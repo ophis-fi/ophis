@@ -21,7 +21,7 @@ const FAQS = [
   },
   {
     q: 'How do batch auctions mitigate MEV?',
-    a: `Three properties work together. First, orders are signed off-chain and submitted to an orderbook, not broadcast as transactions, so there is no pending swap in the public mempool to spot and sandwich. Second, all trades of a pair in a batch settle at one uniform clearing price, so ordering inside the batch carries no advantage. Third, solvers compete on execution quality, so price improvement flows back to the trader instead of being captured by the router.`,
+    a: `Orders are submitted offchain, trades of a pair clear at a uniform batch price, and solvers compete on execution quality. These reduce common ordering advantages. Settlement transactions using external liquidity can still be public, and price improvement is shared under the applicable fee policies.`,
   },
   {
     q: 'What does the signed limit price guarantee?',
@@ -48,12 +48,10 @@ const FAQS = [
   faqs={FAQS}
 >
   <p>
-    <strong>The short version:</strong> MEV extraction needs two things, a visible pending trade
-    and the ability to order around it. Batch-auction settlement removes both: orders are signed
-    off-chain instead of sitting in the mempool, and everything in a batch clears at one uniform
-    price. Your signed limit is enforced by the contract, so no fill can ever be worse than what
-    you signed. The protection is structural, and it is qualified: it mitigates MEV by design, it
-    is not an absolute guarantee against all adversarial conditions.
+    <strong>The short version:</strong> offchain orders and uniform clearing prices per token
+    pair reduce common MEV opportunities. Your signed limit is enforced by the settlement
+    contract, but the settlement transaction can still be public and use external pools.
+    This is mechanism-level mitigation, not an absolute guarantee against every attack.
   </p>
 
   {FAQS.map((f) => (

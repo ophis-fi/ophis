@@ -23,12 +23,12 @@ const FAQS = [
     a: `Up to your slippage tolerance. The tolerance is the worst price you pre-authorized, so it is precisely the budget an attacker can harvest: a 1% tolerance on a large swap hands over up to 1% of it. Tightening the tolerance shrinks the budget but starts failing your trades in volatile markets, which is the uncomfortable trade-off tolerance-based execution forces.`,
   },
   {
-    q: 'How do batch auctions prevent sandwich attacks?',
-    a: `By removing both preconditions. Orders are signed off-chain and submitted to an orderbook, so there is no pending swap in the public mempool to spot. Settlement happens in batches where every trade of a pair clears at one uniform price, so ordering inside the batch carries no advantage to sell. Batch-auction settlement mitigates MEV by design; it is not an absolute guarantee against all adversarial conditions.`,
+    q: 'How do batch auctions mitigate sandwich attacks?',
+    a: `Orders are submitted offchain and each token pair clears at a uniform batch price, reducing common ordering advantages. The settlement transaction can still be visible and use external pools. Signed limits remain enforced, but batch auctions do not guarantee immunity from every sandwich scenario.`,
   },
   {
     q: 'Does a tight slippage setting protect me on a regular DEX?',
-    a: `Only partially. A tighter tolerance shrinks the attacker's budget but does not remove the visible pending transaction that invites the attack, and it raises the chance your trade reverts and you pay gas for nothing. Hiding the transaction (a private RPC) or hardening the tolerance into a contract-enforced floor on an off-chain order (a signed limit settled in a batch auction) addresses the cause rather than the budget: with no pending swap to bracket and no fill possible below the floor, the band is not harvestable.`,
+    a: `Only partially. A tighter tolerance limits adverse execution but can increase failed transactions. Router minimum-output bounds and signed-order limits are both contract-enforced. Private submission and batch auctions add different protections; neither makes all execution inside the permitted price band risk-free.`,
   },
 ]
 ---
@@ -46,9 +46,8 @@ const FAQS = [
     <strong>The short version:</strong> a sandwich attack needs two things: a visible pending
     swap, and a slippage tolerance that pre-authorizes a worse price. The attacker buys before
     you, lets your trade move the price, and sells after you, pocketing up to your tolerance.
-    Remove the visibility, and harden the tolerance into a contract-enforced floor cleared at a
-    uniform batch price, and the attack has nothing to work with, which is what batch-auction
-    settlement does structurally.
+    Offchain orders and uniform clearing prices per token pair reduce this exposure. Signed
+    limits constrain execution, but external-pool settlement can still be public and adversarial.
   </p>
 
   {FAQS.map((f) => (
@@ -62,7 +61,7 @@ const FAQS = [
   <p>
     The full protection picture, including exactly what is and is not guaranteed, is in
     <a href="/learn/mev-protected-swaps/">MEV-protected swaps, explained</a>. How orders work
-    without a tolerance at all: <a href="/learn/intent-based-dex-aggregator/">what is an
+    with signed limits: <a href="/learn/intent-based-dex-aggregator/">what is an
     intent-based DEX aggregator</a>. The role of the parties who settle your trade:
     <a href="/learn/what-is-a-solver/">what is a solver</a>.
   </p>

@@ -14,7 +14,7 @@ const FAQS = [
   },
   {
     q: 'What does Ophis charge on stablecoin pairs?',
-    a: 'Every supported chain pays a 1 bp Ophis base fee. On same-chain stablecoin pairs, Ophis retains 50% of reference-quote improvement, capped at 20 bps of volume. CoW-hosted chains can also apply upstream protocol fees.',
+    a: 'Under the standard policy (excluding the current Arc release exception), swaps pay a 1 bp Ophis base fee. On stablecoin pairs, Ophis retains 50% of reference-quote improvement, capped at 20 bps of volume. CoW-hosted chains can also apply upstream protocol fees.',
   },
 ]
 ---
@@ -36,6 +36,7 @@ const FAQS = [
 
   <h2>Open a stablecoin market</h2>
   <ul>
+    <li><a href="https://swap.ophis.fi/#/5042/swap">Swap stablecoins on Arc</a></li>
     <li><a href="https://swap.ophis.fi/#/8453/swap">Swap stablecoins on Base</a></li>
     <li><a href="https://swap.ophis.fi/#/43114/swap">Swap stablecoins on Avalanche</a></li>
     <li><a href="https://swap.ophis.fi/#/57073/swap">Swap stablecoins on Ink</a></li>
@@ -48,12 +49,18 @@ const FAQS = [
 
   <h2>Why use intents for stablecoin swaps?</h2>
   <p>
+    Arc also has direct Circle bridge routes for configured assets, separate from batch-auction
+    swaps. Availability depends on the source, destination, asset and wallet type; gas,
+    bridge fees and recovery rules differ. See
+    <a href="https://docs.ophis.fi/networks-assets">current bridge support and restrictions</a>.
+  </p>
+  <p>
     You sign the minimum amount you will accept. Solvers compete to fill the order through a batch
     auction, and the order cannot settle below that signed limit. This design mitigates front-running
     and sandwich attacks while allowing a better execution price to flow through to the result.
   </p>
   <p>
-    Stable pairs also use Ophis's stable-specific improvement policy: a 1 bp base plus 50% of
+    Outside the current Arc release exception, stable pairs use Ophis's stable-specific improvement policy: a 1 bp base plus 50% of
     reference-quote improvement, capped at 20 bps of volume. See the
     <a href="/pricing/">pricing page</a> for the complete hosted-chain and operated-chain policy.
   </p>

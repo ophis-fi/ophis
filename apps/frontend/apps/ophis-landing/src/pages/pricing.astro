@@ -11,26 +11,25 @@
  */
 import ContentPage from '../layouts/ContentPage.astro'
 import { canonicalPage } from '../data/canonicalPages'
-import { SOVEREIGN_CHAIN_LIST as sovereignList } from '../data/chains'
 
 const { updated } = canonicalPage('/pricing/')
 
 const FAQS = [
   {
     q: 'What does Ophis charge?',
-    a: `Every supported chain pays a 1 bp Ophis base. Ophis also retains 80% of reference-quote improvement on volatile pairs, capped at 99 bps of volume, or 50% on stable pairs, capped at 20 bps. CoW-hosted chains additionally pay CoW Protocol fees upstream.`,
+    a: `Outside the current Arc release exception, the standard batch-auction schedule charges a 1 bp Ophis base. Ophis also retains 80% of reference-quote improvement on volatile pairs, capped at 99 bps of volume, or 50% on stable pairs, capped at 20 bps. CoW-hosted chains additionally pay CoW Protocol fees upstream.`,
   },
   {
     q: 'What is the all-in cost on each chain?',
-    a: `On every supported chain, the minimum is 1 bp and the maximum Ophis charge is 100 bps on volatile pairs or 21 bps on stable pairs. On CoW-hosted chains, CoW Protocol adds its own fees on top.`,
+    a: `For standard-policy batch-auction swaps (not the current Arc exception), the minimum Ophis fee is 1 bp and the maximum Ophis charge is 100 bps on volatile pairs or 21 bps on stable pairs. On CoW-hosted chains, CoW Protocol adds its own fees on top.`,
   },
   {
     q: 'Does Ophis take a cut of surplus?',
-    a: `Yes, on every supported chain: 80% on volatile pairs or 50% on stable pairs, subject to the caps. The measurement is improvement over the reference quote, not the user's slippage limit.`,
+    a: `Under the standard policy, excluding Arc's current release exception: 80% on volatile pairs or 50% on stable pairs, subject to the caps. The measurement is improvement over the reference quote, not the user's slippage limit.`,
   },
   {
     q: 'What do integrators pay, and what can they charge?',
-    a: `Integrations pay the same 1 bp base plus capped improvement capture on every chain. Integrators can still charge an onboarded own-fee of up to 90 bps on top; hosted settlement reserves a 190 bps aggregate ceiling.`,
+    a: `Published SDK/MCP integrations use the standard 1 bp base plus capped improvement policy on their supported chains, excluding Arc. Integrators can still charge an onboarded own-fee of up to 90 bps on top; Ophis's registered hosted configuration reserves a 190 bps aggregate ceiling. This is not a universal ceiling for every CoW widget or integration.`,
   },
   {
     q: 'Are the APIs free?',
@@ -45,15 +44,15 @@ const FAQS = [
 
 <ContentPage
   title="Ophis fees and pricing"
-  description="The canonical Ophis fee reference: 1 bp plus capped price-improvement capture on every supported chain."
+  description="Ophis fees: the standard base plus capped improvement policy, Arc's release exception, hosted upstream fees and bridge costs."
   path="/pricing/"
   heading="Fees and pricing"
-  lede="The same solver-aligned Ophis pricing on every supported chain."
+  lede="Pricing by settlement path: standard batch-auction fees, the Arc release exception and route-specific bridge costs."
   updated={updated}
   faqs={FAQS}
 >
   <p>
-    <strong>The short version:</strong> on every supported chain, Ophis charges 1 bp plus 80% of
+    <strong>The short version:</strong> the standard schedule, excluding the current Arc exception, charges 1 bp plus 80% of
     reference-quote improvement on volatile pairs (99 bps cap), or 50% on stable pairs (20 bps cap).
     CoW-hosted chains additionally pay CoW Protocol's upstream fees.
   </p>
@@ -62,7 +61,7 @@ const FAQS = [
     <thead>
       <tr>
         <th scope="col">Path</th>
-        <th scope="col">Ophis-operated</th>
+        <th scope="col">Optimism / Unichain / Robinhood</th>
         <th scope="col">CoW-hosted</th>
       </tr>
     </thead>
@@ -97,9 +96,26 @@ const FAQS = [
     </section>
   ))}
 
+  <h2>Arc release exception</h2>
+  <p>
+    Arc is Ophis-operated but its running release currently configures no backend improvement
+    policy. The verified completed USDC/EURC order carried a 1 bp volume-only fee. Do not assume
+    the standard 80%/99 bps or 50%/20 bps capture applies there: review the quote and signed
+    fee metadata. See the <a href="https://docs.ophis.fi/fees#arc-release-exception">dated fee evidence</a>.
+  </p>
+
+  <h2>Bridge costs and gas</h2>
+  <p>
+    These rates are not a total execution-cost estimate. Pool fees, price impact and wallet
+    gas can affect net output. NEAR quotes include a 3 bps Ophis app fee and provider costs;
+    direct Circle bridge and WBTC-conversion routes are separate from batch-auction pricing.
+    Read <a href="https://docs.ophis.fi/networks-assets">route restrictions and recovery rules</a>
+    and review the final quote before authorizing a transfer.
+  </p>
+
   <h2>Worked example</h2>
   <p>
-    On $100,000 of sovereign volatile volume with 20 bps of improvement, Ophis receives $10 base
+    On $100,000 of Optimism volatile volume with 20 bps of improvement, Ophis receives $10 base
     plus $160 of improvement capture: $170 total. On a stable pair with the same improvement, the
     stable capture is 10 bps, producing $110 total; the 20 bps cap does not bind until improvement
     reaches 40 bps. Hosted chains apply the same Ophis base and improvement policy, with CoW

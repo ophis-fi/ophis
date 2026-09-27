@@ -134,7 +134,7 @@ test('/learn hub renders and links every guide', async ({ page }) => {
   }
 })
 
-test('pricing page states the all-chain capture policy', async ({ page }) => {
+test('pricing page states the standard capture policy and Arc exception', async ({ page }) => {
   await page.goto('/pricing')
   const body = page.locator('main')
   await expect(body).toContainText('1 bp + 80% improvement')
@@ -145,7 +145,10 @@ test('pricing page states the all-chain capture policy', async ({ page }) => {
   await expect(body).toContainText("Hosted chains apply the same Ophis base and improvement policy")
   await expect(body).not.toContainText('5 bps')
   await expect(body).not.toContainText('Hosted-chain costs follow the flat schedule')
-  await expect(page.locator('.updated time')).toHaveAttribute('datetime', /2026-09-15/)
+  await expect(page.getByRole('heading', { name: 'Arc release exception' })).toBeVisible()
+  await expect(body).toContainText('currently configures no backend improvement policy')
+  await expect(body).toContainText('1 bp volume-only fee')
+  await expect(page.locator('.updated time')).toHaveAttribute('datetime', /2026-09-27/)
 })
 
 test('acquisition pages are linked from their relevant guides', async ({ page }) => {

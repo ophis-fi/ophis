@@ -13,7 +13,7 @@ const { updated } = canonicalPage('/learn/mev-blockers-vs-batch-auctions/')
 const FAQS = [
   {
     q: 'What does a private RPC or MEV blocker do?',
-    a: `It changes where your transaction goes. Instead of broadcasting to the public mempool, your wallet sends it to a private endpoint that forwards it to block builders directly, so it is never visible while pending. Front-running and sandwiching need to see your trade before it lands, so hiding it removes the trigger, and some services additionally auction off harmless backruns of your trade and rebate part of the proceeds.`,
+    a: `It changes the submission path: your wallet sends a transaction to a private endpoint rather than the public mempool. Protection depends on the endpoint, builder set and fallback behavior. Some services also return part of backrun proceeds; private submission is not a guarantee that no other party sees or exploits the transaction.`,
   },
   {
     q: 'What does a private RPC not change?',
@@ -21,7 +21,7 @@ const FAQS = [
   },
   {
     q: 'How do batch auctions approach the same problem?',
-    a: `Structurally. ERC-20 orders are signed messages on an orderbook, so there is no pending transaction to hide in the first place (native-ETH placement through EthFlow is the on-chain exception), and every trade of a pair in a batch settles at one uniform clearing price, so ordering inside the batch carries no extractable advantage. Add the enforced signed limit and solver competition returning surplus, and the tolerance-harvesting surface is gone rather than hidden. Batch-auction settlement mitigates MEV by design; it is not an absolute guarantee against all adversarial conditions.`,
+    a: `Standard ERC-20 orders are submitted offchain and each token pair clears at a uniform batch price. These reduce ordering advantages while signed limits constrain execution. Native-token placement and the solver's settlement are onchain transactions; external liquidity remains exposed to its own execution risks. This mitigates common MEV, not every attack.`,
   },
   {
     q: 'Can I use both?',
@@ -29,26 +29,25 @@ const FAQS = [
   },
   {
     q: 'Which should a trader choose?',
-    a: `For trading through a router, a private RPC is a genuine upgrade and costs nothing to adopt. For the trade itself, a batch auction changes the model rather than the routing: no visible pending swap, a slippage input that hardens into an enforced floor instead of sitting exposed, and competitive execution above that floor. Ophis applies its published capped improvement policy; hosted settlement additionally applies CoW Protocol's separate upstream policy. Choosing is only necessary per trade, and nothing stops a trader from using batch auctions for swaps and a private RPC for everything else.`,
+    a: `Check the network and transaction type. A private RPC can protect router submission; a batch auction changes order submission and solver competition. Router minimum-output bounds and signed limits are both contract-enforced. Compare the net quote, fee policy, private-endpoint assumptions and recovery behavior; the protections can be combined.`,
   },
 ]
 ---
 
 <ContentPage
   title="MEV blockers vs batch auctions | Ophis"
-  description="Private RPCs hide your pending transaction from the mempool; batch auctions have no pending swap at all and harden the slippage input into an enforced limit. A fair comparison of the two MEV defenses."
+  description="Compare private transaction submission and batch-auction execution, their trust assumptions, and the limits of MEV protection."
   path="/learn/mev-blockers-vs-batch-auctions/"
   heading="MEV blockers vs batch auctions"
-  lede="One defense hides the transaction; the other removes the attack surface. What each protects, what each trusts, and why they compose."
+  lede="Different protections for submission and execution. What each protects, what each trusts, and why they can be combined."
   updated={updated}
   faqs={FAQS}
 >
   <p>
-    <strong>The short version:</strong> a private RPC protects the submission path: your
-    transaction skips the public mempool, so attackers cannot see it pending. A batch auction
-    changes the execution model: no pending swap exists for ERC-20 orders, everything clears at
-    a uniform price, and the slippage input hardens into an enforced signed limit. The first
-    hides the target; the second removes it. They cover different layers and combine cleanly.
+    <strong>The short version:</strong> a private RPC changes who receives your transaction
+    before inclusion. Batch auctions change order submission and clearing, with a uniform
+    price per token pair and solver competition. Settlement may still be public; neither
+    approach removes every MEV risk. Both rely on contract-enforced execution bounds.
   </p>
 
   {FAQS.map((f) => (
@@ -63,7 +62,7 @@ const FAQS = [
     The attack both defenses answer:
     <a href="/learn/what-is-a-sandwich-attack/">what is a sandwich attack</a>. The full
     protection boundary: <a href="/learn/mev-protected-swaps/">MEV-protected swaps,
-    explained</a>. Why removing the tolerance matters as much as hiding the transaction:
+    explained</a>. How execution bounds work:
     <a href="/learn/slippage-vs-signed-limit/">slippage vs a signed limit price</a>.
   </p>
 </ContentPage>

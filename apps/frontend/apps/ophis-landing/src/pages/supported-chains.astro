@@ -28,11 +28,11 @@ const FAQS = [
   },
   {
     q: 'What does Ophis-operated mean?',
-    a: `On ${sovereignList}, settlement uses Ophis's own settlement contracts. Every path pays a 1 bp base; Ophis retains 80% of reference-quote improvement on volatile pairs (99 bps cap) or 50% on stable pairs (20 bps cap). Agents and integrators must resolve the per-chain settlement domain and orderbook host via the @ophis/sdk helpers or the MCP list_chains tool before signing. Using the wrong settlement address produces a signature the deployed contract rejects.`,
+    a: `On ${sovereignList}, batch-auction swaps use Ophis's own settlement contracts with chain-specific fee handling. Arc currently has no configured backend improvement policy; see the pricing page. Resolve supported signing domains and orderbook hosts through @ophis/sdk or MCP list_chains. Arc is app-supported but absent from the published SDK/MCP mappings; do not reuse another chain's address. Bridge routes have separate costs.`,
   },
   {
     q: 'How do cross-chain destinations work?',
-    a: `${destinationList} are supported as destinations from any EVM source chain via NEAR Intents, with no second wallet required. They are destinations only: a swap starts from an EVM chain.`,
+    a: `${destinationList} are destinations via NEAR Intents on supported source chains and pairs, not from every EVM chain. A compatible destination wallet/address is required. Arc uses separate Circle routes; app support does not imply NEAR source support.`,
   },
   {
     q: 'Is there a testnet?',
@@ -116,6 +116,10 @@ const itemListLd = {
 
   <h2>For agents and integrators</h2>
   <p>
+    Published SDK and MCP chain mappings currently exclude Arc. The table above describes
+    the swap app, not universal SDK or bridge coverage.
+  </p>
+  <p>
     The machine-readable per-chain contract-pinning policy (settlement addresses, vault relayers,
     EIP-712 domains, orderbook hosts) ships in the
     <a href="https://ophis.fi/.well-known/agent-skills/ophis/SKILL.md">Ophis agent skill</a>. The
@@ -124,5 +128,21 @@ const itemListLd = {
     <a href="https://docs.ophis.fi/ai-agents">MCP server</a> exposes the same data through the
     <code>list_chains</code> tool. Fee detail per chain lives on the
     <a href="/pricing/">pricing page</a>.
+  </p>
+
+  <h2>Arc bridges and liquidity venues</h2>
+  <p>
+    Arc uses USDC for gas. The app includes configured Circle routes connecting Arc,
+    Ethereum, Base, Arbitrum, Optimism and Unichain, subject to asset mappings.
+    Eligible routes are exact-input, same-wallet transfers from an EOA without smart-account
+    code. Ethereum WBTC conversion follows Ethereum WBTC → Ethereum cirBTC → Arc cirBTC;
+    it is not a native Bitcoin bridge or a single atomic swap.
+  </p>
+  <p>
+    Arc routing lanes are configured for Uniswap v3, KyberSwap, Archery, Aero and Uniswap v4.
+    A venue name identifies liquidity used by a lane; the operator can still be Ophis.
+    Configuration does not guarantee a live quote or fill for every pair. See
+    <a href="https://docs.ophis.fi/networks-assets">networks, assets and feature availability</a>
+    for bridge recovery, confidentiality and institutional-feature boundaries.
   </p>
 </ContentPage>
