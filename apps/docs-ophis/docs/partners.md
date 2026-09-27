@@ -166,7 +166,7 @@ const opChainId = 10 as SupportedChainId;
 const orderBookApi = new OrderBookApi({
   chainId: opChainId,
   // optimism-mainnet.ophis.fi, NOT api.cow.fi. The CoW host does not serve
-  // Ophis on Optimism: it would bypass our solver and charge no Ophis fee.
+  // Ophis on Optimism: that is an unsupported host/domain combination.
   baseUrls: { [opChainId]: getOphisOrderbookUrl(10) } as Record<SupportedChainId, string>,
 });
 ```
@@ -268,8 +268,9 @@ settlement pulls from the Ophis relayer, so an approval to the canonical address
 leaves first sells unfillable. The `approve` moves no funds: it only lets the
 relayer pull the sell token when one of your signed orders settles. It is per token
 and one-time (approve a large or unlimited amount once to skip it on later trades),
-and it is the only on-chain transaction; the swaps themselves are gasless. This is
-standard CoW behaviour, not Ophis-specific.
+but an exact allowance can require renewal after a fill. Standard signed ERC-20
+settlement is solver-paid; wrapping, native-token placement, hard cancellation
+and refunds can still require gas.
 
 :::
 
@@ -279,29 +280,18 @@ Use cow-sdk exactly as you do today (its default `api.cow.fi` host and canonical
 settlement are correct), and add **only** the Ophis partner-fee fragment:
 
 ```ts
-import {
-  buildOphisAppDataPartnerFee,
-  ophisVolumeBpsForChainAndPair,
-  OPHIS_PARTNER_FEE_RECIPIENT,
-  OPHIS_FEE_CHAIN_IDS,
-} from '@ophis/sdk';
+import { buildOphisAppDataPartnerFee } from '@ophis/sdk';
 
-if (OPHIS_FEE_CHAIN_IDS.includes(chainId)) {
-  // Standard rate: buildOphisAppDataPartnerFee(chainId). For a same-chain
-  // stablecoin pair use the reduced 1 bp rate, same as on Optimism:
-  const partnerFee = {
-    recipient: OPHIS_PARTNER_FEE_RECIPIENT,
-    volumeBps: ophisVolumeBpsForChainAndPair(chainId, isStablePair),
-  };
-  // ...put it in metadata.partnerFee, sign with the CoW canonical domain
-}
+const partnerFee = buildOphisAppDataPartnerFee(chainId, isStablePair);
+if (!partnerFee) throw new Error('Unsupported Ophis fee chain');
+// Put the complete value in metadata.partnerFee, then sign with the
+// CoW canonical domain. Hosted chains need both fee policy entries.
 ```
 
-The fee recipient is one CREATE2-deterministic Safe on every chain, so the
-fragment is identical everywhere; only the host and settlement differ, and only
-on the Ophis-operated chains (Optimism, Unichain, and Robinhood Chain). CoW-hosted chains do not
-enforce the floor, so the 1 bp stable rate there is your choice, kept consistent
-with the Ophis-operated chains.
+The fee recipient is one CREATE2-deterministic Safe. The helper returns a base
+volume object on SDK-supported operated chains and an array containing the base
+plus capped improvement policy on hosted chains. Do not replace that array with
+a volume-only entry. Arc is app-supported but not yet in the published SDK mappings.
 
 ## Partner economics: the three layers
 
@@ -362,13 +352,13 @@ Ophis takes **0% of your fee**. The Ophis charge remains separate: 1 bp plus
 capped improvement capture on every chain, plus upstream CoW fees on
 CoW-hosted chains.
 The Ophis entries can realize at most 100 bps on a volatile pair (1 + 99) or 21
-bps on a stable pair (1 + 20). The aggregate hosted settlement ceiling is 190
+bps on a stable pair (1 + 20). The aggregate ceiling for Ophis's registered hosted configuration is 190
 bps, while a registered integrator entry remains capped at **90 bps**.
 
-The array applies to **ERC-20 orders**. A **native-ETH** sell built with the
-`buildOphisEthFlowOrder` helper carries the single Ophis base `partnerFee`
-entry; to add your own fee on a native-ETH order, build the appData manually
-with the array shape above rather than using the helper.
+The array can also be passed in the appData supplied to
+`buildOphisEthFlowOrder` for supported **native-ETH** sells. Keep the full Ophis
+policy and any onboarded own-fee entry: the helper validates arrays and requires
+the hosted volatile improvement policy. Do not bypass the helper's validation.
 
 How your fee reaches you depends on the chain:
 
@@ -383,13 +373,13 @@ How your fee reaches you depends on the chain:
   with a **0.001 WETH minimum** (per CoW's terms a weekly amount below it can be voided, not carried forward), for
   **market-order trades** only
   ([CoW partner-fee docs](https://docs.cow.fi/governance/fees/partner-fee)). The
-  aggregate of all entries is capped at 190 bps, so the maximum Ophis policy and
+  aggregate under Ophis's registered hosted configuration is capped at 190 bps, so the maximum Ophis policy and
   a 90 bps registered integrator entry can coexist. CoW's 25% is a CIP-75 default and is negotiable with
   CoW DAO. We confirm the end-to-end payout to your recipient on the first settled
   trade.
-- **Optimism, Unichain, and Robinhood Chain (Ophis-operated):** a stacked own-fee to a
-  third-party recipient is paid to you through a two-step onboarding, both of
-  which Ophis now supports end to end:
+- **Optimism and Unichain:** an onboarded third-party own-fee uses the two-step
+  process below. Robinhood reporting exists, but its own-fee payout is not
+  covered by this guarantee:
   1. _Ingress (allowlisting)._ Your recipient is added to the backend
      fee-recipient allowlist, so your order settles and your fee is charged (a
      reviewed backend change plus a redeploy; the onboarding step is below).
@@ -415,19 +405,17 @@ capture remains excluded until receipts can be reconciled to the Ophis Safe.
 
 ```ts
 import {
-  ophisVolumeBpsForChainAndPair,
-  OPHIS_PARTNER_FEE_RECIPIENT,
+  buildOphisAppDataPartnerFee,
   buildOphisReferrerMetadata,
 } from '@ophis/sdk';
+
+const partnerFee = buildOphisAppDataPartnerFee(chainId, isStablePair);
+if (!partnerFee) throw new Error('Unsupported Ophis fee chain');
 
 const doc = await new MetadataApi().generateAppDataDoc({
   appCode: 'ophis', // REQUIRED: 'ophis', NOT your app's name (see below)
   metadata: {
-    // Same chain-aware partner-fee fragment as above.
-    partnerFee: {
-      recipient: OPHIS_PARTNER_FEE_RECIPIENT,
-      volumeBps: ophisVolumeBpsForChainAndPair(chainId, isStablePair),
-    },
+    partnerFee,
     ...buildOphisReferrerMetadata('your-code'), // -> metadata.ophisReferrer.code
     hooks: {},
   },
@@ -483,9 +471,9 @@ next-payout time (those stay on the signature-gated partner dashboard).
 ### What Ophis guarantees, and what accrues under CoW terms
 
 Optimism (10), Unichain (130), and Robinhood Chain (4663) are Ophis-operated.
-The earnings indexer and automated sovereign payout currently cover chains 10
-and 130; Robinhood fee and rebate reporting remains unavailable until that
-indexer lane is deployed. On the CoW-hosted chains, partner fees are disbursed by CoW under
+The earnings indexer includes all three; the automated sovereign **own-fee payout
+guarantee** is limited to chains 10 and 130. Robinhood reporting does not imply
+own-fee payout coverage. On the CoW-hosted chains, partner fees are disbursed by CoW under
 CoW terms; Ophis neither pays nor guarantees them. The response splits each figure
 **sovereign** vs **hosted**. The sovereign label means Ophis-controlled settlement: Ophis
 pays the **referral rebate** from its Safe regardless of chain, and it now also pays a
@@ -673,10 +661,10 @@ The order carries the Ophis partner fee exactly as an ERC-20 order does.
   the Ophis base fee and can earn referral attribution through its `appCode`, but
   it cannot stack your own fee on top, redirect the recipient, or control
   per-order `appData`: those need the SDK.
-- **Optimism, Unichain, and Robinhood Chain are the self-hosted chains.** Other chains are CoW-hosted, where
+- **Optimism, Unichain, and Robinhood Chain are the SDK-supported self-hosted chains.** Arc is app-only; the other SDK chains are CoW-hosted, where
   Ophis charges the fee but cannot enforce a floor or an on-chain discount.
-- **Do not use the `api.cow.fi` host on an Ophis-operated chain.** It bypasses the
-  Ophis solver and charges no Ophis fee.
+- **Do not use the `api.cow.fi` host on an Ophis-operated chain.** That is an
+  unsupported host/domain combination, not a valid fee-free route.
 
 ## Quick reference
 

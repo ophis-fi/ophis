@@ -11,7 +11,7 @@ const sidebars: SidebarsConfig = {
       type: 'category',
       label: 'Overview',
       collapsed: false,
-      items: ['getting-started', 'architecture', 'fees', 'trade-rewards', 'affiliate', 'comparison'],
+      items: ['getting-started', 'networks-assets', 'architecture', 'fees', 'trade-rewards', 'affiliate', 'comparison'],
     },
     {
       type: 'category',
