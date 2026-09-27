@@ -65,7 +65,7 @@ const envBaseUrls = process.env.REACT_APP_ORDER_BOOK_URLS
   ? JSON.parse(process.env.REACT_APP_ORDER_BOOK_URLS)
   : undefined
 
-const baseUrls = (envBaseUrls
+const baseUrls: ApiBaseUrls & { [ARC_CHAIN_ID]?: string } = (envBaseUrls
   ? { ...OPHIS_ORDERBOOK_BASE_URLS, ...envBaseUrls }
   : OPHIS_ORDERBOOK_BASE_URLS) as unknown as ApiBaseUrls
 
@@ -78,7 +78,10 @@ setGlobalAdapter(legacyAdapter)
 export const orderBookApi = new OrderBookApi({
   env: isBarnBackendEnv ? 'staging' : 'prod',
   baseUrls,
-  backoffOpts: { ...DEFAULT_BACKOFF_OPTIONS, retry: retryOrderBookRequest },
+  backoffOpts: {
+    ...DEFAULT_BACKOFF_OPTIONS,
+    retry: (error, attempt) => retryOrderBookRequest(error, attempt, ARC_ENABLED ? baseUrls[ARC_CHAIN_ID] : undefined),
+  },
 })
 
 export const metadataApiSDK = new MetadataApi()
