@@ -93,11 +93,11 @@ describe('renderStatsPage', () => {
     expect(renderStatsPage(sample)).toMatch(/^[\x00-\x7F]*$/);
   });
 
-  it('leads with the per-trade guarantees, then per-chain table, then lifetime totals, then docs links', () => {
+  it('leads with the execution model, then per-chain table, then indexed totals, then docs links', () => {
     const html = renderStatsPage(sample);
-    const hero = html.indexOf('MEV-protected batch settlement');
+    const hero = html.indexOf('Batch-auction MEV mitigation');
     const byChain = html.indexOf('Settled volume by chain');
-    const lifetime = html.indexOf('Lifetime settled volume, cumulative');
+    const lifetime = html.indexOf('Lifetime indexed volume, cumulative');
     const docs = html.indexOf('https://docs.ophis.fi/fees');
     expect(hero).toBeGreaterThan(-1);
     expect(byChain).toBeGreaterThan(hero);
@@ -105,12 +105,16 @@ describe('renderStatsPage', () => {
     expect(docs).toBeGreaterThan(lifetime);
   });
 
-  it('states every per-trade guarantee in the hero', () => {
+  it('scopes execution claims to batch swaps and explains route-dependent risks', () => {
     const html = renderStatsPage(sample);
-    expect(html).toContain('MEV-protected batch settlement');
-    expect(html).toContain('Hard signed limit price');
-    expect(html).toContain('Gasless execution');
-    expect(html).toContain('Solver competition on every order');
+    expect(html).toContain('Batch-auction MEV mitigation');
+    expect(html).toContain('Signed order limits');
+    expect(html).toContain('Offchain signing, route-dependent gas');
+    expect(html).toContain('Configured routing lanes');
+    expect(html).toContain('Settlement transactions can still be public');
+    expect(html).toContain('not an absolute guarantee');
+    expect(html).toContain('native-token deposits, onchain cancellation, bridges and recovery can require gas');
+    expect(html).toContain('Lanes are not independent solver operators');
     expect(html).toContain('Optimism: 11, Unichain: 7, Robinhood Chain: 6');
     expect(html).not.toContain('On Unichain, 8 aggregator solvers');
   });
@@ -122,10 +126,18 @@ describe('renderStatsPage', () => {
     expect(html).toContain('https://docs.ophis.fi/fees');
   });
 
-  it('gives the lifetime totals their early-stage, on-chain-verifiable context line', () => {
+  it('distinguishes app support from incomplete indexing, without changing the chain filter', () => {
     const html = renderStatsPage(sample);
-    expect(html).toContain('lifetime totals since launch, not a rolling window');
-    expect(html).toContain('verifiable by anyone');
+    expect(html).toContain('supports 14 EVM networks; this report is configured for 13');
+    expect(html).toContain('Arc activity is not yet included');
+    expect(html).toContain('A missing chain row does not prove there was no activity');
+    expect(html).toContain('A recent publication time does not establish complete coverage');
+    expect(html).toContain('Chains with indexed trades');
+    expect(html).not.toContain('<option value="5042"');
+    expect(html).not.toContain('guarantees below hold for every single trade');
+    expect(html).not.toContain('refreshed continuously');
+    expect(html).not.toContain('no native gas token is needed');
+    expect(html).toContain("Arc's current release has a separate base-only configuration");
   });
 
   it('links the fee model and comparison docs in the footer', () => {
@@ -158,7 +170,8 @@ describe('EXECUTION_FACTS (static execution-model facts on the public JSON)', ()
     expect(EXECUTION_FACTS.mevProtection).toBe('batch-auction');
     expect(EXECUTION_FACTS.settlementModel).toBe('intent, uniform clearing price');
     expect(EXECUTION_FACTS.solverCompetition.hostedChains).toBe('CoW Protocol solver network');
-    expect(EXECUTION_FACTS.improvementSplit.sovereign).toBe('Ophis retains 80% of volatile improvement (99 bps cap) or 50% of stable improvement (20 bps cap)');
+    expect(EXECUTION_FACTS.improvementSplit.sovereign).toContain('On Optimism, Unichain and Robinhood Chain, Ophis retains 80%');
+    expect(EXECUTION_FACTS.improvementSplit.sovereign).toContain('Arc currently has a separate base-only configuration');
     expect(EXECUTION_FACTS.improvementSplit.hosted).toBe('The same Ophis capped capture applies, plus CoW Protocol quote-improvement fees upstream');
   });
 });

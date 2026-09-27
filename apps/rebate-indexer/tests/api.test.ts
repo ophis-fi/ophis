@@ -104,7 +104,7 @@ test('/stats returns public cumulative JSON for an API client', async () => {
       hostedChains: 'CoW Protocol solver network',
     },
     improvementSplit: {
-      sovereign: 'Ophis retains 80% of volatile improvement (99 bps cap) or 50% of stable improvement (20 bps cap)',
+      sovereign: 'On Optimism, Unichain and Robinhood Chain, Ophis retains 80% of volatile improvement (99 bps cap) or 50% of stable improvement (20 bps cap). Arc currently has a separate base-only configuration.',
       hosted: 'The same Ophis capped capture applies, plus CoW Protocol quote-improvement fees upstream',
     },
   });
@@ -120,7 +120,8 @@ test('/stats serves a styled HTML page to a browser (Accept: text/html)', async 
   const res = await app.inject({ method: 'GET', url: '/stats?chain=1&sort=chain-asc', headers: { accept: 'text/html' } });
   expect(res.statusCode).toBe(200);
   expect(res.headers['content-type']).toContain('text/html');
-  expect(res.body).toContain('Every trade settles MEV-protected');
+  expect(res.body).toContain('How trades settle. What we have indexed.');
+  expect(res.body).toContain('Arc activity is not yet included');
   expect(res.headers['content-security-policy']).toContain("form-action 'self'");
   expect(res.headers['content-security-policy']).toContain("img-src 'self'");
   expect(res.body).toContain('<option value="1" selected>');
