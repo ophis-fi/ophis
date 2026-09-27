@@ -60,8 +60,9 @@ trade rather than billed in native gas (the
 full [fee schedule](https://docs.ophis.fi/fees) is public; on the chains that
 settle through CoW Protocol, CoW Protocol's protocol fee applies on top of the
 Ophis fee). On a standard sell order that is the token you receive: sell USDC for ETH and the fee is a slice of the ETH. On a buy order, where you name the amount you want to receive, it comes off the token you spend instead. For standard ERC-20 orders, you do not broadcast or directly pay gas for the
-solver's settlement. The traded asset can itself be the network's gas asset,
-as with USDC on Arc; that does not make the trade gas-free in economic terms.
+solver's settlement. Arc's six-decimal ERC-20 USDC and its 18-decimal native
+USDC gas balance are distinct assets with the same symbol: selling the ERC-20
+does not spend or replenish the native gas balance.
 
 The limit you signed still bounds the outcome. Solvers compete to beat the
 reference quote. Under that standard schedule, Ophis retains 80% of that
@@ -91,17 +92,13 @@ This article's gasless flow is the standard signed ERC-20 order.
 
 ## Who actually hits the gas wall
 
-**New wallets.** The classic deadlock: a fresh wallet receives USDC from an
-exchange withdrawal or an airdrop, and then cannot do anything with it, because
-doing anything takes gas and the wallet holds none. A signed order breaks the
-deadlock: a solver executes the trade, and the fee comes out of the trade
-itself rather than out of a gas balance the wallet does not have.
+**New wallets.** ERC-20 tokens alone do not cover approval gas. A wallet needs
+an existing allowance or a supported permit flow before gasless signing can help.
+Once that requirement is met, the solver pays settlement gas.
 
-**AI agents.** An agent's wallet is funded in the tokens it trades, not in gas.
-Keeping native balances topped up on every chain it touches is an operational
-loop nobody wants to babysit, and spare ETH sitting in a hot agent wallet is
-added attack surface. An agent that signs orders instead of broadcasting
-transactions needs neither; the full integration pattern is in
+**AI agents.** Signed orders remove the need to fund settlement transactions,
+not all wallet operations. Keep gas available for approvals and other required
+transactions; the integration pattern is in
 [how to let an AI agent swap tokens](/blog/let-an-ai-agent-swap-tokens/).
 
 **Multichain traders.** The Ophis app supports 14 chains: Ethereum, Optimism, BNB,
