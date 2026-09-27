@@ -16,33 +16,33 @@ export interface EvmChain {
   name: string
   /** Short display name for the homepage chain strip. */
   shortName: string
+  slug: string
   chainId: number
   /** Logo path under public/ (same-origin; CSP img-src is 'self'). */
   logo: string
-  /** Ophis-operated sovereign network: Ophis's own GPv2Settlement at a
-      non-canonical address, 1 bp base plus capped reference-improvement capture. */
+  /** Ophis-operated sovereign network with its own settlement deployment. */
   sovereign: boolean
 }
 
 // Order = homepage chain-strip display order (tests/chains.spec.ts pins it).
 export const EVM_CHAINS: EvmChain[] = [
-  { name: 'Ethereum', shortName: 'Ethereum', chainId: 1, logo: '/logos/chain-ethereum.png', sovereign: false },
-  { name: 'BNB Smart Chain', shortName: 'BNB', chainId: 56, logo: '/logos/chain-bnb.png', sovereign: false },
-  { name: 'Base', shortName: 'Base', chainId: 8453, logo: '/logos/chain-base.png', sovereign: false },
-  { name: 'Arbitrum One', shortName: 'Arbitrum', chainId: 42161, logo: '/logos/chain-arbitrum.jpg', sovereign: false },
-  { name: 'Polygon', shortName: 'Polygon', chainId: 137, logo: '/logos/chain-polygon.png', sovereign: false },
-  { name: 'Avalanche', shortName: 'Avalanche', chainId: 43114, logo: '/logos/chain-avalanche.png', sovereign: false },
-  { name: 'Linea', shortName: 'Linea', chainId: 59144, logo: '/logos/chain-linea.jpg', sovereign: false },
-  { name: 'Plasma', shortName: 'Plasma', chainId: 9745, logo: '/logos/chain-plasma.svg', sovereign: false },
-  { name: 'Ink', shortName: 'Ink', chainId: 57073, logo: '/logos/chain-ink.svg', sovereign: false },
-  { name: 'Gnosis Chain', shortName: 'Gnosis', chainId: 100, logo: '/logos/chain-gnosis.png', sovereign: false },
-  { name: 'Optimism', shortName: 'Optimism', chainId: 10, logo: '/logos/chain-optimism.png', sovereign: true },
-  { name: 'Unichain', shortName: 'Unichain', chainId: 130, logo: '/logos/chain-unichain.svg', sovereign: true },
+  { name: 'Ethereum', shortName: 'Ethereum', slug: 'ethereum', chainId: 1, logo: '/logos/chain-ethereum.png', sovereign: false },
+  { name: 'BNB Smart Chain', shortName: 'BNB', slug: 'bnb', chainId: 56, logo: '/logos/chain-bnb.png', sovereign: false },
+  { name: 'Base', shortName: 'Base', slug: 'base', chainId: 8453, logo: '/logos/chain-base.png', sovereign: false },
+  { name: 'Arbitrum One', shortName: 'Arbitrum', slug: 'arbitrum', chainId: 42161, logo: '/logos/chain-arbitrum.jpg', sovereign: false },
+  { name: 'Polygon', shortName: 'Polygon', slug: 'polygon', chainId: 137, logo: '/logos/chain-polygon.png', sovereign: false },
+  { name: 'Avalanche', shortName: 'Avalanche', slug: 'avalanche', chainId: 43114, logo: '/logos/chain-avalanche.png', sovereign: false },
+  { name: 'Linea', shortName: 'Linea', slug: 'linea', chainId: 59144, logo: '/logos/chain-linea.jpg', sovereign: false },
+  { name: 'Plasma', shortName: 'Plasma', slug: 'plasma', chainId: 9745, logo: '/logos/chain-plasma.svg', sovereign: false },
+  { name: 'Ink', shortName: 'Ink', slug: 'ink', chainId: 57073, logo: '/logos/chain-ink.svg', sovereign: false },
+  { name: 'Gnosis Chain', shortName: 'Gnosis', slug: 'gnosis', chainId: 100, logo: '/logos/chain-gnosis.png', sovereign: false },
+  { name: 'Optimism', shortName: 'Optimism', slug: 'optimism', chainId: 10, logo: '/logos/chain-optimism.png', sovereign: true },
+  { name: 'Unichain', shortName: 'Unichain', slug: 'unichain', chainId: 130, logo: '/logos/chain-unichain.svg', sovereign: true },
   // -v2 filename: corrected brand art (black feather on #ccff00, per Robinhood
   // Chain team feedback 2026-08-02); /logos/* is cached immutable, so a brand
   // fix must ship under a new filename (see public/_headers).
-  { name: 'Robinhood Chain', shortName: 'Robinhood', chainId: 4663, logo: '/logos/chain-robinhood-v2.svg', sovereign: true },
-  { name: 'Arc', shortName: 'Arc', chainId: 5042, logo: '/logos/chain-arc-network.svg', sovereign: true },
+  { name: 'Robinhood Chain', shortName: 'Robinhood', slug: 'robinhood', chainId: 4663, logo: '/logos/chain-robinhood-v2.svg', sovereign: true },
+  { name: 'Arc', shortName: 'Arc', slug: 'arc', chainId: 5042, logo: '/logos/chain-arc-network.svg', sovereign: true },
 ]
 
 export const EVM_CHAIN_COUNT = EVM_CHAINS.length

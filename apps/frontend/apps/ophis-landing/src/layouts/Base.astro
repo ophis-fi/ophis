@@ -1,5 +1,5 @@
 ---
-import { EVM_CHAIN_COUNT, NEAR_DESTINATION_LIST as destinationList } from '../data/chains'
+import { EVM_CHAINS, EVM_CHAIN_COUNT, NEAR_DESTINATION_LIST as destinationList } from '../data/chains'
 
 export interface Props {
   title?: string
@@ -225,7 +225,7 @@ const howToJsonLd = `{"@context":"https://schema.org","@type":"HowTo","@id":"htt
   <!-- WebMCP: expose Ophis's parse-intent + open-swap tools to in-browser AI
        agents (navigator.modelContext). External script, covered by
        script-src 'self', so no inline CSP hash is needed. -->
-  <script is:inline src="/webmcp.js" defer></script>
+  <script is:inline src="/webmcp.js" data-chain-ids={JSON.stringify(Object.fromEntries(EVM_CHAINS.map(({ slug, chainId }) => [slug, chainId])))} defer></script>
 </head>
 <body>
   <a class="skip-link" href="#main">Skip to content</a>

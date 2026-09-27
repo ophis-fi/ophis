@@ -75,9 +75,9 @@
         "properties": {
           "type": { "type": "string", "enum": ["sellToken", "buyToken", "amount", "chain"] },
           "value": { "type": "string", "description": "Normalized value (e.g. \"optimism\", \"USDC\", \"100\")." },
-          "raw": { "type": "string", "description": "The exact substring from the input." },
-          "start": { "type": "integer", "description": "Start offset of the raw substring." },
-          "end": { "type": "integer", "description": "End offset of the raw substring." }
+          "raw": { "type": "string", "description": "A case-insensitive match somewhere in the input; offsets may be inaccurate." },
+          "start": { "type": "integer", "description": "Model-proposed in-bounds start offset; re-anchor raw before highlighting." },
+          "end": { "type": "integer", "description": "Model-proposed in-bounds end offset (exclusive); not an exact-span guarantee." }
         }
       },
       "ParsedIntent": {

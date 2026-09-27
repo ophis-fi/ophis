@@ -32,6 +32,7 @@ all operated chains use identical fee handling.
 
 Arc uses **USDC for gas**. Its native balance uses 18 decimals, while the
 ERC-20 USDC interface used for token amounts and bridging uses 6.
+Both interfaces access the same underlying balance; do not add them together.
 
 The swap form includes Circle CCTP routes across the configured network set:
 Arc, Ethereum, Base, Arbitrum, Optimism and Unichain. USDC uses CCTP; expanded

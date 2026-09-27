@@ -21,7 +21,7 @@ export const faqLd = {
       name: 'How is Ophis different from 1inch or Matcha?',
       acceptedAnswer: {
         '@type': 'Answer',
-        text: "Ophis uses batch auctions and solver competition to settle orders with MEV protection by construction. Every supported chain pays a 1 bp Ophis base plus 80% of reference-quote improvement on volatile pairs, capped at 99 bps of volume, or 50% on stable pairs, capped at 20 bps. CoW-hosted chains additionally pay CoW Protocol fees upstream.",
+        text: "Ophis batch-auction swaps use solver competition and signed limits to mitigate MEV. The standard schedule (excluding Arc's current release exception) charges a 1 bp Ophis base plus 80% of reference-quote improvement on volatile pairs, capped at 99 bps of volume, or 50% on stable pairs, capped at 20 bps. CoW-hosted chains additionally pay upstream CoW Protocol fees. Bridge routes have separate costs.",
       },
     },
     {
@@ -29,7 +29,7 @@ export const faqLd = {
       name: 'Do I need to connect a wallet?',
       acceptedAnswer: {
         '@type': 'Answer',
-        text: 'Yes, you sign your swap order with your own wallet. Ophis is non-custodial; the signed order is broadcast to the solver auction and your funds move only when a solver settles the batch.',
+        text: 'Yes. You authorize orders or transactions with your wallet. Standard signed ERC-20 orders keep funds in your wallet until settlement; native-token orders and bridge routes can require an onchain deposit with separate recovery rules.',
       },
     },
     {
@@ -37,7 +37,7 @@ export const faqLd = {
       name: 'Which networks are supported?',
       acceptedAnswer: {
         '@type': 'Answer',
-        text: '14 EVM chains as source or destination: Ethereum, Arbitrum One, Avalanche, Base, BNB Smart Chain, Gnosis Chain, Ink, Linea, Optimism, Plasma, Polygon, Robinhood Chain, Unichain, and Arc. Plus Solana and Bitcoin as cross-chain destinations via NEAR Intents.',
+        text: 'The app supports 14 EVM chains: Ethereum, Arbitrum One, Avalanche, Base, BNB Smart Chain, Gnosis Chain, Ink, Linea, Optimism, Plasma, Polygon, Robinhood Chain, Unichain, and Arc. NEAR Intents adds Bitcoin, Solana, Monad, X Layer, Sui, Tron and Hyperliquid destinations where source, pair and provider support permit. Published SDK and MCP chain lists exclude Arc.',
       },
     },
     {
@@ -45,7 +45,7 @@ export const faqLd = {
       name: 'Is my trade protected from MEV?',
       acceptedAnswer: {
         '@type': 'Answer',
-        text: 'Yes. The batch auction settles every order in a batch at the same uniform clearing price. Front-running and sandwich attacks are eliminated by construction; there is no priority-gas auction to win because the protocol does not reorder transactions for value.',
+        text: 'Batch auctions use a uniform clearing price per token pair and offchain order submission to mitigate common MEV. Settlement transactions can still be public. Your signed limits are enforced, but this is not a guarantee against every front-running or sandwich scenario.',
       },
     },
     {
@@ -53,7 +53,7 @@ export const faqLd = {
       name: 'What happens if no solver matches my intent?',
       acceptedAnswer: {
         '@type': 'Answer',
-        text: 'The order expires after its configured validity window (30 minutes by default) and your funds stay in your wallet. You can resubmit, change parameters, or cancel at any time.',
+        text: 'An unfilled standard ERC-20 order expires after its validity window (30 minutes by default), leaving unsold funds in your wallet. Native-token deposits require an onchain refund; bridge routes follow provider recovery rules. Soft cancellation can race an in-flight settlement.',
       },
     },
     {
@@ -69,7 +69,7 @@ export const faqLd = {
       name: 'How are partner fees collected?',
       acceptedAnswer: {
         '@type': 'Answer',
-        text: "Every order carries Ophis's 1 bp base. On Ophis-operated chains the backend adds the capped improvement policy; on CoW-hosted chains appData carries both the 1 bp Volume entry and the pair-aware PriceImprovement entry: 80% capped at 99 bps for volatile pairs, or 50% capped at 20 bps for stable pairs.",
+        text: "Batch-auction orders carry Ophis's 1 bp base. On Optimism, Unichain and Robinhood Chain the backend adds the capped improvement policy; on CoW-hosted chains appData carries both the 1 bp Volume entry and the pair-aware PriceImprovement entry: 80% capped at 99 bps for volatile pairs, or 50% capped at 20 bps for stable pairs. Arc currently has no configured backend improvement policy; check its quote and signed metadata. Bridge costs are separate.",
       },
     },
     {
@@ -99,40 +99,43 @@ export const faqLd = {
 
 ### How is Ophis different from 1inch or Matcha?
 
-Ophis uses batch auctions and a solver competition to settle every order
-at the best on-chain price, with [MEV protection](./architecture.md) by
-construction. The natural-language input lets you skip token-pickers
-entirely. The [fee model](./fees.md) is published by settlement path. On every
-supported chain, each trade pays a 1 bp base; Ophis retains 80% of reference-quote improvement on volatile pairs,
+Ophis batch-auction swaps use solver competition and signed limits to
+[mitigate MEV](./architecture.md). The optional natural-language API parses
+requests; it does not execute them. The [fee model](./fees.md) is published by
+settlement path. The standard schedule, excluding Arc's current release exception,
+charges a 1 bp base; Ophis retains 80% of reference-quote improvement on volatile pairs,
 capped at 99 bps of volume, or 50% on stable pairs, capped at 20 bps. CoW-hosted
-chains additionally apply CoW Protocol fees upstream.
+chains additionally apply CoW Protocol fees upstream. Arc currently has no configured backend improvement policy; check its quote and signed metadata. Bridge costs are separate.
 
 ### Do I need to connect a wallet?
 
-Yes, you sign your swap order with your own wallet. Ophis is
-non-custodial; the signed order is broadcast to the solver auction and
-your funds move only when a solver settles the batch.
+Yes. You authorize orders or transactions with your wallet. Standard signed
+ERC-20 orders keep funds in your wallet until settlement; native-token orders
+and bridge routes can require an onchain deposit with separate recovery rules.
 
 ### Which networks are supported?
 
-14 EVM chains as source / destination: Ethereum, Arbitrum One, Avalanche,
+The app supports 14 EVM chains: Ethereum, Arbitrum One, Avalanche,
 Base, BNB Smart Chain, Gnosis Chain, Ink, Linea, Optimism, Plasma,
-Polygon, Robinhood Chain, Unichain, and Arc. Plus **Solana** and **Bitcoin** as cross-chain
-destinations via NEAR Intents. See [Getting started](./getting-started.md#supported-networks).
+Polygon, Robinhood Chain, Unichain, and Arc. NEAR Intents adds **Bitcoin, Solana,
+Monad, X Layer, Sui, Tron and Hyperliquid** destinations where source, pair and
+provider support permit. Published SDK and MCP chain lists exclude Arc.
+See [Networks & assets](./networks-assets.md).
 
 ### Is my trade protected from MEV?
 
-Yes. The batch auction settles every order in a batch at the same uniform
-clearing price. Front-running and sandwich attacks are eliminated by
-construction, there is no priority-gas auction to win because the
-protocol does not reorder transactions for value. See
+Batch auctions use a uniform clearing price per token pair and offchain order
+submission to mitigate common MEV. Settlement transactions can still be public.
+Your signed limits are enforced, but this is not a guarantee against every
+front-running or sandwich scenario. See
 [Security & audits](./audits.md#mev-protection-by-construction).
 
 ### What happens if no solver matches my intent?
 
-The order expires after its configured validity window (30 minutes by
-default) and your funds stay in your wallet. You can resubmit, change
-parameters, or cancel at any time.
+An unfilled standard ERC-20 order expires after its validity window (30 minutes
+by default), leaving unsold funds in your wallet. Native-token deposits require
+an onchain refund; bridge routes follow provider recovery rules. Soft
+cancellation can race an in-flight settlement.
 
 ### Who runs the solvers?
 
@@ -146,8 +149,9 @@ on-chain, so no solver can fill it worse than the price you accepted.
 
 ### How are partner fees collected?
 
-Every order carries Ophis's **1 bp base**. On Ophis-operated chains the backend
-adds the capped improvement policy. On CoW-hosted chains, `appData` carries both
+Batch-auction orders carry Ophis's **1 bp base**. On Optimism, Unichain and
+Robinhood Chain the backend adds the capped improvement policy. Arc's release
+currently has no configured backend improvement policy; check its quoted metadata. On CoW-hosted chains, `appData` carries both
 the 1 bp `Volume` entry and the pair-aware `PriceImprovement` entry: **80%
 capped at 99 bps** for volatile pairs, or **50% capped at 20 bps** for stable
 pairs. Full detail is on the [Fees & rebates](./fees.md) page.

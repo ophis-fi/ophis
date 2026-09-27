@@ -14,7 +14,7 @@
     "pretest": "pnpm build",
     "test": "playwright test",
     "lh": "lhci autorun",
-    "test:unit": "node scripts/test-html-text.mjs",
+    "test:unit": "node scripts/test-html-text.mjs && node scripts/test-webmcp.mjs",
     "test:csp": "node scripts/test-csp-guard.mjs"
   },
   "dependencies": {
