@@ -254,6 +254,7 @@ def check_free_reads(rpc_url, control):
             if rpc().get("result") == "0x1":
                 break
         except (URLError, OSError):
+            # Container startup is asynchronous; retry only until the deadline.
             pass
         assert time.monotonic() < deadline, "four-provider mock proxy did not boot"
         time.sleep(.2)
