@@ -307,12 +307,16 @@ the existing direct deposit path remains documented, and unavailable routes fail
 closed. No unvalidated `/swap/approval` calldata is executed. A requested slow fill
 remains pending until an actual fill status arrives.
 
-Free official and Blockdaemon RPC responses must agree for protected reads.
+Free official and Blockdaemon RPCs are preferred for protected reads. A failed
+voter can fall back to QuickNode for calls, gas estimation, balance, code and numbered/tagged header reads;
+two distinct providers must still agree. A healthy free quorum makes no paid
+state reads. QuickNode alone cannot replace both unavailable free providers.
+Gas-price hints also have paid fallback; they retain their existing single-provider policy.
 Only the official endpoint receives `eth_sendRawTransaction`, one attempt; it
 never reaches QuickNode. Each public provider is capped at 120 requests/minute.
 Public quote ingress is capped globally at six/minute with a burst of five; the
 frontend requests only optimal Arc quotes, skips hidden/offline polling and
-does not automatically retry Arc HTTP 429 responses. This
+does not immediately retry Arc HTTP 429 or quote HTTP 5xx responses. This
 is deliberately a low-volume launch configuration, not a high-traffic SLA.
 The driver explicitly uses the existing Web3 gas-price estimator and zero extra
 tip. Alloy's default doubled base-fee estimate exceeded the reviewed 25 gwei cap
@@ -328,10 +332,12 @@ Its local configuration is `~/.cloudflared/config-ophis-arc-mainnet.yml`; launch
 label is `com.ophis.cloudflared.arc-mainnet`. It exposes only the localhost API
 proxy at port 8442. The existing OP tunnel and services were not restarted.
 
-QuickNode receives transaction traces plus eRPC's bounded bootstrap/hourly header
-probes. SQLite reserves credits **before** an upstream attempt: 1,000/minute,
-40,000/day and the fixed total allowance. Timeouts remain charged. No retries or
-redirects. Both compose projects share `ophis-arc-quicknode-credits`; retain and
+QuickNode receives the read fallbacks above, transaction traces and eRPC's bounded
+bootstrap/hourly header probes. SQLite reserves credits **before** an upstream
+attempt: 1,000/minute, 40,000/day and the fixed total allowance. Timeouts remain
+charged. Protected reads allow two attempts per voter (four total); upstream
+attempts and other network methods remain single-attempt, with no redirects.
+Both compose projects share `ophis-arc-quicknode-credits`; retain and
 back up this volume. Other consumers of the provider account remain outside this
 ledger, so compare against provider totals. Exhaustion stops the paid lane.
 

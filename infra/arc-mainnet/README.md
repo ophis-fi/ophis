@@ -4,7 +4,7 @@ The local lab builds Ophis contracts, configures the backend, and exercises Arc
 USDC swaps through direct Uniswap/Synthra/AchSwap V3 solvers, with KyberSwap and LI.FI optional.
 The frontend adds an opt-in Arc deployment gate and an inbound Across USDC route from supported source chains.
 Production packaging and the operator ceremony: [release/README.md](release/README.md).
-**Nothing here has been deployed to a public chain or merged.**
+The Arc mainnet stack is live; see the release runbook for deployment records.
 
 Run instructions and validation: [local/README.md](local/README.md).
 Read-only pool/quote/router verification: [LIQUIDITY.md](LIQUIDITY.md).
@@ -16,14 +16,20 @@ internet access; the backend lab uses loopback fixtures. Neither starts the live
 
 ## Routing and budget
 
-- Official Arc + Blockdaemon public RPC: two agreeing responses for protected
+- Official Arc + Blockdaemon public RPC first: two agreeing responses for protected
   state, simulations, headers, logs and receipts; disagreement or missing quorum
   returns an error. This is a managed-provider trust model, not local validation.
-- QuickNode: only `debug_traceTransaction`, needed by autopilot after settlement.
-  Its successful capability check means dRPC can remain entirely unused by Arc.
+- QuickNode: bounded fallback for `eth_call`, `eth_estimateGas`, `eth_getBalance`,
+  `eth_getCode`, `eth_getBlockByNumber` headers and `eth_gasPrice`, plus
+  `debug_traceTransaction` after settlement.
+  Protected reads still require two distinct agreeing providers. Paid reads alone
+  cannot restore a quorum when both free providers are unavailable. No dRPC calls.
 - Each public upstream has a pooled 120 requests/minute limit. QuickNode has a
-  pooled 1,000 credits/minute and 40,000 credits/day limit. Auto-tuning, hedging,
-  network retries and upstream retries are disabled. Quota exhaustion fails closed.
+  pooled 1,000 credits/minute and 40,000 credits/day limit. Auto-tuning, hedging
+  and upstream retries are disabled. Each protected-read voter can make at most
+  two network attempts (four total); other methods have one network attempt.
+  Free providers sort before QuickNode, so healthy free quorums use no paid state
+  reads. Quota exhaustion fails closed; failed attempts remain charged.
 - Fixed-number finalized headers are cached for one hour. Live state, pending
   data and simulations are not cached. eRPC also coalesces simultaneous requests.
 - The pilot denies transaction relay. The release permits signed transaction relay
@@ -53,8 +59,8 @@ Public providers poll every 30 seconds. Account usage remains the source of trut
 python3 infra/arc-mainnet/test_rpc.py
 ```
 
-The proxy compose file is prepared but was not started against live providers.
-The backend lab uses Arc Anvil on loopback, not this RPC proxy. This separation
+These tests do not start the live proxy. The backend lab uses Arc Anvil on
+loopback, not the production RPC proxy. This separation
 keeps simulation, compilation and regression tests outside the 10M allowance.
 The release tooling prepares unsigned deployments, validates governance and
 contract wiring, renders services, and gates frontend/signing activation on real
