@@ -1,23 +1,26 @@
+import { useStore } from 'jotai'
 import { ReactNode } from 'react'
 
 import { USDC_MAINNET, WETH_MAINNET } from '@cowprotocol/common-const'
 import { useIsWindowVisible } from '@cowprotocol/common-hooks'
-import { OrderKind } from '@cowprotocol/cow-sdk'
-import { CurrencyAmount } from '@cowprotocol/currency'
+import { OrderKind, QuoteAndPost } from '@cowprotocol/cow-sdk'
+import { CurrencyAmount, Token } from '@cowprotocol/currency'
 import { WalletInfo, walletInfoAtom } from '@cowprotocol/wallet'
 
-import { renderHook, waitFor } from '@testing-library/react'
+import { act, renderHook, waitFor } from '@testing-library/react'
 import { JotaiTestProvider, WithMockedWeb3 } from 'test-utils'
 import { bridgingSdk } from 'tradingSdk/bridgingSdk'
 
 import { LimitOrdersDerivedState, limitOrdersDerivedStateAtom } from 'modules/limitOrders/state/limitOrdersRawStateAtom'
 import { DEFAULT_TRADE_DERIVED_STATE, TradeType } from 'modules/trade'
+import { shouldHideQuoteAmountsAtom } from 'modules/trade/state/shouldHideQuoteAmounts.atom'
 
 import { useEnoughAllowance } from 'common/hooks/useEnoughAllowance'
 
 import { useTradeQuotePolling } from './useTradeQuotePolling'
 
 import { tradeTypeAtom } from '../../trade/state/tradeTypeAtom'
+import { currentTradeQuoteAtom, updateTradeQuoteAtom } from '../state/tradeQuoteAtom'
 import { tradeQuoteInputAtom } from '../state/tradeQuoteInputAtom'
 
 jest.mock('modules/zeroApproval/hooks/useZeroApprovalState')
@@ -63,7 +66,7 @@ jest.mock('tradingSdk/bridgingSdk', () => ({
 
 const useEnoughAllowanceMock = useEnoughAllowance as jest.Mock
 
-const bridgingSdkMock = bridgingSdk as unknown as { getQuote: jest.Mock }
+const bridgingSdkMock = bridgingSdk as unknown as { getQuote: jest.Mock; getBestQuote: jest.Mock }
 
 const inputCurrencyAmount = CurrencyAmount.fromRawAmount(WETH_MAINNET, 10_000_000)
 const outputCurrencyAmount = CurrencyAmount.fromRawAmount(USDC_MAINNET, 2_000_000)
@@ -105,11 +108,12 @@ describe('useTradeQuotePolling()', () => {
     jest.mocked(useIsWindowVisible).mockReturnValue(true)
 
     bridgingSdkMock.getQuote.mockImplementation(() => new Promise(() => void 0))
+    bridgingSdkMock.getBestQuote.mockImplementation(() => new Promise(() => void 0))
 
     useEnoughAllowanceMock.mockReturnValue(true)
   })
 
-  it('fetches immediately when the tab becomes visible again', async () => {
+  it('does not restart the same pending quote when the tab becomes visible again', async () => {
     const { rerender } = renderHook(
       () => useTradeQuotePolling({ isConfirmOpen: false, isQuoteUpdatePossible: true, useSuggestedSlippageApi: false }),
       { wrapper: Wrapper([...jotaiMock, [walletInfoAtom, walletInfoMock]]) },
@@ -120,8 +124,133 @@ describe('useTradeQuotePolling()', () => {
     expect(bridgingSdkMock.getQuote).toHaveBeenCalledTimes(1)
     jest.mocked(useIsWindowVisible).mockReturnValue(true)
     rerender()
-    await waitFor(() => expect(bridgingSdkMock.getQuote).toHaveBeenCalledTimes(2))
+    expect(bridgingSdkMock.getQuote).toHaveBeenCalledTimes(1)
   })
+
+  it.each(['amount', 'account', 'token', 'chain'])('replaces a pending quote when the %s changes', async (field) => {
+    const { result } = renderHook(
+      () => {
+        useTradeQuotePolling({ isConfirmOpen: false, isQuoteUpdatePossible: true, useSuggestedSlippageApi: false })
+        return useStore()
+      },
+      { wrapper: Wrapper([...jotaiMock, [walletInfoAtom, walletInfoMock]]) },
+    )
+    await waitFor(() => expect(bridgingSdkMock.getQuote).toHaveBeenCalledTimes(1))
+    act(() => {
+      if (field === 'amount') {
+        result.current.set(tradeQuoteInputAtom, {
+          amount: CurrencyAmount.fromRawAmount(WETH_MAINNET, 20_000_000),
+          orderKind: OrderKind.SELL,
+        })
+      } else if (field === 'account') {
+        result.current.set(walletInfoAtom, { ...walletInfoMock, account: '0x0000000000000000000000000000000000000001' })
+      } else if (field === 'token') {
+        result.current.set(limitOrdersDerivedStateAtom, {
+          ...limitOrdersDerivedStateMock,
+          inputCurrency: USDC_MAINNET,
+          outputCurrency: WETH_MAINNET,
+        })
+      } else {
+        result.current.set(limitOrdersDerivedStateAtom, {
+          ...limitOrdersDerivedStateMock,
+          outputCurrency: new Token(100, USDC_MAINNET.address, 6),
+        })
+      }
+    })
+    await waitFor(() =>
+      expect(bridgingSdkMock[field === 'chain' ? 'getBestQuote' : 'getQuote']).toHaveBeenCalledTimes(
+        field === 'chain' ? 1 : 2,
+      ),
+    )
+  })
+
+  it.each([
+    { outcome: 'resolve', confirm: false },
+    { outcome: 'reject', confirm: false },
+    { outcome: 'reject', confirm: true },
+  ])(
+    'expires a pending quote and handles $outcome with confirm=$confirm without a rapid retry loop',
+    async ({ outcome, confirm }) => {
+      jest.useFakeTimers()
+      const consoleError = jest.spyOn(console, 'error').mockImplementation(() => undefined)
+      let resolveQuote: (quote: QuoteAndPost) => void = () => {
+        throw new Error('Request not started')
+      }
+      let rejectQuote: (error: Error) => void = () => {
+        throw new Error('Request not started')
+      }
+      bridgingSdkMock.getQuote.mockImplementation(
+        () =>
+          new Promise<QuoteAndPost>((resolve, reject) => {
+            resolveQuote = resolve
+            rejectQuote = reject
+          }),
+      )
+      const makeQuote = (seconds: number): QuoteAndPost =>
+        ({
+          quoteResults: {
+            appDataInfo: {},
+            tradeParameters: { validFor: 1800 },
+            quoteResponse: {
+              expiration: new Date(Date.now() + seconds * 1000).toISOString(),
+              quote: { validTo: Math.ceil(Date.now() / 1000) + 1800 },
+            },
+          },
+        }) as QuoteAndPost
+      const { result, unmount, rerender } = renderHook(
+        ({ isConfirmOpen }) => {
+          useTradeQuotePolling({ isConfirmOpen, isQuoteUpdatePossible: true, useSuggestedSlippageApi: false })
+          return useStore()
+        },
+        { initialProps: { isConfirmOpen: false }, wrapper: Wrapper([...jotaiMock, [walletInfoAtom, walletInfoMock]]) },
+      )
+      try {
+        await waitFor(() => expect(bridgingSdkMock.getQuote).toHaveBeenCalledTimes(1))
+        const original = makeQuote(4)
+        act(() =>
+          result.current.set(updateTradeQuoteAtom, WETH_MAINNET.address, {
+            quote: original,
+            hasParamsChanged: false,
+            isLoading: true,
+          }),
+        )
+        expect(result.current.get(shouldHideQuoteAmountsAtom)).toBe(false)
+        rerender({ isConfirmOpen: confirm })
+        await act(async () => {
+          await jest.advanceTimersByTimeAsync(6000)
+        })
+        expect(result.current.get(currentTradeQuoteAtom)).toMatchObject({
+          quote: confirm ? original : null,
+          isLoading: true,
+        })
+        if (!confirm) expect(result.current.get(shouldHideQuoteAmountsAtom)).toBe(true)
+        expect(bridgingSdkMock.getQuote).toHaveBeenCalledTimes(1)
+        const replacement = makeQuote(60)
+        await act(async () => {
+          if (outcome === 'resolve') resolveQuote(replacement)
+          else rejectQuote(new Error('429 Too Many Requests'))
+        })
+        expect(result.current.get(currentTradeQuoteAtom).isLoading).toBe(false)
+        expect(result.current.get(currentTradeQuoteAtom).quote).toBe(
+          outcome === 'resolve' ? replacement : confirm ? original : null,
+        )
+        for (let second = 0; second < 30; second++) {
+          await act(async () => {
+            await jest.advanceTimersByTimeAsync(1000)
+          })
+          expect(bridgingSdkMock.getQuote).toHaveBeenCalledTimes(1)
+        }
+        await act(async () => {
+          await jest.advanceTimersByTimeAsync(1000)
+        })
+        expect(bridgingSdkMock.getQuote).toHaveBeenCalledTimes(2)
+      } finally {
+        unmount()
+        consoleError.mockRestore()
+        jest.useRealTimers()
+      }
+    },
+  )
 
   describe('When wallet is connected', () => {
     it('Then should put account address into "receiver" field in the quote request', async () => {

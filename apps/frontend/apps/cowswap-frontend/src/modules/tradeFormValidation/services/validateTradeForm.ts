@@ -168,16 +168,11 @@ export function validateTradeForm(context: TradeFormValidationContext): TradeFor
       validations.push(TradeFormValidation.TokenPolicyDenied)
     }
 
-    if (isFastQuote || !tradeQuote.quote || (isBridging && tradeQuote.isLoading)) {
+    if (isFastQuote || !tradeQuote.quote || ((isBridging || tradeQuote.hasParamsChanged) && isQuoteLoading)) {
       validations.push(TradeFormValidation.QuoteLoading)
     }
 
-    if (
-      derivedTradeState.tradeType !== TradeType.LIMIT_ORDER &&
-      !isQuoteLoading &&
-      !isFastQuote &&
-      isQuoteExpired(tradeQuote)
-    ) {
+    if (derivedTradeState.tradeType !== TradeType.LIMIT_ORDER && !isFastQuote && isQuoteExpired(tradeQuote)) {
       validations.push(TradeFormValidation.QuoteExpired)
     }
 

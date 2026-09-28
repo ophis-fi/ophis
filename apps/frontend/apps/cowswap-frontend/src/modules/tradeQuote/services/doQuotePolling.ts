@@ -5,17 +5,23 @@ import { QuoteBridgeRequest } from '@cowprotocol/sdk-bridging'
 import { AppDataInfo } from '../../appData'
 import { TradeQuoteState } from '../state/tradeQuoteAtom'
 import { TradeQuoteFetchParams } from '../types'
+import { isQuoteExpired } from '../utils/quoteDeadline'
 import { quoteUsingSameParameters } from '../utils/quoteUsingSameParameters'
 
 function isQuoteCached(quote: TradeQuoteState): boolean {
   const hasCachedResponse = quote.quote
   const hasCachedError = quote.error
 
-  return Boolean(hasCachedResponse || hasCachedError)
+  return Boolean(hasCachedResponse || hasCachedError) && isQuoteExpired(quote) !== true
 }
 
-function canUseFastQuote(params: QuoteBridgeRequest | undefined): boolean {
-  return !!params && params.sellTokenChainId !== ARC_CHAIN_ID && params.sellTokenChainId === params.buyTokenChainId
+function canUseFastQuote(params: QuoteBridgeRequest | undefined, isConfirmOpen: boolean): boolean {
+  return (
+    !isConfirmOpen &&
+    !!params &&
+    params.sellTokenChainId !== ARC_CHAIN_ID &&
+    params.sellTokenChainId === params.buyTokenChainId
+  )
 }
 
 export interface QuoteUpdateContext {
@@ -47,6 +53,7 @@ export function doQuotePolling({
 
   // Forced refreshes bypass the cache, never the hidden/offline-tab guard.
   if (!isBrowserOnline) return false
+  if (currentQuote.isLoading && !hasParamsChanged) return false
 
   if (!forceUpdate) {
     // Don't fetch quote if the parameters are the same
@@ -63,7 +70,7 @@ export function doQuotePolling({
   const fetchStartTimestamp = Date.now()
 
   // Arc's direct solver already returns promptly; a second quote wastes its limited RPC budget.
-  if (fastQuote && !isConfirmOpen && canUseFastQuote(quoteParams)) {
+  if (fastQuote && canUseFastQuote(quoteParams, isConfirmOpen)) {
     fetchQuote({ hasParamsChanged, priceQuality: PriceQuality.FAST, fetchStartTimestamp })
   }
   fetchQuote({ hasParamsChanged, priceQuality: PriceQuality.OPTIMAL, fetchStartTimestamp })

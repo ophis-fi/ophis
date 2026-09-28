@@ -45,3 +45,16 @@ it('does not refresh hidden or offline tabs even when forced', () => {
   expect(doQuotePolling(hidden)).toBe(false)
   expect(hidden.fetchQuote).not.toHaveBeenCalled()
 })
+
+it('does not overlap a slow request with a timed refresh', () => {
+  const pending = {
+    ...context(ARC_CHAIN_ID),
+    currentQuote: { ...DEFAULT_TRADE_QUOTE_STATE, isLoading: true },
+    hasParamsChanged: false,
+    forceUpdate: true,
+  }
+  expect(doQuotePolling(pending)).toBe(false)
+  expect(pending.fetchQuote).not.toHaveBeenCalled()
+  expect(doQuotePolling({ ...pending, hasParamsChanged: true })).toBe(true)
+  expect(pending.fetchQuote).toHaveBeenCalledTimes(1)
+})

@@ -1,19 +1,20 @@
 import { atom } from 'jotai'
 
-import { currentTradeQuoteAtom } from 'modules/tradeQuote'
+import { currentTradeQuoteAtom, isQuoteExpired } from 'modules/tradeQuote'
 
 import { isNonEvmRecipientChain } from 'common/utils/recipientAddress.utils'
 
 import { derivedTradeStateAtom } from './derivedTradeStateAtom'
 
 export const shouldHideQuoteAmountsAtom = atom((get) => {
-  const { isLoading: isRateLoading, error: quoteError, quote, isStaleDestination } = get(currentTradeQuoteAtom)
+  const tradeQuote = get(currentTradeQuoteAtom)
+  const { isLoading, hasParamsChanged, error, quote, bridgeQuote, isStaleDestination } = tradeQuote
   const destinationChainId = get(derivedTradeStateAtom)?.outputCurrency?.chainId
 
-  /**
-   * When a quote is loading, or there is an error in the quote result, we should not display values
-   */
+  // Background comparison must not blank an unchanged, still-valid same-chain quote.
+  const hideWhileLoading =
+    isLoading && [hasParamsChanged, !quote, !!bridgeQuote, isQuoteExpired(tradeQuote) !== false].some(Boolean)
   return Boolean(
-    isRateLoading || quoteError || isStaleDestination || (isNonEvmRecipientChain(destinationChainId) && !quote),
+    hideWhileLoading || error || isStaleDestination || (isNonEvmRecipientChain(destinationChainId) && !quote),
   )
 })

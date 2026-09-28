@@ -121,6 +121,7 @@ describe('fetchAndProcessQuote', () => {
     mockTradeQuoteManager = {
       setLoading: jest.fn(),
       reset: jest.fn(),
+      expire: jest.fn(),
       resetTracking: jest.fn(),
       onError: jest.fn(),
       onResponse: jest.fn(),

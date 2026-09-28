@@ -1,5 +1,6 @@
 import { useCallback, useMemo, useRef } from 'react'
 
+import { ARC_CHAIN_ID } from '@cowprotocol/common-const'
 import { FractionUtils, getIntOrFloat, isFractionFalsy, tryParseCurrencyAmount } from '@cowprotocol/common-utils'
 import { OrderKind } from '@cowprotocol/cow-sdk'
 
@@ -20,6 +21,7 @@ import { useDerivedTradeState } from './useDerivedTradeState'
 import { useTradeState } from './useTradeState'
 
 import { ExtendedTradeRawState } from '../types'
+import { TradeType } from '../types/TradeType'
 
 interface SetupTradeAmountsParams {
   onlySell?: boolean
@@ -108,9 +110,9 @@ export function useSetupTradeAmountsFromUrl({ onAmountsUpdate, onlySell }: Setup
       }
     }
 
-    // When both sell and buy amount are not set
-    // Then set 1 unit to sell by default
-    if (!isAtLeastOneAmountIsSetRef.current && !update.inputCurrencyAmount && inputCurrency) {
+    // Arc's shared quote budget must serve entered amounts, not unsolicited one-token previews.
+    const needsEnteredAmount = inputCurrency?.chainId === ARC_CHAIN_ID && state?.tradeType === TradeType.SWAP
+    if (!needsEnteredAmount && !isAtLeastOneAmountIsSetRef.current && !update.inputCurrencyAmount && inputCurrency) {
       update.inputCurrencyAmount = FractionUtils.serializeFractionToJSON(tryParseCurrencyAmount('1', inputCurrency))
     }
 
@@ -129,5 +131,5 @@ export function useSetupTradeAmountsFromUrl({ onAmountsUpdate, onlySell }: Setup
       }
     }
     // Trigger only when URL or assets are changed
-  }, [params, inputCurrency, outputCurrency, cleanParams, onlySell])
+  }, [params, inputCurrency, outputCurrency, cleanParams, onlySell, state?.tradeType])
 }

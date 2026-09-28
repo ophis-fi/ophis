@@ -24,6 +24,7 @@ export function usePollQuoteCallback(
   const { fastQuote } = useAtomValue(tradeQuoteInputAtom)
   const getCorrelatedTokensByChainId = useGetCorrelatedTokensByChainId()
   const tradeQuote = useTradeQuote()
+  const lastRequestRef = useRef<QuoteParams | undefined>(undefined)
   const tradeQuoteRef = useRef(tradeQuote)
   // eslint-disable-next-line react-hooks/refs
   tradeQuoteRef.current = tradeQuote
@@ -76,7 +77,13 @@ export function usePollQuoteCallback(
         quoteParams,
         appData,
         fetchQuote,
-        hasParamsChanged,
+        hasParamsChanged:
+          hasParamsChanged &&
+          [
+            lastRequestRef.current?.quoteParams !== quoteParams,
+            lastRequestRef.current?.appData !== appData,
+            lastRequestRef.current?.hasSmartSlippage !== hasSmartSlippage,
+          ].some(Boolean),
         forceUpdate: smartSlippageModeChanged || forceUpdate,
         isBrowserOnline: isOnlineRef.current && isWindowVisible,
         isConfirmOpen,
@@ -87,7 +94,9 @@ export function usePollQuoteCallback(
       /**
        * Fetch the quote instantly once the quote params are changed
        */
-      return doQuotePolling(context)
+      const requested = doQuotePolling(context)
+      if (requested) lastRequestRef.current = quoteParamsState
+      return requested
     },
     [
       quoteParams,
@@ -101,6 +110,7 @@ export function usePollQuoteCallback(
       hasSmartSlippage,
       hasSmartSlippagePrev,
       currentAmountRef,
+      quoteParamsState,
     ],
   )
 }
