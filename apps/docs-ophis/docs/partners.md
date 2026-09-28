@@ -1,7 +1,7 @@
 ---
 id: partners
 title: Partner integration (SDK)
-description: Add Ophis as a swap route inside your own tool with @ophis/sdk plus cow-sdk. Works on Optimism, Unichain, and Robinhood Chain (self-hosted) and every CoW-hosted chain, signs with a vault Safe via EIP-1271, and earns a cross-chain WETH rebate.
+description: Add Ophis as a swap route inside your own tool with @ophis/sdk plus cow-sdk. Works on Optimism, Unichain, Robinhood Chain and Arc (self-hosted), plus CoW-hosted chains; uses chain-specific signing domains and rebates where indexed.
 sidebar_label: Partner integration
 sidebar_position: 4
 ---
@@ -9,10 +9,12 @@ sidebar_position: 4
 # Partner integration (SDK)
 
 :::important All-chain pricing
-The SDK applies the same economics on every supported chain: a required 1 bp
+The standard schedule is a required 1 bp
 base plus 80% of reference-quote improvement on volatile pairs (99 bps cap), or
 50% on stable pairs (20 bps cap). Operated-chain backends apply the improvement
-component directly; hosted orders encode it in CIP-75 appData. Integrator
+component directly when configured; hosted orders encode it in CIP-75 appData.
+Arc currently has no backend improvement capture or rebate indexing. SDK v0.4.3
+supports Arc orders without referral tags and rejects nonempty Arc referral codes. Integrator
 own-fees remain separate, and Ophis takes 0% of that markup.
 :::
 
@@ -25,7 +27,7 @@ If you want to **embed** the Ophis swap UI instead, use the
 [widget](./widget.md). The widget carries the Ophis base fee automatically, and
 it can earn referral attribution too: set its `appCode` to a referral code you
 have minted and activated (the code string from your affiliate dashboard) and the
-indexer credits every widget order tagged with that code to you, with no wallet
+indexer credits eligible widget orders on indexed chains (excluding Arc) tagged with that code to you, with no wallet
 bind required. Use the SDK path described here when you need what the iframe
 cannot express: signing with a Safe or MPC signer via EIP-1271, stacking your own
 fee on top of the base, or controlling per-order `appData`.
@@ -51,7 +53,9 @@ Since `@ophis/sdk` v0.1.0 the whole integration is a handful of helper calls tha
 get the silent-failure details right for you: the correct `appCode`, the partner
 fee, your referral tag, wallet enrollment, the per-chain relayer / host / signing
 domain, the receiver pin, and the `sendOrder` wire shape. **The same code works on
-every served chain** because the helpers branch on `chainId` internally.
+every served chain** because the helpers branch on `chainId` internally. For
+Arc (5042), use SDK v0.4.3 or later and omit the referral code; enrollment does not
+enable Arc rebates.
 
 ```ts
 import {
@@ -97,7 +101,7 @@ await sellTokenAsOwner.approve(getOphisVaultRelayer(chainId), amount); // owner-
 
 // 2. appData: appCode 'ophis' + the partner fee + your referral code in one call.
 const doc = await new MetadataApi().generateAppDataDoc(
-  buildOphisOrderMetadata({ chainId, referralCode: 'yourcode', isStablePair, signer: owner }),
+  buildOphisOrderMetadata({ chainId, referralCode: chainId === 5042 ? undefined : 'yourcode', isStablePair, signer: owner }),
 );
 const fullAppData = await stringifyDeterministic(doc); // never JSON.stringify
 const appDataHash = keccak256(toUtf8Bytes(fullAppData)); // bytes32
@@ -132,24 +136,24 @@ SigningScheme.EIP712`, produce a normal EIP-712 signature, and send the token
 approval from the EOA itself (not a Safe transaction).
 
 That is the whole integration. The sections below explain what each helper does
-per chain (Optimism, Unichain, and Robinhood Chain are self-hosted, the others are CoW-hosted) and the lower-level
+per chain (Optimism, Unichain, Robinhood Chain and Arc are self-hosted, the others are CoW-hosted) and the lower-level
 primitives, if you would rather wire the steps yourself.
 
-## Two cases: self-hosted (Optimism, Unichain, Robinhood Chain) vs CoW-hosted chains
+## Two cases: self-hosted (Optimism, Unichain, Robinhood Chain, Arc) vs CoW-hosted chains
 
-Ophis serves two kinds of chain, and they differ only in **where the order is
+Ophis serves two kinds of chain, and they differ in **where the order is
 posted** and **which settlement contract signs**:
 
-|                                          | Self-hosted (Optimism, Unichain, Robinhood Chain)                                                                                                                                                       | CoW-hosted chains (Mainnet, Base, Arbitrum, Gnosis, Polygon, Avalanche, BNB, Linea, Plasma, Ink) |
+|                                          | Self-hosted (Optimism, Unichain, Robinhood Chain, Arc)                                                                                                                                                       | CoW-hosted chains (Mainnet, Base, Arbitrum, Gnosis, Polygon, Avalanche, BNB, Linea, Plasma, Ink) |
 | ---------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------ |
-| Orderbook host                           | `optimism-mainnet.ophis.fi` / `unichain-mainnet.ophis.fi` / `robinhood-mainnet.ophis.fi` (Ophis, per chain via `@ophis/sdk`)                                                                            | `api.cow.fi/<chain>` (cow-sdk default)                                                           |
-| Settlement (EIP-712 `verifyingContract`) | Ophis, per chain via `@ophis/sdk`: Optimism `0x310784c7FCE12d578dA6f53460777bAc9718B859`, Unichain `0x108A678716e5E1776036eF044CAB7064226F714E`, Robinhood `0x886d9fd312F442C4E1f3cdeAE7b4AB73493e57cD` | CoW canonical `0x9008D19f58AAbD9eD0D60971565AA8510560ab41` (cow-sdk default)                     |
-| Partner fee                              | 1 bp from `buildOphisAppDataPartnerFee(chainId)`; improvement policy is applied by the backend | Base + pair-aware improvement entries from `buildOphisAppDataPartnerFee(chainId, isStablePair)` |
-| Fee enforcement                          | Enforced floor at settlement                                                                                                                                                                            | Carried in `appData`, validated by CoW                                                           |
+| Orderbook host                           | `optimism-mainnet.ophis.fi` / `unichain-mainnet.ophis.fi` / `robinhood-mainnet.ophis.fi` / `arc-mainnet.ophis.fi` (Ophis, per chain via `@ophis/sdk`)                                                                            | `api.cow.fi/<chain>` (cow-sdk default)                                                           |
+| Settlement (EIP-712 `verifyingContract`) | Ophis, per chain via `@ophis/sdk`: Optimism `0x310784c7FCE12d578dA6f53460777bAc9718B859`, Unichain `0x108A678716e5E1776036eF044CAB7064226F714E`, Robinhood `0x886d9fd312F442C4E1f3cdeAE7b4AB73493e57cD`, Arc `0x78799F98276efba1EdeeD32eae03a3fd8Cdfec3A` | CoW canonical `0x9008D19f58AAbD9eD0D60971565AA8510560ab41` (cow-sdk default)                     |
+| Partner fee                              | 1 bp from `buildOphisAppDataPartnerFee(chainId)`; improvement policy is applied by the backend when configured (currently absent on Arc) | Base + pair-aware improvement entries from `buildOphisAppDataPartnerFee(chainId, isStablePair)` |
+| Fee enforcement                          | Declared fee entries validated at backend ingress; not an on-chain minimum                                                                                                                                                                            | Carried in `appData`, validated by CoW                                                           |
 
 On CoW-hosted chains you change **nothing** about host or settlement (cow-sdk
 defaults are correct); you only add the Ophis `partnerFee` fragment. On
-Optimism you also override the host and the settlement contract.
+each Ophis-operated chain you also override the host and the settlement contract.
 
 ## Optimism integration
 
@@ -291,18 +295,18 @@ if (!partnerFee) throw new Error('Unsupported Ophis fee chain');
 The fee recipient is one CREATE2-deterministic Safe. The helper returns a base
 volume object on SDK-supported operated chains and an array containing the base
 plus capped improvement policy on hosted chains. Do not replace that array with
-a volume-only entry. Arc is app-supported but not yet in the published SDK mappings.
+a volume-only entry. Arc is supported from SDK v0.4.3 with its own host and signing domain.
 
 ## Partner economics: the three layers
 
-An SDK integration earns on three layers, and all three numbers are published:
+These three layers describe indexed chains; Arc currently supports the base trading fee only, without referral accrual or an own-fee payout guarantee:
 
 1. **Your users get the chain's published integration pricing.** On sovereign
-   chains that is the 1 bp base plus capped improvement capture described above.
+   chains other than Arc that is the 1 bp base plus capped improvement capture described above.
    The same policy applies on CoW-hosted chains, with CoW Protocol's own fees on top (see
    [Fees & rebates](./fees.md#the-all-in-cost-per-chain)).
-2. **You earn a share of Ophis's verified 1 bp base fee** on every trade you
-   route: 8% on the self-serve tier, **12% on the partner tier** (uncapped
+2. **You earn a share of Ophis's verified 1 bp base fee** on each eligible trade you
+   route on an indexed chain (excluding Arc): 8% on the self-serve tier, **12% on the partner tier** (uncapped
    referred volume; ask us to upgrade your code). Paid monthly in WETH,
    on-chain. Improvement capture is excluded until receipts can be reconciled
    to the Ophis Safe.
@@ -341,7 +345,7 @@ address, next to the Ophis base entry:
 ```ts
 const ophisPartnerFee = buildOphisAppDataPartnerFee(chainId, isStablePair);
 const partnerFee = [
-  // Hosted: Ophis base + improvement entry. Operated: base only (backend adds improvement).
+  // Hosted: Ophis base + improvement entry. Operated: base only (backend adds improvement when configured).
   ...(Array.isArray(ophisPartnerFee) ? ophisPartnerFee : [ophisPartnerFee]),
   // Your fee, your address, your rate (charged on top of the base)
   { recipient: YOUR_FEE_ADDRESS, volumeBps: 80 },
@@ -349,7 +353,7 @@ const partnerFee = [
 ```
 
 Ophis takes **0% of your fee**. The Ophis charge remains separate: 1 bp plus
-capped improvement capture on every chain, plus upstream CoW fees on
+capped improvement capture where configured (Arc currently charges only the base), plus upstream CoW fees on
 CoW-hosted chains.
 The Ophis entries can realize at most 100 bps on a volatile pair (1 + 99) or 21
 bps on a stable pair (1 + 20). The aggregate ceiling for Ophis's registered hosted configuration is 190
@@ -400,7 +404,7 @@ Layer 2 is separate from the fee your users pay. The fee itself is set in
 `appData` at settlement (the chain-aware base, plus your own entry if you add one).
 The **referral share** of 8% or 12% is a distinct earning: it is a portion of
 the verified 1 bp base fee Ophis keeps, paid back to you monthly in WETH. Tag
-each order with your referral code and Ophis pays it out each cycle. Improvement
+each eligible order on an indexed chain with your referral code and Ophis pays it out each cycle. Arc is not indexed and earns no referral rebate. Improvement
 capture remains excluded until receipts can be reconciled to the Ophis Safe.
 
 ```ts
@@ -416,14 +420,14 @@ const doc = await new MetadataApi().generateAppDataDoc({
   appCode: 'ophis', // REQUIRED: 'ophis', NOT your app's name (see below)
   metadata: {
     partnerFee,
-    ...buildOphisReferrerMetadata('your-code'), // -> metadata.ophisReferrer.code
+    ...buildOphisReferrerMetadata(chainId === 5042 ? undefined : 'your-code', chainId),
     hooks: {},
   },
 });
 ```
 
-The rebate indexer reads `metadata.ophisReferrer.code` from every settled order,
-credits your referred USD volume **across all served chains**, and pays out
+The rebate indexer reads `metadata.ophisReferrer.code` from settled orders on its supported chains,
+credits your referred USD volume **across indexed chains, excluding Arc**, and pays out
 monthly in WETH from a single Gnosis Safe. Your code must exist before you tag
 orders with it. Higher tiers earn a larger share. See the
 [Affiliate program](./affiliate.md) for rates and tiers.
@@ -470,13 +474,13 @@ next-payout time (those stay on the signature-gated partner dashboard).
 
 ### What Ophis guarantees, and what accrues under CoW terms
 
-Optimism (10), Unichain (130), and Robinhood Chain (4663) are Ophis-operated.
-The earnings indexer includes all three; the automated sovereign **own-fee payout
+Optimism (10), Unichain (130), Robinhood Chain (4663), and Arc (5042) are Ophis-operated.
+The earnings indexer includes the first three, not Arc; the automated sovereign **own-fee payout
 guarantee** is limited to chains 10 and 130. Robinhood reporting does not imply
 own-fee payout coverage. On the CoW-hosted chains, partner fees are disbursed by CoW under
 CoW terms; Ophis neither pays nor guarantees them. The response splits each figure
 **sovereign** vs **hosted**. The sovereign label means Ophis-controlled settlement: Ophis
-pays the **referral rebate** from its Safe regardless of chain, and it now also pays a
+pays the **referral rebate** from its Safe on indexed chains, and it now also pays a
 stacked third-party **own-fee** monthly in WETH from the sovereign chain's Ophis Safe,
 taking 0% of it, once your recipient is onboarded (allowlisted) and we have enabled and
 funded the payout for it. No partner is onboarded for sovereign own-fee payout yet, so
@@ -654,6 +658,7 @@ other CoW-hosted chains. Robinhood uses the Ophis-operated EthFlow deployment at
 `0xC1Ee77e8a1B85D5EED702a9bB435f434408A4d29`; resolve it through
 `getOphisEthFlowAddress(4663)` rather than hardcoding it.
 The order carries the Ophis partner fee exactly as an ERC-20 order does.
+Arc uses native USDC and has no supported EthFlow deployment; use its ERC-20 USDC interface.
 
 ## Caveats
 
@@ -661,7 +666,7 @@ The order carries the Ophis partner fee exactly as an ERC-20 order does.
   the Ophis base fee and can earn referral attribution through its `appCode`, but
   it cannot stack your own fee on top, redirect the recipient, or control
   per-order `appData`: those need the SDK.
-- **Optimism, Unichain, and Robinhood Chain are the SDK-supported self-hosted chains.** Arc is app-only; the other SDK chains are CoW-hosted, where
+- **Optimism, Unichain, Robinhood Chain and Arc are SDK-supported self-hosted chains.** Arc requires SDK v0.4.3 or later and has no referral accrual; the other SDK chains are CoW-hosted, where
   Ophis charges the fee but cannot enforce a floor or an on-chain discount.
 - **Do not use the `api.cow.fi` host on an Ophis-operated chain.** That is an
   unsupported host/domain combination, not a valid fee-free route.
@@ -673,6 +678,6 @@ The order carries the Ophis partner fee exactly as an ERC-20 order does.
 | Orderbook host | `getOphisOrderbookUrl(10)`                                                               | cow-sdk default `api.cow.fi/<chain>`                                    |
 | EIP-712 domain | `getOphisOrderDomain(10)`                                                                | cow-sdk default (canonical settlement)                                  |
 | Partner fee    | `volumeBps: ophisVolumeBpsForChainAndPair(chainId, isStablePair)` to the Ophis recipient | same; `buildOphisAppDataPartnerFee(chainId)` resolves the correct chain base |
-| Rebate tag     | `buildOphisReferrerMetadata(code)`                                                       | `buildOphisReferrerMetadata(code)`                                      |
+| Rebate tag     | `buildOphisReferrerMetadata(code, chainId)`                                                       | `buildOphisReferrerMetadata(code, chainId)`                                      |
 | Receiver       | `assertReceiverIsOwner(vault, receiver)`                                                 | `assertReceiverIsOwner(vault, receiver)`                                |
 | Signing        | EIP-1271 (Safe / MPC)                                                                    | EIP-1271 (Safe / MPC)                                                   |

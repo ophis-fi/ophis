@@ -50,7 +50,7 @@ does not promise current uptime. Use the linked checks above before routing.
   orderbooks at `optimism-mainnet.ophis.fi`, `unichain-mainnet.ophis.fi`, and
   `robinhood-mainnet.ophis.fi`, and `arc-mainnet.ophis.fi` using Ophis-deployed
   `GPv2Settlement` contracts. Resolve SDK-supported chains through `@ophis/sdk`
-  or MCP `list_chains`; Arc is app-supported but not yet in those published helpers.
+  v0.4.3 or MCP `list_chains`; both include Arc.
 
 Solana, Bitcoin, Monad, Hyperliquid, X Layer, Sui and Tron are supported as **destinations** via
 [NEAR Intents](https://near.org/intents), not as source-chain orderbooks.

@@ -69,7 +69,7 @@ createCowSwapWidget(container, {
 | Field | Default (via `@ophis/widget-react`) | Notes |
 | --- | --- | --- |
 | `baseUrl` | `https://swap.ophis.fi` | The iframe host. Override for a self-hosted/staging Ophis. |
-| `appCode` | `ophis` | Tags orders in appData. Set it to a referral code you have minted and activated to earn the [affiliate rebate](./affiliate.md) on widget orders (an arbitrary label earns nothing). |
+| `appCode` | `ophis` | Tags orders in appData. Set it to a referral code you have minted and activated to earn the [affiliate rebate](./affiliate.md) on eligible widget orders on indexed chains, excluding Arc (an arbitrary label earns nothing). |
 | `partnerFee` | Unset; the iframe applies the complete policy | An explicit override is authoritative. |
 | `partnerFee.recipient` | Ophis Safe when overridden | Always pinned by the React wrapper. |
 | `chainId`, `sell`, `buy`, `theme`, `tokenLists` | upstream defaults | Full [CoW widget params](https://www.npmjs.com/package/@cowprotocol/widget-lib) pass through. |

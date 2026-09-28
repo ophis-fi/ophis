@@ -45,6 +45,10 @@ order carried a **1 bp volume-only** partner fee. Do not infer 80%/99 bps or
 quote and signed fee metadata. This is a documented release difference, not a
 change to trading fees made by this documentation update.
 
+Arc trades are not yet ingested by the rebate indexer and do not accrue volume-tier
+or affiliate rebates. SDK v0.4.3 rejects Arc referral codes; ordinary Arc orders
+without referral attribution remain supported.
+
 ## How it works
 
 - Volatile pairs add 80% of reference-quote improvement, capped at 99 bps.
@@ -129,7 +133,7 @@ pair-aware `priceImprovementBps` entry with a hard `maxVolumeBps` cap; operated
 chains in the standard schedule apply that second component in the backend instead
 to avoid duplication. Arc is the release exception described above.
 
-On the **SDK-supported Ophis stacks (Optimism, Unichain, Robinhood Chain)**, the backend also enforces
+On the **SDK-supported Ophis stacks (Optimism, Unichain, Robinhood Chain, Arc)**, the backend also enforces
 an **anti-abuse minimum** in backend order validation, rather than relying
 only on frontend metadata: it rejects an order to the Ophis fee recipient
 whose partner fee falls below **1 bp**. This rejects declared sub-floor fee entries; absent fee metadata does not

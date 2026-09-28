@@ -84,8 +84,8 @@ backend or frontend) can upgrade, pause, or re-point them:
 
 Arc deployment configuration is recorded in the
 [Arc release sources](https://github.com/ophis-fi/ophis/tree/main/infra/arc-mainnet/release).
-Arc is not yet in the published SDK signing helpers; do not substitute another
-chain's addresses. These immutability claims do not cover token issuers, bridges
+SDK v0.4.3 includes Arc signing and approval helpers; use chain ID 5042 and do not
+substitute another chain's addresses. These immutability claims do not cover token issuers, bridges
 or every external contract a route touches.
 
 The core settlement derives from CoW Protocol. Its upstream audits are relevant

@@ -1,7 +1,7 @@
 ---
 id: affiliate
 title: Affiliate program
-description: Share an Ophis referral code and earn 8% (self-serve) or 12% (partner tier, uncapped) of the verified base fee Ophis keeps on every trade your referrals route. Paid monthly in WETH, for life.
+description: Share an Ophis referral code and earn 8% (self-serve) or 12% (partner tier, uncapped) of the verified base fee Ophis keeps on eligible trades your referrals route on indexed chains (excluding Arc). Paid monthly in WETH, for life.
 sidebar_label: Affiliate program
 sidebar_position: 4
 ---
@@ -9,9 +9,10 @@ sidebar_position: 4
 # Affiliate program
 
 The Ophis affiliate program pays a share of the verified 1 bp base fee Ophis
-keeps whenever a wallet you referred trades, settled monthly in WETH.
+keeps when a wallet you referred trades on an indexed chain, settled monthly in WETH.
+Arc (5042) is not yet indexed and earns no affiliate or volume-tier rebates.
 
-Share a referral code. Every time someone you refer trades on Ophis, **you earn a
+Share a referral code. When someone you refer trades on an indexed Ophis chain, **you earn a
 share of the verified base fee Ophis keeps on that trade, for life.** It is paid in WETH, every
 month, from the same Safe that pays volume-tier rebates.
 

@@ -113,8 +113,8 @@ your EVM wallet.
 Arc is available in the swap app (chain ID 5042). Its native gas currency is USDC;
 Circle routes include USDC and mapped expanded assets, plus Ethereum WBTC to
 Arc cirBTC through a separate conversion leg. See the restrictions and recovery
-model in [Networks & assets](./networks-assets.md). The published SDK and MCP
-chain lists do not yet include Arc.
+model in [Networks & assets](./networks-assets.md). SDK v0.4.3 and the hosted MCP
+chain lists also include Arc.
 
 |          |                 |                 |
 | -------- | --------------- | --------------- |

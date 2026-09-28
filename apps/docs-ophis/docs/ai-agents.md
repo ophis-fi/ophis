@@ -391,7 +391,7 @@ pinned per-chain settlement and vault-relayer contracts (the only allowed
 `approve` spenders), the EIP-712 signing domains, the orderbook hosts, and
 slippage latches. Policy-enforcing runtimes can apply it mechanically; CI in
 the Ophis repo pins the block against the deployed addresses so the published
-skills cannot drift. The skills cover all three Ophis-operated chains
+skills cannot drift. The published skills cover three Ophis-operated chains
 (Optimism, Unichain, and Robinhood Chain); for other chains use the MCP server
 above, which resolves per-chain contracts via `list_chains`.
 
@@ -412,8 +412,10 @@ nothing for the end user to sign or opt into.
 3. Pass it to any adapter as `referralCode`, or export `OPHIS_REFERRAL_CODE` and
    the adapters pick it up automatically.
 
-The code is **optional**: without one your agent still swaps normally, it just
-earns no rebate. You can ship first and add the code later.
+Arc is excluded from rebate indexing; SDK v0.4.3 and MCP reject nonempty Arc
+referral codes. Omit the code for Arc (or pass an empty code to override an MCP
+server default). The code is **optional**: without one your agent still swaps
+normally, it just earns no rebate. You can ship first and add the code later.
 
 ## Submitting orders programmatically
 
