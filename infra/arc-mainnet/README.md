@@ -16,23 +16,31 @@ internet access; the backend lab uses loopback fixtures. Neither starts the live
 
 ## Routing and budget
 
-- Public quote admission is paced globally at four requests/minute across quote
-  and draft routes. One excess request may wait up to 15 seconds; further requests
-  receive JSON HTTP 429 with `Retry-After: 15`. This leaves RPC headroom instead of
+- Public quote admission is paced globally at six requests/minute across quote
+  and draft routes. Two excess requests may wait up to 20 seconds; further requests
+  receive JSON HTTP 429 with `Retry-After: 10`. This leaves RPC headroom instead of
   sending six quotes into all five lanes at once. It is bounded admission, not
   additional provider capacity or a guarantee against upstream outages.
-- Official Arc + Blockdaemon public RPC first: two agreeing responses for protected
+- Official Arc + Blockdaemon + PublicNode public RPC first: two agreeing responses for protected
   state, simulations, headers, logs and receipts; disagreement or missing quorum
   returns an error. This is a managed-provider trust model, not local validation.
+- PublicNode (Allnodes) is keyless and independently operated. It serves recent
+  quote/balance reads with its own 120 requests/minute cap; it does not receive
+  indexing logs, transaction relay or traces. Archive access is not assumed:
+  rejected historical reads can fall back to the existing providers.
+  [Allnodes lists free Arc RPC access](https://www.allnodes.com/).
+  September 28 probes matched Blockdaemon's block hash, USDC balance and EIP-1898
+  code-override simulation. This is not an uptime or unlimited-capacity guarantee.
 - QuickNode: bounded fallback for `eth_call`, `eth_estimateGas`, `eth_getBalance`,
   `eth_getCode`, `eth_getBlockByNumber` headers and `eth_gasPrice`, plus
   `debug_traceTransaction` after settlement.
   Protected reads still require two distinct agreeing providers. Paid reads alone
-  cannot restore a quorum when both free providers are unavailable. No dRPC calls.
+  cannot restore a quorum when all free providers are unavailable. No dRPC calls.
 - Each public upstream has a pooled 120 requests/minute limit. QuickNode has a
   pooled 1,000 credits/minute and 40,000 credits/day limit. Auto-tuning, hedging
   and upstream retries are disabled. Each protected-read voter can make at most
-  two network attempts (four total); other methods have one network attempt.
+  three network attempts (six total), so two failed free legs do not hide the
+  fourth provider from a surviving voter; other methods have one network attempt.
   Free providers sort before QuickNode, so healthy free quorums use no paid state
   reads. Quota exhaustion fails closed; failed attempts remain charged.
 - Fixed-number finalized headers are cached for one hour; successful quorum-verified

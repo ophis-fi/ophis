@@ -19,7 +19,8 @@ def serve_mock():
     counts = collections.Counter()
     mode = {"disagree": False, "fail": False, "trace_fail": False,
             "latest_skew": False, "header_disagree": False,
-            "official_fail": False, "paid_disagree": False, "zero": False}
+            "official_fail": False, "paid_disagree": False, "zero": False,
+            "publicnode_fail": False, "publicnode_disagree": False}
     lock = threading.Lock()
 
     class Handler(BaseHTTPRequestHandler):
@@ -60,17 +61,19 @@ def serve_mock():
                         value = "0x2"
                     elif method == "eth_call" and self.path == "/quicknode" and mode["paid_disagree"]:
                         value = "0x3"
+                    elif method == "eth_call" and self.path == "/publicnode" and mode["publicnode_disagree"]:
+                        value = "0x4"
                     if mode["zero"] and method in ("eth_getBalance", "eth_call"):
                         value = "0x0"
                     result = {"jsonrpc": "2.0", "id": body["id"], "result": value}
-                    if (self.path == "/blockdaemon" and mode["fail"]) or (self.path == "/official" and mode["official_fail"]) or (
+                    if (self.path == "/publicnode" and mode["publicnode_fail"]) or (self.path == "/blockdaemon" and mode["fail"]) or (self.path == "/official" and mode["official_fail"]) or (
                         self.path == "/quicknode" and mode["trace_fail"] and method == "debug_traceTransaction"
                     ):
                         result = {"jsonrpc": "2.0", "id": body["id"],
                                   "error": {"code": -32000, "message": "mock unavailable"}}
             data = json.dumps(result).encode()
             # Real provider HTTP failures must trigger the same bounded fallback.
-            self.send_response(503 if self.path in ("/official", "/blockdaemon") and "error" in result else 200)
+            self.send_response(503 if self.path in ("/official", "/blockdaemon", "/publicnode") and "error" in result else 200)
             self.send_header("Content-Type", "application/json")
             self.send_header("Content-Length", str(len(data)))
             self.end_headers()
@@ -144,7 +147,7 @@ def check_proxy(rpc_url, control, release=False):
     assert "error" in rpc("eth_call", call), "paid provider counted as two voters"
     after = post(control, {})["counts"]
     assert sum(after.get(source + ":eth_call", 0) - before.get(source + ":eth_call", 0)
-               for source in ("/official", "/blockdaemon", "/quicknode")) <= 4, "fallback amplified beyond four attempts"
+               for source in ("/official", "/blockdaemon", "/quicknode")) <= 6, "fallback amplified beyond six attempts"
     assert "error" in rpc("eth_call", call, {
         "X-ERPC-Skip-Consensus": "true", "X-ERPC-Use-Upstream": "arc-quicknode"
     }), "client bypassed fallback quorum"
@@ -240,27 +243,75 @@ def check_proxy(rpc_url, control, release=False):
     print("PASS: quorum, no bypass, finalized-only header/call cache, weighted cap, bounded attempts, denied methods; zero live RPC calls")
 
 
-def test_rpc(release=False):
+def check_free_reads(rpc_url, control):
+    def rpc(headers=None):
+        return post(rpc_url, {"jsonrpc": "2.0", "id": 1, "method": "eth_call",
+                             "params": [{"to": "0x" + "11" * 20, "data": "0x12345678"}, "latest"]}, headers)
+
+    deadline = time.monotonic() + 20
+    while True:
+        try:
+            if rpc().get("result") == "0x1":
+                break
+        except (URLError, OSError):
+            pass
+        assert time.monotonic() < deadline, "four-provider mock proxy did not boot"
+        time.sleep(.2)
+    post(control, {"official_fail": True})
+    assert rpc().get("result") == "0x1", "two independent free providers did not restore quorum"
+    counts = post(control, {})["counts"]
+    assert counts.get("/publicnode:eth_call", 0) > 0
+    assert counts.get("/quicknode:eth_call", 0) == 0, "healthy free pair consumed paid credits"
+
+    before = post(control, {"fail": True})["counts"]
+    response = rpc()
+    assert response.get("result") == "0x1", ("PublicNode plus paid fallback failed", response, post(control, {}))
+    after = post(control, {})["counts"]
+    assert after.get("/quicknode:eth_call", 0) == before.get("/quicknode:eth_call", 0) + 1
+    post(control, {"paid_disagree": True})
+    assert "error" in rpc(), "disagreement with the new read voter accepted"
+    post(control, {"publicnode_fail": True, "paid_disagree": False})
+    before = post(control, {})["counts"]
+    assert "error" in rpc(), "one surviving provider counted as two voters"
+    after = post(control, {})["counts"]
+    assert sum(after.get(source + ":eth_call", 0) - before.get(source + ":eth_call", 0)
+               for source in ("/official", "/blockdaemon", "/publicnode", "/quicknode")) <= 6
+    assert after.get("/quicknode:eth_call", 0) <= before.get("/quicknode:eth_call", 0) + 1
+    assert "error" in rpc({"X-ERPC-Skip-Consensus": "true", "X-ERPC-Use-Upstream": "arc-publicnode"})
+    post(control, {"publicnode_fail": False, "official_fail": False, "fail": False,
+                   "disagree": True, "publicnode_disagree": True, "paid_disagree": True})
+    assert "error" in rpc(), "conflicting free providers accepted"
+    print("PASS: additional free voter, free-first failover, paid fallback, disagreement and single-voter rejection")
+
+
+def test_rpc(release=False, expanded=False):
     import yaml  # Existing infra-test dependency; mocks use only Python stdlib.
 
     root = Path(__file__).resolve().parent
     config = yaml.safe_load((root / ("release/generated/erpc.yaml" if release else "erpc.yaml")).read_text())
     project = config["projects"][0]
     upstreams = project["upstreams"]
-    assert [u["id"] for u in upstreams] == ["arc-official", "arc-blockdaemon", "arc-quicknode"]
+    assert [u["id"] for u in upstreams] == ["arc-official", "arc-blockdaemon", "arc-publicnode", "arc-quicknode"]
+    assert upstreams[2]["endpoint"] == "https://arc-rpc.publicnode.com"
+    assert set(upstreams[2]["allowMethods"]) == {"eth_chainId", "eth_blockNumber", "eth_call", "eth_estimateGas", "eth_getBalance", "eth_getCode", "eth_getBlockByNumber", "eth_gasPrice"}
+    assert config["rateLimiters"]["budgets"][-1] == {"id": "arc-publicnode", "rules": [{"method": "*", "maxCount": 120, "period": "minute"}]}
     assert all(u["rateLimitCountMode"] == "credit" for u in upstreams)
     assert set(upstreams[-1]["allowMethods"]) == {"eth_call", "eth_estimateGas", "eth_getBalance", "eth_getCode", "eth_getBlockByNumber", "eth_gasPrice", "debug_traceTransaction"}
     assert upstreams[-1]["creditUnits"] == {"*": 20, "debug_traceTransaction": 40}
     assert project["allowClientDirectives"] == ""
     assert project["upstreamDefaults"]["rateLimitAutoTune"]["enabled"] is False
     protected, other = project["networks"][0]["failsafe"]
-    assert protected["retry"]["maxAttempts"] == 2 and other["retry"]["maxAttempts"] == 1
+    assert protected["retry"]["maxAttempts"] == 3 and other["retry"]["maxAttempts"] == 1
     assert protected["consensus"]["maxParticipants"] == protected["consensus"]["agreementThreshold"] == 2
     assert project["upstreamDefaults"]["failsafe"][0]["retry"]["maxAttempts"] == 1
     assert config["rateLimiters"]["budgets"][0]["rules"] == [
         {"method": "*", "maxCount": 1000, "period": "minute"},
         {"method": "*", "maxCount": 40000, "period": "day"},
     ]
+    if not expanded:
+        # Also retain the existing paid-budget suite with the new free leg absent.
+        # Otherwise a healthy extra voter would hide the fallback/cap scenarios.
+        upstreams.pop(2)
 
     name = "arc-rpc-test-" + uuid.uuid4().hex[:10]
     mock, proxy = name + "-mock", name + "-proxy"
@@ -286,7 +337,7 @@ def test_rpc(release=False):
                    "urllib.request.urlopen(urllib.request.Request('http://localhost:8000/control', b'{}'))")
             docker("run", "-d", "--name", proxy, "--network", name,
                    "-v", f"{config_path}:/erpc.yaml:ro", image)
-            print(docker("exec", mock, "python", "/test_rpc.py", "--check",
+            print(docker("exec", mock, "python", "/test_rpc.py", "--check-free" if expanded else "--check",
                          f"http://{proxy}:4000/main/evm/5042", "http://localhost:8000/control", *(['--release'] if release else [])))
 
     except Exception:
@@ -305,5 +356,8 @@ if __name__ == "__main__":
         serve_mock()
     elif sys.argv[1:2] == ["--check"]:
         check_proxy(*sys.argv[2:4], release='--release' in sys.argv)
+    elif sys.argv[1:2] == ["--check-free"]:
+        check_free_reads(*sys.argv[2:4])
     else:
+        test_rpc(release='--release' in sys.argv, expanded=True)
         test_rpc(release='--release' in sys.argv)
