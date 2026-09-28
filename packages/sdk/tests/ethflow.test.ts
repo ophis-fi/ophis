@@ -74,6 +74,8 @@ describe('isOphisEthFlowChain / getOphisEthFlowAddress', () => {
     expect(isOphisEthFlowChain(4663)).toBe(true);
     expect(isOphisEthFlowChain(8453)).toBe(true);
     expect(isOphisEthFlowChain(12345)).toBe(false); // unknown
+    expect(isOphisEthFlowChain(5042)).toBe(false); // Arc uses ERC-20 USDC, not ETH wrapping
+    expect(getOphisEthFlowAddress(5042)).toBeUndefined();
   });
 
   it('returns the address or undefined', () => {

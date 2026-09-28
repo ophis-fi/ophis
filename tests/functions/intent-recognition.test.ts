@@ -111,6 +111,20 @@ test('chains: a chain in routing context (on base) is still accepted', () => {
   assert.equal(intent.isValidEntity(ent('chain', 'base', 'base', text), text), true)
 })
 
+test('chains: Arc is accepted and recovered when the model omits it', () => {
+  const text = 'swap USDC for EURC on Arc'
+  const chain = ent('chain', 'arc', 'Arc', text)
+  for (const withChain of [true, false]) {
+    const parsed = intent.filterParsedIntent({
+      intent: 'swap',
+      entities: [ent('sellToken', 'USDC', 'USDC', text), ent('buyToken', 'EURC', 'EURC', text), ...(withChain ? [chain] : [])],
+    }, text)
+    assert.ok(parsed)
+    if (withChain) assert.ok(parsed.entities.some((e) => e.type === 'chain' && e.value === 'arc'))
+    assert.equal(intent.injectMissingChain(parsed, text).entities.find((e) => e.type === 'chain')?.value, 'arc')
+  }
+})
+
 test('chains: canonical Robinhood Chain name is accepted before the swap operands', () => {
   const text = 'On Robinhood Chain, swap ETH for USDG'
   assert.equal(intent.valueDerivesFromRaw('chain', 'robinhood', 'Robinhood Chain'), true)

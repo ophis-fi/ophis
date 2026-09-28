@@ -31,6 +31,7 @@
  */
 import { useEffect, useRef } from 'react'
 
+import { SORTED_CHAIN_IDS } from '@cowprotocol/common-const'
 import { usePrevious } from '@cowprotocol/common-hooks'
 import { useWalletInfo } from '@cowprotocol/wallet'
 
@@ -76,6 +77,8 @@ export function IntentRestoreUpdater(): null {
     if (!stash) return
     // Never pull a user off the hooks builder (shared SwapUpdaters mount).
     if (HOOKS_ROUTE_RE.test(pathname)) return
+    // A fresh stash can outlive a deployment that disables its requested chain.
+    if (stash.chainId !== undefined && !SORTED_CHAIN_IDS.some((chainId) => chainId === stash.chainId)) return
 
     // Honour an explicit intent chain; otherwise stay on the connected chain.
     // A no-chain intent stashes chain-agnostic SYMBOLS (see IntentLanding), so

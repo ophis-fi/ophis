@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { readFileSync, readdirSync } from 'node:fs';
 
 const read = (path) => readFileSync(new URL(`../${path}`, import.meta.url), 'utf8');
 const readJson = (path) => JSON.parse(read(path));
@@ -14,6 +14,7 @@ const chains = [
   ['Unichain', 130, '130 as unknown as SupportedChainId'],
   ['Polygon', 137, 'SupportedChainId.POLYGON'],
   ['Robinhood Chain', 4663, '4663 as unknown as SupportedChainId'],
+  ['Arc', 5042, 'arc: 5042'],
   ['Base', 8453, 'SupportedChainId.BASE'],
   ['Plasma', 9745, 'SupportedChainId.PLASMA'],
   ['Arbitrum', 42161, 'SupportedChainId.ARBITRUM_ONE'],
@@ -58,11 +59,18 @@ const sovereign = [
     orderbook: 'https://robinhood-mainnet.ophis.fi',
     settlement: '0x886d9fd312F442C4E1f3cdeAE7b4AB73493e57cD',
   },
+  {
+    name: 'Arc',
+    chainId: 5042,
+    orderbook: 'https://arc-mainnet.ophis.fi',
+    settlement: '0x78799F98276efba1EdeeD32eae03a3fd8Cdfec3A',
+  },
 ];
 
 const sdkConfig = read('packages/sdk/src/config.ts');
 const sdkDomain = read('packages/sdk/src/domain.ts');
 const sdkOrderbook = read('packages/sdk/src/orderbook.ts');
+const sdkFees = read('packages/sdk/src/partner-fee.ts');
 const chainInfo = read('apps/frontend/libs/common-const/src/chainInfo.ts');
 const gettingStarted = read('apps/docs-ophis/docs/getting-started.md');
 const agentPolicies = read('apps/docs-ophis/docs/agent-wallet-policies.md');
@@ -106,6 +114,64 @@ for (const [name, chainId, configKey] of chains) {
   );
 }
 
+const feeChainMatch = sdkFees.match(/const FEE_CHAIN_IDS = \[([\s\S]*?)\] as const/);
+assert.ok(feeChainMatch, 'could not parse SDK fee-chain coverage used by MCP list_chains');
+const feeChainIds = feeChainMatch[1].replace(/\/\/[^\n]*/g, '').match(/\d+/g).map(Number);
+const expectedSdkIds = [...chains.map(([, id]) => id), 11155111].sort((a, b) => a - b);
+assert.deepEqual(feeChainIds.sort((a, b) => a - b), expectedSdkIds, 'SDK/MCP mainnet coverage drift');
+const orderbookIds = [...sdkOrderbook.matchAll(/^  (\d+): 'https:\/\//gm)].map((match) => Number(match[1]));
+assert.deepEqual(orderbookIds.sort((a, b) => a - b), expectedSdkIds, 'SDK orderbook coverage drift');
+
+for (const path of [
+  'apps/docs-ophis/docs/networks-assets.md',
+  'apps/docs-ophis/docs/comparison.md',
+  'apps/docs-ophis/docs/agent-swap-comparison.md',
+  'apps/docs-ophis/docs/agent-btc-cookbook.md',
+  'apps/docs-ophis/docs/faq.mdx',
+  'apps/docs-ophis/static/llms.txt',
+]) {
+  const doc = read(path);
+  assert.match(doc, /SDK v0\.4\.3[\s\S]*?14[^.]*including Arc/, `${path}: SDK/MCP coverage must include Arc`);
+  assert.doesNotMatch(doc, /(?:exclude|excluding) Arc[.;|\n]/, `${path}: stale SDK/MCP Arc exclusion`);
+}
+assert.match(aiAgents, /"arc": 5042/, 'Python intent helper must resolve Arc');
+const partners = read('apps/docs-ophis/docs/partners.md');
+assert.match(partners, /arc-mainnet\.ophis\.fi/, 'partner guide must document the Arc host');
+assert.match(partners, /0x78799F98276efba1EdeeD32eae03a3fd8Cdfec3A/, 'partner guide must document the Arc domain');
+assert.match(partners, /buildOphisReferrerMetadata\(chainId === 5042 \? undefined : 'your-code', chainId\)/,
+  'partner referral example must omit Arc attribution and pass chain context');
+assert.doesNotMatch(partners, /Arc is app-only|Arc is app-supported but not yet/, 'stale Arc SDK exclusion in partner guide');
+
+const landingSource = 'apps/frontend/apps/ophis-landing/src/';
+const publicSitePaths = [
+  ...readdirSync(new URL(`../${landingSource}`, import.meta.url), { recursive: true })
+    .filter((path) => /\.(?:astro|md|mdx)$/.test(path))
+    .map((path) => `${landingSource}${path}`),
+  'apps/frontend/apps/ophis-landing/public/apis.json',
+  'apps/frontend/apps/ophis-landing/public/llms.txt',
+  'apps/frontend/apps/ophis-landing/public/.well-known/ai-plugin.json',
+  'apps/frontend/apps/ophis-landing/public/.well-known/agent-skills/swap-via-ophis/SKILL.md',
+  'apps/frontend/apps/cowswap-frontend/public/llms.txt',
+  'apps/frontend/apps/cowswap-frontend/public/business/index.html',
+  'apps/frontend/apps/cowswap-frontend/index.html',
+  'apps/frontend/apps/cowswap-frontend/src/pages/About/index.tsx',
+  'apps/frontend/apps/cowswap-frontend/src/ophis/components/OphisFooter.tsx',
+  'apps/frontend/apps/explorer/public/llms.txt',
+  'apps/frontend/apps/explorer/index.html',
+  'apps/mcp-server/README.md',
+  'README.md',
+];
+for (const path of publicSitePaths) {
+  const source = read(path);
+  // Dated blog posts can quote historical counts, as in the landing count gate.
+  if (!path.includes('/src/content/')) {
+    assert.doesNotMatch(source, /\b13 (?:supported )?EVM (?:chains|networks)\b|13 mainnets \+ Sepolia/, `${path}: stale network count`);
+  }
+  assert.doesNotMatch(source,
+    /(?:mappings (?:currently )?exclude Arc|supported chains excluding Arc|Arc \(5042\) is not\.|not in the published SDK\/MCP mappings|Arc[^.\n]*?(?:absent from|excluded from|not yet included in) published SDK\/MCP)/,
+    `${path}: stale Arc integration exclusion`);
+}
+
 assert.match(faq, /14 EVM chains/, 'FAQ must state the canonical 14-EVM-chain count');
 if (read('infra/arc-mainnet/release/render.py').includes('[fee-policies]\npolicies = []')) {
   assert.match(
@@ -133,8 +199,8 @@ for (const chain of sovereign) {
     `${chain.name} settlement drifted in wallet-policy docs`,
   );
   assert.ok(
-    `${gettingStarted}\n${faq}\n${aiAgents}`.includes('Optimism, Unichain, and Robinhood Chain'),
-    'public docs must identify all three Ophis-operated chains together',
+    aiAgents.includes(new URL(chain.orderbook).host) && aiAgents.includes(String(chain.chainId)),
+    `${chain.name} host and chain ID must be documented for manual integrations`,
   );
 }
 
@@ -215,4 +281,4 @@ assert.ok(
   'removed Robinhood docs URL reappeared',
 );
 
-console.log('Network/docs invariants are in sync (14 app EVM chains; 13 published SDK/MCP chains).');
+console.log(`Network/docs invariants are in sync (${chains.length} app and SDK/MCP mainnet chains; Sepolia is separate).`);

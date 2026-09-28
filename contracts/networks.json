@@ -45,6 +45,10 @@
       "address": "0x2Ddcc99cD0F2Ba3De0cc37B28ec89921814bBe35",
       "transactionHash": "0xc528abe3fad7c9330b2027b567173c354ef6d60ea2a666f493ad40c79c03b56a"
     },
+    "5042": {
+      "address": "0x153Ed5cf6911ed4180d37Aa6f93A8AC137fB3A33",
+      "transactionHash": "0x53b2530a476075dd08496dffb31718608db557a8e729a0262f15d6fc5a25cff7"
+    },
     "6343": {
       "address": "0xFAB54856B6731BC0C32904BE5297A627d9FDFA31",
       "transactionHash": "0x931234084914baf6afe78897f151d7eb53a75b50596114d4d2851586808b06d2"
@@ -121,6 +125,10 @@
     "4663": {
       "address": "0x5c802B14d9E132717aE78D42B19a4c517876F2E7",
       "transactionHash": "0x8dfa5d5537019b890705b1ceff8ec5d00c5d52afd9e82577057d11e18c7fb5c9"
+    },
+    "5042": {
+      "address": "0xBA352C486B526886fDe4D15f3d3c9aC67Eca9d59",
+      "transactionHash": "0xe761442eefe1a3c9a4f948d943897e8a826becec3e0bc54533284f6a1dbd66a4"
     },
     "6343": {
       "address": "0x9eFDcC2770Af6837B285702d386D558BD1066BA8",
@@ -200,6 +208,10 @@
       "address": "0x5c802B14d9E132717aE78D42B19a4c517876F2E7",
       "transactionHash": "0x8dfa5d5537019b890705b1ceff8ec5d00c5d52afd9e82577057d11e18c7fb5c9"
     },
+    "5042": {
+      "address": "0xBA352C486B526886fDe4D15f3d3c9aC67Eca9d59",
+      "transactionHash": "0xe761442eefe1a3c9a4f948d943897e8a826becec3e0bc54533284f6a1dbd66a4"
+    },
     "6343": {
       "address": "0x9eFDcC2770Af6837B285702d386D558BD1066BA8",
       "transactionHash": "0x3c74e3629eef8b85c09fe7a96f26fdef66d4c8846b88757279205686062ca638"
@@ -278,6 +290,10 @@
       "address": "0x886d9fd312F442C4E1f3cdeAE7b4AB73493e57cD",
       "transactionHash": "0x9d7d12c5c238bc41e620194faaa8aad783c49a06c8a4e00f12efab0a7487561c"
     },
+    "5042": {
+      "address": "0x78799F98276efba1EdeeD32eae03a3fd8Cdfec3A",
+      "transactionHash": "0x88fd91eafc0debbe63d10561ee61396ab612f128da701480e3dd97730014388e"
+    },
     "6343": {
       "address": "0x0864b65F1EFe752a699d119Ae0419E7331a8Bfce",
       "transactionHash": "0xe2bca2200cb5ad0301372a51fd1443dd927960c090f1a47cf495e4627b769d1a"
@@ -355,6 +371,10 @@
     "4663": {
       "address": "0xB52C38097c19cd38238c62DD36027a7918eFa890",
       "transactionHash": "0x9d7d12c5c238bc41e620194faaa8aad783c49a06c8a4e00f12efab0a7487561c"
+    },
+    "5042": {
+      "address": "0x895505F1FE6D762296685fF4a8201782FFdCB8E9",
+      "transactionHash": "0x88fd91eafc0debbe63d10561ee61396ab612f128da701480e3dd97730014388e"
     },
     "6343": {
       "address": "0x842F655C9310C32e5932A0eBFa80c4Cd358c0205",

@@ -38,6 +38,17 @@ describe('deterministicStringify', () => {
 });
 
 describe('buildOphisFullAppData', () => {
+  it('rejects Arc referral attribution while retaining its normal fee', () => {
+    const plain = buildOphisFullAppData(5042);
+    expect(plain.partnerFee).toEqual({
+      volumeBps: 1,
+      recipient: '0x858f0F5eE954846D47155F5203c04aF1819eCeF8',
+    });
+    expect(plain.doc.metadata).not.toHaveProperty('ophisReferrer');
+    expect(() => buildOphisFullAppData(5042, undefined, 'yourcode'))
+      .toThrow(/Arc \(5042\) referral rewards are not supported/);
+  });
+
   it('embeds the CIP-75 partner fee on an Ophis fee chain (Optimism)', () => {
     const ad = buildOphisFullAppData(10);
     expect(ad.partnerFee).toEqual({
@@ -156,6 +167,33 @@ describe('buildOrder', () => {
   it('pins the receiver to the owner by default', () => {
     const o = buildOrder(base, NOW);
     expect(o.order.receiver.toLowerCase()).toBe(OWNER.toLowerCase());
+  });
+
+  it.each(['sellToken', 'buyToken'] as const)('rejects native Arc %s without rewriting its amount', (field) => {
+    for (const token of [
+      '0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee',
+      '0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE',
+      '0x0000000000000000000000000000000000000000',
+    ] as const) {
+      for (const kind of ['sell', 'buy'] as const) {
+        expect(() => buildOrder({ ...base, chainId: 5042, kind, [field]: token }, NOW))
+          .toThrow(new RegExp(`Arc \\(5042\\) ${field}.*native-token placeholder`));
+      }
+    }
+  });
+
+  it('keeps six-decimal Arc ERC-20 amounts and non-Arc native buys unchanged', () => {
+    const arc = buildOrder({
+      ...base, chainId: 5042,
+      sellToken: '0x3600000000000000000000000000000000000000',
+      buyToken: '0xbEf5f6d51CB62b58e6A8f77868681825C6fe21c1',
+      sellAmount: '1000000', buyAmount: '800000',
+    }, NOW);
+    expect(arc.order.sellAmount).toBe('1000000');
+    expect(arc.order.buyAmount).toBe('800000');
+    expect(arc.signing.domain.chainId).toBe(5042);
+    const native = '0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE';
+    expect(buildOrder({ ...base, chainId: 1, buyToken: native }, NOW).order.buyToken).toBe(native);
   });
 
   it('embeds an extra partner fee as an array and changes the signed hash', () => {

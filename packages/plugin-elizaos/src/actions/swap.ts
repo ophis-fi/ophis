@@ -105,10 +105,10 @@ export const ophisSwapAction: Action = {
       // EIP-712 sign -> submit; OP/Unichain non-canonical addresses handled inside).
       // Trim the referral (env vars often carry a trailing newline) and validate the
       // grammar; an invalid code is DROPPED with a warning rather than blocking the
-      // swap — the core is designed never to block on the referral.
+      // swap. Arc is not indexed for rebates, so skip this configured default there.
       const referralRaw = runtime.getSetting('OPHIS_REFERRAL_CODE');
       let referralCode: string | undefined;
-      if (typeof referralRaw === 'string' && referralRaw.trim()) {
+      if (resolved.id !== 5042 && typeof referralRaw === 'string' && referralRaw.trim()) {
         const code = referralRaw.trim().toLowerCase();
         if (/^[a-z0-9_-]{3,64}$/.test(code)) {
           referralCode = code;

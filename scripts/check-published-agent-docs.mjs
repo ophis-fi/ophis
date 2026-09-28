@@ -23,7 +23,8 @@ const adapterPackagePaths = [
 ];
 const adapterPackages = adapterPackagePaths.map(readJson);
 const skillsPackage = readJson('packages/agent-skills/package.json');
-const packages = [sdkPackage, ...adapterPackages, skillsPackage];
+const safeSwapPackage = readJson('packages/safe-swap/package.json');
+const packages = [sdkPackage, ...adapterPackages, skillsPackage, safeSwapPackage];
 
 const documentedAdapterVersions = aiAgents.split('\n').flatMap((line) => {
   const row = line.match(
@@ -108,6 +109,7 @@ assert.deepEqual(
     '@ophis/plugin-goat',
     '@ophis/plugin-elizaos',
     '@ophis/agent-skills',
+    '@ophis/safe-swap',
   ],
   'npm registry allowlist drifted from the package manifests',
 );
@@ -145,6 +147,11 @@ const publishedPackages = await Promise.all([
     '@ophis/agent-skills',
     'https://registry.npmjs.org/%40ophis%2Fagent-skills',
     skillsPackage.version,
+  ),
+  fetchPublishedManifest(
+    '@ophis/safe-swap',
+    'https://registry.npmjs.org/%40ophis%2Fsafe-swap',
+    safeSwapPackage.version,
   ),
 ]);
 

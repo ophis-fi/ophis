@@ -37,8 +37,30 @@ export const addressesEqual = (a: string, b: string): boolean => a.toLowerCase()
 
 const ZERO_ADDRESS = '0x0000000000000000000000000000000000000000';
 
+/** EIP-7528 native-token placeholder, not an ERC-20 contract. */
+export const NATIVE_TOKEN_SENTINEL = '0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE' as const;
+
 /** True for the zero address. CoW treats a zero/absent `receiver` as "send to the order owner". */
 export const isZeroAddress = (value: string): boolean => addressesEqual(value, ZERO_ADDRESS);
+
+/**
+ * Enforces chain-specific order-token restrictions. Address shape validation
+ * remains the caller's responsibility; partial offline preflights may omit a leg.
+ * Arc's native USDC uses 18 decimals, while its ERC-20 USDC uses 6. Neither native
+ * placeholder is a supported Arc order token; never rewrite it or its amount.
+ */
+export function assertOphisOrderTokens(chainId: number, sellToken: unknown, buyToken: unknown): void {
+  assertValidChainId(chainId);
+  if (chainId !== 5042) return;
+  for (const [field, token] of [['sellToken', sellToken], ['buyToken', buyToken]] as const) {
+    if (typeof token === 'string' && (isZeroAddress(token) || addressesEqual(token, NATIVE_TOKEN_SENTINEL))) {
+      throw new Error(
+        `Ophis: Arc (5042) ${field} must be an ERC-20 address, not a native-token placeholder. ` +
+          'Use the ERC-20 token address and its token decimals; native USDC amounts are not interchangeable.',
+      );
+    }
+  }
+}
 
 /** Format-only bytes32 check (0x + 64 hex chars), e.g. an appData keccak hash. */
 export const isBytes32 = (value: unknown): value is `0x${string}` =>

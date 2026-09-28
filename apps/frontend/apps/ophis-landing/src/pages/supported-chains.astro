@@ -28,7 +28,7 @@ const FAQS = [
   },
   {
     q: 'What does Ophis-operated mean?',
-    a: `On ${sovereignList}, batch-auction swaps use Ophis's own settlement contracts with chain-specific fee handling. Arc currently has no configured backend improvement policy; see the pricing page. Resolve supported signing domains and orderbook hosts through @ophis/sdk or MCP list_chains. Arc is app-supported but absent from the published SDK/MCP mappings; do not reuse another chain's address. Bridge routes have separate costs.`,
+    a: `On ${sovereignList}, batch-auction swaps use Ophis's own settlement contracts with chain-specific fee handling. Arc currently has no configured backend improvement policy; see the pricing page. Resolve supported signing domains and orderbook hosts through @ophis/sdk or MCP list_chains. SDK v0.4.3 and hosted MCP include Arc (5042); do not reuse another chain's address. Bridge routes have separate costs.`,
   },
   {
     q: 'How do cross-chain destinations work?',
@@ -117,14 +117,15 @@ const itemListLd = {
 
   <h2>For agents and integrators</h2>
   <p>
-    Published SDK and MCP chain mappings currently exclude Arc. The table above describes
-    the swap app, not universal SDK or bridge coverage.
+    SDK v0.4.3 and the hosted MCP server cover the EVM chains above, including Arc (5042).
+    Bridge coverage remains route-specific; Arc trades do not accrue referral or volume-tier rebates.
   </p>
   <p>
     The machine-readable per-chain contract-pinning policy (settlement addresses, vault relayers,
     EIP-712 domains, orderbook hosts) ships in the
-    <a href="https://ophis.fi/.well-known/agent-skills/ophis/SKILL.md">Ophis agent skill</a>. The
-    <a href="https://github.com/ophis-fi/ophis/tree/main/packages/sdk">@ophis/sdk</a> helpers
+    <a href="https://ophis.fi/.well-known/agent-skills/ophis/SKILL.md">Ophis agent skill</a>
+    for Optimism, Unichain and Robinhood Chain. For all supported EVM chains, including Arc,
+    the <a href="https://github.com/ophis-fi/ophis/tree/main/packages/sdk">@ophis/sdk</a> v0.4.3 helpers
     resolve the correct settlement domain per chain, and the
     <a href="https://docs.ophis.fi/ai-agents">MCP server</a> exposes the same data through the
     <code>list_chains</code> tool. Fee detail per chain lives on the

@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, vi } from 'vitest'
 import { keccak256, toBytes } from 'viem'
 
 import {
@@ -15,6 +15,7 @@ import {
   getBalances,
   getGas,
   getPortfolio,
+  MAX_PORTFOLIO_CHAINS,
   getTokenChart,
   expectedSurplus,
   resolveToken,
@@ -77,6 +78,15 @@ describe('buildOphisAppData', () => {
 })
 
 describe('validateOrder (offline preflight)', () => {
+  it.each(['sellToken', 'buyToken'] as const)('rejects an externally built Arc native %s', (field) => {
+    for (const token of ['0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee', '0x0000000000000000000000000000000000000000']) {
+      const arc = validateOrder({ chainId: 5042, order: { [field]: token } }, NOW)
+      expect(arc.valid).toBe(false)
+      expect(arc.errors).toContainEqual(expect.stringMatching(new RegExp(`Arc \\(5042\\) ${field}.*native-token`)))
+    }
+    expect(validateOrder({ chainId: 1, order: { [field]: '0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee' } }, NOW).valid).toBe(true)
+  })
+
   it('passes a correct Optimism order and echoes the expected wiring', () => {
     const ad = buildOphisAppData(10)
     const r = validateOrder(
@@ -351,6 +361,19 @@ describe('getQuote (enforcement-quote lifetime)', () => {
     return { fetchImpl, body: () => JSON.parse(captured ?? '{}') as Record<string, unknown> }
   }
 
+  it.each(['sellToken', 'buyToken'] as const)('rejects Arc native %s before requesting a quote', async (field) => {
+    const fetchImpl = vi.fn<typeof fetch>()
+    await expect(getQuote({ ...base, chainId: 5042, [field]: '0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee' }, fetchImpl))
+      .rejects.toThrow(/Arc \(5042\).*native-token/)
+    expect(fetchImpl).not.toHaveBeenCalled()
+  })
+
+  it('still requests non-Arc native-token buy quotes', async () => {
+    const cap = captureFetch()
+    await getQuote({ ...base, chainId: 1, buyToken: '0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee' }, cap.fetchImpl)
+    expect(String(cap.body().buyToken).toLowerCase()).toBe('0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee')
+  })
+
   it('quotes for the EXACT absolute validTo when supplied; validForSeconds is ignored', async () => {
     // This is the order-lifetime alignment the build_order handler relies on: the
     // enforcement quote must describe the SAME order being signed, not a relative
@@ -391,6 +414,30 @@ describe('submitOrder (relay guards — no network on the throw paths)', () => {
   }
   const SIG = '0x' + 'ab'.repeat(65)
 
+  it.each(['sellToken', 'buyToken'] as const)('rejects Arc native %s in an externally signed order before relay', async (field) => {
+    const built = buildOrder({ ...base, chainId: 5042 }, NOW)
+    const fetchImpl = vi.fn<typeof fetch>()
+    await expect(submitOrder({
+      chainId: 5042, order: { ...built.order, [field]: '0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee' },
+      signature: SIG, from: OWNER, fullAppData: built.fullAppData,
+    }, fetchImpl)).rejects.toThrow(/Arc \(5042\).*native-token/)
+    expect(fetchImpl).not.toHaveBeenCalled()
+  })
+
+  it.each([5042, 1])('preserves supported token amounts when relaying chain %s', async (chainId) => {
+    const built = buildOrder({
+      ...base, chainId,
+      sellToken: '0x3600000000000000000000000000000000000000',
+      buyToken: chainId === 5042 ? '0xbEf5f6d51CB62b58e6A8f77868681825C6fe21c1' : '0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee',
+      buyAmount: '800000',
+    }, NOW)
+    const fetchImpl = vi.fn<typeof fetch>().mockResolvedValue(new Response(JSON.stringify('0xUID'), { status: 200 }))
+    await submitOrder({ chainId, order: built.order, signature: SIG, from: OWNER, fullAppData: built.fullAppData }, fetchImpl)
+    const body = JSON.parse(String(fetchImpl.mock.calls[0]?.[1]?.body))
+    expect(body).toMatchObject({ sellAmount: '1000000', buyAmount: '800000' })
+    expect(String(body.buyToken).toLowerCase()).toBe(built.order.buyToken.toLowerCase())
+  })
+
   it('REFUSES to relay a non-owner receiver without allowCustomReceiver (drain guard)', async () => {
     const drain = buildOrder({ ...base, unsafeCustomReceiver: ATTACKER }, NOW)
     await expect(
@@ -422,6 +469,35 @@ describe('submitOrder (relay guards — no network on the throw paths)', () => {
 })
 
 describe('listChains', () => {
+  it('exposes Arc with a usable ERC-20 signing domain and Volume-only fee', () => {
+    const arc = listChains().tradeable.find((c) => c.chainId === 5042)
+    expect(arc).toEqual({
+      chainId: 5042,
+      name: 'Arc',
+      ophisOperated: true,
+      settlement: '0x78799F98276efba1EdeeD32eae03a3fd8Cdfec3A',
+      orderbookUrl: 'https://arc-mainnet.ophis.fi',
+      partnerFee: { volumeBps: 1, recipient: OPHIS_SAFE },
+    })
+    const built = buildOrder({
+      chainId: 5042,
+      owner: OWNER,
+      sellToken: '0x3600000000000000000000000000000000000000',
+      buyToken: '0xbEf5f6d51CB62b58e6A8f77868681825C6fe21c1',
+      sellAmount: '1000000',
+      buyAmount: '800000',
+      kind: 'sell',
+    }, NOW)
+    expect(built.signing.domain).toEqual({
+      name: 'Gnosis Protocol', version: 'v2', chainId: 5042, verifyingContract: arc?.settlement,
+    })
+    expect(built.orderbookUrl).toBe(arc?.orderbookUrl)
+    expect(validateOrder({
+      chainId: 5042, owner: OWNER, order: built.order, fullAppData: built.fullAppData,
+      signingDomain: built.signing.domain, orderbookUrl: built.orderbookUrl,
+    }, NOW).errors).toEqual([])
+  })
+
   it('puts Optimism in tradeable with the non-canonical settlement + live orderbook', () => {
     const op = listChains().tradeable.find((c) => c.chainId === 10)
     expect(op?.ophisOperated).toBe(true)
@@ -540,11 +616,29 @@ describe('getBalances / getGas / getPortfolio guards (no network)', () => {
   })
 
   it('portfolio caps the chain count and filters unsupported chains without a network call', async () => {
-    await expect(getPortfolio({ owner: OWNER, chainIds: Array(13).fill(10) })).rejects.toThrow(/at most 12 chains/)
+    await expect(getPortfolio({ owner: OWNER, chainIds: Array(MAX_PORTFOLIO_CHAINS + 1).fill(10) }))
+      .rejects.toThrow(`at most ${MAX_PORTFOLIO_CHAINS} chains`)
     // An unsupported chain is filtered out -> no chains -> no RPC call.
     const res = await getPortfolio({ owner: OWNER, chainIds: [9745] })
     expect(res.chains).toEqual([])
     expect(res.owner).toBe(OWNER)
+  })
+
+  it('reads every built-in RPC chain including Arc when chainIds is omitted', async () => {
+    const rpc = vi.spyOn(globalThis, 'fetch').mockImplementation(async () =>
+      jsonResponse({ jsonrpc: '2.0', id: 1, result: '0x0' }),
+    )
+    try {
+      const result = await getPortfolio({ owner: OWNER })
+      expect(result.chains).toHaveLength(MAX_PORTFOLIO_CHAINS)
+      expect(result.chains.every((chain) => !('error' in chain))).toBe(true)
+      expect(result.chains.find((chain) => chain.chainId === 5042)).toMatchObject({
+        native: { symbol: 'USDC', decimals: 18, raw: '0', formatted: '0' },
+      })
+      expect(rpc).toHaveBeenCalledTimes(MAX_PORTFOLIO_CHAINS)
+    } finally {
+      rpc.mockRestore()
+    }
   })
 
   it('caps the total token fan-out across all chains without a network call', async () => {

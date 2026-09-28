@@ -23,6 +23,7 @@ import {
   type OphisVolumePartnerFee,
 } from './partner-fee.js';
 import { buildOphisReferrerMetadata } from './referral.js';
+import { assertOphisOrderTokens } from './guards.js';
 
 /** CoW appData schema version the live Ophis frontend emits (cow-sdk LATEST_APP_DATA_VERSION). */
 export const APP_DATA_VERSION = '1.14.0';
@@ -163,7 +164,7 @@ export function buildOphisFullAppData(
   // metadata.ophisReferrer.code so the rebate indexer credits that code's owner
   // for this trade's volume. buildOphisReferrerMetadata validates the grammar
   // (throws on a malformed code) so a bad code fails the build, not silently.
-  if (referrerCode !== undefined) Object.assign(metadata, buildOphisReferrerMetadata(referrerCode));
+  if (referrerCode !== undefined) Object.assign(metadata, buildOphisReferrerMetadata(referrerCode, chainId));
   // Order-source attribution under metadata.ophisSource.app, mirroring the
   // ophisReferrer custom-metadata pattern (production orderbooks accept unknown
   // metadata keys). Server-set by the integration surface (e.g. the MCP build_order
@@ -275,6 +276,7 @@ export function buildOrder(p: BuildOrderParams, nowSeconds: number): BuiltOrder 
   const owner = checksum(p.owner, 'owner');
   const sellToken = checksum(p.sellToken, 'sellToken');
   const buyToken = checksum(p.buyToken, 'buyToken');
+  assertOphisOrderTokens(chainId, sellToken, buyToken);
   assertAtoms(p.sellAmount, 'sellAmount');
   assertAtoms(p.buyAmount, 'buyAmount');
   if (p.feeAmount !== undefined) assertFeeAtoms(p.feeAmount, 'feeAmount');

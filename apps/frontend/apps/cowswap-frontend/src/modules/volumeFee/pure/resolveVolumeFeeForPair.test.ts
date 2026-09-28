@@ -115,7 +115,7 @@ describe('resolveVolumeFeeForPair', () => {
   // basket leg actually takes.
 
   it('emits the Volume-only floor on each sovereign chain', () => {
-    for (const chainId of [10, 130, 4663]) {
+    for (const chainId of [10, 130, 4663, 5042]) {
       expect(resolveVolumeFeeForPair(pair({ chainId }), NO_CONTEXT)).toEqual({
         volumeBps: OPHIS_NON_STABLE_VOLUME_BPS,
         recipient: OPHIS_PARTNER_FEE_RECIPIENT,

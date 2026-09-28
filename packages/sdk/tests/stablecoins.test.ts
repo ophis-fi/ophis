@@ -17,6 +17,15 @@ describe('isOphisStablePair', () => {
     expect(isOphisStablePair(4663, usdg, usdg)).toBe(true);
   });
 
+  it('recognizes Arc USDC/EURC only on Arc', () => {
+    const usdc = '0x3600000000000000000000000000000000000000';
+    const eurc = '0xbEf5f6d51CB62b58e6A8f77868681825C6fe21c1';
+    expect(isOphisStablePair(5042, usdc, eurc)).toBe(true);
+    expect(isOphisStablePair(5042, eurc, usdc)).toBe(true);
+    expect(isOphisStablePair(10, usdc, eurc)).toBe(false);
+    expect(isOphisStablePair(5042, usdc, '0x171A4217b86A807A64eB94757Db6849fb4bDbAA0')).toBe(false);
+  });
+
   it('includes native xDAI on Gnosis', () => {
     expect(
       isOphisStablePair(

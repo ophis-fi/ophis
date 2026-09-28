@@ -8,7 +8,7 @@ const VOLUME_FEE = { source: 'volume-fee-pipeline' } as const
 
 // Chains that mandate the CIP-75 Volume policy and reject the price-improvement
 // shape at ingress (VOLUME_ONLY_CHAIN_IDS in ophis/partnerFeeDefault).
-const VOLUME_ONLY = [10, 130, 4663]
+const VOLUME_ONLY = [10, 130, 4663, 5042]
 // A CoW-hosted chain, present in the recipient map, where PI passes through.
 const HOSTED = 1
 

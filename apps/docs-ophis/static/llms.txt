@@ -1,6 +1,6 @@
 # Ophis Docs
 
-> Developer documentation for Ophis: wallet-authorized batch-auction swaps and route-specific bridges. The app supports 14 EVM networks, including Arc; published SDK/MCP mappings cover 13 and exclude Arc. The optional natural-language API parses requests, not quotes or execution. Signed limits and batch auctions mitigate common MEV, not every attack.
+> Developer documentation for Ophis: wallet-authorized batch-auction swaps and route-specific bridges. The app supports 14 EVM networks, including Arc; SDK v0.4.3 and hosted MCP mappings cover the same 14, including Arc. The optional natural-language API parses requests, not quotes or execution. Signed limits and batch auctions mitigate common MEV, not every attack.
 
 ## Build with Ophis
 

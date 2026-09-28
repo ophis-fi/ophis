@@ -179,7 +179,7 @@ import requests
 INTENT_API = "https://ophis.fi/api/intent"
 SWAP_APP = "https://swap.ophis.fi"
 
-# The 13 EVM chains the Intent API can return, mapped to their chain IDs.
+# The 14 EVM chains the Intent API can return, mapped to their chain IDs.
 # Keep in sync with the API's supported-network list; build_deeplink()
 # raises on any future slug not listed here rather than misrouting it.
 CHAIN_SLUG_TO_ID = {
@@ -196,6 +196,7 @@ CHAIN_SLUG_TO_ID = {
     "plasma": 9745,
     "unichain": 130,
     "robinhood": 4663,
+    "arc": 5042,
 }
 
 
@@ -288,19 +289,22 @@ Everything above keeps a human in the signing loop. If instead you are building
 an agent that executes swaps itself and you are on a common framework, you do
 not have to hand-roll the order flow in the next section. Four published npm
 packages wrap quote, EIP-712 sign, relayer approval, and submit into one call,
-and each stamps your referral code into every order when one is supplied, so
-the rebate accrues:
+and apply referral attribution on indexed chains when a code is supplied:
 
 | Package                                                                        | Version | For                                                       | Registers                            |
 | ------------------------------------------------------------------------------ | ------- | --------------------------------------------------------- | ------------------------------------ |
-| [`@ophis/agentkit-ophis`](https://www.npmjs.com/package/@ophis/agentkit-ophis) | v0.3.4  | [Coinbase AgentKit](https://github.com/coinbase/agentkit) | an `OphisActionProvider_swap` action |
-| [`@ophis/plugin-goat`](https://www.npmjs.com/package/@ophis/plugin-goat)       | v0.3.4  | [GOAT SDK](https://github.com/goat-sdk/goat)              | an `ophis_swap` tool                 |
-| [`@ophis/plugin-elizaos`](https://www.npmjs.com/package/@ophis/plugin-elizaos) | v0.3.4  | [elizaOS](https://github.com/elizaOS/eliza)               | a `swap` action                      |
-| [`@ophis/agent-swap`](https://www.npmjs.com/package/@ophis/agent-swap)         | v0.3.4  | any custom EOA framework                                  | the `executeOphisSwap()` core        |
+| [`@ophis/agentkit-ophis`](https://www.npmjs.com/package/@ophis/agentkit-ophis) | v0.3.5  | [Coinbase AgentKit](https://github.com/coinbase/agentkit) | an `OphisActionProvider_swap` action |
+| [`@ophis/plugin-goat`](https://www.npmjs.com/package/@ophis/plugin-goat)       | v0.3.5  | [GOAT SDK](https://github.com/goat-sdk/goat)              | an `ophis_swap` tool                 |
+| [`@ophis/plugin-elizaos`](https://www.npmjs.com/package/@ophis/plugin-elizaos) | v0.3.5  | [elizaOS](https://github.com/elizaOS/eliza)               | a `swap` action                      |
+| [`@ophis/agent-swap`](https://www.npmjs.com/package/@ophis/agent-swap)         | v0.3.5  | any custom EOA framework                                  | the `executeOphisSwap()` core        |
 
-The v0.3.4 adapter family is built and published against `@ophis/sdk` v0.4.2,
-so its fee policy, chain list, orderbook hosts, settlement contracts, and vault
-relayers match the current SDK.
+The v0.3.5 adapter family is built and published against `@ophis/sdk` v0.4.3,
+so its fee policy, orderbook hosts, settlement contracts, and vault relayers
+match the current SDK. The core and AgentKit can use an Arc wallet with ERC-20
+addresses; configured wrapper referral defaults are skipped on Arc, which is
+not indexed for rebates. Explicit per-call Arc codes passed to `executeOphisSwap`
+are rejected. GOAT discovery and the elizaOS chain resolver retain their existing
+chain lists and do not expose Arc merely because their SDK dependency supports it.
 
 Coinbase AgentKit, in one line:
 
@@ -390,7 +394,7 @@ pinned per-chain settlement and vault-relayer contracts (the only allowed
 `approve` spenders), the EIP-712 signing domains, the orderbook hosts, and
 slippage latches. Policy-enforcing runtimes can apply it mechanically; CI in
 the Ophis repo pins the block against the deployed addresses so the published
-skills cannot drift. The skills cover all three Ophis-operated chains
+skills cannot drift. The published skills cover three Ophis-operated chains
 (Optimism, Unichain, and Robinhood Chain); for other chains use the MCP server
 above, which resolves per-chain contracts via `list_chains`.
 
@@ -411,8 +415,10 @@ nothing for the end user to sign or opt into.
 3. Pass it to any adapter as `referralCode`, or export `OPHIS_REFERRAL_CODE` and
    the adapters pick it up automatically.
 
-The code is **optional**: without one your agent still swaps normally, it just
-earns no rebate. You can ship first and add the code later.
+Arc is excluded from rebate indexing; SDK v0.4.3 and MCP reject nonempty Arc
+referral codes. Omit the code for Arc; MCP also skips its configured server
+default on Arc. The code is **optional**: without one your agent still swaps
+normally, it just earns no rebate. You can ship first and add the code later.
 
 ## Submitting orders programmatically
 
@@ -427,17 +433,17 @@ adapters](#drop-in-framework-adapters) above already get all four right, hand-ro
 this only if you are on neither. The `@ophis/sdk` helpers below are also what
 those adapters call under the hood.
 
-The helpers below live in **`@ophis/sdk`**, published on npm (v0.4.2, public).
+The helpers below live in **`@ophis/sdk`**, published on npm (v0.4.3, public).
 Install it with `npm install @ophis/sdk`, or copy the values from the call-outs
 if you prefer to vendor them.
 
 ### 1. Resolve the orderbook host from the chain ID
 
-:::danger[Optimism, Unichain, and Robinhood Chain do not live on api.cow.fi]
+:::danger[Optimism, Unichain, Robinhood Chain, and Arc do not live on api.cow.fi]
 
-Optimism, Unichain, and Robinhood Chain break the `api.cow.fi/<slug>` pattern. Ophis self-hosts
+Optimism, Unichain, Robinhood Chain, and Arc break the `api.cow.fi/<slug>` pattern. Ophis self-hosts
 their orderbooks at `optimism-mainnet.ophis.fi`, `unichain-mainnet.ophis.fi`,
-and `robinhood-mainnet.ophis.fi`.
+`robinhood-mainnet.ophis.fi`, and `arc-mainnet.ophis.fi` (Arc chain ID **5042**).
 Posting one of their orders to `api.cow.fi/<slug>` (a host that does not serve
 Ophis) **is an unsupported host/domain combination, not a fee-free route**. Resolve
 hosts via `@ophis/sdk` `getOphisOrderbookUrl` per chain rather than hardcoding.
@@ -448,6 +454,7 @@ hosts via `@ophis/sdk` `getOphisOrderbookUrl` per chain rather than hardcoding.
 import { getOphisOrderbookUrl } from '@ophis/sdk';
 
 const orderbookUrl = getOphisOrderbookUrl(10); // -> https://optimism-mainnet.ophis.fi
+const arcOrderbookUrl = getOphisOrderbookUrl(5042); // -> https://arc-mainnet.ophis.fi
 // Throws on an invalid or unsupported chainId rather than guessing a host.
 ```
 
@@ -465,6 +472,8 @@ stable, so the hash won't match what solvers expect.
 For a manual builder, call
 `ophisVolumeBpsForChainAndPair(chainId, isStablePair)`. This keeps manual
 builders aligned with the canonical policy.
+Arc trades are not yet ingested by the rebate indexer. Arc order builders reject
+referral codes; omit them to trade without referral attribution.
 The drop-in adapters above derive stable-pair status from a verified stablecoin
 list.
 
@@ -482,6 +491,8 @@ import { buildOphisAppDataPartnerFee } from '@ophis/sdk';
 // On Optimism, Unichain, and Robinhood Chain this returns the required 1 bp
 // base. Their backends enforce the same 1 bp anti-bypass floor and separately
 // apply capped price-improvement capture.
+// Arc also requires the 1 bp base; its backend has no price-improvement
+// capture policy configured.
 const partnerFee = buildOphisAppDataPartnerFee(10);
 // -> { volumeBps: 1, recipient }
 
@@ -503,12 +514,13 @@ CoW orders are signed with **EIP-712 typed data** (`signTypedData`), never
 `signMessage`. The `verifyingContract` is chain-specific, and the Ophis-operated
 chains do **not** use CoW's canonical settlement.
 
-:::danger[The Optimism, Unichain, and Robinhood Chain settlements are not the canonical CoW one]
+:::danger[The Optimism, Unichain, Robinhood Chain, and Arc settlements are not the canonical CoW one]
 
 On Optimism, Ophis's GPv2Settlement is `0x310784c7…B859`, on Unichain it is
-`0x108A678716e5E1776036eF044CAB7064226F714E`, and on Robinhood Chain it is
-`0x886d9fd312F442C4E1f3cdeAE7b4AB73493e57cD`, **not** the canonical
-`0x9008D19f…ab41`. cow-sdk defaults to the canonical address, so signing an OP
+`0x108A678716e5E1776036eF044CAB7064226F714E`, on Robinhood Chain it is
+`0x886d9fd312F442C4E1f3cdeAE7b4AB73493e57cD`, and on Arc (chain ID **5042**) it is
+`0x78799F98276efba1EdeeD32eae03a3fd8Cdfec3A`, **not** the canonical
+`0x9008D19f…ab41`. cow-sdk defaults to the canonical address, so signing an Arc
 order with the SDK default yields a domain separator the deployed contract
 rejects, every order fails. Build the domain from the chain ID instead.
 

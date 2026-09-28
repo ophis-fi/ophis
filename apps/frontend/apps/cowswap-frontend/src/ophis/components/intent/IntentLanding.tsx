@@ -11,6 +11,7 @@
  */
 import { ReactNode, useCallback, useMemo, useState } from 'react'
 
+import { SORTED_CHAIN_IDS } from '@cowprotocol/common-const'
 import { SupportedChainId } from '@cowprotocol/cow-sdk'
 import { symbolToAddressResolver, useTokenForChainMapBySymbol } from '@cowprotocol/tokens'
 import { useWalletInfo } from '@cowprotocol/wallet'
@@ -445,8 +446,11 @@ export function IntentLanding(): ReactNode {
   )
   const navigate = useNavigate()
   const parseState = useIntentParse(text)
-  const ready = isReadyToSubmit(parseState.parsed)
   const { chainId: envChainId } = useWalletInfo()
+  const chainEntity = parseState.parsed?.entities.find((e) => e.type === 'chain')
+  const parsedChainId = chainEntity ? chainSlugToId(chainEntity.value) : undefined
+  const isUnavailableChain = !!chainEntity && !SORTED_CHAIN_IDS.some((chainId) => chainId === parsedChainId)
+  const ready = isReadyToSubmit(parseState.parsed) && !isUnavailableChain
 
   // Resolve recognised symbols to on-chain addresses for the URL's TARGET chain:
   // the chain named in the intent if any, else the connected/default chain (the
@@ -455,19 +459,15 @@ export function IntentLanding(): ReactNode {
   // run per-symbol inside a callback). An address in the URL fills the form
   // reliably (no ambiguous-symbol reset); a symbol that doesn't resolve (target
   // list not loaded, or genuinely unknown) falls back to the bare symbol.
-  const targetChainId = useMemo(() => {
-    const chainEntity = parseState.parsed?.entities.find((e) => e.type === 'chain')
-    const parsedChainId = chainEntity ? chainSlugToId(chainEntity.value) : undefined
-    return (parsedChainId ?? envChainId) as SupportedChainId
-  }, [parseState.parsed, envChainId])
-  const symbolMap = useTokenForChainMapBySymbol(targetChainId)
+  const targetChainId = (parsedChainId ?? envChainId) as SupportedChainId
+  const symbolMap = useTokenForChainMapBySymbol(isUnavailableChain ? undefined : targetChainId)
   // Warm a CROSS-chain target's token lists so symbolMap resolves to addresses (not
   // bare symbols) by the time the user clicks Continue. Only when the target differs
   // from the connected chain: the connected chain's lists already load via
   // TokensListsUpdater, and warming it would redundantly re-fetch (and, before the IDB
   // store hydrates on mount, could override a returning user's list toggles on their
   // active chain). Best-effort; degrades gracefully to the bare symbol on a miss.
-  useWarmTargetChainLists(targetChainId === envChainId ? undefined : targetChainId)
+  useWarmTargetChainLists(isUnavailableChain || targetChainId === envChainId ? undefined : targetChainId)
 
   const handleSubmit = useCallback(() => {
     if (!ready || !parseState.parsed) return
@@ -539,7 +539,14 @@ export function IntentLanding(): ReactNode {
             pending={parseState.status === 'pending'}
             placeholder="e.g. trade 100 USDC for ETH on Optimism"
           />
-          <Helper $variant={helper.variant}>{helper.message || ' '}</Helper>
+          <Helper
+            $variant={isUnavailableChain ? 'error' : helper.variant}
+            role={isUnavailableChain ? 'alert' : undefined}
+          >
+            {isUnavailableChain
+              ? 'This network is not available in this app. Choose another network.'
+              : helper.message || ' '}
+          </Helper>
         </InputBlock>
 
         <IntentCarousel onPick={(t) => setText(t)} />

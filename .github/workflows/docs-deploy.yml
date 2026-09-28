@@ -29,6 +29,7 @@ on:
       - 'Publish @ophis/sdk to npm'
       - 'Publish @ophis agent plugins to npm'
       - 'Publish @ophis/agent-skills to npm'
+      - 'Publish @ophis/safe-swap to npm'
     types: [completed]
   workflow_dispatch: {}
 

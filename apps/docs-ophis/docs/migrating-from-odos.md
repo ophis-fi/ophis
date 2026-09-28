@@ -22,7 +22,7 @@ they belong here and do not. Check this table before you read further.
 | If this is you | Go here instead |
 |---|---|
 | Your signature is validated by a **contract**: a Safe, a smart account, a vault, an MPC signer behind EIP-1271, or a DAO treasury module | **[Partner integration (SDK)](./partners.md).** This surface accepts only `eip712` and `ethsign` and rejects `presign` and `eip1271`, so a contract-validated signer has no path here at all. The SDK reaches those schemes directly |
-| You trade on **Ethereum, Base, Arbitrum, or any other CoW-hosted chain** | **[Partner integration (SDK)](./partners.md).** This surface serves only chains 10, 130 and 4663. The SDK covers those three plus every CoW-hosted chain |
+| You trade on **Ethereum, Base, Arbitrum, or any other CoW-hosted chain** | **[Partner integration (SDK)](./partners.md).** This surface serves only chains 10, 130 and 4663. SDK v0.4.3 covers those three, Arc (5042), and every CoW-hosted chain |
 | You trade mostly **same-chain stable pairs** | This surface and the **[Partner integration (SDK)](./partners.md)** both use the 1 bp sovereign base; the SDK also covers hosted chains |
 | You compose swap **calldata inside your own contract call** | Neither page. Ophis returns an intent, not a transaction, and that is a settlement-model difference rather than a backlog item. See [What this surface is](#what-this-surface-is-and-what-it-is-not) |
 

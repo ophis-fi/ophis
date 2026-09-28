@@ -5,6 +5,7 @@ describe('shouldEmitOphisPartnerFee', () => {
     expect(shouldEmitOphisPartnerFee(10)).toBe(true) // Optimism mainnet
     expect(shouldEmitOphisPartnerFee(130)).toBe(true) // Unichain mainnet
     expect(shouldEmitOphisPartnerFee(4663)).toBe(true) // Robinhood Chain
+    expect(shouldEmitOphisPartnerFee(5042)).toBe(true) // Arc
   })
 
   it('returns true for all CoW-supported chains (restored all-chain fee model 2026-05-27)', () => {

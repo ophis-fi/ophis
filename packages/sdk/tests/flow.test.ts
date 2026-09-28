@@ -52,6 +52,15 @@ describe('buildOphisOrderMetadata', () => {
     expect(metadata.partnerFee).toEqual({ recipient: OPHIS_PARTNER_FEE_RECIPIENT, volumeBps: 1 });
   });
 
+  it('keeps Arc fee-bearing without promising unindexed referral rewards', () => {
+    expect(isOphisFeeChain(5042)).toBe(true);
+    const { metadata } = buildOphisOrderMetadata({ chainId: 5042 });
+    expect(metadata.partnerFee).toEqual({ recipient: OPHIS_PARTNER_FEE_RECIPIENT, volumeBps: 1 });
+    expect(metadata.ophisReferrer).toBeUndefined();
+    expect(() => buildOphisOrderMetadata({ chainId: 5042, referralCode: 'yourcode' }))
+      .toThrow(/Arc \(5042\) referral rewards are not supported/);
+  });
+
   it('tags the referral code (normalized) so the rebate accrues', () => {
     const { metadata } = buildOphisOrderMetadata({ chainId: 1, referralCode: 'YourCode' });
     expect(metadata.ophisReferrer).toEqual({ code: 'yourcode' });
@@ -211,6 +220,26 @@ describe('buildOphisOrderCreation', () => {
     expect(body.signingScheme).toBe('eip712');
     expect(body.signature).toBe('0xsig');
     expect(body.sellToken).toBe('0x1'); // preserves the rest of the order
+  });
+
+  it.each(['sellToken', 'buyToken'] as const)('rejects native %s when Arc chain context is supplied', (field) => {
+    const order = { receiver: OWNER, appData: HASH, [field]: '0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee' };
+    expect(() => buildOphisOrderCreation({ ...base, chainId: 5042, order })).toThrow(/Arc \(5042\).*native-token/);
+    // Other chains and the legacy context-less wire formatter preserve the signed payload.
+    expect(buildOphisOrderCreation({ ...base, chainId: 1, order })[field]).toBe(order[field]);
+    expect(buildOphisOrderCreation({ ...base, order })[field]).toBe(order[field]);
+  });
+
+  it('preserves Arc ERC-20 amounts without leaking validation context into the wire body', () => {
+    const order = {
+      receiver: OWNER, appData: HASH,
+      sellToken: '0x3600000000000000000000000000000000000000',
+      buyToken: '0xbEf5f6d51CB62b58e6A8f77868681825C6fe21c1',
+      sellAmount: '1000000', buyAmount: '800000',
+    };
+    const body = buildOphisOrderCreation({ ...base, chainId: 5042, order });
+    expect(body).toMatchObject({ sellToken: order.sellToken, buyToken: order.buyToken, sellAmount: '1000000', buyAmount: '800000' });
+    expect(body).not.toHaveProperty('chainId');
   });
 
   it('rejects a non-bytes32 appDataHash (e.g. the full appData passed by mistake)', () => {

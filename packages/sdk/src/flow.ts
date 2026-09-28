@@ -27,7 +27,7 @@ import {
 import { buildOphisReferrerMetadata } from './referral.js';
 import { OPHIS_ORDERBOOK_URLS } from './orderbook.js';
 import { assertReceiverIsOwner } from './order.js';
-import { assertValidChainId, assertAddressLike, assertBytes32, addressesEqual } from './guards.js';
+import { assertValidChainId, assertAddressLike, assertBytes32, addressesEqual, assertOphisOrderTokens } from './guards.js';
 
 /** cow-sdk `SigningScheme` string values. EOAs use 'eip712'; Safe / MPC use 'eip1271'. */
 export type OphisSigningScheme = 'eip712' | 'ethsign' | 'eip1271' | 'presign';
@@ -37,7 +37,7 @@ export const OPHIS_REBATE_INDEXER_URL = 'https://rebates.ophis.fi';
 
 const FEE_CHAIN_ID_SET: ReadonlySet<number> = new Set<number>(OPHIS_FEE_CHAIN_IDS);
 
-/** True if Ophis charges its partner fee (and therefore pays a rebate) on this chain. */
+/** True if Ophis charges its partner fee; this does not imply rebate-indexer coverage. */
 export const isOphisFeeChain = (chainId: number): boolean => {
   assertValidChainId(chainId);
   return FEE_CHAIN_ID_SET.has(chainId);
@@ -49,7 +49,8 @@ export interface OphisOrderMetadataOptions {
   /** Your Ophis referral code. OPTIONAL: when set it earns the rebate and is
    *  embedded in metadata.ophisReferrer.code; when omitted the order still
    *  carries the Ophis partner fee and settles normally, you just forgo the
-   *  rebate. Mint one at https://swap.ophis.fi/#/rewards. */
+   *  rebate. Arc (5042) currently rejects referral codes because its trades are
+   *  not indexed for rewards. Mint one at https://swap.ophis.fi/#/rewards. */
   readonly referralCode?: string;
   /**
    * True ONLY for a same-chain stablecoin pair. It selects the 50% improvement
@@ -120,7 +121,7 @@ export function buildOphisOrderMetadata(opts: OphisOrderMetadataOptions): OphisA
   if (!partnerFee) throw new Error(`Ophis: chain ${chainId} has no fee policy.`);
   // buildOphisReferrerMetadata validates the code grammar and throws on a typo;
   // with no code it returns {} so the order is fee-bearing but unattributed.
-  const referrerTag = buildOphisReferrerMetadata(referralCode);
+  const referrerTag = buildOphisReferrerMetadata(referralCode, chainId);
   return {
     appCode: 'ophis',
     metadata: {
@@ -265,6 +266,12 @@ export async function enrollOphisTrader(
 
 export interface OphisOrderCreationOptions {
   /**
+   * Settlement chain for chain-specific token checks. Pass this when known.
+   * Optional for compatibility: this wire formatter cannot infer a chain from
+   * the signed order, so omitted context does not validate chain token support.
+   */
+  readonly chainId?: number;
+  /**
    * The signed CoW order object. Its `appData` field must be the bytes32 HASH
    * (the value that was signed). `receiver` must already be set on it.
    */
@@ -306,11 +313,12 @@ export interface OphisOrderCreationOptions {
  *
  * @example
  *   await orderBookApi.sendOrder(buildOphisOrderCreation({
- *     order, owner, fullAppData, appDataHash, signature, signingScheme: 'eip712',
+ *     chainId, order, owner, fullAppData, appDataHash, signature, signingScheme: 'eip712',
  *   }));
  */
 export function buildOphisOrderCreation(opts: OphisOrderCreationOptions): Record<string, unknown> {
   const { order, owner, fullAppData, appDataHash, signature, signingScheme, allowReceiver } = opts;
+  if (opts.chainId !== undefined) assertOphisOrderTokens(opts.chainId, order.sellToken, order.buyToken);
   assertAddressLike(owner, 'owner');
   // Catch the easy swap of passing the full appData JSON (or a truncated hash)
   // where the bytes32 hash belongs.

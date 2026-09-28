@@ -154,10 +154,11 @@ must occur in the input; exact offsets are not guaranteed. This is not contract 
 resolve the chain/address and request a quote before building an order.
 
 **Chain values** are the parser's supported lowercase slugs. This set is
-separate from the app's network selector: Arc is not yet parsed.
+separate from the app's network selector: `arc` is recognized, but the app blocks
+an explicit chain disabled in its deployment.
 
 ```
-ethereum  arbitrum  avalanche  base  bnb  gnosis
+ethereum  arbitrum  arc  avalanche  base  bnb  gnosis
 ink  linea  optimism  plasma  polygon  robinhood  unichain
 ```
 

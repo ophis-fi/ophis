@@ -47,7 +47,7 @@ export function SwapForm({ sdk, owner, chainId }: Props) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const referral = resolveReferralCode();
+  const referral = resolveReferralCode(chainId);
 
   // Editing any input invalidates a fetched quote: clear it so the proposal button (gated on
   // `quoted`) disappears and the Safe tx can never be built from inputs other than those shown.
@@ -113,13 +113,14 @@ export function SwapForm({ sdk, owner, chainId }: Props) {
     <main>
       <h1>Ophis Swap</h1>
       <p style={{ color: '#666', marginTop: -8 }}>
-        Chain {chainId} · Safe {short(owner)}{referral ? ` · ref ${referral}` : ''}{isSafeWalletLaunch() ? ' · via Safe Wallet' : ''}
+        Chain {chainId} · Safe {short(owner)}{referral ? ` · ref ${referral}${chainId === 5042 ? ' (unsupported on Arc)' : ''}` : ''}{isSafeWalletLaunch() ? ' · via Safe Wallet' : ''}
       </p>
+      {chainId === 5042 && <p>Arc orders use ERC-20 tokens and do not earn referral or volume-tier rebates.</p>}
       <label style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
         <input
           type="checkbox"
           checked={sellNative}
-          disabled={busy}
+          disabled={busy || chainId === 5042}
           onChange={(e) => { setSellNative(e.target.checked); setQuoted(null); setError(null); }}
           style={{ width: 'auto' }}
         />
@@ -144,7 +145,7 @@ export function SwapForm({ sdk, owner, chainId }: Props) {
         <div style={{ background: '#f6f6f7', padding: 12, borderRadius: 8, display: 'grid', gap: 4 }}>
           <div>Buy amount (quoted, after fee): {q.buyAmount}</div>
           <div>Fee: {q.feeAmount ?? '0'}</div>
-          <div style={{ color: '#666' }}>Quoted with the Ophis partner fee + your referral in appData.</div>
+          <div style={{ color: '#666' }}>Quoted with the Ophis partner fee{referral ? ' + your referral' : ''} in appData.</div>
           {quoted?.wrapNative && (
             <div style={{ color: '#666' }}>Selling native ETH: the Safe tx wraps your ETH to WETH first, then sells WETH.</div>
           )}

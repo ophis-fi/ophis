@@ -1,6 +1,6 @@
 import { Interface } from 'ethers';
 import type SafeAppsSDK from '@safe-global/safe-apps-sdk';
-import { assertReceiverIsOwner, buildOphisOrderCreation, getOphisVaultRelayer } from '@ophis/sdk';
+import { assertReceiverIsOwner, assertOphisOrderTokens, buildOphisOrderCreation, getOphisVaultRelayer } from '@ophis/sdk';
 import { assertUidMatches, buildPresignTxBatch } from '@ophis/safe-swap';
 import { ophisOrderBook } from './quote';
 import { assertErc20Token } from './tokens';
@@ -37,6 +37,7 @@ export async function submitOrder(
   opts?: { keepSufficientAllowance?: boolean },
 ): Promise<SubmitResult> {
   assertReceiverIsOwner(owner, order.receiver); // drain guard before any tx
+  assertOphisOrderTokens(chainId, order.sellToken, order.buyToken);
   // Belt-and-suspenders: the approval path below targets order.sellToken, so it must be a real
   // ERC-20 — never a native-ETH sentinel / zero address. For a wrapNative sell this is WETH (the
   // form mapped native -> WETH before quoting); for an ERC-20 sell it's the token itself. Either
@@ -50,14 +51,17 @@ export async function submitOrder(
   //    and surface a VISIBLE non-blocking warning on failure rather than firing-and-forgetting.
   //    Enrollment is NOT a settlement precondition, so a failure must not abort the swap.
   let enrollmentWarning: string | undefined;
-  try {
-    const enrollment = await enrollTrackedWallet(owner);
-    if (!enrollment.enrolled) {
-      const reason = enrollment.status !== undefined ? `HTTP ${enrollment.status}` : 'indexer unreachable';
-      enrollmentWarning = `rebate-indexer enrollment failed (order still submits; rebate may not index): ${reason}`;
+  // Arc is not indexed; do not enroll it or imply that retrying earns a rebate.
+  if (chainId !== 5042) {
+    try {
+      const enrollment = await enrollTrackedWallet(owner);
+      if (!enrollment.enrolled) {
+        const reason = enrollment.status !== undefined ? `HTTP ${enrollment.status}` : 'indexer unreachable';
+        enrollmentWarning = `rebate-indexer enrollment failed (order still submits; rebate may not index): ${reason}`;
+      }
+    } catch (e) {
+      enrollmentWarning = (e as Error).message;
     }
-  } catch (e) {
-    enrollmentWarning = (e as Error).message;
   }
   if (enrollmentWarning) {
     console.warn('[ophis] rebate-indexer enrollment failed; the rebate may not index:', enrollmentWarning);
@@ -67,6 +71,7 @@ export async function submitOrder(
   //    appDataHash, asserts the SIGNED order.appData matches it, and drain-guards the receiver).
   //    For presign the "signature" is the owner address.
   const body = buildOphisOrderCreation({
+    chainId,
     order: order as unknown as Record<string, unknown>,
     owner,
     fullAppData,

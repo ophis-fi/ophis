@@ -34,7 +34,7 @@ that proxies [LibertAI](https://libertai.io)'s **Qwen 3.6 27B**
 
 - holds the LibertAI API key server-side (browsers never see it),
 - validates symbol syntax and source-text spans, not token contracts,
-- validates the chain against its 13 supported slugs (not yet Arc), and
+- validates the chain against its 14 supported slugs, including Arc, and
 - returns a structured `ParsedIntent` the UI uses to pre-fill the form.
 
 The parser **only normalizes language**. It never places, signs, or

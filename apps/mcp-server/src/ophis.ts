@@ -29,6 +29,7 @@ import {
   buildOphisFullAppData,
   normalizeOphisReferralCode,
   assertReceiverIsOwner,
+  assertOphisOrderTokens,
   ophisDefaultPartnerFee,
   OPHIS_STABLE_VOLUME_FEE_BPS,
   OPHIS_SOVEREIGN_VOLUME_FEE_BPS,
@@ -504,6 +505,13 @@ export function validateOrder(p: ValidateOrderParams, nowSeconds: number): Valid
   }
 
   // Light shape checks on the remaining order fields callers may pass.
+  if (chainIdOk) {
+    try {
+      assertOphisOrderTokens(chainId, o?.sellToken, o?.buyToken)
+    } catch (e) {
+      errors.push((e as Error).message)
+    }
+  }
   for (const [field, value] of [
     ['sellToken', o?.sellToken],
     ['buyToken', o?.buyToken],
@@ -605,6 +613,7 @@ export async function getQuote(p: QuoteParams, fetchImpl: typeof fetch = fetch):
   const from = checksum(p.from, 'from')
   const sellToken = checksum(p.sellToken, 'sellToken')
   const buyToken = checksum(p.buyToken, 'buyToken')
+  assertOphisOrderTokens(chainId, sellToken, buyToken)
   assertAtoms(p.amount, 'amount')
   const { fullAppData, appDataHash } = buildOphisFullAppData(
     chainId,
@@ -683,6 +692,7 @@ export async function submitOrder(p: SubmitOrderParams, fetchImpl: typeof fetch 
   const o = p.order
   const sellToken = checksum(o.sellToken, 'order.sellToken')
   const buyToken = checksum(o.buyToken, 'order.buyToken')
+  assertOphisOrderTokens(chainId, sellToken, buyToken)
   const receiver = checksum(o.receiver, 'order.receiver')
   assertAtoms(o.sellAmount, 'order.sellAmount')
   assertAtoms(o.buyAmount, 'order.buyAmount')
@@ -819,6 +829,7 @@ const CHAIN_NAMES: Record<number, string> = {
   100: 'Gnosis',
   130: 'Unichain',
   4663: 'Robinhood Chain',
+  5042: 'Arc',
   137: 'Polygon',
   8453: 'Base',
   9745: 'Plasma',
@@ -907,6 +918,7 @@ const NATIVE_SYMBOL: Record<number, string> = {
   1: 'ETH', 10: 'ETH', 56: 'BNB', 100: 'xDAI', 137: 'POL',
   8453: 'ETH', 9745: 'XPL', 42161: 'ETH', 43114: 'AVAX',
   4663: 'ETH', 57073: 'ETH', 59144: 'ETH', 11155111: 'ETH',
+  5042: 'USDC',
 }
 
 /**
@@ -922,6 +934,7 @@ const PUBLIC_RPCS: Record<number, string[]> = {
   100: ['https://gnosis-rpc.publicnode.com'],
   130: ['https://mainnet.unichain.org'],
   4663: ['https://rpc.mainnet.chain.robinhood.com'],
+  5042: ['https://rpc.mainnet.arc.io'],
   137: ['https://polygon-bor-rpc.publicnode.com', 'https://polygon.llamarpc.com'],
   8453: ['https://base-rpc.publicnode.com', 'https://base.llamarpc.com'],
   42161: ['https://arbitrum-one-rpc.publicnode.com', 'https://arbitrum.llamarpc.com'],
@@ -1056,7 +1069,7 @@ export interface PortfolioResult {
   chains: Array<BalancesResult | { chainId: number; error: string }>
 }
 
-const MAX_PORTFOLIO_CHAINS = 12
+export const MAX_PORTFOLIO_CHAINS = Object.keys(PUBLIC_RPCS).length
 
 // Hard cap on the TOTAL ERC-20 token reads fanned out across all chains in one
 // call. Each chain already costs a native-balance read plus one multicall, so the

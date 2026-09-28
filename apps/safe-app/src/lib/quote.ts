@@ -1,5 +1,5 @@
 import { OrderBookApi, OrderQuoteSideKindSell, SigningScheme } from '@cowprotocol/cow-sdk';
-import { getOphisOrderbookUrl } from '@ophis/sdk';
+import { getOphisOrderbookUrl, assertOphisOrderTokens } from '@ophis/sdk';
 import { assertErc20Token } from './tokens';
 
 // Always point the orderbook at the Ophis host. On OP that is optimism-mainnet.ophis.fi;
@@ -21,6 +21,7 @@ export async function getQuote(
   // trip (and before the approval path in submit.ts) so the user gets an immediate, actionable
   // error instead of an opaque CoW rejection or an unsettleable order. Native-ETH sells need the
   // eth-flow path this scaffold does not implement.
+  assertOphisOrderTokens(chainId, sellToken, buyToken);
   assertErc20Token(sellToken, 'Sell token');
   assertErc20Token(buyToken, 'Buy token');
 

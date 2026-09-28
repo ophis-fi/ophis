@@ -11,7 +11,7 @@
 //
 // This script is the hard gate:
 //   Gate A: addresses.json <-> @ophis/sdk domain.ts, exact + case-sensitive,
-//            for every one of the 13 live chains (and asserts testnets stay
+//            for every one of the 14 live chains (and asserts testnets stay
 //            OUT of the packs).
 //   Gate B: every unique settlement + relayer literal in addresses.json is
 //            present verbatim in the docs page and the pack README, so the
@@ -34,9 +34,9 @@ const PRESENCE_FILES = [
   'examples/agent-wallet-policy-packs/README.md',
 ];
 
-// The 13 live chains the packs cover. Kept here so a chain silently dropped
+// The 14 live chains the packs cover. Kept here so a chain silently dropped
 // from either the SDK or the table is caught (not just a value mismatch).
-const EXPECTED_CHAIN_IDS = [1, 10, 56, 100, 130, 137, 4663, 8453, 9745, 42161, 43114, 57073, 59144];
+const EXPECTED_CHAIN_IDS = [1, 10, 56, 100, 130, 137, 4663, 5042, 8453, 9745, 42161, 43114, 57073, 59144];
 // Testnets MUST NOT appear in the packs.
 const FORBIDDEN_CHAIN_IDS = [11155111];
 

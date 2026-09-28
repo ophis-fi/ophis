@@ -44,8 +44,8 @@ MCP server or SDK for the subsequent workflow, retaining wallet authorization.
 
 ### Cross-chain scope
 
-The app supports **14 EVM chains**, including Arc. Published SDK/MCP chain
-mappings currently cover 13 and exclude Arc. NEAR Intents adds Bitcoin,
+The app supports **14 EVM chains**, including Arc. SDK v0.4.3 and hosted MCP chain
+mappings cover the same 14 networks, including Arc. NEAR Intents adds Bitcoin,
 Solana, Monad, X Layer, Sui, Tron and Hyperliquid destinations on supported
 routes. Circle and Across routes have different source, asset and wallet
 restrictions; no provider covers every possible chain pair.
@@ -103,7 +103,7 @@ and fee policies. Both can fail to find an acceptable fill.
 | Ophis surface | Current scope |
 | --- | --- |
 | Swap app | 14 EVM chains; route-specific cross-chain providers |
-| Published SDK/MCP | 13 EVM chains, excluding Arc |
+| SDK v0.4.3 / hosted MCP | 14 EVM chains, including Arc |
 | Intent API | Parses fields; does not execute swaps |
 | Batch-auction fees | Standard base plus capped improvement; Arc release exception; upstream fees on hosted chains |
 | MEV protection | Mechanism-level mitigation, not a universal guarantee |

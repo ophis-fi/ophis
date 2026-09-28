@@ -12,9 +12,9 @@ npm install @ophis/sdk
 
 ## What's in it
 
-- **`getOphisOrderbookUrl(chainId)`** — the correct orderbook host per chain. Optimism, Unichain, and Robinhood Chain use Ophis-operated hosts, **not** `api.cow.fi`; getting this wrong bypasses the intended Ophis settlement path.
-- **`getOphisOrderDomain(chainId)`** / **`getOphisSettlementAddress(chainId)`** — the EIP-712 signing domain with the correct per-chain `verifyingContract` (all three Ophis-operated settlements are non-canonical, so the cow-sdk default is wrong there).
-- **`buildOphisAppDataPartnerFee(chainId, isStablePair)`** — the exact CIP-75 fee config. Operated chains return the 1 bp base (their backend adds improvement capture); hosted chains return base + pair-aware capped improvement entries.
+- **`getOphisOrderbookUrl(chainId)`** — the correct orderbook host per chain. Optimism, Unichain, Robinhood Chain, and Arc use Ophis-operated hosts, **not** `api.cow.fi`; getting this wrong bypasses the intended Ophis settlement path.
+- **`getOphisOrderDomain(chainId)`** / **`getOphisSettlementAddress(chainId)`** — the EIP-712 signing domain with the correct per-chain `verifyingContract` (all four Ophis-operated settlements are non-canonical, so the cow-sdk default is wrong there).
+- **`buildOphisAppDataPartnerFee(chainId, isStablePair)`** — the exact CIP-75 fee config. Operated chains return the 1 bp base (their backend adds improvement capture when configured); hosted chains return base + pair-aware capped improvement entries.
 - **`ophisOrderReceiver`** / **`assertReceiverIsOwner`** — pin a CoW order's `receiver` to the owner. An unpinned receiver is the #1 drain vector for an automated signer.
 - **`buildOphisOrderMetadata`** / **`enrollOphisTrader`** / **`buildOphisOrderCreation`** — the high-level order-flow helpers that collapse the integration footguns into one call each: `appCode` is always `'ophis'` (a custom one silently forfeits the rebate), each trader wallet is enrolled with the rebate indexer, the receiver is asserted, and the `sendOrder` wire shape (full `appData` string + `appDataHash`) is correct.
 - **`getOphisVaultRelayer(chainId)`** — the correct `approve` spender for the one-time sell-token approval. On Ophis-operated chains the relayer is **not** cow-sdk's canonical one, so resolve it here.
@@ -24,6 +24,13 @@ npm install @ophis/sdk
 - **`assignTier`**, **`ophisDefaults`**, and the partner-fee constants.
 
 ## Example
+
+Arc (5042) supports the standard 1 bp trading fee but is not yet covered by the
+rebate indexer. `buildOphisOrderMetadata`, `buildOphisFullAppData`, and `buildOrder`
+reject a nonempty Arc referral code instead of promising unavailable referral
+rewards. Omit the code to trade on Arc. `isOphisFeeChain` reports fee support,
+not reward eligibility; the low-level `buildOphisReferrerMetadata` only formats a
+tag when called without a chain ID.
 
 ```ts
 import {

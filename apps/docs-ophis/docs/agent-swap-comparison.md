@@ -42,8 +42,8 @@ The properties that decide safety for an agent:
   be public and exposed to adversarial conditions.
 - **Solver-paid ERC-20 settlement.** Approvals, renewed exact allowances,
   wrapping, native-token placement, hard cancellation and refunds can need gas.
-- **Reach.** The app supports 14 EVM networks; published SDK/MCP mappings cover
-  13 and exclude Arc. NEAR destinations and sources are route-specific. The
+- **Reach.** The app supports 14 EVM networks; SDK v0.4.3 and hosted MCP mappings cover
+  the same 14, including Arc. NEAR destinations and sources are route-specific. The
   [BTC cookbook](./agent-btc-cookbook.md) describes a custom composition, not a
   shipped one-call BTC MCP tool.
 
@@ -78,8 +78,9 @@ pinned to itself.
 Point any MCP client at `https://mcp.ophis.fi/mcp` (no key), or read the
 [AI agent integration guide](./ai-agents.md). Prefer `build_order` to construct
 orders: it fetches a live quote, applies your slippage bound, pins the receiver
-to the owner, and applies the canonical all-chain Ophis policy: a 1 bp base plus
+to the owner, and applies the chain-specific Ophis policy: a 1 bp base plus
 80% of reference-quote improvement capped at 99 bps on volatile pairs, or 50%
 capped at 20 bps on stable pairs. Operated-chain backends add the improvement
-policy; hosted orders encode it in CIP-75 appData. The returned order is bounded
+policy where configured; hosted orders encode it in CIP-75 appData. Arc currently
+charges only the 1 bp base and has no referral accrual. The returned order is bounded
 before your agent signs it.

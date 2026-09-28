@@ -56,15 +56,15 @@ including key export and arbitrary contract calls.
 On the 10 non-sovereign chains, Ophis uses CoW Protocol's canonical GPv2
 contracts, so the EIP-712 order domain is byte-identical to CoW Swap's. A policy
 that allowlists that domain therefore authorizes CoW-native order flow on that
-chain too, not Ophis exclusively. **Optimism (10)**, **Unichain (130)**, and
-**Robinhood Chain (4663)** run Ophis-deployed settlements, so those three carry
+chain too, not Ophis exclusively. **Optimism (10)**, **Unichain (130)**,
+**Robinhood Chain (4663)**, and **Arc (5042)** run Ophis-deployed settlements, so those four carry
 an Ophis-exclusive
 domain. If you need Ophis-exclusive routing on a shared-domain chain, also
 enforce the orderbook host and appData in your in-code policy gate.
 
 :::
 
-## Addresses (the 13 production chains)
+## Addresses (the 14 production chains)
 
 The packs pin these values. They are mirrored from `addresses.json`, which CI
 diffs against `@ophis/sdk` (`OPHIS_SETTLEMENT_ADDRESSES` /
@@ -80,6 +80,7 @@ is added. Addresses are EIP-55 checksummed.
 | Unichain *(sovereign)* | 130 | `0x108A678716e5E1776036eF044CAB7064226F714E` | `0xaB29E2a859704C914E55566Ae9b3A7EDE25959cb` |
 | Polygon | 137 | `0x9008D19f58AAbD9eD0D60971565AA8510560ab41` | `0xC92E8bdf79f0507f65a392b0ab4667716BFE0110` |
 | Robinhood Chain *(sovereign)* | 4663 | `0x886d9fd312F442C4E1f3cdeAE7b4AB73493e57cD` | `0xB52C38097c19cd38238c62DD36027a7918eFa890` |
+| Arc *(sovereign)* | 5042 | `0x78799F98276efba1EdeeD32eae03a3fd8Cdfec3A` | `0x895505F1FE6D762296685fF4a8201782FFdCB8E9` |
 | Base | 8453 | `0x9008D19f58AAbD9eD0D60971565AA8510560ab41` | `0xC92E8bdf79f0507f65a392b0ab4667716BFE0110` |
 | Plasma | 9745 | `0x9008D19f58AAbD9eD0D60971565AA8510560ab41` | `0xC92E8bdf79f0507f65a392b0ab4667716BFE0110` |
 | Arbitrum | 42161 | `0x9008D19f58AAbD9eD0D60971565AA8510560ab41` | `0xC92E8bdf79f0507f65a392b0ab4667716BFE0110` |
@@ -87,7 +88,7 @@ is added. Addresses are EIP-55 checksummed.
 | Ink | 57073 | `0x9008D19f58AAbD9eD0D60971565AA8510560ab41` | `0xC92E8bdf79f0507f65a392b0ab4667716BFE0110` |
 | Linea | 59144 | `0x9008D19f58AAbD9eD0D60971565AA8510560ab41` | `0xC92E8bdf79f0507f65a392b0ab4667716BFE0110` |
 
-Sepolia (11155111) is a testnet, so the production packs cover the 13 networks
+Sepolia (11155111) is a testnet, so the production packs cover the 14 networks
 above and exclude Sepolia.
 
 ## The order EIP-712 types

@@ -30,8 +30,8 @@ export const OPHIS_PARTNER_FEE_RECIPIENT =
 
 /**
  * Partner volume fee: the @ophis/sdk default is a flat 1 bp (0.01%) of trade
- * volume on every served chain. Ophis-operated backends add capped
- * price-improvement capture; hosted appData includes the equivalent CIP-75
+ * volume on every served chain. Ophis-operated backends can add capped
+ * price-improvement capture when configured; hosted appData includes the CIP-75
  * PriceImprovement entry. A Volume fee is
  * bounded above only by the autopilot's operator-set global `max_partner_fee`.
  *
@@ -66,8 +66,8 @@ export const OPHIS_AGGREGATE_PARTNER_FEE_CAP_BPS = 190;
  */
 export const OPHIS_STABLE_VOLUME_FEE_BPS = 1;
 
-/** Base fee on Ophis-operated chains; price-improvement capture is enforced by
- * the sovereign backend and therefore must not be duplicated in appData. */
+/** Base fee on Ophis-operated chains; price-improvement capture, when enabled,
+ * is enforced by the backend and must not be duplicated in appData. */
 export const OPHIS_SOVEREIGN_VOLUME_FEE_BPS = 1;
 
 /** Volume bps for a pair: 1 bp if both tokens are stablecoins, else the standard rate. */
@@ -89,7 +89,7 @@ export const ophisVolumeBpsForPair = (isStablePair: boolean): number =>
  */
 const FEE_CHAIN_IDS = [
   // Ophis-operated (own stack — 100%; NOT cow-sdk SupportedChainId members)
-  10, 130, 4663,
+  10, 130, 4663, 5042,
   // CoW-hosted = cow-sdk SupportedChainId (settle via api.cow.fi, 75% weekly).
   // Sepolia (11155111) is the testnet member — kept so the fee path is testable.
   1, 56, 100, 137, 8453, 9745, 42161, 43114, 57073, 59144, 11155111,
@@ -101,7 +101,7 @@ const FEE_CHAIN_IDS = [
  * elsewhere) cannot change which chains charge a fee by mutating a public value.
  */
 const FEE_CHAIN_ID_SET: ReadonlySet<number> = new Set<number>(FEE_CHAIN_IDS);
-const SOVEREIGN_CHAIN_ID_SET: ReadonlySet<number> = new Set<number>([10, 130, 4663]);
+const SOVEREIGN_CHAIN_ID_SET: ReadonlySet<number> = new Set<number>([10, 130, 4663, 5042]);
 
 /** Chain-aware volume fee for high-level order builders: 1 bp on every served chain. */
 export const ophisVolumeBpsForChainAndPair = (chainId: number, isStablePair: boolean): number => {
@@ -150,8 +150,8 @@ export const ophisDefaultPartnerFee = (
     recipient: OPHIS_PARTNER_FEE_RECIPIENT,
   };
   // Ophis-operated orderbooks apply the pair-aware improvement component as a
-  // backend protocol policy. Hosted orderbooks need the equivalent CIP-75
-  // entry in appData so the economics are identical without double charging.
+  // backend protocol policy when enabled. Hosted orderbooks need the CIP-75
+  // entry in appData to capture improvement.
   if (SOVEREIGN_CHAIN_ID_SET.has(chainId)) return base;
   return [
     base,
@@ -171,7 +171,7 @@ export const ophisDefaultPartnerFee = (
  * Builds the exact value for a CoW order's `appData.metadata.partnerFee`, or
  * `undefined` on chains where Ophis charges no fee. Use this instead of
  * hand-assembling it. Operated chains return the base Volume object because
- * their backend supplies improvement capture. Hosted chains return an array
+ * their backend owns improvement capture. Hosted chains return an array
  * containing the base plus the pair-aware capped PriceImprovement entry.
  *
  * @example

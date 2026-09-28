@@ -1,6 +1,6 @@
 # @ophis/agentkit-ophis
 
-A [Coinbase AgentKit](https://github.com/coinbase/agentkit) action provider that lets an AI agent swap ERC-20 tokens via **Ophis** (a CoW Protocol fork): gasless, MEV-protected, intent-based. Every order carries the Ophis partner fee **plus your referral code** in its appData, so **you earn the 8–12% rebate** on the swap volume your agent routes.
+A [Coinbase AgentKit](https://github.com/coinbase/agentkit) action provider that lets an AI agent swap ERC-20 tokens via **Ophis** (a CoW Protocol fork): gasless, MEV-protected, intent-based. Orders carry the Ophis partner fee and optional referral attribution for rebates on indexed chains.
 
 ## Install
 
@@ -38,7 +38,7 @@ It quotes against the Ophis orderbook, signs the order EIP-712 via the wallet pr
 
 - **ERC-20 → ERC-20 only.** Native-ETH sells need CoW eth-flow (a separate path); wrap to WETH first.
 - The agent's wallet is the order **owner and receiver** — funds only ever move through the audited CoW settlement contract, back to the same wallet.
-- Supported chains: Ethereum, Gnosis, Arbitrum, Base, Optimism, Polygon, Avalanche.
+- Version 0.3.5 uses SDK 0.4.3. An EVM wallet can trade on its supported chains, including Arc (5042), using ERC-20 addresses. Configured referral defaults are skipped on Arc, which has no rebate indexing; native USDC sentinels are rejected.
 - Get a referral code (it carries the rebate): https://docs.ophis.fi/ai-agents
 
 The order-flow core is [`@ophis/agent-swap`](../agent-swap); see also [`@ophis/plugin-goat`](../plugin-goat) for the GOAT SDK.

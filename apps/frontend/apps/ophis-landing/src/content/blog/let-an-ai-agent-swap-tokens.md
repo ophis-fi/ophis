@@ -2,7 +2,7 @@
 title: "How to let an AI agent swap tokens: safely, and MEV-protected"
 description: "Give an AI agent bounded token-swap capabilities through Ophis: MCP execution, an Intent API for parsing, SDK safety helpers, and the signing policies required for unattended operation."
 pubDate: 2026-06-25
-updatedDate: 2026-09-27
+updatedDate: 2026-09-28
 author: Ophis
 tags: [ai-agents, mcp, mev, defi, swaps]
 cover: ./let-an-ai-agent-swap-tokens.cover.png
@@ -174,13 +174,15 @@ one-line summary: let the SDK resolve anything that is chain-specific.
 
 Here is the part that flips swaps from a cost center to a revenue line. Every
 swap routed through your integration carries the chain-aware Ophis base in
-`appData`: **0.01% on the 13 SDK/MCP chains**. Operated backends apply capped
-improvement capture; hosted orders encode it in appData. The FAQ gives the fee components. Integrators earn a **rebate**
-on the volume they route, and the `lookup_tier` tool surfaces a wallet's 30-day
-volume tier.
+`appData`: **0.01% on the 14 SDK v0.4.3 / hosted MCP chains**. Optimism,
+Unichain and Robinhood backends apply capped improvement capture; hosted orders
+encode it in appData. Arc currently has no backend improvement capture and is
+not indexed for referral or volume-tier rebates. Omit referral codes from Arc
+orders. On indexed chains, eligible integrators earn a **rebate** on the volume
+they route, and `lookup_tier` surfaces a wallet's 30-day volume tier.
 
-An agent that swaps frequently is not an expense to its builder; it is recurring,
-attributable volume. The more your agent trades, the more you earn back.
+Rebates depend on eligible indexed volume and the applicable program terms.
+See the [fee documentation](https://docs.ophis.fi/fees) for the full mechanics.
 
 ## Going fully autonomous (read this first)
 
@@ -250,8 +252,9 @@ cap), or 50% on stable pairs (20 bps cap). CoW-hosted orders encode the same
 Ophis base and capped improvement capture in appData; CoW Protocol's own fees
 apply upstream. Use `buildOphisAppDataPartnerFee(chainId, isStablePair)` for the
 complete partner fee, not a volume-only entry. Pool costs, price impact and gas
-are additional. Arc is outside these published SDK/MCP mappings and has a
-[separate release fee exception](https://docs.ophis.fi/fees).
+are additional. SDK v0.4.3 and hosted MCP include Arc, whose current
+[release fee exception](https://docs.ophis.fi/fees) is a 1 bp volume fee with no
+backend improvement capture or referral/volume-tier rebates.
 
 Swap fees are deducted from the trade. Standard ERC-20 order signing and
 submission are gasless, but approvals and other wallet transactions need gas.
@@ -259,9 +262,10 @@ Allowances may need renewal; bridge, native-deposit and vault flows differ.
 
 ### Which chains can an agent trade on?
 
-The 13 EVM chains in the published SDK/MCP mappings (Arc is app-only), with Solana and Bitcoin available as
-destinations via NEAR Intents. Do not hardcode endpoints: three of those chains
-(Optimism, Unichain, and Robinhood Chain) are Ophis-operated and settle through
+SDK v0.4.3 and the hosted MCP server cover 14 EVM chains, including Arc. The swap
+app separately offers Solana and Bitcoin destinations via NEAR Intents; bridge
+coverage is route-specific. Do not hardcode endpoints: four of the EVM chains
+(Optimism, Unichain, Robinhood Chain and Arc) are Ophis-operated and settle through
 Ophis's own GPv2Settlement at a non-canonical address, so an order signed
 against CoW's canonical domain will be rejected there. Resolve the settlement
 domain and orderbook host per chain through `list_chains` or the SDK helpers and

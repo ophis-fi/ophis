@@ -36,4 +36,5 @@ export const DEFAULT_PARTNER_FEE_RECIPIENT_PER_NETWORK: Record<SupportedChainId,
   [10 as unknown as SupportedChainId]: OPHIS_PARTNER_FEE_RECIPIENT,
   [130 as unknown as SupportedChainId]: OPHIS_PARTNER_FEE_RECIPIENT,
   [4663 as unknown as SupportedChainId]: OPHIS_PARTNER_FEE_RECIPIENT,
+  [5042 as unknown as SupportedChainId]: OPHIS_PARTNER_FEE_RECIPIENT,
 }

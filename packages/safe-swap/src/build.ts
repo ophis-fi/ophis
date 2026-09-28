@@ -186,18 +186,22 @@ export async function buildOphisSafePresign(p: OphisSafePresignParams): Promise<
   // NEVER indexed (the existing Safe/EOA paths enroll first). Non-blocking, because
   // enrollment is not a settlement precondition: a failure surfaces a warning.
   let enrollmentWarning: string | undefined;
-  try {
-    const enrollment = await enrollOphisTrader(p.safe);
-    if (!enrollment.enrolled) {
-      const reason = enrollment.status !== undefined ? `HTTP ${enrollment.status}` : 'indexer unreachable';
-      enrollmentWarning = `rebate-indexer enrollment failed (order still created; rebate may not index): ${reason}`;
+  // Arc is not indexed; do not enroll it or imply that retrying earns a rebate.
+  if (p.chainId !== 5042) {
+    try {
+      const enrollment = await enrollOphisTrader(p.safe);
+      if (!enrollment.enrolled) {
+        const reason = enrollment.status !== undefined ? `HTTP ${enrollment.status}` : 'indexer unreachable';
+        enrollmentWarning = `rebate-indexer enrollment failed (order still created; rebate may not index): ${reason}`;
+      }
+    } catch (e) {
+      enrollmentWarning = (e as Error).message;
     }
-  } catch (e) {
-    enrollmentWarning = (e as Error).message;
   }
 
   // Create the order PRESIGNATURE_PENDING; for presign the signature is the Safe address.
   const body = buildOphisOrderCreation({
+    chainId: p.chainId,
     order,
     owner: p.safe,
     fullAppData,

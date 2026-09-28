@@ -71,6 +71,33 @@ beforeEach(() => {
 });
 
 describe('submitOrder (shared @ophis/safe-swap batch + wire body)', () => {
+  it('submits Arc ERC-20 orders without enrollment or a misleading rebate warning', async () => {
+    const arcOrder = {
+      ...order,
+      sellToken: '0x3600000000000000000000000000000000000000',
+      buyToken: '0xbEf5f6d51CB62b58e6A8f77868681825C6fe21c1',
+      buyAmount: '800000',
+    } as const;
+    const { sdk, getInfo } = mockSdk(0n);
+    getInfo.mockResolvedValue({ chainId: 5042, safeAddress: OWNER });
+    const uid = computeOrderUid(arcOrder, 5042, OWNER);
+    sendOrder.mockResolvedValue(uid);
+    const result = await submitOrder(sdk, 5042, OWNER, arcOrder, FULL_APP_DATA, APP_DATA_HASH);
+    expect(result.orderUid).toBe(uid);
+    expect(result.enrollmentWarning).toBeUndefined();
+    expect(enrollTrackedWallet).not.toHaveBeenCalled();
+  });
+
+  it.each(['sellToken', 'buyToken'] as const)('rejects an Arc native %s before enrollment, order creation, or Safe proposal', async (field) => {
+    const { sdk, send } = mockSdk(0n);
+    await expect(submitOrder(sdk, 5042, OWNER, {
+      ...order, [field]: '0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee',
+    }, FULL_APP_DATA, APP_DATA_HASH)).rejects.toThrow(/Arc \(5042\).*native-token/);
+    expect(enrollTrackedWallet).not.toHaveBeenCalled();
+    expect(sendOrder).not.toHaveBeenCalled();
+    expect(send).not.toHaveBeenCalled();
+  });
+
   it.each([
     { chainId: 1, safeAddress: OWNER },
     { chainId: CHAIN, safeAddress: '0x2222222222222222222222222222222222222222' },

@@ -9,7 +9,7 @@ sidebar_label: Native BTC for agents
 
 Among intent-based batch-auction swap venues, Ophis packages a gasless,
 source-order path to **native Bitcoin** alongside the app's 14 EVM networks.
-Published SDK/MCP mappings cover 13 networks and exclude Arc. Source and asset
+SDK v0.4.3 and hosted MCP mappings cover the same 14 networks, including Arc. Source and asset
 support for NEAR routes is narrower than the same-chain list. The cross-chain rail (NEAR Intents) is shared by several venues; what Ophis packages is the
 keyless, bounded agent path onto it. This page shows how an agent
 or bot moves an EVM position into native BTC (or SOL) after a one-time
