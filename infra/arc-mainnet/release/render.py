@@ -198,9 +198,9 @@ http {
     "''' + cfg['frontendOrigin'] + '''" $http_origin;
     "''' + cfg['explorerOrigin'] + '''" $http_origin;
   }
-  # Three free 120/min read providers, still two voters per protected read.
-  # ponytail: six quotes/min globally; expand only after measured RPC headroom.
-  limit_req_zone arc-quotes zone=quotes:1m rate=6r/m;
+  # A warm EURC quote uses ~24 reads per voter; the fastest pair can stay pinned.
+  # ponytail: four quotes/min globally; expand only after measured RPC headroom.
+  limit_req_zone arc-quotes zone=quotes:1m rate=4r/m;
   # Only the loopback-published tunnel can reach this port externally. Cloudflare
   # overwrites this header; a local operator already controls the whole service.
   map $http_cf_connecting_ip $client_ip {
@@ -218,7 +218,7 @@ http {
     add_header Access-Control-Allow-Methods "GET, POST, PUT, DELETE, OPTIONS" always;
     if ($request_method = OPTIONS) { return 204; }
     location ~ ^/api/v1/quote(?:/draft)?$ {
-      # Smooth token/amount changes: two requests can wait, at most 20 seconds.
+      # Smooth token/amount changes: two requests can wait, at most 30 seconds.
       limit_req zone=quotes burst=2;
       error_page 429 = @quote_busy;
       proxy_hide_header Access-Control-Allow-Origin;
@@ -229,8 +229,8 @@ http {
       add_header Access-Control-Allow-Origin $allowed_origin always;
       add_header Access-Control-Expose-Headers "Retry-After" always;
       add_header Vary Origin always;
-      add_header Retry-After "10" always;
-      return 429 '{"errorType":"TooManyRequests","description":"Arc quote capacity is busy. Please retry in 10 seconds."}';
+      add_header Retry-After "15" always;
+      return 429 '{"errorType":"TooManyRequests","description":"Arc quote capacity is busy. Please retry in 15 seconds."}';
     }
     location /api/v1/ {
       limit_req zone=reads burst=6 nodelay;

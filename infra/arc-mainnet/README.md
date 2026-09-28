@@ -16,9 +16,11 @@ internet access; the backend lab uses loopback fixtures. Neither starts the live
 
 ## Routing and budget
 
-- Public quote admission is paced globally at six requests/minute across quote
-  and draft routes. Two excess requests may wait up to 20 seconds; further requests
-  receive JSON HTTP 429 with `Retry-After: 10`. This leaves RPC headroom instead of
+- Public quote admission stays paced globally at four requests/minute across quote
+  and draft routes. Two excess requests may wait up to 30 seconds; further requests
+  receive JSON HTTP 429 with `Retry-After: 15`. The fastest pair can stay selected,
+  so a third free provider is fallback headroom, not pooled sustained capacity.
+  This leaves RPC headroom instead of
   sending six quotes into all five lanes at once. It is bounded admission, not
   additional provider capacity or a guarantee against upstream outages.
 - Official Arc + Blockdaemon + PublicNode public RPC first: two agreeing responses for protected
