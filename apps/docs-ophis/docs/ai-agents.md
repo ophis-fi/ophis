@@ -427,7 +427,7 @@ adapters](#drop-in-framework-adapters) above already get all four right, hand-ro
 this only if you are on neither. The `@ophis/sdk` helpers below are also what
 those adapters call under the hood.
 
-The helpers below live in **`@ophis/sdk`**, published on npm (v0.4.2, public).
+The helpers below live in **`@ophis/sdk`**, published on npm (v0.4.3, public).
 Install it with `npm install @ophis/sdk`, or copy the values from the call-outs
 if you prefer to vendor them.
 
