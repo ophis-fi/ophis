@@ -10,7 +10,8 @@ export interface OphisPluginOptions {
   /**
    * OPTIONAL integrator referral code that earns the 8-12% rebate (rides in the
    * order's appData). Omit it and swaps still work (you just forgo the rebate);
-   * mint one in ~30s at https://swap.ophis.fi/#/rewards.
+   * mint one in ~30s at https://swap.ophis.fi/#/rewards. This configured default
+   * is skipped on Arc, which is not indexed for rebates.
    */
   referralCode?: string;
 }
@@ -31,9 +32,10 @@ class OphisService {
   })
   async ophisSwap(walletClient: EVMWalletClient, parameters: OphisSwapParameters): Promise<OphisSwapResult> {
     const wallet = toOphisWallet(walletClient);
+    const chainId = wallet.getChainId();
     // Derive the 1bp stable-pair tier from a verified stablecoin list (never caller input),
     // so a stablecoin<>stablecoin swap is charged the reduced rate automatically.
-    const isStablePair = isOphisStablePair(wallet.getChainId(), parameters.sellToken, parameters.buyToken);
+    const isStablePair = isOphisStablePair(chainId, parameters.sellToken, parameters.buyToken);
     return executeOphisSwap(
       wallet,
       {
@@ -43,7 +45,7 @@ class OphisService {
         slippageBps: parameters.slippageBps,
       },
       {
-        ...(this.options.referralCode !== undefined ? { referralCode: this.options.referralCode } : {}),
+        ...(chainId !== 5042 && this.options.referralCode !== undefined ? { referralCode: this.options.referralCode } : {}),
         isStablePair,
       },
     );

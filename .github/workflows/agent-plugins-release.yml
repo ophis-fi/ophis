@@ -87,6 +87,7 @@ jobs:
           pnpm --filter @ophis/agent-swap test
           pnpm --filter @ophis/plugin-goat test
           pnpm --filter @ophis/agentkit-ophis test
+          pnpm --filter @ophis/plugin-elizaos test
 
       # Pack exactly what pnpm will publish and assert workspace dependencies
       # resolve to the reviewed SDK / adapter versions. This blocks a repeat of

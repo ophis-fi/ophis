@@ -29,6 +29,7 @@ import {
   buildOphisFullAppData,
   normalizeOphisReferralCode,
   assertReceiverIsOwner,
+  assertOphisOrderTokens,
   ophisDefaultPartnerFee,
   OPHIS_STABLE_VOLUME_FEE_BPS,
   OPHIS_SOVEREIGN_VOLUME_FEE_BPS,
@@ -504,6 +505,13 @@ export function validateOrder(p: ValidateOrderParams, nowSeconds: number): Valid
   }
 
   // Light shape checks on the remaining order fields callers may pass.
+  if (chainIdOk) {
+    try {
+      assertOphisOrderTokens(chainId, o?.sellToken, o?.buyToken)
+    } catch (e) {
+      errors.push((e as Error).message)
+    }
+  }
   for (const [field, value] of [
     ['sellToken', o?.sellToken],
     ['buyToken', o?.buyToken],
@@ -605,6 +613,7 @@ export async function getQuote(p: QuoteParams, fetchImpl: typeof fetch = fetch):
   const from = checksum(p.from, 'from')
   const sellToken = checksum(p.sellToken, 'sellToken')
   const buyToken = checksum(p.buyToken, 'buyToken')
+  assertOphisOrderTokens(chainId, sellToken, buyToken)
   assertAtoms(p.amount, 'amount')
   const { fullAppData, appDataHash } = buildOphisFullAppData(
     chainId,
@@ -683,6 +692,7 @@ export async function submitOrder(p: SubmitOrderParams, fetchImpl: typeof fetch 
   const o = p.order
   const sellToken = checksum(o.sellToken, 'order.sellToken')
   const buyToken = checksum(o.buyToken, 'order.buyToken')
+  assertOphisOrderTokens(chainId, sellToken, buyToken)
   const receiver = checksum(o.receiver, 'order.receiver')
   assertAtoms(o.sellAmount, 'order.sellAmount')
   assertAtoms(o.buyAmount, 'order.buyAmount')

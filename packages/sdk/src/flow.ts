@@ -27,7 +27,7 @@ import {
 import { buildOphisReferrerMetadata } from './referral.js';
 import { OPHIS_ORDERBOOK_URLS } from './orderbook.js';
 import { assertReceiverIsOwner } from './order.js';
-import { assertValidChainId, assertAddressLike, assertBytes32, addressesEqual } from './guards.js';
+import { assertValidChainId, assertAddressLike, assertBytes32, addressesEqual, assertOphisOrderTokens } from './guards.js';
 
 /** cow-sdk `SigningScheme` string values. EOAs use 'eip712'; Safe / MPC use 'eip1271'. */
 export type OphisSigningScheme = 'eip712' | 'ethsign' | 'eip1271' | 'presign';
@@ -266,6 +266,12 @@ export async function enrollOphisTrader(
 
 export interface OphisOrderCreationOptions {
   /**
+   * Settlement chain for chain-specific token checks. Pass this when known.
+   * Optional for compatibility: this wire formatter cannot infer a chain from
+   * the signed order, so omitted context does not validate chain token support.
+   */
+  readonly chainId?: number;
+  /**
    * The signed CoW order object. Its `appData` field must be the bytes32 HASH
    * (the value that was signed). `receiver` must already be set on it.
    */
@@ -307,11 +313,12 @@ export interface OphisOrderCreationOptions {
  *
  * @example
  *   await orderBookApi.sendOrder(buildOphisOrderCreation({
- *     order, owner, fullAppData, appDataHash, signature, signingScheme: 'eip712',
+ *     chainId, order, owner, fullAppData, appDataHash, signature, signingScheme: 'eip712',
  *   }));
  */
 export function buildOphisOrderCreation(opts: OphisOrderCreationOptions): Record<string, unknown> {
   const { order, owner, fullAppData, appDataHash, signature, signingScheme, allowReceiver } = opts;
+  if (opts.chainId !== undefined) assertOphisOrderTokens(opts.chainId, order.sellToken, order.buyToken);
   assertAddressLike(owner, 'owner');
   // Catch the easy swap of passing the full appData JSON (or a truncated hash)
   // where the bytes32 hash belongs.

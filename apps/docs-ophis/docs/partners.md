@@ -121,6 +121,7 @@ const orderBookApi = new OrderBookApi({
 // cow-sdk's OrderCreation for sendOrder (the wire shape already matches at runtime).
 await orderBookApi.sendOrder(
   buildOphisOrderCreation({
+    chainId,
     order,
     owner,
     fullAppData,

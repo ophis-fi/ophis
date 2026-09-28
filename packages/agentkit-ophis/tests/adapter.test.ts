@@ -41,6 +41,23 @@ afterEach(() => {
 });
 
 describe('Ophis AgentKit action provider', () => {
+  it.each(['config', 'environment'] as const)('skips the %s referral default on Arc and preserves it on Optimism', async (source) => {
+    if (source === 'environment') process.env.OPHIS_REFERRAL_CODE = 'partner_1';
+    const provider = new OphisActionProvider(source === 'config' ? { referralCode: 'partner_1' } : {});
+    mocks.executeOphisSwap.mockResolvedValue({ orderUid: 'uid' });
+    for (const chainId of ['5042', '10']) {
+      await provider.swap(mockProvider(chainId) as unknown as EvmWalletProvider, {
+        sellToken: USDC_OP,
+        buyToken: USDT_OP,
+        sellAmount: '1',
+        slippageBps: null,
+      });
+      const options = mocks.executeOphisSwap.mock.lastCall?.[2];
+      if (chainId === '5042') expect(options).not.toHaveProperty('referralCode');
+      else expect(options).toHaveProperty('referralCode', 'partner_1');
+    }
+  });
+
   it('registers one EVM action and forwards referral, slippage, and derived stable-pair state', async () => {
     // AgentKit emits best-effort invocation analytics from its decorator. Keep
     // this adapter suite hermetic and assert only Ophis behavior.

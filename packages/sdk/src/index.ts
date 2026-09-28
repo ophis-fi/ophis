@@ -71,6 +71,7 @@ export {
   assertValidChainId,
   isAddressLike,
   assertAddressLike,
+  assertOphisOrderTokens,
   addressesEqual,
   isZeroAddress,
   isBytes32,

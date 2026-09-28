@@ -17,7 +17,7 @@ Check the live quote and the signing request.
 | --- | --- |
 | Swap app | 14 EVM networks, including Arc (5042); see [Getting started](./getting-started.md#supported-networks) |
 | SDK v0.4.3 and hosted MCP | 14 EVM networks, including Arc (5042), with chain-specific orderbook and signing-domain helpers |
-| Published vault-order builder | `@ophis/safe-swap` v0.1.5 covers 13 EVM networks; its pinned SDK v0.4.2 predates Arc support |
+| Published vault-order builder | `@ophis/safe-swap` v0.1.6 uses SDK v0.4.3 and covers 14 EVM networks, including Arc, for ERC-20 presigned orders; this does not extend the on-chain policy-module rollout |
 | Intent parser | 14 chain slugs, including `arc`; the swap app blocks chains disabled in its deployment. Parsing does not verify a token contract or quote |
 | NEAR destination selector | Solana, Bitcoin, Monad, Hyperliquid, X Layer, Sui and Tron; source/asset/provider availability still gates each route |
 

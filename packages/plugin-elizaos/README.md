@@ -41,7 +41,7 @@ The `OPHIS_SWAP` action extracts the intent, resolves the chain + token addresse
 
 ## Supported chains
 
-Ethereum, Optimism, BNB, Gnosis, **Unichain**, Robinhood Chain, Polygon, Base, Plasma, Ink, Arbitrum, Avalanche, Linea. Optimism, Unichain, and Robinhood Chain are Ophis-operated and use the published capped improvement-capture policy. Same-chain only.
+Ethereum, Optimism, BNB, Gnosis, **Unichain**, Polygon, Base, Ink, Arbitrum, Avalanche, Linea. Optimism and Unichain are Ophis-operated and use the published capped improvement-capture policy. Same-chain only. Version 0.3.5 uses SDK 0.4.3; this does not expand the plugin's chain resolver to Arc, Robinhood Chain or Plasma. Its configured referral default is skipped if an Arc wallet is supplied through a custom resolver, because Arc is not indexed for rebates.
 
 ## Tokens
 

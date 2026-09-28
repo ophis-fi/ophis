@@ -289,19 +289,22 @@ Everything above keeps a human in the signing loop. If instead you are building
 an agent that executes swaps itself and you are on a common framework, you do
 not have to hand-roll the order flow in the next section. Four published npm
 packages wrap quote, EIP-712 sign, relayer approval, and submit into one call,
-and each stamps your referral code into every order when one is supplied, so
-the rebate accrues:
+and apply referral attribution on indexed chains when a code is supplied:
 
 | Package                                                                        | Version | For                                                       | Registers                            |
 | ------------------------------------------------------------------------------ | ------- | --------------------------------------------------------- | ------------------------------------ |
-| [`@ophis/agentkit-ophis`](https://www.npmjs.com/package/@ophis/agentkit-ophis) | v0.3.4  | [Coinbase AgentKit](https://github.com/coinbase/agentkit) | an `OphisActionProvider_swap` action |
-| [`@ophis/plugin-goat`](https://www.npmjs.com/package/@ophis/plugin-goat)       | v0.3.4  | [GOAT SDK](https://github.com/goat-sdk/goat)              | an `ophis_swap` tool                 |
-| [`@ophis/plugin-elizaos`](https://www.npmjs.com/package/@ophis/plugin-elizaos) | v0.3.4  | [elizaOS](https://github.com/elizaOS/eliza)               | a `swap` action                      |
-| [`@ophis/agent-swap`](https://www.npmjs.com/package/@ophis/agent-swap)         | v0.3.4  | any custom EOA framework                                  | the `executeOphisSwap()` core        |
+| [`@ophis/agentkit-ophis`](https://www.npmjs.com/package/@ophis/agentkit-ophis) | v0.3.5  | [Coinbase AgentKit](https://github.com/coinbase/agentkit) | an `OphisActionProvider_swap` action |
+| [`@ophis/plugin-goat`](https://www.npmjs.com/package/@ophis/plugin-goat)       | v0.3.5  | [GOAT SDK](https://github.com/goat-sdk/goat)              | an `ophis_swap` tool                 |
+| [`@ophis/plugin-elizaos`](https://www.npmjs.com/package/@ophis/plugin-elizaos) | v0.3.5  | [elizaOS](https://github.com/elizaOS/eliza)               | a `swap` action                      |
+| [`@ophis/agent-swap`](https://www.npmjs.com/package/@ophis/agent-swap)         | v0.3.5  | any custom EOA framework                                  | the `executeOphisSwap()` core        |
 
-The v0.3.4 adapter family is built and published against `@ophis/sdk` v0.4.2,
-so its fee policy, chain list, orderbook hosts, settlement contracts, and vault
-relayers match the current SDK.
+The v0.3.5 adapter family is built and published against `@ophis/sdk` v0.4.3,
+so its fee policy, orderbook hosts, settlement contracts, and vault relayers
+match the current SDK. The core and AgentKit can use an Arc wallet with ERC-20
+addresses; configured wrapper referral defaults are skipped on Arc, which is
+not indexed for rebates. Explicit per-call Arc codes passed to `executeOphisSwap`
+are rejected. GOAT discovery and the elizaOS chain resolver retain their existing
+chain lists and do not expose Arc merely because their SDK dependency supports it.
 
 Coinbase AgentKit, in one line:
 

@@ -57,12 +57,17 @@ relayer / orderbook / signing domain by `chainId`, with no per-chain code. (A fe
 resolve a settlement but have no live orderbook, e.g. paused chains like 4326 / 999; those
 throw at the quote step and are not tradeable.)
 
-- **Ophis-operated** (non-canonical settlement): Optimism, Unichain, Robinhood Chain.
+- **Ophis-operated** (non-canonical settlement): Optimism, Unichain, Robinhood Chain, Arc.
 - **CoW-hosted** (canonical settlement, fee via appData): Ethereum, Base, Arbitrum, Polygon,
   Gnosis, BNB, Avalanche, Linea, Ink, Plasma.
 
-The batch's **on-chain effects** are fork-verified against the REAL deployed contracts on all
-12 — each deploys a Safe, funds the sell token, executes `[approve, setPreSignature]`, and
+Version 0.1.6 uses SDK 0.4.3 and supports Arc (5042) ERC-20 presigned orders.
+Arc charges a 1 bp base, with no backend improvement capture or indexed rebates;
+omit referral codes. Native USDC sentinels are rejected; use its six-decimal
+ERC-20 interface. This adds no Arc policy-module deployment or fork-test claim.
+
+The existing 12-chain suite checks the batch's **on-chain effects** against the REAL deployed
+contracts (excluding Robinhood Chain and Arc) — each deploys a Safe, funds the sell token, executes `[approve, setPreSignature]`, and
 asserts exact allowance to the real relayer + presignature recorded in the real settlement +
 exact-pull. This proves the on-chain surface the builder produces; it does NOT quote/submit an
 order or run a solver settlement (a fork has no solver network — that is covered by the

@@ -9,7 +9,8 @@ export interface OphisActionProviderConfig {
   /**
    * OPTIONAL integrator referral code that earns the 8-12% rebate. Falls back to
    * OPHIS_REFERRAL_CODE. Omit it and swaps still work (you just forgo the
-   * rebate); mint one in ~30s at https://swap.ophis.fi/#/rewards.
+   * rebate); mint one in ~30s at https://swap.ophis.fi/#/rewards. This configured
+   * default is skipped on Arc, which is not indexed for rebates.
    */
   referralCode?: string;
 }
@@ -42,9 +43,10 @@ export class OphisActionProvider extends ActionProvider<EvmWalletProvider> {
   async swap(walletProvider: EvmWalletProvider, args: z.infer<typeof OphisSwapSchema>): Promise<string> {
     try {
       const wallet = toOphisWallet(walletProvider);
+      const chainId = wallet.getChainId();
       // Derive the 1bp stable-pair tier from a verified stablecoin list (never caller input),
       // so a stablecoin<>stablecoin swap is charged the reduced rate automatically.
-      const isStablePair = isOphisStablePair(wallet.getChainId(), args.sellToken, args.buyToken);
+      const isStablePair = isOphisStablePair(chainId, args.sellToken, args.buyToken);
       const result = await executeOphisSwap(
         wallet,
         {
@@ -54,7 +56,7 @@ export class OphisActionProvider extends ActionProvider<EvmWalletProvider> {
           slippageBps: args.slippageBps ?? undefined,
         },
         {
-          ...(this.#referralCode !== undefined ? { referralCode: this.#referralCode } : {}),
+          ...(chainId !== 5042 && this.#referralCode !== undefined ? { referralCode: this.#referralCode } : {}),
           isStablePair,
         },
       );

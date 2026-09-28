@@ -169,6 +169,33 @@ describe('buildOrder', () => {
     expect(o.order.receiver.toLowerCase()).toBe(OWNER.toLowerCase());
   });
 
+  it.each(['sellToken', 'buyToken'] as const)('rejects native Arc %s without rewriting its amount', (field) => {
+    for (const token of [
+      '0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee',
+      '0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE',
+      '0x0000000000000000000000000000000000000000',
+    ] as const) {
+      for (const kind of ['sell', 'buy'] as const) {
+        expect(() => buildOrder({ ...base, chainId: 5042, kind, [field]: token }, NOW))
+          .toThrow(new RegExp(`Arc \\(5042\\) ${field}.*native-token placeholder`));
+      }
+    }
+  });
+
+  it('keeps six-decimal Arc ERC-20 amounts and non-Arc native buys unchanged', () => {
+    const arc = buildOrder({
+      ...base, chainId: 5042,
+      sellToken: '0x3600000000000000000000000000000000000000',
+      buyToken: '0xbEf5f6d51CB62b58e6A8f77868681825C6fe21c1',
+      sellAmount: '1000000', buyAmount: '800000',
+    }, NOW);
+    expect(arc.order.sellAmount).toBe('1000000');
+    expect(arc.order.buyAmount).toBe('800000');
+    expect(arc.signing.domain.chainId).toBe(5042);
+    const native = '0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE';
+    expect(buildOrder({ ...base, chainId: 1, buyToken: native }, NOW).order.buyToken).toBe(native);
+  });
+
   it('embeds an extra partner fee as an array and changes the signed hash', () => {
     const partner = { volumeBps: 10, recipient: ATTACKER } as const;
     const plain = buildOrder(base, NOW);

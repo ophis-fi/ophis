@@ -50,6 +50,7 @@ vi.mock('@ophis/sdk', () => ({
   }),
   ophisOrderReceiver: (owner: string) => owner,
   assertReceiverIsOwner: () => {},
+  assertOphisOrderTokens: () => {},
   buildOphisOrderCreation: (x: unknown) => x,
 }));
 

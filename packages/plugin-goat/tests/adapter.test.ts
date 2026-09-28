@@ -35,6 +35,20 @@ afterEach(() => {
 });
 
 describe('Ophis GOAT plugin', () => {
+  it('skips the configured referral default on an Arc wallet and preserves other-chain defaults', async () => {
+    mocks.executeOphisSwap.mockResolvedValue({ orderUid: 'uid' });
+    const plugin = new OphisPlugin({ referralCode: 'partner_1' });
+    // Tool-level coverage does not add Arc to the plugin's existing discovery list.
+    expect(plugin.supportsChain({ type: 'evm', id: 5042 })).toBe(false);
+    for (const chainId of [5042, 1]) {
+      const [tool] = await plugin.getTools(mockClient(chainId) as unknown as EVMWalletClient);
+      await tool!.execute({ sellToken: USDC, buyToken: USDT, sellAmount: '1' });
+      const options = mocks.executeOphisSwap.mock.lastCall?.[2];
+      if (chainId === 5042) expect(options).not.toHaveProperty('referralCode');
+      else expect(options).toHaveProperty('referralCode', 'partner_1');
+    }
+  });
+
   it('registers one tool and forwards referral, slippage, and derived stable-pair state', async () => {
     mocks.executeOphisSwap.mockResolvedValue({
       orderUid: 'uid',

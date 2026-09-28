@@ -28,7 +28,7 @@
  * the ABI) that the integrator passes to their own contract library.
  */
 
-import { assertValidChainId, assertAddressLike, assertBytes32, isZeroAddress, addressesEqual } from './guards.js';
+import { assertValidChainId, assertAddressLike, assertBytes32, isZeroAddress, addressesEqual, NATIVE_TOKEN_SENTINEL } from './guards.js';
 import { ophisOrderReceiver, type ReceiverOptions } from './order.js';
 import {
   OPHIS_PARTNER_FEE_RECIPIENT,
@@ -57,12 +57,6 @@ const OPHIS_OPERATED_ETHFLOW: Readonly<Record<number, `0x${string}`>> = {
  * Mirrors @cowprotocol/sdk-config `ETH_FLOW_ADDRESS`.
  */
 const CANONICAL_COW_ETHFLOW = '0xba3cb449bd2b4adddbc894d8697f5170800eadec' as const;
-
-/**
- * The EIP-7528 native-token sentinel (0xEeee...EEeE). A CoW eth-flow buyToken
- * must be a real ERC-20, never the native sentinel or the zero address.
- */
-const NATIVE_TOKEN_SENTINEL = '0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE' as const;
 
 /**
  * CoW-hosted chains (cow-sdk `SupportedChainId` members) where the canonical

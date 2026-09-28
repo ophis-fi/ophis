@@ -10,10 +10,15 @@ const mocks = vi.hoisted(() => ({
 vi.mock('@safe-global/safe-apps-react-sdk', () => ({ useSafeAppsSDK: () => mocks.context }));
 vi.mock('../lib/chains', () => ({ isOphisFeeChain: () => true }));
 vi.mock('../lib/quote', () => ({ getQuote: mocks.getQuote }));
-vi.mock('../lib/appData', () => ({ buildAppData: async () => ({ fullAppData: '{}', appDataHash: '0xhash' }) }));
+vi.mock('../lib/appData', async () => {
+  const { buildOphisOrderMetadata } = await import('@ophis/sdk');
+  return { buildAppData: async (chainId: number, owner: `0x${string}`, referralCode?: string) => {
+    buildOphisOrderMetadata({ chainId, signer: owner, referralCode });
+    return { fullAppData: '{}', appDataHash: '0xhash' };
+  } };
+});
 vi.mock('../lib/order', () => ({ assembleOrder: vi.fn() }));
 vi.mock('../lib/submit', () => ({ submitOrder: vi.fn() }));
-vi.mock('../lib/referral', () => ({ resolveReferralCode: () => undefined }));
 vi.mock('../lib/weth', () => ({ getWethAddress: () => '0x4200000000000000000000000000000000000006' }));
 vi.mock('../lib/source', () => ({ isSafeWalletLaunch: () => false }));
 vi.mock('./OrderStatus', () => ({ OrderStatus: () => null }));
@@ -24,6 +29,8 @@ let host: HTMLDivElement;
 let resolveQuote: (value: unknown) => void;
 
 beforeEach(async () => {
+  vi.clearAllMocks();
+  window.history.replaceState(null, '', '/');
   vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
   mocks.context.safe = { chainId: 10, safeAddress: '0x1111111111111111111111111111111111111111' };
   mocks.getQuote.mockReturnValue(new Promise((resolve) => { resolveQuote = resolve; }));
@@ -31,6 +38,10 @@ beforeEach(async () => {
   document.body.append(host);
   root = createRoot(host);
   await act(async () => root.render(<App />));
+  await fillInputs();
+});
+
+async function fillInputs() {
   const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set;
   if (!setter) throw new Error('native input setter missing');
   await act(async () => {
@@ -39,9 +50,31 @@ beforeEach(async () => {
       input.dispatchEvent(new Event('input', { bubbles: true }));
     }
   });
-});
+}
 
-afterEach(async () => { await act(async () => root.unmount()); host.remove(); vi.unstubAllGlobals(); });
+afterEach(async () => { await act(async () => root.unmount()); host.remove(); vi.unstubAllGlobals(); vi.unstubAllEnvs(); });
+
+it.each([false, true])('Arc skips the app default but preserves explicit URL referral rejection (explicit %s)', async (explicit) => {
+  vi.stubEnv('VITE_OPHIS_REFERRAL_CODE', 'builder-code');
+  window.history.replaceState(null, '', explicit ? '/?ref=caller-code' : '/');
+  mocks.context.safe = { ...mocks.context.safe, chainId: 5042 };
+  await act(async () => root.render(<App />));
+  await fillInputs();
+  expect(host.textContent).toContain('do not earn referral or volume-tier rebates');
+  expect(host.textContent).not.toContain('ref builder-code');
+  expect(host.querySelector<HTMLInputElement>('input[type="checkbox"]')?.disabled).toBe(true);
+  await act(async () => host.querySelector('button')?.click());
+  if (explicit) {
+    expect(host.textContent).toContain('ref caller-code (unsupported on Arc)');
+    expect(host.textContent).toMatch(/Arc.*referral rewards are not supported/);
+    expect(mocks.getQuote).not.toHaveBeenCalled();
+  } else {
+    expect(mocks.getQuote).toHaveBeenCalledOnce();
+    await act(async () => resolveQuote({ buyAmount: '2000' }));
+    expect(host.textContent).toContain('Quoted with the Ophis partner fee in appData.');
+    expect(host.textContent).not.toContain('+ your referral');
+  }
+});
 
 it('prevents edits while the pending quote captures the displayed trade', async () => {
   await act(async () => host.querySelector('button')?.click());

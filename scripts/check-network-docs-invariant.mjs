@@ -153,6 +153,7 @@ const publicSitePaths = [
   'apps/frontend/apps/ophis-landing/public/.well-known/agent-skills/swap-via-ophis/SKILL.md',
   'apps/frontend/apps/cowswap-frontend/public/llms.txt',
   'apps/frontend/apps/cowswap-frontend/public/business/index.html',
+  'apps/frontend/apps/cowswap-frontend/index.html',
   'apps/frontend/apps/cowswap-frontend/src/pages/About/index.tsx',
   'apps/frontend/apps/cowswap-frontend/src/ophis/components/OphisFooter.tsx',
   'apps/frontend/apps/explorer/public/llms.txt',
