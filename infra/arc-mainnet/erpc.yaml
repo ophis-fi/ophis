@@ -73,12 +73,14 @@ projects:
           evalFunc: |
             (upstreams, ctx) => upstreams
               .sortByScore(PREFER_FASTEST)
+              .sort((a, b) => Number(a.id === 'arc-quicknode') - Number(b.id === 'arc-quicknode'))
         failsafe:
           - matchMethod: "eth_call|eth_estimateGas|eth_getBalance|eth_getCode|eth_getStorageAt|eth_getLogs|eth_getTransactionCount|eth_getTransactionByHash|eth_getTransactionReceipt|eth_getBlockByHash|eth_getBlockByNumber|eth_feeHistory"
             timeout:
               duration: 12s
             retry:
-              maxAttempts: 1
+              # Each voter may try a fallback after an error; no paid fan-out.
+              maxAttempts: 2
             consensus:
               maxParticipants: 2
               agreementThreshold: 2
@@ -149,7 +151,8 @@ projects:
           "*": 20
           debug_traceTransaction: 40
         ignoreMethods: ["*"]
-        allowMethods: [debug_traceTransaction]
+        # Read-only quote/balance fallback. No indexing, signing or transaction relay.
+        allowMethods: [eth_call, eth_estimateGas, eth_getBalance, eth_getCode, eth_getBlockByNumber, eth_gasPrice, debug_traceTransaction]
         evm:
           chainId: 5042
           # eRPC v0.2.0 replaces 0s with 30s and its poller bypasses allowMethods.

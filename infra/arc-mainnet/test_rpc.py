@@ -15,9 +15,11 @@ import uuid
 
 
 def serve_mock():
+    from credit_gate import cost
     counts = collections.Counter()
     mode = {"disagree": False, "fail": False, "trace_fail": False,
-            "latest_skew": False, "header_disagree": False}
+            "latest_skew": False, "header_disagree": False,
+            "official_fail": False, "paid_disagree": False, "zero": False}
     lock = threading.Lock()
 
     class Handler(BaseHTTPRequestHandler):
@@ -32,6 +34,8 @@ def serve_mock():
                     result = {"counts": dict(counts)}
                 else:
                     method = body["method"]
+                    if self.path == "/quicknode":
+                        cost(body)  # Real paid method/parameter boundary, no paid endpoint.
                     counts[self.path + ":" + method] += 1
                     value = "0x1"
                     if method == "eth_chainId":
@@ -54,8 +58,12 @@ def serve_mock():
                         value = {"type": "CALL", "gasUsed": "0x5208", "calls": []}
                     elif method == "eth_call" and self.path == "/blockdaemon" and mode["disagree"]:
                         value = "0x2"
+                    elif method == "eth_call" and self.path == "/quicknode" and mode["paid_disagree"]:
+                        value = "0x3"
+                    if mode["zero"] and method == "eth_getBalance":
+                        value = "0x0"
                     result = {"jsonrpc": "2.0", "id": body["id"], "result": value}
-                    if (self.path == "/blockdaemon" and mode["fail"]) or (
+                    if (self.path == "/blockdaemon" and mode["fail"]) or (self.path == "/official" and mode["official_fail"]) or (
                         self.path == "/quicknode" and mode["trace_fail"] and method == "debug_traceTransaction"
                     ):
                         result = {"jsonrpc": "2.0", "id": body["id"],
@@ -106,14 +114,42 @@ def check_proxy(rpc_url, control, release=False):
 
     call = [{"to": "0x" + "11" * 20, "data": "0x12345678"}, "0x80"]
     assert rpc("eth_call", call).get("result") == "0x1"
+    assert post(control, {"zero": True})["counts"].get("/quicknode:eth_call", 0) == 0, "paid read despite healthy free quorum"
+    assert rpc("eth_getBalance", [call[0]["to"], "0x80"]).get("result") == "0x0"
+    assert post(control, {"zero": False})["counts"].get("/quicknode:eth_getBalance", 0) == 0, "zero balance triggered paid fallback"
+    # Test-only per-method budget exhausts one free provider locally (no HTTP error).
+    for _ in range(2):
+        assert rpc("eth_getCode", [call[0]["to"], "0x80"]).get("result") == "0x1"
+    assert post(control, {})["counts"].get("/quicknode:eth_getCode", 0) == 1, "local free limit did not fall back"
     post(control, {"disagree": True})
     assert "error" in rpc("eth_call", call), "disagreement accepted or live state cached"
     assert "error" in rpc("eth_call", call, {
         "X-ERPC-Skip-Consensus": "true", "X-ERPC-Use-Upstream": "arc-official"
     }), "client bypassed quorum"
     post(control, {"disagree": False, "fail": True})
-    assert "error" in rpc("eth_call", call), "missing voter accepted"
-    post(control, {"fail": False})
+    assert rpc("eth_call", call).get("result") == "0x1", "paid fallback did not restore quorum"
+    assert post(control, {})["counts"].get("/quicknode:eth_call", 0) == 1
+    # Quote simulation overrides must survive fallback unchanged.
+    assert rpc("eth_call", [*call, {call[0]["to"]: {"code": "0x00", "balance": "0x100"}}]).get("result") == "0x1"
+    for method, params in [("eth_getBalance", [call[0]["to"], "0x80"]),
+                           ("eth_getCode", [call[0]["to"], "0x80"]), ("eth_estimateGas", call)]:
+        previous = post(control, {})["counts"].get("/quicknode:" + method, 0)
+        assert rpc(method, params).get("result") == "0x1", method
+        assert post(control, {})["counts"].get("/quicknode:" + method, 0) == previous + 1
+    assert rpc("eth_getBlockByNumber", ["0x82", False]).get("result", {}).get("number") == "0x82", "quote block fallback failed"
+    post(control, {"paid_disagree": True})
+    assert "error" in rpc("eth_call", call), "conflicting paid response accepted"
+    before = post(control, {"paid_disagree": False, "official_fail": True})["counts"]
+    assert "error" in rpc("eth_call", call), "paid provider counted as two voters"
+    after = post(control, {})["counts"]
+    assert sum(after.get(source + ":eth_call", 0) - before.get(source + ":eth_call", 0)
+               for source in ("/official", "/blockdaemon", "/quicknode")) <= 4, "fallback amplified beyond four attempts"
+    assert "error" in rpc("eth_call", call, {
+        "X-ERPC-Skip-Consensus": "true", "X-ERPC-Use-Upstream": "arc-quicknode"
+    }), "client bypassed fallback quorum"
+    # Gas price is an existing single-provider hint, not a simulation quorum.
+    assert rpc("eth_gasPrice", []).get("result") == "0x1"
+    post(control, {"fail": False, "official_fail": False})
 
     # Moving latest heads must be pinned before quorum; actual header disputes fail.
     before = post(control, {"latest_skew": True})["counts"]
@@ -133,21 +169,33 @@ def check_proxy(rpc_url, control, release=False):
     after = post(control, {})["counts"]
     assert before == after, "finalized header missed cache"
 
-    # Bootstrap consumed 60 credits (chain ID + two headers), leaving three traces.
+    # Read fallback and tracing share one weighted budget, including failed calls.
     before = post(control, {})["counts"]
-    assert before.get("/quicknode:eth_getBlockByNumber", 0) == 2
+    assert before.get("/quicknode:eth_getBlockByNumber", 0) == 3  # Two bootstrap polls, one fallback.
     assert before.get("/quicknode:eth_syncing", 0) == 0
-    for i in range(2):
-        response = rpc("debug_traceTransaction", ["0x" + f"{i+1:064x}", {"tracer": "callTracer"}])
-        assert "result" in response, (response, post(control, {}))
     post(control, {"trace_fail": True})
     assert "error" in rpc("debug_traceTransaction", ["0x" + "33" * 32, {"tracer": "callTracer"}])
     post(control, {"trace_fail": False})
+    spent = sum(count * (40 if key.endswith(":debug_traceTransaction") else 20)
+                for key, count in post(control, {})["counts"].items()
+                if key.startswith("/quicknode:") and key.count(":") == 1)
+    successes = (500 - spent) // 40
+    for i in range(successes):
+        response = rpc("debug_traceTransaction", ["0x" + f"{i+1:064x}", {"tracer": "callTracer"}])
+        assert "result" in response, (response, post(control, {}))
     assert "error" in rpc("debug_traceTransaction", ["0x" + "44" * 32, {"tracer": "callTracer"}]), "credit cap bypassed"
     after = post(control, {})["counts"]
-    assert after.get("/quicknode:debug_traceTransaction", 0) == 3, ("retry amplified paid calls", after)
+    assert after.get("/quicknode:debug_traceTransaction", 0) == successes + 1, ("retry amplified paid calls", after)
     assert not any(k.endswith(":debug_traceTransaction") and not k.startswith("/quicknode:") for k in after)
     assert "error" in rpc("debug_traceBlockByNumber", ["latest", {}])
+    assert rpc("eth_call", call).get("result") == "0x1", "paid exhaustion broke free quorum"
+    # Consume any last 20-credit read permit; both free nodes stay unavailable.
+    post(control, {"fail": True, "official_fail": True})
+    assert "error" in rpc("eth_call", call)
+    before = post(control, {})["counts"]
+    assert "error" in rpc("eth_call", call)
+    after = post(control, {"fail": False, "official_fail": False})["counts"]
+    assert after.get("/quicknode:eth_call", 0) == before.get("/quicknode:eth_call", 0), "read credit cap bypassed"
     if release:
         assert 'result' in rpc('eth_sendRawTransaction', ['0xdead'])
         expected = dict(after)
@@ -168,11 +216,13 @@ def test_rpc(release=False):
     upstreams = project["upstreams"]
     assert [u["id"] for u in upstreams] == ["arc-official", "arc-blockdaemon", "arc-quicknode"]
     assert all(u["rateLimitCountMode"] == "credit" for u in upstreams)
-    assert upstreams[-1]["allowMethods"] == ["debug_traceTransaction"]
+    assert set(upstreams[-1]["allowMethods"]) == {"eth_call", "eth_estimateGas", "eth_getBalance", "eth_getCode", "eth_getBlockByNumber", "eth_gasPrice", "debug_traceTransaction"}
     assert upstreams[-1]["creditUnits"] == {"*": 20, "debug_traceTransaction": 40}
     assert project["allowClientDirectives"] == ""
     assert project["upstreamDefaults"]["rateLimitAutoTune"]["enabled"] is False
-    assert all(f["retry"]["maxAttempts"] == 1 for f in project["networks"][0]["failsafe"])
+    protected, other = project["networks"][0]["failsafe"]
+    assert protected["retry"]["maxAttempts"] == 2 and other["retry"]["maxAttempts"] == 1
+    assert protected["consensus"]["maxParticipants"] == protected["consensus"]["agreementThreshold"] == 2
     assert project["upstreamDefaults"]["failsafe"][0]["retry"]["maxAttempts"] == 1
     assert config["rateLimiters"]["budgets"][0]["rules"] == [
         {"method": "*", "maxCount": 1000, "period": "minute"},
@@ -184,7 +234,9 @@ def test_rpc(release=False):
     # Hard network isolation and replacement of EVERY endpoint prevent credit use.
     for upstream in upstreams:
         upstream["endpoint"] = "http://" + mock + ":8000/" + upstream["id"].removeprefix("arc-")
-    config["rateLimiters"]["budgets"][0]["rules"][0]["maxCount"] = 180
+    config["rateLimiters"]["budgets"][0]["rules"][0]["maxCount"] = 500
+    config["rateLimiters"]["budgets"][2]["rules"].append(
+        {"method": "eth_getCode", "maxCount": 1, "period": "minute"})
     image = yaml.safe_load((root / "docker-compose.yml").read_text())["services"]["rpc-proxy"]["image"]
     try:
         docker("network", "create", "--internal", name)
@@ -193,6 +245,7 @@ def test_rpc(release=False):
             config_path.write_text(yaml.safe_dump(config))
             docker("run", "-d", "--name", mock, "--network", name,
                    "-v", f"{Path(__file__).resolve()}:/test_rpc.py:ro",
+                   "-v", f"{root / 'credit_gate.py'}:/credit_gate.py:ro",
                    "python:3.13-alpine@sha256:79e7a9b9ff1cbceff819f856fb374477792a5967759d94df266de7b7b4120e6f",
                    "python", "/test_rpc.py", "--serve")
             docker("exec", mock, "python", "-c",

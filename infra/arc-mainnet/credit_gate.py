@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Private QuickNode trace lane. Reserve credits durably BEFORE every attempt."""
+"""Private QuickNode read/trace lane. Reserve credits BEFORE every attempt."""
 import json
 import os
 import re
@@ -37,20 +37,44 @@ class Budget:
             return True
 
 
+def read_block(block):
+    if isinstance(block, str):
+        return bool(re.fullmatch(r'latest|pending|finalized|safe|earliest|0x[0-9a-fA-F]+', block))
+    # Direct pool reads pin by EIP-1898 hash; quote simulations also use numbers.
+    if isinstance(block, dict):
+        if set(block) == {'blockNumber'}:
+            return bool(re.fullmatch(r'0x[0-9a-fA-F]+', str(block['blockNumber'])))
+        if set(block) in ({'blockHash'}, {'blockHash', 'requireCanonical'}):
+            return bool(re.fullmatch(r'0x[0-9a-fA-F]{64}', str(block['blockHash']))) and isinstance(block.get('requireCanonical', False), bool)
+    return False
+
+
 def cost(payload):
     if not isinstance(payload, dict) or payload.get('jsonrpc') != '2.0':
         raise ValueError('Single JSON-RPC requests only')
     method, params = payload.get('method'), payload.get('params', [])
+    if not isinstance(params, list):
+        raise ValueError('Expected positional parameters')
     if method == 'debug_traceTransaction':
         if not isinstance(params, list) or len(params) != 2 or not re.fullmatch(r'0x[0-9a-fA-F]{64}', str(params[0])):
             raise ValueError('Expected transaction hash and callTracer options')
         if not isinstance(params[1], dict) or params[1].get('tracer') != 'callTracer' or set(params[1]) - {'tracer', 'timeout', 'tracerConfig'}:
             raise ValueError('Only callTracer is enabled')
         return 40
-    if method in ('eth_chainId', 'net_version', 'eth_blockNumber') and params == []:
+    if method in ('eth_chainId', 'net_version', 'eth_blockNumber', 'eth_gasPrice') and params == []:
         return 20
     if method == 'eth_getBlockByNumber' and isinstance(params, list) and len(params) == 2 and params[1] is False and re.fullmatch(r'latest|finalized|safe|0x[0-9a-fA-F]+', str(params[0])):
         return 20
+    if method in ('eth_getBalance', 'eth_getCode') and len(params) == 2:
+        if re.fullmatch(r'0x[0-9a-fA-F]{40}', str(params[0])) and read_block(params[1]):
+            return 20
+    if method == 'eth_estimateGas' and len(params) == 1 and isinstance(params[0], dict):
+        return 20
+    if method in ('eth_call', 'eth_estimateGas') and len(params) in (2, 3):
+        # Read-only EVM execution, including the quote verifier's state overrides.
+        # The node validates transaction/override fields; never relay or sign here.
+        if isinstance(params[0], dict) and read_block(params[1]) and (len(params) == 2 or isinstance(params[2], dict)):
+            return 20
     raise ValueError('Method denied on the paid lane')
 
 
@@ -86,11 +110,11 @@ def serve():
                     with opener.open(request, timeout=10) as response:
                         body = response.read(8 * 1024 * 1024 + 1)
                     if len(body) > 8 * 1024 * 1024:
-                        raise ValueError('Trace response too large')
+                        raise ValueError('RPC response too large')
                 json.loads(body)
             except Exception:
                 # Failed/time-out calls remain charged; retries must reserve again.
-                body = json.dumps({'jsonrpc': '2.0', 'id': request_id, 'error': {'code': -32005, 'message': 'Trace lane unavailable or budget exhausted'}}).encode()
+                body = json.dumps({'jsonrpc': '2.0', 'id': request_id, 'error': {'code': -32005, 'message': 'Paid RPC lane unavailable or budget exhausted'}}).encode()
             self.send_response(200)
             self.send_header('Content-Type', 'application/json')
             self.send_header('Content-Length', str(len(body)))
