@@ -30,8 +30,15 @@ internet access; the backend lab uses loopback fixtures. Neither starts the live
   two network attempts (four total); other methods have one network attempt.
   Free providers sort before QuickNode, so healthy free quorums use no paid state
   reads. Quota exhaustion fails closed; failed attempts remain charged.
-- Fixed-number finalized headers are cached for one hour. Live state, pending
-  data and simulations are not cached. eRPC also coalesces simultaneous requests.
+- Fixed-number finalized headers are cached for one hour; successful quorum-verified
+  `eth_call` reads at explicit finalized blocks for one minute. Calldata and caller
+  remain part of the cache key. Live/pending state and state/block overrides are
+  not cached. eRPC also coalesces simultaneous requests.
+- Native prices try Uniswap v3 and KyberSwap first, with Archery, Aero and Uniswap
+  v4 as fallback if fewer than two estimates succeed. Trade quotes and auctions
+  still compete across all five lanes. After five consecutive internal estimator
+  failures, the price cache permits another probe after ten seconds (or the
+  configured price TTL, if shorter); successful prices retain their normal TTL.
 - The pilot denies transaction relay. The release permits signed transaction relay
   through one free official upstream; nonce/state reads still require two voters.
   Full-block tracing, replay, unrestricted debug and client provider overrides are denied.

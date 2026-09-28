@@ -18,6 +18,16 @@ database:
         finality: finalized
         empty: ignore
         ttl: 1h
+      # Reuse only quorum-verified calls at an explicit finalized block.
+      # Null slots require absent state/block overrides; calldata/from remain
+      # part of the cache key. Zero balances are valid, RPC errors are not.
+      - connector: arc-headers
+        network: evm:5042
+        method: eth_call
+        params: ["*", "0x*", null, null]
+        finality: finalized
+        empty: allow
+        ttl: 1m
 
 rateLimiters:
   store:
