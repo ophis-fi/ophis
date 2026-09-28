@@ -117,6 +117,7 @@ print('PASS Linux private config/key ownership boundary')
         docker('run', '-d', '--name', api, '--network', network,
                '-v', f'{OUT / "nginx.conf"}:/etc/nginx/nginx.conf:ro', release['services']['api']['image'])
         code = '''import json,time,urllib.request,urllib.error
+from concurrent.futures import ThreadPoolExecutor
 for i in range(40):
  try:
   urllib.request.urlopen('http://127.0.0.1:8080/'); break
@@ -126,15 +127,29 @@ for i in range(40):
   urllib.request.urlopen('http://''' + api + ''':8080/')
  except urllib.error.HTTPError: break
  except OSError: time.sleep(.1)
-codes=[]
-for i in range(8):
- try:
-  r=urllib.request.urlopen('http://''' + api + ''':8080/api/v1/quote'+('/draft' if i%2 else ''))
-  codes.append(r.status)
- except urllib.error.HTTPError as e: codes.append(e.code)
-assert codes==[404]*6+[429,429],codes
-print('PASS live Nginx quote rate limit:',codes)
 allowed=''' + repr(allowed_origins) + '''
+# One quote starts immediately, one waits for the next slot, excess never reaches
+# the backend. Both quote routes and different clients share the same capacity.
+def quote(i):
+ started=time.monotonic()
+ request=urllib.request.Request('http://''' + api + ''':8080/api/v1/quote'+('/draft' if i%2 else ''),
+  headers={'Origin':allowed[0],'CF-Connecting-IP':'198.51.100.'+str(i+1)})
+ try: response=urllib.request.urlopen(request,timeout=25)
+ except urllib.error.HTTPError as e: response=e
+ with response:
+  if response.status==429:
+   assert response.headers['Retry-After']=='15'
+   assert response.headers['Access-Control-Allow-Origin']==allowed[0]
+   assert response.headers['Access-Control-Expose-Headers']=='Retry-After'
+   assert json.load(response)['errorType']=='TooManyRequests'
+  return response.status,time.monotonic()-started
+with ThreadPoolExecutor(max_workers=3) as pool:
+ results=list(pool.map(quote,range(3)))
+assert sorted(code for code,_ in results)==[404,404,429],results
+admitted=sorted(elapsed for code,elapsed in results if code==404)
+assert admitted[0]<3 and 13.5<=admitted[1]<23,results
+assert next(elapsed for code,elapsed in results if code==429)<3,results
+print('PASS live Nginx bounded quote pacing / busy response:',results)
 for origin in allowed+['https://untrusted.example']:
  request=urllib.request.Request('http://''' + api + ''':8080/api/v1/app_data/'+'0'*64,
   method='OPTIONS',headers={'Origin':origin,'Access-Control-Request-Method':'PUT',
