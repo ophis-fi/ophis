@@ -66,7 +66,9 @@ def render(active=False):
     lanes = ['uniswap-v3', 'kyberswap', 'archery', 'aero', 'uniswap-v4']
     price_drivers = ', '.join(f'{{name = "{name}", url = "http://driver:11088/{name}"}}' for name in lanes)
     drivers = '\n'.join(f'[[drivers]]\nname = "{name}"\nurl = "http://driver:11088/{name}"\naddress = "{cfg["solver"]}"' for name in lanes)
-    native_estimators = ', '.join(f'{{type = "Driver", name = "{name}", url = "http://driver:11088/{name}"}}' for name in lanes)
+    # Try two broad-coverage sources first; retain the other venues as fallback.
+    # Trade quotes and executable auctions still compete across all five lanes.
+    native_estimators = ', '.join('[' + ', '.join(f'{{type = "Driver", name = "{name}", url = "http://driver:11088/{name}"}}' for name in stage) + ']' for stage in [lanes[:2], lanes[2:]])
     contracts = '\n'.join(f'{key} = "{c[value]}"' for key, value in [('settlement', 'settlement'), ('balances', 'Balances'), ('signatures', 'Signatures'), ('hooks', 'HooksTrampoline'), ('balancer-v2-vault', 'vault')]) + f'\nnative-token = "{USDC}"\n'
     common = f'''[database]
 write-url = "postgresql://arc:{password}@postgres:5432/arc"
@@ -121,7 +123,8 @@ max-delay = "15s"
 max-winners-per-auction = 1
 submission-deadline = {cfg['submissionDeadlineBlocks']}
 [native-price-estimation]
-estimators = [[{native_estimators}]]
+estimators = [{native_estimators}]
+results-required = 2
 cache-refresh-interval = "30s"
 prefetch-time = "30s"
 [native-price-estimation.cache]

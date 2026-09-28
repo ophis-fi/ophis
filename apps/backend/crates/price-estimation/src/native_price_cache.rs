@@ -216,7 +216,18 @@ impl Cache {
         max_age: &Duration,
     ) -> Option<CachedResult> {
         let entry = cache.get(&token)?;
-        let is_recent = now.saturating_duration_since(entry.updated_at) < *max_age;
+        // RPC/solver outages are not market prices. Keep the existing error
+        // circuit breaker, but probe recovery after a short cooldown instead
+        // of locking a token out for the full successful-price lifetime.
+        let max_age = if matches!(
+            entry.result,
+            Err(PriceEstimationError::EstimatorInternal(_))
+        ) {
+            (*max_age).min(Duration::from_secs(10))
+        } else {
+            *max_age
+        };
+        let is_recent = now.saturating_duration_since(entry.updated_at) < max_age;
         (is_recent && entry.is_ready()).then_some(entry)
     }
 
@@ -1052,6 +1063,61 @@ mod tests {
                 PriceEstimationError::NoLiquidity
             ));
         }
+    }
+
+    #[tokio::test]
+    async fn retries_internal_errors_after_short_cooldown() {
+        let mut inner = MockNativePriceEstimating::new();
+        inner
+            .expect_estimate_native_price()
+            .once()
+            .returning(|_, _| async { Ok(2.0) }.boxed());
+        let estimator =
+            create_caching_estimator(inner, Duration::from_secs(300), 1, Default::default());
+        let cache = estimator.cache();
+        let now = Instant::now();
+        cache.0.data.insert(
+            token(0),
+            CachedResult {
+                result: Err(PriceEstimationError::EstimatorInternal(anyhow!(
+                    "RPC unavailable"
+                ))),
+                updated_at: now,
+                accumulative_errors_count: ACCUMULATIVE_ERRORS_THRESHOLD,
+            },
+        );
+        // Keep the breaker, but do not retain an outage for the price's five-minute TTL.
+        for (age, max_age, hit) in [(9, 300, true), (10, 300, false), (3, 2, false)] {
+            assert_eq!(
+                Cache::get_cached_price(
+                    token(0),
+                    now + Duration::from_secs(age),
+                    &cache.0.data,
+                    &Duration::from_secs(max_age),
+                )
+                .is_some(),
+                hit,
+            );
+        }
+        let mut expired = cache.0.data.get(&token(0)).unwrap();
+        expired.updated_at = now - Duration::from_secs(11);
+        cache.0.data.insert(token(0), expired);
+        assert_eq!(
+            estimator
+                .estimate_native_price(token(0), HEALTHY_PRICE_ESTIMATION_TIME)
+                .await,
+            Ok(2.0),
+        );
+        // A successful recovery keeps the normal price TTL and resets the breaker.
+        let recovered = Cache::get_cached_price(
+            token(0),
+            now + Duration::from_secs(60),
+            &cache.0.data,
+            &Duration::from_secs(300),
+        )
+        .unwrap();
+        assert_eq!(recovered.result, Ok(2.0));
+        assert_eq!(recovered.accumulative_errors_count, 0);
     }
 
     #[tokio::test]

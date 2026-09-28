@@ -60,7 +60,7 @@ def serve_mock():
                         value = "0x2"
                     elif method == "eth_call" and self.path == "/quicknode" and mode["paid_disagree"]:
                         value = "0x3"
-                    if mode["zero"] and method == "eth_getBalance":
+                    if mode["zero"] and method in ("eth_getBalance", "eth_call"):
                         value = "0x0"
                     result = {"jsonrpc": "2.0", "id": body["id"], "result": value}
                     if (self.path == "/blockdaemon" and mode["fail"]) or (self.path == "/official" and mode["official_fail"]) or (
@@ -113,7 +113,7 @@ def check_proxy(rpc_url, control, release=False):
         assert time.monotonic() < deadline, "mock proxy did not boot"
         time.sleep(0.2)
 
-    call = [{"to": "0x" + "11" * 20, "data": "0x12345678"}, "0x80"]
+    call = [{"to": "0x" + "11" * 20, "data": "0x12345678"}, "latest"]
     assert rpc("eth_call", call).get("result") == "0x1"
     assert post(control, {"zero": True})["counts"].get("/quicknode:eth_call", 0) == 0, "paid read despite healthy free quorum"
     assert rpc("eth_getBalance", [call[0]["to"], "0x80"]).get("result") == "0x0"
@@ -174,6 +174,34 @@ def check_proxy(rpc_url, control, release=False):
     after = post(control, {})["counts"]
     assert before == after, "finalized header missed cache"
 
+    # Only a successful two-provider result for immutable state may be reused.
+    fixed_call = [call[0], "0x80"]
+    post(control, {"disagree": True})
+    assert "error" in rpc("eth_call", fixed_call), "unverified call cached"
+    post(control, {"disagree": False, "zero": True})
+    assert rpc("eth_call", fixed_call).get("result") == "0x0", "failure poisoned cache"
+    time.sleep(0.2)
+    before = post(control, {"zero": False})["counts"]
+    assert rpc("eth_call", fixed_call).get("result") == "0x0", "finalized zero call missed cache"
+    assert post(control, {})["counts"] == before, "cache hit made upstream calls"
+    for params in [
+        [{**call[0], "data": "0x87654321"}, "0x80"],
+        [{**call[0], "from": "0x" + "22" * 20}, "0x80"],
+        [call[0], "0x79"],
+    ]:
+        assert rpc("eth_call", params).get("result") == "0x1", "cache key omitted call context"
+    # Neither state overrides nor block overrides nor pending state can be cached.
+    for params in [
+        [*fixed_call, {call[0]["to"]: {"balance": "0x100"}}],
+        [*fixed_call, {}, {"time": "0x1"}],
+        [call[0], "pending"],
+    ]:
+        assert rpc("eth_call", params).get("result") == "0x1"
+        time.sleep(0.2)
+        post(control, {"disagree": True})
+        assert "error" in rpc("eth_call", params), "mutable/override call was cached"
+        post(control, {"disagree": False})
+
     # Read fallback and tracing share one weighted budget, including failed calls.
     before = post(control, {})["counts"]
     assert before.get("/quicknode:eth_getBlockByNumber", 0) == 3  # Two bootstrap polls, one fallback.
@@ -209,7 +237,7 @@ def check_proxy(rpc_url, control, release=False):
     else:
         assert "error" in rpc("eth_sendRawTransaction", ["0xdead"])
         assert post(control, {})["counts"] == after, "disallowed method reached upstream"
-    print("PASS: quorum, no bypass, header cache, weighted cap, bounded attempts, denied methods; zero live RPC calls")
+    print("PASS: quorum, no bypass, finalized-only header/call cache, weighted cap, bounded attempts, denied methods; zero live RPC calls")
 
 
 def test_rpc(release=False):

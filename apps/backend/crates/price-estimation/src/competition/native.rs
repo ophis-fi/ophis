@@ -179,6 +179,54 @@ mod tests {
         }
     }
 
+    #[tokio::test]
+    async fn two_native_results_skip_fallback_but_one_result_does_not() {
+        for needs_fallback in [false, true] {
+            let mut first = MockNativePriceEstimating::new();
+            first
+                .expect_estimate_native_price()
+                .once()
+                .returning(|_, _| async { Ok(1.) }.boxed());
+            let mut second = MockNativePriceEstimating::new();
+            second
+                .expect_estimate_native_price()
+                .once()
+                .returning(move |_, _| {
+                    async move {
+                        if needs_fallback {
+                            Err(PriceEstimationError::NoLiquidity)
+                        } else {
+                            Ok(2.)
+                        }
+                    }
+                    .boxed()
+                });
+            let mut fallback = MockNativePriceEstimating::new();
+            fallback
+                .expect_estimate_native_price()
+                .times(usize::from(needs_fallback))
+                .returning(|_, _| async { Ok(3.) }.boxed());
+            let estimator: CompetitionEstimator<Arc<dyn NativePriceEstimating>> =
+                CompetitionEstimator::<Arc<dyn NativePriceEstimating>>::new(
+                    vec![
+                        vec![
+                            ("first".into(), Arc::new(first)),
+                            ("second".into(), Arc::new(second)),
+                        ],
+                        vec![("fallback".into(), Arc::new(fallback))],
+                    ],
+                    PriceRanking::MaxOutAmount,
+                )
+                .with_early_return(2.try_into().unwrap());
+            assert_eq!(
+                estimator
+                    .estimate_native_price(Default::default(), HEALTHY_PRICE_ESTIMATION_TIME)
+                    .await,
+                Ok(if needs_fallback { 3. } else { 2. })
+            );
+        }
+    }
+
     /// If early stages don't use some of their allocated time later stages
     /// can use it instead.
     #[tokio::test]

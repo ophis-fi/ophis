@@ -52,6 +52,10 @@ def main():
     assert autopilot['price-estimation']['quote-timeout'] == '10s'
     assert orderbook['price-estimation']['quote-timeout'] == '10s'
     assert 'api-estimators' not in autopilot['native-price-estimation']
+    native_prices = autopilot['native-price-estimation']
+    assert native_prices['results-required'] == 2
+    assert [[source['name'] for source in stage] for stage in native_prices['estimators']] == [
+        ['uniswap-v3', 'kyberswap'], ['archery', 'aero', 'uniswap-v4']]
     driver = tomllib.loads((OUT / 'driver.toml').read_text())
     assert driver['gas-estimator'] == {'estimator': 'web3'}
     assert int(driver['submission']['gas-price-cap']) == int(cfg['maxFeePerGas'])
