@@ -819,6 +819,7 @@ const CHAIN_NAMES: Record<number, string> = {
   100: 'Gnosis',
   130: 'Unichain',
   4663: 'Robinhood Chain',
+  5042: 'Arc',
   137: 'Polygon',
   8453: 'Base',
   9745: 'Plasma',
@@ -907,6 +908,7 @@ const NATIVE_SYMBOL: Record<number, string> = {
   1: 'ETH', 10: 'ETH', 56: 'BNB', 100: 'xDAI', 137: 'POL',
   8453: 'ETH', 9745: 'XPL', 42161: 'ETH', 43114: 'AVAX',
   4663: 'ETH', 57073: 'ETH', 59144: 'ETH', 11155111: 'ETH',
+  5042: 'USDC',
 }
 
 /**
@@ -922,6 +924,7 @@ const PUBLIC_RPCS: Record<number, string[]> = {
   100: ['https://gnosis-rpc.publicnode.com'],
   130: ['https://mainnet.unichain.org'],
   4663: ['https://rpc.mainnet.chain.robinhood.com'],
+  5042: ['https://rpc.mainnet.arc.io'],
   137: ['https://polygon-bor-rpc.publicnode.com', 'https://polygon.llamarpc.com'],
   8453: ['https://base-rpc.publicnode.com', 'https://base.llamarpc.com'],
   42161: ['https://arbitrum-one-rpc.publicnode.com', 'https://arbitrum.llamarpc.com'],

@@ -422,6 +422,35 @@ describe('submitOrder (relay guards — no network on the throw paths)', () => {
 })
 
 describe('listChains', () => {
+  it('exposes Arc with a usable ERC-20 signing domain and Volume-only fee', () => {
+    const arc = listChains().tradeable.find((c) => c.chainId === 5042)
+    expect(arc).toEqual({
+      chainId: 5042,
+      name: 'Arc',
+      ophisOperated: true,
+      settlement: '0x78799F98276efba1EdeeD32eae03a3fd8Cdfec3A',
+      orderbookUrl: 'https://arc-mainnet.ophis.fi',
+      partnerFee: { volumeBps: 1, recipient: OPHIS_SAFE },
+    })
+    const built = buildOrder({
+      chainId: 5042,
+      owner: OWNER,
+      sellToken: '0x3600000000000000000000000000000000000000',
+      buyToken: '0xbEf5f6d51CB62b58e6A8f77868681825C6fe21c1',
+      sellAmount: '1000000',
+      buyAmount: '800000',
+      kind: 'sell',
+    }, NOW)
+    expect(built.signing.domain).toEqual({
+      name: 'Gnosis Protocol', version: 'v2', chainId: 5042, verifyingContract: arc?.settlement,
+    })
+    expect(built.orderbookUrl).toBe(arc?.orderbookUrl)
+    expect(validateOrder({
+      chainId: 5042, owner: OWNER, order: built.order, fullAppData: built.fullAppData,
+      signingDomain: built.signing.domain, orderbookUrl: built.orderbookUrl,
+    }, NOW).errors).toEqual([])
+  })
+
   it('puts Optimism in tradeable with the non-canonical settlement + live orderbook', () => {
     const op = listChains().tradeable.find((c) => c.chainId === 10)
     expect(op?.ophisOperated).toBe(true)

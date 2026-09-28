@@ -29,6 +29,9 @@ const OPHIS_UNICHAIN_SETTLEMENT = '0x108A678716e5E1776036eF044CAB7064226F714E' a
 /** Ophis-deployed GPv2Settlement on Robinhood Chain (4663). Verified on-chain. */
 const OPHIS_ROBINHOOD_SETTLEMENT = '0x886d9fd312F442C4E1f3cdeAE7b4AB73493e57cD' as const;
 
+/** Ophis-deployed GPv2Settlement on Arc (5042). Verified against the release receipts. */
+const OPHIS_ARC_SETTLEMENT = '0x78799F98276efba1EdeeD32eae03a3fd8Cdfec3A' as const;
+
 export const OPHIS_SETTLEMENT_ADDRESSES: Readonly<Partial<Record<number, `0x${string}`>>> = Object.freeze({
   1: CANONICAL_COW_SETTLEMENT,
   100: CANONICAL_COW_SETTLEMENT,
@@ -44,6 +47,7 @@ export const OPHIS_SETTLEMENT_ADDRESSES: Readonly<Partial<Record<number, `0x${st
   10: OPHIS_SETTLEMENT, // Optimism — Ophis self-hosted settlement (verified on-chain)
   130: OPHIS_UNICHAIN_SETTLEMENT, // Unichain — Ophis self-hosted settlement (verified on-chain)
   4663: OPHIS_ROBINHOOD_SETTLEMENT, // Robinhood — Ophis self-hosted settlement (verified on-chain)
+  5042: OPHIS_ARC_SETTLEMENT,
 });
 
 /**
@@ -112,6 +116,9 @@ const OPHIS_UNICHAIN_VAULT_RELAYER = '0xaB29E2a859704C914E55566Ae9b3A7EDE25959cb
 /** Ophis-deployed GPv2VaultRelayer on Robinhood Chain (4663), read from settlement.vaultRelayer(). */
 const OPHIS_ROBINHOOD_VAULT_RELAYER = '0xB52C38097c19cd38238c62DD36027a7918eFa890' as const;
 
+/** Arc relayer, confirmed via the deployed settlement's vaultRelayer(). */
+const OPHIS_ARC_VAULT_RELAYER = '0x895505F1FE6D762296685fF4a8201782FFdCB8E9' as const;
+
 export const OPHIS_VAULT_RELAYER_ADDRESSES: Readonly<Partial<Record<number, `0x${string}`>>> = Object.freeze({
   1: CANONICAL_COW_VAULT_RELAYER,
   100: CANONICAL_COW_VAULT_RELAYER,
@@ -127,6 +134,7 @@ export const OPHIS_VAULT_RELAYER_ADDRESSES: Readonly<Partial<Record<number, `0x$
   10: OPHIS_VAULT_RELAYER, // Optimism — Ophis self-hosted relayer (NOT canonical)
   130: OPHIS_UNICHAIN_VAULT_RELAYER, // Unichain — Ophis self-hosted relayer (NOT canonical; confirmed via settlement.vaultRelayer())
   4663: OPHIS_ROBINHOOD_VAULT_RELAYER, // Robinhood — Ophis self-hosted relayer (NOT canonical; confirmed on-chain)
+  5042: OPHIS_ARC_VAULT_RELAYER,
 });
 
 /**
