@@ -42,6 +42,15 @@ describe('partnerFeeDefault', () => {
   })
 
   describe('ophisAppDataPartnerFeeForChain (PI suppression on self-hosted chains)', () => {
+    it.each([false, true])('keeps Arc appData Volume-only (stable pair: %s)', (isStablePair) => {
+      expect(isVolumeOnlyChain(5042)).toBe(true)
+      expect(ophisAppDataPartnerFeeForChain(OPHIS_DEFAULT_APP_DATA_PARTNER_FEE, 5042, isStablePair)).toBeUndefined()
+      expect(ophisVolumeOnlyFloorFee(5042, isStablePair)).toEqual({
+        volumeBps: 1,
+        recipient: CANONICAL_OPHIS_PARTNER_FEE_RECIPIENT,
+      })
+    })
+
     it('suppresses the PI fallback on Optimism (10) (returns undefined; the floor is carried by the volumeFee pipeline so display == charged)', () => {
       // On OP the backend rejects the PI shape at ingress; the floor Volume fee is
       // emitted from the single volumeFee source (ophisVolumeOnlyFloorFee) so the

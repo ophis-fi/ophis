@@ -5,6 +5,19 @@ import type { ParsedIntent } from './types'
 const make = (entities: ParsedIntent['entities']): ParsedIntent => ({ intent: 'swap', entities })
 
 describe('intentToUrl', () => {
+  it('routes an Arc swap to 5042 even when the connected chain is Optimism', () => {
+    const url = intentToUrl(
+      make([
+        { type: 'sellToken', value: 'USDC', raw: 'USDC', start: 5, end: 9 },
+        { type: 'buyToken', value: 'EURC', raw: 'EURC', start: 14, end: 18 },
+        { type: 'chain', value: 'arc', raw: 'Arc', start: 21, end: 24 },
+      ]),
+      undefined,
+      10,
+    )
+    expect(url).toBe('/5042/swap/USDC/EURC')
+  })
+
   it('returns /swap when intent is unknown', () => {
     expect(intentToUrl({ intent: 'unknown', entities: [] })).toBe('/swap')
   })

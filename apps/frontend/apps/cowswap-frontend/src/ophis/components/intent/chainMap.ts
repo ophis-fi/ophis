@@ -16,6 +16,7 @@ export const CHAIN_SLUG_TO_ID: Record<string, number> = {
   optimism: 10,
   unichain: 130,
   robinhood: 4663,
+  arc: 5042,
   base: 8453,
   arbitrum: 42161,
   polygon: 137,

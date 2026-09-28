@@ -166,6 +166,11 @@ const ROBINHOOD_STABLECOINS: &[Address] = &[
     address!("0x5fc5360D0400a0Fd4f2af552ADD042D716F1d168"), // USDG
 ];
 
+const ARC_STABLECOINS: &[Address] = &[
+    address!("0x3600000000000000000000000000000000000000"), // USDC (ERC-20)
+    address!("0xbEf5f6d51CB62b58e6A8f77868681825C6fe21c1"), // EURC
+];
+
 /// Optimism boosted-token set (mirrors the frontend `OPHIS_BOOSTED_TOKENS[10]`).
 /// Empty today (ALEPH is Mainnet/Base only); a swap where EITHER side is boosted
 /// floors at the reduced rate. Kept explicit so adding an OP boosted token to the
@@ -214,6 +219,7 @@ pub fn is_ophis_stable_pair(chain_id: u64, sell_token: Address, buy_token: Addre
         10 => OPTIMISM_STABLECOINS,
         130 => UNICHAIN_STABLECOINS,
         4663 => ROBINHOOD_STABLECOINS,
+        5042 => ARC_STABLECOINS,
         _ => return false,
     };
     stablecoins.contains(&sell_token) && stablecoins.contains(&buy_token)
@@ -1270,10 +1276,16 @@ mod tests {
         let optimism_usdt = address!("0x94b008aA00579c1307B0EF2c499aD98a8ce58e58");
         let unichain_usdc = address!("0x078D782b760474a361dDA0AF3839290b0EF57AD6");
         let robinhood_usdg = address!("0x5fc5360D0400a0Fd4f2af552ADD042D716F1d168");
+        let arc_usdc = address!("0x3600000000000000000000000000000000000000");
+        let arc_eurc = address!("0xbEf5f6d51CB62b58e6A8f77868681825C6fe21c1");
 
         assert!(is_ophis_stable_pair(10, optimism_usdc, optimism_usdt));
         assert!(is_ophis_stable_pair(130, unichain_usdc, unichain_usdc));
         assert!(is_ophis_stable_pair(4663, robinhood_usdg, robinhood_usdg));
+        assert!(is_ophis_stable_pair(5042, arc_usdc, arc_eurc));
+        assert!(is_ophis_stable_pair(5042, arc_eurc, arc_usdc));
+        assert!(!is_ophis_stable_pair(5042, arc_usdc, optimism_usdc));
+        assert!(!is_ophis_stable_pair(10, arc_usdc, arc_eurc));
         assert!(!is_ophis_stable_pair(130, optimism_usdc, optimism_usdt));
         assert!(!is_ophis_stable_pair(4663, unichain_usdc, unichain_usdc));
         assert!(!is_ophis_stable_pair(1, optimism_usdc, optimism_usdt));

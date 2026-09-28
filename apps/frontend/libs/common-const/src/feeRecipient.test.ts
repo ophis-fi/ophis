@@ -39,10 +39,10 @@ describe('feeRecipient', () => {
   })
 
   it('routes Ophis-operated chains to the canonical recipient', () => {
-    // The 3 chains where we operate stacks must route to our Safe.
+    // Chains where we operate stacks must route to our Safe.
     // Per-chain entries existing AT ALL is also load-bearing — a refactor
     // deleting them would fall back to the base placeholder.
-    const ophisChainIds = [10, 130, 4663] as const
+    const ophisChainIds = [10, 130, 4663, 5042] as const
     for (const chainId of ophisChainIds) {
       const entry = (DEFAULT_PARTNER_FEE_RECIPIENT_PER_NETWORK as Record<number, string>)[chainId]
       expect(entry).toBe(OPHIS_PARTNER_FEE_RECIPIENT)
