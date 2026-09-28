@@ -202,7 +202,7 @@ jobs:
 
       - name: Approval and mobile security regression tests
         working-directory: apps/frontend
-        run: pnpm exec nx run cowswap-frontend:test --testPathPatterns 'src/modules/erc20Approve|src/modules/limitOrders|src/modules/permit|src/modules/tradeFlow/hooks/useHandleSwap|src/modules/account/containers/OrderPartialApprove|src/theme/themeConfigAtom|src/ophis/components/intent/IntentEntry' --passWithNoTests=false
+        run: pnpm exec nx run cowswap-frontend:test --testPathPatterns 'src/modules/erc20Approve|src/modules/limitOrders|src/modules/permit|src/modules/tradeFlow/hooks/|src/modules/account/containers/OrderPartialApprove|src/theme/themeConfigAtom|src/ophis/components/intent/IntentEntry' --passWithNoTests=false
 
       # ophisBridgeProviders also proves the sdk-bridging patch is applied to the
       # install this build uses: its getQuote test only passes when the patched

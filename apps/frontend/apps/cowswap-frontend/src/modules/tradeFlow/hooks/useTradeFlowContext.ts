@@ -1,3 +1,5 @@
+import { useMemo } from 'react'
+
 import { TokenWithLogo } from '@cowprotocol/common-const'
 import { OrderClass, PriceQuality } from '@cowprotocol/cow-sdk'
 import { useIsSafeWallet, useWalletDetails, useWalletInfo } from '@cowprotocol/wallet'
@@ -5,7 +7,6 @@ import { useWalletProvider } from '@cowprotocol/wallet-provider'
 
 import { useAddBridgeOrder } from 'entities/bridgeOrders'
 import { useDispatch } from 'react-redux'
-import useSWR from 'swr'
 
 import { AppDispatch } from 'legacy/state'
 import { useCloseModals } from 'legacy/state/application/hooks'
@@ -55,6 +56,7 @@ export function useTradeFlowContext({ deadline }: TradeFlowParams): TradeFlowCon
   const setSigningStep = useSetSigningStep()
 
   const tradeQuote = useTradeQuote()
+  const quote = tradeQuote.quote
   const bridgeContext = useBridgeQuoteAmounts()
 
   const sellCurrency = derivedTradeState?.inputCurrency
@@ -90,153 +92,116 @@ export function useTradeFlowContext({ deadline }: TradeFlowParams): TradeFlowCon
   } = derivedTradeState || {}
 
   const validTo = getOrderValidTo(deadline, tradeQuote)
+  const ready =
+    inputAmount &&
+    outputAmount &&
+    sellAmountBeforeFee &&
+    networkFee &&
+    sellToken &&
+    buyToken &&
+    account &&
+    provider &&
+    appData &&
+    quote &&
+    tradeQuote.fetchParams?.priceQuality === PriceQuality.OPTIMAL &&
+    orderKind &&
+    settlementContract &&
+    uiOrderType &&
+    validTo > 0
 
-  return (
-    useSWR(
-      inputAmount &&
-        outputAmount &&
-        sellAmountBeforeFee &&
-        networkFee &&
-        sellToken &&
-        buyToken &&
-        account &&
-        provider &&
-        appData &&
-        tradeQuote.quote &&
-        tradeQuote.fetchParams?.priceQuality === PriceQuality.OPTIMAL &&
-        orderKind &&
-        settlementContract &&
-        uiOrderType &&
-        validTo > 0
-        ? [
-            account,
-            allowsOffchainSigning,
-            appData,
-            tradeQuote,
-            tradeQuote.quote,
-            buyToken,
-            settlementChainId,
-            closeModals,
-            dispatch,
-            enoughAllowance,
-            generatePermitHook,
-            permitAmountToSign,
-            inputAmount,
-            networkFee,
-            outputAmount,
-            permitInfo,
-            provider,
-            recipient,
-            recipientAddress,
-            sellAmountBeforeFee,
-            sellToken,
-            settlementContract,
-            tradeConfirmActions,
-            typedHooks,
-            validTo,
-            orderKind,
-            uiOrderType,
-            bridgeQuoteAmounts,
-            addBridgeOrder,
-            setSigningStep,
-            verifyRecipientName,
-          ]
-        : null,
-      // TODO: Break down this large function into smaller functions
-      // eslint-disable-next-line max-lines-per-function
-      ([
-        account,
-        allowsOffchainSigning,
-        appData,
-        tradeQuoteState,
-        tradeQuote,
-        buyToken,
-        chainId,
-        closeModals,
-        dispatch,
-        enoughAllowance,
-        generatePermitHook,
-        permitAmountToSign,
+  // This is synchronous derived state. SWR serializes the live wallet/contract graph
+  // into huge cache keys and retains another entry whenever the deadline changes.
+  return useMemo(() => {
+    if (!ready) {
+      return null
+    }
+
+    return {
+      tradeQuoteState: tradeQuote,
+      tradeQuote: quote,
+      bridgeQuoteAmounts,
+      context: {
+        chainId: settlementChainId,
         inputAmount,
-        networkFee,
         outputAmount,
-        permitInfo,
-        provider,
+        inputAmountWithSlippage: inputAmount,
+      },
+      flags: { allowsOffchainSigning },
+      callbacks: { closeModals, getCachedPermit, dispatch, addBridgeOrder, setSigningStep, verifyRecipientName },
+      tradeConfirmActions,
+      swapFlowAnalyticsContext: {
+        account,
         recipient,
         recipientAddress,
-        sellAmountBeforeFee,
-        sellToken,
-        settlementContract,
-        tradeConfirmActions,
-        typedHooks,
-        validTo,
-        orderKind,
-        uiOrderType,
-        bridgeQuoteAmounts,
-        addBridgeOrder,
-        setSigningStep,
-        verifyRecipientName,
-      ]) => {
-        return {
-          tradeQuoteState,
-          tradeQuote,
-          bridgeQuoteAmounts,
-          context: {
-            chainId,
-            inputAmount,
-            outputAmount,
-            inputAmountWithSlippage: inputAmount,
-          },
-          flags: {
-            allowsOffchainSigning,
-          },
-          callbacks: {
-            closeModals,
-            getCachedPermit,
-            dispatch,
-            addBridgeOrder,
-            setSigningStep,
-            verifyRecipientName,
-          },
-          tradeConfirmActions,
-          swapFlowAnalyticsContext: {
-            account,
-            recipient,
-            recipientAddress,
-            marketLabel: [inputAmount?.currency.symbol, outputAmount?.currency.symbol].join(','),
-            orderType: uiOrderType,
-            isBridgeOrder: inputAmount.currency.chainId !== outputAmount.currency.chainId,
-          },
-          contract: settlementContract,
-          permitInfo: !enoughAllowance ? permitInfo : undefined,
-          generatePermitHook,
-          permitAmountToSign,
-          typedHooks,
-          orderParams: {
-            account,
-            chainId,
-            signer: provider.getUncheckedSigner(),
-            kind: orderKind,
-            inputAmount,
-            outputAmount,
-            bridgeOutputAmount,
-            sellAmountBeforeFee,
-            feeAmount: networkFee,
-            sellToken: sellToken as TokenWithLogo,
-            buyToken: buyToken as TokenWithLogo,
-            validTo,
-            recipient: recipientAddress || recipient || account,
-            recipientAddressOrName: recipient || null,
-            allowsOffchainSigning,
-            appData,
-            class: OrderClass.MARKET,
-            // Bridge orders are fill-or-kill (see useQuoteParams).
-            partiallyFillable: isHooksTradeType && inputAmount.currency.chainId === outputAmount.currency.chainId,
-            quoteId: tradeQuote.quoteResults.quoteResponse.id,
-            isSafeWallet,
-          },
-        }
+        marketLabel: [inputAmount.currency.symbol, outputAmount.currency.symbol].join(','),
+        orderType: uiOrderType,
+        isBridgeOrder: inputAmount.currency.chainId !== outputAmount.currency.chainId,
       },
-    ).data || null
-  )
+      contract: settlementContract,
+      permitInfo: !enoughAllowance ? permitInfo : undefined,
+      generatePermitHook,
+      permitAmountToSign,
+      typedHooks,
+      orderParams: {
+        account,
+        chainId: settlementChainId,
+        signer: provider.getUncheckedSigner(),
+        kind: orderKind,
+        inputAmount,
+        outputAmount,
+        bridgeOutputAmount,
+        sellAmountBeforeFee,
+        feeAmount: networkFee,
+        sellToken: sellToken as TokenWithLogo,
+        buyToken: buyToken as TokenWithLogo,
+        validTo,
+        recipient: recipientAddress || recipient || account,
+        recipientAddressOrName: recipient || null,
+        allowsOffchainSigning,
+        appData,
+        class: OrderClass.MARKET,
+        // Bridge orders are fill-or-kill (see useQuoteParams).
+        partiallyFillable: isHooksTradeType && inputAmount.currency.chainId === outputAmount.currency.chainId,
+        quoteId: quote.quoteResults.quoteResponse.id,
+        isSafeWallet,
+      },
+    }
+  }, [
+    ready,
+    account,
+    allowsOffchainSigning,
+    appData,
+    tradeQuote,
+    quote,
+    buyToken,
+    settlementChainId,
+    closeModals,
+    dispatch,
+    enoughAllowance,
+    generatePermitHook,
+    getCachedPermit,
+    permitAmountToSign,
+    inputAmount,
+    networkFee,
+    outputAmount,
+    permitInfo,
+    provider,
+    recipient,
+    recipientAddress,
+    sellAmountBeforeFee,
+    sellToken,
+    settlementContract,
+    tradeConfirmActions,
+    typedHooks,
+    validTo,
+    orderKind,
+    uiOrderType,
+    bridgeQuoteAmounts,
+    bridgeOutputAmount,
+    addBridgeOrder,
+    setSigningStep,
+    verifyRecipientName,
+    isHooksTradeType,
+    isSafeWallet,
+  ])
 }
