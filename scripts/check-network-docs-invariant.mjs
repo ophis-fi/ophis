@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { readFileSync, readdirSync } from 'node:fs';
 
 const read = (path) => readFileSync(new URL(`../${path}`, import.meta.url), 'utf8');
 const readJson = (path) => JSON.parse(read(path));
@@ -141,6 +141,35 @@ assert.match(partners, /0x78799F98276efba1EdeeD32eae03a3fd8Cdfec3A/, 'partner gu
 assert.match(partners, /buildOphisReferrerMetadata\(chainId === 5042 \? undefined : 'your-code', chainId\)/,
   'partner referral example must omit Arc attribution and pass chain context');
 assert.doesNotMatch(partners, /Arc is app-only|Arc is app-supported but not yet/, 'stale Arc SDK exclusion in partner guide');
+
+const landingSource = 'apps/frontend/apps/ophis-landing/src/';
+const publicSitePaths = [
+  ...readdirSync(new URL(`../${landingSource}`, import.meta.url), { recursive: true })
+    .filter((path) => /\.(?:astro|md|mdx)$/.test(path))
+    .map((path) => `${landingSource}${path}`),
+  'apps/frontend/apps/ophis-landing/public/apis.json',
+  'apps/frontend/apps/ophis-landing/public/llms.txt',
+  'apps/frontend/apps/ophis-landing/public/.well-known/ai-plugin.json',
+  'apps/frontend/apps/ophis-landing/public/.well-known/agent-skills/swap-via-ophis/SKILL.md',
+  'apps/frontend/apps/cowswap-frontend/public/llms.txt',
+  'apps/frontend/apps/cowswap-frontend/public/business/index.html',
+  'apps/frontend/apps/cowswap-frontend/src/pages/About/index.tsx',
+  'apps/frontend/apps/cowswap-frontend/src/ophis/components/OphisFooter.tsx',
+  'apps/frontend/apps/explorer/public/llms.txt',
+  'apps/frontend/apps/explorer/index.html',
+  'apps/mcp-server/README.md',
+  'README.md',
+];
+for (const path of publicSitePaths) {
+  const source = read(path);
+  // Dated blog posts can quote historical counts, as in the landing count gate.
+  if (!path.includes('/src/content/')) {
+    assert.doesNotMatch(source, /\b13 (?:supported )?EVM (?:chains|networks)\b|13 mainnets \+ Sepolia/, `${path}: stale network count`);
+  }
+  assert.doesNotMatch(source,
+    /(?:mappings (?:currently )?exclude Arc|supported chains excluding Arc|Arc \(5042\) is not\.|not in the published SDK\/MCP mappings|Arc[^.\n]*?(?:absent from|excluded from|not yet included in) published SDK\/MCP)/,
+    `${path}: stale Arc integration exclusion`);
+}
 
 assert.match(faq, /14 EVM chains/, 'FAQ must state the canonical 14-EVM-chain count');
 if (read('infra/arc-mainnet/release/render.py').includes('[fee-policies]\npolicies = []')) {

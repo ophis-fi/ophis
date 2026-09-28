@@ -29,7 +29,7 @@ const FAQS = [
   },
   {
     q: 'What do integrators pay, and what can they charge?',
-    a: `Published SDK/MCP integrations use the standard 1 bp base plus capped improvement policy on their supported chains, excluding Arc. Integrators can still charge an onboarded own-fee of up to 90 bps on top; Ophis's registered hosted configuration reserves a 190 bps aggregate ceiling. This is not a universal ceiling for every CoW widget or integration.`,
+    a: `SDK v0.4.3 and hosted MCP integrations charge a 1 bp base on supported chains, including Arc. Other chains also apply the standard capped improvement policy; Arc currently has no backend improvement capture. Integrators can still charge an onboarded own-fee of up to 90 bps on top; Ophis's registered hosted configuration reserves a 190 bps aggregate ceiling. This is not a universal ceiling for every CoW widget or integration.`,
   },
   {
     q: 'Are the APIs free?',
@@ -37,7 +37,7 @@ const FAQS = [
   },
   {
     q: 'Are there rebates?',
-    a: `Yes. Volume rebate tiers (10% to 50% by rolling 30-day volume) weight your share of a monthly WETH rebate pool, and a referral layer pays 8% or 12% of the verified base fee Ophis keeps, monthly in WETH, on-chain.`,
+    a: `On indexed chains, volume rebate tiers (10% to 50% by rolling 30-day volume) weight your share of a monthly WETH rebate pool, and a referral layer pays 8% or 12% of the verified base fee Ophis keeps, monthly in WETH, on-chain. Arc is not indexed and earns neither rebate; omit referral codes from Arc SDK/MCP orders.`,
   },
 ]
 ---

@@ -2,7 +2,7 @@
 title: "How to swap on Unichain: gasless and MEV-protected"
 description: "Step-by-step guide to swapping on Unichain with Ophis: connect a wallet, sign an EIP-712 order, and settle it in a MEV-protected batch."
 pubDate: 2026-07-14
-updatedDate: 2026-09-27
+updatedDate: 2026-09-28
 author: Ophis
 tags: [unichain, swaps, mev, defi, how-to]
 draft: false
@@ -50,7 +50,7 @@ Trade enough and part of it comes back. Rebate tiers run on rolling 30-day volum
 
 ## Swapping on Unichain from an AI agent
 
-The same rails are exposed to agents. Ophis runs a remote MCP server at [`https://mcp.ophis.fi/mcp`](https://mcp.ophis.fi/mcp), keyless and unauthenticated, with fourteen tools covering the published SDK/MCP chain set, including Unichain but excluding Arc. `list_chains` resolves Unichain's orderbook host and settlement domain (the sovereign-deployment detail above, handled for you). `get_quote` and `build_order` prepare a bounded order with the receiver pinned to the owner, `validate_order` checks it, and `submit_order` relays the signature. The server never holds keys and never signs; the agent signs locally with its own key.
+The same rails are exposed to agents. Ophis runs a remote MCP server at [`https://mcp.ophis.fi/mcp`](https://mcp.ophis.fi/mcp), keyless and unauthenticated, with fourteen tools covering 14 EVM chains, including Unichain and Arc. `list_chains` resolves Unichain's orderbook host and settlement domain (the sovereign-deployment detail above, handled for you). `get_quote` and `build_order` prepare a bounded order with the receiver pinned to the owner, `validate_order` checks it, and `submit_order` relays the signature. The server never holds keys and never signs; the agent signs locally with its own key.
 
 For the full safety model (bounded orders, pinned receivers, and what to lock down before an agent signs unattended), read [how to let an AI agent swap tokens](/blog/let-an-ai-agent-swap-tokens/) and the [AI agent docs](https://docs.ophis.fi/ai-agents).
 
@@ -70,7 +70,7 @@ Yes. A 1 bp base plus 80% of reference-quote improvement on volatile pairs (99 b
 
 ### Can AI agents swap on Unichain?
 
-Yes. The Ophis MCP server covers Unichain along with the other published SDK/MCP chains (not Arc), resolves the sovereign orderbook and settlement domain via `list_chains`, and returns bounded orders that the agent signs with its own key. Ophis never holds keys.
+Yes. The Ophis MCP server covers Unichain along with the other supported chains, including Arc, resolves the sovereign orderbook and settlement domain via `list_chains`, and returns bounded orders that the agent signs with its own key. Ophis never holds keys.
 
 ## Start swapping
 

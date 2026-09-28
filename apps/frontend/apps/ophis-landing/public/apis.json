@@ -6,7 +6,7 @@
   "image": "https://ophis.fi/favicon.ico",
   "url": "https://ophis.fi/apis.json",
   "created": "2026-06-18",
-  "modified": "2026-06-18",
+  "modified": "2026-09-28",
   "specificationVersion": "0.18",
   "tags": ["DeFi", "DEX", "DEX aggregator", "swap", "intent", "MCP", "AI agents", "web3", "Ethereum"],
   "apis": [
@@ -28,7 +28,7 @@
     {
       "aid": "fi.ophis:mcp",
       "name": "Ophis MCP Server",
-      "description": "Keyless Model Context Protocol server (Streamable-HTTP) exposing fourteen tools (parse_intent, resolve_token, get_quote, build_order, submit_order, lookup_tier, get_integrator_earnings, list_chains, get_balances, get_portfolio, get_gas, get_token_chart, expected_surplus, validate_order) so AI agents can quote, validate, and build non-custodial, gasless, MEV-protected swaps across 13 EVM chains, including Robinhood Chain. The server holds no keys and never signs.",
+      "description": "Keyless Model Context Protocol server (Streamable-HTTP) exposing fourteen tools (parse_intent, resolve_token, get_quote, build_order, submit_order, lookup_tier, get_integrator_earnings, list_chains, get_balances, get_portfolio, get_gas, get_token_chart, expected_surplus, validate_order) so AI agents can quote, validate, and build non-custodial, gasless, MEV-protected swaps across 14 EVM chains, including Robinhood Chain and Arc. Arc currently charges a 1 bp volume fee and earns no referral or volume-tier rebates. The server holds no keys and never signs.",
       "humanURL": "https://docs.ophis.fi/ai-agents",
       "baseURL": "https://mcp.ophis.fi/mcp",
       "image": "https://ophis.fi/favicon.ico",

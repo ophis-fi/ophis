@@ -26,11 +26,11 @@ const faqs: { q: string; a: string }[] = [
   },
   {
     q: 'Which chains does Ophis support?',
-    a: `The app covers ${EVM_CHAIN_COUNT} EVM chains, with ${sovereignList} as its operated networks. Published SDK/MCP chain lists exclude Arc. NEAR Intents adds ${destinationList} destinations where source, pair and provider support permit.`,
+    a: `The app covers ${EVM_CHAIN_COUNT} EVM chains, with ${sovereignList} as its operated networks. SDK v0.4.3 and the hosted MCP server include Arc. NEAR Intents adds ${destinationList} destinations where source, pair and provider support permit.`,
   },
   {
     q: 'How is Ophis different from CoW Swap?',
-    a: 'Ophis is a CoW Protocol fork with its own operated deployments, a public MCP server, Intent API and agent-safety SDK. Agents must resolve the supported per-chain settlement domain through the SDK or MCP before signing. Arc is app-supported but is not yet included in published SDK/MCP mappings.',
+    a: 'Ophis is a CoW Protocol fork with its own operated deployments, a public MCP server, Intent API and agent-safety SDK. Agents must resolve the supported per-chain settlement domain through the SDK or MCP before signing. SDK v0.4.3 and the hosted MCP server include Arc with its own orderbook and signing domain.',
   },
   {
     q: 'Is MEV protection guaranteed?',

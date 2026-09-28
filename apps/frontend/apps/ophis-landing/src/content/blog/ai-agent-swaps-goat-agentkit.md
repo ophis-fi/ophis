@@ -2,7 +2,7 @@
 title: "AI agent token swaps with GOAT or Coinbase AgentKit"
 description: "Wire a swap tool into a GOAT SDK or Coinbase AgentKit agent with Ophis: bounded orders, pinned receiver, capped slippage, gasless MEV-protected settlement."
 pubDate: 2026-07-12
-updatedDate: 2026-09-27
+updatedDate: 2026-09-28
 author: Ophis
 tags: [ai-agents, goat, agentkit, mev, swaps]
 draft: false
@@ -128,7 +128,7 @@ Both snippets pass a `referralCode`. Every order carries the Ophis partner fee p
 
 ## Not writing TypeScript? Use the MCP server
 
-If the agent is not TypeScript (an MCP-native setup, a Python loop, anything that speaks HTTP), point it at the hosted MCP server at [mcp.ophis.fi/mcp](https://mcp.ophis.fi/mcp): keyless, unauthenticated, all 13 supported chains, fourteen tools from `parse_intent` through `validate_order` and `submit_order`, and the same rule that the agent signs locally with its own key. The [first post](/blog/let-an-ai-agent-swap-tokens/) walks through it.
+If the agent is not TypeScript (an MCP-native setup, a Python loop, anything that speaks HTTP), point it at the hosted MCP server at [mcp.ophis.fi/mcp](https://mcp.ophis.fi/mcp): keyless, unauthenticated, all 14 supported EVM chains including Arc, fourteen tools from `parse_intent` through `validate_order` and `submit_order`, and the same rule that the agent signs locally with its own key. For Arc orders, omit referral codes: Arc is not indexed for rebates. The [first post](/blog/let-an-ai-agent-swap-tokens/) walks through it.
 
 ## FAQ
 

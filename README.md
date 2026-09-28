@@ -32,7 +32,7 @@ Say `swap 100 USDC for ETH on Base` and Ophis resolves the tokens, chain, and
 amount, then fills the order through a competitive solver auction that settles
 on-chain. It is a fork of [CoW Protocol](https://cow.fi) (orderbook, autopilot,
 driver, and baseline solver) with a natural-language intent layer over a
-rebranded CoW Swap UI. On Optimism, Ophis runs the whole stack under its own
+rebranded CoW Swap UI. On Optimism, Unichain, Robinhood Chain, and Arc, Ophis runs the whole stack under its own
 settlement contracts and keeps the full fee; on the other supported chains
 (Ethereum, Base, Arbitrum, and more) it routes through CoW Protocol's hosted
 network.
@@ -42,17 +42,17 @@ What that buys you on every trade:
 - **Gasless, MEV-protected.** Orders settle in a batch auction where every trade
   clears at one uniform price, so sandwiches and front-running are structurally
   absent, not best-effort.
-- **Solver-aligned pricing.** On every supported chain the base fee is 1 bp and
-  Ophis earns primarily when execution beats its reference quote: 80% of
+- **Solver-aligned pricing.** On every supported chain the base fee is 1 bp. Except on Arc,
+  Ophis also earns when execution beats its reference quote: 80% of
   improvement on volatile pairs (99 bps cap), or 50% on stable pairs (20 bps
   cap). Hosted chains encode that policy in CIP-75 appData and separately pay
-  CoW Protocol's upstream fees.
+  CoW Protocol's upstream fees. Arc currently charges only the 1 bp base.
 - **Non-custodial, no account, no auth.** Every order is signed in your own
   wallet (EIP-712 or ERC-1271). Ophis never holds keys or funds and cannot move,
   freeze, or recover them. The signature is the only trust boundary.
 - **Transparent, capped fees.** A 0.01% (1 bp) base plus the capped improvement
-  policy above, with a share returned monthly as WETH rebates plus an 8%
-  referral on trades you bring.
+  policy above where configured, with a share returned monthly as WETH rebates plus an 8%
+  referral on indexed chains, excluding Arc.
 
 **Live across 14 EVM chains**, with Ophis-operated settlement on Optimism
 (chain 10), Unichain (130), Robinhood Chain (4663), and Arc (5042), plus CoW-hosted
@@ -260,10 +260,10 @@ Every surface deploys independently from `main`:
 - **Docs** [`docs-deploy.yml`](.github/workflows/docs-deploy.yml): the Docusaurus site to its own Cloudflare Pages project.
 - **MCP server** [`mcp-deploy.yml`](.github/workflows/mcp-deploy.yml): to Cloudflare Workers (custom domain `mcp.ophis.fi`) with a least-privilege Workers token; [`mcp-registry-release.yml`](.github/workflows/mcp-registry-release.yml) publishes matching versioned metadata to the official MCP Registry from protected `mcp-v*` tags.
 - **Rebate indexer** [`rebate-indexer-deploy.yml`](.github/workflows/rebate-indexer-deploy.yml): to self-hosted infrastructure over a private network.
-- **Operated-chain backends**: the Optimism, Unichain, and Robinhood Chain
+- **Operated-chain backends**: the Optimism, Unichain, Robinhood Chain, and Arc
   orderbooks, autopilots, drivers, and solver lanes run on Ophis infrastructure
-  from `infra/optimism-mainnet/`, `infra/unichain-mainnet/`, and
-  `infra/robinhood-mainnet/`. They are not deployed by a GitHub workflow.
+  from `infra/optimism-mainnet/`, `infra/unichain-mainnet/`,
+  `infra/robinhood-mainnet/`, and `infra/arc-mainnet/`. They are not deployed by a GitHub workflow.
 
 Quality gates: [`ci.yml`](.github/workflows/ci.yml) (lint, typecheck, tests),
 [`codeql.yml`](.github/workflows/codeql.yml),
@@ -275,13 +275,13 @@ All package and MCP publishing controls are documented in the
 
 ## Fees and rebates
 
-On every supported chain, Ophis charges a **0.01% (1 bp)** base plus a capped
+On every supported chain, Ophis charges a **0.01% (1 bp)** base. Except on Arc, it also charges a capped
 share of reference-quote improvement: **80% capped at 99 bps** for volatile
-pairs and **50% capped at 20 bps** for stable pairs. Operated-chain backends
+pairs and **50% capped at 20 bps** for stable pairs. Arc currently has no backend improvement capture. The other operated-chain backends
 apply the improvement policy; hosted orders encode it in CIP-75 appData and
 separately pay CoW Protocol's upstream fees.
 
-Part of the fee flows back to traders:
+On indexed chains, excluding Arc, part of the fee flows back to traders:
 
 - **Volume-tier rebates.** Each month a share of collected WETH fees is paid back,
   split across active wallets by 30-day volume and tier (Bronze through Platinum).

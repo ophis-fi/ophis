@@ -7,8 +7,8 @@ license: MIT
 # Swap via Ophis
 
 Ophis is an intent-based DEX aggregator built on CoW Protocol. The swap app
-supports 14 EVM chains including Arc; published SDK/MCP mappings cover 13 and
-exclude Arc. Supported NEAR routes add Solana, Bitcoin, Monad, Hyperliquid,
+supports 14 EVM chains including Arc; `@ophis/sdk` v0.4.3 or later and the MCP
+server cover the same 14 mainnets, plus Sepolia for testing. Supported NEAR routes add Solana, Bitcoin, Monad, Hyperliquid,
 X Layer, Sui and Tron destinations. This MCP workflow describes same-chain
 signed ERC-20 orders, not every bridge flow. Batch auctions mitigate common MEV;
 they do not eliminate every execution risk. Signing happens in the user's wallet.
@@ -54,8 +54,9 @@ backends add improvement capture; hosted orders encode it in appData alongside
 the base, and CoW Protocol's own fees apply upstream. Use
 `buildOphisAppDataPartnerFee(chainId, isStablePair)` rather than a volume-only
 hosted entry. Approvals and other wallet transactions require gas. Details:
-https://docs.ophis.fi/fees. A share of fees is returned
-monthly to active wallets as volume-tier rebates. The `@ophis/sdk` npm package exposes
+https://docs.ophis.fi/fees. Arc currently charges only the 1 bp base and is not
+indexed for rebates or referral rewards; omit referral codes for Arc orders.
+On indexed chains, a share of fees is returned monthly to active wallets as volume-tier rebates. The `@ophis/sdk` npm package exposes
 `buildOphisAppDataPartnerFee`, `OPHIS_VOLUME_FEE_BPS`,
 `OPHIS_STABLE_VOLUME_FEE_BPS`, and
 `ophisVolumeBpsForChainAndPair(chainId, isStablePair)`.
@@ -67,7 +68,9 @@ monthly to active wallets as volume-tier rebates. The `@ophis/sdk` npm package e
 - The settlement contract on Optimism is Ophis's own GPv2Settlement at
   `0x310784c7FCE12d578dA6f53460777bAc9718B859`, and on Unichain it is
   `0x108A678716e5E1776036eF044CAB7064226F714E` (NOT CoW's canonical address).
+  Robinhood Chain and Arc also use non-canonical settlement contracts.
   Always resolve the per-chain settlement domain via `list_chains` or the SDK.
+  Arc has no supported EthFlow deployment; use ERC-20 token addresses.
 - Ophis intentionally does not implement HTTP-native payment automation; the
   user's wallet signature is the trust boundary.
 

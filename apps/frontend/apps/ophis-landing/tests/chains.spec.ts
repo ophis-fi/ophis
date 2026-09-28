@@ -68,10 +68,10 @@ test('FAQ and machine-readable summaries match the supported destinations', asyn
   const plugin = await (await page.request.get('/.well-known/ai-plugin.json')).json()
   expect(plugin.description_for_model).toContain('excluding the current Arc release exception')
   expect(await (await page.request.get('/.well-known/agent-skills/swap-via-ophis/SKILL.md')).text()).toContain('Outside the current Arc release exception')
-  expect(software.description).toContain('published SDK and MCP chain mappings exclude Arc')
-  expect(howTo.description).toContain('excluding Arc')
+  expect(software.description).toContain('SDK v0.4.3 and hosted MCP server include Arc')
+  expect(howTo.description).toContain('including Arc with SDK v0.4.3')
   expect(howTo.step[0].text).toContain('npm i @ophis/sdk @cowprotocol/cow-sdk')
-  expect(howTo.step[1].text).toContain('Arc (5042) is not')
+  expect(howTo.step[1].text).toContain('Use SDK v0.4.3 or later for Arc (5042)')
   expect(llms).toContain('Arc release exception')
   expect(llms).toContain('Standard ERC-20 orders')
   for (const name of EXPECTED_CHAINS.slice(14)) {

@@ -22,7 +22,7 @@ const FAQS = [
   },
   {
     q: 'Why must an agent resolve the settlement domain per chain?',
-    a: `On ${sovereignList}, settlement uses Ophis's own GPv2Settlement at a non-canonical address. An EIP-712 signature binds to its verifying contract. Resolve supported domains and hosts via @ophis/sdk or MCP list_chains before signing. Arc is available in the app but is not yet included in published SDK/MCP mappings; do not substitute another chain's domain.`,
+    a: `On ${sovereignList}, settlement uses Ophis's own GPv2Settlement at a non-canonical address. An EIP-712 signature binds to its verifying contract. Resolve supported domains and hosts via @ophis/sdk or MCP list_chains before signing. SDK v0.4.3 and hosted MCP include Arc (5042); do not substitute another chain's domain.`,
   },
   {
     q: 'What does the Ophis MCP server do, and what does it never do?',

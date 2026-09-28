@@ -413,8 +413,8 @@ nothing for the end user to sign or opt into.
    the adapters pick it up automatically.
 
 Arc is excluded from rebate indexing; SDK v0.4.3 and MCP reject nonempty Arc
-referral codes. Omit the code for Arc (or pass an empty code to override an MCP
-server default). The code is **optional**: without one your agent still swaps
+referral codes. Omit the code for Arc; MCP also skips its configured server
+default on Arc. The code is **optional**: without one your agent still swaps
 normally, it just earns no rebate. You can ship first and add the code later.
 
 ## Submitting orders programmatically

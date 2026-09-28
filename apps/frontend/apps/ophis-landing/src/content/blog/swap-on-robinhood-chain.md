@@ -2,7 +2,7 @@
 title: "Ophis on Robinhood Chain: gasless, MEV-protected Stock Token swaps"
 description: "Ophis runs a sovereign deployment on Robinhood Chain (chain 4663): its own GPv2Settlement, orderbook, and solver lanes, with chain-aware pricing."
 pubDate: 2026-07-31
-updatedDate: 2026-09-27
+updatedDate: 2026-09-28
 author: Ophis
 tags: [robinhood-chain, stock-tokens, dex-aggregator, mev, swaps]
 draft: false
@@ -132,7 +132,7 @@ Rebates are paid monthly in WETH from the fee Safe, out of a pool of 21.25% of c
 
 The chain is wired through the whole Ophis stack, not just the app: the frontend, the SDK, the MCP server, the compatibility API, and the Safe app all carry checked Robinhood contract mappings.
 
-- **MCP server.** [`https://mcp.ophis.fi/mcp`](https://mcp.ophis.fi/mcp) is keyless and unauthenticated, with fourteen tools covering published SDK/MCP chains, including Robinhood but not Arc. `list_chains` resolves the Robinhood orderbook host and settlement domain, `build_order` returns a bounded order with the receiver pinned to the owner, and the server never holds keys and never signs. The [agent walkthrough](/blog/let-an-ai-agent-swap-tokens/) covers the safety model.
+- **MCP server.** [`https://mcp.ophis.fi/mcp`](https://mcp.ophis.fi/mcp) is keyless and unauthenticated, with fourteen tools covering 14 EVM chains, including Robinhood and Arc. `list_chains` resolves the Robinhood orderbook host and settlement domain, `build_order` returns a bounded order with the receiver pinned to the owner, and the server never holds keys and never signs. The [agent walkthrough](/blog/let-an-ai-agent-swap-tokens/) covers the safety model.
 - **SDK.** `@ophis/sdk` resolves the orderbook URL, the EIP-712 signing domain, the vault relayer, and the EthFlow address per chain. On a sovereign chain that is the difference between an order that verifies and one that does not.
 - **Widget.** `@ophis/widget-react` embeds the swap form directly. See the [widget docs](https://docs.ophis.fi/widget).
 - **Affiliate.** Mint a referral code and earn 8% of the verified base fee Ophis keeps on trades your referred wallets route, paid monthly in WETH. Details in the [affiliate docs](https://docs.ophis.fi/affiliate).

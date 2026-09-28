@@ -2,7 +2,7 @@
 title: "MEV-protected swaps: how batch auctions mitigate sandwich attacks"
 description: "Offchain orders and uniform clearing prices mitigate common MEV. Understand signed limits, public settlement exposure and the limits of batch-auction protection."
 pubDate: 2026-07-09
-updatedDate: 2026-09-27
+updatedDate: 2026-09-28
 author: Ophis
 tags: [mev, batch-auctions, swaps, defi]
 draft: false
@@ -147,8 +147,8 @@ still require gas. See the [docs FAQ](https://docs.ophis.fi/faq).
 
 ### Which chains support it?
 
-The app supports 14 EVM chains, including Arc. Published SDK/MCP mappings cover
-13 and exclude Arc. Venue liquidity, bridge coverage and wallet requirements
+The app supports 14 EVM chains, including Arc. SDK v0.4.3 and hosted MCP mappings also cover
+all 14 chains. Venue liquidity, bridge coverage and wallet requirements
 vary; see the [current network matrix](https://docs.ophis.fi/networks-assets).
 
 ## Sign an intent instead

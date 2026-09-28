@@ -2,7 +2,7 @@
 title: "Gasless token swaps: how intent-based trading removes gas"
 description: "Sign an off-chain EIP-712 order and a solver executes it on-chain, paying the gas. The fee comes out of the trade itself, so you can swap with zero ETH."
 pubDate: 2026-07-10
-updatedDate: 2026-09-27
+updatedDate: 2026-09-28
 author: Ophis
 tags: [gasless, swaps, intents, defi]
 draft: false
@@ -98,7 +98,7 @@ not all wallet operations. Keep gas available for approvals and other required t
 
 **Multichain traders.** The Ophis app supports 14 chains: Ethereum, Optimism, BNB,
 Gnosis, Unichain, Robinhood Chain, Polygon, Base, Plasma, Arbitrum, Avalanche,
-Ink, Linea, and Arc. Published SDK/MCP mappings exclude Arc.
+Ink, Linea, and Arc. SDK v0.4.3 and the hosted MCP server also include Arc.
 They do not all share one gas token. Pre-funding a native balance on every
 chain you might trade on is dead capital and real friction; signed orders
 remove settlement-gas payment by the trader, not approval or other transaction gas.

@@ -215,8 +215,9 @@ export default function AboutPage(): ReactNode {
           <Accordion summary="Can I use Ophis from my own app?">
             <p>
               Yes. The natural-language intent parser is publicly available at <InlineCode>POST /api/intent</InlineCode>{' '}
-              with a 30 req/min/IP rate limit. No auth, no key. The published SDK and parser cover 13 EVM networks; Arc
-              is not included. See <TextLink href="https://docs.ophis.fi/">the docs</TextLink> for the full reference.
+              with a 30 req/min/IP rate limit. No auth, no key. The parser, MCP server, and SDK v0.4.3 or later cover 14
+              EVM mainnets, including Arc. Arc currently charges the 1 bp base and is not indexed for rebates or
+              referral rewards. See <TextLink href="https://docs.ophis.fi/">the docs</TextLink> for the full reference.
             </p>
           </Accordion>
         </AccordionGroup>

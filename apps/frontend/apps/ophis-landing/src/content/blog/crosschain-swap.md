@@ -5,7 +5,7 @@ slug: "crosschain-swap"
 primaryKeyword: "crosschain swap"
 author: "Ophis"
 pubDate: 2026-09-06
-updatedDate: 2026-09-27
+updatedDate: 2026-09-28
 tags: [crosschain-swap, cross-chain, swaps, bridging]
 draft: false
 cover: ./crosschain-swap.cover.webp
@@ -60,7 +60,7 @@ Using several networks can leave you with small balances in different places. Mo
 
 Ophis connects its swap experience to cross-chain providers including Across, NEAR Intents and configured Circle routes. The app requests supported routes so you can review the outcome without arranging every step in a separate service.
 
-The app covers 14 EVM blockchains, including Arc. Published SDK/MCP mappings cover 13 and exclude Arc. NEAR routes add Bitcoin, Solana, Monad, Hyperliquid, X Layer, Sui and Tron destinations where source, asset and provider support permit. See the [Ophis supported-chain list](https://ophis.fi/supported-chains/).
+The app covers 14 EVM blockchains, including Arc. SDK v0.4.3 and the hosted MCP server also cover these chains for ERC-20 orders. NEAR routes add Bitcoin, Solana, Monad, Hyperliquid, X Layer, Sui and Tron destinations where source, asset and provider support permit. See the [Ophis supported-chain list](https://ophis.fi/supported-chains/).
 
 Arc has direct Circle routes for configured assets and a separate Ethereum WBTC → Ethereum cirBTC → Arc cirBTC conversion flow. This is not a native Bitcoin bridge or a single atomic swap. Exact-input, same-wallet EOA restrictions and recovery details are in [Networks & assets](https://docs.ophis.fi/networks-assets).
 
