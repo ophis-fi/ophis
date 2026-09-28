@@ -1,4 +1,4 @@
-import { AdditionalTargetChainId, OrderKind } from '@cowprotocol/cow-sdk'
+import { AdditionalTargetChainId, OrderKind, PriceQuality } from '@cowprotocol/cow-sdk'
 import { Currency, CurrencyAmount, Percent } from '@cowprotocol/currency'
 
 import { TradeType } from 'modules/trade/types/TradeType'
@@ -57,6 +57,33 @@ describe('validateTradeForm - xStock logic', () => {
     isInputCurrencyXstock: false,
     isOutputCurrencyXstock: false,
   }
+
+  test.each([false, true])('an expired quote stays blocked while refreshing: %s', (isLoading) => {
+    const now = Math.ceil(Date.now() / 1000)
+    const context = {
+      ...baseContext,
+      tradeQuote: {
+        isLoading,
+        localQuoteTimestamp: now,
+        fetchParams: { priceQuality: PriceQuality.OPTIMAL },
+        quote: {
+          quoteResults: {
+            tradeParameters: { validFor: 1800 },
+            quoteResponse: { expiration: new Date((now - 5) * 1000).toISOString(), quote: { validTo: now + 1800 } },
+          },
+        },
+      },
+    } as TradeFormValidationContext
+    expect(validateTradeForm(context)).toContain(TradeFormValidation.QuoteExpired)
+  })
+
+  test.each([false, true])('only a changed-input refresh blocks a current same-chain quote: %s', (hasParamsChanged) => {
+    const context = {
+      ...baseContext,
+      tradeQuote: { isLoading: true, hasParamsChanged, quote: {} },
+    } as TradeFormValidationContext
+    expect(validateTradeForm(context)?.includes(TradeFormValidation.QuoteLoading)).toBe(hasParamsChanged)
+  })
 
   test('shows xStock minimum trade size for sell orders when xStock sell amount is below $10', () => {
     const context = {

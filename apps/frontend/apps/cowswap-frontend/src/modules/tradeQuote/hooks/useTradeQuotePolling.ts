@@ -54,21 +54,19 @@ export function useTradeQuotePolling(quotePollingParams: TradeQuotePollingParame
   pollQuoteRef.current = pollQuote
 
   /**
-   * Reset quote when window is not visible or sell amount has been cleared
+   * Clear the quote when the amount is cleared, not when the user opens their wallet.
    */
   useLayoutEffect(() => {
     // Do not reset the quote if the confirm modal is open
     // Because we already have a quote and don't want to reset it
     if (isConfirmOpen || !tradeQuoteManager) return
 
-    if (!isWindowVisible || !document.hasFocus() || !amountStr) {
+    if (!amountStr) {
       tradeQuoteManager.reset()
-      if (!amountStr) {
-        tradeQuoteManager.resetTracking()
-      }
+      tradeQuoteManager.resetTracking()
       setTradeQuotePolling(0)
     }
-  }, [isWindowVisible, tradeQuoteManager, isConfirmOpen, amountStr, setTradeQuotePolling])
+  }, [tradeQuoteManager, isConfirmOpen, amountStr, setTradeQuotePolling])
 
   /**
    * Fetch the quote instantly once the quote params are changed
@@ -132,7 +130,10 @@ export function useTradeQuotePolling(quotePollingParams: TradeQuotePollingParame
    */
   useLayoutEffect(() => {
     function revalidateQuoteIfExpired(): void {
-      if (isQuoteExpired(tradeQuote)) {
+      // A frozen confirmation quote may remain expired after failure; use the normal retry interval.
+      if (isConfirmOpen && tradeQuote.error) return
+      if (tradeQuote.quote === tradeQuoteRef.current.quote && isQuoteExpired(tradeQuote)) {
+        if (!isConfirmOpen) tradeQuoteManager?.expire()
         setTradeQuotePolling(0)
       }
     }
@@ -144,7 +145,7 @@ export function useTradeQuotePolling(quotePollingParams: TradeQuotePollingParame
     return () => {
       clearInterval(interval)
     }
-  }, [tradeQuote, setTradeQuotePolling])
+  }, [tradeQuote, setTradeQuotePolling, tradeQuoteManager, isConfirmOpen])
 
   return null
 }

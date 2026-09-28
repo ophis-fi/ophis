@@ -65,7 +65,12 @@ export const updateTradeQuoteAtom = atom(
         ...prevQuote,
         ...nextState,
         quote: typeof nextState.quote === 'undefined' ? prevQuote.quote : nextState.quote,
-        localQuoteTimestamp: nextState.quote ? Math.ceil(Date.now() / 1000) : null,
+        localQuoteTimestamp:
+          nextState.quote === undefined
+            ? prevQuote.localQuoteTimestamp
+            : nextState.quote
+              ? Math.ceil(Date.now() / 1000)
+              : null,
       }
 
       return {

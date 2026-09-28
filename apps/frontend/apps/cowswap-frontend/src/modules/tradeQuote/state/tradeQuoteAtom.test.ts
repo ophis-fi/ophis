@@ -8,7 +8,15 @@ import { derivedTradeStateAtom } from 'modules/trade/state/derivedTradeStateAtom
 import { shouldHideQuoteAmountsAtom } from 'modules/trade/state/shouldHideQuoteAmounts.atom'
 import type { TradeDerivedState } from 'modules/trade/types'
 
-import { currentTradeQuoteAtom, DEFAULT_TRADE_QUOTE_STATE, tradeQuotesAtom, TradeQuoteState } from './tradeQuoteAtom'
+import {
+  currentTradeQuoteAtom,
+  DEFAULT_TRADE_QUOTE_STATE,
+  tradeQuotesAtom,
+  TradeQuoteState,
+  updateTradeQuoteAtom,
+} from './tradeQuoteAtom'
+
+import { isQuoteExpired } from '../utils/quoteDeadline'
 
 jest.mock('modules/trade/state/derivedTradeStateAtom', () => ({
   derivedTradeStateAtom: jest.requireActual<typeof import('jotai')>('jotai').atom(null),
@@ -16,7 +24,10 @@ jest.mock('modules/trade/state/derivedTradeStateAtom', () => ({
 jest.mock('entities/common/isProviderNetworkDeprecated.atom', () => ({
   isProviderNetworkDeprecatedAtom: jest.requireActual<typeof import('jotai')>('jotai').atom(false),
 }))
-jest.mock('modules/tradeQuote', () => jest.requireActual('./tradeQuoteAtom'))
+jest.mock('modules/tradeQuote', () => ({
+  ...jest.requireActual('./tradeQuoteAtom'),
+  ...jest.requireActual('../utils/quoteDeadline'),
+}))
 
 const EVM_TOKEN = new Token(1, '0x1234567890123456789012345678901234567890', 6)
 const SOL_TOKEN = new Token(AdditionalTargetChainId.SOLANA, 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v', 6)
@@ -35,6 +46,50 @@ const QUOTE: TradeQuoteState = {
     },
   },
 } as TradeQuoteState
+
+function freshQuote(): TradeQuoteState {
+  const now = Math.ceil(Date.now() / 1000)
+  return {
+    ...DEFAULT_TRADE_QUOTE_STATE,
+    localQuoteTimestamp: now,
+    quote: {
+      quoteResults: {
+        tradeParameters: { validFor: 1800 },
+        quoteResponse: { expiration: new Date((now + 60) * 1000).toISOString(), quote: { validTo: now + 1800 } },
+      },
+    },
+  } as TradeQuoteState
+}
+
+it('retains quote age when a refresh starts or fails, and clears it only with the quote', () => {
+  const quote = freshQuote()
+  const store = setup({ outputCurrency: EVM_TOKEN }, quote)
+  store.set(updateTradeQuoteAtom, EVM_TOKEN.address, { isLoading: true })
+  expect(store.get(currentTradeQuoteAtom).localQuoteTimestamp).toBe(quote.localQuoteTimestamp)
+  expect(isQuoteExpired(store.get(currentTradeQuoteAtom))).toBe(false)
+  store.set(updateTradeQuoteAtom, EVM_TOKEN.address, { isLoading: false })
+  expect(store.get(currentTradeQuoteAtom).localQuoteTimestamp).toBe(quote.localQuoteTimestamp)
+  store.set(updateTradeQuoteAtom, EVM_TOKEN.address, { quote: null })
+  expect(store.get(currentTradeQuoteAtom).localQuoteTimestamp).toBeNull()
+})
+
+it.each(['changed', 'unknownAge', 'bridge'])(
+  'does not display stale or unverifiable amounts during a %s refresh',
+  (reason) => {
+    const quote = freshQuote()
+    const store = setup(
+      { outputCurrency: EVM_TOKEN },
+      {
+        ...quote,
+        isLoading: true,
+        hasParamsChanged: reason === 'changed',
+        localQuoteTimestamp: reason === 'unknownAge' ? null : quote.localQuoteTimestamp,
+        bridgeQuote: reason === 'bridge' ? QUOTE.bridgeQuote : null,
+      },
+    )
+    expect(store.get(shouldHideQuoteAmountsAtom)).toBe(true)
+  },
+)
 
 function setup(state: Partial<TradeDerivedState> = {}, quote: TradeQuoteState = QUOTE): ReturnType<typeof createStore> {
   const store = createStore()

@@ -19,6 +19,8 @@ export interface TradeQuoteManager {
 
   reset(): void
 
+  expire(): void
+
   resetTracking(): void
 
   onError(
@@ -121,6 +123,8 @@ export function useTradeQuoteManager(sellTokenAddress: SellTokenAddress | undefi
     return {
       setLoading,
       reset,
+      // Keep the pending request eligible to replace this expired quote.
+      expire: () => update(sellTokenAddress, { quote: null, bridgeQuote: null, isBridgeQuote: null }),
       resetTracking,
       onError,
       onResponse,
