@@ -47,9 +47,18 @@ describe('buildOphisOrderMetadata', () => {
     ]);
   });
 
-  it.each([10, 130, 4663, 5042])('uses the 1 bp sovereign base on chain %i', (chainId) => {
+  it.each([10, 130, 4663])('uses the 1 bp sovereign base on chain %i', (chainId) => {
     const { metadata } = buildOphisOrderMetadata({ chainId, referralCode: 'yourcode' });
     expect(metadata.partnerFee).toEqual({ recipient: OPHIS_PARTNER_FEE_RECIPIENT, volumeBps: 1 });
+  });
+
+  it('keeps Arc fee-bearing without promising unindexed referral rewards', () => {
+    expect(isOphisFeeChain(5042)).toBe(true);
+    const { metadata } = buildOphisOrderMetadata({ chainId: 5042 });
+    expect(metadata.partnerFee).toEqual({ recipient: OPHIS_PARTNER_FEE_RECIPIENT, volumeBps: 1 });
+    expect(metadata.ophisReferrer).toBeUndefined();
+    expect(() => buildOphisOrderMetadata({ chainId: 5042, referralCode: 'yourcode' }))
+      .toThrow(/Arc \(5042\) referral rewards are not supported/);
   });
 
   it('tags the referral code (normalized) so the rebate accrues', () => {

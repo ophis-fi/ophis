@@ -1059,7 +1059,7 @@ export interface PortfolioResult {
   chains: Array<BalancesResult | { chainId: number; error: string }>
 }
 
-const MAX_PORTFOLIO_CHAINS = 12
+export const MAX_PORTFOLIO_CHAINS = Object.keys(PUBLIC_RPCS).length
 
 // Hard cap on the TOTAL ERC-20 token reads fanned out across all chains in one
 // call. Each chain already costs a native-balance read plus one multicall, so the

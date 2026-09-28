@@ -7,7 +7,7 @@ sidebar_label: Networks & assets
 
 # Networks, bridges & assets
 
-Reviewed September 27, 2026. A listed network or token is not a promise that
+Reviewed September 28, 2026. A listed network or token is not a promise that
 every pair has liquidity, that every wallet is eligible, or that a route will settle.
 Check the live quote and the signing request.
 
@@ -16,14 +16,18 @@ Check the live quote and the signing request.
 | Surface | Current scope |
 | --- | --- |
 | Swap app | 14 EVM networks, including Arc (5042); see [Getting started](./getting-started.md#supported-networks) |
-| Published SDK, MCP and vault-order builder | 13 EVM networks; Arc is not yet included in their chain/domain helpers |
-| Intent parser | 13 chain slugs, including `robinhood`, not `arc`; parsing does not verify a token contract or quote |
+| SDK v0.4.3 and hosted MCP | 14 EVM networks, including Arc (5042), with chain-specific orderbook and signing-domain helpers |
+| Published vault-order builder | `@ophis/safe-swap` v0.1.5 covers 13 EVM networks; its pinned SDK v0.4.2 predates Arc support |
+| Intent parser | 14 chain slugs, including `arc`; the swap app blocks chains disabled in its deployment. Parsing does not verify a token contract or quote |
 | NEAR destination selector | Solana, Bitcoin, Monad, Hyperliquid, X Layer, Sui and Tron; source/asset/provider availability still gates each route |
 
 Ophis operates the orderbook and routing lanes on **Optimism, Unichain,
 Robinhood Chain and Arc**. The other ten app networks use CoW-hosted orderbooks.
 Do not send Arc orders to a guessed CoW endpoint or use another chain's signing domain.
-Arc's app configuration is deployment-specific; the published SDK is not an Arc integration API.
+Arc's app configuration is deployment-specific. SDK v0.4.3 resolves its orderbook to
+`https://arc-mainnet.ophis.fi` and its EIP-712 settlement to
+`0x78799F98276efba1EdeeD32eae03a3fd8Cdfec3A`. Arc is not yet ingested by the
+rebate indexer; the SDK rejects Arc referral metadata rather than promising an untracked rebate.
 Arc's current backend has no configured protocol improvement policy; see the
 [fee-schedule exception](./fees.md#arc-release-exception), rather than assuming
 all operated chains use identical fee handling.

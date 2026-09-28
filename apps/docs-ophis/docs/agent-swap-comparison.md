@@ -42,8 +42,8 @@ The properties that decide safety for an agent:
   be public and exposed to adversarial conditions.
 - **Solver-paid ERC-20 settlement.** Approvals, renewed exact allowances,
   wrapping, native-token placement, hard cancellation and refunds can need gas.
-- **Reach.** The app supports 14 EVM networks; published SDK/MCP mappings cover
-  13 and exclude Arc. NEAR destinations and sources are route-specific. The
+- **Reach.** The app supports 14 EVM networks; SDK v0.4.3 and hosted MCP mappings cover
+  the same 14, including Arc. NEAR destinations and sources are route-specific. The
   [BTC cookbook](./agent-btc-cookbook.md) describes a custom composition, not a
   shipped one-call BTC MCP tool.
 

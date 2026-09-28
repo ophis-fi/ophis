@@ -23,6 +23,7 @@ import {
   assertLimitWithinSlippage,
   getBalances,
   getPortfolio,
+  MAX_PORTFOLIO_CHAINS,
   getGas,
   getTokenChart,
   expectedSurplus,
@@ -497,14 +498,14 @@ export function registerOphisTools(server: McpServer, config?: OphisToolConfig):
     {
       annotations: { title: 'Get cross-chain balances', readOnlyHint: true, openWorldHint: true },
       description:
-        "Read a wallet's native and (optionally) ERC-20 balances across multiple chains at once. Pass `tokensByChain` (chainId -> token addresses) to include token balances; omit `chainIds` to scan every chain with a public RPC (max 12 chains, and at most 100 token reads total across all chains). Per-chain RPC failures are returned inline so one dead endpoint does not sink the result. Read-only; holds no keys.",
+        `Read a wallet's native and (optionally) ERC-20 balances across multiple chains at once. Pass tokensByChain (chainId -> token addresses) to include token balances; omit chainIds to scan every chain with a public RPC (max ${MAX_PORTFOLIO_CHAINS} chains, and at most 100 token reads total across all chains). Per-chain RPC failures are returned inline so one dead endpoint does not sink the result. Read-only; holds no keys.`,
       inputSchema: {
         owner: z.string().describe('Wallet address to read (0x...).'),
         chainIds: z
           .array(z.number().int())
-          .max(12)
+          .max(MAX_PORTFOLIO_CHAINS)
           .optional()
-          .describe('Chains to read (max 12). Omit to scan all chains with a public RPC.'),
+          .describe(`Chains to read (max ${MAX_PORTFOLIO_CHAINS}). Omit to scan all chains with a public RPC.`),
         tokensByChain: z
           .record(z.string(), z.array(z.string()).max(50))
           .optional()

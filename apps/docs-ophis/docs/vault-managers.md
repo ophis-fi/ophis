@@ -92,7 +92,8 @@ Two requirements for a token to be allowlistable:
 ## Operational chains
 
 The published `@ophis/safe-swap` vault-order builder supports these 13 chains.
-Arc is available in the swap app, but is not yet in the published SDK's chain mappings:
+Arc is available in the swap app and `@ophis/sdk` v0.4.3, but the published
+`@ophis/safe-swap` v0.1.5 still depends on SDK v0.4.2:
 
 - **Ophis self-hosted:** Optimism, Unichain, and Robinhood Chain (4663).
 - **CoW-hosted:** Ethereum, Base, Arbitrum One, Polygon, Gnosis Chain, BNB

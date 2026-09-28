@@ -25,6 +25,13 @@ npm install @ophis/sdk
 
 ## Example
 
+Arc (5042) supports the standard 1 bp trading fee but is not yet covered by the
+rebate indexer. `buildOphisOrderMetadata`, `buildOphisFullAppData`, and `buildOrder`
+reject a nonempty Arc referral code instead of promising unavailable referral
+rewards. Omit the code to trade on Arc. `isOphisFeeChain` reports fee support,
+not reward eligibility; the low-level `buildOphisReferrerMetadata` only formats a
+tag when called without a chain ID.
+
 ```ts
 import {
   getOphisOrderbookUrl,

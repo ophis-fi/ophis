@@ -54,9 +54,10 @@ What that buys you on every trade:
   policy above, with a share returned monthly as WETH rebates plus an 8%
   referral on trades you bring.
 
-**Live across 13 EVM chains**, with Ophis-operated settlement on Optimism
-(chain 10), Unichain (130), and Robinhood Chain (4663), plus CoW-hosted
-settlement on the other supported chains.
+**Live across 14 EVM chains**, with Ophis-operated settlement on Optimism
+(chain 10), Unichain (130), Robinhood Chain (4663), and Arc (5042), plus CoW-hosted
+settlement on the other ten chains. Arc currently charges the 1 bp base without
+backend improvement capture and is not yet covered by rebate indexing.
 
 ## Quickstart: the Intent API
 

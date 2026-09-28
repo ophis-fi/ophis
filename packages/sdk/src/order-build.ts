@@ -163,7 +163,7 @@ export function buildOphisFullAppData(
   // metadata.ophisReferrer.code so the rebate indexer credits that code's owner
   // for this trade's volume. buildOphisReferrerMetadata validates the grammar
   // (throws on a malformed code) so a bad code fails the build, not silently.
-  if (referrerCode !== undefined) Object.assign(metadata, buildOphisReferrerMetadata(referrerCode));
+  if (referrerCode !== undefined) Object.assign(metadata, buildOphisReferrerMetadata(referrerCode, chainId));
   // Order-source attribution under metadata.ophisSource.app, mirroring the
   // ophisReferrer custom-metadata pattern (production orderbooks accept unknown
   // metadata keys). Server-set by the integration surface (e.g. the MCP build_order

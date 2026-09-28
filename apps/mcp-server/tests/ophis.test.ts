@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, vi } from 'vitest'
 import { keccak256, toBytes } from 'viem'
 
 import {
@@ -15,6 +15,7 @@ import {
   getBalances,
   getGas,
   getPortfolio,
+  MAX_PORTFOLIO_CHAINS,
   getTokenChart,
   expectedSurplus,
   resolveToken,
@@ -569,11 +570,29 @@ describe('getBalances / getGas / getPortfolio guards (no network)', () => {
   })
 
   it('portfolio caps the chain count and filters unsupported chains without a network call', async () => {
-    await expect(getPortfolio({ owner: OWNER, chainIds: Array(13).fill(10) })).rejects.toThrow(/at most 12 chains/)
+    await expect(getPortfolio({ owner: OWNER, chainIds: Array(MAX_PORTFOLIO_CHAINS + 1).fill(10) }))
+      .rejects.toThrow(`at most ${MAX_PORTFOLIO_CHAINS} chains`)
     // An unsupported chain is filtered out -> no chains -> no RPC call.
     const res = await getPortfolio({ owner: OWNER, chainIds: [9745] })
     expect(res.chains).toEqual([])
     expect(res.owner).toBe(OWNER)
+  })
+
+  it('reads every built-in RPC chain including Arc when chainIds is omitted', async () => {
+    const rpc = vi.spyOn(globalThis, 'fetch').mockImplementation(async () =>
+      jsonResponse({ jsonrpc: '2.0', id: 1, result: '0x0' }),
+    )
+    try {
+      const result = await getPortfolio({ owner: OWNER })
+      expect(result.chains).toHaveLength(MAX_PORTFOLIO_CHAINS)
+      expect(result.chains.every((chain) => !('error' in chain))).toBe(true)
+      expect(result.chains.find((chain) => chain.chainId === 5042)).toMatchObject({
+        native: { symbol: 'USDC', decimals: 18, raw: '0', formatted: '0' },
+      })
+      expect(rpc).toHaveBeenCalledTimes(MAX_PORTFOLIO_CHAINS)
+    } finally {
+      rpc.mockRestore()
+    }
   })
 
   it('caps the total token fan-out across all chains without a network call', async () => {

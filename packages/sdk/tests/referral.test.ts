@@ -49,5 +49,7 @@ describe('buildOphisReferrerMetadata', () => {
     expect(buildOphisReferrerMetadata()).toEqual({});
     expect(buildOphisReferrerMetadata('')).toEqual({});
     expect(buildOphisReferrerMetadata(undefined)).toEqual({});
+    expect(buildOphisReferrerMetadata(undefined, 5042)).toEqual({});
+    expect(buildOphisReferrerMetadata('', 5042)).toEqual({});
   });
 });
