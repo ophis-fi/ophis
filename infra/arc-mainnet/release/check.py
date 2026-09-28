@@ -128,13 +128,13 @@ for i in range(40):
  except urllib.error.HTTPError: break
  except OSError: time.sleep(.1)
 allowed=''' + repr(allowed_origins) + '''
-# One quote starts immediately, one waits for the next slot, excess never reaches
+# One quote starts immediately, two wait for paced slots, excess never reaches
 # the backend. Both quote routes and different clients share the same capacity.
 def quote(i):
  started=time.monotonic()
  request=urllib.request.Request('http://''' + api + ''':8080/api/v1/quote'+('/draft' if i%2 else ''),
   headers={'Origin':allowed[0],'CF-Connecting-IP':'198.51.100.'+str(i+1)})
- try: response=urllib.request.urlopen(request,timeout=25)
+ try: response=urllib.request.urlopen(request,timeout=40)
  except urllib.error.HTTPError as e: response=e
  with response:
   if response.status==429:
@@ -143,11 +143,11 @@ def quote(i):
    assert response.headers['Access-Control-Expose-Headers']=='Retry-After'
    assert json.load(response)['errorType']=='TooManyRequests'
   return response.status,time.monotonic()-started
-with ThreadPoolExecutor(max_workers=3) as pool:
- results=list(pool.map(quote,range(3)))
-assert sorted(code for code,_ in results)==[404,404,429],results
+with ThreadPoolExecutor(max_workers=4) as pool:
+ results=list(pool.map(quote,range(4)))
+assert sorted(code for code,_ in results)==[404,404,404,429],results
 admitted=sorted(elapsed for code,elapsed in results if code==404)
-assert admitted[0]<3 and 13.5<=admitted[1]<23,results
+assert admitted[0]<3 and 13.5<=admitted[1]<23 and 28.5<=admitted[2]<36,results
 assert next(elapsed for code,elapsed in results if code==429)<3,results
 print('PASS live Nginx bounded quote pacing / busy response:',results)
 for origin in allowed+['https://untrusted.example']:

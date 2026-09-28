@@ -52,6 +52,11 @@ rateLimiters:
         - method: "*"
           maxCount: 120
           period: minute
+    - id: arc-publicnode
+      rules:
+        - method: "*"
+          maxCount: 120
+          period: minute
 
 projects:
   - id: main
@@ -89,8 +94,9 @@ projects:
             timeout:
               duration: 12s
             retry:
-              # Each voter may try a fallback after an error; no paid fan-out.
-              maxAttempts: 2
+              # Two failed free legs must not hide the fourth provider from
+              # the remaining voter. At most six attempts; still two voters.
+              maxAttempts: 3
             consensus:
               maxParticipants: 2
               agreementThreshold: 2
@@ -153,6 +159,16 @@ projects:
         creditUnits: {"*": 1}
         ignoreMethods: ["*"]
         allowMethods: *public-methods
+      # Allnodes' keyless Arc endpoint adds an independent free read voter.
+      # Restrict it to quote/balance reads; archive indexing, writes and traces
+      # remain on their existing routes. Two agreeing providers are still required.
+      - id: arc-publicnode
+        endpoint: https://arc-rpc.publicnode.com
+        rateLimitBudget: arc-publicnode
+        rateLimitCountMode: credit
+        creditUnits: {"*": 1}
+        ignoreMethods: ["*"]
+        allowMethods: [eth_chainId, eth_blockNumber, eth_call, eth_estimateGas, eth_getBalance, eth_getCode, eth_getBlockByNumber, eth_gasPrice]
       - id: arc-quicknode
         endpoint: http://credit-gate:8080
         rateLimitBudget: arc-quicknode

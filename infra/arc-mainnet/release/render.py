@@ -198,8 +198,8 @@ http {
     "''' + cfg['frontendOrigin'] + '''" $http_origin;
     "''' + cfg['explorerOrigin'] + '''" $http_origin;
   }
-  # One measured warm quote uses about 20 reads per provider. Leave room under
-  # their 120/min caps for cold native prices, auctions and background reads.
+  # A warm EURC quote uses ~24 reads per voter; the fastest pair can stay pinned.
+  # ponytail: four quotes/min globally; expand only after measured RPC headroom.
   limit_req_zone arc-quotes zone=quotes:1m rate=4r/m;
   # Only the loopback-published tunnel can reach this port externally. Cloudflare
   # overwrites this header; a local operator already controls the whole service.
@@ -218,8 +218,8 @@ http {
     add_header Access-Control-Allow-Methods "GET, POST, PUT, DELETE, OPTIONS" always;
     if ($request_method = OPTIONS) { return 204; }
     location ~ ^/api/v1/quote(?:/draft)?$ {
-      # Pace admission; at most one request waits, for up to 15 seconds.
-      limit_req zone=quotes burst=1;
+      # Smooth token/amount changes: two requests can wait, at most 30 seconds.
+      limit_req zone=quotes burst=2;
       error_page 429 = @quote_busy;
       proxy_hide_header Access-Control-Allow-Origin;
       proxy_pass http://orderbook:8080;

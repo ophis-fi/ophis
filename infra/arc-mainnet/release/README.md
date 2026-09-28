@@ -307,14 +307,20 @@ the existing direct deposit path remains documented, and unavailable routes fail
 closed. No unvalidated `/swap/approval` calldata is executed. A requested slow fill
 remains pending until an actual fill status arrives.
 
-Free official and Blockdaemon RPCs are preferred for protected reads. A failed
+Free official, Blockdaemon and PublicNode RPCs are preferred for quote/balance reads.
+PublicNode is read-only and does not receive indexing logs or traces. A failed
 voter can fall back to QuickNode for calls, gas estimation, balance, code and numbered/tagged header reads;
 two distinct providers must still agree. A healthy free quorum makes no paid
-state reads. QuickNode alone cannot replace both unavailable free providers.
+state reads. PublicNode plus QuickNode can restore quote/balance quorum when the
+other two free providers are unavailable; QuickNode alone cannot replace all
+three unavailable free providers. Archive access through PublicNode is not assumed.
 Gas-price hints also have paid fallback; they retain their existing single-provider policy.
 Only the official endpoint receives `eth_sendRawTransaction`, one attempt; it
 never reaches QuickNode. Each public provider is capped at 120 requests/minute.
-Public quote ingress is capped globally at six/minute with a burst of five; the
+Public quote ingress stays paced globally at four/minute. Two requests may wait
+up to 30 seconds; excess receives JSON HTTP 429 with `Retry-After: 15`. The fastest
+pair can stay selected, so the third free provider is fallback headroom, not
+pooled sustained capacity. The
 frontend requests only optimal Arc quotes, skips hidden/offline polling and
 does not immediately retry Arc HTTP 429 or quote HTTP 5xx responses. This
 is deliberately a low-volume launch configuration, not a high-traffic SLA.
@@ -335,7 +341,7 @@ proxy at port 8442. The existing OP tunnel and services were not restarted.
 QuickNode receives the read fallbacks above, transaction traces and eRPC's bounded
 bootstrap/hourly header probes. SQLite reserves credits **before** an upstream
 attempt: 1,000/minute, 40,000/day and the fixed total allowance. Timeouts remain
-charged. Protected reads allow two attempts per voter (four total); upstream
+charged. Protected reads allow three attempts per voter (six total); upstream
 attempts and other network methods remain single-attempt, with no redirects.
 Both compose projects share `ophis-arc-quicknode-credits`; retain and
 back up this volume. Other consumers of the provider account remain outside this
