@@ -69,7 +69,8 @@ def serve_mock():
                         result = {"jsonrpc": "2.0", "id": body["id"],
                                   "error": {"code": -32000, "message": "mock unavailable"}}
             data = json.dumps(result).encode()
-            self.send_response(200)
+            # Real provider HTTP failures must trigger the same bounded fallback.
+            self.send_response(503 if self.path in ("/official", "/blockdaemon") and "error" in result else 200)
             self.send_header("Content-Type", "application/json")
             self.send_header("Content-Length", str(len(data)))
             self.end_headers()
@@ -148,7 +149,11 @@ def check_proxy(rpc_url, control, release=False):
         "X-ERPC-Skip-Consensus": "true", "X-ERPC-Use-Upstream": "arc-quicknode"
     }), "client bypassed fallback quorum"
     # Gas price is an existing single-provider hint, not a simulation quorum.
-    assert rpc("eth_gasPrice", []).get("result") == "0x1"
+    before = post(control, {})["counts"]
+    assert rpc("eth_gasPrice", []).get("result") == "0x1", "HTTP 503 gas-price fallback failed"
+    after = post(control, {})["counts"]
+    for source in ("/official", "/blockdaemon", "/quicknode"):
+        assert after.get(source + ":eth_gasPrice", 0) == before.get(source + ":eth_gasPrice", 0) + 1, "gas-price sweep skipped or duplicated a provider"
     post(control, {"fail": False, "official_fail": False})
 
     # Moving latest heads must be pinned before quorum; actual header disputes fail.
