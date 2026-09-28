@@ -198,7 +198,9 @@ http {
     "''' + cfg['frontendOrigin'] + '''" $http_origin;
     "''' + cfg['explorerOrigin'] + '''" $http_origin;
   }
-  limit_req_zone arc-quotes zone=quotes:1m rate=6r/m;
+  # One measured warm quote uses about 20 reads per provider. Leave room under
+  # their 120/min caps for cold native prices, auctions and background reads.
+  limit_req_zone arc-quotes zone=quotes:1m rate=4r/m;
   # Only the loopback-published tunnel can reach this port externally. Cloudflare
   # overwrites this header; a local operator already controls the whole service.
   map $http_cf_connecting_ip $client_ip {
@@ -216,9 +218,19 @@ http {
     add_header Access-Control-Allow-Methods "GET, POST, PUT, DELETE, OPTIONS" always;
     if ($request_method = OPTIONS) { return 204; }
     location ~ ^/api/v1/quote(?:/draft)?$ {
-      limit_req zone=quotes burst=5 nodelay;
+      # Pace admission; at most one request waits, for up to 15 seconds.
+      limit_req zone=quotes burst=1;
+      error_page 429 = @quote_busy;
       proxy_hide_header Access-Control-Allow-Origin;
       proxy_pass http://orderbook:8080;
+    }
+    location @quote_busy {
+      default_type application/json;
+      add_header Access-Control-Allow-Origin $allowed_origin always;
+      add_header Access-Control-Expose-Headers "Retry-After" always;
+      add_header Vary Origin always;
+      add_header Retry-After "15" always;
+      return 429 '{"errorType":"TooManyRequests","description":"Arc quote capacity is busy. Please retry in 15 seconds."}';
     }
     location /api/v1/ {
       limit_req zone=reads burst=6 nodelay;

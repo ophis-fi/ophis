@@ -16,6 +16,11 @@ internet access; the backend lab uses loopback fixtures. Neither starts the live
 
 ## Routing and budget
 
+- Public quote admission is paced globally at four requests/minute across quote
+  and draft routes. One excess request may wait up to 15 seconds; further requests
+  receive JSON HTTP 429 with `Retry-After: 15`. This leaves RPC headroom instead of
+  sending six quotes into all five lanes at once. It is bounded admission, not
+  additional provider capacity or a guarantee against upstream outages.
 - Official Arc + Blockdaemon public RPC first: two agreeing responses for protected
   state, simulations, headers, logs and receipts; disagreement or missing quorum
   returns an error. This is a managed-provider trust model, not local validation.
