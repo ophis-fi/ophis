@@ -7,11 +7,11 @@ use {
     alloy_provider::{DynProvider, Provider},
     alloy_rpc_types::{Filter, Log},
     alloy_sol_types::SolEventInterface,
-    anyhow::{Context, Result},
+    anyhow::{Context, Result, ensure},
     ethrpc::block_stream::BlockNumberHash,
-    futures::{Stream, StreamExt},
-    std::{pin::Pin, sync::Arc},
-    tokio::sync::Mutex,
+    futures::{Stream, StreamExt, TryStreamExt},
+    std::{pin::Pin, sync::Arc, time::Duration},
+    tokio::{sync::Mutex, time::Instant},
     tracing::{Instrument, instrument},
 };
 
@@ -24,6 +24,8 @@ const INSERT_EVENT_BATCH_SIZE: usize = 10_000;
 // chances of avoiding the need for history fetch of block events, since history
 // fetch is less efficient than latest block fetch
 const MAX_BLOCKS_QUERIED: u64 = 2 * MAX_REORG_BLOCK_COUNT;
+// ponytail: ten 500-block pages per historical attempt; tune from provider capacity.
+const MAX_HISTORY_BLOCKS: u64 = 5_000;
 // Keep catch-up from bursting 128 reads into every consensus voter at once.
 pub(crate) const MAX_PARALLEL_RPC_CALLS: usize = 4;
 
@@ -50,6 +52,7 @@ where
     contract: C,
     store: S,
     last_handled_blocks: Vec<BlockNumberHash>,
+    retry_after: Option<Instant>,
     _phantom: std::marker::PhantomData<E>,
 }
 
@@ -215,6 +218,7 @@ where
             block_retriever,
             contract,
             store,
+            retry_after: None,
             last_handled_blocks: {
                 match start_sync_at_block {
                     Some(block) => vec![block],
@@ -350,6 +354,17 @@ where
             latest_range
         );
 
+        if let Some(range) = history_range {
+            // Checkpoint bounded history before spending RPC quota fetching the
+            // moving tip. The next attempt still verifies the reorg overlap.
+            let end = (*range.end()).min(range.start().saturating_add(MAX_HISTORY_BLOCKS - 1));
+            return Ok(EventRange {
+                history_range: Some(RangeInclusive::try_new(*range.start(), end)?),
+                latest_blocks: vec![],
+                is_reorg: true,
+            });
+        }
+
         let latest_blocks = self.block_retriever.blocks(latest_range).await?;
         tracing::debug!(
             "latest blocks: {:?} - {:?}",
@@ -357,17 +372,8 @@ where
             latest_blocks.last(),
         );
 
-        // do not try to shorten the latest_blocks list if history range exists
-        // if history range exists then we want to update for the full range of blocks,
-        // otherwise history_blocks update would erase all subsequent blocks and we
-        // might have a gap in storage
-        let (latest_blocks, is_reorg) = match history_range {
-            Some(_) => (latest_blocks, true),
-            None => {
-                let (latest_blocks, is_reorg) = detect_reorg_path(handled_blocks, &latest_blocks);
-                (latest_blocks.to_vec(), is_reorg)
-            }
-        };
+        let (latest_blocks, is_reorg) = detect_reorg_path(handled_blocks, &latest_blocks);
+        let latest_blocks = latest_blocks.to_vec();
 
         tracing::debug!(
             "final latest blocks {:?} - {:?}, is reorg: {}",
@@ -377,7 +383,7 @@ where
         );
 
         Ok(EventRange {
-            history_range,
+            history_range: None,
             latest_blocks,
             is_reorg,
         })
@@ -389,7 +395,10 @@ where
         let event_range = self.event_block_range().await?;
 
         if let Some(range) = event_range.history_range {
+            let end = *range.end();
             self.update_events_from_old_blocks(range).await?;
+            self.store.persist_last_indexed_block(end).await?;
+            anyhow::bail!("historical event catch-up incomplete");
         }
         if let Some(last_block) = event_range.latest_blocks.last() {
             self.update_events_from_latest_blocks(&event_range.latest_blocks, event_range.is_reorg)
@@ -418,8 +427,10 @@ where
             .past_events_by_block_number_range(&range)
             .await
             .context("failed to get past events")?
-            .chunks(INSERT_EVENT_BATCH_SIZE)
-            .map(|chunk| chunk.into_iter().collect::<Result<Vec<_>, _>>());
+            // Stop polling later RPC pages as soon as one fails. Ordinary
+            // `chunks` collects 10,000 errors before the caller can stop.
+            .try_chunks(INSERT_EVENT_BATCH_SIZE)
+            .map_err(|error| error.1);
         futures::pin_mut!(events);
         // We intentionally do not go with the obvious approach of deleting old events
         // first and then inserting new ones. Instead, we make sure that the
@@ -635,11 +646,23 @@ where
 {
     async fn run_maintenance(&self) -> Result<()> {
         let mut inner = self.lock().await;
+        ensure!(
+            inner
+                .retry_after
+                .is_none_or(|deadline| Instant::now() >= deadline),
+            "event indexing retry is cooling down"
+        );
         let address = inner.contract.address();
-        inner
+        let result = inner
             .update_events()
             .instrument(tracing::info_span!("address", ?address))
-            .await
+            .await;
+        // Each indexer backs off independently; a failed optional indexer must
+        // not sleep while holding up essential maintenance on the next block.
+        inner.retry_after = result
+            .is_err()
+            .then(|| Instant::now() + Duration::from_secs(10));
+        result
     }
 
     fn name(&self) -> &str {
@@ -738,6 +761,168 @@ mod tests {
             // Nothing to do here since `last_event_block` looks up last stored event.
             Ok(())
         }
+    }
+
+    #[tokio::test]
+    async fn historical_failure_stops_pages_preserves_state_and_backs_off() {
+        use std::sync::atomic::{AtomicUsize, Ordering};
+
+        #[derive(Debug)]
+        struct Blocks {
+            calls: AtomicUsize,
+            head: u64,
+            headers: AtomicUsize,
+        }
+        #[async_trait::async_trait]
+        impl BlockRetrieving for Blocks {
+            async fn current_block(&self) -> Result<ethrpc::block_stream::BlockInfo> {
+                if self.calls.fetch_add(1, Ordering::SeqCst) == 0 {
+                    anyhow::bail!("provider rate limit");
+                }
+                Ok(ethrpc::block_stream::BlockInfo {
+                    number: self.head,
+                    hash: B256::with_last_byte(1),
+                    ..Default::default()
+                })
+            }
+            async fn block(&self, number: u64) -> Result<BlockNumberHash> {
+                Ok((number, B256::with_last_byte(1)))
+            }
+            async fn blocks(&self, range: RangeInclusive<u64>) -> Result<Vec<BlockNumberHash>> {
+                self.headers.fetch_add(
+                    (*range.end() - *range.start() + 1) as usize,
+                    Ordering::SeqCst,
+                );
+                Ok((*range.start()..=*range.end())
+                    .map(|number| (number, B256::with_last_byte(1)))
+                    .collect())
+            }
+        }
+        struct Contract(bool);
+        #[async_trait::async_trait]
+        impl EventRetrieving for Contract {
+            type Event = ((), Log);
+            async fn get_events_by_block_hash(&self, _: B256) -> Result<Vec<Self::Event>> {
+                unreachable!()
+            }
+            async fn get_events_by_block_range(
+                &self,
+                _: &RangeInclusive<u64>,
+            ) -> Result<EventStream<Self::Event>> {
+                if !self.0 {
+                    return Ok(Box::pin(futures::stream::empty()));
+                }
+                Ok(Box::pin(async_stream::stream! {
+                    yield Ok(((), Log { block_number: Some(600), ..Default::default() }));
+                    yield Err(anyhow::anyhow!("provider rate limit"));
+                    panic!("requested another page after an error");
+                }))
+            }
+            fn address(&self) -> Vec<Address> {
+                vec![]
+            }
+        }
+
+        let blocks = Arc::new(Blocks {
+            calls: AtomicUsize::new(0),
+            head: 1000,
+            headers: AtomicUsize::new(0),
+        });
+        let checkpoint = (1000, B256::with_last_byte(1));
+        let original = (
+            (),
+            Log {
+                block_number: Some(999),
+                ..Default::default()
+            },
+        );
+        let mut handler = EventHandler::new(
+            blocks.clone(),
+            Contract(true),
+            EventStorage {
+                events: vec![original.clone()],
+            },
+            Some(checkpoint),
+        );
+        assert!(
+            handler
+                .update_events_from_old_blocks(RangeInclusive::try_new(500, 999).unwrap())
+                .await
+                .is_err()
+        );
+        assert_eq!(handler.store.events, vec![original]);
+        assert_eq!(handler.last_handled_blocks, vec![checkpoint]);
+
+        let handler = Mutex::new(handler);
+        assert!(handler.run_maintenance().await.is_err());
+        assert!(handler.run_maintenance().await.is_err());
+        assert_eq!(blocks.calls.load(Ordering::SeqCst), 1);
+        handler.lock().await.retry_after = Some(Instant::now());
+        handler.run_maintenance().await.unwrap();
+        assert_eq!(blocks.calls.load(Ordering::SeqCst), 2);
+        assert!(handler.lock().await.retry_after.is_none());
+
+        struct Checkpoint {
+            cursor: u64,
+            fail_write: bool,
+        }
+        #[async_trait::async_trait]
+        impl EventStoring<((), Log)> for Checkpoint {
+            async fn replace_events(
+                &mut self,
+                events: Vec<((), Log)>,
+                range: RangeInclusive<u64>,
+            ) -> Result<()> {
+                ensure!(!self.fail_write, "database unavailable");
+                assert!(events.is_empty());
+                assert!(*range.end() - *range.start() < MAX_HISTORY_BLOCKS);
+                Ok(())
+            }
+            async fn append_events(&mut self, _: Vec<((), Log)>) -> Result<()> {
+                unreachable!()
+            }
+            async fn last_event_block(&self) -> Result<u64> {
+                Ok(self.cursor)
+            }
+            async fn persist_last_indexed_block(&mut self, last: u64) -> Result<()> {
+                self.cursor = last;
+                Ok(())
+            }
+        }
+        let blocks = Arc::new(Blocks {
+            calls: AtomicUsize::new(1),
+            head: 20_000,
+            headers: AtomicUsize::new(0),
+        });
+        let mut handler = EventHandler::new(
+            blocks.clone(),
+            Contract(false),
+            Checkpoint {
+                cursor: 1000,
+                fail_write: false,
+            },
+            Some(checkpoint),
+        );
+        assert!(
+            handler.update_events().await.is_err(),
+            "partial history is not a current auction view"
+        );
+        assert_eq!(handler.store.cursor, 5935);
+        assert_eq!(
+            blocks.headers.load(Ordering::SeqCst),
+            65,
+            "do not fetch tip headers during backfill"
+        );
+        let saved = handler.last_handled_blocks.clone();
+        handler.store.fail_write = true;
+        assert!(handler.update_events().await.is_err());
+        assert_eq!(handler.store.cursor, 5935);
+        assert_eq!(handler.last_handled_blocks, saved);
+        handler.store.fail_write = false;
+        // A restart resumes the persisted empty range, retaining the reorg overlap.
+        let mut restarted = EventHandler::new(blocks, Contract(false), handler.store, None);
+        assert!(restarted.update_events().await.is_err());
+        assert_eq!(restarted.store.cursor, 10870);
     }
 
     #[test]
