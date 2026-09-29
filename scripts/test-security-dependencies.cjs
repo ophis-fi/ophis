@@ -71,6 +71,34 @@ function installed(name, major) {
 }
 
 async function main() {
+  for (const pkg of workspace === 'root' ? [] : installed('fast-uri', 3)) {
+    const uri = pkg.require('fast-uri');
+    for (const input of ['https://ophis.fi/path?asset=USDC#swap', 'http://localhost:8080/', 'https://[::1]:443/']) {
+      assert.equal(uri.parse(input).error, undefined);
+      assert(uri.equal(uri.serialize(uri.parse(input)), input));
+    }
+    assert.equal(uri.parse('//%41.com').host, 'a.com');
+    assert(uri.equal('//%41.com', '//a.com'));
+    const components = { scheme: 'http', host: 'trusted.example', path: '/app' };
+    assert.equal(uri.serialize({ ...components, port: '8124' }), 'http://trusted.example:8124/app');
+    for (const port of ['@127.0.0.1:8124', '80/path', '80?query', '80#fragment']) {
+      assert.throws(() => uri.serialize({ ...components, port }));
+      assert.throws(() => uri.normalize({ ...components, port }));
+      assert.equal(uri.equal({ ...components, port }, 'http://trusted.example/app'), false);
+    }
+    console.log(`PASS fast-uri ${pkg.version}: URI round trips, host normalization, authority injection rejected`);
+  }
+  for (const pkg of workspace === 'root' ? [] : installed('ajv', 8)) {
+    const Ajv = pkg.require('ajv');
+    const ajv = new Ajv();
+    ajv.addSchema({ $id: 'https://ophis.fi/schemas/amount', type: 'integer', minimum: 1 });
+    const validate = ajv.compile({ $id: 'https://ophis.fi/schemas/order', type: 'object', required: ['amount'],
+      properties: { amount: { $ref: './amount' } }, additionalProperties: false });
+    assert(validate({ amount: 10 }));
+    for (const value of [{ amount: 0 }, { amount: '10' }, {}, { amount: 10, extra: true }]) assert(!validate(value));
+    console.log(`PASS ajv ${pkg.version}: relative URI schema resolution and validation`);
+  }
+
   for (const pkg of installed('elliptic', 6)) {
     // Independent researcher vector from elliptic issue #322: P-521 needs to
     // discard seven bits even when the DRBG's first byte is zero.
