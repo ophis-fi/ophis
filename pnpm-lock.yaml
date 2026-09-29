@@ -17,7 +17,7 @@ overrides:
   find-my-way: ^9.7.0
   postcss: 8.5.23
   fast-uri: ^3.1.8
-  ip-address: ^10.2.1
+  ip-address: 10.5.1
   socket.io-parser: ^4.2.7
   sharp: ^0.35.4
   js-yaml: ^4.3.2
@@ -4890,8 +4890,8 @@ packages:
   interface-store@7.0.2:
     resolution: {integrity: sha512-KYOPcDH+1peaPhSeoZujR5nwkVeola1EdrnrlHTIM0HRNUs9B0aTsUQMH5kTmIjaQq1BOowoUyoCamgL8IMyww==}
 
-  ip-address@10.4.0:
-    resolution: {integrity: sha512-oSK96Grm3aP6OrS263xVxbNDGVL7rzBtYdpGqlDG8iQdoenDoTs/nkki+DflYbAEE8Xl6o5YxhxlrKvI3nqKXQ==}
+  ip-address@10.5.1:
+    resolution: {integrity: sha512-EXujUp9jyOI/chPgtqk6uy7fDq8AeCB/WlfEuPg9LN0fN9lzKAKfuDYi60SMhHwgUiEhZvVYsbGZN+RUU1INiA==}
     engines: {node: '>= 12'}
 
   ipaddr.js@1.9.1:
@@ -13199,7 +13199,7 @@ snapshots:
   express-rate-limit@8.5.2(express@5.2.1):
     dependencies:
       express: 5.2.1
-      ip-address: 10.4.0
+      ip-address: 10.5.1
 
   express@5.2.1:
     dependencies:
@@ -13665,7 +13665,7 @@ snapshots:
 
   interface-store@7.0.2: {}
 
-  ip-address@10.4.0: {}
+  ip-address@10.5.1: {}
 
   ipaddr.js@1.9.1: {}
 
