@@ -406,7 +406,7 @@ footer.site { padding: 64px 24px 36px; background: var(--panel); border-top: 1px
     <p class="lede reveal">
       Ophis publishes its terms. Except on Arc, integrations pay a 1 bp base plus 80% of
       reference-quote improvement on volatile pairs (99 bps cap), or 50% on stable pairs (20 bps
-      cap). Arc currently charges only the 1 bp base and is not yet indexed for rebates, referral rewards, or own-fee earnings. Hosted integrations additionally pay CoW Protocol fees upstream. Using the
+      cap). Arc currently charges only the 1 bp base and is indexed for volume and referral rebates; its own-fee payout guarantee is not enabled. Hosted integrations additionally pay CoW Protocol fees upstream. Using the
       SDK or manual appData, you can still add your own fee and Ophis takes 0% of that markup.
     </p>
 
@@ -495,7 +495,7 @@ footer.site { padding: 64px 24px 36px; background: var(--panel); border-top: 1px
         <p class="pool">
           The referral share is calculated on the <b>verified base fee Ophis keeps</b> from the flow you
           refer, and paid <b>monthly in WETH, on-chain</b>. It stacks with your own fee line: you
-          keep your markup in full and earn the referral share on the base on indexed chains. Arc is not yet indexed and earns no referral rebate.
+          keep your markup in full and earn the referral share on the base on indexed chains. Arc is included in referral indexing; own-fee payout guarantees remain scoped to Optimism and Unichain.
         </p>
       </div>
     </div>
@@ -600,7 +600,7 @@ footer.site { padding: 64px 24px 36px; background: var(--panel); border-top: 1px
           <code>@ophis/sdk</code> v0.4.3 across 14 chains, including Robinhood Chain and Arc. Native ETH flows are supported only on chains with an EthFlow deployment; Arc uses ERC-20 orders. The SDK path pays the
           chain-specific Ophis rate, carries your own fee entry on ERC-20 orders within the
           190 bps hosted aggregate cap and 90 bps per-partner ceiling, no Ophis cut), and carries your referral code for the 8% or
-          12% share on indexed chains, excluding Arc. Omit referral codes for Arc orders.
+          12% share on indexed chains, including Arc. Use SDK v0.4.4 or later for Arc referral tags.
         </p>
         <div class="foot"><span class="badge live">Live</span></div>
       </div>
@@ -840,7 +840,7 @@ footer.site { padding: 64px 24px 36px; background: var(--panel); border-top: 1px
             we enable and fund the payout for it. A referral layer
             pays 8% of the verified base fee Ophis keeps (self-serve, referred volume capped at $1M/month) or
             12% (partner tier, uncapped, contact us), paid monthly in WETH, on-chain. Separately,
-            active traders on indexed chains earn the documented pooled volume-tier WETH rebates. Arc is not indexed for rebates or referral rewards; the finite 150 USDG
+            active traders on indexed chains earn the documented pooled volume-tier WETH rebates. Arc is included in rebate and referral indexing; the finite 150 USDG
             trade-reward pilot remains inactive until its distributor is published and funded.
           </p>
         </div>

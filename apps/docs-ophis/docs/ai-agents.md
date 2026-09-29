@@ -301,9 +301,8 @@ and apply referral attribution on indexed chains when a code is supplied:
 The v0.3.6 adapter family is built and published against `@ophis/sdk` v0.4.4,
 so its fee policy, orderbook hosts, settlement contracts, and vault relayers
 match the current SDK. The core and AgentKit can use an Arc wallet with ERC-20
-addresses; configured wrapper referral defaults are skipped on Arc, which is
-not indexed for rebates. Explicit per-call Arc codes passed to `executeOphisSwap`
-are rejected. GOAT discovery and the elizaOS chain resolver retain their existing
+addresses; configured wrapper defaults and explicit per-call codes now support
+Arc referral attribution. GOAT discovery and the elizaOS chain resolver retain their existing
 chain lists and do not expose Arc merely because their SDK dependency supports it.
 
 Coinbase AgentKit, in one line:

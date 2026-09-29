@@ -47,7 +47,7 @@ The practical consequence for anyone integrating: never hardcode api.cow.fi or t
 
 **Published, chain-aware pricing.** Outside the current Arc release exception, the standard schedule charges a 1 bp base and retains 80% of reference-quote improvement on volatile pairs (99 bps cap), or 50% on stable pairs (20 bps cap). On the ten chains that settle through CoW Protocol's canonical contracts, CoW Protocol's fees apply separately upstream. The current schedule and worked examples are in the [fee docs](https://docs.ophis.fi/fees).
 
-**Volume rebates.** Arc is not indexed for volume-tier or referral rebates. On indexed chains, a rolling 30-day volume tier earns a share of a monthly WETH rebate pool paid from the fee Safe. The pool is 21.25% of WETH fees, split across qualifying wallets by tier-weighted 30-day volume:
+**Volume rebates.** Arc is included in volume-tier and referral rebate indexing. On indexed chains, a rolling 30-day volume tier earns a share of a monthly WETH rebate pool paid from the fee Safe. The pool is 21.25% of WETH fees, split across qualifying wallets by tier-weighted 30-day volume:
 
 | Tier | 30-day volume | Pool-allocation weight |
 | --- | --- | --- |
@@ -87,7 +87,7 @@ Three reasons. First, an agent-first product: a keyless MCP server, an Intent AP
 
 ### What does a trade on Ophis cost?
 
-Every supported chain pays the 1 bp Ophis base. Under the standard schedule, excluding Arc's current release exception, capped improvement capture can bring the maximum to 100 bps on volatile pairs or 21 bps on stable pairs. CoW-hosted chains pay CoW Protocol's fees separately upstream. On indexed chains, volume tiers weight a wallet's share of a monthly WETH rebate pool; Arc earns no rebates. See the [canonical fee documentation](https://docs.ophis.fi/fees) for the current schedule.
+Every supported chain pays the 1 bp Ophis base. Under the standard schedule, excluding Arc's current release exception, capped improvement capture can bring the maximum to 100 bps on volatile pairs or 21 bps on stable pairs. CoW-hosted chains pay CoW Protocol's fees separately upstream. On indexed chains, volume tiers weight a wallet's share of a monthly WETH rebate pool; Arc is included. See the [canonical fee documentation](https://docs.ophis.fi/fees) for the current schedule.
 
 ## Try it
 

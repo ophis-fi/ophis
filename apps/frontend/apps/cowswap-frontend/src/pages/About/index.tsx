@@ -216,8 +216,9 @@ export default function AboutPage(): ReactNode {
             <p>
               Yes. The natural-language intent parser is publicly available at <InlineCode>POST /api/intent</InlineCode>{' '}
               with a 30 req/min/IP rate limit. No auth, no key. The parser, MCP server, and SDK v0.4.3 or later cover 14
-              EVM mainnets, including Arc. Arc currently charges the 1 bp base and is not indexed for rebates or
-              referral rewards. See <TextLink href="https://docs.ophis.fi/">the docs</TextLink> for the full reference.
+              EVM mainnets, including Arc. Arc charges the 1 bp base; eligible settled trades count toward volume
+              and referral rebates. Arc referral tags require SDK v0.4.4 or later. See{' '}
+              <TextLink href="https://docs.ophis.fi/">the docs</TextLink> for the full reference.
             </p>
           </Accordion>
         </AccordionGroup>

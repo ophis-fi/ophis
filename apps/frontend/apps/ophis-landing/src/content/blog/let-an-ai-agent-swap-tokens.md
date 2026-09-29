@@ -176,9 +176,9 @@ Here is the part that flips swaps from a cost center to a revenue line. Every
 swap routed through your integration carries the chain-aware Ophis base in
 `appData`: **0.01% on the 14 SDK v0.4.3 / hosted MCP chains**. Optimism,
 Unichain and Robinhood backends apply capped improvement capture; hosted orders
-encode it in appData. Arc currently has no backend improvement capture and is
-not indexed for referral or volume-tier rebates. Omit referral codes from Arc
-orders. On indexed chains, eligible integrators earn a **rebate** on the volume
+encode it in appData. Arc currently has no backend improvement capture; its
+settled trades are indexed for referral and volume-tier rebates. Use SDK v0.4.4
+or later for Arc referral tags. On indexed chains, eligible integrators earn a **rebate** on the volume
 they route, and `lookup_tier` surfaces a wallet's 30-day volume tier.
 
 Rebates depend on eligible indexed volume and the applicable program terms.
