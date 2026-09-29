@@ -253,8 +253,9 @@ Ophis base and capped improvement capture in appData; CoW Protocol's own fees
 apply upstream. Use `buildOphisAppDataPartnerFee(chainId, isStablePair)` for the
 complete partner fee, not a volume-only entry. Pool costs, price impact and gas
 are additional. SDK v0.4.3 and hosted MCP include Arc, whose current
-[release fee exception](https://docs.ophis.fi/fees) is a 1 bp volume fee with no
-backend improvement capture or referral/volume-tier rebates.
+[release fee exception](https://docs.ophis.fi/fees) is a 1 bp volume fee without
+backend improvement capture. Eligible settled Arc trades count toward referral
+and volume-tier rebates; use SDK v0.4.4 or later for referral attribution.
 
 Swap fees are deducted from the trade. Standard ERC-20 order signing and
 submission are gasless, but approvals and other wallet transactions need gas.
