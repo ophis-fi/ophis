@@ -15,8 +15,12 @@ describe('About page execution and security copy', () => {
     expect(copy).toContain('Soft cancellation can race an in-flight settlement')
     expect(copy).toContain('not every Ophis modification, deployment, or external route')
     expect(copy).toContain('SDK v0.4.3 or later cover 14 EVM mainnets, including Arc')
-    expect(copy).toContain('Arc charges the 1 bp base; eligible settled trades count toward volume and referral rebates')
-    expect(copy).toContain('Arc referral tags require SDK v0.4.4 or later')
+    expect(copy).toContain(
+      'Arc charges the 1 bp base; eligible settled trades count toward volume and referral rebates',
+    )
+    expect(copy).toContain('For Arc referrals, MCP clients pass referrerCode to build_order')
+    expect(copy).toContain('direct SDK integrations require v0.4.4 or later')
+    expect(copy).not.toContain('Arc referral tags require SDK')
     expect(copy).not.toContain('Arc is not included')
     expect(copy).not.toMatch(/any EVM chain|same bytecode|>Inherited<|>Clean<|No front-running, no sandwich/)
   })
