@@ -20,6 +20,11 @@ The flow settles through CoW Protocol as one atomic, MEV-protected order. The
 vault Safe is both `order.from` and `order.receiver`: sold tokens leave at
 settlement and bought tokens return to the Safe. Each order carries the Ophis partner fee.
 
+For rebate accounting, call `enrollOphisTrader(vaultSafe, { blocking: true })`
+immediately before each order submission. Enroll the Safe, not the curator or one of
+its owners. Registering once during setup is insufficient for a vault that starts
+trading later. See [Partner enrollment](./partners.md) for retention and recovery.
+
 ## How it works
 
 Three parties, three roles:

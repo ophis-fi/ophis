@@ -43,11 +43,11 @@ async function ins(
     INSERT INTO trades (
       trade_uid, chain_id, wallet, block_number, block_timestamp,
       sell_token, buy_token, sell_amount, buy_amount, app_code,
-      value_usd, priced_at, volume_fee_bps)
+      value_usd, priced_at, volume_fee_bps, undecoded_fee_fallback_bps)
     VALUES (
       decode(${UID(uid)}, 'hex'), ${chain}, decode(${W(wallet)}, 'hex'), 1, ${at},
       decode(${W('5e11')}, 'hex'), decode(${W('b111')}, 'hex'), 1, 1, 'ophis',
-      ${usd}, ${at}, ${feeBps})`;
+      ${usd}, ${at}, ${feeBps}, 1)`;
 }
 
 beforeAll(async () => {
@@ -83,6 +83,11 @@ beforeAll(async () => {
     VALUES (decode(${W(HUMAN_B)}, 'hex'), 'itest', decode(${W(HUMAN_A)}, 'hex'), true, ${BOUND})`;
   await ins('07', SEPOLIA, HUMAN_B, '9000', RECENT, null);
   await ins('08', 1, HUMAN_B, '8000', RECENT, 0);
+  // Same bound trader also tags this partner: count once, not twice.
+  await sql`UPDATE trades SET appdata_ref_code = 'itest', volume_fee_bps = 1 WHERE trade_uid = decode(${UID('05')}, 'hex')`;
+  // Code-only trader has historical volume but no current leaderboard rank.
+  await ins('09', 10, W('c0de'), '25', OLD, 1);
+  await sql`UPDATE trades SET appdata_ref_code = 'itest' WHERE trade_uid = decode(${UID('09')}, 'hex')`;
 
   await sql.unsafe('REFRESH MATERIALIZED VIEW wallets');
 }, 180_000);
@@ -124,10 +129,10 @@ describe('getLeaderboard', () => {
   it('excludes Sepolia and examined-0-fee trades from referred volume', async () => {
     const board = await getLeaderboard(100);
     const a = board.entries.find((e) => e.wallet.startsWith('0x0494'))!;
-    expect(a.affiliateCount).toBe(1);
-    // B's clean $50 only. NOT 17050: the $9000 Sepolia and $8000 fee-0 referred
+    expect(a.affiliateCount).toBe(2);
+    // B's $50 plus the code-only trader's $25. The $9000 Sepolia and $8000 fee-0 referred
     // trades are display-dust exactly like they are in the volume columns.
-    expect(a.referredVolumeUsd).toBeCloseTo(50, 4);
+    expect(a.referredVolumeUsd).toBeCloseTo(75, 4);
   });
 
   it('keeps all-time >= 30d for every ranked wallet', async () => {

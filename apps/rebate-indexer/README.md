@@ -40,6 +40,21 @@ The `.env` file on the VM is **not** synced by the deploy workflow — it lives 
 it via `ssh` when secrets rotate). The workflow's `rsync --delete` explicitly
 excludes it.
 
+## Contract-wallet authentication
+
+The five signed affiliate/partner/reward endpoints accept EIP-1271 signatures only
+on an operator-pinned chain for each global wallet identity. Set
+`CONTRACT_WALLET_AUTH_CHAINS` to a JSON object mapping **lowercase wallet addresses**
+to numeric supported chain IDs after confirming the authoritative deployment with
+the wallet administrator. Do not infer authority from the request, from a matching
+address on another chain, or from the first successful signature.
+
+For example, `{"0x1111111111111111111111111111111111111111":1}` pins that example
+contract to Ethereum. Missing/invalid configuration fails closed for contract
+wallets; existing EOA signatures are unaffected. A Safe owner rotation must be
+checked on this pinned chain. Changing the pin is an operator-controlled identity
+change and requires renewed verification. Payouts remain separately disabled.
+
 ## Swap scan (exhaustive, allowlist-free)
 
 Report every Ophis swap in a time window across chains, independent of the rebate

@@ -72,10 +72,18 @@ export function PartnerEmptyReferees({ rate }: { rate: number }): ReactNode {
       <p>No referees yet.</p>
       <ol>
         <li>Share your code or link above.</li>
-        <li>A net-new wallet trades on Ophis after using it, and is bound to you for life.</li>
-        <li>You earn {rate}% of the verified base fee Ophis keeps on their trades, paid monthly in WETH.</li>
+        <li>
+          A net-new wallet can bind through your link. A code tagged on an order attributes that trade, not the wallet
+          for life.
+        </li>
+        <li>
+          Your share is {rate}% of the verified base fee Ophis keeps on eligible trades. Check payout status before
+          expecting a payment.
+        </li>
       </ol>
-      <p style={{ opacity: 0.75 }}>Your referees will appear here once a wallet binds to your code.</p>
+      <p style={{ opacity: 0.75 }}>
+        Wallets appear here after binding your link or settling an eligible trade tagged with your code.
+      </p>
     </>
   )
 }

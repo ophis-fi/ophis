@@ -79,17 +79,11 @@ import {
 // Safe via EIP-1271). For a connected EOA signer, see the note after the snippet.
 const signingScheme = SigningScheme.EIP1271; // SigningScheme.EIP712 for an EOA (see note)
 
-// 0. Register the wallet with the rebate indexer once, on wallet-connect. Without
-//    this the indexer never fetches its trades and the rebate never accrues.
-//    Best-effort by default: an indexer outage (non-2xx / network error / timeout)
-//    RESOLVES to { enrolled: false } instead of throwing, so INSPECT the result -
-//    re-call on the next connect, and warn your user the rebate may not index yet.
-//    A wallet left un-enrolled past a monthly payout cutoff permanently misses that
-//    trade's rebate; pass { blocking: true } to hard-require enrollment instead.
-const enrollment = await enrollOphisTrader(owner);
-if (!enrollment.enrolled) {
-  console.warn(`Ophis enrollment not confirmed (${enrollment.status ?? 'indexer unreachable'}); retrying on next connect`);
-}
+// 0. Renew enrollment immediately before EVERY submission, including delayed
+//    vault trades. The owner is the vault Safe, not its signing owner/curator.
+//    This strict example stops on enrollment failure; retry enrollment before
+//    submitting. Best-effort callers must inspect { enrolled } and report failure.
+await enrollOphisTrader(owner, { blocking: true });
 
 // 1. One-time per sell token: approve it to the correct Vault Relayer. On Optimism
 //    getOphisVaultRelayer returns the Ophis relayer, NOT cow-sdk's canonical one.
@@ -307,8 +301,9 @@ These three layers describe indexed chains, including Arc. Arc retains its base-
    [Fees & rebates](./fees.md#the-all-in-cost-per-chain)).
 2. **You earn a share of Ophis's verified 1 bp base fee** on each eligible trade you
    route on an indexed chain (including Arc): 8% on the self-serve tier, **12% on the partner tier** (uncapped
-   referred volume; ask us to upgrade your code). Paid monthly in WETH,
-   on-chain. Improvement capture is excluded until receipts can be reconciled
+   referred volume; ask us to upgrade your code). The payout design is monthly WETH,
+   subject to activation, reconciliation, funding and Safe approval. Affiliate payout
+   execution is currently disabled; see dashboard status. Improvement capture is excluded until receipts can be reconciled
    to the Ophis Safe.
 3. **You can charge your own fee on top** of an ERC-20 order: up to 90 bps under
    the registered-partner ceiling. The hosted aggregate cap is 190 bps, leaving
@@ -403,7 +398,8 @@ How your fee reaches you depends on the chain:
 Layer 2 is separate from the fee your users pay. The fee itself is set in
 `appData` at settlement (the chain-aware base, plus your own entry if you add one).
 The **referral share** of 8% or 12% is a distinct earning: it is a portion of
-the verified 1 bp base fee Ophis keeps, paid back to you monthly in WETH. Tag
+the verified 1 bp base fee Ophis keeps. Monthly WETH distribution is the design;
+affiliate payout execution is currently disabled. Tag
 each eligible order on an indexed chain, including Arc, with your referral code. Improvement
 capture remains excluded until receipts can be reconciled to the Ophis Safe.
 
@@ -427,8 +423,9 @@ const doc = await new MetadataApi().generateAppDataDoc({
 ```
 
 The rebate indexer reads `metadata.ophisReferrer.code` from settled orders on its supported chains,
-credits your referred USD volume **across indexed chains, including Arc**, and pays out
-monthly in WETH from a single Gnosis Safe. Your code must exist before you tag
+credits your referred USD volume **across indexed chains, including Arc**. Payouts are
+designed for monthly WETH from a single Gnosis Safe, but affiliate payout execution
+is currently disabled. Indexed estimates are not payments. Your code must exist before you tag
 orders with it. Higher tiers earn a larger share. See the
 [Affiliate program](./affiliate.md) for rates and tiers.
 
@@ -443,15 +440,31 @@ from `appCode` (which records _which app_ placed the order, always `'ophis'` her
 **2. Each order-owner wallet must be registered with the indexer.** The indexer
 fetches trades per tracked owner (CoW's trades API cannot be enumerated globally),
 so a programmatic integrator that never loads the Ophis frontend must enroll every
-owner (vault Safe) once, with a public idempotent call:
+owner (vault Safe) immediately before each submission, with a public idempotent call:
 
 ```bash
-curl https://rebates.ophis.fi/tier/<ownerAddress>
+curl --fail --max-time 10 https://rebates.ophis.fi/tier/<ownerAddress>
 ```
 
-or ask us to register them. Until an owner is registered, its orders are never
-fetched and nothing accrues, even with the correct `appCode` and referral code.
+Successful registration renews the inactivity clock; it does not change the wallet's
+first-seen date. Empty wallets may be pruned after seven inactive days only after
+orderbooks confirm no order history and supported production RPCs confirm no contract
+code. Contract wallets are retained conservatively: a queued Safe TWAP may not yet
+have a child order. Existing orders and failed verification also retain tracking.
+Do not rely on discovery coverage or on registration performed weeks before
+a vault first trades. Reconcile missing history before a payout cycle is finalized.
 :::
+
+The partner dashboard counts distinct link-bound and eligible code-attributed wallets.
+An order tag does not create a permanent referral binding. Contract wallets authenticate
+with an EIP-1271 signature on their operator-approved authentication chain, configured
+in `CONTRACT_WALLET_AUTH_CHAINS`. Contact Ophis to confirm that chain before using a
+Safe for dashboard/referral/reward access; unconfigured or mismatched chains are rejected.
+This prevents a same-address Safe with different owners on another chain from accessing
+the global wallet record. Signed API requests include `chainId`
+and append `\nChain ID: <chainId>` to the action/address/issued message. Legacy EOA-only
+messages without a chain remain supported. Payout status and estimates are separate
+from executed payment records.
 
 A future option for Optimism is an **enforced lower fee** at settlement (rather
 than a post-hoc rebate), via a signed fee credential. That is a separate,
@@ -480,8 +493,8 @@ guarantee** is limited to chains 10 and 130. Robinhood and Arc reporting do not 
 own-fee payout coverage. On the CoW-hosted chains, partner fees are disbursed by CoW under
 CoW terms; Ophis neither pays nor guarantees them. The response splits each figure
 **sovereign** vs **hosted**. The sovereign label means Ophis-controlled settlement: Ophis
-pays the **referral rebate** from its Safe on indexed chains, and it now also pays a
-stacked third-party **own-fee** monthly in WETH from the sovereign chain's Ophis Safe,
+accounts for the **referral rebate** on indexed chains (affiliate payout execution is
+currently disabled). A stacked third-party **own-fee** can be paid monthly in WETH from the sovereign chain's Ophis Safe,
 taking 0% of it, once your recipient is onboarded (allowlisted) and we have enabled and
 funded the payout for it. No partner is onboarded for sovereign own-fee payout yet, so
 until we turn it on for your recipient the sovereign own-fee is charged and reported but
@@ -504,8 +517,9 @@ Three earnings streams appear:
   CoW's 25% service fee (Ophis does not guarantee CoW's payout, and we confirm a stacked
   recipient's first hosted settlement). Treat the accrued figures as charged/gross and the paid-to-date figures as the
   amounts realized.
-- **Referral rebate** (`referral`): the monthly WETH rebate Ophis pays your wallet from
-  the Gnosis Safe when your `appCode` is a registered referral code. `paidToDateWeth` /
+- **Referral rebate** (`referral`): the rebate attributed to your wallet when your
+  `appCode` is a registered referral code. Monthly WETH payouts are currently disabled.
+  `paidToDateWeth` /
   `paidToDateUsd` are **exact**, summed from already-executed Safe batches, and `payouts`
   lists each executed payout with its on-chain tx and a block-explorer link (your proof of
   where it paid out).
@@ -556,7 +570,7 @@ Three earnings streams appear:
         "amountWeth": 1.0,
       },
     ],
-    "note": "Referral rebate Ophis pays your wallet monthly ... per referrer wallet.",
+    "note": "Referral rebate attributed to your wallet; payout execution is currently disabled. Paid-to-date reports executed batches only, per referrer wallet.",
   },
   "byChain": [
     {

@@ -15,6 +15,7 @@ import { getIntegratorEarnings } from './earnings.js';
 import { DECODER_ETHFLOW_OWNERS } from './fetcher.js';
 import { logger } from './logger.js';
 import { verifyPartnerAuth } from './affiliate/partnerAuth.js';
+import { affiliatePayoutStatus } from './affiliate/payoutPlan.js';
 import { findReward } from './rewards.js';
 import { getPartnerFeeDashboard, getPartnerFeeStats } from './partnerFees/report.js';
 import { registerTradeRewardRoutes } from './tradeRewards/routes.js';
@@ -115,8 +116,8 @@ export async function getReferrerStats(referrer: `0x${string}`, now: Date) {
   // trades carrying one of this referrer's ACTIVE codes, owner != referrer (self-
   // referral excluded). Disjoint from the bind agg above (which now excludes these
   // trades), so summing the two does NOT double-count, and the displayed volume
-  // matches what the monthly payout actually accrues. referredCount stays bind-
-  // based (an appData tag credits volume; it does not create a bound referee).
+  // matches what the monthly payout actually accrues. A tag does not create a
+  // permanent bind; reporting counts the union of bound and code-attributed wallets.
   const [appdataAgg] = await sql<{ cycle_volume_usd: string; cycle_net_weighted: string; lifetime_volume_usd: string }[]>`
     SELECT
       COALESCE(SUM(t.value_usd) FILTER (
@@ -153,13 +154,16 @@ export async function getReferrerStats(referrer: `0x${string}`, now: Date) {
   const bindNetWeighted = agg && agg.cycle_net_weighted ? parseFloat(agg.cycle_net_weighted) : 0;
   const appdataNetWeighted = appdataAgg ? parseFloat(appdataAgg.cycle_net_weighted) : 0;
   const currentCycleNetFeeUsd = (bindNetWeighted + appdataNetWeighted) / 100_000_000;
+  const [counts] = await sql<{ referred_count: string }[]>`
+    SELECT COUNT(*)::text AS referred_count FROM affiliate_referees WHERE referrer_wallet = ${buf}
+  `;
 
   return {
     wallet: referrer,
     kind,
     rateOfNetFeePct: FEE_SHARE_BPS[kind] / 100, // 8 or 12
     activeCodes: codes.filter((c) => c.active).map((c) => c.code),
-    referredCount: agg ? parseInt(agg.referred_count, 10) : 0,
+    referredCount: counts ? parseInt(counts.referred_count, 10) : 0,
     // Bind + appData volume (disjoint). Drives both the display and the partner
     // earnings estimate, so the dashboard now matches the payout.
     currentCycleVolumeUsd: bindCycle + appdataCycle,
@@ -261,7 +265,7 @@ async function admitTrackedWallet(rawWallet: `0x${string}`): Promise<boolean> {
       SELECT wallet FROM candidate
       WHERE EXISTS (SELECT 1 FROM existing)
          OR (SELECT queued FROM queue) < ${maxQueued}
-      ON CONFLICT (wallet) DO NOTHING
+      ON CONFLICT (wallet) DO UPDATE SET last_registered_at = now()
       RETURNING 1
     )
     SELECT (EXISTS (SELECT 1 FROM existing) OR EXISTS (SELECT 1 FROM inserted)) AS accepted
@@ -800,7 +804,7 @@ export async function buildApiServer(): Promise<FastifyInstance> {
   // farm existing volume); FIRST-BIND-WINS (ON CONFLICT DO NOTHING is idempotent +
   // lifetime). Also registers the wallet in tracked_wallets so the fetcher indexes
   // its future trades.
-  app.post<{ Body: { referredWallet?: string; code?: string; issued?: number; signature?: string } }>('/ref/bind', {
+  app.post<{ Body: { referredWallet?: string; code?: string; issued?: number; signature?: string; chainId?: number } }>('/ref/bind', {
     config: { rateLimit: { max: 20, timeWindow: '1 minute' } },
   }, async (req, reply) => {
     const referred = String(req.body?.referredWallet ?? '').toLowerCase();
@@ -814,13 +818,14 @@ export async function buildApiServer(): Promise<FastifyInstance> {
     if (!/^0x[0-9a-f]{40}$/.test(referred)) return reply.code(400).send({ error: 'invalid referredWallet' });
     if (!/^[a-z0-9_-]{3,64}$/.test(code)) return reply.code(400).send({ error: 'invalid code' });
     if (!Number.isInteger(issued)) return reply.code(400).send({ error: 'invalid issued timestamp' });
-    if (!/^0x[0-9a-fA-F]+$/.test(signature)) return reply.code(400).send({ error: 'invalid signature' });
+    if (!/^0x(?:[0-9a-fA-F]{2})*$/.test(signature)) return reply.code(400).send({ error: 'invalid signature' });
 
     // Prove the caller controls `referred` before any DB work. verifyPartnerAuth
     // rebuilds `Ophis bind referral code <code>\nAddress: <referred>\nIssued: <issued>`,
     // recovers the signer, checks it equals `referred`, and enforces the replay window.
     const auth = await verifyPartnerAuth({
       action: 'bind referral code ' + code,
+      chainId: req.body?.chainId,
       address: referred,
       issued,
       signature: signature as `0x${string}`,
@@ -847,7 +852,11 @@ export async function buildApiServer(): Promise<FastifyInstance> {
       if (`0x${rc.referrer_hex}` === auth.address) return reply.code(400).send({ error: 'cannot refer your own wallet' });
 
       const existing = await tx`SELECT 1 FROM referrals WHERE referred_wallet = ${referredBuf} LIMIT 1`;
-      if (existing.length > 0) return { bound: true, alreadyBound: true }; // first-bind-wins, idempotent
+      if (existing.length > 0) {
+        await tx`INSERT INTO tracked_wallets (wallet) VALUES (${referredBuf})
+          ON CONFLICT (wallet) DO UPDATE SET last_registered_at = now()`;
+        return { bound: true, alreadyBound: true }; // first-bind-wins, renew enrollment
+      }
 
       // Reject ALL cycles, not just direct self-referral: binding referred=X to a
       // code owned by referrer=Y is invalid if X is an ANCESTOR of Y in the referral
@@ -873,7 +882,7 @@ export async function buildApiServer(): Promise<FastifyInstance> {
         VALUES (${referredBuf}, ${code}, decode(${rc.referrer_hex}, 'hex'), true)
         ON CONFLICT (referred_wallet) DO NOTHING
       `;
-      await tx`INSERT INTO tracked_wallets (wallet) VALUES (${referredBuf}) ON CONFLICT (wallet) DO NOTHING`;
+      await tx`INSERT INTO tracked_wallets (wallet) VALUES (${referredBuf}) ON CONFLICT (wallet) DO UPDATE SET last_registered_at = now()`;
       return { bound: true, alreadyBound: false };
     });
   });
@@ -895,7 +904,7 @@ export async function buildApiServer(): Promise<FastifyInstance> {
   // ownership, so a code can only be minted for the wallet that signed). Idempotent:
   // returns the wallet's existing active regular code if any, else mints a fresh
   // RANDOM one. Partner codes are NOT self-serve (admin-seeded only).
-  app.post<{ Body: { wallet?: string; issued?: number; signature?: string } }>('/ref/codes', {
+  app.post<{ Body: { wallet?: string; issued?: number; signature?: string; chainId?: number } }>('/ref/codes', {
     config: { rateLimit: { max: 20, timeWindow: '1 minute' } },
   }, async (req, reply) => {
     const wallet = String(req.body?.wallet ?? '').toLowerCase();
@@ -903,8 +912,8 @@ export async function buildApiServer(): Promise<FastifyInstance> {
     const signature = String(req.body?.signature ?? '');
     if (!/^0x[0-9a-f]{40}$/.test(wallet)) return reply.code(400).send({ error: 'invalid wallet address' });
     if (!Number.isInteger(issued)) return reply.code(400).send({ error: 'invalid issued timestamp' });
-    if (!/^0x[0-9a-fA-F]+$/.test(signature)) return reply.code(400).send({ error: 'invalid signature' });
-    const auth = await verifyPartnerAuth({ action: 'create referral code', address: wallet, issued, signature: signature as `0x${string}`, nowSec: Math.floor(Date.now() / 1000) });
+    if (!/^0x(?:[0-9a-fA-F]{2})*$/.test(signature)) return reply.code(400).send({ error: 'invalid signature' });
+    const auth = await verifyPartnerAuth({ action: 'create referral code', chainId: req.body?.chainId, address: wallet, issued, signature: signature as `0x${string}`, nowSec: Math.floor(Date.now() / 1000) });
     if (!auth.ok) return reply.code(401).send({ error: auth.reason });
 
     const buf = Buffer.from(auth.address.slice(2), 'hex');
@@ -963,7 +972,7 @@ export async function buildApiServer(): Promise<FastifyInstance> {
   // partner (own an ACTIVE partner-kind code) and (b) prove ownership by signing the
   // partnerAuth message. One partner can never read another's data: the recovered
   // signer must equal the requested wallet.
-  app.post<{ Body: { wallet?: string; issued?: number; signature?: string } }>('/partner', {
+  app.post<{ Body: { wallet?: string; issued?: number; signature?: string; chainId?: number } }>('/partner', {
     config: { rateLimit: { max: 60, timeWindow: '1 minute' } },
   }, async (req, reply) => {
     const wallet = String(req.body?.wallet ?? '').toLowerCase();
@@ -971,9 +980,9 @@ export async function buildApiServer(): Promise<FastifyInstance> {
     const signature = String(req.body?.signature ?? '');
     if (!/^0x[0-9a-f]{40}$/.test(wallet)) return reply.code(400).send({ error: 'invalid wallet address' });
     if (!Number.isInteger(issued)) return reply.code(400).send({ error: 'invalid issued timestamp' });
-    if (!/^0x[0-9a-fA-F]+$/.test(signature)) return reply.code(400).send({ error: 'invalid signature' });
+    if (!/^0x(?:[0-9a-fA-F]{2})*$/.test(signature)) return reply.code(400).send({ error: 'invalid signature' });
 
-    const auth = await verifyPartnerAuth({ address: wallet, issued, signature: signature as `0x${string}`, nowSec: Math.floor(Date.now() / 1000) });
+    const auth = await verifyPartnerAuth({ chainId: req.body?.chainId, address: wallet, issued, signature: signature as `0x${string}`, nowSec: Math.floor(Date.now() / 1000) });
     if (!auth.ok) return reply.code(401).send({ error: auth.reason });
 
     // Whitelist: the signer must hold an ACTIVE partner code.
@@ -982,31 +991,15 @@ export async function buildApiServer(): Promise<FastifyInstance> {
     if (!partner) return reply.code(403).send({ error: 'not a whitelisted partner' });
 
     const stats = await getReferrerStats(auth.address, new Date());
-    // Partner detail: their bound referees' addresses + each one's cycle volume.
-    const referees = await sql<{ wallet_hex: string; bound_at: Date; volume_usd: string | null }[]>`
-      SELECT encode(r.referred_wallet, 'hex') AS wallet_hex, r.bound_at,
+    // One row per wallet, whether link-bound, code-attributed, or both.
+    const referees = await sql<{ wallet_hex: string; bound_at: Date | null; first_seen: Date; code_tagged: boolean; volume_usd: string }[]>`
+      SELECT encode(r.wallet, 'hex') AS wallet_hex, r.bound_at, r.first_seen, r.code_tagged,
              COALESCE(SUM(t.value_usd), 0)::text AS volume_usd
-      FROM referrals r
-      LEFT JOIN trades t ON t.wallet = r.referred_wallet AND t.block_timestamp >= r.bound_at AND t.value_usd IS NOT NULL
-        -- Mirror the headline stats + accrual bind arm so each referee's shown bind
-        -- volume == the corrected headline + payout:
-        --   (1) fee-gate out examined-0 trades. A settle() DISCOVERY row credits
-        --       nothing (volume_fee_bps=0), so it must not inflate a referee's shown
-        --       volume; an API-enriched NULL is kept through its policy marker,
-        --       while a decoder-only unknown is held. Same gates as the headline.
-        AND t.volume_fee_bps IS DISTINCT FROM 0
-        AND (t.volume_fee_bps IS NOT NULL OR t.undecoded_fee_fallback_bps IS NOT NULL)
-        --   (2) appData-wins: exclude trades attributed via an active code owned by
-        --       someone OTHER than the trader.
-        AND NOT (t.appdata_ref_code IS NOT NULL AND EXISTS (
-          SELECT 1 FROM ref_codes rc2 WHERE rc2.code = t.appdata_ref_code AND rc2.active AND rc2.referrer_wallet <> t.wallet
-        ))
-        --   (3) production chains only, mirroring the headline stats + accrual, so
-        --       per-referee rows reconcile with the totals (Codex post-merge review).
-        AND t.chain_id <> 11155111
+      FROM affiliate_referees r
+      LEFT JOIN affiliate_attributed_trades t ON t.wallet = r.wallet AND t.referrer_wallet = r.referrer_wallet
       WHERE r.referrer_wallet = ${buf}
-      GROUP BY r.referred_wallet, r.bound_at
-      ORDER BY r.bound_at DESC
+      GROUP BY r.wallet, r.bound_at, r.first_seen, r.code_tagged
+      ORDER BY r.first_seen DESC, r.wallet
       LIMIT 500
     `;
     // Earnings panel figures. Estimated current-cycle earnings are FEE-AWARE: the
@@ -1026,13 +1019,17 @@ export async function buildApiServer(): Promise<FastifyInstance> {
       JOIN affiliate_batches b ON b.id = e.batch_id
       WHERE e.referrer_wallet = ${buf} AND e.status = 'paid'
     `;
+    const payoutStatus = affiliatePayoutStatus();
     return {
       ...stats,
       estimatedCurrentCycleEarningsUsd,
       paidToDateWeth: paid?.paid_weth ?? 0,
       paidToDateUsd: paid?.paid_usd ?? 0,
-      nextPayoutAt: nextFirstOfMonth().toISOString(),
-      referees: referees.map((x) => ({ wallet: `0x${x.wallet_hex}`, boundAt: x.bound_at, lifetimeVolumeUsd: x.volume_usd ? parseFloat(x.volume_usd) : 0 })),
+      payoutStatus,
+      nextPayoutAt: payoutStatus === 'scheduled' ? nextFirstOfMonth().toISOString() : null,
+      referees: referees.map((x) => ({ wallet: `0x${x.wallet_hex}`, boundAt: x.bound_at, firstSeenAt: x.first_seen,
+        attribution: x.bound_at ? (x.code_tagged ? 'link-and-code' : 'link') : 'code',
+        lifetimeVolumeUsd: parseFloat(x.volume_usd) })),
     };
   });
 
@@ -1041,7 +1038,7 @@ export async function buildApiServer(): Promise<FastifyInstance> {
   // address by signing the partnerAuth message (action-namespaced), and only ever sees their
   // OWN figures: the recovered signer must equal the requested wallet. No whitelist beyond
   // ownership — the data is self-scoped (a non-partner just sees zeros).
-  app.post<{ Body: { wallet?: string; issued?: number; signature?: string } }>('/partner-fees', {
+  app.post<{ Body: { wallet?: string; issued?: number; signature?: string; chainId?: number } }>('/partner-fees', {
     config: { rateLimit: { max: 60, timeWindow: '1 minute' } },
   }, async (req, reply) => {
     const wallet = String(req.body?.wallet ?? '').toLowerCase();
@@ -1049,9 +1046,9 @@ export async function buildApiServer(): Promise<FastifyInstance> {
     const signature = String(req.body?.signature ?? '');
     if (!/^0x[0-9a-f]{40}$/.test(wallet)) return reply.code(400).send({ error: 'invalid wallet address' });
     if (!Number.isInteger(issued)) return reply.code(400).send({ error: 'invalid issued timestamp' });
-    if (!/^0x[0-9a-fA-F]+$/.test(signature)) return reply.code(400).send({ error: 'invalid signature' });
+    if (!/^0x(?:[0-9a-fA-F]{2})*$/.test(signature)) return reply.code(400).send({ error: 'invalid signature' });
 
-    const auth = await verifyPartnerAuth({ action: 'Partner Fee dashboard access', address: wallet, issued, signature: signature as `0x${string}`, nowSec: Math.floor(Date.now() / 1000) });
+    const auth = await verifyPartnerAuth({ action: 'Partner Fee dashboard access', chainId: req.body?.chainId, address: wallet, issued, signature: signature as `0x${string}`, nowSec: Math.floor(Date.now() / 1000) });
     if (!auth.ok) return reply.code(401).send({ error: auth.reason });
 
     reply.header('vary', 'Origin');
@@ -1207,6 +1204,7 @@ export async function buildApiServer(): Promise<FastifyInstance> {
     Body: {
       wallet?: string;
       rewardId?: string;
+      chainId?: number;
       email?: string;
       issued?: number;
       signature?: string;
@@ -1231,7 +1229,7 @@ export async function buildApiServer(): Promise<FastifyInstance> {
       return reply.code(400).send({ error: 'invalid email address' });
     }
     if (!Number.isInteger(issued)) return reply.code(400).send({ error: 'invalid issued timestamp' });
-    if (!/^0x[0-9a-fA-F]+$/.test(signature)) return reply.code(400).send({ error: 'invalid signature' });
+    if (!/^0x(?:[0-9a-fA-F]{2})*$/.test(signature)) return reply.code(400).send({ error: 'invalid signature' });
 
     const reward = findReward(rewardId);
     if (!reward) return reply.code(404).send({ error: 'unknown reward' });
@@ -1248,6 +1246,7 @@ export async function buildApiServer(): Promise<FastifyInstance> {
     // The frontend signs the same trimmed, case-preserving email.
     const auth = await verifyPartnerAuth({
       action: `claim reward ${rewardId}\nEmail: ${email}`,
+      chainId: req.body?.chainId,
       address: wallet,
       issued,
       signature: signature as `0x${string}`,

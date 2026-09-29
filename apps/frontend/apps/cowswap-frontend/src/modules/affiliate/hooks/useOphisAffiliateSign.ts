@@ -29,12 +29,13 @@ export function useOphisAffiliateSign(
       if (!account) throw new Error('No connected wallet')
       if (!provider) throw new Error('No wallet provider available')
 
+      const { chainId } = await provider.getNetwork()
       const issued = nowIssuedSec()
-      const message = buildAffiliateSignMessage(action, account, issued)
+      const message = buildAffiliateSignMessage(action, account, issued, chainId)
       const signer = provider.getSigner()
       const signature = await signer.signMessage(message)
 
-      return { wallet: account, issued, signature }
+      return { wallet: account, issued, signature, chainId }
     },
     [account, provider],
   )

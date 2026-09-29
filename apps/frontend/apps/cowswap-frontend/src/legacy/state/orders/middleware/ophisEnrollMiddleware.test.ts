@@ -20,15 +20,17 @@ describe('ophisEnrollMiddleware', () => {
     global.fetch = fetchMock as unknown as typeof fetch
   })
 
-  it('enrolls the order owner (lowercased) when an order is placed, and always forwards the action', () => {
+  it('enrolls the order owner (lowercased) when an order is placed, and always forwards the action', async () => {
     const owner = '0x04981fF1F1a901B0F5221af38E7Ee4ACa8353A27'
     when(actionMock.type).thenReturn('order/addPendingOrder')
     when(actionMock.payload).thenReturn({ chainId: 1, order: { owner } })
 
     dispatch()
 
+    await flushMicrotasks()
+
     expect(fetchMock).toHaveBeenCalledTimes(1)
-    expect(fetchMock).toHaveBeenCalledWith(`https://rebates.ophis.fi/tier/${owner.toLowerCase()}`)
+    expect(fetchMock).toHaveBeenCalledWith(`https://rebates.ophis.fi/tier/${owner.toLowerCase()}`, expect.any(Object))
     expect(nextMock).toHaveBeenCalledTimes(1)
   })
 
@@ -52,14 +54,19 @@ describe('ophisEnrollMiddleware', () => {
     expect(nextMock).toHaveBeenCalledTimes(1)
   })
 
-  it('enrolls a given wallet only once per session (dedup)', () => {
+  it('deduplicates concurrent calls but renews on subsequent submissions', async () => {
     when(actionMock.type).thenReturn('order/addPendingOrder')
     when(actionMock.payload).thenReturn({ chainId: 1, order: { owner: '0x1111111111111111111111111111111111111111' } })
 
     dispatch()
     dispatch()
 
+    await flushMicrotasks()
+
     expect(fetchMock).toHaveBeenCalledTimes(1)
+    dispatch()
+    await flushMicrotasks()
+    expect(fetchMock).toHaveBeenCalledTimes(2)
   })
 
   it('never breaks order dispatch even if enrollment throws synchronously', () => {
@@ -82,6 +89,7 @@ describe('ophisEnrollMiddleware', () => {
     await flushMicrotasks() // let the non-OK response drop the address from the set
     dispatch()
 
+    await flushMicrotasks()
     expect(fetchMock).toHaveBeenCalledTimes(2)
   })
 })

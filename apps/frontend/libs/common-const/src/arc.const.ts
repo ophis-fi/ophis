@@ -55,7 +55,12 @@ if (requested && (!ARC_SETTLEMENT || !ARC_VAULT_RELAYER))
   throw new Error('Arc requires settlement and vault relayer addresses')
 if (requested && areAddressesEqual(ARC_SETTLEMENT, ARC_VAULT_RELAYER)) throw new Error('Arc contracts must be distinct')
 if (requested && !ARC_LOCAL) {
-  const url = new URL(ARC_ORDERBOOK_URL)
+  let url: URL
+  try {
+    url = new URL(ARC_ORDERBOOK_URL)
+  } catch {
+    throw new Error('Arc requires a valid public HTTPS orderbook URL')
+  }
   if (
     url.protocol !== 'https:' ||
     url.username ||
