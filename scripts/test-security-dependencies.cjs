@@ -71,7 +71,7 @@ function installed(name, major) {
 }
 
 async function main() {
-  for (const pkg of workspace === 'root' ? [] : installed('fast-uri', 3)) {
+  for (const pkg of installed('fast-uri', 3)) {
     const uri = pkg.require('fast-uri');
     for (const input of ['https://ophis.fi/path?asset=USDC#swap', 'http://localhost:8080/', 'https://[::1]:443/']) {
       assert.equal(uri.parse(input).error, undefined);
@@ -88,7 +88,7 @@ async function main() {
     }
     console.log(`PASS fast-uri ${pkg.version}: URI round trips, host normalization, authority injection rejected`);
   }
-  for (const pkg of workspace === 'root' ? [] : installed('ajv', 8)) {
+  for (const pkg of installed('ajv', 8)) {
     const Ajv = pkg.require('ajv');
     const ajv = new Ajv();
     ajv.addSchema({ $id: 'https://ophis.fi/schemas/amount', type: 'integer', minimum: 1 });
