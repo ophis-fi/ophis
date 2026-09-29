@@ -4,7 +4,7 @@ import type { ChainConfig, ScanResult, Swap } from '../types.js';
 import { parseAppData } from '../appdata.js';
 import { redactSecrets } from '../redact.js';
 
-export type PsqlRunner = (container: string, sql: string) => Promise<string>;
+export type PsqlRunner = (container: string, sql: string, user?: string) => Promise<string>;
 
 // The orderbook DB stores bytea columns; we hex-encode + prefix 0x in SQL. Join the
 // app_data document so we can filter on appCode without a second round-trip, and use
@@ -62,9 +62,9 @@ export function buildLocalQuery(t0Iso: string): string {
     order by max(coalesce(stl.settled_at, o.creation_timestamp)) desc;`;
 }
 
-export const dockerPsql: PsqlRunner = (container, sql) =>
+export const dockerPsql: PsqlRunner = (container, sql, user = 'ophis') =>
   new Promise((resolve, reject) => {
-    execFile('docker', ['exec', container, 'psql', '-U', 'ophis', '-d', 'ophis', '-F', '\t', '-A', '-t', '-c', sql],
+    execFile('docker', ['exec', container, 'psql', '-U', user, '-d', user, '-F', '\t', '-A', '-t', '-c', sql],
       { maxBuffer: 64 * 1024 * 1024 },
       (err, stdout, stderr) => (err ? reject(new Error(stderr || err.message)) : resolve(stdout)));
   });
@@ -98,7 +98,7 @@ export async function scanLocalDbChain(cfg: ChainConfig, t0Iso: string, run: Psq
     return { swaps: [], coverage: { ...base, status: 'degraded', error: 'dbContainer not configured' } };
   }
   try {
-    const tsv = await run(cfg.dbContainer, buildLocalQuery(t0Iso));
+    const tsv = await run(cfg.dbContainer, buildLocalQuery(t0Iso), cfg.dbUser);
     const swaps = parseLocalRows(tsv, cfg.chainId, cfg.name);
     return { swaps, coverage: { ...base, fillsScanned: swaps.length, ophisFound: swaps.length } };
   } catch (err) {

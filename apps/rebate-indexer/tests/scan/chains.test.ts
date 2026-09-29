@@ -44,9 +44,9 @@ describe('chains', () => {
       SCAN_BLOCK_RPC_BNB: 'https://blocks.example',
     })).toBe('https://blocks.example');
   });
-  it('covers all 13 production chains', () => {
+  it('covers all 14 production chains', () => {
     expect(SCAN_CHAINS.map((c) => c.chainId).sort((a, b) => a - b)).toEqual([
-      1, 10, 56, 100, 130, 137, 4663, 8453, 9745, 42161, 43114, 57073, 59144,
+      1, 10, 56, 100, 130, 137, 4663, 5042, 8453, 9745, 42161, 43114, 57073, 59144,
     ]);
   });
   it('selectChains filters by name, defaults to all', () => {

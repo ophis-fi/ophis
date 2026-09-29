@@ -52,6 +52,15 @@ describe('DefiLlama readiness', () => {
   it('stays closed until every production fill has an exact executed assessment', async () => {
     expect(await isDefiLlamaBackfillComplete()).toBe(false);
     await sql`UPDATE defillama_fills SET assessed_fee_bps = 1 WHERE chain_id = 1`;
+    expect(await isDefiLlamaBackfillComplete()).toBe(false);
+  });
+
+  it('requires the Arc reconciliation acknowledgement even with complete known rows and an old completion timestamp', async () => {
+    await sql`UPDATE defillama_reporting_state SET completed_at = now()`;
+    expect(await isDefiLlamaBackfillComplete()).toBe(false);
+    const { completeDefiLlamaBackfillIfReady } = await import('../src/defillamaBackfill.js');
+    expect(await completeDefiLlamaBackfillIfReady()).toBe(false);
+    await sql`UPDATE defillama_reporting_state SET arc_reconciled_through_block = 23345455`;
     expect(await isDefiLlamaBackfillComplete()).toBe(true);
   });
 

@@ -21,6 +21,7 @@ export const DEFILLAMA_CHAIN_SLUG: Readonly<Record<number, string>> = {
   130: 'unichain',
   137: 'polygon',
   4663: 'robinhood',
+  5042: 'arc',
   8453: 'base',
   9745: 'plasma',
   42161: 'arbitrum',
@@ -110,6 +111,7 @@ export async function priceDefiLlamaFill(row: {
 // CoW native_price confirmed serving plasma. Plasma is USDT-native, so its USD
 // reference is USDT0 rather than USDC.)
 const USD_REFERENCE: Readonly<Record<number, { token: `0x${string}`; decimals: number }>> = {
+  5042:     { token: '0x3600000000000000000000000000000000000000', decimals: 6 }, // Arc ERC-20 USDC, NOT the 18-decimal native gas balance
   1:        { token: '0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48', decimals: 6 },  // USDC mainnet
   100:      { token: '0xddafbb505ad214d7b80b1f830fccc89b60fb7a83', decimals: 6 },  // USDC.e gnosis
   8453:     { token: '0x833589fcd6edb6e08f4c7c32d4f71b54bda02913', decimals: 6 },  // USDC base

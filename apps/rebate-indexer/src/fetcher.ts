@@ -5,6 +5,7 @@ import {
   HISTORICAL_OPHIS_FEE_MAX_BPS,
   OWN_FEE_MAX_BPS,
   SOVEREIGN_CHAIN_IDS,
+  ARC_CHAIN_ID,
   affiliateFeeBpsForOrderCreatedAt,
   undecodedFeeFallbackBpsForOrderCreatedAt,
 } from './affiliate/rates.js';
@@ -393,7 +394,13 @@ export function readAssessedOphisFeeBps(
   const raw = (meta as { metadata?: { partnerFee?: unknown } })?.metadata?.partnerFee;
   const appFees = (Array.isArray(raw) ? raw : raw ? [raw] : []) as Array<{ recipient?: unknown }>;
   const executed = trade.executedProtocolFees ?? [];
-  if (appFees.length === 0 || executed.length < appFees.length) return null;
+  if (appFees.length === 0) {
+    // Arc has no operator policy; an explicitly empty execution list proves zero.
+    // Missing execution metadata is not evidence of a zero fee.
+    return chainId === ARC_CHAIN_ID && orderClass !== undefined && meta != null
+      && trade.executedProtocolFees?.length === 0 ? '0.00000000' : null;
+  }
+  if (executed.length < appFees.length) return null;
 
   // Operated market and limit orders can prepend one canonical Ophis improvement
   // policy. Exact cardinality plus the value-level suffix match below rejects
@@ -401,7 +408,11 @@ export function readAssessedOphisFeeBps(
   const sovereign = SOVEREIGN_CHAIN_IDS.has(chainId);
   let hasSovereignImprovement = false;
   if (sovereign) {
-    if ((orderClass === 'market' || orderClass === 'limit')
+    // Arc has no operator improvement policy. Match its signed partner-fee
+    // list exactly; never infer an Ophis recipient for an extra backend fee.
+    if (chainId === ARC_CHAIN_ID) {
+      if (orderClass === undefined || executed.length !== appFees.length) return null;
+    } else if ((orderClass === 'market' || orderClass === 'limit')
       && executed.length === appFees.length + 1
       && isCanonicalOphisImprovement(chainId, executed[0]!.policy)) {
       hasSovereignImprovement = true;
@@ -425,7 +436,7 @@ export function readAssessedOphisFeeBps(
       : [],
   );
   if (hasSovereignImprovement) ophisFees.unshift(executed[0]!);
-  if (ophisFees.length === 0) return null;
+  if (ophisFees.length === 0) return chainId === ARC_CHAIN_ID ? '0.00000000' : null;
   const token = ophisFees[0]!.token.toLowerCase();
   if (ophisFees.some((fee) => fee.token.toLowerCase() !== token)) return null;
 

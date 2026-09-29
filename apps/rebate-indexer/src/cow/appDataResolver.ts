@@ -15,6 +15,7 @@
  */
 import { keccak256, stringToHex } from 'viem';
 import {
+  ARC_CHAIN_ID,
   OPTIMISM_CHAIN_ID,
   ROBINHOOD_CHAIN_ID,
   UNICHAIN_CHAIN_ID,
@@ -32,7 +33,7 @@ export async function resolveAppData(chainId: number, hash: `0x${string}`): Prom
   // Ophis content store still retains the same hash. Query the order's native
   // store first, then the other sovereign stores. Re-hashing makes this safe: a
   // fallback can provide availability, but cannot alter the signed document.
-  const sovereign = [OPTIMISM_CHAIN_ID, UNICHAIN_CHAIN_ID, ROBINHOOD_CHAIN_ID];
+  const sovereign = [OPTIMISM_CHAIN_ID, UNICHAIN_CHAIN_ID, ROBINHOOD_CHAIN_ID, ARC_CHAIN_ID];
   const bases = [
     orderbookBase(chainId),
     ...(sovereign.includes(chainId) ? sovereign.map(orderbookBase) : []),

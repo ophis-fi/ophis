@@ -20,6 +20,7 @@ import { decodeFunctionData, type PublicClient } from 'viem';
 import { TRADE_EVENT, SETTLE_FN, settlementAddressFor } from './settleAbi.js';
 import { getRpcClient } from '../rpc/client.js';
 import { orderbookBase, getOrder } from './client.js';
+import { ARC_CHAIN_ID } from '../affiliate/rates.js';
 import { resolveAppData } from './appDataResolver.js';
 import { attributeOrder, DECODER_ETHFLOW_OWNERS, type PendingTrade, type PendingDefiLlamaFill } from '../fetcher.js';
 import { logger } from '../logger.js';
@@ -423,9 +424,16 @@ async function scanChain(chainId: number, deps: SettleDecoderDeps, discoveryOnly
   if (cursor >= safeHead) return 0;
 
   let inserted = 0;
-  let window = DEFAULT_WINDOW;
+  // Arc's free RPC accepts at most 100 blocks per getLogs. Keep the cap after
+  // each successful window instead of repeatedly sending an oversized request.
+  const maxWindow = chainId === ARC_CHAIN_ID && DEFAULT_WINDOW > 100n ? 100n : DEFAULT_WINDOW;
+  let window = maxWindow;
+  // ponytail: 10k Arc blocks/run bounds free-RPC load; catch up via the persisted
+  // cursor over successive runs. Bootstrap old history from the orderbook DB.
+  const maxWindows = chainId === ARC_CHAIN_ID ? 100 : Infinity;
+  let windows = 0;
   let from = cursor + 1n;
-  while (from <= safeHead) {
+  while (from <= safeHead && windows < maxWindows) {
     const to = from + window - 1n > safeHead ? safeHead : from + window - 1n;
     let logs: TradeLog[];
     try {
@@ -450,8 +458,9 @@ async function scanChain(chainId: number, deps: SettleDecoderDeps, discoveryOnly
     // window and the (chain, block, logIndex, uid)-keyed insert is idempotent.
     if (fills.length > 0) await deps.appendDefillamaFills!(fills);
     await writeCursor(chainId, to, deps.sql); // advance ONLY after the window's rows + fills persist
+    windows += 1;
     from = to + 1n;
-    if (window < DEFAULT_WINDOW) window = DEFAULT_WINDOW; // restore after a clean window
+    if (window < maxWindow) window = maxWindow; // restore within the provider's cap
   }
   return inserted;
 }
