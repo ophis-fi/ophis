@@ -394,7 +394,13 @@ export function readAssessedOphisFeeBps(
   const raw = (meta as { metadata?: { partnerFee?: unknown } })?.metadata?.partnerFee;
   const appFees = (Array.isArray(raw) ? raw : raw ? [raw] : []) as Array<{ recipient?: unknown }>;
   const executed = trade.executedProtocolFees ?? [];
-  if (appFees.length === 0 || executed.length < appFees.length) return null;
+  if (appFees.length === 0) {
+    // Arc has no operator policy; an explicitly empty execution list proves zero.
+    // Missing execution metadata is not evidence of a zero fee.
+    return chainId === ARC_CHAIN_ID && orderClass !== undefined && meta != null
+      && trade.executedProtocolFees?.length === 0 ? '0.00000000' : null;
+  }
+  if (executed.length < appFees.length) return null;
 
   // Operated market and limit orders can prepend one canonical Ophis improvement
   // policy. Exact cardinality plus the value-level suffix match below rejects
@@ -430,7 +436,7 @@ export function readAssessedOphisFeeBps(
       : [],
   );
   if (hasSovereignImprovement) ophisFees.unshift(executed[0]!);
-  if (ophisFees.length === 0) return null;
+  if (ophisFees.length === 0) return chainId === ARC_CHAIN_ID ? '0.00000000' : null;
   const token = ophisFees[0]!.token.toLowerCase();
   if (ophisFees.some((fee) => fee.token.toLowerCase() !== token)) return null;
 
