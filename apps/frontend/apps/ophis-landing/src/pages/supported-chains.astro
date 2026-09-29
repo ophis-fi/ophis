@@ -28,7 +28,7 @@ const FAQS = [
   },
   {
     q: 'What does Ophis-operated mean?',
-    a: `On ${sovereignList}, batch-auction swaps use Ophis's own settlement contracts with chain-specific fee handling. Arc currently has no configured backend improvement policy; see the pricing page. Resolve supported signing domains and orderbook hosts through @ophis/sdk or MCP list_chains. SDK v0.4.3 and hosted MCP include Arc (5042); do not reuse another chain's address. Bridge routes have separate costs.`,
+    a: `On ${sovereignList}, batch-auction swaps use Ophis's own settlement contracts with chain-specific fee handling. Arc currently has no configured backend improvement policy; see the pricing page. Resolve supported signing domains and orderbook hosts through @ophis/sdk or MCP list_chains. SDK v0.4.4 and hosted MCP include Arc (5042); do not reuse another chain's address. Bridge routes have separate costs.`,
   },
   {
     q: 'How do cross-chain destinations work?',
@@ -117,15 +117,35 @@ const itemListLd = {
 
   <h2>For agents and integrators</h2>
   <p>
-    SDK v0.4.3 and the hosted MCP server cover the EVM chains above, including Arc (5042).
+    SDK v0.4.4 and the hosted MCP server cover the EVM chains above, including Arc (5042).
     Bridge coverage remains route-specific; eligible settled Arc trades count toward referral and volume-tier rebates.
+  </p>
+  <p>
+    SDK v0.4.3 already supports Arc trading. Upgrade to v0.4.4 to include referral codes on Arc orders.
+  </p>
+  <p><code>npm install @ophis/sdk@0.4.4</code></p>
+  <p>
+    Before every order submission, register the actual order owner so Ophis can track eligible trades for rebates.
+    Registering only when the wallet connects is not sufficient. If a Safe owns the order, register the Safe address,
+    not its curator's or signer's wallet.
+  </p>
+  <p><code>{"await enrollOphisTrader(orderOwner, { blocking: true })"}</code></p>
+  <p>
+    If registration fails, retry registration before submitting the order. Do not submit an already accepted order
+    again just to fix registration. Registration alone does not establish partner affiliation: keep
+    <code>appCode</code> set to <code>'ophis'</code> and include your valid referral code separately in the order's metadata.
+    See the <a href="https://docs.ophis.fi/partners">partner integration guide</a> for the complete flow.
+  </p>
+  <p>
+    Affiliate payouts remain disabled. The partner dashboard shows estimated earnings, not payments.
+    No payout date is currently confirmed.
   </p>
   <p>
     The machine-readable per-chain contract-pinning policy (settlement addresses, vault relayers,
     EIP-712 domains, orderbook hosts) ships in the
     <a href="https://ophis.fi/.well-known/agent-skills/ophis/SKILL.md">Ophis agent skill</a>
     for Optimism, Unichain and Robinhood Chain. For all supported EVM chains, including Arc,
-    the <a href="https://github.com/ophis-fi/ophis/tree/main/packages/sdk">@ophis/sdk</a> v0.4.3 helpers
+    the <a href="https://github.com/ophis-fi/ophis/tree/main/packages/sdk">@ophis/sdk</a> v0.4.4 helpers
     resolve the correct settlement domain per chain, and the
     <a href="https://docs.ophis.fi/ai-agents">MCP server</a> exposes the same data through the
     <code>list_chains</code> tool. Fee detail per chain lives on the

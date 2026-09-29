@@ -175,6 +175,7 @@ const publicSitePaths = [
   'apps/frontend/apps/ophis-landing/public/apis.json',
   'apps/frontend/apps/ophis-landing/public/llms.txt',
   'apps/frontend/apps/ophis-landing/public/.well-known/ai-plugin.json',
+  'apps/frontend/apps/ophis-landing/public/.well-known/agent-skills/ophis/SKILL.md',
   'apps/frontend/apps/ophis-landing/public/.well-known/agent-skills/swap-via-ophis/SKILL.md',
   'apps/frontend/apps/cowswap-frontend/public/llms.txt',
   'apps/frontend/apps/cowswap-frontend/public/business/index.html',
@@ -186,14 +187,20 @@ const publicSitePaths = [
   'apps/mcp-server/README.md',
   'README.md',
 ];
+const staleArcIntegration = /(?:mappings (?:currently )?exclude Arc|supported chains excluding Arc|Arc \(5042\) is not\.|not in the published SDK\/MCP mappings|Arc[^.]*?(?:absent from|excluded from|not yet included in)[^.]*?published SDK\/MCP)/;
+assert.match(
+  'Arc is also Ophis-operated in the swap app, but is excluded from this pinned execution policy and the published SDK/MCP mappings.',
+  staleArcIntegration,
+  'Arc integration guard must catch the umbrella skill exclusion',
+);
 for (const path of publicSitePaths) {
   const source = read(path);
   // Dated blog posts can quote historical counts, as in the landing count gate.
   if (!path.includes('/src/content/')) {
     assert.doesNotMatch(source, /\b13 (?:supported )?EVM (?:chains|networks)\b|13 mainnets \+ Sepolia/, `${path}: stale network count`);
   }
-  assert.doesNotMatch(source,
-    /(?:mappings (?:currently )?exclude Arc|supported chains excluding Arc|Arc \(5042\) is not\.|not in the published SDK\/MCP mappings|Arc[^.\n]*?(?:absent from|excluded from|not yet included in) published SDK\/MCP)/,
+  assert.doesNotMatch(source.replace(/\s+/g, ' '),
+    staleArcIntegration,
     `${path}: stale Arc integration exclusion`);
 }
 
