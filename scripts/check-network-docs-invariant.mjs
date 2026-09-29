@@ -143,13 +143,21 @@ assert.match(partners, /buildOphisReferrerMetadata\('your-code', chainId\)/,
 assert.doesNotMatch(partners, /Arc is app-only|Arc is app-supported but not yet/, 'stale Arc SDK exclusion in partner guide');
 
 const integrationDocPaths = [
+  'README.md',
   ...readdirSync(new URL('../apps/docs-ophis/docs/', import.meta.url))
     .filter((name) => /\.mdx?$/.test(name)).map((name) => `apps/docs-ophis/docs/${name}`),
   ...readdirSync(new URL('../packages/', import.meta.url))
     .map((name) => `packages/${name}/README.md`)
     .filter((path) => existsSync(new URL(`../${path}`, import.meta.url))),
 ];
-const staleArcRebate = /Arc[^.]{0,120}(?:not (?:yet )?(?:indexed|ingested)|no rebate indexing|no referral accrual|excluded from rebate indexing|do not accrue referral)|omit referral codes (?:from|for) Arc|referralCode: [^,;]{0,80}=== 5042 \? undefined/i;
+const staleArcRebate = /Arc[^.]{0,160}(?:not (?:yet )?(?:indexed|ingested|eligible|covered by rebate indexing)|no (?:[\w/-]+ ){0,5}rebates|no rebate indexing|no referral accrual|excluded from rebate indexing|do not accrue referral)|indexed chains,? excluding Arc|no backend improvement capture or (?:rebate indexing|referral\/volume-tier rebates)|omit referral codes (?:from|for) Arc|referralCode: [^,;]{0,80}=== 5042 \? undefined/i;
+for (const stale of [
+  'Arc earns no referral or volume-tier rebates', 'Arc is not yet eligible',
+  'Arc earns no rebates', 'indexed chains, excluding Arc',
+  'Arc is not yet covered by rebate indexing',
+  'no backend improvement capture or referral/volume-tier rebates',
+  'referralCode: wallet.getChainId() === 5042 ? undefined : code',
+]) assert.match(stale, staleArcRebate, `Arc exclusion guard misses: ${stale}`);
 for (const path of integrationDocPaths) {
   assert.doesNotMatch(read(path).replace(/\s+/g, ' '), staleArcRebate,
     `${path}: stale Arc rebate/referral exclusion`);

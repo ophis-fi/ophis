@@ -52,12 +52,12 @@ What that buys you on every trade:
   freeze, or recover them. The signature is the only trust boundary.
 - **Transparent, capped fees.** A 0.01% (1 bp) base plus the capped improvement
   policy above where configured, with a share returned monthly as WETH rebates plus an 8%
-  referral on indexed chains, excluding Arc.
+  referral on indexed chains, including Arc.
 
 **Live across 14 EVM chains**, with Ophis-operated settlement on Optimism
 (chain 10), Unichain (130), Robinhood Chain (4663), and Arc (5042), plus CoW-hosted
 settlement on the other ten chains. Arc currently charges the 1 bp base without
-backend improvement capture and is not yet covered by rebate indexing.
+backend improvement capture; eligible settled trades are covered by rebate indexing.
 
 ## Quickstart: the Intent API
 
@@ -281,7 +281,7 @@ pairs and **50% capped at 20 bps** for stable pairs. Arc currently has no backen
 apply the improvement policy; hosted orders encode it in CIP-75 appData and
 separately pay CoW Protocol's upstream fees.
 
-On indexed chains, excluding Arc, part of the fee flows back to traders:
+On indexed chains, including Arc, part of the fee flows back to traders:
 
 - **Volume-tier rebates.** Each month a share of collected WETH fees is paid back,
   split across active wallets by 30-day volume and tier (Bronze through Platinum).
