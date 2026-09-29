@@ -3,7 +3,7 @@
   "name": "fi.ophis/mcp",
   "title": "Ophis MCP",
   "description": "Gasless, MEV-protected onchain token swaps for AI agents on 14 EVM chains, built on CoW Protocol.",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "websiteUrl": "https://ophis.fi",
   "repository": {
     "url": "https://github.com/ophis-fi/ophis",
@@ -19,7 +19,7 @@
   "_meta": {
     "io.modelcontextprotocol.registry/publisher-provided": {
       "tool": "ophis-mcp",
-      "version": "0.1.1",
+      "version": "0.1.2",
       "docs": "https://docs.ophis.fi/",
       "tools": [
         "parse_intent",

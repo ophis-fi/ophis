@@ -38,7 +38,7 @@ It quotes against the Ophis orderbook, signs the order EIP-712 via the wallet pr
 
 - **ERC-20 → ERC-20 only.** Native-ETH sells need CoW eth-flow (a separate path); wrap to WETH first.
 - The agent's wallet is the order **owner and receiver** — funds only ever move through the audited CoW settlement contract, back to the same wallet.
-- Version 0.3.5 uses SDK 0.4.3. An EVM wallet can trade on its supported chains, including Arc (5042), using ERC-20 addresses. Configured referral defaults are skipped on Arc, which has no rebate indexing; native USDC sentinels are rejected.
+- Version 0.3.6 uses SDK 0.4.4. An EVM wallet can trade on its supported chains, including Arc (5042), using ERC-20 addresses. Configured referral defaults apply on Arc; native USDC sentinels are rejected.
 - Get a referral code (it carries the rebate): https://docs.ophis.fi/ai-agents
 
 The order-flow core is [`@ophis/agent-swap`](../agent-swap); see also [`@ophis/plugin-goat`](../plugin-goat) for the GOAT SDK.

@@ -45,9 +45,9 @@ order carried a **1 bp volume-only** partner fee. Do not infer 80%/99 bps or
 quote and signed fee metadata. This is a documented release difference, not a
 change to trading fees made by this documentation update.
 
-Arc trades are not yet ingested by the rebate indexer and do not accrue volume-tier
-or affiliate rebates. SDK v0.4.3 rejects Arc referral codes; ordinary Arc orders
-without referral attribution remain supported.
+Arc settled trades are indexed for volume-tier and affiliate rebates under the
+same eligibility rules. Use SDK v0.4.4 or later for Arc referral tags. This does
+not enable backend improvement capture or an Arc own-fee payout guarantee.
 
 ## How it works
 

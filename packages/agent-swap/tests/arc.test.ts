@@ -40,8 +40,9 @@ function wallet(): OphisAgentWallet {
 afterEach(() => { vi.restoreAllMocks(); vi.clearAllMocks(); });
 
 describe('Arc agent-swap with the current SDK', () => {
-  it.each([undefined, ''])('builds untagged ERC-20 orders without rebate enrollment (code %s)', async (referralCode) => {
-    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+  it.each([undefined, '', 'partner_1'])('builds ERC-20 orders with rebate enrollment (code %s)', async (referralCode) => {
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+    mocks.enroll.mockResolvedValue({ enrolled: true });
     // This fails when test dependencies accidentally resolve the older pre-Arc SDK.
     expect(getOphisOrderDomain(5042).verifyingContract).toBe('0x78799F98276efba1EdeeD32eae03a3fd8Cdfec3A');
     mocks.quote.mockResolvedValue({ quote: { sellToken: SELL, buyToken: BUY, sellAmount: '1000000', feeAmount: '0', buyAmount: '900000' } });
@@ -50,19 +51,20 @@ describe('Arc agent-swap with the current SDK', () => {
     await expect(executeOphisSwap(agentWallet, params, { referralCode, isStablePair: true })).resolves.toMatchObject({ orderUid: 'uid', chainId: 5042 });
     const appData = JSON.parse(mocks.quote.mock.lastCall?.[0].appData);
     expect(appData.metadata.partnerFee).toMatchObject({ volumeBps: 1 });
-    expect(appData.metadata).not.toHaveProperty('ophisReferrer');
-    expect(mocks.enroll).not.toHaveBeenCalled();
-    expect(warn).not.toHaveBeenCalled();
+    expect(appData.metadata.ophisReferrer?.code).toBe(referralCode || undefined);
+    expect(mocks.enroll).toHaveBeenCalledWith(agentWallet.getAddress());
     expect(agentWallet.signTypedData).toHaveBeenCalledWith(expect.objectContaining({ domain: getOphisOrderDomain(5042) }));
   });
 
-  it('rejects an explicit Arc referral code before quoting, approval or signing', async () => {
+  it('reports an Arc enrollment failure without blocking settlement', async () => {
+    mocks.enroll.mockRejectedValue(new Error('indexer unavailable'));
+    mocks.quote.mockResolvedValue({ quote: { sellToken: SELL, buyToken: BUY, sellAmount: '1000000', feeAmount: '0', buyAmount: '900000' } });
+    mocks.send.mockResolvedValue('uid');
     const agentWallet = wallet();
-    await expect(executeOphisSwap(agentWallet, params, { referralCode: 'partner_1' })).rejects.toThrow(/Arc.*not.*indexed|Arc.*rebate/i);
-    expect(mocks.enroll).not.toHaveBeenCalled();
-    expect(mocks.quote).not.toHaveBeenCalled();
-    expect(agentWallet.ensureErc20Allowance).not.toHaveBeenCalled();
-    expect(agentWallet.signTypedData).not.toHaveBeenCalled();
+    await expect(executeOphisSwap(agentWallet, params, { referralCode: 'partner_1' })).resolves.toMatchObject({
+      orderUid: 'uid', enrollmentWarning: expect.stringContaining('indexer unavailable'),
+    });
+    expect(agentWallet.signTypedData).toHaveBeenCalledOnce();
   });
 
   it.each([

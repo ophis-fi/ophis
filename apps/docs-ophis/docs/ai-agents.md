@@ -36,7 +36,7 @@ https://mcp.ophis.fi/mcp
 
 It speaks streamable-HTTP MCP and exposes fourteen tools:
 
-The current server release is **v0.1.1**. Its package metadata, runtime
+The current server release is **v0.1.2**. Its package metadata, runtime
 handshake, discovery response, and official registry manifest are checked as a
 single versioned unit in CI.
 
@@ -293,17 +293,16 @@ and apply referral attribution on indexed chains when a code is supplied:
 
 | Package                                                                        | Version | For                                                       | Registers                            |
 | ------------------------------------------------------------------------------ | ------- | --------------------------------------------------------- | ------------------------------------ |
-| [`@ophis/agentkit-ophis`](https://www.npmjs.com/package/@ophis/agentkit-ophis) | v0.3.5  | [Coinbase AgentKit](https://github.com/coinbase/agentkit) | an `OphisActionProvider_swap` action |
-| [`@ophis/plugin-goat`](https://www.npmjs.com/package/@ophis/plugin-goat)       | v0.3.5  | [GOAT SDK](https://github.com/goat-sdk/goat)              | an `ophis_swap` tool                 |
-| [`@ophis/plugin-elizaos`](https://www.npmjs.com/package/@ophis/plugin-elizaos) | v0.3.5  | [elizaOS](https://github.com/elizaOS/eliza)               | a `swap` action                      |
-| [`@ophis/agent-swap`](https://www.npmjs.com/package/@ophis/agent-swap)         | v0.3.5  | any custom EOA framework                                  | the `executeOphisSwap()` core        |
+| [`@ophis/agentkit-ophis`](https://www.npmjs.com/package/@ophis/agentkit-ophis) | v0.3.6  | [Coinbase AgentKit](https://github.com/coinbase/agentkit) | an `OphisActionProvider_swap` action |
+| [`@ophis/plugin-goat`](https://www.npmjs.com/package/@ophis/plugin-goat)       | v0.3.6  | [GOAT SDK](https://github.com/goat-sdk/goat)              | an `ophis_swap` tool                 |
+| [`@ophis/plugin-elizaos`](https://www.npmjs.com/package/@ophis/plugin-elizaos) | v0.3.6  | [elizaOS](https://github.com/elizaOS/eliza)               | a `swap` action                      |
+| [`@ophis/agent-swap`](https://www.npmjs.com/package/@ophis/agent-swap)         | v0.3.6  | any custom EOA framework                                  | the `executeOphisSwap()` core        |
 
-The v0.3.5 adapter family is built and published against `@ophis/sdk` v0.4.3,
+The v0.3.6 adapter family is built and published against `@ophis/sdk` v0.4.4,
 so its fee policy, orderbook hosts, settlement contracts, and vault relayers
 match the current SDK. The core and AgentKit can use an Arc wallet with ERC-20
-addresses; configured wrapper referral defaults are skipped on Arc, which is
-not indexed for rebates. Explicit per-call Arc codes passed to `executeOphisSwap`
-are rejected. GOAT discovery and the elizaOS chain resolver retain their existing
+addresses; configured wrapper defaults and explicit per-call codes now support
+Arc referral attribution. GOAT discovery and the elizaOS chain resolver retain their existing
 chain lists and do not expose Arc merely because their SDK dependency supports it.
 
 Coinbase AgentKit, in one line:
@@ -415,10 +414,10 @@ nothing for the end user to sign or opt into.
 3. Pass it to any adapter as `referralCode`, or export `OPHIS_REFERRAL_CODE` and
    the adapters pick it up automatically.
 
-Arc is excluded from rebate indexing; SDK v0.4.3 and MCP reject nonempty Arc
-referral codes. Omit the code for Arc; MCP also skips its configured server
-default on Arc. The code is **optional**: without one your agent still swaps
-normally, it just earns no rebate. You can ship first and add the code later.
+Arc is indexed for rebates. SDK v0.4.4 and MCP accept Arc referral codes;
+MCP applies its configured default unless a per-call code overrides it (an empty
+string opts out). The code is **optional**: without one your agent still swaps
+normally, it just earns no referral rebate. You can ship first and add the code later.
 
 ## Submitting orders programmatically
 
@@ -433,7 +432,7 @@ adapters](#drop-in-framework-adapters) above already get all four right, hand-ro
 this only if you are on neither. The `@ophis/sdk` helpers below are also what
 those adapters call under the hood.
 
-The helpers below live in **`@ophis/sdk`**, published on npm (v0.4.3, public).
+The helpers below live in **`@ophis/sdk`**, published on npm (v0.4.4, public).
 Install it with `npm install @ophis/sdk`, or copy the values from the call-outs
 if you prefer to vendor them.
 
@@ -472,8 +471,8 @@ stable, so the hash won't match what solvers expect.
 For a manual builder, call
 `ophisVolumeBpsForChainAndPair(chainId, isStablePair)`. This keeps manual
 builders aligned with the canonical policy.
-Arc trades are not yet ingested by the rebate indexer. Arc order builders reject
-referral codes; omit them to trade without referral attribution.
+Arc settled trades are ingested by the rebate indexer. Use SDK v0.4.4 or later
+for Arc referral tags; enrollment and verified settlement determine eligibility.
 The drop-in adapters above derive stable-pair status from a verified stablecoin
 list.
 

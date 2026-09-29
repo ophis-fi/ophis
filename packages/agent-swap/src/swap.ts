@@ -45,7 +45,6 @@ export interface OphisSwapOptions {
    * OPTIONAL integrator referral code that earns the 8-12% rebate (rides in the
    * order's appData). Omit it and the swap still works and settles normally,
    * you just forgo the rebate. Mint one in ~30s at https://swap.ophis.fi/#/rewards.
-   * Arc is not indexed; a nonempty code explicitly supplied here is rejected.
    */
   referralCode?: string;
   /** Set true for stablecoin<>stablecoin pairs to apply the 50%/20 bps stable improvement tier. */
@@ -100,7 +99,7 @@ export async function executeOphisSwap(
   if (!isOphisFeeChain(chainId)) {
     throw new Error(`Ophis does not operate on chain ${chainId}; switch the agent to a supported chain.`);
   }
-  if (chainId !== 5042 && !options.referralCode && !warnedNoReferral) {
+  if (!options.referralCode && !warnedNoReferral) {
     warnedNoReferral = true;
     // Do not block the swap on a missing code (that was the top adoption
     // killer): warn once, keep swapping, let the builder add a code to earn.
@@ -150,18 +149,15 @@ export async function executeOphisSwap(
 
   // Enroll the trader with the OWNER-SCOPED rebate indexer. Non-fatal: an enrollment hiccup must not
   // abort the swap; the rebate simply won't index until the wallet is enrolled.
-  // Arc is not indexed, so it has no enrollment or rebate warning.
   let enrollmentWarning: string | undefined;
-  if (chainId !== 5042) {
-    try {
-      const enrollment = await enrollOphisTrader(owner);
-      if (!enrollment.enrolled) {
-        const reason = enrollment.status !== undefined ? `HTTP ${enrollment.status}` : 'indexer unreachable';
-        enrollmentWarning = `rebate-indexer enrollment failed (swap still executes; rebate may not index): ${reason}`;
-      }
-    } catch (e) {
-      enrollmentWarning = `rebate-indexer enrollment failed (swap still executes; rebate may not index): ${(e as Error).message}`;
+  try {
+    const enrollment = await enrollOphisTrader(owner);
+    if (!enrollment.enrolled) {
+      const reason = enrollment.status !== undefined ? `HTTP ${enrollment.status}` : 'indexer unreachable';
+      enrollmentWarning = `rebate-indexer enrollment failed (swap still executes; rebate may not index): ${reason}`;
     }
+  } catch (e) {
+    enrollmentWarning = `rebate-indexer enrollment failed (swap still executes; rebate may not index): ${(e as Error).message}`;
   }
 
   // Build the fee-bearing appData (appCode 'ophis' + CIP-75 partner fee + ophisReferrer code) and

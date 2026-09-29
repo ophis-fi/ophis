@@ -10,8 +10,7 @@ export interface OphisPluginOptions {
   /**
    * OPTIONAL integrator referral code that earns the 8-12% rebate (rides in the
    * order's appData). Omit it and swaps still work (you just forgo the rebate);
-   * mint one in ~30s at https://swap.ophis.fi/#/rewards. This configured default
-   * is skipped on Arc, which is not indexed for rebates.
+   * mint one in ~30s at https://swap.ophis.fi/#/rewards.
    */
   referralCode?: string;
 }
@@ -45,7 +44,7 @@ class OphisService {
         slippageBps: parameters.slippageBps,
       },
       {
-        ...(chainId !== 5042 && this.options.referralCode !== undefined ? { referralCode: this.options.referralCode } : {}),
+        ...(this.options.referralCode !== undefined ? { referralCode: this.options.referralCode } : {}),
         isStablePair,
       },
     );

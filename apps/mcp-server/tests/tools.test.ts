@@ -3,8 +3,9 @@ import { expect, it, vi } from 'vitest'
 import { registerOphisTools } from '../src/tools.js'
 
 it.each([
-  { chainId: 5042, referrerCode: undefined, expectedCode: undefined, rejected: false },
-  { chainId: 5042, referrerCode: 'caller-code', expectedCode: undefined, rejected: true },
+  { chainId: 5042, referrerCode: undefined, expectedCode: 'server-code', rejected: false },
+  { chainId: 5042, referrerCode: 'caller-code', expectedCode: 'caller-code', rejected: false },
+  { chainId: 5042, referrerCode: '!', expectedCode: undefined, rejected: true },
   { chainId: 5042, referrerCode: '', expectedCode: undefined, rejected: false },
   { chainId: 10, referrerCode: undefined, expectedCode: 'server-code', rejected: false },
   { chainId: 10, referrerCode: 'caller-code', expectedCode: 'caller-code', rejected: false },
@@ -29,7 +30,7 @@ it.each([
     })
     if (rejected) {
       expect(result.isError).toBe(true)
-      expect(result.content[0].text).toMatch(/Arc \(5042\) referral rewards are not supported/)
+      expect(result.content[0].text).toContain('Invalid Ophis referral code')
       expect(fetchQuote).not.toHaveBeenCalled()
     } else {
       expect(result.isError).not.toBe(true)

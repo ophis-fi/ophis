@@ -24,7 +24,7 @@ afterEach(() => {
 });
 
 describe('elizaOS configured referral defaults', () => {
-  it.each([5042, 10])('forwards the default only for indexed chains (chain %i)', async (chainId) => {
+  it.each([5042, 10])('forwards the default on indexed chains (chain %i)', async (chainId) => {
     // Exercise the forwarding boundary without expanding the published resolver.
     expect(chains.resolveChain('arc')).toBeUndefined();
     vi.spyOn(chains, 'resolveChain').mockReturnValue({ id: chainId, chain: optimism, settingKey: 'TEST' });
@@ -40,7 +40,6 @@ describe('elizaOS configured referral defaults', () => {
     } as Memory);
     expect(result).toMatchObject({ success: true });
     const options = mocks.executeOphisSwap.mock.lastCall?.[2];
-    if (chainId === 5042) expect(options).not.toHaveProperty('referralCode');
-    else expect(options).toHaveProperty('referralCode', 'partner_1');
+    expect(options).toHaveProperty('referralCode', 'partner_1');
   });
 });
