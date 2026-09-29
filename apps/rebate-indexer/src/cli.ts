@@ -64,7 +64,7 @@ const cmds: Record<string, (args: string[]) => Promise<void>> = {
   async ['track-wallet'](args) {
     const addr = args.find((a) => /^0x[0-9a-fA-F]{40}$/.test(a))?.toLowerCase();
     if (!addr) throw new Error('usage: track-wallet 0x<40 hex>');
-    await sql`INSERT INTO tracked_wallets (wallet) VALUES (decode(${addr.slice(2)}, 'hex')) ON CONFLICT (wallet) DO NOTHING`;
+    await sql`INSERT INTO tracked_wallets (wallet) VALUES (decode(${addr.slice(2)}, 'hex')) ON CONFLICT (wallet) DO UPDATE SET last_registered_at = now()`;
     log.info({ wallet: addr }, 'wallet tracked');
   },
   async ['replay-from-genesis']() {

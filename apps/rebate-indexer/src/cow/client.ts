@@ -112,6 +112,15 @@ export async function getOrder(chainId: number, uid: `0x${string}`): Promise<Cow
   return fetchJson(url, CowOrder);
 }
 
+/** Prove absence of order history before pruning an empty wallet. One result
+ * suffices: even a terminal order can have an unindexed fill, so keep it.
+ * ponytail: retain cancelled-only traders; bounded nightly checks are
+ * cheaper and safer than trying to prove every historical fill was indexed. */
+export async function hasAccountOrders(chainId: number, owner: `0x${string}`, signal?: AbortSignal): Promise<boolean> {
+  const url = `${orderbookBase(chainId)}/api/v1/account/${owner}/orders?limit=1&offset=0`;
+  return (await fetchJson(url, z.array(AccountOrder), { signal })).length > 0;
+}
+
 /**
  * CoW's price ORACLE: the token's price as native-token wei per 1 ATOM of `token`.
  * A signer-less GET — NO from/receiver/body — so it structurally cannot hit the

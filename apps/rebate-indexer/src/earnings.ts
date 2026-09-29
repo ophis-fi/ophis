@@ -119,7 +119,7 @@ export interface IntegratorEarnings {
     payouts: EarningsPayout[];
     note: string;
   };
-  /** Referral rebate Ophis pays this integrator's wallet monthly (only if the appCode is a registered code). */
+  /** Referral attribution and executed payments, not a promise of scheduled payouts. */
   referral: {
     registered: boolean;
     /** EXACT, from already-executed Ophis Safe batches. Not an estimate, not current-cycle. */
@@ -327,7 +327,7 @@ export function assembleEarnings(appCode: string, input: EarningsInput, now: Dat
       paidToDateUsd: round(paidUsd),
       payouts,
       note: input.registered
-        ? `Referral rebate Ophis pays your wallet monthly in WETH from the Gnosis Safe. paidToDate is exact, summed from executed Safe batches; it is not an estimate and not a current-cycle figure. Paid-to-date and payouts are per referrer wallet (summed across every code that wallet owns).`
+        ? `Referral rebate attributed to your wallet. Accrual does not mean payout execution is enabled; check the partner dashboard payout status. paidToDate is exact, summed from executed Safe batches; it is not an estimate and not a current-cycle figure. Paid-to-date and payouts are per referrer wallet (summed across every code that wallet owns).`
         : `This appCode is not a registered referral code, so no Ophis referral rebate accrues. Own-fee (above) is independent of the referral program. Register a code to earn the rebate on top of your own fee.`,
     },
     byChain,

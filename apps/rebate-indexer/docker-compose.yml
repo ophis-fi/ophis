@@ -35,6 +35,8 @@ services:
       TELEGRAM_CHAT_ID: ${TELEGRAM_CHAT_ID}
       API_PORT: 8080
       LOG_LEVEL: ${LOG_LEVEL:-info}
+      # Operator-approved authority for global contract-wallet identities (JSON).
+      CONTRACT_WALLET_AUTH_CHAINS: ${CONTRACT_WALLET_AUTH_CHAINS:-}
       BATCHER_PROPOSE_ENABLED: ${BATCHER_PROPOSE_ENABLED:-true}
       # Intraday public-data refresh cadence in minutes (default 60, clamped
       # [10,1440] in cron.ts). Without this pass-through the knob is inert:

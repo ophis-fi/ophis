@@ -1,6 +1,6 @@
 import { useWalletInfo } from '@cowprotocol/wallet'
 
-import { render, screen, fireEvent, waitFor } from '@testing-library/react'
+import { act, render, screen, fireEvent, waitFor, within } from '@testing-library/react'
 
 import {
   type PartnerDashboard,
@@ -13,11 +13,8 @@ import {
 
 import { PartnerPage } from './Partner.container'
 
-// PartnerPage reads the connected wallet and issues a signed POST to the
-// rebate-indexer. Mock the wallet hook and the affiliate barrel's signed-flow
-// seam so the dashboard renders with controlled data; keep the rest of the
-// barrel real (AffiliateApiError etc.) via requireActual.
 jest.mock('@cowprotocol/wallet', () => ({ useWalletInfo: jest.fn() }))
+jest.mock('pages/Affiliate/ConnectWalletCta', () => ({ ConnectWalletCta: 'button' }))
 jest.mock('modules/affiliate', () => ({
   ...jest.requireActual('modules/affiliate'),
   useOphisAffiliateSign: jest.fn(),
@@ -47,8 +44,6 @@ function makeReferee(i: number): PartnerDashboard['referees'][number] {
   return { wallet: '0x' + String(i).padStart(40, '0'), boundAt: '2026-01-01T00:00:00Z', lifetimeVolumeUsd: 1000 }
 }
 
-// referredCount is the un-capped total; refereesLen is how many rows the capped
-// /partner query returned (LIMIT 500). The note shows iff referredCount > refereesLen.
 function makeDashboard(referredCount: number, refereesLen: number): PartnerDashboard {
   return {
     wallet: ACCOUNT,
@@ -66,8 +61,6 @@ function makeDashboard(referredCount: number, refereesLen: number): PartnerDashb
   }
 }
 
-// Render, click through the signature gate, and wait for the signed POST to
-// resolve and populate the dashboard (the Referees section appears).
 async function renderAndLoad(): Promise<void> {
   render(<PartnerPage />)
   fireEvent.click(screen.getByRole('button', { name: /Access Partner Dashboard/i }))
@@ -79,7 +72,7 @@ describe('PartnerPage referee-table truncation note', () => {
     jest.clearAllMocks()
     useWalletInfoMock.mockReturnValue({ account: ACCOUNT, chainId: 1 })
     useOphisAffiliateSignMock.mockReturnValue(
-      jest.fn().mockResolvedValue({ wallet: ACCOUNT, issued: 1, signature: '0xsig' }),
+      jest.fn().mockResolvedValue({ wallet: ACCOUNT, issued: 1, signature: '0xsig', chainId: 5042 }),
     )
     getRankStatusMock.mockResolvedValue(GOLD_RANK)
   })
@@ -89,13 +82,19 @@ describe('PartnerPage referee-table truncation note', () => {
 
     await renderAndLoad()
 
-    // getByText throws if the note is absent, so a returned element is itself
-    // the proof it rendered. The text is interpolated across JSX nodes, so match
-    // the static substring, then assert the interpolated counts via textContent.
-    const note = screen.getByText(/most recently bound of/i)
+    const note = screen.getByText(/most recently referred of/i)
     expect(note).toBeTruthy()
     expect(note.textContent).toContain('Showing the 500')
     expect(note.textContent).toContain('of 501')
+  })
+
+  it('explains the approved-chain requirement when contract authentication is unavailable', async () => {
+    getPartnerDashboardMock.mockRejectedValue(new AffiliateApiError(401))
+    render(<PartnerPage />)
+    fireEvent.click(screen.getByRole('button', { name: /Access Partner Dashboard/i }))
+    expect(await screen.findByText('Signature not verified')).toBeTruthy()
+    expect(screen.getByText(/contact Ophis if that chain has not been configured/i)).toBeTruthy()
+    expect(screen.queryByText('Signature expired')).toBeNull()
   })
 
   it('hides the truncation note when every referee is shown', async () => {
@@ -103,9 +102,8 @@ describe('PartnerPage referee-table truncation note', () => {
 
     await renderAndLoad()
 
-    // The table renders (not the empty state) but the note must be absent.
     expect(screen.queryByText(/No referees yet/i)).toBeNull()
-    expect(screen.queryByText(/most recently bound of/i)).toBeNull()
+    expect(screen.queryByText(/most recently referred of/i)).toBeNull()
   })
 
   it('renders the partner referral code, share link, and share actions', async () => {
@@ -113,8 +111,6 @@ describe('PartnerPage referee-table truncation note', () => {
 
     await renderAndLoad()
 
-    // activeCodes[0] is 'ophispartner' in the fixture; it was previously absent
-    // from this page, so a partner could not get their link here.
     expect(screen.getByText('ophispartner')).toBeTruthy()
     expect(screen.getByText('https://swap.ophis.fi/?ref=ophispartner')).toBeTruthy()
     expect(screen.getByRole('button', { name: /copy share link/i })).toBeTruthy()
@@ -127,7 +123,7 @@ describe('PartnerPage referee-table truncation note', () => {
     await renderAndLoad()
 
     expect(screen.getByText(/how the program works/i)).toBeTruthy()
-    // the bare one-liner is replaced by the 3-step guide
+    expect(screen.getByText(/attributes that trade, not the wallet for life/i)).toBeTruthy()
     expect(screen.queryByText('No referees yet. Share your code to start referring wallets.')).toBeNull()
   })
 
@@ -139,7 +135,43 @@ describe('PartnerPage referee-table truncation note', () => {
     expect(screen.getByText('Earnings')).toBeTruthy()
     expect(screen.getByText(/Estimated this cycle/i)).toBeTruthy()
     expect(screen.getByText(/Paid to date/i)).toBeTruthy()
-    expect(screen.getByText(/Next payout/i)).toBeTruthy()
+    expect(screen.getByText(/Payout status/i)).toBeTruthy()
+    expect(screen.getByText('Unconfirmed')).toBeTruthy()
+    expect(getPartnerDashboardMock).toHaveBeenCalledWith({
+      wallet: ACCOUNT,
+      issued: 1,
+      signature: '0xsig',
+      chainId: 5042,
+    })
+  })
+
+  it('shows code-only and mixed referrals with first-seen dates and small nonzero volume', async () => {
+    const dashboard = makeDashboard(2, 2)
+    dashboard.referees = [
+      {
+        ...makeReferee(1),
+        boundAt: null,
+        firstSeenAt: '2026-02-03T12:00:00Z',
+        attribution: 'code',
+        lifetimeVolumeUsd: 0.12,
+      },
+      {
+        ...makeReferee(2),
+        firstSeenAt: '2026-01-02T12:00:00Z',
+        attribution: 'link-and-code',
+        lifetimeVolumeUsd: 0.001,
+      },
+    ]
+    getPartnerDashboardMock.mockResolvedValue(dashboard)
+    await renderAndLoad()
+    const [, codeRow, mixedRow] = screen.getAllByRole('row')
+    if (!codeRow || !mixedRow) throw new Error('referee rows missing')
+    expect(within(codeRow).getByText('Code')).toBeTruthy()
+    expect(within(codeRow).getByText('Feb 3, 2026')).toBeTruthy()
+    expect(within(codeRow).getByText('$0.12')).toBeTruthy()
+    expect(within(mixedRow).getByText('Link + code')).toBeTruthy()
+    expect(within(mixedRow).getByText('Jan 2, 2026')).toBeTruthy()
+    expect(within(mixedRow).getByText('<$0.01')).toBeTruthy()
   })
 
   it('toggles referred volume between lifetime and the current cycle', async () => {
@@ -147,9 +179,7 @@ describe('PartnerPage referee-table truncation note', () => {
 
     await renderAndLoad()
 
-    // Defaults to lifetime ($5,000,000).
     expect(screen.getByText('$5,000,000')).toBeTruthy()
-    // Switching to the current cycle shows currentCycleVolumeUsd ($1,000,000).
     fireEvent.click(screen.getByRole('button', { name: /this cycle/i }))
     expect(screen.getByText('$1,000,000')).toBeTruthy()
   })
@@ -164,7 +194,6 @@ describe('PartnerPage referee-table truncation note', () => {
 
   it('clears the trader-rank chip when the account changes and the new fetch fails', async () => {
     getPartnerDashboardMock.mockResolvedValue(makeDashboard(3, 3))
-    // Account A resolves Gold; any other account's /rank fails with a non-404.
     getRankStatusMock.mockImplementation((acct: string) =>
       acct.toLowerCase() === ACCOUNT.toLowerCase()
         ? Promise.resolve(GOLD_RANK)
@@ -175,10 +204,46 @@ describe('PartnerPage referee-table truncation note', () => {
     await screen.findByText('Referees')
     expect(await screen.findByText(/Trader rank: Gold/i)).toBeTruthy()
 
-    // Switch wallets: the new account's rank fetch fails, so the chip must clear
-    // rather than keep showing the prior wallet's rank.
     useWalletInfoMock.mockReturnValue({ account: '0xdef0000000000000000000000000000000000002', chainId: 1 })
     rerender(<PartnerPage />)
     await waitFor(() => expect(screen.queryByText(/Trader rank:/i)).toBeNull())
+    expect(screen.queryByText('Referees')).toBeNull()
+    expect(screen.queryByText('ophispartner')).toBeNull()
+    expect(screen.getByRole('button', { name: /Access Partner Dashboard/i })).toBeTruthy()
+  })
+
+  it('does not restore the previous wallet dashboard after a delayed response', async () => {
+    const pending: { resolve?: (data: PartnerDashboard) => void } = {}
+    getPartnerDashboardMock.mockReturnValue(
+      new Promise<PartnerDashboard>((resolve) => {
+        pending.resolve = resolve
+      }),
+    )
+    const { rerender } = render(<PartnerPage />)
+    fireEvent.click(screen.getByRole('button', { name: /Access Partner Dashboard/i }))
+    await waitFor(() => expect(getPartnerDashboardMock).toHaveBeenCalledTimes(1))
+    useWalletInfoMock.mockReturnValue({ account: '0xdef0000000000000000000000000000000000002', chainId: 1 })
+    rerender(<PartnerPage />)
+    await act(async () => {
+      pending.resolve?.(makeDashboard(3, 3))
+    })
+    expect(screen.queryByText('Referees')).toBeNull()
+    expect(screen.getByRole('button', { name: /Access Partner Dashboard/i })).toBeTruthy()
+  })
+
+  it('clears access on disconnect, but preserves it for a checksum-only account change', async () => {
+    getPartnerDashboardMock.mockResolvedValue(makeDashboard(3, 3))
+    const { rerender } = render(<PartnerPage />)
+    fireEvent.click(screen.getByRole('button', { name: /Access Partner Dashboard/i }))
+    await screen.findByText('Referees')
+    useWalletInfoMock.mockReturnValue({ account: ACCOUNT.replace('abc', 'aBc'), chainId: 1 })
+    rerender(<PartnerPage />)
+    expect(screen.getByText('Referees')).toBeTruthy()
+    useWalletInfoMock.mockReturnValue({ account: undefined, chainId: 1 })
+    rerender(<PartnerPage />)
+    expect(screen.queryByText('Referees')).toBeNull()
+    useWalletInfoMock.mockReturnValue({ account: ACCOUNT, chainId: 1 })
+    rerender(<PartnerPage />)
+    expect(screen.getByRole('button', { name: /Access Partner Dashboard/i })).toBeTruthy()
   })
 })

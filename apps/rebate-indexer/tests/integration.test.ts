@@ -158,8 +158,9 @@ describe('pruneStaleWallets', () => {
       (decode(${'2b'.repeat(20)}, 'hex'),  now() - interval '40 days', NULL,                        now() - interval '31 days')   -- queued backfill -> KEEP
     `;
     await sql`INSERT INTO defillama_backfill_wallets (wallet) VALUES (decode(${'2b'.repeat(20)}, 'hex'))`;
+    await sql`UPDATE tracked_wallets SET last_registered_at = first_seen`;
 
-    await pruneStaleWallets();
+    await pruneStaleWallets(async () => false, async () => false);
     const rows = await sql<{ w: string }[]>`SELECT encode(wallet, 'hex') AS w FROM tracked_wallets`;
     const survivors = new Set(rows.map((r) => r.w));
 
@@ -174,6 +175,44 @@ describe('pruneStaleWallets', () => {
 
     await sql`TRUNCATE defillama_backfill_wallets, trades, tracked_wallets`;
   }, 30_000); // integration: container + prune over a fixtured wallet set
+
+  it('renews registration and preserves order history, failures, and concurrent enrollment', async () => {
+    const { sql } = await import('../src/db/index.js');
+    const { pruneStaleWallets } = await import('../src/fetcher.js');
+    const { buildApiServer } = await import('../src/api.js');
+    await sql`TRUNCATE defillama_backfill_wallets, trades, tracked_wallets, pruned_wallets`;
+    const wallets = ['31', '32', '33', '34', '35', '36', '37'].map((byte) => `0x${byte.repeat(20)}` as `0x${string}`);
+    for (const wallet of wallets) {
+      await sql`INSERT INTO tracked_wallets (wallet, first_seen, last_registered_at, last_fetched)
+        VALUES (decode(${wallet.slice(2)}, 'hex'), now() - interval '40 days', now() - interval '40 days', now())`;
+    }
+    const app = await buildApiServer();
+    try {
+      expect((await app.inject({ method: 'GET', url: `/tier/${wallets[0]}` })).statusCode).toBe(200);
+      const result = await pruneStaleWallets(async (_chainId, wallet) => {
+        if (wallet === wallets[1]) return true; // pending OR terminal order awaiting indexing
+        if (wallet === wallets[2]) throw new Error('orderbook unavailable');
+        if (wallet === wallets[3]) {
+          await sql`UPDATE tracked_wallets SET last_registered_at = now() WHERE wallet = decode(${wallet.slice(2)}, 'hex')`;
+        }
+        return false;
+      }, async (_chainId, wallet) => {
+        if (wallet === wallets[5]) return true; // aged Safe proposal; no child order yet
+        if (wallet === wallets[6]) throw new Error('RPC unavailable');
+        return false;
+      });
+      expect(result.pruned).toBe(1);
+      const remaining = await sql<{ wallet: string; fifo_preserved: boolean }[]>`
+        SELECT '0x' || encode(wallet, 'hex') AS wallet, first_seen < now() - interval '30 days' AS fifo_preserved FROM tracked_wallets`;
+      expect(remaining.map((row) => row.wallet).sort()).toEqual(wallets.filter((_, i) => i !== 4));
+      expect(remaining.every((row) => row.fifo_preserved)).toBe(true);
+      const audit = await sql<{ wallet: string }[]>`SELECT '0x' || encode(wallet, 'hex') AS wallet FROM pruned_wallets`;
+      expect(audit.map((row) => row.wallet)).toEqual([wallets[4]]);
+    } finally {
+      await app.close();
+      await sql`TRUNCATE defillama_backfill_wallets, trades, tracked_wallets, pruned_wallets`;
+    }
+  });
 });
 
 describe('wallets matview fee-gate', () => {

@@ -20,7 +20,7 @@ jest.mock('./Rewards.styled', () => ({
 }))
 
 const wallet = '0x1111111111111111111111111111111111111111'
-const proof = { wallet, issued: 1_800_000_000, signature: '0xsigned-email' }
+const proof = { wallet, issued: 1_800_000_000, signature: '0xsigned-email', chainId: 5042 }
 const perk = REWARDS_PERKS[0]
 
 it('signs the exact trimmed delivery email before submitting a reward claim', async () => {

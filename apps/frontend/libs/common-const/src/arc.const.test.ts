@@ -39,6 +39,10 @@ it('activates Arc with explicit public deployment configuration', () => {
   expect(arc.ARC_RPC_URL).toBe('https://rpc.mainnet.arc.io')
 })
 
+it.each(['', 'not-a-url', 'https://['])('reports a clear error for a missing or malformed orderbook URL (%s)', (url) => {
+  expect(() => loadArc({ ...production, REACT_APP_ARC_ORDERBOOK_URL: url })).toThrow('Arc requires a valid public HTTPS orderbook URL')
+})
+
 it.each([
   { REACT_APP_ARC_SETTLEMENT: '' },
   { REACT_APP_ARC_VAULT_RELAYER: settlement },

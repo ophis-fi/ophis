@@ -118,6 +118,7 @@ export function RefCodeCaptureUpdater(): ReactNode {
           code,
           issued: signed.issued,
           signature: signed.signature,
+          chainId: signed.chainId,
         })
       })
       .then((res) => {

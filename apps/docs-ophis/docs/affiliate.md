@@ -1,7 +1,7 @@
 ---
 id: affiliate
 title: Affiliate program
-description: Share an Ophis referral code and earn 8% (self-serve) or 12% (partner tier, uncapped) of the verified base fee Ophis keeps on eligible trades your referrals route on indexed chains, including Arc. Paid monthly in WETH, for life.
+description: Referral attribution and estimated shares of Ophis's verified base fee on indexed chains, including Arc. Payout execution is subject to activation and reconciliation.
 sidebar_label: Affiliate program
 sidebar_position: 4
 ---
@@ -9,12 +9,18 @@ sidebar_position: 4
 # Affiliate program
 
 The Ophis affiliate program pays a share of the verified 1 bp base fee Ophis
-keeps when a wallet you referred trades on an indexed chain, settled monthly in WETH.
+keeps when a wallet you referred trades on an indexed chain. The payout design is monthly WETH.
 Arc (5042) is included in affiliate and volume-tier rebate indexing.
 
 Share a referral code. When someone you refer trades on an indexed Ophis chain, **you earn a
-share of the verified base fee Ophis keeps on that trade, for life.** It is paid in WETH, every
-month, from the same Safe that pays volume-tier rebates.
+share of the verified base fee Ophis keeps on eligible attributed trades.**
+
+:::warning Payout execution is not currently enabled
+Affiliate indexing and estimates are available, but affiliate payouts are disabled.
+The monthly proposal process also requires a configured proposer, reconciled accounting,
+funding and Safe approval. A displayed estimate is not a payment. Check the partner
+dashboard's payout status; a scheduled cycle is not a guaranteed payment date.
+:::
 
 ## How it works
 
@@ -36,7 +42,7 @@ There are two tiers, and both numbers are published:
 | Referred volume counted | Capped at **$1,000,000/month** | **Uncapped** |
 | How to get it | Mint a code on the swap page | [Contact us](https://business.ophis.fi) to upgrade your code |
 
-- Paid **monthly in WETH**, from the Ophis fee Safe, on-chain.
+- Payout denomination: **WETH**, with monthly processing when enabled.
 - **Through your referral link,** counts only **net-new wallets**: wallets that
   had not traded on Ophis before arriving through the link. Volume you route
   yourself through the SDK or widget is not net-new gated.
@@ -64,9 +70,10 @@ chain-aware base, hosted partner rate, and how to charge your own fee on top.
   with your active code through the [SDK](./partners.md) or [widget](./widget.md)
   credits that volume to you with no bind, and the net-new rule does not apply
   there.
-- **Payout is monthly, in WETH.** At the end of each cycle, Ophis tallies the fees
-  earned from your referrals' trades and batches the WETH owed to you in a single
-  monthly payout from the fee Safe.
+- **Payout processing is conditional.** The monthly WETH design requires activation,
+  complete accounting, funding and Safe approval. Execution is currently disabled.
+- **Dashboard counts combine both attribution paths.** A wallet appearing through a
+  link and an eligible code-tagged trade counts once. Code tags do not create permanent binds.
 
 ## Affiliate vs rebates
 
@@ -76,7 +83,7 @@ These are two separate ways to earn, and you can use both:
 | --- | --- | --- |
 | Who earns | You, on trades your **referrals** route | You, on **your own** trade volume |
 | What | 8% (self-serve) or 12% (partner) of the verified base fee Ophis keeps | Share of the WETH rebate pool, weighted by your tier |
-| Paid in | WETH, monthly | WETH, monthly |
+| Payout design | WETH, monthly when enabled | WETH, monthly subject to readiness and Safe approval |
 
 See [Fees & rebates](./fees.md) for the volume-tier rebate model.
 

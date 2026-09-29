@@ -13,7 +13,7 @@
  *   - the partner fee + referral tag must both ride in one metadata object
  *     -> buildOphisOrderMetadata assembles them.
  *   - each trading wallet must be registered with the rebate indexer or its
- *     trades are never fetched -> enrollOphisTrader.
+ *     owner-scoped trades can be fetched reliably -> enrollOphisTrader.
  *   - the receiver must be the order owner (an unpinned receiver is a drain)
  *     and the sendOrder body wire shape is appData=full-string + appDataHash
  *     (NOT the hash as appData) -> buildOphisOrderCreation.
@@ -177,9 +177,10 @@ export interface EnrollOphisTraderResult {
 /**
  * Registers a trading wallet with the Ophis rebate indexer so its Ophis trades
  * are indexed and the referral rebate accrues. The indexer is owner-scoped (it
- * only fetches trades for wallets it knows), so a wallet that never connects to
- * an Ophis frontend is NEVER indexed unless enrolled here. Call this per trader
- * wallet on wallet-connect; it is idempotent (the endpoint upserts) and cheap.
+ * fetches trades for wallets it knows); supplemental discovery is not guaranteed
+ * on every chain and must not replace explicit enrollment. Call this per trader
+ * wallet immediately before each submission; success renews enrollment. Do not
+ * rely on a one-time wallet-connect call for a delayed vault/limit-order flow.
  *
  * Best-effort by default: a transient indexer failure (network error, non-2xx,
  * or timeout) is reported in the returned `{ enrolled, status }` — NOT thrown —
@@ -308,7 +309,7 @@ export interface OphisOrderCreationOptions {
  *
  * NOTE: for the rebate to accrue, `owner` must already have been registered via
  * `enrollOphisTrader` (the indexer never fetches an unenrolled wallet's trades).
- * This builder does not enforce that ordering; enroll on wallet-connect.
+ * This builder does not enforce that ordering; enroll before each submission.
  *
  * @example
  *   await orderBookApi.sendOrder(buildOphisOrderCreation({

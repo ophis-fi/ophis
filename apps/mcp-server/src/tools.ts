@@ -10,6 +10,7 @@
  */
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 import { z } from 'zod'
+import { enrollOphisTrader } from '@ophis/sdk'
 
 import {
   parseIntent,
@@ -376,33 +377,15 @@ export function registerOphisTools(server: McpServer, config?: OphisToolConfig):
           // allowCustomReceiver intentionally NOT forwarded — submitOrder defaults
           // to refusing any non-owner receiver (drain guard). See the schema note.
         })
-        // The order was accepted by the orderbook (a real, signed order). If it
-        // carries an affiliate referral code, register the owner so the rebate
-        // indexer (which fetches trades per tracked wallet) actually indexes
-        // this trade and credits the referrer — otherwise a pure agent-routed
-        // wallet that never visits the swap UI would never be fetched. Best
-        // effort + fire-and-forget: a registration failure must NOT fail the
-        // already-relayed order. Gated on a referral tag so untagged orders do
-        // not grow tracked_wallets, and only after a successful relay so a bogus
-        // submit cannot register arbitrary wallets.
-        try {
-          const ref = (JSON.parse(a.fullAppData) as { metadata?: { ophisReferrer?: { code?: unknown } } })
-            ?.metadata?.ophisReferrer?.code
-          if (typeof ref === 'string' && /^0x[0-9a-fA-F]{40}$/.test(a.from)) {
-            const base = config?.rebatesApi ?? 'https://rebates.ophis.fi'
-            // AWAIT (not fire-and-forget): a bare background fetch in a Durable
-            // Object can be cancelled once the response returns, making the
-            // registration unreliable. Await it so it actually completes, bounded
-            // by a short timeout and fully swallowed so it can never delay-fail or
-            // fail the already-relayed order.
-            await fetch(`${base}/tier/${a.from.toLowerCase()}`, {
-              signal: AbortSignal.timeout(2500),
-            }).catch(() => {})
-          }
-        } catch {
-          // Malformed fullAppData: skip registration, the order still succeeded.
-        }
-        return ok(result)
+        // Enroll every accepted order, independently of optional referrals.
+        // Await the bounded request so Worker teardown cannot cancel it.
+        const enrollment = await enrollOphisTrader(a.from, { host: config?.rebatesApi, timeoutMs: 2500 })
+          .catch(() => ({ enrolled: false }))
+        const response = ok(result)
+        if (!enrollment.enrolled) response.content.push({
+          type: 'text', text: 'Order accepted; rebate enrollment failed. Retry enrollment, not order submission.',
+        })
+        return response
       } catch (e) {
         return fail(e)
       }

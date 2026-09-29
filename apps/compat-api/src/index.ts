@@ -25,6 +25,7 @@ import {
   buildOphisFullAppData,
   buildOrder,
   checksum,
+  enrollOphisTrader,
   getOphisOrderbookUrl,
   isZeroAddress,
   type Address,
@@ -749,9 +750,12 @@ async function handleSubmit(
     },
     deps.fetchImpl,
   );
+  const enrollment = await enrollOphisTrader(req.from, { fetch: deps.fetchImpl, timeoutMs: 2500 })
+    .catch(() => ({ enrolled: false }));
   return json(traceId, {
     traceId,
     orderUid,
+    ...(!enrollment.enrolled ? { enrollmentWarning: 'Order accepted; rebate enrollment failed. Retry enrollment, not order submission.' } : {}),
     ophis: {
       settlementModel: 'batch-auction-async',
       expectedSettlementSeconds: settlementBaselineSeconds(env),

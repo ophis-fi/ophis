@@ -5,6 +5,7 @@ import { join } from 'node:path';
 import { CowTrade } from '../src/cow/types.js';
 import {
   listTrades,
+  hasAccountOrders,
   nativePrice,
   orderbookBase,
   SUPPORTED_CHAIN_IDS,
@@ -14,6 +15,26 @@ import {
 } from '../src/cow/client.js';
 
 const fixturesDir = fileURLToPath(new URL('./fixtures', import.meta.url));
+
+describe('hasAccountOrders — absence must be confirmed', () => {
+  afterEach(() => vi.restoreAllMocks());
+  const owner = `0x${'12'.repeat(20)}` as const;
+  it.each(['open', 'fulfilled', 'expired', 'cancelled'])('retains %s order history', async (status) => {
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(JSON.stringify([
+      { uid: 'test-order', sellToken: owner, buyToken: owner, status },
+    ])));
+    expect(await hasAccountOrders(5042, owner)).toBe(true);
+    expect(fetchSpy.mock.calls[0]?.[0]).toBe(`https://arc-mainnet.ophis.fi/api/v1/account/${owner}/orders?limit=1&offset=0`);
+  });
+  it('accepts only an empty array as absence; errors and malformed responses reject', async () => {
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(new Response('[]'));
+    expect(await hasAccountOrders(1, owner)).toBe(false);
+    fetchSpy.mockResolvedValueOnce(new Response('{}'));
+    await expect(hasAccountOrders(1, owner)).rejects.toThrow();
+    fetchSpy.mockResolvedValueOnce(new Response('unavailable', { status: 503 }));
+    await expect(hasAccountOrders(1, owner)).rejects.toThrow();
+  });
+});
 
 describe('SUPPORTED_CHAIN_IDS / orderbookBase — sovereign + hosted routing', () => {
   it('includes every sovereign Ophis chain', () => {

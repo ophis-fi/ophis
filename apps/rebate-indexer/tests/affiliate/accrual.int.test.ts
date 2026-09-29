@@ -278,7 +278,7 @@ describe('buildAffiliateReferrers — integration (catches the Date-param 500)',
     expect(final!.value_usd).toBe('1000.0000'); // other columns untouched by the backfill
   });
 
-  it('getReferrerStats: current-cycle volume = bind + appData, no double-count, referredCount bind-based', async () => {
+  it('getReferrerStats: current-cycle volume and distinct wallet count include links and codes without duplication', async () => {
     const refS = W('5ec0'); // referrer owning an active code used for BOTH bind + appData
     const boundW = W('b0c0'); // bound to refS; makes an untagged AND a tagged trade
     const pureW = W('9c0c'); // unbound; trades tagged with refS's code (appData only)
@@ -298,8 +298,12 @@ describe('buildAffiliateReferrers — integration (catches the Date-param 500)',
     // bind 100k + appData (40k + 25k) = 165k. The bound+tagged 40k trade is counted
     // ONCE (appData), not also in bind -> a double-count would show 205k.
     expect(stats.currentCycleVolumeUsd).toBe(165000);
-    // referredCount stays bind-based: only boundW is a bound referee (pureW is appData-only).
-    expect(stats.referredCount).toBe(1);
+    expect(stats.referredCount).toBe(2); // boundW counted once; pureW included without a fabricated bind.
+    const referees = await sql`SELECT wallet, bound_at, code_tagged FROM affiliate_referees WHERE referrer_wallet = decode(${refS}, 'hex')`;
+    expect(referees).toHaveLength(2);
+    expect(referees.filter((r: { bound_at: Date | null }) => r.bound_at === null)).toHaveLength(1);
+    const [reported] = await sql`SELECT SUM(value_usd)::text AS volume FROM affiliate_attributed_trades WHERE referrer_wallet = decode(${refS}, 'hex')`;
+    expect(Number(reported.volume)).toBe(stats.currentCycleVolumeUsd);
   });
 
   it('getReferrerStats net fee applies per-chain keep (real SQL): sovereign OP+Unichain 100%, hosted 75%', async () => {
