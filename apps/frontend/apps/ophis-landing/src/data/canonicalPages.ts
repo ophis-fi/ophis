@@ -33,7 +33,7 @@ export interface CanonicalPage {
 
 export const CANONICAL_PAGES: CanonicalPage[] = [
   { path: '/pricing/', updated: new Date('2026-09-27') },
-  { path: '/supported-chains/', updated: new Date('2026-09-27') },
+  { path: '/supported-chains/', updated: new Date('2026-09-29') },
   { path: '/security/', updated: new Date('2026-09-27') },
   { path: '/stablecoin-swaps/', updated: new Date('2026-09-27') },
   { path: '/tokenized-stocks-rwa/', updated: new Date('2026-09-27') },

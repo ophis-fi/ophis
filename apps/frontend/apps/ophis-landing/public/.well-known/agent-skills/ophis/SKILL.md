@@ -71,11 +71,13 @@ three Ophis-operated chains, not every chain in the swap app:
 | Unichain | 130 | `https://unichain-mainnet.ophis.fi` |
 | Robinhood Chain | 4663 | `https://robinhood-mainnet.ophis.fi` |
 
-Arc is also Ophis-operated in the swap app, but is excluded from this pinned
-execution policy and the published SDK/MCP mappings. Do not use a CoW canonical
-address for Arc. The ten CoW-hosted networks use separate canonical addresses;
-resolve those through MCP `list_chains` or `@ophis/sdk`, outside this skill's
-three-chain execution policy.
+Arc (5042) is also Ophis-operated and is supported by the published SDK and
+hosted MCP. It remains outside this skill's three-chain execution policy.
+Resolve Arc's settlement domain and orderbook through `@ophis/sdk` or MCP
+`list_chains`; do not use a CoW canonical address for Arc. SDK v0.4.4 enables
+referral codes on Arc orders. The ten CoW-hosted networks use separate canonical
+addresses; resolve those through the same SDK or MCP helpers, outside this
+skill's execution policy.
 
 ## Pick the right sub-skill
 
