@@ -77,16 +77,17 @@ services:
       # SETTLE_RPC_URL_130 for a keyed archive endpoint if the backfill lags. Start
       # blocks = each sovereign GPv2Settlement's first activity (from the orderbook
       # DBs). Defaults ACTIVATE the feature; set SETTLE_DECODER_CHAINS='' to disable.
-      SETTLE_DECODER_CHAINS: ${SETTLE_DECODER_CHAINS-10,130,5042}
+      SETTLE_DECODER_CHAINS: ${SETTLE_DECODER_CHAINS-10,130}
       SETTLE_DECODER_DISCOVERY_ONLY: ${SETTLE_DECODER_DISCOVERY_ONLY:-true}
       SETTLE_SCAN_START_BLOCK_10: ${SETTLE_SCAN_START_BLOCK_10:-151586936}
       SETTLE_SCAN_START_BLOCK_130: ${SETTLE_SCAN_START_BLOCK_130:-51998330}
       # Robinhood is not in the discovery decoder default yet, but the exact-UID
       # DefiLlama audit uses the same archive scan when its orderbook lacks history.
       SETTLE_SCAN_START_BLOCK_4663: ${SETTLE_SCAN_START_BLOCK_4663:-22558475}
-      # Arc settlement activation. See RUNBOOK.md for the verified historical
-      # bootstrap before enabling a live cursor; never seed blindly at the tip.
-      SETTLE_SCAN_START_BLOCK_5042: ${SETTLE_SCAN_START_BLOCK_5042:-22516917}
+      # Arc is explicitly enabled only after the RUNBOOK reconciliation and cursor
+      # seed. Do not pass a genesis start block: it also activates the unbounded
+      # exact-UID archive audit. Arc uses its complete orderbook API for that audit
+      # and its persisted cursor for bounded forward discovery on the free RPC.
       # Keyed archive RPC used by all supported dRPC networks. Without this
       # passthrough, a host-level DRPC_API_KEY is invisible inside the container
       # and historical scans always fall back to rate-limited public endpoints.

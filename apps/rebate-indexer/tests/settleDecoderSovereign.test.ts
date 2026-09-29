@@ -31,9 +31,9 @@ describe('settle decoder targets the sovereign settlement on sovereign chains', 
   it('scans Arc with 100-block windows, a bounded run and a resumable cursor', async () => {
     process.env.SETTLE_DECODER_CHAINS = '5042';
     process.env.SETTLE_DECODER_DISCOVERY_ONLY = 'true';
-    process.env.SETTLE_SCAN_START_BLOCK_5042 = '100';
+    delete process.env.SETTLE_SCAN_START_BLOCK_5042;
     vi.mocked(mockClient.getBlock).mockResolvedValueOnce({ number: 20000n } as never);
-    let cursor: string | null = null;
+    let cursor: string | null = '99'; // reconciled snapshot, no archive-audit seed
     const sql = vi.fn(async (strings: TemplateStringsArray, ...values: unknown[]) => {
       if (strings.join('').includes('INSERT INTO settle_scan_cursor')) cursor = values[1] as string;
       return cursor === null ? [] : [{ last_block: cursor }];

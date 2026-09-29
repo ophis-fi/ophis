@@ -1,4 +1,5 @@
 import { afterEach, expect, it, vi } from 'vitest';
+import { readFileSync } from 'node:fs';
 import { orderbookBase, SUPPORTED_CHAIN_IDS } from '../src/cow/client.js';
 import { fetchChainTrades, readAssessedOphisFeeBps, type PendingDefiLlamaFill } from '../src/fetcher.js';
 import { CowTrade } from '../src/cow/types.js';
@@ -26,6 +27,12 @@ const trade = CowTrade.parse({
   executedProtocolFees: [{ policy: { volume: { factor: 0.0001 } }, amount: '874', token: EURC }],
 });
 afterEach(() => vi.unstubAllGlobals());
+
+it('requires explicit Arc bootstrap and does not activate genesis archive audits on the free RPC', () => {
+  const compose = readFileSync(new URL('../docker-compose.yml', import.meta.url), 'utf8');
+  expect(compose).toContain('SETTLE_DECODER_CHAINS: ${SETTLE_DECODER_CHAINS-10,130}');
+  expect(compose).not.toContain('SETTLE_SCAN_START_BLOCK_5042:');
+});
 
 it('covers Arc across ingestion, reporting, RPC and fee accounting without enabling payouts', () => {
   expect(SUPPORTED_CHAIN_IDS).toContain(5042);
