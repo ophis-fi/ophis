@@ -90,6 +90,16 @@ it('prices ERC-20 USDC at 6 decimals and cancels native wei units for EURC', asy
   expect(await tokenMeta(USDC, null, new Map())).toEqual({ symbol: 'USDC', decimals: 6 });
 });
 
+it('reports proven fee-free Arc fills as zero, not missing or unexplained executions', () => {
+  const noFeeMeta = { appCode: 'ophis' };
+  expect(readAssessedOphisFeeBps(5042, 'limit', noFeeMeta, { ...trade, executedProtocolFees: [] })).toBe('0.00000000');
+  expect(readAssessedOphisFeeBps(5042, 'limit', noFeeMeta, { ...trade, executedProtocolFees: undefined })).toBeNull();
+  expect(readAssessedOphisFeeBps(5042, 'limit', noFeeMeta, trade)).toBeNull();
+  expect(readAssessedOphisFeeBps(10, 'limit', noFeeMeta, { ...trade, executedProtocolFees: [] })).toBeNull();
+  const partnerOnly = { metadata: { partnerFee: { ...meta.metadata.partnerFee, recipient: owner } } };
+  expect(readAssessedOphisFeeBps(5042, 'limit', partnerOnly, trade)).toBe('0.00000000');
+});
+
 it('uses Arc historical prices for a non-USDC fill, rejecting stale historical quotes', async () => {
   const timestamp = 1790608800;
   const fetchMock = vi.fn(async () => Response.json({ coins: {
