@@ -201,11 +201,13 @@ for (const path of publicSitePaths) {
   assert.doesNotMatch(read(path).replace(/\s+/g, ' '), staleArcRebate,
     `${path}: stale Arc rebate/referral exclusion`);
 }
-assert.match(
-  read('apps/frontend/apps/ophis-landing/public/.well-known/agent-skills/swap-via-ophis/SKILL.md'),
-  /MCP clients pass `referrerCode` to\s+`build_order`/,
-  'MCP-first skill must explain its own referral parameter',
-);
+for (const path of [
+  'apps/frontend/apps/ophis-landing/public/.well-known/agent-skills/swap-via-ophis/SKILL.md',
+  'apps/frontend/apps/ophis-landing/public/.well-known/ai-plugin.json',
+  'apps/frontend/apps/ophis-landing/public/llms.txt',
+  'apps/frontend/apps/ophis-landing/src/content/blog/let-an-ai-agent-swap-tokens.md',
+]) assert.match(read(path), /MCP clients pass `?referrerCode`? to\s+`?build_order`?/,
+  `${path}: MCP guidance must explain its own referral parameter`);
 
 assert.match(faq, /14 EVM chains/, 'FAQ must state the canonical 14-EVM-chain count');
 if (read('infra/arc-mainnet/release/render.py').includes('[fee-policies]\npolicies = []')) {

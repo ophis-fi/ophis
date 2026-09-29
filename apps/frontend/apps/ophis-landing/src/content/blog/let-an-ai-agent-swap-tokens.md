@@ -177,8 +177,9 @@ swap routed through your integration carries the chain-aware Ophis base in
 `appData`: **0.01% on the 14 SDK v0.4.3 / hosted MCP chains**. Optimism,
 Unichain and Robinhood backends apply capped improvement capture; hosted orders
 encode it in appData. Arc currently has no backend improvement capture; its
-settled trades are indexed for referral and volume-tier rebates. Use SDK v0.4.4
-or later for Arc referral tags. On indexed chains, eligible integrators earn a **rebate** on the volume
+settled trades are indexed for referral and volume-tier rebates. For Arc referrals,
+MCP clients pass `referrerCode` to `build_order`; direct SDK integrations use
+v0.4.4 or later. On indexed chains, eligible integrators earn a **rebate** on the volume
 they route, and `lookup_tier` surfaces a wallet's 30-day volume tier.
 
 Rebates depend on eligible indexed volume and the applicable program terms.
@@ -255,7 +256,8 @@ complete partner fee, not a volume-only entry. Pool costs, price impact and gas
 are additional. SDK v0.4.3 and hosted MCP include Arc, whose current
 [release fee exception](https://docs.ophis.fi/fees) is a 1 bp volume fee without
 backend improvement capture. Eligible settled Arc trades count toward referral
-and volume-tier rebates; use SDK v0.4.4 or later for referral attribution.
+and volume-tier rebates. For Arc referrals, MCP clients pass `referrerCode` to
+`build_order`; direct SDK integrations use v0.4.4 or later.
 
 Swap fees are deducted from the trade. Standard ERC-20 order signing and
 submission are gasless, but approvals and other wallet transactions need gas.
