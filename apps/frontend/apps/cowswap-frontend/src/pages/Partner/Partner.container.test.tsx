@@ -13,7 +13,6 @@ import {
 
 import { PartnerPage } from './Partner.container'
 
-// Keep the API types/errors real while controlling wallet and signed requests.
 jest.mock('@cowprotocol/wallet', () => ({ useWalletInfo: jest.fn() }))
 jest.mock('pages/Affiliate/ConnectWalletCta', () => ({ ConnectWalletCta: 'button' }))
 jest.mock('modules/affiliate', () => ({
@@ -103,7 +102,6 @@ describe('PartnerPage referee-table truncation note', () => {
 
     await renderAndLoad()
 
-    // The table renders (not the empty state) but the note must be absent.
     expect(screen.queryByText(/No referees yet/i)).toBeNull()
     expect(screen.queryByText(/most recently referred of/i)).toBeNull()
   })
@@ -126,7 +124,6 @@ describe('PartnerPage referee-table truncation note', () => {
 
     expect(screen.getByText(/how the program works/i)).toBeTruthy()
     expect(screen.getByText(/attributes that trade, not the wallet for life/i)).toBeTruthy()
-    // the bare one-liner is replaced by the 3-step guide
     expect(screen.queryByText('No referees yet. Share your code to start referring wallets.')).toBeNull()
   })
 
@@ -182,9 +179,7 @@ describe('PartnerPage referee-table truncation note', () => {
 
     await renderAndLoad()
 
-    // Defaults to lifetime ($5,000,000).
     expect(screen.getByText('$5,000,000')).toBeTruthy()
-    // Switching to the current cycle shows currentCycleVolumeUsd ($1,000,000).
     fireEvent.click(screen.getByRole('button', { name: /this cycle/i }))
     expect(screen.getByText('$1,000,000')).toBeTruthy()
   })
@@ -199,7 +194,6 @@ describe('PartnerPage referee-table truncation note', () => {
 
   it('clears the trader-rank chip when the account changes and the new fetch fails', async () => {
     getPartnerDashboardMock.mockResolvedValue(makeDashboard(3, 3))
-    // Account A resolves Gold; any other account's /rank fails with a non-404.
     getRankStatusMock.mockImplementation((acct: string) =>
       acct.toLowerCase() === ACCOUNT.toLowerCase()
         ? Promise.resolve(GOLD_RANK)
@@ -210,8 +204,6 @@ describe('PartnerPage referee-table truncation note', () => {
     await screen.findByText('Referees')
     expect(await screen.findByText(/Trader rank: Gold/i)).toBeTruthy()
 
-    // Switch wallets: the new account's rank fetch fails, so the chip must clear
-    // rather than keep showing the prior wallet's rank.
     useWalletInfoMock.mockReturnValue({ account: '0xdef0000000000000000000000000000000000002', chainId: 1 })
     rerender(<PartnerPage />)
     await waitFor(() => expect(screen.queryByText(/Trader rank:/i)).toBeNull())

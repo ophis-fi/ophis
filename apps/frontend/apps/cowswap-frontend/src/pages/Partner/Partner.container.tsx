@@ -3,10 +3,6 @@
  * signature-gated by POST /partner on rebates.ophis.fi, never fetched or shown
  * before a successful response. Wallet-keyed sessions reset access on disconnect
  * or an identity change, including when the previous response is still pending.
- *
- *   - 403 -> "for Ophis partners only" (no data).
- *   - 401 -> expired / retry message.
- *
  */
 import { ReactNode, useCallback, useState } from 'react'
 
@@ -207,16 +203,12 @@ function PartnerWalletDashboard({ account }: { account: string }): ReactNode {
           setState('unauthorized')
           return
         }
-        // 400 / 409 / 429 / 5xx: a real server response. Keep the generic state
-        // but log the status + server message so it is diagnosable.
+        // Log server failures separately from transport failures.
         console.error('[PartnerPage] access failed:', error.status, error.message)
         setState('error')
         return
       }
-      // Not an API response at all: a CORS/network failure (TypeError "Failed to
-      // fetch") or a request timeout (DOMException). Surface a distinct message so
-      // a transport break is not mistaken for a server error (this is the class of
-      // failure the CORS-preflight bug produced).
+      // Distinguish network/timeouts from actual server responses.
       console.error('[PartnerPage] access failed (network/transport):', error)
       setState('network')
     }

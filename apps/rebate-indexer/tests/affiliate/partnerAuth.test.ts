@@ -67,6 +67,23 @@ describe('verifyPartnerAuth — signature gate for the Partner dashboard', () =>
     expect((await verifyPartnerAuth({ ...safeInput, address: ADDR, signature: legacy }, () => rpc as unknown as PublicClient)).ok).toBe(false);
   });
 
+  it.each(['Partner Dashboard access', 'Partner Fee dashboard access', 'create referral code', 'bind referral code partner', 'claim reward test\nEmail: partner@example.com'])(
+    'accepts EOA ownership on an unsupported wallet network for %s without RPC', async (action) => {
+      const chainId = 999999;
+      const signature = await account.signMessage({ message: buildSignedActionMessage(action, ADDR, NOW, chainId) });
+      const factory = vi.fn(() => client('0x1626ba7e', chainId) as unknown as PublicClient);
+      expect(await verifyPartnerAuth({ ...safeInput, action, address: ADDR, chainId, signature }, factory))
+        .toEqual({ ok: true, address: ADDR });
+      expect((await verifyPartnerAuth({ ...safeInput, action, address: ADDR, chainId: 1, signature }, factory)).ok).toBe(false);
+      expect(factory).not.toHaveBeenCalled();
+    },
+  );
+
+  it.each([0, -1, 1.5, Number.NaN, Number.MAX_SAFE_INTEGER + 1])('rejects invalid chain IDs even for EOAs: %s', async (chainId) => {
+    const signature = await account.signMessage({ message: buildSignedActionMessage('Partner Dashboard access', ADDR, NOW, chainId) });
+    expect((await verifyPartnerAuth({ ...safeInput, address: ADDR, chainId, signature })).ok).toBe(false);
+  });
+
   it('does not accept a Safe owner signature merely because it recovers to an EOA', async () => {
     const signature = await account.signMessage({ message: buildSignedActionMessage('Partner Dashboard access', safe, NOW, 1) });
     const rpc = client('0xffffffff');

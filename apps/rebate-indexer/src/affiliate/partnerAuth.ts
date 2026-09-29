@@ -85,8 +85,8 @@ export async function verifyPartnerAuth(
     return { ok: false, reason: 'invalid signature' };
   }
 
-  if (input.chainId !== undefined && (!Number.isInteger(input.chainId) || !SUPPORTED_CHAIN_IDS.includes(input.chainId))) {
-    return { ok: false, reason: 'unsupported signature chain' };
+  if (input.chainId !== undefined && (!Number.isSafeInteger(input.chainId) || input.chainId <= 0)) {
+    return { ok: false, reason: 'invalid signature chain' };
   }
 
   const message = buildSignedActionMessage(input.action ?? 'Partner Dashboard access', address, issued, input.chainId);
@@ -100,6 +100,8 @@ export async function verifyPartnerAuth(
   }
 
   if (input.chainId !== undefined) {
+    // EOA ownership is chain-independent; only contract verification needs an available RPC.
+    if (!SUPPORTED_CHAIN_IDS.includes(input.chainId)) return { ok: false, reason: 'unsupported signature chain' };
     try {
       const authChains: unknown = JSON.parse(process.env.CONTRACT_WALLET_AUTH_CHAINS || '{}');
       const authority = authChains && typeof authChains === 'object' && !Array.isArray(authChains)
