@@ -147,6 +147,7 @@ assert.match(partners, /The earnings indexer includes all four/,
 assert.doesNotMatch(partners, /Arc is app-only|Arc is app-supported but not yet/, 'stale Arc SDK exclusion in partner guide');
 
 const integrationDocPaths = [
+  'README.md',
   ...readdirSync(new URL('../apps/docs-ophis/docs/', import.meta.url))
     .filter((name) => /\.mdx?$/.test(name)).map((name) => `apps/docs-ophis/docs/${name}`),
   ...readdirSync(new URL('../packages/', import.meta.url))
