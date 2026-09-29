@@ -153,7 +153,7 @@ const integrationDocPaths = [
     .map((name) => `packages/${name}/README.md`)
     .filter((path) => existsSync(new URL(`../${path}`, import.meta.url))),
 ];
-const staleArcRebate = /Arc[^.]{0,120}(?:not (?:yet )?(?:indexed|ingested)|no rebate indexing|no referral accrual|excluded from rebate indexing|do not accrue referral)|omit referral codes (?:from|for) Arc|referralCode: [^,;]{0,80}=== 5042 \? undefined/i;
+const staleArcRebate = /Arc[^.]{0,120}(?:not (?:yet )?(?:indexed|ingested)|no rebate indexing|no backend improvement capture or rebate indexing|no referral accrual|excluded from rebate indexing|do not accrue referral)|omit referral codes (?:from|for) Arc|referralCode: [^,;]{0,80}=== 5042 \? undefined/i;
 for (const path of integrationDocPaths) {
   assert.doesNotMatch(read(path).replace(/\s+/g, ' '), staleArcRebate,
     `${path}: stale Arc rebate/referral exclusion`);
@@ -189,10 +189,8 @@ for (const path of publicSitePaths) {
     `${path}: stale Arc integration exclusion`);
 }
 
-for (const path of [...publicSitePaths, ...readdirSync(new URL('../apps/docs-ophis/docs/', import.meta.url))
-  .filter((name) => /\.mdx?$/.test(name)).map((name) => `apps/docs-ophis/docs/${name}`)]) {
-  assert.doesNotMatch(read(path).replace(/\s+/g, ' '),
-    /Arc[^.]{0,120}(?:not (?:yet )?indexed|no rebate indexing|no referral accrual|excluded from rebate indexing|do not accrue referral)|omit referral codes (?:from|for) Arc/i,
+for (const path of publicSitePaths) {
+  assert.doesNotMatch(read(path).replace(/\s+/g, ' '), staleArcRebate,
     `${path}: stale Arc rebate/referral exclusion`);
 }
 
