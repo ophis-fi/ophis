@@ -13,7 +13,9 @@ async function reportingIsReady(): Promise<boolean> {
       GROUP BY chain_id, trade_uid
     )
     SELECT
-      NOT EXISTS (SELECT 1 FROM defillama_backfill_wallets)
+      EXISTS (SELECT 1 FROM defillama_reporting_state
+        WHERE singleton = true AND arc_reconciled_through_block IS NOT NULL)
+      AND NOT EXISTS (SELECT 1 FROM defillama_backfill_wallets)
       AND NOT EXISTS (
         SELECT 1 FROM defillama_fills
         WHERE chain_id = ANY(${[...PRODUCTION_CHAIN_IDS]})
