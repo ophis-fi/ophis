@@ -8,7 +8,7 @@ use {
         AlloyProvider,
         block_stream::{BlockInfo, BlockNumberHash, get_block_at_id},
     },
-    futures::{TryStreamExt, stream::FuturesUnordered},
+    futures::{StreamExt, TryStreamExt},
     std::fmt::Debug,
     tokio::sync::watch,
     tracing::instrument,
@@ -43,23 +43,23 @@ impl BlockRetrieving for AlloyProvider {
     async fn blocks(&self, range: RangeInclusive<u64>) -> Result<Vec<BlockNumberHash>> {
         let (start, end) = range.into_inner();
 
-        // Uses FuturesUnordered instead of try_join_all, since the latter
-        // starts using FuturesOrdered once the number of futures exceeds 30, which
-        // doesn't support fail-fast behavior.
-        let futures = FuturesUnordered::new();
-        for block_num in start..=end {
+        // Bound header catch-up too; fail fast without launching the whole range.
+        let futures = futures::stream::iter(start..=end).map(|block_num| {
             let block_id = BlockNumberOrTag::Number(block_num).into();
             let provider = self.clone();
-            futures.push(async move {
+            async move {
                 provider
                     .get_block(block_id)
                     .await
                     .with_context(|| format!("failed to fetch block {block_num}"))?
                     .with_context(|| format!("missing block {block_num}"))
-            });
-        }
+            }
+        });
 
-        let mut blocks: Vec<Block> = futures.try_collect().await?;
+        let mut blocks: Vec<Block> = futures
+            .buffer_unordered(crate::event_handler::MAX_PARALLEL_RPC_CALLS)
+            .try_collect()
+            .await?;
 
         // Sort the same way as the requested range
         blocks.sort_by_key(|block| block.number());
