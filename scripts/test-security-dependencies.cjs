@@ -71,6 +71,55 @@ function installed(name, major) {
 }
 
 async function main() {
+  for (const pkg of installed('undici', 6)) {
+    const { request, Response } = pkg.require('undici');
+    const server = createServer((_req, res) => {
+      res.writeHead(200, { 'content-type': 'application/json' });
+      res.end(JSON.stringify({ ok: true }));
+    });
+    try {
+      await new Promise((done) => server.listen(0, '127.0.0.1', done));
+      const response = await request(`http://127.0.0.1:${server.address().port}/`, {
+        signal: AbortSignal.timeout(2000), headersTimeout: 2000, bodyTimeout: 2000,
+      });
+      assert.equal(response.statusCode, 200);
+      assert.deepEqual(await response.body.json(), { ok: true });
+      const valid = new Response('asset=USDC&amount=10', { headers: { 'content-type': 'application/x-www-form-urlencoded' } });
+      assert.deepEqual(Object.fromEntries(await valid.formData()), { asset: 'USDC', amount: '10' });
+      const malformed = new Response('asset=USDC', { headers: { 'content-type': 'multipart/form-data; boundary="unterminated' } });
+      await assert.rejects(malformed.formData(), TypeError);
+    } finally { await new Promise((done) => server.close(done)); }
+    console.log(`PASS undici ${pkg.version}: bounded HTTP/JSON, valid form and malformed Content-Type rejection`);
+  }
+
+  for (const pkg of installed('fast-uri', 3)) {
+    const uri = pkg.require('fast-uri');
+    for (const input of ['https://ophis.fi/path?asset=USDC#swap', 'http://localhost:8080/', 'https://[::1]:443/']) {
+      assert.equal(uri.parse(input).error, undefined);
+      assert(uri.equal(uri.serialize(uri.parse(input)), input));
+    }
+    assert.equal(uri.parse('//%41.com').host, 'a.com');
+    assert(uri.equal('//%41.com', '//a.com'));
+    const components = { scheme: 'http', host: 'trusted.example', path: '/app' };
+    assert.equal(uri.serialize({ ...components, port: '8124' }), 'http://trusted.example:8124/app');
+    for (const port of ['@127.0.0.1:8124', '80/path', '80?query', '80#fragment']) {
+      assert.throws(() => uri.serialize({ ...components, port }));
+      assert.throws(() => uri.normalize({ ...components, port }));
+      assert.equal(uri.equal({ ...components, port }, 'http://trusted.example/app'), false);
+    }
+    console.log(`PASS fast-uri ${pkg.version}: URI round trips, host normalization, authority injection rejected`);
+  }
+  for (const pkg of installed('ajv', 8)) {
+    const Ajv = pkg.require('ajv');
+    const ajv = new Ajv();
+    ajv.addSchema({ $id: 'https://ophis.fi/schemas/amount', type: 'integer', minimum: 1 });
+    const validate = ajv.compile({ $id: 'https://ophis.fi/schemas/order', type: 'object', required: ['amount'],
+      properties: { amount: { $ref: './amount' } }, additionalProperties: false });
+    assert(validate({ amount: 10 }));
+    for (const value of [{ amount: 0 }, { amount: '10' }, {}, { amount: 10, extra: true }]) assert(!validate(value));
+    console.log(`PASS ajv ${pkg.version}: relative URI schema resolution and validation`);
+  }
+
   for (const pkg of installed('elliptic', 6)) {
     // Independent researcher vector from elliptic issue #322: P-521 needs to
     // discard seven bits even when the DRBG's first byte is zero.
