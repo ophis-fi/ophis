@@ -55,7 +55,9 @@ the base, and CoW Protocol's own fees apply upstream. Use
 `buildOphisAppDataPartnerFee(chainId, isStablePair)` rather than a volume-only
 hosted entry. Approvals and other wallet transactions require gas. Details:
 https://docs.ophis.fi/fees. Arc currently charges only the 1 bp base and is
-indexed for volume and referral rebates; use SDK v0.4.4 or later for referral tags.
+indexed for volume and referral rebates. MCP clients pass `referrerCode` to
+`build_order` for Arc attribution; only direct SDK integrations require
+`@ophis/sdk` v0.4.4 or later for Arc referral tags.
 On indexed chains, a share of fees is returned monthly to active wallets as volume-tier rebates. The `@ophis/sdk` npm package exposes
 `buildOphisAppDataPartnerFee`, `OPHIS_VOLUME_FEE_BPS`,
 `OPHIS_STABLE_VOLUME_FEE_BPS`, and
