@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 import assert from 'node:assert/strict';
-import { readFileSync, readdirSync } from 'node:fs';
+import { existsSync, readFileSync, readdirSync } from 'node:fs';
 
 const read = (path) => readFileSync(new URL(`../${path}`, import.meta.url), 'utf8');
 const readJson = (path) => JSON.parse(read(path));
@@ -145,6 +145,19 @@ assert.doesNotMatch(partners, /referralCode: chainId === 5042 \? undefined/,
 assert.match(partners, /The earnings indexer includes all four/,
   'earnings reporting must include every Ophis-operated chain');
 assert.doesNotMatch(partners, /Arc is app-only|Arc is app-supported but not yet/, 'stale Arc SDK exclusion in partner guide');
+
+const integrationDocPaths = [
+  ...readdirSync(new URL('../apps/docs-ophis/docs/', import.meta.url))
+    .filter((name) => /\.mdx?$/.test(name)).map((name) => `apps/docs-ophis/docs/${name}`),
+  ...readdirSync(new URL('../packages/', import.meta.url))
+    .map((name) => `packages/${name}/README.md`)
+    .filter((path) => existsSync(new URL(`../${path}`, import.meta.url))),
+];
+const staleArcRebate = /Arc[^.]{0,120}(?:not (?:yet )?(?:indexed|ingested)|no rebate indexing|no referral accrual|excluded from rebate indexing|do not accrue referral)|omit referral codes (?:from|for) Arc|referralCode: [^,;]{0,80}=== 5042 \? undefined/i;
+for (const path of integrationDocPaths) {
+  assert.doesNotMatch(read(path).replace(/\s+/g, ' '), staleArcRebate,
+    `${path}: stale Arc rebate/referral exclusion`);
+}
 
 const landingSource = 'apps/frontend/apps/ophis-landing/src/';
 const publicSitePaths = [

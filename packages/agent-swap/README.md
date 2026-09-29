@@ -14,7 +14,7 @@ import { executeOphisSwap, type OphisAgentWallet } from '@ophis/agent-swap';
 const result = await executeOphisSwap(
   wallet, // your OphisAgentWallet
   { sellToken, buyToken, sellAmount: '1.5' /* whole units */, slippageBps: 50 },
-  { referralCode: wallet.getChainId() === 5042 ? undefined : process.env.OPHIS_REFERRAL_CODE },
+  { referralCode: process.env.OPHIS_REFERRAL_CODE },
 );
 // result.orderUid, result.explorerUrl, result.minBuyAmount
 ```
