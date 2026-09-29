@@ -140,6 +140,10 @@ assert.match(partners, /arc-mainnet\.ophis\.fi/, 'partner guide must document th
 assert.match(partners, /0x78799F98276efba1EdeeD32eae03a3fd8Cdfec3A/, 'partner guide must document the Arc domain');
 assert.match(partners, /buildOphisReferrerMetadata\('your-code', chainId\)/,
   'partner referral example must include Arc attribution and pass chain context');
+assert.doesNotMatch(partners, /referralCode: chainId === 5042 \? undefined/,
+  'high-level partner example must not suppress Arc referrals');
+assert.match(partners, /The earnings indexer includes all four/,
+  'earnings reporting must include every Ophis-operated chain');
 assert.doesNotMatch(partners, /Arc is app-only|Arc is app-supported but not yet/, 'stale Arc SDK exclusion in partner guide');
 
 const integrationDocPaths = [
@@ -192,6 +196,18 @@ for (const path of publicSitePaths) {
     /(?:mappings (?:currently )?exclude Arc|supported chains excluding Arc|Arc \(5042\) is not\.|not in the published SDK\/MCP mappings|Arc[^.\n]*?(?:absent from|excluded from|not yet included in) published SDK\/MCP)/,
     `${path}: stale Arc integration exclusion`);
 }
+
+for (const path of publicSitePaths) {
+  assert.doesNotMatch(read(path).replace(/\s+/g, ' '), staleArcRebate,
+    `${path}: stale Arc rebate/referral exclusion`);
+}
+for (const path of [
+  'apps/frontend/apps/ophis-landing/public/.well-known/agent-skills/swap-via-ophis/SKILL.md',
+  'apps/frontend/apps/ophis-landing/public/.well-known/ai-plugin.json',
+  'apps/frontend/apps/ophis-landing/public/llms.txt',
+  'apps/frontend/apps/ophis-landing/src/content/blog/let-an-ai-agent-swap-tokens.md',
+]) assert.match(read(path), /MCP clients pass `?referrerCode`? to\s+`?build_order`?/,
+  `${path}: MCP guidance must explain its own referral parameter`);
 
 assert.match(faq, /14 EVM chains/, 'FAQ must state the canonical 14-EVM-chain count');
 if (read('infra/arc-mainnet/release/render.py').includes('[fee-policies]\npolicies = []')) {
