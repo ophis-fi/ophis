@@ -7,7 +7,7 @@
 // node scripts/test-security-dependencies.cjs --workspace root
 // node scripts/test-security-dependencies.cjs --workspace frontend
 // A fixture needs query-string 5/7, minimatch 3/5, jayson 4, stream-json 1,
-// file-type 21, uuid 11 and workbox-build 6, using this repo's overrides/patches.
+// file-type 21, uuid 11, workbox-build 6 and ip-address 10, using this repo's overrides/patches.
 const assert = require('node:assert/strict');
 const { spawnSync } = require('node:child_process');
 const { createHash } = require('node:crypto');
@@ -71,6 +71,25 @@ function installed(name, major) {
 }
 
 async function main() {
+  // Resolve the active hoisted package, not retained pnpm cache versions.
+  for (const { root } of stores) {
+    const requireIp = createRequire(join(root, 'node_modules', '_ip-address-check.cjs'));
+    const { Address4, Address6 } = requireIp('ip-address');
+    for (const ip of ['fe80::1', 'fe81::1', 'febf::1', 'fe80:0:0:1::1']) {
+      assert(new Address6(ip).isLinkLocal(), `${ip} must be link-local`);
+    }
+    for (const ip of ['64:ff9b:1:7f00:0:100::', '64:ff9b:1::7f00:1']) {
+      assert(new Address6(ip).isPrivate(), `${ip} must be private`);
+    }
+    const publicIp = new Address6('2001:4860:4860::8888');
+    assert(!publicIp.isLinkLocal() && !publicIp.isPrivate());
+    assert.equal(new Address6('2001:db8::1/56').networkForm(), '2001:db8::/56');
+    assert.equal(new Address6('::ffff:192.0.2.1').to4().correctForm(), '192.0.2.1');
+    assert.equal(Address6.fromByteArray(publicIp.toByteArray()).canonicalForm(), publicIp.canonicalForm());
+    assert.deepEqual(new Address4('192.0.2.1').toArray(), [192, 0, 2, 1]);
+    console.log(`PASS ip-address ${requireIp('ip-address/package.json').version}: IPv6 boundaries and consumer compatibility`);
+  }
+
   for (const pkg of installed('undici', 6)) {
     const { request, Response } = pkg.require('undici');
     const server = createServer((_req, res) => {

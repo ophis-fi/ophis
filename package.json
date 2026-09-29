@@ -55,7 +55,7 @@
       "find-my-way": "^9.7.0",
       "postcss": "8.5.23",
       "fast-uri": "^3.1.8",
-      "ip-address": "^10.2.1",
+      "ip-address": "10.5.1",
       "socket.io-parser": "^4.2.7",
       "sharp": "^0.35.4",
       "js-yaml": "^4.3.2",

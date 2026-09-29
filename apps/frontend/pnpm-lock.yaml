@@ -39,7 +39,7 @@ overrides:
   secp256k1: ^4.0.4
   socket.io-parser: ^4.2.7
   fast-uri: ^3.1.8
-  ip-address: ^10.2.1
+  ip-address: 10.5.1
   koa: ^3.1.2
   handlebars: ^4.7.9
   path-to-regexp: ^0.1.13
@@ -12430,8 +12430,8 @@ packages:
   iobuffer@5.4.0:
     resolution: {integrity: sha512-DRebOWuqDvxunfkNJAlc3IzWIPD5xVxwUNbHr7xKB8E6aLJxIPfNX3CoMJghcFjpv6RWQsrcJbghtEwSPoJqMA==}
 
-  ip-address@10.3.1:
-    resolution: {integrity: sha512-1e9d3kb97NHJTIJDZW9rKqW2h6+dFa50Dy0fpPSMQp2ADje5gvKsXmdiK6dwY5t76TaTt5+P5N1Y/LoToIxP6g==}
+  ip-address@10.5.1:
+    resolution: {integrity: sha512-EXujUp9jyOI/chPgtqk6uy7fDq8AeCB/WlfEuPg9LN0fN9lzKAKfuDYi60SMhHwgUiEhZvVYsbGZN+RUU1INiA==}
     engines: {node: '>= 12'}
 
   ipaddr.js@1.9.1:
@@ -32902,7 +32902,7 @@ snapshots:
 
   iobuffer@5.4.0: {}
 
-  ip-address@10.3.1: {}
+  ip-address@10.5.1: {}
 
   ipaddr.js@1.9.1: {}
 
@@ -37876,7 +37876,7 @@ snapshots:
 
   socks@2.8.10:
     dependencies:
-      ip-address: 10.3.1
+      ip-address: 10.5.1
       smart-buffer: 4.2.0
 
   sonic-boom@4.2.1:
