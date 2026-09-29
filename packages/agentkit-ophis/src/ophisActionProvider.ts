@@ -9,8 +9,7 @@ export interface OphisActionProviderConfig {
   /**
    * OPTIONAL integrator referral code that earns the 8-12% rebate. Falls back to
    * OPHIS_REFERRAL_CODE. Omit it and swaps still work (you just forgo the
-   * rebate); mint one in ~30s at https://swap.ophis.fi/#/rewards. This configured
-   * default is skipped on Arc, which is not indexed for rebates.
+   * rebate); mint one in ~30s at https://swap.ophis.fi/#/rewards.
    */
   referralCode?: string;
 }
@@ -56,7 +55,7 @@ export class OphisActionProvider extends ActionProvider<EvmWalletProvider> {
           slippageBps: args.slippageBps ?? undefined,
         },
         {
-          ...(chainId !== 5042 && this.#referralCode !== undefined ? { referralCode: this.#referralCode } : {}),
+          ...(this.#referralCode !== undefined ? { referralCode: this.#referralCode } : {}),
           isStablePair,
         },
       );

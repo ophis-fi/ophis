@@ -49,8 +49,7 @@ export interface OphisOrderMetadataOptions {
   /** Your Ophis referral code. OPTIONAL: when set it earns the rebate and is
    *  embedded in metadata.ophisReferrer.code; when omitted the order still
    *  carries the Ophis partner fee and settles normally, you just forgo the
-   *  rebate. Arc (5042) currently rejects referral codes because its trades are
-   *  not indexed for rewards. Mint one at https://swap.ophis.fi/#/rewards. */
+   *  referral rebate. Mint one at https://swap.ophis.fi/#/rewards. */
   readonly referralCode?: string;
   /**
    * True ONLY for a same-chain stablecoin pair. It selects the 50% improvement

@@ -64,8 +64,7 @@ export const SERVER_INFO = { name: 'ophis', version: MCP_SERVER_VERSION } as con
  */
 export interface OphisToolConfig {
   /** Optional server-wide default affiliate referral code. When set, build_order
-   *  embeds it in appData on indexed chains unless the call passes its own referrerCode.
-   *  Arc skips the server default because its trades are not indexed for rewards. */
+   *  embeds it in appData unless the call passes its own referrerCode. */
   defaultReferrerCode?: string
   /** Rebate-indexer base URL. submit_order pings {base}/tier/<owner> to register
    *  a referrer-tagged order's owner for indexing (so the affiliate is actually
@@ -243,7 +242,7 @@ export function registerOphisTools(server: McpServer, config?: OphisToolConfig):
         referrerCode: z
           .string()
           .optional()
-          .describe('Affiliate referral code to embed in appData (credits that code\'s owner for this trade). Defaults to the server\'s OPHIS_DEFAULT_REFERRER_CODE except on Arc, which has no referral rewards and rejects nonempty codes. Grammar: 3-64 chars [a-z0-9_-]; an invalid code errors.'),
+          .describe('Affiliate referral code to embed in appData (credits that code\'s owner for eligible settled trades, including Arc). Defaults to the server\'s OPHIS_DEFAULT_REFERRER_CODE. An empty string opts out. Grammar: 3-64 chars [a-z0-9_-]; an invalid code errors.'),
       },
     },
     async (a) => {
@@ -264,9 +263,8 @@ export function registerOphisTools(server: McpServer, config?: OphisToolConfig):
             slippageBips: a.slippageBips,
             // unsafeCustomReceiver intentionally NOT forwarded — see the schema
             // note above; buildOrder therefore pins the receiver to the owner.
-            // Per-call code wins. Arc has no referral rewards, so skip only
-            // the server default there; the SDK still rejects an explicit code.
-            referrerCode: a.referrerCode ?? (a.chainId === 5042 ? undefined : config?.defaultReferrerCode),
+            // Per-call code wins; an empty string explicitly opts out.
+            referrerCode: a.referrerCode ?? config?.defaultReferrerCode,
             // Server-set order-source tag (metadata.ophisSource.app) so the
             // funnel can attribute settled volume to the MCP surface. Not a
             // caller-controlled field: every order this tool builds is 'mcp'.
@@ -433,7 +431,7 @@ export function registerOphisTools(server: McpServer, config?: OphisToolConfig):
     {
       annotations: { title: 'Get integrator earnings', readOnlyHint: true, openWorldHint: true },
       description:
-        "Look up what an integrator's own-fee routing earned on indexed chains (excluding Arc), by appCode (the identifier you tag into appData: your widget appCode or your SDK ophisReferrer code). Returns routed volume (USD, split by chain and by sovereign-vs-hosted), the Ophis base fee charged on your flow, your OWN stacked fee, and your referral rebate paid-to-date with payout tx links. Guaranteed/paid figures are scoped to the Ophis-operated chains (Optimism, Unichain); CoW-hosted figures are accrued at settlement and disbursed by CoW under CoW terms (see the response `disclaimer`). Read-only, keyless, cumulative (no current-cycle or next-payout data).",
+        "Look up what an integrator's own-fee routing earned on indexed chains, including Arc, by appCode (the identifier you tag into appData: your widget appCode or your SDK ophisReferrer code). Returns routed volume (USD, split by chain and by sovereign-vs-hosted), the Ophis base fee charged on your flow, your OWN stacked fee, and your referral rebate paid-to-date with payout tx links. Guaranteed/paid figures are scoped to the Ophis-operated chains (Optimism, Unichain); CoW-hosted figures are accrued at settlement and disbursed by CoW under CoW terms (see the response `disclaimer`). Read-only, keyless, cumulative (no current-cycle or next-payout data).",
       inputSchema: {
         appCode: z
           .string()

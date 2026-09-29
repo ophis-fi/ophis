@@ -61,9 +61,9 @@ throw at the quote step and are not tradeable.)
 - **CoW-hosted** (canonical settlement, fee via appData): Ethereum, Base, Arbitrum, Polygon,
   Gnosis, BNB, Avalanche, Linea, Ink, Plasma.
 
-Version 0.1.6 uses SDK 0.4.3 and supports Arc (5042) ERC-20 presigned orders.
-Arc charges a 1 bp base, with no backend improvement capture or indexed rebates;
-omit referral codes. Native USDC sentinels are rejected; use its six-decimal
+Version 0.1.7 uses SDK 0.4.4 and supports Arc (5042) ERC-20 presigned orders,
+including referral attribution and trader enrollment. Arc charges a 1 bp base,
+with no backend improvement capture. Native USDC sentinels are rejected; use its six-decimal
 ERC-20 interface. This adds no Arc policy-module deployment or fork-test claim.
 
 The existing 12-chain suite checks the batch's **on-chain effects** against the REAL deployed

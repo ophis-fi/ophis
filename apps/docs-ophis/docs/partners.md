@@ -13,8 +13,8 @@ The standard schedule is a required 1 bp
 base plus 80% of reference-quote improvement on volatile pairs (99 bps cap), or
 50% on stable pairs (20 bps cap). Operated-chain backends apply the improvement
 component directly when configured; hosted orders encode it in CIP-75 appData.
-Arc currently has no backend improvement capture or rebate indexing. SDK v0.4.3
-supports Arc orders without referral tags and rejects nonempty Arc referral codes. Integrator
+Arc currently has no backend improvement capture. SDK v0.4.4 supports Arc
+referral tags, and eligible settled trades are indexed for rebates. Integrator
 own-fees remain separate, and Ophis takes 0% of that markup.
 :::
 
@@ -27,7 +27,7 @@ If you want to **embed** the Ophis swap UI instead, use the
 [widget](./widget.md). The widget carries the Ophis base fee automatically, and
 it can earn referral attribution too: set its `appCode` to a referral code you
 have minted and activated (the code string from your affiliate dashboard) and the
-indexer credits eligible widget orders on indexed chains (excluding Arc) tagged with that code to you, with no wallet
+indexer credits eligible widget orders on indexed chains (including Arc) tagged with that code to you, with no wallet
 bind required. Use the SDK path described here when you need what the iframe
 cannot express: signing with a Safe or MPC signer via EIP-1271, stacking your own
 fee on top of the base, or controlling per-order `appData`.
@@ -54,8 +54,7 @@ get the silent-failure details right for you: the correct `appCode`, the partner
 fee, your referral tag, wallet enrollment, the per-chain relayer / host / signing
 domain, the receiver pin, and the `sendOrder` wire shape. **The same code works on
 every served chain** because the helpers branch on `chainId` internally. For
-Arc (5042), use SDK v0.4.3 or later and omit the referral code; enrollment does not
-enable Arc rebates.
+Arc (5042), use SDK v0.4.4 or later for referral attribution and enroll the trader.
 
 ```ts
 import {
@@ -300,14 +299,14 @@ a volume-only entry. Arc is supported from SDK v0.4.3 with its own host and sign
 
 ## Partner economics: the three layers
 
-These three layers describe indexed chains; Arc currently supports the base trading fee only, without referral accrual or an own-fee payout guarantee:
+These three layers describe indexed chains, including Arc. Arc retains its base-only trading fee; referral indexing does not add an Arc own-fee payout guarantee:
 
 1. **Your users get the chain's published integration pricing.** On sovereign
    chains other than Arc that is the 1 bp base plus capped improvement capture described above.
    The same policy applies on CoW-hosted chains, with CoW Protocol's own fees on top (see
    [Fees & rebates](./fees.md#the-all-in-cost-per-chain)).
 2. **You earn a share of Ophis's verified 1 bp base fee** on each eligible trade you
-   route on an indexed chain (excluding Arc): 8% on the self-serve tier, **12% on the partner tier** (uncapped
+   route on an indexed chain (including Arc): 8% on the self-serve tier, **12% on the partner tier** (uncapped
    referred volume; ask us to upgrade your code). Paid monthly in WETH,
    on-chain. Improvement capture is excluded until receipts can be reconciled
    to the Ophis Safe.
@@ -405,7 +404,7 @@ Layer 2 is separate from the fee your users pay. The fee itself is set in
 `appData` at settlement (the chain-aware base, plus your own entry if you add one).
 The **referral share** of 8% or 12% is a distinct earning: it is a portion of
 the verified 1 bp base fee Ophis keeps, paid back to you monthly in WETH. Tag
-each eligible order on an indexed chain with your referral code and Ophis pays it out each cycle. Arc is not indexed and earns no referral rebate. Improvement
+each eligible order on an indexed chain, including Arc, with your referral code. Improvement
 capture remains excluded until receipts can be reconciled to the Ophis Safe.
 
 ```ts
@@ -421,14 +420,14 @@ const doc = await new MetadataApi().generateAppDataDoc({
   appCode: 'ophis', // REQUIRED: 'ophis', NOT your app's name (see below)
   metadata: {
     partnerFee,
-    ...buildOphisReferrerMetadata(chainId === 5042 ? undefined : 'your-code', chainId),
+    ...buildOphisReferrerMetadata('your-code', chainId),
     hooks: {},
   },
 });
 ```
 
 The rebate indexer reads `metadata.ophisReferrer.code` from settled orders on its supported chains,
-credits your referred USD volume **across indexed chains, excluding Arc**, and pays out
+credits your referred USD volume **across indexed chains, including Arc**, and pays out
 monthly in WETH from a single Gnosis Safe. Your code must exist before you tag
 orders with it. Higher tiers earn a larger share. See the
 [Affiliate program](./affiliate.md) for rates and tiers.
@@ -667,7 +666,7 @@ Arc uses native USDC and has no supported EthFlow deployment; use its ERC-20 USD
   the Ophis base fee and can earn referral attribution through its `appCode`, but
   it cannot stack your own fee on top, redirect the recipient, or control
   per-order `appData`: those need the SDK.
-- **Optimism, Unichain, Robinhood Chain and Arc are SDK-supported self-hosted chains.** Arc requires SDK v0.4.3 or later and has no referral accrual; the other SDK chains are CoW-hosted, where
+- **Optimism, Unichain, Robinhood Chain and Arc are SDK-supported self-hosted chains.** Arc referral attribution requires SDK v0.4.4 or later; the other SDK chains are CoW-hosted, where
   Ophis charges the fee but cannot enforce a floor or an on-chain discount.
 - **Do not use the `api.cow.fi` host on an Ophis-operated chain.** That is an
   unsupported host/domain combination, not a valid fee-free route.

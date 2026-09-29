@@ -54,26 +54,19 @@ async function fillInputs() {
 
 afterEach(async () => { await act(async () => root.unmount()); host.remove(); vi.unstubAllGlobals(); vi.unstubAllEnvs(); });
 
-it.each([false, true])('Arc skips the app default but preserves explicit URL referral rejection (explicit %s)', async (explicit) => {
+it.each([false, true])('Arc quotes with default or explicit URL referrals (explicit %s)', async (explicit) => {
   vi.stubEnv('VITE_OPHIS_REFERRAL_CODE', 'builder-code');
   window.history.replaceState(null, '', explicit ? '/?ref=caller-code' : '/');
   mocks.context.safe = { ...mocks.context.safe, chainId: 5042 };
   await act(async () => root.render(<App />));
   await fillInputs();
-  expect(host.textContent).toContain('do not earn referral or volume-tier rebates');
-  expect(host.textContent).not.toContain('ref builder-code');
+  expect(host.textContent).toContain('Eligible settled trades count toward referral and volume-tier rebates');
+  expect(host.textContent).toContain(`ref ${explicit ? 'caller-code' : 'builder-code'}`);
   expect(host.querySelector<HTMLInputElement>('input[type="checkbox"]')?.disabled).toBe(true);
   await act(async () => host.querySelector('button')?.click());
-  if (explicit) {
-    expect(host.textContent).toContain('ref caller-code (unsupported on Arc)');
-    expect(host.textContent).toMatch(/Arc.*referral rewards are not supported/);
-    expect(mocks.getQuote).not.toHaveBeenCalled();
-  } else {
-    expect(mocks.getQuote).toHaveBeenCalledOnce();
-    await act(async () => resolveQuote({ buyAmount: '2000' }));
-    expect(host.textContent).toContain('Quoted with the Ophis partner fee in appData.');
-    expect(host.textContent).not.toContain('+ your referral');
-  }
+  expect(mocks.getQuote).toHaveBeenCalledOnce();
+  await act(async () => resolveQuote({ buyAmount: '2000' }));
+  expect(host.textContent).toContain('Quoted with the Ophis partner fee + your referral in appData.');
 });
 
 it('prevents edits while the pending quote captures the displayed trade', async () => {

@@ -44,18 +44,11 @@ export function normalizeOphisReferralCode(code: string): string {
  *
  * The code is OPTIONAL: called with no code (or an empty string) it returns
  * `{}`, so an order can be built and settled WITHOUT a referral (it still
- * carries the Ophis partner fee) and simply earns no rebate. Pass `chainId`
- * when known: Arc referral attribution is unavailable until the rebate indexer
- * supports it. Without chain context this helper only formats the tag; it does
- * not establish rebate eligibility. Chain-aware order builders pass it here.
+ * carries the Ophis partner fee) and simply earns no referral rebate. This
+ * helper only formats the tag; enrollment and verified settlement determine
+ * rebate eligibility. The optional chain argument is retained for compatibility.
  */
-export function buildOphisReferrerMetadata(code?: string, chainId?: number): { ophisReferrer?: OphisReferrerTag } {
+export function buildOphisReferrerMetadata(code?: string, _chainId?: number): { ophisReferrer?: OphisReferrerTag } {
   if (!code) return {};
-  if (chainId === 5042) {
-    throw new Error(
-      'Ophis: Arc (5042) referral rewards are not supported by the rebate indexer yet. ' +
-        'Omit referralCode/referrerCode to trade without referral attribution.',
-    );
-  }
   return { ophisReferrer: { code: normalizeOphisReferralCode(code) } };
 }

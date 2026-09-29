@@ -21,16 +21,17 @@ const SELL = '0x3600000000000000000000000000000000000000';
 const BUY = '0xbEf5f6d51CB62b58e6A8f77868681825C6fe21c1';
 afterEach(() => vi.clearAllMocks());
 
-it.each([5042, 10])('retains fee-bearing Safe orders on %s and enrolls only indexed chains', async (chainId) => {
+it.each([5042, 10])('retains fee-bearing Safe orders and referral enrollment on %s', async (chainId) => {
   mocks.quote.mockResolvedValue({ quote: { sellToken: SELL, buyToken: BUY, sellAmount: '1000000', feeAmount: '0', buyAmount: '900000' } });
   mocks.enroll.mockResolvedValue({ enrolled: true });
   mocks.send.mockImplementation(async (body: VaultOrder & { appDataHash: string }) => computeOrderUid({ ...body, appData: body.appDataHash }, chainId, SAFE));
-  const result = await buildOphisSafePresign({ chainId, safe: SAFE, sellToken: SELL, buyToken: BUY, sellAmount: '1000000' });
+  const result = await buildOphisSafePresign({ chainId, safe: SAFE, sellToken: SELL, buyToken: BUY, sellAmount: '1000000', referralCode: 'partner_1' });
   expect(result.enrollmentWarning).toBeUndefined();
-  expect(mocks.enroll).toHaveBeenCalledTimes(chainId === 5042 ? 0 : 1);
+  expect(mocks.enroll).toHaveBeenCalledExactlyOnceWith(SAFE);
   expect(mocks.send).toHaveBeenCalledOnce();
   const body = mocks.send.mock.calls[0]?.[0];
   expect(body).toMatchObject({ sellToken: SELL, buyToken: BUY, sellAmount: '1000000', feeAmount: '0' });
   expect(JSON.parse(body.appData).metadata.partnerFee).toMatchObject({ volumeBps: 1 });
+  expect(JSON.parse(body.appData).metadata.ophisReferrer).toEqual({ code: 'partner_1' });
   expect(body).not.toHaveProperty('chainId');
 });

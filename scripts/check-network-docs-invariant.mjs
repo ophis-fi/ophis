@@ -138,8 +138,8 @@ assert.match(aiAgents, /"arc": 5042/, 'Python intent helper must resolve Arc');
 const partners = read('apps/docs-ophis/docs/partners.md');
 assert.match(partners, /arc-mainnet\.ophis\.fi/, 'partner guide must document the Arc host');
 assert.match(partners, /0x78799F98276efba1EdeeD32eae03a3fd8Cdfec3A/, 'partner guide must document the Arc domain');
-assert.match(partners, /buildOphisReferrerMetadata\(chainId === 5042 \? undefined : 'your-code', chainId\)/,
-  'partner referral example must omit Arc attribution and pass chain context');
+assert.match(partners, /buildOphisReferrerMetadata\('your-code', chainId\)/,
+  'partner referral example must include Arc attribution and pass chain context');
 assert.doesNotMatch(partners, /Arc is app-only|Arc is app-supported but not yet/, 'stale Arc SDK exclusion in partner guide');
 
 const landingSource = 'apps/frontend/apps/ophis-landing/src/';

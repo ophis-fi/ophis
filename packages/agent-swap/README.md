@@ -21,4 +21,4 @@ const result = await executeOphisSwap(
 
 ERC-20 → ERC-20 only (the EOA EIP-712 path; native-ETH sells need CoW eth-flow). The agent's wallet is the order owner **and** receiver. Get a referral code at https://docs.ophis.fi/ai-agents.
 
-Version 0.3.5 uses SDK 0.4.3, including Arc (5042). Arc orders use ERC-20 token addresses and the 1 bp base fee; Arc has no rebate indexing. Omit `referralCode` on Arc: an explicit nonempty code is rejected, and Arc never triggers referral warnings or indexer enrollment.
+Version 0.3.6 uses SDK 0.4.4, including Arc (5042). Arc orders use ERC-20 token addresses and the 1 bp base fee. Arc traders are enrolled for indexing, and optional `referralCode` tags eligible settled orders. Enrollment failures return a warning without blocking the swap.
