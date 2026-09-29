@@ -57,6 +57,7 @@ services:
       # thus no UNICHAIN_RPC_URL. The passthrough is required for a .env override
       # (staging/failover) to reach the container at all (same audit note as above).
       UNI_ORDERBOOK_URL: ${UNI_ORDERBOOK_URL:-https://unichain-mainnet.ophis.fi}
+      ARC_ORDERBOOK_URL: ${ARC_ORDERBOOK_URL:-https://arc-mainnet.ophis.fi}
       # Canonical Plasma archive RPC, staged for the future Plasma self-host. The
       # indexer prices Plasma via CoW's native_price oracle today (same as all
       # hosted chains), so this is unused at runtime — but per the audit note
@@ -76,13 +77,16 @@ services:
       # SETTLE_RPC_URL_130 for a keyed archive endpoint if the backfill lags. Start
       # blocks = each sovereign GPv2Settlement's first activity (from the orderbook
       # DBs). Defaults ACTIVATE the feature; set SETTLE_DECODER_CHAINS='' to disable.
-      SETTLE_DECODER_CHAINS: ${SETTLE_DECODER_CHAINS-10,130}
+      SETTLE_DECODER_CHAINS: ${SETTLE_DECODER_CHAINS-10,130,5042}
       SETTLE_DECODER_DISCOVERY_ONLY: ${SETTLE_DECODER_DISCOVERY_ONLY:-true}
       SETTLE_SCAN_START_BLOCK_10: ${SETTLE_SCAN_START_BLOCK_10:-151586936}
       SETTLE_SCAN_START_BLOCK_130: ${SETTLE_SCAN_START_BLOCK_130:-51998330}
       # Robinhood is not in the discovery decoder default yet, but the exact-UID
       # DefiLlama audit uses the same archive scan when its orderbook lacks history.
       SETTLE_SCAN_START_BLOCK_4663: ${SETTLE_SCAN_START_BLOCK_4663:-22558475}
+      # Arc settlement activation. See RUNBOOK.md for the verified historical
+      # bootstrap before enabling a live cursor; never seed blindly at the tip.
+      SETTLE_SCAN_START_BLOCK_5042: ${SETTLE_SCAN_START_BLOCK_5042:-22516917}
       # Keyed archive RPC used by all supported dRPC networks. Without this
       # passthrough, a host-level DRPC_API_KEY is invisible inside the container
       # and historical scans always fall back to rate-limited public endpoints.
@@ -90,6 +94,8 @@ services:
       SETTLE_RPC_URL_10: ${SETTLE_RPC_URL_10:-}
       SETTLE_RPC_URL_130: ${SETTLE_RPC_URL_130:-}
       SETTLE_RPC_URL_4663: ${SETTLE_RPC_URL_4663:-}
+      SETTLE_RPC_URL_5042: ${SETTLE_RPC_URL_5042:-}
+      SETTLE_RPC_FALLBACK_5042: ${SETTLE_RPC_FALLBACK_5042:-https://rpc.mainnet.arc.io}
       # Finite Robinhood Chain reward campaign. Keep disabled until the contract
       # is deployed, verified, funded with at least 150 USDG, and the immutable
       # allocation commitment has been recorded.

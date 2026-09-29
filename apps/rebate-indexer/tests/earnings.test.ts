@@ -33,7 +33,7 @@ describe('assembleEarnings - sovereign-vs-hosted scoping', () => {
     expect(e.routedVolumeUsd.hosted).toBe(200_000); // Base
     expect(e.routedVolumeUsd.total).toBe(350_000);
     expect(e.routedVolumeUsd.sovereign + e.routedVolumeUsd.hosted).toBe(e.routedVolumeUsd.total);
-    expect(e.sovereignChains).toEqual([10, 130, 4663]);
+    expect(e.sovereignChains).toEqual([10, 130, 4663, 5042]);
   });
 
   it('scopes GUARANTEED own-fee to the sovereign chains and labels hosted as gross, not guaranteed', () => {

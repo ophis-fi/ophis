@@ -127,15 +127,14 @@ describe('renderStatsPage', () => {
     expect(html).toContain('https://docs.ophis.fi/fees');
   });
 
-  it('distinguishes app support from incomplete indexing, without changing the chain filter', () => {
+  it('includes Arc reporting without promising exhaustive history for every route', () => {
     const html = renderStatsPage(sample);
-    expect(html).toContain('This report is configured for 13 EVM networks');
-    expect(html).toContain('App availability and reporting coverage differ');
-    expect(html).toContain('Arc activity is not yet included');
+    expect(html).toContain('This report is configured for 14 EVM networks, including Arc');
+    expect(html).not.toContain('Arc activity is not yet included');
     expect(html).toContain('A missing chain row does not prove there was no activity');
     expect(html).toContain('A recent publication time does not establish complete coverage');
     expect(html).toContain('Chains with indexed trades');
-    expect(html).not.toContain('<option value="5042"');
+    expect(html).toContain('<option value="5042"');
     expect(html).not.toContain('guarantees below hold for every single trade');
     expect(html).not.toContain('refreshed continuously');
     expect(html).not.toContain('no native gas token is needed');
@@ -166,6 +165,7 @@ describe('EXECUTION_FACTS (static execution-model facts on the public JSON)', ()
       { chainId: 10, solvers: 11 },
       { chainId: 130, solvers: 7 },
       { chainId: 4663, solvers: 6 },
+      { chainId: 5042, solvers: 5 },
     ]);
   });
 
@@ -180,9 +180,9 @@ describe('EXECUTION_FACTS (static execution-model facts on the public JSON)', ()
 });
 
 describe('PRODUCTION_CHAIN_IDS (public /stats allow-list)', () => {
-  it('lists exactly the 13 named mainnet chains', () => {
+  it('lists exactly the 14 named mainnet chains', () => {
     expect([...PRODUCTION_CHAIN_IDS].sort((a, b) => a - b)).toEqual([
-      1, 10, 56, 100, 130, 137, 4663, 8453, 9745, 42161, 43114, 57073, 59144,
+      1, 10, 56, 100, 130, 137, 4663, 5042, 8453, 9745, 42161, 43114, 57073, 59144,
     ]);
   });
 

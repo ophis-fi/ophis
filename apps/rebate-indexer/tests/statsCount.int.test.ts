@@ -2,6 +2,8 @@ import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { type StartedPostgreSqlContainer } from '@testcontainers/postgresql';
 import { startPg, stopPg } from './fixtures/pgContainer.js';
 import { DECODER_ETHFLOW_OWNERS } from '../src/fetcher.js';
+import { PRODUCTION_CHAIN_IDS } from '../src/stats-page.js';
+import { SOVEREIGN_CHAIN_IDS } from '../src/affiliate/rates.js';
 
 // The public /stats "distinct traders" number must count HUMANS, not eth-flow router
 // contracts. A native-ETH order settles with owner = a router, and if that router
@@ -224,5 +226,28 @@ describe('computeDefiLlamaDay', () => {
       4,
     );
     expect(second).toMatchObject([{ chainId: 1, volumeUsd: 20, trades: 1 }]);
+  });
+
+  it('counts Arc in stats and rebate volume, but never credits unverified discoveries', async () => {
+    const wallet = W('a4c');
+    await ins('a4c1', 5042, wallet, '10');
+    await ins('a4c2', 5042, wallet, '12');
+    await sql`UPDATE trades SET fee_verified = true, volume_fee_bps = 1 WHERE trade_uid = decode(${UID('a4c1')}, 'hex')`;
+    await sql`UPDATE defillama_fills SET volume_fee_bps = 1, assessed_fee_bps = 0.99913747 WHERE trade_uid = decode(${UID('a4c1')}, 'hex')`;
+    await sql`UPDATE trades SET fee_verified = false, volume_fee_bps = 0 WHERE trade_uid = decode(${UID('a4c2')}, 'hex')`;
+    await sql`UPDATE defillama_fills SET fee_verified = false, volume_fee_bps = 0 WHERE trade_uid = decode(${UID('a4c2')}, 'hex')`;
+
+    const stats = await computePublicStats(sql, [...PRODUCTION_CHAIN_IDS]);
+    expect(stats.byChain.find(c => c.chainId === 5042)).toMatchObject({ trades: 2, volumeUsd: 22 });
+    const daily = await computeDefiLlamaDay(sql, RECENT.slice(0, 10), [...PRODUCTION_CHAIN_IDS], [...SOVEREIGN_CHAIN_IDS], 7500);
+    const arc = daily.find(c => c.chainId === 5042)!;
+    expect(arc).toMatchObject({ volumeUsd: 10, trades: 1, supplySideRevenueUsd: 0 });
+    expect(arc.feesUsd).toBeCloseTo(0.00099913747, 10);
+    expect(arc.revenueUsd).toBe(arc.feesUsd); // no CoW 25% cut on Arc
+
+    await sql.unsafe('REFRESH MATERIALIZED VIEW wallets');
+    const [tier] = await sql`SELECT volume_30d_usd, trade_count_30d FROM wallets WHERE wallet = decode(${wallet}, 'hex')`;
+    expect(Number(tier.volume_30d_usd)).toBe(10);
+    expect(Number(tier.trade_count_30d)).toBe(1);
   });
 });

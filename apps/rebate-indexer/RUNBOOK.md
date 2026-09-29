@@ -357,3 +357,35 @@ source (the executed `order_execution.protocol_fee_amounts`), which is the
 authoritative on-chain collected amount. When `fee_sweeps` lands, wire a
 reconciliation check (Σ paid partner WETH + Ophis retained ≈ swept realized
 revenue) as a follow-up; it is not required for correctness of the accrual.
+# Arc reporting bootstrap (5042)
+
+Migration `0045` requeues known wallets without deleting or repricing old trades.
+Before declaring Arc caught up, reconcile **all** settlement Trade events from
+the Arc orderbook DB against the reporting ledger, including untracked owners:
+
+1. On the Arc host, take a read-only repeatable-read snapshot of `trades`, joined
+   to orders/app data and the first following Settlement event in the same block.
+   Record `last_indexed_blocks` (`settlements`) from that same snapshot. The existing
+   `pnpm scan --since 30d --chains arc` is a read-only cross-check; choose a window
+   that includes deployment, not just recent activity.
+2. Register any missing owners using `cli track-wallet`; requeue their refresh if
+   already tracked. Let the deployed fetch/price/score pipeline import them through
+   the normal API path. Do **not** run `replay-from-genesis` or hand-credit fees.
+3. Compare exact `(block_number, log_index, order_uid)`, transaction hashes and
+   executed token amounts with `defillama_fills`; reconcile distinct order UIDs
+   with `trades`. Require correct attribution, verified API fee metadata, non-null
+   prices and complete expected fill counts. Inspect unresolved/failed rows.
+4. Only after that complete comparison, seed the **Arc-only** `settle_scan_cursor`
+   to the snapshot's indexed block under the pipeline lock. Never use an arbitrary
+   current RPC tip or jump an existing cursor without a proved complete interval.
+5. Ensure the deployed `SETTLE_DECODER_CHAINS` includes `5042` (host `.env` overrides
+   the Compose default). Verify its cursor advances after the next refresh and
+   that `/stats` JSON, the HTML Arc row/filter/icon, `/tier/:wallet`, `/health`, and
+   the fail-closed `/defillama` readiness agree with the database.
+
+Arc discovery uses the free public RPC in sequential windows of at most 100 blocks,
+at most 100 windows per refresh (10,000 blocks). Larger gaps resume next run; do
+not increase parallelism or enable paid RPCs to accelerate a historical sweep.
+`SETTLE_RPC_URL_5042` / `SETTLE_RPC_FALLBACK_5042` override read endpoints.
+Discovery remains fee-unverified/zero-credit until API enrichment. No payout keys,
+Safe proposal jobs, or automatic Arc own-fee payouts are enabled by this rollout.

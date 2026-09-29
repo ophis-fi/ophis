@@ -5,6 +5,7 @@ import {
   HISTORICAL_OPHIS_FEE_MAX_BPS,
   OWN_FEE_MAX_BPS,
   SOVEREIGN_CHAIN_IDS,
+  ARC_CHAIN_ID,
   affiliateFeeBpsForOrderCreatedAt,
   undecodedFeeFallbackBpsForOrderCreatedAt,
 } from './affiliate/rates.js';
@@ -401,7 +402,11 @@ export function readAssessedOphisFeeBps(
   const sovereign = SOVEREIGN_CHAIN_IDS.has(chainId);
   let hasSovereignImprovement = false;
   if (sovereign) {
-    if ((orderClass === 'market' || orderClass === 'limit')
+    // Arc has no operator improvement policy. Match its signed partner-fee
+    // list exactly; never infer an Ophis recipient for an extra backend fee.
+    if (chainId === ARC_CHAIN_ID) {
+      if (orderClass === undefined || executed.length !== appFees.length) return null;
+    } else if ((orderClass === 'market' || orderClass === 'limit')
       && executed.length === appFees.length + 1
       && isCanonicalOphisImprovement(chainId, executed[0]!.policy)) {
       hasSovereignImprovement = true;

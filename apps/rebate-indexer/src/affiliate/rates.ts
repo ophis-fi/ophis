@@ -83,10 +83,11 @@ export const REGULAR_VOL_CAP_USD = 1_000_000;
 export const OPTIMISM_CHAIN_ID = 10;
 export const UNICHAIN_CHAIN_ID = 130;
 export const ROBINHOOD_CHAIN_ID = 4663;
+export const ARC_CHAIN_ID = 5042;
 
 /** Ophis-SOVEREIGN chains: Ophis runs its own orderbook + settlement, so there is
  *  NO CoW DAO service-fee cut and Ophis keeps the full fee (100%). Optimism (10),
- *  Unichain (130), and Robinhood (4663) are sovereign; every CoW-hosted chain pays
+ *  Unichain (130), Robinhood (4663), and Arc (5042) are sovereign; every CoW-hosted chain pays
  *  CoW's 25% cut (keeps 75%).
  *  This set is the SINGLE source of truth for the keep fraction — keepFractionBps() and
  *  the api.ts payout SQL both derive from it, so adding a sovereign chain is one edit. */
@@ -94,11 +95,12 @@ export const SOVEREIGN_CHAIN_IDS: ReadonlySet<number> = new Set([
   OPTIMISM_CHAIN_ID,
   UNICHAIN_CHAIN_ID,
   ROBINHOOD_CHAIN_ID,
+  ARC_CHAIN_ID,
 ]);
 
 /**
  * Chains where the own-fee Safe payout pipeline is configured end to end.
- * Robinhood is sovereign for affiliate keep-rate accounting, but stays out of
+ * Robinhood and Arc are sovereign for affiliate keep-rate accounting, but stay out of
  * this set until its WETH, Safe transaction service, and cron payout lane exist.
  */
 export const OWN_FEE_GUARANTEED_CHAIN_IDS: ReadonlySet<number> = new Set([

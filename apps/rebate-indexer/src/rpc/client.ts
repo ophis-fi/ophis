@@ -42,6 +42,7 @@ const DEFAULT_FALLBACK: Record<number, string> = {
   10: 'https://mainnet.optimism.io',
   130: 'https://mainnet.unichain.org',
   4663: 'https://rpc.mainnet.chain.robinhood.com',
+  5042: 'https://rpc.mainnet.arc.io',
 };
 
 const RPC_TIMEOUT_MS = 15_000;

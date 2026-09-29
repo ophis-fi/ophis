@@ -61,6 +61,7 @@ const server = setupServer(
   }),
   // Catch-all: return empty trades for all other chains so the fetcher doesn't hit real network.
   http.get(`${COW}/:chain/api/v2/trades`, () => HttpResponse.json([])),
+  http.get('*/api/v2/trades', () => HttpResponse.json([])), // sovereign host roots, including Arc
 );
 
 beforeAll(async () => {

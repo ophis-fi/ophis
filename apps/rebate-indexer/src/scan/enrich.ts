@@ -5,6 +5,9 @@ import type { Swap } from './types.js';
 // Static fast-path for the common tokens so a quiet run needs zero token RPC.
 // Keyed by lowercased address. Covers WETH/USDC/USDT/DAI/WBTC on the scanned chains.
 const STATIC: Record<string, { symbol: string; decimals: number }> = {
+  '0x3600000000000000000000000000000000000000': { symbol: 'USDC', decimals: 6 }, // Arc ERC-20, not native gas units
+  '0xbef5f6d51cb62b58e6a8f77868681825c6fe21c1': { symbol: 'EURC', decimals: 6 }, // Arc
+  '0x171a4217b86a807a64eb94757db6849fb4bdbaa0': { symbol: 'cirBTC', decimals: 8 }, // Arc
   '0x4200000000000000000000000000000000000006': { symbol: 'WETH', decimals: 18 }, // OP WETH
   '0x94b008aa00579c1307b0ef2c499ad98a8ce58e58': { symbol: 'USDT', decimals: 6 },  // OP USDT
   '0x0b2c639c533813f4aa9d7837caf62653d097ff85': { symbol: 'USDC', decimals: 6 },  // OP USDC

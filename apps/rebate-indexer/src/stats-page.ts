@@ -45,6 +45,7 @@ export const CHAIN_NAME: Record<number, string> = {
   130: 'Unichain',
   137: 'Polygon',
   4663: 'Robinhood Chain',
+  5042: 'Arc',
   8453: 'Base',
   9745: 'Plasma',
   42161: 'Arbitrum',
@@ -82,6 +83,7 @@ export const EXECUTION_FACTS = {
       { chainId: 10, solvers: 11 },
       { chainId: 130, solvers: 7 },
       { chainId: 4663, solvers: 6 },
+      { chainId: 5042, solvers: 5 },
     ],
     hostedChains: 'CoW Protocol solver network',
   },
@@ -103,6 +105,7 @@ export const CHAIN_ICON: Record<number, string> = {
   1: 'chain-ethereum.png', 10: 'chain-optimism.png', 56: 'chain-bnb.png',
   100: 'chain-gnosis.png', 130: 'chain-unichain.svg', 137: 'chain-polygon.png',
   4663: 'chain-robinhood-v2.svg', 8453: 'chain-base.png', 9745: 'chain-plasma.svg',
+  5042: 'chain-arc-network.svg',
   42161: 'chain-arbitrum.jpg', 43114: 'chain-avalanche.png', 57073: 'chain-ink.svg', 59144: 'chain-linea.jpg',
 };
 
@@ -156,7 +159,7 @@ export function renderStatsPage(s: PublicStats, query = new URLSearchParams()): 
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="robots" content="index, follow">
 <title>Ophis: execution model and indexed volume</title>
-<meta name="description" content="How Ophis batch-auction swaps work, their execution limits, and cumulative indexed volume. Arc activity is not yet included in these totals.">
+<meta name="description" content="How Ophis batch-auction swaps work, their execution limits, and cumulative indexed volume across ${PRODUCTION_CHAIN_IDS.length} EVM networks, including Arc.">
 <meta name="theme-color" content="#ffffff">
 <style>
 :root{color-scheme:light}
@@ -225,7 +228,7 @@ ${freshnessWarning}
   <li><strong>Configured routing lanes</strong>Ophis operates its own orderbooks and routing lanes on Robinhood Chain, Unichain, Optimism, and Arc. These lanes share one operator, with participation varying by token pair and auction. CoW-hosted networks use the ${esc(EXECUTION_FACTS.solverCompetition.hostedChains)}.</li>
 </ul>
 <h2 id="chains">Settled volume by chain</h2>
-<p class="note">This report is configured for ${PRODUCTION_CHAIN_IDS.length} EVM networks. App availability and reporting coverage differ: Arc activity is not yet included. These are indexed batch-settlement records, not a complete ledger of every swap or bridge route. A missing chain row does not prove there was no activity.</p>
+<p class="note">This report is configured for ${PRODUCTION_CHAIN_IDS.length} EVM networks, including Arc. These are indexed batch-settlement records, not a complete ledger of every swap or bridge route. A missing chain row does not prove there was no activity.</p>
 <form method="get" action="/stats#chains" aria-label="Filter settled volume">
 <div class="filters">
   <label><span>Chain</span><select name="chain"><option value="">All reporting chains</option>${chainOptions}</select></label>
