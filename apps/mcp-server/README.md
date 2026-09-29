@@ -3,7 +3,7 @@
 Agent-facing **MCP server** for the Ophis DEX, deployed as a Cloudflare Worker
 with the Streamable-HTTP transport at **`https://mcp.ophis.fi/mcp`**.
 
-Current server release: **v0.1.1**, with 14 tools across 15 configured EVM
+Current server release: **v0.1.2**, with 14 tools across 15 configured EVM
 chains (14 mainnets plus Sepolia).
 
 It exposes the Ophis trading surface to autonomous agents and MCP clients
