@@ -100,7 +100,7 @@ await sellTokenAsOwner.approve(getOphisVaultRelayer(chainId), amount); // owner-
 
 // 2. appData: appCode 'ophis' + the partner fee + your referral code in one call.
 const doc = await new MetadataApi().generateAppDataDoc(
-  buildOphisOrderMetadata({ chainId, referralCode: chainId === 5042 ? undefined : 'yourcode', isStablePair, signer: owner }),
+  buildOphisOrderMetadata({ chainId, referralCode: 'yourcode', isStablePair, signer: owner }),
 );
 const fullAppData = await stringifyDeterministic(doc); // never JSON.stringify
 const appDataHash = keccak256(toUtf8Bytes(fullAppData)); // bytes32
@@ -475,8 +475,8 @@ next-payout time (those stay on the signature-gated partner dashboard).
 ### What Ophis guarantees, and what accrues under CoW terms
 
 Optimism (10), Unichain (130), Robinhood Chain (4663), and Arc (5042) are Ophis-operated.
-The earnings indexer includes the first three, not Arc; the automated sovereign **own-fee payout
-guarantee** is limited to chains 10 and 130. Robinhood reporting does not imply
+The earnings indexer includes all four; the automated sovereign **own-fee payout
+guarantee** is limited to chains 10 and 130. Robinhood and Arc reporting do not imply
 own-fee payout coverage. On the CoW-hosted chains, partner fees are disbursed by CoW under
 CoW terms; Ophis neither pays nor guarantees them. The response splits each figure
 **sovereign** vs **hosted**. The sovereign label means Ophis-controlled settlement: Ophis

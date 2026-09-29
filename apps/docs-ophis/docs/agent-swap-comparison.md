@@ -82,5 +82,5 @@ to the owner, and applies the chain-specific Ophis policy: a 1 bp base plus
 80% of reference-quote improvement capped at 99 bps on volatile pairs, or 50%
 capped at 20 bps on stable pairs. Operated-chain backends add the improvement
 policy where configured; hosted orders encode it in CIP-75 appData. Arc currently
-charges only the 1 bp base and has no referral accrual. The returned order is bounded
+charges only the 1 bp base; eligible settled orders support referral accrual. The returned order is bounded
 before your agent signs it.
