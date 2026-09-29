@@ -71,6 +71,27 @@ function installed(name, major) {
 }
 
 async function main() {
+  for (const pkg of installed('undici', 6)) {
+    const { request, Response } = pkg.require('undici');
+    const server = createServer((_req, res) => {
+      res.writeHead(200, { 'content-type': 'application/json' });
+      res.end(JSON.stringify({ ok: true }));
+    });
+    try {
+      await new Promise((done) => server.listen(0, '127.0.0.1', done));
+      const response = await request(`http://127.0.0.1:${server.address().port}/`, {
+        signal: AbortSignal.timeout(2000), headersTimeout: 2000, bodyTimeout: 2000,
+      });
+      assert.equal(response.statusCode, 200);
+      assert.deepEqual(await response.body.json(), { ok: true });
+      const valid = new Response('asset=USDC&amount=10', { headers: { 'content-type': 'application/x-www-form-urlencoded' } });
+      assert.deepEqual(Object.fromEntries(await valid.formData()), { asset: 'USDC', amount: '10' });
+      const malformed = new Response('asset=USDC', { headers: { 'content-type': 'multipart/form-data; boundary="unterminated' } });
+      await assert.rejects(malformed.formData(), TypeError);
+    } finally { await new Promise((done) => server.close(done)); }
+    console.log(`PASS undici ${pkg.version}: bounded HTTP/JSON, valid form and malformed Content-Type rejection`);
+  }
+
   for (const pkg of installed('fast-uri', 3)) {
     const uri = pkg.require('fast-uri');
     for (const input of ['https://ophis.fi/path?asset=USDC#swap', 'http://localhost:8080/', 'https://[::1]:443/']) {
