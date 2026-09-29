@@ -36,7 +36,7 @@ https://mcp.ophis.fi/mcp
 
 It speaks streamable-HTTP MCP and exposes fourteen tools:
 
-The current server release is **v0.1.1**. Its package metadata, runtime
+The current server release is **v0.1.2**. Its package metadata, runtime
 handshake, discovery response, and official registry manifest are checked as a
 single versioned unit in CI.
 

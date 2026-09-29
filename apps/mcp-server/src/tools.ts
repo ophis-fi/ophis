@@ -34,7 +34,7 @@ import {
 import { resolveStablePair } from './stablePair.js'
 
 /** Identity reported by both transports (stdio + Worker). */
-export const MCP_SERVER_VERSION = '0.1.1' as const
+export const MCP_SERVER_VERSION = '0.1.2' as const
 
 /** Canonical public tool inventory. Metadata tests fail if registration or server.json drifts. */
 export const OPHIS_TOOL_NAMES = [
