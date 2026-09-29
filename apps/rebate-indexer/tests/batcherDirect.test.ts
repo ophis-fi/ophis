@@ -22,6 +22,7 @@ const ONE = 10n ** 18n; // 1 WETH in wei
 
 // Mutable per-test RPC state.
 let mockBalanceWei = 0n;
+let rpcRequests = 0;
 const badRecipients = new Set<string>(); // lowercased 20-byte hex (no 0x): transfer reverts -> quarantine
 
 const hex32 = (v: bigint): string => '0x' + v.toString(16).padStart(64, '0');
@@ -51,6 +52,7 @@ vi.mock('../src/batch/poll.js', () => ({
 
 const server = setupServer(
   http.post(RPC, async ({ request }) => {
+    rpcRequests++;
     const body = (await request.json()) as { id: number; method: string; params: { data: string }[] };
     const { id, method } = body;
     if (method === 'eth_chainId') return HttpResponse.json({ jsonrpc: '2.0', id, result: '0x64' });
@@ -118,6 +120,7 @@ afterAll(async () => {
 
 beforeEach(async () => {
   const sql = await getSql();
+  await sql`UPDATE defillama_reporting_state SET arc_reconciled_through_block = 23347643`;
   await sql`TRUNCATE rebate_batch_entries, rebate_batches, trades`;
   await sql.unsafe('REFRESH MATERIALIZED VIEW wallets'); // empty the matview
   mockBalanceWei = 0n;
@@ -127,6 +130,23 @@ beforeEach(async () => {
 });
 
 describe('direct-mode accrual basis', () => {
+  it.each([true, false])('blocks unreconciled Arc history before RPC or batch writes (direct: %s)', async (directMode) => {
+    const sql = await getSql();
+    await seedWallet(sql, 'aa'.repeat(20), 100_000);
+    await sql`UPDATE defillama_reporting_state SET arc_reconciled_through_block = NULL`;
+    const { runBatcher: rb } = await import('../src/batcher.js');
+    const { proposeRebateBatch } = await import('../src/batch/propose.js');
+    const requestsBefore = rpcRequests;
+    const proposalsBefore = vi.mocked(proposeRebateBatch).mock.calls.length;
+    await expect(rb({ chainId: 100, rpcUrl: RPC,
+      proposerPrivateKey: ('0x' + '11'.repeat(32)) as `0x${string}`,
+      proposeEnabled: true, directMode }, JUN)).rejects.toThrow('Arc historical reconciliation is incomplete');
+    expect(rpcRequests).toBe(requestsBefore);
+    expect(vi.mocked(proposeRebateBatch).mock.calls).toHaveLength(proposalsBefore);
+    const [batches] = await sql`SELECT COUNT(*)::int AS count FROM rebate_batches`;
+    expect(batches?.count).toBe(0);
+  });
+
   it('first cycle (no seed) rebates nothing and sets the baseline to the current balance', async () => {
     mockBalanceWei = 10n * ONE; // no prior accounted cycle, no env seed -> basis defaults to balance
     const r = await runBatcher(JUN);

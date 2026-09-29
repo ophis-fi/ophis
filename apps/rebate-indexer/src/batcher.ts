@@ -269,6 +269,12 @@ export async function runBatcher(deps: BatcherDeps, now: Date = new Date()): Pro
 }
 
 async function runBatcherLocked(deps: BatcherDeps, now: Date): Promise<BatcherResult> {
+  // Partial Arc bootstrap must not weight tracked owners ahead of missing owners.
+  // Gate both cron and CLI before RPC reads, cycle writes or Safe proposals.
+  const [arc] = await sql<{ ready: boolean }[]>`SELECT arc_reconciled_through_block IS NOT NULL AS ready
+    FROM defillama_reporting_state WHERE singleton = true`;
+  if (arc?.ready !== true) throw new Error('batcher: Arc historical reconciliation is incomplete');
+
   const cycleMonth = cycleMonthKey(now);
   const directMode = deps.directMode ?? resolveDirectMode();
   log.info({ cycleMonth, chainId: deps.chainId, proposeEnabled: deps.proposeEnabled, directMode }, 'batcher start');
