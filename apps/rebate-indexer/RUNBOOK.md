@@ -378,9 +378,9 @@ the Arc orderbook DB against the reporting ledger, including untracked owners:
 4. Only after that complete comparison, seed the **Arc-only** `settle_scan_cursor`
    to the snapshot's indexed block under the pipeline lock. In the same database
    transaction, set `defillama_reporting_state.arc_reconciled_through_block` to
-   that proved block. This acknowledgement holds `/defillama` closed even when
-   every known wallet has been fetched. Never use an arbitrary current RPC tip or
-   jump an existing cursor without a proved complete interval.
+   that proved block. This acknowledgement holds `/defillama` and monthly rebate
+   batching closed even when every known wallet has been fetched. Never use an
+   arbitrary current RPC tip or jump an existing cursor without a proved complete interval.
 5. Ensure the deployed `SETTLE_DECODER_CHAINS` includes `5042` (host `.env` overrides
    the Compose default). Verify its cursor advances after the next refresh and
    that `/stats` JSON, the HTML Arc row/filter/icon, `/tier/:wallet`, `/health`, and
