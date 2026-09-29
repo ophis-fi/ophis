@@ -711,6 +711,30 @@ describe('repairDefiLlamaSettlementIdentity', () => {
     expect(audit).toEqual({ expected: 1, fills: '1' });
   });
 
+  it('audits Arc through the exact-UID API without a genesis RPC sweep', async () => {
+    expect(process.env.SETTLE_SCAN_START_BLOCK_5042).toBeUndefined();
+    const uid = UID('ca');
+    const trade = apiTrade(uid, 23218655, 82, 10000000n, 8746671n);
+    trade.executedProtocolFees[0]!.amount = '874';
+    API_TRADES.set(`5042:${uid}`, [trade]);
+    ORDERS.set(`5042:${uid}`, {
+      ...ORDERS.get(`1:${PARTIAL_UID}`), uid, class: 'limit',
+      sellAmount: trade.sellAmount, buyAmount: trade.buyAmount,
+    });
+    await insertAggregate(uid, 5042, 10000000n, 8746671n, 1);
+    const callsBefore = GET_LOG_RANGES.length;
+    await repairDefiLlamaSettlementIdentity();
+    expect(GET_LOG_RANGES.slice(callsBefore).filter(c => c.chainId === 5042)).toEqual([]);
+    const [audit] = await sql`
+      SELECT t.defillama_expected_fill_count AS expected, COUNT(f.*)::int AS fills,
+             BOOL_AND(f.fee_verified) AS verified
+      FROM trades t LEFT JOIN defillama_fills f
+        ON f.chain_id = t.chain_id AND f.trade_uid = t.trade_uid
+      WHERE t.chain_id = 5042 AND t.trade_uid = decode(${uid.slice(2)}, 'hex')
+      GROUP BY t.defillama_expected_fill_count`;
+    expect(audit).toEqual({ expected: 1, fills: 1, verified: true });
+  });
+
   it('shrinks for explicit response-size errors that also mention capacity', async () => {
     process.env.SETTLE_SCAN_START_BLOCK_4663 = '100';
     BLOCK_HEADS.set(4663, 30_008n);
