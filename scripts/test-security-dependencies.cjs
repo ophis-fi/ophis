@@ -348,12 +348,20 @@ async function main() {
       assert(!matchFn('src/index.py', 'src/*.{js,ts}'));
       assert.deepEqual(minimatch.braceExpand('file{1..3}.txt'), ['file1.txt', 'file2.txt', 'file3.txt']);
       if (major === 10) {
-        const start = Date.now();
-        const expanded = minimatch.braceExpand('{1..100}');
-        assert.equal(expanded.length, 100);
-        assert.equal(expanded[0], '1');
-        assert.equal(expanded[99], '100');
-        assert(Date.now() - start < 1000, 'range expansion must complete in bounded time');
+        assert(typeof braceExpansion.EXPANSION_MAX === 'number' && isFinite(braceExpansion.EXPANSION_MAX) && braceExpansion.EXPANSION_MAX > 0, 'EXPANSION_MAX must be exported and finite');
+        const t0 = Date.now();
+        const rangeResult = braceExpansion.expand('{1..100}');
+        assert.equal(rangeResult.length, 100);
+        assert.equal(rangeResult[0], '1');
+        assert.equal(rangeResult[99], '100');
+        assert(Date.now() - t0 < 500, 'range expansion must complete in bounded time');
+        const t1 = Date.now();
+        const capped = braceExpansion.expand('{a,b}'.repeat(25));
+        assert(Date.now() - t1 < 500, 'deeply nested must complete in bounded time (EXPANSION_MAX cap)');
+        assert(capped.length <= braceExpansion.EXPANSION_MAX, 'deeply nested must be capped by EXPANSION_MAX');
+        const t2 = Date.now();
+        braceExpansion.expand(('{{a,b},').repeat(30) + 'c' + '}'.repeat(30));
+        assert(Date.now() - t2 < 500, 'rewrite-heavy pattern must complete in bounded time (EXPANSION_MAX_REWRITES)');
       }
       console.log(`PASS minimatch ${pkg.version}: brace-expansion ${braceVersion}, callable API and expressions`);
     }
@@ -402,30 +410,59 @@ async function main() {
   }
 
   for (const pkg of workspace === 'root' ? [] : installed('@xhmikosr/decompress', 10)) {
-    const decompress = pkg.require('@xhmikosr/decompress');
+    const decompress = pkg.require('@xhmikosr/decompress').default;
     const destDir = mkdtempSync(join(tmpdir(), 'ophis-decompress-'));
-    const escapeFile = join(dirname(destDir), 'escape.txt');
+    const escapeName = basename(destDir) + '-esc.txt';
+    const escapeFile = join(dirname(destDir), escapeName);
     try {
-      const tarHeader = Buffer.alloc(512, 0);
-      Buffer.from('../escape.txt').copy(tarHeader, 0);
-      Buffer.from('0000644\0').copy(tarHeader, 100);
-      Buffer.from('0000000\0').copy(tarHeader, 108);
-      Buffer.from('0000000\0').copy(tarHeader, 116);
-      Buffer.from('00000000000\0').copy(tarHeader, 124);
-      Buffer.from('00000000000\0').copy(tarHeader, 136);
-      Buffer.from('        ').copy(tarHeader, 148);
-      tarHeader[156] = 0x30;
-      Buffer.from('ustar\0').copy(tarHeader, 257);
-      Buffer.from('00').copy(tarHeader, 263);
-      let checksum = 0;
-      for (let i = 0; i < 512; i++) checksum += tarHeader[i];
-      Buffer.from(checksum.toString(8).padStart(6, '0') + '\0 ').copy(tarHeader, 148);
-      const { gzipSync } = require('node:zlib');
-      const tarGz = gzipSync(Buffer.concat([tarHeader, Buffer.alloc(1024, 0)]));
+      function makeUstarHeader(name, typeChar, size, linkname) {
+        const hdr = Buffer.alloc(512, 0);
+        Buffer.from(name).copy(hdr, 0);
+        Buffer.from('0000644\0').copy(hdr, 100);
+        Buffer.from('0000000\0').copy(hdr, 108);
+        Buffer.from('0000000\0').copy(hdr, 116);
+        Buffer.from(size.toString(8).padStart(11, '0') + '\0').copy(hdr, 124);
+        Buffer.from('00000000000\0').copy(hdr, 136);
+        Buffer.from('        ').copy(hdr, 148);
+        hdr[156] = typeChar.charCodeAt(0);
+        if (linkname) Buffer.from(linkname).copy(hdr, 157);
+        Buffer.from('ustar\0').copy(hdr, 257);
+        Buffer.from('00').copy(hdr, 263);
+        let cs = 0; for (let i = 0; i < 512; i++) cs += hdr[i];
+        Buffer.from(cs.toString(8).padStart(6, '0') + '\0 ').copy(hdr, 148);
+        return hdr;
+      }
+      const EOT = Buffer.alloc(1024, 0);
+
+      // Legitimate extraction: single file safe.txt in raw ustar tar
+      const safeContent = Buffer.from('hello');
+      const legitTar = Buffer.concat([
+        makeUstarHeader('safe.txt', '0', safeContent.length),
+        safeContent, Buffer.alloc(512 - safeContent.length, 0),
+        EOT,
+      ]);
+      const legitDest = mkdtempSync(join(tmpdir(), 'ophis-decompress-legit-'));
+      try {
+        const extracted = await decompress(legitTar, legitDest);
+        assert.equal(extracted.length, 1, 'legitimate tar must extract one file');
+        assert(existsSync(join(legitDest, 'safe.txt')), 'safe.txt must exist after extraction');
+      } finally {
+        rmSync(legitDest, { recursive: true, force: true });
+      }
+
+      // Symlink-chain traversal (GHSA-hrh2-vp3x-79xf):
+      // entry 1: symlink 'link' -> '../'  (points outside destDir)
+      // entry 2: regular file 'link/<escapeName>'  (resolves through the symlink to outside destDir)
+      const symlinkTar = Buffer.concat([
+        makeUstarHeader('link', '2', 0, '../'),
+        makeUstarHeader('link/' + escapeName, '0', 0),
+        EOT,
+      ]);
       let threw = false;
-      try { await decompress(tarGz, destDir); } catch { threw = true; }
-      assert(!existsSync(escapeFile), 'path-traversal entry must not write outside destination (GHSA-hrh2-vp3x-79xf)');
-      console.log(`PASS @xhmikosr/decompress ${pkg.version}: path-traversal blocked (GHSA-hrh2-vp3x-79xf)${threw ? ' [threw]' : ' [dropped]'}`);
+      try { await decompress(symlinkTar, destDir); } catch { threw = true; }
+      assert(!existsSync(escapeFile), 'symlink-chain traversal must not escape destination (GHSA-hrh2-vp3x-79xf)');
+      assert(threw, 'decompress must throw on symlink-chain traversal attempt');
+      console.log(`PASS @xhmikosr/decompress ${pkg.version}: legitimate extraction ok, symlink-chain traversal blocked (GHSA-hrh2-vp3x-79xf)`);
     } finally {
       rmSync(destDir, { recursive: true, force: true });
       if (existsSync(escapeFile)) rmSync(escapeFile, { force: true });
