@@ -630,6 +630,7 @@ mod protected_interaction_tests {
         let sell = address!("4200000000000000000000000000000000000006");
         let buy = address!("0b2C639c533813f4Aa9D7837CAf62653d097Ff85");
         let targets = [
+            shared::arc_sushi::ROUTER,
             address!("4c4AF8DBc524681930a27b2F1Af5bcC8062E6fB7"),
             address!("833fA253e3A0cb2be15F14Cb0B0Ad0C17dD57b12"),
             address!("a062aE8A9c5e11aaA026fc2670B0D65cCc8B2858"),

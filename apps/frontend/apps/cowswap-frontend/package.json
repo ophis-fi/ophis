@@ -63,6 +63,7 @@
     "@cowprotocol/wallet": "workspace:*",
     "@cowprotocol/wallet-provider": "workspace:*",
     "@cowprotocol/widget-lib": "workspace:*",
+    "@defuse-protocol/one-click-sdk-typescript": "0.1.26",
     "@ethersproject/abi": "5.7.0",
     "@ethersproject/abstract-provider": "5.7.0",
     "@ethersproject/abstract-signer": "5.7.0",

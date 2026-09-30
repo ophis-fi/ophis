@@ -36,10 +36,8 @@ import jsonStringify from 'json-stringify-deterministic'
 
 const OPHIS_NEAR_REFERRAL = 'ophis'
 
-// 3 bps of amountIn, taken by NEAR's settlement and paid to the Safe. In
-// keyless (local dev) mode the platform's own unauthenticated appFee is
-// additionally present server-side; with the production API key ours is the
-// only one.
+// Requested Ophis integrator fee. NEAR's authenticated/keyless provider fees
+// and partner sharing rules are applied server-side; use the net quote output.
 const OPHIS_NEAR_APP_FEES = [{ recipient: OPHIS_PARTNER_FEE_RECIPIENT, fee: 3 }]
 
 // Attestation message constants (not exported by sdk-bridging; mirrored from

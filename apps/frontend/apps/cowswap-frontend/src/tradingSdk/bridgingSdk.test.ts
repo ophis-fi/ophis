@@ -195,7 +195,15 @@ describe('NEAR Intents destinations Ophis adds (Monad, X Layer)', () => {
     expect(isBridgeOnlyDestinationChain(SupportedChainId.MAINNET)).toBe(false)
     expect(isBridgeOnlyDestinationChain(undefined)).toBe(false)
     // Public copy (About, Protocol) lists destinations from this same registry.
-    expect(BRIDGE_ONLY_DESTINATION_LABELS).toEqual(['Monad', 'X Layer', 'Sui', 'Tron', 'Hyperliquid'])
+    expect(BRIDGE_ONLY_DESTINATION_LABELS).toEqual([
+      'Monad',
+      'X Layer',
+      'Sui',
+      'Tron',
+      'Hyperliquid',
+      'Starknet',
+      'Zcash',
+    ])
   })
 
   it('passes the token policy for a valid destination asset on those chains (Codex round 4)', () => {

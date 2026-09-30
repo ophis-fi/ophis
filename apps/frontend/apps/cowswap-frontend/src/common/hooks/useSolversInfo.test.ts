@@ -78,11 +78,18 @@ describe('useSolversInfo', () => {
   it('counts only the configured Arc lanes and resolves their names without CMS data', () => {
     const { result } = renderHook(() => useSolversInfo(5042 as SupportedChainId))
 
-    expect(Object.keys(result.current)).toEqual(['kyberswap', 'uniswap-v3', 'archery', 'aero', 'uniswap-v4'])
+    expect(Object.keys(result.current)).toEqual([
+      'kyberswap',
+      'uniswap-v3',
+      'sushiswap-v3',
+      'archery',
+      'aero',
+      'uniswap-v4',
+    ])
     expect(Object.values(result.current).every((solver) => solver.displayName === 'Ophis')).toBe(true)
-    expect(result.current['uniswap-v3']).toMatchObject({
+    expect(result.current['sushiswap-v3']).toMatchObject({
       displayName: 'Ophis',
-      description: 'Ophis-operated routing lane: Uniswap v3.',
+      description: 'Ophis-operated routing lane: Sushi v3.',
       solverNetworks: expect.arrayContaining([{ chainId: 5042, env: 'prod' }]),
     })
   })

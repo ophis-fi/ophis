@@ -12,6 +12,13 @@ export const XLAYER_CHAIN_ID = 196
 export const SUI_CHAIN_ID = 1_000_000_101
 export const TRON_CHAIN_ID = 1_000_000_102
 export const HYPERCORE_CHAIN_ID = 1_000_000_103
+export const STARKNET_CHAIN_ID = 1_000_000_104
+export const ZCASH_CHAIN_ID = 1_000_000_105
+// Native identifiers are token sentinels, never recipient addresses.
+export const STRK_NATIVE_CURRENCY_ADDRESS = '0x04718f5a0fc34cc1af16a1cdee98ffb20c31f5cd61d6ab07201858f4287c938d'
+export const ZEC_NATIVE_CURRENCY_ADDRESS = 'zec:native'
+export const STARKNET_LOGO = 'https://icons.llamao.fi/icons/chains/rsz_starknet.jpg' as HttpsString
+export const ZCASH_LOGO = 'https://icons.llamao.fi/icons/chains/rsz_zcash.jpg' as HttpsString
 
 // Native sentinels: NEAR lists a native asset without a contractAddress, so
 // this is the address the token carries in the app. Sui: its real coin type.

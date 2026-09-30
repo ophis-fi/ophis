@@ -116,7 +116,7 @@ describe('OPHIS_SOLVERS registry', () => {
       .map((solver) => solver.solverId)
       .sort()
 
-    expect(driverNames).toEqual(['aero', 'archery', 'kyberswap', 'uniswap-v3', 'uniswap-v4'])
+    expect(driverNames).toEqual(['aero', 'archery', 'kyberswap', 'sushiswap-v3', 'uniswap-v3', 'uniswap-v4'])
     expect(registryIds).toEqual(driverNames)
   })
 })

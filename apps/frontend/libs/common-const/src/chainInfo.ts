@@ -23,6 +23,8 @@ import {
 
 import { ARC_CHAIN_ID, ARC_ENABLED_CHAIN_IDS, ARC_LABEL } from './arc.const'
 import {
+  STARKNET_CHAIN_ID,
+  ZCASH_CHAIN_ID,
   HYPERCORE_CHAIN_ID,
   MONAD_CHAIN_ID,
   SUI_CHAIN_ID,
@@ -307,6 +309,8 @@ export const SORTED_DST_CHAIN_IDS: TargetChainId[] = [
   SUI_CHAIN_ID as TargetChainId, // Ophis fork: NEAR Intents destination only (non-EVM)
   TRON_CHAIN_ID as TargetChainId, // Ophis fork: NEAR Intents destination only (non-EVM)
   HYPERCORE_CHAIN_ID as TargetChainId, // Ophis fork: NEAR Intents destination only (non-EVM)
+  STARKNET_CHAIN_ID as TargetChainId,
+  ZCASH_CHAIN_ID as TargetChainId,
   AdditionalTargetChainId.BITCOIN,
 ]
 

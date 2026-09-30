@@ -58,14 +58,14 @@ def main():
     native_prices = autopilot['native-price-estimation']
     assert native_prices['results-required'] == 2
     assert [[source['name'] for source in stage] for stage in native_prices['estimators']] == [
-        ['uniswap-v3', 'kyberswap'], ['archery', 'aero', 'uniswap-v4']]
+        ['uniswap-v3', 'kyberswap'], ['archery', 'aero', 'uniswap-v4', 'sushiswap-v3']]
     driver = tomllib.loads((OUT / 'driver.toml').read_text())
     assert driver['gas-estimator'] == {'estimator': 'web3'}
     assert int(driver['submission']['gas-price-cap']) == int(cfg['maxFeePerGas'])
     assert all(pool['additional-tip-percentage'] == 0 for pool in driver['submission']['mempool'])
     assert all(lane['address'] == cfg['solver'] for lane in autopilot['drivers'])
     assert all(lane['account'] == cfg['solver'] for lane in driver['solver'])
-    lanes = {'uniswap-v3', 'kyberswap', 'archery', 'aero', 'uniswap-v4'}
+    lanes = {'uniswap-v3', 'kyberswap', 'archery', 'aero', 'uniswap-v4', 'sushiswap-v3'}
     assert {lane['name'] for lane in driver['solver']} == lanes
     assert len(autopilot['drivers']) == len(lanes)
     assert autopilot['run-loop']['max-winners-per-auction'] == 1

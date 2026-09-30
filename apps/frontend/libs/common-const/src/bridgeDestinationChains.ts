@@ -1,6 +1,10 @@
 import { HttpsString, TargetChainId } from '@cowprotocol/cow-sdk'
 
 import {
+  STARKNET_LOGO,
+  ZCASH_LOGO,
+  STARKNET_CHAIN_ID,
+  ZCASH_CHAIN_ID,
   HYPERCORE_CHAIN_ID,
   HYPERLIQUID_LOGO,
   MONAD_CHAIN_ID,
@@ -25,8 +29,8 @@ export {
 } from './bridgeDestination.const'
 
 /**
- * Chains Ophis offers ONLY as bridge destinations (via NEAR Intents): no
- * orderbook, no trading, so they stay out of CHAIN_INFO (which drives the
+ * Chains without a CoW orderbook. The NEAR direct-deposit flow also supports
+ * these as sources; they stay out of CHAIN_INFO (which drives the
  * explorer's network routes and the "available chains" copy) and live here.
  * getChainInfo() falls back to this map so network badges, the "Receive on"
  * picker and the bridge chain infos all resolve them. They ARE listed in
@@ -34,6 +38,37 @@ export {
  * semantics), the two shared lists the destination picker reads.
  */
 export const BRIDGE_DESTINATION_CHAIN_INFO: Readonly<Partial<Record<number, BaseChainInfo>>> = {
+  [STARKNET_CHAIN_ID]: {
+    docs: 'https://docs.starknet.io' as HttpsString,
+    explorer: 'https://voyager.online' as HttpsString,
+    addressPath: 'contract',
+    tokenPath: 'contract',
+    infoLink: 'https://starknet.io' as HttpsString,
+    logo: { light: STARKNET_LOGO, dark: STARKNET_LOGO },
+    addressPrefix: 'starknet',
+    label: 'Starknet',
+    eip155Label: 'Starknet',
+    explorerTitle: 'Voyager',
+    color: '#0C0C4F',
+    name: 'starknet',
+    urlAlias: 'starknet',
+    nativeCurrency: NATIVE_CURRENCIES[STARKNET_CHAIN_ID as TargetChainId],
+  },
+  [ZCASH_CHAIN_ID]: {
+    docs: 'https://zcash.readthedocs.io' as HttpsString,
+    explorer: 'https://blockchair.com/zcash' as HttpsString,
+    txPath: 'transaction',
+    infoLink: 'https://z.cash' as HttpsString,
+    logo: { light: ZCASH_LOGO, dark: ZCASH_LOGO },
+    addressPrefix: 'zcash',
+    label: 'Zcash',
+    eip155Label: 'Zcash',
+    explorerTitle: 'Blockchair',
+    color: '#F4B728',
+    name: 'zcash',
+    urlAlias: 'zcash',
+    nativeCurrency: NATIVE_CURRENCIES[ZCASH_CHAIN_ID as TargetChainId],
+  },
   [MONAD_CHAIN_ID]: {
     docs: 'https://docs.monad.xyz' as HttpsString,
     explorer: 'https://monadscan.com' as HttpsString,

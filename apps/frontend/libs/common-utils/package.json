@@ -45,6 +45,7 @@
     "@sentry/browser": "^9.47.1",
     "@sentry/react": "^9.47.1",
     "@cowprotocol/currency": "workspace:*",
+    "bech32": "2.0.0",
     "bignumber.js": "^9.1.2",
     "cids": "^1.0.0",
     "ethers": "5.7.2",

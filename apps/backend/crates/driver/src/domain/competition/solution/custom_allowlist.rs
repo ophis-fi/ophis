@@ -56,7 +56,7 @@
 use {
     crate::domain::competition::solution::interaction,
     alloy::primitives::{Address, U256, address},
-    shared::arc_routes,
+    shared::{arc_routes, arc_sushi},
 };
 
 const ETHEREUM_FXUSD: Address = address!("085780639CC2cACd35E474e71f4d000e2405d8f6");
@@ -392,6 +392,7 @@ impl Error {
 /// violation — callers should log + emit `custom_interaction_rejected`
 /// metric + propagate to the solver as a parse error.
 pub(crate) const PROTECTED_TARGETS: &[Address] = &[
+    arc_sushi::ROUTER,
     arc_routes::AERO_ROUTER,
     arc_routes::V4_ROUTER,
     ARC_UNISWAP_V3_ROUTER,
@@ -594,6 +595,25 @@ pub fn validate_with_settlement(
             .contains(&target))
     {
         return validate_direct_v3_swap(custom, required_amounts, chain_id, settlement);
+    }
+    if chain_id == 5042 && target == arc_sushi::ROUTER {
+        let reject = || Error::CallDataNotAllowed { target, chain_id };
+        let required = required_amounts.ok_or_else(reject)?;
+        let settlement = settlement
+            .filter(|address| !address.is_zero())
+            .ok_or_else(reject)?;
+        let (input, minimum) = arc_sushi::decode(
+            custom.call_data.as_ref(),
+            required.sell_token,
+            required.buy_token,
+            settlement,
+        )
+        .ok_or_else(reject)?;
+        return if validate_common_direct_swap(custom, required, target, input, minimum) {
+            Ok(())
+        } else {
+            Err(reject())
+        };
     }
     let allowlist = chain_allowlist(chain_id)?;
 
@@ -1581,6 +1601,58 @@ mod tests {
                 );
             }
         }
+    }
+
+    #[test]
+    fn sushi_binds_nested_route_and_spend_to_order() {
+        let sell = arc_routes::USDC;
+        let buy = arc_routes::EURC;
+        let settlement = Address::repeat_byte(7);
+        let data = arc_sushi::calldata(
+            sell,
+            buy,
+            10000,
+            U256::from(1000),
+            U256::from(900),
+            settlement,
+        )
+        .unwrap();
+        let custom = direct_custom(arc_sushi::ROUTER, sell, buy, 1000, 900, data);
+        let amounts = Some(required(sell, buy, 1000, 900));
+        assert_eq!(
+            validate_with_settlement(&custom, 5042, amounts, Some(settlement)),
+            Ok(())
+        );
+        assert!(validate_target(arc_sushi::ROUTER, 5042).is_err());
+        assert!(validate_with_settlement(&custom, 1, amounts, Some(settlement)).is_err());
+        assert!(validate_with_settlement(&custom, 5042, amounts, None).is_err());
+        assert!(
+            validate_with_settlement(
+                &custom,
+                5042,
+                Some(required(sell, buy, 999, 900)),
+                Some(settlement)
+            )
+            .is_err()
+        );
+        assert!(
+            validate_with_settlement(
+                &custom,
+                5042,
+                Some(required(sell, buy, 1000, 901)),
+                Some(settlement)
+            )
+            .is_err()
+        );
+        let mut bad = custom.clone();
+        bad.internalize = true;
+        assert!(validate_with_settlement(&bad, 5042, amounts, Some(settlement)).is_err());
+        let mut bad = custom.clone();
+        bad.value.0 = U256::from(1);
+        assert!(validate_with_settlement(&bad, 5042, amounts, Some(settlement)).is_err());
+        let mut bad = custom.clone();
+        bad.allowances.clear();
+        assert!(validate_with_settlement(&bad, 5042, amounts, Some(settlement)).is_err());
     }
 
     #[test]

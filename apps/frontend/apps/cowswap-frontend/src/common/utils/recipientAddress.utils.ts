@@ -1,11 +1,12 @@
 import { getChainInfo } from '@cowprotocol/common-const'
 import {
   isAddress,
+  isBitcoinAddress,
   isNonEvmBridgeDestination,
   isNonEvmDestinationString,
   NON_EVM_DESTINATION_RULES,
 } from '@cowprotocol/common-utils'
-import { AdditionalTargetChainId, isBtcAddress, isSolanaAddress } from '@cowprotocol/cow-sdk'
+import { AdditionalTargetChainId, isSolanaAddress } from '@cowprotocol/cow-sdk'
 
 import { t } from '@lingui/core/macro'
 import { utils } from 'ethers'
@@ -21,7 +22,7 @@ export function isNonEvmRecipientChain(chainId: number | undefined): boolean {
 /** Validate the destination wallet address, never the destination token identifier. */
 export function isRecipientAddress(value: string | null | undefined, chainId: number | undefined): boolean {
   if (!value) return false
-  if (chainId === AdditionalTargetChainId.BITCOIN) return isBtcAddress(value)
+  if (chainId === AdditionalTargetChainId.BITCOIN) return isBitcoinAddress(value)
   // SDK validation is regex-only; a Solana public key must decode to 32 bytes.
   if (chainId === AdditionalTargetChainId.SOLANA) {
     try {

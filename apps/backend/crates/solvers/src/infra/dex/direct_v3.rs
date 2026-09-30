@@ -9,6 +9,7 @@ use {
     ethrpc::block_context::{BlockContext, Error as RpcError, ReadOnlyRpc},
     futures::{StreamExt, TryStreamExt, stream},
     moka::future::Cache,
+    shared::arc_sushi,
     std::time::Duration,
 };
 
@@ -102,16 +103,28 @@ impl DirectV3 {
         if min_out.is_zero() {
             return Err(Error::NotFound);
         }
-        let data = swap_calldata(
-            c.tick_spacing,
-            c.legacy_router,
-            order.sell.0,
-            order.buy.0,
-            tier,
-            c.settlement,
-            order.amount.get(),
-            min_out,
-        );
+        let data = if c.chain_id == 5042 && c.router == arc_sushi::ROUTER {
+            arc_sushi::calldata(
+                order.sell.0,
+                order.buy.0,
+                tier,
+                order.amount.get(),
+                min_out,
+                c.settlement,
+            )
+            .ok_or(Error::InvalidResponse)?
+        } else {
+            swap_calldata(
+                c.tick_spacing,
+                c.legacy_router,
+                order.sell.0,
+                order.buy.0,
+                tier,
+                c.settlement,
+                order.amount.get(),
+                min_out,
+            )
+        };
         Ok(dex::Swap {
             calls: vec![dex::Call {
                 to: c.router,
@@ -160,7 +173,14 @@ impl DirectV3 {
             if pool.len() != 32 || pool[..12].iter().any(|&v| v != 0) {
                 return Err(Error::InvalidResponse);
             }
-            let exists = !Address::from_slice(&pool[12..]).is_zero();
+            let pool = Address::from_slice(&pool[12..]);
+            if c.router == arc_sushi::ROUTER
+                && !pool.is_zero()
+                && pool != arc_sushi::pool(order.sell.0, order.buy.0, tier)
+            {
+                return Err(Error::InvalidResponse);
+            }
+            let exists = !pool.is_zero();
             self.pools.insert(key, exists).await;
             exists
         };
