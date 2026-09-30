@@ -28,7 +28,7 @@ export function TokenListItemContainer({
     permitCompatibleTokens,
     listedTokenIds,
     tokenizedAssetProviderByTokenId,
-    balancesState: { values: balances },
+    balancesState: { values: balances, error: balanceError },
     isWalletConnected,
   } = context
 
@@ -59,6 +59,7 @@ export function TokenListItemContainer({
       selectedToken={selectedToken}
       token={token}
       balance={balances ? balances[addressKey] : undefined}
+      balanceError={!!balanceError}
       onSelectToken={handleSelectToken}
       isWalletConnected={isWalletConnected}
       tokenListTags={tokenListTags}
