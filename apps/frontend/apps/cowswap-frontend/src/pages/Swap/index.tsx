@@ -1,4 +1,4 @@
-import { ReactNode } from 'react'
+import { ReactNode, Suspense } from 'react'
 
 import { PAGE_TITLES, WRAPPED_NATIVE_CURRENCIES as WETH } from '@cowprotocol/common-const'
 import { isInjectedWidget } from '@cowprotocol/common-utils'
@@ -9,10 +9,11 @@ import { useLingui } from '@lingui/react/macro'
 import { useIsCctpEnabled } from 'entities/cctp'
 import { useIsOphisSwap } from 'ophis/hooks/useIsOphisSwap'
 import { DesktopSwapLayout } from 'ophis/mobile/DesktopSwapLayout.pure'
-import { Navigate, NavLink, useLocation, useParams } from 'react-router'
+import { Navigate, NavLink, useLocation, useParams, useSearchParams } from 'react-router'
 import styled from 'styled-components/macro'
 
 import { NetworkSelector, PageTitle } from 'modules/application'
+import { ModeButtons, NearDirectSwap } from 'modules/nearDirect'
 import { swapDerivedStateAtom, SwapUpdaters, SwapWidget, useSwapDerivedStateToFill } from 'modules/swap'
 import { parameterizeTradeRoute, getDefaultTradeRawState } from 'modules/trade'
 
@@ -43,23 +44,54 @@ export function SwapPage(): ReactNode {
   const isOphisSwap = useIsOphisSwap()
   const { i18n } = useLingui()
   const swapDerivedStateToFill = useSwapDerivedStateToFill()
+  const [searchParams, setSearchParams] = useSearchParams()
+  const directNear = isOphisSwap && searchParams.get('route') === 'near'
+  const setDirectNear = (enabled: boolean): void => {
+    setSearchParams(
+      (current) => {
+        const next = new URLSearchParams(current)
+        if (enabled) next.set('route', 'near')
+        else next.delete('route')
+        return next
+      },
+      { replace: true },
+    )
+  }
 
   if (!params.chainId) {
     return <SwapPageRedirect />
   }
 
   const widget = (
-    <SwapWidget
-      enableCctp={cctpEnabled}
-      headerContent={isOphisSwap ? <NetworkSelector /> : undefined}
-      topContent={isInjectedWidget() ? DcaCta : undefined}
-    />
+    <div>
+      {isOphisSwap && (
+        <ModeButtons aria-label="Swap method">
+          <button type="button" aria-pressed={!directNear} onClick={() => setDirectNear(false)}>
+            Swap
+          </button>
+          <button type="button" aria-pressed={directNear} onClick={() => setDirectNear(true)}>
+            Cross-chain · NEAR
+          </button>
+        </ModeButtons>
+      )}
+      {isOphisSwap && directNear ? (
+        <Suspense fallback={<p role="status">Loading cross-chain swap…</p>}>
+          <NearDirectSwap />
+        </Suspense>
+      ) : (
+        <SwapWidget
+          enableCctp={cctpEnabled}
+          headerContent={isOphisSwap ? <NetworkSelector /> : undefined}
+          topContent={isInjectedWidget() ? DcaCta : undefined}
+        />
+      )}
+    </div>
   )
 
   return (
     <HydrateAtom atom={swapDerivedStateAtom} state={swapDerivedStateToFill}>
       <PageTitle title={i18n._(PAGE_TITLES.SWAP)} />
-      <SwapUpdaters />
+      {!directNear && <SwapUpdaters />}
       {isOphisSwap ? <DesktopSwapLayout>{widget}</DesktopSwapLayout> : widget}
     </HydrateAtom>
   )

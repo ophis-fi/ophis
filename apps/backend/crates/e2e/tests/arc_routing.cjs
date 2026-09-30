@@ -13,6 +13,7 @@ assert(probe?.['bin-runtime']);
 const settlement = '0x78799f98276efba1edeed32eae03a3fd8cdfec3a';
 const sell = '0x3600000000000000000000000000000000000000';
 const assets = {
+  EURC: '0xbef5f6d51cb62b58e6a8f77868681825c6fe21c1',
   cirBTC: '0x171a4217b86a807a64eb94757db6849fb4bdbaa0',
   WETH: '0x128cc466b61f542da60c70e3aa11c10e19b84edb',
   XAUM: '0x178b01f61cbea1d2a5581fe1621be607835ec349',
@@ -28,7 +29,7 @@ async function main() {
   assert.equal(await client.getChainId(), 5042);
   const results = [];
   for (const [symbol, buy] of Object.entries(assets)) {
-    for (const lane of ['uniswap-v3', 'kyberswap']) {
+    for (const lane of symbol === 'EURC' ? ['sushiswap-v3'] : ['uniswap-v3', 'kyberswap']) {
       const started = Date.now();
       const query = new URLSearchParams({ sellToken: sell, buyToken: buy, amount: '10000000', kind: 'sell',
         deadline: new Date(Date.now() + 20000).toISOString() });
@@ -43,6 +44,7 @@ async function main() {
       assert(minimum > 0n);
       const calls = quote.interactions.map((call) => ({ ...call, value: BigInt(call.value) }));
       assert(calls.every((call) => call.value === 0n));
+      if (lane === 'sushiswap-v3') assert(calls.some((call) => call.target.toLowerCase() === '0xe52abd50ad151ecdf56427effd715e703696a6b1'));
       const simulate = (floor, omitSwap = false) => {
         const validTo = Math.floor(Date.now() / 1000) + 3600;
         const order = { sellToken: sell, buyToken: buy, receiver: owner, sellAmount: 10000000n, buyAmount: floor,

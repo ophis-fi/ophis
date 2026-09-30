@@ -62,6 +62,16 @@ pub async fn load(path: &Path) -> super::Config {
                 metrics::Dex::UniswapV3,
                 "",
             ),
+            // Sushi Arc Mainnet deployments; the driver pins the complete route grammar.
+            (eth::ChainId::Arc, "sushiswap-v3") => (
+                "0x7282249282902e1f99c2CB0A04230091bd30FE3A",
+                "0x475d8dAB6dEcbBf89DB860D2673F2472Fa58E5f4",
+                "0xE52abd50ad151ecDf56427effD715E703696a6B1",
+                false,
+                vec![100, 500, 3000, 10000],
+                metrics::Dex::SushiSwap,
+                "",
+            ),
             // https://archery.wtf/docs/security — Arc Mainnet, not its QA deployment.
             (eth::ChainId::Arc, "archery") => (
                 "0xc481038c013fe96f38ce7a2dc417b2b1b78b16a4",

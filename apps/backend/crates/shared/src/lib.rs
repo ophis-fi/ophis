@@ -2,6 +2,7 @@
 pub mod macros;
 
 pub mod arc_routes;
+pub mod arc_sushi;
 pub mod arguments;
 pub mod current_block;
 pub mod db_order_conversions;

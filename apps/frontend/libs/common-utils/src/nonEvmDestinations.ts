@@ -1,8 +1,18 @@
-import { HYPERCORE_CHAIN_ID, SUI_CHAIN_ID, TRON_CHAIN_ID, TRX_NATIVE_CURRENCY_ADDRESS } from '@cowprotocol/common-const'
+import {
+  HYPERCORE_CHAIN_ID,
+  STARKNET_CHAIN_ID,
+  ZCASH_CHAIN_ID,
+  ZEC_NATIVE_CURRENCY_ADDRESS,
+  SUI_CHAIN_ID,
+  TRON_CHAIN_ID,
+  TRX_NATIVE_CURRENCY_ADDRESS,
+} from '@cowprotocol/common-const'
 import { isAddress } from '@ethersproject/address'
 import { Base58 } from '@ethersproject/basex'
 import { arrayify } from '@ethersproject/bytes'
 import { sha256 } from '@ethersproject/sha2'
+
+import { bech32, bech32m } from 'bech32'
 
 /** Sui account address: 0x + 32 bytes. */
 export const isSuiAddress = (value: string): boolean => /^0x[0-9a-fA-F]{64}$/.test(value)
@@ -11,17 +21,50 @@ export const isSuiAddress = (value: string): boolean => /^0x[0-9a-fA-F]{64}$/.te
 export const isSuiCoinType = (value: string): boolean =>
   /^0x[0-9a-fA-F]{1,64}::[A-Za-z_][A-Za-z0-9_]*::[A-Za-z_][A-Za-z0-9_]*$/.test(value)
 
-/** Tron base58check address: 0x41 prefix + 20 bytes + 4-byte double-sha256 checksum, 34 chars starting with T. */
-export function isTronAddress(value: string): boolean {
-  if (!/^T[1-9A-HJ-NP-Za-km-z]{33}$/.test(value)) return false
+function isBase58Check(value: string, prefix: number[]): boolean {
   try {
     const bytes = Base58.decode(value)
-    if (bytes.length !== 25 || bytes[0] !== 0x41) return false
-    const check = arrayify(sha256(sha256(bytes.slice(0, 21))))
-    return check[0] === bytes[21] && check[1] === bytes[22] && check[2] === bytes[23] && check[3] === bytes[24]
+    if (bytes.length !== prefix.length + 24 || !prefix.every((byte, index) => byte === bytes[index])) return false
+    const dataLength = bytes.length - 4
+    const checksum = arrayify(sha256(sha256(bytes.slice(0, dataLength))))
+    return checksum.slice(0, 4).every((byte, index) => byte === bytes[dataLength + index])
   } catch {
     return false
   }
+}
+
+/** Tron mainnet Base58Check recipient. */
+export function isTronAddress(value: string): boolean {
+  return /^T[1-9A-HJ-NP-Za-km-z]{33}$/.test(value) && isBase58Check(value, [0x41])
+}
+
+/** Mainnet Bitcoin recipients: Base58Check, SegWit v0 and Taproot v1. */
+export function isBitcoinAddress(value: string): boolean {
+  try {
+    if (/^[13][1-9A-HJ-NP-Za-km-z]{24,33}$/.test(value)) {
+      return isBase58Check(value, value[0] === '1' ? [0] : [5])
+    }
+    const codec = /^bc1q/i.test(value) ? bech32 : bech32m
+    const decoded = codec.decode(value)
+    const version = decoded.words[0]
+    const length = codec.fromWords(decoded.words.slice(1)).length
+    return decoded.prefix === 'bc' && ((version === 0 && [20, 32].includes(length)) || (version === 1 && length === 32))
+  } catch {
+    return false
+  }
+}
+
+/** Starknet contract addresses are nonzero and below the address upper bound, not EVM addresses. */
+export function isStarknetAddress(value: string): boolean {
+  return /^0x[0-9a-fA-F]{1,64}$/.test(value) && BigInt(value) > 0n && BigInt(value) < (1n << 251n) - 256n
+}
+
+/** NEAR supports Zcash mainnet transparent t1/t3 addresses only. */
+export function isZcashAddress(value: string): boolean {
+  return (
+    /^t[13][1-9A-HJ-NP-Za-km-z]{33}$/.test(value) &&
+    isBase58Check(value, value[1] === '1' ? [0x1c, 0xb8] : [0x1c, 0xbd])
+  )
 }
 
 /** Hyperliquid (Hypercore) account: a 0x EVM address with a valid checksum (ethers isAddress alone also admits ICAP). */
@@ -51,6 +94,8 @@ export interface NonEvmDestinationRules {
  * shorteners, so a new chain is added in exactly one place.
  */
 export const NON_EVM_DESTINATION_RULES: Readonly<Partial<Record<number, NonEvmDestinationRules>>> = {
+  [STARKNET_CHAIN_ID]: { isRecipientAddress: isStarknetAddress, isTokenId: isStarknetAddress },
+  [ZCASH_CHAIN_ID]: { isRecipientAddress: isZcashAddress, isTokenId: (value) => value === ZEC_NATIVE_CURRENCY_ADDRESS },
   [SUI_CHAIN_ID]: { isRecipientAddress: isSuiAddress, isTokenId: isSuiCoinType },
   [TRON_CHAIN_ID]: { isRecipientAddress: isTronRecipient, isTokenId: isTronAddress },
   [HYPERCORE_CHAIN_ID]: { isRecipientAddress: isHypercoreAddress, isTokenId: isHypercoreTokenId },

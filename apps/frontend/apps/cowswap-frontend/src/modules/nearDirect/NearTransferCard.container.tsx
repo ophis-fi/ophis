@@ -1,0 +1,148 @@
+import { useAtomValue, useSetAtom } from 'jotai'
+import { ReactNode, useCallback, useEffect, useState } from 'react'
+
+import { useCopyClipboard, useInterval } from '@cowprotocol/common-hooks'
+
+import { QRCode } from 'react-qrcode-logo'
+
+import { nearTokensAtom, nearTransfersAtom, nearTransferStatusAtom } from './nearDirect.atoms'
+import { NearTransfer } from './nearDirect.schemas'
+import { getNearFundingDeadline, hasCurrentNearAssets, submitNearDeposit } from './nearDirect.service'
+import { Panel } from './nearDirect.styled'
+import { NearQuote } from './NearQuote.pure'
+import { NearWalletSend } from './NearWalletSend.container'
+
+const STATUS_LABELS = {
+  PENDING_DEPOSIT: 'Waiting for your deposit',
+  KNOWN_DEPOSIT_TX: 'Deposit detected; waiting for confirmations',
+  INCOMPLETE_DEPOSIT: 'Deposit is below the required amount; waiting for refund processing',
+  PROCESSING: 'Swap processing',
+  SUCCESS: 'Delivered',
+  REFUNDED: 'Refunded to your refund address',
+  FAILED: 'Swap failed; check the provider for refund status',
+}
+
+export function NearTransferCard({ transfer }: { transfer: NearTransfer }): ReactNode {
+  const setTransfers = useSetAtom(nearTransfersAtom)
+  const { data: tokens = [] } = useAtomValue(nearTokensAtom)
+  const { data, error: statusError } = useAtomValue(nearTransferStatusAtom(transfer.response.signature))
+  const [now, setNow] = useState(Date.now())
+  const [txHash, setTxHash] = useState('')
+  const [error, setError] = useState('')
+  const [busy, setBusy] = useState(false)
+  useInterval(() => setNow(Date.now()), 10_000)
+  useEffect(() => {
+    if (data && data.statusUpdatedAt !== transfer.statusUpdatedAt) {
+      void setTransfers((current) =>
+        current.map((item) =>
+          item.response.signature === data.response.signature &&
+          (!item.statusUpdatedAt || (data.statusUpdatedAt && data.statusUpdatedAt > item.statusUpdatedAt))
+            ? { ...item, status: data.status, statusUpdatedAt: data.statusUpdatedAt, receipt: data.receipt }
+            : item,
+        ),
+      ).catch((failure: unknown) => setError(failure instanceof Error ? failure.message : 'Unable to save status.'))
+    }
+  }, [data, transfer.statusUpdatedAt, setTransfers])
+  const deadline = getNearFundingDeadline(transfer.response)
+  const canFund =
+    transfer.status === 'PENDING_DEPOSIT' && now < deadline && !transfer.fundingStarted && !transfer.transactionHash
+  const assetsVerified = hasCurrentNearAssets(transfer, tokens)
+
+  const submit = useCallback(async (): Promise<void> => {
+    if (busy) return
+    setBusy(true)
+    setError('')
+    try {
+      await submitNearDeposit(transfer, txHash.trim())
+      await setTransfers((current) =>
+        current.map((item) =>
+          item.response.signature === transfer.response.signature ? { ...item, transactionHash: txHash.trim() } : item,
+        ),
+      )
+    } catch (failure) {
+      setError(
+        failure instanceof Error ? failure.message : 'Unable to submit transaction. Automatic tracking continues.',
+      )
+    } finally {
+      setBusy(false)
+    }
+  }, [busy, transfer, txHash, setTransfers])
+
+  return (
+    <Panel aria-label="NEAR swap tracking">
+      <h3 aria-live="polite">{STATUS_LABELS[transfer.status]}</h3>
+      {assetsVerified ? (
+        <NearQuote transfer={transfer} />
+      ) : (
+        <p>Verifying assets before displaying deposit instructions…</p>
+      )}
+      {assetsVerified && <NearFundingInstructions transfer={transfer} canFund={canFund} deadline={deadline} />}
+      {transfer.fundingError && <p role="alert">{transfer.fundingError}</p>}
+      {transfer.transactionHash && (
+        <p>
+          Source transaction: <code>{transfer.transactionHash}</code>
+        </p>
+      )}
+      {!['SUCCESS', 'REFUNDED'].includes(transfer.status) && (
+        <>
+          <label>
+            Already sent? Add the source transaction hash (optional)
+            <input value={txHash} onChange={(event) => setTxHash(event.target.value)} />
+          </label>
+          <button type="button" disabled={busy || !txHash} onClick={submit}>
+            Track transaction
+          </button>
+        </>
+      )}
+      {(error || statusError) && (
+        <p role="alert">
+          {error || 'Status is temporarily unavailable. Do not send a second deposit; tracking will retry.'}
+        </p>
+      )}
+      <small>Swap reference: {transfer.response.correlationId}</small>
+    </Panel>
+  )
+}
+
+function NearFundingInstructions({
+  transfer,
+  canFund,
+  deadline,
+}: {
+  transfer: NearTransfer
+  canFund: boolean
+  deadline: number
+}): ReactNode {
+  const [copied, copy] = useCopyClipboard()
+  const { depositAddress, depositMemo } = transfer.response.quote
+  if (transfer.status !== 'PENDING_DEPOSIT') return null
+  if (!canFund || !depositAddress)
+    return (
+      <p>
+        {transfer.fundingStarted || transfer.transactionHash
+          ? 'A deposit may already have been sent. Check your wallet before taking any further action.'
+          : 'Deposit instructions have expired. Do not send funds to this quote.'}
+      </p>
+    )
+  return (
+    <>
+      <p>Send the exact amount shown above once. Keep enough funds for your wallet’s network fee.</p>
+      <label>
+        Deposit address
+        <input readOnly value={depositAddress} />
+      </label>
+      <button type="button" onClick={() => copy(depositAddress)}>
+        {copied ? 'Copied' : 'Copy deposit address'}
+      </button>
+      {depositMemo ? (
+        <p>
+          Required memo: <code>{depositMemo}</code>. Include it with the transfer.
+        </p>
+      ) : (
+        <QRCode value={depositAddress} size={150} />
+      )}
+      <small>Deposit deadline: {new Date(deadline).toLocaleString()}. Allow time for network confirmations.</small>
+      <NearWalletSend transfer={transfer} />
+    </>
+  )
+}

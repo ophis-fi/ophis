@@ -12,6 +12,12 @@ import {
 import { ARC_CHAIN_ID, ARC_USDC } from './arc.const'
 import {
   HYPE_NATIVE_CURRENCY_ADDRESS,
+  STRK_NATIVE_CURRENCY_ADDRESS,
+  ZEC_NATIVE_CURRENCY_ADDRESS,
+  STARKNET_LOGO,
+  ZCASH_LOGO,
+  STARKNET_CHAIN_ID,
+  ZCASH_CHAIN_ID,
   HYPERCORE_CHAIN_ID,
   HYPERLIQUID_LOGO,
   MONAD_CHAIN_ID,
@@ -93,6 +99,22 @@ export const WRAPPED_NATIVE_CURRENCIES: Record<SupportedChainId, TokenWithLogo> 
   ),
   // Non-EVM destinations have no wrapped twin: getWrappedToken() maps the native
   // to itself so USD value / price impact keep working.
+  [STARKNET_CHAIN_ID as SupportedChainId]: new TokenWithLogo(
+    STARKNET_LOGO,
+    STARKNET_CHAIN_ID as SupportedChainId,
+    STRK_NATIVE_CURRENCY_ADDRESS,
+    18,
+    'STRK',
+    'Starknet',
+  ),
+  [ZCASH_CHAIN_ID as SupportedChainId]: new TokenWithLogo(
+    ZCASH_LOGO,
+    ZCASH_CHAIN_ID as SupportedChainId,
+    ZEC_NATIVE_CURRENCY_ADDRESS,
+    8,
+    'ZEC',
+    'Zcash',
+  ),
   [SUI_CHAIN_ID as SupportedChainId]: new TokenWithLogo(
     SUI_LOGO,
     SUI_CHAIN_ID as SupportedChainId,
@@ -178,6 +200,22 @@ export const NATIVE_CURRENCIES: Record<TargetChainId, TokenWithLogo> = {
     'OKB',
   ),
   // Non-EVM destinations: natives carry the sentinels from bridgeDestination.const.ts.
+  [STARKNET_CHAIN_ID as TargetChainId]: new TokenWithLogo(
+    STARKNET_LOGO,
+    STARKNET_CHAIN_ID as SupportedChainId,
+    STRK_NATIVE_CURRENCY_ADDRESS,
+    18,
+    'STRK',
+    'Starknet',
+  ),
+  [ZCASH_CHAIN_ID as TargetChainId]: new TokenWithLogo(
+    ZCASH_LOGO,
+    ZCASH_CHAIN_ID as SupportedChainId,
+    ZEC_NATIVE_CURRENCY_ADDRESS,
+    8,
+    'ZEC',
+    'Zcash',
+  ),
   [SUI_CHAIN_ID as TargetChainId]: new TokenWithLogo(
     SUI_LOGO,
     SUI_CHAIN_ID as SupportedChainId,

@@ -4,6 +4,10 @@ import { registerNearIntentsNetworks } from '@cowprotocol/sdk-bridging'
 import { toBridgeChainInfo } from './bridgeChainInfo'
 import {
   HYPE_NATIVE_CURRENCY_ADDRESS,
+  STRK_NATIVE_CURRENCY_ADDRESS,
+  ZEC_NATIVE_CURRENCY_ADDRESS,
+  STARKNET_CHAIN_ID,
+  ZCASH_CHAIN_ID,
   HYPERCORE_CHAIN_ID,
   MONAD_CHAIN_ID,
   SUI_CHAIN_ID,
@@ -47,6 +51,8 @@ export const OPHIS_NEAR_INTENTS_NETWORKS: ReadonlyArray<OphisNearIntentsNetwork>
   { blockchain: 'hood', chainId: 4663, evm: true },
   { blockchain: 'monad', chainId: MONAD_CHAIN_ID, evm: true },
   { blockchain: 'xlayer', chainId: XLAYER_CHAIN_ID, evm: true },
+  { blockchain: 'starknet', chainId: STARKNET_CHAIN_ID, evm: false, nativeAddress: STRK_NATIVE_CURRENCY_ADDRESS },
+  { blockchain: 'zec', chainId: ZCASH_CHAIN_ID, evm: false, nativeAddress: ZEC_NATIVE_CURRENCY_ADDRESS },
   { blockchain: 'sui', chainId: SUI_CHAIN_ID, evm: false, nativeAddress: SUI_NATIVE_CURRENCY_ADDRESS },
   { blockchain: 'tron', chainId: TRON_CHAIN_ID, evm: false, nativeAddress: TRX_NATIVE_CURRENCY_ADDRESS },
   {

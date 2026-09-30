@@ -63,11 +63,11 @@ def render(active=False):
     token = (OUT / 'service-token').read_text().strip()
     write('services.env', f'OPHIS_INTER_SERVICE_AUTH_TOKEN={token}\n')
     rpc = 'http://rpc-proxy:4000/main/evm/5042'
-    lanes = ['uniswap-v3', 'kyberswap', 'archery', 'aero', 'uniswap-v4']
+    lanes = ['uniswap-v3', 'kyberswap', 'archery', 'aero', 'uniswap-v4', 'sushiswap-v3']
     price_drivers = ', '.join(f'{{name = "{name}", url = "http://driver:11088/{name}"}}' for name in lanes)
     drivers = '\n'.join(f'[[drivers]]\nname = "{name}"\nurl = "http://driver:11088/{name}"\naddress = "{cfg["solver"]}"' for name in lanes)
     # Try two broad-coverage sources first; retain the other venues as fallback.
-    # Trade quotes and executable auctions still compete across all five lanes.
+    # Trade quotes and executable auctions still compete across all six lanes.
     native_estimators = ', '.join('[' + ', '.join(f'{{type = "Driver", name = "{name}", url = "http://driver:11088/{name}"}}' for name in stage) + ']' for stage in [lanes[:2], lanes[2:]])
     contracts = '\n'.join(f'{key} = "{c[value]}"' for key, value in [('settlement', 'settlement'), ('balances', 'Balances'), ('signatures', 'Signatures'), ('hooks', 'HooksTrampoline'), ('balancer-v2-vault', 'vault')]) + f'\nnative-token = "{USDC}"\n'
     common = f'''[database]
