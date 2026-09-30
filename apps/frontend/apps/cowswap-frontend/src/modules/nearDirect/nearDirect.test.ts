@@ -13,16 +13,53 @@ import monadDeposit from './fixtures/monadDeposit.json'
 import signedDeposit from './fixtures/signedDepositQuote.json'
 import signedQuote from './fixtures/signedDryQuote.json'
 import { DIRECT_NEAR_CHAINS } from './nearDirect.constants'
-import { nearQuoteSchema } from './nearDirect.schemas'
+import { nearQuoteSchema, nearTransferSchema } from './nearDirect.schemas'
 import {
   assertNearRequest,
   getNearFundingDeadline,
+  isNewerNearStatus,
   isNearAddress,
   isSupportedNearToken,
   parseNearAmount,
   requestNearQuote,
+  submitNearDeposit,
   verifyNearQuote,
 } from './nearDirect.service'
+
+it('orders status updates by time across RFC 3339 fractional precision', () => {
+  expect(isNewerNearStatus('2026-09-30T12:00:00.100Z', '2026-09-30T12:00:00Z')).toBe(true)
+  expect(isNewerNearStatus('2026-09-30T12:00:00Z', '2026-09-30T12:00:00.100Z')).toBe(false)
+  expect(isNewerNearStatus('2026-09-30T12:00:00.000Z', '2026-09-30T12:00:00Z')).toBe(false)
+  expect(isNewerNearStatus(undefined, undefined)).toBe(false)
+})
+
+it('journals a sent deposit before notification and stops if recovery cannot be saved', async () => {
+  const transfer = nearTransferSchema.parse(monadDeposit)
+  const hash = '0x' + 'ab'.repeat(32)
+  const persist = jest.fn(async () => {
+    transfer.fundingStarted = true
+    transfer.transactionHash = hash
+  })
+  const submit = jest.spyOn(OneClickService, 'submitDepositTx').mockImplementation(
+    () =>
+      new CancelablePromise((_resolve, reject) => {
+        expect(transfer.transactionHash).toBe(hash)
+        reject(new Error('provider unavailable'))
+      }),
+  )
+  try {
+    await expect(submitNearDeposit(transfer, hash, persist)).rejects.toThrow('provider unavailable')
+    expect(transfer.fundingStarted).toBe(true)
+    expect(transfer.transactionHash).toBe(hash)
+    persist.mockRejectedValueOnce(new Error('quota exceeded'))
+    await expect(submitNearDeposit(transfer, hash, persist)).rejects.toThrow('quota exceeded')
+    expect(submit).toHaveBeenCalledTimes(1)
+    await expect(submitNearDeposit(transfer, 'invalid', persist)).rejects.toThrow('valid transaction hash')
+    expect(persist).toHaveBeenCalledTimes(2)
+  } finally {
+    jest.restoreAllMocks()
+  }
+})
 
 function transparent(prefix: number[]): string {
   const bytes = Uint8Array.from([...prefix, ...Array<number>(20).fill(1)])

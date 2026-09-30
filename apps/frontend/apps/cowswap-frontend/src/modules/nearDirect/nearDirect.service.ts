@@ -182,6 +182,10 @@ export async function requestNearQuote(
   return transfer
 }
 
+export function isNewerNearStatus(updatedAt: string | undefined, previous: string | undefined): boolean {
+  return !!updatedAt && (!previous || Date.parse(updatedAt) > Date.parse(previous))
+}
+
 export async function getNearTransferStatus(transfer: NearTransfer): Promise<NearTransfer> {
   const { depositAddress, depositMemo } = transfer.response.quote
   if (!depositAddress) throw new Error('Missing deposit address.')
@@ -189,7 +193,7 @@ export async function getNearTransferStatus(transfer: NearTransfer): Promise<Nea
   const response = verifyNearQuote(result.quoteResponse)
   if (response.signature !== transfer.response.signature) throw new Error('Status belongs to another deposit quote.')
   const updatedAt = z.string().datetime().parse(result.updatedAt)
-  if (transfer.statusUpdatedAt && updatedAt < transfer.statusUpdatedAt) return transfer
+  if (!isNewerNearStatus(updatedAt, transfer.statusUpdatedAt)) return transfer
   return {
     ...transfer,
     status: nearStatusSchema.parse(result.status),
@@ -198,8 +202,14 @@ export async function getNearTransferStatus(transfer: NearTransfer): Promise<Nea
   }
 }
 
-export async function submitNearDeposit(transfer: NearTransfer, txHash: string): Promise<void> {
+export async function submitNearDeposit(
+  transfer: NearTransfer,
+  txHash: string,
+  persistFunding: () => Promise<void>,
+): Promise<void> {
   const { depositAddress, depositMemo } = transfer.response.quote
   if (!depositAddress || !/^[a-zA-Z0-9_-]{20,150}$/.test(txHash)) throw new Error('Enter a valid transaction hash.')
+  // The transfer already happened; preserve recovery even if notification fails.
+  await persistFunding()
   await OneClickService.submitDepositTx({ depositAddress, memo: depositMemo, txHash })
 }

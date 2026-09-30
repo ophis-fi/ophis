@@ -2,8 +2,18 @@
 import { createStore } from 'jotai'
 
 import fixture from './fixtures/monadDeposit.json'
-import { nearTransfersAtom, normalizeNearTransfers } from './nearDirect.atoms'
+import { nearTransfersAtom, normalizeNearTransfers, pruneNearTransfers } from './nearDirect.atoms'
 import { nearTransferSchema } from './nearDirect.schemas'
+
+it('bounds completed history without deleting failed, expired, or uncertain recovery', () => {
+  const transfer = nearTransferSchema.parse(fixture)
+  const active = [transfer, { ...transfer, fundingStarted: true }, { ...transfer, status: 'FAILED' as const }]
+  const completed = Array.from({ length: 60 }, (_, index) => ({
+    ...transfer,
+    status: index % 2 ? ('SUCCESS' as const) : ('REFUNDED' as const),
+  }))
+  expect(pruneNearTransfers([...active, ...completed])).toEqual([...active, ...completed.slice(-50)])
+})
 
 it('saves recovery before exposing a deposit and preserves state when storage fails', async () => {
   const values = new Map<string, string>()

@@ -41,10 +41,11 @@ export function NearWalletSend({ transfer }: { transfer: NearTransfer }): ReactN
             ),
           )
         })
-        await setTransfers((current) =>
-          current.map((item) => (item.response.signature === signature ? { ...item, transactionHash: hash } : item)),
+        await submitNearDeposit(stored, hash, () =>
+          setTransfers((current) =>
+            current.map((item) => (item.response.signature === signature ? { ...item, transactionHash: hash } : item)),
+          ),
         )
-        await submitNearDeposit(stored, hash)
       })
     } catch (failure) {
       // A transport error can follow broadcast. Keep the funding journal locked;

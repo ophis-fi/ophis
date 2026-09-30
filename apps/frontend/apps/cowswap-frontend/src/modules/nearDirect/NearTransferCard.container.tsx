@@ -7,7 +7,12 @@ import { QRCode } from 'react-qrcode-logo'
 
 import { nearTokensAtom, nearTransfersAtom, nearTransferStatusAtom } from './nearDirect.atoms'
 import { NearTransfer } from './nearDirect.schemas'
-import { getNearFundingDeadline, hasCurrentNearAssets, submitNearDeposit } from './nearDirect.service'
+import {
+  getNearFundingDeadline,
+  hasCurrentNearAssets,
+  isNewerNearStatus,
+  submitNearDeposit,
+} from './nearDirect.service'
 import { Panel } from './nearDirect.styled'
 import { NearQuote } from './NearQuote.pure'
 import { NearWalletSend } from './NearWalletSend.container'
@@ -36,7 +41,7 @@ export function NearTransferCard({ transfer }: { transfer: NearTransfer }): Reac
       void setTransfers((current) =>
         current.map((item) =>
           item.response.signature === data.response.signature &&
-          (!item.statusUpdatedAt || (data.statusUpdatedAt && data.statusUpdatedAt > item.statusUpdatedAt))
+          isNewerNearStatus(data.statusUpdatedAt, item.statusUpdatedAt)
             ? { ...item, status: data.status, statusUpdatedAt: data.statusUpdatedAt, receipt: data.receipt }
             : item,
         ),
@@ -53,10 +58,13 @@ export function NearTransferCard({ transfer }: { transfer: NearTransfer }): Reac
     setBusy(true)
     setError('')
     try {
-      await submitNearDeposit(transfer, txHash.trim())
-      await setTransfers((current) =>
-        current.map((item) =>
-          item.response.signature === transfer.response.signature ? { ...item, transactionHash: txHash.trim() } : item,
+      await submitNearDeposit(transfer, txHash.trim(), () =>
+        setTransfers((current) =>
+          current.map((item) =>
+            item.response.signature === transfer.response.signature
+              ? { ...item, fundingStarted: true, transactionHash: txHash.trim() }
+              : item,
+          ),
         ),
       )
     } catch (failure) {

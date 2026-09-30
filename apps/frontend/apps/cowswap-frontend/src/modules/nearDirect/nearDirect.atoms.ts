@@ -51,13 +51,24 @@ export function readStoredNearTransfer(signature: string): NearTransfer | undefi
 const transfersStoreAtom = atomWithStorage<NearTransfer[]>('nearDirectTransfers:v0', [], storage, {
   getOnInit: true,
 })
+
+export function pruneNearTransfers(transfers: NearTransfer[]): NearTransfer[] {
+  let completed = 0
+  // ponytail: retain 50 completed swaps; active/uncertain recovery is never evicted.
+  return transfers
+    .slice()
+    .reverse()
+    .filter((transfer) => !['SUCCESS', 'REFUNDED'].includes(transfer.status) || ++completed <= 50)
+    .reverse()
+}
+
 export const nearTransfersAtom = atom(
   (get) => get(transfersStoreAtom),
   async (_get, set, update: NearTransfer[] | ((current: NearTransfer[]) => NearTransfer[])): Promise<void> => {
     if (!navigator.locks) throw new Error('This browser cannot safely save swap recovery. Use a current browser.')
     await navigator.locks.request('nearDirectTransfers', () => {
       const current = storage.getItem('nearDirectTransfers:v0')
-      const next = typeof update === 'function' ? update(current) : update
+      const next = pruneNearTransfers(typeof update === 'function' ? update(current) : update)
       // Persist before rendering instructions or allowing the wallet to sign.
       storage.setItem('nearDirectTransfers:v0', next)
       set(transfersStoreAtom, next)
