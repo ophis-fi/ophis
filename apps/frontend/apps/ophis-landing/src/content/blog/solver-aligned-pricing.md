@@ -2,7 +2,7 @@
 title: "Ophis moves to solver-aligned pricing"
 description: "A 1 bp base and capped price-improvement capture on Ophis-operated chains aligns protocol revenue with execution quality."
 pubDate: 2026-08-05
-updatedDate: 2026-09-30
+updatedDate: 2026-09-27
 author: Ophis
 tags: [fees, solver-auctions, price-improvement, optimism]
 draft: false
@@ -20,13 +20,14 @@ On volatile pairs, Ophis retains **80% of price improvement, capped at 99 bps
 of trade volume**. On same-chain stablecoin pairs, Ophis retains **50%, capped
 at 20 bps**. The base remains 1 bp in both cases.
 
-The standard policy applies to Optimism, Unichain, Robinhood Chain, Arc and the ten
-CoW-hosted networks. Those four operated backends enforce it directly; CoW-hosted orders encode the same policy in
+The standard policy applies to Optimism, Unichain, Robinhood Chain and the ten
+CoW-hosted networks. Those three operated backends enforce it directly; CoW-hosted orders encode the same policy in
 CIP-75 appData, with CoW Protocol's upstream fees applied separately.
 
-**September 30 update:** Arc now uses the same backend market-order improvement
-policy. Its original release omitted that policy; historical base-only trades
-retain their original fees. See the [Arc fee details](https://docs.ophis.fi/fees#arc-price-improvement-policy).
+**September 27 update:** Arc is app-supported but its current backend configures
+no protocol improvement policy. The verified completed Arc order carried a
+1 bp volume-only fee. Do not apply the improvement table below to Arc without
+checking its current quote and signed metadata. See the [Arc fee exception](https://docs.ophis.fi/fees#arc-release-exception).
 
 ## Why change the model?
 
@@ -68,7 +69,7 @@ the user's signed limit or treat loose slippage tolerance as protocol revenue.
 That distinction matters: the fee should reflect execution Ophis created, not
 room the trader allowed for safe settlement.
 
-On Optimism, Unichain, Robinhood Chain and Arc, the backend applies the reference quote, capture
+On Optimism, Unichain and Robinhood Chain, the backend applies the reference quote, capture
 factor and cap; omitting metadata does not remove that backend policy. On
 CoW-hosted chains the Ophis policy is encoded in signed appData, alongside
 CoW's upstream fees. Use the complete SDK fee helper output.

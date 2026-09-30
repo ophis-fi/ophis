@@ -10,7 +10,7 @@
 <meta property="og:type" content="website">
 <meta property="og:site_name" content="Ophis">
 <meta property="og:title" content="Ophis for Business">
-<meta property="og:description" content="Non-custodial intent routing for desks, treasuries, and integrators. Every supported chain uses a 1 bp base, with capped price-improvement capture on all supported chains. Charge your own fee on top and Ophis takes 0% of it.">
+<meta property="og:description" content="Non-custodial intent routing for desks, treasuries, and integrators. Every supported chain uses a 1 bp base, with capped price-improvement capture except on Arc. Charge your own fee on top and Ophis takes 0% of it.">
 <meta property="og:url" content="https://business.ophis.fi">
 <meta property="og:image" content="https://business.ophis.fi/ophis-og.jpg">
 <meta property="og:image:width" content="1920">
@@ -45,13 +45,13 @@
       "provider": { "@id": "https://ophis.fi/#organization" },
       "url": "https://business.ophis.fi",
       "areaServed": "Worldwide",
-      "description": "Non-custodial intent routing with MEV-protected batch-auction settlement across 14 EVM chains. Supported chains charge a 1 bp base plus 80% of reference-quote improvement on volatile pairs, capped at 99 bps of volume, or 50% on stable pairs, capped at 20 bps. CoW-hosted integrations additionally pay CoW Protocol fees upstream. Integrators can stack an onboarded own-fee on top, and Ophis takes 0% of that markup."
+      "description": "Non-custodial intent routing with MEV-protected batch-auction settlement across 14 EVM chains. Except on Arc, which currently charges only a 1 bp base, supported chains charge a 1 bp base plus 80% of reference-quote improvement on volatile pairs, capped at 99 bps of volume, or 50% on stable pairs, capped at 20 bps. CoW-hosted integrations additionally pay CoW Protocol fees upstream. Integrators can stack an onboarded own-fee on top, and Ophis takes 0% of that markup."
     },
     {
       "@type": "FAQPage",
       "mainEntity": [
         { "@type": "Question", "name": "Is Ophis a regulated financial-services entity?", "acceptedAnswer": { "@type": "Answer", "text": "No. Ophis is operated independently and provides a non-custodial software interface to permissionless on-chain protocols. It does not take custody of funds, execute discretionary trades, or hold a regulated financial-services license. Full operator and entity details are provided on request for formal contractual arrangements." } },
-        { "@type": "Question", "name": "How does Ophis price its service for partners?", "acceptedAnswer": { "@type": "Answer", "text": "Supported chains charge a 1 bp base plus 80% of reference-quote improvement on volatile pairs, capped at 99 bps of volume, or 50% on stable pairs, capped at 20 bps. CoW-hosted integrations additionally pay CoW Protocol fees upstream. Integrators can stack an onboarded own-fee up to 90 bps on top of ERC-20 orders, and Ophis takes 0% of that markup." } },
+        { "@type": "Question", "name": "How does Ophis price its service for partners?", "acceptedAnswer": { "@type": "Answer", "text": "Except on Arc, which currently charges only a 1 bp base, supported chains charge a 1 bp base plus 80% of reference-quote improvement on volatile pairs, capped at 99 bps of volume, or 50% on stable pairs, capped at 20 bps. CoW-hosted integrations additionally pay CoW Protocol fees upstream. Integrators can stack an onboarded own-fee up to 90 bps on top of ERC-20 orders, and Ophis takes 0% of that markup." } },
         { "@type": "Question", "name": "Where are integrator own-fees guaranteed for payout?", "acceptedAnswer": { "@type": "Answer", "text": "Ophis-operated own-fee payout is currently guaranteed on Optimism and Unichain once the recipient is onboarded and its payout lane is enabled. Robinhood accrual is reported as non-guaranteed until its dedicated payout lane exists. CoW-hosted payouts follow CoW Protocol's terms and service fee." } },
         { "@type": "Question", "name": "Can I get a custom rate limit?", "acceptedAnswer": { "@type": "Answer", "text": "Yes. The public Intent API allows 30 requests per minute per IP, adequate for low and medium-volume operators. Partner-tier rate limits for higher throughput are reviewed case by case; reach out with a brief description of your use case and target volume." } },
         { "@type": "Question", "name": "How do I integrate with Ophis?", "acceptedAnswer": { "@type": "Answer", "text": "Three paths: point your operators at swap.ophis.fi for direct use, call POST /api/intent from your bot or agent, or embed the upstream CoW Widget. Documentation is at docs.ophis.fi." } },
@@ -324,7 +324,7 @@ footer.site { padding: 64px 24px 36px; background: var(--panel); border-top: 1px
     <p class="sub rise d1">
       Non-custodial intent routing with MEV-protected, uniform-price settlement on CoW Protocol's
       audited GPv2 contracts. Every supported chain pays a 1 bp base, with capped price-improvement
-      capture on all supported chains; hosted integrations additionally pay CoW Protocol fees upstream. Charge your own fee on top and Ophis
+      capture except on Arc; hosted integrations additionally pay CoW Protocol fees upstream. Charge your own fee on top and Ophis
       takes 0% of that markup.
     </p>
     <div class="ctas rise d2">
@@ -404,9 +404,9 @@ footer.site { padding: 64px 24px 36px; background: var(--panel); border-top: 1px
     <div class="eyebrow reveal">How partners win</div>
     <h2 class="reveal">Charge your own fee. Ophis takes 0% of it.</h2>
     <p class="lede reveal">
-      Ophis publishes its terms. Integrations pay a 1 bp base plus 80% of
+      Ophis publishes its terms. Except on Arc, integrations pay a 1 bp base plus 80% of
       reference-quote improvement on volatile pairs (99 bps cap), or 50% on stable pairs (20 bps
-      cap). Arc uses the same backend improvement policy and is indexed for volume and referral rebates; its own-fee payout guarantee is not enabled. Hosted integrations additionally pay CoW Protocol fees upstream. Using the
+      cap). Arc currently charges only the 1 bp base and is indexed for volume and referral rebates; its own-fee payout guarantee is not enabled. Hosted integrations additionally pay CoW Protocol fees upstream. Using the
       SDK or manual appData, you can still add your own fee and Ophis takes 0% of that markup.
     </p>
 
@@ -456,7 +456,7 @@ footer.site { padding: 64px 24px 36px; background: var(--panel); border-top: 1px
         <div class="feerow">
           <span class="big take">1 bp</span>
           <span class="txt"><b>All-chain base rate</b>, plus 80% of volatile improvement capped at
-          99 bps, or 50% of stable improvement capped at 20 bps, including on Arc.</span>
+          99 bps, or 50% of stable improvement capped at 20 bps, except on Arc, which currently charges only the base.</span>
         </div>
         <div class="feerow">
           <span class="big zero">0%</span>
@@ -468,13 +468,13 @@ footer.site { padding: 64px 24px 36px; background: var(--panel); border-top: 1px
         </div>
         <div class="feerow">
           <span class="big cap">99 bps</span>
-          <span class="txt"><b>Volatile capture cap</b> where improvement capture applies. Stablecoin capture is
+          <span class="txt"><b>Volatile capture cap</b> where improvement capture applies (excluding Arc). Stablecoin capture is
           capped at 20 bps; each also carries the 1 bp base.</span>
         </div>
         <div class="example">
           Worked example: your own rate <b>80 bps</b> on <b>$1,000,000</b> monthly volume.<br>
           Ophis takes <b>0%</b> of your <b>$8,000</b> markup. On Optimism, Unichain, and Robinhood Chain, the separate
-          Ophis charge is 1 bp plus capped price-improvement capture. Arc uses the same capped backend improvement policy and has no own-fee payout guarantee. You receive your markup on the CoW-hosted chains today,
+          Ophis charge is 1 bp plus capped price-improvement capture. Arc currently charges only the 1 bp base and has no own-fee payout guarantee. You receive your markup on the CoW-hosted chains today,
           paid out under CoW's terms; on Optimism and Unichain it is paid to you monthly in WETH from
           the sovereign chain's Safe once you are onboarded and we enable it. Robinhood payout is not
           guaranteed until its dedicated payout lane is enabled.<br>
@@ -813,10 +813,10 @@ footer.site { padding: 64px 24px 36px; background: var(--panel); border-top: 1px
         <summary>How does Ophis price its service, and is execution competitive?</summary>
         <div class="body">
           <p>
-            The rates are published. On Optimism, Unichain, Robinhood Chain, and Arc, integrations pay
+            The rates are published. On Optimism, Unichain, and Robinhood Chain, integrations pay
             a 1 bp base plus 80% of reference-quote improvement on volatile pairs, capped at 99 bps
             of volume, or 50% on stable pairs, capped at 20 bps. CoW-hosted integrations use the same
-            1 bp Ophis base, plus CoW Protocol's separate upstream fees. Arc uses the same capped backend improvement policy; an Arc own-fee payout guarantee is not enabled.
+            1 bp Ophis base, plus CoW Protocol's separate upstream fees. Arc currently charges only the 1 bp base, with no backend improvement capture or own-fee payout guarantee.
             Execution is benchmarked against leading aggregators, with the additional protection of
             MEV-safe, uniform-price batch settlement that public mempool routes cannot offer.
           </p>

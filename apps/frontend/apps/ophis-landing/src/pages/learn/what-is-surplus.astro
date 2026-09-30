@@ -20,7 +20,7 @@ const FAQS = [
   },
   {
     q: 'Who keeps the surplus?',
-    a: `Under the standard policy, Ophis retains 80% of reference-quote improvement on volatile pairs, capped at 99 bps of volume, or 50% on stable pairs, capped at 20 bps; the trader receives the remainder. CoW-hosted chains additionally apply CoW Protocol's upstream fees.`,
+    a: `Under the standard policy, excluding the current Arc release exception, Ophis retains 80% of reference-quote improvement on volatile pairs, capped at 99 bps of volume, or 50% on stable pairs, capped at 20 bps; the trader receives the remainder. CoW-hosted chains additionally apply CoW Protocol's upstream fees.`,
   },
   {
     q: 'How is surplus different from positive slippage?',
@@ -46,7 +46,7 @@ const FAQS = [
     <strong>The short version:</strong> surplus is the gap between what you signed for and the
     better execution settlement achieved. It comes from price movement, solver competition, and
     peer matches. The standard schedule shares reference-quote improvement under capped Ophis
-    policies; hosted chains also apply upstream CoW fees. Arc follows the same policy.
+    policies; hosted chains also apply upstream CoW fees. Arc has a separate release exception.
     Check the <a href="/pricing/">current fee scope</a> before calculating the trader's remainder.
   </p>
 

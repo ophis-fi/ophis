@@ -52,7 +52,7 @@ MEV, but the solver's settlement can still be public and use external pools.
 
 ## The fee comes out of the trade, not your gas balance
 
-Ophis uses chain-aware pricing. The standard schedule charges a 1 bp base plus
+Ophis uses chain-aware pricing. The standard schedule, excluding Arc's current release exception, charges a 1 bp base plus
 capped reference-quote-improvement capture; hosted chains additionally apply
 CoW Protocol fees upstream. Fees are taken from the
 trade rather than billed in native gas (the

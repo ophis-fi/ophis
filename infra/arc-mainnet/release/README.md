@@ -29,6 +29,10 @@ substitutes 50% capped at 20 bps for Arc USDC/EURC. The existing
 The signed appData still supplies only the 1 bp base; adding a second client
 improvement entry would be incorrect.
 
+This backend change retains the currently published fee copy. Public-copy changes
+must ship in a separate PR after the activation below, so independent main-branch
+Pages deployments cannot advertise the fee before it is active.
+
 Deploy the rebate-indexer change before activation: it now accepts the canonical
 backend policy plus the appData suffix and retains historical base-only fills.
 After review, back up the private mounted `generated/autopilot.toml`, replace
@@ -37,7 +41,8 @@ only `ophis-arc-autopilot-1`. Do not regenerate the deployed plan or key files.
 Confirm the mounted policy and `/liveness` plus `/ready` on port 9587, then check
 the next eligible settlement's `executedProtocolFees` for the pair-specific
 factor, cap and separate base. No improvement means no improvement fee.
-Publish the updated fee documentation with activation. Rollback restores the
+Only after those checks, merge the separate fee-documentation PR to publish the
+updated landing, docs, business, stats and discovery surfaces. Rollback restores the
 backed-up config and restarts the same container; historical fees stay intact.
 
 Offline checks: `python3 infra/arc-mainnet/local/test_render.py` and

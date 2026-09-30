@@ -487,9 +487,11 @@ import { buildOphisAppDataPartnerFee } from '@ophis/sdk';
 // OPHIS_FEE_CHAIN_IDS (the Ophis-operated chains plus the CoW-hosted chains the
 // fork serves), or `undefined` on any other chain.
 //
-// On Optimism, Unichain, Robinhood Chain, and Arc this returns the required 1 bp
+// On Optimism, Unichain, and Robinhood Chain this returns the required 1 bp
 // base. Their backends enforce the same 1 bp anti-bypass floor and separately
 // apply capped price-improvement capture.
+// Arc also requires the 1 bp base; its backend has no price-improvement
+// capture policy configured.
 const partnerFee = buildOphisAppDataPartnerFee(10);
 // -> { volumeBps: 1, recipient }
 

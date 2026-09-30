@@ -98,7 +98,7 @@ Two requirements for a token to be allowlistable:
 
 The `@ophis/safe-swap` v0.1.7 vault-order builder uses SDK v0.4.4 and supports
 these 14 chains. Use ERC-20 token addresses on Arc; native-token sentinels are
-rejected. Arc charges the 1 bp base plus capped backend improvement capture; eligible
+rejected. Arc charges the 1 bp base without backend improvement capture; eligible
 settled trades count toward volume-tier and referral rebates:
 
 - **Ophis self-hosted:** Optimism, Unichain, Robinhood Chain (4663), and Arc (5042).

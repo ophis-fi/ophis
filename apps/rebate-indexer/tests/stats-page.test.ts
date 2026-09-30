@@ -138,7 +138,7 @@ describe('renderStatsPage', () => {
     expect(html).not.toContain('guarantees below hold for every single trade');
     expect(html).not.toContain('refreshed continuously');
     expect(html).not.toContain('no native gas token is needed');
-    expect(html).toContain('Arc uses the same capped backend improvement policy');
+    expect(html).toContain('Arc currently has no configured backend improvement policy; check the quote and signed fee metadata');
     expect(html).not.toContain('base-only configuration');
   });
 
@@ -173,8 +173,8 @@ describe('EXECUTION_FACTS (static execution-model facts on the public JSON)', ()
     expect(EXECUTION_FACTS.mevProtection).toBe('batch-auction');
     expect(EXECUTION_FACTS.settlementModel).toBe('intent, uniform clearing price');
     expect(EXECUTION_FACTS.solverCompetition.hostedChains).toBe('CoW Protocol solver network');
-    expect(EXECUTION_FACTS.improvementSplit.sovereign).toContain('On Optimism, Unichain, Robinhood Chain and Arc, Ophis retains 80%');
-    expect(EXECUTION_FACTS.improvementSplit.sovereign).toContain('Arc uses the same capped backend improvement policy');
+    expect(EXECUTION_FACTS.improvementSplit.sovereign).toContain('On Optimism, Unichain and Robinhood Chain, Ophis retains 80%');
+    expect(EXECUTION_FACTS.improvementSplit.sovereign).toContain('Arc currently has no configured backend improvement policy; check the quote and signed fee metadata');
     expect(EXECUTION_FACTS.improvementSplit.hosted).toBe('The same Ophis capped capture applies, plus CoW Protocol quote-improvement fees upstream');
   });
 });

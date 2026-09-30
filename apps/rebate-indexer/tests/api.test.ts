@@ -105,7 +105,7 @@ test('/stats returns public cumulative JSON for an API client', async () => {
       hostedChains: 'CoW Protocol solver network',
     },
     improvementSplit: {
-      sovereign: 'On Optimism, Unichain, Robinhood Chain and Arc, Ophis retains 80% of volatile improvement (99 bps cap) or 50% of stable improvement (20 bps cap). Arc uses the same capped backend improvement policy.',
+      sovereign: 'On Optimism, Unichain and Robinhood Chain, Ophis retains 80% of volatile improvement (99 bps cap) or 50% of stable improvement (20 bps cap). Arc currently has no configured backend improvement policy; check the quote and signed fee metadata.',
       hosted: 'The same Ophis capped capture applies, plus CoW Protocol quote-improvement fees upstream',
     },
   });

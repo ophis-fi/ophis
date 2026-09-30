@@ -28,8 +28,9 @@ Arc's app configuration is deployment-specific. SDK v0.4.3 resolves its orderboo
 `https://arc-mainnet.ophis.fi` and its EIP-712 settlement to
 `0x78799F98276efba1EdeeD32eae03a3fd8Cdfec3A`. Arc settled trades are ingested by
 the rebate indexer; use SDK v0.4.4 or later for referral metadata.
-Arc applies the same capped backend market-order improvement policy as the
-other operated chains; see the [fee schedule](./fees.md#arc-price-improvement-policy).
+Arc's current backend has no configured protocol improvement policy; see the
+[fee-schedule exception](./fees.md#arc-release-exception), rather than assuming
+all operated chains use identical fee handling.
 
 ## Arc and Circle bridges
 
