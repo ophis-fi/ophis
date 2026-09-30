@@ -357,7 +357,7 @@ def validate(cfg):
             if expected_budget and (len(u.get("failsafe", [])) != 1
                     or u["failsafe"][0].get("retry", {}).get("maxAttempts") != 1):
                 errs.append("Nodies must use one upstream attempt so retries cannot bypass its budget")
-            expected_evm = {"getLogsAutoSplittingRangeThreshold": 50} if _hostname(u.get("endpoint")) == "lb.nodies.app" else None
+            expected_evm = {"getLogsAutoSplittingRangeThreshold": 500} if _hostname(u.get("endpoint")) == "lb.nodies.app" else None
             if _hostname(u.get("endpoint")) == "lb.nodies.app":
                 url = urlsplit(u["endpoint"])
                 query = parse_qs(url.query, keep_blank_values=True)
@@ -366,7 +366,7 @@ def validate(cfg):
                         or set(query) != {"apikey"} or len(key) != 1 or not key[0].strip()):
                     errs.append("Nodies must use the private Optimism endpoint with a nonempty API key")
             if u.get("evm") != expected_evm:
-                errs.append("upstream evm config must only split Nodies logs into 50-block ranges")
+                errs.append("upstream evm config must only split Nodies logs into 500-block ranges")
             for j, r in enumerate(u.get("failsafe") or []):
                 if isinstance(r, dict):
                     _check_rule_subtree(r, f"upstream[{u.get('id')}].failsafe[{j}]", errs, level="upstream_rule")

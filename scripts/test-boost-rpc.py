@@ -50,10 +50,10 @@ for expression in ("upstreams.slice(0, 2)", "upstreams.filter(u => u.id !== 'drp
     bad = copy.deepcopy(config)
     bad["projects"][0]["networks"][0]["selectionPolicy"]["evalFunc"] = expression
     assert validate(bad), expression
-for evm in (None, {}, {"getLogsAutoSplittingRangeThreshold": 100}, {"getLogsAutoSplittingRangeThreshold": 50, "chainId": 1}):
+for evm in (None, {}, {"getLogsAutoSplittingRangeThreshold": 100}, {"getLogsAutoSplittingRangeThreshold": 500, "chainId": 1}):
     bad = copy.deepcopy(config)
     bad["projects"][0]["upstreams"][2]["evm"] = evm
-    assert validate(bad), "Nodies must use the proven 50-block log limit only"
+    assert validate(bad), "Nodies must use the verified private 500-block log limit only"
 for endpoint in ("https://op-pokt.nodies.app", "https://lb.nodies.app/v2/optimism?apikey=",
                  "https://lb.nodies.app/v2/ethereum?apikey=test"):
     bad = copy.deepcopy(config)

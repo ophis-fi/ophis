@@ -45,16 +45,16 @@ class MockRpc(BaseHTTPRequestHandler):
             f = request["params"][0]
             size = int(f["toBlock"], 16) - int(f["fromBlock"], 16) + 1
             self.log_ranges.append(size)
-            if size > 50:
+            if size > 500:
                 self.send_response(413)
                 self.end_headers()
                 return
         result = {
             "eth_chainId": "0xa",
             "net_version": "10",
-            "eth_blockNumber": "0x100",
+            "eth_blockNumber": "0x1000",
             "eth_syncing": False,
-            "eth_getBlockByNumber": {"number": "0x100", "hash": BLOCK_HASH, "timestamp": "0x123456"},
+            "eth_getBlockByNumber": {"number": "0x1000", "hash": BLOCK_HASH, "timestamp": "0x123456"},
             "eth_call": CALL_RESULT,
             "eth_getBalance": "0x0",
             "eth_getCode": "0x",
@@ -143,7 +143,7 @@ def main():
                     for method, params in (
                         ("eth_call", [{"to": "0x" + "33" * 20, "data": "0x"}, "0x80"]),
                         ("eth_getTransactionReceipt", [TX_HASH]),
-                        ("eth_getLogs", [{"fromBlock": "0x80", "toBlock": "0xe4"}]),
+                        ("eth_getLogs", [{"fromBlock": "0x80", "toBlock": "0x468"}]),
                     ):
                         body = json.dumps({"jsonrpc": "2.0", "id": 1, "method": method, "params": params}).encode()
                         req = Request(f"http://127.0.0.1:{PORT}/main/evm/10", data=body,
@@ -163,7 +163,7 @@ def main():
                                 actual = actual.get("transactionHash")
                             assert actual == expected and "error" not in result, result
                         if method == "eth_getLogs":
-                            assert MockRpc.log_ranges and max(MockRpc.log_ranges) <= 50, MockRpc.log_ranges
+                            assert MockRpc.log_ranges and max(MockRpc.log_ranges) <= 500, MockRpc.log_ranges
                         print(f"PASS {method}: {healthy} valid voter(s), {3 - healthy} HTTP 500 voter(s)", flush=True)
                 finally:
                     subprocess.run(["docker", "rm", "-f", container], check=True, stdout=subprocess.DEVNULL)

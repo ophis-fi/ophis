@@ -212,7 +212,7 @@ services:
 
   autopilot:
     logging: *default-logging
-    image: local-autopilot:latest
+    image: ${OP_AUTOPILOT_IMAGE:-local-autopilot:latest}
     build:
       context: ../../apps/backend
       dockerfile: Dockerfile

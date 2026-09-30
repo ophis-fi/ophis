@@ -675,8 +675,8 @@ projects:
               successThresholdCapacity: 4
 
       - id: nodies-op
-        # Keyed account replaces the throttled public endpoint. Keep 50-block
-        # log splitting; never bypass consensus if the account is rate-limited.
+        # Private Nodies accepts 500-block historical log pages. Match the
+        # indexer page size instead of multiplying catch-up into ten votes.
         endpoint: https://lb.nodies.app/v2/optimism?apikey=${NODIES_OP_KEY}
         rateLimitBudget: nodies-op-free
         # Request mode has separate method counters; credit mode shares a pool.
@@ -686,7 +686,7 @@ projects:
         rateLimitAutoTune:
           enabled: false
         evm:
-          getLogsAutoSplittingRangeThreshold: 50
+          getLogsAutoSplittingRangeThreshold: 500
         failsafe:
           # The limiter charges before upstream retries: one attempt prevents
           # uncounted retry amplification. Network retries acquire a new permit.
