@@ -319,9 +319,11 @@ def test_rpc(release=False, expanded=False):
     # Hard network isolation and replacement of EVERY endpoint prevent credit use.
     for upstream in upstreams:
         upstream["endpoint"] = "http://" + mock + ":8000/" + upstream["id"].removeprefix("arc-")
-    config["rateLimiters"]["budgets"][0]["rules"][0]["maxCount"] = 500
+    # Cap assertions spend one window; a wall-clock minute reset refills it
+    # mid-test. Production periods are asserted above, before this fixture override.
+    config["rateLimiters"]["budgets"][0]["rules"][0].update(maxCount=500, period="year")
     config["rateLimiters"]["budgets"][2]["rules"].append(
-        {"method": "eth_getCode", "maxCount": 1, "period": "minute"})
+        {"method": "eth_getCode", "maxCount": 1, "period": "year"})
     image = yaml.safe_load((root / "docker-compose.yml").read_text())["services"]["rpc-proxy"]["image"]
     try:
         docker("network", "create", "--internal", name)
