@@ -327,7 +327,7 @@ async function main() {
     console.log(`PASS jayson ${pkg.version}: consecutive JSON-RPC messages through StreamValues`);
   }
 
-  for (const major of workspace === 'root' ? [3, 5] : [3, 5, 10]) {
+  for (const major of workspace === 'frontend' ? [3, 5, 10] : [3, 5]) {
     for (const pkg of installed('minimatch', major)) {
       const minimatch = pkg.require('minimatch');
       const braceExpansion = pkg.require('brace-expansion');
@@ -409,7 +409,7 @@ async function main() {
     console.log(`PASS uuid ${pkg.version}: named exports, v4/v5 buffer output, parse/stringify`);
   }
 
-  for (const pkg of workspace === 'root' ? [] : installed('@xhmikosr/decompress', 10)) {
+  for (const pkg of workspace === 'frontend' ? installed('@xhmikosr/decompress', 10) : []) {
     const decompress = pkg.require('@xhmikosr/decompress').default;
     const destDir = mkdtempSync(join(tmpdir(), 'ophis-decompress-'));
     const escapeName = basename(destDir) + '-esc.txt';
