@@ -15,7 +15,7 @@ const { existsSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSyn
 const { createRequire, Module } = require('node:module');
 const { createServer } = require('node:http');
 const { tmpdir } = require('node:os');
-const { basename, join, resolve } = require('node:path');
+const { basename, dirname, join, resolve } = require('node:path');
 const { Readable, Writable } = require('node:stream');
 const { pipeline } = require('node:stream/promises');
 const { pathToFileURL } = require('node:url');
@@ -325,17 +325,25 @@ async function main() {
     console.log(`PASS jayson ${pkg.version}: consecutive JSON-RPC messages through StreamValues`);
   }
 
-  for (const major of [3, 5]) {
+  for (const major of workspace === 'root' ? [3, 5] : [3, 5, 10]) {
     for (const pkg of installed('minimatch', major)) {
       const minimatch = pkg.require('minimatch');
       assert.equal(typeof pkg.require('brace-expansion'), 'function');
       const braceVersion = pkg.require('brace-expansion/package.json').version;
-      assert.equal(braceVersion.split('.')[0], major === 3 ? '1' : '2');
+      assert.equal(braceVersion.split('.')[0], major === 3 ? '1' : major === 5 ? '2' : '5');
       assert(minimatch('src/index.ts', 'src/*.{js,ts}'));
       assert(minimatch('file2.txt', 'file{1..3}.txt'));
       assert(minimatch('a/c/file.ts', '{a,b}/{c,d}/*.{js,ts}'));
       assert(!minimatch('src/index.py', 'src/*.{js,ts}'));
       assert.deepEqual(minimatch.braceExpand('file{1..3}.txt'), ['file1.txt', 'file2.txt', 'file3.txt']);
+      if (major === 10) {
+        const start = Date.now();
+        const expanded = minimatch.braceExpand('{1..100}');
+        assert.equal(expanded.length, 100);
+        assert.equal(expanded[0], '1');
+        assert.equal(expanded[99], '100');
+        assert(Date.now() - start < 1000, 'range expansion must complete in bounded time');
+      }
       console.log(`PASS minimatch ${pkg.version}: brace-expansion ${braceVersion}, callable API and expressions`);
     }
   }
@@ -380,6 +388,37 @@ async function main() {
     assert(uuid.validate(expected));
     assert.equal(uuid.version(expected), 5);
     console.log(`PASS uuid ${pkg.version}: named exports, v4/v5 buffer output, parse/stringify`);
+  }
+
+  for (const pkg of workspace === 'root' ? [] : installed('@xhmikosr/decompress', 10)) {
+    const decompress = pkg.require('@xhmikosr/decompress');
+    const destDir = mkdtempSync(join(tmpdir(), 'ophis-decompress-'));
+    const escapeFile = join(dirname(destDir), 'escape.txt');
+    try {
+      const tarHeader = Buffer.alloc(512, 0);
+      Buffer.from('../escape.txt').copy(tarHeader, 0);
+      Buffer.from('0000644\0').copy(tarHeader, 100);
+      Buffer.from('0000000\0').copy(tarHeader, 108);
+      Buffer.from('0000000\0').copy(tarHeader, 116);
+      Buffer.from('00000000000\0').copy(tarHeader, 124);
+      Buffer.from('00000000000\0').copy(tarHeader, 136);
+      Buffer.from('        ').copy(tarHeader, 148);
+      tarHeader[156] = 0x30;
+      Buffer.from('ustar\0').copy(tarHeader, 257);
+      Buffer.from('00').copy(tarHeader, 263);
+      let checksum = 0;
+      for (let i = 0; i < 512; i++) checksum += tarHeader[i];
+      Buffer.from(checksum.toString(8).padStart(6, '0') + '\0 ').copy(tarHeader, 148);
+      const { gzipSync } = require('node:zlib');
+      const tarGz = gzipSync(Buffer.concat([tarHeader, Buffer.alloc(1024, 0)]));
+      let threw = false;
+      try { await decompress(tarGz, destDir); } catch { threw = true; }
+      assert(!existsSync(escapeFile), 'path-traversal entry must not write outside destination (GHSA-hrh2-vp3x-79xf)');
+      console.log(`PASS @xhmikosr/decompress ${pkg.version}: path-traversal blocked (GHSA-hrh2-vp3x-79xf)${threw ? ' [threw]' : ' [dropped]'}`);
+    } finally {
+      rmSync(destDir, { recursive: true, force: true });
+      if (existsSync(escapeFile)) rmSync(escapeFile, { force: true });
+    }
   }
 }
 
