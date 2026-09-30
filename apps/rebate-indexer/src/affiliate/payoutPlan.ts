@@ -18,6 +18,16 @@ export function resolveAffiliatePayoutEnabled(): boolean {
   throw new Error(`AFFILIATE_PAYOUT_ENABLED must be 'true', '1', 'false', '0', or unset; got "${raw}"`);
 }
 
+/** Configuration readiness only, never a promise of execution or Safe approval. */
+export function affiliatePayoutStatus(env: NodeJS.ProcessEnv = process.env): 'disabled' | 'not-configured' | 'dry-run' | 'scheduled' {
+  if (!['true', '1'].includes(env.AFFILIATE_PAYOUT_ENABLED?.trim() ?? '')) return 'disabled';
+  if (!env.SAFE_PROPOSER_PRIVATE_KEY?.trim()) return 'not-configured';
+  const propose = env.BATCHER_PROPOSE_ENABLED?.trim() ?? '';
+  if (['false', '0'].includes(propose)) return 'dry-run';
+  if (!['', 'true', '1'].includes(propose)) return 'not-configured';
+  return 'scheduled';
+}
+
 export interface AffiliateTransfer {
   /** The on-chain WETH recipient = COALESCE(payoutWallet, referrerWallet). */
   readonly to: `0x${string}`;

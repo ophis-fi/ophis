@@ -52,13 +52,13 @@ describe('buildOphisOrderMetadata', () => {
     expect(metadata.partnerFee).toEqual({ recipient: OPHIS_PARTNER_FEE_RECIPIENT, volumeBps: 1 });
   });
 
-  it('keeps Arc fee-bearing without promising unindexed referral rewards', () => {
+  it('keeps Arc fee-bearing and includes an optional referral', () => {
     expect(isOphisFeeChain(5042)).toBe(true);
     const { metadata } = buildOphisOrderMetadata({ chainId: 5042 });
     expect(metadata.partnerFee).toEqual({ recipient: OPHIS_PARTNER_FEE_RECIPIENT, volumeBps: 1 });
     expect(metadata.ophisReferrer).toBeUndefined();
-    expect(() => buildOphisOrderMetadata({ chainId: 5042, referralCode: 'yourcode' }))
-      .toThrow(/Arc \(5042\) referral rewards are not supported/);
+    expect(buildOphisOrderMetadata({ chainId: 5042, referralCode: 'YourCode' }).metadata)
+      .toMatchObject({ partnerFee: metadata.partnerFee, ophisReferrer: { code: 'yourcode' } });
   });
 
   it('tags the referral code (normalized) so the rebate accrues', () => {

@@ -17,19 +17,19 @@ const { updated } = canonicalPage('/pricing/')
 const FAQS = [
   {
     q: 'What does Ophis charge?',
-    a: `Outside the current Arc release exception, the standard batch-auction schedule charges a 1 bp Ophis base. Ophis also retains 80% of reference-quote improvement on volatile pairs, capped at 99 bps of volume, or 50% on stable pairs, capped at 20 bps. CoW-hosted chains additionally pay CoW Protocol fees upstream.`,
+    a: `The standard batch-auction schedule charges a 1 bp Ophis base. On eligible orders, Ophis also retains 80% of reference-quote improvement on volatile pairs, capped at 99 bps of volume, or 50% on stable pairs, capped at 20 bps. On Ophis-operated chains, including Arc, improvement capture applies only to in-market orders. Out-of-market limit orders pay the signed base without this backend improvement fee. CoW-hosted chains additionally pay CoW Protocol fees upstream.`,
   },
   {
     q: 'What is the all-in cost on each chain?',
-    a: `For standard-policy batch-auction swaps (not the current Arc exception), the minimum Ophis fee is 1 bp and the maximum Ophis charge is 100 bps on volatile pairs or 21 bps on stable pairs. On CoW-hosted chains, CoW Protocol adds its own fees on top.`,
+    a: `For standard-policy batch-auction swaps, the minimum Ophis fee is 1 bp and the maximum Ophis charge is 100 bps on volatile pairs or 21 bps on stable pairs. On CoW-hosted chains, CoW Protocol adds its own fees on top.`,
   },
   {
     q: 'Does Ophis take a cut of surplus?',
-    a: `Under the standard policy, excluding Arc's current release exception: 80% on volatile pairs or 50% on stable pairs, subject to the caps. The measurement is improvement over the reference quote, not the user's slippage limit.`,
+    a: `Under the standard policy: 80% on volatile pairs or 50% on stable pairs, subject to the caps. The measurement is improvement over the reference quote, not the user's slippage limit.`,
   },
   {
     q: 'What do integrators pay, and what can they charge?',
-    a: `SDK v0.4.3 and hosted MCP integrations charge a 1 bp base on supported chains, including Arc. Other chains also apply the standard capped improvement policy; Arc currently has no backend improvement capture. Integrators can still charge an onboarded own-fee of up to 90 bps on top; Ophis's registered hosted configuration reserves a 190 bps aggregate ceiling. This is not a universal ceiling for every CoW widget or integration.`,
+    a: `SDK v0.4.3 and hosted MCP integrations charge a 1 bp base on supported chains, including Arc. All supported chains also apply the standard capped improvement policy. Integrators can still charge an onboarded own-fee of up to 90 bps on top; Ophis's registered hosted configuration reserves a 190 bps aggregate ceiling. This is not a universal ceiling for every CoW widget or integration.`,
   },
   {
     q: 'Are the APIs free?',
@@ -37,23 +37,24 @@ const FAQS = [
   },
   {
     q: 'Are there rebates?',
-    a: `On indexed chains, volume rebate tiers (10% to 50% by rolling 30-day volume) weight your share of a monthly WETH rebate pool, and a referral layer pays 8% or 12% of the verified base fee Ophis keeps, monthly in WETH, on-chain. Arc is not indexed and earns neither rebate; omit referral codes from Arc SDK/MCP orders.`,
+    a: `On indexed chains, including Arc, volume rebate tiers (10% to 50% by rolling 30-day volume) weight your share of a monthly WETH rebate pool, and a referral layer pays 8% or 12% of the verified base fee Ophis keeps, monthly in WETH, on-chain. Eligibility requires verified settled trades. For Arc referrals, MCP clients pass referrerCode to build_order; direct SDK integrations use v0.4.4 or later.`,
   },
 ]
 ---
 
 <ContentPage
   title="Ophis fees and pricing"
-  description="Ophis fees: the standard base plus capped improvement policy, Arc's release exception, hosted upstream fees and bridge costs."
+  description="Ophis fees: the standard base plus capped improvement policy, hosted upstream fees and bridge costs."
   path="/pricing/"
   heading="Fees and pricing"
-  lede="Pricing by settlement path: standard batch-auction fees, the Arc release exception and route-specific bridge costs."
+  lede="Pricing by settlement path: standard batch-auction fees and route-specific bridge costs."
   updated={updated}
   faqs={FAQS}
 >
   <p>
-    <strong>The short version:</strong> the standard schedule, excluding the current Arc exception, charges 1 bp plus 80% of
+    <strong>The short version:</strong> the standard schedule charges 1 bp plus 80% of
     reference-quote improvement on volatile pairs (99 bps cap), or 50% on stable pairs (20 bps cap).
+    On Ophis-operated chains, this improvement fee applies only to in-market orders.
     CoW-hosted chains additionally pay CoW Protocol's upstream fees.
   </p>
 
@@ -61,7 +62,7 @@ const FAQS = [
     <thead>
       <tr>
         <th scope="col">Path</th>
-        <th scope="col">Optimism / Unichain / Robinhood</th>
+        <th scope="col">Optimism / Unichain / Robinhood / Arc</th>
         <th scope="col">CoW-hosted</th>
       </tr>
     </thead>
@@ -96,12 +97,15 @@ const FAQS = [
     </section>
   ))}
 
-  <h2>Arc release exception</h2>
+  <h2>Arc price-improvement policy</h2>
   <p>
-    Arc is Ophis-operated but its running release currently configures no backend improvement
-    policy. The verified completed USDC/EURC order carried a 1 bp volume-only fee. Do not assume
-    the standard 80%/99 bps or 50%/20 bps capture applies there: review the quote and signed
-    fee metadata. See the <a href="https://docs.ophis.fi/fees#arc-release-exception">dated fee evidence</a>.
+    Arc uses the same backend market-order policy: 80% of reference-quote improvement capped
+    at 99 bps, or 50% capped at 20 bps for recognized stablecoin pairs such as USDC/EURC,
+    plus the separate 1 bp base. It applies only to in-market orders; out-of-market limit
+    orders pay the signed base without this backend improvement fee. Eligibility follows
+    the order's price relative to its reference quote, not the frontend's market/limit
+    label. Historical base-only trades retain their original fees.
+    See the <a href="https://docs.ophis.fi/fees#arc-price-improvement-policy">Arc fee details</a>.
   </p>
 
   <h2>Bridge costs and gas</h2>

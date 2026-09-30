@@ -193,19 +193,15 @@ async function fetchLeaderboardEntries(limit: number): Promise<CachedLeaderboard
     affiliate_counts AS (
       SELECT
         r.referrer_wallet,
-        COUNT(DISTINCT r.referred_wallet)::text AS affiliate_count,
+        COUNT(DISTINCT r.wallet)::text AS affiliate_count,
         -- Same fee gate + Sepolia exclusion as every other volume column on this
         -- endpoint, so referred testnet dust or examined-0-fee trades cannot
         -- inflate a referrer's displayed figure. (The affiliate MONEY path in
         -- affiliate/accrual.ts applies its own, stricter cycle-scoped filters.)
         COALESCE(SUM(t.value_usd), 0)::text AS referred_volume_usd
-      FROM referrals r
-      LEFT JOIN trades t
-        ON t.wallet = r.referred_wallet
-        AND t.block_timestamp >= r.bound_at
-        AND t.value_usd IS NOT NULL
-        AND (t.volume_fee_bps IS NULL OR t.volume_fee_bps > 0)
-        AND t.chain_id <> ${TESTNET_CHAIN_ID}
+      FROM affiliate_referees r
+      LEFT JOIN affiliate_attributed_trades t
+        ON t.wallet = r.wallet AND t.referrer_wallet = r.referrer_wallet
       GROUP BY r.referrer_wallet
     )
     SELECT

@@ -150,7 +150,15 @@ such signatures.
 
 ### Step 7: publish the appData and submit the order
 
+Renew rebate enrollment immediately before **each** submission, even without a
+referral code. Register the order owner, not a Safe owner's signing address.
+If this fails, stop before submitting and retry enrollment; do not silently
+promise a rebate. Registering once when a wallet connects is not sufficient.
+
 ```bash
+curl --fail --silent --show-error --max-time 10 \
+  "https://rebates.ophis.fi/tier/$owner" >/dev/null || exit 1
+
 # Register the appData document (idempotent, content-addressed).
 curl -sS -X PUT "$ORDERBOOK/api/v1/app_data/$appDataHash" \
   -H 'Content-Type: application/json' \

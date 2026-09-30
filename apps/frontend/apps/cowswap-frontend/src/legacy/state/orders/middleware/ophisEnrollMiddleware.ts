@@ -1,6 +1,8 @@
 import { isAnyOf } from '@reduxjs/toolkit'
 import { Middleware } from 'redux'
 
+import { enrollOphisTrader } from 'common/utils/enrollOphisTrader'
+
 import { AppState } from '../../index'
 import * as OrderActions from '../actions'
 
@@ -21,51 +23,27 @@ import * as OrderActions from '../actions'
  * address is already public on-chain in the settled order's appData — so this
  * does NOT re-introduce the connect-time tracking the opt-in gate prevents.
  *
- * `addPendingOrder` is the single chokepoint every order type passes through
- * (market, limit, TWAP, Safe, eth-flow). We enroll `order.owner`, which is the
- * trader for every standard order — an EOA for swaps/limit/TWAP, the Safe for
+ * `addPendingOrder` covers market, limit, Safe and eth-flow orders. TWAP
+ * enrolls explicitly from its creation flow. We enroll `order.owner`, the
+ * trader for every standard order — an EOA for swaps/limit, the Safe for
  * smart-contract wallets. For eth-flow (native-ETH sells) `owner` is the eth-flow
  * CONTRACT rather than the trader; that address is simply re-enrolled (idempotent,
  * and it is already tracked), while the actual eth-flow trader is attributed by
  * the on-chain settle() decoder, not this middleware.
  *
- * Enrollment is idempotent server-side (INSERT ... ON CONFLICT DO NOTHING); the
- * per-session `enrolled` set just avoids redundant network calls.
+ * Each submission renews server-side enrollment; only in-flight calls are deduplicated.
  */
-const REBATES_API = process.env.REACT_APP_REBATES_API ?? 'https://rebates.ophis.fi'
 const isPendingOrderAction = isAnyOf(OrderActions.addPendingOrder)
-const enrolled = new Set<string>()
 
 export const ophisEnrollMiddleware = (() => (next) => (action) => {
   if (isPendingOrderAction(action)) {
     // Enrollment is a best-effort side effect; it must NEVER break order
     // dispatch, so any failure is swallowed and `next(action)` still runs.
     try {
-      enrollWallet(action.payload.order.owner)
+      void enrollOphisTrader(action.payload.order.owner)
     } catch {
       /* noop */
     }
   }
   return next(action)
 }) satisfies Middleware<Record<string, unknown>, AppState>
-
-function enrollWallet(raw: string | null | undefined): void {
-  if (!raw) return
-  const addr = (raw.startsWith('0x') ? raw : `0x${raw}`).toLowerCase()
-  // Address shape check — skip anything malformed or the zero address.
-  if (!/^0x[0-9a-f]{40}$/.test(addr) || addr === `0x${'0'.repeat(40)}`) return
-  if (enrolled.has(addr)) return
-  enrolled.add(addr)
-  // Fire-and-forget: enrollment must never block or throw into the trade flow.
-  // On ANY failure — a network/CORS error OR a non-2xx response (e.g. a 429
-  // rate-limit or a transient 500, where `fetch` still resolves) — drop the
-  // address so a later order retries. Otherwise one transient error would
-  // permanently mask a wallet we are specifically trying not to miss.
-  fetch(`${REBATES_API}/tier/${addr}`)
-    .then((res) => {
-      if (!res.ok) enrolled.delete(addr)
-    })
-    .catch(() => {
-      enrolled.delete(addr)
-    })
-}

@@ -1,10 +1,11 @@
 import { sql as dsql } from 'drizzle-orm';
-import { listTrades, getOrder, SUPPORTED_CHAIN_IDS } from './cow/client.js';
+import { listTrades, getOrder, hasAccountOrders, SUPPORTED_CHAIN_IDS } from './cow/client.js';
 import { APP_CODES, type AppCode, type CowTrade } from './cow/types.js';
 import {
   HISTORICAL_OPHIS_FEE_MAX_BPS,
   OWN_FEE_MAX_BPS,
   SOVEREIGN_CHAIN_IDS,
+  ARC_CHAIN_ID,
   affiliateFeeBpsForOrderCreatedAt,
   undecodedFeeFallbackBpsForOrderCreatedAt,
 } from './affiliate/rates.js';
@@ -393,7 +394,13 @@ export function readAssessedOphisFeeBps(
   const raw = (meta as { metadata?: { partnerFee?: unknown } })?.metadata?.partnerFee;
   const appFees = (Array.isArray(raw) ? raw : raw ? [raw] : []) as Array<{ recipient?: unknown }>;
   const executed = trade.executedProtocolFees ?? [];
-  if (appFees.length === 0 || executed.length < appFees.length) return null;
+  if (appFees.length === 0) {
+    // An explicitly empty execution list proves zero, including historical Arc fills.
+    // Missing execution metadata is not evidence of a zero fee.
+    return chainId === ARC_CHAIN_ID && orderClass !== undefined && meta != null
+      && trade.executedProtocolFees?.length === 0 ? '0.00000000' : null;
+  }
+  if (executed.length < appFees.length) return null;
 
   // Operated market and limit orders can prepend one canonical Ophis improvement
   // policy. Exact cardinality plus the value-level suffix match below rejects
@@ -405,6 +412,9 @@ export function readAssessedOphisFeeBps(
       && executed.length === appFees.length + 1
       && isCanonicalOphisImprovement(chainId, executed[0]!.policy)) {
       hasSovereignImprovement = true;
+    } else if (chainId === ARC_CHAIN_ID) {
+      // Preserve pre-activation partner-only history, but reject unknown prefixes.
+      if (orderClass === undefined || executed.length !== appFees.length) return null;
     } else if ((orderClass !== 'limit' && orderClass !== 'liquidity')
       || executed.length !== appFees.length) {
       return null;
@@ -425,7 +435,7 @@ export function readAssessedOphisFeeBps(
       : [],
   );
   if (hasSovereignImprovement) ophisFees.unshift(executed[0]!);
-  if (ophisFees.length === 0) return null;
+  if (ophisFees.length === 0) return chainId === ARC_CHAIN_ID ? '0.00000000' : null;
   const token = ophisFees[0]!.token.toLowerCase();
   if (ophisFees.some((fee) => fee.token.toLowerCase() !== token)) return null;
 
@@ -1347,13 +1357,39 @@ export async function runFetcher(
  * Never touches a proven wallet (one with a row in `trades`), and never drops a
  * wallet we haven't given a fair chance to fetch (uses last_attempt_at to tell a
  * transient failure apart from genuine emptiness / deep spam backlog):
- *   - fetched OK but empty     (last_fetched set)                 -> 7 days since registration
+ *   - fetched OK but empty     (last_fetched set)                 -> 7 days since LAST registration
  *   - attempted, never succeeded (last_attempt_at set, no fetch)  -> 30 days since the last attempt
- *   - never even attempted      (overflow behind the per-run cap) -> 30 days since registration
+ *   - never even attempted      (overflow behind the per-run cap) -> 30 days since LAST registration
  * A wallet still being retried (attempted recently, last_attempt_at < 30d) is
  * NOT pruned, so a CoW outage on its chain can't drop it before it succeeds.
  */
-export async function pruneStaleWallets(): Promise<{ pruned: number }> {
+export async function hasContractWalletCode(
+  chainId: number, owner: `0x${string}`, signal: AbortSignal, client = getRpcClient(chainId),
+): Promise<boolean> {
+  signal.throwIfAborted();
+  let onAbort: () => void;
+  const aborted = new Promise<never>((_, reject) => {
+    onAbort = () => reject(signal.reason);
+    signal.addEventListener('abort', onAbort, { once: true });
+  });
+  try {
+    // Bound the prune wait even if the shared read-only RPC client is retrying.
+    const code = await Promise.race([(async () => {
+      if (await client.getChainId() !== chainId) throw new Error('prune RPC chain mismatch');
+      signal.throwIfAborted();
+      return client.request({ method: 'eth_getCode', params: [owner, 'latest'] });
+    })(), aborted]);
+    if (typeof code !== 'string' || !/^0x(?:[0-9a-fA-F]{2})*$/.test(code)) throw new Error('invalid prune bytecode response');
+    return code !== '0x';
+  } finally {
+    signal.removeEventListener('abort', onAbort!);
+  }
+}
+
+export async function pruneStaleWallets(
+  hasOrders = hasAccountOrders,
+  hasContract = hasContractWalletCode,
+): Promise<{ pruned: number }> {
   const { sql } = await import('./db/index.js');
   // Hold the SAME advisory lock runFetcher uses, so the prune can NEVER run
   // concurrently with a fetch. Without it, a fetch already holding the lock may
@@ -1371,18 +1407,59 @@ export async function pruneStaleWallets(): Promise<{ pruned: number }> {
       return { pruned: 0 };
     }
     try {
-      const pruned = await sql`
-        DELETE FROM tracked_wallets
+      const candidates = await sql<{ wallet: `0x${string}`; last_registered_at: string }[]>`
+        SELECT '0x' || encode(wallet, 'hex') AS wallet, last_registered_at::text FROM tracked_wallets
         WHERE wallet NOT IN (SELECT wallet FROM trades)
           AND wallet NOT IN (SELECT wallet FROM defillama_backfill_wallets)
           AND (
-            (last_fetched IS NOT NULL AND first_seen < now() - INTERVAL '7 days')
-            OR (last_fetched IS NULL AND last_attempt_at IS NOT NULL AND last_attempt_at < now() - INTERVAL '30 days')
-            OR (last_fetched IS NULL AND last_attempt_at IS NULL AND first_seen < now() - INTERVAL '30 days')
+            (last_fetched IS NOT NULL AND last_registered_at < now() - INTERVAL '7 days')
+            OR (last_fetched IS NULL AND last_registered_at < now() - INTERVAL '30 days'
+                AND (last_attempt_at IS NULL OR last_attempt_at < now() - INTERVAL '30 days'))
           )
+        ORDER BY last_prune_check_at ASC NULLS FIRST, last_registered_at ASC LIMIT 100
       `;
-      log.info({ pruned: pruned.count }, 'pruned stale tracked wallets');
-      return { pruned: pruned.count };
+      const signal = AbortSignal.timeout(30_000);
+      let pruned = 0;
+      for (const candidate of candidates) {
+        if (signal.aborted) break;
+        await sql`UPDATE tracked_wallets SET last_prune_check_at = now()
+          WHERE wallet = decode(${candidate.wallet.slice(2)}, 'hex')`;
+        try {
+          // Do not mistake an unfilled limit/presign order (or a fill racing
+          // the last fetch) for an inactive wallet. Errors retain enrollment.
+          let hasHistory = false;
+          for (const chainId of SUPPORTED_CHAIN_IDS) {
+            if (await hasOrders(chainId, candidate.wallet, signal)) { hasHistory = true; break; }
+          }
+          if (!hasHistory && !signal.aborted) {
+            // ponytail: retain contract wallets conservatively until conditional
+            // proposal discovery exists; a queued Safe TWAP has no child order yet.
+            for (const chainId of PRODUCTION_CHAIN_IDS) {
+              if (await hasContract(chainId, candidate.wallet, signal)) { hasHistory = true; break; }
+            }
+          }
+          if (hasHistory || signal.aborted) continue;
+          const removed = await sql`
+            WITH removed AS (
+              DELETE FROM tracked_wallets
+              WHERE wallet = decode(${candidate.wallet.slice(2)}, 'hex')
+                AND last_registered_at = ${candidate.last_registered_at}::timestamptz
+                AND NOT EXISTS (SELECT 1 FROM trades WHERE wallet = decode(${candidate.wallet.slice(2)}, 'hex'))
+                AND NOT EXISTS (SELECT 1 FROM defillama_backfill_wallets WHERE wallet = decode(${candidate.wallet.slice(2)}, 'hex'))
+              RETURNING wallet, first_seen, last_registered_at
+            )
+            INSERT INTO pruned_wallets (wallet, first_seen, last_registered_at)
+            SELECT wallet, first_seen, last_registered_at FROM removed
+            ON CONFLICT (wallet) DO UPDATE SET pruned_at = now(), last_registered_at = EXCLUDED.last_registered_at
+            RETURNING wallet
+          `;
+          pruned += removed.length;
+        } catch (err) {
+          log.warn({ err, wallet: candidate.wallet }, 'prune verification failed; retaining wallet');
+        }
+      }
+      log.info({ pruned }, 'pruned stale tracked wallets');
+      return { pruned };
     } finally {
       await lockConn`SELECT pg_advisory_unlock(${FETCHER_LOCK_KEY})`;
     }

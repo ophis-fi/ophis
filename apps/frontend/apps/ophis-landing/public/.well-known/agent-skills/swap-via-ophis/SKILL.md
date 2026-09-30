@@ -47,15 +47,17 @@ All endpoints are public and require no API key or authentication.
 
 ## Fees
 
-Outside the current Arc release exception, batch-auction orders carry a 1 bp base
+Batch-auction orders carry a 1 bp base
 plus 80% of reference-quote improvement on volatile pairs (99 bps cap), or 50%
-on stable pairs (20 bps cap). Optimism, Unichain and Robinhood Chain operated
+on stable pairs (20 bps cap). Optimism, Unichain, Robinhood Chain and Arc operated
 backends add improvement capture; hosted orders encode it in appData alongside
 the base, and CoW Protocol's own fees apply upstream. Use
 `buildOphisAppDataPartnerFee(chainId, isStablePair)` rather than a volume-only
 hosted entry. Approvals and other wallet transactions require gas. Details:
-https://docs.ophis.fi/fees. Arc currently charges only the 1 bp base and is not
-indexed for rebates or referral rewards; omit referral codes for Arc orders.
+https://docs.ophis.fi/fees. Arc uses the same backend improvement policy for in-market orders and is
+indexed for volume and referral rebates. MCP clients pass `referrerCode` to
+`build_order` for Arc attribution; only direct SDK integrations require
+`@ophis/sdk` v0.4.4 or later for Arc referral tags.
 On indexed chains, a share of fees is returned monthly to active wallets as volume-tier rebates. The `@ophis/sdk` npm package exposes
 `buildOphisAppDataPartnerFee`, `OPHIS_VOLUME_FEE_BPS`,
 `OPHIS_STABLE_VOLUME_FEE_BPS`, and

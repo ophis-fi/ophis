@@ -38,7 +38,9 @@ export const ARC_USYC = new TokenWithLogo(
   'USYC (eligible wallets only)',
 )
 export const ARC_LOCAL = process.env.NODE_ENV !== 'production' && process.env.REACT_APP_ARC_LOCAL === 'true'
-export const ARC_RPC_URL = ARC_LOCAL ? 'http://127.0.0.1:8547' : 'https://rpc.mainnet.arc.io'
+// Keep the default outside arc.io: browser content blockers can block that entire domain.
+export const ARC_RPC_URL = ARC_LOCAL ? 'http://127.0.0.1:8547' : 'https://arc-rpc.publicnode.com'
+export const ARC_FALLBACK_RPC_URL = 'https://rpc.blockdaemon.mainnet.arc.io'
 export const ARC_LABEL = ARC_LOCAL ? 'Arc (local)' : 'Arc'
 export const ARC_ORDERBOOK_URL = ARC_LOCAL ? 'http://127.0.0.1:8087' : process.env.REACT_APP_ARC_ORDERBOOK_URL || ''
 
@@ -55,7 +57,12 @@ if (requested && (!ARC_SETTLEMENT || !ARC_VAULT_RELAYER))
   throw new Error('Arc requires settlement and vault relayer addresses')
 if (requested && areAddressesEqual(ARC_SETTLEMENT, ARC_VAULT_RELAYER)) throw new Error('Arc contracts must be distinct')
 if (requested && !ARC_LOCAL) {
-  const url = new URL(ARC_ORDERBOOK_URL)
+  let url: URL
+  try {
+    url = new URL(ARC_ORDERBOOK_URL)
+  } catch {
+    throw new Error('Arc requires a valid public HTTPS orderbook URL')
+  }
   if (
     url.protocol !== 'https:' ||
     url.username ||

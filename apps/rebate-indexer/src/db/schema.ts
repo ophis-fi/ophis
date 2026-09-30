@@ -175,6 +175,8 @@ export const defillamaFills = pgTable(
 export const trackedWallets = pgTable('tracked_wallets', {
   wallet: bytea('wallet').primaryKey(),
   firstSeen: timestamp('first_seen', { withTimezone: true }).notNull().defaultNow(),
+  lastRegisteredAt: timestamp('last_registered_at', { withTimezone: true }).notNull().defaultNow(),
+  lastPruneCheckAt: timestamp('last_prune_check_at', { withTimezone: true }),
   // Stamped on a fully-successful fetch (all chains OK). Drives the 6h refresh
   // window and "this wallet has no Ophis trades" eviction.
   lastFetched: timestamp('last_fetched', { withTimezone: true }),

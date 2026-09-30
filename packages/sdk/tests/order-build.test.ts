@@ -38,15 +38,15 @@ describe('deterministicStringify', () => {
 });
 
 describe('buildOphisFullAppData', () => {
-  it('rejects Arc referral attribution while retaining its normal fee', () => {
+  it('includes Arc referral attribution while retaining its normal fee', () => {
     const plain = buildOphisFullAppData(5042);
     expect(plain.partnerFee).toEqual({
       volumeBps: 1,
       recipient: '0x858f0F5eE954846D47155F5203c04aF1819eCeF8',
     });
     expect(plain.doc.metadata).not.toHaveProperty('ophisReferrer');
-    expect(() => buildOphisFullAppData(5042, undefined, 'yourcode'))
-      .toThrow(/Arc \(5042\) referral rewards are not supported/);
+    expect(buildOphisFullAppData(5042, undefined, 'YourCode').doc.metadata)
+      .toMatchObject({ partnerFee: plain.partnerFee, ophisReferrer: { code: 'yourcode' } });
   });
 
   it('embeds the CIP-75 partner fee on an Ophis fee chain (Optimism)', () => {

@@ -1,5 +1,27 @@
 import { test, expect } from '@playwright/test'
 
+for (const width of [320, 390, 1280]) {
+  test(`Arc announcement shows its logo and links to Arc at ${width}px`, async ({ page }) => {
+    await page.setViewportSize({ width, height: 844 })
+    await page.goto('/')
+    const banner = page.getByRole('complementary', { name: 'Product announcement' })
+    await expect(banner).toBeVisible()
+    await expect(banner).toHaveText('Arc is live on Ophis. Trade now →')
+    const link = banner.getByRole('link')
+    await expect(link).toHaveAttribute('href', 'https://swap.ophis.fi/#/5042/swap')
+    const logo = banner.locator('img')
+    await expect(logo).toHaveAttribute('src', '/logos/chain-arc-network.svg')
+    await logo.evaluate((img: HTMLImageElement) => img.decode())
+    await expect(logo).toHaveCSS('filter', 'none')
+    const size = await logo.evaluate((img) => ({ width: img.clientWidth, height: img.clientHeight }))
+    expect(size.width).toBeGreaterThan(0)
+    expect(size.width).toBe(size.height)
+    expect(await banner.evaluate((el) => el.scrollWidth)).toBeLessThanOrEqual(width)
+    await link.focus()
+    await expect(link).toBeFocused()
+  })
+}
+
 test('nav renders mono logo + nav links + Trade CTA', async ({ page }) => {
   await page.goto('/')
   await expect(page.locator('.nav .logo')).toContainText('Ophis')

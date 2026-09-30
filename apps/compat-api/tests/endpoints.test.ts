@@ -41,6 +41,7 @@ const liveQuoteBody = {
 };
 
 interface StubOptions {
+  enrollment?: () => Response;
   quote?: () => Response;
   orders?: (init?: RequestInit) => Response;
   orderByUid?: () => Response;
@@ -52,6 +53,7 @@ const stubFetch = (opts: StubOptions = {}): typeof fetch =>
   (async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
     const url = String(input instanceof Request ? input.url : input);
     opts.onRequest?.(url, init);
+    if (url.startsWith('https://rebates.ophis.fi/tier/')) return (opts.enrollment ?? (() => Response.json({})))();
     if (url.includes('/api/v1/quote')) {
       return (opts.quote ?? (() => Response.json(liveQuoteBody)))();
     }
@@ -784,6 +786,22 @@ describe('POST /sor/submit', () => {
     expect(posted!.appDataHash).toBe(built.appDataHash);
     expect(posted!.quoteId).toBe(9858);
     expect(posted!.signingScheme).toBe('eip712');
+  });
+
+  it.each([200, 503])('enrolls the owner after acceptance and reports enrollment HTTP %s honestly', async (status) => {
+    const built = draft();
+    const calls: string[] = [];
+    const res = await handleRequest(post('/sor/submit', {
+      chainId: 10, order: built.order, signature: '0xdeadbeef', from: USER, fullAppData: built.fullAppData,
+    }), ENV, deps(stubFetch({
+      onRequest: (url) => calls.push(url),
+      enrollment: () => Response.json({}, { status }),
+    })));
+    const result = await res.json() as { orderUid: string; enrollmentWarning?: string };
+    expect(res.status).toBe(200);
+    expect(result.orderUid).toBe(UID);
+    expect(calls.at(-1)?.toLowerCase()).toBe(`https://rebates.ophis.fi/tier/${USER.toLowerCase()}`);
+    expect(Boolean(result.enrollmentWarning)).toBe(status !== 200);
   });
 
   it('refuses a fullAppData that does not hash to order.appData', async () => {

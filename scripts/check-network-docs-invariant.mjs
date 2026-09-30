@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 import assert from 'node:assert/strict';
-import { readFileSync, readdirSync } from 'node:fs';
+import { existsSync, readFileSync, readdirSync } from 'node:fs';
 
 const read = (path) => readFileSync(new URL(`../${path}`, import.meta.url), 'utf8');
 const readJson = (path) => JSON.parse(read(path));
@@ -138,9 +138,34 @@ assert.match(aiAgents, /"arc": 5042/, 'Python intent helper must resolve Arc');
 const partners = read('apps/docs-ophis/docs/partners.md');
 assert.match(partners, /arc-mainnet\.ophis\.fi/, 'partner guide must document the Arc host');
 assert.match(partners, /0x78799F98276efba1EdeeD32eae03a3fd8Cdfec3A/, 'partner guide must document the Arc domain');
-assert.match(partners, /buildOphisReferrerMetadata\(chainId === 5042 \? undefined : 'your-code', chainId\)/,
-  'partner referral example must omit Arc attribution and pass chain context');
+assert.match(partners, /buildOphisReferrerMetadata\('your-code', chainId\)/,
+  'partner referral example must include Arc attribution and pass chain context');
+assert.doesNotMatch(partners, /referralCode: chainId === 5042 \? undefined/,
+  'high-level partner example must not suppress Arc referrals');
+assert.match(partners, /The earnings indexer includes all four/,
+  'earnings reporting must include every Ophis-operated chain');
 assert.doesNotMatch(partners, /Arc is app-only|Arc is app-supported but not yet/, 'stale Arc SDK exclusion in partner guide');
+
+const integrationDocPaths = [
+  'README.md',
+  ...readdirSync(new URL('../apps/docs-ophis/docs/', import.meta.url))
+    .filter((name) => /\.mdx?$/.test(name)).map((name) => `apps/docs-ophis/docs/${name}`),
+  ...readdirSync(new URL('../packages/', import.meta.url))
+    .map((name) => `packages/${name}/README.md`)
+    .filter((path) => existsSync(new URL(`../${path}`, import.meta.url))),
+];
+const staleArcRebate = /Arc[^.]{0,160}(?:not (?:yet )?(?:indexed|ingested|eligible|covered by rebate indexing)|no (?:[\w/-]+ ){0,5}rebates|no rebate indexing|no referral accrual|excluded from rebate indexing|do not accrue referral)|indexed chains,? excluding Arc|no backend improvement capture or (?:rebate indexing|referral\/volume-tier rebates)|omit referral codes (?:from|for) Arc|referralCode: [^,;]{0,80}=== 5042 \? undefined/i;
+for (const stale of [
+  'Arc earns no referral or volume-tier rebates', 'Arc is not yet eligible',
+  'Arc earns no rebates', 'indexed chains, excluding Arc',
+  'Arc is not yet covered by rebate indexing',
+  'no backend improvement capture or referral/volume-tier rebates',
+  'referralCode: wallet.getChainId() === 5042 ? undefined : code',
+]) assert.match(stale, staleArcRebate, `Arc exclusion guard misses: ${stale}`);
+for (const path of integrationDocPaths) {
+  assert.doesNotMatch(read(path).replace(/\s+/g, ' '), staleArcRebate,
+    `${path}: stale Arc rebate/referral exclusion`);
+}
 
 const landingSource = 'apps/frontend/apps/ophis-landing/src/';
 const publicSitePaths = [
@@ -150,6 +175,7 @@ const publicSitePaths = [
   'apps/frontend/apps/ophis-landing/public/apis.json',
   'apps/frontend/apps/ophis-landing/public/llms.txt',
   'apps/frontend/apps/ophis-landing/public/.well-known/ai-plugin.json',
+  'apps/frontend/apps/ophis-landing/public/.well-known/agent-skills/ophis/SKILL.md',
   'apps/frontend/apps/ophis-landing/public/.well-known/agent-skills/swap-via-ophis/SKILL.md',
   'apps/frontend/apps/cowswap-frontend/public/llms.txt',
   'apps/frontend/apps/cowswap-frontend/public/business/index.html',
@@ -161,24 +187,46 @@ const publicSitePaths = [
   'apps/mcp-server/README.md',
   'README.md',
 ];
+const staleArcIntegration = /(?:mappings (?:currently )?exclude Arc|supported chains excluding Arc|Arc \(5042\) is not\.|not in the published SDK\/MCP mappings|Arc[^.]*?(?:absent from|excluded from|not yet included in)[^.]*?published SDK\/MCP)/;
+assert.match(
+  'Arc is also Ophis-operated in the swap app, but is excluded from this pinned execution policy and the published SDK/MCP mappings.',
+  staleArcIntegration,
+  'Arc integration guard must catch the umbrella skill exclusion',
+);
 for (const path of publicSitePaths) {
   const source = read(path);
   // Dated blog posts can quote historical counts, as in the landing count gate.
   if (!path.includes('/src/content/')) {
     assert.doesNotMatch(source, /\b13 (?:supported )?EVM (?:chains|networks)\b|13 mainnets \+ Sepolia/, `${path}: stale network count`);
   }
-  assert.doesNotMatch(source,
-    /(?:mappings (?:currently )?exclude Arc|supported chains excluding Arc|Arc \(5042\) is not\.|not in the published SDK\/MCP mappings|Arc[^.\n]*?(?:absent from|excluded from|not yet included in) published SDK\/MCP)/,
+  assert.doesNotMatch(source.replace(/\s+/g, ' '),
+    staleArcIntegration,
     `${path}: stale Arc integration exclusion`);
 }
 
+for (const path of publicSitePaths) {
+  assert.doesNotMatch(read(path).replace(/\s+/g, ' '), staleArcRebate,
+    `${path}: stale Arc rebate/referral exclusion`);
+}
+for (const path of [
+  'apps/frontend/apps/ophis-landing/public/.well-known/agent-skills/swap-via-ophis/SKILL.md',
+  'apps/frontend/apps/ophis-landing/public/.well-known/ai-plugin.json',
+  'apps/frontend/apps/ophis-landing/public/llms.txt',
+  'apps/frontend/apps/ophis-landing/src/content/blog/let-an-ai-agent-swap-tokens.md',
+]) assert.match(read(path), /MCP clients pass `?referrerCode`? to\s+`?build_order`?/,
+  `${path}: MCP guidance must explain its own referral parameter`);
+
 assert.match(faq, /14 EVM chains/, 'FAQ must state the canonical 14-EVM-chain count');
-if (read('infra/arc-mainnet/release/render.py').includes('[fee-policies]\npolicies = []')) {
-  assert.match(
-    read('apps/docs-ophis/docs/fees.md'),
-    /### Arc release exception/,
-    'Arc without configured protocol fees must not inherit the standard improvement claim',
-  );
+for (const mode of ['local', 'release']) {
+  assert.match(read(`infra/arc-mainnet/${mode}/render.py`),
+    /\[\[fee-policies\.policies\]\]\nkind\.price-improvement = \{\{ factor = 0\.80, max-volume-factor = 0\.0099 \}\}\norder-class = "market"/,
+    `Arc ${mode} must retain the standard operated-chain market-order policy`);
+}
+const staleArcImprovement = /Arc currently (?:charges only|has no|differs)|(?:current Arc|Arc's current) release exception|Except on Arc|capture except on Arc|Arc[^.]{0,80}without backend improvement/i;
+assert.match('Arc currently differs', staleArcImprovement);
+for (const path of [...integrationDocPaths, ...publicSitePaths]) {
+  assert.doesNotMatch(read(path).replace(/\s+/g, ' '), staleArcImprovement,
+    `${path}: stale Arc price-improvement exclusion`);
 }
 assert.match(read('apps/frontend/libs/common-const/src/arc.const.ts'), /ARC_CHAIN_ID = 5042 as SupportedChainId/);
 assert.match(gettingStarted, /Arc is available in the swap app \(chain ID 5042\)/);

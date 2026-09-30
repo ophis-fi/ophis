@@ -7,7 +7,7 @@ sidebar_label: Networks & assets
 
 # Networks, bridges & assets
 
-Reviewed September 28, 2026. A listed network or token is not a promise that
+Reviewed September 29, 2026. A listed network or token is not a promise that
 every pair has liquidity, that every wallet is eligible, or that a route will settle.
 Check the live quote and the signing request.
 
@@ -17,7 +17,7 @@ Check the live quote and the signing request.
 | --- | --- |
 | Swap app | 14 EVM networks, including Arc (5042); see [Getting started](./getting-started.md#supported-networks) |
 | SDK v0.4.3 and hosted MCP | 14 EVM networks, including Arc (5042), with chain-specific orderbook and signing-domain helpers |
-| Published vault-order builder | `@ophis/safe-swap` v0.1.6 uses SDK v0.4.3 and covers 14 EVM networks, including Arc, for ERC-20 presigned orders; this does not extend the on-chain policy-module rollout |
+| Published vault-order builder | `@ophis/safe-swap` v0.1.7 uses SDK v0.4.4 and covers 14 EVM networks, including Arc, for ERC-20 presigned orders and referral attribution; this does not extend the on-chain policy-module rollout |
 | Intent parser | 14 chain slugs, including `arc`; the swap app blocks chains disabled in its deployment. Parsing does not verify a token contract or quote |
 | NEAR destination selector | Solana, Bitcoin, Monad, Hyperliquid, X Layer, Sui and Tron; source/asset/provider availability still gates each route |
 
@@ -26,11 +26,10 @@ Robinhood Chain and Arc**. The other ten app networks use CoW-hosted orderbooks.
 Do not send Arc orders to a guessed CoW endpoint or use another chain's signing domain.
 Arc's app configuration is deployment-specific. SDK v0.4.3 resolves its orderbook to
 `https://arc-mainnet.ophis.fi` and its EIP-712 settlement to
-`0x78799F98276efba1EdeeD32eae03a3fd8Cdfec3A`. Arc is not yet ingested by the
-rebate indexer; the SDK rejects Arc referral metadata rather than promising an untracked rebate.
-Arc's current backend has no configured protocol improvement policy; see the
-[fee-schedule exception](./fees.md#arc-release-exception), rather than assuming
-all operated chains use identical fee handling.
+`0x78799F98276efba1EdeeD32eae03a3fd8Cdfec3A`. Arc settled trades are ingested by
+the rebate indexer; use SDK v0.4.4 or later for referral metadata.
+Arc applies the same capped backend market-order improvement policy as the
+other operated chains; see the [fee schedule](./fees.md#arc-price-improvement-policy).
 
 ## Arc and Circle bridges
 

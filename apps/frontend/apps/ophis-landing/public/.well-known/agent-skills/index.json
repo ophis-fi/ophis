@@ -6,14 +6,14 @@
       "type": "skill-md",
       "description": "Swap or bridge tokens through Ophis, a non-custodial intent-based DEX aggregator: parse a natural-language request, get a best-execution quote, build an EIP-712 order, sign it in the user's own wallet, and submit it. Covers the public Intent API and the hosted MCP server.",
       "url": "https://ophis.fi/.well-known/agent-skills/swap-via-ophis/SKILL.md",
-      "digest": "sha256:c7b7c05306110528ef495a5d5d3ae32d5dd1a4c0673659f84a3da0514412677f"
+      "digest": "sha256:9b210f24b12d0723cb6abafdfa1b9e6f90ac5738d2d0ffd55bd73384b0fb8c86"
     },
     {
       "name": "ophis",
       "type": "skill-md",
       "description": "Umbrella skill for the Ophis family: when to use each sub-skill, the eight safety rules, and a machine-readable per-chain policy block (pinned settlement and vault-relayer contracts, EIP-712 domains, orderbook hosts, slippage latches) for shell-capable agents with curl, jq and cast.",
       "url": "https://ophis.fi/.well-known/agent-skills/ophis/SKILL.md",
-      "digest": "sha256:7ad667b287663cda31722a381d102bf6cfeeeb4592a8428e503ed77330999521"
+      "digest": "sha256:3d03ea745ddb31737a7458a57d13a47ade2f4194ed2ffbf423a225038a9888b9"
     },
     {
       "name": "ophis-quote",
@@ -27,7 +27,7 @@
       "type": "skill-md",
       "description": "Execute a token swap on Ophis end to end: quote, build, confirm with the user, exact approval to the pinned vault relayer, EIP-712 sign, submit. The signed order is a bounded intent with a hard minimum, settled MEV-protected in a batch auction.",
       "url": "https://ophis.fi/.well-known/agent-skills/ophis/skills/ophis-swap.md",
-      "digest": "sha256:f977935d70dabff76b68fe717c3fbaa3d478144bec98e6574ad36c4f5f0e6302"
+      "digest": "sha256:936e70b51a7a569ce3b0b9616c827be00f1b14268bdd540b95897b70de88b18f"
     },
     {
       "name": "ophis-order-status",

@@ -40,6 +40,7 @@ export interface ChainConfig {
   name: string;
   kind: ChainKind;
   dbContainer?: string;      // local-db chains
+  dbUser?: string;           // local DB role/database name; defaults to 'ophis'
   alchemySubdomain?: string; // rpc chains
   defaultRpcUrl?: string;    // public, keyless fallback; SCAN_RPC_<NAME> overrides it
   defaultBlockRpcUrl?: string; // optional header/archive fallback; SCAN_BLOCK_RPC_<NAME> overrides it

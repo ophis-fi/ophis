@@ -27,6 +27,7 @@ export const SOVEREIGN_SETTLEMENT: Readonly<Record<number, `0x${string}`>> = Obj
   10: '0x310784c7FCE12d578dA6f53460777bAc9718B859', // Optimism
   130: '0x108A678716e5E1776036eF044CAB7064226F714E', // Unichain
   4663: '0x886d9fd312F442C4E1f3cdeAE7b4AB73493e57cD', // Robinhood Chain
+  5042: '0x78799f98276efba1edeed32eae03a3fd8cdfec3a', // Arc; infra/arc-mainnet/VALIDATION.md
 });
 
 /** The GPv2Settlement contract whose Trade events the decoder scans on `chainId`:

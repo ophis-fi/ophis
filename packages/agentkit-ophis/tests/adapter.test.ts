@@ -41,7 +41,7 @@ afterEach(() => {
 });
 
 describe('Ophis AgentKit action provider', () => {
-  it.each(['config', 'environment'] as const)('skips the %s referral default on Arc and preserves it on Optimism', async (source) => {
+  it.each(['config', 'environment'] as const)('forwards the %s referral default on Arc and Optimism', async (source) => {
     if (source === 'environment') process.env.OPHIS_REFERRAL_CODE = 'partner_1';
     const provider = new OphisActionProvider(source === 'config' ? { referralCode: 'partner_1' } : {});
     mocks.executeOphisSwap.mockResolvedValue({ orderUid: 'uid' });
@@ -53,8 +53,7 @@ describe('Ophis AgentKit action provider', () => {
         slippageBps: null,
       });
       const options = mocks.executeOphisSwap.mock.lastCall?.[2];
-      if (chainId === '5042') expect(options).not.toHaveProperty('referralCode');
-      else expect(options).toHaveProperty('referralCode', 'partner_1');
+      expect(options).toHaveProperty('referralCode', 'partner_1');
     }
   });
 

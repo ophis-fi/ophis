@@ -21,7 +21,7 @@ export const faqLd = {
       name: 'How is Ophis different from 1inch or Matcha?',
       acceptedAnswer: {
         '@type': 'Answer',
-        text: "Ophis batch-auction swaps use solver competition and signed limits to mitigate MEV. The standard schedule (excluding Arc's current release exception) charges a 1 bp Ophis base plus 80% of reference-quote improvement on volatile pairs, capped at 99 bps of volume, or 50% on stable pairs, capped at 20 bps. CoW-hosted chains additionally pay upstream CoW Protocol fees. Bridge routes have separate costs.",
+        text: "Ophis batch-auction swaps use solver competition and signed limits to mitigate MEV. The standard schedule charges a 1 bp Ophis base plus 80% of reference-quote improvement on volatile pairs, capped at 99 bps of volume, or 50% on stable pairs, capped at 20 bps. CoW-hosted chains additionally pay upstream CoW Protocol fees. Bridge routes have separate costs.",
       },
     },
     {
@@ -69,7 +69,7 @@ export const faqLd = {
       name: 'How are partner fees collected?',
       acceptedAnswer: {
         '@type': 'Answer',
-        text: "Batch-auction orders carry Ophis's 1 bp base. On Optimism, Unichain and Robinhood Chain the backend adds the capped improvement policy; on CoW-hosted chains appData carries both the 1 bp Volume entry and the pair-aware PriceImprovement entry: 80% capped at 99 bps for volatile pairs, or 50% capped at 20 bps for stable pairs. Arc currently has no configured backend improvement policy; check its quote and signed metadata. Bridge costs are separate.",
+        text: "Batch-auction orders carry Ophis's 1 bp base. On Optimism, Unichain, Robinhood Chain and Arc the backend adds the capped improvement policy to in-market orders; on CoW-hosted chains appData carries both the 1 bp Volume entry and the pair-aware PriceImprovement entry: 80% capped at 99 bps for volatile pairs, or 50% capped at 20 bps for stable pairs. Bridge costs are separate.",
       },
     },
     {
@@ -102,10 +102,10 @@ export const faqLd = {
 Ophis batch-auction swaps use solver competition and signed limits to
 [mitigate MEV](./architecture.md). The optional natural-language API parses
 requests; it does not execute them. The [fee model](./fees.md) is published by
-settlement path. The standard schedule, excluding Arc's current release exception,
+settlement path. The standard schedule
 charges a 1 bp base; Ophis retains 80% of reference-quote improvement on volatile pairs,
 capped at 99 bps of volume, or 50% on stable pairs, capped at 20 bps. CoW-hosted
-chains additionally apply CoW Protocol fees upstream. Arc currently has no configured backend improvement policy; check its quote and signed metadata. Bridge costs are separate.
+chains additionally apply CoW Protocol fees upstream. Bridge costs are separate.
 
 ### Do I need to connect a wallet?
 
@@ -149,9 +149,9 @@ on-chain, so no solver can fill it worse than the price you accepted.
 
 ### How are partner fees collected?
 
-Batch-auction orders carry Ophis's **1 bp base**. On Optimism, Unichain and
-Robinhood Chain the backend adds the capped improvement policy. Arc's release
-currently has no configured backend improvement policy; check its quoted metadata. On CoW-hosted chains, `appData` carries both
+Batch-auction orders carry Ophis's **1 bp base**. On Optimism, Unichain,
+Robinhood Chain and Arc the backend adds the capped improvement policy to in-market orders.
+On CoW-hosted chains, `appData` carries both
 the 1 bp `Volume` entry and the pair-aware `PriceImprovement` entry: **80%
 capped at 99 bps** for volatile pairs, or **50% capped at 20 bps** for stable
 pairs. Full detail is on the [Fees & rebates](./fees.md) page.

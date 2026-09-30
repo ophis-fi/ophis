@@ -3,7 +3,7 @@
 Agent-facing **MCP server** for the Ophis DEX, deployed as a Cloudflare Worker
 with the Streamable-HTTP transport at **`https://mcp.ophis.fi/mcp`**.
 
-Current server release: **v0.1.1**, with 14 tools across 15 configured EVM
+Current server release: **v0.1.2**, with 14 tools across 15 configured EVM
 chains (14 mainnets plus Sepolia).
 
 It exposes the Ophis trading surface to autonomous agents and MCP clients
@@ -12,8 +12,9 @@ without making them re-derive the fork's non-obvious, easy-to-get-wrong details
 -hosted Optimism, Unichain, Robinhood Chain, and Arc orderbook hosts, the CIP-75 partner-fee appData shape, and
 receiver pinning).
 
-Arc (5042) charges the 1 bp trading fee and is not yet indexed for rebates or
-referral rewards. Omit referral codes for Arc orders; explicit nonempty codes are rejected.
+Arc (5042) charges the 1 bp trading fee and is indexed for volume and referral
+rebates. Server referral defaults apply; a per-call code overrides the default,
+and an empty string opts out. Eligibility requires a verified settled trade.
 
 ## Security model
 
@@ -36,7 +37,7 @@ every backing endpoint is already public, and the tools are read/build-only.
 | `build_order` | A bounded, ready-to-sign CoW order: correct per-chain settlement + orderbook, CIP-75 partner fee in appData, receiver pinned to owner. |
 | `submit_order` | Relay a **pre-signed** order to the orderbook (`/api/v1/orders`). No keys held here. |
 | `lookup_tier` | A wallet's fee-rebate tier + live status (`rebates.ophis.fi/tier/:wallet`). |
-| `get_integrator_earnings` | What an integrator's own-fee routing earned, by appCode: routed volume + own-fee + referral rebate paid-to-date across indexed chains (excluding Arc), with figures split sovereign (Optimism, Unichain: swept in full) vs CoW-hosted (gross, not guaranteed) (`rebates.ophis.fi/earnings/:appCode`). |
+| `get_integrator_earnings` | What an integrator's own-fee routing earned, by appCode: routed volume + own-fee + referral rebate paid-to-date across indexed chains, including Arc, with figures split sovereign (Optimism, Unichain: swept in full) vs CoW-hosted (gross, not guaranteed) (`rebates.ophis.fi/earnings/:appCode`). |
 | `get_balances` | Native + ERC-20 balances for an address on one chain. |
 | `get_portfolio` | Native + ERC-20 balances across multiple chains. |
 | `get_gas` | Current gas price for a chain (informational; trades are gasless for the trader). |

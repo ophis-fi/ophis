@@ -100,11 +100,12 @@ test('/stats returns public cumulative JSON for an API client', async () => {
         { chainId: 10, solvers: 11 },
         { chainId: 130, solvers: 7 },
         { chainId: 4663, solvers: 6 },
+        { chainId: 5042, solvers: 5 },
       ],
       hostedChains: 'CoW Protocol solver network',
     },
     improvementSplit: {
-      sovereign: 'On Optimism, Unichain and Robinhood Chain, Ophis retains 80% of volatile improvement (99 bps cap) or 50% of stable improvement (20 bps cap). Arc currently has no configured backend improvement policy; check the quote and signed fee metadata.',
+      sovereign: 'On in-market orders on Optimism, Unichain, Robinhood Chain and Arc, Ophis retains 80% of volatile improvement (99 bps cap) or 50% of stable improvement (20 bps cap). Arc uses the same capped backend improvement policy for in-market orders.',
       hosted: 'The same Ophis capped capture applies, plus CoW Protocol quote-improvement fees upstream',
     },
   });
@@ -121,7 +122,7 @@ test('/stats serves a styled HTML page to a browser (Accept: text/html)', async 
   expect(res.statusCode).toBe(200);
   expect(res.headers['content-type']).toContain('text/html');
   expect(res.body).toContain('How trades settle. What we have indexed.');
-  expect(res.body).toContain('Arc activity is not yet included');
+  expect(res.body).toContain('14 EVM networks, including Arc');
   expect(res.headers['content-security-policy']).toContain("form-action 'self'");
   expect(res.headers['content-security-policy']).toContain("img-src 'self'");
   expect(res.body).toContain('<option value="1" selected>');
@@ -188,7 +189,7 @@ test('/earnings/:appCode returns keyless per-appCode JSON, scoped + disclaimed, 
   expect(body.appCode).toBe('acme-dapp');
   expect(typeof body.disclaimer).toBe('string');
   expect(body.disclaimer).toContain('paid out by CoW under CoW terms; not guaranteed by Ophis');
-  expect(body.sovereignChains).toEqual([10, 130, 4663]);
+  expect(body.sovereignChains).toEqual([10, 130, 4663, 5042]);
   expect(body.routedVolumeUsd).toMatchObject({ total: 0, sovereign: 0, hosted: 0 });
   expect(body.ownFeeAccruedUsd).toMatchObject({ sovereignGuaranteed: 0, hostedAccrued: 0 });
   expect(body.referral.registered).toBe(false);

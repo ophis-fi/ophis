@@ -8,6 +8,7 @@ import { TokenListTags } from '@cowprotocol/tokens'
 import { FiatAmount, HoverTooltip, LoadingRows, LoadingRowSmall, TokenAmount } from '@cowprotocol/ui'
 import { BigNumber } from '@ethersproject/bignumber'
 
+import { t } from '@lingui/core/macro'
 import { Nullish } from 'types'
 
 import * as styledEl from './styled'
@@ -27,6 +28,7 @@ export interface TokenListItemProps {
   token: TokenWithLogo
   selectedToken?: Nullish<Currency>
   balance: BigNumber | undefined
+  balanceError?: boolean
   usdAmount?: CurrencyAmount<Currency> | null
 
   onSelectToken?: TokenSelectionHandler
@@ -85,6 +87,7 @@ interface TokenBalanceColumnProps {
   shouldShow: boolean
   shouldFormat: boolean
   balanceAmount?: CurrencyAmount<Currency>
+  balanceError: boolean
   usdAmount?: CurrencyAmount<Currency> | null
 }
 
@@ -93,6 +96,7 @@ export function TokenListItem(props: TokenListItemProps): ReactNode {
     token,
     selectedToken,
     balance,
+    balanceError = false,
     usdAmount,
     onSelectToken,
     isUnsupported = false,
@@ -162,6 +166,7 @@ export function TokenListItem(props: TokenListItemProps): ReactNode {
           shouldShow={shouldShowBalances}
           shouldFormat={shouldFormatBalances}
           balanceAmount={balanceAmount}
+          balanceError={balanceError}
           usdAmount={usdAmount}
         />
         {children}
@@ -174,6 +179,7 @@ function TokenBalanceColumn({
   shouldShow,
   shouldFormat,
   balanceAmount,
+  balanceError,
   usdAmount,
 }: TokenBalanceColumnProps): ReactNode {
   if (!shouldShow) {
@@ -182,7 +188,9 @@ function TokenBalanceColumn({
 
   return (
     <styledEl.TokenBalance>
-      {shouldFormat ? (
+      {balanceError && !balanceAmount ? (
+        <span title={t`Balance unavailable. Try again shortly.`}>—</span>
+      ) : shouldFormat ? (
         <>
           {balanceAmount ? <TokenAmount amount={balanceAmount} /> : LoadingElement}
           {usdAmount ? <FiatAmount amount={usdAmount} /> : null}

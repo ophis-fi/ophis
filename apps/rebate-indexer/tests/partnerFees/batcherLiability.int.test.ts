@@ -99,6 +99,7 @@ beforeAll(async () => {
   server.listen();
   await runMigrations();
   const sql = await getSql();
+  await sql`UPDATE defillama_reporting_state SET arc_reconciled_through_block = 23347643`;
   await sql.unsafe('REFRESH MATERIALIZED VIEW wallets');
 }, 120_000);
 

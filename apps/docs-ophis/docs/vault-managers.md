@@ -20,6 +20,11 @@ The flow settles through CoW Protocol as one atomic, MEV-protected order. The
 vault Safe is both `order.from` and `order.receiver`: sold tokens leave at
 settlement and bought tokens return to the Safe. Each order carries the Ophis partner fee.
 
+For rebate accounting, call `enrollOphisTrader(vaultSafe, { blocking: true })`
+immediately before each order submission. Enroll the Safe, not the curator or one of
+its owners. Registering once during setup is insufficient for a vault that starts
+trading later. See [Partner enrollment](./partners.md) for retention and recovery.
+
 ## How it works
 
 Three parties, three roles:
@@ -91,10 +96,10 @@ Two requirements for a token to be allowlistable:
 
 ## Operational chains
 
-The `@ophis/safe-swap` v0.1.6 vault-order builder uses SDK v0.4.3 and supports
+The `@ophis/safe-swap` v0.1.7 vault-order builder uses SDK v0.4.4 and supports
 these 14 chains. Use ERC-20 token addresses on Arc; native-token sentinels are
-rejected. Arc charges the 1 bp base without backend improvement capture and is
-not indexed for rebates, so omit referral codes:
+rejected. Arc charges the 1 bp base plus capped backend improvement capture on in-market orders; eligible
+settled trades count toward volume-tier and referral rebates:
 
 - **Ophis self-hosted:** Optimism, Unichain, Robinhood Chain (4663), and Arc (5042).
 - **CoW-hosted:** Ethereum, Base, Arbitrum One, Polygon, Gnosis Chain, BNB

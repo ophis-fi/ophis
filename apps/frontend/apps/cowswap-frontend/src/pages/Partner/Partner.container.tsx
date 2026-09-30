@@ -1,21 +1,12 @@
 /**
- * PartnerPage — Ophis partner dashboard (Surface C). WHITELIST + SIGNATURE
- * gated.
- *
- * Partner data MUST NOT render to the general public. ALL partner data
- * (stats + referee table) is gated behind a successful signed
- * POST /partner against the NATIVE rebate-indexer API (rebates.ophis.fi).
- * Nothing partner-specific is fetched or shown until that POST returns 200.
- *
- *   - 403 -> "for Ophis partners only" (no data).
- *   - 401 -> expired / retry message.
- *
- * AGENTS.md compliance: named export (no default), page implementation in
- * *.container.tsx, barrel re-export in index.ts. Shared chrome reused from
- * the Affiliate page's styled module.
+ * PartnerPage — Ophis partner dashboard. All partner data is whitelist- and
+ * signature-gated by POST /partner on rebates.ophis.fi, never fetched or shown
+ * before a successful response. Wallet-keyed sessions reset access on disconnect
+ * or an identity change, including when the previous response is still pending.
  */
 import { ReactNode, useCallback, useState } from 'react'
 
+import { getAddressKey } from '@cowprotocol/cow-sdk'
 import { useWalletInfo } from '@cowprotocol/wallet'
 
 import { Badge, Callout, InlineCode, MetricCard, PageShell, Section, Table, Tbody, Td, Th, Thead, Tr } from 'ophis/ds'
@@ -24,6 +15,7 @@ import { type PartnerDashboard, AffiliateApiError, getPartnerDashboard, useOphis
 
 import { ConnectWalletCta } from 'pages/Affiliate/ConnectWalletCta'
 
+import { formatUsd } from './Partner.utils'
 import { PartnerEarnings, PartnerTraderRank, ReferredVolumeMetric } from './PartnerDashboardCards'
 import { PartnerEmptyReferees, PartnerReferralShare } from './PartnerReferralShare'
 
@@ -31,11 +23,6 @@ import { ActionButton, MetricRow } from '../Affiliate/Affiliate.styled'
 
 function truncate(addr: string): string {
   return `${addr.slice(0, 6)}...${addr.slice(-4)}`
-}
-
-function formatUsd(value: number): string {
-  if (!Number.isFinite(value)) return '$0'
-  return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 }).format(value)
 }
 
 function formatDate(iso: string): string {
@@ -61,7 +48,8 @@ function PartnerAccess({ busy, onAccess, state }: PartnerAccessProps): ReactNode
     <Section id="access" title="Access your dashboard">
       <p>
         Partner data is private. Sign a message with your partner wallet to load your stats and referee breakdown. This
-        is a signature only, no transaction and no gas.
+        does not submit a swap or approve token spending. Contract wallets require an Ophis-approved authentication
+        chain and may need additional Safe approvals.
       </p>
       <ActionButton type="button" onClick={onAccess} disabled={busy}>
         {buttonLabel}
@@ -72,8 +60,11 @@ function PartnerAccess({ busy, onAccess, state }: PartnerAccessProps): ReactNode
         </Callout>
       )}
       {state === 'unauthorized' && (
-        <Callout tone="warning" title="Signature expired">
-          <p>Your signature could not be verified or has expired. Please try again.</p>
+        <Callout tone="warning" title="Signature not verified">
+          <p>
+            Your signature could not be verified or has expired. For a contract wallet, use its Ophis-approved
+            authentication chain; contact Ophis if that chain has not been configured.
+          </p>
         </Callout>
       )}
       {state === 'rejected' && (
@@ -124,12 +115,14 @@ function PartnerDashboardContent({ account, data }: PartnerDashboardContentProps
         paidToDateWeth={data.paidToDateWeth}
         paidToDateUsd={data.paidToDateUsd}
         nextPayoutAt={data.nextPayoutAt}
+        payoutStatus={data.payoutStatus}
       />
 
       <Section id="link" title="Your referral link">
         <p>
-          Share your code or link. When a net-new wallet trades on Ophis after using it, they are bound to you, and you
-          earn {data.rateOfNetFeePct}% of the verified base fee Ophis keeps on their trades.
+          Share your link or tag eligible orders with your code. Link binding and per-order code attribution are
+          different paths; an order tag does not permanently bind a wallet. Your rate is {data.rateOfNetFeePct}% of the
+          verified base fee Ophis keeps on eligible attributed trades.
         </p>
         <PartnerReferralShare code={data.activeCodes[0]} />
       </Section>
@@ -139,11 +132,12 @@ function PartnerDashboardContent({ account, data }: PartnerDashboardContentProps
           <PartnerEmptyReferees rate={data.rateOfNetFeePct} />
         ) : (
           <>
-            <Table caption="Your referred wallets, bind date, and lifetime referred volume.">
+            <Table caption="Your referred wallets, first referral date, attribution, and lifetime referred volume.">
               <Thead>
                 <Tr>
                   <Th>Wallet</Th>
-                  <Th>Bound</Th>
+                  <Th>First referred</Th>
+                  <Th>Attribution</Th>
                   <Th>Lifetime volume</Th>
                 </Tr>
               </Thead>
@@ -153,7 +147,14 @@ function PartnerDashboardContent({ account, data }: PartnerDashboardContentProps
                     <Td>
                       <InlineCode>{truncate(referee.wallet)}</InlineCode>
                     </Td>
-                    <Td>{formatDate(referee.boundAt)}</Td>
+                    <Td>{formatDate(referee.firstSeenAt ?? referee.boundAt ?? '')}</Td>
+                    <Td>
+                      {referee.attribution === 'code'
+                        ? 'Code'
+                        : referee.attribution === 'link-and-code'
+                          ? 'Link + code'
+                          : 'Link'}
+                    </Td>
                     <Td>{formatUsd(referee.lifetimeVolumeUsd)}</Td>
                   </Tr>
                 ))}
@@ -161,7 +162,7 @@ function PartnerDashboardContent({ account, data }: PartnerDashboardContentProps
             </Table>
             {hasHiddenReferees && (
               <p style={{ marginTop: 8, opacity: 0.75, fontSize: '0.9em' }}>
-                Showing the {data.referees.length} most recently bound of {data.referredCount} referees. Reach out to
+                Showing the {data.referees.length} most recently referred of {data.referredCount} referees. Reach out to
                 your Ophis contact for a full export.
               </p>
             )}
@@ -172,15 +173,13 @@ function PartnerDashboardContent({ account, data }: PartnerDashboardContentProps
   )
 }
 
-export function PartnerPage(): ReactNode {
-  const { account } = useWalletInfo()
+function PartnerWalletDashboard({ account }: { account: string }): ReactNode {
   const sign = useOphisAffiliateSign(account)
 
   const [data, setData] = useState<PartnerDashboard | null>(null)
   const [state, setState] = useState<AccessState>('idle')
 
   const onAccess = useCallback(async () => {
-    if (!account) return
     setState('signing')
     setData(null)
     try {
@@ -204,22 +203,28 @@ export function PartnerPage(): ReactNode {
           setState('unauthorized')
           return
         }
-        // 400 / 409 / 429 / 5xx: a real server response. Keep the generic state
-        // but log the status + server message so it is diagnosable.
+        // Log server failures separately from transport failures.
         console.error('[PartnerPage] access failed:', error.status, error.message)
         setState('error')
         return
       }
-      // Not an API response at all: a CORS/network failure (TypeError "Failed to
-      // fetch") or a request timeout (DOMException). Surface a distinct message so
-      // a transport break is not mistaken for a server error (this is the class of
-      // failure the CORS-preflight bug produced).
+      // Distinguish network/timeouts from actual server responses.
       console.error('[PartnerPage] access failed (network/transport):', error)
       setState('network')
     }
-  }, [account, sign])
+  }, [sign])
 
   const busy = state === 'signing' || state === 'loading'
+
+  return data ? (
+    <PartnerDashboardContent account={account} data={data} />
+  ) : (
+    <PartnerAccess busy={busy} onAccess={onAccess} state={state} />
+  )
+}
+
+export function PartnerPage(): ReactNode {
+  const { account } = useWalletInfo()
 
   return (
     <PageShell
@@ -233,10 +238,8 @@ export function PartnerPage(): ReactNode {
           <p>Connect your partner wallet, then sign in below to load your dashboard.</p>
           <ConnectWalletCta>Connect Partner Wallet</ConnectWalletCta>
         </Callout>
-      ) : !data ? (
-        <PartnerAccess busy={busy} onAccess={onAccess} state={state} />
       ) : (
-        <PartnerDashboardContent account={account} data={data} />
+        <PartnerWalletDashboard key={getAddressKey(account)} account={account} />
       )}
     </PageShell>
   )

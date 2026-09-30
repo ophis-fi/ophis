@@ -16,7 +16,7 @@ npm install @ophis/sdk
 - **`getOphisOrderDomain(chainId)`** / **`getOphisSettlementAddress(chainId)`** — the EIP-712 signing domain with the correct per-chain `verifyingContract` (all four Ophis-operated settlements are non-canonical, so the cow-sdk default is wrong there).
 - **`buildOphisAppDataPartnerFee(chainId, isStablePair)`** — the exact CIP-75 fee config. Operated chains return the 1 bp base (their backend adds improvement capture when configured); hosted chains return base + pair-aware capped improvement entries.
 - **`ophisOrderReceiver`** / **`assertReceiverIsOwner`** — pin a CoW order's `receiver` to the owner. An unpinned receiver is the #1 drain vector for an automated signer.
-- **`buildOphisOrderMetadata`** / **`enrollOphisTrader`** / **`buildOphisOrderCreation`** — the high-level order-flow helpers that collapse the integration footguns into one call each: `appCode` is always `'ophis'` (a custom one silently forfeits the rebate), each trader wallet is enrolled with the rebate indexer, the receiver is asserted, and the `sendOrder` wire shape (full `appData` string + `appDataHash`) is correct.
+- **`buildOphisOrderMetadata`** / **`enrollOphisTrader`** / **`buildOphisOrderCreation`** — the high-level order-flow helpers: `appCode` is always `'ophis'` (a custom one silently forfeits the rebate), the receiver is asserted, and the `sendOrder` wire shape (full `appData` string + `appDataHash`) is correct. Call `await enrollOphisTrader(owner, { blocking: true })` separately before **each submission**, including delayed vault trades; constructing metadata or an order does not enroll the wallet. Use the actual order owner (the Safe for a vault), not its curator.
 - **`getOphisVaultRelayer(chainId)`** — the correct `approve` spender for the one-time sell-token approval. On Ophis-operated chains the relayer is **not** cow-sdk's canonical one, so resolve it here.
 - **`buildOphisEthFlowOrder`** / **`getOphisEthFlowAddress`** / **`isOphisEthFlowChain`** — sell **native ETH** through Ophis via the on-chain eth-flow `createOrder`, with the Ophis partner-fee appData embedded. Without this an integrator has to wrap to WETH first and Ophis is unavailable on native-ETH sells. The builder pins the receiver to the taker, hardcodes the eth-flow `feeAmount`/`msg.value` correctly, and (optionally) verifies the committed appData hash binds to the JSON you upload.
 - **`parseOphisApiError`** / **`withOphisRetry`** / **`isUnroutable`** / **`isRetryable`**: typed errors for the orderbook API's numeric code bands (1xxx-5xxx) with `traceId` capture (`X-Trace-Id` header + error body). "No route" is a typed **answer** (`OphisUnroutableError`), not a failure, and is never retried; 429 is never retried in-call (both hold even under a custom `shouldRetry`: the terminal classes are rethrown before the predicate runs; for every other error a custom predicate replaces the default policy entirely and can narrow or broaden it, so broadening callers must retry only transient failures); only the 3xxx upstream band (503 + `Retry-After`) is. Unknown codes degrade gracefully and preserve the raw payload.
@@ -25,12 +25,11 @@ npm install @ophis/sdk
 
 ## Example
 
-Arc (5042) supports the standard 1 bp trading fee but is not yet covered by the
-rebate indexer. `buildOphisOrderMetadata`, `buildOphisFullAppData`, and `buildOrder`
-reject a nonempty Arc referral code instead of promising unavailable referral
-rewards. Omit the code to trade on Arc. `isOphisFeeChain` reports fee support,
-not reward eligibility; the low-level `buildOphisReferrerMetadata` only formats a
-tag when called without a chain ID.
+SDK 0.4.4 enables referral tags on Arc (5042), which is covered by the rebate
+indexer. Arc applies the standard 1 bp base plus capped backend improvement
+capture on in-market orders. Enroll the trader and supply a valid referral code for attribution on
+eligible settled orders. `isOphisFeeChain` reports fee support, not reward
+eligibility; `buildOphisReferrerMetadata` only formats the tag.
 
 ```ts
 import {

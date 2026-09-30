@@ -42,22 +42,21 @@ What that buys you on every trade:
 - **Gasless, MEV-protected.** Orders settle in a batch auction where every trade
   clears at one uniform price, so sandwiches and front-running are structurally
   absent, not best-effort.
-- **Solver-aligned pricing.** On every supported chain the base fee is 1 bp. Except on Arc,
+- **Solver-aligned pricing.** On every supported chain the base fee is 1 bp.
   Ophis also earns when execution beats its reference quote: 80% of
   improvement on volatile pairs (99 bps cap), or 50% on stable pairs (20 bps
   cap). Hosted chains encode that policy in CIP-75 appData and separately pay
-  CoW Protocol's upstream fees. Arc currently charges only the 1 bp base.
+  CoW Protocol's upstream fees.
 - **Non-custodial, no account, no auth.** Every order is signed in your own
   wallet (EIP-712 or ERC-1271). Ophis never holds keys or funds and cannot move,
   freeze, or recover them. The signature is the only trust boundary.
 - **Transparent, capped fees.** A 0.01% (1 bp) base plus the capped improvement
-  policy above where configured, with a share returned monthly as WETH rebates plus an 8%
-  referral on indexed chains, excluding Arc.
+  policy above, with a share returned monthly as WETH rebates plus an 8%
+  referral on indexed chains, including Arc.
 
 **Live across 14 EVM chains**, with Ophis-operated settlement on Optimism
 (chain 10), Unichain (130), Robinhood Chain (4663), and Arc (5042), plus CoW-hosted
-settlement on the other ten chains. Arc currently charges the 1 bp base without
-backend improvement capture and is not yet covered by rebate indexing.
+settlement on the other ten chains. Arc applies the same capped backend improvement policy for in-market orders; eligible settled trades are covered by rebate indexing.
 
 ## Quickstart: the Intent API
 
@@ -275,13 +274,13 @@ All package and MCP publishing controls are documented in the
 
 ## Fees and rebates
 
-On every supported chain, Ophis charges a **0.01% (1 bp)** base. Except on Arc, it also charges a capped
+On every supported chain, Ophis charges a **0.01% (1 bp)** base. It also charges a capped
 share of reference-quote improvement: **80% capped at 99 bps** for volatile
-pairs and **50% capped at 20 bps** for stable pairs. Arc currently has no backend improvement capture. The other operated-chain backends
+pairs and **50% capped at 20 bps** for stable pairs. The operated-chain backends
 apply the improvement policy; hosted orders encode it in CIP-75 appData and
 separately pay CoW Protocol's upstream fees.
 
-On indexed chains, excluding Arc, part of the fee flows back to traders:
+On indexed chains, including Arc, part of the fee flows back to traders:
 
 - **Volume-tier rebates.** Each month a share of collected WETH fees is paid back,
   split across active wallets by 30-day volume and tier (Bronze through Platinum).

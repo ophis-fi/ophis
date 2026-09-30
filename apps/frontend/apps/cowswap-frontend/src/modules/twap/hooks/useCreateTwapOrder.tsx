@@ -23,6 +23,7 @@ import { TradeFlowAnalyticsContext, useTradeFlowAnalytics } from 'modules/trade/
 import { CowSwapAnalyticsCategory } from 'common/analytics/types'
 import { useConfirmPriceImpactWithoutFee } from 'common/hooks/useConfirmPriceImpactWithoutFee'
 import { useVerifyOphisRecipientName } from 'common/hooks/useVerifyOphisRecipientName'
+import { enrollOphisTrader } from 'common/utils/enrollOphisTrader'
 import { getAreBridgeCurrencies } from 'common/utils/getAreBridgeCurrencies'
 
 import { useExtensibleFallbackContext } from './useExtensibleFallbackContext'
@@ -201,6 +202,7 @@ export function useCreateTwapOrder() {
         }
 
         addTwapOrderToList(orderItem)
+        void enrollOphisTrader(account)
 
         getCowSoundSend().play()
 

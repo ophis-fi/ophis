@@ -10,6 +10,7 @@
  */
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 import { z } from 'zod'
+import { enrollOphisTrader } from '@ophis/sdk'
 
 import {
   parseIntent,
@@ -34,7 +35,7 @@ import {
 import { resolveStablePair } from './stablePair.js'
 
 /** Identity reported by both transports (stdio + Worker). */
-export const MCP_SERVER_VERSION = '0.1.1' as const
+export const MCP_SERVER_VERSION = '0.1.2' as const
 
 /** Canonical public tool inventory. Metadata tests fail if registration or server.json drifts. */
 export const OPHIS_TOOL_NAMES = [
@@ -64,8 +65,7 @@ export const SERVER_INFO = { name: 'ophis', version: MCP_SERVER_VERSION } as con
  */
 export interface OphisToolConfig {
   /** Optional server-wide default affiliate referral code. When set, build_order
-   *  embeds it in appData on indexed chains unless the call passes its own referrerCode.
-   *  Arc skips the server default because its trades are not indexed for rewards. */
+   *  embeds it in appData unless the call passes its own referrerCode. */
   defaultReferrerCode?: string
   /** Rebate-indexer base URL. submit_order pings {base}/tier/<owner> to register
    *  a referrer-tagged order's owner for indexing (so the affiliate is actually
@@ -243,7 +243,7 @@ export function registerOphisTools(server: McpServer, config?: OphisToolConfig):
         referrerCode: z
           .string()
           .optional()
-          .describe('Affiliate referral code to embed in appData (credits that code\'s owner for this trade). Defaults to the server\'s OPHIS_DEFAULT_REFERRER_CODE except on Arc, which has no referral rewards and rejects nonempty codes. Grammar: 3-64 chars [a-z0-9_-]; an invalid code errors.'),
+          .describe('Affiliate referral code to embed in appData (credits that code\'s owner for eligible settled trades, including Arc). Defaults to the server\'s OPHIS_DEFAULT_REFERRER_CODE. An empty string opts out. Grammar: 3-64 chars [a-z0-9_-]; an invalid code errors.'),
       },
     },
     async (a) => {
@@ -264,9 +264,8 @@ export function registerOphisTools(server: McpServer, config?: OphisToolConfig):
             slippageBips: a.slippageBips,
             // unsafeCustomReceiver intentionally NOT forwarded — see the schema
             // note above; buildOrder therefore pins the receiver to the owner.
-            // Per-call code wins. Arc has no referral rewards, so skip only
-            // the server default there; the SDK still rejects an explicit code.
-            referrerCode: a.referrerCode ?? (a.chainId === 5042 ? undefined : config?.defaultReferrerCode),
+            // Per-call code wins; an empty string explicitly opts out.
+            referrerCode: a.referrerCode ?? config?.defaultReferrerCode,
             // Server-set order-source tag (metadata.ophisSource.app) so the
             // funnel can attribute settled volume to the MCP surface. Not a
             // caller-controlled field: every order this tool builds is 'mcp'.
@@ -378,33 +377,15 @@ export function registerOphisTools(server: McpServer, config?: OphisToolConfig):
           // allowCustomReceiver intentionally NOT forwarded — submitOrder defaults
           // to refusing any non-owner receiver (drain guard). See the schema note.
         })
-        // The order was accepted by the orderbook (a real, signed order). If it
-        // carries an affiliate referral code, register the owner so the rebate
-        // indexer (which fetches trades per tracked wallet) actually indexes
-        // this trade and credits the referrer — otherwise a pure agent-routed
-        // wallet that never visits the swap UI would never be fetched. Best
-        // effort + fire-and-forget: a registration failure must NOT fail the
-        // already-relayed order. Gated on a referral tag so untagged orders do
-        // not grow tracked_wallets, and only after a successful relay so a bogus
-        // submit cannot register arbitrary wallets.
-        try {
-          const ref = (JSON.parse(a.fullAppData) as { metadata?: { ophisReferrer?: { code?: unknown } } })
-            ?.metadata?.ophisReferrer?.code
-          if (typeof ref === 'string' && /^0x[0-9a-fA-F]{40}$/.test(a.from)) {
-            const base = config?.rebatesApi ?? 'https://rebates.ophis.fi'
-            // AWAIT (not fire-and-forget): a bare background fetch in a Durable
-            // Object can be cancelled once the response returns, making the
-            // registration unreliable. Await it so it actually completes, bounded
-            // by a short timeout and fully swallowed so it can never delay-fail or
-            // fail the already-relayed order.
-            await fetch(`${base}/tier/${a.from.toLowerCase()}`, {
-              signal: AbortSignal.timeout(2500),
-            }).catch(() => {})
-          }
-        } catch {
-          // Malformed fullAppData: skip registration, the order still succeeded.
-        }
-        return ok(result)
+        // Enroll every accepted order, independently of optional referrals.
+        // Await the bounded request so Worker teardown cannot cancel it.
+        const enrollment = await enrollOphisTrader(a.from, { host: config?.rebatesApi, timeoutMs: 2500 })
+          .catch(() => ({ enrolled: false }))
+        const response = ok(result)
+        if (!enrollment.enrolled) response.content.push({
+          type: 'text', text: 'Order accepted; rebate enrollment failed. Retry enrollment, not order submission.',
+        })
+        return response
       } catch (e) {
         return fail(e)
       }
@@ -433,7 +414,7 @@ export function registerOphisTools(server: McpServer, config?: OphisToolConfig):
     {
       annotations: { title: 'Get integrator earnings', readOnlyHint: true, openWorldHint: true },
       description:
-        "Look up what an integrator's own-fee routing earned on indexed chains (excluding Arc), by appCode (the identifier you tag into appData: your widget appCode or your SDK ophisReferrer code). Returns routed volume (USD, split by chain and by sovereign-vs-hosted), the Ophis base fee charged on your flow, your OWN stacked fee, and your referral rebate paid-to-date with payout tx links. Guaranteed/paid figures are scoped to the Ophis-operated chains (Optimism, Unichain); CoW-hosted figures are accrued at settlement and disbursed by CoW under CoW terms (see the response `disclaimer`). Read-only, keyless, cumulative (no current-cycle or next-payout data).",
+        "Look up what an integrator's own-fee routing earned on indexed chains, including Arc, by appCode (the identifier you tag into appData: your widget appCode or your SDK ophisReferrer code). Returns routed volume (USD, split by chain and by sovereign-vs-hosted), the Ophis base fee charged on your flow, your OWN stacked fee, and your referral rebate paid-to-date with payout tx links. Guaranteed/paid figures are scoped to the Ophis-operated chains (Optimism, Unichain); CoW-hosted figures are accrued at settlement and disbursed by CoW under CoW terms (see the response `disclaimer`). Read-only, keyless, cumulative (no current-cycle or next-payout data).",
       inputSchema: {
         appCode: z
           .string()

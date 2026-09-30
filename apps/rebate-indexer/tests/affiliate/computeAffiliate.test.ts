@@ -29,7 +29,7 @@ describe('keepFractionBps — sovereign chains keep the full fee (no CoW cut)', 
   });
 
   it('SOVEREIGN_CHAIN_IDS is the single source of truth for the keep rate', () => {
-    expect([...SOVEREIGN_CHAIN_IDS].sort((a, b) => a - b)).toEqual([10, 130, 4663]);
+    expect([...SOVEREIGN_CHAIN_IDS].sort((a, b) => a - b)).toEqual([10, 130, 4663, 5042]);
     expect(SOVEREIGN_CHAIN_IDS.has(1)).toBe(false);
     expect(SOVEREIGN_CHAIN_IDS.has(8453)).toBe(false);
   });

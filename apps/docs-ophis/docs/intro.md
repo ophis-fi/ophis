@@ -36,8 +36,7 @@ Choose tokens and amount → review quote → sign order → settle
 - **Transparent, chain-aware fees.** The standard batch-auction policy charges a 1 bp base
   plus 80% of reference-quote improvement on volatile pairs (99 bps cap), or
   50% on stable pairs (20 bps cap). On CoW-hosted chains,
-  [CoW Protocol's own fees apply on top](./fees.md). Arc's current release has a
-  separate base-only configuration; do not assume standard improvement capture there.
+  [CoW Protocol's own fees apply on top](./fees.md). Arc applies the same capped backend improvement policy for in-market orders.
 - **Open.** The full frontend, intent-parser proxy, and infra runbooks
   are public.
 
@@ -47,7 +46,7 @@ Choose tokens and amount → review quote → sign order → settle
 | --- | --- |
 | [Getting started](./getting-started.md) | Make your first swap; how the three-step flow works; supported networks. |
 | [How it works](./architecture.md) | Intent lifecycle, batch auctions, the parser proxy, and settlement. |
-| [Fees & rebates](./fees.md) | Standard pricing, Arc's release exception, hosted upstream fees and rebates. |
+| [Fees & rebates](./fees.md) | Standard pricing, hosted upstream fees and rebates. |
 | [Networks & assets](./networks-assets.md) | App versus SDK coverage, Arc bridges, token labels and feature availability. |
 | [Affiliate program](./affiliate.md) | Share a referral code, earn 8% of Ophis's verified base fee on eligible referred trades. |
 | [Intent API](./intent-api.md) | The public `POST /api/intent` endpoint, parse English into a structured order. |

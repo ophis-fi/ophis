@@ -33,7 +33,7 @@ describe('assembleEarnings - sovereign-vs-hosted scoping', () => {
     expect(e.routedVolumeUsd.hosted).toBe(200_000); // Base
     expect(e.routedVolumeUsd.total).toBe(350_000);
     expect(e.routedVolumeUsd.sovereign + e.routedVolumeUsd.hosted).toBe(e.routedVolumeUsd.total);
-    expect(e.sovereignChains).toEqual([10, 130, 4663]);
+    expect(e.sovereignChains).toEqual([10, 130, 4663, 5042]);
   });
 
   it('scopes GUARANTEED own-fee to the sovereign chains and labels hosted as gross, not guaranteed', () => {
@@ -50,12 +50,12 @@ describe('assembleEarnings - sovereign-vs-hosted scoping', () => {
     expect(e.ownFeeAccruedUsd.recipient).toBe(RECIPIENT);
   });
 
-  it('keeps Robinhood routed volume sovereign without guaranteeing its own-fee payout', () => {
+  it.each([4663, 5042])('keeps chain %i routed volume sovereign without guaranteeing its own-fee payout', (chainId) => {
     const input: EarningsInput = {
       ...fullInput,
       byChain: [
         {
-          chainId: 4663,
+          chainId,
           volumeUsd: 20_000,
           trades: 2,
           ophisFeeBase: 20_000 * 10,
@@ -70,7 +70,7 @@ describe('assembleEarnings - sovereign-vs-hosted scoping', () => {
       sovereignGuaranteed: 0,
       hostedAccrued: 50,
     });
-    expect(e.ownFeeAccruedUsd.note).toContain('includes Robinhood until that payout lane exists');
+    expect(e.ownFeeAccruedUsd.note).toContain('includes Robinhood and Arc, which have no own-fee payout lane');
   });
 
   it('reports the Ophis base fee (informational) split the same way', () => {
@@ -97,6 +97,7 @@ describe('assembleEarnings - sovereign-vs-hosted scoping', () => {
     expect(typeof e.disclaimer).toBe('string');
     expect(e.disclaimer).toContain('Optimism');
     expect(e.disclaimer).toContain('Unichain');
+    expect(e.disclaimer).toContain('Arc (5042)');
     expect(e.disclaimer).toContain('paid out by CoW under CoW terms; not guaranteed by Ophis');
   });
 });

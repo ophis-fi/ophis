@@ -64,14 +64,14 @@ const cmds: Record<string, (args: string[]) => Promise<void>> = {
   async ['track-wallet'](args) {
     const addr = args.find((a) => /^0x[0-9a-fA-F]{40}$/.test(a))?.toLowerCase();
     if (!addr) throw new Error('usage: track-wallet 0x<40 hex>');
-    await sql`INSERT INTO tracked_wallets (wallet) VALUES (decode(${addr.slice(2)}, 'hex')) ON CONFLICT (wallet) DO NOTHING`;
+    await sql`INSERT INTO tracked_wallets (wallet) VALUES (decode(${addr.slice(2)}, 'hex')) ON CONFLICT (wallet) DO UPDATE SET last_registered_at = now()`;
     log.info({ wallet: addr }, 'wallet tracked');
   },
   async ['replay-from-genesis']() {
     await runMigrations();
     log.info('clearing derived state');
     await sql`TRUNCATE rebate_batch_entries, rebate_batches, defillama_fills, trades RESTART IDENTITY CASCADE`;
-    await sql`UPDATE defillama_reporting_state SET backfill_started_at = now(), completed_at = NULL WHERE singleton = true`;
+    await sql`UPDATE defillama_reporting_state SET backfill_started_at = now(), completed_at = NULL, arc_reconciled_through_block = NULL WHERE singleton = true`;
     await sql`TRUNCATE defillama_backfill_wallets`;
     await sql`INSERT INTO defillama_backfill_wallets (wallet) SELECT wallet FROM tracked_wallets`;
     // Reset the fetch cursor too: runFetcher only re-fetches wallets whose

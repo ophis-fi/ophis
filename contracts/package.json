@@ -39,7 +39,7 @@
     "axios": "^1.16.1",
     "tar": "^7.5.19",
     "js-yaml": "^4.3.2",
-    "undici": "^6.28.0",
+    "undici": "^6.29.0",
     "ws": "^8.17.1",
     "@ethersproject/bignumber": "^5.8.0",
     "elliptic": "^6.6.1",

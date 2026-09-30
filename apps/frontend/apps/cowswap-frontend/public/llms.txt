@@ -1,13 +1,13 @@
 # Ophis
 
-> Ophis is an intent-based DEX aggregator across 14 EVM production deployments, including Robinhood Chain and Arc. You describe a swap in natural language ("swap 100 USDC for ETH on Base"), a network of solvers competes to fill it through batch auctions, and you sign the resulting order with your own wallet. Every supported chain charges a 1 bp Ophis base fee. Except on Arc, orders also carry capped reference-quote-improvement capture: 80% on volatile pairs, capped at 99 bps of volume, or 50% on stable pairs, capped at 20 bps. Arc currently has no backend improvement capture or rebate indexing. CoW-hosted swaps also pay CoW Protocol's separate upstream fees (see https://docs.ophis.fi/fees). Ophis is a fork of CoW Protocol's frontend with an added natural-language intent-parsing layer; the full source is at github.com/ophis-fi/ophis.
+> Ophis is an intent-based DEX aggregator across 14 EVM production deployments, including Robinhood Chain and Arc. You describe a swap in natural language ("swap 100 USDC for ETH on Base"), a network of solvers competes to fill it through batch auctions, and you sign the resulting order with your own wallet. Every supported chain charges a 1 bp Ophis base fee. Orders also carry capped reference-quote-improvement capture: 80% on volatile pairs, capped at 99 bps of volume, or 50% on stable pairs, capped at 20 bps. Arc applies the same backend improvement policy for in-market orders; eligible settled Arc trades are indexed for volume-tier and referral rebates. CoW-hosted swaps also pay CoW Protocol's separate upstream fees (see https://docs.ophis.fi/fees). Ophis is a fork of CoW Protocol's frontend with an added natural-language intent-parsing layer; the full source is at github.com/ophis-fi/ophis.
 
 ## Core principles
 
 - **Intent-based**, not router-based: users sign their *desired outcome*, solvers compete on *how* to deliver it.
 - **MEV-aware batch execution**: signed intents are auctioned off-chain and settle on-chain; uniform clearing and solver competition reduce common sandwich-attack exposure without promising that every execution is immune to every form of MEV.
 - **Self-custodial**: Ophis never holds funds. Every order is signed by the user's wallet (EIP-712 or ERC-1271).
-- **Published pricing**: every supported chain uses a 1 bp base. Except on Arc, orders also carry 80% of reference-quote improvement on volatile pairs (99 bps cap) or 50% on stable pairs (20 bps cap). Arc currently charges only the 1 bp base. On the other Ophis-operated chains the trader keeps the remainder and all improvement above Ophis's cap; hosted settlement additionally applies CoW Protocol's separate upstream policy.
+- **Published pricing**: every supported chain uses a 1 bp base. Orders also carry 80% of reference-quote improvement on volatile pairs (99 bps cap) or 50% on stable pairs (20 bps cap). On Ophis-operated chains, including Arc, the trader keeps the remainder and all improvement above Ophis's cap; hosted settlement additionally applies CoW Protocol's separate upstream policy.
 - **Hosted-chain upstream pricing**: CoW-hosted swaps additionally pay CoW Protocol's separate upstream volume and price-improvement fees.
 - **Open**: full frontend, intent-parser proxy, and infra runbooks are public.
 
@@ -23,7 +23,7 @@
 - [/#/about](https://swap.ophis.fi/#/about): About, what Ophis is and isn't.
 - [/#/profile](https://swap.ophis.fi/#/profile): Profile, wallet identity read from your connected wallet (address, chain, ENS).
 - [/#/learn](https://swap.ophis.fi/#/learn): Learn, primers on intents, solvers, MEV, batch auctions.
-- [/#/affiliate](https://swap.ophis.fi/#/affiliate): Affiliate, mint a referral code and earn a share of the fee on referred volume on indexed chains, excluding Arc.
+- [/#/affiliate](https://swap.ophis.fi/#/affiliate): Affiliate, mint a referral code and earn a share of the fee on referred volume on indexed chains, including Arc.
 - [https://docs.ophis.fi](https://docs.ophis.fi): Full docs, protocol overview, intent API spec, architecture, AI-agent integration guide, audits.
 - [https://business.ophis.fi](https://business.ophis.fi): Business portal, integration playbook for institutional desks, custodians, and AI agents.
 
@@ -40,7 +40,7 @@ Ophis is designed to be agent-friendly. The intent endpoint above accepts free-f
 3. Construct a deep-link: `https://swap.ophis.fi/#/<chainId>/swap/<sellTokenSymbol>/<buyTokenSymbol>?inputCurrency=<amount>`.
 4. Open the link for the user to review and sign. Ophis never auto-signs, every order requires explicit wallet approval.
 
-Agents that submit orders programmatically should use `@ophis/sdk` v0.4.3 or later, or the Ophis MCP server so the orderbook URL and EIP-712 signing domain are resolved safely per chain. Ophis surfaces 14 EVM source/destination chains in the network selector: Ethereum, Arbitrum One, Arc, Avalanche, Base, BNB Smart Chain, Gnosis Chain, Ink, Linea, Optimism, Plasma, Polygon, Robinhood Chain, and Unichain, plus Sepolia for integration testing. CoW-hosted chain endpoints live at `api.cow.fi`; Ophis-operated deployments use `optimism-mainnet.ophis.fi`, `unichain-mainnet.ophis.fi`, `robinhood-mainnet.ophis.fi`, and `arc-mainnet.ophis.fi`. All follow the same orderbook schema. Arc uses its own signing domain and has no supported EthFlow deployment; use ERC-20 token addresses and omit referral codes while Arc is not indexed. See [Ophis AI agent integration](https://docs.ophis.fi/ai-agents) for the safe programmatic flow.
+Agents that submit orders programmatically should use `@ophis/sdk` v0.4.3 or later, or the Ophis MCP server so the orderbook URL and EIP-712 signing domain are resolved safely per chain. Ophis surfaces 14 EVM source/destination chains in the network selector: Ethereum, Arbitrum One, Arc, Avalanche, Base, BNB Smart Chain, Gnosis Chain, Ink, Linea, Optimism, Plasma, Polygon, Robinhood Chain, and Unichain, plus Sepolia for integration testing. CoW-hosted chain endpoints live at `api.cow.fi`; Ophis-operated deployments use `optimism-mainnet.ophis.fi`, `unichain-mainnet.ophis.fi`, `robinhood-mainnet.ophis.fi`, and `arc-mainnet.ophis.fi`. All follow the same orderbook schema. Arc uses its own signing domain and has no supported EthFlow deployment; use ERC-20 token addresses. For Arc referrals, MCP clients pass `referrerCode` to `build_order`; direct SDK integrations use v0.4.4 or later. See [Ophis AI agent integration](https://docs.ophis.fi/ai-agents) for the safe programmatic flow.
 
 Ophis intentionally does NOT implement x402 (HTTP-native payments). The wallet-sign model is the trust boundary; bypassing it for payment automation would compromise self-custody.
 

@@ -98,7 +98,7 @@ quote within the slippage-adjusted limit; otherwise the order remains unfilled.
 Solver competition can improve execution; it does not guarantee extra value. Your signed order carries
 the minimum you will accept. When the winning solver finds better execution
 than that, the difference above the signed limit is **surplus**. Improvement
-over the reference quote is a separate measure when the limit includes slippage. Under the standard schedule, excluding Arc's current release exception, Ophis retains 80% of
+over the reference quote is a separate measure when the limit includes slippage. Under the standard schedule, Ophis retains 80% of
 reference-quote improvement on volatile pairs (99 bps cap) or 50% on stable
 pairs (20 bps cap); the trader receives the remainder and everything above the
 cap. On the ten chains that settle through CoW Protocol's canonical contracts,

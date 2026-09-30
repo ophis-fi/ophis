@@ -45,6 +45,7 @@ export const CHAIN_NAME: Record<number, string> = {
   130: 'Unichain',
   137: 'Polygon',
   4663: 'Robinhood Chain',
+  5042: 'Arc',
   8453: 'Base',
   9745: 'Plasma',
   42161: 'Arbitrum',
@@ -82,11 +83,12 @@ export const EXECUTION_FACTS = {
       { chainId: 10, solvers: 11 },
       { chainId: 130, solvers: 7 },
       { chainId: 4663, solvers: 6 },
+      { chainId: 5042, solvers: 5 },
     ],
     hostedChains: 'CoW Protocol solver network',
   },
   improvementSplit: {
-    sovereign: 'On Optimism, Unichain and Robinhood Chain, Ophis retains 80% of volatile improvement (99 bps cap) or 50% of stable improvement (20 bps cap). Arc currently has no configured backend improvement policy; check the quote and signed fee metadata.',
+    sovereign: 'On in-market orders on Optimism, Unichain, Robinhood Chain and Arc, Ophis retains 80% of volatile improvement (99 bps cap) or 50% of stable improvement (20 bps cap). Arc uses the same capped backend improvement policy for in-market orders.',
     hosted: 'The same Ophis capped capture applies, plus CoW Protocol quote-improvement fees upstream',
   },
 } as const;
@@ -103,6 +105,7 @@ export const CHAIN_ICON: Record<number, string> = {
   1: 'chain-ethereum.png', 10: 'chain-optimism.png', 56: 'chain-bnb.png',
   100: 'chain-gnosis.png', 130: 'chain-unichain.svg', 137: 'chain-polygon.png',
   4663: 'chain-robinhood-v2.svg', 8453: 'chain-base.png', 9745: 'chain-plasma.svg',
+  5042: 'chain-arc-network.svg',
   42161: 'chain-arbitrum.jpg', 43114: 'chain-avalanche.png', 57073: 'chain-ink.svg', 59144: 'chain-linea.jpg',
 };
 
@@ -156,7 +159,7 @@ export function renderStatsPage(s: PublicStats, query = new URLSearchParams()): 
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="robots" content="index, follow">
 <title>Ophis: execution model and indexed volume</title>
-<meta name="description" content="How Ophis batch-auction swaps work, their execution limits, and cumulative indexed volume. Arc activity is not yet included in these totals.">
+<meta name="description" content="How Ophis batch-auction swaps work, their execution limits, and cumulative indexed volume across ${PRODUCTION_CHAIN_IDS.length} EVM networks, including Arc.">
 <meta name="theme-color" content="#ffffff">
 <style>
 :root{color-scheme:light}
@@ -225,7 +228,7 @@ ${freshnessWarning}
   <li><strong>Configured routing lanes</strong>Ophis operates its own orderbooks and routing lanes on Robinhood Chain, Unichain, Optimism, and Arc. These lanes share one operator, with participation varying by token pair and auction. CoW-hosted networks use the ${esc(EXECUTION_FACTS.solverCompetition.hostedChains)}.</li>
 </ul>
 <h2 id="chains">Settled volume by chain</h2>
-<p class="note">This report is configured for ${PRODUCTION_CHAIN_IDS.length} EVM networks. App availability and reporting coverage differ: Arc activity is not yet included. These are indexed batch-settlement records, not a complete ledger of every swap or bridge route. A missing chain row does not prove there was no activity.</p>
+<p class="note">This report is configured for ${PRODUCTION_CHAIN_IDS.length} EVM networks, including Arc. These are indexed batch-settlement records, not a complete ledger of every swap or bridge route. A missing chain row does not prove there was no activity.</p>
 <form method="get" action="/stats#chains" aria-label="Filter settled volume">
 <div class="filters">
   <label><span>Chain</span><select name="chain"><option value="">All reporting chains</option>${chainOptions}</select></label>
@@ -249,7 +252,7 @@ ${freshnessWarning}
   <div class="card"><div class="n">${fmtInt(s.distinctTraders)}</div><div class="l">Traders</div></div>
   <div class="card"><div class="n">${fmtInt(s.chainsActive)}</div><div class="l">Chains with indexed trades</div></div>
 </div>
-<p class="note">Standard batch-auction fees combine a 1 bp Ophis base with capped price-improvement capture. CoW-hosted chains also apply upstream fees. Arc currently has no configured backend improvement policy; check the quote and signed fee metadata. Bridge and conversion costs differ; check the final route quote. Volume is priced in USD at index time and refreshed periodically. Source: <a href="https://github.com/ophis-fi/ophis">github.com/ophis-fi/ophis</a>.</p>
+<p class="note">Standard batch-auction fees combine a 1 bp Ophis base with capped price-improvement capture. CoW-hosted chains also apply upstream fees. Arc uses the same capped backend improvement policy for in-market orders. Bridge and conversion costs differ; check the final route quote. Volume is priced in USD at index time and refreshed periodically. Source: <a href="https://github.com/ophis-fi/ophis">github.com/ophis-fi/ophis</a>.</p>
 <div class="foot"><span><a href="https://docs.ophis.fi/fees">Fee model</a> &middot; <a href="https://docs.ophis.fi/comparison">How Ophis compares</a> &middot; <a href="https://swap.ophis.fi/">Open the app</a></span><span>${updated ? `Data as of ${updated}` : 'Data publication time unavailable'}</span></div>
 </main></body></html>`;
 }

@@ -119,7 +119,7 @@ export interface IntegratorEarnings {
     payouts: EarningsPayout[];
     note: string;
   };
-  /** Referral rebate Ophis pays this integrator's wallet monthly (only if the appCode is a registered code). */
+  /** Referral attribution and executed payments, not a promise of scheduled payouts. */
   referral: {
     registered: boolean;
     /** EXACT, from already-executed Ophis Safe batches. Not an estimate, not current-cycle. */
@@ -286,7 +286,7 @@ export function assembleEarnings(appCode: string, input: EarningsInput, now: Dat
   const sovereignPaidToDateWeth = round(Number(ownPaidWeiTotal) / 1e18);
 
   const disclaimer =
-    `Trades on Optimism (10), Unichain (130), and Robinhood (4663) settle through Ophis-operated stacks. ` +
+    `Trades on Optimism (10), Unichain (130), Robinhood (4663), and Arc (5042) settle through Ophis-operated stacks. ` +
     `Own-fee payouts are currently guaranteed only on Optimism and Unichain. ` +
     `Figures on CoW-hosted chains are ${HOSTED_ACCRUAL_LABEL}. ` +
     `Routed volume is cumulative (lifetime); this surface never reports a 30-day figure or a next-payout time.`;
@@ -317,7 +317,7 @@ export function assembleEarnings(appCode: string, input: EarningsInput, now: Dat
       note:
         `Own-fee is the partner-fee entry you stack to your own recipient in appData, decoded from settled orders, reported GROSS (Ophis takes 0% of it). ` +
         `sovereignGuaranteed (Optimism, Unichain) is swept through the configured Ophis own-fee payout lanes. ` +
-        `hostedAccrued is the backwards-compatible field for every non-guaranteed own-fee accrual: it includes Robinhood until that payout lane exists, while CoW-hosted amounts are ${HOSTED_ACCRUAL_LABEL} and subject to CoW's terms. Treat this field as gross and not guaranteed. ` +
+        `hostedAccrued is the backwards-compatible field for every non-guaranteed own-fee accrual: it includes Robinhood and Arc, which have no own-fee payout lane, while CoW-hosted amounts are ${HOSTED_ACCRUAL_LABEL} and subject to CoW's terms. Treat this field as gross and not guaranteed. ` +
         `Only flat Volume own-fees are priced from routed volume; a surplus or price-improvement own-fee is not included. ` +
         `sovereignPaidToDate is exact, summed from executed Ophis Safe own-fee batches on Optimism and Unichain; it is keyed on the recipient address, so if several integrators share one own-fee recipient the paid-to-date is attributed to each.`,
     },
@@ -327,7 +327,7 @@ export function assembleEarnings(appCode: string, input: EarningsInput, now: Dat
       paidToDateUsd: round(paidUsd),
       payouts,
       note: input.registered
-        ? `Referral rebate Ophis pays your wallet monthly in WETH from the Gnosis Safe. paidToDate is exact, summed from executed Safe batches; it is not an estimate and not a current-cycle figure. Paid-to-date and payouts are per referrer wallet (summed across every code that wallet owns).`
+        ? `Referral rebate attributed to your wallet. Accrual does not mean payout execution is enabled; check the partner dashboard payout status. paidToDate is exact, summed from executed Safe batches; it is not an estimate and not a current-cycle figure. Paid-to-date and payouts are per referrer wallet (summed across every code that wallet owns).`
         : `This appCode is not a registered referral code, so no Ophis referral rebate accrues. Own-fee (above) is independent of the referral program. Register a code to earn the rebate on top of your own fee.`,
     },
     byChain,

@@ -113,9 +113,9 @@ export function SwapForm({ sdk, owner, chainId }: Props) {
     <main>
       <h1>Ophis Swap</h1>
       <p style={{ color: '#666', marginTop: -8 }}>
-        Chain {chainId} · Safe {short(owner)}{referral ? ` · ref ${referral}${chainId === 5042 ? ' (unsupported on Arc)' : ''}` : ''}{isSafeWalletLaunch() ? ' · via Safe Wallet' : ''}
+        Chain {chainId} · Safe {short(owner)}{referral ? ` · ref ${referral}` : ''}{isSafeWalletLaunch() ? ' · via Safe Wallet' : ''}
       </p>
-      {chainId === 5042 && <p>Arc orders use ERC-20 tokens and do not earn referral or volume-tier rebates.</p>}
+      {chainId === 5042 && <p>Arc orders use ERC-20 tokens. Eligible settled trades count toward referral and volume-tier rebates.</p>}
       <label style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
         <input
           type="checkbox"

@@ -40,13 +40,28 @@ The `.env` file on the VM is **not** synced by the deploy workflow — it lives 
 it via `ssh` when secrets rotate). The workflow's `rsync --delete` explicitly
 excludes it.
 
+## Contract-wallet authentication
+
+The five signed affiliate/partner/reward endpoints accept EIP-1271 signatures only
+on an operator-pinned chain for each global wallet identity. Set
+`CONTRACT_WALLET_AUTH_CHAINS` to a JSON object mapping **lowercase wallet addresses**
+to numeric supported chain IDs after confirming the authoritative deployment with
+the wallet administrator. Do not infer authority from the request, from a matching
+address on another chain, or from the first successful signature.
+
+For example, `{"0x1111111111111111111111111111111111111111":1}` pins that example
+contract to Ethereum. Missing/invalid configuration fails closed for contract
+wallets; existing EOA signatures are unaffected. A Safe owner rotation must be
+checked on this pinned chain. Changing the pin is an operator-controlled identity
+change and requires renewed verification. Payouts remain separately disabled.
+
 ## Swap scan (exhaustive, allowlist-free)
 
 Report every Ophis swap in a time window across chains, independent of the rebate
 wallet allowlist. Read-only: it never touches the rebate DB.
 
 ```bash
-# All 13 production chains, last 48h, also DM Clement:
+# All 14 production chains, last 48h, also DM Clement:
 pnpm scan --since 48h --telegram
 
 # one chain, custom window, custom artifact path:
@@ -58,10 +73,17 @@ SCAN_RPC_ETHEREUM=https://example-rpc.invalid pnpm scan --since 2d --chains ethe
 
 Discovery is on-chain (`getLogs(Trade)` on the CoW Settlement contract) plus per-order
 appData resolution via CoW's API, keeping `appCode in {ophis, greg}`. Self-hosted
-Optimism reads its local orderbook Postgres directly (run on the Mac mini where Docker
+Optimism and Arc read their local orderbook Postgres directly (run on the Mac mini where Docker
 lives). RPC chains use keyless public endpoints by default; `SCAN_RPC_<CHAIN>` overrides
 one endpoint, while `SCAN_BLOCK_RPC_<CHAIN>` can separately override historical block
 headers when a log provider does not serve them. An explicitly set `ALCHEMY_API_KEY`
 takes precedence over the public fallback on supported chains. The optional `ophis-telegram-bot` secret comes from the
 macOS Keychain. The JSON artifact and the orderUid cache default to `~/.ophis/` (out of repo). Design:
 `docs/development/specs/2026-06-19-onchain-appdata-swap-scan-design.md`.
+
+Arc uses chain ID `5042`, `https://arc-mainnet.ophis.fi`, and settlement
+`0x78799f98276efba1edeed32eae03a3fd8cdfec3a`. Its USD reference is the **6-decimal
+ERC-20 USDC** at `0x3600000000000000000000000000000000000000`, not the 18-decimal
+native gas balance. Historical reporting prices use the verified `arc` coins-API
+namespace. Arc keeps the sovereign 100% fee fraction; its backend has no operator
+improvement prefix. This integration does not enable Arc own-fee payouts.

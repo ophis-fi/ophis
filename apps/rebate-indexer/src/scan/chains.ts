@@ -2,6 +2,7 @@ import type { ChainConfig } from './types.js';
 
 export const SCAN_CHAINS: readonly ChainConfig[] = [
   { chainId: 10,    name: 'optimism',  kind: 'local-db', dbContainer: 'optimism-mainnet-db-1' },
+  { chainId: 5042,  name: 'arc',       kind: 'local-db', dbContainer: 'ophis-arc-postgres-1', dbUser: 'arc' },
   { chainId: 1,     name: 'ethereum',  kind: 'rpc', alchemySubdomain: 'eth-mainnet',     defaultRpcUrl: 'https://eth.drpc.org' },
   { chainId: 100,   name: 'gnosis',    kind: 'rpc',                                  defaultRpcUrl: 'https://gnosis-rpc.publicnode.com' },
   { chainId: 8453,  name: 'base',      kind: 'rpc', alchemySubdomain: 'base-mainnet',    defaultRpcUrl: 'https://mainnet.base.org' },

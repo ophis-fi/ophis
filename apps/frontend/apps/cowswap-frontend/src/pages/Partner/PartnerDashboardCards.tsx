@@ -4,12 +4,9 @@ import { Badge, MetricCard, Section } from 'ophis/ds'
 
 import { type RankStatus, AffiliateApiError, getRankStatus } from 'modules/affiliate'
 
-import { GhostButton, MetricRow, ShareRow } from '../Affiliate/Affiliate.styled'
+import { formatUsd } from './Partner.utils'
 
-function formatUsd(value: number): string {
-  if (!Number.isFinite(value)) return '$0'
-  return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 }).format(value)
-}
+import { GhostButton, MetricRow, ShareRow } from '../Affiliate/Affiliate.styled'
 
 function formatWeth(value: number): string {
   if (!Number.isFinite(value) || value <= 0) return '0'
@@ -106,22 +103,24 @@ export function ReferredVolumeMetric({ lifetimeUsd, cycleUsd }: { lifetimeUsd: n
 
 /**
  * Earnings panel. These fields ship with a newer rebate-indexer, so if the
- * backend has not been updated yet (nextPayoutAt absent) the panel is hidden
- * rather than rendering blanks. Estimated earnings are volume-derived and
- * clearly labeled as an estimate; paid-to-date is exact.
+ * backend supplies neither earnings nor payout status, the panel is hidden.
+ * Disabled or unconfirmed payouts do not hide available earnings. Estimated
+ * earnings are labeled as estimates; paid-to-date comes from executed batches.
  */
 export function PartnerEarnings({
   estimatedCurrentCycleEarningsUsd,
   paidToDateWeth,
   paidToDateUsd,
   nextPayoutAt,
+  payoutStatus,
 }: {
   estimatedCurrentCycleEarningsUsd?: number
   paidToDateWeth?: number
   paidToDateUsd?: number
-  nextPayoutAt?: string
+  nextPayoutAt?: string | null
+  payoutStatus?: 'disabled' | 'not-configured' | 'dry-run' | 'scheduled'
 }): ReactNode {
-  if (!nextPayoutAt) return null
+  if (estimatedCurrentCycleEarningsUsd === undefined && paidToDateUsd === undefined && !payoutStatus) return null
 
   return (
     <Section id="earnings" title="Earnings">
@@ -129,18 +128,36 @@ export function PartnerEarnings({
         <MetricCard
           label="Estimated this cycle"
           value={`~${formatUsd(estimatedCurrentCycleEarningsUsd ?? 0)}`}
-          sublabel="from referred volume, settles in WETH"
+          sublabel="from eligible referred volume; not yet paid"
         />
         <MetricCard
           label="Paid to date"
           value={formatUsd(paidToDateUsd ?? 0)}
           sublabel={`${formatWeth(paidToDateWeth ?? 0)} WETH`}
         />
-        <MetricCard label="Next payout" value={formatDate(nextPayoutAt)} sublabel="1st of the month" />
+        <MetricCard
+          label="Payout status"
+          value={
+            payoutStatus === 'scheduled'
+              ? 'Scheduled'
+              : payoutStatus === 'disabled'
+                ? 'Disabled'
+                : payoutStatus === 'dry-run'
+                  ? 'Dry run'
+                  : payoutStatus === 'not-configured'
+                    ? 'Not configured'
+                    : 'Unconfirmed'
+          }
+          sublabel={
+            payoutStatus === 'scheduled' && nextPayoutAt
+              ? `Next cycle: ${formatDate(nextPayoutAt)}`
+              : 'No payout date confirmed'
+          }
+        />
       </MetricRow>
       <p style={{ opacity: 0.75, fontSize: '0.9em', marginTop: 8 }}>
-        Estimated earnings are derived from referred volume and may differ from the settled amount. Payouts run monthly
-        in WETH.
+        Estimated earnings may differ from settled amounts. When enabled, payouts are processed monthly in WETH, subject
+        to reconciliation, funding and Safe approval. A scheduled cycle is not a guaranteed payment date.
       </p>
     </Section>
   )

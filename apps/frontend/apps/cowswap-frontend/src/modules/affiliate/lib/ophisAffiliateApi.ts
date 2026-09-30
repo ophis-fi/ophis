@@ -12,6 +12,7 @@
  * EIP-191), NOT `_signTypedData` (EIP-712, would not verify).
  */
 
+import { getTimeoutAbortController } from '@cowprotocol/common-utils'
 import { getAddressKey } from '@cowprotocol/cow-sdk'
 
 import { AFFILIATE_API_TIMEOUT_MS } from '../config/affiliateProgram.const'
@@ -34,9 +35,7 @@ function timeoutSignal(): AbortSignal {
   if (typeof AbortSignal !== 'undefined' && typeof AbortSignal.timeout === 'function') {
     return AbortSignal.timeout(AFFILIATE_API_TIMEOUT_MS)
   }
-  const controller = new AbortController()
-  setTimeout(() => controller.abort(), AFFILIATE_API_TIMEOUT_MS)
-  return controller.signal
+  return getTimeoutAbortController(AFFILIATE_API_TIMEOUT_MS).signal
 }
 
 export type AffiliateKind = 'regular' | 'partner'
@@ -76,7 +75,9 @@ export interface AffiliateStats {
 
 export interface PartnerReferee {
   wallet: string
-  boundAt: string
+  boundAt: string | null
+  firstSeenAt?: string
+  attribution?: 'link' | 'code' | 'link-and-code'
   lifetimeVolumeUsd: number
 }
 
@@ -92,7 +93,8 @@ export interface PartnerDashboard extends AffiliateStats {
   estimatedCurrentCycleEarningsUsd?: number
   paidToDateWeth?: number
   paidToDateUsd?: number
-  nextPayoutAt?: string
+  nextPayoutAt?: string | null
+  payoutStatus?: 'disabled' | 'not-configured' | 'dry-run' | 'scheduled'
 }
 
 /**
@@ -156,6 +158,7 @@ export type AffiliateSignedAction =
 
 export interface SignedRequestBody {
   wallet: string
+  chainId?: number
   issued: number
   signature: string
 }
@@ -167,8 +170,13 @@ export interface SignedRequestBody {
  * getAddressKey returns the exact lowercase form, so this is byte-identical to
  * the previous `.toLowerCase()` and preserves signature compatibility.
  */
-export function buildAffiliateSignMessage(action: AffiliateSignedAction, address: string, issuedSec: number): string {
-  return `Ophis ${action}\nAddress: ${getAddressKey(address)}\nIssued: ${issuedSec}`
+export function buildAffiliateSignMessage(
+  action: AffiliateSignedAction,
+  address: string,
+  issuedSec: number,
+  chainId?: number,
+): string {
+  return `Ophis ${action}\nAddress: ${getAddressKey(address)}\nIssued: ${issuedSec}${chainId === undefined ? '' : `\nChain ID: ${chainId}`}`
 }
 
 export function nowIssuedSec(): number {
@@ -234,6 +242,7 @@ export function getWalletXp(wallet: string): Promise<WalletXp> {
  */
 export interface RefBindRequestBody {
   referredWallet: string
+  chainId?: number
   code: string
   issued: number
   signature: string
@@ -295,6 +304,7 @@ export function getRankStatus(wallet: string): Promise<RankStatus> {
  */
 export interface RewardClaimRequestBody {
   wallet: string
+  chainId?: number
   rewardId: string
   email: string
   issued: number
