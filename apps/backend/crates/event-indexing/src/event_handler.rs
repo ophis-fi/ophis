@@ -31,6 +31,17 @@ const MAX_LATEST_BLOCKS: u64 = 16;
 // Keep catch-up from bursting 128 reads into every consensus voter at once.
 pub(crate) const MAX_PARALLEL_RPC_CALLS: usize = 4;
 
+#[derive(Debug)]
+struct CatchUpIncomplete;
+
+impl std::fmt::Display for CatchUpIncomplete {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter.write_str("event catch-up incomplete")
+    }
+}
+
+impl std::error::Error for CatchUpIncomplete {}
+
 /// General idea behind the algorithm:
 /// 1. Use `last_handled_blocks` as an indicator of the beginning of the block
 ///    crange that needs to be updated in current iteration. If it is empty,
@@ -429,10 +440,7 @@ where
             let end = *range.end();
             self.update_events_from_old_blocks(range).await?;
             self.store.persist_last_indexed_block(end).await?;
-            ensure!(
-                !event_range.latest_blocks.is_empty(),
-                "historical event catch-up incomplete"
-            );
+            ensure!(!event_range.latest_blocks.is_empty(), CatchUpIncomplete);
         }
         if let Some(last_block) = event_range.latest_blocks.last() {
             self.update_events_from_latest_blocks(&event_range.latest_blocks, event_range.is_reorg)
@@ -440,10 +448,7 @@ where
             self.store_mut()
                 .persist_last_indexed_block(last_block.0)
                 .await?;
-            ensure!(
-                last_block.0 >= event_range.target_block,
-                "event catch-up incomplete"
-            );
+            ensure!(last_block.0 >= event_range.target_block, CatchUpIncomplete);
         }
         Ok(())
     }
@@ -692,10 +697,13 @@ where
             .update_events()
             .instrument(tracing::info_span!("address", ?address))
             .await;
-        // Each indexer backs off independently; a failed optional indexer must
-        // not sleep while holding up essential maintenance on the next block.
+        // Back off real failures, not successful partial checkpoints: a ten-second
+        // delay would let fast chains outpace every bounded tail checkpoint.
+        // Partial progress still returns an error so maintenance cannot mark it current.
         inner.retry_after = result
-            .is_err()
+            .as_ref()
+            .err()
+            .is_some_and(|err| !err.is::<CatchUpIncomplete>())
             .then(|| Instant::now() + Duration::from_secs(10));
         result
     }
@@ -991,6 +999,38 @@ mod tests {
             restarted.store.cursor
         );
         restarted.update_events().await.unwrap();
+
+        // A fast chain adds 100 blocks during a real error's ten-second cooldown,
+        // then ten per one-second maintenance retry. Partial progress must resume
+        // immediately and remain incomplete until the sampled head is reached.
+        let restarted = Mutex::new(restarted);
+        blocks.head.fetch_add(100, Ordering::SeqCst);
+        restarted.lock().await.contract.0 = true;
+        assert!(restarted.run_maintenance().await.is_err());
+        assert!(restarted.lock().await.retry_after.is_some());
+        blocks.head.fetch_add(100, Ordering::SeqCst);
+        {
+            let mut inner = restarted.lock().await;
+            inner.contract.0 = false;
+            inner.retry_after = Some(Instant::now());
+        }
+        for _ in 0..64 {
+            let head = blocks.head.fetch_add(10, Ordering::SeqCst) as u64 + 10;
+            let result = restarted.run_maintenance().await;
+            let inner = restarted.lock().await;
+            assert!(
+                inner.retry_after.is_none(),
+                "partial progress must not cool down"
+            );
+            assert_eq!(result.is_ok(), inner.store.cursor == head);
+            if result.is_ok() {
+                break;
+            }
+        }
+        assert_eq!(
+            restarted.lock().await.store.cursor,
+            blocks.head.load(Ordering::SeqCst) as u64
+        );
     }
 
     #[test]
