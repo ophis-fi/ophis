@@ -55,8 +55,10 @@ const stores = roots.filter(existsSync).map((root) => {
 
 function installed(name, major) {
   const found = [];
+  // pnpm encodes the / in scoped package names as + in .pnpm directory entries
+  const dirPrefix = name.replace('/', '+');
   for (const { root, entries, patches } of stores) {
-    for (const entry of entries.filter((entry) => entry.startsWith(`${name}@${major}.`))) {
+    for (const entry of entries.filter((entry) => entry.startsWith(`${dirPrefix}@${major}.`))) {
       const manifest = join(root, entry, 'node_modules', name, 'package.json');
       if (existsSync(manifest)) {
         const pkg = JSON.parse(readFileSync(manifest, 'utf8'));
@@ -328,13 +330,22 @@ async function main() {
   for (const major of workspace === 'root' ? [3, 5] : [3, 5, 10]) {
     for (const pkg of installed('minimatch', major)) {
       const minimatch = pkg.require('minimatch');
-      assert.equal(typeof pkg.require('brace-expansion'), 'function');
+      const braceExpansion = pkg.require('brace-expansion');
+      // brace-expansion v5 (used by minimatch 10) changed from a default-function
+      // export to a named-export object { expand, EXPANSION_MAX, … }
+      if (major === 10) {
+        assert(braceExpansion && typeof braceExpansion === 'object' && typeof braceExpansion.expand === 'function');
+      } else {
+        assert.equal(typeof braceExpansion, 'function');
+      }
       const braceVersion = pkg.require('brace-expansion/package.json').version;
       assert.equal(braceVersion.split('.')[0], major === 3 ? '1' : major === 5 ? '2' : '5');
-      assert(minimatch('src/index.ts', 'src/*.{js,ts}'));
-      assert(minimatch('file2.txt', 'file{1..3}.txt'));
-      assert(minimatch('a/c/file.ts', '{a,b}/{c,d}/*.{js,ts}'));
-      assert(!minimatch('src/index.py', 'src/*.{js,ts}'));
+      // minimatch 10 switched to named exports; the match function is minimatch.minimatch
+      const matchFn = major === 10 ? minimatch.minimatch : minimatch;
+      assert(matchFn('src/index.ts', 'src/*.{js,ts}'));
+      assert(matchFn('file2.txt', 'file{1..3}.txt'));
+      assert(matchFn('a/c/file.ts', '{a,b}/{c,d}/*.{js,ts}'));
+      assert(!matchFn('src/index.py', 'src/*.{js,ts}'));
       assert.deepEqual(minimatch.braceExpand('file{1..3}.txt'), ['file1.txt', 'file2.txt', 'file3.txt']);
       if (major === 10) {
         const start = Date.now();
