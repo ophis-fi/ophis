@@ -728,7 +728,7 @@ describe('readAssessedOphisFeeBps', () => {
     });
     const meta = { metadata: { partnerFee: { volumeBps: 1, recipient: OPHIS } } };
 
-    for (const chainId of [10, 4663]) {
+    for (const chainId of [10, 130, 4663, 5042]) {
       expect(readAssessedOphisFeeBps(chainId, 'market', meta, trade)).toBe('50.00000000');
       expect(readAssessedOphisFeeBps(chainId, 'limit', meta, trade)).toBe('50.00000000');
       expect(readAssessedOphisFeeBps(chainId, 'liquidity', meta, trade)).toBeNull();

@@ -46,6 +46,9 @@ def main():
     assert submit[0]['rateLimitBudget'] == 'arc-official'
     assert 'guarded' not in (OUT / 'driver.toml').read_text()
     autopilot = tomllib.loads((OUT / 'autopilot.toml').read_text())
+    for chain, filename in [('optimism', 'autopilot.toml'), ('unichain', 'autopilot.toml.tmpl'), ('robinhood', 'autopilot.toml.tmpl')]:
+        reference = HERE.parents[1] / f'{chain}-mainnet/configs' / filename
+        assert autopilot['fee-policies'] == tomllib.loads(reference.read_text())['fee-policies'], chain
     orderbook = tomllib.loads((OUT / 'orderbook.toml').read_text())
     # Two bounded native-price legs must retain usable solver time after
     # driver/solver deadline margins; sharing avoids duplicate cold probes.

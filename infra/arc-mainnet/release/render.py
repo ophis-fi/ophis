@@ -116,7 +116,12 @@ contracts = []
 skip-event-sync = false
 {drivers}
 [fee-policies]
-policies = []
+max-partner-fee = 0.01
+# Same market-order policy as OP, Unichain and Robinhood. The shared autopilot
+# substitutes 50% / 20 bps for Arc USDC/EURC; appData supplies the 1 bp base.
+[[fee-policies.policies]]
+kind.price-improvement = {{ factor = 0.80, max-volume-factor = 0.0099 }}
+order-class = "market"
 [run-loop]
 solve-deadline = "20s"
 max-delay = "15s"
