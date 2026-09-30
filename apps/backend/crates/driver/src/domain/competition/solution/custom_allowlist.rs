@@ -392,6 +392,7 @@ impl Error {
 /// violation — callers should log + emit `custom_interaction_rejected`
 /// metric + propagate to the solver as a parse error.
 pub(crate) const PROTECTED_TARGETS: &[Address] = &[
+    arc_sushi::ROUTER,
     arc_routes::AERO_ROUTER,
     arc_routes::V4_ROUTER,
     ARC_UNISWAP_V3_ROUTER,

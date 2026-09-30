@@ -42,7 +42,7 @@ beforeEach(() => {
 })
 afterEach(() => jest.restoreAllMocks())
 
-it('journals the nonce before a bounded token transfer, with no approval', async () => {
+it('journals an advisory nonce before a transfer but leaves nonce allocation to the wallet', async () => {
   const journal = jest.fn()
   await fundNearTransfer(wallet as unknown as WalletClient, transfer, journal)
   expect(journal).toHaveBeenCalledWith(7)
@@ -50,7 +50,7 @@ it('journals the nonce before a bounded token transfer, with no approval', async
   const call = wallet.sendTransaction.mock.calls[0]?.[0]
   expect(areAddressesEqual(call.to, mockFixture.source.contractAddress)).toBe(true)
   expect(call.value).toBe(0n)
-  expect(call.nonce).toBe(7)
+  expect(call).not.toHaveProperty('nonce')
   expect(decodeFunctionData({ abi: erc20Abi, data: call.data })).toEqual({
     functionName: 'transfer',
     args: [expect.any(String), 100_000_000n],

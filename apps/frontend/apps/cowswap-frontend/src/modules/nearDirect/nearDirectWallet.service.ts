@@ -55,8 +55,9 @@ export async function fundNearTransfer(
   if (getNearFundingDeadline(transfer.response) <= Date.now() + 60_000)
     throw new Error('Quote expired. Do not fund it.')
   await beforeSend(nonce)
-  // Transfer only: the wallet never grants an allowance to a NEAR deposit address.
-  return wallet.sendTransaction({ account, chain, to, data, value, gas, gasPrice, nonce })
+  // The observed nonce is only a recovery hint. Let the wallet allocate the
+  // actual nonce so concurrent quotes cannot replace each other's deposits.
+  return wallet.sendTransaction({ account, chain, to, data, value, gas, gasPrice })
 }
 
 async function getFundingChain(transfer: NearTransfer): Promise<typeof monad | typeof xLayer> {
