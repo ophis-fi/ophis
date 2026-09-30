@@ -26,8 +26,8 @@ npm install @ophis/sdk
 ## Example
 
 SDK 0.4.4 enables referral tags on Arc (5042), which is covered by the rebate
-indexer. Arc retains the standard 1 bp trading fee, without backend improvement
-capture. Enroll the trader and supply a valid referral code for attribution on
+indexer. Arc applies the standard 1 bp base plus capped backend improvement
+capture on in-market orders. Enroll the trader and supply a valid referral code for attribution on
 eligible settled orders. `isOphisFeeChain` reports fee support, not reward
 eligibility; `buildOphisReferrerMetadata` only formats the tag.
 

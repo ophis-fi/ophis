@@ -217,12 +217,16 @@ for (const path of [
   `${path}: MCP guidance must explain its own referral parameter`);
 
 assert.match(faq, /14 EVM chains/, 'FAQ must state the canonical 14-EVM-chain count');
-if (read('infra/arc-mainnet/release/render.py').includes('[fee-policies]\npolicies = []')) {
-  assert.match(
-    read('apps/docs-ophis/docs/fees.md'),
-    /### Arc release exception/,
-    'Arc without configured protocol fees must not inherit the standard improvement claim',
-  );
+for (const mode of ['local', 'release']) {
+  assert.match(read(`infra/arc-mainnet/${mode}/render.py`),
+    /\[\[fee-policies\.policies\]\]\nkind\.price-improvement = \{\{ factor = 0\.80, max-volume-factor = 0\.0099 \}\}\norder-class = "market"/,
+    `Arc ${mode} must retain the standard operated-chain market-order policy`);
+}
+const staleArcImprovement = /Arc currently (?:charges only|has no|differs)|(?:current Arc|Arc's current) release exception|Except on Arc|capture except on Arc|Arc[^.]{0,80}without backend improvement/i;
+assert.match('Arc currently differs', staleArcImprovement);
+for (const path of [...integrationDocPaths, ...publicSitePaths]) {
+  assert.doesNotMatch(read(path).replace(/\s+/g, ' '), staleArcImprovement,
+    `${path}: stale Arc price-improvement exclusion`);
 }
 assert.match(read('apps/frontend/libs/common-const/src/arc.const.ts'), /ARC_CHAIN_ID = 5042 as SupportedChainId/);
 assert.match(gettingStarted, /Arc is available in the swap app \(chain ID 5042\)/);
