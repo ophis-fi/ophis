@@ -90,6 +90,30 @@ async function main() {
     console.log(`PASS ip-address ${requireIp('ip-address/package.json').version}: IPv6 boundaries and consumer compatibility`);
   }
 
+  for (const pkg of installed('axios', 1)) {
+    const axios = pkg.require('axios');
+    let completed = 0;
+    const server = createServer((req, res) => {
+      if (req.url === '/redirect') {
+        res.writeHead(302, { location: '/ok' });
+      } else {
+        completed += 1;
+        res.writeHead(200, { 'content-type': 'application/json' });
+      }
+      res.end(JSON.stringify({ ok: true }));
+    });
+    try {
+      await new Promise((done) => server.listen(0, '127.0.0.1', done));
+      const url = `http://127.0.0.1:${server.address().port}`;
+      assert.deepEqual((await axios.get(`${url}/ok`, { timeout: 2000, proxy: false })).data, { ok: true });
+      for (const adapter of ['http', 'fetch']) {
+        await assert.rejects(axios.get(`${url}/redirect`, { adapter, maxRedirects: 0, timeout: 2000, proxy: false }));
+      }
+      assert.equal(completed, 1, 'maxRedirects: 0 must prevent HTTP and fetch adapters following redirects');
+    } finally { await new Promise((done) => server.close(done)); }
+    console.log(`PASS axios ${pkg.version}: HTTP/JSON compatibility and redirect blocking`);
+  }
+
   for (const pkg of installed('undici', 6)) {
     const { request, Response } = pkg.require('undici');
     const server = createServer((_req, res) => {

@@ -45,6 +45,11 @@ test("security overrides preserve signing and the legacy tooling APIs", async ()
   );
   await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
   try {
+    const response = await require("axios").get(
+      `http://127.0.0.1:${server.address().port}/Contract.sol`,
+      { timeout: 2000, proxy: false },
+    );
+    assert.equal(response.data, "pragma solidity ^0.8.0;");
     const parse = require("@resolver-engine/core").parsers.UrlParser();
     assert.equal(
       await parse(`http://127.0.0.1:${server.address().port}/Contract.sol`),
