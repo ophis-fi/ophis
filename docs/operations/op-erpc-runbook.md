@@ -28,8 +28,10 @@ advances ordinary catch-up in hash-verified checkpoints of at most 16 blocks,
 requiring the sampled head before reporting success. The no-reorg path accepts head drift
 after partial progress instead of replaying history. Historical checkpoints need
 one header; the 64-block event overlap remains. Four-request concurrency,
-contiguous-prefix handling, ten-second error cooldown, and fail-closed RPC
-consensus remain. The regression follows a persisted empty-range restart through
+contiguous-prefix handling, ten-second cooldown for RPC/storage failures, and
+fail-closed RPC consensus remain. Successful partial checkpoints resume on the
+next maintenance retry, so fast chains cannot outrun an artificial cooldown.
+The regression follows a persisted empty-range restart through
 historical checkpoints and requires completion despite a moving head, with at
 most 17 headers per normal tail attempt. A changed anchor still uses the full
 reorg-detection window.
@@ -198,8 +200,9 @@ fetch. Historical maintenance checkpoints at most 5,000 blocks per attempt,
 retains the 64-block reorg overlap, and avoids fetching moving-tip headers until
 the final historical chunk. Tail checkpoints process at most 16 blocks at a time.
 It stops consuming RPC pages on the first error and backs off that indexer for
-ten seconds. Partial checkpoints return an error, so essential maintenance
-cannot publish a current auction from them.
+ten seconds. Successful partial checkpoints return a distinct incomplete error
+without that cooldown, so essential maintenance cannot publish a current auction
+from them while catch-up continues on fast chains.
 This fixes the refund indexer's repeated historical scan that saturated the two
 remaining providers during the September 27–29 incident.
 
