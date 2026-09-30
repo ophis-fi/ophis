@@ -36,7 +36,7 @@ it('activates Arc with explicit public deployment configuration', () => {
   const arc = loadArc(production)
   expect(arc.ARC_ENABLED_CHAIN_IDS).toEqual([5042])
   expect(arc.ARC_LABEL).toBe('Arc')
-  expect(arc.ARC_RPC_URL).toBe('https://rpc.mainnet.arc.io')
+  expect(arc.ARC_RPC_URL).toBe('https://arc-rpc.publicnode.com')
 })
 
 it.each(['', 'not-a-url', 'https://['])('reports a clear error for a missing or malformed orderbook URL (%s)', (url) => {

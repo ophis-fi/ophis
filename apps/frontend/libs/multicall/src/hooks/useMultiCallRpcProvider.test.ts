@@ -18,9 +18,9 @@ const mockIsWalletConnect = jest.fn()
 jest.mock('@cowprotocol/common-const', () => ({
   ARC_CHAIN_ID: 5042,
   ARC_LOCAL: false,
-  ARC_RPC_URL: 'https://rpc.mainnet.arc.io',
-  ARC_READ_RPC_URL: 'https://rpc.blockdaemon.mainnet.arc.io',
-  RPC_URLS: { 5042: 'https://rpc.mainnet.arc.io' },
+  ARC_RPC_URL: 'https://arc-rpc.publicnode.com',
+  ARC_FALLBACK_RPC_URL: 'https://rpc.blockdaemon.mainnet.arc.io',
+  RPC_URLS: { 5042: 'https://arc-rpc.publicnode.com' },
   getRpcProvider: (chainId: number) => mockGetRpcProvider(chainId),
 }))
 jest.mock('@cowprotocol/wallet', () => ({
@@ -100,17 +100,29 @@ it('fails over Arc balance reads without using the connected wallet', async () =
   mockWalletChainId.mockReturnValue(5042)
   mockContext.mockReturnValue({ chainId: 5042 })
   mockSend.mockImplementation(async function (this: StaticJsonRpcProvider, method: string) {
-    if (this.connection.url.includes('blockdaemon')) throw new Error('429 rate limit exceeded')
+    if (this.connection.url.includes('publicnode')) throw new Error('429 rate limit exceeded')
     if (method === 'eth_blockNumber') return '0x64'
     return '0x1234'
   })
   const { result } = renderHook(useMultiCallRpcProvider)
   expect(result.current).toBeInstanceOf(ArcReadProvider)
   await expect(result.current?.call({ to: '0x3600000000000000000000000000000000000000' })).resolves.toBe('0x1234')
-  expect(mockSend.mock.instances.some((provider) => provider.connection.url === 'https://rpc.mainnet.arc.io')).toBe(
-    true,
-  )
+  expect(
+    mockSend.mock.instances.some((provider) => provider.connection.url === 'https://rpc.blockdaemon.mainnet.arc.io'),
+  ).toBe(true)
   expect(mockGetRpcProvider).not.toHaveBeenCalled()
+})
+
+it('loads Arc balances when the browser blocks every arc.io subdomain', async () => {
+  mockWalletChainId.mockReturnValue(5042)
+  mockContext.mockReturnValue({ chainId: 5042 })
+  mockSend.mockImplementation(async function (this: StaticJsonRpcProvider) {
+    if (new URL(this.connection.url).hostname.endsWith('.arc.io')) throw new Error('net::ERR_BLOCKED_BY_CLIENT')
+    return '0x1234'
+  })
+  const { result } = renderHook(useMultiCallRpcProvider)
+  await expect(result.current?.call({ to: '0x3600000000000000000000000000000000000000' })).resolves.toBe('0x1234')
+  expect(mockSend).toHaveBeenCalledTimes(1)
 })
 
 it('rejects when both Arc read endpoints fail', async () => {

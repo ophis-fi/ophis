@@ -38,8 +38,9 @@ export const ARC_USYC = new TokenWithLogo(
   'USYC (eligible wallets only)',
 )
 export const ARC_LOCAL = process.env.NODE_ENV !== 'production' && process.env.REACT_APP_ARC_LOCAL === 'true'
-export const ARC_RPC_URL = ARC_LOCAL ? 'http://127.0.0.1:8547' : 'https://rpc.mainnet.arc.io'
-export const ARC_READ_RPC_URL = 'https://rpc.blockdaemon.mainnet.arc.io'
+// Keep the default outside arc.io: browser content blockers can block that entire domain.
+export const ARC_RPC_URL = ARC_LOCAL ? 'http://127.0.0.1:8547' : 'https://arc-rpc.publicnode.com'
+export const ARC_FALLBACK_RPC_URL = 'https://rpc.blockdaemon.mainnet.arc.io'
 export const ARC_LABEL = ARC_LOCAL ? 'Arc (local)' : 'Arc'
 export const ARC_ORDERBOOK_URL = ARC_LOCAL ? 'http://127.0.0.1:8087' : process.env.REACT_APP_ARC_ORDERBOOK_URL || ''
 
