@@ -10,8 +10,10 @@ import { NearTransfer } from './nearDirect.schemas'
 import {
   getNearFundingDeadline,
   hasCurrentNearAssets,
-  isNewerNearStatus,
+  isExpiredUnfundedNearTransfer,
+  nearErrorMessage,
   submitNearDeposit,
+  withLatestNearStatus,
 } from './nearDirect.service'
 import { Panel } from './nearDirect.styled'
 import { NearQuote } from './NearQuote.pure'
@@ -27,7 +29,13 @@ const STATUS_LABELS = {
   FAILED: 'Swap failed; check the provider for refund status',
 }
 
-export function NearTransferCard({ transfer }: { transfer: NearTransfer }): ReactNode {
+export function NearTransferCard({
+  transfer,
+  allowFunding = true,
+}: {
+  transfer: NearTransfer
+  allowFunding?: boolean
+}): ReactNode {
   const setTransfers = useSetAtom(nearTransfersAtom)
   const { data: tokens = [] } = useAtomValue(nearTokensAtom)
   const { data, error: statusError } = useAtomValue(nearTransferStatusAtom(transfer.response.signature))
@@ -38,20 +46,30 @@ export function NearTransferCard({ transfer }: { transfer: NearTransfer }): Reac
   useInterval(() => setNow(Date.now()), 10_000)
   useEffect(() => {
     if (data && data.statusUpdatedAt !== transfer.statusUpdatedAt) {
-      void setTransfers((current) =>
-        current.map((item) =>
-          item.response.signature === data.response.signature &&
-          isNewerNearStatus(data.statusUpdatedAt, item.statusUpdatedAt)
-            ? { ...item, status: data.status, statusUpdatedAt: data.statusUpdatedAt, receipt: data.receipt }
-            : item,
-        ),
-      ).catch((failure: unknown) => setError(failure instanceof Error ? failure.message : 'Unable to save status.'))
+      void setTransfers((current) => current.map((item) => withLatestNearStatus(item, data))).catch(
+        (failure: unknown) => setError(failure instanceof Error ? failure.message : 'Unable to save status.'),
+      )
     }
   }, [data, transfer.statusUpdatedAt, setTransfers])
   const deadline = getNearFundingDeadline(transfer.response)
+  const latest = withLatestNearStatus(transfer, data)
   const canFund =
-    transfer.status === 'PENDING_DEPOSIT' && now < deadline && !transfer.fundingStarted && !transfer.transactionHash
+    latest.status === 'PENDING_DEPOSIT' && now < deadline && !transfer.fundingStarted && !transfer.transactionHash
   const assetsVerified = hasCurrentNearAssets(transfer, tokens)
+
+  const removeExpired = useCallback(async (): Promise<void> => {
+    if (!window.confirm('Remove this expired quote? Only continue if you checked your wallet and sent no deposit.'))
+      return
+    try {
+      await setTransfers((current) =>
+        current.filter(
+          (item) => item.response.signature !== transfer.response.signature || !isExpiredUnfundedNearTransfer(item),
+        ),
+      )
+    } catch (failure) {
+      setError(failure instanceof Error ? failure.message : 'Unable to remove this quote.')
+    }
+  }, [transfer.response.signature, setTransfers])
 
   const submit = useCallback(async (): Promise<void> => {
     if (busy) return
@@ -68,9 +86,7 @@ export function NearTransferCard({ transfer }: { transfer: NearTransfer }): Reac
         ),
       )
     } catch (failure) {
-      setError(
-        failure instanceof Error ? failure.message : 'Unable to submit transaction. Automatic tracking continues.',
-      )
+      setError(nearErrorMessage(failure))
     } finally {
       setBusy(false)
     }
@@ -78,20 +94,19 @@ export function NearTransferCard({ transfer }: { transfer: NearTransfer }): Reac
 
   return (
     <Panel aria-label="NEAR swap tracking">
-      <h3 aria-live="polite">{STATUS_LABELS[transfer.status]}</h3>
-      {assetsVerified ? (
-        <NearQuote transfer={transfer} />
-      ) : (
-        <p>Verifying assets before displaying deposit instructions…</p>
+      <h3 aria-live="polite">{STATUS_LABELS[latest.status]}</h3>
+      {assetsVerified && <NearQuote transfer={latest} />}
+      {!assetsVerified && <p>Verifying assets before displaying deposit instructions…</p>}
+      {assetsVerified && allowFunding && (
+        <NearFundingInstructions transfer={latest} canFund={canFund} deadline={deadline} />
       )}
-      {assetsVerified && <NearFundingInstructions transfer={transfer} canFund={canFund} deadline={deadline} />}
       {transfer.fundingError && <p role="alert">{transfer.fundingError}</p>}
       {transfer.transactionHash && (
         <p>
           Source transaction: <code>{transfer.transactionHash}</code>
         </p>
       )}
-      {!['SUCCESS', 'REFUNDED'].includes(transfer.status) && (
+      {!['SUCCESS', 'REFUNDED'].includes(latest.status) && (
         <>
           <label>
             Already sent? Add the source transaction hash (optional)
@@ -101,6 +116,11 @@ export function NearTransferCard({ transfer }: { transfer: NearTransfer }): Reac
             Track transaction
           </button>
         </>
+      )}
+      {isExpiredUnfundedNearTransfer(latest, now) && (
+        <button type="button" onClick={removeExpired}>
+          Remove expired quote
+        </button>
       )}
       {(error || statusError) && (
         <p role="alert">

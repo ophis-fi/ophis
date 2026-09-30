@@ -5,9 +5,9 @@ import { atomWithQuery } from 'jotai-tanstack-query'
 
 import { NearTransfer, nearTransferSchema } from './nearDirect.schemas'
 import {
-  getNearFundingDeadline,
   getNearTokens,
   getNearTransferStatus,
+  isExpiredUnfundedNearTransfer,
   validateNearTransfer,
 } from './nearDirect.service'
 
@@ -86,13 +86,7 @@ export const nearTransferStatusAtom = atomFamily((signature: string) =>
         return getNearTransferStatus(transfer)
       },
       enabled: !!transfer && !['SUCCESS', 'REFUNDED'].includes(transfer.status),
-      refetchInterval: (): number | false =>
-        transfer?.status === 'PENDING_DEPOSIT' &&
-        !transfer.fundingStarted &&
-        !transfer.transactionHash &&
-        Date.now() > getNearFundingDeadline(transfer.response) + 86_400_000
-          ? false
-          : 10_000,
+      refetchInterval: (): number | false => (transfer && isExpiredUnfundedNearTransfer(transfer) ? false : 10_000),
       retry: 1,
     }
   }),

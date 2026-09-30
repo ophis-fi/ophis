@@ -186,6 +186,22 @@ export function isNewerNearStatus(updatedAt: string | undefined, previous: strin
   return !!updatedAt && (!previous || Date.parse(updatedAt) > Date.parse(previous))
 }
 
+export function withLatestNearStatus(transfer: NearTransfer, update: NearTransfer | undefined): NearTransfer {
+  return update?.response.signature === transfer.response.signature &&
+    isNewerNearStatus(update.statusUpdatedAt, transfer.statusUpdatedAt)
+    ? { ...transfer, status: update.status, statusUpdatedAt: update.statusUpdatedAt, receipt: update.receipt }
+    : transfer
+}
+
+export function isExpiredUnfundedNearTransfer(transfer: NearTransfer, now = Date.now()): boolean {
+  return (
+    transfer.status === 'PENDING_DEPOSIT' &&
+    !transfer.fundingStarted &&
+    !transfer.transactionHash &&
+    now > getNearFundingDeadline(transfer.response) + 86_400_000
+  )
+}
+
 export async function getNearTransferStatus(transfer: NearTransfer): Promise<NearTransfer> {
   const { depositAddress, depositMemo } = transfer.response.quote
   if (!depositAddress) throw new Error('Missing deposit address.')

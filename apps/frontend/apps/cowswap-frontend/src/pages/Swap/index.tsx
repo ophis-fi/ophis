@@ -1,6 +1,7 @@
 import { ReactNode, Suspense } from 'react'
 
 import { PAGE_TITLES, WRAPPED_NATIVE_CURRENCIES as WETH } from '@cowprotocol/common-const'
+import { useFeatureFlags } from '@cowprotocol/common-hooks'
 import { isInjectedWidget } from '@cowprotocol/common-utils'
 import { InlineBanner, StatusColorVariant } from '@cowprotocol/ui'
 import { useWalletInfo } from '@cowprotocol/wallet'
@@ -42,10 +43,12 @@ export function SwapPage(): ReactNode {
   const params = useParams()
   const cctpEnabled = useIsCctpEnabled()
   const isOphisSwap = useIsOphisSwap()
+  const { isNearIntentsBridgeProviderEnabled } = useFeatureFlags()
   const { i18n } = useLingui()
   const swapDerivedStateToFill = useSwapDerivedStateToFill()
   const [searchParams, setSearchParams] = useSearchParams()
-  const directNear = isOphisSwap && searchParams.get('route') === 'near'
+  const nearEnabled = isOphisSwap && isNearIntentsBridgeProviderEnabled === true
+  const directNear = nearEnabled && searchParams.get('route') === 'near'
   const setDirectNear = (enabled: boolean): void => {
     setSearchParams(
       (current) => {
@@ -64,7 +67,7 @@ export function SwapPage(): ReactNode {
 
   const widget = (
     <div>
-      {isOphisSwap && (
+      {nearEnabled && (
         <ModeButtons aria-label="Swap method">
           <button type="button" aria-pressed={!directNear} onClick={() => setDirectNear(false)}>
             Swap
@@ -84,6 +87,11 @@ export function SwapPage(): ReactNode {
           headerContent={isOphisSwap ? <NetworkSelector /> : undefined}
           topContent={isInjectedWidget() ? DcaCta : undefined}
         />
+      )}
+      {isOphisSwap && !nearEnabled && (
+        <Suspense fallback={null}>
+          <NearDirectSwap recoveryOnly />
+        </Suspense>
       )}
     </div>
   )
