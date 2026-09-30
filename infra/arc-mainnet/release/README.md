@@ -38,11 +38,12 @@ backend policy plus the appData suffix and retains historical base-only fills.
 After review, back up the private mounted `generated/autopilot.toml`, replace
 only its `[fee-policies]` section with the policy from `render.py`, and restart
 only `ophis-arc-autopilot-1`. Do not regenerate the deployed plan or key files.
-Confirm the mounted policy and `/liveness` plus `/ready` on port 9587, then check
-the next eligible settlement's `executedProtocolFees` for the pair-specific
-factor, cap and separate base. No improvement means no improvement fee.
-Only after those checks, merge the separate fee-documentation PR to publish the
-updated landing, docs, business, stats and discovery surfaces. Rollback restores the
+Confirm the mounted policy, `/liveness` plus `/ready` on port 9587, and a
+successful read-only quote before merging the separate fee-documentation PR
+to publish landing, docs, business, stats and discovery surfaces. Check the next
+eligible natural settlement's `executedProtocolFees` for the pair-specific
+factor, cap and separate base when one is available. No improvement means no
+improvement fee. Rollback restores the
 backed-up config and restarts the same container; historical fees stay intact.
 
 Offline checks: `python3 infra/arc-mainnet/local/test_render.py` and

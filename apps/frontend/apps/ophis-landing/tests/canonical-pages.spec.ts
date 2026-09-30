@@ -134,7 +134,7 @@ test('/learn hub renders and links every guide', async ({ page }) => {
   }
 })
 
-test('pricing page states the standard capture policy and Arc exception', async ({ page }) => {
+test('pricing page includes Arc in the standard capture policy', async ({ page }) => {
   await page.goto('/pricing')
   const body = page.locator('main')
   await expect(body).toContainText('1 bp + 80% improvement')
@@ -145,10 +145,11 @@ test('pricing page states the standard capture policy and Arc exception', async 
   await expect(body).toContainText("Hosted chains apply the same Ophis base and improvement policy")
   await expect(body).not.toContainText('5 bps')
   await expect(body).not.toContainText('Hosted-chain costs follow the flat schedule')
-  await expect(page.getByRole('heading', { name: 'Arc release exception' })).toBeVisible()
-  await expect(body).toContainText('currently configures no backend improvement policy')
-  await expect(body).toContainText('1 bp volume-only fee')
-  await expect(page.locator('.updated time')).toHaveAttribute('datetime', /2026-09-27/)
+  await expect(page.getByRole('heading', { name: 'Arc price-improvement policy' })).toBeVisible()
+  await expect(body).toContainText('Arc uses the same backend market-order policy')
+  await expect(body).toContainText('Out-of-market limit orders pay the signed base without this backend improvement fee')
+  await expect(body).toContainText('Historical base-only trades retain their original fees')
+  await expect(page.locator('.updated time')).toHaveAttribute('datetime', /2026-09-30/)
 })
 
 test('acquisition pages are linked from their relevant guides', async ({ page }) => {
@@ -181,7 +182,7 @@ test('supported-chains explains the current SDK, Arc referrals and enrollment', 
   await expect(body).toContainText('await enrollOphisTrader(orderOwner, { blocking: true })')
   await expect(body).toContainText('Registration alone does not establish partner affiliation')
   await expect(body).toContainText('Affiliate payouts remain disabled.')
-  await expect(page.locator('.updated time')).toHaveAttribute('datetime', /2026-09-29/)
+  await expect(page.locator('.updated time')).toHaveAttribute('datetime', /2026-09-30/)
   const ldBlocks = await page.locator('script[type="application/ld+json"]').allTextContents()
   const faq = ldBlocks.map((block) => JSON.parse(block)).find((block) => block['@type'] === 'FAQPage')
   expect(JSON.stringify(faq)).toContain(`SDK v${sdk.version} and hosted MCP include Arc (5042)`)
@@ -191,7 +192,7 @@ test('supported-chains explains the current SDK, Arc referrals and enrollment', 
   expect(guideText).toContain('Arc (5042) is also Ophis-operated and is supported by the published SDK and hosted MCP.')
   expect(guideText).toContain("It remains outside this skill's three-chain execution policy.")
   const sitemap = readFileSync(dist('sitemap.xml'), 'utf8')
-  expect(sitemap).toMatch(/<loc>https:\/\/ophis\.fi\/supported-chains\/<\/loc>\s*<lastmod>2026-09-29/)
+  expect(sitemap).toMatch(/<loc>https:\/\/ophis\.fi\/supported-chains\/<\/loc>\s*<lastmod>2026-09-30/)
 })
 
 test('sitemap lists the canonical pages with trailing-slash URLs', () => {

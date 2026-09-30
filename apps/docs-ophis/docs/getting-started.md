@@ -41,7 +41,7 @@ export const howToLd = {
       '@type': 'HowToStep',
       name: 'Settle: on-chain, MEV-protected',
       url: 'https://docs.ophis.fi/getting-started#3--settle-on-chain-mev-protected',
-      text: 'The winning solver settles the signed order without exposing it as a public-mempool router swap. The signed limit price is enforced on-chain. Ophis applies the standard capped improvement policy outside the current Arc release exception; CoW-hosted chains additionally apply CoW Protocol upstream fees.',
+      text: 'The winning solver settles the signed order without exposing it as a public-mempool router swap. The signed limit price is enforced on-chain. Ophis applies the standard capped improvement policy on all supported chains; CoW-hosted chains additionally apply CoW Protocol upstream fees.',
     },
   ],
 };
