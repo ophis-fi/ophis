@@ -5,11 +5,11 @@ settings:
   excludeLinksFromLockfile: false
 
 overrides:
-  axios: ^1.18.0
+  axios: ^1.20.0
   form-data: ^2.5.4
   underscore: ^1.12.1
   '@babel/traverse': ^7.23.2
-  undici: ^6.28.0
+  undici: ^6.28.1
   ws: ^8.21.0
   tmp: ^0.2.6
   esbuild: ^0.28.1
@@ -3524,15 +3524,15 @@ packages:
   axios-mock-adapter@1.22.0:
     resolution: {integrity: sha512-dmI0KbkyAhntUR05YY96qg2H6gg0XMl2+qTW0xmYg6Up+BFBAJYRLROMXRdDEL06/Wqwa0TJThAYvFtSFdRCZw==}
     peerDependencies:
-      axios: ^1.18.0
+      axios: ^1.20.0
 
   axios-retry@4.5.0:
     resolution: {integrity: sha512-aR99oXhpEDGo0UuAlYcn2iGRds30k366Zfa05XWScR9QaQD4JYiP3/1Qt1u7YlefUOK+cn0CcwoL1oefavQUlQ==}
     peerDependencies:
-      axios: ^1.18.0
+      axios: ^1.20.0
 
-  axios@1.18.1:
-    resolution: {integrity: sha512-3nTvFlvpn9Zu/RkHUqtc7/+al4UpRW5az71ap5zccp6e8RAYEzhMTecX8Dz1wWDYrPpUoB1HAQEGEAEvUr7S9g==}
+  axios@1.20.0:
+    resolution: {integrity: sha512-r8aOh8j9cGKpgQAqpzrUHnSIc6a59Y3Xf/cv8sy1DrHCkZHzQGEuoq1tARk6qSyDdtQGSDgpb9kFlruzPvrgwg==}
 
   b4a@1.8.1:
     resolution: {integrity: sha512-aiqre1Nr0B/6DgE2N5vwTc+2/oQZ4Wh1t4NznYY4E00y8LCt6NqdRv81so00oo27D8MVKTpUa/MwUUtBLXCoDw==}
@@ -6784,8 +6784,8 @@ packages:
   undici-types@8.9.0:
     resolution: {integrity: sha512-KTDyRTYX8sWmKXAikPHHSyc63CRPETMctyjKFupcC6OBLXT3xsN0e9aF7m+mIXutFWpUXuedtowG7iLOzp0kQg==}
 
-  undici@6.28.0:
-    resolution: {integrity: sha512-LIY910g9TI13YS95lrMFrs8Rm/u/irgHeTWoKCoteeJ04CUJ92eEfj0rVn+7VKMPBpUPiUoBKfhNyLI23EE/KA==}
+  undici@6.29.0:
+    resolution: {integrity: sha512-R+RODBqp6i2pPflGdq+xIOUkl+RNfGgHwoinecKu/JCuf2uO06cOKoDbI2P7Dn6KcswdKwrczbU6IYJ6K8X+wg==}
     engines: {node: '>=18.17'}
 
   unenv@2.0.0-rc.24:
@@ -7386,7 +7386,7 @@ snapshots:
       '@ai-sdk/provider': 3.0.16
       '@standard-schema/spec': 1.1.0
       eventsource-parser: 3.1.1
-      undici: 6.28.0
+      undici: 6.29.0
       zod: 3.25.76
 
   '@ai-sdk/provider@3.0.10':
@@ -7757,8 +7757,8 @@ snapshots:
       '@solana-program/token': 0.9.0(@solana/kit@5.5.1(bufferutil@4.1.0)(fastestsmallesttextencoderdecoder@1.0.22)(typescript@5.9.3)(utf-8-validate@6.0.6))
       '@solana/kit': 5.5.1(bufferutil@4.1.0)(fastestsmallesttextencoderdecoder@1.0.22)(typescript@5.9.3)(utf-8-validate@6.0.6)
       abitype: 1.0.6(typescript@5.9.3)(zod@3.25.76)
-      axios: 1.18.1
-      axios-retry: 4.5.0(axios@1.18.1)
+      axios: 1.20.0
+      axios-retry: 4.5.0(axios@1.20.0)
       bs58: 6.0.0
       jose: 6.2.3
       md5: 2.3.0
@@ -7777,9 +7777,9 @@ snapshots:
     dependencies:
       '@scure/bip32': 1.7.0
       abitype: 1.2.3(typescript@5.9.3)(zod@3.25.76)
-      axios: 1.18.1
-      axios-mock-adapter: 1.22.0(axios@1.18.1)
-      axios-retry: 4.5.0(axios@1.18.1)
+      axios: 1.20.0
+      axios-mock-adapter: 1.22.0(axios@1.20.0)
+      axios-retry: 4.5.0(axios@1.20.0)
       bip32: 4.0.0
       bip39: 3.1.0
       decimal.js: 10.6.0
@@ -8156,7 +8156,7 @@ snapshots:
 
   '@defuse-protocol/one-click-sdk-typescript@0.1.1-0.2':
     dependencies:
-      axios: 1.18.1
+      axios: 1.20.0
       form-data: 2.5.6
     transitivePeerDependencies:
       - debug
@@ -8217,7 +8217,7 @@ snapshots:
 
   '@ensofinance/sdk@2.4.1':
     dependencies:
-      axios: 1.18.1
+      axios: 1.20.0
     transitivePeerDependencies:
       - debug
       - supports-color
@@ -12177,18 +12177,18 @@ snapshots:
       '@fastify/error': 4.2.0
       fastq: 1.20.3
 
-  axios-mock-adapter@1.22.0(axios@1.18.1):
+  axios-mock-adapter@1.22.0(axios@1.20.0):
     dependencies:
-      axios: 1.18.1
+      axios: 1.20.0
       fast-deep-equal: 3.1.3
       is-buffer: 2.0.5
 
-  axios-retry@4.5.0(axios@1.18.1):
+  axios-retry@4.5.0(axios@1.20.0):
     dependencies:
-      axios: 1.18.1
+      axios: 1.20.0
       is-retry-allowed: 2.2.0
 
-  axios@1.18.1:
+  axios@1.20.0:
     dependencies:
       follow-redirects: 1.16.0
       form-data: 2.5.6
@@ -14184,7 +14184,7 @@ snapshots:
     dependencies:
       '@cspotcode/source-map-support': 0.8.1
       sharp: 0.35.4(@types/node@22.19.17)
-      undici: 6.28.0
+      undici: 6.29.0
       workerd: 1.20260526.1
       ws: 8.21.0(bufferutil@4.1.0)(utf-8-validate@6.0.6)
       youch: 4.1.0-beta.10
@@ -15683,7 +15683,7 @@ snapshots:
       ssh-remote-port-forward: 1.0.4
       tar-fs: 3.1.2
       tmp: 0.2.7
-      undici: 6.28.0
+      undici: 6.29.0
     transitivePeerDependencies:
       - bare-abort-controller
       - bare-buffer
@@ -15893,7 +15893,7 @@ snapshots:
   undici-types@8.9.0:
     optional: true
 
-  undici@6.28.0: {}
+  undici@6.29.0: {}
 
   unenv@2.0.0-rc.24:
     dependencies:
