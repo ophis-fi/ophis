@@ -1,13 +1,14 @@
 import { useAtomValue } from 'jotai/index'
 import { useMemo } from 'react'
 
-import { getRpcProvider } from '@cowprotocol/common-const'
+import { ARC_CHAIN_ID, ARC_LOCAL, getRpcProvider } from '@cowprotocol/common-const'
 import { Nullish } from '@cowprotocol/types'
 import { useIsBraveWallet, useIsWalletConnect } from '@cowprotocol/wallet'
 import { useWalletChainId, useWalletProvider } from '@cowprotocol/wallet-provider'
 import { JsonRpcProvider } from '@ethersproject/providers'
 
 import { multiCallContextAtom } from '../state/multiCallContextAtom'
+import { ArcReadProvider } from '../utils/ArcReadProvider'
 
 export function useMultiCallRpcProvider(): Nullish<JsonRpcProvider> {
   // TODO M-6 COW-573
@@ -21,6 +22,10 @@ export function useMultiCallRpcProvider(): Nullish<JsonRpcProvider> {
   const contextChainId = context?.chainId
 
   return useMemo(() => {
+    if (!ARC_LOCAL && (contextChainId || walletChainId) === ARC_CHAIN_ID) {
+      return new ArcReadProvider()
+    }
+
     // We need to use our RPC node provider instead of wallet provider
     // when we need to make calls on other chains (e.g. balances)
     // if that is the case contextChainId is going to be defined and different from walletChainId
