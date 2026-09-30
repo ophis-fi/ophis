@@ -5,20 +5,19 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { SwapPage } from 'pages/Swap'
 
 import mockFixture from './fixtures/monadDeposit.json'
-import { NearTransfer, nearTransferSchema } from './nearDirect.schemas'
+import { NearToken, NearTransfer, nearTransferSchema } from './nearDirect.schemas'
 import { getNearFundingDeadline } from './nearDirect.service'
 import { NearTransferCard } from './NearTransferCard.container'
 
 let mockEnabled: boolean | undefined = true
 let mockStatus: NearTransfer | undefined
+let mockTokens: NearToken[] = [mockFixture.source, mockFixture.destination]
 const mockSave = jest.fn()
 
 jest.mock('jotai', () => ({
   ...jest.requireActual('jotai'),
   useSetAtom: () => mockSave,
-  useAtomValue: (key: string) => ({
-    data: key === 'tokens' ? [mockFixture.source, mockFixture.destination] : mockStatus,
-  }),
+  useAtomValue: (key: string) => ({ data: key === 'tokens' ? mockTokens : mockStatus }),
 }))
 jest.mock('./nearDirect.atoms', () => ({ nearTokensAtom: 'tokens', nearTransferStatusAtom: () => 'status' }))
 jest.mock('@cowprotocol/common-hooks', () => ({
@@ -56,7 +55,7 @@ jest.mock('common/constants/routes', () => ({ Routes: { SWAP: '/swap' } }))
 jest.mock('common/state/HydrateAtom', () => ({
   HydrateAtom: ({ children }: { children: ReactNode }) => <>{children}</>,
 }))
-jest.mock('./NearQuote.pure', () => ({ NearQuote: () => null }))
+jest.mock('./NearQuote.pure', () => ({ NearQuote: () => <p>Saved quote details</p> }))
 jest.mock('./NearWalletSend.container', () => ({ NearWalletSend: () => <button>Send with connected wallet</button> }))
 jest.mock('react-qrcode-logo', () => ({ QRCode: () => null }))
 
@@ -64,6 +63,7 @@ afterEach(() => {
   jest.restoreAllMocks()
   mockSave.mockReset()
   mockStatus = undefined
+  mockTokens = [mockFixture.source, mockFixture.destination]
 })
 
 it.each([true, false, undefined])('honors the provider flag (%s), including a direct NEAR URL', (enabled) => {
@@ -78,7 +78,9 @@ it.each([true, false, undefined])('honors the provider flag (%s), including a di
 it('retains tracking without any funding instructions while the provider is paused', () => {
   const transfer = nearTransferSchema.parse(mockFixture)
   jest.spyOn(Date, 'now').mockReturnValue(getNearFundingDeadline(transfer.response) - 60_000)
+  mockTokens = []
   render(<NearTransferCard transfer={transfer} allowFunding={false} />)
+  expect(screen.getByText('Saved quote details')).toBeTruthy()
   expect(screen.getByText(/Swap reference:/)).toBeTruthy()
   expect(screen.getByRole('button', { name: 'Track transaction' })).toBeTruthy()
   expect(screen.queryByLabelText('Deposit address')).toBeNull()
