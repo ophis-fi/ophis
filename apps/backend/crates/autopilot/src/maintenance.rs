@@ -225,30 +225,32 @@ impl Maintenance {
     async fn run_essential_maintenance(&self) -> Result<()> {
         let _timer = observe::metrics::metrics()
             .on_auction_overhead_start("autopilot", "maintenance_essential");
-        tokio::try_join!(
+        finish_maintenance([
             Self::timed_future(
                 "settlement_indexer",
-                self.settlement_indexer.run_maintenance()
-            ),
+                self.settlement_indexer.run_maintenance(),
+            )
+            .boxed(),
             Self::timed_future(
                 "cow_amm_indexer",
-                futures::future::try_join_all(
+                finish_maintenance(
                     self.cow_amm_indexer
                         .iter()
                         .map(|indexer| indexer.run_maintenance()),
                 ),
-            ),
+            )
+            .boxed(),
             Self::timed_future(
                 "ethflow_order_indexer",
-                futures::future::try_join_all(
+                finish_maintenance(
                     self.ethflow_order_indexer
                         .iter()
                         .map(|indexer| indexer.run_maintenance()),
                 ),
-            ),
-        )?;
-
-        Ok(())
+            )
+            .boxed(),
+        ])
+        .await
     }
 
     /// Runs all the maintenance tasks that should run eventually but are not
@@ -256,25 +258,26 @@ impl Maintenance {
     async fn run_optional_maintenance(&self) -> Result<()> {
         let _timer = observe::metrics::metrics()
             .on_auction_overhead_start("autopilot", "maintenance_optional");
-        tokio::try_join!(
-            Self::timed_future("db_cleanup", self.db_cleanup.remove_expired_quotes()),
+        finish_maintenance([
+            Self::timed_future("db_cleanup", self.db_cleanup.remove_expired_quotes()).boxed(),
             Self::timed_future(
                 "ethflow_refund_indexer",
-                futures::future::try_join_all(
+                finish_maintenance(
                     self.ethflow_refund_indexer
                         .iter()
                         .map(|indexer| indexer.run_maintenance()),
                 ),
-            ),
+            )
+            .boxed(),
             Self::timed_future(
                 "settlement_attribution",
                 self.settlement_observer
                     .post_process_outstanding_settlement_transactions()
-                    .map(|_| Ok(()))
+                    .map(|_| Ok(())),
             )
-        )?;
-
-        Ok(())
+            .boxed(),
+        ])
+        .await
     }
 
     /// Registers all maintenance tasks that are necessary to correctly support
@@ -304,6 +307,16 @@ impl Maintenance {
         let _timer2 = observe::metrics::metrics().on_auction_overhead_start("autopilot", label);
         fut.await
     }
+}
+
+// A partial checkpoint is an error, but must not cancel another indexer's work.
+async fn finish_maintenance(
+    tasks: impl IntoIterator<Item = impl Future<Output = Result<()>>>,
+) -> Result<()> {
+    for result in futures::future::join_all(tasks).await {
+        result?;
+    }
+    Ok(())
 }
 
 type EthflowOrderIndexer =
@@ -348,4 +361,35 @@ struct Metrics {
 
 fn metrics() -> &'static Metrics {
     Metrics::instance(observe::metrics::get_storage_registry()).unwrap()
+}
+
+#[cfg(test)]
+mod tests {
+    use {
+        super::*,
+        std::sync::atomic::{AtomicBool, Ordering},
+    };
+
+    #[tokio::test]
+    async fn failed_checkpoint_does_not_cancel_other_maintenance() {
+        let finished = AtomicBool::new(false);
+        let result = finish_maintenance([
+            async { anyhow::bail!("event catch-up incomplete") }.boxed(),
+            async {
+                tokio::task::yield_now().await;
+                finished.store(true, Ordering::SeqCst);
+                Ok(())
+            }
+            .boxed(),
+        ])
+        .await;
+        assert!(
+            result.is_err(),
+            "partial maintenance must still fail closed"
+        );
+        assert!(
+            finished.load(Ordering::SeqCst),
+            "other indexer was cancelled"
+        );
+    }
 }

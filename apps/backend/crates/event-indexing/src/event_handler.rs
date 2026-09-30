@@ -26,6 +26,8 @@ const INSERT_EVENT_BATCH_SIZE: usize = 10_000;
 const MAX_BLOCKS_QUERIED: u64 = 2 * MAX_REORG_BLOCK_COUNT;
 // ponytail: ten 500-block pages per historical attempt; tune from provider capacity.
 const MAX_HISTORY_BLOCKS: u64 = 5_000;
+// ponytail: small tail checkpoints fit constrained RPC budgets; tune from live demand.
+const MAX_LATEST_BLOCKS: u64 = 16;
 // Keep catch-up from bursting 128 reads into every consensus voter at once.
 pub(crate) const MAX_PARALLEL_RPC_CALLS: usize = 4;
 
@@ -228,6 +230,8 @@ pub trait EventRetrieving {
 
 #[derive(Debug)]
 struct EventRange {
+    /// Sampled head; partial checkpoints must not report successful maintenance.
+    target_block: u64,
     /// Optional block number range for fetching reorg safe history
     history_range: Option<RangeInclusive<u64>>,
     /// List of block numbers with hashes for fetching reorg unsafe blocks
@@ -331,6 +335,7 @@ where
         // block is added)
         if current_block.parent_hash == last_handled_block_hash {
             return Ok(EventRange {
+                target_block: current_block_number,
                 history_range: None,
                 latest_blocks: vec![(current_block_number, current_block_hash)],
                 is_reorg: false,
@@ -344,6 +349,7 @@ where
             == (last_handled_block_number, last_handled_block_hash)
         {
             return Ok(EventRange {
+                target_block: current_block_number,
                 history_range: None,
                 latest_blocks: vec![],
                 is_reorg: false,
@@ -351,13 +357,19 @@ where
         }
 
         // Special case where multiple new blocks were added and no reorg happened.
-        // Because we need to fetch the full block range we only do this if the number
-        // of new blocks is sufficiently small.
+        // Include head drift after a partial tail update. Bound each checkpoint so
+        // retries preserve progress instead of repeatedly exhausting the RPC budget.
         if let Ok(block_range) =
             RangeInclusive::try_new(last_handled_block_number, current_block_number)
-            && block_range.end() - block_range.start() <= MAX_REORG_BLOCK_COUNT
+            && block_range.end() - block_range.start() <= 2 * MAX_BLOCKS_QUERIED
         {
-            let mut new_blocks = self.block_retriever.blocks(block_range).await?;
+            let mut new_blocks = self
+                .block_retriever
+                .blocks(RangeInclusive::try_new(
+                    *block_range.start(),
+                    (*block_range.end()).min(block_range.start().saturating_add(MAX_LATEST_BLOCKS)),
+                )?)
+                .await?;
             if new_blocks.first().map(|b| b.1) == Some(last_handled_block_hash) {
                 // first block is not actually new and was only fetched to detect a reorg
                 new_blocks.remove(0);
@@ -367,6 +379,7 @@ where
                     "multiple new blocks without reorg"
                 );
                 return Ok(EventRange {
+                    target_block: current_block_number,
                     history_range: None,
                     latest_blocks: new_blocks,
                     is_reorg: false,
@@ -387,17 +400,29 @@ where
             latest_range
         );
 
-        if let Some(range) = history_range {
-            // Checkpoint bounded history before spending RPC quota fetching the
-            // moving tip. The next attempt still verifies the reorg overlap.
-            let end = (*range.end()).min(range.start().saturating_add(MAX_HISTORY_BLOCKS - 1));
-            return Ok(EventRange {
-                history_range: Some(RangeInclusive::try_new(*range.start(), end)?),
-                latest_blocks: vec![],
-                is_reorg: true,
-            });
+        if let Some(range) = &history_range {
+            // Only yield when history exceeds this attempt's budget. The final
+            // chunk must process the hash-verified tail or it stays 128 blocks behind.
+            let end = range.start().saturating_add(MAX_HISTORY_BLOCKS - 1);
+            if end < *range.end() {
+                return Ok(EventRange {
+                    target_block: current_block_number,
+                    history_range: Some(RangeInclusive::try_new(*range.start(), end)?),
+                    latest_blocks: vec![],
+                    is_reorg: true,
+                });
+            }
         }
 
+        let latest_range = if history_range.is_some() {
+            RangeInclusive::try_new(
+                *latest_range.start(),
+                (*latest_range.end())
+                    .min(latest_range.start().saturating_add(MAX_LATEST_BLOCKS - 1)),
+            )?
+        } else {
+            latest_range
+        };
         let latest_blocks = self.block_retriever.blocks(latest_range).await?;
         tracing::debug!(
             "latest blocks: {:?} - {:?}",
@@ -405,8 +430,13 @@ where
             latest_blocks.last(),
         );
 
-        let (latest_blocks, is_reorg) = detect_reorg_path(handled_blocks, &latest_blocks);
-        let latest_blocks = latest_blocks.to_vec();
+        // Replacing history removes subsequent events, so replay the entire tail.
+        let (latest_blocks, is_reorg) = if history_range.is_some() {
+            (latest_blocks, true)
+        } else {
+            let (blocks, is_reorg) = detect_reorg_path(handled_blocks, &latest_blocks);
+            (blocks.to_vec(), is_reorg)
+        };
 
         tracing::debug!(
             "final latest blocks {:?} - {:?}, is reorg: {}",
@@ -416,7 +446,8 @@ where
         );
 
         Ok(EventRange {
-            history_range: None,
+            target_block: current_block_number,
+            history_range,
             latest_blocks,
             is_reorg,
         })
@@ -431,7 +462,10 @@ where
             let end = *range.end();
             self.update_events_from_old_blocks(range).await?;
             self.store.persist_last_indexed_block(end).await?;
-            anyhow::bail!("historical event catch-up incomplete");
+            ensure!(
+                !event_range.latest_blocks.is_empty(),
+                "historical event catch-up incomplete"
+            );
         }
         if let Some(last_block) = event_range.latest_blocks.last() {
             self.update_events_from_latest_blocks(&event_range.latest_blocks, event_range.is_reorg)
@@ -439,6 +473,10 @@ where
             self.store_mut()
                 .persist_last_indexed_block(last_block.0)
                 .await?;
+            ensure!(
+                last_block.0 >= event_range.target_block,
+                "event catch-up incomplete"
+            );
         }
         Ok(())
     }
@@ -502,15 +540,12 @@ where
 
     #[instrument(skip_all)]
     async fn update_events_from_old_blocks(&mut self, range: RangeInclusive<u64>) -> Result<()> {
-        // first get the blocks needed to update `last_handled_blocks` because if it
+        // First get the checkpoint needed to update `last_handled_blocks`: if it
         // fails, it's safer to fail at the beginning of the function before we
         // update Storage
         let blocks = self
             .block_retriever
-            .blocks(RangeInclusive::try_new(
-                range.end().saturating_sub(MAX_REORG_BLOCK_COUNT),
-                *range.end(),
-            )?)
+            .blocks(RangeInclusive::try_new(*range.end(), *range.end())?)
             .await?;
 
         let events = self
@@ -860,7 +895,7 @@ mod tests {
         #[derive(Debug)]
         struct Blocks {
             calls: AtomicUsize,
-            head: u64,
+            head: AtomicUsize,
             headers: AtomicUsize,
         }
         #[async_trait::async_trait]
@@ -870,7 +905,7 @@ mod tests {
                     anyhow::bail!("provider rate limit");
                 }
                 Ok(ethrpc::block_stream::BlockInfo {
-                    number: self.head,
+                    number: self.head.load(Ordering::SeqCst) as u64,
                     hash: B256::with_last_byte(1),
                     ..Default::default()
                 })
@@ -893,7 +928,8 @@ mod tests {
         impl EventRetrieving for Contract {
             type Event = ((), Log);
             async fn get_events_by_block_hash(&self, _: B256) -> Result<Vec<Self::Event>> {
-                unreachable!()
+                ensure!(!self.0, "provider rate limit");
+                Ok(vec![])
             }
             async fn get_events_by_block_range(
                 &self,
@@ -915,7 +951,7 @@ mod tests {
 
         let blocks = Arc::new(Blocks {
             calls: AtomicUsize::new(0),
-            head: 1000,
+            head: AtomicUsize::new(1000),
             headers: AtomicUsize::new(0),
         });
         let checkpoint = (1000, B256::with_last_byte(1));
@@ -968,8 +1004,10 @@ mod tests {
                 assert!(*range.end() - *range.start() < MAX_HISTORY_BLOCKS);
                 Ok(())
             }
-            async fn append_events(&mut self, _: Vec<((), Log)>) -> Result<()> {
-                unreachable!()
+            async fn append_events(&mut self, events: Vec<((), Log)>) -> Result<()> {
+                ensure!(!self.fail_write, "database unavailable");
+                assert!(events.is_empty());
+                Ok(())
             }
             async fn last_event_block(&self) -> Result<u64> {
                 Ok(self.cursor)
@@ -981,7 +1019,7 @@ mod tests {
         }
         let blocks = Arc::new(Blocks {
             calls: AtomicUsize::new(1),
-            head: 20_000,
+            head: AtomicUsize::new(20_000),
             headers: AtomicUsize::new(0),
         });
         let mut handler = EventHandler::new(
@@ -1000,7 +1038,7 @@ mod tests {
         assert_eq!(handler.store.cursor, 5935);
         assert_eq!(
             blocks.headers.load(Ordering::SeqCst),
-            65,
+            1,
             "do not fetch tip headers during backfill"
         );
         let saved = handler.last_handled_blocks.clone();
@@ -1010,9 +1048,39 @@ mod tests {
         assert_eq!(handler.last_handled_blocks, saved);
         handler.store.fail_write = false;
         // A restart resumes the persisted empty range, retaining the reorg overlap.
-        let mut restarted = EventHandler::new(blocks, Contract(false), handler.store, None);
+        let mut restarted = EventHandler::new(blocks.clone(), Contract(false), handler.store, None);
         assert!(restarted.update_events().await.is_err());
         assert_eq!(restarted.store.cursor, 10870);
+        assert!(restarted.update_events().await.is_err());
+        assert_eq!(restarted.store.cursor, 15805);
+        // Finish history and checkpoint a bounded hash-verified tail. Even with
+        // head drift, subsequent attempts advance without replaying history.
+        assert!(restarted.update_events().await.is_err());
+        assert_eq!(restarted.store.cursor, 19_888);
+        for _ in 0..16 {
+            let head = blocks.head.fetch_add(4, Ordering::SeqCst) as u64 + 4;
+            let cursor = restarted.store.cursor;
+            let headers = blocks.headers.load(Ordering::SeqCst);
+            let result = restarted.update_events().await;
+            assert_eq!(
+                restarted.store.cursor,
+                (cursor + MAX_LATEST_BLOCKS).min(head)
+            );
+            assert!(blocks.headers.load(Ordering::SeqCst) - headers <= 17);
+            assert_eq!(result.is_ok(), restarted.store.cursor == head);
+            if result.is_ok() {
+                break;
+            }
+        }
+        assert_eq!(
+            restarted.store.cursor,
+            blocks.head.load(Ordering::SeqCst) as u64
+        );
+        assert_eq!(
+            restarted.last_handled_block().unwrap().0,
+            restarted.store.cursor
+        );
+        restarted.update_events().await.unwrap();
     }
 
     #[test]
