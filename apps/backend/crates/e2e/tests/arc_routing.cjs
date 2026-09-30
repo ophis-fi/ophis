@@ -24,7 +24,7 @@ const fields = [['sellToken','address'],['buyToken','address'],['receiver','addr
   ['buyAmount','uint256'],['validTo','uint32'],['appData','bytes32'],['feeAmount','uint256'],['kind','string'],
   ['partiallyFillable','bool'],['sellTokenBalance','string'],['buyTokenBalance','string']].map(([name,type]) => ({name,type}));
 const params = v.parseAbiParameters('address,address,address,uint256,uint256,bytes,bytes');
-const client = v.createPublicClient({ transport: v.http('https://rpc.mainnet.arc.io', { retryCount: 0, timeout: 15000 }) });
+const client = v.createPublicClient({ transport: v.http(process.env.ARC_RPC_URL || 'https://rpc.mainnet.arc.io', { retryCount: 0, timeout: 15000 }) });
 async function main() {
   assert.equal(await client.getChainId(), 5042);
   const results = [];
