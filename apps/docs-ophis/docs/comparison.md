@@ -55,12 +55,12 @@ wallet may be needed, and source settlement is not proof of final delivery.
 
 ### Fee transparency
 
-The standard schedule, excluding Arc's current release exception, charges a **1 bp base**, plus **80% of reference-quote
+The standard schedule charges a **1 bp base**, plus **80% of reference-quote
 improvement on volatile pairs capped at 99 bps**, or **50% on stable pairs
 capped at 20 bps**. CoW-hosted chains additionally apply upstream protocol fees.
 Bridge fees and gas are separate; use [Fees & rebates](./fees.md), not this
-summary, for cost assumptions. Arc currently has no configured backend improvement
-policy; the verified completed order carried a 1 bp volume-only fee.
+summary, for cost assumptions. Arc follows the same backend improvement policy
+as Optimism, Unichain and Robinhood Chain.
 
 Competitor pricing can vary with route, pair and order type. Check current
 [CoW fees](https://docs.cow.fi/governance/fees),
@@ -105,7 +105,7 @@ and fee policies. Both can fail to find an acceptable fill.
 | Swap app | 14 EVM chains; route-specific cross-chain providers |
 | SDK v0.4.3 / hosted MCP | 14 EVM chains, including Arc |
 | Intent API | Parses fields; does not execute swaps |
-| Batch-auction fees | Standard base plus capped improvement; Arc release exception; upstream fees on hosted chains |
+| Batch-auction fees | Standard base plus capped improvement; upstream fees on hosted chains |
 | MEV protection | Mechanism-level mitigation, not a universal guarantee |
 | Rebates | Eligible collected WETH, tier-weighted; not a guaranteed return |
 

@@ -395,7 +395,7 @@ export function readAssessedOphisFeeBps(
   const appFees = (Array.isArray(raw) ? raw : raw ? [raw] : []) as Array<{ recipient?: unknown }>;
   const executed = trade.executedProtocolFees ?? [];
   if (appFees.length === 0) {
-    // Arc has no operator policy; an explicitly empty execution list proves zero.
+    // An explicitly empty execution list proves zero, including historical Arc fills.
     // Missing execution metadata is not evidence of a zero fee.
     return chainId === ARC_CHAIN_ID && orderClass !== undefined && meta != null
       && trade.executedProtocolFees?.length === 0 ? '0.00000000' : null;
@@ -408,14 +408,13 @@ export function readAssessedOphisFeeBps(
   const sovereign = SOVEREIGN_CHAIN_IDS.has(chainId);
   let hasSovereignImprovement = false;
   if (sovereign) {
-    // Arc has no operator improvement policy. Match its signed partner-fee
-    // list exactly; never infer an Ophis recipient for an extra backend fee.
-    if (chainId === ARC_CHAIN_ID) {
-      if (orderClass === undefined || executed.length !== appFees.length) return null;
-    } else if ((orderClass === 'market' || orderClass === 'limit')
+    if ((orderClass === 'market' || orderClass === 'limit')
       && executed.length === appFees.length + 1
       && isCanonicalOphisImprovement(chainId, executed[0]!.policy)) {
       hasSovereignImprovement = true;
+    } else if (chainId === ARC_CHAIN_ID) {
+      // Preserve pre-activation partner-only history, but reject unknown prefixes.
+      if (orderClass === undefined || executed.length !== appFees.length) return null;
     } else if ((orderClass !== 'limit' && orderClass !== 'liquidity')
       || executed.length !== appFees.length) {
       return null;

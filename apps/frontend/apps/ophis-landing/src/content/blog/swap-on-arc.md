@@ -2,6 +2,7 @@
 title: "Swap on Arc: Ophis Is Live on Circle's Stablecoin Blockchain"
 description: "Ophis is now live on Arc, Circle's stablecoin blockchain. Swap USDC, EURC and cirBTC, bring USDC over from five networks and trade with MEV protection."
 pubDate: 2026-09-27
+updatedDate: 2026-09-30
 author: Ophis
 tags: [arc, circle, usdc, stablecoins, dex-aggregator, swaps, cctp]
 draft: false
@@ -29,7 +30,7 @@ Every order includes the minimum amount you agree to receive, and it cannot sett
 
 ### What does an Arc swap cost?
 
-You sign an order instead of paying Arc gas to submit the swap yourself. Ophis's solver pays the network gas to settle it; the quoted trade accounts for settlement costs. As of September 27, 2026, Ophis charges a 0.01% volume fee on Arc, with no price-improvement fee in the running release. Check the current quote and signed fee details before trading; the [fee documentation](https://docs.ophis.fi/fees/) explains Arc's release exception. If a token needs approval first, that separate wallet transaction costs USDC gas on Arc. The [gasless swaps guide](https://ophis.fi/blog/gasless-swaps-how-intents-work/) explains the distinction.
+You sign an order instead of paying Arc gas to submit the swap yourself. Ophis's solver pays the network gas to settle it; the quoted trade accounts for settlement costs. Arc now follows the standard Ophis market-order policy: a 0.01% base plus 80% of reference-quote improvement capped at 99 bps for volatile pairs, or 50% capped at 20 bps for recognized stablecoin pairs such as USDC/EURC. Check the current quote and signed fee details before trading; the [fee documentation](https://docs.ophis.fi/fees/) explains the fee schedule. If a token needs approval first, that separate wallet transaction costs USDC gas on Arc. The [gasless swaps guide](https://ophis.fi/blog/gasless-swaps-how-intents-work/) explains the distinction.
 
 For one real example, the first Ophis swap on Arc, on September 24, 2026, sold 2 USDC for 1.740907 EURC. The solver's on-chain transaction used about 0.0066 USDC in network gas. That figure is the network gas for this transaction, not the total cost of every swap. [See the transaction on Arc's explorer](https://explorer.arc.io/tx/0xba2f98b61df1c265f1f3d5e795293085523d2146c664bd2a5e8670c137e0685e).
 
@@ -125,7 +126,7 @@ In the Ophis swap box, choose USDC on Ethereum, Base, Arbitrum, Optimism or Unic
 
 ### How much does it cost to swap on Arc with Ophis?
 
-As of September 27, 2026, Ophis charges a 0.01% volume fee on Arc and no price-improvement fee in the running release. The quote reflects settlement costs; a token approval, if needed, uses USDC gas separately. Check the current quote and signed fee details, and see the [Arc fee documentation](https://docs.ophis.fi/fees/).
+Ophis charges a 0.01% base on Arc plus capped reference-quote improvement: 80% capped at 99 bps for volatile pairs, or 50% capped at 20 bps for recognized stablecoin pairs. The quote reflects settlement costs; a token approval, if needed, uses USDC gas separately. Check the current quote and signed fee details, and see the [Arc fee documentation](https://docs.ophis.fi/fees/).
 
 ### What is Arc's chain ID?
 

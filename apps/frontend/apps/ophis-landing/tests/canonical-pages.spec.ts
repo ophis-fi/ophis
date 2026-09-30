@@ -134,7 +134,7 @@ test('/learn hub renders and links every guide', async ({ page }) => {
   }
 })
 
-test('pricing page states the standard capture policy and Arc exception', async ({ page }) => {
+test('pricing page includes Arc in the standard capture policy', async ({ page }) => {
   await page.goto('/pricing')
   const body = page.locator('main')
   await expect(body).toContainText('1 bp + 80% improvement')
@@ -145,10 +145,10 @@ test('pricing page states the standard capture policy and Arc exception', async 
   await expect(body).toContainText("Hosted chains apply the same Ophis base and improvement policy")
   await expect(body).not.toContainText('5 bps')
   await expect(body).not.toContainText('Hosted-chain costs follow the flat schedule')
-  await expect(page.getByRole('heading', { name: 'Arc release exception' })).toBeVisible()
-  await expect(body).toContainText('currently configures no backend improvement policy')
-  await expect(body).toContainText('1 bp volume-only fee')
-  await expect(page.locator('.updated time')).toHaveAttribute('datetime', /2026-09-27/)
+  await expect(page.getByRole('heading', { name: 'Arc price-improvement policy' })).toBeVisible()
+  await expect(body).toContainText('Arc uses the same backend market-order policy')
+  await expect(body).toContainText('Historical base-only trades retain their original fees')
+  await expect(page.locator('.updated time')).toHaveAttribute('datetime', /2026-09-30/)
 })
 
 test('acquisition pages are linked from their relevant guides', async ({ page }) => {

@@ -15,6 +15,36 @@ flags. CCTP uses Circle's permissionless API and no Circle Swap or secret API ke
 `plan`, `rehearse`, `render`, and `check` are preparation
 commands, not deployment commands; do not regenerate this deployed release.
 
+## Price-improvement policy rollout
+
+The September 24 launch shipped `fee-policies.policies = []` in both renderers.
+PR #1493 deliberately left activation as a separate policy change. On September
+30, the running autopilot still had that empty list; its database contained
+three volume-policy records and no price-improvement policy records.
+
+The corrected renderers match OP, Unichain and Robinhood: market-order
+reference-quote improvement at 80%, capped at 99 bps. The shared autopilot
+substitutes 50% capped at 20 bps for Arc USDC/EURC. The existing
+`5d774d62e050` autopilot image already contains Arc's stable-pair classifier.
+The signed appData still supplies only the 1 bp base; adding a second client
+improvement entry would be incorrect.
+
+Deploy the rebate-indexer change before activation: it now accepts the canonical
+backend policy plus the appData suffix and retains historical base-only fills.
+After review, back up the private mounted `generated/autopilot.toml`, replace
+only its `[fee-policies]` section with the policy from `render.py`, and restart
+only `ophis-arc-autopilot-1`. Do not regenerate the deployed plan or key files.
+Confirm the mounted policy and `/liveness` plus `/ready` on port 9587, then check
+the next eligible settlement's `executedProtocolFees` for the pair-specific
+factor, cap and separate base. No improvement means no improvement fee.
+Publish the updated fee documentation with activation. Rollback restores the
+backed-up config and restarts the same container; historical fees stay intact.
+
+Offline checks: `python3 infra/arc-mainnet/local/test_render.py` and
+`python3 infra/arc-mainnet/release/check.py` compare rendered fee policies with
+all three existing operated-chain configs. Run `release/check.py` only in an
+isolated checkout with no deployed release state.
+
 ## Existing identities
 
 ### Prepared Mac mini launch — September 24

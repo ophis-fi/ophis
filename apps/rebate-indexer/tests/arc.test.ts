@@ -71,12 +71,32 @@ it('matches Arc partner-only fees for market and limit orders, rejecting unknown
     expect(Number(readAssessedOphisFeeBps(5042, cls, meta, trade))).toBeCloseTo(0.99913747, 8);
   }
   const extra = { ...trade, executedProtocolFees: [
-    { policy: { priceImprovement: { factor: 0.8, maxVolumeFactor: 0.0099 } }, amount: '123', token: EURC },
+    { policy: { priceImprovement: { factor: 0.8, maxVolumeFactor: 0.005 } }, amount: '123', token: EURC },
     ...trade.executedProtocolFees!,
   ] };
   expect(readAssessedOphisFeeBps(5042, 'market', meta, extra)).toBeNull();
   expect(readAssessedOphisFeeBps(5042, undefined, meta, trade)).toBeNull();
   expect(readAssessedOphisFeeBps(5042, 'limit', { metadata: { partnerFee: { ...meta.metadata.partnerFee, volumeBps: 10 } } }, trade)).toBeNull();
+});
+
+it.each([
+  { factor: 0.8, maxVolumeFactor: 0.0099 },
+  { factor: 0.5, maxVolumeFactor: 0.002 },
+])('accounts for Arc backend improvement plus the base: %j', (priceImprovement) => {
+  const execution = { ...trade, executedProtocolFees: [
+    { policy: { priceImprovement }, amount: '123', token: EURC },
+    ...trade.executedProtocolFees!,
+  ] };
+  for (const cls of ['market', 'limit'] as const) {
+    expect(Number(readAssessedOphisFeeBps(5042, cls, meta, execution)))
+      .toBeCloseTo((123 + 874) / (8746671 + 123 + 874) * 10000, 8);
+  }
+  expect(readAssessedOphisFeeBps(5042, 'liquidity', meta, execution)).toBeNull();
+  expect(readAssessedOphisFeeBps(5042, undefined, meta, execution)).toBeNull();
+  expect(readAssessedOphisFeeBps(5042, 'market', { appCode: 'ophis' }, execution)).toBeNull();
+  const thirdPartyBase = { metadata: { partnerFee: { ...meta.metadata.partnerFee, recipient: owner } } };
+  expect(Number(readAssessedOphisFeeBps(5042, 'market', thirdPartyBase, execution)))
+    .toBeCloseTo(123 / (8746671 + 123 + 874) * 10000, 8);
 });
 
 it('prices ERC-20 USDC at 6 decimals and cancels native wei units for EURC', async () => {

@@ -100,7 +100,11 @@ contracts = []
 skip-event-sync = true
 {auction_drivers}
 [fee-policies]
-policies = []
+max-partner-fee = 0.01
+# Exercise the production fee policy in the local lab as well.
+[[fee-policies.policies]]
+kind.price-improvement = {{ factor = 0.80, max-volume-factor = 0.0099 }}
+order-class = "market"
 [run-loop]
 solve-deadline = "20s"
 max-delay = "15s"

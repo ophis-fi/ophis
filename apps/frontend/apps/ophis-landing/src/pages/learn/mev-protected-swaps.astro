@@ -25,7 +25,7 @@ const FAQS = [
   },
   {
     q: 'What does the signed limit price guarantee?',
-    a: `An order can never be settled below its signed limit price. That bound is enforced by the settlement contract, not by the goodwill of any solver: a settlement that violates it reverts. On the standard-policy chains, improvement over the reference quote is shared under the capped pricing policy. Arc has a current release exception; review the pricing page and signed fee metadata.`,
+    a: `An order can never be settled below its signed limit price. That bound is enforced by the settlement contract, not by the goodwill of any solver: a settlement that violates it reverts. On the standard-policy chains, improvement over the reference quote is shared under the capped pricing policy. Arc uses the same capped backend improvement policy.`,
   },
   {
     q: 'Is MEV protection guaranteed?',

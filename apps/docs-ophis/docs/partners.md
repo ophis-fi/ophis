@@ -13,7 +13,7 @@ The standard schedule is a required 1 bp
 base plus 80% of reference-quote improvement on volatile pairs (99 bps cap), or
 50% on stable pairs (20 bps cap). Operated-chain backends apply the improvement
 component directly when configured; hosted orders encode it in CIP-75 appData.
-Arc currently has no backend improvement capture. SDK v0.4.4 supports Arc
+Arc uses the same backend improvement policy. SDK v0.4.4 supports Arc
 referral tags, and eligible settled trades are indexed for rebates. Integrator
 own-fees remain separate, and Ophis takes 0% of that markup.
 :::
@@ -142,7 +142,7 @@ posted** and **which settlement contract signs**:
 | ---------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------ |
 | Orderbook host                           | `optimism-mainnet.ophis.fi` / `unichain-mainnet.ophis.fi` / `robinhood-mainnet.ophis.fi` / `arc-mainnet.ophis.fi` (Ophis, per chain via `@ophis/sdk`)                                                                            | `api.cow.fi/<chain>` (cow-sdk default)                                                           |
 | Settlement (EIP-712 `verifyingContract`) | Ophis, per chain via `@ophis/sdk`: Optimism `0x310784c7FCE12d578dA6f53460777bAc9718B859`, Unichain `0x108A678716e5E1776036eF044CAB7064226F714E`, Robinhood `0x886d9fd312F442C4E1f3cdeAE7b4AB73493e57cD`, Arc `0x78799F98276efba1EdeeD32eae03a3fd8Cdfec3A` | CoW canonical `0x9008D19f58AAbD9eD0D60971565AA8510560ab41` (cow-sdk default)                     |
-| Partner fee                              | 1 bp from `buildOphisAppDataPartnerFee(chainId)`; improvement policy is applied by the backend when configured (currently absent on Arc) | Base + pair-aware improvement entries from `buildOphisAppDataPartnerFee(chainId, isStablePair)` |
+| Partner fee                              | 1 bp from `buildOphisAppDataPartnerFee(chainId)`; improvement policy is applied by the backend on every operated chain | Base + pair-aware improvement entries from `buildOphisAppDataPartnerFee(chainId, isStablePair)` |
 | Fee enforcement                          | Declared fee entries validated at backend ingress; not an on-chain minimum                                                                                                                                                                            | Carried in `appData`, validated by CoW                                                           |
 
 On CoW-hosted chains you change **nothing** about host or settlement (cow-sdk
@@ -293,10 +293,10 @@ a volume-only entry. Arc is supported from SDK v0.4.3 with its own host and sign
 
 ## Partner economics: the three layers
 
-These three layers describe indexed chains, including Arc. Arc retains its base-only trading fee; referral indexing does not add an Arc own-fee payout guarantee:
+These three layers describe indexed chains, including Arc. Arc applies the standard base plus capped improvement policy; referral indexing does not add an Arc own-fee payout guarantee:
 
 1. **Your users get the chain's published integration pricing.** On sovereign
-   chains other than Arc that is the 1 bp base plus capped improvement capture described above.
+   chains, including Arc, that is the 1 bp base plus capped improvement capture described above.
    The same policy applies on CoW-hosted chains, with CoW Protocol's own fees on top (see
    [Fees & rebates](./fees.md#the-all-in-cost-per-chain)).
 2. **You earn a share of Ophis's verified 1 bp base fee** on each eligible trade you
@@ -348,7 +348,7 @@ const partnerFee = [
 ```
 
 Ophis takes **0% of your fee**. The Ophis charge remains separate: 1 bp plus
-capped improvement capture where configured (Arc currently charges only the base), plus upstream CoW fees on
+capped improvement capture on all supported chains, plus upstream CoW fees on
 CoW-hosted chains.
 The Ophis entries can realize at most 100 bps on a volatile pair (1 + 99) or 21
 bps on a stable pair (1 + 20). The aggregate ceiling for Ophis's registered hosted configuration is 190
