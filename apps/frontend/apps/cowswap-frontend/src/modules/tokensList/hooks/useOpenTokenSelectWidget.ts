@@ -26,6 +26,7 @@ export function useOpenTokenSelectWidget(
   field: Field | undefined,
   oppositeToken: TokenWithLogo | LpToken | Currency | undefined,
   onSelectToken: (currency: Currency) => void,
+  targetChainId?: number,
 ) => void {
   const widget = useSelectTokenWidgetState()
   const activeOptions = widget.field === Field.OUTPUT ? outputTokenOptions : inputTokenOptions
@@ -46,7 +47,7 @@ export function useOpenTokenSelectWidget(
   }, [widget.open, widget.tokenOptions, activeOptions, updateSelectTokenWidget])
 
   return useCallback(
-    (selectedToken, field, oppositeToken, onSelectToken) => {
+    (selectedToken, field, oppositeToken, onSelectToken, targetChainId) => {
       const tokenOptions = field === Field.OUTPUT ? outputTokenOptions : inputTokenOptions
       const isOutputField = field === Field.OUTPUT
       const nextSelectedTargetChainId =
@@ -61,7 +62,9 @@ export function useOpenTokenSelectWidget(
         oppositeToken,
         open: true,
         forceOpen: false,
-        selectedTargetChainId: nextSelectedTargetChainId,
+        selectedTargetChainId: shouldLockTargetChain
+          ? nextSelectedTargetChainId
+          : (targetChainId ?? nextSelectedTargetChainId),
         tradeType,
         onSelectToken: (currency) => {
           if (!getCurrencyTokenPolicyDecision(currency, TokenPolicyProfile.ESTABLISHED_SETTLEMENT).allowed) return

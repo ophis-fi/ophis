@@ -35,6 +35,7 @@ import { PoweredFooter } from 'common/pure/PoweredFooter'
 import { isNonEvmRecipientChain } from 'common/utils/recipientAddress.utils'
 
 import * as styledEl from './styled'
+import { TradeSourceNetworkSelector } from './TradeSourceNetworkSelector'
 import { mapCurrencyInfo } from './TradeWidgetForm.utils'
 import { TradeWidgetProps } from './types'
 
@@ -231,7 +232,11 @@ export function TradeWidgetForm(props: TradeWidgetProps): ReactNode {
             {isOphisMobileSwap ? (
               <>
                 {isMobileSwap && <TradeWidgetLinks isDropdown />}
-                {headerContent}
+                {params.inputTokenOptions ? (
+                  <TradeSourceNetworkSelector widget={props} openTokenSelectWidget={openTokenSelectWidget} />
+                ) : (
+                  headerContent
+                )}
               </>
             ) : shouldLockForAlternativeOrder ? (
               <div></div>

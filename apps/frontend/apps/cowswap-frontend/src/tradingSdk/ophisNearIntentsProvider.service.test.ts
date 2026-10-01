@@ -242,7 +242,12 @@ describe('NEAR destination tokens', () => {
 
     expect(result.isRouteAvailable).toBe(true)
     expect(result.tokens).toEqual([
-      expect.objectContaining({ symbol: 'USDC', address: SOLANA_USDC.contractAddress, decimals: 6 }),
+      expect.objectContaining({
+        symbol: 'USDC',
+        address: SOLANA_USDC.contractAddress,
+        decimals: 6,
+        logoUrl: '/logos/token-usdc.png',
+      }),
     ])
   })
 })

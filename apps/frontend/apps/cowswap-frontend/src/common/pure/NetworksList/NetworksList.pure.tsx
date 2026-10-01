@@ -1,7 +1,7 @@
 import { ReactNode } from 'react'
 
 import { ARC_CHAIN_ID, getChainInfo } from '@cowprotocol/common-const'
-import { SupportedChainId, TargetChainId } from '@cowprotocol/cow-sdk'
+import { TargetChainId } from '@cowprotocol/cow-sdk'
 import { Badge, BadgeTypes } from '@cowprotocol/ui'
 
 import { Trans } from '@lingui/react/macro'
@@ -18,7 +18,7 @@ const NEW_NETWORK_IDS: Set<TargetChainId> = new Set([
 ])
 
 export interface NetworksListProps {
-  currentChainId: SupportedChainId | null
+  currentChainId: TargetChainId | null
   isDarkMode: boolean
   availableChains: TargetChainId[]
   onSelectChain(targetChainId: TargetChainId): void

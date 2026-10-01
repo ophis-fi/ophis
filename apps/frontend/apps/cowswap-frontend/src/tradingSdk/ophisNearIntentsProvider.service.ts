@@ -10,6 +10,8 @@ import { BridgeProviderQuoteError, BridgeQuoteErrors, NearIntentsBridgeProvider 
 import { utils } from 'ethers'
 import jsonStringify from 'json-stringify-deterministic'
 
+import { getBridgeTokenLogo } from './bridgeTokenLogo.utils'
+
 /**
  * Ophis NEAR Intents provider. Two jobs:
  *
@@ -143,7 +145,14 @@ export class OphisNearIntentsBridgeProvider extends NearIntentsBridgeProvider {
   async getBuyTokens(
     params: Parameters<NearIntentsBridgeProvider['getBuyTokens']>[0],
   ): ReturnType<NearIntentsBridgeProvider['getBuyTokens']> {
-    const result = await super.getBuyTokens(params)
+    const response = await super.getBuyTokens(params)
+    const result = {
+      ...response,
+      tokens: response.tokens.map((token) => ({
+        ...token,
+        logoUrl: token.logoUrl || getBridgeTokenLogo(token.chainId, token.address, token.symbol ?? ''),
+      })),
+    }
     if ((params.buyChainId as number) === HYPERCORE_CHAIN_ID) {
       // NEAR lists Hypercore USDC twice (the HIP-1 spot id and an erc20
       // mirror). Only the HIP-1 asset is the account balance a user expects.

@@ -34,3 +34,12 @@ it('refreshes an already-open picker when its asynchronous token options arrive'
   expect(mockWidget.open).toBe(true)
   expect(mockWidget.tokenOptions).toBe(loaded)
 })
+
+it('opens the source network requested by the swap header instead of the current EVM token network', () => {
+  const { result } = renderHook(() => useOpenTokenSelectWidget({ tokens: [], chains: [] }))
+  const current = new TokenWithLogo(undefined, 1, '0x1111111111111111111111111111111111111111', 6, 'USDC')
+  act(() => result.current(current, Field.INPUT, undefined, jest.fn(), 1_000_000_104))
+  expect(mockWidget.open).toBe(true)
+  expect(mockWidget.field).toBe(Field.INPUT)
+  expect(mockWidget.selectedTargetChainId).toBe(1_000_000_104)
+})

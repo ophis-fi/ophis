@@ -86,3 +86,10 @@ describe('getTokenLogoUrls', () => {
     expect(getTokenLogoUrls(token)[0]).toMatch(/^https:\/\//)
   })
 })
+
+it('renders local token artwork without accepting arbitrary local paths', () => {
+  const token = new TokenWithLogo('/logos/token-usdc.png', 1, AAPL, 6, 'USDC')
+  expect(getTokenLogoUrls(token)[0]).toBe('/logos/token-usdc.png')
+  const traversal = new TokenWithLogo('/logos/../../private', 1, AAPL, 6, 'USDC')
+  expect(getTokenLogoUrls(traversal)).not.toContain(traversal.logoURI)
+})

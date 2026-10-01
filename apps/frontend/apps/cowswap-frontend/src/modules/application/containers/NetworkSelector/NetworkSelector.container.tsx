@@ -2,6 +2,8 @@ import { ReactNode, useRef, type MouseEvent } from 'react'
 
 import { getChainInfo } from '@cowprotocol/common-const'
 import { useAvailableChains, useBodyScrollbarLocker, useMediaQuery, useOnClickOutside } from '@cowprotocol/common-hooks'
+import { isSupportedChainId } from '@cowprotocol/common-utils'
+import { TargetChainId } from '@cowprotocol/cow-sdk'
 import { Media } from '@cowprotocol/ui'
 import { useWalletInfo } from '@cowprotocol/wallet'
 
@@ -19,8 +21,12 @@ import { NetworksList } from 'common/pure/NetworksList/NetworksList.pure'
 
 import * as styledEl from './NetworkSelector.styled'
 
-type OnSelectNetwork = ReturnType<typeof useOnSelectNetwork>
-type OnSelectNetworkTarget = Parameters<OnSelectNetwork>[0]
+interface NetworkSelectorProps {
+  selectedChainId?: TargetChainId
+  additionalChainIds?: TargetChainId[]
+  onSelectChain?(chainId: TargetChainId): boolean
+  disabled?: boolean
+}
 
 const stopPropagation = (event: MouseEvent<HTMLDivElement>): void => {
   event.stopPropagation()
@@ -35,23 +41,21 @@ const createCloseHandler =
     }
   }
 
-const createSelectHandler =
-  (isOpen: boolean, toggleModal: () => void, onSelectChain: OnSelectNetwork) =>
-  (targetChainId: OnSelectNetworkTarget): void => {
-    if (isOpen) {
-      toggleModal()
-    }
-    void onSelectChain(targetChainId, true)
-  }
-
-export function NetworkSelector(): ReactNode {
-  const { chainId } = useWalletInfo()
+export function NetworkSelector({
+  selectedChainId,
+  additionalChainIds = [],
+  onSelectChain: selectSourceChain,
+  disabled = false,
+}: NetworkSelectorProps = {}): ReactNode {
+  const { chainId: walletChainId } = useWalletInfo()
+  const chainId = selectedChainId ?? walletChainId
   const node = useRef<HTMLDivElement>(null)
   const nodeMobile = useRef<HTMLDivElement>(null)
   const nodeSelector = useRef<HTMLDivElement>(null)
   const isOpen = useModalIsOpen(ApplicationModal.NETWORK_SELECTOR)
   const toggleModal = useToggleModal(ApplicationModal.NETWORK_SELECTOR)
-  const isChainIdUnsupported = useIsProviderNetworkUnsupported()
+  const isWalletChainUnsupported = useIsProviderNetworkUnsupported()
+  const isChainIdUnsupported = selectedChainId === undefined && isWalletChainUnsupported
   const info = getChainInfo(chainId)
   const isUpToMedium = useMediaQuery(Media.upToMedium(false))
   const shouldHideNetworkSelector = useShouldHideNetworkSelector()
@@ -70,7 +74,12 @@ export function NetworkSelector(): ReactNode {
   const { t } = useLingui()
 
   const handleClose = createCloseHandler(isOpen, toggleModal)
-  const handleSelectChain = createSelectHandler(isOpen, toggleModal, onSelectChain)
+  const handleSelectChain = (targetChainId: TargetChainId): void => {
+    if (disabled) return
+    if (isOpen) toggleModal()
+    if (selectSourceChain?.(targetChainId)) return
+    if (isSupportedChainId(targetChainId)) void onSelectChain(targetChainId, true)
+  }
 
   if (shouldHideNetworkSelector) {
     return null
@@ -93,7 +102,7 @@ export function NetworkSelector(): ReactNode {
               currentChainId={isChainIdUnsupported ? null : chainId}
               isDarkMode={isDarkMode}
               onSelectChain={handleSelectChain}
-              availableChains={availableChains}
+              availableChains={[...new Set([...availableChains, ...additionalChainIds])]}
             />
           </styledEl.FlayoutMenuList>
         </styledEl.FlyoutMenuScrollable>
@@ -102,7 +111,7 @@ export function NetworkSelector(): ReactNode {
   )
 
   return (
-    <styledEl.SelectorWrapper ref={node} onClick={toggleModal}>
+    <styledEl.SelectorWrapper ref={node} onClick={disabled ? undefined : toggleModal} aria-disabled={disabled}>
       <styledEl.SelectorControls ref={nodeSelector} $isChainIdUnsupported={isChainIdUnsupported} $isOpen={isOpen}>
         {!isChainIdUnsupported ? (
           <>
@@ -126,7 +135,7 @@ export function NetworkSelector(): ReactNode {
           so `bottom:56px` resolved against the ~83px header and the sheet
           rendered off-screen at the top (unselectable). On desktop the flyout
           is position:absolute relative to the selector, so it stays inline. */}
-      {isOpen && (isUpToMedium ? createPortal(flyoutMenu, document.body) : flyoutMenu)}
+      {isOpen && !disabled && (isUpToMedium ? createPortal(flyoutMenu, document.body) : flyoutMenu)}
     </styledEl.SelectorWrapper>
   )
 }
