@@ -16,6 +16,11 @@ Arc (5042) charges the 1 bp trading fee and is indexed for volume and referral
 rebates. Server referral defaults apply; a per-call code overrides the default,
 and an empty string opts out. Eligibility requires a verified settled trade.
 
+The tools operate on configured EVM orderbooks. `list_chains` reports configuration,
+not a live availability probe. The standalone app's externally funded NEAR
+source flow is separate; these tools do not create or fund those deposits.
+See [network and funding coverage](https://docs.ophis.fi/networks-assets).
+
 ## Security model
 
 The server holds **no private keys and never signs**. `build_order` returns a
@@ -37,10 +42,10 @@ every backing endpoint is already public, and the tools are read/build-only.
 | `build_order` | A bounded, ready-to-sign CoW order: correct per-chain settlement + orderbook, CIP-75 partner fee in appData, receiver pinned to owner. |
 | `submit_order` | Relay a **pre-signed** order to the orderbook (`/api/v1/orders`). No keys held here. |
 | `lookup_tier` | A wallet's fee-rebate tier + live status (`rebates.ophis.fi/tier/:wallet`). |
-| `get_integrator_earnings` | What an integrator's own-fee routing earned, by appCode: routed volume + own-fee + referral rebate paid-to-date across indexed chains, including Arc, with figures split sovereign (Optimism, Unichain: swept in full) vs CoW-hosted (gross, not guaranteed) (`rebates.ophis.fi/earnings/:appCode`). |
+| `get_integrator_earnings` | What an integrator's own-fee routing earned, by appCode: routed volume + own-fee + referral rebate paid-to-date across indexed chains, including Arc, with configured own-fee payout lanes on Optimism/Unichain, Robinhood/Arc own-fee accruals without an Ophis payout lane, and CoW-hosted accruals under CoW terms (`rebates.ophis.fi/earnings/:appCode`). |
 | `get_balances` | Native + ERC-20 balances for an address on one chain. |
 | `get_portfolio` | Native + ERC-20 balances across multiple chains. |
-| `get_gas` | Current gas price for a chain (informational; trades are gasless for the trader). |
+| `get_gas` | Current gas price for a chain (informational; offchain order signatures are gasless, approvals and other wallet transactions are not). |
 | `get_token_chart` | OHLCV price history for a token. |
 | `validate_order` | Offline preflight for an externally-built order (no network, no keys): catches wrong appCode, orderbook host, EIP-712 domain, appData hash mismatch, unpinned receiver, and expired or non-zero-fee orders. |
 

@@ -1,8 +1,10 @@
 # Ophis
 
-> Ophis is an intent-based, MEV-protected DEX aggregator for agents and tokenized markets. Trade supported stablecoins, Stock Tokens, tokenized stocks, and other onchain assets, or integrate through MCP, SDK, and API. Ophis batch-settles on supported EVM chains, with Solana, Bitcoin, Monad, Hyperliquid, X Layer, Sui, and Tron destinations via NEAR Intents.
+> Ophis is an intent-based, MEV-protected DEX aggregator for agents and tokenized markets. Trade supported stablecoins, Stock Tokens, tokenized stocks, and other onchain assets, or integrate through MCP, SDK, and API. Ophis batch-settles on supported EVM chains, with Solana, Bitcoin, Monad, Hyperliquid (Hypercore), X Layer, Sui, Tron, Starknet and Zcash as additional NEAR sources and destinations.
 
 Ophis is a CoW Protocol fork supporting 14 EVM chains: Ethereum, Arbitrum One, Avalanche, Base, BNB Smart Chain, Gnosis Chain, Ink, Linea, Optimism, Plasma, Polygon, Robinhood Chain, Unichain, and Arc. Standard ERC-20 orders are offchain, wallet-signed intents with solver-paid settlement gas and a hard limit price: an agent signs a *bounded capability*, not an arbitrary transaction, and it can never be settled below its signed limit. On the Ophis-operated networks Optimism (chain 10), Unichain (chain 130), Robinhood Chain (chain 4663), and Arc (chain 5042), settlement uses Ophis's own GPv2Settlement at a non-canonical address (NOT CoW's canonical address). Arc swaps and configured Circle bridge routes are available in the swap app, including mapped expanded assets and a separate Ethereum WBTC → Ethereum cirBTC → Arc cirBTC flow; SDK v0.4.3 and the hosted MCP server also include Arc for ERC-20 orders. On their supported chains, agents MUST resolve the per-chain settlement domain (and orderbook host) via the `@ophis/sdk` helpers or the MCP `list_chains` tool before signing; signing against CoW's canonical address yields a domain the deployed contract rejects.
+
+The standalone app supports externally funded NEAR swaps: select the source under You sell and destination under You receive, review the quote and source-chain refund address, then fund the deposit before its deadline with any required memo. Keep the transfer record until delivery or refund. Zcash uses transparent t1/t3 addresses; Hyperliquid means Hypercore spot balances. These flows depend on live assets and executable quotes and are separate from SDK/MCP EVM orders, embedded widgets and Hooks.
 
 ## Pricing
 
@@ -13,7 +15,7 @@ Ophis is a CoW Protocol fork supporting 14 EVM chains: Ethereum, Arbitrum One, A
 - Integrator own-fees: onboarded integrators may stack their own ERC-20 fee on top; Ophis takes 0% of that markup. See https://docs.ophis.fi/partners.
 - Surplus: traders receive the price improvement remaining after the applicable capped protocol capture.
 - APIs: the public MCP server and the Intent API are free. The Intent API is rate-limited to 30 requests per minute per IP.
-- Worked example: a $100,000 volatile trade with 20 bps of improvement pays a $10 base plus $160 of captured improvement on Optimism, Unichain or Robinhood Chain. A stablecoin trade with the same improvement pays $10 plus $100.
+- Worked example: a $100,000 volatile trade with 20 bps of improvement pays a $10 base plus $160 of captured improvement on Optimism, Unichain, Robinhood Chain or Arc. A stablecoin trade with the same improvement pays $10 plus $100.
 
 Intent API example (free, 30 req/min per IP):
 

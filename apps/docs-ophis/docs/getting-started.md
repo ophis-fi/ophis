@@ -15,7 +15,7 @@ import Head from '@docusaurus/Head';
 export const howToLd = {
   '@context': 'https://schema.org',
   '@type': 'HowTo',
-  name: 'How to make your first swap on Ophis',
+  name: 'How to make a batch-auction swap on Ophis',
   description:
     'Choose tokens and an amount, review and sign your order, then follow settlement.',
   totalTime: 'PT2M',
@@ -52,16 +52,21 @@ export const howToLd = {
 
 # Getting started
 
-Choose your tokens, review the quote, and sign with your wallet.
+Choose your tokens and networks, review the quote, then authorize the displayed
+order or fund the quoted deposit from your source wallet.
 
 ## Your first swap
 
-1. Open [the swap app](https://swap.ophis.fi/#/swap) and connect a wallet.
+1. Open [the swap app](https://swap.ophis.fi/#/swap). Connect your EVM wallet for
+   batch-auction swaps; externally funded routes can use a separate source wallet.
 2. Select the token and network you want to pay from, then enter the amount.
 3. Open **You receive** to select the destination network and token. For
    a cross-chain route, check the destination-address and wallet requirements.
-4. Review the quote, fees, destination address, and spending limit. Approve
-   the displayed amount if needed, then **sign the order with your wallet**.
+4. Review the quote, fees, destination address, and spending limit. For a
+   batch-auction swap, approve the displayed amount if needed and **sign the order**.
+   For an externally funded swap, also enter a source-chain refund address,
+   confirm the quote, and send the specified deposit before its deadline,
+   including any required memo. Keep the saved transfer until delivery or refund.
 
 :::note[Non-custodial by design]
 
@@ -74,7 +79,9 @@ are route-specific; see [Networks & assets](./networks-assets.md).
 
 ## How it works
 
-Three steps from token selection to settlement:
+The following steps describe batch-auction orders. Externally funded NEAR and
+direct Circle routes follow their provider's deposit and delivery lifecycle;
+see [Networks & assets](./networks-assets.md).
 
 <span id="1--intent-parse-the-request" />
 
@@ -104,11 +111,11 @@ For the full lifecycle, see [How it works](./architecture.md).
 
 ## Supported networks
 
-Ophis surfaces **14 EVM chains** as full source _and_ destination in the
-network selector: Ethereum, Arbitrum One, Avalanche, Base, BNB Smart
+Ophis supports batch-auction orders on **14 EVM chains**:
+Ethereum, Arbitrum One, Avalanche, Base, BNB Smart
 Chain, Gnosis Chain, Ink, Linea, Optimism, Plasma, Polygon, Robinhood Chain, Unichain, and Arc
-(plus the Sepolia testnet). On any of these you can both pay from and receive into
-your EVM wallet.
+(plus the Sepolia testnet). Same-chain trading and cross-chain route availability
+are separate: a listed chain does not guarantee every source/destination pair.
 
 Arc is available in the swap app (chain ID 5042). Its native gas currency is USDC;
 Circle routes include USDC and mapped expanded assets, plus Ethereum WBTC to
@@ -124,12 +131,13 @@ chain lists also include Arc.
 | Plasma   | Polygon         | Robinhood Chain |
 | Unichain | Arc             |                 |
 
-In addition, **Solana, Bitcoin, Monad, Hyperliquid, X Layer, Sui and Tron** are available as cross-chain
-_destinations only_ via [NEAR Intents](https://near.org/intents): trade
-from an enabled EVM source and supported asset pair without a second wallet. They
-are destination-only in this flow; you cannot start a swap from a non-EVM
-balance. You paste a destination address and sign with your EVM wallet;
-NEAR Intents brokers the bridge.
+The standalone app also supports **Solana, Bitcoin, Monad, Hyperliquid
+(Hypercore), X Layer, Sui, Tron, Starknet and Zcash** as sources and destinations
+through [NEAR Intents](https://near.org/intents), where live assets and quotes
+permit. Select the source in **You sell** to enter the externally funded flow;
+select the destination in **You receive**. These networks do not gain a CoW
+orderbook or SDK signing domain. See the
+[funding, address and recovery requirements](./networks-assets.md#externally-funded-swaps-through-near-intents).
 
 The current token catalog covers stablecoins, ETH/BTC pegs, DeFi
 blue-chips, AI/RWA, memes, and gaming. The in-app token selector is the
@@ -147,7 +155,7 @@ the executable trade price remains the signed Ophis solver quote.
 - [Stock Token integration and multiplier](https://docs.robinhood.com/chain/stock-tokens/)
 - [Bridge assets to Robinhood Chain](https://docs.robinhood.com/chain/bridging/)
 
-Swaps are gasless. Wallet approvals, wrapping, and other direct transactions
+Offchain ERC-20 order signatures are gasless. Wallet approvals, wrapping, and other direct transactions
 still require ETH. Robinhood's public RPC is rate-limited; production
 integrations should use a supervised provider endpoint and reserve the public
 RPC for wallet configuration and fallback use.

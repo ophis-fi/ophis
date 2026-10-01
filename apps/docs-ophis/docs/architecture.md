@@ -86,9 +86,13 @@ See [Security & audits](./audits.md#mev-protection-by-construction).
 
 ## Cross-chain via NEAR Intents
 
-Solana, Bitcoin, Monad, Hyperliquid, X Layer, Sui and Tron are available as
-**output destinations** through NEAR Intents for supported sources and assets.
-The user supplies the destination address and authorizes the source flow.
+Solana, Bitcoin, Monad, Hyperliquid (Hypercore), X Layer, Sui, Tron, Starknet and
+Zcash are available as sources and destinations through NEAR Intents for
+supported assets and quoted routes. From a batch-auction source, the user
+supplies the destination address and authorizes the source order. Selecting an
+additional source in the standalone app instead opens an externally funded flow:
+review the quote and refund address, confirm, then transfer the quoted deposit
+from the source wallet. It does not submit a CoW order on that external network.
 Destination delivery is separate from source settlement and can require recovery.
 Across and Circle routes have different coverage and wallet restrictions; see
 [Networks & assets](./networks-assets.md).

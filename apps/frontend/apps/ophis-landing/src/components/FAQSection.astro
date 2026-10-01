@@ -12,13 +12,13 @@
  *
  * Accurate Ophis facts only. No em-dash in rendered copy (commas / colons).
  */
-import { EVM_CHAIN_COUNT, SOVEREIGN_CHAIN_LIST as sovereignList, NEAR_DESTINATION_LIST as destinationList } from '../data/chains'
+import { EVM_CHAIN_COUNT, SOVEREIGN_CHAIN_LIST as sovereignList, NEAR_NETWORK_LIST as nearNetworkList } from '../data/chains'
 import { jsonLdSafe } from '../lib/jsonld'
 
 const faqs: { q: string; a: string }[] = [
   {
     q: 'What is Ophis?',
-    a: `Ophis is an intent-based, MEV-protected DEX aggregator for agents and tokenized markets. Traders can route supported stablecoins, Stock Tokens, tokenized stocks, and other onchain assets; builders can integrate through MCP, SDK, or API. Ophis batch-settles on supported EVM chains, with ${destinationList} destinations via NEAR Intents. It is non-custodial and a CoW Protocol fork.`,
+    a: `Ophis is an intent-based, MEV-protected DEX aggregator for agents and tokenized markets. Traders can route supported stablecoins, Stock Tokens, tokenized stocks, and other onchain assets; builders can integrate through MCP, SDK, or API. Ophis batch-settles on supported EVM chains, with additional NEAR sources and destinations including ${nearNetworkList}. External-source swaps use a deposit flow in the standalone app. It is non-custodial and a CoW Protocol fork.`,
   },
   {
     q: 'What does Ophis charge?',
@@ -26,7 +26,7 @@ const faqs: { q: string; a: string }[] = [
   },
   {
     q: 'Which chains does Ophis support?',
-    a: `The app covers ${EVM_CHAIN_COUNT} EVM chains, with ${sovereignList} as its operated networks. SDK v0.4.3 and the hosted MCP server include Arc. NEAR Intents adds ${destinationList} destinations where source, pair and provider support permit.`,
+    a: `The app covers ${EVM_CHAIN_COUNT} EVM chains, with ${sovereignList} as its operated networks. SDK v0.4.3 and the hosted MCP server include Arc. The standalone app also supports ${nearNetworkList} as NEAR sources and destinations where assets and quotes permit. External-source swaps use a deposit and refund address; SDK/MCP order builders remain scoped to EVM orderbooks.`,
   },
   {
     q: 'How is Ophis different from CoW Swap?',
@@ -34,7 +34,7 @@ const faqs: { q: string; a: string }[] = [
   },
   {
     q: 'Is MEV protection guaranteed?',
-    a: 'Orders settle through CoW Protocol batch auctions, which are designed to protect trades from MEV such as front-running and sandwiching by settling at a uniform clearing price per token pair. An order can never be settled below its signed limit price. Batch-auction settlement mitigates MEV by design; it is not an absolute guarantee against all adversarial conditions.',
+    a: 'Batch-auction orders settle through CoW Protocol, which are designed to protect trades from MEV such as front-running and sandwiching by settling at a uniform clearing price per token pair. An order can never be settled below its signed limit price. Batch-auction settlement mitigates MEV by design; it is not an absolute guarantee against all adversarial conditions.',
   },
   {
     q: 'Who controls the keys, and is Ophis custodial?',

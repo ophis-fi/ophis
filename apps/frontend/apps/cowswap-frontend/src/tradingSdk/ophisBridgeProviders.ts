@@ -54,15 +54,9 @@ const ACROSS_EXTRA_NETWORKS: ChainInfo[] = [
   ROBINHOOD_BRIDGE_CHAIN,
 ]
 
-// Chains Across can actually EXECUTE a bridge deposit from with sdk-bridging
-// 4.0.2: both ACROSS_SPOOK_CONTRACT_ADDRESSES and ACROSS_MATH_CONTRACT_ADDRESSES
-// have entries only for these (getUnsignedBridgeCall throws on any other
-// source). Deliberately narrower than the SDK's own 5-network source claim —
-// Polygon/Optimism lack the math helper upstream and have always failed there;
-// NEAR Intents covers every corridor that overlap loses. Ink/Linea join via the
-// flagged EXTRA_ACROSS_SOURCE_CHAIN_IDS (their SpokePool ships upstream; our
-// patch adds the math helper) — the same shared const BRIDGE_SOURCE_CHAIN_IDS
-// spreads, so the executable set and the source set cannot disagree.
+// Source support requires deployed SpokePool, math helper, CoW Shed and hook
+// execution. EXTRA_ACROSS_SOURCE_CHAIN_IDS keeps additional chains gated until
+// their deployment and execution checks pass (including Polygon and Optimism).
 export const ACROSS_EXECUTABLE_SOURCE_IDS: ReadonlySet<number> = new Set<number>([
   SupportedChainId.MAINNET,
   SupportedChainId.ARBITRUM_ONE,

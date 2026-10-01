@@ -850,16 +850,16 @@ export interface PausedChain {
 }
 
 export interface ChainList {
-  /** Chains you can quote/build/submit on right now (orderbook host is live). */
+  /** Chains with a configured orderbook URL; this does not probe live availability. */
   tradeable: ChainInfo[]
-  /** Fee chains whose orderbook host is not live yet. */
+  /** Fee chains without a configured orderbook URL. */
   paused: PausedChain[]
 }
 
 /**
- * Lists Ophis chains, split into `tradeable` (orderbook live — use these) and
- * `paused` (settlement deployed but no live orderbook — get_quote/build_order
- * would throw). Pure. Only ever route a chainId from `tradeable`.
+ * Lists Ophis chains, split into `tradeable` (orderbook URL configured) and
+ * `paused` (no configured URL — get_quote/build_order would throw).
+ * Pure configuration lookup, not a live health check. Only ever route a chainId from `tradeable`.
  */
 export function listChains(): ChainList {
   const ophisOperated = new Set<number>(Object.values(OPHIS_CHAIN_IDS))
@@ -884,7 +884,7 @@ export function listChains(): ChainList {
         name,
         ophisOperated: ophisOperated.has(chainId),
         settlement,
-        reason: 'orderbook host not live yet (settlement deployed) — get_quote/build_order will throw for this chain',
+        reason: 'no configured orderbook URL — get_quote/build_order will throw for this chain',
       })
     }
   }

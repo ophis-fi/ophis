@@ -49,6 +49,7 @@ export function useTokensToSelect(): TokensToSelectContext {
   }, [chainId, field, oppositeToken])
 
   const pickerTokens = useMemo(() => getPickerTokens(tokenOptions, targetChainId), [tokenOptions, targetChainId])
+  const pickerContext = useMemo(() => (pickerTokens ? pickerTokenContext(pickerTokens) : undefined), [pickerTokens])
 
   const areTokensFromBridge =
     !pickerTokens &&
@@ -105,7 +106,7 @@ export function useTokensToSelect(): TokensToSelectContext {
       bridgeSupportedTokensMap,
     }
   }, [allTokens, bridgeSupportedTokensMap, isPickerLoading, areTokensFromBridge, favoriteTokens, result])
-  return pickerTokens ? pickerTokenContext(pickerTokens) : defaults
+  return pickerContext ?? defaults
 }
 
 function getPickerTokens(options: TokenPickerOptions | undefined, chainId: number): TokenWithLogo[] | undefined {

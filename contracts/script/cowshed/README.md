@@ -3,7 +3,7 @@
 `COWShed.initcode` and `COWShedFactory.initcode` are the **exact creation
 bytecode** CoW deployed on Ethereum mainnet, used to reproduce the CoW Shed
 implementation and factory at their canonical addresses on Ophis sovereign
-chains (Unichain 130, Robinhood Chain 4663) via byte-exact CREATE2 replay.
+chains (Optimism 10, Unichain 130, Robinhood Chain 4663) via byte-exact CREATE2 replay.
 
 | Contract | Canonical address (all chains) | initcode bytes |
 |---|---|---|

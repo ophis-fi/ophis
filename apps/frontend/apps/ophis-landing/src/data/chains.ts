@@ -57,10 +57,10 @@ export const SOVEREIGN_CHAIN_LIST = new Intl.ListFormat('en', {
   type: 'conjunction',
 }).format(SOVEREIGN_CHAINS.map((c) => c.name))
 
-/** Additional destinations reachable from supported EVM source chains. */
-export const NEAR_DESTINATIONS = ['Solana', 'Bitcoin', 'Monad', 'Hyperliquid', 'X Layer', 'Sui', 'Tron'] as const
+/** Additional networks available through the standalone app's NEAR source/deposit and destination flows. */
+export const NEAR_NETWORKS = ['Solana', 'Bitcoin', 'Monad', 'Hyperliquid', 'X Layer', 'Sui', 'Tron', 'Starknet', 'Zcash'] as const
 
-export const NEAR_DESTINATION_LIST = new Intl.ListFormat('en', {
+export const NEAR_NETWORK_LIST = new Intl.ListFormat('en', {
   style: 'long',
   type: 'conjunction',
-}).format(NEAR_DESTINATIONS)
+}).format(NEAR_NETWORKS)

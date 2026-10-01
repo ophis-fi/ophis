@@ -15,8 +15,8 @@
 // Exit 0 = all deps present on all requested chains; 1 = a dep is codeless;
 // 2 = bad usage. Any invalid or unknown chain fails the whole invocation.
 //
-// SCOPE: only chains whose FULL source path is ready are listed here; an unknown
-// chain is rejected (fail closed).
+// SCOPE: registered source candidates can be checked without enabling them.
+// Unknown chains and missing deployment dependencies fail closed.
 //
 // Contract presence alone is NOT sufficient for a SOVEREIGN chain (Ophis runs its
 // own settlement + driver there, so OUR driver must execute the post-hook rather
@@ -28,9 +28,11 @@
 //   2. the LIVE orderbook advertises the same trampoline + settlement it is
 //      running with (/api/v1/info/contracts), catching config drift between the
 //      deployed contracts and the running services.
-// Even then, the flag must not be flipped until a real bridge FROM the chain has
-// produced a SpokePool FundsDeposited event: the trampoline discards each hook's
-// success flag, so a broken post-hook is invisible on-chain (2026-08-13).
+// Presence/config checks must be paired with execution evidence: a signed SDK
+// hook must emit SpokePool FundsDeposited through the bound trampoline. Record
+// whether this was a local fork or a funded mainnet transfer; a fork does not
+// prove live solver execution or destination delivery. The trampoline discards
+// hook success flags, so a successful outer transaction alone proves nothing.
 // Unichain 130 stays absent until its own readiness is done.
 
 // Chain-independent deps (same CREATE2 address on every chain).
@@ -44,9 +46,26 @@ const CHAIN_INDEPENDENT = {
 // on non-sovereign chains (canonical settlement 0x9008D19f, current-version
 // trampoline 0x60Bf7823, both verified bound + present). rpc is a keyless
 // endpoint used only to read code. A chain absent here is rejected (fail closed);
-// add a row ONLY when the chain's full source path — including driver execution
-// for sovereign chains — is actually wired.
+// A row permits checking readiness; it does not enable the source flag.
 const PER_CHAIN = {
+  137: {
+    name: 'Polygon',
+    rpc: 'https://polygon-bor-rpc.publicnode.com',
+    settlement: '0x9008D19f58AAbD9eD0D60971565AA8510560ab41',
+    hooksTrampoline: '0x60Bf78233f48eC42eE3F101b9a05eC7878728006',
+    spokePool: '0x9295ee1d8C5b022Be115A2AD3c30C72E34e7F096',
+    mathHelper: '0xEdE97D044d4C8aAA682968bee10284521B9f311a',
+  },
+  10: {
+    name: 'Optimism',
+    sovereign: true,
+    rpc: 'https://mainnet.optimism.io',
+    orderbookApi: 'https://optimism-mainnet.ophis.fi',
+    settlement: '0x310784c7FCE12d578dA6f53460777bAc9718B859',
+    hooksTrampoline: '0x2FbB1e41fF4f9b707E4428EEC7F5AFAaC5D60810',
+    spokePool: '0x6f26Bf09B1C792e3228e5467807a900A503c0281',
+    mathHelper: '0xEdE97D044d4C8aAA682968bee10284521B9f311a',
+  },
   57073: {
     name: 'Ink',
     rpc: 'https://rpc-gel.inkonchain.com',
@@ -137,10 +156,15 @@ async function checkSovereign(chain) {
   // 1. The trampoline is settlement-bound: settlement() must return THIS chain's
   //    settlement, or our settlement could never call it.
   try {
-    const raw = await rpcCall(chain.rpc, 'eth_call', [{ to: chain.hooksTrampoline, data: SETTLEMENT_SELECTOR }, 'latest'])
+    const raw = await rpcCall(chain.rpc, 'eth_call', [
+      { to: chain.hooksTrampoline, data: SETTLEMENT_SELECTOR },
+      'latest',
+    ])
     const bound = raw && raw.length >= 66 ? `0x${raw.slice(-40)}` : undefined
     const good = sameAddress(bound, chain.settlement)
-    lines.push(`  ${chain.name} trampoline.settlement() -> ${bound ?? 'unreadable'}: ${good ? 'ok (bound to this chain)' : 'MISMATCH (expected ' + chain.settlement + ')'}`)
+    lines.push(
+      `  ${chain.name} trampoline.settlement() -> ${bound ?? 'unreadable'}: ${good ? 'ok (bound to this chain)' : 'MISMATCH (expected ' + chain.settlement + ')'}`,
+    )
     if (!good) ok = false
   } catch (e) {
     lines.push(`  ${chain.name} trampoline.settlement(): RPC ERROR (${e.message}) — treat as MISSING`)
@@ -169,7 +193,9 @@ async function checkSovereign(chain) {
     ]
     for (const [label, live, expected] of checks) {
       const good = sameAddress(live, expected)
-      lines.push(`  ${chain.name} orderbook ${label} -> ${live ?? 'absent'}: ${good ? 'ok (matches deployed)' : 'MISMATCH (expected ' + expected + ')'}`)
+      lines.push(
+        `  ${chain.name} orderbook ${label} -> ${live ?? 'absent'}: ${good ? 'ok (matches deployed)' : 'MISMATCH (expected ' + expected + ')'}`,
+      )
       if (!good) ok = false
     }
     const chainOk = Number(info?.chainId) === Number(chain.chainId ?? info?.chainId)
@@ -189,14 +215,15 @@ async function checkChain(chainId) {
   const chain = PER_CHAIN[chainId]
   // Fail closed on an unknown chain: not being in the table means its source
   // path was never verified as complete.
-  if (!chain) return { chainId, ok: false, lines: [`  chain ${chainId}: NOT a verified Across source chain — refuse to enable`] }
+  if (!chain)
+    return { chainId, ok: false, lines: [`  chain ${chainId}: NOT a verified Across source chain — refuse to enable`] }
 
   const deps = {
     ...CHAIN_INDEPENDENT,
     'CoW settlement': chain.settlement,
-    'HooksTrampoline': chain.hooksTrampoline,
+    HooksTrampoline: chain.hooksTrampoline,
     'Across SpokePool': chain.spokePool,
-    'AcrossMathHelper': chain.mathHelper,
+    AcrossMathHelper: chain.mathHelper,
   }
   const lines = []
   let ok = true
@@ -250,5 +277,7 @@ for (const r of results) {
   r.lines.forEach((l) => console.log(l))
   if (!r.ok) allOk = false
 }
-console.log(`\n${allOk ? 'PREFLIGHT PASS — every dependency has code on every requested chain.' : 'PREFLIGHT FAIL — do NOT enable these chains as Across sources.'}`)
+console.log(
+  `\n${allOk ? 'PREFLIGHT PASS — every dependency has code on every requested chain.' : 'PREFLIGHT FAIL — do NOT enable these chains as Across sources.'}`,
+)
 process.exit(allOk ? 0 : 1)

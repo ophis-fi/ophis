@@ -4,6 +4,11 @@ Integration helpers for [Ophis](https://ophis.fi) — a [CoW Protocol](https://d
 
 > **Non-custodial.** These helpers build and guard order parameters. They never hold keys or sign on your behalf. See [Security](#security) before wiring up an automated signer.
 
+The SDK builds orders for configured EVM settlement deployments. The standalone
+swap app also supports externally funded NEAR swaps, including Bitcoin and
+Solana sources; those deposits are a separate flow and are not built or signed
+by these order helpers. See [network and funding coverage](https://docs.ophis.fi/networks-assets).
+
 ## Install
 
 ```bash

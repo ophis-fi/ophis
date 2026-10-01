@@ -40,8 +40,11 @@ export const tokensToSelectAtomPerField = atom(async (get): Promise<TokensToSele
   }
 })
 
+// Registering search's Enter handler must not invalidate the async token list.
+const tokenSelectionFieldAtom = atom((get) => get(selectTokenWidgetAtom).field)
+
 export const tokensToSelectAtom = atom(async (get) => {
-  const { field } = get(selectTokenWidgetAtom)
+  const field = get(tokenSelectionFieldAtom)
   const tokensPerField = await get(tokensToSelectAtomPerField)
 
   return tokensPerField[field === Field.INPUT ? Field.INPUT : Field.OUTPUT]

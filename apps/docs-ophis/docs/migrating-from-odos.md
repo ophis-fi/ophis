@@ -132,7 +132,7 @@ surface does not paper over them:
    it cannot be filled at your limit. Orders settle at the clearing price; an
    execution better than your signed minimum is reflected in the executed
    amounts returned by the orderbook.
-3. **You pay no gas.** `gasEstimate`, `gweiPerGas` and `gasEstimateValue` are
+3. **You sell no gas.** `gasEstimate`, `gweiPerGas` and `gasEstimateValue` are
    0 because you broadcast nothing. The winning solver pays settlement gas and
    that cost is already priced into the quoted amounts. The embedded estimate
    is visible in `ophis.executionCost`.

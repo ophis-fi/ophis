@@ -8,7 +8,7 @@
   <div class="sec-head">
     <p class="eyebrow reveal-up" data-reveal>Product</p>
     <h2 class="serif reveal-up" id="productTitle" data-reveal>One place. <em>Your next swap.</em></h2>
-    <p class="lede reveal-up" data-reveal>Choose where the funds should land. Each destination accepts specific assets, and cross-chain destinations need their own address.</p>
+    <p class="lede reveal-up" data-reveal>Choose where to pay from and where funds should land. Supported assets and live quotes determine each route; external-source swaps need a deposit and refund address.</p>
   </div>
   <div class="chips reveal-up" role="group" aria-label="Networks" data-reveal>
     <button type="button" data-chain="ethereum" aria-pressed="true"><img src="/logos/chain-ethereum.png" alt="" width="20" height="20" />Ethereum</button>
@@ -35,8 +35,8 @@
     }
     const texts: Record<string, string> = {
       ethereum: 'Swap between supported Ethereum assets, with the receiving token delivered to your wallet. Review the quote and spending limit before you sign.',
-      solana: 'Receive supported assets such as SOL or USDC in your Solana wallet. Choose the receiving token and enter a Solana address; the available quote determines the route.',
-      bitcoin: 'Receive native BTC at your Bitcoin address. USDC can be swapped into BTC when a route is available. Wrapped BTC tokens belong to other networks and are not Bitcoin outputs.',
+      solana: 'Send or receive supported Solana assets such as SOL or USDC. To pay from Solana, select it under You sell, review the quote and refund address, then fund the deposit from your Solana wallet.',
+      bitcoin: 'Send or receive native BTC when a route is available. To pay from Bitcoin, review the quote and refund address, then fund the deposit from your Bitcoin wallet. Wrapped BTC tokens belong to other networks.',
     }
     const tokens: Record<string, string> = {
       ethereum: '<span><img src="/logos/eth.png" alt="" width="22" height="22">ETH</span><span><img src="/logos/usdc.png" alt="" width="22" height="22">USDC</span>',

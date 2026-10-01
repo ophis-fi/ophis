@@ -7,7 +7,7 @@ sidebar_label: How Ophis compares
 
 # How Ophis compares
 
-Reviewed **September 27, 2026**. Compare the net output of current quotes for
+Reviewed **October 1, 2026**. Compare the net output of current quotes for
 the same assets, size and destination. A headline interface fee alone does not
 measure execution cost, liquidity or safety.
 
@@ -45,9 +45,11 @@ MCP server or SDK for the subsequent workflow, retaining wallet authorization.
 ### Cross-chain scope
 
 The app supports **14 EVM chains**, including Arc. SDK v0.4.3 and hosted MCP chain
-mappings cover the same 14 networks, including Arc. NEAR Intents adds Bitcoin,
-Solana, Monad, X Layer, Sui, Tron and Hyperliquid destinations on supported
-routes. Circle and Across routes have different source, asset and wallet
+mappings cover the same 14 networks, including Arc, for batch-auction orders.
+The standalone app also supports externally funded NEAR swaps from Bitcoin,
+Solana, Monad, X Layer, Sui, Tron, Hyperliquid (Hypercore), Starknet and Zcash;
+these networks can also receive supported routes. This does not extend the
+SDK's order-building coverage. Circle and Across routes have different source, asset and wallet
 restrictions; no provider covers every possible chain pair.
 
 See [Networks & assets](./networks-assets.md) for exact boundaries. A destination
@@ -72,7 +74,7 @@ only a traditional same-chain aggregator is no longer accurate.
 ### Where the surplus goes
 
 Reference-quote improvement and surplus over the signed limit are not the
-same measure. On Optimism, Unichain and Robinhood Chain the backend applies Ophis's capped
+same measure. On Optimism, Unichain, Robinhood Chain and Arc the backend applies Ophis's capped
 improvement policy. On hosted chains Ophis encodes its policy in appData;
 CoW applies protocol policies **before** partner policies, calculating fees
 iteratively. Do not add capture percentages against the original improvement.
@@ -102,7 +104,7 @@ and fee policies. Both can fail to find an acceptable fill.
 
 | Ophis surface | Current scope |
 | --- | --- |
-| Swap app | 14 EVM chains; route-specific cross-chain providers |
+| Swap app | Batch-auction orders on 14 EVM chains; additional externally funded NEAR sources and route-specific bridges |
 | SDK v0.4.3 / hosted MCP | 14 EVM chains, including Arc |
 | Intent API | Parses fields; does not execute swaps |
 | Batch-auction fees | Standard base plus capped improvement; upstream fees on hosted chains |

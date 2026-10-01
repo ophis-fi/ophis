@@ -2,7 +2,7 @@
 title: "How to let an AI agent swap tokens: safely, and MEV-protected"
 description: "Give an AI agent bounded token-swap capabilities through Ophis: MCP execution, an Intent API for parsing, SDK safety helpers, and the signing policies required for unattended operation."
 pubDate: 2026-06-25
-updatedDate: 2026-09-28
+updatedDate: 2026-10-01
 author: Ophis
 tags: [ai-agents, mcp, mev, defi, swaps]
 cover: ./let-an-ai-agent-swap-tokens.cover.png
@@ -263,8 +263,8 @@ Allowances may need renewal; bridge, native-deposit and vault flows differ.
 
 ### Which chains can an agent trade on?
 
-SDK v0.4.3 and the hosted MCP server cover 14 EVM chains, including Arc. The swap
-app separately offers Solana and Bitcoin destinations via NEAR Intents; bridge
+SDK v0.4.3 and the hosted MCP server cover 14 EVM chains, including Arc. The
+standalone swap app separately offers NEAR sources and destinations, including externally funded Bitcoin and Solana balances; bridge
 coverage is route-specific. Do not hardcode endpoints: four of the EVM chains
 (Optimism, Unichain, Robinhood Chain and Arc) are Ophis-operated and settle through
 Ophis's own GPv2Settlement at a non-canonical address, so an order signed

@@ -71,12 +71,10 @@ contract DeployCowShed is Script {
         // Refuse to deploy off the intended chains. The CREATE2 proxy exists on
         // nearly every network, so without this a stale or mistyped --rpc-url
         // would silently deploy (and bill gas) on the wrong chain while
-        // Unichain/Robinhood stay empty. (Add Optimism 10 here if we later enable
-        // it as an Across/Bungee hook source - it is the third sovereign chain
-        // that also lacks the factory.)
+        // the intended source stays empty.
         require(
-            block.chainid == 130 || block.chainid == 4663,
-            "DeployCowShed: confirmed deploy only allowed on Unichain 130 or Robinhood 4663 - check --rpc-url"
+            block.chainid == 130 || block.chainid == 4663 || block.chainid == 10,
+            "DeployCowShed: confirmed deploy only allowed on Unichain 130, Robinhood 4663 or Optimism 10 - check --rpc-url"
         );
 
         // Impl first: the factory clones it.

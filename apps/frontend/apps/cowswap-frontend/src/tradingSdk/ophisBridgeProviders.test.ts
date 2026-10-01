@@ -1,5 +1,8 @@
 import {
   ACROSS_INK_LINEA_SOURCE_ENABLED,
+  ACROSS_POLYGON_SOURCE_ENABLED,
+  ACROSS_OPTIMISM_SOURCE_ENABLED,
+  acrossPolygonOptimismSourceIds,
   ACROSS_ROBINHOOD_SOURCE_ENABLED,
   acrossInkLineaSourceIds,
   acrossRobinhoodSourceIds,
@@ -389,6 +392,10 @@ describe('ophisBridgeProviders: chains, decode-only provider, invariants', () =>
     it('keeps every flagged source OFF by default (flags unset in the build)', () => {
       expect(ACROSS_INK_LINEA_SOURCE_ENABLED).toBe(false)
       expect(ACROSS_ROBINHOOD_SOURCE_ENABLED).toBe(false)
+      expect(ACROSS_POLYGON_SOURCE_ENABLED).toBe(false)
+      expect(ACROSS_OPTIMISM_SOURCE_ENABLED).toBe(false)
+      expect(ACROSS_EXECUTABLE_SOURCE_IDS.has(137)).toBe(false)
+      expect(ACROSS_EXECUTABLE_SOURCE_IDS.has(10)).toBe(false)
       expect(EXTRA_ACROSS_SOURCE_CHAIN_IDS).toEqual([])
       // The executable set and the source set derive from the same const, so
       // they agree on every flagged chain in every flag state.
@@ -398,6 +405,13 @@ describe('ophisBridgeProviders: chains, decode-only provider, invariants', () =>
       }
       expect(BRIDGE_SOURCE_CHAIN_IDS.has(4663)).toBe(true)
       expect(ACROSS_EXECUTABLE_SOURCE_IDS.has(4663)).toBe(false)
+    })
+
+    it('enables Polygon and Optimism independently after source preflight', () => {
+      expect(acrossPolygonOptimismSourceIds(false, false)).toEqual([])
+      expect(acrossPolygonOptimismSourceIds(true, false)).toEqual([137])
+      expect(acrossPolygonOptimismSourceIds(false, true)).toEqual([10])
+      expect(acrossPolygonOptimismSourceIds(true, true)).toEqual([137, 10])
     })
 
     it('adds exactly Robinhood Chain (4663) when its own gate is enabled', () => {
@@ -427,8 +441,18 @@ describe('ophisBridgeProviders: chains, decode-only provider, invariants', () =>
       expect(EXTRA_ACROSS_SOURCE_CHAIN_IDS).toEqual([
         ...acrossInkLineaSourceIds(ACROSS_INK_LINEA_SOURCE_ENABLED),
         ...acrossRobinhoodSourceIds(ACROSS_ROBINHOOD_SOURCE_ENABLED),
+        ...acrossPolygonOptimismSourceIds(ACROSS_POLYGON_SOURCE_ENABLED, ACROSS_OPTIMISM_SOURCE_ENABLED),
       ])
     })
+  })
+
+  it('registers Polygon and Optimism math helpers in both shipped SDK builds', () => {
+    const patch = readFileSync(join(__dirname, '../../../../patches/@cowprotocol__sdk-bridging@4.0.2.patch'), 'utf8')
+    const helper = '"0xEdE97D044d4C8aAA682968bee10284521B9f311a"'
+    for (const chain of ['POLYGON', 'OPTIMISM']) {
+      const entries = patch.split('\n').filter((line) => line.startsWith('+') && line.includes(`.${chain}]: ${helper}`))
+      expect(entries).toHaveLength(2)
+    }
   })
 
   describe('Robinhood 4663 source prerequisites (sovereign)', () => {

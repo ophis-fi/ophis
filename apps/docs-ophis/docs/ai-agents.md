@@ -347,8 +347,9 @@ default 0.5% slippage. Each quotes against the Ophis orderbook, signs the order
 EIP-712 with the agent's own wallet, approves the CoW vault relayer once, submits,
 and returns the order UID plus an explorer URL. ERC-20 to ERC-20 only (native-ETH
 sells need CoW eth-flow, a separate path, so wrap to WETH first). The agent's
-wallet is the order owner **and** receiver, so funds only ever move through the
-audited CoW settlement contract, back to the same wallet.
+wallet is the order owner **and** receiver. Settlement validates that receiver
+and may use external liquidity interactions. Upstream CoW audits and Ophis
+reviews have separate scopes; see [Security & audits](./audits.md).
 
 The 1 bp base fee applies to every supported pair. Every drop-in adapter
 (AgentKit, GOAT, elizaOS) and the platform integrations below detect stable
@@ -363,7 +364,7 @@ to start earning.
 ### More platform integrations
 
 Beyond the npm packages above, Ophis maintains swap integrations for more agent
-platforms, each built on the same audited Ophis order flow (the TypeScript ones
+platforms, each built on the same Ophis order flow (the TypeScript ones
 reuse `@ophis/agent-swap`; the Python ones mirror the same order construction and
 fund-safety guards):
 [elizaOS](https://www.npmjs.com/package/@ophis/plugin-elizaos) (published, in the

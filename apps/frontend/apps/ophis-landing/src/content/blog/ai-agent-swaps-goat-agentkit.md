@@ -2,7 +2,7 @@
 title: "AI agent token swaps with GOAT or Coinbase AgentKit"
 description: "Wire a swap tool into a GOAT SDK or Coinbase AgentKit agent with Ophis: bounded orders, pinned receiver, capped slippage, gasless MEV-protected settlement."
 pubDate: 2026-07-12
-updatedDate: 2026-09-28
+updatedDate: 2026-10-01
 author: Ophis
 tags: [ai-agents, goat, agentkit, mev, swaps]
 draft: false

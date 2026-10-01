@@ -1,6 +1,6 @@
 ---
 name: ophis
-description: MEV-protected same-chain token swaps via Ophis (CoW Protocol) using the MetaMask Agent Wallet. Use when the user wants to swap one ERC-20 for another ON THE SAME CHAIN with best execution, no sandwiching/front-running, and gasless settlement. Ophis charges a 1 bp base plus capped reference-quote-improvement capture; hosted settlement additionally applies CoW Protocol's separate upstream policy. The MetaMask wallet signs the CoW order directly (EIP-712 via `mm wallet sign-typed-data`) and sends the ERC-20 approval via `mm wallet send-transaction`; the order is submitted to the Ophis/CoW orderbook. Supports Base, Optimism, Unichain, Arbitrum, Polygon, BNB, Ethereum. NOT for cross-chain bridging.
+description: MEV-protected same-chain token swaps via Ophis (CoW Protocol) using the MetaMask Agent Wallet. Use when the user wants to swap one ERC-20 for another ON THE SAME CHAIN with best execution, batch-auction MEV mitigation, and gasless settlement. Ophis charges a 1 bp base plus capped reference-quote-improvement capture; hosted settlement additionally applies CoW Protocol's separate upstream policy. The MetaMask wallet signs the CoW order directly (EIP-712 via `mm wallet sign-typed-data`) and sends the ERC-20 approval via `mm wallet send-transaction`; the order is submitted to the Ophis/CoW orderbook. Supports Base, Optimism, Unichain, Arbitrum, Polygon, BNB, Ethereum. NOT for cross-chain bridging.
 license: Apache-2.0
 metadata:
   version: "0.1.0"
