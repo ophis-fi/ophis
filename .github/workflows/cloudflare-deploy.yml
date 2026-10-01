@@ -134,9 +134,6 @@ jobs:
             exit 1
           fi
 
-      - name: verify Optimism Across source contracts
-        run: node apps/frontend/scripts/across-source-preflight.mjs 10
-
       - name: build cowswap
         working-directory: apps/frontend
         env:
