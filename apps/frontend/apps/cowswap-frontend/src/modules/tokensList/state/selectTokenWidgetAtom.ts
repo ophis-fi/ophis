@@ -2,6 +2,7 @@ import { atom } from 'jotai'
 
 import { LpToken, TokenWithLogo } from '@cowprotocol/common-const'
 import { atomWithPartialUpdate } from '@cowprotocol/common-utils'
+import { ChainInfo } from '@cowprotocol/cow-sdk'
 import { Currency } from '@cowprotocol/currency'
 import { ListState } from '@cowprotocol/tokens'
 import { Command } from '@cowprotocol/types'
@@ -21,7 +22,14 @@ export interface ListToToggle {
   consentHash: string
 }
 
+export interface TokenPickerOptions {
+  chains: ChainInfo[]
+  tokens: TokenWithLogo[]
+  includeDefaultTokens?: boolean
+}
+
 export interface SelectTokenWidgetState {
+  tokenOptions?: TokenPickerOptions
   open: boolean
   field?: Field
   oppositeToken?: TokenWithLogo | LpToken | Currency
@@ -42,6 +50,7 @@ export interface SelectTokenWidgetState {
 
 export const DEFAULT_SELECT_TOKEN_WIDGET_STATE: SelectTokenWidgetState = {
   open: false,
+  tokenOptions: undefined,
   field: undefined,
   selectedToken: undefined,
   onSelectToken: undefined,

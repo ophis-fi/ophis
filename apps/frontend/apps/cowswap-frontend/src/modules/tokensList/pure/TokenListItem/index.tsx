@@ -11,6 +11,8 @@ import { BigNumber } from '@ethersproject/bignumber'
 import { t } from '@lingui/core/macro'
 import { Nullish } from 'types'
 
+import { isNonEvmRecipientChain } from 'common/utils/recipientAddress.utils'
+
 import * as styledEl from './styled'
 
 import { useDeferredVisibility } from '../../hooks/useDeferredVisibility'
@@ -58,7 +60,11 @@ interface DisabledTooltipProps {
 
 function checkIsTokenSelected(token: TokenWithLogo, selectedToken: Nullish<Currency>): boolean {
   if (!selectedToken) return false
-  return areAddressesEqual(token.address, getCurrencyAddress(selectedToken)) && token.chainId === selectedToken.chainId
+  const selectedAddress = selectedToken.isToken ? selectedToken.address : getCurrencyAddress(selectedToken)
+  if (token.chainId !== selectedToken.chainId) return false
+  return isNonEvmRecipientChain(token.chainId)
+    ? token.address === selectedAddress
+    : areAddressesEqual(token.address, selectedAddress)
 }
 
 function DisabledTooltip({ children, disabled, disabledReason }: DisabledTooltipProps): ReactNode {

@@ -1,4 +1,4 @@
-export { SelectTokenModal } from './SelectTokenModal'
+export { SelectTokenModal, SelectTokenModalFrame } from './SelectTokenModal'
 export type { SelectTokenModalProps } from './SelectTokenModal'
 
 export {

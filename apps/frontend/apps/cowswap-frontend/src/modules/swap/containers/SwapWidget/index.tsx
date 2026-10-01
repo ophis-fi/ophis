@@ -1,4 +1,4 @@
-import { ReactNode, useCallback, useEffect, useMemo, useState } from 'react'
+import { ReactNode, Suspense, useCallback, useEffect, useMemo, useState } from 'react'
 
 import { getIsNativeToken, isSellOrder } from '@cowprotocol/common-utils'
 import { OrderKind } from '@cowprotocol/cow-sdk'
@@ -15,7 +15,9 @@ import { useHooksEnabledManager } from 'legacy/state/user/hooks'
 import { CctpSwapDetails, CctpSwapRecovery, useCctpSwapRoute } from 'modules/cctp'
 import { TradeApproveWithAffectedOrderList } from 'modules/erc20Approve'
 import { EthFlowModal, EthFlowProps } from 'modules/ethFlow'
-import { AddIntermediateTokenModal } from 'modules/tokensList'
+import { NearDirectSwap, NearSwapRecovery, useNearSwapEntry } from 'modules/nearDirect'
+import { useTokenSelectorConsentFlow } from 'modules/rwa'
+import { AddIntermediateTokenModal, SelectTokenWidget, TokenPickerOptions } from 'modules/tokensList'
 import {
   TradeWidget,
   TradeWidgetSlots,
@@ -60,6 +62,7 @@ import { WholeTokenReview } from '../WholeTokenRoute/WholeTokenReview.container'
 import { WholeTokenRoute } from '../WholeTokenRoute/WholeTokenRoute.container'
 
 export interface SwapWidgetProps {
+  standardUpdaters?: ReactNode
   headerContent?: ReactNode
   topContent?: ReactNode
   bottomContent?: ReactNode
@@ -67,15 +70,58 @@ export interface SwapWidgetProps {
   enableCctp?: boolean
 }
 
+export function SwapWidget(props: SwapWidgetProps): ReactNode {
+  const direct = useNearSwapEntry()
+  const consentFlow = useTokenSelectorConsentFlow()
+  return (
+    <>
+      {!direct.selection && props.standardUpdaters}
+      {direct.selection ? (
+        <Suspense fallback={<p role="status">Loading swap…</p>}>
+          <NearDirectSwap initial={direct.selection} onExit={direct.exit} />
+        </Suspense>
+      ) : (
+        <StandardSwapWidget
+          {...props}
+          sourceTokens={direct.tokenOptions}
+          enterDirect={direct.enter}
+          topContent={
+            <>
+              {props.topContent}
+              {direct.tokenError && (
+                <InlineBanner bannerType={StatusColorVariant.Alert}>
+                  <span role="alert">Some networks could not load.</span>
+                  <LinkStyledButton onClick={direct.retryTokens}>Retry loading assets</LinkStyledButton>
+                </InlineBanner>
+              )}
+            </>
+          }
+        />
+      )}
+      {direct.selection && <SelectTokenWidget customFlows={consentFlow} />}
+      {direct.showRecovery && (
+        <Suspense fallback={null}>
+          <NearSwapRecovery allowFunding={direct.enabled} />
+        </Suspense>
+      )}
+    </>
+  )
+}
+
 // TODO: Break down this large function into smaller functions
 // eslint-disable-next-line max-lines-per-function
-export function SwapWidget({
+function StandardSwapWidget({
   headerContent,
   topContent,
   bottomContent,
   allowSwapSameToken,
   enableCctp,
-}: SwapWidgetProps): ReactNode {
+  sourceTokens,
+  enterDirect,
+}: SwapWidgetProps & {
+  sourceTokens?: TokenPickerOptions
+  enterDirect(field: Field, currency: Currency | null): boolean
+}): ReactNode {
   const direct = useWholeTokenRoute()
   const { showRecipient } = useSwapSettings()
   const deadlineState = useSwapDeadlineState()
@@ -84,7 +130,13 @@ export function SwapWidget({
   const { isLoading: isRateLoading, bridgeQuote } = useTradeQuote()
   const hideQuoteAmount = useShouldHideTradeRateDetails()
   const priceImpact = useTradePriceImpact()
-  const widgetActions = useSwapWidgetActions()
+  const standardActions = useSwapWidgetActions()
+  const widgetActions = {
+    ...standardActions,
+    onCurrencySelection: (field: Field, currency: Currency | null) => {
+      if (currency && !enterDirect(field, currency)) standardActions.onCurrencySelection(field, currency)
+    },
+  }
   const receiveAmountInfo = useGetReceiveAmountInfo()
   const { token: intermediateBuyToken, toBeImported } = useTryFindToken(getBridgeIntermediateTokenAddress(bridgeQuote))
   const [{ wrap: nativeWrapAmount, approval: nativeApprovalAmount }, setNativeFunding] = useState<{
@@ -344,6 +396,7 @@ export function SwapWidget({
   }
 
   const params = {
+    inputTokenOptions: sourceTokens,
     compactView: true,
     enableSmartSlippage: true,
     disableQuotePolling: direct.reviewed,

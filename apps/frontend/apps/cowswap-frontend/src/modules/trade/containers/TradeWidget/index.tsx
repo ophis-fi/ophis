@@ -44,18 +44,20 @@ export function TradeWidget(props: TradeWidgetProps): JSX.Element {
   return (
     <>
       <styledEl.Container id={id} isTokenSelectOpen={isTokenSelectOpen} isTokenSelectWide={isTokenSelectWide}>
-        <TradeWidgetUpdaters
-          disableTradeNotifications={params.disableTradeNotifications}
-          allowSwapSameToken={allowSwapSameToken}
-          disableQuotePolling={disableQuotePolling || isTokenSelectOpen}
-          disableNativeSelling={disableNativeSelling}
-          disableSuggestedSlippageApi={disableSuggestedSlippageApi}
-          onChangeRecipient={props.actions.onChangeRecipient}
-        >
-          {slots.updaters}
-        </TradeWidgetUpdaters>
+        {!params.externalFunding && (
+          <TradeWidgetUpdaters
+            disableTradeNotifications={params.disableTradeNotifications}
+            allowSwapSameToken={allowSwapSameToken}
+            disableQuotePolling={disableQuotePolling || isTokenSelectOpen}
+            disableNativeSelling={disableNativeSelling}
+            disableSuggestedSlippageApi={disableSuggestedSlippageApi}
+            onChangeRecipient={props.actions.onChangeRecipient}
+          >
+            {slots.updaters}
+          </TradeWidgetUpdaters>
+        )}
 
-        {modals}
+        {params.externalFunding ? <TradeWidgetForm {...props} /> : modals}
       </styledEl.Container>
 
       {selectTokenWidgetNode}

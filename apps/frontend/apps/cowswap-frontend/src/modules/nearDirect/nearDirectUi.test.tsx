@@ -66,14 +66,16 @@ afterEach(() => {
   mockTokens = [mockFixture.source, mockFixture.destination]
 })
 
-it.each([true, false, undefined])('honors the provider flag (%s), including a direct NEAR URL', (enabled) => {
-  mockEnabled = enabled
-  render(<SwapPage />)
-  expect(screen.queryByText('Direct NEAR form') !== null).toBe(enabled === true)
-  expect(screen.queryByRole('button', { name: 'Cross-chain · NEAR' }) !== null).toBe(enabled === true)
-  expect(screen.queryByText('Normal swap form') !== null).toBe(enabled !== true)
-  expect(screen.queryByText('NEAR recovery') !== null).toBe(enabled !== true)
-})
+it.each([true, false, undefined])(
+  'always renders the existing swap box without provider-branded modes (%s)',
+  (enabled) => {
+    mockEnabled = enabled
+    render(<SwapPage />)
+    expect(screen.getByText('Normal swap form')).toBeTruthy()
+    expect(screen.queryByText('Direct NEAR form')).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Cross-chain · NEAR' })).toBeNull()
+  },
+)
 
 it('retains tracking without any funding instructions while the provider is paused', () => {
   const transfer = nearTransferSchema.parse(mockFixture)

@@ -1,6 +1,6 @@
 import { useAtomValue } from 'jotai'
 
-import { TokenWithLogo } from '@cowprotocol/common-const'
+import { SUI_CHAIN_ID, TokenWithLogo } from '@cowprotocol/common-const'
 import { AdditionalTargetChainId, SupportedChainId } from '@cowprotocol/cow-sdk'
 import { useFavoriteTokens } from '@cowprotocol/tokens'
 import { useWalletInfo, WalletInfo } from '@cowprotocol/wallet'
@@ -14,7 +14,16 @@ import { useChainsToSelect } from './useChainsToSelect'
 import { useSelectTokenWidgetState } from './useSelectTokenWidgetState'
 import { useTokensToSelect } from './useTokensToSelect'
 
+import { buildVirtualRows } from '../pure/TokensVirtualList/tokensVirtualListUtils'
 import { DEFAULT_SELECT_TOKEN_WIDGET_STATE } from '../state/selectTokenWidgetAtom'
+import {
+  buildNextStoredTokens,
+  buildTokensByKey,
+  getStoredTokenKey,
+  hydrateStoredToken,
+  persistStoredTokens,
+  readStoredTokens,
+} from '../utils/recentTokensStorage'
 
 jest.mock('jotai', () => ({
   ...jest.requireActual('jotai'),
@@ -237,4 +246,50 @@ describe('useTokensToSelect', () => {
     expect(result.current.tokens).toEqual([lineaToken])
     expect(result.current.isLoading).toBe(false)
   })
+
+  it.each([
+    [AdditionalTargetChainId.SOLANA, 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v', false],
+    [SUI_CHAIN_ID, '0x2::sui::SUI', false],
+    [SupportedChainId.MAINNET, '0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48', true],
+  ])(
+    'preserves custom token identity through recent storage and bridge rows on %s',
+    (chainId, address, sameIdentity) => {
+      const token = new TokenWithLogo(undefined, chainId, address, 6, 'TOKEN')
+      const variant = new TokenWithLogo(undefined, chainId, address.toLowerCase(), 6, 'OTHER')
+      mockUseSelectTokenWidgetState.mockReturnValue(
+        createWidgetState({
+          field: Field.INPUT,
+          selectedTargetChainId: chainId,
+          tokenOptions: { tokens: [token], chains: [] },
+        }),
+      )
+      const { result } = renderHook(() => useTokensToSelect())
+      expect(result.current.tokens).toEqual([token])
+      expect(mockUseBridgeSupportedTokens).toHaveBeenCalledWith(undefined)
+
+      const stored = buildNextStoredTokens(buildNextStoredTokens({}, token, 4), variant, 4)
+      persistStoredTokens(stored)
+      const reloaded = readStoredTokens(4)[chainId]
+      expect(reloaded).toHaveLength(sameIdentity ? 1 : 2)
+      const canonical = buildTokensByKey(result.current.tokens)
+      const recentTokens = reloaded.flatMap((entry) => {
+        const hydrated = hydrateStoredToken(entry, canonical.get(getStoredTokenKey(entry)))
+        return hydrated ? [hydrated] : []
+      })
+      expect(recentTokens).toEqual(sameIdentity ? [token] : [variant, token])
+
+      const rows = buildVirtualRows({
+        sortedTokens: [],
+        favoriteTokens: [],
+        recentTokens,
+        hideFavoriteTokensTooltip: false,
+        onClearRecentTokens: jest.fn(),
+        areTokensFromBridge: result.current.areTokensFromBridge,
+        bridgeSupportedTokensMap: result.current.bridgeSupportedTokensMap,
+      })
+      expect(rows.filter((row) => row.type === 'token').map((row) => row.disabled)).toEqual(
+        sameIdentity ? [false] : [true, false],
+      )
+    },
+  )
 })

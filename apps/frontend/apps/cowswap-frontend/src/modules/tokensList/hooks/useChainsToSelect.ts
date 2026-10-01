@@ -35,11 +35,13 @@ export { createInputChainsState, createOutputChainsState } from '../utils/chains
  */
 export function useChainsToSelect(): ChainsToSelectState | undefined {
   const { chainId } = useWalletInfo()
-  const { field, selectedTargetChainId = chainId, tradeType, oppositeToken } = useSelectTokenWidgetState()
+  const { field, selectedTargetChainId = chainId, tradeType, oppositeToken, tokenOptions } = useSelectTokenWidgetState()
   const { data: bridgeSupportedNetworks, isLoading } = useBridgeSupportedNetworks()
   const isBridgingEnabled = useIsBridgingEnabled() // Reads from Jotai atom
   const cctpEnabled = useIsCctpEnabled()
-  const isAdvancedTradeType = tradeType === TradeType.LIMIT_ORDER || tradeType === TradeType.ADVANCED_ORDERS
+  const isAdvancedTradeType = (
+    [TradeType.LIMIT_ORDER, TradeType.ADVANCED_ORDERS] as (TradeType | undefined)[]
+  ).includes(tradeType)
   const shouldHideNetworkSelector = useShouldHideNetworkSelector()
 
   const supportedChains = useSupportedChains()
@@ -53,12 +55,13 @@ export function useChainsToSelect(): ChainsToSelectState | undefined {
 
   const destinationChainIds = useMemo(() => supportedTargetChains.map((c) => c.id), [supportedTargetChains])
   const isBuyField = field === Field.OUTPUT
-  const routesAvailability = useRoutesAvailability(
-    isBuyField && oppositeToken && isBridgingEnabled ? sourceChainId : undefined,
-    destinationChainIds,
+  const routeSourceChainId = useMemo(
+    () => (isBuyField && oppositeToken && isBridgingEnabled && !tokenOptions ? sourceChainId : undefined),
+    [isBuyField, oppositeToken, isBridgingEnabled, tokenOptions, sourceChainId],
   )
+  const routesAvailability = useRoutesAvailability(routeSourceChainId, destinationChainIds)
 
-  return useMemo(() => {
+  const defaultState = useMemo(() => {
     // TODO: Limit/TWAP orders currently disable chain selection; revisit when SC wallet bridging supports advanced trades.
     if (!field || !chainId || !sourceChainId || !isBridgingEnabled || isAdvancedTradeType) return undefined
 
@@ -101,4 +104,19 @@ export function useChainsToSelect(): ChainsToSelectState | undefined {
     routesAvailability,
     shouldHideNetworkSelector,
   ])
+  const pickerState = useMemo(() => {
+    if (tokenOptions && !isAdvancedTradeType) {
+      const defaults = tokenOptions.includeDefaultTokens ? selectableChains : []
+      const chains = sortChainsByDisplayOrder([
+        ...new Map([...defaults, ...tokenOptions.chains].map((c) => [c.id, c])).values(),
+      ])
+      return {
+        chains,
+        defaultChainId: resolveDefaultChainId(chains, selectedTargetChainId, sourceChainId, new Set()),
+        isLoading: false,
+      }
+    }
+    return undefined
+  }, [tokenOptions, isAdvancedTradeType, selectableChains, selectedTargetChainId, sourceChainId])
+  return pickerState ?? defaultState
 }

@@ -1,4 +1,4 @@
-import { useCallback } from 'react'
+import { useCallback, useEffect } from 'react'
 
 import { LpToken, TokenWithLogo } from '@cowprotocol/common-const'
 import { useIsBridgingEnabled } from '@cowprotocol/common-hooks'
@@ -13,14 +13,22 @@ import { TradeType, useTradeTypeInfo } from 'modules/trade'
 import { useTradeTypeInfoFromUrl } from 'modules/trade/hooks/useTradeTypeInfoFromUrl'
 
 import { useCloseTokenSelectWidget } from './useCloseTokenSelectWidget'
+import { useSelectTokenWidgetState } from './useSelectTokenWidgetState'
 import { useUpdateSelectTokenWidgetState } from './useUpdateSelectTokenWidgetState'
 
-export function useOpenTokenSelectWidget(): (
+import { TokenPickerOptions } from '../state/selectTokenWidgetAtom'
+
+export function useOpenTokenSelectWidget(
+  inputTokenOptions?: TokenPickerOptions,
+  outputTokenOptions?: TokenPickerOptions,
+): (
   selectedToken: Nullish<Currency>,
   field: Field | undefined,
   oppositeToken: TokenWithLogo | LpToken | Currency | undefined,
   onSelectToken: (currency: Currency) => void,
 ) => void {
+  const widget = useSelectTokenWidgetState()
+  const activeOptions = widget.field === Field.OUTPUT ? outputTokenOptions : inputTokenOptions
   const updateSelectTokenWidget = useUpdateSelectTokenWidgetState()
   const closeTokenSelectWidget = useCloseTokenSelectWidget()
   const isBridgingEnabled = useIsBridgingEnabled()
@@ -31,16 +39,24 @@ export function useOpenTokenSelectWidget(): (
   // Advanced trades lock the target chain so price guarantees stay valid while the widget is open.
   const shouldLockTargetChain = tradeType === TradeType.LIMIT_ORDER || tradeType === TradeType.ADVANCED_ORDERS
 
+  useEffect(() => {
+    if (widget.open && widget.tokenOptions !== activeOptions) {
+      updateSelectTokenWidget({ tokenOptions: activeOptions })
+    }
+  }, [widget.open, widget.tokenOptions, activeOptions, updateSelectTokenWidget])
+
   return useCallback(
     (selectedToken, field, oppositeToken, onSelectToken) => {
+      const tokenOptions = field === Field.OUTPUT ? outputTokenOptions : inputTokenOptions
       const isOutputField = field === Field.OUTPUT
       const nextSelectedTargetChainId =
-        isOutputField && selectedToken && isBridgingEnabled && !shouldLockTargetChain
+        (isOutputField || !!tokenOptions) && selectedToken && isBridgingEnabled && !shouldLockTargetChain
           ? selectedToken.chainId
           : undefined
 
       updateSelectTokenWidget({
         selectedToken,
+        tokenOptions,
         field,
         oppositeToken,
         open: true,
@@ -56,6 +72,14 @@ export function useOpenTokenSelectWidget(): (
         },
       })
     },
-    [closeTokenSelectWidget, updateSelectTokenWidget, isBridgingEnabled, shouldLockTargetChain, tradeType],
+    [
+      closeTokenSelectWidget,
+      updateSelectTokenWidget,
+      isBridgingEnabled,
+      shouldLockTargetChain,
+      tradeType,
+      inputTokenOptions,
+      outputTokenOptions,
+    ],
   )
 }

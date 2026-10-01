@@ -20,13 +20,7 @@ import {
 
 import { useCloseTokenSelectWidget } from '../../../hooks/useCloseTokenSelectWidget'
 import { useSelectTokenWidgetState } from '../../../hooks/useSelectTokenWidgetState'
-import {
-  useChainPanelState,
-  useDismissHandler,
-  useManageWidgetVisibility,
-  useWidgetEffects,
-  useWidgetOpenState,
-} from '../hooks'
+import { useChainPanelState, useDismissHandler, useManageWidgetVisibility, useWidgetOpenState } from '../hooks'
 import { InnerWrapper, ModalContainer, WidgetCard, WidgetOverlay, Wrapper } from '../styled'
 
 export interface SelectTokenModalProps {
@@ -34,17 +28,23 @@ export interface SelectTokenModalProps {
 }
 
 export function SelectTokenModal({ children }: SelectTokenModalProps): ReactNode {
+  const widgetState = useSelectTokenWidgetState()
+  const chainPanel = useChainPanelState(widgetState.tradeType, widgetState.field)
+
+  return <SelectTokenModalFrame hasChainPanel={chainPanel.isEnabled}>{children}</SelectTokenModalFrame>
+}
+
+export function SelectTokenModalFrame({
+  children,
+  hasChainPanel = false,
+}: SelectTokenModalProps & { hasChainPanel?: boolean }): ReactNode {
   const isOpen = useWidgetOpenState()
   const isCompactLayout = useMediaQuery(Media.upToMedium(false))
-  const widgetState = useSelectTokenWidgetState()
   const { closeManageWidget } = useManageWidgetVisibility()
   const closeTokenSelectWidget = useCloseTokenSelectWidget()
   const onDismiss = useDismissHandler(closeManageWidget, closeTokenSelectWidget)
 
-  const chainPanel = useChainPanelState(widgetState.tradeType, widgetState.field)
-  const isChainPanelVisible = chainPanel.isEnabled && !isCompactLayout
-
-  useWidgetEffects(isOpen)
+  const isChainPanelVisible = hasChainPanel && !isCompactLayout
 
   if (!isOpen) return null
 
@@ -62,7 +62,7 @@ export function SelectTokenModal({ children }: SelectTokenModalProps): ReactNode
 
   const overlay = (
     <WidgetOverlay onClick={handleOverlayClick}>
-      <WidgetCard $isCompactLayout={isCompactLayout} $hasChainPanel={chainPanel.isEnabled}>
+      <WidgetCard $isCompactLayout={isCompactLayout} $hasChainPanel={hasChainPanel}>
         {content}
       </WidgetCard>
     </WidgetOverlay>

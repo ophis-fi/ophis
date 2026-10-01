@@ -29,3 +29,6 @@ export { useSourceChainId } from './hooks/useSourceChainId'
 export { useChainsToSelect } from './hooks/useChainsToSelect'
 export { useCloseTokenSelectWidget } from './hooks/useCloseTokenSelectWidget'
 export { useRestrictedTokensImportStatus } from './hooks/useRestrictedTokensImportStatus'
+
+export type { TokenPickerOptions } from './state/selectTokenWidgetAtom'
+export { mapChainInfo } from './utils/mapChainInfo'

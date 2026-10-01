@@ -76,9 +76,9 @@ export function TradeWidgetForm(props: TradeWidgetProps): ReactNode {
   const isAlternativeOrderModalVisible = useIsAlternativeOrderModalVisible()
   const isLimitOrderTrade = tradeTypeInfo?.tradeType === TradeType.LIMIT_ORDER
   const shouldLockForAlternativeOrder = isAlternativeOrderModalVisible && isLimitOrderTrade
-  const isWrapOrUnwrap = useIsWrapOrUnwrap()
+  const isWrapOrUnwrap = useIsWrapOrUnwrap() && !props.params.externalFunding
   const { isLimitOrdersUpgradeBannerEnabled } = useFeatureFlags()
-  const isCurrentTradeBridging = useIsCurrentTradeBridging()
+  const isCurrentTradeBridging = useIsCurrentTradeBridging() || !!props.params.externalFunding
   const { orderKind } = useDerivedTradeState() || {}
   const { darkMode, isOphisMobileSwap } = useTheme()
   const isMobileSwap = useIsMobileSwap()
@@ -137,10 +137,10 @@ export function TradeWidgetForm(props: TradeWidgetProps): ReactNode {
 
   const { chainId, account } = useWalletInfo()
   const { allowsOffchainSigning } = useWalletDetails()
-  const isProviderNetworkUnsupported = useIsProviderNetworkUnsupported()
-  const isProviderNetworkDeprecated = useIsProviderNetworkDeprecated()
+  const isProviderNetworkUnsupported = useIsProviderNetworkUnsupported() && !params.externalFunding
+  const isProviderNetworkDeprecated = useIsProviderNetworkDeprecated() && !params.externalFunding
   const isSafeWallet = useIsSafeWallet()
-  const openTokenSelectWidget = useOpenTokenSelectWidget()
+  const openTokenSelectWidget = useOpenTokenSelectWidget(params.inputTokenOptions, params.outputTokenOptions)
   const tradeStateFromUrl = useTradeStateFromUrl()
   const primaryFormValidation = useGetTradeFormValidation()
   const { shouldBeVisible: isLimitOrdersPromoBannerVisible } = useLimitOrdersPromoBanner()
@@ -280,6 +280,7 @@ export function TradeWidgetForm(props: TradeWidgetProps): ReactNode {
                   <div>
                     <CurrencyInputPanel
                       id="input-currency-input"
+                      allowUnsupportedTokenSelection={!!params.inputTokenOptions}
                       inputDisabled={params.inputsDisabled}
                       currencyInfo={inputCurrencyInfo}
                       showSetMax={showSetMax && !params.inputsDisabled}
@@ -313,8 +314,8 @@ export function TradeWidgetForm(props: TradeWidgetProps): ReactNode {
                         params.inputsDisabled ||
                         params.disableTokenSwitch ||
                         shouldLockForAlternativeOrder ||
-                        isOutputTokenUnsupported ||
-                        isNonEvmRecipientChain(buyToken?.chainId) ||
+                        ((isOutputTokenUnsupported || isNonEvmRecipientChain(buyToken?.chainId)) &&
+                          !params.externalFunding) ||
                         isProviderNetworkUnsupported ||
                         isProviderNetworkDeprecated
                       }
