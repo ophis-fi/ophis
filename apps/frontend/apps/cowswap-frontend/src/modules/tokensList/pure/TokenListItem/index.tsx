@@ -58,7 +58,8 @@ interface DisabledTooltipProps {
 
 function checkIsTokenSelected(token: TokenWithLogo, selectedToken: Nullish<Currency>): boolean {
   if (!selectedToken) return false
-  return areAddressesEqual(token.address, getCurrencyAddress(selectedToken)) && token.chainId === selectedToken.chainId
+  const selectedAddress = selectedToken.isToken ? selectedToken.address : getCurrencyAddress(selectedToken)
+  return areAddressesEqual(token.address, selectedAddress) && token.chainId === selectedToken.chainId
 }
 
 function DisabledTooltip({ children, disabled, disabledReason }: DisabledTooltipProps): ReactNode {

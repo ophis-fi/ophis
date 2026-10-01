@@ -29,13 +29,16 @@ export function useNearSwapEntry(): {
   enabled: boolean
   showRecovery: boolean
   tokenOptions: TokenPickerOptions | undefined
+  tokenError: boolean
+  retryTokens(): void
   enter(field: Field, currency: Currency | null): boolean
   exit(): void
 } {
   const isOphis = useIsOphisSwap()
   const { isNearIntentsBridgeProviderEnabled } = useFeatureFlags()
   const enabled = isOphis && isNearIntentsBridgeProviderEnabled === true
-  const { data: tokens } = useAtomValue(enabled ? nearTokensAtom : inactiveTokensAtom)
+  const tokenQuery = useAtomValue(enabled ? nearTokensAtom : inactiveTokensAtom)
+  const { data: tokens } = tokenQuery
   const [selection, setSelection] = useState<NearSwapSelection | null>(null)
   const state = useDerivedTradeState()
   const tokenOptions = useMemo(
@@ -47,6 +50,10 @@ export function useNearSwapEntry(): {
     enabled,
     showRecovery: isOphis,
     tokenOptions,
+    tokenError: enabled && 'error' in tokenQuery && !!tokenQuery.error,
+    retryTokens() {
+      if ('refetch' in tokenQuery) void tokenQuery.refetch()
+    },
     enter(field, currency) {
       if (!enabled || field !== Field.INPUT || !currency || isSupportedChainId(currency.chainId)) return false
       setSelection({

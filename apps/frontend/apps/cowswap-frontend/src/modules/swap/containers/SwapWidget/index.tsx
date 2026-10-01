@@ -79,7 +79,22 @@ export function SwapWidget(props: SwapWidgetProps): ReactNode {
           <NearDirectSwap initial={direct.selection} onExit={direct.exit} />
         </Suspense>
       ) : (
-        <StandardSwapWidget {...props} sourceTokens={direct.tokenOptions} enterDirect={direct.enter} />
+        <StandardSwapWidget
+          {...props}
+          sourceTokens={direct.tokenOptions}
+          enterDirect={direct.enter}
+          topContent={
+            <>
+              {props.topContent}
+              {direct.tokenError && (
+                <InlineBanner bannerType={StatusColorVariant.Alert}>
+                  <span role="alert">Some networks could not load.</span>
+                  <LinkStyledButton onClick={direct.retryTokens}>Retry loading assets</LinkStyledButton>
+                </InlineBanner>
+              )}
+            </>
+          }
+        />
       )}
       {direct.selection && <SelectTokenWidget customFlows={consentFlow} />}
       {direct.showRecovery && (

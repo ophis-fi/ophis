@@ -8,7 +8,7 @@ import { useNearSwapEntry } from './useNearSwapEntry'
 
 let mockStandalone = true
 let mockEnabled = true
-const mockRead = jest.fn((_value: unknown): { data?: unknown[] } => ({ data: [] }))
+const mockRead = jest.fn((_value: unknown): { data?: unknown[]; error?: Error; refetch?: () => void } => ({ data: [] }))
 jest.mock('jotai', () => ({ ...jest.requireActual('jotai'), useAtomValue: (value: unknown) => mockRead(value) }))
 jest.mock('@cowprotocol/common-hooks', () => ({
   useFeatureFlags: () => ({ isNearIntentsBridgeProviderEnabled: mockEnabled }),
@@ -60,4 +60,16 @@ it('keeps picker options stable while the asset query is pending or failed', () 
   const options = result.current.tokenOptions
   rerender()
   expect(result.current.tokenOptions).toBe(options)
+})
+
+it('exposes a retryable asset failure before any direct swap is selected', () => {
+  mockStandalone = true
+  mockEnabled = true
+  const refetch = jest.fn()
+  mockRead.mockReturnValue({ error: new Error('unavailable'), refetch })
+  const { result } = renderHook(() => useNearSwapEntry())
+  expect(result.current.selection).toBeNull()
+  expect(result.current.tokenError).toBe(true)
+  act(() => result.current.retryTokens())
+  expect(refetch).toHaveBeenCalledTimes(1)
 })
