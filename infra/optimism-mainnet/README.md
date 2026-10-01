@@ -99,11 +99,12 @@ the signed SDK deposit hook through the Ophis-bound trampoline, emitted the
 SpokePool deposit event and emptied the Shed. **This was a fork execution proof,
 not a funded live user swap or destination-delivery canary.**
 
-The frontend deployment enables Optimism only after
-`node apps/frontend/scripts/across-source-preflight.mjs 10` succeeds. Quotes and
-assets remain route-dependent. Polygon's source flag remains off pending live
-helper deployment and verification; its successful fork proof alone does not
-make the production source available.
+Both new source flags remain off. Before enabling Optimism, rerun
+`node apps/frontend/scripts/across-source-preflight.mjs 10` and record a funded
+mainnet settlement emitting the expected SpokePool `FundsDeposited` event in
+the same transaction, followed by destination delivery. Polygon also needs its
+helper deployed and verified before the equivalent live proof. Successful fork
+execution alone does not make either production source available.
 
 ### Host ports (all 127.0.0.1-bound)
 

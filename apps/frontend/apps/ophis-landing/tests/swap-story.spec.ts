@@ -87,11 +87,12 @@ for (const width of [320, 390, 768, 850, 851, 1024, 1440, 1920]) {
   })
 }
 
-test('network chips still swap the destination panel', async ({ page }) => {
+test('network chips switch between external-wallet and same-chain guidance', async ({ page }) => {
   await page.goto('/')
   const panel = page.locator('#chainPanel')
   await page.locator('[data-chain="solana"]').click()
-  await expect(panel.locator('#chainText')).toContainText('Solana address')
+  await expect(panel.locator('#chainText')).toContainText('Send or receive supported Solana assets')
+  await expect(panel.locator('#chainText')).toContainText('fund the deposit from your Solana wallet')
   await page.locator('[data-chain="ethereum"]').click()
   await expect(panel.locator('#chainTitle')).toContainText('same-chain settlement')
 })

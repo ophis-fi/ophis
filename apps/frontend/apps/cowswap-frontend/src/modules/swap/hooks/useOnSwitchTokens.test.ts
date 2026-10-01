@@ -1,4 +1,5 @@
-import { OrderKind } from '@cowprotocol/cow-sdk'
+import { BRIDGE_SOURCE_CHAIN_IDS } from '@cowprotocol/common-const'
+import { OrderKind, SupportedChainId } from '@cowprotocol/cow-sdk'
 import { Token } from '@cowprotocol/currency'
 
 import { act, renderHook } from '@testing-library/react'
@@ -11,6 +12,12 @@ let mockState = { inputCurrency: input, outputCurrency: output, orderKind: Order
 const mockSameChainSwitch = jest.fn()
 const mockNavigate = jest.fn()
 const mockUpdateState = jest.fn()
+let mockCctpEnabled = false
+const mockHasCctpRoute = jest.fn<boolean, [number, number]>()
+jest.mock('entities/cctp', () => ({
+  useIsCctpEnabled: () => mockCctpEnabled,
+  hasCctpRoute: (source: number, destination: number) => mockHasCctpRoute(source, destination),
+}))
 jest.mock('modules/trade', () => ({
   useSwitchTokensPlaces: () => mockSameChainSwitch,
   useTradeNavigate: () => mockNavigate,
@@ -20,6 +27,8 @@ jest.mock('./useUpdateSwapRawState', () => ({ useUpdateSwapRawState: () => mockU
 
 beforeEach(() => {
   jest.clearAllMocks()
+  mockCctpEnabled = false
+  mockHasCctpRoute.mockReturnValue(false)
   mockState = { inputCurrency: input, outputCurrency: output, orderKind: OrderKind.BUY }
 })
 
@@ -55,5 +64,38 @@ it('does not navigate a non-settlement destination into the standard source rout
   act(() => result.current())
   expect(mockNavigate).not.toHaveBeenCalled()
   expect(mockUpdateState).not.toHaveBeenCalled()
+  expect(mockSameChainSwitch).not.toHaveBeenCalled()
+})
+
+it.each([SupportedChainId.INK, SupportedChainId.LINEA])(
+  'preserves the selection when destination %s is not enabled as a bridge source',
+  (chainId) => {
+    expect(BRIDGE_SOURCE_CHAIN_IDS.has(chainId)).toBe(false)
+    mockState.outputCurrency = new Token(chainId, output.address, 6, 'USDC')
+    const { result } = renderHook(() => useOnSwitchTokens())
+    act(() => result.current())
+    expect(mockNavigate).not.toHaveBeenCalled()
+    expect(mockUpdateState).not.toHaveBeenCalled()
+    expect(mockSameChainSwitch).not.toHaveBeenCalled()
+  },
+)
+
+it.each([false, true])('requires surface CCTP support to reverse a CCTP-only source (enabled: %s)', (enabled) => {
+  mockCctpEnabled = enabled
+  mockHasCctpRoute.mockReturnValue(true)
+  mockState.outputCurrency = new Token(130, output.address, 6, 'USDC')
+  const { result } = renderHook(() => useOnSwitchTokens())
+  act(() => result.current())
+  if (enabled) {
+    expect(mockHasCctpRoute).toHaveBeenCalledWith(130, input.chainId)
+    expect(mockNavigate).toHaveBeenCalledWith(
+      130,
+      { inputCurrencyId: output.address, outputCurrencyId: input.address },
+      { targetChainId: input.chainId, kind: OrderKind.SELL, amount: '', clearRecipient: true },
+    )
+  } else {
+    expect(mockNavigate).not.toHaveBeenCalled()
+    expect(mockUpdateState).not.toHaveBeenCalled()
+  }
   expect(mockSameChainSwitch).not.toHaveBeenCalled()
 })
