@@ -111,7 +111,7 @@ Polygon's helper was subsequently deployed at
 [transaction 0xc2f8…2b8e](https://polygonscan.com/tx/0xc2f82a99b62c019634a87c66eaa837e6fb1f36419ab525f5449d783a0cc12b8e),
 block 94789732, on October 1, 2026. The transaction succeeded and its 520-byte
 runtime matches the reviewed compiled artifact exactly. Deployment consumed
-165,288 gas, costing 0.053009350172323125 POL. This closes the missing-contract
+165,288 gas, costing approximately 0.053 POL. This closes the missing-contract
 blocker; it is not a live bridge deposit or destination-delivery proof.
 All seven dependency checks passed using `https://polygon.drpc.org`, and the
 trampoline's `settlement()` matched Polygon's canonical settlement,
