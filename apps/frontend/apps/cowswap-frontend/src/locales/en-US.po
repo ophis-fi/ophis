@@ -5260,6 +5260,7 @@ msgstr "Execution price"
 msgid "Minimum received after fees"
 msgstr "Minimum received after fees"
 
+#: apps/cowswap-frontend/src/modules/tokensList/containers/SelectTokenWidget/internal/slots/TokenList.tsx
 #: apps/cowswap-frontend/src/modules/tokensList/pure/TokenSearchContent/index.tsx
 msgid "No tokens found"
 msgstr "No tokens found"
@@ -5808,10 +5809,6 @@ msgstr "Error loading the claimable amount"
 #: apps/cowswap-frontend/src/modules/twap/containers/TwapFormWarnings/warnings/SmallPriceProtectionWarning.tsx
 msgid "Attention"
 msgstr "Attention"
-
-#: apps/cowswap-frontend/src/modules/tokensList/containers/SelectTokenWidget/internal/slots/TokenList.tsx
-msgid "This route is not yet supported."
-msgstr "This route is not yet supported."
 
 #: apps/cowswap-frontend/src/modules/ordersTable/pure/OrdersTable/Row/WarningTooltip/WarningTooltip.pure.tsx
 msgid "The order remains open. Execution requires sufficient"
