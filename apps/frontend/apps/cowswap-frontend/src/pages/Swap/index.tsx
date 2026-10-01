@@ -51,6 +51,7 @@ export function SwapPage(): ReactNode {
   const widget = (
     <SwapWidget
       enableCctp={cctpEnabled}
+      standardUpdaters={<SwapUpdaters />}
       headerContent={isOphisSwap ? <NetworkSelector /> : undefined}
       topContent={isInjectedWidget() ? DcaCta : undefined}
     />
@@ -59,7 +60,6 @@ export function SwapPage(): ReactNode {
   return (
     <HydrateAtom atom={swapDerivedStateAtom} state={swapDerivedStateToFill}>
       <PageTitle title={i18n._(PAGE_TITLES.SWAP)} />
-      <SwapUpdaters />
       {isOphisSwap ? <DesktopSwapLayout>{widget}</DesktopSwapLayout> : widget}
     </HydrateAtom>
   )

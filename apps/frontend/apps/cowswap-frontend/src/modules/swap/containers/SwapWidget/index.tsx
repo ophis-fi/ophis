@@ -62,6 +62,7 @@ import { WholeTokenReview } from '../WholeTokenRoute/WholeTokenReview.container'
 import { WholeTokenRoute } from '../WholeTokenRoute/WholeTokenRoute.container'
 
 export interface SwapWidgetProps {
+  standardUpdaters?: ReactNode
   headerContent?: ReactNode
   topContent?: ReactNode
   bottomContent?: ReactNode
@@ -74,6 +75,7 @@ export function SwapWidget(props: SwapWidgetProps): ReactNode {
   const consentFlow = useTokenSelectorConsentFlow()
   return (
     <>
+      {!direct.selection && props.standardUpdaters}
       {direct.selection ? (
         <Suspense fallback={<p role="status">Loading swap…</p>}>
           <NearDirectSwap initial={direct.selection} onExit={direct.exit} />

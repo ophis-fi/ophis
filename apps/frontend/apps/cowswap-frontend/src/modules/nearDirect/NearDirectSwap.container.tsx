@@ -7,6 +7,7 @@ import { Currency, CurrencyAmount } from '@cowprotocol/currency'
 import { Field } from 'legacy/state/types'
 
 import { TradeWidget } from 'modules/trade'
+import { useSetTradeQuoteParams } from 'modules/tradeQuote'
 
 import { CurrencyInfo } from 'common/pure/CurrencyInputPanel/types'
 
@@ -17,6 +18,7 @@ import { NearSwapDetails } from './NearSwapDetails.container'
 import { NearSwapSelection } from './useNearSwapEntry'
 
 export function NearDirectSwap({ initial, onExit }: { initial: NearSwapSelection; onExit(): void }): ReactNode {
+  useSetTradeQuoteParams({ amount: null })
   const { data: tokens, isPending, error: tokenError, refetch } = useAtomValue(nearTokensAtom)
   const form = useNearSwapSelection(initial, onExit)
   const {
