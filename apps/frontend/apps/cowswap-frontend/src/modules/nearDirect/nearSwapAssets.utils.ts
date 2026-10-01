@@ -1,9 +1,11 @@
 import { getChainInfo, NATIVE_CURRENCIES, TokenWithLogo } from '@cowprotocol/common-const'
 import { getCurrencyAddress } from '@cowprotocol/common-utils'
-import { TargetChainId } from '@cowprotocol/cow-sdk'
+import { getAddressKey, TargetChainId } from '@cowprotocol/cow-sdk'
 import { Currency } from '@cowprotocol/currency'
 
 import { mapChainInfo, TokenPickerOptions } from 'modules/tokensList'
+
+import { isNonEvmRecipientChain } from 'common/utils/recipientAddress.utils'
 
 import { DIRECT_NEAR_CHAINS } from './nearDirect.constants'
 import { NearToken } from './nearDirect.schemas'
@@ -21,7 +23,7 @@ export function nearTokenCurrency(token: NearToken): TokenWithLogo | undefined {
 
 function currencyKey(currency: Currency): string {
   const address = currency.isToken ? currency.address : getCurrencyAddress(currency)
-  return `${currency.chainId}:${/^0x[0-9a-f]+$/i.test(address) ? address.toLowerCase() : address}`
+  return `${currency.chainId}:${isNonEvmRecipientChain(currency.chainId) ? address : getAddressKey(address)}`
 }
 
 export function findNearToken(tokens: NearToken[], currency: Currency | null): NearToken | undefined {

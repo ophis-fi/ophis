@@ -74,3 +74,8 @@ it('does not alias case variants of the native Sui type', () => {
   }
   expect(findNearToken([sui], nearTokenCurrency({ ...sui, contractAddress: '0x2::sui::sui' }) ?? null)).toBeUndefined()
 })
+
+it('normalizes EVM checksum casing through the shared address key', () => {
+  const token = { ...fixture.source, contractAddress: '0x754704BC059F8C67012FED69BC8A327A5AAFB603' }
+  expect(findNearToken([token], nearTokenCurrency(fixture.source) ?? null)).toEqual(token)
+})
