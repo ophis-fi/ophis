@@ -52,6 +52,7 @@
       "tmp": "^0.2.6",
       "esbuild": "^0.28.1",
       "protobufjs": "^7.6.5",
+      "fastify": "^5.12.2",
       "find-my-way": "^9.7.0",
       "postcss": "8.5.23",
       "fast-uri": "^3.1.8",
