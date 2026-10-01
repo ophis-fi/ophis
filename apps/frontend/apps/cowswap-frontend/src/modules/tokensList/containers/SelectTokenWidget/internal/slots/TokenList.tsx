@@ -13,7 +13,7 @@ export function TokenList({ isRouteAvailable = true }: TokenListProps): ReactNod
   if (!isRouteAvailable) {
     return (
       <styledEl.RouteNotAvailable>
-        <Trans>This route is not yet supported.</Trans>
+        <Trans>No tokens found</Trans>
       </styledEl.RouteNotAvailable>
     )
   }

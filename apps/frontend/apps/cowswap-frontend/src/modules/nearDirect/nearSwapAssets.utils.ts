@@ -48,7 +48,11 @@ export function nearTokenPickerOptions(tokens: NearToken[], includeDefaultTokens
     counts.set(key, (counts.get(key) ?? 0) + 1)
   }
   const currencies = candidates.filter((currency) => counts.get(currencyKey(currency)) === 1)
-  const chains = [...new Set(currencies.map((token) => token.chainId))].flatMap((id) => {
+  // Source networks remain discoverable while the live asset catalogue is unavailable.
+  const chainIds = includeDefaultTokens
+    ? Object.values(DIRECT_NEAR_CHAINS).map(({ id }) => id)
+    : [...new Set(currencies.map((token) => token.chainId))]
+  const chains = chainIds.flatMap((id) => {
     const info = getChainInfo(id)
     return info ? [mapChainInfo(id as TargetChainId, info)] : []
   })
