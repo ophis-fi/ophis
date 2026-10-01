@@ -99,12 +99,16 @@ the signed SDK deposit hook through the Ophis-bound trampoline, emitted the
 SpokePool deposit event and emptied the Shed. **This was a fork execution proof,
 not a funded live user swap or destination-delivery canary.**
 
-Both new source flags remain off. Before enabling Optimism, rerun
-`node apps/frontend/scripts/across-source-preflight.mjs 10` and record a funded
-mainnet settlement emitting the expected SpokePool `FundsDeposited` event in
-the same transaction, followed by destination delivery. Polygon requires the
-equivalent live proof. Successful fork execution alone does not make either
-production source available.
+Optimism source routing is enabled after a funded mainnet test on October 1,
+2026 (UTC). The production SDK sold 0.0003 WETH through Ophis's settlement:
+
+- [Optimism settlement and Across deposit](https://optimistic.etherscan.io/tx/0xed07b7834a74f607038e2ad64b6a502cc19f7b36b24b8804724c1f474de17070): successful settlement with the expected SpokePool `FundsDeposited` event in the same transaction.
+- [Base delivery](https://basescan.org/tx/0x924b95fefa40292bb5d66673d8a324f6ed761d678bd367a07a0b4c5b12638d86): 0.798230 USDC delivered to the sending wallet, above the approved 0.78 USDC minimum.
+- Wrapping and exact-amount approval consumed 0.000000195395030114 ETH in wallet gas, including Optimism's additional fees; the approved cap was 0.00005 ETH.
+- All ten dependency/wiring checks passed immediately before execution.
+
+Polygon remains disabled pending its own funded settlement/deposit and destination
+delivery proof. A successful Optimism test does not activate another source.
 
 Polygon's helper was subsequently deployed at
 `0xEdE97D044d4C8aAA682968bee10284521B9f311a` in
