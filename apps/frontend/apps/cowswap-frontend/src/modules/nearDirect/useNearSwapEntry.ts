@@ -1,4 +1,4 @@
-import { useAtomValue } from 'jotai'
+import { atom, useAtomValue } from 'jotai'
 import { useMemo, useState } from 'react'
 
 import { useFeatureFlags } from '@cowprotocol/common-hooks'
@@ -13,7 +13,10 @@ import { TokenPickerOptions } from 'modules/tokensList'
 import { useDerivedTradeState } from 'modules/trade'
 
 import { nearTokensAtom } from './nearDirect.atoms'
+import { NearToken } from './nearDirect.schemas'
 import { nearTokenPickerOptions } from './nearSwapAssets.utils'
+
+const inactiveTokensAtom = atom<{ data: NearToken[] }>({ data: [] })
 
 export interface NearSwapSelection {
   input: Currency
@@ -32,10 +35,13 @@ export function useNearSwapEntry(): {
   const isOphis = useIsOphisSwap()
   const { isNearIntentsBridgeProviderEnabled } = useFeatureFlags()
   const enabled = isOphis && isNearIntentsBridgeProviderEnabled === true
-  const { data: tokens = [] } = useAtomValue(nearTokensAtom)
+  const { data: tokens } = useAtomValue(enabled ? nearTokensAtom : inactiveTokensAtom)
   const [selection, setSelection] = useState<NearSwapSelection | null>(null)
   const state = useDerivedTradeState()
-  const tokenOptions = useMemo(() => (enabled ? nearTokenPickerOptions(tokens, true) : undefined), [enabled, tokens])
+  const tokenOptions = useMemo(
+    () => (enabled ? nearTokenPickerOptions(tokens ?? [], true) : undefined),
+    [enabled, tokens],
+  )
   return {
     selection: enabled ? selection : null,
     enabled,

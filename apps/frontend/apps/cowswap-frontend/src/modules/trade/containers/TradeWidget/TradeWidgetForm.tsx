@@ -140,7 +140,7 @@ export function TradeWidgetForm(props: TradeWidgetProps): ReactNode {
   const isProviderNetworkUnsupported = useIsProviderNetworkUnsupported() && !params.externalFunding
   const isProviderNetworkDeprecated = useIsProviderNetworkDeprecated() && !params.externalFunding
   const isSafeWallet = useIsSafeWallet()
-  const openTokenSelectWidget = useOpenTokenSelectWidget()
+  const openTokenSelectWidget = useOpenTokenSelectWidget(params.inputTokenOptions, params.outputTokenOptions)
   const tradeStateFromUrl = useTradeStateFromUrl()
   const primaryFormValidation = useGetTradeFormValidation()
   const { shouldBeVisible: isLimitOrdersPromoBannerVisible } = useLimitOrdersPromoBanner()
@@ -196,16 +196,16 @@ export function TradeWidgetForm(props: TradeWidgetProps): ReactNode {
 
   const openSellTokenSelect = useCallback(
     (selectedToken: Nullish<Currency>, field: Field | undefined, onSelectToken: (currency: Currency) => void) => {
-      openTokenSelectWidget(selectedToken, field, buyToken || undefined, onSelectToken, params.inputTokenOptions)
+      openTokenSelectWidget(selectedToken, field, buyToken || undefined, onSelectToken)
     },
-    [openTokenSelectWidget, buyToken, params.inputTokenOptions],
+    [openTokenSelectWidget, buyToken],
   )
 
   const openBuyTokenSelect = useCallback(
     (selectedToken: Nullish<Currency>, field: Field | undefined, onSelectToken: (currency: Currency) => void) => {
-      openTokenSelectWidget(selectedToken, field, sellToken || undefined, onSelectToken, params.outputTokenOptions)
+      openTokenSelectWidget(selectedToken, field, sellToken || undefined, onSelectToken)
     },
-    [openTokenSelectWidget, sellToken, params.outputTokenOptions],
+    [openTokenSelectWidget, sellToken],
   )
 
   const toggleAccountModal = useToggleAccountModal()

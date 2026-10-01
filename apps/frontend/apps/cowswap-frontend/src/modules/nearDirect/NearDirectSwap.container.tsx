@@ -17,7 +17,7 @@ import { NearSwapDetails } from './NearSwapDetails.container'
 import { NearSwapSelection } from './useNearSwapEntry'
 
 export function NearDirectSwap({ initial, onExit }: { initial: NearSwapSelection; onExit(): void }): ReactNode {
-  const { data: tokens = [], isPending, error: tokenError, refetch } = useAtomValue(nearTokensAtom)
+  const { data: tokens, isPending, error: tokenError, refetch } = useAtomValue(nearTokensAtom)
   const form = useNearSwapSelection(initial, onExit)
   const {
     selection,
@@ -33,10 +33,10 @@ export function NearDirectSwap({ initial, onExit }: { initial: NearSwapSelection
     select,
     switchTokens,
   } = form
-  const source = findNearToken(tokens, selection.input)
-  const destination = findNearToken(tokens, selection.output)
-  const tokenOptions = useMemo(() => nearTokenPickerOptions(tokens, true), [tokens])
-  const buyTokenOptions = useMemo(() => nearTokenPickerOptions(tokens), [tokens])
+  const source = findNearToken(tokens ?? [], selection.input)
+  const destination = findNearToken(tokens ?? [], selection.output)
+  const tokenOptions = useMemo(() => nearTokenPickerOptions(tokens ?? [], true), [tokens])
+  const buyTokenOptions = useMemo(() => nearTokenPickerOptions(tokens ?? []), [tokens])
   const inputAmount = tryParseCurrencyAmount(selection.amount, selection.input) ?? null
   const quoteAmount = inputAmount?.toExact() ?? ''
   const outputAmount =

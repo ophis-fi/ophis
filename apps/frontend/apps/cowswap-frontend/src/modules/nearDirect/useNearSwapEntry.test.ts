@@ -8,7 +8,8 @@ import { useNearSwapEntry } from './useNearSwapEntry'
 
 let mockStandalone = true
 let mockEnabled = true
-jest.mock('jotai', () => ({ useAtomValue: () => ({ data: [] }) }))
+const mockRead = jest.fn((_value: unknown): { data?: unknown[] } => ({ data: [] }))
+jest.mock('jotai', () => ({ ...jest.requireActual('jotai'), useAtomValue: (value: unknown) => mockRead(value) }))
 jest.mock('@cowprotocol/common-hooks', () => ({
   useFeatureFlags: () => ({ isNearIntentsBridgeProviderEnabled: mockEnabled }),
 }))
@@ -38,4 +39,25 @@ it('starts a newly selected external source with an empty amount', () => {
   const { result } = renderHook(() => useNearSwapEntry())
   act(() => result.current.enter(Field.INPUT, new Token(143, '0x1111111111111111111111111111111111111111', 6, 'USDC')))
   expect(result.current.selection?.amount).toBe('')
+})
+
+it.each([
+  [true, false],
+  [false, true],
+])('does not subscribe to the external query when standalone=%s enabled=%s', (standalone, enabled) => {
+  mockStandalone = standalone
+  mockEnabled = enabled
+  mockRead.mockClear()
+  renderHook(() => useNearSwapEntry())
+  expect(mockRead).not.toHaveBeenCalledWith('tokens')
+})
+
+it('keeps picker options stable while the asset query is pending or failed', () => {
+  mockStandalone = true
+  mockEnabled = true
+  mockRead.mockReturnValue({ data: undefined })
+  const { result, rerender } = renderHook(() => useNearSwapEntry())
+  const options = result.current.tokenOptions
+  rerender()
+  expect(result.current.tokenOptions).toBe(options)
 })
