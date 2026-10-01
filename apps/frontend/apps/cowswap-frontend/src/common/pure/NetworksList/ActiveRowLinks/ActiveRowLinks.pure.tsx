@@ -1,6 +1,6 @@
 import { ReactNode } from 'react'
 
-import { SupportedChainId } from '@cowprotocol/cow-sdk'
+import { TargetChainId } from '@cowprotocol/cow-sdk'
 
 import { Trans } from '@lingui/react/macro'
 
@@ -8,7 +8,7 @@ import * as styledEl from './ActiveRowLinks.styled'
 
 export interface ActiveRowLinksProps {
   helpCenterUrl: string | undefined
-  targetChainId: SupportedChainId
+  targetChainId: TargetChainId
 }
 
 // Ophis: dropped the hardcoded "CoW Protocol Explorer" row and the per-chain

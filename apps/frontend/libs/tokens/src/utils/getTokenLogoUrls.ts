@@ -27,7 +27,9 @@ export function getTokenLogoUrls(token: TokenWithLogo | undefined): string[] {
     return fallbackUrls
   }
 
-  const urls = uriToHttp(token.logoURI)
+  const urls = /^\/logos\/[a-z0-9-]+\.(?:svg|png|jpg)$/i.test(token.logoURI)
+    ? [token.logoURI]
+    : uriToHttp(token.logoURI)
 
   if (fallbackUrls.length) {
     urls.push(...fallbackUrls.filter((url) => !urls.includes(url)))

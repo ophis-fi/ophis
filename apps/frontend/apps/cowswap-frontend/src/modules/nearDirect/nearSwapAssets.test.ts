@@ -86,3 +86,25 @@ it('normalizes EVM checksum casing through the shared address key', () => {
   const token = { ...fixture.source, contractAddress: '0x754704BC059F8C67012FED69BC8A327A5AAFB603' }
   expect(findNearToken([token], nearTokenCurrency(fixture.source) ?? null)).toEqual(token)
 })
+
+it('uses existing local artwork for cross-chain contract tokens', () => {
+  expect(nearTokenCurrency(fixture.source)?.logoURI).toBe('/logos/token-usdc.png')
+})
+
+it('preserves the bundled native artwork when the provider lists its contract address', () => {
+  const native = NATIVE_CURRENCIES[STARKNET_CHAIN_ID]
+  const token: NearToken = {
+    assetId: 'starknet-strk',
+    blockchain: 'starknet',
+    contractAddress: native.address,
+    symbol: 'STRK',
+    decimals: native.decimals,
+    price: 1,
+  }
+  expect(nearTokenCurrency(token)?.logoURI).toBe(native.logoURI)
+})
+
+it('does not assign canonical artwork to an unknown contract with a familiar symbol', () => {
+  const unknown = { ...fixture.source, contractAddress: '0x1111111111111111111111111111111111111111' }
+  expect(nearTokenCurrency(unknown)?.logoURI).toBeUndefined()
+})

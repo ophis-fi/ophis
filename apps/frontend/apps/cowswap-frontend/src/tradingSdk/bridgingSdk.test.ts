@@ -146,12 +146,14 @@ describe('NEAR Intents destinations Ophis adds (Monad, X Layer)', () => {
     const monad = await nearIntentsBridgeProvider.getBuyTokens({ buyChainId: MONAD_CHAIN_ID as TargetChainId })
     expect(monad.isRouteAvailable).toBe(true)
     expect(monad.tokens.map((t) => t.symbol).sort()).toEqual(['MON', 'USDC'])
+    expect(monad.tokens.find((t) => t.symbol === 'MON')?.logoUrl).toBeTruthy()
     expect(monad.tokens.find((t) => t.symbol === 'MON')?.address.toLowerCase()).toBe(
       NATIVE_CURRENCY_ADDRESS.toLowerCase(),
     )
 
     const xlayer = await nearIntentsBridgeProvider.getBuyTokens({ buyChainId: XLAYER_CHAIN_ID as TargetChainId })
     expect(xlayer.tokens.map((t) => t.symbol)).toEqual(['OKB'])
+    expect(xlayer.tokens[0].logoUrl).toBeTruthy()
     spy.mockRestore()
   })
 

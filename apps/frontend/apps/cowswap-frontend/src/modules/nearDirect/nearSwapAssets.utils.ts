@@ -3,6 +3,9 @@ import { getCurrencyAddress } from '@cowprotocol/common-utils'
 import { getAddressKey, TargetChainId } from '@cowprotocol/cow-sdk'
 import { Currency } from '@cowprotocol/currency'
 
+import { tokenLogo } from 'ophis/components/intent/tokenAssets'
+import { getBridgeTokenLogo } from 'tradingSdk/bridgeTokenLogo.utils'
+
 import { mapChainInfo, TokenPickerOptions } from 'modules/tokensList'
 
 import { isNonEvmRecipientChain } from 'common/utils/recipientAddress.utils'
@@ -13,12 +16,21 @@ import { NearToken } from './nearDirect.schemas'
 export function nearTokenCurrency(token: NearToken): TokenWithLogo | undefined {
   const chain = DIRECT_NEAR_CHAINS[token.blockchain]
   if (!chain) return undefined
-  if (token.contractAddress)
-    return new TokenWithLogo(undefined, chain.id, token.contractAddress, token.decimals, token.symbol, token.symbol)
   const native = NATIVE_CURRENCIES[chain.id as TargetChainId]
+  if (token.contractAddress) {
+    const logo = getBridgeTokenLogo(chain.id, token.contractAddress)
+    return new TokenWithLogo(logo, chain.id, token.contractAddress, token.decimals, token.symbol, token.symbol)
+  }
   // A second native-looking asset (e.g. BTC(OMNI)) must not alias the native coin.
   if (!native || native.symbol !== token.symbol || native.decimals !== token.decimals) return undefined
-  return new TokenWithLogo(native.logoURI, chain.id, native.address, token.decimals, token.symbol, token.symbol)
+  return new TokenWithLogo(
+    native.logoURI ?? tokenLogo(token.symbol.toUpperCase()),
+    chain.id,
+    native.address,
+    token.decimals,
+    token.symbol,
+    token.symbol,
+  )
 }
 
 function currencyKey(currency: Currency): string {
