@@ -29,7 +29,7 @@ export const faqLd = {
       name: 'Do I need to connect a wallet?',
       acceptedAnswer: {
         '@type': 'Answer',
-        text: 'Yes. You authorize orders or transactions with your wallet. Standard signed ERC-20 orders keep funds in your wallet until settlement; native-token orders and bridge routes can require an onchain deposit with separate recovery rules.',
+        text: 'Connect an EVM wallet for batch-auction orders. Externally funded NEAR routes can use a separate source wallet: review the quote, then send the specified deposit. Standard ERC-20 orders keep funds in the wallet until settlement; deposits have separate gas and recovery rules.',
       },
     },
     {
@@ -37,7 +37,7 @@ export const faqLd = {
       name: 'Which networks are supported?',
       acceptedAnswer: {
         '@type': 'Answer',
-        text: 'The app supports 14 EVM chains: Ethereum, Arbitrum One, Avalanche, Base, BNB Smart Chain, Gnosis Chain, Ink, Linea, Optimism, Plasma, Polygon, Robinhood Chain, Unichain, and Arc. NEAR Intents adds Bitcoin, Solana, Monad, X Layer, Sui, Tron and Hyperliquid destinations where source, pair and provider support permit. SDK v0.4.3 and hosted MCP chain lists include all 14 networks, including Arc.',
+        text: 'The app supports batch-auction orders on 14 EVM chains: Ethereum, Arbitrum One, Avalanche, Base, BNB Smart Chain, Gnosis Chain, Ink, Linea, Optimism, Plasma, Polygon, Robinhood Chain, Unichain, and Arc. The standalone app also supports Bitcoin, Solana, Monad, X Layer, Sui, Tron, Hyperliquid (Hypercore), Starknet and Zcash as NEAR sources and destinations where assets and quotes permit. External-source swaps require a deposit and refund address. SDK v0.4.3 and hosted MCP chain lists cover the 14 EVM networks, including Arc; they do not build orders on the additional networks.',
       },
     },
     {
@@ -109,17 +109,21 @@ chains additionally apply CoW Protocol fees upstream. Bridge costs are separate.
 
 ### Do I need to connect a wallet?
 
-Yes. You authorize orders or transactions with your wallet. Standard signed
-ERC-20 orders keep funds in your wallet until settlement; native-token orders
-and bridge routes can require an onchain deposit with separate recovery rules.
+Connect an EVM wallet for batch-auction orders. Externally funded NEAR routes
+can use a separate source wallet: review the quote, then send the specified
+deposit. Standard ERC-20 orders keep funds in the wallet until settlement;
+deposits have separate gas and recovery rules.
 
 ### Which networks are supported?
 
-The app supports 14 EVM chains: Ethereum, Arbitrum One, Avalanche,
+The app supports batch-auction orders on 14 EVM chains: Ethereum, Arbitrum One, Avalanche,
 Base, BNB Smart Chain, Gnosis Chain, Ink, Linea, Optimism, Plasma,
-Polygon, Robinhood Chain, Unichain, and Arc. NEAR Intents adds **Bitcoin, Solana,
-Monad, X Layer, Sui, Tron and Hyperliquid** destinations where source, pair and
-provider support permit. SDK v0.4.3 and hosted MCP chain lists include all 14 networks, including Arc.
+Polygon, Robinhood Chain, Unichain, and Arc. The standalone app also supports
+**Bitcoin, Solana, Monad, X Layer, Sui, Tron, Hyperliquid (Hypercore), Starknet
+and Zcash** as NEAR sources and destinations where assets and quotes permit.
+External-source swaps require a deposit and refund address. SDK v0.4.3 and
+hosted MCP chain lists cover the 14 EVM networks, including Arc; they do not
+build orders on the additional networks.
 See [Networks & assets](./networks-assets.md).
 
 ### Is my trade protected from MEV?

@@ -414,7 +414,7 @@ export function registerOphisTools(server: McpServer, config?: OphisToolConfig):
     {
       annotations: { title: 'Get integrator earnings', readOnlyHint: true, openWorldHint: true },
       description:
-        "Look up what an integrator's own-fee routing earned on indexed chains, including Arc, by appCode (the identifier you tag into appData: your widget appCode or your SDK ophisReferrer code). Returns routed volume (USD, split by chain and by sovereign-vs-hosted), the Ophis base fee charged on your flow, your OWN stacked fee, and your referral rebate paid-to-date with payout tx links. Guaranteed/paid figures are scoped to the Ophis-operated chains (Optimism, Unichain); CoW-hosted figures are accrued at settlement and disbursed by CoW under CoW terms (see the response `disclaimer`). Read-only, keyless, cumulative (no current-cycle or next-payout data).",
+        "Look up what an integrator's own-fee routing earned on indexed chains, including Arc, by appCode (the identifier you tag into appData: your widget appCode or your SDK ophisReferrer code). Returns routed volume (USD, split by chain and by sovereign-vs-hosted), the Ophis base fee charged on your flow, your OWN stacked fee, and your referral rebate paid-to-date with payout tx links. Own-fee payout lanes cover Optimism and Unichain only; Robinhood and Arc own-fees are accruals without an Ophis payout lane. CoW-hosted figures are accrued at settlement and disbursed by CoW under CoW terms (see the response `disclaimer`). Read-only, keyless, cumulative (no current-cycle or next-payout data).",
       inputSchema: {
         appCode: z
           .string()
@@ -437,7 +437,7 @@ export function registerOphisTools(server: McpServer, config?: OphisToolConfig):
     {
       annotations: { title: 'List Ophis chains', readOnlyHint: true, openWorldHint: false },
       description:
-        "List Ophis chains, split into `tradeable` (orderbook host is live, only route get_quote/build_order to these) and `paused` (settlement deployed but no live orderbook yet, so these throw). Each tradeable chain includes its orderbook host, GPv2Settlement contract (Optimism, Unichain, Robinhood Chain, and Arc are non-canonical), and canonical Ophis fee config. No input.",
+        "List configured EVM orderbook chains, split into `tradeable` (orderbook URL configured; only route get_quote/build_order to these) and `paused` (no configured orderbook URL, so those tools reject the chain). This is configuration, not a live health or liquidity check. The standalone app's externally funded NEAR networks are not orderbook chains. Each tradeable chain includes its orderbook host, GPv2Settlement contract (Optimism, Unichain, Robinhood Chain, and Arc are non-canonical), and canonical Ophis fee config. No input.",
       inputSchema: {},
     },
     async () => {

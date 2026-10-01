@@ -1,7 +1,7 @@
 ---
 id: intro
 title: Ophis DEX Aggregator Documentation
-description: Ophis is an intent-based DEX aggregator across 14 EVM chains. Choose tokens, review your quote and spending limit, and sign with your wallet.
+description: Ophis offers batch-auction swaps on 14 EVM chains and route-specific cross-chain swaps, including externally funded sources. Review the quote and authorize the displayed flow.
 slug: /
 sidebar_label: Introduction
 sidebar_position: 1
@@ -12,6 +12,11 @@ sidebar_position: 1
 **Ophis is an intent-based DEX aggregator.** Choose the tokens and amount,
 review the quote and spending limit, and sign with your own wallet.
 Solvers find a route that satisfies your signed order.
+
+The standalone app also accepts supported external balances through NEAR
+Intents. Select the source and destination in the same token pickers, review
+the quote and refund address, then fund the quoted deposit. See
+[Networks & assets](./networks-assets.md) for coverage and recovery.
 
 Ophis builds on [CoW Protocol](https://docs.cow.fi/cow-protocol).
 The [Intent API](./intent-api.md) also supports natural-language requests

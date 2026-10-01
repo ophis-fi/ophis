@@ -87,8 +87,9 @@ contract DeployAcrossMathHelper is Script {
         // patch registers in ACROSS_MATH_CONTRACT_ADDRESSES (Ink/Linea/Unichain/
         // Robinhood) - add a chain here only alongside registering it there.
         require(
-            block.chainid == 57073 || block.chainid == 59144 || block.chainid == 130 || block.chainid == 4663,
-            "DeployAcrossMathHelper: confirmed deploy only on Ink/Linea/Unichain/Robinhood - check --rpc-url"
+            block.chainid == 57073 || block.chainid == 59144 || block.chainid == 130 || block.chainid == 4663
+                || block.chainid == 137 || block.chainid == 10,
+            "DeployAcrossMathHelper: confirmed deploy only on Ink/Linea/Unichain/Robinhood/Polygon/Optimism - check --rpc-url"
         );
 
         vm.startBroadcast();

@@ -80,6 +80,18 @@ describe('tokensToSelectAtom', () => {
     expect(result).toEqual([token1, token2, token3])
   })
 
+  it('does not suspend again when widget state updates without changing the field', async () => {
+    const initial = store.get(tokensToSelectAtom)
+    await initial
+
+    store.set(mockSelectTokenWidgetAtom, { field: Field.INPUT })
+
+    expect(store.get(tokensToSelectAtom)).toBe(initial)
+
+    store.set(mockSelectTokenWidgetAtom, { field: Field.OUTPUT })
+    expect(store.get(tokensToSelectAtom)).not.toBe(initial)
+  })
+
   it('precomputes tokens for both fields', async () => {
     store.set(mockEnvironmentAtom, {
       sellSelectedLists: [LIST_A],

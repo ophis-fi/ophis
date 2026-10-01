@@ -104,7 +104,7 @@ function FullFooter({ borderless }: { borderless: boolean }): ReactNode {
           </styledEl.BrandMark>
           <styledEl.BrandTagline>
             Best-execution, MEV-protected, intent-based trading. Across 14 EVM chains, including Robinhood Chain and
-            Arc, plus Solana and Bitcoin destinations.
+            Arc, plus supported cross-chain sources and destinations.
           </styledEl.BrandTagline>
         </styledEl.Brand>
 

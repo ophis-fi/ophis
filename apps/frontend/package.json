@@ -43,7 +43,7 @@
     },
     "overrides": {
       "adm-zip": "^0.6.1",
-      "devalue@>=5.0.0 <5.9.2": "5.9.2",
+      "devalue@>=5.0.0 <5.9.3": "5.9.3",
       "elliptic": "^6.6.1",
       "form-data": "^2.5.6",
       "protobufjs": "^7.6.5",
@@ -89,7 +89,8 @@
       "nanoid@>=3.0.0 <3.3.18": ">=3.3.18 <4.0.0",
       "http-proxy-middleware@>=3.0.4 <3.0.7": "3.0.7",
       "http-proxy-middleware@>=2.0.0 <2.0.10": "2.0.10",
-      "piscina": "4.9.3",
+      "piscina": "4.9.4",
+      "basic-ftp": "6.2.1",
       "postcss": "8.5.23",
       "smol-toml@<1.7.1": "1.8.0",
       "yaml": "^1.10.3",

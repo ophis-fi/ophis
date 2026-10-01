@@ -247,6 +247,30 @@ describe('useTokensToSelect', () => {
     expect(result.current.isLoading).toBe(false)
   })
 
+  it('keeps custom picker context stable when search registers its Enter handler', () => {
+    const token = new TokenWithLogo(
+      undefined,
+      AdditionalTargetChainId.SOLANA,
+      'So11111111111111111111111111111111111111112',
+      9,
+      'SOL',
+    )
+    const state = createWidgetState({
+      field: Field.INPUT,
+      selectedTargetChainId: AdditionalTargetChainId.SOLANA,
+      tokenOptions: { tokens: [token], chains: [] },
+    })
+    mockUseSelectTokenWidgetState.mockReturnValue(state)
+    const { result, rerender } = renderHook(() => useTokensToSelect())
+    const initial = result.current
+
+    mockUseSelectTokenWidgetState.mockReturnValue({ ...state, onInputPressEnter: jest.fn() })
+    rerender()
+
+    expect(result.current).toBe(initial)
+    expect(result.current.bridgeSupportedTokensMap).toBe(initial.bridgeSupportedTokensMap)
+  })
+
   it.each([
     [AdditionalTargetChainId.SOLANA, 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v', false],
     [SUI_CHAIN_ID, '0x2::sui::SUI', false],

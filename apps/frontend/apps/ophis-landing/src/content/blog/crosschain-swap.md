@@ -5,7 +5,7 @@ slug: "crosschain-swap"
 primaryKeyword: "crosschain swap"
 author: "Ophis"
 pubDate: 2026-09-06
-updatedDate: 2026-09-28
+updatedDate: 2026-10-01
 tags: [crosschain-swap, cross-chain, swaps, bridging]
 draft: false
 cover: ./crosschain-swap.cover.webp
@@ -60,7 +60,7 @@ Using several networks can leave you with small balances in different places. Mo
 
 Ophis connects its swap experience to cross-chain providers including Across, NEAR Intents and configured Circle routes. The app requests supported routes so you can review the outcome without arranging every step in a separate service.
 
-The app covers 14 EVM blockchains, including Arc. SDK v0.4.3 and the hosted MCP server also cover these chains for ERC-20 orders. NEAR routes add Bitcoin, Solana, Monad, Hyperliquid, X Layer, Sui and Tron destinations where source, asset and provider support permit. See the [Ophis supported-chain list](https://ophis.fi/supported-chains/).
+The app covers 14 EVM blockchains, including Arc. SDK v0.4.3 and the hosted MCP server also cover these chains for ERC-20 orders. The standalone app also supports Bitcoin, Solana, Monad, Hyperliquid (Hypercore), X Layer, Sui, Tron, Starknet and Zcash as NEAR sources and destinations where assets and quotes permit. External-source deposits are a separate flow from SDK/MCP orders. See the [Ophis supported-chain list](https://ophis.fi/supported-chains/).
 
 Arc has direct Circle routes for configured assets and a separate Ethereum WBTC → Ethereum cirBTC → Arc cirBTC conversion flow. This is not a native Bitcoin bridge or a single atomic swap. Exact-input, same-wallet EOA restrictions and recovery details are in [Networks & assets](https://docs.ophis.fi/networks-assets).
 
@@ -72,9 +72,9 @@ If Robinhood Chain is your destination, the [Ophis Robinhood Chain swap guide](h
 
 ## How to make a crosschain swap with Ophis
 
-### 1. Connect the wallet holding your funds
+### 1. Choose how to fund the swap
 
-Open [the Ophis swap app](https://swap.ophis.fi/#/1/swap/_/_) and connect a compatible wallet. Confirm which network currently holds the asset you want to sell.
+Open [the Ophis swap app](https://swap.ophis.fi/#/1/swap/_/_). Confirm which network holds the asset you want to sell. Connect a compatible EVM wallet for batch-auction orders; an externally funded route can use a separate source wallet.
 
 ### 2. Choose the starting token and network
 
@@ -90,9 +90,9 @@ Check the estimated output, minimum received, route costs, and delivery estimate
 
 If a route is unavailable, another amount or supported pair may have a quote. Do not assume that increasing your tolerance for price changes will solve a route-availability problem.
 
-### 5. Approve and sign as prompted
+### 5. Authorize the order or fund the deposit
 
-You may need to approve a token before using it. Review each wallet request, including the spending permission and the swap details, before confirming.
+For a batch-auction route, you may need to approve a token and sign an order. For an external NEAR source, enter a refund address on the sending network, confirm the quote, then send the exact deposit before its deadline with any required memo. Keep the saved transfer for tracking and recovery. Review each wallet request and source network fee.
 
 ### 6. Follow delivery through to completion
 
@@ -124,13 +124,13 @@ Cross-chain delivery depends on more than the first transaction. Network confirm
 
 Check the status if delivery takes longer than expected. Review the selected provider's recovery or refund process when relevant; do not assume every route handles delays in the same way.
 
-## Can Ophis send to Bitcoin or Solana?
+## Can Ophis swap from or to Bitcoin or Solana?
 
-Yes. Ophis supports Bitcoin and Solana as destinations through NEAR Intents on available routes from supported EVM sources.
+Yes. The standalone app supports Bitcoin and Solana as NEAR sources and destinations when supported assets and a live quote are available.
 
-You provide a destination address you control and sign from your EVM wallet. Receiving through this flow does not require a second wallet connection or a signature on Bitcoin or Solana. You still need control of the destination address to use what arrives.
+For an EVM order delivering to Bitcoin or Solana, provide a destination address you control and authorize the source flow. Receiving does not require a second wallet connection. To start with BTC or a supported Solana balance, select it under **You sell**; review the quote and refund address, then fund the deposit from your source wallet.
 
-Bitcoin and Solana are destinations in this Ophis flow, rather than starting networks. Delivery is a separate stage and is not instant. The [native Bitcoin guide](https://docs.ophis.fi/agent-btc-cookbook/) explains that distinction.
+Delivery is a separate stage and is not instant. The [native Bitcoin guide](https://docs.ophis.fi/agent-btc-cookbook/) explains that distinction.
 
 ## FAQ
 

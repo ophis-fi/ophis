@@ -5,7 +5,7 @@
 <h1 align="center">Ophis</h1>
 
 <p align="center">
-  <b>Describe a trade in plain English. Ophis does the rest.</b><br/>
+  <b>Choose tokens, review the quote, and authorize your swap.</b><br/>
   An intent-based DEX aggregator with a natural-language layer, built for humans and agents alike.
 </p>
 
@@ -28,28 +28,30 @@
 
 ---
 
-Say `swap 100 USDC for ETH on Base` and Ophis resolves the tokens, chain, and
-amount, then fills the order through a competitive solver auction that settles
-on-chain. It is a fork of [CoW Protocol](https://cow.fi) (orderbook, autopilot,
+Select tokens and networks in the swap app, review the quote, and authorize
+the displayed flow. The optional Intent API parses requests such as
+`swap 100 USDC for ETH on Base`; it does not execute them. Batch-auction
+orders settle onchain through configured solver routes. It is a fork of [CoW Protocol](https://cow.fi) (orderbook, autopilot,
 driver, and baseline solver) with a natural-language intent layer over a
 rebranded CoW Swap UI. On Optimism, Unichain, Robinhood Chain, and Arc, Ophis runs the whole stack under its own
 settlement contracts and keeps the full fee; on the other supported chains
 (Ethereum, Base, Arbitrum, and more) it routes through CoW Protocol's hosted
 network.
 
-What that buys you on every trade:
+For standard batch-auction orders:
 
 - **Gasless, MEV-protected.** Orders settle in a batch auction where every trade
-  clears at one uniform price, so sandwiches and front-running are structurally
-  absent, not best-effort.
+  uses uniform prices per token pair. Offchain submission and signed limits
+  mitigate common MEV; they do not eliminate every execution risk.
 - **Solver-aligned pricing.** On every supported chain the base fee is 1 bp.
   Ophis also earns when execution beats its reference quote: 80% of
   improvement on volatile pairs (99 bps cap), or 50% on stable pairs (20 bps
   cap). Hosted chains encode that policy in CIP-75 appData and separately pay
   CoW Protocol's upstream fees.
 - **Non-custodial, no account, no auth.** Every order is signed in your own
-  wallet (EIP-712 or ERC-1271). Ophis never holds keys or funds and cannot move,
-  freeze, or recover them. The signature is the only trust boundary.
+  wallet (EIP-712 or ERC-1271), or explicitly presigned onchain. Standard ERC-20
+  orders keep funds in the wallet until settlement; native-token, bridge and
+  external OTC flows can require deposits and have separate recovery rules.
 - **Transparent, capped fees.** A 0.01% (1 bp) base plus the capped improvement
   policy above, with a share returned monthly as WETH rebates plus an 8%
   referral on indexed chains, including Arc.
@@ -178,7 +180,13 @@ BNB trades use CoW Protocol's canonical BSC deployment.
 The two have different settlement contracts and orderbook hosts, so resolve them
 per chain via `@ophis/sdk` or the MCP `list_chains` tool rather than assuming.
 Full live status: [docs.ophis.fi/status](https://docs.ophis.fi/status).
-Cross-chain destinations (Solana, Bitcoin) are surfaced via NEAR Intents.
+The standalone app also supports Bitcoin, Solana, Monad, Hyperliquid (Hypercore),
+X Layer, Sui, Tron, Starknet and Zcash as NEAR sources and destinations where live
+assets and quotes permit. Selecting an external source opens a deposit flow in
+the same swap form: review the quote and source-chain refund address, confirm,
+then fund the specified deposit before its deadline with any required memo.
+This is separate from SDK/MCP EVM order building. See
+[networks and funding coverage](https://docs.ophis.fi/networks-assets).
 Canonical contract addresses and the disclosure policy live in
 [`SECURITY.md`](SECURITY.md).
 

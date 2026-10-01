@@ -3,7 +3,7 @@ import { test, expect } from '@playwright/test'
 const EXPECTED_CHAINS = [
   'Ethereum', 'BNB', 'Base', 'Arbitrum', 'Polygon', 'Avalanche',
   'Linea', 'Plasma', 'Ink', 'Gnosis', 'Optimism', 'Unichain', 'Robinhood', 'Arc',
-  'Solana', 'Bitcoin', 'Monad', 'Hyperliquid', 'X Layer', 'Sui', 'Tron',
+  'Solana', 'Bitcoin', 'Monad', 'Hyperliquid', 'X Layer', 'Sui', 'Tron', 'Starknet', 'Zcash',
 ]
 
 test('WebMCP uses the rendered canonical chain map', async ({ page }) => {

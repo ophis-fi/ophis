@@ -55,9 +55,25 @@ export function useNearSwapSelection(initial: NearSwapSelection, onExit: () => v
     [navigate, updateState, onExit],
   )
 
+  const switchTokens = useCallback((): void => {
+    if (!selection.output || busy || preview) return
+    if (isSupportedChainId(selection.output.chainId)) {
+      exitToStandard(selection.output, selection.input)
+      return
+    }
+    setSelection({ input: selection.output, output: selection.input, amount: '' })
+    setRecipient('')
+    setRefundTo('')
+  }, [busy, preview, selection, exitToStandard])
+
   const select = useCallback(
     (field: Field, currency: Currency | null): void => {
       if (!currency || busy || preview) return
+      const opposite = field === Field.INPUT ? selection.output : selection.input
+      if (opposite?.equals(currency)) {
+        switchTokens()
+        return
+      }
       if (field === Field.INPUT && isSupportedChainId(currency.chainId)) {
         exitToStandard(currency, selection.output)
         return
@@ -70,19 +86,8 @@ export function useNearSwapSelection(initial: NearSwapSelection, onExit: () => v
       if (field === Field.INPUT) setRefundTo('')
       else setRecipient('')
     },
-    [busy, preview, selection, exitToStandard],
+    [busy, preview, selection, exitToStandard, switchTokens],
   )
-
-  const switchTokens = useCallback((): void => {
-    if (!selection.output || busy || preview) return
-    if (isSupportedChainId(selection.output.chainId)) {
-      exitToStandard(selection.output, selection.input)
-      return
-    }
-    setSelection({ input: selection.output, output: selection.input, amount: '' })
-    setRecipient('')
-    setRefundTo('')
-  }, [busy, preview, selection, exitToStandard])
 
   return {
     selection,

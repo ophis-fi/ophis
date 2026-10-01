@@ -1,7 +1,7 @@
 ---
 id: audits
 title: Security & audits
-description: Ophis is non-custodial and MEV-protected, settling through immutable CoW Protocol contracts, with governance via a 2-of-3 multisig and a 24-hour timelock.
+description: Ophis settlement addresses by chain, wallet authorization and bridge recovery boundaries, and the scope of upstream audits and internal security reviews.
 sidebar_label: Security & audits
 sidebar_position: 1
 ---
@@ -18,10 +18,10 @@ listed deployment, not every contract used by every route.
 
 :::
 
-Ophis is built so that the protocol **cannot move your funds without your
-signature**, and so that execution is fair by construction rather than by
-trust. This page describes the security measures in place. Every on-chain
-property below is independently verifiable from the addresses listed.
+Ophis uses wallet-authorized orders and transactions. The enforced limits and
+recovery rules depend on the path you authorize. This page separates
+batch-auction settlement contracts from bridges, deposits and external escrow,
+and identifies the deployment and review scope behind each claim.
 
 ## Custody
 
@@ -29,9 +29,9 @@ Standard ERC-20 swaps use EIP-712 wallet signatures, ERC-1271 validation, or
 explicit onchain presigning. Funds remain in the wallet until settlement.
 The order fixes the
 sell token, sell amount, minimum buy amount (your limit price), receiver and
-expiry, and an authorized solver settles it on-chain within exactly those
-limits. A solver can never pull more than your signed sell amount, send the
-proceeds anywhere but your signed receiver, or fill below your limit price.
+expiry, and an authorized solver settles it on-chain within those limits.
+The settlement enforces the authorized sell amount and any applicable signed
+fee, the receiver and the minimum buy amount.
 
 Native-token orders deposit into EthFlow before settlement. Bridge routes can
 deposit or burn assets before delivery and follow provider recovery rules.
@@ -41,9 +41,15 @@ an offchain ERC-20 order. Always check the contract, approval, receiver and
 minimum amount in your wallet; an immutable settlement does not prevent a
 compromised interface from asking you to authorize a harmful action.
 
+Externally funded NEAR swaps start with a source-chain deposit rather than a
+CoW order signature. Verify the asset, amount, destination, refund address,
+deadline and any memo before sending. Keep the saved transfer for delivery or
+refund tracking. The settlement addresses below do not authenticate a NEAR
+deposit address or extend CoW's audit scope to NEAR, Across or Circle routes.
+
 ## MEV protection by construction
 
-Orders settle through a batch auction with a uniform clearing price per token pair.
+Batch-auction orders settle with a uniform clearing price per token pair.
 This is designed to mitigate common MEV vectors at the mechanism layer:
 
 - Orders are submitted offchain instead of broadcasting individual public swaps.
@@ -61,31 +67,48 @@ against every adversarial or infrastructure condition.
 Ophis runs its **own deployment** of CoW Protocol's GPv2 settlement stack on
 Optimism, Unichain, Robinhood Chain, and Arc. The listed settlement, relayer and
 EthFlow contracts are **immutable**: they have
-no admin, no owner, and no proxy, so no operator (and no compromise of Ophis's
-backend or frontend) can upgrade, pause, or re-point them:
+no upgrade admin or proxy. Their bytecode and constructor wiring cannot be
+replaced by an Ophis operator. The separate mutable solver allowlist still
+affects who may settle orders; immutability does not guarantee availability.
 
-| Contract | Address (Optimism) | Property |
+Addresses were cross-checked against the
+[SDK deployment map](https://github.com/ophis-fi/ophis/blob/main/packages/sdk/src/domain.ts)
+and public RPC code/relayer reads on October 1, 2026. Chain ID is part of the
+identity: never reuse a listed address on a different network.
+
+| Contract | Address (Optimism, chain 10) | Property |
 | --- | --- | --- |
 | `GPv2Settlement` | `0x310784c7FCE12d578dA6f53460777bAc9718B859` | Immutable, no admin/proxy |
 | `GPv2VaultRelayer` | `0x83847EaB41ad9ea43809ce71569eB2e9daF51830` | Immutable, only ever honors the Settlement above |
 | `CoWSwapEthFlow` | `0x764fE4aa1FF493cf39931c7923C8ff5837596504` | Immutable, native-ETH sells (see below) |
 
-| Contract | Address (Unichain) | Property |
+| Contract | Address (Unichain, chain 130) | Property |
 | --- | --- | --- |
 | `GPv2Settlement` | `0x108A678716e5E1776036eF044CAB7064226F714E` | Immutable, no admin/proxy |
 | `GPv2VaultRelayer` | `0xaB29E2a859704C914E55566Ae9b3A7EDE25959cb` | Immutable, only ever honors the Settlement above |
 | `CoWSwapEthFlow` | `0x38C03729153BCCF6a281DaF41D7C6a14C543F1D7` | Immutable, native-ETH sells (see below) |
 
-| Contract | Address (Robinhood Chain) | Property |
+| Contract | Address (Robinhood Chain, chain 4663) | Property |
 | --- | --- | --- |
 | `GPv2Settlement` | `0x886d9fd312F442C4E1f3cdeAE7b4AB73493e57cD` | Immutable, no admin/proxy |
 | `GPv2VaultRelayer` | `0xB52C38097c19cd38238c62DD36027a7918eFa890` | Immutable, only ever honors the Settlement above |
 | `CoWSwapEthFlow` | `0xC1Ee77e8a1B85D5EED702a9bB435f434408A4d29` | Immutable, native-ETH sells (see below) |
 
+The Robinhood settlement remains
+[`0x886d9fd312F442C4E1f3cdeAE7b4AB73493e57cD`](https://robinhoodchain.blockscout.com/address/0x886d9fd312F442C4E1f3cdeAE7b4AB73493e57cD).
+It is an Ophis deployment, distinct from CoW's canonical settlement address on
+CoW-hosted chains.
+
+| Contract | Address (Arc, chain 5042) | Property |
+| --- | --- | --- |
+| `GPv2Settlement` | `0x78799F98276efba1EdeeD32eae03a3fd8Cdfec3A` | Immutable, no admin/proxy |
+| `GPv2VaultRelayer` | `0x895505F1FE6D762296685fF4a8201782FFdCB8E9` | Immutable, only ever honors the Settlement above |
+
 Arc deployment configuration is recorded in the
 [Arc release sources](https://github.com/ophis-fi/ophis/tree/main/infra/arc-mainnet/release).
 SDK v0.4.3 includes Arc signing and approval helpers; use chain ID 5042 and do not
-substitute another chain's addresses. These immutability claims do not cover token issuers, bridges
+substitute another chain's addresses. Arc has no supported EthFlow deployment;
+use its ERC-20 token interfaces for batch orders. These immutability claims do not cover token issuers, bridges
 or every external contract a route touches.
 
 The core settlement derives from CoW Protocol. Its upstream audits are relevant
@@ -96,9 +119,11 @@ to shared code, but are not an audit of every Ophis modification or deployment:
 - CoW Protocol documentation:
   [docs.cow.fi/cow-protocol](https://docs.cow.fi/cow-protocol)
 
-Two pieces are **Ophis-specific** (not stock CoW) and were reviewed in Ophis's
-internal/tool-assisted security reviews: a hardened `GPv2AllowListAuthentication` (two-step manager
-transfer) and the partner-fee settlement-buffer handling.
+Ophis-specific contract changes reviewed in internal/tool-assisted security
+reviews include a hardened `GPv2AllowListAuthentication` (two-step manager
+transfer) and partner-fee settlement-buffer handling. Ophis also maintains
+frontend, solver, bridge and integration code. A review of those contract
+changes is not a blanket audit of every component or later release.
 
 ### Audit methodology and tools
 
@@ -156,8 +181,9 @@ audit, endorsement or certification by those firms.
 
 Selling native ETH is placed as an **on-chain order** to the immutable
 `CoWSwapEthFlow` contract, which is constructor-wired to the Settlement and
-WETH. These orders carry the same signed limit price and receiver as any other
-order, and they are **refundable by you on-chain after the order expires**, so
+WETH. The placement transaction authorizes the limit price and receiver;
+it is not an offchain EIP-712 order signature. Unfilled deposits are
+**refundable by you on-chain after the order expires**, so
 even if no solver ever settles it, you reclaim your ETH directly from the
 contract without trusting any operator.
 
@@ -183,18 +209,20 @@ Its governance is:
 
 ## Key custody
 
-Authority is split and held in **multisigs, not single keys**:
+The documented governance and fee custody use multisigs:
 
 - The **protocol multisig** and the **partner-fee multisig** are each a
   **2-of-3 Gnosis Safe** with hardware-wallet signers: no single key can move
   governance or fees.
-- The only single-key components are non-custodial operational hot wallets (the
-  solver that signs settlements carries a small gas float, never a treasury, and
-  can only call `settle()` within your signed limits: it cannot drain wallets).
+- Settlement transactions use operational solver keys. Solver authorization
+  does not waive order validation or let a solver exceed an order's limits.
+  Safe threshold and membership are onchain properties; hardware-key custody
+  is an operational policy, not something an address alone proves.
 
 The partner-fee multisig (`0x858f0F5eE954846D47155F5203c04aF1819eCeF8`) holds
-only collected protocol fees, kept entirely separate from trader funds, which
-Ophis never custodies. See [Fees & rebates](./fees.md) for how the fee is
+collected protocol fees separately from trader balances. Route-specific
+contracts can hold native-token or bridge deposits as described above.
+See [Fees & rebates](./fees.md) for how the fee is
 calculated.
 
 ## Infrastructure

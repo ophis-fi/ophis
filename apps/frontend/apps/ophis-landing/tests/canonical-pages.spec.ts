@@ -182,7 +182,7 @@ test('supported-chains explains the current SDK, Arc referrals and enrollment', 
   await expect(body).toContainText('await enrollOphisTrader(orderOwner, { blocking: true })')
   await expect(body).toContainText('Registration alone does not establish partner affiliation')
   await expect(body).toContainText('Affiliate payouts remain disabled.')
-  await expect(page.locator('.updated time')).toHaveAttribute('datetime', /2026-09-30/)
+  await expect(page.locator('.updated time')).toHaveAttribute('datetime', /2026-10-01/)
   const ldBlocks = await page.locator('script[type="application/ld+json"]').allTextContents()
   const faq = ldBlocks.map((block) => JSON.parse(block)).find((block) => block['@type'] === 'FAQPage')
   expect(JSON.stringify(faq)).toContain(`SDK v${sdk.version} and hosted MCP include Arc (5042)`)
@@ -192,7 +192,7 @@ test('supported-chains explains the current SDK, Arc referrals and enrollment', 
   expect(guideText).toContain('Arc (5042) is also Ophis-operated and is supported by the published SDK and hosted MCP.')
   expect(guideText).toContain("It remains outside this skill's three-chain execution policy.")
   const sitemap = readFileSync(dist('sitemap.xml'), 'utf8')
-  expect(sitemap).toMatch(/<loc>https:\/\/ophis\.fi\/supported-chains\/<\/loc>\s*<lastmod>2026-09-30/)
+  expect(sitemap).toMatch(/<loc>https:\/\/ophis\.fi\/supported-chains\/<\/loc>\s*<lastmod>2026-10-01/)
 })
 
 test('sitemap lists the canonical pages with trailing-slash URLs', () => {

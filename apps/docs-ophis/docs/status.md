@@ -52,8 +52,10 @@ does not promise current uptime. Use the linked checks above before routing.
   `GPv2Settlement` contracts. Resolve SDK-supported chains through `@ophis/sdk`
   v0.4.3 or MCP `list_chains`; both include Arc.
 
-Solana, Bitcoin, Monad, Hyperliquid, X Layer, Sui and Tron are supported as **destinations** via
-[NEAR Intents](https://near.org/intents), not as source-chain orderbooks.
+Solana, Bitcoin, Monad, Hyperliquid (Hypercore), X Layer, Sui, Tron, Starknet and
+Zcash are additional sources and destinations via [NEAR Intents](https://near.org/intents).
+External-source swaps use the standalone app's deposit flow, not source-chain
+CoW orderbooks or SDK EIP-712 signing domains.
 Provider and asset availability still determine executable routes. See
 [Networks & assets](./networks-assets.md) for Circle bridges, stock labels and
 the current confidential-routing and institutional-feature boundaries.

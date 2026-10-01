@@ -13,8 +13,8 @@ import {
   EVM_CHAIN_COUNT,
   SOVEREIGN_CHAINS,
   SOVEREIGN_CHAIN_LIST as sovereignList,
-  NEAR_DESTINATIONS,
-  NEAR_DESTINATION_LIST as destinationList,
+  NEAR_NETWORKS,
+  NEAR_NETWORK_LIST as nearNetworkList,
 } from '../data/chains'
 
 const { updated } = canonicalPage('/supported-chains/')
@@ -24,15 +24,15 @@ const tableChains = [...EVM_CHAINS].sort((a, b) => a.name.localeCompare(b.name))
 const FAQS = [
   {
     q: 'Which chains does Ophis support?',
-    a: `Ophis covers ${EVM_CHAIN_COUNT} EVM chains, with ${sovereignList} as its operated sovereign networks, and supports ${destinationList} as destinations via NEAR Intents.`,
+    a: `Ophis covers ${EVM_CHAIN_COUNT} EVM chains, with ${sovereignList} as its operated sovereign networks, and supports ${nearNetworkList} as additional sources and destinations through NEAR Intents in the standalone app. External-source routes use a deposit flow, not an EVM orderbook.`,
   },
   {
     q: 'What does Ophis-operated mean?',
     a: `On ${sovereignList}, batch-auction swaps use Ophis's own settlement contracts with chain-specific fee handling. Arc uses the same capped backend improvement policy for in-market orders; see the pricing page. Resolve supported signing domains and orderbook hosts through @ophis/sdk or MCP list_chains. SDK v0.4.4 and hosted MCP include Arc (5042); do not reuse another chain's address. Bridge routes have separate costs.`,
   },
   {
-    q: 'How do cross-chain destinations work?',
-    a: `${destinationList} are destinations via NEAR Intents on supported source chains and pairs, not from every EVM chain. A compatible destination wallet/address is required. Arc uses separate Circle routes; app support does not imply NEAR source support.`,
+    q: 'How do external-source and cross-chain swaps work?',
+    a: `Select a source and destination in the same token pickers. For an additional NEAR source, review the quote and source-chain refund address, then send the specified deposit from your source wallet, including any required memo. Keep the transfer record until delivery or refund. Asset and provider availability gate every route; the list does not promise every pair in both directions. Hyperliquid means Hypercore spot balances, and Zcash requires a transparent t1/t3 address. Arc uses separate Circle routes.`,
   },
   {
     q: 'Is there a testnet?',
@@ -56,17 +56,17 @@ const itemListLd = {
 
 <ContentPage
   title={`Supported chains: ${EVM_CHAIN_COUNT} EVM networks | Ophis`}
-  description={`The canonical list of the ${EVM_CHAIN_COUNT} EVM chains Ophis supports, including the Ophis-operated sovereign networks, plus ${destinationList} destinations via NEAR Intents.`}
+  description={`The canonical list of the ${EVM_CHAIN_COUNT} EVM chains Ophis supports, including the Ophis-operated sovereign networks, plus ${nearNetworkList} sources and destinations through the standalone app’s externally funded NEAR flow.`}
   path="/supported-chains/"
   heading="Supported chains"
-  lede={`Ophis settles MEV-protected batch auctions on ${EVM_CHAIN_COUNT} EVM chains and reaches ${destinationList} as destinations via NEAR Intents. This page is the canonical list.`}
+  lede={`Ophis settles MEV-protected batch auctions on ${EVM_CHAIN_COUNT} EVM chains and supports ${nearNetworkList} through NEAR Intents, including externally funded source swaps. Availability depends on the live assets and quote.`}
   updated={updated}
   faqs={FAQS}
   extraLd={[itemListLd]}
 >
   <p>
     <strong>The short version:</strong> {EVM_CHAIN_COUNT} EVM chains, {SOVEREIGN_CHAINS.length} of
-    them Ophis-operated ({sovereignList}), plus {destinationList} as cross-chain destinations.
+    them Ophis-operated ({sovereignList}), plus {nearNetworkList} as NEAR sources and destinations in the standalone app.
     The full table with chain IDs and settlement mode:
   </p>
 
@@ -92,11 +92,11 @@ const itemListLd = {
           </td>
         </tr>
       ))}
-      {NEAR_DESTINATIONS.map((d) => (
+      {NEAR_NETWORKS.map((d) => (
         <tr>
           <td>{d}</td>
           <td>n/a</td>
-          <td>Destination via NEAR Intents</td>
+          <td>NEAR source deposit or destination; route-dependent</td>
         </tr>
       ))}
     </tbody>
@@ -118,7 +118,7 @@ const itemListLd = {
   <h2>For agents and integrators</h2>
   <p>
     SDK v0.4.4 and the hosted MCP server cover the EVM chains above, including Arc (5042).
-    Bridge coverage remains route-specific; eligible settled Arc trades count toward referral and volume-tier rebates.
+    External NEAR deposits are a separate app flow, not orders built by these SDK/MCP tools. Bridge coverage remains route-specific; eligible settled Arc trades count toward referral and volume-tier rebates.
   </p>
   <p>
     SDK v0.4.3 already supports Arc trading. Upgrade to v0.4.4 to include referral codes on Arc orders.
@@ -144,7 +144,7 @@ const itemListLd = {
     The machine-readable per-chain contract-pinning policy (settlement addresses, vault relayers,
     EIP-712 domains, orderbook hosts) ships in the
     <a href="https://ophis.fi/.well-known/agent-skills/ophis/SKILL.md">Ophis agent skill</a>
-    for Optimism, Unichain and Robinhood Chain. For all supported EVM chains, including Arc,
+    for the chains listed in that policy. For all supported EVM chains, including Arc,
     the <a href="https://github.com/ophis-fi/ophis/tree/main/packages/sdk">@ophis/sdk</a> v0.4.4 helpers
     resolve the correct settlement domain per chain, and the
     <a href="https://docs.ophis.fi/ai-agents">MCP server</a> exposes the same data through the
@@ -161,7 +161,7 @@ const itemListLd = {
     it is not a native Bitcoin bridge or a single atomic swap.
   </p>
   <p>
-    Arc routing lanes are configured for Uniswap v3, KyberSwap, Archery, Aero and Uniswap v4.
+    Arc routing lanes are configured for Uniswap v3, KyberSwap, Archery, Aero, Uniswap v4 and SushiSwap v3.
     A venue name identifies liquidity used by a lane; the operator can still be Ophis.
     Configuration does not guarantee a live quote or fill for every pair. See
     <a href="https://docs.ophis.fi/networks-assets">networks, assets and feature availability</a>

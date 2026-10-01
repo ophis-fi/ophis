@@ -1,8 +1,8 @@
 ---
 /**
  * /security: the canonical security page. Audit facts mirror
- * docs.ophis.fi/audits exactly (inherited CoW settlement audits + the two
- * Ophis-specific pieces reviewed internally). No external audit firm is named
+ * docs.ophis.fi/audits in scope (upstream CoW audits plus scoped internal/tool-assisted
+ * reviews of Ophis-specific changes). No external audit firm is named
  * because none is engaged; do not add one here without a verifiable public
  * relationship. MEV claims keep the qualified wording from the homepage FAQ.
  */
@@ -24,7 +24,7 @@ const FAQS = [
   },
   {
     q: 'Is MEV protection guaranteed?',
-    a: `Orders settle through CoW Protocol batch auctions, which are designed to protect trades from MEV such as front-running and sandwiching by settling at a uniform clearing price. An order can never be settled below its signed limit price. Batch-auction settlement mitigates MEV by design; it is not an absolute guarantee against all adversarial conditions.`,
+    a: `Batch-auction orders settle through CoW Protocol, which are designed to protect trades from MEV such as front-running and sandwiching by settling at a uniform clearing price. An order can never be settled below its signed limit price. Batch-auction settlement mitigates MEV by design; it is not an absolute guarantee against all adversarial conditions.`,
   },
   {
     q: 'How should an autonomous agent trade safely?',
@@ -39,7 +39,7 @@ const FAQS = [
 
 <ContentPage
   title="Security | Ophis"
-  description="How Ophis handles security: non-custodial EIP-712 intents, CoW Protocol's audited settlement contracts, qualified MEV protection, agent safety rules, and vulnerability disclosure."
+  description="How Ophis handles security: non-custodial EIP-712 intents, per-chain settlement deployments and scoped reviews, qualified MEV protection, agent safety rules, and vulnerability disclosure."
   path="/security/"
   heading="Security"
   lede="Wallet-authorized trading with signed execution limits. Understand the differences between offchain orders, deposits and bridge routes, and the scope of security reviews."

@@ -16,6 +16,10 @@ or bot moves an EVM position into native BTC (or SOL) after a one-time
 source-token approval, with no Bitcoin-side signing and without clicking through
 a bridge UI.
 
+The standalone app also supports externally funded Bitcoin and Solana sources.
+That deposit flow is separate from the EVM-order composition described here and
+is not a new MCP tool. See [Networks & assets](./networks-assets.md).
+
 ## The mechanism
 
 A Bitcoin address cannot receive an ERC-20, so the cross-chain leg runs through

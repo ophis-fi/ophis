@@ -54,7 +54,7 @@ External dependencies:
 
 **Protocol authority**: 2-of-3 Safe (v1.4.1) at `0xe049a64546fb8564CC4c7D64A0A1BAe00Aa801cF`, hardware-backed signers; threshold and the three owners verified on-chain. **Post-#442 migration (2026-06-05) the Safe no longer holds `owner()`/`manager()` of `AllowListAuthentication` directly** — `manager()` is the AllowListGuardian (`0x327F8894…6B6fC`) and the proxy `owner()` is the TimelockController (`0x8fEe4289…C373`). So `addSolver` and AllowList upgrades go through the **24h timelock** (Safe schedules → waits → executes); only `removeSolver` is instant (Safe → Guardian). A Safe batch sent directly to the AllowList now reverts. See `docs/operations/allowlist-governance-runbook.md` §3.
 
-**Partner-fee recipient**: `0x858f0F5eE954846D47155F5203c04aF1819eCeF8` (separate Safe). Receives CIP-75 priceImprovementBps:2500 maxVolumeBps:50. Safe v1.4.1, **2-of-3 on all three chains** (Optimism, Gnosis, Ethereum) with the same three owners as the protocol Safe — unified 2026-06-05 (Gnosis + Ethereum were raised from 2-of-2 by adding the 3rd owner); verified on-chain.
+**Partner-fee recipient**: `0x858f0F5eE954846D47155F5203c04aF1819eCeF8` (separate Safe). Receives the 1 bp base fee and backend price-improvement fees under the current [fee schedule](../../apps/docs-ophis/docs/fees.md). Safe v1.4.1, **2-of-3 on all three chains** (Optimism, Gnosis, Ethereum) with the same three owners as the protocol Safe — unified 2026-06-05 (Gnosis + Ethereum were raised from 2-of-2 by adding the 3rd owner); verified on-chain.
 
 **Public reachability**: `https://optimism-mainnet.ophis.fi` → Cloudflare Tunnel `ophis-optimism-mainnet` (id `56a68415-b1d9-4808-8218-850ec066b40b`) → `127.0.0.1:8102` on the Mac mini. Tunnel runs persistently via launchd at `~/Library/LaunchAgents/com.ophis.cloudflared.op-mainnet.plist`. Config at `~/.cloudflared/config-ophis-op-mainnet.yml`.
 
@@ -79,6 +79,32 @@ External dependencies:
 | HW deployer | `0xBeC5B03ffDcac50071693E87bFDb88bAa6710199` |
 
 > **AllowList impl upgrade.** The proxy was deployed with initial impl `0xFAB54856…` and later upgraded (via the Safe calling `upgradeTo`) to the two-step-manager impl `0x59eE2de8…` (`proposeManager`/`acceptManagership`/`pendingManager`). The current impl's `deployedBytecode` is verified byte-for-byte against the live `EXTCODEHASH`. Full record: [`contracts/deployments/optimism-mainnet/NOTE-allowlist-upgrade.md`](../../contracts/deployments/optimism-mainnet/NOTE-allowlist-upgrade.md). `GPv2Settlement` and `VaultRelayer` are non-upgradeable (no proxy).
+
+### Across source dependencies (October 1, 2026)
+
+The canonical CoW Shed implementation/factory and deterministic Across math
+helper were deployed on Optimism. Existing settlement and Ophis-bound
+HooksTrampoline addresses remain the ones in the table above.
+
+| Dependency | Address | Deployment transaction |
+| --- | --- | --- |
+| CoW Shed implementation | `0xa2704cF562AD418Bf0453F4B662ebf6A2489eD88` | [0x9be7…63c6](https://optimistic.etherscan.io/tx/0x9be7a50779c5b58251a0f77c153d429af8d6c8922f783e2e1026839d96e663c6) |
+| CoW Shed factory | `0x312f92fe5f1710408B20D52A374fa29e099cFA86` | [0x5020…e3e6](https://optimistic.etherscan.io/tx/0x50204957b8bb3b54fc7248b143428bcab46bb6a61daacff166051f8fbd4de3e6) |
+| Across math helper | `0xEdE97D044d4C8aAA682968bee10284521B9f311a` | [0xa4d8…025e](https://optimistic.etherscan.io/tx/0xa4d8d8897f01d8349a011637604fe8f7e698fb0f29005644a79139e6312f025e) |
+
+Post-deployment checks matched the Shed runtime bytes to Ethereum's canonical
+contracts and the math runtime to the pinned compiled artifact. The source
+preflight passed all ten dependency/wiring checks. A local Optimism fork executed
+the signed SDK deposit hook through the Ophis-bound trampoline, emitted the
+SpokePool deposit event and emptied the Shed. **This was a fork execution proof,
+not a funded live user swap or destination-delivery canary.**
+
+Both new source flags remain off. Before enabling Optimism, rerun
+`node apps/frontend/scripts/across-source-preflight.mjs 10` and record a funded
+mainnet settlement emitting the expected SpokePool `FundsDeposited` event in
+the same transaction, followed by destination delivery. Polygon also needs its
+helper deployed and verified before the equivalent live proof. Successful fork
+execution alone does not make either production source available.
 
 ### Host ports (all 127.0.0.1-bound)
 

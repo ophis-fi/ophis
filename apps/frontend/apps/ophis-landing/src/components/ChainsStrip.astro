@@ -1,7 +1,7 @@
 ---
-import { EVM_CHAINS, NEAR_DESTINATIONS } from '../data/chains'
+import { EVM_CHAINS, NEAR_NETWORKS } from '../data/chains'
 
-const destinationLogos: Record<(typeof NEAR_DESTINATIONS)[number], string> = {
+const destinationLogos: Record<(typeof NEAR_NETWORKS)[number], string> = {
   Solana: '/logos/solana.svg',
   Bitcoin: '/logos/bitcoin.svg',
   Monad: '/logos/chain-monad.png',
@@ -9,10 +9,12 @@ const destinationLogos: Record<(typeof NEAR_DESTINATIONS)[number], string> = {
   'X Layer': '/logos/chain-xlayer.png',
   Sui: '/logos/chain-sui.png',
   Tron: '/logos/chain-tron.svg',
+  Starknet: '/logos/chain-starknet.svg',
+  Zcash: '/logos/chain-zcash.svg',
 }
 const chains = [
   ...EVM_CHAINS.map((c) => ({ name: c.shortName, logo: c.logo })),
-  ...NEAR_DESTINATIONS.map((name) => ({ name, logo: destinationLogos[name] })),
+  ...NEAR_NETWORKS.map((name) => ({ name, logo: destinationLogos[name] })),
 ]
 // Two passes feed a seamless CSS marquee: the first is the real, accessible set
 // (counted by tests + read by AT); the second is an aria-hidden clone marked

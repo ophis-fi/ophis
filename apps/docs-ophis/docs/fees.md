@@ -90,8 +90,10 @@ to the original improvement. See [CoW's current fee policy](https://docs.cow.fi/
 
 ### Bridge and conversion routes
 
-The NEAR Intents quote request includes a **3 bps Ophis app fee**, alongside
-provider costs reflected in the quote. Direct Circle bridge and WBTC-conversion
+NEAR Intents quotes, including the standalone externally funded flow, request a
+**3 bps Ophis app fee**, alongside provider costs reflected in the quote. A direct
+NEAR deposit is not a batch-auction order and does not also use the 1 bp base
+and capped improvement schedule above. Direct Circle bridge and WBTC-conversion
 routes are not batch-auction swaps and must not be priced using the table above.
 Source approval/deposit, conversion and destination execution can require gas.
 See [Networks & assets](./networks-assets.md) for route restrictions and recovery.

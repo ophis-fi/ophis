@@ -54,6 +54,14 @@ export function acrossRobinhoodSourceIds(enabled: boolean): readonly number[] {
   return enabled ? [4663] : []
 }
 
+export const ACROSS_POLYGON_SOURCE_ENABLED = process.env.REACT_APP_ACROSS_POLYGON_SOURCE === 'true'
+export const ACROSS_OPTIMISM_SOURCE_ENABLED = process.env.REACT_APP_ACROSS_OPTIMISM_SOURCE === 'true'
+
+// Separate gates: each chain must pass deployment and hook execution checks.
+export function acrossPolygonOptimismSourceIds(polygon: boolean, optimism: boolean): readonly number[] {
+  return [...(polygon ? [SupportedChainId.POLYGON] : []), ...(optimism ? [10] : [])]
+}
+
 /**
  * The extra Across source chains our own deploys unlock; each group is empty
  * until its own flag flips. Single source of truth so BRIDGE_SOURCE_CHAIN_IDS
@@ -63,6 +71,7 @@ export function acrossRobinhoodSourceIds(enabled: boolean): readonly number[] {
 export const EXTRA_ACROSS_SOURCE_CHAIN_IDS: readonly number[] = [
   ...acrossInkLineaSourceIds(ACROSS_INK_LINEA_SOURCE_ENABLED),
   ...acrossRobinhoodSourceIds(ACROSS_ROBINHOOD_SOURCE_ENABLED),
+  ...acrossPolygonOptimismSourceIds(ACROSS_POLYGON_SOURCE_ENABLED, ACROSS_OPTIMISM_SOURCE_ENABLED),
 ]
 
 /**
@@ -74,7 +83,7 @@ export const EXTRA_ACROSS_SOURCE_CHAIN_IDS: readonly number[] = [
  * on-chain: NEAR Intents settles via an attested deposit-address receiver (any
  * chain it lists), but Across builds post-swap hooks via CoW Shed and
  * additionally needs a math-helper contract that upstream only deployed on
- * Ethereum/Arbitrum/Base.
+ * Ethereum/Arbitrum/Base. Additional source deployments are gated above.
  *
  * This set is the union of chains at least one provider can execute FROM with
  * sdk-bridging 4.0.2 — exactly the effective source set before destinations
@@ -94,8 +103,7 @@ export const BRIDGE_SOURCE_CHAIN_IDS: ReadonlySet<number> = new Set<number>([
   SupportedChainId.PLASMA,
   SupportedChainId.ARBITRUM_ONE,
   SupportedChainId.AVALANCHE,
-  // Optimism (Ophis sovereign): NEAR Intents lists it as a source, and its
-  // deposit-address model needs only a plain swap with an overridden receiver.
+  // Optimism supports deposit-address routing; Across additionally requires its source gate.
   10,
   // NEAR 1Click hood routes: FLEX_INPUT quotes and attestations verified 2026-09-22.
   4663,

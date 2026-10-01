@@ -16,7 +16,7 @@ overrides:
   '@walletconnect/utils': 2.25.0
   '@walletconnect/types': 2.25.0
   adm-zip: ^0.6.1
-  devalue@>=5.0.0 <5.9.2: 5.9.2
+  devalue@>=5.0.0 <5.9.3: 5.9.3
   elliptic: ^6.6.1
   form-data: ^2.5.6
   protobufjs: ^7.6.5
@@ -62,7 +62,8 @@ overrides:
   nanoid@>=3.0.0 <3.3.18: '>=3.3.18 <4.0.0'
   http-proxy-middleware@>=3.0.4 <3.0.7: 3.0.7
   http-proxy-middleware@>=2.0.0 <2.0.10: 2.0.10
-  piscina: 4.9.3
+  piscina: 4.9.4
+  basic-ftp: 6.2.1
   postcss: 8.5.23
   smol-toml@<1.7.1: 1.8.0
   yaml: ^1.10.3
@@ -122,7 +123,7 @@ overrides:
 
 patchedDependencies:
   '@cowprotocol/sdk-bridging@4.0.2':
-    hash: e52e89f1ccb16b509c926158cb22b4c75864185959326afcd3068be022d8a811
+    hash: c44840b6ad5e3f75765230da609e0d22a6c4a00f28d5bd7290d98c45fb04d517
     path: patches/@cowprotocol__sdk-bridging@4.0.2.patch
   '@cowprotocol/sdk-config@2.0.0':
     hash: 4c11fe5353edfd0908bbbc6cb4ffd1271156633f5e1f5c4157caa09a6c627035
@@ -528,7 +529,7 @@ importers:
         version: link:../../libs/permit-utils
       '@cowprotocol/sdk-bridging':
         specifier: 4.0.2
-        version: 4.0.2(patch_hash=e52e89f1ccb16b509c926158cb22b4c75864185959326afcd3068be022d8a811)(ajv@8.20.0)(cross-fetch@4.0.0(encoding@0.1.13))(encoding@0.1.13)(ipfs-only-hash@4.0.0(encoding@0.1.13))(multiformats@9.9.0)
+        version: 4.0.2(patch_hash=c44840b6ad5e3f75765230da609e0d22a6c4a00f28d5bd7290d98c45fb04d517)(ajv@8.20.0)(cross-fetch@4.0.0(encoding@0.1.13))(encoding@0.1.13)(ipfs-only-hash@4.0.0(encoding@0.1.13))(multiformats@9.9.0)
       '@cowprotocol/sdk-contracts-ts':
         specifier: 3.0.1
         version: 3.0.1
@@ -929,7 +930,7 @@ importers:
         version: link:../../libs/hook-dapp-lib
       '@cowprotocol/sdk-bridging':
         specifier: 4.0.2
-        version: 4.0.2(patch_hash=e52e89f1ccb16b509c926158cb22b4c75864185959326afcd3068be022d8a811)(ajv@8.20.0)(cross-fetch@4.0.0(encoding@0.1.13))(encoding@0.1.13)(ipfs-only-hash@4.0.0(encoding@0.1.13))(multiformats@9.9.0)
+        version: 4.0.2(patch_hash=c44840b6ad5e3f75765230da609e0d22a6c4a00f28d5bd7290d98c45fb04d517)(ajv@8.20.0)(cross-fetch@4.0.0(encoding@0.1.13))(encoding@0.1.13)(ipfs-only-hash@4.0.0(encoding@0.1.13))(multiformats@9.9.0)
       '@cowprotocol/sdk-contracts-ts':
         specifier: 3.0.1
         version: 3.0.1
@@ -1305,7 +1306,7 @@ importers:
         version: link:../currency
       '@cowprotocol/sdk-bridging':
         specifier: 4.0.2
-        version: 4.0.2(patch_hash=e52e89f1ccb16b509c926158cb22b4c75864185959326afcd3068be022d8a811)(ajv@8.20.0)(cross-fetch@4.0.0(encoding@0.1.13))(encoding@0.1.13)(ipfs-only-hash@4.0.0(encoding@0.1.13))(multiformats@9.9.0)
+        version: 4.0.2(patch_hash=c44840b6ad5e3f75765230da609e0d22a6c4a00f28d5bd7290d98c45fb04d517)(ajv@8.20.0)(cross-fetch@4.0.0(encoding@0.1.13))(encoding@0.1.13)(ipfs-only-hash@4.0.0(encoding@0.1.13))(multiformats@9.9.0)
       '@cowprotocol/types':
         specifier: workspace:*
         version: link:../types
@@ -1655,7 +1656,7 @@ importers:
         version: 9.0.2(@openzeppelin/merkle-tree@1.0.8)(ajv@8.20.0)(cross-fetch@4.0.0(encoding@0.1.13))(encoding@0.1.13)(ipfs-only-hash@4.0.0(encoding@0.1.13))(multiformats@9.9.0)
       '@cowprotocol/sdk-bridging':
         specifier: 4.0.2
-        version: 4.0.2(patch_hash=e52e89f1ccb16b509c926158cb22b4c75864185959326afcd3068be022d8a811)(ajv@8.20.0)(cross-fetch@4.0.0(encoding@0.1.13))(encoding@0.1.13)(ipfs-only-hash@4.0.0(encoding@0.1.13))(multiformats@9.9.0)
+        version: 4.0.2(patch_hash=c44840b6ad5e3f75765230da609e0d22a6c4a00f28d5bd7290d98c45fb04d517)(ajv@8.20.0)(cross-fetch@4.0.0(encoding@0.1.13))(encoding@0.1.13)(ipfs-only-hash@4.0.0(encoding@0.1.13))(multiformats@9.9.0)
       '@cowprotocol/types':
         specifier: workspace:*
         version: link:../types
@@ -1914,7 +1915,7 @@ importers:
         version: link:../currency
       '@cowprotocol/sdk-bridging':
         specifier: 4.0.2
-        version: 4.0.2(patch_hash=e52e89f1ccb16b509c926158cb22b4c75864185959326afcd3068be022d8a811)(ajv@8.20.0)(cross-fetch@4.0.0(encoding@0.1.13))(encoding@0.1.13)(ipfs-only-hash@4.0.0(encoding@0.1.13))(multiformats@9.9.0)
+        version: 4.0.2(patch_hash=c44840b6ad5e3f75765230da609e0d22a6c4a00f28d5bd7290d98c45fb04d517)(ajv@8.20.0)(cross-fetch@4.0.0(encoding@0.1.13))(encoding@0.1.13)(ipfs-only-hash@4.0.0(encoding@0.1.13))(multiformats@9.9.0)
       eventemitter3:
         specifier: ^4.0.0
         version: 4.0.7
@@ -9560,8 +9561,8 @@ packages:
     resolution: {integrity: sha512-NF+epuEdnUYVlGuhaxbbq+dvJttwLnGY+YixlXlME5KpQ5W3CnXA5cVTneY3SPbPDRkcjMbifrwmFYcClgOZeg==}
     engines: {node: '>= 0.8'}
 
-  basic-ftp@5.3.1:
-    resolution: {integrity: sha512-bopVNp6ugyA150DDuZfPFdt1KZ5a94ZDiwX4hMgZDzF+GttD80lEy8kj98kbyhLXnPvhtIo93mdnLIjpCAeeOw==}
+  basic-ftp@6.2.1:
+    resolution: {integrity: sha512-bK67isD+lKq46AU8vNtjvMaT2ZqAOAmNCbxUHlFBRD4k15NWxyEjmaKtZPlgce58So4BNTjITGQOVTjL9y0ECA==}
     engines: {node: '>=10.0.0'}
 
   batch@0.6.1:
@@ -10806,8 +10807,8 @@ packages:
     engines: {node: '>= 16.0.0'}
     hasBin: true
 
-  devalue@5.9.2:
-    resolution: {integrity: sha512-po4PAY5c53tw5XMocSnf8A/5OHhbbUftpr93aEN6BBoAdntUmK7vu7wOATqvt7cXO7m1Cl4gMVn6p7n6n4mj0w==}
+  devalue@5.9.3:
+    resolution: {integrity: sha512-xRumYOCUZN/EesqHEU3WOXanOZNvfZFZ/o1AHVFDX1yI0UAkZkOgDXt341CzKoBVIkgQba55/+DjGBKrIoKcHw==}
 
   devlop@1.1.0:
     resolution: {integrity: sha512-RWmIqhcFf1lRYBvNmr7qTNuyCt/7/ns2jbpp1+PalgE/rDQcBT0fioSMUpJ93irlUhC5hrg4cYqe6U+0ImW0rA==}
@@ -14792,8 +14793,8 @@ packages:
     resolution: {integrity: sha512-TfySrs/5nm8fQJDcBDuUng3VOUKsd7S+zqvbOTiGXHfxX4wK31ard+hoNuvkicM/2YFzlpDgABOevKSsB4G/FA==}
     engines: {node: '>= 6'}
 
-  piscina@4.9.3:
-    resolution: {integrity: sha512-3e3ka9QCE8RJ5I9uszdAADZnkcYi21cqmF3gxox3u884N72qpFHCsIVhHt8cEQ9t3Auq/NqoiCEuhxlxxQuDWA==}
+  piscina@4.9.4:
+    resolution: {integrity: sha512-RyBDr2VheQ8ZfH3N8SzQZHztqVyOtadTwLnUYof6gdj5161/eu2wNhCbGl5GHnNKDpnkicJYpKtL2J+y/gk6XA==}
 
   pkg-dir@4.2.0:
     resolution: {integrity: sha512-HRDzbaKjC+AOWVXxAU/x54COGeIv9eb+6CkDSQoNTt4XyWoIJvuPsXizxu/Fr23EiekbtZwmh1IcIG/l/a10GQ==}
@@ -18931,7 +18932,7 @@ snapshots:
       '@astrojs/internal-helpers': 0.10.0
       '@preact/preset-vite': 2.10.5(@babel/core@7.29.7)(preact@10.28.2)(rollup@4.63.1)(vite@7.3.5(@types/node@26.5.0)(jiti@2.6.1)(less@4.8.1)(lightningcss@1.32.0)(sass-embedded@1.88.0)(sass@1.88.0)(terser@5.51.2)(yaml@1.10.3))
       '@preact/signals': 2.9.0(preact@10.28.2)
-      devalue: 5.9.2
+      devalue: 5.9.3
       preact: 10.28.2
       preact-render-to-string: 6.7.0(preact@10.28.2)
       vite: 7.3.5(@types/node@26.5.0)(jiti@2.6.1)(less@4.8.1)(lightningcss@1.32.0)(sass-embedded@1.88.0)(sass@1.88.0)(terser@5.51.2)(yaml@1.10.3)
@@ -20345,7 +20346,7 @@ snapshots:
       json-stringify-deterministic: 1.0.12
       multiformats: 9.9.0
 
-  '@cowprotocol/sdk-bridging@4.0.2(patch_hash=e52e89f1ccb16b509c926158cb22b4c75864185959326afcd3068be022d8a811)(ajv@8.20.0)(cross-fetch@4.0.0(encoding@0.1.13))(encoding@0.1.13)(ipfs-only-hash@4.0.0(encoding@0.1.13))(multiformats@9.9.0)':
+  '@cowprotocol/sdk-bridging@4.0.2(patch_hash=c44840b6ad5e3f75765230da609e0d22a6c4a00f28d5bd7290d98c45fb04d517)(ajv@8.20.0)(cross-fetch@4.0.0(encoding@0.1.13))(encoding@0.1.13)(ipfs-only-hash@4.0.0(encoding@0.1.13))(multiformats@9.9.0)':
     dependencies:
       '@cowprotocol/sdk-app-data': 5.0.0(ajv@8.20.0)(cross-fetch@4.0.0(encoding@0.1.13))(ipfs-only-hash@4.0.0(encoding@0.1.13))(multiformats@9.9.0)
       '@cowprotocol/sdk-common': 0.10.2
@@ -26632,7 +26633,7 @@ snapshots:
       '@xhmikosr/bin-wrapper': 13.0.5
       commander: 8.3.0
       minimatch: 9.0.9
-      piscina: 4.9.3
+      piscina: 4.9.4
       semver: 7.7.3
       slash: 3.0.0
       source-map: 0.7.4
@@ -29297,7 +29298,7 @@ snapshots:
       clsx: 2.1.1
       common-ancestor-path: 2.0.0
       cookie: 1.1.1
-      devalue: 5.9.2
+      devalue: 5.9.3
       diff: 9.0.0
       dset: 3.1.4
       es-module-lexer: 2.3.2
@@ -29635,7 +29636,7 @@ snapshots:
     dependencies:
       safe-buffer: 5.1.2
 
-  basic-ftp@5.3.1: {}
+  basic-ftp@6.2.1: {}
 
   batch@0.6.1: {}
 
@@ -31016,7 +31017,7 @@ snapshots:
     dependencies:
       address: 2.0.3
 
-  devalue@5.9.2: {}
+  devalue@5.9.3: {}
 
   devlop@1.1.0:
     dependencies:
@@ -32556,7 +32557,7 @@ snapshots:
 
   get-uri@6.0.5:
     dependencies:
-      basic-ftp: 5.3.1
+      basic-ftp: 6.2.1
       data-uri-to-buffer: 6.0.2
       debug: 4.4.3(supports-color@8.1.1)
     transitivePeerDependencies:
@@ -36273,7 +36274,7 @@ snapshots:
 
   pirates@4.0.7: {}
 
-  piscina@4.9.3:
+  piscina@4.9.4:
     optionalDependencies:
       '@napi-rs/nice': 1.0.1
 

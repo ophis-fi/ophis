@@ -323,7 +323,7 @@ footer.site { padding: 64px 24px 36px; background: var(--panel); border-top: 1px
     <h1 class="rise">Execution infrastructure for <em>desks &amp; integrators</em>.</h1>
     <p class="sub rise d1">
       Non-custodial intent routing with MEV-protected, uniform-price settlement on CoW Protocol's
-      audited GPv2 contracts. Every supported chain pays a 1 bp base, with capped price-improvement
+      GPv2-derived contracts, with review scope documented in the security guide. Batch-auction orders pay a 1 bp base, with capped price-improvement
       capture on all supported chains; hosted integrations additionally pay CoW Protocol fees upstream. Charge your own fee on top and Ophis
       takes 0% of that markup.
     </p>
@@ -339,7 +339,7 @@ footer.site { padding: 64px 24px 36px; background: var(--panel); border-top: 1px
       </div>
       <div class="c">
         <span class="num">Solana + Bitcoin</span>
-        <span class="lab">Destinations via NEAR Intents</span>
+        <span class="lab">Sources and destinations via NEAR Intents</span>
       </div>
       <div class="c">
         <span class="num"><b>1 bp</b> sovereign base</span>
@@ -535,10 +535,13 @@ footer.site { padding: 64px 24px 36px; background: var(--panel); border-top: 1px
 <section id="chains">
   <div class="wrap">
     <div class="eyebrow reveal">Chain coverage</div>
-    <h2 class="reveal">14 EVM chains, including Robinhood Chain and Arc, plus Solana &amp; Bitcoin destinations.</h2>
+    <h2 class="reveal">14 EVM chains, including Robinhood Chain and Arc, plus externally funded cross-chain sources.</h2>
     <p class="lede reveal">
-      EVM source via the CoW Protocol orderbook. Solana and Bitcoin destinations from EVM source
-      via NEAR Intents, with no second wallet required.
+      Batch-auction orders use EVM orderbooks. The standalone app also supports Bitcoin, Solana, Monad,
+      Hyperliquid (Hypercore), X Layer, Sui, Tron, Starknet and Zcash through NEAR Intents, including
+      external-source deposits. Select a supported source, review the quote and refund address,
+      then fund from your source wallet. Asset and route availability apply; these deposits are
+      separate from SDK/MCP order builders and embedded widgets.
     </p>
 
     <div class="chains reveal">
@@ -666,17 +669,17 @@ footer.site { padding: 64px 24px 36px; background: var(--panel); border-top: 1px
     <div class="eyebrow reveal">Security posture</div>
     <h2 class="reveal">Security and review posture.</h2>
     <p class="lede reveal">
-      Settlement runs on CoW Protocol's audited GPv2 contracts. The Ophis-specific routing and
-      authentication components are reviewed with the tooling below, and external review and a bug
-      bounty are listed here as they go live.
+      Batch-auction settlement uses CoW's GPv2 contracts or Ophis deployments derived from them.
+      Upstream audits apply to their stated shared-code scope. Ophis-specific reviews are internal
+      and tool-assisted; their reports do not establish blanket coverage of every release or bridge.
     </p>
 
     <div class="grid cols-3 reveal">
       <div class="card">
         <h3>Upstream contract audits</h3>
         <p>
-          The GPv2 settlement contracts are CoW Protocol's audited code. The upstream audit
-          reports are public in CoW Protocol's contracts repository
+          Upstream audits cover the CoW contract versions named in those reports, not every
+          Ophis modification or deployment. Reports are public in CoW Protocol's contracts repository
           (<a href="https://github.com/cowprotocol/contracts/tree/main/audits">github.com/cowprotocol/contracts</a>).
         </p>
         <div class="foot"><span class="badge live">Live · upstream</span></div>

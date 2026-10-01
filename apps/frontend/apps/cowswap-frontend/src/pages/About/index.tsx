@@ -12,7 +12,7 @@
  *   - Why intent-based (rationale; contrast with traditional DEX UX)
  *   - Non-custodial guarantees (settlement contract, signing flow)
  *   - MEV protection (batch auctions, uniform clearing price)
- *   - Cross-chain via NEAR Intents (Solana + Bitcoin destinations)
+ *   - Cross-chain via NEAR Intents (external sources and destinations)
  *   - Audited infrastructure (audit artifacts, claim badges)
  *   - Open source (license, GitHub, audit trail)
  *   - Who operates Ophis (non-custodial; formal operator disclosure on the Legal page)
@@ -123,17 +123,19 @@ export default function AboutPage(): ReactNode {
       <Section
         id="cross-chain"
         title="Cross-chain routes"
-        intro={`Receive on Solana, Bitcoin, ${BRIDGE_ONLY_DESTINATION_LABELS_TEXT} through supported NEAR Intents routes.`}
+        intro={`Send from or receive on Solana, Bitcoin, ${BRIDGE_ONLY_DESTINATION_LABELS_TEXT} through supported NEAR Intents routes.`}
       >
         <p>
           NEAR Intents availability depends on the source network, asset, and provider. An EVM network in the swap
           selector is not automatically a supported bridge source. Circle and Across serve separate routes; direct
           Circle bridging is not a batch-auction swap. Source settlement does not prove destination delivery.
         </p>
-        <Callout tone="info" title="Destination-only today">
-          Solana, Bitcoin, {BRIDGE_ONLY_DESTINATION_LABELS_TEXT} can be receive addresses but not source chains. Ophis
-          uses an EVM wallet for these routes. Review destination-address requirements, gas, and provider recovery rules
-          in the <TextLink href="https://docs.ophis.fi/networks-assets">networks and bridges guide</TextLink>.
+        <Callout tone="info" title="External-source funding">
+          Select an external source under You sell in the standalone swap app, review the quote and source-chain refund
+          address, then fund the deposit from your source wallet before its deadline, including any required memo. Keep
+          the transfer record for delivery or refund tracking. Live assets and quotes determine availability. These
+          deposits are separate from SDK/MCP orders and embedded widgets. Review address requirements and gas in the{' '}
+          <TextLink href="https://docs.ophis.fi/networks-assets">networks and bridges guide</TextLink>.
         </Callout>
       </Section>
 
