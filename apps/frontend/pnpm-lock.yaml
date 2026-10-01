@@ -62,7 +62,8 @@ overrides:
   nanoid@>=3.0.0 <3.3.18: '>=3.3.18 <4.0.0'
   http-proxy-middleware@>=3.0.4 <3.0.7: 3.0.7
   http-proxy-middleware@>=2.0.0 <2.0.10: 2.0.10
-  piscina: 4.9.3
+  piscina: 4.9.4
+  basic-ftp: 6.2.1
   postcss: 8.5.23
   smol-toml@<1.7.1: 1.8.0
   yaml: ^1.10.3
@@ -9560,8 +9561,8 @@ packages:
     resolution: {integrity: sha512-NF+epuEdnUYVlGuhaxbbq+dvJttwLnGY+YixlXlME5KpQ5W3CnXA5cVTneY3SPbPDRkcjMbifrwmFYcClgOZeg==}
     engines: {node: '>= 0.8'}
 
-  basic-ftp@5.3.1:
-    resolution: {integrity: sha512-bopVNp6ugyA150DDuZfPFdt1KZ5a94ZDiwX4hMgZDzF+GttD80lEy8kj98kbyhLXnPvhtIo93mdnLIjpCAeeOw==}
+  basic-ftp@6.2.1:
+    resolution: {integrity: sha512-bK67isD+lKq46AU8vNtjvMaT2ZqAOAmNCbxUHlFBRD4k15NWxyEjmaKtZPlgce58So4BNTjITGQOVTjL9y0ECA==}
     engines: {node: '>=10.0.0'}
 
   batch@0.6.1:
@@ -14792,8 +14793,8 @@ packages:
     resolution: {integrity: sha512-TfySrs/5nm8fQJDcBDuUng3VOUKsd7S+zqvbOTiGXHfxX4wK31ard+hoNuvkicM/2YFzlpDgABOevKSsB4G/FA==}
     engines: {node: '>= 6'}
 
-  piscina@4.9.3:
-    resolution: {integrity: sha512-3e3ka9QCE8RJ5I9uszdAADZnkcYi21cqmF3gxox3u884N72qpFHCsIVhHt8cEQ9t3Auq/NqoiCEuhxlxxQuDWA==}
+  piscina@4.9.4:
+    resolution: {integrity: sha512-RyBDr2VheQ8ZfH3N8SzQZHztqVyOtadTwLnUYof6gdj5161/eu2wNhCbGl5GHnNKDpnkicJYpKtL2J+y/gk6XA==}
 
   pkg-dir@4.2.0:
     resolution: {integrity: sha512-HRDzbaKjC+AOWVXxAU/x54COGeIv9eb+6CkDSQoNTt4XyWoIJvuPsXizxu/Fr23EiekbtZwmh1IcIG/l/a10GQ==}
@@ -26632,7 +26633,7 @@ snapshots:
       '@xhmikosr/bin-wrapper': 13.0.5
       commander: 8.3.0
       minimatch: 9.0.9
-      piscina: 4.9.3
+      piscina: 4.9.4
       semver: 7.7.3
       slash: 3.0.0
       source-map: 0.7.4
@@ -29635,7 +29636,7 @@ snapshots:
     dependencies:
       safe-buffer: 5.1.2
 
-  basic-ftp@5.3.1: {}
+  basic-ftp@6.2.1: {}
 
   batch@0.6.1: {}
 
@@ -32556,7 +32557,7 @@ snapshots:
 
   get-uri@6.0.5:
     dependencies:
-      basic-ftp: 5.3.1
+      basic-ftp: 6.2.1
       data-uri-to-buffer: 6.0.2
       debug: 4.4.3(supports-color@8.1.1)
     transitivePeerDependencies:
@@ -36273,7 +36274,7 @@ snapshots:
 
   pirates@4.0.7: {}
 
-  piscina@4.9.3:
+  piscina@4.9.4:
     optionalDependencies:
       '@napi-rs/nice': 1.0.1
 
