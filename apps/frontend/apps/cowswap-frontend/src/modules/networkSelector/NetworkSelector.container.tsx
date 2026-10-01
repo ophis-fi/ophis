@@ -65,7 +65,7 @@ export function NetworkSelector({
     }
   })
 
-  useBodyScrollbarLocker(isOpen && !shouldHideNetworkSelector, Media.upToMedium(false))
+  useBodyScrollbarLocker(isOpen && !disabled && !shouldHideNetworkSelector, Media.upToMedium(false))
 
   const onSelectChain = useOnSelectNetwork()
   const { darkMode: isDarkMode } = useTheme()

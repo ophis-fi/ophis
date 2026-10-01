@@ -5,8 +5,7 @@ import { TargetChainId } from '@cowprotocol/cow-sdk'
 
 import { Field } from 'legacy/state/types'
 
-// The application barrel imports the router, which depends back on the trade widget.
-import { NetworkSelector } from 'modules/application/containers/NetworkSelector/NetworkSelector.container'
+import { NetworkSelector } from 'modules/networkSelector'
 import { useOpenTokenSelectWidget } from 'modules/tokensList'
 
 import { TradeWidgetProps } from './types'

@@ -18,7 +18,7 @@ export function nearTokenCurrency(token: NearToken): TokenWithLogo | undefined {
   if (!chain) return undefined
   const native = NATIVE_CURRENCIES[chain.id as TargetChainId]
   if (token.contractAddress) {
-    const logo = getBridgeTokenLogo(chain.id, token.contractAddress, token.symbol)
+    const logo = getBridgeTokenLogo(chain.id, token.contractAddress)
     return new TokenWithLogo(logo, chain.id, token.contractAddress, token.decimals, token.symbol, token.symbol)
   }
   // A second native-looking asset (e.g. BTC(OMNI)) must not alias the native coin.

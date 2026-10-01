@@ -1,16 +1,18 @@
 import { NATIVE_CURRENCIES } from '@cowprotocol/common-const'
-import { getAddressKey, TargetChainId } from '@cowprotocol/cow-sdk'
+import { areAddressesEqual, getAddressKey, TargetChainId } from '@cowprotocol/cow-sdk'
 
 import { tokenLogo } from 'ophis/components/intent/tokenAssets'
 
 import { isNonEvmRecipientChain } from 'common/utils/recipientAddress.utils'
 
-export function getBridgeTokenLogo(chainId: number, address: string, symbol: string): string | undefined {
+import { BRIDGE_TOKEN_LOGOS } from './bridgeTokenLogos.const'
+
+export function getBridgeTokenLogo(chainId: number, address: string): string | undefined {
   const native = NATIVE_CURRENCIES[chainId as TargetChainId]
   const isNative =
     native &&
-    (isNonEvmRecipientChain(chainId)
-      ? address === native.address
-      : getAddressKey(address) === getAddressKey(native.address))
-  return (isNative && native.logoURI) || tokenLogo(symbol.toUpperCase())
+    (isNonEvmRecipientChain(chainId) ? address === native.address : areAddressesEqual(address, native.address))
+  if (isNative) return native.logoURI ?? tokenLogo(native.symbol?.toUpperCase() ?? '')
+  const addressKey = isNonEvmRecipientChain(chainId) ? address : getAddressKey(address)
+  return BRIDGE_TOKEN_LOGOS[`${chainId}:${addressKey}`]
 }

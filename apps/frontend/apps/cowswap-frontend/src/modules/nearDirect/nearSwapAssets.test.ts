@@ -103,3 +103,8 @@ it('preserves the bundled native artwork when the provider lists its contract ad
   }
   expect(nearTokenCurrency(token)?.logoURI).toBe(native.logoURI)
 })
+
+it('does not assign canonical artwork to an unknown contract with a familiar symbol', () => {
+  const unknown = { ...fixture.source, contractAddress: '0x1111111111111111111111111111111111111111' }
+  expect(nearTokenCurrency(unknown)?.logoURI).toBeUndefined()
+})

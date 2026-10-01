@@ -150,7 +150,7 @@ export class OphisNearIntentsBridgeProvider extends NearIntentsBridgeProvider {
       ...response,
       tokens: response.tokens.map((token) => ({
         ...token,
-        logoUrl: token.logoUrl || getBridgeTokenLogo(token.chainId, token.address, token.symbol ?? ''),
+        logoUrl: token.logoUrl || getBridgeTokenLogo(token.chainId, token.address),
       })),
     }
     if ((params.buyChainId as number) === HYPERCORE_CHAIN_ID) {
