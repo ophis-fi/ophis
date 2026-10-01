@@ -1,4 +1,4 @@
-import { useCallback, useState } from 'react'
+import { SetStateAction, useCallback, useState } from 'react'
 
 import { getCurrencyAddress, isSupportedChainId } from '@cowprotocol/common-utils'
 import { OrderKind } from '@cowprotocol/cow-sdk'
@@ -11,7 +11,22 @@ import { useTradeNavigate } from 'modules/trade'
 import { NearTransfer } from '../nearDirect.schemas'
 import { NearSwapSelection } from '../useNearSwapEntry'
 
-export function useNearSwapSelection(initial: NearSwapSelection, onExit: () => void) {
+interface NearSwapFormState {
+  selection: NearSwapSelection
+  setSelection(value: SetStateAction<NearSwapSelection>): void
+  recipient: string
+  setRecipient(value: string): void
+  refundTo: string
+  setRefundTo(value: string): void
+  preview: NearTransfer | undefined
+  setPreview(value: NearTransfer | undefined): void
+  busy: boolean
+  setBusy(value: boolean): void
+  select(field: Field, currency: Currency | null): void
+  switchTokens(): void
+}
+
+export function useNearSwapSelection(initial: NearSwapSelection, onExit: () => void): NearSwapFormState {
   const [selection, setSelection] = useState(initial)
   const [recipient, setRecipient] = useState('')
   const [refundTo, setRefundTo] = useState('')
@@ -34,7 +49,11 @@ export function useNearSwapSelection(initial: NearSwapSelection, onExit: () => v
         onExit()
         return
       }
-      setSelection((current) => ({ ...current, [field === Field.INPUT ? 'input' : 'output']: currency }))
+      setSelection((current) => ({
+        ...current,
+        [field === Field.INPUT ? 'input' : 'output']: currency,
+        amount: field === Field.INPUT ? '' : current.amount,
+      }))
       if (field === Field.INPUT) setRefundTo('')
       else setRecipient('')
     },

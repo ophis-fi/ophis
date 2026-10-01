@@ -38,6 +38,7 @@ export interface CurrencyInputPanelProps extends Partial<BuiltItProps> {
   disabled?: boolean
   inputDisabled?: boolean
   tokenSelectorDisabled?: boolean
+  allowUnsupportedTokenSelection?: boolean
   displayTokenName?: boolean
   displayChainName?: boolean
   inputTooltip?: string
@@ -240,11 +241,12 @@ export function CurrencyInputPanel(props: CurrencyInputPanelProps): ReactNode {
     openTokenSelectWidget(currency, field, (currency) => onCurrencySelection(field, currency))
   }, [openTokenSelectWidget, currency, onCurrencySelection, field])
 
+  const selectorDisabled = !!props.disabled || (disabled && !props.allowUnsupportedTokenSelection)
   const currencySelector = (
     <CurrencySelectButton
       onClick={onTokenSelectClick}
-      currency={disabled ? undefined : currency || undefined}
-      loading={areCurrenciesLoading || disabled}
+      currency={selectorDisabled ? undefined : currency || undefined}
+      loading={areCurrenciesLoading || selectorDisabled}
       readonlyMode={tokenSelectorDisabled}
       displayTokenName={displayTokenName}
       displayChainName={displayChainName}
@@ -259,7 +261,7 @@ export function CurrencyInputPanel(props: CurrencyInputPanelProps): ReactNode {
         className={className}
         data-address={selectedTokenAddress}
         withReceiveAmountInfo={!!receiveAmountInfo}
-        pointerDisabled={disabled}
+        pointerDisabled={selectorDisabled}
         readOnly={inputDisabled}
       >
         <styledEl.TopRow>

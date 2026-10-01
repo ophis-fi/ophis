@@ -241,6 +241,7 @@ jobs:
       - name: production-build cowswap-frontend
         working-directory: apps/frontend
         env:
+          NODE_OPTIONS: --max-old-space-size=6144
           REACT_APP_ARC_ENABLED: 'true'
           REACT_APP_CCTP_ENABLED: 'true'
           REACT_APP_ARC_LOCAL: 'false'
@@ -252,6 +253,7 @@ jobs:
       - name: production-build explorer with Arc
         working-directory: apps/frontend
         env:
+          NODE_OPTIONS: --max-old-space-size=6144
           REACT_APP_ARC_ENABLED: 'true'
           REACT_APP_CCTP_ENABLED: 'true'
           REACT_APP_ARC_LOCAL: 'false'

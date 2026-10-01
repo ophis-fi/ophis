@@ -82,9 +82,11 @@ export function SwapWidget(props: SwapWidgetProps): ReactNode {
         <StandardSwapWidget {...props} sourceTokens={direct.tokenOptions} enterDirect={direct.enter} />
       )}
       {direct.selection && <SelectTokenWidget customFlows={consentFlow} />}
-      <Suspense fallback={null}>
-        <NearSwapRecovery allowFunding={direct.enabled} />
-      </Suspense>
+      {direct.showRecovery && (
+        <Suspense fallback={null}>
+          <NearSwapRecovery allowFunding={direct.enabled} />
+        </Suspense>
+      )}
     </>
   )
 }

@@ -137,8 +137,8 @@ export function TradeWidgetForm(props: TradeWidgetProps): ReactNode {
 
   const { chainId, account } = useWalletInfo()
   const { allowsOffchainSigning } = useWalletDetails()
-  const isProviderNetworkUnsupported = useIsProviderNetworkUnsupported() && !params.inputTokenOptions
-  const isProviderNetworkDeprecated = useIsProviderNetworkDeprecated() && !params.inputTokenOptions
+  const isProviderNetworkUnsupported = useIsProviderNetworkUnsupported() && !params.externalFunding
+  const isProviderNetworkDeprecated = useIsProviderNetworkDeprecated() && !params.externalFunding
   const isSafeWallet = useIsSafeWallet()
   const openTokenSelectWidget = useOpenTokenSelectWidget()
   const tradeStateFromUrl = useTradeStateFromUrl()
@@ -280,6 +280,7 @@ export function TradeWidgetForm(props: TradeWidgetProps): ReactNode {
                   <div>
                     <CurrencyInputPanel
                       id="input-currency-input"
+                      allowUnsupportedTokenSelection={!!params.inputTokenOptions}
                       inputDisabled={params.inputsDisabled}
                       currencyInfo={inputCurrencyInfo}
                       showSetMax={showSetMax && !params.inputsDisabled}

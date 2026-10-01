@@ -24,6 +24,7 @@ export interface NearSwapSelection {
 export function useNearSwapEntry(): {
   selection: NearSwapSelection | null
   enabled: boolean
+  showRecovery: boolean
   tokenOptions: TokenPickerOptions | undefined
   enter(field: Field, currency: Currency | null): boolean
   exit(): void
@@ -38,13 +39,14 @@ export function useNearSwapEntry(): {
   return {
     selection: enabled ? selection : null,
     enabled,
+    showRecovery: isOphis,
     tokenOptions,
     enter(field, currency) {
       if (!enabled || field !== Field.INPUT || !currency || isSupportedChainId(currency.chainId)) return false
       setSelection({
         input: currency,
         output: state?.outputCurrency ?? null,
-        amount: state?.inputCurrencyAmount?.toExact() ?? '',
+        amount: '',
       })
       return true
     },
