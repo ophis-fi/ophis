@@ -1,5 +1,5 @@
 import { atom, useAtomValue } from 'jotai'
-import { useMemo, useState } from 'react'
+import { useCallback, useMemo, useState } from 'react'
 
 import { useFeatureFlags } from '@cowprotocol/common-hooks'
 import { isSupportedChainId } from '@cowprotocol/common-utils'
@@ -45,24 +45,32 @@ export function useNearSwapEntry(): {
     () => (enabled ? nearTokenPickerOptions(tokens ?? [], true) : undefined),
     [enabled, tokens],
   )
-  return {
-    selection: enabled ? selection : null,
-    enabled,
-    showRecovery: isOphis,
-    tokenOptions,
-    tokenError: enabled && 'error' in tokenQuery && !!tokenQuery.error,
-    retryTokens() {
-      if ('refetch' in tokenQuery) void tokenQuery.refetch()
-    },
-    enter(field, currency) {
+  const output = state?.outputCurrency ?? null
+  const refetch = 'refetch' in tokenQuery ? tokenQuery.refetch : undefined
+  const tokenError = enabled && 'error' in tokenQuery && !!tokenQuery.error
+  const retryTokens = useCallback((): void => {
+    void refetch?.()
+  }, [refetch])
+  const exit = useCallback((): void => setSelection(null), [])
+  const enter = useCallback(
+    (field: Field, currency: Currency | null): boolean => {
       if (!enabled || field !== Field.INPUT || !currency || isSupportedChainId(currency.chainId)) return false
-      setSelection({
-        input: currency,
-        output: state?.outputCurrency ?? null,
-        amount: '',
-      })
+      setSelection({ input: currency, output, amount: '' })
       return true
     },
-    exit: () => setSelection(null),
-  }
+    [enabled, output],
+  )
+  return useMemo(
+    () => ({
+      selection: enabled ? selection : null,
+      enabled,
+      showRecovery: isOphis,
+      tokenOptions,
+      tokenError,
+      retryTokens,
+      enter,
+      exit,
+    }),
+    [selection, enabled, isOphis, tokenOptions, tokenError, retryTokens, enter, exit],
+  )
 }

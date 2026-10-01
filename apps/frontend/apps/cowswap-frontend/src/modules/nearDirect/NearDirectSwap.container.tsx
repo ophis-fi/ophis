@@ -1,5 +1,5 @@
 import { useAtomValue } from 'jotai'
-import { ReactNode, useMemo } from 'react'
+import { ReactNode, useCallback, useMemo } from 'react'
 
 import { tryParseCurrencyAmount } from '@cowprotocol/common-utils'
 import { Currency, CurrencyAmount } from '@cowprotocol/currency'
@@ -39,28 +39,47 @@ export function NearDirectSwap({ initial, onExit }: { initial: NearSwapSelection
   const destination = findNearToken(tokens ?? [], selection.output)
   const tokenOptions = useMemo(() => nearTokenPickerOptions(tokens ?? [], true), [tokens])
   const buyTokenOptions = useMemo(() => nearTokenPickerOptions(tokens ?? []), [tokens])
-  const inputAmount = tryParseCurrencyAmount(selection.amount, selection.input) ?? null
-  const quoteAmount = inputAmount?.toExact() ?? ''
+  const { inputAmount, quoteAmount } = useMemo(() => {
+    const inputAmount = tryParseCurrencyAmount(selection.amount, selection.input) ?? null
+    return { inputAmount, quoteAmount: inputAmount?.toExact() ?? '' }
+  }, [selection.amount, selection.input])
   const outputAmount =
     preview && selection.output
       ? CurrencyAmount.fromRawAmount(selection.output, preview.response.quote.amountOut)
       : null
-  const bottomContent = (): ReactNode => (
-    <NearSwapDetails
-      source={source}
-      destination={destination}
-      amount={quoteAmount}
-      recipient={recipient}
-      refundTo={refundTo}
-      setRefundTo={setRefundTo}
-      preview={preview}
-      setPreview={setPreview}
-      busy={busy}
-      setBusy={setBusy}
-      isPending={isPending}
-      tokenError={!!tokenError}
-      refetch={refetch}
-    />
+  const bottomContent = useCallback(
+    (): ReactNode => (
+      <NearSwapDetails
+        source={source}
+        destination={destination}
+        amount={quoteAmount}
+        recipient={recipient}
+        refundTo={refundTo}
+        setRefundTo={setRefundTo}
+        preview={preview}
+        setPreview={setPreview}
+        busy={busy}
+        setBusy={setBusy}
+        isPending={isPending}
+        tokenError={!!tokenError}
+        refetch={refetch}
+      />
+    ),
+    [
+      source,
+      destination,
+      quoteAmount,
+      recipient,
+      refundTo,
+      setRefundTo,
+      preview,
+      setPreview,
+      busy,
+      setBusy,
+      isPending,
+      tokenError,
+      refetch,
+    ],
   )
 
   return (

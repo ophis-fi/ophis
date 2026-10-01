@@ -1,7 +1,7 @@
 import { isSellOrder } from '@cowprotocol/common-utils'
 import { OrderKind } from '@cowprotocol/cow-sdk'
 
-import { TRADE_URL_BUY_AMOUNT_KEY, TRADE_URL_SELL_AMOUNT_KEY } from '../const/tradeUrl'
+import { TRADE_URL_BUY_AMOUNT_KEY, TRADE_URL_ORDER_KIND_KEY, TRADE_URL_SELL_AMOUNT_KEY } from '../const/tradeUrl'
 
 export type TradeSearchParams = {
   amount?: string
@@ -24,6 +24,7 @@ export function parameterizeTradeSearch(search: string, searchParamsToAdd?: Trad
   if (amount === '') {
     searchParams.delete(TRADE_URL_SELL_AMOUNT_KEY)
     searchParams.delete(TRADE_URL_BUY_AMOUNT_KEY)
+    searchParams.delete(TRADE_URL_ORDER_KIND_KEY)
   } else if (amount && amountQueryKey) {
     searchParams.set(amountQueryKey, amount)
   }

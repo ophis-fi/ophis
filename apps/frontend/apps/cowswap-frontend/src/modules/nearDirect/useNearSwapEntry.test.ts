@@ -73,3 +73,13 @@ it('exposes a retryable asset failure before any direct swap is selected', () =>
   act(() => result.current.retryTokens())
   expect(refetch).toHaveBeenCalledTimes(1)
 })
+
+it('keeps the entry result and callbacks stable when its inputs are unchanged', () => {
+  mockStandalone = true
+  mockEnabled = true
+  mockRead.mockReturnValue({ data: [] })
+  const { result, rerender } = renderHook(() => useNearSwapEntry())
+  const previous = result.current
+  rerender()
+  expect(result.current).toBe(previous)
+})
