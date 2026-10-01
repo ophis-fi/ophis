@@ -13,6 +13,7 @@ import { TradeType } from 'modules/trade'
 
 import { useChainsToSelect } from '../../../hooks/useChainsToSelect'
 import { useOnSelectChain } from '../../../hooks/useOnSelectChain'
+import { useSelectTokenWidgetState } from '../../../hooks/useSelectTokenWidgetState'
 import { ChainsToSelectState } from '../../../types'
 
 // TODO: Re-enable once Yield should support cross-network selection in the modal
@@ -29,9 +30,10 @@ export function useChainPanelState(tradeType: TradeType | undefined, field?: Fie
   const onSelectChain = useOnSelectChain()
   const isBridgeFeatureEnabled = useIsBridgingEnabled()
   const isSmartContractWallet = useIsSmartContractWallet()
+  const { tokenOptions } = useSelectTokenWidgetState()
 
   const shouldDisableForYield = tradeType === TradeType.YIELD && !ENABLE_YIELD_CHAIN_PANEL
-  const shouldDisableForSmartContractWallet = field === Field.INPUT && isSmartContractWallet
+  const shouldDisableForSmartContractWallet = field === Field.INPUT && isSmartContractWallet && !tokenOptions
 
   const isEnabled =
     !shouldDisableForSmartContractWallet &&

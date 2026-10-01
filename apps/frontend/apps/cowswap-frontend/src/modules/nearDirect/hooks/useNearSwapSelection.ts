@@ -6,7 +6,7 @@ import { Currency } from '@cowprotocol/currency'
 
 import { Field } from 'legacy/state/types'
 
-import { useTradeNavigate } from 'modules/trade'
+import { useTradeNavigate, useTradeState } from 'modules/trade'
 
 import { NearTransfer } from '../nearDirect.schemas'
 import { NearSwapSelection } from '../useNearSwapEntry'
@@ -33,20 +33,33 @@ export function useNearSwapSelection(initial: NearSwapSelection, onExit: () => v
   const [preview, setPreview] = useState<NearTransfer>()
   const [busy, setBusy] = useState(false)
   const navigate = useTradeNavigate()
+  const { updateState } = useTradeState()
+
+  const exitToStandard = useCallback(
+    (input: Currency, output: Currency | null): void => {
+      if (!updateState) return
+      updateState({
+        inputCurrencyAmount: null,
+        outputCurrencyAmount: null,
+        orderKind: OrderKind.SELL,
+        recipient: null,
+        recipientAddress: null,
+      })
+      void navigate(
+        input.chainId,
+        { inputCurrencyId: getCurrencyAddress(input), outputCurrencyId: output ? getCurrencyAddress(output) : null },
+        { targetChainId: output?.chainId, kind: OrderKind.SELL, amount: '', clearRecipient: true },
+      )
+      onExit()
+    },
+    [navigate, updateState, onExit],
+  )
 
   const select = useCallback(
     (field: Field, currency: Currency | null): void => {
       if (!currency || busy || preview) return
       if (field === Field.INPUT && isSupportedChainId(currency.chainId)) {
-        void navigate(
-          currency.chainId,
-          {
-            inputCurrencyId: getCurrencyAddress(currency),
-            outputCurrencyId: selection.output ? getCurrencyAddress(selection.output) : null,
-          },
-          { targetChainId: selection.output?.chainId, kind: OrderKind.SELL, amount: selection.amount },
-        )
-        onExit()
+        exitToStandard(currency, selection.output)
         return
       }
       setSelection((current) => ({
@@ -57,27 +70,19 @@ export function useNearSwapSelection(initial: NearSwapSelection, onExit: () => v
       if (field === Field.INPUT) setRefundTo('')
       else setRecipient('')
     },
-    [busy, preview, selection, navigate, onExit],
+    [busy, preview, selection, exitToStandard],
   )
 
   const switchTokens = useCallback((): void => {
     if (!selection.output || busy || preview) return
     if (isSupportedChainId(selection.output.chainId)) {
-      void navigate(
-        selection.output.chainId,
-        {
-          inputCurrencyId: getCurrencyAddress(selection.output),
-          outputCurrencyId: getCurrencyAddress(selection.input),
-        },
-        { targetChainId: selection.input.chainId, kind: OrderKind.SELL },
-      )
-      onExit()
+      exitToStandard(selection.output, selection.input)
       return
     }
     setSelection({ input: selection.output, output: selection.input, amount: '' })
     setRecipient('')
     setRefundTo('')
-  }, [busy, preview, selection, navigate, onExit])
+  }, [busy, preview, selection, exitToStandard])
 
   return {
     selection,

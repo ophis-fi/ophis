@@ -4,7 +4,7 @@ import { ReactNode, Suspense, useEffect } from 'react'
 import { Loader } from '@cowprotocol/ui'
 
 import { useChainPanelState, useViewWithFlows, useWidgetEffects, useWidgetOpenState } from './hooks'
-import { SelectTokenModal } from './internal'
+import { SelectTokenModal, SelectTokenModalFrame } from './internal'
 import { customFlowsRegistryAtom } from './state'
 import { CustomFlowsRegistry, TokenSelectorView } from './types'
 
@@ -57,7 +57,14 @@ export function SelectTokenWidget({ displayLpTokenLists, standalone, customFlows
   }, [customFlows, setCustomFlows])
 
   return (
-    <Suspense fallback={<Loader />}>
+    <Suspense
+      fallback={
+        <SelectTokenModalFrame>
+          <SelectTokenModal.Header />
+          <Loader />
+        </SelectTokenModalFrame>
+      }
+    >
       <SelectTokenModal>
         <SelectTokenWidgetContent />
       </SelectTokenModal>

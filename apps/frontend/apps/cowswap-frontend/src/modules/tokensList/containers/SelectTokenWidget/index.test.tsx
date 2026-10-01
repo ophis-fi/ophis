@@ -1,10 +1,11 @@
 import { ReactNode, Suspense } from 'react'
 
-import { act, render, screen } from '@testing-library/react'
+import { act, fireEvent, render, screen } from '@testing-library/react'
 
 import { SelectTokenWidget } from './index'
 
 const mockClose = jest.fn()
+const mockDismiss = jest.fn()
 let mockPending: Promise<void> | undefined
 const mockUpdate = jest.fn()
 jest.mock('jotai', () => ({ useSetAtom: () => mockUpdate }))
@@ -19,9 +20,10 @@ jest.mock('./hooks', () => ({
   },
 }))
 jest.mock('./internal', () => ({
-  SelectTokenModal: ({ children }: { children: ReactNode }) => {
-    return <div>{children}</div>
-  },
+  SelectTokenModal: Object.assign(({ children }: { children: ReactNode }) => <div>{children}</div>, {
+    Header: (): ReactNode => <button onClick={mockDismiss}>Close picker</button>,
+  }),
+  SelectTokenModalFrame: ({ children }: { children: ReactNode }) => <div role="dialog">{children}</div>,
 }))
 jest.mock('./state', () => ({ customFlowsRegistryAtom: 'flows' }))
 jest.mock('../../hooks/useSelectTokenWidgetState', () => ({ useSelectTokenWidgetState: () => ({}) }))
@@ -30,7 +32,7 @@ jest.mock('../../pure/SelectTokenModal/styled', () => ({}))
 
 it('keeps the picker open while asset queries suspend', async () => {
   let resolve: () => void = () => undefined
-  const view = () => (
+  const view = (): ReactNode => (
     <Suspense fallback={<span>Outer loading</span>}>
       <SelectTokenWidget />
     </Suspense>
@@ -41,7 +43,9 @@ it('keeps the picker open while asset queries suspend', async () => {
     resolve = done
   })
   rerender(view())
-  expect(screen.getByText('Loading assets')).toBeTruthy()
+  expect(screen.getByRole('dialog').contains(screen.getByText('Loading assets'))).toBe(true)
+  fireEvent.click(screen.getByRole('button', { name: 'Close picker' }))
+  expect(mockDismiss).toHaveBeenCalledTimes(1)
   expect(screen.queryByText('Outer loading')).toBeNull()
   expect(mockClose).not.toHaveBeenCalled()
   await act(async () => {
