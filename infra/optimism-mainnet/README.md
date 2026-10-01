@@ -102,9 +102,21 @@ not a funded live user swap or destination-delivery canary.**
 Both new source flags remain off. Before enabling Optimism, rerun
 `node apps/frontend/scripts/across-source-preflight.mjs 10` and record a funded
 mainnet settlement emitting the expected SpokePool `FundsDeposited` event in
-the same transaction, followed by destination delivery. Polygon also needs its
-helper deployed and verified before the equivalent live proof. Successful fork
-execution alone does not make either production source available.
+the same transaction, followed by destination delivery. Polygon requires the
+equivalent live proof. Successful fork execution alone does not make either
+production source available.
+
+Polygon's helper was subsequently deployed at
+`0xEdE97D044d4C8aAA682968bee10284521B9f311a` in
+[transaction 0xc2f8…2b8e](https://polygonscan.com/tx/0xc2f82a99b62c019634a87c66eaa837e6fb1f36419ab525f5449d783a0cc12b8e),
+block 94789732, on October 1, 2026. The transaction succeeded and its 520-byte
+runtime matches the reviewed compiled artifact exactly. Deployment consumed
+165,288 gas, costing 0.053009350172323125 POL. This closes the missing-contract
+blocker; it is not a live bridge deposit or destination-delivery proof.
+All seven dependency checks passed using `https://polygon.drpc.org`, and the
+trampoline's `settlement()` matched Polygon's canonical settlement,
+`0x9008D19f58AAbD9eD0D60971565AA8510560ab41`. The script's default PublicNode
+endpoint timed out on several reads during verification.
 
 ### Host ports (all 127.0.0.1-bound)
 

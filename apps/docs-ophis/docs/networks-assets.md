@@ -91,8 +91,8 @@ pairs and lanes may change; no venue is promised on every chain or every trade.
 Across and NEAR Intents remain separate providers for their supported routes.
 An EVM network in the same-chain selector is not automatically an enabled bridge source.
 Optimism and Polygon Across source activation remains pending live execution
-and delivery verification; Polygon also needs its helper deployed. Live assets
-and quotes still gate each route. See the [Optimism deployment record](https://github.com/ophis-fi/ophis/blob/main/infra/optimism-mainnet/README.md#across-source-dependencies-october-1-2026)
+and delivery verification. Their missing helper contracts are now deployed.
+Live assets and quotes still gate each route. See the [deployment record](https://github.com/ophis-fi/ophis/blob/main/infra/optimism-mainnet/README.md#across-source-dependencies-october-1-2026)
 for the mainnet dependencies and the separate fork-execution proof.
 
 ## Tokenized-asset labels
