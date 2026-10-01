@@ -16,7 +16,7 @@ overrides:
   '@walletconnect/utils': 2.25.0
   '@walletconnect/types': 2.25.0
   adm-zip: ^0.6.1
-  devalue@>=5.0.0 <5.9.2: 5.9.2
+  devalue@>=5.0.0 <5.9.3: 5.9.3
   elliptic: ^6.6.1
   form-data: ^2.5.6
   protobufjs: ^7.6.5
@@ -10807,8 +10807,8 @@ packages:
     engines: {node: '>= 16.0.0'}
     hasBin: true
 
-  devalue@5.9.2:
-    resolution: {integrity: sha512-po4PAY5c53tw5XMocSnf8A/5OHhbbUftpr93aEN6BBoAdntUmK7vu7wOATqvt7cXO7m1Cl4gMVn6p7n6n4mj0w==}
+  devalue@5.9.3:
+    resolution: {integrity: sha512-xRumYOCUZN/EesqHEU3WOXanOZNvfZFZ/o1AHVFDX1yI0UAkZkOgDXt341CzKoBVIkgQba55/+DjGBKrIoKcHw==}
 
   devlop@1.1.0:
     resolution: {integrity: sha512-RWmIqhcFf1lRYBvNmr7qTNuyCt/7/ns2jbpp1+PalgE/rDQcBT0fioSMUpJ93irlUhC5hrg4cYqe6U+0ImW0rA==}
@@ -18932,7 +18932,7 @@ snapshots:
       '@astrojs/internal-helpers': 0.10.0
       '@preact/preset-vite': 2.10.5(@babel/core@7.29.7)(preact@10.28.2)(rollup@4.63.1)(vite@7.3.5(@types/node@26.5.0)(jiti@2.6.1)(less@4.8.1)(lightningcss@1.32.0)(sass-embedded@1.88.0)(sass@1.88.0)(terser@5.51.2)(yaml@1.10.3))
       '@preact/signals': 2.9.0(preact@10.28.2)
-      devalue: 5.9.2
+      devalue: 5.9.3
       preact: 10.28.2
       preact-render-to-string: 6.7.0(preact@10.28.2)
       vite: 7.3.5(@types/node@26.5.0)(jiti@2.6.1)(less@4.8.1)(lightningcss@1.32.0)(sass-embedded@1.88.0)(sass@1.88.0)(terser@5.51.2)(yaml@1.10.3)
@@ -29298,7 +29298,7 @@ snapshots:
       clsx: 2.1.1
       common-ancestor-path: 2.0.0
       cookie: 1.1.1
-      devalue: 5.9.2
+      devalue: 5.9.3
       diff: 9.0.0
       dset: 3.1.4
       es-module-lexer: 2.3.2
@@ -31017,7 +31017,7 @@ snapshots:
     dependencies:
       address: 2.0.3
 
-  devalue@5.9.2: {}
+  devalue@5.9.3: {}
 
   devlop@1.1.0:
     dependencies:
