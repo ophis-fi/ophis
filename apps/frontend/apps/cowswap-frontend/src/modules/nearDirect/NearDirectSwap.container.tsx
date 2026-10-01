@@ -1,5 +1,5 @@
 import { useAtomValue } from 'jotai'
-import { ReactNode, useCallback, useMemo } from 'react'
+import { ReactNode, useMemo } from 'react'
 
 import { tryParseCurrencyAmount } from '@cowprotocol/common-utils'
 import { Currency, CurrencyAmount } from '@cowprotocol/currency'
@@ -38,43 +38,27 @@ export function NearDirectSwap({ initial, onExit }: { initial: NearSwapSelection
   const tokenOptions = useMemo(() => nearTokenPickerOptions(tokens, true), [tokens])
   const buyTokenOptions = useMemo(() => nearTokenPickerOptions(tokens), [tokens])
   const inputAmount = tryParseCurrencyAmount(selection.amount, selection.input) ?? null
+  const quoteAmount = inputAmount?.toExact() ?? ''
   const outputAmount =
     preview && selection.output
       ? CurrencyAmount.fromRawAmount(selection.output, preview.response.quote.amountOut)
       : null
-  const bottomContent = useCallback(
-    () => (
-      <NearSwapDetails
-        source={source}
-        destination={destination}
-        amount={selection.amount}
-        recipient={recipient}
-        refundTo={refundTo}
-        setRefundTo={setRefundTo}
-        preview={preview}
-        setPreview={setPreview}
-        busy={busy}
-        setBusy={setBusy}
-        isPending={isPending}
-        tokenError={!!tokenError}
-        refetch={refetch}
-      />
-    ),
-    [
-      source,
-      destination,
-      selection.amount,
-      recipient,
-      refundTo,
-      setRefundTo,
-      preview,
-      setPreview,
-      busy,
-      setBusy,
-      isPending,
-      tokenError,
-      refetch,
-    ],
+  const bottomContent = (): ReactNode => (
+    <NearSwapDetails
+      source={source}
+      destination={destination}
+      amount={quoteAmount}
+      recipient={recipient}
+      refundTo={refundTo}
+      setRefundTo={setRefundTo}
+      preview={preview}
+      setPreview={setPreview}
+      busy={busy}
+      setBusy={setBusy}
+      isPending={isPending}
+      tokenError={!!tokenError}
+      refetch={refetch}
+    />
   )
 
   return (
