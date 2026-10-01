@@ -1,4 +1,4 @@
-import { NATIVE_CURRENCIES } from '@cowprotocol/common-const'
+import { NATIVE_CURRENCIES, STARKNET_CHAIN_ID, ZCASH_CHAIN_ID } from '@cowprotocol/common-const'
 import { AdditionalTargetChainId } from '@cowprotocol/cow-sdk'
 import { Token } from '@cowprotocol/currency'
 
@@ -11,6 +11,13 @@ jest.mock('modules/tokensList', () => ({
 }))
 
 const tokens: NearToken[] = [fixture.source, fixture.destination]
+
+it('keeps source networks visible during a catalogue outage without inventing selectable assets', () => {
+  const options = nearTokenPickerOptions([], true)
+  expect(options.chains.map(({ id }) => id)).toEqual(expect.arrayContaining([STARKNET_CHAIN_ID, ZCASH_CHAIN_ID]))
+  expect(options.tokens).toEqual([])
+  expect(nearTokenPickerOptions([]).chains).toEqual([])
+})
 
 it('keeps chain and decimals bound to the exact live asset', () => {
   const currency = nearTokenCurrency(tokens[0])
