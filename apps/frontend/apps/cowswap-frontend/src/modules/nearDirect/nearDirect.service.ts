@@ -34,7 +34,7 @@ export function nearErrorMessage(error: unknown): string {
     const body = z.object({ message: z.string().max(500) }).safeParse(error.body)
     if (body.success) return body.data.message
   }
-  return error instanceof Error ? error.message : 'NEAR is temporarily unavailable. Please retry.'
+  return error instanceof Error ? error.message : 'Swaps are temporarily unavailable. Please retry.'
 }
 
 export function isNearAddress(blockchain: string, value: string): boolean {
@@ -68,7 +68,7 @@ export function parseNearAmount(amount: string, decimals: number): string {
 export function verifyNearQuote(value: unknown): NearQuote {
   const response = nearQuoteSchema.parse(value)
   if (!verifyQuoteSignature(response))
-    throw new Error('NEAR quote signature is invalid. No deposit address was accepted.')
+    throw new Error('Swap quote signature is invalid. No deposit address was accepted.')
   return response
 }
 
@@ -76,7 +76,7 @@ export function validateNearTransfer(transfer: NearTransfer): void {
   const { response, source, destination } = transfer
   const { quote, quoteRequest: request } = verifyNearQuote(response)
   for (const key of ['virtualChainRecipient', 'virtualChainRefundRecipient', 'customRecipientMsg']) {
-    if (request[key] || quote[key]) throw new Error('NEAR returned unsupported recipient routing metadata.')
+    if (request[key] || quote[key]) throw new Error('The swap service returned unsupported recipient routing metadata.')
   }
   const invalid = [
     request.dry,
@@ -99,7 +99,7 @@ export function validateNearTransfer(transfer: NearTransfer): void {
     !quote.deadline,
   ].some(Boolean)
   if (invalid) {
-    throw new Error('NEAR returned an incompatible deposit quote.')
+    throw new Error('The swap service returned an incompatible deposit quote.')
   }
 }
 
@@ -130,11 +130,11 @@ export function assertNearRequest(response: NearQuote, request: QuoteRequest): v
     const actual =
       response.quoteRequest.appFees?.filter((entry) => areAddressesEqual(entry.recipient, fee.recipient)) ?? []
     const total = actual.reduce((sum, entry) => sum + entry.fee, 0)
-    if (total <= 0 || total > fee.fee) throw new Error('NEAR returned unexpected Ophis fees.')
+    if (total <= 0 || total > fee.fee) throw new Error('The swap service returned unexpected Ophis fees.')
   }
   for (const key of Object.keys(request) as (keyof QuoteRequest)[]) {
     if (key !== 'appFees' && JSON.stringify(response.quoteRequest[key]) !== JSON.stringify(request[key])) {
-      throw new Error(`NEAR changed the requested ${key}. Request a new quote.`)
+      throw new Error(`The swap service changed the requested ${key}. Request a new quote.`)
     }
   }
 }

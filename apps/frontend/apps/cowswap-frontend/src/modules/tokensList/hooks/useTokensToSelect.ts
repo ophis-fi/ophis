@@ -15,6 +15,7 @@ import { Field } from 'legacy/state/types'
 import { useChainsToSelect } from './useChainsToSelect'
 import { useSelectTokenWidgetState } from './useSelectTokenWidgetState'
 
+import { TokenPickerOptions } from '../state/selectTokenWidgetAtom'
 import { tokensToSelectAtom } from '../state/tokensToSelectAtom'
 
 const EMPTY_TOKENS: TokenWithLogo[] = []
@@ -31,7 +32,7 @@ export interface TokensToSelectContext {
 export function useTokensToSelect(): TokensToSelectContext {
   const { chainId } = useWalletInfo()
   const favoriteTokens = useFavoriteTokens()
-  const { selectedTargetChainId = chainId, field, oppositeToken } = useSelectTokenWidgetState()
+  const { selectedTargetChainId = chainId, field, oppositeToken, tokenOptions } = useSelectTokenWidgetState()
   const chainsToSelect = useChainsToSelect()
   const allTokens = useAtomValue(tokensToSelectAtom)
   const targetChainId = chainsToSelect?.defaultChainId ?? selectedTargetChainId
@@ -47,8 +48,13 @@ export function useTokensToSelect(): TokensToSelectContext {
     return chainId
   }, [chainId, field, oppositeToken])
 
+  const pickerTokens = useMemo(() => getPickerTokens(tokenOptions, targetChainId), [tokenOptions, targetChainId])
+
   const areTokensFromBridge =
-    field === Field.OUTPUT && targetChainId !== sourceChainId && (!!oppositeToken || !isSupportedChainId(targetChainId))
+    !pickerTokens &&
+    field === Field.OUTPUT &&
+    targetChainId !== sourceChainId &&
+    (!!oppositeToken || !isSupportedChainId(targetChainId))
 
   const params: BuyTokensParams | undefined = useMemo(() => {
     if (!areTokensFromBridge) return undefined
@@ -61,7 +67,6 @@ export function useTokensToSelect(): TokensToSelectContext {
   }, [areTokensFromBridge, sourceChainId, targetChainId, oppositeToken])
 
   const { data: result, isLoading } = useBridgeSupportedTokens(params)
-  const isPickerLoading = isLoading && !result?.tokens.length
 
   const bridgeSupportedTokensMap = useMemo(() => {
     const tokens = result?.tokens
@@ -74,7 +79,8 @@ export function useTokensToSelect(): TokensToSelectContext {
     }, {})
   }, [result])
 
-  return useMemo(() => {
+  const isPickerLoading = useMemo(() => isLoading && !result?.tokens.length, [isLoading, result])
+  const defaults = useMemo(() => {
     // In bridge mode, hide favorites until we know what's actually bridgeable for this chain pair.
     // This avoids selecting a favorite token and then getting it cleared by async validation.
     const bridgeTokensByAddress = result?.tokens.reduce<Record<string, TokenWithLogo>>((acc, token) => {
@@ -99,4 +105,21 @@ export function useTokensToSelect(): TokensToSelectContext {
       bridgeSupportedTokensMap,
     }
   }, [allTokens, bridgeSupportedTokensMap, isPickerLoading, areTokensFromBridge, favoriteTokens, result])
+  return pickerTokens ? pickerTokenContext(pickerTokens) : defaults
+}
+
+function getPickerTokens(options: TokenPickerOptions | undefined, chainId: number): TokenWithLogo[] | undefined {
+  if (!options || (options.includeDefaultTokens && isSupportedChainId(chainId))) return undefined
+  return options.tokens.filter((token) => token.chainId === chainId)
+}
+
+function pickerTokenContext(tokens: TokenWithLogo[]): TokensToSelectContext {
+  return {
+    isLoading: false,
+    tokens,
+    favoriteTokens: EMPTY_TOKENS,
+    areTokensFromBridge: true,
+    isRouteAvailable: tokens.length > 0,
+    bridgeSupportedTokensMap: Object.fromEntries(tokens.map((token) => [getAddressKey(token.address), true])),
+  }
 }

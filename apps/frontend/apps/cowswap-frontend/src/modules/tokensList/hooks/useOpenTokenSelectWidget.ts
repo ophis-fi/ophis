@@ -15,11 +15,14 @@ import { useTradeTypeInfoFromUrl } from 'modules/trade/hooks/useTradeTypeInfoFro
 import { useCloseTokenSelectWidget } from './useCloseTokenSelectWidget'
 import { useUpdateSelectTokenWidgetState } from './useUpdateSelectTokenWidgetState'
 
+import { TokenPickerOptions } from '../state/selectTokenWidgetAtom'
+
 export function useOpenTokenSelectWidget(): (
   selectedToken: Nullish<Currency>,
   field: Field | undefined,
   oppositeToken: TokenWithLogo | LpToken | Currency | undefined,
   onSelectToken: (currency: Currency) => void,
+  tokenOptions?: TokenPickerOptions,
 ) => void {
   const updateSelectTokenWidget = useUpdateSelectTokenWidgetState()
   const closeTokenSelectWidget = useCloseTokenSelectWidget()
@@ -32,15 +35,16 @@ export function useOpenTokenSelectWidget(): (
   const shouldLockTargetChain = tradeType === TradeType.LIMIT_ORDER || tradeType === TradeType.ADVANCED_ORDERS
 
   return useCallback(
-    (selectedToken, field, oppositeToken, onSelectToken) => {
+    (selectedToken, field, oppositeToken, onSelectToken, tokenOptions) => {
       const isOutputField = field === Field.OUTPUT
       const nextSelectedTargetChainId =
-        isOutputField && selectedToken && isBridgingEnabled && !shouldLockTargetChain
+        (isOutputField || !!tokenOptions) && selectedToken && isBridgingEnabled && !shouldLockTargetChain
           ? selectedToken.chainId
           : undefined
 
       updateSelectTokenWidget({
         selectedToken,
+        tokenOptions,
         field,
         oppositeToken,
         open: true,

@@ -76,9 +76,9 @@ export function TradeWidgetForm(props: TradeWidgetProps): ReactNode {
   const isAlternativeOrderModalVisible = useIsAlternativeOrderModalVisible()
   const isLimitOrderTrade = tradeTypeInfo?.tradeType === TradeType.LIMIT_ORDER
   const shouldLockForAlternativeOrder = isAlternativeOrderModalVisible && isLimitOrderTrade
-  const isWrapOrUnwrap = useIsWrapOrUnwrap()
+  const isWrapOrUnwrap = useIsWrapOrUnwrap() && !props.params.externalFunding
   const { isLimitOrdersUpgradeBannerEnabled } = useFeatureFlags()
-  const isCurrentTradeBridging = useIsCurrentTradeBridging()
+  const isCurrentTradeBridging = useIsCurrentTradeBridging() || !!props.params.externalFunding
   const { orderKind } = useDerivedTradeState() || {}
   const { darkMode, isOphisMobileSwap } = useTheme()
   const isMobileSwap = useIsMobileSwap()
@@ -137,8 +137,8 @@ export function TradeWidgetForm(props: TradeWidgetProps): ReactNode {
 
   const { chainId, account } = useWalletInfo()
   const { allowsOffchainSigning } = useWalletDetails()
-  const isProviderNetworkUnsupported = useIsProviderNetworkUnsupported()
-  const isProviderNetworkDeprecated = useIsProviderNetworkDeprecated()
+  const isProviderNetworkUnsupported = useIsProviderNetworkUnsupported() && !params.inputTokenOptions
+  const isProviderNetworkDeprecated = useIsProviderNetworkDeprecated() && !params.inputTokenOptions
   const isSafeWallet = useIsSafeWallet()
   const openTokenSelectWidget = useOpenTokenSelectWidget()
   const tradeStateFromUrl = useTradeStateFromUrl()
@@ -196,16 +196,16 @@ export function TradeWidgetForm(props: TradeWidgetProps): ReactNode {
 
   const openSellTokenSelect = useCallback(
     (selectedToken: Nullish<Currency>, field: Field | undefined, onSelectToken: (currency: Currency) => void) => {
-      openTokenSelectWidget(selectedToken, field, buyToken || undefined, onSelectToken)
+      openTokenSelectWidget(selectedToken, field, buyToken || undefined, onSelectToken, params.inputTokenOptions)
     },
-    [openTokenSelectWidget, buyToken],
+    [openTokenSelectWidget, buyToken, params.inputTokenOptions],
   )
 
   const openBuyTokenSelect = useCallback(
     (selectedToken: Nullish<Currency>, field: Field | undefined, onSelectToken: (currency: Currency) => void) => {
-      openTokenSelectWidget(selectedToken, field, sellToken || undefined, onSelectToken)
+      openTokenSelectWidget(selectedToken, field, sellToken || undefined, onSelectToken, params.outputTokenOptions)
     },
-    [openTokenSelectWidget, sellToken],
+    [openTokenSelectWidget, sellToken, params.outputTokenOptions],
   )
 
   const toggleAccountModal = useToggleAccountModal()
@@ -313,8 +313,8 @@ export function TradeWidgetForm(props: TradeWidgetProps): ReactNode {
                         params.inputsDisabled ||
                         params.disableTokenSwitch ||
                         shouldLockForAlternativeOrder ||
-                        isOutputTokenUnsupported ||
-                        isNonEvmRecipientChain(buyToken?.chainId) ||
+                        ((isOutputTokenUnsupported || isNonEvmRecipientChain(buyToken?.chainId)) &&
+                          !params.externalFunding) ||
                         isProviderNetworkUnsupported ||
                         isProviderNetworkDeprecated
                       }

@@ -20,13 +20,7 @@ import {
 
 import { useCloseTokenSelectWidget } from '../../../hooks/useCloseTokenSelectWidget'
 import { useSelectTokenWidgetState } from '../../../hooks/useSelectTokenWidgetState'
-import {
-  useChainPanelState,
-  useDismissHandler,
-  useManageWidgetVisibility,
-  useWidgetEffects,
-  useWidgetOpenState,
-} from '../hooks'
+import { useChainPanelState, useDismissHandler, useManageWidgetVisibility, useWidgetOpenState } from '../hooks'
 import { InnerWrapper, ModalContainer, WidgetCard, WidgetOverlay, Wrapper } from '../styled'
 
 export interface SelectTokenModalProps {
@@ -43,8 +37,6 @@ export function SelectTokenModal({ children }: SelectTokenModalProps): ReactNode
 
   const chainPanel = useChainPanelState(widgetState.tradeType, widgetState.field)
   const isChainPanelVisible = chainPanel.isEnabled && !isCompactLayout
-
-  useWidgetEffects(isOpen)
 
   if (!isOpen) return null
 

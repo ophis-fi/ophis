@@ -2,6 +2,8 @@ import { ReactNode } from 'react'
 
 import { PriceImpact } from 'legacy/hooks/usePriceImpact'
 
+import { TokenPickerOptions } from 'modules/tokensList'
+
 import { CurrencyInputPanelProps } from 'common/pure/CurrencyInputPanel'
 import { CurrencyInfo } from 'common/pure/CurrencyInputPanel/types'
 
@@ -14,6 +16,9 @@ export interface TradeWidgetActions {
 }
 
 export interface TradeWidgetParams {
+  externalFunding?: boolean
+  inputTokenOptions?: TokenPickerOptions
+  outputTokenOptions?: TokenPickerOptions
   recipient?: string | null
   compactView: boolean
   showRecipient: boolean

@@ -93,7 +93,7 @@ export function NearTransferCard({
   }, [busy, transfer, txHash, setTransfers])
 
   return (
-    <Panel aria-label="NEAR swap tracking">
+    <Panel aria-label="Swap tracking">
       <h3 aria-live="polite">{STATUS_LABELS[latest.status]}</h3>
       <NearQuote transfer={latest} />
       {!assetsVerified && allowFunding && <p>Verifying assets before displaying deposit instructions…</p>}

@@ -1,7 +1,9 @@
 import { useSetAtom } from 'jotai'
-import { ReactNode, useEffect } from 'react'
+import { ReactNode, Suspense, useEffect } from 'react'
 
-import { useChainPanelState, useViewWithFlows } from './hooks'
+import { Loader } from '@cowprotocol/ui'
+
+import { useChainPanelState, useViewWithFlows, useWidgetEffects, useWidgetOpenState } from './hooks'
 import { SelectTokenModal } from './internal'
 import { customFlowsRegistryAtom } from './state'
 import { CustomFlowsRegistry, TokenSelectorView } from './types'
@@ -40,6 +42,7 @@ export interface SelectTokenWidgetProps {
  * Custom flows (like consent) are provided externally via the customFlows prop.
  */
 export function SelectTokenWidget({ displayLpTokenLists, standalone, customFlows }: SelectTokenWidgetProps): ReactNode {
+  useWidgetEffects(useWidgetOpenState())
   const updateWidgetState = useSetAtom(updateSelectTokenWidgetAtom)
   const setCustomFlows = useSetAtom(customFlowsRegistryAtom)
 
@@ -54,9 +57,11 @@ export function SelectTokenWidget({ displayLpTokenLists, standalone, customFlows
   }, [customFlows, setCustomFlows])
 
   return (
-    <SelectTokenModal>
-      <SelectTokenWidgetContent />
-    </SelectTokenModal>
+    <Suspense fallback={<Loader />}>
+      <SelectTokenModal>
+        <SelectTokenWidgetContent />
+      </SelectTokenModal>
+    </Suspense>
   )
 }
 

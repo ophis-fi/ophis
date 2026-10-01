@@ -1,76 +1,128 @@
-import { useAtom, useAtomValue } from 'jotai'
-import { ReactNode, useCallback, useState } from 'react'
+import { useAtomValue } from 'jotai'
+import { ReactNode, useCallback, useMemo } from 'react'
 
-import { nearTokensAtom, nearTransfersAtom } from './nearDirect.atoms'
-import { NearTransfer } from './nearDirect.schemas'
-import { getNearFundingDeadline, nearErrorMessage } from './nearDirect.service'
-import { Panel, Stack } from './nearDirect.styled'
-import { NearQuote } from './NearQuote.pure'
-import { NearSwapForm } from './NearSwapForm.container'
-import { NearTransferCard } from './NearTransferCard.container'
+import { tryParseCurrencyAmount } from '@cowprotocol/common-utils'
+import { Currency, CurrencyAmount } from '@cowprotocol/currency'
 
-export function NearDirectSwap({ recoveryOnly = false }: { recoveryOnly?: boolean }): ReactNode {
+import { Field } from 'legacy/state/types'
+
+import { TradeWidget } from 'modules/trade'
+
+import { CurrencyInfo } from 'common/pure/CurrencyInputPanel/types'
+
+import { useNearSwapSelection } from './hooks/useNearSwapSelection'
+import { nearTokensAtom } from './nearDirect.atoms'
+import { findNearToken, nearTokenPickerOptions } from './nearSwapAssets.utils'
+import { NearSwapDetails } from './NearSwapDetails.container'
+import { NearSwapSelection } from './useNearSwapEntry'
+
+export function NearDirectSwap({ initial, onExit }: { initial: NearSwapSelection; onExit(): void }): ReactNode {
   const { data: tokens = [], isPending, error: tokenError, refetch } = useAtomValue(nearTokensAtom)
-  const [transfers, setTransfers] = useAtom(nearTransfersAtom)
-  const [preview, setPreview] = useState<NearTransfer>()
-  const [error, setError] = useState('')
-  const confirm = useCallback(async (): Promise<void> => {
-    if (!preview || recoveryOnly) return
-    try {
-      if (getNearFundingDeadline(preview.response) <= Date.now() + 60_000)
-        throw new Error('Quote expired. Go back and review a new quote.')
-      await setTransfers((current) =>
-        current.some((item) => item.response.signature === preview.response.signature)
-          ? current
-          : [...current, preview],
-      )
-      setPreview(undefined)
-      setError('')
-    } catch (failure) {
-      setError(nearErrorMessage(failure))
-    }
-  }, [preview, recoveryOnly, setTransfers])
-  return (
-    <Stack>
-      {recoveryOnly && transfers.length > 0 && (
-        <p>New NEAR swaps are paused. Existing swaps are still tracked below.</p>
-      )}
-      {!recoveryOnly && (
-        <Panel aria-label="Cross-chain swap via NEAR Intents">
-          <h2>Cross-chain swap</h2>
-          <p>Send from your wallet and receive on another network through NEAR Intents.</p>
-          {preview && (
-            <>
-              <NearQuote transfer={preview} />
-              <button type="button" onClick={confirm}>
-                Confirm and show deposit instructions
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  setPreview(undefined)
-                  setError('')
-                }}
-              >
-                Back
-              </button>
-            </>
-          )}
-          <NearSwapForm tokens={tokens} isPending={isPending} hidden={!!preview} onQuote={setPreview} />
-          {(error || tokenError) && <p role="alert">{error || 'Unable to load NEAR assets. Please try again.'}</p>}
-          {tokenError && (
-            <button type="button" onClick={() => refetch()}>
-              Retry loading assets
-            </button>
-          )}
-        </Panel>
-      )}
-      {transfers
-        .slice()
-        .reverse()
-        .map((transfer) => (
-          <NearTransferCard key={transfer.response.signature} transfer={transfer} allowFunding={!recoveryOnly} />
-        ))}
-    </Stack>
+  const form = useNearSwapSelection(initial, onExit)
+  const {
+    selection,
+    setSelection,
+    recipient,
+    setRecipient,
+    refundTo,
+    setRefundTo,
+    preview,
+    setPreview,
+    busy,
+    setBusy,
+    select,
+    switchTokens,
+  } = form
+  const source = findNearToken(tokens, selection.input)
+  const destination = findNearToken(tokens, selection.output)
+  const tokenOptions = useMemo(() => nearTokenPickerOptions(tokens, true), [tokens])
+  const buyTokenOptions = useMemo(() => nearTokenPickerOptions(tokens), [tokens])
+  const inputAmount = tryParseCurrencyAmount(selection.amount, selection.input) ?? null
+  const outputAmount =
+    preview && selection.output
+      ? CurrencyAmount.fromRawAmount(selection.output, preview.response.quote.amountOut)
+      : null
+  const bottomContent = useCallback(
+    () => (
+      <NearSwapDetails
+        source={source}
+        destination={destination}
+        amount={selection.amount}
+        recipient={recipient}
+        refundTo={refundTo}
+        setRefundTo={setRefundTo}
+        preview={preview}
+        setPreview={setPreview}
+        busy={busy}
+        setBusy={setBusy}
+        isPending={isPending}
+        tokenError={!!tokenError}
+        refetch={refetch}
+      />
+    ),
+    [
+      source,
+      destination,
+      selection.amount,
+      recipient,
+      refundTo,
+      setRefundTo,
+      preview,
+      setPreview,
+      busy,
+      setBusy,
+      isPending,
+      tokenError,
+      refetch,
+    ],
   )
+
+  return (
+    <TradeWidget
+      inputCurrencyInfo={currencyInfo(Field.INPUT, selection.input, inputAmount)}
+      outputCurrencyInfo={currencyInfo(Field.OUTPUT, selection.output, outputAmount)}
+      actions={{
+        onCurrencySelection: select,
+        onSwitchTokens: switchTokens,
+        onChangeRecipient: (value) => {
+          if (!busy && !preview) setRecipient(value ?? '')
+        },
+        onUserInput: (field, value) => {
+          if (field === Field.INPUT && !busy && !preview)
+            setSelection((current) => ({ ...current, amount: value ?? '' }))
+        },
+      }}
+      params={{
+        externalFunding: true,
+        compactView: true,
+        showRecipient: true,
+        recipient,
+        isTradePriceUpdating: busy,
+        isPriceStatic: true,
+        hideTradeWarnings: true,
+        disablePriceImpact: true,
+        inputsDisabled: busy || !!preview,
+        isMarketOrderWidget: true,
+        displayChainName: true,
+        inputTokenOptions: tokenOptions,
+        outputTokenOptions: buyTokenOptions,
+        priceImpact: { priceImpact: undefined, loading: false },
+      }}
+      disableOutput
+      slots={{ settingsWidget: null, selectTokenWidget: <></>, bottomContent }}
+    />
+  )
+}
+
+function currencyInfo(field: Field, currency: Currency | null, amount: CurrencyAmount<Currency> | null): CurrencyInfo {
+  return {
+    field,
+    currency,
+    amount,
+    label: field === Field.INPUT ? 'You sell' : 'You receive',
+    isIndependent: field === Field.INPUT,
+    balance: null,
+    fiatAmount: null,
+    receiveAmountInfo: null,
+  }
 }

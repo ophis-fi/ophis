@@ -79,22 +79,3 @@ export const Stack = styled.div`
   width: 100%;
   min-width: 0;
 `
-
-export const ModeButtons = styled.div`
-  display: flex;
-  gap: 8px;
-  margin: 0 0 12px;
-  button {
-    font: inherit;
-    padding: 10px 14px;
-    border-radius: 20px;
-    border: 1px solid #8885;
-    cursor: pointer;
-    background: transparent;
-    color: inherit;
-  }
-  button[aria-pressed='true'] {
-    background: #202020;
-    color: white;
-  }
-`
