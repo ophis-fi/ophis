@@ -208,8 +208,11 @@ jobs:
           REACT_APP_ACROSS_ROBINHOOD_SOURCE: 'true'
           # Optimism live proof: settlement + FundsDeposited 0xed07b783…de17070;
           # Base delivery 0x924b95fe…2638d86, 0.798230 USDC (2026-10-01 UTC).
-          # Full receipts: infra/optimism-mainnet/README.md. Polygon stays gated.
+          # Full receipts: infra/optimism-mainnet/README.md.
           REACT_APP_ACROSS_OPTIMISM_SOURCE: 'true'
+          # Polygon live proof (2026-10-02): settlement + deposit 0x19c561e0…af09456;
+          # Robinhood delivery 0x9d8f7c5f…508648a, 0.980474 USDG.
+          REACT_APP_ACROSS_POLYGON_SOURCE: 'true'
           # Ink (57073) + Linea (59144) as Across bridge SOURCES — still DISABLED,
           # but the 2026-08-13 blocker is GONE: the weiroll VM
           # 0x9585c3062Df1C247d5E373Cfca9167F7dC2b5963 was deployed on both chains
