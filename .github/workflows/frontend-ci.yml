@@ -83,6 +83,9 @@ jobs:
       - name: dependency security regressions
         run: node scripts/test-security-dependencies.cjs --workspace frontend
 
+      - name: Across status API regression
+        run: node scripts/test-across-status.cjs
+
       # `nx run cowswap-frontend:typecheck`. No secrets required.
       - name: typecheck cowswap-frontend
         working-directory: apps/frontend
