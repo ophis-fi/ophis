@@ -2,6 +2,7 @@ import { OPHIS_PARTNER_FEE_RECIPIENT } from '@cowprotocol/common-const'
 import { AdditionalTargetChainId, BTC_CURRENCY_ADDRESS, SupportedChainId } from '@cowprotocol/cow-sdk'
 import { BridgeQuoteErrors } from '@cowprotocol/sdk-bridging'
 
+import { QuoteRequest } from '@defuse-protocol/one-click-sdk-typescript'
 import { utils } from 'ethers'
 import jsonStringify from 'json-stringify-deterministic'
 
@@ -102,21 +103,32 @@ describe('ophisNearIntentsProvider', () => {
   })
 
   describe('wrapNearApiWithOphisQuoteParams', () => {
-    it('rebinds api.getQuote so the underlying call receives the injected params', async () => {
-      const underlying = jest.fn().mockResolvedValue(QUOTE_RESPONSE)
+    it.each([false, true])('forces EXACT_INPUT for dry=%s without changing funding or recipients', async (dry) => {
+      const response = {
+        ...QUOTE_RESPONSE,
+        quoteRequest: { ...QUOTE_REQUEST, dry, swapType: QuoteRequest.swapType.EXACT_INPUT },
+      }
+      const underlying = jest.fn().mockResolvedValue(response)
       const api = { getQuote: underlying }
 
       wrapNearApiWithOphisQuoteParams(api)
-      const result = await api.getQuote({ ...QUOTE_REQUEST, referral: 'cow' } as never)
+      const result = await api.getQuote({ ...QUOTE_REQUEST, dry, referral: 'cow' })
 
-      expect(result).toBe(QUOTE_RESPONSE)
-      expect(underlying).toHaveBeenCalledWith(
-        expect.objectContaining({
-          amount: QUOTE_REQUEST.amount,
-          referral: 'ophis',
-          appFees: [{ recipient: OPHIS_PARTNER_FEE_RECIPIENT, fee: 3 }],
-        }),
-      )
+      expect(result).toBe(response)
+      expect(underlying).toHaveBeenCalledWith({
+        ...QUOTE_REQUEST,
+        dry,
+        swapType: QuoteRequest.swapType.EXACT_INPUT,
+        referral: 'ophis',
+        appFees: [{ recipient: OPHIS_PARTNER_FEE_RECIPIENT, fee: 3 }],
+      })
+    })
+
+    it('rejects a FLEX_INPUT response to an EXACT_INPUT request', async () => {
+      const api = { getQuote: jest.fn().mockResolvedValue(QUOTE_RESPONSE) }
+      wrapNearApiWithOphisQuoteParams(api)
+
+      await expect(api.getQuote(QUOTE_REQUEST)).rejects.toThrow(BridgeQuoteErrors.INVALID_API_JSON_RESPONSE)
     })
 
     it('is installed by the provider constructor', () => {
@@ -133,17 +145,23 @@ describe('ophisNearIntentsProvider', () => {
       async (mode) => {
         const underlying = jest.fn().mockResolvedValue({
           ...QUOTE_RESPONSE,
-          quoteRequest: { ...QUOTE_REQUEST, confidentiality: mode },
+          quoteRequest: { ...QUOTE_REQUEST, swapType: QuoteRequest.swapType.EXACT_INPUT, confidentiality: mode },
         })
         const api = { getQuote: underlying }
         wrapNearApiWithOphisQuoteParams(api, mode)
 
         await expect(api.getQuote(QUOTE_REQUEST)).resolves.toHaveProperty('quoteRequest.confidentiality', mode)
-        expect(underlying).toHaveBeenCalledWith(expect.objectContaining({ confidentiality: mode, referral: 'ophis' }))
+        expect(underlying).toHaveBeenCalledWith(
+          expect.objectContaining({
+            swapType: QuoteRequest.swapType.EXACT_INPUT,
+            confidentiality: mode,
+            referral: 'ophis',
+          }),
+        )
 
         underlying.mockResolvedValue({
           ...QUOTE_RESPONSE,
-          quoteRequest: { ...QUOTE_REQUEST, confidentiality: 'public' },
+          quoteRequest: { ...QUOTE_REQUEST, swapType: QuoteRequest.swapType.EXACT_INPUT, confidentiality: 'public' },
         })
         await expect(api.getQuote(QUOTE_REQUEST)).rejects.toThrow(BridgeQuoteErrors.INVALID_API_JSON_RESPONSE)
         underlying.mockRejectedValue(new Error('Unauthorized'))
