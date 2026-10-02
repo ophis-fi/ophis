@@ -6,7 +6,7 @@ import { MemoryRouter } from 'react-router'
 
 import { OphisHeader } from './OphisHeader'
 
-jest.mock('@cowprotocol/common-const', () => ({ ARC_CHAIN_ID: 5042, ARC_ENABLED: true }))
+jest.mock('@cowprotocol/common-const', () => ({ __esModule: true, ARC_CHAIN_ID: 5042, ARC_ENABLED: true }))
 
 jest.mock('@cowprotocol/common-hooks', () => ({
   useFeatureFlags: jest.fn(),
