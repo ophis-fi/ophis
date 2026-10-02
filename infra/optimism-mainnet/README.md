@@ -107,9 +107,6 @@ Optimism source routing is enabled after a funded mainnet test on October 1,
 - Wrapping and exact-amount approval consumed 0.000000195395030114 ETH in wallet gas, including Optimism's additional fees; the approved cap was 0.00005 ETH.
 - All ten dependency/wiring checks passed immediately before execution.
 
-Polygon remains disabled pending its own funded settlement/deposit and destination
-delivery proof. A successful Optimism test does not activate another source.
-
 Polygon's helper was subsequently deployed at
 `0xEdE97D044d4C8aAA682968bee10284521B9f311a` in
 [transaction 0xc2f8…2b8e](https://polygonscan.com/tx/0xc2f82a99b62c019634a87c66eaa837e6fb1f36419ab525f5449d783a0cc12b8e),
@@ -121,6 +118,15 @@ All seven dependency checks passed using `https://polygon.drpc.org`, and the
 trampoline's `settlement()` matched Polygon's canonical settlement,
 `0x9008D19f58AAbD9eD0D60971565AA8510560ab41`. The script's default PublicNode
 endpoint timed out on several reads during verification.
+
+Polygon source routing is enabled after its own funded test on October 2, 2026
+(UTC). The production SDK sold 1 native Polygon USDC, using the existing
+same-token source settlement and Across route to Robinhood Chain USDG:
+
+- [Polygon settlement and Across deposit](https://polygonscan.com/tx/0x19c561e0191b4f9714350d95c93e9343ec4472863ae2436be32a1226daf09456): successful settlement with the expected SpokePool `FundsDeposited` event in the same transaction.
+- [Robinhood Chain delivery](https://robinhoodchain.blockscout.com/tx/0x9d8f7c5fc056676fd6f7415e7502a0d451d01f281651fe82b56f21470508648a): 0.980474 USDG received at the sending wallet, above the approved 0.95 USDG minimum.
+- Exact-amount approval consumed 0.03636058265961912 POL in wallet gas, below the approved 0.1 POL cap.
+- Seven dependency checks and the settlement/relayer/trampoline bindings passed before execution.
 
 ### Host ports (all 127.0.0.1-bound)
 
