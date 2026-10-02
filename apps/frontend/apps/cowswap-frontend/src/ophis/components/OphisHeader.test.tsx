@@ -1,9 +1,12 @@
+import * as commonConst from '@cowprotocol/common-const'
 import { useFeatureFlags } from '@cowprotocol/common-hooks'
 
 import { render, screen } from '@testing-library/react'
 import { MemoryRouter } from 'react-router'
 
 import { OphisHeader } from './OphisHeader'
+
+jest.mock('@cowprotocol/common-const', () => ({ __esModule: true, ARC_CHAIN_ID: 5042, ARC_ENABLED: true }))
 
 jest.mock('@cowprotocol/common-hooks', () => ({
   useFeatureFlags: jest.fn(),
@@ -35,6 +38,25 @@ function renderHeader(transparent = false, route = '/'): void {
 }
 
 describe('OphisHeader', () => {
+  it('announces Arc with its logo and trading link when enabled', () => {
+    useFeatureFlagsMock.mockReturnValue({ isOtcEnabled: true })
+    renderHeader()
+    const banner = screen.getByRole('link', { name: 'Arc is live on Ophis. Trade now' })
+    expect(banner.getAttribute('href')).toBe('/#/5042/swap')
+    expect(banner.querySelector('img')?.getAttribute('src')).toBe('/logos/chain-arc-network.svg')
+  })
+
+  it('hides the Arc announcement when Arc is disabled', () => {
+    useFeatureFlagsMock.mockReturnValue({ isOtcEnabled: true })
+    const flag = jest.replaceProperty(commonConst, 'ARC_ENABLED', false)
+    try {
+      renderHeader()
+      expect(screen.queryByRole('link', { name: 'Arc is live on Ophis. Trade now' })).toBeNull()
+    } finally {
+      flag.restore()
+    }
+  })
+
   it('keeps the transparent hero wordmark visible with the default light theme', () => {
     useFeatureFlagsMock.mockReturnValue({ isOtcEnabled: true })
     renderHeader(true)

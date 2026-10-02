@@ -8,6 +8,7 @@
  */
 import { ReactNode } from 'react'
 
+import { ARC_CHAIN_ID, ARC_ENABLED } from '@cowprotocol/common-const'
 import { useFeatureFlags } from '@cowprotocol/common-hooks'
 
 import { Link, useLocation } from 'react-router'
@@ -74,13 +75,12 @@ const Announcement = styled.a`
 `
 
 const AnnouncementLogo = styled.img`
-  width: 16px;
+  width: 21px;
   height: 21px;
   flex: 0 0 auto;
-  filter: brightness(0);
 
   @media (max-width: 600px) {
-    width: 14px;
+    width: 18px;
     height: 18px;
   }
 `
@@ -201,10 +201,12 @@ export function OphisHeader({ children, transparent = false, walletConnected = f
 
   return (
     <HeaderStack $transparent={transparent}>
-      <Announcement href="/#/4663/swap" aria-label="Robinhood Chain is live on Ophis. Trade now">
-        <AnnouncementLogo src="/robinhood-feather.svg" alt="" aria-hidden="true" />
-        Robinhood Chain is live on Ophis. <span>Trade now →</span>
-      </Announcement>
+      {ARC_ENABLED && (
+        <Announcement href={`/#/${ARC_CHAIN_ID}/swap`} aria-label="Arc is live on Ophis. Trade now">
+          <AnnouncementLogo src="/logos/chain-arc-network.svg" alt="" aria-hidden="true" />
+          Arc is live on Ophis. <span>Trade now →</span>
+        </Announcement>
+      )}
       <Bar
         $transparent={transparent}
         $walletConnected={walletConnected}
