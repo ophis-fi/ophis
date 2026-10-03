@@ -2,8 +2,26 @@
 import { createStore } from 'jotai'
 
 import fixture from './fixtures/monadDeposit.json'
-import { nearTransfersAtom, normalizeNearTransfers, pruneNearTransfers } from './nearDirect.atoms'
+import {
+  markNearFundingStarted,
+  nearTransfersAtom,
+  normalizeNearTransfers,
+  pruneNearTransfers,
+} from './nearDirect.atoms'
 import { nearTransferSchema } from './nearDirect.schemas'
+
+it('refuses a journal write when recovery disappeared or another deposit started during preflight', () => {
+  const transfer = nearTransferSchema.parse(fixture)
+  const signature = transfer.response.signature
+  expect(markNearFundingStarted([transfer], signature)[0]?.fundingStarted).toBe(true)
+  for (const current of [
+    [],
+    [{ ...transfer, fundingStarted: true }],
+    [{ ...transfer, transactionHash: '0x123' }],
+    [{ ...transfer, status: 'PROCESSING' as const }],
+  ])
+    expect(() => markNearFundingStarted(current, signature)).toThrow('Swap recovery changed')
+})
 
 it('bounds completed history without deleting failed, expired, or uncertain recovery', () => {
   const transfer = nearTransferSchema.parse(fixture)

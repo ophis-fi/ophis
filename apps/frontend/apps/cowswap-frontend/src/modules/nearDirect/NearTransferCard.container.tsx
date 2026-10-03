@@ -155,22 +155,25 @@ function NearFundingInstructions({
   return (
     <>
       <p>Send the exact amount shown above once. Keep enough funds for your wallet’s network fee.</p>
-      <label>
-        Deposit address
-        <input readOnly value={depositAddress} />
-      </label>
-      <button type="button" onClick={() => copy(depositAddress)}>
-        {copied ? 'Copied' : 'Copy deposit address'}
-      </button>
-      {depositMemo ? (
-        <p>
-          Required memo: <code>{depositMemo}</code>. Include it with the transfer.
-        </p>
-      ) : (
-        <QRCode value={depositAddress} size={150} />
-      )}
-      <small>Deposit deadline: {new Date(deadline).toLocaleString()}. Allow time for network confirmations.</small>
       <NearWalletSend transfer={transfer} />
+      <details open={transfer.source.blockchain !== 'starknet'}>
+        <summary>Send manually from a wallet</summary>
+        <label>
+          Deposit address
+          <input readOnly value={depositAddress} />
+        </label>
+        <button type="button" onClick={() => copy(depositAddress)}>
+          {copied ? 'Copied' : 'Copy deposit address'}
+        </button>
+        {depositMemo ? (
+          <p>
+            Required memo: <code>{depositMemo}</code>. Include it with the transfer.
+          </p>
+        ) : (
+          <QRCode value={depositAddress} size={150} />
+        )}
+      </details>
+      <small>Deposit deadline: {new Date(deadline).toLocaleString()}. Allow time for network confirmations.</small>
     </>
   )
 }

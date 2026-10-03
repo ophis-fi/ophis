@@ -48,6 +48,15 @@ const storage = {
 export function readStoredNearTransfer(signature: string): NearTransfer | undefined {
   return storage.getItem('nearDirectTransfers:v0').find((item) => item.response.signature === signature)
 }
+
+export function markNearFundingStarted(current: NearTransfer[], signature: string, nonce?: number): NearTransfer[] {
+  const saved = current.find((item) => item.response.signature === signature)
+  if (!saved || saved.fundingStarted || saved.transactionHash || saved.status !== 'PENDING_DEPOSIT')
+    throw new Error('Swap recovery changed. Check your wallet and the swap status before sending.')
+  return current.map((item) =>
+    item === saved ? { ...item, fundingStarted: true, fundingNonce: nonce, fundingError: undefined } : item,
+  )
+}
 const transfersStoreAtom = atomWithStorage<NearTransfer[]>('nearDirectTransfers:v0', [], storage, {
   getOnInit: true,
 })
