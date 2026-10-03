@@ -75,7 +75,29 @@ export const Panel = styled.section`
 
 export const Stack = styled.div`
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
   gap: 12px;
   width: 100%;
   min-width: 0;
+`
+
+export const Quote = styled(Stack)`
+  overflow-wrap: anywhere;
+
+  p {
+    margin: 0;
+  }
+`
+
+export const QuoteAmount = styled.div`
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+
+  > * {
+    min-width: 0;
+    max-width: 100%;
+  }
 `

@@ -308,7 +308,13 @@ describe('NEAR Intents non-EVM destinations Ophis adds (Sui, Tron, Hyperliquid)'
     expect(getRecipientPlaceholder(SUI_CHAIN_ID)).toContain('Sui')
     expect(getRecipientPlaceholder(TRON_CHAIN_ID)).toContain('Tron')
     expect(getRecipientPlaceholder(HYPERCORE_CHAIN_ID)).toContain('Hyperliquid')
-    for (const id of [SUI_CHAIN_ID, TRON_CHAIN_ID, HYPERCORE_CHAIN_ID])
+    for (const id of [
+      SUI_CHAIN_ID,
+      TRON_CHAIN_ID,
+      HYPERCORE_CHAIN_ID,
+      SupportedChainId.BASE,
+      SupportedChainId.GNOSIS_CHAIN,
+    ])
       expect(getRecipientPlaceholder(id)).not.toMatch(/ENS/)
     expect(getRecipientPlaceholder(SupportedChainId.MAINNET)).toMatch(/ENS/)
   })
