@@ -7,6 +7,7 @@ import { isHypercoreTokenId } from '@cowprotocol/common-utils'
 import { AdditionalTargetChainId, areAddressesEqual, BTC_CURRENCY_ADDRESS } from '@cowprotocol/cow-sdk'
 import { BridgeProviderQuoteError, BridgeQuoteErrors, NearIntentsBridgeProvider } from '@cowprotocol/sdk-bridging'
 
+import { QuoteRequest } from '@defuse-protocol/one-click-sdk-typescript'
 import { utils } from 'ethers'
 import jsonStringify from 'json-stringify-deterministic'
 
@@ -37,8 +38,8 @@ import { getBridgeTokenLogo } from './bridgeTokenLogo.utils'
  */
 
 const OPHIS_NEAR_REFERRAL = 'ophis'
-// The bridging SDK does not export its transitive 1-Click enum.
-const OPHIS_NEAR_SWAP_TYPE = 'EXACT_INPUT' as NearQuoteResponse['quoteRequest']['swapType']
+// The app and bridging SDK use distinct versions of the 1-Click enum.
+const OPHIS_NEAR_SWAP_TYPE = QuoteRequest.swapType.EXACT_INPUT as NearQuoteResponse['quoteRequest']['swapType']
 
 // Requested Ophis integrator fee. NEAR's authenticated/keyless provider fees
 // and partner sharing rules are applied server-side; use the net quote output.
