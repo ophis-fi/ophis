@@ -26,7 +26,7 @@ it('keeps a requested slow fill pending until the destination fill arrives', asy
   })
 })
 
-it('bridges six-decimal USDC into Arc through an executable source, never out of Arc', async () => {
+it('keeps CoW-hook execution inbound-only for Arc; outbound uses the direct wallet flow', async () => {
   expect(ARC_BRIDGE_CHAIN.id).toBe(5042)
   expect(ARC_BRIDGE_CHAIN.nativeCurrency.decimals).toBe(18)
   expect(ACROSS_EXECUTABLE_SOURCE_IDS.has(ARC_CHAIN_ID)).toBe(false)

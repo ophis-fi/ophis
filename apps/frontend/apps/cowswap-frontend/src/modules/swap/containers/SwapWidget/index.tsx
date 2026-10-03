@@ -12,6 +12,7 @@ import { t } from '@lingui/core/macro'
 import { Field } from 'legacy/state/types'
 import { useHooksEnabledManager } from 'legacy/state/user/hooks'
 
+import { AcrossDirect, AcrossRecovery, useAcrossDirect } from 'modules/acrossDirect'
 import { CctpSwapDetails, CctpSwapRecovery, useCctpSwapRoute } from 'modules/cctp'
 import { TradeApproveWithAffectedOrderList } from 'modules/erc20Approve'
 import { EthFlowModal, EthFlowProps } from 'modules/ethFlow'
@@ -163,8 +164,17 @@ function StandardSwapWidget({
     orderKind,
     isUnlocked,
   } = useSwapDerivedState()
-  const cctp = useCctpSwapRoute({
+  const across = useAcrossDirect({
     enabled: !!enableCctp,
+    input: inputCurrency,
+    output: outputCurrency,
+    amount: inputCurrencyAmount,
+    recipient,
+    recipientAddress,
+    orderKind,
+  })
+  const cctp = useCctpSwapRoute({
+    enabled: across.cctpEnabled,
     input: inputCurrency,
     output: outputCurrency,
     amount: inputCurrencyAmount,
@@ -232,11 +242,12 @@ function StandardSwapWidget({
     receiveAmountInfo: !isSellTrade ? receiveAmountInfo : null,
   }
 
-  const outputCurrencyInfo: CurrencyInfo = cctp.active
+  const bridge = selectedBridge(across, cctp)
+  const outputCurrencyInfo: CurrencyInfo = bridge.active
     ? {
         field: Field.OUTPUT,
         currency: outputCurrency,
-        amount: cctp.output,
+        amount: bridge.output,
         isIndependent: false,
         balance: outputCurrencyBalance,
         fiatAmount: null,
@@ -311,6 +322,7 @@ function StandardSwapWidget({
     topContent: (
       <>
         {topContent}
+        <AcrossRecovery />
         <CctpSwapRecovery route={cctp} />
       </>
     ),
@@ -325,6 +337,7 @@ function StandardSwapWidget({
     ),
     bottomContent: useCallback(
       (tradeWarnings: ReactNode | null) => {
+        if (across.active) return <AcrossDirect route={across} />
         if (cctp.active)
           return (
             <CctpSwapDetails
@@ -375,6 +388,7 @@ function StandardSwapWidget({
       },
       [
         direct,
+        across,
         cctp,
         inputCurrency,
         outputCurrency,
@@ -410,6 +424,7 @@ function StandardSwapWidget({
     showRecipient,
     isTradePriceUpdating: isRateLoading,
     ...cctp.params,
+    ...across.params,
     priceImpact,
   }
 
@@ -461,4 +476,11 @@ function StandardSwapWidget({
       <BottomBanners />
     </Container>
   )
+}
+
+function selectedBridge(
+  across: ReturnType<typeof useAcrossDirect>,
+  cctp: ReturnType<typeof useCctpSwapRoute>,
+): Pick<typeof across, 'active' | 'output'> {
+  return across.active ? across : cctp
 }
