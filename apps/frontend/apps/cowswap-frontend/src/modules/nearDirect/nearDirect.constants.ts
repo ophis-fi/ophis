@@ -9,6 +9,8 @@ import {
 } from '@cowprotocol/common-const'
 import { AdditionalTargetChainId } from '@cowprotocol/cow-sdk'
 
+export const SOURCE_WALLET_CHAINS = ['starknet', 'sol', 'sui', 'tron']
+
 // Source capability is independent of the CoW settlement chain registry.
 export const DIRECT_NEAR_CHAINS: Readonly<Record<string, { id: number; label: string }>> = {
   btc: { id: AdditionalTargetChainId.BITCOIN, label: 'Bitcoin' },

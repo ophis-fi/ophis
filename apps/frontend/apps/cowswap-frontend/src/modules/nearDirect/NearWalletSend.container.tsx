@@ -1,32 +1,26 @@
-import { useAtomValue, useSetAtom } from 'jotai'
+import { useSetAtom } from 'jotai'
 import { ReactNode, useCallback, useState } from 'react'
-
-import { useWalletInfo } from '@cowprotocol/wallet'
 
 import { BaseError, UserRejectedRequestError } from 'viem'
 
-import { useBridgeWallet } from 'modules/cctp'
-
+import { useNearFundingWallet } from './hooks/useNearFundingWallet'
 import { markNearFundingStarted, nearTransfersAtom, readStoredNearTransfer } from './nearDirect.atoms'
+import { DIRECT_NEAR_CHAINS, SOURCE_WALLET_CHAINS } from './nearDirect.constants'
 import { NearTransfer } from './nearDirect.schemas'
 import { submitNearDeposit } from './nearDirect.service'
-import { fundNearTransfer } from './nearDirectWallet.service'
-import { starknetWalletAtom } from './starknetWallet.atoms'
-import { StarknetWallet } from './StarknetWallet.container'
-import { fundStarknetTransfer } from './starknetWallet.service'
+import { NearSourceWallet } from './NearSourceWallet.container'
 
 export function NearWalletSend({ transfer }: { transfer: NearTransfer }): ReactNode {
-  const wallet = useBridgeWallet()
-  const starknet = useAtomValue(starknetWalletAtom)
-  const isStarknet = transfer.source.blockchain === 'starknet'
-  const { account } = useWalletInfo()
+  const chain = transfer.source.blockchain
+  const fund = useNearFundingWallet(chain)
+  const sourceWallet = SOURCE_WALLET_CHAINS.includes(chain)
   const setTransfers = useSetAtom(nearTransfersAtom)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
   const signature = transfer.response.signature
 
   const send = useCallback(async (): Promise<void> => {
-    if ((isStarknet ? !starknet : !wallet) || busy) return
+    if (!fund || busy) return
     setBusy(true)
     setError('')
     try {
@@ -40,13 +34,7 @@ export function NearWalletSend({ transfer }: { transfer: NearTransfer }): ReactN
         const beforeSend = async (nonce?: number): Promise<void> => {
           await setTransfers((current) => markNearFundingStarted(current, signature, nonce))
         }
-        const hash =
-          isStarknet && starknet
-            ? await fundStarknetTransfer(starknet.wallet, stored, beforeSend)
-            : wallet
-              ? await fundNearTransfer(wallet, stored, beforeSend)
-              : undefined
-        if (!hash) throw new Error('Reconnect your wallet before sending.')
+        const hash = await fund(stored, beforeSend)
         await submitNearDeposit(stored, hash, () =>
           setTransfers((current) => [
             ...current.filter((item) => item.response.signature !== signature),
@@ -76,18 +64,18 @@ export function NearWalletSend({ transfer }: { transfer: NearTransfer }): ReactN
     } finally {
       setBusy(false)
     }
-  }, [wallet, starknet, isStarknet, busy, signature, setTransfers])
+  }, [fund, busy, signature, setTransfers])
 
-  if (
-    (!isStarknet && (!account || !wallet || !['monad', 'xlayer'].includes(transfer.source.blockchain))) ||
-    transfer.response.quote.depositMemo
-  )
-    return null
+  if ((!sourceWallet && !fund) || transfer.response.quote.depositMemo) return null
   return (
     <>
-      {isStarknet && <StarknetWallet source={transfer.source} disabled={busy} />}
-      <button type="button" disabled={busy || (isStarknet && !starknet)} onClick={send}>
-        {busy ? 'Check your wallet…' : isStarknet ? 'Send with Starknet wallet' : 'Send with connected wallet'}
+      {sourceWallet && <NearSourceWallet source={transfer.source} disabled={busy} />}
+      <button type="button" disabled={busy || !fund} onClick={send}>
+        {busy
+          ? 'Check your wallet…'
+          : sourceWallet
+            ? `Send with ${DIRECT_NEAR_CHAINS[chain]?.label} wallet`
+            : 'Send with connected wallet'}
       </button>
       {error && <p role="alert">{error}</p>}
     </>

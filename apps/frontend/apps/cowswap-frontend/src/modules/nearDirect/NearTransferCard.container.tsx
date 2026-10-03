@@ -6,6 +6,7 @@ import { useCopyClipboard, useInterval } from '@cowprotocol/common-hooks'
 import { QRCode } from 'react-qrcode-logo'
 
 import { nearTokensAtom, nearTransfersAtom, nearTransferStatusAtom } from './nearDirect.atoms'
+import { SOURCE_WALLET_CHAINS } from './nearDirect.constants'
 import { NearTransfer } from './nearDirect.schemas'
 import {
   getNearFundingDeadline,
@@ -158,7 +159,7 @@ function NearFundingInstructions({
     <>
       <p>Send the exact amount shown above once. Keep enough funds for your wallet’s network fee.</p>
       <NearWalletSend transfer={transfer} />
-      <details open={transfer.source.blockchain !== 'starknet'}>
+      <details open={!SOURCE_WALLET_CHAINS.includes(transfer.source.blockchain)}>
         <summary>Send manually from a wallet</summary>
         <label>
           Deposit address
