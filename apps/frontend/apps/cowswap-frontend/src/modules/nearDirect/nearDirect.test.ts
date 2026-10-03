@@ -17,6 +17,7 @@ import { nearQuoteSchema, nearTransferSchema } from './nearDirect.schemas'
 import {
   assertNearRequest,
   getNearFundingDeadline,
+  getNearTransferStatus,
   isNewerNearStatus,
   isNearAddress,
   isSupportedNearToken,
@@ -25,6 +26,35 @@ import {
   submitNearDeposit,
   verifyNearQuote,
 } from './nearDirect.service'
+
+it('accepts status quotes without a tracking ID and nullable pending amounts while checking the signature', async () => {
+  const transfer = nearTransferSchema.parse(monadDeposit)
+  const quoteResponse = { ...transfer.response }
+  Reflect.deleteProperty(quoteResponse, 'correlationId') // Actual status API omits this metadata.
+  const getStatus = jest.spyOn(OneClickService, 'getExecutionStatus').mockImplementation(
+    () =>
+      new CancelablePromise((resolve) =>
+        resolve(
+          JSON.parse(
+            JSON.stringify({
+              quoteResponse,
+              correlationId: 'status-request',
+              updatedAt: transfer.response.timestamp,
+              status: 'PENDING_DEPOSIT',
+              swapDetails: { amountOut: null, refundedAmount: '0', destinationChainTxHashes: [] },
+            }),
+          ),
+        ),
+      ),
+  )
+  try {
+    expect((await getNearTransferStatus(transfer)).status).toBe('PENDING_DEPOSIT')
+    quoteResponse.quote = { ...quoteResponse.quote, depositAddress: '0x' + 'aa'.repeat(20) }
+    await expect(getNearTransferStatus(transfer)).rejects.toThrow('signature')
+  } finally {
+    getStatus.mockRestore()
+  }
+})
 
 it('orders status updates by time across RFC 3339 fractional precision', () => {
   expect(isNewerNearStatus('2026-09-30T12:00:00.100Z', '2026-09-30T12:00:00Z')).toBe(true)
