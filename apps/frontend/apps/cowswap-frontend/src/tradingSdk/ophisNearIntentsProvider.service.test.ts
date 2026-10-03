@@ -140,8 +140,8 @@ describe('ophisNearIntentsProvider', () => {
       expect(Object.prototype.hasOwnProperty.call(provider.testApi, 'getQuote')).toBe(true)
     })
 
-    it.each(['basic', 'advanced'] as const)(
-      'requests %s confidentiality without accepting a public downgrade',
+    it.each(['public', 'basic', 'advanced'] as const)(
+      'requests %s confidentiality without accepting a different execution mode',
       async (mode) => {
         const underlying = jest.fn().mockResolvedValue({
           ...QUOTE_RESPONSE,
@@ -161,7 +161,11 @@ describe('ophisNearIntentsProvider', () => {
 
         underlying.mockResolvedValue({
           ...QUOTE_RESPONSE,
-          quoteRequest: { ...QUOTE_REQUEST, swapType: QuoteRequest.swapType.EXACT_INPUT, confidentiality: 'public' },
+          quoteRequest: {
+            ...QUOTE_REQUEST,
+            swapType: QuoteRequest.swapType.EXACT_INPUT,
+            confidentiality: mode === 'public' ? 'basic' : 'public',
+          },
         })
         await expect(api.getQuote(QUOTE_REQUEST)).rejects.toThrow(BridgeQuoteErrors.INVALID_API_JSON_RESPONSE)
         underlying.mockRejectedValue(new Error('Unauthorized'))

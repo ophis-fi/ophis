@@ -52,7 +52,7 @@ const ATTESTATION_PREFIX = '0x0a773570'
 const ATTESTATION_VERSION_BYTE = '0x00'
 
 export type NearQuoteResponse = Parameters<NearIntentsBridgeProvider['recoverDepositAddress']>[0]
-type NearConfidentiality = 'basic' | 'advanced'
+type NearConfidentiality = 'public' | 'basic' | 'advanced'
 type NearProviderOptions = ConstructorParameters<typeof NearIntentsBridgeProvider>[0] & {
   confidentiality?: NearConfidentiality
 }
