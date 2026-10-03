@@ -7,6 +7,7 @@ import {
   parsePrefixedAddress,
 } from '@cowprotocol/common-utils'
 import { SupportedChainId } from '@cowprotocol/cow-sdk'
+import { parseOphisName } from '@cowprotocol/ens'
 import { ExternalLink, RowBetween, UI } from '@cowprotocol/ui'
 import { useWalletInfo } from '@cowprotocol/wallet'
 
@@ -192,6 +193,8 @@ export function AddressInputPanel({
               )}
             </RowBetween>
             <Input
+              error={error}
+              aria-invalid={error}
               className={className}
               type="text"
               autoComplete="off"
@@ -203,6 +206,7 @@ export function AddressInputPanel({
               value={value}
               onFocus={autofocus}
             />
+            <AddressInputError error={error} chainId={chainId} value={value} />
             {name && address && system ? (
               <ResolvedRecipient>
                 {system === 'ens' ? 'ENS' : '.wei'} · {address}
@@ -212,5 +216,20 @@ export function AddressInputPanel({
         </InputContainer>
       </ContainerRow>
     </InputPanel>
+  )
+}
+
+function AddressInputError({ error, chainId, value }: { error: boolean; chainId: number; value: string }): ReactNode {
+  if (!error) return null
+  return (
+    <small role="alert">
+      {chainId !== SupportedChainId.MAINNET && parseOphisName(value) ? (
+        <Trans>
+          Names are currently supported only for Ethereum recipients. Paste your wallet address on the selected network.
+        </Trans>
+      ) : (
+        <Trans>Enter a valid wallet address on the selected network.</Trans>
+      )}
+    </small>
   )
 }

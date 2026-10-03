@@ -9,6 +9,7 @@ import { TokenAmountDisplay } from 'modules/bridge'
 
 import { DIRECT_NEAR_CHAINS } from './nearDirect.constants'
 import { NearToken, NearTransfer } from './nearDirect.schemas'
+import * as styledEl from './nearDirect.styled'
 
 export function NearQuote({ transfer }: { transfer: NearTransfer }): ReactNode {
   const {
@@ -18,30 +19,28 @@ export function NearQuote({ transfer }: { transfer: NearTransfer }): ReactNode {
     response: { quote, quoteRequest },
   } = transfer
   return (
-    <>
-      <p>
-        Send{' '}
+    <styledEl.Quote>
+      <styledEl.QuoteAmount>
+        <span>Send on {DIRECT_NEAR_CHAINS[source.blockchain]?.label}</span>
         <TokenAmountDisplay
           displaySymbol
           currencyAmount={displayAmount(source, quote.amountIn)}
           usdValue={displayUsd(quote.amountInUsd)}
-        />{' '}
-        on {DIRECT_NEAR_CHAINS[source.blockchain]?.label}
-      </p>
+        />
+      </styledEl.QuoteAmount>
       {source.contractAddress && (
         <small>
           Sending token: <code>{source.contractAddress}</code>
         </small>
       )}
-      <p>
-        Receive approximately{' '}
+      <styledEl.QuoteAmount>
+        <span>Receive on {DIRECT_NEAR_CHAINS[destination.blockchain]?.label} (estimated)</span>
         <TokenAmountDisplay
           displaySymbol
           currencyAmount={displayAmount(destination, quote.amountOut)}
           usdValue={displayUsd(quote.amountOutUsd)}
-        />{' '}
-        on {DIRECT_NEAR_CHAINS[destination.blockchain]?.label}
-      </p>
+        />
+      </styledEl.QuoteAmount>
       <small>
         Minimum received: {formatUnits(quote.minAmountOut, destination.decimals)} {destination.symbol}. Slippage: 1%.
         Output includes provider and Ophis fees. Source network fees are paid separately.
@@ -85,7 +84,7 @@ export function NearQuote({ transfer }: { transfer: NearTransfer }): ReactNode {
           Destination transaction: <code>{hash}</code>
         </p>
       ))}
-    </>
+    </styledEl.Quote>
   )
 }
 
