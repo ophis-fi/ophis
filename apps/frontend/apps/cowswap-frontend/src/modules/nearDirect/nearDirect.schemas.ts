@@ -67,8 +67,8 @@ export const nearQuoteSchema = z
 export type NearQuote = z.infer<typeof nearQuoteSchema>
 export const nearStatusSchema = z.nativeEnum(GetExecutionStatusResponse.status)
 export const nearReceiptSchema = z.object({
-  amountOut: integer.optional(),
-  refundedAmount: integer.optional(),
+  amountOut: integer.nullish(),
+  refundedAmount: integer.nullish(),
   destinationChainTxHashes: z.array(z.object({ hash: z.string().regex(/^[a-zA-Z0-9_-]{20,150}$/) })).max(100),
 })
 export const nearTransferSchema = z.object({
