@@ -197,7 +197,7 @@ export function isExpiredUnfundedNearTransfer(transfer: NearTransfer, now = Date
     transfer.status === 'PENDING_DEPOSIT' &&
     !transfer.fundingStarted &&
     !transfer.transactionHash &&
-    now > getNearFundingDeadline(transfer.response) + 86_400_000
+    now >= getNearFundingDeadline(transfer.response)
   )
 }
 

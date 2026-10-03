@@ -48,6 +48,15 @@ const storage = {
 export function readStoredNearTransfer(signature: string): NearTransfer | undefined {
   return storage.getItem('nearDirectTransfers:v0').find((item) => item.response.signature === signature)
 }
+
+export function markNearFundingStarted(current: NearTransfer[], signature: string, nonce?: number): NearTransfer[] {
+  const saved = current.find((item) => item.response.signature === signature)
+  if (!saved || saved.fundingStarted || saved.transactionHash || saved.status !== 'PENDING_DEPOSIT')
+    throw new Error('Swap recovery changed. Check your wallet and the swap status before sending.')
+  return current.map((item) =>
+    item === saved ? { ...item, fundingStarted: true, fundingNonce: nonce, fundingError: undefined } : item,
+  )
+}
 const transfersStoreAtom = atomWithStorage<NearTransfer[]>('nearDirectTransfers:v0', [], storage, {
   getOnInit: true,
 })
@@ -86,7 +95,9 @@ export const nearTransferStatusAtom = atomFamily((signature: string) =>
         return getNearTransferStatus(transfer)
       },
       enabled: !!transfer && !['SUCCESS', 'REFUNDED'].includes(transfer.status),
-      refetchInterval: (): number | false => (transfer && isExpiredUnfundedNearTransfer(transfer) ? false : 10_000),
+      // Keep checking for delayed deposits for 24 hours after quote expiry.
+      refetchInterval: (): number | false =>
+        transfer && isExpiredUnfundedNearTransfer(transfer, Date.now() - 86_400_000) ? false : 10_000,
       retry: 1,
     }
   }),

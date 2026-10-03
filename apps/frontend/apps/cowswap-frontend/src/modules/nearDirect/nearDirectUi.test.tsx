@@ -101,22 +101,30 @@ it('hides funding immediately when a detected deposit cannot be saved', async ()
   expect(screen.queryByRole('button', { name: 'Send with connected wallet' })).toBeNull()
 })
 
-it('allows explicit removal of an expired unfunded quote while rechecking current recovery', async () => {
+it('allows removal immediately at expiry while preserving any deposit started during removal', async () => {
   const transfer = nearTransferSchema.parse(mockFixture)
-  jest.spyOn(Date, 'now').mockReturnValue(getNearFundingDeadline(transfer.response) + 2 * 86_400_000)
+  jest.spyOn(Date, 'now').mockReturnValue(getNearFundingDeadline(transfer.response))
   const confirm = jest.spyOn(window, 'confirm').mockReturnValue(false)
   let current = [transfer]
   mockSave.mockImplementation(async (update: (items: NearTransfer[]) => NearTransfer[]) => {
     current = update(current)
   })
   render(<NearTransferCard transfer={transfer} />)
+  expect(screen.getByRole('heading', { name: 'Quote expired' })).toBeTruthy()
   fireEvent.click(screen.getByRole('button', { name: 'Remove expired quote' }))
   expect(mockSave).not.toHaveBeenCalled()
   confirm.mockReturnValue(true)
-  current = [{ ...transfer, fundingStarted: true }]
-  fireEvent.click(screen.getByRole('button', { name: 'Remove expired quote' }))
-  await waitFor(() => expect(mockSave).toHaveBeenCalledTimes(1))
-  expect(current).toHaveLength(1)
+  for (const protectedTransfer of [
+    { ...transfer, fundingStarted: true },
+    { ...transfer, transactionHash: '0x' + 'ab'.repeat(32) },
+    { ...transfer, status: 'PROCESSING' as const },
+  ]) {
+    current = [protectedTransfer]
+    mockSave.mockClear()
+    fireEvent.click(screen.getByRole('button', { name: 'Remove expired quote' }))
+    await waitFor(() => expect(mockSave).toHaveBeenCalledTimes(1))
+    expect(current).toHaveLength(1)
+  }
   current = [transfer]
   fireEvent.click(screen.getByRole('button', { name: 'Remove expired quote' }))
   await waitFor(() => expect(current).toHaveLength(0))

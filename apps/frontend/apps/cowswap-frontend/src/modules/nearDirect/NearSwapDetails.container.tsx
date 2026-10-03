@@ -13,6 +13,7 @@ import { NearToken, NearTransfer } from './nearDirect.schemas'
 import { getNearFundingDeadline, nearErrorMessage, requestNearQuote } from './nearDirect.service'
 import { Stack } from './nearDirect.styled'
 import { NearQuote } from './NearQuote.pure'
+import { StarknetWallet } from './StarknetWallet.container'
 
 interface NearSwapDetailsProps {
   source: NearToken | undefined
@@ -101,6 +102,7 @@ export function NearSwapDetails(props: NearSwapDetailsProps): ReactNode {
         </>
       ) : (
         <>
+          <StarknetWallet source={source} onConnect={setRefundTo} disabled={busy} />
           <AddressInputPanel
             id="refund-address"
             label="Refund address on the sending network"
