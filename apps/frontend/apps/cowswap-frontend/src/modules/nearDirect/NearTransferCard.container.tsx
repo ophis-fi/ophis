@@ -29,16 +29,16 @@ const STATUS_LABELS = {
   FAILED: 'Swap failed; check the provider for refund status',
 }
 
-export function NearTransferCard({
-  transfer,
-  allowFunding = true,
-}: {
+interface NearTransferCardProps {
   transfer: NearTransfer
   allowFunding?: boolean
-}): ReactNode {
+}
+
+export function NearTransferCard({ transfer, allowFunding = true }: NearTransferCardProps): ReactNode {
+  const { signature } = transfer.response
   const setTransfers = useSetAtom(nearTransfersAtom)
   const { data: tokens = [] } = useAtomValue(nearTokensAtom)
-  const { data, error: statusError } = useAtomValue(nearTransferStatusAtom(transfer.response.signature))
+  const { data, error: statusError } = useAtomValue(nearTransferStatusAtom(signature))
   const [now, setNow] = useState(Date.now())
   const [txHash, setTxHash] = useState('')
   const [error, setError] = useState('')
@@ -53,6 +53,7 @@ export function NearTransferCard({
   }, [data, transfer.statusUpdatedAt, setTransfers])
   const deadline = getNearFundingDeadline(transfer.response)
   const latest = withLatestNearStatus(transfer, data)
+  const expired = isExpiredUnfundedNearTransfer(latest, now)
   const canFund =
     latest.status === 'PENDING_DEPOSIT' && now < deadline && !transfer.fundingStarted && !transfer.transactionHash
   const assetsVerified = hasCurrentNearAssets(transfer, tokens)
@@ -63,13 +64,14 @@ export function NearTransferCard({
     try {
       await setTransfers((current) =>
         current.filter(
-          (item) => item.response.signature !== transfer.response.signature || !isExpiredUnfundedNearTransfer(item),
+          (item) =>
+            item.response.signature !== signature || !isExpiredUnfundedNearTransfer(withLatestNearStatus(item, data)),
         ),
       )
     } catch (failure) {
       setError(failure instanceof Error ? failure.message : 'Unable to remove this quote.')
     }
-  }, [transfer.response.signature, setTransfers])
+  }, [signature, data, setTransfers])
 
   const submit = useCallback(async (): Promise<void> => {
     if (busy) return
@@ -79,7 +81,7 @@ export function NearTransferCard({
       await submitNearDeposit(transfer, txHash.trim(), () =>
         setTransfers((current) =>
           current.map((item) =>
-            item.response.signature === transfer.response.signature
+            item.response.signature === signature
               ? { ...item, fundingStarted: true, transactionHash: txHash.trim() }
               : item,
           ),
@@ -90,11 +92,11 @@ export function NearTransferCard({
     } finally {
       setBusy(false)
     }
-  }, [busy, transfer, txHash, setTransfers])
+  }, [busy, transfer, signature, txHash, setTransfers])
 
   return (
     <Panel aria-label="Swap tracking">
-      <h3 aria-live="polite">{STATUS_LABELS[latest.status]}</h3>
+      <h3 aria-live="polite">{expired ? 'Quote expired' : STATUS_LABELS[latest.status]}</h3>
       <NearQuote transfer={latest} />
       {!assetsVerified && allowFunding && <p>Verifying assets before displaying deposit instructions…</p>}
       {assetsVerified && allowFunding && (
@@ -117,7 +119,7 @@ export function NearTransferCard({
           </button>
         </>
       )}
-      {isExpiredUnfundedNearTransfer(latest, now) && (
+      {expired && (
         <button type="button" onClick={removeExpired}>
           Remove expired quote
         </button>

@@ -95,7 +95,9 @@ export const nearTransferStatusAtom = atomFamily((signature: string) =>
         return getNearTransferStatus(transfer)
       },
       enabled: !!transfer && !['SUCCESS', 'REFUNDED'].includes(transfer.status),
-      refetchInterval: (): number | false => (transfer && isExpiredUnfundedNearTransfer(transfer) ? false : 10_000),
+      // Keep checking for delayed deposits for 24 hours after quote expiry.
+      refetchInterval: (): number | false =>
+        transfer && isExpiredUnfundedNearTransfer(transfer, Date.now() - 86_400_000) ? false : 10_000,
       retry: 1,
     }
   }),
