@@ -1,0 +1,69 @@
+{
+  "kind": "near-direct",
+  "source": {
+    "assetId": "nep141:sol.omft.near",
+    "decimals": 9,
+    "blockchain": "sol",
+    "symbol": "SOL",
+    "price": 119.94994907629311,
+    "priceUpdatedAt": "2026-10-03T17:57:00.757Z",
+    "coingeckoId": "solana"
+  },
+  "destination": {
+    "assetId": "nep141:base-0x833589fcd6edb6e08f4c7c32d4f71b54bda02913.omft.near",
+    "decimals": 6,
+    "blockchain": "base",
+    "symbol": "USDC",
+    "price": 0.9999673961276497,
+    "priceUpdatedAt": "2026-10-03T17:57:00.757Z",
+    "contractAddress": "0x833589fcd6edb6e08f4c7c32d4f71b54bda02913",
+    "coingeckoId": "usd-coin"
+  },
+  "response": {
+    "quote": {
+      "amountIn": "100000000",
+      "amountInFormatted": "0.1",
+      "amountInUsd": "11.994994907629",
+      "minAmountIn": "100000000",
+      "amountOut": "11969111",
+      "amountOutFormatted": "11.969111",
+      "amountOutUsd": "11.968720760633",
+      "minAmountOut": "11849419",
+      "timeEstimate": 22,
+      "refundFee": "86347",
+      "withdrawFee": "2400",
+      "deadline": "2026-10-06T19:57:57.069Z",
+      "timeWhenInactive": "2026-10-06T19:57:57.069Z",
+      "depositAddress": "6HkgPVjQkENext23dZBTegmAoY8b24hgbdk9yTQ5xkKF"
+    },
+    "quoteRequest": {
+      "dry": false,
+      "depositMode": "SIMPLE",
+      "swapType": "EXACT_INPUT",
+      "slippageTolerance": 100,
+      "originAsset": "nep141:sol.omft.near",
+      "depositType": "ORIGIN_CHAIN",
+      "destinationAsset": "nep141:base-0x833589fcd6edb6e08f4c7c32d4f71b54bda02913.omft.near",
+      "amount": "100000000",
+      "refundTo": "HoEaMpdXxGid2uR4HEcYf35iKukk7sEWoQ2PcxmARnMZ",
+      "refundType": "ORIGIN_CHAIN",
+      "recipient": "0x0494F503912C101Bfd76b88e4F5D8A33de284d1A",
+      "recipientType": "DESTINATION_CHAIN",
+      "deadline": "2026-10-03T19:57:57.069Z",
+      "confidentiality": "public",
+      "quoteWaitingTimeMs": 0,
+      "insured": false,
+      "appFees": [
+        {
+          "recipient": "5880ad2b362620fadf759cbceb1cd5737ce8c6ed7fb8e9942881e6731f9247dd",
+          "fee": 20,
+          "limitOrderId": null
+        }
+      ]
+    },
+    "signature": "ed25519:25m8dFz5i5qgKKzmrstQQ1Hwb6gnaSAhAaUce2P9tpqNqa2T4vnhBX2jxsiQ75Rk35Sb7EWLatmNxWoFC6WaJWZX",
+    "timestamp": "2026-10-03T17:57:57.096Z",
+    "correlationId": "27d81b4e-36bc-4bbf-a0ce-b0f4384997b4"
+  },
+  "status": "PENDING_DEPOSIT"
+}
