@@ -25,7 +25,7 @@ const FAQS = [
   },
   {
     q: 'Do coincidences of wants happen on Ophis today?',
-    a: `On the CoW-hosted chains, orders settle through CoW Protocol's solver competition, which includes solvers that combine orders, so matches happen there when opposite flow overlaps. On the Ophis-operated chains (${sovereignList}), the current solver lineup builds each settlement against on-chain liquidity per order, so peer matches do not occur there today; the settlement layer supports them, and they arrive with the solver lineup, not with a contract change. Where matching runs, the rate depends entirely on opposite flow in the same window, so any fixed number would be made up.`,
+    a: `On the CoW-hosted chains, orders settle through CoW Protocol's solver competition, which includes solvers that combine orders, so matches happen there when opposite flow overlaps. On the Ophis-operated chains (${sovereignList}), the current solver lineup builds each settlement against on-chain liquidity per order, so peer matches do not occur there today; the settlement layer supports them, but the current solver lineup does not combine orders. Where matching runs, the rate depends entirely on opposite flow in the same window, so any fixed number would be made up.`,
   },
   {
     q: 'Is this where the name CoW Protocol comes from?',
@@ -63,7 +63,7 @@ const FAQS = [
     The full batch-auction mechanism around this:
     <a href="/learn/intent-based-dex-aggregator/">what is an intent-based DEX aggregator</a>. Who
     does the matching and why they bother:
-    <a href="/learn/what-is-a-solver/">what is a solver</a>. How the same batches shut down
+    <a href="/learn/what-is-a-solver/">what is a solver</a>. How the same batches mitigate
     sandwich attacks: <a href="/learn/what-is-a-sandwich-attack/">what is a sandwich attack</a>.
   </p>
 </ContentPage>

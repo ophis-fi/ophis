@@ -8,6 +8,11 @@ import { getBffUsdPrice } from '../apis/getBffUsdPrice'
 import { getCowProtocolUsdPrice } from '../apis/getCowProtocolUsdPrice'
 import { getDefillamaUsdPrice } from '../apis/getDefillamaUsdPrice'
 
+jest.mock('@cowprotocol/common-const', () => ({
+  ...jest.requireActual('@cowprotocol/common-const'),
+  ARC_ENABLED_CHAIN_IDS: [5042],
+}))
+
 jest.mock('../apis/getBffUsdPrice', () => ({ getBffUsdPrice: jest.fn() }))
 jest.mock('../apis/getCowProtocolUsdPrice', () => ({ getCowProtocolUsdPrice: jest.fn() }))
 jest.mock('../apis/getDefillamaUsdPrice', () => ({
@@ -48,13 +53,14 @@ describe('fetchCurrencyUsdPrice on a chain without a CoW orderbook', () => {
     expect(cow).toHaveBeenCalledTimes(1)
   })
 
-  it('keeps the CoW source for the Ophis chains the SDK enum lacks (Optimism, Unichain, Robinhood Chain) (Codex)', async () => {
+  it('skips the unsupported BFF and keeps the orderbook price source for Ophis chains', async () => {
     cow.mockResolvedValue(new Fraction(1, 1))
-    for (const chainId of [10, 130, 4663]) {
+    for (const chainId of [10, 130, 4663, 5042]) {
       cow.mockClear()
       const usdc = new Token(chainId, '0x0b2C639c533813f4Aa9D7837CAf62653d097Ff85', 6, 'USDC')
       await expect(fetchCurrencyUsdPrice(usdc)).resolves.toEqual(new Fraction(1, 1))
       expect(cow).toHaveBeenCalledTimes(1)
+      expect(bff).not.toHaveBeenCalled()
     }
   })
 })

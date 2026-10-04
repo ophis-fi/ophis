@@ -2,7 +2,7 @@
 title: "Ophis on Robinhood Chain: gasless, MEV-protected Stock Token swaps"
 description: "Ophis runs a sovereign deployment on Robinhood Chain (chain 4663): its own GPv2Settlement, orderbook, and solver lanes, with chain-aware pricing."
 pubDate: 2026-07-31
-updatedDate: 2026-09-28
+updatedDate: 2026-10-04
 author: Ophis
 tags: [robinhood-chain, stock-tokens, dex-aggregator, mev, swaps]
 draft: false
@@ -50,7 +50,7 @@ This is the part that diverges most from the rest of the Ophis fleet. Optimism a
 
 Two details from that table shaped the deployment more than anything else.
 
-The first is the RPC surface. Robinhood's public endpoint serves `net`, `web3`, and `eth` only. It has no `debug`, no `arb`, and no `arbtrace`. The Ophis autopilot requires `debug_traceTransaction` to decode settlement calldata, so Robinhood's public RPC alone could not carry the stack: Ophis runs its own Nitro node with the trace namespaces enabled, and that node is currently the only trace source in the stack.
+The first is the RPC surface. Robinhood's public endpoint serves `net`, `web3`, and `eth` only. It has no `debug`, no `arb`, and no `arbtrace`. The Ophis autopilot requires `debug_traceTransaction` to decode settlement calldata, so Robinhood's public RPC alone could not carry the stack: Ophis runs its own Nitro node with the trace namespaces enabled.
 
 The second is how that node gets its state. A Nitro node reconstructs L2 state by replaying the chain's data availability from Ethereum L1, which for this chain means EIP-4844 blobs, and blobs are not retained forever. Measured against a public beacon endpoint, retention ran roughly 45 to 50 days, while the rollup was deployed at L1 block `24994238` on 2026-04-30. Verifying from genesis therefore needs a blob source reaching past standard beacon retention, which the stack has in a narrow, fail-closed archive adapter.
 
@@ -102,15 +102,15 @@ The registry itself needed a small piece of infrastructure. Robinhood's first-pa
 
 ## Why the stack pauses instead of guessing
 
-As deployed today, the stack has exactly one trace source, the self-hosted Nitro node, because the public RPC does not serve `debug_traceTransaction` at all. That is a choice rather than a law: managed providers do offer trace access for 4663, and adding one would buy availability. It would not buy independence for free, since it swaps one external party's trace output for another's. Until that trade is made, the stack is built to stop rather than to improvise.
+Settlement decoding depends on a trace-capable endpoint. Availability and trust therefore depend on the configured trace providers.
 
 - **Reads are 2-of-2.** Protected reads require agreement between the Ophis Nitro node and Robinhood's official public RPC. If the two disagree, or either is unreachable, the read fails rather than falling back to a single voter. That is the mitigation for the restored snapshot: a second independent voter on the reads that gate settlement.
 - **The residual trust is in traces, and it is worth naming.** The quorum covers those reads. It does not cover `debug_traceTransaction`, which only the Cadia node can serve. A snapshot with tampered state returns wrong values rather than errors, so a fail-closed guard has nothing to trip on, which means each trace is ultimately only as trustworthy as the snapshot's publisher. Closing that properly means a second independently derived node, not a second opinion on the same data.
 - **Traces are single-source and gated.** Without a trace, the autopilot pauses settlement. It does not settle a batch it cannot decode.
 - **The topology is locked in CI.** A check named `assert-erpc-failclosed.py` fails the build if the proxy configuration drifts toward failing open. A guard that cannot fail is worse than no guard, so this one is asserted in CI rather than assumed.
-- **Production is re-verified daily.** A read-only canary re-checks chain identity, that the settlement, relayer, and EthFlow addresses it pins still carry code, that `settlement.vaultRelayer()` still returns the pinned relayer, that WETH still reports 18 decimals and USDG 6, that the stock-token registry still resolves and AAPL's on-chain `uiMultiplier()` is non-zero, that the default token list still exposes the canonical AAPL address, and that all three sovereign orderbooks still answer with a live auction id and block.
+- **Scheduled production checks.** A read-only canary re-checks chain identity, that the settlement, relayer, and EthFlow addresses it pins still carry code, that `settlement.vaultRelayer()` still returns the pinned relayer, that WETH still reports 18 decimals and USDG 6, that the stock-token registry still resolves and AAPL's on-chain `uiMultiplier()` is non-zero, that the default token list still exposes the canonical AAPL address, and that the orderbooks covered by the canary answer with a live auction id and block.
 
-The canary carries its own copy of the addresses, so what it catches is the deployment drifting away from that pinned set: a relayer rewired, a token's decimals changing under an upgradeable proxy, a registry that stops resolving, an orderbook that stops producing auctions. It is a daily assertion that the chain still looks the way the stack assumes it does.
+The canary carries its own copy of the addresses, so what it catches is the deployment drifting away from that pinned set: a relayer rewired, a token's decimals changing under an upgradeable proxy, a registry that stops resolving, an orderbook that stops producing auctions. A successful run verifies these checks at its observation time.
 
 ## Fees and rebates
 
@@ -126,16 +126,16 @@ Volume then earns part of it back, on rolling 30-day volume:
 | Palladium | $500,000+ | 35% |
 | Platinum | $1,000,000+ | 50% |
 
-Rebates are paid monthly in WETH from the fee Safe, out of a pool of 21.25% of collected WETH fees, split by tier-weighted 30-day volume. Your tier and progress show on the swap page, and the [fee docs](https://docs.ophis.fi/fees) carry the full mechanics.
+View rewards and payout status in your dashboard. Rebate eligibility is calculated from a pool of 21.25% of collected WETH fees, split by tier-weighted 30-day volume. Your tier and progress show on the swap page, and the [fee docs](https://docs.ophis.fi/fees) carry the full mechanics.
 
 ## Building on Robinhood Chain
 
 The chain is wired through the whole Ophis stack, not just the app: the frontend, the SDK, the MCP server, the compatibility API, and the Safe app all carry checked Robinhood contract mappings.
 
-- **MCP server.** [`https://mcp.ophis.fi/mcp`](https://mcp.ophis.fi/mcp) is keyless and unauthenticated, with fourteen tools covering 14 EVM chains, including Robinhood and Arc. `list_chains` resolves the Robinhood orderbook host and settlement domain, `build_order` returns a bounded order with the receiver pinned to the owner, and the server never holds keys and never signs. The [agent walkthrough](/blog/let-an-ai-agent-swap-tokens/) covers the safety model.
+- **MCP server.** `https://mcp.ophis.fi/mcp` ([connection guide](https://docs.ophis.fi/ai-agents#mcp-server-recommended)) is keyless and unauthenticated, with fourteen tools covering 14 EVM chains, including Robinhood and Arc. `list_chains` resolves the Robinhood orderbook host and settlement domain, `build_order` returns a bounded order with the receiver pinned to the owner, and the server never holds keys and never signs. The [agent walkthrough](/blog/let-an-ai-agent-swap-tokens/) covers the safety model.
 - **SDK.** `@ophis/sdk` resolves the orderbook URL, the EIP-712 signing domain, the vault relayer, and the EthFlow address per chain. On a sovereign chain that is the difference between an order that verifies and one that does not.
 - **Widget.** `@ophis/widget-react` embeds the swap form directly. See the [widget docs](https://docs.ophis.fi/widget).
-- **Affiliate.** Mint a referral code and earn 8% of the verified base fee Ophis keeps on trades your referred wallets route, paid monthly in WETH. Details in the [affiliate docs](https://docs.ophis.fi/affiliate).
+- **Affiliate.** Mint a referral code and earn 8% of the verified base fee Ophis keeps on trades your referred wallets route, with rewards and payout status in your dashboard. Details in the [affiliate docs](https://docs.ophis.fi/affiliate).
 
 If you want the same walkthrough for Optimism and Unichain, read [how to swap on Optimism](/blog/how-to-swap-on-optimism/) and [how to swap on Unichain](/blog/how-to-swap-on-unichain/).
 

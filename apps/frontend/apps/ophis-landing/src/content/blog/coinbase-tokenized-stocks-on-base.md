@@ -2,7 +2,7 @@
 title: "Coinbase tokenized stocks on Base: swap AAPLc, NVDAc on Ophis"
 description: "Coinbase tokenized stocks are live on Base and listed on Ophis. Swap AAPLc, NVDAc, METAc and GOOGLc gasless and MEV-protected, multiplier read on chain."
 pubDate: 2026-08-24
-updatedDate: 2026-09-27
+updatedDate: 2026-10-04
 author: Ophis
 tags: [base, tokenized-stocks, coinbase, b20, dex-aggregator, swaps]
 draft: false
@@ -93,9 +93,9 @@ Ophis added a Base-specific stock panel beside the quote, the same way it did fo
 
 ## Fees and rebates on Base
 
-Base is one of the ten chains where Ophis settles through CoW Protocol's hosted stack rather than its own. Every trade pays the 1 bp Ophis base fee, and Ophis retains 80% of reference-quote improvement on volatile pairs, capped at 99 bps of volume, or 50% on stablecoin pairs, capped at 20 bps; the trader receives the remainder and everything above the cap. CoW Protocol charges its own upstream volume fee on hosted chains, 0.02% on volatile pairs and 0.003% on correlated ones, which Ophis does not receive. A stock-token swap against USDC is a volatile pair, so the base and upstream volume components sum to 0.03%, before applicable improvement fees, liquidity costs and approval gas. The [fee docs](https://docs.ophis.fi/fees) carry the full breakdown per chain type.
+Base is one of the ten chains where Ophis settles through CoW Protocol's hosted stack rather than its own. Every trade pays the 1 bp Ophis base fee, and Ophis retains 80% of reference-quote improvement on volatile pairs, capped at 99 bps of volume, or 50% on stablecoin pairs, capped at 20 bps; the trader receives the remainder and everything above the cap. CoW Protocol also charges upstream fees on hosted chains, which Ophis does not receive. The applicable upstream rate depends on CoW's pair classification; use the executable quote for the total cost, including liquidity and network costs. The [fee docs](https://docs.ophis.fi/fees) carry the full breakdown per chain type.
 
-Rolling 30-day volume then places you in a rebate tier. The percentage is a weight, not a refund of your own fee: each month, a pool of 21.25% of the WETH fees Ophis collected is split across eligible wallets in proportion to their 30-day volume multiplied by their tier weight.
+Rolling 30-day volume then places you in a rebate tier. The percentage is a weight, not a refund of your own fee: the rebate calculation allocates 21.25% of collected WETH fees to eligible wallets in proportion to their 30-day volume multiplied by their tier weight.
 
 | Tier | 30-day volume | Rebate |
 | --- | --- | --- |
@@ -105,7 +105,7 @@ Rolling 30-day volume then places you in a rebate tier. The percentage is a weig
 | Palladium | $500,000+ | 35% |
 | Platinum | $1,000,000+ | 50% |
 
-Rebates are paid monthly in WETH from the fee Safe. What a wallet receives depends on the pool and on every other eligible wallet's weighted volume that month. Your tier and progress show on the swap page, and the [fee docs](https://docs.ophis.fi/fees) carry the full mechanics.
+View rewards and payout status in your dashboard. What a wallet receives depends on the pool and on every other eligible wallet's weighted volume that month. Your tier and progress show on the swap page, and the [fee docs](https://docs.ophis.fi/fees) carry the full mechanics.
 
 ## Coinbase stocks on Base and Robinhood Stock Tokens: two different products
 
@@ -128,7 +128,7 @@ Everything the app uses is public and keyless.
 
 - **Token list.** [swap.ophis.fi/token-lists/coinbase-tokenized-stocks.json](https://swap.ophis.fi/token-lists/coinbase-tokenized-stocks.json) is a standard Uniswap-schema list with CORS enabled, so any interface can load it. Identify tokens by address; B20 names and symbols are mutable on chain.
 - **Metadata endpoint.** [swap.ophis.fi/api/base/tokenized-stocks](https://swap.ophis.fi/api/base/tokenized-stocks) returns, per token, the multiplier as an 18-decimal string, whether supply is issued, and whether transfers are paused.
-- **MCP server.** [`https://mcp.ophis.fi/mcp`](https://mcp.ophis.fi/mcp) is keyless and unauthenticated. On Base, `resolve_token` consults the Coinbase stock list first, then CoW's list, so `AAPLc` or `NVDAc` resolves to the same canonical address the selector shows, with decimals and the list it came from; a symbol that is not on a trusted list returns no canonical rather than a guess. `build_order` returns a bounded order with the receiver pinned to the owner, and the server never holds keys and never signs. The [agent walkthrough](/blog/let-an-ai-agent-swap-tokens/) covers the safety model.
+- **MCP server.** `https://mcp.ophis.fi/mcp` ([connection guide](https://docs.ophis.fi/ai-agents#mcp-server-recommended)) is keyless and unauthenticated. On Base, `resolve_token` consults the Coinbase stock list first, then CoW's list, so `AAPLc` or `NVDAc` resolves to the same canonical address the selector shows, with decimals and the list it came from; a symbol that is not on a trusted list returns no canonical rather than a guess. `build_order` returns a bounded order with the receiver pinned to the owner, and the server never holds keys and never signs. The [agent walkthrough](/blog/let-an-ai-agent-swap-tokens/) covers the safety model.
 - **SDK.** `@ophis/sdk` resolves the orderbook URL and the EIP-712 signing domain per chain; on Base that is CoW Protocol's canonical settlement domain.
 - **Widget.** `@ophis/widget-react` embeds the swap form directly. See the [widget docs](https://docs.ophis.fi/widget).
 
@@ -156,7 +156,7 @@ No. Coinbase tokenized stocks are B20 tokens on Base issued by Coinbase; Robinho
 
 ### How much does a tokenized stock swap cost on Ophis?
 
-On Base, Ophis charges a 1 bp base fee plus 80% of reference-quote improvement on volatile pairs, capped at 99 bps of volume. CoW Protocol adds its own upstream volume fee of 0.02% on volatile pairs, so those base and volume components sum to 0.03%, before applicable improvement fees, liquidity costs and approval gas. Rolling 30-day volume places you in a rebate tier whose weight sets your share of a monthly pool of 21.25% of collected WETH fees.
+On Base, Ophis charges a 1 bp base fee plus 80% of reference-quote improvement on volatile pairs, capped at 99 bps of volume. CoW Protocol adds upstream fees according to its pair classification. Check the executable quote for the total cost, including liquidity and network costs. Rolling 30-day volume places you in a rebate tier whose weight sets your share of a pool of 21.25% of collected WETH fees.
 
 ## Start swapping
 

@@ -8,7 +8,8 @@ sidebar_position: 4
 
 # Partner integration (SDK)
 
-:::important All-chain pricing
+:::important[All-chain pricing]
+
 The standard schedule is a required 1 bp
 base plus 80% of reference-quote improvement on volatile pairs (99 bps cap), or
 50% on stable pairs (20 bps cap). Operated-chain backends apply the improvement
@@ -252,7 +253,7 @@ body** carries `appData` = the full JSON string and `appDataHash` = the hash.
 Your tool already does steps like this against CoW Swap. The only deltas are the
 three overrides above (host, `verifyingContract`, `partnerFee`).
 
-:::note One-time token approval (the first on-chain step)
+:::note[One-time token approval (the first on-chain step)]
 
 Before its first CoW **sell** of a given token, the order owner approves that
 token to the CoW **Vault Relayer** (the contract that pulls the sell token at
@@ -302,8 +303,8 @@ These three layers describe indexed chains, including Arc. Arc applies the stand
 2. **You earn a share of Ophis's verified 1 bp base fee** on each eligible trade you
    route on an indexed chain (including Arc): 8% on the self-serve tier, **12% on the partner tier** (uncapped
    referred volume; ask us to upgrade your code). The payout design is monthly WETH,
-   subject to activation, reconciliation, funding and Safe approval. Affiliate payout
-   execution is currently disabled; see dashboard status. Improvement capture is excluded until receipts can be reconciled
+   subject to activation, reconciliation, funding and Safe approval. Check the dashboard for
+   current affiliate payout status. Improvement capture is excluded until receipts can be reconciled
    to the Ophis Safe.
 3. **You can charge your own fee on top** of an ERC-20 order: up to 90 bps under
    the registered-partner ceiling. The hosted aggregate cap is 190 bps, leaving
@@ -378,12 +379,12 @@ How your fee reaches you depends on the chain:
   trade.
 - **Optimism and Unichain:** an onboarded third-party own-fee uses the two-step
   process below. Robinhood reporting exists, but its own-fee payout is not
-  covered by this guarantee:
+  covered by these terms:
   1. _Ingress (allowlisting)._ Your recipient is added to the backend
      fee-recipient allowlist, so your order settles and your fee is charged (a
      reviewed backend change plus a redeploy; the onboarding step is below).
-  2. _Payout._ Ophis meters your charged own-fee per settled trade and pays it
-     to your recipient monthly in WETH from the sovereign chain's Ophis Safe,
+  2. _Payout._ Ophis meters your charged own-fee per settled trade. Payments
+     to your recipient use WETH from the sovereign chain's Ophis Safe,
      taking 0% of it. Execution is a 2-of-3 Safe signature. The payout runs once
      you are allowlisted and we have enabled and funded it for your recipient;
      amounts are USD-valued from routed volume, not exact per-token restitution.
@@ -398,8 +399,7 @@ How your fee reaches you depends on the chain:
 Layer 2 is separate from the fee your users pay. The fee itself is set in
 `appData` at settlement (the chain-aware base, plus your own entry if you add one).
 The **referral share** of 8% or 12% is a distinct earning: it is a portion of
-the verified 1 bp base fee Ophis keeps. Monthly WETH distribution is the design;
-affiliate payout execution is currently disabled. Tag
+the verified 1 bp base fee Ophis keeps. Affiliate payout execution requires activation, reconciliation, funding and Safe approval. Tag
 each eligible order on an indexed chain, including Arc, with your referral code. Improvement
 capture remains excluded until receipts can be reconciled to the Ophis Safe.
 
@@ -423,13 +423,12 @@ const doc = await new MetadataApi().generateAppDataDoc({
 ```
 
 The rebate indexer reads `metadata.ophisReferrer.code` from settled orders on its supported chains,
-credits your referred USD volume **across indexed chains, including Arc**. Payouts are
-designed for monthly WETH from a single Gnosis Safe, but affiliate payout execution
-is currently disabled. Indexed estimates are not payments. Your code must exist before you tag
+credits your referred USD volume **across indexed chains, including Arc**. WETH payout execution
+requires activation, reconciliation, funding and Safe approval. Indexed estimates are not payments. Your code must exist before you tag
 orders with it. Higher tiers earn a larger share. See the
 [Affiliate program](./affiliate.md) for rates and tiers.
 
-:::warning Two requirements, or the rebate silently never accrues
+:::warning[Two requirements, or the rebate silently never accrues]
 
 **1. `appCode` must be `'ophis'`**, not your app's name. The indexer only
 attributes orders carrying the Ophis appCode; an order with a custom appCode still
@@ -466,10 +465,6 @@ and append `\nChain ID: <chainId>` to the action/address/issued message. Legacy 
 messages without a chain remain supported. Payout status and estimates are separate
 from executed payment records.
 
-A future option for Optimism is an **enforced lower fee** at settlement (rather
-than a post-hoc rebate), via a signed fee credential. That is a separate,
-not-yet-shipped capability; talk to us if you want it.
-
 ## Verifying your earnings: `GET /earnings/:appCode`
 
 A keyless, read-only endpoint on the rebate indexer lets you verify what your own
@@ -493,19 +488,18 @@ guarantee** is limited to chains 10 and 130. Robinhood and Arc reporting do not 
 own-fee payout coverage. On the CoW-hosted chains, partner fees are disbursed by CoW under
 CoW terms; Ophis neither pays nor guarantees them. The response splits each figure
 **sovereign** vs **hosted**. The sovereign label means Ophis-controlled settlement: Ophis
-accounts for the **referral rebate** on indexed chains (affiliate payout execution is
-currently disabled). A stacked third-party **own-fee** can be paid monthly in WETH from the sovereign chain's Ophis Safe,
+accounts for the **referral rebate** on indexed chains (affiliate payout execution requires
+activation, reconciliation, funding and Safe approval). A stacked third-party **own-fee** can be paid in WETH from the sovereign chain's Ophis Safe,
 taking 0% of it, once your recipient is onboarded (allowlisted) and we have enabled and
-funded the payout for it. No partner is onboarded for sovereign own-fee payout yet, so
-until we turn it on for your recipient the sovereign own-fee is charged and reported but
-not paid to your address. The response carries a top-level `disclaimer` with the scope.
+funded the payout for it. Charged and reported own-fees are not proof of payment;
+check the executed payout records for your recipient. The response carries a top-level `disclaimer` with the scope.
 
 Three earnings streams appear:
 
 - **Own-fee** (`ownFeeAccruedUsd`): the partner-fee entry you stack to **your own**
   recipient in the appData `partnerFee` array, next to the Ophis base entry.
   `sovereignGuaranteed` (the historical field name) is the own-fee **charged** on Optimism
-  and Unichain, and it is now paid to your recipient monthly in WETH from the sovereign
+  and Unichain, and it can be paid to your recipient in WETH from the sovereign
   chain's Ophis Safe (Ophis takes 0% of it), once your recipient is onboarded (allowlisted)
   and we have enabled and funded the payout for it (see [Charge your own fee](#charge-your-own-fee)).
   `sovereignPaidToDateWeth` / `sovereignPaidToDateUsd` are the **exact** amounts already
@@ -518,7 +512,7 @@ Three earnings streams appear:
   recipient's first hosted settlement). Treat the accrued figures as charged/gross and the paid-to-date figures as the
   amounts realized.
 - **Referral rebate** (`referral`): the rebate attributed to your wallet when your
-  `appCode` is a registered referral code. Monthly WETH payouts are currently disabled.
+  `appCode` is a registered referral code. Check the partner dashboard for current WETH payout readiness.
   `paidToDateWeth` /
   `paidToDateUsd` are **exact**, summed from already-executed Safe batches, and `payouts`
   lists each executed payout with its on-chain tx and a block-explorer link (your proof of
@@ -539,7 +533,7 @@ Three earnings streams appear:
   "ophisFeeAccruedUsd": { "total": 350, "sovereign": 150, "hosted": 200 },
   "ownFeeAccruedUsd": {
     "total": 975,
-    "sovereignGuaranteed": 375, // OP + Unichain: charged, paid monthly once onboarded + enabled
+    "sovereignGuaranteed": 375, // OP + Unichain: charged; payout requires onboarding, activation and funding
     "hostedAccrued": 600, // CoW-hosted: disbursed by CoW under CoW terms
     "recipient": "0xYourOwnFeeRecipient",
     "sovereignPaidToDateWeth": 0.05, // EXACT WETH paid from executed Ophis Safe own-fee batches
@@ -570,7 +564,7 @@ Three earnings streams appear:
         "amountWeth": 1.0,
       },
     ],
-    "note": "Referral rebate attributed to your wallet; payout execution is currently disabled. Paid-to-date reports executed batches only, per referrer wallet.",
+    "note": "Referral rebate attributed to your wallet; payout execution requires activation, reconciliation, funding and Safe approval. Paid-to-date reports executed batches only, per referrer wallet.",
   },
   "byChain": [
     {
@@ -598,8 +592,8 @@ Three earnings streams appear:
 Agents can poll the same data through the Ophis MCP server's `get_integrator_earnings`
 tool (it calls this endpoint). The own-fee amount is decoded from settled appData on every
 chain, so the charged amount is attributed everywhere, but a charged amount is not itself a
-payout. On Optimism and Unichain a stacked third-party own-fee is now paid to your recipient
-monthly in WETH from the sovereign chain's Ophis Safe (Ophis takes 0% of it), once your
+payout. On Optimism and Unichain a stacked third-party own-fee can be paid to your recipient
+in WETH from the sovereign chain's Ophis Safe (Ophis takes 0% of it), once your
 recipient is onboarded (allowlisted) and we have enabled and funded the payout for it; the
 `sovereignPaidToDateWeth` / `sovereignPaidToDateUsd` and `payouts` fields report the exact
 sovereign amounts already paid and their on-chain txs. The hosted figure is the gross amount

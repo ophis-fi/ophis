@@ -17,15 +17,11 @@
  *   - Order entry is the structured in-app swap form. The
  *     natural-language → structured-order endpoint remains a developer
  *     API (POST /api/intent); it is not presented as the pretrade UX.
- *   - Fee framing mirrors the /learn copy and docs.ophis.fi/fees (flat 0.01%
- *     volume fee, 0.01% on stablecoin pairs - live since the volume-fee flag
- *     shipped). Source of truth: ophis/partnerFeeDefault.ts, which mirrors
+ *   - Fee framing mirrors the /learn copy and docs.ophis.fi/fees (0.01%
+ *     base plus capped improvement capture). Source of truth: ophis/partnerFeeDefault.ts, which mirrors
  *     packages/sdk/src/partner-fee.ts. Update all fee copy together.
- *   - Chain count "11" mirrors SORTED_CHAIN_IDS (libs/common-const/chainInfo.ts).
- *     Update both together if the chain set changes (known drift source).
- *   - Solana/Bitcoin = destination-only (in SORTED_DST_CHAIN_IDS, NOT
- *     SORTED_CHAIN_IDS). No solver counts, no "best price" guarantees, no MEV
- *     claims beyond intra-batch uniform-price.
+ *   - External NEAR networks use separate source/deposit and destination flows;
+ *     EVM order builders do not cover those deposits.
  *   - Inherited-from-CoW surfaces Badge tone="audit"; Ophis-operated surfaces
  *     Badge tone="live"; destination-only tone="beta"; testnet/paused tone="draft".
  *
@@ -89,16 +85,17 @@ export function ProtocolPage(): ReactNode {
             what you will sign. Nothing is submitted until you sign.
           </FeatureCard>
           <FeatureCard icon="03" title="Sign">
-            You review the order and sign it with your own wallet (EIP-712). Nothing leaves your wallet and nothing
-            executes until this signature.
+            You authorize the order with your wallet. ERC-20 orders typically use an off-chain signature; approvals,
+            native-token swaps, and Safe transactions can require on-chain steps.
           </FeatureCard>
           <FeatureCard icon="04" title="Compete">
-            The signed order is broadcast to a batch auction. Solvers race to find the best path, on-chain DEX,
-            peer-to-peer match, or cross-chain route, and bid for the right to settle it.
+            The authorized order enters an auction. Solvers compete to find an execution route through available
+            liquidity and bid for the right to settle it.
           </FeatureCard>
           <FeatureCard icon="05" title="Settle">
-            The winning solver settles your order inside a batch at a uniform clearing price, through CoW Protocol&#39;s{' '}
-            <InlineCode>GPv2Settlement</InlineCode> contract.
+            The winning solver settles the source-chain order through CoW Protocol&#39;s{' '}
+            <InlineCode>GPv2Settlement</InlineCode> contract. Cross-chain routes also depend on the selected bridge for
+            destination delivery.
           </FeatureCard>
         </FeatureGrid>
       </Section>
@@ -110,16 +107,15 @@ export function ProtocolPage(): ReactNode {
       >
         <FeatureGrid minCardWidth="240px">
           <FeatureCard title="Batch auctions" footer={<Badge tone="audit">Upstream CoW</Badge>}>
-            Orders are collected and settled together on a recurring cadence, rather than executed
-            first-come-first-served. There is no per-transaction priority race to win.
+            Eligible orders compete in recurring auctions and may settle together in a batch.
           </FeatureCard>
           <FeatureCard title="Coincidence of wants" footer={<Badge tone="audit">Upstream CoW</Badge>}>
-            Opposing orders in the same batch can settle directly against each other, a peer-to-peer match that skips
-            routing through external liquidity pools.
+            CoW settlement supports matching opposing orders directly. Ophis-operated solvers currently quote individual
+            orders against liquidity sources; they do not match peer orders.
           </FeatureCard>
           <FeatureCard title="Uniform clearing price" footer={<Badge tone="audit">Upstream CoW</Badge>}>
-            Every trade in a batch clears at the same price. That removes the intra-batch ordering value that makes
-            front-running and sandwich attacks profitable against ordinary users.
+            A settled batch uses uniform clearing prices per token pair under the settlement rules. This reduces
+            intra-batch ordering advantages; external liquidity and bridge execution retain their own MEV risks.
           </FeatureCard>
           <FeatureCard title="GPv2 settlement contract" footer={<Badge tone="audit">Unmodified</Badge>}>
             Ophis runs CoW Protocol&#39;s audited <InlineCode>GPv2Settlement</InlineCode> bytecode as deployed, under
@@ -172,7 +168,9 @@ export function ProtocolPage(): ReactNode {
             <Tr>
               <RowTh scope="row">Backend services</RowTh>
               <Td>CoW-operated</Td>
-              <Td>Ophis-operated orderbooks, drivers, and solver lanes on Optimism, Unichain, and Robinhood Chain</Td>
+              <Td>
+                Ophis-operated orderbooks, drivers, and solver lanes on Optimism, Unichain, Robinhood Chain, and Arc
+              </Td>
               <Td>
                 <Badge tone="live">Ophis</Badge>
               </Td>
@@ -214,7 +212,8 @@ export function ProtocolPage(): ReactNode {
           items={[
             {
               label: 'Funds custody',
-              value: 'Never held by Ophis. Only the settlement contract moves tokens, and only against a signed order.',
+              value:
+                'Ophis holds no wallet keys. Approvals, native-token escrow, and bridge deposits have separate contract permissions.',
             },
             {
               label: 'Interface authority',
@@ -235,32 +234,37 @@ export function ProtocolPage(): ReactNode {
       <Section
         id="fees"
         title="Fees"
-        intro="Ophis charges a flat 0.01% (1 bp) fee on trade volume, written into your order as a CIP-75 partner fee and taken from the trade output at settlement."
+        intro="Ophis charges a 0.01% base fee plus a capped share of eligible price improvement. The base fee applies even when there is no improvement."
       >
         <FeatureGrid minCardWidth="200px" gap="12px">
-          <MetricCard label="All trades" value="0.01%" sublabel="flat Ophis fee on trade volume (1 bp)" />
+          <MetricCard label="Base fee" value="0.01%" sublabel="of trade volume (1 bp)" />
+          <MetricCard
+            label="Volatile pairs"
+            value="80%"
+            sublabel="of eligible improvement, capped at 0.99% of volume"
+          />
           <MetricCard
             label="Stablecoin pairs"
-            value="0.01%"
-            sublabel="same-chain stablecoin-to-stablecoin swaps (1 bp)"
+            value="50%"
+            sublabel="of eligible improvement, capped at 0.20% of volume"
           />
         </FeatureGrid>
         <p>
-          The fee is written into your order as a CIP-75 partner fee. Its recipient is checked against an allowlist at
-          app-data validation, and the fee level is bounded by an operator-set protocol ceiling enforced by the backend.
-          A share of collected fees flows back to traders each month as volume-tier rebates; see the fee policy below
-          for the current split.
+          The caps apply to the improvement component; the base fee is additional. On Ophis-operated chains, the backend
+          applies the improvement policy to eligible in-market orders. On hosted chains, the order carries both fee
+          components, and CoW Protocol fees can also apply. Network, liquidity, bridge, or integrator fees may be
+          additional. See the fee policy for the calculation and rebate terms.
         </p>
         <KeyValueList
           items={[
             {
               label: 'Fee recipient',
               value:
-                'An allow-listed Ophis Safe. The recipient named in app-data is checked against a partner-fee allowlist enforced at validation.',
+                'The designated Ophis Safe. Ophis-operated backends validate the recipient against a partner-fee allowlist.',
             },
             {
               label: 'Arbitrary recipients',
-              value: 'Rejected, app-data cannot name an unlisted fee recipient (closes audit finding C3).',
+              value: 'Ophis-operated backends reject app-data that names an unlisted fee recipient.',
             },
             {
               label: 'Fee policy',
@@ -289,11 +293,10 @@ export function ProtocolPage(): ReactNode {
           </Thead>
           <Tbody>
             <Tr>
-              {/* Count mirrors SORTED_CHAIN_IDS in libs/common-const/chainInfo.ts, update together. */}
               <RowTh scope="row">EVM source chains</RowTh>
               <Td>
-                13 production EVM chains selectable in the app, including Ethereum, Arbitrum, Base, Optimism, Unichain,
-                and Robinhood Chain
+                Ethereum, Arbitrum, Base, Optimism, Unichain, Robinhood Chain, Arc, and other networks in the app&#39;s
+                chain selector
               </Td>
               <Td>
                 <Badge tone="live">Selectable</Badge>
@@ -301,7 +304,9 @@ export function ProtocolPage(): ReactNode {
             </Tr>
             <Tr>
               <RowTh scope="row">Ophis-operated stack</RowTh>
-              <Td>Ophis-operated orderbooks, drivers, and solver lanes on Optimism, Unichain, and Robinhood Chain</Td>
+              <Td>
+                Ophis-operated orderbooks, drivers, and solver lanes on Optimism, Unichain, Robinhood Chain, and Arc
+              </Td>
               <Td>
                 <Badge tone="live">Live</Badge>
               </Td>

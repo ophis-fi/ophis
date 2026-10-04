@@ -1,6 +1,6 @@
 # Ophis Explorer
 
-> Ophis Explorer is the public blockchain explorer for Ophis, an intent-based DEX aggregator (a CoW Protocol fork) live across 14 EVM chains (Optimism, Unichain, Robinhood Chain, and Arc operated by Ophis; Ethereum, Base, Arbitrum, Gnosis, Polygon, Avalanche, BNB, Linea, Plasma, and Ink CoW-hosted) with Bitcoin and Solana destinations via NEAR Intents. It surfaces orders, trades, settlement batches, and solver competition for Ophis.
+> Ophis Explorer is the public blockchain explorer for Ophis, an intent-based DEX aggregator (a CoW Protocol fork) live across 14 EVM chains (Optimism, Unichain, Robinhood Chain, and Arc operated by Ophis; Ethereum, Base, Arbitrum, Gnosis, Polygon, Avalanche, BNB, Linea, Plasma, and Ink CoW-hosted). It surfaces orders, trades, settlement batches, and solver competition for Ophis.
 
 ## What you can look up
 
@@ -12,14 +12,14 @@
 ## Key facts
 
 - On Optimism (chain 10), Unichain (chain 130), Robinhood Chain (chain 4663), and Arc (chain 5042), Ophis settles via its own GPv2Settlement (Optimism: 0x310784c7FCE12d578dA6f53460777bAc9718B859), derived from CoW's settlement code and deployed at a non-canonical address (not CoW's canonical 0x9008D19f58AAbD9eD0D60971565AA8510560ab41); on the other 10 chains Ophis routes through CoW's hosted orderbook and settlement. Upstream audits cover their stated shared-code scope, not every Ophis modification or deployment. See [Smart contracts](https://docs.ophis.fi/audits#smart-contracts).
-- Orders are gasless, off-chain, EIP-712-signed intents with a hard limit price; they can never settle below the signed limit. See [Order signing](https://docs.ophis.fi/architecture#2-order-signing).
+- Standard ERC-20 orders are off-chain signed intents with a hard limit price and solver-paid settlement gas. Approvals, native-token placement, wrapping, on-chain cancellation and refunds can require gas. Settlement enforces the signed order amounts; this does not bound future token value. See [Order signing](https://docs.ophis.fi/architecture#2-order-signing).
 - Every supported chain pays a 0.01% (1 bp) Ophis base. Orders also carry 80% of reference-quote improvement on volatile pairs (capped at 99 bps of volume), or 50% on stable pairs (capped at 20 bps). Arc applies the same capped backend improvement policy for in-market orders; eligible settled trades count toward volume and referral rebates. On Ophis-operated chains the trader keeps the remainder and all improvement above Ophis's cap; hosted settlement additionally applies CoW Protocol's separate upstream policy. See [Fees](https://docs.ophis.fi/fees).
 - Optimism, Unichain, Robinhood Chain, and Arc apply that improvement policy in the backend; CoW-hosted chains encode the same Ophis policy in CIP-75 appData and additionally pay CoW Protocol's separate upstream fees.
-- Non-custodial: every order is signed by the user's own wallet. See [Custody](https://docs.ophis.fi/audits#custody).
+- Users authorize their own orders. Standard ERC-20 funds remain in the wallet until settlement; native-token orders and bridge routes can require deposits with separate recovery rules. See [Custody](https://docs.ophis.fi/audits#custody).
 
 ## Links
 
 - [Swap](https://swap.ophis.fi/): the Ophis trading app.
 - [Docs](https://docs.ophis.fi/): protocol design, Intent API reference, SDK, security audits.
-- [Landing](https://ophis.fi/): product overview and the natural-language intent input.
+- [Landing](https://ophis.fi/): product overview and integration guides.
 - [Source](https://github.com/ophis-fi/ophis): full source code.

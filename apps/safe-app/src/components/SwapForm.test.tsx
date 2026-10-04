@@ -88,3 +88,16 @@ it.each(['account', 'chain'])('drops the previous %s quote even when its respons
   expect(host.textContent).not.toContain('Review & propose to Safe');
   expect(host.querySelector<HTMLInputElement>('input[placeholder="1000000000000000000"]')?.value).toBe('');
 });
+
+it.each([10, 56, 100])('describes native wrapping without naming the wrong token on chain %s', async (chainId) => {
+  mocks.context.safe = { ...mocks.context.safe, chainId };
+  await act(async () => root.render(<App />));
+  await fillInputs();
+  expect(host.textContent).toContain('Sell native token (wraps in the same Safe transaction)');
+  expect(host.textContent).not.toContain('Sell native ETH');
+  await act(async () => host.querySelector<HTMLInputElement>('input[type="checkbox"]')?.click());
+  expect(host.querySelector<HTMLInputElement>('input[placeholder="0x..."]')?.value).toBe('native token → wrapped token');
+  await act(async () => host.querySelector('button')?.click());
+  await act(async () => resolveQuote({ buyAmount: '2000' }));
+  expect(host.textContent).toContain('The Safe transaction wraps your native token first, then sells the wrapped token.');
+});

@@ -86,22 +86,24 @@ export default function AnySwapAffectedUsers(): ReactNode {
   return (
     <Wrapper>
       <Title>
-        <Trans>Your account is affected by the AnySwap Hack</Trans>
+        <Trans>AnySwap router security notice</Trans>
       </Title>
       <Content>
         <Container>
-          <img src={cow404IMG} alt={t`Ophis 404 not found`} />
+          <img src={cow404IMG} alt={t`Ophis`} />
           <h2>
-            <Trans>Read how to prevent losing funds</Trans>
+            <Trans>Review your token approvals</Trans>
           </h2>
         </Container>
         <p>
           <Trans>
-            You have given an allowance to <pre>AnyswapV4Router</pre> which is affected by a critical vulnerability.
+            This notice concerns approvals to <pre>AnyswapV4Router</pre>, a router affected by a critical vulnerability.
           </Trans>
         </p>
         <p>
-          <Trans>In order to protect your funds, you will need to remove the approval on this contract.</Trans>
+          <Trans>
+            If your wallet still has an approval for the affected contract, revoke it to protect your funds.
+          </Trans>
         </p>
         <p>
           <Trans>Please read more in this</Trans>{' '}

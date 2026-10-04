@@ -2,7 +2,7 @@
 title: "AI agent token swaps with GOAT or Coinbase AgentKit"
 description: "Wire a swap tool into a GOAT SDK or Coinbase AgentKit agent with Ophis: bounded orders, pinned receiver, capped slippage, gasless MEV-protected settlement."
 pubDate: 2026-07-12
-updatedDate: 2026-10-01
+updatedDate: 2026-10-04
 author: Ophis
 tags: [ai-agents, goat, agentkit, mev, swaps]
 draft: false
@@ -124,11 +124,11 @@ Two limits to plan around: the flow is ERC-20 to ERC-20 only (wrap native ETH to
 
 ## The referral code pays the builder
 
-Both snippets pass a `referralCode`. Every order carries the Ophis partner fee plus that code in its appData, attributing the swap volume your agent routes to you: you earn 8% of the verified base fee Ophis keeps on that volume, paid monthly in WETH (standard tier capped at $1M referred volume per month; an invitation-only Partner tier pays 12%, uncapped). Mint a code at [swap.ophis.fi/#/affiliate](https://swap.ophis.fi/#/affiliate) (details in the [AI agent docs](https://docs.ophis.fi/ai-agents)).
+Both snippets pass a `referralCode`. Every order carries the Ophis partner fee plus that code in its appData, attributing the swap volume your agent routes to you: you earn 8% of the verified base fee Ophis keeps on that volume, with payout status in your dashboard (standard tier capped at $1M referred volume per month; an invitation-only Partner tier pays 12%, uncapped). Mint a code at [swap.ophis.fi/#/affiliate](https://swap.ophis.fi/#/affiliate) (details in the [AI agent docs](https://docs.ophis.fi/ai-agents)).
 
 ## Not writing TypeScript? Use the MCP server
 
-If the agent is not TypeScript (an MCP-native setup, a Python loop, anything that speaks HTTP), point it at the hosted MCP server at [mcp.ophis.fi/mcp](https://mcp.ophis.fi/mcp): keyless, unauthenticated, all 14 supported EVM chains including Arc, fourteen tools from `parse_intent` through `validate_order` and `submit_order`, and the same rule that the agent signs locally with its own key. For Arc referrals through MCP, pass the optional `referrerCode` to `build_order`; eligible settled Arc trades are indexed for rebates. Direct SDK integrations need v0.4.4 or later for Arc referral tags. The [first post](/blog/let-an-ai-agent-swap-tokens/) walks through it.
+If the agent is not TypeScript (an MCP-native setup, a Python loop, anything that speaks HTTP), point it at the hosted MCP server at `https://mcp.ophis.fi/mcp` ([connection guide](https://docs.ophis.fi/ai-agents#mcp-server-recommended)): keyless, unauthenticated, all 14 supported EVM chains including Arc, fourteen tools from `parse_intent` through `validate_order` and `submit_order`, and the same rule that the agent signs locally with its own key. For Arc referrals through MCP, pass the optional `referrerCode` to `build_order`; eligible settled Arc trades are indexed for rebates. Direct SDK integrations need v0.4.4 or later for Arc referral tags. The [first post](/blog/let-an-ai-agent-swap-tokens/) walks through it.
 
 ## FAQ
 

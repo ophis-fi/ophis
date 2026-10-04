@@ -154,7 +154,7 @@ export function LeaderboardPage(): ReactNode {
       width="wide"
       eyebrow="Leaderboard"
       title="Top traders by 30-day volume."
-      lede="Ranked by rolling 30-day volume on Ophis. Volume sets your rebate tier and your share of the monthly WETH rebate pool."
+      lede="Ranked by rolling 30-day volume on Ophis. Volume determines your rebate tier and pool weight."
     >
       <LeaderboardFreshnessWarning dataFresh={data?.dataFresh} dataAsOf={data?.dataAsOf} />
       {selfEntry && (

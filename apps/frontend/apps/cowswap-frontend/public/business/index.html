@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Ophis for Business: intent routing for desks &amp; integrators</title>
-<meta name="description" content="Ophis for desks, treasuries, and integrators: non-custodial, MEV-protected intent routing on CoW Protocol's audited GPv2 contracts.">
+<meta name="description" content="Token swaps for desks, treasuries and integrators across 14 EVM chains. Connect through the widget, SDK or app. Published fees and security limits.">
 <link rel="canonical" href="https://business.ophis.fi">
 
 <meta property="og:type" content="website">
@@ -23,7 +23,7 @@
 <meta name="twitter:card" content="summary_large_image">
 <meta name="twitter:site" content="@ophisfi">
 <meta name="twitter:title" content="Ophis for Business">
-<meta name="twitter:description" content="Non-custodial intent routing for desks, treasuries, and integrators. MEV-protected execution on CoW Protocol's audited GPv2 contracts.">
+<meta name="twitter:description" content="Token swaps for desks, treasuries and integrators across 14 EVM chains. Widget, SDK and app integrations with published fees.">
 <meta name="twitter:image" content="https://business.ophis.fi/ophis-og.jpg">
 
 <script type="application/ld+json">
@@ -322,10 +322,9 @@ footer.site { padding: 64px 24px 36px; background: var(--panel); border-top: 1px
   <div class="wrap">
     <h1 class="rise">Execution infrastructure for <em>desks &amp; integrators</em>.</h1>
     <p class="sub rise d1">
-      Non-custodial intent routing with MEV-protected, uniform-price settlement on CoW Protocol's
-      GPv2-derived contracts, with review scope documented in the security guide. Batch-auction orders pay a 1 bp base, with capped price-improvement
-      capture on all supported chains; hosted integrations additionally pay CoW Protocol fees upstream. Charge your own fee on top and Ophis
-      takes 0% of that markup.
+      Connect your desk or app to token swaps across 14 EVM chains. Use the widget, SDK or trading
+      app with published <a href="https://ophis.fi/pricing/">fees</a> and
+      <a href="https://ophis.fi/security/">security limits</a>.
     </p>
     <div class="ctas rise d2">
       <a class="btn primary" href="https://swap.ophis.fi/#/contact">Talk to us →</a>
@@ -342,8 +341,8 @@ footer.site { padding: 64px 24px 36px; background: var(--panel); border-top: 1px
         <span class="lab">Sources and destinations via NEAR Intents</span>
       </div>
       <div class="c">
-        <span class="num"><b>1 bp</b> sovereign base</span>
-        <span class="lab">Solver-aligned pricing; hosted base is 1 bp</span>
+        <span class="num"><b>1 bp</b> base</span>
+        <span class="lab">Plus capped improvement capture; hosted fees apply</span>
       </div>
     </div>
   </div>
@@ -355,19 +354,18 @@ footer.site { padding: 64px 24px 36px; background: var(--panel); border-top: 1px
 <section id="why">
   <div class="wrap">
     <div class="eyebrow reveal">Why Ophis</div>
-    <h2 class="reveal">Three properties desks care about, enforced at the protocol layer.</h2>
+    <h2 class="reveal">Review the execution model.</h2>
     <p class="lede reveal">
-      Mechanism-level guarantees, not marketing. Each is implemented at the contract or settlement
-      layer Ophis inherits from CoW Protocol, so it holds regardless of the interface.
+      Signed orders constrain execution. Settlement, approvals and external routes have different risks.
     </p>
 
     <div class="grid cols-3 reveal">
       <div class="card">
         <span class="idx">01</span>
-        <h3>Non-custodial by construction</h3>
+        <h3>You authorize the order</h3>
         <p>
-          Your tokens never leave your wallet until on-chain settlement. The operator cannot move,
-          freeze, or recover funds. No counterparty custody risk, no recoverable hot wallet.
+          Standard ERC-20 funds stay in your wallet until settlement under your signed order and
+          allowance. Native-token orders and bridges can require deposits with separate recovery rules.
         </p>
         <div class="foot"><span class="badge live">Live</span></div>
       </div>
@@ -375,20 +373,17 @@ footer.site { padding: 64px 24px 36px; background: var(--panel); border-top: 1px
         <span class="idx">02</span>
         <h3>MEV-protected settlement</h3>
         <p>
-          Orders execute inside a batch auction at a single uniform clearing price. Front-running
-          and sandwich attacks are designed out, with no priority-gas auction to lose. Inherited
-          from CoW Protocol's GPv2 mechanism.
+          Offchain orders and uniform clearing prices per token pair mitigate common MEV.
+          Solver transactions can still use public liquidity pools; protection is not absolute.
         </p>
         <div class="foot"><span class="badge live">Live</span></div>
       </div>
       <div class="card">
         <span class="idx">03</span>
-        <h3>Audit-inherited contracts</h3>
+        <h3>Documented review scope</h3>
         <p>
-          Settlement runs on CoW Protocol's audited GPv2 contracts, with the upstream audit
-          reports published in CoW Protocol's contracts repository. Ophis-specific solver wiring
-          and the AllowList contract were reviewed with Trail of Bits' Slither and Echidna fuzzing,
-          GitHub CodeQL, and multi-agent code review.
+          CoW's upstream audits cover the versions named in their reports. Ophis deployments and
+          changes have separate review scope. Read the <a href="https://docs.ophis.fi/audits">security guide</a>.
         </p>
         <div class="foot"><span class="badge live">Live</span></div>
       </div>
@@ -418,8 +413,8 @@ footer.site { padding: 64px 24px 36px; background: var(--panel); border-top: 1px
           For an ERC-20 order, the appData <code>partnerFee</code> field accepts an array: you stack
           your own fee entry (your recipient, within the aggregate cap) next to the Ophis base.
           Ophis takes 0% of your fee; the protocol charge is separate. On
-          Optimism and Unichain your own-fee is paid to your recipient monthly in WETH from the
-          Ophis Safe once you are onboarded. Robinhood own-fee payout is not yet guaranteed and is
+          Optimism and Unichain, own-fee payouts use WETH from the Ophis Safe, subject to
+          recipient onboarding, activation, funding and Safe approval. Robinhood own-fee payout is not yet guaranteed and is
           reported with non-guaranteed accruals until its payout lane is enabled. On CoW-hosted chains it pays through CoW's weekly
           distribution under CoW's terms. Native-ETH orders use the eth-flow helper; add your own
           fee via a manual appData build.
@@ -428,23 +423,21 @@ footer.site { padding: 64px 24px 36px; background: var(--panel); border-top: 1px
       </div>
       <div class="card">
         <span class="idx">02</span>
-        <h3>Finite trade-reward pilot</h3>
+        <h3>Finite trade rewards</h3>
         <p>
-          Ophis has prepared a 150 USDG product experiment: 105 winning tickets, one per eligible
-          wallet, for verified $100+ Ophis swaps made after the campaign starts. Wallet age and
-          wallet balance are not requirements. Claims have no deadline and Ophis sponsors the Robinhood Chain transaction.
-          The pilot is not active until the distributor address is published and funded.
+          Eligible wallets can receive one winning ticket after a verified $100+ swap on an
+          eligible chain while inventory remains. The campaign started with 105 tickets totaling
+          150 USDG. Check <a href="https://swap.ophis.fi/#/rewards">Rewards</a> for current availability
+          and the <a href="https://docs.ophis.fi/trade-rewards">eligibility rules</a>.
         </p>
-        <div class="foot"><span class="badge partner">Prepared</span></div>
+        <div class="foot"><span class="badge live">Active</span></div>
       </div>
       <div class="card">
         <span class="idx">03</span>
-        <h3>Make your token the cheapest safe trade</h3>
+        <h3>Discuss an ecosystem integration</h3>
         <p>
-          For ecosystem and token launches, Ophis can run a boost: we step aside on the economics so
-          your pair becomes the most competitive MEV-protected route available, while you or your
-          chain fund the token-side rewards. Ophis brings the rails and stands as the named venue.
-          Scope is bespoke per launch; contact us.
+          Contact us about token listings, integration support and a scoped commercial agreement.
+          Price and execution depend on available liquidity and the live quote.
         </p>
         <div class="foot"><span class="badge partner">Contact us</span></div>
       </div>
@@ -474,9 +467,8 @@ footer.site { padding: 64px 24px 36px; background: var(--panel); border-top: 1px
         <div class="example">
           Worked example: your own rate <b>80 bps</b> on <b>$1,000,000</b> monthly volume.<br>
           Ophis takes <b>0%</b> of your <b>$8,000</b> markup. On Optimism, Unichain, and Robinhood Chain, the separate
-          Ophis charge is 1 bp plus capped price-improvement capture. Arc uses the same capped backend improvement policy for in-market orders and has no own-fee payout guarantee. You receive your markup on the CoW-hosted chains today,
-          paid out under CoW's terms; on Optimism and Unichain it is paid to you monthly in WETH from
-          the sovereign chain's Safe once you are onboarded and we enable it. Robinhood payout is not
+          Ophis charge is 1 bp plus capped price-improvement capture. Arc uses the same capped backend improvement policy for in-market orders and has no own-fee payout guarantee. CoW-hosted payouts follow CoW's terms; on Optimism and Unichain, WETH payouts from
+          the sovereign chain's Safe require onboarding, activation, funding and Safe approval. Robinhood payout is not
           guaranteed until its dedicated payout lane is enabled.<br>
           <span class="plus">For reference, <a href="https://support.metamask.io/trade/swap/user-guide-swaps/" target="_blank" rel="noopener noreferrer">MetaMask Swaps charges 0.875%</a>.</span>
         </div>
@@ -494,8 +486,8 @@ footer.site { padding: 64px 24px 36px; background: var(--panel); border-top: 1px
         </table>
         <p class="pool">
           The referral share is calculated on the <b>verified base fee Ophis keeps</b> from the flow you
-          refer, and paid <b>monthly in WETH, on-chain</b>. It stacks with your own fee line: you
-          keep your markup in full and earn the referral share on the base on indexed chains. Arc is included in referral indexing; own-fee payout guarantees remain scoped to Optimism and Unichain.
+          refer. View rewards and payout status in your dashboard. Arc is included in referral
+          indexing; integrator own-fee payout terms are separate.
         </p>
       </div>
     </div>
@@ -506,7 +498,7 @@ footer.site { padding: 64px 24px 36px; background: var(--panel); border-top: 1px
         <p>
           On Optimism and Unichain, your recipient address is added to the settlement backend's
           fee-recipient allowlist after verification, then your own-fee is metered per settled trade
-          and paid to your recipient monthly in WETH from the sovereign chain's Ophis Safe, with
+          and eligible for payout to your recipient in WETH from the sovereign chain's Ophis Safe, with
           Ophis taking 0% of it. Execution is a 2-of-3 Safe signature. The payout runs once your
           recipient is onboarded (allowlisted) and we have enabled and funded it; amounts are
           USD-valued from routed volume, not exact per-token restitution. The 1 bp sovereign base
@@ -520,9 +512,8 @@ footer.site { padding: 64px 24px 36px; background: var(--panel); border-top: 1px
           and charged by CoW's production orderbooks, verified against live quotes in July 2026.
           Payouts flow through CoW Protocol's weekly partner-fee distribution under CoW's terms,
           which include a service fee on partner fees (25% by default) and a 0.001 WETH minimum.
-          Whether that service fee applies to a stacked non-Ophis recipient, and the end-to-end
-          payout of that recipient, are still being verified, so do not assume the full own-fee
-          reaches you until we confirm it with your recipient address.
+          Those terms also apply to stacked partner-fee recipients. Check executed payout records
+          for the amount received by your recipient.
         </p>
       </div>
     </div>
@@ -535,7 +526,7 @@ footer.site { padding: 64px 24px 36px; background: var(--panel); border-top: 1px
 <section id="chains">
   <div class="wrap">
     <div class="eyebrow reveal">Chain coverage</div>
-    <h2 class="reveal">14 EVM chains, including Robinhood Chain and Arc, plus externally funded cross-chain sources.</h2>
+    <h2 class="reveal">14 EVM chains, plus external routes.</h2>
     <p class="lede reveal">
       Batch-auction orders use EVM orderbooks. The standalone app also supports Bitcoin, Solana, Monad,
       Hyperliquid (Hypercore), X Layer, Sui, Tron, Starknet and Zcash through NEAR Intents, including
@@ -579,31 +570,26 @@ footer.site { padding: 64px 24px 36px; background: var(--panel); border-top: 1px
     <div class="eyebrow reveal">Integration paths</div>
     <h2 class="reveal">Three ways to put Ophis in front of users.</h2>
     <p class="lede reveal">
-      All three settle through CoW Protocol's MEV-protected batch auction. Choose by how much of the
-      interface you want to own, and by whether you want to charge your own fee on the flow you send.
+      Choose an embedded interface, a programmatic integration or direct app access.
+      The widget and SDK build EVM orders; external deposit routes are separate app flows.
     </p>
 
     <div class="grid cols-3 reveal">
       <div class="card">
         <h3>Embed the widget</h3>
         <p>
-          Drop the Ophis swap form into your app with the themed <code>@ophis/widget-react</code>
-          wrapper, which pins the Ophis host and applies the Ophis default appCode, or the upstream
-          <code>@cowprotocol/widget-react</code> pointed at swap.ophis.fi. With either, pass your own
-          <code>appCode</code> so orders are attributed to you rather than the Ophis default. Same
-          MEV-protected, batch-auction settlement, in your branding. See
-          <a href="https://docs.ophis.fi/widget">docs.ophis.fi/widget</a>.
+          Embed <code>@ophis/widget-react</code> and set your own <code>appCode</code> for attribution.
+          The wrapper uses the Ophis host and theme. See the
+          <a href="https://docs.ophis.fi/widget">widget guide</a>.
         </p>
         <div class="foot"><span class="badge partner">Available</span></div>
       </div>
       <div class="card">
         <h3>Build with the SDK</h3>
         <p>
-          Call Ophis from your bot, agent, or backend with the dependency-free
-          <code>@ophis/sdk</code> v0.4.3 across 14 chains, including Robinhood Chain and Arc. Native ETH flows are supported only on chains with an EthFlow deployment; Arc uses ERC-20 orders. The SDK path pays the
-          chain-specific Ophis rate, carries your own fee entry on ERC-20 orders within the
-          190 bps hosted aggregate cap and 90 bps per-partner ceiling, no Ophis cut), and carries your referral code for the 8% or
-          12% share on indexed chains, including Arc. Use SDK v0.4.4 or later for Arc referral tags.
+          Quote, build and submit orders with <code>@ophis/sdk</code> across 14 EVM chains.
+          Use v0.4.4 or later for Arc referral tags. Native-token flows require an EthFlow deployment;
+          Arc uses ERC-20 orders. See the <a href="https://docs.ophis.fi/ai-agents">integration guide</a>.
         </p>
         <div class="foot"><span class="badge live">Live</span></div>
       </div>
@@ -625,7 +611,7 @@ footer.site { padding: 64px 24px 36px; background: var(--panel); border-top: 1px
   <div class="cta-banner reveal">
     <div>
       <h3>Partner access &amp; your fee line</h3>
-      <p>Material-volume routing, an ecosystem boost, or an integration where you charge your own fee on top of Ophis's published protocol pricing? Start the conversation and we respond within one business day.</p>
+      <p>Share your chains, expected volume and integration needs. Review fee caps and payout conditions before routing partner flow.</p>
     </div>
     <a class="btn primary" href="https://swap.ophis.fi/#/contact">Discuss partner access →</a>
   </div>
@@ -635,10 +621,9 @@ footer.site { padding: 64px 24px 36px; background: var(--panel); border-top: 1px
 <section id="api">
   <div class="wrap">
     <div class="eyebrow reveal">API overview</div>
-    <h2 class="reveal">Public Intent API. Partner tiers on request.</h2>
+    <h2 class="reveal">Public Intent API.</h2>
     <p class="lede reveal">
-      The public Intent API needs no auth and no key, useful for prototyping and low-volume
-      automation. Higher rate limits and partner-tier endpoints are reviewed case by case.
+      Parse a natural-language swap request without an API key. The parser does not quote, sign or execute trades.
     </p>
 
     <div class="table-wrap reveal" tabindex="0" role="region" aria-label="API endpoints">
@@ -648,15 +633,13 @@ footer.site { padding: 64px 24px 36px; background: var(--panel); border-top: 1px
         </thead>
         <tbody>
           <tr><td><code>/api/intent</code></td><td>POST</td><td>None</td><td>30 / min / IP</td><td><span class="badge live">Live</span></td></tr>
-          <tr><td><code>/api/intent</code></td><td>POST</td><td>API key (partner)</td><td>Higher limits for partners (contact us)</td><td><span class="badge planned">Planned</span></td></tr>
           <tr><td>CoW orderbook API</td><td>HTTP</td><td>None</td><td>Upstream-defined</td><td><span class="badge live">Live</span></td></tr>
         </tbody>
       </table>
     </div>
     <p style="margin-top: 18px; color: var(--muted); font-size: 14px;">
-      Full reference at <a href="https://docs.ophis.fi/intent-api">docs.ophis.fi</a>. Public-tier
-      limits suit low and medium-volume operators; for higher throughput or partner-tier access,
-      reach out and quotas are reviewed case by case.
+      See the <a href="https://docs.ophis.fi/intent-api">Intent API reference</a> for validation,
+      origin restrictions and errors. Contact us to discuss requirements beyond the public limits.
     </p>
   </div>
 </section>
@@ -695,12 +678,12 @@ footer.site { padding: 64px 24px 36px; background: var(--panel); border-top: 1px
         <div class="foot"><span class="badge live">Live · internal</span></div>
       </div>
       <div class="card">
-        <h3>Ongoing security work</h3>
+        <h3>Security disclosures</h3>
         <p>
-          Additional external review and a formal bug bounty are on the roadmap and will be listed
-          here as they go live. To discuss a security disclosure in the meantime, reach out.
+          Report vulnerabilities through the <a href="https://docs.ophis.fi/audits#reporting-a-vulnerability">disclosure process</a>.
+          A public bounty reward is not offered on this page.
         </p>
-        <div class="foot"><span class="badge planned">Planned</span></div>
+        <div class="foot"><span class="badge partner">Contact us</span></div>
       </div>
     </div>
   </div>
@@ -722,26 +705,24 @@ footer.site { padding: 64px 24px 36px; background: var(--panel); border-top: 1px
       <div class="card">
         <h3>Public best-effort</h3>
         <p>
-          Open access to the web UI and public Intent API. GitHub issues and email answered within
-          one business day. No formal SLA; downtime, RPC outages, or upstream protocol issues may
-          affect availability.
+          Open access to the app and public Intent API, without a formal SLA.
+          RPC outages and upstream protocol issues can affect availability.
         </p>
         <div class="foot"><span class="badge live">Live</span></div>
       </div>
       <div class="card">
         <h3>Partner-tier support</h3>
         <p>
-          Direct Telegram or email channel, higher API rate limits, integration assistance.
-          Reviewed case by case for material-volume routing through Ophis. Not a public tier;
-          contact us with your use case and target volume.
+          Contact us with your use case, target volume and support needs.
+          Any private service terms require a separate agreement.
         </p>
         <div class="foot"><span class="badge partner">Contact us</span></div>
       </div>
       <div class="card">
         <h3>OTC routing partnership</h3>
         <p>
-          Custom solver-set composition, dedicated execution lanes, post-trade reporting. Requires
-          a formal partnership contract; the scope is bespoke. Contact us to discuss fit.
+          Contact us to discuss OTC routing requirements. Availability, execution scope and reporting
+          require a separate written agreement.
         </p>
         <div class="foot"><span class="badge partner">Contact us</span></div>
       </div>
@@ -774,7 +755,7 @@ footer.site { padding: 64px 24px 36px; background: var(--panel); border-top: 1px
         <h3>What Ophis is</h3>
         <p>
           A non-custodial interface to the CoW Protocol settlement layer, with a plain-English
-          intent parser, a partner program that returns a share of trading revenue, and cross-chain
+          intent parser, a partner program that tracks eligible referral fees, and cross-chain
           destination support via NEAR Intents. Operated independently and open-source under GPL-3.0.
         </p>
       </div>
@@ -816,35 +797,15 @@ footer.site { padding: 64px 24px 36px; background: var(--panel); border-top: 1px
         <summary>How does Ophis price its service, and is execution competitive?</summary>
         <div class="body">
           <p>
-            The rates are published. On Optimism, Unichain, Robinhood Chain, and Arc, integrations pay
-            a 1 bp base plus 80% of reference-quote improvement on volatile pairs, capped at 99 bps
-            of volume, or 50% on stable pairs, capped at 20 bps. CoW-hosted integrations use the same
-            1 bp Ophis base, plus CoW Protocol's separate upstream fees. Arc uses the same capped backend improvement policy for in-market orders; an Arc own-fee payout guarantee is not enabled.
-            Execution is benchmarked against leading aggregators, with the additional protection of
-            MEV-safe, uniform-price batch settlement that public mempool routes cannot offer.
+            Orders pay a 1 bp base plus capped reference-quote-improvement capture: 80% on volatile
+            pairs, capped at 99 bps of volume; 50% on stable pairs, capped at 20 bps. Hosted chains
+            also apply CoW Protocol fees. Execution and price depend on the live quote.
           </p>
           <p>
-            Using the SDK or a manual appData build, you charge your own fee on top of ERC-20
-            orders and Ophis takes 0% of it: the order's appData <code>partnerFee</code> field accepts an
-            array, so you stack your own entry (your recipient address and rate: up to 90 bps under
-            the registered-partner ceiling and 190 bps hosted aggregate cap)
-            next to the Ophis base entry, and Ophis takes
-            0% of your markup. Set your own rate to 80 bps on $1,000,000 of monthly volume and Ophis
-            takes 0% of your $8,000 markup; Ophis's chain-specific protocol charge is separate.
-            You receive that markup on the CoW-hosted chains today (under CoW terms); on the
-            sovereign chains Optimism and Unichain it is paid to you monthly in WETH from the
-            sovereign chain's Safe once you are onboarded and we enable it. For reference, MetaMask Swaps charges 0.875%. A
-            third-party own-fee is chargeable today on the CoW-hosted chains, where it pays out
-            through CoW Protocol's weekly partner distribution under CoW's terms and we are
-            completing an end-to-end payout check for stacked recipients, so do not assume the full
-            own-fee reaches you until confirmed. On Optimism and Unichain the own-fee is charged into
-            settlement and swept to the Ophis Safe, then paid back to your recipient monthly in WETH
-            from that Safe (Ophis takes 0% of it) once your recipient is onboarded (allowlisted) and
-            we enable and fund the payout for it. A referral layer
-            pays 8% of the verified base fee Ophis keeps (self-serve, referred volume capped at $1M/month) or
-            12% (partner tier, uncapped, contact us), paid monthly in WETH, on-chain. Separately,
-            active traders on indexed chains earn the documented pooled volume-tier WETH rebates. Arc is included in rebate and referral indexing; the finite 150 USDG
-            trade-reward pilot remains inactive until its distributor is published and funded.
+            Integrators can add their own fee within the documented caps. Ophis takes 0% of that
+            markup; the payout path and upstream deductions affect the amount received.
+            Review the <a href="#economics">rates and payout conditions</a> and
+            <a href="https://docs.ophis.fi/partners">partner guide</a> before integrating.
           </p>
         </div>
       </details>
@@ -865,10 +826,8 @@ footer.site { padding: 64px 24px 36px; background: var(--panel); border-top: 1px
         <summary>Can I get a custom rate limit?</summary>
         <div class="body">
           <p>
-            Yes, partner-tier rate limits are reviewed case by case. The public Intent API allows 30
-            requests/min/IP, adequate for low and medium-volume operators. For higher throughput,
-            reach out with a brief description of your use case and target volume, and we respond
-            within one business day.
+            The public Intent API allows 30 requests per minute per IP. Contact us with your
+            throughput and integration requirements; no public API-key tier is available.
           </p>
         </div>
       </details>
@@ -890,11 +849,10 @@ footer.site { padding: 64px 24px 36px; background: var(--panel); border-top: 1px
         <summary>What happens if a solver fails or the upstream protocol has an outage?</summary>
         <div class="body">
           <p>
-            Solver competition handles single-solver failures automatically: your order is settled
-            by whichever solver wins the batch. If the underlying CoW Protocol orderbook is degraded
-            (rare but possible), Ophis surfaces an explicit error instead of routing through a
-            degraded venue. Unsettled orders incur no Ophis or CoW settlement fee, though network
-            gas may still apply to token approvals or other wallet actions you signed first.
+            Another solver may fill an order, but execution is not guaranteed. Orders can remain
+            open or expire during solver or upstream outages. An unfilled signed ERC-20 order has
+            no settlement fee; approvals and other wallet transactions can still cost gas.
+            Native-token deposits need separate refund handling.
           </p>
         </div>
       </details>
@@ -917,8 +875,8 @@ footer.site { padding: 64px 24px 36px; background: var(--panel); border-top: 1px
   <div class="wrap" style="text-align: center;">
     <h2 class="reveal" style="margin: 0 auto;">Start the conversation.</h2>
     <p class="lede reveal" style="margin: 18px auto 30px;">
-      A response within one business day on substantive inquiries. If a competitive, MEV-protected
-      venue where you charge your own fee alongside transparent protocol pricing fits your desk, the conversation is short.
+      Tell us your chains, expected volume and integration needs. We can discuss the published pricing,
+      payout conditions and an appropriate integration path.
     </p>
     <a class="btn primary reveal" href="https://swap.ophis.fi/#/contact">Contact us →</a>
   </div>
@@ -935,7 +893,7 @@ footer.site { padding: 64px 24px 36px; background: var(--panel); border-top: 1px
         ophis<span>.</span>
       </a>
       <p>
-        Intent-based DEX aggregator. Non-custodial, MEV-protected, audit-inherited. For
+        Intent-based token swaps with published fees and security limits. For
         material-volume traders and integrators.
       </p>
     </div>

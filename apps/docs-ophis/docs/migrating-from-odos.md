@@ -51,7 +51,7 @@ a backlog:
 |---|---|
 | Server-side price discovery, ERC-20 to ERC-20 | Yes |
 | Execution from an EOA, ERC-20 to ERC-20, on an enabled chain | Yes |
-| Executable calldata to compose inside your own contract call | **No, and not planned.** Ophis returns an intent, not a transaction |
+| Executable calldata to compose inside your own contract call | **No.** Ophis returns an intent, not a transaction |
 | Signing from a Safe, smart account, MPC or DAO treasury | **No.** EOA signing schemes only |
 | Native ETH in or out | **No** |
 | Multi-token in or out | **No.** Tracked with basket intents |

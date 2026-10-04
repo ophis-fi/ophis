@@ -9,7 +9,7 @@ license: MIT
 Ophis is an intent-based DEX aggregator built on CoW Protocol. The swap app
 supports 14 EVM chains including Arc; `@ophis/sdk` v0.4.3 or later and the MCP
 server cover the same 14 mainnets, plus Sepolia for testing. Supported NEAR routes add Solana, Bitcoin, Monad, Hyperliquid,
-X Layer, Sui and Tron destinations. This MCP workflow describes same-chain
+X Layer, Sui, Tron, Starknet and Zcash sources and destinations, subject to route availability. This MCP workflow describes same-chain
 signed ERC-20 orders, not every bridge flow. Batch auctions mitigate common MEV;
 they do not eliminate every execution risk. Signing happens in the user's wallet.
 
@@ -58,7 +58,7 @@ https://docs.ophis.fi/fees. Arc uses the same backend improvement policy for in-
 indexed for volume and referral rebates. MCP clients pass `referrerCode` to
 `build_order` for Arc attribution; only direct SDK integrations require
 `@ophis/sdk` v0.4.4 or later for Arc referral tags.
-On indexed chains, a share of fees is returned monthly to active wallets as volume-tier rebates. The `@ophis/sdk` npm package exposes
+On indexed chains, eligible volume weights a share of the WETH rebate pool. View rewards and payout status in the dashboard. The `@ophis/sdk` npm package exposes
 `buildOphisAppDataPartnerFee`, `OPHIS_VOLUME_FEE_BPS`,
 `OPHIS_STABLE_VOLUME_FEE_BPS`, and
 `ophisVolumeBpsForChainAndPair(chainId, isStablePair)`.

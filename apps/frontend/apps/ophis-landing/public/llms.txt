@@ -48,7 +48,7 @@ curl -X POST https://swap.ophis.fi/api/intent \
 - [SDK](https://github.com/ophis-fi/ophis/tree/main/packages/sdk): `@ophis/sdk`: agent-safety helpers for building bounded CoW orders on Ophis (correct per-chain settlement domain, base plus capped improvement fee policy, receiver pinning).
 
 - [Networks and assets](https://docs.ophis.fi/networks-assets): Arc venue lanes, Circle and NEAR route boundaries, stock-provider labels (including bStocks on BNB and Reality on Arbitrum), and confidentiality scope. Badges are metadata attribution, not issuer authentication or eligibility.
-- Confidentiality: keyed NEAR builds request basic confidentiality and verify the quote echo; this is not universal privacy or a public mode selector. A broader public selector and customer-gated institutional AML/SHIELD remain planned, not released screening services.
+- Confidentiality: keyed NEAR builds request basic confidentiality and verify the quote echo; this is not universal privacy or a public mode selector. Ophis has no public route-wide confidentiality selector or released AML/SHIELD screening service.
 - Custody: native-token orders and bridges can deposit or burn assets before delivery. Expiry, refund and recovery differ from standard ERC-20 orders.
 
 ## Optional

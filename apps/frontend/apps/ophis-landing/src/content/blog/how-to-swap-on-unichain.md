@@ -2,7 +2,7 @@
 title: "How to swap on Unichain: gasless and MEV-protected"
 description: "Step-by-step guide to swapping on Unichain with Ophis: connect a wallet, sign an EIP-712 order, and settle it in a MEV-protected batch."
 pubDate: 2026-07-14
-updatedDate: 2026-09-28
+updatedDate: 2026-10-04
 author: Ophis
 tags: [unichain, swaps, mev, defi, how-to]
 draft: false
@@ -46,11 +46,11 @@ If you swap through the page, this changes nothing; the app targets the right co
 
 Every trade pays a 1 bp base. Ophis retains 80% of reference-quote improvement on volatile pairs (99 bps cap) or 50% on stable pairs (20 bps cap).
 
-Trade enough and part of it comes back. Rebate tiers run on rolling 30-day volume: Bronze ($20,000+) 10%, Silver ($50,000+) 15%, Gold ($100,000+) 25%, Palladium ($500,000+) 35%, Platinum ($1,000,000+) 50%. Rebates are paid monthly in WETH from the fee Safe, out of a pool of 21.25% of collected WETH fees split by tier-weighted 30-day volume. Your tier and progress show on the swap page, and the [fee docs](https://docs.ophis.fi/fees) have the full breakdown.
+Eligible trading volume determines your rebate tier; it does not guarantee a payout. Rebate tiers run on rolling 30-day volume: Bronze ($20,000+) 10%, Silver ($50,000+) 15%, Gold ($100,000+) 25%, Palladium ($500,000+) 35%, Platinum ($1,000,000+) 50%. View rewards and payout status in your dashboard. Rebate eligibility is calculated from a pool of 21.25% of collected WETH fees split by tier-weighted 30-day volume. Your tier and progress show on the swap page, and the [fee docs](https://docs.ophis.fi/fees) have the full breakdown.
 
 ## Swapping on Unichain from an AI agent
 
-The same rails are exposed to agents. Ophis runs a remote MCP server at [`https://mcp.ophis.fi/mcp`](https://mcp.ophis.fi/mcp), keyless and unauthenticated, with fourteen tools covering 14 EVM chains, including Unichain and Arc. `list_chains` resolves Unichain's orderbook host and settlement domain (the sovereign-deployment detail above, handled for you). `get_quote` and `build_order` prepare a bounded order with the receiver pinned to the owner, `validate_order` checks it, and `submit_order` relays the signature. The server never holds keys and never signs; the agent signs locally with its own key.
+The same rails are exposed to agents. Ophis runs a remote MCP server at `https://mcp.ophis.fi/mcp` ([connection guide](https://docs.ophis.fi/ai-agents#mcp-server-recommended)), keyless and unauthenticated, with fourteen tools covering 14 EVM chains, including Unichain and Arc. `list_chains` resolves Unichain's orderbook host and settlement domain (the sovereign-deployment detail above, handled for you). `get_quote` and `build_order` prepare a bounded order with the receiver pinned to the owner, `validate_order` checks it, and `submit_order` relays the signature. The server never holds keys and never signs; the agent signs locally with its own key.
 
 For the full safety model (bounded orders, pinned receivers, and what to lock down before an agent signs unattended), read [how to let an AI agent swap tokens](/blog/let-an-ai-agent-swap-tokens/) and the [AI agent docs](https://docs.ophis.fi/ai-agents).
 

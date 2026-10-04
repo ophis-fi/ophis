@@ -31,10 +31,9 @@ async function timedFetch(
   init: RequestInit,
   label: string,
 ): Promise<Response> {
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
   try {
-    return await fetchImpl(url, { ...init, signal: controller.signal });
+    // Native deadlines remain active after headers, including during JSON reads.
+    return await fetchImpl(url, { ...init, signal: AbortSignal.timeout(TIMEOUT_MS) });
   } catch (err) {
     // Keep the raw transport detail server-side only (correlate by the request
     // traceId in the logs); the client-facing body stays a fixed generic string
@@ -43,8 +42,6 @@ async function timedFetch(
     throw new CompatError('UPSTREAM_UNAVAILABLE', `${label}: orderbook temporarily unreachable.`, {
       retryAfterSeconds: 1,
     });
-  } finally {
-    clearTimeout(timer);
   }
 }
 
@@ -307,6 +304,6 @@ export async function fetchTrades(
   const url = `${getOphisOrderbookUrl(chainId)}/api/v1/trades?orderUid=${orderUid}`;
   const res = await timedFetch(fetchImpl, url, { method: 'GET' }, 'order-status');
   if (!res.ok) return [];
-  const body = (await res.json()) as unknown;
+  const body = await parseOkJson(res, 'order-status');
   return Array.isArray(body) ? body : [];
 }

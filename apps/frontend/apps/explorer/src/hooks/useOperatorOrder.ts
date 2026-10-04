@@ -26,6 +26,11 @@ type UseOrderResult = {
   forceUpdate?: Command
 }
 
+type LoadedOrder = Pick<UseOrderResult, 'order' | 'error' | 'errorOrderPresentInNetworkId'> & {
+  orderId: string
+  networkId: Network
+}
+
 function _getOrder(networkId: Network, orderId: string): Promise<GetOrderResult<SingleOrder>> {
   const defaultParams: GetOrderParams = { networkId, orderId }
   const getOrderApi: GetOrderApi<GetOrderParams, SingleOrder> = {
@@ -38,42 +43,64 @@ function _getOrder(networkId: Network, orderId: string): Promise<GetOrderResult<
 
 export function useOrderByNetwork(orderId: string, networkId: Network | null, updateInterval = 0): UseOrderResult {
   const [isLoading, setIsLoading] = useState(false)
-  const [error, setError] = useState<UiError>()
-  const [order, setOrder] = useState<Order | null>(null)
-  const [errorOrderPresentInNetworkId, setErrorOrderPresentInNetworkId] = useState<Network | null>(null)
+  const [loadedOrder, setLoadedOrder] = useState<LoadedOrder>()
+  const current = loadedOrder?.orderId === orderId && loadedOrder.networkId === networkId ? loadedOrder : undefined
+  const order = current?.order ?? null
+  const error = current?.error
+  const errorOrderPresentInNetworkId = current?.errorOrderPresentInNetworkId ?? null
   // Hack to force component to update itself on demand
   const [forcedUpdate, setForcedUpdate] = useState({})
   const forceUpdate = useCallback((): void => setForcedUpdate({}), [])
 
   useEffect(() => {
+    let cancelled = false
+
     async function fetchOrder(): Promise<void> {
-      if (!networkId) return
+      if (!networkId) {
+        setIsLoading(false)
+        return
+      }
 
       setIsLoading(true)
 
+      let nextOrder: Order | null = null
+      let nextNetwork: Network | null = null
+      let fetchError: UiError | undefined
+      const errorMessage = `Failed to fetch order: ${shortenOrderId(orderId)}`
+
       try {
-        const { order: rawOrder, errorOrderPresentInNetworkId: errorOrderPresentInNetworkIdRaw } = await _getOrder(
-          networkId,
-          orderId,
-        )
-        console.log({ rawOrder, errorOrderPresentInNetworkIdRaw })
-        if (rawOrder) {
-          setOrder(transformOrder(rawOrder))
-        }
-        if (errorOrderPresentInNetworkIdRaw) {
-          setErrorOrderPresentInNetworkId(errorOrderPresentInNetworkIdRaw)
-        }
-        setError(undefined)
+        const { order: rawOrder, errorOrderPresentInNetworkId: otherNetwork } = await _getOrder(networkId, orderId)
+        if (cancelled) return
+        nextOrder = rawOrder ? transformOrder(rawOrder) : null
+        nextNetwork = otherNetwork ?? null
       } catch (e) {
-        const msg = `Failed to fetch order`
-        console.error(`${msg}: ${orderId}`, e.message)
-        setError({ message: `${msg}: ${shortenOrderId(orderId)}`, type: 'error' })
-      } finally {
-        setIsLoading(false)
+        if (cancelled) return
+        console.error(`Failed to fetch order: ${orderId}`, e)
+        fetchError = { message: errorMessage, type: 'error' }
       }
+
+      setLoadedOrder((previous) => {
+        const next: LoadedOrder = {
+          orderId,
+          networkId,
+          order: nextOrder,
+          errorOrderPresentInNetworkId: nextNetwork,
+        }
+        if (nextOrder) return next
+        const sameRequest = previous?.orderId === orderId && previous.networkId === networkId
+        // Lookups can return null on an outage. Keep this order's last snapshot so polling can recover.
+        if (sameRequest && previous.order) {
+          return { ...previous, error: fetchError ?? { message: errorMessage, type: 'error' } }
+        }
+        return { ...next, error: fetchError }
+      })
+      setIsLoading(false)
     }
 
-    fetchOrder()
+    void fetchOrder()
+    return (): void => {
+      cancelled = true
+    }
   }, [networkId, orderId, forcedUpdate])
 
   useEffect(() => {

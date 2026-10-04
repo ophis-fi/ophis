@@ -1,5 +1,6 @@
 import { ReactNode } from 'react'
 
+import { NATIVE_CURRENCIES } from '@cowprotocol/common-const'
 import { getAddressKey, SupportedChainId } from '@cowprotocol/cow-sdk'
 import type { CrossChainOrder } from '@cowprotocol/sdk-bridging'
 
@@ -30,7 +31,8 @@ export function TokenDisplay(props: Readonly<TokenDisplayProps>): ReactNode {
   const { data: networks } = useBridgeProviderNetworks(bridgeProvider)
 
   const tokenInfo = tokens?.[getAddressKey(erc20.address)]
-  const tokenLogo = erc20?.logoUrl || tokenInfo?.logoURI
+  const tokenLogo =
+    erc20.logoUrl || (isNativeToken(erc20.address) ? NATIVE_CURRENCIES[network]?.logoURI : tokenInfo?.logoURI)
 
   const bridgeNetwork = networks?.[network]
   const bridgeBlockExplorer = bridgeNetwork?.blockExplorer
@@ -48,7 +50,13 @@ export function TokenDisplay(props: Readonly<TokenDisplayProps>): ReactNode {
 
   return (
     <Wrapper>
-      <StyledImg address={imageAddress} network={network} tokenLogo={tokenLogo} />
+      <StyledImg
+        address={imageAddress}
+        network={network}
+        tokenLogo={tokenLogo}
+        symbol={erc20.symbol}
+        name={erc20.name}
+      />
       {isNativeToken(erc20.address) ? (
         nativeTokenDisplay
       ) : (

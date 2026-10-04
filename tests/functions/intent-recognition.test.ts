@@ -16,6 +16,38 @@ import assert from 'node:assert/strict'
 
 import * as intent from '../../functions/api/intent.ts'
 
+test('intent timeout covers a stalled response body after successful headers', async (t) => {
+  const deadline = new AbortController()
+  t.mock.method(AbortSignal, 'timeout', (milliseconds: number) => {
+    assert.equal(milliseconds, 5000)
+    return deadline.signal
+  })
+  let stream: ReadableStreamDefaultController<Uint8Array> | undefined
+  t.mock.method(globalThis, 'fetch', async (_input, init) => new Response(new ReadableStream({
+    start(controller) {
+      stream = controller
+      const signal = init?.signal
+      signal?.addEventListener('abort', () => controller.error(signal.reason), { once: true })
+      setTimeout(() => deadline.abort(new DOMException('Timed out', 'TimeoutError')), 0)
+    },
+  })))
+  const request = new Request('https://swap.ophis.fi/api/intent', {
+    method: 'POST', body: JSON.stringify({ text: 'swap 1 ETH for USDC' }),
+  })
+  let timer: ReturnType<typeof setTimeout> | undefined
+  try {
+    const response = await Promise.race([
+      intent.onRequestPost({ request, env: { LIBERTAI_API_KEY: 'test-only' } } as Parameters<typeof intent.onRequestPost>[0]),
+      new Promise<never>((_resolve, reject) => { timer = setTimeout(() => reject(new Error('stalled body ignored timeout')), 250) }),
+    ])
+    assert.equal(response.status, 504)
+    assert.equal((await response.json()).error.code, 'TIMEOUT')
+  } finally {
+    clearTimeout(timer)
+    stream?.error(new Error('test cleanup'))
+  }
+})
+
 type EntityType = 'sellToken' | 'buyToken' | 'amount' | 'chain'
 
 // Build an entity with start/end offsets derived from where `raw` appears in

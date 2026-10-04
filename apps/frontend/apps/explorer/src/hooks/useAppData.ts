@@ -1,8 +1,11 @@
+import { useMemo } from 'react'
+
 import { SWR_NO_REFRESH_OPTIONS } from '@cowprotocol/common-const'
 import { AnyAppDataDocVersion } from '@cowprotocol/cow-sdk'
 
 import { DEFAULT_IPFS_READ_URI, IPFS_INVALID_APP_IDS } from 'const'
 import { metadataApiSDK, orderBookSDK } from 'cowSdk'
+import { useNetworkId } from 'state/network'
 import useSWR, { SWRConfiguration } from 'swr'
 
 import { decodeFullAppData } from '../utils/decodeFullAppData'
@@ -20,6 +23,9 @@ interface AppDataDecodingResult {
 }
 
 export const useAppData = (appData: string, fullAppData?: string): AppDataDecodingResult => {
+  const networkId = useNetworkId()
+  const inlineAppData = useMemo(() => decodeFullAppData(fullAppData), [fullAppData])
+
   // Old AppData use a different way to derive the CID (we know is old if fullAppData is not available)
   const isLegacyAppDataHex = fullAppData === undefined
 
@@ -42,9 +48,9 @@ export const useAppData = (appData: string, fullAppData?: string): AppDataDecodi
     isLoading: isAppDataLoading,
     data: appDataDocFromApi,
   } = useSWR(
-    ['appDataFromApi', appData],
-    async ([_, appDataHash]) => {
-      const response = await orderBookSDK.getAppData(appDataHash)
+    !inlineAppData && networkId ? ['appDataFromApi', appData, networkId] : null,
+    async ([_, appDataHash, chainId]) => {
+      const response = await orderBookSDK.getAppData(appDataHash, { chainId })
 
       const { error, decodedAppData } = await getDecodedAppData(appData, isLegacyAppDataHex, response.fullAppData)
 

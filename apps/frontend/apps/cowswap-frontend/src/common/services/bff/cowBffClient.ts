@@ -1,3 +1,4 @@
+import { COW_API_UNSUPPORTED_CHAIN_IDS } from '@cowprotocol/common-const'
 import { SlippageToleranceRequest, SlippageToleranceResponse } from '@cowprotocol/cow-sdk'
 
 const DEFAULT_TIMEOUT = 2000 // 2 sec
@@ -5,10 +6,6 @@ const DEFAULT_TIMEOUT = 2000 // 2 sec
 const EMPTY_SLIPPAGE_RESPONSE = { slippageBps: null }
 
 const log = console.debug
-
-// Ophis fork: chains not served by CoW's BFF — calls always 400.
-// Short-circuit to the empty response to avoid the network noise.
-const UNSUPPORTED_BFF_CHAINS = new Set<number>([10, 130, 4663])
 
 export class CoWBFFClient {
   constructor(private readonly baseUrl: string) {}
@@ -25,16 +22,16 @@ export class CoWBFFClient {
     buyToken,
     chainId,
   }: SlippageToleranceRequest): Promise<SlippageToleranceResponse> {
-    if (UNSUPPORTED_BFF_CHAINS.has(chainId)) {
+    if (COW_API_UNSUPPORTED_CHAIN_IDS.has(chainId)) {
       return EMPTY_SLIPPAGE_RESPONSE
     }
+    const controller = new AbortController()
+    const timeoutId = setTimeout(() => controller.abort(), DEFAULT_TIMEOUT)
+
     try {
       const url = `${this.baseUrl}/${chainId}/markets/${sellToken}-${buyToken}/slippageTolerance`
 
       log(`Fetching slippage tolerance from API: ${url} (timeout: ${DEFAULT_TIMEOUT}ms)`)
-
-      const controller = new AbortController()
-      const timeoutId = setTimeout(() => controller.abort(), DEFAULT_TIMEOUT)
 
       const response = await fetch(url, {
         method: 'GET',
@@ -44,8 +41,6 @@ export class CoWBFFClient {
         },
         signal: controller.signal,
       })
-
-      clearTimeout(timeoutId)
 
       if (!response.ok) {
         log(`Slippage tolerance API error: ${response.status} ${response.statusText}`)
@@ -65,6 +60,8 @@ export class CoWBFFClient {
     } catch (error) {
       log(`Failed to fetch slippage tolerance from API: ${error instanceof Error ? error.message : 'Unknown error'}`)
       return EMPTY_SLIPPAGE_RESPONSE
+    } finally {
+      clearTimeout(timeoutId)
     }
   }
 }

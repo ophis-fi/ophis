@@ -5,7 +5,7 @@
  * none / bronze / silver / gold / palladium / platinum, keyed on 30-day USD
  * volume. Fetches GET /tier/:account (JSON path) for the connected wallet and
  * renders a compact "Bronze : 30d $X : $Y to Silver" chip plus the rebate %
- * for the tier and a one-line "paid monthly in WETH" note.
+ * for the tier and a description of pool weight.
  *
  * Falls back gracefully: an unindexed / never-traded wallet (404 or zeroed
  * payload) reads as "Unranked" with progress to Bronze. No partner-tier
@@ -111,7 +111,7 @@ export function ProfileRank({ account }: Props): ReactNode {
       <MetricCard
         label="Rebate rate"
         value={rebatePctLabel}
-        sublabel="of the rebate pool weight for your tier, paid monthly in WETH"
+        sublabel="of the rebate pool weight for your tier"
         compact
       />
     </Section>

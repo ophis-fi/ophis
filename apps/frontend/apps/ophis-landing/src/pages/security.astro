@@ -24,7 +24,7 @@ const FAQS = [
   },
   {
     q: 'Is MEV protection guaranteed?',
-    a: `Batch-auction orders settle through CoW Protocol, which are designed to protect trades from MEV such as front-running and sandwiching by settling at a uniform clearing price. An order can never be settled below its signed limit price. Batch-auction settlement mitigates MEV by design; it is not an absolute guarantee against all adversarial conditions.`,
+    a: `Batch-auction orders use CoW Protocol settlement primitives, with Ophis deployments on operated chains. Offchain orders and uniform clearing prices per token pair mitigate common front-running and sandwich attacks. An order can never be settled below its signed limit price. Batch-auction settlement mitigates MEV by design; it is not an absolute guarantee against all adversarial conditions.`,
   },
   {
     q: 'How should an autonomous agent trade safely?',

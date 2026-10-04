@@ -1,3 +1,4 @@
+import { NATIVE_CURRENCIES } from '@cowprotocol/common-const'
 import { getAddressKey } from '@cowprotocol/cow-sdk'
 import { Command } from '@cowprotocol/types'
 
@@ -59,20 +60,6 @@ export function isNativeToken(address: string): boolean {
   return getAddressKey(address) === getAddressKey(NATIVE_TOKEN_ADDRESS)
 }
 
-const NetworkImageAddressMap: Record<Network, string> = {
-  [Network.MAINNET]: 'eth',
-  [Network.BASE]: 'eth',
-  [Network.ARBITRUM_ONE]: 'eth',
-  [Network.GNOSIS_CHAIN]: 'xdai',
-  [Network.POLYGON]: 'pol',
-  [Network.AVALANCHE]: 'avax',
-  [Network.SEPOLIA]: 'eth',
-  [Network.BNB]: 'bnb',
-  [Network.LINEA]: 'eth',
-  [Network.PLASMA]: 'xpl',
-  [Network.INK]: 'eth',
-}
-
 interface RetryOptions {
   retriesLeft?: number
   interval?: number
@@ -85,7 +72,7 @@ export function getImageAddress(address: string, network: Network): string {
     // Well, this address here is the path on `src/assets/tokens/`
     // So these special values will use the local images,
     // because they are native tokens and don't really have an address
-    return NetworkImageAddressMap[network]
+    return NATIVE_CURRENCIES[network]?.symbol?.toLowerCase() || address
   }
   return address
 }

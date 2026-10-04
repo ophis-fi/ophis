@@ -198,8 +198,8 @@ appDataHash=$(cast keccak "$appData")
 The appData carries the 1 bip sovereign base. Ophis also retains 80% of
 reference-quote improvement on volatile pairs, capped at 99 bips of volume, or
 50% on stable pairs, capped at 20 bips. The trader receives the remainder and
-all improvement above the cap. A share of fees is returned monthly to active wallets as
-volume-tier rebates. Details: https://docs.ophis.fi/fees.
+all improvement above the cap. Eligible volume weights a share of the WETH rebate
+pool; view rewards and payout status in the dashboard. Details: https://docs.ophis.fi/fees.
 
 ## Errors you'll see
 
