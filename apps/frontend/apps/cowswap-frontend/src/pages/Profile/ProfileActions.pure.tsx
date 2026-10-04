@@ -18,7 +18,7 @@ export function ProfileActions(): ReactNode {
         </p>
       </FeatureCard>
       <FeatureCard title="About Ophis">
-        <p>How the protocol works, audit references, what&apos;s live vs planned. All claims status-tagged.</p>
+        <p>Product overview, supported trading paths, and security references.</p>
         <p>
           <TextLink href="/about">About →</TextLink>
         </p>

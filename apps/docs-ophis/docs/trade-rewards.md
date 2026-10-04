@@ -6,9 +6,9 @@ description: Rules and claim flow for the finite Ophis winning-ticket campaign.
 
 # Ophis trade rewards
 
-Ophis has prepared a finite reward pilot to study how traders use the product. The campaign is not
-active until Ophis publishes the Robinhood Chain distributor address and enables the claim service.
-There is no token launch or speculative airdrop.
+The Ophis trade-reward campaign is active. Eligible wallets can receive one winning ticket
+while inventory remains. Check the [Rewards page](https://swap.ophis.fi/#/rewards) for current
+availability and claims. There is no token launch or speculative airdrop.
 
 ## Fixed campaign
 

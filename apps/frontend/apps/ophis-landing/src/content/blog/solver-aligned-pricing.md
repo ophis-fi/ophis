@@ -2,7 +2,7 @@
 title: "Ophis moves to solver-aligned pricing"
 description: "A 1 bp base and capped price-improvement capture on Ophis-operated chains aligns protocol revenue with execution quality."
 pubDate: 2026-08-05
-updatedDate: 2026-09-30
+updatedDate: 2026-10-04
 author: Ophis
 tags: [fees, solver-auctions, price-improvement, optimism]
 draft: false
@@ -10,11 +10,9 @@ cover: ./solver-aligned-pricing.cover.png
 coverAlt: "A gold serpent dividing an upward stream of price improvement across dark market contours"
 ---
 
-Ophis is changing how it earns on the chains where it operates the orderbook,
-solver auction, and settlement stack. Instead of charging retail users a fixed
-10 basis points while returning every unit of price improvement, Ophis will
-charge a **1 bp base fee** and earn primarily when execution beats the reference
-quote.
+Ophis charges a **1 bp base fee** plus capped reference-quote improvement.
+On Ophis-operated chains, improvement capture applies to in-market orders;
+CoW-hosted chains encode the Ophis policy in appData and add upstream fees.
 
 On volatile pairs, Ophis retains **80% of price improvement, capped at 99 bps
 of trade volume**. On same-chain stablecoin pairs, Ophis retains **50%, capped
@@ -83,14 +81,8 @@ integrator markup.
 On CoW-hosted chains, the same Ophis improvement policy is encoded in appData.
 CoW Protocol's upstream fees apply separately and are not Ophis fees.
 
-## A model designed to evolve
+## Current terms
 
-The initial caps are guardrails, not permanent ceilings. Ophis will measure the
-volume-weighted distribution of reference-quote improvement, the share of trades
-that hit each cap, and the revenue and volume response by pair type. As the
-dataset grows, capture caps can be reviewed transparently.
-
-The objective is straightforward: maximize sustainable protocol revenue by
-making Ophis better at the work users route through it. See the canonical
-[pricing page](/pricing/) and the complete [fee documentation](https://docs.ophis.fi/fees)
-for the current terms.
+Review the final quote before signing. The [pricing page](/pricing/) and
+[fee documentation](https://docs.ophis.fi/fees) describe the current base,
+improvement caps, hosted upstream fees and separate bridge costs.

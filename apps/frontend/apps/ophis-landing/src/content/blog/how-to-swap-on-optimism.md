@@ -2,7 +2,7 @@
 title: "Swap on Optimism: MEV-protected DEX aggregator + rebates"
 description: "How to swap on Optimism with Ophis: intent orders, MEV-protected batch settlement, and solver-aligned pricing."
 pubDate: 2026-07-13
-updatedDate: 2026-09-27
+updatedDate: 2026-10-04
 author: Ophis
 tags: [optimism, dex-aggregator, mev, rebates, swaps]
 draft: false
@@ -19,7 +19,7 @@ Ophis, the intent-based DEX aggregator at ophis.fi, is a fork of CoW Protocol's 
 1. **Open the app.** [swap.ophis.fi/#/10/swap](https://swap.ophis.fi/#/10/swap) loads with Optimism (chain id 10) pre-selected. Connect a wallet. Standard signed ERC-20 orders keep funds in your wallet until settlement. Native-token placement and bridges have separate deposit rules.
 2. **Sign an intent, not a transaction.** Enter the pair and amount, review the quote, and sign the order. The signature carries a hard limit price, the worst execution you can receive. Standard ERC-20 settlement is solver-paid; approvals and other wallet transactions can still require gas.
 3. **Let solvers compete.** Your order goes to the Ophis orderbook off chain, where solvers race to fill it. The batch settles at a uniform clearing price, and improvement is shared under the published capped pricing policy.
-4. **Watch the rebate meter.** The swap page shows your rolling 30-day volume tier and your progress toward the next one. From $20,000 of 30-day volume you enter the tier ladder, and a higher tier means a larger share of the monthly rebate pool.
+4. **Watch the rebate meter.** The swap page shows your rolling 30-day volume tier and your progress toward the next one. From $20,000 of 30-day volume you enter the tier ladder, and a higher tier means a larger share of the rebate pool.
 
 Step for step, this is the same flow as on any other Ophis chain. What is different on Optimism sits underneath.
 
@@ -61,7 +61,7 @@ Volume then earns part of that back. Tiers follow your rolling 30-day volume:
 | Palladium | $500,000+ | 35% |
 | Platinum | $1,000,000+ | 50% |
 
-Rebates are paid monthly in WETH from the fee Safe. The pool is 21.25% of collected WETH fees, split across qualifying wallets by tier-weighted 30-day volume. Your tier and progress are shown directly on the swap page, and the full mechanics live in the [fee docs](https://docs.ophis.fi/fees).
+View rewards and payout status in your dashboard. The pool is 21.25% of collected WETH fees, split across qualifying wallets by tier-weighted 30-day volume. Your tier and progress are shown directly on the swap page, and the full mechanics live in the [fee docs](https://docs.ophis.fi/fees).
 
 ## Agents, bots, and integrators: earning on OP flow
 
@@ -69,7 +69,7 @@ Optimism flow does not have to come from a human clicking a UI. Three integratio
 
 - **MCP server.** A hosted, keyless endpoint at `https://mcp.ophis.fi/mcp` exposes fourteen tools, from `parse_intent` and `get_quote` through `build_order`, `validate_order`, and `submit_order`. `list_chains` resolves the Optimism orderbook and settlement domain, `build_order` pins the receiver to the owner, and the server never holds keys or signs anything. The [agent walkthrough](/blog/let-an-ai-agent-swap-tokens/) covers the full safety model.
 - **SDK.** `@ophis/sdk` resolves the orderbook URL and the EIP-712 signing domain per chain. That is exactly the part integrations get wrong when they hardcode canonical endpoints on a sovereign chain. Details in the [AI agent docs](https://docs.ophis.fi/ai-agents).
-- **Affiliate rebate.** Anyone can mint a referral code and earn 8% of the verified base fee Ophis keeps on every trade their referred wallets route, paid monthly in WETH. The regular tier is capped at $1M of referred volume per month; an invitation-only Partner tier pays 12%, uncapped. Mechanics in the [affiliate docs](https://docs.ophis.fi/affiliate).
+- **Affiliate rebate.** Anyone can mint a referral code and earn 8% of the verified base fee Ophis keeps on every trade their referred wallets route, with rewards and payout status in your dashboard. The regular tier is capped at $1M of referred volume per month; an invitation-only Partner tier pays 12%, uncapped. Mechanics in the [affiliate docs](https://docs.ophis.fi/affiliate).
 
 For apps that want the interface without the plumbing, `@ophis/widget-react` embeds the swap form directly; see the [widget docs](https://docs.ophis.fi/widget).
 
@@ -85,10 +85,10 @@ No. An Ophis order is a signed message, not a broadcast transaction, so there is
 
 ### How do rebates pay out?
 
-Your tier follows your rolling 30-day volume, with weights from 10% at $20,000 up to 50% at $1,000,000 and above. These are pool-allocation weights, not a promised percentage refund of your own fees. Rebates are paid monthly in WETH from the fee Safe, out of a pool equal to 21.25% of collected WETH fees, split by tier-weighted 30-day volume. The swap page shows your current tier and progress at all times.
+Your tier follows your rolling 30-day volume, with weights from 10% at $20,000 up to 50% at $1,000,000 and above. These are pool-allocation weights, not a promised percentage refund of your own fees. View rewards and payout status in your dashboard. Rebate eligibility is calculated from a pool equal to 21.25% of collected WETH fees, split by tier-weighted 30-day volume. The swap page shows your current tier and progress at all times.
 
 ### Can I integrate Ophis into my app?
 
-Yes, at whichever depth fits. `@ophis/widget-react` is a drop-in swap UI, `@ophis/sdk` handles per-chain orderbook and signing-domain resolution for programmatic orders, and agents can point at the hosted MCP server with no keys involved. To earn on that flow, mint a referral code at [swap.ophis.fi/#/affiliate](https://swap.ophis.fi/#/affiliate): trades from your referred wallets earn you 8% of the verified base fee Ophis keeps, paid monthly in WETH.
+Yes, at whichever depth fits. `@ophis/widget-react` is a drop-in swap UI, `@ophis/sdk` handles per-chain orderbook and signing-domain resolution for programmatic orders, and agents can point at the hosted MCP server with no keys involved. To earn on that flow, mint a referral code at [swap.ophis.fi/#/affiliate](https://swap.ophis.fi/#/affiliate): trades from your referred wallets earn you 8% of the verified base fee Ophis keeps, with rewards and payout status in your dashboard.
 
 One signature, a solver auction, batch settlement, and a fee ladder that pays volume back. If you are starting from zero, the [getting-started guide](https://docs.ophis.fi/getting-started) walks through a first swap end to end. When you are ready, open [swap.ophis.fi/#/10/swap](https://swap.ophis.fi/#/10/swap) with Optimism pre-selected and place your first order.

@@ -1,7 +1,8 @@
 ---
 title: "DeFi on Robinhood Chain: a simpler way to swap with Ophis"
-description: "Explore DeFi on Robinhood Chain, meet the DEXs in Ophis's routing expansion, and learn how to find a token swap with your own wallet."
+description: "Explore DeFi on Robinhood Chain and learn how to check an available Ophis quote, review its costs and sign a token swap with your own wallet."
 pubDate: 2026-09-15
+updatedDate: 2026-10-04
 author: Ophis
 tags: [robinhood-chain, defi, dex-aggregator, token-swaps]
 draft: false
@@ -37,24 +38,15 @@ A DEX aggregator helps bring those choices together. Instead of picking an excha
 
 The meaningful comparison is the quote for **your trade**, including its costs and minimum received. More exchange names on a list do not automatically mean a better price for every swap.
 
-## Meet Ophis and its Robinhood Chain routing expansion
+## Check an available Ophis route
 
 Ophis uses intent-based trading. In everyday language, you sign the conditions of a trade you are willing to accept. Trading services called solvers compete to find a way to complete it within those conditions.
 
 You do not need to understand the machinery behind each DEX to use the interface. You choose tokens, review an available quote and decide whether to sign. Ophis uses batch settlement designed to reduce exposure to common front-running and sandwich attacks.
 
-The Robinhood Chain venues covered by Ophis's latest direct-routing work are:
-
-| DEX | Its place in the Ophis update |
-| --- | --- |
-| **UP33** | The existing direct exchange integration, retained in the routing update. |
-| **PancakeSwap** | A new direct integration for supported pools on Robinhood Chain. |
-| **RamsesX** | A new direct integration that adds another source of supported token liquidity. |
-| **Fables** | A new direct integration focused initially on the ETH/USDG market. |
-
-**Integration status, 15 September 2026:** the new PancakeSwap, RamsesX and Fables routes have been implemented, but the latest [Ophis rollout record](https://github.com/ophis-fi/ophis/blob/dce3490f836096522925f03f89865162801021af/docs/operations/direct-dex-routes.md) still lists production activation as pending. Their inclusion here is an introduction to the routing expansion, not a claim that all three are already available in live quotes.
-
-You can explore [PancakeSwap's Robinhood deployment documentation](https://developer.pancakeswap.finance/contracts/v3/addresses), [RamsesX](https://www.ramses.xyz/) and [Fables](https://www.fables.fi/) through their official sites. For trading today, the available quote in Ophis is the practical starting point.
+Check the route and quote in the app for your chosen tokens and amount. A venue
+name or an implemented integration does not establish that a route is active or
+that it can fill your order.
 
 ## One place to start, with your wallet in control
 
@@ -79,7 +71,7 @@ If your funds are on another blockchain, opening this trading form does not move
 
 DeFi becomes easier to explore when the first interaction is understandable. A clear pair of tokens, a quote you can inspect and an order you approve are a useful place to begin.
 
-Ophis's role is to make those trading opportunities easier to reach as Robinhood Chain's exchange ecosystem develops. The direct-routing expansion builds on that idea: more supported sources of liquidity, brought into the same trading experience.
+Ophis brings available token-swap quotes into one interface. Check the quoted output, fees and minimum received before authorizing a trade.
 
 **[Choose your tokens and check an Ophis quote](https://swap.ophis.fi/#/4663/swap).**
 
@@ -89,9 +81,9 @@ Ophis's role is to make those trading opportunities easier to reach as Robinhood
 
 Ophis is an independent DEX aggregator with a Robinhood Chain trading interface. It helps users find an available token-swap route, review a quote and sign an order with their own wallet.
 
-### Which Robinhood Chain DEXs are included in the latest Ophis routing update?
+### How do I check whether a route is available?
 
-The update retains UP33 and adds direct integrations for PancakeSwap, RamsesX and Fables. As of 15 September 2026, the rollout record still lists activation of the new routes as pending. A listed integration does not guarantee an available quote for every token pair.
+Select Robinhood Chain, choose your tokens and amount, and request a quote. Availability depends on the pair, liquidity and current service status; a token listing does not guarantee a fill.
 
 ### Do I need a Robinhood brokerage account to use Ophis?
 

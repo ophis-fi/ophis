@@ -1,3 +1,4 @@
+import { COW_API_UNSUPPORTED_CHAIN_IDS } from '@cowprotocol/common-const'
 import { isNonEvmBridgeDestination, isSupportedChainId } from '@cowprotocol/common-utils'
 import { getAddressKey, SupportedChainId, mapSupportedNetworks } from '@cowprotocol/cow-sdk'
 import { Fraction, Token } from '@cowprotocol/currency'
@@ -70,7 +71,7 @@ export async function fetchCurrencyUsdPrice(currency: Token): Promise<Fraction |
 function getShouldSkipBff(currency: Token): boolean {
   // CoW's BFF only knows EVM chain ids; a non-EVM bridge destination (Sui,
   // Tron, Hyperliquid) would just log a 404 per token.
-  if (isNonEvmBridgeDestination(currency.chainId)) return true
+  if (isNonEvmBridgeDestination(currency.chainId) || COW_API_UNSUPPORTED_CHAIN_IDS.has(currency.chainId)) return true
   return getShouldSkipPriceSource(currency, null, bffUnknownCurrencies, null, 0)
 }
 

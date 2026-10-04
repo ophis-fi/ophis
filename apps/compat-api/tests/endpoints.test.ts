@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { buildOrder } from '@ophis/sdk';
 
 import { clearStatusCache, handleRequest, type Deps } from '../src/index.js';
@@ -266,6 +266,38 @@ describe('POST /sor/quote/v3', () => {
     expect(res.headers.get('retry-after')).toBe('1');
     const body = (await res.json()) as Record<string, any>;
     expect(body.error.code).toBe('UPSTREAM_UNAVAILABLE');
+  });
+
+  it('times out a stalled upstream body after successful headers', async () => {
+    const deadline = new AbortController();
+    const timeout = vi.spyOn(AbortSignal, 'timeout').mockImplementation((milliseconds) => {
+      expect(milliseconds).toBe(10_000);
+      return deadline.signal;
+    });
+    let stream: ReadableStreamDefaultController<Uint8Array> | undefined;
+    const fetchImpl: typeof fetch = async (_input, init) => new Response(new ReadableStream({
+      start(controller) {
+        stream = controller;
+        const signal = init?.signal;
+        signal?.addEventListener('abort', () => controller.error(signal.reason), { once: true });
+        setTimeout(() => deadline.abort(new DOMException('Timed out', 'TimeoutError')), 0);
+      },
+    }));
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    try {
+      const res = await Promise.race([
+        handleRequest(post('/sor/quote/v3', quoteBody()), ENV, deps(fetchImpl)),
+        new Promise<never>((_resolve, reject) => { timer = setTimeout(() => reject(new Error('stalled body ignored timeout')), 250); }),
+      ]);
+      expect(res.status).toBe(503);
+      expect(res.headers.get('retry-after')).toBe('1');
+      const body = await res.json() as { error: { code: string } };
+      expect(body.error.code).toBe('UPSTREAM_UNAVAILABLE');
+    } finally {
+      clearTimeout(timer);
+      stream?.error(new Error('test cleanup'));
+      timeout.mockRestore();
+    }
   });
 
   it('rejects unsupported chains listing the enabled set', async () => {
@@ -860,6 +892,42 @@ describe('POST /sor/submit', () => {
 });
 
 describe('GET /sor/order-status/{chainId}/{orderUid}', () => {
+  it('maps a stalled trades body to a retryable upstream error', async () => {
+    const deadline = new AbortController();
+    const timeout = vi.spyOn(AbortSignal, 'timeout').mockImplementation((milliseconds) => {
+      expect(milliseconds).toBe(10_000);
+      return deadline.signal;
+    });
+    let stream: ReadableStreamDefaultController<Uint8Array> | undefined;
+    const regularFetch = stubFetch();
+    const fetchImpl: typeof fetch = async (input, init) => {
+      if (!String(input).includes('/api/v1/trades')) return regularFetch(input, init);
+      return new Response(new ReadableStream({
+        start(controller) {
+          stream = controller;
+          const signal = init?.signal;
+          signal?.addEventListener('abort', () => controller.error(signal.reason), { once: true });
+          setTimeout(() => deadline.abort(new DOMException('Timed out', 'TimeoutError')), 0);
+        },
+      }));
+    };
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    try {
+      const res = await Promise.race([
+        handleRequest(new Request(`https://compat.ophis.fi/sor/order-status/10/${UID}`), ENV, deps(fetchImpl)),
+        new Promise<never>((_resolve, reject) => { timer = setTimeout(() => reject(new Error('stalled body ignored timeout')), 250); }),
+      ]);
+      expect(res.status).toBe(503);
+      expect(res.headers.get('retry-after')).toBe('1');
+      const body = await res.json() as { error: { code: string } };
+      expect(body.error.code).toBe('UPSTREAM_UNAVAILABLE');
+    } finally {
+      clearTimeout(timer);
+      stream?.error(new Error('test cleanup'));
+      timeout.mockRestore();
+    }
+  });
+
   it('proxies order + trades and caches for 3 seconds', async () => {
     let orderFetches = 0;
     const impl = stubFetch({

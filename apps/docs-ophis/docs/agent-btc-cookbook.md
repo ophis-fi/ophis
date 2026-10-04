@@ -39,13 +39,11 @@ address it controls and signs nothing on the Bitcoin side. Source approvals
 and other wallet transactions can require gas. The EIP-712 limit bounds the
 **source swap**, not final BTC delivery; the provider quote governs that leg.
 
-## Today vs the packaged tool
+## App and agent coverage
 
-The BTC and SOL destination flow is live in the Ophis **web app** today, where a
-person composes it. For an **agent**, there is no single wrapped tool yet: a
-keyless `swap_to_btc` / `swap_to_sol` MCP tool that combines the two legs is on
-the roadmap, not shipped;
-until it ships, an agent must implement and validate the composition itself.
+The Ophis **web app** supports BTC and SOL destination routes when assets and
+quotes permit. The hosted MCP server has no `swap_to_btc` or `swap_to_sol` tool.
+An agent integration must implement and validate the two-leg composition itself.
 The following is conceptual pseudocode, not a runnable 1-Click API example.
 Verify source/deposit asset, amount, destination, expiry and refund data before
 signing; do not override a receiver after signing or reuse mismatched quotes:

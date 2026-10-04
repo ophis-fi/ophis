@@ -134,10 +134,9 @@ builds use public NEAR routes. This is provider-specific behavior, **not a
 user-selectable all-route privacy guarantee**: Across, Circle and same-chain
 orders do not inherit it, and external-chain transfers remain public.
 
-A public confidentiality selector with route-wide enforcement remains planned.
-The planned **AML + SHIELD institutional offer** is separate, customer-gated work;
-it is not a released screening service for every swap. Neither a provider response
-nor a badge proves compliance or anonymity. See NEAR's
+Ophis has no public route-wide confidentiality selector or released AML/SHIELD
+screening service. Neither a provider response nor a badge proves compliance
+or anonymity. See NEAR's
 [confidential-swap integration](https://docs.near-intents.org/integration/distribution-channels/1click-api/quickstart/confidential-swaps)
 and [SHIELD incident API](https://docs.near-intents.org/security-compliance/shield-incident-api)
 for the upstream capabilities, not a claim that all of them are integrated into Ophis.

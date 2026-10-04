@@ -8,18 +8,17 @@ sidebar_position: 4
 
 # Affiliate program
 
-The Ophis affiliate program pays a share of the verified 1 bp base fee Ophis
-keeps when a wallet you referred trades on an indexed chain. The payout design is monthly WETH.
+Earn a share of your referrals’ trading fees. View rewards and payout status in
+your [dashboard](https://swap.ophis.fi/#/affiliate).
 Arc (5042) is included in affiliate and volume-tier rebate indexing.
 
 Share a referral code. When someone you refer trades on an indexed Ophis chain, **you earn a
 share of the verified base fee Ophis keeps on eligible attributed trades.**
 
-:::warning Payout execution is not currently enabled
-Affiliate indexing and estimates are available, but affiliate payouts are disabled.
-The monthly proposal process also requires a configured proposer, reconciled accounting,
-funding and Safe approval. A displayed estimate is not a payment. Check the partner
-dashboard's payout status; a scheduled cycle is not a guaranteed payment date.
+:::note[Payout status]
+
+WETH payouts require enabled processing, reconciled accounting, funds and Safe approval.
+The dashboard shows current status; estimated earnings are not completed payments.
 :::
 
 ## How it works
@@ -70,8 +69,6 @@ chain-aware base, hosted partner rate, and how to charge your own fee on top.
   with your active code through the [SDK](./partners.md) or [widget](./widget.md)
   credits that volume to you with no bind, and the net-new rule does not apply
   there.
-- **Payout processing is conditional.** The monthly WETH design requires activation,
-  complete accounting, funding and Safe approval. Execution is currently disabled.
 - **Dashboard counts combine both attribution paths.** A wallet appearing through a
   link and an eligible code-tagged trade counts once. Code tags do not create permanent binds.
 

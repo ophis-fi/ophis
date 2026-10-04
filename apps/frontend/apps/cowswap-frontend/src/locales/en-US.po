@@ -1423,8 +1423,8 @@ msgid "Allows you to choose a destination address for the swap other than the co
 msgstr "Allows you to choose a destination address for the swap other than the connected one."
 
 #: apps/cowswap-frontend/src/pages/error/AnySwapAffectedUsers/index.tsx
-msgid "Your account is affected by the AnySwap Hack"
-msgstr "Your account is affected by the AnySwap Hack"
+msgid "AnySwap router security notice"
+msgstr "AnySwap router security notice"
 
 #: apps/cowswap-frontend/src/modules/swap/containers/WholeTokenRoute/WholeTokenRoute.container.tsx
 msgid "Insufficient {nativeSymbol} for gas"
@@ -3225,8 +3225,8 @@ msgid "This swap has a price impact of at least {pct}%."
 msgstr "This swap has a price impact of at least {pct}%."
 
 #: apps/cowswap-frontend/src/pages/error/AnySwapAffectedUsers/index.tsx
-msgid "Read how to prevent losing funds"
-msgstr "Read how to prevent losing funds"
+msgid "Review your token approvals"
+msgstr "Review your token approvals"
 
 #: apps/cowswap-frontend/src/pages/Otc/OtcOrderDetailView.pure.tsx
 msgid "Escrow contract"
@@ -3488,8 +3488,8 @@ msgid "Order Submitted"
 msgstr "Order Submitted"
 
 #: apps/cowswap-frontend/src/pages/error/AnySwapAffectedUsers/index.tsx
-msgid "You have given an allowance to <0>AnyswapV4Router</0> which is affected by a critical vulnerability."
-msgstr "You have given an allowance to <0>AnyswapV4Router</0> which is affected by a critical vulnerability."
+msgid "This notice concerns approvals to <0>AnyswapV4Router</0>, a router affected by a critical vulnerability."
+msgstr "This notice concerns approvals to <0>AnyswapV4Router</0>, a router affected by a critical vulnerability."
 
 #: apps/cowswap-frontend/src/legacy/components/ErrorBoundary/ChunkLoadError.tsx
 msgid "This could have happened due to the lack of internet or the release of a new version of the application."
@@ -6113,8 +6113,8 @@ msgid "Total costs"
 msgstr "Total costs"
 
 #: apps/cowswap-frontend/src/pages/error/AnySwapAffectedUsers/index.tsx
-msgid "In order to protect your funds, you will need to remove the approval on this contract."
-msgstr "In order to protect your funds, you will need to remove the approval on this contract."
+msgid "If your wallet still has an approval for the affected contract, revoke it to protect your funds."
+msgstr "If your wallet still has an approval for the affected contract, revoke it to protect your funds."
 
 #: apps/cowswap-frontend/src/modules/erc20Approve/pure/ApproveConfirmation/AdvancedApprove.tsx
 msgid "Advanced"

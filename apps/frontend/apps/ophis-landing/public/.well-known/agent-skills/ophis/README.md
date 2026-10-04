@@ -53,7 +53,8 @@ Policy-enforcing agent runtimes can enforce it mechanically; every other
 agent should treat it as the source of truth the prose rules point back to.
 CI pins these addresses against the repo's deployment artifacts and the
 `@ophis/sdk` maps (`scripts/check-agent-skills-invariant.mjs`), so the
-published skills cannot drift from what is deployed.
+published skills agree with the repository's recorded deployment maps. Check the
+current chain and endpoint before authorizing an order.
 
 ## Required environment
 

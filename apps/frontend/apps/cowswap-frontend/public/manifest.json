@@ -2,7 +2,7 @@
   "background_color": "#02000d",
   "display": "standalone",
   "homepage_url": "https://ophis.fi",
-  "description": "Ophis, intent-based DEX aggregator. Tell us what to swap in natural language; we'll route you to a pre-filled, MEV-protected swap.",
+  "description": "Ophis, an intent-based DEX aggregator. Select tokens and networks, review an available quote and authorize the order with your wallet.",
   "iconPath": "/ophis-icon.svg",
   "icons": [
     {

@@ -75,9 +75,10 @@ How the token set behaves:
   to clear the implied price minus the slippage band. The curator rotates freely
   within the allowlist, always price-checked. A token that is not on the list is
   rejected as `TokenNotAllowed`.
-- **One shared daily budget, denominated in USD.** The turnover cap is global
+- **One shared USD turnover bucket.** The turnover capacity is global
   across every token, not per token, so a compromised curator cannot multiply
-  its reach by rotating through many assets. One bucket bounds the whole vault.
+  its reach by rotating through many assets. The bucket refills over 24 hours;
+  its rolling-day allowance can reach approximately twice the configured capacity.
 - **One live order per sell token.** Allowance tracking is per sell token, so
   there is never more than one in-flight presigned order per token sharing an
   allowance (the property the audit's regression invariant locks down).
@@ -114,11 +115,11 @@ This operational list describes where vault managers can build and submit Safe
 orders. The stronger on-chain policy-module rollout is tracked separately
 below.
 
-## Live deployments
+## Deployment addresses
 
-The module is live on six chains (and has settled real rebalances on five). The
-contracts are identical everywhere; the per-chain difference is which
-settlement they gate and which Chainlink feeds they read.
+The repository records the module factories below. Each chain has its own
+settlement and Chainlink feed configuration; the operator runbook documents
+the deployment and preflight checks.
 
 | Chain | Module factory | Settlement |
 |---|---|---|
@@ -181,12 +182,12 @@ const { orderUid, order } = await buildOphisSafePresign({
 Practical notes from the live rollout:
 
 - Give the module's `maxTtl` headroom over the order TTL (the deploy scripts
-  use 1980s vs the builder's default 1800s) so block-timestamp lag never
-  rejects a fresh order, while keeping the fill window tight.
+  use 1980s vs the builder's default 1800s) to allow for block-timestamp lag
+  while keeping the fill window tight.
 - The oracle floor band (50 bps) must cover the order's slippage plus the
-  quote fee. On L1, fees on very small orders can exceed the band; size orders
-  so the fee is a few basis points and this never matters. Production-size
-  rebalances are unaffected.
+  quote fee. Fees, slippage or price movement can put an order outside the
+  band. Check each quote against the configured floor; a larger order is not
+  guaranteed to pass.
 - If the floor rejects an order (`BelowFloor`), nothing was signed and no
   funds moved. Rebuild with tighter slippage or retry after the next oracle
   update.

@@ -2,6 +2,7 @@
 title: "Swap and Win: Every Ophis Ticket Earns a Reward"
 description: "Make a qualifying Ophis swap of at least $100 and receive a winning ticket worth $1 or $10 in USDG. One ticket per wallet while rewards remain."
 pubDate: 2026-08-09
+updatedDate: 2026-10-04
 author: Ophis
 tags: [rewards, giveaway, trading]
 draft: false
@@ -15,7 +16,7 @@ $1 or $10 in USDG**.
 
 There are no losing tickets. Every ticket issued is attached to a real prize.
 
-A total of **105 winning tickets** are available:
+The campaign started with **105 winning tickets**:
 
 - **5 tickets worth $10**
 - **100 tickets worth $1**
@@ -36,7 +37,7 @@ Joining the Ophis giveaway takes three simple steps:
 Your swap must be successfully completed through Ophis. The $100 minimum applies
 to one swap and cannot be reached by combining several smaller swaps.
 
-[Trade now and earn your ticket](https://swap.ophis.fi/)
+[Check reward availability](https://swap.ophis.fi/#/rewards)
 
 ## What can I win?
 
@@ -84,8 +85,8 @@ Yes. The Ophis Trade Rewards Giveaway is live and qualifying swaps can earn
 tickets now.
 
 There is no fixed closing date. The campaign continues while winning tickets
-remain, so participating earlier gives you the best chance of securing one of
-the limited rewards.
+remain. Check the [Rewards page](https://swap.ophis.fi/#/rewards) for current
+availability; a qualifying trade does not reserve a ticket.
 
 ## Can I earn more than one ticket?
 
@@ -97,8 +98,9 @@ real swaps through Ophis.
 
 ## Start trading and claim your reward
 
-Only **105 winning tickets** are available. Make a qualifying Ophis swap of at
-least $100, then visit the Rewards page to discover your prize.
+The campaign has a fixed inventory of **105 winning tickets**. Check remaining
+availability and eligibility before swapping, then visit the Rewards page to
+see whether your wallet has received a ticket.
 
 **Every issued ticket wins. Your ticket could be worth $1 or $10 in USDG.**
 

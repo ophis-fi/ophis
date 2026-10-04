@@ -2,7 +2,7 @@
 title: "Ophis vs CoW Swap: what a CoW Protocol fork changes"
 description: "Ophis is a CoW Protocol fork with batch auctions, an agent stack, and solver-aligned sovereign pricing on Optimism, Unichain, and Robinhood Chain."
 pubDate: 2026-07-11
-updatedDate: 2026-09-28
+updatedDate: 2026-10-04
 author: Ophis
 tags: [cow-protocol, comparison, defi, swaps, mev]
 draft: false
@@ -10,7 +10,7 @@ cover: ./ophis-vs-cow-swap.cover.jpg
 coverAlt: "Ophis emblem ringed by supported chain logos, a CoW Protocol fork"
 ---
 
-Ophis is a fork of CoW Protocol's frontend. On most chains an Ophis order settles through CoW Protocol's canonical audited GPv2 contracts and solver competition; on Optimism, Unichain, Robinhood Chain and Arc, Ophis operates sovereign deployments with its own orderbook and a settlement derived from GPv2 at a non-canonical address. What the fork changes is the layer on top: natural-language intent input, an agent stack, chain-aware pricing, monthly WETH volume rebates, and an affiliate program.
+Ophis is a fork of CoW Protocol's frontend. On most chains an Ophis order settles through CoW Protocol's canonical audited GPv2 contracts and solver competition; on Optimism, Unichain, Robinhood Chain and Arc, Ophis operates sovereign deployments with its own orderbook and a settlement derived from GPv2 at a non-canonical address. What the fork changes is the layer on top: natural-language intent input, an agent stack, chain-aware pricing, volume-tier rebate tracking, and an affiliate program.
 
 That is the whole comparison in three sentences. The rest of this page unpacks it plainly, because Ophis (the intent-based DEX aggregator at [ophis.fi](https://ophis.fi/)) exists because of CoW Protocol, not despite it. A maintained side-by-side also lives in the [comparison docs](https://docs.ophis.fi/comparison).
 
@@ -43,11 +43,11 @@ The practical consequence for anyone integrating: never hardcode api.cow.fi or t
 
 **Optional natural-language parsing.** The [Intent API](https://docs.ophis.fi/intent-api) turns text into structured fields (30 requests per minute per IP). It does not quote, sign or execute the trade; those are separate SDK/MCP or app steps.
 
-**An agent stack.** A remote, keyless MCP server at [mcp.ophis.fi/mcp](https://mcp.ophis.fi/mcp) exposes fourteen tools, from `parse_intent` and `get_quote` to `validate_order`, `submit_order`, and `lookup_tier`. The server never holds keys and never signs; `build_order` pins the receiver to the owner and caps slippage, and the agent signs locally with its own key. Around the server: the `@ophis/sdk` npm package, GOAT and AgentKit plugins, and a [Safe app](https://safe.ophis.fi/) for smart-account trading. The full walkthrough is [how to let an AI agent swap tokens](/blog/let-an-ai-agent-swap-tokens/).
+**An agent stack.** A remote, keyless MCP server at `https://mcp.ophis.fi/mcp` ([connection guide](https://docs.ophis.fi/ai-agents#mcp-server-recommended)) exposes fourteen tools, from `parse_intent` and `get_quote` to `validate_order`, `submit_order`, and `lookup_tier`. The server never holds keys and never signs; `build_order` pins the receiver to the owner and caps slippage, and the agent signs locally with its own key. Around the server: the `@ophis/sdk` npm package, GOAT and AgentKit plugins, and a [Safe app](https://safe.ophis.fi/) for smart-account trading. The full walkthrough is [how to let an AI agent swap tokens](/blog/let-an-ai-agent-swap-tokens/).
 
 **Published, chain-aware pricing.** The standard schedule charges a 1 bp base and retains 80% of reference-quote improvement on volatile pairs (99 bps cap), or 50% on stable pairs (20 bps cap). On the ten chains that settle through CoW Protocol's canonical contracts, CoW Protocol's fees apply separately upstream. The current schedule and worked examples are in the [fee docs](https://docs.ophis.fi/fees).
 
-**Volume rebates.** Arc is included in volume-tier and referral rebate indexing. On indexed chains, a rolling 30-day volume tier earns a share of a monthly WETH rebate pool paid from the fee Safe. The pool is 21.25% of WETH fees, split across qualifying wallets by tier-weighted 30-day volume:
+**Volume rebates.** Arc is included in volume-tier and referral rebate indexing. On indexed chains, rolling 30-day volume and tier weight determine eligibility for a WETH rebate pool. View rewards and payout status in your dashboard. The pool is 21.25% of WETH fees, split across qualifying wallets by tier-weighted 30-day volume:
 
 | Tier | 30-day volume | Pool-allocation weight |
 | --- | --- | --- |
@@ -59,7 +59,7 @@ The practical consequence for anyone integrating: never hardcode api.cow.fi or t
 
 Your current tier and progress toward the next one show directly on the swap page.
 
-**An affiliate program.** Mint a referral code and earn 8% of the verified base fee Ophis keeps on eligible trades your referred wallets route on indexed chains, paid monthly in WETH from the same Safe. The regular tier caps at $1M of referred volume per month; an invitation-only Partner tier (12%, uncapped) exists. Details in the [affiliate docs](https://docs.ophis.fi/affiliate).
+**An affiliate program.** Mint a referral code and earn 8% of the verified base fee Ophis keeps on eligible trades your referred wallets route on indexed chains, with rewards and payout status in your dashboard. The regular tier caps at $1M of referred volume per month; an invitation-only Partner tier (12%, uncapped) exists. Details in the [affiliate docs](https://docs.ophis.fi/affiliate).
 
 ## When CoW Swap is the right pick
 
@@ -83,11 +83,11 @@ Mostly, yes. You still build and sign a CoW Protocol order: same order struct, s
 
 ### Why fork CoW Protocol at all?
 
-Three reasons. First, an agent-first product: a keyless MCP server, an Intent API, receiver pinning, and slippage caps need a different surface than a human-first swap UI. Second, sovereign chains: on Optimism, Unichain, Robinhood Chain and Arc, Ophis operates the orderbook and settlement deployment directly. Third, the economics: standard-policy revenue combines a low fixed base with capped price-improvement capture on eligible orders, while tiered monthly WETH rebates and affiliate shares are paid from the fee Safe.
+Three reasons. First, an agent-first product: a keyless MCP server, an Intent API, receiver pinning, and slippage caps need a different surface than a human-first swap UI. Second, sovereign chains: on Optimism, Unichain, Robinhood Chain and Arc, Ophis operates the orderbook and settlement deployment directly. Third, the economics: standard-policy revenue combines a low fixed base with capped price-improvement capture on eligible orders, while volume-tier and affiliate accruals are tracked separately from executed WETH payouts.
 
 ### What does a trade on Ophis cost?
 
-Every supported chain pays the 1 bp Ophis base. Under the standard schedule, capped improvement capture can bring the maximum to 100 bps on volatile pairs or 21 bps on stable pairs. CoW-hosted chains pay CoW Protocol's fees separately upstream. On indexed chains, volume tiers weight a wallet's share of a monthly WETH rebate pool; Arc is included. See the [canonical fee documentation](https://docs.ophis.fi/fees) for the current schedule.
+Every supported chain pays the 1 bp Ophis base. Under the standard schedule, capped improvement capture can bring the maximum to 100 bps on volatile pairs or 21 bps on stable pairs. CoW-hosted chains pay CoW Protocol's fees separately upstream. On indexed chains, volume tiers weight a wallet's share of a WETH rebate pool; Arc is included. See the [canonical fee documentation](https://docs.ophis.fi/fees) for the current schedule.
 
 ## Try it
 

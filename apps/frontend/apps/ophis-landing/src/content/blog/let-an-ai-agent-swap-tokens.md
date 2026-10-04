@@ -2,7 +2,7 @@
 title: "How to let an AI agent swap tokens: safely, and MEV-protected"
 description: "Give an AI agent bounded token-swap capabilities through Ophis: MCP execution, an Intent API for parsing, SDK safety helpers, and the signing policies required for unattended operation."
 pubDate: 2026-06-25
-updatedDate: 2026-10-01
+updatedDate: 2026-10-04
 author: Ophis
 tags: [ai-agents, mcp, mev, defi, swaps]
 cover: ./let-an-ai-agent-swap-tokens.cover.png
@@ -277,7 +277,7 @@ that class of bug disappears.
 Ophis is the swap layer for the agent era: MEV-protected, self-custody, and
 revenue-aligned with the people who integrate it.
 
-- **MCP server:** [`https://mcp.ophis.fi/mcp`](https://mcp.ophis.fi/mcp)
+- **MCP server:** [MCP connection guide](https://docs.ophis.fi/ai-agents#mcp-server-recommended)
 - **AI agent docs:** [docs.ophis.fi/ai-agents](https://docs.ophis.fi/ai-agents)
 - **SDK:** [`npm install @ophis/sdk`](https://www.npmjs.com/package/@ophis/sdk)
 - **Try a swap:** [swap.ophis.fi](https://swap.ophis.fi/)

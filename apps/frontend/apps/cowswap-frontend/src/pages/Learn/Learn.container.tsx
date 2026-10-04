@@ -1,30 +1,4 @@
-/**
- * Learn - orientation / navigation hub (Phase A3 tail, 2026-05-23).
- *
- * IA decision (Codex 2026-05-23): NOT a content / publication archive.
- * cow.fi/learn ships years of original articles, podcasts, and media
- * coverage. Ophis has none of that yet - a literal copy would be 90%
- * empty placeholders. So /learn is reframed as a GUIDED INDEX of the
- * existing Ophis pages, organized by user intent, with a small
- * upstream-CoW context section clearly separated at the bottom.
- *
- * Codex pre-flight rules applied:
- *   - Title: "Learn Ophis without the guesswork." (anti-marketing)
- *   - Lede: honest about no articles / podcasts / media coverage yet.
- *   - 5 internal clusters first, upstream-CoW external section last.
- *   - Upstream CoW links labeled "Upstream protocol context - not Ophis
- *     documentation, not Ophis policy." Codex was specific about this:
- *     do not imply CoW endorses Ophis or that CoW docs define Ophis.
- *   - No search bar / no article cards / no topic subpages / no
- *     podcasts section / no media coverage - those imply a content
- *     operation that does not exist.
- *   - /profile, /missions, /earn referenced as PLAIN TEXT until their
- *     respective PRs (#255, #256, #257) land, then a follow-up re-links.
- *
- * AGENTS.md compliance (proactive - same constraints as PR #255 Profile):
- *   - Named export (no default).
- *   - Page implementation in *.container.tsx, barrel in index.ts.
- */
+/** Links to Ophis guides, product pages and attributed upstream protocol context. */
 import { ReactNode } from 'react'
 
 import { Callout, FeatureCard, FeatureGrid, KeyValueList, PageShell, Section, TextLink } from 'ophis/ds'
@@ -36,25 +10,26 @@ export function LearnPage(): ReactNode {
       width="medium"
       eyebrow="Learn, navigation hub"
       title="Learn Ophis without the guesswork."
-      lede="A guided index of Ophis pages, live surfaces, and upstream CoW Protocol context. Ophis does not yet publish original articles, podcasts, or media coverage. When we do, they will get their own section below."
+      lede="Guides to trading, fees, integrations, and the protocol behind Ophis."
     >
-      <Callout tone="info" title="What this page is, and isn't">
+      <Callout tone="info" title="Guides and articles">
         <p>
-          <strong>This page is</strong> an orientation map. It points at existing Ophis pages, tells you what each
-          covers, and links to upstream CoW Protocol material where Ophis inherits behavior from the protocol we forked.
-        </p>
-        <p>
-          <strong>This page is not</strong> a knowledge base, blog, podcast index, or press archive. When we publish
-          those, they will appear in clearly-labeled sections, not as placeholders.
+          Browse the{' '}
+          <TextLink href="https://ophis.fi/learn/" external>
+            Ophis guides
+          </TextLink>{' '}
+          for protocol concepts and the{' '}
+          <TextLink href="https://ophis.fi/blog/" external>
+            blog
+          </TextLink>{' '}
+          for walkthroughs and product articles.
         </p>
       </Callout>
 
       <Section id="start-here" title="Start here" intro="If you're new to Ophis, read these in order.">
         <FeatureGrid minCardWidth="260px">
           <FeatureCard title="About Ophis">
-            <p>
-              How the protocol works, audit references, what&apos;s live vs planned. All product claims status-tagged.
-            </p>
+            <p>Product overview, supported trading paths, and security references.</p>
             <p>
               <TextLink href="/about">/about →</TextLink>
             </p>
@@ -85,7 +60,7 @@ export function LearnPage(): ReactNode {
       <Section
         id="trading-fees"
         title="Trading, routing, and fees"
-        intro="Mechanics of how Ophis charges a flat 0.01% (1 bp) fee on trade volume and how routing decisions get made."
+        intro="How the 0.01% base fee, capped price-improvement fee, and routing work."
       >
         <FeatureGrid minCardWidth="260px">
           <FeatureCard title="Trade form">
@@ -141,12 +116,12 @@ export function LearnPage(): ReactNode {
       <Section
         id="upstream-cow"
         title="Upstream CoW Protocol context"
-        intro="Ophis is a fork of CoW Protocol. The contracts, intent format, and solver-competition mechanism are inherited from upstream, so CoW's literature applies where Ophis hasn't yet written its own equivalent. Not Ophis documentation, not Ophis policy."
+        intro="Background on the contracts, intent format, and solver competition inherited from CoW Protocol."
       >
         <Callout tone="info" title="Read with attribution in mind">
           <p>
-            CoW DAO and its publications speak for CoW Protocol, not for Ophis. We link here because the underlying
-            mechanism is shared, not because CoW endorses Ophis or because CoW docs define Ophis policy.
+            These sources describe CoW Protocol. Use Ophis documentation for Ophis fees, networks and integration
+            details.
           </p>
         </Callout>
         <KeyValueList
@@ -179,15 +154,9 @@ export function LearnPage(): ReactNode {
         />
       </Section>
 
-      <Section
-        id="suggest"
-        title="Something missing?"
-        intro="This page intentionally avoids making content up. If a topic you expect is absent, it's because it doesn't exist on Ophis yet."
-      >
+      <Section id="suggest" title="Something missing?" intro="Send us a documentation question or correction.">
         <p>
-          Drop a note via the <TextLink href="/contact">contact form</TextLink>, it helps us decide what to document
-          next. If and when original Ophis articles or product announcements ship, they will appear in a new section
-          above.
+          Use the <TextLink href="/contact">contact form</TextLink> to get in touch.
         </p>
       </Section>
     </PageShell>

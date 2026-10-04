@@ -1,8 +1,8 @@
 ---
-title: "Gasless token swaps: how intent-based trading removes gas"
-description: "Sign an off-chain EIP-712 order and a solver executes it on-chain, paying the gas. The fee comes out of the trade itself, so you can swap with zero ETH."
+title: "Gasless token swaps: who pays settlement gas"
+description: "For approved ERC-20 tokens, sign an off-chain order and a solver pays settlement gas. Approvals, native-token orders and other transactions can still need gas."
 pubDate: 2026-07-10
-updatedDate: 2026-09-28
+updatedDate: 2026-10-04
 author: Ophis
 tags: [gasless, swaps, intents, defi]
 draft: false
@@ -10,13 +10,14 @@ cover: ./gasless-swaps-how-intents-work.cover.jpg
 coverAlt: "Ophis multi-chain DEX aggregator emblem for gasless intent swaps"
 ---
 
-A gasless token swap is a trade where you never send an on-chain transaction
-yourself: you sign an off-chain order, and someone else executes it. On Ophis
+For a standard ERC-20 swap with sufficient allowance, you sign an off-chain
+order and a solver submits the settlement transaction. On Ophis
 (the intent-based DEX aggregator at ophis.fi), that order is
 [EIP-712](https://eips.ethereum.org/EIPS/eip-712) typed data signed by your
 wallet; a competing solver network executes it on-chain and pays the gas, and
-the fee comes out of the traded amount. So you can trade with no native gas
-token in your wallet at all, and an order that never fills costs you nothing.
+the fee comes out of the trade. Approval transactions can still require native
+gas. An unfilled signed ERC-20 order has no settlement fee; any approval gas
+already spent is not refunded.
 
 The rest of this article is the mechanism: where the gas cost actually goes,
 the places it can still appear, and why this matters most for new wallets,
@@ -67,13 +68,14 @@ improvement on volatile pairs (99 bps cap) or 50% on stable pairs (20 bps
 cap); the trader receives the remainder and everything above the cap. Hosted
 chains additionally apply CoW Protocol's upstream fees.
 
-## Failed and expired orders cost nothing
+## Unfilled signed orders have no settlement fee
 
 A failed on-chain swap still burns gas: you paid the network to execute your
 revert. A signed order has no equivalent failure cost. If no solver can meet
-your limit price before the order's expiry, the order expires, and nothing
-happened on-chain on your behalf. There is nothing to pay for. The worst case
-of a gasless order is the state you started in.
+your limit price before the order's expiry, the signed ERC-20 order expires
+without a settlement fee. The unsold tokens remain in your wallet, where their
+market value can still change. Approval or cancellation transactions have
+separate gas costs.
 
 ## Where gas can still appear
 
@@ -115,7 +117,7 @@ cancellation, refunds and direct bridge transactions can still require gas.
 
 Your order carries a hard limit price that you signed, and it cannot settle
 below that price. If the market never reaches your limit before expiry, the
-order expires at zero cost to you. If the market moves in your favor, solvers
+signed ERC-20 order expires without a settlement fee. If the market moves in your favor, solvers
 still compete for the fill, and improvement beyond the reference quote is
 shared under the operated-chain capped policy or the hosted CoW policy.
 
@@ -135,9 +137,9 @@ ERC-1271 from a smart-contract wallet). Native-token orders and bridges can
 require deposits with separate recovery rules. See the
 [FAQ docs](https://docs.ophis.fi/faq).
 
-## Try a swap with an empty gas tank
+## Try a signed ERC-20 swap
 
 Open [swap.ophis.fi](https://swap.ophis.fi/), connect a wallet that holds any
-ERC-20 on a supported chain, and sign an order. For your first trade of a token
-you may need a one-time approval first; the
+ERC-20 on a supported chain, and sign an order. You need sufficient allowance to the vault relayer; approval transactions
+can cost gas and an exact allowance may need renewing. The
 [getting started guide](https://docs.ophis.fi/getting-started) covers the rest.

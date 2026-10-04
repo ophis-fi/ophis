@@ -124,11 +124,11 @@ export function SwapForm({ sdk, owner, chainId }: Props) {
           onChange={(e) => { setSellNative(e.target.checked); setQuoted(null); setError(null); }}
           style={{ width: 'auto' }}
         />
-        Sell native ETH (wraps to WETH in the same Safe tx)
+        Sell native token (wraps in the same Safe transaction)
       </label>
       <label>Sell token (address)
         <input
-          value={sellNative ? 'native ETH → WETH' : sellToken}
+          value={sellNative ? 'native token → wrapped token' : sellToken}
           onChange={onInput(setSellToken)}
           placeholder="0x..."
           disabled={sellNative || busy}
@@ -147,7 +147,7 @@ export function SwapForm({ sdk, owner, chainId }: Props) {
           <div>Fee: {q.feeAmount ?? '0'}</div>
           <div style={{ color: '#666' }}>Quoted with the Ophis partner fee{referral ? ' + your referral' : ''} in appData.</div>
           {quoted?.wrapNative && (
-            <div style={{ color: '#666' }}>Selling native ETH: the Safe tx wraps your ETH to WETH first, then sells WETH.</div>
+            <div style={{ color: '#666' }}>The Safe transaction wraps your native token first, then sells the wrapped token.</div>
           )}
           <button onClick={onPropose} disabled={busy} style={{ marginTop: 8 }}>Review &amp; propose to Safe</button>
         </div>

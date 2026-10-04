@@ -1,7 +1,7 @@
 ---
 id: agent-swap-comparison
 title: How does an AI agent swap safely
-description: "A guide to giving an autonomous agent the ability to swap tokens safely: the properties that bound an agent's worst case (keyless, machine-signable, hard limit price, MEV protection, gasless, native BTC) and how Ophis provides each."
+description: "A guide to giving an autonomous agent the ability to swap tokens safely: the properties that constrain an agent's orders (keyless quoting, machine signing, hard limit price, MEV mitigation and solver-paid settlement) and how Ophis provides each."
 sidebar_label: How agents swap safely
 ---
 
@@ -19,13 +19,13 @@ The properties that decide safety for an agent:
   in the agent's environment is less to leak.
 - **Machine-signable.** Does the interface return something the agent's own
   signer can sign directly, or does it hand off to a human in a browser?
-- **Bounded worst case.** When the agent signs, is the maximum loss knowable at
-  signing time (a hard limit price), or is it an arbitrary transaction whose
-  outcome depends on execution?
+- **Bounded order.** Can the signer inspect and constrain the sell amount,
+  minimum received and receiver before signing? A limit price constrains one
+  fill, not future token value or cumulative losses.
 - **MEV mitigation.** How are orders submitted and settled, and what visibility
   or ordering risks remain?
-- **Gasless.** Does the agent need a native gas token on every chain, or does a
-  solver pay the gas?
+- **Settlement gas.** Who pays settlement gas, and which approvals or other
+  transactions still need native gas?
 
 ## How Ophis addresses each property
 
@@ -63,9 +63,8 @@ a snapshot here. Two things are worth knowing when you compare:
 
 ## What "safe" does and does not mean here
 
-An intent order bounds the blast radius: the receiver is pinned to the owner, so
-proceeds cannot be redirected to a third party, and the limit price caps the
-downside of any single fill. It does **not** turn a bad decision into a good one:
+An order from Ophis's builder pins the receiver to the owner and fixes the
+minimum received for one fill. It does **not** turn a bad decision into a good one:
 if the agent chooses to sell the wrong token, or signs a limit price that is
 worse than the market, the order still executes within those bounds. Pair the
 intent primitive with a policy wallet (see

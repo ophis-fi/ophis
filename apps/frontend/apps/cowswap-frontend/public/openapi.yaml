@@ -35,24 +35,23 @@ paths:
       description: |
         Submit free-form English text (up to 280 chars). The proxy
         forwards it to LibertAI Qwen 3.6 27B with a pinned system
-        prompt and `temperature: 0` for deterministic structured
-        extraction. The response normalizes recognized tokens, the
+        prompt and `temperature: 0` to reduce extraction variability.
+        Validate each response before using it. The response normalizes recognized tokens, the
         amount, and the target chain.
 
-        Tokens are validated against an internal allowlist (top-200+
-        DEX-traded symbols + DeFi blue-chips + memes + gaming).
-        Unknown symbols are filtered out, the response will still
-        include the other entities, with the unknown one omitted.
+        Token values use bounded symbol syntax and must derive from
+        the request text. The parser does not verify token contracts;
+        resolve the chain/address and obtain a quote before signing.
 
         **Origin allowlist:** non-null `Origin` headers are checked
-        against `https://ophis.fi` + Cloudflare Pages preview
-        subdomains. Browser-side calls from other origins return
+        against `https://ophis.fi` and `https://swap.ophis.fi`.
+        Cloudflare Pages preview origins are not allowed. Browser-side calls from other origins return
         `403 FORBIDDEN`. Non-browser callers (curl, server-side
         scripts) that omit `Origin` entirely are allowed but subject
         to the per-IP rate limit.
 
         **Rate limit:** 30 requests per IP per rolling 60s window,
-        enforced by a KV-backed counter. Exceeding returns `429`
+        enforced by a Cloudflare rate-limiting binding. Exceeding returns `429`
         with `Retry-After`.
 
         **Caching:** identical normalized text (lowercased + trimmed)
@@ -179,9 +178,8 @@ components:
           description: |
             Natural-language swap request. Recognised entities: amount,
             sellToken (you're paying with), buyToken (you want),
-            chain. Case-insensitive. The model is pinned to
-            `temperature: 0` so identical normalized inputs produce
-            identical outputs.
+            chain. Case-insensitive. The model uses `temperature: 0`
+            to reduce variability; identical outputs are not guaranteed.
 
     Entity:
       type: object
@@ -193,20 +191,21 @@ components:
         value:
           type: string
           description: |
-            Canonical form (e.g. `USDC`, `0.5`, `optimism`). Validated
-            against an internal allowlist; entities with unknown values
-            are filtered out of the response.
+            Normalized form (e.g. `USDC`, `0.5`, `optimism`). Tokens
+            use bounded symbol syntax; chains use supported slugs.
+            The value must derive from the request text. This does not
+            verify a token contract or executable route.
         raw:
           type: string
-          description: The exact substring from the input text.
+          description: A case-insensitive match somewhere in the input.
         start:
           type: integer
           minimum: 0
-          description: 0-indexed start position of `raw` within the input.
+          description: Model-proposed in-bounds start offset; re-anchor raw before highlighting.
         end:
           type: integer
           minimum: 1
-          description: 0-indexed end position of `raw` within the input (exclusive).
+          description: Model-proposed in-bounds end offset (exclusive); not an exact-span guarantee.
 
     ParsedIntent:
       type: object
@@ -259,8 +258,7 @@ components:
 tags:
   - name: intent
     description: |
-      Natural-language → structured swap intent. The only API surface
-      Ophis exposes for agent integration. Order placement uses the
-      underlying CoW Protocol orderbook (API-compatible with
-      docs.cow.fi/cow-protocol/reference/apis/orderbook); Ophis runs
-      self-hosted orderbook instances per chain.
+      Natural-language → structured swap intent. Parsing does not
+      quote, sign or execute an order. Use the hosted MCP server or SDK
+      for order building, and resolve the chain-specific orderbook:
+      Ophis-operated chains use Ophis hosts; hosted chains use CoW Protocol.

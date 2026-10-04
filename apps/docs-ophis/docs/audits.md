@@ -236,7 +236,9 @@ calculated.
 - On-chain state is read through a **multi-source RPC consensus** layer that
   **fails closed**: if the sources disagree or are unavailable, the driver
   stops rather than acting on an unverified view.
-- The frontends ship with a strict **Content-Security-Policy**, are deployed
+- The frontends use app-specific **Content-Security-Policy** headers. The swap app
+  permits `unsafe-eval`, broad HTTPS connections and embedding for its integrations;
+  the landing policy is tighter. The sites are deployed
   from a **branch-protected, SHA-pinned CI pipeline** with **signed build
   provenance**, and the edge enforces HTTPS.
 

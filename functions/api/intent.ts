@@ -771,14 +771,12 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
     }
   }
 
-  const controller = new AbortController()
-  const timer = setTimeout(() => controller.abort(), TIMEOUT_MS)
-
   let upstreamRes: Response
   try {
     upstreamRes = await fetch(LIBERTAI_URL, {
       method: 'POST',
-      signal: controller.signal,
+      // Keep the deadline active while the response body is consumed too.
+      signal: AbortSignal.timeout(TIMEOUT_MS),
       headers: {
         authorization: `Bearer ${env.LIBERTAI_API_KEY}`,
         'content-type': 'application/json',
@@ -794,8 +792,7 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
       }),
     })
   } catch (err: unknown) {
-    clearTimeout(timer)
-    const aborted = err instanceof Error && err.name === 'AbortError'
+    const aborted = err instanceof Error && (err.name === 'AbortError' || err.name === 'TimeoutError')
     // Generic error messages — don't reveal the upstream provider.
     return json(
       {
@@ -808,8 +805,6 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
       aborted ? 504 : 502,
     )
   }
-  clearTimeout(timer)
-
   if (!upstreamRes.ok) {
     return json({ ok: false, error: { code: 'UPSTREAM', message: `parser returned ${upstreamRes.status}` } }, 502)
   }
@@ -817,8 +812,12 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
   let raw: unknown
   try {
     raw = await upstreamRes.json()
-  } catch {
-    return json({ ok: false, error: { code: 'INVALID_JSON', message: 'parser returned non-JSON' } }, 502)
+  } catch (err: unknown) {
+    const aborted = err instanceof Error && (err.name === 'AbortError' || err.name === 'TimeoutError')
+    return json({ ok: false, error: {
+      code: aborted ? 'TIMEOUT' : 'INVALID_JSON',
+      message: aborted ? 'parser did not respond within 5s' : 'parser returned non-JSON',
+    } }, aborted ? 504 : 502)
   }
 
   // OpenAI-compatible: choices[0].message.content is the model's text.

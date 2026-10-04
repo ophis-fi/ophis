@@ -18,6 +18,14 @@ describe('CoWBFFClient', () => {
     const buyToken = '0x2260fac5e5542a773aa44fbcfedf7c193bc2c599'
     const chainId = 1
 
+    it.each([10, 130, 4663, 5042])('skips unsupported CoW BFF requests on chain %s', async (chainId) => {
+      const client = new CoWBFFClient('http://slippage.api')
+      await expect(client.getSlippageTolerance({ sellToken, buyToken, chainId })).resolves.toEqual({
+        slippageBps: null,
+      })
+      expect(mockFetch).not.toHaveBeenCalled()
+    })
+
     it('should return slippage tolerance on successful API response', async () => {
       const client = new CoWBFFClient('http://slippage.api')
       const mockResponse = { slippageBps: 150 }
@@ -135,6 +143,38 @@ describe('CoWBFFClient', () => {
           signal: expect.any(AbortSignal),
         }),
       )
+    })
+
+    it('should time out when response headers arrive but the body stalls', async () => {
+      jest.useFakeTimers()
+      try {
+        const client = new CoWBFFClient('http://slippage.api')
+        let requestSignal: AbortSignal | undefined
+        const readBody = jest.fn()
+        mockFetch.mockImplementation((_url: string, { signal }: RequestInit) => {
+          requestSignal = signal as AbortSignal
+          readBody.mockImplementation(
+            () =>
+              new Promise((_resolve, reject) => {
+                signal?.addEventListener('abort', () => reject(new DOMException('Timed out', 'AbortError')), {
+                  once: true,
+                })
+              }),
+          )
+          return Promise.resolve({ ok: true, json: readBody })
+        })
+
+        const pending = client.getSlippageTolerance({ sellToken, buyToken, chainId })
+        await jest.advanceTimersByTimeAsync(2000)
+
+        expect(readBody).toHaveBeenCalled()
+        expect(requestSignal?.aborted).toBe(true)
+        await expect(pending).resolves.toEqual({ slippageBps: null })
+        expect(jest.getTimerCount()).toBe(0)
+      } finally {
+        jest.clearAllTimers()
+        jest.useRealTimers()
+      }
     })
   })
 })

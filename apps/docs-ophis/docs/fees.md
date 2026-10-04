@@ -108,12 +108,12 @@ pool fee: a solver route can itself use that AMM and incur its liquidity costs.
 Improvement capture and hosted protocol fees also affect the result. A lower
 advertised base rate alone does not establish a saving over a direct swap.
 
-## What you get back: monthly WETH rebates
+## WETH rebate calculation
 
-Beyond the published trading charge, a share of collected WETH fees **comes back to active traders**.
-Each month, **21.25% of the WETH fees collected by the Ophis fee Safe** is paid
-out as rebates, split across active wallets in proportion to their **30-day
-volume weighted by tier**.
+The rebate calculation allocates **21.25% of collected WETH fees** to eligible wallets
+in proportion to their **30-day volume weighted by tier**. WETH payout processing
+requires reconciled accounting, sufficient funds and Safe approval. An estimate or
+cycle date is not proof of payment; executed payout transactions establish what was paid.
 
 | Tier | 30-day volume | Weight |
 | --- | --- | --- |

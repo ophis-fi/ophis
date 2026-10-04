@@ -33,7 +33,7 @@ export const Search: React.FC<SearchProps> = (props) => {
       }}
       className={className}
     >
-      <Button type="submit">
+      <Button type="submit" aria-label="Search">
         <SearchIcon src={searchImg} />
       </Button>
       <Input
