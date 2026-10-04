@@ -9,7 +9,8 @@ was `5683afba6db260a70da6d66c8e4f477e62dae256`.
 Recommendation: accept the scoped dependency changes and braces exception below, subject to
 the normal authenticated Codex review and required CI checks. Change risk is MEDIUM because
 review-evidence validation changes. No unauthenticated gate bypass was demonstrated. Two
-reproduced lifecycle consistency defects were fixed. This is a focused differential review,
+reproduced lifecycle consistency defects were fixed, followed by the summary-transition case
+found in Codex review. This is a focused differential review,
 not a new full application or smart-contract audit.
 
 ## Changes
@@ -107,6 +108,10 @@ summaries. Those summaries remain non-authoritative and do not invalidate a clea
    evaluator required the reviewed-commit line immediately afterward. An intervening line
    could therefore suppress invalidation without being valid new evidence. Both now enforce
    the same grammar and normalize CRLF identically.
+3. Codex's review of `10343c42` found that changing clean evidence into a status summary
+   skipped invalidation. Summary filtering now happens only in the step, which exempts pure
+   summary events and checkpoints transitions into or out of summary format. Regression cases
+   execute the actual Bash exemption, including both transition directions.
 
 These events require the authenticated Codex bot; this is a lifecycle correctness fix, not a
 claim of an unprivileged account impersonating Codex. Tests execute the actual Bash/jq condition

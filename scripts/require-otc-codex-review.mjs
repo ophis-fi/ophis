@@ -274,6 +274,39 @@ function selfTest() {
     new URL('../.github/workflows/otc-milestone-c-gate-rerun.yml', import.meta.url),
     'utf8',
   );
+  const summaryCondition = workflow.match(
+    / {12}if \[\[ "\$normalized_body" == "\$CODEX_SUMMARY_PREFIX"\* \]\][\s\S]*? {12}fi\n/,
+  )?.[0];
+  assert(summaryCondition, 'dispatcher summary exemption must be tested');
+  const summary = '<!-- codex-pull-request-review-summary -->';
+  assert(
+    !workflow.split('    steps:')[0].includes(summary),
+    'summary filtering belongs in the step',
+  );
+  for (const [action, body, previousBody, exempt] of [
+    ['created', summary, '', true],
+    ['deleted', summary, '', true],
+    ['edited', summary, summary, true],
+    ['edited', summary, cleanComment.body, false],
+    ['edited', cleanComment.body, summary, false],
+    ['edited', cleanComment.body, cleanComment.body, false],
+  ]) {
+    const result = spawnSync('bash', ['-euc', `${summaryCondition}\nexit 1`], {
+      encoding: 'utf8',
+      timeout: 5000,
+      env: {
+        ...process.env,
+        EVENT_ACTION: action,
+        CODEX_SUMMARY_PREFIX: summary,
+        normalized_body: body,
+        normalized_body_from: previousBody,
+      },
+    });
+    assert(
+      result.status === (exempt ? 0 : 1),
+      `summary transition must preserve evidence: ${result.stderr}`,
+    );
+  }
   const condition = workflow.match(
     / {12}if \[\[ "\$EVENT_ACTION" == created[\s\S]*? {12}fi\n/,
   )?.[0];
