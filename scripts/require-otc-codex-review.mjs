@@ -13,6 +13,9 @@
  * Mutable approvals are never evidence.
  */
 
+import { spawnSync } from 'node:child_process';
+import { readFileSync } from 'node:fs';
+
 const CODEX_LOGIN = 'chatgpt-codex-connector[bot]';
 const ACTIONS_LOGIN = 'github-actions[bot]';
 const GITHUB_API_ORIGIN = 'https://api.github.com';
@@ -107,9 +110,11 @@ function isBoundReviewCheckpoint(item, headSha, baseSha) {
 }
 
 function cleanCommentHeadPrefix(comment) {
-  const match = String(comment?.body ?? '').match(
-    /^Codex Review: Didn't find any major issues\.[^\r\n]*\r?\n+\*\*Reviewed commit:\*\* `([0-9a-f]{10}|[0-9a-f]{40})`(?:\r?\n|$)/,
-  );
+  const match = String(comment?.body ?? '')
+    .replaceAll('\r\n', '\n')
+    .match(
+      /^Codex Review: Didn't find any major issues\.[^\r\n]*\n+\*\*Reviewed commit:\*\* `([0-9a-f]{10}|[0-9a-f]{40})`(?:\n|$)/,
+    );
   return match?.[1];
 }
 
@@ -124,6 +129,7 @@ function hasFreshCleanEvidence(checkpoint, headSha) {
       headSha.startsWith(displayedSha) &&
       comment.resolved_commit_id === headSha &&
       Number.isFinite(createdAt) &&
+      Date.parse(comment.updated_at) === createdAt &&
       createdAt > updatedAt
     );
   });
@@ -244,6 +250,7 @@ function selfTest() {
     user: { login: CODEX_LOGIN },
     body: `Codex Review: Didn't find any major issues. :+1:\n\n**Reviewed commit:** \`${base.headSha.slice(0, 10)}\`\n`,
     created_at: '2026-08-20T12:01:00Z',
+    updated_at: '2026-08-20T12:01:00Z',
     resolved_commit_id: base.headSha,
   };
   assert(
@@ -253,6 +260,49 @@ function selfTest() {
     }).accepted,
     'an authenticated clean comment naming the current head must pass',
   );
+  for (const updated_at of [undefined, 'invalid', '2026-08-20T12:04:00Z']) {
+    assert(
+      !assessCodexGate({
+        ...base,
+        reviewRequests: [recordedRequest({ cleanComments: [{ ...cleanComment, updated_at }] })],
+      }).accepted,
+      'edited or missing-timestamp clean comments must fail closed',
+    );
+  }
+  // Exercise the real dispatcher condition so its clean grammar cannot drift.
+  const workflow = readFileSync(
+    new URL('../.github/workflows/otc-milestone-c-gate-rerun.yml', import.meta.url),
+    'utf8',
+  );
+  const condition = workflow.match(
+    / {12}if \[\[ "\$EVENT_ACTION" == created[\s\S]*? {12}fi\n/,
+  )?.[0];
+  assert(condition, 'dispatcher clean-result condition must be tested');
+  for (const body of [
+    cleanComment.body,
+    cleanComment.body.replaceAll('\n', '\r\n'),
+    cleanComment.body.replace(base.headSha.slice(0, 10), base.headSha),
+    cleanComment.body.replace('\n\n', '\nNew finding.\n'),
+    cleanComment.body.replace(base.headSha.slice(0, 10), 'b'.repeat(10)),
+  ]) {
+    for (const action of ['created', 'edited', 'deleted']) {
+      const result = spawnSync(
+        'bash',
+        ['-euc', `checkpoint=true\n${condition}\n[[ "$checkpoint" == false ]]`],
+        {
+          encoding: 'utf8',
+          timeout: 5000,
+          env: { ...process.env, EVENT_ACTION: action, SOURCE_BODY: body, head_sha: base.headSha },
+        },
+      );
+      const parsed = cleanCommentHeadPrefix({ body });
+      assert(
+        result.status ===
+          (action === 'created' && parsed && base.headSha.startsWith(parsed) ? 0 : 1),
+        `dispatcher and parser must agree for ${action}: ${result.stderr}`,
+      );
+    }
+  }
   assert(
     assessCodexGate({
       ...base,
@@ -366,7 +416,11 @@ function selfTest() {
     }).accepted,
     'a newer Codex finding must supersede older clean evidence even when its thread is resolved',
   );
-  const laterCleanComment = { ...cleanComment, created_at: '2026-08-20T12:03:00Z' };
+  const laterCleanComment = {
+    ...cleanComment,
+    created_at: '2026-08-20T12:03:00Z',
+    updated_at: '2026-08-20T12:03:00Z',
+  };
   assert(
     assessCodexGate({
       ...base,

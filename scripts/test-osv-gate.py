@@ -47,6 +47,8 @@ with tempfile.TemporaryDirectory() as directory:
     check({'results': []}, 0, '--mode', 'advisories', '--osv-rc', '0')
     check({'results': []}, 2, '--mode', 'advisories', '--osv-rc', '127')
     check(document(finding()), 1, '--mode', 'advisories', '--ignore', 'GHSA-old:2000-01-01')
+    check(document(finding()), 0, '--mode', 'advisories', '--ignore', 'GHSA-old:2999-01-01')
+    check(document(finding(), finding('GHSA-new')), 1, '--mode', 'advisories', '--ignore', 'GHSA-old:2999-01-01')
     baseline.write_text(json.dumps({'high': 1}))  # Legacy count-only baseline fails closed.
     check(document(finding()), 2, *args)
-print('osv gate: 14 regression checks passed')
+print('osv gate: 16 regression checks passed')

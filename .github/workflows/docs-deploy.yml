@@ -76,6 +76,9 @@ jobs:
         working-directory: apps/docs-ophis
         run: pnpm install --frozen-lockfile
 
+      - name: dependency security regression
+        run: node scripts/test-http-cache-semantics.cjs apps/docs-ophis
+
       - name: build docs
         working-directory: apps/docs-ophis
         # A broken link/anchor fails the build (onBrokenLinks: 'throw'),
