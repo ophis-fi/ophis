@@ -27,7 +27,6 @@ import {
 
 OpenAPI.BASE = 'https://1click.chaindefuser.com'
 OpenAPI.TOKEN = process.env.REACT_APP_NEAR_API_KEY || undefined
-const confidentiality = process.env.REACT_APP_NEAR_API_KEY ? QuoteRequest.confidentiality.BASIC : undefined
 
 export function nearErrorMessage(error: unknown): string {
   if (error instanceof ApiError) {
@@ -166,7 +165,7 @@ export async function requestNearQuote(
       // External wallets and UTXO confirmations need more time than EVM signing.
       deadline: new Date(Date.now() + 2 * 60 * 60 * 1000).toISOString(),
     },
-    confidentiality,
+    QuoteRequest.confidentiality.PUBLIC,
   )
   const response = verifyNearQuote(await OneClickService.getQuote(request))
   assertNearRequest(response, request)

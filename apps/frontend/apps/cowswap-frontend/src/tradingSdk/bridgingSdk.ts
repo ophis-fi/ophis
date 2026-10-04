@@ -5,6 +5,7 @@ import {
 } from '@cowprotocol/common-const'
 import { BridgingSdk } from '@cowprotocol/sdk-bridging'
 
+import { QuoteRequest } from '@defuse-protocol/one-click-sdk-typescript'
 import { orderBookApi } from 'cowSdk'
 
 import { OphisAcrossBridgeProvider } from './ophisBridgeProviders'
@@ -30,8 +31,7 @@ export const acrossBridgeProvider = new OphisAcrossBridgeProvider({ apiOptions: 
 // adds referral attribution + the 3 bps integrator appFee (see its header).
 export const nearIntentsBridgeProvider = new OphisNearIntentsBridgeProvider({
   apiKey: process.env.REACT_APP_NEAR_API_KEY || undefined,
-  // The deployed partner key supports confidential quotes; keyless development uses public routes.
-  confidentiality: process.env.REACT_APP_NEAR_API_KEY ? 'basic' : undefined,
+  confidentiality: QuoteRequest.confidentiality.PUBLIC,
 })
 
 // Bungee LAST: the SDK's single-provider getQuote path takes providers[0] for

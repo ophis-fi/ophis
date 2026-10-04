@@ -7,6 +7,7 @@ import { isHypercoreTokenId } from '@cowprotocol/common-utils'
 import { AdditionalTargetChainId, areAddressesEqual, BTC_CURRENCY_ADDRESS } from '@cowprotocol/cow-sdk'
 import { BridgeProviderQuoteError, BridgeQuoteErrors, NearIntentsBridgeProvider } from '@cowprotocol/sdk-bridging'
 
+import { QuoteRequest } from '@defuse-protocol/one-click-sdk-typescript'
 import { utils } from 'ethers'
 import jsonStringify from 'json-stringify-deterministic'
 
@@ -37,6 +38,8 @@ import { getBridgeTokenLogo } from './bridgeTokenLogo.utils'
  */
 
 const OPHIS_NEAR_REFERRAL = 'ophis'
+// The app and bridging SDK use distinct versions of the 1-Click enum.
+const OPHIS_NEAR_SWAP_TYPE = QuoteRequest.swapType.EXACT_INPUT as NearQuoteResponse['quoteRequest']['swapType']
 
 // Requested Ophis integrator fee. NEAR's authenticated/keyless provider fees
 // and partner sharing rules are applied server-side; use the net quote output.
@@ -49,7 +52,7 @@ const ATTESTATION_PREFIX = '0x0a773570'
 const ATTESTATION_VERSION_BYTE = '0x00'
 
 export type NearQuoteResponse = Parameters<NearIntentsBridgeProvider['recoverDepositAddress']>[0]
-type NearConfidentiality = 'basic' | 'advanced'
+type NearConfidentiality = 'public' | 'basic' | 'advanced'
 type NearProviderOptions = ConstructorParameters<typeof NearIntentsBridgeProvider>[0] & {
   confidentiality?: NearConfidentiality
 }
@@ -114,7 +117,7 @@ export function withOphisNearQuoteParams<T extends object>(request: T, confident
 
 /**
  * Rebinds api.getQuote so every outgoing 1-Click quote request carries the
- * Ophis referral + appFees. Split out so the wrapping mechanics are testable
+ * EXACT_INPUT mode and Ophis referral + appFees. Split out so the wrapping mechanics are testable
  * against a fake api (the constructor is the single untested line).
  */
 export function wrapNearApiWithOphisQuoteParams(
@@ -123,10 +126,16 @@ export function wrapNearApiWithOphisQuoteParams(
 ): void {
   const originalGetQuote = api.getQuote.bind(api)
   api.getQuote = async (request) => {
-    const response = await originalGetQuote(withOphisNearQuoteParams(request, confidentiality))
+    // Quote the guaranteed source-swap amount; NEAR refunds any excess to refundTo.
+    const response = await originalGetQuote(
+      withOphisNearQuoteParams({ ...request, swapType: OPHIS_NEAR_SWAP_TYPE }, confidentiality),
+    )
     const echoedRequest = response.quoteRequest as NearQuoteResponse['quoteRequest'] & { confidentiality?: string }
-    // Confidential quotes require NEAR access. Never silently downgrade to a public swap.
-    if (confidentiality && echoedRequest?.confidentiality !== confidentiality) {
+    // Reject a mode change or a silent downgrade to a public swap.
+    if (
+      echoedRequest?.swapType !== OPHIS_NEAR_SWAP_TYPE ||
+      (confidentiality && echoedRequest?.confidentiality !== confidentiality)
+    ) {
       throw new BridgeProviderQuoteError(BridgeQuoteErrors.INVALID_API_JSON_RESPONSE)
     }
     return response

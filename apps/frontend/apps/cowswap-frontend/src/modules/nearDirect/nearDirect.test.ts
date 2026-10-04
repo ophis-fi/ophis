@@ -5,7 +5,7 @@ import { Base58 } from '@ethersproject/basex'
 import { arrayify, concat } from '@ethersproject/bytes'
 import { sha256 } from '@ethersproject/sha2'
 
-import { CancelablePromise, OneClickService } from '@defuse-protocol/one-click-sdk-typescript'
+import { CancelablePromise, OneClickService, QuoteRequest } from '@defuse-protocol/one-click-sdk-typescript'
 
 import { isRecipientAddress } from 'common/utils/recipientAddress.utils'
 
@@ -159,6 +159,9 @@ it('creates a verified executable quote with the real provider fee response', as
     expect(transfer.response.signature).toBe(response.signature)
     expect(transfer.status).toBe('PENDING_DEPOSIT')
     expect(quote).toHaveBeenCalledTimes(1)
+    expect(quote).toHaveBeenCalledWith(
+      expect.objectContaining({ confidentiality: QuoteRequest.confidentiality.PUBLIC }),
+    )
   } finally {
     jest.restoreAllMocks()
   }

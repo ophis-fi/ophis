@@ -6,7 +6,7 @@ import {
   isNonEvmDestinationString,
   NON_EVM_DESTINATION_RULES,
 } from '@cowprotocol/common-utils'
-import { AdditionalTargetChainId, isSolanaAddress } from '@cowprotocol/cow-sdk'
+import { AdditionalTargetChainId, isSolanaAddress, SupportedChainId } from '@cowprotocol/cow-sdk'
 
 import { t } from '@lingui/core/macro'
 import { utils } from 'ethers'
@@ -42,7 +42,7 @@ export function isDisplayableRecipient(value: string | null | undefined): boolea
   return !!value && (!!isAddress(value) || isNonEvmDestinationString(value))
 }
 
-/** Input placeholder: ENS and .wei names only resolve on EVM destinations. */
+/** Input placeholder: Ophis currently resolves ENS and .wei names only for Ethereum destinations. */
 export function getRecipientPlaceholder(chainId: number): string {
   if (chainId === AdditionalTargetChainId.SOLANA) return t`Solana wallet address`
   if (chainId === AdditionalTargetChainId.BITCOIN) return t`Bitcoin wallet address`
@@ -50,5 +50,5 @@ export function getRecipientPlaceholder(chainId: number): string {
     const label = getChainInfo(chainId as Parameters<typeof getChainInfo>[0])?.label ?? ''
     return t`${label} wallet address`
   }
-  return t`Wallet address, ENS, or .wei name`
+  return chainId === SupportedChainId.MAINNET ? t`Wallet address, ENS, or .wei name` : t`Wallet address (0x…)`
 }

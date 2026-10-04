@@ -291,7 +291,7 @@ describe('NEAR Intents non-EVM destinations Ophis adds (Sui, Tron, Hyperliquid)'
     const nonEvmRegistered = OPHIS_NEAR_INTENTS_NETWORKS.filter((entry) => !entry.evm).map((entry) => entry.chainId)
     const ruled = Object.keys(NON_EVM_DESTINATION_RULES).map(Number)
     expect([...nonEvmRegistered].sort()).toEqual([...ruled].sort())
-    // EXACT_INPUT changes money flow (surplus refunded on the origin chain): Hypercore only.
+    // Hypercore requires EXACT_INPUT in the SDK; Ophis also enforces it at the API boundary.
     expect(OPHIS_NEAR_INTENTS_NETWORKS.filter((entry) => entry.exactInput).map((entry) => entry.chainId)).toEqual([
       HYPERCORE_CHAIN_ID,
     ])
@@ -308,7 +308,13 @@ describe('NEAR Intents non-EVM destinations Ophis adds (Sui, Tron, Hyperliquid)'
     expect(getRecipientPlaceholder(SUI_CHAIN_ID)).toContain('Sui')
     expect(getRecipientPlaceholder(TRON_CHAIN_ID)).toContain('Tron')
     expect(getRecipientPlaceholder(HYPERCORE_CHAIN_ID)).toContain('Hyperliquid')
-    for (const id of [SUI_CHAIN_ID, TRON_CHAIN_ID, HYPERCORE_CHAIN_ID])
+    for (const id of [
+      SUI_CHAIN_ID,
+      TRON_CHAIN_ID,
+      HYPERCORE_CHAIN_ID,
+      SupportedChainId.BASE,
+      SupportedChainId.GNOSIS_CHAIN,
+    ])
       expect(getRecipientPlaceholder(id)).not.toMatch(/ENS/)
     expect(getRecipientPlaceholder(SupportedChainId.MAINNET)).toMatch(/ENS/)
   })
@@ -365,7 +371,7 @@ describe('NEAR Intents non-EVM destinations Ophis adds (Sui, Tron, Hyperliquid)'
     spy.mockRestore()
   })
 
-  it('quotes 1Click EXACT_INPUT for Hypercore (its assets reject FLEX_INPUT) and FLEX_INPUT elsewhere', async () => {
+  it('selects EXACT_INPUT for Hypercore and FLEX_INPUT elsewhere before Ophis request overrides', async () => {
     const MAINNET_USDT = '0xdAC17F958D2ee523a2206206994597C13D831ec7'
     const api = (
       nearIntentsBridgeProvider as unknown as {
@@ -380,6 +386,7 @@ describe('NEAR Intents non-EVM destinations Ophis adds (Sui, Tron, Hyperliquid)'
         nearToken('hypercore', 'USDC', 8, HL_USDC_HIP1),
       ])
     const sent: { swapType?: string; amount?: string }[] = []
+    // This mock replaces the Ophis wrapper; outbound EXACT_INPUT is covered in the provider tests.
     const quote = jest.spyOn(api, 'getQuote').mockImplementation(async (request) => {
       sent.push(request as { swapType?: string; amount?: string })
       throw new Error('captured')
