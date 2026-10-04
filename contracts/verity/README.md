@@ -1,16 +1,13 @@
 # Formal verification — `AllowListGuardian`
 
-Machine-checked proofs (Lean 4 / [Verity](https://github.com/lfglabs-dev/verity)) of the security
-properties of [`AllowListGuardian.sol`](../src/contracts/AllowListGuardian.sol) — the **one
-Ophis-custom contract** in the GPv2 suite (everything else is canonical, already-audited CoW
-Protocol). It governs the solver allowlist, i.e. *who may settle batches*, so its access-control and
-state-immutability properties are the most safety-critical on-chain invariants Ophis adds to the
-base protocol.
+Machine-checked proofs (Lean 4 / [Verity](https://github.com/lfglabs-dev/verity)) of a model of
+[`AllowListGuardian.sol`](../src/contracts/AllowListGuardian.sol). It governs the solver allowlist,
+i.e. *who may settle batches*. The model covers its access-control and state-immutability properties.
 
 `AllowListGuardian` already ships an [Echidna fuzz harness](../echidna/E2EAllowListGuardian.sol)
 over 7 invariants. Fuzzing establishes *"no counterexample was found over sampled paths."* These
-proofs establish the same invariants over **all reachable states** — machine-checked theorems, not
-sampling.
+proofs establish the modeled invariants for states satisfying each theorem's assumptions.
+They do not establish equivalence between the model and deployed Solidity bytecode.
 
 ## What is proven
 
@@ -28,16 +25,17 @@ proven (`Proofs/Basic.lean`, 38 theorems) to satisfy:
 | 6 | `removeSolver` only under the guardian; otherwise reverts | `removeSolver_meets_spec_when_guardian`, `removeSolver_reverts_when_not_guardian` |
 | 7 | `authenticator` + `timelock` immutable under every function; guardian ≠ 0 preserved by every function | `{addSolver,setManager,setGuardian,removeSolver}_preserves_{authenticator,timelock}`, `*_preserves_wellformedness` |
 
-The core safety property of the design — *"capability can only be reduced instantly; adding a solver
-or handing off the manager always requires the 24h timelock"* — is exactly properties 3–7: the slow
+The core modeled safety property is that adding a solver or handing off the manager requires
+the timelock role, while the guardian can remove a solver. Properties 3–7 establish that the slow
 path (`addSolver` / `setManager` / `setGuardian`) **reverts for any non-timelock caller**, and only
-the fast, capability-*reducing* `removeSolver` is reachable by the guardian.
+the fast, capability-*reducing* `removeSolver` is reachable by the guardian. The timelock's delay
+and the external authenticator's behavior are outside this model.
 
 ## Axiom footprint
 
-Every theorem depends **only** on `propext` and `Quot.sound` — a strict subset of Lean's standard
-`{propext, Classical.choice, Quot.sound}`. There is **no `sorryAx`** (no `sorry`/`admit`): nothing is
-assumed, the proofs are complete. Confirm with the `#print axioms` step below.
+All 38 theorems depend **only** on Lean's standard axioms
+`{propext, Classical.choice, Quot.sound}`. There is **no `sorryAx`** (no `sorry`/`admit`) or custom
+axiom. Confirm with the `#print axioms` step below.
 
 ## Modeling note (honest scope)
 
@@ -56,16 +54,19 @@ machine-check them yourself:
 
 ```sh
 git clone https://github.com/lfglabs-dev/verity && cd verity
+git checkout 98533b72d2c93546e135d6b9e3aac08c5dbc06a8
 cp -r /path/to/ophis/contracts/verity/Contracts/AllowListGuardian* Contracts/
 printf '\nimport Contracts.AllowListGuardian\n' >> Contracts.lean
 lake exe cache get      # prebuilt mathlib cache
-lake build              # machine-checks every proof; expect "Build completed successfully."
+lake build Contracts    # explicitly include the contract proofs, not just the default Verity target
 
-# confirm no sorryAx:
-printf 'import Contracts.AllowListGuardian\nopen Contracts.AllowListGuardian.Proofs\n#print axioms addSolver_reverts_when_not_timelock\n#print axioms setGuardian_preserves_wellformedness\n' > /tmp/ax.lean
-lake env lean /tmp/ax.lean   # expect: depends on axioms: [propext, Quot.sound]
+# inspect every theorem's axioms; none should include sorryAx:
+printf 'import Contracts.AllowListGuardian\n' > /tmp/ax.lean
+sed -n 's/^theorem \([A-Za-z0-9_]*\).*/#print axioms Contracts.AllowListGuardian.Proofs.\1/p' \
+  Contracts/AllowListGuardian/Proofs/Basic.lean >> /tmp/ax.lean
+lake env lean /tmp/ax.lean
 ```
 
-Pinned toolchain: [`lfglabs-dev/verity`](https://github.com/lfglabs-dev/verity) (MIT), Lean 4
-`v4.22.0`. The `Contracts/` files here are a verified artifact — additive, verifying the *existing*
+Verified framework: [`lfglabs-dev/verity` at `98533b72d2c93546e135d6b9e3aac08c5dbc06a8`](https://github.com/lfglabs-dev/verity/tree/98533b72d2c93546e135d6b9e3aac08c5dbc06a8) (MIT), Lean 4
+`v4.31.0`. The `Contracts/` files here are a verified artifact — additive, verifying the *existing*
 `AllowListGuardian.sol`; no Solidity is changed.

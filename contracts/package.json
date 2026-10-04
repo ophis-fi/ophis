@@ -22,7 +22,7 @@
     "lint:sol:test": "solhint --disc --max-warnings 0 --config ./test/.solhint.json 'test/**/*.sol'",
     "lint:ts": "eslint --max-warnings 0 .",
     "test": "OPHIS_AUTH_PROXY_GAS_LIMIT=${OPHIS_AUTH_PROXY_GAS_LIMIT:-8000000} OPHIS_SETTLEMENT_GAS_LIMIT=${OPHIS_SETTLEMENT_GAS_LIMIT:-8000000} hardhat test",
-    "test:dependencies": "node --test test/security-dependencies.cjs",
+    "test:dependencies": "node --test test/security-dependencies.cjs && node ../scripts/test-http-cache-semantics.cjs .",
     "test:ignored-in-coverage": "MOCHA_CONF='ignored in coverage' yarn test",
     "coverage": "MOCHA_CONF='coverage' hardhat coverage",
     "bench": "hardhat run bench/index.ts",
@@ -57,7 +57,8 @@
     "ganache": "7.9.2",
     "request": "npm:@cypress/request@4.0.1",
     "uuid": "^11.1.1",
-    "secp256k1": "^4.0.5"
+    "secp256k1": "^4.0.5",
+    "http-cache-semantics": "^4.3.0"
   },
   "peerDependencies": {
     "ethers": "^5.4.0"

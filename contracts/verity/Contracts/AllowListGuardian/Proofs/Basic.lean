@@ -30,7 +30,7 @@ namespace Contracts.AllowListGuardian.Proofs
 open Verity
 open Contracts.AllowListGuardian
 open Contracts.AllowListGuardian.Spec
-open Verity.Proofs.Stdlib.Automation (wf_of_state_eq address_beq_false_of_ne)
+open Verity.Proofs.Stdlib.Automation (wf_of_state_eq)
 open Contracts.AllowListGuardian.Invariants
 
 /-! ## §0 Storage-slot basics (mirror Owned) -/
@@ -91,8 +91,10 @@ theorem constructor_preserves_wellformedness (s : ContractState)
   WellFormedState s' := by
   obtain ⟨h_slot0, h_slot1, h_slot2⟩ := constructor_sets_slots s authenticator_ timelock_ guardian_
   obtain ⟨h_sender, h_this⟩ := constructor_preserves_context s authenticator_ timelock_ guardian_
-  exact ⟨h_sender ▸ h.sender_nonzero, h_this ▸ h.contract_nonzero,
-    h_slot0 ▸ h_auth, h_slot1 ▸ h_tl, h_slot2 ▸ h_g⟩
+  refine ⟨h_sender ▸ h.sender_nonzero, h_this ▸ h.contract_nonzero, ?_, ?_, ?_⟩
+  · rw [h_slot0]; exact h_auth
+  · rw [h_slot1]; exact h_tl
+  · rw [h_slot2]; exact h_g
 
 /-! ## §2 addSolver — SLOW path, timelock-only, no storage effect
 
@@ -171,8 +173,7 @@ theorem setManager_preserves_all_slots_when_timelock (s : ContractState) (newMan
 theorem setGuardian_unfold (s : ContractState) (newGuardian : Address)
   (h_tl : s.sender = s.storageAddr 1) (h_nz : newGuardian ≠ 0) :
   (setGuardian newGuardian).run s = ContractResult.success ()
-    { s with
-      storageAddr := fun slotIdx => if (slotIdx == 2) = true then newGuardian else s.storageAddr slotIdx } := by
+    (s.writeAddrSlot 2 newGuardian) := by
   verity_unfold setGuardian with h_tl
   simp [timelock, guardian, h_nz]
   exact h_tl
@@ -254,7 +255,7 @@ theorem addSolver_reverts_when_not_timelock (s : ContractState) (solver : Addres
   ∃ msg, (addSolver solver).run s = ContractResult.revert msg s := by
   simp [addSolver, timelock, msgSender, getStorageAddr,
     Verity.require, Verity.bind, Bind.bind, Contract.run,
-    address_beq_false_of_ne s.sender (s.storageAddr 1) h_not]
+    ContractState.readAddrSlot, h_not]
 
 /-- removeSolver reverts when the caller is not the guardian. -/
 theorem removeSolver_reverts_when_not_guardian (s : ContractState) (solver : Address)
@@ -262,7 +263,7 @@ theorem removeSolver_reverts_when_not_guardian (s : ContractState) (solver : Add
   ∃ msg, (removeSolver solver).run s = ContractResult.revert msg s := by
   simp [removeSolver, guardian, msgSender, getStorageAddr,
     Verity.require, Verity.bind, Bind.bind, Contract.run,
-    address_beq_false_of_ne s.sender (s.storageAddr 2) h_not]
+    ContractState.readAddrSlot, h_not]
 
 /-- setManager reverts when the caller is not the timelock. -/
 theorem setManager_reverts_when_not_timelock (s : ContractState) (newManager : Address)
@@ -270,7 +271,7 @@ theorem setManager_reverts_when_not_timelock (s : ContractState) (newManager : A
   ∃ msg, (setManager newManager).run s = ContractResult.revert msg s := by
   simp [setManager, timelock, msgSender, getStorageAddr,
     Verity.require, Verity.bind, Bind.bind, Contract.run,
-    address_beq_false_of_ne s.sender (s.storageAddr 1) h_not]
+    ContractState.readAddrSlot, h_not]
 
 /-- setGuardian reverts when the caller is not the timelock; in particular slot 2
     cannot be rotated by a non-timelock. -/
@@ -279,7 +280,7 @@ theorem setGuardian_reverts_when_not_timelock (s : ContractState) (newGuardian :
   ∃ msg, (setGuardian newGuardian).run s = ContractResult.revert msg s := by
   simp [setGuardian, timelock, msgSender, getStorageAddr,
     Verity.require, Verity.bind, Bind.bind, Contract.run,
-    address_beq_false_of_ne s.sender (s.storageAddr 1) h_not]
+    ContractState.readAddrSlot, h_not]
 
 /-- setGuardian reverts when `newGuardian = 0` (the zero-address guard), so the
     guardian slot can never be zeroed by a successful call — this is what keeps the
@@ -289,7 +290,7 @@ theorem setGuardian_reverts_when_zero (s : ContractState) :
   by_cases h_tl : s.sender = s.storageAddr 1
   · refine ⟨"Guardian: zero guardian", ?_⟩
     simp [setGuardian, timelock, msgSender, getStorageAddr,
-      Verity.require, Verity.bind, Bind.bind, Contract.run, h_tl]
+      Verity.require, Verity.bind, Bind.bind, Contract.run, ContractState.readAddrSlot, h_tl]
   · exact setGuardian_reverts_when_not_timelock s 0 h_tl
 
 /-! ## §7 Immutability + invariant preservation across EVERY function
