@@ -1,5 +1,7 @@
 # @ophis/sdk
 
+Version 0.4.5 refreshes the Arc fee-policy and trader-enrollment documentation. Runtime behavior and exported types are unchanged from 0.4.4.
+
 Integration helpers for [Ophis](https://ophis.fi) — a [CoW Protocol](https://docs.cow.fi) fork with a natural-language intent layer.
 
 > **Non-custodial.** These helpers build and guard order parameters. They never hold keys or sign on your behalf. See [Security](#security) before wiring up an automated signer.
