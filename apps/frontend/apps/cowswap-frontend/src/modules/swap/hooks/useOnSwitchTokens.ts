@@ -11,7 +11,7 @@ import { useSwitchTokensPlaces, useTradeNavigate } from 'modules/trade'
 import { useSwapDerivedState } from './useSwapDerivedState'
 import { useUpdateSwapRawState } from './useUpdateSwapRawState'
 
-export function useOnSwitchTokens(): () => void {
+export function useOnSwitchTokens(): () => boolean {
   const cctpEnabled = useIsCctpEnabled()
   const { inputCurrency, outputCurrency, orderKind } = useSwapDerivedState()
   const switchSameChainTokens = useSwitchTokensPlaces({
@@ -23,13 +23,13 @@ export function useOnSwitchTokens(): () => void {
   return useCallback(() => {
     if (!inputCurrency || !outputCurrency || inputCurrency.chainId === outputCurrency.chainId) {
       switchSameChainTokens()
-      return
+      return true
     }
-    if (!isSupportedChainId(outputCurrency.chainId)) return
+    if (!isSupportedChainId(outputCurrency.chainId)) return false
     const isSourceSupported =
       BRIDGE_SOURCE_CHAIN_IDS.has(outputCurrency.chainId) ||
       (cctpEnabled && hasCctpRoute(outputCurrency.chainId, inputCurrency.chainId))
-    if (!isSourceSupported) return
+    if (!isSourceSupported) return false
 
     updateState({
       inputCurrencyAmount: null,
@@ -43,5 +43,6 @@ export function useOnSwitchTokens(): () => void {
       { inputCurrencyId: getCurrencyAddress(outputCurrency), outputCurrencyId: getCurrencyAddress(inputCurrency) },
       { targetChainId: inputCurrency.chainId, kind: OrderKind.SELL, amount: '', clearRecipient: true },
     )
+    return true
   }, [inputCurrency, outputCurrency, switchSameChainTokens, cctpEnabled, navigate, updateState])
 }

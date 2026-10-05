@@ -1,9 +1,10 @@
 import { useSetAtom } from 'jotai'
-import { ReactNode, Suspense, useEffect } from 'react'
+import { ReactNode, Suspense, useEffect, useContext } from 'react'
 
 import { Loader } from '@cowprotocol/ui'
 
 import { useChainPanelState, useViewWithFlows, useWidgetEffects, useWidgetOpenState } from './hooks'
+import { InlineTokenPickerContext } from './inlineTokenPicker.context'
 import { SelectTokenModal, SelectTokenModalFrame } from './internal'
 import { customFlowsRegistryAtom } from './state'
 import { CustomFlowsRegistry, TokenSelectorView } from './types'
@@ -73,6 +74,7 @@ export function SelectTokenWidget({ displayLpTokenLists, standalone, customFlows
 }
 
 function SelectTokenWidgetContent(): ReactNode {
+  const inline = useContext(InlineTokenPickerContext)
   const flowResult = useViewWithFlows()
   const { tradeType, field } = useSelectTokenWidgetState()
   const { isEnabled: isChainPanelEnabled } = useChainPanelState(tradeType, field)
@@ -103,11 +105,11 @@ function SelectTokenWidgetContent(): ReactNode {
       // Main token list view
       return (
         <>
-          <styledEl.Wrapper $hasChainPanel={isChainPanelEnabled}>
+          <styledEl.Wrapper $hasChainPanel={isChainPanelEnabled && !inline}>
             <SelectTokenModal.Header />
             <SelectTokenModal.Search />
             <SelectTokenModal.ChainSelector />
-            <styledEl.Body>
+            <styledEl.Body className={inline ? 'swp-inline-token-body' : undefined}>
               <styledEl.TokenColumn>
                 <SelectTokenModal.TokenList />
               </styledEl.TokenColumn>

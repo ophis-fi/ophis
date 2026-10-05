@@ -39,7 +39,8 @@
       "request@2.88.2": "../../patches/request@2.88.2.patch",
       "uuid@3.4.0": "../../patches/uuid@3.4.0.patch",
       "web3-core-method@1.10.3": "../../patches/web3-core-method@1.10.3.patch",
-      "web3-core-subscriptions@1.10.3": "../../patches/web3-core-subscriptions@1.10.3.patch"
+      "web3-core-subscriptions@1.10.3": "../../patches/web3-core-subscriptions@1.10.3.patch",
+      "braces@3.0.3": "patches/braces@3.0.3.patch"
     },
     "overrides": {
       "adm-zip": "^0.6.1",
@@ -47,7 +48,7 @@
       "elliptic": "^6.6.1",
       "form-data": "^2.5.6",
       "protobufjs": "^7.6.5",
-      "dompurify": "^3.4.13",
+      "dompurify": "^3.4.16",
       "astro": "^7.2.8",
       "launch-editor": "^2.14.1",
       "@babel/core": "^7.29.6",
@@ -66,7 +67,7 @@
       "secp256k1": "^4.0.4",
       "socket.io-parser": "^4.2.7",
       "fast-uri": "^3.1.8",
-      "ip-address": "10.5.1",
+      "ip-address": "10.7.1",
       "koa": "^3.1.2",
       "handlebars": "^4.7.9",
       "path-to-regexp": "^0.1.13",
@@ -189,7 +190,8 @@
     "analyze-build": "cross-env ANALYZE_BUNDLE=true ANALYZE_BUNDLE_TEMPLATE=sunburst pnpm run build",
     "install:sdk-preview": "node tools/scripts/install-sdk-preview.js && pnpm install",
     "install:ci": "pnpm run install:sdk-preview",
-    "across-source-preflight": "node scripts/across-source-preflight.mjs"
+    "across-source-preflight": "node scripts/across-source-preflight.mjs",
+    "start:asset-swap": "cross-env REACT_APP_ASSET_SWAP_PREVIEW=true NODE_ENV=development vite --config apps/cowswap-frontend/vite.config.mts --host 127.0.0.1 --port 4318"
   },
   "browser": {
     "crypto": false

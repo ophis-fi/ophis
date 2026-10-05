@@ -22,7 +22,7 @@ export interface ChainPanelProps {
   title: string
   chainsState: ChainsToSelectState | undefined
   onSelectChain(chain: ChainInfo): void
-  variant?: 'default' | 'fullscreen'
+  variant?: 'default' | 'fullscreen' | 'inline'
   onClose?(): void
   tradeType?: TradeType
   field?: Field
@@ -57,7 +57,7 @@ export function ChainPanel({
   })
 
   return (
-    <styledEl.Panel $variant={variant}>
+    <styledEl.Panel $variant={variant === 'inline' ? 'fullscreen' : variant}>
       <ChainPanelHeader onClose={onClose} title={title} variant={variant} />
       <styledEl.PanelSearchInputWrapper>
         <styledEl.PanelSearchInput

@@ -1,0 +1,370 @@
+{
+  "date": "2026-10-05",
+  "scope": "Local AssetSwap changes only",
+  "base_commit": "1e923ab7c9a888b978510fabdfbd2f65be7713e1",
+  "independent_model": "gpt-6-astra",
+  "independent_initial_review": {
+    "findings": [
+      {
+        "title": "[Medium] Close the picker when its slab host unmounts",
+        "body": "With a valid quote, open the inline picker and click the still-accessible trade confirmation button outside the slabs. `TradeWidgetModals` replaces the form, removing this portal target, while `SelectTokenWidget` remains mounted and logically open. The picker can remain attached to detached DOM, with body scrolling locked and quote polling paused. Close the selector when its host disappears, or prevent form-replacing actions while it is open.",
+        "confidence_score": 0.94,
+        "priority": 2,
+        "code_location": {
+          "file_path": "/Users/scep/ophis-asset-swap-local/apps/frontend/apps/cowswap-frontend/src/modules/tokensList/containers/SelectTokenWidget/internal/SelectTokenModal.tsx",
+          "line_range": {
+            "start": 77,
+            "end": 80
+          }
+        }
+      },
+      {
+        "title": "[Medium] Dispatch Escape to the active nested view",
+        "body": "Open Manage, start importing a token or list, then press Escape. This handler clears only `isManageWidgetOpen`; `tokenToImport` or `listToImport` still takes precedence, so the import screen remains unchanged. A second Escape closes the entire picker. List consent similarly leaves `listToToggle` pending. Dispatch to the active view\u2019s Back/Cancel handler so Escape clears the appropriate pending state and returns one level.",
+        "confidence_score": 0.99,
+        "priority": 2,
+        "code_location": {
+          "file_path": "/Users/scep/ophis-asset-swap-local/apps/frontend/apps/cowswap-frontend/src/modules/tokensList/containers/SelectTokenWidget/internal/SelectTokenModal.tsx",
+          "line_range": {
+            "start": 88,
+            "end": 91
+          }
+        }
+      },
+      {
+        "title": "[Medium] Add a Suspense boundary around the live motion fields",
+        "body": "`AssetSwapFields` renders lazy `MotionDiv` and `MotionButton` components, but the standard swap route has no enclosing Suspense boundary. Opening the live preview before visiting the lab therefore suspends at the application root while Framer Motion loads, leaving a blank initial screen or stale previous route without loading feedback. Wrap the live fields in a local Suspense boundary; the lab route\u2019s boundary does not cover this path.",
+        "confidence_score": 0.96,
+        "priority": 2,
+        "code_location": {
+          "file_path": "/Users/scep/ophis-asset-swap-local/apps/frontend/apps/cowswap-frontend/src/modules/trade/containers/TradeWidget/TradeWidgetForm.tsx",
+          "line_range": {
+            "start": 342,
+            "end": 347
+          }
+        }
+      }
+    ],
+    "overall_correctness": "patch is incorrect",
+    "overall_explanation": "The current worktree retains picker lifecycle, nested Escape, and loading-boundary defects. Demo pricing remains isolated. Review was limited to read-only source inspection as requested.",
+    "overall_confidence_score": 0.95
+  },
+  "independent_followup": {
+    "findings": [],
+    "overall_correctness": "patch is correct",
+    "overall_explanation": "All three previous findings are addressed. Read-only source inspection found no new actionable regressions in reversal acceptance, focus recovery, nested flows, viewport sizing, contrast, or normal-mode behavior. Demo values remain isolated from trading state. No runtime or browser checks were performed, as requested.",
+    "overall_confidence_score": 0.87
+  },
+  "browser_audit": [
+    {
+      "case": "demo-closed-dark-False",
+      "violations": []
+    },
+    {
+      "case": "demo-picker-dark-False",
+      "violations": []
+    },
+    {
+      "case": "demo-closed-dark-True",
+      "violations": []
+    },
+    {
+      "case": "demo-picker-dark-True",
+      "violations": []
+    },
+    {
+      "case": "demo-duplicate-selection-exchanges-assets",
+      "passed": true
+    },
+    {
+      "case": "live-tokens-0",
+      "violations": []
+    },
+    {
+      "case": "live-networks-0",
+      "violations": []
+    },
+    {
+      "case": "live-tokens-1",
+      "violations": []
+    },
+    {
+      "case": "live-networks-1",
+      "violations": []
+    },
+    {
+      "case": "settings-escape-and-reopen-both-slabs",
+      "passed": true
+    },
+    {
+      "case": "short-window-844-390",
+      "passed": true
+    },
+    {
+      "case": "short-window-390-520",
+      "passed": true
+    },
+    {
+      "case": "resize-with-picker-open",
+      "passed": true
+    },
+    {
+      "case": "rapid-open-close",
+      "passed": true,
+      "pageErrors": []
+    },
+    {
+      "case": "cold-motion-chunk-keeps-page-visible",
+      "passed": true
+    },
+    {
+      "case": "live-closed",
+      "violations": []
+    }
+  ],
+  "responsive_browser_cases": [
+    {
+      "view": "demo",
+      "width": 320,
+      "dark": false,
+      "rgb": "23, 25, 28",
+      "keyboard": true
+    },
+    {
+      "view": "demo",
+      "width": 320,
+      "dark": true,
+      "rgb": "244, 244, 245",
+      "keyboard": true
+    },
+    {
+      "view": "live",
+      "width": 320,
+      "reversal": true,
+      "twoInlinePickers": true,
+      "inlineNetworks": true,
+      "errors": []
+    },
+    {
+      "view": "demo",
+      "width": 390,
+      "dark": false,
+      "rgb": "23, 25, 28",
+      "keyboard": true
+    },
+    {
+      "view": "demo",
+      "width": 390,
+      "dark": true,
+      "rgb": "244, 244, 245",
+      "keyboard": true
+    },
+    {
+      "view": "live",
+      "width": 390,
+      "reversal": true,
+      "twoInlinePickers": true,
+      "inlineNetworks": true,
+      "errors": []
+    },
+    {
+      "view": "demo",
+      "width": 768,
+      "dark": false,
+      "rgb": "23, 25, 28",
+      "keyboard": true
+    },
+    {
+      "view": "demo",
+      "width": 768,
+      "dark": true,
+      "rgb": "244, 244, 245",
+      "keyboard": true
+    },
+    {
+      "view": "live",
+      "width": 768,
+      "reversal": true,
+      "twoInlinePickers": true,
+      "inlineNetworks": true,
+      "errors": []
+    },
+    {
+      "view": "demo",
+      "width": 1440,
+      "dark": false,
+      "rgb": "23, 25, 28",
+      "keyboard": true
+    },
+    {
+      "view": "demo",
+      "width": 1440,
+      "dark": true,
+      "rgb": "244, 244, 245",
+      "keyboard": true
+    },
+    {
+      "view": "live",
+      "width": 1440,
+      "reversal": true,
+      "twoInlinePickers": true,
+      "inlineNetworks": true,
+      "errors": []
+    },
+    {
+      "view": "reduced-motion",
+      "demoAndLive": true,
+      "setChangeClosesPicker": true
+    }
+  ],
+  "jest": {
+    "suites_passed": 6,
+    "tests_passed": 52
+  },
+  "typecheck": "passed",
+  "eslint": {
+    "errors": 0,
+    "warnings": 4,
+    "warnings_module": "AssetSwap.demo.const.tsx"
+  },
+  "original_comments": [
+    {
+      "source": "AssetSwap.original.tsx",
+      "comments": 32,
+      "missing": []
+    },
+    {
+      "source": "AssetSwap.original.css",
+      "comments": 10,
+      "missing": []
+    }
+  ],
+  "dependency_advisories": [
+    {
+      "package": "request",
+      "severity": "moderate",
+      "title": "Server-Side Request Forgery in Request",
+      "versions": [
+        "2.88.2"
+      ],
+      "in_base_lockfile": true,
+      "url": "https://github.com/advisories/GHSA-p8p7-x288-28g6"
+    },
+    {
+      "package": "web3-core-method",
+      "severity": "low",
+      "title": "web3-core-method is vulnerable to prototype pollution",
+      "versions": [
+        "1.10.3"
+      ],
+      "in_base_lockfile": true,
+      "url": "https://github.com/advisories/GHSA-2j4c-9qqq-896r"
+    },
+    {
+      "package": "web3-core-subscriptions",
+      "severity": "low",
+      "title": "web3-core-subscriptions has a Prototype Pollution vulnerability",
+      "versions": [
+        "1.10.3"
+      ],
+      "in_base_lockfile": true,
+      "url": "https://github.com/advisories/GHSA-hhf6-3xpg-pggx"
+    },
+    {
+      "package": "elliptic",
+      "severity": "low",
+      "title": "Elliptic Uses a Cryptographic Primitive with a Risky Implementation",
+      "versions": [
+        "6.6.1"
+      ],
+      "in_base_lockfile": true,
+      "url": "https://github.com/advisories/GHSA-848j-6mx2-7j84"
+    },
+    {
+      "package": "uuid",
+      "severity": "moderate",
+      "title": "uuid: Missing buffer bounds check in v3/v5/v6 when buf is provided",
+      "versions": [
+        "3.4.0"
+      ],
+      "in_base_lockfile": true,
+      "url": "https://github.com/advisories/GHSA-w5hq-g745-h8pq"
+    },
+    {
+      "package": "ip-address",
+      "severity": "moderate",
+      "title": "ip-address: isInSubnet() and isHostInSubnet() compare addresses of different families as if they shared an address space, allowing an allowlist check to admit an address outside its range",
+      "versions": [
+        "10.5.1"
+      ],
+      "in_base_lockfile": true,
+      "url": "https://github.com/advisories/GHSA-j6r3-76f7-8jcv"
+    },
+    {
+      "package": "ip-address",
+      "severity": "moderate",
+      "title": "ip-address: Address6 builds a parse diagnostic proportional to the input with no length bound, allowing a single long string to stall or crash the process",
+      "versions": [
+        "10.5.1"
+      ],
+      "in_base_lockfile": true,
+      "url": "https://github.com/advisories/GHSA-h3mg-xc3c-68pw"
+    },
+    {
+      "package": "dompurify",
+      "severity": "low",
+      "title": "DOMPurify: IN_PLACE: node-removing afterSanitize hook leaves detached subtree event handlers armed, causing DOM XSS",
+      "versions": [
+        "3.4.13"
+      ],
+      "in_base_lockfile": true,
+      "url": "https://github.com/advisories/GHSA-p98j-92pf-mc4p"
+    },
+    {
+      "package": "braces",
+      "severity": "high",
+      "title": "braces vulnerable to stack-exhaustion denial of service through deeply nested patterns",
+      "versions": [
+        "3.0.3"
+      ],
+      "in_base_lockfile": true,
+      "url": "https://github.com/advisories/GHSA-vfj7-8cjw-p6xm"
+    }
+  ],
+  "source_sha256": {
+    "apps/frontend/apps/cowswap-frontend/src/modules/application/containers/App/RoutesApp.tsx": "63dbb06a6176922adf4449e33b1a6e0dc7e7c5c80009bd1a3d162594650af6bc",
+    "apps/frontend/apps/cowswap-frontend/src/modules/swap/hooks/useOnSwitchTokens.test.ts": "1f1a6f0eb76a280d6bd3b454b482f7a2252a49ea5ec95e22c451c0163ce0ef30",
+    "apps/frontend/apps/cowswap-frontend/src/modules/swap/hooks/useOnSwitchTokens.ts": "1251d6a423e353663d19da1c29130ec8e9e935b0caa1497340f73d9d141a175d",
+    "apps/frontend/apps/cowswap-frontend/src/modules/tokensList/containers/SelectTokenWidget/InlineChainPanel.container.tsx": "090e4dd7422be746686cfbeb8d84581aede327e60de3418985e136586cce7070",
+    "apps/frontend/apps/cowswap-frontend/src/modules/tokensList/containers/SelectTokenWidget/MobileChainPanelPortal.tsx": "40afbea1429bada57c404fecf9d8902907fcf630c5ba06246f0322d0970d07ab",
+    "apps/frontend/apps/cowswap-frontend/src/modules/tokensList/containers/SelectTokenWidget/hooks/useInlineTokenPickerBack.test.ts": "3dc80efa63f2ce7df7ee5ed528fd88504fea0e34e09714634c5e64b4603c11a1",
+    "apps/frontend/apps/cowswap-frontend/src/modules/tokensList/containers/SelectTokenWidget/hooks/useInlineTokenPickerBack.ts": "3acebcea9caeefaffe95a359f3139ad971ec1318260886eebdacc175bbf02647",
+    "apps/frontend/apps/cowswap-frontend/src/modules/tokensList/containers/SelectTokenWidget/index.tsx": "cd8b134fababfca4578a30568b0ff9af2adcd497a17cb80ddb1cd4eb632d43d2",
+    "apps/frontend/apps/cowswap-frontend/src/modules/tokensList/containers/SelectTokenWidget/inlineTokenPicker.context.ts": "14da1388cde79b2f2d446aa79d0423b528cd0a1a85b68ecdbb54283badda630a",
+    "apps/frontend/apps/cowswap-frontend/src/modules/tokensList/containers/SelectTokenWidget/internal/SelectTokenModal.tsx": "38d380823f3e66ecf792b53fcaed93620b5fc716d7d327030f8d8e3360f67681",
+    "apps/frontend/apps/cowswap-frontend/src/modules/tokensList/containers/SelectTokenWidget/internal/slots/ChainSelector.tsx": "3a51c59f6a045488b69b9a7de23b1682160ee86bf9cc694d7d072b9b8e96db0a",
+    "apps/frontend/apps/cowswap-frontend/src/modules/tokensList/containers/SelectTokenWidget/internal/slots/ConnectedDesktopChainPanel.tsx": "19cea25fc49aa3f3e1344990ac45208a2c2e244d73bebfab0b28bc6457ab6776",
+    "apps/frontend/apps/cowswap-frontend/src/modules/tokensList/hooks/useInlineChainPanelFocus.ts": "80036e767fe3e5a92f1cd0699a7c56183df0ef958dfc0b7316bcd61cf7a88489",
+    "apps/frontend/apps/cowswap-frontend/src/modules/tokensList/pure/ChainPanel/ChainPanelHeader.tsx": "d1ab2605c7e8cadc89f374eacf4ecd3cc1c5a8afa48b8423a1679474c5ea15c4",
+    "apps/frontend/apps/cowswap-frontend/src/modules/tokensList/pure/ChainPanel/index.tsx": "f844707d3790afc0b3b427f94b74683400ec996b6ea2ff54cff166372a878ee4",
+    "apps/frontend/apps/cowswap-frontend/src/modules/trade/containers/TradeWidget/TradeWidgetForm.tsx": "cde4e548f087873b9b534ef31f8a5fd1287ae70a6aeb019e97cd0997ade739ac",
+    "apps/frontend/apps/cowswap-frontend/src/modules/trade/containers/TradeWidget/index.tsx": "f1642cbe2645976bf68d725b5bc7349b67ee4119917b57337aa69843d71eef05",
+    "apps/frontend/apps/cowswap-frontend/src/modules/trade/containers/TradeWidget/types.ts": "e8728e14a032e005d5b060d1ff15e06c7e3b0352c39e061d248e8ef385a092df",
+    "apps/frontend/apps/cowswap-frontend/src/ophis/components/AssetSwap/AssetSwap.demo.const.tsx": "86eb8b2e08a98638986da6317d40d4ae942c8025dba6430a96b8d20a63006b1c",
+    "apps/frontend/apps/cowswap-frontend/src/ophis/components/AssetSwap/AssetSwap.motion.tsx": "57a69440d00651b10071b439c5677aed725b71879ef1ce88ba73ea282439c41d",
+    "apps/frontend/apps/cowswap-frontend/src/ophis/components/AssetSwap/AssetSwap.tsx": "68fb1642c604b7dd92f6adb31ad97f7b198b00236dd28eedf9c4dcf11f75516d",
+    "apps/frontend/apps/cowswap-frontend/src/ophis/components/AssetSwap/AssetSwapDemoSlab.tsx": "30dca054df185b2a935825df05f5940a0ed460687fbae288799cc643f8140728",
+    "apps/frontend/apps/cowswap-frontend/src/ophis/components/AssetSwap/AssetSwapFields.test.tsx": "665eff8c6fc7ad5a507672035fb688d02ff04ccb6c25712b091894567fc7cc51",
+    "apps/frontend/apps/cowswap-frontend/src/ophis/components/AssetSwap/AssetSwapFields.tsx": "765e043169c80a0d634a720efc7db51946b180e125d10139f72484db2504d3b9",
+    "apps/frontend/apps/cowswap-frontend/src/ophis/components/AssetSwap/AssetSwapPreview.tsx": "e1a6c07ae8f902269069c7d9dc7f754c7c6002e50dc5d36f1c86e12f88123872",
+    "apps/frontend/apps/cowswap-frontend/src/ophis/components/AssetSwap/assetSwapPreview.const.ts": "aa5dc1bf7c0c5b34d2f26e084ad8bf75c8f9215363bb0a28dade5a6d507f31e5",
+    "apps/frontend/apps/cowswap-frontend/src/ophis/components/AssetSwap/index.ts": "7b190a8c8426e538aebe5746fecd2313ebf50da49e67fa02c945bbfb61d7915d",
+    "apps/frontend/apps/cowswap-frontend/src/ophis/components/AssetSwap/useAssetSwapDemo.ts": "dc441f3af437cf9c711d509d0d3b118e309b302dd230eb41a16bfe0ccad0c2f0",
+    "apps/frontend/apps/cowswap-frontend/src/ophis/components/AssetSwap/useAssetSwapPickerFocus.ts": "8c4e3c5485d060c13f146ed29ed677e2edd3c39be763d0598b344d0288433ee8",
+    "apps/frontend/apps/cowswap-frontend/src/ophis/components/AssetSwap/useAssetSwapStyle.ts": "7635a8deffcd9d87becd113961c3dc88481f2e88108a0a995a3189a8a50c6d3c",
+    "apps/frontend/apps/cowswap-frontend/src/ophis/styles.css": "3174be09943976bfef8869b88ae917542ebee9383f481e4eee91ebdddca35161",
+    "apps/frontend/scripts/asset-swap-audit.py": "c9c758b6534a953a5bfe3b783a8649be41eab5095b2c8b4a143c2af69f4d4d0e",
+    "apps/frontend/scripts/asset-swap-smoke.py": "6e06bdbc478afe7e3c34252c49cffc715b3049a0cfd01d4eb961bb4d323cf0e6"
+  },
+  "logs_directory": "/private/tmp/ophis-asset-swap-audit-20261005"
+}

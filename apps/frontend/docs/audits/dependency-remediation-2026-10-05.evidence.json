@@ -1,0 +1,376 @@
+{
+  "date": "2026-10-05",
+  "scope": "Local frontend workspace only; no push or deployment",
+  "baseline": "1e923ab7c9a888b978510fabdfbd2f65be7713e1",
+  "advisories": [
+    {
+      "package": "request",
+      "advisory": "GHSA-p8p7-x288-28g6",
+      "url": "https://github.com/advisories/GHSA-p8p7-x288-28g6",
+      "severity": "moderate",
+      "before_versions": [
+        "2.88.2"
+      ],
+      "status": "already_patched",
+      "impact_assessment": "Explorer legacy Swarm dependency; absent from the Ophis swap production sourcemaps. Cross-protocol redirect regression passes."
+    },
+    {
+      "package": "web3-core-method",
+      "advisory": "GHSA-2j4c-9qqq-896r",
+      "url": "https://github.com/advisories/GHSA-2j4c-9qqq-896r",
+      "severity": "low",
+      "before_versions": [
+        "1.10.3"
+      ],
+      "status": "already_patched",
+      "impact_assessment": "Explorer Web3 dependency; absent from swap build. Unsafe namespaces reject before prototype traversal."
+    },
+    {
+      "package": "web3-core-subscriptions",
+      "advisory": "GHSA-hhf6-3xpg-pggx",
+      "url": "https://github.com/advisories/GHSA-hhf6-3xpg-pggx",
+      "severity": "low",
+      "before_versions": [
+        "1.10.3"
+      ],
+      "status": "already_patched",
+      "impact_assessment": "Explorer Web3 dependency; absent from swap build. Unsafe namespaces reject before prototype traversal."
+    },
+    {
+      "package": "elliptic",
+      "advisory": "GHSA-848j-6mx2-7j84",
+      "url": "https://github.com/advisories/GHSA-848j-6mx2-7j84",
+      "severity": "low",
+      "before_versions": [
+        "6.6.1"
+      ],
+      "status": "already_patched",
+      "impact_assessment": "Present in browser signing dependencies. Existing nonce-width fix passes independent P-521 vector and Ethereum signing/recovery."
+    },
+    {
+      "package": "uuid",
+      "advisory": "GHSA-w5hq-g745-h8pq",
+      "url": "https://github.com/advisories/GHSA-w5hq-g745-h8pq",
+      "severity": "moderate",
+      "before_versions": [
+        "3.4.0"
+      ],
+      "status": "already_patched",
+      "impact_assessment": "Flagged v3 is a legacy Explorer dependency. Swap build includes v11.1.1; legacy buffer bounds tests pass."
+    },
+    {
+      "package": "ip-address",
+      "advisory": "GHSA-j6r3-76f7-8jcv",
+      "url": "https://github.com/advisories/GHSA-j6r3-76f7-8jcv",
+      "severity": "moderate",
+      "before_versions": [
+        "10.5.1"
+      ],
+      "status": "upgraded",
+      "impact_assessment": "10.5.1 -> 10.7.1. SOCKS caller validates textual IPs with node:net or parses fixed 16-byte replies; no subnet allowlist calls found. Absent from swap build."
+    },
+    {
+      "package": "ip-address",
+      "advisory": "GHSA-h3mg-xc3c-68pw",
+      "url": "https://github.com/advisories/GHSA-h3mg-xc3c-68pw",
+      "severity": "moderate",
+      "before_versions": [
+        "10.5.1"
+      ],
+      "status": "upgraded",
+      "impact_assessment": "10.5.1 -> 10.7.1. SOCKS caller validates textual IPs with node:net or parses fixed 16-byte replies; no subnet allowlist calls found. Absent from swap build."
+    },
+    {
+      "package": "dompurify",
+      "advisory": "GHSA-p98j-92pf-mc4p",
+      "url": "https://github.com/advisories/GHSA-p98j-92pf-mc4p",
+      "severity": "low",
+      "before_versions": [
+        "3.4.13"
+      ],
+      "status": "upgraded",
+      "impact_assessment": "3.4.13 -> 3.4.16. jsPDF optional HTML sanitizer is bundled; receipt export uses text/PNG and no in-place afterSanitize hook."
+    },
+    {
+      "package": "braces",
+      "advisory": "GHSA-vfj7-8cjw-p6xm",
+      "url": "https://github.com/advisories/GHSA-vfj7-8cjw-p6xm",
+      "severity": "high",
+      "before_versions": [
+        "3.0.3"
+      ],
+      "status": "locally_patched",
+      "impact_assessment": "Build/watch globs only; no user-controlled pattern path identified. Depth/cycle guard backported; absent from swap build."
+    }
+  ],
+  "raw_before": {
+    "vulnerabilities": {
+      "info": 0,
+      "low": 4,
+      "moderate": 4,
+      "high": 1,
+      "critical": 0
+    },
+    "dependencies": 2170,
+    "devDependencies": 0,
+    "optionalDependencies": 0,
+    "totalDependencies": 2170
+  },
+  "raw_after": {
+    "vulnerabilities": {
+      "info": 0,
+      "low": 3,
+      "moderate": 2,
+      "high": 1,
+      "critical": 0
+    },
+    "dependencies": 2170,
+    "devDependencies": 0,
+    "optionalDependencies": 0,
+    "totalDependencies": 2170
+  },
+  "remaining_version_alerts": [
+    {
+      "package": "request",
+      "advisory": "GHSA-p8p7-x288-28g6"
+    },
+    {
+      "package": "web3-core-method",
+      "advisory": "GHSA-2j4c-9qqq-896r"
+    },
+    {
+      "package": "web3-core-subscriptions",
+      "advisory": "GHSA-hhf6-3xpg-pggx"
+    },
+    {
+      "package": "elliptic",
+      "advisory": "GHSA-848j-6mx2-7j84"
+    },
+    {
+      "package": "uuid",
+      "advisory": "GHSA-w5hq-g745-h8pq"
+    },
+    {
+      "package": "braces",
+      "advisory": "GHSA-vfj7-8cjw-p6xm"
+    }
+  ],
+  "active_patches": {
+    "braces": {
+      "version": "3.0.3",
+      "patchHash": "bfdb0c171556074c2785f98d0a7355209223df8e29dbc2ff489240c16a47da97",
+      "patchSha256": "bfdb0c171556074c2785f98d0a7355209223df8e29dbc2ff489240c16a47da97",
+      "installed": true
+    },
+    "elliptic": {
+      "version": "6.6.1",
+      "patchHash": "5ee290c3bdaf9354587016fbf02863812413e6dc0f9ae73318a2da6f10ca7cef",
+      "patchSha256": "5ee290c3bdaf9354587016fbf02863812413e6dc0f9ae73318a2da6f10ca7cef",
+      "installed": true
+    },
+    "request": {
+      "version": "2.88.2",
+      "patchHash": "07433b2788f5fc8e40dd98909a62fdf6ec464fde15f62ca4dd6bc2f59d032cc3",
+      "patchSha256": "07433b2788f5fc8e40dd98909a62fdf6ec464fde15f62ca4dd6bc2f59d032cc3",
+      "installed": true
+    },
+    "uuid": {
+      "version": "3.4.0",
+      "patchHash": "34583c2ff6a44d871c6eb6a38bb2f95e0b7e048009e0a3071acaee9a2a87086e",
+      "patchSha256": "34583c2ff6a44d871c6eb6a38bb2f95e0b7e048009e0a3071acaee9a2a87086e",
+      "installed": true
+    },
+    "web3-core-method": {
+      "version": "1.10.3",
+      "patchHash": "7e52b235c4ef735b85bd2b5acd8460930d6b4b594fbf162f719002b54306226c",
+      "patchSha256": "7e52b235c4ef735b85bd2b5acd8460930d6b4b594fbf162f719002b54306226c",
+      "installed": true
+    },
+    "web3-core-subscriptions": {
+      "version": "1.10.3",
+      "patchHash": "f3b32ddbaa463bd15283892b7468a2a62a9da379eac2684a3b279db742930ea2",
+      "patchSha256": "f3b32ddbaa463bd15283892b7468a2a62a9da379eac2684a3b279db742930ea2",
+      "installed": true
+    }
+  },
+  "lock_changes": {
+    "added": [
+      "dompurify@3.4.16",
+      "ip-address@10.7.1"
+    ],
+    "removed": [
+      "dompurify@3.4.13",
+      "ip-address@10.5.1"
+    ],
+    "changedImporters": []
+  },
+  "production_sourcemaps": {
+    "maps_scanned": 138,
+    "source_counts": {
+      "braces": 0,
+      "ip-address": 0,
+      "dompurify": 1,
+      "elliptic": 15,
+      "request": 0,
+      "uuid": 6,
+      "web3-core-method": 0,
+      "web3-core-subscriptions": 0
+    },
+    "sources": {
+      "braces": [],
+      "ip-address": [],
+      "dompurify": [
+        "../../../node_modules/.pnpm/dompurify@3.4.16/node_modules/dompurify/dist/purify.es.mjs"
+      ],
+      "elliptic": [
+        "../../../node_modules/.pnpm/elliptic@6.6.1_patch_hash=5ee290c3bdaf9354587016fbf02863812413e6dc0f9ae73318a2da6f10ca7cef/node_modules/elliptic/lib/elliptic.js",
+        "../../../node_modules/.pnpm/elliptic@6.6.1_patch_hash=5ee290c3bdaf9354587016fbf02863812413e6dc0f9ae73318a2da6f10ca7cef/node_modules/elliptic/lib/elliptic/curve/base.js",
+        "../../../node_modules/.pnpm/elliptic@6.6.1_patch_hash=5ee290c3bdaf9354587016fbf02863812413e6dc0f9ae73318a2da6f10ca7cef/node_modules/elliptic/lib/elliptic/curve/edwards.js",
+        "../../../node_modules/.pnpm/elliptic@6.6.1_patch_hash=5ee290c3bdaf9354587016fbf02863812413e6dc0f9ae73318a2da6f10ca7cef/node_modules/elliptic/lib/elliptic/curve/index.js",
+        "../../../node_modules/.pnpm/elliptic@6.6.1_patch_hash=5ee290c3bdaf9354587016fbf02863812413e6dc0f9ae73318a2da6f10ca7cef/node_modules/elliptic/lib/elliptic/curve/mont.js",
+        "../../../node_modules/.pnpm/elliptic@6.6.1_patch_hash=5ee290c3bdaf9354587016fbf02863812413e6dc0f9ae73318a2da6f10ca7cef/node_modules/elliptic/lib/elliptic/curve/short.js",
+        "../../../node_modules/.pnpm/elliptic@6.6.1_patch_hash=5ee290c3bdaf9354587016fbf02863812413e6dc0f9ae73318a2da6f10ca7cef/node_modules/elliptic/lib/elliptic/curves.js",
+        "../../../node_modules/.pnpm/elliptic@6.6.1_patch_hash=5ee290c3bdaf9354587016fbf02863812413e6dc0f9ae73318a2da6f10ca7cef/node_modules/elliptic/lib/elliptic/ec/index.js",
+        "../../../node_modules/.pnpm/elliptic@6.6.1_patch_hash=5ee290c3bdaf9354587016fbf02863812413e6dc0f9ae73318a2da6f10ca7cef/node_modules/elliptic/lib/elliptic/ec/key.js",
+        "../../../node_modules/.pnpm/elliptic@6.6.1_patch_hash=5ee290c3bdaf9354587016fbf02863812413e6dc0f9ae73318a2da6f10ca7cef/node_modules/elliptic/lib/elliptic/ec/signature.js",
+        "../../../node_modules/.pnpm/elliptic@6.6.1_patch_hash=5ee290c3bdaf9354587016fbf02863812413e6dc0f9ae73318a2da6f10ca7cef/node_modules/elliptic/lib/elliptic/eddsa/index.js",
+        "../../../node_modules/.pnpm/elliptic@6.6.1_patch_hash=5ee290c3bdaf9354587016fbf02863812413e6dc0f9ae73318a2da6f10ca7cef/node_modules/elliptic/lib/elliptic/eddsa/key.js",
+        "../../../node_modules/.pnpm/elliptic@6.6.1_patch_hash=5ee290c3bdaf9354587016fbf02863812413e6dc0f9ae73318a2da6f10ca7cef/node_modules/elliptic/lib/elliptic/eddsa/signature.js",
+        "../../../node_modules/.pnpm/elliptic@6.6.1_patch_hash=5ee290c3bdaf9354587016fbf02863812413e6dc0f9ae73318a2da6f10ca7cef/node_modules/elliptic/lib/elliptic/precomputed/secp256k1.js",
+        "../../../node_modules/.pnpm/elliptic@6.6.1_patch_hash=5ee290c3bdaf9354587016fbf02863812413e6dc0f9ae73318a2da6f10ca7cef/node_modules/elliptic/lib/elliptic/utils.js"
+      ],
+      "request": [],
+      "uuid": [
+        "../../../node_modules/.pnpm/uuid@11.1.1/node_modules/uuid/dist/esm-browser/native.js",
+        "../../../node_modules/.pnpm/uuid@11.1.1/node_modules/uuid/dist/esm-browser/regex.js",
+        "../../../node_modules/.pnpm/uuid@11.1.1/node_modules/uuid/dist/esm-browser/rng.js",
+        "../../../node_modules/.pnpm/uuid@11.1.1/node_modules/uuid/dist/esm-browser/stringify.js",
+        "../../../node_modules/.pnpm/uuid@11.1.1/node_modules/uuid/dist/esm-browser/v4.js",
+        "../../../node_modules/.pnpm/uuid@11.1.1/node_modules/uuid/dist/esm-browser/validate.js"
+      ],
+      "web3-core-method": [],
+      "web3-core-subscriptions": []
+    }
+  },
+  "independent_review": {
+    "findings": [],
+    "overall_correctness": "patch is correct",
+    "overall_explanation": "No actionable defects remain in the current on-disk remediation. Concurrent edits removed the supplied snapshot\u2019s quote-parser regression and added coverage. Patch hashes, installed runtime files, and consumer resolution agree. Reviewed depth/cycle guards, compatibility, and regression wiring. I made no edits, network calls, installations, or exploit-test executions.",
+    "overall_confidence_score": 0.91
+  },
+  "browser_cases": [
+    {
+      "view": "demo",
+      "width": 320,
+      "dark": false,
+      "rgb": "23, 25, 28",
+      "keyboard": true
+    },
+    {
+      "view": "demo",
+      "width": 320,
+      "dark": true,
+      "rgb": "244, 244, 245",
+      "keyboard": true
+    },
+    {
+      "view": "live",
+      "width": 320,
+      "reversal": true,
+      "twoInlinePickers": true,
+      "inlineNetworks": true,
+      "errors": []
+    },
+    {
+      "view": "demo",
+      "width": 390,
+      "dark": false,
+      "rgb": "23, 25, 28",
+      "keyboard": true
+    },
+    {
+      "view": "demo",
+      "width": 390,
+      "dark": true,
+      "rgb": "244, 244, 245",
+      "keyboard": true
+    },
+    {
+      "view": "live",
+      "width": 390,
+      "reversal": true,
+      "twoInlinePickers": true,
+      "inlineNetworks": true,
+      "errors": []
+    },
+    {
+      "view": "demo",
+      "width": 768,
+      "dark": false,
+      "rgb": "23, 25, 28",
+      "keyboard": true
+    },
+    {
+      "view": "demo",
+      "width": 768,
+      "dark": true,
+      "rgb": "244, 244, 245",
+      "keyboard": true
+    },
+    {
+      "view": "live",
+      "width": 768,
+      "reversal": true,
+      "twoInlinePickers": true,
+      "inlineNetworks": true,
+      "errors": []
+    },
+    {
+      "view": "demo",
+      "width": 1440,
+      "dark": false,
+      "rgb": "23, 25, 28",
+      "keyboard": true
+    },
+    {
+      "view": "demo",
+      "width": 1440,
+      "dark": true,
+      "rgb": "244, 244, 245",
+      "keyboard": true
+    },
+    {
+      "view": "live",
+      "width": 1440,
+      "reversal": true,
+      "twoInlinePickers": true,
+      "inlineNetworks": true,
+      "errors": []
+    },
+    {
+      "view": "reduced-motion",
+      "demoAndLive": true,
+      "setChangeClosesPicker": true
+    }
+  ],
+  "checks": {
+    "new_advisory_cases": 6,
+    "existing_security_check_groups": 18,
+    "released_braces_suite": 764,
+    "frontend_tests": 37,
+    "wallet_tests": 34,
+    "typecheck": "passed",
+    "eslint": "passed",
+    "frozen_install": "passed",
+    "production_build": "passed with NODE_OPTIONS=--max-old-space-size=6144 (CI setting)",
+    "diff_check": "passed"
+  },
+  "source_sha256": {
+    "apps/frontend/package.json": "abdd489f0d677a1e90af4aae65fc92331d9a1ee8c16306a87078b4a59e7c0ad4",
+    "apps/frontend/pnpm-lock.yaml": "cb619645e557b78fad90d228e557c81cfb7135fed6de06c77615804fd41311f4",
+    "apps/frontend/patches/braces@3.0.3.patch": "bfdb0c171556074c2785f98d0a7355209223df8e29dbc2ff489240c16a47da97",
+    "apps/frontend/scripts/test-advisory-remediation.cjs": "c2eadfd567b620fac01ad28514eab7b022cc00386ae5e5846f2ba861bfefaed4",
+    "scripts/test-security-dependencies.cjs": "2ae49d466b3cf316fe1e4b385f62a83ed2349b28b6da6c944dff1ad3474708d4"
+  },
+  "logs": "/private/tmp/ophis-dependency-review-20261005"
+}

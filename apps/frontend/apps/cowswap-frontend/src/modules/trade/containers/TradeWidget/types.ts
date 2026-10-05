@@ -1,4 +1,4 @@
-import { ReactNode } from 'react'
+import { ComponentType, ReactNode } from 'react'
 
 import { PriceImpact } from 'legacy/hooks/usePriceImpact'
 
@@ -12,7 +12,8 @@ export interface TradeWidgetActions {
   onUserInput: CurrencyInputPanelProps['onUserInput']
   onChangeRecipient: (recipient: string | null) => void
 
-  onSwitchTokens(): void
+  /** False means the reverse route was rejected; legacy handlers return void. */
+  onSwitchTokens(): boolean | void
 }
 
 export interface TradeWidgetParams {
@@ -41,7 +42,15 @@ export interface TradeWidgetParams {
   customSelectTokenButton?: ReactNode
 }
 
+export interface TradeWidgetCurrencyFieldsProps {
+  input: ReactNode
+  output: ReactNode
+  reverse: { onClick: () => boolean | void; disabled: boolean; loading: boolean }
+}
+
 export interface TradeWidgetSlots {
+  /** A consumer can supply paired fields that host their token picker inline. */
+  currencyFields?: ComponentType<TradeWidgetCurrencyFieldsProps>
   headerContent?: ReactNode
   settingsWidget: ReactNode
   lockScreen?: ReactNode

@@ -1,11 +1,11 @@
-import React, { ReactNode, useCallback, useMemo } from 'react'
+import React, { ReactNode, Suspense, useCallback, useMemo } from 'react'
 
 import ICON_ORDERS from '@cowprotocol/assets/svg/orders.svg'
 import { useFeatureFlags, useTheme, useMediaQuery } from '@cowprotocol/common-hooks'
 import { isInjectedWidget, isSellOrder, isSupportedChainId, maxAmountSpend } from '@cowprotocol/common-utils'
 import { SupportedChainId } from '@cowprotocol/cow-sdk'
 import { Currency } from '@cowprotocol/currency'
-import { ButtonOutlined, Media, MY_ORDERS_ID, SWAP_HEADER_OFFSET } from '@cowprotocol/ui'
+import { ButtonOutlined, Loader, Media, MY_ORDERS_ID, SWAP_HEADER_OFFSET } from '@cowprotocol/ui'
 import { useIsSafeWallet, useWalletDetails, useWalletInfo } from '@cowprotocol/wallet'
 
 import { Trans, useLingui } from '@lingui/react/macro'
@@ -22,7 +22,7 @@ import { Field } from 'legacy/state/types'
 
 import { useToggleAccountModal } from 'modules/account'
 import { useInjectedWidgetParams } from 'modules/injectedWidget'
-import { useOpenTokenSelectWidget } from 'modules/tokensList'
+import { useOpenTokenSelectWidget, useSelectTokenWidgetState } from 'modules/tokensList'
 import { useDerivedTradeState } from 'modules/trade'
 import { TradeFormValidation, useGetTradeFormValidation } from 'modules/tradeFormValidation'
 
@@ -34,6 +34,7 @@ import { CurrencyInputPanel, CurrencyInputPanelProps } from 'common/pure/Currenc
 import { PoweredFooter } from 'common/pure/PoweredFooter'
 import { isNonEvmRecipientChain } from 'common/utils/recipientAddress.utils'
 
+import { isAssetSwapLayout } from './assetSwapLayout.utils'
 import * as styledEl from './styled'
 import { TradeSourceNetworkSelector } from './TradeSourceNetworkSelector'
 import { mapCurrencyInfo } from './TradeWidgetForm.utils'
@@ -223,12 +224,72 @@ export function TradeWidgetForm(props: TradeWidgetProps): ReactNode {
 
   const { t } = useLingui()
 
+  const CurrencyFields = slots.currencyFields
+  const assetSwapLayout = isAssetSwapLayout(params, slots)
+  const { open, forceOpen, onSelectToken, field } = useSelectTokenWidgetState()
+  // Quote polling pauses in the picker. Keep trade/settings controls inert
+  // until it closes so a paused quote cannot enter approval or confirmation.
+  const inlinePickerOpen = assetSwapLayout && Boolean((open || forceOpen) && onSelectToken && field)
+  const reverseDisabled = !!(
+    params.inputsDisabled ||
+    params.disableTokenSwitch ||
+    shouldLockForAlternativeOrder ||
+    ((isOutputTokenUnsupported || isNonEvmRecipientChain(buyToken?.chainId)) && !params.externalFunding) ||
+    isProviderNetworkUnsupported ||
+    isProviderNetworkDeprecated
+  )
+  const reverseLoading = Boolean(sellToken && outputCurrencyInfo.currency && isTradePriceUpdating)
+  const inputPanel = (
+    <CurrencyInputPanel
+      id="input-currency-input"
+      allowUnsupportedTokenSelection={!!params.inputTokenOptions}
+      inputDisabled={params.inputsDisabled}
+      currencyInfo={inputCurrencyInfo}
+      showSetMax={showSetMax && !params.inputsDisabled}
+      maxBalance={maxBalance}
+      topLabel={
+        assetSwapLayout
+          ? inputCurrencyInfo.label || t`You pay`
+          : isOphisMobileSwap
+            ? inputCurrencyInfo.label || t`You sell`
+            : isWrapOrUnwrap
+              ? undefined
+              : inputCurrencyInfo.label
+      }
+      topContent={inputCurrencyInfo.topContent}
+      openTokenSelectWidget={openSellTokenSelect}
+      customSelectTokenButton={params.customSelectTokenButton}
+      {...currencyInputCommonProps}
+    />
+  )
+  const outputPanel = (
+    <CurrencyInputPanel
+      id="output-currency-input"
+      inputDisabled={isWrapOrUnwrap || isCurrentTradeBridging || disableOutput}
+      currencyInfo={outputCurrencyInfo}
+      priceImpactParams={!disablePriceImpact ? priceImpact : undefined}
+      topLabel={
+        assetSwapLayout
+          ? outputCurrencyInfo.label || t`You receive`
+          : isOphisMobileSwap
+            ? outputCurrencyInfo.label || t`You receive`
+            : isWrapOrUnwrap
+              ? undefined
+              : outputCurrencyInfo.label
+      }
+      topContent={outputCurrencyInfo.topContent}
+      openTokenSelectWidget={openBuyTokenSelect}
+      customSelectTokenButton={params.customSelectTokenButton}
+      {...currencyInputCommonProps}
+    />
+  )
+
   return (
     <>
       {isMobileSwap && <MobileSwapHeading />}
       <MobileSwapReveal enabled={!!isOphisMobileSwap}>
         <styledEl.ContainerBox data-mobile-swap-form={isOphisMobileSwap || undefined}>
-          <styledEl.Header>
+          <styledEl.Header inert={inlinePickerOpen}>
             {isOphisMobileSwap ? (
               <>
                 {isMobileSwap && <TradeWidgetLinks isDropdown />}
@@ -269,86 +330,61 @@ export function TradeWidgetForm(props: TradeWidgetProps): ReactNode {
                 lockScreen
               ) : (
                 <>
-                  {topContent}
-                  <RobinhoodAssetContext
-                    chainId={chainId}
-                    sellToken={sellToken}
-                    buyToken={buyToken}
-                    sellBalance={inputCurrencyInfo.balance}
-                  />
-                  <CoinbaseStockContext
-                    chainId={chainId}
-                    sellToken={sellToken}
-                    buyToken={buyToken}
-                    sellBalance={inputCurrencyInfo.balance}
-                  />
-                  <div>
-                    <CurrencyInputPanel
-                      id="input-currency-input"
-                      allowUnsupportedTokenSelection={!!params.inputTokenOptions}
-                      inputDisabled={params.inputsDisabled}
-                      currencyInfo={inputCurrencyInfo}
-                      showSetMax={showSetMax && !params.inputsDisabled}
-                      maxBalance={maxBalance}
-                      topLabel={
-                        isOphisMobileSwap
-                          ? inputCurrencyInfo.label || t`You sell`
-                          : isWrapOrUnwrap
-                            ? undefined
-                            : inputCurrencyInfo.label
-                      }
-                      topContent={inputCurrencyInfo.topContent}
-                      openTokenSelectWidget={openSellTokenSelect}
-                      customSelectTokenButton={params.customSelectTokenButton}
-                      {...currencyInputCommonProps}
+                  <div inert={inlinePickerOpen} style={{ display: 'contents' }}>
+                    {topContent}
+                    <RobinhoodAssetContext
+                      chainId={chainId}
+                      sellToken={sellToken}
+                      buyToken={buyToken}
+                      sellBalance={inputCurrencyInfo.balance}
+                    />
+                    <CoinbaseStockContext
+                      chainId={chainId}
+                      sellToken={sellToken}
+                      buyToken={buyToken}
+                      sellBalance={inputCurrencyInfo.balance}
                     />
                   </div>
-                  {!isWrapOrUnwrap && middleContent}
-
-                  <styledEl.CurrencySeparatorBox compactView={compactView}>
-                    <CurrencyArrowSeparator
-                      isCollapsed={compactView}
-                      hasSeparatorLine={!compactView}
-                      onSwitchTokens={
-                        isProviderNetworkUnsupported || isProviderNetworkDeprecated
-                          ? () => void 0
-                          : throttledOnSwitchTokens
+                  {assetSwapLayout && CurrencyFields ? (
+                    <Suspense
+                      fallback={
+                        <div className="swp-loading" role="status">
+                          <Loader />
+                          <Trans>Loading swap controls…</Trans>
+                        </div>
                       }
-                      isLoading={Boolean(sellToken && outputCurrencyInfo.currency && isTradePriceUpdating)}
-                      disabled={
-                        params.inputsDisabled ||
-                        params.disableTokenSwitch ||
-                        shouldLockForAlternativeOrder ||
-                        ((isOutputTokenUnsupported || isNonEvmRecipientChain(buyToken?.chainId)) &&
-                          !params.externalFunding) ||
-                        isProviderNetworkUnsupported ||
-                        isProviderNetworkDeprecated
-                      }
-                      isDarkMode={darkMode}
-                    />
-                  </styledEl.CurrencySeparatorBox>
-                  <div>
-                    <CurrencyInputPanel
-                      id="output-currency-input"
-                      inputDisabled={isWrapOrUnwrap || isCurrentTradeBridging || disableOutput}
-                      currencyInfo={outputCurrencyInfo}
-                      priceImpactParams={!disablePriceImpact ? priceImpact : undefined}
-                      topLabel={
-                        isOphisMobileSwap
-                          ? outputCurrencyInfo.label || t`You receive`
-                          : isWrapOrUnwrap
-                            ? undefined
-                            : outputCurrencyInfo.label
-                      }
-                      topContent={outputCurrencyInfo.topContent}
-                      openTokenSelectWidget={openBuyTokenSelect}
-                      customSelectTokenButton={params.customSelectTokenButton}
-                      {...currencyInputCommonProps}
-                    />
-                  </div>
+                    >
+                      <CurrencyFields
+                        input={inputPanel}
+                        output={outputPanel}
+                        reverse={{ onClick: onSwitchTokens, disabled: reverseDisabled, loading: reverseLoading }}
+                      />
+                    </Suspense>
+                  ) : (
+                    <>
+                      <div>{inputPanel}</div>
+                      {!isWrapOrUnwrap && middleContent}
+                      <styledEl.CurrencySeparatorBox compactView={compactView}>
+                        <CurrencyArrowSeparator
+                          isCollapsed={compactView}
+                          hasSeparatorLine={!compactView}
+                          onSwitchTokens={
+                            isProviderNetworkUnsupported || isProviderNetworkDeprecated
+                              ? () => void 0
+                              : throttledOnSwitchTokens
+                          }
+                          isLoading={reverseLoading}
+                          disabled={reverseDisabled}
+                          isDarkMode={darkMode}
+                        />
+                      </styledEl.CurrencySeparatorBox>
+                      <div>{outputPanel}</div>
+                    </>
+                  )}
                   {withRecipient && (
                     <fieldset
                       disabled={params.inputsDisabled}
+                      inert={inlinePickerOpen}
                       style={{ border: 0, padding: 0, margin: 0, minWidth: 0 }}
                     >
                       <SetRecipient
@@ -359,20 +395,22 @@ export function TradeWidgetForm(props: TradeWidgetProps): ReactNode {
                     </fieldset>
                   )}
 
-                  {isWrapOrUnwrap && !isPriceStatic ? (
-                    sellToken ? (
-                      <WrapFlowActionButton sellToken={sellToken} />
-                    ) : null
-                  ) : (
-                    bottomContent?.(
-                      hideTradeWarnings ? null : (
-                        <TradeWarnings
-                          enableSmartSlippage={enableSmartSlippage}
-                          isTradePriceUpdating={isTradePriceUpdating}
-                        />
-                      ),
-                    )
-                  )}
+                  <div inert={inlinePickerOpen} style={{ display: 'contents' }}>
+                    {isWrapOrUnwrap && !isPriceStatic ? (
+                      sellToken ? (
+                        <WrapFlowActionButton sellToken={sellToken} />
+                      ) : null
+                    ) : (
+                      bottomContent?.(
+                        hideTradeWarnings ? null : (
+                          <TradeWarnings
+                            enableSmartSlippage={enableSmartSlippage}
+                            isTradePriceUpdating={isTradePriceUpdating}
+                          />
+                        ),
+                      )
+                    )}
+                  </div>
                 </>
               )}
 
@@ -382,7 +420,7 @@ export function TradeWidgetForm(props: TradeWidgetProps): ReactNode {
         </styledEl.ContainerBox>
       </MobileSwapReveal>
       {!isLimitOrdersPromoBannerVisible && !isLimitOrdersUpgradeBannerEnabled && outerContent && (
-        <styledEl.OuterContentWrapper>{outerContent}</styledEl.OuterContentWrapper>
+        <styledEl.OuterContentWrapper inert={inlinePickerOpen}>{outerContent}</styledEl.OuterContentWrapper>
       )}
     </>
   )

@@ -1,6 +1,6 @@
 import { Media, UI } from '@cowprotocol/ui'
 
-import { darken, transparentize } from 'color2k'
+import { transparentize } from 'color2k'
 import { AlertTriangle, ChevronDown, X } from 'react-feather'
 import styled from 'styled-components/macro'
 
@@ -162,7 +162,9 @@ export const SelectorLabel = styled.div`
     display: ${({ theme }) => (theme.isOphisMobileSwap ? 'block' : 'none')};
   }
 `
-export const SelectorControls = styled.div<{ $isChainIdUnsupported: boolean; $isOpen: boolean }>`
+export const SelectorControls = styled.button<{ $isChainIdUnsupported: boolean; $isOpen: boolean }>`
+  font: inherit;
+  cursor: pointer;
   min-width: 0;
   align-items: center;
   color: inherit;
@@ -183,8 +185,9 @@ export const SelectorControls = styled.div<{ $isChainIdUnsupported: boolean; $is
       border: 2px solid var(${UI.COLOR_PAPER_DARKEST});
     `}
 
-  &:focus {
-    background-color: ${({ theme }) => darken(theme.error, 0.1)};
+  &:focus-visible {
+    outline: 2px solid var(${UI.COLOR_PRIMARY});
+    outline-offset: 2px;
   }
 
   &:hover {

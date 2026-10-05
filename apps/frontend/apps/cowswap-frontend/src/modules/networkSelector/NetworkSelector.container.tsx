@@ -26,6 +26,7 @@ interface NetworkSelectorProps {
   additionalChainIds?: TargetChainId[]
   onSelectChain?(chainId: TargetChainId): boolean
   disabled?: boolean
+  tokenPickerTrigger?: boolean
 }
 
 const stopPropagation = (event: MouseEvent<HTMLDivElement>): void => {
@@ -46,12 +47,13 @@ export function NetworkSelector({
   additionalChainIds = [],
   onSelectChain: selectSourceChain,
   disabled = false,
+  tokenPickerTrigger = false,
 }: NetworkSelectorProps = {}): ReactNode {
   const { chainId: walletChainId } = useWalletInfo()
   const chainId = selectedChainId ?? walletChainId
   const node = useRef<HTMLDivElement>(null)
   const nodeMobile = useRef<HTMLDivElement>(null)
-  const nodeSelector = useRef<HTMLDivElement>(null)
+  const nodeSelector = useRef<HTMLButtonElement>(null)
   const isOpen = useModalIsOpen(ApplicationModal.NETWORK_SELECTOR)
   const toggleModal = useToggleModal(ApplicationModal.NETWORK_SELECTOR)
   const isWalletChainUnsupported = useIsProviderNetworkUnsupported()
@@ -111,8 +113,18 @@ export function NetworkSelector({
   )
 
   return (
-    <styledEl.SelectorWrapper ref={node} onClick={disabled ? undefined : toggleModal} aria-disabled={disabled}>
-      <styledEl.SelectorControls ref={nodeSelector} $isChainIdUnsupported={isChainIdUnsupported} $isOpen={isOpen}>
+    <styledEl.SelectorWrapper ref={node}>
+      <styledEl.SelectorControls
+        ref={nodeSelector}
+        type="button"
+        onClick={toggleModal}
+        disabled={disabled}
+        aria-expanded={isOpen}
+        aria-haspopup="dialog"
+        data-token-picker-trigger={tokenPickerTrigger || undefined}
+        $isChainIdUnsupported={isChainIdUnsupported}
+        $isOpen={isOpen}
+      >
         {!isChainIdUnsupported ? (
           <>
             <styledEl.SelectorLogo src={logoUrl} />

@@ -203,3 +203,291 @@ button {
     transform: none !important;
   }
 }
+
+/* ══ Asset swap ════════════════════════════════════════════ */
+.swp {
+  /* Bencho → Ophis. These aliases belong to this root, never :root.
+     RGB channels are supplied from the active theme by useAssetSwapStyle;
+     they are three bare comma-separated numbers for rgba(), not hex. */
+  --card: var(--cow-color-paper);
+  --fill-slab: var(--cow-color-paper-darker);
+  --ink: var(--cow-color-text);
+  --fill-on: var(--cow-color-text-paper);
+  --font-ui: var(--ophis-font-body);
+  --pane-edge: var(--cow-color-border);
+  --pick: var(--cow-color-primary);
+  --swp-r: var(--cow-border-radius-large, var(--ophis-radius-lg));
+  max-width: 100%;
+  box-sizing: border-box;
+  position: relative;
+  font-family: var(--font-ui);
+  color: var(--fill-on, var(--ink));
+  overflow: hidden;
+  border-radius: var(--swp-r);}
+
+.swp-card {
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 116px;
+  z-index: 1;
+  overflow: hidden;
+  border-radius: var(--swp-r);
+  background: var(--fill-slab, var(--card));}
+
+/* the slab that is open, or still shrinking home, is above the
+   other slab and the arrow */
+.swp-card[data-lifted] { z-index: 3; }
+
+/* what a slab shows, at the slab's resting height whatever the
+   slab is doing: amount and fiat low on the left, the label and
+   the coin pinned to the corners */
+.swp-face {
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 116px;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  padding: 0 18px 16px;}
+
+[data-stroke="on"] .swp-card { box-shadow: inset 0 0 0 1px var(--pane-edge); }
+
+.swp-label {
+  position: absolute;
+  top: 16px;
+  left: 18px;
+  font-size: 12px;
+  font-weight: 500;
+  color: rgba(var(--fill-on-rgb, var(--ink-rgb)), 0.38);}
+
+.swp-amount {
+  font-size: 24px;
+  font-weight: 500;
+  letter-spacing: -0.025em;
+  line-height: 1.1;
+  margin-bottom: 4px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;}
+
+.swp-fiat {
+  font-size: 12px;
+  color: rgba(var(--fill-on-rgb, var(--ink-rgb)), 0.45);
+  font-variant-numeric: tabular-nums;}
+
+/* the coin sits in the slab's bottom-right corner */
+.swp-coin {
+  position: absolute;
+  right: 14px;
+  bottom: 14px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 30px;
+  padding: 0 10px 0 4px;
+  border-radius: 999px;
+  background: rgba(var(--fill-on-rgb, var(--ink-rgb)), 0.06);
+  font-size: 13px;
+  font-weight: 600;
+  /* a button now: it opens the picker */
+  border: 0;
+  margin: 0;
+  color: inherit;
+  font-family: inherit;
+  cursor: pointer;
+  transition: background 160ms ease, scale 160ms ease;
+  -webkit-tap-highlight-color: transparent;}
+
+.swp-coin:hover { background: rgba(var(--fill-on-rgb, var(--ink-rgb)), 0.1); }
+
+/* on the dark fill 6% of white barely separates from the slab, so
+   the pill takes more of it there */
+[data-fill="dark"] .swp-coin { background: rgba(var(--fill-on-rgb, var(--ink-rgb)), 0.11); }
+
+[data-fill="dark"] .swp-coin:hover { background: rgba(var(--fill-on-rgb, var(--ink-rgb)), 0.16); }
+
+.swp-coin:active { scale: 0.96; }
+
+.swp-coin:focus-visible { outline: 2px solid var(--pick); outline-offset: 2px; }
+
+.swp-logo { display: block; flex: none; }
+
+/* on the seam, floating over both slabs */
+.swp-flip {
+  position: absolute;
+  z-index: 2;
+  left: 50%;
+  top: 117.5px; /* the middle of the gap */
+  width: 40px;
+  height: 40px;
+  margin: -20px 0 0 -20px;
+  display: grid;
+  place-items: center;
+  border: 0;
+  padding: 0;
+  cursor: pointer;
+  color: var(--fill-on, var(--ink));
+  /* no shadow: a step darker than the slabs is what sets it apart */
+  background: color-mix(in srgb, var(--fill-on, var(--ink)) 7%, var(--fill-slab, var(--card)));
+  -webkit-tap-highlight-color: transparent;}
+
+[data-stroke="on"] .swp-flip { box-shadow: inset 0 0 0 1px var(--pane-edge); }
+
+.swp-flip:focus-visible { outline: 2px solid var(--pick); outline-offset: 2px; }
+
+.swp-pick-in {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  gap: 2px;
+  padding: 8px 10px 10px;}
+
+.swp-pick-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  height: 32px;
+  padding-left: 10px;
+  margin-bottom: 2px;
+  font-size: 12px;
+  font-weight: 500;
+  color: rgba(var(--fill-on-rgb, var(--ink-rgb)), 0.45);}
+
+.swp-pick-x {
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  border: 0;
+  padding: 0;
+  border-radius: 50%;
+  background: transparent;
+  /* a solid grey, mixed from the fill's own ink and slab, rather
+     than a translucent ink — nothing shows through it */
+  color: color-mix(in srgb, var(--fill-on, var(--ink)) 50%, var(--fill-slab, var(--card)));
+  cursor: pointer;}
+
+.swp-pick-x:hover { background: rgba(var(--fill-on-rgb, var(--ink-rgb)), 0.06); color: var(--fill-on, var(--ink)); }
+
+.swp-pick-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex: 1;
+  min-height: 0;
+  padding: 0 10px;
+  border: 0;
+  border-radius: 12px;
+  background: transparent;
+  color: inherit;
+  font-family: inherit;
+  text-align: left;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;}
+
+.swp-pick-row:hover { background: rgba(var(--fill-on-rgb, var(--ink-rgb)), 0.05); }
+
+.swp-pick-row:focus-visible { outline: 2px solid var(--pick); outline-offset: -2px; }
+
+.swp-pick-sym { font-size: 14px; font-weight: 600; }
+
+.swp-pick-name { font-size: 13px; color: rgba(var(--fill-on-rgb, var(--ink-rgb)), 0.45); }
+
+.swp-pick-on { margin-left: auto; }
+/* Ophis's secondary text token stays readable on both of its surfaces.
+   The reference's 38–45% ink falls below AA contrast in this palette. */
+.swp-label, .swp-fiat, .swp-pick-head, .swp-pick-name { color: var(--cow-color-text-opacity-70); }
+/* Keep box sizing and keyboard affordances self-contained. */
+.swp *, .swp *::before, .swp *::after { box-sizing: border-box; }
+.swp-pick-x:focus-visible { outline: 2px solid var(--pick); outline-offset: -2px; }
+.swp [inert] { pointer-events: none; }
+.swp-flip:disabled { pointer-events: none; }
+@media (prefers-reduced-motion: reduce) {
+  .swp *, .swp *::before, .swp *::after { transition: none; }
+  .swp-coin:active { scale: 1; }
+}
+
+/* Ophis live-input adaptation. Give amounts room to edit, while keeping
+   Bencho's 3px seam and one physical slab per asset. The grid grows for
+   fee/balance content instead of clipping it to a fixed demo height. */
+.swp-loading { min-height: 355px; display: flex; align-items: center; justify-content: center; gap: 12px; }
+.swp.swp-live {
+  width: 100%;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: repeat(2, minmax(176px, 1fr));
+  gap: 3px;
+  --swp-r: 28px;
+}
+.swp-live-card {
+  grid-column: 1;
+  position: relative;
+  min-width: 0;
+  z-index: 1;
+  overflow: hidden;
+  border-radius: var(--swp-r);
+  background: var(--fill-slab);
+}
+.swp-live-card[data-lifted] { z-index: 3; }
+.swp-live-face { height: 100%; transition: opacity 120ms ease; }
+.swp-live-face > div { height: 100%; }
+.swp-live-face #input-currency-input,
+.swp-live-face #output-currency-input {
+  min-height: 176px;
+  flex: 1;
+  border-radius: var(--swp-r);
+  border: 1px solid transparent;
+  background: transparent;
+  padding: 18px;
+}
+.swp-live-face #input-currency-input:focus-within,
+.swp-live-face #output-currency-input:focus-within { border-color: var(--pick); }
+.swp-live-face .token-amount-input { font-size: clamp(28px, 6vw, 36px); letter-spacing: -0.025em; }
+.swp-live-face .open-currency-select-button {
+  border-radius: 999px;
+  background: rgba(var(--fill-on-rgb), 0.06);
+  padding: 6px 10px 6px 6px;
+  min-height: 40px;
+}
+.swp-live .swp-flip { top: 50%; border-radius: 20px; }
+.swp-live .swp-flip:disabled { cursor: default; }
+.swp-live .swp-flip[disabled]:not([style*="opacity: 0"]) { color: rgba(var(--fill-on-rgb), 0.45); }
+.swp-live-picker { position: absolute; inset: 0; }
+.swp-live-picker[hidden] { display: none; }
+.swp-inline-token-list { height: 100%; display: flex; min-width: 0; }
+.swp-inline-token-list > div { min-width: 0; overflow-y: auto; overscroll-behavior: contain; }
+.swp-inline-token-list > div > * { flex-shrink: 0; }
+.swp-inline-token-body { min-height: 120px; }
+
+/* Networks are a second view of the open slab, with their own scrolling
+   list. Keep them in the slab instead of the mobile full-screen portal. */
+.swp-inline-network-list { position: absolute; inset: 0; z-index: 20; }
+.swp-live-picker button:focus-visible { outline: 2px solid var(--pick); outline-offset: -2px; }
+
+/* Local workbench, using the app's own type and surfaces. */
+.swp-lab { width: min(820px, 100%); padding: 48px 20px; margin: 0 auto; color: var(--cow-color-text); }
+.swp-lab h1 { font: 400 clamp(34px, 6vw, 54px)/1.1 var(--ophis-font-display); margin: 14px 0; letter-spacing: -0.025em; }
+.swp-lab header > p:not(.swp-lab-eyebrow) { max-width: 440px; line-height: 1.6; color: var(--cow-color-text-opacity-70); }
+.swp-lab a { color: inherit; text-underline-offset: 4px; }
+.swp-lab-eyebrow { font-size: 11px; text-transform: uppercase; letter-spacing: 0.12em; }
+.swp-lab-workbench { display: grid; grid-template-columns: minmax(0, 1fr) 210px; gap: 48px; align-items: center; padding: 40px 0; margin: 32px 0 16px; border-block: 1px solid var(--cow-color-border); }
+.swp-lab-example { min-width: 0; }
+.swp-lab-example > .swp { margin: 0 auto; }
+.swp-lab-example > p, .swp-lab-controls > p, .swp-lab-credit { font-size: 12px; line-height: 1.6; color: var(--cow-color-text-opacity-70); }
+.swp-lab-example > p { text-align: center; margin: 22px 0 0; }
+.swp-lab-controls label { display: block; font-size: 13px; margin-bottom: 22px; }
+.swp-lab-controls select { display: block; width: 100%; margin-top: 8px; padding: 8px 10px; color: var(--cow-color-text); background: var(--cow-color-paper); border: 1px solid var(--cow-color-border); border-radius: 8px; }
+.swp-lab-controls output { float: right; font-variant-numeric: tabular-nums; }
+.swp-lab-controls input { display: block; width: 100%; margin: 12px 0; accent-color: var(--cow-color-primary); }
+@media (max-width: 640px) { .swp-lab-workbench { grid-template-columns: minmax(0, 1fr); gap: 32px; } }
+.swp .swp-flip { min-height: 40px; max-height: 40px; }
+.swp-lab-theme { padding: 8px 12px; margin-bottom: 24px; border: 1px solid var(--cow-color-border); border-radius: 999px; color: var(--cow-color-text); background: var(--cow-color-paper-darker); cursor: pointer; }
+.swp-lab-theme:focus-visible { outline: 2px solid var(--cow-color-primary); outline-offset: 2px; }
+/* The real selector also contains networks, search and favourites. Open the
+   local swap study to 480px so its scrolling token list keeps useful space. */
+.swp.swp-live { --swp-picker-height: min(480px, calc(var(--swp-viewport-height, 100dvh) - 112px)); scroll-margin-top: 88px; min-height: 355px; transition: min-height 360ms cubic-bezier(.22, 1, .36, 1); }
+.swp.swp-live[data-picker-open] { height: var(--swp-picker-height); min-height: var(--swp-picker-height); grid-template-rows: repeat(2, minmax(0, 1fr)); }
+@media (prefers-reduced-motion: reduce) { .swp.swp-live { transition: none; } }

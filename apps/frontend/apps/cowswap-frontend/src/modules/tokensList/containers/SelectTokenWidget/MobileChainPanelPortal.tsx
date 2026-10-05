@@ -1,4 +1,4 @@
-import { MouseEvent, ReactNode } from 'react'
+import { MouseEvent, ReactNode, useContext } from 'react'
 
 import { ChainInfo } from '@cowprotocol/cow-sdk'
 
@@ -8,6 +8,8 @@ import { Field } from 'legacy/state/types'
 
 import { TradeType } from 'modules/trade'
 
+import { InlineChainPanel } from './InlineChainPanel.container'
+import { InlineTokenPickerContext } from './inlineTokenPicker.context'
 import { MobileChainPanelCard, MobileChainPanelOverlay } from './styled'
 
 import { ChainPanel } from '../../pure/ChainPanel'
@@ -32,26 +34,41 @@ export function MobileChainPanelPortal({
   field,
   counterChainId,
 }: MobileChainPanelPortalProps): ReactNode {
+  const inline = useContext(InlineTokenPickerContext)
   if (typeof document === 'undefined') {
     return null
+  }
+
+  const panel = (
+    <ChainPanel
+      title={chainsPanelTitle}
+      chainsState={chainsToSelect}
+      onSelectChain={(chain) => {
+        onSelectChain(chain)
+        onClose()
+      }}
+      variant={inline ? 'inline' : 'fullscreen'}
+      onClose={onClose}
+      tradeType={tradeType}
+      field={field}
+      counterChainId={counterChainId}
+    />
+  )
+
+  // The expanded swap slab owns this subview as well as the token list.
+  // Only the regular mobile modal belongs in a document-level portal.
+  if (inline) {
+    return (
+      <InlineChainPanel title={chainsPanelTitle} onClose={onClose}>
+        {panel}
+      </InlineChainPanel>
+    )
   }
 
   return createPortal(
     <MobileChainPanelOverlay onClick={onClose}>
       <MobileChainPanelCard onClick={(event: MouseEvent<HTMLDivElement>) => event.stopPropagation()}>
-        <ChainPanel
-          title={chainsPanelTitle}
-          chainsState={chainsToSelect}
-          onSelectChain={(chain) => {
-            onSelectChain(chain)
-            onClose()
-          }}
-          variant="fullscreen"
-          onClose={onClose}
-          tradeType={tradeType}
-          field={field}
-          counterChainId={counterChainId}
-        />
+        {panel}
       </MobileChainPanelCard>
     </MobileChainPanelOverlay>,
     document.body,
