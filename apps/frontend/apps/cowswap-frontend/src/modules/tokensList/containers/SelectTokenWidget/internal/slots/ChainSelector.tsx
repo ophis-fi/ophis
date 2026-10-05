@@ -1,4 +1,4 @@
-import { ReactNode, useState, useCallback } from 'react'
+import { ReactNode, useState, useCallback, useContext } from 'react'
 
 import { useMediaQuery } from '@cowprotocol/common-hooks'
 import { ChainInfo } from '@cowprotocol/cow-sdk'
@@ -12,6 +12,7 @@ import { TradeType } from 'modules/trade'
 
 import { MobileChainSelector } from '../../../../pure/SelectTokenModal/MobileChainSelector'
 import { ChainsToSelectState } from '../../../../types'
+import { InlineTokenPickerContext } from '../../inlineTokenPicker.context'
 import { MobileChainPanelPortal } from '../../MobileChainPanelPortal'
 
 export interface ChainSelectorProps {
@@ -31,6 +32,7 @@ export function ChainSelector({
   field,
   counterChainId,
 }: ChainSelectorProps): ReactNode {
+  const inline = useContext(InlineTokenPickerContext)
   const resolvedTitle = title ?? (field === Field.OUTPUT ? t`Receive on` : t`Select network`)
   const [isMobilePanelOpen, setMobilePanelOpen] = useState(false)
   const isCompactLayout = useMediaQuery(Media.upToMedium(false))
@@ -46,7 +48,7 @@ export function ChainSelector({
     [onSelectChain, closePanel],
   )
 
-  if (!isCompactLayout || !chains) {
+  if ((!isCompactLayout && !inline) || !chains) {
     return null
   }
 

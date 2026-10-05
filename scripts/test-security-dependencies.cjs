@@ -405,6 +405,15 @@ async function main() {
     assert.equal(uuid.version(expected), 5);
     console.log(`PASS uuid ${pkg.version}: named exports, v4/v5 buffer output, parse/stringify`);
   }
+
+  if (workspace === 'frontend') {
+    const result = spawnSync(process.execPath, [resolve(__dirname, '../apps/frontend/scripts/test-advisory-remediation.cjs')], {
+      encoding: 'utf8', timeout: 15_000, maxBuffer: 1024 * 1024,
+    });
+    process.stdout.write(result.stdout || '');
+    process.stderr.write(result.stderr || '');
+    assert.equal(result.status, 0, result.error?.message || 'frontend advisory regressions failed');
+  }
 }
 
 // An unresolved Promise does not keep Node alive. Fail if a broken stream lets

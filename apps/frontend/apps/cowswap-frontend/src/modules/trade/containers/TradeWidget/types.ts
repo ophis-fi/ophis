@@ -12,7 +12,8 @@ export interface TradeWidgetActions {
   onUserInput: CurrencyInputPanelProps['onUserInput']
   onChangeRecipient: (recipient: string | null) => void
 
-  onSwitchTokens(): void
+  /** False means the reverse route was rejected; legacy handlers return void. */
+  onSwitchTokens(): boolean | void
 }
 
 export interface TradeWidgetParams {

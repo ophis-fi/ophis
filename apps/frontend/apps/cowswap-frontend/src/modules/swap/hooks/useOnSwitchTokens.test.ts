@@ -34,7 +34,9 @@ beforeEach(() => {
 
 it('reverses both networks and token addresses, clearing the old amount and recipient', () => {
   const { result } = renderHook(() => useOnSwitchTokens())
-  act(() => result.current())
+  act(() => {
+    expect(result.current()).toBe(true)
+  })
   expect(mockNavigate).toHaveBeenCalledWith(
     output.chainId,
     { inputCurrencyId: output.address, outputCurrencyId: input.address },
@@ -53,7 +55,9 @@ it('reverses both networks and token addresses, clearing the old amount and reci
 it('retains the existing same-chain reversal', () => {
   mockState.outputCurrency = new Token(1, output.address, 6, 'OTHER')
   const { result } = renderHook(() => useOnSwitchTokens())
-  act(() => result.current())
+  act(() => {
+    expect(result.current()).toBe(true)
+  })
   expect(mockSameChainSwitch).toHaveBeenCalledTimes(1)
   expect(mockNavigate).not.toHaveBeenCalled()
 })
@@ -61,7 +65,9 @@ it('retains the existing same-chain reversal', () => {
 it('does not navigate a non-settlement destination into the standard source route', () => {
   mockState.outputCurrency = new Token(143, output.address, 6, 'USDC')
   const { result } = renderHook(() => useOnSwitchTokens())
-  act(() => result.current())
+  act(() => {
+    expect(result.current()).toBe(false)
+  })
   expect(mockNavigate).not.toHaveBeenCalled()
   expect(mockUpdateState).not.toHaveBeenCalled()
   expect(mockSameChainSwitch).not.toHaveBeenCalled()
@@ -73,7 +79,9 @@ it.each([SupportedChainId.INK, SupportedChainId.LINEA])(
     expect(BRIDGE_SOURCE_CHAIN_IDS.has(chainId)).toBe(false)
     mockState.outputCurrency = new Token(chainId, output.address, 6, 'USDC')
     const { result } = renderHook(() => useOnSwitchTokens())
-    act(() => result.current())
+    act(() => {
+      expect(result.current()).toBe(false)
+    })
     expect(mockNavigate).not.toHaveBeenCalled()
     expect(mockUpdateState).not.toHaveBeenCalled()
     expect(mockSameChainSwitch).not.toHaveBeenCalled()
@@ -85,7 +93,9 @@ it.each([false, true])('requires surface CCTP support to reverse a CCTP-only sou
   mockHasCctpRoute.mockReturnValue(true)
   mockState.outputCurrency = new Token(130, output.address, 6, 'USDC')
   const { result } = renderHook(() => useOnSwitchTokens())
-  act(() => result.current())
+  act(() => {
+    expect(result.current()).toBe(enabled)
+  })
   if (enabled) {
     expect(mockHasCctpRoute).toHaveBeenCalledWith(130, input.chainId)
     expect(mockNavigate).toHaveBeenCalledWith(

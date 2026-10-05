@@ -21,6 +21,8 @@ import {
 import { useCloseTokenSelectWidget } from '../../../hooks/useCloseTokenSelectWidget'
 import { useSelectTokenWidgetState } from '../../../hooks/useSelectTokenWidgetState'
 import { useChainPanelState, useDismissHandler, useManageWidgetVisibility, useWidgetOpenState } from '../hooks'
+import { useInlineTokenPickerBack } from '../hooks/useInlineTokenPickerBack'
+import { InlineTokenPickerContext } from '../inlineTokenPicker.context'
 import { InnerWrapper, ModalContainer, WidgetCard, WidgetOverlay, Wrapper } from '../styled'
 
 export interface SelectTokenModalProps {
@@ -39,10 +41,12 @@ export function SelectTokenModalFrame({
   hasChainPanel = false,
 }: SelectTokenModalProps & { hasChainPanel?: boolean }): ReactNode {
   const isOpen = useWidgetOpenState()
+  const { field } = useSelectTokenWidgetState()
   const isCompactLayout = useMediaQuery(Media.upToMedium(false))
   const { closeManageWidget } = useManageWidgetVisibility()
   const closeTokenSelectWidget = useCloseTokenSelectWidget()
   const onDismiss = useDismissHandler(closeManageWidget, closeTokenSelectWidget)
+  const onInlineBack = useInlineTokenPickerBack(onDismiss)
 
   const isChainPanelVisible = hasChainPanel && !isCompactLayout
 
@@ -68,6 +72,29 @@ export function SelectTokenModalFrame({
     </WidgetOverlay>
   )
 
+  // In the market swap form, both slab targets already exist before
+  // opening. Portal the same picker, including consent/import flows, into its
+  // originating slab; all other widgets retain their existing modal.
+  const slab = typeof document !== 'undefined' ? document.getElementById(`asset-swap-picker-${field}`) : null
+  if (slab)
+    return createPortal(
+      <InlineTokenPickerContext.Provider value>
+        <div
+          className="swp-inline-token-list"
+          onKeyDown={(event) => {
+            if (event.key !== 'Escape') return
+            // Handle the active view before document-level Back listeners and
+            // the slab's outer Escape handler can both dismiss it.
+            event.preventDefault()
+            event.stopPropagation()
+            onInlineBack()
+          }}
+        >
+          {children}
+        </div>
+      </InlineTokenPickerContext.Provider>,
+      slab,
+    )
   return typeof document === 'undefined' ? overlay : createPortal(overlay, document.body)
 }
 

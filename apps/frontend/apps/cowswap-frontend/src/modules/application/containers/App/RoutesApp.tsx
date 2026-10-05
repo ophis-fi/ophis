@@ -1,6 +1,7 @@
 import { lazy, ReactNode, Suspense, useEffect } from 'react'
 
 import { OphisPageLoader } from 'ophis/components'
+import { ASSET_SWAP_PREVIEW } from 'ophis/components/AssetSwap/assetSwapPreview.const'
 import { IntentEntry } from 'ophis/components/intent'
 import { Navigate, Route, Routes } from 'react-router'
 
@@ -26,6 +27,10 @@ import { HooksPage } from 'pages/Hooks'
 import { LimitOrdersPage } from 'pages/LimitOrders/LimitOrders.page'
 import { SwapPage } from 'pages/Swap'
 import YieldPage from 'pages/Yield'
+
+const AssetSwapPreview = lazy(() =>
+  import('ophis/components/AssetSwap/AssetSwapPreview').then((module) => ({ default: module.AssetSwapPreview })),
+)
 
 // Async routes
 const NotFound = lazy(() => import(/* webpackChunkName: "not_found" */ 'pages/error/NotFound'))
@@ -204,6 +209,16 @@ const lazyRoutes: LazyRouteProps[] = [
 export function RoutesApp(): ReactNode {
   return (
     <Routes>
+      {ASSET_SWAP_PREVIEW && (
+        <Route
+          path="/asset-swap-lab"
+          element={
+            <Suspense fallback={<OphisPageLoader />}>
+              <AssetSwapPreview />
+            </Suspense>
+          }
+        />
+      )}
       {/*Account*/}
       <Route path={RoutesEnum.ACCOUNT} element={<Account />}>
         {/* Account overview was the COW/vCOW/governance/delegate dashboard (CoW-DAO

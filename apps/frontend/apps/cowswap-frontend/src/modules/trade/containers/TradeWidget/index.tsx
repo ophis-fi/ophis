@@ -4,6 +4,7 @@ import { useTokenSelectorConsentFlow } from 'modules/rwa'
 import { SelectTokenWidget, useSelectTokenWidgetState } from 'modules/tokensList'
 import { useSetShouldUseAutoSlippage } from 'modules/tradeSlippage'
 
+import { isAssetSwapLayout } from './assetSwapLayout.utils'
 import * as styledEl from './styled'
 import { TradeWidgetForm } from './TradeWidgetForm'
 import { TradeWidgetModals } from './TradeWidgetModals'
@@ -43,7 +44,11 @@ export function TradeWidget(props: TradeWidgetProps): JSX.Element {
 
   return (
     <>
-      <styledEl.Container id={id} isTokenSelectOpen={isTokenSelectOpen} isTokenSelectWide={isTokenSelectWide}>
+      <styledEl.Container
+        id={id}
+        isTokenSelectOpen={isTokenSelectOpen && !isAssetSwapLayout(params, slots.middleContent)}
+        isTokenSelectWide={isTokenSelectWide}
+      >
         {!params.externalFunding && (
           <TradeWidgetUpdaters
             disableTradeNotifications={params.disableTradeNotifications}

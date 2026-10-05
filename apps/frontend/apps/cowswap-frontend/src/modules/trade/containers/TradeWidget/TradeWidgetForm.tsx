@@ -1,14 +1,15 @@
-import React, { ReactNode, useCallback, useMemo } from 'react'
+import React, { ReactNode, Suspense, useCallback, useMemo } from 'react'
 
 import ICON_ORDERS from '@cowprotocol/assets/svg/orders.svg'
 import { useFeatureFlags, useTheme, useMediaQuery } from '@cowprotocol/common-hooks'
 import { isInjectedWidget, isSellOrder, isSupportedChainId, maxAmountSpend } from '@cowprotocol/common-utils'
 import { SupportedChainId } from '@cowprotocol/cow-sdk'
 import { Currency } from '@cowprotocol/currency'
-import { ButtonOutlined, Media, MY_ORDERS_ID, SWAP_HEADER_OFFSET } from '@cowprotocol/ui'
+import { ButtonOutlined, Loader, Media, MY_ORDERS_ID, SWAP_HEADER_OFFSET } from '@cowprotocol/ui'
 import { useIsSafeWallet, useWalletDetails, useWalletInfo } from '@cowprotocol/wallet'
 
 import { Trans, useLingui } from '@lingui/react/macro'
+import { AssetSwapFields } from 'ophis/components/AssetSwap/AssetSwapFields'
 import { CoinbaseStockContext } from 'ophis/components/CoinbaseStockContext'
 import { RobinhoodAssetContext } from 'ophis/components/RobinhoodAssetContext'
 import { useIsMobileSwap } from 'ophis/hooks/useIsMobileSwap'
@@ -34,6 +35,7 @@ import { CurrencyInputPanel, CurrencyInputPanelProps } from 'common/pure/Currenc
 import { PoweredFooter } from 'common/pure/PoweredFooter'
 import { isNonEvmRecipientChain } from 'common/utils/recipientAddress.utils'
 
+import { isAssetSwapLayout } from './assetSwapLayout.utils'
 import * as styledEl from './styled'
 import { TradeSourceNetworkSelector } from './TradeSourceNetworkSelector'
 import { mapCurrencyInfo } from './TradeWidgetForm.utils'
@@ -223,6 +225,61 @@ export function TradeWidgetForm(props: TradeWidgetProps): ReactNode {
 
   const { t } = useLingui()
 
+  const assetSwapLayout = isAssetSwapLayout(params, middleContent)
+  const reverseDisabled = !!(
+    params.inputsDisabled ||
+    params.disableTokenSwitch ||
+    shouldLockForAlternativeOrder ||
+    ((isOutputTokenUnsupported || isNonEvmRecipientChain(buyToken?.chainId)) && !params.externalFunding) ||
+    isProviderNetworkUnsupported ||
+    isProviderNetworkDeprecated
+  )
+  const reverseLoading = Boolean(sellToken && outputCurrencyInfo.currency && isTradePriceUpdating)
+  const inputPanel = (
+    <CurrencyInputPanel
+      id="input-currency-input"
+      allowUnsupportedTokenSelection={!!params.inputTokenOptions}
+      inputDisabled={params.inputsDisabled}
+      currencyInfo={inputCurrencyInfo}
+      showSetMax={showSetMax && !params.inputsDisabled}
+      maxBalance={maxBalance}
+      topLabel={
+        assetSwapLayout
+          ? inputCurrencyInfo.label || t`You pay`
+          : isOphisMobileSwap
+            ? inputCurrencyInfo.label || t`You sell`
+            : isWrapOrUnwrap
+              ? undefined
+              : inputCurrencyInfo.label
+      }
+      topContent={inputCurrencyInfo.topContent}
+      openTokenSelectWidget={openSellTokenSelect}
+      customSelectTokenButton={params.customSelectTokenButton}
+      {...currencyInputCommonProps}
+    />
+  )
+  const outputPanel = (
+    <CurrencyInputPanel
+      id="output-currency-input"
+      inputDisabled={isWrapOrUnwrap || isCurrentTradeBridging || disableOutput}
+      currencyInfo={outputCurrencyInfo}
+      priceImpactParams={!disablePriceImpact ? priceImpact : undefined}
+      topLabel={
+        assetSwapLayout
+          ? outputCurrencyInfo.label || t`You receive`
+          : isOphisMobileSwap
+            ? outputCurrencyInfo.label || t`You receive`
+            : isWrapOrUnwrap
+              ? undefined
+              : outputCurrencyInfo.label
+      }
+      topContent={outputCurrencyInfo.topContent}
+      openTokenSelectWidget={openBuyTokenSelect}
+      customSelectTokenButton={params.customSelectTokenButton}
+      {...currencyInputCommonProps}
+    />
+  )
+
   return (
     <>
       {isMobileSwap && <MobileSwapHeading />}
@@ -282,70 +339,42 @@ export function TradeWidgetForm(props: TradeWidgetProps): ReactNode {
                     buyToken={buyToken}
                     sellBalance={inputCurrencyInfo.balance}
                   />
-                  <div>
-                    <CurrencyInputPanel
-                      id="input-currency-input"
-                      allowUnsupportedTokenSelection={!!params.inputTokenOptions}
-                      inputDisabled={params.inputsDisabled}
-                      currencyInfo={inputCurrencyInfo}
-                      showSetMax={showSetMax && !params.inputsDisabled}
-                      maxBalance={maxBalance}
-                      topLabel={
-                        isOphisMobileSwap
-                          ? inputCurrencyInfo.label || t`You sell`
-                          : isWrapOrUnwrap
-                            ? undefined
-                            : inputCurrencyInfo.label
+                  {assetSwapLayout ? (
+                    <Suspense
+                      fallback={
+                        <div className="swp-loading" role="status">
+                          <Loader />
+                          <Trans>Loading swap controls…</Trans>
+                        </div>
                       }
-                      topContent={inputCurrencyInfo.topContent}
-                      openTokenSelectWidget={openSellTokenSelect}
-                      customSelectTokenButton={params.customSelectTokenButton}
-                      {...currencyInputCommonProps}
-                    />
-                  </div>
-                  {!isWrapOrUnwrap && middleContent}
-
-                  <styledEl.CurrencySeparatorBox compactView={compactView}>
-                    <CurrencyArrowSeparator
-                      isCollapsed={compactView}
-                      hasSeparatorLine={!compactView}
-                      onSwitchTokens={
-                        isProviderNetworkUnsupported || isProviderNetworkDeprecated
-                          ? () => void 0
-                          : throttledOnSwitchTokens
-                      }
-                      isLoading={Boolean(sellToken && outputCurrencyInfo.currency && isTradePriceUpdating)}
-                      disabled={
-                        params.inputsDisabled ||
-                        params.disableTokenSwitch ||
-                        shouldLockForAlternativeOrder ||
-                        ((isOutputTokenUnsupported || isNonEvmRecipientChain(buyToken?.chainId)) &&
-                          !params.externalFunding) ||
-                        isProviderNetworkUnsupported ||
-                        isProviderNetworkDeprecated
-                      }
-                      isDarkMode={darkMode}
-                    />
-                  </styledEl.CurrencySeparatorBox>
-                  <div>
-                    <CurrencyInputPanel
-                      id="output-currency-input"
-                      inputDisabled={isWrapOrUnwrap || isCurrentTradeBridging || disableOutput}
-                      currencyInfo={outputCurrencyInfo}
-                      priceImpactParams={!disablePriceImpact ? priceImpact : undefined}
-                      topLabel={
-                        isOphisMobileSwap
-                          ? outputCurrencyInfo.label || t`You receive`
-                          : isWrapOrUnwrap
-                            ? undefined
-                            : outputCurrencyInfo.label
-                      }
-                      topContent={outputCurrencyInfo.topContent}
-                      openTokenSelectWidget={openBuyTokenSelect}
-                      customSelectTokenButton={params.customSelectTokenButton}
-                      {...currencyInputCommonProps}
-                    />
-                  </div>
+                    >
+                      <AssetSwapFields
+                        input={inputPanel}
+                        output={outputPanel}
+                        reverse={{ onClick: onSwitchTokens, disabled: reverseDisabled, loading: reverseLoading }}
+                      />
+                    </Suspense>
+                  ) : (
+                    <>
+                      <div>{inputPanel}</div>
+                      {!isWrapOrUnwrap && middleContent}
+                      <styledEl.CurrencySeparatorBox compactView={compactView}>
+                        <CurrencyArrowSeparator
+                          isCollapsed={compactView}
+                          hasSeparatorLine={!compactView}
+                          onSwitchTokens={
+                            isProviderNetworkUnsupported || isProviderNetworkDeprecated
+                              ? () => void 0
+                              : throttledOnSwitchTokens
+                          }
+                          isLoading={reverseLoading}
+                          disabled={reverseDisabled}
+                          isDarkMode={darkMode}
+                        />
+                      </styledEl.CurrencySeparatorBox>
+                      <div>{outputPanel}</div>
+                    </>
+                  )}
                   {withRecipient && (
                     <fieldset
                       disabled={params.inputsDisabled}
