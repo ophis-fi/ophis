@@ -1,6 +1,6 @@
 import { Suspense } from 'react'
 
-import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 
 import { AssetSwapFields } from './AssetSwapFields'
 
@@ -32,4 +32,33 @@ it.each([false, true, undefined])('changes direction only when reversal is accep
   })
   unmount()
   expect(mockClosePicker).toHaveBeenCalledWith({ overrideForceLock: true })
+})
+
+it('retains the 500ms reversal cooldown with reduced motion', async () => {
+  const reverse = jest.fn(() => true)
+  const { unmount } = render(
+    <Suspense fallback={<span>Loading</span>}>
+      <AssetSwapFields
+        input={<span>Pay panel</span>}
+        output={<span>Receive panel</span>}
+        reverse={{ onClick: reverse, disabled: false, loading: false }}
+      />
+    </Suspense>,
+  )
+  const arrow = await screen.findByRole('button', { name: 'Reverse swap direction' })
+  jest.useFakeTimers()
+  try {
+    fireEvent.click(arrow)
+    fireEvent.click(arrow)
+    expect(reverse).toHaveBeenCalledTimes(1)
+    act(() => jest.advanceTimersByTime(499))
+    expect(arrow.hasAttribute('disabled')).toBe(true)
+    act(() => jest.advanceTimersByTime(1))
+    expect(arrow.hasAttribute('disabled')).toBe(false)
+    fireEvent.click(arrow)
+    expect(reverse).toHaveBeenCalledTimes(2)
+  } finally {
+    unmount()
+    jest.useRealTimers()
+  }
 })

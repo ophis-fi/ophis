@@ -23,7 +23,7 @@ import { Field } from 'legacy/state/types'
 
 import { useToggleAccountModal } from 'modules/account'
 import { useInjectedWidgetParams } from 'modules/injectedWidget'
-import { useOpenTokenSelectWidget } from 'modules/tokensList'
+import { useOpenTokenSelectWidget, useSelectTokenWidgetState } from 'modules/tokensList'
 import { useDerivedTradeState } from 'modules/trade'
 import { TradeFormValidation, useGetTradeFormValidation } from 'modules/tradeFormValidation'
 
@@ -226,6 +226,10 @@ export function TradeWidgetForm(props: TradeWidgetProps): ReactNode {
   const { t } = useLingui()
 
   const assetSwapLayout = isAssetSwapLayout(params, middleContent)
+  const { open, forceOpen, onSelectToken, field } = useSelectTokenWidgetState()
+  // Quote polling pauses in the picker. Keep trade/settings controls inert
+  // until it closes so a paused quote cannot enter approval or confirmation.
+  const inlinePickerOpen = assetSwapLayout && Boolean((open || forceOpen) && onSelectToken && field)
   const reverseDisabled = !!(
     params.inputsDisabled ||
     params.disableTokenSwitch ||
@@ -285,7 +289,7 @@ export function TradeWidgetForm(props: TradeWidgetProps): ReactNode {
       {isMobileSwap && <MobileSwapHeading />}
       <MobileSwapReveal enabled={!!isOphisMobileSwap}>
         <styledEl.ContainerBox data-mobile-swap-form={isOphisMobileSwap || undefined}>
-          <styledEl.Header>
+          <styledEl.Header inert={inlinePickerOpen}>
             {isOphisMobileSwap ? (
               <>
                 {isMobileSwap && <TradeWidgetLinks isDropdown />}
@@ -326,19 +330,21 @@ export function TradeWidgetForm(props: TradeWidgetProps): ReactNode {
                 lockScreen
               ) : (
                 <>
-                  {topContent}
-                  <RobinhoodAssetContext
-                    chainId={chainId}
-                    sellToken={sellToken}
-                    buyToken={buyToken}
-                    sellBalance={inputCurrencyInfo.balance}
-                  />
-                  <CoinbaseStockContext
-                    chainId={chainId}
-                    sellToken={sellToken}
-                    buyToken={buyToken}
-                    sellBalance={inputCurrencyInfo.balance}
-                  />
+                  <div inert={inlinePickerOpen} style={{ display: 'contents' }}>
+                    {topContent}
+                    <RobinhoodAssetContext
+                      chainId={chainId}
+                      sellToken={sellToken}
+                      buyToken={buyToken}
+                      sellBalance={inputCurrencyInfo.balance}
+                    />
+                    <CoinbaseStockContext
+                      chainId={chainId}
+                      sellToken={sellToken}
+                      buyToken={buyToken}
+                      sellBalance={inputCurrencyInfo.balance}
+                    />
+                  </div>
                   {assetSwapLayout ? (
                     <Suspense
                       fallback={
@@ -378,6 +384,7 @@ export function TradeWidgetForm(props: TradeWidgetProps): ReactNode {
                   {withRecipient && (
                     <fieldset
                       disabled={params.inputsDisabled}
+                      inert={inlinePickerOpen}
                       style={{ border: 0, padding: 0, margin: 0, minWidth: 0 }}
                     >
                       <SetRecipient
@@ -388,20 +395,22 @@ export function TradeWidgetForm(props: TradeWidgetProps): ReactNode {
                     </fieldset>
                   )}
 
-                  {isWrapOrUnwrap && !isPriceStatic ? (
-                    sellToken ? (
-                      <WrapFlowActionButton sellToken={sellToken} />
-                    ) : null
-                  ) : (
-                    bottomContent?.(
-                      hideTradeWarnings ? null : (
-                        <TradeWarnings
-                          enableSmartSlippage={enableSmartSlippage}
-                          isTradePriceUpdating={isTradePriceUpdating}
-                        />
-                      ),
-                    )
-                  )}
+                  <div inert={inlinePickerOpen} style={{ display: 'contents' }}>
+                    {isWrapOrUnwrap && !isPriceStatic ? (
+                      sellToken ? (
+                        <WrapFlowActionButton sellToken={sellToken} />
+                      ) : null
+                    ) : (
+                      bottomContent?.(
+                        hideTradeWarnings ? null : (
+                          <TradeWarnings
+                            enableSmartSlippage={enableSmartSlippage}
+                            isTradePriceUpdating={isTradePriceUpdating}
+                          />
+                        ),
+                      )
+                    )}
+                  </div>
                 </>
               )}
 
@@ -411,7 +420,7 @@ export function TradeWidgetForm(props: TradeWidgetProps): ReactNode {
         </styledEl.ContainerBox>
       </MobileSwapReveal>
       {!isLimitOrdersPromoBannerVisible && !isLimitOrdersUpgradeBannerEnabled && outerContent && (
-        <styledEl.OuterContentWrapper>{outerContent}</styledEl.OuterContentWrapper>
+        <styledEl.OuterContentWrapper inert={inlinePickerOpen}>{outerContent}</styledEl.OuterContentWrapper>
       )}
     </>
   )

@@ -10,6 +10,7 @@ import { Field } from 'legacy/state/types'
 import { useCloseTokenSelectWidget, useSelectTokenWidgetState } from 'modules/tokensList'
 
 import { MotionDiv, MotionButton } from './AssetSwap.motion'
+import { useAssetSwapCooldown } from './useAssetSwapCooldown'
 import { useAssetSwapPickerFocus } from './useAssetSwapPickerFocus'
 import { useAssetSwapStyle } from './useAssetSwapStyle'
 
@@ -27,6 +28,7 @@ export function AssetSwapFields({ input, output, reverse }: AssetSwapFieldsProps
   const reducedMotion = useReducedMotionPreference()
   const [turns, setTurns] = useState(0)
   const [turning, setTurning] = useState(false)
+  const [coolingDown, startCooldown] = useAssetSwapCooldown()
   const [lifted, setLifted] = useState<number | null>(null)
   const { open, forceOpen, field, onSelectToken } = useSelectTokenWidgetState()
   const close = useCloseTokenSelectWidget()
@@ -95,7 +97,7 @@ export function AssetSwapFields({ input, output, reverse }: AssetSwapFieldsProps
         className="swp-flip"
         aria-label={t`Reverse swap direction`}
         aria-busy={reverse.loading}
-        disabled={reverse.disabled || turning || pick !== null || lifted !== null}
+        disabled={reverse.disabled || turning || coolingDown || pick !== null || lifted !== null}
         initial={false}
         // Count turns upward: every press carries on round, never unwinds.
         animate={{
@@ -118,6 +120,7 @@ export function AssetSwapFields({ input, output, reverse }: AssetSwapFieldsProps
           // A destination-only network can reject reversal. Keep its existing
           // direction and slab positions when the trade action declines it.
           if (reverse.onClick() === false) return
+          startCooldown()
           if (!reducedMotion) setTurning(true)
           setTurns((count) => count + 1)
         }}

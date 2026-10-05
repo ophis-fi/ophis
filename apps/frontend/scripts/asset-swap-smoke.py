@@ -115,7 +115,8 @@ with sync_playwright() as p:
  expect(page.get_by_role('dialog')).to_have_count(0);expect(page.locator('.swp-flip')).to_be_enabled()
  assert page.locator('.swp-coin').all_text_contents()==['USD','EUR']
  page.goto('http://127.0.0.1:4318/#/swap');page.locator('.swp-live').wait_for();page.wait_for_timeout(500)
- arrow=page.get_by_role('button',name='Reverse swap direction');arrow.click();page.wait_for_timeout(100);expect(arrow).to_be_enabled()
+ arrow=page.get_by_role('button',name='Reverse swap direction');arrow.click();page.wait_for_timeout(100);expect(arrow).to_be_disabled()
+ page.wait_for_timeout(450);expect(arrow).to_be_enabled()
  page.locator('.swp-live .open-currency-select-button').first.click();page.get_by_role('dialog').wait_for();page.keyboard.press('Escape');page.wait_for_timeout(100);expect(arrow).to_be_enabled()
  results.append({'view':'reduced-motion','demoAndLive':True,'setChangeClosesPicker':True})
  browser.close()

@@ -16,7 +16,8 @@ pnpm start:asset-swap
 
 The reference workbench requires **both** Vite development mode and
 `REACT_APP_ASSET_SWAP_PREVIEW=true`. The live market swap uses the slab presentation
-in normal startup and production. External-funding forms, other order types and
+in normal startup and production, through an explicit Swap-widget opt-in.
+External-funding forms, Yield, other order types and
 forms with content between their inputs retain their existing layout. Nothing is
 published by these local commands.
 
@@ -31,6 +32,9 @@ return to the token list, preserving its search and restoring keyboard focus.
 The selector is capped at 480px and shrinks to fit short viewports. Settings,
 imports and consent screens handle Escape one level at a time. A rejected trade
 reversal leaves the arrow and asset positions unchanged.
+Reversal retains its 500ms interaction cooldown with reduced motion. While the
+inline picker pauses quotes, the surrounding trade and settings controls are
+inert; closing it restores them before trading can continue.
 
 `AssetSwap` is the supplied standalone reference. Its hardcoded example prices,
 round lots and 0.3% example fee are isolated in the demo files and labelled on the

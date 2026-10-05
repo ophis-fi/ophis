@@ -7,7 +7,7 @@ import json
 from pathlib import Path
 
 from playwright.async_api import async_playwright
-from playwright.sync_api import expect, sync_playwright
+from playwright.sync_api import TimeoutError, expect, sync_playwright
 
 FRONTEND = Path(__file__).resolve().parents[1]
 OUT = Path('/tmp/ophis-asset-swap-audit-20261005')
@@ -86,6 +86,16 @@ def browser_checks():
             trigger = live.locator('.open-currency-select-button').nth(index)
             trigger.click()
             page.wait_for_timeout(650)
+            # Quote polling pauses while choosing a token. The trade controls
+            # must reject pointer actions as well as leave the tab order.
+            connect = page.locator('button').filter(has_text='Connect Wallet').last
+            assert connect.evaluate('el => !!el.closest("[inert]")')
+            assert not connect.evaluate('el => { el.focus(); return document.activeElement === el; }')
+            try:
+                connect.click(timeout=300)
+                raise AssertionError('Trade controls accepted a click while the picker was open')
+            except TimeoutError:
+                pass
             scan(page, '.swp-live-picker:not([hidden])', f'live-tokens-{index}')
             page.get_by_role('button', name='Manage token lists').click()
             expect(live.get_by_role('button', name='Lists', exact=True)).to_be_focused()
@@ -94,6 +104,7 @@ def browser_checks():
             page.keyboard.press('Escape')
             page.wait_for_timeout(650)
             expect(trigger).to_be_focused()
+            assert not connect.evaluate('el => !!el.closest("[inert]")')
             trigger.click()
             page.wait_for_timeout(650)
             expect(live.locator('#token-search-input')).to_be_visible()
@@ -103,6 +114,7 @@ def browser_checks():
             page.keyboard.press('Escape')
             page.wait_for_timeout(650)
         RESULTS.append({'case': 'settings-escape-and-reopen-both-slabs', 'passed': True})
+        RESULTS.append({'case': 'inline-picker-blocks-and-restores-trade-actions', 'passed': True})
 
         for width, height in ((844, 390), (390, 520)):
             page.set_viewport_size({'width': width, 'height': height})

@@ -405,6 +405,7 @@ function StandardSwapWidget({
     disablePriceImpact: !!direct.quote,
     hideTradeWarnings: !!direct.quote,
     isMarketOrderWidget: true,
+    enableAssetSwapLayout: true,
     allowSwapSameToken,
     recipient,
     showRecipient,

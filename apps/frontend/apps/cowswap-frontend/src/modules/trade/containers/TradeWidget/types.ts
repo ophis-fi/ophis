@@ -33,6 +33,7 @@ export interface TradeWidgetParams {
   hideTradeWarnings?: boolean
   enableSmartSlippage?: boolean
   isMarketOrderWidget?: boolean
+  enableAssetSwapLayout?: boolean
   displayTokenName?: boolean
   displayChainName?: boolean
   inputsDisabled?: boolean
