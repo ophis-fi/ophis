@@ -45,7 +45,7 @@ It quotes against the Ophis orderbook, signs the order EIP-712 with the agent's 
 
 - **ERC-20 → ERC-20 only.** Native-ETH sells need CoW eth-flow (a separate path); wrap to WETH first.
 - The agent's wallet is the order **owner and receiver** — funds only ever move through the audited CoW settlement contract, back to the same wallet.
-- Discovery chains: Ethereum, Gnosis, Arbitrum, Base, Optimism, Polygon, Avalanche. Version 0.3.6 uses SDK 0.4.4 but does not expand this discovery list to Arc. If the tool is invoked directly with an Arc wallet, its configured referral default applies and only ERC-20 orders are accepted.
+- Discovery chains: Ethereum, Gnosis, Arbitrum, Base, Optimism, Polygon, Avalanche. Version 0.3.7 uses SDK 0.4.5 but does not expand this discovery list to Arc. If the tool is invoked directly with an Arc wallet, its configured referral default applies and only ERC-20 orders are accepted.
 - Get a referral code (it carries the rebate): https://docs.ophis.fi/ai-agents
 
 The order-flow core is [`@ophis/agent-swap`](../agent-swap); see also [`@ophis/agentkit-ophis`](../agentkit-ophis) for Coinbase AgentKit.

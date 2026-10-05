@@ -293,12 +293,12 @@ and apply referral attribution on indexed chains when a code is supplied:
 
 | Package                                                                        | Version | For                                                       | Registers                            |
 | ------------------------------------------------------------------------------ | ------- | --------------------------------------------------------- | ------------------------------------ |
-| [`@ophis/agentkit-ophis`](https://www.npmjs.com/package/@ophis/agentkit-ophis) | v0.3.6  | [Coinbase AgentKit](https://github.com/coinbase/agentkit) | an `OphisActionProvider_swap` action |
-| [`@ophis/plugin-goat`](https://www.npmjs.com/package/@ophis/plugin-goat)       | v0.3.6  | [GOAT SDK](https://github.com/goat-sdk/goat)              | an `ophis_swap` tool                 |
-| [`@ophis/plugin-elizaos`](https://www.npmjs.com/package/@ophis/plugin-elizaos) | v0.3.6  | [elizaOS](https://github.com/elizaOS/eliza)               | a `swap` action                      |
-| [`@ophis/agent-swap`](https://www.npmjs.com/package/@ophis/agent-swap)         | v0.3.6  | any custom EOA framework                                  | the `executeOphisSwap()` core        |
+| [`@ophis/agentkit-ophis`](https://www.npmjs.com/package/@ophis/agentkit-ophis) | v0.3.7  | [Coinbase AgentKit](https://github.com/coinbase/agentkit) | an `OphisActionProvider_swap` action |
+| [`@ophis/plugin-goat`](https://www.npmjs.com/package/@ophis/plugin-goat)       | v0.3.7  | [GOAT SDK](https://github.com/goat-sdk/goat)              | an `ophis_swap` tool                 |
+| [`@ophis/plugin-elizaos`](https://www.npmjs.com/package/@ophis/plugin-elizaos) | v0.3.7  | [elizaOS](https://github.com/elizaOS/eliza)               | a `swap` action                      |
+| [`@ophis/agent-swap`](https://www.npmjs.com/package/@ophis/agent-swap)         | v0.3.7  | any custom EOA framework                                  | the `executeOphisSwap()` core        |
 
-The v0.3.6 adapter family is built and published against `@ophis/sdk` v0.4.4,
+The v0.3.7 adapter family is built and published against `@ophis/sdk` v0.4.5,
 so its fee policy, orderbook hosts, settlement contracts, and vault relayers
 match the current SDK. The core and AgentKit can use an Arc wallet with ERC-20
 addresses; configured wrapper defaults and explicit per-call codes now support
@@ -435,7 +435,7 @@ adapters](#drop-in-framework-adapters) above already get all four right, hand-ro
 this only if you are on neither. The `@ophis/sdk` helpers below are also what
 those adapters call under the hood.
 
-The helpers below live in **`@ophis/sdk`**, published on npm (v0.4.4, public).
+The helpers below live in **`@ophis/sdk`**, published on npm (v0.4.5, public).
 Install it with `npm install @ophis/sdk`, or copy the values from the call-outs
 if you prefer to vendor them.
 
