@@ -4,6 +4,8 @@ import { ReactNode, useCallback, useMemo } from 'react'
 import { tryParseCurrencyAmount } from '@cowprotocol/common-utils'
 import { Currency, CurrencyAmount } from '@cowprotocol/currency'
 
+import { AssetSwapFields } from 'ophis/components/AssetSwap/AssetSwapFields'
+
 import { Field } from 'legacy/state/types'
 
 import { TradeWidget } from 'modules/trade'
@@ -13,6 +15,7 @@ import { CurrencyInfo } from 'common/pure/CurrencyInputPanel/types'
 
 import { useNearSwapSelection } from './hooks/useNearSwapSelection'
 import { nearTokensAtom } from './nearDirect.atoms'
+import { ReviewPanel } from './nearDirect.styled'
 import { findNearToken, nearTokenPickerOptions } from './nearSwapAssets.utils'
 import { NearSwapDetails } from './NearSwapDetails.container'
 import { NearSwapSelection } from './useNearSwapEntry'
@@ -21,20 +24,8 @@ export function NearDirectSwap({ initial, onExit }: { initial: NearSwapSelection
   useSetTradeQuoteParams({ amount: null })
   const { data: tokens, isPending, error: tokenError, refetch } = useAtomValue(nearTokensAtom)
   const form = useNearSwapSelection(initial, onExit)
-  const {
-    selection,
-    setSelection,
-    recipient,
-    setRecipient,
-    refundTo,
-    setRefundTo,
-    preview,
-    setPreview,
-    busy,
-    setBusy,
-    select,
-    switchTokens,
-  } = form
+  const { selection, setSelection, recipient, setRecipient, refundTo, setRefundTo } = form
+  const { preview, setPreview, busy, setBusy, select, switchTokens } = form
   const source = findNearToken(tokens ?? [], selection.input)
   const destination = findNearToken(tokens ?? [], selection.output)
   const tokenOptions = useMemo(() => nearTokenPickerOptions(tokens ?? [], true), [tokens])
@@ -82,6 +73,14 @@ export function NearDirectSwap({ initial, onExit }: { initial: NearSwapSelection
     ],
   )
 
+  if (preview)
+    return (
+      <ReviewPanel aria-label="Review swap">
+        <h2>Review swap</h2>
+        {bottomContent()}
+      </ReviewPanel>
+    )
+
   return (
     <TradeWidget
       inputCurrencyInfo={currencyInfo(Field.INPUT, selection.input, inputAmount)}
@@ -90,11 +89,10 @@ export function NearDirectSwap({ initial, onExit }: { initial: NearSwapSelection
         onCurrencySelection: select,
         onSwitchTokens: switchTokens,
         onChangeRecipient: (value) => {
-          if (!busy && !preview) setRecipient(value ?? '')
+          if (!busy) setRecipient(value ?? '')
         },
         onUserInput: (field, value) => {
-          if (field === Field.INPUT && !busy && !preview)
-            setSelection((current) => ({ ...current, amount: value ?? '' }))
+          if (field === Field.INPUT && !busy) setSelection((current) => ({ ...current, amount: value ?? '' }))
         },
       }}
       params={{
@@ -114,7 +112,7 @@ export function NearDirectSwap({ initial, onExit }: { initial: NearSwapSelection
         priceImpact: { priceImpact: undefined, loading: false },
       }}
       disableOutput
-      slots={{ settingsWidget: null, selectTokenWidget: <></>, bottomContent }}
+      slots={{ currencyFields: AssetSwapFields, settingsWidget: null, selectTokenWidget: <></>, bottomContent }}
     />
   )
 }
@@ -124,7 +122,7 @@ function currencyInfo(field: Field, currency: Currency | null, amount: CurrencyA
     field,
     currency,
     amount,
-    label: field === Field.INPUT ? 'You sell' : 'You receive',
+    label: field === Field.INPUT ? 'You pay' : 'You receive',
     isIndependent: field === Field.INPUT,
     balance: null,
     fiatAmount: null,

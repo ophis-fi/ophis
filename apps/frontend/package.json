@@ -229,6 +229,7 @@
     "@babel/runtime": "^7.27.0",
     "@lingui/cli": "^5.4.1",
     "@sentry/webpack-plugin": "^2.10.0",
+    "@starknet-io/get-starknet-core": "4.0.8",
     "@swc/helpers": "~0.5.11",
     "@types/hdkey": "^2.0.1",
     "@walletconnect/ethereum-provider": "2.25.0",

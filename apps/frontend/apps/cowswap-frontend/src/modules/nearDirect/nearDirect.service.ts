@@ -206,7 +206,9 @@ export async function getNearTransferStatus(transfer: NearTransfer): Promise<Nea
   const { depositAddress, depositMemo } = transfer.response.quote
   if (!depositAddress) throw new Error('Missing deposit address.')
   const result = await OneClickService.getExecutionStatus(depositAddress, depositMemo)
-  const response = verifyNearQuote(result.quoteResponse)
+  // Status places correlationId beside quoteResponse, unlike the quote endpoint.
+  // Keep our original tracking metadata; all signed quote fields are still verified.
+  const response = verifyNearQuote({ ...result.quoteResponse, correlationId: transfer.response.correlationId })
   if (response.signature !== transfer.response.signature) throw new Error('Status belongs to another deposit quote.')
   const updatedAt = z.string().datetime().parse(result.updatedAt)
   if (!isNewerNearStatus(updatedAt, transfer.statusUpdatedAt)) return transfer

@@ -14,8 +14,8 @@ it('preserves the unlocked Yield widget, which shares the market presentation fl
   expect(isAssetSwapLayout({ isMarketOrderWidget: true }, {})).toBe(false)
 })
 
-it('preserves the external-funding form and selector sizing', () => {
-  expect(isAssetSwapLayout({ isMarketOrderWidget: true, externalFunding: true }, { currencyFields })).toBe(false)
+it('uses the supplied paired fields for external-funding swaps', () => {
+  expect(isAssetSwapLayout({ isMarketOrderWidget: true, externalFunding: true }, { currencyFields })).toBe(true)
 })
 
 it('preserves forms with content between their amount fields', () => {

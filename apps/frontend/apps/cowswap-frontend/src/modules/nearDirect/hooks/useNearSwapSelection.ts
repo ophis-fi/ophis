@@ -8,6 +8,8 @@ import { Field } from 'legacy/state/types'
 
 import { useTradeNavigate, useTradeState } from 'modules/trade'
 
+import { useStarknetWallet } from './useStarknetWallet'
+
 import { NearTransfer } from '../nearDirect.schemas'
 import { NearSwapSelection } from '../useNearSwapEntry'
 
@@ -27,6 +29,7 @@ interface NearSwapFormState {
 }
 
 export function useNearSwapSelection(initial: NearSwapSelection, onExit: () => void): NearSwapFormState {
+  useStarknetWallet()
   const [selection, setSelection] = useState(initial)
   const [recipient, setRecipient] = useState('')
   const [refundTo, setRefundTo] = useState('')
