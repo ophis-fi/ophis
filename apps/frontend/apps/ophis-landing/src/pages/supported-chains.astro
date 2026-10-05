@@ -7,6 +7,7 @@
  * list at build time.
  */
 import ContentPage from '../layouts/ContentPage.astro'
+import sdkPackage from '../../../../../../packages/sdk/package.json'
 import { canonicalPage } from '../data/canonicalPages'
 import {
   EVM_CHAINS,
@@ -28,7 +29,7 @@ const FAQS = [
   },
   {
     q: 'What does Ophis-operated mean?',
-    a: `On ${sovereignList}, batch-auction swaps use Ophis's own settlement contracts with chain-specific fee handling. Arc uses the same capped backend improvement policy for in-market orders; see the pricing page. Resolve supported signing domains and orderbook hosts through @ophis/sdk or MCP list_chains. SDK v0.4.4 and hosted MCP include Arc (5042); do not reuse another chain's address. Bridge routes have separate costs.`,
+    a: `On ${sovereignList}, batch-auction swaps use Ophis's own settlement contracts with chain-specific fee handling. Arc uses the same capped backend improvement policy for in-market orders; see the pricing page. Resolve supported signing domains and orderbook hosts through @ophis/sdk or MCP list_chains. SDK v${sdkPackage.version} and hosted MCP include Arc (5042); do not reuse another chain's address. Bridge routes have separate costs.`,
   },
   {
     q: 'How do external-source and cross-chain swaps work?',
@@ -117,13 +118,13 @@ const itemListLd = {
 
   <h2>For agents and integrators</h2>
   <p>
-    SDK v0.4.4 and the hosted MCP server cover the EVM chains above, including Arc (5042).
+    SDK v{sdkPackage.version} and the hosted MCP server cover the EVM chains above, including Arc (5042).
     External NEAR deposits are a separate app flow, not orders built by these SDK/MCP tools. Bridge coverage remains route-specific; eligible settled Arc trades count toward referral and volume-tier rebates.
   </p>
   <p>
     SDK v0.4.3 already supports Arc trading. Upgrade to v0.4.4 to include referral codes on Arc orders.
   </p>
-  <p><code>npm install @ophis/sdk@0.4.4</code></p>
+  <p><code>npm install @ophis/sdk@{sdkPackage.version}</code></p>
   <p>
     Before every order submission, register the actual order owner so Ophis can track eligible trades for rebates.
     Registering only when the wallet connects is not sufficient. If a Safe owns the order, register the Safe address,
@@ -144,7 +145,7 @@ const itemListLd = {
     EIP-712 domains, orderbook hosts) ships in the
     <a href="https://ophis.fi/.well-known/agent-skills/ophis/SKILL.md">Ophis agent skill</a>
     for the chains listed in that policy. For all supported EVM chains, including Arc,
-    the <a href="https://github.com/ophis-fi/ophis/tree/main/packages/sdk">@ophis/sdk</a> v0.4.4 helpers
+    the <a href="https://github.com/ophis-fi/ophis/tree/main/packages/sdk">@ophis/sdk</a> v{sdkPackage.version} helpers
     resolve the correct settlement domain per chain, and the
     <a href="https://docs.ophis.fi/ai-agents">MCP server</a> exposes the same data through the
     <code>list_chains</code> tool. Fee detail per chain lives on the
