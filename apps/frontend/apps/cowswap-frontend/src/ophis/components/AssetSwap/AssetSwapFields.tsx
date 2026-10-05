@@ -8,21 +8,16 @@ import { ArrowDown } from 'lucide-react'
 import { Field } from 'legacy/state/types'
 
 import { useCloseTokenSelectWidget, useSelectTokenWidgetState } from 'modules/tokensList'
+import type { TradeWidgetCurrencyFieldsProps } from 'modules/trade'
 
 import { MotionDiv, MotionButton } from './AssetSwap.motion'
 import { useAssetSwapCooldown } from './useAssetSwapCooldown'
 import { useAssetSwapPickerFocus } from './useAssetSwapPickerFocus'
 import { useAssetSwapStyle } from './useAssetSwapStyle'
 
-interface AssetSwapFieldsProps {
-  input: ReactNode
-  output: ReactNode
-  reverse: { onClick: () => boolean | void; disabled: boolean; loading: boolean }
-}
-
 /** Bencho's slabs applied to Ophis's real amount inputs and token picker.
  * No demo assets, prices or fees enter the trade state. */
-export function AssetSwapFields({ input, output, reverse }: AssetSwapFieldsProps): ReactNode {
+export function AssetSwapFields({ input, output, reverse }: TradeWidgetCurrencyFieldsProps): ReactNode {
   const root = useRef<HTMLDivElement>(null)
   const style = useAssetSwapStyle()
   const reducedMotion = useReducedMotionPreference()

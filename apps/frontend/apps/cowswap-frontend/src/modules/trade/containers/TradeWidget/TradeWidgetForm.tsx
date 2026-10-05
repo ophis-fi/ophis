@@ -9,7 +9,6 @@ import { ButtonOutlined, Loader, Media, MY_ORDERS_ID, SWAP_HEADER_OFFSET } from 
 import { useIsSafeWallet, useWalletDetails, useWalletInfo } from '@cowprotocol/wallet'
 
 import { Trans, useLingui } from '@lingui/react/macro'
-import { AssetSwapFields } from 'ophis/components/AssetSwap/AssetSwapFields'
 import { CoinbaseStockContext } from 'ophis/components/CoinbaseStockContext'
 import { RobinhoodAssetContext } from 'ophis/components/RobinhoodAssetContext'
 import { useIsMobileSwap } from 'ophis/hooks/useIsMobileSwap'
@@ -225,7 +224,8 @@ export function TradeWidgetForm(props: TradeWidgetProps): ReactNode {
 
   const { t } = useLingui()
 
-  const assetSwapLayout = isAssetSwapLayout(params, middleContent)
+  const CurrencyFields = slots.currencyFields
+  const assetSwapLayout = isAssetSwapLayout(params, slots)
   const { open, forceOpen, onSelectToken, field } = useSelectTokenWidgetState()
   // Quote polling pauses in the picker. Keep trade/settings controls inert
   // until it closes so a paused quote cannot enter approval or confirmation.
@@ -345,7 +345,7 @@ export function TradeWidgetForm(props: TradeWidgetProps): ReactNode {
                       sellBalance={inputCurrencyInfo.balance}
                     />
                   </div>
-                  {assetSwapLayout ? (
+                  {assetSwapLayout && CurrencyFields ? (
                     <Suspense
                       fallback={
                         <div className="swp-loading" role="status">
@@ -354,7 +354,7 @@ export function TradeWidgetForm(props: TradeWidgetProps): ReactNode {
                         </div>
                       }
                     >
-                      <AssetSwapFields
+                      <CurrencyFields
                         input={inputPanel}
                         output={outputPanel}
                         reverse={{ onClick: onSwitchTokens, disabled: reverseDisabled, loading: reverseLoading }}

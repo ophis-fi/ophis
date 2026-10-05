@@ -45,17 +45,23 @@ export function useAssetSwapPickerFocus(
   const closeRef = useRef(close)
   const triggerRef = useRef<HTMLElement | null>(null)
   useEffect(() => {
-    const node = root.current
+    // The mobile source-network control opens this picker from the form header.
+    // Its flyout is portaled, so remember the header before that flyout opens.
+    const node = root.current?.closest('[data-mobile-swap-form]') ?? root.current
     const rememberTrigger = (event: Event): void => {
       if (!(event.target instanceof Element)) return
-      const trigger = event.target.closest<HTMLElement>('.swp-coin, .open-currency-select-button')
+      const trigger = event.target.closest<HTMLElement>(
+        '.swp-coin, .open-currency-select-button, [data-token-picker-trigger]',
+      )
       if (trigger) triggerRef.current = trigger
     }
     node?.addEventListener('focusin', rememberTrigger)
     node?.addEventListener('pointerdown', rememberTrigger)
+    node?.addEventListener('click', rememberTrigger)
     return () => {
       node?.removeEventListener('focusin', rememberTrigger)
       node?.removeEventListener('pointerdown', rememberTrigger)
+      node?.removeEventListener('click', rememberTrigger)
     }
   }, [root])
   useEffect(() => {
@@ -100,9 +106,12 @@ export function useAssetSwapPickerFocus(
       window.removeEventListener('resize', keepVisible)
       window.visualViewport?.removeEventListener('resize', keepVisible)
       window.removeEventListener('keydown', key)
-      // Closing restores keyboard focus to the coin that opened this slab.
+      // Closing restores keyboard focus to the control that opened this slab.
+      // Clear it after focusin fires so a later programmatic open cannot use
+      // a stale opener from the previous interaction.
       requestAnimationFrame(() => {
         if (trigger?.isConnected) trigger.focus()
+        triggerRef.current = null
       })
     }
   }, [root, pick])

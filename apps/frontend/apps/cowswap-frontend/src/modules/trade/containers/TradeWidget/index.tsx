@@ -46,7 +46,7 @@ export function TradeWidget(props: TradeWidgetProps): JSX.Element {
     <>
       <styledEl.Container
         id={id}
-        isTokenSelectOpen={isTokenSelectOpen && !isAssetSwapLayout(params, slots.middleContent)}
+        isTokenSelectOpen={isTokenSelectOpen && !isAssetSwapLayout(params, slots)}
         isTokenSelectWide={isTokenSelectWide}
       >
         {!params.externalFunding && (

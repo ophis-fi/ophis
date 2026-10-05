@@ -97,6 +97,10 @@ jobs:
         working-directory: apps/frontend
         run: pnpm exec nx run cowswap-frontend:test --testPathPatterns 'solverAttribution.fuzz.test|useOrderProgressBarProps.test|useSolversInfo.test|ophis/solvers.test|FinishedStep.test' --passWithNoTests=false --runInBand
 
+      - name: Asset swap layout and picker regressions
+        working-directory: apps/frontend
+        run: pnpm exec nx run cowswap-frontend:test --testPathPatterns 'ophis/components/AssetSwap/.*test|assetSwapLayout.utils.test|useOnSwitchTokens.test|useInlineTokenPickerBack.test' --passWithNoTests=false --runInBand
+
       - name: Arc activation, native USDC and bridge regressions
         working-directory: apps/frontend
         run: |

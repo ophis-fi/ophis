@@ -8,6 +8,7 @@ import { InlineBanner, StatusColorVariant, LinkStyledButton } from '@cowprotocol
 import { useIsEagerConnectInProgress, useIsSmartContractWallet, useWalletInfo } from '@cowprotocol/wallet'
 
 import { t } from '@lingui/core/macro'
+import { AssetSwapFields } from 'ophis/components/AssetSwap/AssetSwapFields'
 
 import { Field } from 'legacy/state/types'
 import { useHooksEnabledManager } from 'legacy/state/user/hooks'
@@ -307,6 +308,7 @@ function StandardSwapWidget({
   ]
 
   const slots: TradeWidgetSlots = {
+    currencyFields: AssetSwapFields,
     headerContent,
     topContent: (
       <>
@@ -405,7 +407,6 @@ function StandardSwapWidget({
     disablePriceImpact: !!direct.quote,
     hideTradeWarnings: !!direct.quote,
     isMarketOrderWidget: true,
-    enableAssetSwapLayout: true,
     allowSwapSameToken,
     recipient,
     showRecipient,

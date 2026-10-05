@@ -21,6 +21,7 @@ export function TradeSourceNetworkSelector({
 }: TradeSourceNetworkSelectorProps): ReactNode {
   return (
     <NetworkSelector
+      tokenPickerTrigger
       selectedChainId={inputCurrencyInfo.currency?.chainId as TargetChainId | undefined}
       additionalChainIds={params.inputTokenOptions?.chains.map(({ id }) => id as TargetChainId)}
       disabled={params.inputsDisabled}
