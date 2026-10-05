@@ -1,5 +1,5 @@
 import { useAtomValue } from 'jotai'
-import { ReactNode, useCallback, useMemo } from 'react'
+import { ReactNode, useCallback, useEffect, useMemo, useRef } from 'react'
 
 import { tryParseCurrencyAmount } from '@cowprotocol/common-utils'
 import { Currency, CurrencyAmount } from '@cowprotocol/currency'
@@ -26,6 +26,12 @@ export function NearDirectSwap({ initial, onExit }: { initial: NearSwapSelection
   const form = useNearSwapSelection(initial, onExit)
   const { selection, setSelection, recipient, setRecipient, refundTo, setRefundTo } = form
   const { preview, setPreview, busy, setBusy, select, switchTokens } = form
+  const reviewHeading = useRef<HTMLHeadingElement>(null)
+  useEffect(() => {
+    if (!preview) return
+    reviewHeading.current?.focus({ preventScroll: true })
+    reviewHeading.current?.scrollIntoView({ block: 'start' })
+  }, [preview])
   const source = findNearToken(tokens ?? [], selection.input)
   const destination = findNearToken(tokens ?? [], selection.output)
   const tokenOptions = useMemo(() => nearTokenPickerOptions(tokens ?? [], true), [tokens])
@@ -34,10 +40,6 @@ export function NearDirectSwap({ initial, onExit }: { initial: NearSwapSelection
     const inputAmount = tryParseCurrencyAmount(selection.amount, selection.input) ?? null
     return { inputAmount, quoteAmount: inputAmount?.toExact() ?? '' }
   }, [selection.amount, selection.input])
-  const outputAmount =
-    preview && selection.output
-      ? CurrencyAmount.fromRawAmount(selection.output, preview.response.quote.amountOut)
-      : null
   const bottomContent = useCallback(
     (): ReactNode => (
       <NearSwapDetails
@@ -76,7 +78,9 @@ export function NearDirectSwap({ initial, onExit }: { initial: NearSwapSelection
   if (preview)
     return (
       <ReviewPanel aria-label="Review swap">
-        <h2>Review swap</h2>
+        <h2 ref={reviewHeading} tabIndex={-1}>
+          Review swap
+        </h2>
         {bottomContent()}
       </ReviewPanel>
     )
@@ -84,7 +88,7 @@ export function NearDirectSwap({ initial, onExit }: { initial: NearSwapSelection
   return (
     <TradeWidget
       inputCurrencyInfo={currencyInfo(Field.INPUT, selection.input, inputAmount)}
-      outputCurrencyInfo={currencyInfo(Field.OUTPUT, selection.output, outputAmount)}
+      outputCurrencyInfo={currencyInfo(Field.OUTPUT, selection.output, null)}
       actions={{
         onCurrencySelection: select,
         onSwitchTokens: switchTokens,
@@ -104,7 +108,7 @@ export function NearDirectSwap({ initial, onExit }: { initial: NearSwapSelection
         isPriceStatic: true,
         hideTradeWarnings: true,
         disablePriceImpact: true,
-        inputsDisabled: busy || !!preview,
+        inputsDisabled: busy,
         isMarketOrderWidget: true,
         displayChainName: true,
         inputTokenOptions: tokenOptions,

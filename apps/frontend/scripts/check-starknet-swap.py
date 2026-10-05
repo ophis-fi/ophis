@@ -32,6 +32,9 @@ with sync_playwright() as p:
  review=page.get_by_role('button',name='Review swap',exact=True);expect(review).to_be_enabled(timeout=30000);review.click()
  try:page.get_by_role('button',name='Confirm swap',exact=True).wait_for(timeout=45000)
  except:print(page.locator('body').inner_text());raise
+ expect(page.get_by_role('heading',name='Review swap')).to_be_focused()
+ heading=page.get_by_role('heading',name='Review swap').bounding_box()
+ assert heading and heading['y']>=0, heading
  for w in [1440,768,390,320]:
   page.set_viewport_size({'width':w,'height':900});page.wait_for_timeout(300)
   assert page.evaluate('document.documentElement.scrollWidth <= innerWidth'),w

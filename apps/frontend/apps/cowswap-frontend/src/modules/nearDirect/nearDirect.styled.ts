@@ -97,6 +97,7 @@ export const ReviewPanel = styled(Stack)`
   padding: 20px;
   h2 {
     font-size: 20px;
+    scroll-margin-top: 96px;
     margin: 0 0 8px;
   }
 `
