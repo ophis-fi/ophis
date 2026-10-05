@@ -12,7 +12,11 @@ import { nearTransfersAtom, readStoredNearTransfer } from './nearDirect.atoms'
 import { NearTransfer } from './nearDirect.schemas'
 import { submitNearDeposit } from './nearDirect.service'
 import { fundNearTransfer } from './nearDirectWallet.service'
-import { fundNearStarknetTransfer, StarknetDepositNotSentError } from './starknetWallet.service'
+import {
+  fundNearStarknetTransfer,
+  StarknetDepositNotSentError,
+  StarknetWalletChangedError,
+} from './starknetWallet.service'
 import { StarknetWalletConnect } from './StarknetWalletConnect.container'
 
 export function NearWalletSend({ transfer }: { transfer: NearTransfer }): ReactNode {
@@ -70,7 +74,13 @@ export function NearWalletSend({ transfer }: { transfer: NearTransfer }): ReactN
       await setTransfers((current) =>
         current.map((item) =>
           item.response.signature === signature
-            ? { ...item, fundingStarted: rejected ? false : item.fundingStarted, fundingError: message }
+            ? {
+                ...item,
+                fundingStarted: rejected ? false : item.fundingStarted,
+                fundingError: message,
+                transactionHash:
+                  failure instanceof StarknetWalletChangedError ? failure.transactionHash : item.transactionHash,
+              }
             : item,
         ),
       ).catch(() => undefined)

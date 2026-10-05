@@ -5,6 +5,7 @@ import {
   fundNearStarknetTransfer,
   getStarknetAccount,
   StarknetUserRejectedError,
+  StarknetWalletChangedError,
   StarknetWallet,
 } from './starknetWallet.service'
 
@@ -148,5 +149,18 @@ it('aborts before invoke if the account changes during the final chain read', as
   })
   await expect(fundNearStarknetTransfer(wallet, transfer, journal)).rejects.toThrow('changed')
   expect(request.mock.calls.some(([call]) => call.type === 'wallet_addInvokeTransaction')).toBe(false)
+  expect(events.size).toBe(0)
+})
+
+it.each(['accountsChanged', 'networkChanged'])('preserves the hash if %s fires during approval', async (event) => {
+  request.mockImplementation(async ({ type }: { type: string }) => {
+    if (type === 'wallet_requestAccounts') return [account]
+    if (type === 'wallet_requestChainId') return '0x534e5f4d41494e'
+    events.get(event)?.()
+    return { transaction_hash: hash }
+  })
+  const failure = await fundNearStarknetTransfer(wallet, transfer, journal).catch((error: unknown) => error)
+  expect(failure).toBeInstanceOf(StarknetWalletChangedError)
+  expect(failure).toMatchObject({ transactionHash: hash })
   expect(events.size).toBe(0)
 })

@@ -1,3 +1,4 @@
+import { STARKNET_CHAIN_ID, STRK_NATIVE_CURRENCY_ADDRESS } from '@cowprotocol/common-const'
 import { OrderKind } from '@cowprotocol/cow-sdk'
 import { Token } from '@cowprotocol/currency'
 
@@ -10,13 +11,19 @@ import { useNearSwapSelection } from './useNearSwapSelection'
 import fixture from '../fixtures/monadDeposit.json'
 import { nearTransferSchema } from '../nearDirect.schemas'
 
+let mockConnection: { address: string } | null = null
+jest.mock('./useStarknetWallet', () => ({ useStarknetWallet: () => ({ connection: mockConnection }) }))
+
 const mockNavigate = jest.fn()
 const mockUpdateState = jest.fn()
 jest.mock('modules/trade', () => ({
   useTradeNavigate: () => mockNavigate,
   useTradeState: () => ({ updateState: mockUpdateState }),
 }))
-beforeEach(() => jest.clearAllMocks())
+beforeEach(() => {
+  jest.clearAllMocks()
+  mockConnection = null
+})
 
 it('resets old precision only when the source changes', () => {
   const address = '0x1111111111111111111111111111111111111111'
@@ -104,4 +111,25 @@ it.each(['busy', 'preview'])('keeps the reviewed pair unchanged while %s', (guar
   expect(result.current.selection).toEqual(initial)
   expect(mockNavigate).not.toHaveBeenCalled()
   expect(onExit).not.toHaveBeenCalled()
+})
+
+it('restores the connected Starknet refund account when changing tokens or returning to Starknet', () => {
+  const address = '0x01' + '11'.repeat(31)
+  mockConnection = { address }
+  const input = new Token(STARKNET_CHAIN_ID, STRK_NATIVE_CURRENCY_ADDRESS, 18, 'STRK')
+  const replacement = new Token(STARKNET_CHAIN_ID, '0x02' + '22'.repeat(31), 8, 'ZEC')
+  const otherNetwork = new Token(143, '0x' + '33'.repeat(20), 6, 'USDC')
+  const { result } = renderHook(() => useNearSwapSelection({ input, output: null, amount: '' }, jest.fn()))
+  expect(result.current.refundTo).toBe(address)
+  act(() => result.current.select(Field.INPUT, replacement))
+  expect(result.current.refundTo).toBe(address)
+  act(() => result.current.select(Field.INPUT, otherNetwork))
+  expect(result.current.refundTo).toBe('')
+  act(() => result.current.select(Field.INPUT, input))
+  expect(result.current.refundTo).toBe(address)
+  act(() => result.current.setRefundTo(''))
+  act(() => result.current.select(Field.INPUT, input))
+  expect(result.current.refundTo).toBe(address)
+  act(() => result.current.setRefundTo('manual refund address'))
+  expect(result.current.refundTo).toBe('manual refund address')
 })

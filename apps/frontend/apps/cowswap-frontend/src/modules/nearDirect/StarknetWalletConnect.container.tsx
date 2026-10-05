@@ -3,7 +3,7 @@ import { ReactNode, useEffect, useRef, useState } from 'react'
 import { ButtonSecondary } from '@cowprotocol/ui'
 
 import { useStarknetWallet } from './hooks/useStarknetWallet'
-import { Stack } from './nearDirect.styled'
+import * as styledEl from './nearDirect.styled'
 import { getStarknetAccount, StarknetWallet } from './starknetWallet.service'
 
 export function StarknetWalletConnect({
@@ -58,7 +58,7 @@ export function StarknetWalletConnect({
     }
   }
   return (
-    <Stack aria-label="Starknet wallet">
+    <styledEl.Stack aria-label="Starknet wallet">
       {connection ? (
         <>
           <small>
@@ -86,6 +86,6 @@ export function StarknetWalletConnect({
         </small>
       )}
       {error && <small role="alert">{error}</small>}
-    </Stack>
+    </styledEl.Stack>
   )
 }

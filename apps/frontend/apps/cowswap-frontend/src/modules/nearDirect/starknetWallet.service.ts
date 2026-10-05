@@ -1,3 +1,4 @@
+import { STRK_NATIVE_CURRENCY_ADDRESS } from '@cowprotocol/common-const'
 import { isStarknetAddress } from '@cowprotocol/common-utils'
 
 import { NearTransfer } from './nearDirect.schemas'
@@ -13,12 +14,15 @@ import type { StarknetWindowObject } from '@starknet-io/get-starknet-core'
 
 export type StarknetWallet = StarknetWindowObject
 const MAINNET = 0x534e5f4d41494en
-// Starknet's canonical STRK contract, including when 1Click lists it as native:
-// https://github.com/starknet-io/starknet-addresses/blob/master/bridged_tokens/mainnet.json
-const STRK = '0x04718f5a0fc34cc1af16a1cdee98ffb20c31f5cd61d6ab07201858f4287c938d'
-
 export class StarknetDepositNotSentError extends Error {}
 export class StarknetUserRejectedError extends StarknetDepositNotSentError {}
+export class StarknetWalletChangedError extends Error {
+  constructor(readonly transactionHash: string) {
+    super(
+      'Your Starknet account or network changed during approval. A transaction may have been sent. Check the saved transaction in your wallet before taking any further action.',
+    )
+  }
+}
 
 export async function getStarknetAccount(wallet: StarknetWallet, silent = false): Promise<string> {
   const accounts = await wallet.request({ type: 'wallet_requestAccounts', params: { silent_mode: silent } })
@@ -84,13 +88,20 @@ export async function fundNearStarknetTransfer(
           throw new StarknetUserRejectedError('Transaction declined in your Starknet wallet. No deposit was sent.')
         throw failure
       })
-    if (!/^0x[0-9a-fA-F]{1,64}$/.test(result.transaction_hash) || BigInt(result.transaction_hash) === 0n)
-      throw new Error('The wallet returned no valid transaction hash. Check your wallet before sending again.')
-    return result.transaction_hash
+    return checkedTransactionHash(result.transaction_hash, changed.signal.aborted)
   } finally {
     wallet.off('accountsChanged', invalidate)
     wallet.off('networkChanged', invalidate)
   }
+}
+
+function checkedTransactionHash(hash: string, walletChanged: boolean): string {
+  if (!/^0x[0-9a-fA-F]{1,64}$/.test(hash) || BigInt(hash) === 0n)
+    throw new Error('The wallet returned no valid transaction hash. Check your wallet before sending again.')
+  // The wallet API cannot cancel an open approval request. If its context
+  // changed, retain the hash for recovery without claiming the deposit is valid.
+  if (walletChanged) throw new StarknetWalletChangedError(hash)
+  return hash
 }
 
 async function assertFundingWallet(wallet: StarknetWallet, expected: string): Promise<void> {
@@ -118,5 +129,5 @@ function fundingToken(transfer: NearTransfer): string {
 function starknetTokenContract(source: NearTransfer['source']): string | undefined {
   const nativeStrk =
     source.assetId === 'nep141:starknet.omft.near' && source.symbol === 'STRK' && source.decimals === 18
-  return source.contractAddress ?? (nativeStrk ? STRK : undefined)
+  return source.contractAddress ?? (nativeStrk ? STRK_NATIVE_CURRENCY_ADDRESS : undefined)
 }

@@ -15,7 +15,7 @@ import { CurrencyInfo } from 'common/pure/CurrencyInputPanel/types'
 
 import { useNearSwapSelection } from './hooks/useNearSwapSelection'
 import { nearTokensAtom } from './nearDirect.atoms'
-import { ReviewPanel } from './nearDirect.styled'
+import * as styledEl from './nearDirect.styled'
 import { findNearToken, nearTokenPickerOptions } from './nearSwapAssets.utils'
 import { NearSwapDetails } from './NearSwapDetails.container'
 import { NearSwapSelection } from './useNearSwapEntry'
@@ -77,12 +77,12 @@ export function NearDirectSwap({ initial, onExit }: { initial: NearSwapSelection
 
   if (preview)
     return (
-      <ReviewPanel aria-label="Review swap">
+      <styledEl.ReviewPanel aria-label="Review swap">
         <h2 ref={reviewHeading} tabIndex={-1}>
           Review swap
         </h2>
         {bottomContent()}
-      </ReviewPanel>
+      </styledEl.ReviewPanel>
     )
 
   return (

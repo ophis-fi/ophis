@@ -1,5 +1,6 @@
-import { SetStateAction, useCallback, useState } from 'react'
+import { SetStateAction, useCallback, useEffect, useState } from 'react'
 
+import { STARKNET_CHAIN_ID } from '@cowprotocol/common-const'
 import { getCurrencyAddress, isSupportedChainId } from '@cowprotocol/common-utils'
 import { OrderKind } from '@cowprotocol/cow-sdk'
 import { Currency } from '@cowprotocol/currency'
@@ -29,10 +30,15 @@ interface NearSwapFormState {
 }
 
 export function useNearSwapSelection(initial: NearSwapSelection, onExit: () => void): NearSwapFormState {
-  useStarknetWallet()
+  const { connection } = useStarknetWallet()
+  const connectedAddress = connection?.address
   const [selection, setSelection] = useState(initial)
   const [recipient, setRecipient] = useState('')
   const [refundTo, setRefundTo] = useState('')
+  useEffect(() => {
+    if (selection.input.chainId === STARKNET_CHAIN_ID && connection?.address)
+      setRefundTo((current) => current || connection.address)
+  }, [selection.input, connection?.address])
   const [preview, setPreview] = useState<NearTransfer>()
   const [busy, setBusy] = useState(false)
   const navigate = useTradeNavigate()
@@ -86,10 +92,10 @@ export function useNearSwapSelection(initial: NearSwapSelection, onExit: () => v
         [field === Field.INPUT ? 'input' : 'output']: currency,
         amount: field === Field.INPUT ? '' : current.amount,
       }))
-      if (field === Field.INPUT) setRefundTo('')
+      if (field === Field.INPUT) setRefundTo(sourceRefundAddress(currency, connectedAddress))
       else setRecipient('')
     },
-    [busy, preview, selection, exitToStandard, switchTokens],
+    [busy, preview, selection, exitToStandard, switchTokens, connectedAddress],
   )
 
   return {
@@ -106,4 +112,8 @@ export function useNearSwapSelection(initial: NearSwapSelection, onExit: () => v
     select,
     switchTokens,
   }
+}
+
+function sourceRefundAddress(currency: Currency, starknetAddress: string | undefined): string {
+  return currency.chainId === STARKNET_CHAIN_ID ? (starknetAddress ?? '') : ''
 }
