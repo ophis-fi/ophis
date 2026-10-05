@@ -5,7 +5,11 @@ import { Base58 } from '@ethersproject/basex'
 import { arrayify, concat } from '@ethersproject/bytes'
 import { sha256 } from '@ethersproject/sha2'
 
-import { CancelablePromise, OneClickService } from '@defuse-protocol/one-click-sdk-typescript'
+import {
+  CancelablePromise,
+  GetExecutionStatusResponse,
+  OneClickService,
+} from '@defuse-protocol/one-click-sdk-typescript'
 
 import { isRecipientAddress } from 'common/utils/recipientAddress.utils'
 
@@ -17,6 +21,7 @@ import { nearQuoteSchema, nearTransferSchema } from './nearDirect.schemas'
 import {
   assertNearRequest,
   getNearFundingDeadline,
+  getNearTransferStatus,
   isNewerNearStatus,
   isNearAddress,
   isSupportedNearToken,
@@ -159,6 +164,31 @@ it('creates a verified executable quote with the real provider fee response', as
     expect(transfer.response.signature).toBe(response.signature)
     expect(transfer.status).toBe('PENDING_DEPOSIT')
     expect(quote).toHaveBeenCalledTimes(1)
+  } finally {
+    jest.restoreAllMocks()
+  }
+})
+
+it('accepts the live status envelope and null pending amounts while verifying its signed quote', async () => {
+  const transfer = nearTransferSchema.parse(monadDeposit)
+  const { correlationId, ...quoteResponse } = structuredClone(monadDeposit.response)
+  const result = {
+    correlationId,
+    quoteResponse,
+    status: 'PENDING_DEPOSIT',
+    updatedAt: '2026-10-05T20:00:00Z',
+    swapDetails: { amountOut: null, refundedAmount: '0', destinationChainTxHashes: [] },
+  } as unknown as GetExecutionStatusResponse
+  jest
+    .spyOn(OneClickService, 'getExecutionStatus')
+    .mockImplementation(() => new CancelablePromise((resolve) => resolve(result)))
+  try {
+    const status = await getNearTransferStatus(transfer)
+    expect(status.status).toBe('PENDING_DEPOSIT')
+    expect(status.receipt?.amountOut).toBeUndefined()
+    expect(status.response.correlationId).toBe(correlationId)
+    result.quoteResponse.quote.amountOut = '9999999999'
+    await expect(getNearTransferStatus(transfer)).rejects.toThrow('signature')
   } finally {
     jest.restoreAllMocks()
   }

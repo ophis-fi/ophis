@@ -7,6 +7,8 @@ import { render, screen } from '@testing-library/react'
 import { NearDirectSwap } from './NearDirectSwap.container'
 
 const mockSetQuoteParams = jest.fn()
+jest.mock('ophis/components/AssetSwap/AssetSwapFields', () => ({ AssetSwapFields: () => null }))
+jest.mock('./nearDirect.styled', () => ({ ReviewPanel: ({ children }: { children: ReactNode }) => <>{children}</> }))
 jest.mock('modules/tradeQuote', () => ({ useSetTradeQuoteParams: (params: unknown) => mockSetQuoteParams(params) }))
 
 const mockInput = new Token(143, '0x1111111111111111111111111111111111111111', 6, 'USDC')

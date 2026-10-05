@@ -13,6 +13,7 @@ import { NearToken, NearTransfer } from './nearDirect.schemas'
 import { getNearFundingDeadline, nearErrorMessage, requestNearQuote } from './nearDirect.service'
 import { Stack } from './nearDirect.styled'
 import { NearQuote } from './NearQuote.pure'
+import { StarknetWalletConnect } from './StarknetWalletConnect.container'
 
 interface NearSwapDetailsProps {
   source: NearToken | undefined
@@ -101,6 +102,7 @@ export function NearSwapDetails(props: NearSwapDetailsProps): ReactNode {
         </>
       ) : (
         <>
+          <SourceWallet source={source} busy={busy} onConnect={setRefundTo} />
           <AddressInputPanel
             id="refund-address"
             label="Refund address on the sending network"
@@ -127,4 +129,16 @@ export function NearSwapDetails(props: NearSwapDetailsProps): ReactNode {
       {tokenError && <ButtonSecondary onClick={() => refetch()}>Retry loading assets</ButtonSecondary>}
     </Stack>
   )
+}
+
+function SourceWallet({
+  source,
+  busy,
+  onConnect,
+}: {
+  source: NearToken | undefined
+  busy: boolean
+  onConnect(address: string): void
+}): ReactNode {
+  return source?.blockchain === 'starknet' ? <StarknetWalletConnect disabled={busy} onConnect={onConnect} /> : null
 }

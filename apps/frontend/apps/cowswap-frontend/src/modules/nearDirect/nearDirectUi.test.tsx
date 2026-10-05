@@ -25,7 +25,11 @@ jest.mock('@cowprotocol/common-hooks', () => ({
   useCopyClipboard: () => [false, jest.fn()],
   useInterval: jest.fn(),
 }))
-jest.mock('@cowprotocol/ui', () => ({ InlineBanner: () => null, StatusColorVariant: { Info: 'info' } }))
+jest.mock('@cowprotocol/ui', () => ({
+  UI: jest.requireActual('@cowprotocol/ui').UI,
+  InlineBanner: () => null,
+  StatusColorVariant: { Info: 'info' },
+}))
 jest.mock('@cowprotocol/wallet', () => ({ useWalletInfo: () => ({ chainId: 1 }) }))
 jest.mock('@lingui/react', () => ({ useLingui: () => ({ i18n: { _: (value: string) => value } }) }))
 jest.mock('entities/cctp', () => ({ useIsCctpEnabled: () => false }))

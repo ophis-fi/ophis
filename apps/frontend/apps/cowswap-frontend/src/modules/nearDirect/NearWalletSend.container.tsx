@@ -7,13 +7,22 @@ import { BaseError, UserRejectedRequestError } from 'viem'
 
 import { useBridgeWallet } from 'modules/cctp'
 
+import { useStarknetWallet } from './hooks/useStarknetWallet'
 import { nearTransfersAtom, readStoredNearTransfer } from './nearDirect.atoms'
 import { NearTransfer } from './nearDirect.schemas'
 import { submitNearDeposit } from './nearDirect.service'
 import { fundNearTransfer } from './nearDirectWallet.service'
+import {
+  fundNearStarknetTransfer,
+  StarknetDepositNotSentError,
+  StarknetWalletChangedError,
+} from './starknetWallet.service'
+import { StarknetWalletConnect } from './StarknetWalletConnect.container'
 
 export function NearWalletSend({ transfer }: { transfer: NearTransfer }): ReactNode {
   const wallet = useBridgeWallet()
+  const { connection } = useStarknetWallet()
+  const starknet = transfer.source.blockchain === 'starknet'
   const { account } = useWalletInfo()
   const setTransfers = useSetAtom(nearTransfersAtom)
   const [busy, setBusy] = useState(false)
@@ -21,7 +30,7 @@ export function NearWalletSend({ transfer }: { transfer: NearTransfer }): ReactN
   const signature = transfer.response.signature
 
   const send = useCallback(async (): Promise<void> => {
-    if (!wallet || busy) return
+    if (busy || (starknet ? !connection : !wallet)) return
     setBusy(true)
     setError('')
     try {
@@ -32,7 +41,7 @@ export function NearWalletSend({ transfer }: { transfer: NearTransfer }): ReactN
         if (!stored || stored.fundingStarted || stored.transactionHash || stored.status !== 'PENDING_DEPOSIT') {
           throw new Error('A deposit may already have been sent. Check the swap status and your wallet.')
         }
-        const hash = await fundNearTransfer(wallet, stored, async (nonce) => {
+        const beforeSend = async (nonce?: number): Promise<void> => {
           await setTransfers((current) =>
             current.map((item) =>
               item.response.signature === signature
@@ -40,7 +49,14 @@ export function NearWalletSend({ transfer }: { transfer: NearTransfer }): ReactN
                 : item,
             ),
           )
-        })
+        }
+        const hash =
+          starknet && connection
+            ? await fundNearStarknetTransfer(connection.wallet, stored, beforeSend)
+            : wallet
+              ? await fundNearTransfer(wallet, stored, beforeSend)
+              : undefined
+        if (!hash) throw new Error('Connect the sending wallet before sending.')
         await submitNearDeposit(stored, hash, () =>
           setTransfers((current) =>
             current.map((item) => (item.response.signature === signature ? { ...item, transactionHash: hash } : item)),
@@ -52,12 +68,19 @@ export function NearWalletSend({ transfer }: { transfer: NearTransfer }): ReactN
       // automatic status polling and a manually supplied hash recover the swap.
       const message = failure instanceof Error ? failure.message : 'Check your wallet before sending again.'
       const rejected =
-        failure instanceof BaseError &&
-        failure.walk((cause) => cause instanceof UserRejectedRequestError) instanceof UserRejectedRequestError
+        failure instanceof StarknetDepositNotSentError ||
+        (failure instanceof BaseError &&
+          failure.walk((cause) => cause instanceof UserRejectedRequestError) instanceof UserRejectedRequestError)
       await setTransfers((current) =>
         current.map((item) =>
           item.response.signature === signature
-            ? { ...item, fundingStarted: rejected ? false : item.fundingStarted, fundingError: message }
+            ? {
+                ...item,
+                fundingStarted: rejected ? false : item.fundingStarted,
+                fundingError: message,
+                transactionHash:
+                  failure instanceof StarknetWalletChangedError ? failure.transactionHash : item.transactionHash,
+              }
             : item,
         ),
       ).catch(() => undefined)
@@ -65,19 +88,15 @@ export function NearWalletSend({ transfer }: { transfer: NearTransfer }): ReactN
     } finally {
       setBusy(false)
     }
-  }, [wallet, busy, signature, setTransfers])
+  }, [wallet, connection, starknet, busy, signature, setTransfers])
 
-  if (
-    !account ||
-    !wallet ||
-    !['monad', 'xlayer'].includes(transfer.source.blockchain) ||
-    transfer.response.quote.depositMemo
-  )
-    return null
+  if (transfer.response.quote.depositMemo) return null
+  if (starknet && !connection) return <StarknetWalletConnect />
+  if (!starknet && (!account || !wallet || !['monad', 'xlayer'].includes(transfer.source.blockchain))) return null
   return (
     <>
       <button type="button" disabled={busy} onClick={send}>
-        {busy ? 'Check your wallet…' : 'Send with connected wallet'}
+        {busy ? 'Check your wallet…' : starknet ? 'Send with Starknet wallet' : 'Send with connected wallet'}
       </button>
       {error && <p role="alert">{error}</p>}
     </>

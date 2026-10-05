@@ -17,7 +17,6 @@ import { useIsProviderNetworkDeprecated } from 'common/hooks/useIsProviderNetwor
 import * as styledEl from './BottomBanners.styled'
 
 import { DeprecatedNetworkBanner } from '../DeprecatedNetworkBanner/DeprecatedNetworkBanner.container'
-import { NetworkBridgeBanner } from '../NetworkBridgeBanner/NetworkBridgeBanner.container'
 
 export function BottomBanners(): ReactNode {
   const { chainId, account } = useWalletInfo()
@@ -45,8 +44,6 @@ export function BottomBanners(): ReactNode {
         </Trans>
       </InlineBanner>
     )
-  } else {
-    bannerNode = <NetworkBridgeBanner />
   }
 
   return (

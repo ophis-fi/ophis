@@ -1,12 +1,15 @@
+import { UI } from '@cowprotocol/ui'
+
 import styled from 'styled-components/macro'
 
 export const Panel = styled.section`
-  background: var(--ophis-surface, #fff);
-  color: var(--ophis-text, #202020);
-  border: 1px solid #8885;
+  background: var(${UI.COLOR_PAPER});
+  color: var(${UI.COLOR_TEXT});
+  border: 1px solid var(${UI.COLOR_BORDER});
   border-radius: 24px;
   padding: 24px;
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
   gap: 16px;
   width: 100%;
   min-width: 0;
@@ -75,7 +78,26 @@ export const Panel = styled.section`
 
 export const Stack = styled.div`
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
   gap: 12px;
   width: 100%;
   min-width: 0;
+  overflow-wrap: anywhere;
+  > * {
+    min-width: 0;
+    max-width: 100%;
+  }
+`
+
+export const ReviewPanel = styled(Stack)`
+  border: 1px solid var(${UI.COLOR_BORDER});
+  background: var(${UI.COLOR_PAPER});
+  color: var(${UI.COLOR_TEXT});
+  border-radius: 24px;
+  padding: 20px;
+  h2 {
+    font-size: 20px;
+    scroll-margin-top: 96px;
+    margin: 0 0 8px;
+  }
 `
