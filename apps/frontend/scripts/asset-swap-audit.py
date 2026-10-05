@@ -111,7 +111,7 @@ def browser_checks():
                 page.wait_for_timeout(650)
                 assert_contained(page)
                 page.get_by_role('button', name='View all', exact=False).click()
-                panel = live.locator('.swp-inline-network-list')
+                expect(live.locator('.swp-inline-network-list')).to_be_visible()
                 assert_contained(page)
                 page.screenshot(path=str(OUT / f'short-{width}-{height}-{index}.png'), full_page=True)
                 page.keyboard.press('Escape')
