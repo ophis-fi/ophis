@@ -1,5 +1,5 @@
 import { useSetAtom } from 'jotai'
-import { ReactNode, useState } from 'react'
+import { ReactNode, useEffect, useState } from 'react'
 
 import { SupportedChainId } from '@cowprotocol/cow-sdk'
 import { ButtonPrimary, ButtonSecondary } from '@cowprotocol/ui'
@@ -51,6 +51,9 @@ export function NearSwapDetails(props: NearSwapDetailsProps): ReactNode {
   const ready = [source, destination, amount, resolved.recipient, resolved.refundTo].every(Boolean)
   const setTransfers = useSetAtom(nearTransfersAtom)
   const [error, setError] = useState('')
+  useEffect(() => {
+    setError('')
+  }, [source?.assetId, destination?.assetId, amount, resolved.recipient, resolved.refundTo])
   const review = async (): Promise<void> => {
     if (busy || !ready || !source || !destination) return
     setBusy(true)
@@ -120,14 +123,32 @@ export function NearSwapDetails(props: NearSwapDetailsProps): ReactNode {
           {(source?.blockchain === 'hypercore' || destination?.blockchain === 'hypercore') && (
             <small>Use your Hypercore spot balance. HyperEVM is a separate network.</small>
           )}
-          <ButtonPrimary disabled={busy || isPending || !ready} onClick={review}>
-            {busy ? 'Getting quote…' : isPending ? 'Loading assets…' : 'Review swap'}
-          </ButtonPrimary>
+          <QuoteButton busy={busy} isPending={isPending} ready={ready} error={error} onClick={review} />
         </>
       )}
       {(error || tokenError) && <p role="alert">{error || 'Unable to load assets. Please try again.'}</p>}
       {tokenError && <ButtonSecondary onClick={() => refetch()}>Retry loading assets</ButtonSecondary>}
     </Stack>
+  )
+}
+
+function QuoteButton({
+  busy,
+  isPending,
+  ready,
+  error,
+  onClick,
+}: {
+  busy: boolean
+  isPending: boolean
+  ready: boolean
+  error: string
+  onClick(): Promise<void>
+}): ReactNode {
+  return (
+    <ButtonPrimary disabled={busy || isPending || !ready} onClick={onClick}>
+      {busy ? 'Getting quote…' : isPending ? 'Loading assets…' : error ? 'Retry quote' : 'Review swap'}
+    </ButtonPrimary>
   )
 }
 

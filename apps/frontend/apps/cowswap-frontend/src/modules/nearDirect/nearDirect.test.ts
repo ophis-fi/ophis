@@ -6,6 +6,7 @@ import { arrayify, concat } from '@ethersproject/bytes'
 import { sha256 } from '@ethersproject/sha2'
 
 import {
+  ApiError,
   CancelablePromise,
   GetExecutionStatusResponse,
   OneClickService,
@@ -25,11 +26,35 @@ import {
   isNewerNearStatus,
   isNearAddress,
   isSupportedNearToken,
+  nearErrorMessage,
   parseNearAmount,
   requestNearQuote,
   submitNearDeposit,
   verifyNearQuote,
 } from './nearDirect.service'
+
+it('explains unavailable quotes and preserves the provider reference without masking other errors', () => {
+  const correlationId = '0075b791-2dd8-4278-b63c-7eb043efe22b'
+  const failure = (body: unknown): ApiError =>
+    new ApiError(
+      { method: 'POST', url: '/v0/quote' },
+      {
+        url: '/v0/quote',
+        ok: false,
+        status: 400,
+        statusText: 'Bad Request',
+        body,
+      },
+      'Bad Request',
+    )
+  expect(nearErrorMessage(failure({ message: 'Quoting for this pair is not available', correlationId }))).toBe(
+    `The provider cannot quote this route right now. Please retry. Reference: ${correlationId}`,
+  )
+  expect(nearErrorMessage(failure({ message: 'Invalid recipient', correlationId: 'invalid' }))).toBe(
+    'Invalid recipient',
+  )
+  expect(nearErrorMessage(new Error('Quote expired.'))).toBe('Quote expired.')
+})
 
 it('orders status updates by time across RFC 3339 fractional precision', () => {
   expect(isNewerNearStatus('2026-09-30T12:00:00.100Z', '2026-09-30T12:00:00Z')).toBe(true)
