@@ -42,6 +42,7 @@ export interface CurrencyInputPanelProps extends Partial<BuiltItProps> {
   displayTokenName?: boolean
   displayChainName?: boolean
   inputTooltip?: string
+  inputPlaceholder?: string
   showSetMax?: boolean
   maxBalance?: CurrencyAmount<Currency> | undefined
   allowsOffchainSigning: boolean
@@ -194,6 +195,7 @@ export function CurrencyInputPanel(props: CurrencyInputPanelProps): ReactNode {
   const numericalInput = (
     <styledEl.NumericalInput
       className="token-amount-input"
+      placeholder={props.inputPlaceholder}
       prependSymbol={isUsdValuesMode ? '$' : ''}
       value={isProviderNetworkUnsupported || isProviderNetworkDeprecated ? '' : typedValue}
       readOnly={inputDisabled || disabled}

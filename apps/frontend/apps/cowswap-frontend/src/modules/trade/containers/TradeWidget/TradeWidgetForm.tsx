@@ -265,6 +265,7 @@ export function TradeWidgetForm(props: TradeWidgetProps): ReactNode {
   const outputPanel = (
     <CurrencyInputPanel
       id="output-currency-input"
+      inputPlaceholder={params.externalFunding ? '—' : undefined}
       inputDisabled={isWrapOrUnwrap || isCurrentTradeBridging || disableOutput}
       currencyInfo={outputCurrencyInfo}
       priceImpactParams={!disablePriceImpact ? priceImpact : undefined}

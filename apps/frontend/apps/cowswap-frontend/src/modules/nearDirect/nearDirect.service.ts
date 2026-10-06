@@ -31,8 +31,16 @@ const confidentiality = process.env.REACT_APP_NEAR_API_KEY ? QuoteRequest.confid
 
 export function nearErrorMessage(error: unknown): string {
   if (error instanceof ApiError) {
-    const body = z.object({ message: z.string().max(500) }).safeParse(error.body)
-    if (body.success) return body.data.message
+    const body = z
+      .object({ message: z.string().max(500), correlationId: z.string().uuid().optional().catch(undefined) })
+      .safeParse(error.body)
+    if (body.success) {
+      const message =
+        body.data.message === 'Quoting for this pair is not available'
+          ? 'The provider cannot quote this route right now. Please retry.'
+          : body.data.message
+      return body.data.correlationId ? `${message} Reference: ${body.data.correlationId}` : message
+    }
   }
   return error instanceof Error ? error.message : 'Swaps are temporarily unavailable. Please retry.'
 }
