@@ -89,5 +89,6 @@ export const nearTransferSchema = z.object({
   fundingError: z.string().optional(),
   fundingNonce: z.number().int().nonnegative().optional(),
   statusUpdatedAt: z.string().datetime().optional(),
+  archived: z.boolean().optional(),
 })
 export type NearTransfer = z.infer<typeof nearTransferSchema>

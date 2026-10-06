@@ -2,12 +2,21 @@
 import { createStore } from 'jotai'
 
 import fixture from './fixtures/monadDeposit.json'
-import { nearTransfersAtom, normalizeNearTransfers, pruneNearTransfers } from './nearDirect.atoms'
+import {
+  nearTransfersAtom,
+  normalizeNearTransfers,
+  pruneNearTransfers,
+  readStoredNearTransfer,
+} from './nearDirect.atoms'
 import { nearTransferSchema } from './nearDirect.schemas'
 
 it('bounds completed history without deleting failed, expired, or uncertain recovery', () => {
   const transfer = nearTransferSchema.parse(fixture)
-  const active = [transfer, { ...transfer, fundingStarted: true }, { ...transfer, status: 'FAILED' as const }]
+  const active = [
+    transfer,
+    { ...transfer, archived: true, fundingStarted: true },
+    { ...transfer, status: 'FAILED' as const },
+  ]
   const completed = Array.from({ length: 60 }, (_, index) => ({
     ...transfer,
     status: index % 2 ? ('SUCCESS' as const) : ('REFUNDED' as const),
@@ -32,7 +41,11 @@ it('saves recovery before exposing a deposit and preserves state when storage fa
     value: { request: async (_key: string, action: () => void): Promise<void> => action() },
   })
   const store = createStore()
-  const transfer = nearTransferSchema.parse(fixture)
+  const transfer = nearTransferSchema.parse({
+    ...fixture,
+    fundingStarted: true,
+    transactionHash: '0x' + 'ab'.repeat(32),
+  })
   expect(store.get(nearTransfersAtom)).toEqual([])
   storage.setItem.mockImplementationOnce(() => {
     throw new Error('quota exceeded')
@@ -42,6 +55,11 @@ it('saves recovery before exposing a deposit and preserves state when storage fa
   await store.set(nearTransfersAtom, [transfer])
   expect(store.get(nearTransfersAtom)).toEqual([transfer])
   expect(normalizeNearTransfers(JSON.parse(values.get('nearDirectTransfers:v0') ?? 'null'))).toEqual([transfer])
+  await store.set(nearTransfersAtom, (current) => current.map((item) => ({ ...item, archived: true })))
+  expect(readStoredNearTransfer(transfer.response.signature)).toEqual({ ...transfer, archived: true })
+  expect(normalizeNearTransfers(JSON.parse(values.get('nearDirectTransfers:v0') ?? 'null'))).toEqual([
+    { ...transfer, archived: true },
+  ])
   expect(
     normalizeNearTransfers([{ ...transfer, response: { ...transfer.response, signature: 'forged' } }, null]),
   ).toEqual([])
