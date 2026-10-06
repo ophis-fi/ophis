@@ -29,6 +29,10 @@ minimumReleaseAgeExclude:
   # excluded above) on every release, so they share its soak exclusion. Without this,
   # any next security patch soaks its swc binaries and blocks a lockfile regen.
   - '@next/*'
+  # source-map-js 1.2.2 is the GHSA-68fv-2mgg-jv7q fix (DoS via indexed source-map
+  # sections); released 2026-09-30 (<1 week from patch date), so excluded from
+  # soak to allow immediate resolution. Remove once >1 week old.
+  - source-map-js
   # NOTE: esbuild 0.28.1 (GHSA-gv7w-rqvm-qjhr), http-proxy-middleware 3.0.7
   # (GHSA-gcq2-9pq2-cxqm; selective override on >=3.0.4 <3.0.7 so the v2 consumers
   # react-cosmos@7 + @nx/webpack are left untouched, since HPM v3 dropped the v2
