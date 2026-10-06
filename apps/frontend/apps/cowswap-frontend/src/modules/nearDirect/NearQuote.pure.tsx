@@ -21,10 +21,15 @@ export function NearQuote({ transfer }: { transfer: NearTransfer }): ReactNode {
     receipt,
     response: { quote, quoteRequest },
   } = transfer
+  const refundFee = transfer.status === 'REFUNDED' ? receipt?.refundFee : quote.refundFee
+  const labels =
+    transfer.status === 'REFUNDED'
+      ? { input: 'Quoted input', output: 'Quoted output', fee: 'Refund fee', transaction: 'Refund transaction' }
+      : { input: 'You pay', output: 'You receive', fee: 'Fee if refunded', transaction: 'Destination transaction' }
   return (
     <styledEl.Quote aria-label="Swap summary">
-      <QuoteAmount label="You pay" token={source} amount={quote.amountIn} usdValue={quote.amountInUsd} />
-      <QuoteAmount label="You receive" token={destination} amount={quote.amountOut} usdValue={quote.amountOutUsd} />
+      <QuoteAmount label={labels.input} token={source} amount={quote.amountIn} usdValue={quote.amountInUsd} />
+      <QuoteAmount label={labels.output} token={destination} amount={quote.amountOut} usdValue={quote.amountOutUsd} />
       <styledEl.Details>
         <dt>Minimum received</dt>
         <dd>
@@ -42,11 +47,11 @@ export function NearQuote({ transfer }: { transfer: NearTransfer }): ReactNode {
             </dd>
           </>
         )}
-        {quote.refundFee && (
+        {refundFee && (
           <>
-            <dt>Fee if refunded</dt>
+            <dt>{labels.fee}</dt>
             <dd>
-              <FeeAmount token={source} amount={quote.refundFee} />
+              <FeeAmount token={source} amount={refundFee} />
             </dd>
           </>
         )}
@@ -76,8 +81,11 @@ export function NearQuote({ transfer }: { transfer: NearTransfer }): ReactNode {
           Refunded: {formatUnits(receipt.refundedAmount, source.decimals)} {source.symbol}
         </p>
       )}
+      {transfer.status === 'REFUNDED' && receipt?.refundReason === 'INTENT_SUBMIT_FAILED' && (
+        <p>The provider could not execute the swap. Your deposit was refunded, less the refund fee.</p>
+      )}
       {receipt?.destinationChainTxHashes.map(({ hash }) => (
-        <QuoteAddress key={hash} label="Destination transaction" address={hash} />
+        <QuoteAddress key={hash} label={labels.transaction} address={hash} />
       ))}
     </styledEl.Quote>
   )

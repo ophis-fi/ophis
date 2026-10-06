@@ -1,5 +1,6 @@
 import { ReactNode } from 'react'
 
+import { CancelablePromise, OneClickService } from '@defuse-protocol/one-click-sdk-typescript'
 import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 
 import { SwapPage } from 'pages/Swap'
@@ -103,6 +104,47 @@ it('hides funding immediately when a detected deposit cannot be saved', async ()
   expect(screen.getByRole('heading').textContent).toContain('Deposit detected')
   expect(screen.queryByLabelText('Deposit address')).toBeNull()
   expect(screen.queryByRole('button', { name: 'Send with connected wallet' })).toBeNull()
+})
+
+it('uses the saved transaction for retry and replaces stale funding errors when a refund arrives', async () => {
+  const transfer = nearTransferSchema.parse({
+    ...mockFixture,
+    fundingStarted: true,
+    transactionHash: '0x' + 'ab'.repeat(32),
+    fundingError: 'Internal Server Error',
+  })
+  mockSave.mockResolvedValue(undefined)
+  const view = render(<NearTransferCard transfer={nearTransferSchema.parse(mockFixture)} />)
+  expect((screen.getByLabelText(/Already sent/) as HTMLInputElement).value).toBe('')
+  view.rerender(<NearTransferCard transfer={transfer} />)
+  expect((screen.getByLabelText(/Already sent/) as HTMLInputElement).value).toBe(transfer.transactionHash)
+  expect(screen.getByRole('button', { name: 'Track transaction' }).hasAttribute('disabled')).toBe(false)
+  expect(screen.queryByText('Internal Server Error')).toBeNull()
+  expect(screen.getByRole('alert').textContent).toContain('Do not send again')
+  jest
+    .spyOn(OneClickService, 'submitDepositTx')
+    .mockImplementation(
+      () => new CancelablePromise((_resolve, reject) => reject(new Error('Notification unavailable'))),
+    )
+  fireEvent.click(screen.getByRole('button', { name: 'Track transaction' }))
+  await screen.findByText('Notification unavailable')
+  mockStatus = { ...transfer, status: 'REFUNDED', statusUpdatedAt: '2026-10-06T11:04:22.000Z' }
+  view.rerender(<NearTransferCard transfer={transfer} />)
+  expect(screen.getByRole('heading').textContent).toBe('Refunded to your refund address')
+  expect(screen.queryByRole('alert')).toBeNull()
+  expect(screen.queryByRole('button', { name: 'Track transaction' })).toBeNull()
+  expect(screen.queryByRole('button', { name: 'Send with connected wallet' })).toBeNull()
+  await waitFor(() => expect(mockSave).toHaveBeenCalled())
+})
+
+it('preserves wallet context warnings even when a transaction hash was saved', () => {
+  const transfer = nearTransferSchema.parse({
+    ...mockFixture,
+    transactionHash: '0x' + 'ab'.repeat(32),
+    fundingError: 'Wallet account or network changed. Check your wallet before sending again.',
+  })
+  render(<NearTransferCard transfer={transfer} />)
+  expect(screen.getByRole('alert').textContent).toBe(transfer.fundingError)
 })
 
 it('allows explicit removal of an expired unfunded quote while rechecking current recovery', async () => {

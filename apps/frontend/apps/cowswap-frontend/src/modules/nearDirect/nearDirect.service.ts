@@ -197,7 +197,13 @@ export function isNewerNearStatus(updatedAt: string | undefined, previous: strin
 export function withLatestNearStatus(transfer: NearTransfer, update: NearTransfer | undefined): NearTransfer {
   return update?.response.signature === transfer.response.signature &&
     isNewerNearStatus(update.statusUpdatedAt, transfer.statusUpdatedAt)
-    ? { ...transfer, status: update.status, statusUpdatedAt: update.statusUpdatedAt, receipt: update.receipt }
+    ? {
+        ...transfer,
+        status: update.status,
+        statusUpdatedAt: update.statusUpdatedAt,
+        receipt: update.receipt,
+        fundingError: update.status === 'PENDING_DEPOSIT' ? transfer.fundingError : undefined,
+      }
     : transfer
 }
 
@@ -211,12 +217,23 @@ export function isExpiredUnfundedNearTransfer(transfer: NearTransfer, now = Date
 }
 
 export async function getNearTransferStatus(transfer: NearTransfer): Promise<NearTransfer> {
-  const { depositAddress, depositMemo } = transfer.response.quote
+  const original = verifyNearQuote(transfer.response)
+  const { depositAddress, depositMemo } = original.quote
   if (!depositAddress) throw new Error('Missing deposit address.')
   const result = await OneClickService.getExecutionStatus(depositAddress, depositMemo)
   // Status places correlationId beside quoteResponse, unlike the quote endpoint.
   // Keep our original tracking metadata; all signed quote fields are still verified.
-  const response = verifyNearQuote({ ...result.quoteResponse, correlationId: transfer.response.correlationId })
+  const response = verifyNearQuote({
+    ...result.quoteResponse,
+    quote: {
+      ...result.quoteResponse.quote,
+      // Refunded status replaces the estimated refund fee with the charged fee
+      // but keeps the original signature. Verify against the saved signed fee;
+      // every other signed field must still match. Never use this for funding.
+      ...(result.status === 'REFUNDED' && { refundFee: original.quote.refundFee }),
+    },
+    correlationId: original.correlationId,
+  })
   if (response.signature !== transfer.response.signature) throw new Error('Status belongs to another deposit quote.')
   const updatedAt = z.string().datetime().parse(result.updatedAt)
   if (!isNewerNearStatus(updatedAt, transfer.statusUpdatedAt)) return transfer

@@ -69,6 +69,12 @@ export const nearStatusSchema = z.nativeEnum(GetExecutionStatusResponse.status)
 export const nearReceiptSchema = z.object({
   amountOut: integer.nullish().transform((value) => value ?? undefined),
   refundedAmount: integer.nullish().transform((value) => value ?? undefined),
+  refundFee: integer.nullish().transform((value) => value ?? undefined),
+  refundReason: z
+    .string()
+    .max(200)
+    .nullish()
+    .transform((value) => value ?? undefined),
   destinationChainTxHashes: z.array(z.object({ hash: z.string().regex(/^[a-zA-Z0-9_-]{20,150}$/) })).max(100),
 })
 export const nearTransferSchema = z.object({
