@@ -83,6 +83,7 @@ jobs:
       - name: dependency security regressions
         run: |
           node scripts/test-security-dependencies.cjs --workspace frontend
+          node scripts/test-dependency-advisories.cjs apps/frontend
           node scripts/test-http-cache-semantics.cjs apps/frontend
 
       - name: Across status API regression
