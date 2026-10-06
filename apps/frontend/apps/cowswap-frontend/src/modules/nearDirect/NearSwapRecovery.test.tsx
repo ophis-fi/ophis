@@ -114,3 +114,19 @@ it('does not clear a newly initiated swap that was absent when Clear from page w
   fireEvent.click(screen.getByRole('button', { name: 'Clear from page', exact: true }))
   await waitFor(() => expect(store.get(nearTransfersAtom)).toEqual([{ ...transfer, archived: true }, next]))
 })
+
+it('returns from history to expanded activity when a new swap is initiated', () => {
+  const transfer = { ...nearTransferSchema.parse(fixture), status: 'REFUNDED' as const, archived: true }
+  const next = {
+    ...transfer,
+    status: 'PENDING_DEPOSIT' as const,
+    archived: false,
+    response: { ...transfer.response, signature: 'new-swap' },
+  }
+  const { store, container } = setup([transfer])
+  fireEvent.click(screen.getByRole('button', { name: 'History (1)' }))
+  act(() => store.set(nearTransfersAtom, [transfer, next]))
+  expect(screen.getByRole('heading', { name: 'Swap activity' })).toBeTruthy()
+  expect(screen.getByText('Awaiting deposit').closest('[hidden]')).toBeNull()
+  expect(container.querySelector('details')?.open).toBe(true)
+})

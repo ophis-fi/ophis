@@ -23,7 +23,9 @@ function RecoveryTransfers({
 }): ReactNode {
   const { error: tokenError, refetch } = useAtomValue(nearTokensAtom)
   const setTransfers = useSetAtom(nearTransfersAtom)
-  const [showHistory, setShowHistory] = useState(false)
+  const [historyFor, setHistoryFor] = useState<string>()
+  const latestSignature = transfers[transfers.length - 1]?.response.signature
+  const showHistory = historyFor === latestSignature
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
   const historyButton = useRef<HTMLButtonElement>(null)
@@ -63,7 +65,11 @@ function RecoveryTransfers({
               Clear from page
             </button>
           )}
-          <button type="button" ref={historyButton} onClick={() => setShowHistory(!showHistory)}>
+          <button
+            type="button"
+            ref={historyButton}
+            onClick={() => setHistoryFor(showHistory ? undefined : latestSignature)}
+          >
             {showHistory ? 'Back to activity' : `History (${archivedCount})`}
           </button>
         </styledEl.Actions>
