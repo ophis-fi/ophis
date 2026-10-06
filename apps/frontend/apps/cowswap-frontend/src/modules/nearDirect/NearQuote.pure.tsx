@@ -21,6 +21,7 @@ export function NearQuote({ transfer }: { transfer: NearTransfer }): ReactNode {
     receipt,
     response: { quote, quoteRequest },
   } = transfer
+  const refundFee = transfer.status === 'REFUNDED' ? receipt?.refundFee : quote.refundFee
   return (
     <styledEl.Quote aria-label="Swap summary">
       <QuoteAmount label="You pay" token={source} amount={quote.amountIn} usdValue={quote.amountInUsd} />
@@ -42,11 +43,11 @@ export function NearQuote({ transfer }: { transfer: NearTransfer }): ReactNode {
             </dd>
           </>
         )}
-        {quote.refundFee && (
+        {refundFee && (
           <>
-            <dt>Fee if refunded</dt>
+            <dt>{transfer.status === 'REFUNDED' ? 'Refund fee' : 'Fee if refunded'}</dt>
             <dd>
-              <FeeAmount token={source} amount={quote.refundFee} />
+              <FeeAmount token={source} amount={refundFee} />
             </dd>
           </>
         )}
@@ -76,8 +77,15 @@ export function NearQuote({ transfer }: { transfer: NearTransfer }): ReactNode {
           Refunded: {formatUnits(receipt.refundedAmount, source.decimals)} {source.symbol}
         </p>
       )}
+      {transfer.status === 'REFUNDED' && receipt?.refundReason === 'INTENT_SUBMIT_FAILED' && (
+        <p>The provider could not execute the swap. Your deposit was refunded, less the refund fee.</p>
+      )}
       {receipt?.destinationChainTxHashes.map(({ hash }) => (
-        <QuoteAddress key={hash} label="Destination transaction" address={hash} />
+        <QuoteAddress
+          key={hash}
+          label={transfer.status === 'REFUNDED' ? 'Refund transaction' : 'Destination transaction'}
+          address={hash}
+        />
       ))}
     </styledEl.Quote>
   )

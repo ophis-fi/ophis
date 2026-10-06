@@ -31,6 +31,7 @@ import {
   requestNearQuote,
   submitNearDeposit,
   verifyNearQuote,
+  withLatestNearStatus,
 } from './nearDirect.service'
 
 it('explains unavailable quotes and preserves the provider reference without masking other errors', () => {
@@ -213,6 +214,60 @@ it('accepts the live status envelope and null pending amounts while verifying it
     expect(status.receipt?.amountOut).toBeUndefined()
     expect(status.response.correlationId).toBe(correlationId)
     result.quoteResponse.quote.amountOut = '9999999999'
+    await expect(getNearTransferStatus(transfer)).rejects.toThrow('signature')
+  } finally {
+    jest.restoreAllMocks()
+  }
+})
+
+it('recovers a refunded status with a recalculated fee without trusting changed signed routing or funding data', async () => {
+  const transfer = nearTransferSchema.parse({
+    ...monadDeposit,
+    fundingStarted: true,
+    fundingError: 'Internal Server Error',
+  })
+  const { correlationId, ...quoteResponse } = structuredClone(monadDeposit.response)
+  const result = {
+    correlationId,
+    quoteResponse: { ...quoteResponse, quote: { ...quoteResponse.quote, refundFee: '718583094070914502' } },
+    status: 'REFUNDED',
+    updatedAt: '2026-10-06T11:04:22.000Z',
+    swapDetails: {
+      amountOut: null,
+      refundedAmount: '89281416905929085498',
+      refundFee: '718583094070914502',
+      refundReason: 'INTENT_SUBMIT_FAILED',
+      destinationChainTxHashes: [{ hash: '0x' + 'ab'.repeat(32) }],
+    },
+  } as unknown as GetExecutionStatusResponse
+  const api = jest.spyOn(OneClickService, 'getExecutionStatus')
+  api.mockImplementation(() => new CancelablePromise((resolve) => resolve(result)))
+  try {
+    expect(() => verifyNearQuote({ ...result.quoteResponse, correlationId })).toThrow('signature')
+    const updated = await getNearTransferStatus(transfer)
+    expect(updated.status).toBe('REFUNDED')
+    expect(updated.receipt).toEqual({ ...result.swapDetails, amountOut: undefined })
+    expect(updated.response).toEqual(transfer.response)
+    expect(withLatestNearStatus(transfer, updated)).toMatchObject({ fundingStarted: true, fundingError: undefined })
+    for (const change of [
+      { quote: { ...result.quoteResponse.quote, depositAddress: '0x' + '22'.repeat(20) } },
+      { quote: { ...result.quoteResponse.quote, amountOut: '9999999999' } },
+      { quoteRequest: { ...result.quoteResponse.quoteRequest, recipient: '0x' + '33'.repeat(20) } },
+      { quoteRequest: { ...result.quoteResponse.quoteRequest, refundTo: '0x' + '22'.repeat(20) } },
+      { signature: 'forged' },
+    ]) {
+      api.mockImplementationOnce(
+        () =>
+          new CancelablePromise((resolve) =>
+            resolve({
+              ...result,
+              quoteResponse: { ...result.quoteResponse, ...change },
+            }),
+          ),
+      )
+      await expect(getNearTransferStatus(transfer)).rejects.toThrow('signature')
+    }
+    result.status = GetExecutionStatusResponse.status.PENDING_DEPOSIT
     await expect(getNearTransferStatus(transfer)).rejects.toThrow('signature')
   } finally {
     jest.restoreAllMocks()

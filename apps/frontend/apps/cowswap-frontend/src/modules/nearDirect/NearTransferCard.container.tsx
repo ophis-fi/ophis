@@ -39,10 +39,8 @@ export function NearTransferCard({
   const setTransfers = useSetAtom(nearTransfersAtom)
   const { data: tokens = [] } = useAtomValue(nearTokensAtom)
   const { data, error: statusError } = useAtomValue(nearTransferStatusAtom(transfer.response.signature))
-  const [now, setNow] = useState(Date.now())
-  const [txHash, setTxHash] = useState('')
+  const [now, setNow] = useState(() => Date.now())
   const [error, setError] = useState('')
-  const [busy, setBusy] = useState(false)
   useInterval(() => setNow(Date.now()), 10_000)
   useEffect(() => {
     if (data && data.statusUpdatedAt !== transfer.statusUpdatedAt) {
@@ -71,27 +69,6 @@ export function NearTransferCard({
     }
   }, [transfer.response.signature, setTransfers])
 
-  const submit = useCallback(async (): Promise<void> => {
-    if (busy) return
-    setBusy(true)
-    setError('')
-    try {
-      await submitNearDeposit(transfer, txHash.trim(), () =>
-        setTransfers((current) =>
-          current.map((item) =>
-            item.response.signature === transfer.response.signature
-              ? { ...item, fundingStarted: true, transactionHash: txHash.trim() }
-              : item,
-          ),
-        ),
-      )
-    } catch (failure) {
-      setError(nearErrorMessage(failure))
-    } finally {
-      setBusy(false)
-    }
-  }, [busy, transfer, txHash, setTransfers])
-
   return (
     <Panel aria-label="Swap tracking">
       <h3 aria-live="polite">{STATUS_LABELS[latest.status]}</h3>
@@ -100,23 +77,19 @@ export function NearTransferCard({
       {assetsVerified && allowFunding && (
         <NearFundingInstructions transfer={latest} canFund={canFund} deadline={deadline} />
       )}
-      {transfer.fundingError && <p role="alert">{transfer.fundingError}</p>}
+      {latest.status === 'PENDING_DEPOSIT' && transfer.fundingError && (
+        <p role="alert">
+          {transfer.transactionHash && transfer.fundingError === 'Internal Server Error'
+            ? 'A transaction hash was saved. Do not send again; check your wallet and retry tracking below.'
+            : transfer.fundingError}
+        </p>
+      )}
       {transfer.transactionHash && (
         <p>
           Source transaction: <code>{transfer.transactionHash}</code>
         </p>
       )}
-      {!['SUCCESS', 'REFUNDED'].includes(latest.status) && (
-        <>
-          <label>
-            Already sent? Add the source transaction hash (optional)
-            <input value={txHash} onChange={(event) => setTxHash(event.target.value)} />
-          </label>
-          <button type="button" disabled={busy || !txHash} onClick={submit}>
-            Track transaction
-          </button>
-        </>
-      )}
+      {!['SUCCESS', 'REFUNDED'].includes(latest.status) && <NearDepositTracking transfer={latest} />}
       {isExpiredUnfundedNearTransfer(latest, now) && (
         <button type="button" onClick={removeExpired}>
           Remove expired quote
@@ -129,6 +102,47 @@ export function NearTransferCard({
       )}
       <small>Swap reference: {transfer.response.correlationId}</small>
     </Panel>
+  )
+}
+
+function NearDepositTracking({ transfer }: { transfer: NearTransfer }): ReactNode {
+  const setTransfers = useSetAtom(nearTransfersAtom)
+  const [txHash, setTxHash] = useState<string>()
+  const depositTxHash = (txHash ?? transfer.transactionHash ?? '').trim()
+  const [error, setError] = useState('')
+  const [busy, setBusy] = useState(false)
+  const submit = useCallback(async (): Promise<void> => {
+    if (busy) return
+    setBusy(true)
+    setError('')
+    try {
+      await submitNearDeposit(transfer, depositTxHash, () =>
+        setTransfers((current) =>
+          current.map((item) =>
+            item.response.signature === transfer.response.signature
+              ? { ...item, fundingStarted: true, transactionHash: depositTxHash }
+              : item,
+          ),
+        ),
+      )
+    } catch (failure) {
+      setError(nearErrorMessage(failure))
+    } finally {
+      setBusy(false)
+    }
+  }, [busy, transfer, depositTxHash, setTransfers])
+
+  return (
+    <>
+      <label>
+        Already sent? Add the source transaction hash (optional)
+        <input value={txHash ?? transfer.transactionHash ?? ''} onChange={(event) => setTxHash(event.target.value)} />
+      </label>
+      <button type="button" disabled={busy || !depositTxHash} onClick={submit}>
+        Track transaction
+      </button>
+      {error && <p role="alert">{error}</p>}
+    </>
   )
 }
 
