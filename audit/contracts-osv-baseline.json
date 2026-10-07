@@ -13,7 +13,7 @@
     "braces@3.0.3 GHSA-vfj7-8cjw-p6xm high"
   ],
   "notes": [
-    "Reviewed 2026-10-04: braces@3.0.3 is reachable only through repository/operator-controlled build, test and watch globs, not deployed contract or web inputs. See audit/dependency-review-2026-10-04.md. Re-review by 2026-10-18 with the frontend/docs exceptions; remove this exact fingerprint and reduce the high ceiling when a compatible upstream fix ships.",
+    "Reviewed 2026-10-04: braces@3.0.3 is reachable only through repository/operator-controlled build, test and watch globs, not deployed contract or web inputs. See audit/dependency-review-2026-10-04.md. Re-reviewed 2026-10-07 (audit/dependency-review-2026-10-07.md): still no fixed release. Re-review by 2026-11-17 with the frontend/docs exceptions; remove this exact fingerprint and reduce the high ceiling when a compatible upstream fix ships.",
     "Reviewed 2026-09-20: removal of unused Safe/Slack packages, Waffle 4/Hardhat-Waffle 2.0.6 migration and compatible overrides reduced 21 findings to 6. No new advisories were accepted.",
     "The five OpenZeppelin advisories retain the prior fixture-only reachability assessment; the affected ERC165Checker, Initializable, TimelockController and TransparentUpgradeableProxy components are not imported by production contracts. The patch release changes fingerprints only. Elliptic 6.6.1 has no fixed compatible release; signing compatibility and negative-message rejection are tested.",
     "Exact package/version/advisory/severity fingerprints and severity ceilings both gate CI. A new advisory cannot consume budget freed by an unrelated fix."

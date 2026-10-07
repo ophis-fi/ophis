@@ -18,7 +18,7 @@
     "cf-typegen": "wrangler types"
   },
   "dependencies": {
-    "@modelcontextprotocol/sdk": "^1.29.0",
+    "@modelcontextprotocol/sdk": "^1.31.0",
     "@ophis/sdk": "workspace:*",
     "agents": "^0.13.3",
     "tsx": "^4.20.6",
