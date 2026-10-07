@@ -8,6 +8,9 @@
 // The ported logic is deliberately narrowed for Ophis:
 //   - the sweep destination is pinned to the immutable fee Safe (the Odos
 //     original accepted an arbitrary `dest`);
+//   - sweepable ERC20s are owner-allowlisted so the hot key cannot name an
+//     arbitrary contract as the interaction target (the Odos original swept
+//     any caller-supplied token);
 //   - consolidation venues and output tokens are owner-allowlisted (the Odos
 //     original executed arbitrary path definitions on any executor);
 //   - `amountOutMin > 0` is mandatory (the Odos original accepted 0);
@@ -28,8 +31,13 @@ import {ReentrancyGuard} from "./mixins/ReentrancyGuard.sol";
 /// driver-submitter key, split across two trust tiers:
 ///   1. `sweep` (liquidator role, hot key): move accrued CIP-75 fees from the
 ///      Ophis OP Settlement contract to the IMMUTABLE fee Safe. Safe for a hot
-///      key because the destination is pinned and unbypassable, the worst a
-///      compromised key can do is move fees to their intended home.
+///      key because (a) the destination is pinned and unbypassable and (b) the
+///      ERC20 interaction target — the token being swept — must be on the
+///      owner's `sweepTokenAllowed` set, so a compromised key can neither
+///      redirect fees nor name an arbitrary contract for the Settlement (the
+///      solver) to call. Native ETH needs no allowlist: its interaction target
+///      is the fee Safe itself, not a token. The worst a compromised key can
+///      do is move allowlisted fees to their intended home.
 ///   2. `consolidate` (OWNER only, the protocol Safe): swap multi-denomination
 ///      fee dust in place into an allowlisted output token. This routes through
 ///      an arbitrary allowlisted venue with caller-supplied calldata and a
@@ -56,6 +64,9 @@ import {ReentrancyGuard} from "./mixins/ReentrancyGuard.sol";
 ///
 /// Funds-flow guarantees:
 ///   - swept funds can ONLY go to the immutable `feeSafe`;
+///   - sweep ERC20 interaction targets are restricted to the owner's
+///     `sweepTokenAllowed` set (native ETH exempt: its target is `feeSafe`),
+///     so the hot key cannot make the Settlement call an unvetted contract;
 ///   - consolidation output can ONLY accrue inside the Settlement contract
 ///     (enforced by the balance-difference floor, not by trusting the venue);
 ///   - only the owner Safe can trigger a consolidation (venue routing is not a
@@ -79,6 +90,11 @@ contract OphisFeeLiquidator is ReentrancyGuard {
 
     /// @notice The fee-ops key. address(0) pauses the ops-key path.
     address public liquidator;
+    /// @notice ERC20s the owner has approved for `sweep` (ships empty: the
+    /// owner allowlists each fee token, mirroring `venueAllowed`). Native ETH
+    /// is not listed here — its sweep target is the immutable `feeSafe`, not a
+    /// token, so it carries no arbitrary-call surface and is always sweepable.
+    mapping(address => bool) public sweepTokenAllowed;
     /// @notice Consolidation venues the owner has approved (ships empty:
     /// sweep-only posture until a Safe transaction enables a venue).
     mapping(address => bool) public venueAllowed;
@@ -94,6 +110,7 @@ contract OphisFeeLiquidator is ReentrancyGuard {
     }
 
     event LiquidatorChanged(address indexed newLiquidator);
+    event SweepTokenSet(address indexed token, bool allowed);
     event VenueSet(address indexed venue, bool allowed);
     event OutputTokenSet(address indexed token, bool allowed);
     event Swept(address indexed token, uint256 amount);
@@ -137,6 +154,15 @@ contract OphisFeeLiquidator is ReentrancyGuard {
         emit LiquidatorChanged(newLiquidator);
     }
 
+    /// @notice Allowlist (or remove) an ERC20 for `sweep`. Native ETH
+    /// (address(0)) is rejected: it is always sweepable and needs no entry
+    /// (its sweep target is the fee Safe, not a token contract).
+    function setSweepToken(address token, bool allowed) external onlyOwner {
+        require(token != NATIVE_ETH, "OFL: native needs no allowlist");
+        sweepTokenAllowed[token] = allowed;
+        emit SweepTokenSet(token, allowed);
+    }
+
     function setVenue(address venue, bool allowed) external onlyOwner {
         require(venue != address(0), "OFL: venue is zero");
         venueAllowed[venue] = allowed;
@@ -153,7 +179,9 @@ contract OphisFeeLiquidator is ReentrancyGuard {
 
     /// @notice Sweep accrued fees from the Settlement contract to the fee
     /// Safe. `amounts[i] == 0` sweeps the full balance of `tokens[i]`;
-    /// `tokens[i] == address(0)` sweeps native ETH.
+    /// `tokens[i] == address(0)` sweeps native ETH. Every non-native token
+    /// must be on `sweepTokenAllowed` (set by the owner), so the hot key can
+    /// only make the Settlement call owner-vetted token contracts.
     /// @dev Post-settlement, every swept token's Settlement balance must have
     /// decreased by exactly the swept amount. This catches false-returning
     /// ERC20s (Settlement's interaction executor does not inspect return
@@ -174,6 +202,13 @@ contract OphisFeeLiquidator is ReentrancyGuard {
             for (uint256 j = 0; j < i; j++) {
                 require(tokens[j] != tokens[i], "OFL: duplicate token");
             }
+            // Native ETH targets the fee Safe (no arbitrary call); every other
+            // token becomes an interaction target the Settlement calls, so it
+            // must be owner-vetted.
+            require(
+                tokens[i] == NATIVE_ETH || sweepTokenAllowed[tokens[i]],
+                "OFL: sweep token not allowed"
+            );
             balancesBefore[i] = _settlementBalance(tokens[i]);
             uint256 amount = amounts[i];
             if (amount == 0) {
