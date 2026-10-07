@@ -315,7 +315,7 @@
     "lint-staged": "^16.2.7",
     "next-sitemap": "^4.2.3",
     "node-stdlib-browser": "^1.2.0",
-    "nx": "22.7.9",
+    "nx": "22.7.10",
     "nx-cloud": "19.1.0",
     "patch-package": "^8.0.0",
     "prettier": "~3.6.2",
