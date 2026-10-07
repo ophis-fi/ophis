@@ -1,5 +1,5 @@
 {
-  "moderate": 3,
+  "moderate": 4,
   "high": 2,
   "critical": 1,
   "low": 1,
@@ -10,9 +10,11 @@
     "@openzeppelin/contracts@3.4.2-solc-0.7 GHSA-fg47-3c2x-m2wr critical",
     "@openzeppelin/contracts@3.4.2-solc-0.7 GHSA-mx2q-35m2-x2rh moderate",
     "elliptic@6.6.1 GHSA-848j-6mx2-7j84 low",
-    "braces@3.0.3 GHSA-vfj7-8cjw-p6xm high"
+    "braces@3.0.3 GHSA-vfj7-8cjw-p6xm high",
+    "pbkdf2@3.1.6 GHSA-477h-4r7f-fvrx moderate"
   ],
   "notes": [
+    "Reviewed 2026-10-07: pbkdf2@3.1.6 GHSA-477h-4r7f-fvrx (moderate) — reachable only via ganache's test-simulation path (PBKDF2 key derivation in the in-process EVM), not deployed contract code. Advisory added to OSV database after the 2026-10-04 baseline cut; contracts/yarn.lock not touched by this PR.",
     "Reviewed 2026-10-04: braces@3.0.3 is reachable only through repository/operator-controlled build, test and watch globs, not deployed contract or web inputs. See audit/dependency-review-2026-10-04.md. Re-review by 2026-10-18 with the frontend/docs exceptions; remove this exact fingerprint and reduce the high ceiling when a compatible upstream fix ships.",
     "Reviewed 2026-09-20: removal of unused Safe/Slack packages, Waffle 4/Hardhat-Waffle 2.0.6 migration and compatible overrides reduced 21 findings to 6. No new advisories were accepted.",
     "The five OpenZeppelin advisories retain the prior fixture-only reachability assessment; the affected ERC165Checker, Initializable, TimelockController and TransparentUpgradeableProxy components are not imported by production contracts. The patch release changes fingerprints only. Elliptic 6.6.1 has no fixed compatible release; signing compatibility and negative-message rejection are tested.",
