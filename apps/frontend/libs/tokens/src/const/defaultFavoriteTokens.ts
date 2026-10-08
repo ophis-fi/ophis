@@ -1,4 +1,8 @@
 import {
+  AAPLON_MAINNET,
+  AMZNON_MAINNET,
+  NVDAON_MAINNET,
+  EURC_MAINNET,
   ARC_CHAIN_ID,
   ARC_CIRBTC,
   ARC_USYC,
@@ -8,7 +12,6 @@ import {
   BTCB_BNB,
   BUSD_BNB,
   CBBTC_BASE,
-  DAI,
   DAI_ARBITRUM_ONE,
   DAI_BASE,
   DAI_BNB,
@@ -17,7 +20,6 @@ import {
   EURE_BASE,
   EURE_GNOSIS_CHAIN,
   EURE_LINEA,
-  EURE_MAINNET,
   EURE_POLYGON,
   GNO_GNOSIS_CHAIN,
   TokenWithLogo,
@@ -38,7 +40,6 @@ import {
   USDT_LINEA,
   USDT_PLASMA,
   USDT_POLYGON,
-  WBTC,
   WBTC_ARBITRUM_ONE,
   WBTC_GNOSIS_CHAIN,
   WETH_GNOSIS_CHAIN,
@@ -72,12 +73,12 @@ const tokensListToMap = (list: (TokenWithLogo | null)[]): TokensMap =>
 
 export const DEFAULT_FAVORITE_TOKENS: Record<SupportedChainId, TokensMap> = {
   [SupportedChainId.MAINNET]: tokensListToMap([
-    DAI,
-    USDC_MAINNET,
     USDT,
-    WBTC,
-    WRAPPED_NATIVE_CURRENCIES[SupportedChainId.MAINNET],
-    EURE_MAINNET,
+    USDC_MAINNET,
+    AAPLON_MAINNET,
+    AMZNON_MAINNET,
+    NVDAON_MAINNET,
+    EURC_MAINNET,
   ]),
   [SupportedChainId.GNOSIS_CHAIN]: tokensListToMap([
     USDCe_GNOSIS_CHAIN,
