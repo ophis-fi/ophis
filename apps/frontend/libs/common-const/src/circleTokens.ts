@@ -1,6 +1,7 @@
 import { areAddressesEqual } from '@cowprotocol/cow-sdk'
 
 import { ARC_CIRBTC, ARC_EURC, ARC_USDC, ARC_USYC } from './arc.const'
+import { EURC_MAINNET } from './mainnetTokens.const'
 import {
   USDC_ARBITRUM_ONE,
   USDC_AVALANCHE,
@@ -40,7 +41,7 @@ const CIRCLE_TOKENS = [
   USDC_LINEA,
   USDC_POLYGON,
   { chainId: 9745, address: '0x2d661C89D812261039AF9764eceaAee884f5F67F', decimals: 6, symbol: 'USDC' },
-  { chainId: 1, address: '0x1aBaEA1f7C830bD89Acc67eC4af516284b1bC33c', decimals: 6, symbol: 'EURC' },
+  EURC_MAINNET,
   { chainId: 8453, address: '0x60a3E35Cc302bFA44Cb288Bc5a4F316Fdb1adb42', decimals: 6, symbol: 'EURC' },
   { chainId: 43114, address: '0xC891EB4cbdEFf6e073e859e987815Ed1505c2ACD', decimals: 6, symbol: 'EURC' },
   { chainId: 9745, address: '0x3EE196E78d4d4248b849B8E1C7F44C5457FAFD2C', decimals: 6, symbol: 'EURC' },

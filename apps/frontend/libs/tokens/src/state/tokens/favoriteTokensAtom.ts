@@ -21,6 +21,13 @@ import { environmentAtom } from '../environmentAtom'
 import { migrateArcFavorites } from '../migrations/migrateArcFavorites'
 import { migrateMainnetFavorites } from '../migrations/migrateMainnetFavorites'
 
+// Upgrade snapshots in order before creating the persisted atoms.
+migrateFavoriteTokensAtom('favouriteTokensAtom:v1', 'favoriteTokensAtom:v2')
+migrateFavoriteTokensAtomV2toV3('favoriteTokensAtom:v2', 'favoriteTokensAtom:v3')
+migrateFavoriteTokensAtomV3toV4('favoriteTokensAtom:v3', 'favoriteTokensAtom:v4')
+migrateArcFavorites()
+migrateMainnetFavorites()
+
 type FavoriteTokens = Record<SupportedChainId, TokensMap>
 
 const EMPTY_FAVORITE_TOKENS: TokenWithLogo[] = []
@@ -184,21 +191,3 @@ export function migrateFavoriteTokensAtomV3toV4(oldStorageKey: string, newStorag
     console.error(`Failed to migrate favorite tokens from '${oldStorageKey}' to '${newStorageKey}'`, e)
   }
 }
-
-// TODO: Remove after 2024-09-15
-// Migrate to the new USDC.e on gnosis chain AND update the localStorage key to the US spelling
-migrateFavoriteTokensAtom('favouriteTokensAtom:v1', 'favoriteTokensAtom:v2')
-
-// 2026-06-03: carry v2 favorites to v3 minus the CoW governance token. Runs after
-// the v1 -> v2 migration so a user still on v1 is upgraded v1 -> v2 -> v3 in order.
-migrateFavoriteTokensAtomV2toV3('favoriteTokensAtom:v2', 'favoriteTokensAtom:v3')
-
-// 2026-07-09: carry v3 favorites to v4 plus the new EURe defaults. Chain order:
-// v1 -> v2 -> v3 -> v4, each step idempotent.
-migrateFavoriteTokensAtomV3toV4('favoriteTokensAtom:v3', 'favoriteTokensAtom:v4')
-
-// Arc defaults must reach returning users without discarding their custom favorites.
-migrateArcFavorites()
-
-// Refresh Ethereum shortcuts while retaining custom favorites and every other chain.
-migrateMainnetFavorites()

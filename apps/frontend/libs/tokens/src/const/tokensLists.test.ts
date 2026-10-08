@@ -1,8 +1,9 @@
-import { SupportedChainId } from '@cowprotocol/cow-sdk'
+import { areAddressesEqual, SupportedChainId } from '@cowprotocol/cow-sdk'
 
 import { existsSync, readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 
+import { DEFAULT_FAVORITE_TOKENS } from './defaultFavoriteTokens'
 import {
   COINBASE_TOKENIZED_STOCKS_LIST_SOURCE,
   DEFAULT_TOKENS_LISTS,
@@ -125,5 +126,17 @@ it('ships the verified Mt Pelerin additions on Ethereum with bundled logos', asy
       }),
     )
     expect(existsSync(resolve(publicDir, `logos/token-${logo}.svg`))).toBe(true)
+  }
+})
+
+it('keeps Ethereum favorite identities consistent with the canonical token catalog', () => {
+  const catalog: { tokens: { chainId: number; address: string; symbol: string; decimals: number }[] } = JSON.parse(
+    readFileSync(resolve(__dirname, '../../../../apps/cowswap-frontend/public/token-lists/ophis.json'), 'utf8'),
+  )
+  for (const favorite of Object.values(DEFAULT_FAVORITE_TOKENS[SupportedChainId.MAINNET])) {
+    const listed = catalog.tokens.find(
+      (token) => token.chainId === favorite.chainId && areAddressesEqual(token.address, favorite.address),
+    )
+    expect(listed).toMatchObject({ symbol: favorite.symbol, decimals: favorite.decimals })
   }
 })
