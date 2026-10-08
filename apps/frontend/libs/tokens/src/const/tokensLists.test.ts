@@ -1,6 +1,6 @@
 import { SupportedChainId } from '@cowprotocol/cow-sdk'
 
-import { readFileSync } from 'node:fs'
+import { existsSync, readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 
 import {
@@ -82,7 +82,7 @@ it('ships zero-decimal MPS in the default Ethereum and Gnosis lists', async () =
     readFileSync(resolve(__dirname, '../../../../apps/cowswap-frontend/public/token-lists/mt-pelerin.json'), 'utf8'),
   )
   await validateTokenList(list)
-  expect(list.tokens).toEqual([
+  expect(list.tokens.filter((token: { symbol: string }) => token.symbol === 'MPS')).toEqual([
     {
       chainId: 1,
       address: '0x96c645D3D3706f793Ef52C19bBACe441900eD47D',
@@ -102,5 +102,28 @@ it('ships zero-decimal MPS in the default Ethereum and Gnosis lists', async () =
     expect(
       DEFAULT_TOKENS_LISTS[chainId].find((entry) => entry.source.endsWith('/mt-pelerin.json'))?.enabledByDefault,
     ).toBe(true)
+  }
+})
+
+it('ships the verified Mt Pelerin additions on Ethereum with bundled logos', async () => {
+  const publicDir = resolve(__dirname, '../../../../apps/cowswap-frontend/public')
+  const list = JSON.parse(readFileSync(resolve(publicDir, 'token-lists/mt-pelerin.json'), 'utf8'))
+  await validateTokenList(list)
+  expect(list.tokens).toHaveLength(5)
+  for (const [address, symbol, decimals, logo] of [
+    ['0xE5F130253fF137f9917C0107659A4c5262abf6b0', 'svZCHF', 18, 'svzchf'],
+    ['0x4933A85b5b5466Fbaf179F72D3DE273c287EC2c2', 'EURAU', 6, 'eurau'],
+    ['0xBD4DfC058eb95b8De5ceAF39966A1a70F5556F78', 'CHFAU', 6, 'chfau'],
+  ] as const) {
+    expect(list.tokens).toContainEqual(
+      expect.objectContaining({
+        chainId: 1,
+        address,
+        symbol,
+        decimals,
+        logoURI: `https://swap.ophis.fi/logos/token-${logo}.svg`,
+      }),
+    )
+    expect(existsSync(resolve(publicDir, `logos/token-${logo}.svg`))).toBe(true)
   }
 })

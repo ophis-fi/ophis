@@ -19,6 +19,7 @@ import { DEFAULT_FAVORITE_TOKENS } from '../../const/defaultFavoriteTokens'
 import { TokensMap } from '../../types'
 import { environmentAtom } from '../environmentAtom'
 import { migrateArcFavorites } from '../migrations/migrateArcFavorites'
+import { migrateMainnetFavorites } from '../migrations/migrateMainnetFavorites'
 
 type FavoriteTokens = Record<SupportedChainId, TokensMap>
 
@@ -36,7 +37,7 @@ const EMPTY_FAVORITE_TOKENS: TokenWithLogo[] = []
 // existing users without a key bump; migrateFavoriteTokensAtomV3toV4 carries the
 // v3 selection forward PLUS the new EURe entries.
 export const favoriteTokensAtom = atomWithStorage<FavoriteTokens>(
-  'favoriteTokensAtom:v5',
+  'favoriteTokensAtom:v6',
   DEFAULT_FAVORITE_TOKENS,
   getJotaiMergerStorage(),
 )
@@ -198,3 +199,6 @@ migrateFavoriteTokensAtomV3toV4('favoriteTokensAtom:v3', 'favoriteTokensAtom:v4'
 
 // Arc defaults must reach returning users without discarding their custom favorites.
 migrateArcFavorites()
+
+// Refresh Ethereum shortcuts while retaining custom favorites and every other chain.
+migrateMainnetFavorites()

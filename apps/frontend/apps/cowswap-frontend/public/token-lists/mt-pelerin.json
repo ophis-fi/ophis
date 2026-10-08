@@ -1,9 +1,9 @@
 {
   "name": "Mt Pelerin",
-  "timestamp": "2026-09-16T14:00:00Z",
+  "timestamp": "2026-10-08T12:00:00Z",
   "version": {
     "major": 1,
-    "minor": 0,
+    "minor": 1,
     "patch": 0
   },
   "tokens": [
@@ -20,6 +20,30 @@
       "name": "Mt Pelerin Shares",
       "symbol": "MPS",
       "decimals": 0
+    },
+    {
+      "chainId": 1,
+      "address": "0xE5F130253fF137f9917C0107659A4c5262abf6b0",
+      "name": "SavingsVault ZCHF",
+      "symbol": "svZCHF",
+      "decimals": 18,
+      "logoURI": "https://swap.ophis.fi/logos/token-svzchf.svg"
+    },
+    {
+      "chainId": 1,
+      "address": "0x4933A85b5b5466Fbaf179F72D3DE273c287EC2c2",
+      "name": "AllUnity EUR",
+      "symbol": "EURAU",
+      "decimals": 6,
+      "logoURI": "https://swap.ophis.fi/logos/token-eurau.svg"
+    },
+    {
+      "chainId": 1,
+      "address": "0xBD4DfC058eb95b8De5ceAF39966A1a70F5556F78",
+      "name": "AllUnity CHF",
+      "symbol": "CHFAU",
+      "decimals": 6,
+      "logoURI": "https://swap.ophis.fi/logos/token-chfau.svg"
     }
   ]
 }
