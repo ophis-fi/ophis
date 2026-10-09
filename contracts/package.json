@@ -59,7 +59,8 @@
     "uuid": "^11.1.1",
     "secp256k1": "^4.0.5",
     "http-cache-semantics": "^4.3.0",
-    "pbkdf2": "^3.1.7"
+    "pbkdf2": "^3.1.7",
+    "handlebars": "^4.7.10"
   },
   "peerDependencies": {
     "ethers": "^5.4.0"
