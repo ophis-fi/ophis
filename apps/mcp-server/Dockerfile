@@ -5,7 +5,7 @@
 # workerd — the production Cloudflare Worker is unaffected (it ships from
 # src/index.ts via wrangler, not this image). The server speaks MCP over stdio.
 
-FROM node:24-alpine AS deps
+FROM node:25-alpine AS deps
 WORKDIR /app
 RUN corepack enable && corepack prepare pnpm@9.12.0 --activate
 COPY pnpm-workspace.yaml pnpm-lock.yaml package.json ./
@@ -17,7 +17,7 @@ COPY packages/sdk/package.json packages/sdk/
 # have JavaScript fallbacks, so third-party lifecycle scripts are unnecessary.
 RUN pnpm install --frozen-lockfile --ignore-scripts --filter @ophis/mcp-server...
 
-FROM node:24-alpine AS build
+FROM node:25-alpine AS build
 WORKDIR /app
 RUN corepack enable && corepack prepare pnpm@9.12.0 --activate
 COPY --from=deps /app /app
@@ -29,7 +29,7 @@ COPY tsconfig.base.json ./
 # package's "main" (./dist/index.js), so it must be built before runtime.
 RUN pnpm --filter @ophis/sdk build
 
-FROM node:24-alpine AS runtime
+FROM node:25-alpine AS runtime
 WORKDIR /app
 ENV COREPACK_HOME=/opt/corepack
 RUN apk add --no-cache tini && corepack enable && corepack prepare pnpm@9.12.0 --activate
