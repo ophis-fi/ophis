@@ -168,6 +168,12 @@ jobs:
           cargo test --offline --locked -p e2e --test e2e \
             wrapper::local_node_unsupported_wrappers -- --ignored --exact --test-threads=1
 
+      - name: Provisioned partner fees settle while public registration stays closed
+        working-directory: apps/backend
+        run: |
+          cargo test --offline --locked -p e2e --test e2e \
+            partner_fee_registry::local_node_provisioned_registry -- --ignored --exact --test-threads=1
+
       # Lightweight Rust STATIC analysis on exactly the Ophis-diverged money-path
       # crates. CodeQL does not cover Rust here (codeql-config paths-ignore
       # excludes apps/backend), and cargo-audit/deny are dependency-advisory

@@ -451,19 +451,10 @@ pub async fn run(config: Configuration) {
     // them.
     let fast_quoter = create_quoter(fast_price_estimator, QuoteVerificationMode::Unverified);
 
-    // Partner-fee recipient enforcement policy (partner-fees Phase A). The
-    // `registration-enabled` flag is the MASTER SWITCH for the whole feature: OFF
-    // (default, every checked-in config) means the registry is neither loaded nor
-    // consulted, and the app-data validator uses the compile-time Ophis-only
-    // policy, so ONLY the always-allowed Ophis partner-fee Safe passes and an
-    // active partner_fee_recipients row is NOT honored. That reproduces the
-    // pre-registry behavior byte for byte. ON wires the live 30s registry
-    // snapshot as the ingress source of truth for third-party recipients (the
-    // per-row `status` suspend is then the granular control).
-    let recipient_policy: Arc<dyn app_data::RecipientPolicy> = if config
-        .partner_fee_registry
-        .registration_enabled
-    {
+    // Honor provisioned recipients at ingress independently of public registration.
+    // Both services must use the same enablement flags; neither flag set retains
+    // the Ophis-only policy. Suspended recipients disappear on refresh.
+    let recipient_policy: Arc<dyn app_data::RecipientPolicy> = if config.partner_fee_registry.registry_active() {
         let partner_fee_registry = Arc::new(PartnerFeeRegistry::empty());
         let pool = postgres_write.pool.clone();
         let loader = move || {

@@ -535,18 +535,10 @@ pub async fn run(config: Configuration, shutdown_controller: ShutdownController)
         config.price_estimation.quote_timeout,
     ));
 
-    // Partner-fee recipient enforcement policy (partner-fees Phase A). The
-    // `registration-enabled` flag is the MASTER SWITCH (kept in lockstep with the
-    // orderbook): OFF (default) means the autopilot neither loads nor consults the
-    // registry and uses the compile-time Ophis-only policy, so an active
-    // partner_fee_recipients row is NOT honored and behavior matches pre-registry
-    // main exactly. ON wires the same 30s registry snapshot the orderbook uses, as
-    // the defense-in-depth filter over partner-fee policies (drops fees to
-    // unregistered/suspended recipients on the next refresh).
-    let recipient_policy: Arc<dyn app_data::RecipientPolicy> = if config
-        .partner_fee_registry
-        .registration_enabled
-    {
+    // Honor provisioned recipients at settlement independently of public registration.
+    // Both services must use the same enablement flags; neither flag set retains
+    // the Ophis-only policy. Suspended recipients disappear on refresh.
+    let recipient_policy: Arc<dyn app_data::RecipientPolicy> = if config.partner_fee_registry.registry_active() {
         let partner_fee_registry = Arc::new(PartnerFeeRegistry::empty());
         let pool = db_write.pool.clone();
         let loader = move || {

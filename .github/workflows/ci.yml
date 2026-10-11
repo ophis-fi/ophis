@@ -390,6 +390,8 @@ jobs:
               --entrypoint promtool prom/prometheus:v3.0.1 check rules /w/alerts.yml
             echo "::endgroup::"
           done
+      - name: verify preserved OP Alertmanager routing
+        run: bash infra/optimism-mainnet/observability/test-alertmanager-routes.sh
       - name: run alert unit tests where they exist
         run: |
           found=0

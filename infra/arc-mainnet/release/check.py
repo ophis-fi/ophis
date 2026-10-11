@@ -50,6 +50,9 @@ def main():
         reference = HERE.parents[1] / f'{chain}-mainnet/configs' / filename
         assert autopilot['fee-policies'] == tomllib.loads(reference.read_text())['fee-policies'], chain
     orderbook = tomllib.loads((OUT / 'orderbook.toml').read_text())
+    for config in [autopilot, orderbook]:
+        assert config['partner-fee-registry']['registry-enabled'] is True
+        assert config['partner-fee-registry']['registration-enabled'] is False
     # Two bounded native-price legs must retain usable solver time after
     # driver/solver deadline margins; sharing avoids duplicate cold probes.
     assert autopilot['price-estimation']['quote-timeout'] == '10s'

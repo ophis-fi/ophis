@@ -23,15 +23,25 @@ pub struct PartnerFeeRegistryConfig {
     #[serde(with = "humantime_serde", default = "default_refresh_interval")]
     pub refresh_interval: Duration,
 
-    /// Master switch for the self-serve registration endpoint
-    /// (`POST /api/v1/partners`). SHIPS DISABLED: `false` (the default and every
-    /// checked-in config) makes the endpoint return 403 and no third party can
-    /// register, so the registry stays empty and only the always-allowed Ophis
-    /// Safe passes partner-fee validation, the exact pre-registry behavior.
-    /// Flip on after the internal test partner order settles. Ignored by the
-    /// autopilot (it only reads the snapshot; it never registers).
+    /// Opens public POST /api/v1/partners; disabled by default. For backward
+    /// compatibility, enabling registration also enables registry enforcement.
     #[serde(default)]
     pub registration_enabled: bool,
+
+    /// Honors operator-provisioned recipients without opening registration.
+    /// Defaults to false; keep this identical in orderbook and autopilot.
+    #[serde(default)]
+    pub registry_enabled: bool,
+}
+
+impl PartnerFeeRegistryConfig {
+    /// Whether the registry snapshot is loaded and enforced: the new
+    /// `registry_enabled` OR the legacy `registration_enabled` (which implied
+    /// enforcement before the two were separated). Do NOT use this to gate
+    /// `POST /api/v1/partners`; that is `registration_enabled` alone.
+    pub fn registry_active(&self) -> bool {
+        self.registry_enabled || self.registration_enabled
+    }
 }
 
 impl Default for PartnerFeeRegistryConfig {
@@ -39,6 +49,7 @@ impl Default for PartnerFeeRegistryConfig {
         Self {
             refresh_interval: default_refresh_interval(),
             registration_enabled: false,
+            registry_enabled: false,
         }
     }
 }
@@ -51,7 +62,11 @@ mod tests {
     fn defaults_ship_registration_disabled() {
         let config: PartnerFeeRegistryConfig = toml::from_str("").unwrap();
         assert!(!config.registration_enabled);
+        assert!(!config.registry_enabled);
+        assert!(!config.registry_active());
         assert_eq!(config.refresh_interval, Duration::from_secs(30));
+        let default = PartnerFeeRegistryConfig::default();
+        assert!(!default.registration_enabled && !default.registry_enabled);
     }
 
     #[test]
@@ -60,15 +75,53 @@ mod tests {
             r#"
             refresh-interval = "10s"
             registration-enabled = true
+            registry-enabled = true
             "#,
         )
         .unwrap();
         assert!(config.registration_enabled);
+        assert!(config.registry_enabled);
         assert_eq!(config.refresh_interval, Duration::from_secs(10));
     }
 
     #[test]
+    fn flag_combinations() {
+        // (registration_enabled, registry_enabled) -> registry_active
+        for (registration, registry, active) in [
+            (false, false, false),
+            (true, false, true), // legacy: registration implies enforcement
+            (false, true, true), // operator-provisioned, public POST stays off
+            (true, true, true),
+        ] {
+            let config: PartnerFeeRegistryConfig = toml::from_str(&format!(
+                "registration-enabled = {registration}\nregistry-enabled = {registry}"
+            ))
+            .unwrap();
+            assert_eq!(config.registration_enabled, registration);
+            assert_eq!(config.registry_enabled, registry);
+            assert_eq!(config.registry_active(), active);
+        }
+    }
+
+    #[test]
+    fn operated_op_configs_enforce_registry_without_public_registration() {
+        for document in [
+            include_str!("../../../../../infra/optimism-mainnet/configs/orderbook.toml"),
+            include_str!("../../../../../infra/optimism-mainnet/configs/autopilot.toml"),
+        ] {
+            let config: toml::Value = toml::from_str(document).unwrap();
+            let registry: PartnerFeeRegistryConfig =
+                config["partner-fee-registry"].clone().try_into().unwrap();
+            assert!(registry.registry_active());
+            assert!(!registry.registration_enabled);
+        }
+    }
+
+    #[test]
     fn rejects_unknown_fields() {
-        assert!(toml::from_str::<PartnerFeeRegistryConfig>("registration-enabledd = true").is_err());
+        assert!(
+            toml::from_str::<PartnerFeeRegistryConfig>("registration-enabledd = true").is_err()
+        );
+        assert!(toml::from_str::<PartnerFeeRegistryConfig>("registry-enabledd = true").is_err());
     }
 }

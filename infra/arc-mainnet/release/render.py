@@ -70,7 +70,12 @@ def render(active=False):
     # Trade quotes and executable auctions still compete across all six lanes.
     native_estimators = ', '.join('[' + ', '.join(f'{{type = "Driver", name = "{name}", url = "http://driver:11088/{name}"}}' for name in stage) + ']' for stage in [lanes[:2], lanes[2:]])
     contracts = '\n'.join(f'{key} = "{c[value]}"' for key, value in [('settlement', 'settlement'), ('balances', 'Balances'), ('signatures', 'Signatures'), ('hooks', 'HooksTrampoline'), ('balancer-v2-vault', 'vault')]) + f'\nnative-token = "{USDC}"\n'
-    common = f'''[database]
+    common = f'''[partner-fee-registry]
+# Preserve operator-provisioned recipients; public registration remains closed.
+registry-enabled = true
+registration-enabled = false
+refresh-interval = "30s"
+[database]
 write-url = "postgresql://arc:{password}@postgres:5432/arc"
 max-connections = 4
 [order-quoting]

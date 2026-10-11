@@ -8,9 +8,8 @@
 //! immutable (a second registration of the same recipient is a 409).
 //!
 //! SHIPS DISABLED: when `partner_fee_registration_enabled` is false (the default
-//! and every checked-in config) the endpoint returns 403 and nothing is written,
-//! so the registry stays empty and only the always-allowed Ophis Safe passes
-//! partner-fee validation.
+//! and every checked-in config) the endpoint returns 403 and nothing is written.
+//! Operator-provisioned recipients can still be enforced with registry-enabled.
 
 use {
     crate::{

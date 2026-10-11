@@ -10,10 +10,11 @@ public RPC requests, QuickNode credits, dRPC, PartnerPage key or paid service.
 Install the frontend's locked dependencies (`pnpm install --frozen-lockfile` from
 `apps/frontend`) and the repository's pinned Rust toolchain. Docker is needed for
 Solidity compilation and the disposable database. Build the existing migration
-image if it is absent:
+image from a clean committed backend/infra tree if it is absent (run from the repository root):
 
 ```sh
-docker build --target migrations -t backend-migrations:latest apps/backend
+OPHIS_GIT_SHA="$(python3 infra/shared/scripts/backend-revision.py source .)" &&
+  docker build --build-arg OPHIS_GIT_SHA="$OPHIS_GIT_SHA" --target migrations -t backend-migrations:latest apps/backend
 python3 infra/arc-mainnet/local/build.py
 python3 infra/arc-mainnet/local/run.py --anvil /path/to/arc-foundry/anvil
 ```

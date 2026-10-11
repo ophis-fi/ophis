@@ -28,6 +28,15 @@ route:
   group_interval: 5m
   repeat_interval: 1h
   routes:
+    # One RPC outage causes several alerts. Keep every signal in one short
+    # incident message; new symptoms/resolutions update it within five minutes.
+    - matchers:
+        - 'alertname =~ "OphisOpErpc.*|OphisOpAutopilotMaintenanceStalled"'
+      receiver: telegram-rpc
+      group_by: ['chain']
+      group_wait: 20s
+      group_interval: 5m
+      repeat_interval: 2h
     - matchers:
         - severity = critical
       receiver: telegram-critical
@@ -42,6 +51,21 @@ route:
       repeat_interval: 4h
 
 receivers:
+  - name: telegram-rpc
+    telegram_configs:
+      - bot_token_file: /etc/alertmanager/telegram-token
+        chat_id: 735726338
+        api_url: https://api.telegram.org
+        parse_mode: HTML
+        send_resolved: true
+        message: |
+          <b>[{{ .Status | toUpper }}] Ophis OP — RPC incident</b>
+          {{ range .Alerts }}
+          <b>{{ .Status | toUpper }} · {{ .Labels.severity }}</b>: {{ .Annotations.summary }}
+          Since {{ .StartsAt.Format "2006-01-02 15:04:05" }} UTC
+          {{ end }}
+          <a href="https://github.com/ophis-fi/ophis/blob/main/docs/operations/op-erpc-runbook.md">Diagnosis and recovery runbook</a>
+
   - name: telegram-critical
     telegram_configs:
       - bot_token_file: /etc/alertmanager/telegram-token
