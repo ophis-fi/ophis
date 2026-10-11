@@ -1,5 +1,5 @@
 import { LAUNCH_DARKLY_VIEM_MIGRATION } from '@cowprotocol/common-const'
-import type { SupportedChainId } from '@cowprotocol/cow-sdk'
+import { getGlobalAdapter, type SupportedChainId, type TradingTransactionParams } from '@cowprotocol/cow-sdk'
 import type { JsonRpcSigner } from '@ethersproject/providers'
 
 import { tradingSdk } from 'tradingSdk/tradingSdk'
@@ -7,16 +7,18 @@ import { tradingSdk } from 'tradingSdk/tradingSdk'
 /**
  * Builds the presign tx on the chain snapshotted before posting, not the SDK's mutable trader defaults
  * (which follow wallet/network switches). Env and settlementContractOverride still come from the SDK defaults.
- * The viem adapter cannot wrap an ethers signer (createSigner would overwrite its account), so it keeps its own.
+ * Viem must explicitly use its adapter signer: SDK defaults can retain an ethers signer from initialization.
  */
-export function getPreSignTransactionForOrder(
+export async function getPreSignTransactionForOrder(
   orderUid: string,
   chainId: SupportedChainId,
   signer: JsonRpcSigner,
-): ReturnType<typeof tradingSdk.getPreSignTransaction> {
-  return tradingSdk.getPreSignTransaction({
+): Promise<TradingTransactionParams & { chainId: SupportedChainId }> {
+  const transaction = await tradingSdk.getPreSignTransaction({
     orderUid,
     chainId,
-    ...(LAUNCH_DARKLY_VIEM_MIGRATION ? {} : { signer }),
+    signer: LAUNCH_DARKLY_VIEM_MIGRATION ? getGlobalAdapter().signer : signer,
   })
+  // The SDK omits chainId; bind the wallet request even if its network changes while posting.
+  return { ...transaction, chainId }
 }

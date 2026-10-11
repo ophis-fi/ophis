@@ -311,8 +311,9 @@ application development. Use the reviewed revision and actual `config.json`:
    actually available credits in `ARC_QUICKNODE_CREDIT_ALLOWANCE` (1..10,000,000).
    Use the environment or an ignored release `.env`; never put these in frontend
    variables. `start.cjs` expects these variables exported in its environment.
-6. Run `node infra/arc-mainnet/release/start.cjs --start`. It first checks that
-   `ARC_RELEASE_TAG` equals the clean full source SHA and that every backend and
+6. Run `node infra/arc-mainnet/release/start.cjs --start`. It checks the release
+   plan and, on macOS, the RAM key and Docker mount proofs before inspecting
+   images. It then checks that `ARC_RELEASE_TAG` equals the clean full source SHA and that every backend and
    migration image has that OCI revision label, recording immutable image IDs.
    It then checks signer identity,
    deployment again, gas funding, disk space and a submission window of at least

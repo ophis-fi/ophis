@@ -3,7 +3,7 @@ use {
         domain::competition::order::app_data::AppData,
         tests::{
             setup,
-            setup::{ab_order, ab_pool, ab_solution},
+            setup::{Solution, ab_order, ab_pool, ab_solution},
         },
     },
     alloy::primitives::Address,
@@ -39,7 +39,12 @@ async fn historical_wrapper_order_filtered_before_solver() {
                 .app_data(data)
                 .filtered(),
         )
-        .solution(ab_solution())
+        // Use the existing settlement buffers: arbitrary pool/token Custom
+        // calls are intentionally disallowed on the local chain.
+        .solution(Solution {
+            use_buffers: true,
+            ..ab_solution()
+        })
         .done()
         .await;
     let id = test.solve().await.ok().id();
@@ -56,7 +61,10 @@ async fn historical_wrapper_order_filtered_before_solver() {
 #[tokio::test]
 #[ignore]
 async fn solver_supplied_wrappers_rejected() {
-    let mut solution = ab_solution();
+    let mut solution = Solution {
+        use_buffers: true,
+        ..ab_solution()
+    };
     solution.wrappers = vec![solvers_dto::solution::WrapperCall {
         address: Address::repeat_byte(1),
         data: vec![0xde, 0xad],

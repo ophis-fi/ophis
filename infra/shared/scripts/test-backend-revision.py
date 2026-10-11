@@ -3,6 +3,7 @@
 import importlib.util
 import json
 import os
+import shlex
 from pathlib import Path
 import subprocess
 import tempfile
@@ -132,6 +133,59 @@ class Provenance(unittest.TestCase):
                 self.assertEqual(result.stdout, expected)
             for args in [["--pull", "always"], ["--pull=always"]]:
                 self.assertNotEqual(subprocess.run(["/bin/bash", "-c", check, "test", *args], capture_output=True).returncode, 0)
+
+    def test_migrations_gate_every_backend_restart(self):
+        # Execute the actual rollout tail with fake Compose/provenance commands.
+        # The credential/render prefix is excluded; nothing reaches Docker/RPC.
+        fake_commands = r"""
+set -euo pipefail
+UP_ARGS=()
+PROFILES_ARG=""
+python3() {
+  printf 'provenance %s\n' "$2" >> "$ROLLOUT_TEST_LOG"
+  if [[ "$2" == source ]]; then printf '%s\n' "$OPHIS_GIT_SHA"; fi
+}
+docker() {
+  printf 'docker %s\n' "$*" >> "$ROLLOUT_TEST_LOG"
+  case "$*" in
+    "compose run --rm migrations") return "$ROLLOUT_TEST_MIGRATION_EXIT" ;;
+    "compose ps --services")
+      if [[ "$ROLLOUT_TEST_EXISTING" == 1 ]]; then printf 'rpc-proxy\n'; fi ;;
+    inspect*) printf 'healthy\n' ;;
+  esac
+  return 0
+}
+"""
+        for chain in ["optimism", "unichain", "robinhood"]:
+            stack = ROOT / f"infra/{chain}-mainnet"
+            source = (stack / "compose-up.sh").read_text()
+            tail = source[source.index('\nPROFILES_ARG=""'):]
+            for existing in ["0", "1"]:
+                for migration_exit in ["0", "42"]:
+                    with self.subTest(chain=chain, existing=existing, migration_exit=migration_exit), tempfile.TemporaryDirectory(prefix=".rollout-test-", dir=ROOT) as directory:
+                        log = Path(directory) / "commands.log"
+                        env = {**os.environ, "OPHIS_GIT_SHA": SHA,
+                               "ROLLOUT_TEST_LOG": str(log), "ROLLOUT_TEST_EXISTING": existing,
+                               "ROLLOUT_TEST_MIGRATION_EXIT": migration_exit}
+                        script = fake_commands + "\nSCRIPT_DIR=" + shlex.quote(str(stack)) + "\n" + tail
+                        result = subprocess.run(["/bin/bash", "-c", script], cwd=directory, env=env, text=True, capture_output=True)
+                        commands = log.read_text().splitlines()
+                        migrate = commands.index("docker compose run --rm migrations")
+                        self.assertLess(commands.index("docker compose build"), migrate)
+                        self.assertLess(commands.index("provenance images"), migrate)
+                        changes = [i for i, command in enumerate(commands)
+                                   if command.startswith(("docker compose stop ", "docker compose up "))]
+                        if migration_exit == "42":
+                            self.assertEqual(result.returncode, 42, result.stderr)
+                            self.assertEqual(changes, [])
+                            self.assertNotIn("provenance record", commands)
+                        else:
+                            self.assertEqual(result.returncode, 0, result.stderr)
+                            self.assertTrue(changes)
+                            self.assertLess(migrate, min(changes))
+                            self.assertGreater(commands.index("provenance record"), max(changes))
+                            if existing == "1":
+                                self.assertTrue(any(c.startswith("docker compose stop driver ") for c in commands))
 
     def test_every_mainnet_solver_is_guarded_for_its_settlement(self):
         for chain in ["optimism", "unichain", "robinhood"]:

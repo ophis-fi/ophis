@@ -579,6 +579,8 @@ pub enum Calldata {
 #[derive(Debug, Clone)]
 pub struct Solution {
     pub calldata: Calldata,
+    /// Fulfill using the fixture's prefunded settlement balances, without swaps.
+    pub use_buffers: bool,
     pub orders: Vec<&'static str>,
     pub flashloans: HashMap<order::Uid, Flashloan>,
     pub gas_fee_override: Option<(u128, u128)>,
@@ -644,6 +646,7 @@ impl Default for Solution {
             calldata: Calldata::Valid {
                 additional_bytes: 0,
             },
+            use_buffers: false,
             orders: Default::default(),
             flashloans: Default::default(),
             gas_fee_override: None,

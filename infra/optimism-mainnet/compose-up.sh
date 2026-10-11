@@ -274,6 +274,11 @@ docker compose $PROFILES_ARG build
 [[ "$(python3 "$SCRIPT_DIR/../shared/scripts/backend-revision.py" source "$SCRIPT_DIR/../..")" == "$OPHIS_GIT_SHA" ]]
 python3 "$SCRIPT_DIR/../shared/scripts/backend-revision.py" images "$SCRIPT_DIR/docker-compose.yml" "$OPHIS_GIT_SHA"
 
+# Match the new binaries' schema before a no-deps restart can launch them.
+# A migration failure must leave the existing backend containers running.
+echo "==> docker compose run --rm migrations"
+docker compose run --rm migrations
+
 echo ""
 # Force-recreate config-mounted services AFTER building. Docker
 # Compose's change-detection only looks at the image+env+volume-spec
