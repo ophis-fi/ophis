@@ -39,6 +39,63 @@ async function checkSafe(rpc, config) {
   assert.equal(next, '0x0000000000000000000000000000000000000001')
 }
 
+async function deploymentTransaction(rpc, recorded) {
+  const hash = rpc.formatter.hash(recorded.transactionHash)
+  let receipt = await rpc.getTransactionReceipt(hash)
+  let actual = await rpc.getTransaction(hash)
+  if (!receipt || !actual) {
+    // Arc may prune its transaction-hash index while retaining canonical blocks.
+    // The archived receipt supplies only a lookup hint, never validation data.
+    const hint = recorded.blockNumber
+    assert((Number.isSafeInteger(hint) && hint >= 0) ||
+      (typeof hint === 'string' && /^0x(?:0|[1-9a-fA-F][0-9a-fA-F]*)$/.test(hint)), 'Invalid deployment block hint')
+    const number = rpc.formatter.number(hint)
+    assert(Number.isSafeInteger(number) && number >= 0, 'Invalid deployment block hint')
+    const head = await rpc.getBlockNumber()
+    const confirmations = head - number + 1
+    assert(Number.isSafeInteger(head) && Number.isSafeInteger(confirmations) && confirmations >= 1,
+      'Deployment block is not confirmed')
+    const tag = '0x' + number.toString(16)
+    const block = await rpc.send('eth_getBlockByNumber', [tag, true])
+    assert(block && rpc.formatter.number(block.number) === number, 'Deployment block number differs')
+    const blockHash = rpc.formatter.hash(block.hash)
+    assert(Array.isArray(block.transactions), 'Missing canonical block transactions')
+    const matches = block.transactions.filter(tx => tx && tx.hash === hash)
+    assert.equal(matches.length, 1, 'Deployment transaction must occur exactly once in canonical block')
+    const canonicalTx = rpc.formatter.transactionResponse({ ...matches[0] })
+    assert.equal(canonicalTx.transactionIndex, block.transactions.indexOf(matches[0]), 'Transaction inclusion index differs')
+    const blockReceipts = await rpc.send('eth_getBlockReceipts', [tag])
+    assert(Array.isArray(blockReceipts), 'Missing canonical block receipts')
+    const matchingReceipts = blockReceipts.filter(item => item && item.transactionHash === hash)
+    assert.equal(matchingReceipts.length, 1, 'Deployment receipt must occur exactly once in canonical block')
+    const canonicalReceipt = rpc.formatter.receipt({ ...matchingReceipts[0], confirmations })
+    // Reject inconsistent partial hash-index responses as well as block data.
+    for (const item of [receipt, actual, canonicalReceipt, canonicalTx].filter(Boolean)) {
+      assert.equal(item.blockNumber, number, 'Transaction/receipt block number differs')
+      assert.equal(item.blockHash, blockHash, 'Transaction/receipt block hash differs')
+      assert.equal(item.transactionIndex, canonicalTx.transactionIndex, 'Transaction/receipt index differs')
+    }
+    if (receipt) {
+      assert.equal(receipt.transactionHash, hash, 'Indexed receipt hash differs')
+      assert.equal(receipt.status, canonicalReceipt.status, 'Indexed receipt status differs')
+    }
+    if (actual) assert.equal(actual.hash, hash, 'Indexed transaction hash differs')
+    // The number-based receipt request must not straddle a canonical reorg.
+    const current = await rpc.send('eth_getBlockByNumber', [tag, false])
+    assert(current && rpc.formatter.number(current.number) === number && current.hash === blockHash,
+      'Deployment block changed during verification')
+    receipt = canonicalReceipt
+    actual = canonicalTx
+  }
+  assert.equal(receipt.transactionHash, hash, 'Deployment receipt hash differs')
+  assert.equal(actual.hash, hash, 'Deployment transaction hash differs')
+  assert.equal(actual.blockHash, receipt.blockHash, 'Transaction/receipt block hash differs')
+  assert.equal(actual.blockNumber, receipt.blockNumber, 'Transaction/receipt block number differs')
+  assert.equal(actual.transactionIndex, receipt.transactionIndex, 'Transaction/receipt index differs')
+  assert(receipt.status === 1 && receipt.confirmations >= 1, 'Deployment transaction was not successful and confirmed')
+  return { receipt, actual }
+}
+
 async function verify(rpc, plan, receipts, artifacts, localOnly = false) {
   checkHash(plan, artifacts)
   assert.equal(await rpc.send('eth_chainId', []), '0x13b2')
@@ -51,10 +108,8 @@ async function verify(rpc, plan, receipts, artifacts, localOnly = false) {
   assert.equal(receipts.length, plan.transactions.length)
   const blocks = {}
   for (const [index, tx] of plan.transactions.entries()) {
-    const receipt = await rpc.getTransactionReceipt(receipts[index].transactionHash)
-    assert(receipt && receipt.status === 1 && receipt.confirmations >= 1)
+    const { receipt, actual } = await deploymentTransaction(rpc, receipts[index])
     assert.equal(address(receipt.contractAddress), tx.predictedAddress)
-    const actual = await rpc.getTransaction(receipt.transactionHash)
     assert.equal(address(actual.from), plan.config.deployer)
     assert.equal(actual.to, null)
     assert.equal(actual.data, tx.data)
@@ -104,4 +159,4 @@ if (require.main === module) (async () => {
   fs.writeFileSync(path.join(OUT, 'verified.json'), JSON.stringify(result, null, 2) + '\n', { mode: 0o600 })
   console.log('Verified deployment, Safe authority, solver authorization and contract wiring.')
 })().catch(error => { console.error(error.message); process.exitCode = 1 })
-module.exports = { verify, checkSafe }
+module.exports = { verify, checkSafe, deploymentTransaction }

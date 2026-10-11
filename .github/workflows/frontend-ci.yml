@@ -134,6 +134,7 @@ jobs:
           export ARC_SOLC="$(command -v solc)"
           node infra/arc-mainnet/release/test_solver.cjs
           node infra/arc-mainnet/release/test_plan.cjs
+          node infra/arc-mainnet/release/test_verify.cjs
           node infra/arc-mainnet/release/test_mac_key.cjs
           node infra/arc-mainnet/release/rehearse.cjs
           python3 infra/arc-mainnet/test_credit_gate.py
