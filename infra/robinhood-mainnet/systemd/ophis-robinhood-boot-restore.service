@@ -1,0 +1,18 @@
+[Unit]
+Description=Restore Robinhood RAM-backed driver config after boot
+Requires=docker.service
+After=docker.service network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+WorkingDirectory=/home/clement/ophis/infra/robinhood-mainnet
+ExecStart=/home/clement/ophis/infra/robinhood-mainnet/boot-restore.sh
+TimeoutStartSec=600
+Environment=HOME=/home/clement
+Environment=USER=root
+Environment=PS4=
+
+[Install]
+WantedBy=multi-user.target
