@@ -30,6 +30,11 @@ hooks = "0x2FbB1e41fF4f9b707E4428EEC7F5AFAaC5D60810"
 # Balancer V2 Vault: canonical cross-chain address.
 balancer-v2-vault = "0xBA12222222228d8Ba445958a75a0704d566BF2C8"
 
+[partner-fee-registry]
+# Keep recipient enforcement consistent with autopilot after every render.
+registry-enabled = true
+registration-enabled = false
+
 [database]
 write-url = "%DB_WRITE_URL"
 read-url = "%DB_READ_URL"

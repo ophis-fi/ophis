@@ -104,10 +104,12 @@ mod tests {
     }
 
     #[test]
-    fn operated_op_configs_enforce_registry_without_public_registration() {
+    fn operated_configs_enforce_registry_without_public_registration() {
         for document in [
             include_str!("../../../../../infra/optimism-mainnet/configs/orderbook.toml"),
             include_str!("../../../../../infra/optimism-mainnet/configs/autopilot.toml"),
+            include_str!("../../../../../infra/unichain-mainnet/configs/orderbook.toml.tmpl"),
+            include_str!("../../../../../infra/unichain-mainnet/configs/autopilot.toml.tmpl"),
         ] {
             let config: toml::Value = toml::from_str(document).unwrap();
             let registry: PartnerFeeRegistryConfig =
