@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1.7
 
-FROM node:24-alpine AS deps
+FROM node:25-alpine AS deps
 WORKDIR /app
 RUN corepack enable && corepack prepare pnpm@9.12.0 --activate
 COPY pnpm-workspace.yaml pnpm-lock.yaml package.json ./
@@ -14,7 +14,7 @@ COPY packages/sdk/package.json packages/sdk/
 # optional-dependency packages, which work at runtime without their postinstall).
 RUN pnpm install --frozen-lockfile --ignore-scripts --filter @ophis/rebate-indexer...
 
-FROM node:24-alpine AS build
+FROM node:25-alpine AS build
 WORKDIR /app
 RUN corepack enable && corepack prepare pnpm@9.12.0 --activate
 COPY --from=deps /app /app
@@ -23,7 +23,7 @@ COPY packages/sdk packages/sdk
 COPY tsconfig.base.json ./
 RUN pnpm --filter @ophis/rebate-indexer typecheck
 
-FROM node:24-alpine AS runtime
+FROM node:25-alpine AS runtime
 WORKDIR /app
 ENV COREPACK_HOME=/opt/corepack
 RUN apk add --no-cache tini && corepack enable && corepack prepare pnpm@9.12.0 --activate
