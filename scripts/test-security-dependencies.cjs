@@ -74,6 +74,14 @@ async function main() {
   // Resolve the active hoisted package, not retained pnpm cache versions.
   for (const { root } of stores) {
     const requireIp = createRequire(join(root, 'node_modules', '_ip-address-check.cjs'));
+    const handlebars = requireIp('handlebars');
+    assert.equal(handlebars.compile('Hello {{name}}')({ name: '<Ophis>' }), 'Hello &lt;Ophis&gt;');
+    const ast = handlebars.parse('{{name}}');
+    assert.equal(handlebars.compile(ast)({ name: 'Ophis' }), 'Ophis');
+    ast.body[0].path.depth = '0';
+    assert.throws(() => handlebars.precompile(ast), /Invalid AST/,
+      'untrusted AST fields must be validated before code generation');
+    console.log(`PASS handlebars ${handlebars.VERSION}: template compatibility and invalid AST rejection`);
     const { Address4, Address6 } = requireIp('ip-address');
     for (const ip of ['fe80::1', 'fe81::1', 'febf::1', 'fe80:0:0:1::1']) {
       assert(new Address6(ip).isLinkLocal(), `${ip} must be link-local`);

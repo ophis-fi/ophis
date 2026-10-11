@@ -117,7 +117,8 @@ export function IframeDappContainer({ dapp, context }: IframeDappContainerProps)
       ),
     ]
 
-    bridgeRef.current = new IframeRpcProviderBridge(iframeWindow, dappOrigin)
+    const bridge = new IframeRpcProviderBridge(iframeWindow, dappOrigin)
+    bridgeRef.current = bridge
 
     listeners.push(
       hookDappIframeTransport.listenToMessageFromWindow(
@@ -152,15 +153,26 @@ export function IframeDappContainer({ dapp, context }: IframeDappContainerProps)
 
     return () => {
       listeners.forEach((listener) => hookDappIframeTransport.stopListeningWindowListener(window, listener))
-      bridgeRef.current?.disconnect()
+      bridge.disconnect()
+      // Never reconnect a bridge bound to a previous origin
+      if (bridgeRef.current === bridge) bridgeRef.current = null
     }
   }, [dappOrigin])
 
+  // Also re-runs on origin change, so the bridge created for the new origin gets the current wallet
   useLayoutEffect(() => {
-    if (!walletProvider || !walletProvider.provider || !bridgeRef.current) return
+    const bridge = bridgeRef.current
 
-    bridgeRef.current.onConnect(walletProvider.provider as EthereumProvider)
-  }, [walletProvider])
+    if (!bridge) return
+
+    if (!walletProvider?.provider) {
+      // Wallet gone: stop serving the iframe from the previous provider
+      bridge.disconnect()
+      return
+    }
+
+    bridge.onConnect(walletProvider.provider as EthereumProvider)
+  }, [walletProvider, dappOrigin])
 
   useLayoutEffect(() => {
     const iframeWindow = iframeRef.current?.contentWindow

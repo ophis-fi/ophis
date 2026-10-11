@@ -171,15 +171,12 @@ cp .env.example .env
 #   OKX_*  from corresponding Keychain entries
 #   POSTGRES_PASSWORD=$(openssl rand -base64 24 | tr -d '/+=' | head -c 32)
 
-# 2. Bring up the stack via the wrapper. compose-up.sh renders the templated
-#    TOMLs, runs the Tier-1.5 RAM-disk + RPC-bypass safety checks, stamps the
-#    git version into the orderbook /api/v1/version, then starts everything.
+# 2. Use a clean reviewed commit. Export the revision for subsequent Compose
+#    inspection commands; the wrapper independently verifies it before building.
+export OPHIS_GIT_SHA="$(python3 ../shared/scripts/backend-revision.py source ../..)"
+# The wrapper renders configs, checks signing-key/RPC prerequisites, embeds this
+# full commit in every binary, and verifies image labels before service restarts.
 ./compose-up.sh
-#
-# Fallback (raw compose, only if you JUST ran ./render-configs.sh): the bare
-# command below SKIPS the safety checks AND leaves /api/v1/version on the
-# vergen sentinel, because OPHIS_GIT_DESCRIBE is exported only by compose-up.sh.
-#   ./render-configs.sh && docker compose up -d --build
 
 # 3. Wait for healthchecks to settle (~60s typical)
 docker compose ps
@@ -200,15 +197,18 @@ docker compose down -v    # ALSO drops the DB volume — use only if you want a 
 ### Restart after a config change
 
 ```bash
-./render-configs.sh         # re-render if you changed any .tmpl
-docker compose up -d        # picks up TOML changes via volume mount; no rebuild needed
+# Commit and review tracked config changes before deployment.
+export OPHIS_GIT_SHA="$(python3 ../shared/scripts/backend-revision.py source ../..)"
+./compose-up.sh             # render, build, verify provenance, apply configs
 ```
 
-If you changed a Rust binary in `apps/backend/`, you need `--build`:
-
-```bash
-docker compose up -d --build
-```
+Rust changes use the same wrapper after their commit passes review and CI.
+All backend images use full commit tags and OCI revision labels; old `latest`
+images or mutable release labels cannot satisfy the startup checks. The public
+`/api/v1/version` now returns the full commit SHA. The wrapper records the verified revision in ignored `.env` after successful
+startup, so later bare `docker compose ps`, `logs`, `exec`, and verification
+scripts work in new shells. Existing credentials are preserved without being read
+or rewritten. The next rollout independently rechecks clean source and images.
 
 ---
 
@@ -259,7 +259,7 @@ docker compose logs migrations
 
 **Fixes**:
 - DB volume corrupt → `docker compose down -v && docker compose up -d` (loses data)
-- Migrations failed → rebuild migrations target: `docker compose up -d --build --force-recreate migrations`
+- Migrations failed → rebuild migrations target: `./compose-up.sh --force-recreate migrations`
 
 ### `/quote`+`/auction` 500 but `/version`+`native_price` 200 — disk full → Postgres crash-loop
 

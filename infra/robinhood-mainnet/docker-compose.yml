@@ -28,7 +28,7 @@
 name: robinhood-mainnet
 
 x-backend-build-args: &backend-build-args
-  OPHIS_GIT_DESCRIBE: "${OPHIS_GIT_DESCRIBE:-}"
+  OPHIS_GIT_SHA: "${OPHIS_GIT_SHA:?run compose-up.sh from a clean reviewed commit}"
 
 # Log rotation. Added 2026-08-24 after the Robinhood outage, where
 # robinhood-nitro-nitro-1's json-file log had grown to 182MB with no rotation
@@ -120,11 +120,13 @@ services:
 
   migrations:
     logging: *default-logging
-    image: backend-migrations:latest
+    image: backend-migrations:${OPHIS_GIT_SHA:?run compose-up.sh}
+    pull_policy: never
     build:
       context: ../../apps/backend
       dockerfile: Dockerfile
       target: migrations
+      args: *backend-build-args
     restart: on-failure
     depends_on:
       db: { condition: service_healthy }
@@ -134,7 +136,8 @@ services:
 
   orderbook:
     logging: *default-logging
-    image: local-orderbook:latest
+    image: local-orderbook:${OPHIS_GIT_SHA:?run compose-up.sh}
+    pull_policy: never
     build:
       context: ../../apps/backend
       dockerfile: Dockerfile
@@ -167,7 +170,8 @@ services:
 
   autopilot:
     logging: *default-logging
-    image: local-autopilot:latest
+    image: local-autopilot:${OPHIS_GIT_SHA:?run compose-up.sh}
+    pull_policy: never
     build:
       context: ../../apps/backend
       dockerfile: Dockerfile
@@ -193,7 +197,8 @@ services:
 
   driver:
     logging: *default-logging
-    image: local-driver:latest
+    image: local-driver:${OPHIS_GIT_SHA:?run compose-up.sh}
+    pull_policy: never
     build:
       context: ../../apps/backend
       dockerfile: Dockerfile
@@ -238,7 +243,8 @@ services:
 
   baseline:
     logging: *default-logging
-    image: local-baseline:latest
+    image: local-baseline:${OPHIS_GIT_SHA:?run compose-up.sh}
+    pull_policy: never
     build:
       context: ../../apps/backend
       dockerfile: Dockerfile
@@ -263,7 +269,8 @@ services:
   # LI.FI same-chain aggregator lane. Keyless.
   lifi-solver:
     logging: *default-logging
-    image: local-baseline:latest
+    image: local-baseline:${OPHIS_GIT_SHA:?run compose-up.sh}
+    pull_policy: never
     build:
       context: ../../apps/backend
       dockerfile: Dockerfile
@@ -289,7 +296,8 @@ services:
   # on-chain DEXs while the solver and driver both enforce the router allowlist.
   kyberswap-solver:
     logging: *default-logging
-    image: local-baseline:latest
+    image: local-baseline:${OPHIS_GIT_SHA:?run compose-up.sh}
+    pull_policy: never
     build:
       context: ../../apps/backend
       dockerfile: Dockerfile
@@ -315,7 +323,8 @@ services:
   # pool. Uses only the sovereign RPC and immutable on-chain contracts.
   uniswap-v4-solver:
     logging: *default-logging
-    image: local-baseline:latest
+    image: local-baseline:${OPHIS_GIT_SHA:?run compose-up.sh}
+    pull_policy: never
     build:
       context: ../../apps/backend
       dockerfile: Dockerfile
@@ -342,7 +351,8 @@ services:
   # Direct pons Uniswap V3 lane for authenticated token/WETH/token routes.
   pons-solver:
     logging: *default-logging
-    image: local-baseline:latest
+    image: local-baseline:${OPHIS_GIT_SHA:?run compose-up.sh}
+    pull_policy: never
     build:
       context: ../../apps/backend
       dockerfile: Dockerfile
@@ -366,7 +376,8 @@ services:
 
   ekubo-solver:
     logging: *default-logging
-    image: local-baseline:latest
+    image: local-baseline:${OPHIS_GIT_SHA:?run compose-up.sh}
+    pull_policy: never
     build:
       context: ../../apps/backend
       dockerfile: Dockerfile
@@ -390,7 +401,8 @@ services:
 
   pancakeswap-solver:
     logging: *default-logging
-    image: local-baseline:latest
+    image: local-baseline:${OPHIS_GIT_SHA:?run compose-up.sh}
+    pull_policy: never
     build:
       context: ../../apps/backend
       dockerfile: Dockerfile
@@ -416,7 +428,8 @@ services:
 
   ramses-solver:
     logging: *default-logging
-    image: local-baseline:latest
+    image: local-baseline:${OPHIS_GIT_SHA:?run compose-up.sh}
+    pull_policy: never
     build:
       context: ../../apps/backend
       dockerfile: Dockerfile
@@ -442,7 +455,8 @@ services:
 
   fables-solver:
     logging: *default-logging
-    image: local-baseline:latest
+    image: local-baseline:${OPHIS_GIT_SHA:?run compose-up.sh}
+    pull_policy: never
     build:
       context: ../../apps/backend
       dockerfile: Dockerfile
@@ -468,7 +482,8 @@ services:
 
   up33-solver:
     logging: *default-logging
-    image: local-baseline:latest
+    image: local-baseline:${OPHIS_GIT_SHA:?run compose-up.sh}
+    pull_policy: never
     build:
       context: ../../apps/backend
       dockerfile: Dockerfile
@@ -496,7 +511,8 @@ services:
   # allowExchanges=nordstern, the venue serving Pools' Uniswap v4 liquidity.
   pools-solver:
     logging: *default-logging
-    image: local-baseline:latest
+    image: local-baseline:${OPHIS_GIT_SHA:?run compose-up.sh}
+    pull_policy: never
     build:
       context: ../../apps/backend
       dockerfile: Dockerfile
@@ -599,7 +615,8 @@ services:
   # nonce contention with the settlement submitter.
   refunder:
     logging: *default-logging
-    image: local-refunder:latest
+    image: local-refunder:${OPHIS_GIT_SHA:?run compose-up.sh}
+    pull_policy: never
     build:
       context: ../../apps/backend
       dockerfile: Dockerfile

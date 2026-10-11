@@ -52,7 +52,7 @@ relative-slippage = "0.1"
 # Driver-submitter EOA 0x92B9bE5e96795E8630fDC61efb0e705E75b1A1B1 — its private
 # key is injected from container env (set via .env in this directory). The CoW
 # config crate substitutes %VAR_NAME at load time.
-account = "${OPHIS_DRIVER_SUBMITTER_KEY}"
+account = { guarded = "${OPHIS_DRIVER_SUBMITTER_KEY}", settlement-targets = [{ address = "0x310784c7FCE12d578dA6f53460777bAc9718B859", selectors = ["0x13d79a0b"] }], require-zero-value = true }
 
 # OKX OnchainOS aggregator — covers UniV3 + Velodrome + Curve + Balancer + long
 # tail. Same driver-submitter EOA signs settlement (the auction picks whichever
@@ -63,7 +63,7 @@ name = "okx"
 endpoint = "http://okx-solver"
 absolute-slippage = "40000000000000000"  # 0.04 ETH in wei
 relative-slippage = "0.1"
-account = "${OPHIS_DRIVER_SUBMITTER_KEY}"
+account = { guarded = "${OPHIS_DRIVER_SUBMITTER_KEY}", settlement-targets = [{ address = "0x310784c7FCE12d578dA6f53460777bAc9718B859", selectors = ["0x13d79a0b"] }], require-zero-value = true }
 
 # KyberSwap aggregator — second competing solver. Covers the same UniV3 +
 # Velodrome + Curve + Balancer surface as OKX. Free public API, no key
@@ -74,7 +74,7 @@ name = "kyberswap"
 endpoint = "http://kyberswap-solver"
 absolute-slippage = "40000000000000000"  # 0.04 ETH in wei
 relative-slippage = "0.1"
-account = "${OPHIS_DRIVER_SUBMITTER_KEY}"
+account = { guarded = "${OPHIS_DRIVER_SUBMITTER_KEY}", settlement-targets = [{ address = "0x310784c7FCE12d578dA6f53460777bAc9718B859", selectors = ["0x13d79a0b"] }], require-zero-value = true }
 
 # Velora (formerly ParaSwap) aggregator — third competing solver.
 # Augustus V6.2 deployed deterministically on OP at
@@ -92,35 +92,35 @@ name = "velora"
 endpoint = "http://velora-solver"
 absolute-slippage = "40000000000000000"  # 0.04 ETH in wei
 relative-slippage = "0.1"
-account = "${OPHIS_DRIVER_SUBMITTER_KEY}"
+account = { guarded = "${OPHIS_DRIVER_SUBMITTER_KEY}", settlement-targets = [{ address = "0x310784c7FCE12d578dA6f53460777bAc9718B859", selectors = ["0x13d79a0b"] }], require-zero-value = true }
 
 [[solver]]
 name = "enso"
 endpoint = "http://enso-solver"
 absolute-slippage = "40000000000000000"  # 0.04 ETH in wei
 relative-slippage = "0.1"
-account = "${OPHIS_DRIVER_SUBMITTER_KEY}"
+account = { guarded = "${OPHIS_DRIVER_SUBMITTER_KEY}", settlement-targets = [{ address = "0x310784c7FCE12d578dA6f53460777bAc9718B859", selectors = ["0x13d79a0b"] }], require-zero-value = true }
 
 [[solver]]
 name = "lifi"
 endpoint = "http://lifi-solver"
 absolute-slippage = "40000000000000000"  # 0.04 ETH in wei
 relative-slippage = "0.1"
-account = "${OPHIS_DRIVER_SUBMITTER_KEY}"
+account = { guarded = "${OPHIS_DRIVER_SUBMITTER_KEY}", settlement-targets = [{ address = "0x310784c7FCE12d578dA6f53460777bAc9718B859", selectors = ["0x13d79a0b"] }], require-zero-value = true }
 
 [[solver]]
 name = "openocean"
 endpoint = "http://openocean-solver"
 absolute-slippage = "40000000000000000"  # 0.04 ETH in wei
 relative-slippage = "0.1"
-account = "${OPHIS_DRIVER_SUBMITTER_KEY}"
+account = { guarded = "${OPHIS_DRIVER_SUBMITTER_KEY}", settlement-targets = [{ address = "0x310784c7FCE12d578dA6f53460777bAc9718B859", selectors = ["0x13d79a0b"] }], require-zero-value = true }
 
 [[solver]]
 name = "dodo"
 endpoint = "http://dodo-solver"
 absolute-slippage = "40000000000000000"  # 0.04 ETH in wei
 relative-slippage = "0.1"
-account = "${OPHIS_DRIVER_SUBMITTER_KEY}"
+account = { guarded = "${OPHIS_DRIVER_SUBMITTER_KEY}", settlement-targets = [{ address = "0x310784c7FCE12d578dA6f53460777bAc9718B859", selectors = ["0x13d79a0b"] }], require-zero-value = true }
 
 # Direct Curve StableSwap lane. Phase one is intentionally limited to the
 # canonical Optimism 3pool and exact-input orders; no API-returned targets.
@@ -129,7 +129,7 @@ name = "curve"
 endpoint = "http://curve-solver"
 absolute-slippage = "40000000000000000"
 relative-slippage = "0.1"
-account = "${OPHIS_DRIVER_SUBMITTER_KEY}"
+account = { guarded = "${OPHIS_DRIVER_SUBMITTER_KEY}", settlement-targets = [{ address = "0x310784c7FCE12d578dA6f53460777bAc9718B859", selectors = ["0x13d79a0b"] }], require-zero-value = true }
 
 # Direct WOOFi sPMM lane. The driver accepts only the pinned router's exact
 # swap selector, with Settlement as recipient and no rebate recipient.
@@ -138,7 +138,7 @@ name = "woofi"
 endpoint = "http://woofi-solver"
 absolute-slippage = "40000000000000000"
 relative-slippage = "0.1"
-account = "${OPHIS_DRIVER_SUBMITTER_KEY}"
+account = { guarded = "${OPHIS_DRIVER_SUBMITTER_KEY}", settlement-targets = [{ address = "0x310784c7FCE12d578dA6f53460777bAc9718B859", selectors = ["0x13d79a0b"] }], require-zero-value = true }
 
 # Direct hookless Uniswap V4 ETH/USDC lane. Execution is through Ophis's
 # immutable pair-specific adapter; no route API or arbitrary hook is accepted.
@@ -147,7 +147,7 @@ name = "uniswap-v4"
 endpoint = "http://uniswap-v4-solver"
 absolute-slippage = "40000000000000000"
 relative-slippage = "0.1"
-account = "${OPHIS_DRIVER_SUBMITTER_KEY}"
+account = { guarded = "${OPHIS_DRIVER_SUBMITTER_KEY}", settlement-targets = [{ address = "0x310784c7FCE12d578dA6f53460777bAc9718B859", selectors = ["0x13d79a0b"] }], require-zero-value = true }
 
 # Direct Velodrome V2; calldata and recipient are checked by the driver.
 [[solver]]
@@ -155,14 +155,14 @@ name = "velodrome"
 endpoint = "http://velodrome-solver"
 absolute-slippage = "40000000000000000"
 relative-slippage = "0.1"
-account = "${OPHIS_DRIVER_SUBMITTER_KEY}"
+account = { guarded = "${OPHIS_DRIVER_SUBMITTER_KEY}", settlement-targets = [{ address = "0x310784c7FCE12d578dA6f53460777bAc9718B859", selectors = ["0x13d79a0b"] }], require-zero-value = true }
 
 [[solver]]
 name = "velodrome-slipstream"
 endpoint = "http://velodrome-slipstream-solver"
 absolute-slippage = "40000000000000000"
 relative-slippage = "0.01"
-account = "${OPHIS_DRIVER_SUBMITTER_KEY}"
+account = { guarded = "${OPHIS_DRIVER_SUBMITTER_KEY}", settlement-targets = [{ address = "0x310784c7FCE12d578dA6f53460777bAc9718B859", selectors = ["0x13d79a0b"] }], require-zero-value = true }
 
 [submission]
 # OP mainnet typical L2 gas price is 0.001-0.05 gwei (1 Mgwei = 10^15 wei

@@ -11,14 +11,9 @@
 name: optimism-mainnet
 
 # Shared build-args for the Rust backend images (orderbook/autopilot/driver/
-# solvers). OPHIS_GIT_DESCRIBE injects the real version into the orderbook
-# GET /api/v1/version route; the build context (apps/backend) has no .git, so
-# vergen otherwise emits the literal "VERGEN_IDEMPOTENT_OUTPUT" sentinel.
-# compose-up.sh exports it from `git describe`. Applied to EVERY Rust service
-# so the shared cargo-build stage has one consistent cache key (a differing
-# arg between services would force a second full workspace compile).
+# solvers). Every image and binary carries the full verified source revision.
 x-backend-build-args: &backend-build-args
-  OPHIS_GIT_DESCRIBE: "${OPHIS_GIT_DESCRIBE:-}"
+  OPHIS_GIT_SHA: "${OPHIS_GIT_SHA:?run compose-up.sh from a clean reviewed commit}"
 
 #
 # Secret management:
@@ -142,11 +137,13 @@ services:
 
   migrations:
     logging: *default-logging
-    image: backend-migrations:latest
+    image: backend-migrations:${OPHIS_GIT_SHA:?run compose-up.sh}
+    pull_policy: never
     build:
       context: ../../apps/backend
       dockerfile: Dockerfile
       target: migrations
+      args: *backend-build-args
     restart: on-failure
     depends_on:
       db: { condition: service_healthy }
@@ -155,7 +152,8 @@ services:
 
   orderbook:
     logging: *default-logging
-    image: local-orderbook:latest
+    image: local-orderbook:${OPHIS_GIT_SHA:?run compose-up.sh}
+    pull_policy: never
     build:
       context: ../../apps/backend
       dockerfile: Dockerfile
@@ -212,7 +210,8 @@ services:
 
   autopilot:
     logging: *default-logging
-    image: ${OP_AUTOPILOT_IMAGE:-local-autopilot:latest}
+    image: ${OP_AUTOPILOT_IMAGE:-local-autopilot:${OPHIS_GIT_SHA:?run compose-up.sh}}
+    pull_policy: never
     build:
       context: ../../apps/backend
       dockerfile: Dockerfile
@@ -253,7 +252,8 @@ services:
 
   driver:
     logging: *default-logging
-    image: ${OP_DRIVER_IMAGE:-local-driver:latest}
+    image: ${OP_DRIVER_IMAGE:-local-driver:${OPHIS_GIT_SHA:?run compose-up.sh}}
+    pull_policy: never
     build:
       context: ../../apps/backend
       dockerfile: Dockerfile
@@ -333,7 +333,8 @@ services:
 
   baseline:
     logging: *default-logging
-    image: local-baseline:latest
+    image: local-baseline:${OPHIS_GIT_SHA:?run compose-up.sh}
+    pull_policy: never
     build:
       context: ../../apps/backend
       dockerfile: Dockerfile
@@ -362,7 +363,8 @@ services:
   # exists with secrets substituted.
   okx-solver:
     logging: *default-logging
-    image: local-baseline:latest
+    image: local-baseline:${OPHIS_GIT_SHA:?run compose-up.sh}
+    pull_policy: never
     build:
       context: ../../apps/backend
       dockerfile: Dockerfile
@@ -389,7 +391,8 @@ services:
   # as-is (no template rendering needed).
   kyberswap-solver:
     logging: *default-logging
-    image: local-baseline:latest
+    image: local-baseline:${OPHIS_GIT_SHA:?run compose-up.sh}
+    pull_policy: never
     build:
       context: ../../apps/backend
       dockerfile: Dockerfile
@@ -418,7 +421,8 @@ services:
   # "ophis" routes our volume against any future Pro API key.
   velora-solver:
     logging: *default-logging
-    image: local-baseline:latest
+    image: local-baseline:${OPHIS_GIT_SHA:?run compose-up.sh}
+    pull_policy: never
     build:
       context: ../../apps/backend
       dockerfile: Dockerfile
@@ -442,7 +446,8 @@ services:
 
   enso-solver:
     logging: *default-logging
-    image: local-baseline:latest
+    image: local-baseline:${OPHIS_GIT_SHA:?run compose-up.sh}
+    pull_policy: never
     build:
       context: ../../apps/backend
       dockerfile: Dockerfile
@@ -466,7 +471,8 @@ services:
 
   lifi-solver:
     logging: *default-logging
-    image: local-baseline:latest
+    image: local-baseline:${OPHIS_GIT_SHA:?run compose-up.sh}
+    pull_policy: never
     build:
       context: ../../apps/backend
       dockerfile: Dockerfile
@@ -490,7 +496,8 @@ services:
 
   openocean-solver:
     logging: *default-logging
-    image: local-baseline:latest
+    image: local-baseline:${OPHIS_GIT_SHA:?run compose-up.sh}
+    pull_policy: never
     build:
       context: ../../apps/backend
       dockerfile: Dockerfile
@@ -514,7 +521,8 @@ services:
 
   dodo-solver:
     logging: *default-logging
-    image: local-baseline:latest
+    image: local-baseline:${OPHIS_GIT_SHA:?run compose-up.sh}
+    pull_policy: never
     build:
       context: ../../apps/backend
       dockerfile: Dockerfile
@@ -538,7 +546,8 @@ services:
 
   velodrome-slipstream-solver:
     logging: *default-logging
-    image: local-baseline:latest
+    image: local-baseline:${OPHIS_GIT_SHA:?run compose-up.sh}
+    pull_policy: never
     build:
       context: ../../apps/backend
       dockerfile: Dockerfile
@@ -564,7 +573,8 @@ services:
 
   velodrome-solver:
     logging: *default-logging
-    image: local-baseline:latest
+    image: local-baseline:${OPHIS_GIT_SHA:?run compose-up.sh}
+    pull_policy: never
     build:
       context: ../../apps/backend
       dockerfile: Dockerfile
@@ -590,7 +600,8 @@ services:
 
   curve-solver:
     logging: *default-logging
-    image: local-baseline:latest
+    image: local-baseline:${OPHIS_GIT_SHA:?run compose-up.sh}
+    pull_policy: never
     build:
       context: ../../apps/backend
       dockerfile: Dockerfile
@@ -616,7 +627,8 @@ services:
 
   woofi-solver:
     logging: *default-logging
-    image: local-baseline:latest
+    image: local-baseline:${OPHIS_GIT_SHA:?run compose-up.sh}
+    pull_policy: never
     build:
       context: ../../apps/backend
       dockerfile: Dockerfile
@@ -642,7 +654,8 @@ services:
 
   uniswap-v4-solver:
     logging: *default-logging
-    image: local-baseline:latest
+    image: local-baseline:${OPHIS_GIT_SHA:?run compose-up.sh}
+    pull_policy: never
     build:
       context: ../../apps/backend
       dockerfile: Dockerfile
@@ -779,7 +792,8 @@ services:
   # settlement submitter, to avoid nonce contention. See docs runbook.
   refunder:
     logging: *default-logging
-    image: local-refunder:latest
+    image: local-refunder:${OPHIS_GIT_SHA:?run compose-up.sh}
+    pull_policy: never
     build:
       context: ../../apps/backend
       dockerfile: Dockerfile

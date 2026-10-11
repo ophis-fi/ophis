@@ -502,6 +502,7 @@ impl Validator {
     /// 1. Below or equal to [`Validator::size_limit`] in size.
     /// 2. A valid JSON & app data object.
     /// 3. CIP-75-compliant partner-fee fields (see [`validate_partner_fees`]).
+    /// 4. No wrappers: Ophis has no authenticated wrapper execution policy.
     pub fn validate(&self, full_app_data: &[u8]) -> Result<ValidatedAppData> {
         if full_app_data.len() > self.size_limit {
             return Err(anyhow!(
@@ -513,6 +514,9 @@ impl Validator {
 
         let document = String::from_utf8(full_app_data.to_vec())?;
         let protocol = parse(full_app_data)?;
+        if !protocol.wrappers.is_empty() {
+            return Err(anyhow!("wrappers are not supported"));
+        }
         validate_partner_fees(self.recipient_policy.as_ref(), &protocol.partner_fee)?;
 
         Ok(ValidatedAppData {
@@ -1116,6 +1120,35 @@ mod tests {
             "#,
             ProtocolAppData::default(),
         );
+    }
+
+    #[test]
+    fn wrappers_are_rejected_for_all_recipients_and_wrapper_shapes() {
+        for validator in [Validator::default(), Validator::permissive(8192)] {
+            for address in [
+                "0x0000000000000000000000000000000000000000",
+                "0x0000000000000000000000000000000000000001",
+            ] {
+                for omittable in [false, true] {
+                    for data in ["0x", "0xdeadbeef"] {
+                        let document = serde_json::json!({"metadata": {"wrappers": [{
+                            "address": address, "data": data, "isOmittable": omittable
+                        }]}})
+                        .to_string();
+                        assert_eq!(
+                            validator
+                                .validate(document.as_bytes())
+                                .unwrap_err()
+                                .to_string(),
+                            "wrappers are not supported"
+                        );
+                    }
+                }
+            }
+            for document in [r#"{}"#, r#"{"metadata":{"wrappers":[]}}"#] {
+                assert!(validator.validate(document.as_bytes()).is_ok());
+            }
+        }
     }
 
     #[test]

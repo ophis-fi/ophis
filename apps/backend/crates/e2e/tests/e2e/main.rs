@@ -29,6 +29,7 @@ mod malformed_requests;
 mod order_cancellation;
 mod order_simulation;
 mod parallel_settlement;
+mod partner_fee_registry;
 mod partial_fill;
 mod partially_fillable_balance;
 mod partially_fillable_pool;

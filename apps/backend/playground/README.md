@@ -9,6 +9,7 @@ run the CoW Protocol stack. The stack will also auto-recompile and restart any s
 2. Configure the stack by editing the `.env.example` file and renaming it to `.env`. **NOTE**: RPC demand is very high,
    for optimal performance, use a local node. The stack was tested with `reth` on `mainnet`.
 3. Run `docker-compose -f docker-compose.fork.yml up --build`.
+    * For `docker-compose.non-interactive.yml`, first export `OPHIS_GIT_SHA="$(git rev-parse HEAD)"` from a clean checkout. Its production Dockerfile requires the full commit for every backend binary and migrations image. The bind-mounted fork playground remains a development build and reports `unversioned-dev` when Git metadata is absent.
     * If you're *not* using Linux, we recommend you use the `docker-compose.non-interactive.yml` definition instead;
       due to how mounts are done outside of Linux, running cargo-watch leads to [very slow buids](https://github.com/watchexec/cargo-watch#docker-running-cargo-commands-over-a-mount-is-very-slow).
 4. Configure Rabby Wallet (or see [Metamask specific notes](#metamask)) to use the RPC endpoint at

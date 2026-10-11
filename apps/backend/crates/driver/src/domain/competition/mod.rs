@@ -850,18 +850,18 @@ impl Competition {
         // down in case the available user balance is only enough to partially
         // cover the rest of the order.
         auction.orders.retain_mut(|order| {
-            if cow_amms.contains(&order.uid) {
-                // cow amm orders already get constructed fully initialized
-                // so we don't have to handle them here anymore.
-                // Without this short circuiting logic they would get filtered
-                // out later because we don't bother fetching their balances
-                // for performance reasons.
-                return true;
-            }
-
-            // Update order app data if it was fetched.
+            // Fetch before filtering so historical orders cannot retain the old
+            // wrapper balance exemption after a backend upgrade.
             if let Some(fetched_app_data) = app_data.get(&order.app_data.hash()) {
                 order.app_data = fetched_app_data.clone().into();
+            }
+            if !order.app_data.wrappers().is_empty() {
+                tracing::warn!(order_uid = ?order.uid, "dropping unsupported wrapper order");
+                return false;
+            }
+            if cow_amms.contains(&order.uid) {
+                // CoW AMM orders are initialized already and have no fetched balances.
+                return true;
             }
 
             // Audit MEDIUM-8 (2026-05-17 phase 1 HyperEVM audit): drop orders
@@ -895,11 +895,6 @@ impl Competition {
             // Flashloan orders get their sell tokens from the flashloan at
             // settlement time, so skip the balance check.
             if order.app_data.flashloan().is_some() {
-                return true;
-            }
-
-            // wrappers can produce the required funds at settlement time
-            if !order.app_data.wrappers().is_empty() {
                 return true;
             }
 

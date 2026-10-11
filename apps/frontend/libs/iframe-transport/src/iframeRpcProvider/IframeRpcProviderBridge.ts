@@ -8,9 +8,15 @@ import {
 } from './iframeRpcProviderEvents'
 import { getEip6963ProviderInfo, getProviderWcMetadata } from './utils'
 
-import type { EthereumProvider, JsonRpcRequestMessage } from '../types'
+import type { EthereumProvider, JsonRpcRequestMessage, WindowListener } from '../types'
 
 const EVENTS_TO_FORWARD_TO_IFRAME = ['connect', 'disconnect', 'close', 'chainChanged', 'accountsChanged']
+
+interface ProviderEventHandlers {
+  provider: EthereumProvider
+  handlers: [string, (params: unknown) => void][]
+}
+
 const eip6963Providers: EIP6963ProviderDetail[] = []
 
 if (typeof window !== 'undefined') {
@@ -33,8 +39,14 @@ export class IframeRpcProviderBridge {
    * */
   private ethereumProvider: EthereumProvider | null = null
 
-  /** Stored JSON-RPC requests, to queue them when disconnected. */
-  private requestWaitingForConnection: { [key: string]: JsonRpcRequestMessage } = {}
+  /**
+   * The actual `message` listeners registered by the transport (wrappers around our callbacks).
+   * They must be kept to be able to remove them, otherwise every reconnection would stack a new listener.
+   */
+  private windowListeners: WindowListener[] = []
+
+  /** Handlers registered in the current provider, to unsubscribe them when the provider is replaced/disconnected. */
+  private providerEventHandlers: ProviderEventHandlers | null = null
 
   /**
    * Creates an instance of IframeRpcProviderBridge.
@@ -48,23 +60,16 @@ export class IframeRpcProviderBridge {
 
   /**
    * Disconnects the JSON-RPC bridge from the Ethereum provider.
+   * Stops listening to the iFrame and invalidates responses from the disconnected provider.
    */
   disconnect(): void {
     if (typeof window === 'undefined') return
 
     // Disconnect provider
-    this.ethereumProvider = null
-    iframeRpcProviderTransport.stopListeningToMessageFromWindow(
-      window,
-      IframeRpcProviderEvents.PROVIDER_RPC_REQUEST,
-      this.processRpcCallFromWindow,
-    )
+    this.disconnectProvider()
 
-    iframeRpcProviderTransport.stopListeningToMessageFromWindow(
-      window,
-      IframeRpcProviderEvents.REQUEST_PROVIDER_META_INFO,
-      this.processProviderMetaInfoRequest,
-    )
+    this.windowListeners.forEach((listener) => iframeRpcProviderTransport.stopListeningWindowListener(window, listener))
+    this.windowListeners = []
   }
 
   /**
@@ -74,93 +79,86 @@ export class IframeRpcProviderBridge {
   onConnect(newProvider: EthereumProvider): void {
     if (typeof window === 'undefined') return
 
-    // Disconnect the previous provider
-    if (this.ethereumProvider) {
-      this.disconnect()
-    } else {
-      // Listen for messages coming to the main window (from the iFrame window)
-      iframeRpcProviderTransport.listenToMessageFromWindow(
-        window,
-        this.iframeWindow,
-        IframeRpcProviderEvents.PROVIDER_RPC_REQUEST,
-        this.processRpcCallFromWindow,
-        this.iframeOrigin,
-      )
+    // Disconnect the previous provider (keep listening to the iFrame)
+    this.disconnectProvider()
+
+    if (this.windowListeners.length === 0) {
+      this.windowListeners = [
+        // Listen for messages coming to the main window (from the iFrame window)
+        iframeRpcProviderTransport.listenToMessageFromWindow(
+          window,
+          this.iframeWindow,
+          IframeRpcProviderEvents.PROVIDER_RPC_REQUEST,
+          this.processRpcCallFromWindow,
+          this.iframeOrigin,
+        ),
+        // Listen for provider meta info request
+        iframeRpcProviderTransport.listenToMessageFromWindow(
+          window,
+          this.iframeWindow,
+          IframeRpcProviderEvents.REQUEST_PROVIDER_META_INFO,
+          this.processProviderMetaInfoRequest,
+          this.iframeOrigin,
+        ),
+      ]
     }
 
     // Save the provider
     this.ethereumProvider = newProvider
 
-    // Process pending requests
-    this.processPendingRequests()
-
     // Register in the provider, the events that needs to be forwarded to the iFrame window
+    const subscription: ProviderEventHandlers = { provider: newProvider, handlers: [] }
+    this.providerEventHandlers = subscription
     EVENTS_TO_FORWARD_TO_IFRAME.forEach((event) => {
-      newProvider.on(event, (params: unknown) => this.onProviderEvent(event, params))
-    })
+      // Ignore events once this provider is no longer the connected one (in case it doesn't support removeListener)
+      const handler = (params: unknown): void => {
+        if (this.providerEventHandlers === subscription) this.onProviderEvent(event, params)
+      }
 
-    // Listen for provider meta info request
-    iframeRpcProviderTransport.listenToMessageFromWindow(
-      window,
-      this.iframeWindow,
-      IframeRpcProviderEvents.REQUEST_PROVIDER_META_INFO,
-      this.processProviderMetaInfoRequest,
-      this.iframeOrigin,
-    )
+      newProvider.on(event, handler)
+      subscription.handlers.push([event, handler])
+    })
   }
 
-  // TODO: Add proper return type annotation
-  // eslint-disable-next-line @typescript-eslint/explicit-function-return-type
-  private processPendingRequests() {
-    // Process pending requests
-    Object.keys(this.requestWaitingForConnection).forEach((key) => {
-      this.processRpcRequest(this.requestWaitingForConnection[key])
-    })
+  private disconnectProvider(): void {
+    this.ethereumProvider = null
 
-    // Clear pending requests
-    this.requestWaitingForConnection = {}
+    if (!this.providerEventHandlers) return
+
+    const { provider, handlers } = this.providerEventHandlers
+    this.providerEventHandlers = null
+    handlers.forEach(([event, handler]) => provider.removeListener?.(event, handler))
   }
 
   /**
    * Processes a JSON-RPC request and sends appropriate response or error via the content window.
    * @param request - The JSON-RPC request to be processed.
    */
-  // TODO: Add proper return type annotation
-  // eslint-disable-next-line @typescript-eslint/explicit-function-return-type
-  processRpcRequest(request: JsonRpcRequestMessage) {
+  processRpcRequest(request: JsonRpcRequestMessage): void {
     const { id, jsonrpc, method } = request
-    if (!this.ethereumProvider || !id) {
+    const subscription = this.providerEventHandlers
+    if (!subscription || id === undefined) {
       return
     }
     const requestPromise =
       // Keep the legacy "enable" method for backward compatibility
       method === 'enable'
-        ? this.ethereumProvider.request({ method: 'eth_requestAccounts', id })
-        : this.ethereumProvider.request({ ...request, id })
+        ? subscription.provider.request({ method: 'eth_requestAccounts', id })
+        : subscription.provider.request({ ...request, id })
 
-    // Do request, and forward the result or error to the iFrame window
+    // A previous connection must not disclose responses to a replacement iframe/provider session.
     requestPromise
-      .then((result) =>
-        this.forwardRpcResponseToIframe({
-          rpcResponse: { jsonrpc, id, result },
-        }),
-      )
-      .catch((error) =>
-        this.forwardRpcResponseToIframe({
-          rpcResponse: { jsonrpc, id, error },
-        }),
-      )
+      .then((result) => {
+        if (this.providerEventHandlers !== subscription) return
+        this.forwardRpcResponseToIframe({ rpcResponse: { jsonrpc, id, result } })
+      })
+      .catch((error) => {
+        if (this.providerEventHandlers !== subscription) return
+        this.forwardRpcResponseToIframe({ rpcResponse: { jsonrpc, id, error } })
+      })
   }
 
   private processRpcCallFromWindow = ({ rpcRequest }: ProviderRpcRequestPayload): void => {
-    // If disconnected, ignore the message. Also persist the request
-    if (!this.ethereumProvider) {
-      if (rpcRequest.id) {
-        this.requestWaitingForConnection[rpcRequest.id] = rpcRequest
-      }
-      return
-    }
-
     this.processRpcRequest(rpcRequest)
   }
 
@@ -191,9 +189,7 @@ export class IframeRpcProviderBridge {
   /**
    * Forward a JSON-RPC message to the content window.
    */
-  // TODO: Add proper return type annotation
-  // eslint-disable-next-line @typescript-eslint/explicit-function-return-type
-  private forwardRpcResponseToIframe(params: ProviderRpcResponsePayload) {
+  private forwardRpcResponseToIframe(params: ProviderRpcResponsePayload): void {
     iframeRpcProviderTransport.postMessageToWindow(
       this.iframeWindow,
       IframeRpcProviderEvents.PROVIDER_RPC_RESPONSE,

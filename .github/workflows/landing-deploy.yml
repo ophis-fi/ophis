@@ -47,6 +47,7 @@ concurrency:
 
 jobs:
   build-deploy:
+    environment: ${{ github.ref == 'refs/heads/main' && 'Production' || 'Preview' }}
     name: build + lighthouse + deploy
     runs-on: ubuntu-latest
     steps:

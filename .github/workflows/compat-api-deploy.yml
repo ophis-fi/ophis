@@ -41,6 +41,7 @@ concurrency:
 
 jobs:
   build-deploy:
+    environment: ${{ github.ref == 'refs/heads/main' && 'Production' || 'Preview' }}
     name: build + test + deploy
     runs-on: ubuntu-latest
     steps:

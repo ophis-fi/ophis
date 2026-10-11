@@ -113,6 +113,7 @@ pub struct Solution {
     pub trades: Vec<Trade>,
     pub flashloans: HashMap<order::Uid, Flashloan>,
     pub gas_fee_override: Option<(u128, u128)>,
+    pub wrappers: Vec<solvers_dto::solution::WrapperCall>,
 }
 
 #[derive(Debug, Clone)]
@@ -809,40 +810,44 @@ impl Blockchain {
             fulfillments.push(Fulfillment {
                 quoted_order: self.quote(order),
                 execution: execution.clone(),
-                interactions: vec![
-                    Interaction {
-                        address: *sell_token.address(),
-                        calldata: match solution.calldata {
-                            super::Calldata::Valid { additional_bytes } => transfer_interaction
-                                .into_iter()
-                                .chain(std::iter::repeat_n(0xab, additional_bytes))
-                                .collect(),
-                            super::Calldata::Invalid => vec![1, 2, 3, 4, 5],
+                interactions: if solution.use_buffers {
+                    vec![]
+                } else {
+                    vec![
+                        Interaction {
+                            address: *sell_token.address(),
+                            calldata: match solution.calldata {
+                                super::Calldata::Valid { additional_bytes } => transfer_interaction
+                                    .into_iter()
+                                    .chain(std::iter::repeat_n(0xab, additional_bytes))
+                                    .collect(),
+                                super::Calldata::Invalid => vec![1, 2, 3, 4, 5],
+                            },
+                            inputs: Default::default(),
+                            outputs: Default::default(),
+                            internalize: false,
                         },
-                        inputs: Default::default(),
-                        outputs: Default::default(),
-                        internalize: false,
-                    },
-                    Interaction {
-                        address: *pair.contract.address(),
-                        calldata: match solution.calldata {
-                            super::Calldata::Valid { .. } => swap_interaction,
-                            super::Calldata::Invalid => {
-                                vec![10, 11, 12, 13, 14, 15, 63, 78]
-                            }
+                        Interaction {
+                            address: *pair.contract.address(),
+                            calldata: match solution.calldata {
+                                super::Calldata::Valid { .. } => swap_interaction,
+                                super::Calldata::Invalid => {
+                                    vec![10, 11, 12, 13, 14, 15, 63, 78]
+                                }
+                            },
+                            inputs: vec![eth::Asset {
+                                token: (*sell_token.address()).into(),
+                                // Surplus fees stay in the contract.
+                                amount: (execution.sell - order.surplus_fee()).into(),
+                            }],
+                            outputs: vec![eth::Asset {
+                                token: (*buy_token.address()).into(),
+                                amount: execution.buy.into(),
+                            }],
+                            internalize: order.internalize,
                         },
-                        inputs: vec![eth::Asset {
-                            token: (*sell_token.address()).into(),
-                            // Surplus fees stay in the contract.
-                            amount: (execution.sell - order.surplus_fee()).into(),
-                        }],
-                        outputs: vec![eth::Asset {
-                            token: (*buy_token.address()).into(),
-                            amount: execution.buy.into(),
-                        }],
-                        internalize: order.internalize,
-                    },
-                ],
+                    ]
+                },
             });
         }
         fulfillments

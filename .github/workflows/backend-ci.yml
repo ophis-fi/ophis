@@ -26,6 +26,9 @@ on:
   pull_request:
     paths:
       - "apps/backend/**"
+      - "infra/shared/scripts/*backend-revision.py"
+      - "infra/*-mainnet/configs/driver.toml.tmpl"
+      - "infra/*-mainnet/compose-up.sh"
       # The OPTIMISM_STABLECOINS drift test reads this frontend file, so a
       # frontend-only stablecoin edit must still trigger the backend test.
       - "apps/frontend/libs/common-const/src/tokens.ts"
@@ -34,6 +37,9 @@ on:
     branches: [main]
     paths:
       - "apps/backend/**"
+      - "infra/shared/scripts/*backend-revision.py"
+      - "infra/*-mainnet/configs/driver.toml.tmpl"
+      - "infra/*-mainnet/compose-up.sh"
       - "apps/frontend/libs/common-const/src/tokens.ts"
   workflow_dispatch:
 
@@ -44,6 +50,29 @@ jobs:
   floor-tests:
     name: backend (cargo check all-targets + test, Ophis-diverged crates)
     runs-on: ubuntu-latest
+    timeout-minutes: 90
+    env:
+      # Keep the full workspace + test links within a hosted runner's disk budget.
+      CARGO_PROFILE_DEV_DEBUG: "0"
+      CARGO_PROFILE_TEST_DEBUG: "0"
+      CARGO_INCREMENTAL: "0"
+      PGHOST: 127.0.0.1
+      PGPORT: "5432"
+      PGUSER: postgres
+      # The e2e harness creates a readonly role with this same local-test password.
+      PGPASSWORD: password
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: password
+          POSTGRES_DB: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s --health-timeout 5s --health-retries 20
     # The OP partner-fee floor's RUNTIME enforcement lives in the Rust backend:
     # the ingress floor (shared::order_validation::enforce_partner_fee_floor),
     # the autopilot Volume clamp / Surplus-PI neutralization + the
@@ -54,11 +83,32 @@ jobs:
     # grep-based floor-invariant gate covered the cross-workspace INPUTS). This
     # job compiles and runs the LIB unit tests for exactly those crates so a
     # floor-LOGIC regression fails a PR. Scoped to --lib of these 4 crates on
-    # purpose: the workspace's integration/e2e tests (tests/*, testcontainers, a
-    # running node) are #[ignore]d and out of scope; --lib skips them. The stable
+    # purpose. The wrapper security regressions below explicitly opt into local
+    # ignored integration/e2e tests with Anvil and a disposable database. The stable
     # toolchain comes from apps/backend/rust-toolchain (rustup auto-installs).
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
+        with:
+          persist-credentials: false
+      - name: Install pinned Anvil for isolated settlement regressions
+        uses: foundry-rs/foundry-toolchain@908c540300062bd5a7e473851cdb4282204cee09 # v1.9.1
+        with:
+          version: v1.5.1
+          cache: true
+      - name: Prepare disposable e2e database
+        env:
+          POSTGRES_CONTAINER: ${{ job.services.postgres.id }}
+        run: |
+          # The harness's readonly URL uses $USER as its database name. Set the
+          # standard PGDATABASE for write connections to that same fresh DB.
+          docker exec "$POSTGRES_CONTAINER" createdb -U postgres "$USER"
+          echo "PGDATABASE=$USER" >> "$GITHUB_ENV"
+          docker run --rm --network host \
+            -v "$GITHUB_WORKSPACE/apps/backend/database/sql:/flyway/sql:ro" \
+            -v "$GITHUB_WORKSPACE/apps/backend/database/conf:/flyway/conf:ro" \
+            flyway/flyway:10.7.1 \
+            -url="jdbc:postgresql://127.0.0.1:5432/$USER" \
+            -user=postgres -password=password migrate
       - name: cargo fetch (retry on transient registry blips)
         working-directory: apps/backend
         # Mirror the cargo-audit/deny resilience (security.yml): a dropped
@@ -81,9 +131,8 @@ jobs:
       # (pathviz Wave 2): it added three fields to OrderQuoteRequest without
       # updating the struct literal in crates/e2e/tests/e2e/ethflow.rs, and
       # `cargo check --all-targets` stayed red on main for days because nothing
-      # in CI ran it. --all-targets is load-bearing here: the e2e tests are
-      # #[ignore]d and never RUN in CI, but they must still COMPILE, and only
-      # --all-targets builds them.
+      # in CI ran it. --all-targets is load-bearing here: most e2e tests remain
+      # #[ignore]d; all must still COMPILE, including those not selected below.
       - name: cargo check (whole workspace, all targets - incl. tests/benches)
         working-directory: apps/backend
         run: cargo check --offline --locked --workspace --all-targets
@@ -97,9 +146,8 @@ jobs:
       # upstream (chain enums, solver lanes, router allowlists, native pricing),
       # so they are the ones worth gating on.
       #
-      # Still scoped to --lib on purpose: the workspace's integration/e2e tests
-      # need testcontainers and a running node, are #[ignore]d, and --lib skips
-      # them (the compile gate above still type-checks them).
+      # Includes app-data's unsupported-wrapper cases and driver's production
+      # inline signing-policy serde/unit tests. Ignored full-path cases run below.
       - name: cargo test (Ophis-diverged crates, lib unit tests)
         working-directory: apps/backend
         run: |
@@ -107,6 +155,24 @@ jobs:
             -p app-data -p shared -p autopilot -p orderbook \
             -p chain -p solvers -p driver -p liquidity-sources -p price-estimation \
             -p balance-overrides -p event-indexing -p configs
+
+      - name: Reject solver wrappers and historical wrapper orders through the driver
+        working-directory: apps/backend
+        run: |
+          cargo test --offline --locked -p driver --lib tests::cases::wrappers:: \
+            -- --ignored --test-threads=1
+
+      - name: Public wrapper rejection and ordinary full-stack settlement
+        working-directory: apps/backend
+        run: |
+          cargo test --offline --locked -p e2e --test e2e \
+            wrapper::local_node_unsupported_wrappers -- --ignored --exact --test-threads=1
+
+      - name: Provisioned partner fees settle while public registration stays closed
+        working-directory: apps/backend
+        run: |
+          cargo test --offline --locked -p e2e --test e2e \
+            partner_fee_registry::local_node_provisioned_registry -- --ignored --exact --test-threads=1
 
       # Lightweight Rust STATIC analysis on exactly the Ophis-diverged money-path
       # crates. CodeQL does not cover Rust here (codeql-config paths-ignore

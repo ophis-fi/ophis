@@ -41,6 +41,7 @@ pub async fn start(args: impl Iterator<Item = String>) {
     );
     observe::tracing::init::initialize(&obs_config);
     observe::panic_hook::install();
+    tracing::info!(revision = env!("VERGEN_GIT_SHA"), "starting refunder");
     #[cfg(unix)]
     observe::heap_dump_handler::spawn_heap_dump_handler();
     tracing::info!("running refunder with validated arguments:\n{}", args);

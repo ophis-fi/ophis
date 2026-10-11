@@ -92,8 +92,10 @@ The prepared key supersedes the fresh-key example below: **do not generate a
 second solver or overwrite this deployed plan**.
 The original disk blocker is resolved: removing only this checkout's rebuildable
 Rust intermediates recovered about 10 GiB, preserving all four native binaries.
-The production backend and migrations images are now built as
+Previously staged backend and migrations images were built as
 `ophis-arc-backend:7f2f8b10f2e1` and `ophis-arc-migrations:7f2f8b10f2e1`.
+These legacy short-tag builds must be rebuilt with the full reviewed commit and
+OCI revision labels before the current startup guard will accept them.
 The build used two Cargo jobs and a 3 GiB disk stop; it began with 14.3 GiB free.
 All five backend binary help commands passed inside the image as UID 501 with
 networking disabled; Flyway's offline version check also passed. Image IDs and
@@ -293,9 +295,11 @@ application development. Use the reviewed revision and actual `config.json`:
    execute with two owners. Run `node infra/arc-mainnet/release/verify.cjs`.
    It binds receipts and creation inputs to the plan and checks actual code,
    ownership, empty pending manager, solver authorization and contract wiring.
-4. Use the prepared backend/migrations Docker images above, or build them on a host with sufficient space
+4. Build the backend/migrations Docker images for the reviewed commit on a host with sufficient space
    (a fresh Rust build needs at least 12 GiB free). Set `ARC_RELEASE_TAG` to the
-   reviewed revision, and export `ARC_RUNTIME_UID=$(id -u)` and
+   full reviewed commit SHA from
+   `python3 infra/shared/scripts/backend-revision.py source .`
+   (a clean backend/infra tree is required), and export `ARC_RUNTIME_UID=$(id -u)` and
    `ARC_RUNTIME_GID=$(id -g)`; `docker compose -f infra/arc-mainnet/release/docker-compose.yml
    build`. Share the one backend image across services. A fresh build still needs
    a new disk-space check; cached outputs are not a reservation of space.
@@ -307,7 +311,11 @@ application development. Use the reviewed revision and actual `config.json`:
    actually available credits in `ARC_QUICKNODE_CREDIT_ALLOWANCE` (1..10,000,000).
    Use the environment or an ignored release `.env`; never put these in frontend
    variables. `start.cjs` expects these variables exported in its environment.
-6. Run `node infra/arc-mainnet/release/start.cjs --start`. It checks signer identity,
+6. Run `node infra/arc-mainnet/release/start.cjs --start`. It checks the release
+   plan and, on macOS, the RAM key and Docker mount proofs before inspecting
+   images. It then checks that `ARC_RELEASE_TAG` equals the clean full source SHA and that every backend and
+   migration image has that OCI revision label, recording immutable image IDs.
+   It then checks signer identity,
    deployment again, gas funding, disk space and a submission window of at least
    60 seconds at the observed block cadence, re-renders active config, and starts
    prebuilt images. Run it as the unprivileged owner of both release files and the

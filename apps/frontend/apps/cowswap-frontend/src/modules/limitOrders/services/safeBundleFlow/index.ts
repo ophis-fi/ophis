@@ -25,6 +25,8 @@ import { TradeFlowAnalytics, TradeFlowAnalyticsContext } from 'modules/trade/uti
 import { shouldZeroApprove as shouldZeroApproveFn } from 'modules/zeroApproval'
 
 import { getSwapErrorMessage } from 'common/utils/getSwapErrorMessage'
+import { assertOrderUidMatches } from 'utils/orderUtils/assertOrderUidMatches'
+import { getPreSignTransactionForOrder } from 'utils/orderUtils/getPreSignTransactionForOrder'
 
 const LOG_PREFIX = 'LIMIT ORDER SAFE BUNDLE FLOW'
 
@@ -68,7 +70,7 @@ export async function safeBundleFlow(
   analytics.approveAndPresign(swapFlowAnalyticsContext)
   beforeTrade?.()
 
-  const { chainId, postOrderParams, erc20Contract, spender, dispatch, sendBatchTransactions } = params
+  const { chainId, signer, postOrderParams, erc20Contract, spender, dispatch, sendBatchTransactions } = params
 
   const validTo = calculateLimitOrdersDeadline(settingsState, params.quoteState)
 
@@ -114,6 +116,8 @@ export async function safeBundleFlow(
       ),
     )
 
+    await assertOrderUidMatches(orderId, unsignedOrder, chainId, account)
+
     const order = mapUnsignedOrderToOrder({
       unsignedOrder,
       additionalParams: {
@@ -139,7 +143,7 @@ export async function safeBundleFlow(
     )
 
     logTradeFlow(LOG_PREFIX, 'STEP 5: build presign tx')
-    const presignTx = await tradingSdk.getPreSignTransaction({ orderUid: orderId })
+    const presignTx = await getPreSignTransactionForOrder(orderId, chainId, signer)
 
     logTradeFlow(LOG_PREFIX, 'STEP 6: send safe tx')
     const safeTransactionData: MetaTransactionData[] = [

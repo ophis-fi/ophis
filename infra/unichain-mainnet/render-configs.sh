@@ -223,7 +223,7 @@ RAM_PK_SIZE_SECTORS=2048   # 2048 * 512B = 1 MB
 # are all USER 10001:10001). Only consumed on Linux, where bind-mount perms are
 # literal and a root-owned 0600 config is unreadable by the container. Override
 # only if the images' USER changes; verify with:
-#   docker image inspect local-driver:latest --format '{{.Config.User}}'
+#   docker image inspect local-driver:<full-sha> --format '{{.Config.User}}'
 OPHIS_CONTAINER_UID="${OPHIS_CONTAINER_UID:-10001}"
 
 # Idempotent mount. Exits non-zero on failure — we WANT this to hard-fail
@@ -743,11 +743,7 @@ fi
 
 echo "Bring up the stack with the wrapper:"
 echo "  ./compose-up.sh                  # re-renders, stamps /api/v1/version, brings up (recommended)"
-echo "OR directly (only if you JUST ran render-configs.sh):"
-echo "  docker compose -f $SCRIPT_DIR/docker-compose.yml up -d --build"
-echo "  NOTE: the direct path does NOT export OPHIS_GIT_DESCRIBE, so a --build"
-echo "  here leaves the orderbook /api/v1/version on the vergen sentinel."
-echo "  Use ./compose-up.sh for an accurate version string."
+echo "The wrapper verifies clean source, stamps all binaries, and checks image revisions before startup."
 echo ""
 echo "After reboot, the RAM-disk is gone. compose-up.sh handles this automatically;"
 echo "raw 'docker compose up' will fail with a dangling driver.toml symlink."

@@ -1,4 +1,7 @@
 FROM docker.io/flyway/flyway:10.7.1 AS migrations
+ARG OPHIS_GIT_SHA
+RUN test "${#OPHIS_GIT_SHA}" -eq 40 && case "$OPHIS_GIT_SHA" in *[!0-9a-f]*) exit 1;; esac
+LABEL org.opencontainers.image.revision=$OPHIS_GIT_SHA
 COPY database/ /flyway/
 CMD ["migrate"]
 
@@ -23,19 +26,13 @@ RUN rustup install 1.96.1 && rustup default 1.96.1
 # Copy and Build Code
 COPY . .
 
-# Version string for the orderbook GET /api/v1/version route. Declared HERE,
-# immediately before the build, so a release-only version bump (git describe
-# differs per commit) busts ONLY the final cargo-build layer, not the cached
-# apt + rustup base layers above. The build context (apps/backend) has no .git,
-# so vergen's `git describe` falls back to the "VERGEN_IDEMPOTENT_OUTPUT"
-# sentinel; the deploy injects the real value via
-# `--build-arg OPHIS_GIT_DESCRIBE=$(git describe --tags --always --dirty)` and
-# orderbook/build.rs reads it. Empty default keeps in-tree builds on vergen.
-ARG OPHIS_GIT_DESCRIBE=""
-ENV OPHIS_GIT_DESCRIBE=${OPHIS_GIT_DESCRIBE}
+# Required for every binary: the context has no Git metadata. Never stamp a
+# mutable tag or a caller's arbitrary release name as the source revision.
+ARG OPHIS_GIT_SHA
+ENV OPHIS_GIT_SHA=${OPHIS_GIT_SHA}
 
 RUN --mount=type=cache,target=/usr/local/cargo/registry --mount=type=cache,target=/src/target \
-    CARGO_PROFILE_RELEASE_DEBUG=1 RUSTFLAGS="${RUSTFLAGS}" cargo build --release \
+    CARGO_PROFILE_RELEASE_DEBUG=1 RUSTFLAGS="${RUSTFLAGS}" cargo build --locked --release \
     -p autopilot -p driver -p orderbook -p refunder -p solvers \
     ${CARGO_BUILD_FEATURES} && \
     cp target/release/autopilot / && \
@@ -46,6 +43,8 @@ RUN --mount=type=cache,target=/usr/local/cargo/registry --mount=type=cache,targe
 
 # Create an intermediate image to extract the binaries
 FROM docker.io/debian:bookworm-slim AS intermediate
+ARG OPHIS_GIT_SHA
+LABEL org.opencontainers.image.revision=$OPHIS_GIT_SHA
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked apt-get update && \
     apt-get install -y ca-certificates tini gettext-base && \
     apt-get clean && \

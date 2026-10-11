@@ -1244,6 +1244,28 @@ enum AtBlock {
 mod tests {
     use super::*;
 
+    #[test]
+    fn production_inline_account_keeps_the_signing_policy() {
+        let account: Account = toml::from_str(&format!(
+            r#"
+            guarded = "0x{}"
+            settlement-targets = [
+                {{ address = "0x310784c7FCE12d578dA6f53460777bAc9718B859", selectors = ["0x13d79a0b"] }},
+            ]
+            require-zero-value = true
+            "#,
+            "01".repeat(32),
+        ))
+        .unwrap();
+        let Account::PolicyGuarded { guarded, settlement_targets, require_zero_value } = account else {
+            panic!("production account must retain its policy");
+        };
+        assert!(matches!(*guarded, Account::PrivateKey(_)));
+        assert_eq!(settlement_targets.len(), 1);
+        assert_eq!(settlement_targets[0].selectors, vec!["0x13d79a0b".to_owned()]);
+        assert!(require_zero_value);
+    }
+
     /// (#441) The opt-in `policy-guarded` account must deserialize as
     /// `PolicyGuarded` and NOT be mis-disambiguated by the untagged enum into a
     /// bare-signer variant. Also checks the recursive inner account, the selector

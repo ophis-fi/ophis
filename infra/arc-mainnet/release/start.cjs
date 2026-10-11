@@ -20,11 +20,18 @@ async function main() {
     verifyRamKey(process.env.ARC_SOLVER_KEY_FILE)
     probeDockerMount()
   }
+  // Preserve the custody proof before inspecting images, and reject unverified
+  // source/images before reading signing keys or changing running services.
+  const provenance = path.join(__dirname, '../../shared/scripts/backend-revision.py')
+  const revision = execFileSync('python3', [provenance, 'source', path.join(__dirname, '../../..')], { encoding: 'utf8' }).trim()
+  assert.equal(process.env.ARC_RELEASE_TAG, revision, 'ARC_RELEASE_TAG must equal the clean reviewed full commit SHA')
+  process.env.ARC_RUNTIME_UID = String(process.getuid())
+  process.env.ARC_RUNTIME_GID = String(process.getgid())
+  const imageEvidence = execFileSync('python3', [provenance, 'images', path.join(__dirname, 'docker-compose.yml'), revision], { encoding: 'utf8' })
+  console.log(imageEvidence.trim())
   const { keyFile, address: signer } = readSolver(process.env.ARC_SOLVER_KEY_FILE)
   assert(fs.statSync(OUT).uid === process.getuid(), 'Release directory must have the same owner as the key')
   process.env.ARC_SOLVER_KEY_FILE = keyFile
-  process.env.ARC_RUNTIME_UID = String(process.getuid())
-  process.env.ARC_RUNTIME_GID = String(process.getgid())
   assert.equal(signer, plan.config.solver, 'Signer differs from authorized solver')
   const rpc = new JsonRpcProvider('https://rpc.mainnet.arc.io', { name: 'arc', chainId: 5042 })
   const verified = await verify(rpc, plan, read('receipts'), read('artifacts'))

@@ -164,9 +164,8 @@ pub struct Configuration {
     #[serde(default)]
     pub pathviz: PathVizConfig,
 
-    /// Self-serve partner-fee recipient registry (partner-fees Phase A). Ships
-    /// with `registration-enabled` off (the master switch); while off the
-    /// registry is neither loaded nor consulted and only the Ophis Safe passes.
+    /// Partner-fee recipient registry. Match autopilot enablement; public
+    /// POST /partners is gated by registration-enabled alone.
     #[serde(default)]
     pub partner_fee_registry: crate::partner_fee_registry::PartnerFeeRegistryConfig,
 }

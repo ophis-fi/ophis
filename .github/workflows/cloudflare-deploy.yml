@@ -16,10 +16,12 @@ permissions:
 
 jobs:
   deploy:
+    environment: Production
+    if: github.ref == 'refs/heads/main'
     name: build + deploy
     runs-on: ubuntu-latest
     concurrency:
-      group: cloudflare-pages-${{ github.ref }}
+      group: cloudflare-pages-production
       # cancel-in-progress: false — this job runs two sequential, non-atomic
       # `wrangler pages deploy` calls (cowswap -> project `greg`, explorer ->
       # project `ophis-explorer`). Cancelling mid-run can leave one Pages

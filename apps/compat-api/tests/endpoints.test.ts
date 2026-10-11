@@ -119,6 +119,37 @@ beforeEach(() => {
 });
 
 describe('POST /sor/quote/v3', () => {
+  it.each([
+    ['increased gross input', { sellAmount: '999999997740' }],
+    ['decreased gross input', { sellAmount: '999997739' }],
+    ['changed fee', { feeAmount: '2261' }],
+    ['different sell token', { sellToken: OTHER }],
+    ['different buy token', { buyToken: OTHER }],
+    ['missing sell token', { sellToken: undefined }],
+    ['missing buy token', { buyToken: undefined }],
+    ['fractional expiry', { validTo: NOW_S + 0.5 }],
+    ['invalid expiry', { validTo: null }],
+  ])('rejects an upstream quote with %s before returning a signable draft', async (_label, quote) => {
+    const orders = vi.fn(() => Response.json(UID));
+    const res = await handleRequest(post('/sor/quote/v3', quoteBody()), ENV, deps(stubFetch({
+      quote: () => Response.json({ ...liveQuoteBody, quote: { ...liveQuoteBody.quote, ...quote } }),
+      orders,
+    })));
+    const body = await res.json() as Record<string, any>;
+    expect(res.status).toBe(503);
+    expect(body.error.code).toBe('UPSTREAM_UNAVAILABLE');
+    expect(body.pathId).toBeUndefined();
+    expect(body.ophis).toBeUndefined();
+    expect(orders).not.toHaveBeenCalled();
+  });
+
+  it('rejects a null upstream quote response as unavailable', async () => {
+    const res = await handleRequest(post('/sor/quote/v3', quoteBody()), ENV,
+      deps(stubFetch({ quote: () => Response.json(null) })));
+    expect(res.status).toBe(503);
+    expect((await res.json() as any).error.code).toBe('UPSTREAM_UNAVAILABLE');
+  });
+
   it('answers the full compat surface with an assemblable draft', async () => {
     const res = await handleRequest(post('/sor/quote/v3', quoteBody()), ENV, deps(stubFetch()));
     expect(res.status).toBe(200);

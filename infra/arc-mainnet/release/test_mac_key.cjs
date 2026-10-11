@@ -70,6 +70,8 @@ try {
 // must stop preparation before sudo/key access and startup before RPC/activation.
 async function entrypointGuards() {
   const events = [], plan = { config: { solver: address } }
+  const revision = '1'.repeat(40)
+  let failureStage = 'mount', activeProcess
   const mockFs = new Proxy({}, { get: (_, name) => {
     if (name === 'readFileSync') return file => {
       assert.equal(path.basename(file), 'plan.json', 'Entrypoint tried to read a key')
@@ -84,6 +86,20 @@ async function entrypointGuards() {
   const solverMock = { readSolver: () => { events.push('key-read'); throw new Error('Unexpected key read') },
     importSolver: () => { events.push('key-write'); throw new Error('Unexpected key write') } }
   const childMock = { execFileSync: (command, args) => {
+    if (command === 'python3' && failureStage !== 'mount') {
+      assert.equal(path.basename(args[0]), 'backend-revision.py', 'Unexpected rendering or activation')
+      events.push('provenance-' + args[1])
+      if (args[1] === 'source') {
+        assert.equal(args[2], path.join(__dirname, '../../..'))
+        if (failureStage === 'source') throw new Error('Disposable dirty source')
+        return revision + '\n'
+      }
+      assert.deepEqual(Array.from(args).slice(1), ['images', path.join(__dirname, 'docker-compose.yml'), revision])
+      assert.equal(activeProcess.env.ARC_RUNTIME_UID, '501')
+      assert.equal(activeProcess.env.ARC_RUNTIME_GID, '20')
+      if (failureStage === 'images') throw new Error('Disposable wrong image revision')
+      return 'Disposable verified image IDs\n'
+    }
     events.push(command)
     assert.equal(command, 'docker', 'Unexpected sudo or process execution')
     for (const flag of ['--rm', '--read-only', '--cap-drop', '--security-opt']) assert(args.includes(flag))
@@ -95,13 +111,14 @@ async function entrypointGuards() {
     const script = args[args.indexOf('-c') + 1]
     assert(script.includes(MARKER) && script.includes(NO_INDEX))
     assert(!script.includes('submitter.key') && !script.includes(fake))
-    throw new Error('Disposable stale Docker mount')
+    if (failureStage === 'mount') throw new Error('Disposable stale Docker mount')
+    return ''
   } }
   let mac
-  const load = (name, args, tail) => {
+  const load = (name, args, tail, platform = 'darwin') => {
     const context = { module: { exports: {} }, __dirname, console, events,
-      process: { argv: ['node', name, ...args], platform: 'darwin', getuid: () => 501, getgid: () => 20,
-        env: { ARC_SOLVER_KEY_FILE: '/public/submitter.key' } },
+      process: { argv: ['node', name, ...args], platform, getuid: () => 501, getgid: () => 20,
+        env: { ARC_SOLVER_KEY_FILE: '/public/submitter.key', ARC_RELEASE_TAG: failureStage === 'mismatch' ? '2'.repeat(40) : revision } },
       require: id => {
         // VM arrays/objects have different prototypes; preserve structural assertions.
         if (id === 'node:assert/strict') return Object.assign((...args) => assert(...args), assert, {
@@ -115,6 +132,7 @@ async function entrypointGuards() {
         if (id === './verify.cjs') return { verify: () => { events.push('verify-RPC'); throw new Error('Unexpected verification') } }
         return require(id)
       } }
+    activeProcess = context.process
     vm.runInNewContext(fs.readFileSync(path.join(__dirname, name), 'utf8') + tail, context, { filename: name })
     return context
   }
@@ -128,5 +146,22 @@ async function entrypointGuards() {
   await assert.rejects(startup.entry(), /Disposable stale Docker mount/)
   assert.deepEqual(events, ['plan', 'hash', 'ram-key-proof', 'ram-proof', 'docker'])
   console.log('PASS real prepare/start entrypoint ordering: failed Docker proof prevents sudo, key reads/writes, RPC, rendering and activation')
+  for (const platform of ['darwin', 'linux']) {
+    for (const stage of ['source', 'mismatch', 'images', 'passed']) {
+      failureStage = stage
+      events.length = 0
+      const startup = load('start.cjs', ['--start'], ';globalThis.entry=main;', platform)
+      const error = { source: /Disposable dirty source/, mismatch: /ARC_RELEASE_TAG must equal/,
+        images: /Disposable wrong image revision/, passed: /Unexpected key read/ }[stage]
+      await assert.rejects(startup.entry(), error)
+      const expected = ['plan', 'hash']
+      if (platform === 'darwin') expected.push('ram-key-proof', 'ram-proof', 'docker')
+      expected.push('provenance-source')
+      if (stage === 'images' || stage === 'passed') expected.push('provenance-images')
+      if (stage === 'passed') expected.push('key-read')
+      assert.deepEqual(events, expected, platform + ': ' + stage)
+    }
+  }
+  console.log('PASS real startup provenance ordering on macOS/Linux: dirty source, wrong release tag and wrong image revision stop before key reads, RPC or activation')
 }
 entrypointGuards().catch(error => { console.error(error); process.exitCode = 1 })

@@ -1,12 +1,13 @@
 name: ophis-arc
 x-backend: &backend
+  pull_policy: never
   image: ophis-arc-backend:${ARC_RELEASE_TAG:?set the reviewed release revision}
   build:
     context: ../../../apps/backend
     args:
-      CARGO_BUILD_FEATURES: --jobs 2 --locked
+      CARGO_BUILD_FEATURES: --jobs 2
       RUSTFLAGS: -C debuginfo=0
-      OPHIS_GIT_DESCRIBE: ${ARC_RELEASE_TAG:?set the reviewed release revision}
+      OPHIS_GIT_SHA: ${ARC_RELEASE_TAG:?set the reviewed release revision}
   restart: unless-stopped
   user: "${ARC_RUNTIME_UID:?use start.cjs}:${ARC_RUNTIME_GID:?use start.cjs}"
   env_file: ./generated/services.env
@@ -21,8 +22,9 @@ services:
     volumes: ["database:/var/lib/postgresql/data"]
     healthcheck: {test: [CMD-SHELL, "pg_isready -U arc -d arc"], interval: 5s, timeout: 3s, retries: 20}
   migrations:
+    pull_policy: never
     image: ophis-arc-migrations:${ARC_RELEASE_TAG:?set the reviewed release revision}
-    build: {context: ../../../apps/backend, target: migrations}
+    build: {context: ../../../apps/backend, target: migrations, args: {OPHIS_GIT_SHA: "${ARC_RELEASE_TAG:?set the reviewed release revision}"}}
     environment: {FLYWAY_URL: 'jdbc:postgresql://postgres:5432/arc', FLYWAY_USER: arc}
     env_file: ./generated/database.env
     depends_on: {postgres: {condition: service_healthy}}

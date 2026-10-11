@@ -131,14 +131,10 @@ trust-cf-connecting-ip = true
 enabled = true
 venues-file = "/configs/pathviz-venues.toml"
 
-# Self-serve partner-fee recipient registry (partner-fees Phase A). SHIPS
-# DISABLED: `registration-enabled` is the master switch for the whole feature.
-# While off, the registry is neither loaded nor consulted, no third party can
-# register, and only the always-allowed Ophis partner-fee Safe passes partner-fee
-# validation, exactly the pre-registry behavior. Flip it on only after the
-# internal test partner order settles; once on, `refresh-interval` sets how
-# quickly a newly registered or suspended partner takes effect.
+# Preserve operator-provisioned recipients without opening public registration.
+# Keep registry-enabled identical in orderbook and autopilot.
 [partner-fee-registry]
+registry-enabled = true
 registration-enabled = false
 refresh-interval = "30s"
 

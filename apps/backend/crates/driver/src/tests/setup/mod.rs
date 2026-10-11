@@ -579,9 +579,12 @@ pub enum Calldata {
 #[derive(Debug, Clone)]
 pub struct Solution {
     pub calldata: Calldata,
+    /// Fulfill using the fixture's prefunded settlement balances, without swaps.
+    pub use_buffers: bool,
     pub orders: Vec<&'static str>,
     pub flashloans: HashMap<order::Uid, Flashloan>,
     pub gas_fee_override: Option<(u128, u128)>,
+    pub wrappers: Vec<solvers_dto::solution::WrapperCall>,
 }
 
 impl Solution {
@@ -643,9 +646,11 @@ impl Default for Solution {
             calldata: Calldata::Valid {
                 additional_bytes: 0,
             },
+            use_buffers: false,
             orders: Default::default(),
             flashloans: Default::default(),
             gas_fee_override: None,
+            wrappers: vec![],
         }
     }
 }
@@ -988,6 +993,7 @@ impl Setup {
                 trades: [fulfillment_trades, jit_trades].concat(),
                 flashloans: solution.flashloans.clone(),
                 gas_fee_override: solution.gas_fee_override,
+                wrappers: solution.wrappers.clone(),
             });
         }
         let orderbook = Orderbook::start(&orders).await;

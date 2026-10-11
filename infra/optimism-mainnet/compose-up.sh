@@ -19,6 +19,17 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$SCRIPT_DIR"
 
+# Building is performed and checked before any service restarts. Accept the
+# historical --build spelling, but never rebuild/pull during the final up.
+UP_ARGS=()
+for arg in "$@"; do
+  case "$arg" in
+    --build|--no-build) ;;
+    --pull|--pull=*) echo "Use the wrapper's verified local images; --pull is not supported" >&2; exit 2 ;;
+    *) UP_ARGS+=("$arg") ;;
+  esac
+done
+
 # ── Deploy-safety guard (2026-07-22 OP outage) ──────────────────────────────
 # This script builds every local image before it restarts services, from whatever
 # source SCRIPT_DIR points at. On 2026-07-22
@@ -79,16 +90,11 @@ else
   echo "==> deploy-safety: HEAD is exactly clean, freshly-fetched origin/main (ok to --build)"
 fi
 
-# Version string for the orderbook GET /api/v1/version route. The Docker build
-# context (apps/backend) has no .git, so vergen falls back to the literal
-# "VERGEN_IDEMPOTENT_OUTPUT" sentinel and it leaks out of /version. Compute the
-# real version from the repo HEAD and pass it through as a build-arg (consumed
-# by orderbook/build.rs via the x-backend-build-args anchor in the compose
-# file). `|| true` keeps a git-less checkout from aborting the deploy — it just
-# falls back to the sentinel, same as before this fix.
-OPHIS_GIT_DESCRIBE="$(git -C "$SCRIPT_DIR" describe --tags --always --dirty 2>/dev/null || true)"
-export OPHIS_GIT_DESCRIBE
-echo "==> OPHIS_GIT_DESCRIBE=${OPHIS_GIT_DESCRIBE:-<unset, /version will show the vergen sentinel>}"
+# Stamp every backend binary and image with the same verified commit. This
+# check is independent of freshness overrides: dirty source is never a release.
+OPHIS_GIT_SHA="$(python3 "$SCRIPT_DIR/../shared/scripts/backend-revision.py" source "$SCRIPT_DIR/../..")"
+export OPHIS_GIT_SHA
+echo "==> Backend source revision: $OPHIS_GIT_SHA"
 
 # F7 (2026-05-21 whole-repo audit, HIGH H2): source inter-service auth
 # token from the macOS Keychain if not already in the environment. This
@@ -265,6 +271,13 @@ echo ""
 # always creates containers from binaries matching this exact origin/main.
 echo "==> docker compose $PROFILES_ARG build"
 docker compose $PROFILES_ARG build
+[[ "$(python3 "$SCRIPT_DIR/../shared/scripts/backend-revision.py" source "$SCRIPT_DIR/../..")" == "$OPHIS_GIT_SHA" ]]
+python3 "$SCRIPT_DIR/../shared/scripts/backend-revision.py" images "$SCRIPT_DIR/docker-compose.yml" "$OPHIS_GIT_SHA"
+
+# Match the new binaries' schema before a no-deps restart can launch them.
+# A migration failure must leave the existing backend containers running.
+echo "==> docker compose run --rm migrations"
+docker compose run --rm migrations
 
 echo ""
 # Force-recreate config-mounted services AFTER building. Docker
@@ -413,7 +426,9 @@ done
 
 echo ""
 echo "==> docker compose $PROFILES_ARG up -d $*"
-docker compose $PROFILES_ARG up -d "$@"
+docker compose $PROFILES_ARG up -d --no-build ${UP_ARGS[@]+"${UP_ARGS[@]}"}
+# Keep ps/logs/exec and existing verification scripts usable in later shells.
+python3 "$SCRIPT_DIR/../shared/scripts/backend-revision.py" record "$SCRIPT_DIR" "$OPHIS_GIT_SHA"
 
 echo ""
 echo "Stack startup initiated. Verify with:"

@@ -37,6 +37,8 @@ try {
   }
   // Both preview entry points must refuse before RPC, Docker, or secret writes.
   const script = `import json,pathlib,runpy,tempfile
+try: import tomllib
+except ImportError: import tomli as tomllib
 for file,function in [('check.py','main'),('render.py','render')]:
  scope=runpy.run_path(str(pathlib.Path(${JSON.stringify(__dirname)})/file),run_name='arc_check_test')
  for name,value in [('receipts.json',[]),('verified.json',{}),('activation.json',{'active':True})]:
@@ -59,6 +61,9 @@ with tempfile.TemporaryDirectory() as directory:
  scope['render'](); scope['render']()
  assert json.loads((out/'activation.json').read_text())['active'] is False
  assert 'guarded' not in (out/'driver.toml').read_text()
+ for service in ['autopilot','orderbook']:
+  registry=tomllib.loads((out/(service+'.toml')).read_text())['partner-fee-registry']
+  assert registry['registry-enabled'] is True and registry['registration-enabled'] is False
  assert 'REACT_APP_CCTP_ENABLED=false' in (out/'frontend.env').read_text()
  assert 'location ~ ^/api/v1/quote(?:/draft)?$' in (out/'nginx.conf').read_text()
  assert out.stat().st_mode & 0o777 == 0o700

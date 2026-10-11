@@ -63,7 +63,7 @@ def band_from_cvss(score):
     return None
 
 
-def iter_findings(doc):
+def iter_findings(doc, rust_informational=False):
     """Yield (name, version, ghsa, severity_lower, title) for every vulnerability.
 
     Severity is taken from database_specific.severity (the GHSA band osv/npm
@@ -96,8 +96,58 @@ def iter_findings(doc):
                                 sev = id_cvss[alias]
                                 break
                     sev = sev or ""
+                if not sev and rust_informational and p.get("ecosystem") == "crates.io":
+                    # RustSec distinguishes maintenance/soundness notices from
+                    # vulnerabilities. Only its explicit, ungraded records get
+                    # this treatment; a GHSA or a scored advisory still gates.
+                    for affected in vuln.get("affected") or []:
+                        ap = affected.get("package") or {}
+                        meta = affected.get("database_specific") or {}
+                        if (str(vuln.get("id", "")).startswith("RUSTSEC-")
+                                and not vuln.get("aliases")
+                                and ap.get("ecosystem") == "crates.io"
+                                and ap.get("name") == name
+                                and meta.get("informational") in ("unmaintained", "unsound", "notice")
+                                and not meta.get("cvss")):
+                            sev = "informational"
+                            break
                 title = vuln.get("summary") or vuln.get("id") or "?"
                 yield name, version, ghsa_of(vuln), sev, title
+
+
+def filter_local_cargo_packages(doc, lock_path):
+    """Avoid matching unpublished workspace crates to unrelated crates.io names.
+
+    Never ignore a registry/git package or an ambiguous name/version pair that
+    also has a sourced entry. This requires the actual lockfile being scanned.
+    """
+    try:
+        import tomllib  # Python 3.11+, provided by the Ubuntu CI runner.
+        with open(lock_path, "rb") as f:
+            lock = tomllib.load(f)
+        packages = lock["package"]
+        if not isinstance(packages, list) or not packages:
+            raise ValueError("missing Cargo packages")
+        local, sourced = set(), set()
+        for package in packages:
+            key = (package["name"], package["version"])
+            (sourced if package.get("source") else local).add(key)
+    except (ImportError, OSError, ValueError, KeyError, TypeError) as exc:
+        print(f"ERROR: cannot read Cargo identities: {exc} -- failing closed.", file=sys.stderr)
+        sys.exit(2)
+    local -= sourced
+    for result in doc.get("results") or []:
+        kept = []
+        for package in result.get("packages") or []:
+            identity = package.get("package") or {}
+            key = (identity.get("name"), identity.get("version"))
+            if identity.get("ecosystem") == "crates.io" and key in local:
+                if package.get("vulnerabilities"):
+                    print(f"LOCAL: {key[0]}@{key[1]} has no registry source in {lock_path}; "
+                          "crates.io name-collision matches excluded")
+            else:
+                kept.append(package)
+        result["packages"] = kept
 
 
 def load_osv(path):
@@ -220,6 +270,8 @@ def main():
     ap.add_argument("--baseline", help="baseline mode: path to per-severity baseline JSON")
     ap.add_argument("--osv-rc", type=int, default=None,
                     help="osv-scanner's exit code, for a fail-closed schema-drift check")
+    ap.add_argument("--cargo-lock", help="scanned Cargo.lock: verify package source identities "
+                    "and display explicitly informational RustSec records separately")
     args = ap.parse_args()
 
     if args.osv_rc not in (None, 0, 1):
@@ -235,6 +287,14 @@ def main():
         print("ERROR: osv-scanner reported vulnerabilities (rc=1) but the gate parsed "
               "none -- schema drift, failing closed.", file=sys.stderr)
         sys.exit(2)
+
+    if args.cargo_lock:
+        filter_local_cargo_packages(doc, args.cargo_lock)
+        findings = list(iter_findings(doc, rust_informational=True))
+        for name, version, advisory, sev, title in findings:
+            if sev == "informational":
+                print(f"INFORMATIONAL RustSec: {name}@{version} {advisory}: {title}")
+        findings = [f for f in findings if f[3] != "informational"]
 
     # Fail-closed severity guard: a finding we cannot classify (no
     # database_specific.severity AND no CVSS fallback) must never be silently

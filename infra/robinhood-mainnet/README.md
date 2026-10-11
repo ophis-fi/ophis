@@ -85,10 +85,22 @@ docker compose up -d          # see nitro/README.md for the trace check
 cd infra/robinhood-mainnet
 cp .env.example .env          # fill secrets, chmod 600
 # fill every __FILL_AFTER_DEPLOY_*__ in configs/*.toml.tmpl (see FILL-IN-AFTER-DEPLOY.md)
+# Use a clean reviewed commit; retain this export for Compose inspection commands.
+export OPHIS_GIT_SHA="$(python3 ../shared/scripts/backend-revision.py source ../..)"
 ./render-configs.sh           # renders *.tmpl -> rendered/* (PK on RAM-disk)
 ./compose-up.sh               # brings up the full stack
 docker compose ps             # verify all services healthy
 ```
+
+`compose-up.sh` verifies clean backend/infra source, builds all backend images
+under the full commit SHA, and checks their OCI revision labels before restarting
+services. All five binaries embed that revision; `/api/v1/version` returns it.
+Old `latest` images and mutable labels require a rebuild. Use the wrapper for
+backend/config rollouts. After successful startup it appends the verified revision
+to ignored `.env`, preserving existing credentials without reading or rewriting
+them. Later bare Compose inspection commands and verification scripts therefore
+work in new shells; the next rollout still rechecks source and image revisions.
+
 
 ## eRPC Upstreams
 

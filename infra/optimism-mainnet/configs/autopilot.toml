@@ -131,16 +131,11 @@ max-partner-fee = 0.01
 kind.price-improvement = { factor = 0.80, max-volume-factor = 0.0099 }
 order-class = "market"
 
-# Partner-fee recipient registry (partner-fees Phase A). `registration-enabled`
-# is the MASTER ENABLE for the whole feature and the autopilot honors it exactly
-# as the orderbook does: while off it uses the Ophis-only policy and drops ALL
-# third-party partner fees at settlement. It MUST be set identically here and in
-# the orderbook config: enabling it only in orderbook.toml means partner fees
-# pass ingress but are silently dropped at settlement (registered partners earn
-# nothing). Flip both on together, only after the internal test partner order
-# settles; `refresh-interval` sets how quickly a registration or suspension
-# takes effect here.
+# Preserve operator-provisioned recipients without opening public registration.
+# Keep registry-enabled identical in orderbook and autopilot so accepted partner
+# fees remain enforced through settlement; suspensions apply on refresh.
 [partner-fee-registry]
+registry-enabled = true
 registration-enabled = false
 refresh-interval = "30s"
 

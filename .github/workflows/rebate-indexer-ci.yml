@@ -15,6 +15,7 @@ on:
       - "pnpm-workspace.yaml"
       - "tsconfig.base.json"
       - ".github/workflows/rebate-indexer-ci.yml"
+      - "scripts/test-rebate-proxy.py"
   push:
     branches: [main]
     paths:
@@ -29,6 +30,13 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
+      - name: Verify production proxy forwarding and ingress
+        run: |
+          image='caddy:2.11.7-alpine@sha256:d8542f48d34a9cf4e4c11a478865229840e87e4c96ea3f439101f31a5d35f75f'
+          docker create --name ophis-proxy-test "$image"
+          trap 'docker rm -f ophis-proxy-test >/dev/null' EXIT
+          docker cp ophis-proxy-test:/usr/bin/caddy /tmp/ophis-caddy
+          CADDY_BIN=/tmp/ophis-caddy python3 scripts/test-rebate-proxy.py
       - uses: pnpm/action-setup@91ab88e2619ed1f46221f0ba42d1492c02baf788  # v6.0.6
         with:
           run_install: false

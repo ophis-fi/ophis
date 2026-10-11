@@ -205,6 +205,12 @@ impl Solutions {
         self.0
             .into_iter()
             .map(|solution| {
+                // A solver response is untrusted independently of order app-data.
+                // Wrappers replace the transaction target and cannot be accepted
+                // without an authenticated wrapper execution policy.
+                if !solution.wrappers.is_empty() {
+                    return Err(super::Error("wrappers are not supported".to_owned()));
+                }
                 let required_custom_amounts = required_custom_amounts(&solution, auction.orders())?;
                 competition::Solution::new(
                     competition::solution::Id::new(solution.id),

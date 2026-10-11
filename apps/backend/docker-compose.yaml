@@ -24,6 +24,7 @@ services:
     build:
       context: .
       target: migrations
+      args: {OPHIS_GIT_SHA: "${OPHIS_GIT_SHA:?export OPHIS_GIT_SHA from git rev-parse HEAD}"}
     restart: on-failure
     command: migrate
     environment:

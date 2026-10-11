@@ -40,6 +40,7 @@ services:
       context: ../../apps/backend
       dockerfile: Dockerfile
       target: migrations
+      args: {OPHIS_GIT_SHA: "${OPHIS_GIT_SHA:?export OPHIS_GIT_SHA from git rev-parse HEAD}"}
     restart: on-failure
     depends_on:
       db:
@@ -55,6 +56,7 @@ services:
       context: ../../apps/backend
       dockerfile: Dockerfile
       target: orderbook
+      args: {OPHIS_GIT_SHA: "${OPHIS_GIT_SHA:?export OPHIS_GIT_SHA from git rev-parse HEAD}"}
     restart: always
     depends_on:
       db:
@@ -77,6 +79,7 @@ services:
       context: ../../apps/backend
       dockerfile: Dockerfile
       target: autopilot
+      args: {OPHIS_GIT_SHA: "${OPHIS_GIT_SHA:?export OPHIS_GIT_SHA from git rev-parse HEAD}"}
     restart: always
     depends_on:
       db:
@@ -99,6 +102,7 @@ services:
       context: ../../apps/backend
       dockerfile: Dockerfile
       target: driver
+      args: {OPHIS_GIT_SHA: "${OPHIS_GIT_SHA:?export OPHIS_GIT_SHA from git rev-parse HEAD}"}
     restart: always
     depends_on:
       baseline:
@@ -118,6 +122,7 @@ services:
       context: ../../apps/backend
       dockerfile: Dockerfile
       target: solvers
+      args: {OPHIS_GIT_SHA: "${OPHIS_GIT_SHA:?export OPHIS_GIT_SHA from git rev-parse HEAD}"}
     restart: always
     environment:
       ADDR: 0.0.0.0:80
