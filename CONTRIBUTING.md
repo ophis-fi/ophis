@@ -110,7 +110,7 @@ See `SECURITY.md` for the responsible-disclosure policy. **Do not open public Gi
 
 ## Project memory
 
-The repo is maintained by Clement Fermaud (CMO Aleph Cloud, CEO Commit Media). Operating context, prior decisions, and roadmap live in:
+Operating context, prior decisions, and roadmap live in:
 
 - `docs/architecture/` — architecture decisions records (ADRs)
 - `docs/audits/` — audit-finding synthesis docs
