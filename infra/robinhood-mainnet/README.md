@@ -116,12 +116,35 @@ settlement pauses. CI locks this topology through `assert-erpc-failclosed.py`.
 | ekubo      | Canonical Core + pinned Ve33 routes from block-pinned quoter | **Implemented - ERC-20 SELL lane** |
 | up33       | Pinned Solidly V2 factory/router, stable + volatile routing | **Implemented - SELL lane** |
 | pools      | Live Pools token route verified through LI.FI exchange `nordstern` | **Implemented - venue-restricted lane** |
+| bitget     | `robinhood` instruction API returns quotes/calldata | **Isolated pilot only; router provenance pending** |
 | baseline   | n/a - ships empty (unsupported pool types) | Inactive |
 | okx / velora / openocean / dodo / enso | NOT on 4663 today | Disabled - revisit as each adds the chain |
 
 LI.FI, KyberSwap, direct Uniswap V4, Ekubo, UP33, and Pools compete
 independently. The Pools lane restricts LI.FI to Nordstern while retaining the
 same simulation, guaranteed-output, same-chain, and router-allowlist checks.
+
+### Bitget credit-limited pilot
+
+`docker-compose.bitget-pilot.yml` starts a separate solver on loopback port
+9321. It is not registered with the production driver and performs no polling.
+The template allows **100 total attempted API requests**, at least **10 seconds
+apart**. Failures count too; automatic HTTP retries and redirects are disabled.
+This is a request cap, not an estimate of Bitget's billing credits.
+
+Build the `solvers` target from `apps/backend/Dockerfile`, then set
+`BITGET_SOLVER_IMAGE`, `BITGET_PARTNER_CODE`, `BITGET_API_KEY_FILE`,
+`BITGET_API_SECRET_FILE`, and `BITGET_BUDGET_DIR`. Keep credential files outside
+git, readable only by container uid 10001 (prefer RAM-backed storage). Provision
+`$BITGET_BUDGET_DIR/requests` as an empty regular file owned by uid 10001 **once**.
+Never truncate it during deployment: its byte length is the consumed request
+count. Missing/unwritable state or a second client using it refuses startup.
+
+Start with `docker compose -p ophis-bitget-pilot -f docker-compose.bitget-pilot.yml
+up -d` (one shell command). The cap survives container recreation; increasing it
+requires an explicit config edit. No automatic daily/monthly reset is configured.
+Before adding Bitget to live settlement competition, authenticate its router
+and spender against Bitget's deployment records and pass a fork settlement test.
 
 ## Common Failures
 

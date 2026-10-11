@@ -30,6 +30,7 @@ fn decimal_to_wei(amount: &BigDecimal, decimals: u8) -> Result<U256, Error> {
     big_decimal_to_u256(&scaled).ok_or(Error::AmountConversionFailed)
 }
 
+mod budget;
 mod dto;
 
 /// Default Bitget swap API base endpoint.
@@ -60,6 +61,7 @@ pub struct Bitget {
     partner_code: String,
     chain_name: dto::ChainName,
     settlement_contract: Address,
+    request_budget: Option<budget::Budget>,
 }
 
 pub struct Config {
@@ -78,6 +80,18 @@ pub struct Config {
 
     /// The stream that yields every new block.
     pub block_stream: Option<CurrentBlockWatcher>,
+
+    pub request_budget: Option<RequestBudgetConfig>,
+}
+
+#[derive(serde::Deserialize)]
+#[serde(rename_all = "kebab-case", deny_unknown_fields)]
+pub struct RequestBudgetConfig {
+    pub state_file: std::path::PathBuf,
+    /// Lifetime attempted requests, not a billing-credit estimate.
+    pub max_requests: u64,
+    #[serde(with = "humantime_serde")]
+    pub min_interval: std::time::Duration,
 }
 
 pub struct BitgetCredentialsConfig {
@@ -90,8 +104,14 @@ pub struct BitgetCredentialsConfig {
 
 impl Bitget {
     pub fn try_new(config: Config) -> Result<Self, CreationError> {
+        if config.chain_id == eth::ChainId::Robinhood && config.request_budget.is_none() {
+            return Err(CreationError::MissingRequestBudget);
+        }
         let client = {
-            let client = reqwest::Client::builder().build()?;
+            let client = reqwest::Client::builder()
+                .redirect(reqwest::redirect::Policy::none())
+                .retry(reqwest::retry::never())
+                .build()?;
             super::Client::new(client, config.block_stream)
         };
 
@@ -105,6 +125,16 @@ impl Bitget {
             partner_code: config.partner_code,
             chain_name,
             settlement_contract: config.settlement_contract,
+            request_budget: config
+                .request_budget
+                .map(|budget| {
+                    budget::Budget::open(
+                        &budget.state_file,
+                        budget.max_requests,
+                        budget.min_interval,
+                    )
+                })
+                .transpose()?,
         })
     }
 
@@ -311,6 +341,10 @@ impl Bitget {
             .header("x-api-signature", &signature)
             .body(body_str);
 
+        if let Some(budget) = &self.request_budget {
+            let used = budget.reserve()?.ok_or(Error::RateLimited)?;
+            tracing::info!(used, "Bitget request budget reserved");
+        }
         let response = request_builder
             .send()
             .await
@@ -358,12 +392,18 @@ fn bitget_min_received(out_amount_wei: U256, slippage_bps: u16) -> U256 {
 
 #[derive(Debug, thiserror::Error)]
 pub enum CreationError {
+    #[error("Robinhood Bitget pilot requires a persistent request budget")]
+    MissingRequestBudget,
+    #[error("failed to open Bitget request budget: {0}")]
+    Budget(#[from] std::io::Error),
     #[error(transparent)]
     Client(#[from] reqwest::Error),
 }
 
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
+    #[error("failed to reserve Bitget request budget: {0}")]
+    Budget(#[from] std::io::Error),
     #[error("failed to build the request")]
     RequestBuildFailed,
     #[error("failed to sign the request")]
