@@ -5,7 +5,7 @@ x-backend: &backend
   build:
     context: ../../../apps/backend
     args:
-      CARGO_BUILD_FEATURES: --jobs 2 --locked
+      CARGO_BUILD_FEATURES: --jobs 2
       RUSTFLAGS: -C debuginfo=0
       OPHIS_GIT_SHA: ${ARC_RELEASE_TAG:?set the reviewed release revision}
   restart: unless-stopped
