@@ -1,7 +1,7 @@
 name: Publish @ophis/widget-react to npm
 
 # Publishes packages/widget-react to npm on a `widget-v*` tag (e.g.
-# `widget-v0.0.1`). Mirrors sdk-release.yml. Requires the repo secret NPM_TOKEN
+# `widget-v0.0.1`). Mirrors sdk-release.yml. Requires the Package Release environment secret NPM_TOKEN
 # (an npm automation token with publish rights to the @ophis scope). Provenance
 # is attested via OIDC (id-token: write). Runs only on a release tag, so it
 # costs near-zero minutes.
@@ -23,6 +23,7 @@ permissions:
 
 jobs:
   publish:
+    environment: Package Release
     name: build + publish
     runs-on: ubuntu-latest
     steps:

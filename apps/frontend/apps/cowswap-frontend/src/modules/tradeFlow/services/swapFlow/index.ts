@@ -15,7 +15,6 @@ import { UiOrderType } from '@cowprotocol/types'
 
 import { SigningSteps } from 'entities/trade'
 import ms from 'ms.macro'
-import { tradingSdk } from 'tradingSdk/tradingSdk'
 
 import { PriceImpact } from 'legacy/hooks/usePriceImpact'
 import { partialOrderUpdate } from 'legacy/state/orders/utils'
@@ -28,6 +27,8 @@ import { logTradeFlow } from 'modules/trade/utils/logger'
 import { TradeFlowAnalytics } from 'modules/trade/utils/tradeFlowAnalytics'
 
 import { getSwapErrorMessage } from 'common/utils/getSwapErrorMessage'
+import { assertOrderUidMatches } from 'utils/orderUtils/assertOrderUidMatches'
+import { getPreSignTransactionForOrder } from 'utils/orderUtils/getPreSignTransactionForOrder'
 
 import { TradeFlowContext } from '../../types/TradeFlowContext'
 
@@ -93,7 +94,8 @@ export async function swapFlow(
       tradeConfirmActions.requestPermitSignature(tradeAmounts)
     }
 
-    const { appData, account, isSafeWallet, recipientAddressOrName, inputAmount, outputAmount, kind } = orderParams
+    const { appData, account, isSafeWallet, recipientAddressOrName, inputAmount, outputAmount, kind, signer } =
+      orderParams
 
     orderParams.appData = await handlePermit({
       appData,
@@ -188,10 +190,11 @@ export async function swapFlow(
 
     if (!orderParams.allowsOffchainSigning) {
       logTradeFlow('SWAP FLOW', 'STEP 5: presign order (optional)')
-      const presignTx = await tradingSdk.getPreSignTransaction({ orderUid: orderId })
+      await assertOrderUidMatches(orderId, unsignedOrder, chainId, account)
+      const presignTx = await getPreSignTransactionForOrder(orderId, chainId, signer)
 
       presignTxHash = (
-        await orderParams.signer.sendTransaction(presignTx).catch((error) => {
+        await signer.sendTransaction(presignTx).catch((error) => {
           /**
            * When using Rabby and Safe, the presign transaction is not a real transaction
            * It's a safe signature

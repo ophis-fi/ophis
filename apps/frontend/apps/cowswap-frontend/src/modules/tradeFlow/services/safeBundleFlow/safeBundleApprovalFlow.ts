@@ -5,8 +5,6 @@ import { assertTradeTokenPolicy, TokenPolicyProfile } from '@cowprotocol/tokens'
 import { UiOrderType } from '@cowprotocol/types'
 import type { MetaTransactionData } from '@safe-global/types-kit'
 
-import { tradingSdk } from 'tradingSdk/tradingSdk'
-
 import { PriceImpact } from 'legacy/hooks/usePriceImpact'
 import { partialOrderUpdate } from 'legacy/state/orders/utils'
 import { mapUnsignedOrderToOrder, wrapErrorInOperatorError } from 'legacy/utils/trade'
@@ -21,6 +19,8 @@ import { TradeFlowAnalytics } from 'modules/trade/utils/tradeFlowAnalytics'
 import { shouldZeroApprove as shouldZeroApproveFn } from 'modules/zeroApproval'
 
 import { getSwapErrorMessage } from 'common/utils/getSwapErrorMessage'
+import { assertOrderUidMatches } from 'utils/orderUtils/assertOrderUidMatches'
+import { getPreSignTransactionForOrder } from 'utils/orderUtils/getPreSignTransactionForOrder'
 
 import { SafeBundleFlowContext, TradeFlowContext } from '../../types/TradeFlowContext'
 
@@ -55,7 +55,7 @@ export async function safeBundleApprovalFlow(
   const { spender, sendBatchTransactions, erc20Contract, amountToApprove } = safeBundleContext
 
   const { chainId } = context
-  const { account, isSafeWallet, recipientAddressOrName, inputAmount, outputAmount, kind } = orderParams
+  const { account, isSafeWallet, recipientAddressOrName, inputAmount, outputAmount, kind, signer } = orderParams
   const tradeAmounts = { inputAmount, outputAmount }
 
   assertTradeTokenPolicy(
@@ -102,6 +102,8 @@ export async function safeBundleApprovalFlow(
         }),
     )
 
+    await assertOrderUidMatches(orderId, unsignedOrder, chainId, account)
+
     const order = mapUnsignedOrderToOrder({
       unsignedOrder,
       additionalParams: {
@@ -124,7 +126,7 @@ export async function safeBundleApprovalFlow(
     addPendingOrderStep(
       {
         id: orderId,
-        chainId: context.chainId,
+        chainId,
         order: {
           ...order,
           isHidden: true,
@@ -135,7 +137,7 @@ export async function safeBundleApprovalFlow(
     )
 
     logTradeFlow(LOG_PREFIX, 'STEP 4: build presign tx')
-    const presignTx = await tradingSdk.getPreSignTransaction({ orderUid: orderId })
+    const presignTx = await getPreSignTransactionForOrder(orderId, chainId, signer)
 
     logTradeFlow(LOG_PREFIX, 'STEP 5: send safe tx')
     const safeTransactionData: MetaTransactionData[] = [
@@ -180,7 +182,7 @@ export async function safeBundleApprovalFlow(
     logTradeFlow(LOG_PREFIX, 'STEP 6: add safe tx hash and unhide order')
     partialOrderUpdate(
       {
-        chainId: context.chainId,
+        chainId,
         order: {
           id: order.id,
           presignGnosisSafeTxHash: safeTxHash,

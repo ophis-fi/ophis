@@ -1,3 +1,12 @@
+{
+    servers {
+        # Only the local tunnel can reach the published loopback port.
+        trusted_proxies static 127.0.0.0/8 ::1/128 172.16.0.0/12
+        trusted_proxies_strict
+        client_ip_headers CF-Connecting-IP
+    }
+}
+
 :80 {
     encode gzip zstd
     # Strip the reverse-proxy fingerprint (audit 2026-07-09): Caddy adds
@@ -9,7 +18,8 @@
     # rebate-indexer-deploy workflow).
     header -Via
     reverse_proxy indexer:8080 {
-        header_up X-Real-IP {remote_host}
+        header_up X-Forwarded-For {client_ip}
+        header_up X-Real-IP {client_ip}
         health_uri /health
         health_interval 30s
     }

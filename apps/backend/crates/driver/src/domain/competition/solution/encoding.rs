@@ -32,8 +32,8 @@ pub enum Error {
     // TODO: remove when contracts are deployed everywhere
     #[error("flashloan support disabled")]
     FlashloanSupportDisabled,
-    #[error("both wrappers and flashloans cannot be encoded in the same auction")]
-    FlashloanWrappersIncompatible,
+    #[error("wrappers are not supported")]
+    WrappersUnsupported,
 }
 
 pub fn tx(
@@ -44,6 +44,11 @@ pub fn tx(
     internalization: settlement::Internalization,
     solver_native_token: ManageNativeToken,
 ) -> Result<eth::Tx, Error> {
+    // Keep the final transaction boundary safe even for internally constructed
+    // or merged solutions that did not pass through the solver DTO validator.
+    if !solution.wrappers.is_empty() {
+        return Err(Error::WrappersUnsupported);
+    }
     let mut tokens = Vec::with_capacity(solution.prices.len() + (solution.trades().len() * 2));
     let mut clearing_prices =
         Vec::with_capacity(solution.prices.len() + (solution.trades().len() * 2));
@@ -225,15 +230,8 @@ pub fn tx(
     // Append auction ID to settlement calldata
     settle_calldata.extend(auction.id().ok_or(Error::MissingAuctionId)?.to_be_bytes());
     let has_flashloans = !solution.flashloans.is_empty();
-    let has_wrappers = !solution.wrappers.is_empty();
-
-    let (to, calldata) = if has_flashloans && has_wrappers {
-        return Err(Error::FlashloanWrappersIncompatible);
-    } else if has_flashloans {
+    let (to, calldata) = if has_flashloans {
         encode_flashloan_settlement(solution, contracts, settle_calldata)?
-    } else if has_wrappers {
-        simulator::encoding::encode_wrapper_settlement(&solution.wrappers, settle_calldata.into())
-            .expect("wrappers is not empty")
     } else {
         (*contracts.settlement().address(), settle_calldata.into())
     };

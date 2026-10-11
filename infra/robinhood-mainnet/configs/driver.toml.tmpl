@@ -24,7 +24,7 @@ name = "baseline"
 endpoint = "http://baseline"
 absolute-slippage = "40000000000000000"  # 0.04 ETH in wei
 relative-slippage = "0.01"  # 1% (lowered from 0.1/10%: bounds per-trade MEV/loss on the small trades this chain targets)
-account = "${OPHIS_DRIVER_SUBMITTER_KEY}"
+account = { guarded = "${OPHIS_DRIVER_SUBMITTER_KEY}", settlement-targets = [{ address = "0x886d9fd312F442C4E1f3cdeAE7b4AB73493e57cD", selectors = ["0x13d79a0b"] }], require-zero-value = true }
 
 # LI.FI same-chain aggregator - ENABLED (keyless). SELL output reports
 # estimate.toAmountMin (the guaranteed on-chain
@@ -42,7 +42,7 @@ name = "lifi"
 endpoint = "http://lifi-solver"
 absolute-slippage = "40000000000000000"
 relative-slippage = "0.01"  # 1% (lowered from 0.1/10%: bounds per-trade MEV/loss on the small trades this chain targets)
-account = "${OPHIS_DRIVER_SUBMITTER_KEY}"
+account = { guarded = "${OPHIS_DRIVER_SUBMITTER_KEY}", settlement-targets = [{ address = "0x886d9fd312F442C4E1f3cdeAE7b4AB73493e57cD", selectors = ["0x13d79a0b"] }], require-zero-value = true }
 
 # KyberSwap Robinhood lane. The backend pins chain 4663 to the `robinhood`
 # endpoint and validates the CREATE2 MetaAggregationRouterV2 in both the solver
@@ -52,7 +52,7 @@ name = "kyberswap"
 endpoint = "http://kyberswap-solver"
 absolute-slippage = "40000000000000000"
 relative-slippage = "0.01"
-account = "${OPHIS_DRIVER_SUBMITTER_KEY}"
+account = { guarded = "${OPHIS_DRIVER_SUBMITTER_KEY}", settlement-targets = [{ address = "0x886d9fd312F442C4E1f3cdeAE7b4AB73493e57cD", selectors = ["0x13d79a0b"] }], require-zero-value = true }
 
 # Direct, zero-budget Uniswap V4 lane. Quotes use the canonical V4Quoter over
 # Cadia's supervised RPC; execution is pair-restricted by the immutable Ophis
@@ -62,7 +62,7 @@ name = "uniswap-v4"
 endpoint = "http://uniswap-v4-solver"
 absolute-slippage = "40000000000000000"
 relative-slippage = "0.01"
-account = "${OPHIS_DRIVER_SUBMITTER_KEY}"
+account = { guarded = "${OPHIS_DRIVER_SUBMITTER_KEY}", settlement-targets = [{ address = "0x886d9fd312F442C4E1f3cdeAE7b4AB73493e57cD", selectors = ["0x13d79a0b"] }], require-zero-value = true }
 
 # pons launch-token/WETH/token direct V3 lane. Token authenticity, fee tier, pool,
 # quote and execution target are all resolved against pinned onchain contracts.
@@ -71,21 +71,21 @@ name = "pons"
 endpoint = "http://pons-solver"
 absolute-slippage = "40000000000000000"
 relative-slippage = "0.01"
-account = "${OPHIS_DRIVER_SUBMITTER_KEY}"
+account = { guarded = "${OPHIS_DRIVER_SUBMITTER_KEY}", settlement-targets = [{ address = "0x886d9fd312F442C4E1f3cdeAE7b4AB73493e57cD", selectors = ["0x13d79a0b"] }], require-zero-value = true }
 
 [[solver]]
 name = "ekubo"
 endpoint = "http://ekubo-solver"
 absolute-slippage = "40000000000000000"
 relative-slippage = "0.01"
-account = "${OPHIS_DRIVER_SUBMITTER_KEY}"
+account = { guarded = "${OPHIS_DRIVER_SUBMITTER_KEY}", settlement-targets = [{ address = "0x886d9fd312F442C4E1f3cdeAE7b4AB73493e57cD", selectors = ["0x13d79a0b"] }], require-zero-value = true }
 
 [[solver]]
 name = "up33"
 endpoint = "http://up33-solver"
 absolute-slippage = "40000000000000000"
 relative-slippage = "0.01"
-account = "${OPHIS_DRIVER_SUBMITTER_KEY}"
+account = { guarded = "${OPHIS_DRIVER_SUBMITTER_KEY}", settlement-targets = [{ address = "0x886d9fd312F442C4E1f3cdeAE7b4AB73493e57cD", selectors = ["0x13d79a0b"] }], require-zero-value = true }
 
 # pools.trade graduated-token liquidity. LI.FI is restricted to the Nordstern
 # exchange key in pools.toml, producing a venue-specific competing lane while
@@ -95,28 +95,28 @@ name = "pools"
 endpoint = "http://pools-solver"
 absolute-slippage = "40000000000000000"
 relative-slippage = "0.01"
-account = "${OPHIS_DRIVER_SUBMITTER_KEY}"
+account = { guarded = "${OPHIS_DRIVER_SUBMITTER_KEY}", settlement-targets = [{ address = "0x886d9fd312F442C4E1f3cdeAE7b4AB73493e57cD", selectors = ["0x13d79a0b"] }], require-zero-value = true }
 
 [[solver]]
 name = "pancakeswap"
 endpoint = "http://pancakeswap-solver"
 absolute-slippage = "40000000000000000"
 relative-slippage = "0.01"
-account = "${OPHIS_DRIVER_SUBMITTER_KEY}"
+account = { guarded = "${OPHIS_DRIVER_SUBMITTER_KEY}", settlement-targets = [{ address = "0x886d9fd312F442C4E1f3cdeAE7b4AB73493e57cD", selectors = ["0x13d79a0b"] }], require-zero-value = true }
 
 [[solver]]
 name = "ramses"
 endpoint = "http://ramses-solver"
 absolute-slippage = "40000000000000000"
 relative-slippage = "0.01"
-account = "${OPHIS_DRIVER_SUBMITTER_KEY}"
+account = { guarded = "${OPHIS_DRIVER_SUBMITTER_KEY}", settlement-targets = [{ address = "0x886d9fd312F442C4E1f3cdeAE7b4AB73493e57cD", selectors = ["0x13d79a0b"] }], require-zero-value = true }
 
 [[solver]]
 name = "fables"
 endpoint = "http://fables-solver"
 absolute-slippage = "40000000000000000"
 relative-slippage = "0.01"
-account = "${OPHIS_DRIVER_SUBMITTER_KEY}"
+account = { guarded = "${OPHIS_DRIVER_SUBMITTER_KEY}", settlement-targets = [{ address = "0x886d9fd312F442C4E1f3cdeAE7b4AB73493e57cD", selectors = ["0x13d79a0b"] }], require-zero-value = true }
 
 [submission]
 # Robinhood L2 gas is ~0.02 gwei. 5 gwei cap is far above realistic traffic.

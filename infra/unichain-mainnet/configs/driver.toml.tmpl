@@ -24,7 +24,7 @@ name = "baseline"
 endpoint = "http://baseline"
 absolute-slippage = "40000000000000000"  # 0.04 ETH in wei
 relative-slippage = "0.1"
-account = "${OPHIS_DRIVER_SUBMITTER_KEY}"
+account = { guarded = "${OPHIS_DRIVER_SUBMITTER_KEY}", settlement-targets = [{ address = "0x108A678716e5E1776036eF044CAB7064226F714E", selectors = ["0x13d79a0b"] }], require-zero-value = true }
 
 # OKX V6 DEX aggregator — ENABLED on Unichain (2026-06-30, renewed OKX_* creds).
 # Covers all Unichain DEXes (incl. Uniswap V4). SELL-only (the solver leaves
@@ -35,14 +35,14 @@ name = "okx"
 endpoint = "http://okx-solver"
 absolute-slippage = "40000000000000000"  # 0.04 ETH in wei
 relative-slippage = "0.1"
-account = "${OPHIS_DRIVER_SUBMITTER_KEY}"
+account = { guarded = "${OPHIS_DRIVER_SUBMITTER_KEY}", settlement-targets = [{ address = "0x108A678716e5E1776036eF044CAB7064226F714E", selectors = ["0x13d79a0b"] }], require-zero-value = true }
 
 [[solver]]
 name = "kyberswap"
 endpoint = "http://kyberswap-solver"
 absolute-slippage = "40000000000000000"  # 0.04 ETH in wei
 relative-slippage = "0.1"
-account = "${OPHIS_DRIVER_SUBMITTER_KEY}"
+account = { guarded = "${OPHIS_DRIVER_SUBMITTER_KEY}", settlement-targets = [{ address = "0x108A678716e5E1776036eF044CAB7064226F714E", selectors = ["0x13d79a0b"] }], require-zero-value = true }
 
 # Velora (formerly ParaSwap) Augustus V6.2 aggregator — ENABLED on Unichain.
 # Verified 2026-06-30: api.velora.xyz serves network 130, VELORA_SUPPORTED_CHAINS
@@ -55,7 +55,7 @@ name = "velora"
 endpoint = "http://velora-solver"
 absolute-slippage = "40000000000000000"
 relative-slippage = "0.1"
-account = "${OPHIS_DRIVER_SUBMITTER_KEY}"
+account = { guarded = "${OPHIS_DRIVER_SUBMITTER_KEY}", settlement-targets = [{ address = "0x108A678716e5E1776036eF044CAB7064226F714E", selectors = ["0x13d79a0b"] }], require-zero-value = true }
 
 # OpenOcean V4 aggregator — ENABLED on Unichain (keyless). Router
 # 0x6352a56c…304e64 (== spender) allowlisted in both allowlists. SELL output =
@@ -65,7 +65,7 @@ name = "openocean"
 endpoint = "http://openocean-solver"
 absolute-slippage = "40000000000000000"
 relative-slippage = "0.1"
-account = "${OPHIS_DRIVER_SUBMITTER_KEY}"
+account = { guarded = "${OPHIS_DRIVER_SUBMITTER_KEY}", settlement-targets = [{ address = "0x108A678716e5E1776036eF044CAB7064226F714E", selectors = ["0x13d79a0b"] }], require-zero-value = true }
 
 # DODO route-service aggregator — ENABLED on Unichain (keyless). RouteProxy
 # 0x89Ba4039…006f4D + separate ApproveProxy 0xf3d60Ba9…3462Dd both allowlisted
@@ -76,7 +76,7 @@ name = "dodo"
 endpoint = "http://dodo-solver"
 absolute-slippage = "40000000000000000"
 relative-slippage = "0.1"
-account = "${OPHIS_DRIVER_SUBMITTER_KEY}"
+account = { guarded = "${OPHIS_DRIVER_SUBMITTER_KEY}", settlement-targets = [{ address = "0x108A678716e5E1776036eF044CAB7064226F714E", selectors = ["0x13d79a0b"] }], require-zero-value = true }
 
 # LI.FI same-chain aggregator — ENABLED on Unichain (keyless). LiFiDiamond
 # 0x864b314D…b9232 allowlisted in both layers; SELL output = estimate.toAmountMin
@@ -86,7 +86,7 @@ name = "lifi"
 endpoint = "http://lifi-solver"
 absolute-slippage = "40000000000000000"
 relative-slippage = "0.1"
-account = "${OPHIS_DRIVER_SUBMITTER_KEY}"
+account = { guarded = "${OPHIS_DRIVER_SUBMITTER_KEY}", settlement-targets = [{ address = "0x108A678716e5E1776036eF044CAB7064226F714E", selectors = ["0x13d79a0b"] }], require-zero-value = true }
 
 # Enso Shortcuts aggregator — ENABLED on Unichain (keyed; free Bearer key).
 # EnsoRouter 0xF75584eF…22Cf (router == spender) allowlisted in both layers;
@@ -96,7 +96,7 @@ name = "enso"
 endpoint = "http://enso-solver"
 absolute-slippage = "40000000000000000"
 relative-slippage = "0.1"
-account = "${OPHIS_DRIVER_SUBMITTER_KEY}"
+account = { guarded = "${OPHIS_DRIVER_SUBMITTER_KEY}", settlement-targets = [{ address = "0x108A678716e5E1776036eF044CAB7064226F714E", selectors = ["0x13d79a0b"] }], require-zero-value = true }
 
 # Direct Velodrome V2; calldata and recipient are checked by the driver.
 [[solver]]
@@ -104,14 +104,14 @@ name = "velodrome"
 endpoint = "http://velodrome-solver"
 absolute-slippage = "40000000000000000"
 relative-slippage = "0.1"
-account = "${OPHIS_DRIVER_SUBMITTER_KEY}"
+account = { guarded = "${OPHIS_DRIVER_SUBMITTER_KEY}", settlement-targets = [{ address = "0x108A678716e5E1776036eF044CAB7064226F714E", selectors = ["0x13d79a0b"] }], require-zero-value = true }
 
 [[solver]]
 name = "uniswap-v4"
 endpoint = "http://uniswap-v4-solver"
 absolute-slippage = "40000000000000000"
 relative-slippage = "0.01"
-account = "${OPHIS_DRIVER_SUBMITTER_KEY}"
+account = { guarded = "${OPHIS_DRIVER_SUBMITTER_KEY}", settlement-targets = [{ address = "0x108A678716e5E1776036eF044CAB7064226F714E", selectors = ["0x13d79a0b"] }], require-zero-value = true }
 
 [submission]
 # Unichain mainnet typical L2 gas price is 0.001-0.05 gwei (same order as OP).

@@ -35,6 +35,10 @@ jobs:
       - name: Solver registry parser fuzz regressions
         run: node scripts/fuzz-solver-registry.cjs
       - run: pnpm test:release-provenance
+      - name: Install workflow validation dependency
+        run: python3 -m pip install --quiet --break-system-packages PyYAML==6.0.2
+      - run: python3 scripts/test-deployment-boundaries.py
+      - run: python3 infra/shared/scripts/test-backend-revision.py
       - run: pnpm lint
       - run: pnpm typecheck
       # Hard gate (no `|| echo` fallback). functions/ belongs to no package

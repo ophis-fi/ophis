@@ -155,6 +155,14 @@ jobs:
         working-directory: apps/frontend
         run: pnpm exec nx run cowswap-frontend:test --testPathPatterns 'src/(ophis/otc|pages/Otc)' --passWithNoTests=false
 
+      - name: Order signing and iframe lifecycle regressions
+        working-directory: apps/frontend
+        run: |
+          pnpm exec nx run cowswap-frontend:test --testPathPatterns 'assertOrderUidMatches|getPreSignTransactionForOrder|presignOrderUidBinding|approvalAmount|IframeDappContainer' --passWithNoTests=false
+          pnpm exec nx run iframe-transport:test --passWithNoTests=false
+          pnpm exec nx run widget-lib:test --passWithNoTests=false
+          pnpm exec nx run common-utils:test --testPathPatterns 'legacyAddressUtils|getExplorerLink' --passWithNoTests=false
+
       - name: Analytics consent and document routing regressions
         working-directory: apps/frontend
         run: pnpm exec nx run cowswap-frontend:test --testPathPatterns 'src/ophis/analytics/|src/serviceWorker/document.test' --passWithNoTests=false

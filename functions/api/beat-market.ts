@@ -144,14 +144,17 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
     })
   }
 
-  let body: { chainId?: unknown; sellToken?: unknown; buyToken?: unknown; sellAmount?: unknown }
+  let body: unknown
   try {
     body = await request.json()
   } catch {
     return json({ ok: false, error: { code: 'BAD_INPUT', message: 'invalid JSON body' } }, 400)
   }
 
-  const { chainId, sellToken, buyToken, sellAmount } = body
+  if (!body || typeof body !== 'object' || Array.isArray(body)) {
+    return json({ ok: false, error: { code: 'BAD_INPUT', message: 'body must be a JSON object' } }, 400)
+  }
+  const { chainId, sellToken, buyToken, sellAmount } = body as Record<string, unknown>
   if (typeof chainId !== 'number' || !Number.isInteger(chainId) || chainId <= 0) {
     return json({ ok: false, error: { code: 'BAD_INPUT', message: 'chainId must be a positive integer' } }, 400)
   }

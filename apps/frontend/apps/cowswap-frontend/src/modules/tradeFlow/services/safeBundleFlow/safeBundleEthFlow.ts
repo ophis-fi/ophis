@@ -7,8 +7,6 @@ import { assertTradeTokenPolicy, TokenPolicyProfile } from '@cowprotocol/tokens'
 import { UiOrderType } from '@cowprotocol/types'
 import type { MetaTransactionData } from '@safe-global/types-kit'
 
-import { tradingSdk } from 'tradingSdk/tradingSdk'
-
 import { PriceImpact } from 'legacy/hooks/usePriceImpact'
 import { partialOrderUpdate } from 'legacy/state/orders/utils'
 import { mapUnsignedOrderToOrder, type PostOrderParams, wrapErrorInOperatorError } from 'legacy/utils/trade'
@@ -22,6 +20,8 @@ import { logTradeFlow } from 'modules/trade/utils/logger'
 import { TradeFlowAnalytics } from 'modules/trade/utils/tradeFlowAnalytics'
 
 import { getSwapErrorMessage } from 'common/utils/getSwapErrorMessage'
+import { assertOrderUidMatches } from 'utils/orderUtils/assertOrderUidMatches'
+import { getPreSignTransactionForOrder } from 'utils/orderUtils/getPreSignTransactionForOrder'
 
 import { SafeBundleFlowContext, TradeFlowContext } from '../../types/TradeFlowContext'
 
@@ -67,7 +67,7 @@ export async function safeBundleEthFlow(
     sellToken: WRAPPED_NATIVE_CURRENCIES[chainId as SupportedChainId],
   }
 
-  const { account, recipientAddressOrName, kind } = orderParams
+  const { account, recipientAddressOrName, kind, signer } = orderParams
 
   analytics.wrapApproveAndPresign(swapFlowAnalyticsContext)
   const nativeAmountInWei = inputAmount.quotient.toString()
@@ -132,6 +132,8 @@ export async function safeBundleEthFlow(
         }),
     )
 
+    await assertOrderUidMatches(orderId, unsignedOrder, chainId, account)
+
     const order = mapUnsignedOrderToOrder({
       unsignedOrder,
       additionalParams: {
@@ -155,7 +157,7 @@ export async function safeBundleEthFlow(
     addPendingOrderStep(
       {
         id: orderId,
-        chainId: context.chainId,
+        chainId,
         order: {
           ...order,
           // Initially as hidden, until we get a confirmation from the wallet it succeeded
@@ -167,7 +169,7 @@ export async function safeBundleEthFlow(
     )
 
     logTradeFlow(LOG_PREFIX, 'STEP 5: build presign tx')
-    const presignTx = await tradingSdk.getPreSignTransaction({ orderUid: orderId })
+    const presignTx = await getPreSignTransactionForOrder(orderId, chainId, signer)
 
     txs.push({
       to: presignTx.to!,
@@ -195,7 +197,7 @@ export async function safeBundleEthFlow(
     logTradeFlow(LOG_PREFIX, 'STEP 7: add safe tx hash and unhide order')
     partialOrderUpdate(
       {
-        chainId: context.chainId,
+        chainId,
         order: {
           id: order.id,
           // Add Safe tx hash

@@ -1,7 +1,7 @@
 name: Publish @ophis/sdk to npm
 
 # Publishes packages/sdk to npm on a `sdk-v*` tag (e.g. `sdk-v0.0.1`) or manual
-# dispatch. Requires the repo secret NPM_TOKEN (an npm automation token with
+# dispatch. Requires the Package Release environment secret NPM_TOKEN (an npm automation token with
 # publish rights to the @ophis scope). Provenance is attested via OIDC
 # (id-token: write). Runs only on a release tag, so it costs near-zero minutes.
 #
@@ -22,6 +22,7 @@ permissions:
 
 jobs:
   publish:
+    environment: Package Release
     name: build + publish
     runs-on: ubuntu-latest
     steps:

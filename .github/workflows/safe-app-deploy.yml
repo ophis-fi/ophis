@@ -55,6 +55,8 @@ concurrency:
 
 jobs:
   deploy:
+    environment: Production
+    if: github.ref == 'refs/heads/main'
     name: build + deploy safe-app
     runs-on: ubuntu-latest
     steps:

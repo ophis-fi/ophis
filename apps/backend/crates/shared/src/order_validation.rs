@@ -466,7 +466,6 @@ impl OrderValidator {
     ) -> Result<(), ValidationError> {
         let simulate_transfers = async |transfer_amounts: &[U256]| {
             let mut res = Ok(());
-            let has_wrappers = !app_data.inner.protocol.wrappers.is_empty();
 
             for transfer_amount in transfer_amounts {
                 let Err(err) = self
@@ -480,7 +479,7 @@ impl OrderValidator {
                     TransferSimulationError::InsufficientAllowance
                     | TransferSimulationError::InsufficientBalance
                     | TransferSimulationError::TransferFailed(_)
-                        if order.signature == Signature::PreSign || has_wrappers =>
+                        if order.signature == Signature::PreSign =>
                     {
                         // Pre-sign orders do not require sufficient balance or allowance.
                         // The idea is that this allows smart contracts to place orders bundled with
@@ -488,9 +487,6 @@ impl OrderValidator {
                         // allowance. This would, for example, allow a Gnosis Safe to bundle the
                         // pre-signature transaction with a WETH wrap and WETH approval to the vault
                         // relayer contract.
-                        //
-                        // Similarly, orders with wrappers may produce the required balance or
-                        // allowance as part of the wrapper execution.
                         return Ok(());
                     }
                     TransferSimulationError::InsufficientAllowance => {

@@ -50,21 +50,18 @@ updates:
   # npm (cowswap-frontend lockfile).
   # Security-only on the heavy frontend lockfile — we don't want
   # weekly noise from Nx / Vite minor bumps. Dependabot still opens
-  # PRs for any direct-dependency security advisories.
+  # PRs for direct and transitive security advisories.
   - package-ecosystem: npm
     directory: /apps/frontend
     schedule:
       interval: weekly
       day: monday
-    open-pull-requests-limit: 5
+    open-pull-requests-limit: 0
     commit-message:
       prefix: "deps(frontend)"
     labels:
       - dependencies
       - frontend
-    allow:
-      - dependency-type: direct
-        update-type: security
     groups:
       frontend-security:
         applies-to: security-updates
@@ -73,7 +70,7 @@ updates:
 
   # npm (root pnpm workspace).
   # Security-only, mirroring the frontend's low-noise posture: no weekly
-  # version-bump churn, but Dependabot still opens PRs for direct-dependency
+  # version-bump churn, but Dependabot still opens PRs for dependency
   # security advisories on the root lockfile (covers @ophis/sdk +
   # @ophis/rebate-indexer). The pnpm-audit job in security.yml is the gate.
   - package-ecosystem: npm
@@ -81,14 +78,11 @@ updates:
     schedule:
       interval: weekly
       day: monday
-    open-pull-requests-limit: 5
+    open-pull-requests-limit: 0
     commit-message:
       prefix: "deps(root)"
     labels:
       - dependencies
-    allow:
-      - dependency-type: direct
-        update-type: security
     groups:
       root-security:
         applies-to: security-updates
@@ -133,3 +127,21 @@ updates:
     labels:
       - dependencies
       - docker
+
+  # The scanner's requirements-scanner.txt plus hash lock ship operational
+  # dependencies. OSV scans the full hash lock on every PR and weekly.
+  - package-ecosystem: pip
+    directory: /tools/toxic-pool-risk
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: "deps(scanner)"
+    labels:
+      - dependencies
+    groups:
+      scanner-security:
+        applies-to: security-updates
+        patterns:
+          - "*"

@@ -64,3 +64,15 @@ test("security overrides preserve signing and the legacy tooling APIs", async ()
     assert.ok(validate(v4()));
   }
 });
+
+test("Handlebars rejects malformed AST input before generating JavaScript", () => {
+  const handlebars = require("handlebars");
+  assert.equal(
+    handlebars.compile("Hello {{name}}")({ name: "<Ophis>" }),
+    "Hello &lt;Ophis&gt;",
+  );
+  const ast = handlebars.parse("{{name}}");
+  assert.equal(handlebars.compile(ast)({ name: "Ophis" }), "Ophis");
+  ast.body[0].path.depth = "0";
+  assert.throws(() => handlebars.precompile(ast), /Invalid AST/);
+});

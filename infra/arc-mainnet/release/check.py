@@ -86,7 +86,7 @@ def main():
     for compose in [pilot, release]:
         assert 'ARC_QUICKNODE_RPC_URL' not in compose['services']['rpc-proxy'].get('environment', {})
         assert not compose['services']['credit-gate'].get('ports')
-    env = {**os.environ, 'ARC_RUNTIME_UID': str(os.getuid()), 'ARC_RUNTIME_GID': str(os.getgid()), 'ARC_RELEASE_TAG': 'local-check', 'ARC_QUICKNODE_RPC_URL': 'https://placeholder.arc-mainnet.quiknode.pro/placeholder', 'ARC_QUICKNODE_CREDIT_ALLOWANCE': '100', 'ARC_SOLVER_KEY_FILE': '/dev/null'}
+    env = {**os.environ, 'ARC_RUNTIME_UID': str(os.getuid()), 'ARC_RUNTIME_GID': str(os.getgid()), 'ARC_RELEASE_TAG': '0' * 40, 'ARC_QUICKNODE_RPC_URL': 'https://placeholder.arc-mainnet.quiknode.pro/placeholder', 'ARC_QUICKNODE_CREDIT_ALLOWANCE': '100', 'ARC_SOLVER_KEY_FILE': '/dev/null'}
     assert release['services']['driver']['user'] == release['services']['rpc-proxy']['user']
     assert release['services']['postgres']['env_file'] == './generated/database.env'
     subprocess.run(['docker', 'compose', '-f', str(HERE / 'docker-compose.yml'), 'config', '--quiet'], env=env, check=True)

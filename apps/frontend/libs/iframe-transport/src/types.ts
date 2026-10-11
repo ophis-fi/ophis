@@ -46,6 +46,11 @@ export interface EthereumProvider {
   on(event: string, args: unknown): void
 
   /**
+   * Unsubscribes a listener registered with `on` (EIP-1193 providers are EventEmitters).
+   */
+  removeListener?(event: string, listener: (params: unknown) => void): void
+
+  /**
    * Sends a JSON-RPC request to the Ethereum provider and returns the response.
    * @param params - JSON-RPC request parameters.
    * @returns A promise that resolves with the response.

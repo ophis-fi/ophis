@@ -38,6 +38,25 @@ const call = (): Promise<Response> =>
   // Only request + env are read; the rest of the Pages context is unused here.
   onRequestPost({ request: quoteRequest(), env: {} } as unknown as Parameters<typeof onRequestPost>[0]);
 
+test('rejects non-object JSON before requesting an upstream quote', async () => {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async () => { throw new Error('invalid input must not reach upstream'); };
+  try {
+    for (const body of [null, [], 'quote', 1, true]) {
+      const request = new Request('https://swap.ophis.fi/api/beat-market', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+      const response = await onRequestPost({ request, env: {} } as unknown as Parameters<typeof onRequestPost>[0]);
+      assert.equal(response.status, 400);
+      assert.equal(((await response.json()) as { error: { code: string } }).error.code, 'BAD_INPUT');
+    }
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
 test('relays a reference amountOut on upstream success', async () => {
   const res = await withUpstream(200, { data: { routeSummary: { amountOut: '40440827659578272' } } }, call);
   assert.equal(res.status, 200);

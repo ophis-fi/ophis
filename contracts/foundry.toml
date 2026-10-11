@@ -1,5 +1,5 @@
 [profile.default]
-no_match_path = "test/direct-routes/**"
+no_match_path = "test/{direct-routes,otc-fork}/**"
 src = "src"
 out = "out"
 libs = ["node_modules", "lib"]
@@ -67,6 +67,8 @@ fuzz.seed = '0'
 # talks to already-deployed mainnet contracts, so it must not inherit compile
 # dependencies from the vendored CoW production tree.
 [profile.otc-fork]
+# Explicit opt-in must override the default exclusion of this external fork suite.
+no_match_path = "test/direct-routes/**"
 src = "test/otc-fork-src"
 test = "test/otc-fork"
 script = "test/otc-fork-script"

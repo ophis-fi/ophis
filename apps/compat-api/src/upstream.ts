@@ -188,6 +188,8 @@ export async function fetchOrderbookQuote(
   if (!res.ok) await throwUpstream(res, 'quote');
   const json = (await parseOkJson(res, 'quote')) as {
     quote?: {
+      sellToken?: unknown;
+      buyToken?: unknown;
       sellAmount?: unknown;
       buyAmount?: unknown;
       feeAmount?: unknown;
@@ -202,14 +204,20 @@ export async function fetchOrderbookQuote(
     pathViz?: unknown;
     pathVizImage?: unknown;
   };
-  const q = json.quote;
+  const q = json?.quote;
   const sellAmount = asAtoms(q?.sellAmount);
   const buyAmount = asAtoms(q?.buyAmount);
   const feeAmount = asAtoms(q?.feeAmount);
-  if (!q || !sellAmount || !buyAmount || !feeAmount || typeof q.validTo !== 'number') {
+  if (
+    !q || !sellAmount || !buyAmount || !feeAmount ||
+    typeof q.validTo !== 'number' || !Number.isSafeInteger(q.validTo) || q.validTo <= 0 ||
+    typeof q.sellToken !== 'string' || q.sellToken.toLowerCase() !== p.sellToken.toLowerCase() ||
+    typeof q.buyToken !== 'string' || q.buyToken.toLowerCase() !== p.buyToken.toLowerCase() ||
+    BigInt(sellAmount) + BigInt(feeAmount) !== BigInt(p.sellAmount)
+  ) {
     throw new CompatError(
       'UPSTREAM_UNAVAILABLE',
-      'quote: orderbook returned an unexpected shape.',
+      'quote: orderbook returned an invalid or mismatched quote.',
       {
         retryAfterSeconds: 1,
       },

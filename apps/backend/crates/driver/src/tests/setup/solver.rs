@@ -406,6 +406,7 @@ impl Solver {
                         .collect(),
                 );
             }
+            solution_json["wrappers"] = json!(solution.wrappers);
             solutions_json.push(solution_json);
         }
 

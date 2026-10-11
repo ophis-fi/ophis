@@ -582,6 +582,7 @@ pub struct Solution {
     pub orders: Vec<&'static str>,
     pub flashloans: HashMap<order::Uid, Flashloan>,
     pub gas_fee_override: Option<(u128, u128)>,
+    pub wrappers: Vec<solvers_dto::solution::WrapperCall>,
 }
 
 impl Solution {
@@ -646,6 +647,7 @@ impl Default for Solution {
             orders: Default::default(),
             flashloans: Default::default(),
             gas_fee_override: None,
+            wrappers: vec![],
         }
     }
 }
@@ -988,6 +990,7 @@ impl Setup {
                 trades: [fulfillment_trades, jit_trades].concat(),
                 flashloans: solution.flashloans.clone(),
                 gas_fee_override: solution.gas_fee_override,
+                wrappers: solution.wrappers.clone(),
             });
         }
         let orderbook = Orderbook::start(&orders).await;

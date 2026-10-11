@@ -43,11 +43,12 @@ permissions:
 
 jobs:
   deploy:
+    environment: Production
     name: build + deploy docs
-    if: github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success'
+    if: github.ref == 'refs/heads/main' && (github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success')
     runs-on: ubuntu-latest
     concurrency:
-      group: cloudflare-pages-docs-${{ github.ref }}
+      group: cloudflare-pages-docs-production
       cancel-in-progress: true
     steps:
       # All actions pinned to commit SHAs (audit finding M3, 2026-05-09).

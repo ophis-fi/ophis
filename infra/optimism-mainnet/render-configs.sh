@@ -760,11 +760,7 @@ fi
 
 echo "Bring up the stack with the wrapper:"
 echo "  ./compose-up.sh                  # re-renders, stamps /api/v1/version, brings up (recommended)"
-echo "OR directly (only if you JUST ran render-configs.sh):"
-echo "  docker compose -f $SCRIPT_DIR/docker-compose.yml up -d --build"
-echo "  NOTE: the direct path does NOT export OPHIS_GIT_DESCRIBE, so a --build"
-echo "  here leaves the orderbook /api/v1/version on the vergen sentinel."
-echo "  Use ./compose-up.sh for an accurate version string."
+echo "The wrapper verifies clean source, stamps all binaries, and checks image revisions before startup."
 echo ""
 echo "After reboot, the RAM-disk is gone. compose-up.sh handles this automatically;"
 echo "raw 'docker compose up' will fail with a dangling driver.toml symlink."

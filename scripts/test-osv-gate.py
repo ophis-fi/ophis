@@ -51,4 +51,31 @@ with tempfile.TemporaryDirectory() as directory:
     check(document(finding(), finding('GHSA-new')), 1, '--mode', 'advisories', '--ignore', 'GHSA-old:2999-01-01')
     baseline.write_text(json.dumps({'high': 1}))  # Legacy count-only baseline fails closed.
     check(document(finding()), 2, *args)
-print('osv gate: 16 regression checks passed')
+    cargo = root / 'Cargo.lock'
+    cargo.write_text('version = 4\n[[package]]\nname = "example"\nversion = "1.0.0"\n')
+    rust = finding()
+    rust['package']['ecosystem'] = 'crates.io'
+    cargo_args = ('--mode', 'advisories', '--osv-rc', '1', '--cargo-lock', str(cargo))
+    check(document(rust), 0, *cargo_args)  # Unpublished local identity collision.
+    check(document(finding()), 1, *cargo_args)  # Never filter another ecosystem.
+    cargo.write_text(cargo.read_text() + 'source = "registry+https://github.com/rust-lang/crates.io-index"\n')
+    check(document(rust), 1, *cargo_args)  # Same name from crates.io must block.
+    cargo.write_text(cargo.read_text() + '[[package]]\nname = "example"\nversion = "1.0.0"\n')
+    check(document(rust), 1, *cargo_args)  # Ambiguous local + registry must block.
+    info = finding('RUSTSEC-2099-0001', '')
+    info['package']['ecosystem'] = 'crates.io'
+    info['vulnerabilities'][0]['affected'] = [{'package': {'name': 'example', 'ecosystem': 'crates.io'},
+                                              'database_specific': {'informational': 'unmaintained'}}]
+    check(document(info), 0, *cargo_args)
+    check(document(info), 2, '--mode', 'advisories')  # Rust treatment is opt-in.
+    info['vulnerabilities'][0]['id'] = 'GHSA-real'
+    check(document(info), 2, *cargo_args)  # Informational tag cannot hide a GHSA.
+    info['vulnerabilities'][0]['id'] = 'RUSTSEC-2099-0001'
+    info['vulnerabilities'][0]['database_specific']['severity'] = 'HIGH'
+    check(document(info), 1, *cargo_args)  # Nor a scored vulnerability.
+    info['vulnerabilities'][0]['database_specific']['severity'] = ''
+    info['vulnerabilities'][0]['affected'][0]['database_specific']['informational'] = None
+    check(document(info), 2, *cargo_args)  # Unknown severity still fails closed.
+    cargo.write_text('broken TOML [')
+    check(document(rust), 2, *cargo_args)
+print('osv gate: 26 regression checks passed')

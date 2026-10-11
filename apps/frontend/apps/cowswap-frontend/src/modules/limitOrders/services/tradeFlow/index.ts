@@ -23,6 +23,8 @@ import type { TradeFlowAnalyticsContext } from 'modules/trade/utils/tradeFlowAna
 import { TradeFlowAnalytics } from 'modules/trade/utils/tradeFlowAnalytics'
 
 import { getSwapErrorMessage } from 'common/utils/getSwapErrorMessage'
+import { assertOrderUidMatches } from 'utils/orderUtils/assertOrderUidMatches'
+import { getPreSignTransactionForOrder } from 'utils/orderUtils/getPreSignTransactionForOrder'
 
 // TODO: Break down this large function into smaller functions
 // eslint-disable-next-line max-lines-per-function
@@ -134,7 +136,8 @@ export async function tradeFlow(
     let presignTxHash: string | null = null
 
     if (!postOrderParams.allowsOffchainSigning) {
-      const presignTx = await tradingSdk.getPreSignTransaction({ orderUid: orderId })
+      await assertOrderUidMatches(orderId, unsignedOrder, chainId, account)
+      const presignTx = await getPreSignTransactionForOrder(orderId, chainId, signer)
 
       presignTxHash = (await signer.sendTransaction(presignTx)).hash
     }

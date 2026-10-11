@@ -19,21 +19,27 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$SCRIPT_DIR"
 
+# Building is performed and checked before any service restarts. Accept the
+# historical --build spelling, but never rebuild/pull during the final up.
+UP_ARGS=()
+for arg in "$@"; do
+  case "$arg" in
+    --build|--no-build) ;;
+    --pull|--pull=*) echo "Use the wrapper's verified local images; --pull is not supported" >&2; exit 2 ;;
+    *) UP_ARGS+=("$arg") ;;
+  esac
+done
+
 # Shared external docker network for the eRPC proxy <-> the ./nitro node (rpc-proxy
 # resolves ophis-rbh-node:8547 container-to-container; see docker-compose.yml).
 # Idempotent — external networks must exist before `docker compose up`.
 docker network create ophis-rbh-net >/dev/null 2>&1 || true
 
-# Version string for the orderbook GET /api/v1/version route. The Docker build
-# context (apps/backend) has no .git, so vergen falls back to the literal
-# "VERGEN_IDEMPOTENT_OUTPUT" sentinel and it leaks out of /version. Compute the
-# real version from the repo HEAD and pass it through as a build-arg (consumed
-# by orderbook/build.rs via the x-backend-build-args anchor in the compose
-# file). `|| true` keeps a git-less checkout from aborting the deploy — it just
-# falls back to the sentinel, same as before this fix.
-OPHIS_GIT_DESCRIBE="$(git -C "$SCRIPT_DIR" describe --tags --always --dirty 2>/dev/null || true)"
-export OPHIS_GIT_DESCRIBE
-echo "==> OPHIS_GIT_DESCRIBE=${OPHIS_GIT_DESCRIBE:-<unset, /version will show the vergen sentinel>}"
+# Stamp every backend binary and image with the same verified commit. This
+# check is independent of freshness overrides: dirty source is never a release.
+OPHIS_GIT_SHA="$(python3 "$SCRIPT_DIR/../shared/scripts/backend-revision.py" source "$SCRIPT_DIR/../..")"
+export OPHIS_GIT_SHA
+echo "==> Backend source revision: $OPHIS_GIT_SHA"
 
 # F7 (2026-05-21 whole-repo audit, HIGH H2): source inter-service auth
 # token from the macOS Keychain if not already in the environment. This
@@ -94,6 +100,8 @@ fi
 # existing .env-driven operator flow by materializing the gitignored secret file
 # if it is missing.
 if [[ ! -s secrets/postgres-password ]]; then
+  # Keep the previous rollout's .env revision out of this build's environment.
+  (
   if [[ -f .env ]]; then
     # shellcheck disable=SC1091
     set -a
@@ -109,6 +117,7 @@ if [[ ! -s secrets/postgres-password ]]; then
   printf '%s' "$POSTGRES_PASSWORD" > secrets/postgres-password
   chmod 600 secrets/postgres-password
   echo "==> wrote secrets/postgres-password from POSTGRES_PASSWORD"
+  )
 fi
 
 echo "==> render-configs.sh"
@@ -161,6 +170,8 @@ echo ""
 # the deploy before Docker ever reaches the build.
 echo "==> docker compose $PROFILES_ARG build"
 docker compose $PROFILES_ARG build
+[[ "$(python3 "$SCRIPT_DIR/../shared/scripts/backend-revision.py" source "$SCRIPT_DIR/../..")" == "$OPHIS_GIT_SHA" ]]
+python3 "$SCRIPT_DIR/../shared/scripts/backend-revision.py" images "$SCRIPT_DIR/docker-compose.yml" "$OPHIS_GIT_SHA"
 
 # The build can also update orderbook/autopilot images. Apply the matching
 # migrations before the no-deps restart below is allowed to recreate either
@@ -256,7 +267,9 @@ fi
 
 echo ""
 echo "==> docker compose $PROFILES_ARG up -d $*"
-docker compose $PROFILES_ARG up -d "$@"
+docker compose $PROFILES_ARG up -d --no-build ${UP_ARGS[@]+"${UP_ARGS[@]}"}
+# Keep ps/logs/exec and existing verification scripts usable in later shells.
+python3 "$SCRIPT_DIR/../shared/scripts/backend-revision.py" record "$SCRIPT_DIR" "$OPHIS_GIT_SHA"
 
 echo ""
 echo "Stack startup initiated. Verify with:"

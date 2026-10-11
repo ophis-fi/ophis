@@ -4,7 +4,7 @@ name: Publish @ophis agent plugins to npm
 # `agent-plugins-v*` tag (e.g. `agent-plugins-v0.1.0`). The four share a version; the tag suffix
 # must equal all four package.json `version`s. They are published in DEPENDENCY ORDER — agent-swap
 # first, because plugin-goat, agentkit-ophis and plugin-elizaos depend on it (pnpm rewrites `workspace:*` to the
-# concrete published versions at pack time). Requires the repo secret NPM_TOKEN (an npm automation
+# concrete published versions at pack time). Requires the Package Release environment secret NPM_TOKEN (an npm automation
 # token with publish rights to the @ophis scope). Provenance is attested via OIDC (id-token: write).
 #
 # Security: the only secret (NPM_TOKEN) is passed via env: (never inline in a run:), no untrusted
@@ -24,6 +24,7 @@ permissions:
 
 jobs:
   publish:
+    environment: Package Release
     name: build + publish (agent-swap → plugin-goat, agentkit-ophis, plugin-elizaos)
     runs-on: ubuntu-latest
     steps:

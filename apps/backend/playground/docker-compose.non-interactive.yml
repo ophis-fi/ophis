@@ -58,6 +58,7 @@ services:
     build:
       context: ../
       target: migrations
+      args: {OPHIS_GIT_SHA: "${OPHIS_GIT_SHA:?export OPHIS_GIT_SHA from git rev-parse HEAD}"}
       dockerfile: ./Dockerfile
     restart: on-failure
     environment:
@@ -69,6 +70,7 @@ services:
     build:
       context: ../
       target: orderbook
+      args: {OPHIS_GIT_SHA: "${OPHIS_GIT_SHA:?export OPHIS_GIT_SHA from git rev-parse HEAD}"}
       dockerfile: ./Dockerfile
     restart: always
     command: ["--config", "/orderbook.toml"]
@@ -94,6 +96,7 @@ services:
     build:
       context: ../
       target: autopilot
+      args: {OPHIS_GIT_SHA: "${OPHIS_GIT_SHA:?export OPHIS_GIT_SHA from git rev-parse HEAD}"}
       dockerfile: ./Dockerfile
     restart: always
     command: ["--config", "/autopilot.toml"]
@@ -120,6 +123,7 @@ services:
     build:
       context: ../
       target: driver
+      args: {OPHIS_GIT_SHA: "${OPHIS_GIT_SHA:?export OPHIS_GIT_SHA from git rev-parse HEAD}"}
       dockerfile: ./Dockerfile
     restart: always
     command: ["--config", "/driver.toml"]
@@ -146,6 +150,7 @@ services:
     build:
       context: ../
       target: solvers
+      args: {OPHIS_GIT_SHA: "${OPHIS_GIT_SHA:?export OPHIS_GIT_SHA from git rev-parse HEAD}"}
       dockerfile: ./Dockerfile
     restart: always
     command: ["baseline", "--config", "/baseline.toml"]

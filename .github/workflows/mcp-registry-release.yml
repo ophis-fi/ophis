@@ -61,6 +61,7 @@ jobs:
       - run: pnpm --filter @ophis/mcp-server test
 
   publish:
+    environment: MCP Registry
     name: verify live Worker and publish registry metadata
     needs: validate
     runs-on: ubuntu-latest

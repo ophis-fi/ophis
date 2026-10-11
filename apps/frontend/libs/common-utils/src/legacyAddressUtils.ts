@@ -117,8 +117,15 @@ export function getEtherscanLink(chainId: SupportedChainId, type: BlockExplorerL
   }
 }
 
-export function getExplorerLabel(_chainId: SupportedChainId, type: BlockExplorerLinkType, data?: string): string {
-  // All links now point at the Ophis explorer (explorer.ophis.fi), for both CoW
+export function getExplorerLabel(chainId: SupportedChainId, type: BlockExplorerLinkType, data?: string): string {
+  // Contract source code links point at the chain's native scanner (see getEtherscanUrl)
+  if (type === 'contract') {
+    const explorerTitle = getChainInfo(chainId)?.explorerTitle
+
+    return explorerTitle ? t`View on ${explorerTitle}` : t`View on block explorer`
+  }
+
+  // All other links point at the Ophis explorer (explorer.ophis.fi), for both CoW
   // orders and tx/address links, so the label no longer names a native scanner.
   return isCowOrder(type, data) ? t`View on Explorer` : t`View on Ophis Explorer`
 }
@@ -137,6 +144,14 @@ export function shortenOrderId(orderId: string): string {
 
 // eslint-disable-next-line complexity
 function getEtherscanUrl(chainId: TargetChainId, data: string, type: BlockExplorerLinkType, base?: string): string {
+  // Verified contract source (#code) only exists on the chain's native scanner; the Ophis explorer only has order history.
+  if (type === 'contract') {
+    const info = getChainInfo(chainId)
+    const nativeBase = BLOCK_EXPLORER_URL_OVERRIDE || base || info?.explorer
+
+    return nativeBase ? `${nativeBase}/${info?.addressPath ?? 'address'}/${data}#code` : ''
+  }
+
   // Prefer the Ophis explorer (explorer.ophis.fi) per-chain base over the chain's
   // native scanner. getExplorerBaseUrl throws for unsupported chains, so fall back
   // to CHAIN_INFO.explorer. The env override and an explicit `base` (bridge
@@ -173,8 +188,6 @@ function getEtherscanUrl(chainId: TargetChainId, data: string, type: BlockExplor
       return `${basePath}/address/${data}#tokentxns`
     case 'event':
       return `${basePath}/tx/${data}#eventlog`
-    case 'contract':
-      return `${basePath}/address/${data}#code`
     case 'address':
     default:
       return `${basePath}/${addressPath}/${data}`

@@ -121,11 +121,12 @@ services:
       - "127.0.0.1:8080:8080"
 
   caddy:
-    image: caddy:2-alpine
+    image: caddy:2.11.7-alpine@sha256:d8542f48d34a9cf4e4c11a478865229840e87e4c96ea3f439101f31a5d35f75f
     restart: unless-stopped
     depends_on: [indexer]
     ports:
-      - "80:80"
+      # Cloudflare Tunnel runs on the host; do not accept visitor headers directly from the internet.
+      - "127.0.0.1:80:80"
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
       - caddy_data:/data
