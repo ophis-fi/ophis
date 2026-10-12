@@ -85,6 +85,8 @@ jobs:
           node scripts/test-security-dependencies.cjs --workspace frontend
           node scripts/test-dependency-advisories.cjs apps/frontend
           node scripts/test-http-cache-semantics.cjs apps/frontend
+          node apps/frontend/scripts/test-advisory-remediation.cjs
+          node scripts/test-sprintf.cjs apps/frontend
 
       - name: Across status API regression
         run: node scripts/test-across-status.cjs

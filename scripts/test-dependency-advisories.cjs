@@ -19,6 +19,7 @@ if (process.argv[2] !== '--worker') {
   for (const workspace of workspaces) {
     const result = spawnSync(process.execPath, [__filename, '--worker', workspace], {
       encoding: 'utf8',
+      env: { ...process.env, BROWSERSLIST: 'chrome 120' },
       timeout: 15_000,
     });
     process.stdout.write(result.stdout || '');
@@ -35,6 +36,29 @@ if (process.argv[2] !== '--worker') {
 async function check(root) {
   const load = createRequire(join(root, 'node_modules/.pnpm/node_modules/_advisory-check.cjs'));
   const manifest = require(join(root, 'package.json'));
+  if (['cowswap-monorepo', 'docs-ophis'].includes(manifest.name)) {
+    const parser = load('postcss-selector-parser');
+    const flat = '.a'.repeat(200_000);
+    assert.equal(parser().processSync(flat), flat);
+    assert.throws(() => parser().astSync(':is('.repeat(2000) + '.a' + ')'.repeat(2000)), /nesting depth/);
+    const postcss = load('postcss');
+    const fixtures = [
+      ['postcss-calc', 'div[data-size="calc(3*3)"]{width:calc(10px + 5px)}', 'div[data-size="9"]{width:15px}', { selectors: true }],
+      ['postcss-discard-unused', '@namespace svg url(svg);@namespace unused url(unused);[svg|href]{color:red}', '@namespace svg url(svg);[svg|href]{color:red}'],
+      ['postcss-merge-rules', '.a:hover{color:red}.b:hover{color:red}', '.a:hover,.b:hover{color:red}'],
+      ['postcss-merge-rules', '.a:unknown-pseudo{color:red}.b:hover{color:red}', '.a:unknown-pseudo{color:red}.b:hover{color:red}'],
+      ['postcss-minify-selectors', 'h1[class~="title"]:nth-child(1), .b > * { color: red; }', '.b>*,h1[class~=title]:first-child { color: red; }'],
+      ['postcss-unique-selectors', '.b, .a, .b {color:red}', '.a,.b {color:red}'],
+      ['stylehacks', '* html .a{color:red}.a{color:blue}', '.a{color:blue}'],
+      ['postcss-modules-scope', ':local(.button) { color: red; } :local(.active) { composes: button; }', '.ophis_button { color: red; } .ophis_active { } :export {\n  button: ophis_button;\n  active: ophis_active ophis_button; }', { generateScopedName: (name) => 'ophis_' + name }],
+    ];
+    for (const [name, css, expected, options] of fixtures) {
+      if (manifest.name !== 'docs-ophis' && name !== 'postcss-modules-scope') continue;
+      const consumer = createRequire(load.resolve(name));
+      assert(load('semver').gte(consumer('postcss-selector-parser/package.json').version, '7.1.6'), name);
+      assert.equal((await postcss([load(name)(options)]).process(css, { from: undefined })).css, expected, name);
+    }
+  }
   const proxyaddr = load('proxy-addr');
   for (const trust of [['::ffff:10.0.0.0/8'], ['::ffff:10.0.0.0/8', '127.0.0.1']]) {
     assert.equal(proxyaddr.compile(trust)('203.0.113.9'), false);

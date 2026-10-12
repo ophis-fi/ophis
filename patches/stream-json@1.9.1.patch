@@ -1,3 +1,32 @@
+diff --git a/Assembler.js b/Assembler.js
+--- a/Assembler.js
++++ b/Assembler.js
+@@ -120,7 +120,11 @@
+       if (this.current instanceof Array) {
+         this.current.push(value);
+       } else {
+-        this.current[this.key] = value;
++        if (this.key === '__proto__') {
++          Object.defineProperty(this.current, this.key, {value, writable: true, enumerable: true, configurable: true});
++        } else {
++          this.current[this.key] = value;
++        }
+         this.key = null;
+       }
+     }
+@@ -138,7 +142,11 @@
+       } else {
+         value = this.reviver(this.key, value);
+         if (value !== undefined) {
+-          this.current[this.key] = value;
++          if (this.key === '__proto__') {
++            Object.defineProperty(this.current, this.key, {value, writable: true, enumerable: true, configurable: true});
++          } else {
++            this.current[this.key] = value;
++          }
+         }
+         this.key = null;
+       }
 diff --git a/filters/FilterBase.js b/filters/FilterBase.js
 --- a/filters/FilterBase.js
 +++ b/filters/FilterBase.js

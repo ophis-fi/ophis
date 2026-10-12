@@ -6,7 +6,7 @@
 // node scripts/test-security-dependencies.cjs node_modules/.pnpm apps/frontend/node_modules/.pnpm
 // node scripts/test-security-dependencies.cjs --workspace root
 // node scripts/test-security-dependencies.cjs --workspace frontend
-// A fixture needs query-string 5/7, minimatch 3/5, jayson 4, stream-json 1,
+// A fixture needs query-string 5/7, minimatch 3/5, Solana 1 + jayson 5 (root), stream-json 1 (frontend),
 // file-type 21, uuid 11, workbox-build 6 and ip-address 10, using this repo's overrides/patches.
 const assert = require('node:assert/strict');
 const { spawnSync } = require('node:child_process');
@@ -16,8 +16,6 @@ const { createRequire, Module } = require('node:module');
 const { createServer } = require('node:http');
 const { tmpdir } = require('node:os');
 const { basename, join, resolve } = require('node:path');
-const { Readable, Writable } = require('node:stream');
-const { pipeline } = require('node:stream/promises');
 const { pathToFileURL } = require('node:url');
 const { parseArgs } = require('node:util');
 
@@ -56,7 +54,7 @@ const stores = roots.filter(existsSync).map((root) => {
 function installed(name, major) {
   const found = [];
   for (const { root, entries, patches } of stores) {
-    for (const entry of entries.filter((entry) => entry.startsWith(`${name}@${major}.`))) {
+    for (const entry of entries.filter((entry) => entry.startsWith(`${name.replace('/', '+')}@${major}.`))) {
       const manifest = join(root, entry, 'node_modules', name, 'package.json');
       if (existsSync(manifest)) {
         const pkg = JSON.parse(readFileSync(manifest, 'utf8'));
@@ -308,53 +306,20 @@ async function main() {
     }
   }
 
-  for (const pkg of installed('stream-json', 1)) {
-    const { parser } = pkg.require('stream-json');
-    const { streamValues } = pkg.require('stream-json/streamers/StreamValues');
-    async function values(input, filter) {
-      const output = [];
-      await pipeline(Readable.from([input]), parser(), ...(filter ? [filter] : []), streamValues(), new Writable({
-        objectMode: true,
-        write(chunk, _, callback) { output.push(chunk.value); callback(); },
-      }));
-      return output;
-    }
-    const input = JSON.stringify({ keep: { n: 1 }, drop: [2, 3] });
-    const cases = [
-      ['Filter', 'keep', { keep: { n: 1 } }],
-      ['Pick', 'keep', { n: 1 }],
-      ['Replace', 'drop', { keep: { n: 1 }, drop: null }],
-      ['Ignore', 'drop', { keep: { n: 1 } }],
-    ];
-    for (const [name, filter, expected] of cases) {
-      const Filter = pkg.require(`stream-json/filters/${name}`);
-      assert.deepEqual(await values(input, new Filter({ filter })), [expected]);
-      // A non-matching path forces each filter to traverse its path stack,
-      // exercising the quadratic construction fixed by the shared depth cap.
-      for (const [open, close] of [['{"a":', '}'], ['[', ']']]) {
-        const deep = open.repeat(8192) + '0' + close.repeat(8192);
-        await assert.rejects(values(deep, new Filter({ filter: 'missing' })), {
-          name: 'RangeError', message: /JSON nesting exceeds 1024 levels/,
-        });
-      }
-    }
-    assert.deepEqual(await values(input), [JSON.parse(input)]);
-    console.log(`PASS stream-json ${pkg.version}: all four filters, deep objects/arrays, StreamValues`);
+  for (const pkg of workspace === 'root' ? [] : installed('stream-json', 1)) {
+    await require('./test-stream-json-security.cjs')(pkg.require);
+    console.log(`PASS stream-json ${pkg.version}: prototype parity, reviver, streamers, depth guards and JSONC exclusion`);
   }
 
-  for (const pkg of workspace === 'frontend' ? [] : installed('jayson', 4)) {
-    const requests = [{ jsonrpc: '2.0', method: 'ping', id: 1 }, { jsonrpc: '2.0', result: { ok: true }, id: 2 }];
-    const received = [];
-    await new Promise((done, reject) => {
-      const input = Readable.from(requests.map((value) => JSON.stringify(value) + '\n'));
-      pkg.require('jayson/lib/utils').parseStream(input, {}, (error, value) => {
-        if (error) return reject(error);
-        received.push(value);
-      });
-      input.on('end', () => setImmediate(done));
-    });
-    assert.deepEqual(received, requests);
-    console.log(`PASS jayson ${pkg.version}: consecutive JSON-RPC messages through StreamValues`);
+  if (workspace === 'root') {
+    for (const { root } of stores) {
+      assert(!/^  stream-json@/m.test(readFileSync(join(root, 'lock.yaml'), 'utf8')),
+        'the root installed graph must no longer contain stream-json');
+    }
+  }
+  for (const pkg of workspace === 'frontend' ? [] : installed('@solana/web3.js', 1)) {
+    await require('./test-solana-rpc-security.cjs')(pkg.require);
+    console.log(`PASS Solana ${pkg.version} + jayson 5: actual RPC client requests, batches, IDs and error handling`);
   }
 
   for (const major of [3, 5]) {

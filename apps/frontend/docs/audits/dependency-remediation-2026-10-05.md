@@ -56,12 +56,14 @@ on `local/asset-swap-20261004`; the user's existing AssetSwap changes were prese
 | --- | --- |
 | [package.json](../../package.json) | Raise DOMPurify's minimum override to 3.4.16, pin ip-address 10.7.1, register the braces patch. |
 | [pnpm-lock.yaml](../../pnpm-lock.yaml) | Resolve those two upgrades and bind every braces parent to its patch hash. No importer changes or unrelated version changes relative to the start of this turn. |
-| [braces patch](../../patches/braces@3.0.3.patch) | Backport the nesting/cycle protections to the published 3.0.3 grammar. |
+| [braces patch](../../../../patches/braces@3.0.3.patch) | Backport the nesting/cycle protections to the published 3.0.3 grammar. |
 | [advisory regression checks](../../scripts/test-advisory-remediation.cjs) | Six installed-package tests for the newly remediated behavior and compatibility. |
 | [existing security test runner](../../../../scripts/test-security-dependencies.cjs) | Invoke those checks in its frontend mode, already run by frontend CI. No workflow changes. |
 | This report, its evidence JSON and the original audit's correction | Preserve the per-advisory assessment and distinguish patch verification from scanner output. |
 
 The five existing package patches were introduced in security commit `ee010d31`.
+The braces patch moved unchanged to root `patches/` on 2026-10-12 for reuse by docs;
+the accompanying evidence JSON retains its original path and hash.
 The previous braces exception and caller review are recorded in
 [the October 4 assessment](../../../../audit/dependency-review-2026-10-04.md).
 
