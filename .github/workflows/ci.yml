@@ -38,6 +38,15 @@ jobs:
       - name: Install workflow validation dependency
         run: python3 -m pip install --quiet --break-system-packages PyYAML==6.0.2
       - run: python3 scripts/test-deployment-boundaries.py
+      - name: Install pinned Docker Compose for backend provenance checks
+        run: |
+          curl --fail --silent --show-error --location \
+            https://github.com/docker/compose/releases/download/v5.2.0/docker-compose-linux-x86_64 \
+            --output "$RUNNER_TEMP/docker-compose"
+          echo "018f9612ecabc5f2d7aaa53d6f5f44453a87611e2d72c8ef84d7b1eca070e719  $RUNNER_TEMP/docker-compose" | sha256sum --check
+          mkdir -p "$HOME/.docker/cli-plugins"
+          install -m 0755 "$RUNNER_TEMP/docker-compose" "$HOME/.docker/cli-plugins/docker-compose"
+          docker compose version
       - run: python3 infra/shared/scripts/test-backend-revision.py
       - run: pnpm lint
       - run: pnpm typecheck

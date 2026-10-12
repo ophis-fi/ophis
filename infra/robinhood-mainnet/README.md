@@ -93,6 +93,9 @@ docker compose ps             # verify all services healthy
 ```
 
 
+Docker Compose 5.0.0 or newer is required: older releases read and discard service
+`env_file` entries even with `--no-env-resolution`.
+
 The wrapper pins every rollout step to `docker-compose.yml` and rejects conflicting
 `COMPOSE_FILE`, preferred Compose files or automatic overrides. Review and migrate
 any required override settings into the approved deployment configuration before

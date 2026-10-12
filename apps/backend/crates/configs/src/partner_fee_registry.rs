@@ -110,6 +110,8 @@ mod tests {
             include_str!("../../../../../infra/optimism-mainnet/configs/autopilot.toml"),
             include_str!("../../../../../infra/unichain-mainnet/configs/orderbook.toml.tmpl"),
             include_str!("../../../../../infra/unichain-mainnet/configs/autopilot.toml.tmpl"),
+            include_str!("../../../../../infra/robinhood-mainnet/configs/orderbook.toml.tmpl"),
+            include_str!("../../../../../infra/robinhood-mainnet/configs/autopilot.toml.tmpl"),
         ] {
             let config: toml::Value = toml::from_str(document).unwrap();
             let registry: PartnerFeeRegistryConfig =

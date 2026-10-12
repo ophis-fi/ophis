@@ -28,6 +28,10 @@ def source_revision(root):
 
 
 def compose_config(*args):
+    # Earlier releases read and discard env_file entries despite --no-env-resolution.
+    version = re.fullmatch(r"v?([0-9]+)\.([0-9]+)\.([0-9]+)(?:-desktop\.[0-9]+)?(?:\+[0-9A-Za-z.-]+)?", output("docker", "compose", "version", "--short"))
+    if not version or tuple(map(int, version.groups())) < (5, 0, 0):
+        raise ValueError("Docker Compose 5.0.0 or newer is required for safe env-file validation")
     # Do not log resolved Compose JSON: it can contain service credentials.
     return json.loads(output("docker", "compose", *args, "--profile", "*", "config", "--no-env-resolution", "--format", "json"))
 

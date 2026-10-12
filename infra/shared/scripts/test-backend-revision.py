@@ -21,6 +21,17 @@ SHA = "a" * 40
 
 
 class Provenance(unittest.TestCase):
+    def test_unsupported_compose_fails_before_loading_config(self):
+        for version in ["2.38.2", "v2.40.3", "5.0.0-rc.1", "unknown", ""]:
+            with self.subTest(version=version), patch.object(revision, "output", return_value=version) as call:
+                with self.assertRaisesRegex(ValueError, "Compose 5.0.0 or newer"):
+                    revision.compose_config()
+                call.assert_called_once_with("docker", "compose", "version", "--short")
+        for version in ["5.0.0", "v5.2.0", "5.2.0-desktop.1", "5.2.0+vendor.1"]:
+            with self.subTest(version=version), patch.object(revision, "output", side_effect=[version, '{"services":{}}']) as call:
+                self.assertEqual(revision.compose_config(), {"services": {}})
+                self.assertIn("--no-env-resolution", call.call_args.args)
+
     def test_builds_each_real_shared_image_once(self):
         for chain, image_count in [("optimism", 6), ("unichain", 6), ("robinhood", 6), ("arc", 2)]:
             compose = ROOT / f"infra/{chain}-mainnet" / ("release/docker-compose.yml" if chain == "arc" else "docker-compose.yml")
@@ -34,12 +45,13 @@ class Provenance(unittest.TestCase):
             env.update(OPHIS_GIT_SHA=SHA, ARC_RELEASE_TAG=SHA, ARC_RUNTIME_UID="10001", ARC_RUNTIME_GID="10001",
                        ARC_QUICKNODE_CREDIT_ALLOWANCE="1", ARC_SOLVER_KEY_FILE="/test-only/solver.key",
                        ARC_QUICKNODE_RPC_URL="https://example.invalid", ERPC_IMAGE="example.invalid/erpc:test")
-            config = subprocess.check_output([
-                "docker", "compose", "--env-file", os.devnull, "-f", str(compose), "--profile", "*",
-                "config", "--no-env-resolution", "--format", "json"
-            ], env=env, text=True, stderr=subprocess.PIPE)
-            services = json.loads(config)["services"]
-            with self.subTest(chain=chain), patch.object(revision, "output", return_value=config), patch.object(revision.subprocess, "run") as run:
+            with patch.dict(os.environ, env, clear=True):
+                try:
+                    config = revision.compose_config("--env-file", os.devnull, "-f", str(compose))
+                except subprocess.CalledProcessError as error:
+                    self.fail(f"{chain} synthetic Compose fixture: {error.stderr}")
+            services = config["services"]
+            with self.subTest(chain=chain), patch.object(revision, "compose_config", return_value=config), patch.object(revision.subprocess, "run") as run:
                 revision.build_images(compose, SHA)
                 built = []
                 for call in run.call_args_list:
@@ -128,7 +140,7 @@ class Provenance(unittest.TestCase):
                    "build": {"context": "/src/apps/backend", "args": {"OPHIS_GIT_SHA": SHA}}}
         other = {**backend, "image": f"other:{SHA}"}
         config = {"services": {"driver": backend, "orderbook": other}}
-        with patch.object(revision, "output", return_value=json.dumps(config)), patch.object(revision.subprocess, "run", side_effect=subprocess.CalledProcessError(42, ["docker"])) as run:
+        with patch.object(revision, "compose_config", return_value=config), patch.object(revision.subprocess, "run", side_effect=subprocess.CalledProcessError(42, ["docker"])) as run:
             with self.assertRaises(subprocess.CalledProcessError):
                 revision.build_images(Path("compose.yml"), SHA)
             self.assertEqual(run.call_count, 1)
@@ -137,7 +149,7 @@ class Provenance(unittest.TestCase):
                        {"platform": "linux/amd64"}]:
             conflicting = {**backend, **change}
             config = {"services": {"driver": backend, "alias": conflicting}}
-            with patch.object(revision, "output", return_value=json.dumps(config)), patch.object(revision.subprocess, "run") as run:
+            with patch.object(revision, "compose_config", return_value=config), patch.object(revision.subprocess, "run") as run:
                 with self.assertRaisesRegex(ValueError, "conflicting build definitions"):
                     revision.build_images(Path("compose.yml"), SHA)
                 run.assert_not_called()
@@ -161,18 +173,18 @@ class Provenance(unittest.TestCase):
         backend = {"image": f"backend:{SHA}", "pull_policy": "never", "build": {"context": "/src/apps/backend", "args": {"OPHIS_GIT_SHA": SHA}}}
         config = {"services": {"driver": backend, "orderbook": backend}}
         metadata = [{"Id": "sha256:content-address", "Config": {"Labels": {"org.opencontainers.image.revision": SHA}}}]
-        with patch.object(revision, "output", side_effect=[json.dumps(config), json.dumps(metadata)]) as call:
+        with patch.object(revision, "compose_config", return_value=config), patch.object(revision, "output", return_value=json.dumps(metadata)) as call:
             result = revision.verify_images(Path("compose.yml"), SHA)
             self.assertEqual(result["images"], {f"backend:{SHA}": "sha256:content-address"})
-            self.assertEqual(call.call_count, 2)
+            self.assertEqual(call.call_count, 1)
         for label in [None, "edge-registry-20261008", "b" * 40]:
             metadata[0]["Config"]["Labels"] = {"org.opencontainers.image.revision": label}
-            with patch.object(revision, "output", side_effect=[json.dumps(config), json.dumps(metadata)]), self.assertRaises(ValueError):
+            with patch.object(revision, "compose_config", return_value=config), patch.object(revision, "output", return_value=json.dumps(metadata)), self.assertRaises(ValueError):
                 revision.verify_images(Path("compose.yml"), SHA)
         backend["build"]["args"]["OPHIS_GIT_SHA"] = "b" * 40
-        with patch.object(revision, "output", return_value=json.dumps(config)), self.assertRaises(ValueError):
+        with patch.object(revision, "compose_config", return_value=config), self.assertRaises(ValueError):
             revision.verify_images(Path("compose.yml"), SHA)
-        with patch.object(revision, "output", return_value='{"services":{}}'), self.assertRaises(ValueError):
+        with patch.object(revision, "compose_config", return_value={"services": {}}), self.assertRaises(ValueError):
             revision.verify_images(Path("compose.yml"), SHA)
 
     def test_all_binary_build_scripts_embed_identical_full_revision(self):
