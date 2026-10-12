@@ -210,6 +210,11 @@ startup, so later bare `docker compose ps`, `logs`, `exec`, and verification
 scripts work in new shells. Existing credentials are preserved without being read
 or rewritten. The next rollout independently rechecks clean source and images.
 
+The wrapper pins every rollout step to `docker-compose.yml` and rejects conflicting
+`COMPOSE_FILE`, preferred Compose files or automatic overrides. Review and migrate
+any required override settings into the approved deployment configuration before
+retrying; do not discard private operator settings to pass this check.
+
 ---
 
 ## Common failures

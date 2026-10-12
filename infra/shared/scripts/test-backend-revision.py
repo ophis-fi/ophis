@@ -3,6 +3,7 @@
 import importlib.util
 import json
 import os
+import re
 import shlex
 from pathlib import Path
 import subprocess
@@ -20,6 +21,89 @@ SHA = "a" * 40
 
 
 class Provenance(unittest.TestCase):
+    def test_builds_each_real_shared_image_once(self):
+        for chain, image_count in [("optimism", 6), ("unichain", 6), ("robinhood", 6), ("arc", 2)]:
+            compose = ROOT / f"infra/{chain}-mainnet" / ("release/docker-compose.yml" if chain == "arc" else "docker-compose.yml")
+            document = compose.read_text()
+            # Resolve the actual service aliases with synthetic env only; no keys or daemon.
+            env = dict(os.environ)
+            for name in re.findall(r"\$\{([A-Z_][A-Z_0-9]*)", document):
+                env.pop(name, None)
+            for name in re.findall(r"\$\{([A-Z_][A-Z_0-9]*):?\?", document):
+                env[name] = "test-only"
+            env.update(OPHIS_GIT_SHA=SHA, ARC_RELEASE_TAG=SHA, ARC_RUNTIME_UID="10001", ARC_RUNTIME_GID="10001",
+                       ARC_QUICKNODE_CREDIT_ALLOWANCE="1", ARC_SOLVER_KEY_FILE="/test-only/solver.key",
+                       ARC_QUICKNODE_RPC_URL="https://example.invalid", ERPC_IMAGE="example.invalid/erpc:test")
+            config = subprocess.check_output([
+                "docker", "compose", "--env-file", os.devnull, "-f", str(compose), "--profile", "*",
+                "config", "--no-env-resolution", "--format", "json"
+            ], env=env, text=True, stderr=subprocess.PIPE)
+            services = json.loads(config)["services"]
+            with self.subTest(chain=chain), patch.object(revision, "output", return_value=config), patch.object(revision.subprocess, "run") as run:
+                revision.build_images(compose, SHA)
+                built = []
+                for call in run.call_args_list:
+                    command = call.args[0]
+                    self.assertEqual(command[:5], ["docker", "compose", "-f", str(compose), "build"])
+                    self.assertEqual(len(command), 6)
+                    self.assertEqual(call.kwargs, {"check": True})
+                    built.append(services[command[5]]["image"])
+                required = {service["image"] for service in services.values() if service.get("build")}
+                self.assertEqual(len(built), image_count)
+                self.assertEqual(len(built), len(set(built)))
+                self.assertEqual(set(built), required)
+
+    def test_conflicting_compose_selection_is_rejected_and_equivalent_selection_is_pinned(self):
+        with tempfile.TemporaryDirectory(prefix=".compose-selection-test-", dir=ROOT) as directory:
+            root = Path(directory)
+            canonical = root / "docker-compose.yml"
+            canonical.write_text("services:\n  app:\n    image: reviewed:test\n")
+            env = {k: v for k, v in os.environ.items() if not k.startswith("COMPOSE_")}
+            command = ["python3", str(HERE / "backend-revision.py"), "compose-file", str(canonical)]
+
+            def checked(extra=None):
+                return subprocess.run(command, cwd=root, env={**env, **(extra or {})}, capture_output=True, text=True)
+
+            result = checked()
+            self.assertEqual(result.returncode, 0, result.stderr)
+            pinned = result.stdout.strip()
+            self.assertEqual(pinned, str(canonical.resolve()))
+            for filename in ["compose.yaml", "docker-compose.override.yml", "custom.yml"]:
+                conflicting = root / filename
+                conflicting.write_text("services:\n  app:\n    image: unreviewed:test\n    environment:\n      EXAMPLE_SECRET: never-print-this\n")
+                modes = [{"COMPOSE_FILE": str(conflicting)}, {}] if filename != "custom.yml" else [{"COMPOSE_FILE": str(conflicting)}]
+                for override in modes:
+                    with self.subTest(filename=filename, override=bool(override)):
+                        result = checked(override)
+                        self.assertNotEqual(result.returncode, 0)
+                        self.assertIn("Compose overrides differ", result.stderr)
+                        self.assertNotIn("never-print-this", result.stdout + result.stderr)
+                (root / ".env").write_text(f"COMPOSE_FILE={conflicting}\n")
+                self.assertNotEqual(checked().returncode, 0)
+                # The exported pin dominates env-file and preferred/override-file discovery.
+                self.assertEqual(checked({"COMPOSE_FILE": pinned}).returncode, 0)
+                (root / ".env").unlink()
+                conflicting.unlink()
+
+    def test_build_failure_and_conflicting_aliases_fail_closed(self):
+        backend = {"image": f"backend:{SHA}", "pull_policy": "never",
+                   "build": {"context": "/src/apps/backend", "args": {"OPHIS_GIT_SHA": SHA}}}
+        other = {**backend, "image": f"other:{SHA}"}
+        config = {"services": {"driver": backend, "orderbook": other}}
+        with patch.object(revision, "output", return_value=json.dumps(config)), patch.object(revision.subprocess, "run", side_effect=subprocess.CalledProcessError(42, ["docker"])) as run:
+            with self.assertRaises(subprocess.CalledProcessError):
+                revision.build_images(Path("compose.yml"), SHA)
+            self.assertEqual(run.call_count, 1)
+        for change in [{"build": {**backend["build"], "target": "different"}},
+                       {"build": {**backend["build"], "args": {"OPHIS_GIT_SHA": SHA, "RUSTFLAGS": "different"}}},
+                       {"platform": "linux/amd64"}]:
+            conflicting = {**backend, **change}
+            config = {"services": {"driver": backend, "alias": conflicting}}
+            with patch.object(revision, "output", return_value=json.dumps(config)), patch.object(revision.subprocess, "run") as run:
+                with self.assertRaisesRegex(ValueError, "conflicting build definitions"):
+                    revision.build_images(Path("compose.yml"), SHA)
+                run.assert_not_called()
+
     def test_only_full_canonical_sha_is_a_release(self):
         self.assertEqual(revision.validate_revision(SHA), SHA)
         for value in ["", "main", "edge-registry-20261008", "a" * 39, "a" * 41, "A" * 40, SHA + "\n", "g" * 40]:
@@ -143,9 +227,15 @@ UP_ARGS=()
 PROFILES_ARG=""
 python3() {
   printf 'provenance %s\n' "$2" >> "$ROLLOUT_TEST_LOG"
+  if [[ "$2" == compose-file ]]; then
+    if [[ "$ROLLOUT_TEST_SELECTION_EXIT" != 0 ]]; then return "$ROLLOUT_TEST_SELECTION_EXIT"; fi
+    printf '%s\n' "$SCRIPT_DIR/docker-compose.yml"
+  fi
+  if [[ "$2" == build ]]; then return "$ROLLOUT_TEST_BUILD_EXIT"; fi
   if [[ "$2" == source ]]; then printf '%s\n' "$OPHIS_GIT_SHA"; fi
 }
 docker() {
+  if [[ "$1" == compose && "$COMPOSE_FILE" != "$SCRIPT_DIR/docker-compose.yml" ]]; then return 99; fi
   printf 'docker %s\n' "$*" >> "$ROLLOUT_TEST_LOG"
   case "$*" in
     "compose run --rm migrations") return "$ROLLOUT_TEST_MIGRATION_EXIT" ;;
@@ -161,17 +251,27 @@ docker() {
             source = (stack / "compose-up.sh").read_text()
             tail = source[source.index('\nPROFILES_ARG=""'):]
             for existing in ["0", "1"]:
-                for migration_exit in ["0", "42"]:
-                    with self.subTest(chain=chain, existing=existing, migration_exit=migration_exit), tempfile.TemporaryDirectory(prefix=".rollout-test-", dir=ROOT) as directory:
+                for selection_exit, build_exit, migration_exit in [("0", "0", "0"), ("0", "0", "42"), ("0", "41", "0"), ("43", "0", "0")]:
+                    with self.subTest(chain=chain, existing=existing, selection_exit=selection_exit, build_exit=build_exit, migration_exit=migration_exit), tempfile.TemporaryDirectory(prefix=".rollout-test-", dir=ROOT) as directory:
                         log = Path(directory) / "commands.log"
                         env = {**os.environ, "OPHIS_GIT_SHA": SHA,
                                "ROLLOUT_TEST_LOG": str(log), "ROLLOUT_TEST_EXISTING": existing,
+                               "COMPOSE_FILE": "/conflicting/compose.yaml", "ROLLOUT_TEST_SELECTION_EXIT": selection_exit,
+                               "ROLLOUT_TEST_BUILD_EXIT": build_exit,
                                "ROLLOUT_TEST_MIGRATION_EXIT": migration_exit}
                         script = fake_commands + "\nSCRIPT_DIR=" + shlex.quote(str(stack)) + "\n" + tail
                         result = subprocess.run(["/bin/bash", "-c", script], cwd=directory, env=env, text=True, capture_output=True)
                         commands = log.read_text().splitlines()
+                        if selection_exit != "0":
+                            self.assertEqual(result.returncode, int(selection_exit), result.stderr)
+                            self.assertEqual(commands, ["provenance compose-file"])
+                            continue
+                        if build_exit != "0":
+                            self.assertEqual(result.returncode, int(build_exit), result.stderr)
+                            self.assertEqual(commands, ["provenance compose-file", "provenance build"])
+                            continue
                         migrate = commands.index("docker compose run --rm migrations")
-                        self.assertLess(commands.index("docker compose build"), migrate)
+                        self.assertLess(commands.index("provenance build"), migrate)
                         self.assertLess(commands.index("provenance images"), migrate)
                         changes = [i for i, command in enumerate(commands)
                                    if command.startswith(("docker compose stop ", "docker compose up "))]
