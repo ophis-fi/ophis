@@ -126,7 +126,7 @@ function currencyInfo(field: Field, currency: Currency | null, amount: CurrencyA
     field,
     currency,
     amount,
-    label: field === Field.INPUT ? 'You pay' : 'You receive',
+    label: field === Field.INPUT ? 'You sell' : 'You buy',
     isIndependent: field === Field.INPUT,
     balance: null,
     fiatAmount: null,

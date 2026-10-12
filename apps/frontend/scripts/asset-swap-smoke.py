@@ -110,7 +110,7 @@ with sync_playwright() as p:
  page.locator('.swp-coin').first.click();page.get_by_role('dialog').wait_for();page.keyboard.press('Escape');page.wait_for_timeout(100)
  expect(page.locator('.swp-flip')).to_be_enabled()
  page.locator('.swp-flip').click();page.wait_for_timeout(100)
- assert page.locator('.swp-label').all_text_contents()==['You receive','You pay']
+ assert page.locator('.swp-label').all_text_contents()==['You buy','You sell']
  page.locator('.swp-coin').first.click();page.get_by_label('Assets',exact=True).select_option('Currency');page.wait_for_timeout(100)
  expect(page.get_by_role('dialog')).to_have_count(0);expect(page.locator('.swp-flip')).to_be_enabled()
  assert page.locator('.swp-coin').all_text_contents()==['USD','EUR']

@@ -34,7 +34,7 @@ export function AssetSwapDemoSlab({ state, i, reducedMotion }: SlabProps): React
   const squeezed = pick !== null && !on
   /* the slab's role, which the picker keeps as its heading — it
            is the same slab, still saying what it is for */
-  const role = i === payer ? 'You pay' : 'You receive'
+  const role = i === payer ? 'You sell' : 'You buy'
   const dialogProps = on ? { role: 'dialog' as const, tabIndex: -1, 'aria-label': `${role}: choose a coin` } : {}
   return (
     <MotionDiv

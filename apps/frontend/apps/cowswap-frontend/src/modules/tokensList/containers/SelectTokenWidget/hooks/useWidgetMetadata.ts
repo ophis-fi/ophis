@@ -44,11 +44,11 @@ export function resolveModalTitle(field: Field, tradeType: TradeType | undefined
   const isSwapTrade = !tradeType || tradeType === TradeType.SWAP
 
   if (field === Field.INPUT) {
-    return isSwapTrade ? t`Swap from` : t`Sell token`
+    return isSwapTrade ? t`You sell` : t`Sell token`
   }
 
   if (field === Field.OUTPUT) {
-    return isSwapTrade ? t`You receive` : t`Buy token`
+    return isSwapTrade ? t`You buy` : t`Buy token`
   }
 
   return t`Select token`
