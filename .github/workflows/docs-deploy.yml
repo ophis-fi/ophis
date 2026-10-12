@@ -19,6 +19,9 @@ on:
       - main
     paths:
       - 'apps/docs-ophis/**'
+      - 'patches/braces@3.0.3.patch'
+      - 'scripts/test-braces.cjs'
+      - 'scripts/test-dependency-advisories.cjs'
       - 'scripts/check-published-agent-docs.mjs'
       - '.github/workflows/docs-deploy.yml'
   # Package releases are intentionally separate protected-tag workflows. A

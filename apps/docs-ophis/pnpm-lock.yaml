@@ -34,12 +34,12 @@ overrides:
   proxy-addr: 2.0.8
   source-map-js: 1.2.2
   tinypool: 2.1.2
-  postcss-selector-parser@<7.1.6: 7.1.6
+  postcss-selector-parser@<7.1.6: ^7.1.6
 
 patchedDependencies:
   braces@3.0.3:
     hash: orvbgohcz6onzqdkhlbaumhpzq
-    path: ../frontend/patches/braces@3.0.3.patch
+    path: ../../patches/braces@3.0.3.patch
   gray-matter@4.0.3:
     hash: 7dvij2yy7s65yjvp5o2ymxrkkq
     path: patches/gray-matter@4.0.3.patch
@@ -1099,13 +1099,13 @@ packages:
     resolution: {integrity: sha512-mf1LEW0tJLKfWyvn5KdDrhpxHyuxpbNwTIwOYLIvsTffeyOf85j5oIzfG0yosxDgx/sswlqBnESYUcQH0vgZ0g==}
     engines: {node: '>=18'}
     peerDependencies:
-      postcss-selector-parser: 7.1.6
+      postcss-selector-parser: ^7.1.6
 
   '@csstools/selector-specificity@5.0.0':
     resolution: {integrity: sha512-PCqQV3c4CoVm3kdPhyeZ07VmBRdH2EpMFA/pd9OASpOEC3aXNGoqPDAZ80D0cLpMBxnmk0+yNhGsEx31hq7Gtw==}
     engines: {node: '>=18'}
     peerDependencies:
-      postcss-selector-parser: 7.1.6
+      postcss-selector-parser: ^7.1.6
 
   '@csstools/utilities@2.0.0':
     resolution: {integrity: sha512-5VdOr0Z71u+Yp3ozOx8T11N703wIFGVRgOWbOZMKgglPJsWA54MRIoMNVMa7shUToIhx5J8vX4sOZgD2XiihiQ==}
