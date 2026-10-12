@@ -64,6 +64,10 @@ msgstr "Test exact ERC-20 escrow actions against a local Ethereum fork. Every or
 msgid "Because you are using a smart contract wallet, you will pay a separate gas cost for signing the order placement on-chain."
 msgstr "Because you are using a smart contract wallet, you will pay a separate gas cost for signing the order placement on-chain."
 
+#: apps/cowswap-frontend/src/ophis/components/AssetSwap/AssetSwapFields.tsx
+msgid "You sell: choose a token"
+msgstr "You sell: choose a token"
+
 #: apps/cowswap-frontend/src/api/cowProtocol/errors/OperatorError.ts
 msgid "cancelled. Too many order cancellations"
 msgstr "cancelled. Too many order cancellations"
@@ -851,6 +855,10 @@ msgstr "Waiting for every leg to be quoted before you can place the basket."
 msgid "Signing"
 msgstr "Signing"
 
+#: apps/cowswap-frontend/src/ophis/components/AssetSwap/AssetSwapFields.tsx
+msgid "You buy: choose a token"
+msgstr "You buy: choose a token"
+
 #: apps/cowswap-frontend/src/ophis/mobile/DesktopSwapLayout.pure.tsx
 msgid "Choose what to receive."
 msgstr "Choose what to receive."
@@ -1107,9 +1115,6 @@ msgid "The backend that served this order appears to be behind the network. The 
 msgstr "The backend that served this order appears to be behind the network. The order state below was verified on-chain but may not reflect the latest blocks."
 
 #: apps/cowswap-frontend/src/modules/swap/containers/WholeTokenRoute/WholeTokenReview.container.tsx
-#: apps/cowswap-frontend/src/modules/tokensList/containers/SelectTokenWidget/hooks/useWidgetMetadata.ts
-#: apps/cowswap-frontend/src/modules/trade/containers/TradeWidget/TradeWidgetForm.tsx
-#: apps/cowswap-frontend/src/modules/trade/containers/TradeWidget/TradeWidgetForm.tsx
 msgid "You receive"
 msgstr "You receive"
 
@@ -1136,6 +1141,12 @@ msgstr "Symbol"
 #: apps/cowswap-frontend/src/modules/bridge/pure/contents/QuoteBridgeContent/index.tsx
 msgid "Bridge transaction costs."
 msgstr "Bridge transaction costs."
+
+#: apps/cowswap-frontend/src/modules/tokensList/containers/SelectTokenWidget/hooks/useWidgetMetadata.ts
+#: apps/cowswap-frontend/src/modules/trade/containers/TradeWidget/TradeWidgetForm.tsx
+#: apps/cowswap-frontend/src/modules/trade/containers/TradeWidget/TradeWidgetForm.tsx
+msgid "You buy"
+msgstr "You buy"
 
 #: apps/cowswap-frontend/src/modules/limitOrders/pure/DeadlineSelector/index.tsx
 #: apps/cowswap-frontend/src/modules/twap/pure/DeadlineSelector/index.tsx
@@ -2532,8 +2543,8 @@ msgid "Return to Swap"
 msgstr "Return to Swap"
 
 #: apps/cowswap-frontend/src/ophis/components/AssetSwap/AssetSwapFields.tsx
-msgid "You pay: choose a token"
-msgstr "You pay: choose a token"
+#~ msgid "You pay: choose a token"
+#~ msgstr "You pay: choose a token"
 
 #: apps/cowswap-frontend/src/common/utils/tradeSettingsTooltips.tsx
 msgid "Native currency"
@@ -3532,8 +3543,8 @@ msgid "Wallet actions re-read the current order and verify the network before op
 msgstr "Wallet actions re-read the current order and verify the network before opening the wallet."
 
 #: apps/cowswap-frontend/src/modules/trade/containers/TradeWidget/TradeWidgetForm.tsx
-msgid "You pay"
-msgstr "You pay"
+#~ msgid "You pay"
+#~ msgstr "You pay"
 
 #: apps/cowswap-frontend/src/modules/tradeWidgetAddons/containers/RowQuoteId/QuoteVerificationIndicator.tsx
 msgid "Unverified"
@@ -5556,8 +5567,8 @@ msgid "Not compatible with current wallet type"
 msgstr "Not compatible with current wallet type"
 
 #: apps/cowswap-frontend/src/modules/tokensList/containers/SelectTokenWidget/hooks/useWidgetMetadata.ts
-msgid "Swap from"
-msgstr "Swap from"
+#~ msgid "Swap from"
+#~ msgstr "Swap from"
 
 #: apps/cowswap-frontend/src/modules/trade/pure/NetReceivedRow/index.tsx
 msgid "+ gas"
@@ -6518,6 +6529,8 @@ msgstr "Value"
 
 #: apps/cowswap-frontend/src/modules/ordersTable/pure/ReceiptModal/ReceiptModal.modal.tsx
 #: apps/cowswap-frontend/src/modules/swap/containers/WholeTokenRoute/WholeTokenReview.container.tsx
+#: apps/cowswap-frontend/src/modules/tokensList/containers/SelectTokenWidget/hooks/useWidgetMetadata.ts
+#: apps/cowswap-frontend/src/modules/trade/containers/TradeWidget/TradeWidgetForm.tsx
 #: apps/cowswap-frontend/src/modules/trade/containers/TradeWidget/TradeWidgetForm.tsx
 msgid "You sell"
 msgstr "You sell"
@@ -6668,8 +6681,8 @@ msgid "Exec. price"
 msgstr "Exec. price"
 
 #: apps/cowswap-frontend/src/ophis/components/AssetSwap/AssetSwapFields.tsx
-msgid "You receive: choose a token"
-msgstr "You receive: choose a token"
+#~ msgid "You receive: choose a token"
+#~ msgstr "You receive: choose a token"
 
 #: apps/cowswap-frontend/src/modules/orderProgressBar/pure/steps/FinishedStep.tsx
 msgid "You sold <0/>"

@@ -70,7 +70,7 @@ export function AssetSwapFields({ input, output, reverse }: TradeWidgetCurrencyF
             tabIndex={on ? -1 : undefined}
             role={on ? 'dialog' : undefined}
             aria-label={
-              on ? (slabField === Field.INPUT ? t`You pay: choose a token` : t`You receive: choose a token`) : undefined
+              on ? (slabField === Field.INPUT ? t`You sell: choose a token` : t`You buy: choose a token`) : undefined
             }
           >
             {/* The face stays in its slab; the existing picker mounts inside that

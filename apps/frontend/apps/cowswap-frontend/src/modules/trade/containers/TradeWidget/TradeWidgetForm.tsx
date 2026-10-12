@@ -249,7 +249,7 @@ export function TradeWidgetForm(props: TradeWidgetProps): ReactNode {
       maxBalance={maxBalance}
       topLabel={
         assetSwapLayout
-          ? inputCurrencyInfo.label || t`You pay`
+          ? inputCurrencyInfo.label || t`You sell`
           : isOphisMobileSwap
             ? inputCurrencyInfo.label || t`You sell`
             : isWrapOrUnwrap
@@ -271,9 +271,9 @@ export function TradeWidgetForm(props: TradeWidgetProps): ReactNode {
       priceImpactParams={!disablePriceImpact ? priceImpact : undefined}
       topLabel={
         assetSwapLayout
-          ? outputCurrencyInfo.label || t`You receive`
+          ? outputCurrencyInfo.label || t`You buy`
           : isOphisMobileSwap
-            ? outputCurrencyInfo.label || t`You receive`
+            ? outputCurrencyInfo.label || t`You buy`
             : isWrapOrUnwrap
               ? undefined
               : outputCurrencyInfo.label

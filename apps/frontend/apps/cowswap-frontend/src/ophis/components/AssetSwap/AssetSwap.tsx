@@ -18,8 +18,8 @@ import { useAssetSwapStyle } from './useAssetSwapStyle'
    goes. Press the arrow and it turns to point the other way.
    The slabs and the coins in them stay exactly where they are:
    only the direction changes, and the labels with it — whichever
-   slab the arrow leaves is "You pay", the one it points at is
-   "You receive".
+   slab the arrow leaves is "You sell", the one it points at is
+   "You buy".
 
    ── THE ARROW KEEPS TURNING ONE WAY ──────────────────────
    Half a turn every press, counted up rather than flipped
