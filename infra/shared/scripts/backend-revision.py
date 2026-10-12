@@ -29,11 +29,12 @@ def source_revision(root):
 
 def compose_config(*args):
     # Do not log resolved Compose JSON: it can contain service credentials.
-    return json.loads(output("docker", "compose", *args, "--profile", "*", "config", "--format", "json"))
+    return json.loads(output("docker", "compose", *args, "--profile", "*", "config", "--no-env-resolution", "--format", "json"))
 
 
 def checked_compose_file(compose_file):
-    compose_file = compose_file.resolve()
+    if not compose_file.is_absolute():
+        raise ValueError("Compose file must be an absolute path")
     if compose_config() != compose_config("-f", str(compose_file)):
         raise ValueError("Compose overrides differ from the reviewed file; review their settings before deploying")
     return compose_file

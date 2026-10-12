@@ -67,7 +67,7 @@ class Provenance(unittest.TestCase):
             result = checked()
             self.assertEqual(result.returncode, 0, result.stderr)
             pinned = result.stdout.strip()
-            self.assertEqual(pinned, str(canonical.resolve()))
+            self.assertEqual(pinned, str(canonical))
             for filename in ["compose.yaml", "docker-compose.override.yml", "custom.yml"]:
                 conflicting = root / filename
                 conflicting.write_text("services:\n  app:\n    image: unreviewed:test\n    environment:\n      EXAMPLE_SECRET: never-print-this\n")
@@ -84,6 +84,44 @@ class Provenance(unittest.TestCase):
                 self.assertEqual(checked({"COMPOSE_FILE": pinned}).returncode, 0)
                 (root / ".env").unlink()
                 conflicting.unlink()
+
+    def test_symlinked_release_and_unresolved_profile_env_files(self):
+        with self.assertRaisesRegex(ValueError, "absolute path"):
+            revision.checked_compose_file(Path("docker-compose.yml"))
+        with tempfile.TemporaryDirectory(prefix=".compose-symlink-test-", dir=ROOT) as directory:
+            root = Path(directory)
+            release = root / "release"
+            release.mkdir()
+            (release / "backend").mkdir()
+            (release / "config").mkdir()
+            linked = root / "current"
+            linked.symlink_to(release, target_is_directory=True)
+            service = {"image": f"backend:{SHA}", "pull_policy": "never",
+                       "build": {"context": "./backend", "args": {"OPHIS_GIT_SHA": SHA}},
+                       "volumes": ["./config:/config:ro"]}
+            document = {"services": {"app": service, "monitor": {
+                **service, "profiles": ["observability"], "env_file": ["./missing-monitor.env"]}}}
+            compose = linked / "docker-compose.yml"
+            compose.write_text(json.dumps(document))
+            env = {k: v for k, v in os.environ.items() if not k.startswith("COMPOSE_")}
+            env["PWD"] = str(linked)
+            command = ["python3", str(HERE / "backend-revision.py"), "compose-file", str(compose)]
+            result = subprocess.run(command, cwd=linked, env=env, capture_output=True, text=True)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertEqual(result.stdout.strip(), str(compose))
+            probe = "import json,runpy,sys; from pathlib import Path; scope=runpy.run_path(sys.argv[1]); print(json.dumps(scope['backend_builds'](Path(sys.argv[2]),sys.argv[3])))"
+            builds = json.loads(subprocess.check_output([
+                "python3", "-c", probe, str(HERE / "backend-revision.py"), str(compose), SHA
+            ], cwd=linked, env=env, text=True))
+            self.assertEqual(list(builds), [f"backend:{SHA}"])
+            self.assertEqual(builds[f"backend:{SHA}"]["definition"]["build"]["context"], str(linked / "backend"))
+            # Even an inactive profile's env-file path must remain part of the comparison.
+            document["services"]["monitor"]["env_file"] = ["./other-missing-monitor.env"]
+            different = linked / "custom.yml"
+            different.write_text(json.dumps(document))
+            result = subprocess.run(command, cwd=linked, env={**env, "COMPOSE_FILE": str(different)}, capture_output=True, text=True)
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn("Compose overrides differ", result.stderr)
 
     def test_build_failure_and_conflicting_aliases_fail_closed(self):
         backend = {"image": f"backend:{SHA}", "pull_policy": "never",
@@ -240,7 +278,7 @@ docker() {
   case "$*" in
     "compose run --rm migrations") return "$ROLLOUT_TEST_MIGRATION_EXIT" ;;
     "compose ps --services")
-      if [[ "$ROLLOUT_TEST_EXISTING" == 1 ]]; then printf 'rpc-proxy\n'; fi ;;
+      if [[ "$ROLLOUT_TEST_EXISTING" == 1 ]]; then printf 'rpc-proxy\nalertmanager\nprometheus\n'; fi ;;
     inspect*) printf 'healthy\n' ;;
   esac
   return 0
@@ -254,6 +292,12 @@ docker() {
                 for selection_exit, build_exit, migration_exit in [("0", "0", "0"), ("0", "0", "42"), ("0", "41", "0"), ("43", "0", "0")]:
                     with self.subTest(chain=chain, existing=existing, selection_exit=selection_exit, build_exit=build_exit, migration_exit=migration_exit), tempfile.TemporaryDirectory(prefix=".rollout-test-", dir=ROOT) as directory:
                         log = Path(directory) / "commands.log"
+                        observability = existing == "1" and (selection_exit, build_exit, migration_exit) == ("0", "0", "0")
+                        if observability:
+                            for relative in ["observability-rendered/alertmanager.yml", "observability/prometheus.yml"]:
+                                file = Path(directory) / relative
+                                file.parent.mkdir(exist_ok=True)
+                                file.touch()
                         env = {**os.environ, "OPHIS_GIT_SHA": SHA,
                                "ROLLOUT_TEST_LOG": str(log), "ROLLOUT_TEST_EXISTING": existing,
                                "COMPOSE_FILE": "/conflicting/compose.yaml", "ROLLOUT_TEST_SELECTION_EXIT": selection_exit,
@@ -273,7 +317,8 @@ docker() {
                         migrate = commands.index("docker compose run --rm migrations")
                         self.assertLess(commands.index("provenance build"), migrate)
                         self.assertLess(commands.index("provenance images"), migrate)
-                        changes = [i for i, command in enumerate(commands)
+                        normalized = [command.replace("docker compose --profile observability ", "docker compose ") for command in commands]
+                        changes = [i for i, command in enumerate(normalized)
                                    if command.startswith(("docker compose stop ", "docker compose up "))]
                         if migration_exit == "42":
                             self.assertEqual(result.returncode, 42, result.stderr)
@@ -286,6 +331,9 @@ docker() {
                             self.assertGreater(commands.index("provenance record"), max(changes))
                             if existing == "1":
                                 self.assertTrue(any(c.startswith("docker compose stop driver ") for c in commands))
+                            if observability:
+                                self.assertIn("docker compose --profile observability up -d --no-build", commands)
+                                self.assertIn("docker compose --profile observability up -d --no-deps --force-recreate alertmanager", commands)
 
     def test_every_mainnet_solver_is_guarded_for_its_settlement(self):
         for chain in ["optimism", "unichain", "robinhood"]:
