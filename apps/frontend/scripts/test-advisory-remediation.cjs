@@ -22,7 +22,6 @@ const { test } = require('node:test');
 const frontend = createRequire(resolve(__dirname, '../package.json'));
 const hoisted = createRequire(resolve(__dirname, '../node_modules/.pnpm/node_modules/_advisory-check.cjs'));
 const { Address4, Address6 } = hoisted('ip-address');
-const braces = hoisted('braces');
 
 test('ip-address: subnet checks reject cross-family addresses', () => {
   for (const [host, network] of [
@@ -67,46 +66,4 @@ test('DOMPurify: detached subtrees lose event handlers after either afterSanitiz
   }
 });
 
-test('braces: bound brace and parenthesis depth across public string APIs', () => {
-  for (const method of ['parse', 'compile', 'expand', 'stringify']) {
-    for (const [open, close] of [['{', '}'], ['(', ')']]) {
-      assert.doesNotThrow(() => braces[method](open.repeat(100) + 'a' + close.repeat(100)));
-      for (const depth of [101, 4000]) {
-        const input = open.repeat(depth) + 'a' + close.repeat(depth);
-        for (const maxDepth of [undefined, 1000000, Infinity, NaN]) {
-          assert.throws(() => braces[method](input, { maxDepth }), /exceeds max depth/);
-        }
-      }
-    }
-  }
-  assert.throws(() => braces.parse('{{a,b},c}', { maxDepth: 1.5 }), /exceeds max depth/);
-  assert.throws(() => braces.parse('{('.repeat(100) + 'a'), /exceeds max depth/);
-});
-
-test('braces: caller-supplied ASTs cannot bypass nesting and cycle limits', () => {
-  for (const method of ['compile', 'expand', 'stringify']) {
-    let ast = { type: 'text', value: 'a' };
-    for (let i = 0; i < 101; i++) ast = { type: 'brace', nodes: [ast] };
-    assert.throws(() => braces[method]({ type: 'root', nodes: [ast] }), /exceeds max depth/);
-  }
-  const ast = { type: 'paren', nodes: [{ type: 'text', value: 'a' }] };
-  ast.parent = ast;
-  assert.throws(() => braces.expand(ast), /parent chain contains a cycle/);
-});
-
-test('braces: repository glob syntax and escaped literals retain their behavior', () => {
-  assert.deepEqual(braces.expand('src/{app,lib}/*.{ts,tsx}'), [
-    'src/app/*.ts', 'src/app/*.tsx', 'src/lib/*.ts', 'src/lib/*.tsx',
-  ]);
-  assert.deepEqual(braces.expand('file{1..3}.ts'), ['file1.ts', 'file2.ts', 'file3.ts']);
-  assert.deepEqual(braces.expand('foo/({a,b})'), ['foo/(a)', 'foo/(b)']);
-  // The upstream branch also contains unreleased quote-parser changes. Keep
-  // this security backport compatible with the published 3.0.3 grammar.
-  assert.deepEqual(braces.expand('"foo{a,b}'), ['foo{a,b}']);
-  assert.deepEqual(braces.expand('"a\\\\"{b,c}'), ['a\\\\b', 'a\\\\c']);
-  for (const pattern of ['{{a}}', '{a,{b}}', '{}{a}', '"' + '{'.repeat(150) + '"']) {
-    assert.equal(braces.stringify(braces.parse(pattern, { keepQuotes: true }), { escapeInvalid: true }), pattern);
-  }
-  const micromatch = hoisted('micromatch');
-  assert.deepEqual(micromatch(['src/app.ts', 'src/app.js'], 'src/*.{ts,tsx}'), ['src/app.ts']);
-});
+require('../../../scripts/test-braces.cjs')(hoisted);

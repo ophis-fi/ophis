@@ -105,7 +105,6 @@ overrides:
   cypress: '>=15.16.0 <16'
   puppeteer-core>@puppeteer/browsers: '>=3.0.2 <4'
   '@humanfs/node': ^0.16.8
-  postcss-selector-parser@>=7.0.0 <7.1.6: ^7.1.6
   ajv@>=8.0.0 <8.18.0: ^8.18.0
   fflate@>=0.8.0 <0.8.3: ^0.8.3
   decode-uri-component: 0.5.0
@@ -125,6 +124,7 @@ overrides:
   compression: 1.8.2
   proxy-addr: 2.0.8
   source-map-js: 1.2.2
+  postcss-selector-parser@<7.1.6: 7.1.6
 
 patchedDependencies:
   '@cowprotocol/sdk-bridging@4.0.2':
@@ -148,8 +148,11 @@ patchedDependencies:
   request@2.88.2:
     hash: 07433b2788f5fc8e40dd98909a62fdf6ec464fde15f62ca4dd6bc2f59d032cc3
     path: ../../patches/request@2.88.2.patch
+  sprintf-js@1.0.3:
+    hash: e8cc34c8066ab7287972d42d03aa71f472dbf62c177d6690de0c7b18c3928d04
+    path: patches/sprintf-js@1.0.3.patch
   stream-json@1.9.1:
-    hash: 7384de7e36eef7c52c8397f28a10ff3b740a336263a5d40ec0633c5da45b4f5b
+    hash: 67b2c72cd949777daef6a8e70abb86da5822f1ff48273382e99247d8fa0dafc2
     path: ../../patches/stream-json@1.9.1.patch
   uuid@3.4.0:
     hash: 34583c2ff6a44d871c6eb6a38bb2f95e0b7e048009e0a3071acaee9a2a87086e
@@ -14955,10 +14958,6 @@ packages:
     peerDependencies:
       postcss: 8.5.23
 
-  postcss-selector-parser@6.0.16:
-    resolution: {integrity: sha512-A0RVJrX+IUkVZbW3ClroRWurercFhieevHB38sr2+l9eUClMqome3LmEmnhlNy+5Mr2EYN6B2Kaw9wYdd+VHiw==}
-    engines: {node: '>=4'}
-
   postcss-selector-parser@7.1.6:
     resolution: {integrity: sha512-7qASPzhKF2l2KLboRZux8CCTRMdGiV08vWmyKzPz22qZ7ZjQBOeY7rNzNoCLSUiftJ7HUq0GERHmxw/t0dCdMw==}
     engines: {node: '>=4'}
@@ -19970,7 +19969,7 @@ snapshots:
       find-cache-dir: 3.3.2
       lodash: 4.18.1
       stream-chain: 3.4.0
-      stream-json: 1.9.1(patch_hash=7384de7e36eef7c52c8397f28a10ff3b740a336263a5d40ec0633c5da45b4f5b)
+      stream-json: 1.9.1(patch_hash=67b2c72cd949777daef6a8e70abb86da5822f1ff48273382e99247d8fa0dafc2)
     transitivePeerDependencies:
       - core-js
 
@@ -28980,7 +28979,7 @@ snapshots:
 
   argparse@1.0.10:
     dependencies:
-      sprintf-js: 1.0.3
+      sprintf-js: 1.0.3(patch_hash=e8cc34c8066ab7287972d42d03aa71f472dbf62c177d6690de0c7b18c3928d04)
 
   argparse@2.0.1: {}
 
@@ -36294,7 +36293,7 @@ snapshots:
   postcss-modules-scope@3.2.0(postcss@8.5.23):
     dependencies:
       postcss: 8.5.23
-      postcss-selector-parser: 6.0.16
+      postcss-selector-parser: 7.1.6
 
   postcss-modules-values@4.0.0(postcss@8.5.23):
     dependencies:
@@ -36374,11 +36373,6 @@ snapshots:
     dependencies:
       postcss: 8.5.23
       postcss-value-parser: 4.2.0
-
-  postcss-selector-parser@6.0.16:
-    dependencies:
-      cssesc: 3.0.0
-      util-deprecate: 1.0.2
 
   postcss-selector-parser@7.1.6:
     dependencies:
@@ -38156,7 +38150,7 @@ snapshots:
 
   split2@4.2.0: {}
 
-  sprintf-js@1.0.3: {}
+  sprintf-js@1.0.3(patch_hash=e8cc34c8066ab7287972d42d03aa71f472dbf62c177d6690de0c7b18c3928d04): {}
 
   sshpk@1.18.0:
     dependencies:
@@ -38214,7 +38208,7 @@ snapshots:
       readable-stream: 3.6.2
       xtend: 4.0.2
 
-  stream-json@1.9.1(patch_hash=7384de7e36eef7c52c8397f28a10ff3b740a336263a5d40ec0633c5da45b4f5b):
+  stream-json@1.9.1(patch_hash=67b2c72cd949777daef6a8e70abb86da5822f1ff48273382e99247d8fa0dafc2):
     dependencies:
       stream-chain: 2.2.5
 

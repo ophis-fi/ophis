@@ -39,7 +39,6 @@ overrides:
   '@metamask/utils>uuid': ^11.1.1
   body-parser@<2.3.0: ^2.3.0
   dockerode>uuid: ^11.1.1
-  jayson>uuid: ^11.1.1
   '@metamask/sdk>uuid': ^11.1.1
   '@metamask/sdk-communication-layer>uuid': ^11.1.1
   nanoid@<3.3.17: ^3.3.17
@@ -52,6 +51,7 @@ overrides:
   proxy-addr: 2.0.8
   source-map-js: 1.2.2
   fast-copy@>=3.0.0 <3.1.0: ^3.1.0
+  '@solana/web3.js>jayson': 5.0.0
 
 patchedDependencies:
   bigint-buffer@1.1.5:
@@ -63,9 +63,6 @@ patchedDependencies:
   elliptic@6.6.1:
     hash: xgakzvp3u6yq3iqh3ujxpryt74
     path: patches/elliptic@6.6.1.patch
-  stream-json@1.9.1:
-    hash: 3glwpmjfahevsdjgpsu6z3ywpi
-    path: patches/stream-json@1.9.1.patch
 
 importers:
 
@@ -4517,10 +4514,6 @@ packages:
     resolution: {integrity: sha512-CvdFfHkC95B4bBBk36hcEmvdR2awOdhhVUYH6S/zrVj3477zven/fJMYg7121h4T1xHZC+tetUpubpAhxwI7hQ==}
     engines: {node: ^10.17.0 || ^12.0.0 || >= 13.7.0}
 
-  eyes@0.1.8:
-    resolution: {integrity: sha512-GipyPsXO1anza0AOZdy69Im7hGFCNB7Y/NGjDlZGJ3GJJLtwNSb2vrzYrTYJRrRloVx7pl+bhUaTB8yiccPvFQ==}
-    engines: {node: '> 0.1.90'}
-
   fast-check@3.23.2:
     resolution: {integrity: sha512-h5+1OzzfCC3Ef7VbtKdcv7zsstUQwUDlYpUTvjeUsJAssPgLn7QzbboPtL5ro04Mq0rPOsMzl7q5hIbRs2wD1A==}
     engines: {node: '>=8.0.0'}
@@ -5085,9 +5078,9 @@ packages:
   jackspeak@3.4.3:
     resolution: {integrity: sha512-OGlZQpz2yfahA/Rd1Y8Cd9SIEsqvXkLVoSw/cgwhnhFMDbsQFeZYoJJ7bIZBS9BcamUW96asq/npPWugM+RQBw==}
 
-  jayson@4.3.0:
-    resolution: {integrity: sha512-AauzHcUcqs8OBnCHOkJY280VaTiCm57AbuO7lqzcw7JapGj50BisE3xhksye4zlTSR1+1tAz67wLTl8tEH1obQ==}
-    engines: {node: '>=8'}
+  jayson@5.0.0:
+    resolution: {integrity: sha512-FghxOWlJB5ZPsRsuMF1U4GFHjkJfOEYSlIHpI6Wt6MXIzvqWVo0Kpl7/SMfY36vWggA+b+L09zRGP6m4ROVnKg==}
+    engines: {node: '>=20'}
     hasBin: true
 
   jose@4.15.9:
@@ -6437,14 +6430,8 @@ packages:
   stream-browserify@3.0.0:
     resolution: {integrity: sha512-H73RAHsVBapbim0tU2JwwOiXUj+fikfiaoYAKHF3VJfA0pe2BCzkhAHBlLG6REzE+2WNZcxOXjK7lkso+9euLA==}
 
-  stream-chain@2.2.5:
-    resolution: {integrity: sha512-1TJmBx6aSWqZ4tx7aTpBDXK0/e2hhcNSTV8+CbFJtDjbb+I1mZ8lHit0Grw9GRT+6JbIrrDd8esncgBi8aBXGA==}
-
   stream-http@3.2.0:
     resolution: {integrity: sha512-Oq1bLqisTyK3TSCXpPbT4sdeYNdmyZJv1LxpEm2vu1ZhK89kSE5YXwZc3cWk0MagGaKriBh9mCFbVGtO+vY29A==}
-
-  stream-json@1.9.1:
-    resolution: {integrity: sha512-uWkjJ+2Nt/LO9Z/JyKZbMusL8Dkh97uUBTv3AJQ74y07lVahLY4eEFsPsE97pxYBwr8nnjMAIch5eqI0gPShyw==}
 
   stream-shift@1.0.3:
     resolution: {integrity: sha512-76ORR0DO1o1hlKwTbi/DM3EXWGf3ZJYO8cXX5RJwnul2DEg2oyoZyjLNoQM8WsvZiFKCRfC1O0J7iCvie3RZmQ==}
@@ -10964,7 +10951,7 @@ snapshots:
       bs58: 4.0.1
       buffer: 6.0.3
       fast-stable-stringify: 1.0.0
-      jayson: 4.3.0(bufferutil@4.1.0)(utf-8-validate@6.0.6)
+      jayson: 5.0.0(bufferutil@4.1.0)(utf-8-validate@6.0.6)
       node-fetch: 2.7.0(encoding@0.1.13)
       rpc-websockets: 9.3.9
       superstruct: 2.0.2
@@ -13242,8 +13229,6 @@ snapshots:
 
   extract-files@9.0.0: {}
 
-  eyes@0.1.8: {}
-
   fast-check@3.23.2:
     dependencies:
       pure-rand: 6.1.0
@@ -13875,7 +13860,7 @@ snapshots:
     optionalDependencies:
       '@pkgjs/parseargs': 0.11.0
 
-  jayson@4.3.0(bufferutil@4.1.0)(utf-8-validate@6.0.6):
+  jayson@5.0.0(bufferutil@4.1.0)(utf-8-validate@6.0.6):
     dependencies:
       '@types/connect': 3.4.38
       '@types/node': 12.20.55
@@ -13883,11 +13868,8 @@ snapshots:
       commander: 2.20.3
       delay: 5.0.0
       es6-promisify: 5.0.0
-      eyes: 0.1.8
       isomorphic-ws: 4.0.1(ws@8.21.0(bufferutil@4.1.0)(utf-8-validate@6.0.6))
       json-stringify-safe: 5.0.1
-      stream-json: 1.9.1(patch_hash=3glwpmjfahevsdjgpsu6z3ywpi)
-      uuid: 11.1.1
       ws: 8.21.0(bufferutil@4.1.0)(utf-8-validate@6.0.6)
     transitivePeerDependencies:
       - bufferutil
@@ -15518,18 +15500,12 @@ snapshots:
       inherits: 2.0.4
       readable-stream: 3.6.2
 
-  stream-chain@2.2.5: {}
-
   stream-http@3.2.0:
     dependencies:
       builtin-status-codes: 3.0.0
       inherits: 2.0.4
       readable-stream: 3.6.2
       xtend: 4.0.2
-
-  stream-json@1.9.1(patch_hash=3glwpmjfahevsdjgpsu6z3ywpi):
-    dependencies:
-      stream-chain: 2.2.5
 
   stream-shift@1.0.3: {}
 

@@ -35,6 +35,28 @@ if (process.argv[2] !== '--worker') {
 async function check(root) {
   const load = createRequire(join(root, 'node_modules/.pnpm/node_modules/_advisory-check.cjs'));
   const manifest = require(join(root, 'package.json'));
+  if (manifest.pnpm.overrides['postcss-selector-parser@<7.1.6']) {
+    const parser = load('postcss-selector-parser');
+    const flat = '.a'.repeat(200_000);
+    assert.equal(parser().processSync(flat), flat);
+    assert.throws(() => parser().astSync(':is('.repeat(2000) + '.a' + ')'.repeat(2000)), /nesting depth/);
+    const postcss = load('postcss');
+    const fixtures = [
+      ['postcss-calc', 'div[data-size="calc(3*3)"]{width:calc(10px + 5px)}', 'div[data-size="9"]{width:15px}', { selectors: true }],
+      ['postcss-discard-unused', '@keyframes used{to{opacity:0}}@keyframes unused{to{opacity:1}}.a{animation:used 1s}', '@keyframes used{to{opacity:0}}.a{animation:used 1s}'],
+      ['postcss-merge-rules', '.a{color:red}.b{color:red}', '.a,.b{color:red}'],
+      ['postcss-minify-selectors', 'h1[class~="title"]:nth-child(1), .b > * { color: red; }', '.b>*,h1[class~=title]:first-child { color: red; }'],
+      ['postcss-unique-selectors', '.b, .a, .b {color:red}', '.a,.b {color:red}'],
+      ['stylehacks', '* html .a{color:red}.a{color:blue}', '.a{color:blue}'],
+      ['postcss-modules-scope', ':local(.button) { color: red; } :local(.active) { composes: button; }', '.ophis_button { color: red; } .ophis_active { } :export {\n  button: ophis_button;\n  active: ophis_active ophis_button; }', { generateScopedName: (name) => 'ophis_' + name }],
+    ];
+    for (const [name, css, expected, options] of fixtures) {
+      if (manifest.name !== 'docs-ophis' && name !== 'postcss-modules-scope') continue;
+      const consumer = createRequire(load.resolve(name));
+      assert.equal(consumer('postcss-selector-parser/package.json').version, '7.1.6', name);
+      assert.equal((await postcss([load(name)(options)]).process(css, { from: undefined })).css, expected, name);
+    }
+  }
   const proxyaddr = load('proxy-addr');
   for (const trust of [['::ffff:10.0.0.0/8'], ['::ffff:10.0.0.0/8', '127.0.0.1']]) {
     assert.equal(proxyaddr.compile(trust)('203.0.113.9'), false);
