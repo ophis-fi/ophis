@@ -27,12 +27,28 @@ def source_revision(root):
     return revision
 
 
-def verify_images(compose_file, revision):
-    validate_revision(revision)
+def compose_config(*args):
+    # Earlier releases read and discard env_file entries despite --no-env-resolution.
+    version = re.fullmatch(r"v?([0-9]+)\.([0-9]+)\.([0-9]+)(?:-desktop\.[0-9]+)?(?:\+[0-9A-Za-z.-]+)?", output("docker", "compose", "version", "--short"))
+    if not version or tuple(map(int, version.groups())) < (5, 0, 0):
+        raise ValueError("Docker Compose 5.0.0 or newer is required for safe env-file validation")
     # Do not log resolved Compose JSON: it can contain service credentials.
-    config = json.loads(output("docker", "compose", "-f", str(compose_file), "config", "--format", "json"))
-    images = {}
-    for service in config["services"].values():
+    return json.loads(output("docker", "compose", *args, "--profile", "*", "config", "--no-env-resolution", "--format", "json"))
+
+
+def checked_compose_file(compose_file):
+    if not compose_file.is_absolute():
+        raise ValueError("Compose file must be an absolute path")
+    if compose_config() != compose_config("-f", str(compose_file)):
+        raise ValueError("Compose overrides differ from the reviewed file; review their settings before deploying")
+    return compose_file
+
+
+def backend_builds(compose_file, revision):
+    validate_revision(revision)
+    config = compose_config("-f", str(compose_file))
+    builds = {}
+    for service_name, service in config["services"].items():
         build = service.get("build", {})
         if not build or Path(build["context"]).name != "backend":
             continue
@@ -41,14 +57,28 @@ def verify_images(compose_file, revision):
         if service.get("pull_policy") != "never":
             raise ValueError("backend images must disable pulling after verification")
         name = service["image"]
-        if name in images:
-            continue
+        definition = {"build": build, "platform": service.get("platform")}
+        if name in builds and builds[name]["definition"] != definition:
+            raise ValueError(f"backend image {name} has conflicting build definitions")
+        builds.setdefault(name, {"service": service_name, "definition": definition})
+    if not builds:
+        raise ValueError("no backend images found in Compose configuration")
+    return builds
+
+
+def build_images(compose_file, revision):
+    # Compose v5 Bake ignores COMPOSE_PARALLEL_LIMIT and races shared image tags.
+    for build in backend_builds(compose_file, revision).values():
+        subprocess.run(["docker", "compose", "-f", str(compose_file), "build", build["service"]], check=True)
+
+
+def verify_images(compose_file, revision):
+    images = {}
+    for name in backend_builds(compose_file, revision):
         metadata = json.loads(output("docker", "image", "inspect", name))[0]
         if (metadata["Config"].get("Labels") or {}).get("org.opencontainers.image.revision") != revision:
             raise ValueError(f"backend image {name} has missing or mismatched source revision")
         images[name] = metadata["Id"]
-    if not images:
-        raise ValueError("no backend images found in Compose configuration")
     return {"revision": revision, "images": images}
 
 
@@ -73,12 +103,16 @@ def record_compose_revision(directory, revision):
 def main():
     if len(sys.argv) == 3 and sys.argv[1] == "source":
         print(source_revision(Path(sys.argv[2])))
+    elif len(sys.argv) == 3 and sys.argv[1] == "compose-file":
+        print(checked_compose_file(Path(sys.argv[2])))
+    elif len(sys.argv) == 4 and sys.argv[1] == "build":
+        build_images(Path(sys.argv[2]), sys.argv[3])
     elif len(sys.argv) == 4 and sys.argv[1] == "images":
         print(json.dumps(verify_images(Path(sys.argv[2]), sys.argv[3]), sort_keys=True))
     elif len(sys.argv) == 4 and sys.argv[1] == "record":
         record_compose_revision(Path(sys.argv[2]), sys.argv[3])
     else:
-        raise ValueError("usage: backend-revision.py source REPO | images COMPOSE FULL_SHA | record DIRECTORY FULL_SHA")
+        raise ValueError("usage: backend-revision.py source REPO | compose-file COMPOSE | build COMPOSE FULL_SHA | images COMPOSE FULL_SHA | record DIRECTORY FULL_SHA")
 
 
 if __name__ == "__main__":

@@ -210,6 +210,14 @@ startup, so later bare `docker compose ps`, `logs`, `exec`, and verification
 scripts work in new shells. Existing credentials are preserved without being read
 or rewritten. The next rollout independently rechecks clean source and images.
 
+Docker Compose 5.0.0 or newer is required: older releases read and discard service
+`env_file` entries even with `--no-env-resolution`.
+
+The wrapper pins every rollout step to `docker-compose.yml` and rejects conflicting
+`COMPOSE_FILE`, preferred Compose files or automatic overrides. Review and migrate
+any required override settings into the approved deployment configuration before
+retrying; do not discard private operator settings to pass this check.
+
 ---
 
 ## Common failures

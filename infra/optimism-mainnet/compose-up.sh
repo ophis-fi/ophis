@@ -269,8 +269,11 @@ echo ""
 # aborts the deploy before the final build (Curve rollout, 2026-08-05).
 # Building is non-disruptive and cache-backed; the sequenced restart below then
 # always creates containers from binaries matching this exact origin/main.
-echo "==> docker compose $PROFILES_ARG build"
-docker compose $PROFILES_ARG build
+echo "==> building each backend image once"
+# Reject conflicting implicit overrides, then pin build, migration and startup to one file.
+COMPOSE_FILE="$(python3 "$SCRIPT_DIR/../shared/scripts/backend-revision.py" compose-file "$SCRIPT_DIR/docker-compose.yml")"
+export COMPOSE_FILE
+python3 "$SCRIPT_DIR/../shared/scripts/backend-revision.py" build "$SCRIPT_DIR/docker-compose.yml" "$OPHIS_GIT_SHA"
 [[ "$(python3 "$SCRIPT_DIR/../shared/scripts/backend-revision.py" source "$SCRIPT_DIR/../..")" == "$OPHIS_GIT_SHA" ]]
 python3 "$SCRIPT_DIR/../shared/scripts/backend-revision.py" images "$SCRIPT_DIR/docker-compose.yml" "$OPHIS_GIT_SHA"
 

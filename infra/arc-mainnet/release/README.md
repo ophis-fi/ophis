@@ -300,9 +300,11 @@ application development. Use the reviewed revision and actual `config.json`:
    full reviewed commit SHA from
    `python3 infra/shared/scripts/backend-revision.py source .`
    (a clean backend/infra tree is required), and export `ARC_RUNTIME_UID=$(id -u)` and
-   `ARC_RUNTIME_GID=$(id -g)`; `docker compose -f infra/arc-mainnet/release/docker-compose.yml
-   build`. Share the one backend image across services. A fresh build still needs
-   a new disk-space check; cached outputs are not a reservation of space.
+   `ARC_RUNTIME_GID=$(id -g)`; run
+   `python3 infra/shared/scripts/backend-revision.py build infra/arc-mainnet/release/docker-compose.yml "$ARC_RELEASE_TAG"`.
+   Docker Compose 5.0.0 or newer is required to validate service env-file paths without reading them.
+   This builds each shared image once, sequentially, avoiding Compose v5 Bake tag collisions.
+   A fresh build still needs a new disk-space check; cached outputs are not a reservation of space.
 5. On the selected Mac mini, prepare the verified RAM copy using `mac-key.cjs`
    above and run Compose/startup as the Colima operator. On Linux, use the isolated
    signing account and its canonical key directly. Supply `ARC_SOLVER_KEY_FILE`

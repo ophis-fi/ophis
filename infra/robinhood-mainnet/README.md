@@ -92,6 +92,15 @@ export OPHIS_GIT_SHA="$(python3 ../shared/scripts/backend-revision.py source ../
 docker compose ps             # verify all services healthy
 ```
 
+
+Docker Compose 5.0.0 or newer is required: older releases read and discard service
+`env_file` entries even with `--no-env-resolution`.
+
+The wrapper pins every rollout step to `docker-compose.yml` and rejects conflicting
+`COMPOSE_FILE`, preferred Compose files or automatic overrides. Review and migrate
+any required override settings into the approved deployment configuration before
+retrying; do not discard private operator settings to pass this check.
+
 `compose-up.sh` verifies clean backend/infra source, builds all backend images
 under the full commit SHA, and checks their OCI revision labels before restarting
 services. All five binaries embed that revision; `/api/v1/version` returns it.

@@ -166,10 +166,13 @@ echo ""
 # Build before stopping any running service. The sequenced restart below can
 # include a newly-added service whose config requires code that is not present
 # in the host's previous shared backend image. Starting that service before the
-# final `up --build` would reuse the stale image, fail its healthcheck, and abort
+# final startup would reuse the stale image, fail its healthcheck, and abort
 # the deploy before Docker ever reaches the build.
-echo "==> docker compose $PROFILES_ARG build"
-docker compose $PROFILES_ARG build
+echo "==> building each backend image once"
+# Reject conflicting implicit overrides, then pin build, migration and startup to one file.
+COMPOSE_FILE="$(python3 "$SCRIPT_DIR/../shared/scripts/backend-revision.py" compose-file "$SCRIPT_DIR/docker-compose.yml")"
+export COMPOSE_FILE
+python3 "$SCRIPT_DIR/../shared/scripts/backend-revision.py" build "$SCRIPT_DIR/docker-compose.yml" "$OPHIS_GIT_SHA"
 [[ "$(python3 "$SCRIPT_DIR/../shared/scripts/backend-revision.py" source "$SCRIPT_DIR/../..")" == "$OPHIS_GIT_SHA" ]]
 python3 "$SCRIPT_DIR/../shared/scripts/backend-revision.py" images "$SCRIPT_DIR/docker-compose.yml" "$OPHIS_GIT_SHA"
 

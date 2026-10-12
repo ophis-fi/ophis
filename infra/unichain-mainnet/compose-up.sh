@@ -159,7 +159,10 @@ else
 fi
 
 echo ""
-docker compose $PROFILES_ARG build
+# Reject conflicting implicit overrides, then pin build, migration and startup to one file.
+COMPOSE_FILE="$(python3 "$SCRIPT_DIR/../shared/scripts/backend-revision.py" compose-file "$SCRIPT_DIR/docker-compose.yml")"
+export COMPOSE_FILE
+python3 "$SCRIPT_DIR/../shared/scripts/backend-revision.py" build "$SCRIPT_DIR/docker-compose.yml" "$OPHIS_GIT_SHA"
 [[ "$(python3 "$SCRIPT_DIR/../shared/scripts/backend-revision.py" source "$SCRIPT_DIR/../..")" == "$OPHIS_GIT_SHA" ]]
 python3 "$SCRIPT_DIR/../shared/scripts/backend-revision.py" images "$SCRIPT_DIR/docker-compose.yml" "$OPHIS_GIT_SHA"
 
@@ -244,7 +247,7 @@ fi
 # stack had been missing the symmetric fix. Conditional on the rendered
 # config existing AND the service being up (skipped on first-deploy
 # where the service isn't running yet — the final
-# `docker compose up -d --build` below brings it up fresh).
+# `docker compose up -d --no-build` below brings it up fresh).
 if [[ -f observability-rendered/alertmanager.yml ]] && \
    docker compose ps --services 2>/dev/null | grep -qF alertmanager; then
   echo "==> force-recreating alertmanager to pick up rendered Telegram token"
