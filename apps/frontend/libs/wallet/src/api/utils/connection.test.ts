@@ -15,7 +15,7 @@ it('connects the injected wallet eagerly inside Ledger Wallet, but not for a des
   expect(getShouldConnectInjectedEagerly()).toBe(true)
 })
 
-it('ignores the Ledger flag inside an iframe, where a Safe App keeps Safe first', () => {
+it('ignores the Ledger flag inside an iframe (e.g. a Safe App)', () => {
   window.ethereum = { isLedgerLive: true, providers: [] }
   jest.spyOn(window, 'self', 'get').mockReturnValue({} as Window & typeof globalThis)
 

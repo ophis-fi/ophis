@@ -117,9 +117,6 @@ export class InjectedWallet extends Connector {
   // Copied from https://github.com/Uniswap/web3-react/blob/de97c00c378b7909dfbd8a06558ed12e1f796caa/packages/metamask/src/index.ts#L98
   /** {@inheritdoc Connector.connectEagerly} */
   async connectEagerly(): Promise<void> {
-    // A second eager connect (e.g. the remembered EIP-6963 provider after window.ethereum) must not reset a live session
-    if (this.eagerConnection) return
-
     const cancelActivation = this.actions.startActivation()
 
     try {

@@ -45,7 +45,7 @@ export function getIsInjectedMobileBrowser(): boolean {
 }
 
 // Ledger Wallet's dApp Browser injects a provider flagged isLedgerLive into the page it loads: that provider is the user's wallet there.
-// Ignored inside an iframe, where a Safe App must keep the Safe connector first.
+// Only the top-level page counts: inside an iframe (e.g. a Safe App) the usual wallet handling applies.
 export function getIsLedgerLiveBrowser(): boolean {
   return !!window.ethereum?.isLedgerLive && !isIframe()
 }

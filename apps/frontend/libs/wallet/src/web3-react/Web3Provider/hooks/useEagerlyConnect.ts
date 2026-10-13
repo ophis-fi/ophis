@@ -13,7 +13,7 @@ import {
 } from '../../../api/hooks'
 import { selectedEip6963ProviderRdnsAtom } from '../../../api/state/multiInjectedProvidersAtom'
 import { ConnectionType } from '../../../api/types'
-import { getShouldConnectInjectedEagerly } from '../../../api/utils/connection'
+import { getIsLedgerLiveBrowser, getShouldConnectInjectedEagerly } from '../../../api/utils/connection'
 import { injectedWalletConnection } from '../../connection/injectedWallet'
 import { networkConnection } from '../../connection/network'
 import { gnosisSafeConnection } from '../../connection/safe'
@@ -70,7 +70,8 @@ export function useEagerlyConnect(selectedWallet: ConnectionType | undefined, st
 
     start(connect(networkConnection.connector))
 
-    if (selectedWallet) {
+    // Inside Ledger Wallet its injected wallet, connected above, is the one to use: a remembered wallet is not restored
+    if (selectedWallet && !getIsLedgerLiveBrowser()) {
       const connection = getWeb3ReactConnection(selectedWallet)
       const cachedProviderRdns = jotaiStore.get(selectedEip6963ProviderRdnsAtom)
 
