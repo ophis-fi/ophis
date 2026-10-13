@@ -13,7 +13,7 @@ import {
 } from '../../../api/hooks'
 import { selectedEip6963ProviderRdnsAtom } from '../../../api/state/multiInjectedProvidersAtom'
 import { ConnectionType } from '../../../api/types'
-import { getIsInjectedMobileBrowser } from '../../../api/utils/connection'
+import { getShouldConnectInjectedEagerly } from '../../../api/utils/connection'
 import { injectedWalletConnection } from '../../connection/injectedWallet'
 import { networkConnection } from '../../connection/network'
 import { gnosisSafeConnection } from '../../connection/safe'
@@ -35,16 +35,6 @@ async function connect(connector: Connector) {
   } catch (error: any) {
     console.debug(`web3-react eager connection error: ${error}`)
   }
-}
-
-function shouldConnectInjectedEagerly(): boolean {
-  // autoConnect is set to true in the e2e tests; isLedgerLive is set by the Ledger Wallet dApp Browser
-  return (
-    isInjectedWidget() ||
-    getIsInjectedMobileBrowser() ||
-    !!window.ethereum?.autoConnect ||
-    !!window.ethereum?.isLedgerLive
-  )
 }
 
 export function useEagerlyConnect(selectedWallet: ConnectionType | undefined, standaloneMode?: boolean): void {
@@ -69,7 +59,7 @@ export function useEagerlyConnect(selectedWallet: ConnectionType | undefined, st
 
     const isIframe = window.top !== window.self
 
-    if (shouldConnectInjectedEagerly()) {
+    if (getShouldConnectInjectedEagerly()) {
       start(connect(injectedWalletConnection.connector))
     }
 

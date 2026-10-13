@@ -1,4 +1,4 @@
-import { isMobile } from '@cowprotocol/common-utils'
+import { isInjectedWidget, isMobile } from '@cowprotocol/common-utils'
 
 import { default as MetamaskImage } from '../../api/assets/metamask.png'
 import CoinbaseWalletIcon from '../assets/coinbase.svg'
@@ -42,4 +42,16 @@ export function getIsInjected(): boolean {
 
 export function getIsInjectedMobileBrowser(): boolean {
   return getIsInjected() && isMobile
+}
+
+// Ledger Wallet's dApp Browser injects a provider flagged isLedgerLive: that provider is the user's wallet there
+export function getIsLedgerLiveBrowser(): boolean {
+  return !!window.ethereum?.isLedgerLive
+}
+
+// autoConnect is set to true in the e2e tests
+export function getShouldConnectInjectedEagerly(): boolean {
+  return (
+    isInjectedWidget() || getIsInjectedMobileBrowser() || !!window.ethereum?.autoConnect || getIsLedgerLiveBrowser()
+  )
 }
