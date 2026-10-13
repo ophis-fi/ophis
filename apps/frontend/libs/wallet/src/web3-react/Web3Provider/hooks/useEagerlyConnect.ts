@@ -37,6 +37,16 @@ async function connect(connector: Connector) {
   }
 }
 
+function shouldConnectInjectedEagerly(): boolean {
+  // autoConnect is set to true in the e2e tests; isLedgerLive is set by the Ledger Wallet dApp Browser
+  return (
+    isInjectedWidget() ||
+    getIsInjectedMobileBrowser() ||
+    !!window.ethereum?.autoConnect ||
+    !!window.ethereum?.isLedgerLive
+  )
+}
+
 export function useEagerlyConnect(selectedWallet: ConnectionType | undefined, standaloneMode?: boolean): void {
   const [tryConnectEip6963Provider, setTryConnectEip6963Provider] = useState(false)
   const eagerlyConnectInitRef = useRef(false)
@@ -59,8 +69,7 @@ export function useEagerlyConnect(selectedWallet: ConnectionType | undefined, st
 
     const isIframe = window.top !== window.self
 
-    // autoConnect is set to true in the e2e tests
-    if (isInjectedWidget() || getIsInjectedMobileBrowser() || window.ethereum?.autoConnect) {
+    if (shouldConnectInjectedEagerly()) {
       start(connect(injectedWalletConnection.connector))
     }
 
