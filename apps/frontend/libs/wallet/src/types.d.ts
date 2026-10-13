@@ -8,6 +8,7 @@ interface Window {
     isMetaMask?: true
     isRabby?: true
     autoConnect?: true
+    isLedgerLive?: true
     providers: unknown[]
   }
 }

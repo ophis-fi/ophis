@@ -28,6 +28,7 @@ interface Window {
     isRabby?: true
     autoRefreshOnNetworkChange?: boolean
     autoConnect?: boolean
+    isLedgerLive?: boolean
     setSelectedProvider: (any) => void
     // TODO: Replace any with proper type definitions
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
