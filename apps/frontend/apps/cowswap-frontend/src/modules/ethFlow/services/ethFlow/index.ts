@@ -7,6 +7,7 @@ import { UiOrderType } from '@cowprotocol/types'
 
 import { t } from '@lingui/core/macro'
 import { SigningSteps } from 'entities/trade'
+import { placeConfirmed } from 'tradingSdk/ophisBridgeProviders'
 
 import { PriceImpact } from 'legacy/hooks/usePriceImpact'
 import { mapUnsignedOrderToOrder, wrapErrorInOperatorError } from 'legacy/utils/trade'
@@ -147,8 +148,8 @@ export async function ethFlow({
       signingScheme,
       orderToSign: unsignedOrder,
     } = await wrapErrorInOperatorError(() =>
-      tradeQuote
-        .postSwapOrderFromQuote(
+      placeConfirmed(tradeQuoteState.bridgeQuote, orderParams.account, () =>
+        tradeQuote.postSwapOrderFromQuote(
           {
             appData: orderParams.appData.doc,
             additionalParams: {
@@ -161,8 +162,8 @@ export async function ethFlow({
             },
           },
           isBridgingOrder ? signingStepManager : undefined,
-        )
-        .finally(closeModals),
+        ),
+      ).finally(closeModals),
     )
 
     const quoteId = tradeQuote.quoteResults.quoteResponse.id

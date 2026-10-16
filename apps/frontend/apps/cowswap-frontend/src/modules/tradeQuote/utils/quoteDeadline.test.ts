@@ -1,5 +1,10 @@
 import { MAX_VALID_TO_EPOCH } from '@cowprotocol/common-utils'
-import { CrossChainQuoteAndPost } from '@cowprotocol/sdk-bridging'
+import {
+  AcrossBridgeProvider,
+  BridgeQuoteResults,
+  CrossChainQuoteAndPost,
+  NearIntentsBridgeProvider,
+} from '@cowprotocol/sdk-bridging'
 
 import { getOrderValidTo, getQuoteTimeOffset, isQuoteExpired } from './quoteDeadline'
 
@@ -132,6 +137,79 @@ describe('Quote deadline utils', () => {
       }
 
       expect(getOrderValidTo(deadline, getQuoteState(quoteDeadlineParams))).toEqual(MAX_VALID_TO_EPOCH)
+    })
+
+    describe('for an Across bridge order', () => {
+      // A server clock 2 hours behind the local one, and an Across quote taken a minute ago.
+      const offset = 7200
+      const now = Math.floor(NOW_TIME / 1000) - offset
+      const quoteTimestamp = now - 60
+      const bridgeState = (
+        providerInfo: BridgeQuoteResults['providerInfo'],
+        fillDeadline: number,
+      ): TradeQuoteState => ({
+        ...getQuoteState({
+          validFor: 1800,
+          quoteValidTo: now + 1800,
+          localQuoteTimestamp: now + offset,
+        }),
+        bridgeQuote: {
+          providerInfo,
+          quoteTimestamp,
+          quoteBody: JSON.stringify({ timestamp: String(quoteTimestamp), fillDeadline: String(fillDeadline) }),
+        } as BridgeQuoteResults,
+      })
+      const across = new AcrossBridgeProvider().info
+      const roomyFill = quoteTimestamp + 7440
+
+      it('caps a forced 60 minute deadline 300 s inside the 3600 s Across quote time buffer', () => {
+        expect(getOrderValidTo(3600, bridgeState(across, roomyFill))).toBe(quoteTimestamp + 3300)
+      })
+
+      it('caps at 900 s before the Across fill deadline when that comes first', () => {
+        expect(getOrderValidTo(3600, bridgeState(across, quoteTimestamp + 3000))).toBe(quoteTimestamp + 2100)
+      })
+
+      it('keeps a deadline up to the cap, in server time', () => {
+        // now + 3240 is quoteTimestamp + 3300.
+        expect(getOrderValidTo(3240, bridgeState(across, roomyFill))).toBe(now + 3240)
+        expect(getOrderValidTo(3241, bridgeState(across, roomyFill))).toBe(now + 3240)
+        expect(getOrderValidTo(1800, bridgeState(across, roomyFill))).toBe(now + 1800)
+      })
+
+      it('leaves other providers alone', () => {
+        const other = { ...across, dappId: `${across.dappId}-other` }
+        expect(getOrderValidTo(3600, bridgeState(other, roomyFill))).toBe(now + 3600)
+      })
+    })
+
+    describe('for a NEAR Intents bridge order', () => {
+      // Same clocks: the server 2 hours behind, the quote taken a minute ago, its NEAR deadline 30 min on.
+      const offset = 7200
+      const now = Math.floor(NOW_TIME / 1000) - offset
+      const nearDeadline = now - 60 + 1800
+      const nearState = (quoteBody: string): TradeQuoteState => ({
+        ...getQuoteState({ validFor: 1800, quoteValidTo: now + 1800, localQuoteTimestamp: now + offset }),
+        bridgeQuote: { providerInfo: new NearIntentsBridgeProvider({}).info, quoteBody } as BridgeQuoteResults,
+      })
+      // NEAR's quote deadline, as calculateDeadline writes it and the attested quote echoes it.
+      const attested = JSON.stringify({
+        deadline: new Date(nearDeadline * 1000).toISOString().replace(/\.\d{3}Z$/, 'Z'),
+      })
+
+      it('ends the order 300 s before the deadline NEAR attested, whatever the swap deadline', () => {
+        expect(getOrderValidTo(3 * 3600, nearState(attested))).toBe(nearDeadline - 300)
+        expect(getOrderValidTo(1800, nearState(attested))).toBe(nearDeadline - 300)
+      })
+
+      it('keeps a deadline that ends before that', () => {
+        expect(getOrderValidTo(600, nearState(attested))).toBe(now + 600)
+      })
+
+      it('places no order when the NEAR deadline cannot be read', () => {
+        expect(getOrderValidTo(600, nearState('{}'))).toBe(0)
+        expect(getOrderValidTo(600, nearState('not json'))).toBe(0)
+      })
     })
   })
 

@@ -1,6 +1,7 @@
 import { MAX_VALID_TO_EPOCH } from '@cowprotocol/common-utils'
 
 import ms from 'ms.macro'
+import { acrossValidToLimit, nearValidToLimit } from 'tradingSdk/ophisBridgeProviders'
 
 import { getIsFastQuote } from './getIsFastQuote'
 
@@ -67,6 +68,11 @@ export function getOrderValidTo(deadline: number, state: TradeQuoteState): numbe
   const now = Date.now() / 1000
   const validTo = Math.floor(deadline + now - timeOffset)
 
-  // Should not be greater than what the contract supports
-  return Math.min(validTo, MAX_VALID_TO_EPOCH)
+  // Should not be greater than what the contract supports, nor than the order's bridge deposit allows
+  return Math.min(
+    validTo,
+    MAX_VALID_TO_EPOCH,
+    acrossValidToLimit(state.bridgeQuote),
+    nearValidToLimit(state.bridgeQuote),
+  )
 }

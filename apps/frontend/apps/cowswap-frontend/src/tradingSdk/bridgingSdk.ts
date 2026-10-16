@@ -3,6 +3,7 @@ import {
   ophisAcrossApiOptions,
   registerOphisNearIntentsNetworks,
 } from '@cowprotocol/common-const'
+import { EnrichedOrder, SupportedChainId } from '@cowprotocol/cow-sdk'
 import { BridgingSdk } from '@cowprotocol/sdk-bridging'
 
 import { orderBookApi } from 'cowSdk'
@@ -20,7 +21,18 @@ registerOphisNearIntentsNetworks()
 // only lets the SDK resolve historical Bungee orders by their appData hook dappId.
 export const bungeeBridgeProvider = createDecodeOnlyBungeeBridgeProvider()
 
-export const acrossBridgeProvider = new OphisAcrossBridgeProvider({ apiOptions: ophisAcrossApiOptions() })
+export const acrossBridgeProvider = new OphisAcrossBridgeProvider({
+  apiOptions: ophisAcrossApiOptions(),
+  // Placement refuses while another bridge of the wallet is open (see assertNoOpenBridge).
+  ordersOf: (chainId, owner) => newestOrders(chainId, owner),
+})
+
+// The wallet's newest 5,000 orders on a chain, 1,000 (the orderbook's maximum) per request.
+async function newestOrders(chainId: SupportedChainId, owner: string, offset = 0): Promise<EnrichedOrder[]> {
+  const page = await orderBookApi.getOrders({ owner, offset, limit: 1000 }, { chainId })
+  if (page.length < 1000 || offset >= 4000) return page
+  return [...page, ...(await newestOrders(chainId, owner, offset + 1000))]
+}
 
 // `|| undefined`: an unset GitHub secret renders as '' in the deploy env, and
 // an empty-string apiKey would make the SDK send a blank Bearer header instead

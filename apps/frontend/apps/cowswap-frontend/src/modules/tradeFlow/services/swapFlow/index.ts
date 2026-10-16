@@ -15,6 +15,7 @@ import { UiOrderType } from '@cowprotocol/types'
 
 import { SigningSteps } from 'entities/trade'
 import ms from 'ms.macro'
+import { placeConfirmed } from 'tradingSdk/ophisBridgeProviders'
 
 import { PriceImpact } from 'legacy/hooks/usePriceImpact'
 import { partialOrderUpdate } from 'legacy/state/orders/utils'
@@ -167,8 +168,8 @@ export async function swapFlow(
       signingScheme,
       orderToSign: unsignedOrder,
     } = await wrapErrorInOperatorError(() =>
-      tradeQuote
-        .postSwapOrderFromQuote(
+      placeConfirmed(tradeQuoteState.bridgeQuote, orderParams.account, () =>
+        tradeQuote.postSwapOrderFromQuote(
           {
             appData: orderParams.appData.doc,
             additionalParams: {
@@ -180,10 +181,10 @@ export async function swapFlow(
             },
           },
           signingStepManager,
-        )
-        .finally(() => {
-          callbacks.closeModals()
-        }),
+        ),
+      ).finally(() => {
+        callbacks.closeModals()
+      }),
     )
 
     let presignTxHash: string | null = null

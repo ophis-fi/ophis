@@ -9,6 +9,19 @@ class TestAcross extends OphisAcrossBridgeProvider {
   get tokensApi(): { getSupportedTokens(): Promise<TokenInfo[]> } {
     return this.api
   }
+
+  // The Ophis list's Base and Arc USDC entries, without fetching the list.
+  protected trustedTokens(): Promise<TokenInfo[]> {
+    return Promise.resolve([
+      {
+        chainId: SupportedChainId.BASE,
+        address: '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913',
+        symbol: 'USDC',
+        decimals: 6,
+      },
+      { chainId: ARC_CHAIN_ID, address: ARC_USDC_ADDRESS, symbol: 'USDC', decimals: 6 },
+    ])
+  }
 }
 
 afterEach(() => jest.restoreAllMocks())
@@ -96,7 +109,7 @@ it('quotes Base USDC to Arc USDC with both token addresses and correct output un
     },
   }
   const fetchSpy = jest.spyOn(global, 'fetch').mockResolvedValue({ ok: true, json: async () => fees } as Response)
-  const quote = await new OphisAcrossBridgeProvider().getQuote({
+  const quote = await new TestAcross().getQuote({
     kind: OrderKind.SELL,
     sellTokenChainId: SupportedChainId.BASE,
     buyTokenChainId: ARC_CHAIN_ID,
