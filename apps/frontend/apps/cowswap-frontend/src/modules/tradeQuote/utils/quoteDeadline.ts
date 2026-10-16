@@ -1,7 +1,7 @@
 import { MAX_VALID_TO_EPOCH } from '@cowprotocol/common-utils'
 
 import ms from 'ms.macro'
-import { acrossValidToLimit, nearValidToLimit } from 'tradingSdk/ophisBridgeProviders'
+import { acrossValidToLimit, nearValidToLimit } from 'tradingSdk/ophisBridgeValidTo'
 
 import { getIsFastQuote } from './getIsFastQuote'
 

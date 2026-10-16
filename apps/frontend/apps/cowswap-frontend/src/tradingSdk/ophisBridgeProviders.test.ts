@@ -48,10 +48,10 @@ import { Wallet } from '@ethersproject/wallet'
 import { readFileSync } from 'fs'
 import { join } from 'path'
 
-import { BRIDGE_QUOTE_ACCOUNT } from 'modules/tradeQuote/utils/getBridgeQuoteSigner'
-
+import { BRIDGE_QUOTE_ACCOUNT } from 'common/constants/bridgeQuoteAccount'
 import { getSwapErrorMessage } from 'common/utils/getSwapErrorMessage'
 
+import { loadHooks } from './ophisAcrossPlacedHooks'
 import { ROBINHOOD_BRIDGE_CHAIN, UNICHAIN_BRIDGE_CHAIN } from './ophisBridgeChains'
 import {
   ACROSS_EXECUTABLE_SOURCE_IDS,
@@ -1069,6 +1069,12 @@ describe('OphisAcrossBridgeProvider: other bridges of the wallet', () => {
     // Records it cannot read back are not taken for none.
     localStorage.setItem(`ophisBridgeHooks:v0:${OWNER.toLowerCase()}`, '{"not": "a list"}')
     await expect(placeConfirmed(confirmedQuote(PCT), OWNER, sign)).rejects.toThrow('cannot keep track of your bridges')
+    // Entries of any other shape than rememberHook writes are no hooks this browser placed.
+    const kept = { chainId: 8453, nonce: `0x${'ab'.repeat(32)}`, deadline: '1700000000' }
+    const odd = [{ ...kept, chainId: '8453' }, { ...kept, nonce: '0xab' }, { ...kept, deadline: 1700000000 }, null, 7]
+    localStorage.setItem(`ophisBridgeHooks:v0:${OWNER.toLowerCase()}`, JSON.stringify([kept, ...odd]))
+    expect(loadHooks(OWNER)).toEqual([kept])
+    localStorage.clear()
     // Each wallet's records are its own.
     expect(stored(`0x${'0c'.repeat(20)}`)).toEqual([])
   })
