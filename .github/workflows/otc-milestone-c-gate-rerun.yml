@@ -160,7 +160,7 @@ jobs:
             # earlier evidence, even when the new body still looks clean.
             if [[ "$EVENT_ACTION" == created ]] && jq -ne \
               --arg body "$SOURCE_BODY" --arg head "$head_sha" \
-              '$body | gsub("\r\n"; "\n") | test("^Codex Review: Didn\u0027t find any major issues\\.[^\\r\\n]*\\n+\\*\\*Reviewed commit:\\*\\* `(" + $head[0:10] + "|" + $head + ")`(?:\\n|$)")' >/dev/null; then
+              '$body | gsub("\r\n"; "\n") | test("^(?:<!-- codex-review-receipt:v1 -->\\n\\n)?Codex Review: Didn\u0027t find any major issues\\.[^\\r\\n]*\\n+\\*\\*Reviewed commit:\\*\\* `(" + $head[0:10] + "|" + $head + ")`(?:\\n|$)")' >/dev/null; then
               checkpoint=false
             fi
           elif [[ "$SOURCE_USER" == "$ACTIONS_LOGIN" && "$EVENT_ACTION" != created ]] && {

@@ -113,7 +113,7 @@ function cleanCommentHeadPrefix(comment) {
   const match = String(comment?.body ?? '')
     .replaceAll('\r\n', '\n')
     .match(
-      /^Codex Review: Didn't find any major issues\.[^\r\n]*\n+\*\*Reviewed commit:\*\* `([0-9a-f]{10}|[0-9a-f]{40})`(?:\n|$)/,
+      /^(?:<!-- codex-review-receipt:v1 -->\n\n)?Codex Review: Didn't find any major issues\.[^\r\n]*\n+\*\*Reviewed commit:\*\* `([0-9a-f]{10}|[0-9a-f]{40})`(?:\n|$)/,
     );
   return match?.[1];
 }
@@ -260,6 +260,17 @@ function selfTest() {
     }).accepted,
     'an authenticated clean comment naming the current head must pass',
   );
+  const receiptComment = {
+    ...cleanComment,
+    body: `<!-- codex-review-receipt:v1 -->\n\n${cleanComment.body}`,
+  };
+  assert(
+    assessCodexGate({
+      ...base,
+      reviewRequests: [recordedRequest({ cleanComments: [receiptComment] })],
+    }).accepted,
+    'the authenticated Codex receipt wrapper must preserve clean evidence',
+  );
   for (const updated_at of [undefined, 'invalid', '2026-08-20T12:04:00Z']) {
     assert(
       !assessCodexGate({
@@ -313,8 +324,11 @@ function selfTest() {
   assert(condition, 'dispatcher clean-result condition must be tested');
   for (const body of [
     cleanComment.body,
+    receiptComment.body,
     cleanComment.body.replaceAll('\n', '\r\n'),
+    receiptComment.body.replaceAll('\n', '\r\n'),
     cleanComment.body.replace(base.headSha.slice(0, 10), base.headSha),
+    receiptComment.body.replace('<!-- codex-review-receipt:v1 -->', '<!-- other -->'),
     cleanComment.body.replace('\n\n', '\nNew finding.\n'),
     cleanComment.body.replace(base.headSha.slice(0, 10), 'b'.repeat(10)),
   ]) {
