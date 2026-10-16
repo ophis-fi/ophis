@@ -37,12 +37,12 @@ jobs:
       RPC_URL_OPTIMISM: ${{ secrets.OPHIS_OPTIMISM_READ_RPC_URL }}
     steps:
       - name: Check out Ophis
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       # External code stays outside the Ophis source tree and is fixed to the
       # reviewed revision. Do not vendor or modify it until licensing is clear.
       - name: Check out toxic-pool-utils
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: wavey0x/toxic-pool-utils
           ref: f188c245cbb05fd6d629d960f3f4c3cbfa6b83f5
