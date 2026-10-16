@@ -756,13 +756,17 @@ describe('OphisAcrossBridgeProvider: guarded hook and Across deadlines', () => {
     await expect(signHook(provider, deadline, { fillDeadline: deadline + 899n })).rejects.toThrow(
       'bridge quote changed',
     )
-    // A quote time the chain has not reached, or a fill deadline past its 6 hour buffer: the deposit reverts.
-    await expect(signHook(provider, deadline, { timestamp: QUOTE_TIME + 1n })).rejects.toThrow('bridge quote changed')
+    // A quote time over 60 s ahead of the chain's latest block (the RPC may trail the Across API by less), or a
+    // fill deadline past its 6 hour buffer: the deposit would revert.
+    await expect(signHook(provider, deadline, { timestamp: QUOTE_TIME + 61n })).rejects.toThrow('bridge quote changed')
     await expect(signHook(provider, deadline, { fillDeadline: QUOTE_TIME + 21_601n })).rejects.toThrow(
       'bridge quote changed',
     )
     expect(signCalls).not.toHaveBeenCalled()
     await expect(signHook(provider, deadline, { fillDeadline: QUOTE_TIME + 21_600n })).resolves.toMatchObject({
+      recipient: SHED,
+    })
+    await expect(signHook(provider, deadline, { timestamp: QUOTE_TIME + 60n })).resolves.toMatchObject({
       recipient: SHED,
     })
   })

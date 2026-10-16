@@ -8,6 +8,7 @@ import { BRIDGE_QUOTE_ACCOUNT } from 'common/constants/bridgeQuoteAccount'
 import {
   ACROSS_DAPP_ID,
   ACROSS_QUOTE_TIME_BUFFER,
+  QUOTE_TIME_SKEW,
   BRIDGE_PLACING,
   EXCLUSIVITY_OFFSET_MAX,
   FEE_ROOM_PCT,
@@ -88,7 +89,7 @@ function depositRuns(terms: GuardedHookTerms, deadline: bigint, now: bigint): bo
     exclusivity === 0n ? 0n : exclusivity <= EXCLUSIVITY_OFFSET_MAX ? now + exclusivity : exclusivity
 
   return (
-    quoteTimestamp <= now &&
+    quoteTimestamp <= now + QUOTE_TIME_SKEW &&
     deadline - quoteTimestamp <= ACROSS_QUOTE_TIME_BUFFER &&
     fillDeadline <= now + FILL_DEADLINE_BUFFER &&
     deadline + FILL_MARGIN <= fillDeadline &&

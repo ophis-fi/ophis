@@ -29,6 +29,10 @@ export const GUARD_GAS = 50_000
 // fillDeadlineBuffer (21600 s) ahead. The hook runs as late as the order's
 // validTo, and relayers need FILL_MARGIN to fill an order settled at the end.
 export const ACROSS_QUOTE_TIME_BUFFER = 3_600n
+// How far the quote time may be ahead of the sell chain's latest block as our RPC
+// reports it: Across quotes a block the RPC may not have seen yet, and the hook
+// only runs in a later settlement block, by which time that block has passed.
+export const QUOTE_TIME_SKEW = 60n
 export const FILL_DEADLINE_BUFFER = 21_600n
 export const FILL_MARGIN = 900n
 // Exclusivity lets one named relayer fill first: it must end within 5 minutes.
