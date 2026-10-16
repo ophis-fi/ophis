@@ -40,7 +40,7 @@ jobs:
       # Tailscale SSH itself is intentionally not used here: tag:ci is allowed
       # network access but not an interactive Tailscale SSH login.
       - name: Connect to Tailscale (ephemeral CI node)
-        uses: tailscale/github-action@306e68a486fd2350f2bfc3b19fcd143891a4a2d8  # v4.1.2
+        uses: tailscale/github-action@d1b6cd204f8dceda5b3eaad7f1f767be390056cd  # v4.2.0
         with:
           authkey: ${{ secrets.TS_AUTHKEY }}
           tags: tag:ci
