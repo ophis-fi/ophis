@@ -179,6 +179,8 @@ export async function findToken(net: Network, query: string): Promise<Token> {
     const list = found.matches.map((m) => `      ${m.address}  ${clean(m.symbol)}  ${dim(clean(m.name))}`).join('\n')
     throw new UserError(`"${query}" could mean several tokens on ${net.name}. Use the address instead:\n${list}`)
   }
+  // Never on a partial view: an Ophis list that could not be read may hold this very name.
+  if (found.incomplete) throw new UserError(`Could not read the Ophis token list just now. Try again, or use the token's address.`)
   // Not on the Ophis list: the public lists swap.ophis.fi also offers on this chain may name it. The address found
   // is then described like a typed one (by the Ophis list, else by the chain, and the confirmation warns).
   const named = await publicListAddresses(net.id, query)
@@ -189,22 +191,35 @@ export async function findToken(net: Network, query: string): Promise<Token> {
   throw new UserError(`No token called "${query}" on ${net.name}. You can also use the token's address.`)
 }
 
-/** Addresses a symbol has in CoW's copies of CoinGecko's and Uniswap's lists for the chain (what the website offers too). */
+// The CoW-hosted public lists swap.ophis.fi offers per chain (apps/frontend/libs/tokens/src/const/tokensList.json).
+const PUBLIC_LISTS: Readonly<Record<number, readonly string[]>> = {
+  1: ['CoinGecko'],
+  56: ['CoinGecko', 'Uniswap'],
+  100: ['Uniswap', 'CoinGecko'],
+  137: ['CoinGecko', 'Uniswap'],
+  8453: ['CoinGecko', 'Uniswap'],
+  9745: ['CoinGecko'],
+  42161: ['Uniswap', 'CoinGecko'],
+  43114: ['CoinGecko', 'Uniswap'],
+  57073: ['CoinGecko'],
+  59144: ['CoinGecko'],
+}
+
+/** Addresses a symbol has in those lists. Every list must be read: a partial view could hide another token of that name. */
 async function publicListAddresses(chainId: number, symbol: string): Promise<Address[]> {
   const want = symbol.toUpperCase()
   const lists = await Promise.all(
-    ['CoinGecko', 'Uniswap'].map((name) =>
-      fetch(`https://files.cow.fi/token-lists/${name}.${chainId}.json`, { signal: AbortSignal.timeout(8_000) })
-        .then((res) => (res.ok ? (res.json() as Promise<{ tokens?: unknown }>) : null))
-        .catch(() => null),
-    ),
+    (PUBLIC_LISTS[chainId] ?? []).map(async (name) => {
+      const res = await fetch(`https://files.cow.fi/token-lists/${name}.${chainId}.json`, { signal: AbortSignal.timeout(8_000) }).catch(() => null)
+      const body = res?.ok ? ((await res.json().catch(() => null)) as { tokens?: unknown } | null) : null
+      if (!Array.isArray(body?.tokens)) throw new UserError(`Could not check the public token lists for "${symbol}" just now. Try again, or use the token's address.`)
+      return body.tokens as { chainId?: unknown; symbol?: unknown; address?: unknown }[]
+    }),
   )
   const found = new Set<Address>()
-  for (const list of lists) {
-    for (const t of Array.isArray(list?.tokens) ? (list.tokens as { chainId?: unknown; symbol?: unknown; address?: unknown }[]) : []) {
-      if (t?.chainId === chainId && typeof t.symbol === 'string' && t.symbol.toUpperCase() === want && typeof t.address === 'string' && isAddress(t.address)) {
-        found.add(getAddress(t.address))
-      }
+  for (const t of lists.flat()) {
+    if (t?.chainId === chainId && typeof t.symbol === 'string' && t.symbol.toUpperCase() === want && typeof t.address === 'string' && isAddress(t.address)) {
+      found.add(getAddress(t.address))
     }
   }
   return [...found]

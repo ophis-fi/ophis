@@ -1401,6 +1401,8 @@ export interface ResolveTokenResult {
   canonical: ResolvedToken | null
   matches: ResolvedToken[]
   note: string
+  /** A trusted source could not be read: the answer is partial, so no token may be chosen from it or from elsewhere. */
+  incomplete: boolean
 }
 
 /** Curated token-list URLs to consult for a chain, in priority order (first wins). */
@@ -1496,6 +1498,7 @@ export async function resolveToken(
       canonical: null,
       matches: [],
       note: 'A trusted token source was temporarily unavailable, so resolution is incomplete. Do not trade on a partial result: retry, or confirm the address with get_balances (symbol and decimals) and the user.',
+      incomplete: true,
     }
   }
 
@@ -1510,7 +1513,7 @@ export async function resolveToken(
   // canonical (the priority-ordered `matches` are still provided) so a caller cannot grab
   // matches[0] and trade the wrong same-symbol variant (e.g. native vs bridged) without an
   // explicit choice. A single match still resolves to a canonical.
-  return { chainId, query: String(p.symbol), found, ambiguous, canonical: ambiguous ? null : (matches[0] ?? null), matches, note }
+  return { chainId, query: String(p.symbol), found, ambiguous, canonical: ambiguous ? null : (matches[0] ?? null), matches, note, incomplete: false }
 }
 
 /**

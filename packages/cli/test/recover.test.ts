@@ -43,6 +43,7 @@ function serve(rpc: Record<string, (params: unknown[]) => unknown>, paths: Recor
     const path = Object.keys(paths).find((p) => u.includes(p))
     if (path) {
       const answer = paths[path]
+      if (answer instanceof Response) return answer.clone() // a status other than 200
       return Response.json(typeof answer === 'function' ? answer(u) : answer)
     }
     const { id, method, params } = JSON.parse(String(init?.body ?? '{}')) as { id: number; method: string; params: unknown[] }
@@ -672,6 +673,18 @@ describe('ophis recover, end to end (chain, orderbook and wallet answered here)'
     // Another chain's entry, or a name no list has, stays unknown.
     serve(chain, { ...LISTS, ...lists([{ chainId: 1, address: usdt, symbol: 'USDT', decimals: 6 }], []) })
     await expect(findToken(arbitrum, 'USDT')).rejects.toThrow('No token called "USDT"')
+    // A public list that cannot be read could hide a second USDT: nothing is chosen from the other one.
+    serve(chain, { ...LISTS, ...lists([{ chainId: 42161, address: usdt, symbol: 'USDT', decimals: 6 }], []), 'files.cow.fi/token-lists/CoinGecko.42161.json': new Response('down', { status: 503 }) })
+    await expect(findToken(arbitrum, 'USDT')).rejects.toThrow('Could not check the public token lists')
+    // Nor when the Ophis list itself cannot be read (past its cache): it may hold the name.
+    const later = Date.now() + 7 * 86_400_000
+    const clock = spyOn(Date, 'now').mockReturnValue(later)
+    try {
+      serve(chain, { ...lists([{ chainId: 42161, address: usdt, symbol: 'USDT', decimals: 6 }], []), 'swap.ophis.fi/token-lists/ophis.json': new Response('down', { status: 503 }) })
+      await expect(findToken(arbitrum, 'USDT')).rejects.toThrow('Could not read the Ophis token list')
+    } finally {
+      clock.mockRestore()
+    }
   })
   test('finds what a bridge left in any of your latest 1,000 orders, and says so when there are more', async () => {
     const page = (n: number) => [...Array(n)].map(() => ({ receiver: X, buyToken: WETH.address.toLowerCase() })) // orders paying elsewhere
