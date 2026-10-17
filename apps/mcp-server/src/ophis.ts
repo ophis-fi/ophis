@@ -1379,6 +1379,12 @@ const EXCLUDED_TOKENS_BY_CHAIN: Record<number, ReadonlySet<string>> = {
   ]),
 }
 
+/** A native placeholder, or a token the swap UI filters out on this chain: never resolved as a tradeable token. */
+export function isUntradeableToken(chainId: number, address: string): boolean {
+  const key = address.toLowerCase()
+  return NATIVE_SENTINELS.has(key) || !!EXCLUDED_TOKENS_BY_CHAIN[chainId]?.has(key)
+}
+
 interface RawListToken {
   chainId?: unknown
   address?: unknown

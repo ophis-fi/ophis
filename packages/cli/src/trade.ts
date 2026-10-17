@@ -36,7 +36,7 @@ import {
 } from '@ophis/sdk'
 // ponytail: token lookup and order relay come straight from the MCP server module (same checks the
 // agents get); move them into @ophis/sdk before any public release.
-import { findListedToken, resolveToken, submitOrder } from '@ophis/mcp-server/src/ophis.ts'
+import { findListedToken, isUntradeableToken, resolveToken, submitOrder } from '@ophis/mcp-server/src/ophis.ts'
 import { reader, type Network } from './network.ts'
 import type { Signer, TxRequest, TypedDataJson } from './phone.ts'
 import { amount, bold, clean, dim, green, red, rows, saffron, spinner, UserError } from './ui.ts'
@@ -218,7 +218,7 @@ async function publicListAddresses(chainId: number, symbol: string): Promise<Add
   )
   const found = new Set<Address>()
   for (const t of lists.flat()) {
-    if (t?.chainId === chainId && typeof t.symbol === 'string' && t.symbol.toUpperCase() === want && typeof t.address === 'string' && isAddress(t.address)) {
+    if (t?.chainId === chainId && typeof t.symbol === 'string' && t.symbol.toUpperCase() === want && typeof t.address === 'string' && isAddress(t.address) && !isUntradeableToken(chainId, t.address)) {
       found.add(getAddress(t.address))
     }
   }

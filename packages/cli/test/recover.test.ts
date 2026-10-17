@@ -676,6 +676,10 @@ describe('ophis recover, end to end (chain, orderbook and wallet answered here)'
     // A public list that cannot be read could hide a second USDT: nothing is chosen from the other one.
     serve(chain, { ...LISTS, ...lists([{ chainId: 42161, address: usdt, symbol: 'USDT', decimals: 6 }], []), 'files.cow.fi/token-lists/CoinGecko.42161.json': new Response('down', { status: 503 }) })
     await expect(findToken(arbitrum, 'USDT')).rejects.toThrow('Could not check the public token lists')
+    // A placeholder the swap UI filters out (here on Ethereum) is never picked from a public list.
+    const ethereum = network('ethereum', 'http://127.0.0.1:9')
+    serve({ ...chain, eth_chainId: () => numberToHex(1) }, { ...LISTS, 'files.cow.fi/token-lists/CoinGecko.1.json': { tokens: [{ chainId: 1, address: '0x7751e2f4b8ae93ef6b79d86419d42fe3295a4559', symbol: 'WUSDL', decimals: 18 }] } })
+    await expect(findToken(ethereum, 'wUSDL')).rejects.toThrow('No token called "wUSDL"')
     // Nor when the Ophis list itself cannot be read (past its cache): it may hold the name.
     const later = Date.now() + 7 * 86_400_000
     const clock = spyOn(Date, 'now').mockReturnValue(later)
