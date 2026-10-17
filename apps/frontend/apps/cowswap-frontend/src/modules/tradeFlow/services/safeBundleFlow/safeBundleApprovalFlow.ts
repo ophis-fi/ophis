@@ -5,6 +5,8 @@ import { assertTradeTokenPolicy, TokenPolicyProfile } from '@cowprotocol/tokens'
 import { UiOrderType } from '@cowprotocol/types'
 import type { MetaTransactionData } from '@safe-global/types-kit'
 
+import { placeConfirmed } from 'tradingSdk/ophisBridgeProviders'
+
 import { PriceImpact } from 'legacy/hooks/usePriceImpact'
 import { partialOrderUpdate } from 'legacy/state/orders/utils'
 import { mapUnsignedOrderToOrder, wrapErrorInOperatorError } from 'legacy/utils/trade'
@@ -88,18 +90,18 @@ export async function safeBundleApprovalFlow(
       signature,
       orderToSign: unsignedOrder,
     } = await wrapErrorInOperatorError(() =>
-      tradeQuote
-        .postSwapOrderFromQuote({
+      placeConfirmed(tradeContext.tradeQuoteState.bridgeQuote, orderParams.account, () =>
+        tradeQuote.postSwapOrderFromQuote({
           appData: orderParams.appData.doc,
           quoteRequest: {
             signingScheme: SigningScheme.PRESIGN,
             validTo: orderParams.validTo,
             receiver: orderParams.recipient,
           },
-        })
-        .finally(() => {
-          callbacks.closeModals()
         }),
+      ).finally(() => {
+        callbacks.closeModals()
+      }),
     )
 
     await assertOrderUidMatches(orderId, unsignedOrder, chainId, account)

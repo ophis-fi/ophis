@@ -7,6 +7,8 @@ import { assertTradeTokenPolicy, TokenPolicyProfile } from '@cowprotocol/tokens'
 import { UiOrderType } from '@cowprotocol/types'
 import type { MetaTransactionData } from '@safe-global/types-kit'
 
+import { placeConfirmed } from 'tradingSdk/ophisBridgeProviders'
+
 import { PriceImpact } from 'legacy/hooks/usePriceImpact'
 import { partialOrderUpdate } from 'legacy/state/orders/utils'
 import { mapUnsignedOrderToOrder, type PostOrderParams, wrapErrorInOperatorError } from 'legacy/utils/trade'
@@ -116,8 +118,8 @@ export async function safeBundleEthFlow(
       signingScheme,
       orderToSign: unsignedOrder,
     } = await wrapErrorInOperatorError(() =>
-      tradeQuote
-        .postSwapOrderFromQuote({
+      placeConfirmed(tradeContext.tradeQuoteState.bridgeQuote, orderParams.account, () =>
+        tradeQuote.postSwapOrderFromQuote({
           appData: orderParams.appData.doc,
           quoteRequest: {
             signingScheme: SigningScheme.PRESIGN,
@@ -126,10 +128,10 @@ export async function safeBundleEthFlow(
             // Override the sellToken to be the wrapped native token
             sellToken: WRAPPED_NATIVE_CURRENCIES[chainId as SupportedChainId].address,
           },
-        })
-        .finally(() => {
-          callbacks.closeModals()
         }),
+      ).finally(() => {
+        callbacks.closeModals()
+      }),
     )
 
     await assertOrderUidMatches(orderId, unsignedOrder, chainId, account)
