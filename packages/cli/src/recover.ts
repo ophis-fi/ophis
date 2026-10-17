@@ -8,7 +8,7 @@ import { lockBridges, rememberHook, same, SHED_FACTORY, SHED_FACTORY_ADDRESS, SH
 import { reader, type Network } from './network.ts'
 import type { Signer } from './phone.ts'
 import { findToken, patient, priceTx, sendTx, WRAPPED, type Token } from './trade.ts'
-import { amount, dim, green, note, rows, saffron, step, UserError } from './ui.ts'
+import { amount, clean, dim, green, note, rows, saffron, step, UserError } from './ui.ts'
 
 const TTL = 1800n // seconds the signed calls stay valid, by the chain's clock
 // Sent with less time left, the recovery could mine after its deadline and revert, burning gas: the wallet has up to
@@ -274,7 +274,7 @@ export async function recover(net: Network, wallet: Signer, named: string | unde
     // Read back after the transaction's block: the shed and you.
     const read = await Promise.all([balancesOf(net, shed, tokens, receipt.blockNumber), balancesOf(net, owner, tokens, receipt.blockNumber)]).catch(() => null)
     if (!read) {
-      note(`The recovery was sent (${receipt.transactionHash}), but the balances could not be read back. Check them in your wallet.`)
+      note(`The recovery was sent (${clean(receipt.transactionHash)}), but the balances could not be read back. Check them in your wallet.`)
       return 'unknown'
     }
     const [left, mine] = read

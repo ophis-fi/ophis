@@ -509,7 +509,7 @@ export async function bridgeQuote(r: BridgeRequest): Promise<BridgeQuote> {
   } catch (err) {
     const msg = String((err as Error)?.message ?? err)
     if (/NO_ROUTES|NO_INTERMEDIATE|not supported|No routes/i.test(msg)) throw new UserError(`Across has no route for ${r.sell.symbol} on ${r.src.name} to ${r.buy.symbol} on ${r.dst.name} right now.`)
-    throw new UserError(`Could not get a bridge price: ${msg.slice(0, 140)}`)
+    throw new UserError(`Could not get a bridge price: ${clean(msg).slice(0, 140)}`)
   }
   const legs = quote as unknown as {
     swap: { amountsAndCosts: { afterPartnerFees: { buyAmount: bigint }; afterSlippage: { buyAmount: bigint } } }
@@ -713,7 +713,7 @@ export function lockBridges(): () => void {
         return 'unknown'
       }
     })()
-    throw new UserError(`Another ophis bridge is being placed (process ${holder}). If none is running, remove ${path} and try again.`)
+    throw new UserError(`Another ophis bridge is being placed (process ${clean(holder)}). If none is running, remove ${path} and try again.`)
   } finally {
     unlinkSync(mine)
   }
@@ -749,8 +749,9 @@ export async function openBridge(src: Network, owner: Address): Promise<{ open?:
     const page = res.ok ? ((await res.json().catch(() => null)) as ListedOrder[] | null) : null
     if (!Array.isArray(page)) throw new UserError('Could not check your open orders on the orderbook. Try again in a moment.')
     const intoShed = page.filter((o) => same(o?.receiver, shed))
-    const open = intoShed.find((o) => o.status === 'open')?.uid
-    if (open) return { open, hooks }
+    // The orderbook's own text: shown to the user, so stripped of anything that could drive the terminal.
+    const open = intoShed.find((o) => o.status === 'open')
+    if (open) return { open: clean(String(open.uid ?? '')) || '(no id)', hooks }
     const signed = intoShed.filter((o) => o.status === 'cancelled' || o.status === 'fulfilled' || (o.status === 'expired' && o.signingScheme !== 'presign'))
     hooks.push(...signed.flatMap((o) => shedHooks(o.fullAppData)))
     if (page.length < 100) return { hooks }
@@ -839,7 +840,7 @@ async function placeLocked(b: BridgeQuote, wallet: Signer, onSigned?: (uid: stri
     // The id is computed here from what was signed; an orderbook answering with another one is not trusted.
     if (signed && same(posted.orderId, signed)) return sent(signed)
     spin.stop(`${saffron('!')} The orderbook answered with another order id`)
-    throw Object.assign(new UserError(`Before trying again, check: ophis status ${signed ?? posted.orderId} -c ${b.src.alias}`), { maybeSent: true })
+    throw Object.assign(new UserError(`Before trying again, check: ophis status ${signed ?? clean(String(posted.orderId))} -c ${b.src.alias}`), { maybeSent: true })
   } catch (err) {
     if ((err as { maybeSent?: boolean }).maybeSent) throw err
     if (process.env.OPHIS_DEBUG) console.error(err)

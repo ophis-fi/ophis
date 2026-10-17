@@ -104,6 +104,9 @@ describe('the CoW Shed address', () => {
     const ORDERS = `${getOphisOrderbookUrl(8453)}/api/v1/account/`
     serve({}, { [ORDERS]: (u: string) => (u.includes('offset=0&') ? listed : [{ uid: '0xopen', status: 'open', receiver: shed }]) })
     expect((await openBridge(network('base'), owner)).open).toBe('0xopen')
+    // The orderbook's text reaches the terminal stripped of control characters (no escape sequences).
+    serve({}, { [ORDERS]: () => [{ uid: '0x\u001b[2J\u001b]0;owned\u0007open', status: 'open', receiver: shed }] })
+    expect((await openBridge(network('base'), owner)).open).toBe('0x[2J]0;ownedopen')
     // Past 1,000 orders it goes ahead with a note: refusing would let that listing block the wallet's bridges for good.
     const seen = serve({}, { [ORDERS]: () => listed })
     const log = spyOn(console, 'log').mockImplementation(() => {})
