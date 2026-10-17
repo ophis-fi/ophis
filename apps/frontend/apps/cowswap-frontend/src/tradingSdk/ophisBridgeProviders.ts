@@ -1,10 +1,9 @@
-import { ARC_ENABLED, EXTRA_ACROSS_SOURCE_CHAIN_IDS, tagAcrossIntegratorCalldata } from '@cowprotocol/common-const'
-import { getTimeoutAbortController } from '@cowprotocol/common-utils'
+import { ARC_ENABLED, EXTRA_ACROSS_SOURCE_CHAIN_IDS } from '@cowprotocol/common-const'
 import {
   avalanche,
   bnb,
   ChainInfo,
-  getAddressKey,
+  EvmCall,
   ink,
   linea,
   plasma,
@@ -21,13 +20,16 @@ import {
   GetProviderBuyTokens,
   QuoteBridgeRequest,
 } from '@cowprotocol/sdk-bridging'
+import { fetchTokenList, OPHIS_TOKENS_LIST_SOURCE } from '@cowprotocol/tokens'
 
+import { FEE_ROOM_PCT, GuardedHookTerms, GUARD_GAS, OrdersOf, PCT_100 } from './ophisAcrossConstants'
+import { getSignedHook, guardedHookTerms } from './ophisAcrossHooks'
+import { getBridgingParams } from './ophisAcrossLogs'
+import { getIntermediateTokensFromRoutes, keepTrustedSameAsset } from './ophisAcrossTokenTrust'
 import { ARC_BRIDGE_CHAIN, ROBINHOOD_BRIDGE_CHAIN, UNICHAIN_BRIDGE_CHAIN } from './ophisBridgeChains'
 
-// A stalled available-routes request must not hang the quote — it is ABORTED
-// (not just raced) at the timeout and degrades to "no intermediate found" like
-// every other route-fetch failure, so retries never pile up open connections.
-const AVAILABLE_ROUTES_TIMEOUT_MS = 10_000
+export { placeConfirmed } from './ophisAcrossPlacement'
+export { acrossValidToLimit, nearValidToLimit } from './ophisBridgeValidTo'
 
 /**
  * sdk-bridging 4.0.2 hardcodes Across's network list far below what the
@@ -65,6 +67,18 @@ export const ACROSS_EXECUTABLE_SOURCE_IDS: ReadonlySet<number> = new Set<number>
 ])
 
 export class OphisAcrossBridgeProvider extends AcrossBridgeProvider {
+  private readonly guardedHooks = new WeakMap<EvmCall, GuardedHookTerms>()
+  private trustedList?: Promise<TokenInfo[]>
+  private readonly ordersOf: OrdersOf | undefined
+
+  constructor({
+    ordersOf,
+    ...options
+  }: NonNullable<ConstructorParameters<typeof AcrossBridgeProvider>[0]> & { ordersOf?: OrdersOf } = {}) {
+    super(options)
+    this.ordersOf = ordersOf
+  }
+
   async getNetworks(): Promise<ChainInfo[]> {
     return [...(await super.getNetworks()), ...ACROSS_EXTRA_NETWORKS]
   }
@@ -92,9 +106,9 @@ export class OphisAcrossBridgeProvider extends AcrossBridgeProvider {
   // match returns nothing and the corridor dies with NO_INTERMEDIATE_TOKENS.
   // When the symbol match is empty, fall back to Across's authoritative
   // available-routes, which enumerates the real origin tokens that bridge to
-  // the target. Fallback-only, so every currently-working corridor is
-  // untouched. (super throws ONLY_SELL_ORDER_SUPPORTED for non-SELL, which
-  // propagates through the await.)
+  // the target. Either way the candidates come from Across's own lists, so
+  // only trusted same-asset ones survive (keepTrustedSameAsset). (super throws
+  // ONLY_SELL_ORDER_SUPPORTED for non-SELL, which propagates through the await.)
   async getIntermediateTokens(request: QuoteBridgeRequest): Promise<TokenInfo[]> {
     // Same executable-source gate as getBuyTokens: Across can only build a
     // deposit from a chain with the SpokePool + math helper, so a non-executable
@@ -105,9 +119,28 @@ export class OphisAcrossBridgeProvider extends AcrossBridgeProvider {
     if (!ACROSS_EXECUTABLE_SOURCE_IDS.has(request.sellTokenChainId)) return []
 
     const bySymbol = await super.getIntermediateTokens(request)
-    if (bySymbol.length > 0) return bySymbol
+    const candidates = bySymbol.length > 0 ? bySymbol : await getIntermediateTokensFromRoutes(this.api, request)
 
-    return this.getIntermediateTokensFromRoutes(request)
+    return keepTrustedSameAsset(() => this.trustedTokens(), request, candidates)
+  }
+  async getUnsignedBridgeCall(request: QuoteBridgeRequest, quote: AcrossQuoteResult): Promise<EvmCall> {
+    const call = await super.getUnsignedBridgeCall(request, quote)
+    this.guardedHooks.set(call, guardedHookTerms(this.cowShedSdk, request, quote))
+    return call
+  }
+
+  async getBridgingParams(
+    ...args: Parameters<AcrossBridgeProvider['getBridgingParams']>
+  ): ReturnType<AcrossBridgeProvider['getBridgingParams']> {
+    return getBridgingParams(this.getStatus.bind(this), ...args)
+  }
+
+  async getGasLimitEstimationForHook(request: QuoteBridgeRequest): Promise<number> {
+    return (await super.getGasLimitEstimationForHook(request)) + GUARD_GAS
+  }
+
+  async getSignedHook(...args: Parameters<AcrossBridgeProvider['getSignedHook']>): Promise<BridgeHook> {
+    return getSignedHook(this.cowShedSdk, this.info.dappId, this.guardedHooks.get(args[1]), this.ordersOf, ...args)
   }
 
   // The Across deposit hook computes depositV3's outputAmount ON-CHAIN as
@@ -119,18 +152,17 @@ export class OphisAcrossBridgeProvider extends AcrossBridgeProvider {
   // Such a deposit would offer 100e6 of input for ~1e-10 of output and be filled
   // instantly. Refuse them here, the one method every Across quote passes
   // through, before any fee request; the UI renders NO_ROUTES as "No routes found".
-  /**
-   * Same signed CoW Shed hook as upstream, with Across's on-chain integrator
-   * tag appended to its calldata (see tagAcrossIntegratorCalldata). Nothing
-   * decodes this calldata later: the SDK reads Across deposits back from the
-   * FundsDeposited event, not from the hook.
-   */
-  async getSignedHook(...args: Parameters<AcrossBridgeProvider['getSignedHook']>): Promise<BridgeHook> {
-    const hook = await super.getSignedHook(...args)
-    return { ...hook, postHook: { ...hook.postHook, callData: tagAcrossIntegratorCalldata(hook.postHook.callData) } }
-  }
-
+  // The same goes for an intermediate keepTrustedSameAsset would drop: the SDK
+  // serves intermediates from a cache shared across tabs and app versions,
+  // without calling getIntermediateTokens.
   async getQuote(request: QuoteBridgeRequest): Promise<AcrossQuoteResult> {
+    // The cached-intermediate path skips getIntermediateTokens, and with it the source gate.
+    if (!ACROSS_EXECUTABLE_SOURCE_IDS.has(request.sellTokenChainId)) {
+      throw new BridgeProviderQuoteError(BridgeQuoteErrors.NO_ROUTES, {
+        reason: 'Across is not executable from this source chain',
+        sellTokenChainId: request.sellTokenChainId,
+      })
+    }
     if (request.sellTokenDecimals !== request.buyTokenDecimals) {
       throw new BridgeProviderQuoteError(BridgeQuoteErrors.NO_ROUTES, {
         reason: 'sell/buy token decimals differ; Across deposit outputAmount is computed in sell-token units',
@@ -139,46 +171,34 @@ export class OphisAcrossBridgeProvider extends AcrossBridgeProvider {
       })
     }
 
-    return super.getQuote(request)
+    const [trusted] = await keepTrustedSameAsset(() => this.trustedTokens(), request, [
+      { address: request.sellTokenAddress },
+    ])
+    if (!trusted) {
+      throw new BridgeProviderQuoteError(BridgeQuoteErrors.NO_ROUTES, {
+        reason: 'the intermediate is not a trusted token of the destination asset',
+        sellTokenAddress: request.sellTokenAddress,
+      })
+    }
+
+    // Placing the order quotes Across again and takes a fee up to FEE_ROOM_PCT
+    // higher (assertPlaceable). Upstream's Across minimum has no slippage at all,
+    // so the minimum shown keeps that room: what arrives is never less than it.
+    const quote = await super.getQuote(request)
+    const { beforeFee, afterSlippage } = quote.amountsAndCosts
+    afterSlippage.buyAmount -= (beforeFee.buyAmount * FEE_ROOM_PCT) / PCT_100
+    return quote
   }
 
-  private async getIntermediateTokensFromRoutes(request: QuoteBridgeRequest): Promise<TokenInfo[]> {
-    const { sellTokenChainId, buyTokenChainId, buyTokenAddress } = request
-
-    // Whole body guarded: any failure — network, a timeout, a malformed/garbage
-    // routes response, a non-string originToken, the token-list fetch — degrades
-    // to "no intermediate found" rather than crashing the quote pipeline.
-    try {
-      // Through the SDK's AcrossApi, so this request carries the configured
-      // integratorId and API key like every other Across call (the SDK also
-      // validates the route shape and rejects garbage as INVALID_API_JSON_RESPONSE).
-      const routes = await this.api.getAvailableRoutes(
-        {
-          originChainId: String(sellTokenChainId),
-          destinationChainId: String(buyTokenChainId),
-          destinationToken: buyTokenAddress,
-        },
-        { signal: getTimeoutAbortController(AVAILABLE_ROUTES_TIMEOUT_MS).signal },
-      )
-      if (routes.length === 0) return []
-
-      // Normalize both sides with the repo's canonical address key (not a raw
-      // toLowerCase) so matching tracks the SDK's address semantics.
-      const originKeys = new Set(
-        routes
-          .map((route) => (typeof route?.originToken === 'string' ? getAddressKey(route.originToken) : undefined))
-          .filter((key): key is ReturnType<typeof getAddressKey> => Boolean(key)),
-      )
-      if (originKeys.size === 0) return []
-
-      // Return the SDK's own TokenInfo objects (with decimals/symbol/logo) for
-      // the route origins, so the downstream quote path gets the shape it wants.
-      const tokens = await this.api.getSupportedTokens()
-      return tokens.filter(
-        (token) => token.chainId === sellTokenChainId && originKeys.has(getAddressKey(token.address)),
-      )
-    } catch {
-      return []
-    }
+  /** The Ophis token list, loaded once per provider; a failed load is dropped so the next quote retries. */
+  protected trustedTokens(): Promise<TokenInfo[]> {
+    this.trustedList ??= fetchTokenList({ source: OPHIS_TOKENS_LIST_SOURCE }).then(
+      (state) => state.list.tokens,
+      (error) => {
+        this.trustedList = undefined
+        throw error
+      },
+    )
+    return this.trustedList
   }
 }
