@@ -4,7 +4,7 @@ import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import SignClient from '@walletconnect/sign-client'
 import QRCode from 'qrcode'
-import { getAddress, isHex, numberToHex, type Address, type Hex } from 'viem'
+import { getAddress, isAddress, isHex, numberToHex, type Address, type Hex } from 'viem'
 import { OPHIS_HOME } from './home.ts'
 import { clean, UserError } from './ui.ts'
 
@@ -107,12 +107,17 @@ export function savedWallet(): { address: Address; chains: number[] } | null {
 const liveSession = (c: Client): Session | undefined =>
   c.session.getAll().filter((s) => s.expiry * 1000 > Date.now()).sort((a, b) => b.expiry - a.expiry)[0]
 
-/** "eip155:8453:0xabc..." entries -> the account and the chains the wallet allowed. */
-function accountsOf(session: Session): { address: Address; chains: number[] } {
+/**
+ * "eip155:8453:0xabc..." entries -> the account and the chains the wallet allowed it on. The CLI uses one address: a
+ * chain where the wallet gave another account is left out, so nothing is ever signed there as the wrong owner.
+ */
+export function accountsOf(session: Pick<Session, 'namespaces'>): { address: Address; chains: number[] } {
   const entries = (session.namespaces.eip155?.accounts ?? []).map((a) => a.split(':'))
   const first = entries[0]
-  if (!first?.[2]) throw new UserError('The wallet connected without an Ethereum account. Run ophis connect again.')
-  return { address: getAddress(first[2]), chains: entries.map((e) => Number(e[1])) }
+  if (!first?.[2] || !isAddress(first[2])) throw new UserError('The wallet connected without an Ethereum account. Run ophis connect again.')
+  const address = getAddress(first[2])
+  const chains = entries.filter((e) => !!e[2] && isAddress(e[2]) && getAddress(e[2]) === address).map((e) => Number(e[1]))
+  return { address, chains }
 }
 
 /** Starts a pairing: a QR code to show, and a wait() that resolves once the user approves in their wallet. */

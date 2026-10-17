@@ -150,7 +150,7 @@ async function swap(args: string[], flags: Flags) {
   const interrupted = () => {
     const live = sending ? ` The order may already be live: ophis status ${sending} -c ${net.alias}` : ''
     console.log(`\n  ${saffron('!')} Stopped.${wrappedNote()}${live}\n`)
-    process.exit(130)
+    finish(130)
   }
   process.on('SIGINT', interrupted)
   let uid: string
@@ -236,7 +236,7 @@ async function crossChain(amountText: string, from: string, to: string, flags: F
   const interrupted = () => {
     const after = signedUid ? ` The order may already be live. Check before trying again: ophis status ${signedUid} -c ${src.alias}` : wrappedNote()
     console.log(`\n  ${saffron('!')} Stopped.${after}\n`)
-    process.exit(130)
+    finish(130)
   }
   process.on('SIGINT', interrupted)
   let placed: { uid: string; validTo: number }
@@ -271,7 +271,7 @@ async function crossChain(amountText: string, from: string, to: string, flags: F
   console.log(`    ${dim(explorer(placed.uid))}`)
   const stopWatching = () => {
     console.log(`\n  ${saffron('!')} Stopped watching. The bridge carries on: ophis status ${placed.uid} -c ${src.alias}\n`)
-    process.exit(130)
+    finish(130)
   }
   process.on('SIGINT', stopWatching)
   const outcome = await watch(src, placed.uid, pay, placed.validTo, sell.native ? pay : undefined, `Order filled on ${src.name}. Bridging now.`)
@@ -362,8 +362,12 @@ async function main(argv: string[]) {
   }
 }
 
+// The WalletConnect link keeps a socket open, so the process is ended by hand, but only once what was printed has
+// reached the terminal, file or pipe (Node writes to pipes asynchronously and process.exit would cut it short).
+const finish = (code: number) => process.stdout.write('', () => process.stderr.write('', () => process.exit(code)))
+
 main(process.argv.slice(2))
-  .then(() => process.exit(process.exitCode ?? 0)) // the WalletConnect link keeps a socket open: close everything
+  .then(() => finish(Number(process.exitCode ?? 0)))
   .catch((err: unknown) => {
     const e = err as Error & { code?: string; shortMessage?: string }
     const message =
@@ -372,5 +376,5 @@ main(process.argv.slice(2))
       : `Something went wrong: ${clean(String(e.shortMessage ?? e.message))}`
     console.error(`\n  ${red('✗')} ${message}\n`)
     if (process.env.OPHIS_DEBUG) console.error(err)
-    process.exit(1)
+    finish(1)
   })

@@ -12,7 +12,13 @@ mock.module('@walletconnect/sign-client', () => ({
     }),
   },
 }))
-const { phoneSigner } = await import('../src/phone.ts')
+const { accountsOf, phoneSigner } = await import('../src/phone.ts')
+
+test('a chain where the wallet gave another account is left out: nothing is signed there as the wrong owner', () => {
+  const other = '0x2222222222222222222222222222222222222222'
+  const session = { namespaces: { eip155: { accounts: [`eip155:1:${ME}`, `eip155:8453:${ME}`, `eip155:42161:${other}`, 'eip155:10:junk'] } } }
+  expect(accountsOf(session as never)).toEqual({ address: ME, chains: [1, 8453] })
+})
 
 test('the wallet is only asked on the chain the signer was opened for', async () => {
   const wallet = await phoneSigner(8453)

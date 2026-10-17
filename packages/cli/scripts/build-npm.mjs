@@ -37,6 +37,7 @@ const published = {
   bin: { ophis: 'ophis.js' },
   files: ['ophis.js', 'README.md', 'LICENSE', 'THIRD_PARTY_LICENSES.md'],
   engines: { node: '>=20' },
+  publishConfig: { access: 'public' },
 }
 writeFileSync(`${out}/package.json`, `${JSON.stringify(published, null, 2)}\n`)
 copyFileSync('README.md', `${out}/README.md`)
