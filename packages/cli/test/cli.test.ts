@@ -22,6 +22,9 @@ describe('amounts and slippage', () => {
     expect(slippageBps('0.5')).toBe(50)
     expect(() => slippageBps('51')).toThrow()
     expect(() => slippageBps('-1')).toThrow()
+    expect(slippageBps('0.29')).toBe(29) // 0.29 * 100 is 28.999... in floating point
+    expect(slippageBps('0.25')).toBe(25)
+    expect(() => slippageBps('0.006')).toThrow('steps of 0.01%') // never rounded up to a wider 0.01%
     expect(minOut(1_000_000n, 50)).toBe(995_000n)
     expect(minOut(999n, 50)).toBe(994n)
   })

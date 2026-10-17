@@ -1,6 +1,7 @@
 #!/usr/bin/env bun
 // ophis: swap on Ophis from your terminal. Signing happens in your own wallet app, never here.
 import { parseArgs } from 'node:util'
+import { enrollOphisTrader } from '@ophis/sdk'
 import { formatUnits } from 'viem'
 import pkg from '../package.json' with { type: 'json' }
 import { checkHome } from './home.ts'
@@ -27,7 +28,7 @@ import {
   type Trade,
   type TradeRequest,
 } from './trade.ts'
-import { amount, banner, bold, clean, confirm, dim, done, note, red, rows, saffron, step, UserError } from './ui.ts'
+import { amount, banner, bold, clean, confirm, dim, done, finish, note, red, rows, saffron, step, UserError } from './ui.ts'
 
 const DEFAULT_CHAIN = 'base'
 
@@ -260,6 +261,7 @@ async function crossChain(amountText: string, from: string, to: string, flags: F
     placed = await placeBridge(bridge, wallet, (uid) => {
       signedUid = uid
     })
+    enrollOphisTrader(owner).catch(() => {}) // best effort, as for swaps: lets the rebate indexer see this wallet
   } catch (err) {
     if (!prep.wrapDone || (err as { maybeSent?: boolean }).maybeSent) throw err
     const e = err as Error & { shortMessage?: string }
@@ -337,10 +339,15 @@ async function main(argv: string[]) {
     case 'status': {
       const [uid = ''] = need(args, 1, 'ophis status <order id> [-c chain]')
       const net = network(flags.chain ?? DEFAULT_CHAIN, flags.rpc)
-      const leg = await bridgeStatus(net, uid).catch(() => undefined)
+      // Not a bridge order: no bridge row. A bridge whose state could not be read says so, rather than look done.
+      let unread = ''
+      const leg = await bridgeStatus(net, uid).catch((err: unknown) => void (unread = clean(String((err as Error)?.message ?? err)).slice(0, 120)))
       const yours = !!leg && savedWallet()?.address?.toLowerCase() === leg.owner.toLowerCase()
+      const bridgeRow: [string, string][] = leg
+        ? [['Bridge', saidStatus(leg.status, net, leg.shed, leg.token, yours)]]
+        : unread ? [['Bridge', `could not be checked (${unread}). Try again, or use --rpc.`]] : []
       console.log()
-      await status(net, uid, leg ? [['Bridge', saidStatus(leg.status, net, leg.shed, leg.token, yours)]] : [])
+      await status(net, uid, bridgeRow)
       return console.log()
     }
     case 'recover': {
@@ -361,10 +368,6 @@ async function main(argv: string[]) {
       throw new UserError(`Unknown command "${command}". See: ophis help`)
   }
 }
-
-// The WalletConnect link keeps a socket open, so the process is ended by hand, but only once what was printed has
-// reached the terminal, file or pipe (Node writes to pipes asynchronously and process.exit would cut it short).
-const finish = (code: number) => process.stdout.write('', () => process.stderr.write('', () => process.exit(code)))
 
 main(process.argv.slice(2))
   .then(() => finish(Number(process.exitCode ?? 0)))

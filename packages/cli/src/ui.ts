@@ -27,6 +27,12 @@ export const clean = (text: string) => text.replace(UNSAFE_TEXT, '')
 /** A problem the user can fix. Printed as a plain sentence, without a stack trace. */
 export class UserError extends Error {}
 
+/**
+ * Ends the process once what was printed has reached the terminal, file or pipe: the WalletConnect link keeps a socket
+ * open, so the CLI exits by hand, and Node writes to pipes asynchronously (process.exit alone could cut them short).
+ */
+export const finish = (code: number): void => void process.stdout.write('', () => process.stderr.write('', () => process.exit(code)))
+
 // The Ophis claw (apps/frontend/apps/ophis-landing/public/ophis-claw-saffron.svg) drawn with braille dots.
 const EMBLEM = [
   '⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⣆',

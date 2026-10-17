@@ -39,7 +39,7 @@ import {
 import { findListedToken, isUntradeableToken, resolveToken, submitOrder } from '@ophis/mcp-server/src/ophis.ts'
 import { reader, type Network } from './network.ts'
 import type { Signer, TxRequest, TypedDataJson } from './phone.ts'
-import { amount, bold, clean, dim, green, red, rows, saffron, spinner, UserError } from './ui.ts'
+import { amount, bold, clean, dim, finish, green, red, rows, saffron, spinner, UserError } from './ui.ts'
 
 export const ORDER_TTL = 30 * 60 // seconds an order stays open, as in @ophis/agent-swap
 const WRAPPED_ABI = parseAbi(['function deposit() payable'])
@@ -124,7 +124,10 @@ export function toAtoms(text: string, decimals: number): bigint {
 export function slippageBps(percent: string): number {
   const value = Number(percent)
   if (!/^\d+(\.\d+)?$/.test(percent) || value > 50) throw new UserError('Slippage is a percentage from 0 to 50, like 0.5.')
-  return Math.round(value * 100)
+  // Basis points are the finest step an order takes: a finer value is refused, never rounded wider than asked.
+  const bps = Math.round(value * 100)
+  if (Math.abs(value * 100 - bps) > 1e-9) throw new UserError('Slippage goes in steps of 0.01%, like 0.5 or 0.25.')
+  return bps
 }
 
 /** The least the order accepts: the expected amount minus slippage, rounded down. */
@@ -718,7 +721,7 @@ export async function watch(net: Network, uid: string, buy: Token, validTo: numb
   const spin = spinner('Waiting for solvers to fill your order')
   const leave = () => {
     spin.stop(`Stopped watching. The order is still live: ${bold(`ophis status ${uid} -c ${net.alias}`)}`)
-    process.exit(130)
+    finish(130)
   }
   process.once('SIGINT', leave)
   try {

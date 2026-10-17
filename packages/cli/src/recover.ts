@@ -8,7 +8,7 @@ import { lockBridges, rememberHook, same, SHED_FACTORY, SHED_FACTORY_ADDRESS, SH
 import { reader, type Network } from './network.ts'
 import type { Signer } from './phone.ts'
 import { findToken, patient, priceTx, sendTx, WRAPPED, type Token } from './trade.ts'
-import { amount, clean, dim, green, note, rows, saffron, step, UserError } from './ui.ts'
+import { amount, clean, dim, finish, green, note, rows, saffron, step, UserError } from './ui.ts'
 
 const TTL = 1800n // seconds the signed calls stay valid, by the chain's clock
 // Sent with less time left, the recovery could mine after its deadline and revert, burning gas: the wallet has up to
@@ -105,7 +105,8 @@ export async function shedHoldings(net: Network, owner: Address, named?: string)
   })
   const holdings = await Promise.all(
     found.map(async ({ address, native, balance }) => {
-      if (native) return { token: await findToken(net, address), balance }
+      // The chain's gas coin, described directly (Arc trades its USDC only as the ERC-20, so findToken refuses it).
+      if (native) return { token: { address, symbol: net.native, decimals: 18, native: true, listed: true } as Token, balance }
       const unknown: Token = { address, symbol: '???', decimals: 0, native: false, listed: false } // amounts then show in base units
       return { token: await findToken(net, address).catch(() => unknown), balance }
     }),
@@ -206,7 +207,7 @@ export async function recover(net: Network, wallet: Signer, named: string | unde
   const interrupted = () => {
     const state = sending ? `The recovery may still go through from your wallet. To see what is left: ophis recover -c ${net.alias}` : 'Nothing was sent.'
     console.log(`\n  ${saffron('!')} Stopped. ${state}\n`)
-    process.exit(130)
+    finish(130)
   }
   process.on('SIGINT', interrupted)
   // Recoveries and bridges record their signed hooks in one file, one run at a time.
