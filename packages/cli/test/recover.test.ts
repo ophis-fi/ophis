@@ -733,13 +733,22 @@ describe('ophis recover, end to end (chain, orderbook and wallet answered here)'
     } finally {
       unlinkSync(lock)
     }
-    // The balances move while you answer: the second estimate is the one sent.
+    // The balances move while you answer: the second estimate is the one sent, once you agree to its higher fee.
     let estimates = 0
     serve(chainOf({ gas: () => numberToHex(++estimates === 1 ? 200_000 : 300_000) }), { [ORDERS]: [BRIDGE], ...LISTS })
     const sent: { gas?: bigint }[] = []
-    await run(async () => true, sent)
+    let asked = 0
+    const { printed } = await run(async () => (asked++, true), sent)
+    expect(asked).toBe(2)
+    expect(printed).toContain('up since you answered')
     expect(sent[0]?.gas).toBe(360_000n) // 300,000 plus 20%
     expect(existsSync(lock)).toBe(false)
+    // Declined at the higher fee: nothing is sent.
+    estimates = 0
+    const none: unknown[] = []
+    let answers = 0
+    expect((await run(async () => ++answers === 1, none)).outcome).toBe('cancelled')
+    expect(none).toEqual([])
   })
   test('a recovery declined after it was priced still blocks bridging until it expires: the RPC saw it signed', async () => {
     serve(chainOf(), { [ORDERS]: [BRIDGE], ...LISTS })

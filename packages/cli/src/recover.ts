@@ -266,6 +266,13 @@ export async function recover(net: Network, wallet: Signer, named: string | unde
         }),
       )
       if (!still) return relayed()
+      // The fee shown is the most the user agreed to: if the network now needs more, show it and ask again.
+      if (still.maxFee > priced.maxFee) {
+        console.log()
+        rows([['Network fee', `${still.feeText}  ${dim('(up since you answered)')}`]])
+        console.log()
+        if (!(await ask('Recover at this fee?'))) return 'cancelled'
+      }
       pricing = still // the balances may have moved meanwhile: the gas the calls need now
     }
     sending = true

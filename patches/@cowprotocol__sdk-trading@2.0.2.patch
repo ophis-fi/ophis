@@ -1,0 +1,122 @@
+diff --git a/dist/index.js b/dist/index.js
+index 6a95e9f..d90c40d 100644
+--- a/dist/index.js
++++ b/dist/index.js
+@@ -64,7 +64,7 @@ var import_sdk_order_book = require("@cowprotocol/sdk-order-book");
+ var import_sdk_config = require("@cowprotocol/sdk-config");
+ var DEFAULT_QUOTE_VALIDITY = 60 * 30;
+ var DEFAULT_SLIPPAGE_BPS = 50;
+-var ETH_FLOW_DEFAULT_SLIPPAGE_BPS = (0, import_sdk_config.mapSupportedNetworks)(DEFAULT_SLIPPAGE_BPS);
++var ETH_FLOW_DEFAULT_SLIPPAGE_BPS = { ...(0, import_sdk_config.mapSupportedNetworks)(DEFAULT_SLIPPAGE_BPS), 999: DEFAULT_SLIPPAGE_BPS, 10: DEFAULT_SLIPPAGE_BPS, 130: DEFAULT_SLIPPAGE_BPS, 4663: DEFAULT_SLIPPAGE_BPS };
+ var SIGN_SCHEME_MAP = {
+   [import_sdk_order_book.EcdsaSigningScheme.EIP712]: import_sdk_order_book.SigningScheme.EIP712,
+   [import_sdk_order_book.EcdsaSigningScheme.ETHSIGN]: import_sdk_order_book.SigningScheme.ETHSIGN
+@@ -85,12 +85,18 @@ function getPartnerFeeBps(partnerFee) {
+   if ("volumeBps" in partnerFee) {
+     return partnerFee.volumeBps;
+   }
+   if (Array.isArray(partnerFee)) {
++    // Ophis: settlement compounds Volume fees. Round up to whole bps because
++    // downstream quote math converts this value to BigInt (50 + 1 => 51.005 => 52).
++    let total = 0;
++    let seen = false;
+     for (const fee of partnerFee) {
+       if ("volumeBps" in fee) {
+-        return fee.volumeBps;
++        total += fee.volumeBps + total * fee.volumeBps / 10000;
++        seen = true;
+       }
+     }
++    return seen ? Math.ceil(total) : void 0;
+   }
+   return void 0;
+ }
+@@ -596,7 +602,11 @@ async function buildAppData({ slippageBps, appCode, orderClass: orderClassName,
+   const baseMetadata = {
+     quote: quoteParams,
+     orderClass,
+-    partnerFee,
++    // Ophis: the deepmerge below CONCATENATES arrays, and postLimitOrder copies the
++    // override's `partnerFee` into params first (applySettingsToLimitTradeParameters),
++    // so base and override carry the SAME policy array and every fee policy doubles.
++    // Yield to the override when it supplies one; keep the params value otherwise.
++    partnerFee: advancedParams?.metadata?.partnerFee ? [] : partnerFee,
+     ...shouldAddDefaultUtm ? { utm: getDefaultUtmParams() } : {}
+   };
+   const doc = await metadataApiSdk.generateAppDataDoc(
+@@ -623,7 +633,13 @@ async function mergeAppDataDoc(_doc, appDataOverride) {
+     metadata: {
+       ..._doc.metadata,
+       ...appDataOverride.metadata?.hooks ? { hooks: {} } : {},
+-      ...appDataOverride.metadata?.userConsents ? { userConsents: [] } : {}
++      ...appDataOverride.metadata?.userConsents ? { userConsents: [] } : {},
++      // Ophis: deepmerge CONCATENATES arrays, so merging an override that carries the
++      // same `partnerFee` the target already has DUPLICATES every fee policy (and the
++      // protocol charges each duplicate). Reset it here exactly like hooks/userConsents
++      // above, so an override that supplies partnerFee REPLACES it instead of appending.
++      ...appDataOverride.metadata?.partnerFee ? { partnerFee: [] } : {},
++      ...appDataOverride.metadata?.wrappers ? { wrappers: [] } : {}
+     }
+   };
+   const appData = appDataOverride ? (0, import_deepmerge.default)(doc, appDataOverride) : doc;
+diff --git a/dist/index.mjs b/dist/index.mjs
+index 3e0c67f..06e66c6 100644
+--- a/dist/index.mjs
++++ b/dist/index.mjs
+@@ -6,7 +6,7 @@ import { EcdsaSigningScheme, SigningScheme } from "@cowprotocol/sdk-order-book";
+ import { mapSupportedNetworks } from "@cowprotocol/sdk-config";
+ var DEFAULT_QUOTE_VALIDITY = 60 * 30;
+ var DEFAULT_SLIPPAGE_BPS = 50;
+-var ETH_FLOW_DEFAULT_SLIPPAGE_BPS = mapSupportedNetworks(DEFAULT_SLIPPAGE_BPS);
++var ETH_FLOW_DEFAULT_SLIPPAGE_BPS = { ...mapSupportedNetworks(DEFAULT_SLIPPAGE_BPS), 999: DEFAULT_SLIPPAGE_BPS, 10: DEFAULT_SLIPPAGE_BPS, 130: DEFAULT_SLIPPAGE_BPS, 4663: DEFAULT_SLIPPAGE_BPS };
+ var SIGN_SCHEME_MAP = {
+   [EcdsaSigningScheme.EIP712]: SigningScheme.EIP712,
+   [EcdsaSigningScheme.ETHSIGN]: SigningScheme.ETHSIGN
+@@ -31,12 +31,18 @@ function getPartnerFeeBps(partnerFee) {
+   if ("volumeBps" in partnerFee) {
+     return partnerFee.volumeBps;
+   }
+   if (Array.isArray(partnerFee)) {
++    // Ophis: settlement compounds Volume fees. Round up to whole bps because
++    // downstream quote math converts this value to BigInt (50 + 1 => 51.005 => 52).
++    let total = 0;
++    let seen = false;
+     for (const fee of partnerFee) {
+       if ("volumeBps" in fee) {
+-        return fee.volumeBps;
++        total += fee.volumeBps + total * fee.volumeBps / 10000;
++        seen = true;
+       }
+     }
++    return seen ? Math.ceil(total) : void 0;
+   }
+   return void 0;
+ }
+@@ -560,7 +566,11 @@ async function buildAppData({ slippageBps, appCode, orderClass: orderClassName,
+   const baseMetadata = {
+     quote: quoteParams,
+     orderClass,
+-    partnerFee,
++    // Ophis: the deepmerge below CONCATENATES arrays, and postLimitOrder copies the
++    // override's `partnerFee` into params first (applySettingsToLimitTradeParameters),
++    // so base and override carry the SAME policy array and every fee policy doubles.
++    // Yield to the override when it supplies one; keep the params value otherwise.
++    partnerFee: advancedParams?.metadata?.partnerFee ? [] : partnerFee,
+     ...shouldAddDefaultUtm ? { utm: getDefaultUtmParams() } : {}
+   };
+   const doc = await metadataApiSdk.generateAppDataDoc(
+@@ -587,7 +597,13 @@ async function mergeAppDataDoc(_doc, appDataOverride) {
+     metadata: {
+       ..._doc.metadata,
+       ...appDataOverride.metadata?.hooks ? { hooks: {} } : {},
+-      ...appDataOverride.metadata?.userConsents ? { userConsents: [] } : {}
++      ...appDataOverride.metadata?.userConsents ? { userConsents: [] } : {},
++      // Ophis: deepmerge CONCATENATES arrays, so merging an override that carries the
++      // same `partnerFee` the target already has DUPLICATES every fee policy (and the
++      // protocol charges each duplicate). Reset it here exactly like hooks/userConsents
++      // above, so an override that supplies partnerFee REPLACES it instead of appending.
++      ...appDataOverride.metadata?.partnerFee ? { partnerFee: [] } : {},
++      ...appDataOverride.metadata?.wrappers ? { wrappers: [] } : {}
+     }
+   };
+   const appData = appDataOverride ? deepmerge(doc, appDataOverride) : doc;

@@ -56,13 +56,13 @@ overrides:
 patchedDependencies:
   '@cowprotocol/sdk-bridging@4.0.2':
     hash: 4rnsap57ds3qcajpfo22oank3m
-    path: apps/frontend/patches/@cowprotocol__sdk-bridging@4.0.2.patch
+    path: patches/@cowprotocol__sdk-bridging@4.0.2.patch
   '@cowprotocol/sdk-config@2.0.0':
     hash: kwkxesyxlclpkpvqlavlqyjqsm
-    path: apps/frontend/patches/@cowprotocol__sdk-config@2.0.0.patch
+    path: patches/@cowprotocol__sdk-config@2.0.0.patch
   '@cowprotocol/sdk-trading@2.0.2':
     hash: qic45zklihhor5za6uiiggh5pq
-    path: apps/frontend/patches/@cowprotocol__sdk-trading@2.0.2.patch
+    path: patches/@cowprotocol__sdk-trading@2.0.2.patch
   bigint-buffer@1.1.5:
     hash: dwoslng34vjzhshmn35zptcf4u
     path: patches/bigint-buffer@1.1.5.patch
