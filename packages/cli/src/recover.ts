@@ -257,14 +257,12 @@ export async function recover(net: Network, wallet: Signer, named: string | unde
     if (ask) {
       if (!(await ask('Recover now?'))) return 'cancelled'
       // Answering may have taken a while: the deadline may be near, or the balances moved.
-      const still = await elsewhere(
-        step('Checking it still goes through', async () => {
-          if (deadline - (await reader(net).getBlock()).timestamp < SEND_MARGIN) {
-            throw new UserError('The signed recovery is too close to its deadline to be sent in time. Nothing was sent: run the command again.')
-          }
-          return priceTx(net, owner, tx)
-        }),
-      )
+      const inTime = async () => {
+        if (deadline - (await reader(net).getBlock()).timestamp < SEND_MARGIN) {
+          throw new UserError('The signed recovery is too close to its deadline to be sent in time. Nothing was sent: run the command again.')
+        }
+      }
+      const still = await elsewhere(step('Checking it still goes through', async () => (await inTime(), priceTx(net, owner, tx))))
       if (!still) return relayed()
       // The fee shown is the most the user agreed to: if the network now needs more, show it and ask again.
       if (still.maxFee > priced.maxFee) {
@@ -272,6 +270,7 @@ export async function recover(net: Network, wallet: Signer, named: string | unde
         rows([['Network fee', `${still.feeText}  ${dim('(up since you answered)')}`]])
         console.log()
         if (!(await ask('Recover at this fee?'))) return 'cancelled'
+        await inTime()
       }
       pricing = still // the balances may have moved meanwhile: the gas the calls need now
     }

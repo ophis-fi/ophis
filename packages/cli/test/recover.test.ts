@@ -749,6 +749,13 @@ describe('ophis recover, end to end (chain, orderbook and wallet answered here)'
     let answers = 0
     expect((await run(async () => ++answers === 1, none)).outcome).toBe('cancelled')
     expect(none).toEqual([])
+    // Agreed to the higher fee too late: the deadline is checked again after every answer.
+    estimates = 0
+    let now = START
+    serve(chainOf({ now: () => now, gas: () => numberToHex(++estimates === 1 ? 200_000 : 300_000) }), { [ORDERS]: [BRIDGE], ...LISTS })
+    let replies = 0
+    await expect(run(async () => (++replies === 2 && (now = START + 1441n), true), none)).rejects.toThrow('too close to its deadline')
+    expect(none).toEqual([])
   })
   test('a recovery declined after it was priced still blocks bridging until it expires: the RPC saw it signed', async () => {
     serve(chainOf(), { [ORDERS]: [BRIDGE], ...LISTS })
