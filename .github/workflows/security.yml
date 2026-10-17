@@ -53,7 +53,7 @@ jobs:
     name: Audit gate regression tests
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
       - run: python3 scripts/test-osv-gate.py
 
   partner-fee-invariant:
@@ -69,7 +69,7 @@ jobs:
     # the class entirely by failing CI if any of the 3 literals diverges
     # from the canonical Safe address.
     steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
       - name: Check 3 source-of-truth files match canonical Safe address
         run: ./scripts/check-partner-fee-invariant.sh
       - name: Check public fee and chain claims match the current model
@@ -92,7 +92,7 @@ jobs:
     # 10 / 1 floor values across backend + frontend + SDK. (It does NOT cover the
     # floor-LOGIC Rust tests, which remain CI-unverified; see security.yml notes.)
     steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
       - name: Check OP partner-fee floor inputs match across frontend + backend + SDK
         run: ./scripts/check-floor-invariant.sh
 
@@ -111,7 +111,7 @@ jobs:
     # strips comments and NUMERIC-normalizes (0.5 == 0.50, 5_000 == 5000) so only
     # a real semantic divergence fails.
     steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
       - name: Check tiers.ts mirror across rebate-indexer + packages/sdk + cowswap-frontend
         run: ./scripts/check-tier-invariant.sh
 
@@ -129,7 +129,7 @@ jobs:
     # gives the same signal in the frontend lane, but the frontend jest suite
     # is not a repo-root CI gate, so this script is the hard gate.
     steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
       - name: Check solver registry mirrors the chain-10 driver config
         run: ./scripts/check-solver-registry-invariant.sh
 
@@ -146,7 +146,7 @@ jobs:
     # light-mode contrast override, and the inlined icon stay on-brand and
     # the retired green cannot return.
     steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
       - name: Check Robinhood Chain branding invariants
         run: ./scripts/check-robinhood-brand-invariant.sh
 
@@ -164,7 +164,7 @@ jobs:
     # rebate indexer's basket_id passthrough attributes baskets inconsistently.
     # The script's --self-test verifies the checker itself catches drift.
     steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
       - name: Self-test the invariant checker
         run: ./scripts/check-basket-metadata-invariant.sh --self-test
       - name: Check basket-metadata grammar + caps match across SDK and frontend mirror
@@ -176,7 +176,7 @@ jobs:
     runs-on: ubuntu-latest
     if: github.event_name != 'schedule'
     steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
       - name: Check auth parity and pinned RPC proxy image requirements
         run: ./scripts/check-infra-compose-security.py
       - name: Reject missing, commented-out, or optional production auth
@@ -193,7 +193,7 @@ jobs:
     # metric label gets two different sources and dashboards mis-
     # attribute load.
     steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
       - name: Assert each chain's eRPC upstream IDs are suffixed and unique
         run: ./scripts/check-erpc-id-collisions.sh
 
@@ -213,7 +213,7 @@ jobs:
     # testnet chains stay OUT of the packs and that the literals are present in
     # the docs + README collateral.
     steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
       - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e  # v6.4.0
         with:
           node-version: 22
@@ -236,7 +236,7 @@ jobs:
     # read-only skills must stay read-only, execution skills sign
     # keystore-first and never grant unlimited approvals.
     steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
       - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e  # v6.4.0
         with:
           node-version: 22
@@ -264,7 +264,7 @@ jobs:
     # job; baseline-known findings stay green. Refresh the baseline by
     # running `scripts/slither-baseline.py --generate ...` after audit.
     steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
 
       # File-list mode: production CoW Protocol contracts (Settlement,
       # AllowListAuth + transitively-imported mixins/libs) use only
@@ -362,7 +362,7 @@ jobs:
     # here: without it a PR could add a vulnerable dep to contracts/package.json
     # without updating yarn.lock and be audited against the stale lockfile.
     steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
       - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e  # v6.4.0
         with:
           node-version: 22
@@ -403,7 +403,7 @@ jobs:
     # legacy audit endpoint (HTTP 410). Documented non-reachable advisories with no
     # fix are ignored below; keep that list TIGHT.
     steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
       - uses: ./.github/actions/install-osv-scanner
       - name: Scan root workspace and block on HIGH/CRITICAL
         run: |
@@ -433,7 +433,7 @@ jobs:
     # surface, audit 2026-06 P2). Documented non-reachable advisories are ignored
     # below; keep that list TIGHT.
     steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
       - uses: ./.github/actions/install-osv-scanner
       - name: Scan frontend workspace and block on HIGH/CRITICAL
         run: |
@@ -464,7 +464,7 @@ jobs:
     # jobs (docs-ophis is a small, modern tree with no legacy baseline, so it
     # does NOT need the contracts-style regression mode).
     steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
       - uses: ./.github/actions/install-osv-scanner
       - name: Scan docs-ophis workspace and block on HIGH/CRITICAL
         run: |
@@ -486,7 +486,7 @@ jobs:
     name: Python scanner dependency advisories
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
       - uses: ./.github/actions/install-osv-scanner
       - name: Reject Python manifest and lock drift
         run: python3 scripts/check-scanner-lock.py
@@ -512,7 +512,7 @@ jobs:
           - apps/backend/contracts/Cargo.lock
           - apps/backend/contracts/generated/Cargo.lock
     steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
       - uses: ./.github/actions/install-osv-scanner
       - name: Scan all locked dependencies and verify Cargo source identities
         env:
@@ -529,7 +529,7 @@ jobs:
     name: cargo audit (Rust deps)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
 
       - name: Install cargo-audit
         # `cargo install` occasionally drops its crates.io TLS connection
@@ -567,7 +567,7 @@ jobs:
     name: cargo deny (Rust supply chain)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
 
       # Pinned to a specific minor version for stable advisory-db fetch
       # semantics + config schema. Bump intentionally.
@@ -615,7 +615,7 @@ jobs:
     # allowlist (bytes32 / topic0 / init-code-hash noise, Anvil test keys,
     # generated artifacts) live in .github/gitleaks.toml. Free on public repos.
     steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         with:
           # Full history so the commits a PR introduces are scanned (and the
           # weekly run sweeps all history), not just the tip.
