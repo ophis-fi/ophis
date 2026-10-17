@@ -10,7 +10,7 @@ import { bridgeStatus, checkEarlierHooks, checkLeftover, openBridge, placeBridge
 import { network } from '../src/network.ts'
 import type { Signer, TypedDataJson } from '../src/phone.ts'
 import { checkRecovery, recover, recoveryCalls, shedHoldings, signRecovery, type Holding, type Recovery, type ShedCall } from '../src/recover.ts'
-import { priceTx, sendTx, type Token } from '../src/trade.ts'
+import { findToken, priceTx, sendTx, type Token } from '../src/trade.ts'
 
 const realFetch = globalThis.fetch
 afterEach(() => {
@@ -650,6 +650,29 @@ describe('ophis recover, end to end (chain, orderbook and wallet answered here)'
     blockNumber: numberToHex(MINED_IN), blockHash: `0x${'22'.repeat(32)}`, transactionHash: SENT, transactionIndex: '0x0', logIndex: '0x0', removed: false,
   })
 
+  test('a name the Ophis list lacks is found in the public lists the website offers, then described like an address', async () => {
+    const usdt = '0xFd086bC7CD5C481DCC9C85ebE478A1C0b69FCbb9' // Arbitrum's USDT, upgraded in place to USDT0
+    const arbitrum = network('arbitrum', 'http://127.0.0.1:9')
+    const lists = (uniswap: unknown[], coingecko: unknown[]) => ({
+      'files.cow.fi/token-lists/Uniswap.42161.json': { tokens: uniswap },
+      'files.cow.fi/token-lists/CoinGecko.42161.json': { tokens: coingecko },
+    })
+    const chain = {
+      eth_chainId: () => numberToHex(42161),
+      // The token describes itself: symbol() (0x95d89b41) as the chain answers it, then decimals().
+      eth_call: ([call]: unknown[]) =>
+        (call as { data: Hex }).data.startsWith('0x95d89b41') ? encodeAbiParameters([{ type: 'string' }], ['USD\u20ae0']) : pad(numberToHex(6)),
+    }
+    serve(chain, { ...LISTS, ...lists([{ chainId: 42161, address: usdt, symbol: 'USDT', decimals: 6 }], [{ chainId: 42161, address: usdt.toLowerCase(), symbol: 'USDT0', decimals: 6 }]) })
+    expect(await findToken(arbitrum, 'usdt')).toMatchObject({ address: usdt, symbol: 'USD\u20ae0', decimals: 6, listed: false })
+    // One name, two contracts across the lists: the user is asked for the address.
+    const other = `0x${'7e'.repeat(20)}`
+    serve(chain, { ...LISTS, ...lists([{ chainId: 42161, address: usdt, symbol: 'USDT', decimals: 6 }], [{ chainId: 42161, address: other, symbol: 'usdt', decimals: 6 }]) })
+    await expect(findToken(arbitrum, 'USDT')).rejects.toThrow('could mean several tokens')
+    // Another chain's entry, or a name no list has, stays unknown.
+    serve(chain, { ...LISTS, ...lists([{ chainId: 1, address: usdt, symbol: 'USDT', decimals: 6 }], []) })
+    await expect(findToken(arbitrum, 'USDT')).rejects.toThrow('No token called "USDT"')
+  })
   test('finds what a bridge left in any of your latest 1,000 orders, and says so when there are more', async () => {
     const page = (n: number) => [...Array(n)].map(() => ({ receiver: X, buyToken: WETH.address.toLowerCase() })) // orders paying elsewhere
     // The bridge that left USDC in the shed is the 101st order back.

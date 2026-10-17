@@ -179,7 +179,35 @@ export async function findToken(net: Network, query: string): Promise<Token> {
     const list = found.matches.map((m) => `      ${m.address}  ${clean(m.symbol)}  ${dim(clean(m.name))}`).join('\n')
     throw new UserError(`"${query}" could mean several tokens on ${net.name}. Use the address instead:\n${list}`)
   }
+  // Not on the Ophis list: the public lists swap.ophis.fi also offers on this chain may name it. The address found
+  // is then described like a typed one (by the Ophis list, else by the chain, and the confirmation warns).
+  const named = await publicListAddresses(net.id, query)
+  if (named.length === 1) return findToken(net, named[0]!)
+  if (named.length > 1) {
+    throw new UserError(`"${query}" could mean several tokens on ${net.name}. Use the address instead:\n${named.map((a) => `      ${a}`).join('\n')}`)
+  }
   throw new UserError(`No token called "${query}" on ${net.name}. You can also use the token's address.`)
+}
+
+/** Addresses a symbol has in CoW's copies of CoinGecko's and Uniswap's lists for the chain (what the website offers too). */
+async function publicListAddresses(chainId: number, symbol: string): Promise<Address[]> {
+  const want = symbol.toUpperCase()
+  const lists = await Promise.all(
+    ['CoinGecko', 'Uniswap'].map((name) =>
+      fetch(`https://files.cow.fi/token-lists/${name}.${chainId}.json`, { signal: AbortSignal.timeout(8_000) })
+        .then((res) => (res.ok ? (res.json() as Promise<{ tokens?: unknown }>) : null))
+        .catch(() => null),
+    ),
+  )
+  const found = new Set<Address>()
+  for (const list of lists) {
+    for (const t of Array.isArray(list?.tokens) ? (list.tokens as { chainId?: unknown; symbol?: unknown; address?: unknown }[]) : []) {
+      if (t?.chainId === chainId && typeof t.symbol === 'string' && t.symbol.toUpperCase() === want && typeof t.address === 'string' && isAddress(t.address)) {
+        found.add(getAddress(t.address))
+      }
+    }
+  }
+  return [...found]
 }
 
 /** The ERC-20 that wraps the chain's gas token (WETH on most chains), from the pinned table. */
