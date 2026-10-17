@@ -1,21 +1,29 @@
 // Builds the npm package in dist/npm: one Node file with every dependency inside (the patched cow-sdk copies
 // included, which a plain npm install would not apply), a package.json with no dependencies, and the README.
 // Run from packages/cli: pnpm build:npm. Bun's bundler output does not run under Node, so esbuild bundles it.
-import { execFileSync } from 'node:child_process'
 import { chmodSync, copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
+import { buildSync } from 'esbuild'
 
 const out = 'dist/npm'
 rmSync(out, { recursive: true, force: true })
 mkdirSync(out, { recursive: true })
 
-execFileSync(
-  'npx',
-  ['-y', 'esbuild@0.25.10', 'src/main.ts', '--bundle', '--platform=node', '--format=cjs', '--target=node20',
-    // Packages' ES builds first: some CommonJS builds hand a default import the whole module (SignClient.init fails).
-    '--main-fields=module,main', '--minify', '--legal-comments=none', '--log-level=warning', `--metafile=${out}/meta.json`, `--outfile=${out}/ophis.js`],
-  { stdio: 'inherit' },
-)
+// The esbuild the lockfile pins (a devDependency), so the published file can be rebuilt offline.
+const { metafile } = buildSync({
+  entryPoints: ['src/main.ts'],
+  bundle: true,
+  platform: 'node',
+  format: 'cjs',
+  target: 'node20',
+  // Packages' ES builds first: some CommonJS builds hand a default import the whole module (SignClient.init fails).
+  mainFields: ['module', 'main'],
+  minify: true,
+  legalComments: 'none',
+  logLevel: 'warning',
+  metafile: true,
+  outfile: `${out}/ophis.js`,
+})
 
 // A Node launcher, and no runtime warnings meant for developers (a dependency's punycode use, Node's experimental
 // localStorage) printed to the people using the CLI.
@@ -45,7 +53,7 @@ copyFileSync('../../LICENSE', `${out}/LICENSE`)
 
 // Every bundled package's license and notice, as their licenses require (MIT, ISC, Apache-2.0, ...).
 const roots = new Set()
-for (const input of Object.keys(JSON.parse(readFileSync(`${out}/meta.json`, 'utf8')).inputs)) {
+for (const input of Object.keys(metafile.inputs)) {
   const root = /^(.*node_modules\/(?:@[^/]+\/)?[^/]+)\//.exec(input)?.[1]
   if (root) roots.add(root)
 }
@@ -59,6 +67,5 @@ const notices = [...roots]
   .sort((a, b) => a.id.localeCompare(b.id))
   .filter((n, i, all) => i === 0 || n.id !== all[i - 1].id)
 writeFileSync(`${out}/THIRD_PARTY_LICENSES.md`, notices.map((n) => `## ${n.id}\n\n${n.text}\n`).join('\n'))
-rmSync(`${out}/meta.json`)
 if (!existsSync(`${out}/THIRD_PARTY_LICENSES.md`) || notices.length === 0) throw new Error('no third-party notices written')
 console.log(`Built ${out}: ${published.name}@${published.version}`)

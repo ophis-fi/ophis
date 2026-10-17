@@ -94,8 +94,22 @@ async function quote(args: string[], flags: Flags) {
   const trade = await step(`Getting the best price on ${net.name}`, () => prepare(request))
   console.log()
   showTrade(trade)
-  console.log(`\n  ${dim('Nothing was signed. To trade it:')} ophis swap ${args.join(' ')}${flags.chain ? ` -c ${flags.chain}` : ''}\n`)
+  console.log(`\n  ${dim('Nothing was signed. To trade it:')} ophis swap ${args.map(shellArg).join(' ')}${flags.chain ? ` -c ${net.alias}` : ''}${sameTerms(flags)}\n`)
 }
+
+/** A value as the shell would read it back: plain when safe, else single-quoted. */
+const shellArg = (s: string): string => (/^[\w.,:/@%+=-]+$/.test(s) ? s : `'${s.replace(/'/g, `'\\''`)}'`)
+
+/** The options a quote ran with, so the command it suggests trades on the same terms. */
+const sameTerms = (flags: Flags): string =>
+  [
+    flags.slippage !== undefined ? `-s ${shellArg(flags.slippage)}` : '',
+    flags.ref ? `--ref ${shellArg(flags.ref)}` : '',
+    flags.rpc ? `--rpc ${shellArg(flags.rpc)}` : '',
+  ]
+    .filter(Boolean)
+    .map((option) => ` ${option}`)
+    .join('')
 
 function cancelled(message: string): void {
   console.log(`  ${dim(message)}\n`)
@@ -198,7 +212,8 @@ async function crossChain(amountText: string, from: string, to: string, flags: F
   // Across carries the wrapped gas token and pays it out as the native coin to a regular wallet.
   const buy = found.native ? wrappedNative(dst) : found
   const pay = sell.native ? wrappedNative(src) : sell
-  const again = (amt: string, token: string) => `ophis bridge ${amt} ${token} -c ${src.alias} --to-chain ${dst.alias}${token === to ? '' : ` --to-token ${to}`}`
+  const again = (amt: string, token: string) =>
+    `ophis bridge ${shellArg(amt)} ${shellArg(token)} -c ${src.alias} --to-chain ${dst.alias}${token === to ? '' : ` --to-token ${shellArg(to)}`}${sameTerms(flags)}`
   const request: BridgeRequest = {
     src, dst, sell, pay, buy,
     atoms: toAtoms(amountText, sell.decimals),
