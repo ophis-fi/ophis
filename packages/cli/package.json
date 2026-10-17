@@ -10,7 +10,8 @@
     "test": "bun test",
     "typecheck": "tsc --noEmit",
     "build:mac": "pnpm --filter @ophis/sdk build && bun build src/main.ts --compile --minify --no-compile-autoload-dotenv --no-compile-autoload-bunfig --outfile dist/ophis && codesign --remove-signature dist/ophis && codesign --sign - --force dist/ophis",
-    "install:local": "pnpm build:mac && mkdir -p ~/.local/bin && cp dist/ophis ~/.local/bin/ophis"
+    "install:local": "pnpm build:mac && mkdir -p ~/.local/bin && cp dist/ophis ~/.local/bin/ophis",
+    "build:npm": "pnpm --filter @ophis/sdk build && node scripts/build-npm.mjs"
   },
   "dependencies": {
     "@ophis/mcp-server": "workspace:*",
