@@ -23,10 +23,8 @@ import {
   type BridgeHook,
   BridgeProviderQuoteError,
   BridgeQuoteErrors,
-  type BridgeQuoteResults,
   type BuyTokensParams,
   type GetProviderBuyTokens,
-  HOOK_DAPP_BRIDGE_PROVIDER_PREFIX,
   type QuoteBridgeRequest,
 } from '@cowprotocol/sdk-bridging'
 import { loadCuratedTokenList, NATIVE_SYMBOL, OPHIS_TOKEN_LIST_URL, PUBLIC_RPCS } from '@ophis/mcp-server/src/ophis.ts'
@@ -150,12 +148,8 @@ const GUARD_GAS = 50_000
 // validTo, and relayers need FILL_MARGIN to fill an order settled at the end.
 const ACROSS_QUOTE_TIME_BUFFER = 3_600n
 const FILL_MARGIN = 900n
-// Placing the order quotes Across again; acrossValidToLimit keeps this much slack for it.
-const QUOTE_TIME_MARGIN = 300n
 // sdk-trading's DEFAULT_QUOTE_VALIDITY, for a quote request without validFor.
 const SDK_QUOTE_VALIDITY = 1_800
-// Upstream's ACROSS_HOOK_DAPP_ID, which every Across quote's providerInfo carries.
-const ACROSS_DAPP_ID = `${HOOK_DAPP_BRIDGE_PROVIDER_PREFIX}/across`
 
 const ERC20 = Erc20__factory.createInterface()
 
@@ -201,34 +195,10 @@ function isSameAsset(source: TokenInfo, destination: TokenInfo): boolean {
 }
 
 /**
- * The latest validTo an order may carry with this bridge quote. The placed hook
- * may run until validTo, when the Across deposit must still accept the quote time
- * (with QUOTE_TIME_MARGIN to spare) and leave relayers FILL_MARGIN. Infinity for
- * any other provider's quote.
- */
-export function acrossValidToLimit(bridgeQuote: BridgeQuoteResults | null): number {
-  if (bridgeQuote?.providerInfo.dappId !== ACROSS_DAPP_ID) return Infinity
-
-  return Math.min(
-    bridgeQuote.quoteTimestamp + Number(ACROSS_QUOTE_TIME_BUFFER - QUOTE_TIME_MARGIN),
-    quotedFillDeadline(bridgeQuote.quoteBody) - Number(FILL_MARGIN),
-  )
-}
-
-// An Across quoteBody is its stringified suggested-fees response.
-function quotedFillDeadline(quoteBody: string | undefined): number {
-  try {
-    return Number(JSON.parse(quoteBody ?? '{}').fillDeadline ?? Infinity)
-  } catch {
-    return Infinity
-  }
-}
-
-/**
  * Refusals that run before any wallet prompt. The SDK signs the hook twice: while
  * quoting, with the app's own quote key and a deadline of local time + validFor,
  * and discards that hook; then when the order is placed, as the order owner, with
- * the order's server-corrected validTo, already capped at acrossValidToLimit.
+ * the order's validTo (bridge.ts checks it against the quote and the fill deadline before signing).
  */
 async function assertPlaceable(
   chainId: SupportedChainId,

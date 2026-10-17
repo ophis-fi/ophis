@@ -106,7 +106,7 @@ export const shedOf = (owner: Address): Address =>
   })
 
 /** What a weiroll call reads: a state word as the program set it, or the output of an earlier call. */
-export interface WeirollArg {
+interface WeirollArg {
   dynamic: boolean
   literal?: Hex
   output?: number
@@ -188,7 +188,7 @@ function acrossHook(callData: Hex, srcChainId: number, want: BridgeWant, now: bi
 }
 
 /** What the user confirmed: the only things bridgeAccount lets the wallet sign. */
-export interface BridgeWant {
+interface BridgeWant {
   owner: Address
   shed: Address // the user's own CoW Shed, recomputed here, never read from the data being signed
   sellToken: Address
@@ -760,7 +760,7 @@ export async function openBridge(src: Network, owner: Address): Promise<{ open?:
   return { hooks }
 }
 
-export type ShedHook = { nonce: Hex; deadline: bigint }
+type ShedHook = { nonce: Hex; deadline: bigint }
 
 /** The shed hooks an order's appData carries (metadata.hooks.post). A post-hook that does not decode as one cannot run as one. */
 function shedHooks(fullAppData: string | null | undefined): ShedHook[] {

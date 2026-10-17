@@ -154,7 +154,6 @@ describe('bridgeAccount: only the confirmed bridge reaches the wallet', () => {
     if (i < 0) throw new Error('no depositV3 in the program')
     return i + 1 // depositV3 keeps its arguments in the next word
   }
-  const slotOf = (c: Hex[], k: number) => byteOf(c[depositArgs(c)]!, k) // the state slot of depositV3's k-th argument
   const order = (o: Record<string, unknown> = {}) => ({
     domain: getOphisOrderDomain(8453),
     types: {

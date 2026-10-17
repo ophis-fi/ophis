@@ -4,7 +4,7 @@ import { formatUnits } from 'viem'
 
 const out = process.stdout
 const color = out.isTTY === true && !process.env.NO_COLOR
-export const motion = color && !process.env.OPHIS_NO_ANIMATION
+const motion = color && !process.env.OPHIS_NO_ANIMATION
 
 const paint = (code: string) => (s: string) => (color ? `\x1b[${code}m${s}\x1b[0m` : s)
 export const saffron = paint('38;2;242;166;62') // Ophis brand color #f2a63e

@@ -80,7 +80,7 @@ export interface Token {
 }
 
 /** What the user asked to trade. Fixed once confirmed: refreshing the price never changes it. */
-export interface TradeBase {
+interface TradeBase {
   net: Network
   sell: Token // what the user typed, e.g. ETH
   pay: Token // what the order sells, e.g. WETH when selling ETH
@@ -98,7 +98,7 @@ export interface Trade extends TradeBase {
 }
 
 /** What paying for a swap or a bridge needs: the chain, the tokens, the amount and who pays. */
-export type Funding = Pick<Trade, 'net' | 'sell' | 'pay' | 'atoms' | 'owner'>
+type Funding = Pick<Trade, 'net' | 'sell' | 'pay' | 'atoms' | 'owner'>
 
 export interface TradeRequest {
   net: Network
@@ -186,9 +186,9 @@ export async function findToken(net: Network, query: string): Promise<Token> {
   const named = await publicListAddresses(net.id, query)
   if (named.length === 1) return findToken(net, named[0]!)
   if (named.length > 1) {
-    throw new UserError(`"${query}" could mean several tokens on ${net.name}. Use the address instead:\n${named.map((a) => `      ${a}`).join('\n')}`)
+    throw new UserError(`"${clean(query)}" could mean several tokens on ${net.name}. Use the address instead:\n${named.map((a) => `      ${a}`).join('\n')}`)
   }
-  throw new UserError(`No token called "${query}" on ${net.name}. You can also use the token's address.`)
+  throw new UserError(`No token called "${clean(query)}" on ${net.name}. You can also use the token's address.`)
 }
 
 // The CoW-hosted public lists swap.ophis.fi offers per chain (apps/frontend/libs/tokens/src/const/tokensList.json).
@@ -212,7 +212,7 @@ async function publicListAddresses(chainId: number, symbol: string): Promise<Add
     (PUBLIC_LISTS[chainId] ?? []).map(async (name) => {
       const res = await fetch(`https://files.cow.fi/token-lists/${name}.${chainId}.json`, { signal: AbortSignal.timeout(8_000) }).catch(() => null)
       const body = res?.ok ? ((await res.json().catch(() => null)) as { tokens?: unknown } | null) : null
-      if (!Array.isArray(body?.tokens)) throw new UserError(`Could not check the public token lists for "${symbol}" just now. Try again, or use the token's address.`)
+      if (!Array.isArray(body?.tokens)) throw new UserError(`Could not check the public token lists for "${clean(symbol)}" just now. Try again, or use the token's address.`)
       return body.tokens as { chainId?: unknown; symbol?: unknown; address?: unknown }[]
     }),
   )
@@ -407,7 +407,7 @@ const feeWords = (net: Network, maxFee: bigint, steps?: string) =>
     ? `about ${amount(maxFee, 18)} ${net.native} (${steps ? `${steps}; ` : ''}the L1 data fee part can vary)`
     : `at most ${amount(maxFee, 18)} ${net.native}${steps ? ` (${steps})` : ''}`
 
-export interface Prep {
+interface Prep {
   wrap: boolean
   approve: bigint // the allowance to set; 0n when the current one already covers every open order
   resetFirst: boolean // the token refuses to change a non-zero approval (USDT on Ethereum)
@@ -605,10 +605,10 @@ export async function sendTx(net: Network, signer: Signer, fees: Fees, label: st
     let replaced: string | undefined
     const receipt = await client.waitForTransactionReceipt({ hash, timeout: 180_000, onReplaced: (r) => void (replaced = r.reason) })
     if (replaced && replaced !== 'repriced') {
-      throw new UserError(`${label}: your wallet ${replaced === 'cancelled' ? 'cancelled it' : 'replaced it with another transaction'} (${receipt.transactionHash}), so it did not happen.`)
+      throw new UserError(`${label}: your wallet ${replaced === 'cancelled' ? 'cancelled it' : 'replaced it with another transaction'} (${clean(receipt.transactionHash)}), so it did not happen.`)
     }
-    if (receipt.status !== 'success') throw new UserError(`${label} failed on-chain (transaction ${receipt.transactionHash}).`)
-    spin.stop(`${green('✓')} ${label}  ${dim(receipt.transactionHash)}`)
+    if (receipt.status !== 'success') throw new UserError(`${label} failed on-chain (transaction ${clean(receipt.transactionHash)}).`)
+    spin.stop(`${green('✓')} ${label}  ${dim(clean(receipt.transactionHash))}`)
     return receipt
   } catch (err) {
     spin.stop(`${red('✗')} ${label}`)
@@ -619,7 +619,7 @@ export async function sendTx(net: Network, signer: Signer, fees: Fees, label: st
   }
 }
 
-export interface Signed {
+interface Signed {
   uid: string
   signature: Hex
 }
@@ -673,7 +673,13 @@ export async function send(t: Trade, signed: Signed): Promise<string> {
     const message = clean((err as Error).message)
     const errorType = /"errorType":"(\w+)"/.exec(message)?.[1]
     // DuplicatedOrder: this very order is already there (a retried send), so it is checked below like a timeout.
-    if (errorType && errorType !== 'DuplicatedOrder') throw new UserError(explain(errorType, `The orderbook refused the order: ${message}`))
+    if (errorType && errorType !== 'DuplicatedOrder') {
+      // The signature exists: were the order sent on anyway, it could fill until its expiry, and a new one with it.
+      const until = new Date(t.built.order.validTo * 1000).toLocaleString()
+      throw new UserError(
+        `${explain(errorType, `The orderbook refused the order: ${message}`)} The order you signed stays valid until ${until}: before signing a new one, check ophis status ${signed.uid} -c ${t.net.alias}`,
+      )
+    }
     // No clear refusal (a timeout, a dropped connection): the order may have arrived anyway.
     if (!(await getOrder(t.net, signed.uid).catch(() => null))) {
       throw new UserError(`Could not confirm the order reached Ophis (${message}). Before trying again, check: ophis status ${signed.uid} -c ${t.net.alias}`)
@@ -705,7 +711,7 @@ export async function getOrder(net: Network, uid: string): Promise<OrderView | n
   return (await res.json()) as OrderView
 }
 
-export type Outcome = 'filled' | 'unfilled' | 'unknown'
+type Outcome = 'filled' | 'unfilled' | 'unknown'
 
 /** Follows an order until it fills or expires. Ctrl+C stops watching, not the order. */
 export async function watch(net: Network, uid: string, buy: Token, validTo: number, wrapped?: Token, filled?: string): Promise<Outcome> {
@@ -744,6 +750,8 @@ export async function status(net: Network, uid: string, extra: [string, string][
   if (!/^0x[0-9a-fA-F]{112}$/.test(uid)) throw new UserError('That is not an order id (0x followed by 112 hex characters).')
   const order = await getOrder(net, uid)
   if (!order) throw new UserError(`No such order on ${net.name}. Is it on another chain? Add -c <chain>.`)
+  // The orderbook's fields are its own text: only token addresses are looked up, never names it could inject.
+  if (![order.sellToken, order.buyToken].every((t) => typeof t === 'string' && isAddress(t))) throw new UserError('The orderbook returned an unreadable order.')
   const [sell, buy] = await Promise.all([findToken(net, order.sellToken), findToken(net, order.buyToken)])
   const state: Record<string, string> = { fulfilled: green('Filled'), open: saffron('Open, waiting for solvers'), expired: red('Expired'), cancelled: red('Cancelled') }
   rows([

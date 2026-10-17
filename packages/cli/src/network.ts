@@ -30,7 +30,7 @@ export interface Network {
 }
 
 /** RPC addresses must be https (plain http only for this computer) and carry no user name or password. */
-export function checkRpc(url: string): string {
+function checkRpc(url: string): string {
   let parsed: URL
   try {
     parsed = new URL(url)

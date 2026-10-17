@@ -10,7 +10,7 @@ import { bridgeStatus, checkEarlierHooks, checkLeftover, openBridge, placeBridge
 import { network } from '../src/network.ts'
 import type { Signer, TypedDataJson } from '../src/phone.ts'
 import { checkRecovery, recover, recoveryCalls, shedHoldings, signRecovery, type Holding, type Recovery, type ShedCall } from '../src/recover.ts'
-import { findToken, priceTx, sendTx, type Token } from '../src/trade.ts'
+import { findToken, priceTx, sendTx, status, type Token } from '../src/trade.ts'
 
 const realFetch = globalThis.fetch
 afterEach(() => {
@@ -572,6 +572,17 @@ describe('reading the chain before asking anything (RPC answered here)', () => {
     await expect(send('replaced')).rejects.toThrow('Wrapping: your wallet replaced it with another transaction')
     expect((await send('repriced')).transactionHash).toBe(MINED) // the same call at a higher fee
     expect((await send()).transactionHash).toBe(SENT)
+    // The RPC's text reaches the terminal cleaned (here an escape sequence that would write the clipboard).
+    const evil = `0x\u001b]52;c;aGk=\u0007${'cc'.repeat(30)}`
+    const lying = { getTransactionCount: async () => 5, getBlock: async () => ({ baseFeePerGas: 10n ** 9n }), waitForTransactionReceipt: async () => ({ status: 'reverted', transactionHash: evil, logs: [] }) } as never
+    const failed = await sendTx(network('base', RPC), signer, { maxFeePerGas: 3n * 10n ** 9n, maxPriorityFeePerGas: 1n }, 'Wrapping', tx, lying).catch((e: Error) => e.message)
+    expect(String(failed)).toContain('failed on-chain')
+    expect(String(failed)).not.toContain('\u001b')
+  })
+  test('ophis status looks up only token addresses from the orderbook, never text it could inject', async () => {
+    const uid = `0x${'ab'.repeat(56)}`
+    serve({}, { [`/api/v1/orders/${uid}`]: { status: 'open', sellToken: '\u001b[2J\u001b]52;c;aGk=\u0007USDC', buyToken: USDC.address, sellAmount: '1', buyAmount: '1' } })
+    await expect(status(network('base'), uid)).rejects.toThrow('unreadable order')
   })
 })
 

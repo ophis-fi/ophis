@@ -5,7 +5,7 @@ import { generatePrivateKey, privateKeyToAccount, type PrivateKeyAccount } from 
 import { findListedToken } from '@ophis/mcp-server/src/ophis.ts'
 import { network, networks } from '../src/network.ts'
 import type { Signer, TypedDataJson } from '../src/phone.ts'
-import { minOut, prepare, requote, sign, slippageBps, toAtoms, WRAPPED } from '../src/trade.ts'
+import { minOut, prepare, requote, send, sign, slippageBps, toAtoms, WRAPPED } from '../src/trade.ts'
 import { clean } from '../src/ui.ts'
 
 describe('amounts and slippage', () => {
@@ -148,6 +148,20 @@ describe('order building (orderbook mocked)', () => {
     expect(seen[0]?.types.EIP712Domain).toBeDefined() // eth_signTypedData_v4 format
     expect(seen[0]?.message.sellAmount).toBe('100000000') // numbers as text for the wallet
     expect(seen[0]?.domain.verifyingContract).toBe(t.built.signing.domain.verifyingContract)
+  })
+
+  test('a signed order the orderbook refuses is shown with its id and expiry, so a retry is never signed blind', async () => {
+    const phone = privateKeyToAccount(generatePrivateKey())
+    orderbook({ sellAmount: '99000000', feeAmount: '1000000', buyAmount: '100000' })
+    const t = await prepare({ ...request, owner: phone.address })
+    const signed = await sign(t, walletApp(phone.address, phone))
+    const quoting = globalThis.fetch
+    globalThis.fetch = (async (url: string | URL | Request, init?: RequestInit) =>
+      String(url).endsWith('/api/v1/orders')
+        ? Response.json({ errorType: 'NoLiquidity', description: 'no route' }, { status: 400 })
+        : quoting(url, init)) as typeof fetch
+    await expect(send(t, signed)).rejects.toThrow(`stays valid until`)
+    await expect(send(t, signed)).rejects.toThrow(`check ophis status ${signed.uid} -c base`)
   })
 
   test('a signature from any other key is refused before anything is sent', async () => {
