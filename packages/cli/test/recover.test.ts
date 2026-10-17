@@ -724,6 +724,20 @@ describe('ophis recover, end to end (chain, orderbook and wallet answered here)'
       expect(sent.length).toBe(0)
     }
   })
+  test('a recovery relayed while you agree to a higher fee is reported as done, and not sent again', async () => {
+    let estimates = 0
+    const gas = () => {
+      if (++estimates >= 3) throw { code: 3, message: 'execution reverted: NonceAlreadyUsed' } // it ran elsewhere meanwhile
+      return numberToHex(estimates === 1 ? 200_000 : 300_000) // the fee rose after your first answer
+    }
+    const held = (t: Address) => (estimates >= 3 ? 0n : (HELD[getAddress(t)] ?? 0n))
+    serve(chainOf({ relayed: true, gas, held }), { [ORDERS]: [BRIDGE], ...LISTS })
+    const sent: unknown[] = []
+    let asked = 0
+    const { outcome, printed } = await run(async () => (asked++, true), sent)
+    expect([outcome, sent.length, asked]).toEqual(['done', 0, 2])
+    expect(printed).toContain('went through in another transaction')
+  })
   test('a recovery waits for a bridge being placed, and sends with the gas its last check measured', async () => {
     serve(chainOf(), { [ORDERS]: [BRIDGE], ...LISTS })
     const lock = `${process.env.OPHIS_HOME}/bridge.lock`
