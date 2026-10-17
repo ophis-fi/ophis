@@ -1,0 +1,36 @@
+{
+  "name": "@ophis/cli",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Ophis in your terminal: quote and swap on Ophis without a browser.",
+  "license": "GPL-3.0-or-later",
+  "type": "module",
+  "scripts": {
+    "dev": "bun src/main.ts",
+    "test": "bun test",
+    "typecheck": "tsc --noEmit",
+    "build:mac": "pnpm --filter @ophis/sdk build && bun build src/main.ts --compile --minify --no-compile-autoload-dotenv --no-compile-autoload-bunfig --outfile dist/ophis && codesign --remove-signature dist/ophis && codesign --sign - --force dist/ophis",
+    "install:local": "pnpm build:mac && mkdir -p ~/.local/bin && cp dist/ophis ~/.local/bin/ophis",
+    "build:npm": "pnpm --filter @ophis/sdk build && node scripts/build-npm.mjs"
+  },
+  "dependencies": {
+    "@ophis/mcp-server": "workspace:*",
+    "@ophis/sdk": "workspace:*",
+    "viem": "^2.48.8",
+    "@walletconnect/sign-client": "2.21.1",
+    "qrcode": "1.5.3",
+    "@cowprotocol/cow-sdk": "9.0.2",
+    "@cowprotocol/sdk-bridging": "4.0.2",
+    "@cowprotocol/sdk-trading": "2.0.2",
+    "@cowprotocol/sdk-config": "2.0.0",
+    "@cowprotocol/sdk-viem-adapter": "0.3.18",
+    "@cowprotocol/sdk-cow-shed": "0.3.8",
+    "multiformats": "9.9.0"
+  },
+  "devDependencies": {
+    "@types/bun": "^1.3.0",
+    "typescript": "^5.5.0",
+    "@types/qrcode": "^1.5.5",
+    "esbuild": "^0.28.1"
+  }
+}

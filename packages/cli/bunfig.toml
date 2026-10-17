@@ -1,0 +1,3 @@
+[test]
+# Every test run gets its own OPHIS_HOME: tests never read or write the user's ~/.ophis.
+preload = ["./test/home.ts"]

@@ -94,7 +94,10 @@
     "patchedDependencies": {
       "decode-uri-component@0.5.0": "patches/decode-uri-component@0.5.0.patch",
       "elliptic@6.6.1": "patches/elliptic@6.6.1.patch",
-      "bigint-buffer@1.1.5": "patches/bigint-buffer@1.1.5.patch"
+      "bigint-buffer@1.1.5": "patches/bigint-buffer@1.1.5.patch",
+      "@cowprotocol/sdk-config@2.0.0": "patches/@cowprotocol__sdk-config@2.0.0.patch",
+      "@cowprotocol/sdk-trading@2.0.2": "patches/@cowprotocol__sdk-trading@2.0.2.patch",
+      "@cowprotocol/sdk-bridging@4.0.2": "patches/@cowprotocol__sdk-bridging@4.0.2.patch"
     }
   }
 }
