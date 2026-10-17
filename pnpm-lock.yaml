@@ -54,6 +54,15 @@ overrides:
   '@solana/web3.js>jayson': 5.0.0
 
 patchedDependencies:
+  '@cowprotocol/sdk-bridging@4.0.2':
+    hash: 4rnsap57ds3qcajpfo22oank3m
+    path: apps/frontend/patches/@cowprotocol__sdk-bridging@4.0.2.patch
+  '@cowprotocol/sdk-config@2.0.0':
+    hash: kwkxesyxlclpkpvqlavlqyjqsm
+    path: apps/frontend/patches/@cowprotocol__sdk-config@2.0.0.patch
+  '@cowprotocol/sdk-trading@2.0.2':
+    hash: qic45zklihhor5za6uiiggh5pq
+    path: apps/frontend/patches/@cowprotocol__sdk-trading@2.0.2.patch
   bigint-buffer@1.1.5:
     hash: dwoslng34vjzhshmn35zptcf4u
     path: patches/bigint-buffer@1.1.5.patch
@@ -174,7 +183,7 @@ importers:
         version: 1.0.5(typescript@5.9.3)(zod@3.25.76)
       drizzle-orm:
         specifier: ^0.45.2
-        version: 0.45.2(@cloudflare/workers-types@5.20260724.1)(@opentelemetry/api@1.9.1)(postgres@3.4.9)
+        version: 0.45.2(@cloudflare/workers-types@5.20260724.1)(@opentelemetry/api@1.9.1)(bun-types@1.4.3)(postgres@3.4.9)
       fastify:
         specifier: ^5.12.2
         version: 5.12.5
@@ -347,6 +356,55 @@ importers:
       zod:
         specifier: ^3.23.8
         version: 3.25.76
+
+  packages/cli:
+    dependencies:
+      '@cowprotocol/cow-sdk':
+        specifier: 9.0.2
+        version: 9.0.2(@openzeppelin/merkle-tree@1.0.8)(ajv@8.20.0)(cross-fetch@4.1.0(encoding@0.1.13))(encoding@0.1.13)(ipfs-only-hash@4.0.0(encoding@0.1.13))(multiformats@9.9.0)
+      '@cowprotocol/sdk-bridging':
+        specifier: 4.0.2
+        version: 4.0.2(patch_hash=4rnsap57ds3qcajpfo22oank3m)(ajv@8.20.0)(cross-fetch@4.1.0(encoding@0.1.13))(encoding@0.1.13)(ipfs-only-hash@4.0.0(encoding@0.1.13))(multiformats@9.9.0)
+      '@cowprotocol/sdk-config':
+        specifier: 2.0.0
+        version: 2.0.0(patch_hash=kwkxesyxlclpkpvqlavlqyjqsm)
+      '@cowprotocol/sdk-cow-shed':
+        specifier: 0.3.8
+        version: 0.3.8
+      '@cowprotocol/sdk-trading':
+        specifier: 2.0.2
+        version: 2.0.2(patch_hash=qic45zklihhor5za6uiiggh5pq)(ajv@8.20.0)(cross-fetch@4.1.0(encoding@0.1.13))(encoding@0.1.13)(ipfs-only-hash@4.0.0(encoding@0.1.13))(multiformats@9.9.0)
+      '@cowprotocol/sdk-viem-adapter':
+        specifier: 0.3.18
+        version: 0.3.18(viem@2.48.8(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@6.0.6)(zod@3.25.76))
+      '@ophis/mcp-server':
+        specifier: workspace:*
+        version: link:../../apps/mcp-server
+      '@ophis/sdk':
+        specifier: workspace:*
+        version: link:../sdk
+      '@walletconnect/sign-client':
+        specifier: 2.21.1
+        version: 2.21.1(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@6.0.6)(zod@3.25.76)
+      multiformats:
+        specifier: 9.9.0
+        version: 9.9.0
+      qrcode:
+        specifier: 1.5.3
+        version: 1.5.3
+      viem:
+        specifier: ^2.48.8
+        version: 2.48.8(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@6.0.6)(zod@3.25.76)
+    devDependencies:
+      '@types/bun':
+        specifier: ^1.3.0
+        version: 1.4.3
+      '@types/qrcode':
+        specifier: ^1.5.5
+        version: 1.5.6
+      typescript:
+        specifier: ^5.5.0
+        version: 5.9.3
 
   packages/plugin-elizaos:
     dependencies:
@@ -737,6 +795,21 @@ packages:
     peerDependencies:
       ethers: ^5.7.2
 
+  '@cowprotocol/cow-sdk@9.0.2':
+    resolution: {integrity: sha512-cXYzAzL4XQGYeg1ICf8dINKAC8OebnhjUDeLYUNksb8orRgPzNHcXw2RVeUuBNnYC0StMDQLf1eRh45Vf2FQiA==}
+    peerDependencies:
+      '@openzeppelin/merkle-tree': ^1.x
+      cross-fetch: ^3.x
+      ipfs-only-hash: ^4.x
+      multiformats: ^9.x
+    peerDependenciesMeta:
+      '@openzeppelin/merkle-tree':
+        optional: true
+      ipfs-only-hash:
+        optional: true
+      multiformats:
+        optional: true
+
   '@cowprotocol/cow-sdk@9.1.2':
     resolution: {integrity: sha512-jnmk7zQ+iFRc0Lv06FphiYn0th9FsJ5BFXQ91yTe/kiU7zkAKLft1Lwgw6YvaKczWRBTSKZkJUQEgNDWwr3NjQ==}
     peerDependencies:
@@ -758,6 +831,14 @@ packages:
   '@cowprotocol/iframe-transport@2.3.0':
     resolution: {integrity: sha512-eolBupALjPCTGkv4w8T82Rn+nIByn3y0Oi/Zc+ja/48tffIh8jGPvjPV4ejNdqn/1bjh0B1tKvx5ygd9WgJoUQ==}
 
+  '@cowprotocol/sdk-app-data@5.0.0':
+    resolution: {integrity: sha512-HGvjV+CbiCSOaoHU7beubaJxFobD8e4v9MliSlc7G48kx2ah6uKJ4SPdsSmGSDmsSfpjmwc8DPihptjNkTidkw==}
+    peerDependencies:
+      ajv: ^8.x
+      cross-fetch: ^3.x
+      ipfs-only-hash: ^4.x
+      multiformats: ^9.x
+
   '@cowprotocol/sdk-app-data@5.1.2':
     resolution: {integrity: sha512-gstMI79KU7sz5zc2y7KATTLMgGo2lhmH+lmm0ZBfRjLvn70iLsRjTfnnmXwzp+KalkRfF+hF4UnUnt87hn+KJg==}
     peerDependencies:
@@ -765,8 +846,14 @@ packages:
       cross-fetch: ^3.x
       multiformats: ^9.x
 
+  '@cowprotocol/sdk-bridging@4.0.2':
+    resolution: {integrity: sha512-EVaN0JCzH07ZRpxJXnejEUYeYB9GyY3wsjbQbq6YpWnJmRnvMsEAhPAnjtvzyh/9qeckcwoI/p7ZUJ92NUcaVQ==}
+
   '@cowprotocol/sdk-bridging@4.0.5':
     resolution: {integrity: sha512-9j0CX0rnJvUBl6crVNPrXfsHJSPY28u5YZM4hsoJEXgyfBIcHOfmqRS5lS3FmOp2tVDfeuuYOHIu3IAnV7LH6w==}
+
+  '@cowprotocol/sdk-common@0.10.2':
+    resolution: {integrity: sha512-4FrQu6/yCjlI6P5KaBnsfYpu2lNsiyDuPqXrMsj3VgKGAR7+3FddrUE5ojpl82iPLOZzQb9zjFk7+N0UN8V65A==}
 
   '@cowprotocol/sdk-common@0.10.3':
     resolution: {integrity: sha512-hBJFtUXXw9zeNBeCP6YTz0r/L6Ma0xLILYBRZs7RNbg8EdTi4KAaCXHgYQIK08S1Lr/hKQcYHJD0ZLH5GkM+jg==}
@@ -777,8 +864,14 @@ packages:
   '@cowprotocol/sdk-config@0.6.3':
     resolution: {integrity: sha512-0Fodk5O8pqslt+jkOL1ybg9V0bokFA+/DF02TZjQcPtSAmnmuep6zEjaY2+s4WVdB98YDb0RkgI/Ejn/E2TaAA==}
 
+  '@cowprotocol/sdk-config@2.0.0':
+    resolution: {integrity: sha512-ZeND/fzuzQShpVqOoJ3LbU0DoeKIb2SH2iANumX5LN7R/H495jIfExsb67JANqnrpupJtbUUw1FxfBchN5MVoQ==}
+
   '@cowprotocol/sdk-config@2.1.0':
     resolution: {integrity: sha512-tEmWSAAineima2f7Fp5H2QSzUiBwCrlNhq9fwd6ygz7EMdz4a4V07NFB5Fsg3JMwNnJItXUSzt6wfoLSTxlsFA==}
+
+  '@cowprotocol/sdk-contracts-ts@3.0.1':
+    resolution: {integrity: sha512-bOB0nYROfOzsJ5nww/QL1+/4scWmkzfQ2Ryd+wSgqHnvzM/zgsG22Fo8loXPKSDhs46FzdV7FkAfmzSVrOVtZg==}
 
   '@cowprotocol/sdk-contracts-ts@3.0.3':
     resolution: {integrity: sha512-i/Uj4oFLZ9akZMrEtE0+lGCr2VPPKQH+4TvBRA09dMFJci5PX7ztJRFYvfIzMX0iYNscPzOlqcsnsCr2EXCdAw==}
@@ -786,17 +879,37 @@ packages:
   '@cowprotocol/sdk-cow-shed@0.3.10':
     resolution: {integrity: sha512-DRuvIa3wyyuu4+SHrRonn/+IzCjxXsdaPVvXSVC+XN/kr7Ns1/LD+U12X/QCiHQTtHgeS91uZaFLY4UK1w6mSg==}
 
+  '@cowprotocol/sdk-cow-shed@0.3.8':
+    resolution: {integrity: sha512-2tZ8a+vueZP4WArETUmxv4Jq5uivNOlx8X/VAtO4Uxhtit4UjhRpDMAxNuDhWyLyNb+t2BoVXWLZVybHJ6M35g==}
+
   '@cowprotocol/sdk-order-book@0.5.1':
     resolution: {integrity: sha512-dXqmQs2ju+1Q0nhdEk6/Sav+W8Hur8A85Yja3AzYR/Iw0ogkLt/hSUUup86lOEpizg8fZ4boP+urAn6LMir7bA==}
+
+  '@cowprotocol/sdk-order-book@3.0.0':
+    resolution: {integrity: sha512-tDW3LZK4RnvXtaoUmulU0broirDeZ/Rp1QcVBzIklvBDDUEUcjRavN3sIUdDIOsYJhn6lKsSQTZ7u1MuYRPtDQ==}
 
   '@cowprotocol/sdk-order-book@3.1.0':
     resolution: {integrity: sha512-Ct7x9yivwK8wcAgg2L9z7u+wynE6JNdm9SUeZWcDlAFkx03XvWkBizsuki81oNbIoFZdWFXbGYanuV/Le6TcGw==}
 
+  '@cowprotocol/sdk-order-signing@1.0.1':
+    resolution: {integrity: sha512-ILWej4zc1PD2Ea+LVhAL+kpP+Y2U3xKf4bcrH0yXRlWZCxQKH0SruovZ2rTv4zPW53U0mu5sConc5PEmYQZ97Q==}
+
   '@cowprotocol/sdk-order-signing@1.0.3':
     resolution: {integrity: sha512-S21seBqbhLR8G8QjMkN/LPOLR6Bk3IyEzb1KzjGwfuIG96ZCA699zFlz42gxY3ftES15N1VmNdNLbPNrlFhcaQ==}
 
+  '@cowprotocol/sdk-trading@2.0.2':
+    resolution: {integrity: sha512-2IBWs4L6QJZTqEh9yrCRFiuBIEfMoiP8qlrtbN/RtV/N5RLzfqvSoClLmp38WxJ5x1Lbj+vw6c6OtL7o5nagVg==}
+
   '@cowprotocol/sdk-trading@2.0.5':
     resolution: {integrity: sha512-7ecPA6Bmi508UkQ6VzsFGebVUgBgxp2JDy1zBiyC0F7MZECajDM/JB266EQ5g7AXSCV2UKqDa3Yv8k6ID7AXdg==}
+
+  '@cowprotocol/sdk-viem-adapter@0.3.18':
+    resolution: {integrity: sha512-fyvgnyvJiZQiqFvvUAYlEbc/Rk2CUAb5UAe6Yswlf1HttHDb4CNzsPUKKsVD9gbDMXnTUXAxcz7AGcunDtwbAQ==}
+    peerDependencies:
+      viem: ^2.28.4
+
+  '@cowprotocol/sdk-weiroll@0.1.30':
+    resolution: {integrity: sha512-dyz+tvXn9Zavzxcq9m2UPUJ2jMmYcvMPSbSXVOeRouI7o3tIGoGQ3ce8UAOo0V9IlAoybkzJNl0x3fsHtQCLGg==}
 
   '@cowprotocol/sdk-weiroll@0.1.32':
     resolution: {integrity: sha512-PyDtw09TmLFiIzd4mNXrud4RCq4UnztpfDIZPOZMcc7HLG4HZWiSlqNUlZYpHpG/Zrw9k4FtOPGp6e4wVrpcXw==}
@@ -2982,6 +3095,9 @@ packages:
   '@types/babel__traverse@7.28.0':
     resolution: {integrity: sha512-8PvcXf70gTDZBgt9ptxJ8elBeBjcLOAcOtoO/mPJjtji1+CdGbHgm77om1GrsPxsiE+uXIpNSK64UYaIwQXd4Q==}
 
+  '@types/bun@1.4.3':
+    resolution: {integrity: sha512-N67Pqy8JXbAY/j0tNraS3V5mubGvc6rrrNDmDCtZLlFzccbUJPDb0tvgUBC5q4m8ybkP93Jcn1QB+RYQ6PvBhw==}
+
   '@types/chai@5.2.3':
     resolution: {integrity: sha512-Mw558oeA9fFbv65/y4mHtXDs9bPnFMZAL/jxdPFUpOHHIXX91mcgEHbS5Lahr+pwZFR8A7GQleRWeI6cGFC2UA==}
 
@@ -3038,6 +3154,9 @@ packages:
 
   '@types/prop-types@15.7.15':
     resolution: {integrity: sha512-F6bEyamV9jKGAFBEmlQnesRPGOQqS2+Uwi0Em15xenOxHaf2hv6L8YCVn3rPdPJOiJfPiCnLIRyvwVaqMY3MIw==}
+
+  '@types/qrcode@1.5.6':
+    resolution: {integrity: sha512-te7NQcV2BOvdj2b1hCAHzAoMNuj65kNBMz0KBaxM6c3VGBOhU0dURQKOtH8CFNI/dsKkwlv32p26qYQTWoB5bw==}
 
   '@types/react-dom@18.3.7':
     resolution: {integrity: sha512-MEe3UeoENYVFXzoXEWsvcpg6ZvlrFNlOQ7EOsvhI3CfAXwzPfO8Qwuxd40nepsYKqyyVQnTdEfv68q91yLcKrQ==}
@@ -3760,6 +3879,9 @@ packages:
 
   builtin-status-codes@3.0.0:
     resolution: {integrity: sha512-HpGFw18DgFWlncDfjTa2rcQ4W88O1mC8e8yZ2AvQY5KDaktSTwo+KRf6nHK6FRI5FyRyb/5T6+TSxfP7QyGsmQ==}
+
+  bun-types@1.4.3:
+    resolution: {integrity: sha512-tinRJNGOmUN+tEAsn2y2e942n9JHRHR42iUYzDH75NmhJqVBokGSQkkfSFdNWwsANIdrK6ACH9t01M452YyTwg==}
 
   byline@5.0.0:
     resolution: {integrity: sha512-s6webAy+R4SR8XVuJWt2V2rGvhnrhxN+9S15GNuTK3wKPOXFF6RNc+8ug2XhH+2s4f+uudG4kUVYmYOQWL2g0Q==}
@@ -7908,6 +8030,24 @@ snapshots:
       - multiformats
       - supports-color
 
+  '@cowprotocol/cow-sdk@9.0.2(@openzeppelin/merkle-tree@1.0.8)(ajv@8.20.0)(cross-fetch@4.1.0(encoding@0.1.13))(encoding@0.1.13)(ipfs-only-hash@4.0.0(encoding@0.1.13))(multiformats@9.9.0)':
+    dependencies:
+      '@cowprotocol/sdk-app-data': 5.0.0(ajv@8.20.0)(cross-fetch@4.1.0(encoding@0.1.13))(ipfs-only-hash@4.0.0(encoding@0.1.13))(multiformats@9.9.0)
+      '@cowprotocol/sdk-common': 0.10.2
+      '@cowprotocol/sdk-config': 2.0.0(patch_hash=kwkxesyxlclpkpvqlavlqyjqsm)
+      '@cowprotocol/sdk-contracts-ts': 3.0.1
+      '@cowprotocol/sdk-order-book': 3.0.0(encoding@0.1.13)
+      '@cowprotocol/sdk-order-signing': 1.0.1(encoding@0.1.13)
+      '@cowprotocol/sdk-trading': 2.0.2(patch_hash=qic45zklihhor5za6uiiggh5pq)(ajv@8.20.0)(cross-fetch@4.1.0(encoding@0.1.13))(encoding@0.1.13)(ipfs-only-hash@4.0.0(encoding@0.1.13))(multiformats@9.9.0)
+      cross-fetch: 4.1.0(encoding@0.1.13)
+    optionalDependencies:
+      '@openzeppelin/merkle-tree': 1.0.8
+      ipfs-only-hash: 4.0.0(encoding@0.1.13)
+      multiformats: 9.9.0
+    transitivePeerDependencies:
+      - ajv
+      - encoding
+
   '@cowprotocol/cow-sdk@9.1.2(@openzeppelin/merkle-tree@1.0.8)(ajv@8.20.0)(cross-fetch@4.1.0(encoding@0.1.13))(encoding@0.1.13)(multiformats@14.0.0)':
     dependencies:
       '@cowprotocol/sdk-app-data': 5.1.2(ajv@8.20.0)(cross-fetch@4.1.0(encoding@0.1.13))(encoding@0.1.13)(multiformats@14.0.0)
@@ -7965,6 +8105,15 @@ snapshots:
       - multiformats
       - supports-color
 
+  '@cowprotocol/sdk-app-data@5.0.0(ajv@8.20.0)(cross-fetch@4.1.0(encoding@0.1.13))(ipfs-only-hash@4.0.0(encoding@0.1.13))(multiformats@9.9.0)':
+    dependencies:
+      '@cowprotocol/sdk-common': 0.10.2
+      ajv: 8.20.0
+      cross-fetch: 4.1.0(encoding@0.1.13)
+      ipfs-only-hash: 4.0.0(encoding@0.1.13)
+      json-stringify-deterministic: 1.0.13
+      multiformats: 9.9.0
+
   '@cowprotocol/sdk-app-data@5.1.2(ajv@8.20.0)(cross-fetch@4.1.0(encoding@0.1.13))(encoding@0.1.13)(multiformats@14.0.0)':
     dependencies:
       '@cowprotocol/sdk-common': 0.10.3
@@ -7975,6 +8124,27 @@ snapshots:
       multiformats: 14.0.0
     transitivePeerDependencies:
       - encoding
+      - supports-color
+
+  '@cowprotocol/sdk-bridging@4.0.2(patch_hash=4rnsap57ds3qcajpfo22oank3m)(ajv@8.20.0)(cross-fetch@4.1.0(encoding@0.1.13))(encoding@0.1.13)(ipfs-only-hash@4.0.0(encoding@0.1.13))(multiformats@9.9.0)':
+    dependencies:
+      '@cowprotocol/sdk-app-data': 5.0.0(ajv@8.20.0)(cross-fetch@4.1.0(encoding@0.1.13))(ipfs-only-hash@4.0.0(encoding@0.1.13))(multiformats@9.9.0)
+      '@cowprotocol/sdk-common': 0.10.2
+      '@cowprotocol/sdk-config': 2.0.0(patch_hash=kwkxesyxlclpkpvqlavlqyjqsm)
+      '@cowprotocol/sdk-contracts-ts': 3.0.1
+      '@cowprotocol/sdk-cow-shed': 0.3.8
+      '@cowprotocol/sdk-order-book': 3.0.0(encoding@0.1.13)
+      '@cowprotocol/sdk-trading': 2.0.2(patch_hash=qic45zklihhor5za6uiiggh5pq)(ajv@8.20.0)(cross-fetch@4.1.0(encoding@0.1.13))(encoding@0.1.13)(ipfs-only-hash@4.0.0(encoding@0.1.13))(multiformats@9.9.0)
+      '@cowprotocol/sdk-weiroll': 0.1.30
+      '@defuse-protocol/one-click-sdk-typescript': 0.1.1-0.2
+      json-stable-stringify: 1.3.0
+    transitivePeerDependencies:
+      - ajv
+      - cross-fetch
+      - debug
+      - encoding
+      - ipfs-only-hash
+      - multiformats
       - supports-color
 
   '@cowprotocol/sdk-bridging@4.0.5(ajv@8.20.0)(cross-fetch@4.1.0(encoding@0.1.13))(encoding@0.1.13)(multiformats@14.0.0)':
@@ -7997,6 +8167,10 @@ snapshots:
       - multiformats
       - supports-color
 
+  '@cowprotocol/sdk-common@0.10.2':
+    dependencies:
+      '@cowprotocol/sdk-config': 2.0.0(patch_hash=kwkxesyxlclpkpvqlavlqyjqsm)
+
   '@cowprotocol/sdk-common@0.10.3':
     dependencies:
       '@cowprotocol/sdk-config': 2.1.0
@@ -8010,10 +8184,20 @@ snapshots:
       exponential-backoff: 3.1.3
       limiter: 2.1.0
 
+  '@cowprotocol/sdk-config@2.0.0(patch_hash=kwkxesyxlclpkpvqlavlqyjqsm)':
+    dependencies:
+      exponential-backoff: 3.1.3
+      limiter: 2.1.0
+
   '@cowprotocol/sdk-config@2.1.0':
     dependencies:
       exponential-backoff: 3.1.3
       limiter: 2.1.0
+
+  '@cowprotocol/sdk-contracts-ts@3.0.1':
+    dependencies:
+      '@cowprotocol/sdk-common': 0.10.2
+      '@cowprotocol/sdk-config': 2.0.0(patch_hash=kwkxesyxlclpkpvqlavlqyjqsm)
 
   '@cowprotocol/sdk-contracts-ts@3.0.3':
     dependencies:
@@ -8026,10 +8210,26 @@ snapshots:
       '@cowprotocol/sdk-config': 2.1.0
       '@cowprotocol/sdk-contracts-ts': 3.0.3
 
+  '@cowprotocol/sdk-cow-shed@0.3.8':
+    dependencies:
+      '@cowprotocol/sdk-common': 0.10.2
+      '@cowprotocol/sdk-config': 2.0.0(patch_hash=kwkxesyxlclpkpvqlavlqyjqsm)
+      '@cowprotocol/sdk-contracts-ts': 3.0.1
+
   '@cowprotocol/sdk-order-book@0.5.1(encoding@0.1.13)':
     dependencies:
       '@cowprotocol/sdk-common': 0.5.0
       '@cowprotocol/sdk-config': 0.6.3
+      cross-fetch: 3.2.0(encoding@0.1.13)
+      exponential-backoff: 3.1.3
+      limiter: 3.0.0
+    transitivePeerDependencies:
+      - encoding
+
+  '@cowprotocol/sdk-order-book@3.0.0(encoding@0.1.13)':
+    dependencies:
+      '@cowprotocol/sdk-common': 0.10.2
+      '@cowprotocol/sdk-config': 2.0.0(patch_hash=kwkxesyxlclpkpvqlavlqyjqsm)
       cross-fetch: 3.2.0(encoding@0.1.13)
       exponential-backoff: 3.1.3
       limiter: 3.0.0
@@ -8046,6 +8246,15 @@ snapshots:
     transitivePeerDependencies:
       - encoding
 
+  '@cowprotocol/sdk-order-signing@1.0.1(encoding@0.1.13)':
+    dependencies:
+      '@cowprotocol/sdk-common': 0.10.2
+      '@cowprotocol/sdk-config': 2.0.0(patch_hash=kwkxesyxlclpkpvqlavlqyjqsm)
+      '@cowprotocol/sdk-contracts-ts': 3.0.1
+      '@cowprotocol/sdk-order-book': 3.0.0(encoding@0.1.13)
+    transitivePeerDependencies:
+      - encoding
+
   '@cowprotocol/sdk-order-signing@1.0.3(encoding@0.1.13)':
     dependencies:
       '@cowprotocol/sdk-common': 0.10.3
@@ -8054,6 +8263,22 @@ snapshots:
       '@cowprotocol/sdk-order-book': 3.1.0(encoding@0.1.13)
     transitivePeerDependencies:
       - encoding
+
+  '@cowprotocol/sdk-trading@2.0.2(patch_hash=qic45zklihhor5za6uiiggh5pq)(ajv@8.20.0)(cross-fetch@4.1.0(encoding@0.1.13))(encoding@0.1.13)(ipfs-only-hash@4.0.0(encoding@0.1.13))(multiformats@9.9.0)':
+    dependencies:
+      '@cowprotocol/sdk-app-data': 5.0.0(ajv@8.20.0)(cross-fetch@4.1.0(encoding@0.1.13))(ipfs-only-hash@4.0.0(encoding@0.1.13))(multiformats@9.9.0)
+      '@cowprotocol/sdk-common': 0.10.2
+      '@cowprotocol/sdk-config': 2.0.0(patch_hash=kwkxesyxlclpkpvqlavlqyjqsm)
+      '@cowprotocol/sdk-contracts-ts': 3.0.1
+      '@cowprotocol/sdk-order-book': 3.0.0(encoding@0.1.13)
+      '@cowprotocol/sdk-order-signing': 1.0.1(encoding@0.1.13)
+      deepmerge: 4.3.1
+    transitivePeerDependencies:
+      - ajv
+      - cross-fetch
+      - encoding
+      - ipfs-only-hash
+      - multiformats
 
   '@cowprotocol/sdk-trading@2.0.5(ajv@8.20.0)(cross-fetch@4.1.0(encoding@0.1.13))(encoding@0.1.13)(multiformats@14.0.0)':
     dependencies:
@@ -8070,6 +8295,16 @@ snapshots:
       - encoding
       - multiformats
       - supports-color
+
+  '@cowprotocol/sdk-viem-adapter@0.3.18(viem@2.48.8(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@6.0.6)(zod@3.25.76))':
+    dependencies:
+      '@cowprotocol/sdk-common': 0.10.2
+      viem: 2.48.8(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@6.0.6)(zod@3.25.76)
+
+  '@cowprotocol/sdk-weiroll@0.1.30':
+    dependencies:
+      '@cowprotocol/sdk-common': 0.10.2
+      '@cowprotocol/sdk-config': 2.0.0(patch_hash=kwkxesyxlclpkpvqlavlqyjqsm)
 
   '@cowprotocol/sdk-weiroll@0.1.32':
     dependencies:
@@ -11031,6 +11266,10 @@ snapshots:
     dependencies:
       '@babel/types': 7.29.7
 
+  '@types/bun@1.4.3':
+    dependencies:
+      bun-types: 1.4.3
+
   '@types/chai@5.2.3':
     dependencies:
       '@types/deep-eql': 4.0.2
@@ -11091,6 +11330,10 @@ snapshots:
   '@types/normalize-package-data@2.4.4': {}
 
   '@types/prop-types@15.7.15': {}
+
+  '@types/qrcode@1.5.6':
+    dependencies:
+      '@types/node': 22.19.17
 
   '@types/react-dom@18.3.7(@types/react@18.3.31)':
     dependencies:
@@ -12441,6 +12684,11 @@ snapshots:
 
   builtin-status-codes@3.0.0: {}
 
+  bun-types@1.4.3:
+    dependencies:
+      '@types/node': 22.19.17
+      undici-types: 8.9.0
+
   byline@5.0.0: {}
 
   bytes@3.1.2: {}
@@ -12824,10 +13072,11 @@ snapshots:
       esbuild: 0.28.1
       tsx: 4.21.0
 
-  drizzle-orm@0.45.2(@cloudflare/workers-types@5.20260724.1)(@opentelemetry/api@1.9.1)(postgres@3.4.9):
+  drizzle-orm@0.45.2(@cloudflare/workers-types@5.20260724.1)(@opentelemetry/api@1.9.1)(bun-types@1.4.3)(postgres@3.4.9):
     optionalDependencies:
       '@cloudflare/workers-types': 5.20260724.1
       '@opentelemetry/api': 1.9.1
+      bun-types: 1.4.3
       postgres: 3.4.9
 
   dunder-proto@1.0.1:
@@ -15867,8 +16116,7 @@ snapshots:
 
   undici-types@7.28.0: {}
 
-  undici-types@8.9.0:
-    optional: true
+  undici-types@8.9.0: {}
 
   undici@6.29.0: {}
 

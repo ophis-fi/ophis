@@ -76,6 +76,7 @@ export {
   isZeroAddress,
   isBytes32,
   assertBytes32,
+  NATIVE_TOKEN_SENTINEL,
 } from './guards.js';
 
 export {

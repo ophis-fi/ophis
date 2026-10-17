@@ -914,8 +914,8 @@ export { assignTier }
 const MULTICALL3: Address = '0xcA11bde05977b3631167028862bE2a173976CA11'
 
 /** Native gas-token symbol per chain (all 18-decimal). For display only. */
-const NATIVE_SYMBOL: Record<number, string> = {
-  1: 'ETH', 10: 'ETH', 56: 'BNB', 100: 'xDAI', 137: 'POL',
+export const NATIVE_SYMBOL: Record<number, string> = {
+  1: 'ETH', 10: 'ETH', 56: 'BNB', 100: 'xDAI', 130: 'ETH', 137: 'POL',
   8453: 'ETH', 9745: 'XPL', 42161: 'ETH', 43114: 'AVAX',
   4663: 'ETH', 57073: 'ETH', 59144: 'ETH', 11155111: 'ETH',
   5042: 'USDC',
@@ -927,17 +927,19 @@ const NATIVE_SYMBOL: Record<number, string> = {
  * operator can override or extend via OphisToolConfig.rpcUrls. Chains not listed
  * here return a clear "no public RPC" error rather than guessing an endpoint.
  */
-const PUBLIC_RPCS: Record<number, string[]> = {
-  1: ['https://ethereum-rpc.publicnode.com', 'https://eth.llamarpc.com'],
-  10: ['https://optimism-rpc.publicnode.com', 'https://optimism.llamarpc.com'],
-  56: ['https://bsc-rpc.publicnode.com', 'https://binance.llamarpc.com'],
+export const PUBLIC_RPCS: Record<number, string[]> = {
+  // Fallbacks are the chains' official or drpc public endpoints (the LlamaRPC ones died 2026-10;
+  // every URL here answered the right eth_chainId on 2026-10-15).
+  1: ['https://ethereum-rpc.publicnode.com', 'https://eth.drpc.org'],
+  10: ['https://optimism-rpc.publicnode.com', 'https://mainnet.optimism.io'],
+  56: ['https://bsc-rpc.publicnode.com', 'https://bsc-dataseed.bnbchain.org'],
   100: ['https://gnosis-rpc.publicnode.com'],
   130: ['https://mainnet.unichain.org'],
   4663: ['https://rpc.mainnet.chain.robinhood.com'],
   5042: ['https://rpc.mainnet.arc.io'],
-  137: ['https://polygon-bor-rpc.publicnode.com', 'https://polygon.llamarpc.com'],
-  8453: ['https://base-rpc.publicnode.com', 'https://base.llamarpc.com'],
-  42161: ['https://arbitrum-one-rpc.publicnode.com', 'https://arbitrum.llamarpc.com'],
+  137: ['https://polygon-bor-rpc.publicnode.com', 'https://polygon.drpc.org'],
+  8453: ['https://base-rpc.publicnode.com', 'https://mainnet.base.org'],
+  42161: ['https://arbitrum-one-rpc.publicnode.com', 'https://arb1.arbitrum.io/rpc'],
   43114: ['https://avalanche-c-chain-rpc.publicnode.com'],
   57073: ['https://rpc-gel.inkonchain.com'],
   59144: ['https://linea-rpc.publicnode.com'],
@@ -1344,7 +1346,7 @@ export async function expectedSurplus(
 // Match the swap UI's curated sources. A miss fails closed; permissionless
 // discovery feeds never become canonical symbol resolvers. Source URLs are
 // static (no SSRF) and every fetched entry is validated before use.
-const OPHIS_TOKEN_LIST_URL = 'https://swap.ophis.fi/token-lists/ophis.json'
+export const OPHIS_TOKEN_LIST_URL = 'https://swap.ophis.fi/token-lists/ophis.json'
 const OPTIMISM_TOKEN_LIST_URL = 'https://static.optimism.io/optimism.tokenlist.json'
 // Coinbase's tokenized stocks on Base (B20). Served by the swap UI from its own origin and
 // registered there as the priority-0 Base list; must stay byte-identical to
@@ -1415,7 +1417,7 @@ function tokenListUrlsForChain(chainId: number): string[] {
 // (a mock fetchImpl, i.e. tests, bypasses it so test runs stay isolated).
 const tokenListCache = new Map<string, { at: number; tokens: unknown[] }>()
 
-async function loadCuratedTokenList(url: string, fetchImpl: typeof fetch): Promise<unknown[]> {
+export async function loadCuratedTokenList(url: string, fetchImpl: typeof fetch): Promise<unknown[]> {
   const useCache = fetchImpl === fetch
   const now = Date.now()
   if (useCache) {
@@ -1509,4 +1511,39 @@ export async function resolveToken(
   // matches[0] and trade the wrong same-symbol variant (e.g. native vs bridged) without an
   // explicit choice. A single match still resolves to a canonical.
   return { chainId, query: String(p.symbol), found, ambiguous, canonical: ambiguous ? null : (matches[0] ?? null), matches, note }
+}
+
+/**
+ * Looks a token up by ADDRESS in the same trusted lists (and with the same entry checks) as
+ * resolveToken. Returns null when no list has it or a list could not be loaded. Use this when the
+ * address is already known: unlike a symbol, the address cannot be spoofed by the token or an RPC.
+ */
+export async function findListedToken(chainId: number, address: string, fetchImpl: typeof fetch = fetch): Promise<ResolvedToken | null> {
+  assertChain(chainId)
+  if (!isAddress(address)) return null
+  const want = address.toLowerCase()
+  if (NATIVE_SENTINELS.has(want) || EXCLUDED_TOKENS_BY_CHAIN[chainId]?.has(want)) return null
+  for (const url of tokenListUrlsForChain(chainId)) {
+    let tokens: unknown[]
+    try {
+      tokens = await loadCuratedTokenList(url, fetchImpl)
+    } catch {
+      return null // fail closed: a partial view must not decide what a token is
+    }
+    for (const raw of tokens) {
+      if (!raw || typeof raw !== 'object') continue
+      const t = raw as RawListToken
+      if (t.chainId !== chainId || typeof t.address !== 'string' || t.address.toLowerCase() !== want) continue
+      if (typeof t.symbol !== 'string' || typeof t.decimals !== 'number') continue
+      if (!Number.isInteger(t.decimals) || t.decimals < 0 || t.decimals > MAX_TOKEN_DECIMALS) continue
+      return {
+        address: getAddress(t.address),
+        symbol: t.symbol,
+        decimals: t.decimals,
+        name: typeof t.name === 'string' ? t.name.slice(0, 80) : t.symbol,
+        source: url,
+      }
+    }
+  }
+  return null
 }
