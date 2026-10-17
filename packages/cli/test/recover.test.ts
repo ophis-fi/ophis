@@ -663,7 +663,7 @@ describe('ophis recover, end to end (chain, orderbook and wallet answered here)'
   })
 
   test('a name the Ophis list lacks is found in the public lists the website offers, then described like an address', async () => {
-    const usdt = '0xFd086bC7CD5C481DCC9C85ebE478A1C0b69FCbb9' // Arbitrum's USDT, upgraded in place to USDT0
+    const usdt = '0x5555555555555555555555555555555555555555' // a token on no real list: list updates cannot change this test
     const arbitrum = network('arbitrum', 'http://127.0.0.1:9')
     const lists = (uniswap: unknown[], coingecko: unknown[]) => ({
       'files.cow.fi/token-lists/Uniswap.42161.json': { tokens: uniswap },
