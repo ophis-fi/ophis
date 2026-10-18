@@ -12,17 +12,43 @@ mock.module('@walletconnect/sign-client', () => ({
     }),
   },
 }))
-const { accountsOf, pairingFailed, phoneSigner, showQrImage } = await import('../src/phone.ts')
+const { accountsOf, pairingFailed, phoneSigner, showQrImage, terminalQr } = await import('../src/phone.ts')
+
+test('the terminal QR code paints both squares of every character, so no stripe shows between lines', async () => {
+  const QRCode = (await import('qrcode')).default
+  const text = `wc:${'ab'.repeat(32)}@2?relay-protocol=irn&symKey=${'cd'.repeat(32)}&expiryTimestamp=1792322178`
+  const { modules } = QRCode.create(text, { errorCorrectionLevel: 'L' })
+  // Read the squares back: background = top square, foreground = bottom square (16 = black, 231 = white).
+  const read = terminalQr(text)
+    .trimEnd()
+    .split('\n')
+    .flatMap((line) => {
+      const cells = [...line.matchAll(/\x1b\[48;5;(16|231);38;5;(16|231)m▄/g)]
+      return [cells.map((m) => m[1] === '16'), cells.map((m) => m[2] === '16')]
+    })
+  const size = modules.size + 4 // the code and a white border of two squares on each side
+  const expected = Array.from({ length: size }, (_, r) =>
+    Array.from({ length: size }, (_, c) => r >= 2 && c >= 2 && r < size - 2 && c < size - 2 && !!modules.get(r - 2, c - 2)),
+  )
+  expect(read.slice(0, size)).toEqual(expected)
+  expect(read.slice(size).flat().includes(true)).toBe(false) // an odd row count ends on white
+})
 
 test('the pairing QR code opens as an image, kept private and deleted once the pairing ends', async () => {
   const { existsSync, statSync } = await import('node:fs')
   const opened: string[] = []
-  const image = await showQrImage('wc:test@2?relay-protocol=irn&symKey=00', (file) => opened.push(file))
+  const image = await showQrImage('wc:test@2?relay-protocol=irn&symKey=00', async (file) => {
+    expect(statSync(file).mode & 0o777).toBe(0o600) // private before any viewer reads it
+    return opened.push(file) > 0
+  })
   expect(image.opened).toBe(true)
   expect(opened).toHaveLength(1)
   expect(existsSync(opened[0]!)).toBe(true)
-  expect(statSync(opened[0]!).mode & 0o777).toBe(0o600)
   image.remove()
+  expect(existsSync(opened[0]!)).toBe(false)
+  // No image viewer (a bare Linux server): no claim that it opened, and no key left on disk.
+  const none = await showQrImage('wc:test@2?relay-protocol=irn&symKey=00', async () => false)
+  expect(none.opened).toBe(false)
   expect(existsSync(opened[0]!)).toBe(false)
 })
 

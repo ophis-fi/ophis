@@ -301,16 +301,47 @@ async function crossChain(amountText: string, from: string, to: string, flags: F
 async function connectCommand() {
   await banner('Your keys stay in your wallet app. Ophis never sees them.')
   const pairing = await step('Preparing a secure pairing', () => startConnect(networks().map((n) => n.id)))
-  console.log(`\n  Scan this with your wallet app (MetaMask, Rabby, Rainbow, Trust, Ledger Wallet...):\n`)
-  console.log(pairing.qr.replace(/^/gm, '  '))
-  console.log(`  ${dim('Or paste this link into your wallet:')} ${pairing.uri}\n`)
-  const image = await showQrImage(pairing.uri)
-  if (image.opened) console.log(`  ${dim('The same QR code also opened as an image: scan that one if this one does not scan.')}\n`)
+  console.log(`\n  ${dim('Pairing link, to paste into your wallet instead of scanning:')} ${pairing.uri}\n`)
+  // The iPhone Camera app hands this code to no wallet (Rabby, Ledger Wallet) or to whichever one iOS picks: the
+  // wallet's own scanner always works, and some are tucked away.
+  const help = [
+    bold('Connect your wallet'),
+    '',
+    '1. Open your wallet app on your phone.',
+    `2. Open its WalletConnect scanner ${dim('(not the Camera app)')}:`,
+    `   MetaMask       ${dim('Scan, top right or in the account menu')}`,
+    `   Rabby          ${dim('Settings > WalletConnect')}`,
+    `   Trust Wallet   ${dim('Scan QR code, top right')}`,
+    `   Rainbow        ${dim('scan icon, home screen')}`,
+    `   Ledger Wallet  ${dim('an account, then its WalletConnect icon')}`,
+    '3. Scan this code, then approve in the wallet.',
+  ]
+  const qr = pairing.qr.trimEnd().split('\n')
+  const width = (line: string) => line.replace(/\x1b\[[\d;]*m/g, '').length
+  const { columns = 80, rows: height = 0 } = process.stdout // no size when the output is not a terminal
+  // Beside the code when the window is wide enough, so both stay on screen; below it otherwise.
+  const lines =
+    columns >= 2 + width(qr[0]!) + 4 + Math.max(...help.map(width))
+      ? qr.map((line, i) => `  ${line}    ${help[i - 1] ?? ''}`)
+      : [...qr, '', ...help].map((line) => `  ${line}`)
+  console.log(lines.join('\n'))
+  // A window too short to show the whole code: the same code opens in an image window.
+  const image = height && height < lines.length + 3 ? await showQrImage(pairing.uri) : { opened: false, remove: () => {} }
+  if (image.opened) console.log(`\n  ${dim('This window is too small for the whole code, so it also opened in a separate window.')}`)
+  console.log()
+  // Ctrl-C would end the process without its exit handlers: delete the image (it holds the pairing key) first.
+  const interrupted = () => {
+    image.remove()
+    console.log(`\n  ${saffron('!')} Stopped. No wallet was connected.\n`)
+    finish(130)
+  }
+  process.on('SIGINT', interrupted)
   let wallet
   try {
     wallet = await step('Waiting for your wallet to connect', pairing.wait)
   } finally {
     image.remove()
+    process.off('SIGINT', interrupted)
   }
   done(`Connected ${bold(wallet.address)}`)
   rows([['Chains', chainNames(wallet.chains)]])

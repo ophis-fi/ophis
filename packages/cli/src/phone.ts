@@ -1,7 +1,7 @@
 // Signing happens in the user's own wallet app (phone, or Ledger through Ledger Wallet), reached with
 // WalletConnect. The CLI never sees a private key: it asks the wallet to sign, then checks the answer.
 import { spawn } from 'node:child_process'
-import { chmodSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import SignClient from '@walletconnect/sign-client'
 import QRCode from 'qrcode'
@@ -149,35 +149,61 @@ export async function startConnect(chainIds: number[]): Promise<{ qr: string; ur
     remember(wallet)
     return wallet
   }
-  // Lowest error correction: fewer, bigger squares, which a phone reads more easily off a screen.
-  return { qr: await QRCode.toString(uri, { type: 'terminal', small: true, errorCorrectionLevel: 'L' }), uri, wait }
-}
-
-/** Opens a file with the system's default app (an image viewer here). Best effort: nothing is shown if none exists. */
-function openWithSystem(file: string): void {
-  const [cmd, ...args] = process.platform === 'darwin' ? ['open', file] : process.platform === 'win32' ? ['cmd', '/c', 'start', '""', file] : ['xdg-open', file]
-  spawn(cmd!, args, { stdio: 'ignore', detached: true }).on('error', () => {}).unref()
+  return { qr: terminalQr(uri), uri, wait }
 }
 
 /**
- * The pairing QR code as an image, opened in a window: terminal fonts often leave gaps between the lines of a text QR
- * code that phones cannot read. The image holds the pairing key, so it stays in OPHIS_HOME and is deleted once the
- * pairing ends (remove), or when the process exits.
+ * A QR code as terminal text, two rows of squares per line: a lower half block (▄) in the bottom square's colour over a
+ * background in the top square's colour. Terminal.app draws block characters shorter than the line and fills the rest
+ * of the line with the background colour: with a fixed background that leftover is a stripe across every row, which
+ * phones cannot read; here it joins the top square. Pure black and white from the 256-colour palette (terminal themes
+ * recolour the basic colours), a white border two squares wide, and the lowest error correction for bigger squares.
  */
-export async function showQrImage(uri: string, open: (file: string) => void = openWithSystem): Promise<{ opened: boolean; remove: () => void }> {
+export function terminalQr(text: string): string {
+  const { modules } = QRCode.create(text, { errorCorrectionLevel: 'L' })
+  const dark = (r: number, c: number) => r >= 0 && c >= 0 && r < modules.size && c < modules.size && !!modules.get(r, c)
+  const colour = (r: number, c: number) => (dark(r, c) ? 16 : 231)
+  let out = ''
+  for (let r = -2; r < modules.size + 2; r += 2) {
+    for (let c = -2; c < modules.size + 2; c++) out += `\x1b[48;5;${colour(r, c)};38;5;${colour(r + 1, c)}m▄`
+    out += '\x1b[0m\n'
+  }
+  return out
+}
+
+/**
+ * Opens a file with the system's default app (an image viewer here). True once the opener exits cleanly, or is still
+ * running after two seconds (a viewer that stays in the foreground); false if there is no opener or it failed.
+ */
+function openWithSystem(file: string): Promise<boolean> {
+  const [cmd, ...args] = process.platform === 'darwin' ? ['open', file] : process.platform === 'win32' ? ['cmd', '/c', 'start', '""', file] : ['xdg-open', file]
+  return new Promise((resolve) => {
+    const child = spawn(cmd!, args, { stdio: 'ignore', detached: true })
+    child.once('error', () => resolve(false)).once('exit', (code) => resolve(code === 0))
+    setTimeout(() => resolve(true), 2000).unref()
+    child.unref()
+  })
+}
+
+/**
+ * The pairing QR code as an image, opened in a window, for a terminal window too small to show the text one whole. The
+ * image holds the pairing key: it is created owner-only (never through a file already there), stays in OPHIS_HOME, and
+ * is deleted once the pairing ends (remove), or when the process exits.
+ */
+export async function showQrImage(uri: string, open: (file: string) => Promise<boolean> = openWithSystem): Promise<{ opened: boolean; remove: () => void }> {
   const file = join(OPHIS_HOME, 'connect-qr.png')
   const remove = () => rmSync(file, { force: true })
   try {
     mkdirSync(OPHIS_HOME, { recursive: true, mode: 0o700 })
-    await QRCode.toFile(file, uri, { margin: 4, scale: 12, errorCorrectionLevel: 'L' })
-    chmodSync(file, 0o600)
-    process.once('exit', remove)
-    open(file)
-    return { opened: true, remove }
-  } catch {
     remove()
-    return { opened: false, remove } // the text QR code and the link remain
+    writeFileSync(file, await QRCode.toBuffer(uri, { margin: 4, scale: 12, errorCorrectionLevel: 'L' }), { mode: 0o600, flag: 'wx' })
+    process.once('exit', remove)
+    if (await open(file)) return { opened: true, remove }
+  } catch {
+    // no image: the text QR code and the link remain
   }
+  remove()
+  return { opened: false, remove }
 }
 
 /** The connected wallet, or null when there is none. */
@@ -204,7 +230,8 @@ export async function phoneSigner(chainId: number): Promise<Signer> {
   const session = liveSession(c)
   if (!session) throw new UserError('No wallet connected. Run: ophis connect')
   const { address, chains } = accountsOf(session)
-  if (!chains.includes(chainId)) throw new UserError('Your wallet did not allow this chain. Run ophis connect again and accept it.')
+  // Wallets connect only the networks they have: MetaMask the ones added to it, Ledger Wallet the ones with a ticked account.
+  if (!chains.includes(chainId)) throw new UserError('Your wallet did not connect this chain. Add the network in your wallet app (in Ledger Wallet, tick an account on it), then run ophis connect again.')
   // The session asks the wallet on `chainId` alone: a request meant for another chain must not go through.
   const sameChain = (asked: number) => {
     if (asked !== chainId) throw new UserError(`This request is for chain ${asked} but the wallet session is on chain ${chainId}. Nothing was sent.`)
