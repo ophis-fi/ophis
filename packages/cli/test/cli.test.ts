@@ -3,7 +3,7 @@ import { describe, expect, mock, test } from 'bun:test'
 import { getAddress, type Hex } from 'viem'
 import { generatePrivateKey, privateKeyToAccount, type PrivateKeyAccount } from 'viem/accounts'
 import { findListedToken } from '@ophis/mcp-server/src/ophis.ts'
-import { network, networks } from '../src/network.ts'
+import { CHAIN_COLOURS, chainWords, network, networks } from '../src/network.ts'
 import type { Signer, TypedDataJson } from '../src/phone.ts'
 import { minOut, prepare, requote, send, sign, slippageBps, toAtoms, WRAPPED } from '../src/trade.ts'
 import { clean } from '../src/ui.ts'
@@ -53,6 +53,25 @@ describe('chains', () => {
   test('Plasma and Sepolia have an RPC', () => {
     expect(network('plasma').rpc.length).toBeGreaterThan(0)
     expect(network('sepolia').rpc.length).toBeGreaterThan(0)
+  })
+  test('every chain has its brand colour, so none shows up as a grey dot', () => {
+    for (const n of networks()) expect(CHAIN_COLOURS[n.id]).toMatch(/^#[0-9A-F]{6}$/i)
+  })
+  test('chains in plain words: "on" or "from" is the chain to use, "to" the chain to receive on', () => {
+    const read = (args: string[], own: number, flags: { chain?: string; 'to-chain'?: string } = {}) => ({ words: chainWords(args, flags, own), ...flags })
+    expect(read(['5', 'USDC', 'ETH', 'on', 'arbitrum'], 3)).toEqual({ words: ['5', 'USDC', 'ETH'], chain: 'arbitrum' })
+    expect(read(['5', 'USDC', 'ETH', 'to', 'arbitrum'], 3)).toEqual({ words: ['5', 'USDC', 'ETH'], 'to-chain': 'arbitrum' })
+    expect(read(['25', 'USDC', 'from', 'base', 'to', 'arb'], 2)).toEqual({ words: ['25', 'USDC'], chain: 'base', 'to-chain': 'arb' })
+    expect(read(['0xuid', 'ON', 'Base'], 1)).toEqual({ words: ['0xuid'], chain: 'Base' })
+    // A token's own place is never a chain word: tokens called ON or TO still read as tokens.
+    expect(read(['5', 'ON', 'TO', 'on', 'base'], 3)).toEqual({ words: ['5', 'ON', 'TO'], chain: 'base' })
+    // Anything else stays with the command's words, for its usage check to refuse (never silently dropped).
+    expect(read(['5', 'USDC', 'ETH', 'arbitrum'], 3).words).toEqual(['5', 'USDC', 'ETH', 'arbitrum'])
+    expect(read(['5', 'USDC', 'ETH', 'on'], 3).words).toEqual(['5', 'USDC', 'ETH', 'on'])
+    // The flag and the words agree, or nothing runs.
+    expect(read(['5', 'USDC', 'ETH', 'on', 'arbitrum'], 3, { chain: 'arb' }).chain).toBe('arbitrum')
+    expect(() => read(['5', 'USDC', 'ETH', 'on', 'arbitrum'], 3, { chain: 'base' })).toThrow('Two different chains')
+    expect(() => read(['5', 'USDC', 'ETH', 'to', 'base', 'to', 'linea'], 3)).toThrow('Two different chains')
   })
 })
 
@@ -164,7 +183,7 @@ describe('order building (orderbook mocked)', () => {
         ? Response.json({ errorType: 'NoLiquidity', description: 'no route' }, { status: 400 })
         : quoting(url, init)) as typeof fetch
     await expect(send(t, signed)).rejects.toThrow(`stays valid until`)
-    await expect(send(t, signed)).rejects.toThrow(`check ophis status ${signed.uid} -c base`)
+    await expect(send(t, signed)).rejects.toThrow(`check ophis status ${signed.uid} on base`)
   })
 
   test('a signature from any other key is refused before anything is sent', async () => {

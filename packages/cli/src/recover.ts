@@ -94,8 +94,8 @@ export async function shedHoldings(net: Network, owner: Address, named?: string)
       break
     }
   }
-  if (orders === 'unread') notes.push(`Could not read all your orders from Ophis, so only the tokens shown were checked. To check another: ophis recover <token> -c ${net.alias}`)
-  if (orders === 'capped') notes.push(`Only your latest 1,000 orders were checked. For a token an older bridge carried: ophis recover <token> -c ${net.alias}`)
+  if (orders === 'unread') notes.push(`Could not read all your orders from Ophis, so only the tokens shown were checked. To check another: ophis recover <token> on ${net.alias}`)
+  if (orders === 'capped') notes.push(`Only your latest 1,000 orders were checked. For a token an older bridge carried: ophis recover <token> on ${net.alias}`)
   const tokens = [...[...candidates].map((address) => ({ address, native: false })), ...(asked && !asked.native ? [] : [{ address: NATIVE_TOKEN_SENTINEL as Address, native: true }])]
   const balances = await balancesOf(net, shed, tokens)
   const found = tokens.flatMap((t, i) => {
@@ -120,7 +120,7 @@ export async function shedHoldings(net: Network, owner: Address, named?: string)
     }),
   )
   for (const [i, h] of holdings.entries()) {
-    if (!moves[i]) notes.push(`${h.token.symbol} (${h.token.native ? 'native coin' : h.token.address}) would not transfer out of your CoW Shed right now, so it was left out. To try it alone: ophis recover ${h.token.native ? h.token.symbol : h.token.address} -c ${net.alias}`)
+    if (!moves[i]) notes.push(`${h.token.symbol} (${h.token.native ? 'native coin' : h.token.address}) would not transfer out of your CoW Shed right now, so it was left out. To try it alone: ophis recover ${h.token.native ? h.token.symbol : h.token.address} on ${net.alias}`)
   }
   return { shed, holdings: holdings.filter((_, i) => moves[i]), notes }
 }
@@ -191,7 +191,7 @@ export async function recover(net: Network, wallet: Signer, named: string | unde
   for (const line of notes) note(line)
   for (const h of holdings) if (!h.token.listed) note(`${h.token.symbol} is not on the Ophis token list. Its details come from your RPC: check the amounts.`)
   if (!holdings.length) {
-    console.log(`\n  Nothing to recover on ${net.name}. ${dim(`To check another token: ophis recover <token> -c ${net.alias}`)}`)
+    console.log(`\n  Nothing to recover on ${net.name}. ${dim(`To check another token: ophis recover <token> on ${net.alias}`)}`)
     return 'empty'
   }
   const calls = recoveryCalls(owner, holdings)
@@ -205,7 +205,7 @@ export async function recover(net: Network, wallet: Signer, named: string | unde
 
   let sending = false
   const interrupted = () => {
-    const state = sending ? `The recovery may still go through from your wallet. To see what is left: ophis recover -c ${net.alias}` : 'Nothing was sent.'
+    const state = sending ? `The recovery may still go through from your wallet. To see what is left: ophis recover on ${net.alias}` : 'Nothing was sent.'
     console.log(`\n  ${saffron('!')} Stopped. ${state}\n`)
     finish(130)
   }
@@ -222,7 +222,7 @@ export async function recover(net: Network, wallet: Signer, named: string | unde
     rememberHook(net, owner, data)
     const tx = { to: SHED_FACTORY_ADDRESS, data, value: 0n }
     const tokens = holdings.map((h) => h.token)
-    const again = (t: Token) => `ophis recover ${t.native ? '' : `${t.address} `}-c ${net.alias}`
+    const again = (t: Token) => `ophis recover ${t.native ? '' : `${t.address} `}on ${net.alias}`
     const report = (left: (bigint | null)[], mine: (bigint | null)[]) => {
       for (const [i, h] of holdings.entries()) {
         const n = left[i]

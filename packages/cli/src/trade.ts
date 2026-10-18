@@ -37,7 +37,7 @@ import {
 // ponytail: token lookup and order relay come straight from the MCP server module (same checks the
 // agents get); move them into @ophis/sdk before any public release.
 import { findListedToken, isUntradeableToken, resolveToken, submitOrder } from '@ophis/mcp-server/src/ophis.ts'
-import { reader, type Network } from './network.ts'
+import { reader, tag, type Network } from './network.ts'
 import type { Signer, TxRequest, TypedDataJson } from './phone.ts'
 import { amount, bold, clean, dim, finish, green, red, rows, saffron, spinner, UserError } from './ui.ts'
 
@@ -363,7 +363,7 @@ export function showTrade(t: Trade, extra: [string, string][] = []): void {
   const price = (expected * 10n ** BigInt(t.sell.decimals) * 10n ** 18n) / (t.atoms * 10n ** BigInt(t.buy.decimals))
   const sellWhere = t.sell.native ? `native coin, wrapped first into ${t.pay.symbol} ${t.pay.address}` : t.sell.address
   rows([
-    ['Chain', t.net.name],
+    ['Chain', tag(t.net)],
     ['You pay', `${amount(t.atoms, t.sell.decimals)} ${t.sell.symbol}`],
     ['You get', bold(saffron(`about ${amount(expected, t.buy.decimals)} ${t.buy.symbol}`))],
     ['At least', `${amount(BigInt(t.built.order.buyAmount), t.buy.decimals)} ${t.buy.symbol}  ${dim(`(${t.slippage / 100}% slippage)`)}`],
@@ -680,12 +680,12 @@ export async function send(t: Trade, signed: Signed): Promise<string> {
       // The signature exists: were the order sent on anyway, it could fill until its expiry, and a new one with it.
       const until = new Date(t.built.order.validTo * 1000).toLocaleString()
       throw new UserError(
-        `${explain(errorType, `The orderbook refused the order: ${message}`)} The order you signed stays valid until ${until}: before signing a new one, check ophis status ${signed.uid} -c ${t.net.alias}`,
+        `${explain(errorType, `The orderbook refused the order: ${message}`)} The order you signed stays valid until ${until}: before signing a new one, check ophis status ${signed.uid} on ${t.net.alias}`,
       )
     }
     // No clear refusal (a timeout, a dropped connection): the order may have arrived anyway.
     if (!(await getOrder(t.net, signed.uid).catch(() => null))) {
-      throw new UserError(`Could not confirm the order reached Ophis (${message}). Before trying again, check: ophis status ${signed.uid} -c ${t.net.alias}`)
+      throw new UserError(`Could not confirm the order reached Ophis (${message}). Before trying again, check: ophis status ${signed.uid} on ${t.net.alias}`)
     }
   }
   enrollOphisTrader(t.owner).catch(() => {}) // best effort: lets the rebate indexer see this wallet
@@ -720,7 +720,7 @@ type Outcome = 'filled' | 'unfilled' | 'unknown'
 export async function watch(net: Network, uid: string, buy: Token, validTo: number, wrapped?: Token, filled?: string): Promise<Outcome> {
   const spin = spinner('Waiting for solvers to fill your order')
   const leave = () => {
-    spin.stop(`Stopped watching. The order is still live: ${bold(`ophis status ${uid} -c ${net.alias}`)}`)
+    spin.stop(`Stopped watching. The order is still live: ${bold(`ophis status ${uid} on ${net.alias}`)}`)
     finish(130)
   }
   process.once('SIGINT', leave)
@@ -738,7 +738,7 @@ export async function watch(net: Network, uid: string, buy: Token, validTo: numb
       }
       if (Date.now() / 1000 > validTo + 120) {
         // Past expiry and still no clear answer (orderbook unreachable?): stop, and say how to check.
-        spin.stop(`${saffron('!')} Could not get the final result. Check it later with: ${bold(`ophis status ${uid} -c ${net.alias}`)}`)
+        spin.stop(`${saffron('!')} Could not get the final result. Check it later with: ${bold(`ophis status ${uid} on ${net.alias}`)}`)
         return 'unknown'
       }
       await new Promise((resolve) => setTimeout(resolve, 3000))

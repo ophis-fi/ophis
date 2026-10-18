@@ -18,33 +18,48 @@ Or run it once without installing: `npx @ophis/cli help`.
 ## Quick start
 
 ```sh
-ophis connect                                    # scan the QR code with your wallet app
-ophis quote 100 USDC ETH                         # see the price; nothing is signed
-ophis swap 0.05 ETH USDC -c arbitrum             # confirm here, then approve in your wallet
-ophis bridge 25 USDC -c base --to-chain arbitrum # move a token to another chain
-ophis status <order id> -c base                  # follow an order
+ophis connect                      # link your wallet app: scan the QR code with it
+ophis quote 5 USDC ETH             # see the price; nothing is signed
+ophis swap 5 USDC ETH              # say yes here, then approve in your wallet
+ophis bridge 25 USDC to arbitrum   # move 25 USDC from Base to Arbitrum
 ```
+
+## Choose the chain
+
+Everything happens on Base unless you name a chain. Name it in plain words:
+
+```sh
+ophis swap 5 USDC ETH on arbitrum            # swap on Arbitrum
+ophis swap 5 USDC ETH to arbitrum            # swap on Base, get the ETH on Arbitrum
+ophis bridge 25 USDC from arbitrum to base   # move USDC from Arbitrum to Base
+ophis status <order id> on arbitrum          # follow an order placed on Arbitrum
+ophis chains                                 # every chain, and the name to type
+```
+
+`-c <chain>` and `--to-chain <chain>` work the same as `on` and `to`.
 
 ## Commands
 
 | Command | What it does |
 | --- | --- |
-| `ophis connect` | Pair your wallet app with a QR code. |
-| `ophis quote <amount> <token> <token>` | Show the price. Nothing is signed. |
-| `ophis swap <amount> <token> <token>` | Swap: confirm in the terminal, then approve in your wallet. |
-| `ophis bridge <amount> <token> --to-chain <chain>` | Bridge a token to another chain (through Across). |
-| `ophis status <order id>` | Check an order, and a bridge's progress. |
-| `ophis recover [token]` | Move what a bridge left in your CoW Shed back to your wallet. |
-| `ophis wallet` / `ophis disconnect` | Show or end the wallet connection. |
-| `ophis chains` | List the chains you can trade on. |
+| `ophis connect` | Link your wallet app with a QR code. |
+| `ophis quote <amount> <token> <token>` | See the price. Nothing is signed. |
+| `ophis swap <amount> <token> <token>` | Swap: say yes in the terminal, then approve in your wallet. |
+| `ophis bridge <amount> <token> to <chain>` | Move a token to another chain (through Across). |
+| `ophis status <order id>` | See where an order is, and a bridge's progress. |
+| `ophis recover [token]` | Get back tokens a bridge left behind in your CoW Shed. |
+| `ophis wallet` / `ophis disconnect` | Show or unlink your wallet. |
+| `ophis chains` | Every chain you can trade on. |
 
-Options: `-c, --chain <name>` (default `base`), `--to-chain <name>`, `--to-token <token>`, `-s, --slippage <pct>`
-(default 0.5), `-y, --yes`, `--ref <code>`, `--rpc <url>`.
+Options: `-s, --slippage <percent>` (how far the price may move, default 0.5), `-y, --yes` (skip the question in the
+terminal; your wallet still asks), `--to-token <token>` (with bridge: get a different token on arrival),
+`--ref <code>`, `--rpc <url>`.
 
 ## Chains
 
-Ethereum, Base, Arbitrum One, Optimism, Polygon, BNB Chain, Gnosis, Avalanche, Linea, Ink, Unichain, Plasma, Robinhood
-Chain, Arc, and the Sepolia testnet. Bridges can start from Ethereum, Arbitrum or Base.
+Arbitrum One, Arc, Avalanche, Base, BNB Chain, Ethereum, Gnosis, Ink, Linea, Optimism, Plasma, Polygon, Robinhood
+Chain, Unichain, and the Sepolia testnet. Bridges can start from Ethereum, Arbitrum or Base. In the terminal, each
+chain shows with a dot in its brand colour.
 
 ## How it keeps you safe
 

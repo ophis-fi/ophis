@@ -3,7 +3,7 @@ import { createPublicClient, fallback, http, type Chain } from 'viem'
 // ponytail: the chain list and RPC defaults come straight from the MCP server module (one source of truth);
 // move them into @ophis/sdk before any public release.
 import { listChains, NATIVE_SYMBOL, PUBLIC_RPCS } from '@ophis/mcp-server/src/ophis.ts'
-import { clean, UserError } from './ui.ts'
+import { clean, tint, UserError } from './ui.ts'
 
 // Short names people type. The first name listed for a chain is the one we show.
 const ALIASES: Record<string, number> = {
@@ -18,6 +18,44 @@ const ALIASES: Record<string, number> = {
 const MORE_RPCS: Record<number, string[]> = {
   9745: ['https://rpc.plasma.to'],
   11155111: ['https://ethereum-sepolia-rpc.publicnode.com', 'https://sepolia.drpc.org'],
+}
+
+// Each chain's brand colour, as the Ophis website shows it (@cowprotocol/sdk-config chain colours, and
+// apps/frontend/libs/common-const/src/chainInfo.ts for Arc, Unichain and Robinhood Chain).
+const COLOURS: Record<number, string> = {
+  1: '#62688F', 10: '#FF0420', 56: '#F0B90B', 100: '#07795B', 130: '#FF007A', 137: '#8247E5', 4663: '#CCFF00',
+  5042: '#2775CA', 8453: '#0052FF', 9745: '#569F8C', 42161: '#1B4ADD', 43114: '#FF3944', 57073: '#7132F5',
+  59144: '#61DFFF', 11155111: '#C12FF2',
+}
+
+export const CHAIN_COLOURS: Readonly<Record<number, string>> = COLOURS
+
+/** A dot in the chain's brand colour: the terminal's stand-in for its logo. */
+export const dot = (id: number) => tint(COLOURS[id] ?? '#888888')('●')
+export const tag = (net: { id: number; name: string }) => `${dot(net.id)} ${net.name}`
+
+/**
+ * Chains in plain words after a command's own words: "on base" (or "from base") is the chain to use and "to arbitrum"
+ * the chain to receive on, the same as -c and --to-chain. The first `own` words always belong to the command, so a
+ * token called ON or TO still reads as a token. Returns the command's words; whatever else is left stays in them, for
+ * the command's usage check to refuse.
+ */
+export function chainWords(args: string[], flags: { chain?: string; 'to-chain'?: string }, own: number): string[] {
+  const words: string[] = []
+  for (let i = 0; i < args.length; i++) {
+    const word = args[i]!.toLowerCase()
+    const key = word === 'on' || word === 'from' ? 'chain' : word === 'to' ? 'to-chain' : undefined
+    const chain = args[i + 1]
+    if (!key || i < own || chain === undefined) {
+      words.push(args[i]!)
+      continue
+    }
+    const named = flags[key]
+    if (named !== undefined && network(named).id !== network(chain).id) throw new UserError(`Two different chains were named: ${clean(named)} and ${clean(chain)}. Name one.`)
+    flags[key] = chain
+    i++
+  }
+  return words
 }
 
 export interface Network {
