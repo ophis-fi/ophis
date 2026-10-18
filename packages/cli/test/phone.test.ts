@@ -12,7 +12,52 @@ mock.module('@walletconnect/sign-client', () => ({
     }),
   },
 }))
-const { accountsOf, phoneSigner } = await import('../src/phone.ts')
+const { accountsOf, pairingFailed, phoneSigner, showQrImage, terminalQr } = await import('../src/phone.ts')
+
+test('the terminal QR code paints both squares of every character, so no stripe shows between lines', async () => {
+  const QRCode = (await import('qrcode')).default
+  const text = `wc:${'ab'.repeat(32)}@2?relay-protocol=irn&symKey=${'cd'.repeat(32)}&expiryTimestamp=1792322178`
+  const { modules } = QRCode.create(text, { errorCorrectionLevel: 'L' })
+  // Read the squares back: background = top square, foreground = bottom square (16 = black, 231 = white).
+  const read = terminalQr(text)
+    .trimEnd()
+    .split('\n')
+    .flatMap((line) => {
+      const cells = [...line.matchAll(/\x1b\[48;5;(16|231);38;5;(16|231)m▄/g)]
+      return [cells.map((m) => m[1] === '16'), cells.map((m) => m[2] === '16')]
+    })
+  const size = modules.size + 8 // the code and a white border of four squares on each side
+  const expected = Array.from({ length: size }, (_, r) =>
+    Array.from({ length: size }, (_, c) => r >= 4 && c >= 4 && r < size - 4 && c < size - 4 && !!modules.get(r - 4, c - 4)),
+  )
+  expect(read.slice(0, size)).toEqual(expected)
+  expect(read.slice(size).flat().includes(true)).toBe(false) // an odd row count ends on white
+})
+
+test('the pairing QR code opens as an image, kept private and deleted once the pairing ends', async () => {
+  const { existsSync, statSync } = await import('node:fs')
+  const opened: string[] = []
+  const image = await showQrImage('wc:test@2?relay-protocol=irn&symKey=00', async (file) => {
+    expect(statSync(file).mode & 0o777).toBe(0o600) // private before any viewer reads it
+    return opened.push(file) > 0
+  })
+  expect(image.opened).toBe(true)
+  expect(opened).toHaveLength(1)
+  expect(existsSync(opened[0]!)).toBe(true)
+  image.remove()
+  expect(existsSync(opened[0]!)).toBe(false)
+  // No image viewer (a bare Linux server): no claim that it opened, and no key left on disk.
+  const none = await showQrImage('wc:test@2?relay-protocol=irn&symKey=00', async () => false)
+  expect(none.opened).toBe(false)
+  expect(existsSync(opened[0]!)).toBe(false)
+})
+
+test('WalletConnect failures read as plain sentences, whatever their code', () => {
+  expect(pairingFailed({ code: 8000, message: 'Proposal expired' }).message).toBe('No wallet connected within 5 minutes. Run ophis connect again.')
+  expect(pairingFailed({ code: 5000, message: 'User rejected.' }).message).toBe('Your wallet declined the connection.')
+  expect(pairingFailed({ code: 1, message: 'relay \u001b[2Jdown' }).message).toBe('The wallet did not connect: relay [2Jdown')
+  expect(pairingFailed('socket hang up').message).toBe('The wallet did not connect: socket hang up')
+})
 
 test('a chain where the wallet gave another account is left out: nothing is signed there as the wrong owner', () => {
   const other = '0x2222222222222222222222222222222222222222'

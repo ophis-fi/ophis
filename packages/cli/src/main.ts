@@ -6,7 +6,7 @@ import { formatUnits } from 'viem'
 import pkg from '../package.json' with { type: 'json' }
 import { checkHome } from './home.ts'
 import { network, networks } from './network.ts'
-import { connected, disconnect, phoneSigner, savedWallet, startConnect } from './phone.ts'
+import { connected, disconnect, phoneSigner, savedWallet, showQrImage, startConnect } from './phone.ts'
 import { bridgeQuote, bridgeStatus, checkEarlierHooks, checkLeftover, openBridge, placeBridge, saidStatus, showBridge, watchBridge, type BridgeQuote, type BridgeRequest } from './bridge.ts'
 import { recover } from './recover.ts'
 import {
@@ -301,10 +301,52 @@ async function crossChain(amountText: string, from: string, to: string, flags: F
 async function connectCommand() {
   await banner('Your keys stay in your wallet app. Ophis never sees them.')
   const pairing = await step('Preparing a secure pairing', () => startConnect(networks().map((n) => n.id)))
-  console.log(`\n  Scan this with your wallet app (MetaMask, Rabby, Rainbow, Trust, Ledger Wallet...):\n`)
-  console.log(pairing.qr.replace(/^/gm, '  '))
-  console.log(`  ${dim('Or paste this link into your wallet:')} ${pairing.uri}\n`)
-  const wallet = await step('Waiting for your wallet to connect', pairing.wait)
+  console.log(`\n  ${dim('Pairing link, to paste into your wallet instead of scanning:')} ${pairing.uri}\n`)
+  // The iPhone Camera app hands this code to no wallet (Rabby, Ledger Wallet) or to whichever one iOS picks: the
+  // wallet's own scanner always works, and some are tucked away.
+  const help = [
+    bold('Connect your wallet'),
+    '',
+    '1. Open your wallet app on your phone.',
+    `2. Open its WalletConnect scanner ${dim('(not the Camera app)')}:`,
+    `   MetaMask       ${dim('Scan (account menu or top right)')}`,
+    `   Rabby          ${dim('Settings > WalletConnect')}`,
+    `   Trust Wallet   ${dim('Scan QR code, top right')}`,
+    `   Rainbow        ${dim('scan icon, home screen')}`,
+    `   Ledger Wallet  ${dim('an account > WalletConnect icon')}`,
+    '3. Scan this code, then approve in the wallet.',
+  ]
+  const qr = pairing.qr.trimEnd().split('\n')
+  const width = (line: string) => line.replace(/\x1b\[[\d;]*m/g, '').length
+  const { columns = 80, rows: height = 0 } = process.stdout // no size when the output is not a terminal
+  // Beside the code when the window is wide enough, so both stay on screen; below it otherwise.
+  const lines =
+    columns >= 2 + width(qr[0]!) + 4 + Math.max(...help.map(width))
+      ? qr.map((line, i) => `  ${line}    ${help[i - 1] ?? ''}`)
+      : [...qr, '', ...help].map((line) => `  ${line}`)
+  // A code is only scannable whole: in a window too narrow (lines would wrap) or too short for it, it opens as an image.
+  const fits = columns >= 2 + width(qr[0]!) && (!height || height >= lines.length + 1)
+  // Ctrl-C, a closed terminal or a kill would end the process without its exit handlers: from before the image exists,
+  // delete it (it holds the pairing key) on the way out, with the usual 128 + signal exit status.
+  let image = { opened: false, remove: () => {} }
+  const signals: NodeJS.Signals[] = ['SIGINT', 'SIGHUP', 'SIGTERM']
+  const interrupted = (signal: NodeJS.Signals) => {
+    image.remove()
+    if (signal !== 'SIGINT') process.exit(signal === 'SIGHUP' ? 129 : 143) // the terminal may be gone: print nothing
+    console.log(`\n  ${saffron('!')} Stopped. No wallet was connected.\n`)
+    finish(130)
+  }
+  for (const signal of signals) process.on(signal, interrupted)
+  let wallet
+  try {
+    if (!fits) image = await showQrImage(pairing.uri)
+    if (image.opened) console.log(`${help.map((line) => `  ${line}`).join('\n')}\n\n  ${dim('The code opened in a separate window: this one is too small to show it.')}`)
+    else console.log(fits ? lines.join('\n') : `${lines.join('\n')}\n\n  ${dim('Make this window bigger to show the whole code.')}`)
+    wallet = await step('Waiting for your wallet to connect', pairing.wait)
+  } finally {
+    image.remove()
+    for (const signal of signals) process.off(signal, interrupted)
+  }
   done(`Connected ${bold(wallet.address)}`)
   rows([['Chains', chainNames(wallet.chains)]])
   console.log(`\n  Next: ${bold('ophis quote 10 USDC ETH')}\n`)
@@ -390,7 +432,7 @@ main(process.argv.slice(2))
     const e = err as Error & { code?: string; shortMessage?: string }
     const message =
       err instanceof UserError ? e.message
-      : e.code?.startsWith('ERR_PARSE_ARGS') ? `${e.message}. See: ophis help`
+      : typeof e.code === 'string' && e.code.startsWith('ERR_PARSE_ARGS') ? `${e.message}. See: ophis help` // a library's code can be a number
       : `Something went wrong: ${clean(String(e.shortMessage ?? e.message))}`
     console.error(`\n  ${red('✗')} ${message}\n`)
     if (process.env.OPHIS_DEBUG) console.error(err)
