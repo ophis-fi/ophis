@@ -752,7 +752,7 @@ export async function watch(net: Network, uid: string, buy: Token, validTo: numb
 export async function status(net: Network, uid: string, extra: [string, string][] = []): Promise<void> {
   if (!/^0x[0-9a-fA-F]{112}$/.test(uid)) throw new UserError('That is not an order id (0x followed by 112 hex characters).')
   const order = await getOrder(net, uid)
-  if (!order) throw new UserError(`No such order on ${net.name}. Is it on another chain? Add -c <chain>.`)
+  if (!order) throw new UserError(`No such order on ${net.name}. Is it on another chain? Name it, for example: ophis status ${uid} on ${net.id === 42161 ? 'base' : 'arbitrum'}`)
   // The orderbook's fields are its own text: only token addresses are looked up, never names it could inject.
   if (![order.sellToken, order.buyToken].every((t) => typeof t === 'string' && isAddress(t))) throw new UserError('The orderbook returned an unreadable order.')
   const [sell, buy] = await Promise.all([findToken(net, order.sellToken), findToken(net, order.buyToken)])

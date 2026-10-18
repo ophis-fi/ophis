@@ -449,12 +449,14 @@ async function main(argv: string[]) {
     case 'chains': {
       // A to Z, the testnet last; the name to type is the one in bold.
       const all = networks().sort((a, b) => Number(a.id === 11155111) - Number(b.id === 11155111) || a.name.localeCompare(b.name))
-      console.log(`\n  ${dim(`  ${'Chain'.padEnd(17)}${'Type'.padEnd(12)}Fees paid in`)}`)
+      console.log(`\n  ${dim(`  ${'Chain'.padEnd(17)}${'Name to type'.padEnd(14)}Network fee in`)}`)
       for (const n of all) {
         const note = n.alias === DEFAULT_CHAIN ? 'used when you name no chain' : n.id === 11155111 ? 'testnet, free test tokens' : ''
-        console.log(`  ${dot(n.id)} ${n.name.padEnd(17)}${bold(n.alias.padEnd(12))}${n.native.padEnd(6)}${dim(note)}`)
+        console.log(`  ${dot(n.id)} ${n.name.padEnd(17)}${bold(n.alias.padEnd(14))}${n.native.padEnd(15)}${dim(note)}`)
       }
-      return console.log(`\n  ${dim('Name a chain with "on", for example: ophis swap 5 USDC ETH on arbitrum')}\n`)
+      console.log(`\n  ${dim('Name a chain with "on", for example: ophis swap 5 USDC ETH on arbitrum')}`)
+      console.log(`  ${dim('A network fee is only for a first approval of a token, or wrapping ETH: signing an order is free,')}`)
+      return console.log(`  ${dim('and the Ophis fee comes out of the trade.')}\n`)
     }
     default:
       throw new UserError(`Unknown command "${command}". See: ophis help`)
