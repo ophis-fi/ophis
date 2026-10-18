@@ -1,6 +1,7 @@
 // Signing happens in the user's own wallet app (phone, or Ledger through Ledger Wallet), reached with
 // WalletConnect. The CLI never sees a private key: it asks the wallet to sign, then checks the answer.
-import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { spawn } from 'node:child_process'
+import { chmodSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import SignClient from '@walletconnect/sign-client'
 import QRCode from 'qrcode'
@@ -148,7 +149,35 @@ export async function startConnect(chainIds: number[]): Promise<{ qr: string; ur
     remember(wallet)
     return wallet
   }
-  return { qr: await QRCode.toString(uri, { type: 'terminal', small: true }), uri, wait }
+  // Lowest error correction: fewer, bigger squares, which a phone reads more easily off a screen.
+  return { qr: await QRCode.toString(uri, { type: 'terminal', small: true, errorCorrectionLevel: 'L' }), uri, wait }
+}
+
+/** Opens a file with the system's default app (an image viewer here). Best effort: nothing is shown if none exists. */
+function openWithSystem(file: string): void {
+  const [cmd, ...args] = process.platform === 'darwin' ? ['open', file] : process.platform === 'win32' ? ['cmd', '/c', 'start', '""', file] : ['xdg-open', file]
+  spawn(cmd!, args, { stdio: 'ignore', detached: true }).on('error', () => {}).unref()
+}
+
+/**
+ * The pairing QR code as an image, opened in a window: terminal fonts often leave gaps between the lines of a text QR
+ * code that phones cannot read. The image holds the pairing key, so it stays in OPHIS_HOME and is deleted once the
+ * pairing ends (remove), or when the process exits.
+ */
+export async function showQrImage(uri: string, open: (file: string) => void = openWithSystem): Promise<{ opened: boolean; remove: () => void }> {
+  const file = join(OPHIS_HOME, 'connect-qr.png')
+  const remove = () => rmSync(file, { force: true })
+  try {
+    mkdirSync(OPHIS_HOME, { recursive: true, mode: 0o700 })
+    await QRCode.toFile(file, uri, { margin: 4, scale: 12, errorCorrectionLevel: 'L' })
+    chmodSync(file, 0o600)
+    process.once('exit', remove)
+    open(file)
+    return { opened: true, remove }
+  } catch {
+    remove()
+    return { opened: false, remove } // the text QR code and the link remain
+  }
 }
 
 /** The connected wallet, or null when there is none. */

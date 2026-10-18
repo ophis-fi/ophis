@@ -6,7 +6,7 @@ import { formatUnits } from 'viem'
 import pkg from '../package.json' with { type: 'json' }
 import { checkHome } from './home.ts'
 import { network, networks } from './network.ts'
-import { connected, disconnect, phoneSigner, savedWallet, startConnect } from './phone.ts'
+import { connected, disconnect, phoneSigner, savedWallet, showQrImage, startConnect } from './phone.ts'
 import { bridgeQuote, bridgeStatus, checkEarlierHooks, checkLeftover, openBridge, placeBridge, saidStatus, showBridge, watchBridge, type BridgeQuote, type BridgeRequest } from './bridge.ts'
 import { recover } from './recover.ts'
 import {
@@ -304,7 +304,14 @@ async function connectCommand() {
   console.log(`\n  Scan this with your wallet app (MetaMask, Rabby, Rainbow, Trust, Ledger Wallet...):\n`)
   console.log(pairing.qr.replace(/^/gm, '  '))
   console.log(`  ${dim('Or paste this link into your wallet:')} ${pairing.uri}\n`)
-  const wallet = await step('Waiting for your wallet to connect', pairing.wait)
+  const image = await showQrImage(pairing.uri)
+  if (image.opened) console.log(`  ${dim('The same QR code also opened as an image: scan that one if this one does not scan.')}\n`)
+  let wallet
+  try {
+    wallet = await step('Waiting for your wallet to connect', pairing.wait)
+  } finally {
+    image.remove()
+  }
   done(`Connected ${bold(wallet.address)}`)
   rows([['Chains', chainNames(wallet.chains)]])
   console.log(`\n  Next: ${bold('ophis quote 10 USDC ETH')}\n`)

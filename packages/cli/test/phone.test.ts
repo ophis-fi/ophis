@@ -12,7 +12,19 @@ mock.module('@walletconnect/sign-client', () => ({
     }),
   },
 }))
-const { accountsOf, pairingFailed, phoneSigner } = await import('../src/phone.ts')
+const { accountsOf, pairingFailed, phoneSigner, showQrImage } = await import('../src/phone.ts')
+
+test('the pairing QR code opens as an image, kept private and deleted once the pairing ends', async () => {
+  const { existsSync, statSync } = await import('node:fs')
+  const opened: string[] = []
+  const image = await showQrImage('wc:test@2?relay-protocol=irn&symKey=00', (file) => opened.push(file))
+  expect(image.opened).toBe(true)
+  expect(opened).toHaveLength(1)
+  expect(existsSync(opened[0]!)).toBe(true)
+  expect(statSync(opened[0]!).mode & 0o777).toBe(0o600)
+  image.remove()
+  expect(existsSync(opened[0]!)).toBe(false)
+})
 
 test('WalletConnect failures read as plain sentences, whatever their code', () => {
   expect(pairingFailed({ code: 8000, message: 'Proposal expired' }).message).toBe('No wallet connected within 5 minutes. Run ophis connect again.')
