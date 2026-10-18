@@ -326,15 +326,17 @@ async function connectCommand() {
       : [...qr, '', ...help].map((line) => `  ${line}`)
   // A code is only scannable whole: in a window too narrow (lines would wrap) or too short for it, it opens as an image.
   const fits = columns >= 2 + width(qr[0]!) && (!height || height >= lines.length + 1)
-  // Ctrl-C would end the process without its exit handlers: from before the image exists, delete it (it holds the
-  // pairing key) on the way out.
+  // Ctrl-C, a closed terminal or a kill would end the process without its exit handlers: from before the image exists,
+  // delete it (it holds the pairing key) on the way out, with the usual 128 + signal exit status.
   let image = { opened: false, remove: () => {} }
-  const interrupted = () => {
+  const signals: NodeJS.Signals[] = ['SIGINT', 'SIGHUP', 'SIGTERM']
+  const interrupted = (signal: NodeJS.Signals) => {
     image.remove()
+    if (signal !== 'SIGINT') process.exit(signal === 'SIGHUP' ? 129 : 143) // the terminal may be gone: print nothing
     console.log(`\n  ${saffron('!')} Stopped. No wallet was connected.\n`)
     finish(130)
   }
-  process.on('SIGINT', interrupted)
+  for (const signal of signals) process.on(signal, interrupted)
   let wallet
   try {
     if (!fits) image = await showQrImage(pairing.uri)
@@ -343,7 +345,7 @@ async function connectCommand() {
     wallet = await step('Waiting for your wallet to connect', pairing.wait)
   } finally {
     image.remove()
-    process.off('SIGINT', interrupted)
+    for (const signal of signals) process.off(signal, interrupted)
   }
   done(`Connected ${bold(wallet.address)}`)
   rows([['Chains', chainNames(wallet.chains)]])
