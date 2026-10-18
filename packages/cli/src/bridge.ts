@@ -21,7 +21,7 @@ import { findListedToken } from '@ophis/mcp-server/src/ophis.ts'
 import { ACROSS_EXECUTABLE_SOURCE_IDS, ACROSS_INTEGRATOR_ID, OphisAcrossBridgeProvider } from './across.ts'
 import { OPHIS_HOME } from './home.ts'
 import type { Network } from './network.ts'
-import { reader } from './network.ts'
+import { reader, tag } from './network.ts'
 import type { Signer, TypedDataJson } from './phone.ts'
 import { amount, bold, clean, dim, green, note, red, rows, saffron, spinner, UserError } from './ui.ts'
 import { afterFee, explain, feeText, getOrder, ORDER_TTL, patient, someAddress, volumeBps, WRAPPED, wrappedNative, type Token } from './trade.ts'
@@ -586,7 +586,7 @@ export async function checkLeftover(src: Network, owner: Address, via: Token, gu
     .catch(() => {
       throw new UserError('Could not read your CoW Shed balance. Try again in a moment, or use --rpc with another RPC.')
     })
-  if (held * LEFTOVER_SHARE >= guard) throw new UserError(`Your CoW Shed still holds ${amount(held, via.decimals)} ${via.symbol} from an earlier bridge. Recover it first: ophis recover ${via.address} -c ${src.alias}`)
+  if (held * LEFTOVER_SHARE >= guard) throw new UserError(`Your CoW Shed still holds ${amount(held, via.decimals)} ${via.symbol} from an earlier bridge. Recover it first: ophis recover ${via.address} on ${src.alias}`)
 }
 
 export const SHED_NONCES = parseAbi(['function nonces(bytes32 nonce) view returns (bool)'])
@@ -786,8 +786,8 @@ export function showBridge(b: BridgeQuote, extra: [string, string][] = [], owner
   const native = same(b.buy.address, wrappedNative(b.dst).address)
   const out = native ? b.dst.native : b.buy.symbol
   rows([
-    ['From', `${amount(b.atoms, b.sell.decimals)} ${b.sell.symbol} on ${b.src.name}`],
-    ['To', bold(saffron(`about ${amount(b.expected, b.buy.decimals)} ${out} on ${b.dst.name}`))],
+    ['From', `${amount(b.atoms, b.sell.decimals)} ${b.sell.symbol} on ${tag(b.src)}`],
+    ['To', `${bold(saffron(`about ${amount(b.expected, b.buy.decimals)} ${out}`))} on ${tag(b.dst)}`],
     ['At least', `${amount(b.minOut, b.buy.decimals)} ${out}  ${dim(`(${b.slippage / 100}% slippage, and the Across fee may move ${Number(FEE_ROOM_BPS) / 100}%)`)}`],
     ['Bridge', `Across, ${minutes} after the order fills`],
     ['Fees', `Across about ${amount(b.acrossFee, b.buy.decimals)} ${out}, in the amounts above`],
@@ -813,7 +813,7 @@ export async function placeBridge(b: BridgeQuote, wallet: Signer, onSigned?: (ui
 
 async function placeLocked(b: BridgeQuote, wallet: Signer, onSigned?: (uid: string) => void): Promise<{ uid: string; validTo: number }> {
   const { open, hooks } = await openBridge(b.src, b.owner)
-  if (open) throw new UserError(`A bridge from this wallet is still open: ophis status ${open} -c ${b.src.alias}`)
+  if (open) throw new UserError(`A bridge from this wallet is still open: ophis status ${open} on ${b.src.alias}`)
   await checkEarlierHooks(b.src, b.owner, true, hooks)
   await checkLeftover(b.src, b.owner, b.via, b.guard) // again: a refreshed price may bridge through another token
   let signed: string | undefined
@@ -840,7 +840,7 @@ async function placeLocked(b: BridgeQuote, wallet: Signer, onSigned?: (uid: stri
     // The id is computed here from what was signed; an orderbook answering with another one is not trusted.
     if (signed && same(posted.orderId, signed)) return sent(signed)
     spin.stop(`${saffron('!')} The orderbook answered with another order id`)
-    throw Object.assign(new UserError(`Before trying again, check: ophis status ${signed ?? clean(String(posted.orderId))} -c ${b.src.alias}`), { maybeSent: true })
+    throw Object.assign(new UserError(`Before trying again, check: ophis status ${signed ?? clean(String(posted.orderId))} on ${b.src.alias}`), { maybeSent: true })
   } catch (err) {
     if ((err as { maybeSent?: boolean }).maybeSent) throw err
     if (process.env.OPHIS_DEBUG) console.error(err)
@@ -851,7 +851,7 @@ async function placeLocked(b: BridgeQuote, wallet: Signer, onSigned?: (uid: stri
       if (await getOrder(b.src, signed).catch(() => null)) return sent(signed)
       if (!body?.errorType || body.errorType === 'DuplicatedOrder') {
         spin.stop(`${saffron('!')} Could not confirm the bridge order reached Ophis`)
-        throw Object.assign(new UserError(`Before trying again, check: ophis status ${signed} -c ${b.src.alias}`), { maybeSent: true })
+        throw Object.assign(new UserError(`Before trying again, check: ophis status ${signed} on ${b.src.alias}`), { maybeSent: true })
       }
     }
     spin.stop(`${red('✗')} Bridge order not sent`)
@@ -877,7 +877,7 @@ export async function watchBridge(b: BridgeQuote, uid: string): Promise<'done' |
     }
     await new Promise((resolve) => setTimeout(resolve, 5000))
   }
-  spin.stop(`${saffron('!')} Still bridging. Check it later with: ${bold(`ophis status ${uid} -c ${b.src.alias}`)}`)
+  spin.stop(`${saffron('!')} Still bridging. Check it later with: ${bold(`ophis status ${uid} on ${b.src.alias}`)}`)
   return 'unknown'
 }
 
@@ -951,7 +951,7 @@ export async function bridgeStatus(src: Network, uid: string): Promise<{ status:
  */
 export function saidStatus(status: string, src: Network, shed: Address, token: Address, yours = true): string {
   const whose = yours ? 'your CoW Shed' : "the owner's CoW Shed"
-  const hint = (how: string) => (yours ? `. ${how} with: ophis recover ${token} -c ${src.alias}` : '')
+  const hint = (how: string) => (yours ? `. ${how} with: ophis recover ${token} on ${src.alias}` : '')
   const said: Record<string, string> = {
     executed: 'Bridged: Across reports it arrived on the destination chain',
     in_progress: 'Bridging: on its way',

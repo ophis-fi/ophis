@@ -12,6 +12,8 @@ export const bold = paint('1')
 export const dim = paint('2')
 export const green = paint('32')
 export const red = paint('31')
+/** Text in a brand colour given as #rrggbb (a chain's colour, say). */
+export const tint = (hex: string) => paint(`38;2;${[1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16)).join(';')}`)
 
 // Everything that can steer a terminal or hide in text: control codes (Cc), format characters such as
 // bidi overrides and zero-width marks (Cf), line and paragraph separators, and every default-ignorable

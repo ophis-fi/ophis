@@ -122,7 +122,7 @@ describe('the CoW Shed address', () => {
   test('a bridge stuck in your shed says how to recover it, naming the token; someone else\'s does not', () => {
     const base = network('base')
     for (const status of ['expired', 'not_deposited', 'refund']) {
-      expect(saidStatus(status, base, X, USDC.address)).toContain(`with: ophis recover ${USDC.address} -c base`)
+      expect(saidStatus(status, base, X, USDC.address)).toContain(`with: ophis recover ${USDC.address} on base`)
       expect(saidStatus(status, base, X, USDC.address, false)).not.toContain('recover')
     }
     expect(saidStatus('expired', base, X, USDC.address)).toContain('Once the refund arrives, recover it with')
@@ -157,7 +157,7 @@ describe('the CoW Shed address', () => {
       settled([trade(uid), paidOut])
       const leg = await bridgeStatus(network('base', 'http://127.0.0.1:9'), uid)
       expect(leg).toEqual({ status: 'not_deposited', shed: getAddress(shed), owner, token: USDC.address })
-      expect(saidStatus(leg!.status, network('base'), leg!.shed, leg!.token)).toContain(`Recover them with: ophis recover ${USDC.address} -c base`)
+      expect(saidStatus(leg!.status, network('base'), leg!.shed, leg!.token)).toContain(`Recover them with: ophis recover ${USDC.address} on base`)
       // The orderbook names a transaction that did not settle this order (another order, or another contract): unknown.
       for (const logs of [[], [trade(`0x${'ab'.repeat(56)}`)], [trade(uid, X)]]) {
         settled(logs)
@@ -383,7 +383,7 @@ describe('the CoW Shed address', () => {
     const reads: { to?: string; data?: Hex }[] = []
     let held = 5_000_000n
     serve({ eth_call: ([call]) => (reads.push(call as never), pad(numberToHex(held))) }, { [`${getOphisOrderbookUrl(8453)}/api/v1/account/`]: [] })
-    const leftover = `Your CoW Shed still holds 5 USDC from an earlier bridge. Recover it first: ophis recover ${USDC.address} -c base`
+    const leftover = `Your CoW Shed still holds 5 USDC from an earlier bridge. Recover it first: ophis recover ${USDC.address} on base`
     const GUARD = 25_000_000n // a 25 USDC bridge: a leftover of 2.5 USDC or more must be recovered first
     await expect(checkLeftover(base, owner, USDC, GUARD)).rejects.toThrow(leftover)
     expect([getAddress(reads[0]!.to!), decodeFunctionData({ abi: erc20Abi, data: reads[0]!.data! }).args]).toEqual([USDC.address, [shedOf(owner)]]) // the shed's, not yours
@@ -712,7 +712,7 @@ describe('ophis recover, end to end (chain, orderbook and wallet answered here)'
     // Ten full pages: the 1,000 newest are read, and the note says older ones were not.
     seen = serve(chainOf(), { [ORDERS]: () => page(100), ...LISTS })
     const capped = await shedHoldings(base, ME)
-    expect(capped.notes).toEqual([`Only your latest 1,000 orders were checked. For a token an older bridge carried: ophis recover <token> -c base`])
+    expect(capped.notes).toEqual([`Only your latest 1,000 orders were checked. For a token an older bridge carried: ophis recover <token> on base`])
     expect(capped.holdings.map((h) => h.token.symbol)).toEqual(['ETH'])
     expect(seen.filter((u) => u.includes('/orders?offset=')).length).toBe(10)
   })
@@ -736,7 +736,7 @@ describe('ophis recover, end to end (chain, orderbook and wallet answered here)'
     serve(chainOf({ stuck: USDC.address }), { [ORDERS]: [BRIDGE], ...LISTS })
     const stuck = await shedHoldings(base, ME)
     expect(stuck.holdings.map((h) => h.token.symbol)).toEqual(['ETH'])
-    expect(stuck.notes).toEqual([`USDC (${USDC.address}) would not transfer out of your CoW Shed right now, so it was left out. To try it alone: ophis recover ${USDC.address} -c base`])
+    expect(stuck.notes).toEqual([`USDC (${USDC.address}) would not transfer out of your CoW Shed right now, so it was left out. To try it alone: ophis recover ${USDC.address} on base`])
     // Naming a token recovers only it: not the coin, not what the orders paid in.
     serve(chainOf(), { [ORDERS]: [BRIDGE], ...LISTS })
     expect((await shedHoldings(base, ME, 'WETH')).holdings).toEqual([])
@@ -854,8 +854,8 @@ describe('ophis recover, end to end (chain, orderbook and wallet answered here)'
     expect(none.outcome).toBe('left')
     expect(none.printed).toContain('Recovered   0 USDC')
     expect(none.printed).toContain('0.01 ETH  you now hold 1')
-    expect(none.printed).toContain(`25 USDC is still in your CoW Shed. To try again: ophis recover ${USDC.address} -c base`)
-    expect(none.printed).toContain('0.01 ETH is still in your CoW Shed. To try again: ophis recover -c base')
+    expect(none.printed).toContain(`25 USDC is still in your CoW Shed. To try again: ophis recover ${USDC.address} on base`)
+    expect(none.printed).toContain('0.01 ETH is still in your CoW Shed. To try again: ophis recover on base')
   })
   test('after sending, a balance that cannot be read back is never shown as zero', async () => {
     serve(chainOf({ failAt: numberToHex(MINED_IN), logs: [transferLog(USDC.address, 25_000_000n)] }), { [ORDERS]: [BRIDGE], ...LISTS })
@@ -868,6 +868,6 @@ describe('ophis recover, end to end (chain, orderbook and wallet answered here)'
     serve(chainOf({ held: gone, logs: [transferLog(USDC.address, 25_000_000n)] }), { [ORDERS]: [BRIDGE], ...LISTS })
     const one = await run(async () => true)
     expect(one.outcome).toBe('unknown')
-    expect(one.printed).toContain(`Could not read back how much USDC is still in your CoW Shed. To check: ophis recover ${USDC.address} -c base`)
+    expect(one.printed).toContain(`Could not read back how much USDC is still in your CoW Shed. To check: ophis recover ${USDC.address} on base`)
   })
 })
