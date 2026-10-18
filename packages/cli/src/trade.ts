@@ -184,6 +184,9 @@ export async function findToken(net: Network, query: string): Promise<Token> {
   }
   // Never on a partial view: an Ophis list that could not be read may hold this very name.
   if (found.incomplete) throw new UserError(`Could not read the Ophis token list just now. Try again, or use the token's address.`)
+  // A chain with its own coin has ether only as a token: ETH is what the Ophis list names so (BNB Chain), never a public
+  // list's lookalike (Wormhole ether on Polygon and Avalanche, which calls itself WETH but is not the WETH people mean).
+  if (query.toUpperCase() === 'ETH' && net.native !== 'ETH') throw new UserError(`${net.name} has no ETH: only wrapped ether is available, WETH.`)
   // Not on the Ophis list: the public lists swap.ophis.fi also offers on this chain may name it. The address found
   // is then described like a typed one (by the Ophis list, else by the chain, and the confirmation warns).
   const named = await publicListAddresses(net.id, query)
