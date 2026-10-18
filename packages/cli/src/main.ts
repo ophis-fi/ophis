@@ -390,7 +390,7 @@ main(process.argv.slice(2))
     const e = err as Error & { code?: string; shortMessage?: string }
     const message =
       err instanceof UserError ? e.message
-      : e.code?.startsWith('ERR_PARSE_ARGS') ? `${e.message}. See: ophis help`
+      : typeof e.code === 'string' && e.code.startsWith('ERR_PARSE_ARGS') ? `${e.message}. See: ophis help` // a library's code can be a number
       : `Something went wrong: ${clean(String(e.shortMessage ?? e.message))}`
     console.error(`\n  ${red('✗')} ${message}\n`)
     if (process.env.OPHIS_DEBUG) console.error(err)

@@ -1,6 +1,6 @@
 {
   "name": "@ophis/cli",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "private": true,
   "description": "Ophis in your terminal: quote and swap on Ophis without a browser.",
   "license": "GPL-3.0-or-later",

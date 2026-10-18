@@ -120,6 +120,15 @@ export function accountsOf(session: Pick<Session, 'namespaces'>): { address: Add
   return { address, chains }
 }
 
+/** WalletConnect's own failures as plain sentences: an expired pairing, a declined one, or the wallet's reason. */
+export function pairingFailed(err: unknown): UserError {
+  const { code, message } = (err ?? {}) as { code?: unknown; message?: unknown }
+  const text = clean(String(message ?? err))
+  if (/expired/i.test(text)) return new UserError('No wallet connected within 5 minutes. Run ophis connect again.')
+  if (code === 5000 || /reject|declin/i.test(text)) return new UserError('Your wallet declined the connection.')
+  return new UserError(`The wallet did not connect: ${text.slice(0, 120)}`)
+}
+
 /** Starts a pairing: a QR code to show, and a wait() that resolves once the user approves in their wallet. */
 export async function startConnect(chainIds: number[]): Promise<{ qr: string; uri: string; wait: () => Promise<{ address: Address; chains: number[] }> }> {
   const c = await client()
@@ -130,8 +139,10 @@ export async function startConnect(chainIds: number[]): Promise<{ qr: string; ur
   if (!uri) throw new UserError('Could not start a WalletConnect pairing. Check your internet connection.')
   const wait = async () => {
     const session = await Promise.race([
-      approval(),
-      new Promise<never>((_, reject) => setTimeout(() => reject(new UserError('No wallet connected within 5 minutes.')), WAIT * 1000)),
+      approval().catch((err: unknown) => {
+        throw pairingFailed(err)
+      }),
+      new Promise<never>((_, reject) => setTimeout(() => reject(new UserError('No wallet connected within 5 minutes. Run ophis connect again.')), WAIT * 1000)),
     ])
     const wallet = accountsOf(session)
     remember(wallet)

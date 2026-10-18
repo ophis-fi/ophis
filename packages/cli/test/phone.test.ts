@@ -12,7 +12,14 @@ mock.module('@walletconnect/sign-client', () => ({
     }),
   },
 }))
-const { accountsOf, phoneSigner } = await import('../src/phone.ts')
+const { accountsOf, pairingFailed, phoneSigner } = await import('../src/phone.ts')
+
+test('WalletConnect failures read as plain sentences, whatever their code', () => {
+  expect(pairingFailed({ code: 8000, message: 'Proposal expired' }).message).toBe('No wallet connected within 5 minutes. Run ophis connect again.')
+  expect(pairingFailed({ code: 5000, message: 'User rejected.' }).message).toBe('Your wallet declined the connection.')
+  expect(pairingFailed({ code: 1, message: 'relay \u001b[2Jdown' }).message).toBe('The wallet did not connect: relay [2Jdown')
+  expect(pairingFailed('socket hang up').message).toBe('The wallet did not connect: socket hang up')
+})
 
 test('a chain where the wallet gave another account is left out: nothing is signed there as the wrong owner', () => {
   const other = '0x2222222222222222222222222222222222222222'
