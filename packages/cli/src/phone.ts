@@ -157,15 +157,16 @@ export async function startConnect(chainIds: number[]): Promise<{ qr: string; ur
  * background in the top square's colour. Terminal.app draws block characters shorter than the line and fills the rest
  * of the line with the background colour: with a fixed background that leftover is a stripe across every row, which
  * phones cannot read; here it joins the top square. Pure black and white from the 256-colour palette (terminal themes
- * recolour the basic colours), a white border two squares wide, and the lowest error correction for bigger squares.
+ * recolour the basic colours), the four-square white border QR readers expect, and the lowest error correction for
+ * bigger squares.
  */
 export function terminalQr(text: string): string {
   const { modules } = QRCode.create(text, { errorCorrectionLevel: 'L' })
   const dark = (r: number, c: number) => r >= 0 && c >= 0 && r < modules.size && c < modules.size && !!modules.get(r, c)
   const colour = (r: number, c: number) => (dark(r, c) ? 16 : 231)
   let out = ''
-  for (let r = -2; r < modules.size + 2; r += 2) {
-    for (let c = -2; c < modules.size + 2; c++) out += `\x1b[48;5;${colour(r, c)};38;5;${colour(r + 1, c)}m▄`
+  for (let r = -4; r < modules.size + 4; r += 2) {
+    for (let c = -4; c < modules.size + 4; c++) out += `\x1b[48;5;${colour(r, c)};38;5;${colour(r + 1, c)}m▄`
     out += '\x1b[0m\n'
   }
   return out

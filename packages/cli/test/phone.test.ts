@@ -26,9 +26,9 @@ test('the terminal QR code paints both squares of every character, so no stripe 
       const cells = [...line.matchAll(/\x1b\[48;5;(16|231);38;5;(16|231)m▄/g)]
       return [cells.map((m) => m[1] === '16'), cells.map((m) => m[2] === '16')]
     })
-  const size = modules.size + 4 // the code and a white border of two squares on each side
+  const size = modules.size + 8 // the code and a white border of four squares on each side
   const expected = Array.from({ length: size }, (_, r) =>
-    Array.from({ length: size }, (_, c) => r >= 2 && c >= 2 && r < size - 2 && c < size - 2 && !!modules.get(r - 2, c - 2)),
+    Array.from({ length: size }, (_, c) => r >= 4 && c >= 4 && r < size - 4 && c < size - 4 && !!modules.get(r - 4, c - 4)),
   )
   expect(read.slice(0, size)).toEqual(expected)
   expect(read.slice(size).flat().includes(true)).toBe(false) // an odd row count ends on white

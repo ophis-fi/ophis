@@ -309,11 +309,11 @@ async function connectCommand() {
     '',
     '1. Open your wallet app on your phone.',
     `2. Open its WalletConnect scanner ${dim('(not the Camera app)')}:`,
-    `   MetaMask       ${dim('Scan, top right or in the account menu')}`,
+    `   MetaMask       ${dim('Scan (account menu or top right)')}`,
     `   Rabby          ${dim('Settings > WalletConnect')}`,
     `   Trust Wallet   ${dim('Scan QR code, top right')}`,
     `   Rainbow        ${dim('scan icon, home screen')}`,
-    `   Ledger Wallet  ${dim('an account, then its WalletConnect icon')}`,
+    `   Ledger Wallet  ${dim('an account > WalletConnect icon')}`,
     '3. Scan this code, then approve in the wallet.',
   ]
   const qr = pairing.qr.trimEnd().split('\n')
@@ -324,12 +324,11 @@ async function connectCommand() {
     columns >= 2 + width(qr[0]!) + 4 + Math.max(...help.map(width))
       ? qr.map((line, i) => `  ${line}    ${help[i - 1] ?? ''}`)
       : [...qr, '', ...help].map((line) => `  ${line}`)
-  console.log(lines.join('\n'))
-  // A window too short to show the whole code: the same code opens in an image window.
-  const image = height && height < lines.length + 3 ? await showQrImage(pairing.uri) : { opened: false, remove: () => {} }
-  if (image.opened) console.log(`\n  ${dim('This window is too small for the whole code, so it also opened in a separate window.')}`)
-  console.log()
-  // Ctrl-C would end the process without its exit handlers: delete the image (it holds the pairing key) first.
+  // A code is only scannable whole: in a window too narrow (lines would wrap) or too short for it, it opens as an image.
+  const fits = columns >= 2 + width(qr[0]!) && (!height || height >= lines.length + 1)
+  // Ctrl-C would end the process without its exit handlers: from before the image exists, delete it (it holds the
+  // pairing key) on the way out.
+  let image = { opened: false, remove: () => {} }
   const interrupted = () => {
     image.remove()
     console.log(`\n  ${saffron('!')} Stopped. No wallet was connected.\n`)
@@ -338,6 +337,9 @@ async function connectCommand() {
   process.on('SIGINT', interrupted)
   let wallet
   try {
+    if (!fits) image = await showQrImage(pairing.uri)
+    if (image.opened) console.log(`${help.map((line) => `  ${line}`).join('\n')}\n\n  ${dim('The code opened in a separate window: this one is too small to show it.')}`)
+    else console.log(fits ? lines.join('\n') : `${lines.join('\n')}\n\n  ${dim('Make this window bigger to show the whole code.')}`)
     wallet = await step('Waiting for your wallet to connect', pairing.wait)
   } finally {
     image.remove()
