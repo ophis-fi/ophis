@@ -166,7 +166,7 @@ async function swap(args: string[], flags: Flags) {
   // From here on, whatever stops the swap also says what state the wallet is in.
   const wrappedNote = () =>
     prep.wrapDone
-      ? ` You now hold ${amount(trade.atoms, 18)} ${trade.pay.symbol} instead of ${trade.sell.symbol}. To swap it: ophis swap ${formatUnits(trade.atoms, 18)} ${trade.pay.symbol} ${to} on ${net.alias}`
+      ? ` You now hold ${amount(trade.atoms, 18)} ${trade.pay.symbol} instead of ${trade.sell.symbol}. To swap it: ophis swap ${formatUnits(trade.atoms, 18)} ${trade.pay.symbol} ${clean(shellArg(to))} on ${net.alias}${clean(sameTerms(flags))}`
       : ''
   let sending = ''
   const interrupted = () => {
@@ -390,19 +390,37 @@ async function main(argv: string[]) {
       const words = chainWords(args, flags, 3)
       // "swap 5 USDC to ETH": the tokens go one after the other ("to" before a chain means the chain to receive on).
       if (words.length === 4 && /^(to|for)$/i.test(words[2]!)) {
-        throw new UserError(`Name the two tokens one after the other: ophis ${command} ${clean([words[0], words[1], words[3]].map((w) => shellArg(w!)).join(' '))}`)
+        // The corrected command keeps every chain and option given, so running it trades on the same terms.
+        const [amt, sell, , buy] = words.map((w) => clean(shellArg(w)))
+        const on = flags.chain !== undefined ? ` on ${network(flags.chain).alias}` : ''
+        const to = flags['to-chain'] !== undefined ? ` to ${network(flags['to-chain']).alias}` : ''
+        const terms = clean(sameTerms(flags))
+        // A chain's own name there ("to arbitrum", not a symbol such as ETH or ARB) means moving the token to that chain.
+        const dest = networks().find((n) => n.alias === words[3]!.toLowerCase())
+        if (dest) {
+          throw new UserError(`${dest.name} is a chain. To move ${sell} there: ophis bridge ${amt} ${sell}${on.replace(' on ', ' from ')} to ${dest.alias}${terms}. To swap and receive there: ophis swap ${amt} ${sell} <token>${on} to ${dest.alias}${terms}`)
+        }
+        throw new UserError(`Name the two tokens one after the other: ophis ${command} ${amt} ${sell} ${buy}${on}${to}${terms}`)
       }
-      if (!flags['to-chain']) return command === 'quote' ? quote(words, flags) : swap(words, flags)
+      // Present, even if blank, means a destination was named: a blank one is refused, never read as "stay here".
+      if (flags['to-chain'] === undefined) return command === 'quote' ? quote(words, flags) : swap(words, flags)
       const [amountText = '', from = '', to = ''] = need(words, 3, `ophis ${command} <amount> <token> <token> [on <chain>] to <chain>`)
       return crossChain(amountText, from, to, flags, command === 'quote')
     }
     case 'bridge': {
       const [amountText = '', token = ''] = need(chainWords(args, flags, 2), 2, 'ophis bridge <amount> <token> to <chain> [from <chain>]')
-      if (!flags['to-chain']) throw new UserError(`Where to? Name the chain, for example: ophis bridge ${clean(`${shellArg(amountText)} ${shellArg(token)}`)} to arbitrum`)
+      if (flags['to-chain'] === undefined) {
+        // The example keeps the chain and options given, and never names the source chain as the destination.
+        const src = network(flags.chain ?? DEFAULT_CHAIN)
+        const from = flags.chain !== undefined ? ` from ${src.alias}` : ''
+        const other = flags['to-token'] !== undefined ? ` --to-token ${shellArg(flags['to-token'])}` : ''
+        throw new UserError(`Where to? Name the chain, for example: ophis bridge ${clean(`${shellArg(amountText)} ${shellArg(token)}${from} to ${src.alias === 'arbitrum' ? 'base' : 'arbitrum'}${other}${sameTerms(flags)}`)}`)
+      }
       return crossChain(amountText, token, flags['to-token'] ?? token, flags, false)
     }
     case 'status': {
       const [uid = ''] = need(chainWords(args, flags, 1), 1, 'ophis status <order id> [on <chain>]')
+      if (flags['to-chain'] !== undefined) throw new UserError('An order lives on one chain: name it with "on", for example: ophis status <order id> on arbitrum')
       const net = network(flags.chain ?? DEFAULT_CHAIN, flags.rpc)
       // Not a bridge order: no bridge row. A bridge whose state could not be read says so, rather than look done.
       let unread = ''
@@ -416,8 +434,10 @@ async function main(argv: string[]) {
       return console.log()
     }
     case 'recover': {
-      const words = chainWords(args, flags, 0)
+      // Chain words come in pairs after the optional token, so an odd count means a token leads (even one named ON).
+      const words = chainWords(args, flags, args.length % 2)
       if (words.length > 1) throw new UserError('Usage: ophis recover [token] [on <chain>]')
+      if (flags['to-chain'] !== undefined) throw new UserError('Recovery happens on one chain: name it with "on", for example: ophis recover on arbitrum')
       const net = network(flags.chain ?? DEFAULT_CHAIN, flags.rpc)
       await banner()
       const wallet = await step('Reaching your wallet', () => phoneSigner(net.id))

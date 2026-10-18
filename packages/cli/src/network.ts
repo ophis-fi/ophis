@@ -51,8 +51,9 @@ export function chainWords(args: string[], flags: { chain?: string; 'to-chain'?:
       continue
     }
     const named = flags[key]
+    // network() refuses an empty or unknown name here, so a blank never reads as "no chain named".
     if (named !== undefined && network(named).id !== network(chain).id) throw new UserError(`Two different chains were named: ${clean(named)} and ${clean(chain)}. Name one.`)
-    flags[key] = chain
+    flags[key] = network(chain).alias
     i++
   }
   return words
