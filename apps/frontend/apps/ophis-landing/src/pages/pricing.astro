@@ -36,8 +36,8 @@ const FAQS = [
     a: `Yes. The public Intent API and the MCP server are free to call. The Intent API is rate-limited to 30 requests per minute per IP; partner-tier rate limits are reviewed case by case.`,
   },
   {
-    q: 'Are there rebates?',
-    a: `On indexed chains, including Arc, volume tiers (10% to 50% by rolling 30-day volume) weight rebate eligibility. Referrals accrue 8% or 12% of the verified base fee Ophis keeps on eligible settled trades. View rewards and payout status in your dashboard. For Arc referrals, MCP clients pass referrerCode to build_order; direct SDK integrations use v0.4.4 or later.`,
+    q: 'How do integrations track routed volume?',
+    a: `Referral attribution is live on indexed chains, including Arc. MCP clients pass referrerCode to build_order; direct SDK integrations use v0.4.4 or later for Arc referral tags. The get_integrator_earnings tool reports routed volume, the Ophis base fee, and the integrator's own fee on CoW-hosted chains by appCode.`,
   },
 ]
 ---
@@ -134,7 +134,7 @@ const FAQS = [
   <p>
     Chain-by-chain fee detail lives at <a href="https://docs.ophis.fi/fees">docs.ophis.fi/fees</a>,
     integrator terms at <a href="https://docs.ophis.fi/partners">docs.ophis.fi/partners</a> and
-    <a href="https://business.ophis.fi/">business.ophis.fi</a>, rebate mechanics at
+    <a href="https://business.ophis.fi/">business.ophis.fi</a>, referral attribution at
     <a href="https://docs.ophis.fi/affiliate">docs.ophis.fi/affiliate</a>, and CoW Protocol's own
     fee schedule at <a href="https://docs.cow.fi/governance/fees">docs.cow.fi</a>. See also
     <a href="/supported-chains/">supported chains</a> for which chains are Ophis-operated.

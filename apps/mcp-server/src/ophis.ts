@@ -50,13 +50,10 @@ import {
   assertAtoms,
   assertFeeAtoms,
   extractQuoteAmounts,
-  assignTier,
-  TIERS,
   type Address,
   type BuiltOrder,
   type OphisOrderDomain,
   type OphisPartnerFeeConfig,
-  type Tier,
 } from '@ophis/sdk'
 
 // The pure order-build core lives in @ophis/sdk (packages/sdk/src/order-build.ts)
@@ -267,14 +264,14 @@ export function validateOrder(p: ValidateOrderParams, nowSeconds: number): Valid
     if (doc) {
       if (doc.appCode !== 'ophis') {
         warnings.push(
-          `appData appCode is ${JSON.stringify(doc.appCode)} instead of "ophis": the order still settles and pays the partner fee, but the rebate indexer attributes zero rebate/affiliate volume for it, silently. Use build_order or set appCode to "ophis".`,
+          `appData appCode is ${JSON.stringify(doc.appCode)} instead of "ophis": Ophis referral attribution requires appCode "ophis". Use build_order or set appCode to "ophis".`,
         )
       }
       const metadata = (doc.metadata && typeof doc.metadata === 'object' ? doc.metadata : {}) as Record<string, unknown>
       const partnerFee = metadata.partnerFee
       if (partnerFee === undefined) {
         warnings.push(
-          'appData metadata.partnerFee is absent: the order carries no Ophis fee and earns no rebate or affiliate attribution. Ophis integrations normally embed it; use build_order, which adds the correct partnerFee for the chain.',
+          'appData metadata.partnerFee is absent: the order carries no Ophis fee and is missing the fee metadata used for referral attribution. Use build_order, which adds the correct partnerFee for the chain.',
         )
       } else {
         const entries = Array.isArray(partnerFee) ? partnerFee : [partnerFee]
@@ -749,33 +746,6 @@ export async function submitOrder(p: SubmitOrderParams, fetchImpl: typeof fetch 
   return json // the order UID (string) on success
 }
 
-export interface TierStatus {
-  wallet: Address
-  /** Live status from the rebate indexer (rebates.ophis.fi), or null if unavailable. */
-  indexer: unknown
-  /** The static tier ladder for context. */
-  tiers: readonly Tier[]
-}
-
-/** Looks up a wallet's fee-rebate tier/status from the live rebate indexer. */
-export async function lookupTier(wallet: Address, fetchImpl: typeof fetch = fetch): Promise<TierStatus> {
-  const w = checksum(wallet, 'wallet')
-  let indexer: unknown = null
-  try {
-    const res = await timedFetch(
-      fetchImpl,
-      `${REBATE_API}/tier/${w}`,
-      { headers: { accept: 'application/json' } },
-      TIMEOUT_MS.rebate,
-      'lookup_tier',
-    )
-    indexer = res.ok ? await res.json() : { error: `rebate indexer ${res.status}` }
-  } catch (e) {
-    indexer = { error: `rebate indexer unreachable: ${(e as Error).message}` }
-  }
-  return { wallet: w, indexer, tiers: TIERS }
-}
-
 /** Grammar for an integrator appCode / referral code (mirrors the rebate indexer). */
 const APP_CODE_RE = /^[a-z0-9_-]{3,64}$/
 
@@ -884,7 +854,7 @@ export function listChains(): ChainList {
         name,
         ophisOperated: ophisOperated.has(chainId),
         settlement,
-        reason: 'no configured orderbook URL — get_quote/build_order will throw for this chain',
+        reason: 'no configured orderbook URL; get_quote/build_order will throw for this chain',
       })
     }
   }
@@ -896,8 +866,6 @@ function truncate(value: unknown, max = 300): string {
   const s = typeof value === 'string' ? value : JSON.stringify(value)
   return s.length > max ? s.slice(0, max) + '…' : s
 }
-
-export { assignTier }
 
 // ---------------------------------------------------------------------------
 // Agent data tools: balances, portfolio, gas, OHLCV chart, expected surplus.
@@ -971,7 +939,7 @@ function publicClient(chainId: number, rpcUrls?: Record<number, string>) {
   const override = rpcUrls?.[chainId]
   const urls = override ? [override] : PUBLIC_RPCS[chainId]
   if (!urls || urls.length === 0) {
-    throw new Error(`no public RPC configured for chain ${chainId} — pass an rpcUrl override`)
+    throw new Error(`no public RPC configured for chain ${chainId}; pass an rpcUrl override`)
   }
   // Minimal chain object: viem only needs the id + multicall3 address for the
   // calls these tools make (getBalance / multicall / gas). Native currency is

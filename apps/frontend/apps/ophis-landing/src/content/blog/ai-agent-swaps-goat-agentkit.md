@@ -2,7 +2,7 @@
 title: "AI agent token swaps with GOAT or Coinbase AgentKit"
 description: "Wire a swap tool into a GOAT SDK or Coinbase AgentKit agent with Ophis: bounded orders, pinned receiver, capped slippage, gasless MEV-protected settlement."
 pubDate: 2026-07-12
-updatedDate: 2026-10-04
+updatedDate: 2026-10-19
 author: Ophis
 tags: [ai-agents, goat, agentkit, mev, swaps]
 draft: false
@@ -94,7 +94,7 @@ Both plugins run on supported EVM chains; the READMEs in the [Ophis monorepo](ht
 
 ## The shared core: @ophis/agent-swap
 
-The two plugins are thin adapters over `@ophis/agent-swap`, a framework-agnostic core where the order flow is written and tested once: quote, fee-bearing appData, EIP-712 signature, relayer approval, submission, rebate enrollment. If your agent runs on neither framework, implement the five-method `OphisAgentWallet` interface (`getAddress`, `getChainId`, `readErc20Decimals`, `ensureErc20Allowance`, `signTypedData`) and call the core directly:
+The two plugins are thin adapters over `@ophis/agent-swap`, a framework-agnostic core where the order flow is written and tested once: quote, fee-bearing appData, EIP-712 signature, relayer approval, submission, owner enrollment for indexing and trade rewards. If your agent runs on neither framework, implement the five-method `OphisAgentWallet` interface (`getAddress`, `getChainId`, `readErc20Decimals`, `ensureErc20Allowance`, `signTypedData`) and call the core directly:
 
 ```ts
 import { executeOphisSwap, type OphisAgentWallet } from '@ophis/agent-swap';
@@ -122,13 +122,13 @@ An autonomous signer has no confirmation dialog, so the properties a human would
 
 Two limits to plan around: the flow is ERC-20 to ERC-20 only (wrap native ETH to WETH first), and it signs as an EOA via `signTypedData`, not as a Safe. Before removing the human from the loop entirely, read the autonomous-agent section of the first post: unattended operation also needs policy gates and spend caps around the signer.
 
-## The referral code pays the builder
+## Attribute routed volume to the builder
 
-Both snippets pass a `referralCode`. Every order carries the Ophis partner fee plus that code in its appData, attributing the swap volume your agent routes to you: you earn 8% of the verified base fee Ophis keeps on that volume, with payout status in your dashboard (standard tier capped at $1M referred volume per month; an invitation-only Partner tier pays 12%, uncapped). Mint a code at [swap.ophis.fi/#/affiliate](https://swap.ophis.fi/#/affiliate) (details in the [AI agent docs](https://docs.ophis.fi/ai-agents)).
+Both snippets pass a `referralCode`. Every order carries the Ophis partner fee plus that code in its appData, attributing the swap volume your agent routes to your integration. Use `get_integrator_earnings` to read routed volume, the Ophis base fee, and your own fee on CoW-hosted chains by appCode. Create a code at [swap.ophis.fi/#/affiliate](https://swap.ophis.fi/#/affiliate). See the [AI agent docs](https://docs.ophis.fi/ai-agents) for the workflow.
 
 ## Not writing TypeScript? Use the MCP server
 
-If the agent is not TypeScript (an MCP-native setup, a Python loop, anything that speaks HTTP), point it at the hosted MCP server at `https://mcp.ophis.fi/mcp` ([connection guide](https://docs.ophis.fi/ai-agents#mcp-server-recommended)): keyless, unauthenticated, all 14 supported EVM chains including Arc, fourteen tools from `parse_intent` through `validate_order` and `submit_order`, and the same rule that the agent signs locally with its own key. For Arc referrals through MCP, pass the optional `referrerCode` to `build_order`; eligible settled Arc trades are indexed for rebates. Direct SDK integrations need v0.4.4 or later for Arc referral tags. The [first post](/blog/let-an-ai-agent-swap-tokens/) walks through it.
+If the agent is not TypeScript (an MCP-native setup, a Python loop, anything that speaks HTTP), point it at the hosted MCP server at `https://mcp.ophis.fi/mcp` ([connection guide](https://docs.ophis.fi/ai-agents#mcp-server-recommended)): keyless, unauthenticated, all 14 supported EVM chains including Arc, thirteen tools from `parse_intent` through `validate_order` and `submit_order`, and the same rule that the agent signs locally with its own key. For Arc referrals through MCP, pass the optional `referrerCode` to `build_order`; settled Arc trades are indexed for routed volume and referral attribution. Direct SDK integrations need v0.4.4 or later for Arc referral tags. The [first post](/blog/let-an-ai-agent-swap-tokens/) walks through it.
 
 ## FAQ
 

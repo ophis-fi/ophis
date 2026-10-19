@@ -1,7 +1,7 @@
 {
   "name": "ophis",
   "title": "Ophis MCP",
-  "description": "Fourteen agent-facing tools for the Ophis DEX: parse swap intents, resolve trusted tokens, fetch best-execution quotes, build and validate bounded signable CoW orders, relay pre-signed orders, and inspect tiers, integrator earnings, chains, balances, portfolios, gas, charts, and expected surplus. Public, unauthenticated, and keyless: the server never holds keys or signs; build_order pins the order receiver to the owner and the agent signs locally.",
+  "description": "Thirteen agent-facing tools for the Ophis DEX: parse swap intents, resolve trusted tokens, fetch best-execution quotes, build and validate bounded signable CoW orders, relay pre-signed orders, and inspect integrator earnings, chains, balances, portfolios, gas, charts, and expected surplus. Public, unauthenticated, and keyless: the server never holds keys or signs; build_order pins the order receiver to the owner and the agent signs locally.",
   "endpoint": "https://mcp.ophis.fi/mcp",
   "transport": "streamable-http",
   "authentication": "none",
@@ -11,8 +11,7 @@
     { "name": "get_quote", "description": "Best-execution quote from the chain's Ophis orderbook." },
     { "name": "build_order", "description": "A bounded, ready-to-sign EIP-712 CoW order (receiver pinned to owner; correct per-chain settlement; CIP-75 partner fee)." },
     { "name": "submit_order", "description": "Relay a pre-signed order to the orderbook." },
-    { "name": "lookup_tier", "description": "A wallet's fee-rebate tier and live status." },
-    { "name": "get_integrator_earnings", "description": "Integrator routed volume, own-fee accrual, referral rebates, and paid-to-date figures by appCode." },
+    { "name": "get_integrator_earnings", "description": "Routed volume, the Ophis base fee, and the integrator's own fee on CoW-hosted chains, by appCode." },
     { "name": "list_chains", "description": "Supported chains with orderbook host and settlement contract." },
     { "name": "get_balances", "description": "A wallet's native and ERC-20 balances on one chain via a public RPC." },
     { "name": "get_portfolio", "description": "A wallet's token balances across multiple chains." },

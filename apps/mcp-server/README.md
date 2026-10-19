@@ -3,7 +3,7 @@
 Agent-facing **MCP server** for the Ophis DEX, deployed as a Cloudflare Worker
 with the Streamable-HTTP transport at **`https://mcp.ophis.fi/mcp`**.
 
-Current server release: **v0.1.2**, with 14 tools across 15 configured EVM
+Current server release: **v0.2.0**, with 13 tools across 15 configured EVM
 chains (14 mainnets plus Sepolia).
 
 It exposes the Ophis trading surface to autonomous agents and MCP clients
@@ -12,9 +12,10 @@ without making them re-derive the fork's non-obvious, easy-to-get-wrong details
 -hosted Optimism, Unichain, Robinhood Chain, and Arc orderbook hosts, the CIP-75 partner-fee appData shape, and
 receiver pinning).
 
-Arc (5042) charges the 1 bp trading fee and is indexed for volume and referral
-rebates. Server referral defaults apply; a per-call code overrides the default,
-and an empty string opts out. Eligibility requires a verified settled trade.
+Arc (5042) charges the 1 bp base fee and supports routed-volume indexing and
+referral attribution. Server referral defaults apply; a per-call code overrides
+the default, and an empty string opts out. After an order is accepted,
+submit_order enrolls the owner for indexing and the live trade-rewards campaign.
 
 The tools operate on configured EVM orderbooks. `list_chains` reports configuration,
 not a live availability probe. The standalone app's externally funded NEAR
@@ -26,7 +27,7 @@ See [network and funding coverage](https://docs.ophis.fi/networks-assets).
 The server holds **no private keys and never signs**. `build_order` returns a
 *bounded, ready-to-sign* EIP-712 payload with the order **receiver pinned to the
 owner** (the #1 autonomous-agent drain vector); the agent signs with its own key
-and submits. This is the V1 "bounded capability" pattern — an off-chain misuse
+and submits. This is the V1 "bounded capability" pattern, an off-chain misuse
 guard, not an on-chain authorization boundary. It is public and unauthenticated:
 every backing endpoint is already public, and the tools are read/build-only.
 
@@ -41,8 +42,7 @@ every backing endpoint is already public, and the tools are read/build-only.
 | `expected_surplus` | Estimate price improvement versus a public aggregator (KyberSwap), in basis points. |
 | `build_order` | A bounded, ready-to-sign CoW order: correct per-chain settlement + orderbook, CIP-75 partner fee in appData, receiver pinned to owner. |
 | `submit_order` | Relay a **pre-signed** order to the orderbook (`/api/v1/orders`). No keys held here. |
-| `lookup_tier` | A wallet's fee-rebate tier + live status (`rebates.ophis.fi/tier/:wallet`). |
-| `get_integrator_earnings` | What an integrator's own-fee routing earned, by appCode: routed volume + own-fee + referral rebate paid-to-date across indexed chains, including Arc, with configured own-fee payout lanes on Optimism/Unichain, Robinhood/Arc own-fee accruals without an Ophis payout lane, and CoW-hosted accruals under CoW terms (`rebates.ophis.fi/earnings/:appCode`). |
+| `get_integrator_earnings` | Routed volume, the Ophis base fee, and the integrator's own fee on CoW-hosted chains, by appCode (`rebates.ophis.fi/earnings/:appCode`). |
 | `get_balances` | Native + ERC-20 balances for an address on one chain. |
 | `get_portfolio` | Native + ERC-20 balances across multiple chains. |
 | `get_gas` | Current gas price for a chain (informational; offchain order signatures are gasless, approvals and other wallet transactions are not). |

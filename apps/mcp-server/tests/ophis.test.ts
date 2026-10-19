@@ -142,7 +142,9 @@ describe('validateOrder (offline preflight)', () => {
   it('warns (not errors) on a non-ophis appCode', () => {
     const doc = JSON.stringify({ version: APP_DATA_VERSION, appCode: 'notophis', metadata: {} })
     const r = validateOrder({ chainId: 10, fullAppData: doc }, NOW)
-    expect(r.warnings.some((w) => /appCode/.test(w) && /zero rebate/i.test(w))).toBe(true)
+    expect(r.warnings.some((w) => /appCode/.test(w) && /referral attribution/i.test(w))).toBe(true)
+    expect(r.warnings.some((w) => /partnerFee/.test(w) && /referral attribution/i.test(w))).toBe(true)
+    expect(r.warnings.join(' ')).not.toMatch(/rebate|payout/i)
   })
 
   it('errors when the receiver is not the owner (drain guard)', () => {

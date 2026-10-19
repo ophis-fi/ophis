@@ -50,7 +50,7 @@ Eligible trading volume determines your rebate tier; it does not guarantee a pay
 
 ## Swapping on Unichain from an AI agent
 
-The same rails are exposed to agents. Ophis runs a remote MCP server at `https://mcp.ophis.fi/mcp` ([connection guide](https://docs.ophis.fi/ai-agents#mcp-server-recommended)), keyless and unauthenticated, with fourteen tools covering 14 EVM chains, including Unichain and Arc. `list_chains` resolves Unichain's orderbook host and settlement domain (the sovereign-deployment detail above, handled for you). `get_quote` and `build_order` prepare a bounded order with the receiver pinned to the owner, `validate_order` checks it, and `submit_order` relays the signature. The server never holds keys and never signs; the agent signs locally with its own key.
+The same rails are exposed to agents. Ophis runs a remote MCP server at `https://mcp.ophis.fi/mcp` ([connection guide](https://docs.ophis.fi/ai-agents#mcp-server-recommended)), keyless and unauthenticated, with thirteen tools covering 14 EVM chains, including Unichain and Arc. `list_chains` resolves Unichain's orderbook host and settlement domain (the sovereign-deployment detail above, handled for you). `get_quote` and `build_order` prepare a bounded order with the receiver pinned to the owner, `validate_order` checks it, and `submit_order` relays the signature. The server never holds keys and never signs; the agent signs locally with its own key.
 
 For the full safety model (bounded orders, pinned receivers, and what to lock down before an agent signs unattended), read [how to let an AI agent swap tokens](/blog/let-an-ai-agent-swap-tokens/) and the [AI agent docs](https://docs.ophis.fi/ai-agents).
 

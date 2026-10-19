@@ -65,11 +65,11 @@ View rewards and payout status in your dashboard. The pool is 21.25% of collecte
 
 ## Agents, bots, and integrators: earning on OP flow
 
-Optimism flow does not have to come from a human clicking a UI. Three integration surfaces exist, and integrators earn on routed flow through the affiliate program: mint a referral code, and trades from your referred wallets are attributed to you.
+Optimism flow does not have to come from a human clicking a UI. Integrations can attach a referral code so settled trades are attributed to the code, then track routed volume and fees by appCode.
 
-- **MCP server.** A hosted, keyless endpoint at `https://mcp.ophis.fi/mcp` exposes fourteen tools, from `parse_intent` and `get_quote` through `build_order`, `validate_order`, and `submit_order`. `list_chains` resolves the Optimism orderbook and settlement domain, `build_order` pins the receiver to the owner, and the server never holds keys or signs anything. The [agent walkthrough](/blog/let-an-ai-agent-swap-tokens/) covers the full safety model.
+- **MCP server.** A hosted, keyless endpoint at `https://mcp.ophis.fi/mcp` exposes thirteen tools, from `parse_intent` and `get_quote` through `build_order`, `validate_order`, and `submit_order`. `list_chains` resolves the Optimism orderbook and settlement domain, `build_order` pins the receiver to the owner, and the server never holds keys or signs anything. The [agent walkthrough](/blog/let-an-ai-agent-swap-tokens/) covers the full safety model.
 - **SDK.** `@ophis/sdk` resolves the orderbook URL and the EIP-712 signing domain per chain. That is exactly the part integrations get wrong when they hardcode canonical endpoints on a sovereign chain. Details in the [AI agent docs](https://docs.ophis.fi/ai-agents).
-- **Affiliate rebate.** Anyone can mint a referral code and earn 8% of the verified base fee Ophis keeps on every trade their referred wallets route, with rewards and payout status in your dashboard. The regular tier is capped at $1M of referred volume per month; an invitation-only Partner tier pays 12%, uncapped. Mechanics in the [affiliate docs](https://docs.ophis.fi/affiliate).
+- **Referral attribution.** Create a referral code and pass it as `referrerCode` to `build_order`. Use `get_integrator_earnings` to read routed volume, the Ophis base fee, and your own fee on CoW-hosted chains by appCode. Details in the [partner docs](https://docs.ophis.fi/partners).
 
 For apps that want the interface without the plumbing, `@ophis/widget-react` embeds the swap form directly; see the [widget docs](https://docs.ophis.fi/widget).
 

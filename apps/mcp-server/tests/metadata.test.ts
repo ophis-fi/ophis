@@ -33,15 +33,27 @@ describe('MCP release metadata', () => {
     )
   })
 
-  it('keeps the registered and published 14-tool inventories identical', () => {
+  it('keeps the registered and published 13-tool inventories identical', () => {
     const registerTool = vi.fn()
     registerOphisTools({ registerTool } as never)
     const registered = registerTool.mock.calls.map(([name]) => name as string)
     const published = registryMetadata._meta['io.modelcontextprotocol.registry/publisher-provided'].tools
 
     expect([...registered].sort()).toEqual([...OPHIS_TOOL_NAMES].sort())
-    expect(new Set(registered)).toHaveLength(14)
+    expect(new Set(registered)).toHaveLength(13)
     expect(published).toEqual(OPHIS_TOOL_NAMES)
-    expect(registered).toHaveLength(14)
+    expect(registered).toHaveLength(13)
+  })
+
+  it('advertises live data in tool and referral parameter descriptions', () => {
+    const registerTool = vi.fn()
+    registerOphisTools({ registerTool } as never)
+    for (const [, config] of registerTool.mock.calls) {
+      expect(config.description).not.toMatch(/rebate|payout|paid-to-date/i)
+      if (config.inputSchema.referrerCode) {
+        expect(config.inputSchema.referrerCode.description).toContain('attribution')
+        expect(config.inputSchema.referrerCode.description).not.toMatch(/rebate|payout|credits/i)
+      }
+    }
   })
 })

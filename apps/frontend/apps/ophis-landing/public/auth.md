@@ -18,8 +18,8 @@ Token issuers can retain freezing or transfer restrictions independently of Ophi
   structured intent). Rate limited to 30 requests/min/IP. Spec:
   `https://ophis.fi/openapi.json`.
 - **MCP server:** `https://mcp.ophis.fi/mcp` (discovery at
-  `https://ophis.fi/.well-known/mcp.json`). Fourteen public tools: parse_intent,
-  resolve_token, get_quote, build_order, submit_order, lookup_tier, list_chains,
+  `https://ophis.fi/.well-known/mcp.json`). Thirteen public tools: parse_intent,
+  resolve_token, get_quote, build_order, submit_order, list_chains,
   get_balances, get_portfolio, get_gas, get_token_chart, expected_surplus,
   get_integrator_earnings, validate_order.
 - **Agent skills index:** `https://ophis.fi/.well-known/agent-skills/index.json`
