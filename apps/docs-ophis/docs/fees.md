@@ -36,7 +36,7 @@ Gas, liquidity-pool fees, price impact and bridge costs also affect the amount y
 
 ## Price improvement {/* #standard-price-improvement-capture */}
 
-Price improvement is the extra amount a solver finds beyond the reference quote. Ophis keeps the share shown above, up to the cap, and you get the rest, including everything above the cap. Surplus is a different measure: it counts from your signed minimum, which includes your slippage allowance.
+Price improvement is the extra amount a solver finds beyond the reference quote. Ophis keeps 80% of price improvement on volatile pairs, capped at 99 bps of volume, or 50% on stablecoin pairs, capped at 20 bps. You get the rest, including everything above the cap. Surplus is a different measure: it counts from your signed minimum, which includes your slippage allowance.
 
 On Ophis-operated chains, improvement capture applies to **in-market orders**. Limit orders priced away from the market pay only the base fee.
 

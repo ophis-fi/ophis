@@ -18,7 +18,7 @@ Connect your agent to Ophis to parse requests, get quotes and build orders for w
 
 ## Connect a client {/* #connect-your-mcp-client */}
 
-The public MCP server uses streamable HTTP and requires no API key:
+The current server release is **v0.1.2**. It uses streamable HTTP and requires no API key:
 
 ```
 https://mcp.ophis.fi/mcp
@@ -26,7 +26,6 @@ https://mcp.ophis.fi/mcp
 
 | Setting | Value |
 | --- | --- |
-| Server release | v0.1.2 |
 | Request header | `Accept: text/event-stream` |
 | Missing header | HTTP 406 |
 
@@ -90,14 +89,16 @@ Add this to `.vscode/mcp.json`:
 
 OpenAI Agents SDK, LangChain and custom clients can connect with a streamable-HTTP MCP transport.
 
-## Available MCP tools {/* #mcp-server-recommended */}
+## Main MCP tools {/* #mcp-server-recommended */}
+
+Your MCP client lists every tool the server offers.
 
 | Tool | Purpose |
 | --- | --- |
 | `parse_intent` | Parse natural language into structured fields. |
 | `resolve_token` | Resolve a symbol against trusted Ophis/CoW lists; check the chain, address and ambiguity. |
 | `get_quote` | Fetch an executable quote. |
-| `build_order` | Build a bounded order with the receiver pinned to its owner. |
+| `build_order` | Build a bounded order with the receiver unconditionally pinned to the owner. |
 | `submit_order` | Submit a signed order to its chain's orderbook. |
 | `validate_order` | Check appCode, host, domain, appData hash and receiver for a manually built order. |
 | `list_chains` | List supported chains, settlement contracts and orderbook hosts. |
@@ -107,6 +108,8 @@ OpenAI Agents SDK, LangChain and custom clients can connect with a streamable-HT
 | `get_gas` | Read the current gas price. |
 | `get_token_chart` | Fetch an OHLCV price chart. |
 | `expected_surplus` | Compare an Ophis sell quote with the open market using `beatBps`. |
+
+MCP clients pass `referrerCode` to `build_order` for referral attribution, including on Arc.
 
 ## Build a swap link {/* #the-integration-flow */}
 
@@ -254,7 +257,7 @@ The handler posts `{ "text": <text> }` to `https://ophis.fi/api/intent`, then re
 
 ## Framework adapters {/* #drop-in-framework-adapters */}
 
-These packages quote, sign EIP-712 orders, approve the relayer and submit using the agent's wallet:
+The v0.3.7 adapter family is built and published against `@ophis/sdk` v0.4.5. These packages quote, sign EIP-712 orders, approve the relayer and submit using the agent's wallet:
 
 | Package | Version | Framework | Entry point |
 | --- | --- | --- | --- |
@@ -265,7 +268,6 @@ These packages quote, sign EIP-712 orders, approve the relayer and submit using 
 
 | Requirement | Value |
 | --- | --- |
-| SDK dependency | `@ophis/sdk` v0.4.5 |
 | Assets | ERC-20 to ERC-20; wrap native ETH to WETH before using an adapter |
 | Owner and receiver | The agent's wallet |
 | AgentKit and GOAT inputs | `sellToken`, `buyToken`, `sellAmount` in whole units, such as `"1.5"` |
@@ -317,28 +319,27 @@ Adapters select the stable-pair policy from a verified stablecoin list.
 | Fee | Amount |
 | --- | --- |
 | Base | 1 bp on every supported pair |
-| Stable-pair improvement | 50%, capped at 20 bps |
-| Volatile-pair improvement | 80%, capped at 99 bps |
+| Reference-quote improvement | 50% capped at 20 bps for stable pairs, versus 80% capped at 99 bps for volatile pairs |
 
 See [Fees](/fees) for the chain-specific policy and [Security and audits](/audits) for review coverage.
 
 ## Shell agent skills {/* #markdown-skill-family-shell-capable-agents */}
 
-Shell-capable agents can use the published skill family with `curl`, `jq` and Foundry's `cast`.
+Use [`@ophis/agent-skills`](https://www.npmjs.com/package/@ophis/agent-skills)
+v0.1.1 for runtimes with a shell, `curl`, `jq` and Foundry's `cast`.
 
 | Resource | Use |
 | --- | --- |
 | [Skill index](https://ophis.fi/.well-known/agent-skills/index.json) | Download files and verify their sha256 digests. |
 | [Umbrella skill](https://ophis.fi/.well-known/agent-skills/ophis/SKILL.md) | Read contract addresses, signing domains, orderbook hosts and slippage limits. |
 | Sub-skills | `ophis-quote`, `ophis-swap`, `ophis-order-status`, `ophis-cancel`, `ophis-surplus-report` |
-| npm package | [`@ophis/agent-skills`](https://www.npmjs.com/package/@ophis/agent-skills), v0.1.1 |
 | Skill chains | Optimism, Unichain and Robinhood Chain |
 
 Use MCP `list_chains` for supported networks beyond the shell skills.
 
 ## Build SDK orders {/* #submitting-orders-programmatically */}
 
-Install `@ophis/sdk` with `npm install @ophis/sdk` to build orders for the [CoW Protocol orderbook API](https://docs.cow.fi/cow-protocol/reference/apis/orderbook).
+**`@ophis/sdk`**, published on npm (v0.4.5, public), builds orders for the [CoW Protocol orderbook API](https://docs.cow.fi/cow-protocol/reference/apis/orderbook). Install it with `npm install @ophis/sdk`.
 
 <Steps>
 

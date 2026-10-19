@@ -85,11 +85,11 @@ See [Networks & assets](/networks-assets#externally-funded-swaps-through-near-in
 | Network group | Coverage |
 | --- | --- |
 | App and CLI total | 15 EVM networks, including the Sepolia testnet |
-| EVM mainnets | Ethereum, Arbitrum One, Avalanche, Base, BNB Smart Chain, Gnosis Chain, Ink, Linea, Optimism, Plasma, Polygon, Robinhood Chain, Unichain, Arc |
+| EVM mainnets (14) | Ethereum, Arbitrum One, Avalanche, Base, BNB Smart Chain, Gnosis Chain, Ink, Linea, Optimism, Plasma, Polygon, Robinhood Chain, Unichain, and Arc |
 | Testnet | Sepolia |
 | NEAR Intents sources and destinations | Solana, Bitcoin, Monad, Hyperliquid (Hypercore), X Layer, Sui, Tron, Starknet, Zcash |
 
-Use the token selector to find assets on each network. Arc uses USDC for gas and connects through Circle bridges.
+Use the token selector to find assets on each network. Arc is available in the swap app (chain ID 5042), uses USDC for gas and connects through Circle bridges.
 
 ## Stock tokens {/* #robinhood-stock-tokens */}
 

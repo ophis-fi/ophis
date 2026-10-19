@@ -81,13 +81,14 @@ Quote-only responses set `ophis.assemblable` to `false`. The `pathId`, `ophis.or
 
 <Steps>
 
-1. **Request a signable quote.** Add your signing account as `userAddr` to this request to receive `pathId`, the unsigned order, and its signing envelope.
+1. **Request a signable quote.** Replace the example `userAddr` with your signing account to receive `pathId`, the unsigned order, and its signing envelope.
 
    ```bash
    curl -sS -X POST https://compat.ophis.fi/sor/quote/v3 \
      -H 'content-type: application/json' \
      -d '{
        "chainId": 10,
+       "userAddr": "0x1234567890123456789012345678901234567890",
        "inputTokens":  [{ "tokenAddress": "0x0b2C639c533813f4Aa9D7837CAf62653d097Ff85", "amount": "1000000000" }],
        "outputTokens": [{ "tokenAddress": "0x4200000000000000000000000000000000000006", "proportion": 1 }],
        "slippageLimitPercent": 0.3

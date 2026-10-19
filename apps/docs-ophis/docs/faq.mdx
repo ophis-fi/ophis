@@ -33,7 +33,7 @@ export const faqLd = {
       "name": "Which networks are supported?",
       "acceptedAnswer": {
         "@type": "Answer",
-        "text": "The swap app and CLI support EVM mainnets and the Sepolia testnet. The standalone app also accepts NEAR Intents sources and destinations. Interface: Networks. App and CLI: 15 EVM networks, including Sepolia. EVM mainnets: Ethereum, Arbitrum One, Avalanche, Base, BNB Smart Chain, Gnosis Chain, Ink, Linea, Optimism, Plasma, Polygon, Robinhood Chain, Unichain, Arc. NEAR Intents: Bitcoin, Solana, Monad, X Layer, Sui, Tron, Hyperliquid (Hypercore), Starknet, Zcash. SDK v0.4.3 and hosted MCP: 14 EVM mainnets, including Arc."
+        "text": "The swap app and CLI support 14 EVM chains on mainnet, plus the Sepolia testnet. The standalone app also accepts NEAR Intents sources and destinations. Interface: Networks. App and CLI: 15 EVM networks, including Sepolia. EVM mainnets: Ethereum, Arbitrum One, Avalanche, Base, BNB Smart Chain, Gnosis Chain, Ink, Linea, Optimism, Plasma, Polygon, Robinhood Chain, Unichain, Arc. NEAR Intents: Bitcoin, Solana, Monad, X Layer, Sui, Tron, Hyperliquid (Hypercore), Starknet, Zcash. SDK v0.4.3 and hosted MCP: 14 EVM mainnets, including Arc."
       }
     },
     {
@@ -65,7 +65,7 @@ export const faqLd = {
       "name": "How are partner fees collected?",
       "acceptedAnswer": {
         "@type": "Answer",
-        "text": "The app and SDK put the base fee in appData. The Ophis backend applies improvement capture on operated chains; appData carries both components on CoW-hosted chains. Ophis fee component: Rate. Base: 1 bp. Volatile-pair improvement capture: 80%, capped at 99 bps. Stable-pair improvement capture: 50%, capped at 20 bps."
+        "text": "Batch-auction orders carry Ophis's 1 bp base. The app and SDK put the base fee in appData. The Ophis backend applies improvement capture on operated chains; appData carries both components on CoW-hosted chains. Ophis fee component: Rate. Base: 1 bp. Volatile-pair improvement capture: 80%, capped at 99 bps. Stable-pair improvement capture: 50%, capped at 20 bps."
       }
     },
     {
@@ -114,7 +114,7 @@ Connect an EVM wallet for batch-auction orders. For an external NEAR source, use
 <details id="which-networks-are-supported">
 <summary>Which networks are supported?</summary>
 
-The swap app and CLI support EVM mainnets and the Sepolia testnet. The standalone app also accepts NEAR Intents sources and destinations.
+The swap app and CLI support 14 EVM chains on mainnet, plus the Sepolia testnet. The standalone app also accepts NEAR Intents sources and destinations.
 
 | Interface | Networks |
 | --- | --- |
@@ -157,7 +157,7 @@ CoW's solver network handles CoW-hosted chains. Ophis operates the solver on its
 <details id="how-are-partner-fees-collected">
 <summary>How are partner fees collected?</summary>
 
-The app and SDK put the base fee in appData. The Ophis backend applies improvement capture on operated chains; appData carries both components on CoW-hosted chains.
+Batch-auction orders carry Ophis's **1 bp base**. The app and SDK put the base fee in appData. The Ophis backend applies improvement capture on operated chains; appData carries both components on CoW-hosted chains.
 
 | Ophis fee component | Rate |
 | --- | --- |

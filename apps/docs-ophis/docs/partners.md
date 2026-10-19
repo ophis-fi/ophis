@@ -268,6 +268,8 @@ Successful registration renews the inactivity clock and keeps the wallet's first
 
 A public, read-only endpoint reports what your integration routed under your registered code. Create the code in the [Ophis dashboard](https://swap.ophis.fi/#/affiliate), then tag every order with it: `referralCode` in the SDK (stored as `metadata.ophisReferrer.code`) or the widget's top-level `appCode`. Figures are lifetime totals.
 
+For manual appData, merge `buildOphisReferrerMetadata('your-code', chainId)` from `@ophis/sdk` into `metadata`, including on Arc. MCP clients pass `referrerCode` to `build_order`.
+
 ```bash
 curl https://rebates.ophis.fi/earnings/your-code
 ```
