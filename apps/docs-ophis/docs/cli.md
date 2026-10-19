@@ -75,8 +75,9 @@ ophis swap 5 USDC ETH
 ```
 
 Confirm in the terminal, then approve in your wallet. Usually this takes one
-free signature. The first time you sell a token, you may also need a one-time
-approval, which gives permission to spend it. Selling ETH may need a wrap,
+free signature. If your wallet has not yet allowed Ophis to spend that amount of
+the token, it first asks for an approval, which costs a small network fee. The
+CLI approves only the amount each swap needs, so a later swap can ask again. Selling ETH may need a wrap,
 which turns ETH into WETH, the token form used for the swap.
 
 A bridge moves tokens to another network. This moves 25 USDC from Base to
@@ -123,8 +124,8 @@ way, you receive at least the amount the CLI shows as **At least**. See
 
 Across is the bridge service; its fee is already included in the amounts shown.
 
-Signing an order costs nothing. Network fees only apply to a one-time token
-approval, to wrapping ETH into WETH before selling it, and to `ophis recover`,
+Signing an order costs nothing. Network fees only apply to a token approval
+(the CLI approves only what each swap needs, so you may approve again later), to wrapping ETH into WETH before selling it, and to `ophis recover`,
 which sends a transaction. Wrapping turns ETH into WETH, the token form used
 for swaps.
 
