@@ -662,7 +662,7 @@ describe('ophis recover, end to end (chain, orderbook and wallet answered here)'
     blockNumber: numberToHex(MINED_IN), blockHash: `0x${'22'.repeat(32)}`, transactionHash: SENT, transactionIndex: '0x0', logIndex: '0x0', removed: false,
   })
 
-  test('ETH on a chain with its own coin: what the Ophis list names ETH, never a public list lookalike', async () => {
+  test('ETH on a chain with its own coin: what the Ophis list names ETH, else its wrapped ether, said aloud', async () => {
     // Polygon: CoinGecko's "ETH" is Wormhole ether (it calls itself WETH); the WETH people mean is another contract.
     const polygon = network('polygon', 'http://127.0.0.1:9')
     const wormhole = '0x11cd37bb86f65419713f30673a480ea33c826872'
@@ -671,7 +671,15 @@ describe('ophis recover, end to end (chain, orderbook and wallet answered here)'
       'files.cow.fi/token-lists/CoinGecko.137.json': { tokens: [{ chainId: 137, address: wormhole, symbol: 'ETH', decimals: 18 }] },
       'files.cow.fi/token-lists/Uniswap.137.json': { tokens: [] },
     })
-    await expect(findToken(polygon, 'eth')).rejects.toThrow('Polygon has no ETH: only wrapped ether is available, WETH.')
+    expect(await findToken(polygon, 'eth')).toEqual({
+      address: '0x7ceB23fD6bC0adD59E62ac25578270cFf1b9f619', // Polygon's WETH on the Ophis list, never the Wormhole lookalike
+      symbol: 'WETH',
+      decimals: 18,
+      native: false,
+      listed: true,
+      note: 'Polygon has no ETH: using wrapped ether, WETH.',
+    })
+    expect((await findToken(polygon, 'WETH')).note).toBeUndefined() // asked for by name: nothing to say
     // BNB Chain: its ether is named ETH on the Ophis list itself, so ETH still finds it.
     serve({ eth_chainId: () => numberToHex(56) }, LISTS)
     expect(await findToken(network('bnb', 'http://127.0.0.1:9'), 'ETH')).toMatchObject({ address: '0x2170Ed0880ac9A755fd29B2688956BD959F933F8', listed: true })
