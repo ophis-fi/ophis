@@ -37,7 +37,7 @@ import {
 // ponytail: token lookup and order relay come straight from the MCP server module (same checks the
 // agents get); move them into @ophis/sdk before any public release.
 import { findListedToken, isUntradeableToken, loadCuratedTokenList, OPHIS_TOKEN_LIST_URL, resolveToken, submitOrder } from '@ophis/mcp-server/src/ophis.ts'
-import { reader, tag, type Network } from './network.ts'
+import { reader, tag, transactionLink, type Network } from './network.ts'
 import type { Signer, TxRequest, TypedDataJson } from './phone.ts'
 import { amount, bold, clean, dim, finish, green, red, rows, saffron, spinner, UserError } from './ui.ts'
 
@@ -620,8 +620,7 @@ export async function sendTx(net: Network, signer: Signer, fees: Fees, label: st
     hash = await signer.sendTransaction(net.id, { ...tx, ...fees })
     if (!/^0x[0-9a-fA-F]{64}$/.test(hash)) throw new UserError('The wallet returned an invalid transaction id.')
     onPending?.(true)
-    const url = net.chain.blockExplorers?.default.url
-    spin.stop(`Transaction sent: ${dim(url ? `${url}/tx/${hash}` : hash)}`)
+    spin.stop(`Transaction sent: ${dim(transactionLink(net, hash))}`)
     spin = spinner(`${label}: waiting for confirmation`)
     // The wallet may speed it up (repriced: the same call, higher fee), or cancel or replace it before it mines: then
     // the receipt is another transaction's, and what this one was sent to do did not happen.
@@ -629,15 +628,15 @@ export async function sendTx(net: Network, signer: Signer, fees: Fees, label: st
     const receipt = await client.waitForTransactionReceipt({ hash, timeout: 180_000, onReplaced: (r) => void (replaced = r.reason) })
     onPending?.(false)
     if (replaced && replaced !== 'repriced') {
-      throw new UserError(`${label} did not happen because your wallet ${replaced === 'cancelled' ? 'cancelled the transaction' : 'sent a different transaction instead'} (${clean(receipt.transactionHash)}). Check your wallet activity before trying again.`)
+      throw new UserError(`${label} did not happen because your wallet ${replaced === 'cancelled' ? 'cancelled the transaction' : 'sent a different transaction instead'} (${transactionLink(net, receipt.transactionHash)}). Check your wallet activity before trying again.`)
     }
-    if (receipt.status !== 'success') throw new UserError(`${label} failed on-chain (transaction ${clean(receipt.transactionHash)}).`)
-    spin.stop(`${green('✓')} ${label}  ${dim(clean(receipt.transactionHash))}`)
+    if (receipt.status !== 'success') throw new UserError(`${label} failed on-chain (transaction ${transactionLink(net, receipt.transactionHash)}).`)
+    spin.stop(`${green('✓')} ${label}${receipt.transactionHash === hash ? '' : `  ${dim(transactionLink(net, receipt.transactionHash))}`}`)
     return receipt
   } catch (err) {
     spin.stop(`${red('✗')} ${label}`)
-    if ((err as Error).name === 'WaitForTransactionReceiptTimeoutError') {
-      throw new UserError(`Transaction ${hash} has not confirmed after 3 minutes. It may still go through: wait for it before trying again.`)
+    if (hash && (err as Error).name === 'WaitForTransactionReceiptTimeoutError') {
+      throw new UserError(`Transaction ${transactionLink(net, hash)} has not confirmed after 3 minutes. It may still go through: wait for it before trying again.`)
     }
     throw err
   }
