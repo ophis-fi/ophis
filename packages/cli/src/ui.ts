@@ -82,7 +82,9 @@ export async function banner(tagline = 'Swap on Ophis from your terminal'): Prom
   if (!out.isTTY) return // no artwork in pipes and logs
   const side = (row: number) => (row === 5 ? `    ${bold(saffron('ophis'))}` : row === 6 ? `    ${dim(tagline)}` : '')
   const frame = (step: number) => emblemFrame(step).map((line, row) => `  ${line}${side(row)}`).join('\n')
-  if (!motion) return void console.log(`\n${frame(12)}\n`)
+  // Redrawing rewinds a fixed number of lines: a window too narrow for the widest line (it would wrap) gets the still logo.
+  const widest = 2 + EMBLEM[0]!.length + 4 + Math.max(5, tagline.length)
+  if (!motion || (out.columns ?? 80) < widest) return void console.log(`\n${frame(12)}\n`)
   const restore = () => { out.write('\x1b[?25h') }
   process.once('exit', restore)
   try {
