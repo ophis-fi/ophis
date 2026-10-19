@@ -1,4 +1,4 @@
-import { afterAll, beforeAll, describe, expect, test } from 'bun:test'
+import { afterAll, beforeAll, describe, expect, spyOn, test } from 'bun:test'
 import { readFileSync } from 'node:fs'
 import { setGlobalAdapter, SupportedChainId } from '@cowprotocol/cow-sdk'
 import { AcrossBridgeProvider } from '@cowprotocol/sdk-bridging'
@@ -8,13 +8,63 @@ import { buildOphisAppDataPartnerFee, getOphisOrderDomain } from '@ophis/sdk'
 import { concat, createPublicClient, decodeFunctionData, encodeFunctionData, getAddress, hashTypedData, http, keccak256, numberToHex, pad, parseAbi, recoverTypedDataAddress, toBytes, toHex, type Hex } from 'viem'
 import { generatePrivateKey, privateKeyToAccount } from 'viem/accounts'
 import { ACROSS_EXECUTABLE_SOURCE_IDS, OphisAcrossBridgeProvider, tagAcrossIntegratorCalldata } from '../src/across.ts'
-import { ACROSS, BridgeAdapter, bridgeAccount, bridgeQuote, bridgeVia, guardSendOrder, ROBINHOOD_USDG, weirollCalls, type BridgeSigned } from '../src/bridge.ts'
+import { ACROSS, BridgeAdapter, bridgeAccount, bridgeQuote, bridgeVia, guardSendOrder, ROBINHOOD_USDG, showBridge, weirollCalls, type BridgeSigned } from '../src/bridge.ts'
 import { network } from '../src/network.ts'
 import type { Signer, TypedDataJson } from '../src/phone.ts'
 import { wrappedNative } from '../src/trade.ts'
 
 const read = (path: string) => readFileSync(new URL(path, import.meta.url), 'utf8')
 const norm = (s: string) => s.replace(/\s+/g, ' ').trim()
+
+test('a quote to Arc shows its ERC-20 payout without asking for a wrapped gas token', () => {
+  const usdc = { address: '0x3600000000000000000000000000000000000000', symbol: 'USDC', decimals: 6, native: false, listed: true }
+  const base = network('base')
+  const quote = { src: base, dst: network('arc'), sell: usdc, pay: usdc, buy: usdc, via: usdc, owner: usdc.address, atoms: 10_000_000n, expected: 9_990_000n, minOut: 9_900_000n, acrossFee: 10_000n, slippage: 50 }
+  const log = spyOn(console, 'log').mockImplementation(() => {})
+  try {
+    showBridge(quote as never)
+    const printed = log.mock.calls.flat().join('\n')
+    expect(printed).toContain('about 9.99 USDC')
+    expect(printed).toContain(`${usdc.address} on Arc`)
+    expect(printed).not.toContain('native coin')
+    log.mockClear()
+    showBridge({ ...quote, dst: base, buy: wrappedNative(base) } as never)
+    expect(log.mock.calls.flat().join('\n')).toContain('native coin on Base')
+  } finally {
+    log.mockRestore()
+  }
+})
+
+test('Across status, suggested fees and token lists abort stalled fetches', async () => {
+  class Provider extends OphisAcrossBridgeProvider {
+    get requests() { return this.api }
+  }
+  const provider = new Provider({ apiOptions: { integratorId: '0x0311' } })
+  const realFetch = globalThis.fetch
+  const timeout = AbortSignal.timeout
+  const timer = spyOn(AbortSignal, 'timeout').mockImplementation((ms) => {
+    expect(ms).toBe(10_000)
+    return timeout(1)
+  })
+  const aborted: string[] = []
+  globalThis.fetch = ((url: string | URL | Request, init?: RequestInit) => new Promise<Response>((_, reject) => {
+    const signal = init?.signal
+    if (!signal) return reject(new Error('No abort signal'))
+    signal.addEventListener('abort', () => {
+      aborted.push(new URL(String(url)).pathname)
+      reject(signal.reason)
+    }, { once: true })
+  })) as typeof fetch
+  try {
+    await expect(provider.getStatus('7', 8453)).rejects.toThrow('timed out')
+    await expect(provider.requests.getSuggestedFees({ token: '0x1111111111111111111111111111111111111111', originChainId: 8453, destinationChainId: 42161, amount: 1n } as never)).rejects.toThrow('timed out')
+    await expect(provider.requests.getSupportedTokens()).rejects.toThrow('timed out')
+    expect(aborted).toEqual(['/api/deposit/status', '/api/suggested-fees', '/api/token-list'])
+  } finally {
+    globalThis.fetch = realFetch
+    timer.mockRestore()
+  }
+})
 
 describe('the Across provider adapted from the frontend', () => {
   const OPTS = '../../../apps/frontend/libs/common-const/src/acrossApiOptions.ts'

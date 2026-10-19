@@ -783,7 +783,7 @@ function shedHooks(fullAppData: string | null | undefined): ShedHook[] {
 export function showBridge(b: BridgeQuote, extra: [string, string][] = [], ownerKnown = true): void {
   const minutes = b.seconds ? `about ${Math.max(1, Math.round(b.seconds / 60))} min` : 'a few minutes'
   // Across pays its wrapped gas token out as the native coin to a regular wallet (still wrapped to a smart account).
-  const native = same(b.buy.address, wrappedNative(b.dst).address)
+  const native = same(b.buy.address, WRAPPED[b.dst.id]?.[0])
   const out = native ? b.dst.native : b.buy.symbol
   const notes = [b.sell.note, b.buy.note].filter((n): n is string => !!n)
   if (notes.length) {

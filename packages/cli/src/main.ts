@@ -165,8 +165,8 @@ async function swap(args: string[], flags: Flags) {
 
   // From here on, whatever stops the swap also says what state the wallet is in.
   const wrappedNote = () =>
-    prep.wrapDone
-      ? ` You now hold ${amount(trade.atoms, 18)} ${trade.pay.symbol} instead of ${trade.sell.symbol}. To swap it: ophis swap ${formatUnits(trade.atoms, 18)} ${trade.pay.symbol} ${clean(shellArg(to))} on ${net.alias}${clean(sameTerms(flags))}`
+    prep.wrapDone || prep.wrapPending
+      ? `${prep.wrapPending ? ' The wrap may still confirm. Check the transaction before trying again. If it confirms, you will hold' : ' You now hold'} ${amount(trade.atoms, 18)} ${trade.pay.symbol} instead of ${trade.sell.symbol}. To swap it: ophis swap ${formatUnits(trade.atoms, 18)} ${trade.pay.symbol} ${clean(shellArg(to))} on ${net.alias}${clean(sameTerms(flags))}`
       : ''
   let sending = ''
   const interrupted = () => {
@@ -192,7 +192,7 @@ async function swap(args: string[], flags: Flags) {
     sending = signed.uid
     uid = await step('Sending the order', () => send(trade, signed))
   } catch (err) {
-    if (!prep.wrapDone) throw err
+    if (!prep.wrapDone && !prep.wrapPending) throw err
     const e = err as Error & { shortMessage?: string }
     const why = err instanceof UserError ? e.message : `Something went wrong: ${clean(String(e.shortMessage ?? e.message))}`
     throw new UserError(`${why}${wrappedNote()}`)
@@ -252,8 +252,8 @@ async function crossChain(amountText: string, from: string, to: string, flags: F
   console.log(`  ${dim(`Your wallet will ask you to approve ${asks} steps. Check each one there.`)}`)
 
   const wrappedNote = () =>
-    prep.wrapDone
-      ? ` You now hold ${amount(request.atoms, 18)} ${pay.symbol} instead of ${sell.symbol} on ${src.name}. To bridge it: ${again(formatUnits(request.atoms, 18), pay.symbol)}`
+    prep.wrapDone || prep.wrapPending
+      ? `${prep.wrapPending ? ' The wrap may still confirm. Check the transaction before trying again. If it confirms, you will hold' : ' You now hold'} ${amount(request.atoms, 18)} ${pay.symbol} instead of ${sell.symbol} on ${src.name}. To bridge it: ${again(formatUnits(request.atoms, 18), pay.symbol)}`
       : ''
   let signedUid: string | undefined // once the order is signed it may go live, so a stop must not suggest a retry
   const interrupted = () => {
@@ -285,7 +285,7 @@ async function crossChain(amountText: string, from: string, to: string, flags: F
     })
     enrollOphisTrader(owner).catch(() => {}) // best effort, as for swaps: lets the rebate indexer see this wallet
   } catch (err) {
-    if (!prep.wrapDone || (err as { maybeSent?: boolean }).maybeSent) throw err
+    if ((!prep.wrapDone && !prep.wrapPending) || (err as { maybeSent?: boolean }).maybeSent) throw err
     const e = err as Error & { shortMessage?: string }
     const why = err instanceof UserError ? e.message : `Something went wrong: ${clean(String(e.shortMessage ?? e.message))}`
     throw new UserError(`${why}${wrappedNote()}`)
@@ -356,6 +356,10 @@ async function connectCommand() {
   }
   done(`Connected ${bold(wallet.address)}`)
   rows(chainRows(wallet.chains))
+  if (wallet.otherChains.length) {
+    const leftOut = wallet.otherChains.map((id) => networks().find((n) => n.id === id)?.name ?? String(id)).join(', ')
+    note(`Left out ${leftOut}: your wallet picked another account there. Run ophis connect again and pick the same account on every network.`)
+  }
   console.log(`\n  Next: ${bold('ophis quote 10 USDC ETH')}  ${dim('(on Base; for another chain add, say, "on arbitrum")')}\n`)
 }
 

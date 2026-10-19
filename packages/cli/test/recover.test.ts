@@ -579,6 +579,27 @@ describe('reading the chain before asking anything (RPC answered here)', () => {
     expect(String(failed)).toContain('failed on-chain')
     expect(String(failed)).not.toContain('\u001b')
   })
+  test('a transaction explorer link is printed while the transaction is still pending', async () => {
+    const hash = `0x${'aa'.repeat(32)}` as Hex
+    const net = network('base', RPC)
+    net.chain.blockExplorers = { default: { name: 'Base', url: 'https://basescan.org' } }
+    const log = spyOn(console, 'log').mockImplementation(() => {})
+    const pending: boolean[] = []
+    const client = {
+      getTransactionCount: async () => 5,
+      waitForTransactionReceipt: async () => {
+        expect(log.mock.calls.flat().join('\n')).toContain(`Transaction sent: https://basescan.org/tx/${hash}`)
+        expect(pending).toEqual([true])
+        return { status: 'success', transactionHash: hash }
+      },
+    } as never
+    try {
+      await sendTx(net, { address: OWNER, sendTransaction: async () => hash } as unknown as Signer, { gasPrice: 1n }, 'Wrapping', tx, client, (value) => { pending.push(value) })
+      expect(pending).toEqual([true, false])
+    } finally {
+      log.mockRestore()
+    }
+  })
   test('ophis status looks up only token addresses from the orderbook, never text it could inject', async () => {
     const uid = `0x${'ab'.repeat(56)}`
     serve({}, { [`/api/v1/orders/${uid}`]: { status: 'open', sellToken: '\u001b[2J\u001b]52;c;aGk=\u0007USDC', buyToken: USDC.address, sellAmount: '1', buyAmount: '1' } })
