@@ -19,6 +19,9 @@ See [`docs/development/specs/2026-05-11-rebate-ledger-design.md`](../../docs/dev
 
 See [`RUNBOOK.md`](./RUNBOOK.md) for incident response.
 
+See the [Ethereum RPC runbook](../../infra/ethereum-rpc/README.md) for baal-backed
+chain-1 reads, public fallback, and the scheduled OTC consistency check.
+
 ## GitHub secrets required for deploy
 
 The deploy workflow joins the tailnet as an ephemeral `tag:ci` node and builds

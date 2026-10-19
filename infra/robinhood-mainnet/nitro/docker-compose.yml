@@ -26,6 +26,33 @@ x-default-logging: &default-logging
 
 
 services:
+  l1-execution-proxy:
+    logging: *default-logging
+    build:
+      context: .
+      dockerfile: Dockerfile.l1-execution-proxy
+    image: local/ophis-l1-deriver:1
+    restart: always
+    mem_limit: 128m
+    read_only: true
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    environment:
+      # Single-dash default: an explicitly empty value disables the primary.
+      L1_PRIMARY_UPSTREAM: ${L1_PRIMARY_UPSTREAM-http://100.69.134.7:8547}
+      L1_PRIMARY_TIMEOUT: ${L1_PRIMARY_TIMEOUT:-15}
+    tmpfs:
+      - /tmp:size=16m,mode=1777
+    healthcheck:
+      # Liveness only; upstream availability is checked through JSON-RPC.
+      test: ["CMD", "wget", "-q", "-O-", "http://127.0.0.1:8545/healthz"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
   blob-archive:
     logging: *default-logging
     build:
@@ -65,6 +92,8 @@ services:
       GOMEMLIMIT: 13GiB
     depends_on:
       blob-archive:
+        condition: service_healthy
+      l1-execution-proxy:
         condition: service_healthy
     volumes:
       # VERIFIED against the running v3.11.2-3599aca image (2026-07-23): it runs as
