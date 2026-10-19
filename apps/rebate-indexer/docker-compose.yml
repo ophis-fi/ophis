@@ -94,6 +94,9 @@ services:
       # passthrough, a host-level DRPC_API_KEY is invisible inside the container
       # and historical scans always fall back to rate-limited public endpoints.
       DRPC_API_KEY: ${DRPC_API_KEY:-}
+      # Ethereum reads can use baal over Tailscale; retain an independent fallback.
+      SETTLE_RPC_URL_1: ${SETTLE_RPC_URL_1:-}
+      SETTLE_RPC_FALLBACK_1: ${SETTLE_RPC_FALLBACK_1:-https://ethereum-rpc.publicnode.com}
       SETTLE_RPC_URL_10: ${SETTLE_RPC_URL_10:-}
       SETTLE_RPC_URL_130: ${SETTLE_RPC_URL_130:-}
       SETTLE_RPC_URL_4663: ${SETTLE_RPC_URL_4663:-}
@@ -119,6 +122,23 @@ services:
       # (172.17.0.1), so Fastify trusted a spoofable X-Forwarded-For and the
       # per-IP rate limiter could be evaded or poisoned. Loopback closes that path.
       - "127.0.0.1:8080:8080"
+
+  # One-shot read-only check, scheduled by infra/ethereum-rpc/ophis-otc-canary.timer.
+  otc-canary:
+    profiles: ["monitoring"]
+    image: node:24-alpine
+    user: node
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    mem_limit: 128m
+    memswap_limit: 128m
+    cpus: 0.25
+    environment:
+      OTC_CANARY_RPC_URL: ${OTC_CANARY_RPC_URL:-http://100.69.134.7:8547}
+    volumes:
+      - ../../scripts/otc-mainnet-canary.mjs:/app/otc-mainnet-canary.mjs:ro
+    command: ["node", "/app/otc-mainnet-canary.mjs"]
 
   caddy:
     image: caddy:2.11.7-alpine@sha256:d8542f48d34a9cf4e4c11a478865229840e87e4c96ea3f439101f31a5d35f75f

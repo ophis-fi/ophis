@@ -68,8 +68,10 @@ log "L1 anchor: reading AssertionConfirmed from rollup $ROLLUP on Ethereum L1"
 TOPIC0="$(cast sig-event 'AssertionConfirmed(bytes32,bytes32,bytes32)')"
 echo "  topic0: $TOPIC0"
 L1_HEAD="$(cast block-number --rpc-url "$L1_RPC")"
-FROM=$(( L1_HEAD - 100000 ))     # ~2 weeks of L1; assertions are periodic, not per-block
-LOGS="$(cast logs --rpc-url "$L1_RPC" --from-block "$FROM" --to-block latest \
+FROM=$(( L1_HEAD - 99999 ))      # ~2 weeks of L1; assertions are periodic, not per-block
+# A fixed upper bound keeps the span at 100,000 blocks, the eth_getLogs cap of a
+# default Reth node; `latest` could advance past it between the two calls.
+LOGS="$(cast logs --rpc-url "$L1_RPC" --from-block "$FROM" --to-block "$L1_HEAD" \
         --address "$ROLLUP" "$TOPIC0" --json 2>/dev/null || echo '[]')"
 # Fail closed if the query did not return a JSON array. jq 'length' on a
 # non-array (e.g. an RPC error object) is nonzero, which previously passed this

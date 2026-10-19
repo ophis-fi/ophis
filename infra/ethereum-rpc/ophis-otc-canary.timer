@@ -1,0 +1,10 @@
+[Unit]
+Description=Check Ophis OTC against Ethereum every 15 minutes
+
+[Timer]
+OnCalendar=*:0/15
+RandomizedDelaySec=30s
+Persistent=true
+
+[Install]
+WantedBy=timers.target

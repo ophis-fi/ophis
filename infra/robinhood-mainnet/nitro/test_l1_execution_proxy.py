@@ -13,6 +13,11 @@ SPEC.loader.exec_module(proxy)
 
 
 class L1ExecutionProxyTest(TestCase):
+    def setUp(self) -> None:
+        primary = mock.patch.object(proxy, "PRIMARY_UPSTREAM", "")
+        primary.start()
+        self.addCleanup(primary.stop)
+
     def test_post_rejects_wrong_response_identity_and_invalid_envelopes(self) -> None:
         request = {"jsonrpc": "2.0", "method": "eth_blockNumber", "params": [], "id": 1}
         valid = {"jsonrpc": "2.0", "id": 1, "result": "0x1"}
@@ -126,6 +131,122 @@ class L1ExecutionProxyTest(TestCase):
             self.assertNotIn(mock.call(4), sleep.call_args_list)
             self.assertIn(mock.call(1), sleep.call_args_list)
             self.assertIn(mock.call(2), sleep.call_args_list)
+
+
+class PrimaryFailoverTest(TestCase):
+    """The self-hosted lane: serve from it when it answers, fall back when it does not."""
+
+    def setUp(self) -> None:
+        self._saved = proxy.PRIMARY_UPSTREAM
+        proxy.PRIMARY_UPSTREAM = "http://primary.invalid:8547"
+
+    def tearDown(self) -> None:
+        proxy.PRIMARY_UPSTREAM = self._saved
+
+    def test_primary_result_is_served_without_touching_the_fallback(self) -> None:
+        request = {"jsonrpc": "2.0", "method": "eth_blockNumber", "params": [], "id": 1}
+        ok = {"jsonrpc": "2.0", "id": 1, "result": "0x18d1af5"}
+        with (
+            mock.patch.object(proxy, "_post", return_value=ok) as post,
+            mock.patch.object(proxy, "_rate_limited_fallback_request") as fallback,
+        ):
+            self.assertEqual(proxy.dispatch(request), ok)
+            post.assert_called_once_with(
+                proxy.PRIMARY_UPSTREAM, request, timeout=proxy.PRIMARY_TIMEOUT
+            )
+            fallback.assert_not_called()
+
+    def test_getlogs_from_primary_is_not_chunked(self) -> None:
+        # The whole point: one request instead of 200 throttled 50-block windows.
+        request = {
+            "jsonrpc": "2.0",
+            "method": "eth_getLogs",
+            "params": [{"fromBlock": "0x1", "toBlock": "0x2710"}],
+            "id": 1,
+        }
+        ok = {"jsonrpc": "2.0", "id": 1, "result": [{"logIndex": "0x0"}]}
+        with (
+            mock.patch.object(proxy, "_post", return_value=ok) as post,
+            mock.patch.object(proxy, "_rate_limited_fallback_request") as fallback,
+        ):
+            self.assertEqual(proxy.dispatch(request), ok)
+            self.assertEqual(post.call_count, 1)
+            fallback.assert_not_called()
+
+    def test_primary_transport_failure_falls_back(self) -> None:
+        request = {"jsonrpc": "2.0", "method": "eth_blockNumber", "params": [], "id": 1}
+        with (
+            mock.patch.object(proxy, "_post", side_effect=OSError("connection refused")),
+            mock.patch.object(
+                proxy,
+                "_rate_limited_fallback_request",
+                return_value={"jsonrpc": "2.0", "id": 1, "result": "0x1"},
+            ) as fallback,
+        ):
+            self.assertEqual(proxy.dispatch(request)["result"], "0x1")
+            fallback.assert_called_once_with(request)
+
+    def test_primary_jsonrpc_error_falls_back(self) -> None:
+        # e.g. the self-hosted node's own 20,000-result cap on eth_getLogs, which
+        # the fallback's 50-block chunking handles.
+        # one 50-block chunk, so the fallback is expected exactly once
+        request = {
+            "jsonrpc": "2.0",
+            "method": "eth_getLogs",
+            "params": [{"fromBlock": "0x1", "toBlock": "0x10"}],
+            "id": 1,
+        }
+        with (
+            mock.patch.object(
+                proxy,
+                "_post",
+                return_value={"error": {"code": -32602, "message": "query exceeds max results"}},
+            ),
+            mock.patch.object(
+                proxy,
+                "_rate_limited_fallback_request",
+                return_value={"result": [{"logIndex": "0x0"}]},
+            ) as fallback,
+        ):
+            self.assertEqual(proxy.dispatch(request)["result"], [{"logIndex": "0x0"}])
+            self.assertEqual(fallback.call_count, 1)
+
+    def test_unset_primary_preserves_the_old_public_only_behaviour(self) -> None:
+        proxy.PRIMARY_UPSTREAM = ""
+        request = {"jsonrpc": "2.0", "method": "eth_blockNumber", "params": [], "id": 1}
+        with mock.patch.object(
+            proxy, "_post", return_value={"jsonrpc": "2.0", "id": 1, "result": "0x1"}
+        ) as post:
+            self.assertEqual(proxy.dispatch(request)["result"], "0x1")
+            post.assert_called_once_with(proxy.GENERAL_UPSTREAM, request)
+
+    def test_excessive_log_range_never_reaches_either_provider(self) -> None:
+        request = {"jsonrpc": "2.0", "id": 1, "method": "eth_getLogs",
+                   "params": [{"fromBlock": "0x1", "toBlock": "0x2711"}]}
+        with mock.patch.object(proxy, "_post") as post:
+            with self.assertRaisesRegex(ValueError, "excessive"):
+                proxy.dispatch(request)
+            post.assert_not_called()
+
+    def test_malformed_primary_response_falls_back_over_the_real_parser(self) -> None:
+        request = {"jsonrpc": "2.0", "id": 1, "method": "eth_blockNumber", "params": []}
+        ok = {"jsonrpc": "2.0", "id": 1, "result": "0x123"}
+        for bad in ([], {}, {**ok, "id": 2}, {**ok, "id": True},
+                    {**ok, "error": {"code": -32005, "message": "rate limit"}}):
+            with self.subTest(response=bad), mock.patch.object(
+                proxy.urllib.request, "urlopen",
+                side_effect=[io.BytesIO(json.dumps(bad).encode()),
+                             io.BytesIO(json.dumps(ok).encode())],
+            ) as open_url:
+                self.assertEqual(proxy.dispatch(request), ok)
+                self.assertEqual(open_url.call_count, 2)
+
+    def test_response_size_is_bounded(self) -> None:
+        request = {"jsonrpc": "2.0", "id": 1, "method": "eth_blockNumber", "params": []}
+        with (mock.patch.object(proxy, "MAX_RESPONSE_BYTES", 8),
+              mock.patch.object(proxy.urllib.request, "urlopen", return_value=io.BytesIO(b"x" * 9))):
+            with self.assertRaisesRegex(ValueError, "byte limit"):
+                proxy._post(proxy.PRIMARY_UPSTREAM, request)
 
 
 if __name__ == "__main__":

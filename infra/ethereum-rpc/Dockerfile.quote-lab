@@ -1,0 +1,18 @@
+FROM rust:1.96.1-slim-bookworm AS build
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential pkg-config libssl-dev git ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+WORKDIR /src
+COPY . .
+RUN --mount=type=cache,target=/usr/local/cargo/registry \
+    --mount=type=cache,target=/src/target \
+    cargo build --locked --release -p ophis-quote-lab -j 2 \
+    && cp target/release/ophis-quote-lab /ophis-quote-lab
+
+FROM debian:bookworm-slim
+RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates libssl3 \
+    && rm -rf /var/lib/apt/lists/*
+COPY --from=build /ophis-quote-lab /usr/local/bin/ophis-quote-lab
+COPY crates/ophis-quote-lab/config/ /app/config/
+USER 65532:65532
+ENTRYPOINT ["ophis-quote-lab", "--manifest", "/app/config/ethereum.toml"]
