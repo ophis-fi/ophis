@@ -680,6 +680,22 @@ describe('ophis recover, end to end (chain, orderbook and wallet answered here)'
       note: 'Polygon has no ETH: using wrapped ether, WETH.',
     })
     expect((await findToken(polygon, 'WETH')).note).toBeUndefined() // asked for by name: nothing to say
+    // Avalanche: no WETH on the Ophis list, only in a public list. That one is never put in for ETH: asked for by name only.
+    const lookalike = `0x${'4e'.repeat(20)}`
+    serve(
+      {
+        eth_chainId: () => numberToHex(43114),
+        eth_call: ([call]: unknown[]) => ((call as { data: Hex }).data.startsWith('0x95d89b41') ? encodeAbiParameters([{ type: 'string' }], ['WETH']) : pad(numberToHex(18))),
+      },
+      {
+        ...LISTS,
+        'files.cow.fi/token-lists/CoinGecko.43114.json': { tokens: [{ chainId: 43114, address: lookalike, symbol: 'WETH', decimals: 18 }] },
+        'files.cow.fi/token-lists/Uniswap.43114.json': { tokens: [] },
+      },
+    )
+    const avalanche = network('avalanche', 'http://127.0.0.1:9')
+    await expect(findToken(avalanche, 'ETH')).rejects.toThrow('Avalanche has no ETH: only wrapped ether is available, WETH.')
+    expect(await findToken(avalanche, 'WETH')).toMatchObject({ address: getAddress(lookalike), listed: false }) // by name: warned as unlisted
     // BNB Chain: its ether is named ETH on the Ophis list itself, so ETH still finds it.
     serve({ eth_chainId: () => numberToHex(56) }, LISTS)
     expect(await findToken(network('bnb', 'http://127.0.0.1:9'), 'ETH')).toMatchObject({ address: '0x2170Ed0880ac9A755fd29B2688956BD959F933F8', listed: true })

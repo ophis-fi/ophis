@@ -190,6 +190,9 @@ export async function findToken(net: Network, query: string): Promise<Token> {
   // Avalanche calls itself WETH but is not the WETH people mean).
   if (query.toUpperCase() === 'ETH' && net.native !== 'ETH') {
     const weth = await findToken(net, 'WETH')
+    // Only a token on the Ophis list stands in for a name the user did not type: a public list's WETH is never
+    // substituted silently, it must be asked for by name (and then carries the unlisted-token warning).
+    if (!weth.listed) throw new UserError(`${net.name} has no ETH: only wrapped ether is available, WETH.`)
     return { ...weth, note: `${net.name} has no ETH: using wrapped ether, ${weth.symbol}.` }
   }
   // Not on the Ophis list: the public lists swap.ophis.fi also offers on this chain may name it. The address found
