@@ -1,4 +1,4 @@
-FROM docker.io/flyway/flyway:10.7.1 AS migrations
+FROM docker.io/flyway/flyway:13.10.3 AS migrations
 ARG OPHIS_GIT_SHA
 RUN test "${#OPHIS_GIT_SHA}" -eq 40 && case "$OPHIS_GIT_SHA" in *[!0-9a-f]*) exit 1;; esac
 LABEL org.opencontainers.image.revision=$OPHIS_GIT_SHA
