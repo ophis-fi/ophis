@@ -41,6 +41,10 @@ const faqs: { q: string; a: string }[] = [
     a: 'Signing keys stay with the trader or agent. Standard signed ERC-20 orders keep funds in the wallet until settlement. Native-token orders and bridge routes can require onchain transactions and deposits, with gas and separate recovery rules. Always review what your wallet authorizes.',
   },
   {
+    q: 'Can I swap from my terminal?',
+    a: 'Yes. The Ophis CLI lets you trade by typing commands. Install it with npm install -g @ophis/cli (Node.js 20 or later). Run ophis connect and scan the QR code with your wallet app\'s own scanner, then run ophis swap 5 USDC ETH. Confirm in the terminal and approve in your wallet. Your keys stay in your wallet.',
+  },
+  {
     q: 'What is the Ophis MCP server?',
     a: 'The Ophis MCP server at mcp.ophis.fi is a Streamable-HTTP Model Context Protocol server that lets AI agents trade. It exposes tools including parse_intent, get_quote, build_order, submit_order, lookup_tier, and list_chains. It is public, unauthenticated, and keyless: it never holds keys or signs, so the agent signs with its own key.',
   },

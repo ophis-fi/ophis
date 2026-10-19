@@ -55,6 +55,9 @@ export const howToLd = {
 Choose your tokens and networks, review the quote, then authorize the displayed
 order or fund the quoted deposit from your source wallet.
 
+To trade by typing commands, use the [Ophis CLI](./cli.md) to quote, swap and
+bridge from your terminal, with approvals in your wallet.
+
 ## Your first swap
 
 1. Open [the swap app](https://swap.ophis.fi/#/swap). Connect your EVM wallet for

@@ -200,6 +200,7 @@ Canonical contract addresses and the disclosure policy live in
 | `apps/rebate-indexer/` | New | `@ophis/rebate-indexer`: off-chain volume-tier and WETH rebate indexer plus Safe batch proposer ([rebates.ophis.fi](https://rebates.ophis.fi)). |
 | `apps/docs-ophis/` | New | Docusaurus docs portal ([docs.ophis.fi](https://docs.ophis.fi)). Self-contained app (own lockfile, excluded from the root, like `apps/frontend`). |
 | `packages/sdk/` | New | [`@ophis/sdk`](packages/sdk): dependency-free helpers for the per-chain orderbook host, EIP-712 order domain, CIP-75 partner-fee `appData`, receiver-pinning guards, tier assignment, and the supported-chain registry. |
+| `packages/cli/` | New | [`@ophis/cli`](packages/cli): quote, swap and bridge from your terminal, with approvals in your wallet. Install with `npm install -g @ophis/cli` (Node.js 20 or later). [CLI guide](https://docs.ophis.fi/cli). |
 | `contracts/` | [`cowprotocol/contracts`](https://github.com/cowprotocol/contracts) (subtree) | `GPv2Settlement`, `GPv2VaultRelayer`, `GPv2AllowListAuthentication`, deployed under an Ophis-controlled solver allowlist. Per-network artifacts in `contracts/deployments/`. |
 | `functions/` | New | Cloudflare Pages Functions: `api/intent.ts` (the natural-language parser, shared by swap and landing), `_middleware.ts` (host routing). |
 | `infra/` | New | Per-chain runtime stacks (`optimism-mainnet/`, `unichain-mainnet/`, `robinhood-mainnet/`, `local/`), plus `rpc/` (eRPC) and `cloudflare/` config. |
@@ -220,6 +221,7 @@ ophis/
 │   └── mcp-server/      agent-facing MCP Worker (mcp.ophis.fi)
 ├── contracts/           GPv2 settlement contracts (+ per-network deployments)
 ├── packages/sdk/        @ophis/sdk
+├── packages/cli/        @ophis/cli
 ├── functions/           Cloudflare Pages Functions (intent API, middleware)
 ├── infra/               per-chain runtime stacks + rpc + cloudflare config
 ├── scripts/             repo utility scripts
