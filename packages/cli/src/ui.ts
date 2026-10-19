@@ -148,7 +148,7 @@ async function drain(): Promise<void> {
 
 /** A yes/no question. Anything other than y or yes (including Ctrl+C) means no. */
 export async function confirm(question: string): Promise<boolean> {
-  if (!process.stdin.isTTY) throw new UserError('This needs a yes from you: run it in a terminal, or add --yes.')
+  if (!process.stdin.isTTY) throw new UserError('Your approval is needed, but this session cannot ask for it. Run the command in a terminal where you can answer, or add --yes to approve it.')
   await drain()
   const rl = createInterface({ input: process.stdin, output: out })
   const stop = new AbortController()

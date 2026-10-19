@@ -250,8 +250,8 @@ export async function phoneSigner(chainId: number): Promise<Signer> {
       const message = String((err as Error)?.message ?? err)
       if (/reject|denied|cancel/i.test(message)) throw new UserError('You declined the request in your wallet. Nothing more was sent.')
       // The wallet wrote this text: clean it so it cannot steer the terminal.
-      const sent = method === 'eth_sendTransaction' ? " Check your wallet's activity first: the transaction may already have been sent." : ''
-      throw new UserError(`Your wallet did not answer: ${clean(message).slice(0, 120)}. Open your wallet app and keep it open (in Ledger Wallet, stay on its WalletConnect screen). If it still does not answer, run ophis connect again. Some wallets, like Rabby, drop the connection when they restart.${sent}`)
+      const sent = method === 'eth_sendTransaction' ? '; the transaction may already have been sent' : ''
+      throw new UserError(`Your wallet did not respond (${clean(message).slice(0, 120)})${sent}. Check your wallet activity before retrying, keep the app open (in Ledger Wallet, use the WalletConnect connection screen), and reconnect with ophis connect if needed.`)
     } finally {
       clearTimeout(timer)
     }

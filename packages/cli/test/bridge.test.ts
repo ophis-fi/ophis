@@ -544,11 +544,11 @@ describe('bridge routes', () => {
       [() => bridgeVia(base, '0x1111111111111111111111111111111111111111', arbitrum, LISTED.arbitrumUsdc), 'not on the Ophis token list for Base'],
       [() => bridgeVia(base, LISTED.baseUsdc.address, arbitrum, { address: '0x1111111111111111111111111111111111111111', decimals: 6 }), 'does not match the Ophis token list'],
       [() => bridgeVia(base, LISTED.baseUsdc.address, arbitrum, { ...LISTED.arbitrumUsdc, decimals: 18 }), 'does not match the Ophis token list'], // decimals from the list
-      [() => bridgeVia(base, LISTED.baseUsdc.address, unichain, LISTED.unichainUsdt0), 'USDC (0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913), which is not the same asset as USDT0 on Unichain'],
-      [() => bridgeVia(base, LISTED.baseUsdc.address, bnb, LISTED.bnbUsdc), 'not the same asset as USDC on BNB'], // same symbol, other decimals
-      [() => bridgeVia(base, LISTED.baseUsdt.address, robinhood, LISTED.robinhoodUsdg), 'not the same asset as USDG'], // the corridor is USDC only
-      [() => bridgeVia(base, LISTED.baseUsdc.address, unichain, LISTED.unichainUsdg), 'not the same asset as USDG'], // and Robinhood's USDG only
-      [() => bridgeVia(base, wrappedNative(base).address, robinhood, LISTED.robinhoodUsdg), 'not the same asset as USDG'],
+      [() => bridgeVia(base, LISTED.baseUsdc.address, unichain, LISTED.unichainUsdt0), 'USDC (0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913), which does not match USDT0 on Unichain'],
+      [() => bridgeVia(base, LISTED.baseUsdc.address, bnb, LISTED.bnbUsdc), 'does not match USDC on BNB'], // same symbol, other decimals
+      [() => bridgeVia(base, LISTED.baseUsdt.address, robinhood, LISTED.robinhoodUsdg), 'does not match USDG'], // the corridor is USDC only
+      [() => bridgeVia(base, LISTED.baseUsdc.address, unichain, LISTED.unichainUsdg), 'does not match USDG'], // and Robinhood's USDG only
+      [() => bridgeVia(base, wrappedNative(base).address, robinhood, LISTED.robinhoodUsdg), 'does not match USDG'],
     ]
     for (const [check, message] of refusals) await expect(check()).rejects.toThrow(message)
   })

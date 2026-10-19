@@ -463,7 +463,7 @@ export async function bridgeQuote(r: BridgeRequest): Promise<BridgeQuote> {
   if (!ACROSS_EXECUTABLE_SOURCE_IDS.has(r.src.id) || !ACROSS[r.src.id]) {
     throw new UserError(`Bridging can start from Ethereum, Arbitrum or Base for now (not ${r.src.name}).`)
   }
-  if (r.src.id === r.dst.id) throw new UserError('Pick a different destination chain.')
+  if (r.src.id === r.dst.id) throw new UserError('The sending and receiving networks are the same. Choose a different network to receive your tokens on.')
   const placeholder = toAccount({
     address: someAddress(),
     signTypedData: async () => PLACEHOLDER_SIGNATURE,
@@ -565,7 +565,7 @@ export async function bridgeVia(src: Network, address: string, dst: Network, buy
   const usdg = (net: Network, t: { address: string }) => net.id === ROBINHOOD_USDG.chainId && same(t.address, ROBINHOOD_USDG.address)
   const corridor = (usdg(dst, to) && assetOf(via.symbol) === 'USDC') || (usdg(src, via) && assetOf(to.symbol) === 'USDC')
   if (via.decimals !== to.decimals || (assetOf(via.symbol) !== assetOf(to.symbol) && !corridor)) {
-    throw new UserError(`Across offered to bridge through ${clean(via.symbol)} (${getAddress(via.address)}), which is not the same asset as ${clean(to.symbol)} on ${dst.name}; refusing.`)
+    throw new UserError(`Across, the transfer service, offered ${clean(via.symbol)} (${getAddress(via.address)}), which does not match ${clean(to.symbol)} on ${dst.name}. Check the token and destination network before trying again.`)
   }
   return { address: getAddress(via.address), symbol: clean(via.symbol), decimals: via.decimals, native: false, listed: true }
 }
@@ -586,7 +586,7 @@ export async function checkLeftover(src: Network, owner: Address, via: Token, gu
     .catch(() => {
       throw new UserError('Could not read your CoW Shed balance. Try again in a moment, or use --rpc with another RPC.')
     })
-  if (held * LEFTOVER_SHARE >= guard) throw new UserError(`Your CoW Shed still holds ${amount(held, via.decimals)} ${via.symbol} from an earlier bridge. Recover it first: ophis recover ${via.address} on ${src.alias}`)
+  if (held * LEFTOVER_SHARE >= guard) throw new UserError(`Your CoW Shed, the small account bridges pay into, still holds ${amount(held, via.decimals)} ${via.symbol} from an earlier transfer. Return it to your wallet first: ophis recover ${via.address} on ${src.alias}`)
 }
 
 export const SHED_NONCES = parseAbi(['function nonces(bytes32 nonce) view returns (bool)'])
@@ -687,7 +687,7 @@ export async function checkEarlierHooks(src: Network, owner: Address, prune = fa
   const running = live.filter((_, i) => !used[i])
   if (running.length) {
     const until = new Date(Number(running.reduce((last, hook) => (hook.deadline > last ? hook.deadline : last), 0n)) * 1000)
-    throw new UserError(`An earlier bridge or recovery from this wallet could still run until ${until.toLocaleString()} and would carry this one. Try again after that.`)
+    throw new UserError(`An earlier transfer between networks or back to your wallet could still move these tokens until ${until.toLocaleString()}. Wait until that time has passed before trying again.`)
   }
 }
 
@@ -818,7 +818,7 @@ export async function placeBridge(b: BridgeQuote, wallet: Signer, onSigned?: (ui
 
 async function placeLocked(b: BridgeQuote, wallet: Signer, onSigned?: (uid: string) => void): Promise<{ uid: string; validTo: number }> {
   const { open, hooks } = await openBridge(b.src, b.owner)
-  if (open) throw new UserError(`A bridge from this wallet is still open: ophis status ${open} on ${b.src.alias}`)
+  if (open) throw new UserError(`This wallet already has a bridge, a transfer between networks, waiting to finish. Check its status and wait for it to finish: ophis status ${open} on ${b.src.alias}`)
   await checkEarlierHooks(b.src, b.owner, true, hooks)
   await checkLeftover(b.src, b.owner, b.via, b.guard) // again: a refreshed price may bridge through another token
   let signed: string | undefined
@@ -845,7 +845,7 @@ async function placeLocked(b: BridgeQuote, wallet: Signer, onSigned?: (uid: stri
     // The id is computed here from what was signed; an orderbook answering with another one is not trusted.
     if (signed && same(posted.orderId, signed)) return sent(signed)
     spin.stop(`${saffron('!')} The orderbook answered with another order id`)
-    throw Object.assign(new UserError(`Before trying again, check: ophis status ${signed ?? clean(String(posted.orderId))} on ${b.src.alias}`), { maybeSent: true })
+    throw Object.assign(new UserError(`Ophis returned an unexpected order ID, so this bridge may already be active. Check its status before trying again: ophis status ${signed ?? clean(String(posted.orderId))} on ${b.src.alias}`), { maybeSent: true })
   } catch (err) {
     if ((err as { maybeSent?: boolean }).maybeSent) throw err
     if (process.env.OPHIS_DEBUG) console.error(err)
@@ -856,7 +856,7 @@ async function placeLocked(b: BridgeQuote, wallet: Signer, onSigned?: (uid: stri
       if (await getOrder(b.src, signed).catch(() => null)) return sent(signed)
       if (!body?.errorType || body.errorType === 'DuplicatedOrder') {
         spin.stop(`${saffron('!')} Could not confirm the bridge order reached Ophis`)
-        throw Object.assign(new UserError(`Before trying again, check: ophis status ${signed} on ${b.src.alias}`), { maybeSent: true })
+        throw Object.assign(new UserError(`The bridge order may have reached Ophis, but this could not be confirmed. Check its status before trying again: ophis status ${signed} on ${b.src.alias}`), { maybeSent: true })
       }
     }
     spin.stop(`${red('✗')} Bridge order not sent`)

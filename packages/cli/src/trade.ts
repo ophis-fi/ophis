@@ -124,10 +124,10 @@ export function toAtoms(text: string, decimals: number): bigint {
 /** Slippage given in percent ("0.5") -> basis points (50). */
 export function slippageBps(percent: string): number {
   const value = Number(percent)
-  if (!/^\d+(\.\d+)?$/.test(percent) || value > 50) throw new UserError('Slippage is a percentage from 0 to 50, like 0.5.')
+  if (!/^\d+(\.\d+)?$/.test(percent) || value > 50) throw new UserError('Your slippage, how much less you accept than quoted, is not a valid percentage. Enter a number from 0 to 50, like 0.5.')
   // Basis points are the finest step an order takes: a finer value is refused, never rounded wider than asked.
   const bps = Math.round(value * 100)
-  if (Math.abs(value * 100 - bps) > 1e-9) throw new UserError('Slippage goes in steps of 0.01%, like 0.5 or 0.25.')
+  if (Math.abs(value * 100 - bps) > 1e-9) throw new UserError('Your slippage, how much less you accept than quoted, has too many decimal places. Use steps of 0.01%, like 0.5 or 0.25.')
   return bps
 }
 
@@ -166,7 +166,7 @@ export async function findToken(net: Network, query: string): Promise<Token> {
       client.readContract({ address, abi: erc20Abi, functionName: 'symbol' }),
       client.readContract({ address, abi: erc20Abi, functionName: 'decimals' }),
     ]).catch(() => {
-      throw new UserError(`${address} is not a token on ${net.name}.`)
+      throw new UserError(`Ophis could not recognize ${address} as a token on ${net.name}. Check the token address and network, then try again.`)
     })
     if (!Number.isInteger(decimals) || decimals > 36) throw new UserError(`${address} reports an impossible number of decimals.`)
     // A token's own symbol is attacker-chosen text: clean it before it reaches the confirmation screen.
@@ -181,7 +181,7 @@ export async function findToken(net: Network, query: string): Promise<Token> {
   }
   if (found.matches.length > 1) {
     const list = found.matches.map((m) => `      ${m.address}  ${clean(m.symbol)}  ${dim(clean(m.name))}`).join('\n')
-    throw new UserError(`"${query}" could mean several tokens on ${net.name}. Use the address instead:\n${list}`)
+    throw new UserError(`"${query}" matches several tokens on ${net.name}. Replace the name with the address of the token you want from this list:\n${list}`)
   }
   // Never on a partial view: an Ophis list that could not be read may hold this very name.
   if (found.incomplete) throw new UserError(`Could not read the Ophis token list just now. Try again, or use the token's address.`)
@@ -200,7 +200,7 @@ export async function findToken(net: Network, query: string): Promise<Token> {
   const named = await publicListAddresses(net.id, query)
   if (named.length === 1) return findToken(net, named[0]!)
   if (named.length > 1) {
-    throw new UserError(`"${clean(query)}" could mean several tokens on ${net.name}. Use the address instead:\n${named.map((a) => `      ${a}`).join('\n')}`)
+    throw new UserError(`"${clean(query)}" matches several tokens on ${net.name}. Replace the name with the address of the token you want from this list:\n${named.map((a) => `      ${a}`).join('\n')}`)
   }
   const listed = await loadCuratedTokenList(OPHIS_TOKEN_LIST_URL, fetch).catch(() => []) as { chainId?: number; symbol?: string }[]
   const dollars = [...new Set(listed.filter((t) => t?.chainId === net.id && typeof t.symbol === 'string' && /USD/i.test(t.symbol)).map((t) => clean(t.symbol!)))]
@@ -308,10 +308,10 @@ async function fetchQuote(t: TradeBase, appData: { fullAppData: string; appDataH
 /** Finds the tokens and the amount, then gets a price. Nothing is signed or sent here. */
 export async function prepare(r: TradeRequest): Promise<Trade> {
   const [sell, buy] = await Promise.all([findToken(r.net, r.from), findToken(r.net, r.to)])
-  if (sell.native && buy.native) throw new UserError('Pick two different tokens.')
+  if (sell.native && buy.native) throw new UserError('You chose the same token to sell and receive. Choose two different tokens.')
   const pay = sell.native ? wrappedNative(r.net) : sell
   if (pay.address.toLowerCase() === buy.address.toLowerCase()) {
-    throw new UserError(sell.native ? `Turning ${sell.symbol} into ${pay.symbol} is a wrap, not a swap.` : 'Pick two different tokens.')
+    throw new UserError(sell.native ? `Turning ${sell.symbol} into ${pay.symbol} is a wrap, not a swap.` : 'You chose the same token to sell and receive. Choose two different tokens.')
   }
   const atoms = toAtoms(r.amount, sell.decimals)
   return requote({ net: r.net, sell, pay, buy, atoms, owner: r.owner, slippage: r.slippage, ref: r.ref })
@@ -629,7 +629,7 @@ export async function sendTx(net: Network, signer: Signer, fees: Fees, label: st
     const receipt = await client.waitForTransactionReceipt({ hash, timeout: 180_000, onReplaced: (r) => void (replaced = r.reason) })
     onPending?.(false)
     if (replaced && replaced !== 'repriced') {
-      throw new UserError(`${label}: your wallet ${replaced === 'cancelled' ? 'cancelled it' : 'replaced it with another transaction'} (${clean(receipt.transactionHash)}), so it did not happen.`)
+      throw new UserError(`${label} did not happen because your wallet ${replaced === 'cancelled' ? 'cancelled the transaction' : 'sent a different transaction instead'} (${clean(receipt.transactionHash)}). Check your wallet activity before trying again.`)
     }
     if (receipt.status !== 'success') throw new UserError(`${label} failed on-chain (transaction ${clean(receipt.transactionHash)}).`)
     spin.stop(`${green('✓')} ${label}  ${dim(clean(receipt.transactionHash))}`)

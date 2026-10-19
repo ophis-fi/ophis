@@ -78,8 +78,8 @@ describe('chains', () => {
     expect(read(['5', 'USDC', 'ETH', 'on'], 3).words).toEqual(['5', 'USDC', 'ETH', 'on'])
     // The flag and the words agree, or nothing runs.
     expect(read(['5', 'USDC', 'ETH', 'on', 'arbitrum'], 3, { chain: 'arb' }).chain).toBe('arbitrum')
-    expect(() => read(['5', 'USDC', 'ETH', 'on', 'arbitrum'], 3, { chain: 'base' })).toThrow('Two different chains')
-    expect(() => read(['5', 'USDC', 'ETH', 'to', 'base', 'to', 'linea'], 3)).toThrow('Two different chains')
+    expect(() => read(['5', 'USDC', 'ETH', 'on', 'arbitrum'], 3, { chain: 'base' })).toThrow('Two different networks')
+    expect(() => read(['5', 'USDC', 'ETH', 'to', 'base', 'to', 'linea'], 3)).toThrow('Two different networks')
   })
 })
 

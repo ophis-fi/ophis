@@ -89,17 +89,17 @@ test('expired and unanswered wallet requests explain how to reconnect and warn a
     for (const reply of [async () => { throw new Error('Request expired') }, () => new Promise<string>(() => {})]) {
       answer = reply
       const error = await wallet.sendTransaction(8453, { to: ME }).catch((err: Error) => err.message)
-      expect(error).toContain('Your wallet did not answer')
-      expect(error).toContain('Open your wallet app and keep it open')
-      expect(error).toContain('Ledger Wallet, stay on its WalletConnect screen')
-      expect(error).toContain('run ophis connect again')
-      expect(error).toContain('Rabby')
-      expect(error).toContain("Check your wallet's activity first: the transaction may already have been sent")
+      expect(error).toContain('Your wallet did not respond')
+      expect(error).toContain('keep the app open')
+      expect(error).toContain('Ledger Wallet, use the WalletConnect connection screen')
+      expect(error).toContain('reconnect with ophis connect')
+      expect(error).toContain('Check your wallet activity before retrying')
+      expect(error).toContain('the transaction may already have been sent')
     }
     answer = async () => { throw new Error('Request expired') }
     const typed = { domain: { chainId: 8453 } } as never
     const error = await wallet.signTypedData(8453, typed).catch((err: Error) => err.message)
-    expect(error).toContain('keep it open')
+    expect(error).toContain('keep the app open')
     expect(error).not.toContain('may already have been sent')
     answer = async () => { throw new Error('User rejected') }
     await expect(wallet.sendTransaction(8453, { to: ME })).rejects.toThrow('You declined the request')
