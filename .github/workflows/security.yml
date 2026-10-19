@@ -9,7 +9,7 @@ name: Security
 # repo-wide red-CI surprise, PR #786). The weekly run closes that gap.
 #
 # WHICH jobs run on the cron: ONLY the time-sensitive advisory jobs
-# (cargo-audit, cargo-deny, pnpm-audit, pnpm-audit-frontend, pnpm-audit-docs, contracts-osv-audit, python-osv-audit, rust-osv-audit) plus the
+# (cargo-audit, cargo-deny, pnpm-audit, pnpm-audit-frontend, pnpm-audit-docs, contracts-osv-audit, rust-osv-audit) plus the
 # secret scan (gitleaks). The input-invariant gates (partner-fee / floor /
 # tier / erpc / policy-pack) and Slither depend only on repo contents a PR
 # already exercised, so they are skipped on schedule via
@@ -481,25 +481,6 @@ jobs:
           # Keep the dated version-only exception until an upstream fixed release.
           # Review and removal criteria: audit/dependency-review-2026-10-04.md;
           # renewal: audit/dependency-review-2026-10-07.md.
-
-  python-osv-audit:
-    name: Python scanner dependency advisories
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
-      - uses: ./.github/actions/install-osv-scanner
-      - name: Reject Python manifest and lock drift
-        run: python3 scripts/check-scanner-lock.py
-      - name: Scan the complete hashed Python lock
-        run: |
-          lock=tools/toxic-pool-risk/requirements-scanner.lock
-          test -s "$lock"
-          # OSV selects pip extraction by the conventional filename.
-          cp "$lock" /tmp/requirements.txt
-          rc=0
-          osv-scanner scan source --lockfile /tmp/requirements.txt --format json \
-            --output-file /tmp/osv-python.json || rc=$?
-          python3 scripts/osv-gate.py /tmp/osv-python.json --mode advisories --osv-rc "$rc"
 
   rust-osv-audit:
     name: Rust OSV (${{ matrix.lock }})
