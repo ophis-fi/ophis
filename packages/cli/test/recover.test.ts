@@ -582,6 +582,15 @@ describe('reading the chain before asking anything (RPC answered here)', () => {
       log.mockRestore()
     }
     expect((await send()).transactionHash).toBe(SENT)
+    // A wallet that returns the hash in capitals sent the same transaction: no second link on the success line.
+    const capitals = { address: OWNER, sendTransaction: async () => `0x${'AA'.repeat(32)}` } as unknown as Signer
+    const quiet = spyOn(console, 'log').mockImplementation(() => {})
+    try {
+      await sendTx(network('base', RPC), capitals, { maxFeePerGas: 3n * 10n ** 9n, maxPriorityFeePerGas: 1n }, 'Wrapping', tx, client())
+      expect(quiet.mock.calls.at(-1)).toEqual(['  ✓ Wrapping'])
+    } finally {
+      quiet.mockRestore()
+    }
     // The RPC's text reaches the terminal cleaned (here an escape sequence that would write the clipboard).
     const evil = `0x\u001b]52;c;aGk=\u0007${'cc'.repeat(30)}`
     const lying = { getTransactionCount: async () => 5, getBlock: async () => ({ baseFeePerGas: 10n ** 9n }), waitForTransactionReceipt: async () => ({ status: 'reverted', transactionHash: evil, logs: [] }) } as never

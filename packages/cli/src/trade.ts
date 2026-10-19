@@ -631,7 +631,7 @@ export async function sendTx(net: Network, signer: Signer, fees: Fees, label: st
       throw new UserError(`${label} did not happen because your wallet ${replaced === 'cancelled' ? 'cancelled the transaction' : 'sent a different transaction instead'} (${transactionLink(net, receipt.transactionHash)}). Check your wallet activity before trying again.`)
     }
     if (receipt.status !== 'success') throw new UserError(`${label} failed on-chain (transaction ${transactionLink(net, receipt.transactionHash)}).`)
-    spin.stop(`${green('✓')} ${label}${receipt.transactionHash === hash ? '' : `  ${dim(transactionLink(net, receipt.transactionHash))}`}`)
+    spin.stop(`${green('✓')} ${label}${receipt.transactionHash.toLowerCase() === hash.toLowerCase() ? '' : `  ${dim(transactionLink(net, receipt.transactionHash))}`}`)
     return receipt
   } catch (err) {
     spin.stop(`${red('✗')} ${label}`)
