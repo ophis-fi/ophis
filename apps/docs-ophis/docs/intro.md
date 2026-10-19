@@ -50,6 +50,7 @@ Choose tokens and amount → review quote → sign order → settle
 | Section | What you'll find |
 | --- | --- |
 | [Getting started](./getting-started.md) | Make your first swap; how the three-step flow works; supported networks. |
+| [Ophis CLI](./cli.md) | Quote, swap and bridge from your terminal, with approvals in your wallet. |
 | [How it works](./architecture.md) | Intent lifecycle, batch auctions, the parser proxy, and settlement. |
 | [Fees & rebates](./fees.md) | Standard pricing, hosted upstream fees and rebates. |
 | [Networks & assets](./networks-assets.md) | App versus SDK coverage, Arc bridges, token labels and feature availability. |
@@ -62,6 +63,7 @@ Choose tokens and amount → review quote → sign order → settle
 ## Quick links
 
 - **App:** [swap.ophis.fi](https://swap.ophis.fi)
+- **Terminal:** [Ophis CLI](./cli.md), type commands to quote, swap and bridge.
 - **Business portal:** [business.ophis.fi](https://business.ophis.fi)
 - **Machine-readable summary:** [ophis.fi/llms.txt](https://ophis.fi/llms.txt)
 - **OpenAPI spec:** [ophis.fi/openapi.json](https://ophis.fi/openapi.json)

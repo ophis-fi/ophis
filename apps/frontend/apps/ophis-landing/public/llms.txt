@@ -25,6 +25,12 @@ curl -X POST https://swap.ophis.fi/api/intent \
   -d '{"text": "swap 100 USDC for ETH on Optimism"}'
 ```
 
+## Ophis CLI
+
+- [Ophis CLI](https://docs.ophis.fi/cli): quote, swap and bridge by typing commands in your terminal. Install or update with `npm install -g @ophis/cli` (Node.js 20 or later), or run once with `npx @ophis/cli help`.
+- Run `ophis connect` and scan the QR code with your wallet app's own WalletConnect scanner. Your keys stay in your wallet. Try `ophis quote 5 USDC ETH` to see a price without signing, then `ophis swap 5 USDC ETH` to confirm in the terminal and approve in your wallet.
+- Base is the default chain. Use `on arbitrum` to trade on Arbitrum or `to arbitrum` to receive there. `ophis bridge 25 USDC to arbitrum` moves tokens through Across; bridges start from Ethereum, Arbitrum or Base. Run `ophis chains` for all 15 chains, including the Sepolia testnet.
+
 ## For agents
 
 - [MCP server](https://mcp.ophis.fi/mcp): a Streamable-HTTP Model Context Protocol server. Tools: `parse_intent` (natural language -> structured swap), `resolve_token` (symbol -> canonical address, fails closed / anti-spoof), `get_quote` (best-execution quote), `build_order` (a bounded, ready-to-sign EIP-712 order with the receiver pinned to the owner), `submit_order` (relay a pre-signed order), `lookup_tier` (fee-rebate tier), `get_integrator_earnings` (integrator fee earnings), `list_chains`, `get_balances` (wallet balances on a chain), `get_portfolio` (cross-chain balances), `get_gas` (chain gas price), `get_token_chart` (OHLCV chart), `expected_surplus` (beat-the-market estimate), `validate_order` (preflight order validation). Public, unauthenticated, and keyless: it never holds keys or signs; the agent signs with its own key.
