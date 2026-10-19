@@ -59,6 +59,12 @@ describe('chains', () => {
   test('every chain has its brand colour, so none shows up as a grey dot', () => {
     for (const n of networks()) expect(CHAIN_COLOURS[n.id]).toMatch(/^#[0-9A-F]{6}$/i)
   })
+  test('every tradeable chain has an https block explorer', () => {
+    for (const n of networks()) {
+      expect(n.chain.blockExplorers?.default.url).toMatch(/^https:\/\//)
+      expect(n.chain.blockExplorers?.default.name).toBeTruthy()
+    }
+  })
   test('chains in plain words: "on" or "from" is the chain to use, "to" the chain to receive on', () => {
     const read = (args: string[], own: number, flags: { chain?: string; 'to-chain'?: string } = {}) => ({ words: chainWords(args, flags, own), ...flags })
     expect(read(['5', 'USDC', 'ETH', 'on', 'arbitrum'], 3)).toEqual({ words: ['5', 'USDC', 'ETH'], chain: 'arbitrum' })

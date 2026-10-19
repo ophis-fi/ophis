@@ -568,21 +568,39 @@ describe('reading the chain before asking anything (RPC answered here)', () => {
       }) as never
     const signer = { address: OWNER, sendTransaction: async () => SENT } as unknown as Signer
     const send = (reason?: 'cancelled' | 'replaced' | 'repriced') => sendTx(network('base', RPC), signer, { maxFeePerGas: 3n * 10n ** 9n, maxPriorityFeePerGas: 1n }, 'Wrapping', tx, client(reason))
-    await expect(send('cancelled')).rejects.toThrow(`Wrapping did not happen because your wallet cancelled the transaction (${MINED}). Check your wallet activity before trying again.`)
-    await expect(send('replaced')).rejects.toThrow('Wrapping did not happen because your wallet sent a different transaction instead')
-    expect((await send('repriced')).transactionHash).toBe(MINED) // the same call at a higher fee
+    await expect(send('cancelled')).rejects.toThrow(`Wrapping did not happen because your wallet cancelled the transaction (https://basescan.org/tx/${MINED}). Check your wallet activity before trying again.`)
+    await expect(send('replaced')).rejects.toThrow(`Wrapping did not happen because your wallet sent a different transaction instead (https://basescan.org/tx/${MINED})`)
+    const log = spyOn(console, 'log').mockImplementation(() => {})
+    try {
+      expect((await send('repriced')).transactionHash).toBe(MINED) // the same call at a higher fee
+      const printed = log.mock.calls.flat().join('\n')
+      expect(printed).toContain(`Transaction sent: https://basescan.org/tx/${SENT}`)
+      expect(log.mock.calls.at(-1)).toEqual([`  ✓ Wrapping  https://basescan.org/tx/${MINED}`])
+      expect(printed.split(SENT).length).toBe(2)
+      expect(printed.split(MINED).length).toBe(2)
+    } finally {
+      log.mockRestore()
+    }
     expect((await send()).transactionHash).toBe(SENT)
+    // A wallet that returns the hash in capitals sent the same transaction: no second link on the success line.
+    const capitals = { address: OWNER, sendTransaction: async () => `0x${'AA'.repeat(32)}` } as unknown as Signer
+    const quiet = spyOn(console, 'log').mockImplementation(() => {})
+    try {
+      await sendTx(network('base', RPC), capitals, { maxFeePerGas: 3n * 10n ** 9n, maxPriorityFeePerGas: 1n }, 'Wrapping', tx, client())
+      expect(quiet.mock.calls.at(-1)).toEqual(['  ✓ Wrapping'])
+    } finally {
+      quiet.mockRestore()
+    }
     // The RPC's text reaches the terminal cleaned (here an escape sequence that would write the clipboard).
     const evil = `0x\u001b]52;c;aGk=\u0007${'cc'.repeat(30)}`
     const lying = { getTransactionCount: async () => 5, getBlock: async () => ({ baseFeePerGas: 10n ** 9n }), waitForTransactionReceipt: async () => ({ status: 'reverted', transactionHash: evil, logs: [] }) } as never
     const failed = await sendTx(network('base', RPC), signer, { maxFeePerGas: 3n * 10n ** 9n, maxPriorityFeePerGas: 1n }, 'Wrapping', tx, lying).catch((e: Error) => e.message)
-    expect(String(failed)).toContain('failed on-chain')
+    expect(String(failed)).toContain('failed on-chain (transaction https://basescan.org/tx/')
     expect(String(failed)).not.toContain('\u001b')
   })
-  test('a transaction explorer link is printed while the transaction is still pending', async () => {
+  test('a transaction explorer link is printed once, while the transaction is still pending', async () => {
     const hash = `0x${'aa'.repeat(32)}` as Hex
     const net = network('base', RPC)
-    net.chain.blockExplorers = { default: { name: 'Base', url: 'https://basescan.org' } }
     const log = spyOn(console, 'log').mockImplementation(() => {})
     const pending: boolean[] = []
     const client = {
@@ -596,6 +614,8 @@ describe('reading the chain before asking anything (RPC answered here)', () => {
     try {
       await sendTx(net, { address: OWNER, sendTransaction: async () => hash } as unknown as Signer, { gasPrice: 1n }, 'Wrapping', tx, client, (value) => { pending.push(value) })
       expect(pending).toEqual([true, false])
+      expect(log.mock.calls.flat().join('\n').split(hash).length).toBe(2)
+      expect(log.mock.calls.at(-1)).toEqual(['  ✓ Wrapping'])
     } finally {
       log.mockRestore()
     }
@@ -921,7 +941,7 @@ describe('ophis recover, end to end (chain, orderbook and wallet answered here)'
     serve(chainOf({ failAt: numberToHex(MINED_IN), logs: [transferLog(USDC.address, 25_000_000n)] }), { [ORDERS]: [BRIDGE], ...LISTS })
     const { outcome, printed } = await run(async () => true)
     expect(outcome).toBe('unknown') // the command exits non-zero
-    expect(printed).toContain(`The recovery was sent (${SENT}), but the balances could not be read back.`)
+    expect(printed).toContain(`The recovery was sent (https://basescan.org/tx/${SENT}), but the balances could not be read back.`)
     expect(printed).not.toContain('you now hold')
     // One token that no longer answers at that block: what it left in the shed is unknown, not zero.
     const gone = (token: Address, block: string) => (block !== '0x21' ? (HELD[getAddress(token)] ?? 0n) : same(token, USDC.address) ? 'revert' : 0n)

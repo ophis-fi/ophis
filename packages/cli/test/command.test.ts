@@ -24,9 +24,10 @@ for (const [command, args, continuation] of [
       const result = run(mode, [...args])
       expect(result.code).toBe(mode === 'interrupt' ? 130 : 1)
       const hash = `0x${'ab'.repeat(32)}`
-      expect(result.out).toContain(`Transaction sent: ${hash}`)
+      expect(result.out).toContain(`Transaction sent: https://basescan.org/tx/${hash}`)
       expect(result.out.indexOf(hash)).toBeLessThan(result.out.indexOf('Receipt wait started'))
       const message = result.out + result.error
+      if (mode === 'timeout') expect(result.error).toContain(`Transaction https://basescan.org/tx/${hash} has not confirmed`)
       expect(message).toContain('The wrap may still confirm')
       expect(message).toContain('Check the transaction before trying again')
       expect(message).toContain('If it confirms, you will hold 1 WETH instead of ETH')
@@ -42,6 +43,7 @@ for (const [command, args, continuation] of [
       const result = run(mode, [...args])
       expect(result.code).toBe(1)
       expect(result.error).toContain(mode === 'reverted' ? 'failed on-chain' : 'Wallet declined')
+      if (mode === 'reverted') expect(result.error).toContain(`failed on-chain (transaction https://basescan.org/tx/0x${'ab'.repeat(32)})`)
       expect(result.error).not.toContain('wrap may still confirm')
       expect(result.error).not.toContain(continuation)
     }

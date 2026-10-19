@@ -1,5 +1,6 @@
 // Chains people can trade on, and RPC connections to them.
 import { createPublicClient, fallback, http, type Chain } from 'viem'
+import { getChainInfo } from '@cowprotocol/sdk-config'
 // ponytail: the chain list and RPC defaults come straight from the MCP server module (one source of truth);
 // move them into @ophis/sdk before any public release.
 import { listChains, NATIVE_SYMBOL, PUBLIC_RPCS } from '@ophis/mcp-server/src/ophis.ts'
@@ -18,6 +19,13 @@ const ALIASES: Record<string, number> = {
 const MORE_RPCS: Record<number, string[]> = {
   9745: ['https://rpc.plasma.to'],
   11155111: ['https://ethereum-sepolia-rpc.publicnode.com', 'https://sepolia.drpc.org'],
+}
+
+// The website's explorer overrides in common-const/src/chainInfo.ts and robinhood.const.ts.
+const EXPLORERS: Record<number, { name: string; url: string }> = {
+  130: { name: 'Uniscan', url: 'https://uniscan.xyz' },
+  4663: { name: 'Robinhood Chain Blockscout', url: 'https://robinhoodchain.blockscout.com' },
+  5042: { name: 'Arcscan', url: 'https://arcscan.app' },
 }
 
 // Each chain's brand colour, as the Ophis website shows it (@cowprotocol/sdk-config chain colours, and
@@ -68,6 +76,11 @@ export interface Network {
   chain: Chain
 }
 
+export function transactionLink(net: Network, hash: string): string {
+  const url = net.chain.blockExplorers?.default.url
+  return clean(url ? `${url}/tx/${hash}` : hash)
+}
+
 /** RPC addresses must be https (plain http only for this computer) and carry no user name or password. */
 function checkRpc(url: string): string {
   let parsed: URL
@@ -88,11 +101,13 @@ function describe(id: number, name: string, rpcOverride?: string): Network {
   const native = NATIVE_SYMBOL[id] ?? 'ETH'
   const fromEnv = process.env[`OPHIS_RPC_URL_${id}`]?.split(',').map((url) => url.trim())
   const rpc = (rpcOverride ? [rpcOverride] : (fromEnv ?? PUBLIC_RPCS[id] ?? MORE_RPCS[id] ?? [])).map(checkRpc)
+  const explorer = EXPLORERS[id] ?? getChainInfo(id)?.blockExplorer
   const chain: Chain = {
     id,
     name,
     nativeCurrency: { name: native, symbol: native, decimals: 18 },
     rpcUrls: { default: { http: rpc } },
+    blockExplorers: explorer ? { default: explorer } : undefined,
     contracts: { multicall3: { address: '0xcA11bde05977b3631167028862bE2a173976CA11' } },
     // Fee cap = 2 x base fee + tip: still valid after about six blocks of rising fees while the user confirms.
     fees: { baseFeeMultiplier: 2 },
