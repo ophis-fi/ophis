@@ -1,80 +1,51 @@
 ---
 id: ai-agents
 title: AI agent integration
-description: Wire the Ophis Intent API into LangChain, AutoGPT, or any function-calling agent, parse a request, build a deep link, let the user sign.
-sidebar_label: AI agent integration
+description: Connect an agent to Ophis through MCP, framework adapters or the SDK.
+sidebar_label: AI agents
 sidebar_position: 2
 ---
 
 # AI agent integration
 
-Ophis is designed to be agent-friendly. The [Intent API](./intent-api.md)
-accepts free-form natural language and returns structured JSON your agent
-can map directly to a pre-filled swap link. The agent does the parsing
-and routing; in this deep-link flow, **the human always reviews and signs.**
-The MCP server and framework adapters can also support programmatic signing;
-use the policy controls in [Autonomous agent trading](#autonomous-agent-trading-advanced)
-before giving an agent signing authority.
+Connect your agent to Ophis to parse requests, get quotes and build orders for wallet signing.
 
-:::tip[New: the full walkthrough]
+<Cards>
+<Card icon="server" title="MCP server" href="/ai-agents#connect-your-mcp-client">Connect your client to the hosted swap tools.</Card>
+<Card icon="plug" title="Framework adapters" href="/ai-agents#drop-in-framework-adapters">Use a published package to quote, sign and submit.</Card>
+<Card icon="braces" title="Intent API" href="/intent-api">Turn natural language into fields for a swap link.</Card>
+</Cards>
 
-For a narrative guide, including the MEV and key-safety pitfalls of letting an
-agent trade, read
-[How to let an AI agent swap tokens](https://ophis.fi/blog/let-an-ai-agent-swap-tokens)
-on the Ophis blog.
+## Connect a client {/* #connect-your-mcp-client */}
 
-:::
-
-## MCP server (recommended)
-
-The fastest way to give an MCP-capable agent full Ophis access is the hosted
-**Model Context Protocol** server:
+The current server release is **v0.1.2**. It uses streamable HTTP and requires no API key:
 
 ```
 https://mcp.ophis.fi/mcp
 ```
 
-It speaks streamable-HTTP MCP and exposes fourteen tools:
+| Setting | Value |
+| --- | --- |
+| Request header | `Accept: text/event-stream` |
+| Missing header | HTTP 406 |
 
-The current server release is **v0.1.2**. Its package metadata, runtime
-handshake, discovery response, and official registry manifest are checked as a
-single versioned unit in CI.
+<Steps>
 
-| Tool                      | What it does                                                                                                                                                                                                            |
-| ------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `parse_intent`            | Parse a natural-language request into a structured intent.                                                                                                                                                              |
-| `resolve_token`           | Resolve a token symbol against trusted Ophis/CoW lists. Check the returned chain, exact address and any ambiguity before quoting or building.                    |
-| `get_quote`               | Fetch an executable quote for a parsed intent.                                                                                                                                                                          |
-| `build_order`             | Build a bounded, ready-to-sign order (receiver unconditionally pinned to the owner).                                                                                                                                    |
-| `submit_order`            | Submit a signed order to the correct per-chain orderbook.                                                                                                                                                               |
-| `validate_order`          | Offline preflight for an order you built outside `build_order`: catches the silent-failure modes (wrong appCode, wrong orderbook host, wrong EIP-712 domain, appData-hash mismatch, unpinned receiver) before you sign. |
-| `lookup_tier`             | Look up a wallet's 30-day volume tier / rebate status.                                                                                                                                                                  |
-| `get_integrator_earnings` | Look up what an integrator's own-fee / referral routing earned, by appCode: routed volume, the Ophis base fee, your stacked fee, and rebate paid-to-date with payout tx links.                                          |
-| `list_chains`             | Resolve supported chains and their settlement / orderbook hosts.                                                                                                                                                        |
-| `get_balances`            | Read a wallet's native and ERC-20 balances on one chain via a public RPC.                                                                                                                                               |
-| `get_portfolio`           | Read a wallet's token balances across multiple chains.                                                                                                                                                                  |
-| `get_gas`                 | Fetch the current gas price for a chain.                                                                                                                                                                                |
-| `get_token_chart`         | Fetch a token's OHLCV price chart.                                                                                                                                                                                      |
-| `expected_surplus`        | Estimate how much better an Ophis sell-quote beats the open market (`beatBps`).                                                                                                                                         |
+1. **Add the server.** Use the configuration for your client below.
+2. **Request a quote.** Ask the agent to "quote 100 USDC to ETH on Optimism".
+3. **Review and sign.** The agent calls `resolve_token`, `get_quote` and `build_order`; sign the returned order with your wallet.
 
-Point any MCP client (Claude, Cursor, or a custom agent) at that URL. Ophis
-never holds keys: `build_order` returns a bounded order the agent signs
-locally; the signature is the trust boundary (see the warning below). A bare
-request without an `Accept: text/event-stream` header returns HTTP 406; that is
-the transport negotiating, not an outage.
+</Steps>
 
-### Connect your MCP client
-
-The server is public and keyless, so there is nothing to sign up for. Copy the
-block for your client.
-
-**Claude Code** (one command):
+### Claude Code
 
 ```bash
 claude mcp add --transport http ophis https://mcp.ophis.fi/mcp
 ```
 
-**Claude Desktop** (`claude_desktop_config.json`, via the `mcp-remote` bridge):
+### Claude Desktop
+
+Add this to `claude_desktop_config.json` to use the `mcp-remote` bridge:
 
 ```json
 {
@@ -87,7 +58,9 @@ claude mcp add --transport http ophis https://mcp.ophis.fi/mcp
 }
 ```
 
-**Cursor** (`~/.cursor/mcp.json`, or the project `.cursor/mcp.json`):
+### Cursor
+
+Add this to `~/.cursor/mcp.json` or the project's `.cursor/mcp.json`:
 
 ```json
 {
@@ -99,7 +72,9 @@ claude mcp add --transport http ophis https://mcp.ophis.fi/mcp
 }
 ```
 
-**VS Code** (`.vscode/mcp.json`):
+### VS Code
+
+Add this to `.vscode/mcp.json`:
 
 ```json
 {
@@ -112,43 +87,48 @@ claude mcp add --transport http ophis https://mcp.ophis.fi/mcp
 }
 ```
 
-**OpenAI Agents SDK, LangChain, or any custom client**: point a
-streamable-HTTP MCP transport at `https://mcp.ophis.fi/mcp`. The
-[LangChain tool](#langchain-tool) and function-calling examples below show the
-call path without an MCP client at all.
+OpenAI Agents SDK, LangChain and custom clients can connect with a streamable-HTTP MCP transport.
 
-After connecting, ask the agent to "quote 100 USDC to ETH on Optimism" and it
-will call `resolve_token`, `get_quote`, and `build_order`; it returns a bounded
-order for you (or your wallet) to sign.
+## Main MCP tools {/* #mcp-server-recommended */}
 
-If you'd rather make a single REST call than wire up the full toolset, use the
-[Intent API](./intent-api.md) directly, as shown next.
+Your MCP client lists every tool the server offers.
 
-## The integration flow
+| Tool | Purpose |
+| --- | --- |
+| `parse_intent` | Parse natural language into structured fields. |
+| `resolve_token` | Resolve a symbol against trusted Ophis/CoW lists; check the chain, address and ambiguity. |
+| `get_quote` | Fetch an executable quote. |
+| `build_order` | Build a bounded order with the receiver unconditionally pinned to the owner. |
+| `submit_order` | Submit a signed order to its chain's orderbook. |
+| `validate_order` | Check appCode, host, domain, appData hash and receiver for a manually built order. |
+| `list_chains` | List supported chains, settlement contracts and orderbook hosts. |
+| `get_balances` | Read native and ERC-20 balances on one chain. |
+| `get_portfolio` | Read token balances across chains. |
+| `get_integrator_earnings` | Look up the volume and fees routed under an appCode. |
+| `get_gas` | Read the current gas price. |
+| `get_token_chart` | Fetch an OHLCV price chart. |
+| `expected_surplus` | Compare an Ophis sell quote with the open market using `beatBps`. |
 
-1. **Parse.** `POST` the user's request (or your agent-generated trade
-   idea) to `https://ophis.fi/api/intent`.
-2. **Read.** Receive a `ParsedIntent` with normalized `sellToken`,
-   `buyToken`, `amount`, and `chain` entities.
-3. **Build a deep link.** Map the chain slug to its chain ID and
-   construct `https://swap.ophis.fi/#/<chainId>/swap/<sellToken>/<buyToken>`.
-4. **Hand off.** Open the link for the user to review and sign. Ophis
-   never auto-signs, every order requires explicit wallet approval.
+MCP clients pass `referrerCode` to `build_order` for referral attribution, including on Arc.
 
-:::warning[The signature is the trust boundary]
+## Build a swap link {/* #the-integration-flow */}
 
-Ophis intentionally does **not** implement [x402](https://x402.org) or any
-HTTP-native payment automation. In the Intent API / deep-link flow, an order
-only becomes real when the user signs it in their wallet. Agents using this
-flow must hand off to the user for review and signing. Autonomous integrations
-instead need the deterministic signing policies described below.
+<Steps>
 
-:::
+1. **Parse the request.** Send the user's text to `https://ophis.fi/api/intent`.
+2. **Read the fields.** Extract `sellToken`, `buyToken`, `amount` and `chain` from the `ParsedIntent`.
+3. **Build the link.** Map the chain slug to its ID and construct `https://swap.ophis.fi/#/<chainId>/swap/<sellToken>/<buyToken>`.
+4. **Open the swap form.** Let the user confirm the amount, review the order and sign in their wallet.
 
-Server-side callers (no browser `Origin` header) are allowed, subject to
-the 30 req/min/IP rate limit. Honour `429` + `Retry-After`.
+</Steps>
 
-## Minimal example (curl)
+| API limit | Requirement |
+| --- | --- |
+| Rate | 30 req/min/IP |
+| Server calls | Omit the browser `Origin` header |
+| Rate-limit response | Honour `429` and `Retry-After` |
+
+### Curl example {/* #minimal-example-curl */}
 
 ```bash
 curl -sS https://ophis.fi/api/intent \
@@ -173,15 +153,15 @@ curl -sS https://ophis.fi/api/intent \
 
 ## Python helper
 
+Use this helper to parse text and build a link. Requests without a chain default to Ethereum; unknown chain slugs raise an error.
+
 ```python
 import requests
 
 INTENT_API = "https://ophis.fi/api/intent"
 SWAP_APP = "https://swap.ophis.fi"
 
-# The 14 EVM chains the Intent API can return, mapped to their chain IDs.
-# Keep in sync with the API's supported-network list; build_deeplink()
-# raises on any future slug not listed here rather than misrouting it.
+# The 14 chain slugs returned by the Intent API.
 CHAIN_SLUG_TO_ID = {
     "ethereum": 1,
     "optimism": 10,
@@ -221,8 +201,7 @@ def build_deeplink(parsed: dict) -> str:
     elif chain_slug in CHAIN_SLUG_TO_ID:
         chain_id = CHAIN_SLUG_TO_ID[chain_slug]
     else:
-        # The parser may return a chain this map doesn't cover yet. Fail
-        # loud instead of silently routing the user to the wrong chain.
+        # Reject unmapped chains to prevent wrong-chain links.
         raise ValueError(f"unmapped chain slug {chain_slug!r}; update CHAIN_SLUG_TO_ID")
     # The user sets/confirms the amount and signs in the app.
     return f"{SWAP_APP}/#/{chain_id}/swap/{sell}/{buy}"
@@ -234,8 +213,7 @@ print(build_deeplink(intent))  # https://swap.ophis.fi/#/8453/swap/USDC/ETH
 
 ## LangChain tool
 
-Wrap the API as a [LangChain](https://python.langchain.com) tool your
-agent can call when a user wants to trade:
+Wrap the helper as a [LangChain](https://python.langchain.com) tool:
 
 ```python
 from langchain_core.tools import tool
@@ -246,25 +224,21 @@ def ophis_swap_intent(text: str) -> dict:
     """Parse a natural-language swap request into a structured Ophis intent
     and a deep link the user can open to review and sign. Use this
     whenever a user wants to swap, buy, or sell a crypto token.
-    The link must be shown to the user, never auto-execute a trade."""
+    Show the link to the user for wallet signing."""
     parsed = parse_intent(text)
     return {"intent": parsed, "deeplink": build_deeplink(parsed)}
 ```
 
-The tool returns both the structured intent (so your agent can reason
-about the trade) and a link (so the user can sign it).
+## Function calling {/* #autogpt--function-calling-agents */}
 
-## AutoGPT / function-calling agents
-
-Any function-calling agent. AutoGPT commands, OpenAI Assistants, or a
-custom tool loop, can register the parser with this schema:
+Register this schema with AutoGPT, OpenAI Assistants or a custom function-calling loop:
 
 ```json
 {
   "type": "function",
   "function": {
     "name": "ophis_parse_intent",
-    "description": "Parse a natural-language crypto swap request into a structured intent (sellToken, buyToken, amount, chain). Returns a deep link the user opens to review and sign. Never auto-executes a trade.",
+    "description": "Parse a natural-language crypto swap request into a structured intent (sellToken, buyToken, amount, chain). Returns a deep link the user opens to review and sign.",
     "parameters": {
       "type": "object",
       "properties": {
@@ -279,57 +253,55 @@ custom tool loop, can register the parser with this schema:
 }
 ```
 
-Implement the handler by `POST`ing `{ "text": <text> }` to
-`https://ophis.fi/api/intent` (see the Python helper above), then surface
-the resulting deep link to the user.
+The handler posts `{ "text": <text> }` to `https://ophis.fi/api/intent`, then returns the parsed fields and swap link using the Python helper.
 
-## Drop-in framework adapters
+## Framework adapters {/* #drop-in-framework-adapters */}
 
-Everything above keeps a human in the signing loop. If instead you are building
-an agent that executes swaps itself and you are on a common framework, you do
-not have to hand-roll the order flow in the next section. Four published npm
-packages wrap quote, EIP-712 sign, relayer approval, and submit into one call,
-and apply referral attribution on indexed chains when a code is supplied:
+The v0.3.7 adapter family is built and published against `@ophis/sdk` v0.4.5. These packages quote, sign EIP-712 orders, approve the relayer and submit using the agent's wallet:
 
-| Package                                                                        | Version | For                                                       | Registers                            |
-| ------------------------------------------------------------------------------ | ------- | --------------------------------------------------------- | ------------------------------------ |
-| [`@ophis/agentkit-ophis`](https://www.npmjs.com/package/@ophis/agentkit-ophis) | v0.3.7  | [Coinbase AgentKit](https://github.com/coinbase/agentkit) | an `OphisActionProvider_swap` action |
-| [`@ophis/plugin-goat`](https://www.npmjs.com/package/@ophis/plugin-goat)       | v0.3.7  | [GOAT SDK](https://github.com/goat-sdk/goat)              | an `ophis_swap` tool                 |
-| [`@ophis/plugin-elizaos`](https://www.npmjs.com/package/@ophis/plugin-elizaos) | v0.3.7  | [elizaOS](https://github.com/elizaOS/eliza)               | a `swap` action                      |
-| [`@ophis/agent-swap`](https://www.npmjs.com/package/@ophis/agent-swap)         | v0.3.7  | any custom EOA framework                                  | the `executeOphisSwap()` core        |
+| Package | Version | Framework | Entry point |
+| --- | --- | --- | --- |
+| [`@ophis/agentkit-ophis`](https://www.npmjs.com/package/@ophis/agentkit-ophis) | v0.3.7 | [Coinbase AgentKit](https://github.com/coinbase/agentkit) | `OphisActionProvider_swap` |
+| [`@ophis/plugin-goat`](https://www.npmjs.com/package/@ophis/plugin-goat) | v0.3.7 | [GOAT SDK](https://github.com/goat-sdk/goat) | `ophis_swap` |
+| [`@ophis/plugin-elizaos`](https://www.npmjs.com/package/@ophis/plugin-elizaos) | v0.3.7 | [elizaOS](https://github.com/elizaOS/eliza) | `swap` |
+| [`@ophis/agent-swap`](https://www.npmjs.com/package/@ophis/agent-swap) | v0.3.7 | Custom EOA frameworks | `executeOphisSwap()` |
 
-The v0.3.7 adapter family is built and published against `@ophis/sdk` v0.4.5,
-so its fee policy, orderbook hosts, settlement contracts, and vault relayers
-match the current SDK. The core and AgentKit can use an Arc wallet with ERC-20
-addresses; configured wrapper defaults and explicit per-call codes now support
-Arc referral attribution. GOAT discovery and the elizaOS chain resolver retain their existing
-chain lists and do not expose Arc merely because their SDK dependency supports it.
+| Requirement | Value |
+| --- | --- |
+| Assets | ERC-20 to ERC-20; wrap native ETH to WETH before using an adapter |
+| Owner and receiver | The agent's wallet |
+| AgentKit and GOAT inputs | `sellToken`, `buyToken`, `sellAmount` in whole units, such as `"1.5"` |
+| Optional slippage | `slippageBps`, default `50` = 0.5% |
+| elizaOS input | Tokens and amount from the user's message; default 0.5% slippage |
+| Result | Order UID and explorer URL |
+| Arc support | Core and AgentKit accept an Arc wallet with ERC-20 addresses; use GOAT and elizaOS on their listed chains |
 
-Coinbase AgentKit, in one line:
+### Coinbase AgentKit
 
 ```ts
 import { AgentKit } from '@coinbase/agentkit';
 import { ophisActionProvider } from '@ophis/agentkit-ophis';
 
 const agentKit = await AgentKit.from({
-  walletProvider, // any EvmWalletProvider (Viem, CDP, Privy, ZeroDev)
-  actionProviders: [ophisActionProvider({ referralCode: process.env.OPHIS_REFERRAL_CODE })],
+  walletProvider, // your EvmWalletProvider
+  actionProviders: [ophisActionProvider()],
 });
 ```
 
-GOAT SDK:
+### GOAT SDK
 
 ```ts
 import { ophis } from '@ophis/plugin-goat';
 
 const tools = await getOnChainTools({
   wallet: viem(walletClient),
-  plugins: [ophis({ referralCode: process.env.OPHIS_REFERRAL_CODE })],
+  plugins: [ophis({})],
 });
 ```
 
-elizaOS (the agent signs with its own `EVM_PRIVATE_KEY`; set `OPHIS_REFERRAL_CODE`
-in the character settings to earn the rebate):
+### elizaOS
+
+The agent signs with its `EVM_PRIVATE_KEY`:
 
 ```ts
 import { ophisPlugin } from '@ophis/plugin-elizaos';
@@ -340,264 +312,134 @@ export const character = {
 };
 ```
 
-The AgentKit and GOAT tools take `sellToken`, `buyToken`, `sellAmount` (whole
-units, e.g. `"1.5"`), and an optional `slippageBps` (default `50` = 0.5%); the
-elizaOS action reads the tokens and amount from the user's message and uses the
-default 0.5% slippage. Each quotes against the Ophis orderbook, signs the order
-EIP-712 with the agent's own wallet, approves the CoW vault relayer once, submits,
-and returns the order UID plus an explorer URL. ERC-20 to ERC-20 only (native-ETH
-sells need CoW eth-flow, a separate path, so wrap to WETH first). The agent's
-wallet is the order owner **and** receiver. Settlement validates that receiver
-and may use external liquidity interactions. Upstream CoW audits and Ophis
-reviews have separate scopes; see [Security & audits](./audits.md).
+## Adapter fees
 
-The 1 bp base fee applies to every supported pair. Every drop-in adapter
-(AgentKit, GOAT, elizaOS) and the platform integrations below detect stable
-pairs from a verified stablecoin list so the reduced price-improvement policy
-is selected automatically: 50% capped at 20 bps for stable pairs, versus 80%
-capped at 99 bps for volatile pairs.
+Adapters select the stable-pair policy from a verified stablecoin list.
 
-The `referralCode` is optional: omit it and swaps still work and settle, you just
-forgo the rebate. Mint one below, then ship, no redeploy of the swap path needed
-to start earning.
+| Fee | Amount |
+| --- | --- |
+| Base | 1 bp on every supported pair |
+| Reference-quote improvement | 50% capped at 20 bps for stable pairs, versus 80% capped at 99 bps for volatile pairs |
 
-### More platform integrations
+See [Fees](/fees) for the chain-specific policy and [Security and audits](/audits) for review coverage.
 
-Beyond the npm packages above, Ophis maintains swap integrations for more agent
-platforms, each built on the same Ophis order flow (the TypeScript ones
-reuse `@ophis/agent-swap`; the Python ones mirror the same order construction and
-fund-safety guards):
-[elizaOS](https://www.npmjs.com/package/@ophis/plugin-elizaos) (published, in the
-table above), plus **HeyAnon**, **Swarms**, the **MetaMask Agent Wallet**, and
-**Bankr**. Their source lives under
-[`integrations/`](https://github.com/ophis-fi/ophis/tree/main/integrations) in the
-Ophis repo; each is being submitted to its platform's own registry, so availability
-follows that platform's review. The MCP server and Intent API above already work
-with any of these agents today.
+## Shell agent skills {/* #markdown-skill-family-shell-capable-agents */}
 
-## Markdown skill family (shell-capable agents)
+Use [`@ophis/agent-skills`](https://www.npmjs.com/package/@ophis/agent-skills)
+v0.1.1 for runtimes with a shell, `curl`, `jq` and Foundry's `cast`.
 
-Agents that can run shell commands (Claude Code and similar local runtimes with
-`curl`, `jq`, and Foundry's `cast`) do not need the MCP transport at all: Ophis
-publishes a self-describing **agent-skill family** the agent reads and executes
-directly.
+| Resource | Use |
+| --- | --- |
+| [Skill index](https://ophis.fi/.well-known/agent-skills/index.json) | Download files and verify their sha256 digests. |
+| [Umbrella skill](https://ophis.fi/.well-known/agent-skills/ophis/SKILL.md) | Read contract addresses, signing domains, orderbook hosts and slippage limits. |
+| Sub-skills | `ophis-quote`, `ophis-swap`, `ophis-order-status`, `ophis-cancel`, `ophis-surplus-report` |
+| Skill chains | Optimism, Unichain and Robinhood Chain |
 
-- Index (with a sha256 digest per file, verify after download):
-  [`https://ophis.fi/.well-known/agent-skills/index.json`](https://ophis.fi/.well-known/agent-skills/index.json)
-- Umbrella skill:
-  [`https://ophis.fi/.well-known/agent-skills/ophis/SKILL.md`](https://ophis.fi/.well-known/agent-skills/ophis/SKILL.md)
-- Sub-skills: `ophis-quote`, `ophis-swap`, `ophis-order-status`,
-  `ophis-cancel`, `ophis-surplus-report`.
+Use MCP `list_chains` for supported networks beyond the shell skills.
 
-The umbrella's frontmatter carries a **machine-readable policy block**: the
-pinned per-chain settlement and vault-relayer contracts (the only allowed
-`approve` spenders), the EIP-712 signing domains, the orderbook hosts, and
-slippage latches. Policy-enforcing runtimes can apply it mechanically; CI in
-the Ophis repo pins the block against the deployed addresses so the published
-skills cannot drift. The published skills cover three Ophis-operated chains
-(Optimism, Unichain, and Robinhood Chain); for other chains use the MCP server
-above, which resolves per-chain contracts via `list_chains`.
+## Build SDK orders {/* #submitting-orders-programmatically */}
 
-The same canonical family is published as
-[`@ophis/agent-skills`](https://www.npmjs.com/package/@ophis/agent-skills)
-v0.1.1 for runtimes that install skills from npm.
+**`@ophis/sdk`**, published on npm (v0.4.5, public), builds orders for the [CoW Protocol orderbook API](https://docs.cow.fi/cow-protocol/reference/apis/orderbook). Install it with `npm install @ophis/sdk`.
 
-## Get a referral code
+<Steps>
 
-Every order these adapters (or the SDK below) build already carries the Ophis
-partner fee. Add your **referral code** and that same order also credits _you_
-with the [affiliate rebate](./affiliate.md) on its volume, currently 8 to 12
-percent of the verified base fee Ophis keeps. Payouts require activation, reconciled
-accounting, funding and Safe approval; accrual is not payment. The code rides in
-the order's appData, so there is
-nothing for the end user to sign or opt into.
+1. **Resolve the host.** Use the chain ID to select the orderbook.
 
-1. Open the [affiliate page](https://swap.ophis.fi/#/affiliate) and connect a wallet.
-2. Mint a code tied to your wallet.
-3. Pass it to any adapter as `referralCode`, or export `OPHIS_REFERRAL_CODE` and
-   the adapters pick it up automatically.
+   ```typescript
+   import { getOphisOrderbookUrl } from '@ophis/sdk';
 
-Arc is indexed for rebates. SDK v0.4.4 and MCP accept Arc referral codes;
-MCP applies its configured default unless a per-call code overrides it (an empty
-string opts out). The code is **optional**: without one your agent still swaps
-normally, it just earns no referral rebate. You can ship first and add the code later.
+   const orderbookUrl = getOphisOrderbookUrl(10); // -> https://optimism-mainnet.ophis.fi
+   const arcOrderbookUrl = getOphisOrderbookUrl(5042); // -> https://arc-mainnet.ophis.fi
+   // Throws on an invalid or unsupported chainId rather than guessing a host.
+   ```
 
-## Submitting orders programmatically
+2. **Build the appData.** Use the fee helper and cow-sdk's deterministic serializer before hashing; keep hooks empty.
 
-The Intent API only normalizes language, it does not place orders. To submit
-orders programmatically, build and sign a
-[CoW Protocol order](https://docs.cow.fi/cow-protocol/reference/apis/orderbook)
-yourself. Four things must each be exactly right, every one fails **silently**
-(a rejected order, a wrong-chain trade, or zero fee collected) if you guess.
+   ```typescript
+   import { MetadataApi, stringifyDeterministic } from '@cowprotocol/cow-sdk';
+   import { keccak256, toUtf8Bytes } from 'ethers';
+   import { buildOphisAppDataPartnerFee } from '@ophis/sdk';
 
-If your agent runs on Coinbase AgentKit or GOAT, the [drop-in
-adapters](#drop-in-framework-adapters) above already get all four right, hand-roll
-this only if you are on neither. The `@ophis/sdk` helpers below are also what
-those adapters call under the hood.
+   // The chain ID selects the fee policy.
+   const partnerFee = buildOphisAppDataPartnerFee(10);
+   // -> { volumeBps: 1, recipient }
 
-The helpers below live in **`@ophis/sdk`**, published on npm (v0.4.5, public).
-Install it with `npm install @ophis/sdk`, or copy the values from the call-outs
-if you prefer to vendor them.
+   const metadataApi = new MetadataApi();
+   const doc = await metadataApi.generateAppDataDoc({
+     appCode: 'ophis',
+     metadata: {
+       partnerFee,
+       hooks: {}, // pin empty, appData hooks are arbitrary on-chain calls
+     },
+   });
+   const fullAppData = await stringifyDeterministic(doc);
+   const appDataHash = keccak256(toUtf8Bytes(fullAppData)); // bytes32 -> order.appData
+   ```
 
-### 1. Resolve the orderbook host from the chain ID
+3. **Pin the receiver.** Check that bought tokens go to the order owner before signing.
 
-:::danger[Optimism, Unichain, Robinhood Chain, and Arc do not live on api.cow.fi]
+   ```typescript
+   import { assertReceiverIsOwner } from '@ophis/sdk';
 
-Optimism, Unichain, Robinhood Chain, and Arc break the `api.cow.fi/<slug>` pattern. Ophis self-hosts
-their orderbooks at `optimism-mainnet.ophis.fi`, `unichain-mainnet.ophis.fi`,
-`robinhood-mainnet.ophis.fi`, and `arc-mainnet.ophis.fi` (Arc chain ID **5042**).
-Posting one of their orders to `api.cow.fi/<slug>` (a host that does not serve
-Ophis) **is an unsupported host/domain combination, not a fee-free route**. Resolve
-hosts via `@ophis/sdk` `getOphisOrderbookUrl` per chain rather than hardcoding.
+   assertReceiverIsOwner(owner, order.receiver); // throws if receiver !== owner
+   ```
+
+4. **Sign the typed data.** Use `signTypedData` with the chain-specific domain and `Order` type.
+
+   ```typescript
+   import { getOphisOrderDomain } from '@ophis/sdk';
+
+   // The EIP-712 primary type is Order.
+   const ORDER_TYPES = {
+     Order: [
+       { name: 'sellToken', type: 'address' },
+       { name: 'buyToken', type: 'address' },
+       { name: 'receiver', type: 'address' },
+       { name: 'sellAmount', type: 'uint256' },
+       { name: 'buyAmount', type: 'uint256' },
+       { name: 'validTo', type: 'uint32' },
+       { name: 'appData', type: 'bytes32' },
+       { name: 'feeAmount', type: 'uint256' },
+       { name: 'kind', type: 'string' },
+       { name: 'partiallyFillable', type: 'bool' },
+       { name: 'sellTokenBalance', type: 'string' },
+       { name: 'buyTokenBalance', type: 'string' },
+     ],
+   };
+
+   // ethers v6: resolve the domain for Optimism.
+   const signature = await wallet.signTypedData(getOphisOrderDomain(10), ORDER_TYPES, order);
+   ```
+
+5. **Submit the order.** Send the signed order to the resolved orderbook.
+
+</Steps>
+
+:::warning[Check the receiver before signing]
+
+A different `receiver` sends the bought tokens to another account. Run `assertReceiverIsOwner` before authorizing the order.
 
 :::
 
-```typescript
-import { getOphisOrderbookUrl } from '@ophis/sdk';
+| Chain | Orderbook host | Settlement |
+| --- | --- | --- |
+| Optimism | `optimism-mainnet.ophis.fi` | `0x310784c7…B859` |
+| Unichain | `unichain-mainnet.ophis.fi` | `0x108A678716e5E1776036eF044CAB7064226F714E` |
+| Robinhood Chain | `robinhood-mainnet.ophis.fi` | `0x886d9fd312F442C4E1f3cdeAE7b4AB73493e57cD` |
+| Arc (5042) | `arc-mainnet.ophis.fi` | `0x78799F98276efba1EdeeD32eae03a3fd8Cdfec3A` |
 
-const orderbookUrl = getOphisOrderbookUrl(10); // -> https://optimism-mainnet.ophis.fi
-const arcOrderbookUrl = getOphisOrderbookUrl(5042); // -> https://arc-mainnet.ophis.fi
-// Throws on an invalid or unsupported chainId rather than guessing a host.
-```
+`getOphisOrderDomain` selects the settlement for signing. `getOphisOrderbookUrl` selects the matching submission host.
 
-### 2. Build the partner-fee appData correctly
+For manual fee construction, use `ophisVolumeBpsForChainAndPair(chainId, isStablePair)` and the CIP-75 volume shape. The price-improvement shape uses a different denominator. Use `stringifyDeterministic` to produce the appData hash expected by solvers.
 
-The appData base is **1 bp on every supported chain and pair**. The keyless MCP
-`build_order` and high-level SDK builders select it automatically. Use the
-CIP-75 **volume** shape, **not** the
-price-improvement shape `{ priceImprovementBps, maxVolumeBps, recipient }`:
-the two shapes use different denominators, so slotting a value into the wrong
-field is a silent magnitude error. Hash the appData with cow-sdk's deterministic
-serializer, **never** `keccak256(JSON.stringify(doc))`. JSON key order isn't
-stable, so the hash won't match what solvers expect.
+## Wallet controls {/* #autonomous-agent-trading-advanced */}
 
-For a manual builder, call
-`ophisVolumeBpsForChainAndPair(chainId, isStablePair)`. This keeps manual
-builders aligned with the canonical policy.
-Arc settled trades are ingested by the rebate indexer. Use SDK v0.4.4 or later
-for Arc referral tags; enrollment and verified settlement determine eligibility.
-The drop-in adapters above derive stable-pair status from a verified stablecoin
-list.
+Use [Turnkey wallet policies](/agent-wallet-policies) to pin the signer to the settlement domain, your token allowlist and your receiver address. Approve bounded sell-token amounts and keep a guardian key that can revoke signing.
 
-```typescript
-import { MetadataApi, stringifyDeterministic } from '@cowprotocol/cow-sdk';
-import { keccak256, toUtf8Bytes } from 'ethers';
-import { buildOphisAppDataPartnerFee } from '@ophis/sdk';
+## Next
 
-// buildOphisAppDataPartnerFee(chainId) REQUIRES a chainId and THROWS on a
-// missing/invalid one (a forgotten arg fails loud, not as a silent `undefined`).
-// It returns the metadata.partnerFee value on every chain in the SDK's
-// OPHIS_FEE_CHAIN_IDS (the Ophis-operated chains plus the CoW-hosted chains the
-// fork serves), or `undefined` on any other chain.
-//
-// On Optimism, Unichain, Robinhood Chain, and Arc this returns the required 1 bp
-// base. Their backends enforce the same 1 bp anti-bypass floor and separately
-// apply capped price-improvement capture.
-const partnerFee = buildOphisAppDataPartnerFee(10);
-// -> { volumeBps: 1, recipient }
-
-const metadataApi = new MetadataApi();
-const doc = await metadataApi.generateAppDataDoc({
-  appCode: 'ophis',
-  metadata: {
-    partnerFee,
-    hooks: {}, // pin empty, appData hooks are arbitrary on-chain calls
-  },
-});
-const fullAppData = await stringifyDeterministic(doc);
-const appDataHash = keccak256(toUtf8Bytes(fullAppData)); // bytes32 -> order.appData
-```
-
-### 3. Sign with the correct EIP-712 domain
-
-CoW orders are signed with **EIP-712 typed data** (`signTypedData`), never
-`signMessage`. The `verifyingContract` is chain-specific, and the Ophis-operated
-chains do **not** use CoW's canonical settlement.
-
-:::danger[The Optimism, Unichain, Robinhood Chain, and Arc settlements are not the canonical CoW one]
-
-On Optimism, Ophis's GPv2Settlement is `0x310784c7…B859`, on Unichain it is
-`0x108A678716e5E1776036eF044CAB7064226F714E`, on Robinhood Chain it is
-`0x886d9fd312F442C4E1f3cdeAE7b4AB73493e57cD`, and on Arc (chain ID **5042**) it is
-`0x78799F98276efba1EdeeD32eae03a3fd8Cdfec3A`, **not** the canonical
-`0x9008D19f…ab41`. cow-sdk defaults to the canonical address, so signing an Arc
-order with the SDK default yields a domain separator the deployed contract
-rejects, every order fails. Build the domain from the chain ID instead.
-
-:::
-
-```typescript
-import { getOphisOrderDomain } from '@ophis/sdk';
-
-// CoW's EIP-712 order struct is named `Order` (the Solidity library is
-// GPv2Order, but the EIP-712 type name, which feeds the type hash, is
-// `Order`; a wrong name produces a valid-looking but unusable signature).
-const ORDER_TYPES = {
-  Order: [
-    { name: 'sellToken', type: 'address' },
-    { name: 'buyToken', type: 'address' },
-    { name: 'receiver', type: 'address' },
-    { name: 'sellAmount', type: 'uint256' },
-    { name: 'buyAmount', type: 'uint256' },
-    { name: 'validTo', type: 'uint32' },
-    { name: 'appData', type: 'bytes32' },
-    { name: 'feeAmount', type: 'uint256' },
-    { name: 'kind', type: 'string' },
-    { name: 'partiallyFillable', type: 'bool' },
-    { name: 'sellTokenBalance', type: 'string' },
-    { name: 'buyTokenBalance', type: 'string' },
-  ],
-};
-
-// ethers v6, signer.signTypedData(domain, types, value). The domain's
-// verifyingContract must be the Ophis OP settlement (getOphisOrderDomain).
-const signature = await wallet.signTypedData(getOphisOrderDomain(10), ORDER_TYPES, order);
-// NOT wallet.signMessage(order), that produces an invalid order signature.
-```
-
-### 4. Pin the order `receiver`
-
-A CoW order's `receiver` is part of the signed payload and is fully
-caller-controlled. Pin it to the order owner: a non-owner receiver sends the
-bought tokens elsewhere on settlement, and the signature makes that
-irreversible. In the UI a wallet prompt gates this; an autonomous signer has no
-such gate, so guard it in code before signing.
-
-```typescript
-import { assertReceiverIsOwner } from '@ophis/sdk';
-
-assertReceiverIsOwner(owner, order.receiver); // throws if receiver !== owner
-```
-
-## Autonomous agent trading (advanced)
-
-Everything above keeps a **human in the signing loop**. For an agent that signs
-_without_ human review, off-chain helpers are not enough, a compromised or
-prompt-injected agent will sign whatever it is told. Safety has to be enforced
-where the agent cannot reach it:
-
-1. **Funds in a smart account (Safe).** The agent never holds the fund-owning
-   key; it only _proposes_ orders. The account's EIP-1271 validator (or a Safe
-   module) approves only order hashes that satisfy policy.
-2. **A deterministic policy gate** between the (untrusted) LLM and any signature,
-   owning every order field:
-   - token resolution from a chain-scoped allowlist only, never an LLM-emitted address;
-   - `receiver` pinned to the account;
-   - `appData` pinned to the Ophis canonical, hooks forced empty;
-   - limit price within X% of an independent, staleness-checked oracle (CoW
-     guarantees you won't fill _below_ your limit, not that your limit is sane);
-   - per-trade notional + rolling daily caps; short `validTo`; avoid `presign`.
-3. **Containment:** a bounded vault-relayer allowance (the blast radius if policy
-   fails once), a guardian key that can revoke signing or pause, keys in an
-   HSM/TEE, and a tamper-evident audit trail.
-4. **Defense in depth:** enforce the policy in two places, the EIP-1271
-   validator/signer **and** server-side at orderbook ingestion.
-
-:::warning[The signing gate must be in code, not prose]
-
-In the human-mediated flow, "the human reviews and signs" is a documented social
-contract, not an enforced boundary. Autonomous signing is fine to pursue, but
-only once that promise is replaced by the policy-enforced kit above. Otherwise
-an autonomous integrator is one unpinned `receiver` away from draining itself.
-
-:::
+<Cards>
+<Card icon="lock" title="Wallet policies" href="/agent-wallet-policies">Configure Turnkey signing restrictions.</Card>
+<Card icon="scale" title="Order controls" href="/agent-swap-comparison">Review signed limits and settlement fees.</Card>
+<Card icon="code" title="SDK integration" href="/partners">Use the SDK's order-building helpers.</Card>
+</Cards>

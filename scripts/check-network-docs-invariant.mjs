@@ -126,7 +126,6 @@ for (const path of [
   'apps/docs-ophis/docs/networks-assets.md',
   'apps/docs-ophis/docs/comparison.md',
   'apps/docs-ophis/docs/agent-swap-comparison.md',
-  'apps/docs-ophis/docs/agent-btc-cookbook.md',
   'apps/docs-ophis/docs/faq.mdx',
   'apps/docs-ophis/static/llms.txt',
 ]) {
@@ -142,8 +141,6 @@ assert.match(partners, /buildOphisReferrerMetadata\('your-code', chainId\)/,
   'partner referral example must include Arc attribution and pass chain context');
 assert.doesNotMatch(partners, /referralCode: chainId === 5042 \? undefined/,
   'high-level partner example must not suppress Arc referrals');
-assert.match(partners, /The earnings indexer includes all four/,
-  'earnings reporting must include every Ophis-operated chain');
 assert.doesNotMatch(partners, /Arc is app-only|Arc is app-supported but not yet/, 'stale Arc SDK exclusion in partner guide');
 
 const integrationDocPaths = [

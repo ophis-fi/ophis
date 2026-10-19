@@ -1,110 +1,75 @@
 ---
 id: intent-api
 title: Intent API
-description: POST /api/intent, turn a natural-language swap request into a structured ParsedIntent. Public, no key, rate-limited.
+description: Parse a natural-language swap request into structured tokens, amount and chain fields.
 sidebar_label: Intent API
 sidebar_position: 1
 ---
 
 import Head from '@docusaurus/Head';
 
-{/* HowTo schema.org structured data for AEO / answer engines, covering the
-    request / response / error-handling flow for POST /api/intent.
-    JSON.stringify handles all quote/apostrophe escaping at build time. A
-    type=application/ld+json block is inert data (not executed JS), so it is not
-    governed by script-src. */}
 export const howToLd = {
-  '@context': 'https://schema.org',
-  '@type': 'HowTo',
-  name: 'How to call the Ophis Intent API',
-  description:
-    'Turn a natural-language swap request into a structured ParsedIntent with the public Ophis Intent API: make the request, read the response, and handle errors.',
-  totalTime: 'PT3M',
-  tool: [
-    { '@type': 'HowToTool', name: 'An HTTP client such as curl' },
-    { '@type': 'HowToTool', name: 'The @ophis/sdk package on npm (optional)' },
+  "@context": "https://schema.org",
+  "@type": "HowTo",
+  "name": "How to call the Ophis Intent API",
+  "description": "Turn a natural-language swap request into structured fields with the Ophis Intent API.",
+  "totalTime": "PT3M",
+  "tool": [
+    {
+      "@type": "HowToTool",
+      "name": "An HTTP client such as curl"
+    },
+    {
+      "@type": "HowToTool",
+      "name": "The @ophis/sdk package on npm (optional)"
+    }
   ],
-  step: [
+  "step": [
     {
-      '@type': 'HowToStep',
-      name: 'Make the request',
-      url: 'https://docs.ophis.fi/intent-api#request',
-      text: 'Send POST /api/intent to https://ophis.fi with a JSON body { "text": "swap 100 USDC for ETH on Base" }. No API key is required. The text field is 1 to 280 characters. The endpoint is rate-limited to 30 requests per minute per IP; non-browser callers that omit the Origin header are allowed.',
+      "@type": "HowToStep",
+      "name": "Send the request",
+      "url": "https://docs.ophis.fi/intent-api#request",
+      "text": "Send POST /api/intent to https://ophis.fi with a JSON body containing text."
     },
     {
-      '@type': 'HowToStep',
-      name: 'Read the response',
-      url: 'https://docs.ophis.fi/intent-api#response',
-      text: 'On success you get 200 OK with { "ok": true, "data": { "intent", "entities" } }. The intent is swap or unknown, and entities lists the recognised sellToken, buyToken, amount, and chain, each with value, raw, start, and end offsets. The endpoint only normalizes text: it never places, signs, or executes a trade, so order signing always happens in your own wallet.',
+      "@type": "HowToStep",
+      "name": "Read the response",
+      "url": "https://docs.ophis.fi/intent-api#response",
+      "text": "Read intent and entities from data when ok is true."
     },
     {
-      '@type': 'HowToStep',
-      name: 'Handle errors',
-      url: 'https://docs.ophis.fi/intent-api#errors',
-      text: 'Errors return { "ok": false, "error": { "code", "message" } }. Handle 400 BAD_INPUT for malformed text, 403 FORBIDDEN for a disallowed Origin, 429 RATE_LIMITED (honour the Retry-After header), and 500, 502, or 504 for upstream parser failures.',
-    },
-  ],
+      "@type": "HowToStep",
+      "name": "Handle errors",
+      "url": "https://docs.ophis.fi/intent-api#errors",
+      "text": "Read error.code and error.message when ok is false, and honour Retry-After for rate limits."
+    }
+  ]
 };
 
 <Head>
   <script type="application/ld+json">{JSON.stringify(howToLd)}</script>
 </Head>
 
+
 # Intent API
 
-The Intent API parses a free-form swap request into a structured
-`ParsedIntent` that the Ophis frontend, or your own app or agent, can
-use to pre-fill a swap form or construct a deep link.
+Turn a natural-language swap request into structured fields for your app or agent.
 
-It is a text parser, separate from the MCP server, compatibility API and
-rebate/reward APIs. To place orders
-programmatically you use the standard CoW Protocol orderbook API per chain
-(see [AI agent integration](./ai-agents.md)). The Intent API itself does not
-place, sign, or execute trades; order signing always happens in the user's
-wallet.
+<Cards>
+<Card icon="key-round" title="Public access">Call the endpoint without an API key.</Card>
+<Card icon="braces" title="Structured output">Read the tokens, amount and chain from a ParsedIntent.</Card>
+<Card icon="wallet" title="Wallet signing" href="/ai-agents">Use the parsed fields to build an order for your wallet to sign.</Card>
+</Cards>
 
-- **Base URL:** `https://ophis.fi`
-- **Endpoint:** `POST /api/intent`
-- **Auth:** none, no API key required.
-- **Backed by:** LibertAI Qwen 3.6 27B (open-weights, on Aleph Cloud),
-  behind a Cloudflare Pages Function proxy. The LibertAI key is held
-  server-side and never reaches callers.
-- **Machine-readable spec:** [openapi.json](https://ophis.fi/openapi.json)
+## Parse a request
 
-## Access control
+<Steps>
 
-| Control | Behaviour |
-| --- | --- |
-| **Origin allowlist** | Requests with a non-null `Origin` header are checked against `https://ophis.fi` and `https://swap.ophis.fi`. Browser calls from other origins get `403 FORBIDDEN`. |
-| **Non-browser callers** | curl and server-side scripts that omit `Origin` entirely are **allowed**, subject to the rate limit. This is the path agents use. |
-| **Rate limit** | 30 requests per IP per rolling 60-second window. Exceeding returns `429` with a `Retry-After` header. |
-| **Caching** | Identical normalized text (lowercased + trimmed) within an origin bucket is served from a 5-minute edge cache. Cache hits return the header `x-ophis-cache: hit` and don't consume an upstream model call. The rate-limit counter still increments on a cache hit. |
+1. **Send the request.** Send POST /api/intent to https://ophis.fi with a JSON body containing text.
+2. **Read the response.** Read intent and entities from data when ok is true.
+3. **Handle errors.** Read error.code and error.message when ok is false, and honour Retry-After for rate limits.
 
-:::note[Origin is a speed bump, not a security boundary]
-
-The `Origin` check raises the bar for casual browser abuse but can be
-omitted by any non-browser client. The real protections are the per-IP
-rate limit and the fact that the endpoint only normalizes text, it
-moves no funds.
-
-:::
-
-## Request
-
-`POST /api/intent` with a JSON body:
-
-```json
-{ "text": "swap 100 USDC for ETH on Base" }
-```
-
-| Field | Type | Constraints |
-| --- | --- | --- |
-| `text` | string | Required. 1–280 characters. The swap request in your own words. Case-insensitive. |
-
-The model uses `temperature: 0` to reduce variation. This is not a guarantee
-of identical outputs across model runs or upgrades; validate every response.
-
-### Example
+</Steps>
 
 ```bash
 curl -sS https://ophis.fi/api/intent \
@@ -112,9 +77,23 @@ curl -sS https://ophis.fi/api/intent \
   -d '{"text":"swap 100 USDC for ETH on Base"}'
 ```
 
-## Response
+## Request fields {/* #request */}
 
-On success, `200 OK` with a `ParsedIntent`:
+| Setting | Value |
+| --- | --- |
+| Base URL | `https://ophis.fi` |
+| Endpoint | `POST /api/intent` |
+| Authentication | No API key required |
+| `text` | Required string, 1–280 characters, case-insensitive |
+| Specification | [openapi.json](https://ophis.fi/openapi.json) |
+
+```json
+{ "text": "swap 100 USDC for ETH on Base" }
+```
+
+## Response fields {/* #response */}
+
+A successful request returns `200 OK` with a `ParsedIntent` in `data`:
 
 ```json
 {
@@ -131,52 +110,67 @@ On success, `200 OK` with a `ParsedIntent`:
 }
 ```
 
-### `ParsedIntent`
+### ParsedIntent
 
 | Field | Type | Description |
 | --- | --- | --- |
-| `intent` | `"swap"` \| `"unknown"` | `unknown` (with an empty `entities` array) if the text isn't a swap request. |
-| `entities` | `Entity[]` | The recognised entities, in any order. |
+| `intent` | `"swap"` \| `"unknown"` | `unknown` with empty `entities` for text outside swap requests. |
+| `entities` | `Entity[]` | Recognised entities, in any order. |
 
-### `Entity`
+### Entity
 
 | Field | Type | Description |
 | --- | --- | --- |
-| `type` | `"sellToken"` \| `"buyToken"` \| `"amount"` \| `"chain"` | The kind of entity. `sellToken` is what you pay with; `buyToken` is what you want. |
-| `value` | string | Canonical form (e.g. `USDC`, `0.5`, `optimism`). |
-| `raw` | string | A case-insensitive match somewhere in the input. |
-| `start` | integer | Model-proposed, in-bounds start offset (inclusive); may be inaccurate. |
-| `end` | integer | Model-proposed, in-bounds end offset (exclusive); re-anchor `raw` before highlighting. |
+| `type` | `"sellToken"` \| `"buyToken"` \| `"amount"` \| `"chain"` | The token you sell, token you buy, amount or chain. |
+| `value` | string | Canonical form, such as `USDC`, `0.5` or `optimism`; token symbols use 2–12 letters/digits with at least one letter, excluding common non-token words. |
+| `raw` | string | A case-insensitive match in the input that the value derives from. |
+| `start` | integer | Model-proposed start offset, inclusive and within the input. |
+| `end` | integer | Model-proposed end offset, exclusive and within the input. |
 
-**Token values** use bounded symbol syntax: 2–12 letters/digits, at least one
-letter, excluding common non-token words. Values must derive from `raw`, which
-must occur in the input; exact offsets are not guaranteed. This is not contract verification;
-resolve the chain/address and request a quote before building an order.
+:::tip[Validate before quoting]
 
-**Chain values** are the parser's supported lowercase slugs. This set is
-separate from the app's network selector: `arc` is recognized, but the app blocks
-an explicit chain disabled in its deployment.
+Find `raw` in the input again before using it for highlighting. Resolve each token to its chain and contract address, then request a quote before building an order.
 
-```
-ethereum  arbitrum  arc  avalanche  base  bnb  gnosis
-ink  linea  optimism  plasma  polygon  robinhood  unichain
-```
+:::
 
-## Errors
+## Chain values
+
+The parser returns these lowercase slugs:
+
+| Slug | Slug |
+| --- | --- |
+| `ethereum` | `arbitrum` |
+| `arc` | `avalanche` |
+| `base` | `bnb` |
+| `gnosis` | `ink` |
+| `linea` | `optimism` |
+| `plasma` | `polygon` |
+| `robinhood` | `unichain` |
+
+## Access controls {/* #access-control */}
+
+| Control | Behaviour |
+| --- | --- |
+| Browser origins | A non-null `Origin` must be `https://ophis.fi` or `https://swap.ophis.fi`; other origins receive `403 FORBIDDEN`. |
+| Server calls | curl and server-side scripts can omit `Origin`. |
+| Rate limit | 30 requests per IP per rolling 60-second window; excess requests receive `429` and `Retry-After`. |
+| Edge cache | Identical lowercased, trimmed text within an origin bucket is cached for 5 minutes. |
+| Cache hits | `x-ophis-cache: hit`; counts toward the rate limit and saves an upstream model call. |
+| Parser | LibertAI Qwen 3.6 27B on Aleph Cloud, through a Cloudflare Pages Function. |
+| Model access | The LibertAI key stays on the server; `temperature: 0` reduces output variation. |
+
+## Error codes {/* #errors */}
 
 Errors return `{ "ok": false, "error": { "code", "message" } }`:
 
-| Status | `code` | When |
+| Status | `code` | Cause or action |
 | --- | --- | --- |
-| `400` | `BAD_INPUT` | Missing/empty `text`, `text` over 280 chars, or an invalid JSON body. |
-| `403` | `FORBIDDEN` | The `Origin` header is present but not on the allowlist. |
-| `429` | `RATE_LIMITED` | More than 30 requests in 60s from your IP. Honour `Retry-After`. |
-| `500` | `UPSTREAM` | Operator configuration error (the model key is unset). |
-| `502` | `UPSTREAM` / `INVALID_JSON` | The upstream parser was unreachable, returned a non-2xx, or produced output that failed schema validation. |
-| `504` | `TIMEOUT` | The upstream parser didn't respond within 5 seconds. |
-
-The full set of error codes is
-`TIMEOUT | UPSTREAM | INVALID_JSON | BAD_INPUT | RATE_LIMITED | FORBIDDEN`.
+| `400` | `BAD_INPUT` | Missing or empty `text`, text over 280 characters, or invalid JSON. |
+| `403` | `FORBIDDEN` | The supplied `Origin` is outside the allowlist. |
+| `429` | `RATE_LIMITED` | More than 30 requests in 60s from your IP; honour `Retry-After`. |
+| `500` | `UPSTREAM` | The server's model key is unset. |
+| `502` | `UPSTREAM` / `INVALID_JSON` | The parser was unreachable, returned a non-2xx response or failed schema validation. |
+| `504` | `TIMEOUT` | The parser exceeded the 5-second timeout. |
 
 ```json
 { "ok": false, "error": { "code": "RATE_LIMITED", "message": "too many requests" } }
@@ -184,15 +178,17 @@ The full set of error codes is
 
 ## Response headers
 
-Every response sets `cache-control: no-store`, `x-content-type-options: nosniff`,
-`x-frame-options: DENY`, and `referrer-policy: no-referrer`. A cache hit
-additionally sets `x-ophis-cache: hit`.
+| Header | Value |
+| --- | --- |
+| `cache-control` | `no-store` |
+| `x-content-type-options` | `nosniff` |
+| `x-frame-options` | `DENY` |
+| `referrer-policy` | `no-referrer` |
+| `x-ophis-cache` | `hit` on a cache hit |
 
-## Trust model
+## Next
 
-Ophis is non-custodial. This endpoint **does not place, sign, or execute
-trades**, it only normalizes natural language into structured entities.
-Order signing always happens in the user's wallet on the frontend. To
-submit orders programmatically, use the
-[CoW Protocol orderbook API](https://docs.cow.fi/cow-protocol/reference/apis/orderbook)
-directly against the relevant orderbook host.
+<Cards>
+<Card icon="bot" title="Agent integration" href="/ai-agents">Connect an agent and build a signed order.</Card>
+<Card icon="code" title="SDK integration" href="/partners">Build and submit orders with the Ophis SDK.</Card>
+</Cards>

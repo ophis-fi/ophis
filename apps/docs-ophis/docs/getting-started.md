@@ -1,23 +1,18 @@
 ---
 id: getting-started
 title: Getting started
-description: Make your first swap on Ophis and understand the three-step intent flow.
+description: Make your first Ophis swap by choosing tokens, reviewing the quote and signing with your wallet.
 sidebar_label: Getting started
 sidebar_position: 1
 ---
 
 import Head from '@docusaurus/Head';
 
-{/* HowTo schema.org structured data for AEO / answer engines, built from the
-    three-step intent flow described below. JSON.stringify handles all
-    quote/apostrophe escaping at build time. A type=application/ld+json block is
-    inert data (not executed JS), so it is not governed by script-src. */}
 export const howToLd = {
   '@context': 'https://schema.org',
   '@type': 'HowTo',
   name: 'How to make a batch-auction swap on Ophis',
-  description:
-    'Choose tokens and an amount, review and sign your order, then follow settlement.',
+  description: 'Choose tokens and an amount, review and sign your order, then follow settlement.',
   totalTime: 'PT2M',
   supply: [
     { '@type': 'HowToSupply', name: 'An EVM wallet' },
@@ -29,19 +24,19 @@ export const howToLd = {
       '@type': 'HowToStep',
       name: 'Choose tokens and amount',
       url: 'https://docs.ophis.fi/getting-started#1--intent-parse-the-request',
-      text: 'Open swap.ophis.fi, connect your wallet, and select the tokens, networks, and amount. Review the quote, destination address, and spending limit before signing. Ophis is non-custodial; fee terms depend on whether the chain is Ophis-operated or CoW-hosted.',
+      text: 'Open swap.ophis.fi/#/swap and connect your EVM wallet. Select the token and network in You sell, enter an amount, then select the token and network in You receive.',
     },
     {
       '@type': 'HowToStep',
-      name: 'Auction: solver competition',
+      name: 'Review and sign',
       url: 'https://docs.ophis.fi/getting-started#2--auction-solver-competition',
-      text: 'Review the quote and sign the order with your wallet. The signed order is broadcast to a batch auction where solvers compete to find the best path: an on-chain DEX, a peer-to-peer match in the same batch, or a cross-chain route.',
+      text: 'Check the quote, fees, destination address and spending limit. Approve the displayed token amount if requested, then sign the order in your wallet.',
     },
     {
       '@type': 'HowToStep',
-      name: 'Settle: on-chain, MEV-protected',
+      name: 'Track settlement',
       url: 'https://docs.ophis.fi/getting-started#3--settle-on-chain-mev-protected',
-      text: 'The winning solver settles the signed order without exposing it as a public-mempool router swap. The signed limit price is enforced on-chain. Ophis applies the standard capped improvement policy on all supported chains; CoW-hosted chains additionally apply CoW Protocol upstream fees.',
+      text: 'Follow the order in the app. A solver finds a route and settles the trade within your signed limits. For a cross-chain route, follow the transfer until the destination receives the tokens.',
     },
   ],
 };
@@ -52,121 +47,61 @@ export const howToLd = {
 
 # Getting started
 
-Choose your tokens and networks, review the quote, then authorize the displayed
-order or fund the quoted deposit from your source wallet.
-
-To trade by typing commands, use the [Ophis CLI](./cli.md) to quote, swap and
-bridge from your terminal, with approvals in your wallet.
+Choose your tokens, review the quote and approve your first swap in your wallet.
 
 ## Your first swap
 
-1. Open [the swap app](https://swap.ophis.fi/#/swap). Connect your EVM wallet for
-   batch-auction swaps; externally funded routes can use a separate source wallet.
-2. Select the token and network you want to pay from, then enter the amount.
-3. Open **You receive** to select the destination network and token. For
-   a cross-chain route, check the destination-address and wallet requirements.
-4. Review the quote, fees, destination address, and spending limit. For a
-   batch-auction swap, approve the displayed amount if needed and **sign the order**.
-   For an externally funded swap, also enter a source-chain refund address,
-   confirm the quote, and send the specified deposit before its deadline,
-   including any required memo. Keep the saved transfer until delivery or refund.
+<Steps>
 
-:::note[Non-custodial by design]
+1. **Choose tokens and amount.** <span id="1--intent-parse-the-request" /> Open [swap.ophis.fi/#/swap](https://swap.ophis.fi/#/swap) and connect your EVM wallet. Select the token and network in **You sell**, enter an amount, then select the token and network in **You receive**.
+2. **Review and sign.** <span id="2--auction-solver-competition" /> Check the quote, fees, destination address and spending limit. Approve the displayed token amount if requested, then sign the order in your wallet.
+3. **Track settlement.** <span id="3--settle-on-chain-mev-protected" /> Follow the order in the app. A solver finds a route and settles the trade within your signed limits. For a cross-chain route, follow the transfer until the destination receives the tokens.
 
-Ophis does not hold your signing key. Standard ERC-20 orders stay in your
-wallet until settlement; native-token orders and bridge routes can require
-an onchain deposit or transfer first. Their recovery and trust assumptions
-are route-specific; see [Networks & assets](./networks-assets.md).
+</Steps>
+
+:::tip[Keep gas for approvals]
+
+Signing an ERC-20 order is gasless. Token approvals, wrapping and deposits require the network's gas currency. Standard ERC-20 orders keep your tokens in your wallet until settlement.
 
 :::
 
-## How it works
+## Fund an external swap
 
-The following steps describe batch-auction orders. Externally funded NEAR and
-direct Circle routes follow their provider's deposit and delivery lifecycle;
-see [Networks & assets](./networks-assets.md).
+Use the standalone app to swap from a NEAR Intents source such as Bitcoin or Solana.
 
-<span id="1--intent-parse-the-request" />
+<Steps>
 
-### 1 · Choose tokens and amount
+1. **Select the route.** Choose the source in **You sell** and the destination in **You receive**.
+2. **Enter your addresses.** Check the destination address and provide a refund address on the source chain.
+3. **Fund the deposit.** Confirm the quote and send the specified amount before its deadline, including any required memo.
+4. **Keep the transfer record.** Use it to track delivery or recover a refund.
 
-The swap form opens directly. Select the assets and networks, enter the
-amount, and review the quote and spending limit. Developers and agents can
-still use the [Intent API](./intent-api.md) for natural-language requests.
+</Steps>
 
-### 2 · Auction, solver competition
-
-Your signed order is broadcast to a batch auction. Solvers race to find
-the best path, an on-chain DEX, a peer-to-peer match against another
-order in the same batch, or a cross-chain route, and bid for the right
-to settle it. On Optimism, Unichain, Robinhood Chain, and Arc, Ophis currently operates the solver itself,
-competing across several routing strategies, see [How it works](./architecture.md).
-
-### 3 · Settle, on-chain, MEV-protected
-
-The winning solver settles your order in a batch where every trade
-uses uniform clearing prices for each token pair. Your signed limit price is enforced
-on-chain, and Ophis orders are not exposed as public-mempool router swaps.
-On Robinhood Chain, the sequencer is first-come-first-served, so paying a
-higher priority fee does not buy an earlier place in the ordering.
-
-For the full lifecycle, see [How it works](./architecture.md).
+See [Networks & assets](/networks-assets#externally-funded-swaps-through-near-intents) for address requirements and bridge coverage.
 
 ## Supported networks
 
-Ophis supports batch-auction orders on **14 EVM chains**:
-Ethereum, Arbitrum One, Avalanche, Base, BNB Smart
-Chain, Gnosis Chain, Ink, Linea, Optimism, Plasma, Polygon, Robinhood Chain, Unichain, and Arc
-(plus the Sepolia testnet). Same-chain trading and cross-chain route availability
-are separate: a listed chain does not guarantee every source/destination pair.
+| Network group | Coverage |
+| --- | --- |
+| App and CLI total | 15 EVM networks, including the Sepolia testnet |
+| EVM mainnets (14) | Ethereum, Arbitrum One, Avalanche, Base, BNB Smart Chain, Gnosis Chain, Ink, Linea, Optimism, Plasma, Polygon, Robinhood Chain, Unichain, and Arc |
+| Testnet | Sepolia |
+| NEAR Intents sources and destinations | Solana, Bitcoin, Monad, Hyperliquid (Hypercore), X Layer, Sui, Tron, Starknet, Zcash |
 
-Arc is available in the swap app (chain ID 5042). Its native gas currency is USDC;
-Circle routes include USDC and mapped expanded assets, plus Ethereum WBTC to
-Arc cirBTC through a separate conversion leg. See the restrictions and recovery
-model in [Networks & assets](./networks-assets.md). SDK v0.4.3 and the hosted MCP
-chain lists also include Arc.
+Use the token selector to find assets on each network. Arc is available in the swap app (chain ID 5042), uses USDC for gas and connects through Circle bridges.
 
-|          |                 |                 |
-| -------- | --------------- | --------------- |
-| Ethereum | Arbitrum One    | Avalanche       |
-| Base     | BNB Smart Chain | Gnosis Chain    |
-| Ink      | Linea           | Optimism        |
-| Plasma   | Polygon         | Robinhood Chain |
-| Unichain | Arc             |                 |
+## Stock tokens {/* #robinhood-stock-tokens */}
 
-The standalone app also supports **Solana, Bitcoin, Monad, Hyperliquid
-(Hypercore), X Layer, Sui, Tron, Starknet and Zcash** as sources and destinations
-through [NEAR Intents](https://near.org/intents), where live assets and quotes
-permit. Select the source in **You sell** to enter the externally funded flow;
-select the destination in **You receive**. These networks do not gain a CoW
-orderbook or SDK signing domain. See the
-[funding, address and recovery requirements](./networks-assets.md#externally-funded-swaps-through-near-intents).
+On Robinhood Chain, Ophis checks Stock Tokens against Robinhood's canonical registry and displays trading restrictions and the corporate-action multiplier. A split changes the share-equivalent display while the raw ERC-20 balance stays the same.
 
-The current token catalog covers stablecoins, ETH/BTC pegs, DeFi
-blue-chips, AI/RWA, memes, and gaming. The in-app token selector is the
-live source of truth because token availability can change by chain.
+See Robinhood's [network configuration](https://docs.robinhood.com/chain/connecting/), [Stock Token guide](https://docs.robinhood.com/chain/stock-tokens/) and [bridging guide](https://docs.robinhood.com/chain/bridging/).
 
-### Robinhood Stock Tokens
+## Next
 
-Robinhood Chain includes tokenized equities and ETFs. Ophis verifies a selected
-Stock Token against Robinhood's live canonical deployment registry and shows its
-corporate-action multiplier and trading restrictions in the swap form. A split
-can change the share-equivalent display without rebasing the raw ERC-20 balance;
-the executable trade price remains the signed Ophis solver quote.
-
-- [Robinhood Chain network configuration](https://docs.robinhood.com/chain/connecting/)
-- [Stock Token integration and multiplier](https://docs.robinhood.com/chain/stock-tokens/)
-- [Bridge assets to Robinhood Chain](https://docs.robinhood.com/chain/bridging/)
-
-Offchain ERC-20 order signatures are gasless. Wallet approvals, wrapping, and other direct transactions
-still require ETH. Robinhood's public RPC is rate-limited; production
-integrations should use a supervised provider endpoint and reserve the public
-RPC for wallet configuration and fallback use.
-
-:::tip[Building on Ophis?]
-
-Skip the UI entirely, the [Intent API](./intent-api.md) exposes a
-natural-language parser as a public endpoint, and the
-[AI agent guide](./ai-agents.md) shows how to wire it into an agent.
-
-:::
+<Cards>
+<Card icon="terminal" title="Ophis CLI" href="/cli">Make swaps from your terminal.</Card>
+<Card icon="receipt" title="Fees" href="/fees">Check base fees and price-improvement capture.</Card>
+<Card icon="workflow" title="How it works" href="/architecture">Follow an order from signing to settlement.</Card>
+<Card icon="code" title="Intent API" href="/intent-api">Add natural-language parsing to your app.</Card>
+</Cards>

@@ -1,94 +1,90 @@
 ---
 id: faq
 title: FAQ
-description: Common questions about Ophis, how it differs from other aggregators, fees, networks, MEV protection, and custody.
+description: Find answers about Ophis wallets, networks, fees, settlement and developer access.
 sidebar_label: FAQ
 sidebar_position: 2
 ---
 
 import Head from '@docusaurus/Head';
 
-{/* FAQPage schema.org structured data for AEO / answer engines. Built from the
-    Q&As below; JSON.stringify handles all quote/apostrophe escaping at build time.
-    A type=application/ld+json block is inert data (not executed JS), so it is not
-    governed by script-src even if a CSP is added later. */}
 export const faqLd = {
-  '@context': 'https://schema.org',
-  '@type': 'FAQPage',
-  mainEntity: [
+  "@context": "https://schema.org",
+  "@type": "FAQPage",
+  "mainEntity": [
     {
-      '@type': 'Question',
-      name: 'How is Ophis different from 1inch or Matcha?',
-      acceptedAnswer: {
-        '@type': 'Answer',
-        text: "Ophis batch-auction swaps use solver competition and signed limits to mitigate MEV. The standard schedule charges a 1 bp Ophis base plus 80% of reference-quote improvement on volatile pairs, capped at 99 bps of volume, or 50% on stable pairs, capped at 20 bps. CoW-hosted chains additionally pay upstream CoW Protocol fees. Bridge routes have separate costs.",
-      },
+      "@type": "Question",
+      "name": "How is Ophis different from 1inch or Matcha?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "Ophis uses solver competition, batch auctions and signed price limits. You authorize the trade in your wallet, and solvers find a route within those limits. Compare the final amount received for the same trade."
+      }
     },
     {
-      '@type': 'Question',
-      name: 'Do I need to connect a wallet?',
-      acceptedAnswer: {
-        '@type': 'Answer',
-        text: 'Connect an EVM wallet for batch-auction orders. Externally funded NEAR routes can use a separate source wallet: review the quote, then send the specified deposit. Standard ERC-20 orders keep funds in the wallet until settlement; deposits have separate gas and recovery rules.',
-      },
+      "@type": "Question",
+      "name": "Do I need to connect a wallet?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "Connect an EVM wallet for batch-auction orders. For an external NEAR source, use your source wallet to fund the quoted deposit and provide a source-chain refund address. Standard ERC-20 orders keep funds in your wallet until settlement."
+      }
     },
     {
-      '@type': 'Question',
-      name: 'Which networks are supported?',
-      acceptedAnswer: {
-        '@type': 'Answer',
-        text: 'The app supports batch-auction orders on 14 EVM chains: Ethereum, Arbitrum One, Avalanche, Base, BNB Smart Chain, Gnosis Chain, Ink, Linea, Optimism, Plasma, Polygon, Robinhood Chain, Unichain, and Arc. The standalone app also supports Bitcoin, Solana, Monad, X Layer, Sui, Tron, Hyperliquid (Hypercore), Starknet and Zcash as NEAR sources and destinations where assets and quotes permit. External-source swaps require a deposit and refund address. SDK v0.4.3 and hosted MCP chain lists cover the 14 EVM networks, including Arc; they do not build orders on the additional networks.',
-      },
+      "@type": "Question",
+      "name": "Which networks are supported?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "The swap app and CLI support 14 EVM chains on mainnet, plus the Sepolia testnet. The standalone app also accepts NEAR Intents sources and destinations. Interface: Networks. App and CLI: 15 EVM networks, including Sepolia. EVM mainnets: Ethereum, Arbitrum One, Avalanche, Base, BNB Smart Chain, Gnosis Chain, Ink, Linea, Optimism, Plasma, Polygon, Robinhood Chain, Unichain, Arc. NEAR Intents: Bitcoin, Solana, Monad, X Layer, Sui, Tron, Hyperliquid (Hypercore), Starknet, Zcash. SDK v0.4.3 and hosted MCP: 14 EVM mainnets, including Arc."
+      }
     },
     {
-      '@type': 'Question',
-      name: 'Is my trade protected from MEV?',
-      acceptedAnswer: {
-        '@type': 'Answer',
-        text: 'Batch auctions use a uniform clearing price per token pair and offchain order submission to mitigate common MEV. Settlement transactions can still be public. Your signed limits are enforced, but this is not a guarantee against every front-running or sandwich scenario.',
-      },
+      "@type": "Question",
+      "name": "Is my trade protected from MEV?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "Batch auctions use offchain order submission and a uniform clearing price per token pair to reduce front-running and sandwich opportunities. The settlement contract enforces your signed limits."
+      }
     },
     {
-      '@type': 'Question',
-      name: 'What happens if no solver matches my intent?',
-      acceptedAnswer: {
-        '@type': 'Answer',
-        text: 'An unfilled standard ERC-20 order expires after its validity window (30 minutes by default), leaving unsold funds in your wallet. Native-token deposits require an onchain refund; bridge routes follow provider recovery rules. Soft cancellation can race an in-flight settlement.',
-      },
+      "@type": "Question",
+      "name": "What happens if no solver matches my intent?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "An unfilled standard ERC-20 order expires, leaving unsold funds in your wallet. Native-token deposits require an onchain refund, and bridge routes use provider recovery. Soft cancellation can race an in-flight settlement. Order setting: Value. Default validity window: 30 minutes."
+      }
     },
     {
-      '@type': 'Question',
-      name: 'Who runs the solvers?',
-      acceptedAnswer: {
-        '@type': 'Answer',
-        text: "On the CoW-hosted chains Ophis surfaces, CoW's established solver network competes. On Optimism, Unichain, Robinhood Chain, and Arc, where Ophis runs its own stack, Ophis operates multiple routing lanes. Their availability and pair coverage vary at runtime, so Ophis does not promise a fixed live count. The on-chain allowlist gates who may settle, and more solvers can be authorized over time. Your protection is the same either way: the signed order's limit price is enforced on-chain, so no solver can fill it worse than the price you accepted.",
-      },
+      "@type": "Question",
+      "name": "Who runs the solvers?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "CoW's solver network handles CoW-hosted chains. Ophis operates the solver on its own chains. The onchain allowlist controls which solvers can settle orders, and settlement enforces your signed limit price. Ophis-operated chains. Optimism, Unichain, Robinhood Chain, Arc."
+      }
     },
     {
-      '@type': 'Question',
-      name: 'How are partner fees collected?',
-      acceptedAnswer: {
-        '@type': 'Answer',
-        text: "Batch-auction orders carry Ophis's 1 bp base. On Optimism, Unichain, Robinhood Chain and Arc the backend adds the capped improvement policy to in-market orders; on CoW-hosted chains appData carries both the 1 bp Volume entry and the pair-aware PriceImprovement entry: 80% capped at 99 bps for volatile pairs, or 50% capped at 20 bps for stable pairs. Bridge costs are separate.",
-      },
+      "@type": "Question",
+      "name": "How are partner fees collected?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "Batch-auction orders carry Ophis's 1 bp base. The app and SDK put the base fee in appData. The Ophis backend applies improvement capture on operated chains; appData carries both components on CoW-hosted chains. Ophis fee component: Rate. Base: 1 bp. Volatile-pair improvement capture: 80%, capped at 99 bps. Stable-pair improvement capture: 50%, capped at 20 bps."
+      }
     },
     {
-      '@type': 'Question',
-      name: 'Is Ophis open source?',
-      acceptedAnswer: {
-        '@type': 'Answer',
-        text: "Yes, full source at github.com/ophis-fi/ophis. Ophis is an open-source DEX aggregator frontend with an added natural-language intent-parsing layer, built on CoW Protocol's settlement primitives.",
-      },
+      "@type": "Question",
+      "name": "Is Ophis open source?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "Yes. The frontend, intent-parser proxy and infrastructure runbooks are public at github.com/ophis-fi/ophis."
+      }
     },
     {
-      '@type': 'Question',
-      name: "Can I use Ophis's intent parser in my own app?",
-      acceptedAnswer: {
-        '@type': 'Answer',
-        text: 'Yes. The natural-language to structured-order endpoint is publicly available at POST /api/intent with a 30 req/min/IP rate limit, no auth, and no key. Build it into a Telegram bot, browser extension, agent framework, or your own UI.',
-      },
-    },
-  ],
+      "@type": "Question",
+      "name": "Can I use Ophis's intent parser in my own app?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "Yes. Use the public API to turn natural-language requests into structured trade fields for your app or agent. API setting: Value. Endpoint: POST /api/intent. Rate limit: 30 req/min/IP. Authentication: No auth or key required."
+      }
+    }
+  ]
 };
 
 <Head>
@@ -97,80 +93,105 @@ export const faqLd = {
 
 # FAQ
 
-### How is Ophis different from 1inch or Matcha?
+Find the wallet, network and order requirements for your Ophis swap.
 
-Ophis batch-auction swaps use solver competition and signed limits to
-[mitigate MEV](./architecture.md). The optional natural-language API parses
-requests; it does not execute them. The [fee model](./fees.md) is published by
-settlement path. The standard schedule
-charges a 1 bp base; Ophis retains 80% of reference-quote improvement on volatile pairs,
-capped at 99 bps of volume, or 50% on stable pairs, capped at 20 bps. CoW-hosted
-chains additionally apply CoW Protocol fees upstream. Bridge costs are separate.
+## Trading questions
 
-### Do I need to connect a wallet?
+<details id="how-is-ophis-different-from-1inch-or-matcha">
+<summary>How is Ophis different from 1inch or Matcha?</summary>
 
-Connect an EVM wallet for batch-auction orders. Externally funded NEAR routes
-can use a separate source wallet: review the quote, then send the specified
-deposit. Standard ERC-20 orders keep funds in the wallet until settlement;
-deposits have separate gas and recovery rules.
+Ophis uses solver competition, batch auctions and signed price limits. You authorize the trade in your wallet, and solvers find a route within those limits. Compare the final amount received for the same trade.
 
-### Which networks are supported?
+</details>
 
-The app supports batch-auction orders on 14 EVM chains: Ethereum, Arbitrum One, Avalanche,
-Base, BNB Smart Chain, Gnosis Chain, Ink, Linea, Optimism, Plasma,
-Polygon, Robinhood Chain, Unichain, and Arc. The standalone app also supports
-**Bitcoin, Solana, Monad, X Layer, Sui, Tron, Hyperliquid (Hypercore), Starknet
-and Zcash** as NEAR sources and destinations where assets and quotes permit.
-External-source swaps require a deposit and refund address. SDK v0.4.3 and
-hosted MCP chain lists cover the 14 EVM networks, including Arc; they do not
-build orders on the additional networks.
-See [Networks & assets](./networks-assets.md).
+<details id="do-i-need-to-connect-a-wallet">
+<summary>Do I need to connect a wallet?</summary>
 
-### Is my trade protected from MEV?
+Connect an EVM wallet for batch-auction orders. For an external NEAR source, use your source wallet to fund the quoted deposit and provide a source-chain refund address. Standard ERC-20 orders keep funds in your wallet until settlement.
 
-Batch auctions use a uniform clearing price per token pair and offchain order
-submission to mitigate common MEV. Settlement transactions can still be public.
-Your signed limits are enforced, but this is not a guarantee against every
-front-running or sandwich scenario. See
-[Security & audits](./audits.md#mev-protection-by-construction).
+</details>
 
-### What happens if no solver matches my intent?
+<details id="which-networks-are-supported">
+<summary>Which networks are supported?</summary>
 
-An unfilled standard ERC-20 order expires after its validity window (30 minutes
-by default), leaving unsold funds in your wallet. Native-token deposits require
-an onchain refund; bridge routes follow provider recovery rules. Soft
-cancellation can race an in-flight settlement.
+The swap app and CLI support 14 EVM chains on mainnet, plus the Sepolia testnet. The standalone app also accepts NEAR Intents sources and destinations.
 
-### Who runs the solvers?
+| Interface | Networks |
+| --- | --- |
+| App and CLI | 15 EVM networks, including Sepolia |
+| EVM mainnets | Ethereum, Arbitrum One, Avalanche, Base, BNB Smart Chain, Gnosis Chain, Ink, Linea, Optimism, Plasma, Polygon, Robinhood Chain, Unichain, Arc |
+| NEAR Intents | Bitcoin, Solana, Monad, X Layer, Sui, Tron, Hyperliquid (Hypercore), Starknet, Zcash |
+| SDK v0.4.3 and hosted MCP | 14 EVM mainnets, including Arc |
 
-On the CoW-hosted chains Ophis surfaces, CoW's established solver network
-competes. On Optimism, Unichain, Robinhood Chain, and Arc, where Ophis runs its own
-stack, Ophis operates multiple routing lanes. Availability and pair coverage
-vary at runtime, so Ophis does not promise a fixed live count. The on-chain allowlist
-gates who may settle, and more solvers can be authorized over time. Your
-protection is the same either way: the signed order's limit price is enforced
-on-chain, so no solver can fill it worse than the price you accepted.
+</details>
 
-### How are partner fees collected?
+<details id="is-my-trade-protected-from-mev">
+<summary>Is my trade protected from MEV?</summary>
 
-Batch-auction orders carry Ophis's **1 bp base**. On Optimism, Unichain,
-Robinhood Chain and Arc the backend adds the capped improvement policy to in-market orders.
-On CoW-hosted chains, `appData` carries both
-the 1 bp `Volume` entry and the pair-aware `PriceImprovement` entry: **80%
-capped at 99 bps** for volatile pairs, or **50% capped at 20 bps** for stable
-pairs. Full detail is on the [Fees & rebates](./fees.md) page.
+Batch auctions use offchain order submission and a uniform clearing price per token pair to reduce front-running and sandwich opportunities. The settlement contract enforces your signed limits.
 
-### Is Ophis open source?
+</details>
 
-Yes, full source at
-[github.com/ophis-fi/ophis](https://github.com/ophis-fi/ophis). Ophis is
-an open-source DEX aggregator frontend with an added natural-language
-intent-parsing layer, built on CoW Protocol's settlement primitives.
+<details id="what-happens-if-no-solver-matches-my-intent">
+<summary>What happens if no solver matches my intent?</summary>
 
-### Can I use Ophis's intent parser in my own app?
+An unfilled standard ERC-20 order expires, leaving unsold funds in your wallet. Native-token deposits require an onchain refund, and bridge routes use provider recovery. Soft cancellation can race an in-flight settlement.
 
-Yes. The natural-language → structured-order endpoint is publicly
-available at `POST /api/intent` with a 30 req/min/IP rate limit, no auth,
-and no key. Build it into a Telegram bot, browser extension, agent
-framework, or your own UI. See the [Intent API](./intent-api.md) reference
-and the [AI agent integration](./ai-agents.md) guide.
+| Order setting | Value |
+| --- | --- |
+| Default validity window | 30 minutes |
+
+</details>
+
+<details id="who-runs-the-solvers">
+<summary>Who runs the solvers?</summary>
+
+CoW's solver network handles CoW-hosted chains. Ophis operates the solver on its own chains. The onchain allowlist controls which solvers can settle orders, and settlement enforces your signed limit price.
+
+| Ophis-operated chains |
+| --- |
+| Optimism, Unichain, Robinhood Chain, Arc |
+
+</details>
+
+<details id="how-are-partner-fees-collected">
+<summary>How are partner fees collected?</summary>
+
+Batch-auction orders carry Ophis's **1 bp base**. The app and SDK put the base fee in appData. The Ophis backend applies improvement capture on operated chains; appData carries both components on CoW-hosted chains.
+
+| Ophis fee component | Rate |
+| --- | --- |
+| Base | 1 bp |
+| Volatile-pair improvement capture | 80%, capped at 99 bps |
+| Stable-pair improvement capture | 50%, capped at 20 bps |
+
+</details>
+
+<details id="is-ophis-open-source">
+<summary>Is Ophis open source?</summary>
+
+Yes. The frontend, intent-parser proxy and infrastructure runbooks are public at github.com/ophis-fi/ophis.
+
+</details>
+
+<details id="can-i-use-ophiss-intent-parser-in-my-own-app">
+<summary>Can I use Ophis's intent parser in my own app?</summary>
+
+Yes. Use the public API to turn natural-language requests into structured trade fields for your app or agent.
+
+| API setting | Value |
+| --- | --- |
+| Endpoint | POST /api/intent |
+| Rate limit | 30 req/min/IP |
+| Authentication | No auth or key required |
+
+</details>
+
+## Next
+
+<Cards>
+<Card icon="receipt" title="Fees" href="/fees">Read the full fee schedule.</Card>
+<Card icon="globe" title="Networks and assets" href="/networks-assets">Check bridge and address requirements.</Card>
+<Card icon="code" title="Intent API" href="/intent-api">Build natural-language parsing into your app.</Card>
+<Card icon="shield-check" title="Security and audits" href="/audits">Review custody and settlement contracts.</Card>
+</Cards>

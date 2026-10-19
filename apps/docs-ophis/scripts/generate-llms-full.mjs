@@ -21,7 +21,6 @@ const ORDER = [
   'getting-started',
   'architecture',
   'fees',
-  'affiliate',
   'comparison',
   'intent-api',
   'ai-agents',
@@ -101,7 +100,17 @@ try {
         if (depth > 0) skipDepth = depth
         continue
       }
-      kept.push(line)
+      // <Cards>/<Steps> wrappers are layout only; a one-line <Card> becomes a plain list item.
+      if (/^\s*<\/?(Cards|Steps)>\s*$/.test(line)) continue
+      const card = line.match(/^\s*<Card\b([^>]*?)\s*(?:\/>|>(.*)<\/Card>)\s*$/)
+      if (card) {
+        const attr = (k) => card[1].match(new RegExp(`\\b${k}="([^"]*)"`))?.[1]
+        const href = attr('href')
+        kept.push(`- ${attr('title')}${card[2] ? `: ${card[2]}` : ''}${href ? ` (${href.startsWith('/') ? SITE + href : href})` : ''}`)
+        continue
+      }
+      // Drop explicit heading ids ({/* #id */}), which only keep old anchors working.
+      kept.push(line.replace(/\s*\{\/\*\s*#[\w-]+\s*\*\/\}\s*$/, ''))
     }
     body = kept.join('\n').trim()
     return { id, slug, title, body }

@@ -1,46 +1,59 @@
 ---
 sidebar_position: 4
 title: Trade rewards
-description: Rules and claim flow for the finite Ophis winning-ticket campaign.
+description: Complete an eligible Ophis swap to receive a winning ticket and claim USDG on Robinhood Chain.
 ---
 
 # Ophis trade rewards
 
-The Ophis trade-reward campaign is active. Eligible wallets can receive one winning ticket
-while inventory remains. Check the [Rewards page](https://swap.ophis.fi/#/rewards) for current
-availability and claims. There is no token launch or speculative airdrop.
+Complete an eligible swap to receive a winning ticket in the active USDG rewards campaign.
 
-## Fixed campaign
+## Campaign rewards {/* #fixed-campaign */}
 
-- 105 winning tickets: 100 worth 1 USDG and 5 worth 10 USDG.
-- Total lifetime reward inventory: 150 USDG.
-- One ticket per wallet.
-- Every issued ticket wins; losing tickets are not created.
-- No claim deadline. An assigned reward remains claimable until it is claimed.
-- Rewards are paid in USDG on Robinhood Chain, and Ophis sponsors the claim transaction.
+| Reward rule | Amount or requirement |
+| --- | --- |
+| Winning tickets | 105 |
+| Ticket values | 100 worth 1 USDG and 5 worth 10 USDG |
+| Total inventory | 150 USDG |
+| Wallet limit | One ticket per wallet |
+| Claim deadline | None; assigned rewards stay claimable until claimed |
+| Payment | USDG on Robinhood Chain |
+| Claim transaction | Sponsored by Ophis |
 
-The order of denominations is committed before the campaign starts. The unrevealed allocation seed
-is held separately from the public commitment so neither a trader nor the relayer can choose a
-ticket's denomination after a qualifying swap. Per-ticket odds are not presented in the swap UI.
+Every issued ticket wins. Ticket denominations are committed before the campaign starts.
 
-## Eligibility
+:::tip[Check availability]
 
-A wallet must complete a settled Ophis swap with a priced value of at least **$100** on Ethereum,
-BNB Chain, Arbitrum, Optimism, Base, Robinhood Chain, Unichain, Plasma, Ink, Gnosis, Avalanche, or
-Polygon after the campaign starts. The indexer accepts only settled trades whose Ophis fee was
-verified; unrelated swaps and swaps between the same token do not count. Wallet age and wallet
-balance are not eligibility requirements.
+Open the [Rewards page](https://swap.ophis.fi/#/rewards) to check remaining tickets and your assigned reward.
 
-Each wallet can receive only one ticket. Ophis may exclude wallets involved in evident self-dealing,
-automation abuse, or coordinated attempts to manufacture qualifying volume. Exclusions are reviewed
-and recorded by an operator before rewards are assigned.
+:::
 
-## Claiming
+## Eligible swaps {/* #eligibility */}
 
-Connect the qualifying wallet at [swap.ophis.fi/#/rewards](https://swap.ophis.fi/#/rewards). Once the
-signed assignment is confirmed on Robinhood Chain, select **Claim**. Ophis submits and pays for the
-transaction; the distributor sends USDG directly to the qualifying wallet. A relayer cannot redirect
-the payment.
+| Requirement | Details |
+| --- | --- |
+| Trade value | At least $100 |
+| Timing | Swap settles after the campaign starts |
+| Networks | Ethereum, BNB Chain, Arbitrum, Optimism, Base, Robinhood Chain, Unichain, Plasma, Ink, Gnosis, Avalanche, Polygon |
+| Fee verification | Settled Ophis trade with a verified Ophis fee |
+| Token pair | Different sell and buy tokens |
+| Wallet age and balance | No minimum |
 
-The campaign contract has no owner withdrawal function. The Ophis Safe can pause assignment and
-claims during an incident and rotate the offchain reward signer, but cannot sweep the committed USDG.
+Self-dealing, automation abuse and coordinated attempts to manufacture qualifying volume are excluded from rewards.
+
+## Claim your reward {/* #claiming */}
+
+<Steps>
+
+1. **Connect your wallet.** Open [swap.ophis.fi/#/rewards](https://swap.ophis.fi/#/rewards) with the wallet that made the qualifying swap.
+2. **Check your assignment.** Wait for the signed assignment to be confirmed on Robinhood Chain.
+3. **Select Claim.** Ophis submits and pays for the transaction, and the distributor sends USDG directly to your wallet.
+
+</Steps>
+
+## Next
+
+<Cards>
+<Card icon="rocket" title="Getting started" href="/getting-started">Make your first Ophis swap.</Card>
+<Card icon="receipt" title="Fees" href="/fees">Review swap fees before trading.</Card>
+</Cards>

@@ -1,128 +1,77 @@
 ---
 id: vault-managers
 title: Vault manager rebalancing
-description: Rebalance a vault or treasury Safe through Ophis with onchain token, receiver, oracle and turnover constraints, subject to disclosed residual risks.
+description: Rebalance your vault or treasury Safe with onchain rules for tokens, prices and turnover.
 sidebar_label: Vault managers
 sidebar_position: 4
 ---
 
 # Vault manager rebalancing
 
-If you run a vault or treasury from a Safe, rebalancing its underlying assets
-usually means handing an operations key the power to move funds. Ophis limits
-that authority: the curator key can trigger swaps, but an onchain policy
-module checks every order against a fixed rulebook before anything is signed.
-A compromised curator key cannot redirect proceeds or trade unlisted tokens
-through this module. Price and turnover protections have the limits described
-in [Security model](#security-model).
-
-The flow settles through CoW Protocol as one atomic, MEV-protected order. The
-vault Safe is both `order.from` and `order.receiver`: sold tokens leave at
-settlement and bought tokens return to the Safe. Each order carries the Ophis partner fee.
-
-For rebate accounting, call `enrollOphisTrader(vaultSafe, { blocking: true })`
-immediately before each order submission. Enroll the Safe, not the curator or one of
-its owners. Registering once during setup is insufficient for a vault that starts
-trading later. See [Partner enrollment](./partners.md) for retention and recovery.
+Rebalance your vault or treasury Safe through CoW Protocol with onchain rules for tokens, prices and turnover.
 
 ## How it works
 
-Three parties, three roles:
+<Cards>
+<Card icon="vault" title="Vault Safe">Your Safe holds the assets and receives the bought tokens.</Card>
+<Card icon="shield-check" title="Policy module">OphisVaultPolicyModule checks each order before authorizing it.</Card>
+<Card icon="key-round" title="Curator key">Your curator calls rebalance and cancel within the module's rules.</Card>
+</Cards>
 
-- **The vault Safe** holds the assets. Its owners keep full custody at all
-  times and can disable the module whenever they want.
-- **The policy module** (`OphisVaultPolicyModule`) is a Safe module the owners
-  enable once. It is the only path from the curator to the Safe.
-- **The curator** is a dedicated key (EOA, MPC signer, or multisig) that may
-  call exactly two functions on the module: `rebalance` and `cancel`. It must
-  not be a Safe owner and must not be an enabled Safe module; the module
-  rejects both at deploy time.
+The curator can be an EOA, MPC signer or multisig. It must be separate from the Safe's owners and enabled modules. The constructor rejects a curator with either role.
 
-On every `rebalance(order, minBuyOverride)` call the module re-checks the full order onchain
-and reverts if any rule fails:
+The Safe is both `order.from` and `order.receiver`. Sold tokens leave at settlement, and bought tokens return to the Safe. Each order carries the Ophis partner fee.
 
-| Check | Guarantee |
-|---|---|
-| `receiver == the Safe` | Proceeds can only ever return to the vault |
-| Token allowlist | Only the underlyings the owners configured can trade |
-| Chainlink oracle floor | At presign time, the minimum out must satisfy the configured oracle band (default 50 bps). Stale or invalid rounds fail closed; the oracle is not checked again at fill time |
-| Pinned appData | The order carries the exact Ophis fee metadata the owners froze at deploy; nothing can be swapped in |
-| Zero signed fee | The fee rides in appData only; a nonzero signed `feeAmount` is rejected |
-| TTL ceiling | Orders cannot outlive the configured window (the deploy scripts use 33 minutes: the builder's 30-minute order plus lag margin) |
-| Turnover capacity | One USD leaky bucket limits bursts and refills over 24 hours; it can admit approximately twice its configured capacity in a rolling 24-hour window |
-| L2 sequencer gate | On L2s, oracle reads are refused while the sequencer is down and during a grace period after recovery |
+## Policy checks
 
-Only when every check passes does the module set an exact-amount allowance to
-the settlement relayer and presign the order in the CoW settlement. After a
-fill (or a `cancel`) the allowance returns to zero. Fill-or-kill semantics
-mean each presign backs at most one fill.
+Every `rebalance(order, minBuyOverride)` call checks the order onchain and reverts if a rule fails.
 
-The module is immutable: no owner, no setters, no upgrade path. Changing
-policy means deploying a new module and switching over.
+| Check | Rule |
+| --- | --- |
+| Receiver | `receiver == the Safe` |
+| Token allowlist | Both tokens must be in the configured list. |
+| Chainlink oracle floor | The minimum buy amount must meet the oracle band at presign time; the default is 50 bps. Stale or invalid rounds are rejected. |
+| Pinned appData | The order must carry the exact fee metadata fixed at deployment. |
+| Signed fee | `feeAmount` must be zero; fees use appData. |
+| Order expiry | 33 minutes in the deploy scripts, allowing for the builder's 30-minute order plus lag margin. |
+| Turnover capacity | A shared USD bucket refills over 24 hours and can admit approximately twice its capacity in a rolling 24-hour window. |
+| L2 sequencer | Oracle reads stop during sequencer downtime and the recovery grace period. |
+
+After the checks pass, the module sets an exact-amount allowance for the settlement relayer and presigns the order. Each presign permits one full fill. The allowance returns to zero after a fill or `cancel`.
 
 ## Multi-token vaults
 
-The USDC/WETH pair in the examples is just the smallest case. The module is
-built with a LIST of tokens, each paired with its own Chainlink USD price feed
-and staleness window. The minimum is two, and there is no fixed upper bound
-beyond gas. A vault holding USDC, WETH, WBTC, and DAI, for instance, deploys
-with four entries.
+You can rebalance any allowlisted token into another, such as USDC, WETH, WBTC or DAI.
 
-How the token set behaves:
+| Setting | Requirement |
+| --- | --- |
+| Token count | Minimum two; the upper limit depends on gas. |
+| Price feeds | Each token needs a Chainlink USD feed and staleness window. |
+| Oracle floor | Uses the sell-token/USD and buy-token/USD cross-rate minus the slippage band. |
+| Token type | Fee-on-transfer and rebasing tokens are excluded from rebalancing. |
+| Active orders | One live presigned order per sell token. |
+| Turnover budget | Shared across every token. |
+| Policy changes | Deploy and enable a new module to change tokens, feeds or caps. |
 
-- **Any allowlisted token into any other.** The oracle floor is a cross-rate:
-  for a sell of A into B the module reads A/USD and B/USD and requires the order
-  to clear the implied price minus the slippage band. The curator rotates freely
-  within the allowlist, always price-checked. A token that is not on the list is
-  rejected as `TokenNotAllowed`.
-- **One shared USD turnover bucket.** The turnover capacity is global
-  across every token, not per token, so a compromised curator cannot multiply
-  its reach by rotating through many assets. The bucket refills over 24 hours;
-  its rolling-day allowance can reach approximately twice the configured capacity.
-- **One live order per sell token.** Allowance tracking is per sell token, so
-  there is never more than one in-flight presigned order per token sharing an
-  allowance (the property the audit's regression invariant locks down).
-- **The set is fixed at deploy.** The module is immutable, so adding or removing
-  a token means deploying a fresh module and re-enabling it. That is the
-  deliberate trade for having no admin function that could inject a malicious
-  token or feed.
-
-Two requirements for a token to be allowlistable:
-
-- It needs a Chainlink USD feed, which is how the module prices it.
-- It must not be fee-on-transfer or rebasing. The floor is computed on the gross
-  sell amount, which those token types do not deliver in full, so they are
-  excluded. A vault can still HOLD such assets; it just cannot rebalance them
-  through this module.
+An unlisted token is rejected as `TokenNotAllowed`. Your vault can still hold assets excluded from rebalancing.
 
 ## Operational chains
 
-The `@ophis/safe-swap` v0.1.7 vault-order builder uses SDK v0.4.4 and supports
-these 14 chains. Use ERC-20 token addresses on Arc; native-token sentinels are
-rejected. Arc charges the 1 bp base plus capped backend improvement capture on in-market orders; eligible
-settled trades count toward volume-tier and referral rebates:
+The `@ophis/safe-swap` v0.1.7 builder uses SDK v0.4.4 and supports these 14 chains.
 
-- **Ophis self-hosted:** Optimism, Unichain, Robinhood Chain (4663), and Arc (5042).
-- **CoW-hosted:** Ethereum, Base, Arbitrum One, Polygon, Gnosis Chain, BNB
-  Smart Chain, Avalanche, Linea, Ink, and **Plasma (9745)**.
+| Orderbook | Chains |
+| --- | --- |
+| Ophis self-hosted | Optimism, Unichain, Robinhood Chain (4663), Arc (5042) |
+| CoW-hosted | Ethereum, Base, Arbitrum One, Polygon, Gnosis Chain, BNB Smart Chain, Avalanche, Linea, Ink, Plasma (9745) |
 
-Plasma orders use CoW's production Plasma orderbook and canonical settlement.
-Because Plasma does not have native USDC, the repository's real-contract fork
-check uses WETH9 to USDT0 and verifies the relayer allowance, presignature, and
-exact token pull.
-
-This operational list describes where vault managers can build and submit Safe
-orders. The stronger on-chain policy-module rollout is tracked separately
-below.
+Use ERC-20 token addresses on Arc; native-token sentinels are rejected. Plasma orders use CoW's production Plasma orderbook and canonical settlement.
 
 ## Deployment addresses
 
-The repository records the module factories below. Each chain has its own
-settlement and Chainlink feed configuration; the operator runbook documents
-the deployment and preflight checks.
+Each vault deploys a module through a factory with its own Safe, curator, token allowlist and caps.
 
 | Chain | Module factory | Settlement |
-|---|---|---|
+| --- | --- | --- |
 | Ethereum (1) | `0xd6e80ca05b8bfebdaf6338b1f22f98f065ce96f4` | Canonical CoW |
 | Optimism (10) | `0xd6e80ca05b8bfebdaf6338b1f22f98f065ce96f4` | Ophis self-hosted |
 | Base (8453) | `0xd6e80ca05b8bfebdaf6338b1f22f98f065ce96f4` | Canonical CoW |
@@ -130,137 +79,83 @@ the deployment and preflight checks.
 | Unichain (130) | `0x251195c88639fa9364302D51E649910A2537ee9d` | Ophis self-hosted |
 | Plasma (9745) | `0x8bfd02f98854647f4235d770a284ddbbac0bf2ca` | Canonical CoW |
 
-Plasma uses the native WXPL/USDT0 allowlist (it has no USDC) with Chainlink
-XPL/USD and USDT0/USD feeds. Each vault deploys its own module instance through
-the factory, configured
-with its own Safe, curator, allowlist, and caps.
+The Plasma module uses WXPL/USDT0 with Chainlink XPL/USD and USDT0/USD feeds. Plasma has no native USDC.
 
-## Implementing it
+## Set up rebalancing {/* #implementing-it */}
 
-The end-to-end operator guide (with verified per-chain addresses, deploy
-scripts, and fork preflights) lives in the repo:
-[`docs/operations/vault-policy-module-trial-runbook.md`](https://github.com/ophis-fi/ophis/blob/main/docs/operations/vault-policy-module-trial-runbook.md).
-The short version:
+The [operator runbook](https://github.com/ophis-fi/ophis/blob/main/docs/operations/vault-policy-module-trial-runbook.md) contains deployment scripts and checks for each chain.
 
-**1. Derive the appData hash to pin.** The module accepts only orders carrying
-one exact appData document (chain, fee metadata, your Safe as signer). Derive
-its hash once and pass it to the deploy.
+<Steps>
 
-**2. Deploy your module through the factory.** Per-chain forge scripts with
-verified feed and token addresses are in
-[`contracts/script/`](https://github.com/ophis-fi/ophis/tree/main/contracts/script).
-The constructor probes every configured Chainlink feed and the settlement at
-deploy, so a mis-configured deploy reverts instead of shipping.
+1. **Derive the appData hash.** Pin the document containing the chain, fee metadata and your Safe as signer.
+2. **Deploy your module.** Use the factory and the per-chain scripts in [`contracts/script/`](https://github.com/ophis-fi/ophis/tree/main/contracts/script). The constructor validates the feeds and settlement.
+3. **Enable the module.** Have the Safe owners sign `enableModule(module)`.
+4. **Build and submit an order.** Use `@ophis/safe-swap`, then have the curator call `module.rebalance(order, minBuyOverride)`.
 
-**3. Enable the module on your Safe.** One `enableModule(module)` transaction
-signed by the Safe owners. From this point the curator can rebalance and the
-owners retain everything else.
+   ```ts
+   import { buildOphisSafePresign } from '@ophis/safe-swap'
 
-**4. Build and submit orders with `@ophis/safe-swap`.** The published npm
-package quotes against the orderbook, assembles a hardened, receiver-pinned
-order, posts it, and returns the exact struct the module expects:
+   const { orderUid, order } = await buildOphisSafePresign({
+     chainId: 10,
+     safe: VAULT_SAFE,
+     sellToken: USDC,
+     buyToken: WETH,
+     sellAmount: '250000000000',   // atomic units
+     slippageBps: 30,
+     ttlSeconds: 1500,             // keep under the module's maxTtl
+   })
 
-```ts
-import { buildOphisSafePresign } from '@ophis/safe-swap'
+   // The curator then calls, from its own key:
+   //   module.rebalance(order, minBuyOverride)
+   // The module re-derives the same orderUid, re-checks every field on-chain,
+   // sets the exact allowance, and presigns. Solvers settle it like any CoW order.
+   ```
 
-const { orderUid, order } = await buildOphisSafePresign({
-  chainId: 10,
-  safe: VAULT_SAFE,
-  sellToken: USDC,
-  buyToken: WETH,
-  sellAmount: '250000000000',   // atomic units
-  slippageBps: 30,
-  ttlSeconds: 1500,             // keep under the module's maxTtl
-})
+</Steps>
 
-// The curator then calls, from its own key:
-//   module.rebalance(order, minBuyOverride)
-// The module re-derives the same orderUid, re-checks every field on-chain,
-// sets the exact allowance, and presigns. Solvers settle it like any CoW order.
-```
+| Setting | Deployment value |
+| --- | --- |
+| Module `maxTtl` | 1980s |
+| Builder default TTL | 1800s |
+| Oracle floor band | 50 bps |
 
-Practical notes from the live rollout:
-
-- Give the module's `maxTtl` headroom over the order TTL (the deploy scripts
-  use 1980s vs the builder's default 1800s) to allow for block-timestamp lag
-  while keeping the fill window tight.
-- The oracle floor band (50 bps) must cover the order's slippage plus the
-  quote fee. Fees, slippage or price movement can put an order outside the
-  band. Check each quote against the configured floor; a larger order is not
-  guaranteed to pass.
-- If the floor rejects an order (`BelowFloor`), nothing was signed and no
-  funds moved. Rebuild with tighter slippage or retry after the next oracle
-  update.
+:::tip
+Leave TTL headroom for block-timestamp lag. The oracle band must cover slippage plus the quote fee. If an order fails with `BelowFloor`, rebuild with tighter slippage or retry after the next oracle update; the failed call signs nothing and moves no funds.
+:::
 
 ## Security model
 
-The module restricts a curator to allowlisted tokens, Safe-bound proceeds and
-policy-valid orders. It is **not a guarantee against loss**. The oracle floor
-is checked when an order is presigned, not when it fills; price movement during
-its TTL, fees and repeated policy-valid trades can erode vault value.
+The module checks the oracle floor only at presign time. Price movement before the fill, fees and repeated trades can reduce vault value. Set turnover capacity no higher than half your intended rolling-day tolerance to account for the bucket's refill.
 
-The turnover limiter is a leaky bucket, not a strict daily spending cap. An
-initial full bucket plus its refill can admit approximately **2× the configured
-capacity over rolling 24 hours**. Set capacity no higher than half the intended
-rolling-day turnover tolerance and size TTL, slippage and asset risk accordingly.
+The module is immutable. To change its policy, deploy a new module and migrate your Safe.
 
-Repository reports record a 12-agent adversarial review, Trail of Bits Semgrep
-rules, Echidna and Foundry invariant fuzzing (including a regression invariant
-for the one-live-order-per-token allowance discipline), and independent review,
-with fork preflights against real chain state gating the documented deployments.
-Using these tools is not an audit or endorsement by their authors. During the
-live rollout the oracle floor rejected mispriced orders in production exactly
-as designed.
+:::warning
+Disabling the module leaves existing presignatures and allowances active. Resolve outstanding orders before disabling it, while the curator can still call `cancel`. Keep its token allowances separate from other enabled modules.
+:::
 
-`disableModule` blocks new module calls; it **does not revoke existing
-presignatures or allowances**. The module's `cancel` is curator-only and accepts
-only orders it recorded. Follow the runbook to cancel or expire outstanding
-orders and clear allowances before migration. Do not share its token allowances
-with another enabled module; disabling first also prevents curator cancellation
-through that disabled module.
+<Steps>
 
-## Fees
+1. **Resolve outstanding orders.** Have the curator cancel recorded orders or wait for them to expire.
+2. **Clear allowances.** Follow the runbook to clear remaining token allowances.
+3. **Disable the old module.** Safe owners call `disableModule` to block new module calls.
 
-Rebalances use the canonical all-chain Ophis policy: a 1 bp base plus 80% of
-reference-quote improvement capped at 99 bps on volatile pairs, or 50% capped
-at 20 bps on stable pairs. Operated-chain backends add the improvement policy;
-hosted orders encode it in CIP-75 appData and separately pay CoW Protocol's
-upstream fees. See [Fees](/fees) for the full schedule.
+</Steps>
 
-## FAQ
+## Rebalance fees {/* #fees */}
 
-**What problem does this actually solve?**
+| Fee | Rate |
+| --- | --- |
+| Base | 1 bp |
+| Volatile pairs | 80% of reference-quote improvement, capped at 99 bps |
+| Stable pairs | 50% of reference-quote improvement, capped at 20 bps |
+| CoW-hosted orders | CoW Protocol's upstream fees also apply. |
 
-Running an active vault strategy normally means giving an operations key the
-power to move funds, which is the same power needed to steal them. The policy
-module separates the two. The curator key can trigger swaps but can only ever
-produce policy-valid orders: proceeds back to the vault, allowlisted tokens,
-oracle-checked at presign, and leaky-bucket-limited turnover. A leaked curator
-cannot redirect proceeds through this module, but repeated trades and price
-drift can still cause losses. See the security limits above.
+Ophis-operated backends apply the improvement policy. CoW-hosted orders encode it in CIP-75 appData.
 
-**What does a vault manager have to do to start using it?**
+## Next
 
-Four steps: deploy a module for your Safe from the per-chain factory; enable it
-on the Safe with one owner-signed `enableModule` transaction; build orders with
-the `@ophis/safe-swap` package; and have the curator key call
-`module.rebalance(order, minBuyOverride)`. Proceeds return to the Safe. Owners can
-disable new calls, but must separately resolve existing orders and allowances. The
-[runbook](https://github.com/ophis-fi/ophis/blob/main/docs/operations/vault-policy-module-trial-runbook.md)
-has the full sequence.
-
-**Can a vault rebalance more than two tokens?**
-
-Yes. The module takes a list of tokens, each with its own price feed, minimum
-two and no fixed upper bound. See [Multi-token vaults](#multi-token-vaults) for
-how the allowlist, the shared USD budget, and the fixed-at-deploy token set
-behave.
-
-**Why is the module factory at a different address on Unichain?**
-
-A contract's address is derived from its deployer and that deployer's nonce. On
-Ethereum, Optimism, Base, and Arbitrum the factory was the deployer's first
-transaction on each chain, so it landed at the same address everywhere. On
-Unichain the deployer had already transacted, so the factory came out at a
-different nonce and therefore a different address. It is the same factory
-contract in every case.
+<Cards>
+<Card icon="receipt" title="Fees" href="/fees">Read the swap fee schedule.</Card>
+<Card icon="shield-check" title="Security & audits" href="/audits">Review settlement controls and security reports.</Card>
+<Card icon="activity" title="Status" href="/status">Check orderbook availability before submitting orders.</Card>
+</Cards>

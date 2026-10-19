@@ -1,7 +1,7 @@
 ---
 id: intro
 title: Ophis DEX Aggregator Documentation
-description: Ophis offers batch-auction swaps on 14 EVM chains and route-specific cross-chain swaps, including externally funded sources. Review the quote and authorize the displayed flow.
+description: Ophis lets you swap tokens across networks with your own wallet.
 slug: /
 sidebar_label: Introduction
 sidebar_position: 1
@@ -9,62 +9,55 @@ sidebar_position: 1
 
 # Ophis
 
-**Ophis is an intent-based DEX aggregator.** Choose the tokens and amount,
-review the quote and spending limit, and sign with your own wallet.
-Solvers find a route that satisfies your signed order.
+Ophis is a token swap service built on CoW Protocol that finds routes for the trade you approve in your wallet.
 
-The standalone app also accepts supported external balances through NEAR
-Intents. Select the source and destination in the same token pickers, review
-the quote and refund address, then fund the quoted deposit. See
-[Networks & assets](./networks-assets.md) for coverage and recovery.
+## Make a swap
 
-Ophis builds on [CoW Protocol](https://docs.cow.fi/cow-protocol).
-The [Intent API](./intent-api.md) also supports natural-language requests
-for developers and agents. The full source is at
-[github.com/ophis-fi/ophis](https://github.com/ophis-fi/ophis).
+<Steps>
 
-```
-Choose tokens and amount → review quote → sign order → settle
-```
+1. **Choose your tokens.** Open [the swap app](https://swap.ophis.fi), select the networks and tokens, and enter an amount.
+2. **Review the quote.** Check the fees, destination address and minimum amount you will receive.
+3. **Authorize the trade.** Sign the order in your wallet, or fund the quoted deposit for an external-source swap.
 
-## Core principles
+</Steps>
 
-- **Intent-based, not router-based.** You sign your _desired outcome_;
-  solvers compete on _how_ to deliver it.
-- **MEV-protected by design.** Orders settle through a batch auction where
-  trades clear at a uniform price per token pair, mitigating front-running and sandwiching.
-  This is a mechanism-level defense, not an absolute guarantee against every
-  adversarial condition.
-- **Wallet-authorized.** Standard ERC-20 orders keep funds in your wallet until
-  settlement. Native-token orders and bridge routes can require onchain deposits;
-  their custody, gas and recovery rules differ. See [Security & audits](./audits.md).
-- **Transparent, chain-aware fees.** The standard batch-auction policy charges a 1 bp base
-  plus 80% of reference-quote improvement on volatile pairs (99 bps cap), or
-  50% on stable pairs (20 bps cap). On CoW-hosted chains,
-  [CoW Protocol's own fees apply on top](./fees.md). Arc applies the same capped backend improvement policy for in-market orders.
-- **Open.** The full frontend, intent-parser proxy, and infra runbooks
-  are public.
+## How trading works
 
-## What's in these docs
+<Cards>
+<Card icon="wallet" title="Wallet approval">You approve each order in your own wallet.</Card>
+<Card icon="scale" title="Signed limits">The settlement contract enforces the minimum amount you accept.</Card>
+<Card icon="layers" title="Batch auctions">Solvers find routes and settle trades at a uniform price per token pair.</Card>
+<Card icon="globe" title="Cross-chain swaps" href="/networks-assets">Use NEAR Intents, Circle or Across routes in the swap app.</Card>
+</Cards>
 
-| Section | What you'll find |
+Standard ERC-20 orders keep funds in your wallet until settlement; native-token and bridge routes use onchain deposits.
+
+## Swap fees
+
+| Component | Rate |
 | --- | --- |
-| [Getting started](./getting-started.md) | Make your first swap; how the three-step flow works; supported networks. |
-| [Ophis CLI](./cli.md) | Quote, swap and bridge from your terminal, with approvals in your wallet. |
-| [How it works](./architecture.md) | Intent lifecycle, batch auctions, the parser proxy, and settlement. |
-| [Fees & rebates](./fees.md) | Standard pricing, hosted upstream fees and rebates. |
-| [Networks & assets](./networks-assets.md) | App versus SDK coverage, Arc bridges, token labels and feature availability. |
-| [Affiliate program](./affiliate.md) | Share a referral code, earn 8% of Ophis's verified base fee on eligible referred trades. |
-| [Intent API](./intent-api.md) | The public `POST /api/intent` endpoint, parse English into a structured order. |
-| [AI agent integration](./ai-agents.md) | Wire the intent API into LangChain, AutoGPT, or your own agent. |
-| [Security & audits](./audits.md) | Custody model, settlement contracts, and audit posture. |
-| [FAQ](./faq.mdx) | Common questions about fees, networks, MEV, and custody. |
+| Ophis base fee | 1 bp |
+| Volatile-pair improvement capture | 80% of reference-quote improvement, capped at 99 bps of volume |
+| Stable-pair improvement capture | 50% of reference-quote improvement, capped at 20 bps of volume |
+| CoW-hosted chains | CoW Protocol's own fees apply in addition |
 
-## Quick links
+See [Fees](/fees) for order eligibility and bridge costs.
 
-- **App:** [swap.ophis.fi](https://swap.ophis.fi)
-- **Terminal:** [Ophis CLI](./cli.md), type commands to quote, swap and bridge.
-- **Business portal:** [business.ophis.fi](https://business.ophis.fi)
-- **Machine-readable summary:** [ophis.fi/llms.txt](https://ophis.fi/llms.txt)
-- **OpenAPI spec:** [ophis.fi/openapi.json](https://ophis.fi/openapi.json)
-- **Source:** [github.com/ophis-fi/ophis](https://github.com/ophis-fi/ophis)
+## Build with Ophis
+
+<Cards>
+<Card icon="braces" title="SDK" href="/partners">Build and submit wallet-signed orders in your app.</Card>
+<Card icon="bot" title="MCP server" href="/ai-agents">Connect your AI assistant to Ophis tools.</Card>
+<Card icon="code" title="Intent API" href="/intent-api">Parse natural-language requests into structured trade fields.</Card>
+<Card icon="app-window" title="Swap widget" href="/widget">Embed the swap interface in your app.</Card>
+</Cards>
+
+Find the [source code](https://github.com/ophis-fi/ophis), [OpenAPI spec](https://ophis.fi/openapi.json) and [machine-readable summary](https://ophis.fi/llms.txt) online.
+
+## Next
+
+<Cards>
+<Card icon="rocket" title="Getting started" href="/getting-started">Make your first swap.</Card>
+<Card icon="terminal" title="Ophis CLI" href="/cli">Swap and bridge from your terminal.</Card>
+<Card icon="shield-check" title="Security and audits" href="/audits">Review wallet custody and settlement contracts.</Card>
+</Cards>

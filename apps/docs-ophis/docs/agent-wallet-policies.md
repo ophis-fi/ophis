@@ -1,75 +1,55 @@
 ---
 id: agent-wallet-policies
 title: Agent wallet policy packs
-description: Ready-made Turnkey and Privy wallet policies that pin an agent key to Ophis trades only, so an agent policy engine can safely allow the swap.
-sidebar_label: Agent wallet policies
+description: Configure Turnkey policies for an agent wallet that approves tokens and signs Ophis orders.
+sidebar_label: Wallet policies
 sidebar_position: 3
 ---
 
 # Agent wallet policy packs
 
-If you run an agent that holds its own key, the question is not "should the
-agent be able to swap" but "what is the worst a compromised agent can do with
-the swap". These packs answer that: drop-in
-[Turnkey](https://docs.turnkey.com/concepts/policies/overview) and
-[Privy](https://docs.privy.io/controls/policies/overview) wallet policies that
-let the key sign Ophis trades and nothing else. Ophis becomes the one swap an
-agent policy engine can allow without opening a drain.
+Use Turnkey policies to restrict an agent's approvals, order signing, token choices and receiver address.
 
-The packs live in the repo at
-[`examples/agent-wallet-policy-packs`](https://github.com/ophis-fi/ophis/tree/main/examples/agent-wallet-policy-packs).
+<Cards>
+<Card icon="lock" title="Pinned spender">Approve sell tokens only for the chain's vault relayer.</Card>
+<Card icon="wallet" title="Pinned receiver">Send bought tokens to the agent's own account.</Card>
+<Card icon="shield-check" title="Allowed tokens">Restrict orders to your token allowlist and settlement domain.</Card>
+</Cards>
 
-:::info[What a wallet policy can and cannot enforce]
+## Configure Turnkey {/* #turnkey */}
 
-A static wallet policy cannot read a per-order limit price, so it cannot promise
-a good fill or that the wallet "cannot lose money". What it enforces is
-**anti-exfiltration pinning**. The constrained key can only produce two kinds of
-signature: a one-time ERC-20 `approve` whose spender is the Ophis vault relayer,
-and an Ophis order that carries the correct EIP-712 domain (name
-`Gnosis Protocol`, version `v2`, and the exact per-chain settlement as
-`verifyingContract`), delivers proceeds to the agent's own account (`receiver`
-pinned to self), and moves only tokens on your allowlist. The result is a
-**bounded blast radius**: a compromised or prompt-injected agent still cannot
-drain funds to a third party, approve an arbitrary spender, or sign against a
-non-Ophis contract. It **can** still sign a weak price within your token set,
-and CoW/Ophis guarantee only that a fill is no worse than the signed limit, not
-that the limit itself is sane. This pack bounds where value can go, not the
-price it trades at. To bound execution quality too, pair it with the in-code
-policy gate (limit versus an independent oracle, per-trade and rolling caps)
-described in [AI agent integration](./ai-agents.md).
+The [policy packs](https://github.com/ophis-fi/ophis/tree/main/examples/agent-wallet-policy-packs) allow token approvals and EIP-712 order signing. Turnkey denies other actions by default, and `EFFECT_DENY` overrides `EFFECT_ALLOW`.
 
-:::
+<Steps>
 
-## The two actions an Ophis agent needs
+1. **Create a dedicated user.** Give the agent a non-root API user; keep root credentials offline with a guardian who can revoke signing.
+2. **Set the policy values.** Use the chain's addresses below, your wallet as `receiver`, and your token allowlist.
+3. **Upload the token ABI.** Turnkey needs it to decode `eth.tx.contract_call_args['spender']`; match argument names to the token ABI.
+4. **Check address casing.** Use lowercase hex in `eth.eip_712.*` conditions and the checksummed addresses shown for `eth.tx.*`; verify against a real payload.
+5. **Apply the deny guards.** Include the pre-hashed signing and key-export deny rules in the examples below.
 
-1. **A one-time ERC-20 `approve`** to the per-chain vault relayer (the contract
-   that pulls the sell token at settlement). Prefer a bounded amount over an
-   unlimited approval. This is the only on-chain transaction.
-2. **EIP-712 order signing** (off-chain, gasless). The swap settles without the
-   agent paying gas.
+</Steps>
 
-Each pack allowlists exactly these two paths and denies everything else,
-including key export and arbitrary contract calls.
+| Setting | Required value |
+| --- | --- |
+| EIP-712 domain name | `Gnosis Protocol` |
+| EIP-712 domain version | `v2` |
+| Primary type | `Order` |
+| `verifyingContract` | The chain's settlement address |
+| `receiver` | The agent's own account |
+| Approval argument names | Canonical ERC-20: `spender` / `value`; some tokens: `guy` / `wad` |
 
-:::caution[The canonical domain is shared with CoW Swap]
+:::warning[Keep the pre-hashed signing guard]
 
-On the 10 non-sovereign chains, Ophis uses CoW Protocol's canonical GPv2
-contracts, so the EIP-712 order domain is byte-identical to CoW Swap's. A policy
-that allowlists that domain therefore authorizes CoW-native order flow on that
-chain too, not Ophis exclusively. **Optimism (10)**, **Unichain (130)**,
-**Robinhood Chain (4663)**, and **Arc (5042)** run Ophis-deployed settlements, so those four carry
-an Ophis-exclusive
-domain. If you need Ophis-exclusive routing on a shared-domain chain, also
-enforce the orderbook host and appData in your in-code policy gate.
+Turnkey inspects order fields through `PAYLOAD_ENCODING_EIP712`. A pre-hashed `HASH_FUNCTION_NO_OP` digest bypasses those field checks, so keep the `NO_OP` deny rule.
 
 :::
 
-## Addresses (the 14 production chains)
+See Turnkey's [policy overview](https://docs.turnkey.com/concepts/policies/overview), [policy language](https://docs.turnkey.com/concepts/policies/language), [EVM examples](https://docs.turnkey.com/concepts/policies/examples/ethereum) and [EIP-712 signing guide](https://www.turnkey.com/blog/hyperliquid-secure-eip-712-signing).
 
-The packs pin these values. They are mirrored from `addresses.json`, which CI
-diffs against `@ophis/sdk` (`OPHIS_SETTLEMENT_ADDRESSES` /
-`OPHIS_VAULT_RELAYER_ADDRESSES`) so the packs cannot silently drift when a chain
-is added. Addresses are EIP-55 checksummed.
+## Contract addresses {/* #addresses-the-14-production-chains */}
+
+Use these EIP-55 checksummed addresses from the pack's `addresses.json`:
 
 | Chain | ID | Settlement (`verifyingContract`) | Vault relayer (`approve` spender) |
 | --- | --- | --- | --- |
@@ -88,14 +68,20 @@ is added. Addresses are EIP-55 checksummed.
 | Ink | 57073 | `0x9008D19f58AAbD9eD0D60971565AA8510560ab41` | `0xC92E8bdf79f0507f65a392b0ab4667716BFE0110` |
 | Linea | 59144 | `0x9008D19f58AAbD9eD0D60971565AA8510560ab41` | `0xC92E8bdf79f0507f65a392b0ab4667716BFE0110` |
 
-Sepolia (11155111) is a testnet, so the production packs cover the 14 networks
-above and exclude Sepolia.
+| Pack coverage | Networks |
+| --- | --- |
+| Production | The 14 networks above |
+| Testnet excluded | Sepolia (11155111) |
 
-## The order EIP-712 types
+:::info[Shared signing domains]
 
-Both providers pin fields inside the CoW order struct, so both need the same
-type definition. The EIP-712 primary type is `Order` (the Solidity library is
-`GPv2Order`, but the type name that feeds the type hash is `Order`).
+On the 10 CoW-hosted chains above, the domain also authorizes CoW Swap orders. Optimism, Unichain, Robinhood Chain and Arc use Ophis-deployed settlements. For Ophis-specific routing on a shared-domain chain, check the orderbook host and appData before signing.
+
+:::
+
+## Order type {/* #the-order-eip-712-types */}
+
+Use `Order` as the EIP-712 primary type; `GPv2Order` is the Solidity library name.
 
 ```json
 {
@@ -116,33 +102,9 @@ type definition. The EIP-712 primary type is `Order` (the Solidity library is
 }
 ```
 
-## Turnkey
+## Optimism policy
 
-Turnkey is deny-by-default and an `EFFECT_DENY` policy overrides an
-`EFFECT_ALLOW`, so the pack ALLOWs exactly two paths and adds two DENY guards.
-Bind the agent to a **dedicated non-root API user**; keep root credentials
-offline with a guardian who can revoke signing. Schema:
-[policy language](https://docs.turnkey.com/concepts/policies/language),
-[EVM + EIP-712 examples](https://docs.turnkey.com/concepts/policies/examples/ethereum).
-
-Two subtleties, both documented in the pack README:
-
-- **The NO_OP deny is mandatory.** Turnkey can inspect `eth.eip_712.*` fields
-  only when the caller submits structured typed data
-  (`PAYLOAD_ENCODING_EIP712`). A pre-hashed digest (`HASH_FUNCTION_NO_OP`) is
-  opaque, so the receiver/domain pins would not apply; the deny closes that
-  path. Reference:
-  [secure EIP-712 signing](https://www.turnkey.com/blog/hyperliquid-secure-eip-712-signing).
-- **Address casing.** Turnkey compares addresses as case-sensitive strings and
-  the EIP-712 docs mandate **lowercase** hex for `eth.eip_712.*` conditions,
-  while `eth.tx.*` examples use checksummed hex. Verify the casing each field
-  expects against a real payload; a mismatch fails closed (denied).
-
-Also: `eth.tx.contract_call_args['spender']` decodes only after you upload the
-token ABI, and the arg key equals the ABI parameter name (canonical ERC-20 is
-`spender` / `value`; some tokens use `guy` / `wad`).
-
-### Copy-paste: Optimism (10), the sovereign case
+Replace the token and wallet placeholders with your allowlist and agent address.
 
 ```json
 {
@@ -171,11 +133,9 @@ token ABI, and the arg key equals the ABI parameter name (canonical ERC-20 is
 }
 ```
 
-### Copy-paste: Base (8453), the shared-domain case
+## Base policy
 
-Identical shape; only `chain_id` and the (canonical) `verifying_contract` +
-relayer change. Note the reminder above: on Base the domain is shared with CoW
-Swap.
+This Turnkey policy lets the agent wallet do two things on Base: approve allowlisted tokens for the CoW vault relayer, and sign Ophis orders that pay out to the agent's own wallet. It blocks the pre-hashed signing bypass and key export. Base uses the shared CoW signing domain.
 
 ```json
 {
@@ -204,110 +164,24 @@ Swap.
 }
 ```
 
-For any other chain, take the parameterized
-[`turnkey/ophis-agent-policy.template.json`](https://github.com/ophis-fi/ophis/tree/main/examples/agent-wallet-policy-packs/turnkey)
-and substitute the row from the table above.
+For other chains, use the [Turnkey template](https://github.com/ophis-fi/ophis/tree/main/examples/agent-wallet-policy-packs/turnkey) with the matching row from the address table.
 
-## Privy
+## Submit a trade {/* #a-working-trade-path */}
 
-Privy policies are default-DENY: a method with no matching `ALLOW` is denied,
-and any `DENY` overrides an `ALLOW`. Conditions inside a rule are ANDed. Do not
-add a catch-all `"method": "*"` DENY (it would override the allows). Privy can
-inspect both the typed-data domain and message fields, so the receiver and token
-pins hold at signing time. Schema:
-[policies overview](https://docs.privy.io/controls/policies/overview),
-[EVM examples](https://docs.privy.io/controls/policies/example-policies/ethereum).
+<Steps>
 
-Watch `chain_id` vs `chainId`: the transaction source uses snake_case
-(`ethereum_transaction.chain_id`), the typed-data domain uses camelCase
-(`ethereum_typed_data_domain.chainId`). Message-field conditions must carry the
-`typed_data` schema (the `Order` types above) so the engine can decode. The
-`approve.spender` and `receiver` paths follow Privy's documented
-`transfer.amount` / `owner.wallet` patterns; validate both in staging, since the
-Privy examples do not show `approve()` or a bare `receiver` field verbatim.
+1. **Build the order.** Call `build_order` through the [MCP server](/ai-agents) to get a live quote, slippage bounds, owner-pinned receiver and EIP-712 `domain` and `types`.
+2. **Approve the sell token.** Approve a bounded amount for the vault relayer; keep native gas for the transaction.
+3. **Review and sign.** Check the sell amount and minimum buy amount, then sign with the constrained wallet.
+4. **Submit the signature.** Call `submit_order`, which also checks that the receiver is the owner.
 
-### Copy-paste: Optimism (10)
+</Steps>
 
-Replace `ORDER_TYPES` with the `Order` type array above, `0xAGENT` with the
-agent wallet, and `0xTOKEN_1` / `0xTOKEN_2` with your token allowlist.
+The [constrained trade example](https://github.com/ophis-fi/ophis/blob/main/examples/agent-wallet-policy-packs/example-constrained-trade.md) includes the Turnkey signing loop.
 
-```json
-{
-  "version": "1.0",
-  "name": "Ophis-only agent wallet (Optimism)",
-  "chain_type": "ethereum",
-  "rules": [
-    {
-      "name": "Allow approve() only to the vault relayer",
-      "method": "eth_sendTransaction",
-      "action": "ALLOW",
-      "conditions": [
-        { "field_source": "ethereum_transaction", "field": "chain_id", "operator": "eq", "value": "10" },
-        { "field_source": "ethereum_transaction", "field": "value", "operator": "eq", "value": "0x0" },
-        { "field_source": "ethereum_transaction", "field": "to", "operator": "in", "value": ["0xTOKEN_1", "0xTOKEN_2"] },
-        { "field_source": "ethereum_calldata", "field": "function_name", "operator": "eq", "value": "approve",
-          "abi": [{ "name": "approve", "type": "function", "stateMutability": "nonpayable",
-            "inputs": [{ "name": "spender", "type": "address" }, { "name": "amount", "type": "uint256" }],
-            "outputs": [{ "name": "", "type": "bool" }] }] },
-        { "field_source": "ethereum_calldata", "field": "approve.spender", "operator": "eq", "value": "0x83847EaB41ad9ea43809ce71569eB2e9daF51830",
-          "abi": [{ "name": "approve", "type": "function", "stateMutability": "nonpayable",
-            "inputs": [{ "name": "spender", "type": "address" }, { "name": "amount", "type": "uint256" }],
-            "outputs": [{ "name": "", "type": "bool" }] }] }
-      ]
-    },
-    {
-      "name": "Allow signing Ophis orders only",
-      "method": "eth_signTypedData_v4",
-      "action": "ALLOW",
-      "conditions": [
-        { "field_source": "ethereum_typed_data_domain", "field": "chainId", "operator": "eq", "value": "10" },
-        { "field_source": "ethereum_typed_data_domain", "field": "verifyingContract", "operator": "eq", "value": "0x310784c7FCE12d578dA6f53460777bAc9718B859" },
-        { "field_source": "ethereum_typed_data_message", "field": "receiver", "operator": "eq", "value": "0xAGENT",
-          "typed_data": { "types": { "Order": "ORDER_TYPES" }, "primary_type": "Order" } },
-        { "field_source": "ethereum_typed_data_message", "field": "sellToken", "operator": "in", "value": ["0xTOKEN_1", "0xTOKEN_2"],
-          "typed_data": { "types": { "Order": "ORDER_TYPES" }, "primary_type": "Order" } },
-        { "field_source": "ethereum_typed_data_message", "field": "buyToken", "operator": "in", "value": ["0xTOKEN_1", "0xTOKEN_2"],
-          "typed_data": { "types": { "Order": "ORDER_TYPES" }, "primary_type": "Order" } }
-      ]
-    },
-    { "name": "Never export the raw key", "method": "exportPrivateKey", "action": "DENY", "conditions": [] },
-    { "name": "Never export the seed phrase", "method": "exportSeedPhrase", "action": "DENY", "conditions": [] }
-  ]
-}
-```
+## Next
 
-For Base or any other chain, change the two `chain_id` / `chainId` values and the
-`verifyingContract` + relayer to that chain's row, using the parameterized
-[`privy/ophis-agent-policy.template.json`](https://github.com/ophis-fi/ophis/tree/main/examples/agent-wallet-policy-packs/privy).
-On Base the `verifyingContract` is the canonical `0x9008D19f...ab41` and the
-relayer is `0xC92E8bdf...0110` (shared with CoW Swap, per the caution above).
-
-## A working trade path
-
-The pack only says what the key may sign. To get a valid, bounded order to sign,
-use the keyless [Ophis MCP server](./ai-agents.md) at
-`https://mcp.ophis.fi/mcp` or the `@ophis/sdk`:
-
-1. **`build_order`** returns a ready-to-sign order with the `receiver` already
-   pinned to the owner and slippage bounded against a live quote, plus the exact
-   EIP-712 `domain` + `types`.
-2. **Approve** the vault relayer once per sell token (a bounded amount). The
-   pack's approve rule permits only this.
-3. **Sign** the typed data with the constrained wallet. The pack lets it through
-   only because the domain, receiver, and token set match.
-4. **`submit_order`** relays the signed order; it also refuses any non-owner
-   receiver as a second check.
-
-The full loop, with Turnkey and Privy signing snippets, is in
-[`example-constrained-trade.md`](https://github.com/ophis-fi/ophis/blob/main/examples/agent-wallet-policy-packs/example-constrained-trade.md).
-
-:::warning[Policy packs bound exfiltration, not price]
-
-These packs are the containment layer, not the whole autonomous-trading story.
-For an agent that signs without human review, also run the in-code policy gate
-from [AI agent integration](./ai-agents.md): token resolution from a chain-scoped
-allowlist, limit price within X% of an independent staleness-checked oracle,
-per-trade and rolling notional caps, and a short `validTo`. The pack stops the
-drain; the gate stops the bad price.
-
-:::
+<Cards>
+<Card icon="bot" title="Agent integration" href="/ai-agents">Connect the MCP server or a framework adapter.</Card>
+<Card icon="scale" title="Order controls" href="/agent-swap-comparison">Review the limits enforced for each swap.</Card>
+</Cards>

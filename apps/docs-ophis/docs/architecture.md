@@ -1,19 +1,40 @@
 ---
 id: architecture
 title: How it works
-description: The Ophis intent lifecycle, parsing, batch auctions, solver competition, and settlement on CoW Protocol contracts.
+description: Ophis turns wallet-signed orders into batch-auction swaps settled through CoW Protocol contracts.
 sidebar_label: How it works
 sidebar_position: 2
 ---
 
 # How it works
 
-Ophis sits on top of [CoW Protocol](https://docs.cow.fi/cow-protocol)'s
-batch-auction settlement layer. The app opens a token-selection form; developers
-can optionally use the natural-language parser before building an order.
-Circle and other cross-chain routes have separate execution and recovery steps.
+Ophis uses CoW Protocol's batch auctions to find a route and settle your trade within the limits you sign.
 
-## The intent lifecycle
+## Order lifecycle {/* #the-intent-lifecycle */}
+
+<Steps>
+
+1. **Choose the trade.** Select tokens, networks and an amount in the swap app, or build an order with the SDK.
+2. **Sign the order.** Your wallet authorizes the sell amount and minimum output using EIP-712 for EOAs or ERC-1271 for smart-contract wallets.
+3. **Enter the auction.** Solvers compare onchain liquidity and peer-to-peer matches, then bid to settle the batch.
+4. **Settle the trade.** The winning solver submits the batch onchain with uniform clearing prices per token pair and enforced order limits.
+
+</Steps>
+
+Offchain order submission, uniform clearing prices and peer matching reduce front-running and sandwich opportunities. See [Security & audits](/audits#mev-protection-by-construction).
+
+## Settlement operators
+
+| Networks | Orderbook and solvers |
+| --- | --- |
+| Optimism, Unichain, Robinhood Chain, Arc | Ophis operates the orderbook and solver |
+| CoW-hosted chains | CoW's orderbooks and solver network |
+
+The onchain `GPv2AllowListAuthentication` contract controls which solvers can settle orders. Each settlement enforces your signed limit price.
+
+## Developer intent parsing
+
+The [Intent API](/intent-api) converts natural language into a structured `ParsedIntent` for your app or agent to use when building an order.
 
 ```
  plain English          structured order           batch auction          settlement
@@ -25,81 +46,38 @@ Circle and other cross-chain routes have separate execution and recovery steps.
                         └──────────────────┘
 ```
 
-### 1. Intent parsing
-
-Free-form text is sent to a [Cloudflare Pages Function](./intent-api.md)
-that proxies [LibertAI](https://libertai.io)'s **Qwen 3.6 27B**
-(open-weights, hosted on Aleph Cloud) with a pinned system prompt and
-`temperature: 0` to reduce extraction variability. The proxy:
-
-- holds the LibertAI API key server-side (browsers never see it),
-- validates symbol syntax and source-text spans, not token contracts,
-- validates the chain against its 14 supported slugs, including Arc, and
-- returns a structured `ParsedIntent` the UI uses to pre-fill the form.
-
-The parser **only normalizes language**. It never places, signs, or
-executes a trade, that is always the user's wallet on the frontend.
-
-### 2. Order signing
-
-Once the form is filled, the user signs an order with their own wallet
-(EIP-712 for EOAs, ERC-1271 for smart-contract wallets). The signature
-authorizes a _limit_, a minimum acceptable output, not a specific
-execution path. Solvers may only do better than the limit, never worse.
-
-### 3. Batch auction & solver competition
-
-Signed orders collect into batches. For each batch, solvers search for
-the best way to settle every order simultaneously, routing through
-on-chain liquidity, matching orders against each other peer-to-peer
-(no liquidity pool needed), or bridging cross-chain. Solvers bid, and
-the one that maximises total surplus wins the right to settle.
-
-On Optimism, Unichain, Robinhood Chain, and Arc, Ophis runs its own stack and operates the
-solver itself, competing across several routing strategies (a baseline on-chain
-router plus multiple DEX aggregators) that bid against each other per batch, so
-there is genuine price competition even though the solver is Ophis-operated. The
-on-chain allowlist (`GPv2AllowListAuthentication`) controls who may settle, and
-additional independent solvers can be authorized over time. On the CoW-hosted
-chains Ophis surfaces, CoW's established solver network competes. Your protection
-is identical either way: the limit price in your signed order is enforced
-on-chain, so any solver can only fill it at or better than the price you signed.
-
-### 4. Uniform-price settlement
-
-The winning solver settles the batch onchain using uniform clearing prices
-per token pair and enforcing each order's signed limits. Offchain ERC-20 orders
-avoid the user's public-mempool router transaction, and peer matching can avoid
-an AMM leg. These mechanisms mitigate MEV; they do not eliminate all risks in
-solver execution, external liquidity, sequencers or bridge delivery.
-See [Security & audits](./audits.md#mev-protection-by-construction).
-
-## What Ophis runs
-
-| Component | Description |
+| Parser setting | Value |
 | --- | --- |
-| **Frontend** | A fork of the CoW Swap frontend with token selection, route review and provider-specific bridge flows. |
-| **Intent-parser proxy** | A Cloudflare Pages Function in front of LibertAI Qwen 3.6 27B. See [Intent API](./intent-api.md). |
-| **Self-hosted orderbook & solver** | Ophis operates Optimism, Unichain, Robinhood Chain and Arc; see the hosts in [Status](./status.md). CoW-hosted chains use `api.cow.fi` and CoW's solver network. |
-| **Settlement contracts** | Ophis deployments of `GPv2Settlement`, alongside allowlist and fee-handling contracts. Deployment configuration and review scope matter; see [Security & audits](./audits.md). |
-| **Rebate indexer** | Indexes volume-tier rebates that accrue to traders. See [Fees & rebates](./fees.md). |
+| Model | LibertAI Qwen 3.6 27B, hosted on Aleph Cloud |
+| Temperature | `0` |
+| Chain validation | 14 supported slugs, including Arc |
+| Output checks | Symbol syntax and source-text spans |
 
-## Cross-chain via NEAR Intents
+A Cloudflare Pages Function holds the LibertAI API key server-side and validates the response. Your integration resolves token contracts, requests a quote and asks the wallet to sign.
 
-Solana, Bitcoin, Monad, Hyperliquid (Hypercore), X Layer, Sui, Tron, Starknet and
-Zcash are available as sources and destinations through NEAR Intents for
-supported assets and quoted routes. From a batch-auction source, the user
-supplies the destination address and authorizes the source order. Selecting an
-additional source in the standalone app instead opens an externally funded flow:
-review the quote and refund address, confirm, then transfer the quoted deposit
-from the source wallet. It does not submit a CoW order on that external network.
-Destination delivery is separate from source settlement and can require recovery.
-Across and Circle routes have different coverage and wallet restrictions; see
-[Networks & assets](./networks-assets.md).
+## Ophis components {/* #what-ophis-runs */}
 
-## Where to go next
+<Cards>
+<Card icon="app-window" title="Swap app">Select tokens, review quotes and follow bridge transfers.</Card>
+<Card icon="code" title="Intent API" href="/intent-api">Turn natural-language requests into trade fields.</Card>
+<Card icon="server" title="Orderbooks" href="/status">Submit signed orders to the service for your chain.</Card>
+<Card icon="shield-check" title="Settlement contracts" href="/audits">Enforce signed orders through GPv2Settlement.</Card>
+</Cards>
 
-- Make a swap: [Getting started](./getting-started.md)
-- Integrate programmatically: [Intent API](./intent-api.md) ·
-  [AI agents](./ai-agents.md)
-- Fee mechanics: [Fees & rebates](./fees.md)
+## Cross-chain transfers {/* #cross-chain-via-near-intents */}
+
+| Provider | Flow |
+| --- | --- |
+| NEAR Intents | Source order or external deposit followed by destination delivery |
+| Circle | Direct asset bridging with transfer tracking and recovery |
+| Across | Bridging through supported source and destination networks |
+
+For an external NEAR source, select the route in the standalone app, provide the destination and source refund addresses, then fund the quoted deposit. Keep the transfer record until delivery or refund completes.
+
+## Next
+
+<Cards>
+<Card icon="rocket" title="Getting started" href="/getting-started">Make a wallet-signed swap.</Card>
+<Card icon="globe" title="Networks and assets" href="/networks-assets">Check bridge coverage and wallet requirements.</Card>
+<Card icon="receipt" title="Fees" href="/fees">See how each settlement path charges fees.</Card>
+</Cards>
