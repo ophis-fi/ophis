@@ -40,7 +40,8 @@ class DeploymentBoundaries(unittest.TestCase):
 
     def test_other_control_plane_credentials_are_environment_scoped(self):
         expected = {
-            'TS_AUTHKEY': 'Production',
+            'TS_OIDC_CLIENT_ID': 'Production',
+            'TS_OIDC_AUDIENCE': 'Production',
             'MCP_PRIVATE_KEY': 'MCP Registry',
             'NPM_TOKEN': 'Package Release',
         }
@@ -58,7 +59,10 @@ class DeploymentBoundaries(unittest.TestCase):
                             trigger = workflow.get('on', workflow.get(True))
                             self.assertTrue(trigger['push']['tags'])
                             self.assertIn('git merge-base --is-ancestor', str(job))
-        self.assertEqual(counts, {'TS_AUTHKEY': 1, 'MCP_PRIVATE_KEY': 1, 'NPM_TOKEN': 5})
+        self.assertEqual(counts, {
+            'TS_OIDC_CLIENT_ID': 1, 'TS_OIDC_AUDIENCE': 1,
+            'MCP_PRIVATE_KEY': 1, 'NPM_TOKEN': 5,
+        })
 
     def test_indexer_keeps_host_credentials_on_main(self):
         workflow = yaml.safe_load((ROOT / '.github/workflows/rebate-indexer-deploy.yml').read_text())

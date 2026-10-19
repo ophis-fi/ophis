@@ -32,17 +32,19 @@ jobs:
     if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     environment: Production
+    permissions:
+      contents: read
+      id-token: write
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
 
-      # Join the tailnet as an ephemeral, tagged CI node so the deploy reaches
-      # Cadia's tailnet-only sshd listener instead of exposing SSH publicly.
-      # Tailscale SSH itself is intentionally not used here: tag:ci is allowed
-      # network access but not an interactive Tailscale SSH login.
+      # OIDC federation joins an ephemeral tag:ci node for Cadia's tailnet-only
+      # sshd listener. This uses network access, not Tailscale SSH.
       - name: Connect to Tailscale (ephemeral CI node)
         uses: tailscale/github-action@306e68a486fd2350f2bfc3b19fcd143891a4a2d8  # v4.1.2
         with:
-          authkey: ${{ secrets.TS_AUTHKEY }}
+          oauth-client-id: ${{ secrets.TS_OIDC_CLIENT_ID }}
+          audience: ${{ secrets.TS_OIDC_AUDIENCE }}
           tags: tag:ci
 
       - name: rsync source to Cadia
