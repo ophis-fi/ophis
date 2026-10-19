@@ -26,17 +26,24 @@ chain-1 reads, public fallback, and the scheduled OTC consistency check.
 
 The deploy workflow joins the tailnet as an ephemeral `tag:ci` node and builds
 the Docker image on Cadia via `docker compose up --build`, so no container
-registry credential is required. Configure these secrets in the `production`
+registry credential is required. Configure these secrets in the `Production`
 GitHub environment:
 
 | Secret | Source | Notes |
 |---|---|---|
-| `TS_AUTHKEY` | Tailscale admin console | ephemeral, pre-authorized auth key permitted to use `tag:ci` |
+| `TS_OIDC_CLIENT_ID` | Tailscale OIDC workload identity credential | OAuth client ID |
+| `TS_OIDC_AUDIENCE` | Tailscale OIDC workload identity credential | audience configured for the trust credential |
 | `CADIA_REBATES_SSH_PRIVATE_KEY` | dedicated deploy key | private half of the key whose public half is in Cadia's `~/.ssh/authorized_keys` |
 | `CADIA_REBATES_SSH_HOST` | `tailscale ip -4` on Cadia | Cadia's Tailscale IPv4 address; the SSH listener is bound only to this address |
 | `CADIA_REBATES_SSH_USER` | Cadia operator configuration | unprivileged deploy user with access to `/srv/ophis` and Docker |
 | `CADIA_REBATES_SSH_PORT` | Cadia sshd configuration | tailnet-only deploy listener port (`2222` currently) |
 | `CADIA_REBATES_SSH_HOST_KEY` | `ssh-keyscan -p <port> <host>` over Tailscale | complete pinned `known_hosts` line, including `[host]:port` |
+
+In Tailscale, create an OpenID Connect trust credential with issuer
+`https://token.actions.githubusercontent.com`, subject
+`repo:ophis-fi/ophis:environment:Production`, scope `auth_keys:write`, and tag
+`tag:ci`. The tailnet policy needs `tagOwners` for `tag:ci` and an access rule
+allowing `tag:ci` to reach only `100.85.130.25` on TCP port `2222`.
 
 The `.env` file on the VM is **not** synced by the deploy workflow — it lives at
 `/srv/ophis/apps/rebate-indexer/.env` and is managed out-of-band (operator updates
