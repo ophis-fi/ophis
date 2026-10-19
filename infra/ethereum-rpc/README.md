@@ -32,7 +32,7 @@ browsers, Cloudflare, GitHub-hosted runners and users' machines cannot reach it.
 | Robinhood Nitro parent-chain reads | cadia-wsl, `/home/clement/robinhood-nitro` | `L1_EXECUTION_RPC=http://l1-execution-proxy:8545`, `L1_PRIMARY_UPSTREAM` | dRPC and MEV Blocker, through the proxy |
 | Rebate indexer, chain 1 | cadia-wsl, `/srv/ophis/apps/rebate-indexer` | `SETTLE_RPC_URL_1` in the deployment `.env` | `SETTLE_RPC_FALLBACK_1` (PublicNode) |
 | OTC consistency check, every 15 min | cadia-wsl, systemd `ophis-otc-canary.timer` | `OTC_CANARY_RPC_URL` (Compose default: baal) | none on purpose |
-| Quote Lab V2/V3 baselines, every 15 min | cadia-wsl, systemd `ophis-quote-lab.timer` | `ETHEREUM_RPC_URL` in `run-quote-lab.sh` | none; a failed run writes no report |
+| Quote Lab V2/V3 baselines (timer disabled 2026-10-19) | cadia-wsl, systemd `ophis-quote-lab.timer` | `ETHEREUM_RPC_URL` in `run-quote-lab.sh` | none; a failed run writes no report |
 
 ### Why the settings live in this repository
 
@@ -87,15 +87,20 @@ sudo systemctl enable --now ophis-otc-canary.timer
 journalctl -u ophis-otc-canary.service -n 30 --no-pager
 ```
 
-The timer records results in journald only. Rollback:
-`sudo systemctl disable --now ophis-otc-canary.timer`.
+Results go to journald. `notify-otc-canary.sh` (the unit's `ExecStopPost`)
+sends a Telegram message, with the bot and chat from the indexer `.env`, when
+the check fails twice in a row and again when it passes; a failed send is
+retried on the next run. Its state is `/var/lib/ophis-otc-canary/state`.
+Rollback: `sudo systemctl disable --now ophis-otc-canary.timer`.
 
 ## 3. Quote Lab
 
-The timer runs the 10-case Uniswap V2/V3 matrix at minutes 7, 22, 37 and 52 in
-a read-only container (128 MiB, 0.25 CPU, three-minute timeout). Reports are
-JSON files in `/var/lib/ophis-quote-lab/`, kept 30 days. Build the image on the
-Mac, then copy it with `docker save` and `docker load`:
+Disabled on 2026-10-19: its reports had no reader. The 2026-09-21 to
+2026-10-19 reports stay in `/var/lib/ophis-quote-lab/`. When re-enabled, the
+timer runs the 10-case Uniswap V2/V3 matrix at minutes 7, 22, 37 and 52 in a
+read-only container (128 MiB, 0.25 CPU, three-minute timeout) and keeps 30
+days of JSON reports. Build the image on the Mac, then copy it with
+`docker save` and `docker load`:
 
 ```sh
 # From apps/backend on the build machine:
@@ -160,6 +165,7 @@ From a Mac on the tailnet (Tailscale connected):
 ```sh
 uv run --no-project python infra/robinhood-mainnet/nitro/test_l1_execution_proxy.py
 uv run --no-project python infra/ethereum-rpc/test_quote_lab_runner.py
+uv run --no-project python infra/ethereum-rpc/test_notify_otc_canary.py
 pnpm --filter @ophis/rebate-indexer exec vitest run tests/rpcClient.test.ts
 node scripts/otc-mainnet-canary.mjs --self-test
 OTC_CANARY_RPC_URL=http://100.69.134.7:8547 node scripts/otc-mainnet-canary.mjs
