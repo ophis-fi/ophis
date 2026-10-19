@@ -1,0 +1,12 @@
+[Unit]
+Description=Ophis Ethereum quote measurements
+Requires=docker.service
+After=docker.service network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+StateDirectory=ophis-quote-lab
+StateDirectoryMode=0755
+ExecStart=/bin/sh /srv/ophis/infra/ethereum-rpc/run-quote-lab.sh
+TimeoutStartSec=3min

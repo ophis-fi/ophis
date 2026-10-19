@@ -17,6 +17,11 @@ plus a read-consensus voter.
 The node publishes JSON-RPC on **:8547** (HTTP) and **:8548** (WS). The eRPC proxy in the
 main stack reaches it over Tailscale at `ophis-rbh-node:8547`.
 
+The checked-in `.env.example` routes Ethereum parent-chain reads through the local
+baal-primary/public-fallback proxy. It is part of the base Compose stack, including
+when the genesis profile is disabled. See the [Ethereum RPC runbook](../../ethereum-rpc/README.md)
+for activation, checks and rollback. Beacon/blob providers remain separate.
+
 ---
 
 ## Hard prerequisites (these are the real lift)

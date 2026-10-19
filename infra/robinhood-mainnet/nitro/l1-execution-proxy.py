@@ -1,15 +1,37 @@
 #!/usr/bin/env python3
-"""Rate-shaped zero-budget Ethereum L1 RPC for Nitro genesis derivation."""
+"""Ethereum L1 RPC for Nitro: self-hosted primary, rate-shaped public fallback.
+
+Originally a rate-shaped zero-budget shim for the one-time genesis derivation.
+It now fronts a self-hosted L1 node (baal, reached over the tailnet) and keeps
+the old public path as the fallback lane, because Nitro accepts exactly ONE
+--parent-chain.connection.url and has no failover of its own.
+
+Bounded requests try PRIMARY_UPSTREAM first, then the public path with its
+50-block log chunking and 0.25s floor. A primary outage adds its timeout before
+fallback. This endpoint is private to the Docker network.
+"""
 
 from __future__ import annotations
 
 import copy
 import json
+import math
+import os
+import sys
 import threading
 import time
 import urllib.error
 import urllib.request
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+
+# Self-hosted L1 node, tried first for every method. Overridable so the URL is
+# not baked into the image (the container runs read_only).
+PRIMARY_UPSTREAM = os.environ.get("L1_PRIMARY_UPSTREAM", "").strip()
+# Generous next to the 5s public timeout: a 10k-block getLogs on the self-hosted
+# node measured 2.13s, and paying that once beats 200 throttled public windows.
+PRIMARY_TIMEOUT = float(os.environ.get("L1_PRIMARY_TIMEOUT", "15"))
+if not math.isfinite(PRIMARY_TIMEOUT) or not 0 < PRIMARY_TIMEOUT <= 30:
+    raise ValueError("L1_PRIMARY_TIMEOUT must be between 0 and 30 seconds")
 
 GENERAL_UPSTREAM = "https://eth.drpc.org"
 LOG_UPSTREAM = "https://rpc.mevblocker.io"
@@ -73,7 +95,7 @@ def _log_bounds(payload: dict[str, object]) -> tuple[int, int]:
         raise ValueError("eth_getLogs requires explicit block bounds")
     start = int(start_raw, 16)
     end = int(end_raw, 16)
-    if end < start or end - start + 1 > 10_000:
+    if start < 0 or end < start or end - start + 1 > 10_000:
         raise ValueError("invalid or excessive eth_getLogs range")
     return start, end
 
@@ -84,6 +106,7 @@ def _rate_limited_fallback_request(
     global _last_log_request
     if validate_log_range:
         _log_bounds(payload)
+    # ponytail: serialize public fallback calls; split locks if this becomes a bottleneck.
     with _log_lock:
         for attempt in range(MAX_ATTEMPTS):
             delay = MIN_LOG_INTERVAL - (time.monotonic() - _last_log_request)
@@ -101,10 +124,49 @@ def _rate_limited_fallback_request(
     raise RuntimeError("historical log upstream remained unavailable")
 
 
+def _try_primary(payload: dict[str, object]) -> dict[str, object] | None:
+    """Ask the self-hosted node. Return its response, or None to use the fallback.
+
+    Deliberately returns None on a JSON-RPC `error` as well as on transport
+    failure: the self-hosted node caps eth_getLogs at 20,000 results, and the
+    fallback's 50-block chunking handles smaller result sets.
+    """
+    if not PRIMARY_UPSTREAM:
+        return None
+    try:
+        response = _post(PRIMARY_UPSTREAM, payload, timeout=PRIMARY_TIMEOUT)
+    except (OSError, urllib.error.URLError, json.JSONDecodeError, ValueError) as exc:
+        _note_fallback(payload, f"transport: {type(exc).__name__}")
+        return None
+    if "error" in response or (payload.get("method") == "eth_getLogs"
+                              and not isinstance(response.get("result"), list)):
+        _note_fallback(payload, "upstream error or invalid log result")
+        return None
+    return response
+
+
+def _note_fallback(payload: dict[str, object], reason: str) -> None:
+    # Do not log upstream URLs, credentials, or untrusted error messages.
+    print(
+        f"l1-proxy: primary miss, falling back method={payload.get('method')} {reason}",
+        file=sys.stderr,
+        flush=True,
+    )
+
+
 def dispatch(payload: dict[str, object]) -> dict[str, object]:
     method = payload.get("method")
     if not isinstance(method, str) or payload.get("jsonrpc") != "2.0":
         raise ValueError("invalid JSON-RPC request")
+
+    # Apply the same load bound before either provider sees the request.
+    if method == "eth_getLogs":
+        _log_bounds(payload)
+
+    primary = _try_primary(payload)
+    if primary is not None:
+        return primary
+
     if method == "eth_getLogs":
         start, end = _log_bounds(payload)
         logs: list[object] = []

@@ -1,0 +1,11 @@
+[Unit]
+Description=Ophis Ethereum OTC contract and index consistency check
+Requires=docker.service
+After=docker.service network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=/srv/ophis/apps/rebate-indexer
+ExecStart=/usr/bin/docker compose --profile monitoring run --rm --no-deps otc-canary
+TimeoutStartSec=5min
