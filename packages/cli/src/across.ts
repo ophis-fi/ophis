@@ -272,6 +272,19 @@ export class OphisAcrossBridgeProvider extends AcrossBridgeProvider {
   private readonly guardedHooks = new WeakMap<EvmCall, GuardedHookTerms>()
   private trustedList?: Promise<TokenInfo[]>
 
+  constructor(...args: ConstructorParameters<typeof AcrossBridgeProvider>) {
+    super(...args)
+    // The SDK accepts a signal in fetchApi, but exposes it only for available routes.
+    const api = this.api as unknown as {
+      fetchApi<T>(path: string, params: Record<string, string>, valid?: (response: unknown) => response is T, init?: Pick<RequestInit, 'signal'>): Promise<T>
+    }
+    const fetchApi = api.fetchApi.bind(api)
+    api.fetchApi = (path, params, valid, init) => {
+      const timeout = AbortSignal.timeout(10_000)
+      return fetchApi(path, params, valid, { signal: init?.signal ? AbortSignal.any([init.signal, timeout]) : timeout })
+    }
+  }
+
   async getNetworks(): Promise<ChainInfo[]> {
     return [...(await super.getNetworks()), ...ACROSS_EXTRA_NETWORKS]
   }

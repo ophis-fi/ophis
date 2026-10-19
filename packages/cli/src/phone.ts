@@ -112,13 +112,14 @@ const liveSession = (c: Client): Session | undefined =>
  * "eip155:8453:0xabc..." entries -> the account and the chains the wallet allowed it on. The CLI uses one address: a
  * chain where the wallet gave another account is left out, so nothing is ever signed there as the wrong owner.
  */
-export function accountsOf(session: Pick<Session, 'namespaces'>): { address: Address; chains: number[] } {
+export function accountsOf(session: Pick<Session, 'namespaces'>): { address: Address; chains: number[]; otherChains: number[] } {
   const entries = (session.namespaces.eip155?.accounts ?? []).map((a) => a.split(':'))
   const first = entries[0]
   if (!first?.[2] || !isAddress(first[2])) throw new UserError('The wallet connected without an Ethereum account. Run ophis connect again.')
   const address = getAddress(first[2])
   const chains = entries.filter((e) => !!e[2] && isAddress(e[2]) && getAddress(e[2]) === address).map((e) => Number(e[1]))
-  return { address, chains }
+  const otherChains = [...new Set(entries.filter((e) => !!e[2] && isAddress(e[2]) && getAddress(e[2]) !== address).map((e) => Number(e[1])))].filter((id) => !chains.includes(id))
+  return { address, chains, otherChains }
 }
 
 /** WalletConnect's own failures as plain sentences: an expired pairing, a declined one, or the wallet's reason. */
@@ -131,7 +132,7 @@ export function pairingFailed(err: unknown): UserError {
 }
 
 /** Starts a pairing: a QR code to show, and a wait() that resolves once the user approves in their wallet. */
-export async function startConnect(chainIds: number[]): Promise<{ qr: string; uri: string; wait: () => Promise<{ address: Address; chains: number[] }> }> {
+export async function startConnect(chainIds: number[]): Promise<{ qr: string; uri: string; wait: () => Promise<ReturnType<typeof accountsOf>> }> {
   const c = await client()
   for (const old of c.session.getAll()) await c.disconnect({ topic: old.topic, reason: { code: 6000, message: 'Replaced' } }).catch(() => {})
   const { uri, approval } = await c.connect({
@@ -230,7 +231,8 @@ export async function phoneSigner(chainId: number): Promise<Signer> {
   const c = await client()
   const session = liveSession(c)
   if (!session) throw new UserError('No wallet connected. Run: ophis connect')
-  const { address, chains } = accountsOf(session)
+  const { address, chains, otherChains } = accountsOf(session)
+  if (otherChains.includes(chainId)) throw new UserError('Your wallet approved this chain under another address. Run ophis connect again and pick the same account on every network.')
   // Wallets connect only the networks they have: MetaMask the ones added to it, Ledger Wallet the ones with a ticked account.
   if (!chains.includes(chainId)) throw new UserError('Your wallet did not connect this chain. Add the network in your wallet app (in Ledger Wallet, tick an account on it), then run ophis connect again.')
   // The session asks the wallet on `chainId` alone: a request meant for another chain must not go through.
@@ -238,13 +240,20 @@ export async function phoneSigner(chainId: number): Promise<Signer> {
     if (asked !== chainId) throw new UserError(`This request is for chain ${asked} but the wallet session is on chain ${chainId}. Nothing was sent.`)
   }
   const ask = async <T>(method: string, params: unknown[]): Promise<T> => {
+    let timer: ReturnType<typeof setTimeout> | undefined
     try {
-      return await c.request<T>({ topic: session.topic, chainId: `eip155:${chainId}`, request: { method, params }, expiry: WAIT })
+      return await Promise.race([
+        c.request<T>({ topic: session.topic, chainId: `eip155:${chainId}`, request: { method, params }, expiry: WAIT }),
+        new Promise<never>((_, reject) => { timer = setTimeout(() => reject(new Error('The request expired')), WAIT * 1000) }),
+      ])
     } catch (err) {
       const message = String((err as Error)?.message ?? err)
       if (/reject|denied|cancel/i.test(message)) throw new UserError('You declined the request in your wallet. Nothing more was sent.')
       // The wallet wrote this text: clean it so it cannot steer the terminal.
-      throw new UserError(`Your wallet did not answer: ${clean(message).slice(0, 120)}`)
+      const sent = method === 'eth_sendTransaction' ? '; the transaction may already have been sent' : ''
+      throw new UserError(`Your wallet did not respond (${clean(message).slice(0, 120)})${sent}. Check your wallet activity before retrying, keep the app open (in Ledger Wallet, use the WalletConnect connection screen), and reconnect with ophis connect if needed.`)
+    } finally {
+      clearTimeout(timer)
     }
   }
   return {

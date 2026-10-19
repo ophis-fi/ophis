@@ -36,7 +36,7 @@ import {
 } from '@ophis/sdk'
 // ponytail: token lookup and order relay come straight from the MCP server module (same checks the
 // agents get); move them into @ophis/sdk before any public release.
-import { findListedToken, isUntradeableToken, resolveToken, submitOrder } from '@ophis/mcp-server/src/ophis.ts'
+import { findListedToken, isUntradeableToken, loadCuratedTokenList, OPHIS_TOKEN_LIST_URL, resolveToken, submitOrder } from '@ophis/mcp-server/src/ophis.ts'
 import { reader, tag, type Network } from './network.ts'
 import type { Signer, TxRequest, TypedDataJson } from './phone.ts'
 import { amount, bold, clean, dim, finish, green, red, rows, saffron, spinner, UserError } from './ui.ts'
@@ -124,10 +124,10 @@ export function toAtoms(text: string, decimals: number): bigint {
 /** Slippage given in percent ("0.5") -> basis points (50). */
 export function slippageBps(percent: string): number {
   const value = Number(percent)
-  if (!/^\d+(\.\d+)?$/.test(percent) || value > 50) throw new UserError('Slippage is a percentage from 0 to 50, like 0.5.')
+  if (!/^\d+(\.\d+)?$/.test(percent) || value > 50) throw new UserError('Your slippage, how much less you accept than quoted, is not a valid percentage. Enter a number from 0 to 50, like 0.5.')
   // Basis points are the finest step an order takes: a finer value is refused, never rounded wider than asked.
   const bps = Math.round(value * 100)
-  if (Math.abs(value * 100 - bps) > 1e-9) throw new UserError('Slippage goes in steps of 0.01%, like 0.5 or 0.25.')
+  if (Math.abs(value * 100 - bps) > 1e-9) throw new UserError('Your slippage, how much less you accept than quoted, has too many decimal places. Use steps of 0.01%, like 0.5 or 0.25.')
   return bps
 }
 
@@ -166,7 +166,7 @@ export async function findToken(net: Network, query: string): Promise<Token> {
       client.readContract({ address, abi: erc20Abi, functionName: 'symbol' }),
       client.readContract({ address, abi: erc20Abi, functionName: 'decimals' }),
     ]).catch(() => {
-      throw new UserError(`${address} is not a token on ${net.name}.`)
+      throw new UserError(`Ophis could not recognize ${address} as a token on ${net.name}. Check the token address and network, then try again.`)
     })
     if (!Number.isInteger(decimals) || decimals > 36) throw new UserError(`${address} reports an impossible number of decimals.`)
     // A token's own symbol is attacker-chosen text: clean it before it reaches the confirmation screen.
@@ -181,7 +181,7 @@ export async function findToken(net: Network, query: string): Promise<Token> {
   }
   if (found.matches.length > 1) {
     const list = found.matches.map((m) => `      ${m.address}  ${clean(m.symbol)}  ${dim(clean(m.name))}`).join('\n')
-    throw new UserError(`"${query}" could mean several tokens on ${net.name}. Use the address instead:\n${list}`)
+    throw new UserError(`"${query}" matches several tokens on ${net.name}. Replace the name with the address of the token you want from this list:\n${list}`)
   }
   // Never on a partial view: an Ophis list that could not be read may hold this very name.
   if (found.incomplete) throw new UserError(`Could not read the Ophis token list just now. Try again, or use the token's address.`)
@@ -200,9 +200,11 @@ export async function findToken(net: Network, query: string): Promise<Token> {
   const named = await publicListAddresses(net.id, query)
   if (named.length === 1) return findToken(net, named[0]!)
   if (named.length > 1) {
-    throw new UserError(`"${clean(query)}" could mean several tokens on ${net.name}. Use the address instead:\n${named.map((a) => `      ${a}`).join('\n')}`)
+    throw new UserError(`"${clean(query)}" matches several tokens on ${net.name}. Replace the name with the address of the token you want from this list:\n${named.map((a) => `      ${a}`).join('\n')}`)
   }
-  throw new UserError(`No token called "${clean(query)}" on ${net.name}. You can also use the token's address.`)
+  const listed = await loadCuratedTokenList(OPHIS_TOKEN_LIST_URL, fetch).catch(() => []) as { chainId?: number; symbol?: string }[]
+  const dollars = [...new Set(listed.filter((t) => t?.chainId === net.id && typeof t.symbol === 'string' && /USD/i.test(t.symbol)).map((t) => clean(t.symbol!)))]
+  throw new UserError(`No token called "${clean(query)}" on ${net.name}. You can also use the token's address.${dollars.length ? ` Its dollar tokens: ${dollars.join(', ')}.` : ''}`)
 }
 
 // The CoW-hosted public lists swap.ophis.fi offers per chain (apps/frontend/libs/tokens/src/const/tokensList.json).
@@ -306,10 +308,10 @@ async function fetchQuote(t: TradeBase, appData: { fullAppData: string; appDataH
 /** Finds the tokens and the amount, then gets a price. Nothing is signed or sent here. */
 export async function prepare(r: TradeRequest): Promise<Trade> {
   const [sell, buy] = await Promise.all([findToken(r.net, r.from), findToken(r.net, r.to)])
-  if (sell.native && buy.native) throw new UserError('Pick two different tokens.')
+  if (sell.native && buy.native) throw new UserError('You chose the same token to sell and receive. Choose two different tokens.')
   const pay = sell.native ? wrappedNative(r.net) : sell
   if (pay.address.toLowerCase() === buy.address.toLowerCase()) {
-    throw new UserError(sell.native ? `Turning ${sell.symbol} into ${pay.symbol} is a wrap, not a swap.` : 'Pick two different tokens.')
+    throw new UserError(sell.native ? `Turning ${sell.symbol} into ${pay.symbol} is a wrap, not a swap.` : 'You chose the same token to sell and receive. Choose two different tokens.')
   }
   const atoms = toAtoms(r.amount, sell.decimals)
   return requote({ net: r.net, sell, pay, buy, atoms, owner: r.owner, slippage: r.slippage, ref: r.ref })
@@ -433,6 +435,7 @@ interface Prep {
   feeText?: string
   notes: string[] // warnings for the confirmation screen
   wrapDone: boolean // set once the wrap is mined: from then on the user holds the wrapped token
+  wrapPending?: boolean // the wallet sent the wrap, but its receipt is not known yet
 }
 
 /** What this owner's other open orders can still pull from the same token, or null if unknown. */
@@ -580,10 +583,10 @@ export async function fund(t: Funding, prep: Prep, signer: Signer): Promise<void
   if (getAddress(signer.address) !== getAddress(t.owner)) throw new UserError('The connected wallet changed. Run ophis connect again.')
   const fees = prep.fees
   if ((await reader(t.net).getChainId()) !== t.net.id) throw new UserError('The RPC answers for a different chain. Check --rpc.')
-  const send = (label: string, tx: TxRequest) => sendTx(t.net, signer, fees, label, tx)
+  const send = (label: string, tx: TxRequest, onPending?: (pending: boolean) => void) => sendTx(t.net, signer, fees, label, tx, reader(t.net), onPending)
   if (prep.wrap) {
     const data = encodeFunctionData({ abi: WRAPPED_ABI, functionName: 'deposit' })
-    await send(`Wrapping ${amount(t.atoms, 18)} ${t.sell.symbol} into ${t.pay.symbol}`, { to: t.pay.address, data, value: t.atoms, gas: prep.gas.wrap })
+    await send(`Wrapping ${amount(t.atoms, 18)} ${t.sell.symbol} into ${t.pay.symbol}`, { to: t.pay.address, data, value: t.atoms, gas: prep.gas.wrap }, (pending) => { prep.wrapPending = pending })
     prep.wrapDone = true
   }
   if (prep.approve) {
@@ -603,7 +606,7 @@ export async function fund(t: Funding, prep: Prep, signer: Signer): Promise<void
  * Sends one transaction from the user's wallet app with the gas and fees shown at confirmation, then waits for its
  * receipt. Checked again before each one: the user may have waited, or started another one meanwhile.
  */
-export async function sendTx(net: Network, signer: Signer, fees: Fees, label: string, tx: TxRequest, client: Client = reader(net)): Promise<TransactionReceipt> {
+export async function sendTx(net: Network, signer: Signer, fees: Fees, label: string, tx: TxRequest, client: Client = reader(net), onPending?: (pending: boolean) => void): Promise<TransactionReceipt> {
   if (await waiting(client, signer.address)) throw new UserError('Another transaction from this wallet is waiting to confirm, so the next one was not sent.')
   if ('maxFeePerGas' in fees) {
     const base = (await client.getBlock()).baseFeePerGas ?? 0n
@@ -611,17 +614,22 @@ export async function sendTx(net: Network, signer: Signer, fees: Fees, label: st
       throw new UserError('Network fees went up since you confirmed, so the next transaction was not sent. Run the command again to see the new fee.')
     }
   }
-  const spin = spinner(`${label}: approve it in your wallet`)
+  let spin = spinner(`${label}: approve it in your wallet`)
   let hash: Hex | undefined
   try {
     hash = await signer.sendTransaction(net.id, { ...tx, ...fees })
     if (!/^0x[0-9a-fA-F]{64}$/.test(hash)) throw new UserError('The wallet returned an invalid transaction id.')
+    onPending?.(true)
+    const url = net.chain.blockExplorers?.default.url
+    spin.stop(`Transaction sent: ${dim(url ? `${url}/tx/${hash}` : hash)}`)
+    spin = spinner(`${label}: waiting for confirmation`)
     // The wallet may speed it up (repriced: the same call, higher fee), or cancel or replace it before it mines: then
     // the receipt is another transaction's, and what this one was sent to do did not happen.
     let replaced: string | undefined
     const receipt = await client.waitForTransactionReceipt({ hash, timeout: 180_000, onReplaced: (r) => void (replaced = r.reason) })
+    onPending?.(false)
     if (replaced && replaced !== 'repriced') {
-      throw new UserError(`${label}: your wallet ${replaced === 'cancelled' ? 'cancelled it' : 'replaced it with another transaction'} (${clean(receipt.transactionHash)}), so it did not happen.`)
+      throw new UserError(`${label} did not happen because your wallet ${replaced === 'cancelled' ? 'cancelled the transaction' : 'sent a different transaction instead'} (${clean(receipt.transactionHash)}). Check your wallet activity before trying again.`)
     }
     if (receipt.status !== 'success') throw new UserError(`${label} failed on-chain (transaction ${clean(receipt.transactionHash)}).`)
     spin.stop(`${green('✓')} ${label}  ${dim(clean(receipt.transactionHash))}`)

@@ -279,7 +279,7 @@ describe('the CoW Shed address', () => {
     await check()
     // A cancelled bridge whose hook could still run does, though this CLI never signed it.
     orders = [...orders, { uid: '0x5', status: 'cancelled', signingScheme: 'eip712', receiver: shed, fullAppData: appData(live, NOW + 600n) }]
-    await expect(check()).rejects.toThrow('could still run')
+    await expect(check()).rejects.toThrow('could still move these tokens')
   })
   test('no bridge starts while a hook this CLI placed on that chain could still run, whatever the orderbook lists', async () => {
     const owner = privateKeyToAccount(generatePrivateKey()).address
@@ -320,11 +320,11 @@ describe('the CoW Shed address', () => {
       log.mockRestore()
       write.mockRestore()
     }
-    await expect(checkEarlierHooks(base, owner)).rejects.toThrow('could still run')
+    await expect(checkEarlierHooks(base, owner)).rejects.toThrow('could still move these tokens')
     expect(asked.some((data) => data.includes(nonce.slice(2)))).toBe(true)
     // A second bridge is refused before anything is armed or signed.
     let armed = false
-    await expect(placeBridge({ ...quote, arm: () => void (armed = true) } as never, { address: owner } as never)).rejects.toThrow('could still run')
+    await expect(placeBridge({ ...quote, arm: () => void (armed = true) } as never, { address: owner } as never)).rejects.toThrow('could still move these tokens')
     expect(armed).toBe(false)
     // Its nonce used (the hook ran): no longer a block, but kept until its deadline (a reorg could undo the use).
     used = true
@@ -383,7 +383,7 @@ describe('the CoW Shed address', () => {
     const reads: { to?: string; data?: Hex }[] = []
     let held = 5_000_000n
     serve({ eth_call: ([call]) => (reads.push(call as never), pad(numberToHex(held))) }, { [`${getOphisOrderbookUrl(8453)}/api/v1/account/`]: [] })
-    const leftover = `Your CoW Shed still holds 5 USDC from an earlier bridge. Recover it first: ophis recover ${USDC.address} on base`
+    const leftover = `Your CoW Shed, the small account bridges pay into, still holds 5 USDC from an earlier transfer. Return it to your wallet first: ophis recover ${USDC.address} on base`
     const GUARD = 25_000_000n // a 25 USDC bridge: a leftover of 2.5 USDC or more must be recovered first
     await expect(checkLeftover(base, owner, USDC, GUARD)).rejects.toThrow(leftover)
     expect([getAddress(reads[0]!.to!), decodeFunctionData({ abi: erc20Abi, data: reads[0]!.data! }).args]).toEqual([USDC.address, [shedOf(owner)]]) // the shed's, not yours
@@ -568,8 +568,8 @@ describe('reading the chain before asking anything (RPC answered here)', () => {
       }) as never
     const signer = { address: OWNER, sendTransaction: async () => SENT } as unknown as Signer
     const send = (reason?: 'cancelled' | 'replaced' | 'repriced') => sendTx(network('base', RPC), signer, { maxFeePerGas: 3n * 10n ** 9n, maxPriorityFeePerGas: 1n }, 'Wrapping', tx, client(reason))
-    await expect(send('cancelled')).rejects.toThrow(`Wrapping: your wallet cancelled it (${MINED}), so it did not happen.`)
-    await expect(send('replaced')).rejects.toThrow('Wrapping: your wallet replaced it with another transaction')
+    await expect(send('cancelled')).rejects.toThrow(`Wrapping did not happen because your wallet cancelled the transaction (${MINED}). Check your wallet activity before trying again.`)
+    await expect(send('replaced')).rejects.toThrow('Wrapping did not happen because your wallet sent a different transaction instead')
     expect((await send('repriced')).transactionHash).toBe(MINED) // the same call at a higher fee
     expect((await send()).transactionHash).toBe(SENT)
     // The RPC's text reaches the terminal cleaned (here an escape sequence that would write the clipboard).
@@ -578,6 +578,27 @@ describe('reading the chain before asking anything (RPC answered here)', () => {
     const failed = await sendTx(network('base', RPC), signer, { maxFeePerGas: 3n * 10n ** 9n, maxPriorityFeePerGas: 1n }, 'Wrapping', tx, lying).catch((e: Error) => e.message)
     expect(String(failed)).toContain('failed on-chain')
     expect(String(failed)).not.toContain('\u001b')
+  })
+  test('a transaction explorer link is printed while the transaction is still pending', async () => {
+    const hash = `0x${'aa'.repeat(32)}` as Hex
+    const net = network('base', RPC)
+    net.chain.blockExplorers = { default: { name: 'Base', url: 'https://basescan.org' } }
+    const log = spyOn(console, 'log').mockImplementation(() => {})
+    const pending: boolean[] = []
+    const client = {
+      getTransactionCount: async () => 5,
+      waitForTransactionReceipt: async () => {
+        expect(log.mock.calls.flat().join('\n')).toContain(`Transaction sent: https://basescan.org/tx/${hash}`)
+        expect(pending).toEqual([true])
+        return { status: 'success', transactionHash: hash }
+      },
+    } as never
+    try {
+      await sendTx(net, { address: OWNER, sendTransaction: async () => hash } as unknown as Signer, { gasPrice: 1n }, 'Wrapping', tx, client, (value) => { pending.push(value) })
+      expect(pending).toEqual([true, false])
+    } finally {
+      log.mockRestore()
+    }
   })
   test('ophis status looks up only token addresses from the orderbook, never text it could inject', async () => {
     const uid = `0x${'ab'.repeat(56)}`
@@ -719,7 +740,7 @@ describe('ophis recover, end to end (chain, orderbook and wallet answered here)'
     // One name, two contracts across the lists: the user is asked for the address.
     const other = `0x${'7e'.repeat(20)}`
     serve(chain, { ...LISTS, ...lists([{ chainId: 42161, address: usdt, symbol: 'USDT', decimals: 6 }], [{ chainId: 42161, address: other, symbol: 'usdt', decimals: 6 }]) })
-    await expect(findToken(arbitrum, 'USDT')).rejects.toThrow('could mean several tokens')
+    await expect(findToken(arbitrum, 'USDT')).rejects.toThrow('matches several tokens')
     // Another chain's entry, or a name no list has, stays unknown.
     serve(chain, { ...LISTS, ...lists([{ chainId: 1, address: usdt, symbol: 'USDT', decimals: 6 }], []) })
     await expect(findToken(arbitrum, 'USDT')).rejects.toThrow('No token called "USDT"')
@@ -864,7 +885,7 @@ describe('ophis recover, end to end (chain, orderbook and wallet answered here)'
   test('a recovery declined after it was priced still blocks bridging until it expires: the RPC saw it signed', async () => {
     serve(chainOf(), { [ORDERS]: [BRIDGE], ...LISTS })
     expect((await run(async () => false)).outcome).toBe('cancelled')
-    await expect(checkEarlierHooks(base, ME)).rejects.toThrow('could still run')
+    await expect(checkEarlierHooks(base, ME)).rejects.toThrow('could still move these tokens')
   })
   test('refuses to send a recovery that could reach its deadline while your wallet sends it', async () => {
     // You answer 24 minutes and 1 second after signing: 5 minutes and 59 seconds are left, under the 6 needed.

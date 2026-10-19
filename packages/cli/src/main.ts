@@ -165,8 +165,8 @@ async function swap(args: string[], flags: Flags) {
 
   // From here on, whatever stops the swap also says what state the wallet is in.
   const wrappedNote = () =>
-    prep.wrapDone
-      ? ` You now hold ${amount(trade.atoms, 18)} ${trade.pay.symbol} instead of ${trade.sell.symbol}. To swap it: ophis swap ${formatUnits(trade.atoms, 18)} ${trade.pay.symbol} ${clean(shellArg(to))} on ${net.alias}${clean(sameTerms(flags))}`
+    prep.wrapDone || prep.wrapPending
+      ? `${prep.wrapPending ? ' The wrap may still confirm. Check the transaction before trying again. If it confirms, you will hold' : ' You now hold'} ${amount(trade.atoms, 18)} ${trade.pay.symbol} instead of ${trade.sell.symbol}. To swap it: ophis swap ${formatUnits(trade.atoms, 18)} ${trade.pay.symbol} ${clean(shellArg(to))} on ${net.alias}${clean(sameTerms(flags))}`
       : ''
   let sending = ''
   const interrupted = () => {
@@ -192,7 +192,7 @@ async function swap(args: string[], flags: Flags) {
     sending = signed.uid
     uid = await step('Sending the order', () => send(trade, signed))
   } catch (err) {
-    if (!prep.wrapDone) throw err
+    if (!prep.wrapDone && !prep.wrapPending) throw err
     const e = err as Error & { shortMessage?: string }
     const why = err instanceof UserError ? e.message : `Something went wrong: ${clean(String(e.shortMessage ?? e.message))}`
     throw new UserError(`${why}${wrappedNote()}`)
@@ -236,7 +236,7 @@ async function crossChain(amountText: string, from: string, to: string, flags: F
     return console.log(`\n  ${dim('Nothing was signed. To do it:')} ${again(amountText, from)}\n`)
   }
   const { open, hooks } = await openBridge(src, owner)
-  if (open) throw new UserError(`A bridge from this wallet is still open, and two at once would share your CoW Shed. Wait for it: ophis status ${open} on ${src.alias}`)
+  if (open) throw new UserError(`An earlier transfer between networks is still using your CoW Shed, the small account bridges pay into. Check its status and wait for it to finish: ophis status ${open} on ${src.alias}`)
   await checkEarlierHooks(src, owner, false, hooks)
   await checkLeftover(src, owner, bridge.via, bridge.guard) // before any wrap or approval is paid for
   const funding = { net: src, sell, pay, atoms: request.atoms, owner }
@@ -252,8 +252,8 @@ async function crossChain(amountText: string, from: string, to: string, flags: F
   console.log(`  ${dim(`Your wallet will ask you to approve ${asks} steps. Check each one there.`)}`)
 
   const wrappedNote = () =>
-    prep.wrapDone
-      ? ` You now hold ${amount(request.atoms, 18)} ${pay.symbol} instead of ${sell.symbol} on ${src.name}. To bridge it: ${again(formatUnits(request.atoms, 18), pay.symbol)}`
+    prep.wrapDone || prep.wrapPending
+      ? `${prep.wrapPending ? ' The wrap may still confirm. Check the transaction before trying again. If it confirms, you will hold' : ' You now hold'} ${amount(request.atoms, 18)} ${pay.symbol} instead of ${sell.symbol} on ${src.name}. To bridge it: ${again(formatUnits(request.atoms, 18), pay.symbol)}`
       : ''
   let signedUid: string | undefined // once the order is signed it may go live, so a stop must not suggest a retry
   const interrupted = () => {
@@ -285,7 +285,7 @@ async function crossChain(amountText: string, from: string, to: string, flags: F
     })
     enrollOphisTrader(owner).catch(() => {}) // best effort, as for swaps: lets the rebate indexer see this wallet
   } catch (err) {
-    if (!prep.wrapDone || (err as { maybeSent?: boolean }).maybeSent) throw err
+    if ((!prep.wrapDone && !prep.wrapPending) || (err as { maybeSent?: boolean }).maybeSent) throw err
     const e = err as Error & { shortMessage?: string }
     const why = err instanceof UserError ? e.message : `Something went wrong: ${clean(String(e.shortMessage ?? e.message))}`
     throw new UserError(`${why}${wrappedNote()}`)
@@ -356,6 +356,10 @@ async function connectCommand() {
   }
   done(`Connected ${bold(wallet.address)}`)
   rows(chainRows(wallet.chains))
+  if (wallet.otherChains.length) {
+    const leftOut = wallet.otherChains.map((id) => networks().find((n) => n.id === id)?.name ?? String(id)).join(', ')
+    note(`Left out ${leftOut}: your wallet picked another account there. Run ophis connect again and pick the same account on every network.`)
+  }
   console.log(`\n  Next: ${bold('ophis quote 10 USDC ETH')}  ${dim('(on Base; for another chain add, say, "on arbitrum")')}\n`)
 }
 
@@ -398,9 +402,9 @@ async function main(argv: string[]) {
         // A chain's own name there ("to arbitrum", not a symbol such as ETH or ARB) means moving the token to that chain.
         const dest = networks().find((n) => n.alias === words[3]!.toLowerCase())
         if (dest) {
-          throw new UserError(`${dest.name} is a chain. To move ${sell} there: ophis bridge ${amt} ${sell}${on.replace(' on ', ' from ')} to ${dest.alias}${terms}. To swap and receive there: ophis swap ${amt} ${sell} <token>${on} to ${dest.alias}${terms}`)
+          throw new UserError(`${dest.name} is a network, not a token. To move ${sell} there: ophis bridge ${amt} ${sell}${on.replace(' on ', ' from ')} to ${dest.alias}${terms}; to swap there (replace <token> with the token to receive): ophis swap ${amt} ${sell} <token>${on} to ${dest.alias}${terms}`)
         }
-        throw new UserError(`Name the two tokens one after the other: ophis ${command} ${amt} ${sell} ${buy}${on}${to}${terms}`)
+        throw new UserError(`There is an extra word between the two tokens. Use: ophis ${command} ${amt} ${sell} ${buy}${on}${to}${terms}`)
       }
       // Present, even if blank, means a destination was named: a blank one is refused, never read as "stay here".
       if (flags['to-chain'] === undefined) return command === 'quote' ? quote(words, flags) : swap(words, flags)
@@ -414,7 +418,7 @@ async function main(argv: string[]) {
         const src = network(flags.chain ?? DEFAULT_CHAIN)
         const from = flags.chain !== undefined ? ` from ${src.alias}` : ''
         const other = flags['to-token'] !== undefined ? ` --to-token ${shellArg(flags['to-token'])}` : ''
-        throw new UserError(`Where to? Name the chain, for example: ophis bridge ${clean(`${shellArg(amountText)} ${shellArg(token)}${from} to ${src.alias === 'arbitrum' ? 'base' : 'arbitrum'}${other}${sameTerms(flags)}`)}`)
+        throw new UserError(`The network to receive your tokens on is missing. Choose a destination, for example: ophis bridge ${clean(`${shellArg(amountText)} ${shellArg(token)}${from} to ${src.alias === 'arbitrum' ? 'base' : 'arbitrum'}${other}${sameTerms(flags)}`)}`)
       }
       return crossChain(amountText, token, flags['to-token'] ?? token, flags, false)
     }
@@ -436,7 +440,7 @@ async function main(argv: string[]) {
     case 'recover': {
       // Chain words come in pairs after the optional token, so an odd count means a token leads (even one named ON).
       const words = chainWords(args, flags, args.length % 2)
-      if (words.length > 1) throw new UserError('Usage: ophis recover [token] [on <chain>]')
+      if (words.length > 1) throw new UserError('The recover command has extra words. Usage: ophis recover [token] [on <chain>]')
       if (flags['to-chain'] !== undefined) throw new UserError('Recovery happens on one chain: name it with "on", for example: ophis recover on arbitrum')
       const net = network(flags.chain ?? DEFAULT_CHAIN, flags.rpc)
       await banner()

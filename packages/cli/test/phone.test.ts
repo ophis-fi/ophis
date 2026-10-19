@@ -1,14 +1,21 @@
-import { expect, mock, test } from 'bun:test'
+import { beforeEach, expect, mock, spyOn, test } from 'bun:test'
 
 // The wallet app, as WalletConnect reaches it: a session for Base and OP Mainnet that signs whatever it is asked.
 const ME = '0x1111111111111111111111111111111111111111' as const
 const SIGNATURE = `0x${'ab'.repeat(32)}` as const
 const asked: { chainId: string }[] = []
+let accounts: string[]
+let answer: () => Promise<string>
+beforeEach(() => {
+  accounts = [`eip155:8453:${ME}`, `eip155:10:${ME}`]
+  answer = async () => SIGNATURE
+  asked.length = 0
+})
 mock.module('@walletconnect/sign-client', () => ({
   default: {
     init: async () => ({
-      session: { getAll: () => [{ topic: 't', expiry: 2 ** 40, namespaces: { eip155: { accounts: [`eip155:8453:${ME}`, `eip155:10:${ME}`] } } }] },
-      request: async (r: { chainId: string }) => (asked.push(r), SIGNATURE),
+      session: { getAll: () => [{ topic: 't', expiry: 2 ** 40, namespaces: { eip155: { accounts } } }] },
+      request: async (r: { chainId: string }) => (asked.push(r), answer()),
     }),
   },
 }))
@@ -62,7 +69,43 @@ test('WalletConnect failures read as plain sentences, whatever their code', () =
 test('a chain where the wallet gave another account is left out: nothing is signed there as the wrong owner', () => {
   const other = '0x2222222222222222222222222222222222222222'
   const session = { namespaces: { eip155: { accounts: [`eip155:1:${ME}`, `eip155:8453:${ME}`, `eip155:42161:${other}`, 'eip155:10:junk'] } } }
-  expect(accountsOf(session as never)).toEqual({ address: ME, chains: [1, 8453] })
+  expect(accountsOf(session as never)).toEqual({ address: ME, chains: [1, 8453], otherChains: [42161] })
+  session.namespaces.eip155.accounts.push(`eip155:42161:${ME}`)
+  expect(accountsOf(session as never).otherChains).toEqual([]) // this owner was also approved there
+})
+
+test('a chain approved under another address explains the account mismatch and never reaches the wallet', async () => {
+  accounts.push('eip155:42161:0x2222222222222222222222222222222222222222')
+  await expect(phoneSigner(42161)).rejects.toThrow('approved this chain under another address. Run ophis connect again and pick the same account on every network.')
+  await expect(phoneSigner(1)).rejects.toThrow('did not connect this chain')
+  expect(asked).toEqual([])
+})
+
+test('expired and unanswered wallet requests explain how to reconnect and warn about a possibly sent transaction', async () => {
+  const setTimer = globalThis.setTimeout
+  const timer = spyOn(globalThis, 'setTimeout').mockImplementation(((fn: () => void, ms: number) => setTimer(fn, ms === 300_000 ? 1 : ms)) as typeof setTimeout)
+  try {
+    const wallet = await phoneSigner(8453)
+    for (const reply of [async () => { throw new Error('Request expired') }, () => new Promise<string>(() => {})]) {
+      answer = reply
+      const error = await wallet.sendTransaction(8453, { to: ME }).catch((err: Error) => err.message)
+      expect(error).toContain('Your wallet did not respond')
+      expect(error).toContain('keep the app open')
+      expect(error).toContain('Ledger Wallet, use the WalletConnect connection screen')
+      expect(error).toContain('reconnect with ophis connect')
+      expect(error).toContain('Check your wallet activity before retrying')
+      expect(error).toContain('the transaction may already have been sent')
+    }
+    answer = async () => { throw new Error('Request expired') }
+    const typed = { domain: { chainId: 8453 } } as never
+    const error = await wallet.signTypedData(8453, typed).catch((err: Error) => err.message)
+    expect(error).toContain('keep the app open')
+    expect(error).not.toContain('may already have been sent')
+    answer = async () => { throw new Error('User rejected') }
+    await expect(wallet.sendTransaction(8453, { to: ME })).rejects.toThrow('You declined the request')
+  } finally {
+    timer.mockRestore()
+  }
 })
 
 test('the wallet is only asked on the chain the signer was opened for', async () => {
