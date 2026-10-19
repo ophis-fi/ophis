@@ -114,11 +114,19 @@ Ophis charges **0.01%** of the trade: on a **100 USDC** swap, this fee is
 part of the extra, and the exact share and cap appear on every quote and
 confirmation. Fees are shown before you confirm.
 
+On the 10 networks where CoW Protocol runs the order book, Base (the default)
+among them, CoW Protocol adds its own fee: 0.02% of the trade (0.003% between
+stablecoins), so 0.03% in total on a regular swap. The networks Ophis runs
+itself (Optimism, Unichain, Robinhood Chain and Arc) have no extra fee. Either
+way, you receive at least the amount the CLI shows as **At least**. See
+[Fees & rebates](./fees.md) for the details.
+
 Across is the bridge service; its fee is already included in the amounts shown.
 
 Signing an order costs nothing. Network fees only apply to a one-time token
-approval or to wrapping ETH into WETH before selling it. Wrapping turns ETH
-into WETH, the token form used for swaps.
+approval, to wrapping ETH into WETH before selling it, and to `ophis recover`,
+which sends a transaction. Wrapping turns ETH into WETH, the token form used
+for swaps.
 
 ## Safety
 
@@ -185,7 +193,7 @@ you receive.
 | `ophis bridge <amount> <token> to <chain>` | Move a token to another chain through Across. |
 | `ophis status <order id>` | See where an order is and follow a bridge's progress. |
 | `ophis wallet` | Show your wallet and the chains it shares. |
-| `ophis recover` | Get back tokens a bridge left behind. |
+| `ophis recover [token]` | Get back tokens a bridge left behind. Name the token, for example `ophis recover USDC on base`, to look for one from a very old bridge. |
 | `ophis disconnect` | Unlink your wallet. |
 | `ophis chains` | List the chains and the names to type. |
 | `ophis help` | Show commands and options. |
