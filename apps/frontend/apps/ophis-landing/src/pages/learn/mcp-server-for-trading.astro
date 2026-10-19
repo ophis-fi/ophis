@@ -17,7 +17,7 @@ const FAQS = [
   },
   {
     q: 'What does a trading MCP server expose?',
-    a: `The Ophis MCP server exposes 14 tools covering the full trade lifecycle: parse_intent turns natural language into a structured swap, resolve_token maps a symbol to a canonical address and fails closed on spoofs, get_quote fetches a best-execution quote, build_order returns a bounded, ready-to-sign EIP-712 order with the receiver pinned to the owner, validate_order preflights it, and submit_order relays the signed result. Supporting tools cover chains, balances, portfolio, gas, charts, and expected surplus.`,
+    a: `The Ophis MCP server exposes 13 tools covering the full trade lifecycle: parse_intent turns natural language into a structured swap, resolve_token maps a symbol to a canonical address and fails closed on spoofs, get_quote fetches a best-execution quote, build_order returns a bounded, ready-to-sign EIP-712 order with the receiver pinned to the owner, validate_order preflights it, and submit_order relays the signed result. Supporting tools cover integrator volume and fees, chains, balances, portfolio, gas, charts, and expected surplus.`,
   },
   {
     q: 'Does the MCP server hold keys or funds?',

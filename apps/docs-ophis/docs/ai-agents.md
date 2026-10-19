@@ -18,7 +18,7 @@ Connect your agent to Ophis to parse requests, get quotes and build orders for w
 
 ## Connect a client {/* #connect-your-mcp-client */}
 
-The current server release is **v0.1.2**. It uses streamable HTTP and requires no API key:
+The current server release is **v0.2.0**. It uses streamable HTTP and requires no API key:
 
 ```
 https://mcp.ophis.fi/mcp

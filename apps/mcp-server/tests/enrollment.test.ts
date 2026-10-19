@@ -30,6 +30,7 @@ it('reports enrollment failure without making an accepted order look rejected', 
   const result = await submit({ chainId: 10, from: `0x${'12'.repeat(20)}`, order: {}, signature: '0x12', fullAppData: '{}' })
   expect(result.isError).not.toBe(true)
   expect(result.content[0].text).toContain('accepted-order-uid')
+  expect(result.content[1].text).toContain('owner enrollment for indexing and trade rewards failed')
   expect(result.content[1].text).toContain('Retry enrollment, not order submission')
 })
 

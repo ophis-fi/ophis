@@ -28,13 +28,21 @@ All endpoints are public and require no API key or authentication.
    - Rate limited to 30 requests/min/IP. See https://ophis.fi/openapi.json.
 
 2. Full trade lifecycle via the hosted MCP server: `https://mcp.ophis.fi/mcp`
-   (discovery at `https://ophis.fi/.well-known/mcp.json`). Tools:
+   (discovery at `https://ophis.fi/.well-known/mcp.json`). Thirteen tools:
    - `parse_intent` natural language to a structured intent
+   - `resolve_token` a token symbol to its canonical address
    - `get_quote` best-execution quote for a pair/amount/chain
    - `build_order` a bounded, EIP-712-signable order (receiver pinned to owner)
    - `submit_order` broadcast a signed order to the orderbook
-   - `lookup_tier` a wallet's fee-rebate tier
+   - `get_integrator_earnings` routed volume, the Ophis base fee, and the
+     integrator's own fee on CoW-hosted chains, by appCode
    - `list_chains` per-chain settlement domain + orderbook host
+   - `get_balances` native and ERC-20 balances on one chain
+   - `get_portfolio` wallet balances across chains
+   - `get_gas` current gas price
+   - `get_token_chart` token OHLCV history
+   - `expected_surplus` estimated price improvement against the open market
+   - `validate_order` order preflight before signing
 
 ## How to swap (recommended flow)
 
@@ -55,10 +63,12 @@ the base, and CoW Protocol's own fees apply upstream. Use
 `buildOphisAppDataPartnerFee(chainId, isStablePair)` rather than a volume-only
 hosted entry. Approvals and other wallet transactions require gas. Details:
 https://docs.ophis.fi/fees. Arc uses the same backend improvement policy for in-market orders and is
-indexed for volume and referral rebates. MCP clients pass `referrerCode` to
+indexed for routed volume and referral attribution. MCP clients pass `referrerCode` to
 `build_order` for Arc attribution; only direct SDK integrations require
 `@ophis/sdk` v0.4.4 or later for Arc referral tags.
-On indexed chains, eligible volume weights a share of the WETH rebate pool. View rewards and payout status in the dashboard. The `@ophis/sdk` npm package exposes
+After an order is accepted, `submit_order` enrolls its owner for indexing and
+the live trade-rewards campaign via `https://rebates.ophis.fi/tier/<owner>`.
+The `@ophis/sdk` npm package exposes
 `buildOphisAppDataPartnerFee`, `OPHIS_VOLUME_FEE_BPS`,
 `OPHIS_STABLE_VOLUME_FEE_BPS`, and
 `ophisVolumeBpsForChainAndPair(chainId, isStablePair)`.

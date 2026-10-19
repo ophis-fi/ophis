@@ -2,7 +2,7 @@
 title: "How to let an AI agent swap tokens: safely, and MEV-protected"
 description: "Give an AI agent bounded token-swap capabilities through Ophis: MCP execution, an Intent API for parsing, SDK safety helpers, and the signing policies required for unattended operation."
 pubDate: 2026-06-25
-updatedDate: 2026-10-04
+updatedDate: 2026-10-19
 author: Ophis
 tags: [ai-agents, mcp, mev, defi, swaps]
 cover: ./let-an-ai-agent-swap-tokens.cover.png
@@ -54,7 +54,7 @@ server:
 https://mcp.ophis.fi/mcp
 ```
 
-It exposes fourteen tools:
+It exposes thirteen tools:
 
 | Tool | What it does |
 | --- | --- |
@@ -63,8 +63,7 @@ It exposes fourteen tools:
 | `get_quote` | Fetch an executable quote for a parsed intent. |
 | `build_order` | Build a bounded, ready-to-sign order (receiver pinned to the owner by default). |
 | `submit_order` | Submit a signed order to the correct per-chain orderbook. |
-| `lookup_tier` | Look up a wallet's 30-day volume tier and rebate status. |
-| `get_integrator_earnings` | Read routed volume, own-fee accrual, referral rebates, and paid-to-date figures for an appCode. |
+| `get_integrator_earnings` | Routed volume, the Ophis base fee, and the integrator's own fee on CoW-hosted chains, by appCode. |
 | `list_chains` | Resolve supported chains and their settlement / orderbook hosts. |
 | `get_balances` | Read a wallet's native and ERC-20 balances on one chain. |
 | `get_portfolio` | Read a wallet's token balances across multiple chains. |
@@ -170,19 +169,18 @@ The [full four-step guide](https://docs.ophis.fi/ai-agents#submitting-orders-pro
 covers the appData hashing and the EIP-712 order struct in detail. The
 one-line summary: let the SDK resolve anything that is chain-specific.
 
-## Agents that trade *earn*: the rebate
+## Track the volume your agent routes
 
-Here is the part that flips swaps from a cost center to a revenue line. Every
-swap routed through your integration carries the chain-aware Ophis base in
-`appData`: **0.01% on the 14 SDK v0.4.3 / hosted MCP chains**. Optimism,
-Unichain, Robinhood and Arc backends apply capped improvement capture; hosted orders
-encode it in appData. Eligible settled Arc trades are indexed for referral and volume-tier rebates. For Arc referrals,
-MCP clients pass `referrerCode` to `build_order`; direct SDK integrations use
-v0.4.4 or later. On indexed chains, eligible integrators earn a **rebate** on the volume
-they route, and `lookup_tier` surfaces a wallet's 30-day volume tier.
+Referral attribution records settled trades under your integration's code,
+including on Arc. MCP clients pass `referrerCode` to `build_order`; direct SDK
+integrations use v0.4.4 or later for Arc referral tags. After an order is
+accepted, `submit_order` enrolls its owner for indexing and the live
+trade-rewards campaign via `rebates.ophis.fi/tier/<owner>`.
 
-Rebates depend on eligible indexed volume and the applicable program terms.
-See the [fee documentation](https://docs.ophis.fi/fees) for the full mechanics.
+Use `get_integrator_earnings` to read routed volume, the Ophis base fee, and
+your own fee on CoW-hosted chains by appCode. The same report is available at
+`rebates.ophis.fi/earnings/<appCode>`. See the
+[partner documentation](https://docs.ophis.fi/partners) for attribution details.
 
 ## Going fully autonomous (read this first)
 
@@ -253,8 +251,8 @@ Ophis base and capped improvement capture in appData; CoW Protocol's own fees
 apply upstream. Use `buildOphisAppDataPartnerFee(chainId, isStablePair)` for the
 complete partner fee, not a volume-only entry. Pool costs, price impact and gas
 are additional. SDK v0.4.3 and hosted MCP include Arc, which applies the same
-[capped backend improvement policy](https://docs.ophis.fi/fees). Eligible settled Arc trades count toward referral
-and volume-tier rebates. For Arc referrals, MCP clients pass `referrerCode` to
+[capped backend improvement policy](https://docs.ophis.fi/fees). Settled Arc trades are indexed for routed volume
+and referral attribution. For Arc referrals, MCP clients pass `referrerCode` to
 `build_order`; direct SDK integrations use v0.4.4 or later.
 
 Swap fees are deducted from the trade. Standard ERC-20 order signing and
@@ -274,8 +272,8 @@ that class of bug disappears.
 
 ## Start here
 
-Ophis is the swap layer for the agent era: MEV-protected, self-custody, and
-revenue-aligned with the people who integrate it.
+Ophis gives agents a swap workflow with MEV protection, local signing, and
+referral attribution.
 
 - **MCP server:** [MCP connection guide](https://docs.ophis.fi/ai-agents#mcp-server-recommended)
 - **AI agent docs:** [docs.ophis.fi/ai-agents](https://docs.ophis.fi/ai-agents)

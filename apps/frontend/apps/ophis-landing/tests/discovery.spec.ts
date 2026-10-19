@@ -27,7 +27,7 @@ test('openapi.json is a valid OpenAPI 3.1 spec for POST /api/intent', () => {
   )
 })
 
-test('.well-known/mcp.json points to the live MCP server with all fourteen tools', () => {
+test('.well-known/mcp.json points to the live MCP server with all thirteen tools', () => {
   const mcp = json('.well-known/mcp.json')
   expect(mcp.endpoint).toBe('https://mcp.ophis.fi/mcp')
   expect(mcp.transport).toBe('streamable-http')
@@ -40,7 +40,6 @@ test('.well-known/mcp.json points to the live MCP server with all fourteen tools
       'get_quote',
       'build_order',
       'submit_order',
-      'lookup_tier',
       'get_integrator_earnings',
       'list_chains',
       'get_balances',
@@ -51,7 +50,7 @@ test('.well-known/mcp.json points to the live MCP server with all fourteen tools
       'validate_order',
     ]),
   )
-  expect(tools).toHaveLength(14)
+  expect(tools).toHaveLength(13)
   expect(mcp.openapi).toBe('https://ophis.fi/openapi.json')
 })
 

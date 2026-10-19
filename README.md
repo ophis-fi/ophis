@@ -106,9 +106,9 @@ Context Protocol server:
 https://mcp.ophis.fi/mcp
 ```
 
-It speaks Streamable-HTTP MCP and exposes 14 tools: intent parsing, canonical
+It speaks Streamable-HTTP MCP and exposes 13 tools: intent parsing, canonical
 token resolution, chain discovery, quoting, bounded order build/validation and
-submission, rebate and integrator lookups, balances, portfolios, gas, charts,
+submission, integrator volume and fee lookups, balances, portfolios, gas, charts,
 and expected-surplus comparison. The server holds no keys and never signs.
 `build_order` returns a bounded, ready-to-sign EIP-712 order with the receiver
 pinned to the owner; the agent signs locally with its own key and submits. See

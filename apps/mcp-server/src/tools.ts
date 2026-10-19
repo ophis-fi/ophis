@@ -1,7 +1,7 @@
 /**
  * Ophis MCP tool registration — shared between the Cloudflare Worker
  * (src/index.ts, Streamable HTTP) and the standalone stdio server
- * (src/standalone.ts, plain Node). Both register the SAME 14 tools against an
+ * (src/standalone.ts, plain Node). Both register the SAME 13 tools against an
  * McpServer; only the transport and how config is sourced differ.
  *
  * The server holds NO private keys and never signs. build_order returns a
@@ -17,7 +17,6 @@ import {
   getQuote,
   buildOrder,
   submitOrder,
-  lookupTier,
   getIntegratorEarnings,
   listChains,
   extractQuoteAmounts,
@@ -35,7 +34,7 @@ import {
 import { resolveStablePair } from './stablePair.js'
 
 /** Identity reported by both transports (stdio + Worker). */
-export const MCP_SERVER_VERSION = '0.1.2' as const
+export const MCP_SERVER_VERSION = '0.2.0' as const
 
 /** Canonical public tool inventory. Metadata tests fail if registration or server.json drifts. */
 export const OPHIS_TOOL_NAMES = [
@@ -47,7 +46,6 @@ export const OPHIS_TOOL_NAMES = [
   'build_order',
   'validate_order',
   'submit_order',
-  'lookup_tier',
   'get_integrator_earnings',
   'get_balances',
   'get_portfolio',
@@ -87,7 +85,7 @@ function fail(e: unknown) {
 }
 
 /**
- * Registers the 14 Ophis MCP tools on `server`. Behaviour-identical to the
+ * Registers the 13 Ophis MCP tools on `server`. Behaviour-identical to the
  * original OphisMCP.init(); the only difference is config is passed in rather
  * than read from a Worker Env (so the same tools run under stdio too).
  */
@@ -203,7 +201,7 @@ export function registerOphisTools(server: McpServer, config?: OphisToolConfig):
           .optional()
           .refine((v) => v === undefined || v === '0', {
             message:
-              'feeAmount must be omitted or "0" — Ophis orders take the fee from surplus + the appData partner fee; a non-zero signed feeAmount is not accepted on this tool.',
+              'feeAmount must be omitted or "0". Ophis orders take the fee from surplus + the appData partner fee; a non-zero signed feeAmount is not accepted on this tool.',
           })
           .describe('Signed feeAmount in atoms. Must be omitted or "0" on this tool (the fee is taken from surplus + the appData partner fee).'),
         partiallyFillable: z.boolean().optional().describe('Allow partial fills (default false = fill-or-kill).'),
@@ -225,14 +223,14 @@ export function registerOphisTools(server: McpServer, config?: OphisToolConfig):
           .optional()
           .refine((v) => v === undefined, {
             message:
-              'referenceBuyAmount was removed — slippage is now enforced server-side against a live quote. Remove it (optionally set slippageBips).',
+              'referenceBuyAmount was removed. Slippage is now enforced server-side against a live quote. Remove it (optionally set slippageBips).',
           }),
         referenceSellAmount: z
           .any()
           .optional()
           .refine((v) => v === undefined, {
             message:
-              'referenceSellAmount was removed — slippage is now enforced server-side against a live quote. Remove it (optionally set slippageBips).',
+              'referenceSellAmount was removed. Slippage is now enforced server-side against a live quote. Remove it (optionally set slippageBips).',
           }),
         // SECURITY (#608 review): no custom-receiver field is exposed on this
         // public, no-auth tool. The receiver is unconditionally pinned to the
@@ -243,7 +241,7 @@ export function registerOphisTools(server: McpServer, config?: OphisToolConfig):
         referrerCode: z
           .string()
           .optional()
-          .describe('Affiliate referral code to embed in appData (credits that code\'s owner for eligible settled trades, including Arc). Defaults to the server\'s OPHIS_DEFAULT_REFERRER_CODE. An empty string opts out. Grammar: 3-64 chars [a-z0-9_-]; an invalid code errors.'),
+          .describe('Referral code to embed in appData for attribution of settled trades, including Arc. Defaults to the server\'s OPHIS_DEFAULT_REFERRER_CODE. An empty string opts out. Grammar: 3-64 chars [a-z0-9_-]; an invalid code errors.'),
       },
     },
     async (a) => {
@@ -333,7 +331,7 @@ export function registerOphisTools(server: McpServer, config?: OphisToolConfig):
       // not a fund-drain vector, but it does change state -> destructive, not read-only.
       annotations: { title: 'Submit signed order', readOnlyHint: false, destructiveHint: true, openWorldHint: true },
       description:
-        'Relay a PRE-SIGNED order to the chain\'s Ophis orderbook. Pass the exact `order` object and `fullAppData` from build_order, plus your EIP-712 `signature` and `from` (owner). The MCP holds no keys — it only forwards. Returns the order UID on success.',
+        'Relay a pre-signed order to the chain\'s Ophis orderbook. Pass the exact `order` object and `fullAppData` from build_order, plus your EIP-712 `signature` and `from` (owner). Returns the order UID on success and enrolls the owner for indexing, referral attribution, and trade rewards.',
       inputSchema: {
         chainId: z.number().int().describe('EVM chain id the order was built for.'),
         order: z
@@ -383,26 +381,9 @@ export function registerOphisTools(server: McpServer, config?: OphisToolConfig):
           .catch(() => ({ enrolled: false }))
         const response = ok(result)
         if (!enrollment.enrolled) response.content.push({
-          type: 'text', text: 'Order accepted; rebate enrollment failed. Retry enrollment, not order submission.',
+          type: 'text', text: 'Order accepted; owner enrollment for indexing and trade rewards failed. Retry enrollment, not order submission.',
         })
         return response
-      } catch (e) {
-        return fail(e)
-      }
-    },
-  )
-
-  server.registerTool(
-    'lookup_tier',
-    {
-      annotations: { title: 'Look up fee-rebate tier', readOnlyHint: true, openWorldHint: true },
-      description:
-        "Look up a wallet's Ophis fee-rebate tier and live status (30-day volume → bronze/silver/gold/platinum, rebate %). Returns the indexer status plus the static tier ladder.",
-      inputSchema: { wallet: z.string().describe('Wallet address (0x...).') },
-    },
-    async ({ wallet }) => {
-      try {
-        return ok(await lookupTier(wallet as Address))
       } catch (e) {
         return fail(e)
       }
@@ -414,7 +395,7 @@ export function registerOphisTools(server: McpServer, config?: OphisToolConfig):
     {
       annotations: { title: 'Get integrator earnings', readOnlyHint: true, openWorldHint: true },
       description:
-        "Look up what an integrator's own-fee routing earned on indexed chains, including Arc, by appCode (the identifier you tag into appData: your widget appCode or your SDK ophisReferrer code). Returns routed volume (USD, split by chain and by sovereign-vs-hosted), the Ophis base fee charged on your flow, your OWN stacked fee, and your referral rebate paid-to-date with payout tx links. Own-fee payout lanes cover Optimism and Unichain only; Robinhood and Arc own-fees are accruals without an Ophis payout lane. CoW-hosted figures are accrued at settlement and disbursed by CoW under CoW terms (see the response `disclaimer`). Read-only, keyless, cumulative (no current-cycle or next-payout data).",
+        "Look up routed volume, the Ophis base fee, and the integrator's own fee on CoW-hosted chains, by appCode (your widget appCode or SDK ophisReferrer code). Routed volume is reported in USD, split by chain and by Ophis-operated versus CoW-hosted chains. Read-only, keyless, cumulative.",
       inputSchema: {
         appCode: z
           .string()
@@ -606,7 +587,7 @@ export function registerOphisTools(server: McpServer, config?: OphisToolConfig):
     {
       annotations: { title: 'Validate order preflight', readOnlyHint: true, openWorldHint: false },
       description:
-        "Offline preflight for an order you built OUTSIDE build_order (no network call, no keys). Catches the documented silent-failure modes before you sign or submit: wrong appCode (settles but earns zero rebate), wrong orderbook host (api.cow.fi silently bypasses the Ophis stack on Ophis-operated chains), wrong EIP-712 domain (signing against CoW's canonical settlement on an Ophis-operated chain yields a domain the deployed contract rejects), appData hash mismatch (order.appData must equal keccak256 of the exact fullAppData string), an unpinned receiver (proceeds leaving the owner), an expired or non-zero-fee order, and malformed partnerFee entries. Pass whatever you have (chainId is required; owner, order, fullAppData, signingDomain, orderbookUrl are all optional and each is checked if present). Returns { valid, errors, warnings, expected } where `expected` echoes the correct per-chain orderbook host, settlement, EIP-712 domain, appCode, and partnerFee. Prefer build_order to construct orders; use this to verify externally-built ones.",
+        "Offline preflight for an order you built OUTSIDE build_order (no network call, no keys). Catches the documented silent-failure modes before you sign or submit: wrong appCode (prevents Ophis referral attribution), wrong orderbook host (api.cow.fi silently bypasses the Ophis stack on Ophis-operated chains), wrong EIP-712 domain (signing against CoW's canonical settlement on an Ophis-operated chain yields a domain the deployed contract rejects), appData hash mismatch (order.appData must equal keccak256 of the exact fullAppData string), an unpinned receiver (proceeds leaving the owner), an expired or non-zero-fee order, and malformed partnerFee entries. Pass whatever you have (chainId is required; owner, order, fullAppData, signingDomain, orderbookUrl are all optional and each is checked if present). Returns { valid, errors, warnings, expected } where `expected` echoes the correct per-chain orderbook host, settlement, EIP-712 domain, appCode, and partnerFee. Prefer build_order to construct orders; use this to verify externally-built ones.",
       inputSchema: {
         chainId: z.number().int().describe('EVM chain id the order is for (use list_chains `tradeable`).'),
         owner: z.string().optional().describe('The signing account address; enables the receiver drain-guard check.'),

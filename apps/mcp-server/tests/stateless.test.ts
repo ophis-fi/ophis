@@ -51,7 +51,7 @@ it('initializes and serves independent tool requests without Durable Objects', a
   const [listed, called] = await Promise.all([
     call(2, 'tools/list', {}), call(3, 'tools/call', { name: 'list_chains', arguments: {} }),
   ])
-  expect(listed.tools).toHaveLength(14)
+  expect(listed.tools).toHaveLength(13)
   expect(JSON.parse(called.content[0].text).tradeable.some((chain: { chainId: number }) => chain.chainId === 1)).toBe(true)
   expect((await worker!.fetch('/mcp', { headers: { accept: 'text/event-stream' } })).status).toBe(405)
 })
