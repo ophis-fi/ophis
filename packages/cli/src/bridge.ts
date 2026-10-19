@@ -785,6 +785,11 @@ export function showBridge(b: BridgeQuote, extra: [string, string][] = [], owner
   // Across pays its wrapped gas token out as the native coin to a regular wallet (still wrapped to a smart account).
   const native = same(b.buy.address, wrappedNative(b.dst).address)
   const out = native ? b.dst.native : b.buy.symbol
+  const notes = [b.sell.note, b.buy.note].filter((n): n is string => !!n)
+  if (notes.length) {
+    for (const n of notes) note(n)
+    console.log()
+  }
   rows([
     ['From', `${amount(b.atoms, b.sell.decimals)} ${b.sell.symbol} on ${tag(b.src)}`],
     ['To', `${bold(saffron(`about ${amount(b.expected, b.buy.decimals)} ${out}`))} on ${tag(b.dst)}`],

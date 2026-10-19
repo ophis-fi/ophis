@@ -77,6 +77,7 @@ export interface Token {
   decimals: number
   native: boolean
   listed: boolean // false: name and decimals came from the RPC, not from the Ophis token list
+  note?: string // said above the price, e.g. that ETH was read as the chain's wrapped ether
 }
 
 /** What the user asked to trade. Fixed once confirmed: refreshing the price never changes it. */
@@ -184,9 +185,16 @@ export async function findToken(net: Network, query: string): Promise<Token> {
   }
   // Never on a partial view: an Ophis list that could not be read may hold this very name.
   if (found.incomplete) throw new UserError(`Could not read the Ophis token list just now. Try again, or use the token's address.`)
-  // A chain with its own coin has ether only as a token: ETH is what the Ophis list names so (BNB Chain), never a public
-  // list's lookalike (Wormhole ether on Polygon and Avalanche, which calls itself WETH but is not the WETH people mean).
-  if (query.toUpperCase() === 'ETH' && net.native !== 'ETH') throw new UserError(`${net.name} has no ETH: only wrapped ether is available, WETH.`)
+  // A chain with its own coin has ether only as a token: ETH is what the Ophis list names so (BNB Chain), else the
+  // chain's wrapped ether, said aloud above the price. Never a public list's lookalike (Wormhole ether on Polygon and
+  // Avalanche calls itself WETH but is not the WETH people mean).
+  if (query.toUpperCase() === 'ETH' && net.native !== 'ETH') {
+    const weth = await findToken(net, 'WETH')
+    // Only a token on the Ophis list stands in for a name the user did not type: a public list's WETH is never
+    // substituted silently, it must be asked for by name (and then carries the unlisted-token warning).
+    if (!weth.listed) throw new UserError(`${net.name} has no ETH: only wrapped ether is available, WETH.`)
+    return { ...weth, note: `${net.name} has no ETH: using wrapped ether, ${weth.symbol}.` }
+  }
   // Not on the Ophis list: the public lists swap.ophis.fi also offers on this chain may name it. The address found
   // is then described like a typed one (by the Ophis list, else by the chain, and the confirmation warns).
   const named = await publicListAddresses(net.id, query)
@@ -365,6 +373,8 @@ export function showTrade(t: Trade, extra: [string, string][] = []): void {
   const expected = afterFee(t.quoted, volumeBps(t.built.partnerFee))
   const price = (expected * 10n ** BigInt(t.sell.decimals) * 10n ** 18n) / (t.atoms * 10n ** BigInt(t.buy.decimals))
   const sellWhere = t.sell.native ? `native coin, wrapped first into ${t.pay.symbol} ${t.pay.address}` : t.sell.address
+  const notes = [t.sell.note, t.buy.note].filter(Boolean)
+  if (notes.length) console.log(`${notes.map((n) => `  ${saffron('!')} ${n}`).join('\n')}\n`)
   rows([
     ['Chain', tag(t.net)],
     ['You pay', `${amount(t.atoms, t.sell.decimals)} ${t.sell.symbol}`],
