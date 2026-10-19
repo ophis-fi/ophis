@@ -68,7 +68,7 @@ await enrollOphisTrader(owner, { blocking: true });
 await sellTokenAsOwner.approve(getOphisVaultRelayer(chainId), amount);
 
 const doc = await new MetadataApi().generateAppDataDoc(
-  buildOphisOrderMetadata({ chainId, isStablePair, signer: owner }),
+  buildOphisOrderMetadata({ chainId, referralCode: 'yourcode', isStablePair, signer: owner }),
 );
 const fullAppData = await stringifyDeterministic(doc);
 const appDataHash = keccak256(toUtf8Bytes(fullAppData));
@@ -266,7 +266,7 @@ Successful registration renews the inactivity clock and keeps the wallet's first
 
 ## Check your earnings {/* #verifying-your-earnings-get-earningsappcode */}
 
-A public, read-only endpoint reports what your integration routed, by the `appCode` you tag into appData: the widget's top-level appCode or the SDK's `metadata.ophisReferrer.code`. Figures are lifetime totals.
+A public, read-only endpoint reports what your integration routed under your registered code. Create the code in the [Ophis dashboard](https://swap.ophis.fi/#/affiliate), then tag every order with it: `referralCode` in the SDK (stored as `metadata.ophisReferrer.code`) or the widget's top-level `appCode`. Figures are lifetime totals.
 
 ```bash
 curl https://rebates.ophis.fi/earnings/your-code
@@ -303,7 +303,7 @@ import {
 if (!isOphisEthFlowChain(chainId)) throw new Error('wrap ETH to WETH first');
 
 const doc = await new MetadataApi().generateAppDataDoc(
-  buildOphisOrderMetadata({ chainId, isStablePair }),
+  buildOphisOrderMetadata({ chainId, referralCode: 'yourcode', isStablePair }),
 );
 const fullAppData = await stringifyDeterministic(doc);
 const appDataHash = keccak256(toUtf8Bytes(fullAppData));
