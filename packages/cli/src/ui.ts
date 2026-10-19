@@ -1,4 +1,4 @@
-// How ophis looks in a terminal: Ophis colors, the animated claw emblem, spinners and prompts.
+// How ophis looks in a terminal: Ophis colors, the animated serpent emblem, spinners and prompts.
 import { createInterface } from 'node:readline/promises'
 import { formatUnits } from 'viem'
 
@@ -35,50 +35,70 @@ export class UserError extends Error {}
  */
 export const finish = (code: number): void => void process.stdout.write('', () => process.stderr.write('', () => process.exit(code)))
 
-// The Ophis claw (apps/frontend/apps/ophis-landing/public/ophis-claw-saffron.svg) drawn with braille dots.
+// The serpent ring from Ophis_logo.svg, the website's logo, drawn with braille dots.
 const EMBLEM = [
-  '⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⣆',
-  '⠀⠀⠀⠀⠀⠀⠀⣀⣼⣷⢶⢿⣶⣶⠒⢦⡀',
-  '⠀⠀⠀⠀⢀⣴⣻⣿⣷⢿⣿⡏⣱⣿⢟⡛⢿⣦',
-  '⠀⠀⠀⣠⣟⣿⠟⠁⠀⠀⠀⠀⠘⣧⠸⣯⢦',
-  '⠀⢀⣠⡿⣾⠏⠀⠀⠀⠀⠀⠀⠀⠈⠁⢹⣟⡇',
-  '⠈⠉⢹⣿⣿⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⣿⢿',
-  '⠀⠐⠛⣷⣿⡄⠀⠀⠀⠀⠀⠀⠀⠀⠀⢀⣿⡿',
-  '⠀⠀⠀⠘⣯⢿⣦⡀⠀⠀⠀⠀⠀⢀⣠⣟⡾⠃',
-  '⠀⠀⠀⠀⠈⠻⢿⣟⡶⣶⣶⣶⡾⣟⡷⠟⠁',
-  '⠀⠀⠀⠀⠀⠀⠀⠈⠙⠛⠛⠚⠋⠉',
-].map((line) => line.padEnd(18, '⠀'))
+  '⠀⠀⠀⠀⠀⠀⢀⣠⣤⣶⠶⣶⠿⣿⣶⣿⠛⠻⣶⣄⠀⠀',
+  '⠀⠀⠀⠀⣠⢾⣟⣹⣷⣿⣿⣿⡿⠋⣹⣿⣷⣶⣿⣿⣷⣀',
+  '⠀⠀⣰⣟⢻⣶⡿⠟⠛⠉⠛⠛⠃⠘⣿⣿⢁⣶⣦⡈⠛⠟',
+  '⠀⣼⣯⣽⣿⠋⠀⠀⠀⠀⠀⠀⠀⠀⠙⣿⡀⢻⣶⠿⡄⠀',
+  '⣸⣿⣼⣿⠃⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠈⠓⠀⢿⣿⢿⡄',
+  '⣿⣧⣿⡏⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠘⣿⡟⣧',
+  '⣿⣶⣿⡇⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⣿⡟⣿',
+  '⢻⣶⢿⣧⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⣿⣻⡿',
+  '⠈⢷⡾⢿⣦⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢀⣼⣏⣿⠃',
+  '⠀⠈⢻⣟⣻⣷⣄⡀⠀⠀⠀⠀⠀⠀⠀⣀⣴⣿⣯⣿⠋⠀',
+  '⠀⠀⠀⠙⢿⣥⣿⢻⣷⣶⣶⣶⣶⣶⣿⣟⣻⣶⠟⠁⠀⠀',
+  '⠀⠀⠀⠀⠀⠈⠙⠻⠷⣾⣯⣿⣭⣿⠶⠟⠋⠁⠀⠀⠀⠀',
+].map((line) => line.padEnd(22, '⠀'))
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
+const brightSaffron = tint('#FFD18A')
+const BRAILLE_DOTS = [[0, 0], [0, 1], [0, 2], [1, 0], [1, 1], [1, 2], [0, 3], [1, 3]]
 
-// Keeps a fixed pseudo-random share of each cell's dots: step 8 of 8 shows them all.
-function reveal(line: string, row: number, step: number): string {
-  return [...line]
-    .map((cell, col) => {
+/** Sweeps clockwise from the head at 1 o'clock: step 0 is blank, step 12 is complete. */
+export function emblemFrame(step: number): string[] {
+  const sweep = step / 12 * 360
+  return EMBLEM.map((line, row) =>
+    [...line].map((cell, col) => {
       const dots = cell.charCodeAt(0) - 0x2800
       let kept = 0
+      let leading = false
       for (let bit = 0; bit < 8; bit++) {
-        if (dots & (1 << bit) && (row * 31 + col * 17 + bit * 7) % 8 < step) kept |= 1 << bit
+        if (!(dots & (1 << bit))) continue
+        const [dx, dy] = BRAILLE_DOTS[bit]
+        const angle = (Math.atan2(row * 4 + dy - (EMBLEM.length * 2 - 0.5), col * 2 + dx - (line.length - 0.5)) * 180 / Math.PI + 60 + 360) % 360
+        if (angle < sweep) {
+          kept |= 1 << bit
+          if (step < 12 && angle >= sweep - 25) leading = true
+        }
       }
-      return String.fromCharCode(0x2800 + kept)
-    })
-    .join('')
+      // A terminal colours a whole braille cell, so any leading dot lights the cell.
+      return (leading ? brightSaffron : saffron)(String.fromCharCode(0x2800 + kept))
+    }).join(''))
 }
 
-/** The Ophis claw beside the wordmark. On a terminal its dots sparkle in. */
+/** The Ophis serpent beside the wordmark. On a terminal it draws itself clockwise. */
 export async function banner(tagline = 'Swap on Ophis from your terminal'): Promise<void> {
   if (!out.isTTY) return // no artwork in pipes and logs
-  const side = (row: number) => (row === 4 ? `    ${bold(saffron('ophis'))}` : row === 5 ? `    ${dim(tagline)}` : '')
-  const frame = (step: number) => EMBLEM.map((line, row) => `  ${saffron(reveal(line, row, step))}${side(row)}`).join('\n')
-  if (!motion) return void console.log(`\n${frame(8)}\n`)
-  out.write('\n\x1b[?25l') // hide the cursor while drawing
-  process.once('exit', () => out.write('\x1b[?25h'))
-  for (let step = 1; step <= 8; step++) {
-    out.write(`${frame(step)}\n`)
-    await sleep(45)
-    if (step < 8) out.write(`\x1b[${EMBLEM.length}A`) // back up to redraw
+  const side = (row: number) => (row === 5 ? `    ${bold(saffron('ophis'))}` : row === 6 ? `    ${dim(tagline)}` : '')
+  const frame = (step: number) => emblemFrame(step).map((line, row) => `  ${line}${side(row)}`).join('\n')
+  if (!motion) return void console.log(`\n${frame(12)}\n`)
+  const restore = () => { out.write('\x1b[?25h') }
+  process.once('exit', restore)
+  try {
+    out.write('\n\x1b[?25l') // hide the cursor while drawing
+    for (let step = 0; step <= 12; step++) {
+      out.write(`${frame(step)}\n`)
+      if (step < 12) {
+        await sleep(35)
+        out.write(`\x1b[${EMBLEM.length}A`) // back up to redraw
+      }
+    }
+  } finally {
+    restore()
+    process.removeListener('exit', restore)
   }
-  out.write('\x1b[?25h\n')
+  out.write('\n')
 }
 
 const ORBIT = '⣾⣽⣻⢿⡿⣟⣯⣷'
