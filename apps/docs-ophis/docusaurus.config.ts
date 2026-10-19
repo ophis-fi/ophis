@@ -194,7 +194,7 @@ const config: Config = {
           title: 'Documentation',
           items: [
             {label: 'How it works', to: '/architecture'},
-            {label: 'Fees & rebates', to: '/fees'},
+            {label: 'Fees', to: '/fees'},
             {label: 'Security & audits', to: '/audits'},
             {label: 'FAQ', to: '/faq'},
           ],

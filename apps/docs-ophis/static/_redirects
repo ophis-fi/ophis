@@ -19,3 +19,9 @@
 # Worst case CF drops the fragment and it lands on the live swap home (never 404).
 /brand            https://swap.ophis.fi/#/brand   301
 /brand/           https://swap.ophis.fi/#/brand   301
+
+# Pages removed in the 2026-10 docs cleanup (the features they described are not running).
+/affiliate              /partners          301
+/affiliate/             /partners          301
+/agent-btc-cookbook     /networks-assets   301
+/agent-btc-cookbook/    /networks-assets   301

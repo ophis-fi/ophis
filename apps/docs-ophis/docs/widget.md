@@ -1,104 +1,129 @@
 ---
 id: widget
 title: Embeddable swap widget
-description: Embed the Ophis swap app with chain-specific settlement and automatic Ophis fee configuration.
+description: Embed the Ophis swap app in a React or JavaScript site.
 sidebar_label: Swap widget
 sidebar_position: 3
 ---
 
 # Embeddable swap widget
 
-Let your users swap without leaving your site. The Ophis widget is an iframe of
-[swap.ophis.fi](https://swap.ophis.fi). Orders use the Ophis-operated or CoW-hosted
-settlement path for the selected chain and carry the Ophis fee configuration
-automatically. See [networks and routes](./networks-assets.md) and the
-[chain-specific fee policy](./fees.md). The embed builds on the CoW Protocol widget.
+Embed the Ophis swap app so users can trade from your site.
 
-## React (recommended)
+<Cards>
+<Card icon="app-window" title="Embedded swaps">Load swap.ophis.fi in an iframe on your page.</Card>
+<Card icon="wallet" title="Wallet connection">Pass an EIP-1193 provider to connect a wallet inside the widget.</Card>
+<Card icon="receipt" title="Fee configuration">The widget applies the Ophis fee policy for the selected chain.</Card>
+</Cards>
 
-```bash
-npm install @ophis/widget-react react react-dom
-```
+## Install for React {/* #react-recommended */}
 
-```tsx
-import { OphisWidget } from '@ophis/widget-react';
+<Steps>
 
-export function Swap() {
-  return (
-    <OphisWidget
-      params={{ tradeType: 'swap', width: '450px', height: '640px' }}
-      onReady={() => console.log('Ophis widget ready')}
-    />
-  );
-}
-```
+1. **Install the package.** Add the widget and its React dependencies.
 
-Pass a `provider` (an EIP-1193 injected wallet) to let users connect inside the
-widget. `baseUrl` and `appCode` are injected for you; the Ophis iframe applies
-the complete fee policy when no explicit override is supplied.
+   ```bash
+   npm install @ophis/widget-react react react-dom
+   ```
 
-## Vanilla JS
+2. **Render the widget.** Add `OphisWidget` to your page.
 
-No React? Use the underlying library and point it at Ophis:
+   ```tsx
+   import { OphisWidget } from '@ophis/widget-react';
 
-```bash
-npm install @cowprotocol/widget-lib
-```
+   export function Swap() {
+     return (
+       <OphisWidget
+         params={{ tradeType: 'swap', width: '450px', height: '640px' }}
+         onReady={() => console.log('Ophis widget ready')}
+       />
+     );
+   }
+   ```
 
-```ts
-import { createCowSwapWidget } from '@cowprotocol/widget-lib';
+3. **Connect a wallet.** Pass an EIP-1193 injected wallet as `provider`.
 
-const container = document.getElementById('ophis-widget')!;
-createCowSwapWidget(container, {
-  params: {
-    baseUrl: 'https://swap.ophis.fi', // the Ophis host
-    appCode: 'ophis',
-    tradeType: 'swap',
-    width: '450px',
-    height: '640px',
-  },
-});
-```
+</Steps>
 
-> Leave `partnerFee` unset to receive Ophis's complete base + improvement
-> policy. Supplying it is an explicit volume-fee override; the iframe honors
-> that `bps` instead of layering the default improvement policy on top.
+The wrapper supplies `baseUrl` and `appCode` automatically.
 
-## Configuration
+## Install for JavaScript {/* #vanilla-js */}
 
-| Field | Default (via `@ophis/widget-react`) | Notes |
+<Steps>
+
+1. **Install the library.** Use the underlying CoW Protocol widget library.
+
+   ```bash
+   npm install @cowprotocol/widget-lib
+   ```
+
+2. **Create the widget.** Add a container with the ID `ophis-widget`, then point the widget at Ophis.
+
+   ```ts
+   import { createCowSwapWidget } from '@cowprotocol/widget-lib';
+
+   const container = document.getElementById('ophis-widget')!;
+   createCowSwapWidget(container, {
+     params: {
+       baseUrl: 'https://swap.ophis.fi', // the Ophis host
+       appCode: 'ophis',
+       tradeType: 'swap',
+       width: '450px',
+       height: '640px',
+     },
+   });
+   ```
+
+</Steps>
+
+:::tip[Use the default fee policy]
+
+Leave `partnerFee` unset to use Ophis's base and price-improvement fees. An explicit `partnerFee` uses that volume-fee `bps` value in place of the default policy.
+
+:::
+
+## Widget configuration {/* #configuration */}
+
+| Field | Default via `@ophis/widget-react` | Purpose |
 | --- | --- | --- |
-| `baseUrl` | `https://swap.ophis.fi` | The iframe host. Override for a self-hosted/staging Ophis. |
-| `appCode` | `ophis` | Tags orders in appData. Set it to a referral code you have minted and activated to earn the [affiliate rebate](./affiliate.md) on eligible widget orders on indexed chains, including Arc (an arbitrary label earns nothing). |
-| `partnerFee` | Unset; the iframe applies the complete policy | An explicit override is authoritative. |
-| `partnerFee.recipient` | Ophis Safe when overridden | Always pinned by the React wrapper. |
-| `chainId`, `sell`, `buy`, `theme`, `tokenLists` | upstream defaults | Full [CoW widget params](https://www.npmjs.com/package/@cowprotocol/widget-lib) pass through. |
+| `baseUrl` | `https://swap.ophis.fi` | Iframe host; override for a self-hosted or staging Ophis. |
+| `appCode` | `ophis` | Tags orders in appData. |
+| `partnerFee` | Unset | The iframe applies the complete Ophis fee policy. |
+| `partnerFee.recipient` | Ophis Safe when overridden | Pinned by the React wrapper. |
+| `chainId`, `sell`, `buy`, `theme`, `tokenLists` | Upstream defaults | [CoW widget parameters](https://www.npmjs.com/package/@cowprotocol/widget-lib) pass through. |
 
-## Theming
+## Choose a theme {/* #theming */}
 
-Pass a `theme` (`'light'` or `'dark'`) or a full palette object: see the
-upstream widget docs. The widget inherits the Ophis app styling by default.
+Set `theme` to `'light'`, `'dark'` or a full palette object. The default uses Ophis app styling.
 
-## Live demo + copy-paste snippets
+## Run the demo {/* #live-demo--copy-paste-snippets */}
 
-A runnable demo and one-file snippets for React, Next.js, vanilla JS and a raw
-iframe live in the repo at
-[`examples/widget-embed/`](https://github.com/ophis-fi/ophis/tree/main/examples/widget-embed).
-Run `npx serve .` in that folder and open `index.html` to see the widget
-embedded against a third-party origin.
+<Steps>
 
-## Notes
+1. **Open the examples.** Use [examples/widget-embed/](https://github.com/ophis-fi/ophis/tree/main/examples/widget-embed) for React, Next.js, vanilla JS and raw iframe snippets.
+2. **Start the demo.** Run `npx serve .` in that folder and open `index.html`.
 
-- The widget is GPL-3.0, like the rest of Ophis.
-- Optimism, Unichain, Robinhood Chain, and Arc orders settle on the Ophis self-hosted orderbooks; the
-  CoW-hosted chains (Ethereum, Base, Arbitrum, Polygon, BNB, Gnosis, Avalanche,
-  Linea, Plasma, Ink) route via `api.cow.fi`. Host selection is handled inside the
-  widget app, 14 app networks in total. The injected widget does not enable the
-  direct Circle bridge flow; app and bridge support are separate capabilities.
-- **Self-hosting an Ophis fork?** The host must allow third-party framing (CSP
-  `frame-ancestors *`, no `X-Frame-Options: SAMEORIGIN`), or integrators'
-  iframes are blocked. (`swap.ophis.fi` already ships this.) Clickjacking is
-  mitigated structurally: every fund-moving action signs in a wallet popup
-  outside the frame.
-- For programmatic / agent integrations (no iframe), use the
-  [AI agent guide](./ai-agents.md) and [`@ophis/sdk`](https://www.npmjs.com/package/@ophis/sdk) directly.
+</Steps>
+
+## Hosting and settlement {/* #notes */}
+
+| Chains | Orderbook |
+| --- | --- |
+| Optimism, Unichain, Robinhood Chain, Arc | Ophis self-hosted orderbooks |
+| Ethereum, Base, Arbitrum, Polygon, BNB, Gnosis, Avalanche, Linea, Plasma, Ink | `api.cow.fi` |
+
+The widget selects the orderbook for the chosen chain. Use the standalone app for direct Circle bridging.
+
+A self-hosted iframe host must allow third-party framing: set CSP `frame-ancestors *` and omit `X-Frame-Options: SAMEORIGIN`. The hosted app already allows framing. Users sign fund-moving actions in a wallet popup outside the iframe.
+
+| License | Value |
+| --- | --- |
+| Widget | GPL-3.0 |
+
+## Next
+
+<Cards>
+<Card icon="receipt" title="Fees" href="/fees">Read the fee policy for each settlement path.</Card>
+<Card icon="network" title="Networks and routes" href="/networks-assets">Check network and bridge support.</Card>
+<Card icon="bot" title="Agent integration" href="/ai-agents">Build a programmatic integration with MCP or the SDK.</Card>
+</Cards>

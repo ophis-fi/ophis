@@ -1,166 +1,90 @@
 ---
 id: fees
-title: Fees & rebates
-description: Ophis batch-auction fees, hosted upstream fees, bridge costs and weighted WETH rebates.
-sidebar_label: Fees & rebates
+title: Fees
+description: Ophis charges a base fee plus capped price-improvement capture, with separate CoW Protocol and bridge costs.
+sidebar_label: Fees
 sidebar_position: 3
 ---
 
-# Fees & rebates
+# Fees
 
-The standard batch-auction schedule has a **1 bp Ophis base fee**.
-On eligible orders, Ophis also retains **80% of price improvement on volatile pairs,
-capped at 99 bps of volume**, or **50% on stablecoin pairs, capped at 20 bps**.
-On Optimism, Unichain, Robinhood Chain and Arc, this backend fee applies only
-to **in-market orders**. Out-of-market limit orders pay the signed base without
-this backend improvement fee.
-On CoW-hosted chains, CoW Protocol applies its own upstream fee policy separately.
+Ophis charges a 0.01% base fee plus a capped share of any price improvement over the reference quote.
 
-The table separates Ophis and upstream batch-auction fees. It is not a total
-execution-cost estimate: gas, pool fees, price impact and bridge costs can also
-affect the net amount. Check the final route quote before signing.
+:::tip[Example]
 
-## The all-in cost, per chain
+On a 100 USDC swap, the Ophis base fee is 0.01 USDC.
 
-| | Ophis-operated chains (Optimism, Unichain, Robinhood Chain, Arc) | CoW-hosted chains (10) |
+:::
+
+## What you pay {/* #the-all-in-cost-per-chain */}
+
+| Component | Ophis-operated chains | CoW-hosted chains (10) |
 | --- | --- | --- |
-| Ophis fee | 0.01% base + 80% of price improvement (50% stables), capped at 0.99% (0.20% stables) | Same Ophis policy: 0.01% base + capped improvement capture |
-| Upstream protocol fee | **None** | CoW Protocol volume fee: 0.02% (0.003% on correlated pairs such as stablecoins) |
-| **Base + upstream volume components** | **0.01%** | **0.03% volatile / 0.013% correlated stables** |
-| Price improvement | Trader receives the remainder after Ophis's capped capture; all improvement above the cap returns to the trader | Ophis's capped capture applies, and CoW Protocol's upstream improvement policy applies separately |
+| Ophis base fee | 1 bp (0.01%) | 1 bp (0.01%) |
+| Volatile-pair improvement capture | 80%, capped at 99 bps (0.99%) of volume | 80%, capped at 99 bps (0.99%) of volume |
+| Stablecoin-pair improvement capture | 50%, capped at 20 bps (0.20%) of volume | 50%, capped at 20 bps (0.20%) of volume |
+| CoW Protocol volume fee | None | 0.02%, or 0.003% on correlated pairs such as stablecoins |
+| Total volume fee (Ophis and CoW) | 0.01% | 0.03% volatile / 0.013% correlated stables |
+| CoW Protocol improvement policy | None | Applies separately |
 
-Why the difference: on the 10 CoW-hosted chains, orders settle through CoW
-Protocol's hosted orderbook and solver network, which charges its own
-[protocol fees](https://docs.cow.fi/governance/fees) on top of the Ophis fee.
-On **Optimism, Unichain, Robinhood Chain, and Arc**, Ophis operates the entire stack itself
-(settlement contracts, orderbook, solvers), so there is no upstream fee. The 1
-bp base and capped price-improvement policy are the complete
-Ophis charge.
+| Settlement stack | Networks |
+| --- | --- |
+| Ophis-operated | Optimism, Unichain, Robinhood Chain, Arc |
+| CoW-hosted | The other 10 mainnets |
+
+Gas, liquidity-pool fees, price impact and bridge costs also affect the amount you receive. Review the final quote before signing.
+
+## Price improvement {/* #standard-price-improvement-capture */}
+
+Price improvement is the extra amount a solver finds beyond the reference quote. Ophis keeps the share shown above, up to the cap, and you get the rest, including everything above the cap. Surplus is a different measure: it counts from your signed minimum, which includes your slippage allowance.
+
+On Ophis-operated chains, improvement capture applies to **in-market orders**. Limit orders priced away from the market pay only the base fee.
+
+On CoW-hosted chains, CoW Protocol applies its own fees before the Ophis fee, and the quote shows the result. See [CoW's fee policy](https://docs.cow.fi/governance/fees).
 
 <span id="arc-release-exception" />
 
-### Arc price-improvement policy
+## Arc fee policy {/* #arc-price-improvement-policy */}
 
-Arc uses the same backend policy for in-market orders as the other Ophis-operated
-chains: **80% of reference-quote improvement capped at 99 bps**, or **50%
-capped at 20 bps** for recognized stablecoin pairs, including USDC/EURC.
-Eligibility follows the order's price relative to its reference quote, not the frontend's
-market/limit label. An out-of-market limit order has no backend improvement fee.
-The separate **1 bp base** remains in signed appData; clients must not duplicate
-the backend improvement policy in appData.
+Arc follows the same rules as the other Ophis-operated chains, and USDC/EURC counts as a stablecoin pair. Whether an order is in-market depends on its price compared with its reference quote, including orders entered as limit orders.
 
-Arc originally launched with an empty protocol-fee configuration. Historical
-base-only executions remain recorded at their original fees; enabling the
-standard policy does not recalculate past trades.
+## Bridge costs {/* #bridge-and-conversion-routes */}
 
-Arc settled trades are indexed for volume-tier and affiliate rebates under the
-same eligibility rules. Use SDK v0.4.4 or later for Arc referral tags. This does
-not enable an Arc own-fee payout guarantee.
+| Route | Fee treatment |
+| --- | --- |
+| NEAR Intents, including external deposits | 3 bps Ophis app fee plus provider costs in the quote |
+| Direct NEAR deposit | Uses the NEAR quote's fees |
+| Direct Circle bridge | Uses the route quote's fees |
+| Source approval, deposit and destination execution | Network gas costs |
 
-## How it works
+See [Networks & assets](/networks-assets) for funding and recovery requirements.
 
-- Volatile pairs add 80% of reference-quote improvement, capped at 99 bps.
-- Stablecoin pairs add 50% of reference-quote improvement, capped at 20 bps.
-- A **1 bp base fee** is applied on every supported chain.
-- On CoW-hosted chains, the upstream CoW Protocol fees in the table above are
-  charged in addition; Ophis does not receive them.
+## Fee collection {/* #how-its-collected */}
 
-## Standard price-improvement capture
+The app and SDK use CoW Protocol's partner-fee model to record fees in `appData`.
 
-Solvers compete to fill your order. **Price improvement** is measured against
-the reference quote; **surplus** relative to your signed limit is a different
-measure when that limit includes slippage. Neither is a guaranteed return.
+| Setting | Ophis-operated chains | CoW-hosted chains |
+| --- | --- | --- |
+| Base fee in `appData` | 1 bp | 1 bp |
+| Improvement capture | Backend policy | CIP-75 `priceImprovementBps` with a `maxVolumeBps` cap |
+| Declared fee validation | Backend rejects a declared fee below 1 bp for the Ophis recipient | CoW's backend validates `appData` |
 
-The capture is measured against the backend's reference quote, not against a
-loose user slippage limit. For volatile pairs Ophis retains 80%, until the fee
-reaches 99 bps of volume. For stablecoin pairs it retains 50%, until the fee
-reaches 20 bps. The separate 1 bp base fee always applies.
+:::tip[Building an integration]
 
-Where the order settles still matters:
+On Ophis-operated chains, write the base fee in `appData` and leave improvement capture to the backend. On CoW-hosted chains, include both entries. The [SDK helpers](/partners) handle this distinction.
 
-- **Optimism, Unichain, Robinhood Chain, and Arc:** the backend applies the capped
-  capture model to in-market orders as a protocol policy.
-- **CoW-hosted chains:** the same Ophis policy is encoded in CIP-75 appData.
-  CoW Protocol's own fee model also applies upstream. That upstream charge is
-  not an Ophis fee and applies to every frontend using CoW-hosted settlement.
-
-CoW applies protocol policies before partner policies, with iterative fee
-calculation. Do not add their capture percentages as if both apply independently
-to the original improvement. See [CoW's current fee policy](https://docs.cow.fi/governance/fees).
-
-### Bridge and conversion routes
-
-NEAR Intents quotes, including the standalone externally funded flow, request a
-**3 bps Ophis app fee**, alongside provider costs reflected in the quote. A direct
-NEAR deposit is not a batch-auction order and does not also use the 1 bp base
-and capped improvement schedule above. Direct Circle bridge and WBTC-conversion
-routes are not batch-auction swaps and must not be priced using the table above.
-Source approval/deposit, conversion and destination execution can require gas.
-See [Networks & assets](./networks-assets.md) for route restrictions and recovery.
+:::
 
 <span id="what-you-save-versus-a-typical-amm" />
 
-## Comparing execution costs
+## Compare execution costs {/* #comparing-execution-costs */}
 
-Compare the final executable output for the same amount and token pair, including
-wallet gas where applicable. An Ophis base fee is not a substitute for an AMM's
-pool fee: a solver route can itself use that AMM and incur its liquidity costs.
-Improvement capture and hosted protocol fees also affect the result. A lower
-advertised base rate alone does not establish a saving over a direct swap.
+Compare the final amount received for the same token pair and trade size, including wallet gas. Solver routes that use an AMM also incur its pool fees.
 
-## WETH rebate calculation
+## Next
 
-The rebate calculation allocates **21.25% of collected WETH fees** to eligible wallets
-in proportion to their **30-day volume weighted by tier**. WETH payout processing
-requires reconciled accounting, sufficient funds and Safe approval. An estimate or
-cycle date is not proof of payment; executed payout transactions establish what was paid.
-
-| Tier | 30-day volume | Weight |
-| --- | --- | --- |
-| Bronze | $20,000+ | 10% |
-| Silver | $50,000+ | 15% |
-| Gold | $100,000+ | 25% |
-| Palladium | $500,000+ | 35% |
-| Platinum | $1,000,000+ | 50% |
-
-A wallet's share is its `eligible 30-day volume × tier weight`, divided by the
-sum of that value across every eligible wallet. For example, $100,000 of Gold
-volume has a weighted value of $25,000. If the total weighted value is $250,000,
-that wallet receives 10% of the pool: $1,000 equivalent from an illustrative
-$10,000 WETH pool. Actual amounts depend on collected WETH and all participants;
-this is not a promised payout.
-
-Wallets below $20,000 of 30-day volume are unranked and do not share in the pool.
-Your current tier and progress to the next one are shown on the swap page.
-Rebates are separate from execution output. Neither a rebate nor positive
-surplus is guaranteed, and a tier weight is not a refund percentage of your own fees.
-
-## How it's collected
-
-The fee uses CoW Protocol's partner-fee model. The Ophis swap app and SDK write
-the 1 bp base on every supported chain. On hosted chains they also write a
-pair-aware `priceImprovementBps` entry with a hard `maxVolumeBps` cap; operated
-chains in the standard schedule apply that second component in the backend instead
-to avoid duplication.
-
-On the **SDK-supported Ophis stacks (Optimism, Unichain, Robinhood Chain, Arc)**, the backend also enforces
-an **anti-abuse minimum** in backend order validation, rather than relying
-only on frontend metadata: it rejects an order to the Ophis fee recipient
-whose partner fee falls below **1 bp**. This rejects declared sub-floor fee entries; absent fee metadata does not
-establish the same guarantee. It is not a Solidity minimum-fee invariant in the
-settlement contract.
-On CoW-hosted chains no sovereign floor is
-enforced, the same `appData` rate applies (validated by CoW's backend), and CoW's
-protocol fees (see the all-in table above) are charged by CoW on top.
-
-For the protocol-level details, see
-[CoW Protocol batch auctions](https://docs.cow.fi/cow-protocol/reference/core/auctions).
-
-:::note
-
-The rebate pool is the **WETH** the fee Safe holds; fees collected in other
-tokens are not currently part of it. Want to earn on trades you refer? See the
-[Affiliate program](./affiliate.md): share a code and earn a share of the
-verified base fee Ophis keeps on every trade your referrals route.
-
-:::
+<Cards>
+<Card icon="globe" title="Networks and assets" href="/networks-assets">Check the settlement and bridge path for your trade.</Card>
+<Card icon="braces" title="SDK integration" href="/partners">Build orders with the fee metadata for your chain.</Card>
+<Card icon="gift" title="Trade rewards" href="/trade-rewards">See the USDG campaign and claim steps.</Card>
+</Cards>

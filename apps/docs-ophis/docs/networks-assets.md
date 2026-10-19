@@ -1,142 +1,132 @@
 ---
 id: networks-assets
 title: Networks, bridges & assets
-description: Current app and SDK coverage, Arc bridges and venues, stock-provider labels, and the limits of confidential routing.
+description: Find supported networks, bridge routes, wallet requirements and token information for Ophis swaps.
 sidebar_label: Networks & assets
 ---
 
 # Networks, bridges & assets
 
-Reviewed October 1, 2026. A listed network or token is not a promise that
-every pair has liquidity, that every wallet is eligible, or that a route will settle.
-Check the live quote and the signing request.
+Use the swap app's token pickers to choose a network, asset and route.
 
-## App, parser and SDK coverage
+## Network coverage {/* #app-parser-and-sdk-coverage */}
 
-| Surface | Current scope |
+| Surface | Coverage |
 | --- | --- |
-| Swap app: batch-auction orders | 14 EVM networks, including Arc (5042); see [Getting started](./getting-started.md#supported-networks) |
-| SDK v0.4.3 and hosted MCP | 14 EVM networks, including Arc (5042), with chain-specific orderbook and signing-domain helpers |
-| Published vault-order builder | `@ophis/safe-swap` v0.1.7 uses SDK v0.4.4 and covers 14 EVM networks, including Arc, for ERC-20 presigned orders and referral attribution; this does not extend the on-chain policy-module rollout |
-| Intent parser | 14 chain slugs, including `arc`; the swap app blocks chains disabled in its deployment. Parsing does not verify a token contract or quote |
-| Standalone swap app: additional NEAR sources and destinations | Bitcoin, Solana, Monad, Hyperliquid (Hypercore), X Layer, Sui, Tron, Starknet and Zcash; source/asset/provider availability still gates each route. These are not additional CoW orderbook or SDK signing-domain deployments |
+| Swap app and CLI | 15 EVM networks, including the Sepolia testnet; see [the network list](/getting-started#supported-networks) |
+| SDK v0.4.3 and hosted MCP | 14 EVM mainnets, including Arc (5042), with chain-specific orderbook and signing-domain helpers |
+| Vault-order builder | `@ophis/safe-swap` v0.1.7 uses SDK v0.4.4 for ERC-20 presigned orders on 14 EVM mainnets, including Arc |
+| Intent parser | 14 chain slugs, including `arc` |
+| Standalone app through NEAR Intents | Bitcoin, Solana, Monad, Hyperliquid (Hypercore), X Layer, Sui, Tron, Starknet, Zcash |
 
-Ophis operates the orderbook and routing lanes on **Optimism, Unichain,
-Robinhood Chain and Arc**. The other ten app networks use CoW-hosted orderbooks.
-Do not send Arc orders to a guessed CoW endpoint or use another chain's signing domain.
-Arc's app configuration is deployment-specific. SDK v0.4.3 resolves its orderbook to
-`https://arc-mainnet.ophis.fi` and its EIP-712 settlement to
-`0x78799F98276efba1EdeeD32eae03a3fd8Cdfec3A`. Arc settled trades are ingested by
-the rebate indexer; use SDK v0.4.4 or later for referral metadata.
-Arc applies the same capped backend market-order improvement policy as the
-other operated chains; see the [fee schedule](./fees.md#arc-price-improvement-policy).
+| Orderbook operator | Networks |
+| --- | --- |
+| Ophis | Optimism, Unichain, Robinhood Chain, Arc |
+| CoW Protocol | The other ten mainnets |
 
-## Externally funded swaps through NEAR Intents
+Use the SDK's chain-specific orderbook and signing-domain helpers for Arc orders.
 
-Use the same **You sell** and **You receive** network/token pickers in the
-standalone swap app. Choosing a source outside the batch-auction network set
-opens the externally funded flow automatically; a separate NEAR form is not required.
-Supported balances can be sent **from or to** the additional networks above,
-subject to the live asset catalogue and an executable quote. Source network names
-can remain visible while the catalogue is unavailable; that does not make a token
-or route available.
+| Arc setting | Value |
+| --- | --- |
+| Chain ID | 5042 |
+| Orderbook | `https://arc-mainnet.ophis.fi` |
+| EIP-712 settlement | `0x78799F98276efba1EdeeD32eae03a3fd8Cdfec3A` |
+| Gas currency | USDC |
+| Native balance decimals | 18 |
+| ERC-20 USDC decimals | 6 |
 
-The direct flow's configured receiving networks also include Ethereum, Base,
-Arbitrum, Optimism, Polygon, BNB, Avalanche, Gnosis, Plasma and Robinhood Chain.
-This is a different coverage set from the 14 batch-auction chains. Arc uses the
-Circle routes below; do not infer direct NEAR support for Arc, Unichain, Ink or Linea.
+Arc's native and ERC-20 USDC interfaces access the same balance. Use the ERC-20 interface for token amounts and bridging. See [Arc fees](/fees#arc-price-improvement-policy).
 
-Review the source asset and exact amount, destination asset and minimum receive,
-destination address, source-chain refund address and deposit deadline. Confirming
-the quote creates a transfer record before funding instructions appear. Fund the
-quoted deposit from your source wallet, including any required memo; a compatible
-connected EVM wallet may offer a send action. External funding is an onchain
-transfer, not a gasless EIP-712 batch order, and source gas or network fees can apply.
-Keep the transfer record until delivery or refund is confirmed; the app provides
-status tracking and transaction-reference recovery.
+## NEAR Intents swaps {/* #externally-funded-swaps-through-near-intents */}
 
-Zcash requires a mainnet transparent **t1/t3 address**; shielded and unified
-addresses are not supported. Hyperliquid means **Hypercore spot balances**, not
-Hyperliquid's EVM network. These flows require the NEAR provider to be enabled. Pausing new swaps
-retains saved-transfer recovery in the standalone app. External-source selection
-is not currently exposed by the embedded widget, Hooks view, SDK order builder
-or hosted MCP tools.
+The standalone app accepts external-source deposits through NEAR Intents and tracks destination delivery or refunds.
 
-## Arc and Circle bridges
+| Route requirement | Details |
+| --- | --- |
+| Additional sources and destinations | Bitcoin, Solana, Monad, Hyperliquid (Hypercore), X Layer, Sui, Tron, Starknet, Zcash |
+| EVM receiving networks | Ethereum, Base, Arbitrum, Optimism, Polygon, BNB, Avalanche, Gnosis, Plasma, Robinhood Chain |
+| Source funding | Quoted deposit amount, deadline and any required memo |
+| Refund address | Address on the source chain |
+| Hyperliquid (Hypercore) | Hypercore spot balances; exact-input routes with a source-chain refund address |
+| Zcash | Mainnet transparent t1/t3 address |
+| Network fees | Source-chain gas or transfer fees |
 
-Arc uses **USDC for gas**. Its native balance uses 18 decimals, while the
-ERC-20 USDC interface used for token amounts and bridging uses 6.
-Both interfaces access the same underlying balance; do not add them together.
+<Steps>
 
-The swap form includes Circle CCTP routes across the configured network set:
-Arc, Ethereum, Base, Arbitrum, Optimism and Unichain. USDC uses CCTP; expanded
-asset routes use Circle's token service and the configured per-chain registry.
-Assets include EURC, cirBTC and WETH where both sides have a supported mapping.
-This does not make every token in the picker bridgeable.
+1. **Select your assets.** Choose the source in **You sell** and the destination in **You receive**.
+2. **Review the quote.** Check the exact deposit, minimum receive amount, destination address, refund address and deadline.
+3. **Fund the transfer.** Confirm the quote to save the transfer record, then send the quoted deposit from your source wallet with any required memo.
+4. **Track delivery.** Keep the transfer record until delivery or refund completes; use the app's transaction-reference recovery to resume tracking.
 
-- The direct Circle flow requires an exact-input swap and a personal EOA wallet
-  without smart-account code. It delivers to the connected wallet, not a custom recipient.
-- **Ethereum WBTC → Arc cirBTC** is a separate two-stage flow: convert WBTC
-  on Ethereum, then bridge cirBTC. It is not a native Bitcoin deposit or an atomic cross-chain swap.
-- Approvals, conversion placement and bridge transactions can require gas.
-  Review the quoted fees, minimum receive amount and destination gas needs.
-- Source settlement does not prove destination delivery. Keep the pending
-  transfer record and use the app's recovery flow if an attestation or mint is delayed.
+</Steps>
 
-Arc's configured Ophis routing lanes include **Uniswap v3, KyberSwap, Aero,
-Archery, Uniswap v4 and SushiSwap v3**. A lane identifies a liquidity route, not an independent
-solver operator: Ophis-operated winners are labeled **Ophis**. Available pools,
-pairs and lanes may change; no venue is promised on every chain or every trade.
+:::tip[Check addresses before funding]
 
-Across and NEAR Intents remain separate providers for their supported routes.
-An EVM network in the same-chain selector is not automatically an enabled bridge source.
-Optimism and Polygon Across source routing are enabled after separate live
-settlement and delivery tests: Optimism to Base, and Polygon USDC to Robinhood
-Chain USDG.
-Live assets and quotes still gate each route. See the [deployment record](https://github.com/ophis-fi/ophis/blob/main/infra/optimism-mainnet/README.md#across-source-dependencies-october-1-2026)
-for the mainnet dependencies, live test receipts and separate fork-execution proof.
+Use a refund address on the source chain. For Zcash, use a mainnet transparent t1/t3 address. Copy the deposit amount and memo from the saved quote.
 
-## Tokenized-asset labels
+:::
 
-The picker carries provider labels for **Ondo, xStocks, Coinbase, bStocks and
-Reality** when configured-list metadata attributes that chain/address to a provider.
-The latest additions are **bStocks on BNB** and **Reality/rStock on Arbitrum**.
-Their attribution comes from the configured CoinGecko lists and naming conventions,
-not arbitrary wallet names, symbols or user-added list tags.
+## Circle bridges {/* #arc-and-circle-bridges */}
 
-A badge is **display attribution**, not issuer authentication, a legal-rights
-assessment, an AML decision, trading eligibility or a settlement guarantee.
-Robinhood canonical-registry and multiplier checks are a separate feature;
-they must not be inferred from a bStocks or Reality badge. Check the contract,
-issuer disclosures, jurisdiction restrictions and executable liquidity independently.
+The swap form bridges assets through Circle between Arc, Ethereum, Base, Arbitrum, Optimism and Unichain. USDC uses CCTP. EURC, cirBTC and WETH use Circle's token service where both networks have a supported mapping.
 
-## OTC is a separate Ethereum flow
+| Requirement | Details |
+| --- | --- |
+| Network set | Arc, Ethereum, Base, Arbitrum, Optimism, Unichain |
+| Swap type | Exact input |
+| Wallet | Personal EOA without smart-account code |
+| Recipient | Connected wallet |
+| Gas | Required for approvals, conversion and bridge transactions |
+| Recovery | Keep the pending transfer record for delayed attestation or minting |
 
-The optional OTC desk uses external immutable escrow on **Ethereum**, not the
-batch-auction orderbook. Public-mode support is restricted to reviewed WETH,
-USDC and DAI and eligible standard EOAs; contract/delegated wallets and native
-ETH are not supported. Create, fill, cancel and approval transactions cost gas.
-Orders are public and all-or-nothing, with **no automatic onchain order expiry**.
-A pending fill can race cancellation.
+**Ethereum WBTC to Arc cirBTC** takes two steps: convert WBTC on Ethereum, then bridge cirBTC to Arc.
 
-Writes require both a compatible frontend build and a fresh, matching runtime
-authorization. A disabled switch prevents new prompts, not already-signed
-transactions or existing escrow orders. Source support is not proof that live
-writes are enabled. See the
-[OTC operating guide](https://github.com/ophis-fi/ophis/blob/main/docs/development/otc-public-trading.md)
-for admission, shutdown and uncertain-transaction recovery.
+Check the quoted fees, minimum receive amount and destination gas requirements before signing. Follow the transfer until destination delivery completes.
 
-## Confidential routing and institutional features
+## Across bridges
 
-With a configured partner key, Ophis's NEAR provider requests `confidentiality:
-'basic'` and rejects a quote that does not echo the requested mode. Keyless
-builds use public NEAR routes. This is provider-specific behavior, **not a
-user-selectable all-route privacy guarantee**: Across, Circle and same-chain
-orders do not inherit it, and external-chain transfers remain public.
+The app also uses Across for supported cross-chain routes.
 
-Ophis has no public route-wide confidentiality selector or released AML/SHIELD
-screening service. Neither a provider response nor a badge proves compliance
-or anonymity. See NEAR's
-[confidential-swap integration](https://docs.near-intents.org/integration/distribution-channels/1click-api/quickstart/confidential-swaps)
-and [SHIELD incident API](https://docs.near-intents.org/security-compliance/shield-incident-api)
-for the upstream capabilities, not a claim that all of them are integrated into Ophis.
+| App source route | Destination example |
+| --- | --- |
+| Optimism | Base |
+| Polygon USDC | Robinhood Chain USDG |
+
+For terminal swaps, use the [CLI's bridge source list](/cli#bridge-tokens).
+
+## Tokenized assets {/* #tokenized-asset-labels */}
+
+| Provider label | Source |
+| --- | --- |
+| Ondo, xStocks, Coinbase, bStocks, Reality | Configured token-list metadata for the chain and contract |
+| bStocks on BNB | Configured CoinGecko lists and naming conventions |
+| Reality/rStock on Arbitrum | Configured CoinGecko lists and naming conventions |
+| Robinhood Stock Tokens | Canonical-registry and corporate-action multiplier checks |
+
+Check the token contract, issuer disclosures and trading restrictions before swapping. Ophis displays Robinhood Stock Token restrictions and multipliers in the swap form.
+
+## Ethereum OTC trading {/* #otc-is-a-separate-ethereum-flow */}
+
+The OTC desk lets you create, fill and cancel public orders through immutable escrow on Ethereum.
+
+| Requirement | Details |
+| --- | --- |
+| Assets | WETH, USDC, DAI |
+| Wallet | Standard EOA without contract or delegated code |
+| Fill type | All-or-nothing |
+| Transactions | Create, fill, cancel and approvals cost gas |
+| Expiry | No automatic onchain order expiry |
+
+:::warning[Cancel an open OTC order]
+
+OTC orders stay open until filled or cancelled. A pending fill can race your cancellation; check the transaction result and order status.
+
+:::
+
+## Next
+
+<Cards>
+<Card icon="receipt" title="Fees" href="/fees">Review swap and bridge costs.</Card>
+<Card icon="terminal" title="Ophis CLI" href="/cli">Choose a network from your terminal.</Card>
+<Card icon="shield-check" title="Security and audits" href="/audits">Review settlement and wallet custody.</Card>
+</Cards>

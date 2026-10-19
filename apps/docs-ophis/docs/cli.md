@@ -1,39 +1,40 @@
 ---
 id: cli
 title: Ophis CLI
-description: Quote, swap and bridge from your terminal, with every approval in your own wallet.
+description: Quote, swap and bridge from your terminal with approvals in your wallet.
 sidebar_label: Ophis CLI
 ---
 
 # Ophis CLI
 
-## What it is
+Use the Ophis CLI to check prices, swap tokens and bridge between networks by typing commands in your terminal.
 
-The Ophis CLI lets you check prices, swap tokens and move them between networks
-from your terminal. CLI means command-line interface: you type commands instead
-of using the website. A terminal is the app where you enter those commands.
-Your keys stay in your wallet, where you approve each step.
+## Before you start
 
-You need a computer with **Node.js 20 or later** and a wallet app on your phone:
-**MetaMask, Rabby, Trust Wallet, Rainbow or Ledger Wallet**.
+| Requirement | Details |
+| --- | --- |
+| Computer | Node.js 20 or later; npm comes with Node.js |
+| Phone wallet | MetaMask, Rabby, Trust Wallet, Rainbow or Ledger Wallet |
 
-## Install
+## Install the CLI {/* #install */}
 
-In your terminal, install the CLI with npm, which comes with Node.js:
+<Steps>
 
-```sh
-npm install -g @ophis/cli
-```
+1. **Install the package.** Run this command in your terminal:
 
-Check it worked by running:
+   ```sh
+   npm install -g @ophis/cli
+   ```
 
-```sh
-ophis --version
-```
+2. **Check the version.** A version number confirms the installation:
 
-If it prints a version number, the CLI is installed.
+   ```sh
+   ophis --version
+   ```
 
-Run the install command again to update it. To run it once without installing:
+</Steps>
+
+Run the install command again to update. To run the CLI once without installing:
 
 ```sh
 npx @ophis/cli help
@@ -41,138 +42,149 @@ npx @ophis/cli help
 
 ## Connect your wallet
 
-```sh
-ophis connect
-```
+<Steps>
 
-This shows a QR code. Scan it with your wallet app's own **WalletConnect
-scanner**, not your phone's Camera app. WalletConnect links the CLI to your
-wallet so it can ask you to approve a trade.
+1. **Start the connection.** Run:
+
+   ```sh
+   ophis connect
+   ```
+
+2. **Scan with your wallet.** Open its WalletConnect scanner and scan the QR code, or paste the pairing link into the wallet.
+3. **Approve the connection.** Your wallet handles signing requests and keeps your keys.
+
+</Steps>
 
 | Wallet | Where to scan |
 | --- | --- |
-| MetaMask | **Scan**, in the account menu or at the top right. |
-| Rabby | **Settings > WalletConnect**. |
-| Trust Wallet | **Scan QR code**, at the top right. |
-| Rainbow | The scan icon on the home screen. |
-| Ledger Wallet | Open an account, then its **WalletConnect** icon. |
+| MetaMask | **Scan**, in the account menu or at the top right |
+| Rabby | **Settings > WalletConnect** |
+| Trust Wallet | **Scan QR code**, at the top right |
+| Rainbow | Scan icon on the home screen |
+| Ledger Wallet | Open an account, then its **WalletConnect** icon |
 
-You can paste the pairing link into the wallet instead. Your keys never leave
-your wallet.
+:::tip[Use the wallet scanner]
 
-## Quote, swap, bridge
+Scan the code inside your wallet app. Keep the wallet open while the CLI waits for a response; in Ledger Wallet, stay on the WalletConnect screen.
 
-Check the price first. Nothing is signed:
+:::
 
-```sh
-ophis quote 5 USDC ETH
-```
+## Quote and swap {/* #quote-swap-bridge */}
 
-To swap 5 USDC for ETH:
+<Steps>
 
-```sh
-ophis swap 5 USDC ETH
-```
+1. **Check the price.** Request a quote:
 
-Confirm in the terminal, then approve in your wallet. Usually this takes one
-free signature. If your wallet has not yet allowed Ophis to spend that amount of
-the token, it first asks for an approval, which costs a small network fee. The
-CLI approves only the amount each swap needs, so a later swap can ask again. Selling ETH may need a wrap,
-which turns ETH into WETH, the token form used for the swap.
+   ```sh
+   ophis quote 5 USDC ETH
+   ```
 
-A bridge moves tokens to another network. This moves 25 USDC from Base to
-Arbitrum through Across, the bridge service:
+2. **Start the swap.** Sell USDC for ETH:
+
+   ```sh
+   ophis swap 5 USDC ETH
+   ```
+
+3. **Review and approve.** Confirm the amounts in the terminal, then approve in your wallet. Approve token spending if requested, then sign the order. Each approval covers the amount needed. Selling ETH uses WETH, its token form, and requires wrapping if needed.
+
+</Steps>
+
+## Bridge tokens
+
+Move USDC from Base to Arbitrum through Across:
 
 ```sh
 ophis bridge 25 USDC to arbitrum
 ```
 
-Bridges can start from **Ethereum, Arbitrum or Base**.
+| CLI bridge setting | Networks |
+| --- | --- |
+| Supported sources | Ethereum, Arbitrum, Base |
+| Default source | Base |
+
+Confirm the route in the terminal and approve in your wallet. Use `ophis status <order id>` to follow the transfer.
 
 ## Choose the chain
 
-A chain is a blockchain network. Everything runs on **Base** unless you name
-a chain in plain words:
+The default network is **Base**. Add a chain name to change the source or destination.
 
 | Words | Meaning | Example |
 | --- | --- | --- |
-| `on arbitrum` | Trade on Arbitrum. | `ophis swap 5 USDC ETH on arbitrum` |
-| `to arbitrum` | Trade on Base and receive on Arbitrum, swapping and bridging in one go. | `ophis swap 5 USDC ETH to arbitrum` |
-| `from arbitrum to base` | Bridge from Arbitrum to Base. | `ophis bridge 25 USDC from arbitrum to base` |
+| `on arbitrum` | Trade on Arbitrum | `ophis swap 5 USDC ETH on arbitrum` |
+| `to arbitrum` | Trade on Base and receive on Arbitrum | `ophis swap 5 USDC ETH to arbitrum` |
+| `from arbitrum to base` | Bridge from Arbitrum to Base | `ophis bridge 25 USDC from arbitrum to base` |
+| `-c <chain>` | Same as `on` | Select the source chain |
+| `--to-chain <chain>` | Same as `to` | Select the destination chain |
 
-`-c <chain>` and `--to-chain <chain>` do the same as `on` and `to`.
-For an order placed on Arbitrum, use `ophis status <order id> on arbitrum`.
+For an Arbitrum order, use `ophis status <order id> on arbitrum`.
 
-Run `ophis chains` to see all 15 chains and the names to type: **Arbitrum One,
-Arc, Avalanche, Base, BNB Chain, Ethereum, Gnosis, Ink, Linea, Optimism, Plasma,
-Polygon, Robinhood Chain, Unichain, and the Sepolia testnet**. Sepolia is a
-network for testing. Each chain appears in the terminal with its brand colour.
+| Network list | Chains |
+| --- | --- |
+| Mainnets | Arbitrum One, Arc, Avalanche, Base, BNB Chain, Ethereum, Gnosis, Ink, Linea, Optimism, Plasma, Polygon, Robinhood Chain, Unichain |
+| Testnet | Sepolia |
+| Total | 15 |
 
-## Fees
+Run `ophis chains` to see the names to type.
 
-Ophis charges **0.01%** of the trade: on a **100 USDC** swap, this fee is
-**0.01 USDC**. When a trade fills at a better price than the quote, Ophis keeps
-part of the extra, and the exact share and cap appear on every quote and
-confirmation. Fees are shown before you confirm.
+## Swap fees {/* #fees */}
 
-On the 10 networks where CoW Protocol runs the order book, Base (the default)
-among them, CoW Protocol adds its own fee: 0.02% of the trade (0.003% between
-stablecoins), so 0.03% in total on a regular swap. The networks Ophis runs
-itself (Optimism, Unichain, Robinhood Chain and Arc) have no extra fee. Either
-way, you receive at least the amount the CLI shows as **At least**. See
-[Fees & rebates](./fees.md) for the details.
+| Charge | Amount |
+| --- | --- |
+| Ophis base | 0.01%; 0.01 USDC on a 100 USDC swap |
+| Price improvement | Share and cap shown on every quote and confirmation |
+| CoW Protocol volume fee | 0.02%, or 0.003% between stablecoins |
+| Base plus CoW volume fee on a regular swap | 0.03% |
+| CoW-hosted networks | 10, including Base |
+| Ophis-operated networks | Optimism, Unichain, Robinhood Chain, Arc; no upstream fee |
+| Across bridge fee | Included in the displayed amounts |
 
-Across is the bridge service; its fee is already included in the amounts shown.
+You receive at least the amount shown as **At least**. See [Fees](/fees) for improvement capture and upstream fee details.
 
-Signing an order costs nothing. Network fees only apply to a token approval
-(the CLI approves only what each swap needs, so you may approve again later), to wrapping ETH into WETH before selling it, and to `ophis recover`,
-which sends a transaction. Wrapping turns ETH into WETH, the token form used
-for swaps.
+Signing an order is free. Token approvals, wrapping ETH and `ophis recover` require network fees. Each approval covers the amount needed for that swap.
 
-## Safety
+## Wallet checks {/* #safety */}
 
-- **Keys stay in your wallet.** The CLI asks the wallet to sign.
-- **Every order is checked before the wallet is asked.** The CLI checks the
-  amounts, recipient, chain and, for a bridge, the bridge step.
-- **Token names are checked against lists.** The CLI uses the Ophis list first,
-  then the public lists offered by swap.ophis.fi. It always shows the exact
-  contract address, which identifies the token on that chain. Tokens outside
-  the Ophis list are flagged. A name that could mean two tokens is refused.
-- **Before approving**, check that the amounts and token addresses in your
-  wallet match what the terminal shows.
+<Cards>
+<Card icon="key-round" title="Wallet signing">Your wallet holds your keys and approves each order.</Card>
+<Card icon="shield-check" title="Order validation">The CLI checks amounts, recipient, chain and bridge steps before requesting approval.</Card>
+<Card icon="search" title="Token addresses">The CLI displays each token's contract address for you to check.</Card>
+</Cards>
 
-## Troubleshooting
+The CLI checks the Ophis token list first, then public lists from swap.ophis.fi. It flags tokens outside the Ophis list and rejects ambiguous names. Before approving, match the wallet's amounts and token addresses to the terminal.
 
-### The phone's Camera app cannot open the code
+## Connection and tokens {/* #troubleshooting */}
 
-Run `ophis connect` to show a new code, then use the wallet's own WalletConnect
-scanner. See
-[Connect your wallet](#connect-your-wallet) for where to find it.
+<details>
+<summary>The wallet did not answer</summary>
 
-### "Your wallet did not answer"
+Keep the wallet open, then run `ophis connect` again if needed. Some wallets, including Rabby, drop the connection on restart. Use `ophis wallet` to check the session.
 
-Open your wallet app and keep it open. In Ledger Wallet, stay on its
-WalletConnect screen. If it still does not answer, run `ophis connect` again.
-Some wallets, such as Rabby, drop the connection when they restart.
-Run `ophis wallet` to check your connection.
+</details>
 
-### A chain is missing in `ophis wallet`
+<details>
+<summary>Connect another network</summary>
 
-Add the network in your wallet app's network list or settings, then run
-`ophis connect` again and approve it in your wallet. Run `ophis wallet` to
-check that the chain appears.
+Add the network in your wallet's settings. Run `ophis connect` and approve the connection again, then check the chain with `ophis wallet`.
 
-### ETH on a chain whose own coin is not ETH
+</details>
 
-On Arc, Polygon and Gnosis, asking for ETH uses that chain's WETH automatically.
-On Avalanche and Plasma, ask for **WETH**:
+<details>
+<summary>Use ETH on another chain</summary>
+
+| Network | Token to request |
+| --- | --- |
+| Arc, Polygon, Gnosis | ETH resolves to WETH automatically |
+| Avalanche, Plasma | WETH |
 
 ```sh
 ophis quote 5 USDC WETH on avalanche
 ophis quote 5 USDC WETH on plasma
 ```
 
-### The dollar token on Robinhood Chain
+</details>
+
+<details>
+<summary>Use the dollar token on Robinhood Chain</summary>
 
 Use **USDG** on Robinhood Chain.
 
@@ -180,21 +192,28 @@ Use **USDG** on Robinhood Chain.
 ophis quote 5 USDG ETH on robinhood
 ```
 
-## All commands
+</details>
 
-Replace the parts in angle brackets with your amount, tokens, chain or order ID.
-The first token in a quote or swap is the one you sell; the second is the one
-you receive.
+## Command reference {/* #all-commands */}
 
-| Command | What it does |
+Replace the angle-bracket placeholders with your values. In a quote or swap, the first token is sold and the second is received.
+
+| Command | Action |
 | --- | --- |
-| `ophis connect` | Link your wallet with a QR code or pairing link. |
-| `ophis quote <amount> <token> <token>` | See the price. Nothing is signed. |
-| `ophis swap <amount> <token> <token>` | Confirm in the terminal, then approve in your wallet. |
-| `ophis bridge <amount> <token> to <chain>` | Move a token to another chain through Across. |
-| `ophis status <order id>` | See where an order is and follow a bridge's progress. |
-| `ophis wallet` | Show your wallet and the chains it shares. |
-| `ophis recover [token]` | Get back tokens a bridge left behind. Name the token, for example `ophis recover USDC on base`, to look for one from a very old bridge. |
-| `ophis disconnect` | Unlink your wallet. |
-| `ophis chains` | List the chains and the names to type. |
-| `ophis help` | Show commands and options. |
+| `ophis connect` | Link your wallet with a QR code or pairing link |
+| `ophis quote <amount> <token> <token>` | Check the price |
+| `ophis swap <amount> <token> <token>` | Confirm a swap and approve in your wallet |
+| `ophis bridge <amount> <token> to <chain>` | Move tokens through Across |
+| `ophis status <order id>` | Track an order or bridge |
+| `ophis wallet` | Show your wallet and connected chains |
+| `ophis recover [token]` | Recover tokens left by a bridge; use `ophis recover USDC on base` to look for an older transfer |
+| `ophis disconnect` | Unlink your wallet |
+| `ophis chains` | List networks and their command names |
+| `ophis help` | Show commands and options |
+
+## Next
+
+<Cards>
+<Card icon="receipt" title="Fees" href="/fees">Review the full swap fee schedule.</Card>
+<Card icon="globe" title="Networks and assets" href="/networks-assets">Check app routes and bridge requirements.</Card>
+</Cards>

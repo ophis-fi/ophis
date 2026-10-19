@@ -21,7 +21,6 @@ const ORDER = [
   'getting-started',
   'architecture',
   'fees',
-  'affiliate',
   'comparison',
   'intent-api',
   'ai-agents',
@@ -110,7 +109,8 @@ try {
         kept.push(`- ${attr('title')}${card[2] ? `: ${card[2]}` : ''}${href ? ` (${href.startsWith('/') ? SITE + href : href})` : ''}`)
         continue
       }
-      kept.push(line)
+      // Drop explicit heading ids ({/* #id */}), which only keep old anchors working.
+      kept.push(line.replace(/\s*\{\/\*\s*#[\w-]+\s*\*\/\}\s*$/, ''))
     }
     body = kept.join('\n').trim()
     return { id, slug, title, body }

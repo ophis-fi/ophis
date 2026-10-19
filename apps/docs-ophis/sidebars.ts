@@ -14,13 +14,13 @@ const sidebars: SidebarsConfig = {
       type: 'category',
       label: 'Overview',
       collapsed: false,
-      items: [doc('getting-started', 'rocket'), doc('cli', 'terminal'), doc('networks-assets', 'globe'), doc('architecture', 'workflow'), doc('fees', 'receipt'), doc('trade-rewards', 'gift'), doc('affiliate', 'users'), doc('comparison', 'scale')],
+      items: [doc('getting-started', 'rocket'), doc('cli', 'terminal'), doc('networks-assets', 'globe'), doc('architecture', 'workflow'), doc('fees', 'receipt'), doc('trade-rewards', 'gift'), doc('comparison', 'scale')],
     },
     {
       type: 'category',
       label: 'Build with Ophis',
       collapsed: false,
-      items: [doc('intent-api', 'braces'), doc('ai-agents', 'bot'), doc('agent-swap-comparison', 'shield-check'), doc('agent-btc-cookbook', 'bitcoin'), doc('agent-wallet-policies', 'key-round'), doc('vault-managers', 'vault'), doc('widget', 'app-window'), doc('partners', 'handshake'), doc('migrating-from-odos', 'arrow-right-left')],
+      items: [doc('intent-api', 'braces'), doc('ai-agents', 'bot'), doc('agent-swap-comparison', 'shield-check'), doc('agent-wallet-policies', 'key-round'), doc('vault-managers', 'vault'), doc('widget', 'app-window'), doc('partners', 'handshake'), doc('migrating-from-odos', 'arrow-right-left')],
     },
     {
       type: 'category',
