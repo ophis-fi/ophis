@@ -683,9 +683,7 @@ mod protected_interaction_tests {
             address!("FCBBe2Af83F94e7E2a9C35a535B3A04719aFD2Ae"),
             address!("0792a633F0c19c351081CF4B211F68F79bCc9676"),
             address!("e490d7aC34CDf92a3Bd16cd4cA3BB1F1a6671828"),
-        ]
-        .into_iter()
-        .chain(shared::fx_curve::POOLS.iter().map(|(pool, _)| *pool));
+        ];
         let order = protected_order(sell, buy);
         for target in targets {
             let solution: solvers_dto::solution::Solution =

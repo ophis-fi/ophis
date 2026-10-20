@@ -56,7 +56,7 @@
 use {
     crate::domain::competition::solution::interaction,
     alloy::primitives::{Address, U256, address},
-    shared::{arc_routes, arc_sushi, fx_curve, metric},
+    shared::{arc_routes, arc_sushi, metric},
     std::time::{SystemTime, UNIX_EPOCH},
 };
 
@@ -421,7 +421,7 @@ const PROTECTED_TARGETS: &[Address] = &[
 ];
 
 pub(crate) fn is_protected_target(target: Address) -> bool {
-    PROTECTED_TARGETS.contains(&target) || fx_curve::coins(target).is_some()
+    PROTECTED_TARGETS.contains(&target)
 }
 
 pub fn validate(custom: &interaction::Custom, chain_id: u64) -> Result<(), Error> {
@@ -504,11 +504,6 @@ pub fn validate_with_settlement(
             }
         }
         return validate_curve_exchange(custom, required_amounts, &OPTIMISM_CURVE_3POOL_COINS, 10);
-    }
-    if chain_id == 1 {
-        if let Some(coins) = fx_curve::coins(Address::from(custom.target)) {
-            return validate_curve_exchange(custom, required_amounts, coins, 1);
-        }
     }
     // WOOFi's router also exposes arbitrary external-swap functionality. Keep
     // it out of the address-only allowlist and accept only the exact direct
@@ -2389,6 +2384,22 @@ mod tests {
     }
 
     #[test]
+    fn excluded_ethereum_curve_pool_is_rejected() {
+        let pool = address!("5018BE882DccE5E3F2f3B0913AE2096B9b3fB61f");
+        let sell = address!("A0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48");
+        let buy = ETHEREUM_FXUSD;
+        let mut data = vec![0x3d, 0xf0, 0x21, 0x24];
+        for word in [0u64, 1, 1000, 990] {
+            data.extend_from_slice(&U256::from(word).to_be_bytes::<32>());
+        }
+        let custom = direct_custom(pool, sell, buy, 1000, 990, data);
+        assert!(
+            validate_with_required_output(&custom, 1, Some(required(sell, buy, 1000, 990)))
+                .is_err()
+        );
+    }
+
+    #[test]
     fn curve_pool_target_and_spender_are_allowlisted_only_on_optimism() {
         let c = make_curve_exchange(0, 1);
         assert_eq!(
@@ -2565,69 +2576,6 @@ mod tests {
                 let mut bad = custom.clone();
                 mutate(&mut bad);
                 assert!(validate_with_required_output(&bad, 4663, required).is_err());
-            }
-        }
-    }
-
-    #[test]
-    fn fx_curve_exchanges_are_pool_coin_and_fulfillment_scoped() {
-        for &(pool, coins) in fx_curve::POOLS {
-            assert!(is_protected_target(pool));
-            assert!(
-                validate_target(pool, 1).is_err(),
-                "raw calls must stay forbidden"
-            );
-            for (i, j) in [(0usize, 1usize), (1, 0)] {
-                let (sell, buy) = (coins[i], coins[j]);
-                let mut data = vec![0x3d, 0xf0, 0x21, 0x24];
-                for word in [
-                    U256::from(i),
-                    U256::from(j),
-                    U256::from(1000),
-                    U256::from(990),
-                ] {
-                    data.extend_from_slice(&word.to_be_bytes::<32>());
-                }
-                let custom = direct_custom(pool, sell, buy, 1000, 990, data.clone());
-                let context = Some(required(sell, buy, 1000, 990));
-                assert_eq!(validate_with_required_output(&custom, 1, context), Ok(()));
-                assert!(validate_with_required_output(&custom, 1, None).is_err());
-                assert!(
-                    validate_with_required_output(&custom, 1, Some(required(sell, buy, 999, 990)))
-                        .is_err()
-                );
-                assert!(
-                    validate_with_required_output(&custom, 1, Some(required(sell, buy, 1000, 991)))
-                        .is_err()
-                );
-                assert!(
-                    validate_with_required_output(&custom, 1, Some(required(buy, sell, 1000, 990)))
-                        .is_err()
-                );
-                for chain in [10, 130, 4663, 5042] {
-                    assert!(validate_with_required_output(&custom, chain, context).is_err());
-                }
-                for byte in 0..data.len() {
-                    let mut bad = custom.clone();
-                    let mut poisoned = data.clone();
-                    poisoned[byte] ^= 1;
-                    bad.call_data = poisoned.into();
-                    assert!(
-                        validate_with_required_output(&bad, 1, context).is_err(),
-                        "pool {pool}, byte {byte}"
-                    );
-                }
-                for mutate in [
-                    |c: &mut Custom| c.allowances[0].0.spender = ATTACKER,
-                    |c: &mut Custom| c.allowances[0].0.amount = U256::MAX,
-                    |c: &mut Custom| c.internalize = true,
-                    |c: &mut Custom| c.value = eth::Ether(U256::from(1)),
-                    |c: &mut Custom| c.call_data = [c.call_data.as_ref(), &[0]].concat().into(),
-                ] {
-                    let mut bad = custom.clone();
-                    mutate(&mut bad);
-                    assert!(validate_with_required_output(&bad, 1, context).is_err());
-                }
             }
         }
     }

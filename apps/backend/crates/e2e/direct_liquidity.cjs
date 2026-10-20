@@ -1,8 +1,8 @@
 // Real driver -> Rust connector -> deployed GPv2 settlement; eth_call only.
 // Prerequisites: cargo build -p driver -p solvers --bins, solc 0.8.30 and installed frontend deps.
 // E2E_BIN_DIR=<target/debug> NODE_PATH=<frontend/node_modules/.pnpm/node_modules> node apps/backend/crates/e2e/direct_liquidity.cjs --live
-// State overrides fund a disposable ERC-1271 trader and solver; Ethereum also substitutes authenticator permission.
-// No signatures, transactions or database. At most 400 reads per scenario, 1200 total.
+// State overrides fund a disposable ERC-1271 trader and solver; real Robinhood authorization is retained.
+// No signatures, transactions or database. At most 400 reads per scenario, 800 total.
 const assert = require('node:assert/strict')
 const fs = require('node:fs')
 const os = require('node:os')
@@ -21,7 +21,7 @@ const solver = '0x95f0beab29bea3d18a7c81140aed9227ff2d7665'
 const native = '0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee'
 const zero = '0x' + '00'.repeat(32)
 const token = new Interface(['function balanceOf(address) view returns(uint256)', 'function allowance(address,address) view returns(uint256)'])
-const settlementAbi = new Interface(['function vaultRelayer() view returns(address)', 'function authenticator() view returns(address)'])
+const settlementAbi = new Interface(['function vaultRelayer() view returns(address)'])
 const orderTypes = {Order: [['sellToken','address'],['buyToken','address'],['receiver','address'],['sellAmount','uint256'],['buyAmount','uint256'],['validTo','uint32'],['appData','bytes32'],['feeAmount','uint256'],['kind','string'],['partiallyFillable','bool'],['sellTokenBalance','string'],['buyTokenBalance','string']].map(([name,type]) => ({name,type}))}
 const probeSource = `pragma solidity ^0.8.30;
 interface Token { function balanceOf(address) external view returns(uint256); }
@@ -113,16 +113,13 @@ async function run(chain) {
   try {
     assert.equal(Number(BigInt(await rpc('eth_chainId',[]))),chain.id)
     block = await rpc('eth_getBlockByNumber',['latest',false])
-    console.log(`STATE chain=${chain.id} block=${Number(BigInt(block.number))} hash=${block.hash} nativeBuy=${chain.buy===native} authenticator=${chain.id===1?'temporary-anyone':'unchanged'}`)
+    console.log(`STATE chain=${chain.id} block=${Number(BigInt(block.number))} hash=${block.hash} nativeBuy=${chain.buy===native} authenticator=unchanged`)
     const relayer = settlementAbi.decodeFunctionResult('vaultRelayer',await rpc('eth_call',[{to:chain.settlement,data:settlementAbi.encodeFunctionData('vaultRelayer')},'latest']))[0]
-    const authenticator = settlementAbi.decodeFunctionResult('authenticator',await rpc('eth_call',[{to:chain.settlement,data:settlementAbi.encodeFunctionData('authenticator')},'latest']))[0]
     const funded = 10n ** 18n
     const fundedWord = hexZeroPad('0x'+funded.toString(16),32)
     const balanceSlot = keccak256(abi.encode(['address','uint256'],[owner,chain.slot]))
     const allowanceSlot = keccak256(abi.encode(['address','bytes32'],[relayer,keccak256(abi.encode(['address','uint256'],[owner,chain.allowanceSlot]))]))
     fixture = {[owner]:{code:'0x631626ba7e60e01b60005260206000f3',balance:'0x1'},[solver]:{balance:'0x56bc75e2d63100000'},[chain.sell]:{stateDiff:{[balanceSlot]:fundedWord,[allowanceSlot]:fundedWord}}}
-    // Ethereum auction enrollment is outside this patch; grant only temporary simulation permission.
-    if(chain.id===1)fixture[authenticator]={code:'0x600160005260206000f3'}
     assert.equal(BigInt(await rpc('eth_call',[{to:chain.sell,data:token.encodeFunctionData('balanceOf',[owner])},'latest'])),funded,'Balance override slot must be independently checked')
     assert.equal(BigInt(await rpc('eth_call',[{to:chain.sell,data:token.encodeFunctionData('allowance',[owner,relayer])},'latest'])),funded,'Allowance override slot must be independently checked')
     const rpcServer = http.createServer(async (req,res) => {
@@ -136,7 +133,7 @@ async function run(chain) {
     const rpcUrl=await listen(rpcServer), lanes=[]
     for(const name of chain.lanes) {
       const port=await freePort(),file=path.join(directory,name+'.toml')
-      const dex=name==='curve' ? `\n[[dex.pools]]\naddress="${chain.router}"\ncoins=["${chain.sell}","${chain.buy}"]` : `\nchain-id="${chain.id}"`
+      const dex=`\nchain-id="${chain.id}"`
       fs.writeFileSync(file,`node-url="${rpcUrl}"\nsettlement="${chain.settlement}"\nwrapped-native="${chain.weth}"\nwrapped-native-balance-slot=${chain.wethSlot}\nstrict-output-simulation=true\nstrict-market-output-simulation="all"\ninternalize-interactions=false\n[dex]${dex}\n`,{mode:0o600})
       await start('solvers',['--addr',`127.0.0.1:${port}`,name,'--config',file],port)
       const relay=http.createServer(async(req,res)=>{
@@ -204,9 +201,8 @@ async function run(chain) {
   }
 }
 async function main() {
-  assert.deepEqual(process.argv.slice(2),['--live'],'Explicit --live required; at most 400 reads per scenario, 1200 total')
+  assert.deepEqual(process.argv.slice(2),['--live'],'Explicit --live required; at most 400 reads per scenario, 800 total')
   await run({id:4663,rpc:process.env.ROBINHOOD_RPC || 'https://rpc.mainnet.chain.robinhood.com',settlement:'0x886d9fd312f442c4e1f3cdeae7b4ab73493e57cd',weth:'0x0bd7d308f8e1639fab988df18a8011f41eacad73',wethSlot:51,sell:'0x0bd7d308f8e1639fab988df18a8011f41eacad73',buy:'0x5fc5360d0400a0fd4f2af552add042d716f1d168',slot:51,allowanceSlot:52,input:'100000000000000',sellPrice:'1000000000000000000',buyPrice:'500000000000000000000000000',lanes:['metric','elfomo']})
-  await run({id:1,rpc:process.env.ETHEREUM_RPC || 'https://ethereum-rpc.publicnode.com',settlement:'0x9008d19f58aabd9ed0d60971565aa8510560ab41',weth:'0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2',wethSlot:3,sell:'0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48',buy:'0x085780639cc2cacd35e474e71f4d000e2405d8f6',slot:9,allowanceSlot:10,input:'1000000',sellPrice:'500000000000000000000000000',buyPrice:'500000000000000',router:'0x5018be882dcce5e3f2f3b0913ae2096b9b3fb61f',lanes:['curve']})
   await run({id:4663,rpc:process.env.ROBINHOOD_RPC || 'https://rpc.mainnet.chain.robinhood.com',settlement:'0x886d9fd312f442c4e1f3cdeae7b4ab73493e57cd',weth:'0x0bd7d308f8e1639fab988df18a8011f41eacad73',wethSlot:51,sell:'0x5fc5360d0400a0fd4f2af552add042d716f1d168',buy:native,slot:1,allowanceSlot:3,input:'1000000',sellPrice:'500000000000000000000000000',buyPrice:'1000000000000000000',lanes:['metric']})
 }
 main().catch(error=>{console.error(error);process.exitCode=1})

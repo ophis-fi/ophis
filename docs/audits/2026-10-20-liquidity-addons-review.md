@@ -1,5 +1,12 @@
 # Direct liquidity add-ons: security review
 
+Release scope update, 2026-10-21: the user paused all new f(x) development.
+The f(x) catalog, Ethereum Curve connector/driver extensions, example config,
+fork fixture and development guide are excluded from this PR. The separate
+wallet router remains only on its paused local branch. Any f(x) results below
+record the earlier review, not functionality included in this release. The
+remaining release is Metric/Elfomo on Robinhood and the Railgun assessment.
+
 Date: 2026-10-20. Baseline: `7523bc732e389718f8485ed6c738a356819949f9`.
 Scope: Metric and Elfomo on Robinhood, the sixteen Ethereum f(x) Curve pools,
 their shared RPC/driver boundaries, deployment configuration, frontend labels,

@@ -1,6 +1,6 @@
 //! Direct Curve StableSwap solver for explicitly configured, verified pools.
 //!
-//! Supports Optimism's canonical 3pool and published f(x) stable pools. Pools are never
+//! The first production scope is Optimism's canonical 3pool. Pools are never
 //! accepted from a quote API: operators pin the pool and its ordered coin list,
 //! and every quote is read directly from that pool onchain.
 
@@ -8,11 +8,10 @@ use {
     crate::domain::{dex, eth, order},
     alloy::{
         primitives::{Address, U256, U512, address, ruint::UintTryFrom},
-        providers::{DynProvider, Provider},
+        providers::DynProvider,
         sol,
         sol_types::SolCall,
     },
-    shared::fx_curve,
 };
 
 sol! {
@@ -56,7 +55,6 @@ impl Curve {
         if config.pools.is_empty() {
             return Err(CreationError::NoPools);
         }
-        let optimism = config.pools[0].address == OPTIMISM_3POOL;
         for pool in &config.pools {
             if pool.address.is_zero()
                 || pool.coins.len() < 2
@@ -70,12 +68,7 @@ impl Curve {
             if unique.len() != pool.coins.len() {
                 return Err(CreationError::DuplicateCoin);
             }
-            let allowed = if optimism {
-                pool.address == OPTIMISM_3POOL && pool.coins == OPTIMISM_3POOL_COINS
-            } else {
-                fx_curve::coins(pool.address).is_some_and(|coins| pool.coins == coins.as_slice())
-            };
-            if !allowed {
+            if pool.address != OPTIMISM_3POOL || pool.coins != OPTIMISM_3POOL_COINS {
                 return Err(CreationError::PoolNotAllowlisted(pool.address));
             }
         }
@@ -95,19 +88,6 @@ impl Curve {
     /// A wrong order would make a quote describe different assets than the
     /// calldata actually exchanges, so startup fails closed on any mismatch.
     pub async fn validate_onchain(&self) -> Result<(), CreationError> {
-        let expected = if self.pools[0].address == OPTIMISM_3POOL {
-            10
-        } else {
-            1
-        };
-        let actual = self
-            .provider
-            .get_chain_id()
-            .await
-            .map_err(CreationError::ChainRpc)?;
-        if actual != expected {
-            return Err(CreationError::WrongChain { expected, actual });
-        }
         for pool in &self.pools {
             let contract = ICurveStableSwap::new(pool.address, self.provider.clone());
             for (index, expected) in pool.coins.iter().enumerate() {
@@ -255,10 +235,6 @@ pub enum CreationError {
     PoolNotAllowlisted(Address),
     #[error("Curve pool addresses must be unique")]
     DuplicatePool,
-    #[error("Curve RPC is on chain {actual}, expected {expected}")]
-    WrongChain { expected: u64, actual: u64 },
-    #[error("failed to verify Curve RPC chain: {0}")]
-    ChainRpc(#[source] alloy::transports::TransportError),
     #[error("Curve pool {pool} coin {index} mismatch: configured {expected}, onchain {actual}")]
     CoinMismatch {
         pool: Address,
@@ -287,127 +263,6 @@ pub enum Error {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    fn config(pools: Vec<Pool>, url: &str) -> Config {
-        Config {
-            provider: crate::infra::blockchain::rpc(&url.parse().unwrap()).provider,
-            pools,
-        }
-    }
-
-    fn fx_pools() -> Vec<Pool> {
-        fx_curve::POOLS
-            .iter()
-            .map(|&(address, coins)| Pool {
-                address,
-                coins: coins.to_vec(),
-            })
-            .collect()
-    }
-
-    #[tokio::test]
-    async fn fx_curve_requires_pinned_coins_and_one_chain() {
-        assert_eq!(fx_curve::POOLS.len(), 16);
-        assert!(Curve::try_new(config(fx_pools(), "http://localhost:8545")).is_ok());
-        assert!(
-            Curve::try_new(config(
-                vec![Pool {
-                    address: OPTIMISM_3POOL,
-                    coins: OPTIMISM_3POOL_COINS.to_vec(),
-                }],
-                "http://localhost:8545"
-            ))
-            .is_ok()
-        );
-        let mut reversed = fx_pools();
-        reversed[0].coins.reverse();
-        assert!(Curve::try_new(config(reversed, "http://localhost:8545")).is_err());
-        let mut wrong = fx_pools();
-        wrong[0].address = Address::repeat_byte(1);
-        assert!(Curve::try_new(config(wrong, "http://localhost:8545")).is_err());
-        let mut mixed = fx_pools();
-        mixed.push(Pool {
-            address: OPTIMISM_3POOL,
-            coins: OPTIMISM_3POOL_COINS.to_vec(),
-        });
-        assert!(Curve::try_new(config(mixed, "http://localhost:8545")).is_err());
-    }
-
-    #[tokio::test]
-    async fn fx_curve_rejects_wrong_rpc_chain_before_reading_pools() {
-        use axum::{Json, Router, routing::post};
-        use serde_json::{Value, json};
-        let server = Router::new().route(
-            "/",
-            post(|Json(request): Json<Value>| async move {
-                let reply = |request: &Value| {
-                    assert_eq!(request["method"], "eth_chainId");
-                    json!({"jsonrpc":"2.0", "id":request["id"], "result":"0xa"})
-                };
-                Json(match request.as_array() {
-                    Some(batch) => Value::Array(batch.iter().map(reply).collect()),
-                    None => reply(&request),
-                })
-            }),
-        );
-        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
-        let url = format!("http://{}/", listener.local_addr().unwrap());
-        let task = tokio::spawn(async move { axum::serve(listener, server).await.unwrap() });
-        let curve = Curve::try_new(config(fx_pools(), &url)).unwrap();
-        assert!(matches!(
-            curve.validate_onchain().await,
-            Err(CreationError::WrongChain {
-                expected: 1,
-                actual: 10
-            })
-        ));
-        task.abort();
-    }
-
-    #[tokio::test]
-    #[ignore = "requires ETHEREUM_RPC; read-only live f(x) pool checks"]
-    async fn live_fx_curve_routes() {
-        let curve =
-            Curve::try_new(config(fx_pools(), &std::env::var("ETHEREUM_RPC").unwrap())).unwrap();
-        curve.validate_onchain().await.unwrap();
-        let usdc = address!("A0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48");
-        let pyusd = address!("6c3ea9036406852006290770BEdFcAbA0e23A0e8");
-        for &(pool, coins) in fx_curve::POOLS {
-            for (sell, buy) in [(coins[0], coins[1]), (coins[1], coins[0])] {
-                let amount = U256::from(if sell == usdc || sell == pyusd {
-                    1_000_000u64
-                } else {
-                    1_000_000_000_000_000_000u64
-                });
-                let order = dex::Order {
-                    sell: eth::TokenAddress(sell),
-                    buy: eth::TokenAddress(buy),
-                    side: order::Side::Sell,
-                    amount: dex::Amount::new(amount),
-                    buy_limit: Default::default(),
-                    solve_fee: Default::default(),
-                    owner: Address::ZERO,
-                };
-                let swap = curve
-                    .swap(&order, &dex::Slippage::one_percent(), true)
-                    .await
-                    .unwrap();
-                assert_eq!(swap.calls.len(), 1);
-                assert_eq!(swap.calls[0].to, pool);
-                assert_eq!((swap.input.token.0, swap.input.amount), (sell, amount));
-                assert_eq!(swap.output.token.0, buy);
-                assert!(!swap.output.amount.is_zero());
-                assert_eq!(
-                    (swap.allowance.spender, swap.allowance.amount.get()),
-                    (pool, amount)
-                );
-            }
-        }
-        eprintln!(
-            "Verified {} f(x) pool identities and 32 direct quotes",
-            fx_curve::POOLS.len()
-        );
-    }
 
     #[test]
     fn slippage_floor_is_exact_and_overflow_safe() {
