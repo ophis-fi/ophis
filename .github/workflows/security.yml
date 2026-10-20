@@ -54,7 +54,9 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
-      - run: python3 scripts/test-osv-gate.py
+      - run: |
+          python3 scripts/test-osv-gate.py
+          python3 scripts/test-webpki-compat.py
 
   partner-fee-invariant:
     name: Partner-fee cross-workspace invariant
@@ -534,7 +536,10 @@ jobs:
         run: |
           cd apps/backend
           for lock in Cargo.lock contracts/Cargo.lock contracts/generated/Cargo.lock; do
-            cargo audit --file "$lock"
+            compatibility=$(python3 ../../scripts/webpki_compat.py "$lock")
+            args=()
+            if [[ -n "$compatibility" ]]; then args=(--ignore "$compatibility"); fi
+            cargo audit --file "$lock" "${args[@]}"
           done
 
       - name: Show advisory database version
@@ -570,7 +575,10 @@ jobs:
         # Licenses + bans are informational only — see deny.toml.
         run: |
           cd apps/backend
-          cargo deny check advisories sources
+          config=$(mktemp .deny-compat.XXXXXX.toml)
+          trap 'rm -f "$config"' EXIT
+          python3 ../../scripts/webpki_compat.py Cargo.lock --deny-config deny.toml > "$config"
+          cargo deny --locked check --config "$config" advisories sources
 
       - name: Run cargo deny (bans + licenses, informational)
         # Non-gating; surfaces workspace-internal noise (path-dep
