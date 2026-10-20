@@ -66,6 +66,8 @@ export interface AffiliateStats {
   kind: AffiliateKind
   activeCodes: string[]
   referredCount: number
+  /** Referred volume in the current UTC calendar month. */
+  currentCycleVolumeUsd: number
   /** Lifetime referred volume since each referee bound (shown to partners). */
   lifetimeReferredVolumeUsd: number
 }

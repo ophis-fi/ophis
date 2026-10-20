@@ -297,7 +297,7 @@ separately pay CoW Protocol's upstream fees.
 - **Trade rewards.** The USDG campaign is live at
   [swap.ophis.fi/#/rewards](https://swap.ophis.fi/#/rewards).
 - **Partner fees.** Partners can charge their own fee on CoW-hosted chains.
-  CoW pays that fee weekly.
+  CoW pays it weekly when the weekly amount reaches 0.001 WETH.
 
 Details: [fees](https://docs.ophis.fi/fees),
 [referral attribution](https://docs.ophis.fi/affiliate), and

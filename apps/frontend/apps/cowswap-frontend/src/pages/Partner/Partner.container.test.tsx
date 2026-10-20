@@ -30,6 +30,7 @@ function makeDashboard(referredCount: number, refereesLen: number): PartnerDashb
     kind: 'partner',
     activeCodes: ['ophispartner'],
     referredCount,
+    currentCycleVolumeUsd: 100_000,
     lifetimeReferredVolumeUsd: 5_000_000,
     referees: Array.from({ length: refereesLen }, (_, i) => makeReferee(i)),
   }

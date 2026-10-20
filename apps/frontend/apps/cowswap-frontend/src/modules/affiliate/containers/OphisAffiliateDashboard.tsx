@@ -133,6 +133,7 @@ function useCreateAffiliateCode(
               kind: 'regular',
               activeCodes: [res.code],
               referredCount: 0,
+              currentCycleVolumeUsd: 0,
               lifetimeReferredVolumeUsd: 0,
             },
       )
@@ -175,8 +176,8 @@ function ReferralStatusSection({ loadError, loading, stats }: ReferralStatusSect
           <MetricCard label="Referred wallets" value={stats?.referredCount ?? 0} compact />
           <MetricCard
             label="Referred volume"
-            value={formatUsd(stats?.lifetimeReferredVolumeUsd ?? 0)}
-            sublabel="lifetime"
+            value={formatUsd(stats?.currentCycleVolumeUsd ?? 0)}
+            sublabel="this month"
             compact
           />
         </MetricRow>

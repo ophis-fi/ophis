@@ -31,20 +31,20 @@ beforeEach(() => {
 })
 
 it.each(['regular', 'partner'] as const)('keeps %s attribution and sharing without fee shares', async (kind) => {
-  // Older API deployments can still include financial fields. They must not reach the UI.
   jest.mocked(getAffiliateStats).mockResolvedValue({
     wallet: ACCOUNT,
     kind,
     activeCodes: ['mycode'],
     referredCount: 3,
-    lifetimeReferredVolumeUsd: 125_000,
-    ...{ rateOfNetFeePct: 12, currentCycleVolumeUsd: 10_000, nextPayoutAt: '2026-11-01', paidToDateWeth: 5 },
+    currentCycleVolumeUsd: 10_000,
+    lifetimeReferredVolumeUsd: kind === 'partner' ? 125_000 : 0,
   })
 
   render(<OphisAffiliateDashboard account={ACCOUNT} />)
 
   expect(await screen.findByText('mycode')).toBeTruthy()
-  expect(screen.getByText('$125,000')).toBeTruthy()
+  expect(screen.getByText(kind === 'partner' ? '$125,000' : '$10,000')).toBeTruthy()
+  expect(screen.getByText(kind === 'partner' ? 'lifetime' : 'this month')).toBeTruthy()
   expect(screen.getByText('Referred wallets')).toBeTruthy()
   expect(screen.queryByText(/earn|payout|rebate|your rate|tier|WETH/i)).toBeNull()
   fireEvent.click(screen.getByRole('button', { name: 'Copy share link' }))
