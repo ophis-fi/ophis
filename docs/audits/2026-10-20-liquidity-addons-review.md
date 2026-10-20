@@ -7,6 +7,16 @@ wallet router remains only on its paused local branch. Any f(x) results below
 record the earlier review, not functionality included in this release. The
 remaining release is Metric/Elfomo on Robinhood and the Railgun assessment.
 
+Release CI also exposed advisories published after the original green run.
+The release updates follow-redirects to1.16.1, launch-editor to2.14.2, Vite to
+7.3.7/8.2.4, rustls-webpki to0.103.16 and the1.x WebPKI certificate payloads to
+1.0.10. Existing audit gates and exception lists are unchanged. The four JS
+workspace security gates pass locally. Rust's0.26.11 roots compatibility shim
+re-exports the patched1.x payload; its remaining version-only scanner finding
+has an approved upstream metadata correction in
+[RustSec PR3419](https://github.com/rustsec/advisory-db/pull/3419), still pending
+at this update. Fresh release CI and deployment verification remain required.
+
 Date: 2026-10-20. Baseline: `7523bc732e389718f8485ed6c738a356819949f9`.
 Scope: Metric and Elfomo on Robinhood, the sixteen Ethereum f(x) Curve pools,
 their shared RPC/driver boundaries, deployment configuration, frontend labels,
