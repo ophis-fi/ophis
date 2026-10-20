@@ -41,7 +41,7 @@ jobs:
       # OIDC federation joins an ephemeral tag:ci node for Cadia's tailnet-only
       # sshd listener. This uses network access, not Tailscale SSH.
       - name: Connect to Tailscale (ephemeral CI node)
-        uses: tailscale/github-action@306e68a486fd2350f2bfc3b19fcd143891a4a2d8  # v4.1.2
+        uses: tailscale/github-action@d1b6cd204f8dceda5b3eaad7f1f767be390056cd  # v4.2.0
         with:
           oauth-client-id: ${{ secrets.TS_OIDC_CLIENT_ID }}
           audience: ${{ secrets.TS_OIDC_AUDIENCE }}
