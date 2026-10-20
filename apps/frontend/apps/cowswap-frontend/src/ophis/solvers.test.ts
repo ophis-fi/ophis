@@ -65,6 +65,8 @@ describe('OPHIS_SOLVERS registry', () => {
       'pancakeswap',
       'ramses',
       'fables',
+      'elfomo',
+      'metric',
       'ekubo',
       'up33',
       'pools',

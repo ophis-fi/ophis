@@ -95,6 +95,16 @@ name = "pools"
 url = "http://driver/pools"
 address = "0x95f0beaB29BeA3D18A7c81140AED9227Ff2D7665"
 
+[[drivers]]
+name = "metric"
+url = "http://driver/metric"
+address = "0x95f0beaB29BeA3D18A7c81140AED9227Ff2D7665"
+
+[[drivers]]
+name = "elfomo"
+url = "http://driver/elfomo"
+address = "0x95f0beaB29BeA3D18A7c81140AED9227Ff2D7665"
+
 [fee-policies]
 max-partner-fee = 0.01
 
@@ -112,6 +122,8 @@ read-url = "%DB_READ_URL"
 
 [order-quoting]
 price-estimation-drivers = [
+  { name = "elfomo", url = "http://driver/elfomo" },
+  { name = "metric", url = "http://driver/metric" },
   { name = "baseline", url = "http://driver/baseline" },
   { name = "fables", url = "http://driver/fables" },
   { name = "ramses", url = "http://driver/ramses" },

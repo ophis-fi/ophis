@@ -1,6 +1,6 @@
 use {
     crate::{
-        domain::eth,
+        domain::{dex::MarketOutputSimulation, eth},
         infra::{blockchain, config::dex::file, dex::curve},
     },
     serde::Deserialize,
@@ -25,6 +25,8 @@ pub async fn load(path: &Path) -> super::Config {
     // Curve swaps must execute: the reported floor is enforced by pool
     // calldata and cannot be replaced with a Settlement buffer transfer.
     base.internalize_interactions = false;
+    base.output_guard.strict_output_simulation = true;
+    base.output_guard.strict_market_output_simulation = MarketOutputSimulation::All;
     let provider = blockchain::rpc(&base.node_url).provider;
     super::Config {
         curve: curve::Config {

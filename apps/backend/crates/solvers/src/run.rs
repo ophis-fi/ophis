@@ -190,6 +190,26 @@ async fn run_with(args: cli::Args, bind: Option<oneshot::Sender<SocketAddr>>) {
                 config.base,
             )))
         }
+        cli::Command::Elfomo { config: path } => {
+            let config = config::dex::elfomo::file::load(&path).await;
+            solver::Solver::Dex(Box::new(solver::Dex::new(
+                dex::Dex::Elfomo(Box::new(
+                    dex::elfomo::Elfomo::try_new(config.elfomo)
+                        .expect("invalid Elfomo configuration"),
+                )),
+                config.base,
+            )))
+        }
+        cli::Command::Metric { config: path } => {
+            let config = config::dex::metric::file::load(&path).await;
+            solver::Solver::Dex(Box::new(solver::Dex::new(
+                dex::Dex::Metric(Box::new(
+                    dex::metric::Metric::try_new(config.metric)
+                        .expect("invalid Metric configuration"),
+                )),
+                config.base,
+            )))
+        }
         cli::Command::Arc { config: path } => {
             let (base, venue) = config::dex::arc::load(&path).await;
             solver::Solver::Dex(Box::new(solver::Dex::new(

@@ -143,6 +143,28 @@ impl ReadOnlyRpc {
         const_hex::decode(result).map_err(Error::InvalidHex)
     }
 
+    /// Quote caller-sensitive pools as the contract that will execute the swap.
+    pub async fn call_from_at(
+        &self,
+        context: BlockContext,
+        from: Address,
+        to: Address,
+        calldata: Vec<u8>,
+    ) -> Result<Vec<u8>, Error> {
+        self.ensure_chain(context)?;
+        let result: String = self
+            .rpc(
+                "eth_call",
+                json!([{
+                    "from": format!("{from:#x}"),
+                    "to": format!("{to:#x}"),
+                    "data": const_hex::encode_prefixed(calldata),
+                }, context.selector()]),
+            )
+            .await?;
+        const_hex::decode(result).map_err(Error::InvalidHex)
+    }
+
     pub async fn code_at(&self, context: BlockContext, address: Address) -> Result<Bytes, Error> {
         self.ensure_chain(context)?;
         let result: String = self
@@ -216,11 +238,8 @@ struct RpcResponse<T> {
     error: Option<RpcError>,
 }
 
-#[derive(Clone, Debug, Deserialize, Serialize)]
-pub struct RpcError {
-    pub code: i64,
-    pub message: String,
-}
+// Preserve revert data as well as code/message for the shared EVM error classifier.
+pub type RpcError = alloy_json_rpc::ErrorPayload;
 
 #[derive(Deserialize)]
 struct RpcBlock {
@@ -281,6 +300,59 @@ mod tests {
                 "requireCanonical": true,
             })
         );
+    }
+
+    #[tokio::test]
+    async fn caller_sensitive_quote_sends_caller_and_canonical_block() {
+        use std::io::{BufRead, Read, Write};
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let url = format!("http://{}", listener.local_addr().unwrap());
+        let caller = Address::repeat_byte(0x22);
+        let target = Address::repeat_byte(0x33);
+        let context = context(0x11);
+        let server = std::thread::spawn(move || {
+            let (mut stream, _) = listener.accept().unwrap();
+            let mut reader = std::io::BufReader::new(stream.try_clone().unwrap());
+            let mut length = None;
+            loop {
+                let mut line = String::new();
+                assert!(reader.read_line(&mut line).unwrap() > 0);
+                if line == "\r\n" {
+                    break;
+                }
+                if let Some((key, value)) = line.split_once(':') {
+                    if key.eq_ignore_ascii_case("content-length") {
+                        length = Some(value.trim().parse::<usize>().unwrap());
+                    }
+                }
+            }
+            let mut body = vec![0; length.unwrap()];
+            reader.read_exact(&mut body).unwrap();
+            let request: serde_json::Value = serde_json::from_slice(&body).unwrap();
+            assert_eq!(request["method"], "eth_call");
+            assert_eq!(
+                request["params"][0],
+                json!({
+                    "from": format!("{caller:#x}"), "to": format!("{target:#x}"), "data": "0x1234",
+                })
+            );
+            assert_eq!(
+                request["params"][1],
+                json!({
+                    "blockHash": format!("{:#x}", context.hash), "requireCanonical": true,
+                })
+            );
+            let response = r#"{"jsonrpc":"2.0","id":1,"result":"0x2a"}"#;
+            write!(stream, "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{response}", response.len()).unwrap();
+        });
+        let rpc = ReadOnlyRpc::try_new(url.parse().unwrap(), context.chain_id, "test").unwrap();
+        assert_eq!(
+            rpc.call_from_at(context, caller, target, vec![0x12, 0x34])
+                .await
+                .unwrap(),
+            vec![42]
+        );
+        server.join().unwrap();
     }
 
     #[test]

@@ -22,6 +22,7 @@ use {
 fn required_custom_amounts(
     solution: &solvers_dto::solution::Solution,
     orders: &[competition::Order],
+    weth: eth::WrappedNativeToken,
 ) -> Result<Option<competition::solution::custom_allowlist::RequiredAmounts>, super::Error> {
     const FXUSD: alloy::primitives::Address =
         alloy::primitives::address!("085780639CC2cACd35E474e71f4d000e2405d8f6");
@@ -32,8 +33,7 @@ fn required_custom_amounts(
             let solvers_dto::solution::Interaction::Custom(custom) = interaction else {
                 return None;
             };
-            competition::solution::custom_allowlist::PROTECTED_TARGETS
-                .contains(&custom.target)
+            competition::solution::custom_allowlist::is_protected_target(custom.target)
                 .then_some(custom.target)
         })
         .collect();
@@ -59,8 +59,8 @@ fn required_custom_amounts(
     let Some(order) = orders.iter().find(|order| order.uid == fulfillment.order.0) else {
         return Ok(None);
     };
-    let sell = alloy::primitives::Address::from(order.sell.token);
-    let buy = alloy::primitives::Address::from(order.buy.token);
+    let sell = alloy::primitives::Address::from(order.sell.token.as_erc20(weth));
+    let buy = alloy::primitives::Address::from(order.buy.token.as_erc20(weth));
     let arc_v4_input = if arc_v4 {
         // The only multi-interaction exception: exactly the sold ERC20's
         // transfer first, then the protected v4 router. Both calls undergo
@@ -211,7 +211,7 @@ impl Solutions {
                 if !solution.wrappers.is_empty() {
                     return Err(super::Error("wrappers are not supported".to_owned()));
                 }
-                let required_custom_amounts = required_custom_amounts(&solution, auction.orders())?;
+                let required_custom_amounts = required_custom_amounts(&solution, auction.orders(), weth)?;
                 competition::Solution::new(
                     competition::solution::Id::new(solution.id),
                     solution
@@ -631,11 +631,47 @@ mod protected_interaction_tests {
         alloy::primitives::{Address, U256, address},
     };
 
+    const TEST_WETH: Address = address!("0Bd7D308f8E1639FAb988df18A8011f41EAcAD73");
+
+    #[test]
+    fn protected_native_buy_uses_wrapped_asset_and_clearing_price() {
+        let sell = shared::metric::USDG;
+        let native = Address::from(eth::ETH_TOKEN);
+        let order = protected_order(sell, native);
+        for target in [
+            shared::metric::ROUTER,
+            address!("f0f0F0F0FB0d738452EfD03A28e8be14C76d5f73"),
+        ] {
+            let mut solution: solvers_dto::solution::Solution = serde_json::from_value(serde_json::json!({
+                "id":1,
+                "prices": {format!("{sell:#x}"):"990", format!("{TEST_WETH:#x}"):"1000", format!("{native:#x}"):"1"},
+                "trades":[{"kind":"fulfillment","order":format!("0x{}", "00".repeat(56)),"executedAmount":"1000"}],
+                "interactions":[{"kind":"custom","internalize":false,"target":target,"value":"0","callData":"0x","allowances":[],"inputs":[],"outputs":[]}]
+            })).unwrap();
+            let amounts =
+                required_custom_amounts(&solution, std::slice::from_ref(&order), TEST_WETH.into())
+                    .unwrap()
+                    .unwrap();
+            assert_eq!((amounts.sell_token, amounts.buy_token), (sell, TEST_WETH));
+            assert_eq!(
+                (amounts.max_input, amounts.min_output),
+                (U256::from(1000), U256::from(990))
+            );
+            solution.prices.remove(&TEST_WETH);
+            assert!(
+                required_custom_amounts(&solution, std::slice::from_ref(&order), TEST_WETH.into())
+                    .is_err()
+            );
+        }
+    }
+
     #[test]
     fn protected_direct_interactions_receive_fulfillment_context() {
         let sell = address!("4200000000000000000000000000000000000006");
         let buy = address!("0b2C639c533813f4Aa9D7837CAf62653d097Ff85");
         let targets = [
+            shared::metric::ROUTER,
+            address!("f0f0F0F0FB0d738452EfD03A28e8be14C76d5f73"),
             shared::arc_sushi::ROUTER,
             address!("4c4AF8DBc524681930a27b2F1Af5bcC8062E6fB7"),
             address!("833fA253e3A0cb2be15F14Cb0B0Ad0C17dD57b12"),
@@ -647,7 +683,9 @@ mod protected_interaction_tests {
             address!("FCBBe2Af83F94e7E2a9C35a535B3A04719aFD2Ae"),
             address!("0792a633F0c19c351081CF4B211F68F79bCc9676"),
             address!("e490d7aC34CDf92a3Bd16cd4cA3BB1F1a6671828"),
-        ];
+        ]
+        .into_iter()
+        .chain(shared::fx_curve::POOLS.iter().map(|(pool, _)| *pool));
         let order = protected_order(sell, buy);
         for target in targets {
             let solution: solvers_dto::solution::Solution =
@@ -675,9 +713,10 @@ mod protected_interaction_tests {
                 }))
                 .unwrap();
 
-            let context = required_custom_amounts(&solution, std::slice::from_ref(&order))
-                .unwrap()
-                .unwrap();
+            let context =
+                required_custom_amounts(&solution, std::slice::from_ref(&order), TEST_WETH.into())
+                    .unwrap()
+                    .unwrap();
             assert_eq!(context.sell_token, sell);
             assert_eq!(context.buy_token, buy);
             assert_eq!(context.max_input, U256::from(1_000));
@@ -741,8 +780,13 @@ mod protected_interaction_tests {
             "trades":[{"kind":"fulfillment", "order":format!("0x{}", "00".repeat(56)), "executedAmount":"1000"}],
             "interactions":[custom(USDC),custom(V4_ROUTER)]
         });
-        let context =
-            |value| required_custom_amounts(&serde_json::from_value(value).unwrap(), &orders);
+        let context = |value| {
+            required_custom_amounts(
+                &serde_json::from_value(value).unwrap(),
+                &orders,
+                TEST_WETH.into(),
+            )
+        };
         assert_eq!(
             context(bundle.clone()).unwrap().unwrap().arc_v4_input,
             Some(U256::from(1000))
@@ -815,7 +859,7 @@ mod protected_interaction_tests {
         }))
         .unwrap();
 
-        let err = required_custom_amounts(&solution, &[]).unwrap_err();
+        let err = required_custom_amounts(&solution, &[], TEST_WETH.into()).unwrap_err();
         assert!(
             err.0
                 .contains("exactly one fulfillment and one interaction")
@@ -854,7 +898,7 @@ mod protected_interaction_tests {
     #[test]
     fn protected_solution_rejects_a_pre_interaction() {
         let solution = protected_solution_with_raw_interaction("preInteractions");
-        let err = required_custom_amounts(&solution, &[]).unwrap_err();
+        let err = required_custom_amounts(&solution, &[], TEST_WETH.into()).unwrap_err();
         assert!(
             err.0
                 .contains("exactly one fulfillment and one interaction")
@@ -864,7 +908,7 @@ mod protected_interaction_tests {
     #[test]
     fn protected_solution_rejects_a_post_interaction() {
         let solution = protected_solution_with_raw_interaction("postInteractions");
-        let err = required_custom_amounts(&solution, &[]).unwrap_err();
+        let err = required_custom_amounts(&solution, &[], TEST_WETH.into()).unwrap_err();
         assert!(
             err.0
                 .contains("exactly one fulfillment and one interaction")

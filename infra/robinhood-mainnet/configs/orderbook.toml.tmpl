@@ -59,6 +59,8 @@ estimators = [
 # Keep the independent Robinhood lanes in sync
 # with autopilot.toml.tmpl [order-quoting].price-estimation-drivers.
 price-estimation-drivers = [
+  { name = "elfomo", url = "http://driver/elfomo" },
+  { name = "metric", url = "http://driver/metric" },
   { name = "baseline", url = "http://driver/baseline" },
   { name = "fables", url = "http://driver/fables" },
   { name = "ramses", url = "http://driver/ramses" },
