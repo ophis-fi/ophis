@@ -48,6 +48,7 @@ jobs:
           install -m 0755 "$RUNNER_TEMP/docker-compose" "$HOME/.docker/cli-plugins/docker-compose"
           docker compose version
       - run: python3 infra/shared/scripts/test-backend-revision.py
+      - run: bash infra/robinhood-mainnet/scripts/test-ci-release.sh
       - run: pnpm lint
       - run: pnpm typecheck
       # Hard gate (no `|| echo` fallback). functions/ belongs to no package

@@ -60,15 +60,17 @@ class DeploymentBoundaries(unittest.TestCase):
                             self.assertTrue(trigger['push']['tags'])
                             self.assertIn('git merge-base --is-ancestor', str(job))
         self.assertEqual(counts, {
-            'TS_OIDC_CLIENT_ID': 1, 'TS_OIDC_AUDIENCE': 1,
+            'TS_OIDC_CLIENT_ID': 2, 'TS_OIDC_AUDIENCE': 2,
             'MCP_PRIVATE_KEY': 1, 'NPM_TOKEN': 5,
         })
 
-    def test_indexer_keeps_host_credentials_on_main(self):
-        workflow = yaml.safe_load((ROOT / '.github/workflows/rebate-indexer-deploy.yml').read_text())
-        job = workflow['jobs']['deploy']
-        self.assertEqual(job['environment'], 'Production')
-        self.assertIn(MAIN, job['if'])
+    def test_host_credentials_stay_on_main(self):
+        for filename, name in [('rebate-indexer-deploy', 'deploy'), ('robinhood-backend-release', 'release')]:
+            workflow = yaml.safe_load((ROOT / f'.github/workflows/{filename}.yml').read_text())
+            job = workflow['jobs'][name]
+            with self.subTest(workflow=filename):
+                self.assertEqual(job['environment'], 'Production')
+                self.assertIn(MAIN, job['if'])
 
     def test_pull_requests_still_build_without_production_credentials(self):
         for name in ['landing-deploy', 'mcp-deploy', 'compat-api-deploy']:
