@@ -91,6 +91,7 @@ pub enum Dex {
     UniswapV3,
     SushiSwap,
     Woofi,
+    Elfomo,
     Ekubo,
     Up33,
     Velodrome,
@@ -101,6 +102,7 @@ pub enum Dex {
     AchSwap,
     Archery,
     Aero,
+    Metric,
 }
 
 impl Dex {
@@ -121,6 +123,7 @@ impl Dex {
             Dex::UniswapV3 => "uniswap-v3",
             Dex::SushiSwap => "sushiswap-v3",
             Dex::Woofi => "woofi",
+            Dex::Elfomo => "elfomo",
             Dex::Ekubo => "ekubo",
             Dex::Up33 => "up33",
             Dex::Velodrome => "velodrome",
@@ -131,6 +134,7 @@ impl Dex {
             Dex::AchSwap => "achswap",
             Dex::Archery => "archery",
             Dex::Aero => "aero",
+            Dex::Metric => "metric",
         }
     }
 }

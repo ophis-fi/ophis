@@ -213,6 +213,8 @@ services:
       uniswap-v4-solver: { condition: service_healthy }
       pons-solver: { condition: service_healthy }
       ekubo-solver: { condition: service_healthy }
+      metric-solver: { condition: service_healthy }
+      elfomo-solver: { condition: service_healthy }
       up33-solver: { condition: service_healthy }
       pools-solver: { condition: service_healthy }
       rpc-proxy-health: { condition: service_healthy }
@@ -446,6 +448,60 @@ services:
     command: ["directv3", "--config", "/ramses.toml"]
     ports:
       - "127.0.0.1:9319:80"
+    healthcheck:
+      test: ["CMD-SHELL", "bash -c 'exec 3<>/dev/tcp/127.0.0.1/80' 2>/dev/null || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 30s
+
+  metric-solver:
+    logging: *default-logging
+    image: local-baseline:${OPHIS_GIT_SHA:?run compose-up.sh}
+    pull_policy: never
+    build:
+      context: ../../apps/backend
+      dockerfile: Dockerfile
+      target: solvers
+      args: *backend-build-args
+    restart: always
+    mem_limit: 1g
+    depends_on:
+      rpc-proxy-health: { condition: service_healthy }
+    environment:
+      ADDR: 0.0.0.0:80
+    volumes:
+      - ./rendered/metric.toml:/metric.toml:ro
+    command: ["metric", "--config", "/metric.toml"]
+    ports:
+      - "127.0.0.1:9321:80"
+    healthcheck:
+      test: ["CMD-SHELL", "bash -c 'exec 3<>/dev/tcp/127.0.0.1/80' 2>/dev/null || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 30s
+
+  elfomo-solver:
+    logging: *default-logging
+    image: local-baseline:${OPHIS_GIT_SHA:?run compose-up.sh}
+    pull_policy: never
+    build:
+      context: ../../apps/backend
+      dockerfile: Dockerfile
+      target: solvers
+      args: *backend-build-args
+    restart: always
+    mem_limit: 1g
+    depends_on:
+      rpc-proxy-health: { condition: service_healthy }
+    environment:
+      ADDR: 0.0.0.0:80
+    volumes:
+      - ./rendered/elfomo.toml:/elfomo.toml:ro
+    command: ["elfomo", "--config", "/elfomo.toml"]
+    ports:
+      - "127.0.0.1:9322:80"
     healthcheck:
       test: ["CMD-SHELL", "bash -c 'exec 3<>/dev/tcp/127.0.0.1/80' 2>/dev/null || exit 1"]
       interval: 10s

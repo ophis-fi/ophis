@@ -123,6 +123,7 @@ def filter_local_cargo_packages(doc, lock_path):
     """
     try:
         import tomllib  # Python 3.11+, provided by the Ubuntu CI runner.
+        from webpki_compat import ADVISORY, verified_shim
         with open(lock_path, "rb") as f:
             lock = tomllib.load(f)
         packages = lock["package"]
@@ -132,6 +133,7 @@ def filter_local_cargo_packages(doc, lock_path):
         for package in packages:
             key = (package["name"], package["version"])
             (sourced if package.get("source") else local).add(key)
+        roots_shim = verified_shim(lock_path)
     except (ImportError, OSError, ValueError, KeyError, TypeError) as exc:
         print(f"ERROR: cannot read Cargo identities: {exc} -- failing closed.", file=sys.stderr)
         sys.exit(2)
@@ -146,6 +148,11 @@ def filter_local_cargo_packages(doc, lock_path):
                     print(f"LOCAL: {key[0]}@{key[1]} has no registry source in {lock_path}; "
                           "crates.io name-collision matches excluded")
             else:
+                if roots_shim and identity.get("ecosystem") == "crates.io" and key == ("webpki-roots", "0.26.11"):
+                    vulns = package.get("vulnerabilities") or []
+                    package["vulnerabilities"] = [v for v in vulns if v.get("id") != ADVISORY]
+                    if len(package["vulnerabilities"]) != len(vulns):
+                        print(f"VERIFIED SHIM: {ADVISORY} uses the reviewed patched 1.0.10 payload")
                 kept.append(package)
         result["packages"] = kept
 

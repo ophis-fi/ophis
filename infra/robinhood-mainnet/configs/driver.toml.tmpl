@@ -118,6 +118,22 @@ absolute-slippage = "40000000000000000"
 relative-slippage = "0.01"
 account = { guarded = "${OPHIS_DRIVER_SUBMITTER_KEY}", settlement-targets = [{ address = "0x886d9fd312F442C4E1f3cdeAE7b4AB73493e57cD", selectors = ["0x13d79a0b"] }], require-zero-value = true }
 
+# Direct Metric v1 oracle-priced pools; no aggregator calldata.
+[[solver]]
+name = "metric"
+endpoint = "http://metric-solver"
+absolute-slippage = "40000000000000000"
+relative-slippage = "0.01"
+account = { guarded = "${OPHIS_DRIVER_SUBMITTER_KEY}", settlement-targets = [{ address = "0x886d9fd312F442C4E1f3cdeAE7b4AB73493e57cD", selectors = ["0x13d79a0b"] }], require-zero-value = true }
+
+# Direct ElfomoFi oracle-priced pools; no aggregator calldata.
+[[solver]]
+name = "elfomo"
+endpoint = "http://elfomo-solver"
+absolute-slippage = "40000000000000000"
+relative-slippage = "0.01"
+account = { guarded = "${OPHIS_DRIVER_SUBMITTER_KEY}", settlement-targets = [{ address = "0x886d9fd312F442C4E1f3cdeAE7b4AB73493e57cD", selectors = ["0x13d79a0b"] }], require-zero-value = true }
+
 [submission]
 # Robinhood L2 gas is ~0.02 gwei. 5 gwei cap is far above realistic traffic.
 gas-price-cap = "5000000000"

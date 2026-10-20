@@ -121,6 +121,8 @@ export const OPHIS_SOLVERS: readonly OphisStaticSolverInfo[] = [
   { solverId: 'pancakeswap', chainIds: [OPHIS_ROBINHOOD_SOLVER_REGISTRY_CHAIN_ID] },
   { solverId: 'ramses', chainIds: [OPHIS_ROBINHOOD_SOLVER_REGISTRY_CHAIN_ID] },
   { solverId: 'fables', chainIds: [OPHIS_ROBINHOOD_SOLVER_REGISTRY_CHAIN_ID] },
+  { solverId: 'elfomo', chainIds: [OPHIS_ROBINHOOD_SOLVER_REGISTRY_CHAIN_ID] },
+  { solverId: 'metric', chainIds: [OPHIS_ROBINHOOD_SOLVER_REGISTRY_CHAIN_ID] },
   { solverId: 'ekubo', chainIds: [OPHIS_ROBINHOOD_SOLVER_REGISTRY_CHAIN_ID] }, // direct on-chain lane
   { solverId: 'up33', chainIds: [OPHIS_ROBINHOOD_SOLVER_REGISTRY_CHAIN_ID] }, // direct on-chain lane
   { solverId: 'pools', chainIds: [OPHIS_ROBINHOOD_SOLVER_REGISTRY_CHAIN_ID] }, // pools.trade via Nordstern
@@ -149,6 +151,8 @@ const OPHIS_SOLVER_NAMES: Record<string, string> = {
   pancakeswap: 'PancakeSwap',
   ramses: 'RamsesX',
   fables: 'Fables',
+  elfomo: 'ElfomoFi',
+  metric: 'Metric',
   ekubo: 'Ekubo',
   up33: 'UP33',
   pools: 'Pools.trade',

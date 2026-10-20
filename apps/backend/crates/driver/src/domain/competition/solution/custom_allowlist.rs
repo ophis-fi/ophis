@@ -56,7 +56,8 @@
 use {
     crate::domain::competition::solution::interaction,
     alloy::primitives::{Address, U256, address},
-    shared::{arc_routes, arc_sushi},
+    shared::{arc_routes, arc_sushi, metric},
+    std::time::{SystemTime, UNIX_EPOCH},
 };
 
 const ETHEREUM_FXUSD: Address = address!("085780639CC2cACd35E474e71f4d000e2405d8f6");
@@ -77,6 +78,8 @@ const OPTIMISM_WETH: Address = address!("420000000000000000000000000000000000000
 const OPTIMISM_USDC: Address = address!("0b2C639c533813f4Aa9D7837CAf62653d097Ff85");
 const UNISWAP_V4_SWAP_EXACT_INPUT_SELECTOR: [u8; 4] = [0xd9, 0x95, 0x94, 0x9a];
 const ROBINHOOD_SETTLEMENT: Address = address!("886d9fd312F442C4E1f3cdeAE7b4AB73493e57cD");
+// https://docs.elfomo.fi/integration — standard approval-based swap only.
+const ROBINHOOD_ELFOMO: Address = address!("f0f0F0F0FB0d738452EfD03A28e8be14C76d5f73");
 const ROBINHOOD_WETH: Address = address!("0Bd7D308f8E1639FAb988df18A8011f41EAcAD73");
 const ROBINHOOD_EKUBO_ROUTER: Address = address!("7B2aA7Ecc0B5936b7C52E6259A19C3BA557d0748");
 const ROBINHOOD_UP33_ROUTER: Address = address!("f5198743240fAC98db71868F34c70139b1eb0474");
@@ -391,7 +394,8 @@ impl Error {
 /// Returns `Ok(())` if every check passes. Returns `Err(...)` on the first
 /// violation — callers should log + emit `custom_interaction_rejected`
 /// metric + propagate to the solver as a parse error.
-pub(crate) const PROTECTED_TARGETS: &[Address] = &[
+const PROTECTED_TARGETS: &[Address] = &[
+    ROBINHOOD_ELFOMO,
     arc_sushi::ROUTER,
     arc_routes::AERO_ROUTER,
     arc_routes::V4_ROUTER,
@@ -413,7 +417,12 @@ pub(crate) const PROTECTED_TARGETS: &[Address] = &[
     ROBINHOOD_RAMSES_V3_ROUTER,
     OPTIMISM_SLIPSTREAM_ROUTER,
     UNICHAIN_UNISWAP_V4_ADAPTER,
+    metric::ROUTER,
 ];
+
+pub(crate) fn is_protected_target(target: Address) -> bool {
+    PROTECTED_TARGETS.contains(&target)
+}
 
 pub fn validate(custom: &interaction::Custom, chain_id: u64) -> Result<(), Error> {
     validate_with_required_output(custom, chain_id, None)
@@ -494,7 +503,7 @@ pub fn validate_with_settlement(
                 });
             }
         }
-        return validate_curve_exchange(custom, required_amounts);
+        return validate_curve_exchange(custom, required_amounts, &OPTIMISM_CURVE_3POOL_COINS, 10);
     }
     // WOOFi's router also exposes arbitrary external-swap functionality. Keep
     // it out of the address-only allowlist and accept only the exact direct
@@ -614,6 +623,19 @@ pub fn validate_with_settlement(
         } else {
             Err(reject())
         };
+    }
+    if chain_id == 4663 && target == ROBINHOOD_ELFOMO {
+        return validate_elfomo_swap(custom, required_amounts);
+    }
+    // Metric's router also exposes multihop, exact-output, externalSwap,
+    // sequence and payment helpers, and never checks `tokenOut` against the
+    // pool. Accept only the canonical single-pool exact-input call over a
+    // pinned pool/token triple, bound to the fulfillment and Settlement.
+    if chain_id == metric::CHAIN_ID && target == metric::ROUTER {
+        let now = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map_or(u64::MAX, |elapsed| elapsed.as_secs());
+        return validate_metric_swap(custom, required_amounts, now);
     }
     let allowlist = chain_allowlist(chain_id)?;
 
@@ -878,6 +900,70 @@ fn validate_direct_v3_swap(
     Ok(())
 }
 
+fn validate_elfomo_swap(
+    custom: &interaction::Custom,
+    required: Option<RequiredAmounts>,
+) -> Result<(), Error> {
+    use alloy::sol_types::SolCall;
+    alloy::sol! {
+        function swap(address fromToken, address toToken, int256 specifiedAmount,
+            uint256 limitAmount, address receiver, uint256 partnerId) external;
+    }
+    let reject = || Error::CallDataNotAllowed {
+        target: ROBINHOOD_ELFOMO,
+        chain_id: 4663,
+    };
+    let required = required.ok_or_else(reject)?;
+    let data = custom.call_data.as_ref();
+    let call = swapCall::abi_decode(data).map_err(|_| reject())?;
+    if call.abi_encode() != data
+        || call.specifiedAmount <= alloy::primitives::I256::ZERO
+        || call.limitAmount.is_zero()
+        || call.fromToken != required.sell_token
+        || call.toToken != required.buy_token
+        || call.fromToken.is_zero()
+        || call.toToken.is_zero()
+        || call.fromToken == call.toToken
+        || call.receiver != ROBINHOOD_SETTLEMENT
+        || !call.partnerId.is_zero()
+        || !validate_common_direct_swap(
+            custom,
+            required,
+            ROBINHOOD_ELFOMO,
+            call.specifiedAmount.into_raw(),
+            call.limitAmount,
+        )
+    {
+        return Err(reject());
+    }
+    Ok(())
+}
+
+fn validate_metric_swap(
+    custom: &interaction::Custom,
+    required: Option<RequiredAmounts>,
+    now: u64,
+) -> Result<(), Error> {
+    let reject = || Error::CallDataNotAllowed {
+        target: metric::ROUTER,
+        chain_id: metric::CHAIN_ID,
+    };
+    let required = required.ok_or_else(reject)?;
+    let (input, minimum) = metric::decode(
+        custom.call_data.as_ref(),
+        required.sell_token,
+        required.buy_token,
+        ROBINHOOD_SETTLEMENT,
+        now,
+    )
+    .ok_or_else(reject)?;
+    if validate_common_direct_swap(custom, required, metric::ROUTER, input, minimum) {
+        Ok(())
+    } else {
+        Err(reject())
+    }
+}
+
 fn validate_ekubo_route(
     custom: &interaction::Custom,
     required_amounts: Option<RequiredAmounts>,
@@ -1058,10 +1144,12 @@ fn validate_fxusd_redeem(
 fn validate_curve_exchange(
     custom: &interaction::Custom,
     required_amounts: Option<RequiredAmounts>,
+    coins: &[Address],
+    chain_id: u64,
 ) -> Result<(), Error> {
     let reject = || Error::CallDataNotAllowed {
-        target: OPTIMISM_CURVE_3POOL,
-        chain_id: 10,
+        target: Address::from(custom.target),
+        chain_id,
     };
     let data = custom.call_data.as_ref();
     if data.len() != 4 + 32 * 4 || data[..4] != CURVE_EXCHANGE_SELECTOR || !custom.value.0.is_zero()
@@ -1079,16 +1167,18 @@ fn validate_curve_exchange(
     let Ok(j): Result<usize, _> = j.try_into() else {
         return Err(reject());
     };
-    if i == j || i >= OPTIMISM_CURVE_3POOL_COINS.len() || j >= OPTIMISM_CURVE_3POOL_COINS.len() {
+    if i == j || i >= coins.len() || j >= coins.len() {
         return Err(reject());
     }
-    let sell_token = OPTIMISM_CURVE_3POOL_COINS[i];
-    let buy_token = OPTIMISM_CURVE_3POOL_COINS[j];
+    let sell_token = coins[i];
+    let buy_token = coins[j];
     let Some(required) = required_amounts else {
         return Err(reject());
     };
     if sell_token != required.sell_token
         || buy_token != required.buy_token
+        || amount_in.is_zero()
+        || min_out.is_zero()
         || amount_in > required.max_input
         || min_out < required.min_output
     {
@@ -1113,8 +1203,9 @@ fn validate_curve_exchange(
         || Address::from(output.token) != buy_token
         || output.amount.0 != min_out
         || allowance.token != sell_token.into()
-        || allowance.spender != OPTIMISM_CURVE_3POOL
+        || allowance.spender != Address::from(custom.target)
         || allowance.amount != amount_in
+        || allowance.amount > MAX_CUSTOM_ALLOWANCE
         || custom.internalize
     {
         return Err(reject());
@@ -1790,6 +1881,175 @@ mod tests {
     }
 
     #[test]
+    fn metric_router_binds_pinned_pool_recipient_and_fulfillment() {
+        use alloy::sol_types::SolCall;
+        const NOW: u64 = 1_800_000_000;
+        let deadline = NOW + metric::DEADLINE_SECS;
+        let check = |c: &Custom, r: Option<RequiredAmounts>| validate_metric_swap(c, r, NOW);
+        assert!(PROTECTED_TARGETS.contains(&metric::ROUTER));
+        assert!(
+            validate_target(metric::ROUTER, 4663).is_err(),
+            "no raw pre/post"
+        );
+        for (sell, buy) in [
+            (ROBINHOOD_WETH, ROBINHOOD_USDG),
+            (ROBINHOOD_USDG, ROBINHOOD_WETH),
+        ] {
+            let data = metric::calldata(
+                sell,
+                buy,
+                U256::from(1000),
+                U256::from(990),
+                ROBINHOOD_SETTLEMENT,
+                deadline,
+            )
+            .unwrap();
+            let custom = direct_custom(metric::ROUTER, sell, buy, 1000, 990, data.clone());
+            let amounts = Some(required(sell, buy, 1000, 990));
+            assert_eq!(check(&custom, amounts), Ok(()));
+            // Partial LIMIT fills may leave their surplus fee in Settlement.
+            assert_eq!(check(&custom, Some(required(sell, buy, 1010, 980))), Ok(()));
+            assert!(check(&custom, None).is_err());
+            assert!(check(&custom, Some(required(sell, buy, 999, 990))).is_err());
+            assert!(check(&custom, Some(required(sell, buy, 1000, 991))).is_err());
+            assert!(check(&custom, Some(required(buy, sell, 1000, 990))).is_err());
+            let spcx = metric::POOLS[1].1;
+            assert!(check(&custom, Some(required(sell, spcx, 1000, 990))).is_err());
+            for chain in [1, 10, 130, 5042] {
+                assert!(
+                    validate_with_settlement(&custom, chain, amounts, Some(ROBINHOOD_SETTLEMENT))
+                        .is_err()
+                );
+            }
+
+            // Calldata: only sub-window deadline drift survives a bit flip;
+            // flipped amounts no longer match the declared input/output.
+            for index in (0..data.len()).filter(|i| !(290..292).contains(i)) {
+                let mut bad = data.clone();
+                bad[index] ^= 1;
+                let poisoned = Custom {
+                    call_data: bad.into(),
+                    ..custom.clone()
+                };
+                assert!(check(&poisoned, amounts).is_err(), "byte {index}");
+            }
+            let with_data = |data: Vec<u8>| {
+                check(
+                    &Custom {
+                        call_data: data.into(),
+                        ..custom.clone()
+                    },
+                    amounts,
+                )
+            };
+            let with_params = |f: &dyn Fn(&mut metric::ExactInputSingleParams)| {
+                let mut call = metric::exactInputSingleCall::abi_decode(&data).unwrap();
+                f(&mut call.params);
+                with_data(call.abi_encode())
+            };
+            let attacker = ATTACKER;
+            assert!(with_params(&|p| p.recipient = attacker).is_err());
+            assert!(
+                with_params(&|p| p.tokenOut = attacker).is_err(),
+                "router ignores tokenOut"
+            );
+            assert!(with_params(&|p| p.tokenIn = buy).is_err());
+            assert!(with_params(&|p| p.zeroForOne = !p.zeroForOne).is_err());
+            assert!(with_params(&|p| p.pool = metric::POOLS[3].0).is_err());
+            assert!(with_params(&|p| p.priceLimitX64 = 1).is_err());
+            assert!(with_params(&|p| p.extensionData = vec![0].into()).is_err());
+            assert!(
+                with_params(&|p| p.amountIn = 1001).is_err(),
+                "inflated input"
+            );
+            assert!(with_params(&|p| p.amountOutMinimum = 989).is_err());
+            assert!(with_params(&|p| p.amountOutMinimum = 991).is_err());
+            for bad in [0, NOW, NOW + metric::MAX_DEADLINE_SECS + 1] {
+                assert!(with_params(&|p| p.deadline = U256::from(bad)).is_err());
+            }
+            assert!(
+                with_params(&|p| p.deadline = U256::MAX).is_err(),
+                "finite deadline"
+            );
+            let edge = NOW + metric::MAX_DEADLINE_SECS;
+            assert_eq!(with_params(&|p| p.deadline = U256::from(edge)), Ok(()));
+            let mut trailing = data.clone();
+            trailing.extend([0; 32]);
+            assert!(with_data(trailing).is_err());
+            assert!(with_data(data[..data.len() - 32].to_vec()).is_err());
+            // Payment helpers and alternate entrypoints on the same router.
+            let word = |a: Address| a.into_word().to_vec();
+            let mut sweep = vec![0xdf, 0x2a, 0xb5, 0xbb];
+            sweep.extend(word(buy));
+            sweep.extend(U256::from(990).to_be_bytes::<32>());
+            sweep.extend(word(attacker));
+            let mut unwrap = vec![0x49, 0x40, 0x4b, 0x7c];
+            unwrap.extend(U256::from(990).to_be_bytes::<32>());
+            unwrap.extend(word(attacker));
+            let mut multicall = vec![0xac, 0x96, 0x50, 0xd8];
+            multicall.extend(data[4..].iter().copied());
+            for helper in [sweep, unwrap, vec![0x12, 0x21, 0x0e, 0x8a], multicall] {
+                assert!(with_data(helper).is_err());
+            }
+
+            // Declared interaction: value, internalize, assets and approvals.
+            let mutate = |f: &dyn Fn(&mut Custom)| {
+                let mut c = custom.clone();
+                f(&mut c);
+                check(&c, amounts)
+            };
+            assert!(mutate(&|c| c.value = eth::Ether(U256::from(1))).is_err());
+            assert!(mutate(&|c| c.internalize = true).is_err());
+            assert!(mutate(&|c| c.allowances[0].0.amount = U256::from(1001)).is_err());
+            assert!(mutate(&|c| c.allowances[0].0.amount = U256::MAX).is_err());
+            assert!(mutate(&|c| c.allowances[0].0.spender = attacker).is_err());
+            assert!(mutate(&|c| c.allowances[0].0.token = buy.into()).is_err());
+            assert!(mutate(&|c| c.allowances.push(c.allowances[0].clone())).is_err());
+            assert!(mutate(&|c| c.allowances.clear()).is_err());
+            assert!(mutate(&|c| c.inputs[0].amount = eth::TokenAmount(U256::from(999))).is_err());
+            assert!(mutate(&|c| c.inputs[0].token = buy.into()).is_err());
+            assert!(mutate(&|c| c.inputs.push(c.inputs[0].clone())).is_err());
+            assert!(
+                mutate(&|c| c.outputs[0].amount = eth::TokenAmount(U256::from(991))).is_err(),
+                "inflated output"
+            );
+            assert!(mutate(&|c| c.outputs[0].token = attacker.into()).is_err());
+            assert!(mutate(&|c| c.outputs.clear()).is_err());
+        }
+        // The dispatcher applies the live clock to the same grammar.
+        let now = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_secs();
+        let data = metric::calldata(
+            ROBINHOOD_WETH,
+            ROBINHOOD_USDG,
+            U256::from(1000),
+            U256::from(990),
+            ROBINHOOD_SETTLEMENT,
+            now + metric::DEADLINE_SECS,
+        )
+        .unwrap();
+        let custom = direct_custom(
+            metric::ROUTER,
+            ROBINHOOD_WETH,
+            ROBINHOOD_USDG,
+            1000,
+            990,
+            data,
+        );
+        let amounts = Some(required(ROBINHOOD_WETH, ROBINHOOD_USDG, 1000, 990));
+        assert_eq!(
+            validate_with_settlement(&custom, 4663, amounts, Some(ROBINHOOD_SETTLEMENT)),
+            Ok(())
+        );
+        assert!(
+            validate(&custom, 4663).is_err(),
+            "requires fulfillment amounts"
+        );
+    }
+
+    #[test]
     fn velodrome_guards_handle_both_route_abis() {
         for (chain, router, factory, settlement, leaf) in [
             (
@@ -2124,6 +2384,22 @@ mod tests {
     }
 
     #[test]
+    fn excluded_ethereum_curve_pool_is_rejected() {
+        let pool = address!("5018BE882DccE5E3F2f3B0913AE2096B9b3fB61f");
+        let sell = address!("A0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48");
+        let buy = ETHEREUM_FXUSD;
+        let mut data = vec![0x3d, 0xf0, 0x21, 0x24];
+        for word in [0u64, 1, 1000, 990] {
+            data.extend_from_slice(&U256::from(word).to_be_bytes::<32>());
+        }
+        let custom = direct_custom(pool, sell, buy, 1000, 990, data);
+        assert!(
+            validate_with_required_output(&custom, 1, Some(required(sell, buy, 1000, 990)))
+                .is_err()
+        );
+    }
+
+    #[test]
     fn curve_pool_target_and_spender_are_allowlisted_only_on_optimism() {
         let c = make_curve_exchange(0, 1);
         assert_eq!(
@@ -2228,6 +2504,80 @@ mod tests {
             ),
             Err(Error::CallDataNotAllowed { .. })
         ));
+    }
+
+    #[test]
+    fn elfomo_swap_binds_tokens_recipient_amounts_and_approvals() {
+        assert!(PROTECTED_TARGETS.contains(&ROBINHOOD_ELFOMO));
+        assert!(validate_target(ROBINHOOD_ELFOMO, 4663).is_err());
+        for (sell, buy) in [
+            (ROBINHOOD_WETH, ROBINHOOD_USDG),
+            (ROBINHOOD_USDG, ROBINHOOD_WETH),
+        ] {
+            // Independently encoded official ABI: swap(address,address,int256,uint256,address,uint256).
+            let mut data = vec![0x59, 0x8e, 0xdc, 0xad];
+            for word in [
+                U256::from_be_slice(sell.as_slice()),
+                U256::from_be_slice(buy.as_slice()),
+                U256::from(1000),
+                U256::from(990),
+                U256::from_be_slice(ROBINHOOD_SETTLEMENT.as_slice()),
+                U256::ZERO,
+            ] {
+                data.extend_from_slice(&word.to_be_bytes::<32>());
+            }
+            let custom = direct_custom(ROBINHOOD_ELFOMO, sell, buy, 1000, 990, data.clone());
+            let required = Some(required(sell, buy, 1000, 990));
+            assert_eq!(
+                validate_with_required_output(&custom, 4663, required),
+                Ok(())
+            );
+            assert!(validate_with_required_output(&custom, 4663, None).is_err());
+            for chain in [1, 10, 130, 5042] {
+                assert!(validate_with_required_output(&custom, chain, required).is_err());
+            }
+            for i in 0..data.len() {
+                let mut bad = data.clone();
+                bad[i] ^= 1;
+                assert!(
+                    validate_with_required_output(
+                        &Custom {
+                            call_data: bad.into(),
+                            ..custom.clone()
+                        },
+                        4663,
+                        required
+                    )
+                    .is_err(),
+                    "byte {i}"
+                );
+            }
+            let mut trailing = data.clone();
+            trailing.push(0);
+            assert!(
+                validate_with_required_output(
+                    &Custom {
+                        call_data: trailing.into(),
+                        ..custom.clone()
+                    },
+                    4663,
+                    required
+                )
+                .is_err()
+            );
+            for mutate in [
+                |c: &mut Custom| c.internalize = true,
+                |c: &mut Custom| c.value = eth::Ether(U256::from(1)),
+                |c: &mut Custom| c.allowances[0].0.amount = U256::MAX,
+                |c: &mut Custom| c.allowances[0].0.spender = ATTACKER,
+                |c: &mut Custom| c.outputs[0].amount = eth::TokenAmount(U256::from(991)),
+                |c: &mut Custom| c.inputs[0].token = ATTACKER.into(),
+            ] {
+                let mut bad = custom.clone();
+                mutate(&mut bad);
+                assert!(validate_with_required_output(&bad, 4663, required).is_err());
+            }
+        }
     }
 
     #[test]

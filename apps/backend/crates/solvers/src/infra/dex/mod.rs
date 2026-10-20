@@ -10,10 +10,12 @@ pub mod curve;
 pub mod direct_v3;
 pub mod dodo;
 pub mod ekubo;
+pub mod elfomo;
 pub mod enso;
 pub mod fx;
 pub mod kyberswap;
 pub mod lifi;
+pub mod metric;
 pub mod okx;
 pub mod openocean;
 pub mod pons;
@@ -41,9 +43,11 @@ pub enum Dex {
     Fx(Box<fx::Fx>),
     Pons(Box<pons::Pons>),
     Woofi(Box<woofi::Woofi>),
+    Elfomo(Box<elfomo::Elfomo>),
     Ekubo(Box<ekubo::Ekubo>),
     Up33(Box<up33::Up33>),
     DirectV3(Box<direct_v3::DirectV3>),
+    Metric(Box<metric::Metric>),
 }
 
 impl Dex {
@@ -75,9 +79,11 @@ impl Dex {
             Dex::Fx(fx) => fx.swap(order, slippage).await?,
             Dex::Pons(pons) => pons.swap(order, slippage).await?,
             Dex::Woofi(woofi) => woofi.swap(order, slippage, is_quote).await?,
+            Dex::Elfomo(elfomo) => elfomo.swap(order, slippage, is_quote).await?,
             Dex::Ekubo(ekubo) => ekubo.swap(order, slippage, is_quote).await?,
             Dex::Up33(up33) => up33.swap(order, slippage, is_quote).await?,
             Dex::DirectV3(v3) => v3.swap(order, slippage, is_quote).await?,
+            Dex::Metric(metric) => metric.swap(order, slippage, is_quote).await?,
         };
         Ok(swap)
     }
@@ -183,6 +189,16 @@ impl From<curve::Error> for Error {
         match err {
             curve::Error::OrderNotSupported => Self::OrderNotSupported,
             curve::Error::NotFound => Self::NotFound,
+            _ => Self::Other(Box::new(err)),
+        }
+    }
+}
+
+impl From<elfomo::Error> for Error {
+    fn from(err: elfomo::Error) -> Self {
+        match err {
+            elfomo::Error::OrderNotSupported => Self::OrderNotSupported,
+            elfomo::Error::NotFound => Self::NotFound,
             _ => Self::Other(Box::new(err)),
         }
     }
@@ -325,6 +341,16 @@ impl From<direct_v3::Error> for Error {
         match err {
             direct_v3::Error::OrderNotSupported => Self::OrderNotSupported,
             direct_v3::Error::NotFound => Self::NotFound,
+            other => Self::Other(other.into()),
+        }
+    }
+}
+
+impl From<metric::Error> for Error {
+    fn from(err: metric::Error) -> Self {
+        match err {
+            metric::Error::OrderNotSupported => Self::OrderNotSupported,
+            metric::Error::NotFound => Self::NotFound,
             other => Self::Other(other.into()),
         }
     }

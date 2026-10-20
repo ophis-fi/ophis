@@ -133,4 +133,14 @@ pub enum Command {
         #[clap(long, env)]
         config: PathBuf,
     },
+    /// solve Robinhood exact-input orders through ElfomoFi
+    Elfomo {
+        #[clap(long, env)]
+        config: PathBuf,
+    },
+    /// solve Robinhood exact-input orders through pinned Metric v1 pools
+    Metric {
+        #[clap(long, env)]
+        config: PathBuf,
+    },
 }

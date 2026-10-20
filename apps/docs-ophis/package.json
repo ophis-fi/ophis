@@ -59,7 +59,7 @@
       "http-proxy-middleware@<3.0.6": "3.0.7",
       "joi": "17.13.8",
       "js-yaml": "^4.3.2",
-      "launch-editor": "^2.14.1",
+      "launch-editor": "^2.14.2",
       "postcss": "8.5.23",
       "serialize-javascript": "^7.1.2",
       "shell-quote": "^1.11.0",
@@ -79,7 +79,8 @@
       "proxy-addr": "2.0.8",
       "source-map-js": "1.2.2",
       "tinypool": "2.1.2",
-      "postcss-selector-parser@<7.1.6": "^7.1.6"
+      "postcss-selector-parser@<7.1.6": "^7.1.6",
+      "follow-redirects": "^1.16.1"
     },
     "patchedDependencies": {
       "gray-matter@4.0.3": "patches/gray-matter@4.0.3.patch",

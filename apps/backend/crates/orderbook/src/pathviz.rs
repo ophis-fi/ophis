@@ -287,7 +287,7 @@ pub struct TokenView {
 fn solver_public_label(name: &str) -> &'static str {
     match name.to_ascii_lowercase().as_str() {
         "baseline" => "Baseline",
-        "uniswap-v4" => "Ophis direct solver",
+        "uniswap-v4" | "metric" | "elfomo" => "Ophis direct solver",
         _ => "External solver",
     }
 }
@@ -1106,6 +1106,8 @@ mod tests {
     fn solver_public_label_neutralizes_competitor_brands() {
         assert_eq!(solver_public_label("baseline"), "Baseline");
         assert_eq!(solver_public_label("uniswap-v4"), "Ophis direct solver");
+        assert_eq!(solver_public_label("metric"), "Ophis direct solver");
+        assert_eq!(solver_public_label("elfomo"), "Ophis direct solver");
         // Every external / competitor lane collapses to the neutral label.
         for c in ["velora", "kyberswap", "okx", "lifi", "enso", "openocean", "dodo", "odos", "1inch"] {
             assert_eq!(solver_public_label(c), "External solver", "{c} must be neutralized");
