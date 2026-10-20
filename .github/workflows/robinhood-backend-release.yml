@@ -1,0 +1,62 @@
+name: Cadia Robinhood backend release
+
+on:
+  workflow_dispatch:
+    inputs:
+      operation:
+        description: Inspect the host or deploy this reviewed main revision
+        type: choice
+        options: [inspect, deploy]
+        default: inspect
+        required: true
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: cadia-robinhood-backend-release
+  cancel-in-progress: false
+
+jobs:
+  release:
+    if: github.ref == 'refs/heads/main'
+    environment: Production
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+      - name: Connect to Cadia's existing deployment network
+        uses: tailscale/github-action@306e68a486fd2350f2bfc3b19fcd143891a4a2d8 # v4.1.2
+        with:
+          oauth-client-id: ${{ secrets.TS_OIDC_CLIENT_ID }}
+          audience: ${{ secrets.TS_OIDC_AUDIENCE }}
+          tags: tag:ci
+      - name: Inspect or release through the existing guarded wrapper
+        env:
+          OPERATION: ${{ inputs.operation }}
+          REVISION: ${{ github.sha }}
+          SSH_HOST: ${{ secrets.CADIA_REBATES_SSH_HOST }}
+          SSH_USER: ${{ secrets.CADIA_REBATES_SSH_USER }}
+          SSH_PORT: ${{ secrets.CADIA_REBATES_SSH_PORT }}
+          SSH_PRIVATE_KEY: ${{ secrets.CADIA_REBATES_SSH_PRIVATE_KEY }}
+          SSH_HOST_KEY: ${{ secrets.CADIA_REBATES_SSH_HOST_KEY }}
+        run: |
+          case "$OPERATION" in inspect|deploy) ;; *) exit 2 ;; esac
+          [[ "$REVISION" =~ ^[0-9a-f]{40}$ ]]
+          test -n "$SSH_HOST" && test -n "$SSH_USER" && test -n "$SSH_PORT"
+          test -n "$SSH_PRIVATE_KEY" && test -n "$SSH_HOST_KEY"
+          install -m 700 -d "$RUNNER_TEMP/cadia-ssh"
+          trap 'rm -rf "$RUNNER_TEMP/cadia-ssh"' EXIT
+          umask 077
+          printf '%s\n' "$SSH_PRIVATE_KEY" > "$RUNNER_TEMP/cadia-ssh/key"
+          printf '%s\n' "$SSH_HOST_KEY" > "$RUNNER_TEMP/cadia-ssh/known_hosts"
+          ssh -i "$RUNNER_TEMP/cadia-ssh/key" -p "$SSH_PORT" \
+            -o BatchMode=yes -o IdentitiesOnly=yes -o ConnectTimeout=15 \
+            -o ServerAliveInterval=15 -o ServerAliveCountMax=3 \
+            -o StrictHostKeyChecking=yes \
+            -o "UserKnownHostsFile=$RUNNER_TEMP/cadia-ssh/known_hosts" \
+            "$SSH_USER@$SSH_HOST" bash -s -- "$OPERATION" "$REVISION" \
+            < infra/robinhood-mainnet/scripts/ci-release.sh
