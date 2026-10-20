@@ -4,13 +4,13 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Ophis for Business: multi-chain swaps for desks &amp; platforms</title>
-<meta name="description" content="Offer token swaps across 14 EVM networks, with nine more source and destination networks in the Ophis app. Explore integration, partner revenue and published pricing.">
+<meta name="description" content="Offer token swaps across 14 EVM networks, with nine more source and destination networks in the Ophis app. Explore integration, referral attribution and published pricing.">
 <link rel="canonical" href="https://business.ophis.fi">
 
 <meta property="og:type" content="website">
 <meta property="og:site_name" content="Ophis">
 <meta property="og:title" content="Ophis for Business">
-<meta property="og:description" content="Bring multi-chain swaps to your desk or app. Explore 14 EVM trading networks, nine additional app networks and partner revenue options.">
+<meta property="og:description" content="Bring multi-chain swaps to your desk or app. Explore 14 EVM trading networks, nine additional app networks and referral attribution.">
 <meta property="og:url" content="https://business.ophis.fi">
 <meta property="og:image" content="https://business.ophis.fi/ophis-og.jpg">
 <meta property="og:image:width" content="1920">
@@ -23,7 +23,7 @@
 <meta name="twitter:card" content="summary_large_image">
 <meta name="twitter:site" content="@ophisfi">
 <meta name="twitter:title" content="Ophis for Business">
-<meta name="twitter:description" content="Multi-chain swaps for desks and platforms: 14 EVM trading networks, nine additional app networks and partner revenue options.">
+<meta name="twitter:description" content="Multi-chain swaps for desks and platforms: 14 EVM trading networks, nine additional app networks and referral attribution.">
 <meta name="twitter:image" content="https://business.ophis.fi/ophis-og.jpg">
 
 <script type="application/ld+json">
@@ -45,14 +45,13 @@
       "provider": { "@id": "https://ophis.fi/#organization" },
       "url": "https://business.ophis.fi",
       "areaServed": "Worldwide",
-      "description": "Ophis offers token swaps across 14 EVM trading networks through its app, widget and SDK. Its standalone app also supports nine additional source and destination networks where assets and quotes permit. Integrators can add an eligible own-fee to EVM orders; Ophis takes 0% of that markup. Published pricing and payout conditions apply."
+      "description": "Ophis offers token swaps across 14 EVM trading networks through its app, widget and SDK. Its standalone app also supports nine additional source and destination networks where assets and quotes permit. Create a referral code, share your link and track referred wallets and volume. Orders carry a 1 bp base fee plus capped price-improvement capture."
     },
     {
       "@type": "FAQPage",
       "mainEntity": [
         { "@type": "Question", "name": "Is Ophis a regulated financial-services entity?", "acceptedAnswer": { "@type": "Answer", "text": "No. Ophis is operated independently and provides a non-custodial software interface to permissionless on-chain protocols. It does not take custody of funds, execute discretionary trades, or hold a regulated financial-services license. Full operator and entity details are provided on request for formal contractual arrangements." } },
-        { "@type": "Question", "name": "How does Ophis price its service for partners?", "acceptedAnswer": { "@type": "Answer", "text": "Supported chains charge a 1 bp base plus 80% of reference-quote improvement on volatile pairs, capped at 99 bps of volume, or 50% on stable pairs, capped at 20 bps. CoW-hosted integrations additionally pay CoW Protocol fees upstream. Integrators can stack an onboarded own-fee up to 90 bps on top of ERC-20 orders, and Ophis takes 0% of that markup." } },
-        { "@type": "Question", "name": "Where are integrator own-fees guaranteed for payout?", "acceptedAnswer": { "@type": "Answer", "text": "Ophis-operated own-fee payout is currently guaranteed on Optimism and Unichain once the recipient is onboarded and its payout lane is enabled. Robinhood Chain and Arc do not have an Ophis own-fee payout guarantee. CoW-hosted payouts follow CoW Protocol's terms and service fee." } },
+        { "@type": "Question", "name": "How does Ophis price its service for partners?", "acceptedAnswer": { "@type": "Answer", "text": "Supported chains charge a 1 bp base plus 80% of reference-quote improvement on volatile pairs, capped at 99 bps of volume, or 50% on stable pairs, capped at 20 bps. CoW-hosted integrations additionally pay CoW Protocol fees upstream." } },
         { "@type": "Question", "name": "Can I get a custom rate limit?", "acceptedAnswer": { "@type": "Answer", "text": "The public Intent API allows 30 requests per minute per IP. Contact us with your throughput and integration requirements; no public API-key tier is available." } },
         { "@type": "Question", "name": "How do I integrate with Ophis?", "acceptedAnswer": { "@type": "Answer", "text": "Embed the Ophis widget, build EVM orders with the Ophis SDK, or point operators at swap.ophis.fi for direct use. Additional app networks are separate from widget and SDK order building. Documentation is at docs.ophis.fi." } },
         { "@type": "Question", "name": "Which networks can my business access?", "acceptedAnswer": { "@type": "Answer", "text": "The widget and SDK build orders on 14 EVM networks. The standalone app additionally supports Bitcoin, Solana, Monad, Hyperliquid (Hypercore spot), X Layer, Sui, Tron, Starknet and Zcash as sources and destinations where assets and quotes permit. These additional routes are separate app flows." } },
@@ -219,23 +218,11 @@ h2 { font-size: clamp(30px, 4.4vw, 46px); line-height: 1.08; margin-bottom: 18px
 .feerow { display: flex; align-items: baseline; gap: 14px; padding: 16px 0; border-bottom: 1px solid var(--hairline); }
 .feerow:last-of-type { border-bottom: 0; }
 .feerow .big { font-size: 34px; font-weight: 600; letter-spacing: -0.02em; line-height: 1; min-width: 3.6ch; }
-.feerow .big.zero { color: var(--green); }
 .feerow .big.take { color: var(--sunset); }
 .feerow .big.cap { color: var(--violet); }
 .feerow .txt { font-size: 14px; color: var(--muted); line-height: 1.5; }
 .feerow .txt b { color: var(--cream); font-weight: 600; }
-.example { margin-top: 22px; padding: 16px 18px; border: 1px dashed var(--hairline-strong); border-radius: 12px; font-family: ui-monospace; font-size: 12.5px; color: var(--muted); line-height: 1.7; }
-.example b { color: var(--cream); }
 
-.tier { width: 100%; border-collapse: collapse; }
-.tier th, .tier td { padding: 13px 6px; text-align: left; border-bottom: 1px solid var(--hairline); font-size: 14px; }
-.tier th { font-family: ui-monospace; font-size: 10.5px; letter-spacing: 0.13em; text-transform: uppercase; color: var(--muted-2); font-weight: 500; }
-.tier td:last-child, .tier th:last-child { text-align: right; }
-.tier .pct { color: var(--sunset); font-weight: 600; font-family: ui-monospace; }
-.tier tr:last-child td { border-bottom: 0; }
-.tier .nm { color: var(--cream); }
-.pool { margin-top: 18px; font-size: 13px; color: var(--muted); line-height: 1.55; }
-.pool b { color: var(--cream); }
 
 /* ───── CHAIN GRID ───── */
 .chain-label { font-size: 15px; color: var(--muted); margin-top: 36px; }
@@ -342,8 +329,8 @@ footer.site { padding: 64px 24px 36px; background: var(--panel); border-top: 1px
         <span class="lab">Source and destination networks in the app</span>
       </div>
       <div class="c">
-        <span class="num"><b>0%</b> cut</span>
-        <span class="lab">Of your eligible partner markup; payout terms apply</span>
+        <span class="num"><b>1 bp</b></span>
+        <span class="lab">Base fee, plus capped improvement capture</span>
       </div>
     </div>
   </div>
@@ -383,8 +370,8 @@ footer.site { padding: 64px 24px 36px; background: var(--panel); border-top: 1px
         <span class="idx">03</span>
         <h3>Model the commercial case</h3>
         <p>
-          Published fees, partner markup rules and referral tiers let you assess a use case before
-          committing engineering time. Review payout conditions and live quotes for each route.
+          Published fees and live quotes let you assess a use case before committing engineering
+          time. Review the base fee, improvement caps and any upstream charges for each route.
         </p>
         <div class="foot"><span class="badge live">Live</span></div>
       </div>
@@ -397,42 +384,38 @@ footer.site { padding: 64px 24px 36px; background: var(--panel); border-top: 1px
 <!-- ───────── ECONOMICS ───────── -->
 <section id="economics">
   <div class="wrap">
-    <div class="eyebrow reveal">How partners win</div>
-    <h2 class="reveal">Charge your own fee. Ophis takes 0% of it.</h2>
+    <div class="eyebrow reveal">Fees and referrals</div>
+    <h2 class="reveal">Published fees. Track your referrals.</h2>
     <p class="lede reveal">
-      Add your own fee to eligible EVM orders and retain that markup under the applicable payout
-      terms. Ophis takes 0% of your fee. You can also earn a share of the verified base fee on
-      eligible referred flow. Ophis pricing, caps and any upstream charges remain separate.
+      Ophis orders carry a 1 bp base fee plus capped price-improvement capture.
+      Create a referral code, share your link and view referred wallets and volume in your profile.
     </p>
 
     <div class="grid cols-3 reveal">
       <div class="card">
         <span class="idx">01</span>
-        <h3>Set your own fee</h3>
+        <h3>Review the fees</h3>
         <p>
-          Add an eligible fee entry to ERC-20 orders within the published caps. Ophis takes no cut
-          of that entry. Payout terms differ by chain: Optimism and Unichain require onboarding and
-          an enabled, funded payout lane; CoW-hosted chains follow CoW's distribution terms.
-          Robinhood Chain and Arc do not have an Ophis own-fee payout guarantee.
+          Review the live quote and published fee caps for your route. CoW-hosted chains also apply
+          CoW Protocol fees. Network, liquidity and bridge costs depend on the route.
         </p>
         <div class="foot"><span class="badge live">Live</span></div>
       </div>
       <div class="card">
         <span class="idx">02</span>
-        <h3>Earn on referred flow</h3>
+        <h3>Track referred flow</h3>
         <p>
-          Eligible referrals receive 8% of the verified base fee Ophis keeps at the self-serve tier,
-          or 12% at the partner tier. Track attributed volume and reward status in your dashboard;
-          eligibility and payout conditions apply.
+          Create a referral code in your profile and share your link. New wallets can activate your
+          code. View referred wallet counts and volume in your dashboard.
         </p>
         <div class="foot"><span class="badge live">Live</span></div>
       </div>
       <div class="card">
         <span class="idx">03</span>
-        <h3>Discuss a commercial fit</h3>
+        <h3>Discuss your integration</h3>
         <p>
-          Tell us your audience, target networks and expected volume. We can discuss integration
-          support, token listings, OTC routing needs and a scoped commercial agreement.
+          Tell us your audience, target networks and expected volume. We can discuss the widget,
+          SDK and integration support.
         </p>
         <div class="foot"><span class="badge partner">Contact us</span></div>
       </div>
@@ -443,71 +426,25 @@ footer.site { padding: 64px 24px 36px; background: var(--panel); border-top: 1px
         <div class="ttl">Published rates</div>
         <div class="feerow">
           <span class="big take">1 bp</span>
-          <span class="txt"><b>All-chain base rate</b>, plus 80% of volatile improvement capped at
-          99 bps, or 50% of stable improvement capped at 20 bps, including on Arc.</span>
-        </div>
-        <div class="feerow">
-          <span class="big zero">0%</span>
-          <span class="txt"><b>Ophis's cut of your markup.</b> Your own fee entry can use the room
-          permitted up to the 90 bps registered-partner ceiling. Hosted settlement uses a 190 bps
-          aggregate cap so that fee can coexist with Ophis's 100 bps worst case. Ophis takes no cut; the protocol charge is applied separately, not
-          taken from it. Your net receipt depends on the payout path (see below). On CoW-hosted chains, payout runs through CoW's weekly distribution under
-          CoW's terms.</span>
+          <span class="txt"><b>Base fee</b> on supported orderbook chains, including Arc.</span>
         </div>
         <div class="feerow">
           <span class="big cap">99 bps</span>
-          <span class="txt"><b>Volatile capture cap</b> where improvement capture applies. Stablecoin capture is
-          capped at 20 bps; each also carries the 1 bp base.</span>
+          <span class="txt"><b>Volatile capture cap.</b> Ophis captures 80% of reference-quote
+          improvement on volatile pairs, capped at 99 bps of volume.</span>
         </div>
-        <div class="example">
-          Worked example: your own rate <b>80 bps</b> on <b>$1,000,000</b> monthly volume.<br>
-          Ophis takes <b>0%</b> of your <b>$8,000</b> markup. On Optimism, Unichain, and Robinhood Chain, the separate
-          Ophis charge is 1 bp plus capped price-improvement capture. Arc uses the same capped backend improvement policy for in-market orders and has no own-fee payout guarantee. CoW-hosted payouts follow CoW's terms; on Optimism and Unichain, WETH payouts from
-          the sovereign chain's Safe require onboarding, activation, funding and Safe approval. Robinhood payout is not
-          guaranteed until its dedicated payout lane is enabled.<br>
+        <div class="feerow">
+          <span class="big cap">20 bps</span>
+          <span class="txt"><b>Stablecoin capture cap.</b> Ophis captures 50% of reference-quote
+          improvement on stable pairs, capped at 20 bps of volume. The base fee is additional.</span>
         </div>
       </div>
       <div class="panel">
-        <div class="ttl">Referral layer, on top</div>
-        <table class="tier">
-          <thead>
-            <tr><th>Tier</th><th>Referred volume</th><th>Share</th></tr>
-          </thead>
-          <tbody>
-            <tr><td class="nm">Self-serve</td><td>Capped at $1M/month</td><td class="pct">8%</td></tr>
-            <tr><td class="nm">Partner (by contact)</td><td>Uncapped</td><td class="pct">12%</td></tr>
-          </tbody>
-        </table>
-        <p class="pool">
-          The referral share is calculated on the <b>verified base fee Ophis keeps</b> from the flow you
-          refer. View rewards and payout status in your dashboard. Arc is included in referral
-          indexing; integrator own-fee payout terms are separate.
-        </p>
-      </div>
-    </div>
-
-    <div class="grid cols-2 reveal" style="margin-top: 16px;">
-      <div class="card">
-        <h3>Payouts on Optimism and Unichain</h3>
+        <div class="ttl">Referral attribution</div>
         <p>
-          On Optimism and Unichain, your recipient address is added to the settlement backend's
-          fee-recipient allowlist after verification, then your own-fee is metered per settled trade
-          and eligible for payout to your recipient in WETH from the sovereign chain's Ophis Safe, with
-          Ophis taking 0% of it. Execution is a 2-of-3 Safe signature. The payout runs once your
-          recipient is onboarded (allowlisted) and we have enabled and funded it; amounts are
-          USD-valued from routed volume, not exact per-token restitution. The 1 bp sovereign base
-          and capped price-improvement policy remain separate from the third-party own-fee.
-        </p>
-      </div>
-      <div class="card">
-        <h3>Payouts on CoW-hosted chains</h3>
-        <p>
-          This is where a third-party own-fee is chargeable today. Stacked fee entries are accepted
-          and charged by CoW's production orderbooks, verified against live quotes in July 2026.
-          Payouts flow through CoW Protocol's weekly partner-fee distribution under CoW's terms,
-          which include a service fee on partner fees (25% by default) and a 0.001 WETH minimum.
-          Those terms also apply to stacked partner-fee recipients. Check executed payout records
-          for the amount received by your recipient.
+          Share your referral link from <a href="https://swap.ophis.fi/#/profile">your profile</a>.
+          Partners can view their code, referred wallets and volume in their dashboard.
+          Arc trades are included in referral indexing.
         </p>
       </div>
     </div>
@@ -614,8 +551,8 @@ footer.site { padding: 64px 24px 36px; background: var(--panel); border-top: 1px
 <section style="padding: 0 24px;">
   <div class="cta-banner reveal">
     <div>
-      <h3>Partner access &amp; your fee line</h3>
-      <p>Share your chains, expected volume and integration needs. Review fee caps and payout conditions before routing partner flow.</p>
+      <h3>Plan your integration</h3>
+      <p>Share your chains, expected volume and integration needs. Review fee caps and live quotes before routing trades.</p>
     </div>
     <a class="btn primary" href="https://swap.ophis.fi/#/contact">Discuss partner access →</a>
   </div>
@@ -715,7 +652,7 @@ footer.site { padding: 64px 24px 36px; background: var(--panel); border-top: 1px
         <div class="foot"><span class="badge live">Live</span></div>
       </div>
       <div class="card">
-        <h3>Partner-tier support</h3>
+        <h3>Integration support</h3>
         <p>
           Contact us with your use case, target volume and support needs.
           Any private service terms require a separate agreement.
@@ -759,7 +696,7 @@ footer.site { padding: 64px 24px 36px; background: var(--panel); border-top: 1px
         <h3>What Ophis is</h3>
         <p>
           A non-custodial swap interface across EVM networks, with additional app routes,
-          integration tools and a partner program that tracks eligible referral fees.
+          integration tools and referral attribution for wallets and volume.
           Operated independently and open-source under GPL-3.0.
         </p>
       </div>
@@ -806,22 +743,8 @@ footer.site { padding: 64px 24px 36px; background: var(--panel); border-top: 1px
             also apply CoW Protocol fees. Execution and price depend on the live quote.
           </p>
           <p>
-            Integrators can add their own fee within the documented caps. Ophis takes 0% of that
-            markup; the payout path and upstream deductions affect the amount received.
-            Review the <a href="#economics">rates and payout conditions</a> and
+            Review the <a href="#economics">published rates</a> and
             <a href="https://docs.ophis.fi/partners">partner guide</a> before integrating.
-          </p>
-        </div>
-      </details>
-
-      <details>
-        <summary>Where are integrator own-fees guaranteed for payout?</summary>
-        <div class="body">
-          <p>
-            Ophis-operated own-fee payout is currently guaranteed on Optimism and Unichain once
-            the recipient is onboarded and its payout lane is enabled. Robinhood Chain and Arc do
-            not have an Ophis own-fee payout guarantee. CoW-hosted payouts follow CoW Protocol's
-            terms and service fee.
           </p>
         </div>
       </details>
@@ -891,8 +814,8 @@ footer.site { padding: 64px 24px 36px; background: var(--panel); border-top: 1px
   <div class="wrap" style="text-align: center;">
     <h2 class="reveal" style="margin: 0 auto;">Start the conversation.</h2>
     <p class="lede reveal" style="margin: 18px auto 30px;">
-      Tell us your chains, expected volume and integration needs. We can discuss the published pricing,
-      payout conditions and an appropriate integration path.
+      Tell us your chains, expected volume and integration needs. We can discuss published pricing
+      and an appropriate integration path.
     </p>
     <a class="btn primary reveal" href="https://swap.ophis.fi/#/contact">Contact us →</a>
   </div>

@@ -71,7 +71,6 @@ require_text apps/frontend/apps/ophis-landing/src/content/blog/let-an-ai-agent-s
 require_text apps/frontend/apps/ophis-landing/public/.well-known/ai-plugin.json "Robinhood Chain"
 require_text apps/frontend/apps/ophis-landing/public/.well-known/ai-plugin.json "80% of reference-quote improvement"
 require_text apps/frontend/apps/ophis-landing/public/.well-known/agent-skills/swap-via-ophis/SKILL.md "volatile pairs (99 bps cap)"
-require_text apps/frontend/apps/cowswap-frontend/public/business/index.html "Robinhood payout is not"
 require_text infra/optimism-mainnet/configs/autopilot.toml "max-volume-factor = 0.0099"
 require_text infra/unichain-mainnet/configs/autopilot.toml.tmpl "max-volume-factor = 0.0099"
 require_text infra/robinhood-mainnet/configs/autopilot.toml.tmpl "max-volume-factor = 0.0099"

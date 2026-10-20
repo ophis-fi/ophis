@@ -187,9 +187,9 @@ appDataHash=$(cast keccak "$appData")
   reference-quote-improvement capture; never encode that policy as another
   appData fee.
 - Optional referral: if the user has an Ophis referral code (minted at
-  https://swap.ophis.fi/#/rewards), add
+  https://swap.ophis.fi/#/affiliate), add
   `ophisReferrer: { code: "<code>" }` to `metadata` (lowercase, 3-64 chars of
-  `a-z0-9_-`) so the code's owner earns rebate credit.
+  `a-z0-9_-`) to attribute routed volume to the code.
 - `ophisSource.app` attributes the order to this skill family for analytics;
   it changes nothing about execution.
 
@@ -198,8 +198,10 @@ appDataHash=$(cast keccak "$appData")
 The appData carries the 1 bip sovereign base. Ophis also retains 80% of
 reference-quote improvement on volatile pairs, capped at 99 bips of volume, or
 50% on stable pairs, capped at 20 bips. The trader receives the remainder and
-all improvement above the cap. Eligible volume weights a share of the WETH rebate
-pool; view rewards and payout status in the dashboard. Details: https://docs.ophis.fi/fees.
+all improvement above the cap. Details: https://docs.ophis.fi/fees.
+
+Track routed volume at `https://rebates.ophis.fi/earnings/<appCode>`.
+The USDG trade-rewards campaign is at https://swap.ophis.fi/#/rewards.
 
 ## Errors you'll see
 

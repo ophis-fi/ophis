@@ -1042,10 +1042,6 @@ msgstr "pools available to get yield on your assets!"
 msgid "Confirm"
 msgstr "Confirm"
 
-#: apps/cowswap-frontend/src/modules/volumeFee/hooks/useVolumeFeeTooltip.ts
-msgid "This token gets the maximum Ophis rebate: a reduced {OPHIS_BOOSTED_VOLUME_BPS} bp fee on this swap, applied automatically regardless of your volume tier."
-msgstr "This token gets the maximum Ophis rebate: a reduced {OPHIS_BOOSTED_VOLUME_BPS} bp fee on this swap, applied automatically regardless of your volume tier."
-
 #: apps/cowswap-frontend/src/ophis/components/CoinbaseStockContext/CoinbaseStockContext.container.tsx
 msgid "Coinbase tokenized stocks are only available to persons in eligible jurisdictions outside the U.S. This panel is informational and does not change your order. <0>How B20 stocks work ↗</0>"
 msgstr "Coinbase tokenized stocks are only available to persons in eligible jurisdictions outside the U.S. This panel is informational and does not change your order. <0>How B20 stocks work ↗</0>"
@@ -1256,10 +1252,6 @@ msgstr "creating"
 #: apps/cowswap-frontend/src/modules/hooksStore/dapps/AirdropHookApp/index.tsx
 msgid "Claimable amount"
 msgstr "Claimable amount"
-
-#: apps/cowswap-frontend/src/modules/volumeFee/hooks/useVolumeFeeTooltip.ts
-msgid "⚡ Max rebate"
-msgstr "⚡ Max rebate"
 
 #: apps/cowswap-frontend/src/modules/accountProxy/containers/AccountProxiesPage/index.tsx
 msgid "Select an {accountProxyLabelString} to check for available refunds {chain}"
@@ -2542,10 +2534,6 @@ msgstr "partner fee"
 msgid "Return to Swap"
 msgstr "Return to Swap"
 
-#: apps/cowswap-frontend/src/ophis/components/AssetSwap/AssetSwapFields.tsx
-#~ msgid "You pay: choose a token"
-#~ msgstr "You pay: choose a token"
-
 #: apps/cowswap-frontend/src/common/utils/tradeSettingsTooltips.tsx
 msgid "Native currency"
 msgstr "Native currency"
@@ -2616,6 +2604,10 @@ msgstr "Estimated bridge transaction time: {bridgeEstimatedTime} minutes"
 #: apps/cowswap-frontend/src/common/containers/CoWAmmBanner/index.tsx
 msgid "Booooost APR gas-free!"
 msgstr "Booooost APR gas-free!"
+
+#: apps/cowswap-frontend/src/modules/volumeFee/hooks/useVolumeFeeTooltip.ts
+msgid "The Ophis base fee is {OPHIS_BOOSTED_VOLUME_BPS} bp on this swap, plus capped price-improvement capture."
+msgstr "The Ophis base fee is {OPHIS_BOOSTED_VOLUME_BPS} bp on this swap, plus capped price-improvement capture."
 
 #: apps/cowswap-frontend/src/modules/erc20Approve/pure/ApproveConfirmation/AdvancedApprove.tsx
 msgid "In case you want to give allowance only for the trade amount, use the advanced mode. You can also change the amount manually."
@@ -3253,6 +3245,10 @@ msgstr "Uniswap v3 + v2 via USDC"
 msgid "The time each part of your TWAP order will remain active."
 msgstr "The time each part of your TWAP order will remain active."
 
+#: libs/common-utils/src/legacyAddressUtils.ts
+msgid "View on block explorer"
+msgstr "View on block explorer"
+
 #: apps/cowswap-frontend/src/modules/tokensList/containers/SelectTokenWidget/internal/slots/ChainSelector.tsx
 #: apps/cowswap-frontend/src/modules/tokensList/containers/SelectTokenWidget/internal/slots/DesktopChainPanel.tsx
 msgid "Receive on"
@@ -3541,10 +3537,6 @@ msgstr "Insufficient allowance"
 #: apps/cowswap-frontend/src/pages/Otc/OtcOrderDetailView.pure.tsx
 msgid "Wallet actions re-read the current order and verify the network before opening the wallet."
 msgstr "Wallet actions re-read the current order and verify the network before opening the wallet."
-
-#: apps/cowswap-frontend/src/modules/trade/containers/TradeWidget/TradeWidgetForm.tsx
-#~ msgid "You pay"
-#~ msgstr "You pay"
 
 #: apps/cowswap-frontend/src/modules/tradeWidgetAddons/containers/RowQuoteId/QuoteVerificationIndicator.tsx
 msgid "Unverified"
@@ -3949,6 +3941,10 @@ msgstr "No order exists with id {orderIdText} on the escrow contract."
 #: apps/cowswap-frontend/src/modules/hooksStore/dapps/BuildHookApp/index.tsx
 msgid "Target"
 msgstr "Target"
+
+#: libs/common-utils/src/legacyAddressUtils.ts
+msgid "View on {explorerTitle}"
+msgstr "View on {explorerTitle}"
 
 #: apps/cowswap-frontend/src/modules/bridge/pure/StopStatus/index.tsx
 msgid "Bridge failed on"
@@ -5566,10 +5562,6 @@ msgstr "Maker {maker} on Etherscan"
 msgid "Not compatible with current wallet type"
 msgstr "Not compatible with current wallet type"
 
-#: apps/cowswap-frontend/src/modules/tokensList/containers/SelectTokenWidget/hooks/useWidgetMetadata.ts
-#~ msgid "Swap from"
-#~ msgstr "Swap from"
-
 #: apps/cowswap-frontend/src/modules/trade/pure/NetReceivedRow/index.tsx
 msgid "+ gas"
 msgstr "+ gas"
@@ -5851,6 +5843,7 @@ msgstr "Local device time is not accurate, Ophis most likely will not work corre
 msgid "Connect wallet banner"
 msgstr "Connect wallet banner"
 
+#: apps/cowswap-frontend/src/modules/volumeFee/hooks/useVolumeFeeTooltip.ts
 #: apps/cowswap-frontend/src/modules/volumeFee/hooks/useVolumeFeeTooltip.ts
 msgid "Ophis fee"
 msgstr "Ophis fee"
@@ -6679,10 +6672,6 @@ msgstr "Invalid proxy address"
 #: apps/cowswap-frontend/src/modules/bridge/pure/contents/SwapResultContent/contents.tsx
 msgid "Exec. price"
 msgstr "Exec. price"
-
-#: apps/cowswap-frontend/src/ophis/components/AssetSwap/AssetSwapFields.tsx
-#~ msgid "You receive: choose a token"
-#~ msgstr "You receive: choose a token"
 
 #: apps/cowswap-frontend/src/modules/orderProgressBar/pure/steps/FinishedStep.tsx
 msgid "You sold <0/>"

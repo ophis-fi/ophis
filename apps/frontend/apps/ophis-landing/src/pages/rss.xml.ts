@@ -41,7 +41,7 @@ export const GET: APIRoute = async () => {
     <title>Ophis Blog</title>
     <link>${SITE}/blog/</link>
     <atom:link href="${SITE}/rss.xml" rel="self" type="application/rss+xml" />
-    <description>Intent-based, MEV-protected swaps for the agent era. AI agents, rebates, and multi-chain DeFi.</description>
+    <description>Intent-based, MEV-protected swaps for the agent era. AI agents, trade rewards, and multi-chain DeFi.</description>
     <language>en</language>
     <lastBuildDate>${lastBuild}</lastBuildDate>
 ${items}

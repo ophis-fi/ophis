@@ -7,9 +7,7 @@ export { affiliateOwnCodeAtom, setAffiliateOwnCodeAtom } from './state/affiliate
 // signing hook consumed by the /affiliate and /partner pages.
 export { RefCodeCaptureUpdater } from './updaters/RefCodeCaptureUpdater'
 export { useOphisAffiliateSign } from './hooks/useOphisAffiliateSign'
-// Folded into the Profile page (Phase C restructure, 2026-06-11). PUBLIC
-// regular-8% affiliate dashboard body (mint code + share link + referred
-// totals). No partner-tier surface here.
+// Profile referral code creation, share link, and attribution totals.
 export { OphisAffiliateDashboard } from './containers/OphisAffiliateDashboard'
 export {
   AffiliateApiError,
@@ -20,7 +18,6 @@ export {
   getAffiliateStats,
   getLeaderboard,
   getPartnerDashboard,
-  getRankStatus,
   getTradeRewardStatus,
   getWalletXp,
   lookupRefCode,
@@ -34,7 +31,6 @@ export type {
   LeaderboardResponse,
   PartnerDashboard,
   PartnerReferee,
-  RankStatus,
   RefBindRequestBody,
   RefBindResponse,
   RefCodeCreateResponse,

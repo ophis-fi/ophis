@@ -43,3 +43,16 @@ describe.each([false, true])('boosted trade: %s', (isBoosted) => {
     }
   })
 })
+
+it('describes the configured token base fee and improvement capture without a rebate promotion', () => {
+  jest.mocked(useInjectedWidgetParams).mockReturnValue({})
+  jest.mocked(useAtomValue).mockImplementation((atom) => {
+    if (atom === isBoostedTradeAtom) return true
+    return undefined
+  })
+
+  const { result } = renderHook(() => useVolumeFeeTooltip(), { wrapper: LinguiWrapper })
+
+  expect(result.current.label).toBe('Ophis fee')
+  expect(result.current.content).toBe('The Ophis base fee is 1 bp on this swap, plus capped price-improvement capture.')
+})

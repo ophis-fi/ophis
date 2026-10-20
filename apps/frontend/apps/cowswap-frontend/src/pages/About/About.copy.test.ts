@@ -16,7 +16,7 @@ describe('About page execution and security copy', () => {
     expect(copy).toContain('not every Ophis modification, deployment, or external route')
     expect(copy).toContain('SDK v0.4.3 or later cover 14 EVM mainnets, including Arc')
     expect(copy).toContain(
-      'Arc charges the 1 bp base; eligible settled trades count toward volume and referral rebates',
+      'Arc charges the 1 bp base plus capped improvement capture. Eligible settled trades count toward volume and referral attribution',
     )
     expect(copy).toContain('For Arc referrals, MCP clients pass referrerCode to build_order')
     expect(copy).toContain('direct SDK integrations require v0.4.4 or later')

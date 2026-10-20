@@ -53,17 +53,14 @@ export function RewardsPage(): ReactNode {
       <Section id="xp" title="Your XP">
         {!account ? (
           <Callout tone="info" title="Connect a wallet">
-            <p>
-              XP is read from your trading history on the public rebate indexer. Connect a wallet to see your balance
-              and unlock rewards. Nothing to sign, nothing stored by Ophis.
-            </p>
+            <p>Connect a wallet to see XP from your trading history and unlock rewards.</p>
             <ConnectWalletCta />
           </Callout>
         ) : isXpLoading ? (
           <p>Loading your XP...</p>
         ) : error ? (
           <Callout tone="warning" title="Could not load your XP">
-            <p>The rebate indexer did not respond. Refresh the page to try again.</p>
+            <p>The rewards service did not respond. Refresh the page to try again.</p>
           </Callout>
         ) : (
           <styledEl.XpRow>

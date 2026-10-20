@@ -1,24 +1,6 @@
 /**
- * OphisAffiliateDashboard — the self-serve affiliate dashboard body, extracted
- * from the standalone /affiliate page so it can be folded into the Profile
- * page (Phase C restructure, 2026-06-11).
- *
- * Wallet-aware. Calls the NATIVE rebate-indexer API directly
- * (rebates.ophis.fi via REACT_APP_REBATES_API) — no CoW BFF, no LaunchDarkly.
- * Shows the connected wallet's affiliate rate, referred count, and
- * current-cycle referred volume; lets them mint a regular referral code
- * (signed) and copy a shareable ?ref link.
- *
- * PARTNER-AWARE: when GET /affiliate/:wallet reports `kind === 'partner'` for
- * the connected wallet, this renders the read-only PartnerAffiliateSummary
- * (status, rate, assigned code + share link, referred totals, link to the
- * signature-gated /#/partner breakdown) INSTEAD of the regular mint-a-code
- * flow. Partners already have a code, so the mint action is never offered to
- * them. Everything below the partner branch is the REGULAR 8% self-serve tier
- * only; the friends-and-family tier is NOT surfaced here.
- *
- * AGENTS.md compliance: named export (no default), shared chrome reused from
- * the Affiliate page's styled module.
+ * Referral code creation, sharing, and attribution totals for the Profile page.
+ * Partners see their assigned code and a link to the signed referee breakdown.
  */
 import { useSetAtom } from 'jotai'
 import { Dispatch, ReactNode, SetStateAction, useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
@@ -149,7 +131,6 @@ function useCreateAffiliateCode(
           : {
               wallet: startAccount,
               kind: 'regular',
-              rateOfNetFeePct: 8,
               activeCodes: [res.code],
               referredCount: 0,
               currentCycleVolumeUsd: 0,
@@ -175,11 +156,10 @@ function useCreateAffiliateCode(
 interface ReferralStatusSectionProps {
   loadError: boolean
   loading: boolean
-  rate: number
   stats: AffiliateStats | null
 }
 
-function ReferralStatusSection({ loadError, loading, rate, stats }: ReferralStatusSectionProps): ReactNode {
+function ReferralStatusSection({ loadError, loading, stats }: ReferralStatusSectionProps): ReactNode {
   let content: ReactNode
   if (loading) {
     content = <p>Loading your referral status...</p>
@@ -192,16 +172,12 @@ function ReferralStatusSection({ loadError, loading, rate, stats }: ReferralStat
   } else {
     content = (
       <>
-        <p>
-          Earn {rate}% of the verified base fee Ophis keeps on every trade your referrals route. Paid monthly in WETH.
-        </p>
         <MetricRow>
-          <MetricCard label="Your rate" value={`${rate}%`} sublabel="of the verified base fee" compact />
           <MetricCard label="Referred wallets" value={stats?.referredCount ?? 0} compact />
           <MetricCard
             label="Referred volume"
             value={formatUsd(stats?.currentCycleVolumeUsd ?? 0)}
-            sublabel="this cycle"
+            sublabel="this month"
             compact
           />
         </MetricRow>
@@ -210,7 +186,7 @@ function ReferralStatusSection({ loadError, loading, rate, stats }: ReferralStat
   }
 
   return (
-    <Section id="referral" title="Refer and earn">
+    <Section id="referral" title="Referrals">
       {content}
     </Section>
   )
@@ -251,9 +227,8 @@ function ReferralCodeSection({
         <CreateReferralCodeContent createState={createState} onCreate={onCreate} />
       )}
       <p>
-        Share your code or link. When a net-new wallet trades on Ophis after using your link, they&apos;re bound to you,
-        and you earn a share of the verified base fee Ophis keeps on their trades. Aggregate totals only, no per-trade
-        tracking is shown here.
+        Share your referral link so new wallets can activate your code. View your referred wallet count and volume
+        above.
       </p>
     </Section>
   )
@@ -269,7 +244,7 @@ function CreateReferralCodeContent({
       ? 'Confirm in your wallet...'
       : createState === 'creating'
         ? 'Creating...'
-        : 'Mint your referral code'
+        : 'Create your referral code'
 
   return (
     <>
@@ -301,10 +276,6 @@ export function OphisAffiliateDashboard({ account }: Props): ReactNode {
   const { createState, onCreate } = useCreateAffiliateCode(account, setStats)
 
   const activeCode = stats?.activeCodes?.[0]
-  // Render the rate from the backend (8 is only a last-resort fallback before
-  // stats load), so the view tracks FEE_SHARE_BPS if the policy ever changes.
-  const rate = stats?.rateOfNetFeePct ?? 8
-
   // Cache the connected wallet's own code so the post-trade "share your swap"
   // tweet can embed it as ?ref= (turning every affiliate's swap into a referral
   // link) without a fresh signature. Placed before the partner early-return so
@@ -325,7 +296,7 @@ export function OphisAffiliateDashboard({ account }: Props): ReactNode {
 
   return (
     <>
-      <ReferralStatusSection loadError={loadError} loading={loading} rate={rate} stats={stats} />
+      <ReferralStatusSection loadError={loadError} loading={loading} stats={stats} />
 
       {!loading && !loadError && (
         <ReferralCodeSection

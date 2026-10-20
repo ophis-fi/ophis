@@ -53,12 +53,11 @@ For standard batch-auction orders:
   orders keep funds in the wallet until settlement; native-token, bridge and
   external OTC flows can require deposits and have separate recovery rules.
 - **Transparent, capped fees.** A 0.01% (1 bp) base plus the capped improvement
-  policy above, with a share returned monthly as WETH rebates plus an 8%
-  referral on indexed chains, including Arc.
+  policy above.
 
 **Live across 14 EVM chains**, with Ophis-operated settlement on Optimism
 (chain 10), Unichain (130), Robinhood Chain (4663), and Arc (5042), plus CoW-hosted
-settlement on the other ten chains. Arc applies the same capped backend improvement policy for in-market orders; eligible settled trades are covered by rebate indexing.
+settlement on the other ten chains. Arc applies the same capped backend improvement policy for in-market orders; settled trades are indexed for routed volume and referral attribution.
 
 ## Quickstart: the Intent API
 
@@ -197,7 +196,7 @@ Canonical contract addresses and the disclosure policy live in
 | `apps/frontend/` | [`cowprotocol/cowswap`](https://github.com/cowprotocol/cowswap) (subtree) | Vite/Nx monorepo holding several surfaces: `apps/cowswap-frontend` is the swap UI (Ophis code under `src/ophis/` and `src/modules/mevReceipt/`), `apps/explorer` is the order explorer, `apps/ophis-landing` is the ophis.fi landing site. Self-contained pnpm workspace (own lockfile, excluded from the root). |
 | `apps/backend/` | [`cowprotocol/services`](https://github.com/cowprotocol/services) (subtree) | Rust orderbook, autopilot, driver, baseline solver. Ophis additions live in dedicated crates and `ophis::` module paths. |
 | `apps/mcp-server/` | New | `@ophis/mcp-server`: agent-facing MCP server (Streamable-HTTP) deployed as a Cloudflare Worker at `mcp.ophis.fi/mcp`. Holds no keys and never signs. |
-| `apps/rebate-indexer/` | New | `@ophis/rebate-indexer`: off-chain volume-tier and WETH rebate indexer plus Safe batch proposer ([rebates.ophis.fi](https://rebates.ophis.fi)). |
+| `apps/rebate-indexer/` | New | `@ophis/rebate-indexer`: trade indexing, referral attribution, routed-volume reports, and the USDG trade-rewards campaign ([rebates.ophis.fi](https://rebates.ophis.fi)). |
 | `apps/docs-ophis/` | New | Docusaurus docs portal ([docs.ophis.fi](https://docs.ophis.fi)). Self-contained app (own lockfile, excluded from the root, like `apps/frontend`). |
 | `packages/sdk/` | New | [`@ophis/sdk`](packages/sdk): dependency-free helpers for the per-chain orderbook host, EIP-712 order domain, CIP-75 partner-fee `appData`, receiver-pinning guards, tier assignment, and the supported-chain registry. |
 | `packages/cli/` | New | [`@ophis/cli`](packages/cli): quote, swap and bridge from your terminal, with approvals in your wallet. Install with `npm install -g @ophis/cli` (Node.js 20 or later). [CLI guide](https://docs.ophis.fi/cli). |
@@ -216,7 +215,7 @@ ophis/
 ├── apps/
 │   ├── frontend/        cowswap fork: swap UI + explorer + landing site
 │   ├── backend/         cowprotocol/services fork (Rust)
-│   ├── rebate-indexer/  tier + WETH rebate API, Safe batch proposer
+│   ├── rebate-indexer/  trade indexing, routed-volume reports, USDG trade rewards
 │   ├── docs-ophis/      Docusaurus docs portal
 │   └── mcp-server/      agent-facing MCP Worker (mcp.ophis.fi)
 ├── contracts/           GPv2 settlement contracts (+ per-network deployments)
@@ -268,7 +267,7 @@ Every surface deploys independently from `main`:
 - **Landing** [`landing-deploy.yml`](.github/workflows/landing-deploy.yml): path-filtered build with a Playwright and Lighthouse budget gate, to Cloudflare Pages.
 - **Docs** [`docs-deploy.yml`](.github/workflows/docs-deploy.yml): the Docusaurus site to its own Cloudflare Pages project.
 - **MCP server** [`mcp-deploy.yml`](.github/workflows/mcp-deploy.yml): to Cloudflare Workers (custom domain `mcp.ophis.fi`) with a least-privilege Workers token; [`mcp-registry-release.yml`](.github/workflows/mcp-registry-release.yml) publishes matching versioned metadata to the official MCP Registry from protected `mcp-v*` tags.
-- **Rebate indexer** [`rebate-indexer-deploy.yml`](.github/workflows/rebate-indexer-deploy.yml): to self-hosted infrastructure over a private network.
+- **Trade indexer** [`rebate-indexer-deploy.yml`](.github/workflows/rebate-indexer-deploy.yml): to self-hosted infrastructure over a private network.
 - **Operated-chain backends**: the Optimism, Unichain, Robinhood Chain, and Arc
   orderbooks, autopilots, drivers, and solver lanes run on Ophis infrastructure
   from `infra/optimism-mainnet/`, `infra/unichain-mainnet/`,
@@ -282,7 +281,7 @@ scans), and [`echidna.yml`](.github/workflows/echidna.yml) (contract fuzzing).
 All package and MCP publishing controls are documented in the
 [release runbook](docs/operations/release-publishing.md).
 
-## Fees and rebates
+## Fees, attribution and trade rewards
 
 On every supported chain, Ophis charges a **0.01% (1 bp)** base. It also charges a capped
 share of reference-quote improvement: **80% capped at 99 bps** for volatile
@@ -290,17 +289,19 @@ pairs and **50% capped at 20 bps** for stable pairs. The operated-chain backends
 apply the improvement policy; hosted orders encode it in CIP-75 appData and
 separately pay CoW Protocol's upstream fees.
 
-On indexed chains, including Arc, part of the fee flows back to traders:
+- **Referral attribution.** Create a code in the
+  [swap app](https://swap.ophis.fi/#/affiliate) and share
+  `https://swap.ophis.fi/?ref=YOURCODE`. Orders carry attribution through
+  `appCode` and referral metadata; MCP clients pass `referrerCode` to `build_order`.
+  Track routed volume in the earnings report at `https://rebates.ophis.fi/earnings/<appCode>`.
+- **Trade rewards.** The USDG campaign is live at
+  [swap.ophis.fi/#/rewards](https://swap.ophis.fi/#/rewards).
+- **Partner fees.** Partners can charge their own fee on CoW-hosted chains.
+  CoW pays it weekly when the weekly amount reaches 0.001 WETH.
 
-- **Volume-tier rebates.** Each month a share of collected WETH fees is paid back,
-  split across active wallets by 30-day volume and tier (Bronze through Platinum).
-  The [rebate indexer](https://rebates.ophis.fi) computes shares and a Safe batch
-  proposer pays out.
-- **Referrals.** Mint a code, share `https://swap.ophis.fi/?ref=YOURCODE`, and earn
-  8% of the verified base fee Ophis keeps on trades your referrals route, paid monthly in WETH.
-
-Full numbers and the tier ladder: [docs.ophis.fi/fees](https://docs.ophis.fi/fees)
-and [docs.ophis.fi/affiliate](https://docs.ophis.fi/affiliate).
+Details: [fees](https://docs.ophis.fi/fees),
+[referral attribution](https://docs.ophis.fi/affiliate), and
+[partner integration](https://docs.ophis.fi/partners).
 
 ## Security
 

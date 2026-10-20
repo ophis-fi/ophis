@@ -253,7 +253,7 @@ export function ProtocolPage(): ReactNode {
           The caps apply to the improvement component; the base fee is additional. On Ophis-operated chains, the backend
           applies the improvement policy to eligible in-market orders. On hosted chains, the order carries both fee
           components, and CoW Protocol fees can also apply. Network, liquidity, bridge, or integrator fees may be
-          additional. See the fee policy for the calculation and rebate terms.
+          additional. See the fee policy for the calculation and caps.
         </p>
         <KeyValueList
           items={[

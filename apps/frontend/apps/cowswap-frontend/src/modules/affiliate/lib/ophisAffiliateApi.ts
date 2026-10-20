@@ -64,10 +64,9 @@ export interface RefCodeCreateResponse {
 export interface AffiliateStats {
   wallet: string
   kind: AffiliateKind
-  rateOfNetFeePct: number
   activeCodes: string[]
   referredCount: number
-  /** Referred volume in the current payout cycle (shown to regular affiliates). */
+  /** Referred volume in the current UTC calendar month. */
   currentCycleVolumeUsd: number
   /** Lifetime referred volume since each referee bound (shown to partners). */
   lifetimeReferredVolumeUsd: number
@@ -84,35 +83,6 @@ export interface PartnerReferee {
 /** POST /partner (whitelist + signature gated) */
 export interface PartnerDashboard extends AffiliateStats {
   referees: PartnerReferee[]
-  /**
-   * Earnings panel fields, added with a newer rebate-indexer. Optional so the
-   * frontend keeps typechecking and degrades gracefully if it deploys before
-   * the backend. estimatedCurrentCycleEarningsUsd is a volume-derived estimate
-   * (not a settled figure); paidToDate is exact, summed from executed batches.
-   */
-  estimatedCurrentCycleEarningsUsd?: number
-  paidToDateWeth?: number
-  paidToDateUsd?: number
-  nextPayoutAt?: string | null
-  payoutStatus?: 'disabled' | 'not-configured' | 'dry-run' | 'scheduled'
-}
-
-/**
- * GET /tier/:wallet (JSON path; the same route serves an HTML tier page for
- * Accept: text/html). The rebate RANK = the volume-keyed tier from
- * apps/rebate-indexer/src/tiers.ts. `nextTier`/`nextThresholdUsd`/`toNextUsd`
- * are null at the top tier (platinum). `position` is the 1-based leaderboard
- * rank by 30-day volume, null if the wallet has no indexed volume.
- */
-export interface RankStatus {
-  wallet: string
-  tier: string
-  volume30dUsd: number
-  rebatePct: number
-  nextTier: string | null
-  nextThresholdUsd: number | null
-  toNextUsd: number | null
-  position: number | null
 }
 
 /** One row of GET /leaderboard. `wallet` is the TRUNCATED display address
@@ -121,7 +91,6 @@ export interface RankStatus {
 export interface LeaderboardEntry {
   rank: number
   wallet: string
-  tier: string
   volume30dUsd: number
   volumeTotalUsd: number
   affiliateCount: number
@@ -282,17 +251,6 @@ export function getAffiliateStats(wallet: string): Promise<AffiliateStats> {
   return fetch(`${REBATES_API}/affiliate/${encodeURIComponent(getAddressKey(wallet))}`).then((res) =>
     parseJson<AffiliateStats>(res),
   )
-}
-
-/**
- * GET /rank/:wallet returns the machine-readable RankStatus payload (tier,
- * 30d volume, progress to next tier, leaderboard position). Used by the
- * Profile rank chip. 404 (no volume yet) is handled by the caller as Unranked.
- */
-export function getRankStatus(wallet: string): Promise<RankStatus> {
-  return fetch(`${REBATES_API}/rank/${encodeURIComponent(getAddressKey(wallet))}`, {
-    headers: { accept: 'application/json' },
-  }).then((res) => parseJson<RankStatus>(res))
 }
 
 /**

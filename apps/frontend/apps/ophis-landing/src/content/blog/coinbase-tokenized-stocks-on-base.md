@@ -91,21 +91,9 @@ Ophis added a Base-specific stock panel beside the quote, the same way it did fo
 
 **It states the issuer's eligibility.** Coinbase tokenized stocks are only available to persons in eligible jurisdictions outside the U.S. The panel carries that statement on every stock pair. Ophis is a non-custodial interface: it does not hold the tokens, mint them, or redeem them.
 
-## Fees and rebates on Base
+## Fees on Base
 
 Base is one of the ten chains where Ophis settles through CoW Protocol's hosted stack rather than its own. Every trade pays the 1 bp Ophis base fee, and Ophis retains 80% of reference-quote improvement on volatile pairs, capped at 99 bps of volume, or 50% on stablecoin pairs, capped at 20 bps; the trader receives the remainder and everything above the cap. CoW Protocol also charges upstream fees on hosted chains, which Ophis does not receive. The applicable upstream rate depends on CoW's pair classification; use the executable quote for the total cost, including liquidity and network costs. The [fee docs](https://docs.ophis.fi/fees) carry the full breakdown per chain type.
-
-Rolling 30-day volume then places you in a rebate tier. The percentage is a weight, not a refund of your own fee: the rebate calculation allocates 21.25% of collected WETH fees to eligible wallets in proportion to their 30-day volume multiplied by their tier weight.
-
-| Tier | 30-day volume | Rebate |
-| --- | --- | --- |
-| Bronze | $20,000+ | 10% |
-| Silver | $50,000+ | 15% |
-| Gold | $100,000+ | 25% |
-| Palladium | $500,000+ | 35% |
-| Platinum | $1,000,000+ | 50% |
-
-View rewards and payout status in your dashboard. What a wallet receives depends on the pool and on every other eligible wallet's weighted volume that month. Your tier and progress show on the swap page, and the [fee docs](https://docs.ophis.fi/fees) carry the full mechanics.
 
 ## Coinbase stocks on Base and Robinhood Stock Tokens: two different products
 
@@ -156,7 +144,7 @@ No. Coinbase tokenized stocks are B20 tokens on Base issued by Coinbase; Robinho
 
 ### How much does a tokenized stock swap cost on Ophis?
 
-On Base, Ophis charges a 1 bp base fee plus 80% of reference-quote improvement on volatile pairs, capped at 99 bps of volume. CoW Protocol adds upstream fees according to its pair classification. Check the executable quote for the total cost, including liquidity and network costs. Rolling 30-day volume places you in a rebate tier whose weight sets your share of a pool of 21.25% of collected WETH fees.
+On Base, Ophis charges a 1 bp base fee plus 80% of reference-quote improvement on volatile pairs, capped at 99 bps of volume. CoW Protocol adds upstream fees according to its pair classification. Check the executable quote for the total cost, including liquidity and network costs.
 
 ## Start swapping
 

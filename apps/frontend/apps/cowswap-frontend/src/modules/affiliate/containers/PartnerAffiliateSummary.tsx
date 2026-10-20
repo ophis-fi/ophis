@@ -1,21 +1,7 @@
 /**
- * PartnerAffiliateSummary — the PARTNER-aware variant of the Profile affiliate
- * section. Rendered (instead of the regular self-serve "mint a code" flow) when
- * the connected wallet's PUBLIC GET /affiliate/:wallet payload reports
- * `kind === 'partner'`.
- *
- * Partners already have an assigned code, so this view NEVER offers the
- * mint-code action. It shows their partner status, rate, active code +
- * shareable link (copy), referred count / current-cycle referred volume, and a
- * link to the full signature-gated referee breakdown at /#/partner.
- *
- * Data shown here is the connected wallet's OWN aggregate data from the public
- * per-wallet endpoint. No other partner's data, no payout wallet, and no
- * friends-and-family tier is surfaced. The full referee breakdown stays behind
- * the signature gate on the Partner page.
- *
- * AGENTS.md compliance: named export (no default), shared chrome reused from
- * the Affiliate page's styled module + ophis/ds primitives.
+ * The connected partner's referral code, share link, and attribution totals.
+ * The per-wallet API supplies these aggregates; the full referee breakdown
+ * requires a signature on the Partner page.
  */
 import { ReactNode } from 'react'
 
@@ -52,21 +38,11 @@ export function PartnerAffiliateSummary({ stats }: Props): ReactNode {
 
   return (
     <>
-      <Section id="referral" title="Refer and earn">
+      <Section id="referral" title="Referrals">
         <div style={{ marginBottom: 6 }}>
           <Badge tone="partner">Ophis Partner</Badge>
         </div>
-        <p>
-          Earn {stats.rateOfNetFeePct}% of the verified base fee Ophis keeps on every trade your referrals route. Paid
-          monthly in WETH.
-        </p>
         <MetricRow>
-          <MetricCard
-            label="Your rate"
-            value={`${stats.rateOfNetFeePct}%`}
-            sublabel="of the verified base fee"
-            compact
-          />
           <MetricCard label="Referred wallets" value={stats.referredCount ?? 0} compact />
           <MetricCard
             label="Referred volume"
@@ -99,8 +75,8 @@ export function PartnerAffiliateSummary({ stats }: Props): ReactNode {
           </p>
         )}
         <p>
-          Share your code or link. When a net-new wallet trades on Ophis after using your link, they&apos;re bound to
-          you, and you earn a share of the verified base fee Ophis keeps on their trades.
+          Share your referral link so new wallets can activate your code. View your referred wallet count and volume
+          above.
         </p>
         <p>
           <TextLink href={PARTNER_DASHBOARD_HREF}>View your full partner dashboard</TextLink> for the per-referee

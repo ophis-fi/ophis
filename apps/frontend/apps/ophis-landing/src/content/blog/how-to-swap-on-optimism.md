@@ -1,10 +1,10 @@
 ---
-title: "Swap on Optimism: MEV-protected DEX aggregator + rebates"
+title: "Swap on Optimism: MEV-protected DEX aggregator"
 description: "How to swap on Optimism with Ophis: intent orders, MEV-protected batch settlement, and solver-aligned pricing."
 pubDate: 2026-07-13
 updatedDate: 2026-10-04
 author: Ophis
-tags: [optimism, dex-aggregator, mev, rebates, swaps]
+tags: [optimism, dex-aggregator, mev, swaps]
 draft: false
 cover: ./how-to-swap-on-optimism.cover.jpg
 coverAlt: "Ophis emblem with Optimism and supported chain logos"
@@ -12,14 +12,14 @@ coverAlt: "Ophis emblem with Optimism and supported chain logos"
 
 To swap on Optimism, open the Ophis swap page with chain id 10 pre-selected, pick your pair, and sign the order your wallet shows. That order is an EIP-712 intent with a hard limit price, not a transaction: a competing solver network fills it and settles it in an MEV-protected batch. Pricing is a 1 bp base plus capped reference-quote improvement capture; see the [current schedule](/pricing/).
 
-Ophis, the intent-based DEX aggregator at ophis.fi, is a fork of CoW Protocol's frontend with a natural-language intent layer and an agent stack (MCP server, SDK, plugins) on top. It runs on 14 EVM chains, and Optimism is one of four where the deployment is sovereign, alongside [Unichain](/blog/how-to-swap-on-unichain/) [Robinhood Chain](/blog/swap-on-robinhood-chain/) and Arc: Ophis operates its own orderbook and settlement contracts there. This post covers the flow, what batch settlement changes versus a router, what it costs, and how integrators earn on referred flow.
+Ophis, the intent-based DEX aggregator at ophis.fi, is a fork of CoW Protocol's frontend with a natural-language intent layer and an agent stack (MCP server, SDK, plugins) on top. It runs on 14 EVM chains, and Optimism is one of four where the deployment is sovereign, alongside [Unichain](/blog/how-to-swap-on-unichain/) [Robinhood Chain](/blog/swap-on-robinhood-chain/) and Arc: Ophis operates its own orderbook and settlement contracts there. This post covers the flow, what batch settlement changes versus a router, what it costs, and how integrators track routed volume.
 
 ## Swap on Optimism in four steps
 
 1. **Open the app.** [swap.ophis.fi/#/10/swap](https://swap.ophis.fi/#/10/swap) loads with Optimism (chain id 10) pre-selected. Connect a wallet. Standard signed ERC-20 orders keep funds in your wallet until settlement. Native-token placement and bridges have separate deposit rules.
 2. **Sign an intent, not a transaction.** Enter the pair and amount, review the quote, and sign the order. The signature carries a hard limit price, the worst execution you can receive. Standard ERC-20 settlement is solver-paid; approvals and other wallet transactions can still require gas.
 3. **Let solvers compete.** Your order goes to the Ophis orderbook off chain, where solvers race to fill it. The batch settles at a uniform clearing price, and improvement is shared under the published capped pricing policy.
-4. **Watch the rebate meter.** The swap page shows your rolling 30-day volume tier and your progress toward the next one. From $20,000 of 30-day volume you enter the tier ladder, and a higher tier means a larger share of the rebate pool.
+4. **Check trade rewards.** View the live USDG campaign on the [trade rewards page](https://swap.ophis.fi/#/rewards).
 
 Step for step, this is the same flow as on any other Ophis chain. What is different on Optimism sits underneath.
 
@@ -33,7 +33,7 @@ On most of its chains, Ophis settles through CoW Protocol's canonical audited GP
 
 For a trader in the app this changes nothing visible. For anyone building against the API it changes two things: Optimism orders sign against a different EIP-712 domain than canonical CoW deployments, and they submit to a different orderbook host. Do not hardcode either one. Resolve the per-chain settlement domain via `@ophis/sdk` or the MCP `list_chains` tool and both are always correct.
 
-The settlement mechanics themselves are CoW Protocol's, and Ophis says so plainly: batch auctions, solver competition, and the GPv2 contract suite are documented at [docs.cow.fi](https://docs.cow.fi). Ophis adds the intent layer, the agent stack, and the fee-and-rebate economics below.
+The settlement mechanics themselves are CoW Protocol's, and Ophis says so plainly: batch auctions, solver competition, and the GPv2 contract suite are documented at [docs.cow.fi](https://docs.cow.fi). Ophis adds the intent layer, the agent stack, and the fee policy below.
 
 ## What batch settlement changes versus a router aggregator
 
@@ -47,23 +47,11 @@ An intent flips each of those properties.
 
 The [comparison page](https://docs.ophis.fi/comparison) goes deeper on the trade-offs, and [Ophis vs CoW Swap](/blog/ophis-vs-cow-swap/) covers what the fork changes.
 
-## Fees and the rebate ladder
+## Fees
 
 Every trade pays a 1 bp base. Ophis retains 80% of reference-quote improvement on volatile pairs, capped at 99 bps of volume, or 50% on stable pairs, capped at 20 bps.
 
-Volume then earns part of that back. Tiers follow your rolling 30-day volume:
-
-| Tier | 30-day volume | Rebate |
-| --- | --- | --- |
-| Bronze | $20,000+ | 10% |
-| Silver | $50,000+ | 15% |
-| Gold | $100,000+ | 25% |
-| Palladium | $500,000+ | 35% |
-| Platinum | $1,000,000+ | 50% |
-
-View rewards and payout status in your dashboard. The pool is 21.25% of collected WETH fees, split across qualifying wallets by tier-weighted 30-day volume. Your tier and progress are shown directly on the swap page, and the full mechanics live in the [fee docs](https://docs.ophis.fi/fees).
-
-## Agents, bots, and integrators: earning on OP flow
+## Agents, bots, and integrators: tracking OP flow
 
 Optimism flow does not have to come from a human clicking a UI. Integrations can attach a referral code so settled trades are attributed to the code, then track routed volume and fees by appCode.
 
@@ -83,12 +71,8 @@ A router aggregator executes your swap as an on-chain transaction through a rout
 
 No. An Ophis order is a signed message, not a broadcast transaction, so there is no failed transaction to pay for. If no solver can fill your order at your limit price before it expires, it expires and nothing lands on chain. Fills are gasless for you as well, and the fee comes out of the traded amount; approvals, native-token placement, wrapping, hard cancellation and refunds can still require gas.
 
-### How do rebates pay out?
-
-Your tier follows your rolling 30-day volume, with weights from 10% at $20,000 up to 50% at $1,000,000 and above. These are pool-allocation weights, not a promised percentage refund of your own fees. View rewards and payout status in your dashboard. Rebate eligibility is calculated from a pool equal to 21.25% of collected WETH fees, split by tier-weighted 30-day volume. The swap page shows your current tier and progress at all times.
-
 ### Can I integrate Ophis into my app?
 
-Yes, at whichever depth fits. `@ophis/widget-react` is a drop-in swap UI, `@ophis/sdk` handles per-chain orderbook and signing-domain resolution for programmatic orders, and agents can point at the hosted MCP server with no keys involved. To earn on that flow, mint a referral code at [swap.ophis.fi/#/affiliate](https://swap.ophis.fi/#/affiliate): trades from your referred wallets earn you 8% of the verified base fee Ophis keeps, with rewards and payout status in your dashboard.
+Yes, at whichever depth fits. `@ophis/widget-react` is a drop-in swap UI, `@ophis/sdk` handles per-chain orderbook and signing-domain resolution for programmatic orders, and agents can point at the hosted MCP server with no keys involved. Create a referral code in the [swap app](https://swap.ophis.fi/#/affiliate) to attribute routed trades. Track routed volume in the earnings report at `rebates.ophis.fi/earnings/<appCode>`.
 
-One signature, a solver auction, batch settlement, and a fee ladder that pays volume back. If you are starting from zero, the [getting-started guide](https://docs.ophis.fi/getting-started) walks through a first swap end to end. When you are ready, open [swap.ophis.fi/#/10/swap](https://swap.ophis.fi/#/10/swap) with Optimism pre-selected and place your first order.
+One signature, a solver auction, batch settlement, and a 1 bp base fee plus capped price-improvement capture. If you are starting from zero, the [getting-started guide](https://docs.ophis.fi/getting-started) walks through a first swap end to end. When you are ready, open [swap.ophis.fi/#/10/swap](https://swap.ophis.fi/#/10/swap) with Optimism pre-selected and place your first order.

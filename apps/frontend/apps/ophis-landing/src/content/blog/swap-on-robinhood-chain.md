@@ -112,21 +112,9 @@ Settlement decoding depends on a trace-capable endpoint. Availability and trust 
 
 The canary carries its own copy of the addresses, so what it catches is the deployment drifting away from that pinned set: a relayer rewired, a token's decimals changing under an upgradeable proxy, a registry that stops resolving, an orderbook that stops producing auctions. A successful run verifies these checks at its observation time.
 
-## Fees and rebates
+## Fees
 
 Every trade pays a 1 bp base. Ophis also retains 80% of reference-quote improvement on volatile pairs, capped at 99 bps of volume, or 50% on stablecoin pairs, capped at 20 bps. The trader receives the remainder and all improvement above the cap. Because Robinhood Chain is Ophis-operated, there is no upstream CoW-hosted fee layer.
-
-Volume then earns part of it back, on rolling 30-day volume:
-
-| Tier | 30-day volume | Rebate |
-| --- | --- | --- |
-| Bronze | $20,000+ | 10% |
-| Silver | $50,000+ | 15% |
-| Gold | $100,000+ | 25% |
-| Palladium | $500,000+ | 35% |
-| Platinum | $1,000,000+ | 50% |
-
-View rewards and payout status in your dashboard. Rebate eligibility is calculated from a pool of 21.25% of collected WETH fees, split by tier-weighted 30-day volume. Your tier and progress show on the swap page, and the [fee docs](https://docs.ophis.fi/fees) carry the full mechanics.
 
 ## Building on Robinhood Chain
 

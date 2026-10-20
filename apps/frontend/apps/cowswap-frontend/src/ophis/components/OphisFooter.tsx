@@ -121,7 +121,7 @@ function FullFooter({ borderless }: { borderless: boolean }): ReactNode {
               <styledEl.InternalLink to="/profile">Profile</styledEl.InternalLink>
             </li>
             <li>
-              <styledEl.InternalLink to="/profile">Refer and earn</styledEl.InternalLink>
+              <styledEl.InternalLink to="/profile">Referrals</styledEl.InternalLink>
             </li>
             <li>
               <styledEl.InternalLink to="/rewards">Rewards</styledEl.InternalLink>

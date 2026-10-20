@@ -1,6 +1,6 @@
 # Ophis
 
-> Ophis is an intent-based DEX aggregator with batch-auction orders on 14 EVM production deployments, including Robinhood Chain and Arc, and route-specific cross-chain swaps. Select tokens and networks in the swap app; the optional Intent API parses natural language for developers and agents. Standard batch orders charge a 1 bp Ophis base plus capped reference-quote-improvement capture: 80% on volatile pairs (99 bps cap), or 50% on stable pairs (20 bps cap). Arc applies the same backend improvement policy for in-market orders; eligible settled Arc trades are indexed for volume-tier and referral rebates. CoW-hosted swaps also pay separate upstream fees. Direct NEAR and Circle routes have separate fees, gas and recovery rules. See https://docs.ophis.fi/fees and https://docs.ophis.fi/networks-assets.
+> Ophis is an intent-based DEX aggregator with batch-auction orders on 14 EVM production deployments, including Robinhood Chain and Arc, and route-specific cross-chain swaps. Select tokens and networks in the swap app; the optional Intent API parses natural language for developers and agents. Standard batch orders charge a 1 bp Ophis base plus capped reference-quote-improvement capture: 80% on volatile pairs (99 bps cap), or 50% on stable pairs (20 bps cap). Arc applies the same backend improvement policy for in-market orders; eligible settled Arc trades are indexed for volume and referral attribution. CoW-hosted swaps also pay separate upstream fees. Direct NEAR and Circle routes have separate fees, gas and recovery rules. See https://docs.ophis.fi/fees and https://docs.ophis.fi/networks-assets.
 
 ## Core principles
 
@@ -28,7 +28,7 @@ The standalone app supports Bitcoin, Solana, Monad, Hyperliquid (Hypercore), X L
 - [/#/about](https://swap.ophis.fi/#/about): About, what Ophis is and isn't.
 - [/#/profile](https://swap.ophis.fi/#/profile): Profile, wallet identity read from your connected wallet (address, chain, ENS).
 - [/#/learn](https://swap.ophis.fi/#/learn): Learn, primers on intents, solvers, MEV, batch auctions.
-- [/#/affiliate](https://swap.ophis.fi/#/affiliate): Affiliate, mint a referral code and earn a share of the fee on referred volume on indexed chains, including Arc.
+- [/#/affiliate](https://swap.ophis.fi/#/affiliate): Redirects to Profile, where you can create a referral code, share your link and view attribution totals.
 - [https://docs.ophis.fi](https://docs.ophis.fi): Full docs, protocol overview, intent API spec, architecture, AI-agent integration guide, audits.
 - [https://business.ophis.fi](https://business.ophis.fi): Business portal, integration playbook for institutional desks, custodians, and AI agents.
 
@@ -53,7 +53,7 @@ Ophis intentionally does NOT implement x402 (HTTP-native payments). The wallet-s
 
 - **Custody**: users authorize orders or transactions with their wallet. An external NEAR source uses a deposit, not a CoW EIP-712 order; recovery follows that provider's rules.
 - **Smart contracts**: On the Ophis-operated networks Optimism (chain 10), Unichain (chain 130), Robinhood Chain (4663), and Arc (5042), Ophis settles through its OWN GPv2Settlement deployments at non-canonical addresses; on Optimism that is `0x310784c7FCE12d578dA6f53460777bAc9718B859`, which is NOT CoW Protocol's canonical settlement address (`0x9008D19f58AAbD9eD0D60971565AA8510560ab41`). These deployments derive from CoW's GPv2Settlement. Upstream audits cover their stated shared-code scope, not every Ophis modification or deployment: [github.com/cowprotocol/contracts/tree/main/docs](https://github.com/cowprotocol/contracts/tree/main/docs). Agents MUST resolve the per-chain settlement domain via the `@ophis/sdk` helpers or the MCP `list_chains` tool before signing; signing against CoW's canonical address on an Ophis-operated network yields a domain the deployed contract rejects.
-- **Ophis-specific code**: Frontend fork, intent-parser CF Pages Function, rebate-indexer service. Source: [github.com/ophis-fi/ophis](https://github.com/ophis-fi/ophis).
+- **Ophis-specific code**: Frontend fork, intent-parser CF Pages Function, trade and referral indexing service. Source: [github.com/ophis-fi/ophis](https://github.com/ophis-fi/ophis).
 - **Operator contact**: [/#/contact](https://swap.ophis.fi/#/contact) (form) or contact@ophis.fi.
 
 ## Optional
