@@ -997,10 +997,6 @@ msgstr "pools disponibles para obtener rendimiento sobre sus activos!"
 msgid "Confirm"
 msgstr "Confirmar"
 
-#: apps/cowswap-frontend/src/modules/volumeFee/hooks/useVolumeFeeTooltip.ts
-msgid "This token gets the maximum Ophis rebate: a reduced {OPHIS_BOOSTED_VOLUME_BPS} bp fee on this swap, applied automatically regardless of your volume tier."
-msgstr ""
-
 #: apps/cowswap-frontend/src/ophis/components/CoinbaseStockContext/CoinbaseStockContext.container.tsx
 msgid "Coinbase tokenized stocks are only available to persons in eligible jurisdictions outside the U.S. This panel is informational and does not change your order. <0>How B20 stocks work ↗</0>"
 msgstr ""
@@ -1186,10 +1182,6 @@ msgstr "creando"
 #: apps/cowswap-frontend/src/modules/hooksStore/dapps/AirdropHookApp/index.tsx
 msgid "Claimable amount"
 msgstr "Cantidad reclamable"
-
-#: apps/cowswap-frontend/src/modules/volumeFee/hooks/useVolumeFeeTooltip.ts
-msgid "⚡ Max rebate"
-msgstr ""
 
 #: apps/cowswap-frontend/src/modules/accountProxy/containers/AccountProxiesPage/index.tsx
 msgid "Select an {accountProxyLabelString} to check for available refunds {chain}"

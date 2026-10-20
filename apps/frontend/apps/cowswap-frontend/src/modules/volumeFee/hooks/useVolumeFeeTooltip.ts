@@ -27,12 +27,12 @@ export function useVolumeFeeTooltip(): VolumeFeeTooltip {
 
   return useMemo(() => {
     // Boosted-token flagship (e.g. ALEPH): the boosted fee wins over a Safe-App fee in
-    // volumeFeeAtom when the flat-fee flag is on, so the "max rebate" tag takes precedence
+    // volumeFeeAtom when the flat-fee flag is on, so its base-fee label takes precedence
     // here too. Gated on the same flag so the tag only shows when the boost actually applies.
     if (hasOphisBoost)
       return {
-        content: t`This token gets the maximum Ophis rebate: a reduced ${OPHIS_BOOSTED_VOLUME_BPS} bp fee on this swap, applied automatically regardless of your volume tier.`,
-        label: t`⚡ Max rebate`,
+        content: t`The Ophis base fee is ${OPHIS_BOOSTED_VOLUME_BPS} bp on this swap, plus capped price-improvement capture.`,
+        label: t`Ophis fee`,
       }
 
     if (safeAppFee)

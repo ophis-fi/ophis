@@ -13,12 +13,7 @@
  *   - Respects `prefers-reduced-motion: reduce` — paused state by default
  *     for users with motion-sensitivity preferences set.
  *
- * The intent list is curated, NOT live-data. P4 from the backlog originally
- * proposed "anonymized recent swaps"; we shipped curated for v1 because
- * (a) the rebate-indexer's matview is still warming up post-rebrand and
- * (b) showing recency is only valuable once there's enough volume that the
- * list visibly changes between page loads. Swap to a fetch from
- * rebates.ophis.fi when daily Ophis-tagged trade count exceeds ~50.
+ * The intent list contains curated examples.
  */
 import { ReactNode } from 'react'
 

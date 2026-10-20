@@ -23,7 +23,6 @@ function entry(rank: number, wallet: string, vol: number, isSelf = false): Leade
   return {
     rank,
     wallet,
-    tier: 'gold',
     volume30dUsd: vol,
     volumeTotalUsd: vol,
     affiliateCount: 0,
@@ -63,6 +62,9 @@ describe('LeaderboardPage', () => {
 
     expect(await screen.findByText(SELF_SHORT)).toBeTruthy()
     expect(screen.queryByText(SELF)).toBeNull()
+    expect(screen.getByRole('columnheader', { name: '30d volume' })).toBeTruthy()
+    expect(screen.queryByRole('columnheader', { name: /tier|rebate/i })).toBeNull()
+    expect(screen.queryByText(/rebate|payout|pool weight/i)).toBeNull()
   })
 
   it('warns when the backend reports a stale leaderboard publication', async () => {
@@ -133,7 +135,6 @@ describe('LeaderboardPage', () => {
         {
           rank: 1,
           wallet: SELF_SHORT,
-          tier: 'gold',
           volume30dUsd: 500_000,
           volumeTotalUsd: 500_000,
           affiliateCount: 0,
@@ -142,7 +143,6 @@ describe('LeaderboardPage', () => {
         {
           rank: 2,
           wallet: '0xcccc...dddd',
-          tier: 'gold',
           volume30dUsd: 50_000,
           volumeTotalUsd: 50_000,
           affiliateCount: 0,

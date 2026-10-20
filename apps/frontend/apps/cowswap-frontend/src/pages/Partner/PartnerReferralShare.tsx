@@ -59,27 +59,16 @@ export function PartnerReferralShare({ code }: { code: string | undefined }): Re
   )
 }
 
-/**
- * Richer empty state for the Referees section. A 0-referee partner is the
- * default viewer, so instead of one bare line we show a 3-step how-it-works that
- * tells them exactly what to do and fills the space. The rate is read from the
- * API so the copy never drifts from FEE_SHARE_BPS.
- */
-export function PartnerEmptyReferees({ rate }: { rate: number }): ReactNode {
+/** Attribution steps for partners with no referred wallets yet. */
+export function PartnerEmptyReferees(): ReactNode {
   return (
     <>
       <h3>How the program works</h3>
       <p>No referees yet.</p>
       <ol>
         <li>Share your code or link above.</li>
-        <li>
-          A net-new wallet can bind through your link. A code tagged on an order attributes that trade, not the wallet
-          for life.
-        </li>
-        <li>
-          Your share is {rate}% of the verified base fee Ophis keeps on eligible trades. Check payout status before
-          expecting a payment.
-        </li>
+        <li>New wallets can activate your code through your link. A code tagged on an order attributes that trade.</li>
+        <li>Track referred wallets and volume in your dashboard.</li>
       </ol>
       <p style={{ opacity: 0.75 }}>
         Wallets appear here after binding your link or settling an eligible trade tagged with your code.

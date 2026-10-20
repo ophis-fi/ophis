@@ -13,7 +13,7 @@
       "type": "skill-md",
       "description": "Umbrella skill for the Ophis family: when to use each sub-skill, the eight safety rules, and a machine-readable per-chain policy block (pinned settlement and vault-relayer contracts, EIP-712 domains, orderbook hosts, slippage latches) for shell-capable agents with curl, jq and cast.",
       "url": "https://ophis.fi/.well-known/agent-skills/ophis/SKILL.md",
-      "digest": "sha256:d71f7b21ad9c4c7e655a1ac2701dde74c11e9698343228a156e8a8070fc20e8b"
+      "digest": "sha256:b8e3e9128ca27f4e832e702ad88a83cf4d961d5966bb88846406b0b7c9b2dd6b"
     },
     {
       "name": "ophis-quote",
@@ -27,7 +27,7 @@
       "type": "skill-md",
       "description": "Execute a token swap on Ophis end to end: quote, build, confirm with the user, exact approval to the pinned vault relayer, EIP-712 sign, submit. The signed order is a bounded intent with a hard minimum, settled MEV-protected in a batch auction.",
       "url": "https://ophis.fi/.well-known/agent-skills/ophis/skills/ophis-swap.md",
-      "digest": "sha256:936e70b51a7a569ce3b0b9616c827be00f1b14268bdd540b95897b70de88b18f"
+      "digest": "sha256:bb98205b5af0b89c6414760bf9e6fad72ed87919d356c8b5f4fbcc4e536968bc"
     },
     {
       "name": "ophis-order-status",
@@ -48,7 +48,7 @@
       "type": "skill-md",
       "description": "Report the surplus (price improvement beyond the signed minimum) a wallet earned from Ophis trades, in total and per order. Read-only.",
       "url": "https://ophis.fi/.well-known/agent-skills/ophis/skills/ophis-surplus-report.md",
-      "digest": "sha256:c7ad78d1f2f6680fa74935bc83b6702e74ac215f6faa5dfc8fb884ffd5fc8487"
+      "digest": "sha256:14036ce7927deb3442a9e975cbc20c2ce09b7a0f3176edca435262acab94d8de"
     }
   ]
 }

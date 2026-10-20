@@ -1,11 +1,10 @@
 #!/usr/bin/env bash
 # Verifies that the TIERS + POOL_SPLIT_BPS constants are semantically identical
-# across ALL THREE mirrors:
+# across the indexer and SDK mirrors:
 #   - apps/rebate-indexer/src/tiers.ts                        (the payout engine)
 #   - packages/sdk/src/tiers.ts                               (@ophis/sdk)
-#   - apps/frontend/apps/cowswap-frontend/src/ophis/tiers.ts  (swap-page display)
-# Hard CI gate. Drift would silently misallocate WETH (indexer) or misdisplay
-# tiers (frontend). The comparison is NUMERIC-normalized, so pure formatting
+# Hard CI gate. Drift would make SDK calculations disagree with the indexer.
+# The comparison is NUMERIC-normalized, so pure formatting
 # differences (0.5 vs 0.50, 5_000 vs 5000, quote style, comments, whitespace)
 # never cause a false mismatch -- only a real semantic divergence fails.
 #
@@ -21,13 +20,12 @@ set -euo pipefail
 
 A=apps/rebate-indexer/src/tiers.ts
 B=packages/sdk/src/tiers.ts
-C=apps/frontend/apps/cowswap-frontend/src/ophis/tiers.ts
 
 # Interpreter override for dev machines whose PATH python3 is a policy shim
 # (e.g. CHECK_TIER_PYTHON=/usr/bin/python3). CI uses the default.
 PYTHON_BIN=${CHECK_TIER_PYTHON:-python3}
 
-for f in "$A" "$B" "$C"; do
+for f in "$A" "$B"; do
   [[ -f "$f" ]] || { echo "ERROR: $f missing" >&2; exit 1; }
 done
 
@@ -97,17 +95,15 @@ self_test
 
 A_C=$(extract "$A")
 B_C=$(extract "$B")
-C_C=$(extract "$C")
 
-if [[ "$A_C" == "$B_C" && "$B_C" == "$C_C" ]]; then
-  echo "OK: TIERS + POOL_SPLIT_BPS semantic mirror across indexer, sdk, and frontend (extractor self-test passed)"
+if [[ "$A_C" == "$B_C" ]]; then
+  echo "OK: TIERS + POOL_SPLIT_BPS semantic mirror across indexer and sdk (extractor self-test passed)"
   echo "  $A_C"
   exit 0
 fi
 
-echo "FATAL: tiers.ts drift across the three mirrors" >&2
+echo "FATAL: tiers.ts drift between indexer and sdk" >&2
 echo "  indexer  $A: $A_C" >&2
 echo "  sdk      $B: $B_C" >&2
-echo "  frontend $C: $C_C" >&2
-echo "  Mismatch silently misallocates rebates or misdisplays tiers. Reconcile all three in the same PR." >&2
+echo "  Reconcile both mirrors in the same PR." >&2
 exit 2

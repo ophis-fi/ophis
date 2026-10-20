@@ -16,7 +16,6 @@ import { type PartnerDashboard, AffiliateApiError, getPartnerDashboard, useOphis
 import { ConnectWalletCta } from 'pages/Affiliate/ConnectWalletCta'
 
 import { formatUsd } from './Partner.utils'
-import { PartnerEarnings, PartnerTraderRank, ReferredVolumeMetric } from './PartnerDashboardCards'
 import { PartnerEmptyReferees, PartnerReferralShare } from './PartnerReferralShare'
 
 import { ActionButton, MetricRow } from '../Affiliate/Affiliate.styled'
@@ -87,11 +86,10 @@ function PartnerAccess({ busy, onAccess, state }: PartnerAccessProps): ReactNode
 }
 
 interface PartnerDashboardContentProps {
-  account: string
   data: PartnerDashboard
 }
 
-function PartnerDashboardContent({ account, data }: PartnerDashboardContentProps): ReactNode {
+function PartnerDashboardContent({ data }: PartnerDashboardContentProps): ReactNode {
   const hasHiddenReferees = data.referredCount > data.referees.length
 
   return (
@@ -101,35 +99,22 @@ function PartnerDashboardContent({ account, data }: PartnerDashboardContentProps
           <Badge tone="partner">Partner</Badge>
         </div>
         <MetricRow>
-          <MetricCard label="Your rate" value={`${data.rateOfNetFeePct}%`} sublabel="of the verified base fee" />
           <MetricCard label="Referred wallets" value={data.referredCount} />
-          <ReferredVolumeMetric lifetimeUsd={data.lifetimeReferredVolumeUsd} cycleUsd={data.currentCycleVolumeUsd} />
+          <MetricCard label="Referred volume" value={formatUsd(data.lifetimeReferredVolumeUsd)} sublabel="lifetime" />
         </MetricRow>
-        <div style={{ marginTop: 12 }}>
-          <PartnerTraderRank account={account} />
-        </div>
       </Section>
-
-      <PartnerEarnings
-        estimatedCurrentCycleEarningsUsd={data.estimatedCurrentCycleEarningsUsd}
-        paidToDateWeth={data.paidToDateWeth}
-        paidToDateUsd={data.paidToDateUsd}
-        nextPayoutAt={data.nextPayoutAt}
-        payoutStatus={data.payoutStatus}
-      />
 
       <Section id="link" title="Your referral link">
         <p>
-          Share your link or tag eligible orders with your code. Link binding and per-order code attribution are
-          different paths; an order tag does not permanently bind a wallet. Your rate is {data.rateOfNetFeePct}% of the
-          verified base fee Ophis keeps on eligible attributed trades.
+          Share your link so new wallets can activate your code, or tag orders with your code to attribute individual
+          trades. View referred wallets and volume below.
         </p>
         <PartnerReferralShare code={data.activeCodes[0]} />
       </Section>
 
       <Section id="referees" title="Referees">
         {data.referees.length === 0 ? (
-          <PartnerEmptyReferees rate={data.rateOfNetFeePct} />
+          <PartnerEmptyReferees />
         ) : (
           <>
             <Table caption="Your referred wallets, first referral date, attribution, and lifetime referred volume.">
@@ -217,7 +202,7 @@ function PartnerWalletDashboard({ account }: { account: string }): ReactNode {
   const busy = state === 'signing' || state === 'loading'
 
   return data ? (
-    <PartnerDashboardContent account={account} data={data} />
+    <PartnerDashboardContent data={data} />
   ) : (
     <PartnerAccess busy={busy} onAccess={onAccess} state={state} />
   )
@@ -231,7 +216,7 @@ export function PartnerPage(): ReactNode {
       width="wide"
       eyebrow="Partner"
       title="Partner dashboard."
-      lede="Your referee breakdown, rate, and referred volume. Access is restricted to Ophis partners and requires a wallet signature."
+      lede="Your referral code, referred wallets, and volume. Access is restricted to Ophis partners and requires a wallet signature."
     >
       {!account ? (
         <Callout tone="info" title="Connect a wallet">

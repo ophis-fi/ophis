@@ -1,25 +1,6 @@
 /**
- * Profile - wallet-aware trader identity page.
- *
- * Phase C restructure (2026-06-11): COMPACT "rank and profile" layout modeled
- * on Jumper's profile. Sections, in order:
- *   (a) identity   : truncated address / ENS / app chain (brief).
- *   (b) rank       : the rebate Tier (apps/rebate-indexer/src/tiers.ts) chip +
- *                    rebate % for the tier, fetched from /tier/:account.
- *   (c) referral   : the self-serve affiliate dashboard folded in (mint code,
- *                    share link, referred totals). REGULAR 8% tier only - no
- *                    partner-tier surface.
- *
- * The standalone /affiliate route now redirects here (RoutesApp.tsx); the
- * app-wide ?ref capture/bind updater is separate and untouched.
- *
- * AGENTS.md compliance:
- *   - Named export (no default).
- *   - Page implementation in *.container.tsx, not index.tsx.
- *   - Explorer URL built via getExplorerLink helper (respects
- *     REACT_APP_BLOCK_EXPLORER_URL override for local/custom explorers).
- *   - Rank card + actions extracted to sibling components to keep this file
- *     under the 250-LOC cap.
+ * Wallet identity and referral attribution. The /affiliate route redirects here;
+ * app-wide referral activation is handled by RefCodeCaptureUpdater.
  */
 import { ReactNode } from 'react'
 
@@ -34,7 +15,6 @@ import { OphisAffiliateDashboard } from 'modules/affiliate'
 import { ConnectWalletCta } from 'pages/Affiliate/ConnectWalletCta'
 
 import { ProfileActions } from './ProfileActions.pure'
-import { ProfileRank } from './ProfileRank.container'
 
 function truncateAddress(addr: string): string {
   return `${addr.slice(0, 6)}…${addr.slice(-4)}`
@@ -50,11 +30,11 @@ export function ProfilePage(): ReactNode {
     <PageShell
       width="medium"
       eyebrow="Profile"
-      title="Your rank, rebates, and referrals."
+      title="Your wallet and referrals."
       lede={
         account
-          ? 'Your wallet identity, trading rank, and referral activity in one place.'
-          : 'Connect a wallet to see your tier rank, rebate rate, and referral code.'
+          ? 'Your wallet identity and referral activity in one place.'
+          : 'Connect a wallet to see your referral code and activity.'
       }
     >
       <Section id="identity" title="Identity">
@@ -85,16 +65,11 @@ export function ProfilePage(): ReactNode {
           />
         ) : (
           <Callout tone="info" title="Connect a wallet">
-            <p>
-              Connect a wallet to see your address, rank, and referral code. Identity is read from the wallet, not
-              stored by Ophis.
-            </p>
+            <p>Connect a wallet to see your address and referral code.</p>
             <ConnectWalletCta />
           </Callout>
         )}
       </Section>
-
-      {account && <ProfileRank account={account} />}
 
       {account && <OphisAffiliateDashboard account={account} />}
 

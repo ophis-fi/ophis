@@ -42,11 +42,9 @@ On most supported chains, Ophis settles through CoW Protocol's canonical audited
 
 If you swap through the page, this changes nothing; the app targets the right contracts for chain 130. It matters if you integrate programmatically: an order built for the canonical CoW settlement domain will not verify against the Unichain deployment. Resolve the per-chain settlement domain via `@ophis/sdk` or the MCP `list_chains` tool instead of hardcoding anything.
 
-## Fees and volume rebates
+## Fees
 
 Every trade pays a 1 bp base. Ophis retains 80% of reference-quote improvement on volatile pairs (99 bps cap) or 50% on stable pairs (20 bps cap).
-
-Eligible trading volume determines your rebate tier; it does not guarantee a payout. Rebate tiers run on rolling 30-day volume: Bronze ($20,000+) 10%, Silver ($50,000+) 15%, Gold ($100,000+) 25%, Palladium ($500,000+) 35%, Platinum ($1,000,000+) 50%. View rewards and payout status in your dashboard. Rebate eligibility is calculated from a pool of 21.25% of collected WETH fees split by tier-weighted 30-day volume. Your tier and progress show on the swap page, and the [fee docs](https://docs.ophis.fi/fees) have the full breakdown.
 
 ## Swapping on Unichain from an AI agent
 

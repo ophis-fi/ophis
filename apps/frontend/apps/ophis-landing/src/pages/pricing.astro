@@ -25,11 +25,11 @@ const FAQS = [
   },
   {
     q: 'Does Ophis take a cut of surplus?',
-    a: `Under the standard policy: 80% on volatile pairs or 50% on stable pairs, subject to the caps. The measurement is improvement over the reference quote, not the user's slippage limit.`,
+    a: `Under the standard policy: 80% on volatile pairs, capped at 99 bps, or 50% on stable pairs, capped at 20 bps. The measurement is improvement over the reference quote, not the user's slippage limit.`,
   },
   {
     q: 'What do integrators pay, and what can they charge?',
-    a: `SDK v0.4.3 and hosted MCP integrations charge a 1 bp base on supported chains, including Arc. All supported chains also apply the standard capped improvement policy. Integrators can still charge an onboarded own-fee of up to 90 bps on top; Ophis's registered hosted configuration reserves a 190 bps aggregate ceiling. This is not a universal ceiling for every CoW widget or integration.`,
+    a: `SDK v0.4.3 and hosted MCP integrations charge a 1 bp base on supported chains, including Arc. All supported chains also apply the standard capped improvement policy. On CoW-hosted chains, integrators can charge an onboarded own-fee of up to 90 bps on top, which CoW pays weekly. Ophis's registered hosted configuration reserves a 190 bps aggregate ceiling.`,
   },
   {
     q: 'Are the APIs free?',

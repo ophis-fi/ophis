@@ -101,13 +101,10 @@ jobs:
     runs-on: ubuntu-latest
     # Input-invariant gate: skip on the weekly cron (advisory jobs only).
     if: github.event_name != 'schedule'
-    # 2026-05-21 follow-up to the rebate-indexer audit; extended 2026-06-09 to
-    # the frontend mirror. TIERS + POOL_SPLIT_BPS are mirrored across THREE files:
-    # apps/rebate-indexer/src/tiers.ts (drives the batcher's actual WETH
-    # allocation per wallet), packages/sdk/src/tiers.ts (@ophis/sdk), and
-    # apps/frontend/apps/cowswap-frontend/src/ophis/tiers.ts (the swap-page chip
-    # showing users their projected rebate %). Drift would silently misallocate
-    # real WETH or misdisplay tiers. Hard CI gate via a Python canonicalizer that
+    # TIERS + POOL_SPLIT_BPS are mirrored in apps/rebate-indexer/src/tiers.ts
+    # and packages/sdk/src/tiers.ts (@ophis/sdk). The frontend tier display
+    # has been removed. Drift would make SDK calculations disagree with the
+    # indexer. Hard CI gate via a Python canonicalizer that
     # strips comments and NUMERIC-normalizes (0.5 == 0.50, 5_000 == 5000) so only
     # a real semantic divergence fails.
     steps:

@@ -1,27 +1,13 @@
 import { SupportedChainId } from '@cowprotocol/cow-sdk'
 
 /**
- * Boosted-token program: the generalizable lever behind the ALEPH flagship.
- *
- * A SAME-CHAIN swap where EITHER side is a boosted token pays the reduced
- * OPHIS_BOOSTED_VOLUME_BPS (the "max rebate" rate) instead of the standard volume
- * fee, REGARDLESS of the trader's volume tier. It flows through the same single
- * volumeFeeAtom source as the standard and stablecoin rates, so the quote display
- * and the on-chain appData fee stay in lockstep (no hidden or double charge).
- *
- * This is a partnership / business-development product: list a partner's token here
- * (with the swap-box badge) to incentivise trading it on Ophis. Adding a token is one
- * line per chain. Same-chain only, mirroring the stablecoin rule: a cross-chain bridge
- * leg's fee sits on the source token and boosting it is ambiguous, so we keep it safe.
- *
- * FLAGSHIP: ALEPH (Aleph Cloud). Ethereum mainnet is seeded below; add Base / other
- * chains once each per-chain ALEPH address is confirmed (one entry each).
- *
- * Addresses are stored LOWERCASE and matched against a lowercased currency address
- * (see isBoostedTradeAtom) so the match is case-insensitive and checksum-agnostic.
+ * Token-specific base-fee configuration for same-chain swaps. Matching either
+ * token selects OPHIS_BOOSTED_VOLUME_BPS through volumeFeeAtom so the quote
+ * and appData use the same base fee. Improvement capture is applied separately.
+ * Addresses are lowercase for case-insensitive matching.
  */
 
-/** Reduced "max rebate" rate for boosted-token trades, in bps (1 = 0.01%). */
+/** Base fee for configured tokens, in bps (1 = 0.01%). */
 export const OPHIS_BOOSTED_VOLUME_BPS = 1
 
 /** Per-chain set of boosted-token addresses (LOWERCASE). EITHER side triggers the boost. */

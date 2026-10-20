@@ -2,14 +2,7 @@ import { useWalletInfo } from '@cowprotocol/wallet'
 
 import { act, render, screen, fireEvent, waitFor, within } from '@testing-library/react'
 
-import {
-  type PartnerDashboard,
-  type RankStatus,
-  AffiliateApiError,
-  getPartnerDashboard,
-  getRankStatus,
-  useOphisAffiliateSign,
-} from 'modules/affiliate'
+import { type PartnerDashboard, AffiliateApiError, getPartnerDashboard, useOphisAffiliateSign } from 'modules/affiliate'
 
 import { PartnerPage } from './Partner.container'
 
@@ -19,26 +12,13 @@ jest.mock('modules/affiliate', () => ({
   ...jest.requireActual('modules/affiliate'),
   useOphisAffiliateSign: jest.fn(),
   getPartnerDashboard: jest.fn(),
-  getRankStatus: jest.fn(),
 }))
 
 const useWalletInfoMock = useWalletInfo as jest.Mock
 const useOphisAffiliateSignMock = useOphisAffiliateSign as jest.Mock
 const getPartnerDashboardMock = getPartnerDashboard as jest.Mock
-const getRankStatusMock = getRankStatus as jest.Mock
 
 const ACCOUNT = '0xabc0000000000000000000000000000000000001'
-
-const GOLD_RANK: RankStatus = {
-  wallet: ACCOUNT.toLowerCase(),
-  tier: 'gold',
-  volume30dUsd: 150_000,
-  rebatePct: 0.25,
-  nextTier: 'palladium',
-  nextThresholdUsd: 500_000,
-  toNextUsd: 350_000,
-  position: 5,
-}
 
 function makeReferee(i: number): PartnerDashboard['referees'][number] {
   return { wallet: '0x' + String(i).padStart(40, '0'), boundAt: '2026-01-01T00:00:00Z', lifetimeVolumeUsd: 1000 }
@@ -48,15 +28,9 @@ function makeDashboard(referredCount: number, refereesLen: number): PartnerDashb
   return {
     wallet: ACCOUNT,
     kind: 'partner',
-    rateOfNetFeePct: 12,
     activeCodes: ['ophispartner'],
     referredCount,
-    currentCycleVolumeUsd: 1_000_000,
     lifetimeReferredVolumeUsd: 5_000_000,
-    estimatedCurrentCycleEarningsUsd: 90,
-    paidToDateWeth: 1.2345,
-    paidToDateUsd: 3086,
-    nextPayoutAt: '2026-07-01T02:00:00Z',
     referees: Array.from({ length: refereesLen }, (_, i) => makeReferee(i)),
   }
 }
@@ -74,7 +48,6 @@ describe('PartnerPage referee-table truncation note', () => {
     useOphisAffiliateSignMock.mockReturnValue(
       jest.fn().mockResolvedValue({ wallet: ACCOUNT, issued: 1, signature: '0xsig', chainId: 5042 }),
     )
-    getRankStatusMock.mockResolvedValue(GOLD_RANK)
   })
 
   it('shows the truncation note when more referees exist than the table shows', async () => {
@@ -123,20 +96,17 @@ describe('PartnerPage referee-table truncation note', () => {
     await renderAndLoad()
 
     expect(screen.getByText(/how the program works/i)).toBeTruthy()
-    expect(screen.getByText(/attributes that trade, not the wallet for life/i)).toBeTruthy()
+    expect(screen.getByText(/attributes that trade/i)).toBeTruthy()
     expect(screen.queryByText('No referees yet. Share your code to start referring wallets.')).toBeNull()
   })
 
-  it('renders the earnings panel (estimated, paid-to-date, next payout)', async () => {
+  it('shows attribution totals without earnings, payout status, rates, or tiers', async () => {
     getPartnerDashboardMock.mockResolvedValue(makeDashboard(3, 3))
 
     await renderAndLoad()
 
-    expect(screen.getByText('Earnings')).toBeTruthy()
-    expect(screen.getByText(/Estimated this cycle/i)).toBeTruthy()
-    expect(screen.getByText(/Paid to date/i)).toBeTruthy()
-    expect(screen.getByText(/Payout status/i)).toBeTruthy()
-    expect(screen.getByText('Unconfirmed')).toBeTruthy()
+    expect(screen.getByText('$5,000,000')).toBeTruthy()
+    expect(screen.queryByText(/earnings|paid to date|payout|your rate|trader rank|tier/i)).toBeNull()
     expect(getPartnerDashboardMock).toHaveBeenCalledWith({
       wallet: ACCOUNT,
       issued: 1,
@@ -174,39 +144,14 @@ describe('PartnerPage referee-table truncation note', () => {
     expect(within(mixedRow).getByText('<$0.01')).toBeTruthy()
   })
 
-  it('toggles referred volume between lifetime and the current cycle', async () => {
+  it('clears the partner dashboard when the account changes', async () => {
     getPartnerDashboardMock.mockResolvedValue(makeDashboard(3, 3))
-
-    await renderAndLoad()
-
-    expect(screen.getByText('$5,000,000')).toBeTruthy()
-    fireEvent.click(screen.getByRole('button', { name: /this cycle/i }))
-    expect(screen.getByText('$1,000,000')).toBeTruthy()
-  })
-
-  it('renders the trader-rank chip from the /rank endpoint', async () => {
-    getPartnerDashboardMock.mockResolvedValue(makeDashboard(3, 3))
-
-    await renderAndLoad()
-
-    expect(await screen.findByText(/Trader rank:/i)).toBeTruthy()
-  })
-
-  it('clears the trader-rank chip when the account changes and the new fetch fails', async () => {
-    getPartnerDashboardMock.mockResolvedValue(makeDashboard(3, 3))
-    getRankStatusMock.mockImplementation((acct: string) =>
-      acct.toLowerCase() === ACCOUNT.toLowerCase()
-        ? Promise.resolve(GOLD_RANK)
-        : Promise.reject(new AffiliateApiError(500)),
-    )
     const { rerender } = render(<PartnerPage />)
     fireEvent.click(screen.getByRole('button', { name: /Access Partner Dashboard/i }))
     await screen.findByText('Referees')
-    expect(await screen.findByText(/Trader rank: Gold/i)).toBeTruthy()
 
     useWalletInfoMock.mockReturnValue({ account: '0xdef0000000000000000000000000000000000002', chainId: 1 })
     rerender(<PartnerPage />)
-    await waitFor(() => expect(screen.queryByText(/Trader rank:/i)).toBeNull())
     expect(screen.queryByText('Referees')).toBeNull()
     expect(screen.queryByText('ophispartner')).toBeNull()
     expect(screen.getByRole('button', { name: /Access Partner Dashboard/i })).toBeTruthy()

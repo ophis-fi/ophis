@@ -119,14 +119,14 @@ const itemListLd = {
   <h2>For agents and integrators</h2>
   <p>
     SDK v{sdkPackage.version} and the hosted MCP server cover the EVM chains above, including Arc (5042).
-    External NEAR deposits are a separate app flow, not orders built by these SDK/MCP tools. Bridge coverage remains route-specific; eligible settled Arc trades count toward referral and volume-tier rebates.
+    External NEAR deposits are a separate app flow, not orders built by these SDK/MCP tools. Bridge coverage remains route-specific; settled Arc trades are indexed for routed volume and referral attribution.
   </p>
   <p>
     SDK v0.4.3 already supports Arc trading. Upgrade to v0.4.4 to include referral codes on Arc orders.
   </p>
   <p><code>npm install @ophis/sdk@{sdkPackage.version}</code></p>
   <p>
-    Before every order submission, register the actual order owner so Ophis can track eligible trades for rebates.
+    Before every order submission, register the actual order owner for trade indexing and the USDG trade-rewards campaign.
     Registering only when the wallet connects is not sufficient. If a Safe owns the order, register the Safe address,
     not its curator's or signer's wallet.
   </p>
@@ -138,7 +138,11 @@ const itemListLd = {
     See the <a href="https://docs.ophis.fi/partners">partner integration guide</a> for the complete flow.
   </p>
   <p>
-    View referral earnings and payout status in your partner dashboard.
+    Create referral codes in the <a href="https://swap.ophis.fi/#/affiliate">swap app</a>.
+    MCP clients pass <code>referrerCode</code> to <code>build_order</code>.
+    Track routed volume by <code>appCode</code> in the earnings report at
+    <code>rebates.ophis.fi/earnings/&lt;appCode&gt;</code>.
+    View the USDG campaign on the <a href="https://swap.ophis.fi/#/rewards">trade rewards page</a>.
   </p>
   <p>
     The machine-readable per-chain contract-pinning policy (settlement addresses, vault relayers,

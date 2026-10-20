@@ -67,9 +67,7 @@ Lead with the total, then the best example:
 
 > "This wallet has earned 0.0042 ETH of surplus on Optimism to date. Best
 > single fill: your 0.5 WETH sell settled 3.1 USDC above the minimum you
-> signed. Surplus is price improvement returned to you, not a rebate: the
-> batch auction cleared better than your limit and the difference is yours
-> by construction."
+> signed. Surplus is the amount you received above your signed minimum."
 
 For a cross-chain picture, run the same report per chain and sum in prose
 (never sum wei across chains whose native tokens differ in price).

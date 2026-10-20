@@ -150,10 +150,11 @@ such signatures.
 
 ### Step 7: publish the appData and submit the order
 
-Renew rebate enrollment immediately before **each** submission, even without a
-referral code. Register the order owner, not a Safe owner's signing address.
-If this fails, stop before submitting and retry enrollment; do not silently
-promise a rebate. Registering once when a wallet connects is not sufficient.
+Renew trader registration immediately before **each** submission for trade
+indexing and the USDG trade-rewards campaign, even without a referral code.
+Register the order owner, not a Safe owner's signing address.
+If this fails, stop before submitting and retry registration.
+Registering once when a wallet connects is not sufficient.
 
 ```bash
 curl --fail --silent --show-error --max-time 10 \

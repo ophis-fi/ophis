@@ -1,15 +1,11 @@
 /**
- * LeaderboardPage — public rebate leaderboard (Phase C, 2026-06-11).
+ * LeaderboardPage — public volume leaderboard (Phase C, 2026-06-11).
  *
  * Jumper "Classement" style: ranked wallet rows by 30-day volume. Consumes
  * GET rebates.ophis.fi/leaderboard (already sorted by volume30dUsd desc and
  * CORS-allowed for swap.ophis.fi). PUBLIC: works with no wallet connected.
  * When a wallet is connected, its own row is highlighted in place, and a
  * pinned summary row at the top shows its position (Jumper's "your rank" row).
- *
- * The RANK shown is the wallet's leaderboard position; the tier column is the
- * volume-keyed rebate Tier (apps/rebate-indexer/src/tiers.ts). No partner /
- * friends-and-family tier is exposed here.
  *
  * AGENTS.md compliance: named export (no default), page in *.container.tsx,
  * barrel re-export in index.ts.
@@ -26,14 +22,6 @@ import { Num, SelfTr, YouTag } from './Leaderboard.styled'
 
 function truncateAddress(addr: string): string {
   return `${addr.slice(0, 6)}...${addr.slice(-4)}`
-}
-
-function titleCase(name: string): string {
-  return name.length ? name[0]!.toUpperCase() + name.slice(1) : name
-}
-
-function tierLabel(name: string): string {
-  return name === 'none' ? 'Unranked' : titleCase(name)
 }
 
 function formatUsd(value: number): string {
@@ -92,7 +80,6 @@ function LeaderboardRow({ entry, isSelf }: RowProps): ReactNode {
         <Num>{truncateAddress(entry.wallet)}</Num>
         {isSelf && <YouTag>you</YouTag>}
       </Td>
-      <Td>{tierLabel(entry.tier)}</Td>
       <Td>
         <Num>{formatUsd(entry.volume30dUsd)}</Num>
       </Td>
@@ -154,7 +141,7 @@ export function LeaderboardPage(): ReactNode {
       width="wide"
       eyebrow="Leaderboard"
       title="Top traders by 30-day volume."
-      lede="Ranked by rolling 30-day volume on Ophis. Volume determines your rebate tier and pool weight."
+      lede="Ranked by rolling 30-day volume on Ophis."
     >
       <LeaderboardFreshnessWarning dataFresh={data?.dataFresh} dataAsOf={data?.dataAsOf} />
       {selfEntry && (
@@ -164,7 +151,6 @@ export function LeaderboardPage(): ReactNode {
               <Tr>
                 <Th>Rank</Th>
                 <Th>Wallet</Th>
-                <Th>Tier</Th>
                 <Th>30d volume</Th>
                 <Th>Affiliates</Th>
                 <Th>Referred volume</Th>
@@ -181,7 +167,7 @@ export function LeaderboardPage(): ReactNode {
         {data === null ? (
           loadError ? (
             <Callout tone="warning" title="Could not load the leaderboard">
-              <p>The rebate service did not respond. Refresh the page to try again.</p>
+              <p>The leaderboard service did not respond. Refresh the page to try again.</p>
             </Callout>
           ) : (
             <p>Loading the leaderboard...</p>
@@ -200,7 +186,6 @@ export function LeaderboardPage(): ReactNode {
                 <Tr>
                   <Th>Rank</Th>
                   <Th>Wallet</Th>
-                  <Th>Tier</Th>
                   <Th>30d volume</Th>
                   <Th>Affiliates</Th>
                   <Th>Referred volume</Th>
