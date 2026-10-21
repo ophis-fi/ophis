@@ -1,0 +1,24 @@
+diff --git a/cjs/index.js b/cjs/index.js
+--- a/cjs/index.js
++++ b/cjs/index.js
+@@ -23,7 +23,7 @@
+         websocket = new WebSocketImpl(subscriptionsEndpoint, 'graphql-ws', {
+             followRedirects: true,
+             headers: options === null || options === void 0 ? void 0 : options.headers,
+-            rejectUnauthorized: false,
++            rejectUnauthorized: true,
+             skipUTF8Validation: true,
+         });
+         websocket.onopen = () => {
+diff --git a/esm/index.js b/esm/index.js
+--- a/esm/index.js
++++ b/esm/index.js
+@@ -20,7 +20,7 @@
+         websocket = new WebSocketImpl(subscriptionsEndpoint, 'graphql-ws', {
+             followRedirects: true,
+             headers: options === null || options === void 0 ? void 0 : options.headers,
+-            rejectUnauthorized: false,
++            rejectUnauthorized: true,
+             skipUTF8Validation: true,
+         });
+         websocket.onopen = () => {

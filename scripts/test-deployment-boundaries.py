@@ -36,6 +36,7 @@ class DeploymentBoundaries(unittest.TestCase):
             'cloudflare-deploy.yml', 'safe-app-deploy.yml', 'docs-deploy.yml',
             'landing-deploy.yml', 'mcp-deploy.yml', 'compat-api-deploy.yml',
             'otc-runtime-control.yml', 'mcp-registry-release.yml',
+            'railgun-deploy.yml',
         })
 
     def test_other_control_plane_credentials_are_environment_scoped(self):

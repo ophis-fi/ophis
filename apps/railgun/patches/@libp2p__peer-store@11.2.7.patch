@@ -1,0 +1,26 @@
+diff --git a/src/index.ts b/src/index.ts
+--- a/src/index.ts
++++ b/src/index.ts
+@@ -183,6 +183,9 @@
+     }
+ 
+     const peerRecord = PeerRecord.createFromProtobuf(envelope.payload)
++    if (!peerRecord.peerId.equals(peerId)) {
++      return false
++    }
+     let peer: Peer | undefined
+ 
+     try {
+diff --git a/dist/src/index.js b/dist/src/index.js
+--- a/dist/src/index.js
++++ b/dist/src/index.js
+@@ -109,6 +109,9 @@
+             return false;
+         }
+         const peerRecord = PeerRecord.createFromProtobuf(envelope.payload);
++    if (!peerRecord.peerId.equals(peerId)) {
++      return false
++    }
+         let peer;
+         try {
+             peer = await this.get(peerId, options);
