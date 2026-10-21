@@ -36,6 +36,12 @@ def render(active=False):
         from datetime import datetime
         assert 0 <= time.time() - datetime.fromisoformat(verified['verifiedAt'].replace('Z', '+00:00')).timestamp() < 3600, 'Re-run verify.cjs before activation'
         assert verified['contracts'] == c and verified['solver'] == cfg['solver']
+    gas_price_cap = cfg['maxFeePerGas']
+    if active and (OUT / 'driver.toml').exists():
+        # Runtime fee changes must survive rendering without rewriting the deployment plan.
+        gas_price_cap = tomllib.loads((OUT / 'driver.toml').read_text())['submission']['gas-price-cap']
+    assert isinstance(gas_price_cap, str) and gas_price_cap.isascii() and gas_price_cap.isdigit()
+    assert 0 < int(gas_price_cap) <= 100_000_000_000, 'Runtime gas price exceeds the release cap'
     # These service credentials must be readable by Compose/Postgres, but only
     # by the operator on the host. Create private files BEFORE writing secrets;
     # atomic replacement also avoids truncation and following destination links.
@@ -164,7 +170,7 @@ balances = "{c['Balances']}"
 signatures = "{c['Signatures']}"
 {solver_lanes}
 [submission]
-gas-price-cap = "{cfg['maxFeePerGas']}"
+gas-price-cap = "{gas_price_cap}"
 [[submission.mempool]]
 url = "{rpc}"
 additional-tip-percentage = 0.0
