@@ -1,0 +1,77 @@
+name: Temporary read-only ledger proof
+'on':
+  workflow_dispatch: {}
+permissions:
+  contents: read
+jobs:
+  export:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 6
+    environment: Production
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: tailscale/github-action@306e68a486fd2350f2bfc3b19fcd143891a4a2d8 # v4.1.2
+        with:
+          oauth-client-id: ${{ secrets.TS_OIDC_CLIENT_ID }}
+          audience: ${{ secrets.TS_OIDC_AUDIENCE }}
+          tags: tag:ci
+      - name: Export an encrypted read-only snapshot
+        env:
+          SSH_HOST: ${{ secrets.CADIA_REBATES_SSH_HOST }}
+          SSH_USER: ${{ secrets.CADIA_REBATES_SSH_USER }}
+          SSH_PORT: ${{ secrets.CADIA_REBATES_SSH_PORT }}
+          SSH_PRIVATE_KEY: ${{ secrets.CADIA_REBATES_SSH_PRIVATE_KEY }}
+          SSH_HOST_KEY: ${{ secrets.CADIA_REBATES_SSH_HOST_KEY }}
+          AUDIT_CERT_B64: LS0tLS1CRUdJTiBDRVJUSUZJQ0FURS0tLS0tCk1JSUR5akNDQWpJQ0NRRFh4cWVnODFQRUxUQU5CZ2txaGtpRzl3MEJBUXNGQURBbk1TVXdJd1lEVlFRRERCeFAKY0docGN5QnlaV0ZrTFc5dWJIa2diR1ZrWjJWeUlIQnliMjltTUI0WERUSTJNVEF5TVRBNE1EWTBObG9YRFRJMgpNVEF5T0RBNE1EWTBObG93SnpFbE1DTUdBMVVFQXd3Y1QzQm9hWE1nY21WaFpDMXZibXg1SUd4bFpHZGxjaUJ3CmNtOXZaakNDQWFJd0RRWUpLb1pJaHZjTkFRRUJCUUFEZ2dHUEFEQ0NBWW9DZ2dHQkFOUFdEOVRvRmVLb0RsZ04KdVN5L0xPQUE4U3VJWHhmQ0pUaWt1WGVIck45V0VraGFacUhuUHMvTWJZeW9teHovVHVBR3EvektBcE1Kd3gxcApkaGZaVzVTZkcyelQyay9JZ2kzM0VyQmpGRFZ5ZEpObVp2MEFOSEQ5c0xRRzZQSUhuSk1tM1JtbEJkenlwQUJmClB1ZC9rYnV4dXdzMnFqc08wdTRBN3FvbW1QWlVmb015TjFzQldwK1VUaGExMC9DalB0dUlSUWdUWWpuUVRwMTQKSkpJKzRFbU9FeGtJR1NKZDltMzlsM0Q2czRib3lIcENWWjdHSTcyaGthUHcvTnRsYVcvTlVMSTlyTnRseHIrbApFSkZwNWhYSWRYL01zeTlWUmQ4RDlramN0cVhIVFJwdjZiNStzSXZtV3poMXg1ZFkyN0FmVCtFV3VHL2c0YkN0Clo4NG0rTEV5UDhuTkhNSFliSjc3ZkkzVUt0RTNUNzFteXR5dy92ODk1ZVRNNHlHYzRCdkUzOFI4M0xuWHI1ZmoKVHVkZ1VXeTRqcEhITmE3VFZ4Qy8vYkdrbDlob1hOVUVkZGt6MEZpQlBQakg0bWQ0QTZURzYyTTJjVVRNNEdzZApZVWY4U1IxbUQ4d1ZpTFovTitUWnNOb1I0cFlpWGQ4aWRTZjN3NENpbE1YZ2RkQTdvd0lEQVFBQk1BMEdDU3FHClNJYjNEUUVCQ3dVQUE0SUJnUUJnSjllb1RIVmwxUFNJR2RLYWxDNnNpNnlnaGNmMzJsVEh3VHg2UFQwckFjY3MKYkRvZUFlOFF0M3p4TWRYbFVYMTk5MDdXOElUbXBIVmFDR2p5dGNyQVFoZ3hrVGFUaUQ0Skt5ZmFDOUc5MXQwWgpWQ21pWjBrcUJhaHV2WTZVdVdXY3FTVkUwVndxTlRhRFVYbWpXeTdLZ09BVU1yQnlHN29GOWEwUHdRYU1mMVJ6CnN2TGVaNGkxWjdodUQ4T0s5TFZ2UXBSVm1KMHYzaFROMi9tZW1MZ1pRTjRnWjdWMXVaR2tFMGF3bUk2VnhDSUIKbHBod2Q0c2VqelVXeFRHR1MvallnZ1ZYZU1rKzB2ZG5uME9IUlJGd2NIS3JzOWNtbTZwNUE2M0grZjVTNWRqVwpJbzdNNUJraVRQSUtsY29uVUlsVmxreW9hYXkzVkV1UUFEWGJmNVRHWnlacHlIT2YwR0oxTlB3RTMwYjJlRUkxCnFXdnQzYVFZNzNzTzJiL0lHYTgvMEI2dEhjZmRZM2xxSTJLb005Y3JUTy9ZTHRaOGE0ZVNkT3hTV0FBaENTTEwKS0p4aGNKM0JhYkZtOWF0M3c1ZkUreWZwdDFYMFkxd0hia0lsdzVTK2MvK0hIZWV6dVV5Q216UVU5VUlUU0pUZApnTW93VTFTQjlrRkYzS0xiTzM0PQotLS0tLUVORCBDRVJUSUZJQ0FURS0tLS0tCg==
+        run: |
+          set -euo pipefail
+          umask 077
+          audit_dir="$RUNNER_TEMP/ledger-proof"
+          mkdir -p "$audit_dir"
+          trap 'rm -rf "$audit_dir"' EXIT
+          printf '%s\n' "$SSH_PRIVATE_KEY" > "$audit_dir/key"
+          printf '%s\n' "$SSH_HOST_KEY" > "$audit_dir/known_hosts"
+          printf '%s' "$AUDIT_CERT_B64" | base64 --decode > "$audit_dir/cert.crt"
+          ssh -i "$audit_dir/key" -p "$SSH_PORT" \
+            -o BatchMode=yes -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes \
+            -o ConnectTimeout=15 -o "UserKnownHostsFile=$audit_dir/known_hosts" \
+            "$SSH_USER@$SSH_HOST" \
+            "cd /srv/ophis/apps/rebate-indexer && docker compose exec -T pg env 'PGOPTIONS=-c default_transaction_read_only=on -c statement_timeout=30000' psql -X -U rebates -d rebates -A -t -q" \
+            > "$audit_dir/snapshot.jsonl" <<'SQL'
+          \set ON_ERROR_STOP on
+          BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY;
+          SELECT json_build_object('kind','snapshot','at',now(),'database',current_database());
+          SELECT json_build_object('kind','trades','rows',coalesce(json_agg(r),'[]')) FROM (
+            SELECT chain_id,'0x'||encode(trade_uid,'hex') AS order_uid,
+              '0x'||encode(wallet,'hex') AS wallet,block_number::text,block_timestamp,
+              '0x'||encode(sell_token,'hex') AS sell_token,sell_amount::text,
+              '0x'||encode(buy_token,'hex') AS buy_token,buy_amount::text,
+              value_usd::text,priced_at,fetched_at,app_code,volume_fee_bps,fee_verified,
+              defillama_expected_fill_count
+            FROM trades
+            WHERE chain_id IN (1,10,56,100,130,137,4663,5042,8453,9745,42161,43114,57073,59144)
+            ORDER BY chain_id,trade_uid
+          ) r;
+          SELECT json_build_object('kind','fills','rows',coalesce(json_agg(r),'[]')) FROM (
+            SELECT chain_id,'0x'||encode(trade_uid,'hex') AS order_uid,
+              block_number::text,log_index,'0x'||encode(transaction_hash,'hex') AS transaction_hash,
+              '0x'||encode(sell_token,'hex') AS sell_token,sell_amount::text,
+              '0x'||encode(buy_token,'hex') AS buy_token,buy_amount::text,
+              settlement_timestamp,value_usd::text,fee_verified,assessed_fee_bps::text
+            FROM defillama_fills
+            WHERE chain_id IN (1,10,56,100,130,137,4663,5042,8453,9745,42161,43114,57073,59144)
+            ORDER BY chain_id,block_number,log_index
+          ) r;
+          COMMIT;
+          SQL
+          openssl smime -encrypt -aes-256-cbc -binary \
+            -in "$audit_dir/snapshot.jsonl" -outform PEM \
+            -out ledger-proof.enc.pem "$audit_dir/cert.crt"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: encrypted-ledger-proof
+          path: ledger-proof.enc.pem
+          retention-days: 1
