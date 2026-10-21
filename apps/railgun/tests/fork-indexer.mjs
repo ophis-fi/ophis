@@ -1,3 +1,5 @@
+import { readFileSync, writeFileSync } from 'node:fs'
+
 // Public historical events only. Never include events newer than the Anvil snapshot.
 export async function fetchPublicIndexer(fetchResponse) {
   for (let attempt = 0; attempt < 3; attempt++) {
@@ -7,6 +9,23 @@ export async function fetchPublicIndexer(fetchResponse) {
       throw new Error(`Public indexer HTTP ${response.status()}`)
     await new Promise((resolve) => setTimeout(resolve, 1000))
   }
+}
+
+export async function cachedIndexerResponse(file, fetchResponse) {
+  try {
+    return JSON.parse(readFileSync(file, 'utf8'))
+  } catch (error) {
+    if (error.code !== 'ENOENT') throw error
+  }
+  const response = await fetchPublicIndexer(fetchResponse)
+  const payload = await response.json()
+  if (payload.errors) throw new Error('Public indexer query failed')
+  try {
+    writeFileSync(file, JSON.stringify(payload), { flag: 'wx', mode: 0o600 })
+  } catch (error) {
+    if (error.code !== 'EEXIST') throw error
+  }
+  return payload
 }
 
 export function boundIndexerResponse(response, block) {

@@ -1,5 +1,31 @@
 import { expect, it, vi } from 'vitest'
-import { boundIndexerResponse, fetchPublicIndexer } from './fork-indexer.mjs'
+import { mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+import { boundIndexerResponse, cachedIndexerResponse, fetchPublicIndexer } from './fork-indexer.mjs'
+
+it('reuses public cache data and never overwrites a file inserted during fetching', async () => {
+  const directory = mkdtempSync(join(tmpdir(), 'railgun-indexer-'))
+  const cache = join(directory, 'cache.json')
+  const victim = join(directory, 'unrelated.json')
+  const payload = { data: { events: [] } }
+  const response = { ok: () => true, json: async () => payload }
+  try {
+    const fetch = vi.fn().mockResolvedValue(response)
+    await expect(cachedIndexerResponse(cache, fetch)).resolves.toEqual(payload)
+    await expect(cachedIndexerResponse(cache, fetch)).resolves.toEqual(payload)
+    expect(fetch).toHaveBeenCalledTimes(1)
+    rmSync(cache)
+    writeFileSync(victim, 'do not overwrite')
+    await expect(cachedIndexerResponse(cache, async () => {
+      symlinkSync(victim, cache)
+      return response
+    })).resolves.toEqual(payload)
+    expect(readFileSync(victim, 'utf8')).toBe('do not overwrite')
+  } finally {
+    rmSync(directory, { recursive: true, force: true })
+  }
+})
 
 it('bounds every indexer event and batched response at the pinned fork height', () => {
   const response = { data: { __typename: 'Query', unshields: [{ blockNumber: '100' }, { blockNumber: '101' }] } }

@@ -1,8 +1,8 @@
 import assert from 'node:assert/strict'
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync } from 'node:fs'
 import { createHash } from 'node:crypto'
 import { resolve, join } from 'node:path'
-import { boundIndexerResponse, fetchPublicIndexer } from './fork-indexer.mjs'
+import { boundIndexerResponse, cachedIndexerResponse } from './fork-indexer.mjs'
 import { chromium } from '@playwright/test'
 import { Contract, JsonRpcProvider, JsonRpcSigner } from 'ethers'
 import { forkMarker } from '../src/fork-marker.ts'
@@ -56,14 +56,9 @@ await page.route('https://rail-squid.squids.live/**/graphql', async (route) => {
       .update(`${block}:${JSON.stringify(body)}`)
       .digest('hex')}.json`,
   )
-  let payload
-  if (existsSync(cache)) payload = JSON.parse(readFileSync(cache, 'utf8'))
-  else {
-    const response = await fetchPublicIndexer(() => route.fetch({ postData: JSON.stringify(body), timeout: 90_000 }))
-    payload = await response.json()
-    if (payload.errors) throw new Error('Public indexer query failed')
-    writeFileSync(cache, JSON.stringify(payload))
-  }
+  const payload = await cachedIndexerResponse(cache, () =>
+    route.fetch({ postData: JSON.stringify(body), timeout: 90_000 }),
+  )
   await route.fulfill({
     status: 200,
     headers: { 'content-type': 'application/json', 'access-control-allow-origin': '*' },

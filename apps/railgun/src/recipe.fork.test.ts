@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
-import { Contract, JsonRpcProvider, JsonRpcSigner, getAddress } from 'ethers'
-import { ERC20, OPHIS_FEE, TOKENS, PERMIT, PERMIT2, ROUTER } from './config'
+import { Contract, JsonRpcProvider, JsonRpcSigner } from 'ethers'
+import { ERC20, OPHIS_FEE, TOKENS } from './config'
 import { quoteSwap, recipeCalls } from './recipe'
 
 const enabled = process.env.RAILGUN_FORK_TEST === '1'

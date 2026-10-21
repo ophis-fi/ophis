@@ -93,7 +93,7 @@ export async function startWalletEngine(
       if (event.scanStatus === MerkletreeScanStatus.Complete) scan.ready = true
       if (event.scanStatus === MerkletreeScanStatus.Incomplete) scan.ready = false
       onStatus(
-        `Scanning private balances: ${event.scanStatus} ${Math.round((event.progress || 0) * 100)}%`,
+        `Scanning private balances: ${event.scanStatus}${event.progress == null ? '' : ` ${Math.round(event.progress * 100)}%`}`,
         scan.ready,
       )
     })
