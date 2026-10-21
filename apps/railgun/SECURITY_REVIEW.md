@@ -1,6 +1,6 @@
 # Release security review — 2026-10-21
 
-**Decision: hold merge and deployment.** The user authorized them only when the applicable release checks are green. Code review fixes have passed focused checks, but browser-wallet sending and actual PPOI/broadcaster transaction acceptance remain release gates. The protected RPC transport is now deployed and verified separately. No application merge, wallet deployment or funded mainnet transaction was performed. A draft PR is being prepared for hosted checks. Baal tracing and its authenticated transport were deployed during the subsequent authorized release work.
+**Decision: hold merge and deployment.** The user authorized them only when the applicable release checks are green. Code review fixes have passed focused checks, but actual funded PPOI/broadcaster transaction acceptance and hosted checks remain release gates. Actual injected-wallet approval and shielding now pass on the marked fork. The protected RPC transport is now deployed and verified separately. No application merge, wallet deployment or funded mainnet transaction was performed. Draft PR [#1594](https://github.com/ophis-fi/ophis/pull/1594) starts hosted checks; it remains unmerged. Baal tracing and its authenticated transport were deployed during the subsequent authorized release work.
 
 ## Review scope
 
@@ -39,7 +39,7 @@ Evidence lives in `/Users/scep/ophis-railgun-evidence` outside the repository. I
 
 ## Remaining release gates
 
-1. Actual injected-wallet approval and shield transaction, beyond connection/rejection/network-switch checks.
+1. Actual injected-wallet approval and shielding passed on the marked fork; retain the separate funded mainnet acceptance gate.
 2. Protected tracing and trusted transport are verified through the actual Workerd runtime. Retest the deployed wallet gateway after release.
 3. A specifically authorized test wallet and spending cap for live shielding, PPOI eligibility, broadcaster acceptance, private output, withdrawal and recovery.
 4. Final deployment configuration, required GitHub checks and release review. The main-only manual deployment workflow uses existing protected CI credentials; it has not been dispatched for this app.
@@ -49,3 +49,5 @@ This report records applicable checks and their limits. It is not an all-green o
 ## Authenticated transport review
 
 The server-only bearer token is required for nonlocal forwarding and cannot be overridden by client headers. Caddy restricts authenticated requests to `POST /rpc`, strips credentials before Baal and limits bodies to256KiB. The two-container transport publishes no host port, runs without root and pins image digests; Caddy retains only the capability required by its official executable. Secrets are excluded from Git and browser builds. Independent Codex source review found no concrete new issue and independently passed five gateway tests. Internal origin tests and public HTTPS tests establish authentication separately from the existing Cloudflare browser-integrity policy. Actual Workerd-to-Baal delegated call and trace simulations passed.
+
+Actual MetaMask13.53 approval and shielding passed through its normal injected provider and enabled confirmation UI on the marked fork, with successful receipts and no remaining allowance. This closes the injected-wallet fork gate; live funded acceptance is still pending. The final deployment source/configuration scan ran212applicable rules across38explicit files with0findings/errors. No new concrete deployment vulnerability was identified.
