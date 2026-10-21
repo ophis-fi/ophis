@@ -1,0 +1,153 @@
+import { BroadcasterTransaction, WakuBroadcasterClient } from '@railgun-community/waku-broadcaster-client-web'
+import {
+  calculateGasLimit,
+  calculateGasPrice,
+  EVMGasType,
+  POI_REQUIRED_LISTS,
+  type SelectedBroadcaster,
+  type TransactionGasDetailsType4,
+  type TransactionGasDetailsType1,
+  type RailgunPopulateTransactionResponse,
+} from '@railgun-community/shared-models'
+import { calculateBroadcasterFeeERC20Amount, validateRailgunAddress } from '@railgun-community/wallet'
+import { getAddress, isAddress, type TransactionRequest } from 'ethers'
+import { CONFIG, ENVIRONMENT, FEE_SIGNER, VERSION } from './config'
+import type { WalletSession } from './wallet'
+
+export async function startBroadcasters(onStatus: (status: string) => void): Promise<void> {
+  if (ENVIRONMENT !== 'ethereum')
+    throw new Error(
+      'Mainnet broadcasters are disabled in this local fork build. Use the fork test harness for private execution.',
+    )
+  const signer = FEE_SIGNER
+  if (!signer || !validateRailgunAddress(signer))
+    throw new Error('Configure a verified Railgun broadcaster fee signer before enabling private submissions.')
+  if (!WakuBroadcasterClient.isStarted())
+    await WakuBroadcasterClient.start(
+      CONFIG.chain,
+      {
+        trustedFeeSigner: signer,
+        poiActiveListKeys: POI_REQUIRED_LISTS.map((list) => list.key),
+        enableHealthcheckLogs: false,
+      },
+      (_chain, status) => onStatus(`Broadcaster: ${status}`),
+    )
+}
+
+export function selectBroadcaster(tokenAddress: string, use7702: boolean): SelectedBroadcaster {
+  const choices: SelectedBroadcaster[] =
+    WakuBroadcasterClient.findBroadcastersForToken(CONFIG.chain, tokenAddress, use7702, use7702) || []
+  const selected = choices
+    .filter(
+      (candidate) =>
+        candidate.tokenFee.expiration > Date.now() + 60_000 && (!use7702 || supportsCanonicalDelegate(candidate)),
+    )
+    .sort((a, b) => (BigInt(a.tokenFee.feePerUnitGas) < BigInt(b.tokenFee.feePerUnitGas) ? -1 : 1))[0]
+  if (!selected)
+    throw new Error('No broadcaster with a fresh compatible fee is available. Try again after discovery connects.')
+  validateBroadcaster(selected, tokenAddress, use7702)
+  return selected
+}
+
+export function validateBroadcaster(selected: SelectedBroadcaster, tokenAddress: string, use7702: boolean): void {
+  if (
+    getAddress(selected.tokenAddress) !== getAddress(tokenAddress) ||
+    !validateRailgunAddress(selected.railgunAddress) ||
+    BigInt(selected.tokenFee.feePerUnitGas) <= 0n
+  )
+    throw new Error('Invalid broadcaster quote.')
+  if (use7702 && !supportsCanonicalDelegate(selected))
+    throw new Error('Broadcaster does not support the canonical Railgun delegate.')
+}
+
+export async function gasDetails(session: WalletSession): Promise<TransactionGasDetailsType4> {
+  const fee = await session.provider.getFeeData()
+  if (fee.maxFeePerGas == null || fee.maxPriorityFeePerGas == null)
+    throw new Error('Ethereum fee estimate unavailable.')
+  return {
+    evmGasType: EVMGasType.Type4,
+    gasEstimate: 3_000_000n,
+    maxFeePerGas: fee.maxFeePerGas,
+    maxPriorityFeePerGas: fee.maxPriorityFeePerGas,
+  }
+}
+
+export function broadcasterFee(
+  selected: SelectedBroadcaster,
+  gas: TransactionGasDetailsType4 | TransactionGasDetailsType1,
+) {
+  if (selected.tokenFee.expiration <= Date.now() + 60_000)
+    throw new Error('Broadcaster fee expired. Prepare another transaction.')
+  return {
+    ...calculateBroadcasterFeeERC20Amount(
+      { tokenAddress: selected.tokenAddress, feePerUnitGas: BigInt(selected.tokenFee.feePerUnitGas) },
+      gas,
+    ),
+    recipientAddress: selected.railgunAddress,
+  }
+}
+
+export async function assertSubmittable(
+  session: WalletSession,
+  selected: SelectedBroadcaster,
+  gas: TransactionGasDetailsType4 | TransactionGasDetailsType1,
+): Promise<void> {
+  if (ENVIRONMENT !== 'ethereum') throw new Error('Mainnet broadcasting is disabled in this local fork build.')
+  // Detect known local forks even if the operator selected the wrong environment.
+  const fork = await session.provider.send('anvil_metadata', []).catch(() => undefined)
+  const hardhat = await session.provider.send('hardhat_metadata', []).catch(() => undefined)
+  if (fork || hardhat) throw new Error('Broadcaster submission is disabled on local forks.')
+  if ((await session.provider.getNetwork()).chainId !== 1n) throw new Error('Ethereum RPC required.')
+  broadcasterFee(selected, gas)
+}
+
+export async function submitPrivate(
+  session: WalletSession,
+  populated: RailgunPopulateTransactionResponse,
+  selected: SelectedBroadcaster,
+  gas: TransactionGasDetailsType4 | TransactionGasDetailsType1,
+  use7702: boolean,
+): Promise<string> {
+  await assertSubmittable(session, selected, gas)
+  if (!populated.nullifiers?.length) throw new Error('Private transaction has no spend nullifiers.')
+  const transaction = populated.transaction as TransactionRequest
+  if (!transaction.to || typeof transaction.to !== 'string' || typeof transaction.data !== 'string')
+    throw new Error('Invalid populated private transaction.')
+  const authorization = use7702 ? transaction.authorizationList?.[0] : undefined
+  if (use7702 && !authorization) throw new Error('Missing 7702 authorization.')
+  const type4 =
+    gas.evmGasType === EVMGasType.Type4
+      ? {
+          gasLimit: calculateGasLimit(gas.gasEstimate),
+          maxFeePerGas: gas.maxFeePerGas,
+          maxPriorityFeePerGas: gas.maxPriorityFeePerGas,
+        }
+      : undefined
+  if (use7702 && !type4) throw new Error('Type-4 fees required for a private swap.')
+  const broadcast = await BroadcasterTransaction.create(
+    VERSION,
+    transaction.to,
+    transaction.data,
+    selected.railgunAddress,
+    selected.tokenFee.feesID,
+    CONFIG.chain,
+    populated.nullifiers,
+    use7702 ? 0n : calculateGasPrice(gas),
+    use7702,
+    populated.preTransactionPOIsPerTxidLeafPerList,
+    authorization,
+    type4,
+  )
+  return broadcast.send()
+}
+
+export interface PrivateSubmitter {
+  assertReady: typeof assertSubmittable
+  send: typeof submitPrivate
+}
+export const privateSubmitter: PrivateSubmitter = { assertReady: assertSubmittable, send: submitPrivate }
+
+function supportsCanonicalDelegate(selected: SelectedBroadcaster): boolean {
+  const delegate = selected.tokenFee.relayAdapt7702
+  return !!delegate && isAddress(delegate) && getAddress(delegate) === getAddress(CONFIG.relayAdapt7702Contract)
+}

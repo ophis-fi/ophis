@@ -1,0 +1,3 @@
+# Local gateway smoke test only. Never use this upstream in production.
+RAILGUN_RPC_URL=http://127.0.0.1:8549
+RAILGUN_RPC_ENABLED=true

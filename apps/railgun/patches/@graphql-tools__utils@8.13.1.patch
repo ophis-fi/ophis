@@ -1,0 +1,28 @@
+diff --git a/cjs/mergeDeep.js b/cjs/mergeDeep.js
+--- a/cjs/mergeDeep.js
++++ b/cjs/mergeDeep.js
+@@ -23,8 +23,9 @@
+                 }
+             }
+             for (const key in source) {
++                if (key === '__proto__' || key === 'constructor' || key === 'prototype') continue;
+                 if (isObject(source[key])) {
+-                    if (!(key in output)) {
++                    if (!Object.prototype.hasOwnProperty.call(output, key)) {
+                         Object.assign(output, { [key]: source[key] });
+                     }
+                     else {
+diff --git a/esm/mergeDeep.js b/esm/mergeDeep.js
+--- a/esm/mergeDeep.js
++++ b/esm/mergeDeep.js
+@@ -20,8 +20,9 @@
+                 }
+             }
+             for (const key in source) {
++                if (key === '__proto__' || key === 'constructor' || key === 'prototype') continue;
+                 if (isObject(source[key])) {
+-                    if (!(key in output)) {
++                    if (!Object.prototype.hasOwnProperty.call(output, key)) {
+                         Object.assign(output, { [key]: source[key] });
+                     }
+                     else {

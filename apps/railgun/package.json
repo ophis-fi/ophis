@@ -1,0 +1,70 @@
+{
+  "name": "@ophis/railgun",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "packageManager": "pnpm@10.33.2",
+  "engines": {
+    "node": ">=22.18.0"
+  },
+  "scripts": {
+    "dev": "vite --host 127.0.0.1 --port 4319 --strictPort",
+    "build": "pnpm typecheck && vite build",
+    "test": "vitest run",
+    "test:fork": "RAILGUN_FORK_TEST=1 vitest run src/recipe.fork.test.ts src/cancel.fork.test.ts --no-file-parallelism",
+    "test:wallet": "node tests/browser-wallet.mjs",
+    "test:roundtrip": "node tests/fork-browser.mjs",
+    "preview": "vite preview",
+    "typecheck": "tsc --noEmit && tsc --noEmit -p tsconfig.server.json"
+  },
+  "dependencies": {
+    "@railgun-community/curve25519-scalarmult-wasm": "0.1.5",
+    "@railgun-community/engine": "9.9.1",
+    "@railgun-community/poseidon-hash-wasm": "1.0.3",
+    "@railgun-community/shared-models": "8.2.1",
+    "@railgun-community/waku-broadcaster-client-web": "10.0.1",
+    "@railgun-community/wallet": "11.2.0",
+    "ethers": "6.14.3",
+    "level-js": "6.1.0",
+    "levelup": "5.1.1",
+    "snarkjs": "0.7.5"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "5.20261021.1",
+    "@playwright/test": "1.64.1",
+    "@types/level-js": "4.0.5",
+    "@types/levelup": "5.1.5",
+    "@types/node": "22.19.7",
+    "@types/snarkjs": "0.7.9",
+    "typescript": "5.9.3",
+    "vite": "7.3.7",
+    "vite-plugin-node-polyfills": "0.24.0",
+    "vitest": "4.1.11",
+    "wrangler": "4.151.3"
+  },
+  "pnpm": {
+    "peerDependencyRules": {
+      "allowedVersions": {
+        "@railgun-community/waku-broadcaster-client-web@10.0.1>@railgun-community/wallet": "11.2.0"
+      },
+      "ignoreMissing": [
+        "react-native"
+      ]
+    },
+    "overrides": {
+      "axios": "^1.20.0",
+      "ws": "^8.21.0",
+      "protobufjs": "^7.6.5",
+      "bn.js@4.11.6": "4.12.5",
+      "chai": "5.3.3"
+    },
+    "patchedDependencies": {
+      "elliptic@6.6.1": "../../patches/elliptic@6.6.1.patch",
+      "@graphql-tools/utils@8.13.1": "patches/@graphql-tools__utils@8.13.1.patch",
+      "@graphql-tools/utils@9.2.1": "patches/@graphql-tools__utils@9.2.1.patch",
+      "@libp2p/peer-store@11.2.7": "patches/@libp2p__peer-store@11.2.7.patch",
+      "@graphql-tools/executor-legacy-ws@0.0.11": "patches/@graphql-tools__executor-legacy-ws@0.0.11.patch",
+      "@railgun-community/engine@9.9.1": "patches/@railgun-community__engine@9.9.1.patch"
+    }
+  }
+}

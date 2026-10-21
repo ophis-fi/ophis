@@ -14,6 +14,13 @@ import { mountConsentBanner } from 'ophis/analytics'
 
 import * as styledEl from './OphisFooter.styled'
 
+const PRIVATE_WALLET_URL =
+  process.env.NODE_ENV === 'development'
+    ? 'http://127.0.0.1:4319'
+    : process.env.REACT_APP_PRIVATE_WALLET_URL?.startsWith('https://')
+      ? process.env.REACT_APP_PRIVATE_WALLET_URL
+      : undefined
+
 interface Props {
   /** Render with no top border for routes where the body already has its own divider. */
   borderless?: boolean
@@ -36,6 +43,11 @@ function CompactFooter({ borderless }: { borderless: boolean }): ReactNode {
         </styledEl.Wordmark>
       </styledEl.CompactBrand>
       <styledEl.CompactLinks aria-label="More from Ophis">
+        {PRIVATE_WALLET_URL && (
+          <styledEl.ExternalLink href={PRIVATE_WALLET_URL} target="_blank" rel="noreferrer">
+            Private wallet{process.env.NODE_ENV === 'development' ? ' (local)' : ''}
+          </styledEl.ExternalLink>
+        )}
         <styledEl.ExternalLink href="https://docs.ophis.fi/">Docs</styledEl.ExternalLink>
         <styledEl.ExternalLink href="https://ophis.fi/blog/">Blog</styledEl.ExternalLink>
         <styledEl.ExternalLink href="https://x.com/ophisfi" aria-label="Ophis on X">
@@ -111,6 +123,13 @@ function FullFooter({ borderless }: { borderless: boolean }): ReactNode {
         <div>
           <styledEl.ColTitle>Product</styledEl.ColTitle>
           <styledEl.ColList>
+            {PRIVATE_WALLET_URL && (
+              <li>
+                <styledEl.ExternalLink href={PRIVATE_WALLET_URL} target="_blank" rel="noreferrer">
+                  Private wallet{process.env.NODE_ENV === 'development' ? ' (local)' : ''}
+                </styledEl.ExternalLink>
+              </li>
+            )}
             <li>
               <styledEl.InternalLink to="/1/swap/_/_">Trade</styledEl.InternalLink>
             </li>

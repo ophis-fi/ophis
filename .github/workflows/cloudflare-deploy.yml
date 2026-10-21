@@ -148,6 +148,7 @@ jobs:
           # Base URL for the rebate-indexer API (TierChip + useTier hook).
           # Defaults to the same value at runtime if the env var is missing.
           REACT_APP_REBATES_API: https://rebates.ophis.fi
+          REACT_APP_PRIVATE_WALLET_URL: ${{ vars.REACT_APP_PRIVATE_WALLET_URL }}
           # Flat volume fee in bps (build-time flag). readVolumeFeeBps() enables the
           # 1 bp base ONLY for EXACTLY the canonical rate; the step above asserts
           # the secret equals it before build. The pair-aware improvement policy
