@@ -246,13 +246,16 @@ jobs:
                      /mnt/infra/shared/cron/container-watchdog.test.sh \
                      /mnt/infra/shared/cron/settlement-buffer-watch.sh \
                      /mnt/infra/shared/cron/settlement-buffer-watch.test.sh \
-                     /mnt/infra/shared/scripts/sweep-preflight.sh
+                     /mnt/infra/shared/scripts/sweep-preflight.sh \
+                     /mnt/infra/shared/scripts/mac-restore-backends.sh
           echo "::endgroup::"
       - name: container-watchdog
         run: |
           echo "::group::container-watchdog.test.sh"
           bash infra/shared/cron/container-watchdog.test.sh
           echo "::endgroup::"
+      - name: Mac OP and Arc reboot recovery
+        run: python3 infra/shared/scripts/test-mac-restore-backends.py
       - name: settlement-buffer-watch
         # This job hardcodes its suites rather than globbing *.test.sh, so a new
         # suite that is not listed here is a suite CI never runs -- written,

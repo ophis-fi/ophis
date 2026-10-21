@@ -15,6 +15,21 @@ flags. CCTP uses Circle's permissionless API and no Circle Swap or secret API ke
 `plan`, `rehearse`, `render`, and `check` are preparation
 commands, not deployment commands; do not regenerate this deployed release.
 
+Active re-renders preserve the existing driver's runtime gas-price cap instead
+of resetting it to the historical deployment plan. First activation still uses
+the plan's cap. The October 21 operator-approved runtime cap is 30 gwei with the
+existing 10-million-gas limit (at most 0.30 native USDC per transaction). The
+renderer rejects invalid caps and values above the release's 100 gwei bound
+before writing configuration; it never rewrites the hashed deployment plan.
+
+For the Mac mini's OP and Arc stacks, `infra/shared/scripts/mac-restore-backends.sh`
+restores RAM files with the existing local sudo authentication and starts only
+the existing affected containers. Set `OPHIS_OP_DEPLOY_DIR` to the OP infra
+directory and `OPHIS_ARC_DEPLOY_DIR` to this release directory. Its `--login`
+mode first runs the existing Colima boot helper and opens Terminal for recovery
+if RAM files are absent. It does not grant unattended access to signing keys.
+After authentication, check driver health and representative public quotes.
+
 ## Price-improvement policy rollout
 
 The September 24 launch shipped `fee-policies.policies = []` in both renderers.
