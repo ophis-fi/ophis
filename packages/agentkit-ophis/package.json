@@ -51,12 +51,12 @@
   },
   "peerDependencies": {
     "@coinbase/agentkit": ">=0.10.0",
-    "zod": "^3.23.8"
+    "zod": "^4.6.6"
   },
   "devDependencies": {
     "@coinbase/agentkit": "^0.10.4",
     "typescript": "^5.5.0",
     "vitest": "^4.1.12",
-    "zod": "^3.23.8"
+    "zod": "^4.6.6"
   }
 }
