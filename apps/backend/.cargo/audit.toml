@@ -35,4 +35,14 @@ ignore = [
   # yet, not a vulnerability. Mirrors apps/backend/deny.toml, which already
   # ignores it (this file had drifted out of sync).
   "RUSTSEC-2026-0173",
+
+  # crypto-bigint 0.5.5 - constant-time violations (RUSTSEC-2026-0387)
+  # Only fix is crypto-bigint >=0.7.6; no patched 0.5.x exists. Reached only via
+  # elliptic-curve 0.13 (k256/alloy-signer); even the latest alloy-signer (2.5.0)
+  # still requires elliptic-curve/k256 ^0.13, so no upgrade path exists yet.
+  # Local key signing does touch it, but exploiting it needs fine-grained timing
+  # measurement co-resident on our self-hosted, single-tenant signer hosts.
+  # Re-review by 2026-11-16 (same date as the dated OSV --ignore in security.yml,
+  # which enforces it); mirrored in deny.toml.
+  "RUSTSEC-2026-0387",
 ]
