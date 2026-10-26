@@ -502,8 +502,10 @@ jobs:
           rc=0
           osv-scanner scan source --lockfile "$CARGO_LOCK" --format json \
             --no-call-analysis rust --output-file /tmp/osv-rust.json || rc=$?
+          # RUSTSEC-2026-0387 (crypto-bigint 0.5.5, ungraded): no patched 0.5.x and no
+          # alloy release leaves elliptic-curve 0.13; reason in apps/backend/.cargo/audit.toml.
           python3 scripts/osv-gate.py /tmp/osv-rust.json --mode advisories \
-            --cargo-lock "$CARGO_LOCK" --osv-rc "$rc"
+            --cargo-lock "$CARGO_LOCK" --osv-rc "$rc" --ignore RUSTSEC-2026-0387:2026-11-16
 
   cargo-audit:
     name: cargo audit (Rust deps)

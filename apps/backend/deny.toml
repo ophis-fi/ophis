@@ -43,6 +43,12 @@ ignore = [
     # of the unmaintained proc-macro-error). Transitive build-time macro dep,
     # no maintained drop-in yet; not a vulnerability. RUSTSEC-2026-0173.
     "RUSTSEC-2026-0173",
+    # crypto-bigint 0.5.5 — constant-time violations; only fix is >=0.7.6, reached
+    # only via elliptic-curve/k256 ^0.13, which even the latest alloy-signer (2.5.0)
+    # still requires. Needs co-resident timing measurement on our single-tenant
+    # signer hosts. Re-review by 2026-11-16 (enforced by the dated OSV --ignore in
+    # security.yml); mirrors .cargo/audit.toml. RUSTSEC-2026-0387.
+    "RUSTSEC-2026-0387",
 ]
 
 # ---------------------------------------------------------------------------
