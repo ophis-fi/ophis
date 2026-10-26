@@ -23,7 +23,7 @@
     "agents": "^0.13.3",
     "tsx": "^4.20.6",
     "viem": "^2.48.8",
-    "zod": "^3.25.76"
+    "zod": "^4.6.6"
   },
   "devDependencies": {
     "@cloudflare/workers-types": "^4.20260529.1",
