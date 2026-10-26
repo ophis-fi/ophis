@@ -174,7 +174,9 @@ services:
     # The official image binds its metrics/debug server (/metrics, /debug/pprof,
     # /debug/vars) on 0.0.0.0, which with network_mode: host exposes it on every
     # Cadia interface, tailnet included. Nothing scrapes it, so keep it loopback.
-    command: tunnel --no-autoupdate --metrics 127.0.0.1:20241 --url http://127.0.0.1:80 run
+    # Not 20241: the host's systemd cloudflared-robinhood already holds
+    # 127.0.0.1:20241, and a failed metrics bind makes cloudflared exit (530).
+    command: tunnel --no-autoupdate --metrics 127.0.0.1:20242 --url http://127.0.0.1:80 run
 
 volumes:
   pg_data:
