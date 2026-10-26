@@ -3,6 +3,10 @@
   "name": "ophis-compat",
   "main": "src/index.ts",
   "compatibility_date": "2025-05-01",
+  // Serve only on compat.ophis.fi: a *.workers.dev or preview URL would skip
+  // the zone's WAF and rate-limit rules.
+  "workers_dev": false,
+  "preview_urls": false,
   "observability": {
     "enabled": true
   },
