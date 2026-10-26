@@ -11,6 +11,7 @@ for (const failedBody of [
   null,
   { message: 'Quoting for this pair is not available', correlationId: 'test-reference' },
   { quote: { amountOut: '0' } },
+  { quote: { amountOut: '123456' }, quoteRequest: { confidentiality: 'basic' } },
   {},
 ]) {
   test(`checks both directions using dry quotes, rejecting unavailable output: ${JSON.stringify(failedBody)}`, async () => {
@@ -23,13 +24,13 @@ for (const failedBody of [
       requests.push(request);
       assert.equal(request.dry, true);
       assert.equal(options.headers.Authorization, 'Bearer test-key');
-      assert.equal(request.confidentiality, 'basic');
+      assert.equal(request.confidentiality, 'public');
       assert.equal(request.referral, 'ophis');
       assert.equal(request.appFees[0].fee, 3);
       return Response.json(
         request.originAsset === tokens[0].assetId && failedBody !== null
           ? failedBody
-          : { quote: { amountOut: '123456' } },
+          : { quote: { amountOut: '123456' }, quoteRequest: { confidentiality: 'public' } },
         { status: failedBody?.message && request.originAsset === tokens[0].assetId ? 400 : 201 },
       );
     };
@@ -38,7 +39,7 @@ for (const failedBody of [
       apiKey: 'test-key',
       report: (line) => reports.push(JSON.parse(line)),
     });
-    if (failedBody !== null) await assert.rejects(run, /no positive quote/);
+    if (failedBody !== null) await assert.rejects(run, /no positive public quote/);
     else await run;
     assert.deepEqual(
       requests.map((r) => [r.originAsset, r.destinationAsset, r.amount]),

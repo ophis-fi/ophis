@@ -190,6 +190,7 @@ it('creates a verified executable quote with the real provider fee response', as
     expect(transfer.response.signature).toBe(response.signature)
     expect(transfer.status).toBe('PENDING_DEPOSIT')
     expect(quote).toHaveBeenCalledTimes(1)
+    expect(quote).toHaveBeenCalledWith(expect.objectContaining({ confidentiality: 'public' }))
   } finally {
     jest.restoreAllMocks()
   }
