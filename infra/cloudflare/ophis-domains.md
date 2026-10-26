@@ -12,9 +12,13 @@ project.
 | `ophis.exchange` | Redirect → `ophis.fi` | already at Gandi (autorenew on, expires 2027-05-10) |
 
 Cloudflare account: `4761b41ef352631db0ed367fea98ffdc` (per memory).
-Pages project: `greg` (project URL `https://greg.pages.dev`; canonical
-user-facing domain `https://swap.ophis.fi`). The `.pages.dev` URL is the
-internal deploy target only and is not in any Origin allow-list.
+Pages projects: `ophis-landing` (`https://ophis-landing.pages.dev`, serves
+`ophis.fi` + `www.ophis.fi`) and `greg` (`https://greg-etm.pages.dev`, serves
+`swap.ophis.fi`). The `.pages.dev` URLs are internal deploy targets only and
+are not in any Origin allow-list.
+
+> ⚠️ `greg.pages.dev` is NOT ours (a third party owns that subdomain; the
+> `greg` project got the `greg-etm` suffix). Never CNAME anything to it.
 
 ---
 
@@ -73,13 +77,13 @@ Verify with `dig NS ophis.fi +short`.
 ## Phase 3 — Wire `ophis.fi` to the Pages project
 
 Add `ophis.fi` and `www.ophis.fi` (optional) as custom domains on the
-`greg` Pages project. Pages will provision a TLS certificate via
+`ophis-landing` Pages project. Pages will provision a TLS certificate via
 Cloudflare's edge.
 
 ```bash
 for host in ophis.fi www.ophis.fi; do
   curl -sS -X POST \
-    "https://api.cloudflare.com/client/v4/accounts/$CF_ACCOUNT/pages/projects/greg/domains" \
+    "https://api.cloudflare.com/client/v4/accounts/$CF_ACCOUNT/pages/projects/ophis-landing/domains" \
     -H "Authorization: Bearer $CF_API_TOKEN" \
     -H "Content-Type: application/json" \
     -d "{\"name\":\"$host\"}"
@@ -88,9 +92,9 @@ done
 
 Pages will tell you which DNS records to create. Typically:
 
-- `ophis.fi` → `CNAME` to `greg.pages.dev` (CF will flatten the apex
+- `ophis.fi` → `CNAME` to `ophis-landing.pages.dev` (CF will flatten the apex
   CNAME automatically since the zone lives on CF).
-- `www.ophis.fi` → `CNAME` to `greg.pages.dev`.
+- `www.ophis.fi` → `CNAME` to `ophis-landing.pages.dev`.
 
 Add the records to the `ophis.fi` zone:
 
@@ -102,12 +106,12 @@ ZONE_FI=$(curl -sS -H "Authorization: Bearer $CF_API_TOKEN" \
 # Apex (CNAME-flattened by CF)
 curl -sS -X POST "https://api.cloudflare.com/client/v4/zones/$ZONE_FI/dns_records" \
   -H "Authorization: Bearer $CF_API_TOKEN" -H "Content-Type: application/json" \
-  -d '{"type":"CNAME","name":"@","content":"greg.pages.dev","proxied":true}'
+  -d '{"type":"CNAME","name":"@","content":"ophis-landing.pages.dev","proxied":true}'
 
 # www
 curl -sS -X POST "https://api.cloudflare.com/client/v4/zones/$ZONE_FI/dns_records" \
   -H "Authorization: Bearer $CF_API_TOKEN" -H "Content-Type: application/json" \
-  -d '{"type":"CNAME","name":"www","content":"greg.pages.dev","proxied":true}'
+  -d '{"type":"CNAME","name":"www","content":"ophis-landing.pages.dev","proxied":true}'
 ```
 
 Wait for the Pages domain to flip from `pending` → `active` (~5 min).

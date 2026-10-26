@@ -76,6 +76,9 @@ with tempfile.TemporaryDirectory() as directory:
     info['vulnerabilities'][0]['database_specific']['severity'] = ''
     info['vulnerabilities'][0]['affected'][0]['database_specific']['informational'] = None
     check(document(info), 2, *cargo_args)  # Unknown severity still fails closed.
+    check(document(info), 0, *cargo_args, '--ignore', 'RUSTSEC-2099-0001:2999-01-01')  # Live ignore covers it.
+    check(document(info), 2, *cargo_args, '--ignore', 'RUSTSEC-2099-0001:2000-01-01')  # Expired: fails closed.
+    check(document(info), 2, *cargo_args, '--ignore', 'RUSTSEC-2099-0002:2999-01-01')  # Other id: fails closed.
     cargo.write_text('broken TOML [')
     check(document(rust), 2, *cargo_args)
-print('osv gate: 26 regression checks passed')
+print('osv gate: 29 regression checks passed')

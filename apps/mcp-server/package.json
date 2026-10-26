@@ -23,14 +23,14 @@
     "agents": "^0.13.3",
     "tsx": "^4.20.6",
     "viem": "^2.48.8",
-    "zod": "^3.25.76"
+    "zod": "^4.6.6"
   },
   "devDependencies": {
     "@cloudflare/workers-types": "^4.20260529.1",
     "@types/node": "^22.5.0",
     "typescript": "^5.9.3",
     "vite": "^7.0.0",
-    "vitest": "^4.1.11",
+    "vitest": "^4.1.12",
     "wrangler": "^4.95.0"
   }
 }

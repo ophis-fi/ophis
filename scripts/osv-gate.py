@@ -307,7 +307,20 @@ def main():
     # database_specific.severity AND no CVSS fallback) must never be silently
     # skipped by advisories mode or dropped from baseline counts. This is the
     # net the old npm-audit gate had via its metadata high/critical cross-check.
-    unclassified = [f for f in findings if f[3] not in SEVERITIES]
+    # A live (non-expired) --ignore is an explicit, documented decision, so it may
+    # cover an ungraded record too (e.g. a fresh RustSec id with no CVSS yet).
+    # An expired or absent ignore still fails closed below.
+    ignore = parse_ignores(args.ignore)
+    today = datetime.date.today()
+    unclassified = []
+    for f in findings:
+        if f[3] in SEVERITIES:
+            continue
+        if f[2] in ignore and (ignore[f[2]] is None or ignore[f[2]] >= today):
+            suffix = f" [ignore expires {ignore[f[2]]}]" if ignore[f[2]] else ""
+            print(f"IGNORED (documented, ungraded): {f[0]}@{f[1]} {f[2]}: {f[4]}{suffix}")
+        else:
+            unclassified.append(f)
     if unclassified:
         n, v, g, _, _ = unclassified[0]
         print(f"ERROR: {len(unclassified)} finding(s) have no resolvable severity "
@@ -315,7 +328,7 @@ def main():
         sys.exit(2)
 
     if args.mode == "advisories":
-        mode_advisories(findings, parse_ignores(args.ignore))
+        mode_advisories(findings, ignore)
     else:
         if not args.baseline:
             print("ERROR: baseline mode requires --baseline -- failing closed.", file=sys.stderr)

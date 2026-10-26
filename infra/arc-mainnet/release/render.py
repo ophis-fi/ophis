@@ -203,6 +203,7 @@ REACT_APP_ARC_ORDERBOOK_URL={cfg['orderbookUrl']}
 ''')
     write('nginx.conf', '''events {}
 http {
+  server_tokens off;
   map $http_origin $allowed_origin {
     default "";
     "''' + cfg['frontendOrigin'] + '''" $http_origin;
