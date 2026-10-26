@@ -25,12 +25,12 @@
     "@safe-global/safe-deployments": "^1.37.0",
     "@safe-global/types-kit": "^1.0.0",
     "drizzle-orm": "^0.45.2",
-    "fastify": "^5.12.1",
+    "fastify": "^5.12.6",
     "pino": "^9.5.0",
     "postgres": "^3.4.5",
     "tsx": "^4.19.0",
     "viem": "^2.21.0",
-    "zod": "^3.23.0"
+    "zod": "^4.6.6"
   },
   "devDependencies": {
     "@testcontainers/postgresql": "^10.13.0",
