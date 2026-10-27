@@ -27,7 +27,6 @@ import {
 
 OpenAPI.BASE = 'https://1click.chaindefuser.com'
 OpenAPI.TOKEN = process.env.REACT_APP_NEAR_API_KEY || undefined
-const confidentiality = process.env.REACT_APP_NEAR_API_KEY ? QuoteRequest.confidentiality.BASIC : undefined
 
 export function nearErrorMessage(error: unknown): string {
   if (error instanceof ApiError) {
@@ -158,24 +157,21 @@ export async function requestNearQuote(
     throw new Error('Enter valid receiving and refund addresses on their selected networks.')
   }
   if (source.assetId === destination.assetId) throw new Error('Select different assets.')
-  const request = withOphisNearQuoteParams<QuoteRequest>(
-    {
-      dry: false,
-      swapType: QuoteRequest.swapType.EXACT_INPUT,
-      slippageTolerance: 100,
-      originAsset: source.assetId,
-      destinationAsset: destination.assetId,
-      depositType: QuoteRequest.depositType.ORIGIN_CHAIN,
-      amount: parseNearAmount(amount, source.decimals),
-      recipient,
-      recipientType: QuoteRequest.recipientType.DESTINATION_CHAIN,
-      refundTo,
-      refundType: QuoteRequest.refundType.ORIGIN_CHAIN,
-      // External wallets and UTXO confirmations need more time than EVM signing.
-      deadline: new Date(Date.now() + 2 * 60 * 60 * 1000).toISOString(),
-    },
-    confidentiality,
-  )
+  const request = withOphisNearQuoteParams<QuoteRequest>({
+    dry: false,
+    swapType: QuoteRequest.swapType.EXACT_INPUT,
+    slippageTolerance: 100,
+    originAsset: source.assetId,
+    destinationAsset: destination.assetId,
+    depositType: QuoteRequest.depositType.ORIGIN_CHAIN,
+    amount: parseNearAmount(amount, source.decimals),
+    recipient,
+    recipientType: QuoteRequest.recipientType.DESTINATION_CHAIN,
+    refundTo,
+    refundType: QuoteRequest.refundType.ORIGIN_CHAIN,
+    // External wallets and UTXO confirmations need more time than EVM signing.
+    deadline: new Date(Date.now() + 2 * 60 * 60 * 1000).toISOString(),
+  })
   const response = verifyNearQuote(await OneClickService.getQuote(request))
   assertNearRequest(response, request)
   const transfer: NearTransfer = {
