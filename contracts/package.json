@@ -57,6 +57,7 @@
     "browserslist": "^4.28.7",
     "ganache": "7.9.2",
     "request": "npm:@cypress/request@4.0.1",
+    "qs": "6.16.1",
     "uuid": "^11.1.1",
     "secp256k1": "^4.0.5",
     "http-cache-semantics": "^4.3.0",

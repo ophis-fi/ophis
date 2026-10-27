@@ -1,0 +1,29 @@
+{
+	admin off
+	auto_https off
+	log {
+		level ERROR
+	}
+}
+
+:8080 {
+	@wallet {
+		method POST
+		path /rpc
+		header Authorization "Bearer {$RAILGUN_RPC_TOKEN}"
+	}
+	handle @wallet {
+		request_body {
+			max_size 256KiB
+		}
+		rewrite * /
+		reverse_proxy http://100.69.134.7:8547 {
+			header_up -Authorization
+			header_up -Cookie
+			transport http {
+				response_header_timeout 30s
+			}
+		}
+	}
+	respond 403
+}

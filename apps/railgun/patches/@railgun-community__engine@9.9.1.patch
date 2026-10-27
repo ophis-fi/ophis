@@ -1,0 +1,27 @@
+diff --git a/dist/merkletree/utxo-merkletree.js b/dist/merkletree/utxo-merkletree.js
+index 3daf20d1ba536b295a734511c29ababb20480194..f622b531d4178eb91f11c443b86bd29dcd89ce8c 100644
+--- a/dist/merkletree/utxo-merkletree.js
++++ b/dist/merkletree/utxo-merkletree.js
+@@ -125,13 +125,15 @@ class UTXOMerkletree extends merkletree_1.Merkletree {
+     async addUnshieldEvents(unshields, replaceExisting = false) {
+         let newUnshields = unshields;
+         if (!replaceExisting) {
+-            newUnshields = (0, is_defined_1.removeUndefineds)(await Promise.all(unshields.map(async (unshield) => {
+-                const hasExisting = await this.hasExistingUnshieldEvent(unshield);
+-                if (!hasExisting) {
+-                    return unshield;
+-                }
+-                return undefined;
+-            })));
++            newUnshields = [];
++            // Bound concurrent IndexedDB transactions during a full browser history import.
++            for (let offset = 0; offset < unshields.length; offset += 256) {
++                const chunk = unshields.slice(offset, offset + 256);
++                newUnshields.push(...(0, is_defined_1.removeUndefineds)(await Promise.all(chunk.map(async (unshield) => {
++                    const hasExisting = await this.hasExistingUnshieldEvent(unshield);
++                    return hasExisting ? undefined : unshield;
++                }))));
++            }
+         }
+         // Build write batch for nullifiers
+         const writeBatch = newUnshields.map((unshield) => ({

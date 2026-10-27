@@ -1,0 +1,6 @@
+tunnel: 0d5b03b0-39da-4377-9f70-edd5242f91fb
+credentials-file: /etc/cloudflared/credentials.json
+ingress:
+  - hostname: railgun-rpc.ophis.fi
+    service: http://rpc:8080
+  - service: http_status:404

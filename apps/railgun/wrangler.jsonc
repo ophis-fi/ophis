@@ -1,0 +1,31 @@
+{
+  "$schema": "https://developers.cloudflare.com/workers/wrangler/config-schema.json",
+  "name": "ophis-private-wallet",
+  "main": "server/index.ts",
+  "compatibility_date": "2026-10-21",
+  "assets": {
+    "directory": "./dist",
+    "binding": "ASSETS",
+    "run_worker_first": ["/rpc"],
+  },
+  "workers_dev": false,
+  "preview_urls": false,
+  "routes": [{ "pattern": "private.ophis.fi", "custom_domain": true }],
+  "observability": { "enabled": false },
+  "vars": {
+    "RAILGUN_RPC_URL": "",
+    "RAILGUN_RPC_ENABLED": "false",
+  },
+  "ratelimits": [
+    {
+      "name": "RPC_LIMIT",
+      "namespace_id": "1819",
+      "simple": { "limit": 600, "period": 60 },
+    },
+    {
+      "name": "TRACE_LIMIT",
+      "namespace_id": "1820",
+      "simple": { "limit": 10, "period": 60 },
+    },
+  ],
+}
