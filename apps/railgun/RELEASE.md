@@ -1,8 +1,8 @@
 # Private wallet release
 
-The Ethereum private WETH→USDC route has completed a funded transaction through a real broadcaster, including the Uniswap trade, Ophis fee and USDC reshield. The private output was independently observed in the wallet and the pending journal cleared. Native ETH deposits and a broadcaster withdrawal were also confirmed. Transaction identifiers and private wallet details are retained outside the repository.
+The Ethereum private WETH→USDC route has completed a funded transaction through a real broadcaster, including the Uniswap trade, Ophis fee and USDC reshield. The private output was independently observed in the wallet, progressed to Spendable after validation, and the pending journal cleared. Native ETH deposits and a broadcaster withdrawal were also confirmed. Transaction identifiers and private wallet details are retained outside the repository.
 
-Public deployment and the Ophis entry link are opt-in. The user has authorized merge and deployment once the applicable checks pass. Final-head hosted checks, output Spendable status and production deployment verification are gates; see [SECURITY_REVIEW.md](./SECURITY_REVIEW.md). f(x) remains paused. No new Ethereum contract or Ophis SDK release is required.
+Public deployment and the Ophis entry link are opt-in. The user has authorized merge and deployment once the applicable checks pass. Final-head hosted checks and production deployment verification remain gates; see [SECURITY_REVIEW.md](./SECURITY_REVIEW.md). f(x) remains paused. No new Ethereum contract or Ophis SDK release is required.
 
 ## Release order
 

@@ -1,6 +1,6 @@
 # Release security review — 2026-10-27
 
-**Local release candidate; merge remains gated by the current commit's hosted checks and live output spendability.** A funded private WETH→USDC swap through a real broadcaster has now completed, paid the Ophis fee and returned the committed private USDC output. The wallet journal cleared. Native ETH deposits and a separate broadcaster withdrawal were confirmed. Public production enablement requires the deployment checks in [RELEASE.md](./RELEASE.md).
+**Local release candidate; merge remains gated by the current commit's hosted checks.** A funded private WETH→USDC swap through a real broadcaster has now completed, paid the Ophis fee and returned the committed private USDC output. The output subsequently became Spendable after a read-only refresh; the wallet journal cleared. Native ETH deposits and a separate broadcaster withdrawal were confirmed. Public production enablement requires the deployment checks in [RELEASE.md](./RELEASE.md).
 
 ## Scope and requested methods
 
@@ -51,4 +51,4 @@ The DEX trade and amounts remain public. A trusted simulation RPC receives the s
 
 The gateway fails closed without its server credential, replaces client Authorization, rejects administrative methods and bounds request/trace/log work. Baal's delegated reads and HTTP tracing and the authenticated HTTPS transport were verified. The public wallet domain must be verified separately before the Ophis link is enabled.
 
-Required hosted checks passed on the previous PR head; final follow-up changes require a new run. No public enablement is inferred from local tests. Evidence remains machine-local outside Git and must not be uploaded wholesale.
+The first follow-up hosted run passed the wallet tests/build and most repository checks, but a newly updated advisory blocked legacy contract tooling on qs6.16.0. The release pins the compatible6.16.1 patch using Yarn, with a hostile-coercion regression that fails before the update and passes afterward. Frozen install, dependency compatibility and the OSV baseline gate pass without adding an advisory ignore. The final commit requires a fresh hosted run. No public enablement is inferred from local tests. Evidence remains machine-local outside Git and must not be uploaded wholesale.

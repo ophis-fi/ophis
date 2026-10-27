@@ -76,3 +76,17 @@ test("Handlebars rejects malformed AST input before generating JavaScript", () =
   ast.body[0].path.depth = "0";
   assert.throws(() => handlebars.precompile(ast), /Invalid AST/);
 });
+
+test("qs comma arrays reject hostile coercion without throwing", () => {
+  const qs = createRequire(require.resolve("request"))("qs");
+  const input = JSON.parse('{"a":[{"toString":"x"}]}');
+  for (const encodeValuesOnly of [false, true]) {
+    assert.doesNotThrow(() =>
+      qs.stringify(input, { arrayFormat: "comma", encodeValuesOnly }),
+    );
+  }
+  assert.equal(
+    qs.stringify({ a: ["one", "two"] }, { arrayFormat: "comma" }),
+    "a=one%2Ctwo",
+  );
+});
