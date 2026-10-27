@@ -3,6 +3,10 @@
   "name": "ophis-mcp",
   "main": "src/index.ts",
   "compatibility_date": "2025-05-01",
+  // Serve only on mcp.ophis.fi: a *.workers.dev or preview URL would skip
+  // the zone's WAF and rate-limit rules.
+  "workers_dev": false,
+  "preview_urls": false,
   // nodejs_compat is required by the agents SDK / @modelcontextprotocol/sdk
   // (node:crypto, node:stream shims). Ref: agents-sdk configuration.
   "compatibility_flags": ["nodejs_compat"],

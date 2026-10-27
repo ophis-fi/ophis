@@ -46,12 +46,15 @@ export async function checkNearQuotes({ fetcher = fetch, apiKey = '', report = c
           deadline: new Date(Date.now() + 2 * 60 * 60 * 1000).toISOString(),
           referral: 'ophis',
           appFees: [{ recipient: '0x858f0F5eE954846D47155F5203c04aF1819eCeF8', fee: 3 }],
-          ...(apiKey ? { confidentiality: 'basic' } : {}),
+          confidentiality: 'public',
         }),
       });
       const body = await response.json();
       const available =
-        response.ok && /^\d+$/.test(body.quote?.amountOut) && BigInt(body.quote.amountOut) > 0n;
+        response.ok &&
+        body.quoteRequest?.confidentiality === 'public' &&
+        /^\d+$/.test(body.quote?.amountOut) &&
+        BigInt(body.quote.amountOut) > 0n;
       const result = {
         route: route.name,
         available,
@@ -61,7 +64,7 @@ export async function checkNearQuotes({ fetcher = fetch, apiKey = '', report = c
         amountOut: body.quote?.amountOut,
       };
       report(JSON.stringify(result));
-      if (!available) throw new Error(`${route.name}: no positive quote (HTTP ${response.status})`);
+      if (!available) throw new Error(`${route.name}: no positive public quote (HTTP ${response.status})`);
       return result;
     }),
   );

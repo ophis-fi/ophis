@@ -418,8 +418,17 @@ jobs:
           # -> @solana/spl-token -> buffer-layout-utils. The Solana spl-token path
           # is unreachable for Ophis, dev/test-only, not in any published tarball,
           # and NO patched release exists. (audit 2026-07)
+          # IGNORE zod GHSA-mrhx-c7xc-m3w5 (HIGH, array-issue memory blowup) until
+          # 2026-11-16: fixed only in zod >=4.6.6, NO 3.x patch exists. zod 4.x is
+          # forced to >=4.6.6 by the root override, and apps/mcp-server (the only
+          # internet-facing server that zod-validates request input) is on zod 4.
+          # Remaining zod 3.x: rebate-indexer parses only upstream CoW/feed API
+          # responses (no request input); agentkit-ophis/plugin-goat (+ x402,
+          # goat-sdk, cdp-sdk, privy) validate local agent tool args; reown appkit
+          # runs in the user's browser. Drop when those move to zod 4. (2026-10-26)
           python3 scripts/osv-gate.py /tmp/osv-root.json --mode advisories \
-            --osv-rc "$rc" --ignore GHSA-3gc7-fjrx-p6mg
+            --osv-rc "$rc" --ignore GHSA-3gc7-fjrx-p6mg \
+            --ignore GHSA-mrhx-c7xc-m3w5:2026-11-16
 
   pnpm-audit-frontend:
     name: pnpm audit (frontend deps)
@@ -444,7 +453,13 @@ jobs:
             echo "osv-scanner errored (rc=$rc) -- failing closed"; exit "$rc"
           fi
           python3 scripts/osv-gate.py /tmp/osv-fe.json --mode advisories \
-            --osv-rc "$rc" --ignore GHSA-vfj7-8cjw-p6xm:2026-11-17
+            --osv-rc "$rc" --ignore GHSA-vfj7-8cjw-p6xm:2026-11-17 \
+            --ignore GHSA-mrhx-c7xc-m3w5:2026-11-16
+          # zod GHSA-mrhx-c7xc-m3w5: fixed only in >=4.6.6, NO 3.x patch exists;
+          # zod 4.x is forced to >=4.6.6 by override. The zod 3.x copies
+          # (cowswap-frontend, reown appkit-wallet, cdp-sdk) run in the user's
+          # browser (static SPA, no server parses with them); @vercel/config and
+          # chromium-bidi are build/test tooling. Drop when cowswap moves to zod 4.
           # braces has a pnpm backport; installed depth/cycle regressions run in frontend CI.
           # Keep the dated version-only exception until an upstream fixed release.
           # Review and removal criteria: audit/dependency-review-2026-10-04.md;
@@ -502,8 +517,10 @@ jobs:
           rc=0
           osv-scanner scan source --lockfile "$CARGO_LOCK" --format json \
             --no-call-analysis rust --output-file /tmp/osv-rust.json || rc=$?
+          # RUSTSEC-2026-0387 (crypto-bigint 0.5.5, ungraded): no patched 0.5.x and no
+          # alloy release leaves elliptic-curve 0.13; reason in apps/backend/.cargo/audit.toml.
           python3 scripts/osv-gate.py /tmp/osv-rust.json --mode advisories \
-            --cargo-lock "$CARGO_LOCK" --osv-rc "$rc"
+            --cargo-lock "$CARGO_LOCK" --osv-rc "$rc" --ignore RUSTSEC-2026-0387:2026-11-16
 
   cargo-audit:
     name: cargo audit (Rust deps)

@@ -42,8 +42,6 @@ async function newestOrders(chainId: SupportedChainId, owner: string, offset = 0
 // adds referral attribution + the 3 bps integrator appFee (see its header).
 export const nearIntentsBridgeProvider = new OphisNearIntentsBridgeProvider({
   apiKey: process.env.REACT_APP_NEAR_API_KEY || undefined,
-  // The deployed partner key supports confidential quotes; keyless development uses public routes.
-  confidentiality: process.env.REACT_APP_NEAR_API_KEY ? 'basic' : undefined,
 })
 
 // Bungee LAST: the SDK's single-provider getQuote path takes providers[0] for
