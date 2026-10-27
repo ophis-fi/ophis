@@ -11,7 +11,7 @@ export default defineConfig(({ mode }) => {
     'Referrer-Policy': 'no-referrer',
     'X-Content-Type-Options': 'nosniff',
     'Content-Security-Policy':
-      "default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'; connect-src 'self' https: wss: ws://127.0.0.1:4319; worker-src 'self' blob:; img-src 'self' data:; frame-ancestors 'none'; base-uri 'none'; form-action 'none'",
+      "default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'; connect-src 'self' https: wss: ws://127.0.0.1:4319; worker-src 'self' blob:; img-src 'self' data:; frame-src https://verify.walletconnect.org; frame-ancestors 'none'; base-uri 'none'; form-action 'none'",
   }
   const proxy = { '^/rpc$': { target: env.RAILGUN_RPC_URL, changeOrigin: true, rewrite: () => '/' } }
   return {
