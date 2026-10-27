@@ -39,21 +39,34 @@
         <button id="lock" type="button">Lock wallet</button>
         <h2>Shield funds</h2>
         <p>
-          Shielding uses your public wallet. Railgun fees apply; newly shielded funds can remain pending before private
-          spending.
+          Shielding uses your public wallet. Railgun fees apply. New deposits usually remain ShieldPending for about
+          one hour while Railgun validates them. Use Refresh balances afterward; only Spendable funds can pay for private swaps.
         </p>
+        <p>Deposit ETH directly in one wallet transaction, with no token approval or separate wrapping step. Railgun holds it privately as WETH. Keep ETH in your public wallet for gas.</p>
         <label
-          >Token<select id="token">
+          >Deposit asset<select id="shield-token">
+            <option>ETH</option>
             <option>USDC</option>
             <option>WETH</option>
           </select></label
         >
-        <label>Amount<input id="amount" type="text" inputmode="decimal" autocomplete="off" /></label>
-        <button id="connect" type="button">Connect public wallet</button>
+        <label>Deposit amount<input id="shield-amount" type="text" inputmode="decimal" autocomplete="off" /></label>
+        <button id="connect" type="button">Connect browser wallet</button>
+        <button id="walletconnect" type="button">Connect with WalletConnect</button>
+        <button id="disconnect-public" type="button" hidden>Disconnect public wallet</button>
+        <p id="public-wallet-status" role="status" aria-live="polite"></p>
+        <p id="public-wallet-error" role="alert"></p>
         <button id="switch-network" type="button" hidden>Switch to Ethereum</button>
+        <button id="review-shield" type="button" hidden>Check shield amount</button>
         <button id="approve" type="button" hidden>Approve amount</button>
         <button id="shield" type="button" hidden>Shield amount</button>
+        <p id="public-transaction-status" role="status" aria-live="polite"></p>
         <h2>Private swap</h2>
+        <label>Token to sell / withdraw<select id="token"><option>WETH</option><option>USDC</option></select></label>
+        <label>Amount to sell / withdraw<input id="amount" type="text" inputmode="decimal" autocomplete="off" aria-describedby="swap-direction swap-fee-help" /></label>
+        <button id="max-swap" type="button" aria-describedby="swap-fee-help">Max swap after fee</button>
+        <p id="swap-fee-help">The broadcaster fee comes from the same private balance. Max budgets extra room for gas price changes and shows the adjusted trade amount for review. This headroom can increase the committed broadcaster fee.</p>
+        <p id="swap-direction">Sell WETH → receive USDC. Enter the amount of WETH to sell.</p>
         <p>
           USDC ↔ WETH through Uniswap v3. 0.5% slippage limit. Ophis charges 1 bp; Railgun and broadcaster fees are
           additional. This route does not use the public orderbook.
@@ -63,6 +76,8 @@
           identifies this route. Use a trusted RPC: simulation reveals the signed batch to it.
         </p>
         <button id="broadcasters" type="button">Connect private broadcasters</button>
+        <p id="broadcaster-status" role="status" aria-live="polite">Private quotes connect to broadcasters automatically.</p>
+        <p id="private-wallet-error" role="alert"></p>
         <button id="quote" type="button">Get private swap quote</button>
         <pre id="quote-details"></pre>
         <button id="swap" type="button" hidden>Prove and submit private swap</button>
@@ -101,6 +116,14 @@
       </section>
       <p id="error" role="alert"></p>
     </main>
+    <dialog id="walletconnect-dialog" aria-labelledby="walletconnect-title">
+      <h2 id="walletconnect-title">Connect with WalletConnect</h2>
+      <p>Scan this QR code with your wallet app. Connecting does not send funds.</p>
+      <img id="walletconnect-qr" alt="WalletConnect pairing QR code" />
+      <label>Connection link<input id="walletconnect-link" type="text" readonly /></label>
+      <button id="walletconnect-copy" type="button">Copy connection link</button>
+      <button id="walletconnect-cancel" type="button">Cancel</button>
+    </dialog>
     <script type="module" src="/src/main.ts"></script>
   </body>
 </html>

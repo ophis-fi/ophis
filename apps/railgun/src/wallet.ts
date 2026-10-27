@@ -10,6 +10,8 @@ import {
   fullWalletForID,
   EphemeralKeyManager,
   refreshBalances,
+  refreshReceivePOIsForWallet,
+  onBalancesUpdate,
   stopRailgunEngine,
   type SnarkJSGroth16,
 } from '@railgun-community/wallet'
@@ -21,7 +23,7 @@ import {
 import { JsonRpcProvider, Mnemonic, randomBytes, hexlify, getBytes } from 'ethers'
 import { groth16 } from 'snarkjs'
 import { artifacts, encryptionKey, readPreference, walletDB, writePreference } from './storage'
-import { CONFIG, ENVIRONMENT, NETWORK, POI_NODES } from './config'
+import { CONFIG, ENVIRONMENT, NETWORK, POI_NODES, VERSION } from './config'
 import { RPC_BATCH_SIZE } from '../rpc-policy'
 
 export interface WalletSession {
@@ -165,4 +167,20 @@ export async function openWallet(
 
 export async function syncWallet(session: WalletSession): Promise<void> {
   await refreshBalances(CONFIG.chain, [session.info.id])
+  await refreshReceivedBalances(session)
+}
+
+const receiveRefreshes = new Map<string, Promise<void>>()
+
+export function refreshReceivedBalances(session: WalletSession): Promise<void> {
+  const id = session.info.id
+  let refresh = receiveRefreshes.get(id)
+  if (!refresh) {
+    refresh = (async () => {
+      await refreshReceivePOIsForWallet(VERSION, NETWORK, id)
+      await onBalancesUpdate(VERSION, fullWalletForID(id), CONFIG.chain)
+    })().finally(() => { receiveRefreshes.delete(id) })
+    receiveRefreshes.set(id, refresh)
+  }
+  return refresh
 }

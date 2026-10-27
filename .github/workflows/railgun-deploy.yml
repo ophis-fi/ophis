@@ -22,6 +22,7 @@ jobs:
     env:
       RAILGUN_RPC_URL: https://railgun-rpc.ophis.fi/rpc
       VITE_RAILGUN_ENVIRONMENT: ethereum
+      VITE_WALLETCONNECT_PROJECT_ID: ${{ vars.REACT_APP_WC_PROJECT_ID }}
       NODE_OPTIONS: --max-old-space-size=4096
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
@@ -38,7 +39,9 @@ jobs:
       - run: pnpm test
         env:
           VITE_RAILGUN_ENVIRONMENT: fork
-      - run: pnpm build
+      - run: |
+          test -n "$VITE_WALLETCONNECT_PROJECT_ID"
+          pnpm build
       - name: Deploy authenticated wallet gateway
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_WORKERS_TOKEN }}

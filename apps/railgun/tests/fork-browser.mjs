@@ -3,7 +3,7 @@ import { existsSync, mkdirSync } from 'node:fs'
 import { createHash } from 'node:crypto'
 import { resolve, join } from 'node:path'
 import { boundIndexerResponse, cachedIndexerResponse } from './fork-indexer.mjs'
-import { chromium } from '@playwright/test'
+import { chromium, expect } from '@playwright/test'
 import { Contract, JsonRpcProvider, JsonRpcSigner } from 'ethers'
 import { forkMarker } from '../src/fork-marker.ts'
 
@@ -135,6 +135,27 @@ try {
   await page.evaluate(async () =>
     (await import('/tests/fork.fixture.ts')).loadForkSession('local-test-password-railgun'),
   )
+  assert.equal(BigInt(await page.evaluate(async () => (await import('/tests/fork.fixture.ts')).forkWethBalance())), 0n, 'Use a new dedicated test profile for the exact-balance case')
+  await page.evaluate(async () => (await import('/tests/fork.fixture.ts')).forkShieldETH('0.001'))
+  const change = 218_990_555_332_357n
+  const changeDeposit = (change * 10_000n) / 9975n
+  assert.equal(changeDeposit - (changeDeposit * 25n) / 10_000n, change)
+  const changeAmount = `0.${changeDeposit.toString().padStart(18, '0')}`
+  await page.evaluate(async (value) => (await import('/tests/fork.fixture.ts')).forkShieldETH(value), changeAmount)
+  await expect.poll(async () => BigInt(
+    await page.evaluate(async () => (await import('/tests/fork.fixture.ts')).forkWethBalance()),
+  ), { timeout: 90_000 }).toBe(1_216_490_555_332_357n)
+  const beforeCapped = BigInt(await page.evaluate(async () => (await import('/tests/fork.fixture.ts')).forkBalance()))
+  const capped = await page.evaluate(async () => (await import('/tests/fork.fixture.ts')).forkBudgetSwap())
+  assert.equal(capped.amount, '500000000000000')
+  assert(BigInt(capped.amount) + BigInt(capped.fee) <= 1_216_490_555_332_357n)
+  await expect.poll(async () => BigInt(
+    await page.evaluate(async () => (await import('/tests/fork.fixture.ts')).forkBalance()),
+  ), { timeout: 90_000 }).toBeGreaterThan(beforeCapped)
+  await expect.poll(async () => BigInt(
+    await page.evaluate(async () => (await import('/tests/fork.fixture.ts')).forkWethBalance()),
+  ), { timeout: 90_000 }).toBe(1_216_490_555_332_357n - BigInt(capped.amount) - BigInt(capped.fee))
+  console.log('CAPPED_BUDGET_SWAP_PASS', JSON.stringify(capped))
   const previousPrivate = BigInt(
     await page.evaluate(async () => (await import('/tests/fork.fixture.ts')).forkBalance()),
   )
@@ -143,7 +164,8 @@ try {
   )
   const publicWallet = await rpc.getSigner(0)
   await fundUSDC(await publicWallet.getAddress(), 100_000_000n)
-  await page.locator('#amount').fill('50')
+  await page.locator('#shield-token').selectOption('USDC')
+  await page.locator('#shield-amount').fill('50')
   await page.locator('#connect').click()
   await idle()
   if (await page.locator('#approve').isVisible()) {
@@ -153,23 +175,29 @@ try {
   await page.locator('#shield').click()
   await idle()
   assert.equal(await page.locator('#error').innerText(), '')
+  await expect.poll(async () => BigInt(
+    await page.evaluate(async () => (await import('/tests/fork.fixture.ts')).forkBalance()),
+  ), { timeout: 90_000, message: 'New shielded private balance missing' }).toBeGreaterThan(previousPrivate + 49_000_000n)
   const privateBalance = await page.evaluate(async () => (await import('/tests/fork.fixture.ts')).forkBalance())
-  assert(BigInt(privateBalance) - previousPrivate > 49_000_000n, 'New shielded private balance missing')
   console.log('SHIELD_PASS', privateBalance)
   const swapHash = await page.evaluate(async () => (await import('/tests/fork.fixture.ts')).forkSwap('USDC', '5'))
   console.log('PRIVATE_SWAP_PASS', swapHash)
-  assert(
-    BigInt(await page.evaluate(async () => (await import('/tests/fork.fixture.ts')).forkWethBalance())) > previousWeth,
-    'Private WETH balance did not increase',
-  )
+  await expect.poll(async () => BigInt(
+    await page.evaluate(async () => (await import('/tests/fork.fixture.ts')).forkWethBalance()),
+  ), { timeout: 90_000, message: 'Private WETH balance did not increase' }).toBeGreaterThan(previousWeth)
+  const beforeNativeShield = BigInt(await page.evaluate(async () => (await import('/tests/fork.fixture.ts')).forkWethBalance()))
+  const nativeShieldHash = await page.evaluate(async () => (await import('/tests/fork.fixture.ts')).forkShieldETH('0.01'))
+  await expect.poll(async () => BigInt(
+    await page.evaluate(async () => (await import('/tests/fork.fixture.ts')).forkWethBalance()),
+  ), { timeout: 90_000, message: 'Native shield did not credit private WETH' }).toBe(beforeNativeShield + 9_975_000_000_000_000n)
+  console.log('NATIVE_SHIELD_PASS', nativeShieldHash)
   const beforeReverse = BigInt(await page.evaluate(async () => (await import('/tests/fork.fixture.ts')).forkBalance()))
   const reverseHash = await page.evaluate(async () =>
-    (await import('/tests/fork.fixture.ts')).forkSwap('WETH', '0.0001'),
+    (await import('/tests/fork.fixture.ts')).forkSwap('WETH', '0.001', '1000000000000000000'),
   )
-  assert(
-    BigInt(await page.evaluate(async () => (await import('/tests/fork.fixture.ts')).forkBalance())) > beforeReverse,
-    'Reverse swap did not increase private USDC',
-  )
+  await expect.poll(async () => BigInt(
+    await page.evaluate(async () => (await import('/tests/fork.fixture.ts')).forkBalance()),
+  ), { timeout: 90_000, message: 'Reverse swap did not increase private USDC' }).toBeGreaterThan(beforeReverse)
   console.log('REVERSE_SWAP_PASS', reverseHash)
   const destination = await (await rpc.getSigner(1)).getAddress()
   const usdc = new Contract(

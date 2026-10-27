@@ -1,4 +1,12 @@
-# Local validation — 2026-10-21
+# Validation records
+
+## Follow-up — 2026-10-27
+
+The current candidate passes 138 unit/dependency regressions, both TypeScript checks, the Ethereum build and a frozen scripts-disabled install. A real broadcaster has completed the funded WETH→USDC swap and reshield; native ETH deposits and a separate broadcaster withdrawal also succeeded. Private transaction evidence remains outside Git. Current review, dependency assessment and release gates are in [SECURITY_REVIEW.md](./SECURITY_REVIEW.md) and [RELEASE.md](./RELEASE.md).
+
+## Earlier local validation — 2026-10-21
+
+The dated records below describe the earlier candidate and its then-open checks. They do not override the current release review.
 
 Latest follow-up: restricted gateway and exact-route Vite proxy, shared client batching, compatible fork marker, browser-wallet network switching, read-only service preflight and production opt-in entry point. See [RELEASE.md](./RELEASE.md).
 

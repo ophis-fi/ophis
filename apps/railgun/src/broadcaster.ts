@@ -14,6 +14,10 @@ import { getAddress, isAddress, type TransactionRequest } from 'ethers'
 import { CONFIG, ENVIRONMENT, FEE_SIGNER, VERSION } from './config'
 import type { WalletSession } from './wallet'
 
+let starting: Promise<void> | undefined
+let reportConnection: (status: string) => void = () => {}
+const DISCOVERY_TIMEOUT_MS = 45_000
+
 export async function startBroadcasters(onStatus: (status: string) => void): Promise<void> {
   if (ENVIRONMENT !== 'ethereum')
     throw new Error(
@@ -22,31 +26,63 @@ export async function startBroadcasters(onStatus: (status: string) => void): Pro
   const signer = FEE_SIGNER
   if (!signer || !validateRailgunAddress(signer))
     throw new Error('Configure a verified Railgun broadcaster fee signer before enabling private submissions.')
-  if (!WakuBroadcasterClient.isStarted())
-    await WakuBroadcasterClient.start(
+  reportConnection = onStatus
+  if (!WakuBroadcasterClient.isStarted()) {
+    onStatus('Connecting to the private broadcaster network…')
+    starting ??= WakuBroadcasterClient.start(
       CONFIG.chain,
       {
         trustedFeeSigner: signer,
         poiActiveListKeys: POI_REQUIRED_LISTS.map((list) => list.key),
         enableHealthcheckLogs: false,
       },
-      (_chain, status) => onStatus(`Broadcaster: ${status}`),
-    )
+      (_chain, status) => reportConnection(`Broadcaster: ${status}`),
+    ).finally(() => { starting = undefined })
+    let timeout: ReturnType<typeof setTimeout> | undefined
+    try {
+      await Promise.race([
+        starting,
+        new Promise<never>((_, reject) => {
+          timeout = setTimeout(() => reject(new Error('Broadcaster connection timed out. Check your connection and try again.')), DISCOVERY_TIMEOUT_MS)
+        }),
+      ])
+    } catch (error) {
+      onStatus(error instanceof Error ? error.message : 'Broadcaster connection failed.')
+      throw error
+    } finally {
+      clearTimeout(timeout)
+    }
+  }
 }
 
-export function selectBroadcaster(tokenAddress: string, use7702: boolean): SelectedBroadcaster {
-  const choices: SelectedBroadcaster[] =
-    WakuBroadcasterClient.findBroadcastersForToken(CONFIG.chain, tokenAddress, use7702, use7702) || []
-  const selected = choices
-    .filter(
-      (candidate) =>
-        candidate.tokenFee.expiration > Date.now() + 60_000 && (!use7702 || supportsCanonicalDelegate(candidate)),
-    )
-    .sort((a, b) => (BigInt(a.tokenFee.feePerUnitGas) < BigInt(b.tokenFee.feePerUnitGas) ? -1 : 1))[0]
-  if (!selected)
-    throw new Error('No broadcaster with a fresh compatible fee is available. Try again after discovery connects.')
-  validateBroadcaster(selected, tokenAddress, use7702)
-  return selected
+export async function selectBroadcaster(
+  tokenAddress: string,
+  use7702: boolean,
+  onStatus: (status: string) => void,
+): Promise<SelectedBroadcaster> {
+  await startBroadcasters(onStatus)
+  onStatus('Waiting for a fresh compatible broadcaster fee…')
+  const deadline = Date.now() + DISCOVERY_TIMEOUT_MS
+  while (true) {
+    const choices: SelectedBroadcaster[] = WakuBroadcasterClient.findBroadcastersForToken(CONFIG.chain, tokenAddress, use7702, use7702) || []
+    const selected = choices
+      .filter(
+        (candidate) =>
+          candidate.tokenFee.expiration > Date.now() + 60_000 && (!use7702 || supportsCanonicalDelegate(candidate)),
+      )
+      .sort((a, b) => (BigInt(a.tokenFee.feePerUnitGas) < BigInt(b.tokenFee.feePerUnitGas) ? -1 : 1))[0]
+    if (selected) {
+      validateBroadcaster(selected, tokenAddress, use7702)
+      onStatus('A fresh compatible broadcaster fee is ready.')
+      return selected
+    }
+    if (Date.now() >= deadline) {
+      const message = 'No verified compatible broadcaster fee arrived. Keep this page open and try again.'
+      onStatus(message)
+      throw new Error(message)
+    }
+    await new Promise<void>((resolve) => setTimeout(resolve, 1000))
+  }
 }
 
 export function validateBroadcaster(selected: SelectedBroadcaster, tokenAddress: string, use7702: boolean): void {
@@ -70,6 +106,20 @@ export async function gasDetails(session: WalletSession): Promise<TransactionGas
     maxFeePerGas: fee.maxFeePerGas,
     maxPriorityFeePerGas: fee.maxPriorityFeePerGas,
   }
+}
+
+export async function minimumGasPrice(session: WalletSession, gas: TransactionGasDetailsType4): Promise<bigint> {
+  const block = await session.provider.getBlock('latest')
+  if (block?.baseFeePerGas == null) throw new Error('Ethereum base fee unavailable.')
+  return block.baseFeePerGas + gas.maxPriorityFeePerGas
+}
+
+export function capGasPrice(gas: TransactionGasDetailsType4, selected: SelectedBroadcaster, budget: bigint): TransactionGasDetailsType4 {
+  const rate = BigInt(selected.tokenFee.feePerUnitGas)
+  if (budget <= 0n || rate <= 0n || gas.gasEstimate <= 0n) throw new Error('Invalid broadcaster fee budget.')
+  // Match the SDK's downward fee rounding at the last affordable gas price.
+  const cap = ((budget + 1n) * 10n ** 18n - 1n) / (rate * calculateGasLimit(gas.gasEstimate))
+  return { ...gas, maxFeePerGas: cap < gas.maxFeePerGas ? cap : gas.maxFeePerGas }
 }
 
 export function broadcasterFee(
@@ -99,6 +149,8 @@ export async function assertSubmittable(
   if (fork || hardhat) throw new Error('Broadcaster submission is disabled on local forks.')
   if ((await session.provider.getNetwork()).chainId !== 1n) throw new Error('Ethereum RPC required.')
   broadcasterFee(selected, gas)
+  if (gas.evmGasType === EVMGasType.Type4 && gas.maxFeePerGas < await minimumGasPrice(session, gas))
+    throw new Error('Ethereum gas price exceeds this quote’s cap. Check recovery before requesting a fresh quote.')
 }
 
 export async function submitPrivate(

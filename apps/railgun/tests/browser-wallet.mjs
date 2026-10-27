@@ -27,6 +27,7 @@ try {
   await page.locator('#open').click()
   await idle(page)
   assert(await page.locator('#wallet').isVisible(), await page.locator('#error').innerText())
+  assert.equal(await page.locator('#max-swap').innerText(), 'Max swap after fee')
   const address = await page.locator('#address').innerText()
   assert(address.startsWith('0zk'))
   assert.equal(await page.locator('#password').inputValue(), '')

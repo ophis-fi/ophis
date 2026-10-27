@@ -15,7 +15,7 @@ import {
   reconcilePendingWithdrawal,
   savePendingWithdrawal,
 } from './withdrawal-journal'
-import { requireWalletSync, type WalletSession } from './wallet'
+import { refreshReceivedBalances, requireWalletSync, type WalletSession } from './wallet'
 
 export async function prepareUnshield(
   session: WalletSession,
@@ -30,6 +30,7 @@ export async function prepareUnshield(
   validateBroadcaster(selected, TOKENS[token].address, false)
   const destination = getAddress(recipient)
   assertWithdrawalRecipient(destination, (await session.accounts.getCurrentAccount(1n)).address)
+  await refreshReceivedBalances(session)
   const amounts = [
     { tokenAddress: TOKENS[token].address, amount: amountFromInput(value, token), recipientAddress: destination },
   ]

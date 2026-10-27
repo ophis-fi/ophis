@@ -1,55 +1,54 @@
-# Release security review — 2026-10-21
+# Release security review — 2026-10-27
 
-**Decision: hold merge and deployment.** The user authorized them only when the applicable release checks are green. Code review fixes have passed focused checks, but actual funded PPOI/broadcaster transaction acceptance and hosted checks remain release gates. Actual injected-wallet approval and shielding now pass on the marked fork. The protected RPC transport is now deployed and verified separately. No application merge, wallet deployment or funded mainnet transaction was performed. Draft PR [#1594](https://github.com/ophis-fi/ophis/pull/1594) starts hosted checks; it remains unmerged. Baal tracing and its authenticated transport were deployed during the subsequent authorized release work.
+**Local release candidate; merge remains gated by the current commit's hosted checks and live output spendability.** A funded private WETH→USDC swap through a real broadcaster has now completed, paid the Ophis fee and returned the committed private USDC output. The wallet journal cleared. Native ETH deposits and a separate broadcaster withdrawal were confirmed. Public production enablement requires the deployment checks in [RELEASE.md](./RELEASE.md).
 
-## Review scope
+## Scope and requested methods
 
-The change adds a standalone browser wallet, a restricted Cloudflare RPC gateway, dependency backports and an opt-in Ophis footer link. It adds no Solidity contract, verifier, proxy upgrade or Lean contract. f(x) remains paused.
+This release adds a separate browser wallet, a restricted Cloudflare RPC gateway, dependency backports and an opt-in Ophis footer link. It adds no Solidity contract, verifier, proxy upgrade or Lean contract. f(x) remains paused.
 
-| Requested method | Work performed | Limit |
+| Method | Work performed | Limit |
 | --- | --- | --- |
-| Trail of Bits skills | Independent source reviews using context-building and insecure-defaults guidance; public-rule Semgrep scan; dependency and privacy-boundary inspection | Guided AI review, not a Trail of Bits engagement or certification |
-| Pashov skills | Inspected installed Solidity-auditor scope and searched this release for Solidity sources: none | No applicable changed contract; no Pashov contract-audit pass claimed. Installed skill version is 3; current upstream version checked as 4.1 |
-| ethskills | Wallet flow, chain/fork validation, exact execution, token precision, allowances, recovery and release checks; independent reviewers | Fork execution does not prove mainnet service acceptance |
-| Verity | Checked official compiler documentation and release inputs | Verity verifies supported smart-contract inputs; this TypeScript release has no Verity input or compiler-linked proof. No formal verification pass claimed |
-| Ponytail and Codex | Minimal fixes, caller inspection, targeted regressions and independent fix review | No guarantee that all defects are absent |
+| Trail of Bits skills | Context building, differential review, insecure-default inspection, dependency reachability and public-rule Semgrep scanning | Guided review, not a Trail of Bits engagement or certification |
+| Pashov skills | Checked Solidity-auditor scope against changed sources | No changed Solidity input; no contract-audit pass claimed |
+| ethskills | Chain and fork checks, wallet safety, exact allowances/execution, precision, fee budgets, recovery and release boundaries | A successful route does not establish every wallet, amount or market condition |
+| Verity | Checked the contract/compiler scope against release inputs | No supported smart-contract input or compiler-linked proof; no formal-verification claim |
+| Ponytail and Codex | Caller inspection, security review, targeted regressions and removal of an unnecessary SDK-error workaround | No guarantee all defects are absent |
+| Claude and Jev | Source-only final-diff review and narrow typed claim checks, including ETH target/value, pairing cancellation and immutable fee budgets | Supporting model reviews, not proofs or certification |
 
-Verity references: [compiler and contract scope](https://github.com/lfglabs-dev/verity), [trust boundaries](https://veritylang.com/trust-model). Pashov reference: [Solidity auditor](https://github.com/pashov/skills/tree/main/solidity-auditor).
+References: [Pashov Solidity auditor](https://github.com/pashov/skills/tree/main/solidity-auditor), [Verity compiler](https://github.com/lfglabs-dev/verity), [Verity trust boundaries](https://veritylang.com/trust-model).
 
-## Findings and fixes
+## Security findings closed
 
-1. **Medium — cached wallet could bypass a retry password check.** A correct-password opening could fail after the SDK cached its decrypted wallet. The next opening could use that cache without authenticating a different key. `wallet.ts` now authenticates persisted encrypted data with SDK `getWalletMnemonic` before loading; its result is discarded. The regression models the permissive cache, failed history scan, incorrect retry and successful correct retry. Independent review confirmed closure against the installed SDK implementation.
-2. **Medium — cancellation could clear its journal before nonce advancement was confirmed.** When the latest nonce was already advanced, the old path skipped the receipt wait. `cancel.ts` now requires canonical delegation and an advanced nonce at `head - 1` before clearing or ratcheting. Three regressions retain unconfirmed records and permit confirmed advancement; the real fork cancellation/replay test also passed. Independent review confirmed closure.
-3. **Dependency — older bn.js was bundled through legacy unit conversion.** The prior inventory summary missed version 4.11.6. An exact compatible override and actual-consumer regression now cover it; the rebuilt graph excludes that version. See [DEPENDENCIES.md](./DEPENDENCIES.md).
+- Persisted encrypted wallet data is authenticated before reusing SDK-cached decrypted state. A failed opening followed by an incorrect-password retry cannot bypass authentication.
+- Cancellation retains its encrypted journal until the canonical delegate's execution nonce is advanced at the two-confirmation block, including previously advanced nonces.
+- Fork-test public cache files use direct reads and exclusive creation; the symlink-insertion regression prevents overwriting unrelated files. Hosted CodeQL passed this fix on the prior commit.
+- Legacy bn.js resolves to patched versions through actual consumers. Dependency backports cover GraphQL merge keys, peer-record signer binding, legacy Node WebSocket TLS and elliptic nonce conversion. See [DEPENDENCIES.md](./DEPENDENCIES.md).
 
-A development-only optimizer issue also surfaced after replacing dependencies: late discovery of polyfill shims changed SDK module identities. The existing buffer/global/process shims are now included in initial optimization. A fresh-server complete gateway roundtrip passed without further optimization changes.
+## Final follow-up review
 
-## Validation and evidence
+The follow-up adds native ETH shielding, WalletConnect, bounded broadcaster discovery, receive-POI refresh, fee-budget capping and fee-reserving Max. The review traced their callers in wallet actions, quote preparation and submission. Wallet and public-connection state changes invalidate stale controls. Native ETH checks the canonical Relay Adapt destination and exact payable value. WalletConnect cancellation isolates subsequent pairing storage and rejects late approval.
 
-- Full unit and dependency regressions, both TypeScript projects and production build: recorded in machine-local `release-unit-tests.log` and `release-build-command.log`.
-- Explicit fork suite: three passed, including failed-swap fee behavior and cancellation preventing replay.
-- Complete real-proof gateway-backed fork roundtrip passed after the fixes: shield, both swap directions, withdrawal and old-account recovery. Fork-only PPOI and sponsor fixtures remain explicit.
-- Production-runtime browser wallet creation, normalization, lock, incorrect password, persistence and tab exclusion passed.
-- Semgrep OSS 1.136.0: 180 applicable rules across 30 explicit production files, zero findings/errors. One incompatible upstream Apiiro rule was excluded and the original failing result retained. No Pro interprocedural coverage is claimed.
-- Dependency raw counts remain nonzero. Per-advisory browser reachability and patch notes are preserved; no blanket dependency approval is claimed.
-- Baal was inspected over SSH. Its real EIP-7702 trace works over IPC, while HTTP/WS omit debug. The private HTTP configuration was subsequently applied by recreating only execution. Synced status and actual delegated HTTP tracing passed; consensus and validator remained untouched.
-- `.github/workflows/railgun-ci.yml` adds standalone checks because the app is outside the root workspace. Actions and the app's pnpm10.33.2 are pinned; permissions are read-only, dependency scripts and checkout credential persistence are disabled, and no production secrets or deploy step are included. Independent workflow review, local structural validation and repository deployment-boundary checks passed. Its actual install/test/build commands passed on Node22.23.1 with a4096MiB heap. No GitHub-hosted run has occurred yet.
+Fee math preserves token units and the original total budget. Quote retries are bounded and rebuild the complete recipe; fixed partial amounts retain their meaning. Gas estimates, the 3m floor and the SDK margin are not reduced to force affordability. Fresh fee, network-price, signed-execution, committed-output and recovery checks remain. Max headroom is explicitly disclosed because it can increase the committed fee. No automatic transaction retry or application transaction timeout is added.
 
-Evidence lives in `/Users/scep/ophis-railgun-evidence` outside the repository. It contains disposable local test profiles and must not be published wholesale. Test recovery phrases, credentials, environment files, node_modules and built assets are excluded from Git.
+Claude's final source review found no proven blocking regression. Its missing-context questions were checked against the installed SDK exports, fee-rounding implementation, canonical configuration and existing tests. Jev's narrow answers supported the stated source properties; probabilities were not used as permission or a safety proof.
 
-## Remaining release gates
+## Validation
 
-1. Actual injected-wallet approval and shielding passed on the marked fork; retain the separate funded mainnet acceptance gate.
-2. Protected tracing and trusted transport are verified through the actual Workerd runtime. Retest the deployed wallet gateway after release.
-3. A specifically authorized test wallet and spending cap for live shielding, PPOI eligibility, broadcaster acceptance, private output, withdrawal and recovery.
-4. Final deployment configuration, required GitHub checks and release review. The main-only manual deployment workflow uses existing protected CI credentials; it has not been dispatched for this app.
+- Frozen scripts-disabled standalone install passed with the pinned lockfile.
+- 138 unit/dependency regressions passed; three fork-only cases are intentionally skipped by the normal command. Both TypeScript projects and the Ethereum production build passed.
+- The separate explicit fork suite passed three cases. The complete real-proof gateway roundtrip passed shielding, both swap directions, withdrawal and temporary-account recovery, including the capped-fee budget case. Fork-only PPOI and gas sponsorship remain confined to guarded fixtures.
+- Production-runtime browser checks covered wallet creation, password failure, persistence, locking, tab exclusion and quote rendering. Actual MetaMask approval/shielding passed on the marked fork through ordinary confirmations. WalletConnect relay pairing and generated-signer Anvil execution passed separately.
+- Final Semgrep OSS 1.136.0: 211 rules on 27 production/configuration targets, no scanner errors. Its one generic-one-liners result points to a readable quote-summary template literal, not obfuscation; it was assessed as a false positive. One previously incompatible upstream rule remains excluded with the original evidence retained. No Pro interprocedural coverage is claimed.
+- The standalone version audit still reports 2 critical, 17 high, 11 moderate and 2 low findings. Installed SDK Node-only branches, patched versions and browser-reachable code are assessed separately in DEPENDENCIES.md. This is not a clean dependency-audit claim.
+- The installed wallet SDK execution/fee files match the integrity-verified official npm archive; no local SDK edit is needed to reproduce the live result.
+- The real Ethereum receipt, canonical delegation, DEX transfers, Ophis fee and exact private USDC output were independently checked. Private transaction identifiers, balances and disposable test profiles remain outside the repository.
 
-This report records applicable checks and their limits. It is not an all-green or formal-verification verdict.
+## Operational limits
 
-## Authenticated transport review
+PPOI/network refresh can be slow and can retain cached SDK status after a remote failure. Only Spendable funds pass private spending guards. A capped gas price can become stale; submission rejects it below the current base fee plus tip. Inclusion and future broadcaster availability are not guaranteed. The public wallet must retain ETH for deposit gas, even when the deposit amount itself passes its balance check.
 
-The server-only bearer token is required for nonlocal forwarding and cannot be overridden by client headers. Caddy restricts authenticated requests to `POST /rpc`, strips credentials before Baal and limits bodies to256KiB. The two-container transport publishes no host port, runs without root and pins image digests; Caddy retains only the capability required by its official executable. Secrets are excluded from Git and browser builds. Independent Codex source review found no concrete new issue and independently passed five gateway tests. Internal origin tests and public HTTPS tests establish authentication separately from the existing Cloudflare browser-integrity policy. Actual Workerd-to-Baal delegated call and trace simulations passed.
+The DEX trade and amounts remain public. A trusted simulation RPC receives the signed executable batch. Encrypted journals must survive uncertain outcomes, and recovery/cancellation can create public links. Browser-origin storage does not migrate from localhost to the public domain automatically.
 
-Actual MetaMask13.53 approval and shielding passed through its normal injected provider and enabled confirmation UI on the marked fork, with successful receipts and no remaining allowance. This closes the injected-wallet fork gate; live funded acceptance is still pending. The final deployment source/configuration scan ran212applicable rules across38explicit files with0findings/errors. No new concrete deployment vulnerability was identified.
+The gateway fails closed without its server credential, replaces client Authorization, rejects administrative methods and bounds request/trace/log work. Baal's delegated reads and HTTP tracing and the authenticated HTTPS transport were verified. The public wallet domain must be verified separately before the Ophis link is enabled.
 
-Hosted CodeQL found a high-severity file-system-race pattern in the fork-test public cache, plus two unused-import notes. The cache now uses direct reads and exclusive `wx` creation; an adversarial symlink-insertion regression proves unrelated files are not overwritten. Independent focused review and all48unit tests pass; hosted CodeQL rescan remains required. Actual MetaMask approval and shielding were additionally repeated successfully with optional internet/security services enabled and ordinary confirmations. Its remote simulation warned of possible fork failure; no mainnet acceptance is inferred.
+Required hosted checks passed on the previous PR head; final follow-up changes require a new run. No public enablement is inferred from local tests. Evidence remains machine-local outside Git and must not be uploaded wholesale.

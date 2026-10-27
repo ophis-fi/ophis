@@ -71,5 +71,6 @@ element<HTMLButtonElement>('lock').onclick = () => location.reload()
 const refresh = element<HTMLButtonElement>('refresh')
 refresh.onclick = () =>
   run(refresh, 'Refreshing…', async () => {
+    element('private-wallet-error').textContent = ''
     if (session.current) await syncWallet(session.current)
   })
