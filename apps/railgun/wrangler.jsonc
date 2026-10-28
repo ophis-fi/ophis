@@ -11,6 +11,8 @@
   "workers_dev": false,
   "preview_urls": false,
   "observability": { "enabled": false },
+  "durable_objects": { "bindings": [{ "name": "VALIDATION_CLOUD_BUDGET", "class_name": "ValidationCloudBudget" }] },
+  "migrations": [{ "tag": "vc-budget-v1", "new_sqlite_classes": ["ValidationCloudBudget"] }],
   "vars": {
     "RAILGUN_RPC_URL": "",
     "RAILGUN_RPC_ENABLED": "false",

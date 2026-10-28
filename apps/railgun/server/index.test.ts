@@ -2,9 +2,16 @@ import { afterEach, expect, it, vi } from 'vitest'
 import gateway, { rpcCall } from './index'
 import { FetchRequest, JsonRpcProvider } from 'ethers'
 import { NETWORK_CONFIG, NetworkName } from '@railgun-community/shared-models'
-import { RPC_BATCH_SIZE, RAILGUN_PROXY, RAILGUN_PROXIES, zanRpcUrl } from '../rpc-policy'
+import { RPC_BATCH_SIZE, RAILGUN_PROXY, RAILGUN_PROXIES, isValidationCloudUrl, zanRpcUrl } from '../rpc-policy'
 
+vi.mock('cloudflare:workers', () => ({ DurableObject: class {} }))
+
+function budgetBinding(reserve = vi.fn().mockReturnValue({ allowed: true })): Env['VALIDATION_CLOUD_BUDGET'] {
+  return { getByName: vi.fn().mockReturnValue({ consume: reserve }), get: vi.fn(), newUniqueId: vi.fn(),
+    idFromName: vi.fn(), idFromString: vi.fn(), jurisdiction: vi.fn() }
+}
 const enabled = {
+  VALIDATION_CLOUD_BUDGET: budgetBinding(),
   RAILGUN_RPC_ENABLED: 'true',
   RAILGUN_RPC_URL: 'https://trusted-rpc.example',
   RAILGUN_RPC_TOKEN: 'server-only-test-token',
@@ -26,6 +33,86 @@ function request(body: unknown, headers: Record<string, string> = {}): Request {
 }
 const chain = { jsonrpc: '2.0', id: 1, method: 'eth_chainId', params: [] }
 afterEach(() => vi.unstubAllGlobals())
+
+const vcURL = 'https://mainnet.arbitrum.validationcloud.io/v1/test-key'
+function vcEnv(reserve = vi.fn().mockReturnValue({ allowed: true })) {
+  return { ...enabled, RAILGUN_ARBITRUM_RPC_URL: vcURL, RAILGUN_ZAN_API_KEY: 'test-zan',
+    VALIDATION_CLOUD_BUDGET: budgetBinding(reserve),
+  }
+}
+function arbitrum(body: unknown): Request {
+  return new Request('https://swap.ophis.fi/rpc/42161', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
+  })
+}
+
+it('meters execution checks once on the configured Validation Cloud endpoint without disclosing them to another provider', async () => {
+  const reserve = vi.fn().mockReturnValue({ allowed: true })
+  const upstream = vi.fn().mockResolvedValue(new Response('upstream unavailable', { status: 503 }))
+  vi.stubGlobal('fetch', upstream)
+  const transaction = { to: RAILGUN_PROXIES[42161], data: '0x1234', authorizationList: [{ chainId: '0xa4b1' }] }
+  expect((await gateway.fetch(arbitrum({ ...chain, method: 'eth_call', params: [transaction, 'latest'] }), vcEnv(reserve))).status).toBe(503)
+  expect(reserve).toHaveBeenCalledExactlyOnceWith(['eth_call'])
+  expect(upstream).toHaveBeenCalledOnce()
+  expect(String(upstream.mock.calls[0][0])).toBe(vcURL)
+  expect(JSON.parse(upstream.mock.calls[0][1].body).params[0]).toEqual({ ...transaction, gas: '0x1c9c380' })
+})
+
+it('keeps ordinary reads on ZAN without spending Validation Cloud credits', async () => {
+  const reserve = vi.fn()
+  const upstream = vi.fn().mockResolvedValue(Response.json({ ...chain, result: '0xa4b1' }))
+  vi.stubGlobal('fetch', upstream)
+  expect((await gateway.fetch(arbitrum(chain), vcEnv(reserve))).status).toBe(200)
+  expect(String(upstream.mock.calls[0][0])).toBe(zanRpcUrl(42161, 'test-zan'))
+  expect(reserve).not.toHaveBeenCalled()
+})
+
+it('keeps methods with undocumented CU costs off Validation Cloud, including after a ZAN failure', async () => {
+  const reserve = vi.fn()
+  const upstream = vi.fn().mockResolvedValue(new Response(null, { status: 429 }))
+  vi.stubGlobal('fetch', upstream)
+  const feeHistory = { ...chain, method: 'eth_feeHistory', params: ['0x1', 'latest', []] }
+  expect((await gateway.fetch(arbitrum(feeHistory), vcEnv(reserve))).status).toBe(429)
+  expect(upstream).toHaveBeenCalledOnce()
+  expect(String(upstream.mock.calls[0][0])).toBe(zanRpcUrl(42161, 'test-zan'))
+  expect(reserve).not.toHaveBeenCalled()
+  const mixed = [feeHistory, { ...chain, method: 'eth_call', params: [{ data: '0x1234', authorizationList: [{ chainId: '0xa4b1' }] }] }]
+  upstream.mockClear()
+  expect((await gateway.fetch(arbitrum(mixed), vcEnv(reserve))).status).toBe(400)
+  expect(upstream).not.toHaveBeenCalled()
+  expect(reserve).not.toHaveBeenCalled()
+})
+
+it.each(['http', 'json', 'network', 'body'])('allows at most one metered read fallback after a %s failure', async (failure) => {
+  const reserve = vi.fn().mockReturnValue({ allowed: true })
+  const upstream = vi.fn()
+  if (failure === 'network') upstream.mockRejectedValueOnce(new Error('offline'))
+  else if (failure === 'body') upstream.mockResolvedValueOnce(new Response(new ReadableStream({ start(controller) { controller.error(new Error('truncated')) } })))
+  else upstream.mockResolvedValueOnce(failure === 'http' ? new Response(null, { status: 429 }) : Response.json({ ...chain, error: { code: -32005, message: 'rate limit exceeded' } }))
+  upstream.mockResolvedValue(new Response(null, { status: 503 }))
+  vi.stubGlobal('fetch', upstream)
+  expect((await gateway.fetch(arbitrum(chain), vcEnv(reserve))).status).toBe(503)
+  expect(upstream).toHaveBeenCalledTimes(2)
+  expect(String(upstream.mock.calls[1][0])).toBe(vcURL)
+  expect(reserve).toHaveBeenCalledExactlyOnceWith(['eth_chainId'])
+})
+
+it('stops before contacting Validation Cloud when the shared budget is exhausted', async () => {
+  const reserve = vi.fn().mockReturnValue({ allowed: false, reason: 'shared CU budget reached' })
+  const upstream = vi.fn()
+  vi.stubGlobal('fetch', upstream)
+  const response = await gateway.fetch(arbitrum({ ...chain, method: 'eth_call', params: [{ to: RAILGUN_PROXIES[42161] }] }), vcEnv(reserve))
+  expect(response.status).toBe(429)
+  expect(await response.text()).toContain('shared CU budget')
+  expect(upstream).not.toHaveBeenCalled()
+})
+
+it('pins Validation Cloud to the selected network and rejects edited URLs', () => {
+  expect(isValidationCloudUrl(42161, vcURL)).toBe(true)
+  for (const url of [vcURL + '?extra=1', vcURL + '#fragment', vcURL.replace('https:', 'http:'), vcURL.replace('arbitrum', 'bsc'), vcURL.replace('/v1/', ':8443/v1/'), vcURL.replace('mainnet.', 'key@mainnet.')]) {
+    expect(isValidationCloudUrl(42161, url)).toBe(false)
+  }
+})
 
 it.each([[42161, 'ARBITRUM'], [137, 'POLYGON'], [56, 'BNB']] as const)(
   'uses a server-only provider key on the pinned chain %s endpoint and rejects edited URLs',

@@ -11,6 +11,8 @@
     "RAILGUN_RPC_ENABLED": "false",
     "RAILGUN_RPC_URL": "https://railgun-rpc.ophis.fi/rpc"
   },
+  "durable_objects": { "bindings": [{ "name": "VALIDATION_CLOUD_BUDGET", "class_name": "ValidationCloudBudget" }] },
+  "migrations": [{ "tag": "vc-budget-v1", "new_sqlite_classes": ["ValidationCloudBudget"] }],
   "ratelimits": [
     { "name": "RPC_LIMIT", "namespace_id": "1819", "simple": { "limit": 600, "period": 60 } },
     { "name": "TRACE_LIMIT", "namespace_id": "1820", "simple": { "limit": 10, "period": 60 } }

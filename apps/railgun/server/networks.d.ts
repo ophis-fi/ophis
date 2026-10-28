@@ -1,4 +1,5 @@
 interface Env {
+  RAILGUN_RPC_TOKEN?: string
   RAILGUN_ZAN_API_KEY?: string
   RAILGUN_ARBITRUM_RPC_URL?: string
   RAILGUN_ARBITRUM_RPC_TOKEN?: string
