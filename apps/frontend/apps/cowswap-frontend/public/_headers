@@ -120,3 +120,17 @@
   Cache-Control: public, max-age=3600, must-revalidate
 /docs/*
   Cache-Control: public, max-age=3600, must-revalidate
+
+# A fresh private-mode document cannot load remote scripts or be framed by another origin.
+/private-swap/*
+  ! Content-Security-Policy
+  Content-Security-Policy: default-src 'self'; script-src 'self' 'wasm-unsafe-eval' 'unsafe-eval'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com data:; img-src 'self' data: blob: https:; connect-src 'self' https: wss:; frame-src 'self'; frame-ancestors 'self'; worker-src 'self' blob:; base-uri 'self'; form-action 'self'; object-src 'none'
+  Cache-Control: no-store
+  Referrer-Policy: no-referrer
+
+# Separately bundled Railgun runtime inside the private swap card. No analytics scripts.
+/private/*
+  ! Content-Security-Policy
+  Content-Security-Policy: default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'; font-src 'self' data:; img-src 'self' data:; connect-src 'self' https: wss:; frame-src https://verify.walletconnect.org; frame-ancestors 'self'; worker-src 'self' blob:; base-uri 'none'; form-action 'none'; object-src 'none'
+  Cache-Control: no-store
+  Referrer-Policy: no-referrer

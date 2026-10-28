@@ -87,7 +87,7 @@ export default defineConfig(({ mode }) => {
         // versions for hours despite the no-cache HTTP header (precache
         // bypasses HTTP cache entirely). manifest.json is a small JSON
         // metadata file that benefits from the same fresh-fetch behavior.
-        globIgnores: ['**/emergency.js', '**/manifest.json'],
+        globIgnores: ['**/emergency.js', '**/manifest.json', 'private/**', 'private-swap/**'],
       },
     }),
     robotsPlugin({
@@ -164,6 +164,14 @@ export default defineConfig(({ mode }) => {
         ],
       },
       proxy: {
+        '^/private(?:/|$)': {
+          target: 'http://127.0.0.1:4341',
+          changeOrigin: true,
+        },
+        '/rpc': {
+          target: 'http://127.0.0.1:4341',
+          changeOrigin: true,
+        },
         '/hook-dapp-omnibridge': {
           target: 'http://localhost:4317',
           changeOrigin: true,

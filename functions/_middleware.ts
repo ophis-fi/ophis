@@ -194,6 +194,22 @@ function finalizeResponse(res: Response, hostname: string): Response {
 
 export const onRequest: PagesFunction<Env> = async (context) => {
   const url = new URL(context.request.url)
+  const privateShell = /^\/private-swap\/(?:index\.html)?$/.test(url.pathname)
+  const privateRuntime = url.pathname.startsWith('/private/')
+  if (privateShell || privateRuntime) {
+    const res = await context.next()
+    const headers = new Headers(res.headers)
+    const scripts = privateShell ? "'self' 'wasm-unsafe-eval' 'unsafe-eval'" : "'self' 'wasm-unsafe-eval'"
+    const frames = privateShell ? "'self'" : 'https://verify.walletconnect.org'
+    headers.set('Content-Security-Policy', `default-src 'self'; script-src ${scripts}; style-src 'self' 'unsafe-inline'; font-src 'self' data:; img-src 'self' data: blob: https:; connect-src 'self' https: wss:; frame-src ${frames}; frame-ancestors 'self'; worker-src 'self' blob:; base-uri 'self'; form-action 'none'; object-src 'none'`)
+    headers.set('Cache-Control', 'no-store')
+    headers.set('Referrer-Policy', 'no-referrer')
+    headers.set('X-Content-Type-Options', 'nosniff')
+    headers.set('X-Frame-Options', 'SAMEORIGIN')
+    headers.set('X-Robots-Tag', 'noindex')
+    if (privateShell) headers.set('Cross-Origin-Opener-Policy', 'same-origin')
+    return new Response(res.body, { status: res.status, statusText: res.statusText, headers })
+  }
   let request: Request = context.request
   if (request.method === 'POST') {
     const body = await readPostBody(request)

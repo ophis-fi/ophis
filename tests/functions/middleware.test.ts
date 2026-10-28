@@ -112,3 +112,19 @@ test('business root rewrite forwards the rebuilt POST request', async () => {
   assert.equal(res.status, 200);
   assert.equal(await res.text(), body);
 });
+
+
+test('private documents and runtime replace the public CSP, reject external framing and remain uncached', async () => {
+  for (const path of ['/private-swap/', '/private/index.html', '/private/assets/runtime.js']) {
+    const res = await request(path, new Response('Private content', { headers: {
+      'Content-Security-Policy': "script-src https://www.googletagmanager.com; frame-ancestors *",
+    } }));
+    const policy = res.headers.get('Content-Security-Policy') || '';
+    assert.match(policy, /script-src 'self'/);
+    assert(!policy.includes('googletagmanager'));
+    assert.match(policy, /frame-ancestors 'self'/);
+    assert.equal(res.headers.get('Cache-Control'), 'no-store');
+    assert.equal(res.headers.get('X-Frame-Options'), 'SAMEORIGIN');
+    if (path === '/private-swap/') assert.equal(res.headers.get('Cross-Origin-Opener-Policy'), 'same-origin');
+  }
+});
