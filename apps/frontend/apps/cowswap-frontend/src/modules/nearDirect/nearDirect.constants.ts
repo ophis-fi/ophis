@@ -9,6 +9,8 @@ import {
 } from '@cowprotocol/common-const'
 import { AdditionalTargetChainId } from '@cowprotocol/cow-sdk'
 
+export const NEAR_CONFIDENTIAL_QUOTE_REQUIRED = 'Request a new confidential quote before sending funds.'
+
 // Source capability is independent of the CoW settlement chain registry.
 export const DIRECT_NEAR_CHAINS: Readonly<Record<string, { id: number; label: string }>> = {
   btc: { id: AdditionalTargetChainId.BITCOIN, label: 'Bitcoin' },

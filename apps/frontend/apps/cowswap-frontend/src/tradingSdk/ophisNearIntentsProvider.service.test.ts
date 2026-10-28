@@ -100,17 +100,17 @@ describe('ophisNearIntentsProvider', () => {
       expect(out.amount).toBe(QUOTE_REQUEST.amount)
     })
 
-    it.each([undefined, 'basic', 'advanced'])(
-      'forces public execution when the incoming confidentiality is %s',
+    it.each([undefined, 'public', 'basic', 'advanced'])(
+      'requires basic confidentiality when the incoming confidentiality is %s',
       (confidentiality) => {
-        expect(withOphisNearQuoteParams({ ...QUOTE_REQUEST, confidentiality }).confidentiality).toBe('public')
+        expect(withOphisNearQuoteParams({ ...QUOTE_REQUEST, confidentiality }).confidentiality).toBe('basic')
       },
     )
   })
 
   describe('wrapNearApiWithOphisQuoteParams', () => {
     it('rebinds api.getQuote so the underlying call receives the injected params', async () => {
-      const response = { ...QUOTE_RESPONSE, quoteRequest: { ...QUOTE_REQUEST, confidentiality: 'public' } }
+      const response = { ...QUOTE_RESPONSE, quoteRequest: { ...QUOTE_REQUEST, confidentiality: 'basic' } }
       const underlying = jest.fn().mockResolvedValue(response)
       const api = { getQuote: underlying }
 
@@ -121,7 +121,7 @@ describe('ophisNearIntentsProvider', () => {
       expect(underlying).toHaveBeenCalledWith(
         expect.objectContaining({
           amount: QUOTE_REQUEST.amount,
-          confidentiality: 'public',
+          confidentiality: 'basic',
           referral: 'ophis',
           appFees: [{ recipient: OPHIS_PARTNER_FEE_RECIPIENT, fee: 3 }],
         }),
@@ -137,7 +137,7 @@ describe('ophisNearIntentsProvider', () => {
       expect(Object.prototype.hasOwnProperty.call(provider.testApi, 'getQuote')).toBe(true)
     })
 
-    it.each(['basic', 'advanced', undefined] as const)(
+    it.each(['public', 'advanced', undefined] as const)(
       'rejects a response whose confidentiality is %s',
       async (mode) => {
         const underlying = jest.fn().mockResolvedValue({
@@ -149,14 +149,14 @@ describe('ophisNearIntentsProvider', () => {
 
         await expect(api.getQuote(QUOTE_REQUEST)).rejects.toThrow(BridgeQuoteErrors.INVALID_API_JSON_RESPONSE)
         expect(underlying).toHaveBeenCalledWith(
-          expect.objectContaining({ confidentiality: 'public', referral: 'ophis' }),
+          expect.objectContaining({ confidentiality: 'basic', referral: 'ophis' }),
         )
 
         underlying.mockResolvedValue({
           ...QUOTE_RESPONSE,
-          quoteRequest: { ...QUOTE_REQUEST, confidentiality: 'public' },
+          quoteRequest: { ...QUOTE_REQUEST, confidentiality: 'basic' },
         })
-        await expect(api.getQuote(QUOTE_REQUEST)).resolves.toHaveProperty('quoteRequest.confidentiality', 'public')
+        await expect(api.getQuote(QUOTE_REQUEST)).resolves.toHaveProperty('quoteRequest.confidentiality', 'basic')
         underlying.mockRejectedValue(new Error('Unauthorized'))
         await expect(api.getQuote(QUOTE_REQUEST)).rejects.toThrow('Unauthorized')
         expect(underlying).toHaveBeenCalledTimes(3)

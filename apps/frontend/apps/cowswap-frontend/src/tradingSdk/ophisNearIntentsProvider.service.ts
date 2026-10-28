@@ -105,8 +105,8 @@ export function withOphisNearQuoteParams<T extends object>(request: T): T {
     ...request,
     referral: OPHIS_NEAR_REFERRAL,
     appFees: OPHIS_NEAR_APP_FEES,
-    // Confidential execution refunds with INTENT_SUBMIT_FAILED; partner authentication must not enable it.
-    confidentiality: QuoteRequest.confidentiality.PUBLIC,
+    // Require confidential quotes explicitly while the provider still accepts public execution.
+    confidentiality: QuoteRequest.confidentiality.BASIC,
   }
 }
 
@@ -122,7 +122,7 @@ export function wrapNearApiWithOphisQuoteParams(api: {
   api.getQuote = async (request) => {
     const response = await originalGetQuote(withOphisNearQuoteParams(request))
     const echoedRequest = response.quoteRequest as NearQuoteResponse['quoteRequest'] & { confidentiality?: string }
-    if (echoedRequest?.confidentiality !== QuoteRequest.confidentiality.PUBLIC) {
+    if (echoedRequest?.confidentiality !== QuoteRequest.confidentiality.BASIC) {
       throw new BridgeProviderQuoteError(BridgeQuoteErrors.INVALID_API_JSON_RESPONSE)
     }
     return response

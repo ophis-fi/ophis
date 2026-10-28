@@ -5,6 +5,7 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 
 import { SwapPage } from 'pages/Swap'
 
+import confidentialFixture from './fixtures/confidentialDeposit.json'
 import mockFixture from './fixtures/monadDeposit.json'
 import { NearToken, NearTransfer, nearTransferSchema } from './nearDirect.schemas'
 import { getNearFundingDeadline } from './nearDirect.service'
@@ -94,6 +95,26 @@ it('retains tracking without any funding instructions while the provider is paus
   expect(screen.queryByRole('button', { name: 'Send with connected wallet' })).toBeNull()
 })
 
+it('keeps a saved public quote trackable without offering deposit instructions', () => {
+  const transfer = nearTransferSchema.parse(mockFixture)
+  jest.spyOn(Date, 'now').mockReturnValue(getNearFundingDeadline(transfer.response) - 60_000)
+  render(<NearTransferCard transfer={transfer} />)
+  expect(screen.getByText('Request a new confidential quote before sending funds.')).toBeTruthy()
+  expect(screen.getByRole('button', { name: 'Track transaction' })).toBeTruthy()
+  expect(screen.queryByLabelText('Deposit address')).toBeNull()
+  expect(screen.queryByRole('button', { name: 'Send with connected wallet' })).toBeNull()
+})
+
+it('offers deposit instructions for a saved confidential quote', () => {
+  const transfer = nearTransferSchema.parse(confidentialFixture)
+  mockTokens = [transfer.source, transfer.destination]
+  jest.spyOn(Date, 'now').mockReturnValue(getNearFundingDeadline(transfer.response) - 60_000)
+  render(<NearTransferCard transfer={transfer} />)
+  expect((screen.getByLabelText('Deposit address') as HTMLInputElement).value).toBe(
+    transfer.response.quote.depositAddress,
+  )
+})
+
 it('hides funding immediately when a detected deposit cannot be saved', async () => {
   const transfer = nearTransferSchema.parse(mockFixture)
   jest.spyOn(Date, 'now').mockReturnValue(getNearFundingDeadline(transfer.response) - 60_000)
@@ -119,6 +140,9 @@ it('uses the saved transaction for retry and replaces stale funding errors when 
   view.rerender(<NearTransferCard transfer={transfer} />)
   expect((screen.getByLabelText(/Already sent/) as HTMLInputElement).value).toBe(transfer.transactionHash)
   expect(screen.getByRole('button', { name: 'Track transaction' }).hasAttribute('disabled')).toBe(false)
+  expect(
+    screen.getByText('A deposit may already have been sent. Check your wallet before taking any further action.'),
+  ).toBeTruthy()
   expect(screen.queryByText('Internal Server Error')).toBeNull()
   expect(screen.getByRole('alert').textContent).toContain('Do not send again')
   jest
