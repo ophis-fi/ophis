@@ -13,6 +13,8 @@ The local engine supports the following networks. Balances and transactions stay
 
 Railgun supplies privacy rather than DEX liquidity. This implementation quotes **Uniswap v3 only**: four fee tiers and direct or one-intermediate paths, up to 20 candidates per selected pair. Missing pools are skipped, not advertised as available liquidity. The best positive output wins, with gas as a tie-breaker. Other DEX adapters are not implemented. Public orderbook orders remain public; f(x) development remains paused.
 
+Route discovery encodes all 20 candidates into one canonical Multicall3 `eth_call` at one block, reducing quote calls from 20 to 1. The aggregate shares a 30m gas ceiling; expensive paths can reduce coverage, so this selects the best successful quote within that budget. An aggregate RPC or decoding failure stops quoting rather than retrying 20 individual calls. Deployment readiness checks run networks sequentially to avoid simultaneous bursts against the shared vendor account.
+
 The private Ophis fee is **10 bp (0.1%) of output**; the public SDK base stays at 1 bp. Railgun, pool, broadcaster and public deposit gas fees are separate. Existing installed Railgun SDK versions already support these four networks; this expansion requires no SDK release or new mainnet contract.
 
 ## Run locally
@@ -61,7 +63,9 @@ WalletConnect is deliberately unavailable in fork builds: its read RPC is the dA
 
 `pnpm build` produces `dist/`. `pnpm exec vite preview` serves that build at http://127.0.0.1:4320 with the same RPC proxy and security headers. Raw static files need equivalent hosting headers and a trusted RPC proxy; the manual deployment workflow supplies both.
 
-The RPC-only gateway supports `/rpc` (Ethereum), `/rpc/42161`, `/rpc/137` and `/rpc/56`. Ethereum uses the existing protected Baal node transport. The other networks use the existing Ophis ZAN account through fixed chain-specific URLs derived from the server-only `RAILGUN_ZAN_API_KEY`, or an explicit authenticated override. Missing configuration returns 503; unsupported chains are rejected. Log filters accept only the selected Railgun proxy. There is no public upstream fallback. See `.dev.vars.example` and [RELEASE.md](./RELEASE.md). The gateway never serves a standalone wallet.
+The RPC-only gateway supports `/rpc` (Ethereum), `/rpc/42161`, `/rpc/137` and `/rpc/56`. Ethereum uses the existing protected Baal node transport. The other networks use server-only `RAILGUN_ARBITRUM_RPC_URL`, `RAILGUN_POLYGON_RPC_URL` and `RAILGUN_BNB_RPC_URL` secrets for pinned Validation Cloud endpoints. Execution calls, estimates, traces and broadcasts use that configured provider once; signed batches are never replayed to another provider automatically. Ordinary-read-only batches use the existing Ophis ZAN account first, with at most one Validation Cloud attempt after a transport/capacity failure. Without a Validation Cloud override, the existing authenticated/ZAN transport remains supported. Missing configuration returns 503; unsupported chains are rejected. Log filters accept only the selected Railgun proxy. No public endpoint is used as fallback. The gateway never serves a standalone wallet.
+
+All three Validation Cloud keys share one persistent Durable Object meter: **40M CU per UTC calendar month combined**, leaving 10M of the account's 50M allowance for other usage and diagnostics; **60 logical requests/second sustained with burst 60 combined**, leaving room under the team's 120 requests/second limit. Each method in a JSON batch reserves its CU allocation before forwarding, including failed attempts. Published examples: `eth_call` 40 CU, `debug_traceCall` 80 CU, `eth_getLogs` 80 CU. Priority-fee queries reserve 80 CU conservatively because some chains omit their pricing; other undocumented methods stay off Validation Cloud. The meter stores only counts and dates, survives restarts/deployments and rejects requests before forwarding when exhausted. It does not read or control account usage by services outside this gateway; the reserve is not a guarantee against arbitrary external consumption. No subscription upgrade or paid overage is enabled. See `.dev.vars.example` and [RELEASE.md](./RELEASE.md).
 
 Mainnet mode requires explicitly setting `VITE_RAILGUN_ENVIRONMENT=mainnet` and a trusted selected-network RPC supporting EIP-7702 `eth_call` and `debug_traceCall` with `callTracer`. Known Anvil/Hardhat endpoints are rejected in mainnet mode. That check cannot identify every possible private fork: the operator must select the correct endpoint. Fork and mainnet wallet databases are separate. A prior user-controlled Ethereum private swap completed through a real broadcaster. No funded private transaction on Arbitrum, Polygon or BNB Chain was performed for this revision, and the new 0.1% fee has only been exercised on local forks.
 
@@ -97,6 +101,7 @@ Canceling a pending swap requires explicit acknowledgement of possible public le
 ```sh
 pnpm typecheck
 pnpm test
+RAILGUN_RPC_QUOTE_TEST=1 VITE_RAILGUN_CHAIN_ID=1 RAILGUN_RPC_URL=https://swap.ophis.fi/rpc pnpm exec vitest run src/routes.rpc.test.ts
 RAILGUN_FORK_TEST=1 pnpm exec vitest run src/recipe.fork.test.ts src/cancel.fork.test.ts --no-file-parallelism
 pnpm build
 pnpm exec vite preview

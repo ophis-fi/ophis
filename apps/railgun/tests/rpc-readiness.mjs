@@ -16,7 +16,9 @@ const endpoints = {
   137: process.env.RAILGUN_POLYGON_RPC_URL || zanRpcUrl(137, process.env.RAILGUN_ZAN_API_KEY),
   56: process.env.RAILGUN_BNB_RPC_URL || zanRpcUrl(56, process.env.RAILGUN_ZAN_API_KEY),
 }
-const reports = await Promise.all(PRIVATE_NETWORKS.map(async (network) => {
+const reports = []
+// All three vendor-backed networks share one account's credits/second budget.
+for (const network of PRIVATE_NETWORKS) {
   const endpoint = gateway ? new URL(network.chainId === 1 ? '/rpc' : `/rpc/${network.chainId}`, gateway).href : endpoints[network.chainId]
   assert(endpoint, 'Configure this network RPC or the existing server-only provider credential')
   const transport = new FetchRequest(endpoint)
@@ -57,7 +59,8 @@ const reports = await Promise.all(PRIVATE_NETWORKS.map(async (network) => {
   } catch (error) {
     report.error = error.error?.message || error.info?.error?.message || error.shortMessage || error.code || error.name
   } finally { provider.destroy() }
-  return report
-}))
+  reports.push(report)
+  await new Promise((resolve) => setTimeout(resolve, 1000))
+}
 console.log(JSON.stringify({ checkedAt: new Date().toISOString(), readOnly: true, reports }, null, 2))
 if (reports.some((report) => !report.ok)) process.exitCode = 1

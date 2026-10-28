@@ -1,4 +1,5 @@
-import { RPC_BATCH_SIZE, RAILGUN_PROXY, RAILGUN_PROXIES, zanRpcUrl } from '../rpc-policy'
+import { RPC_BATCH_SIZE, RAILGUN_PROXY, RAILGUN_PROXIES, isValidationCloudUrl, validationCloudCU, zanRpcUrl } from '../rpc-policy'
+export { ValidationCloudBudget } from './budget'
 
 const METHODS = new Set([
   'eth_chainId',
@@ -37,7 +38,7 @@ function error(status: number, message: string): Response {
   return Response.json({ error: message }, { status, headers: HEADERS })
 }
 
-async function readBody(request: Request): Promise<unknown> {
+async function readBody(request: Request | Response, maximum = MAX_BODY): Promise<unknown> {
   const reader = request.body?.getReader()
   if (!reader) throw new Error('JSON body required.')
   const parts: Uint8Array[] = []
@@ -46,9 +47,9 @@ async function readBody(request: Request): Promise<unknown> {
     const { value, done } = await reader.read()
     if (done) break
     length += value.byteLength
-    if (length > MAX_BODY) {
+    if (length > maximum) {
       await reader.cancel()
-      throw new Error('RPC body exceeds 256 KiB.')
+      throw new Error('RPC body exceeds its supported size.')
     }
     parts.push(value)
   }
@@ -183,9 +184,10 @@ export default {
         return error(429, 'Simulation rate limit reached. Retry shortly.')
     }
     try {
-      const upstream = new URL(upstreamUrl)
+      const validationCloud = isValidationCloudUrl(chainId, upstreamUrl)
       const local = ['127.0.0.1', 'localhost', '[::1]'].includes(url.hostname)
-      if (!local && !upstreamToken && upstream.href !== zanRpcUrl(chainId, env.RAILGUN_ZAN_API_KEY))
+      const upstream = new URL(upstreamUrl)
+      if (!local && !upstreamToken && !validationCloud && upstream.href !== zanRpcUrl(chainId, env.RAILGUN_ZAN_API_KEY))
         return error(503, 'Trusted RPC authentication is not configured.')
       if (
         upstream.protocol !== 'https:' &&
@@ -196,17 +198,54 @@ export default {
         )
       )
         return error(503, 'A trusted HTTPS RPC is required.')
-      const response = await fetch(upstream, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'User-Agent': 'Ophis-Private-Wallet/1.0',
-          ...(upstreamToken ? { Authorization: `Bearer ${upstreamToken}` } : {}),
-        },
-        body: JSON.stringify(payload),
-        redirect: 'manual',
-        signal: AbortSignal.timeout(30_000),
-      })
+      const execution = calls.some((call) => ['eth_call', 'eth_estimateGas', 'debug_traceCall', 'eth_sendRawTransaction'].includes(call.method))
+      const zan = zanRpcUrl(chainId, env.RAILGUN_ZAN_API_KEY)
+      const priced = calls.every((call) => validationCloudCU(call.method) !== undefined)
+      if (validationCloud && execution && !priced) return error(400, 'Execution batches require methods with verified CU costs.')
+      if (validationCloud && !priced && !zan) return error(503, 'This RPC method requires the configured ZAN transport.')
+      // Execution data goes to one configured provider; only ordinary reads may fail over.
+      const first = validationCloud && !execution && zan ? zan : upstream.href
+      const fallback = validationCloud && priced && first !== upstream.href
+      const forward = async (target: string): Promise<Response> => {
+        if (validationCloud && target === upstream.href) {
+          if (!env.VALIDATION_CLOUD_BUDGET) return error(503, 'Validation Cloud budget guard is not configured.')
+          const budget = await env.VALIDATION_CLOUD_BUDGET.getByName('shared-account').consume(calls.map((call) => call.method))
+          if (!budget.allowed) return error(429, budget.reason || 'Validation Cloud budget reached.')
+        }
+        return fetch(target, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'User-Agent': 'Ophis-Private-Wallet/1.0',
+            ...(target === upstream.href && upstreamToken ? { Authorization: `Bearer ${upstreamToken}` } : {}),
+          },
+          body: JSON.stringify(payload),
+          redirect: 'manual',
+          signal: AbortSignal.timeout(30_000),
+        })
+      }
+      let target = first
+      let response: Response
+      try { response = await forward(target) }
+      catch (cause) {
+        if (!fallback || target === upstream.href) throw cause
+        target = upstream.href
+        response = await forward(target)
+      }
+      if (fallback && target !== upstream.href && (response.status === 429 || response.status >= 500)) {
+        await response.body?.cancel()
+        response = await forward(upstream.href)
+      } else if (fallback && target !== upstream.href && response.ok) {
+        let result: unknown
+        try { result = await readBody(response, 8_388_608) }
+        catch { target = upstream.href; response = await forward(target) }
+        if (target !== upstream.href) {
+          const replies = Array.isArray(result) ? result : [result]
+          const limited = replies.some((reply) => reply && typeof reply === 'object' && 'error' in reply
+            && /rate|limit|capacity|quota/i.test(String((reply.error as { message?: string })?.message)))
+          response = limited ? await forward(upstream.href) : Response.json(result)
+        }
+      }
       if (response.status >= 300 && response.status < 400)
         return error(502, 'Trusted RPC redirects are disabled.')
       return new Response(response.body, { status: response.status, headers: HEADERS })

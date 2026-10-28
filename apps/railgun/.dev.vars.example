@@ -1,9 +1,11 @@
 # Local gateway smoke test only. Never use this upstream in production.
 RAILGUN_RPC_URL=http://127.0.0.1:8549
 RAILGUN_RPC_ENABLED=true
-# Reuse the existing Ophis ZAN account for the other three chains. Server-side only.
+# ZAN handles ordinary-read-only batches first. All credentials are server-side only.
 RAILGUN_ZAN_API_KEY=
-# Optional networks stay unavailable until their own trusted upstream is configured.
+# Validation Cloud URL secrets: https://mainnet.{arbitrum,polygon,bsc}.validationcloud.io/v1/<key>
+# All three share one persistent 40M CU/calendar-month budget, not 40M per endpoint.
+# Canonical Validation Cloud URLs authenticate through their key path; no bearer is needed.
 RAILGUN_ARBITRUM_RPC_URL=
 RAILGUN_ARBITRUM_RPC_TOKEN=
 RAILGUN_POLYGON_RPC_URL=
