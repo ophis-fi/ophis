@@ -1,6 +1,6 @@
+import { CHAIN, CHAIN_NAME, NATIVE_SYMBOL, CONFIG, ERC20, NETWORK, TOKENS, VERSION, type TokenSymbol } from './config'
 import { Contract, formatEther, formatUnits, hexlify, randomBytes } from 'ethers'
 import { populateShield } from '@railgun-community/wallet'
-import { CONFIG, ERC20, NETWORK, TOKENS, VERSION, type TokenSymbol } from './config'
 import type { WalletSession } from './wallet'
 
 export function recoveryIndex(value: string): number {
@@ -11,7 +11,7 @@ export function recoveryIndex(value: string): number {
 }
 
 export async function scanRecovery(session: WalletSession, index: number): Promise<string> {
-  const account = await session.accounts.getAccount(1n, index)
+  const account = await session.accounts.getAccount(CHAIN, index)
   const native = await session.provider.getBalance(account.address)
   const lines = await Promise.all(
     Object.entries(TOKENS).map(async ([symbol, token]) => {
@@ -21,20 +21,25 @@ export async function scanRecovery(session: WalletSession, index: number): Promi
       return `${symbol}: ${formatUnits(amount, token.decimals)}`
     }),
   )
-  return `Account ${index}: ${account.address}\nETH: ${formatEther(native)}\n${lines.join('\n')}`
+  return `Account ${index}: ${account.address}\n${NATIVE_SYMBOL}: ${formatEther(native)}\n${lines.join('\n')}`
 }
 
 export async function recoverToken(session: WalletSession, index: number, symbol: TokenSymbol): Promise<string> {
-  const account = await session.accounts.getAccount(1n, index)
+  const account = await session.accounts.getAccount(CHAIN, index)
   const signer = account.signer.connect(session.provider)
-  if ((await session.provider.getNetwork()).chainId !== 1n) throw new Error('Ethereum RPC required.')
+  if ((await session.provider.getNetwork()).chainId !== CHAIN) throw new Error(`${CHAIN_NAME} RPC required.`)
   const token = new Contract(TOKENS[symbol].address, ERC20, signer)
   const amount: bigint = await token.getFunction('balanceOf')(account.address)
   if (amount <= 0n) throw new Error('No token balance to recover.')
   if ((await session.provider.getBalance(account.address)) === 0n)
     throw new Error(
-      'This temporary account needs ETH for recovery gas. Funding it from your public wallet creates a public link.',
+      `This temporary account needs ${NATIVE_SYMBOL} for recovery gas. Funding it from your public wallet creates a public link.`,
     )
+  if (symbol === 'USDT' && await token.getFunction('allowance')(account.address, CONFIG.proxyContract) > 0n) {
+    const reset = await token.getFunction('approve')(CONFIG.proxyContract, 0n)
+    const cleared = await reset.wait()
+    if (!cleared || cleared.status !== 1) throw new Error('USDT recovery allowance reset was not confirmed.')
+  }
   const approval = await token.getFunction('approve')(CONFIG.proxyContract, amount)
   const approved = await approval.wait()
   if (!approved || approved.status !== 1) throw new Error('Recovery approval failed.')

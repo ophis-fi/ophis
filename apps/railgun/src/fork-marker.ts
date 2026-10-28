@@ -10,7 +10,7 @@ export function forkMarker(metadata: unknown): { address: string; code: string }
     typeof metadata.instanceId !== 'string' ||
     !metadata.instanceId
   )
-    throw new Error('A local Anvil Ethereum fork is required.')
+    throw new Error('A local Anvil fork is required.')
   const marker = keccak256(toUtf8Bytes(`ophisRailgunFork:${metadata.instanceId}`))
   return {
     address: getAddress(`0x${marker.slice(-40)}`),

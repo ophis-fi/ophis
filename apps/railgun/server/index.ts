@@ -1,4 +1,4 @@
-import { RPC_BATCH_SIZE, RAILGUN_PROXY } from '../rpc-policy'
+import { RPC_BATCH_SIZE, RAILGUN_PROXY, RAILGUN_PROXIES, zanRpcUrl } from '../rpc-policy'
 
 const METHODS = new Set([
   'eth_chainId',
@@ -61,7 +61,7 @@ async function readBody(request: Request): Promise<unknown> {
   return JSON.parse(new TextDecoder().decode(bytes))
 }
 
-export function rpcCall(value: unknown): RPCCall {
+export function rpcCall(value: unknown, proxy = RAILGUN_PROXY): RPCCall {
   if (!value || typeof value !== 'object') throw new Error('Invalid JSON-RPC request.')
   const item = value as Record<string, unknown>
   if (
@@ -95,9 +95,9 @@ export function rpcCall(value: unknown): RPCCall {
     if (
       addresses.length !== 1 ||
       typeof addresses[0] !== 'string' ||
-      addresses[0].toLowerCase() !== RAILGUN_PROXY
+      addresses[0].toLowerCase() !== proxy
     )
-      throw new Error('Only Ethereum Railgun V2 logs are supported.')
+      throw new Error('Only the selected network Railgun V2 logs are supported.')
     if ('blockHash' in filter) {
       if (
         typeof filter.blockHash !== 'string' ||
@@ -144,11 +144,22 @@ export function rpcCall(value: unknown): RPCCall {
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
     const url = new URL(request.url)
-    if (url.pathname !== '/rpc') return env.ASSETS.fetch(request)
+    if (url.pathname !== '/rpc' && !url.pathname.startsWith('/rpc/')) return error(404, 'RPC route not found.')
+    const match = /^\/rpc(?:\/(1|42161|137|56))?$/.exec(url.pathname)
+    if (!match) return error(404, 'Unsupported private network.')
+    const chainId = Number(match[1] || 1)
+    const proxy = RAILGUN_PROXIES[chainId]
+    const endpoints: Record<number, { url?: string; token?: string }> = {
+      1: { url: env.RAILGUN_RPC_URL, token: env.RAILGUN_RPC_TOKEN },
+      42161: { url: env.RAILGUN_ARBITRUM_RPC_URL || zanRpcUrl(42161, env.RAILGUN_ZAN_API_KEY), token: env.RAILGUN_ARBITRUM_RPC_TOKEN },
+      137: { url: env.RAILGUN_POLYGON_RPC_URL || zanRpcUrl(137, env.RAILGUN_ZAN_API_KEY), token: env.RAILGUN_POLYGON_RPC_TOKEN },
+      56: { url: env.RAILGUN_BNB_RPC_URL || zanRpcUrl(56, env.RAILGUN_ZAN_API_KEY), token: env.RAILGUN_BNB_RPC_TOKEN },
+    }
+    const { url: upstreamUrl, token: upstreamToken } = endpoints[chainId]
     if (request.method !== 'POST') return error(405, 'POST required.')
     if (request.headers.get('Origin') && request.headers.get('Origin') !== url.origin)
       return error(403, 'Same-origin requests only.')
-    if (env.RAILGUN_RPC_ENABLED !== 'true' || !env.RAILGUN_RPC_URL)
+    if (env.RAILGUN_RPC_ENABLED !== 'true' || !upstreamUrl)
       return error(503, 'Private wallet RPC is not enabled.')
     if (
       request.headers.get('Content-Type')?.split(';')[0].trim().toLowerCase() !== 'application/json'
@@ -160,7 +171,7 @@ export default {
       const parsed = await readBody(request)
       if (Array.isArray(parsed) && (parsed.length === 0 || parsed.length > RPC_BATCH_SIZE))
         throw new Error('RPC batches require 1 to 20 calls.')
-      payload = Array.isArray(parsed) ? parsed.map(rpcCall) : rpcCall(parsed)
+      payload = Array.isArray(parsed) ? parsed.map((item) => rpcCall(item, proxy)) : rpcCall(parsed, proxy)
     } catch (cause) {
       return error(400, cause instanceof Error ? cause.message : 'Invalid RPC body.')
     }
@@ -172,9 +183,9 @@ export default {
         return error(429, 'Simulation rate limit reached. Retry shortly.')
     }
     try {
-      const upstream = new URL(env.RAILGUN_RPC_URL)
+      const upstream = new URL(upstreamUrl)
       const local = ['127.0.0.1', 'localhost', '[::1]'].includes(url.hostname)
-      if (!local && !env.RAILGUN_RPC_TOKEN)
+      if (!local && !upstreamToken && upstream.href !== zanRpcUrl(chainId, env.RAILGUN_ZAN_API_KEY))
         return error(503, 'Trusted RPC authentication is not configured.')
       if (
         upstream.protocol !== 'https:' &&
@@ -190,7 +201,7 @@ export default {
         headers: {
           'Content-Type': 'application/json',
           'User-Agent': 'Ophis-Private-Wallet/1.0',
-          ...(env.RAILGUN_RPC_TOKEN ? { Authorization: `Bearer ${env.RAILGUN_RPC_TOKEN}` } : {}),
+          ...(upstreamToken ? { Authorization: `Bearer ${upstreamToken}` } : {}),
         },
         body: JSON.stringify(payload),
         redirect: 'manual',

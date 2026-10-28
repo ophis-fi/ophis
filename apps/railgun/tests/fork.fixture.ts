@@ -9,7 +9,7 @@ import {
 import { balanceForERC20Token, fullWalletForID, pausePPOIBatchingForChain } from '@railgun-community/wallet'
 import type { SelectedBroadcaster } from '@railgun-community/shared-models'
 import { FeeData, JsonRpcProvider } from 'ethers'
-import { CONFIG, FEE_SIGNER, MIN_SWAP_GAS, NETWORK, TOKENS, VERSION, type TokenSymbol } from '../src/config'
+import { CHAIN, CHAIN_NAME, RPC_PATH, NATIVE_SYMBOL, WRAPPED_SYMBOL, CONFIG, FEE_SIGNER, MIN_SWAP_GAS, NETWORK, TOKENS, VERSION, type TokenSymbol } from '../src/config'
 import { openWallet, syncWallet, type WalletSession } from '../src/wallet'
 import { executePrivateSwap, preparePrivateSwap } from '../src/private-swap'
 import { amountFromInput, quoteSwap } from '../src/recipe'
@@ -53,8 +53,9 @@ class ForkPOI extends POINodeInterface {
 const active: { session?: WalletSession } = {}
 
 export async function loadForkSession(password: string): Promise<string> {
-  const provider = new JsonRpcProvider(new URL('/rpc', location.origin).href)
-  if (!(await provider.send('anvil_metadata', [])).forkedNetwork) throw new Error('A local Ethereum fork is required.')
+  const provider = new JsonRpcProvider(new URL(RPC_PATH, location.origin).href)
+  if (!(await provider.send('anvil_metadata', [])).forkedNetwork || (await provider.getNetwork()).chainId !== CHAIN)
+    throw new Error(`A local ${CHAIN_NAME} fork is required.`)
   active.session = await openWallet(provider, password, undefined)
   pausePPOIBatchingForChain(CONFIG.chain)
   POI.init([], new ForkPOI())
@@ -79,7 +80,7 @@ export async function forkWethBalance(): Promise<string> {
   const current = session()
   await syncWallet(current)
   return String(
-    await balanceForERC20Token(VERSION, fullWalletForID(current.info.id), NETWORK, TOKENS.WETH.address, true),
+    await balanceForERC20Token(VERSION, fullWalletForID(current.info.id), NETWORK, TOKENS[WRAPPED_SYMBOL].address, true),
   )
 }
 
@@ -172,7 +173,8 @@ export async function forkShieldETH(value: string): Promise<string> {
   const current = session()
   if (!(await current.provider.send('anvil_metadata', [])).forkedNetwork)
     throw new Error('Only an Anvil wallet may fund this test.')
-  const receipt = await shield(current, await current.provider.getSigner(0), 'ETH', amountFromInput(value, 'WETH'))
+  if ((await current.provider.getNetwork()).chainId !== CHAIN) throw new Error('Fork network changed.')
+  const receipt = await shield(current, await current.provider.getSigner(0), NATIVE_SYMBOL, amountFromInput(value, WRAPPED_SYMBOL))
   await syncWallet(current)
   return receipt.hash
 }
@@ -201,7 +203,7 @@ export async function forkRecovery(index: number): Promise<string> {
 }
 
 export async function forkAccount(index: number): Promise<string> {
-  return (await session().accounts.getAccount(1n, index)).address
+  return (await session().accounts.getAccount(CHAIN, index)).address
 }
 
 export async function recoveryStatus(index: number): Promise<string> {

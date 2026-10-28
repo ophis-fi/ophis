@@ -1,12 +1,13 @@
+import { CHAIN_ID, isTokenSymbol, CONFIG, TOKENS, type TokenSymbol } from './config'
 import { getWalletTransactionHistory } from '@railgun-community/wallet'
 import { Contract, getAddress, type JsonRpcSigner, type TransactionReceipt } from 'ethers'
-import { CONFIG, TOKENS, type TokenSymbol } from './config'
 import { PRIVACY } from './execution'
 import { deletePrivateState, readPrivateState, writePrivateState } from './storage'
 import type { WalletSession } from './wallet'
 import { assertPublicNetwork } from './shield'
 
 export interface PendingWithdrawal {
+  chainId?: number
   token: TokenSymbol
   recipient: string
   minimum: string
@@ -23,8 +24,9 @@ export async function pendingWithdrawal(session: WalletSession): Promise<Pending
   if (
     !stored ||
     typeof stored !== 'object' ||
+    ('chainId' in stored ? stored.chainId !== CHAIN_ID : CHAIN_ID !== 1) ||
     !('token' in stored) ||
-    (stored.token !== 'USDC' && stored.token !== 'WETH') ||
+    !isTokenSymbol(stored.token) ||
     !('recipient' in stored) ||
     typeof stored.recipient !== 'string' ||
     !('minimum' in stored) ||
@@ -62,7 +64,8 @@ export async function pendingWithdrawal(session: WalletSession): Promise<Pending
 }
 
 export async function savePendingWithdrawal(session: WalletSession, pending: PendingWithdrawal): Promise<void> {
-  await writePrivateState(session, 'pendingWithdrawal', pending)
+  if (pending.chainId !== undefined && pending.chainId !== CHAIN_ID) throw new Error('Pending withdrawal network changed.')
+  await writePrivateState(session, 'pendingWithdrawal', { ...pending, chainId: CHAIN_ID })
 }
 
 export function assertWithdrawalReceipt(receipt: TransactionReceipt, pending: PendingWithdrawal): void {

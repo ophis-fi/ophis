@@ -2,10 +2,15 @@ import { describe, expect, it } from 'vitest'
 import { AbiCoder, getAddress, solidityPacked } from 'ethers'
 import { amountFromInput, assertQuoteFresh, unshieldAmount, recipeCalls, type SwapQuote } from './recipe'
 import { ERC20, OPHIS_FEE, PERMIT, PERMIT2, ROUTER, ROUTER_RECIPIENT, SWAP, TOKENS } from './config'
+import { OPHIS_VOLUME_FEE_BPS } from '../../../packages/sdk/src/partner-fee'
 
 const account = '0x0000000000000000000000000000000000001234'
 
 describe('private swap amounts and recipe', () => {
+  it('charges 10 bps for private swaps and keeps the public base at 1 bp', () => {
+    expect(OPHIS_FEE.bps).toBe(10n)
+    expect(OPHIS_VOLUME_FEE_BPS).toBe(1)
+  })
   it('uses exact integer units and rejects excess precision and nonpositive input', () => {
     expect(amountFromInput('1.000001', 'USDC')).toBe(1_000_001n)
     expect(amountFromInput('0.000000000000000001', 'WETH')).toBe(1n)
@@ -48,7 +53,7 @@ describe('private swap amounts and recipe', () => {
     expect([...abi.decode(['address', 'address', 'uint256'], inputs[1])]).toEqual([
       getAddress(TOKENS.WETH.address),
       OPHIS_FEE.recipient,
-      1n,
+      10n,
     ])
     expect([...abi.decode(['address', 'address', 'uint256'], inputs[2])]).toEqual([
       getAddress(TOKENS.WETH.address),
@@ -60,8 +65,9 @@ describe('private swap amounts and recipe', () => {
   })
   it('refuses zero minimum output, stale quotes and changed temporary accounts', () => {
     expect(() => recipeCalls('USDC', 'WETH', account, 1n, 0n, 1)).toThrow()
-    const quote = { account, deadline: Math.floor(Date.now() / 1000) + 120 } as SwapQuote
+    const quote = { chainId: 1, account, deadline: Math.floor(Date.now() / 1000) + 120 } as SwapQuote
     expect(() => assertQuoteFresh(quote, account)).not.toThrow()
+    expect(() => assertQuoteFresh({ ...quote, chainId: 56 }, account)).toThrow(/network changed/)
     expect(() => assertQuoteFresh(quote, ROUTER)).toThrow(/account changed/)
     expect(() => assertQuoteFresh({ ...quote, deadline: 1 }, account)).toThrow(/expired/)
   })

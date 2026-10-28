@@ -1,20 +1,34 @@
 import './style.css'
 import { formatUnits } from 'ethers'
 import { newMnemonic, openWallet, startWalletEngine, syncWallet, type WalletSession } from './wallet'
-import { ENVIRONMENT, TOKENS } from './config'
+import { CHAIN_NAME, ENVIRONMENT, TOKENS } from './config'
+import { configurePrivateSelectors } from './network-ui'
+import { reportEmbeddedLayout } from './embedded'
 
 import { element, run } from './ui'
 import { wireWalletActions } from './wallet-actions'
 
 const status = element('status')
 element('environment').textContent =
-  ENVIRONMENT === 'fork' ? 'Local Ethereum fork · Test wallets only' : 'Ethereum mainnet'
+  ENVIRONMENT === 'fork' ? `Local ${CHAIN_NAME} fork · Test wallets only` : `${CHAIN_NAME} mainnet`
+configurePrivateSelectors()
+reportEmbeddedLayout()
 const password = element<HTMLInputElement>('password')
 const mnemonic = element<HTMLTextAreaElement>('mnemonic')
 const backup = element<HTMLInputElement>('backup')
 const session: { current?: WalletSession } = {}
 const buckets = new Map<string, string>()
 const started: { provider?: ReturnType<typeof startWalletEngine> } = {}
+
+function renderSelectedBalance(): void {
+  const selected = element<HTMLSelectElement>('token').value
+  const spendable = buckets.get('Spendable')?.split('\n').find((line) => line.startsWith(`${selected}:`))
+  element('spendable-balance').textContent = spendable || `0 ${selected}`
+  element('pending-balances').textContent = [...buckets.entries()]
+    .filter(([name]) => name !== 'Spendable')
+    .map(([, value]) => value).join('\n\n') || 'No pending deposits.'
+}
+element<HTMLSelectElement>('token').addEventListener('input', renderSelectedBalance)
 
 element<HTMLButtonElement>('generate').onclick = () => {
   mnemonic.value = newMnemonic()
@@ -43,6 +57,7 @@ for (const id of ['open', 'unlock']) {
             `${event.balanceBucket}\n${values.join('\n') || 'No balance in this category.'}`,
           )
           element('balances').textContent = [...buckets.values()].join('\n\n')
+          renderSelectedBalance()
         },
         (message, ready) => {
           status.textContent = message
@@ -57,6 +72,8 @@ for (const id of ['open', 'unlock']) {
       password.value = ''
       mnemonic.value = ''
       element('setup').hidden = true
+      element<HTMLSelectElement>('private-network').disabled = true
+      element('private-network-help').textContent = 'Lock the private wallet to change networks. Pending transactions stay saved on their original network.'
       element('wallet').hidden = false
       element('address').textContent = session.current.info.railgunAddress
       await wireWalletActions(session.current)

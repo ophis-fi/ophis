@@ -3,7 +3,7 @@ import { Buffer } from 'buffer'
 import level from 'level-js'
 import levelup from 'levelup'
 import { hexlify, id, toUtf8Bytes } from 'ethers'
-import { ENVIRONMENT } from './config'
+import { CHAIN_ID, ENVIRONMENT } from './config'
 import type { WalletSession } from './wallet'
 
 const scope = ENVIRONMENT === 'fork' ? 'ophisRailgun' : 'ophisRailgunEthereum'
@@ -53,7 +53,8 @@ export async function writePreference(key: string, value: unknown): Promise<void
 }
 
 function privatePath(session: WalletSession, key: string): (Uint8Array | string)[] {
-  return [toUtf8Bytes('ophisPrivate:v0'), session.info.id, id(key)]
+  // Preserve existing Ethereum journals; other chains must never read or resume them.
+  return [toUtf8Bytes('ophisPrivate:v0'), session.info.id, id(CHAIN_ID === 1 ? key : `${CHAIN_ID}:${key}`)]
 }
 
 export async function readPrivateState(session: WalletSession, key: string): Promise<unknown> {
