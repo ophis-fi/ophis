@@ -9,7 +9,9 @@ assert(
 )
 const provider = new JsonRpcProvider(url.href)
 try {
-  assert.equal((await provider.getNetwork()).chainId, 1n)
+  const chainId = Number(process.env.VITE_RAILGUN_CHAIN_ID || 1)
+  assert([1, 42161, 137, 56].includes(chainId), 'Unsupported private network')
+  assert.equal((await provider.getNetwork()).chainId, BigInt(chainId))
   const marker = forkMarker(await provider.send('anvil_metadata', []))
   await provider.send('anvil_setCode', [marker.address, marker.code])
   assert.equal(await provider.send('eth_getCode', [marker.address, 'latest']), marker.code)

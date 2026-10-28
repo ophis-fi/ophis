@@ -14,6 +14,23 @@ vi.mock('./config', async (original) => ({ ...await original<typeof import('./co
 const { approveShield, requireShieldBalance, shield } = await import('./shield')
 const { CONFIG, TOKENS } = await import('./config')
 
+it('resets an existing USDT allowance before approving the requested amount', async () => {
+  mocks.balance.mockResolvedValue(2_000_000n)
+  mocks.allowance.mockResolvedValue(1n)
+  mocks.approve.mockResolvedValue({ wait: async () => ({ status: 1 }) })
+  await approveShield(session, signer, 'USDT', 1_000_000n)
+  expect(mocks.approve).toHaveBeenNthCalledWith(1, CONFIG.proxyContract, 0n)
+  expect(mocks.approve).toHaveBeenNthCalledWith(2, CONFIG.proxyContract, 1_000_000n)
+})
+
+it('stops a USDT approval if the public wallet changes networks during its reset', async () => {
+  mocks.balance.mockResolvedValue(2_000_000n)
+  mocks.allowance.mockResolvedValue(1n)
+  mocks.approve.mockResolvedValue({ wait: async () => { network.mockResolvedValue({ chainId: 56n }); return { status: 1 } } })
+  await expect(approveShield(session, signer, 'USDT', 1_000_000n)).rejects.toThrow(/Switch your public wallet/)
+  expect(mocks.approve).toHaveBeenCalledTimes(1)
+})
+
 const owner = '0x0000000000000000000000000000000000000001'
 const session = { info: { railgunAddress: 'private recipient' } } as unknown as WalletSession
 const send = vi.fn()

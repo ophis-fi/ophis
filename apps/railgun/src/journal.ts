@@ -1,11 +1,12 @@
+import { CHAIN_ID, isTokenSymbol, CHAIN, ERC20, TOKENS, CONFIG, type TokenSymbol } from './config'
 import { Contract, getAddress } from 'ethers'
 import { fullWalletForID, getWalletTransactionHistory } from '@railgun-community/wallet'
-import { ERC20, TOKENS, CONFIG, type TokenSymbol } from './config'
 import { assertReceipt, assertPrivateOutput, PRIVACY, ADAPT } from './execution'
 import { deletePrivateState, readPrivateState, writePrivateState } from './storage'
 import type { WalletSession } from './wallet'
 
 export interface PendingSwap {
+  chainId?: number
   index: number
   account: string
   token: TokenSymbol
@@ -22,12 +23,13 @@ export async function pendingSwap(session: WalletSession): Promise<PendingSwap |
   if (
     !stored ||
     typeof stored !== 'object' ||
+    ('chainId' in stored ? stored.chainId !== CHAIN_ID : CHAIN_ID !== 1) ||
     !('index' in stored) ||
     !Number.isSafeInteger(stored.index) ||
     !('account' in stored) ||
     typeof stored.account !== 'string' ||
     !('token' in stored) ||
-    (stored.token !== 'USDC' && stored.token !== 'WETH') ||
+    !isTokenSymbol(stored.token) ||
     !('minimum' in stored) ||
     typeof stored.minimum !== 'string' ||
     !('npk' in stored) ||
@@ -56,7 +58,8 @@ export async function pendingSwap(session: WalletSession): Promise<PendingSwap |
 }
 
 export async function savePendingSwap(session: WalletSession, pending: PendingSwap): Promise<void> {
-  await writePrivateState(session, 'pendingSwap', pending)
+  if (pending.chainId !== undefined && pending.chainId !== CHAIN_ID) throw new Error('Pending swap network changed.')
+  await writePrivateState(session, 'pendingSwap', { ...pending, chainId: CHAIN_ID })
 }
 
 export async function reconcilePendingSwap(
@@ -105,15 +108,18 @@ export async function reconcilePendingSwap(
       return event?.name === 'Unshield' && getAddress(event.args.to) === getAddress(pending.account)
     })
     if (!unshielded) throw error
+    recovered = true
+  }
+  if (failedCall && !acceptLeftovers) {
     const balances = await Promise.all(
       Object.values(TOKENS).map((token) =>
         new Contract(token.address, ERC20, session.provider).getFunction('balanceOf')(pending.account),
       ),
     )
-    if (balances.some((balance) => BigInt(balance) !== 0n) && !acceptLeftovers) throw error
-    recovered = true
+    if (balances.some((balance) => BigInt(balance) !== 0n))
+      throw new Error(`Recovery account ${pending.index} still holds funds after a failed cleanup call. Recover them before reconciling, or explicitly accept leftovers.`)
   }
-  await fullWalletForID(session.info.id).setEphemeralKeyIndexIfGreater(1n, pending.index + 1)
+  await fullWalletForID(session.info.id).setEphemeralKeyIndexIfGreater(CHAIN, pending.index + 1)
   await deletePrivateState(session, 'pendingSwap')
   return recovered
     ? `Failed swap reconciled after recovery. Account ${pending.index} remains accessible.`

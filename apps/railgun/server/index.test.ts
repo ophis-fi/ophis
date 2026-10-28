@@ -2,7 +2,7 @@ import { afterEach, expect, it, vi } from 'vitest'
 import gateway, { rpcCall } from './index'
 import { FetchRequest, JsonRpcProvider } from 'ethers'
 import { NETWORK_CONFIG, NetworkName } from '@railgun-community/shared-models'
-import { RPC_BATCH_SIZE, RAILGUN_PROXY } from '../rpc-policy'
+import { RPC_BATCH_SIZE, RAILGUN_PROXY, RAILGUN_PROXIES, zanRpcUrl } from '../rpc-policy'
 
 const enabled = {
   RAILGUN_RPC_ENABLED: 'true',
@@ -26,6 +26,26 @@ function request(body: unknown, headers: Record<string, string> = {}): Request {
 }
 const chain = { jsonrpc: '2.0', id: 1, method: 'eth_chainId', params: [] }
 afterEach(() => vi.unstubAllGlobals())
+
+it.each([[42161, 'ARBITRUM'], [137, 'POLYGON'], [56, 'BNB']] as const)(
+  'uses a server-only provider key on the pinned chain %s endpoint and rejects edited URLs',
+  async (chainId, name) => {
+    const upstream = vi.fn().mockResolvedValue(Response.json({ jsonrpc: '2.0', id: 1, result: `0x${chainId.toString(16)}` }))
+    vi.stubGlobal('fetch', upstream)
+    const call = (): Request => new Request(`https://swap.ophis.fi/rpc/${chainId}`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(chain),
+    })
+    const env = { ...enabled, RAILGUN_ZAN_API_KEY: 'test-key/encoded' }
+    expect((await gateway.fetch(call(), env)).status).toBe(200)
+    expect(upstream).toHaveBeenCalledOnce()
+    expect(String(upstream.mock.calls[0][0])).toBe(zanRpcUrl(chainId, env.RAILGUN_ZAN_API_KEY))
+    expect(upstream.mock.calls[0][1]?.headers).not.toHaveProperty('Authorization')
+    const edited = { ...env, [`RAILGUN_${name}_RPC_URL`]: `${zanRpcUrl(chainId, env.RAILGUN_ZAN_API_KEY)}?unapproved=query` }
+    expect((await gateway.fetch(call(), edited)).status).toBe(503)
+    expect(upstream).toHaveBeenCalledOnce()
+    expect((await gateway.fetch(call(), enabled)).status).toBe(503)
+  },
+)
 
 it('bounds expensive reads, preserves supplied execution data and matches the SDK log contract', () => {
   expect(RAILGUN_PROXY).toBe(NETWORK_CONFIG[NetworkName.Ethereum].proxyContract.toLowerCase())
@@ -228,4 +248,23 @@ it('charges a trace rate-limit token for every trace in a batch and keeps upstre
   const redirected = await gateway.fetch(request(chain), enabled)
   expect(redirected.status).toBe(502)
   expect(redirected.headers.get('Location')).toBeNull()
+})
+
+it('pins each network RPC and rejects unconfigured chains and foreign Railgun log filters', async () => {
+  const upstream = vi.fn().mockResolvedValue(Response.json({ jsonrpc: '2.0', id: 1, result: '0x38' }))
+  vi.stubGlobal('fetch', upstream)
+  const env = { ...enabled, RAILGUN_BNB_RPC_URL: 'https://bnb-rpc.example', RAILGUN_BNB_RPC_TOKEN: 'test-bnb-token' }
+  const make = (path: string, body: unknown) => new Request(`https://private.ophis.fi${path}`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
+  })
+  expect((await gateway.fetch(make('/rpc/56', chain), env)).status).toBe(200)
+  expect(String(upstream.mock.calls[0][0])).toBe('https://bnb-rpc.example/')
+  expect(upstream.mock.calls[0][1].headers.Authorization).toBe('Bearer test-bnb-token')
+  upstream.mockClear()
+  expect((await gateway.fetch(make('/rpc/137', chain), env)).status).toBe(503)
+  expect((await gateway.fetch(make('/rpc/8453', chain), env)).status).toBe(404)
+  const logs = { ...chain, method: 'eth_getLogs', params: [{ address: RAILGUN_PROXY, fromBlock: '0x0', toBlock: '0x1' }] }
+  expect((await gateway.fetch(make('/rpc/56', logs), env)).status).toBe(400)
+  expect(upstream).not.toHaveBeenCalled()
+  expect(rpcCall({ ...logs, params: [{ ...logs.params[0], address: RAILGUN_PROXIES[56] }] }, RAILGUN_PROXIES[56]).method).toBe('eth_getLogs')
 })

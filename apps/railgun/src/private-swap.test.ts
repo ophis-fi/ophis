@@ -35,7 +35,7 @@ const session = {
   provider: { getBlockNumber: async () => 100 },
 } as unknown as WalletSession
 const prepared = {
-  quote: { account, deadline: Math.floor(Date.now() / 1000) + 600, buy: 'WETH', minimum: 100n, shieldFee: 25n },
+  quote: { chainId: 1, account, deadline: Math.floor(Date.now() / 1000) + 600, buy: 'WETH', minimum: 100n, shieldFee: 25n },
   selected: {},
   gas: { gasEstimate: 3_000_000n },
   fee: {},
@@ -45,6 +45,7 @@ const prepared = {
 
 beforeEach(() => {
   vi.clearAllMocks()
+  prepared.quote.deadline = Math.floor(Date.now() / 1000) + 600
   state.events = []
   state.save.mockImplementation(async () => {
     state.events.push('saved')
@@ -71,4 +72,12 @@ it('checks transport readiness again after proving before recording or disclosin
   )
   expect(state.save).not.toHaveBeenCalled()
   expect(state.simulate).not.toHaveBeenCalled()
+})
+
+it('does not send a quote that expires during simulation, and retains recovery', async () => {
+  const send = vi.fn()
+  state.simulate.mockImplementationOnce(async () => { prepared.quote.deadline = 1 })
+  await expect(executePrivateSwap(session, prepared, () => {}, { assertReady: async () => {}, send })).rejects.toThrow(/expired/)
+  expect(state.save).toHaveBeenCalledOnce()
+  expect(send).not.toHaveBeenCalled()
 })

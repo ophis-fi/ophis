@@ -1,3 +1,4 @@
+import { CHAIN, CHAIN_NAME, CHAIN_ID, RPC_PATH, CONFIG, ENVIRONMENT, NETWORK, POI_NODES, VERSION } from './config'
 import {
   createRailgunWallet,
   loadWalletByID,
@@ -23,7 +24,6 @@ import {
 import { JsonRpcProvider, Mnemonic, randomBytes, hexlify, getBytes } from 'ethers'
 import { groth16 } from 'snarkjs'
 import { artifacts, encryptionKey, readPreference, walletDB, writePreference } from './storage'
-import { CONFIG, ENVIRONMENT, NETWORK, POI_NODES, VERSION } from './config'
 import { RPC_BATCH_SIZE } from '../rpc-policy'
 
 export interface WalletSession {
@@ -74,17 +74,17 @@ export async function startWalletEngine(
   onStatus: (status: string, ready: boolean) => void,
 ): Promise<JsonRpcProvider> {
   await claimWalletTab()
-  const rpc = new URL('/rpc', location.origin).href
+  const rpc = new URL(RPC_PATH, location.origin).href
   const provider = new JsonRpcProvider(rpc, undefined, { batchMaxCount: RPC_BATCH_SIZE })
   try {
-    if ((await provider.getNetwork()).chainId !== 1n) throw new Error('Ethereum RPC required.')
+    if ((await provider.getNetwork()).chainId !== CHAIN) throw new Error(`${CHAIN_NAME} RPC required.`)
     const anvil: unknown = await provider.send('anvil_metadata', []).catch(() => undefined)
     const hardhat: unknown = await provider.send('hardhat_metadata', []).catch(() => undefined)
     if (
       ENVIRONMENT === 'fork' &&
       (!anvil || typeof anvil !== 'object' || !('forkedNetwork' in anvil) || !anvil.forkedNetwork)
     )
-      throw new Error('The local build requires an Anvil Ethereum fork.')
+      throw new Error(`The local build requires an Anvil ${CHAIN_NAME} fork.`)
     if (ENVIRONMENT === 'ethereum' && (anvil || hardhat))
       throw new Error('Mainnet mode cannot use a local fork.')
     await startRailgunEngine('ophis', walletDB, false, artifacts, false, false, POI_NODES)
@@ -101,7 +101,7 @@ export async function startWalletEngine(
     })
     await loadProvider(
       {
-        chainId: 1,
+        chainId: CHAIN_ID,
         providers: [{ provider: rpc, priority: 1, weight: 2, maxLogsPerBatch: RPC_BATCH_SIZE }],
       },
       NETWORK,
