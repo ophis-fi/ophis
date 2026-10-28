@@ -1,6 +1,7 @@
 import { environmentName, registerOnWindow } from '@cowprotocol/common-utils'
 
 import * as Sentry from '@sentry/react'
+import { PRIVATE_SWAP_DOCUMENT } from 'ophis/privateSwap/privateSwapSession.utils'
 
 import { SENTRY_IGNORED_QUOTE_ERRORS } from 'api/cowProtocol/errors/QuoteError'
 import { USER_SWAP_REJECTED_ERROR } from 'common/utils/getSwapErrorMessage'
@@ -85,7 +86,7 @@ registerOnWindow({
   gitCommitDate: GIT_COMMIT_DATE,
 })
 
-if (SENTRY_DSN) {
+if (SENTRY_DSN && !PRIVATE_SWAP_DOCUMENT) {
   Sentry.init({
     dsn: process.env.REACT_APP_SENTRY_DSN,
     /**

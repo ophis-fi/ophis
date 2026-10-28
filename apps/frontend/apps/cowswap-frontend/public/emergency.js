@@ -12,6 +12,14 @@
 // hash rewriter doesn't mangle the URL — the subdomain pages are real
 // static files, not SPA routes.
 const __ophisSubdomain = { 'docs.ophis.fi': true, 'business.ophis.fi': true }[window.location.hostname]
+const __ophisPrivate = /^\/private-swap\/(?:index\.html)?$/.test(window.location.pathname)
+if (__ophisPrivate) {
+  const policy = document.createElement('meta')
+  policy.httpEquiv = 'Content-Security-Policy'
+  policy.content = "script-src 'self' 'wasm-unsafe-eval' 'unsafe-eval'; object-src 'none'; base-uri 'self'"
+  document.head.appendChild(policy)
+  if (!window.location.hash) window.location.hash = '#/1/swap/_/_'
+}
 
 // Redirect from the outdated domain
 if (window.location.host === 'cowswap.exchange') {
@@ -46,7 +54,7 @@ try {
 // Subdomains (docs.ophis.fi, business.ophis.fi) are exempt: their
 // `/docs/` and `/business/` paths are real static files served by
 // CF Pages, not SPA routes.
-if (!__ophisSubdomain && window.location.pathname !== '/' && !window.location.hash) {
+if (!__ophisSubdomain && !__ophisPrivate && window.location.pathname !== '/' && !window.location.hash) {
   window.location.replace('/#' + window.location.pathname + window.location.search)
 }
 
@@ -68,6 +76,10 @@ if (!__ophisSubdomain && /^#\/docs(\/.*)?$/.test(window.location.hash)) {
 
 ;(async function () {
   const WIPE_KEY = 'emergencyWipe:v1'
+  if (__ophisPrivate) {
+    localStorage.setItem(WIPE_KEY, '1')
+    return
+  }
   const RETURNING_USER_KEY = 'tokens:lastUpdateTimeAtom:v6'
   const hasVisitedBefore = localStorage.getItem(RETURNING_USER_KEY) !== null
 
@@ -144,6 +156,7 @@ if (!__ophisSubdomain && /^#\/docs(\/.*)?$/.test(window.location.hash)) {
         .databases()
         .then(function (dbs) {
           dbs.forEach(function (db) {
+            if (db.name && /ophisRailgun/i.test(db.name)) return
             console.log('[Emergency] Deleting IndexedDB:', db.name)
             indexedDB.deleteDatabase(db.name)
           })
@@ -158,6 +171,7 @@ if (!__ophisSubdomain && /^#\/docs(\/.*)?$/.test(window.location.hash)) {
       const keys = await caches.keys()
       await Promise.all(
         keys.map(function (k) {
+          if (/^ophisRailgun/.test(k)) return false
           return caches.delete(k)
         }),
       )
@@ -272,12 +286,14 @@ const emergencyConfigUrl = '/emergency.json'
 
 async function deleteAllCaches() {
   return caches.keys().then((cacheNames) => {
-    ;(cacheNames || []).map((cacheName) => {
-      console.log('[Service worker] Delete cache', cacheName)
-      // Delete old caches
-      // https://developers.google.com/web/ilt/pwa/caching-files-with-service-worker#removing_outdated_caches
-      return caches.delete(cacheName)
-    })
+    ;(cacheNames || [])
+      .filter((cacheName) => !/^ophisRailgun/.test(cacheName))
+      .map((cacheName) => {
+        console.log('[Service worker] Delete cache', cacheName)
+        // Delete old caches
+        // https://developers.google.com/web/ilt/pwa/caching-files-with-service-worker#removing_outdated_caches
+        return caches.delete(cacheName)
+      })
   })
 }
 

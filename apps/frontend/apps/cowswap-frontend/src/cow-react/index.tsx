@@ -12,6 +12,7 @@ import { LegacyWeb3Provider, Web3Provider } from '@cowprotocol/wallet'
 import { Messages } from '@lingui/core'
 import { LanguageProvider } from 'i18n'
 import { initGa4 } from 'ophis/analytics'
+import { PRIVATE_SWAP_DOCUMENT } from 'ophis/privateSwap/privateSwapSession.utils'
 import { createRoot } from 'react-dom/client'
 import { HelmetProvider } from 'react-helmet-async'
 import SvgCacheProvider from 'react-inlinesvg/provider'
@@ -149,6 +150,6 @@ function Web3ProviderInstance({ children }: { children: ReactNode }): ReactNode 
 
 initApp()
 
-if (process.env.REACT_APP_SERVICE_WORKER !== 'false') {
+if (process.env.REACT_APP_SERVICE_WORKER !== 'false' && !PRIVATE_SWAP_DOCUMENT) {
   serviceWorkerRegistration.register()
 }

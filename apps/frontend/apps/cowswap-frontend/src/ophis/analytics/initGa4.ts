@@ -23,6 +23,8 @@
  * (mountConsentBanner) lets a visitor grant/revoke; the choice is persisted in
  * localStorage and re-applied on return, overriding the regional default.
  */
+import { PRIVATE_SWAP_DOCUMENT } from 'ophis/privateSwap/privateSwapSession.utils'
+
 import { mountConsentBanner } from './consentBanner'
 import { getSanitizedPageLocation, getSanitizedPagePath } from './track'
 
@@ -66,7 +68,12 @@ export const EEA_CONSENT_REGIONS = [
   'CH',
 ]
 
-export function initGa4({ deferDownload = true }: { deferDownload?: boolean } = {}): void {
+export function initGa4(options: { deferDownload?: boolean } = {}): void {
+  if (PRIVATE_SWAP_DOCUMENT) return
+  initializePublicGa4(options)
+}
+
+function initializePublicGa4({ deferDownload = true }: { deferDownload?: boolean } = {}): void {
   if (typeof window === 'undefined' || typeof document === 'undefined') return
   if (window.location.hostname !== GA4_HOST) return
   // Idempotent: never inject twice (HMR / re-entry).
@@ -100,15 +107,7 @@ export function initGa4({ deferDownload = true }: { deferDownload?: boolean } = 
     region: EEA_CONSENT_REGIONS,
     wait_for_update: 500,
   })
-  // Re-apply a returning visitor's explicit choice (overrides the regional default).
-  try {
-    const saved = localStorage.getItem('ophis_consent')
-    if (saved === 'granted' || saved === 'denied') {
-      w.gtag('consent', 'update', { analytics_storage: saved })
-    }
-  } catch {
-    /* localStorage blocked: keep the regional default */
-  }
+  applySavedConsent(w.gtag)
 
   // Perf: defer ONLY the ~506KB gtag.js download off the critical boot path
   // (post-FCP). The window.gtag shim + dataLayer + consent commands above already
@@ -162,4 +161,16 @@ function trackSpaPageViews(gtag: (...args: unknown[]) => void): void {
   send() // initial view (config no longer auto-sends it)
   window.addEventListener('hashchange', send)
   window.addEventListener('popstate', send)
+}
+
+function applySavedConsent(gtag: (...args: unknown[]) => void): void {
+  // Re-apply a returning visitor's explicit choice (overrides the regional default).
+  try {
+    const saved = localStorage.getItem('ophis_consent')
+    if (saved === 'granted' || saved === 'denied') {
+      gtag('consent', 'update', { analytics_storage: saved })
+    }
+  } catch {
+    /* localStorage blocked: keep the regional default */
+  }
 }
