@@ -1,3 +1,5 @@
+import { QuoteRequest } from '@defuse-protocol/one-click-sdk-typescript'
+
 import fixture from './fixtures/monadDeposit.json'
 import { NearTransfer } from './nearDirect.schemas'
 import { getNearTokens, getNearTransferStatus, validateNearTransfer } from './nearDirect.service'
@@ -38,7 +40,11 @@ beforeEach(() => {
     response: {
       ...fixture.response,
       quote: { ...fixture.response.quote, amountIn: '90000000000000000000', depositAddress: deposit },
-      quoteRequest: { ...fixture.response.quoteRequest, refundTo: account },
+      quoteRequest: {
+        ...fixture.response.quoteRequest,
+        refundTo: account,
+        confidentiality: QuoteRequest.confidentiality.BASIC,
+      },
     },
   } as NearTransfer
   jest.mocked(getNearTokens).mockResolvedValue([transfer.source, transfer.destination])
@@ -51,6 +57,17 @@ beforeEach(() => {
     return { transaction_hash: hash }
   })
 })
+
+it.each([QuoteRequest.confidentiality.PUBLIC, undefined] as const)(
+  'refuses funding when saved confidentiality is %s',
+  async (mode) => {
+    transfer.response.quoteRequest.confidentiality = mode
+    await expect(fundNearStarknetTransfer(wallet, transfer, journal)).rejects.toThrow('new confidential quote')
+    expect(journal).not.toHaveBeenCalled()
+    expect(request).not.toHaveBeenCalled()
+    expect(events.size).toBe(0)
+  },
+)
 
 it('sends native STRK through its canonical ERC20 contract after saving recovery', async () => {
   await expect(fundNearStarknetTransfer(wallet, transfer, journal)).resolves.toBe(hash)

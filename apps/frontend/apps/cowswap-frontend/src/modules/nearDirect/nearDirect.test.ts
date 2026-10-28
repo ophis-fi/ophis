@@ -14,6 +14,7 @@ import {
 
 import { isRecipientAddress } from 'common/utils/recipientAddress.utils'
 
+import confidentialDeposit from './fixtures/confidentialDeposit.json'
 import monadDeposit from './fixtures/monadDeposit.json'
 import signedDeposit from './fixtures/signedDepositQuote.json'
 import signedQuote from './fixtures/signedDryQuote.json'
@@ -173,24 +174,48 @@ it('accepts live rounded partner fees while rejecting a changed recipient or inc
   ).toThrow()
 })
 
-it('creates a verified executable quote with the real provider fee response', async () => {
+it('rejects a signed public quote before returning deposit instructions', async () => {
   const response = nearQuoteSchema.parse(monadDeposit.response)
   jest.spyOn(Date, 'now').mockReturnValue(Date.parse(response.quoteRequest.deadline) - 7_200_000)
   const quote = jest
     .spyOn(OneClickService, 'getQuote')
     .mockImplementation(() => new CancelablePromise((resolve) => resolve(response)))
   try {
+    await expect(
+      requestNearQuote(
+        monadDeposit.source,
+        monadDeposit.destination,
+        '100',
+        response.quoteRequest.recipient,
+        response.quoteRequest.refundTo,
+      ),
+    ).rejects.toThrow('confidentiality')
+    expect(quote).toHaveBeenCalledTimes(1)
+    expect(quote).toHaveBeenCalledWith(expect.objectContaining({ confidentiality: 'basic' }))
+  } finally {
+    jest.restoreAllMocks()
+  }
+})
+
+it('creates a verified confidential quote with the real provider fee response', async () => {
+  const response = nearQuoteSchema.parse(confidentialDeposit.response)
+  jest.spyOn(Date, 'now').mockReturnValue(Date.parse(response.quoteRequest.deadline) - 7_200_000)
+  const quote = jest
+    .spyOn(OneClickService, 'getQuote')
+    .mockImplementation(() => new CancelablePromise((resolve) => resolve(response)))
+  try {
     const transfer = await requestNearQuote(
-      monadDeposit.source,
-      monadDeposit.destination,
-      '100',
+      confidentialDeposit.source,
+      confidentialDeposit.destination,
+      '10',
       response.quoteRequest.recipient,
       response.quoteRequest.refundTo,
     )
     expect(transfer.response.signature).toBe(response.signature)
+    expect(transfer.response.quoteRequest.confidentiality).toBe('basic')
     expect(transfer.status).toBe('PENDING_DEPOSIT')
     expect(quote).toHaveBeenCalledTimes(1)
-    expect(quote).toHaveBeenCalledWith(expect.objectContaining({ confidentiality: 'public' }))
+    expect(quote).toHaveBeenCalledWith(expect.objectContaining({ confidentiality: 'basic' }))
   } finally {
     jest.restoreAllMocks()
   }

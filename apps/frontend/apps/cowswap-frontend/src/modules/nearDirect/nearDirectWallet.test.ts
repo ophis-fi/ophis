@@ -3,7 +3,8 @@ import { areAddressesEqual } from '@cowprotocol/cow-sdk'
 
 import { decodeFunctionData, erc20Abi, type WalletClient } from 'viem'
 
-import mockFixture from './fixtures/monadDeposit.json'
+import mockFixture from './fixtures/confidentialMonadDeposit.json'
+import publicFixture from './fixtures/monadDeposit.json'
 import { nearTransferSchema } from './nearDirect.schemas'
 import { fundNearTransfer } from './nearDirectWallet.service'
 
@@ -41,6 +42,15 @@ beforeEach(() => {
   )
 })
 afterEach(() => jest.restoreAllMocks())
+
+it('rejects a saved public quote before journaling or asking the wallet to send', async () => {
+  const journal = jest.fn()
+  await expect(
+    fundNearTransfer(wallet as unknown as WalletClient, nearTransferSchema.parse(publicFixture), journal),
+  ).rejects.toThrow('new confidential quote')
+  expect(journal).not.toHaveBeenCalled()
+  expect(wallet.sendTransaction).not.toHaveBeenCalled()
+})
 
 it('journals an advisory nonce before a transfer but leaves nonce allocation to the wallet', async () => {
   const journal = jest.fn()

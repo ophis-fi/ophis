@@ -37,7 +37,7 @@ live('NEAR Robinhood live quotes and deposit attestations', () => {
   })
 
   it.each(['USDG', 'PONS', 'CASHCAT', 'ETH', 'WETH', 'USDe'])(
-    '%s returns public attested quotes or explicitly unavailable liquidity',
+    '%s returns confidential attested quotes or explicitly unavailable liquidity',
     async (symbol) => {
       const provider = new LiveNearProvider({ apiKey: process.env.NEAR_PREFLIGHT_API_KEY })
       const tokens = await provider.getTokens()
@@ -78,11 +78,11 @@ live('NEAR Robinhood live quotes and deposit attestations', () => {
               body.message === 'No liquidity available'
             ) {
               results.unavailable++
-              console.info(`[NEAR preflight] ${symbol} ${sourceChainId}->${targetChainId} public: no liquidity`)
+              console.info(`[NEAR preflight] ${symbol} ${sourceChainId}->${targetChainId} basic: no liquidity`)
               return null
             }
             const detail = body ? JSON.stringify(body) : String(error)
-            throw new Error(`${symbol} ${sourceChainId}->${targetChainId} public: ${detail}`)
+            throw new Error(`${symbol} ${sourceChainId}->${targetChainId} basic: ${detail}`)
           })
         if (!quote) continue
         // getQuote rejects unless the deposit attestation recovers NEAR's signer.

@@ -1,8 +1,10 @@
 import { areAddressesEqual } from '@cowprotocol/cow-sdk'
 
+import { QuoteRequest } from '@defuse-protocol/one-click-sdk-typescript'
 import { createPublicClient, custom, encodeFunctionData, erc20Abi, getAddress, type WalletClient } from 'viem'
 import { monad, xLayer } from 'viem/chains'
 
+import { NEAR_CONFIDENTIAL_QUOTE_REQUIRED } from './nearDirect.constants'
 import { NearTransfer } from './nearDirect.schemas'
 import {
   getNearFundingDeadline,
@@ -62,6 +64,8 @@ export async function fundNearTransfer(
 
 async function getFundingChain(transfer: NearTransfer): Promise<typeof monad | typeof xLayer> {
   validateNearTransfer(transfer)
+  if (transfer.response.quoteRequest.confidentiality !== QuoteRequest.confidentiality.BASIC)
+    throw new Error(NEAR_CONFIDENTIAL_QUOTE_REQUIRED)
   const chain =
     transfer.source.blockchain === 'monad' ? monad : transfer.source.blockchain === 'xlayer' ? xLayer : undefined
   if (!chain || transfer.response.quote.depositMemo)

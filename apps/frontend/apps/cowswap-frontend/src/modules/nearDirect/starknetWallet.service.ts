@@ -1,6 +1,9 @@
 import { STRK_NATIVE_CURRENCY_ADDRESS } from '@cowprotocol/common-const'
 import { isStarknetAddress } from '@cowprotocol/common-utils'
 
+import { QuoteRequest } from '@defuse-protocol/one-click-sdk-typescript'
+
+import { NEAR_CONFIDENTIAL_QUOTE_REQUIRED } from './nearDirect.constants'
 import { NearTransfer } from './nearDirect.schemas'
 import {
   getNearFundingDeadline,
@@ -43,6 +46,8 @@ export async function fundNearStarknetTransfer(
   wallet.on('networkChanged', invalidate)
   try {
     validateNearTransfer(transfer)
+    if (transfer.response.quoteRequest.confidentiality !== QuoteRequest.confidentiality.BASIC)
+      throw new Error(NEAR_CONFIDENTIAL_QUOTE_REQUIRED)
     const { response } = transfer
     const token = fundingToken(transfer)
     const deposit = String(response.quote.depositAddress)

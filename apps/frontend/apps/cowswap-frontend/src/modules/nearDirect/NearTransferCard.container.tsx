@@ -3,9 +3,11 @@ import { ReactNode, useCallback, useEffect, useState } from 'react'
 
 import { useCopyClipboard, useInterval } from '@cowprotocol/common-hooks'
 
+import { QuoteRequest } from '@defuse-protocol/one-click-sdk-typescript'
 import { QRCode } from 'react-qrcode-logo'
 
 import { nearTokensAtom, nearTransfersAtom, nearTransferStatusAtom } from './nearDirect.atoms'
+import { NEAR_CONFIDENTIAL_QUOTE_REQUIRED } from './nearDirect.constants'
 import { NearTransfer } from './nearDirect.schemas'
 import {
   getNearFundingDeadline,
@@ -166,6 +168,8 @@ function NearFundingInstructions({
           : 'Deposit instructions have expired. Do not send funds to this quote.'}
       </p>
     )
+  if (transfer.response.quoteRequest.confidentiality !== QuoteRequest.confidentiality.BASIC)
+    return <p>{NEAR_CONFIDENTIAL_QUOTE_REQUIRED}</p>
   return (
     <>
       <p>Send the exact amount shown above once. Keep enough funds for your wallet’s network fee.</p>

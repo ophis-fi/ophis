@@ -1,0 +1,72 @@
+{
+  "kind": "near-direct",
+  "source": {
+    "assetId": "nep141:gnosis-0x2a22f9c3b484c3629090feed35f17ff8f88f76f0.omft.near",
+    "blockchain": "gnosis",
+    "symbol": "USDC",
+    "decimals": 6,
+    "contractAddress": "0x2a22f9c3b484c3629090feed35f17ff8f88f76f0",
+    "price": 0.999413
+  },
+  "destination": {
+    "assetId": "nep141:base-0x833589fcd6edb6e08f4c7c32d4f71b54bda02913.omft.near",
+    "blockchain": "base",
+    "symbol": "USDC",
+    "decimals": 6,
+    "contractAddress": "0x833589fcd6edb6e08f4c7c32d4f71b54bda02913",
+    "price": 0.999413
+  },
+  "response": {
+    "quote": {
+      "amountIn": "10000000",
+      "amountInFormatted": "10.0",
+      "amountInUsd": "9.994130000000",
+      "minAmountIn": "10000000",
+      "amountOut": "9992580",
+      "amountOutFormatted": "9.99258",
+      "amountOutUsd": "9.986714355540",
+      "minAmountOut": "9892654",
+      "timeEstimate": 37,
+      "refundFee": "37",
+      "withdrawFee": "2400",
+      "deadline": "2026-10-30T21:20:45.120Z",
+      "timeWhenInactive": "2026-10-30T21:20:45.120Z",
+      "depositAddress": "0x4Cb31F5d677c13589b8738EEe860bb91444F0C1b"
+    },
+    "quoteRequest": {
+      "dry": false,
+      "depositMode": "SIMPLE",
+      "swapType": "EXACT_INPUT",
+      "slippageTolerance": 100,
+      "originAsset": "nep141:gnosis-0x2a22f9c3b484c3629090feed35f17ff8f88f76f0.omft.near",
+      "depositType": "ORIGIN_CHAIN",
+      "destinationAsset": "nep141:base-0x833589fcd6edb6e08f4c7c32d4f71b54bda02913.omft.near",
+      "amount": "10000000",
+      "refundTo": "0x1111111111111111111111111111111111111111",
+      "refundType": "ORIGIN_CHAIN",
+      "recipient": "0x1111111111111111111111111111111111111111",
+      "recipientType": "DESTINATION_CHAIN",
+      "deadline": "2026-10-27T21:20:45.120Z",
+      "confidentiality": "basic",
+      "referral": "ophis",
+      "quoteWaitingTimeMs": 0,
+      "appFees": [
+        {
+          "recipient": "0x858f0F5eE954846D47155F5203c04aF1819eCeF8",
+          "fee": 3,
+          "limitOrderId": null
+        },
+        {
+          "recipient": "2238fd089f1c92b206c218cd16b8676cb98964e0d50f8ab729c6396a81e07805",
+          "fee": 1,
+          "limitOrderId": null
+        }
+      ],
+      "insured": false
+    },
+    "signature": "ed25519:3hieZjs3nomKMkMyQBPzdHvU9sw8ujdcufPam5jEtJaT65VK5xdCwuFfVxuNQvsExHgCDGPtQMbTN3DW1NVBuuQ3",
+    "timestamp": "2026-10-27T19:20:45.172Z",
+    "correlationId": "dcafac75-8969-4b59-8297-6d31749959f2"
+  },
+  "status": "PENDING_DEPOSIT"
+}
