@@ -5,10 +5,15 @@ import type { WalletSession } from './wallet'
 import { SwapBalanceError } from './private-swap'
 
 const mocks = vi.hoisted(() => ({
+  environment: 'fork',
   connect: vi.fn(), signer: vi.fn(), allowance: vi.fn(), approve: vi.fn(), network: vi.fn(), balance: vi.fn(),
   shield: vi.fn(),
   sync: vi.fn(),
   selectBroadcaster: vi.fn(), prepareSwap: vi.fn(), prepareMax: vi.fn(), prepareWithdrawal: vi.fn(), quoteSwap: vi.fn(), unused: vi.fn(),
+}))
+vi.mock('./config', async (original) => ({
+  ...await original<typeof import('./config')>(),
+  get ENVIRONMENT() { return mocks.environment },
 }))
 vi.mock('./public-connection', () => ({ connectPublicWallet: mocks.connect }))
 vi.mock('./shield', () => ({
@@ -37,6 +42,7 @@ vi.mock('./cancel', () => ({ cancelPendingSwap: vi.fn() }))
 let elements: Record<string, { value: string, hidden: boolean, textContent: string, checked: boolean, onclick?: () => Promise<void>, oninput?: () => void }>
 let provider: EventEmitter & { request: ReturnType<typeof vi.fn> }
 beforeEach(() => {
+  mocks.environment = 'fork'
   elements = new Proxy({} as typeof elements, { get: (values, id: string) => values[id] ??= {
     value: ['token', 'shield-token'].includes(id) ? 'WETH' : '1', hidden: ['approve', 'shield', 'switch-network', 'review-shield'].includes(id),
     textContent: '', checked: false,
@@ -74,7 +80,7 @@ it('the normal quote button reserves fees for the exact full-balance amount and 
   await wireWalletActions(session)
   elements.amount.value = '0.009975'
   await elements.quote.onclick?.()
-  expect(mocks.prepareMax).toHaveBeenCalledWith(session, 'WETH', undefined, full)
+  expect(mocks.prepareMax).toHaveBeenCalledWith(session, 'WETH', undefined, full, 'USDC')
   expect(elements.amount.value).toBe('0.009425')
   expect(elements['quote-details'].textContent).toMatch(/^Broadcaster fee reserved/)
   expect(elements['quote-details'].textContent).toContain('Broadcaster fee: 0.00055 WETH')
@@ -106,7 +112,7 @@ it('shows the Max amount and its committed fee for review without executing a sw
   const session = {} as WalletSession
   await wireWalletActions(session)
   await elements['max-swap'].onclick?.()
-  expect(mocks.prepareMax).toHaveBeenCalledWith(session, 'WETH', undefined)
+  expect(mocks.prepareMax).toHaveBeenCalledWith(session, 'WETH', undefined, undefined, 'USDC')
   expect(elements.amount.value).toBe('0.0002')
   expect(elements['quote-details'].textContent).toContain('Max includes gas price headroom')
   expect(elements['quote-details'].textContent).toContain('Broadcaster fee: 0.00034 WETH')
@@ -162,7 +168,7 @@ it('Max fills the fee-reserved amount and shows the quote without connecting a p
   expect(elements.amount.value).toBe('0.009345')
   expect(elements['quote-details'].textContent).toContain('Broadcaster fee: 0.00063 WETH')
   expect(elements.swap.hidden).toBe(false)
-  expect(mocks.prepareMax).toHaveBeenCalledWith(session, 'WETH', undefined)
+  expect(mocks.prepareMax).toHaveBeenCalledWith(session, 'WETH', undefined, undefined, 'USDC')
   expect(mocks.signer).not.toHaveBeenCalled()
   expect(mocks.shield).not.toHaveBeenCalled()
 })
@@ -256,7 +262,7 @@ it('deposits ETH with no token approval, independently of private swap inputs', 
   expect(elements.shield.hidden).toBe(false)
   await elements.approve.onclick?.()
   expect(mocks.approve).not.toHaveBeenCalled()
-  expect(elements['public-wallet-error'].textContent).toMatch(/ETH deposits do not need token approval/)
+  expect(elements['public-wallet-error'].textContent).toMatch(/Native deposits do not need token approval/)
   await elements.shield.onclick?.()
   expect(mocks.shield).toHaveBeenCalledWith(session, expect.anything(), 'ETH', 1n, expect.any(Function))
   expect(elements.status.textContent).toContain('Shield confirmed')
@@ -429,4 +435,44 @@ it('removes an earlier prepared withdrawal and shows discovery failures beside t
   expect(elements['withdraw-details'].textContent).toBe('')
   expect(elements['private-wallet-error'].textContent).toContain('No verified compatible broadcaster fee')
   expect(mocks.prepareWithdrawal).toHaveBeenCalledTimes(1)
+})
+
+it('blocks a mainnet deposit before approval when no compatible private-swap broadcaster is available', async () => {
+  mocks.environment = 'ethereum'
+  mocks.selectBroadcaster.mockRejectedValue(new Error('No compatible broadcaster is available.'))
+  const { wireWalletActions } = await import('./wallet-actions')
+  await wireWalletActions({} as WalletSession)
+  await elements.connect.onclick?.()
+  expect(elements.approve.hidden).toBe(true)
+  expect(elements.shield.hidden).toBe(true)
+  expect(elements['public-wallet-error'].textContent).toContain('No compatible broadcaster')
+  expect(mocks.approve).not.toHaveBeenCalled()
+  expect(mocks.shield).not.toHaveBeenCalled()
+})
+
+it('rechecks a mainnet broadcaster immediately before shielding without sending after discovery fails', async () => {
+  mocks.environment = 'ethereum'
+  mocks.allowance.mockResolvedValue(1n)
+  mocks.selectBroadcaster.mockResolvedValue({ tokenAddress: 'fresh fee token' })
+  const { wireWalletActions } = await import('./wallet-actions')
+  await wireWalletActions({} as WalletSession)
+  await elements.connect.onclick?.()
+  expect(elements.shield.hidden).toBe(false)
+  mocks.selectBroadcaster.mockRejectedValueOnce(new Error('Broadcaster disconnected.'))
+  await elements.shield.onclick?.()
+  expect(mocks.shield).not.toHaveBeenCalled()
+  expect(elements['public-wallet-error'].textContent).toContain('Broadcaster disconnected')
+})
+
+it.each(['quote', 'max-swap'])('blocks %s before preparing a private output without a compatible broadcaster', async (action) => {
+  mocks.environment = 'ethereum'
+  mocks.selectBroadcaster.mockResolvedValueOnce({ tokenAddress: 'input fee token' })
+    .mockRejectedValueOnce(new Error('No compatible broadcaster for the receive token.'))
+  const { wireWalletActions } = await import('./wallet-actions')
+  await wireWalletActions({} as WalletSession)
+  await elements[action].onclick?.()
+  expect(mocks.prepareSwap).not.toHaveBeenCalled()
+  expect(mocks.prepareMax).not.toHaveBeenCalled()
+  expect(elements.swap.hidden).toBe(true)
+  expect(elements['private-wallet-error'].textContent).toContain('receive token')
 })

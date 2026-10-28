@@ -3,7 +3,7 @@ import { selectBroadcaster, startBroadcasters, privateSubmitter } from './broadc
 import { pendingSwap, reconcilePendingSwap } from './journal'
 import { cancelPendingSwap } from './cancel'
 import { pendingWithdrawal, reconcilePendingWithdrawal, resumePendingWithdrawal } from './withdrawal-journal'
-import { TOKENS, type TokenSymbol } from './config'
+import { CHAIN_ID, ENVIRONMENT, NATIVE_SYMBOL, WRAPPED_SYMBOL, TOKENS, isTokenSymbol, tokenFor, type TokenSymbol } from './config'
 import { executePrivateSwap, prepareMaxPrivateSwap, preparePrivateSwap, SwapBalanceError } from './private-swap'
 import { amountFromInput, quoteSwap } from './recipe'
 import { recoverToken, recoveryIndex, scanRecovery } from './recovery'
@@ -24,6 +24,7 @@ export async function wireWalletActions(session: WalletSession): Promise<void> {
     pendingIdentity?: string
   } = { publicEpoch: 0 }
   const token = element<HTMLSelectElement>('token')
+  const buyToken = element<HTMLSelectElement>('buy-token')
   const amount = element<HTMLInputElement>('amount')
   const shieldToken = element<HTMLSelectElement>('shield-token')
   const shieldAmount = element<HTMLInputElement>('shield-amount')
@@ -53,22 +54,35 @@ export async function wireWalletActions(session: WalletSession): Promise<void> {
   const initialPending = await pendingSwap(session)
   if (initialPending) element<HTMLInputElement>('recovery-index').value = String(initialPending.index)
   const symbol = (): TokenSymbol => {
-    if (token.value !== 'USDC' && token.value !== 'WETH') throw new Error('Unsupported token.')
+    if (!isTokenSymbol(token.value)) throw new Error('Unsupported token.')
     return token.value
+  }
+  const buySymbol = (): TokenSymbol => {
+    if (!isTokenSymbol(buyToken.value) || buyToken.value === symbol()) throw new Error('Choose a different receive token.')
+    return buyToken.value
   }
   const updateSwapDirection = (): void => {
     const sell = symbol()
-    element('swap-direction').textContent = `Sell ${sell} → receive ${sell === 'WETH' ? 'USDC' : 'WETH'}. Enter the amount of ${sell} to sell.`
+    if (buyToken.value === sell || !isTokenSymbol(buyToken.value)) buyToken.value = sell === 'USDC' ? WRAPPED_SYMBOL : 'USDC'
+    element('swap-direction').textContent = `Sell ${sell} → receive ${buySymbol()}. Enter the amount of ${sell} to sell.`
   }
   updateSwapDirection()
   const depositToken = (): ShieldToken => {
     const asset = shieldToken.value
-    if (asset !== 'ETH' && asset !== 'USDC' && asset !== 'WETH') throw new Error('Unsupported deposit asset.')
+    if (asset !== NATIVE_SYMBOL && !isTokenSymbol(asset)) throw new Error('Unsupported deposit asset.')
     return asset
   }
   const depositAmount = (): bigint => {
     const asset = depositToken()
-    return amountFromInput(shieldAmount.value, asset === 'ETH' ? 'WETH' : asset)
+    const underlying = asset === NATIVE_SYMBOL ? WRAPPED_SYMBOL : asset
+    if (!isTokenSymbol(underlying)) throw new Error('Unsupported deposit asset.')
+    return amountFromInput(shieldAmount.value, underlying)
+  }
+  const requireDepositBroadcaster = async (asset: ShieldToken): Promise<void> => {
+    if (ENVIRONMENT === 'fork') return
+    publicTransactionStatus('Checking private-swap broadcaster availability before depositing…')
+    await selectBroadcaster(tokenFor(asset === NATIVE_SYMBOL ? WRAPPED_SYMBOL : asset).address, true, broadcasterStatus)
+    publicTransactionStatus('A compatible private-swap broadcaster is available. Review the deposit amount and fees.')
   }
   const button = (id: string, label: string, action: () => Promise<void>): void => {
     const target = element<HTMLButtonElement>(id)
@@ -132,7 +146,8 @@ export async function wireWalletActions(session: WalletSession): Promise<void> {
   const assertPublicEpoch = (epoch: number): void => {
     if (state.publicEpoch !== epoch) throw new Error('Public wallet changed. Reconnect before shielding.')
   }
-  for (const input of [token, amount, recipient, shieldToken, shieldAmount]) input.oninput = invalidate
+  for (const input of [token, buyToken, amount, recipient, shieldToken, shieldAmount]) input.oninput = invalidate
+  buyToken.oninput = () => { invalidate(); updateSwapDirection() }
   token.oninput = () => {
     amount.value = ''
     invalidate()
@@ -140,7 +155,7 @@ export async function wireWalletActions(session: WalletSession): Promise<void> {
   }
   button('switch-network', 'Switching network…', async () => {
     if (!state.provider) throw new Error('Connect your public wallet first.')
-    await state.provider.request({ method: 'wallet_switchEthereumChain', params: [{ chainId: '0x1' }] })
+    await state.provider.request({ method: 'wallet_switchEthereumChain', params: [{ chainId: `0x${CHAIN_ID.toString(16)}` }] })
     invalidate()
   })
   const reviewShieldAmount = async (): Promise<void> => {
@@ -154,7 +169,8 @@ export async function wireWalletActions(session: WalletSession): Promise<void> {
     const required = depositAmount()
     await assertPublicNetwork(session, signer)
     await requireShieldBalance(signer, asset, required)
-    const approved = asset === 'ETH' || (await shieldAllowance(signer, asset)) >= required
+    await requireDepositBroadcaster(asset)
+    const approved = !isTokenSymbol(asset) || (await shieldAllowance(signer, asset)) >= required
     assertPublicEpoch(epoch)
     element('review-shield').hidden = true
     element('approve').hidden = approved
@@ -188,7 +204,7 @@ export async function wireWalletActions(session: WalletSession): Promise<void> {
     const epoch = state.publicEpoch
     if (!signer) throw new Error('Connect your public wallet first.')
     const asset = depositToken()
-    if (asset === 'ETH') throw new Error('ETH deposits do not need token approval.')
+    if (!isTokenSymbol(asset)) throw new Error('Native deposits do not need token approval.')
     const required = depositAmount()
     await approveShield(session, signer, asset, required, publicTransactionStatus)
     assertPublicEpoch(epoch)
@@ -201,8 +217,9 @@ export async function wireWalletActions(session: WalletSession): Promise<void> {
   button('shield', 'Shielding…', async () => {
     if (!state.signer) throw new Error('Connect your public wallet first.')
     const asset = depositToken()
+    await requireDepositBroadcaster(asset)
     const receipt = await shield(session, state.signer, asset, depositAmount(), publicTransactionStatus)
-    token.value = asset === 'ETH' ? 'WETH' : asset
+    token.value = asset === NATIVE_SYMBOL ? WRAPPED_SYMBOL : asset
     amount.value = ''
     updateSwapDirection()
     invalidate()
@@ -223,6 +240,8 @@ export async function wireWalletActions(session: WalletSession): Promise<void> {
       `Amount to swap: ${formatUnits(quote.amount, TOKENS[quote.sell].decimals)} ${quote.sell}\nMinimum private output: ${formatUnits(minimumAfterShield, TOKENS[quote.buy].decimals)} ${quote.buy}\nOphis fee: ${formatUnits(quote.ophisFee, TOKENS[quote.buy].decimals)} ${quote.buy}\nBroadcaster fee: ${formatUnits(prepared.fee.amount, TOKENS[quote.sell].decimals)} ${quote.sell}\nRailgun unshield / reshield: ${quote.unshieldFee} / ${quote.shieldFee} bp`
     if (prepared.gasCapped)
       element('quote-details').textContent += `\nGas price capped at ${formatUnits(prepared.gas.maxFeePerGas, 9)} gwei to fit your private balance. Rising gas prices can require a fresh quote.`
+    if (quote.route)
+      element('quote-details').textContent += `\nUniswap v3: ${quote.route.tokens.join(' → ')}; pool fees ${quote.route.fees.map((fee) => `${fee / 10_000}%`).join(' + ')}. ${quote.availableRoutes} routes returned positive quotes.`
     element('swap').hidden = false
   }
   button('max-swap', 'Reserving broadcaster fee…', async () => {
@@ -230,7 +249,8 @@ export async function wireWalletActions(session: WalletSession): Promise<void> {
     requireWalletSync()
     const sell = symbol()
     const selected = await selectBroadcaster(TOKENS[sell].address, true, broadcasterStatus)
-    const prepared = await prepareMaxPrivateSwap(session, sell, selected)
+    if (ENVIRONMENT === 'ethereum') await selectBroadcaster(TOKENS[buySymbol()].address, true, broadcasterStatus)
+    const prepared = await prepareMaxPrivateSwap(session, sell, selected, undefined, buySymbol())
     showSwapQuote(prepared)
     element('quote-details').textContent = 'Max includes gas price headroom in the fee budget. Review the trade and committed fee below.\n' + element('quote-details').textContent
   })
@@ -241,14 +261,15 @@ export async function wireWalletActions(session: WalletSession): Promise<void> {
     requireWalletSync()
     amountFromInput(amount.value, symbol())
     const selected = await selectBroadcaster(TOKENS[symbol()].address, true, broadcasterStatus)
+    if (ENVIRONMENT === 'ethereum') await selectBroadcaster(TOKENS[buySymbol()].address, true, broadcasterStatus)
     const account = await unusedSwapAccount(session)
-    const quote = await quoteSwap(session.provider, symbol(), amount.value, account.address)
+    const quote = await quoteSwap(session.provider, symbol(), amount.value, account.address, buySymbol())
     let prepared: Awaited<ReturnType<typeof preparePrivateSwap>>
     try {
       prepared = await preparePrivateSwap(session, quote, selected)
     } catch (error) {
       if (!(error instanceof SwapBalanceError) || error.spendable !== quote.amount) throw error
-      prepared = await prepareMaxPrivateSwap(session, quote.sell, selected, quote.amount)
+      prepared = await prepareMaxPrivateSwap(session, quote.sell, selected, quote.amount, quote.buy)
     }
     showSwapQuote(prepared)
     if (prepared.quote.amount < quote.amount)

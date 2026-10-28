@@ -1,49 +1,29 @@
-# Private wallet release
+# Private swap release
 
-The Ethereum private WETH→USDC route has completed a funded transaction through a real broadcaster, including the Uniswap trade, Ophis fee and USDC reshield. The private output was independently observed in the wallet, progressed to Spendable after validation, and the pending journal cleared. Native ETH deposits and a broadcaster withdrawal were also confirmed. Transaction identifiers and private wallet details are retained outside the repository.
-
-Public deployment and the Ophis entry link are opt-in. The user has authorized merge and deployment once the applicable checks pass. Final-head hosted checks and production deployment verification remain gates; see [SECURITY_REVIEW.md](./SECURITY_REVIEW.md). f(x) remains paused. No new Ethereum contract or Ophis SDK release is required.
+This release integrates the reviewed runtime inside `swap.ophis.fi`, using the existing Ophis swap page and supplied incognito icon. It does not restore `private.ophis.fi`. The private fee is 10 bp (0.1%) of final swap output; the public SDK remains at 1 bp. No new contract deployment, SDK release or f(x) work is included.
 
 ## Release order
 
-1. Complete the current-source security review, standalone frozen install, tests, typechecks, build and required hosted checks. Assess the actual browser dependency graph using [DEPENDENCIES.md](./DEPENDENCIES.md); the version audit has outstanding advisories.
-2. Confirm the live reshielded output becomes Spendable after Railgun validation. Do not infer this from an outer successful receipt or ShieldPending alone. No additional deposit or trade is needed for this check.
-3. Merge the reviewed PR. Run **Deploy Railgun private wallet** on `main` using the protected Production environment.
-4. Verify `https://private.ophis.fi`, its security headers, Ethereum chain ID and denial of administrative RPC methods. Check delegated calls and tracing through that deployed gateway.
-5. Only after those checks, set the repository variable `REACT_APP_PRIVATE_WALLET_URL=https://private.ophis.fi` and rebuild/deploy the Ophis frontend. Its existing **Private wallet** link then opens the separate wallet origin.
+1. Pass the applicable source reviews, unit/security regressions, TypeScript checks, production builds and hosted checks. Assess outstanding dependency advisories using [DEPENDENCIES.md](./DEPENDENCIES.md) and [MULTICHAIN-REVIEW.md](./MULTICHAIN-REVIEW.md).
+2. Build the runtime with `VITE_RAILGUN_ENVIRONMENT=mainnet`, `VITE_RAILGUN_ASSET_BASE=/private/` and the existing public WalletConnect project ID. Build the frontend with the private feature flag and run `node scripts/stage-private-swap.mjs`. Check the staged production bundle, not an earlier preview.
+3. Merge the reviewed changes on Ophis's actual default branch, `main`. Keep `REACT_APP_PRIVATE_SWAP_ENABLED` unset until the gateway passes its deployment checks.
+4. Set the protected Production environment's server-only `RAILGUN_ZAN_API_KEY` from the existing Ophis account, preserving `RAILGUN_RPC_TOKEN`. Run **Deploy private swap RPC** on `main`. It checks all upstreams before deploying `ophis-private-rpc` on `swap.ophis.fi/rpc*`, installs secrets while forwarding is disabled, then enables forwarding and checks all four deployed networks.
+5. After gateway postflight succeeds, set repository variable `REACT_APP_PRIVATE_SWAP_ENABLED=true` and run **Deploy to Cloudflare Pages** on `main`. Verify both public and private swap pages, the supplied icon, mobile layout, CSP, iframe and WASM assets. Verify unsupported chains and administrative RPC methods fail closed. Never use a user's wallet or broadcast a funded transaction for deployment verification.
 
-WalletConnect uses the public repository variable `REACT_APP_WC_PROJECT_ID`; the wallet build fails if it is missing. Public project IDs are not signing credentials. Review the project's allowed origins for the production domain.
+WalletConnect uses the existing public `REACT_APP_WC_PROJECT_ID`, with `swap.ophis.fi` allowed by Reown. Wallet storage belongs to the browser origin: a localhost wallet does not automatically appear on the production domain. Its owner restores it locally using their own recovery phrase. Never send that phrase to an operator or support channel.
 
-Wallet storage belongs to its browser origin. A wallet created on localhost will not appear automatically on the production domain. Its owner must restore it locally using their own recovery phrase; never send that phrase to an operator or support channel.
+## Runtime and provider boundaries
 
-## Runtime boundaries
+Public-to-private navigation loads a fresh document. Private entry skips GA4, Sentry and service-worker registration; wallet databases, journals and proof artifacts are preserved during existing public storage migrations. Private responses prohibit remote scripts, disable framing by other origins, set no-store and no-referrer headers, and separate public openers with COOP. The iframe has a separate module bundle but shares Ophis's first-party origin and storage trust. It is not isolation from a compromised same-origin application.
 
-The separate origin isolates encrypted Railgun keys and journals from Ophis frontend analytics. Keep Cloudflare observability, third-party script injection, request-body logging, workers.dev and preview URLs disabled. Static assets and RPC responses use no-store headers; framing is disabled.
+Ethereum uses Baal's synced node through the existing authenticated `https://railgun-rpc.ophis.fi/rpc` transport. Arbitrum, Polygon and BNB Chain use the existing Ophis ZAN account. Its API key remains in Worker secrets, and only fixed ZAN host/chain paths qualify for API-key authentication. Explicit upstream overrides still require a bearer token. No new account, subscription or public fallback is configured. Remaining account credits were not established; monitor shared quota operationally.
 
-`wrangler.jsonc` defaults RPC forwarding off. The deployment explicitly builds `VITE_RAILGUN_ENVIRONMENT=ethereum`, sets `RAILGUN_RPC_ENABLED=true` and selects the trusted HTTPS origin `https://railgun-rpc.ophis.fi/rpc`. The server-only `RAILGUN_RPC_TOKEN` is required for nonlocal forwarding. Client Authorization is never forwarded. A missing secret fails closed; install it before the public link is enabled.
+The restricted gateway permits wallet RPC methods, 20-call batches and 256 KiB bodies. Limits per IP and Cloudflare location are 600 calls/minute and 10 traces/minute. Calls and estimates are capped at 30 million gas. Tracing requires `callTracer`, a five-second timeout and no custom tracer. Log queries require the selected network's pinned Railgun proxy and at most 500 explicit blocks. Administrative methods and redirects are rejected. Raw transaction submission supports user-signed recovery; the server has no signing key. Observability, workers.dev and preview URLs remain disabled.
 
-The restricted gateway permits wallet RPC methods, 20-call batches and 256 KiB bodies. Each batched call consumes a rate-limit token. Limits per IP and Cloudflare location are 600 calls/minute and 10 traces/minute; shared exits can encounter limits. Calls and estimates are capped at 30 million gas. Tracing requires `callTracer`, a five-second timeout and no custom tracer. Log queries require the pinned Ethereum proxy and at most 500 explicit blocks; fee history is limited to 64 blocks. Administrative methods and upstream redirects are rejected. Raw transaction submission supports user-signed recovery; the server holds no signing key.
+## Validation and operational limits
 
-Baal's synced Ethereum node supports the delegated reads and HTTP tracing used by this wallet. Its authenticated Cloudflare Tunnel/Caddy transport publishes no host ports and has independent method, path, authentication and body-limit checks. See [deploy/README.md](./deploy/README.md).
+Four isolated local forks passed native deposit, real proof generation, private swap, confirmed private output, journal cleanup and exact 0.1% recipient payment. Delegated calls and traces passed through the selected gateway on all four chains. Existing Ethereum live execution was previously user-confirmed; this release's added-chain proof tests use a guarded fork POI adapter and local sponsor. Live added-chain PPOI delivery and broadcaster acceptance remain external checks, not claims established by fork tests.
 
-## Read-only readiness check
+Only Spendable notes pay swaps and broadcaster fees. Public and ShieldPending funds do not count. Mainnet deposits require a fresh compatible broadcaster offer, and swap preparation also checks the receive asset. Polygon native USDC had no compatible offer during final discovery; its deposit and receive paths block safely until availability changes.
 
-With authorized access to the trusted node or protected origin:
-
-```sh
-RAILGUN_READINESS_RPC_URL=http://100.69.134.7:8547 node tests/live-services.mjs
-```
-
-For the HTTPS origin, use `RAILGUN_READINESS_RPC_URL=https://railgun-rpc.ophis.fi/rpc` and supply `RAILGUN_READINESS_RPC_TOKEN` securely. Never put its value in shell history or logs. The check reads node status, canonical delegation, tracing, PPOI availability and fresh signed broadcaster advertisements. It does not submit a transaction or establish an individual wallet's spendability.
-
-## Supported behavior and limits
-
-The initial route supports Ethereum USDC↔WETH through Uniswap v3. Native ETH shielding wraps and shields atomically through the existing Relay Adapt contract. Private balances hold WETH. Public approval/deposit transactions require the user's wallet confirmation; private proving and submission remain separate review actions.
-
-The swap quote preserves the requested fixed amount. If needed, it caps price per gas to the private fee budget without lowering the full SDK estimate, the 3m gas floor or the SDK's 20% gas-limit margin. A fresh network-price check can reject an obsolete cap. Capped estimates round upward to 10,000 gas units. No gas-price cap guarantees future inclusion or broadcaster acceptance.
-
-**Max swap after fee** rebuilds at most four times and reserves 25% headroom above the last insufficient fee. It never increases the original balance/budget cap. The extra headroom can become part of the committed private broadcaster fee; it is not a refund promise. A full-balance manual quote shows the adjusted trade for review. Partial fixed amounts are not silently reduced.
-
-Only Spendable private funds pay a trade and its broadcaster fee. ShieldPending, public funds and pending deposits do not count. New shields normally have a standby period before PPOI eligibility. The SDK may retain cached POI statuses after a network failure, so completing a refresh does not certify remote freshness.
-
-The DEX trade and its amounts are public; this does not make CoW orderbook orders private or prevent sandwiches within the slippage limit. The trusted simulation RPC sees the signed executable batch and can submit it. A successful outer receipt alone is insufficient: execution checks the committed private output. Preserve encrypted recovery journals until reconciliation completes.
+The DEX trade and its amounts are public and can be sandwiched within the slippage limit. The trusted simulation RPC sees the signed executable batch and may submit it. A successful outer receipt alone is insufficient: execution checks committed private output and retains recovery journals until reconciliation. Dependency version scanning still reports advisories; reviewed browser reachability and backports are documented, not a zero-finding certification.

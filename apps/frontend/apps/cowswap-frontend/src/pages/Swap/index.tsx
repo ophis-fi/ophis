@@ -9,6 +9,7 @@ import { useLingui } from '@lingui/react/macro'
 import { useIsCctpEnabled } from 'entities/cctp'
 import { useIsOphisSwap } from 'ophis/hooks/useIsOphisSwap'
 import { DesktopSwapLayout } from 'ophis/mobile/DesktopSwapLayout.pure'
+import { PrivateSwap } from 'ophis/privateSwap/PrivateSwap.container'
 import { Navigate, NavLink, useLocation, useParams } from 'react-router'
 import styled from 'styled-components/macro'
 
@@ -60,7 +61,17 @@ export function SwapPage(): ReactNode {
   return (
     <HydrateAtom atom={swapDerivedStateAtom} state={swapDerivedStateToFill}>
       <PageTitle title={i18n._(PAGE_TITLES.SWAP)} />
-      {isOphisSwap ? <DesktopSwapLayout>{widget}</DesktopSwapLayout> : widget}
+      {isOphisSwap ? (
+        <DesktopSwapLayout>
+          {process.env.REACT_APP_PRIVATE_SWAP_ENABLED === 'true' || process.env.NODE_ENV === 'development' ? (
+            <PrivateSwap publicSwap={widget} />
+          ) : (
+            widget
+          )}
+        </DesktopSwapLayout>
+      ) : (
+        widget
+      )}
     </HydrateAtom>
   )
 }

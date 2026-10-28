@@ -1,20 +1,38 @@
-import { NETWORK_CONFIG, NetworkName, TXIDVersion } from '@railgun-community/shared-models'
+import { NETWORK_CONFIG, TXIDVersion } from '@railgun-community/shared-models'
 import { Interface } from 'ethers'
-import { OPHIS_PARTNER_FEE_RECIPIENT, OPHIS_VOLUME_FEE_BPS } from '../../../packages/sdk/src/partner-fee'
+import { OPHIS_PARTNER_FEE_RECIPIENT } from '../../../packages/sdk/src/partner-fee'
+import { privateNetwork, type PrivateToken, type TokenSymbol } from './networks'
 
-export const NETWORK = NetworkName.Ethereum
-export const ENVIRONMENT = import.meta.env.VITE_RAILGUN_ENVIRONMENT === 'ethereum' ? 'ethereum' : 'fork'
+// Pin one network for the entire page lifetime; switching requires a fresh session.
+const requestedChain = (typeof location === 'undefined' ? null : new URLSearchParams(location.search).get('chainId'))
+  ?? import.meta.env.VITE_RAILGUN_CHAIN_ID ?? null
+export const SELECTED_NETWORK = privateNetwork(requestedChain === null ? 1 : Number(requestedChain))
+export const CHAIN_ID = SELECTED_NETWORK.chainId
+export const CHAIN = BigInt(CHAIN_ID)
+export const CHAIN_NAME = SELECTED_NETWORK.name
+export const NETWORK = SELECTED_NETWORK.network
+export const ENVIRONMENT = ['ethereum', 'mainnet'].includes(import.meta.env.VITE_RAILGUN_ENVIRONMENT) ? 'ethereum' : 'fork'
 export const CONFIG = NETWORK_CONFIG[NETWORK]
 export const VERSION = TXIDVersion.V2_PoseidonMerkle
-export const TOKENS = {
-  USDC: { address: '0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48', decimals: 6 },
-  WETH: { address: CONFIG.baseToken.wrappedAddress, decimals: 18 },
-} as const
-export type TokenSymbol = keyof typeof TOKENS
-export const ROUTER = '0x66a9893cc07d91d95644aedd05d03f95e1dba8af'
+export const NATIVE_SYMBOL = SELECTED_NETWORK.nativeSymbol
+export const WRAPPED_SYMBOL = SELECTED_NETWORK.wrappedSymbol
+export const TOKENS: Readonly<Record<string, PrivateToken>> = Object.fromEntries([
+  ...SELECTED_NETWORK.stables.map((token) => [token.symbol, token]),
+  [WRAPPED_SYMBOL, { address: CONFIG.baseToken.wrappedAddress, decimals: 18, symbol: WRAPPED_SYMBOL }],
+])
+export type { TokenSymbol } from './networks'
+export function isTokenSymbol(value: unknown): value is TokenSymbol {
+  return typeof value === 'string' && Object.hasOwn(TOKENS, value)
+}
+export function tokenFor(symbol: string): PrivateToken {
+  if (!isTokenSymbol(symbol)) throw new Error('Token is not supported on the selected private network.')
+  return TOKENS[symbol]
+}
+export const RPC_PATH = CHAIN_ID === 1 ? '/rpc' : `/rpc/${CHAIN_ID}`
+export const ROUTER = SELECTED_NETWORK.router
 export const PERMIT2 = '0x000000000022D473030F116dDEE9F6B43aC78BA3'
 export const ROUTER_RECIPIENT = '0x0000000000000000000000000000000000000002'
-export const QUOTER = '0x61fFE014bA17989E743c5F6cB21bF9697530B21e'
+export const QUOTER = SELECTED_NETWORK.quoter
 export const POI_NODES = ['https://ppoi.fdi.network']
 // Terminal Wallet's published connect-waku.ts default; fee signatures are verified by the SDK.
 export const FEE_SIGNER =
@@ -36,5 +54,7 @@ export const PERMIT = new Interface([
 ])
 export const QUOTE = new Interface([
   'function quoteExactInputSingle((address tokenIn,address tokenOut,uint256 amountIn,uint24 fee,uint160 sqrtPriceLimitX96)) returns (uint256 amountOut,uint160,uint32,uint256)',
+  'function quoteExactInput(bytes path,uint256 amountIn) returns (uint256 amountOut,uint160[],uint32[],uint256)',
 ])
-export const OPHIS_FEE = { recipient: OPHIS_PARTNER_FEE_RECIPIENT, bps: BigInt(OPHIS_VOLUME_FEE_BPS) }
+// Private swaps charge 0.1% of output; the SDK's public-swap base fee is independent.
+export const OPHIS_FEE = { recipient: OPHIS_PARTNER_FEE_RECIPIENT, bps: 10n }

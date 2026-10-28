@@ -32,19 +32,21 @@ const pending = {
   fromBlock: 123,
 }
 const receipt = vi.fn()
+const balance = vi.fn()
 const session = {
   info: { id: 'test-wallet' },
-  provider: { getTransactionReceipt: receipt },
+  provider: { getTransactionReceipt: receipt, call: balance },
 } as unknown as WalletSession
 
 beforeEach(() => {
   state.record = undefined
   vi.clearAllMocks()
   state.history.mockResolvedValue([])
+  balance.mockResolvedValue(`0x${'00'.repeat(32)}`)
 })
 
 describe('pending swap recovery journal', () => {
-  it('finds a replacement hash and confirms private output even if a later cleanup call fails', async () => {
+  it.each([0n, 1n])('finds a replacement hash and checks remaining funds after cleanup failure (%s)', async (leftover) => {
     const shield = PRIVACY.getEvent('Shield')
     const failure = ADAPT.getEvent('CallError')
     if (!shield || !failure) throw new Error('Missing events')
@@ -57,7 +59,7 @@ describe('pending swap recovery journal', () => {
     ])
     const cleanup = ADAPT.encodeEventLog(failure, [4, '0xdeadbeef'])
     const replacement = `0x${'22'.repeat(32)}`
-    state.record = pending
+    state.record = { ...pending }
     state.history.mockResolvedValue([
       { txid: replacement, blockNumber: 125, unshieldERC20Amounts: [{ recipientAddress: pending.account }] },
     ])
@@ -73,7 +75,16 @@ describe('pending swap recovery journal', () => {
           }
         : null,
     )
-    await expect(reconcilePendingSwap(session)).resolves.toMatch(/Private output confirmed.*cleanup call failed/)
+    balance.mockResolvedValue(`0x${leftover.toString(16).padStart(64, '0')}`)
+    if (leftover > 0n) {
+      await expect(reconcilePendingSwap(session)).rejects.toThrow(/still holds funds/)
+      expect(state.remove).not.toHaveBeenCalled()
+      expect(state.ratchet).not.toHaveBeenCalled()
+      await expect(reconcilePendingSwap(session, false, true)).resolves.toMatch(/Private output confirmed/)
+    } else {
+      await expect(reconcilePendingSwap(session)).resolves.toMatch(/Private output confirmed.*cleanup call failed/)
+    }
+    expect(balance).toHaveBeenCalledTimes(Object.keys(TOKENS).length)
     expect(state.history).toHaveBeenCalledWith(CONFIG.chain, 'test-wallet', undefined)
     expect(state.remove).toHaveBeenCalledOnce()
   })

@@ -60,6 +60,18 @@ it('forwards transaction requests directly even when the optional session ping w
   expect(provider.signer.client.ping).not.toHaveBeenCalled()
 })
 
+it.each([1, 42161, 137, 56])('keeps WalletConnect storage and read RPC specific to chain %s', async (chainId) => {
+  vi.stubEnv('VITE_RAILGUN_CHAIN_ID', String(chainId))
+  provider.session = { topic: 'connected-wallet' }
+  const { connectPublicWallet } = await import('./public-connection')
+  await connectPublicWallet('walletconnect')
+  expect(mocks.init).toHaveBeenCalledWith(expect.objectContaining({
+    optionalChains: [chainId],
+    customStoragePrefix: chainId === 1 ? 'ophis-public-wallet' : `ophis-public-wallet-${chainId}`,
+    rpcMap: { [chainId]: `http://127.0.0.1:4322/rpc${chainId === 1 ? '' : `/${chainId}`}` },
+  }))
+})
+
 it('keeps a transaction awaiting wallet approval pending beyond the old ping deadline without retrying', async () => {
   vi.useFakeTimers()
   provider.session = { topic: 'connected-wallet' }

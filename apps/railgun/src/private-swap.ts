@@ -1,3 +1,4 @@
+import { CHAIN, CHAIN_NAME, tokenFor, MIN_SWAP_GAS, NETWORK, TOKENS, VERSION, type TokenSymbol } from './config'
 import {
   fullWalletForID,
   balanceForERC20Token,
@@ -9,7 +10,6 @@ import {
 import { formatUnits, getAddress } from 'ethers'
 import { calculateGasLimit, type SelectedBroadcaster } from '@railgun-community/shared-models'
 import { broadcasterFee, capGasPrice, gasDetails, minimumGasPrice, validateBroadcaster, type PrivateSubmitter } from './broadcaster'
-import { MIN_SWAP_GAS, NETWORK, TOKENS, VERSION, type TokenSymbol } from './config'
 import { assertExecutionNetwork, assertSameExecution, expectedOutputNpk, simulateRequest } from './execution'
 import { pendingSwap, savePendingSwap, reconcilePendingSwap } from './journal'
 import { pendingWithdrawal } from './withdrawal-journal'
@@ -30,8 +30,8 @@ export async function preparePrivateSwap(session: WalletSession, quote: SwapQuot
   const wallet = fullWalletForID(session.info.id)
   let spendable = await balanceForERC20Token(VERSION, wallet, NETWORK, selected.tokenAddress, true)
   const unshields = [{ tokenAddress: TOKENS[quote.sell].address, amount: quote.amount }]
-  const reshields = [TOKENS[quote.sell], TOKENS[quote.buy]].map((token) => ({
-    tokenAddress: token.address,
+  const reshields = [...new Set([quote.sell, quote.buy, ...(quote.route?.tokens || [])])].map((symbol) => ({
+    tokenAddress: tokenFor(symbol).address,
     recipientAddress: session.info.railgunAddress,
   }))
   for (let attempt = 0; attempt < 3; attempt += 1) {
@@ -39,7 +39,7 @@ export async function preparePrivateSwap(session: WalletSession, quote: SwapQuot
     const minimumFee = broadcasterFee(selected, { ...gas, maxFeePerGas: networkPrice })
     requireSwapBalance(spendable, quote.amount, minimumFee.amount, quote.sell, attempt === 0)
     gas = capGasPrice(gas, selected, spendable - quote.amount)
-    if (gas.maxFeePerGas < networkPrice) throw new Error('Ethereum gas price changed. Request a fresh quote.')
+    if (gas.maxFeePerGas < networkPrice) throw new Error(`${CHAIN_NAME} gas price changed. Request a fresh quote.`)
     const estimated = await gasEstimateForUnprovenCrossContractCalls7702(
       VERSION,
       NETWORK,
@@ -64,7 +64,7 @@ export async function preparePrivateSwap(session: WalletSession, quote: SwapQuot
     spendable = await balanceForERC20Token(VERSION, wallet, NETWORK, selected.tokenAddress, true)
     if (spendable >= quote.amount + fee.amount) {
       if (gas.maxFeePerGas < await minimumGasPrice(session, gas))
-        throw new Error('Ethereum gas price changed. Request a fresh quote.')
+        throw new Error(`${CHAIN_NAME} gas price changed. Request a fresh quote.`)
       return { quote, selected, gas, fee, unshields, reshields, gasCapped: gas.maxFeePerGas < recommendedMaxFeePerGas }
     }
     if (spendable <= quote.amount || capGasPrice(gas, selected, spendable - quote.amount).maxFeePerGas >= gas.maxFeePerGas)
@@ -73,7 +73,7 @@ export async function preparePrivateSwap(session: WalletSession, quote: SwapQuot
   throw new Error('Gas estimate kept changing while fitting the fee budget. Request a fresh quote.')
 }
 
-export async function prepareMaxPrivateSwap(session: WalletSession, sell: TokenSymbol, selected: SelectedBroadcaster, budget?: bigint) {
+export async function prepareMaxPrivateSwap(session: WalletSession, sell: TokenSymbol, selected: SelectedBroadcaster, budget?: bigint, buy?: TokenSymbol) {
   requireWalletSync()
   await refreshReceivedBalances(session)
   let amount = await balanceForERC20Token(VERSION, fullWalletForID(session.info.id), NETWORK, TOKENS[sell].address, true)
@@ -82,7 +82,7 @@ export async function prepareMaxPrivateSwap(session: WalletSession, sell: TokenS
   const limit = amount
   for (let attempt = 0; attempt < 4; attempt += 1) {
     const account = await unusedSwapAccount(session)
-    const quote = await quoteSwap(session.provider, sell, formatUnits(amount, TOKENS[sell].decimals), account.address)
+    const quote = await quoteSwap(session.provider, sell, formatUnits(amount, TOKENS[sell].decimals), account.address, buy)
     try {
       const prepared = await preparePrivateSwap(session, quote, selected)
       if (prepared.quote.amount + prepared.fee.amount > limit)
@@ -134,10 +134,10 @@ export async function executePrivateSwap(
   const { quote, selected, gas, fee, unshields, reshields } = prepared
   if ((await pendingSwap(session)) || (await pendingWithdrawal(session)))
     throw new Error('A private transaction is already pending. Reconcile it before spending again.')
-  assertQuoteFresh(quote, (await session.accounts.getCurrentAccount(1n)).address)
+  assertQuoteFresh(quote, (await session.accounts.getCurrentAccount(CHAIN)).address)
   broadcasterFee(selected, gas)
   await submitter.assertReady(session, selected, gas)
-  const index = await fullWalletForID(session.info.id).getEphemeralKeyIndex(1n)
+  const index = await fullWalletForID(session.info.id).getEphemeralKeyIndex(CHAIN)
   const request = await generateCrossContractCallsProof7702(
     VERSION,
     NETWORK,
@@ -156,7 +156,7 @@ export async function executePrivateSwap(
   )
   if (getAddress(request.ephemeralAddress) !== getAddress(quote.account))
     throw new Error('Private account changed while proving.')
-  if (getAddress((await session.accounts.getAccount(1n, index)).address) !== getAddress(request.ephemeralAddress))
+  if (getAddress((await session.accounts.getAccount(CHAIN, index)).address) !== getAddress(request.ephemeralAddress))
     throw new Error('Recovery account does not match the signed transaction.')
   assertQuoteFresh(quote, request.ephemeralAddress)
   await submitter.assertReady(session, selected, gas)
@@ -190,6 +190,7 @@ export async function executePrivateSwap(
   // Simulation discloses a signed executable batch to the trusted RPC.
   onProgress('Simulating the proved swap…')
   await simulateRequest(session, request, calculateGasLimit(gas.gasEstimate))
+  assertQuoteFresh(quote, request.ephemeralAddress)
   const hash = await submitter.send(session, populated, selected, gas, true)
   await savePendingSwap(session, { ...pending, hash })
   await ratchetEphemeralAddress(session.info.id, NETWORK)

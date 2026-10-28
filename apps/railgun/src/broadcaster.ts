@@ -1,3 +1,4 @@
+import { CHAIN, CHAIN_NAME, CHAIN_ID, CONFIG, ENVIRONMENT, FEE_SIGNER, VERSION } from './config'
 import { BroadcasterTransaction, WakuBroadcasterClient } from '@railgun-community/waku-broadcaster-client-web'
 import {
   calculateGasLimit,
@@ -11,7 +12,6 @@ import {
 } from '@railgun-community/shared-models'
 import { calculateBroadcasterFeeERC20Amount, validateRailgunAddress } from '@railgun-community/wallet'
 import { getAddress, isAddress, type TransactionRequest } from 'ethers'
-import { CONFIG, ENVIRONMENT, FEE_SIGNER, VERSION } from './config'
 import type { WalletSession } from './wallet'
 
 let starting: Promise<void> | undefined
@@ -98,19 +98,30 @@ export function validateBroadcaster(selected: SelectedBroadcaster, tokenAddress:
 
 export async function gasDetails(session: WalletSession): Promise<TransactionGasDetailsType4> {
   const fee = await session.provider.getFeeData()
-  if (fee.maxFeePerGas == null || fee.maxPriorityFeePerGas == null)
-    throw new Error('Ethereum fee estimate unavailable.')
+  // BSC supports type-4 authorizations but its RPC reports legacy transaction pricing.
+  const legacy = CHAIN_ID === 56 && fee.maxFeePerGas == null && fee.gasPrice != null && fee.gasPrice > 0n
+  const maxFeePerGas = legacy ? fee.gasPrice : fee.maxFeePerGas
+  const maxPriorityFeePerGas = legacy ? fee.gasPrice : fee.maxPriorityFeePerGas
+  if (maxFeePerGas == null || maxPriorityFeePerGas == null || maxFeePerGas <= 0n || maxPriorityFeePerGas < 0n || maxPriorityFeePerGas > maxFeePerGas)
+    throw new Error(`${CHAIN_NAME} fee estimate unavailable.`)
   return {
     evmGasType: EVMGasType.Type4,
     gasEstimate: 3_000_000n,
-    maxFeePerGas: fee.maxFeePerGas,
-    maxPriorityFeePerGas: fee.maxPriorityFeePerGas,
+    maxFeePerGas,
+    maxPriorityFeePerGas,
   }
 }
 
 export async function minimumGasPrice(session: WalletSession, gas: TransactionGasDetailsType4): Promise<bigint> {
+  if (CHAIN_ID === 56) {
+    const fee = await session.provider.getFeeData()
+    if (fee.maxFeePerGas == null) {
+      if (fee.gasPrice == null || fee.gasPrice <= 0n) throw new Error('BNB Chain gas price unavailable.')
+      return fee.gasPrice
+    }
+  }
   const block = await session.provider.getBlock('latest')
-  if (block?.baseFeePerGas == null) throw new Error('Ethereum base fee unavailable.')
+  if (block?.baseFeePerGas == null) throw new Error(`${CHAIN_NAME} base fee unavailable.`)
   return block.baseFeePerGas + gas.maxPriorityFeePerGas
 }
 
@@ -119,7 +130,8 @@ export function capGasPrice(gas: TransactionGasDetailsType4, selected: SelectedB
   if (budget <= 0n || rate <= 0n || gas.gasEstimate <= 0n) throw new Error('Invalid broadcaster fee budget.')
   // Match the SDK's downward fee rounding at the last affordable gas price.
   const cap = ((budget + 1n) * 10n ** 18n - 1n) / (rate * calculateGasLimit(gas.gasEstimate))
-  return { ...gas, maxFeePerGas: cap < gas.maxFeePerGas ? cap : gas.maxFeePerGas }
+  const maxFeePerGas = cap < gas.maxFeePerGas ? cap : gas.maxFeePerGas
+  return { ...gas, maxFeePerGas, maxPriorityFeePerGas: gas.maxPriorityFeePerGas > maxFeePerGas ? maxFeePerGas : gas.maxPriorityFeePerGas }
 }
 
 export function broadcasterFee(
@@ -147,10 +159,10 @@ export async function assertSubmittable(
   const fork = await session.provider.send('anvil_metadata', []).catch(() => undefined)
   const hardhat = await session.provider.send('hardhat_metadata', []).catch(() => undefined)
   if (fork || hardhat) throw new Error('Broadcaster submission is disabled on local forks.')
-  if ((await session.provider.getNetwork()).chainId !== 1n) throw new Error('Ethereum RPC required.')
+  if ((await session.provider.getNetwork()).chainId !== CHAIN) throw new Error(`${CHAIN_NAME} RPC required.`)
   broadcasterFee(selected, gas)
   if (gas.evmGasType === EVMGasType.Type4 && gas.maxFeePerGas < await minimumGasPrice(session, gas))
-    throw new Error('Ethereum gas price exceeds this quote’s cap. Check recovery before requesting a fresh quote.')
+    throw new Error(`${CHAIN_NAME} gas price exceeds this quote’s cap. Check recovery before requesting a fresh quote.`)
 }
 
 export async function submitPrivate(

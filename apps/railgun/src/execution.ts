@@ -1,3 +1,4 @@
+import { CHAIN, CHAIN_NAME, CONFIG } from './config'
 import {
   ABIRailgunSmartWallet,
   ABIRelayAdapt7702,
@@ -7,7 +8,6 @@ import {
   type RelayAdapt7702Request,
 } from '@railgun-community/engine'
 import { Contract, getAddress, Interface, verifyAuthorization, type TransactionRequest } from 'ethers'
-import { CONFIG } from './config'
 import type { WalletSession } from './wallet'
 
 export const ADAPT = new Interface(ABIRelayAdapt7702)
@@ -17,7 +17,7 @@ const REGISTRY = new Interface(['function getContractAddress(string name) view r
 
 export function assertAuthorization(request: RelayAdapt7702Request): void {
   const authorization = request.authorization
-  if (authorization.chainId !== 1n || getAddress(authorization.address) !== getAddress(CONFIG.relayAdapt7702Contract))
+  if (authorization.chainId !== CHAIN || getAddress(authorization.address) !== getAddress(CONFIG.relayAdapt7702Contract))
     throw new Error('Unexpected 7702 delegate or chain.')
   if (getAddress(verifyAuthorization(authorization, authorization.signature)) !== getAddress(request.ephemeralAddress))
     throw new Error('7702 authorization does not belong to the executing account.')
@@ -40,7 +40,7 @@ export function encodeRequest(request: RelayAdapt7702Request): TransactionReques
 }
 
 export async function assertExecutionNetwork(session: WalletSession): Promise<void> {
-  if ((await session.provider.getNetwork()).chainId !== 1n) throw new Error('Ethereum RPC required.')
+  if ((await session.provider.getNetwork()).chainId !== CHAIN) throw new Error(`${CHAIN_NAME} RPC required.`)
   const registered = await new Contract(CONFIG.railgunRegistryContract, REGISTRY, session.provider).getFunction(
     'getContractAddress',
   )('RelayAdapt7702')

@@ -1,4 +1,4 @@
-name: Deploy Railgun private wallet
+name: Deploy private swap RPC
 
 on:
   workflow_dispatch:
@@ -21,8 +21,6 @@ jobs:
         working-directory: apps/railgun
     env:
       RAILGUN_RPC_URL: https://railgun-rpc.ophis.fi/rpc
-      VITE_RAILGUN_ENVIRONMENT: ethereum
-      VITE_WALLETCONNECT_PROJECT_ID: ${{ vars.REACT_APP_WC_PROJECT_ID }}
       NODE_OPTIONS: --max-old-space-size=4096
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
@@ -39,34 +37,27 @@ jobs:
       - run: pnpm test
         env:
           VITE_RAILGUN_ENVIRONMENT: fork
-      - run: |
-          test -n "$VITE_WALLETCONNECT_PROJECT_ID"
-          pnpm build
-      - name: Deploy authenticated wallet gateway
+      - run: pnpm typecheck
+      - name: Verify all selected upstreams before changing production
+        env:
+          RAILGUN_RPC_TOKEN: ${{ secrets.RAILGUN_RPC_TOKEN }}
+          RAILGUN_ZAN_API_KEY: ${{ secrets.RAILGUN_ZAN_API_KEY }}
+        run: |
+          test -n "$RAILGUN_RPC_TOKEN"
+          test -n "$RAILGUN_ZAN_API_KEY"
+          node tests/rpc-readiness.mjs
+      - name: Deploy restricted same-origin RPC gateway
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_WORKERS_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           RAILGUN_RPC_TOKEN: ${{ secrets.RAILGUN_RPC_TOKEN }}
+          RAILGUN_ZAN_API_KEY: ${{ secrets.RAILGUN_ZAN_API_KEY }}
         run: |
-          test -n "$RAILGUN_RPC_TOKEN"
-          pnpm exec wrangler deploy --var RAILGUN_RPC_URL:https://railgun-rpc.ophis.fi/rpc --var RAILGUN_RPC_ENABLED:true
-          printf '%s' "$RAILGUN_RPC_TOKEN" | pnpm exec wrangler secret put RAILGUN_RPC_TOKEN
-      - name: Verify deployed RPC and deny administrative methods
-        run: |
-          node --input-type=module <<'JS'
-          import assert from 'node:assert/strict'
-          const url = 'https://private.ophis.fi'
-          const headers = { 'User-Agent': 'Ophis-Private-Wallet/1.0' }
-          const page = await fetch(url, { headers })
-          assert.equal(page.status, 200)
-          assert.match(page.headers.get('content-security-policy') || '', /frame-ancestors 'none'/)
-          for (const [method, status] of [['eth_chainId', 200], ['admin_nodeInfo', 400]]) {
-            const response = await fetch(`${url}/rpc`, {
-              method: 'POST',
-              headers: { ...headers, 'Content-Type': 'application/json' },
-              body: JSON.stringify({ jsonrpc: '2.0', id: 1, method, params: [] }),
-            })
-            assert.equal(response.status, status)
-            if (status === 200) assert.equal((await response.json()).result, '0x1')
-          }
-          JS
+          pnpm exec wrangler deploy --config wrangler.rpc.jsonc
+          printf '%s' "$RAILGUN_RPC_TOKEN" | pnpm exec wrangler secret put RAILGUN_RPC_TOKEN --config wrangler.rpc.jsonc
+          printf '%s' "$RAILGUN_ZAN_API_KEY" | pnpm exec wrangler secret put RAILGUN_ZAN_API_KEY --config wrangler.rpc.jsonc
+          pnpm exec wrangler deploy --config wrangler.rpc.jsonc --var RAILGUN_RPC_ENABLED:true
+      - name: Verify all four deployed networks
+        env:
+          RAILGUN_READINESS_GATEWAY: https://swap.ophis.fi
+        run: node tests/rpc-readiness.mjs

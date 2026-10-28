@@ -1,0 +1,18 @@
+{
+  "$schema": "https://developers.cloudflare.com/workers/wrangler/config-schema.json",
+  "name": "ophis-private-rpc",
+  "main": "server/index.ts",
+  "compatibility_date": "2026-10-21",
+  "workers_dev": false,
+  "preview_urls": false,
+  "observability": { "enabled": false },
+  "routes": [{ "pattern": "swap.ophis.fi/rpc*", "zone_name": "ophis.fi" }],
+  "vars": {
+    "RAILGUN_RPC_ENABLED": "false",
+    "RAILGUN_RPC_URL": "https://railgun-rpc.ophis.fi/rpc"
+  },
+  "ratelimits": [
+    { "name": "RPC_LIMIT", "namespace_id": "1819", "simple": { "limit": 600, "period": 60 } },
+    { "name": "TRACE_LIMIT", "namespace_id": "1820", "simple": { "limit": 10, "period": 60 } }
+  ]
+}

@@ -8,12 +8,12 @@
   </head>
   <body>
     <main>
-      <header><strong>Ophis</strong><span id="environment"></span></header>
-      <h1>Your balance, privately.</h1>
-      <p>RAILGUN wallet and direct USDC/WETH swaps. Public orderbook orders remain separate.</p>
+      <header><strong><img src="./incognito.svg" width="20" height="20" alt="" /> Private swap</strong><span id="environment"></span></header>
+      <label>Private network<select id="private-network"><option value="1">Ethereum</option><option value="42161">Arbitrum</option><option value="137">Polygon</option><option value="56">BNB Chain</option></select></label>
+      <small id="private-network-help">Choose the network before unlocking your private wallet.</small>
       <p id="status" role="status" aria-live="polite">Ready to start</p>
       <section id="setup">
-        <h2>Create, restore or unlock</h2>
+        <h1>Your balance, privately.</h1>
         <p>Use a dedicated Railgun recovery phrase. Never enter your MetaMask or hardware wallet recovery phrase.</p>
         <label
           >Password (at least 12 characters)<input
@@ -22,27 +22,31 @@
             autocomplete="current-password"
             minlength="12"
         /></label>
+        <button id="unlock" type="button">Unlock private wallet</button>
+        <details><summary>Create or restore a private wallet</summary>
         <button id="generate" type="button">Generate recovery phrase</button>
         <label
           >Railgun recovery phrase<textarea id="mnemonic" autocomplete="off" spellcheck="false" rows="3"></textarea>
         </label>
         <label><input id="backup" type="checkbox" /> I saved my Railgun recovery phrase offline.</label>
         <button id="open" type="button">Create / restore wallet</button>
-        <button id="unlock" type="button">Unlock existing wallet</button>
+        </details>
       </section>
       <section id="wallet" hidden>
-        <h2>Private balance</h2>
+        <div class="balance-card">
+          <small>Spendable private balance · selected sell token</small>
+          <strong id="spendable-balance">Synchronizing…</strong>
+          <details><summary>Pending verification</summary><p id="pending-balances">Synchronizing…</p></details>
+        </div>
         <p id="balance-sync">Balances are incomplete until the initial history sync finishes.</p>
-        <p id="address"></p>
-        <pre id="balances">Syncing…</pre>
-        <button id="refresh" type="button">Refresh balances</button>
-        <button id="lock" type="button">Lock wallet</button>
-        <h2>Shield funds</h2>
+        <details><summary>Wallet details and balances</summary><p id="address"></p><pre id="balances">Syncing…</pre></details>
+        <div class="secondary-actions"><button id="refresh" type="button">Refresh balances</button><button id="lock" type="button">Lock wallet</button></div>
+        <details id="deposit-details"><summary>Add funds</summary>
         <p>
           Shielding uses your public wallet. Railgun fees apply. New deposits usually remain ShieldPending for about
           one hour while Railgun validates them. Use Refresh balances afterward; only Spendable funds can pay for private swaps.
         </p>
-        <p>Deposit ETH directly in one wallet transaction, with no token approval or separate wrapping step. Railgun holds it privately as WETH. Keep ETH in your public wallet for gas.</p>
+        <p id="native-shield-help">Native funds are wrapped and shielded in one wallet transaction.</p>
         <label
           >Deposit asset<select id="shield-token">
             <option>ETH</option>
@@ -61,36 +65,35 @@
         <button id="approve" type="button" hidden>Approve amount</button>
         <button id="shield" type="button" hidden>Shield amount</button>
         <p id="public-transaction-status" role="status" aria-live="polite"></p>
-        <h2>Private swap</h2>
-        <label>Token to sell / withdraw<select id="token"><option>WETH</option><option>USDC</option></select></label>
+        </details>
+        <h2>Swap privately</h2>
+        <label class="amount-card">You sell<select id="token"><option>WETH</option><option>USDC</option></select></label>
+        <label class="amount-card">You receive<select id="buy-token"><option>USDC</option><option>WETH</option></select></label>
         <label>Amount to sell / withdraw<input id="amount" type="text" inputmode="decimal" autocomplete="off" aria-describedby="swap-direction swap-fee-help" /></label>
         <button id="max-swap" type="button" aria-describedby="swap-fee-help">Max swap after fee</button>
         <p id="swap-fee-help">The broadcaster fee comes from the same private balance. Max budgets extra room for gas price changes and shows the adjusted trade amount for review. This headroom can increase the committed broadcaster fee.</p>
         <p id="swap-direction">Sell WETH → receive USDC. Enter the amount of WETH to sell.</p>
-        <p>
-          USDC ↔ WETH through Uniswap v3. 0.5% slippage limit. Ophis charges 1 bp; Railgun and broadcaster fees are
-          additional. This route does not use the public orderbook.
-        </p>
-        <p>
+        <p id="swap-route-help">Routes are quoted from supported pools on the selected network.</p>
+        <details class="privacy-disclosure"><summary>What stays private?</summary><p>
           The DEX trade and its amounts are public and can be sandwiched within the slippage limit. The Ophis fee
           identifies this route. Use a trusted RPC: simulation reveals the signed batch to it.
-        </p>
+        </p></details>
         <button id="broadcasters" type="button">Connect private broadcasters</button>
         <p id="broadcaster-status" role="status" aria-live="polite">Private quotes connect to broadcasters automatically.</p>
         <p id="private-wallet-error" role="alert"></p>
         <button id="quote" type="button">Get private swap quote</button>
         <pre id="quote-details"></pre>
         <button id="swap" type="button" hidden>Prove and submit private swap</button>
-        <h2>Withdraw</h2>
+        <details><summary>Withdraw to a public wallet</summary>
         <p>Withdrawing makes the destination and amount public.</p>
         <label>Public recipient<input id="recipient" type="text" autocomplete="off" spellcheck="false" /></label>
         <button id="withdraw-quote" type="button">Review withdrawal fee</button>
         <pre id="withdraw-details"></pre>
         <button id="withdraw" type="button" hidden>Prove and withdraw</button>
-        <h2>Recovery</h2>
+        </details>
+        <details><summary>Recovery and pending transactions</summary>
         <p>
-          Check a temporary account after failed or interrupted execution. Recovery sends from that account and requires
-          ETH for gas. Funding it from your public wallet creates a public link.
+          <span id="recovery-gas-help">Recovery requires native currency for gas. Funding a temporary account from your public wallet creates a public link.</span>
         </p>
         <pre id="pending-details"></pre>
         <label>Temporary account index<input id="recovery-index" type="text" inputmode="numeric" value="0" /></label>
@@ -102,7 +105,7 @@
         >
         <p>
           Canceling invalidates the old swap authorization; it does not move or recover tokens. The temporary account
-          needs ETH for gas. Funding it from your public wallet creates a public link.
+          needs <span id="cancel-gas-symbol">native currency</span> for gas. Funding it from your public wallet creates a public link.
         </p>
         <button id="cancel-swap" type="button">Cancel pending swap using temporary account gas</button>
         <button id="reconcile-withdrawal" type="button">Check pending withdrawal</button>
@@ -113,6 +116,7 @@
         <button id="resume-withdrawal" type="button">Resume saved withdrawal with public gas</button>
         <pre id="recovery-details"></pre>
         <button id="recover" type="button">Reshield selected token</button>
+        </details>
       </section>
       <p id="error" role="alert"></p>
     </main>

@@ -1,110 +1,51 @@
 :root {
-  color-scheme: dark;
-  font:
-    16px/1.6 system-ui,
-    sans-serif;
-  background: #101212;
-  color: #eef4ef;
+  color-scheme: light;
+  font: 14px/1.6 Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  background: #fff;
+  color: #17191c;
 }
-body {
-  margin: 0;
+body { margin: 0; }
+main { max-width: 470px; margin: 0 auto; padding: 20px 18px 24px; box-sizing: border-box; }
+header, header strong { display: flex; align-items: center; gap: 8px; }
+header { justify-content: space-between; margin-bottom: 20px; }
+header span, small { color: #687080; font-size: 12px; }
+h1 { font: 32px/1.15 Georgia, serif; margin: 18px 0; letter-spacing: -0.6px; }
+h2 { font-size: 17px; margin: 24px 0 12px; }
+section { margin: 16px 0; }
+label { display: block; margin: 16px 0; }
+input:not([type='checkbox']), textarea, select {
+  display: block; box-sizing: border-box; width: 100%; padding: 13px 14px; margin-top: 6px;
+  background: #f3f3f4; color: inherit; border: 1px solid #e5e6e9; border-radius: 12px; font: inherit;
 }
-main {
-  max-width: 760px;
-  margin: 0 auto;
-  padding: 32px 24px 80px;
-}
-header {
-  display: flex;
-  justify-content: space-between;
-  gap: 16px;
-  color: #b4c0b8;
-}
-a {
-  color: #a6e8bc;
-}
-h1 {
-  font-size: clamp(2rem, 6vw, 3.5rem);
-  line-height: 1.1;
-  margin: 56px 0 20px;
-}
-h2 {
-  margin-top: 0;
-}
-section {
-  background: #1c2220;
-  border: 1px solid #37443c;
-  border-radius: 16px;
-  padding: 24px;
-  margin: 24px 0;
-}
-label {
-  display: block;
-  margin: 18px 0;
-}
-input:not([type='checkbox']),
-textarea,
-select {
-  display: block;
-  box-sizing: border-box;
-  width: 100%;
-  padding: 12px;
-  margin-top: 6px;
-  background: #101512;
-  color: inherit;
-  border: 1px solid #6d8874;
-  border-radius: 8px;
-  font: inherit;
-}
+textarea { resize: vertical; }
 button {
-  background: #b2f0c2;
-  color: #132016;
-  border: 0;
-  border-radius: 8px;
-  padding: 12px 18px;
-  margin: 5px 8px 5px 0;
-  font: inherit;
-  cursor: pointer;
+  background: #17191c; color: #fff; border: 0; border-radius: 999px;
+  padding: 13px 18px; margin: 6px 8px 6px 0; font: inherit; cursor: pointer;
 }
-button:disabled {
-  opacity: 0.55;
-  cursor: wait;
+#unlock, #quote, #swap, #shield, #open { width: 100%; }
+#refresh, #lock, #generate, #broadcasters, #max-swap, #connect, #walletconnect, #disconnect-public {
+  background: #f3f3f4; color: #17191c;
 }
-button:focus-visible,
-input:focus-visible,
-textarea:focus-visible,
-select:focus-visible {
-  outline: 3px solid #f3d77f;
-  outline-offset: 3px;
+.secondary-actions { display: flex; justify-content: space-between; }
+#amount { font-size: 28px; }
+#max-swap { font-size: 12px; margin-top: 0; }
+button:disabled { opacity: .5; cursor: default; }
+button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-visible, summary:focus-visible {
+  outline: 2px solid #17191c; outline-offset: 3px;
 }
-#error,
-#public-wallet-error,
-#private-wallet-error {
-  color: #ffb6ae;
-  white-space: pre-wrap;
-  overflow-wrap: anywhere;
+details { border-top: 1px solid #e5e6e9; padding: 14px 0; margin-top: 12px; }
+summary { cursor: pointer; font-weight: 500; }
+.balance-card { background: #f3f3f4; border-radius: 16px; padding: 16px; }
+#spendable-balance { display: block; font-size: 20px; font-weight: 500; margin-top: 5px; }
+#pending-balances, #private-network-help, #swap-fee-help, #swap-direction, #swap-route-help, #status, #balance-sync, #broadcaster-status {
+  color: #687080; font-size: 12px;
 }
-#address,
-pre {
-  overflow-wrap: anywhere;
-  white-space: pre-wrap;
-}
-[hidden] {
-  display: none !important;
-}
-dialog {
-  max-width: min(440px, calc(100vw - 64px));
-  background: #1c2220;
-  color: inherit;
-  border: 1px solid #6d8874;
-  border-radius: 16px;
-  padding: 24px;
-}
-dialog::backdrop {
-  background: #000b;
-}
-#walletconnect-qr {
-  display: block;
-  max-width: 100%;
-  margin: auto;
-}
+#pending-balances { white-space: pre-wrap; }
+#error, #public-wallet-error, #private-wallet-error { color: #a52626; white-space: pre-wrap; overflow-wrap: anywhere; }
+#error:empty, #private-wallet-error:empty, #public-wallet-error:empty, #quote-details:empty { display: none; }
+#address, pre { overflow-wrap: anywhere; white-space: pre-wrap; font: inherit; font-size: 12px; }
+#quote-details { background: #f3f3f4; border-radius: 14px; padding: 16px; line-height: 1.8; }
+[hidden] { display: none !important; }
+dialog { max-width: min(400px, calc(100vw - 56px)); background: #fff; color: inherit; border: 1px solid #e5e6e9; border-radius: 20px; padding: 20px; }
+dialog::backdrop { background: #17191c88; }
+#walletconnect-qr { display: block; max-width: 100%; margin: auto; }

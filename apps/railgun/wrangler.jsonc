@@ -6,11 +6,10 @@
   "assets": {
     "directory": "./dist",
     "binding": "ASSETS",
-    "run_worker_first": ["/rpc"],
+    "run_worker_first": ["/rpc", "/rpc/*"],
   },
   "workers_dev": false,
   "preview_urls": false,
-  "routes": [{ "pattern": "private.ophis.fi", "custom_domain": true }],
   "observability": { "enabled": false },
   "vars": {
     "RAILGUN_RPC_URL": "",

@@ -136,6 +136,20 @@ jobs:
             exit 1
           fi
 
+      - name: build reviewed private runtime
+        if: vars.REACT_APP_PRIVATE_SWAP_ENABLED == 'true'
+        working-directory: apps/railgun
+        env:
+          RAILGUN_RPC_URL: https://railgun-rpc.ophis.fi/rpc
+          VITE_RAILGUN_ENVIRONMENT: mainnet
+          VITE_RAILGUN_ASSET_BASE: /private/
+          VITE_WALLETCONNECT_PROJECT_ID: ${{ vars.REACT_APP_WC_PROJECT_ID }}
+          NODE_OPTIONS: --max-old-space-size=4096
+        run: |
+          pnpm install --ignore-workspace --frozen-lockfile --ignore-scripts
+          VITE_RAILGUN_ENVIRONMENT=fork pnpm test
+          pnpm build
+
       - name: build cowswap
         working-directory: apps/frontend
         env:
@@ -144,6 +158,7 @@ jobs:
           # (instead of cowswap's upstream default "CoW Swap"). Tracked
           # in apps/frontend/.ophis-divergences.md.
           REACT_APP_APP_CODE: ophis
+          REACT_APP_PRIVATE_SWAP_ENABLED: ${{ vars.REACT_APP_PRIVATE_SWAP_ENABLED }}
           REACT_APP_WC_PROJECT_ID: ${{ vars.REACT_APP_WC_PROJECT_ID }}
           # Base URL for the rebate-indexer API (TierChip + useTier hook).
           # Defaults to the same value at runtime if the env var is missing.
@@ -237,6 +252,10 @@ jobs:
           # falls back to honeypot + Formspree ML.
           REACT_APP_TURNSTILE_SITE_KEY: ${{ secrets.REACT_APP_TURNSTILE_SITE_KEY }}
         run: pnpm run build:cowswap
+
+      - name: stage integrated private swap
+        if: vars.REACT_APP_PRIVATE_SWAP_ENABLED == 'true'
+        run: node scripts/stage-private-swap.mjs
 
       - name: drop production source maps
         # Cowswap's vite.config.mts ships sourcemap:true; the resulting

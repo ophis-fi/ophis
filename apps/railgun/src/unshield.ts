@@ -1,3 +1,4 @@
+import { CHAIN, CHAIN_NAME, CONFIG, NETWORK, PERMIT2, PROXY, ROUTER, TOKENS, VERSION, type TokenSymbol } from './config'
 import { getEVMGasTypeForTransaction, EVMGasType, type SelectedBroadcaster } from '@railgun-community/shared-models'
 import {
   gasEstimateForUnprovenUnshield,
@@ -6,7 +7,6 @@ import {
 } from '@railgun-community/wallet'
 import { Contract, getAddress, ZeroAddress } from 'ethers'
 import { broadcasterFee, validateBroadcaster, type PrivateSubmitter } from './broadcaster'
-import { CONFIG, NETWORK, PERMIT2, PROXY, ROUTER, TOKENS, VERSION, type TokenSymbol } from './config'
 import { amountFromInput, unshieldAmount } from './recipe'
 import { pendingSwap } from './journal'
 import {
@@ -29,7 +29,7 @@ export async function prepareUnshield(
     throw new Error('Resolve the pending private transaction before preparing another withdrawal.')
   validateBroadcaster(selected, TOKENS[token].address, false)
   const destination = getAddress(recipient)
-  assertWithdrawalRecipient(destination, (await session.accounts.getCurrentAccount(1n)).address)
+  assertWithdrawalRecipient(destination, (await session.accounts.getCurrentAccount(CHAIN)).address)
   await refreshReceivedBalances(session)
   const amounts = [
     { tokenAddress: TOKENS[token].address, amount: amountFromInput(value, token), recipientAddress: destination },
@@ -39,7 +39,7 @@ export async function prepareUnshield(
   if (getEVMGasTypeForTransaction(NETWORK, false) !== EVMGasType.Type1)
     throw new Error('Review the updated Railgun broadcaster gas policy before continuing.')
   const gasPrice = (await session.provider.getFeeData()).gasPrice
-  if (gasPrice == null) throw new Error('Ethereum gas price unavailable.')
+  if (gasPrice == null) throw new Error(`${CHAIN_NAME} gas price unavailable.`)
   const gas = { evmGasType: EVMGasType.Type1 as const, gasEstimate: 3_000_000n, gasPrice }
   const estimate = await gasEstimateForUnprovenUnshield(
     VERSION,

@@ -2,7 +2,7 @@ import { afterAll, beforeAll, expect, it, vi } from 'vitest'
 import { Contract, JsonRpcProvider, Wallet } from 'ethers'
 import { RelayAdapt7702ExecutionType, RelayAdapt7702Helper } from '@railgun-community/engine'
 import { ADAPT, encodeRequest } from './execution'
-import { CONFIG } from './config'
+import { CHAIN, CHAIN_ID, CONFIG, WRAPPED_SYMBOL } from './config'
 import type { WalletSession } from './wallet'
 
 const state = vi.hoisted(() => ({ remove: vi.fn(), ratchet: vi.fn(), pending: undefined as unknown }))
@@ -13,13 +13,27 @@ vi.mock('@railgun-community/wallet', async (original) => ({
 }))
 import { cancelPendingSwap } from './cancel'
 
-const provider = new JsonRpcProvider('http://127.0.0.1:8549', 1, { cacheTimeout: -1 })
+const url = new URL(process.env.RAILGUN_FORK_RPC_URL || 'http://127.0.0.1:8549')
+if (!['127.0.0.1', 'localhost', '[::1]'].includes(url.hostname)) throw new Error('Fork tests require loopback RPC.')
+const provider = new JsonRpcProvider(url.href, CHAIN_ID, { cacheTimeout: -1 })
+// Anvil can forward a not-yet-indexed local receipt upstream; free archive RPCs reject unknown hashes.
+const localTransactions = new Set<string>()
+const originalSend = provider.send.bind(provider)
+vi.spyOn(provider, 'send').mockImplementation(async (method, params) => {
+  try {
+    const result: unknown = await originalSend(method, params)
+    if (['eth_sendRawTransaction', 'eth_sendTransaction'].includes(method) && typeof result === 'string') localTransactions.add(result)
+    return result
+  } catch (error) {
+    if (method === 'eth_getTransactionReceipt' && Array.isArray(params) && localTransactions.has(String(params[0])) && String(error).includes('Archive requests require a personal token')) return null
+    throw error
+  }
+})
 let snapshot: string | undefined
 beforeAll(async () => {
   if (process.env.RAILGUN_FORK_TEST !== '1') return
   if (!(await provider.send('anvil_metadata', [])).forkedNetwork) throw new Error('Anvil fork required')
   snapshot = await provider.send('evm_snapshot', [])
-  await provider.send('evm_setIntervalMining', [1])
 })
 afterAll(async () => {
   if (snapshot) {
@@ -38,7 +52,8 @@ it.skipIf(process.env.RAILGUN_FORK_TEST !== '1')(
     state.pending = {
       index: 0,
       account,
-      token: 'WETH',
+      chainId: CHAIN_ID,
+      token: WRAPPED_SYMBOL,
       minimum: '1',
       npk: `0x${'11'.repeat(32)}`,
       executeNonce: '0',
@@ -58,10 +73,10 @@ it.skipIf(process.env.RAILGUN_FORK_TEST !== '1')(
     const authorization = await RelayAdapt7702Helper.signEIP7702Authorization(
       owner,
       CONFIG.relayAdapt7702Contract,
-      1n,
+      CHAIN,
       0,
     )
-    const executionSignature = await RelayAdapt7702Helper.signExecutionAuthorization(owner, [], actionData, 1n, details)
+    const executionSignature = await RelayAdapt7702Helper.signExecutionAuthorization(owner, [], actionData, CHAIN, details)
     const old = encodeRequest({
       ...details,
       authorization,
@@ -74,12 +89,16 @@ it.skipIf(process.env.RAILGUN_FORK_TEST !== '1')(
     await expect(cancelPendingSwap(session, false)).rejects.toThrow(/Acknowledge/)
     await expect(cancelPendingSwap(session, true)).rejects.toThrow(/Fund recovery account/)
     await provider.send('anvil_setBalance', [account, '0xde0b6b3a7640000'])
-    await expect(cancelPendingSwap(session, true)).resolves.toMatch(/invalidated/)
+    // Auto-mine the receipt locally; an extra block satisfies the two-confirmation guard.
+    const mining = setInterval(() => { void provider.send('evm_mine', []).catch(() => {}) }, 100)
+    try {
+      await expect(cancelPendingSwap(session, true)).resolves.toMatch(/invalidated/)
+    } finally { clearInterval(mining) }
     expect(await new Contract(account, ADAPT, provider).getFunction('nonce')()).toBe(1n)
     const replay = await sponsor.sendTransaction({ ...old, gasLimit: 300_000n })
     await expect(replay.wait()).rejects.toThrow()
     expect(state.remove).toHaveBeenCalledOnce()
-    expect(state.ratchet).toHaveBeenCalledWith(1n, 1)
+    expect(state.ratchet).toHaveBeenCalledWith(CHAIN, 1)
   },
   45_000,
 )

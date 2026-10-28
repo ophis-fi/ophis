@@ -1,7 +1,7 @@
 import type EthereumProvider from '@walletconnect/ethereum-provider'
 import type { Eip1193Provider } from 'ethers'
 import { element } from './ui'
-import { ENVIRONMENT } from './config'
+import { CHAIN_ID, RPC_PATH, ENVIRONMENT } from './config'
 
 type WalletEvent = 'accountsChanged' | 'chainChanged' | 'disconnect'
 export type PublicWalletProvider = Eip1193Provider & {
@@ -17,7 +17,9 @@ declare global {
 }
 
 let walletConnect: Promise<EthereumProvider> | undefined
-const STORAGE_PREFIX = 'ophis-walletconnect-storage-prefix'
+const chainSuffix = CHAIN_ID === 1 ? '' : `-${CHAIN_ID}`
+const STORAGE_PREFIX = `ophis-walletconnect-storage-prefix${chainSuffix}`
+const DEFAULT_PREFIX = `ophis-public-wallet${chainSuffix}`
 let pendingStoragePrefix: string | undefined
 
 function saveStoragePrefix(): void {
@@ -43,13 +45,13 @@ export async function connectPublicWallet(kind: 'browser' | 'walletconnect'): Pr
   walletConnect ??= import('@walletconnect/ethereum-provider')
     .then(({ EthereumProvider }) => EthereumProvider.init({
       projectId,
-      optionalChains: [1],
+      optionalChains: [CHAIN_ID],
       optionalMethods: ['eth_sendTransaction', 'wallet_switchEthereumChain'],
       optionalEvents: ['chainChanged', 'accountsChanged'],
-      rpcMap: { 1: new URL('/rpc', location.origin).href },
+      rpcMap: { [CHAIN_ID]: new URL(RPC_PATH, location.origin).href },
       disableProviderPing: true,
       telemetryEnabled: false,
-      customStoragePrefix: localStorage.getItem(STORAGE_PREFIX) || 'ophis-public-wallet',
+      customStoragePrefix: localStorage.getItem(STORAGE_PREFIX) || DEFAULT_PREFIX,
       // The SDK's full modal enables analytics; render only the pairing QR here.
       showQrModal: false,
       metadata: {
@@ -84,7 +86,7 @@ export async function connectPublicWallet(kind: 'browser' | 'walletconnect'): Pr
       // An in-flight approval can finish after cancellation; isolate the next session's storage.
       wasCancelled = true
       walletConnect = undefined
-      pendingStoragePrefix = `ophis-public-wallet-${crypto.randomUUID()}`
+      pendingStoragePrefix = `${DEFAULT_PREFIX}-${crypto.randomUUID()}`
       let message = 'WalletConnect connection cancelled. You can try again.'
       try { saveStoragePrefix() } catch { message = 'WalletConnect connection cancelled. Allow browser storage before reconnecting.' }
       void provider.signer.cleanupPendingPairings({ deletePairings: true })
