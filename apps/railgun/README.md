@@ -13,6 +13,8 @@ The local engine supports the following networks. Balances and transactions stay
 
 Railgun supplies privacy rather than DEX liquidity. This implementation quotes **Uniswap v3 only**: four fee tiers and direct or one-intermediate paths, up to 20 candidates per selected pair. Missing pools are skipped, not advertised as available liquidity. The best positive output wins, with gas as a tie-breaker. Other DEX adapters are not implemented. Public orderbook orders remain public; f(x) development remains paused.
 
+Route discovery encodes all 20 candidates into one canonical Multicall3 `eth_call` at one block, reducing quote calls from 20 to 1. The aggregate shares a 30m gas ceiling; expensive paths can reduce coverage, so this selects the best successful quote within that budget. An aggregate RPC or decoding failure stops quoting rather than retrying 20 individual calls. Deployment readiness checks run networks sequentially to avoid simultaneous bursts against the shared vendor account. These changes do not provide an account-wide credits/second limiter or provider failover.
+
 The private Ophis fee is **10 bp (0.1%) of output**; the public SDK base stays at 1 bp. Railgun, pool, broadcaster and public deposit gas fees are separate. Existing installed Railgun SDK versions already support these four networks; this expansion requires no SDK release or new mainnet contract.
 
 ## Run locally
@@ -97,6 +99,7 @@ Canceling a pending swap requires explicit acknowledgement of possible public le
 ```sh
 pnpm typecheck
 pnpm test
+RAILGUN_RPC_QUOTE_TEST=1 VITE_RAILGUN_CHAIN_ID=1 RAILGUN_RPC_URL=https://swap.ophis.fi/rpc pnpm exec vitest run src/routes.rpc.test.ts
 RAILGUN_FORK_TEST=1 pnpm exec vitest run src/recipe.fork.test.ts src/cancel.fork.test.ts --no-file-parallelism
 pnpm build
 pnpm exec vite preview
