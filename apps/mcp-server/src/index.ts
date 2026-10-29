@@ -21,7 +21,7 @@
  * every backing endpoint is already public, and the tools are read/build-only.
  */
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
-import { createMcpHandler, McpAgent } from 'agents/mcp'
+import { createMcpHandler } from 'agents/mcp'
 
 import { OPHIS_TOOL_NAMES, registerOphisTools, SERVER_INFO } from './tools.js'
 
@@ -39,7 +39,6 @@ interface AnalyticsEngineDataset {
 }
 
 interface Env {
-  OPHIS_MCP: DurableObjectNamespace
   MCP_RATE_LIMIT?: RateLimit
   /** Optional server-wide default affiliate referral code. When set, build_order
    *  embeds it in appData unless the call passes its own referrerCode. Lets an
@@ -83,19 +82,6 @@ async function recordTelemetry(
       indexes: [toolName.slice(0, 32)],
       blobs: [toolName, consumer, uaTrunc, browser, chainId],
       doubles: [1],
-    })
-  }
-}
-
-// Retain the deployed class for rollback without deleting its existing namespace.
-// Public requests use the stateless handler below and never invoke this binding.
-export class OphisMCP extends McpAgent<Env, Record<string, never>, Record<string, never>> {
-  server = new McpServer(SERVER_INFO)
-
-  async init() {
-    registerOphisTools(this.server, {
-      defaultReferrerCode: this.env.OPHIS_DEFAULT_REFERRER_CODE,
-      rebatesApi: this.env.OPHIS_REBATES_API,
     })
   }
 }

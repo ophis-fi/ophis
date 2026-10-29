@@ -19,12 +19,11 @@
   // consumers can be told apart from crawlers and health-checks. The write is
   // non-blocking and swallowed; an unbound dataset is a no-op.
   "analytics_engine_datasets": [{ "binding": "MCP_ANALYTICS", "dataset": "ophis_mcp_funnel" }],
-  // Retained for rollback only. Public MCP requests use a stateless transport
-  // and do not invoke this namespace or write Durable Object storage.
-  "durable_objects": {
-    "bindings": [{ "name": "OPHIS_MCP", "class_name": "OphisMCP" }]
-  },
-  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["OphisMCP"] }],
+  // Permanently retire obsolete session storage; retain this migration on code rollback.
+  "migrations": [
+    { "tag": "v1", "new_sqlite_classes": ["OphisMCP"] },
+    { "tag": "v2-retire-legacy-mcp-storage", "deleted_classes": ["OphisMCP"] }
+  ],
   // Per-IP rate limit for the public /mcp endpoint (60 requests / 60s, per colo).
   // Best-effort abuse cap; combined with the in-handler batch/body cap it closes
   // the JSON-RPC amplification path. Local `wrangler dev` treats this as a no-op.
