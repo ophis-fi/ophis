@@ -29,7 +29,7 @@ jobs:
         with:
           persist-credentials: false
       - name: Connect to Cadia's existing deployment network
-        uses: tailscale/github-action@306e68a486fd2350f2bfc3b19fcd143891a4a2d8 # v4.1.2
+        uses: tailscale/github-action@99a8333667fff04fdd6cffb46dfd409f8329a7bf # v4.3.0
         with:
           oauth-client-id: ${{ secrets.TS_OIDC_CLIENT_ID }}
           audience: ${{ secrets.TS_OIDC_AUDIENCE }}

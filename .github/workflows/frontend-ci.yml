@@ -59,7 +59,7 @@ jobs:
       # finding M3, 2026-05-09): tag refs are mutable, SHAs are not.
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
 
-      - uses: pnpm/action-setup@91ab88e2619ed1f46221f0ba42d1492c02baf788 # v6.0.6
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
         with:
           run_install: false
 
@@ -123,7 +123,7 @@ jobs:
         run: pnpm exec nx run cowswap-frontend:test --testPathPatterns 'modules/nearDirect|tradingSdk/bridgingSdk.test|tokensList/containers/SelectTokenWidget/.*test|tokensList/pure/TokenListItem/index.test|useTokensToSelect.test|useOpenTokenSelectWidget.test|useChainsToSelect.test|parameterizeTradeSearch.test' --passWithNoTests=false --runInBand
 
       - name: Install pinned Foundry for offline Arc ceremony
-        uses: foundry-rs/foundry-toolchain@908c540300062bd5a7e473851cdb4282204cee09 # v1.9.1
+        uses: foundry-rs/foundry-toolchain@dba66c27052e63476d886f22216e119ba7e615bf # v1.9.2
         with:
           version: v1.5.1
           cache: true
