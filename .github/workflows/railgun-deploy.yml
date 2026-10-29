@@ -74,4 +74,7 @@ jobs:
       - name: Verify all four deployed networks
         env:
           RAILGUN_READINESS_GATEWAY: https://swap.ophis.fi
-        run: node tests/rpc-readiness.mjs
+          RAILGUN_RPC_TOKEN: ${{ secrets.RAILGUN_RPC_TOKEN }}
+        run: |
+          RAILGUN_READINESS_BUDGET_ONLY=1 node tests/rpc-readiness.mjs
+          node tests/rpc-readiness.mjs
