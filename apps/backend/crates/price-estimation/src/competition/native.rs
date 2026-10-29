@@ -19,7 +19,7 @@ impl NativePriceEstimating for CompetitionEstimator<Arc<dyn NativePriceEstimatin
         token: Address,
         total_timeout: Duration,
     ) -> BoxFuture<'_, NativePriceEstimateResult> {
-        let started_at = std::time::Instant::now();
+        let started_at = tokio::time::Instant::now();
 
         async move {
             let results = self
@@ -37,10 +37,16 @@ impl NativePriceEstimating for CompetitionEstimator<Arc<dyn NativePriceEstimatin
                                 .unwrap_or_default()
                         };
 
-                        let res = context
-                            .estimator
-                            .estimate_native_price(context.query, stage_timeout)
-                            .await;
+                        let res = tokio::time::timeout(
+                            stage_timeout,
+                            context
+                                .estimator
+                                .estimate_native_price(context.query, stage_timeout),
+                        )
+                        .await
+                        .unwrap_or_else(|error| {
+                            Err(PriceEstimationError::ProtocolInternal(error.into()))
+                        });
                         if res.as_ref().is_ok_and(|price| is_price_malformed(*price)) {
                             let err = anyhow::anyhow!("estimator returned malformed price");
                             return Err(PriceEstimationError::EstimatorInternal(err));
@@ -213,6 +219,37 @@ mod tests {
                 Ok(if needs_fallback { 2.0 } else { 1.0 })
             );
         }
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn a_stalled_primary_leaves_time_for_fallback() {
+        let mut primary = MockNativePriceEstimating::new();
+        primary
+            .expect_estimate_native_price()
+            .once()
+            .returning(|_, _| futures::future::pending().boxed());
+        let mut fallback = MockNativePriceEstimating::new();
+        fallback
+            .expect_estimate_native_price()
+            .once()
+            .withf(|_, timeout| *timeout > Duration::ZERO && *timeout < Duration::from_millis(100))
+            .returning(|_, _| async { Ok(2.0) }.boxed());
+        let estimator = CompetitionEstimator::<Arc<dyn NativePriceEstimating>>::new(
+            vec![
+                vec![("primary".into(), Arc::new(primary))],
+                vec![("fallback".into(), Arc::new(fallback))],
+            ],
+            PriceRanking::MaxOutAmount,
+        )
+        .with_early_return(1.try_into().unwrap());
+        let started = tokio::time::Instant::now();
+        assert_eq!(
+            estimator
+                .estimate_native_price(Default::default(), Duration::from_millis(100))
+                .await,
+            Ok(2.0)
+        );
+        assert!(started.elapsed() < Duration::from_millis(100));
     }
 
     #[tokio::test]
