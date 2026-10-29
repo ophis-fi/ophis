@@ -1,4 +1,4 @@
-import { RPC_BATCH_SIZE, RAILGUN_PROXY, RAILGUN_PROXIES, isValidationCloudUrl, validationCloudCU, zanRpcUrl } from '../rpc-policy'
+import { RPC_BATCH_SIZE, RAILGUN_PROXY, RAILGUN_PROXIES, isAlchemyUrl, alchemyCU, isValidationCloudUrl, validationCloudCU, zanRpcUrl } from '../rpc-policy'
 export { ValidationCloudBudget } from './budget'
 
 const METHODS = new Set([
@@ -184,10 +184,21 @@ export default {
         return error(429, 'Simulation rate limit reached. Retry shortly.')
     }
     try {
-      const validationCloud = isValidationCloudUrl(chainId, upstreamUrl)
+      const alchemy = isAlchemyUrl(chainId, upstreamUrl)
+      const extendedEndpoints: Record<number, string | undefined> = {
+        42161: env.RAILGUN_ARBITRUM_VALIDATION_CLOUD_URL,
+        137: env.RAILGUN_POLYGON_VALIDATION_CLOUD_URL,
+        56: env.RAILGUN_BNB_VALIDATION_CLOUD_URL,
+      }
+      const extended = alchemy && calls.some((call) => call.method === 'debug_traceCall' || call.method === 'eth_getLogs')
+      const extendedUrl = extendedEndpoints[chainId]
+      if (extended && (!extendedUrl || !isValidationCloudUrl(chainId, extendedUrl)))
+        return error(503, 'A verified Validation Cloud endpoint is required for traces and log scans on Alchemy Free.')
+      const upstream = new URL(extended ? extendedUrl! : upstreamUrl)
+      const validationCloud = isValidationCloudUrl(chainId, upstream.href)
+      const token = alchemy ? undefined : upstreamToken
       const local = ['127.0.0.1', 'localhost', '[::1]'].includes(url.hostname)
-      const upstream = new URL(upstreamUrl)
-      if (!local && !upstreamToken && !validationCloud && upstream.href !== zanRpcUrl(chainId, env.RAILGUN_ZAN_API_KEY))
+      if (!local && !token && !validationCloud && !alchemy && upstream.href !== zanRpcUrl(chainId, env.RAILGUN_ZAN_API_KEY))
         return error(503, 'Trusted RPC authentication is not configured.')
       if (
         upstream.protocol !== 'https:' &&
@@ -199,25 +210,34 @@ export default {
       )
         return error(503, 'A trusted HTTPS RPC is required.')
       const execution = calls.some((call) => ['eth_call', 'eth_estimateGas', 'debug_traceCall', 'eth_sendRawTransaction'].includes(call.method))
-      const zan = zanRpcUrl(chainId, env.RAILGUN_ZAN_API_KEY)
-      const priced = calls.every((call) => validationCloudCU(call.method) !== undefined)
+      const zan = alchemy ? undefined : zanRpcUrl(chainId, env.RAILGUN_ZAN_API_KEY)
+      const priced = calls.every((call) => (alchemy && !extended ? alchemyCU(call.method) : validationCloudCU(call.method)) !== undefined)
+      if (alchemy && !priced) return error(400, 'RPC batches require methods supported by the selected free provider with verified CU costs.')
       if (validationCloud && execution && !priced) return error(400, 'Execution batches require methods with verified CU costs.')
       if (validationCloud && !priced && !zan) return error(503, 'This RPC method requires the configured ZAN transport.')
       // Execution data goes to one configured provider; only ordinary reads may fail over.
       const first = validationCloud && !execution && zan ? zan : upstream.href
       const fallback = validationCloud && priced && first !== upstream.href
       const forward = async (target: string): Promise<Response> => {
-        if (validationCloud && target === upstream.href) {
-          if (!env.VALIDATION_CLOUD_BUDGET) return error(503, 'Validation Cloud budget guard is not configured.')
-          const budget = await env.VALIDATION_CLOUD_BUDGET.getByName('shared-account').consume(calls.map((call) => call.method))
-          if (!budget.allowed) return error(429, budget.reason || 'Validation Cloud budget reached.')
+        if ((validationCloud || alchemy) && target === upstream.href) {
+          const provider = validationCloud ? 'validationCloud' : 'alchemy'
+          if (!env.VALIDATION_CLOUD_BUDGET) return error(503, 'RPC budget guard is not configured.')
+          try {
+            const stub = env.VALIDATION_CLOUD_BUDGET.getByName(validationCloud ? 'shared-account' : 'alchemy-shared-account')
+            const methods = calls.map((call) => call.method)
+            const budget = validationCloud ? await stub.consume(methods) : await stub.consume(methods, provider)
+            if (!budget.allowed) return error(429, budget.reason || 'Shared RPC budget reached.')
+          } catch {
+            return error(503, 'RPC budget guard unavailable. Retry without clearing pending transactions.')
+          }
         }
         return fetch(target, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
             'User-Agent': 'Ophis-Private-Wallet/1.0',
-            ...(target === upstream.href && upstreamToken ? { Authorization: `Bearer ${upstreamToken}` } : {}),
+            ...(alchemy && !extended ? { Origin: 'https://swap.ophis.fi' } : {}),
+            ...(target === upstream.href && token ? { Authorization: `Bearer ${token}` } : {}),
           },
           body: JSON.stringify(payload),
           redirect: 'manual',

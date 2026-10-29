@@ -2,7 +2,7 @@ import { afterEach, expect, it, vi } from 'vitest'
 import gateway, { rpcCall } from './index'
 import { FetchRequest, JsonRpcProvider } from 'ethers'
 import { NETWORK_CONFIG, NetworkName } from '@railgun-community/shared-models'
-import { RPC_BATCH_SIZE, RAILGUN_PROXY, RAILGUN_PROXIES, isValidationCloudUrl, zanRpcUrl } from '../rpc-policy'
+import { RPC_BATCH_SIZE, RAILGUN_PROXY, RAILGUN_PROXIES, isAlchemyUrl, isValidationCloudUrl, zanRpcUrl } from '../rpc-policy'
 
 vi.mock('cloudflare:workers', () => ({ DurableObject: class {} }))
 
@@ -45,6 +45,82 @@ function arbitrum(body: unknown): Request {
     method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
   })
 }
+
+const alchemyURL = 'https://arb-mainnet.g.alchemy.com/v2/test-key'
+function alchemyEnv(reserve = vi.fn().mockReturnValue({ allowed: true })) {
+  return { ...vcEnv(reserve), RAILGUN_ARBITRUM_RPC_URL: alchemyURL, RAILGUN_ARBITRUM_VALIDATION_CLOUD_URL: vcURL }
+}
+
+it('uses Alchemy for a quote and reserves its shared budget without contacting ZAN', async () => {
+  const reserve = vi.fn().mockReturnValue({ allowed: true })
+  const env = alchemyEnv(reserve)
+  const withLegacyToken = { ...env, RAILGUN_ARBITRUM_RPC_TOKEN: 'unrelated-legacy-secret' }
+  const upstream = vi.fn().mockResolvedValue(Response.json({ ...chain, result: '0x01' }))
+  vi.stubGlobal('fetch', upstream)
+  expect((await gateway.fetch(arbitrum({ ...chain, method: 'eth_call', params: [{ data: '0x1234' }] }), withLegacyToken)).status).toBe(200)
+  expect(upstream).toHaveBeenCalledOnce()
+  expect(String(upstream.mock.calls[0][0])).toBe(alchemyURL)
+  expect(reserve).toHaveBeenCalledExactlyOnceWith(['eth_call'], 'alchemy')
+  expect(env.VALIDATION_CLOUD_BUDGET.getByName).toHaveBeenCalledWith('alchemy-shared-account')
+  expect(upstream.mock.calls[0][1].headers).not.toHaveProperty('Authorization')
+  expect(upstream.mock.calls[0][1].headers.Origin).toBe('https://swap.ophis.fi')
+})
+
+it.each(['debug_traceCall', 'eth_getLogs'])('routes %s directly to Validation Cloud without probing Alchemy', async (method) => {
+  const reserve = vi.fn().mockReturnValue({ allowed: true })
+  const env = alchemyEnv(reserve)
+  const upstream = vi.fn().mockResolvedValue(Response.json({ ...chain, result: [] }))
+  vi.stubGlobal('fetch', upstream)
+  const params = method === 'eth_getLogs'
+    ? [{ address: RAILGUN_PROXIES[42161], fromBlock: '0x1', toBlock: '0x1f4' }]
+    : [{ gas: '0x1c9c380' }, 'latest', { tracer: 'callTracer' }]
+  expect((await gateway.fetch(arbitrum({ ...chain, method, params }), env)).status).toBe(200)
+  expect(upstream).toHaveBeenCalledOnce()
+  expect(String(upstream.mock.calls[0][0])).toBe(vcURL)
+  expect(reserve).toHaveBeenCalledExactlyOnceWith([method])
+  expect(env.VALIDATION_CLOUD_BUDGET.getByName).toHaveBeenCalledWith('shared-account')
+  expect((await gateway.fetch(arbitrum({ ...chain, method, params }), { ...env, RAILGUN_ARBITRUM_VALIDATION_CLOUD_URL: undefined })).status).toBe(503)
+  expect(upstream).toHaveBeenCalledOnce()
+})
+
+it.each(['eth_call', 'eth_estimateGas', 'eth_sendRawTransaction'])('never retries %s through another provider after an Alchemy failure', async (method) => {
+  const reserve = vi.fn().mockReturnValue({ allowed: true })
+  const upstream = vi.fn().mockRejectedValue(new Error('offline'))
+  vi.stubGlobal('fetch', upstream)
+  const params = method === 'eth_sendRawTransaction' ? ['0x1234'] : [{ data: '0x1234', authorizationList: [] }]
+  expect((await gateway.fetch(arbitrum({ ...chain, method, params }), alchemyEnv(reserve))).status).toBe(502)
+  expect(upstream).toHaveBeenCalledOnce()
+  expect(String(upstream.mock.calls[0][0])).toBe(alchemyURL)
+})
+
+it('rejects exhausted or unavailable Alchemy meters before forwarding and does not expose exceptions', async () => {
+  const upstream = vi.fn()
+  vi.stubGlobal('fetch', upstream)
+  const exhausted = alchemyEnv(vi.fn().mockReturnValue({ allowed: false, reason: 'Alchemy shared CU budget reached.' }))
+  expect((await gateway.fetch(arbitrum(chain), exhausted)).status).toBe(429)
+  const broken = alchemyEnv(vi.fn().mockRejectedValue(new Error('secret-in-error')))
+  const response = await gateway.fetch(arbitrum(chain), broken)
+  expect(response.status).toBe(503)
+  expect(await response.text()).toContain('budget guard unavailable')
+  expect(upstream).not.toHaveBeenCalled()
+})
+
+it.each([[42161, 'arb'], [137, 'polygon'], [56, 'bnb']] as const)('pins Alchemy to chain %s and rejects edited credentials', (chainId, prefix) => {
+  const url = `https://${prefix}-mainnet.g.alchemy.com/v2/test-key`
+  expect(isAlchemyUrl(chainId, url)).toBe(true)
+  for (const edited of [url + '?extra=1', url + '#fragment', url.replace('https:', 'http:'), url.replace('/v2/', ':8443/v2/'), url.replace('-mainnet.', '-mainnet.evil.'), url.replace('https://', 'https://key@')])
+    expect(isAlchemyUrl(chainId, edited)).toBe(false)
+  expect(isAlchemyUrl(1, url)).toBe(false)
+})
+
+it('rejects mixed unpriced execution batches without contacting either provider', async () => {
+  const upstream = vi.fn()
+  vi.stubGlobal('fetch', upstream)
+  const mixed = [{ ...chain, method: 'hardhat_metadata' }, { ...chain, method: 'eth_call', params: [{ data: '0x1234' }] }]
+  expect(rpcCall(mixed[0]).method).toBe('hardhat_metadata')
+  expect((await gateway.fetch(arbitrum(mixed), alchemyEnv())).status).toBe(400)
+  expect(upstream).not.toHaveBeenCalled()
+})
 
 it('meters execution checks once on the configured Validation Cloud endpoint without disclosing them to another provider', async () => {
   const reserve = vi.fn().mockReturnValue({ allowed: true })
