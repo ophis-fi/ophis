@@ -28,6 +28,8 @@ write-url = "%DB_WRITE_URL"
 read-url = "%DB_READ_URL"
 
 [native-price-estimation]
+# One successful primary result prevents unnecessary fallback requests.
+results-required = 1
 # Primary estimator: on-chain Uniswap V3 TWAP. Reads a 180-second TWAP
 # from the deepest WETH/<token> pool across fee tiers [500, 3000, 100,
 # 10000] via `IUniswapV3Pool.observe`. Deterministic, no API key, no
@@ -48,8 +50,8 @@ read-url = "%DB_READ_URL"
 estimators = [
   [
     { type = "UniswapV3", factory = "0x1F98431c8aD98523631AE4a59f267346ea31F984", init-code-hash = "0xe34f199b19b2b4f47f68442619d555527d244f78a3297ea89325f843f87b8b54" },
-    { type = "CoinGecko" },
   ],
+  [{ type = "CoinGecko" }],
 ]
 
 [order-quoting]
@@ -101,6 +103,10 @@ amount-to-estimate-prices-with = "1000000000000000"  # 0.001 ETH
 # coingecko.rs constant AUTHORIZATION).
 api-key = "%COINGECKO_API_KEY"
 url = "https://api.coingecko.com/api/v3/simple/token_price"
+
+[price-estimation.coin-gecko.buffered]
+debouncing-time = "50ms"
+broadcast-channel-capacity = 1000
 
 # Orderbook-native rate limiter (api-dx decision 10). SHIPS DISABLED: the
 # limiter and the published limits table flip on together in a later window,

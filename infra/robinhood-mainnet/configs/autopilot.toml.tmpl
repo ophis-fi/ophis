@@ -143,7 +143,13 @@ amount-to-estimate-prices-with = "1000000000000000"
 api-key = "%COINGECKO_API_KEY"
 url = "https://api.coingecko.com/api/v3/simple/token_price"
 
+[price-estimation.coin-gecko.buffered]
+debouncing-time = "50ms"
+broadcast-channel-capacity = 1000
+
 [native-price-estimation]
+# One successful primary result prevents unnecessary fallback requests.
+results-required = 1
 # See the GATE in orderbook.toml.tmpl. CoinGecko first (authoritative), UniswapV3
 # (Robinhood-specific factory) fallback only; validate both before go-live.
 estimators = [

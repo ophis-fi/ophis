@@ -173,9 +173,13 @@ impl RateLimiter {
                 tracing::warn!(?self.name, ?new_back_off, "extended rate limiting");
             }
         } else {
-            self.strategy().response_ok(&self.name);
-            if times_rate_limited > 0 {
-                tracing::debug!(?self.name, "reset rate limit");
+            let mut strategy = self.strategy();
+            // An older in-flight success must not cancel a newer rate-limit response.
+            if strategy.times_rate_limited == times_rate_limited {
+                strategy.response_ok(&self.name);
+                if times_rate_limited > 0 {
+                    tracing::debug!(?self.name, "reset rate limit");
+                }
             }
         }
 
@@ -260,6 +264,37 @@ mod tests {
         }
         .get_current_back_off();
         assert_eq!(Duration::from_millis(16 * 8), back_off);
+    }
+
+    #[tokio::test]
+    async fn older_success_does_not_clear_a_newer_backoff() {
+        let limiter = Arc::new(RateLimiter::from_strategy(
+            Strategy::try_new(2.0, Duration::from_secs(60), Duration::from_secs(300)).unwrap(),
+            "concurrent_backoff".into(),
+        ));
+        let (started_tx, started_rx) = tokio::sync::oneshot::channel();
+        let (finish_tx, finish_rx) = tokio::sync::oneshot::channel();
+        let older = limiter.clone();
+        let pending = tokio::spawn(async move {
+            older
+                .execute(
+                    async {
+                        started_tx.send(()).unwrap();
+                        finish_rx.await.unwrap();
+                        200
+                    },
+                    |_| false,
+                )
+                .await
+        });
+        started_rx.await.unwrap();
+        assert_eq!(limiter.execute(async { 429 }, |_| true).await, Ok(429));
+        finish_tx.send(()).unwrap();
+        assert_eq!(pending.await.unwrap(), Ok(200));
+        assert_eq!(
+            limiter.execute(async { 200 }, |_| false).await,
+            Err(Error::RateLimited)
+        );
     }
 
     #[tokio::test]

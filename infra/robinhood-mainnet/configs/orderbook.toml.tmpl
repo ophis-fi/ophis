@@ -36,6 +36,8 @@ write-url = "%DB_WRITE_URL"
 read-url = "%DB_READ_URL"
 
 [native-price-estimation]
+# One successful primary result prevents unnecessary fallback requests.
+results-required = 1
 # *** GATE (native pricing on a 1-day-old chain) ***
 # Two open questions the operator MUST resolve before go-live:
 #   1. Does CoinGecko list Robinhood Chain (4663) in /api/v3/asset_platforms yet?
@@ -79,6 +81,10 @@ amount-to-estimate-prices-with = "1000000000000000"  # 0.001 ETH
 [price-estimation.coin-gecko]
 api-key = "%COINGECKO_API_KEY"
 url = "https://api.coingecko.com/api/v3/simple/token_price"
+
+[price-estimation.coin-gecko.buffered]
+debouncing-time = "50ms"
+broadcast-channel-capacity = 1000
 
 # Orderbook-native rate limiter (api-dx decision 10). SHIPS DISABLED: the
 # limiter and the published limits table flip on together in a later window,

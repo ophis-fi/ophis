@@ -163,7 +163,10 @@ pub struct UniswapV3Config {
     /// range — TOML doesn't natively support u128) or a decimal string for
     /// thresholds that exceed u64. Stored internally as u128 to match the
     /// native return type of `IUniswapV3Pool.liquidity()`.
-    #[serde(default = "default_min_liquidity", deserialize_with = "deserialize_u128")]
+    #[serde(
+        default = "default_min_liquidity",
+        deserialize_with = "deserialize_u128"
+    )]
     pub min_liquidity: u128,
 
     /// TWAP window in seconds. Default `180` (3 minutes) — matches CoW
@@ -284,16 +287,82 @@ mod tests {
             estimators = [
               [
                 { type = "UniswapV3", factory = "0x1F98431c8aD98523631AE4a59f267346ea31F984", init-code-hash = "0xe34f199b19b2b4f47f68442619d555527d244f78a3297ea89325f843f87b8b54" },
-                { type = "CoinGecko" },
               ],
+              [{ type = "CoinGecko" }],
             ]
         "#;
         let w: Wrapper = toml::from_str(toml).unwrap();
         let stages = w.estimators.as_slice();
-        assert_eq!(stages.len(), 1);
-        assert_eq!(stages[0].len(), 2);
+        assert_eq!(stages.len(), 2);
+        assert_eq!(stages[0].len(), 1);
+        assert_eq!(stages[1].len(), 1);
         assert!(matches!(stages[0][0], NativePriceEstimator::UniswapV3(_)));
-        assert!(matches!(stages[0][1], NativePriceEstimator::CoinGecko));
+        assert!(matches!(stages[1][0], NativePriceEstimator::CoinGecko));
+    }
+
+    #[test]
+    fn production_sources_use_single_result_stages_and_buffer_coin_gecko() {
+        for (chain, source) in [
+            (
+                "optimism/orderbook",
+                include_str!("../../../../../infra/optimism-mainnet/configs/orderbook.toml"),
+            ),
+            (
+                "optimism/autopilot",
+                include_str!("../../../../../infra/optimism-mainnet/configs/autopilot.toml"),
+            ),
+            (
+                "unichain/orderbook",
+                include_str!("../../../../../infra/unichain-mainnet/configs/orderbook.toml.tmpl"),
+            ),
+            (
+                "unichain/autopilot",
+                include_str!("../../../../../infra/unichain-mainnet/configs/autopilot.toml.tmpl"),
+            ),
+            (
+                "robinhood/orderbook",
+                include_str!("../../../../../infra/robinhood-mainnet/configs/orderbook.toml.tmpl"),
+            ),
+            (
+                "robinhood/autopilot",
+                include_str!("../../../../../infra/robinhood-mainnet/configs/autopilot.toml.tmpl"),
+            ),
+        ] {
+            let config: toml::Value = toml::from_str(source).unwrap();
+            let native = &config["native-price-estimation"];
+            let (estimators, shared) = if chain.ends_with("/autopilot") {
+                let parsed: crate::autopilot::native_price::NativePriceConfig =
+                    native.clone().try_into().unwrap();
+                (parsed.estimators, parsed.shared)
+            } else {
+                let parsed: crate::orderbook::native_price::NativePriceConfig =
+                    native.clone().try_into().unwrap();
+                (parsed.estimators, parsed.shared)
+            };
+            assert_eq!(shared.results_required.get(), 1, "{chain}");
+            let stages = estimators.as_slice();
+            assert_eq!(stages.len(), 2);
+            assert!(stages.iter().all(|stage| stage.len() == 1));
+            let coin_gecko_first = chain.starts_with("robinhood/");
+            assert_eq!(
+                matches!(stages[0][0], NativePriceEstimator::CoinGecko),
+                coin_gecko_first
+            );
+            assert_eq!(
+                matches!(stages[1][0], NativePriceEstimator::CoinGecko),
+                !coin_gecko_first
+            );
+            let buffered: crate::price_estimation::CoinGeckoBufferedConfig =
+                config["price-estimation"]["coin-gecko"]["buffered"]
+                    .clone()
+                    .try_into()
+                    .unwrap();
+            assert_eq!(
+                buffered.debouncing_time,
+                std::time::Duration::from_millis(50)
+            );
+            assert_eq!(buffered.broadcast_channel_capacity, 1000);
+        }
     }
 
     #[test]

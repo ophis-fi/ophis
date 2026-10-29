@@ -77,8 +77,7 @@ mod tests {
     use {
         super::*,
         crate::{
-            HEALTHY_PRICE_ESTIMATION_TIME,
-            competition::PriceRanking,
+            HEALTHY_PRICE_ESTIMATION_TIME, competition::PriceRanking,
             native::MockNativePriceEstimating,
         },
         std::pin::Pin,
@@ -176,6 +175,43 @@ mod tests {
             )
             .await;
             assert!(best.is_err());
+        }
+    }
+
+    #[tokio::test]
+    async fn one_primary_result_skips_fallback_and_failures_allow_it() {
+        for result in [
+            Ok(1.0),
+            Err(PriceEstimationError::NoLiquidity),
+            Err(PriceEstimationError::RateLimited),
+            Ok(f64::NAN),
+        ] {
+            let needs_fallback = !matches!(result, Ok(value) if value.is_finite() && value > 0.0);
+            let mut primary = MockNativePriceEstimating::new();
+            primary
+                .expect_estimate_native_price()
+                .once()
+                .return_once(move |_, _| async move { result }.boxed());
+            let mut fallback = MockNativePriceEstimating::new();
+            fallback
+                .expect_estimate_native_price()
+                .times(usize::from(needs_fallback))
+                .returning(|_, _| async { Ok(2.0) }.boxed());
+            let estimator: CompetitionEstimator<Arc<dyn NativePriceEstimating>> =
+                CompetitionEstimator::<Arc<dyn NativePriceEstimating>>::new(
+                    vec![
+                        vec![("primary".into(), Arc::new(primary))],
+                        vec![("fallback".into(), Arc::new(fallback))],
+                    ],
+                    PriceRanking::MaxOutAmount,
+                )
+                .with_early_return(1.try_into().unwrap());
+            assert_eq!(
+                estimator
+                    .estimate_native_price(Default::default(), HEALTHY_PRICE_ESTIMATION_TIME)
+                    .await,
+                Ok(if needs_fallback { 2.0 } else { 1.0 })
+            );
         }
     }
 
