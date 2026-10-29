@@ -75,7 +75,7 @@
       "sha.js": "^2.4.12",
       "jspdf": "^4.2.1",
       "swiper": "^12.1.2",
-      "systeminformation": "^5.31.7",
+      "systeminformation": "^5.33.16",
       "websocket-driver": ">=0.7.5",
       "react-router": "^7.15.1",
       "undici": "^6.29.1",
