@@ -173,6 +173,10 @@ amount-to-estimate-prices-with = "1000000000000000"
 api-key = "%COINGECKO_API_KEY"
 url = "https://api.coingecko.com/api/v3/simple/token_price"
 
+[price-estimation.coin-gecko.buffered]
+debouncing-time = "50ms"
+broadcast-channel-capacity = 1000
+
 [native-price-estimation]
 # Primary: on-chain Uniswap V3 TWAP. The init-code-hash IS a canonical
 # cross-chain constant, but the factory address is NOT: Unichain uses its own

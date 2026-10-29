@@ -80,6 +80,10 @@ amount-to-estimate-prices-with = "1000000000000000"  # 0.001 ETH
 api-key = "%COINGECKO_API_KEY"
 url = "https://api.coingecko.com/api/v3/simple/token_price"
 
+[price-estimation.coin-gecko.buffered]
+debouncing-time = "50ms"
+broadcast-channel-capacity = 1000
+
 # Orderbook-native rate limiter (api-dx decision 10). SHIPS DISABLED: the
 # limiter and the published limits table flip on together in a later window,
 # with one consistent set of numbers derived from Cloudflare traffic data.

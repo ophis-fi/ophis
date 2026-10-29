@@ -5,13 +5,14 @@ use {
     anyhow::{Context, Result, anyhow},
     chain::Chain,
     futures::{FutureExt, future::BoxFuture},
+    rate_limit::RateLimiter,
     reqwest::{Client, StatusCode},
     rust_decimal::{Decimal, MathematicalOps, prelude::ToPrimitive},
     serde::Deserialize,
     std::{
         collections::{HashMap, HashSet},
         sync::Arc,
-        time::Duration,
+        time::{Duration, Instant},
     },
     token_info::{TokenInfo, TokenInfoFetching},
     tracing::instrument,
@@ -35,6 +36,7 @@ pub struct CoinGecko {
     chain: String,
     denominator: Denominator,
     infos: Arc<dyn TokenInfoFetching>,
+    rate_limiter: RateLimiter,
 }
 
 /// The token in which prices are denominated in.
@@ -47,6 +49,20 @@ struct Denominator {
 }
 
 impl CoinGecko {
+    // Bound provider-directed pauses so an invalid header cannot disable pricing indefinitely.
+    const MAX_RETRY_AFTER: Duration = Duration::from_secs(24 * 60 * 60);
+
+    fn request_limiter() -> Result<RateLimiter> {
+        Ok(RateLimiter::from_strategy(
+            configs::rate_limit::Strategy::try_new(
+                2.0,
+                Duration::from_secs(60),
+                Duration::from_secs(300),
+            )?,
+            "coingecko_http".into(),
+        ))
+    }
+
     /// Authorization header for CoinGecko
     // Ophis divergence (2026-05-14): use the Demo-tier header. CoW upstream
     // uses `x-cg-pro-api-key` because they have Pro tier. Our deployment uses
@@ -116,6 +132,7 @@ impl CoinGecko {
             chain,
             denominator,
             infos: token_infos,
+            rate_limiter: Self::request_limiter()?,
         })
     }
 
@@ -139,11 +156,45 @@ impl CoinGecko {
         if let Some(ref api_key) = self.api_key {
             builder = builder.header(Self::AUTHORIZATION, api_key)
         }
-        observe::coingecko_request(&url);
-        let response = builder
-            .send()
+        let response = self
+            .rate_limiter
+            .execute(
+                async {
+                    observe::coingecko_request(&url);
+                    builder.send().await
+                },
+                rate_limit::back_off::on_http_429,
+            )
             .await
+            .map_err(|_| PriceEstimationError::RateLimited)?
             .context("failed to sent CoinGecko price request")?;
+        if response.status() == StatusCode::TOO_MANY_REQUESTS {
+            if let Some(deadline) = response
+                .headers()
+                .get(reqwest::header::RETRY_AFTER)
+                .and_then(|value| value.to_str().ok())
+                .and_then(|value| {
+                    value
+                        .parse::<u64>()
+                        .ok()
+                        .map(Duration::from_secs)
+                        .or_else(|| {
+                            chrono::DateTime::parse_from_rfc2822(value)
+                                .ok()?
+                                .signed_duration_since(chrono::Utc::now())
+                                .to_std()
+                                .ok()
+                        })
+                })
+                .and_then(|delay| Instant::now().checked_add(delay.min(Self::MAX_RETRY_AFTER)))
+            {
+                let mut strategy = poison_recovery::lock_or_recover(
+                    &self.rate_limiter.strategy,
+                    "coingecko::rate_limiter",
+                );
+                strategy.drop_requests_until = strategy.drop_requests_until.max(deadline);
+            }
+        }
         if !response.status().is_success() {
             return match response.status() {
                 StatusCode::TOO_MANY_REQUESTS => Err(PriceEstimationError::RateLimited),
@@ -385,6 +436,7 @@ mod tests {
                 chain,
                 denominator,
                 infos: token_infos,
+                rate_limiter: Self::request_limiter()?,
             })
         }
     }
@@ -393,8 +445,7 @@ mod tests {
     // difficulty to hit the rate limit manually
     const BASE_API_URL: &str = "https://api.coingecko.com/api/v3/simple/token_price";
 
-    // We also need to test the PRO API, because batch requests aren't available in
-    // the free version
+    // Also cover the separately authenticated Pro endpoint when explicitly enabled.
     const BASE_API_PRO_URL: &str = "https://pro-api.coingecko.com/api/v3/simple/token_price";
 
     fn default_token_info_fetcher() -> Arc<dyn TokenInfoFetching> {
@@ -416,6 +467,93 @@ mod tests {
         });
 
         Arc::new(mock)
+    }
+
+    #[tokio::test]
+    async fn rate_limits_all_tokens_and_honors_retry_after() {
+        use tokio::{
+            io::{AsyncReadExt, AsyncWriteExt},
+            net::TcpListener,
+        };
+
+        for retry_after in [
+            "120".to_string(),
+            (chrono::Utc::now() + chrono::Duration::seconds(120))
+                .format("%a, %d %b %Y %H:%M:%S GMT")
+                .to_string(),
+            "invalid".into(),
+            "999999999".into(),
+            u64::MAX.to_string(),
+        ] {
+            let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+            let url = Url::parse(&format!("http://{}/", listener.local_addr().unwrap())).unwrap();
+            let header = retry_after.clone();
+            let server = tokio::spawn(async move {
+                let (mut socket, _) = listener.accept().await.unwrap();
+                let mut request = Vec::new();
+                let mut buffer = [0; 1024];
+                while !request.windows(4).any(|bytes| bytes == b"\r\n\r\n") {
+                    let read = socket.read(&mut buffer).await.unwrap();
+                    assert!(read > 0 && request.len() + read <= 8192);
+                    request.extend_from_slice(&buffer[..read]);
+                }
+                socket.write_all(format!("HTTP/1.1 429 Too Many Requests\r\nRetry-After: {header}\r\nContent-Length: 0\r\nConnection: close\r\n\r\n").as_bytes()).await.unwrap();
+            });
+            let instance = CoinGecko::new_for_test(
+                Client::builder().no_proxy().build().unwrap(),
+                url,
+                None,
+                &Chain::Mainnet,
+                default_token_info_fetcher(),
+            )
+            .unwrap();
+            let result = instance
+                .bulk_fetch_denominated_in_eth(
+                    &HashSet::from([Address::repeat_byte(1)]),
+                    Duration::from_secs(2),
+                )
+                .await;
+            assert!(matches!(result, Err(PriceEstimationError::RateLimited)));
+            server.await.unwrap();
+            let minimum = if retry_after.parse::<u64>().is_ok_and(|value| value > 86400) {
+                86390
+            } else if retry_after == "120" || retry_after.contains(',') {
+                110
+            } else {
+                50
+            };
+            assert!(
+                instance
+                    .rate_limiter
+                    .strategy
+                    .lock()
+                    .unwrap()
+                    .drop_requests_until
+                    .saturating_duration_since(Instant::now())
+                    >= Duration::from_secs(minimum)
+            );
+            assert!(
+                instance
+                    .rate_limiter
+                    .strategy
+                    .lock()
+                    .unwrap()
+                    .drop_requests_until
+                    .saturating_duration_since(Instant::now())
+                    <= CoinGecko::MAX_RETRY_AFTER
+            );
+            for token in [Address::repeat_byte(1), Address::repeat_byte(2)] {
+                assert!(matches!(
+                    instance
+                        .bulk_fetch_denominated_in_eth(
+                            &HashSet::from([token]),
+                            Duration::from_secs(2)
+                        )
+                        .await,
+                    Err(PriceEstimationError::RateLimited)
+                ));
+            }
+        }
     }
 
     #[tokio::test]

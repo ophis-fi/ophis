@@ -35,9 +35,8 @@ trait StrategyExt {
     /// Calculates back off based on how often we got rate limited in a row.
     fn get_current_back_off(&self) -> Duration;
 
-    /// Returns updated back off if no other thread increased it in the mean
-    /// time.
-    fn response_rate_limited(&mut self, previous_rate_limits: u64, name: &str) -> Option<Duration>;
+    /// Starts back off unless another response already started an active pause.
+    fn response_rate_limited(&mut self, name: &str) -> Option<Duration>;
 
     /// Returns number of times we got rate limited in a row if we are currently
     /// allowing requests.
@@ -67,21 +66,20 @@ impl StrategyExt for Strategy {
         )
     }
 
-    /// Returns updated back off if no other thread increased it in the mean
-    /// time.
-    fn response_rate_limited(&mut self, previous_rate_limits: u64, name: &str) -> Option<Duration> {
+    fn response_rate_limited(&mut self, name: &str) -> Option<Duration> {
         metrics()
             .rate_limited_requests
             .with_label_values(&[name])
             .inc();
-        if self.times_rate_limited != previous_rate_limits {
-            // Don't increase back off if somebody else already updated it in the meantime.
+        let now = Instant::now();
+        if self.drop_requests_until > now {
+            // A stale response must not shorten another response's active pause.
             return None;
         }
 
         let new_back_off = self.get_current_back_off();
         self.times_rate_limited += 1;
-        self.drop_requests_until = Instant::now() + new_back_off;
+        self.drop_requests_until = now + new_back_off;
         Some(new_back_off)
     }
 
@@ -166,16 +164,18 @@ impl RateLimiter {
         let result = task.await;
 
         if requires_back_off(&result) {
-            let new_back_off = self
-                .strategy()
-                .response_rate_limited(times_rate_limited, &self.name);
+            let new_back_off = self.strategy().response_rate_limited(&self.name);
             if let Some(new_back_off) = new_back_off {
                 tracing::warn!(?self.name, ?new_back_off, "extended rate limiting");
             }
         } else {
-            self.strategy().response_ok(&self.name);
-            if times_rate_limited > 0 {
-                tracing::debug!(?self.name, "reset rate limit");
+            let mut strategy = self.strategy();
+            // Even after the counter resets, a stale success must preserve an active pause.
+            if strategy.drop_requests_until <= Instant::now() {
+                strategy.response_ok(&self.name);
+                if times_rate_limited > 0 {
+                    tracing::debug!(?self.name, "reset rate limit");
+                }
             }
         }
 
@@ -260,6 +260,51 @@ mod tests {
         }
         .get_current_back_off();
         assert_eq!(Duration::from_millis(16 * 8), back_off);
+    }
+
+    #[tokio::test]
+    async fn stale_responses_preserve_a_newer_pause_after_counter_reset() {
+        for initial_count in [0, 1] {
+            for older_status in [200, 429] {
+                let mut strategy =
+                    Strategy::try_new(2.0, Duration::from_secs(60), Duration::from_secs(300))
+                        .unwrap();
+                strategy.times_rate_limited = initial_count;
+                let limiter = Arc::new(RateLimiter::from_strategy(
+                    strategy,
+                    "concurrent_backoff".into(),
+                ));
+                let (started_tx, started_rx) = tokio::sync::oneshot::channel();
+                let (finish_tx, finish_rx) = tokio::sync::oneshot::channel();
+                let older = limiter.clone();
+                let pending = tokio::spawn(async move {
+                    older
+                        .execute(
+                            async {
+                                started_tx.send(()).unwrap();
+                                finish_rx.await.unwrap();
+                                older_status
+                            },
+                            |status| *status == 429,
+                        )
+                        .await
+                });
+                started_rx.await.unwrap();
+                assert_eq!(limiter.execute(async { 200 }, |_| false).await, Ok(200));
+                assert_eq!(limiter.strategy().times_rate_limited, 0);
+                assert_eq!(limiter.execute(async { 429 }, |_| true).await, Ok(429));
+                assert_eq!(limiter.strategy().times_rate_limited, 1);
+                let extended_deadline = Instant::now() + Duration::from_secs(3600);
+                limiter.strategy().drop_requests_until = extended_deadline;
+                finish_tx.send(()).unwrap();
+                assert_eq!(pending.await.unwrap(), Ok(older_status));
+                assert_eq!(limiter.strategy().drop_requests_until, extended_deadline);
+                assert_eq!(
+                    limiter.execute(async { 200 }, |_| false).await,
+                    Err(Error::RateLimited)
+                );
+            }
+        }
     }
 
     #[tokio::test]
