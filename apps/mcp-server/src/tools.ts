@@ -85,9 +85,7 @@ function fail(e: unknown) {
 }
 
 /**
- * Registers the 13 Ophis MCP tools on `server`. Behaviour-identical to the
- * original OphisMCP.init(); the only difference is config is passed in rather
- * than read from a Worker Env (so the same tools run under stdio too).
+ * Registers the same 13 Ophis MCP tools for the HTTP and stdio transports.
  */
 export function registerOphisTools(server: McpServer, config?: OphisToolConfig): void {
   server.registerTool(

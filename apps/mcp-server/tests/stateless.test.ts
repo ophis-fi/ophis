@@ -10,7 +10,7 @@ const directory = mkdtempSync(join(tmpdir(), 'ophis-mcp-test-'))
 
 beforeAll(async () => {
   const config = join(directory, 'wrangler.json')
-  // No DO or remote bindings: reverting to McpAgent must fail this check.
+  // No storage or remote bindings: the public transport must remain stateless.
   writeFileSync(config, JSON.stringify({
     name: 'ophis-mcp-test',
     compatibility_date: '2025-05-01',
