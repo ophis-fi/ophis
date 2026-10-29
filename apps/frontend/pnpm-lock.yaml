@@ -108,7 +108,7 @@ overrides:
   '@humanfs/node': ^0.16.8
   ajv@>=8.0.0 <8.18.0: ^8.18.0
   fflate@>=0.8.0 <0.8.3: ^0.8.3
-  decode-uri-component: 0.5.0
+  decode-uri-component: ^0.5.1
   socks: ^2.8.10
   file-type@>=19.0.0 <21.3.2: ^21.3.2
   uuid@>=8.0.0 <11.1.1: ^11.1.1
@@ -141,9 +141,9 @@ patchedDependencies:
   braces@3.0.3:
     hash: bfdb0c171556074c2785f98d0a7355209223df8e29dbc2ff489240c16a47da97
     path: ../../patches/braces@3.0.3.patch
-  decode-uri-component@0.5.0:
-    hash: ba8d99daf7d94c77ac4edc04a075e8192141718a2c3cc9483d1c0f0714679d3c
-    path: ../../patches/decode-uri-component@0.5.0.patch
+  decode-uri-component@0.5.1:
+    hash: 3a6951dd25b67bc6df29643529638ff0ba234a9158a565ade6f54a6491f46506
+    path: ../../patches/decode-uri-component@0.5.1.patch
   elliptic@6.6.1:
     hash: 5ee290c3bdaf9354587016fbf02863812413e6dc0f9ae73318a2da6f10ca7cef
     path: ../../patches/elliptic@6.6.1.patch
@@ -10424,8 +10424,8 @@ packages:
   decode-named-character-reference@1.0.2:
     resolution: {integrity: sha512-O8x12RzrUF8xyVcY0KJowWsmaJxQbmy0/EtnNtHRpsOcT7dFk5W598coHqBVpmWo1oQQfsCqfCmkZN5DJrZVdg==}
 
-  decode-uri-component@0.5.0:
-    resolution: {integrity: sha512-1BiQVoK8C9gUbQU6NzAtO/tkz2qOFpEObMWpcFvhx4fYnj4Oc5yzaJN/LD36ihkVUdXyh5ZekzX+yM+ty/SrPg==}
+  decode-uri-component@0.5.1:
+    resolution: {integrity: sha512-vWHQkXgg2cE3BB4rR0c+PYw9BCQzLoNIRMI7AunIkZst74tw/vpPp7VLoYtsR/cy1f55g3XDWUslfeCZjiZJyA==}
     engines: {node: '>=14.16'}
 
   decompress-response@3.3.0:
@@ -30519,7 +30519,7 @@ snapshots:
     dependencies:
       character-entities: 2.0.2
 
-  decode-uri-component@0.5.0(patch_hash=ba8d99daf7d94c77ac4edc04a075e8192141718a2c3cc9483d1c0f0714679d3c): {}
+  decode-uri-component@0.5.1(patch_hash=3a6951dd25b67bc6df29643529638ff0ba234a9158a565ade6f54a6491f46506): {}
 
   decompress-response@3.3.0:
     dependencies:
@@ -36394,7 +36394,7 @@ snapshots:
 
   query-string@5.1.1:
     dependencies:
-      decode-uri-component: 0.5.0(patch_hash=ba8d99daf7d94c77ac4edc04a075e8192141718a2c3cc9483d1c0f0714679d3c)
+      decode-uri-component: 0.5.1(patch_hash=3a6951dd25b67bc6df29643529638ff0ba234a9158a565ade6f54a6491f46506)
       object-assign: 4.1.1
       strict-uri-encode: 1.1.0
 
