@@ -84,7 +84,7 @@
       "nanoid@>=4.0.0 <5.1.16": "^5.1.16",
       "qs": "^6.16.0",
       "@ai-sdk/provider-utils@>=4.0.0 <4.0.33": "^4.0.33",
-      "decode-uri-component": "0.5.0",
+      "decode-uri-component": "^0.5.1",
       "brace-expansion@<2.0.0": "^1.1.21",
       "brace-expansion@>=2.0.0 <3.0.0": "^2.1.7",
       "proxy-addr": "2.0.8",
@@ -94,7 +94,7 @@
       "follow-redirects": "^1.16.1"
     },
     "patchedDependencies": {
-      "decode-uri-component@0.5.0": "patches/decode-uri-component@0.5.0.patch",
+      "decode-uri-component@0.5.1": "patches/decode-uri-component@0.5.1.patch",
       "elliptic@6.6.1": "patches/elliptic@6.6.1.patch",
       "bigint-buffer@1.1.5": "patches/bigint-buffer@1.1.5.patch",
       "@cowprotocol/sdk-config@2.0.0": "patches/@cowprotocol__sdk-config@2.0.0.patch",
