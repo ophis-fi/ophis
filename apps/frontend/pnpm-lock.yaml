@@ -46,7 +46,7 @@ overrides:
   sha.js: ^2.4.12
   jspdf: ^4.2.1
   swiper: ^12.1.2
-  systeminformation: ^5.31.7
+  systeminformation: ^5.33.16
   websocket-driver: '>=0.7.5'
   react-router: ^7.15.1
   undici: ^6.29.1
@@ -16621,9 +16621,9 @@ packages:
     resolution: {integrity: sha512-MeQTA1r0litLUf0Rp/iisCaL8761lKAZHaimlbGK4j0HysC4PLfqygQj9srcs0m2RdtDYnF8UuYyKpbjHYp7Jw==}
     engines: {node: ^14.18.0 || >=16.0.0}
 
-  systeminformation@5.31.15:
-    resolution: {integrity: sha512-7mqCtD28TK5dVdLAQONVa/Do/NBgMH2dxqf49nh6DIKoEWuDg6tkgGBP+dN22VEJVPZa/QqiHomhWNRn4WUNTQ==}
-    engines: {node: '>=8.0.0'}
+  systeminformation@5.33.16:
+    resolution: {integrity: sha512-R+Lh69IJXfJj6bfyH1In5cIR9FTr4hBS39YvlZHZjsK1p9cuELPq7hplZZIb56ZESMMb+DzdKqqE6Iomi01Mvg==}
+    engines: {node: '>=10.0.0'}
     os: [darwin, linux, win32, freebsd, openbsd, netbsd, sunos, android]
     hasBin: true
 
@@ -30385,7 +30385,7 @@ snapshots:
       proxy-from-env: 1.0.0
       request-progress: 3.0.0
       supports-color: 8.1.1
-      systeminformation: 5.31.15
+      systeminformation: 5.33.16
       tmp: 0.2.7
       tree-kill: 1.2.2
       untildify: 4.0.0
@@ -38317,7 +38317,7 @@ snapshots:
     dependencies:
       '@pkgr/core': 0.2.9
 
-  systeminformation@5.31.15: {}
+  systeminformation@5.33.16: {}
 
   tabbable@5.3.3: {}
 

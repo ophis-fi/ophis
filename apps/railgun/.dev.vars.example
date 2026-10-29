@@ -1,14 +1,19 @@
 # Local gateway smoke test only. Never use this upstream in production.
 RAILGUN_RPC_URL=http://127.0.0.1:8549
 RAILGUN_RPC_ENABLED=true
-# ZAN handles ordinary-read-only batches first. All credentials are server-side only.
+# Legacy transport only; the Alchemy configuration never contacts ZAN.
 RAILGUN_ZAN_API_KEY=
-# Validation Cloud URL secrets: https://mainnet.{arbitrum,polygon,bsc}.validationcloud.io/v1/<key>
-# All three share one persistent 40M CU/calendar-month budget, not 40M per endpoint.
-# Canonical Validation Cloud URLs authenticate through their key path; no bearer is needed.
+# Alchemy Free URLs: https://{arb,polygon,bnb}-mainnet.g.alchemy.com/v2/<key>
+# Shared 24M CU/rolling 32-day allowance; all credentials remain server-side.
 RAILGUN_ARBITRUM_RPC_URL=
 RAILGUN_ARBITRUM_RPC_TOKEN=
 RAILGUN_POLYGON_RPC_URL=
 RAILGUN_POLYGON_RPC_TOKEN=
 RAILGUN_BNB_RPC_URL=
 RAILGUN_BNB_RPC_TOKEN=
+# Alchemy Free cannot trace or scan 500 blocks. Use existing free Validation Cloud endpoints.
+# https://mainnet.{arbitrum,polygon,bsc}.validationcloud.io/v1/<key>
+# All three share 40M CU/calendar month, with no subscription upgrade.
+RAILGUN_ARBITRUM_VALIDATION_CLOUD_URL=
+RAILGUN_POLYGON_VALIDATION_CLOUD_URL=
+RAILGUN_BNB_VALIDATION_CLOUD_URL=

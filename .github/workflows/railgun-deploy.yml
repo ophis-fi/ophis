@@ -45,13 +45,15 @@ jobs:
           RAILGUN_ARBITRUM_RPC_URL: ${{ secrets.RAILGUN_ARBITRUM_RPC_URL }}
           RAILGUN_POLYGON_RPC_URL: ${{ secrets.RAILGUN_POLYGON_RPC_URL }}
           RAILGUN_BNB_RPC_URL: ${{ secrets.RAILGUN_BNB_RPC_URL }}
+          RAILGUN_ARBITRUM_VALIDATION_CLOUD_URL: ${{ secrets.RAILGUN_ARBITRUM_VALIDATION_CLOUD_URL }}
+          RAILGUN_POLYGON_VALIDATION_CLOUD_URL: ${{ secrets.RAILGUN_POLYGON_VALIDATION_CLOUD_URL }}
+          RAILGUN_BNB_VALIDATION_CLOUD_URL: ${{ secrets.RAILGUN_BNB_VALIDATION_CLOUD_URL }}
         run: |
           test -n "$RAILGUN_RPC_TOKEN"
-          test -n "$RAILGUN_ZAN_API_KEY"
           test -n "$RAILGUN_ARBITRUM_RPC_URL"
           test -n "$RAILGUN_POLYGON_RPC_URL"
           test -n "$RAILGUN_BNB_RPC_URL"
-          node --input-type=module -e 'for (const name of ["RAILGUN_ARBITRUM_RPC_URL", "RAILGUN_POLYGON_RPC_URL", "RAILGUN_BNB_RPC_URL"]) console.log("::add-mask::" + new URL(process.env[name]).pathname.split("/").at(-1))'
+          node --input-type=module -e 'for (const name of ["RAILGUN_ARBITRUM_RPC_URL", "RAILGUN_POLYGON_RPC_URL", "RAILGUN_BNB_RPC_URL", "RAILGUN_ARBITRUM_VALIDATION_CLOUD_URL", "RAILGUN_POLYGON_VALIDATION_CLOUD_URL", "RAILGUN_BNB_VALIDATION_CLOUD_URL"]) if (process.env[name]) console.log("::add-mask::" + new URL(process.env[name]).pathname.split("/").at(-1))'
           node tests/rpc-readiness.mjs
       - name: Deploy restricted same-origin RPC gateway
         env:
@@ -62,9 +64,12 @@ jobs:
           RAILGUN_ARBITRUM_RPC_URL: ${{ secrets.RAILGUN_ARBITRUM_RPC_URL }}
           RAILGUN_POLYGON_RPC_URL: ${{ secrets.RAILGUN_POLYGON_RPC_URL }}
           RAILGUN_BNB_RPC_URL: ${{ secrets.RAILGUN_BNB_RPC_URL }}
+          RAILGUN_ARBITRUM_VALIDATION_CLOUD_URL: ${{ secrets.RAILGUN_ARBITRUM_VALIDATION_CLOUD_URL }}
+          RAILGUN_POLYGON_VALIDATION_CLOUD_URL: ${{ secrets.RAILGUN_POLYGON_VALIDATION_CLOUD_URL }}
+          RAILGUN_BNB_VALIDATION_CLOUD_URL: ${{ secrets.RAILGUN_BNB_VALIDATION_CLOUD_URL }}
         run: |
           pnpm exec wrangler deploy --config wrangler.rpc.jsonc --var RAILGUN_RPC_ENABLED:true
-          node --input-type=module -e 'process.stdout.write(JSON.stringify(Object.fromEntries(["RAILGUN_RPC_TOKEN", "RAILGUN_ZAN_API_KEY", "RAILGUN_ARBITRUM_RPC_URL", "RAILGUN_POLYGON_RPC_URL", "RAILGUN_BNB_RPC_URL"].map(key => [key, process.env[key]]))))' | pnpm exec wrangler secret bulk --config wrangler.rpc.jsonc
+          node --input-type=module -e 'process.stdout.write(JSON.stringify(Object.fromEntries(["RAILGUN_RPC_TOKEN", "RAILGUN_ZAN_API_KEY", "RAILGUN_ARBITRUM_RPC_URL", "RAILGUN_POLYGON_RPC_URL", "RAILGUN_BNB_RPC_URL", "RAILGUN_ARBITRUM_VALIDATION_CLOUD_URL", "RAILGUN_POLYGON_VALIDATION_CLOUD_URL", "RAILGUN_BNB_VALIDATION_CLOUD_URL"].map(key => [key, process.env[key]]).filter(([,value]) => value))))' | pnpm exec wrangler secret bulk --config wrangler.rpc.jsonc
       - name: Verify all four deployed networks
         env:
           RAILGUN_READINESS_GATEWAY: https://swap.ophis.fi
