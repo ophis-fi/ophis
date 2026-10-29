@@ -69,8 +69,12 @@ jobs:
           RAILGUN_BNB_VALIDATION_CLOUD_URL: ${{ secrets.RAILGUN_BNB_VALIDATION_CLOUD_URL }}
         run: |
           pnpm exec wrangler deploy --config wrangler.rpc.jsonc --var RAILGUN_RPC_ENABLED:true
+          RAILGUN_READINESS_GATEWAY=https://swap.ophis.fi RAILGUN_READINESS_BUDGET_ONLY=1 node tests/rpc-readiness.mjs
           node --input-type=module -e 'process.stdout.write(JSON.stringify(Object.fromEntries(["RAILGUN_RPC_TOKEN", "RAILGUN_ZAN_API_KEY", "RAILGUN_ARBITRUM_RPC_URL", "RAILGUN_POLYGON_RPC_URL", "RAILGUN_BNB_RPC_URL", "RAILGUN_ARBITRUM_VALIDATION_CLOUD_URL", "RAILGUN_POLYGON_VALIDATION_CLOUD_URL", "RAILGUN_BNB_VALIDATION_CLOUD_URL"].map(key => [key, process.env[key]]).filter(([,value]) => value))))' | pnpm exec wrangler secret bulk --config wrangler.rpc.jsonc
       - name: Verify all four deployed networks
         env:
           RAILGUN_READINESS_GATEWAY: https://swap.ophis.fi
-        run: node tests/rpc-readiness.mjs
+          RAILGUN_RPC_TOKEN: ${{ secrets.RAILGUN_RPC_TOKEN }}
+        run: |
+          RAILGUN_READINESS_BUDGET_ONLY=1 node tests/rpc-readiness.mjs
+          node tests/rpc-readiness.mjs

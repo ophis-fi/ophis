@@ -1,6 +1,7 @@
 import { afterEach, expect, it, vi } from 'vitest'
 import gateway, { rpcCall } from './index'
 import { FetchRequest, JsonRpcProvider } from 'ethers'
+import { timingSafeEqual } from 'node:crypto'
 import { NETWORK_CONFIG, NetworkName } from '@railgun-community/shared-models'
 import { RPC_BATCH_SIZE, RAILGUN_PROXY, RAILGUN_PROXIES, isAlchemyUrl, isValidationCloudUrl, zanRpcUrl } from '../rpc-policy'
 
@@ -50,6 +51,84 @@ const alchemyURL = 'https://arb-mainnet.g.alchemy.com/v2/test-key'
 function alchemyEnv(reserve = vi.fn().mockReturnValue({ allowed: true })) {
   return { ...vcEnv(reserve), RAILGUN_ARBITRUM_RPC_URL: alchemyURL, RAILGUN_ARBITRUM_VALIDATION_CLOUD_URL: vcURL }
 }
+
+function diagnosticCrypto() {
+  const digest = crypto.subtle.digest.bind(crypto.subtle)
+  vi.stubGlobal('crypto', { subtle: { digest,
+    timingSafeEqual: (a: ArrayBuffer, b: ArrayBuffer) => timingSafeEqual(new Uint8Array(a), new Uint8Array(b)),
+  } })
+}
+function probe(provider: string, token?: string): Request {
+  return new Request(`https://swap.ophis.fi/rpc/budget/${provider}`, {
+    method: 'POST', headers: token ? { Authorization: `Bearer ${token}` } : {},
+  })
+}
+
+it.each([undefined, '', 'wrong-secret'])('rejects diagnostic credentials %s before accessing a budget or upstream', async (token) => {
+  diagnosticCrypto()
+  const env = alchemyEnv()
+  const upstream = vi.fn()
+  vi.stubGlobal('fetch', upstream)
+  const response = await gateway.fetch(probe('alchemy', token), env)
+  expect(response.status).toBe(403)
+  expect(await response.json()).toEqual({ error: 'Forbidden.' })
+  expect(env.VALIDATION_CLOUD_BUDGET.getByName).not.toHaveBeenCalled()
+  expect(upstream).not.toHaveBeenCalled()
+})
+
+it('probes only a fixed chain-id budget reservation and never forwards the deployment bearer', async () => {
+  diagnosticCrypto()
+  const reserve = vi.fn().mockReturnValue({ allowed: true, remainingCU: 23_999_990 })
+  const env = alchemyEnv(reserve)
+  const upstream = vi.fn()
+  vi.stubGlobal('fetch', upstream)
+  for (const provider of ['alchemy', 'validationCloud']) {
+    const response = await gateway.fetch(probe(provider, enabled.RAILGUN_RPC_TOKEN), env)
+    expect(response.status).toBe(200)
+    expect(response.headers.get('Cache-Control')).toBe('no-store')
+  }
+  expect(reserve.mock.calls).toEqual([[['eth_chainId'], 'alchemy'], [['eth_chainId']]])
+  expect(env.VALIDATION_CLOUD_BUDGET.getByName).toHaveBeenCalledWith('alchemy-shared-account')
+  expect(env.VALIDATION_CLOUD_BUDGET.getByName).toHaveBeenCalledWith('shared-account')
+  expect((await gateway.fetch(probe('unsupported', enabled.RAILGUN_RPC_TOKEN), env)).status).toBe(404)
+  expect((await gateway.fetch(probe('alchemy', enabled.RAILGUN_RPC_TOKEN), { ...env, RAILGUN_RPC_TOKEN: undefined })).status).toBe(403)
+  expect(upstream).not.toHaveBeenCalled()
+})
+
+it('returns bounded sanitized diagnostic fields only to the authorized deployment client', async () => {
+  diagnosticCrypto()
+  const message = `SQLITE_ERROR: path-secret query-key. ${'row '.repeat(116)}${enabled.RAILGUN_RPC_TOKEN} ${alchemyURL} test-key Bearer short-secret`
+  const cause = Object.assign(new Error(message), { remote: true, retryable: false, overloaded: false })
+  const env = alchemyEnv(vi.fn().mockRejectedValue(cause))
+  env.RAILGUN_RPC_URL = 'https://rpc.example/path-secret/?key=query-key'
+  const response = await gateway.fetch(probe('alchemy', enabled.RAILGUN_RPC_TOKEN), env)
+  const result = await response.json<{ diagnostic: { stage: string; remote: boolean; message: string } }>()
+  expect(response.status).toBe(503)
+  expect(result.diagnostic.stage).toBe('consume')
+  expect(result.diagnostic.remote).toBe(true)
+  expect(result.diagnostic.message.length).toBeLessThanOrEqual(500)
+  const serialized = JSON.stringify(result)
+  for (const secret of [enabled.RAILGUN_RPC_TOKEN, 'server-o', alchemyURL, 'test-key', 'path-secret', 'query-key', 'short-secret', cause.stack])
+    expect(serialized).not.toContain(secret)
+  expect(result.diagnostic).not.toHaveProperty('stack')
+  const publicResponse = await gateway.fetch(arbitrum(chain), env)
+  expect(await publicResponse.json()).toEqual({ error: 'RPC budget guard unavailable. Retry without clearing pending transactions.' })
+})
+
+it('bounds diagnostic methods, origins and rates and identifies a namespace lookup failure', async () => {
+  diagnosticCrypto()
+  const env = alchemyEnv()
+  const authorized = probe('alchemy', enabled.RAILGUN_RPC_TOKEN)
+  expect((await gateway.fetch(new Request(authorized, { method: 'GET' }), env)).status).toBe(405)
+  expect((await gateway.fetch(new Request(authorized, { headers: {
+    Authorization: `Bearer ${enabled.RAILGUN_RPC_TOKEN}`, Origin: 'https://untrusted.example',
+  } }), env)).status).toBe(403)
+  expect((await gateway.fetch(authorized, { ...env, RPC_LIMIT: { limit: async () => ({ success: false }) } })).status).toBe(429)
+  expect(env.VALIDATION_CLOUD_BUDGET.getByName).not.toHaveBeenCalled()
+  vi.mocked(env.VALIDATION_CLOUD_BUDGET.getByName).mockImplementation(() => { throw new Error('Namespace lookup failed.') })
+  const result = await (await gateway.fetch(probe('alchemy', enabled.RAILGUN_RPC_TOKEN), env)).json<{ diagnostic: { stage: string } }>()
+  expect(result.diagnostic.stage).toBe('lookup')
+})
 
 it('uses Alchemy for a quote and reserves its shared budget without contacting ZAN', async () => {
   const reserve = vi.fn().mockReturnValue({ allowed: true })

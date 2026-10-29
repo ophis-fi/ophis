@@ -10,6 +10,27 @@ if (gateway) {
   const url = new URL(gateway)
   assert(url.protocol === 'https:' || ['127.0.0.1', 'localhost', '[::1]'].includes(url.hostname), 'HTTPS or loopback gateway required')
 }
+if (process.env.RAILGUN_READINESS_BUDGET_ONLY === '1') {
+  assert(gateway && process.env.RAILGUN_RPC_TOKEN, 'A gateway and existing deployment credential are required')
+  const target = new URL(gateway)
+  assert(target.origin === 'https://swap.ophis.fi' || ['127.0.0.1', 'localhost', '[::1]'].includes(target.hostname), 'Deployment credential may only reach Ophis or loopback')
+  const reports = []
+  for (const provider of ['alchemy', 'validationCloud']) {
+    const response = await fetch(new URL(`/rpc/budget/${provider}`, gateway), {
+      method: 'POST', headers: { Authorization: `Bearer ${process.env.RAILGUN_RPC_TOKEN}`, 'User-Agent': 'Ophis-Private-Wallet/1.0' },
+      redirect: 'error', signal: AbortSignal.timeout(15000),
+    })
+    const result = await response.json().then((value) => value && typeof value === 'object' ? value : {}, () => ({}))
+    const diagnostic = result.diagnostic && typeof result.diagnostic === 'object'
+      ? Object.fromEntries(['stage', 'name', 'message'].map((field) => [field, typeof result.diagnostic[field] === 'string'
+        ? result.diagnostic[field].replaceAll(process.env.RAILGUN_RPC_TOKEN, '[redacted]')
+          .replace(/https?:\/\/\S+|Bearer\s+\S+|[A-Za-z0-9_+\/=-]{24,}/gi, '[redacted]').slice(0, 500) : undefined])) : undefined
+    reports.push({ provider, ok: response.ok && result.allowed === true && Number.isSafeInteger(result.remainingCU) && result.remainingCU >= 1600,
+      status: response.status, remainingCU: typeof result.remainingCU === 'number' ? result.remainingCU : undefined, diagnostic })
+  }
+  await new Promise((resolve) => process.stdout.write(JSON.stringify({ checkedAt: new Date().toISOString(), fixedBudgetProbe: true, reports }, null, 2) + '\n', resolve))
+  process.exit(reports.every((report) => report.ok) ? 0 : 1)
+}
 const endpoints = {
   1: process.env.RAILGUN_RPC_URL,
   42161: process.env.RAILGUN_ARBITRUM_RPC_URL || zanRpcUrl(42161, process.env.RAILGUN_ZAN_API_KEY),

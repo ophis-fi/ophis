@@ -1,4 +1,5 @@
 import { RPC_BATCH_SIZE, RAILGUN_PROXY, RAILGUN_PROXIES, isAlchemyUrl, alchemyCU, isValidationCloudUrl, validationCloudCU, zanRpcUrl } from '../rpc-policy'
+import { probeBudget } from './budget'
 export { ValidationCloudBudget } from './budget'
 
 const METHODS = new Set([
@@ -145,6 +146,7 @@ export function rpcCall(value: unknown, proxy = RAILGUN_PROXY): RPCCall {
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
     const url = new URL(request.url)
+    if (url.pathname.startsWith('/rpc/budget/')) return probeBudget(request, env)
     if (url.pathname !== '/rpc' && !url.pathname.startsWith('/rpc/')) return error(404, 'RPC route not found.')
     const match = /^\/rpc(?:\/(1|42161|137|56))?$/.exec(url.pathname)
     if (!match) return error(404, 'Unsupported private network.')
