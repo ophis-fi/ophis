@@ -287,21 +287,20 @@ mod tests {
             estimators = [
               [
                 { type = "UniswapV3", factory = "0x1F98431c8aD98523631AE4a59f267346ea31F984", init-code-hash = "0xe34f199b19b2b4f47f68442619d555527d244f78a3297ea89325f843f87b8b54" },
+                { type = "CoinGecko" },
               ],
-              [{ type = "CoinGecko" }],
             ]
         "#;
         let w: Wrapper = toml::from_str(toml).unwrap();
         let stages = w.estimators.as_slice();
-        assert_eq!(stages.len(), 2);
-        assert_eq!(stages[0].len(), 1);
-        assert_eq!(stages[1].len(), 1);
+        assert_eq!(stages.len(), 1);
+        assert_eq!(stages[0].len(), 2);
         assert!(matches!(stages[0][0], NativePriceEstimator::UniswapV3(_)));
-        assert!(matches!(stages[1][0], NativePriceEstimator::CoinGecko));
+        assert!(matches!(stages[0][1], NativePriceEstimator::CoinGecko));
     }
 
     #[test]
-    fn production_sources_use_single_result_stages_and_buffer_coin_gecko() {
+    fn production_sources_preserve_price_competition_and_buffer_coin_gecko() {
         for (chain, source) in [
             (
                 "optimism/orderbook",
@@ -339,19 +338,20 @@ mod tests {
                     native.clone().try_into().unwrap();
                 (parsed.estimators, parsed.shared)
             };
-            assert_eq!(shared.results_required.get(), 1, "{chain}");
+            assert_eq!(shared.results_required.get(), 2, "{chain}");
             let stages = estimators.as_slice();
-            assert_eq!(stages.len(), 2);
-            assert!(stages.iter().all(|stage| stage.len() == 1));
-            let coin_gecko_first = chain.starts_with("robinhood/");
-            assert_eq!(
-                matches!(stages[0][0], NativePriceEstimator::CoinGecko),
-                coin_gecko_first
-            );
-            assert_eq!(
-                matches!(stages[1][0], NativePriceEstimator::CoinGecko),
-                !coin_gecko_first
-            );
+            if chain.starts_with("robinhood/") {
+                assert_eq!(stages.len(), 2);
+                assert_eq!(stages[0].len(), 1);
+                assert_eq!(stages[1].len(), 1);
+                assert!(matches!(stages[0][0], NativePriceEstimator::CoinGecko));
+                assert!(matches!(stages[1][0], NativePriceEstimator::UniswapV3(_)));
+            } else {
+                assert_eq!(stages.len(), 1);
+                assert_eq!(stages[0].len(), 2);
+                assert!(matches!(stages[0][0], NativePriceEstimator::UniswapV3(_)));
+                assert!(matches!(stages[0][1], NativePriceEstimator::CoinGecko));
+            }
             let buffered: crate::price_estimation::CoinGeckoBufferedConfig =
                 config["price-estimation"]["coin-gecko"]["buffered"]
                     .clone()

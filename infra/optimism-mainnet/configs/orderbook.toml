@@ -28,8 +28,6 @@ write-url = "%DB_WRITE_URL"
 read-url = "%DB_READ_URL"
 
 [native-price-estimation]
-# One successful primary result prevents unnecessary fallback requests.
-results-required = 1
 # Primary estimator: on-chain Uniswap V3 TWAP. Reads a 180-second TWAP
 # from the deepest WETH/<token> pool across fee tiers [500, 3000, 100,
 # 10000] via `IUniswapV3Pool.observe`. Deterministic, no API key, no
@@ -50,8 +48,8 @@ results-required = 1
 estimators = [
   [
     { type = "UniswapV3", factory = "0x1F98431c8aD98523631AE4a59f267346ea31F984", init-code-hash = "0xe34f199b19b2b4f47f68442619d555527d244f78a3297ea89325f843f87b8b54" },
+    { type = "CoinGecko" },
   ],
-  [{ type = "CoinGecko" }],
 ]
 
 [order-quoting]

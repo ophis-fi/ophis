@@ -61,7 +61,6 @@ hex-literal = { workspace = true }
 maplit = { workspace = true }
 mockall = { workspace = true }
 testlib = { workspace = true }
-tokio = { workspace = true, features = ["test-util"] }
 token-info = { workspace = true, features = ["test-util"] }
 toml = { workspace = true }
 

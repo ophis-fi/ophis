@@ -40,8 +40,6 @@ write-url = "%DB_WRITE_URL"
 read-url = "%DB_READ_URL"
 
 [native-price-estimation]
-# One successful primary result prevents unnecessary fallback requests.
-results-required = 1
 # Primary: on-chain Uniswap V3 TWAP. The init-code-hash is a canonical
 # cross-chain constant, but the factory is NOT: Unichain uses its own
 # v3CoreFactory (0x1F98400000000000000000000000000000000003), distinct from the
@@ -50,8 +48,8 @@ results-required = 1
 estimators = [
   [
     { type = "UniswapV3", factory = "0x1F98400000000000000000000000000000000003", init-code-hash = "0xe34f199b19b2b4f47f68442619d555527d244f78a3297ea89325f843f87b8b54" },
+    { type = "CoinGecko" },
   ],
-  [{ type = "CoinGecko" }],
 ]
 
 [order-quoting]
