@@ -116,7 +116,7 @@
       "shell-quote": "^1.11.0",
       "rollup": "^4.59.0",
       "yauzl": "^3.2.1",
-      "follow-redirects": "^1.16.1",
+      "follow-redirects": "^1.16.2",
       "webpack-dev-server": "^5.2.6",
       "webpack-dev-middleware": "7.4.6",
       "on-headers": "^1.1.0",

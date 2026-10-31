@@ -29,6 +29,9 @@ minimumReleaseAgeExclude:
   # excluded above) on every release, so they share its soak exclusion. Without this,
   # any next security patch soaks its swc binaries and blocks a lockfile regen.
   - '@next/*'
+  # follow-redirects 1.16.2+ is the GHSA-mrwp-f3q8-3g9p fix (cross-realm credentials
+  # disclosure); name-excluded because no patched release is >=1 week old yet.
+  - follow-redirects
   # NOTE: esbuild 0.28.1 (GHSA-gv7w-rqvm-qjhr), http-proxy-middleware 3.0.7
   # (GHSA-gcq2-9pq2-cxqm; selective override on >=3.0.4 <3.0.7 so the v2 consumers
   # react-cosmos@7 + @nx/webpack are left untouched, since HPM v3 dropped the v2
