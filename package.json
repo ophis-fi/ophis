@@ -91,7 +91,7 @@
       "source-map-js": "1.2.2",
       "fast-copy@>=3.0.0 <3.1.0": "^3.1.0",
       "@solana/web3.js>jayson": "5.0.0",
-      "follow-redirects": "^1.16.1"
+      "follow-redirects": "^1.16.2"
     },
     "patchedDependencies": {
       "decode-uri-component@0.5.0": "patches/decode-uri-component@0.5.0.patch",
