@@ -54,7 +54,6 @@ contract OtcSwapboardEthereumForkTest is Test {
     address internal constant MAKER = address(0xA11CE);
     address internal constant TAKER = address(0xB0B);
     address internal constant RACER = address(0xCAFE);
-    address internal constant USDC_WHALE = 0x28C6c06298d514Db089934071355E5743bf21d60;
 
     ISwapboardV1Fork internal board;
 
@@ -72,8 +71,8 @@ contract OtcSwapboardEthereumForkTest is Test {
     }
 
     function _fundUsdc(address recipient, uint256 amount) internal {
-        vm.prank(USDC_WHALE);
-        assertTrue(IERC20OtcFork(USDC).transfer(recipient, amount));
+        // Isolate fixture funding from live whale balances and blacklist changes.
+        deal(USDC, recipient, IERC20OtcFork(USDC).balanceOf(recipient) + amount);
     }
 
     function test_pinned_identity_and_reviewed_tokens() public view {
