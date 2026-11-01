@@ -5,7 +5,7 @@ import { decodeFunctionData } from 'viem';
 import { SETTLE_FN, TRADE_EVENT, settlementAddressFor } from '../cow/settleAbi.js';
 import { getOrder, listTrades } from '../cow/client.js';
 import { resolveAppData } from '../cow/appDataResolver.js';
-import { advertisedLogRangeLimit, isRangeError } from '../cow/onchain.js';
+import { advertisedLogRangeLimit, isRangeError, isStrongRateLimitError } from '../cow/onchain.js';
 import {
   attributeOrder,
   DECODER_ETHFLOW_OWNERS,
@@ -161,16 +161,6 @@ function sourceFromLog(
     logIndex: event.logIndex,
     apiTrade: null,
   };
-}
-
-function isStrongRateLimitError(err: unknown): boolean {
-  const message = (err instanceof Error ? err.message : String(err)).toLowerCase();
-  return (
-    message.includes('rate limit') ||
-    message.includes('requests per second') ||
-    message.includes('too many requests') ||
-    message.includes('429')
-  );
 }
 
 function isRateLimitError(err: unknown): boolean {

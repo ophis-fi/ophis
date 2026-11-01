@@ -138,13 +138,19 @@ export function advertisedLogRangeLimit(err: unknown): bigint | null {
   return limit > 0n ? limit : null;
 }
 
-function isRateLimitError(err: unknown): boolean {
-  return /rate[ -]?limit|too many requests|\b429\b/i.test(err instanceof Error ? err.message : String(err));
+export function isStrongRateLimitError(err: unknown): boolean {
+  const message = (err instanceof Error ? err.message : String(err)).toLowerCase();
+  return (
+    message.includes('rate limit') ||
+    message.includes('requests per second') ||
+    message.includes('too many requests') ||
+    message.includes('429')
+  );
 }
 
 /** A provider "block range too large / too many results" error -> shrink + retry. */
 export function isRangeError(err: unknown): boolean {
-  if (isRateLimitError(err)) return false;
+  if (isStrongRateLimitError(err)) return false;
   const msg = (err instanceof Error ? err.message : String(err)).toLowerCase();
   return (
     msg.includes('-32602') ||
@@ -454,7 +460,7 @@ async function scanChain(chainId: number, deps: SettleDecoderDeps, discoveryOnly
       })) as unknown as TradeLog[];
       rateRetries = 0;
     } catch (err) {
-      if (isRateLimitError(err) && rateRetries < 2) {
+      if (isStrongRateLimitError(err) && rateRetries < 2) {
         await sleep(2_000 * ++rateRetries);
         continue;
       }
