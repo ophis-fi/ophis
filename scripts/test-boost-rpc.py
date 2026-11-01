@@ -15,6 +15,36 @@ guard = runpy.run_path(str(OP / "assert-erpc-failclosed.py"))
 validate = guard["validate"]
 config = yaml.safe_load((OP / "configs/erpc.yaml.tmpl").read_text())
 assert not validate(config)
+compose = yaml.safe_load((OP / "docker-compose.yml").read_text())
+assert not guard["validate_compose"](compose)
+for hosts in (None, [], ["mainnet.optimism.io=127.0.0.1"],
+              ["mainnet.optimism.io=34.149.58.211", "lb.drpc.org=127.0.0.1"]):
+    bad = copy.deepcopy(compose)
+    bad["services"]["rpc-proxy"]["extra_hosts"] = hosts
+    assert guard["validate_compose"](bad), "Shared DNS must not redirect two read voters"
+for value in (None, {}, {"headers": {}}, {"headers": {"Origin": "https://example.org"}},
+              {"headers": {"Origin": "https://swap.ophis.fi"}, "supportsBatch": True}):
+    bad = copy.deepcopy(config)
+    bad["projects"][0]["upstreams"][1]["jsonRpc"] = value
+    assert validate(bad), "Alchemy must retain exactly its allowed Ophis Origin"
+for field, value in (("evm", {"getLogsAutoSplittingRangeThreshold": 11}),
+                     ("rateLimitCountMode", "request"), ("rateLimitBudget", "drpc-op-budget"),
+                     ("rateLimitAutoTune", {"enabled": True}), ("creditUnits", {"*": 0})):
+    bad = copy.deepcopy(config)
+    bad["projects"][0]["upstreams"][1][field] = value
+    assert validate(bad), "Alchemy must retain supported log pages and its own shared budget"
+for endpoint in ("https://opt-mainnet.g.alchemy.com/v2/", "http://opt-mainnet.g.alchemy.com/v2/key",
+                 "https://opt-mainnet.g.alchemy.com/v2/key/extra"):
+    bad = copy.deepcopy(config)
+    bad["projects"][0]["upstreams"][1]["endpoint"] = endpoint
+    assert validate(bad), "Alchemy must retain the keyed Optimism HTTPS endpoint"
+bad = copy.deepcopy(config)
+bad["projects"][0]["upstreams"][1]["failsafe"][0]["retry"]["maxAttempts"] = 2
+assert validate(bad), "Alchemy upstream retries would bypass its request budget"
+for method in guard["ALCHEMY_REQUEST_UNITS"]:
+    bad = copy.deepcopy(config)
+    del bad["projects"][0]["upstreams"][1]["creditUnits"][method]
+    assert validate(bad), "Vendor method prices must not silently replace request-count units"
 for index, rule in enumerate(config["projects"][0]["networks"][0]["failsafe"]):
     if "consensus" not in rule:
         continue
@@ -50,20 +80,30 @@ for expression in ("upstreams.slice(0, 2)", "upstreams.filter(u => u.id !== 'drp
     bad = copy.deepcopy(config)
     bad["projects"][0]["networks"][0]["selectionPolicy"]["evalFunc"] = expression
     assert validate(bad), expression
-for evm in (None, {}, {"getLogsAutoSplittingRangeThreshold": 100}, {"getLogsAutoSplittingRangeThreshold": 500, "chainId": 1}):
+bad = copy.deepcopy(config)
+policy = bad["projects"][0]["networks"][0]["selectionPolicy"]
+policy["evalFunc"] = policy["evalFunc"].replace('"eth_blockNumber"', '"eth_call"')
+assert validate(bad), "Cost ordering must never reach protected consensus methods"
+bad = copy.deepcopy(config)
+ups = bad["projects"][0]["upstreams"]
+ups[0]["id"], ups[2]["id"] = ups[2]["id"], ups[0]["id"]
+assert validate(bad), "Renaming providers must not send ordinary heads to the metered lane"
+for evm in (None, {}, {"getLogsAutoSplittingRangeThreshold": 500}, {"getLogsAutoSplittingRangeThreshold": 100, "chainId": 1}):
     bad = copy.deepcopy(config)
     bad["projects"][0]["upstreams"][2]["evm"] = evm
-    assert validate(bad), "Nodies must use the verified private 500-block log limit only"
-for endpoint in ("https://op-pokt.nodies.app", "https://lb.nodies.app/v2/optimism?apikey=",
-                 "https://lb.nodies.app/v2/ethereum?apikey=test"):
+    assert validate(bad), "dRPC must use the verified private 100-block log limit only"
+for endpoint in ("https://lb.drpc.org/ogrpc?network=optimism",
+                 "https://lb.drpc.org/ogrpc?network=optimism&dkey=",
+                 "https://lb.drpc.org/ogrpc?network=ethereum&dkey=test",
+                 "https://lb.drpc.org/ogrpc?network=optimism&dkey=test&dkey=other"):
     bad = copy.deepcopy(config)
     bad["projects"][0]["upstreams"][2]["endpoint"] = endpoint
-    assert validate(bad), "Do not silently use public, keyless, or wrong-chain Nodies"
+    assert validate(bad), "Do not silently use public, keyless, or wrong-chain dRPC"
 for key, value in (("rateLimitCountMode", "request"), ("rateLimitBudget", ""),
                    ("creditUnits", {"*": 0}), ("rateLimitAutoTune", {"enabled": True})):
     bad = copy.deepcopy(config)
     bad["projects"][0]["upstreams"][2][key] = value
-    assert validate(bad), "Nodies must not bypass or increase the shared quota cap"
+    assert validate(bad), "dRPC must not bypass or increase the shared quota cap"
 bad = copy.deepcopy(config)
 bad["projects"][0]["upstreams"][2]["failsafe"][0]["retry"]["maxAttempts"] = 2
 assert validate(bad), "Upstream retries would spend uncounted requests"
@@ -75,9 +115,10 @@ bad["projects"][0]["upstreams"].append(copy.deepcopy(bad["projects"][0]["upstrea
 assert validate(bad), "An extra upstream must not dilute the independent three-provider quorum"
 driver = (OP / "configs/driver.toml.tmpl").read_text()
 assert "edge.goldsky.com" not in driver
-assert 'url = "https://lb.nodies.app/v2/optimism?apikey=${NODIES_OP_KEY}"' in driver
+assert 'url = "https://lb.drpc.org/ogrpc?network=optimism&dkey=${DRPC_API_KEY}"' in driver
+assert 'url = "https://mainnet.optimism.io"' in driver
 assert "VALIDATIONCLOUD_OP_KEY" not in driver
-assert "DRPC_API_KEY" not in driver
+assert "BLOCKDAEMON_OP_KEY" not in driver
 assert "GOLDSKY_BOOST_KEY" not in (OP / "render-configs.sh").read_text()
 rbh = runpy.run_path(str(RBH / "assert-erpc-failclosed.py"))
 source = (RBH / "configs/erpc.yaml.tmpl").read_text()
@@ -100,18 +141,18 @@ for stack in (OP,):
         (sandbox / "render-configs.sh").write_text((stack / "render-configs.sh").read_text())
         (sandbox / ".env.example").write_text((stack / ".env.example").read_text())
         (sandbox / ".env").write_text("POSTGRES_USER=test\n")
-        env = {k: v for k, v in os.environ.items() if k not in {"GOLDSKY_BOOST_KEY", "ZAN_API_KEY", "ZAN_OP_KEY", "NODIES_OP_KEY"}}
+        env = {k: v for k, v in os.environ.items() if k not in {"GOLDSKY_BOOST_KEY", "ALCHEMY_API_KEY", "DRPC_API_KEY"}}
         for line in (stack / ".env.example").read_text().splitlines():
             if line.startswith("ERPC_IMAGE="):
                 env["ERPC_IMAGE"] = line.split("=", 1)[1]
         result = subprocess.run(["bash", str(sandbox / "render-configs.sh")], env=env,
                                 capture_output=True, text=True)
         assert result.returncode == 15, (stack.name, result.stderr)
-        assert "ZAN_API_KEY is unset/empty" in result.stderr
-        (sandbox / ".env").write_text("POSTGRES_USER=test\nZAN_API_KEY=test\n")
+        assert "ALCHEMY_API_KEY is unset/empty" in result.stderr
+        (sandbox / ".env").write_text("POSTGRES_USER=test\nALCHEMY_API_KEY=test\n")
         result = subprocess.run(["bash", str(sandbox / "render-configs.sh")], env=env,
                                 capture_output=True, text=True)
-        assert result.returncode == 15 and "NODIES_OP_KEY is unset/empty" in result.stderr
+        assert result.returncode == 15 and "DRPC_API_KEY is unset/empty" in result.stderr
 
 
 # Connector IDs share the YAML indentation of upstream IDs but are not voters.

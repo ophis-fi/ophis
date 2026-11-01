@@ -1,12 +1,18 @@
-# 2026-09-21: official OP gateway + ZAN + private Nodies. Validation Cloud quota
-# is exhausted. Public Nodies and dRPC rate-limit under sustained traffic.
-# Current state, populated logs/receipts and fixed-block reads were compared.
-# Failure domains: Google / Alibaba / Cloudflare (Nodies). Keep two agreeing votes.
+# 2026-10-31: official OP + keyed Alchemy + keyed dRPC; ZAN exhausted its plan.
+# Alchemy requires the allowed Origin and ten-block historical log pages.
+# Compose pins official OP and dRPC DNS while retaining HTTPS hostname checks.
+# Their independent Google/dRPC ingress cannot be redirected through shared CF DNS.
+# shortcut: free allowances remain finite; revalidate a free replacement before exhaustion.
+# shortcut: ingress IPs can change; revalidate and update Compose pins if either moves.
+# Historical topology notes follow.
+# dRPC serves fixed-block state, historical logs in 100-block pages and receipts.
+# Failure domains: Google / Alibaba / dRPC. Keep two agreeing votes.
 # Numbered-header caching and bounded catch-up avoid redundant provider work.
 # Dated notes below describe past incidents, not the current topology.
+# shortcut: dRPC free tier still throttles; replace it when another free route passes admission.
 # eRPC multi-provider proxy for Optimism mainnet (chain 10).
 #
-# **Current shape (2026-09-21): 2-of-3 across official-op + ZAN + private Nodies.**
+# **Current shape (2026-10-31): 2-of-3 across official OP + Alchemy + dRPC.**
 # Consensus wait caps match the 12s network timeout: the v0.2.0 adaptive
 # default can cancel slower independent voters only 5ms after the first reply.
 #
@@ -175,14 +181,18 @@ database:
         empty: ignore
         ttl: 2s
 
-# One shared pool across methods; 180/minute averages 3 requests/second.
-# Through September 30 this allows <2.4M proxy requests of the confirmed 4M.
-# ponytail: memory counters reset on restart; use dashboard totals for billing.
+# Retain the shared 180/minute ceiling during provider replacement.
+# shortcut: this limits request rate, not monthly credits; check provider allowance.
 rateLimiters:
   store:
     driver: memory
   budgets:
-    - id: nodies-op-free
+    - id: drpc-op-budget
+      rules:
+        - method: "*"
+          maxCount: 180
+          period: minute
+    - id: alchemy-op-budget
       rules:
         - method: "*"
           maxCount: 180
@@ -203,10 +213,17 @@ projects:
         selectionPolicy:
           evalScope: network-method
           evalFunc: |
-            (upstreams, ctx) => upstreams
-              .removeCordoned()
-              .whenEmpty(() => upstreams)
-              .sortByScore(PREFER_FASTEST)
+            (upstreams, ctx) => {
+              const ranked = upstreams
+                .removeCordoned()
+                .whenEmpty(() => upstreams)
+                .sortByScore(PREFER_FASTEST);
+              if (["eth_blockNumber", "eth_getBlockByNumber", "eth_getBlockByHash"].includes(ctx.method)) {
+                const order = {"official-op": 0, "alchemy-op": 1, "drpc-op": 2};
+                return ranked.sort((a, b) => order[a.id] - order[b.id]);
+              }
+              return ranked;
+            }
         # Consensus failsafe: defeats fork-view-poisoning on state-reads.
         # Each free provider is unauthenticated HTTPS — a hostile provider
         # (or MITM via CA compromise / DNS hijack) could otherwise serve a
@@ -595,74 +612,46 @@ projects:
               successThresholdCount: 2
               successThresholdCapacity: 4
 
-      - id: zan-op
-        # KEYED (registered account, 2026-07-30) and NON-Cloudflare (no cf-ray, no CF
-        # server header) — together with the owned node this keeps the ≤1-CF
-        # invariant intact.
-        #
-        # Measured on the KEYED endpoint 2026-07-30: ALL TEN guard-protected methods
-        # OK (eth_call, eth_getLogs, eth_estimateGas, eth_getBalance, eth_getCode,
-        # eth_getStorageAt, eth_feeHistory, eth_getTransactionCount,
-        # eth_getTransactionByHash, eth_getTransactionReceipt) and 30/30 on an
-        # unpaced eth_call burst. chainId verified 0xa.
-        #
-        # This SUPERSEDES the unregistered tier, which hard-blocked eth_call /
-        # eth_getLogs / eth_estimateGas (-32012, "not available for unregistered
-        # accounts"). That gap left those three methods with only two capable lanes,
-        # which was a real vulnerability: two responders still satisfy
-        # agreementThreshold:2, so a hostile lane produced a DISPUTE rather than
-        # low-participants, and Blocks A/B's disputeBehavior:preferBlockHeadLeader
-        # would then select whichever upstream advertised the freshest head — an
-        # attacker-controlled value with nothing agreeing with it. Keying this lane
-        # restores three capable lanes for every protected method, so an honest
-        # majority can always outvote a single hostile provider, and the interim
-        # "Block T" fail-closed rule was removed with it.
-        #
-        # Host is LITERAL so the CI guard's urlsplit can pin the failure domain; only
-        # ${ZAN_API_KEY} resolves from .env via render-configs.sh envsubst — NEVER
-        # committed. erpc.yaml is in PK_BEARING_NAMES, so the rendered file carrying
-        # this key lands on the RAM-disk, not the SSD.
-        #
-        # WHY NOT 1rpc: it reaches the RPC fine now (the 2026-05-20 path-stripping
-        # bug noted in this file's header is fixed) BUT its free tier dies under the
-        # stack's per-block state-poller load — eRPC logged ErrEndpointBillingIssue
-        # "You've reached the usage limit for your current plan" and receipts
-        # measured 0/12 THROUGH THE PROXY. WHY NOT drpc: keyless tier returns "You
-        # reached Public endpoint rate limit" (code 15) on eth_call and receipts
-        # under load, which failed the receipt rule outright (ErrConsensusDispute).
-        #
-        # WHY NOT nodies (#898), which this change supersedes: nodies is a fine
-        # endpoint in isolation — measured 2026-07-30 at op-pokt.nodies.app it was
-        # 12/12 on a burst and served eth_call, eth_feeHistory AND receipts. But it
-        # is Cloudflare-fronted, so pairing it with publicnode would put TWO CF lanes
-        # in the quorum and break the ≤1-CF invariant; and while it was live in the
-        # 07-29..07-30 config, eRPC logged it as ErrEndpointCapacityExceeded, "Rate
-        # limit exceeded on Nodies public endpoints", under the per-block state
-        # poller.
-        # FAIRNESS CAVEAT: during that window its two co-lanes were official-op (hard
-        # 429) and rate-capped tenderly, so nodies was absorbing the whole stack's
-        # load plus retry amplification — harsher than it would face in a healthy
-        # trio. It is therefore a REASONABLE CANDIDATE to revisit (it would give
-        # receipts a 3rd lane), but it would have to displace publicnode to keep the
-        # CF invariant, and publicnode is the lane with sustained clean-load evidence.
-        # Swapping a proven-live lane for an unproven one mid-incident was not worth
-        # the risk; revisit deliberately, and verify receipts THROUGH THE PROXY.
-        endpoint: https://api.zan.top/node/v1/opt/mainnet/${ZAN_API_KEY}
+      - id: alchemy-op
+        # Existing account; Origin is required by its endpoint allowlist.
+        endpoint: https://opt-mainnet.g.alchemy.com/v2/${ALCHEMY_API_KEY}
+        jsonRpc:
+          headers:
+            Origin: https://swap.ophis.fi
+        rateLimitBudget: alchemy-op-budget
+        rateLimitCountMode: credit
+        # A wildcard overrides only unlisted vendor methods, so pin called methods.
+        creditUnits:
+          "*": 1
+          eth_call: 1
+          eth_getBalance: 1
+          eth_getCode: 1
+          eth_getStorageAt: 1
+          eth_getLogs: 1
+          eth_getTransactionByHash: 1
+          eth_estimateGas: 1
+          eth_feeHistory: 1
+          eth_getTransactionCount: 1
+          eth_getTransactionReceipt: 1
+          eth_blockNumber: 1
+          eth_getBlockByNumber: 1
+          eth_getBlockByHash: 1
+          eth_chainId: 1
+          net_version: 1
+          eth_syncing: 1
+          eth_gasPrice: 1
+          eth_maxPriorityFeePerGas: 1
+        rateLimitAutoTune:
+          enabled: false
+        evm:
+          # The free plan rejects larger ranges; preserve every historical log.
+          getLogsAutoSplittingRangeThreshold: 10
         failsafe:
-          # BUDGET INVARIANT (2026-08-15, CI-enforced by assert-erpc-failclosed):
-          # one lane's worst-case serial budget (attempts x timeout + backoff)
-          # MUST stay under the 12s network budget, or a single wedged lane
-          # starves every request before failover — the 08-14 outage. 4s x 2
-          # + 1s backoff = 9s < 12s, and 4s is still ~40-80x each lane's
-          # measured median. The circuitBreaker ejects a lane that returns
-          # clean errors in bulk (the 429-storm pattern of 07-23/08-09);
-          # a silently HANGING lane is covered by the catch-all hedge instead
-          # (hedge-cancelled attempts may not record breaker outcomes).
           - matchMethod: "*"
             timeout:
               duration: 4s
             retry:
-              maxAttempts: 2
+              maxAttempts: 1
               delay: 200ms
               backoffMaxDelay: 1s
               backoffFactor: 1.5
@@ -674,11 +663,10 @@ projects:
               successThresholdCount: 2
               successThresholdCapacity: 4
 
-      - id: nodies-op
-        # Private Nodies accepts 500-block historical log pages. Match the
-        # indexer page size instead of multiplying catch-up into ten votes.
-        endpoint: https://lb.nodies.app/v2/optimism?apikey=${NODIES_OP_KEY}
-        rateLimitBudget: nodies-op-free
+      - id: drpc-op
+        # 2026-10-26: keyed dRPC replaces exhausted Blockdaemon in the same slot.
+        endpoint: https://lb.drpc.org/ogrpc?network=optimism&dkey=${DRPC_API_KEY}
+        rateLimitBudget: drpc-op-budget
         # Request mode has separate method counters; credit mode shares a pool.
         rateLimitCountMode: credit
         creditUnits:
@@ -686,7 +674,8 @@ projects:
         rateLimitAutoTune:
           enabled: false
         evm:
-          getLogsAutoSplittingRangeThreshold: 500
+          # Five 100-block pages reproduced all 281 reference historical logs.
+          getLogsAutoSplittingRangeThreshold: 100
         failsafe:
           # The limiter charges before upstream retries: one attempt prevents
           # uncounted retry amplification. Network retries acquire a new permit.
