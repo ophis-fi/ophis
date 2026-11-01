@@ -80,7 +80,7 @@
       "source-map-js": "1.2.2",
       "tinypool": "2.1.2",
       "postcss-selector-parser@<7.1.6": "^7.1.6",
-      "follow-redirects": "^1.16.1"
+      "follow-redirects": "^1.16.2"
     },
     "patchedDependencies": {
       "gray-matter@4.0.3": "patches/gray-matter@4.0.3.patch",

@@ -18,6 +18,7 @@ const { tmpdir } = require('node:os');
 const { basename, join, resolve } = require('node:path');
 const { pathToFileURL } = require('node:url');
 const { parseArgs } = require('node:util');
+const { runInNewContext } = require('node:vm');
 
 // A separate process bounds synchronous decoder/filter regressions too: an
 // in-process timer cannot interrupt an event-loop-blocking malformed input.
@@ -69,6 +70,33 @@ function installed(name, major) {
 }
 
 async function main() {
+  for (const pkg of installed('follow-redirects', 1)) {
+    const destination = createServer((req, res) => res.end(JSON.stringify(req.headers)));
+    const redirect = createServer((_req, res) => res.writeHead(302, {
+      Location: `http://127.0.0.1:${destination.address().port}/`,
+    }).end());
+    try {
+      await Promise.all([destination, redirect].map((server) => new Promise((done) => server.listen(0, '127.0.0.1', done))));
+      for (const sensitiveHeaders of [['X-API-Key'], runInNewContext("['X-API-Key']")]) {
+        const received = await new Promise((done, reject) => {
+          const request = pkg.require('follow-redirects').http.get({
+            hostname: '127.0.0.1', port: redirect.address().port, path: '/', sensitiveHeaders,
+            headers: { 'X-API-Key': 'test-only', 'X-Harmless': 'kept' },
+          }, (response) => {
+            let body = '';
+            response.on('data', (chunk) => { body += chunk; });
+            response.on('end', () => done(JSON.parse(body)));
+            response.on('error', reject);
+          });
+          request.on('error', reject);
+          request.setTimeout(2000, () => request.destroy(new Error('redirect test timed out')));
+        });
+        assert.equal(received['x-api-key'], undefined);
+        assert.equal(received['x-harmless'], 'kept');
+      }
+    } finally { await Promise.all([destination, redirect].map((server) => new Promise((done) => server.close(done)))); }
+    console.log(`PASS follow-redirects ${pkg.version}: same-realm and cross-realm sensitive headers removed across origins`);
+  }
   // Resolve the active hoisted package, not retained pnpm cache versions.
   for (const { root } of stores) {
     const requireIp = createRequire(join(root, 'node_modules', '_ip-address-check.cjs'));
@@ -302,6 +330,9 @@ async function main() {
       assert.deepEqual({ ...query.parse(query.stringify(original)) }, original);
       const malformed = '%FE'.repeat(100_000);
       assert.equal(query.parse(`value=${malformed}%41`).value, `${malformed}A`);
+      const distinctRuns = Array.from({ length: 32_000 }, (_, i) => `%${Math.floor(i / 256).toString(16).padStart(2, '0')}%${(i % 256).toString(16).padStart(2, '0')}x`).join('') + '%zz';
+      assert(decoder(distinctRuns).endsWith('%zz'));
+      assert.equal(decoder('%zz%252B'), '%zz%2B', 'decoded output must never be rescanned');
       console.log(`PASS query-string ${pkg.version}: UTF-8, malformed input, plus semantics, 300 KB malformed run`);
     }
   }
