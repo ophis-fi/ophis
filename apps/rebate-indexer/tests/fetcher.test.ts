@@ -147,6 +147,32 @@ describe('fetcher.fetchChainTrades', () => {
     expect((await fetchChainTrades(100, owner, {})).map(row => row.tradeUid)).toEqual([badUid, goodUid]);
   });
 
+  it.each(['0', '1'])('skips a legacy appData sentinel %s without blocking the chain', async (sentinel) => {
+    const uid = '0x' + 'da'.repeat(56);
+    const owner = ('0x' + 'aa'.repeat(20)) as `0x${string}`;
+    handlers.trades.mockReturnValue([sampleTrade(uid, owner)]);
+    handlers.order.mockReturnValue({ ...sampleOrder(uid, owner), fullAppData: null, appData: `0x${'0'.repeat(63)}${sentinel}` });
+    const markNonOphisOrder = vi.fn();
+    const { fetchChainTrades } = await import('../src/fetcher.js');
+    expect(await fetchChainTrades(100, owner, { markNonOphisOrder })).toEqual([]);
+    expect(markNonOphisOrder).toHaveBeenCalledWith(100, uid);
+  });
+
+  it('resolves missing fullAppData through another hash-verified CoW store', async () => {
+    const uid = '0x' + 'db'.repeat(56);
+    const owner = ('0x' + 'aa'.repeat(20)) as `0x${string}`;
+    const order = sampleOrder(uid, owner);
+    const { keccak256, stringToHex } = await import('viem');
+    handlers.trades.mockReturnValue([sampleTrade(uid, owner)]);
+    handlers.order.mockReturnValue({ ...order, fullAppData: null, appData: keccak256(stringToHex(order.fullAppData)) });
+    server.use(
+      http.get(`${COW_FAKE_BASE}/xdai/api/v1/app_data/:hash`, () => new HttpResponse(null, { status: 404 })),
+      http.get(`${COW_FAKE_BASE}/mainnet/api/v1/app_data/:hash`, () => HttpResponse.json({ fullAppData: order.fullAppData })),
+    );
+    const { fetchChainTrades } = await import('../src/fetcher.js');
+    expect((await fetchChainTrades(100, owner, {})).map(row => row.tradeUid)).toEqual([uid]);
+  });
+
   it('caps a post-cutover custom Ophis flat fee at the 1 bp affiliate base', async () => {
     const uid = '0x' + '7a'.repeat(56);
     const owner = '0xa'.padEnd(42, '0');

@@ -22,6 +22,7 @@ import {
   orderbookBase,
 } from './client.js';
 import { resolveLegacyAppData } from './legacyAppDataRegistry.js';
+import { readCow } from './requests.js';
 
 const APP_DATA_TIMEOUT_MS = 10_000;
 
@@ -33,19 +34,21 @@ export async function resolveAppData(chainId: number, hash: `0x${string}`): Prom
   // Ophis content store still retains the same hash. Query the order's native
   // store first, then the other sovereign stores. Re-hashing makes this safe: a
   // fallback can provide availability, but cannot alter the signed document.
+  // Hosted chains can recover a shared document from the mainnet store.
   const sovereign = [OPTIMISM_CHAIN_ID, UNICHAIN_CHAIN_ID, ROBINHOOD_CHAIN_ID, ARC_CHAIN_ID];
   const bases = [
     orderbookBase(chainId),
-    ...(sovereign.includes(chainId) ? sovereign.map(orderbookBase) : []),
+    ...(sovereign.includes(chainId) ? sovereign.map(orderbookBase) : [orderbookBase(1)]),
   ].filter((base, index, all) => all.indexOf(base) === index);
 
   let transientError: Error | null = null;
   for (const base of bases) {
     let res: Response;
     try {
-      res = await fetch(`${base}/api/v1/app_data/${hash}`, {
+      const url = `${base}/api/v1/app_data/${hash}`;
+      res = await readCow(url, () => fetch(url, {
         signal: AbortSignal.timeout(APP_DATA_TIMEOUT_MS),
-      });
+      }), async (response) => response);
     } catch (err) {
       transientError ??= err instanceof Error ? err : new Error(String(err));
       continue;

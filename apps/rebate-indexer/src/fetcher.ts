@@ -13,6 +13,7 @@ import { OPHIS_SAFE_ADDRESS } from './safe/addresses.js';
 import { logger } from './logger.js';
 import { getRpcClient } from './rpc/client.js';
 import { PRODUCTION_CHAIN_IDS } from './stats-page.js';
+import { resolveAppData } from './cow/appDataResolver.js';
 
 // The Ophis partner-fee recipient (the Safe). A fee only counts toward the rebate
 // base when it actually pays THIS recipient.
@@ -811,13 +812,20 @@ export async function fetchChainTrades(
         const execSell = order.executedSellAmount ?? t.sellAmount;
         const execBuy = order.executedBuyAmount ?? t.buyAmount;
 
+        // Legacy CoW 0/1 sentinels have no appCode document to attribute.
+        if (!order.fullAppData && /^0x0{63}[01]$/i.test(order.appData)) {
+          await deps.markNonOphisOrder?.(chainId, t.orderUid);
+          continue;
+        }
         let meta: unknown;
         try {
-          if (!order.fullAppData) throw new Error('Order appData unavailable');
-          meta = JSON.parse(order.fullAppData);
+          const fullAppData = order.fullAppData || (/^0x[\da-f]{64}$/i.test(order.appData)
+            ? await resolveAppData(chainId, order.appData as `0x${string}`) : null);
+          if (!fullAppData) throw new Error('Order appData unavailable');
+          meta = JSON.parse(fullAppData);
           if (meta === null || typeof meta !== 'object' || Array.isArray(meta)) throw new Error('Invalid order appData');
         } catch (cause) {
-          unresolvedAppData ??= new Error('Order appData is unresolved; retry this chain', { cause });
+          unresolvedAppData ??= new Error(`Order appData is unresolved for ${t.orderUid}; retry this chain`, { cause });
           continue;
         }
         if (!readAppCode(meta)) {
