@@ -1153,7 +1153,7 @@ export async function runFetcher(
       -- Proven traders keep priority over public enrollment spam. Rotate by
       -- attempt age so a busy registry cannot starve older registrations.
       ORDER BY (wallet IN (SELECT wallet FROM trades)) DESC,
-               last_attempt_at ASC NULLS FIRST,
+               COALESCE(last_attempt_at, first_seen) ASC,
                first_seen ASC
       LIMIT ${FETCHER_MAX_OWNERS_PER_RUN}
     `;

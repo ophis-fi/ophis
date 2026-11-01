@@ -89,10 +89,12 @@ it('rotates proven wallets by attempt age and preserves FIFO for unattempted wal
   const older = `0x${'11'.repeat(20)}`;
   const unproven = `0x${'22'.repeat(20)}`;
   const newcomer = `0x${'33'.repeat(20)}`;
+  const retry = `0x${'44'.repeat(20)}`;
   await sql`INSERT INTO tracked_wallets (wallet, first_seen, last_registered_at, last_attempt_at)
     VALUES (decode(${older.slice(2)}, 'hex'), now() - interval '30 days', now() - interval '30 days', now() - interval '1 day'),
       (decode(${unproven.slice(2)}, 'hex'), now() - interval '1 day', now() - interval '1 day', NULL),
-      (decode(${newcomer.slice(2)}, 'hex'), now(), now(), NULL)`;
+      (decode(${newcomer.slice(2)}, 'hex'), now(), now(), NULL),
+      (decode(${retry.slice(2)}, 'hex'), now() - interval '2 days', now() - interval '2 days', now() - interval '2 hours')`;
   await sql`INSERT INTO trades (trade_uid, chain_id, wallet, block_number, block_timestamp,
       sell_token, buy_token, sell_amount, buy_amount, app_code)
     SELECT decode(${'99'.repeat(56)}, 'hex'), chain_id, decode(${older.slice(2)}, 'hex'), block_number,
@@ -101,7 +103,7 @@ it('rotates proven wallets by attempt age and preserves FIFO for unattempted wal
   mocks.trades.mockClear();
   await runFetcher(deps, { staleBefore: new Date() });
   expect(mocks.trades.mock.calls.filter(([p]) => p.chainId === 100).map(([p]) => p.owner))
-    .toEqual([older, owner, unproven, newcomer]);
+    .toEqual([older, owner, unproven, retry, newcomer]);
 });
 
 it('reports a synthetic-owner failure even when the tracked wallet succeeds', async () => {
