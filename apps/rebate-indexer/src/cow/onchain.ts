@@ -437,13 +437,12 @@ async function scanChain(chainId: number, deps: SettleDecoderDeps, discoveryOnly
   if (cursor >= safeHead) return { inserted: 0, complete: true };
 
   let inserted = 0;
-  // Arc's free RPC accepts at most 100 blocks per getLogs. Keep the cap after
-  // each successful window instead of repeatedly sending an oversized request.
-  const maxWindow = chainId === ARC_CHAIN_ID && DEFAULT_WINDOW > 100n ? 100n : DEFAULT_WINDOW;
+  // The live Arc RPC accepts 10k-block windows; the old 100-block cap could not catch up.
+  const requestedWindow = chainId === ARC_CHAIN_ID ? BigInt(process.env.SETTLE_SCAN_WINDOW ?? 10_000) : DEFAULT_WINDOW;
+  const maxWindow = chainId === ARC_CHAIN_ID && requestedWindow > 10_000n ? 10_000n : requestedWindow;
   let window = maxWindow;
-  // ponytail: 10k Arc blocks/run bounds free-RPC load; catch up via the persisted
-  // cursor over successive runs. Bootstrap old history from the orderbook DB.
-  const maxWindows = chainId === ARC_CHAIN_ID ? 100 : Infinity;
+  // shortcut: cap Arc at 3M blocks/run; increase only with RPC capacity if cursor lag grows.
+  const maxWindows = chainId === ARC_CHAIN_ID ? 300 : Infinity;
   let windows = 0;
   let rateRetries = 0;
   let from = cursor + 1n;
