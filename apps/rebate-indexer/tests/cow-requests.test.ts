@@ -57,6 +57,7 @@ describe('CoW read scheduling', () => {
     const request = vi.fn(async () => new Response('', { status: 530 }));
     await expect(readCow('https://down.test/api/v2/trades', request, parse)).rejects.toThrow('530');
     await expect(readCow('https://down.test/api/v1/orders/id', request, parse)).rejects.toThrow('530');
+    await expect(readCow('https://down.test/api/v1/token/healthy/native_price', request, parse)).rejects.toThrow('530');
     expect(request).toHaveBeenCalledTimes(1);
     expect(await readCow('https://healthy.test/', async () => new Response('{}'), parse)).toEqual({});
   });
@@ -67,5 +68,21 @@ describe('CoW read scheduling', () => {
     const failed = vi.fn(async () => new Response('{}'));
     await expect(readCow('https://chains.test/avalanche/api/v1/orders/id', failed, parse)).rejects.toThrow('503');
     expect(failed).not.toHaveBeenCalled();
+  });
+
+  it.each([500, 503, 'timeout'] as const)('isolates token estimator failure %s from healthy tokens and chain reads', async (status) => {
+    const failed = vi.fn(async () => {
+      if (status === 'timeout') throw new Error('request timed out');
+      return new Response('estimation unavailable', { status });
+    });
+    const host = `https://prices-${status}.test`;
+    const badToken = `${host}/mainnet/api/v1/token/bad/native_price`;
+    const error = status === 'timeout' ? 'timed out' : String(status);
+    await expect(readCow(badToken, failed, parse)).rejects.toThrow(error);
+    expect(await readCow(`${host}/mainnet/api/v1/token/good/native_price`, async () => new Response('{"ok":true}'), parse))
+      .toEqual({ ok: true });
+    expect(await readCow(`${host}/mainnet/api/v2/trades`, async () => new Response('[]'), parse)).toEqual([]);
+    await expect(readCow(badToken, failed, parse)).rejects.toThrow(error);
+    expect(failed).toHaveBeenCalledTimes(1);
   });
 });

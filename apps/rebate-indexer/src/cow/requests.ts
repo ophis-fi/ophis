@@ -5,8 +5,10 @@ const services = new Map<string, { until: number; error: Error }>();
 
 /** All hosted chain paths share one rate limit. Queue reads by origin. */
 export async function readCow<T>(url: string, request: () => Promise<Response>, parse: (response: Response) => Promise<T>, signal?: AbortSignal): Promise<T> {
-  const origin = new URL(url).origin;
-  const service = origin + new URL(url).pathname.split('/api/')[0];
+  const endpoint = new URL(url);
+  const origin = endpoint.origin;
+  const service = origin + endpoint.pathname.split('/api/')[0];
+  const tokenService = endpoint.pathname.endsWith('/native_price') ? origin + endpoint.pathname : service;
   let state = origins.get(origin);
   if (!state) {
     state = { tail: Promise.resolve(), nextAt: 0, unavailableUntil: 0 };
@@ -16,8 +18,10 @@ export async function readCow<T>(url: string, request: () => Promise<Response>, 
   const result = queue.tail.then(async () => {
     signal?.throwIfAborted();
     if (queue.unavailableUntil > Date.now()) throw queue.error;
-    const unavailable = services.get(service);
-    if (unavailable && unavailable.until > Date.now()) throw unavailable.error;
+    for (const scope of [service, tokenService]) {
+      const unavailable = services.get(scope);
+      if (unavailable && unavailable.until > Date.now()) throw unavailable.error;
+    }
     for (let attempt = 0; ; attempt++) {
       await sleep(Math.max(0, queue.nextAt - Date.now()), undefined, { signal });
       let response: Response;
@@ -25,7 +29,7 @@ export async function readCow<T>(url: string, request: () => Promise<Response>, 
         response = await request();
       } catch (error) {
         if (!signal?.aborted) {
-          services.set(service, { until: Date.now() + 60_000, error: error instanceof Error ? error : new Error(String(error)) });
+          services.set(tokenService, { until: Date.now() + 60_000, error: error instanceof Error ? error : new Error(String(error)) });
         }
         throw error;
       }
@@ -34,7 +38,9 @@ export async function readCow<T>(url: string, request: () => Promise<Response>, 
         const body = await response.text();
         queue.error = new Error(`CoW API ${response.status} ${response.statusText} @ ${url} — ${body.slice(0, 200)}`);
         if (response.status >= 500) {
-          services.set(service, { until: Date.now() + 60_000, error: queue.error });
+          // Estimator failures are token-specific; proxy outages cover the service.
+          const outage = response.status === 502 || response.status === 504 || response.status >= 520;
+          services.set(outage ? service : tokenService, { until: Date.now() + 60_000, error: queue.error });
           throw queue.error;
         }
         const retry = response.headers.get('retry-after');
@@ -48,6 +54,7 @@ export async function readCow<T>(url: string, request: () => Promise<Response>, 
       }
       queue.unavailableUntil = 0;
       services.delete(service);
+      services.delete(tokenService);
       return parse(response);
     }
   });
