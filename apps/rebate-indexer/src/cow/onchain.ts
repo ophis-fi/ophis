@@ -17,6 +17,7 @@
  * (default OFF). Base (8453) first; the API fetcher keeps running on all chains.
  */
 import { decodeFunctionData, type PublicClient } from 'viem';
+import { setTimeout as sleep } from 'node:timers/promises';
 import { TRADE_EVENT, SETTLE_FN, settlementAddressFor } from './settleAbi.js';
 import { getRpcClient } from '../rpc/client.js';
 import { orderbookBase, getOrder } from './client.js';
@@ -33,6 +34,7 @@ type SqlTag = <T = Record<string, unknown>>(strings: TemplateStringsArray, ...ar
 export interface SettleDecoderDeps {
   sql: SqlTag;
   upsertTrades: (rows: PendingTrade[]) => Promise<number>;
+  reportProgress?: (chainId: number, complete: boolean) => Promise<void>;
   /**
    * Optional settlement-fill persistence (defillama_fills). The decoder is the
    * ONLY source that sees UNTRACKED wallets' hosted-chain native-ETH (shared
@@ -136,8 +138,19 @@ export function advertisedLogRangeLimit(err: unknown): bigint | null {
   return limit > 0n ? limit : null;
 }
 
+export function isStrongRateLimitError(err: unknown): boolean {
+  const message = (err instanceof Error ? err.message : String(err)).toLowerCase();
+  return (
+    message.includes('rate limit') ||
+    message.includes('requests per second') ||
+    message.includes('too many requests') ||
+    message.includes('429')
+  );
+}
+
 /** A provider "block range too large / too many results" error -> shrink + retry. */
 export function isRangeError(err: unknown): boolean {
+  if (isStrongRateLimitError(err)) return false;
   const msg = (err instanceof Error ? err.message : String(err)).toLowerCase();
   return (
     msg.includes('-32602') ||
@@ -382,7 +395,7 @@ export async function decodeWindow(
   return rows;
 }
 
-async function scanChain(chainId: number, deps: SettleDecoderDeps, discoveryOnly: boolean): Promise<number> {
+async function scanChain(chainId: number, deps: SettleDecoderDeps, discoveryOnly: boolean): Promise<{ inserted: number; complete: boolean }> {
   // Misconfiguration guard: the resolver needs a CoW app_data endpoint for this
   // chain. A chain not served by the CoW API (a paused / sovereign-only chain) would
   // otherwise throw on every trade every run; skip it with one clear message.
@@ -390,7 +403,7 @@ async function scanChain(chainId: number, deps: SettleDecoderDeps, discoveryOnly
     orderbookBase(chainId);
   } catch {
     log.error({ chainId }, 'settle-decoder: chain not served by the CoW app_data API; check SETTLE_DECODER_CHAINS');
-    return 0;
+    return { inserted: 0, complete: false };
   }
 
   const client = getRpcClient(chainId);
@@ -410,32 +423,33 @@ async function scanChain(chainId: number, deps: SettleDecoderDeps, discoveryOnly
   } catch {
     safeHead = (await client.getBlockNumber()) - CONFIRMATIONS;
   }
-  if (safeHead <= 0n) return 0;
+  if (safeHead <= 0n) return { inserted: 0, complete: false };
 
   let cursor = await readCursor(chainId, deps.sql);
   if (cursor === null) {
     const seed = process.env[`SETTLE_SCAN_START_BLOCK_${chainId}`];
     if (!seed) {
       log.warn({ chainId }, 'settle-decoder: no cursor and no SETTLE_SCAN_START_BLOCK; skipping chain');
-      return 0;
+      return { inserted: 0, complete: false };
     }
     cursor = BigInt(seed) - 1n; // so the first scanned block is exactly the seed
   }
-  if (cursor >= safeHead) return 0;
+  if (cursor >= safeHead) return { inserted: 0, complete: true };
 
   let inserted = 0;
-  // Arc's free RPC accepts at most 100 blocks per getLogs. Keep the cap after
-  // each successful window instead of repeatedly sending an oversized request.
-  const maxWindow = chainId === ARC_CHAIN_ID && DEFAULT_WINDOW > 100n ? 100n : DEFAULT_WINDOW;
+  // The live Arc RPC accepts 10k-block windows; the old 100-block cap could not catch up.
+  const requestedWindow = chainId === ARC_CHAIN_ID ? BigInt(process.env.SETTLE_SCAN_WINDOW ?? 10_000) : DEFAULT_WINDOW;
+  const maxWindow = chainId === ARC_CHAIN_ID && requestedWindow > 10_000n ? 10_000n : requestedWindow;
   let window = maxWindow;
-  // ponytail: 10k Arc blocks/run bounds free-RPC load; catch up via the persisted
-  // cursor over successive runs. Bootstrap old history from the orderbook DB.
-  const maxWindows = chainId === ARC_CHAIN_ID ? 100 : Infinity;
+  // shortcut: cap Arc at 3M blocks/run; increase only with RPC capacity if cursor lag grows.
+  const maxWindows = chainId === ARC_CHAIN_ID ? 300 : Infinity;
   let windows = 0;
+  let rateRetries = 0;
   let from = cursor + 1n;
   while (from <= safeHead && windows < maxWindows) {
     const to = from + window - 1n > safeHead ? safeHead : from + window - 1n;
     let logs: TradeLog[];
+    if (chainId === ARC_CHAIN_ID) await sleep(1_000);
     try {
       logs = (await client.getLogs({
         address: settlement,
@@ -443,7 +457,12 @@ async function scanChain(chainId: number, deps: SettleDecoderDeps, discoveryOnly
         fromBlock: from,
         toBlock: to,
       })) as unknown as TradeLog[];
+      rateRetries = 0;
     } catch (err) {
+      if (isStrongRateLimitError(err) && rateRetries < 2) {
+        await sleep(2_000 * ++rateRetries);
+        continue;
+      }
       if (isRangeError(err) && window > 1n) {
         window >>= 1n;
         log.info({ chainId, window: window.toString() }, 'settle-decoder: window too large; halving');
@@ -462,7 +481,7 @@ async function scanChain(chainId: number, deps: SettleDecoderDeps, discoveryOnly
     from = to + 1n;
     if (window < maxWindow) window = maxWindow; // restore within the provider's cap
   }
-  return inserted;
+  return { inserted, complete: from > safeHead };
 }
 
 /**
@@ -481,6 +500,7 @@ export async function runSettleDecoder(deps: SettleDecoderDeps): Promise<number>
   // false, which credits nothing (every money gate excludes 0), so it carries no
   // forgery surface. Without either flag, setting SETTLE_DECODER_CHAINS is a no-op.
   if (!FEE_VERIFICATION_IMPLEMENTED && !discoveryOnly) {
+    for (const chainId of chains) await deps.reportProgress?.(chainId, false);
     log.error(
       { chains },
       'settle-decoder: HARD-DISABLED pending on-chain fee verification (ToB B1); not writing. Set SETTLE_DECODER_DISCOVERY_ONLY=true for catalog-only. See DECODER-BUILD-SPEC.md',
@@ -493,10 +513,12 @@ export async function runSettleDecoder(deps: SettleDecoderDeps): Promise<number>
   let inserted = 0;
   for (const chainId of chains) {
     try {
-      const n = await scanChain(chainId, deps, discoveryOnly);
+      const { inserted: n, complete } = await scanChain(chainId, deps, discoveryOnly);
+      await deps.reportProgress?.(chainId, complete);
       if (n > 0) log.info({ chainId, inserted: n }, 'settle-decoder: chain scan complete');
       inserted += n;
     } catch (err) {
+      await deps.reportProgress?.(chainId, false);
       log.error({ err, chainId }, 'settle-decoder: chain scan failed');
     }
   }

@@ -7,6 +7,9 @@ minimumReleaseAge: 10080
 
 # Optional: Allow specific packages to update immediately
 minimumReleaseAgeExclude:
+  # Reviewed security patch releases; overrides pin the compatible release lines.
+  - follow-redirects@1.16.2
+  - decode-uri-component@0.5.1
   - react
   - next
   - typescript

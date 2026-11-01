@@ -1,4 +1,9 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+
+// Scheduling is exercised with real timing in cow-requests.test.ts.
+vi.mock('../src/cow/requests.js', () => ({
+  readCow: async (_url: string, request: () => Promise<Response>, parse: (r: Response) => Promise<unknown>) => parse(await request()),
+}));
 import { setupServer } from 'msw/node';
 import { http, HttpResponse } from 'msw';
 
@@ -87,6 +92,85 @@ describe('fetcher.fetchChainTrades', () => {
     expect(rows[0]!.appCode).toBe('ophis');
     // block_timestamp now comes from the order's creationDate.
     expect(rows[0]!.blockTimestamp.toISOString()).toBe('2026-05-01T12:00:00.000Z');
+  });
+
+  it('caches resolved unrelated orders and never looks up their settlement blocks', async () => {
+    const uid = ('0x' + 'de'.repeat(56)) as `0x${string}`;
+    const owner = ('0x' + 'aa'.repeat(20)) as `0x${string}`;
+    handlers.trades.mockReturnValue([sampleTrade(uid, owner)]);
+    handlers.order.mockClear().mockReturnValue(sampleOrder(uid, owner, 'unrelated'));
+    const cache = new Set<string>();
+    const getSettlementTimestamp = vi.fn();
+    const deps = {
+      defillamaFills: [], getSettlementTimestamp,
+      isNonOphisOrder: (_chainId: number, id: string) => cache.has(id),
+      markNonOphisOrder: async (_chainId: number, id: string) => { cache.add(id); },
+    };
+    const { fetchChainTrades } = await import('../src/fetcher.js');
+    await fetchChainTrades(100, owner, deps);
+    await fetchChainTrades(100, owner, deps);
+    expect(handlers.order).toHaveBeenCalledTimes(1);
+    expect(getSettlementTimestamp).not.toHaveBeenCalled();
+  });
+
+  it('persists earlier trades when a later order lookup fails', async () => {
+    const owner = ('0x' + 'ab'.repeat(20)) as `0x${string}`;
+    const uid = '0x' + 'ed'.repeat(56);
+    handlers.trades.mockReturnValue([sampleTrade(uid, owner), sampleTrade('0x' + 'ef'.repeat(56), owner)]);
+    handlers.order.mockImplementation((id: string) => {
+      if (id !== uid) throw new Error('source failed');
+      return sampleOrder(uid, owner);
+    });
+    const persistPage = vi.fn(async (_rows: import('../src/fetcher.js').PendingTrade[]) => {});
+    const { fetchChainTrades } = await import('../src/fetcher.js');
+    await expect(fetchChainTrades(100, owner, { persistPage })).rejects.toThrow();
+    expect(persistPage).toHaveBeenCalledTimes(1);
+    expect(persistPage.mock.calls[0]![0].map(r => r.tradeUid)).toEqual([uid]);
+  });
+
+  it.each([undefined, '{', '[]'])('keeps scanning past unresolved appData %s and retries it later', async (fullAppData) => {
+    const owner = ('0x' + 'aa'.repeat(20)) as `0x${string}`;
+    const badUid = '0x' + 'ec'.repeat(56);
+    const goodUid = '0x' + 'ed'.repeat(56);
+    handlers.trades.mockReturnValue([sampleTrade(badUid, owner), sampleTrade(goodUid, owner)]);
+    handlers.order.mockImplementation((uid: string) => ({
+      ...sampleOrder(uid, owner, 'ophis'),
+      ...(uid === badUid ? { fullAppData } : {}),
+    }));
+    const persistPage = vi.fn(async (_rows: import('../src/fetcher.js').PendingTrade[]) => {});
+    const markNonOphisOrder = vi.fn();
+    const { fetchChainTrades } = await import('../src/fetcher.js');
+    await expect(fetchChainTrades(100, owner, { persistPage, markNonOphisOrder })).rejects.toThrow('unresolved');
+    expect(persistPage.mock.calls[0]![0].map(row => row.tradeUid)).toEqual([goodUid]);
+    expect(markNonOphisOrder).not.toHaveBeenCalled();
+    handlers.order.mockImplementation((uid: string) => sampleOrder(uid, owner, 'ophis'));
+    expect((await fetchChainTrades(100, owner, {})).map(row => row.tradeUid)).toEqual([badUid, goodUid]);
+  });
+
+  it.each(['0', '1'])('skips a legacy appData sentinel %s without blocking the chain', async (sentinel) => {
+    const uid = '0x' + 'da'.repeat(56);
+    const owner = ('0x' + 'aa'.repeat(20)) as `0x${string}`;
+    handlers.trades.mockReturnValue([sampleTrade(uid, owner)]);
+    handlers.order.mockReturnValue({ ...sampleOrder(uid, owner), fullAppData: null, appData: `0x${'0'.repeat(63)}${sentinel}` });
+    const markNonOphisOrder = vi.fn();
+    const { fetchChainTrades } = await import('../src/fetcher.js');
+    expect(await fetchChainTrades(100, owner, { markNonOphisOrder })).toEqual([]);
+    expect(markNonOphisOrder).toHaveBeenCalledWith(100, uid);
+  });
+
+  it('resolves missing fullAppData through another hash-verified CoW store', async () => {
+    const uid = '0x' + 'db'.repeat(56);
+    const owner = ('0x' + 'aa'.repeat(20)) as `0x${string}`;
+    const order = sampleOrder(uid, owner);
+    const { keccak256, stringToHex } = await import('viem');
+    handlers.trades.mockReturnValue([sampleTrade(uid, owner)]);
+    handlers.order.mockReturnValue({ ...order, fullAppData: null, appData: keccak256(stringToHex(order.fullAppData)) });
+    server.use(
+      http.get(`${COW_FAKE_BASE}/xdai/api/v1/app_data/:hash`, () => new HttpResponse(null, { status: 404 })),
+      http.get(`${COW_FAKE_BASE}/mainnet/api/v1/app_data/:hash`, () => HttpResponse.json({ fullAppData: order.fullAppData })),
+    );
+    const { fetchChainTrades } = await import('../src/fetcher.js');
+    expect((await fetchChainTrades(100, owner, {})).map(row => row.tradeUid)).toEqual([uid]);
   });
 
   it('caps a post-cutover custom Ophis flat fee at the 1 bp affiliate base', async () => {

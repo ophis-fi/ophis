@@ -6,6 +6,19 @@ const { test } = require("node:test");
 
 const { ethers } = require("ethers");
 
+test("legacy minimatch versions lack the reported globparts amplification", () => {
+  for (const consumer of ["recursive-readdir", "mocha"]) {
+    const localRequire = createRequire(require.resolve(consumer));
+    const minimatch = localRequire("minimatch");
+    assert.match(localRequire("minimatch/package.json").version, /^(3|5)\./);
+    assert.equal(minimatch.Minimatch.prototype.firstPhasePreProcess, undefined);
+    assert.equal(minimatch.Minimatch.prototype.secondPhasePreProcess, undefined);
+    const pattern = new minimatch.Minimatch("**/../".repeat(12) + "*.sol", { optimizationLevel: 2 });
+    assert.equal(pattern.set.length, 1);
+    assert(minimatch("src/Contract.sol", "src/*.{js,sol}"));
+  }
+});
+
 test("security overrides preserve signing and the legacy tooling APIs", async () => {
   const signing = createRequire(require.resolve("@ethersproject/signing-key"));
   const curve = new (signing("elliptic").ec)("secp256k1");

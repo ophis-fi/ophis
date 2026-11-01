@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { CowTrade, CowOrder, NativePriceResponse, QuoteResponse, AccountOrder } from './types.js';
 import { logger } from '../logger.js';
+import { readCow } from './requests.js';
 
 const log = logger.child({ module: 'cow-client' });
 
@@ -65,15 +66,21 @@ async function fetchJson<T>(url: string, schema: z.ZodSchema<T>, init?: RequestI
   // The per-request timeout is COMBINED with any caller signal (the #360 conversion's
   // overall-step abort) so EITHER can cancel the request — the prior `...init` spread
   // let a caller signal silently REPLACE the timeout, unbounding the request. (Codex #474)
-  const timeout = AbortSignal.timeout(REQUEST_TIMEOUT_MS);
-  const signal = init?.signal ? AbortSignal.any([timeout, init.signal]) : timeout;
-  const res = await fetch(url, { ...init, signal });
-  if (!res.ok) {
-    const body = await res.text().catch(() => '<unreadable>');
-    throw new Error(`CoW API ${res.status} ${res.statusText} @ ${url} — ${body.slice(0, 200)}`);
-  }
-  const json: unknown = await res.json();
-  return schema.parse(json);
+  const request = () => {
+    const timeout = AbortSignal.timeout(REQUEST_TIMEOUT_MS);
+    const signal = init?.signal ? AbortSignal.any([timeout, init.signal]) : timeout;
+    return fetch(url, { ...init, signal });
+  };
+  const parse = async (res: Response): Promise<T> => {
+    if (!res.ok) {
+      const body = await res.text().catch(() => '<unreadable>');
+      throw new Error(`CoW API ${res.status} ${res.statusText} @ ${url} — ${body.slice(0, 200)}`);
+    }
+    return schema.parse(await res.json());
+  };
+  // Order submission is never automatically retried.
+  if (init?.method && init.method !== 'GET') return parse(await request());
+  return readCow(url, request, parse, init?.signal ?? undefined);
 }
 
 export interface ListTradesParams {

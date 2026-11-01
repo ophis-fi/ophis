@@ -1,4 +1,7 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
+vi.mock('../src/cow/requests.js', () => ({
+  readCow: async (_url: string, request: () => Promise<Response>, parse: (r: Response) => Promise<unknown>) => parse(await request()),
+}));
 import { encodeFunctionData, keccak256, stringToHex, type PublicClient } from 'viem';
 import { SETTLE_FN } from '../src/cow/settleAbi.js';
 import { resolveAppData } from '../src/cow/appDataResolver.js';
@@ -185,6 +188,7 @@ describe('settleDecoderChains / isRangeError', () => {
   });
   it('detects getLogs range/limit errors', () => {
     expect(isRangeError(new Error('block range too large'))).toBe(true);
+    expect(isRangeError(new Error('Request exceeds defined limit. Details: rate limit exceeded'))).toBe(false);
     expect(isRangeError(new Error('query returned more than 10000 results'))).toBe(true);
     expect(isRangeError(new Error('-32602 invalid params'))).toBe(true);
     expect(isRangeError(new Error('eth_getLogs is limited to a 10,000 range (-32614)'))).toBe(true);
@@ -252,6 +256,17 @@ describe('resolveAppData (re-hash guard)', () => {
     expect(fetchMock.mock.calls[0]?.[0]).toContain('unichain-mainnet.ophis.fi');
     expect(fetchMock.mock.calls[1]?.[0]).toContain('optimism-mainnet.ophis.fi');
   });
+  it('uses the hash-verified mainnet store when a hosted chain has lost its document', async () => {
+    const doc = ophisDoc();
+    const hash = hashOf(doc);
+    const fetchMock = vi.fn(async (url: string) => url.includes('/mainnet/')
+      ? ({ ok: true, status: 200, json: async () => ({ fullAppData: doc }) } as Response)
+      : ({ ok: false, status: 404 } as Response));
+    vi.stubGlobal('fetch', fetchMock);
+    expect(await resolveAppData(100, hash)).toBe(doc);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
   it('throws on a transient 500 (caller must not advance the cursor)', async () => {
     vi.stubGlobal(
       'fetch',

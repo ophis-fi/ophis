@@ -1,3 +1,4 @@
+import type { PublicDataSource } from './freshness.js';
 /**
  * Server-rendered HTML for GET /stats when a BROWSER navigates to it
  * (Accept: text/html). API clients (Accept: * / *) get JSON, same as /tier.
@@ -35,6 +36,7 @@ export interface PublicStats {
   dataFresh: boolean;
   dataStatus: 'fresh' | 'degraded';
   dataStaleReason: string | null;
+  dataSources?: PublicDataSource[];
 }
 
 export const CHAIN_NAME: Record<number, string> = {
@@ -152,7 +154,13 @@ export function renderStatsPage(s: PublicStats, query = new URLSearchParams()): 
     : null;
   const freshnessWarning = s.dataFresh
     ? ''
-    : `<div class="warning"><strong>Data refresh delayed.</strong> These figures show the last successful publication${updated ? ` at ${updated}` : ''}. A delayed publication does not itself indicate a failed settlement.</div>`;
+    : s.dataStaleReason === 'ingestion_incomplete'
+      ? `<div class="warning"><strong>Some chain data is incomplete.</strong> Updates continue for available chains. ${
+        (s.dataSources ?? []).filter(source => source.status !== 'fresh')
+          .map(source => `${esc(CHAIN_NAME[source.chainId] ?? `Chain ${source.chainId}`)}: ${esc(source.status)}`)
+          .join('; ')
+      }. Last published${updated ? ` at ${updated}` : ' time unavailable'}.</div>`
+      : `<div class="warning"><strong>Data refresh delayed.</strong> These figures show the last successful publication${updated ? ` at ${updated}` : ''}. A delayed publication does not itself indicate a failed settlement.</div>`;
 
   return `<!doctype html><html lang="en"><head>
 <meta charset="utf-8">

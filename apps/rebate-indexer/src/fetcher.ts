@@ -13,6 +13,7 @@ import { OPHIS_SAFE_ADDRESS } from './safe/addresses.js';
 import { logger } from './logger.js';
 import { getRpcClient } from './rpc/client.js';
 import { PRODUCTION_CHAIN_IDS } from './stats-page.js';
+import { resolveAppData } from './cow/appDataResolver.js';
 
 // The Ophis partner-fee recipient (the Safe). A fee only counts toward the rebate
 // base when it actually pays THIS recipient.
@@ -34,6 +35,10 @@ export interface FetcherDeps {
    * Optional drizzle db instance for dedup checks. Omit in unit tests to skip DB calls.
    */
   db?: FetcherDb | null;
+  isNonOphisOrder?: (chainId: number, uid: string) => boolean;
+  markNonOphisOrder?: (chainId: number, uid: string) => Promise<void>;
+  /** Persist completed page work even when a later metadata/RPC request fails. */
+  persistPage?: (rows: PendingTrade[]) => Promise<void>;
   /** Optional fill sink used by the production fetcher for DefiLlama reporting. */
   defillamaFills?: PendingDefiLlamaFill[];
   /** True when this exact settlement fill is already persisted. */
@@ -472,6 +477,14 @@ export function verifiedHostedZeroAssessment(
   return verifiedVolumeFeeBps === 0 && !SOVEREIGN_CHAIN_IDS.has(chainId) ? '0.00000000' : null;
 }
 
+function readAppCode(meta: unknown): AppCode | undefined {
+  const m = meta as { appCode?: unknown; metadata?: { widget?: { appCode?: unknown } } };
+  const lower = (v: unknown) => typeof v === 'string' ? v.toLowerCase() : undefined;
+  const top = lower(m?.appCode);
+  const widget = lower(m?.metadata?.widget?.appCode);
+  return isAppCodeOfInterest(top) ? top : isAppCodeOfInterest(widget) ? widget : undefined;
+}
+
 function isAppCodeOfInterest(code: string | undefined): code is AppCode {
   return code !== undefined && (APP_CODES as readonly string[]).includes(code);
 }
@@ -487,7 +500,7 @@ function isAppCodeOfInterest(code: string | undefined): code is AppCode {
  * chains (e.g. Base) is NOT here: scanning it would pull all CoW eth-flow traffic,
  * impractical on the free API (tracked as a follow-up).
  */
-const OPHIS_ETHFLOW_OWNER_BY_CHAIN: Readonly<Record<number, `0x${string}`>> = Object.freeze({
+export const OPHIS_ETHFLOW_OWNER_BY_CHAIN: Readonly<Record<number, `0x${string}`>> = Object.freeze({
   // Optimism: Ophis-deployed eth-flow (checksum 0x764fE4aa1FF493cf39931c7923C8ff5837596504, 2026-06-07)
   10: '0x764fe4aa1ff493cf39931c7923c8ff5837596504',
   // Unichain (130): Ophis-deployed eth-flow (checksum 0x38C03729153BCCF6a281DaF41D7C6a14C543F1D7,
@@ -616,11 +629,7 @@ export function attributeOrder(
     // Widget embeds promote the HOST app's appCode to the top level and DEMOTE the
     // Ophis code to metadata.widget.appCode. Recognize either, else widget orders drop.
     const widgetAppCode = lower(m?.metadata?.widget?.appCode);
-    appCode = isAppCodeOfInterest(topAppCode)
-      ? topAppCode
-      : isAppCodeOfInterest(widgetAppCode)
-        ? widgetAppCode
-        : undefined;
+    appCode = readAppCode(meta);
     // Per-trade gross fee rate: a rate (1..retail), or 0 when examined with no settled
     // Ophis Volume fee. Stays NULL only on a parse failure (unknown -> retail default).
     volumeFeeBps = readVolumeFeeBps(meta);
@@ -728,163 +737,185 @@ export async function fetchChainTrades(
 ): Promise<PendingTrade[]> {
   const out: PendingTrade[] = [];
   const seen = new Set<string>(); // collapse multiple fills of the same order within this run
+  let unresolvedAppData: Error | undefined;
   let offset = 0;
   while (true) {
     const page = await listTrades({ chainId, owner, offset, limit: PAGE_SIZE });
     if (page.length === 0) break;
 
-    for (const t of page) {
-      // The rebate ledger collapses an order's fills into one total, while the
-      // DefiLlama ledger preserves every fill. `firstForOrder` controls only the
-      // former; never skip a later API trade row before reporting it.
-      const firstForOrder = !seen.has(t.orderUid);
-      if (firstForOrder) seen.add(t.orderUid);
+    const pageStart = out.length;
+    try {
+      for (const t of page) {
+        if (deps.isNonOphisOrder?.(chainId, t.orderUid)) continue;
+        // The rebate ledger collapses an order's fills into one total, while the
+        // DefiLlama ledger preserves every fill. `firstForOrder` controls only the
+        // former; never skip a later API trade row before reporting it.
+        const firstForOrder = !seen.has(t.orderUid);
+        if (firstForOrder) seen.add(t.orderUid);
 
-      // Skip if already in DB — cheap key lookup. Skipped when db not provided (e.g. unit tests).
-      let rebateRowComplete = false;
-      if (deps.db) {
-        // Lazily import sql + schema only when we have a real db instance.
-        const { sql, schema } = await import('./db/index.js');
-        const already = await deps.db
-          .select({
-            uid: schema.trades.tradeUid,
-            volumeFeeBps: schema.trades.volumeFeeBps,
-            undecodedFeeFallbackBps: schema.trades.undecodedFeeFallbackBps,
-            feeVerified: schema.trades.feeVerified,
-          })
-          .from(schema.trades)
-          .where(sql`trade_uid = decode(${t.orderUid.slice(2)}, 'hex')`)
-          .limit(1);
-        // Skip only a row we've ALREADY enriched AUTHORITATIVELY (fee_verified=true with
-        // a non-null rate). Re-process otherwise:
-        //  - a pre-per-trade row has volume_fee_bps = NULL -> backfill the rate from
-        //    appData (otherwise accrual defaults it to retail and over-credits a 5/1 bps
-        //    order);
-        //  - a settle() decoder DISCOVERY row has fee_verified=false (provisional 0) ->
-        //    write the real owner-allowlist-confirmed fee, so a trade the decoder
-        //    cataloged before its wallet was tracked is not left permanently at 0.
-        // Once authoritatively populated it is skipped here (self-healing, one re-fetch).
-        const row = already[0] as {
-          volumeFeeBps: number | null;
-          undecodedFeeFallbackBps: number | null;
-          feeVerified: boolean;
-        } | undefined;
-        rebateRowComplete = Boolean(
-          row && row.feeVerified &&
-          (row.volumeFeeBps !== null || row.undecodedFeeFallbackBps !== null),
-        );
-      }
-      const fillKey = {
-        chainId,
-        blockNumber: BigInt(t.blockNumber),
-        logIndex: t.logIndex,
-        tradeUid: t.orderUid as `0x${string}`,
-      };
-      const fillSink = DEFILLAMA_CHAIN_IDS.has(chainId) ? deps.defillamaFills : undefined;
-      const reportFillComplete = fillSink
-        ? await deps.hasDefiLlamaFill?.(fillKey) ?? false
-        : true;
-      if ((!firstForOrder || rebateRowComplete) && reportFillComplete) continue;
-
-      // Confirm appCode by fetching the order. We could store unfiltered trades and filter
-      // at scoring time, but fetching the order resolves fullAppData (avoids storing trades
-      // that turn out to be unrelated to Ophis) and gives us the settlement creationDate.
-      const order = await getOrder(chainId, t.orderUid as `0x${string}`);
-
-      // The aggregate rebate row is terminal-only because it stores one lifetime
-      // order total. The reporting fill below is independent and is recorded as soon
-      // as its settled API trade appears, including while a partial order remains open.
-      const isTerminal =
-        order.status === 'fulfilled' || order.status === 'cancelled' || order.status === 'expired';
-      const execSell = order.executedSellAmount ?? t.sellAmount;
-      const execBuy = order.executedBuyAmount ?? t.buyAmount;
-
-      let meta: unknown;
-      try {
-        meta = order.fullAppData ? JSON.parse(order.fullAppData) : {};
-      } catch {
-        continue; // unparseable appData -> not attributable
-      }
-
-      // Shared money-path attribution (same fn the on-chain decoder uses), so the
-      // recipient guard, 3-state fee, refcode gates and eth-flow handling are identical.
-      // block_timestamp = order creationDate (CoW settlement is near-instant and the
-      // rebate window is 30 days, so sub-minute skew is irrelevant; also avoids a
-      // per-chain RPC dependency). NOTE: for a limit/TWAP order created long before it
-      // fills this could land in the wrong 30-day window — tracked as a follow-up if
-      // non-market volume appears. `t.owner` is the SHARED canonical CoW eth-flow
-      // router for a tracked wallet's own native-ETH sells (CoW lists eth-flow orders
-      // under their on-chain sender), so the default owner set must include it or the
-      // row is credited to the contract (2026-09-08: $5.8k across 3 rows, until the
-      // nightly repair). attributeOrder's default DECODER_ETHFLOW_OWNERS covers it.
-      if (isTerminal && firstForOrder && !rebateRowComplete) {
-        const trade = attributeOrder(meta, {
-          owner: t.owner,
-          receiver: order.receiver,
-          onchainUser: order.onchainUser,
-          sellToken: t.sellToken as `0x${string}`,
-          buyToken: t.buyToken as `0x${string}`,
-          executedSell: BigInt(execSell),
-          executedBuy: BigInt(execBuy),
-          tradeUid: t.orderUid as `0x${string}`,
-          chainId,
-          blockNumber: BigInt(t.blockNumber),
-          blockTimestamp: new Date(order.creationDate),
-        });
-        if (trade) {
-          const createdAt = new Date(order.creationDate);
-          trade.volumeFeeBps = affiliateFeeBpsForOrderCreatedAt(trade.volumeFeeBps, createdAt);
-          trade.undecodedFeeFallbackBps = undecodedFeeFallbackBpsForOrderCreatedAt(
-            createdAt,
+        // Skip if already in DB — cheap key lookup. Skipped when db not provided (e.g. unit tests).
+        let rebateRowComplete = false;
+        if (deps.db) {
+          // Lazily import sql + schema only when we have a real db instance.
+          const { sql, schema } = await import('./db/index.js');
+          const already = await deps.db
+            .select({
+              uid: schema.trades.tradeUid,
+              volumeFeeBps: schema.trades.volumeFeeBps,
+              undecodedFeeFallbackBps: schema.trades.undecodedFeeFallbackBps,
+              feeVerified: schema.trades.feeVerified,
+            })
+            .from(schema.trades)
+            .where(sql`trade_uid = decode(${t.orderUid.slice(2)}, 'hex')`)
+            .limit(1);
+          // Skip only a row we've ALREADY enriched AUTHORITATIVELY (fee_verified=true with
+          // a non-null rate). Re-process otherwise:
+          //  - a pre-per-trade row has volume_fee_bps = NULL -> backfill the rate from
+          //    appData (otherwise accrual defaults it to retail and over-credits a 5/1 bps
+          //    order);
+          //  - a settle() decoder DISCOVERY row has fee_verified=false (provisional 0) ->
+          //    write the real owner-allowlist-confirmed fee, so a trade the decoder
+          //    cataloged before its wallet was tracked is not left permanently at 0.
+          // Once authoritatively populated it is skipped here (self-healing, one re-fetch).
+          const row = already[0] as {
+            volumeFeeBps: number | null;
+            undecodedFeeFallbackBps: number | null;
+            feeVerified: boolean;
+          } | undefined;
+          rebateRowComplete = Boolean(
+            row && row.feeVerified &&
+            (row.volumeFeeBps !== null || row.undecodedFeeFallbackBps !== null),
           );
-          out.push(trade);
         }
-      }
-
-      if (fillSink && !reportFillComplete) {
-        const settlementTimestamp = await (deps.getSettlementTimestamp ?? getSettlementTimestamp)(
-          chainId,
-          BigInt(t.blockNumber),
-        );
-        const fill = attributeOrder(meta, {
-          owner: t.owner,
-          receiver: order.receiver,
-          onchainUser: order.onchainUser,
-          sellToken: t.sellToken as `0x${string}`,
-          buyToken: t.buyToken as `0x${string}`,
-          executedSell: BigInt(t.sellAmount),
-          executedBuy: BigInt(t.buyAmount),
-          tradeUid: t.orderUid as `0x${string}`,
+        const fillKey = {
           chainId,
           blockNumber: BigInt(t.blockNumber),
-          blockTimestamp: settlementTimestamp,
-        });
-        if (fill) {
-          const createdAt = new Date(order.creationDate);
-          fill.volumeFeeBps = affiliateFeeBpsForOrderCreatedAt(fill.volumeFeeBps, createdAt);
-          const assessedFeeBps = readAssessedOphisFeeBps(chainId, order.class, meta, t)
-            ?? verifiedHostedZeroAssessment(chainId, fill.volumeFeeBps);
-          fillSink.push({
-            ...fillKey,
-            transactionHash: t.txHash as `0x${string}`,
-            userAddress: fill.wallet,
-            settlementTimestamp,
-            sellToken: fill.sellToken,
-            sellAmount: fill.sellAmount,
-            buyToken: fill.buyToken,
-            buyAmount: fill.buyAmount,
-            volumeFeeBps: fill.volumeFeeBps,
-            assessedFeeBps,
-            feeVerified: true,
+          logIndex: t.logIndex,
+          tradeUid: t.orderUid as `0x${string}`,
+        };
+        const fillSink = DEFILLAMA_CHAIN_IDS.has(chainId) ? deps.defillamaFills : undefined;
+        const reportFillComplete = fillSink
+          ? await deps.hasDefiLlamaFill?.(fillKey) ?? false
+          : true;
+        if ((!firstForOrder || rebateRowComplete) && reportFillComplete) continue;
+
+        // Confirm appCode by fetching the order. We could store unfiltered trades and filter
+        // at scoring time, but fetching the order resolves fullAppData (avoids storing trades
+        // that turn out to be unrelated to Ophis) and gives us the settlement creationDate.
+        const order = await getOrder(chainId, t.orderUid as `0x${string}`);
+
+        // The aggregate rebate row is terminal-only because it stores one lifetime
+        // order total. The reporting fill below is independent and is recorded as soon
+        // as its settled API trade appears, including while a partial order remains open.
+        const isTerminal =
+          order.status === 'fulfilled' || order.status === 'cancelled' || order.status === 'expired';
+        const execSell = order.executedSellAmount ?? t.sellAmount;
+        const execBuy = order.executedBuyAmount ?? t.buyAmount;
+
+        // Legacy CoW 0/1 sentinels have no appCode document to attribute.
+        if (!order.fullAppData && /^0x0{63}[01]$/i.test(order.appData)) {
+          await deps.markNonOphisOrder?.(chainId, t.orderUid);
+          continue;
+        }
+        let meta: unknown;
+        try {
+          const fullAppData = order.fullAppData || (/^0x[\da-f]{64}$/i.test(order.appData)
+            ? await resolveAppData(chainId, order.appData as `0x${string}`) : null);
+          if (!fullAppData) throw new Error('Order appData unavailable');
+          meta = JSON.parse(fullAppData);
+          if (meta === null || typeof meta !== 'object' || Array.isArray(meta)) throw new Error('Invalid order appData');
+        } catch (cause) {
+          unresolvedAppData ??= new Error(`Order appData is unresolved for ${t.orderUid}; retry this chain`, { cause });
+          continue;
+        }
+        if (!readAppCode(meta)) {
+          await deps.markNonOphisOrder?.(chainId, t.orderUid);
+          continue;
+        }
+
+        // Shared money-path attribution (same fn the on-chain decoder uses), so the
+        // recipient guard, 3-state fee, refcode gates and eth-flow handling are identical.
+        // block_timestamp = order creationDate (CoW settlement is near-instant and the
+        // rebate window is 30 days, so sub-minute skew is irrelevant; also avoids a
+        // per-chain RPC dependency). NOTE: for a limit/TWAP order created long before it
+        // fills this could land in the wrong 30-day window — tracked as a follow-up if
+        // non-market volume appears. `t.owner` is the SHARED canonical CoW eth-flow
+        // router for a tracked wallet's own native-ETH sells (CoW lists eth-flow orders
+        // under their on-chain sender), so the default owner set must include it or the
+        // row is credited to the contract (2026-09-08: $5.8k across 3 rows, until the
+        // nightly repair). attributeOrder's default DECODER_ETHFLOW_OWNERS covers it.
+        if (isTerminal && firstForOrder && !rebateRowComplete) {
+          const trade = attributeOrder(meta, {
+            owner: t.owner,
+            receiver: order.receiver,
+            onchainUser: order.onchainUser,
+            sellToken: t.sellToken as `0x${string}`,
+            buyToken: t.buyToken as `0x${string}`,
+            executedSell: BigInt(execSell),
+            executedBuy: BigInt(execBuy),
+            tradeUid: t.orderUid as `0x${string}`,
+            chainId,
+            blockNumber: BigInt(t.blockNumber),
+            blockTimestamp: new Date(order.creationDate),
           });
+          if (trade) {
+            const createdAt = new Date(order.creationDate);
+            trade.volumeFeeBps = affiliateFeeBpsForOrderCreatedAt(trade.volumeFeeBps, createdAt);
+            trade.undecodedFeeFallbackBps = undecodedFeeFallbackBpsForOrderCreatedAt(
+              createdAt,
+            );
+            out.push(trade);
+          }
+        }
+
+        if (fillSink && !reportFillComplete) {
+          const settlementTimestamp = await (deps.getSettlementTimestamp ?? getSettlementTimestamp)(
+            chainId,
+            BigInt(t.blockNumber),
+          );
+          const fill = attributeOrder(meta, {
+            owner: t.owner,
+            receiver: order.receiver,
+            onchainUser: order.onchainUser,
+            sellToken: t.sellToken as `0x${string}`,
+            buyToken: t.buyToken as `0x${string}`,
+            executedSell: BigInt(t.sellAmount),
+            executedBuy: BigInt(t.buyAmount),
+            tradeUid: t.orderUid as `0x${string}`,
+            chainId,
+            blockNumber: BigInt(t.blockNumber),
+            blockTimestamp: settlementTimestamp,
+          });
+          if (fill) {
+            const createdAt = new Date(order.creationDate);
+            fill.volumeFeeBps = affiliateFeeBpsForOrderCreatedAt(fill.volumeFeeBps, createdAt);
+            const assessedFeeBps = readAssessedOphisFeeBps(chainId, order.class, meta, t)
+              ?? verifiedHostedZeroAssessment(chainId, fill.volumeFeeBps);
+            fillSink.push({
+              ...fillKey,
+              transactionHash: t.txHash as `0x${string}`,
+              userAddress: fill.wallet,
+              settlementTimestamp,
+              sellToken: fill.sellToken,
+              sellAmount: fill.sellAmount,
+              buyToken: fill.buyToken,
+              buyAmount: fill.buyAmount,
+              volumeFeeBps: fill.volumeFeeBps,
+              assessedFeeBps,
+              feeVerified: true,
+            });
+          }
         }
       }
-    }
 
+    } finally {
+      await deps.persistPage?.(out.slice(pageStart));
+    }
     if (page.length < PAGE_SIZE) break;
     offset += page.length;
   }
   if (out.length > 0) log.info({ chainId, owner, fetched: out.length }, 'owner/chain fetch complete');
+  if (unresolvedAppData) throw unresolvedAppData;
   return out;
 }
 
@@ -1061,9 +1092,19 @@ export async function runFetcher(
       return { inserted: 0, owners: 0 };
     }
 
+    const ignoredRows = await sql<{ chain_id: number; uid: string }[]>`
+      SELECT chain_id, encode(trade_uid, 'hex') AS uid FROM non_ophis_orders
+    `;
+    const ignored = new Set(ignoredRows.map((r) => `${r.chain_id}:${r.uid}`));
     const pendingDefillamaFills: PendingDefiLlamaFill[] = [];
     const dbDeps: FetcherDeps = {
       db: db as unknown as FetcherDb,
+      isNonOphisOrder: (chainId, uid) => ignored.has(`${chainId}:${uid.slice(2).toLowerCase()}`),
+      markNonOphisOrder: async (chainId, uid) => {
+        await sql`INSERT INTO non_ophis_orders (chain_id, trade_uid)
+          VALUES (${chainId}, decode(${uid.slice(2)}, 'hex')) ON CONFLICT DO NOTHING`;
+        ignored.add(`${chainId}:${uid.slice(2).toLowerCase()}`);
+      },
       defillamaFills: pendingDefillamaFills,
       hasDefiLlamaFill: async (fill) => {
         // Complete = VERIFIED. A decoder DISCOVERY fill (fee_verified=false) must
@@ -1086,7 +1127,7 @@ export async function runFetcher(
         `;
         return row?.present === true;
       },
-      getSettlementTimestamp,
+      getSettlementTimestamp: _deps?.getSettlementTimestamp ?? getSettlementTimestamp,
     };
 
     // Bounded, round-robin owner set. `/tier` is public, so tracked_wallets can
@@ -1094,7 +1135,7 @@ export async function runFetcher(
     // (rows × 12 chains) CoW calls and amplify that into a self-DoS + CoW
     // rate-limit exhaustion. We process at most MAX_OWNERS_PER_RUN per tick,
     // proven wallets (those that already produced an Ophis trade) FIRST so spam
-    // can never starve them, then oldest-fetched. Junk is evicted below.
+    // can never starve them, then least-recently-attempted. Junk is evicted below.
     // Lower clamp only. The upper bound is `now`: the nightly deliberately passes
     // `now` for a boundary-complete fetch, and shaving even a minute off would
     // exclude a wallet a startup backfill touched just before 02:00 -- exactly the
@@ -1109,13 +1150,10 @@ export async function runFetcher(
       WHERE last_fetched IS NULL
          OR last_fetched < ${staleBeforeIso}::timestamptz
          OR wallet IN (SELECT wallet FROM defillama_backfill_wallets)
-      -- proven wallets first; then least-recently-fetched (never-fetched first);
-      -- then OLDEST registration. The first_seen tiebreaker makes never-fetched
-      -- selection FIFO so /tier spam can't starve an older legit wallet that
-      -- registered before the flood (they'd otherwise tie on last_fetched=NULL).
-      ORDER BY (wallet IN (SELECT wallet FROM defillama_backfill_wallets)) DESC,
-               (wallet IN (SELECT wallet FROM trades)) DESC,
-               last_fetched ASC NULLS FIRST,
+      -- Proven traders keep priority over public enrollment spam. Rotate by
+      -- attempt age so a busy registry cannot starve older registrations.
+      ORDER BY (wallet IN (SELECT wallet FROM trades)) DESC,
+               COALESCE(last_attempt_at, first_seen) ASC,
                first_seen ASC
       LIMIT ${FETCHER_MAX_OWNERS_PER_RUN}
     `;
@@ -1166,7 +1204,7 @@ export async function runFetcher(
     // eth-flow synthetic-owner pass below so both apply identical backfill semantics.
     const upsertTrades = async (rows: PendingTrade[]): Promise<number> => {
       if (rows.length === 0) return 0;
-      await db
+      const written = await db
         .insert(schema.trades)
         .values(
           rows.map((r) => ({
@@ -1239,23 +1277,39 @@ export async function runFetcher(
             ownFeeScannedAt: dsql`CASE WHEN (${FEE_UPGRADE_ARMS}) OR (${OWN_FEE_FILL_ARM}) THEN excluded.own_fee_scanned_at ELSE ${schema.trades.ownFeeScannedAt} END`,
           },
           setWhere: dsql`(${FEE_UPGRADE_ARMS}) OR (${OWN_FEE_FILL_ARM}) OR (${POLICY_MARKER_FILL_ARM})`,
-        });
-      return rows.length;
+        })
+        .returning({ inserted: dsql<boolean>`xmax = 0` });
+      return written.filter((r) => r.inserted).length;
     };
     const flushDefillamaFills = async (): Promise<void> => {
       if (pendingDefillamaFills.length === 0) return;
       await upsertDefillamaFills(pendingDefillamaFills.splice(0));
     };
+    dbDeps.persistPage = async (rows) => {
+      inserted += await upsertTrades(rows);
+      await flushDefillamaFills();
+    };
+    // shortcut: pages are still enumerated; add fill cursors if pagination dominates refresh time.
     for (const { wallet } of owners) {
       const owner = wallet as `0x${string}`;
       let ownerOk = true;
       let reportingOk = true;
       for (const chainId of SUPPORTED_CHAIN_IDS) {
+        const [state] = await sql<{ fresh: boolean }[]>`
+          SELECT (last_success_at >= ${staleBeforeIso}::timestamptz AND NOT failed) AS fresh
+          FROM wallet_chain_fetches WHERE wallet = decode(${owner.slice(2)}, 'hex') AND chain_id = ${chainId}
+        `;
+        if (state?.fresh) continue;
         try {
-          const rows = await fetchChainTrades(chainId, owner, dbDeps);
-          inserted += await upsertTrades(rows);
-          await flushDefillamaFills();
+          await fetchChainTrades(chainId, owner, dbDeps);
+          await sql`INSERT INTO wallet_chain_fetches (wallet, chain_id, last_success_at)
+            VALUES (decode(${owner.slice(2)}, 'hex'), ${chainId}, now())
+            ON CONFLICT (wallet, chain_id) DO UPDATE
+            SET last_attempt_at = now(), last_success_at = now(), failed = false`;
         } catch (err) {
+          await sql`INSERT INTO wallet_chain_fetches (wallet, chain_id, failed)
+            VALUES (decode(${owner.slice(2)}, 'hex'), ${chainId}, true)
+            ON CONFLICT (wallet, chain_id) DO UPDATE SET last_attempt_at = now(), failed = true`;
           ownerOk = false; // a transient CoW failure must not silently advance the cursor
           if (DEFILLAMA_CHAIN_IDS.has(chainId)) reportingOk = false;
           log.error({ err, chainId, owner }, 'owner/chain fetch failed'); // single failure does not abort others
@@ -1289,10 +1343,13 @@ export async function runFetcher(
       const chainId = Number(chainIdStr);
       if (!SUPPORTED_CHAIN_IDS.includes(chainId)) continue;
       try {
-        const rows = await fetchChainTrades(chainId, ethFlowOwner, dbDeps);
-        inserted += await upsertTrades(rows);
-        await flushDefillamaFills();
+        await fetchChainTrades(chainId, ethFlowOwner, dbDeps);
+        await sql`INSERT INTO chain_source_fetches (source, chain_id, last_success_at) VALUES ('ethflow', ${chainId}, now())
+          ON CONFLICT (source, chain_id) DO UPDATE
+          SET last_attempt_at = now(), last_success_at = now(), failed = false`;
       } catch (err) {
+        await sql`INSERT INTO chain_source_fetches (source, chain_id, failed) VALUES ('ethflow', ${chainId}, true)
+          ON CONFLICT (source, chain_id) DO UPDATE SET last_attempt_at = now(), failed = true`;
         log.error({ err, chainId, ethFlowOwner }, 'eth-flow owner fetch failed');
       }
     }
@@ -1310,6 +1367,13 @@ export async function runFetcher(
         inserted += await runSettleDecoder({
           sql: sql as unknown as Parameters<typeof runSettleDecoder>[0]['sql'],
           upsertTrades,
+          reportProgress: async (chainId, complete) => {
+            await sql`INSERT INTO chain_source_fetches (source, chain_id, last_success_at, failed)
+              VALUES ('decoder', ${chainId}, CASE WHEN ${complete} THEN now() END, ${!complete})
+              ON CONFLICT (source, chain_id) DO UPDATE SET last_attempt_at = now(),
+                last_success_at = COALESCE(EXCLUDED.last_success_at, chain_source_fetches.last_success_at),
+                failed = EXCLUDED.failed`;
+          },
           // Settlement-fill persistence for decoder-discovered trades: the only
           // source of hosted-chain native-ETH (shared eth-flow) fills for wallets
           // nobody tracks (a tracked wallet's own fetch above lists its eth-flow

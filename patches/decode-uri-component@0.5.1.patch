@@ -1,10 +1,7 @@
 diff --git a/index.js b/index.js
 --- a/index.js
 +++ b/index.js
-@@ -157,7 +157,7 @@
- 	return input;
- }
- 
+@@ -139,4 +139,4 @@
 -export default function decodeUriComponent(encodedURI) {
 +module.exports = function decodeUriComponent(encodedURI) {
  	if (typeof encodedURI !== 'string') {

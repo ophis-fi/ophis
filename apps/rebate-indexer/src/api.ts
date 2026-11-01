@@ -10,7 +10,7 @@ import { renderTierPage } from './tier-page.js';
 import { renderStatsPage, CHAIN_ICON, PRODUCTION_CHAIN_IDS, EXECUTION_FACTS, type PublicStats } from './stats-page.js';
 import { isDefiLlamaBackfillComplete } from './defillamaBackfill.js';
 import { computeDefiLlamaDay, computeDefiLlamaDayUsers, computePublicStats } from './stats.js';
-import { assessPublicDataFreshness, readPublicDataFreshness, type PublicDataFreshness } from './freshness.js';
+import { readPublicDataFreshness, type PublicDataFreshness } from './freshness.js';
 import { getIntegratorEarnings } from './earnings.js';
 import { DECODER_ETHFLOW_OWNERS } from './fetcher.js';
 import { logger } from './logger.js';
@@ -483,7 +483,7 @@ export async function buildApiServer(): Promise<FastifyInstance> {
     const trade_rewards_last_attempt_at = healthRows[0]?.trade_rewards_last_attempt_at ?? null;
     const trade_rewards_last_success_at = healthRows[0]?.trade_rewards_last_success_at ?? null;
     const last_public_data_refresh_at = healthRows[0]?.last_public_data_refresh_at ?? null;
-    const freshness = assessPublicDataFreshness(last_public_data_refresh_at);
+    const freshness = await readPublicDataFreshness(sql);
     const pending = batchCountRows[0]?.pending ?? '0';
     const failed = batchCountRows[0]?.failed ?? '0';
     return {
@@ -500,6 +500,7 @@ export async function buildApiServer(): Promise<FastifyInstance> {
       data_fresh: freshness.dataFresh,
       data_status: freshness.dataStatus,
       data_stale_reason: freshness.dataStaleReason,
+      data_sources: freshness.dataSources,
       pending_batches: parseInt(pending, 10),
       failed_batches: parseInt(failed, 10),
     };
@@ -632,6 +633,7 @@ export async function buildApiServer(): Promise<FastifyInstance> {
       dataFresh: freshness.dataFresh,
       dataStatus: freshness.dataStatus,
       dataStaleReason: freshness.dataStaleReason,
+      dataSources: freshness.dataSources,
     };
 
     reply.header('vary', 'Origin, Accept');
