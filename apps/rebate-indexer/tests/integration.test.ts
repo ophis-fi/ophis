@@ -139,7 +139,7 @@ describe('pruneStaleWallets', () => {
   it('evicts only confirmed junk; keeps proven, recently-retried, and recent wallets', async () => {
     const { sql } = await import('../src/db/index.js');
     const { pruneStaleWallets } = await import('../src/fetcher.js');
-    await sql`TRUNCATE defillama_backfill_wallets, trades, tracked_wallets`;
+    await sql`TRUNCATE wallet_chain_fetches, defillama_backfill_wallets, trades, tracked_wallets`;
 
     const proven = 'a'.repeat(40);
     // Proven wallet must have a row in `trades` so the prune never touches it.
@@ -173,14 +173,14 @@ describe('pruneStaleWallets', () => {
     expect(survivors.has('d'.repeat(40))).toBe(false);  // attempted, never ok, 31d
     expect(survivors.has('f'.repeat(40))).toBe(false);  // never attempted, 31d
 
-    await sql`TRUNCATE defillama_backfill_wallets, trades, tracked_wallets`;
+    await sql`TRUNCATE wallet_chain_fetches, defillama_backfill_wallets, trades, tracked_wallets`;
   }, 30_000); // integration: container + prune over a fixtured wallet set
 
   it('renews registration and preserves order history, failures, and concurrent enrollment', async () => {
     const { sql } = await import('../src/db/index.js');
     const { pruneStaleWallets } = await import('../src/fetcher.js');
     const { buildApiServer } = await import('../src/api.js');
-    await sql`TRUNCATE defillama_backfill_wallets, trades, tracked_wallets, pruned_wallets`;
+    await sql`TRUNCATE wallet_chain_fetches, defillama_backfill_wallets, trades, tracked_wallets, pruned_wallets`;
     const wallets = ['31', '32', '33', '34', '35', '36', '37'].map((byte) => `0x${byte.repeat(20)}` as `0x${string}`);
     for (const wallet of wallets) {
       await sql`INSERT INTO tracked_wallets (wallet, first_seen, last_registered_at, last_fetched)
@@ -210,7 +210,7 @@ describe('pruneStaleWallets', () => {
       expect(audit.map((row) => row.wallet)).toEqual([wallets[4]]);
     } finally {
       await app.close();
-      await sql`TRUNCATE defillama_backfill_wallets, trades, tracked_wallets, pruned_wallets`;
+      await sql`TRUNCATE wallet_chain_fetches, defillama_backfill_wallets, trades, tracked_wallets, pruned_wallets`;
     }
   });
 });
@@ -218,7 +218,7 @@ describe('pruneStaleWallets', () => {
 describe('wallets matview fee-gate', () => {
   it('excludes recognized trades that paid no Ophis fee (volume_fee_bps = 0); keeps NULL and positive', async () => {
     const { sql } = await import('../src/db/index.js');
-    await sql`TRUNCATE trades, tracked_wallets`;
+    await sql`TRUNCATE wallet_chain_fetches, trades, tracked_wallets`;
     const wPos = 'a'.repeat(40); // volume_fee_bps = 5 -> counts
     const wNull = 'b'.repeat(40); // NULL (un-backfilled legacy / surplus-PI) -> counts, never under-count a legit un-priced trade
     const wZero = 'c'.repeat(40); // 0 (no Ophis fee, e.g. the 'ophis-fallback' / forged order) -> EXCLUDED
@@ -235,14 +235,14 @@ describe('wallets matview fee-gate', () => {
     expect(counted.has(wPos)).toBe(true); // positive fee counts
     expect(counted.has(wNull)).toBe(true); // NULL kept: a legit un-backfilled trade is never under-counted
     expect(counted.has(wZero)).toBe(false); // zero-fee recognized order excluded from the trader pool
-    await sql`TRUNCATE trades, tracked_wallets`;
+    await sql`TRUNCATE wallet_chain_fetches, trades, tracked_wallets`;
   }, 30_000);
 });
 
 describe('discovery-only decoder (fee_verified upsert arms)', () => {
   it('API verified fee upgrades a decoder discovery row; a decoder write never downgrades a verified row; a verified own-fee fills a NULL own-fee (finding #4)', async () => {
     const { sql } = await import('../src/db/index.js');
-    await sql`TRUNCATE trades, tracked_wallets`;
+    await sql`TRUNCATE wallet_chain_fetches, trades, tracked_wallets`;
     // MIRRORS the upsert in src/fetcher.ts (upsertTrades): UPGRADE-only via THREE disjoint
     // arms: (1) a still-NULL fee row -> a POSITIVE rate (self-heal), (2) a settle()
     // decoder DISCOVERY row (fee_verified=false) -> the API's verified fee, and (3) a
@@ -300,7 +300,7 @@ describe('discovery-only decoder (fee_verified upsert arms)', () => {
     await upsert('d7', '7'.repeat(40), 10, true); // verified, own NULL
     await upsert('d7', '7'.repeat(40), 0, false, 25, RECIP); // decoder discovery w/ own-fee -> ignored
     expect(await read('d7')).toEqual({ fee: 10, v: true, own: null, recip: null });
-    await sql`TRUNCATE trades, tracked_wallets`;
+    await sql`TRUNCATE wallet_chain_fetches, trades, tracked_wallets`;
   }, 30_000);
 
   it('the API upgrade of a decoder discovery row also moves wallet from receiver to the payer', async () => {
@@ -336,7 +336,7 @@ describe('discovery-only decoder (fee_verified upsert arms)', () => {
 
   it('a discovery row (fee=0) is EXCLUDED from the wallets matview but COUNTED by the /stats query', async () => {
     const { sql } = await import('../src/db/index.js');
-    await sql`TRUNCATE trades, tracked_wallets`;
+    await sql`TRUNCATE wallet_chain_fetches, trades, tracked_wallets`;
     const wDisc = 'e'.repeat(40);
     // a decoder discovery row: volume_fee_bps = 0, fee_verified = false
     await sql`
@@ -349,7 +349,7 @@ describe('discovery-only decoder (fee_verified upsert arms)', () => {
     const [stats] = await sql<{ n: string; vol: string }[]>`SELECT COUNT(*)::text AS n, COALESCE(SUM(value_usd),0)::text AS vol FROM trades WHERE chain_id = 100`;
     expect(Number(stats?.n ?? '0')).toBe(1); // discovery visibility
     expect(Number(stats?.vol ?? '0')).toBe(2500);
-    await sql`TRUNCATE trades, tracked_wallets`;
+    await sql`TRUNCATE wallet_chain_fetches, trades, tracked_wallets`;
   }, 30_000);
 });
 
@@ -395,7 +395,7 @@ describe('GET /earnings/:appCode (getIntegratorEarnings)', () => {
   it('excludes UNVERIFIED discovery rows (fee=0, fee_verified=false) that share the appCode tag', async () => {
     const { sql } = await import('../src/db/index.js');
     const { getIntegratorEarnings } = await import('../src/earnings.js');
-    await sql`TRUNCATE trades, tracked_wallets`;
+    await sql`TRUNCATE wallet_chain_fetches, trades, tracked_wallets`;
     // Verified, fee-paying row -> counts. Discovery row (attacker-controllable appData
     // tag, forced to volume_fee_bps=0 + fee_verified=false) -> MUST NOT count, even
     // though it carries the same appdata_ref_code and a NEWER own-fee recipient.
@@ -412,13 +412,13 @@ describe('GET /earnings/:appCode (getIntegratorEarnings)', () => {
     // The recipient is the VERIFIED row's, never the newer unverified discovery row's.
     expect(e.ownFeeAccruedUsd.recipient).toBe(`0x${RECIP_A}`);
     await sql`DELETE FROM ref_codes WHERE code = 'mycode'`;
-    await sql`TRUNCATE trades, tracked_wallets`;
+    await sql`TRUNCATE wallet_chain_fetches, trades, tracked_wallets`;
   }, 30_000);
 
   it('scopes the own-fee recipient lookup to production chains (a newer testnet row cannot set it)', async () => {
     const { sql } = await import('../src/db/index.js');
     const { getIntegratorEarnings } = await import('../src/earnings.js');
-    await sql`TRUNCATE trades, tracked_wallets`;
+    await sql`TRUNCATE wallet_chain_fetches, trades, tracked_wallets`;
     // Production (Gnosis 100) row is OLDER; a verified Sepolia (11155111, testnet, not in
     // PRODUCTION_CHAIN_IDS) row is NEWER. The aggregate already filters to production, so
     // its recipient lookup must too, else the testnet recipient leaks as "where it paid out".
@@ -431,13 +431,13 @@ describe('GET /earnings/:appCode (getIntegratorEarnings)', () => {
     expect(e.routedVolumeUsd.total).toBe(1000); // testnet 500 excluded from amounts
     expect(e.ownFeeAccruedUsd.recipient).toBe(`0x${RECIP_A}`); // NOT the newer testnet recipient
     await sql`DELETE FROM ref_codes WHERE code = 'chaincode'`;
-    await sql`TRUNCATE trades, tracked_wallets`;
+    await sql`TRUNCATE wallet_chain_fetches, trades, tracked_wallets`;
   }, 30_000);
 
   it('returns all-zero for an UNREGISTERED appCode even with verified fee-paying trades (appData ownership binding)', async () => {
     const { sql } = await import('../src/db/index.js');
     const { getIntegratorEarnings } = await import('../src/earnings.js');
-    await sql`TRUNCATE trades, tracked_wallets`;
+    await sql`TRUNCATE wallet_chain_fetches, trades, tracked_wallets`;
     // A verified, fee-paying production trade tagged with an appCode that is NOT a
     // registered ref_code. appdata_ref_code is attacker-controllable, so without the
     // ref_codes ownership binding this would report attacker-controlled volume / fee /
@@ -458,13 +458,13 @@ describe('GET /earnings/:appCode (getIntegratorEarnings)', () => {
     expect(e2.routedVolumeUsd.total).toBe(5000);
     expect(e2.ownFeeAccruedUsd.recipient).toBe(`0x${RECIP_A}`);
     await sql`DELETE FROM ref_codes WHERE code = 'ghostcode'`;
-    await sql`TRUNCATE trades, tracked_wallets`;
+    await sql`TRUNCATE wallet_chain_fetches, trades, tracked_wallets`;
   }, 30_000);
 
   it('backfills own-fee columns on a verified pre-0014 row without rewriting the verified Ophis fee', async () => {
     const { sql } = await import('../src/db/index.js');
     const { backfillOwnFee } = await import('../src/fetcher.js');
-    await sql`TRUNCATE trades, tracked_wallets`;
+    await sql`TRUNCATE wallet_chain_fetches, trades, tracked_wallets`;
     const INTEGRATOR = 'c1'.repeat(20); // the integrator's stacked own-fee recipient
     // A verified, fee-paying row indexed BEFORE 0014: own_fee columns NULL.
     await insertTrade(sql, { uid: 'f1', chain: 100, code: 'bfcode', feeBps: 10, verified: true, volumeUsd: 1000, ownFeeBps: null, ownRecipHex: null, ts: OLDER });
@@ -494,13 +494,13 @@ describe('GET /earnings/:appCode (getIntegratorEarnings)', () => {
     const [f2] = await sql<{ own_bps: number | null }[]>`
       SELECT own_fee_bps AS own_bps FROM trades WHERE trade_uid = decode(${'f2'.repeat(56)}, 'hex')`;
     expect(f2?.own_bps).toBeNull(); // discovery row untouched by the backfill
-    await sql`TRUNCATE trades, tracked_wallets`;
+    await sql`TRUNCATE wallet_chain_fetches, trades, tracked_wallets`;
   }, 30_000);
 
   it('converges: a no-own-fee row is marked scanned once and never re-selected (finding #3)', async () => {
     const { sql } = await import('../src/db/index.js');
     const { backfillOwnFee } = await import('../src/fetcher.js');
-    await sql`TRUNCATE trades, tracked_wallets`;
+    await sql`TRUNCATE wallet_chain_fetches, trades, tracked_wallets`;
     // A verified, fee-paying row carrying NO stacked own-fee, the vast-majority shape
     // that the old own_fee_bps IS NULL work-queue re-selected forever.
     await insertTrade(sql, { uid: 'a1', chain: 100, code: 'conv', feeBps: 10, verified: true, volumeUsd: 1000, ownFeeBps: null, ownRecipHex: null, ts: OLDER });
@@ -531,13 +531,13 @@ describe('GET /earnings/:appCode (getIntegratorEarnings)', () => {
     const [after] = await sql<{ own: number | null }[]>`
       SELECT own_fee_bps AS own FROM trades WHERE trade_uid = decode(${'a1'.repeat(56)}, 'hex')`;
     expect(after?.own).toBeNull();
-    await sql`TRUNCATE trades, tracked_wallets`;
+    await sql`TRUNCATE wallet_chain_fetches, trades, tracked_wallets`;
   }, 30_000);
 
   it('leaves a row UNSCANNED on a missing/unresolved fullAppData so a later read still backfills it (connector P2)', async () => {
     const { sql } = await import('../src/db/index.js');
     const { backfillOwnFee } = await import('../src/fetcher.js');
-    await sql`TRUNCATE trades, tracked_wallets`;
+    await sql`TRUNCATE wallet_chain_fetches, trades, tracked_wallets`;
     const INTEGRATOR = 'e5'.repeat(20);
     await insertTrade(sql, { uid: 'a3', chain: 100, code: 'miss', feeBps: 10, verified: true, volumeUsd: 1000, ownFeeBps: null, ownRecipHex: null, ts: OLDER });
 
@@ -564,13 +564,13 @@ describe('GET /earnings/:appCode (getIntegratorEarnings)', () => {
       SELECT own_fee_bps AS own, own_fee_scanned_at AS scanned FROM trades WHERE trade_uid = decode(${'a3'.repeat(56)}, 'hex')`;
     expect(aft?.own).toBe(25);
     expect(aft?.scanned).not.toBeNull(); // now conclusively scanned
-    await sql`TRUNCATE trades, tracked_wallets`;
+    await sql`TRUNCATE wallet_chain_fetches, trades, tracked_wallets`;
   }, 30_000);
 
   it('scans a surplus-fee row (volume_fee_bps NULL) and writes its stacked own-fee (finding #4)', async () => {
     const { sql } = await import('../src/db/index.js');
     const { backfillOwnFee } = await import('../src/fetcher.js');
-    await sql`TRUNCATE trades, tracked_wallets`;
+    await sql`TRUNCATE wallet_chain_fetches, trades, tracked_wallets`;
     const INTEGRATOR = 'd4'.repeat(20); // the integrator's stacked own-fee recipient
     // A verified pre-0014 row whose Ophis fee is Surplus/PI -> volume_fee_bps NULL. The
     // OLD backfill required volume_fee_bps IS NOT NULL and skipped it forever; it must now
@@ -594,6 +594,6 @@ describe('GET /earnings/:appCode (getIntegratorEarnings)', () => {
     expect(row?.recip).toBe(INTEGRATOR);
     expect(row?.fee).toBeNull(); // surplus/PI volume_fee_bps stays NULL (invariant kept)
     expect(row?.scanned).not.toBeNull(); // marked scanned
-    await sql`TRUNCATE trades, tracked_wallets`;
+    await sql`TRUNCATE wallet_chain_fetches, trades, tracked_wallets`;
   }, 30_000);
 });

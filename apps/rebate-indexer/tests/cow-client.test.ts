@@ -1,4 +1,9 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
+
+// Scheduling is exercised with real timing in cow-requests.test.ts.
+vi.mock('../src/cow/requests.js', () => ({
+  readCow: async (_url: string, request: () => Promise<Response>, parse: (r: Response) => Promise<unknown>) => parse(await request()),
+}));
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { join } from 'node:path';
