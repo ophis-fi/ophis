@@ -1,5 +1,69 @@
 # Optimism RPC capacity and recovery
 
+## November 1, 2026: reduce Alchemy CU consumption
+
+Operator constraint remains **no spending**. The supplied key matches the
+installed Alchemy credential; no new account, plan, recharge or overage was
+enabled. Keys remain in the existing environment and RAM-backed render, outside
+Git and incident evidence.
+
+Three OP indexers previously requested logs separately for every block, even
+when none of their contracts emitted an event. These reads contributed 1.5
+Alchemy requests/s and 90 estimated CU/s. The total baseline was approximately
+124 CU/s using Alchemy's published per-method prices. Local `creditUnits: 1`
+is a request limiter override and does not change those prices. Transport
+batching also bills each individual method.
+
+OP's settlement, onchain-order and EthFlow-refund retrievers now first request
+the block by its explicit hash. eRPC requires two agreeing providers, then
+caches only nonempty, explicit-hash headers for one hour in the existing
+bounded header cache. The backend recomputes the canonical header hash before
+using its `logsBloom`. Only a proven address/topic absence returns no events.
+Missing, failed, inconsistent or possibly matching headers fall through to the
+existing consensus log read; the optional precheck has a two-second deadline.
+Historical range queries, indexing frequency and other chains retain their
+existing behavior. Logs, receipts and mutable state remain uncached.
+
+`eth_getBlockByHash` is now a protected Block A method. Tagged and numbered
+header reads still prefer official OP. Update the closed-world guard and
+regressions together if changing these policies. The mock engine regression
+requires every provider pair to work, one lone voter to fail, an altered bloom
+to be outvoted, and a repeated agreed header to cause no upstream requests.
+Backend tests cover an actual OP header, forged blooms, possible matches,
+missing/error headers and preservation of log errors.
+
+Deploy RPC first, verify its actual mounted bytes and two-provider canary,
+then deploy the new autopilot image. Reverse that order for rollback: restore
+autopilot before removing explicit-hash consensus. The deployed code revision
+is `706f152a3c8a9cbfcf3d5fb7141787ec237c1bd9`. Only autopilot's binary changes;
+the existing CoinGecko fix, configuration mount, environment and all unrelated
+containers are preserved. Runtime Compose files are the live stack file, the
+existing `compose-pricing.json`, and
+`/Users/scep/ophis-incidents/2026-11-01-alchemy-cu/compose-cu.json`.
+Use all three files for future autopilot recreation; the last override records
+the new image and source build context.
+
+Rollback configuration remains mode 0600 on the verified RAM image under
+`~/.local/state/ophis/ram-pk/op-cu-20261101/before.yaml`. Sanitized measurements,
+deployment identities and recovery instructions are in
+`/Users/scep/ophis-incidents/2026-11-01-alchemy-cu/`. Compare observed request
+rates using the published
+[Alchemy CU weights](https://www.alchemy.com/docs/reference/compute-unit-costs),
+not eRPC's request-count weights. The provider dashboard's actual allowance,
+other account consumers and billing totals remain unverified. A reduced burn
+rate does not guarantee that a finite free allowance lasts the month.
+
+At 18:56:52 UTC, the final ten-minute rate was **53.85 estimated CU/s**, down
+from **123.66 CU/s (56.5%)**. Alchemy requests fell **26.4%**, log requests
+**91.9%**, and combined log/header CU **80.8%**. This uses observed traffic,
+not a controlled equal-load billing comparison. Across 22 samples over 630
+seconds, all indexing cursors advanced from 158980002 to 158980317 with zero
+maintenance lag and zero new sanctions-fetch failures. Auctions stayed HTTP
+200. Driver health was 200 in 21 samples and 503 once: both metered providers'
+local request budgets were exhausted briefly, so balance checks failed closed.
+The next sample and three fresh probes were 200; final alerts were empty.
+Free reserve capacity remains limited during bursts. No live settlement was tested.
+
 ## October 31, 2026: ZAN quota and sanctions refresh recovery
 
 **Operator constraint: no paid RPC plans, purchases, top-ups or overage.** Use
