@@ -48,6 +48,8 @@ async function main() {
           if (fetched.owners < FETCHER_MAX_OWNERS_PER_RUN) break;
           if (i === 99) logger.error('DefiLlama startup backfill hit guard limit');
         }
+        // Publish the priced primary data while historical audits retain the payout lock.
+        await runScorer();
         // A migration can requeue eth-flow routers. runFetcher intentionally
         // filters every router out before its owner loop, so those queue rows can
         // never delete themselves and the DefiLlama readiness gate stays closed.
