@@ -1,5 +1,7 @@
 import type { Sql } from 'postgres';
 import { PRODUCTION_CHAIN_IDS } from './stats-page.js';
+import { OPHIS_ETHFLOW_OWNER_BY_CHAIN } from './fetcher.js';
+import { settleDecoderChains } from './cow/onchain.js';
 
 /** Daily publication runs at 02:00 UTC. Two hours of grace avoids a false alarm
  * while a slow backfill/pricing pass finishes, while still paging on the same day. */
@@ -68,18 +70,31 @@ export async function readPublicDataFreshness(
     WHERE singleton = TRUE
   `;
   const sources = await sql<{
-    chain_id: number; total: number; checked: number; failed: number; overdue: number;
+    chain_id: number; total: number; checked: number; failed: number; failed_wallets: number; overdue: number;
     last_success_at: string | null; unpriced: number;
   }[]>`
-    SELECT c.chain_id, count(w.wallet)::int AS total, count(f.wallet)::int AS checked,
-      count(*) FILTER (WHERE f.failed)::int AS failed,
-      count(*) FILTER (WHERE f.last_success_at IS NULL OR f.last_success_at <
+    WITH sources AS (
+      SELECT c.chain_id, true AS is_wallet, f.wallet IS NOT NULL AS checked, f.failed, f.last_success_at
+      FROM unnest(${[...PRODUCTION_CHAIN_IDS]}::int[]) c(chain_id)
+      CROSS JOIN tracked_wallets w
+      LEFT JOIN wallet_chain_fetches f ON f.wallet = w.wallet AND f.chain_id = c.chain_id
+      UNION ALL
+      SELECT c.chain_id, false AS is_wallet, f.chain_id IS NOT NULL AS checked, f.failed, f.last_success_at
+      FROM (
+        SELECT 'ethflow' AS source, unnest(${Object.keys(OPHIS_ETHFLOW_OWNER_BY_CHAIN).map(Number)}::int[]) AS chain_id
+        UNION ALL
+        SELECT 'decoder', unnest(${settleDecoderChains()}::int[])
+      ) c
+      LEFT JOIN chain_source_fetches f ON f.chain_id = c.chain_id AND f.source = c.source
+    )
+    SELECT c.chain_id, count(*)::int AS total, count(*) FILTER (WHERE c.checked)::int AS checked,
+      count(*) FILTER (WHERE c.failed)::int AS failed,
+      count(*) FILTER (WHERE c.failed AND c.is_wallet)::int AS failed_wallets,
+      count(*) FILTER (WHERE c.last_success_at IS NULL OR c.last_success_at <
         ${new Date(nowMs - PUBLIC_DATA_MAX_AGE_MS).toISOString()}::timestamptz)::int AS overdue,
-      min(f.last_success_at)::text AS last_success_at,
+      min(c.last_success_at)::text AS last_success_at,
       (SELECT count(*)::int FROM trades t WHERE t.chain_id = c.chain_id AND t.value_usd IS NULL) AS unpriced
-    FROM unnest(${[...PRODUCTION_CHAIN_IDS]}::int[]) c(chain_id)
-    CROSS JOIN tracked_wallets w
-    LEFT JOIN wallet_chain_fetches f ON f.wallet = w.wallet AND f.chain_id = c.chain_id
+    FROM sources c
     GROUP BY c.chain_id ORDER BY c.chain_id
   `;
   const dataSources: PublicDataSource[] = sources.map((s) => ({
@@ -87,7 +102,7 @@ export async function readPublicDataFreshness(
     status: s.checked < s.total ? 'pending' : s.failed === s.total ? 'unavailable'
       : s.failed > 0 || s.unpriced > 0 ? 'partial' : s.overdue > 0 ? 'stale' : 'fresh',
     lastSuccessAt: s.last_success_at,
-    failedWallets: s.failed,
+    failedWallets: s.failed_wallets,
     unpricedTrades: s.unpriced,
   }));
   const freshness = assessPublicDataFreshness(row?.refreshed_at ?? null, nowMs);

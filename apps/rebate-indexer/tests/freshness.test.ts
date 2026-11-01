@@ -47,8 +47,8 @@ describe('ingestion coverage', () => {
     const now = Date.now();
     const sql = vi.fn().mockResolvedValueOnce([{ refreshed_at: new Date(now).toISOString() }])
       .mockResolvedValueOnce([
-        { chain_id: 1, total: 2, checked: 2, failed: 0, overdue: 0, last_success_at: new Date(now).toISOString(), unpriced: 0 },
-        { chain_id: 130, total: 2, checked: 2, failed: 2, overdue: 2, last_success_at: null, unpriced: 0 },
+        { chain_id: 1, total: 2, checked: 2, failed: 0, failed_wallets: 0, overdue: 0, last_success_at: new Date(now).toISOString(), unpriced: 0 },
+        { chain_id: 130, total: 2, checked: 2, failed: 2, failed_wallets: 2, overdue: 2, last_success_at: null, unpriced: 0 },
       ]);
     const data = await readPublicDataFreshness(sql as unknown as import('postgres').Sql, now);
     expect(data).toMatchObject({ dataFresh: false, dataStatus: 'degraded', dataStaleReason: 'ingestion_incomplete' });
@@ -57,7 +57,7 @@ describe('ingestion coverage', () => {
 
   it('does not declare a newly enrolled, unattempted wallet covered', async () => {
     const sql = vi.fn().mockResolvedValueOnce([{ refreshed_at: new Date().toISOString() }])
-      .mockResolvedValueOnce([{ chain_id: 1, total: 2, checked: 1, failed: 0, overdue: 1, last_success_at: new Date().toISOString(), unpriced: 0 }]);
+      .mockResolvedValueOnce([{ chain_id: 1, total: 2, checked: 1, failed: 0, failed_wallets: 0, overdue: 1, last_success_at: new Date().toISOString(), unpriced: 0 }]);
     expect(await readPublicDataFreshness(sql as unknown as import('postgres').Sql)).toMatchObject({
       dataFresh: false, dataSources: [{ chainId: 1, status: 'pending' }],
     });

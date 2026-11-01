@@ -1,4 +1,4 @@
-import { beforeAll, afterAll, beforeEach, it, expect, vi } from 'vitest';
+import { beforeAll, afterAll, beforeEach, afterEach, it, expect, vi } from 'vitest';
 import type { StartedPostgreSqlContainer } from '@testcontainers/postgresql';
 import { startPg, stopPg } from './fixtures/pgContainer.js';
 
@@ -32,7 +32,7 @@ afterAll(async () => {
 });
 
 beforeEach(async () => {
-  await sql`TRUNCATE tracked_wallets, trades, defillama_fills, non_ophis_orders CASCADE`;
+  await sql`TRUNCATE tracked_wallets, trades, defillama_fills, non_ophis_orders, chain_source_fetches CASCADE`;
   await sql`INSERT INTO tracked_wallets (wallet) VALUES (decode(${owner.slice(2)}, 'hex'))`;
   mocks.trades.mockReset().mockImplementation(async ({ chainId, owner: account }) => {
     if (chainId === 130) throw new Error('Unichain VM unavailable');
@@ -50,6 +50,7 @@ beforeEach(async () => {
 });
 
 const deps = { getSettlementTimestamp: async () => new Date() };
+afterEach(() => vi.unstubAllEnvs());
 
 it('records success independently and retries only the failed chain within a boundary', async () => {
   const boundary = new Date(Date.now() - 1_000);
@@ -77,8 +78,53 @@ it('counts actual inserts when a completed trade is encountered again', async ()
 
 it('rebuilds recently fetched chains after replay clears their progress', async () => {
   expect((await runFetcher(deps)).inserted).toBe(1);
-  await sql`TRUNCATE trades, defillama_fills, wallet_chain_fetches RESTART IDENTITY CASCADE`;
+  await sql`TRUNCATE trades, defillama_fills, wallet_chain_fetches, chain_source_fetches RESTART IDENTITY CASCADE`;
   await sql`UPDATE tracked_wallets SET last_fetched = NULL`;
   expect((await runFetcher(deps)).inserted).toBe(1);
   expect(mocks.trades.mock.calls.filter(([p]) => p.chainId === 100)).toHaveLength(2);
+});
+
+it('rotates proven wallets by attempt age before registration recency', async () => {
+  await runFetcher(deps);
+  const older = `0x${'11'.repeat(20)}`;
+  const unproven = `0x${'22'.repeat(20)}`;
+  await sql`INSERT INTO tracked_wallets (wallet, last_registered_at, last_attempt_at)
+    VALUES (decode(${older.slice(2)}, 'hex'), now() - interval '30 days', now() - interval '1 day'),
+      (decode(${unproven.slice(2)}, 'hex'), now(), NULL)`;
+  await sql`INSERT INTO trades (trade_uid, chain_id, wallet, block_number, block_timestamp,
+      sell_token, buy_token, sell_amount, buy_amount, app_code)
+    SELECT decode(${'99'.repeat(56)}, 'hex'), chain_id, decode(${older.slice(2)}, 'hex'), block_number,
+      block_timestamp, sell_token, buy_token, sell_amount, buy_amount, app_code FROM trades LIMIT 1`;
+  await sql`UPDATE wallet_chain_fetches SET last_success_at = now() - interval '1 day'`;
+  mocks.trades.mockClear();
+  await runFetcher(deps, { staleBefore: new Date() });
+  expect(mocks.trades.mock.calls.filter(([p]) => p.chainId === 100).map(([p]) => p.owner))
+    .toEqual([older, owner, unproven]);
+});
+
+it('reports a synthetic-owner failure even when the tracked wallet succeeds', async () => {
+  mocks.trades.mockImplementation(async ({ chainId, owner: account }) => {
+    if (chainId === 130 && account !== owner) throw new Error('router metadata unavailable');
+    return [];
+  });
+  await runFetcher(deps);
+  const [tracked] = await sql`SELECT failed FROM wallet_chain_fetches WHERE chain_id = 130`;
+  const [synthetic] = await sql`SELECT failed FROM chain_source_fetches WHERE chain_id = 130 AND source = 'ethflow'`;
+  expect(tracked!.failed).toBe(false);
+  expect(synthetic!.failed).toBe(true);
+  await (await import('../src/scorer.js')).runScorer();
+  const coverage = await (await import('../src/freshness.js')).readPublicDataFreshness(sql);
+  expect(coverage.dataSources?.find(source => source.chainId === 130)?.status).toBe('partial');
+  expect(coverage.dataSources?.find(source => source.chainId === 130)?.failedWallets).toBe(0);
+  expect(coverage.dataFresh).toBe(false);
+});
+
+it('includes an incomplete configured decoder in chain coverage', async () => {
+  vi.stubEnv('SETTLE_DECODER_CHAINS', '5042');
+  await sql`INSERT INTO wallet_chain_fetches (wallet, chain_id, last_success_at)
+    VALUES (decode(${owner.slice(2)}, 'hex'), 5042, now())`;
+  await sql`INSERT INTO chain_source_fetches (source, chain_id, failed) VALUES ('decoder', 5042, true)`;
+  const coverage = await (await import('../src/freshness.js')).readPublicDataFreshness(sql);
+  expect(coverage.dataSources?.find(source => source.chainId === 5042)?.status).toBe('partial');
+  expect(coverage.dataSources?.find(source => source.chainId === 5042)?.failedWallets).toBe(0);
 });

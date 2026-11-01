@@ -70,7 +70,7 @@ const cmds: Record<string, (args: string[]) => Promise<void>> = {
   async ['replay-from-genesis']() {
     await runMigrations();
     log.info('clearing derived state');
-    await sql`TRUNCATE rebate_batch_entries, rebate_batches, defillama_fills, trades, wallet_chain_fetches RESTART IDENTITY CASCADE`;
+    await sql`TRUNCATE rebate_batch_entries, rebate_batches, defillama_fills, trades, wallet_chain_fetches, chain_source_fetches RESTART IDENTITY CASCADE`;
     await sql`UPDATE defillama_reporting_state SET backfill_started_at = now(), completed_at = NULL, arc_reconciled_through_block = NULL WHERE singleton = true`;
     await sql`TRUNCATE defillama_backfill_wallets`;
     await sql`INSERT INTO defillama_backfill_wallets (wallet) SELECT wallet FROM tracked_wallets`;

@@ -39,19 +39,22 @@ describe('settle decoder targets the sovereign settlement on sovereign chains', 
       return cursor === null ? [] : [{ last_block: cursor }];
     });
     const upsertTrades = vi.fn(async () => 0);
-    await runSettleDecoder({ sql: sql as never, upsertTrades });
+    const reportProgress = vi.fn(async (_chainId: number, _complete: boolean) => {});
+    await runSettleDecoder({ sql: sql as never, upsertTrades, reportProgress });
     expect(getLogsSpy).toHaveBeenCalledTimes(100);
     expect(cursor).toBe('10099');
+    expect(reportProgress).toHaveBeenLastCalledWith(5042, false);
     for (const [args] of getLogsSpy.mock.calls) {
       expect(args.address).toBe('0x78799f98276efba1edeed32eae03a3fd8cdfec3a');
       expect(args.toBlock - args.fromBlock + 1n).toBeLessThanOrEqual(100n);
     }
     getLogsSpy.mockClear();
     vi.mocked(mockClient.getBlock).mockResolvedValueOnce({ number: 10150n } as never);
-    await runSettleDecoder({ sql: sql as never, upsertTrades });
+    await runSettleDecoder({ sql: sql as never, upsertTrades, reportProgress });
     expect(getLogsSpy).toHaveBeenCalledTimes(1);
     expect(getLogsSpy.mock.calls[0]![0].fromBlock).toBe(10100n);
     expect(cursor).toBe('10150');
+    expect(reportProgress).toHaveBeenLastCalledWith(5042, true);
     expect(upsertTrades).not.toHaveBeenCalled();
   });
 
@@ -61,8 +64,10 @@ describe('settle decoder targets the sovereign settlement on sovereign chains', 
     process.env.SETTLE_SCAN_START_BLOCK_5042 = '100';
     getLogsSpy.mockRejectedValueOnce(new Error('RPC unavailable'));
     const sql = vi.fn(async () => []);
-    await runSettleDecoder({ sql: sql as never, upsertTrades: async () => 0 });
+    const reportProgress = vi.fn(async (_chainId: number, _complete: boolean) => {});
+    await runSettleDecoder({ sql: sql as never, upsertTrades: async () => 0, reportProgress });
     expect(sql).toHaveBeenCalledTimes(1); // cursor read only, no write
+    expect(reportProgress).toHaveBeenCalledWith(5042, false);
   });
 
   it('scans the sovereign Optimism GPv2Settlement, NOT the canonical 0x9008D19f address', async () => {

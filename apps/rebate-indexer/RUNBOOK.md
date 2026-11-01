@@ -27,6 +27,8 @@ scheduled `Rebate public-data freshness` workflow alerts. `data_as_of` is the
 last completed scorer publication. `data_sources` reports fetch coverage and
 unpriced trades per chain; source failures keep `data_fresh=false` even when
 scoring succeeds. Healthy chains continue updating while a source is unavailable.
+Coverage includes dedicated ETH-flow owners and configured settlement decoders;
+a bounded decoder pass stays incomplete until its cursor reaches the safe head.
 Unichain remains unavailable while its Aleph Cloud VM is down; its history retries
 when the VM returns. Inspect `data_sources` before restarting for a known outage.
 1. Check the durable heartbeats:

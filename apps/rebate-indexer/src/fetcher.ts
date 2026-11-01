@@ -499,7 +499,7 @@ function isAppCodeOfInterest(code: string | undefined): code is AppCode {
  * chains (e.g. Base) is NOT here: scanning it would pull all CoW eth-flow traffic,
  * impractical on the free API (tracked as a follow-up).
  */
-const OPHIS_ETHFLOW_OWNER_BY_CHAIN: Readonly<Record<number, `0x${string}`>> = Object.freeze({
+export const OPHIS_ETHFLOW_OWNER_BY_CHAIN: Readonly<Record<number, `0x${string}`>> = Object.freeze({
   // Optimism: Ophis-deployed eth-flow (checksum 0x764fE4aa1FF493cf39931c7923C8ff5837596504, 2026-06-07)
   10: '0x764fe4aa1ff493cf39931c7923c8ff5837596504',
   // Unichain (130): Ophis-deployed eth-flow (checksum 0x38C03729153BCCF6a281DaF41D7C6a14C543F1D7,
@@ -1127,7 +1127,7 @@ export async function runFetcher(
     // (rows × 12 chains) CoW calls and amplify that into a self-DoS + CoW
     // rate-limit exhaustion. We process at most MAX_OWNERS_PER_RUN per tick,
     // proven wallets (those that already produced an Ophis trade) FIRST so spam
-    // can never starve them, then oldest-fetched. Junk is evicted below.
+    // can never starve them, then least-recently-attempted. Junk is evicted below.
     // Lower clamp only. The upper bound is `now`: the nightly deliberately passes
     // `now` for a boundary-complete fetch, and shaving even a minute off would
     // exclude a wallet a startup backfill touched just before 02:00 -- exactly the
@@ -1142,9 +1142,10 @@ export async function runFetcher(
       WHERE last_fetched IS NULL
          OR last_fetched < ${staleBeforeIso}::timestamptz
          OR wallet IN (SELECT wallet FROM defillama_backfill_wallets)
-      -- Proven traders keep priority over public enrollment spam. Serve renewed
-      -- submissions before cold history so current trades become visible first.
+      -- Proven traders keep priority over public enrollment spam. Rotate by
+      -- attempt age so a busy registry cannot starve older registrations.
       ORDER BY (wallet IN (SELECT wallet FROM trades)) DESC,
+               last_attempt_at ASC NULLS FIRST,
                last_registered_at DESC,
                (wallet IN (SELECT wallet FROM defillama_backfill_wallets)) DESC,
                last_fetched ASC NULLS FIRST,
@@ -1338,7 +1339,12 @@ export async function runFetcher(
       if (!SUPPORTED_CHAIN_IDS.includes(chainId)) continue;
       try {
         await fetchChainTrades(chainId, ethFlowOwner, dbDeps);
+        await sql`INSERT INTO chain_source_fetches (source, chain_id, last_success_at) VALUES ('ethflow', ${chainId}, now())
+          ON CONFLICT (source, chain_id) DO UPDATE
+          SET last_attempt_at = now(), last_success_at = now(), failed = false`;
       } catch (err) {
+        await sql`INSERT INTO chain_source_fetches (source, chain_id, failed) VALUES ('ethflow', ${chainId}, true)
+          ON CONFLICT (source, chain_id) DO UPDATE SET last_attempt_at = now(), failed = true`;
         log.error({ err, chainId, ethFlowOwner }, 'eth-flow owner fetch failed');
       }
     }
@@ -1356,6 +1362,13 @@ export async function runFetcher(
         inserted += await runSettleDecoder({
           sql: sql as unknown as Parameters<typeof runSettleDecoder>[0]['sql'],
           upsertTrades,
+          reportProgress: async (chainId, complete) => {
+            await sql`INSERT INTO chain_source_fetches (source, chain_id, last_success_at, failed)
+              VALUES ('decoder', ${chainId}, CASE WHEN ${complete} THEN now() END, ${!complete})
+              ON CONFLICT (source, chain_id) DO UPDATE SET last_attempt_at = now(),
+                last_success_at = COALESCE(EXCLUDED.last_success_at, chain_source_fetches.last_success_at),
+                failed = EXCLUDED.failed`;
+          },
           // Settlement-fill persistence for decoder-discovered trades: the only
           // source of hosted-chain native-ETH (shared eth-flow) fills for wallets
           // nobody tracks (a tracked wallet's own fetch above lists its eth-flow
