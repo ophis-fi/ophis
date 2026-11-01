@@ -17,6 +17,7 @@
  * (default OFF). Base (8453) first; the API fetcher keeps running on all chains.
  */
 import { decodeFunctionData, type PublicClient } from 'viem';
+import { setTimeout as sleep } from 'node:timers/promises';
 import { TRADE_EVENT, SETTLE_FN, settlementAddressFor } from './settleAbi.js';
 import { getRpcClient } from '../rpc/client.js';
 import { orderbookBase, getOrder } from './client.js';
@@ -137,8 +138,13 @@ export function advertisedLogRangeLimit(err: unknown): bigint | null {
   return limit > 0n ? limit : null;
 }
 
+function isRateLimitError(err: unknown): boolean {
+  return /rate[ -]?limit|too many requests|\b429\b/i.test(err instanceof Error ? err.message : String(err));
+}
+
 /** A provider "block range too large / too many results" error -> shrink + retry. */
 export function isRangeError(err: unknown): boolean {
+  if (isRateLimitError(err)) return false;
   const msg = (err instanceof Error ? err.message : String(err)).toLowerCase();
   return (
     msg.includes('-32602') ||
@@ -433,10 +439,12 @@ async function scanChain(chainId: number, deps: SettleDecoderDeps, discoveryOnly
   // cursor over successive runs. Bootstrap old history from the orderbook DB.
   const maxWindows = chainId === ARC_CHAIN_ID ? 100 : Infinity;
   let windows = 0;
+  let rateRetries = 0;
   let from = cursor + 1n;
   while (from <= safeHead && windows < maxWindows) {
     const to = from + window - 1n > safeHead ? safeHead : from + window - 1n;
     let logs: TradeLog[];
+    if (chainId === ARC_CHAIN_ID) await sleep(1_000);
     try {
       logs = (await client.getLogs({
         address: settlement,
@@ -444,7 +452,12 @@ async function scanChain(chainId: number, deps: SettleDecoderDeps, discoveryOnly
         fromBlock: from,
         toBlock: to,
       })) as unknown as TradeLog[];
+      rateRetries = 0;
     } catch (err) {
+      if (isRateLimitError(err) && rateRetries < 2) {
+        await sleep(2_000 * ++rateRetries);
+        continue;
+      }
       if (isRangeError(err) && window > 1n) {
         window >>= 1n;
         log.info({ chainId, window: window.toString() }, 'settle-decoder: window too large; halving');
