@@ -180,6 +180,28 @@ database:
         finality: unfinalized
         empty: ignore
         ttl: 2s
+      # Explicit hashes are immutable; store only nonempty, consensus-checked headers.
+      - connector: op-headers
+        network: evm:10
+        method: eth_getBlockByHash
+        params: ["0x*", false]
+        finality: finalized
+        empty: ignore
+        ttl: 1h
+      - connector: op-headers
+        network: evm:10
+        method: eth_getBlockByHash
+        params: ["0x*", false]
+        finality: unfinalized
+        empty: ignore
+        ttl: 1h
+      - connector: op-headers
+        network: evm:10
+        method: eth_getBlockByHash
+        params: ["0x*", false]
+        finality: unknown
+        empty: ignore
+        ttl: 1h
 
 # Retain the shared 180/minute ceiling during provider replacement.
 # shortcut: this limits request rate, not monthly credits; check provider allowance.
@@ -218,7 +240,7 @@ projects:
                 .removeCordoned()
                 .whenEmpty(() => upstreams)
                 .sortByScore(PREFER_FASTEST);
-              if (["eth_blockNumber", "eth_getBlockByNumber", "eth_getBlockByHash"].includes(ctx.method)) {
+              if (["eth_blockNumber", "eth_getBlockByNumber"].includes(ctx.method)) {
                 const order = {"official-op": 0, "alchemy-op": 1, "drpc-op": 2};
                 return ranked.sort((a, b) => order[a.id] - order[b.id]);
               }
@@ -240,6 +262,8 @@ projects:
           # upstream-level timeout (~10s) — sharp-edges follow-up #6.
           #
           # Method list (Codex retro-audit, 2026-05-20):
+          # 2026-11-01: explicit block hashes now require agreement and feed a
+          # hash-verified bloom precheck; tagged/numbered header routing stays below.
           # - `eth_estimateGas`: a forged-low estimate yields txs that
           #   revert (gas-only loss bounded by the 5 gwei cap from #131,
           #   but still budget-wasteful).
@@ -387,7 +411,7 @@ projects:
           # - OphisOpErpcCordonMetricAbsent (silent-monitoring-gap guard)
 
           # === Block A: Deterministic-state methods (LOW threshold) ===
-          - matchMethod: "eth_call|eth_getBalance|eth_getCode|eth_getStorageAt"
+          - matchMethod: "eth_call|eth_getBalance|eth_getCode|eth_getStorageAt|eth_getBlockByHash"
             timeout:
               duration: 12s
             consensus:

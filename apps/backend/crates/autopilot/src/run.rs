@@ -470,10 +470,13 @@ pub async fn run(config: Configuration, shutdown_controller: ShutdownController)
             0
         }
     };
+    // Only OP protects block-by-hash headers with independent RPC agreement.
+    let use_verified_block_bloom = chain_id == 10;
     let settlement_event_indexer = EventUpdater::new(
         boundary::events::settlement::GPv2SettlementContract::new(
             web3.provider.clone(),
             *eth.contracts().settlement().address(),
+            use_verified_block_bloom,
         ),
         boundary::events::settlement::Indexer::new(
             db_write.clone(),
@@ -661,7 +664,11 @@ pub async fn run(config: Configuration, shutdown_controller: ShutdownController)
         let refund_event_handler = EventUpdater::new_skip_blocks_before(
             // This cares only about ethflow refund events because all the other ethflow
             // events are already indexed by the OnchainOrderParser.
-            EthFlowRefundRetriever::new(web3.clone(), config.ethflow.contracts.clone()),
+            EthFlowRefundRetriever::new(
+                web3.clone(),
+                config.ethflow.contracts.clone(),
+                use_verified_block_bloom,
+            ),
             db_write.clone(),
             block_retriever.clone(),
             ethflow_refund_start_block,
@@ -693,7 +700,11 @@ pub async fn run(config: Configuration, shutdown_controller: ShutdownController)
         let onchain_order_indexer = EventUpdater::new_skip_blocks_before(
             // The events from the ethflow contract are read with the more generic contract
             // interface called CoWSwapOnchainOrders.
-            CoWSwapOnchainOrdersContract::new(web3.clone(), config.ethflow.contracts),
+            CoWSwapOnchainOrdersContract::new(
+                web3.clone(),
+                config.ethflow.contracts,
+                use_verified_block_bloom,
+            ),
             onchain_order_event_parser,
             block_retriever,
             ethflow_start_block,

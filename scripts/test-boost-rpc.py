@@ -15,6 +15,10 @@ guard = runpy.run_path(str(OP / "assert-erpc-failclosed.py"))
 validate = guard["validate"]
 config = yaml.safe_load((OP / "configs/erpc.yaml.tmpl").read_text())
 assert not validate(config)
+for field, value in (("method", "eth_getLogs"), ("params", ["latest", False]), ("empty", "allow")):
+    bad = copy.deepcopy(config)
+    bad["database"]["evmJsonRpcCache"]["policies"][-1][field] = value
+    assert validate(bad), "Bloom prechecks may only reuse nonempty explicit-hash headers"
 compose = yaml.safe_load((OP / "docker-compose.yml").read_text())
 assert not guard["validate_compose"](compose)
 for hosts in (None, [], ["mainnet.optimism.io=127.0.0.1"],

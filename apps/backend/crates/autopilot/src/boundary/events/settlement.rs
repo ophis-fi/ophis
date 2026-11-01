@@ -16,11 +16,16 @@ use {
 pub struct GPv2SettlementContract {
     provider: AlloyProvider,
     address: Address,
+    use_verified_block_bloom: bool,
 }
 
 impl GPv2SettlementContract {
-    pub fn new(provider: AlloyProvider, address: Address) -> Self {
-        Self { provider, address }
+    pub fn new(provider: AlloyProvider, address: Address, use_verified_block_bloom: bool) -> Self {
+        Self {
+            provider,
+            address,
+            use_verified_block_bloom,
+        }
     }
 }
 
@@ -33,6 +38,10 @@ impl AlloyEventRetrieving for GPv2SettlementContract {
 
     fn provider(&self) -> &alloy::providers::DynProvider {
         &self.provider
+    }
+
+    fn use_verified_block_bloom(&self) -> bool {
+        self.use_verified_block_bloom
     }
 }
 

@@ -32,6 +32,8 @@ class MockRpc(BaseHTTPRequestHandler):
     balance_reads = []
     header_reads = []
     failed_headers = set()
+    forged_headers = set()
+    hash_reads = []
 
     def log_message(self, *_):
         pass
@@ -45,15 +47,17 @@ class MockRpc(BaseHTTPRequestHandler):
                 self.send_response(403)
                 self.end_headers()
                 return
-        if method == "eth_getBlockByHash":
+        if method in ("eth_getBlockByHash", "eth_getBlockByNumber"):
             self.header_reads.append(int(self.path[1:]))
+            if method == "eth_getBlockByHash":
+                self.hash_reads.append(int(self.path[1:]))
             if int(self.path[1:]) in self.failed_headers:
                 self.send_response(500)
                 self.end_headers()
                 return
         if method in ("eth_getBalance", "eth_getCode"):
             self.balance_reads.append(method)
-        if method in ("eth_call", "eth_getTransactionReceipt", "eth_getLogs") and int(self.path[1:]) not in self.healthy:
+        if method in ("eth_call", "eth_getTransactionReceipt", "eth_getLogs", "eth_getBlockByHash") and int(self.path[1:]) not in self.healthy:
             self.send_response(500)
             self.end_headers()
             self.wfile.write(b"mock upstream unavailable")
@@ -76,7 +80,7 @@ class MockRpc(BaseHTTPRequestHandler):
             "eth_blockNumber": "0x1000",
             "eth_syncing": False,
             "eth_getBlockByNumber": {"number": "0x1000", "hash": BLOCK_HASH, "timestamp": "0x123456"},
-            "eth_getBlockByHash": {"number": "0x1000", "hash": BLOCK_HASH, "timestamp": "0x123456"},
+            "eth_getBlockByHash": {"number": "0x1000", "hash": BLOCK_HASH, "timestamp": "0x123456", "logsBloom": "0x" + ("ff" if int(self.path[1:]) in self.forged_headers else "00") * 256},
             "eth_call": CALL_RESULT,
             "eth_getBalance": "0x0",
             "eth_getCode": "0x",
@@ -107,6 +111,8 @@ def main():
             assert policy["agreementThreshold"] == 2
             assert policy["disputeBehavior"] == policy["lowParticipantsBehavior"] == "returnError"
             assert policy["maxWaitOnResult"] == policy["maxWaitOnEmpty"] == "12s"
+    # Historical log splitting can open more than five local connections at once.
+    ThreadingHTTPServer.request_queue_size = 128
     server = ThreadingHTTPServer(("0.0.0.0", 0), MockRpc)
     thread = threading.Thread(target=server.serve_forever, daemon=True)
     thread.start()
@@ -120,13 +126,15 @@ def main():
     try:
         with tempfile.TemporaryDirectory(prefix="ophis-quorum-", dir=cache) as folder:
             config_file = Path(folder) / "erpc.yaml"
-            for healthy in ({1}, {1, 2}, {1, 3}, {2, 3}, 3, 2):
+            for healthy in ({1}, {1, 2}, {1, 3}, {2, 3}, {1, 2, 3}, 3, 2):
                 isolated = isinstance(healthy, int)
                 MockRpc.healthy = {healthy} if isolated else healthy
                 MockRpc.log_ranges.clear()
                 MockRpc.drpc_log_ranges.clear()
                 MockRpc.alchemy_log_ranges.clear()
                 MockRpc.alchemy_origins.clear()
+                MockRpc.hash_reads.clear()
+                MockRpc.forged_headers = {1} if healthy == {1, 2, 3} else set()
                 if isolated:
                     # Isolate each metered provider's shared limiter locally.
                     # One hour avoids a minute rollover during this short test.
@@ -175,6 +183,7 @@ def main():
                         ("eth_call", [{"to": "0x" + "33" * 20, "data": "0x"}, "0x80"]),
                         ("eth_getTransactionReceipt", [TX_HASH]),
                         ("eth_getLogs", [{"fromBlock": "0x80", "toBlock": "0xe4"}]),
+                        ("eth_getBlockByHash", [BLOCK_HASH, False]),
                     ):
                         body = json.dumps({"jsonrpc": "2.0", "id": 1, "method": method, "params": params}).encode()
                         req = Request(f"http://127.0.0.1:{PORT}/main/evm/10", data=body,
@@ -188,11 +197,18 @@ def main():
                         if len(healthy) == 1:
                             assert result.get("error") and "result" not in result, result
                         else:
-                            expected = {"eth_call": CALL_RESULT, "eth_getTransactionReceipt": TX_HASH, "eth_getLogs": []}[method]
+                            expected = {"eth_call": CALL_RESULT, "eth_getTransactionReceipt": TX_HASH, "eth_getLogs": [], "eth_getBlockByHash": BLOCK_HASH}[method]
                             actual = result.get("result")
                             if isinstance(actual, dict):
-                                actual = actual.get("transactionHash")
+                                actual = actual.get("hash" if method == "eth_getBlockByHash" else "transactionHash")
                             assert actual == expected and "error" not in result, result
+                            if method == "eth_getBlockByHash":
+                                assert result["result"]["logsBloom"] == "0x" + "00" * 256
+                                time.sleep(0.25)
+                                reads = list(MockRpc.hash_reads)
+                                with urlopen(req, timeout=15) as response:
+                                    assert json.load(response)["result"]["hash"] == BLOCK_HASH
+                                assert MockRpc.hash_reads == reads, "Only consensus-verified immutable headers may be reused"
                         if method == "eth_getLogs":
                             assert MockRpc.log_ranges and max(MockRpc.log_ranges) <= 500, MockRpc.log_ranges
                             if 2 in healthy:
@@ -203,7 +219,7 @@ def main():
                         print(f"PASS {method}: healthy voters {sorted(healthy)}", flush=True)
                     if healthy == {1, 3}:
                         body = json.dumps({"jsonrpc": "2.0", "id": 2,
-                            "method": "eth_getBlockByHash", "params": [BLOCK_HASH, False]}).encode()
+                            "method": "eth_getBlockByNumber", "params": ["latest", False]}).encode()
                         req = Request(f"http://127.0.0.1:{PORT}/main/evm/10", data=body,
                                       headers={"Content-Type": "application/json"})
                         with urlopen(req, timeout=15) as response:

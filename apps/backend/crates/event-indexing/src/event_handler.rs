@@ -108,6 +108,21 @@ pub trait AlloyEventRetrieving {
     fn filter(&self) -> Filter;
 
     fn provider(&self) -> &DynProvider;
+
+    /// Enable only when block-by-hash headers require independent RPC agreement.
+    fn use_verified_block_bloom(&self) -> bool {
+        false
+    }
+}
+
+fn block_excludes_filter(
+    filter: &Filter,
+    block_hash: B256,
+    header: &alloy_rpc_types::Header,
+) -> bool {
+    header.hash == block_hash
+        && header.inner.hash_slow() == block_hash
+        && !filter.matches_bloom(header.logs_bloom)
 }
 
 /// Common `alloy` crate-related event retrieval patterns are extracted to
@@ -122,6 +137,17 @@ where
     #[instrument(skip_all)]
     async fn get_events_by_block_hash(&self, block_hash: B256) -> Result<Vec<Self::Event>> {
         let filter = self.filter().at_block_hash(block_hash);
+        if self.use_verified_block_bloom()
+            && let Ok(Ok(Some(block))) = tokio::time::timeout(
+                Duration::from_secs(2),
+                self.provider().get_block_by_hash(block_hash),
+            )
+            .await
+            && block_excludes_filter(&filter, block_hash, &block.header)
+        {
+            return Ok(Vec::new());
+        }
+        // Missing, invalid or matching headers retain the ordinary consensus log read.
         let events = self
             .provider()
             .get_logs(&filter)
@@ -843,6 +869,88 @@ mod tests {
         contracts::GPv2Settlement,
         ethrpc::{Web3, block_stream::block_number_to_block_number_hash},
     };
+
+    #[test]
+    fn bloom_skip_requires_a_verified_header_and_proven_absence() {
+        let filter = Filter::new().address(Address::from([0x33; 20]));
+        let mut header: alloy_rpc_types::Header = Default::default();
+        header.hash = header.inner.hash_slow();
+        let original_hash = header.hash;
+        assert!(block_excludes_filter(&filter, original_hash, &header));
+        assert!(!block_excludes_filter(
+            &Filter::new(),
+            original_hash,
+            &header
+        ));
+        assert!(!block_excludes_filter(&filter, B256::ZERO, &header));
+
+        // An advertised hash cannot authenticate a forged bloom.
+        header.inner.logs_bloom = alloy_primitives::Bloom::from([0xff; 256]);
+        assert!(!block_excludes_filter(&filter, original_hash, &header));
+        header.hash = header.inner.hash_slow();
+        assert!(!block_excludes_filter(&filter, header.hash, &header));
+
+        let header: alloy_rpc_types::Header =
+            serde_json::from_str(include_str!("../tests/fixtures/op-block-header.json")).unwrap();
+        assert_eq!(header.inner.hash_slow(), header.hash);
+        assert!(block_excludes_filter(&filter, header.hash, &header));
+    }
+
+    #[tokio::test]
+    async fn bloom_precheck_skips_only_proven_absence_and_preserves_log_errors() {
+        use alloy_provider::{ProviderBuilder, mock::Asserter};
+
+        struct Contract(DynProvider);
+        impl AlloyEventRetrieving for Contract {
+            type Event = GPv2Settlement::GPv2Settlement::GPv2SettlementEvents;
+            fn filter(&self) -> Filter {
+                Filter::new().address(Address::from([0x33; 20]))
+            }
+            fn provider(&self) -> &DynProvider {
+                &self.0
+            }
+            fn use_verified_block_bloom(&self) -> bool {
+                true
+            }
+        }
+
+        for case in ["absent", "missing", "error", "forged", "matching"] {
+            let asserter = Asserter::new();
+            let contract = Contract(
+                ProviderBuilder::new()
+                    .connect_mocked_client(asserter.clone())
+                    .erased(),
+            );
+            let mut block: alloy_rpc_types::Block = Default::default();
+            if case == "matching" {
+                block.header.inner.logs_bloom = alloy_primitives::Bloom::from([0xff; 256]);
+            }
+            block.header.hash = block.header.inner.hash_slow();
+            let hash = block.header.hash;
+            if case == "forged" {
+                block.header.inner.logs_bloom = alloy_primitives::Bloom::from([0xff; 256]);
+            }
+            match case {
+                "error" => asserter.push_failure_msg("header unavailable"),
+                "missing" => asserter.push_success(&Option::<alloy_rpc_types::Block>::None),
+                _ => asserter.push_success(&block),
+            }
+            asserter.push_failure_msg("log read required");
+            let result = contract.get_events_by_block_hash(hash).await;
+            if case == "absent" {
+                assert!(result.unwrap().is_empty());
+                assert_eq!(asserter.read_q().len(), 1);
+            } else {
+                assert!(
+                    result
+                        .unwrap_err()
+                        .to_string()
+                        .contains("log read required")
+                );
+                assert!(asserter.read_q().is_empty());
+            }
+        }
+    }
 
     impl AlloyEventRetrieving for GPv2Settlement::Instance {
         type Event = GPv2Settlement::GPv2Settlement::GPv2SettlementEvents;

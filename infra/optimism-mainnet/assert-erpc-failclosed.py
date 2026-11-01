@@ -81,7 +81,7 @@ EXPECTED_UPSTREAM_HOSTS = frozenset({
 # lag can't cordon it (Codex #465/#466). This guard checks the consensus PARAMS
 # (maxParticipants/threshold/behaviors), not punishMisbehavior, so the no-punish
 # receipt rule satisfies it while a single forged receipt still can't reach quorum.
-BLOCK_A = ("eth_call", "eth_getBalance", "eth_getCode", "eth_getStorageAt")
+BLOCK_A = ("eth_call", "eth_getBalance", "eth_getCode", "eth_getStorageAt", "eth_getBlockByHash")
 BLOCK_B = ("eth_getLogs", "eth_getTransactionByHash",
            "eth_estimateGas", "eth_feeHistory", "eth_getTransactionCount")
 RECEIPT = ("eth_getTransactionReceipt",)
@@ -118,7 +118,7 @@ EXPECTED_SELECTION_POLICY = {
     .removeCordoned()
     .whenEmpty(() => upstreams)
     .sortByScore(PREFER_FASTEST);
-  if (["eth_blockNumber", "eth_getBlockByNumber", "eth_getBlockByHash"].includes(ctx.method)) {
+  if (["eth_blockNumber", "eth_getBlockByNumber"].includes(ctx.method)) {
     const order = {"official-op": 0, "alchemy-op": 1, "drpc-op": 2};
     return ranked.sort((a, b) => order[a.id] - order[b.id]);
   }
@@ -347,8 +347,12 @@ def validate(cfg):
             "finality": finality, "empty": "ignore", "ttl": ttl}
             for finality, ttl in (("finalized", "1h"), ("unfinalized", "2s"))],
     }}
+    expected_cache["evmJsonRpcCache"]["policies"].extend({
+        "connector": "op-headers", "network": "evm:10", "method": "eth_getBlockByHash",
+        "params": ["0x*", False], "finality": finality, "empty": "ignore", "ttl": "1h"}
+        for finality in ("finalized", "unfinalized", "unknown"))
     if cache != expected_cache:
-        errs.append("database must contain only the bounded numbered-header cache")
+        errs.append("database must contain only bounded explicit-header caches")
     if cfg.get("rateLimiters") != {"store": {"driver": "memory"}, "budgets": [{
             "id": name + "-op-budget", "rules": [{"method": "*", "maxCount": 180, "period": "minute"}]}
             for name in ("drpc", "alchemy")]}:

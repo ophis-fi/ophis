@@ -19,15 +19,20 @@ use {
 pub struct CoWSwapOnchainOrdersContract {
     web3: Web3,
     addresses: Vec<Address>,
+    use_verified_block_bloom: bool,
 }
 
 impl CoWSwapOnchainOrdersContract {
-    pub fn new(web3: Web3, addresses: Vec<Address>) -> Self {
+    pub fn new(web3: Web3, addresses: Vec<Address>, use_verified_block_bloom: bool) -> Self {
         assert!(
             !addresses.is_empty(),
             "CoWSwapOnchainOrdersContract must have at least one address to listen to."
         );
-        Self { web3, addresses }
+        Self {
+            web3,
+            addresses,
+            use_verified_block_bloom,
+        }
     }
 }
 
@@ -45,5 +50,9 @@ impl AlloyEventRetrieving for CoWSwapOnchainOrdersContract {
 
     fn provider(&self) -> &alloy::providers::DynProvider {
         &self.web3.provider
+    }
+
+    fn use_verified_block_bloom(&self) -> bool {
+        self.use_verified_block_bloom
     }
 }
