@@ -736,6 +736,7 @@ export async function fetchChainTrades(
 ): Promise<PendingTrade[]> {
   const out: PendingTrade[] = [];
   const seen = new Set<string>(); // collapse multiple fills of the same order within this run
+  let unresolvedAppData: Error | undefined;
   let offset = 0;
   while (true) {
     const page = await listTrades({ chainId, owner, offset, limit: PAGE_SIZE });
@@ -816,7 +817,8 @@ export async function fetchChainTrades(
           meta = JSON.parse(order.fullAppData);
           if (meta === null || typeof meta !== 'object' || Array.isArray(meta)) throw new Error('Invalid order appData');
         } catch (cause) {
-          throw new Error('Order appData is unresolved; retry this chain', { cause });
+          unresolvedAppData ??= new Error('Order appData is unresolved; retry this chain', { cause });
+          continue;
         }
         if (!readAppCode(meta)) {
           await deps.markNonOphisOrder?.(chainId, t.orderUid);
@@ -905,6 +907,7 @@ export async function fetchChainTrades(
     offset += page.length;
   }
   if (out.length > 0) log.info({ chainId, owner, fetched: out.length }, 'owner/chain fetch complete');
+  if (unresolvedAppData) throw unresolvedAppData;
   return out;
 }
 

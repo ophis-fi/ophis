@@ -128,6 +128,25 @@ describe('fetcher.fetchChainTrades', () => {
     expect(persistPage.mock.calls[0]![0].map(r => r.tradeUid)).toEqual([uid]);
   });
 
+  it.each([undefined, '{', '[]'])('keeps scanning past unresolved appData %s and retries it later', async (fullAppData) => {
+    const owner = ('0x' + 'aa'.repeat(20)) as `0x${string}`;
+    const badUid = '0x' + 'ec'.repeat(56);
+    const goodUid = '0x' + 'ed'.repeat(56);
+    handlers.trades.mockReturnValue([sampleTrade(badUid, owner), sampleTrade(goodUid, owner)]);
+    handlers.order.mockImplementation((uid: string) => ({
+      ...sampleOrder(uid, owner, 'ophis'),
+      ...(uid === badUid ? { fullAppData } : {}),
+    }));
+    const persistPage = vi.fn(async (_rows: import('../src/fetcher.js').PendingTrade[]) => {});
+    const markNonOphisOrder = vi.fn();
+    const { fetchChainTrades } = await import('../src/fetcher.js');
+    await expect(fetchChainTrades(100, owner, { persistPage, markNonOphisOrder })).rejects.toThrow('unresolved');
+    expect(persistPage.mock.calls[0]![0].map(row => row.tradeUid)).toEqual([goodUid]);
+    expect(markNonOphisOrder).not.toHaveBeenCalled();
+    handlers.order.mockImplementation((uid: string) => sampleOrder(uid, owner, 'ophis'));
+    expect((await fetchChainTrades(100, owner, {})).map(row => row.tradeUid)).toEqual([badUid, goodUid]);
+  });
+
   it('caps a post-cutover custom Ophis flat fee at the 1 bp affiliate base', async () => {
     const uid = '0x' + '7a'.repeat(56);
     const owner = '0xa'.padEnd(42, '0');

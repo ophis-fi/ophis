@@ -74,3 +74,11 @@ it('counts actual inserts when a completed trade is encountered again', async ()
   const [row] = await sql`SELECT count(*)::int AS count FROM trades`;
   expect(row!.count).toBe(1);
 });
+
+it('rebuilds recently fetched chains after replay clears their progress', async () => {
+  expect((await runFetcher(deps)).inserted).toBe(1);
+  await sql`TRUNCATE trades, defillama_fills, wallet_chain_fetches RESTART IDENTITY CASCADE`;
+  await sql`UPDATE tracked_wallets SET last_fetched = NULL`;
+  expect((await runFetcher(deps)).inserted).toBe(1);
+  expect(mocks.trades.mock.calls.filter(([p]) => p.chainId === 100)).toHaveLength(2);
+});
