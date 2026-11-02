@@ -887,11 +887,15 @@ mod tests {
         ));
         assert!(!block_excludes_filter(&filter, B256::ZERO, &header));
 
-        // An advertised hash cannot authenticate a forged bloom.
-        header.inner.logs_bloom = alloy_primitives::Bloom::from([0xff; 256]);
-        assert!(!block_excludes_filter(&filter, original_hash, &header));
-        header.hash = header.inner.hash_slow();
-        assert!(!block_excludes_filter(&filter, header.hash, &header));
+        // A real header whose bloom matches is never skipped, and re-serving it
+        // with the bloom cleared (forged absence) cannot pass the recomputed hash.
+        let mut forged = header.clone();
+        forged.inner.logs_bloom = alloy_primitives::Bloom::from([0xff; 256]);
+        forged.hash = forged.inner.hash_slow();
+        let real_hash = forged.hash;
+        assert!(!block_excludes_filter(&filter, real_hash, &forged));
+        forged.inner.logs_bloom = Default::default();
+        assert!(!block_excludes_filter(&filter, real_hash, &forged));
 
         let header: alloy_rpc_types::Header =
             serde_json::from_str(include_str!("../tests/fixtures/op-block-header.json")).unwrap();
@@ -925,13 +929,14 @@ mod tests {
                     .erased(),
             );
             let mut block: alloy_rpc_types::Block = Default::default();
-            if case == "matching" {
+            if case == "matching" || case == "forged" {
                 block.header.inner.logs_bloom = alloy_primitives::Bloom::from([0xff; 256]);
             }
             block.header.hash = block.header.inner.hash_slow();
             let hash = block.header.hash;
             if case == "forged" {
-                block.header.inner.logs_bloom = alloy_primitives::Bloom::from([0xff; 256]);
+                // Re-serve the real header with its matching bloom cleared.
+                block.header.inner.logs_bloom = Default::default();
             }
             match case {
                 "error" => asserter.push_failure_msg("header unavailable"),
@@ -1154,7 +1159,11 @@ mod tests {
             handler.update_events().await.is_err(),
             "partial history is not a current auction view"
         );
-        assert_eq!(handler.store.cursor, 5935);
+        // Every attempt starts MAX_REORG_BLOCK_COUNT before the cursor and
+        // checkpoints at the end of its MAX_HISTORY_BLOCKS window.
+        let first = 1000 - MAX_REORG_BLOCK_COUNT + MAX_HISTORY_BLOCKS - 1;
+        let step = MAX_HISTORY_BLOCKS - MAX_REORG_BLOCK_COUNT - 1;
+        assert_eq!(handler.store.cursor, first);
         assert_eq!(
             blocks.headers.load(Ordering::SeqCst),
             1,
@@ -1163,20 +1172,31 @@ mod tests {
         let saved = handler.last_handled_blocks.clone();
         handler.store.fail_write = true;
         assert!(handler.update_events().await.is_err());
-        assert_eq!(handler.store.cursor, 5935);
+        assert_eq!(handler.store.cursor, first);
         assert_eq!(handler.last_handled_blocks, saved);
         handler.store.fail_write = false;
         // A restart resumes the persisted empty range, retaining the reorg overlap.
         let mut restarted = EventHandler::new(blocks.clone(), Contract(false), handler.store, None);
         assert!(restarted.update_events().await.is_err());
-        assert_eq!(restarted.store.cursor, 10870);
-        assert!(restarted.update_events().await.is_err());
-        assert_eq!(restarted.store.cursor, 15805);
-        // Finish history and checkpoint a bounded hash-verified tail. Even with
-        // head drift, subsequent attempts advance without replaying history.
-        assert!(restarted.update_events().await.is_err());
-        assert_eq!(restarted.store.cursor, 19_888);
-        for _ in 0..16 {
+        assert_eq!(restarted.store.cursor, first + step);
+        // Finish history in bounded attempts until the head is within
+        // 2 * MAX_BLOCKS_QUERIED, where hash-verified tail checkpoints take over.
+        // Even with head drift, subsequent attempts advance without replaying
+        // history.
+        let head = 20_000;
+        let history_end = head - MAX_BLOCKS_QUERIED;
+        while head - restarted.store.cursor > 2 * MAX_BLOCKS_QUERIED {
+            let cursor = restarted.store.cursor;
+            assert!(restarted.update_events().await.is_err());
+            let expected = if cursor + step < history_end {
+                cursor + step
+            } else {
+                history_end + MAX_LATEST_BLOCKS
+            };
+            assert_eq!(restarted.store.cursor, expected);
+        }
+        // Tail updates gain MAX_LATEST_BLOCKS against 4 blocks of drift each.
+        for _ in 0..(2 * MAX_BLOCKS_QUERIED / (MAX_LATEST_BLOCKS - 4) + 2) {
             let head = blocks.head.fetch_add(4, Ordering::SeqCst) as u64 + 4;
             let cursor = restarted.store.cursor;
             let headers = blocks.headers.load(Ordering::SeqCst);
