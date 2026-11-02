@@ -4255,6 +4255,7 @@ dependencies = [
  "observe",
  "prometheus",
  "prometheus-metric-storage",
+ "serde_json",
  "tokio",
  "tracing",
  "tracing-subscriber",

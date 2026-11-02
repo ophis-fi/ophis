@@ -24,8 +24,11 @@ const INSERT_EVENT_BATCH_SIZE: usize = 10_000;
 // chances of avoiding the need for history fetch of block events, since history
 // fetch is less efficient than latest block fetch
 const MAX_BLOCKS_QUERIED: u64 = 2 * MAX_REORG_BLOCK_COUNT;
-// ponytail: ten 500-block pages per historical attempt; tune from provider capacity.
-const MAX_HISTORY_BLOCKS: u64 = 5_000;
+// A historical attempt only checkpoints after its last page. On OP eRPC splits
+// logs into 10-block pages (Alchemy's free plan) sent to every voter, so 200
+// blocks x 3 indexers = 60 calls, a third of each 180/minute voter budget.
+// infra/optimism-mainnet/assert-erpc-failclosed.py enforces this in CI.
+const MAX_HISTORY_BLOCKS: u64 = 200;
 // ponytail: small tail checkpoints fit constrained RPC budgets; tune from live demand.
 const MAX_LATEST_BLOCKS: u64 = 16;
 // Keep catch-up from bursting 128 reads into every consensus voter at once.
@@ -108,6 +111,21 @@ pub trait AlloyEventRetrieving {
     fn filter(&self) -> Filter;
 
     fn provider(&self) -> &DynProvider;
+
+    /// Enable only when block-by-hash headers require independent RPC agreement.
+    fn use_verified_block_bloom(&self) -> bool {
+        false
+    }
+}
+
+fn block_excludes_filter(
+    filter: &Filter,
+    block_hash: B256,
+    header: &alloy_rpc_types::Header,
+) -> bool {
+    header.hash == block_hash
+        && header.inner.hash_slow() == block_hash
+        && !filter.matches_bloom(header.logs_bloom)
 }
 
 /// Common `alloy` crate-related event retrieval patterns are extracted to
@@ -122,6 +140,17 @@ where
     #[instrument(skip_all)]
     async fn get_events_by_block_hash(&self, block_hash: B256) -> Result<Vec<Self::Event>> {
         let filter = self.filter().at_block_hash(block_hash);
+        if self.use_verified_block_bloom()
+            && let Ok(Ok(Some(block))) = tokio::time::timeout(
+                Duration::from_secs(2),
+                self.provider().get_block_by_hash(block_hash),
+            )
+            .await
+            && block_excludes_filter(&filter, block_hash, &block.header)
+        {
+            return Ok(Vec::new());
+        }
+        // Missing, invalid or matching headers retain the ordinary consensus log read.
         let events = self
             .provider()
             .get_logs(&filter)
@@ -844,6 +873,93 @@ mod tests {
         ethrpc::{Web3, block_stream::block_number_to_block_number_hash},
     };
 
+    #[test]
+    fn bloom_skip_requires_a_verified_header_and_proven_absence() {
+        let filter = Filter::new().address(Address::from([0x33; 20]));
+        let mut header: alloy_rpc_types::Header = Default::default();
+        header.hash = header.inner.hash_slow();
+        let original_hash = header.hash;
+        assert!(block_excludes_filter(&filter, original_hash, &header));
+        assert!(!block_excludes_filter(
+            &Filter::new(),
+            original_hash,
+            &header
+        ));
+        assert!(!block_excludes_filter(&filter, B256::ZERO, &header));
+
+        // A real header whose bloom matches is never skipped, and re-serving it
+        // with the bloom cleared (forged absence) cannot pass the recomputed hash.
+        let mut forged = header.clone();
+        forged.inner.logs_bloom = alloy_primitives::Bloom::from([0xff; 256]);
+        forged.hash = forged.inner.hash_slow();
+        let real_hash = forged.hash;
+        assert!(!block_excludes_filter(&filter, real_hash, &forged));
+        forged.inner.logs_bloom = Default::default();
+        assert!(!block_excludes_filter(&filter, real_hash, &forged));
+
+        let header: alloy_rpc_types::Header =
+            serde_json::from_str(include_str!("../tests/fixtures/op-block-header.json")).unwrap();
+        assert_eq!(header.inner.hash_slow(), header.hash);
+        assert!(block_excludes_filter(&filter, header.hash, &header));
+    }
+
+    #[tokio::test]
+    async fn bloom_precheck_skips_only_proven_absence_and_preserves_log_errors() {
+        use alloy_provider::{ProviderBuilder, mock::Asserter};
+
+        struct Contract(DynProvider);
+        impl AlloyEventRetrieving for Contract {
+            type Event = GPv2Settlement::GPv2Settlement::GPv2SettlementEvents;
+            fn filter(&self) -> Filter {
+                Filter::new().address(Address::from([0x33; 20]))
+            }
+            fn provider(&self) -> &DynProvider {
+                &self.0
+            }
+            fn use_verified_block_bloom(&self) -> bool {
+                true
+            }
+        }
+
+        for case in ["absent", "missing", "error", "forged", "matching"] {
+            let asserter = Asserter::new();
+            let contract = Contract(
+                ProviderBuilder::new()
+                    .connect_mocked_client(asserter.clone())
+                    .erased(),
+            );
+            let mut block: alloy_rpc_types::Block = Default::default();
+            if case == "matching" || case == "forged" {
+                block.header.inner.logs_bloom = alloy_primitives::Bloom::from([0xff; 256]);
+            }
+            block.header.hash = block.header.inner.hash_slow();
+            let hash = block.header.hash;
+            if case == "forged" {
+                // Re-serve the real header with its matching bloom cleared.
+                block.header.inner.logs_bloom = Default::default();
+            }
+            match case {
+                "error" => asserter.push_failure_msg("header unavailable"),
+                "missing" => asserter.push_success(&Option::<alloy_rpc_types::Block>::None),
+                _ => asserter.push_success(&block),
+            }
+            asserter.push_failure_msg("log read required");
+            let result = contract.get_events_by_block_hash(hash).await;
+            if case == "absent" {
+                assert!(result.unwrap().is_empty());
+                assert_eq!(asserter.read_q().len(), 1);
+            } else {
+                assert!(
+                    result
+                        .unwrap_err()
+                        .to_string()
+                        .contains("log read required")
+                );
+                assert!(asserter.read_q().is_empty());
+            }
+        }
+    }
+
     impl AlloyEventRetrieving for GPv2Settlement::Instance {
         type Event = GPv2Settlement::GPv2Settlement::GPv2SettlementEvents;
 
@@ -1043,7 +1159,11 @@ mod tests {
             handler.update_events().await.is_err(),
             "partial history is not a current auction view"
         );
-        assert_eq!(handler.store.cursor, 5935);
+        // Every attempt starts MAX_REORG_BLOCK_COUNT before the cursor and
+        // checkpoints at the end of its MAX_HISTORY_BLOCKS window.
+        let first = 1000 - MAX_REORG_BLOCK_COUNT + MAX_HISTORY_BLOCKS - 1;
+        let step = MAX_HISTORY_BLOCKS - MAX_REORG_BLOCK_COUNT - 1;
+        assert_eq!(handler.store.cursor, first);
         assert_eq!(
             blocks.headers.load(Ordering::SeqCst),
             1,
@@ -1052,20 +1172,31 @@ mod tests {
         let saved = handler.last_handled_blocks.clone();
         handler.store.fail_write = true;
         assert!(handler.update_events().await.is_err());
-        assert_eq!(handler.store.cursor, 5935);
+        assert_eq!(handler.store.cursor, first);
         assert_eq!(handler.last_handled_blocks, saved);
         handler.store.fail_write = false;
         // A restart resumes the persisted empty range, retaining the reorg overlap.
         let mut restarted = EventHandler::new(blocks.clone(), Contract(false), handler.store, None);
         assert!(restarted.update_events().await.is_err());
-        assert_eq!(restarted.store.cursor, 10870);
-        assert!(restarted.update_events().await.is_err());
-        assert_eq!(restarted.store.cursor, 15805);
-        // Finish history and checkpoint a bounded hash-verified tail. Even with
-        // head drift, subsequent attempts advance without replaying history.
-        assert!(restarted.update_events().await.is_err());
-        assert_eq!(restarted.store.cursor, 19_888);
-        for _ in 0..16 {
+        assert_eq!(restarted.store.cursor, first + step);
+        // Finish history in bounded attempts until the head is within
+        // 2 * MAX_BLOCKS_QUERIED, where hash-verified tail checkpoints take over.
+        // Even with head drift, subsequent attempts advance without replaying
+        // history.
+        let head = 20_000;
+        let history_end = head - MAX_BLOCKS_QUERIED;
+        while head - restarted.store.cursor > 2 * MAX_BLOCKS_QUERIED {
+            let cursor = restarted.store.cursor;
+            assert!(restarted.update_events().await.is_err());
+            let expected = if cursor + step < history_end {
+                cursor + step
+            } else {
+                history_end + MAX_LATEST_BLOCKS
+            };
+            assert_eq!(restarted.store.cursor, expected);
+        }
+        // Tail updates gain MAX_LATEST_BLOCKS against 4 blocks of drift each.
+        for _ in 0..(2 * MAX_BLOCKS_QUERIED / (MAX_LATEST_BLOCKS - 4) + 2) {
             let head = blocks.head.fetch_add(4, Ordering::SeqCst) as u64 + 4;
             let cursor = restarted.store.cursor;
             let headers = blocks.headers.load(Ordering::SeqCst);

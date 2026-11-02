@@ -30,6 +30,7 @@ matcher.
 """
 import re
 import sys
+from pathlib import Path
 from urllib.parse import parse_qs, urlsplit
 
 import yaml
@@ -69,8 +70,8 @@ EXPECTED_UPSTREAMS = 3
 # (mainnet.optimism.io): non-CF, archive-capable, no quota to exhaust.
 EXPECTED_UPSTREAM_HOSTS = frozenset({
     "mainnet.optimism.io",
-    "api.zan.top",
-    "lb.nodies.app",
+    "opt-mainnet.g.alchemy.com",
+    "lb.drpc.org",
 })
 # Settlement-relevant reads that MUST keep a fail-closed-consensus first-match —
 # mirror the template's consensus rules. Block A/B sit in punished consensus
@@ -80,11 +81,15 @@ EXPECTED_UPSTREAM_HOSTS = frozenset({
 # lag can't cordon it (Codex #465/#466). This guard checks the consensus PARAMS
 # (maxParticipants/threshold/behaviors), not punishMisbehavior, so the no-punish
 # receipt rule satisfies it while a single forged receipt still can't reach quorum.
-BLOCK_A = ("eth_call", "eth_getBalance", "eth_getCode", "eth_getStorageAt")
+BLOCK_A = ("eth_call", "eth_getBalance", "eth_getCode", "eth_getStorageAt", "eth_getBlockByHash")
 BLOCK_B = ("eth_getLogs", "eth_getTransactionByHash",
            "eth_estimateGas", "eth_feeHistory", "eth_getTransactionCount")
 RECEIPT = ("eth_getTransactionReceipt",)
 PROTECTED_METHODS = BLOCK_A + BLOCK_B + RECEIPT
+# The wildcard is only a fallback, not an override of Alchemy's method table.
+ALCHEMY_REQUEST_UNITS = dict.fromkeys(("*",) + PROTECTED_METHODS + (
+    "eth_blockNumber", "eth_getBlockByNumber", "eth_getBlockByHash", "eth_chainId",
+    "net_version", "eth_syncing", "eth_gasPrice", "eth_maxPriorityFeePerGas"), 1)
 
 # Allowed keys per structural level of the chain-10 consensus/upstream surface.
 # Any key outside these sets fails closed (the whole point — see module docstring).
@@ -101,14 +106,25 @@ ALLOWED = {
     "retry": {"backoffFactor", "backoffMaxDelay", "delay", "jitter", "maxAttempts"},
     "timeout": {"duration"},
     "hedge": {"delay", "maxCount"},
-    "upstream": {"endpoint", "failsafe", "id", "evm", "rateLimitBudget", "rateLimitCountMode", "creditUnits", "rateLimitAutoTune"},
+    "upstream": {"endpoint", "failsafe", "id", "evm", "jsonRpc", "rateLimitBudget", "rateLimitCountMode", "creditUnits", "rateLimitAutoTune"},
     "upstream_rule": {"matchMethod", "timeout", "retry", "circuitBreaker"},
     "circuitBreaker": {"failureThresholdCount", "failureThresholdCapacity", "halfOpenAfter", "successThresholdCount", "successThresholdCapacity"},
 }
 
 EXPECTED_SELECTION_POLICY = {
     "evalScope": "network-method",
-    "evalFunc": "(upstreams, ctx) => upstreams\n  .removeCordoned()\n  .whenEmpty(() => upstreams)\n  .sortByScore(PREFER_FASTEST)\n",
+    "evalFunc": """(upstreams, ctx) => {
+  const ranked = upstreams
+    .removeCordoned()
+    .whenEmpty(() => upstreams)
+    .sortByScore(PREFER_FASTEST);
+  if (["eth_blockNumber", "eth_getBlockByNumber"].includes(ctx.method)) {
+    const order = {"official-op": 0, "alchemy-op": 1, "drpc-op": 2};
+    return ranked.sort((a, b) => order[a.id] - order[b.id]);
+  }
+  return ranked;
+}
+""",
 }
 
 _SEGMENT_OK = re.compile(r"^[A-Za-z0-9_*]*$")
@@ -331,11 +347,16 @@ def validate(cfg):
             "finality": finality, "empty": "ignore", "ttl": ttl}
             for finality, ttl in (("finalized", "1h"), ("unfinalized", "2s"))],
     }}
+    expected_cache["evmJsonRpcCache"]["policies"].extend({
+        "connector": "op-headers", "network": "evm:10", "method": "eth_getBlockByHash",
+        "params": ["0x*", False], "finality": finality, "empty": "ignore", "ttl": "1h"}
+        for finality in ("finalized", "unfinalized", "unknown"))
     if cache != expected_cache:
-        errs.append("database must contain only the bounded numbered-header cache")
+        errs.append("database must contain only bounded explicit-header caches")
     if cfg.get("rateLimiters") != {"store": {"driver": "memory"}, "budgets": [{
-            "id": "nodies-op-free", "rules": [{"method": "*", "maxCount": 180, "period": "minute"}]}]}:
-        errs.append("Nodies requires the fixed shared 180/minute budget")
+            "id": name + "-op-budget", "rules": [{"method": "*", "maxCount": 180, "period": "minute"}]}
+            for name in ("drpc", "alchemy")]}:
+        errs.append("dRPC and Alchemy require separate shared 180/minute budgets")
     networks_checked = 0
     for proj in cfg.get("projects") or []:
         _check_keys(proj, "project", "project", errs)
@@ -347,26 +368,41 @@ def validate(cfg):
         ups = [u for u in (proj.get("upstreams") or []) if isinstance(u, dict)]
         for u in ups:
             _check_keys(u, "upstream", f"upstream[{u.get('id')}]", errs)
+            host = _hostname(u.get("endpoint"))
+            budget_id = {"lb.drpc.org": "drpc-op-budget", "opt-mainnet.g.alchemy.com": "alchemy-op-budget"}.get(host)
+            metered = budget_id is not None
             budget_keys = {"rateLimitBudget", "rateLimitCountMode", "creditUnits", "rateLimitAutoTune"}
             budget = {k: u[k] for k in budget_keys if k in u}
-            expected_budget = ({"rateLimitBudget": "nodies-op-free", "rateLimitCountMode": "credit",
-                                "creditUnits": {"*": 1}, "rateLimitAutoTune": {"enabled": False}}
-                               if _hostname(u.get("endpoint")) == "lb.nodies.app" else {})
+            expected_budget = ({"rateLimitBudget": budget_id, "rateLimitCountMode": "credit",
+                                "creditUnits": ALCHEMY_REQUEST_UNITS if host == "opt-mainnet.g.alchemy.com" else {"*": 1},
+                                "rateLimitAutoTune": {"enabled": False}}
+                               if metered else {})
             if budget != expected_budget:
-                errs.append("Only Nodies may use the fixed shared request budget, with autotuning disabled")
+                errs.append("Metered providers must use their fixed shared request budget, with autotuning disabled")
             if expected_budget and (len(u.get("failsafe", [])) != 1
                     or u["failsafe"][0].get("retry", {}).get("maxAttempts") != 1):
-                errs.append("Nodies must use one upstream attempt so retries cannot bypass its budget")
-            expected_evm = {"getLogsAutoSplittingRangeThreshold": 500} if _hostname(u.get("endpoint")) == "lb.nodies.app" else None
-            if _hostname(u.get("endpoint")) == "lb.nodies.app":
+                errs.append("Metered providers must use one upstream attempt so retries cannot bypass their budget")
+            log_range = {"lb.drpc.org": 100, "opt-mainnet.g.alchemy.com": 10}.get(host)
+            expected_evm = {"getLogsAutoSplittingRangeThreshold": log_range} if metered else None
+            expected_jsonrpc = {"headers": {"Origin": "https://swap.ophis.fi"}} if host == "opt-mainnet.g.alchemy.com" else None
+            if u.get("jsonRpc") != expected_jsonrpc:
+                errs.append("Only Alchemy may set jsonRpc, with exactly the allowed Ophis Origin")
+            if host == "opt-mainnet.g.alchemy.com":
+                url = urlsplit(u["endpoint"])
+                if (url.scheme != "https" or not url.path.startswith("/v2/")
+                        or not url.path[4:].strip() or "/" in url.path[4:]
+                        or url.query or url.fragment or url.netloc != host):
+                    errs.append("Alchemy must use the keyed Optimism v2 endpoint")
+            if _hostname(u.get("endpoint")) == "lb.drpc.org":
                 url = urlsplit(u["endpoint"])
                 query = parse_qs(url.query, keep_blank_values=True)
-                key = query.get("apikey", [])
-                if (url.scheme != "https" or url.path != "/v2/optimism" or url.fragment
-                        or set(query) != {"apikey"} or len(key) != 1 or not key[0].strip()):
-                    errs.append("Nodies must use the private Optimism endpoint with a nonempty API key")
+                key = query.get("dkey", [])
+                if (url.scheme != "https" or url.path != "/ogrpc" or url.fragment
+                        or set(query) != {"network", "dkey"} or query.get("network") != ["optimism"]
+                        or len(key) != 1 or not key[0].strip()):
+                    errs.append("dRPC must use the private Optimism endpoint with a nonempty API key")
             if u.get("evm") != expected_evm:
-                errs.append("upstream evm config must only split Nodies logs into 500-block ranges")
+                errs.append("upstream evm config must split Alchemy/dRPC logs at 10/100 blocks only")
             for j, r in enumerate(u.get("failsafe") or []):
                 if isinstance(r, dict):
                     _check_rule_subtree(r, f"upstream[{u.get('id')}].failsafe[{j}]", errs, level="upstream_rule")
@@ -374,6 +410,10 @@ def validate(cfg):
             errs.append(f"expected exactly {EXPECTED_UPSTREAMS} upstreams, found {len(ups)}: {[u.get('id') for u in ups]}")
         if len({u.get('id') for u in ups}) != len(ups):
             errs.append(f"upstream ids are not distinct: {[u.get('id') for u in ups]}")
+        if {u.get("id"): _hostname(u.get("endpoint")) for u in ups} != {
+                "official-op": "mainnet.optimism.io", "alchemy-op": "opt-mainnet.g.alchemy.com",
+                "drpc-op": "lb.drpc.org"}:
+            errs.append("upstream IDs must match provider hosts so cost ordering cannot drift")
         for u in ups:
             if not u.get("endpoint"):
                 errs.append(f"upstream {u.get('id')!r} has no endpoint")
@@ -414,14 +454,50 @@ def validate(cfg):
     return list(dict.fromkeys(errs))
 
 
+def validate_compose(cfg):
+    # These providers share Cloudflare DNS; pin their independent HTTPS ingress.
+    expected = ["mainnet.optimism.io=34.149.58.211", "lb.drpc.org=67.213.113.57"]
+    if cfg.get("services", {}).get("rpc-proxy", {}).get("extra_hosts") != expected:
+        return ["rpc-proxy must pin the verified official OP and dRPC ingress IPs"]
+    return []
+
+
+EVENT_HANDLER = Path(__file__).resolve().parents[2] / "apps/backend/crates/event-indexing/src/event_handler.rs"
+INDEXERS = 3  # autopilot run.rs: settlement, ethflow refund and onchain-order EventUpdaters
+
+
+def validate_catchup(cfg):
+    # eRPC 0.2.0 splits eth_getLogs at the SMALLEST upstream threshold and every
+    # page goes to every voter. A history attempt only checkpoints after its last
+    # page, so it must fit the budget or catch-up after an outage never advances.
+    m = re.search(r"const MAX_HISTORY_BLOCKS: u64 = ([0-9_]+);", EVENT_HANDLER.read_text(encoding="utf-8"))
+    if not m:
+        return [f"cannot find MAX_HISTORY_BLOCKS in {EVENT_HANDLER}"]
+    history = int(m.group(1).replace("_", ""))
+    pages = [t for p in cfg.get("projects") or [] for u in p.get("upstreams") or []
+             if (t := (u.get("evm") or {}).get("getLogsAutoSplittingRangeThreshold", 0)) > 0]
+    budgets = [r.get("maxCount", 0) for b in (cfg.get("rateLimiters") or {}).get("budgets") or []
+               for r in b.get("rules") or [] if r.get("period") == "minute"]
+    if not pages or not budgets:
+        return []
+    calls = INDEXERS * -(-history // min(pages))
+    if calls > min(budgets) // 3:
+        return [f"one catch-up attempt sends {calls} log pages to each voter (MAX_HISTORY_BLOCKS={history}, "
+                f"{min(pages)}-block pages, {INDEXERS} indexers); keep it within a third of the "
+                f"{min(budgets)}/minute budget or the attempt cannot checkpoint"]
+    return []
+
+
 def main(path):
     try:
         with open(path, encoding="utf-8") as f:
             cfg = yaml.safe_load(f)
+        with open(Path(__file__).with_name("docker-compose.yml"), encoding="utf-8") as f:
+            compose = yaml.safe_load(f)
     except Exception as e:  # noqa: BLE001 - any parse failure must fail closed
         print(f"ERROR (#447): cannot parse {path}: {e}", file=sys.stderr)
         return EXIT_FAIL
-    errs = validate(cfg or {})
+    errs = validate(cfg or {}) + validate_compose(compose or {}) + validate_catchup(cfg or {})
     if errs:
         print(f"ERROR (#447): Optimism eRPC config is not 2-of-3-across-3 fail-closed ({path}):", file=sys.stderr)
         for e in errs:

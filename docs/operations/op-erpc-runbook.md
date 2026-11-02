@@ -1,5 +1,375 @@
 # Optimism RPC capacity and recovery
 
+## November 1, 2026: reduce Alchemy CU consumption
+
+Operator constraint remains **no spending**. The supplied key matches the
+installed Alchemy credential; no new account, plan, recharge or overage was
+enabled. Keys remain in the existing environment and RAM-backed render, outside
+Git and incident evidence.
+
+Three OP indexers previously requested logs separately for every block, even
+when none of their contracts emitted an event. These reads contributed 1.5
+Alchemy requests/s and 90 estimated CU/s. The total baseline was approximately
+124 CU/s using Alchemy's published per-method prices. Local `creditUnits: 1`
+is a request limiter override and does not change those prices. Transport
+batching also bills each individual method.
+
+OP's settlement, onchain-order and EthFlow-refund retrievers now first request
+the block by its explicit hash. eRPC requires two agreeing providers, then
+caches only nonempty, explicit-hash headers for one hour in the existing
+bounded header cache. The backend recomputes the canonical header hash before
+using its `logsBloom`. Only a proven address/topic absence returns no events.
+Missing, failed, inconsistent or possibly matching headers fall through to the
+existing consensus log read; the optional precheck has a two-second deadline.
+Historical range queries, indexing frequency and other chains retain their
+existing behavior. Logs, receipts and mutable state remain uncached.
+
+`eth_getBlockByHash` is now a protected Block A method. Tagged and numbered
+header reads still prefer official OP. Update the closed-world guard and
+regressions together if changing these policies. The mock engine regression
+requires every provider pair to work, one lone voter to fail, an altered bloom
+to be outvoted, and a repeated agreed header to cause no upstream requests.
+Backend tests cover an actual OP header, forged blooms, possible matches,
+missing/error headers and preservation of log errors.
+
+Deploy RPC first, verify its actual mounted bytes and two-provider canary,
+then deploy the new autopilot image. Reverse that order for rollback: restore
+autopilot before removing explicit-hash consensus. The deployed code revision
+is `706f152a3c8a9cbfcf3d5fb7141787ec237c1bd9`. Only autopilot's binary changes;
+the existing CoinGecko fix, configuration mount, environment and all unrelated
+containers are preserved. Runtime Compose files are the live stack file, the
+existing `compose-pricing.json`, and
+`/Users/scep/ophis-incidents/2026-11-01-alchemy-cu/compose-cu.json`.
+Use all three files for future autopilot recreation; the last override records
+the new image and source build context.
+
+Rollback configuration remains mode 0600 on the verified RAM image under
+`~/.local/state/ophis/ram-pk/op-cu-20261101/before.yaml`. Sanitized measurements,
+deployment identities and recovery instructions are in
+`/Users/scep/ophis-incidents/2026-11-01-alchemy-cu/`. Compare observed request
+rates using the published
+[Alchemy CU weights](https://www.alchemy.com/docs/reference/compute-unit-costs),
+not eRPC's request-count weights. The provider dashboard's actual allowance,
+other account consumers and billing totals remain unverified. A reduced burn
+rate does not guarantee that a finite free allowance lasts the month.
+
+At 18:56:52 UTC, the final ten-minute rate was **53.85 estimated CU/s**, down
+from **123.66 CU/s (56.5%)**. Alchemy requests fell **26.4%**, log requests
+**91.9%**, and combined log/header CU **80.8%**. This uses observed traffic,
+not a controlled equal-load billing comparison. Across 22 samples over 630
+seconds, all indexing cursors advanced from 158980002 to 158980317 with zero
+maintenance lag and zero new sanctions-fetch failures. Auctions stayed HTTP
+200. Driver health was 200 in 21 samples and 503 once: both metered providers'
+local request budgets were exhausted briefly, so balance checks failed closed.
+The next sample and three fresh probes were 200; final alerts were empty.
+Free reserve capacity remains limited during bursts. No live settlement was tested.
+
+## October 31, 2026: ZAN quota and sanctions refresh recovery
+
+**Operator constraint: no paid RPC plans, purchases, top-ups or overage.** Use
+existing free credentials or another validated free provider. Older dated paid
+capacity suggestions below are historical and do not authorize spending.
+
+At **18:57:31 UTC**, deployed **official OP + keyed Alchemy + keyed dRPC**,
+with exactly three voters, two agreeing responses and both failure behaviors
+`returnError`. ZAN returned HTTP 429 with explicit package-credit exhaustion;
+dRPC free-tier throttling then left the sanctions oracle with one valid RPC
+vote. The orderbook logs identify `ErrConsensusLowParticipants` during
+`background_refresh`. This is an RPC-capacity failure on the onchain oracle
+path, not evidence that Chainalysis's hosted API is unavailable. The application
+still intentionally fails open on fetch errors; restoring reads does not change
+that policy.
+
+Historical counter samples last increased at 18:34 UTC, and the sanctions alert's
+last firing sample was 18:42:30 UTC, before deployment. Do not attribute that
+earlier recovery to this hotfix. Fresh production oracle calls pass after the
+change; the counter remains observable without restarting the orderbook. Cache
+refresh is hourly, so a short quiet window does not prove a full refresh cycle.
+
+The existing Alchemy key requires `jsonRpc.headers.Origin: https://swap.ophis.fi`.
+Its free plan rejects log ranges wider than **ten blocks**. Pin
+`getLogsAutoSplittingRangeThreshold: 10`; the similarly named retired setting is
+not a substitute. Ten pages reproduced all 921 reference historical logs.
+Every protected method, a populated successful receipt, state two million blocks
+back, recent fee history and 360 requests paced at three/second matched the
+independent official OP reference. This is a bounded capacity check, not proof
+of remaining monthly allowance. Alchemy and dRPC each retain a separate shared
+180-request/minute credit-mode limiter, autotuning disabled and one upstream
+attempt. The limit counts requests, not provider billing credits.
+
+Alchemy's vendor integration retains per-method prices when only `"*": 1` is
+set. Pin every protected method, header/poller method and gas-price method to one
+local unit explicitly. The initial isolated canary exhausted the local limiter
+without these overrides. The regression forces Alchemy's real vendor defaults
+even with mock endpoints and tests both providers' shared cross-method budgets.
+
+The real-provider canary passed calls, the populated receipt and 921 logs with
+dRPC deliberately unavailable. With official OP unavailable, calls and receipt
+passed but historical logs still failed from dRPC throttling. With Alchemy
+unavailable, dRPC failed to contribute quorum during that canary. These limits
+remain; the new healthy pair is the availability repair. The deployed image is
+unchanged and only the RPC container was recreated. Actual mounted bytes and
+Docker DNS pins match the validated candidate; every other container ID stayed
+unchanged.
+
+DNS observations found Cloudflare authoritative for `optimism.io`, `drpc.org`
+and `g.alchemy.com`. Different HTTPS ingress operators alone therefore do not
+establish independent DNS failure domains. The RPC Compose service pins
+`mainnet.optimism.io=34.149.58.211` and `lb.drpc.org=67.213.113.57`, retaining the
+original HTTPS hostnames, SNI and certificate validation. These are verified
+Google and dRPC ingress addresses. This prevents the shared DNS control plane
+from redirecting those two voters while Alchemy continues to use DNS. The guard
+checks the Compose pins as well as the RPC policy. It does not protect against
+two independent ingress operators being compromised.
+
+`shortcut:` pinned ingress addresses can change; if either becomes unreachable,
+revalidate the operator's current ingress through independent DNS observations
+and successful HTTPS hostname verification, then update Compose, its guard and
+the regression fixture together. Recreate RPC to apply new `extra_hosts`; a
+container restart alone does not change them. Verify Docker's actual
+`HostConfig.ExtraHosts` and its mounted config after recreation.
+
+Only `ALCHEMY_API_KEY` and `DRPC_API_KEY` are required by the RPC renderer; the
+retired ZAN credential is optional. Driver submission remains PublicNode,
+official OP and dRPC, so the two read/submission overlaps remain official OP and
+dRPC. dRPC throttling still limits that overlap during settlement bursts. Do not
+claim that read-only quotes validate live settlement or safe pending-nonce
+propagation under load.
+
+Before deployment, run the closed-world guard, `test-boost-rpc.py`, the pinned
+engine's `test-op-erpc-quorum.py` and the renderer/health-check fixture suite.
+The latter sends notification tests only to its local fixture. Require every
+pair of mock voters to pass calls, receipts and split logs, and one lone voter
+to fail closed. Isolated real-provider checks must include Alchemy plus official
+OP with dRPC unavailable. Record dRPC-dependent failures rather than hiding them
+behind an eventual successful retry.
+
+Deploy from `/Users/scep/ophis-release-20261012-op/infra/optimism-mainnet`, after
+comparing later operator edits with the reviewed baseline. Preserve the original
+mounted render and candidate only in the verified RAM image under
+`~/.local/state/ophis/ram-pk/op-alchemy-20261031`, mode 0600. Update source and
+runtime together and recreate **RPC only**, keeping its pinned image and every
+other container, signer and database unchanged. Validate the actual mount and
+pins, fresh sanctions calls, local/public quotes, a populated receipt and logs,
+advancing maintenance and all three indexing cursors. Observe at least ten
+minutes of production traffic. Removed-upstream ratio alerts can retain their
+15-minute history; do not silence them to report recovery.
+
+The existing Nodies private account remains monthly-quota exhausted; its public
+pool also failed sustained admission checks. Blockdaemon remains exhausted,
+Validation Cloud returned missing historical data and OnFinality throttled.
+Alchemy is contributing free capacity with finite shared allowance. Its published
+[free plan](https://www.alchemy.com/pricing) includes 30M CU/month; remaining
+account allowance and reset timing were not verified. Request-count overrides
+in eRPC do not reduce provider billing credits. Revalidate a different free
+provider or a genuinely replenished existing free account before this allowance
+exhausts. Do not rotate back to a provider based on a head-only success, weaken
+quorum or activate spending. The local host has about 8 GiB available and cannot
+host a new OP node. Sanitized evidence and final
+deployment observations are in
+`/Users/scep/ophis-incidents/2026-10-31-op-rpc/`.
+
+### Production verification at 19:15 UTC
+
+33 samples over 16 minutes: driver and public auction HTTP 200 throughout,
+maintenance lag 0–6 blocks and final lag zero, all three indexing
+cursors advanced to 158937661. Local/public quotes,
+a fresh oracle call, populated receipt and 44 historical logs passed. Sanctions
+counters stayed at background=846 and on-demand=0. The final alert list was empty;
+the retired ZAN rate alerts expired without suppression. dRPC still throttled
+(0.852 capacity errors/s in the last five minutes), so free
+reserve capacity remains limited. No other container restarted. Full evidence
+and rollback details are in the incident directory's `diagnosis-and-recovery.md`.
+
+## October 26, 2026, 17:49 UTC: reduce dRPC consumption
+
+Ordinary `eth_blockNumber`, `eth_getBlockByNumber` and `eth_getBlockByHash`
+requests now prefer official OP, then ZAN, with dRPC retained as the last
+fallback. Every protected consensus method retains the existing ranking and
+all three eligible voters; this policy only reorders the three ordinary block
+methods. The closed-world guard pins the complete policy. The pinned-engine
+regression proves both zero dRPC calls for a healthy ordinary header read and
+successful dRPC fallback when the other two providers fail.
+
+At 17:55 UTC, after a fresh five-minute window, dRPC numbered-block traffic fell
+from 0.493 to 0.193 requests/s (**60.9%**). Total dRPC traffic fell from 3.070 to
+2.719 requests/s (**11.5% observed**, not a controlled equal-load comparison).
+The header difference alone projects to 777,600 fewer requests over 30 days if
+the same load persists. Driver health stayed HTTP 200; maintenance returned to
+zero/one-block lag after the startup transient, with zero measured
+low-participant network errors. dRPC free-tier capacity errors persisted, so
+this optimization does not establish reliable spare capacity.
+
+Keep the shared 180/minute request ceiling, disabled autotuning, one dRPC
+upstream attempt, 100-block historical log pages, bounded numbered-header cache
+and existing in-flight request sharing. Do not cache live balances, receipts or
+logs or slow block indexing to obtain an apparent saving. The three independent
+event indexers still need their per-block log reads. The local `creditUnits: 1`
+setting counts requests for the limiter; it is not the provider's billed-CU
+counter. Use provider dashboard usage for actual consumption and billing.
+
+Only RPC was restarted for this routing change. The actual mounted configuration
+passed the guard and was checked to differ in routing policy only. Billing and
+driver configuration were unchanged. Before/after evidence is in local incident
+artifacts `drpc-usage-before-optimization.json`, `drpc-usage-observation.jsonl`
+and `drpc-usage-deployment.json`, with the comparison in
+`drpc-usage-after-optimization.json`.
+
+## Current status at 17:10 UTC: partial mitigation, capacity still required
+
+The dRPC change below is deployed but **does not establish reliable redundancy**.
+Sustained traffic exposed HTTP 429 `You reached free plan rate limit, please
+upgrade to paid plan` that low-rate probes missed. At 17:09:46 the preceding
+five-minute window had 2.904 dRPC requests/s, 0.933 capacity errors/s (~32.1%),
+plus 0.041 server errors/s. Official OP and ZAN kept quorum; measured
+low-participant network errors remained zero and maintenance stayed near head.
+dRPC contributes successful reads, improving on the completely dead Blockdaemon
+lane, but another provider's failure can still interrupt service during its
+rate-limited periods. Empty alerts or successful quotes do not close this risk.
+
+The recommended next step is usable paid archive capacity on this validated dRPC
+route, with prepaid/bounded spend and automatic recharge disabled, or an owned
+OP node on a suitably provisioned existing host. The
+[published Pay as You Go price](https://drpc.org/docs/pricing/plans) is $6 per
+million requests. At 2.904 requests/s, this lane projects to about $45.16 over
+30 days; its 180/minute ceiling corresponds to $46.66, before driver submission,
+other account consumers, taxes or changes in pricing/usage. This is an estimate,
+not a verified billing cap. Obtain operator budget approval before funding or
+changing the request tier; none was activated during this investigation.
+
+The present local host has only about 31 GiB free, so it is not provisioned for
+an OP node. No zero-cost replacement has passed both correctness and sustained
+capacity checks. Do not claim that slowing a dead provider's polling or reducing
+quorum fixes the missing capacity. The earlier 17:01 checks prove response
+correctness and deployment, not sustained free-tier capacity.
+
+## October 26, 2026, 17:01 UTC: replace Blockdaemon with keyed dRPC
+
+Current voters are **official OP, ZAN and keyed dRPC**. Blockdaemon returned
+HTTP 429 `Quota limit exceeded`; its growing sampled-head lag was a consequence
+of failed polling. The existing dRPC account was usable and replaced Blockdaemon
+in both eRPC reads and driver transaction submission at 17:01:35 UTC. No billing
+setting, signer, image, database cursor or consensus threshold changed. Only the
+existing RPC and driver containers were restarted.
+
+dRPC rejected 200/500-block log ranges, despite an error message referring to
+10,000 blocks. Set its existing `getLogsAutoSplittingRangeThreshold` to **100**.
+Five 100-block pages reproduced all 281 historical reference logs. Fixed-block
+state, a populated transaction and successful receipt matched official OP and
+ZAN; state two million blocks back also passed. Recent fixed-block fee-history
+responses matched all three providers. Do not replace this with a head-only
+probe or restore the unsupported 500-block setting.
+
+Both live two-voter combinations (dRPC plus official OP, and dRPC plus ZAN)
+passed calls, historical logs and receipts through the pinned eRPC engine with
+the other voter deliberately unavailable in an isolated canary. Initial cold
+startup can return a fail-closed low-participant error before pollers warm.
+The local quorum regression rejects a lone voter and proves 100-block dRPC log
+splitting and the shared cross-method budget. Renderer/health-check regression:
+47 passed, zero failed, with external messaging blocked during the test.
+
+Preserve exactly three independent voters, threshold two and both `returnError`
+behaviors. Driver submission uses PublicNode, official OP and dRPC, retaining
+two read/submission overlaps. Keep the shared **180 requests/minute** limiter,
+credit-count mode, autotuning disabled and one upstream attempt. The guard pins
+the keyed Optimism endpoint, log-page size and these invariants. The renderer
+requires `ZAN_API_KEY` and `DRPC_API_KEY`; retired Blockdaemon/Tenderly keys are
+optional. No `Origin` header is needed for this backend key.
+
+The [published dRPC free allowance](https://drpc.org/docs/howitworks/ratelimiting)
+is 210M CU per 30-day period. At the
+[published 20 CU/request](https://drpc.org/docs/pricing/compute-units), the limiter
+ceiling permits 155.52M CU over 30 days, before other account consumers and
+driver submission. Remaining account allowance and reset timing were not
+verified. This is restored contributing capacity, not an unlimited-capacity
+guarantee. Check actual dashboard usage; do not enable paid overage implicitly.
+
+The live deployment checkout is
+`/Users/scep/ophis-release-20261012-op/infra/optimism-mainnet`. Tested source is
+`/Users/scep/ophis-op-rpc-recovery-20261026`. Both actual mounted files were
+compared with the secure candidates, and the mounted RPC file passed the guard.
+Credential-bearing candidates and rollback files are mode 0600 on the verified
+RAM image under `~/.local/state/ophis/ram-pk/op-drpc-20261026`; never move them to
+Git or a disk-backed evidence folder. The driver render changed only its retired
+submission URL, preserving all signer and unrelated settings.
+
+After a provider change, require at least ten minutes of real traffic with
+contributing voters, bounded upstream errors, healthy driver, advancing auction
+and all three database cursors, plus local/public quotes and a populated receipt
+through the production proxy. Lag alerts for a removed voter clear after stale
+series disappear; ratio alerts retain up to 15 minutes of old traffic. A planned
+proxy restart also raises the existing five-minute restart warning. Do not
+silence these rules to claim recovery.
+
+Sanitized evidence is in
+`/Users/scep/ophis-incidents/2026-10-26-op-unichain/drpc-{complete-preflight-1654,live-canary-1656,deployment-1700,production-checks-1703}.json`
+and `drpc-observation-1702.jsonl`. The dated sections below describe earlier
+topologies. A durable OP node would remove one external quota dependency; the
+operator host currently has only about 31 GiB free, so no new node was started
+on it during this recovery.
+
+## October 26, 2026, 13:53 UTC: Blockdaemon allowance exhausted
+
+The morning Blockdaemon replacement is now exhausted too. At 13:57 UTC a direct
+probe returned HTTP 429 `Quota limit exceeded`; the preceding five-minute eRPC
+window showed capacity errors on every Blockdaemon request. Official OP and ZAN
+returned the same head. Public version, auction and a 0.05 WETH→USDC quote still
+passed; essential maintenance was one block behind. This is degraded service
+with two contributing voters and no spare, not restored redundancy. Blockdaemon's
+last sampled head ages when its polls fail; the growing lag is not proof of a
+provider chain fork.
+
+The 13:53:22 lag notification follows a condition active since 13:38:22 plus its
+15-minute hold. Do not wait another hour after a raw quota failure. Restarting
+eRPC, increasing its limiter or retrying cannot replenish account allowance.
+The 180/minute ceiling can still admit 259,200 requests/day (7,776,000 over 30
+days); it limits rate, not monthly quota, and does not cover driver submissions.
+
+Restore this account's usable allowance or validate a genuinely funded/available
+replacement before changing providers. Preserve exactly three independent read
+voters, two agreeing responses and both `returnError` behaviors. Replacing the
+read voter also reaches the driver submission targets, renderer/key validation,
+closed-world guard, regression fixtures and deployment source. Require two
+usable providers in the read/submission overlap: with Blockdaemon exhausted,
+only official OP currently contributes to both. Working quotes do not establish
+safe pending-nonce behavior during a new settlement burst. Do not patch only
+eRPC or remove its third voter to clear the alert.
+
+Run the protected-method, historical-log and populated-receipt preflight in the
+morning procedure below; verify the actual mounted config and observe at least
+ten minutes of real traffic after a change. The earlier Nodies and other rejected
+providers remained unverified replacements at 14:02 UTC. The later dRPC recovery
+above supersedes that capacity assessment. Do not activate paid capacity without
+operator authorization.
+
+The separate sovereign-canary failure is Unichain HTTP 530, not this OP warning.
+Local incident evidence and the full recovery procedure are in
+`/Users/scep/ophis-incidents/2026-10-26-op-unichain/2026-10-26-1353-diagnosis-and-recovery.md`.
+
+## October 26, 2026: Nodies monthly allowance exhausted
+
+Nodies returned HTTP 429: `Request limit exceeded, total free requests allowed
+per month: 4000000`. Replace it with the existing keyed Blockdaemon lane in both
+eRPC reads and driver submission. Current read providers are official OP, ZAN and
+Blockdaemon. Keep exactly three voters, two agreeing responses and both failure
+behaviors set to `returnError`. The shared 180/minute ceiling, 500-block log pages
+and one upstream attempt remain. This rate ceiling does not cap monthly credits;
+confirm remaining allowance in the provider dashboard before claiming permanence.
+Blockdaemon's [published limits](https://docs.blockdaemon.com/docs/rate-limits)
+include 5 requests/second on its free plan. In production this replacement still
+hits burst throttles; treat it as restored redundancy with limited capacity,
+not a permanent capacity fix. PublicNode rejects archive access, Validation Cloud
+returns pruned historical state, and Alchemy's current free plan rejects log
+queries wider than ten blocks. Do not substitute these based on a head-only probe.
+
+Validate every protected method at fixed blocks, including populated historical
+logs and receipts. Run the guard and quorum regression before deployment. Keep
+credential-bearing rollback files on the verified RAM disk. Apply only the RPC
+and driver config changes, then restart those existing containers. Check their
+actual mounts, public quotes, driver health, upstream errors and firing alerts
+under at least ten minutes of real traffic. A hand probe cannot establish capacity.
+Do not reduce quorum or activate paid capacity to clear an alert.
+
 ## September 30 maintenance incident: catch-up cannot finish
 
 The September 29 runtime backport (`0dfebe04`, image
@@ -23,7 +393,8 @@ during the repeated catch-up. These are client requests, not billed credits.
 All seven settlement balance probes passed at 14:14:55; that did not clear the
 indexing failure. This incident is separate from the Pons token-list 503.
 
-The correction yields when more than 5,000 historical blocks remain. It then
+The correction yields when more than 200 historical blocks remain (5,000 at the
+time; see the 2026-11-02 note on catch-up budgets). It then
 advances ordinary catch-up in hash-verified checkpoints of at most 16 blocks,
 requiring the sampled head before reporting success. The no-reorg path accepts head drift
 after partial progress instead of replaying history. Historical checkpoints need
@@ -196,7 +567,7 @@ a syntactically valid TOML file with `[current-block]` at the root is rejected.
 
 The existing bounded numbered-header cache and indexer concurrency limits remain.
 Header and event catch-up share a maximum of four concurrent RPC requests per
-fetch. Historical maintenance checkpoints at most 5,000 blocks per attempt,
+fetch. Historical maintenance checkpoints at most 200 blocks per attempt,
 retains the 64-block reorg overlap, and avoids fetching moving-tip headers until
 the final historical chunk. Tail checkpoints process at most 16 blocks at a time.
 It stops consuming RPC pages on the first error and backs off that indexer for
@@ -312,3 +683,19 @@ advancing refund, order and settlement cursors near the chain head. A provider
 unable to initialize can lack network-specific head metrics; an absent lag alert
 does not establish recovery. ZAN's exhaustion remains an open dependency until
 it contributes successful votes under normal load.
+
+## 2026-11-02: catch-up attempts must fit the log budget
+
+eRPC 0.2.0 splits every `eth_getLogs` at the smallest upstream
+`getLogsAutoSplittingRangeThreshold` (Alchemy's 10 blocks) and sends each page
+to all three voters. A historical attempt saves its checkpoint only after its
+last page, and log pages are not cached, so a failed page restarts the attempt.
+At 5,000 blocks an attempt was 500 pages per indexer, 1,500 per voter across the
+three indexers, far over the 180/minute dRPC and Alchemy budgets: after an
+outage of roughly 15 minutes or more, catch-up could retry forever without
+advancing. `MAX_HISTORY_BLOCKS` is now 200 (60 calls per voter per attempt), and
+`assert-erpc-failclosed.py` fails CI if the two numbers drift apart again.
+
+Limit: a full re-index from an empty database is still impractical at 10-block
+pages within these budgets (months of OP history is millions of pages). Treat a
+database loss as needing more log capacity first, not just time.

@@ -84,6 +84,11 @@ services:
   # Cloned from infra/hyperevm-mainnet (Phase 4 audit M-2, 2026-05-19).
   rpc-proxy:
     logging: *default-logging
+    # Keep shared Cloudflare DNS from redirecting two independent read voters.
+    # Retain HTTPS hostnames/SNI; refresh these verified ingress IPs if they move.
+    extra_hosts:
+      - "mainnet.optimism.io=34.149.58.211"
+      - "lb.drpc.org=67.213.113.57"
     image: ${ERPC_IMAGE:?ERPC_IMAGE must be pinned as ghcr.io/erpc/erpc:<version>@sha256:<digest>}
     restart: always
     mem_limit: 512m

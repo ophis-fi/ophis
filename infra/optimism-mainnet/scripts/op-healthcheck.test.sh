@@ -8,8 +8,7 @@
 # also what happens when the probe fails and the notification is suppressed. It could
 # not distinguish "recovery path ran and delivery failed" from "never recovered".
 #
-# Telegram is never contacted for real: TG_ENV points at a token the API rejects, so
-# notify() genuinely fails end to end, which IS the condition under test.
+# Notification failures use the local fixture; Telegram is never contacted.
 set -uo pipefail
 SRC="$(cd "$(dirname "$0")" && pwd)/op-healthcheck.sh"
 WORK="$(mktemp -d)"
@@ -45,6 +44,8 @@ from http.server import BaseHTTPRequestHandler, HTTPServer
 MODE_V, MODE_Q = sys.argv[2], sys.argv[3]
 class H(BaseHTTPRequestHandler):
     def _code(self):
+        if self.path.startswith('/bot'):
+            return 401
         path = MODE_Q if 'quote' in self.path else MODE_V
         try:
             return int(open(path).read().strip())
@@ -81,7 +82,7 @@ printf 'TELEGRAM_BOT_TOKEN=000000:INVALID-TOKEN-FOR-TESTING\n' > "$WORK/bad-tg.e
 mode(){ printf '%s' "$1" > "$WORK/mode"; printf '%s' "${2:-$1}" > "$WORK/qmode"; }  # mode <liveness> [quote]
 run(){ # statedir [extra env assignments...]
   local sd="$1"; shift
-  sed -e "s|^STATE_DIR=.*|STATE_DIR=\"$sd\"|" -e "s|^BASE=.*|BASE=\"$BASE_URL\"|" "$SRC" > "$WORK/hc.sh"
+  sed -e "s|^STATE_DIR=.*|STATE_DIR=\"$sd\"|" -e "s|^BASE=.*|BASE=\"$BASE_URL\"|" -e "s|https://api.telegram.org|http://127.0.0.1:$PORT|" "$SRC" > "$WORK/hc.sh"
   ( export TELEGRAM_BOT_TOKEN_ENV_FILE="$WORK/bad-tg.env" OPHIS_BOOT_GRACE_SECONDS=0 "$@"; bash "$WORK/hc.sh" ) >"$WORK/out.log" 2>&1
 }
 st(){ cat "$1/op-health.state" 2>/dev/null; }
@@ -231,25 +232,25 @@ R="$(cd "$(dirname "$0")/.." && pwd)"
 if [[ -f "$R/render-configs.sh" ]]; then
   SB="$WORK/render-sandbox"; mkdir -p "$SB"; cp "$R/render-configs.sh" "$R/.env.example" "$SB/"
   # render-configs.sh cd's to its own directory, so the sandbox copy reads the
-  # sandbox .env. The zan guard sits after `source .env` and BEFORE the sudo PK
+  # sandbox .env. The Alchemy guard sits after `source .env` and BEFORE the sudo PK
   # read, so these invocations are real and need no privileges.
   runrender(){ ( cd "$SB" && ERPC_IMAGE="$(sed -n 's/^ERPC_IMAGE=//p' .env.example | head -1)" bash ./render-configs.sh >"$SB/out.log" 2>&1 ); echo $?; }
 
-  printf 'POSTGRES_USER=x\nBLOCKDAEMON_OP_KEY=bd\nDRPC_API_KEY=dr\nTENDERLY_OP_KEY=td\n' > "$SB/.env"   # neither zan name
+  printf 'POSTGRES_USER=x\nBLOCKDAEMON_OP_KEY=bd\nDRPC_API_KEY=dr\nTENDERLY_OP_KEY=td\n' > "$SB/.env"   # no Alchemy key
   rc="$(runrender)"
-  ck "no zan key at all -> exits 15" "$rc" "15"
-  ck "and says why" "$(grep -c 'Refusing to render' "$SB/out.log")" "1"
+  ck "no Alchemy key -> exits 15" "$rc" "15"
+  ck "and says why" "$(grep -c 'ALCHEMY_API_KEY is unset/empty' "$SB/out.log")" "1"
 
-  printf 'POSTGRES_USER=x\nBLOCKDAEMON_OP_KEY=bd\nDRPC_API_KEY=dr\nTENDERLY_OP_KEY=td\nZAN_OP_KEY=legacy-value\n' > "$SB/.env"  # legacy name only
+  printf 'POSTGRES_USER=x\nBLOCKDAEMON_OP_KEY=bd\nDRPC_API_KEY=dr\nTENDERLY_OP_KEY=td\nALCHEMY_API_KEY=active-value\n' > "$SB/.env"  # active key, retired ZAN absent
   rc="$(runrender)"
-  ck "legacy name migrates instead of exiting 15" "$([ "$rc" != "15" ] && echo migrated || echo refused)" "migrated"
-  ck "and warns to rename it" "$(grep -c 'Migrating to ZAN_API_KEY' "$SB/out.log")" "1"
+  ck "active Alchemy key passes credential checks" "$([ "$rc" != "15" ] && echo migrated || echo refused)" "migrated"
+  ck "retired ZAN key is not required" "$(grep -c 'ZAN_API_KEY is unset/empty' "$SB/out.log")" "0"
 
   # The endpoint validator, invoked directly through its --check-rendered seam.
-  printf 'upstreams:\n  - id: zan-op\n    endpoint: https://api.zan.top/node/v1/opt/mainnet/abc123\n' > "$SB/good.yaml"
+  printf 'upstreams:\n  - id: alchemy-op\n    endpoint: https://opt-mainnet.g.alchemy.com/v2/abc123\n' > "$SB/good.yaml"
   ( cd "$SB" && bash ./render-configs.sh --check-rendered "$SB/good.yaml" >/dev/null 2>&1 ); ck "valid rendered config passes" "$?" "0"
 
-  printf 'upstreams:\n  - id: zan-op\n    endpoint: https://api.zan.top/node/v1/opt/mainnet/\n' > "$SB/empty.yaml"
+  printf 'upstreams:\n  - id: alchemy-op\n    endpoint: https://opt-mainnet.g.alchemy.com/v2/\n' > "$SB/empty.yaml"
   ( cd "$SB" && bash ./render-configs.sh --check-rendered "$SB/empty.yaml" >/dev/null 2>&1 ); ck "empty key (trailing /) is rejected with 16" "$?" "16"
 
   printf 'upstreams:\n  - id: vc-op\n    endpoint: https://mainnet.optimism.validationcloud.io/v1//more\n' > "$SB/dbl.yaml"
@@ -259,7 +260,7 @@ if [[ -f "$R/render-configs.sh" ]]; then
   # lane, so an empty key there costs eth_getTransactionReceipt + deep eth_getLogs
   # their 3rd voter. Its key rides in a QUERY PARAM, which the trailing-'/' and
   # '//' checks above cannot see — hence its own guard, and hence these tests.
-  printf 'POSTGRES_USER=x\nZAN_API_KEY=z\nTENDERLY_OP_KEY=td\n' > "$SB/.env"   # no drpc key
+  printf 'POSTGRES_USER=x\nALCHEMY_API_KEY=z\nTENDERLY_OP_KEY=td\n' > "$SB/.env"   # no drpc key
   rc="$(runrender)"
   ck "no drpc key -> exits 15" "$rc" "15"
   ck "and names DRPC_API_KEY" "$(grep -c 'DRPC_API_KEY is unset/empty' "$SB/out.log")" "1"
@@ -273,13 +274,11 @@ if [[ -f "$R/render-configs.sh" ]]; then
   printf 'upstreams:\n  - id: blockdaemon-op\n    endpoint: https://svc.blockdaemon.com/optimism/mainnet/native?apiKey=&z=1\n' > "$SB/bdempty2.yaml"
   ( cd "$SB" && bash ./render-configs.sh --check-rendered "$SB/bdempty2.yaml" >/dev/null 2>&1 ); ck "EMPTY query-param key before & is rejected with 16" "$?" "16"
 
-  # tenderly-op replaced official-op on 2026-08-29. Its key is PATH-style, so an
-  # empty one degrades to the KEYLESS gateway (20 req/s instead of 400, archive
-  # guarantee gone) rather than erroring -- fail fast on it too.
-  printf 'POSTGRES_USER=x\nZAN_API_KEY=z\nBLOCKDAEMON_OP_KEY=bd\nDRPC_API_KEY=dr\n' > "$SB/.env"   # no tenderly key
+  # Retired Blockdaemon/Tenderly credentials must not block the current quorum.
+  printf 'POSTGRES_USER=x\nALCHEMY_API_KEY=z\nDRPC_API_KEY=dr\n' > "$SB/.env"
   rc="$(runrender)"
-  ck "no tenderly key -> exits 15" "$rc" "15"
-  ck "and names TENDERLY_OP_KEY" "$(grep -c 'TENDERLY_OP_KEY is unset/empty' "$SB/out.log")" "1"
+  ck "retired keys are optional" "$([ "$rc" != "15" ] && echo passed || echo refused)" "passed"
+  ck "no retired-key error" "$(grep -Ec '(TENDERLY_OP_KEY|BLOCKDAEMON_OP_KEY|ZAN_API_KEY) is unset/empty' "$SB/out.log")" "0"
 
   printf 'upstreams:\n  - id: tenderly-op\n    endpoint: https://optimism.gateway.tenderly.co/\n' > "$SB/tdempty.yaml"
   ( cd "$SB" && bash ./render-configs.sh --check-rendered "$SB/tdempty.yaml" >/dev/null 2>&1 ); ck "keyless tenderly fallback is rejected with 16" "$?" "16"
