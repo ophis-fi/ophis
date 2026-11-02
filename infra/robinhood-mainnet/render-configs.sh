@@ -692,7 +692,9 @@ echo ""
 # scrub historical snapshots / Time Machine backups. EOA rotation is the
 # only complete remediation for prior exposure.
 if command -v tmutil >/dev/null 2>&1; then
-  snap_count=$(tmutil listlocalsnapshots / 2>/dev/null | wc -l | tr -d ' ')
+  # Skip tmutil's "Snapshots for disk /:" header. `|| true`: grep -c exits 1
+  # on a zero count, and pipefail would otherwise abort the render here.
+  snap_count=$(tmutil listlocalsnapshots / 2>/dev/null | grep -cv -e ':$' -e '^$' || true)
   if [[ "$snap_count" -gt 0 ]]; then
     echo "NOTE: $snap_count APFS local snapshot(s) exist. If a prior Tier-1 render"
     echo "      of driver.toml was made BEFORE this script's Tier-1.5 upgrade,"
