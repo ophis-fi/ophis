@@ -11,9 +11,9 @@ Keep the 80% warning and 90% critical thresholds; do not silence capacity alerts
 
 The genesis-verifier container and `/home/clement/robinhood-nitro-genesis-data`
 are already absent. The September instructions to reclaim another 571 GiB
-are obsolete. The live `/home/clement/robinhood-nitro-data` is about 1 TiB and
-must be preserved. Seven-day measured growth was approximately 7.3 GiB/day;
-growth varies with chain activity and compaction.
+are obsolete. The live `/home/clement/robinhood-nitro-data` must be preserved.
+Before the repair the filesystem had about 1118 GiB in use. Growth varies with
+chain activity and compaction, so measure it before sizing an expansion.
 
 On November 2, the VHD and ext4 expansion from **1500 to 1700 GiB** completed
 using existing physical space with no purchase. Linux application-available
