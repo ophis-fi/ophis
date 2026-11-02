@@ -462,6 +462,32 @@ def validate_compose(cfg):
     return []
 
 
+EVENT_HANDLER = Path(__file__).resolve().parents[2] / "apps/backend/crates/event-indexing/src/event_handler.rs"
+INDEXERS = 3  # autopilot run.rs: settlement, ethflow refund and onchain-order EventUpdaters
+
+
+def validate_catchup(cfg):
+    # eRPC 0.2.0 splits eth_getLogs at the SMALLEST upstream threshold and every
+    # page goes to every voter. A history attempt only checkpoints after its last
+    # page, so it must fit the budget or catch-up after an outage never advances.
+    m = re.search(r"const MAX_HISTORY_BLOCKS: u64 = ([0-9_]+);", EVENT_HANDLER.read_text(encoding="utf-8"))
+    if not m:
+        return [f"cannot find MAX_HISTORY_BLOCKS in {EVENT_HANDLER}"]
+    history = int(m.group(1).replace("_", ""))
+    pages = [t for p in cfg.get("projects") or [] for u in p.get("upstreams") or []
+             if (t := (u.get("evm") or {}).get("getLogsAutoSplittingRangeThreshold", 0)) > 0]
+    budgets = [r.get("maxCount", 0) for b in (cfg.get("rateLimiters") or {}).get("budgets") or []
+               for r in b.get("rules") or [] if r.get("period") == "minute"]
+    if not pages or not budgets:
+        return []
+    calls = INDEXERS * -(-history // min(pages))
+    if calls > min(budgets) // 3:
+        return [f"one catch-up attempt sends {calls} log pages to each voter (MAX_HISTORY_BLOCKS={history}, "
+                f"{min(pages)}-block pages, {INDEXERS} indexers); keep it within a third of the "
+                f"{min(budgets)}/minute budget or the attempt cannot checkpoint"]
+    return []
+
+
 def main(path):
     try:
         with open(path, encoding="utf-8") as f:
@@ -471,7 +497,7 @@ def main(path):
     except Exception as e:  # noqa: BLE001 - any parse failure must fail closed
         print(f"ERROR (#447): cannot parse {path}: {e}", file=sys.stderr)
         return EXIT_FAIL
-    errs = validate(cfg or {}) + validate_compose(compose or {})
+    errs = validate(cfg or {}) + validate_compose(compose or {}) + validate_catchup(cfg or {})
     if errs:
         print(f"ERROR (#447): Optimism eRPC config is not 2-of-3-across-3 fail-closed ({path}):", file=sys.stderr)
         for e in errs:

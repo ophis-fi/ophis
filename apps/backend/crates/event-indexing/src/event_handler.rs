@@ -24,8 +24,11 @@ const INSERT_EVENT_BATCH_SIZE: usize = 10_000;
 // chances of avoiding the need for history fetch of block events, since history
 // fetch is less efficient than latest block fetch
 const MAX_BLOCKS_QUERIED: u64 = 2 * MAX_REORG_BLOCK_COUNT;
-// ponytail: ten 500-block pages per historical attempt; tune from provider capacity.
-const MAX_HISTORY_BLOCKS: u64 = 5_000;
+// A historical attempt only checkpoints after its last page. On OP eRPC splits
+// logs into 10-block pages (Alchemy's free plan) sent to every voter, so 200
+// blocks x 3 indexers = 60 calls, a third of each 180/minute voter budget.
+// infra/optimism-mainnet/assert-erpc-failclosed.py enforces this in CI.
+const MAX_HISTORY_BLOCKS: u64 = 200;
 // ponytail: small tail checkpoints fit constrained RPC budgets; tune from live demand.
 const MAX_LATEST_BLOCKS: u64 = 16;
 // Keep catch-up from bursting 128 reads into every consensus voter at once.

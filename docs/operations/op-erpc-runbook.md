@@ -393,7 +393,8 @@ during the repeated catch-up. These are client requests, not billed credits.
 All seven settlement balance probes passed at 14:14:55; that did not clear the
 indexing failure. This incident is separate from the Pons token-list 503.
 
-The correction yields when more than 5,000 historical blocks remain. It then
+The correction yields when more than 200 historical blocks remain (5,000 at the
+time; see the 2026-11-02 note on catch-up budgets). It then
 advances ordinary catch-up in hash-verified checkpoints of at most 16 blocks,
 requiring the sampled head before reporting success. The no-reorg path accepts head drift
 after partial progress instead of replaying history. Historical checkpoints need
@@ -566,7 +567,7 @@ a syntactically valid TOML file with `[current-block]` at the root is rejected.
 
 The existing bounded numbered-header cache and indexer concurrency limits remain.
 Header and event catch-up share a maximum of four concurrent RPC requests per
-fetch. Historical maintenance checkpoints at most 5,000 blocks per attempt,
+fetch. Historical maintenance checkpoints at most 200 blocks per attempt,
 retains the 64-block reorg overlap, and avoids fetching moving-tip headers until
 the final historical chunk. Tail checkpoints process at most 16 blocks at a time.
 It stops consuming RPC pages on the first error and backs off that indexer for
@@ -682,3 +683,19 @@ advancing refund, order and settlement cursors near the chain head. A provider
 unable to initialize can lack network-specific head metrics; an absent lag alert
 does not establish recovery. ZAN's exhaustion remains an open dependency until
 it contributes successful votes under normal load.
+
+## 2026-11-02: catch-up attempts must fit the log budget
+
+eRPC 0.2.0 splits every `eth_getLogs` at the smallest upstream
+`getLogsAutoSplittingRangeThreshold` (Alchemy's 10 blocks) and sends each page
+to all three voters. A historical attempt saves its checkpoint only after its
+last page, and log pages are not cached, so a failed page restarts the attempt.
+At 5,000 blocks an attempt was 500 pages per indexer, 1,500 per voter across the
+three indexers, far over the 180/minute dRPC and Alchemy budgets: after an
+outage of roughly 15 minutes or more, catch-up could retry forever without
+advancing. `MAX_HISTORY_BLOCKS` is now 200 (60 calls per voter per attempt), and
+`assert-erpc-failclosed.py` fails CI if the two numbers drift apart again.
+
+Limit: a full re-index from an empty database is still impractical at 10-block
+pages within these budgets (months of OP history is millions of pages). Treat a
+database loss as needing more log capacity first, not just time.
