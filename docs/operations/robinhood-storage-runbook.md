@@ -7,7 +7,7 @@ datadir, both Postgres instances and container logs share this Linux filesystem.
 The alert uses application-available bytes, excluding ext4's reserved blocks.
 Keep the 80% warning and 90% critical thresholds; do not silence capacity alerts.
 
-## November 1, 2026 repair
+## November 1–2, 2026 repair
 
 The genesis-verifier container and `/home/clement/robinhood-nitro-genesis-data`
 are already absent. The September instructions to reclaim another 571 GiB
@@ -15,12 +15,20 @@ are obsolete. The live `/home/clement/robinhood-nitro-data` is about 1 TiB and
 must be preserved. Seven-day measured growth was approximately 7.3 GiB/day;
 growth varies with chain activity and compaction.
 
-The planned expansion is **1500 to 1700 GiB**, using existing physical space
-with no purchase. Its preflight requires at least **100 GiB Windows headroom
-even if the enlarged VHD reaches full physical allocation**. The measured
-margin was approximately 195 GiB. This size is a dated capacity decision,
-not a value to reuse for later expansions. Do not reduce ext4 reserves or
-raise alert thresholds to make the warning disappear.
+On November 2, the VHD and ext4 expansion from **1500 to 1700 GiB** completed
+using existing physical space with no purchase. Linux application-available
+space rose from approximately **282 to 471 GiB**, and the alert's used-space
+measure fell from approximately **81% to 72%**. The filesystem UUID, all 32
+container IDs, images, environment fingerprints and mounts were preserved.
+Quotes and auctions passed, indexing advanced, and ten minutes of monitoring
+showed no disk alerts, failed scrapes or additional container restarts.
+
+Preflight required at least **100 GiB Windows headroom even if the enlarged
+VHD reaches full physical allocation**; the measured margin was **195.6 GiB**.
+This size is a dated capacity decision, not a value to reuse for later
+expansions. No data was pruned, ext4 reserves were retained, and alert
+thresholds were unchanged. Boot recovery and Windows supervision were
+verified after restart, and the one-time resize task was removed.
 
 Sanitized before/after evidence, the one-time controller and recovery details
 are recorded under the operator's incident directory:
