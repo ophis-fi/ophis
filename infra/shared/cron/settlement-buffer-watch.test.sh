@@ -312,6 +312,23 @@ ckc "USDT is reported as sweepable" "$out13b" "10000000 sweep threshold"
 ckn "USDT is no longer uncovered" "$out13b" "not covered"
 rm -rf "$W13b"
 
+# WBTC is covered the same way: the live 186 sat (2026-11-02) is dust below the
+# 0.0001 WBTC floor, so it must not page as "not covered" every day.
+W13c="$(mktemp -d)"
+make_repo "$W13c" \
+  "optimism-mainnet|$(report 0xOP 0 "WBTC:186:ok")|0" \
+  "unichain-mainnet|$(report 0xUNI 0 "USDC:1:ok")|0" \
+  "robinhood-mainnet|$(report 0xRBH 0 "USDG:1:ok")|0"
+out13c="$(run_watch "$W13c")"
+ckn "the live 186 sat WBTC is covered and below threshold" "$out13c" "ALERT:"
+ckc "the WBTC dust check completes" "$out13c" "pass complete"
+make_repo "$W13c" "optimism-mainnet|$(report 0xOP 0 "WBTC:10000:ok")|0"
+out13c="$(run_watch "$W13c")"
+ckc "0.0001 WBTC reaches the sweep threshold" "$out13c" "ALERT:"
+ckc "WBTC is reported as sweepable" "$out13c" "10000 sweep threshold"
+ckn "WBTC is no longer uncovered" "$out13c" "not covered"
+rm -rf "$W13c"
+
 # --- 13. a structurally valid but EMPTY report is not a measurement ----------
 W14="$(mktemp -d)"
 make_repo "$W14" \

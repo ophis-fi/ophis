@@ -85,7 +85,9 @@ struct Config {
     current_block_poll_interval: Option<Duration>,
 
     /// Whether to internalize the solution interactions using the Settlement
-    /// contract buffers.
+    /// contract buffers (defaults to `false`). An internalized interaction is
+    /// paid out of the Settlement balance, which on the Ophis-run chains holds
+    /// the unswept fees, so a lane has to opt in explicitly.
     #[serde(default = "default_internalize_interactions")]
     internalize_interactions: bool,
 
@@ -205,7 +207,7 @@ fn default_gas_offset() -> eth::U256 {
 }
 
 fn default_internalize_interactions() -> bool {
-    true
+    false
 }
 
 fn default_max_output_reference_factor() -> BigDecimal {
@@ -325,4 +327,22 @@ pub async fn load<T: DeserializeOwned>(path: &Path) -> (super::Config, T) {
         },
     };
     (config, dex)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn internalization_is_opt_in() {
+        let parse = |src: &str| {
+            toml::de::from_str::<Config>(src)
+                .unwrap()
+                .internalize_interactions
+        };
+        assert!(!parse("node-url = 'http://localhost:8545'\n[dex]\n"));
+        assert!(parse(
+            "node-url = 'http://localhost:8545'\ninternalize-interactions = true\n[dex]\n"
+        ));
+    }
 }

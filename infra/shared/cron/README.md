@@ -346,7 +346,7 @@ Thresholds are **per chain and per token**, mirroring each chain's own
 
 | Chain | Covered by its sweep |
 |---|---|
-| optimism | USDC 1e7, WETH 3e15, native ETH 3e15 |
+| optimism | USDC 1e7, USDT 1e7, WETH 3e15, WBTC 1e4, native ETH 3e15 |
 | unichain | WETH 1e15, USDC 1e7, native ETH 3e15 |
 | robinhood | USDG 1e7, WETH 3e15, native ETH 3e15 |
 

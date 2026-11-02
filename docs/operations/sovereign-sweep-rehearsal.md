@@ -4,9 +4,10 @@
 Agents prepare payloads and verify preconditions; humans sign.
 
 Companion to `fee-treasury-ops-runbook.md` (the OP liquidator ceremony). This
-document covers what can be rehearsed *now* and in what order. Only **Robinhood**
-needs no ceremony; Unichain is blocked on an `addSolver` grant through its 24h
-Timelock (see below), and Optimism needs the liquidator deployed and granted.
+document covers what can be rehearsed *now* and in what order. **Robinhood** and
+**Unichain** need no ceremony (the Unichain sweep has to run on the Unichain VM,
+where its submitter key lives; see below), and Optimism needs the liquidator
+deployed and granted.
 
 ## Why now, when the amount is trivial
 
@@ -29,7 +30,7 @@ first time, against real money, on the day Robinhood volume steps up.
 | Chain | Settlement | Buffer | Sweep path | Ceremony needed |
 |---|---|---|---|---|
 | Robinhood 4663 | `0x886d9fd3…57cD` | USDG 1.106040, WETH 0.0000390808 | v1 forge script | **none** |
-| Unichain 130 | `0x108A6787…F714E` | USDC 0.140666, WETH 0.0000581522 | v1 forge script | **solver grant** (see below) |
+| Unichain 130 | `0x108A6787…F714E` | USDC 0.140666, WETH 0.0000581522 | v1 forge script | **none** (run on the Unichain VM, see below) |
 | Optimism 10 | `0x310784c7…B859` | USDC 0.354188, USDT 0.032961, WETH 0.0000440679 | v2 liquidator | deploy + 24h Timelock |
 
 Two corrections to what was previously recorded:
@@ -69,8 +70,8 @@ Robinhood first because it is the cheapest rehearsal that proves the most:
 - the v1 path, whose driver-submitter EOA is already allowlisted as a solver
   (Safe vote 2026-05-20), so there is nothing to grant
 
-Unichain is the same path and would confirm it generalises, but see the blocker
-above: it needs a solver grant first, so in practice it may land after Optimism.
+Unichain is the same path and would confirm it generalises. It needs no grant,
+but it has to run on the Unichain VM, where the submitter key lives.
 Optimism last of the original three, because it
 is the only one that needs the `OphisFeeLiquidator` deployed and Timelock-granted,
 and there is no reason to spend four owner ceremonies before the mechanism has
@@ -161,14 +162,15 @@ five pending rows in `fee-treasury-ops-runbook.md` §10 are, in order: Sepolia
 rehearsal §4, mainnet deploy §5, Timelock schedule §6, Timelock execute §6
 (24h later), first sweep §7.
 
-Gate this on the **Robinhood** rehearsal only. Unichain is blocked on a solver
-grant that has nothing to do with the Optimism deployment, and waiting for it
-would stall Optimism indefinitely for no reason. If OP needs sweeping before the
+Gate this on the **Robinhood** rehearsal only. Unichain needs no grant, but it
+depends on the Unichain VM being up, which has nothing to do with the Optimism
+deployment, so waiting for it would stall Optimism for no reason. If OP needs sweeping before the
 liquidator ceremony, the v1 forge script remains the documented
 disaster-recovery fallback, at the cost of using the driver-submitter key.
 
-The OP sweep defaults include USDC, USDT, WETH and native ETH. USDT uses a
-10 USDT floor (10,000,000 base units), shared with the hourly buffer monitor.
+The OP sweep defaults include USDC, USDT, WETH, WBTC and native ETH. USDT uses a
+10 USDT floor (10,000,000 base units) and WBTC a 0.0001 WBTC floor (10,000 base
+units), both shared with the hourly buffer monitor.
 The rehearsal override below lowers the thresholds to exercise the dust balances.
 
 Preflight Optimism **after** the deploy and the Timelock execute, immediately
