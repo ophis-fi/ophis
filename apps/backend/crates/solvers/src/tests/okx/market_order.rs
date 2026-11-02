@@ -627,6 +627,7 @@ async fn buy_enabled() {
         tests::Config::String(format!(
             r"
 node-url = 'http://localhost:8545'
+internalize-interactions = true
 [dex]
 chain-id = '1'
 sell-orders-endpoint = 'http://{solver_addr}/'

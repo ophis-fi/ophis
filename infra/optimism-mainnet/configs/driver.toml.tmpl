@@ -48,7 +48,10 @@ signatures = "0x5f315a204e7971fc29a66fef3a5773f6b0202fac"
 name = "baseline"
 endpoint = "http://baseline"
 absolute-slippage = "40000000000000000"  # 0.04 ETH in wei
-relative-slippage = "0.1"
+# 1% (lowered from 0.1/10%, as on Robinhood). Baseline hops are exact-output with
+# this slippage added to the max INPUT, and any input beyond the user's sell
+# amount is pulled from the Settlement buffer, so this caps that overspend.
+relative-slippage = "0.01"
 # Driver-submitter EOA 0x92B9bE5e96795E8630fDC61efb0e705E75b1A1B1 — its private
 # key is injected from container env (set via .env in this directory). The CoW
 # config crate substitutes %VAR_NAME at load time.
