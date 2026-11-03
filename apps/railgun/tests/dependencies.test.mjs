@@ -118,6 +118,39 @@ describe('browser dependency security backports', () => {
       }
     })
   }
+  it('legacy GraphQL WebSocket executor verifies TLS and keeps state per subscription', async () => {
+    const mesh = childLoader(wallet, '@graphql-mesh/graphql')
+    const urlLoader = childLoader(mesh, '@graphql-tools/url-loader')
+    const { buildWSLegacyExecutor } = urlLoader('@graphql-tools/executor-legacy-ws')
+    const sockets = []
+    class FakeSocket {
+      readyState = 1
+      sent = []
+      constructor(url, protocol, options) {
+        this.options = options
+        sockets.push(this)
+      }
+      send(message) {
+        this.sent.push(JSON.parse(message))
+      }
+      terminate() {}
+      receive(message) {
+        this.onmessage({ data: JSON.stringify(message) })
+      }
+    }
+    const executor = buildWSLegacyExecutor('wss://example.invalid/graphql', FakeSocket)
+    const document = urlLoader('graphql').parse('subscription { tick }')
+    const alice = executor({ document, extensions: { connectionParams: { token: 'alice' } } })
+    executor({ document })
+    for (const socket of sockets) socket.onopen()
+    expect(sockets.map((socket) => socket.options.rejectUnauthorized)).toEqual([true, true])
+    expect(sockets.map((socket) => socket.sent[0].payload)).toEqual([{ token: 'alice' }, {}])
+    sockets[0].receive({ type: 'connection_ack' })
+    const { id } = sockets[0].sent[1]
+    sockets[0].receive({ type: 'data', id: `${id}-other`, payload: { data: { tick: 'other' } } })
+    sockets[0].receive({ type: 'data', id, payload: { data: { tick: 'alice' } } })
+    expect((await alice.next()).value).toEqual({ data: { tick: 'alice' } })
+  })
   it('rejects a peer record signed by a different peer before touching the datastore', async () => {
     const broadcaster = createRequire(root.resolve('@railgun-community/waku-broadcaster-client-web'))
     const waku = childLoader(broadcaster, '@waku/sdk')

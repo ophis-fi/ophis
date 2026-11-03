@@ -10,6 +10,10 @@ minimumReleaseAgeExclude:
   # Reviewed security patch releases; overrides pin the compatible release lines.
   - follow-redirects@1.16.2
   - decode-uri-component@0.5.1
+  - glob@14.0.3
+  - '@isaacs/nonrecursive-glob-match@1.0.3'
+  - minimatch@11.0.4
+  - path-scurry@3.0.0
   - react
   - next
   - typescript
