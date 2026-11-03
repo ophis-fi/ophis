@@ -142,6 +142,15 @@ cast call 0x9eFDcC2770Af6837B285702d386D558BD1066BA8 "isSolver(address)(bool)" "
 # 4.4 fund the Settlement with rehearsal fees: send it a test ERC20 +
 #     a little native ETH (Settlement has an open receive()).
 
+# 4.4b allowlist the rehearsal ERC20 for sweep (OWNER only). Non-native
+#      sweeps revert "OFL: sweep token not allowed" until the token is on
+#      sweepTokenAllowed; native ETH needs no entry. Prove the gate first:
+cast send "$LIQ" "sweep(address[],uint256[])" "[<testToken>]" "[0]" \
+  --rpc-url "$RPC" --private-key <rehearsal ops pk>
+#   ^ MUST revert "OFL: sweep token not allowed" (proves the gate binds)
+cast send "$LIQ" "setSweepToken(address,bool)" "<testToken>" true \
+  --rpc-url "$RPC" --private-key <rehearsal OWNER pk>
+
 # 4.5 sweep, dry-run then broadcast, via the real runner:
 OPHIS_RPC="$RPC" FEE_LIQUIDATOR="$LIQ" \
 OPHIS_FEE_OPS_KEY_PATH=<fee-ops-rehearsal.key> \
@@ -288,6 +297,22 @@ trains operators to ignore the pager. That is the failure mode this line
 exists to prevent.
 
 ## 7. Routine sweeps and (later) consolidation activation
+
+**Before the FIRST sweep (one-time, owner Safe TX batch):** allowlist each
+fee token for sweep. `sweepTokenAllowed` ships EMPTY (decision-52 posture,
+same as `venueAllowed`), so every non-native sweep reverts "OFL: sweep token
+not allowed" until the owner Safe runs `setSweepToken`. Native ETH is exempt
+(its sweep target is the immutable fee Safe, not a token contract). The
+runner also preflights this and aborts read-only with an actionable message,
+so a missing entry can never leak a sweep into the mempool.
+
+```
+# owner Safe TX batch, one setSweepToken per fee token (the runner's default
+# TOKENS set — extend when a new fee denomination starts accruing):
+#   To LIQ: setSweepToken(0x0b2C639c533813f4Aa9D7837CAf62653d097Ff85, true)  # USDC
+#   To LIQ: setSweepToken(0x4200000000000000000000000000000000000006, true)  # WETH
+# verify each: cast call $LIQ "sweepTokenAllowed(address)(bool)" <token>
+```
 
 First mainnet sweep, and every sweep until automation is approved:
 

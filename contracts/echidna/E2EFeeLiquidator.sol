@@ -105,6 +105,12 @@ contract E2EFeeLiquidator {
         venue = new FixedRateVenue();
         liq.setVenue(address(venue), true);
         liq.setOutputToken(address(tokenOut), true);
+        // Both harness tokens are sweepable (sweep now requires an allowlist
+        // entry per non-native token); native ETH needs none. Keeps the
+        // sweepIn/sweepOut/sweepAll entry points reachable so the conservation
+        // invariants are actually exercised.
+        liq.setSweepToken(address(tokenIn), true);
+        liq.setSweepToken(address(tokenOut), true);
 
         // Venue payout inventory (counted in the conservation baseline).
         tokenOut.mint(address(venue), MINT_CAP);
