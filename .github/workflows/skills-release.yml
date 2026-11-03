@@ -72,8 +72,8 @@ jobs:
           echo "tag matches package version $PKG_VERSION"
 
       # --ignore-scripts: do NOT run third-party dependency lifecycle scripts
-      # during install in this token-bearing publish job (pnpm 9 runs them by
-      # default). The staging build is invoked explicitly below, so disabling
+      # during install in this token-bearing publish job (pnpm 10 still runs the
+      # onlyBuiltDependencies allowlist). The staging build is invoked explicitly below, so disabling
       # dependency install scripts is safe and removes a supply-chain code-exec
       # surface on the runner that holds NPM_TOKEN.
       - name: install
@@ -110,6 +110,6 @@ jobs:
       - name: publish
         run: pnpm --filter @ophis/agent-skills publish --no-git-checks --access public --provenance --ignore-scripts
         env:
-          # pnpm 9 drops --provenance when forwarding filtered publishes to npm.
+          # pnpm 9 dropped --provenance when forwarding filtered publishes to npm; kept for pnpm 10.
           NPM_CONFIG_PROVENANCE: 'true'
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}

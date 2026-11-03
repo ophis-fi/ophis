@@ -7,7 +7,7 @@
 
 FROM node:24-alpine AS deps
 WORKDIR /app
-RUN corepack enable && corepack prepare pnpm@9.12.0 --activate
+RUN corepack enable && corepack prepare pnpm@10.34.9 --activate
 COPY pnpm-workspace.yaml pnpm-lock.yaml package.json ./
 COPY patches/ patches/
 COPY apps/mcp-server/package.json apps/mcp-server/
@@ -19,7 +19,7 @@ RUN pnpm install --frozen-lockfile --ignore-scripts --filter @ophis/mcp-server..
 
 FROM node:24-alpine AS build
 WORKDIR /app
-RUN corepack enable && corepack prepare pnpm@9.12.0 --activate
+RUN corepack enable && corepack prepare pnpm@10.34.9 --activate
 COPY --from=deps /app /app
 COPY apps/mcp-server apps/mcp-server
 COPY packages/sdk packages/sdk
@@ -32,7 +32,7 @@ RUN pnpm --filter @ophis/sdk build
 FROM node:24-alpine AS runtime
 WORKDIR /app
 ENV COREPACK_HOME=/opt/corepack
-RUN apk add --no-cache tini && corepack enable && corepack prepare pnpm@9.12.0 --activate
+RUN apk add --no-cache tini && corepack enable && corepack prepare pnpm@10.34.9 --activate
 ENV NODE_ENV=production
 COPY --from=build --chown=node:node /app /app
 WORKDIR /app/apps/mcp-server

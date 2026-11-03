@@ -79,6 +79,13 @@ class DeploymentBoundaries(unittest.TestCase):
             job = workflow['jobs']['build-deploy']
             self.assertNotIn('if', job)
             self.assertEqual(job['environment'], PREVIEW)
+        docs = yaml.safe_load((ROOT / '.github/workflows/docs-deploy.yml').read_text())
+        self.assertIn('pull_request', docs.get('on', docs.get(True)))
+        build = docs['jobs']['build']
+        self.assertNotIn('environment', build)
+        self.assertEqual(build['permissions'], {'contents': 'read'})
+        self.assertNotIn('secrets.', str(build))
+        self.assertIn('pnpm run build', str(build))
 
 
 if __name__ == '__main__':

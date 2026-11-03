@@ -4,3 +4,16 @@
 # way apps/frontend is excluded). This app is a single package — there
 # are no member packages beyond the root.
 packages: []
+
+# Enforce a 1-week delay (10080 minutes) before a newly published version can resolve.
+minimumReleaseAge: 10080
+
+# Fail the install when a dependency has a build script that is in neither
+# onlyBuiltDependencies nor ignoredBuiltDependencies (pnpm 10 only warns).
+strictDepBuilds: true
+
+minimumReleaseAgeExclude:
+  # Reviewed security patch releases already pinned in the lockfile; exact
+  # versions, so every other release of these packages still waits 7 days.
+  - joi@17.13.9
+  - qs@6.17.1

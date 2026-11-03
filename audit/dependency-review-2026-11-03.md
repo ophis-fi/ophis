@@ -66,6 +66,7 @@ Required by `apps/frontend/AGENTS.md` (dependency management).
 | zod 3.25.76 -> 4.6.7 (`cowswap-frontend`) | [zod 4 changelog](https://zod.dev/v4/changelog) | `z.string().uuid()` is RFC-strict in zod 4, so `nearDirect.service.ts` uses `z.guid()` to keep the zod 3 behaviour. Zod 4 also rejects unsafe integers under `.int()`, datetimes without seconds and `Infinity`; the NEAR and CCTP APIs do not send those. | cowswap typecheck; Jest over `src/modules/cctp`, `src/modules/nearDirect` and `partnerFeeMerge` (36 suites, 201 tests). |
 | minimatch 9.0.9/10.2.6 -> 11.0.4 for `@swc/cli` 0.7.8, `@typescript-eslint/typescript-estree` 8.46.0/8.54.0/8.56.1 and `@vue/language-core` 2.2.0 (parent-scoped overrides) | [minimatch](https://github.com/isaacs/minimatch/blob/v11.0.4/changelog.md) | `makeRe` and the AST class removed; Node 20 or >=22. These consumers only call the named `minimatch()`; nx keeps 10.2.5. | 157 old-vs-new call shapes identical; real paths (typescript-estree `allowDefaultProject`, `swc --only`, vue template codegen) identical; eslint on 4 files, `ui-utils:lint`, typecheck, `build:cowswap`. |
 | `rollup-plugin-bundle-stats` removed (cowswap-frontend devDependency) | n/a | Only used in the opt-in `ANALYZE_BUNDLE` branch of `vite.config.mts`; `rollup-plugin-visualizer` still writes `build/cowswap/analyse.html`. Removes stream-json and its patch from every lockfile. | `build:cowswap`; `scripts/test-security-dependencies.cjs` now asserts no stream-json in the root and frontend graphs. |
+| pnpm 10.30.3 -> 10.34.9 (`packageManager`; CI reads it via pnpm/action-setup) | [v10.34.9 release](https://github.com/pnpm/pnpm/releases/tag/v10.34.9), [changelog 10.31-10.34](https://github.com/pnpm/pnpm/blob/v10.34.9/pnpm/CHANGELOG.md) | Fixes 18 pnpm advisories present in 10.30.3 (incl. an `onlyBuiltDependencies` bypass). Default changes reviewed: `onlyBuiltDependencies` needs a trusted identity for git/tarball/local deps (the frontend lockfile has only registry resolutions); tarball integrity mismatches and lockfile tarballs without `integrity` now fail hard (frozen install passes); `.npmrc`/workspace yaml can no longer expand env vars into registry settings (none used); a downloaded `packageManager` version is signature-checked. | Lockfile byte-identical after relock; clean frozen installs under 10.30.3 vs 10.34.9 ran the same 22 build scripts, ignored the same 2 and produced the same 3419-entry `node_modules/.pnpm`; `minimumReleaseAge` and excludes read identically; dependency harness, osv gate, typecheck, `build:cowswap` and the landing build pass. |
 | fast-uri 3.1.9, ip-address 10.7.4, qs 6.17.0, serialize-javascript 7.1.4 | [fast-uri](https://github.com/fastify/fast-uri/releases/tag/v3.1.9), [ip-address](https://github.com/beaugunderson/ip-address/releases/tag/v10.7.4), [qs](https://github.com/ljharb/qs/blob/v6.17.0/CHANGELOG.md), [serialize-javascript](https://github.com/yahoo/serialize-javascript/releases/tag/v7.1.4) | Patch/minor releases on the existing major, none. | osv gate and `build:cowswap`. |
 
 ## Other CI exceptions
@@ -77,6 +78,36 @@ Required by `apps/frontend/AGENTS.md` (dependency management).
   patched 0.5.x (latest 0.5.5; fixed only in >=0.7.6), and the latest alloy-signer (2.5.0) still
   requires k256/elliptic-curve ^0.13, so no upgrade path exists. The ignore is load-bearing: without
   it, or with an expired date, the Rust OSV gate fails closed on the ungraded finding.
+
+## Supply-chain hardening (follow-up)
+
+- **Railgun coverage.** `apps/railgun` (standalone pnpm project) now has its own `pnpm-audit-railgun`
+  osv job in `security.yml`, blocking on HIGH/CRITICAL with three dated (2026-12-03) ignores for the
+  backported zod, @graphql-tools/utils and @libp2p/peer-store residuals.
+- **pnpm 10.34.9.** The root workspace, `apps/docs-ophis` and the rebate-indexer and mcp-server
+  Dockerfiles moved from pnpm 9.12.0 (railgun from 10.33.2); 10.34.9 has no OSV advisories, while
+  10.33.2 has 18 (11 HIGH, all fixed by 10.34.5), and it was published 2026-10-25, outside the 7-day
+  window. The relock changes no package versions (only patch-hash format and `libc` metadata, plus
+  re-linked peers: the optional zod peer of viem/ox/abitype in `packages/cli` now points at the
+  already-locked `zod@4.6.7`, and `apps/safe-app`'s `@cowprotocol/app-data` cross-fetch peer (declared
+  `^3.x`) moved from 3.2.0 to the already-locked `cross-fetch@4.1.0` that safe-swap and agent-swap
+  already used; safe-app calls only `generateAppDataDoc`, so no IPFS fetch path is affected). The same
+  11 root dependencies run build scripts as under pnpm 9, the reviewed no-op scripts are listed in
+  `ignoredBuiltDependencies`, and `strictDepBuilds: true` (root and docs) fails the install on any
+  build script in neither list. Both Docker images are built on every PR that touches their inputs,
+  including `.dockerignore` and `tsconfig.base.json` (`rebate-indexer-ci.yml`, `mcp-deploy.yml`), and
+  `docs-deploy.yml` now installs and builds docs on PRs without credentials.
+- **Release-age policy.** New versions resolve only after 7 days (`minimumReleaseAge: 10080` in the
+  root and docs `pnpm-workspace.yaml`, `minimum-release-age=10080` in `apps/railgun/.npmrc`). pnpm
+  applies this only when it resolves dependencies; `--frozen-lockfile` installs (all CI and both
+  Dockerfiles) do not re-check the age of entries already in the lockfile, so Dependabot security PRs
+  and hand-edited lockfiles are not gated and need a manual publish-date check before merge. Each
+  exclusion is an exact reviewed security release (root fastify 5.12.8 and qs 6.17.1; docs joi 17.13.9
+  and qs 6.17.1; railgun minimatch 11.0.4 and @isaacs/nonrecursive-glob-match 1.0.3), so later
+  releases of those packages still wait. Removing the fastify exclusion makes a re-resolve fall back to
+  5.12.7, which confirms the policy is enforced on local resolution.
+- **Railgun ignore scope.** The three railgun osv ignores match GHSA ids only, so the job also fails
+  if osv reports any copy under them that is not an exact `pnpm.patchedDependencies` key.
 
 ## Renewal criteria
 
