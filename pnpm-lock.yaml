@@ -58,34 +58,34 @@ overrides:
 
 patchedDependencies:
   '@cowprotocol/sdk-bridging@4.0.2':
-    hash: 4rnsap57ds3qcajpfo22oank3m
+    hash: 9ad38533e2f2d09d1b2dcb85ba3fc6dad0dec289b00ec9a5f8b687847acb5c21
     path: patches/@cowprotocol__sdk-bridging@4.0.2.patch
   '@cowprotocol/sdk-config@2.0.0':
-    hash: kwkxesyxlclpkpvqlavlqyjqsm
+    hash: 4c11fe5353edfd0908bbbc6cb4ffd1271156633f5e1f5c4157caa09a6c627035
     path: patches/@cowprotocol__sdk-config@2.0.0.patch
   '@cowprotocol/sdk-trading@2.0.2':
-    hash: qic45zklihhor5za6uiiggh5pq
+    hash: 514f8927aaabee3d5c09a382f7a41d69b513de9c969c47755572d57267ee032a
     path: patches/@cowprotocol__sdk-trading@2.0.2.patch
   bigint-buffer@1.1.5:
-    hash: dwoslng34vjzhshmn35zptcf4u
+    hash: aa24cb8411090a8519abdd8ee66401aa773b2356a0d83391b9ed864ca6aa9cdd
     path: patches/bigint-buffer@1.1.5.patch
   decode-uri-component@0.5.1:
-    hash: y5ubmayoh54jgyyq7hcna73blm
+    hash: ea606e7cf7bbeffb3bbe1957a767b144eea1d8f27685d3e0268f0854b806e4d8
     path: patches/decode-uri-component@0.5.1.patch
   deepmerge@4.3.1:
-    hash: ojws7muqxh2p7lyc5bkjc2ulde
+    hash: cb5ef21dc9051b4c0f18e8d1d1b9ffe42203305f1b859f167c56972e90576163
     path: patches/deepmerge@4.3.1.patch
   elliptic@6.6.1:
-    hash: xgakzvp3u6yq3iqh3ujxpryt74
+    hash: 5ee290c3bdaf9354587016fbf02863812413e6dc0f9ae73318a2da6f10ca7cef
     path: patches/elliptic@6.6.1.patch
   zod@3.22.4:
-    hash: 3g53u5nuotvez33fgka6gn7khy
+    hash: ccbaa35b90d202a6ec28cd0ebbfc82463ee5bc7f20eaa0583ac30d4b9d617ed3
     path: patches/zod@3.22.4.patch
   zod@3.23.8:
-    hash: wyyinfi5bq7wh4q2tey6ddudg4
+    hash: 1ea8b436ae1aac51d4a282da8ebffa4ff9f3695541e2576864ac13ebee108189
     path: patches/zod@3.23.8.patch
   zod@3.25.76:
-    hash: n7m4wua237tsnvclvtauns7ije
+    hash: e3f278525e5c146b041a15d08a885b7c177099ea01b94159104fe8b26d1cd00f
     path: patches/zod@3.25.76.patch
 
 importers:
@@ -253,7 +253,7 @@ importers:
     dependencies:
       '@cowprotocol/app-data':
         specifier: ^2.5.1
-        version: 2.5.1(cross-fetch@3.2.0(encoding@0.1.13))(ethers@6.17.0(bufferutil@4.1.0)(utf-8-validate@6.0.6))(ipfs-only-hash@4.0.0(encoding@0.1.13))(multiformats@14.0.0)
+        version: 2.5.1(cross-fetch@4.1.0(encoding@0.1.13))(ethers@6.17.0(bufferutil@4.1.0)(utf-8-validate@6.0.6))(ipfs-only-hash@4.0.0(encoding@0.1.13))(multiformats@14.0.0)
       '@cowprotocol/cow-sdk':
         specifier: ^5.9.0
         version: 5.10.3(encoding@0.1.13)(ethers@6.17.0(bufferutil@4.1.0)(utf-8-validate@6.0.6))(ipfs-only-hash@4.0.0(encoding@0.1.13))(multiformats@14.0.0)
@@ -357,11 +357,11 @@ importers:
         version: link:../agent-swap
       viem:
         specifier: ^2.21.0
-        version: 2.48.8(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@6.0.6)(zod@3.25.76(patch_hash=n7m4wua237tsnvclvtauns7ije))
+        version: 2.48.8(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@6.0.6)(zod@3.25.76(patch_hash=e3f278525e5c146b041a15d08a885b7c177099ea01b94159104fe8b26d1cd00f))
     devDependencies:
       '@coinbase/agentkit':
         specifier: ^0.10.4
-        version: 0.10.4(@tanstack/query-core@5.101.0)(@tanstack/react-query@5.101.0(react@19.2.6))(@types/node@26.5.0)(@types/react@19.2.17)(@zerodev/webauthn-key@5.5.0(viem@2.48.8(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@6.0.6)(zod@3.25.76(patch_hash=n7m4wua237tsnvclvtauns7ije))))(abitype@1.2.3(typescript@5.9.3)(zod@3.25.76(patch_hash=n7m4wua237tsnvclvtauns7ije)))(bufferutil@4.1.0)(encoding@0.1.13)(fastestsmallesttextencoderdecoder@1.0.22)(graphql@16.14.0)(react@19.2.6)(typescript@5.9.3)(use-sync-external-store@1.4.0(react@19.2.6))(utf-8-validate@6.0.6)(ws@8.21.0(bufferutil@4.1.0)(utf-8-validate@6.0.6))
+        version: 0.10.4(@tanstack/query-core@5.101.0)(@tanstack/react-query@5.101.0(react@19.2.6))(@types/node@26.5.0)(@types/react@19.2.17)(@zerodev/webauthn-key@5.5.0(viem@2.48.8(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@6.0.6)(zod@3.25.76(patch_hash=e3f278525e5c146b041a15d08a885b7c177099ea01b94159104fe8b26d1cd00f))))(abitype@1.2.3(typescript@5.9.3)(zod@3.25.76(patch_hash=e3f278525e5c146b041a15d08a885b7c177099ea01b94159104fe8b26d1cd00f)))(bufferutil@4.1.0)(encoding@0.1.13)(fastestsmallesttextencoderdecoder@1.0.22)(graphql@16.14.0)(react@19.2.6)(typescript@5.9.3)(use-sync-external-store@1.4.0(react@19.2.6))(utf-8-validate@6.0.6)(ws@8.21.0(bufferutil@4.1.0)(utf-8-validate@6.0.6))
       typescript:
         specifier: ^5.5.0
         version: 5.9.3
@@ -370,7 +370,7 @@ importers:
         version: 4.1.12(@opentelemetry/api@1.9.1)(@types/node@26.5.0)(jsdom@26.1.0(bufferutil@4.1.0)(utf-8-validate@6.0.6))(msw@2.14.6(@types/node@26.5.0)(typescript@5.9.3))(vite@7.3.7(@types/node@26.5.0)(tsx@4.21.0)(yaml@2.9.0))
       zod:
         specifier: ^3.23.8
-        version: 3.25.76(patch_hash=n7m4wua237tsnvclvtauns7ije)
+        version: 3.25.76(patch_hash=e3f278525e5c146b041a15d08a885b7c177099ea01b94159104fe8b26d1cd00f)
 
   packages/cli:
     dependencies:
@@ -379,19 +379,19 @@ importers:
         version: 9.0.2(@openzeppelin/merkle-tree@1.0.8)(ajv@8.20.0)(cross-fetch@4.1.0(encoding@0.1.13))(encoding@0.1.13)(ipfs-only-hash@4.0.0(encoding@0.1.13))(multiformats@9.9.0)
       '@cowprotocol/sdk-bridging':
         specifier: 4.0.2
-        version: 4.0.2(patch_hash=4rnsap57ds3qcajpfo22oank3m)(ajv@8.20.0)(cross-fetch@4.1.0(encoding@0.1.13))(encoding@0.1.13)(ipfs-only-hash@4.0.0(encoding@0.1.13))(multiformats@9.9.0)
+        version: 4.0.2(patch_hash=9ad38533e2f2d09d1b2dcb85ba3fc6dad0dec289b00ec9a5f8b687847acb5c21)(ajv@8.20.0)(cross-fetch@4.1.0(encoding@0.1.13))(encoding@0.1.13)(ipfs-only-hash@4.0.0(encoding@0.1.13))(multiformats@9.9.0)
       '@cowprotocol/sdk-config':
         specifier: 2.0.0
-        version: 2.0.0(patch_hash=kwkxesyxlclpkpvqlavlqyjqsm)
+        version: 2.0.0(patch_hash=4c11fe5353edfd0908bbbc6cb4ffd1271156633f5e1f5c4157caa09a6c627035)
       '@cowprotocol/sdk-cow-shed':
         specifier: 0.3.8
         version: 0.3.8
       '@cowprotocol/sdk-trading':
         specifier: 2.0.2
-        version: 2.0.2(patch_hash=qic45zklihhor5za6uiiggh5pq)(ajv@8.20.0)(cross-fetch@4.1.0(encoding@0.1.13))(encoding@0.1.13)(ipfs-only-hash@4.0.0(encoding@0.1.13))(multiformats@9.9.0)
+        version: 2.0.2(patch_hash=514f8927aaabee3d5c09a382f7a41d69b513de9c969c47755572d57267ee032a)(ajv@8.20.0)(cross-fetch@4.1.0(encoding@0.1.13))(encoding@0.1.13)(ipfs-only-hash@4.0.0(encoding@0.1.13))(multiformats@9.9.0)
       '@cowprotocol/sdk-viem-adapter':
         specifier: 0.3.18
-        version: 0.3.18(viem@2.48.8(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@6.0.6))
+        version: 0.3.18(viem@2.48.8(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@6.0.6)(zod@4.6.7))
       '@ophis/mcp-server':
         specifier: workspace:*
         version: link:../../apps/mcp-server
@@ -400,7 +400,7 @@ importers:
         version: link:../sdk
       '@walletconnect/sign-client':
         specifier: 2.21.1
-        version: 2.21.1(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@6.0.6)
+        version: 2.21.1(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@6.0.6)(zod@4.6.7)
       multiformats:
         specifier: 9.9.0
         version: 9.9.0
@@ -409,7 +409,7 @@ importers:
         version: 1.5.3
       viem:
         specifier: ^2.48.8
-        version: 2.48.8(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@6.0.6)
+        version: 2.48.8(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@6.0.6)(zod@4.6.7)
     devDependencies:
       '@types/bun':
         specifier: ^1.3.0
@@ -450,14 +450,14 @@ importers:
         version: link:../agent-swap
       viem:
         specifier: ^2.21.0
-        version: 2.48.8(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@6.0.6)(zod@3.25.76(patch_hash=n7m4wua237tsnvclvtauns7ije))
+        version: 2.48.8(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@6.0.6)(zod@3.25.76(patch_hash=e3f278525e5c146b041a15d08a885b7c177099ea01b94159104fe8b26d1cd00f))
     devDependencies:
       '@goat-sdk/core':
         specifier: 0.5.0
-        version: 0.5.0(zod@3.25.76(patch_hash=n7m4wua237tsnvclvtauns7ije))
+        version: 0.5.0(zod@3.25.76(patch_hash=e3f278525e5c146b041a15d08a885b7c177099ea01b94159104fe8b26d1cd00f))
       '@goat-sdk/wallet-evm':
         specifier: 0.3.0
-        version: 0.3.0(@goat-sdk/core@0.5.0(zod@3.25.76(patch_hash=n7m4wua237tsnvclvtauns7ije)))(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@6.0.6)
+        version: 0.3.0(@goat-sdk/core@0.5.0(zod@3.25.76(patch_hash=e3f278525e5c146b041a15d08a885b7c177099ea01b94159104fe8b26d1cd00f)))(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@6.0.6)
       typescript:
         specifier: ^5.5.0
         version: 5.9.3
@@ -466,7 +466,7 @@ importers:
         version: 4.1.12(@opentelemetry/api@1.9.1)(@types/node@26.5.0)(jsdom@26.1.0(bufferutil@4.1.0)(utf-8-validate@6.0.6))(msw@2.14.6(@types/node@26.5.0)(typescript@5.9.3))(vite@7.3.7(@types/node@26.5.0)(tsx@4.21.0)(yaml@2.9.0))
       zod:
         specifier: ^3.23.0
-        version: 3.25.76(patch_hash=n7m4wua237tsnvclvtauns7ije)
+        version: 3.25.76(patch_hash=e3f278525e5c146b041a15d08a885b7c177099ea01b94159104fe8b26d1cd00f)
 
   packages/safe-swap:
     dependencies:
@@ -1438,89 +1438,105 @@ packages:
     resolution: {integrity: sha512-Y3dgX/6lE2QhQb+Gxy0WZxfg9MEm/JBjamZpS2IklP7xIQoKN4hzAm7KcMVGtaVDt3neE9OKBC7vAfonA/Lr1A==}
     cpu: [arm64]
     os: [linux]
+    libc: [glibc]
 
   '@img/sharp-libvips-linux-arm@1.3.4':
     resolution: {integrity: sha512-LmRtTsOHuvM2+wlO2Db37dx5MiZhB0FvSunciw48YjdOkZz9KAiRbm8ujeMOA1INqmei5NapFxYEK1D1ZSidmw==}
     cpu: [arm]
     os: [linux]
+    libc: [glibc]
 
   '@img/sharp-libvips-linux-ppc64@1.3.4':
     resolution: {integrity: sha512-Le6boB8Tai0Nis+gIxIpKx68UDVVIqdR8Tin5Yf1z2LJJQLDJvCDRqRu+jC2qCoD+eIomonmOwB4smBRxfVpYQ==}
     cpu: [ppc64]
     os: [linux]
+    libc: [glibc]
 
   '@img/sharp-libvips-linux-riscv64@1.3.4':
     resolution: {integrity: sha512-aHkkIEHPRdQEegJN20MLmGtxYD9R2wQr3Cwpddnu5+YKMt6Uzax7S9h5gpZTo8wyrGuZSlfQ63OevL5mTyOC7Q==}
     cpu: [riscv64]
     os: [linux]
+    libc: [glibc]
 
   '@img/sharp-libvips-linux-s390x@1.3.4':
     resolution: {integrity: sha512-ra/mB6MikESDUO7Yg+Mi95bFBb9GsObURuhnOv3OqknjGe9sZrG8tCe9q0xSIGrtLgvgw0gKnFWcK4blSgQOuQ==}
     cpu: [s390x]
     os: [linux]
+    libc: [glibc]
 
   '@img/sharp-libvips-linux-x64@1.3.4':
     resolution: {integrity: sha512-GJ//SSXbnwSDes02umB3nDJLFcQzw8a18V8fyhqr6tV515tOEMdImjjxj1AoafMRz56F3PHgftnj1QEKSU1zkw==}
     cpu: [x64]
     os: [linux]
+    libc: [glibc]
 
   '@img/sharp-libvips-linuxmusl-arm64@1.3.4':
     resolution: {integrity: sha512-hvulFwtjUcagsis6BBxHwGFwWoNZjgYmULGVrZcyfNbjA8hKILbRxGg15/7w5HDyXHXUos/j6baAWqnCyQ2DWA==}
     cpu: [arm64]
     os: [linux]
+    libc: [musl]
 
   '@img/sharp-libvips-linuxmusl-x64@1.3.4':
     resolution: {integrity: sha512-6zXKeE/p39I1AmA3cJG35eyBGNqNddLnUXjhwBnsGjFPWqf5VKkDBEqaEkPDoTEtkxwi2vv8Tcr2mDyP4So7Fg==}
     cpu: [x64]
     os: [linux]
+    libc: [musl]
 
   '@img/sharp-linux-arm64@0.35.5':
     resolution: {integrity: sha512-LYVx5JTsOM2CBzmxreh+nl64/3H6Xb09iSLknqH47z2T2DFFxDeFLP5y4dJwe6H7uGQlHPyEEtIqyo3DYsRwdQ==}
     engines: {node: '>=20.9.0'}
     cpu: [arm64]
     os: [linux]
+    libc: [glibc]
 
   '@img/sharp-linux-arm@0.35.5':
     resolution: {integrity: sha512-LEaXK2WdXVK5ykcw0buWyPMsmLLL2vpHLD6yrNSW+JGEL3BZPA4tpKN6iaMc4AxTTAoaX/sU1rOL51lcIz48ZQ==}
     engines: {node: '>=20.9.0'}
     cpu: [arm]
     os: [linux]
+    libc: [glibc]
 
   '@img/sharp-linux-ppc64@0.35.5':
     resolution: {integrity: sha512-QVxAAq8evVRI9ia2vqgwrmWucn5Dfv+JdWzj75pD8omHLPSP7f8p20O8jxzjCcuCEQEOtYOZUmX1hkiZ0kdevA==}
     engines: {node: '>=20.9.0'}
     cpu: [ppc64]
     os: [linux]
+    libc: [glibc]
 
   '@img/sharp-linux-riscv64@0.35.5':
     resolution: {integrity: sha512-LtdreXguaavKODPIfzJ4kffx7UNt1omwtK0rch4EBbbSTXPnxWmYSayXdLJw0fJzQ97kHt1gL/yh4tvU+nCyRQ==}
     engines: {node: '>=20.9.0'}
     cpu: [riscv64]
     os: [linux]
+    libc: [glibc]
 
   '@img/sharp-linux-s390x@0.35.5':
     resolution: {integrity: sha512-UZasTOFiYzotTsGOCu42BfUzP6Tu6Do/947iRm1RsLKvlllxwGcn4RN27LibGWceix4Y+Pmw3jsnTcCQIgWjqA==}
     engines: {node: '>=20.9.0'}
     cpu: [s390x]
     os: [linux]
+    libc: [glibc]
 
   '@img/sharp-linux-x64@0.35.5':
     resolution: {integrity: sha512-SxFtLTeJInhAA9Q836kux2vZNeOBQEx658qvbboZScr0wIARym3IcGmW7KpVD5sbVg0Ojy+udFQdayYIZyoNog==}
     engines: {node: '>=20.9.0'}
     cpu: [x64]
     os: [linux]
+    libc: [glibc]
 
   '@img/sharp-linuxmusl-arm64@0.35.5':
     resolution: {integrity: sha512-9HbMclmI1zlNkFRs3z9/eBtDjfD0sGlrX1z6b1qwmiFY5ElDLh4BC0LPBdVp7z1DXFiKlIcznf+ZlsuZzLxQqg==}
     engines: {node: '>=20.9.0'}
     cpu: [arm64]
     os: [linux]
+    libc: [musl]
 
   '@img/sharp-linuxmusl-x64@0.35.5':
     resolution: {integrity: sha512-4KOphqB035HrVdqLZfCgMzzERrQkkzOwRhl4OAkRO1YCldbaFjySXMaK534Mo0V+LndnlJk+sbUyLeU0ULyD1A==}
     engines: {node: '>=20.9.0'}
     cpu: [x64]
     os: [linux]
+    libc: [musl]
 
   '@img/sharp-wasm32@0.35.5':
     resolution: {integrity: sha512-Ptsga1su4tQx+LLF1ECS9U6nz5kmrXKo6XVbtR48Ke3ZRxxgaWBu7IDtEe1quo8hiupwm6WFqxVlXaSf7IINGQ==}
@@ -1798,30 +1814,35 @@ packages:
     engines: {node: '>= 10'}
     cpu: [arm64]
     os: [linux]
+    libc: [glibc]
 
   '@napi-rs/canvas-linux-arm64-musl@1.0.3':
     resolution: {integrity: sha512-J51oK/axyZ13kxycumSMfLiDZMdWdOVvqDFI28BpuViZHE3A0bQfr8B5vg8YnPEnqLD3BSn1hkdlh2buspEcNQ==}
     engines: {node: '>= 10'}
     cpu: [arm64]
     os: [linux]
+    libc: [musl]
 
   '@napi-rs/canvas-linux-riscv64-gnu@1.0.3':
     resolution: {integrity: sha512-CtQgQjoVTX67jS9XuCTtJ40Sl7wRLMguoFnnGnfDmCWf7kzKFZVwj5ynqUOIGKFMSB61ZCuQlwPvVNxYTTseaw==}
     engines: {node: '>= 10'}
     cpu: [riscv64]
     os: [linux]
+    libc: [glibc]
 
   '@napi-rs/canvas-linux-x64-gnu@1.0.3':
     resolution: {integrity: sha512-jtfzAHFp+FRaR7zGT4jyCe6wUgAG/dVb5A4Apd8FY9jKarntDfUAlJXscugiH7ZF5kKnu7/lHFk9LaDPcrGEVQ==}
     engines: {node: '>= 10'}
     cpu: [x64]
     os: [linux]
+    libc: [glibc]
 
   '@napi-rs/canvas-linux-x64-musl@1.0.3':
     resolution: {integrity: sha512-xTzaUCKUHTY4bCGadeeRZggbRVbGUT1petg7Z8r9AJR2+D9Bqu6nQAgqBGC6D47tA70LjaaaLTrJ7wNY1T74dg==}
     engines: {node: '>= 10'}
     cpu: [x64]
     os: [linux]
+    libc: [musl]
 
   '@napi-rs/canvas-win32-arm64-msvc@1.0.3':
     resolution: {integrity: sha512-ktVLuBkI6QVOm5BwO/WbdGwxgeetAMJa7TTmR8qBarXF0OU2NKjvjUtPJAl2y8t+zBRczJl/1VOl9gua6WcK2g==}
@@ -2059,36 +2080,42 @@ packages:
     engines: {node: ^20.19.0 || >=22.12.0}
     cpu: [arm64]
     os: [linux]
+    libc: [glibc]
 
   '@rolldown/binding-linux-arm64-musl@1.0.3':
     resolution: {integrity: sha512-VWkUHwWriDciit80wleYwKILoR/KMvxh/IdwS/paX+ZgpuRpCrKLUdadJbc0NpBEiyhpYawsJ73j9aCvOH+f7Q==}
     engines: {node: ^20.19.0 || >=22.12.0}
     cpu: [arm64]
     os: [linux]
+    libc: [musl]
 
   '@rolldown/binding-linux-ppc64-gnu@1.0.3':
     resolution: {integrity: sha512-5f1laC0SlIR0yDbFCd8acUhvJIag6N3zC5P7oUPN6wX0aOma+uKJ0wBDH5aq7I1PVI2ttTlhJwzwRIBnLiSGEg==}
     engines: {node: ^20.19.0 || >=22.12.0}
     cpu: [ppc64]
     os: [linux]
+    libc: [glibc]
 
   '@rolldown/binding-linux-s390x-gnu@1.0.3':
     resolution: {integrity: sha512-Iq4ko0r4XsgbrF/LunNgHtAGLRRVE2kXonAXQ/MV0mC6jQpMOhW1SvtZja2EhC/kd05++bP78dsqBeIQyYJ6Yg==}
     engines: {node: ^20.19.0 || >=22.12.0}
     cpu: [s390x]
     os: [linux]
+    libc: [glibc]
 
   '@rolldown/binding-linux-x64-gnu@1.0.3':
     resolution: {integrity: sha512-B8m6tD5+/N5FeNQFbKlLA/2yVq9ycQP1SeedyEYYKWBNR3ZQbkvIUcNnDNM03lO1l5F2roiiFJGgvoLLyZXtSg==}
     engines: {node: ^20.19.0 || >=22.12.0}
     cpu: [x64]
     os: [linux]
+    libc: [glibc]
 
   '@rolldown/binding-linux-x64-musl@1.0.3':
     resolution: {integrity: sha512-pSdpdUJHkuCxun9LE7jvgUB9qsRgaiyNNCX7m/AvHTcq67AiT/Yhoxvw5zPfhrM8k/BfP8ce/hMOpthKDpEUow==}
     engines: {node: ^20.19.0 || >=22.12.0}
     cpu: [x64]
     os: [linux]
+    libc: [musl]
 
   '@rolldown/binding-openharmony-arm64@1.0.3':
     resolution: {integrity: sha512-OXXS3RKJgX2uLwM+gYyuH5omcH8fL1LJs96pZGgtetVCahON57+d4SJHzTgZiOjxgGkSnpXpOsWuPDGAKAigEg==}
@@ -2188,66 +2215,79 @@ packages:
     resolution: {integrity: sha512-DxH0P3wxm+Yzs/p3zrk9dw1rURu8p0Nv5+MRK/L7OtnLNg5rLZraSBFZ8iUXOd9f2BlhJyEpIZUH/emjq4UJ4g==}
     cpu: [arm]
     os: [linux]
+    libc: [glibc]
 
   '@rollup/rollup-linux-arm-musleabihf@4.61.0':
     resolution: {integrity: sha512-T6ZvMNe84kAz6TBWHC7hGAoEtzP1LWYw/AqayGWEF6uISt3Abk/st06LqRD9THd7Xz3NxzurUpzAuEAUbZf+nw==}
     cpu: [arm]
     os: [linux]
+    libc: [musl]
 
   '@rollup/rollup-linux-arm64-gnu@4.61.0':
     resolution: {integrity: sha512-q/4hzvQkDs8b4jIBab1pnLiiM0ayTZsN2amBFPDzuyZxjEd4wDwx0UJFYM3cOZzSf5Kw8fnWSprJzIBMkcR44Q==}
     cpu: [arm64]
     os: [linux]
+    libc: [glibc]
 
   '@rollup/rollup-linux-arm64-musl@4.61.0':
     resolution: {integrity: sha512-vvYWX3akdEAY6km+9wAqFDnk6pQsbJKVnj7xawcvs/+fdlYBGp+U+Qq/lLfpIxYIZvZLHMAKD9HLdacSx/r3dw==}
     cpu: [arm64]
     os: [linux]
+    libc: [musl]
 
   '@rollup/rollup-linux-loong64-gnu@4.61.0':
     resolution: {integrity: sha512-DePa5cqOxDP/Zp0VOXpeWaGew5iIv5DXp9NYbzkX5PFQyWVX9184WCTh3hvr/7lhXo8ZVlbFLkz8+o/q1dU6gA==}
     cpu: [loong64]
     os: [linux]
+    libc: [glibc]
 
   '@rollup/rollup-linux-loong64-musl@4.61.0':
     resolution: {integrity: sha512-LV8aWMB8UChglMCEzs7RkN0GsH29RJaLLqwm9fCIjlqwxQTiWAqNcc7wjBkH31hV0PU/yVxGYvrYsgfea2qw6g==}
     cpu: [loong64]
     os: [linux]
+    libc: [musl]
 
   '@rollup/rollup-linux-ppc64-gnu@4.61.0':
     resolution: {integrity: sha512-QoNSnwQtaeNu5grdBbsL0tt1uyl5EnS8DA8Mr3nluMXbhdQNyhN+G4tBax7VCdxLKj8YJ0/4OO9Ho84jMnJtKA==}
     cpu: [ppc64]
     os: [linux]
+    libc: [glibc]
 
   '@rollup/rollup-linux-ppc64-musl@4.61.0':
     resolution: {integrity: sha512-/zZp5MKapIIApE8trN8qLGNSiRN9TUoaUZ1cmVu4XnVdd5LQLOXTtyi+vtfUbNnT3iyjzpPqYeKXmvJ+gJGYWw==}
     cpu: [ppc64]
     os: [linux]
+    libc: [musl]
 
   '@rollup/rollup-linux-riscv64-gnu@4.61.0':
     resolution: {integrity: sha512-RbrzcD3aJ1k3UbtMRRBNwojdVVyXjuVAFTfn/xPa6EEl6GE9Sm/akPgFTb9aAC9pMKGJ6CtWxaGrqWcabH+ySg==}
     cpu: [riscv64]
     os: [linux]
+    libc: [glibc]
 
   '@rollup/rollup-linux-riscv64-musl@4.61.0':
     resolution: {integrity: sha512-ZF+onDsBso8PJf1XaG9lB+O9RnBpKGnY6OrzC4CSHrtC1jb6jWLTKK4bRqdoCXHd22gyr2hiYmEAm8Wns/BOCw==}
     cpu: [riscv64]
     os: [linux]
+    libc: [musl]
 
   '@rollup/rollup-linux-s390x-gnu@4.61.0':
     resolution: {integrity: sha512-Atk0aSIk5Zx2Wuh9dgRQgLP0Koc8hOeYpbWryMXyk8G8/HmPkwPPkMqIIDhrXHHYqfUzSJA/I7IWSBv8xSmRBA==}
     cpu: [s390x]
     os: [linux]
+    libc: [glibc]
 
   '@rollup/rollup-linux-x64-gnu@4.61.0':
     resolution: {integrity: sha512-0uMOcf3eZ5K+K4cYHkdxShFMPlPXCOdfDFEFn9dNYAEEd2cVvmOfH7zFgRVoDgmtQ1m9k5q7qfrHzyMAubKYUA==}
     cpu: [x64]
     os: [linux]
+    libc: [glibc]
 
   '@rollup/rollup-linux-x64-musl@4.61.0':
     resolution: {integrity: sha512-mvFtE4A/t/7hRJ7X8Ozmu8FsIkAUat2nzl12pgU337BRmq87AQUJztwHz2Zv5/tjo9/C95E66CK03SI/ToEDJw==}
     cpu: [x64]
     os: [linux]
+    libc: [musl]
 
   '@rollup/rollup-openbsd-x64@4.61.0':
     resolution: {integrity: sha512-z9b9+aTxvt8n2rNltMPvyaUfB8NJ+CVyOrGK/MdIKHx7B+lXmZpm/XbRsU7Rpf3fRqJ2uS6mBJiJveCtq8LHDg==}
@@ -7464,9 +7504,9 @@ packages:
 
 snapshots:
 
-  '@across-protocol/app-sdk@0.2.3(viem@2.38.3(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@6.0.6)(zod@3.25.76(patch_hash=n7m4wua237tsnvclvtauns7ije)))':
+  '@across-protocol/app-sdk@0.2.3(viem@2.38.3(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@6.0.6)(zod@3.25.76(patch_hash=e3f278525e5c146b041a15d08a885b7c177099ea01b94159104fe8b26d1cd00f)))':
     dependencies:
-      viem: 2.38.3(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@6.0.6)(zod@3.25.76(patch_hash=n7m4wua237tsnvclvtauns7ije))
+      viem: 2.38.3(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@6.0.6)(zod@3.25.76(patch_hash=e3f278525e5c146b041a15d08a885b7c177099ea01b94159104fe8b26d1cd00f))
 
   '@adraffy/ens-normalize@1.11.1': {}
 
@@ -7686,16 +7726,16 @@ snapshots:
 
   '@balena/dockerignore@1.0.2': {}
 
-  '@base-org/account@2.4.0(@types/react@19.2.17)(bufferutil@4.1.0)(fastestsmallesttextencoderdecoder@1.0.22)(react@19.2.6)(typescript@5.9.3)(use-sync-external-store@1.4.0(react@19.2.6))(utf-8-validate@6.0.6)(zod@3.25.76(patch_hash=n7m4wua237tsnvclvtauns7ije))':
+  '@base-org/account@2.4.0(@types/react@19.2.17)(bufferutil@4.1.0)(fastestsmallesttextencoderdecoder@1.0.22)(react@19.2.6)(typescript@5.9.3)(use-sync-external-store@1.4.0(react@19.2.6))(utf-8-validate@6.0.6)(zod@3.25.76(patch_hash=e3f278525e5c146b041a15d08a885b7c177099ea01b94159104fe8b26d1cd00f))':
     dependencies:
       '@coinbase/cdp-sdk': 1.51.2(bufferutil@4.1.0)(fastestsmallesttextencoderdecoder@1.0.22)(typescript@5.9.3)(utf-8-validate@6.0.6)
       '@noble/hashes': 1.4.0
       clsx: 1.2.1
       eventemitter3: 5.0.1
       idb-keyval: 6.2.1
-      ox: 0.6.9(typescript@5.9.3)(zod@3.25.76(patch_hash=n7m4wua237tsnvclvtauns7ije))
+      ox: 0.6.9(typescript@5.9.3)(zod@3.25.76(patch_hash=e3f278525e5c146b041a15d08a885b7c177099ea01b94159104fe8b26d1cd00f))
       preact: 10.24.2
-      viem: 2.48.8(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@6.0.6)(zod@3.25.76(patch_hash=n7m4wua237tsnvclvtauns7ije))
+      viem: 2.48.8(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@6.0.6)(zod@3.25.76(patch_hash=e3f278525e5c146b041a15d08a885b7c177099ea01b94159104fe8b26d1cd00f))
       zustand: 5.0.3(@types/react@19.2.17)(react@19.2.6)(use-sync-external-store@1.4.0(react@19.2.6))
     transitivePeerDependencies:
       - '@types/react'
@@ -7710,16 +7750,16 @@ snapshots:
       - utf-8-validate
       - zod
 
-  '@base-org/account@2.5.6(@types/react@19.2.17)(bufferutil@4.1.0)(fastestsmallesttextencoderdecoder@1.0.22)(react@19.2.6)(typescript@5.9.3)(use-sync-external-store@1.4.0(react@19.2.6))(utf-8-validate@6.0.6)(zod@3.25.76(patch_hash=n7m4wua237tsnvclvtauns7ije))':
+  '@base-org/account@2.5.6(@types/react@19.2.17)(bufferutil@4.1.0)(fastestsmallesttextencoderdecoder@1.0.22)(react@19.2.6)(typescript@5.9.3)(use-sync-external-store@1.4.0(react@19.2.6))(utf-8-validate@6.0.6)(zod@3.25.76(patch_hash=e3f278525e5c146b041a15d08a885b7c177099ea01b94159104fe8b26d1cd00f))':
     dependencies:
       '@coinbase/cdp-sdk': 1.51.2(bufferutil@4.1.0)(fastestsmallesttextencoderdecoder@1.0.22)(typescript@5.9.3)(utf-8-validate@6.0.6)
       brotli-wasm: 3.0.1
       clsx: 1.2.1
       eventemitter3: 5.0.1
       idb-keyval: 6.2.1
-      ox: 0.6.9(typescript@5.9.3)(zod@3.25.76(patch_hash=n7m4wua237tsnvclvtauns7ije))
+      ox: 0.6.9(typescript@5.9.3)(zod@3.25.76(patch_hash=e3f278525e5c146b041a15d08a885b7c177099ea01b94159104fe8b26d1cd00f))
       preact: 10.24.2
-      viem: 2.48.8(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@6.0.6)(zod@3.25.76(patch_hash=n7m4wua237tsnvclvtauns7ije))
+      viem: 2.48.8(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@6.0.6)(zod@3.25.76(patch_hash=e3f278525e5c146b041a15d08a885b7c177099ea01b94159104fe8b26d1cd00f))
       zustand: 5.0.3(@types/react@19.2.17)(react@19.2.6)(use-sync-external-store@1.4.0(react@19.2.6))
     transitivePeerDependencies:
       - '@types/react'
@@ -7765,18 +7805,18 @@ snapshots:
 
   '@cloudflare/workers-types@5.20260724.1': {}
 
-  '@coinbase/agentkit@0.10.4(@tanstack/query-core@5.101.0)(@tanstack/react-query@5.101.0(react@19.2.6))(@types/node@26.5.0)(@types/react@19.2.17)(@zerodev/webauthn-key@5.5.0(viem@2.48.8(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@6.0.6)(zod@3.25.76(patch_hash=n7m4wua237tsnvclvtauns7ije))))(abitype@1.2.3(typescript@5.9.3)(zod@3.25.76(patch_hash=n7m4wua237tsnvclvtauns7ije)))(bufferutil@4.1.0)(encoding@0.1.13)(fastestsmallesttextencoderdecoder@1.0.22)(graphql@16.14.0)(react@19.2.6)(typescript@5.9.3)(use-sync-external-store@1.4.0(react@19.2.6))(utf-8-validate@6.0.6)(ws@8.21.0(bufferutil@4.1.0)(utf-8-validate@6.0.6))':
+  '@coinbase/agentkit@0.10.4(@tanstack/query-core@5.101.0)(@tanstack/react-query@5.101.0(react@19.2.6))(@types/node@26.5.0)(@types/react@19.2.17)(@zerodev/webauthn-key@5.5.0(viem@2.48.8(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@6.0.6)(zod@3.25.76(patch_hash=e3f278525e5c146b041a15d08a885b7c177099ea01b94159104fe8b26d1cd00f))))(abitype@1.2.3(typescript@5.9.3)(zod@3.25.76(patch_hash=e3f278525e5c146b041a15d08a885b7c177099ea01b94159104fe8b26d1cd00f)))(bufferutil@4.1.0)(encoding@0.1.13)(fastestsmallesttextencoderdecoder@1.0.22)(graphql@16.14.0)(react@19.2.6)(typescript@5.9.3)(use-sync-external-store@1.4.0(react@19.2.6))(utf-8-validate@6.0.6)(ws@8.21.0(bufferutil@4.1.0)(utf-8-validate@6.0.6))':
     dependencies:
-      '@across-protocol/app-sdk': 0.2.3(viem@2.38.3(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@6.0.6)(zod@3.25.76(patch_hash=n7m4wua237tsnvclvtauns7ije)))
+      '@across-protocol/app-sdk': 0.2.3(viem@2.38.3(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@6.0.6)(zod@3.25.76(patch_hash=e3f278525e5c146b041a15d08a885b7c177099ea01b94159104fe8b26d1cd00f)))
       '@alloralabs/allora-sdk': 0.1.1
-      '@base-org/account': 2.5.6(@types/react@19.2.17)(bufferutil@4.1.0)(fastestsmallesttextencoderdecoder@1.0.22)(react@19.2.6)(typescript@5.9.3)(use-sync-external-store@1.4.0(react@19.2.6))(utf-8-validate@6.0.6)(zod@3.25.76(patch_hash=n7m4wua237tsnvclvtauns7ije))
+      '@base-org/account': 2.5.6(@types/react@19.2.17)(bufferutil@4.1.0)(fastestsmallesttextencoderdecoder@1.0.22)(react@19.2.6)(typescript@5.9.3)(use-sync-external-store@1.4.0(react@19.2.6))(utf-8-validate@6.0.6)(zod@3.25.76(patch_hash=e3f278525e5c146b041a15d08a885b7c177099ea01b94159104fe8b26d1cd00f))
       '@coinbase/cdp-sdk': 1.51.2(bufferutil@4.1.0)(fastestsmallesttextencoderdecoder@1.0.22)(typescript@5.9.3)(utf-8-validate@6.0.6)
-      '@coinbase/coinbase-sdk': 0.20.0(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@6.0.6)(zod@3.25.76(patch_hash=n7m4wua237tsnvclvtauns7ije))
+      '@coinbase/coinbase-sdk': 0.20.0(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@6.0.6)(zod@3.25.76(patch_hash=e3f278525e5c146b041a15d08a885b7c177099ea01b94159104fe8b26d1cd00f))
       '@coinbase/x402': 0.6.6(@tanstack/query-core@5.101.0)(@tanstack/react-query@5.101.0(react@19.2.6))(@types/react@19.2.17)(bufferutil@4.1.0)(encoding@0.1.13)(fastestsmallesttextencoderdecoder@1.0.22)(react@19.2.6)(typescript@5.9.3)(utf-8-validate@6.0.6)(ws@8.21.0(bufferutil@4.1.0)(utf-8-validate@6.0.6))
       '@ensofinance/sdk': 2.4.1
       '@jup-ag/api': 6.0.48
       '@privy-io/public-api': 2.18.5(bufferutil@4.1.0)(utf-8-validate@6.0.6)
-      '@privy-io/server-auth': 1.18.4(bufferutil@4.1.0)(encoding@0.1.13)(typescript@5.9.3)(utf-8-validate@6.0.6)(viem@2.38.3(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@6.0.6)(zod@3.25.76(patch_hash=n7m4wua237tsnvclvtauns7ije)))
+      '@privy-io/server-auth': 1.18.4(bufferutil@4.1.0)(encoding@0.1.13)(typescript@5.9.3)(utf-8-validate@6.0.6)(viem@2.38.3(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@6.0.6)(zod@3.25.76(patch_hash=e3f278525e5c146b041a15d08a885b7c177099ea01b94159104fe8b26d1cd00f)))
       '@solana/kit': 2.3.0(fastestsmallesttextencoderdecoder@1.0.22)(typescript@5.9.3)(ws@8.21.0(bufferutil@4.1.0)(utf-8-validate@6.0.6))
       '@solana/spl-token': 0.4.14(@solana/web3.js@1.98.4(bufferutil@4.1.0)(encoding@0.1.13)(typescript@5.9.3)(utf-8-validate@6.0.6))(bufferutil@4.1.0)(encoding@0.1.13)(fastestsmallesttextencoderdecoder@1.0.22)(typescript@5.9.3)(utf-8-validate@6.0.6)
       '@solana/web3.js': 1.98.4(bufferutil@4.1.0)(encoding@0.1.13)(typescript@5.9.3)(utf-8-validate@6.0.6)
@@ -7784,24 +7824,24 @@ snapshots:
       '@x402/evm': 2.16.0(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@6.0.6)
       '@x402/fetch': 2.16.0
       '@x402/svm': 2.16.0(@solana/kit@2.3.0(fastestsmallesttextencoderdecoder@1.0.22)(typescript@5.9.3)(ws@8.21.0(bufferutil@4.1.0)(utf-8-validate@6.0.6)))
-      '@zerodev/ecdsa-validator': 5.4.9(@zerodev/sdk@5.5.10(viem@2.48.8(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@6.0.6)(zod@3.25.76(patch_hash=n7m4wua237tsnvclvtauns7ije))))(viem@2.38.3(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@6.0.6)(zod@3.25.76(patch_hash=n7m4wua237tsnvclvtauns7ije)))
-      '@zerodev/intent': 0.0.24(@zerodev/webauthn-key@5.5.0(viem@2.48.8(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@6.0.6)(zod@3.25.76(patch_hash=n7m4wua237tsnvclvtauns7ije))))(viem@2.38.3(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@6.0.6)(zod@3.25.76(patch_hash=n7m4wua237tsnvclvtauns7ije)))
-      '@zerodev/sdk': 5.5.10(viem@2.38.3(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@6.0.6)(zod@3.25.76(patch_hash=n7m4wua237tsnvclvtauns7ije)))
-      '@zoralabs/coins-sdk': 0.2.8(abitype@1.2.3(typescript@5.9.3)(zod@3.25.76(patch_hash=n7m4wua237tsnvclvtauns7ije)))(viem@2.38.3(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@6.0.6)(zod@3.25.76(patch_hash=n7m4wua237tsnvclvtauns7ije)))
+      '@zerodev/ecdsa-validator': 5.4.9(@zerodev/sdk@5.5.10(viem@2.48.8(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@6.0.6)(zod@3.25.76(patch_hash=e3f278525e5c146b041a15d08a885b7c177099ea01b94159104fe8b26d1cd00f))))(viem@2.38.3(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@6.0.6)(zod@3.25.76(patch_hash=e3f278525e5c146b041a15d08a885b7c177099ea01b94159104fe8b26d1cd00f)))
+      '@zerodev/intent': 0.0.24(@zerodev/webauthn-key@5.5.0(viem@2.48.8(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@6.0.6)(zod@3.25.76(patch_hash=e3f278525e5c146b041a15d08a885b7c177099ea01b94159104fe8b26d1cd00f))))(viem@2.38.3(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@6.0.6)(zod@3.25.76(patch_hash=e3f278525e5c146b041a15d08a885b7c177099ea01b94159104fe8b26d1cd00f)))
+      '@zerodev/sdk': 5.5.10(viem@2.38.3(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@6.0.6)(zod@3.25.76(patch_hash=e3f278525e5c146b041a15d08a885b7c177099ea01b94159104fe8b26d1cd00f)))
+      '@zoralabs/coins-sdk': 0.2.8(abitype@1.2.3(typescript@5.9.3)(zod@3.25.76(patch_hash=e3f278525e5c146b041a15d08a885b7c177099ea01b94159104fe8b26d1cd00f)))(viem@2.38.3(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@6.0.6)(zod@3.25.76(patch_hash=e3f278525e5c146b041a15d08a885b7c177099ea01b94159104fe8b26d1cd00f)))
       '@zoralabs/protocol-deployments': 0.6.1
       bs58: 4.0.1
       canonicalize: 2.1.0
-      clanker-sdk: 4.2.16(@types/node@26.5.0)(typescript@5.9.3)(viem@2.38.3(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@6.0.6)(zod@3.25.76(patch_hash=n7m4wua237tsnvclvtauns7ije)))
+      clanker-sdk: 4.2.16(@types/node@26.5.0)(typescript@5.9.3)(viem@2.38.3(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@6.0.6)(zod@3.25.76(patch_hash=e3f278525e5c146b041a15d08a885b7c177099ea01b94159104fe8b26d1cd00f)))
       decimal.js: 10.6.0
       ethers: 6.17.0(bufferutil@4.1.0)(utf-8-validate@6.0.6)
       graphql-request: 7.4.0(graphql@16.14.0)
       md5: 2.3.0
       opensea-js: 7.4.0(bufferutil@4.1.0)(utf-8-validate@6.0.6)
       reflect-metadata: 0.2.2
-      sushi: 6.2.1(typescript@5.9.3)(viem@2.38.3(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@6.0.6)(zod@3.25.76(patch_hash=n7m4wua237tsnvclvtauns7ije)))(zod@3.25.76(patch_hash=n7m4wua237tsnvclvtauns7ije))
+      sushi: 6.2.1(typescript@5.9.3)(viem@2.38.3(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@6.0.6)(zod@3.25.76(patch_hash=e3f278525e5c146b041a15d08a885b7c177099ea01b94159104fe8b26d1cd00f)))(zod@3.25.76(patch_hash=e3f278525e5c146b041a15d08a885b7c177099ea01b94159104fe8b26d1cd00f))
       twitter-api-v2: 1.29.0
-      viem: 2.38.3(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@6.0.6)(zod@3.25.76(patch_hash=n7m4wua237tsnvclvtauns7ije))
-      zod: 3.25.76(patch_hash=n7m4wua237tsnvclvtauns7ije)
+      viem: 2.38.3(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@6.0.6)(zod@3.25.76(patch_hash=e3f278525e5c146b041a15d08a885b7c177099ea01b94159104fe8b26d1cd00f))
+      zod: 3.25.76(patch_hash=e3f278525e5c146b041a15d08a885b7c177099ea01b94159104fe8b26d1cd00f)
     transitivePeerDependencies:
       - '@azure/app-configuration'
       - '@azure/cosmos'
@@ -7852,15 +7892,15 @@ snapshots:
       '@solana-program/system': 0.10.0(@solana/kit@5.5.1(bufferutil@4.1.0)(fastestsmallesttextencoderdecoder@1.0.22)(typescript@5.9.3)(utf-8-validate@6.0.6))
       '@solana-program/token': 0.9.0(@solana/kit@5.5.1(bufferutil@4.1.0)(fastestsmallesttextencoderdecoder@1.0.22)(typescript@5.9.3)(utf-8-validate@6.0.6))
       '@solana/kit': 5.5.1(bufferutil@4.1.0)(fastestsmallesttextencoderdecoder@1.0.22)(typescript@5.9.3)(utf-8-validate@6.0.6)
-      abitype: 1.0.6(typescript@5.9.3)(zod@3.25.76(patch_hash=n7m4wua237tsnvclvtauns7ije))
+      abitype: 1.0.6(typescript@5.9.3)(zod@3.25.76(patch_hash=e3f278525e5c146b041a15d08a885b7c177099ea01b94159104fe8b26d1cd00f))
       axios: 1.20.0
       axios-retry: 4.5.0(axios@1.20.0)
       bs58: 6.0.0
       jose: 6.2.3
       md5: 2.3.0
       uncrypto: 0.1.3
-      viem: 2.48.8(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@6.0.6)(zod@3.25.76(patch_hash=n7m4wua237tsnvclvtauns7ije))
-      zod: 3.25.76(patch_hash=n7m4wua237tsnvclvtauns7ije)
+      viem: 2.48.8(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@6.0.6)(zod@3.25.76(patch_hash=e3f278525e5c146b041a15d08a885b7c177099ea01b94159104fe8b26d1cd00f))
+      zod: 3.25.76(patch_hash=e3f278525e5c146b041a15d08a885b7c177099ea01b94159104fe8b26d1cd00f)
     transitivePeerDependencies:
       - bufferutil
       - debug
@@ -7869,10 +7909,10 @@ snapshots:
       - typescript
       - utf-8-validate
 
-  '@coinbase/coinbase-sdk@0.20.0(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@6.0.6)(zod@3.25.76(patch_hash=n7m4wua237tsnvclvtauns7ije))':
+  '@coinbase/coinbase-sdk@0.20.0(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@6.0.6)(zod@3.25.76(patch_hash=e3f278525e5c146b041a15d08a885b7c177099ea01b94159104fe8b26d1cd00f))':
     dependencies:
       '@scure/bip32': 1.7.0
-      abitype: 1.2.3(typescript@5.9.3)(zod@3.25.76(patch_hash=n7m4wua237tsnvclvtauns7ije))
+      abitype: 1.2.3(typescript@5.9.3)(zod@3.25.76(patch_hash=e3f278525e5c146b041a15d08a885b7c177099ea01b94159104fe8b26d1cd00f))
       axios: 1.20.0
       axios-mock-adapter: 1.22.0(axios@1.20.0)
       axios-retry: 4.5.0(axios@1.20.0)
@@ -7884,7 +7924,7 @@ snapshots:
       ethers: 6.17.0(bufferutil@4.1.0)(utf-8-validate@6.0.6)
       jose: 5.10.0
       secp256k1: 5.0.1
-      viem: 2.48.8(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@6.0.6)(zod@3.25.76(patch_hash=n7m4wua237tsnvclvtauns7ije))
+      viem: 2.48.8(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@6.0.6)(zod@3.25.76(patch_hash=e3f278525e5c146b041a15d08a885b7c177099ea01b94159104fe8b26d1cd00f))
     transitivePeerDependencies:
       - bufferutil
       - debug
@@ -7908,15 +7948,15 @@ snapshots:
       - preact-render-to-string
       - supports-color
 
-  '@coinbase/wallet-sdk@4.3.6(@types/react@19.2.17)(bufferutil@4.1.0)(react@19.2.6)(typescript@5.9.3)(use-sync-external-store@1.4.0(react@19.2.6))(utf-8-validate@6.0.6)(zod@3.25.76(patch_hash=n7m4wua237tsnvclvtauns7ije))':
+  '@coinbase/wallet-sdk@4.3.6(@types/react@19.2.17)(bufferutil@4.1.0)(react@19.2.6)(typescript@5.9.3)(use-sync-external-store@1.4.0(react@19.2.6))(utf-8-validate@6.0.6)(zod@3.25.76(patch_hash=e3f278525e5c146b041a15d08a885b7c177099ea01b94159104fe8b26d1cd00f))':
     dependencies:
       '@noble/hashes': 1.4.0
       clsx: 1.2.1
       eventemitter3: 5.0.1
       idb-keyval: 6.2.1
-      ox: 0.6.9(typescript@5.9.3)(zod@3.25.76(patch_hash=n7m4wua237tsnvclvtauns7ije))
+      ox: 0.6.9(typescript@5.9.3)(zod@3.25.76(patch_hash=e3f278525e5c146b041a15d08a885b7c177099ea01b94159104fe8b26d1cd00f))
       preact: 10.24.2
-      viem: 2.48.8(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@6.0.6)(zod@3.25.76(patch_hash=n7m4wua237tsnvclvtauns7ije))
+      viem: 2.48.8(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@6.0.6)(zod@3.25.76(patch_hash=e3f278525e5c146b041a15d08a885b7c177099ea01b94159104fe8b26d1cd00f))
       zustand: 5.0.3(@types/react@19.2.17)(react@19.2.6)(use-sync-external-store@1.4.0(react@19.2.6))
     transitivePeerDependencies:
       - '@types/react'
@@ -7931,9 +7971,9 @@ snapshots:
   '@coinbase/x402@0.6.6(@tanstack/query-core@5.101.0)(@tanstack/react-query@5.101.0(react@19.2.6))(@types/react@19.2.17)(bufferutil@4.1.0)(encoding@0.1.13)(fastestsmallesttextencoderdecoder@1.0.22)(react@19.2.6)(typescript@5.9.3)(utf-8-validate@6.0.6)(ws@8.21.0(bufferutil@4.1.0)(utf-8-validate@6.0.6))':
     dependencies:
       '@coinbase/cdp-sdk': 1.51.2(bufferutil@4.1.0)(fastestsmallesttextencoderdecoder@1.0.22)(typescript@5.9.3)(utf-8-validate@6.0.6)
-      viem: 2.48.8(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@6.0.6)(zod@3.25.76(patch_hash=n7m4wua237tsnvclvtauns7ije))
+      viem: 2.48.8(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@6.0.6)(zod@3.25.76(patch_hash=e3f278525e5c146b041a15d08a885b7c177099ea01b94159104fe8b26d1cd00f))
       x402: 0.6.6(@tanstack/query-core@5.101.0)(@tanstack/react-query@5.101.0(react@19.2.6))(@types/react@19.2.17)(bufferutil@4.1.0)(encoding@0.1.13)(fastestsmallesttextencoderdecoder@1.0.22)(react@19.2.6)(typescript@5.9.3)(utf-8-validate@6.0.6)(ws@8.21.0(bufferutil@4.1.0)(utf-8-validate@6.0.6))
-      zod: 3.25.76(patch_hash=n7m4wua237tsnvclvtauns7ije)
+      zod: 3.25.76(patch_hash=e3f278525e5c146b041a15d08a885b7c177099ea01b94159104fe8b26d1cd00f)
     transitivePeerDependencies:
       - '@azure/app-configuration'
       - '@azure/cosmos'
@@ -8018,11 +8058,11 @@ snapshots:
     dependencies:
       '@cowprotocol/sdk-app-data': 5.0.0(ajv@8.20.0)(cross-fetch@4.1.0(encoding@0.1.13))(ipfs-only-hash@4.0.0(encoding@0.1.13))(multiformats@9.9.0)
       '@cowprotocol/sdk-common': 0.10.2
-      '@cowprotocol/sdk-config': 2.0.0(patch_hash=kwkxesyxlclpkpvqlavlqyjqsm)
+      '@cowprotocol/sdk-config': 2.0.0(patch_hash=4c11fe5353edfd0908bbbc6cb4ffd1271156633f5e1f5c4157caa09a6c627035)
       '@cowprotocol/sdk-contracts-ts': 3.0.1
       '@cowprotocol/sdk-order-book': 3.0.0(encoding@0.1.13)
       '@cowprotocol/sdk-order-signing': 1.0.1(encoding@0.1.13)
-      '@cowprotocol/sdk-trading': 2.0.2(patch_hash=qic45zklihhor5za6uiiggh5pq)(ajv@8.20.0)(cross-fetch@4.1.0(encoding@0.1.13))(encoding@0.1.13)(ipfs-only-hash@4.0.0(encoding@0.1.13))(multiformats@9.9.0)
+      '@cowprotocol/sdk-trading': 2.0.2(patch_hash=514f8927aaabee3d5c09a382f7a41d69b513de9c969c47755572d57267ee032a)(ajv@8.20.0)(cross-fetch@4.1.0(encoding@0.1.13))(encoding@0.1.13)(ipfs-only-hash@4.0.0(encoding@0.1.13))(multiformats@9.9.0)
       cross-fetch: 4.1.0(encoding@0.1.13)
     optionalDependencies:
       '@openzeppelin/merkle-tree': 1.0.8
@@ -8110,15 +8150,15 @@ snapshots:
       - encoding
       - supports-color
 
-  '@cowprotocol/sdk-bridging@4.0.2(patch_hash=4rnsap57ds3qcajpfo22oank3m)(ajv@8.20.0)(cross-fetch@4.1.0(encoding@0.1.13))(encoding@0.1.13)(ipfs-only-hash@4.0.0(encoding@0.1.13))(multiformats@9.9.0)':
+  '@cowprotocol/sdk-bridging@4.0.2(patch_hash=9ad38533e2f2d09d1b2dcb85ba3fc6dad0dec289b00ec9a5f8b687847acb5c21)(ajv@8.20.0)(cross-fetch@4.1.0(encoding@0.1.13))(encoding@0.1.13)(ipfs-only-hash@4.0.0(encoding@0.1.13))(multiformats@9.9.0)':
     dependencies:
       '@cowprotocol/sdk-app-data': 5.0.0(ajv@8.20.0)(cross-fetch@4.1.0(encoding@0.1.13))(ipfs-only-hash@4.0.0(encoding@0.1.13))(multiformats@9.9.0)
       '@cowprotocol/sdk-common': 0.10.2
-      '@cowprotocol/sdk-config': 2.0.0(patch_hash=kwkxesyxlclpkpvqlavlqyjqsm)
+      '@cowprotocol/sdk-config': 2.0.0(patch_hash=4c11fe5353edfd0908bbbc6cb4ffd1271156633f5e1f5c4157caa09a6c627035)
       '@cowprotocol/sdk-contracts-ts': 3.0.1
       '@cowprotocol/sdk-cow-shed': 0.3.8
       '@cowprotocol/sdk-order-book': 3.0.0(encoding@0.1.13)
-      '@cowprotocol/sdk-trading': 2.0.2(patch_hash=qic45zklihhor5za6uiiggh5pq)(ajv@8.20.0)(cross-fetch@4.1.0(encoding@0.1.13))(encoding@0.1.13)(ipfs-only-hash@4.0.0(encoding@0.1.13))(multiformats@9.9.0)
+      '@cowprotocol/sdk-trading': 2.0.2(patch_hash=514f8927aaabee3d5c09a382f7a41d69b513de9c969c47755572d57267ee032a)(ajv@8.20.0)(cross-fetch@4.1.0(encoding@0.1.13))(encoding@0.1.13)(ipfs-only-hash@4.0.0(encoding@0.1.13))(multiformats@9.9.0)
       '@cowprotocol/sdk-weiroll': 0.1.30
       '@defuse-protocol/one-click-sdk-typescript': 0.1.1-0.2
       json-stable-stringify: 1.3.0
@@ -8153,7 +8193,7 @@ snapshots:
 
   '@cowprotocol/sdk-common@0.10.2':
     dependencies:
-      '@cowprotocol/sdk-config': 2.0.0(patch_hash=kwkxesyxlclpkpvqlavlqyjqsm)
+      '@cowprotocol/sdk-config': 2.0.0(patch_hash=4c11fe5353edfd0908bbbc6cb4ffd1271156633f5e1f5c4157caa09a6c627035)
 
   '@cowprotocol/sdk-common@0.10.3':
     dependencies:
@@ -8168,7 +8208,7 @@ snapshots:
       exponential-backoff: 3.1.3
       limiter: 2.1.0
 
-  '@cowprotocol/sdk-config@2.0.0(patch_hash=kwkxesyxlclpkpvqlavlqyjqsm)':
+  '@cowprotocol/sdk-config@2.0.0(patch_hash=4c11fe5353edfd0908bbbc6cb4ffd1271156633f5e1f5c4157caa09a6c627035)':
     dependencies:
       exponential-backoff: 3.1.3
       limiter: 2.1.0
@@ -8181,7 +8221,7 @@ snapshots:
   '@cowprotocol/sdk-contracts-ts@3.0.1':
     dependencies:
       '@cowprotocol/sdk-common': 0.10.2
-      '@cowprotocol/sdk-config': 2.0.0(patch_hash=kwkxesyxlclpkpvqlavlqyjqsm)
+      '@cowprotocol/sdk-config': 2.0.0(patch_hash=4c11fe5353edfd0908bbbc6cb4ffd1271156633f5e1f5c4157caa09a6c627035)
 
   '@cowprotocol/sdk-contracts-ts@3.0.3':
     dependencies:
@@ -8197,7 +8237,7 @@ snapshots:
   '@cowprotocol/sdk-cow-shed@0.3.8':
     dependencies:
       '@cowprotocol/sdk-common': 0.10.2
-      '@cowprotocol/sdk-config': 2.0.0(patch_hash=kwkxesyxlclpkpvqlavlqyjqsm)
+      '@cowprotocol/sdk-config': 2.0.0(patch_hash=4c11fe5353edfd0908bbbc6cb4ffd1271156633f5e1f5c4157caa09a6c627035)
       '@cowprotocol/sdk-contracts-ts': 3.0.1
 
   '@cowprotocol/sdk-order-book@0.5.1(encoding@0.1.13)':
@@ -8213,7 +8253,7 @@ snapshots:
   '@cowprotocol/sdk-order-book@3.0.0(encoding@0.1.13)':
     dependencies:
       '@cowprotocol/sdk-common': 0.10.2
-      '@cowprotocol/sdk-config': 2.0.0(patch_hash=kwkxesyxlclpkpvqlavlqyjqsm)
+      '@cowprotocol/sdk-config': 2.0.0(patch_hash=4c11fe5353edfd0908bbbc6cb4ffd1271156633f5e1f5c4157caa09a6c627035)
       cross-fetch: 3.2.0(encoding@0.1.13)
       exponential-backoff: 3.1.3
       limiter: 3.0.0
@@ -8233,7 +8273,7 @@ snapshots:
   '@cowprotocol/sdk-order-signing@1.0.1(encoding@0.1.13)':
     dependencies:
       '@cowprotocol/sdk-common': 0.10.2
-      '@cowprotocol/sdk-config': 2.0.0(patch_hash=kwkxesyxlclpkpvqlavlqyjqsm)
+      '@cowprotocol/sdk-config': 2.0.0(patch_hash=4c11fe5353edfd0908bbbc6cb4ffd1271156633f5e1f5c4157caa09a6c627035)
       '@cowprotocol/sdk-contracts-ts': 3.0.1
       '@cowprotocol/sdk-order-book': 3.0.0(encoding@0.1.13)
     transitivePeerDependencies:
@@ -8248,15 +8288,15 @@ snapshots:
     transitivePeerDependencies:
       - encoding
 
-  '@cowprotocol/sdk-trading@2.0.2(patch_hash=qic45zklihhor5za6uiiggh5pq)(ajv@8.20.0)(cross-fetch@4.1.0(encoding@0.1.13))(encoding@0.1.13)(ipfs-only-hash@4.0.0(encoding@0.1.13))(multiformats@9.9.0)':
+  '@cowprotocol/sdk-trading@2.0.2(patch_hash=514f8927aaabee3d5c09a382f7a41d69b513de9c969c47755572d57267ee032a)(ajv@8.20.0)(cross-fetch@4.1.0(encoding@0.1.13))(encoding@0.1.13)(ipfs-only-hash@4.0.0(encoding@0.1.13))(multiformats@9.9.0)':
     dependencies:
       '@cowprotocol/sdk-app-data': 5.0.0(ajv@8.20.0)(cross-fetch@4.1.0(encoding@0.1.13))(ipfs-only-hash@4.0.0(encoding@0.1.13))(multiformats@9.9.0)
       '@cowprotocol/sdk-common': 0.10.2
-      '@cowprotocol/sdk-config': 2.0.0(patch_hash=kwkxesyxlclpkpvqlavlqyjqsm)
+      '@cowprotocol/sdk-config': 2.0.0(patch_hash=4c11fe5353edfd0908bbbc6cb4ffd1271156633f5e1f5c4157caa09a6c627035)
       '@cowprotocol/sdk-contracts-ts': 3.0.1
       '@cowprotocol/sdk-order-book': 3.0.0(encoding@0.1.13)
       '@cowprotocol/sdk-order-signing': 1.0.1(encoding@0.1.13)
-      deepmerge: 4.3.1(patch_hash=ojws7muqxh2p7lyc5bkjc2ulde)
+      deepmerge: 4.3.1(patch_hash=cb5ef21dc9051b4c0f18e8d1d1b9ffe42203305f1b859f167c56972e90576163)
     transitivePeerDependencies:
       - ajv
       - cross-fetch
@@ -8272,7 +8312,7 @@ snapshots:
       '@cowprotocol/sdk-contracts-ts': 3.0.3
       '@cowprotocol/sdk-order-book': 3.1.0(encoding@0.1.13)
       '@cowprotocol/sdk-order-signing': 1.0.3(encoding@0.1.13)
-      deepmerge: 4.3.1(patch_hash=ojws7muqxh2p7lyc5bkjc2ulde)
+      deepmerge: 4.3.1(patch_hash=cb5ef21dc9051b4c0f18e8d1d1b9ffe42203305f1b859f167c56972e90576163)
     transitivePeerDependencies:
       - ajv
       - cross-fetch
@@ -8280,15 +8320,15 @@ snapshots:
       - multiformats
       - supports-color
 
-  '@cowprotocol/sdk-viem-adapter@0.3.18(viem@2.48.8(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@6.0.6))':
+  '@cowprotocol/sdk-viem-adapter@0.3.18(viem@2.48.8(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@6.0.6)(zod@4.6.7))':
     dependencies:
       '@cowprotocol/sdk-common': 0.10.2
-      viem: 2.48.8(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@6.0.6)
+      viem: 2.48.8(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@6.0.6)(zod@4.6.7)
 
   '@cowprotocol/sdk-weiroll@0.1.30':
     dependencies:
       '@cowprotocol/sdk-common': 0.10.2
-      '@cowprotocol/sdk-config': 2.0.0(patch_hash=kwkxesyxlclpkpvqlavlqyjqsm)
+      '@cowprotocol/sdk-config': 2.0.0(patch_hash=4c11fe5353edfd0908bbbc6cb4ffd1271156633f5e1f5c4157caa09a6c627035)
 
   '@cowprotocol/sdk-weiroll@0.1.32':
     dependencies:
@@ -8770,7 +8810,7 @@ snapshots:
       '@ethersproject/logger': 5.8.0
       '@ethersproject/properties': 5.8.0
       bn.js: 5.2.3
-      elliptic: 6.6.1(patch_hash=xgakzvp3u6yq3iqh3ujxpryt74)
+      elliptic: 6.6.1(patch_hash=5ee290c3bdaf9354587016fbf02863812413e6dc0f9ae73318a2da6f10ca7cef)
       hash.js: 1.1.7
 
   '@ethersproject/solidity@5.8.0':
@@ -8869,25 +8909,25 @@ snapshots:
       fastify-plugin: 5.1.0
       toad-cache: 3.7.0
 
-  '@gemini-wallet/core@0.3.2(viem@2.48.8(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@6.0.6)(zod@3.25.76(patch_hash=n7m4wua237tsnvclvtauns7ije)))':
+  '@gemini-wallet/core@0.3.2(viem@2.48.8(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@6.0.6)(zod@3.25.76(patch_hash=e3f278525e5c146b041a15d08a885b7c177099ea01b94159104fe8b26d1cd00f)))':
     dependencies:
       '@metamask/rpc-errors': 7.0.2
       eventemitter3: 5.0.1
-      viem: 2.48.8(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@6.0.6)(zod@3.25.76(patch_hash=n7m4wua237tsnvclvtauns7ije))
+      viem: 2.48.8(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@6.0.6)(zod@3.25.76(patch_hash=e3f278525e5c146b041a15d08a885b7c177099ea01b94159104fe8b26d1cd00f))
     transitivePeerDependencies:
       - supports-color
 
-  '@goat-sdk/core@0.5.0(zod@3.25.76(patch_hash=n7m4wua237tsnvclvtauns7ije))':
+  '@goat-sdk/core@0.5.0(zod@3.25.76(patch_hash=e3f278525e5c146b041a15d08a885b7c177099ea01b94159104fe8b26d1cd00f))':
     dependencies:
       reflect-metadata: 0.2.2
-      zod: 3.25.76(patch_hash=n7m4wua237tsnvclvtauns7ije)
+      zod: 3.25.76(patch_hash=e3f278525e5c146b041a15d08a885b7c177099ea01b94159104fe8b26d1cd00f)
 
-  '@goat-sdk/wallet-evm@0.3.0(@goat-sdk/core@0.5.0(zod@3.25.76(patch_hash=n7m4wua237tsnvclvtauns7ije)))(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@6.0.6)':
+  '@goat-sdk/wallet-evm@0.3.0(@goat-sdk/core@0.5.0(zod@3.25.76(patch_hash=e3f278525e5c146b041a15d08a885b7c177099ea01b94159104fe8b26d1cd00f)))(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@6.0.6)':
     dependencies:
-      '@goat-sdk/core': 0.5.0(zod@3.25.76(patch_hash=n7m4wua237tsnvclvtauns7ije))
-      abitype: 1.2.3(typescript@5.9.3)(zod@3.23.8(patch_hash=wyyinfi5bq7wh4q2tey6ddudg4))
-      viem: 2.23.4(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@6.0.6)(zod@3.23.8(patch_hash=wyyinfi5bq7wh4q2tey6ddudg4))
-      zod: 3.23.8(patch_hash=wyyinfi5bq7wh4q2tey6ddudg4)
+      '@goat-sdk/core': 0.5.0(zod@3.25.76(patch_hash=e3f278525e5c146b041a15d08a885b7c177099ea01b94159104fe8b26d1cd00f))
+      abitype: 1.2.3(typescript@5.9.3)(zod@3.23.8(patch_hash=1ea8b436ae1aac51d4a282da8ebffa4ff9f3695541e2576864ac13ebee108189))
+      viem: 2.23.4(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@6.0.6)(zod@3.23.8(patch_hash=1ea8b436ae1aac51d4a282da8ebffa4ff9f3695541e2576864ac13ebee108189))
+      zod: 3.23.8(patch_hash=1ea8b436ae1aac51d4a282da8ebffa4ff9f3695541e2576864ac13ebee108189)
     transitivePeerDependencies:
       - bufferutil
       - typescript
@@ -9590,7 +9630,7 @@ snapshots:
 
   '@privy-io/api-base@1.4.3':
     dependencies:
-      zod: 3.25.76(patch_hash=n7m4wua237tsnvclvtauns7ije)
+      zod: 3.25.76(patch_hash=e3f278525e5c146b041a15d08a885b7c177099ea01b94159104fe8b26d1cd00f)
 
   '@privy-io/public-api@2.18.5(bufferutil@4.1.0)(utf-8-validate@6.0.6)':
     dependencies:
@@ -9598,12 +9638,12 @@ snapshots:
       bs58: 5.0.0
       ethers: 5.8.0(bufferutil@4.1.0)(utf-8-validate@6.0.6)
       libphonenumber-js: 1.13.7
-      zod: 3.25.76(patch_hash=n7m4wua237tsnvclvtauns7ije)
+      zod: 3.25.76(patch_hash=e3f278525e5c146b041a15d08a885b7c177099ea01b94159104fe8b26d1cd00f)
     transitivePeerDependencies:
       - bufferutil
       - utf-8-validate
 
-  '@privy-io/server-auth@1.18.4(bufferutil@4.1.0)(encoding@0.1.13)(typescript@5.9.3)(utf-8-validate@6.0.6)(viem@2.38.3(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@6.0.6)(zod@3.25.76(patch_hash=n7m4wua237tsnvclvtauns7ije)))':
+  '@privy-io/server-auth@1.18.4(bufferutil@4.1.0)(encoding@0.1.13)(typescript@5.9.3)(utf-8-validate@6.0.6)(viem@2.38.3(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@6.0.6)(zod@3.25.76(patch_hash=e3f278525e5c146b041a15d08a885b7c177099ea01b94159104fe8b26d1cd00f)))':
     dependencies:
       '@noble/curves': 1.9.7
       '@noble/hashes': 1.8.0
@@ -9617,7 +9657,7 @@ snapshots:
       ts-case-convert: 2.3.1
       type-fest: 3.13.1
     optionalDependencies:
-      viem: 2.38.3(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@6.0.6)(zod@3.25.76(patch_hash=n7m4wua237tsnvclvtauns7ije))
+      viem: 2.38.3(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@6.0.6)(zod@3.25.76(patch_hash=e3f278525e5c146b041a15d08a885b7c177099ea01b94159104fe8b26d1cd00f))
     transitivePeerDependencies:
       - bufferutil
       - encoding
@@ -9646,35 +9686,35 @@ snapshots:
 
   '@protobufjs/utf8@1.1.2': {}
 
-  '@reown/appkit-common@1.7.8(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@6.0.6)(zod@3.22.4(patch_hash=3g53u5nuotvez33fgka6gn7khy))':
+  '@reown/appkit-common@1.7.8(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@6.0.6)(zod@3.22.4(patch_hash=ccbaa35b90d202a6ec28cd0ebbfc82463ee5bc7f20eaa0583ac30d4b9d617ed3))':
     dependencies:
       big.js: 6.2.2
       dayjs: 1.11.13
-      viem: 2.48.8(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@6.0.6)(zod@3.22.4(patch_hash=3g53u5nuotvez33fgka6gn7khy))
+      viem: 2.48.8(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@6.0.6)(zod@3.22.4(patch_hash=ccbaa35b90d202a6ec28cd0ebbfc82463ee5bc7f20eaa0583ac30d4b9d617ed3))
     transitivePeerDependencies:
       - bufferutil
       - typescript
       - utf-8-validate
       - zod
 
-  '@reown/appkit-common@1.7.8(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@6.0.6)(zod@3.25.76(patch_hash=n7m4wua237tsnvclvtauns7ije))':
+  '@reown/appkit-common@1.7.8(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@6.0.6)(zod@3.25.76(patch_hash=e3f278525e5c146b041a15d08a885b7c177099ea01b94159104fe8b26d1cd00f))':
     dependencies:
       big.js: 6.2.2
       dayjs: 1.11.13
-      viem: 2.48.8(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@6.0.6)(zod@3.25.76(patch_hash=n7m4wua237tsnvclvtauns7ije))
+      viem: 2.48.8(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@6.0.6)(zod@3.25.76(patch_hash=e3f278525e5c146b041a15d08a885b7c177099ea01b94159104fe8b26d1cd00f))
     transitivePeerDependencies:
       - bufferutil
       - typescript
       - utf-8-validate
       - zod
 
-  '@reown/appkit-controllers@1.7.8(@types/react@19.2.17)(bufferutil@4.1.0)(encoding@0.1.13)(react@19.2.6)(typescript@5.9.3)(utf-8-validate@6.0.6)(zod@3.25.76(patch_hash=n7m4wua237tsnvclvtauns7ije))':
+  '@reown/appkit-controllers@1.7.8(@types/react@19.2.17)(bufferutil@4.1.0)(encoding@0.1.13)(react@19.2.6)(typescript@5.9.3)(utf-8-validate@6.0.6)(zod@3.25.76(patch_hash=e3f278525e5c146b041a15d08a885b7c177099ea01b94159104fe8b26d1cd00f))':
     dependencies:
-      '@reown/appkit-common': 1.7.8(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@6.0.6)(zod@3.25.76(patch_hash=n7m4wua237tsnvclvtauns7ije))
+      '@reown/appkit-common': 1.7.8(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@6.0.6)(zod@3.25.76(patch_hash=e3f278525e5c146b041a15d08a885b7c177099ea01b94159104fe8b26d1cd00f))
       '@reown/appkit-wallet': 1.7.8(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@6.0.6)
-      '@walletconnect/universal-provider': 2.21.0(bufferutil@4.1.0)(encoding@0.1.13)(typescript@5.9.3)(utf-8-validate@6.0.6)(zod@3.25.76(patch_hash=n7m4wua237tsnvclvtauns7ije))
+      '@walletconnect/universal-provider': 2.21.0(bufferutil@4.1.0)(encoding@0.1.13)(typescript@5.9.3)(utf-8-validate@6.0.6)(zod@3.25.76(patch_hash=e3f278525e5c146b041a15d08a885b7c177099ea01b94159104fe8b26d1cd00f))
       valtio: 1.13.2(@types/react@19.2.17)(react@19.2.6)
-      viem: 2.48.8(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@6.0.6)(zod@3.25.76(patch_hash=n7m4wua237tsnvclvtauns7ije))
+      viem: 2.48.8(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@6.0.6)(zod@3.25.76(patch_hash=e3f278525e5c146b041a15d08a885b7c177099ea01b94159104fe8b26d1cd00f))
     transitivePeerDependencies:
       - '@azure/app-configuration'
       - '@azure/cosmos'
@@ -9703,12 +9743,12 @@ snapshots:
       - utf-8-validate
       - zod
 
-  '@reown/appkit-pay@1.7.8(@types/react@19.2.17)(bufferutil@4.1.0)(encoding@0.1.13)(react@19.2.6)(typescript@5.9.3)(utf-8-validate@6.0.6)(zod@3.25.76(patch_hash=n7m4wua237tsnvclvtauns7ije))':
+  '@reown/appkit-pay@1.7.8(@types/react@19.2.17)(bufferutil@4.1.0)(encoding@0.1.13)(react@19.2.6)(typescript@5.9.3)(utf-8-validate@6.0.6)(zod@3.25.76(patch_hash=e3f278525e5c146b041a15d08a885b7c177099ea01b94159104fe8b26d1cd00f))':
     dependencies:
-      '@reown/appkit-common': 1.7.8(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@6.0.6)(zod@3.25.76(patch_hash=n7m4wua237tsnvclvtauns7ije))
-      '@reown/appkit-controllers': 1.7.8(@types/react@19.2.17)(bufferutil@4.1.0)(encoding@0.1.13)(react@19.2.6)(typescript@5.9.3)(utf-8-validate@6.0.6)(zod@3.25.76(patch_hash=n7m4wua237tsnvclvtauns7ije))
-      '@reown/appkit-ui': 1.7.8(@types/react@19.2.17)(bufferutil@4.1.0)(encoding@0.1.13)(react@19.2.6)(typescript@5.9.3)(utf-8-validate@6.0.6)(zod@3.25.76(patch_hash=n7m4wua237tsnvclvtauns7ije))
-      '@reown/appkit-utils': 1.7.8(@types/react@19.2.17)(bufferutil@4.1.0)(encoding@0.1.13)(react@19.2.6)(typescript@5.9.3)(utf-8-validate@6.0.6)(valtio@1.13.2(@types/react@19.2.17)(react@19.2.6))(zod@3.25.76(patch_hash=n7m4wua237tsnvclvtauns7ije))
+      '@reown/appkit-common': 1.7.8(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@6.0.6)(zod@3.25.76(patch_hash=e3f278525e5c146b041a15d08a885b7c177099ea01b94159104fe8b26d1cd00f))
+      '@reown/appkit-controllers': 1.7.8(@types/react@19.2.17)(bufferutil@4.1.0)(encoding@0.1.13)(react@19.2.6)(typescript@5.9.3)(utf-8-validate@6.0.6)(zod@3.25.76(patch_hash=e3f278525e5c146b041a15d08a885b7c177099ea01b94159104fe8b26d1cd00f))
+      '@reown/appkit-ui': 1.7.8(@types/react@19.2.17)(bufferutil@4.1.0)(encoding@0.1.13)(react@19.2.6)(typescript@5.9.3)(utf-8-validate@6.0.6)(zod@3.25.76(patch_hash=e3f278525e5c146b041a15d08a885b7c177099ea01b94159104fe8b26d1cd00f))
+      '@reown/appkit-utils': 1.7.8(@types/react@19.2.17)(bufferutil@4.1.0)(encoding@0.1.13)(react@19.2.6)(typescript@5.9.3)(utf-8-validate@6.0.6)(valtio@1.13.2(@types/react@19.2.17)(react@19.2.6))(zod@3.25.76(patch_hash=e3f278525e5c146b041a15d08a885b7c177099ea01b94159104fe8b26d1cd00f))
       lit: 3.3.0
       valtio: 1.13.2(@types/react@19.2.17)(react@19.2.6)
     transitivePeerDependencies:
@@ -9743,12 +9783,12 @@ snapshots:
     dependencies:
       buffer: 6.0.3
 
-  '@reown/appkit-scaffold-ui@1.7.8(@types/react@19.2.17)(bufferutil@4.1.0)(encoding@0.1.13)(react@19.2.6)(typescript@5.9.3)(utf-8-validate@6.0.6)(valtio@1.13.2(@types/react@19.2.17)(react@19.2.6))(zod@3.25.76(patch_hash=n7m4wua237tsnvclvtauns7ije))':
+  '@reown/appkit-scaffold-ui@1.7.8(@types/react@19.2.17)(bufferutil@4.1.0)(encoding@0.1.13)(react@19.2.6)(typescript@5.9.3)(utf-8-validate@6.0.6)(valtio@1.13.2(@types/react@19.2.17)(react@19.2.6))(zod@3.25.76(patch_hash=e3f278525e5c146b041a15d08a885b7c177099ea01b94159104fe8b26d1cd00f))':
     dependencies:
-      '@reown/appkit-common': 1.7.8(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@6.0.6)(zod@3.25.76(patch_hash=n7m4wua237tsnvclvtauns7ije))
-      '@reown/appkit-controllers': 1.7.8(@types/react@19.2.17)(bufferutil@4.1.0)(encoding@0.1.13)(react@19.2.6)(typescript@5.9.3)(utf-8-validate@6.0.6)(zod@3.25.76(patch_hash=n7m4wua237tsnvclvtauns7ije))
-      '@reown/appkit-ui': 1.7.8(@types/react@19.2.17)(bufferutil@4.1.0)(encoding@0.1.13)(react@19.2.6)(typescript@5.9.3)(utf-8-validate@6.0.6)(zod@3.25.76(patch_hash=n7m4wua237tsnvclvtauns7ije))
-      '@reown/appkit-utils': 1.7.8(@types/react@19.2.17)(bufferutil@4.1.0)(encoding@0.1.13)(react@19.2.6)(typescript@5.9.3)(utf-8-validate@6.0.6)(valtio@1.13.2(@types/react@19.2.17)(react@19.2.6))(zod@3.25.76(patch_hash=n7m4wua237tsnvclvtauns7ije))
+      '@reown/appkit-common': 1.7.8(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@6.0.6)(zod@3.25.76(patch_hash=e3f278525e5c146b041a15d08a885b7c177099ea01b94159104fe8b26d1cd00f))
+      '@reown/appkit-controllers': 1.7.8(@types/react@19.2.17)(bufferutil@4.1.0)(encoding@0.1.13)(react@19.2.6)(typescript@5.9.3)(utf-8-validate@6.0.6)(zod@3.25.76(patch_hash=e3f278525e5c146b041a15d08a885b7c177099ea01b94159104fe8b26d1cd00f))
+      '@reown/appkit-ui': 1.7.8(@types/react@19.2.17)(bufferutil@4.1.0)(encoding@0.1.13)(react@19.2.6)(typescript@5.9.3)(utf-8-validate@6.0.6)(zod@3.25.76(patch_hash=e3f278525e5c146b041a15d08a885b7c177099ea01b94159104fe8b26d1cd00f))
+      '@reown/appkit-utils': 1.7.8(@types/react@19.2.17)(bufferutil@4.1.0)(encoding@0.1.13)(react@19.2.6)(typescript@5.9.3)(utf-8-validate@6.0.6)(valtio@1.13.2(@types/react@19.2.17)(react@19.2.6))(zod@3.25.76(patch_hash=e3f278525e5c146b041a15d08a885b7c177099ea01b94159104fe8b26d1cd00f))
       '@reown/appkit-wallet': 1.7.8(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@6.0.6)
       lit: 3.3.0
     transitivePeerDependencies:
@@ -9780,10 +9820,10 @@ snapshots:
       - valtio
       - zod
 
-  '@reown/appkit-ui@1.7.8(@types/react@19.2.17)(bufferutil@4.1.0)(encoding@0.1.13)(react@19.2.6)(typescript@5.9.3)(utf-8-validate@6.0.6)(zod@3.25.76(patch_hash=n7m4wua237tsnvclvtauns7ije))':
+  '@reown/appkit-ui@1.7.8(@types/react@19.2.17)(bufferutil@4.1.0)(encoding@0.1.13)(react@19.2.6)(typescript@5.9.3)(utf-8-validate@6.0.6)(zod@3.25.76(patch_hash=e3f278525e5c146b041a15d08a885b7c177099ea01b94159104fe8b26d1cd00f))':
     dependencies:
-      '@reown/appkit-common': 1.7.8(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@6.0.6)(zod@3.25.76(patch_hash=n7m4wua237tsnvclvtauns7ije))
-      '@reown/appkit-controllers': 1.7.8(@types/react@19.2.17)(bufferutil@4.1.0)(encoding@0.1.13)(react@19.2.6)(typescript@5.9.3)(utf-8-validate@6.0.6)(zod@3.25.76(patch_hash=n7m4wua237tsnvclvtauns7ije))
+      '@reown/appkit-common': 1.7.8(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@6.0.6)(zod@3.25.76(patch_hash=e3f278525e5c146b041a15d08a885b7c177099ea01b94159104fe8b26d1cd00f))
+      '@reown/appkit-controllers': 1.7.8(@types/react@19.2.17)(bufferutil@4.1.0)(encoding@0.1.13)(react@19.2.6)(typescript@5.9.3)(utf-8-validate@6.0.6)(zod@3.25.76(patch_hash=e3f278525e5c146b041a15d08a885b7c177099ea01b94159104fe8b26d1cd00f))
       '@reown/appkit-wallet': 1.7.8(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@6.0.6)
       lit: 3.3.0
       qrcode: 1.5.3
@@ -9815,16 +9855,16 @@ snapshots:
       - utf-8-validate
       - zod
 
-  '@reown/appkit-utils@1.7.8(@types/react@19.2.17)(bufferutil@4.1.0)(encoding@0.1.13)(react@19.2.6)(typescript@5.9.3)(utf-8-validate@6.0.6)(valtio@1.13.2(@types/react@19.2.17)(react@19.2.6))(zod@3.25.76(patch_hash=n7m4wua237tsnvclvtauns7ije))':
+  '@reown/appkit-utils@1.7.8(@types/react@19.2.17)(bufferutil@4.1.0)(encoding@0.1.13)(react@19.2.6)(typescript@5.9.3)(utf-8-validate@6.0.6)(valtio@1.13.2(@types/react@19.2.17)(react@19.2.6))(zod@3.25.76(patch_hash=e3f278525e5c146b041a15d08a885b7c177099ea01b94159104fe8b26d1cd00f))':
     dependencies:
-      '@reown/appkit-common': 1.7.8(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@6.0.6)(zod@3.25.76(patch_hash=n7m4wua237tsnvclvtauns7ije))
-      '@reown/appkit-controllers': 1.7.8(@types/react@19.2.17)(bufferutil@4.1.0)(encoding@0.1.13)(react@19.2.6)(typescript@5.9.3)(utf-8-validate@6.0.6)(zod@3.25.76(patch_hash=n7m4wua237tsnvclvtauns7ije))
+      '@reown/appkit-common': 1.7.8(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@6.0.6)(zod@3.25.76(patch_hash=e3f278525e5c146b041a15d08a885b7c177099ea01b94159104fe8b26d1cd00f))
+      '@reown/appkit-controllers': 1.7.8(@types/react@19.2.17)(bufferutil@4.1.0)(encoding@0.1.13)(react@19.2.6)(typescript@5.9.3)(utf-8-validate@6.0.6)(zod@3.25.76(patch_hash=e3f278525e5c146b041a15d08a885b7c177099ea01b94159104fe8b26d1cd00f))
       '@reown/appkit-polyfills': 1.7.8
       '@reown/appkit-wallet': 1.7.8(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@6.0.6)
       '@walletconnect/logger': 2.1.2
-      '@walletconnect/universal-provider': 2.21.0(bufferutil@4.1.0)(encoding@0.1.13)(typescript@5.9.3)(utf-8-validate@6.0.6)(zod@3.25.76(patch_hash=n7m4wua237tsnvclvtauns7ije))
+      '@walletconnect/universal-provider': 2.21.0(bufferutil@4.1.0)(encoding@0.1.13)(typescript@5.9.3)(utf-8-validate@6.0.6)(zod@3.25.76(patch_hash=e3f278525e5c146b041a15d08a885b7c177099ea01b94159104fe8b26d1cd00f))
       valtio: 1.13.2(@types/react@19.2.17)(react@19.2.6)
-      viem: 2.48.8(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@6.0.6)(zod@3.25.76(patch_hash=n7m4wua237tsnvclvtauns7ije))
+      viem: 2.48.8(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@6.0.6)(zod@3.25.76(patch_hash=e3f278525e5c146b041a15d08a885b7c177099ea01b94159104fe8b26d1cd00f))
     transitivePeerDependencies:
       - '@azure/app-configuration'
       - '@azure/cosmos'
@@ -9855,30 +9895,30 @@ snapshots:
 
   '@reown/appkit-wallet@1.7.8(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@6.0.6)':
     dependencies:
-      '@reown/appkit-common': 1.7.8(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@6.0.6)(zod@3.22.4(patch_hash=3g53u5nuotvez33fgka6gn7khy))
+      '@reown/appkit-common': 1.7.8(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@6.0.6)(zod@3.22.4(patch_hash=ccbaa35b90d202a6ec28cd0ebbfc82463ee5bc7f20eaa0583ac30d4b9d617ed3))
       '@reown/appkit-polyfills': 1.7.8
       '@walletconnect/logger': 2.1.2
-      zod: 3.22.4(patch_hash=3g53u5nuotvez33fgka6gn7khy)
+      zod: 3.22.4(patch_hash=ccbaa35b90d202a6ec28cd0ebbfc82463ee5bc7f20eaa0583ac30d4b9d617ed3)
     transitivePeerDependencies:
       - bufferutil
       - typescript
       - utf-8-validate
 
-  '@reown/appkit@1.7.8(@types/react@19.2.17)(bufferutil@4.1.0)(encoding@0.1.13)(react@19.2.6)(typescript@5.9.3)(utf-8-validate@6.0.6)(zod@3.25.76(patch_hash=n7m4wua237tsnvclvtauns7ije))':
+  '@reown/appkit@1.7.8(@types/react@19.2.17)(bufferutil@4.1.0)(encoding@0.1.13)(react@19.2.6)(typescript@5.9.3)(utf-8-validate@6.0.6)(zod@3.25.76(patch_hash=e3f278525e5c146b041a15d08a885b7c177099ea01b94159104fe8b26d1cd00f))':
     dependencies:
-      '@reown/appkit-common': 1.7.8(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@6.0.6)(zod@3.25.76(patch_hash=n7m4wua237tsnvclvtauns7ije))
-      '@reown/appkit-controllers': 1.7.8(@types/react@19.2.17)(bufferutil@4.1.0)(encoding@0.1.13)(react@19.2.6)(typescript@5.9.3)(utf-8-validate@6.0.6)(zod@3.25.76(patch_hash=n7m4wua237tsnvclvtauns7ije))
-      '@reown/appkit-pay': 1.7.8(@types/react@19.2.17)(bufferutil@4.1.0)(encoding@0.1.13)(react@19.2.6)(typescript@5.9.3)(utf-8-validate@6.0.6)(zod@3.25.76(patch_hash=n7m4wua237tsnvclvtauns7ije))
+      '@reown/appkit-common': 1.7.8(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@6.0.6)(zod@3.25.76(patch_hash=e3f278525e5c146b041a15d08a885b7c177099ea01b94159104fe8b26d1cd00f))
+      '@reown/appkit-controllers': 1.7.8(@types/react@19.2.17)(bufferutil@4.1.0)(encoding@0.1.13)(react@19.2.6)(typescript@5.9.3)(utf-8-validate@6.0.6)(zod@3.25.76(patch_hash=e3f278525e5c146b041a15d08a885b7c177099ea01b94159104fe8b26d1cd00f))
+      '@reown/appkit-pay': 1.7.8(@types/react@19.2.17)(bufferutil@4.1.0)(encoding@0.1.13)(react@19.2.6)(typescript@5.9.3)(utf-8-validate@6.0.6)(zod@3.25.76(patch_hash=e3f278525e5c146b041a15d08a885b7c177099ea01b94159104fe8b26d1cd00f))
       '@reown/appkit-polyfills': 1.7.8
-      '@reown/appkit-scaffold-ui': 1.7.8(@types/react@19.2.17)(bufferutil@4.1.0)(encoding@0.1.13)(react@19.2.6)(typescript@5.9.3)(utf-8-validate@6.0.6)(valtio@1.13.2(@types/react@19.2.17)(react@19.2.6))(zod@3.25.76(patch_hash=n7m4wua237tsnvclvtauns7ije))
-      '@reown/appkit-ui': 1.7.8(@types/react@19.2.17)(bufferutil@4.1.0)(encoding@0.1.13)(react@19.2.6)(typescript@5.9.3)(utf-8-validate@6.0.6)(zod@3.25.76(patch_hash=n7m4wua237tsnvclvtauns7ije))
-      '@reown/appkit-utils': 1.7.8(@types/react@19.2.17)(bufferutil@4.1.0)(encoding@0.1.13)(react@19.2.6)(typescript@5.9.3)(utf-8-validate@6.0.6)(valtio@1.13.2(@types/react@19.2.17)(react@19.2.6))(zod@3.25.76(patch_hash=n7m4wua237tsnvclvtauns7ije))
+      '@reown/appkit-scaffold-ui': 1.7.8(@types/react@19.2.17)(bufferutil@4.1.0)(encoding@0.1.13)(react@19.2.6)(typescript@5.9.3)(utf-8-validate@6.0.6)(valtio@1.13.2(@types/react@19.2.17)(react@19.2.6))(zod@3.25.76(patch_hash=e3f278525e5c146b041a15d08a885b7c177099ea01b94159104fe8b26d1cd00f))
+      '@reown/appkit-ui': 1.7.8(@types/react@19.2.17)(bufferutil@4.1.0)(encoding@0.1.13)(react@19.2.6)(typescript@5.9.3)(utf-8-validate@6.0.6)(zod@3.25.76(patch_hash=e3f278525e5c146b041a15d08a885b7c177099ea01b94159104fe8b26d1cd00f))
+      '@reown/appkit-utils': 1.7.8(@types/react@19.2.17)(bufferutil@4.1.0)(encoding@0.1.13)(react@19.2.6)(typescript@5.9.3)(utf-8-validate@6.0.6)(valtio@1.13.2(@types/react@19.2.17)(react@19.2.6))(zod@3.25.76(patch_hash=e3f278525e5c146b041a15d08a885b7c177099ea01b94159104fe8b26d1cd00f))
       '@reown/appkit-wallet': 1.7.8(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@6.0.6)
       '@walletconnect/types': 2.21.0
-      '@walletconnect/universal-provider': 2.21.0(bufferutil@4.1.0)(encoding@0.1.13)(typescript@5.9.3)(utf-8-validate@6.0.6)(zod@3.25.76(patch_hash=n7m4wua237tsnvclvtauns7ije))
+      '@walletconnect/universal-provider': 2.21.0(bufferutil@4.1.0)(encoding@0.1.13)(typescript@5.9.3)(utf-8-validate@6.0.6)(zod@3.25.76(patch_hash=e3f278525e5c146b041a15d08a885b7c177099ea01b94159104fe8b26d1cd00f))
       bs58: 6.0.0
       valtio: 1.13.2(@types/react@19.2.17)(react@19.2.6)
-      viem: 2.48.8(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@6.0.6)(zod@3.25.76(patch_hash=n7m4wua237tsnvclvtauns7ije))
+      viem: 2.48.8(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@6.0.6)(zod@3.25.76(patch_hash=e3f278525e5c146b041a15d08a885b7c177099ea01b94159104fe8b26d1cd00f))
     transitivePeerDependencies:
       - '@azure/app-configuration'
       - '@azure/cosmos'
@@ -10090,9 +10130,9 @@ snapshots:
       - utf-8-validate
       - zod
 
-  '@safe-global/safe-apps-provider@0.18.6(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@6.0.6)(zod@3.25.76(patch_hash=n7m4wua237tsnvclvtauns7ije))':
+  '@safe-global/safe-apps-provider@0.18.6(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@6.0.6)(zod@3.25.76(patch_hash=e3f278525e5c146b041a15d08a885b7c177099ea01b94159104fe8b26d1cd00f))':
     dependencies:
-      '@safe-global/safe-apps-sdk': 9.1.0(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@6.0.6)(zod@3.25.76(patch_hash=n7m4wua237tsnvclvtauns7ije))
+      '@safe-global/safe-apps-sdk': 9.1.0(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@6.0.6)(zod@3.25.76(patch_hash=e3f278525e5c146b041a15d08a885b7c177099ea01b94159104fe8b26d1cd00f))
       events: 3.3.0
     transitivePeerDependencies:
       - bufferutil
@@ -10120,10 +10160,10 @@ snapshots:
       - utf-8-validate
       - zod
 
-  '@safe-global/safe-apps-sdk@9.1.0(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@6.0.6)(zod@3.25.76(patch_hash=n7m4wua237tsnvclvtauns7ije))':
+  '@safe-global/safe-apps-sdk@9.1.0(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@6.0.6)(zod@3.25.76(patch_hash=e3f278525e5c146b041a15d08a885b7c177099ea01b94159104fe8b26d1cd00f))':
     dependencies:
       '@safe-global/safe-gateway-typescript-sdk': 3.23.1
-      viem: 2.48.8(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@6.0.6)(zod@3.25.76(patch_hash=n7m4wua237tsnvclvtauns7ije))
+      viem: 2.48.8(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@6.0.6)(zod@3.25.76(patch_hash=e3f278525e5c146b041a15d08a885b7c177099ea01b94159104fe8b26d1cd00f))
     transitivePeerDependencies:
       - bufferutil
       - typescript
@@ -10303,7 +10343,7 @@ snapshots:
     dependencies:
       '@solana/buffer-layout': 4.0.1
       '@solana/web3.js': 1.98.4(bufferutil@4.1.0)(encoding@0.1.13)(typescript@5.9.3)(utf-8-validate@6.0.6)
-      bigint-buffer: 1.1.5(patch_hash=dwoslng34vjzhshmn35zptcf4u)
+      bigint-buffer: 1.1.5(patch_hash=aa24cb8411090a8519abdd8ee66401aa773b2356a0d83391b9ed864ca6aa9cdd)
       bignumber.js: 9.3.1
     transitivePeerDependencies:
       - bufferutil
@@ -11440,19 +11480,19 @@ snapshots:
       convert-source-map: 2.0.0
       tinyrainbow: 3.1.0
 
-  '@wagmi/connectors@6.2.0(voefnx4x4svvt33epphglx3olm)':
+  '@wagmi/connectors@6.2.0(f59db6cec4ecb5d716f12ebdebe5843c)':
     dependencies:
-      '@base-org/account': 2.4.0(@types/react@19.2.17)(bufferutil@4.1.0)(fastestsmallesttextencoderdecoder@1.0.22)(react@19.2.6)(typescript@5.9.3)(use-sync-external-store@1.4.0(react@19.2.6))(utf-8-validate@6.0.6)(zod@3.25.76(patch_hash=n7m4wua237tsnvclvtauns7ije))
-      '@coinbase/wallet-sdk': 4.3.6(@types/react@19.2.17)(bufferutil@4.1.0)(react@19.2.6)(typescript@5.9.3)(use-sync-external-store@1.4.0(react@19.2.6))(utf-8-validate@6.0.6)(zod@3.25.76(patch_hash=n7m4wua237tsnvclvtauns7ije))
-      '@gemini-wallet/core': 0.3.2(viem@2.48.8(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@6.0.6)(zod@3.25.76(patch_hash=n7m4wua237tsnvclvtauns7ije)))
+      '@base-org/account': 2.4.0(@types/react@19.2.17)(bufferutil@4.1.0)(fastestsmallesttextencoderdecoder@1.0.22)(react@19.2.6)(typescript@5.9.3)(use-sync-external-store@1.4.0(react@19.2.6))(utf-8-validate@6.0.6)(zod@3.25.76(patch_hash=e3f278525e5c146b041a15d08a885b7c177099ea01b94159104fe8b26d1cd00f))
+      '@coinbase/wallet-sdk': 4.3.6(@types/react@19.2.17)(bufferutil@4.1.0)(react@19.2.6)(typescript@5.9.3)(use-sync-external-store@1.4.0(react@19.2.6))(utf-8-validate@6.0.6)(zod@3.25.76(patch_hash=e3f278525e5c146b041a15d08a885b7c177099ea01b94159104fe8b26d1cd00f))
+      '@gemini-wallet/core': 0.3.2(viem@2.48.8(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@6.0.6)(zod@3.25.76(patch_hash=e3f278525e5c146b041a15d08a885b7c177099ea01b94159104fe8b26d1cd00f)))
       '@metamask/sdk': 0.33.1(bufferutil@4.1.0)(encoding@0.1.13)(utf-8-validate@6.0.6)
-      '@safe-global/safe-apps-provider': 0.18.6(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@6.0.6)(zod@3.25.76(patch_hash=n7m4wua237tsnvclvtauns7ije))
-      '@safe-global/safe-apps-sdk': 9.1.0(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@6.0.6)(zod@3.25.76(patch_hash=n7m4wua237tsnvclvtauns7ije))
-      '@wagmi/core': 2.22.1(@tanstack/query-core@5.101.0)(@types/react@19.2.17)(react@19.2.6)(typescript@5.9.3)(use-sync-external-store@1.4.0(react@19.2.6))(viem@2.48.8(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@6.0.6)(zod@3.25.76(patch_hash=n7m4wua237tsnvclvtauns7ije)))
-      '@walletconnect/ethereum-provider': 2.21.1(@types/react@19.2.17)(bufferutil@4.1.0)(encoding@0.1.13)(react@19.2.6)(typescript@5.9.3)(utf-8-validate@6.0.6)(zod@3.25.76(patch_hash=n7m4wua237tsnvclvtauns7ije))
+      '@safe-global/safe-apps-provider': 0.18.6(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@6.0.6)(zod@3.25.76(patch_hash=e3f278525e5c146b041a15d08a885b7c177099ea01b94159104fe8b26d1cd00f))
+      '@safe-global/safe-apps-sdk': 9.1.0(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@6.0.6)(zod@3.25.76(patch_hash=e3f278525e5c146b041a15d08a885b7c177099ea01b94159104fe8b26d1cd00f))
+      '@wagmi/core': 2.22.1(@tanstack/query-core@5.101.0)(@types/react@19.2.17)(react@19.2.6)(typescript@5.9.3)(use-sync-external-store@1.4.0(react@19.2.6))(viem@2.48.8(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@6.0.6)(zod@3.25.76(patch_hash=e3f278525e5c146b041a15d08a885b7c177099ea01b94159104fe8b26d1cd00f)))
+      '@walletconnect/ethereum-provider': 2.21.1(@types/react@19.2.17)(bufferutil@4.1.0)(encoding@0.1.13)(react@19.2.6)(typescript@5.9.3)(utf-8-validate@6.0.6)(zod@3.25.76(patch_hash=e3f278525e5c146b041a15d08a885b7c177099ea01b94159104fe8b26d1cd00f))
       cbw-sdk: '@coinbase/wallet-sdk@3.9.3'
-      porto: 0.2.35(@tanstack/react-query@5.101.0(react@19.2.6))(@types/react@19.2.17)(@wagmi/core@2.22.1(@tanstack/query-core@5.101.0)(@types/react@19.2.17)(react@19.2.6)(typescript@5.9.3)(use-sync-external-store@1.4.0(react@19.2.6))(viem@2.48.8(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@6.0.6)(zod@3.25.76(patch_hash=n7m4wua237tsnvclvtauns7ije))))(react@19.2.6)(typescript@5.9.3)(use-sync-external-store@1.4.0(react@19.2.6))(viem@2.48.8(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@6.0.6)(zod@3.25.76(patch_hash=n7m4wua237tsnvclvtauns7ije)))(wagmi@2.19.5(@tanstack/query-core@5.101.0)(@tanstack/react-query@5.101.0(react@19.2.6))(@types/react@19.2.17)(bufferutil@4.1.0)(encoding@0.1.13)(fastestsmallesttextencoderdecoder@1.0.22)(react@19.2.6)(typescript@5.9.3)(utf-8-validate@6.0.6)(viem@2.48.8(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@6.0.6)(zod@3.25.76(patch_hash=n7m4wua237tsnvclvtauns7ije)))(zod@3.25.76(patch_hash=n7m4wua237tsnvclvtauns7ije)))
-      viem: 2.48.8(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@6.0.6)(zod@3.25.76(patch_hash=n7m4wua237tsnvclvtauns7ije))
+      porto: 0.2.35(ba3bdb1f7f8c57d73bae1318a2a991f3)
+      viem: 2.48.8(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@6.0.6)(zod@3.25.76(patch_hash=e3f278525e5c146b041a15d08a885b7c177099ea01b94159104fe8b26d1cd00f))
     optionalDependencies:
       typescript: 5.9.3
     transitivePeerDependencies:
@@ -11494,11 +11534,11 @@ snapshots:
       - wagmi
       - zod
 
-  '@wagmi/core@2.22.1(@tanstack/query-core@5.101.0)(@types/react@19.2.17)(react@19.2.6)(typescript@5.9.3)(use-sync-external-store@1.4.0(react@19.2.6))(viem@2.48.8(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@6.0.6)(zod@3.25.76(patch_hash=n7m4wua237tsnvclvtauns7ije)))':
+  '@wagmi/core@2.22.1(@tanstack/query-core@5.101.0)(@types/react@19.2.17)(react@19.2.6)(typescript@5.9.3)(use-sync-external-store@1.4.0(react@19.2.6))(viem@2.48.8(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@6.0.6)(zod@3.25.76(patch_hash=e3f278525e5c146b041a15d08a885b7c177099ea01b94159104fe8b26d1cd00f)))':
     dependencies:
       eventemitter3: 5.0.1
       mipd: 0.0.7(typescript@5.9.3)
-      viem: 2.48.8(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@6.0.6)(zod@3.25.76(patch_hash=n7m4wua237tsnvclvtauns7ije))
+      viem: 2.48.8(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@6.0.6)(zod@3.25.76(patch_hash=e3f278525e5c146b041a15d08a885b7c177099ea01b94159104fe8b26d1cd00f))
       zustand: 5.0.0(@types/react@19.2.17)(react@19.2.6)(use-sync-external-store@1.4.0(react@19.2.6))
     optionalDependencies:
       '@tanstack/query-core': 5.101.0
@@ -11519,7 +11559,7 @@ snapshots:
     dependencies:
       '@wallet-standard/base': 1.1.1
 
-  '@walletconnect/core@2.21.0(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@6.0.6)(zod@3.25.76(patch_hash=n7m4wua237tsnvclvtauns7ije))':
+  '@walletconnect/core@2.21.0(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@6.0.6)(zod@3.25.76(patch_hash=e3f278525e5c146b041a15d08a885b7c177099ea01b94159104fe8b26d1cd00f))':
     dependencies:
       '@walletconnect/heartbeat': 1.2.2
       '@walletconnect/jsonrpc-provider': 1.0.14
@@ -11533,7 +11573,7 @@ snapshots:
       '@walletconnect/safe-json': 1.0.2
       '@walletconnect/time': 1.0.2
       '@walletconnect/types': 2.21.0
-      '@walletconnect/utils': 2.21.0(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@6.0.6)(zod@3.25.76(patch_hash=n7m4wua237tsnvclvtauns7ije))
+      '@walletconnect/utils': 2.21.0(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@6.0.6)(zod@3.25.76(patch_hash=e3f278525e5c146b041a15d08a885b7c177099ea01b94159104fe8b26d1cd00f))
       '@walletconnect/window-getters': 1.0.1
       es-toolkit: 1.33.0
       events: 3.3.0
@@ -11563,7 +11603,7 @@ snapshots:
       - utf-8-validate
       - zod
 
-  '@walletconnect/core@2.21.1(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@6.0.6)':
+  '@walletconnect/core@2.21.1(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@6.0.6)(zod@3.25.76(patch_hash=e3f278525e5c146b041a15d08a885b7c177099ea01b94159104fe8b26d1cd00f))':
     dependencies:
       '@walletconnect/heartbeat': 1.2.2
       '@walletconnect/jsonrpc-provider': 1.0.14
@@ -11577,7 +11617,7 @@ snapshots:
       '@walletconnect/safe-json': 1.0.2
       '@walletconnect/time': 1.0.2
       '@walletconnect/types': 2.21.1
-      '@walletconnect/utils': 2.21.1(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@6.0.6)
+      '@walletconnect/utils': 2.21.1(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@6.0.6)(zod@3.25.76(patch_hash=e3f278525e5c146b041a15d08a885b7c177099ea01b94159104fe8b26d1cd00f))
       '@walletconnect/window-getters': 1.0.1
       es-toolkit: 1.33.0
       events: 3.3.0
@@ -11607,7 +11647,7 @@ snapshots:
       - utf-8-validate
       - zod
 
-  '@walletconnect/core@2.21.1(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@6.0.6)(zod@3.25.76(patch_hash=n7m4wua237tsnvclvtauns7ije))':
+  '@walletconnect/core@2.21.1(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@6.0.6)(zod@4.6.7)':
     dependencies:
       '@walletconnect/heartbeat': 1.2.2
       '@walletconnect/jsonrpc-provider': 1.0.14
@@ -11621,7 +11661,7 @@ snapshots:
       '@walletconnect/safe-json': 1.0.2
       '@walletconnect/time': 1.0.2
       '@walletconnect/types': 2.21.1
-      '@walletconnect/utils': 2.21.1(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@6.0.6)(zod@3.25.76(patch_hash=n7m4wua237tsnvclvtauns7ije))
+      '@walletconnect/utils': 2.21.1(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@6.0.6)(zod@4.6.7)
       '@walletconnect/window-getters': 1.0.1
       es-toolkit: 1.33.0
       events: 3.3.0
@@ -11655,18 +11695,18 @@ snapshots:
     dependencies:
       tslib: 1.14.1
 
-  '@walletconnect/ethereum-provider@2.21.1(@types/react@19.2.17)(bufferutil@4.1.0)(encoding@0.1.13)(react@19.2.6)(typescript@5.9.3)(utf-8-validate@6.0.6)(zod@3.25.76(patch_hash=n7m4wua237tsnvclvtauns7ije))':
+  '@walletconnect/ethereum-provider@2.21.1(@types/react@19.2.17)(bufferutil@4.1.0)(encoding@0.1.13)(react@19.2.6)(typescript@5.9.3)(utf-8-validate@6.0.6)(zod@3.25.76(patch_hash=e3f278525e5c146b041a15d08a885b7c177099ea01b94159104fe8b26d1cd00f))':
     dependencies:
-      '@reown/appkit': 1.7.8(@types/react@19.2.17)(bufferutil@4.1.0)(encoding@0.1.13)(react@19.2.6)(typescript@5.9.3)(utf-8-validate@6.0.6)(zod@3.25.76(patch_hash=n7m4wua237tsnvclvtauns7ije))
+      '@reown/appkit': 1.7.8(@types/react@19.2.17)(bufferutil@4.1.0)(encoding@0.1.13)(react@19.2.6)(typescript@5.9.3)(utf-8-validate@6.0.6)(zod@3.25.76(patch_hash=e3f278525e5c146b041a15d08a885b7c177099ea01b94159104fe8b26d1cd00f))
       '@walletconnect/jsonrpc-http-connection': 1.0.8(encoding@0.1.13)
       '@walletconnect/jsonrpc-provider': 1.0.14
       '@walletconnect/jsonrpc-types': 1.0.4
       '@walletconnect/jsonrpc-utils': 1.0.8
       '@walletconnect/keyvaluestorage': 1.1.1
-      '@walletconnect/sign-client': 2.21.1(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@6.0.6)(zod@3.25.76(patch_hash=n7m4wua237tsnvclvtauns7ije))
+      '@walletconnect/sign-client': 2.21.1(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@6.0.6)(zod@3.25.76(patch_hash=e3f278525e5c146b041a15d08a885b7c177099ea01b94159104fe8b26d1cd00f))
       '@walletconnect/types': 2.21.1
-      '@walletconnect/universal-provider': 2.21.1(bufferutil@4.1.0)(encoding@0.1.13)(typescript@5.9.3)(utf-8-validate@6.0.6)(zod@3.25.76(patch_hash=n7m4wua237tsnvclvtauns7ije))
-      '@walletconnect/utils': 2.21.1(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@6.0.6)(zod@3.25.76(patch_hash=n7m4wua237tsnvclvtauns7ije))
+      '@walletconnect/universal-provider': 2.21.1(bufferutil@4.1.0)(encoding@0.1.13)(typescript@5.9.3)(utf-8-validate@6.0.6)(zod@3.25.76(patch_hash=e3f278525e5c146b041a15d08a885b7c177099ea01b94159104fe8b26d1cd00f))
+      '@walletconnect/utils': 2.21.1(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@6.0.6)(zod@3.25.76(patch_hash=e3f278525e5c146b041a15d08a885b7c177099ea01b94159104fe8b26d1cd00f))
       events: 3.3.0
     transitivePeerDependencies:
       - '@azure/app-configuration'
@@ -11789,16 +11829,16 @@ snapshots:
     dependencies:
       tslib: 1.14.1
 
-  '@walletconnect/sign-client@2.21.0(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@6.0.6)(zod@3.25.76(patch_hash=n7m4wua237tsnvclvtauns7ije))':
+  '@walletconnect/sign-client@2.21.0(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@6.0.6)(zod@3.25.76(patch_hash=e3f278525e5c146b041a15d08a885b7c177099ea01b94159104fe8b26d1cd00f))':
     dependencies:
-      '@walletconnect/core': 2.21.0(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@6.0.6)(zod@3.25.76(patch_hash=n7m4wua237tsnvclvtauns7ije))
+      '@walletconnect/core': 2.21.0(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@6.0.6)(zod@3.25.76(patch_hash=e3f278525e5c146b041a15d08a885b7c177099ea01b94159104fe8b26d1cd00f))
       '@walletconnect/events': 1.0.1
       '@walletconnect/heartbeat': 1.2.2
       '@walletconnect/jsonrpc-utils': 1.0.8
       '@walletconnect/logger': 2.1.2
       '@walletconnect/time': 1.0.2
       '@walletconnect/types': 2.21.0
-      '@walletconnect/utils': 2.21.0(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@6.0.6)(zod@3.25.76(patch_hash=n7m4wua237tsnvclvtauns7ije))
+      '@walletconnect/utils': 2.21.0(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@6.0.6)(zod@3.25.76(patch_hash=e3f278525e5c146b041a15d08a885b7c177099ea01b94159104fe8b26d1cd00f))
       events: 3.3.0
     transitivePeerDependencies:
       - '@azure/app-configuration'
@@ -11825,16 +11865,16 @@ snapshots:
       - utf-8-validate
       - zod
 
-  '@walletconnect/sign-client@2.21.1(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@6.0.6)':
+  '@walletconnect/sign-client@2.21.1(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@6.0.6)(zod@3.25.76(patch_hash=e3f278525e5c146b041a15d08a885b7c177099ea01b94159104fe8b26d1cd00f))':
     dependencies:
-      '@walletconnect/core': 2.21.1(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@6.0.6)
+      '@walletconnect/core': 2.21.1(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@6.0.6)(zod@3.25.76(patch_hash=e3f278525e5c146b041a15d08a885b7c177099ea01b94159104fe8b26d1cd00f))
       '@walletconnect/events': 1.0.1
       '@walletconnect/heartbeat': 1.2.2
       '@walletconnect/jsonrpc-utils': 1.0.8
       '@walletconnect/logger': 2.1.2
       '@walletconnect/time': 1.0.2
       '@walletconnect/types': 2.21.1
-      '@walletconnect/utils': 2.21.1(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@6.0.6)
+      '@walletconnect/utils': 2.21.1(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@6.0.6)(zod@3.25.76(patch_hash=e3f278525e5c146b041a15d08a885b7c177099ea01b94159104fe8b26d1cd00f))
       events: 3.3.0
     transitivePeerDependencies:
       - '@azure/app-configuration'
@@ -11861,16 +11901,16 @@ snapshots:
       - utf-8-validate
       - zod
 
-  '@walletconnect/sign-client@2.21.1(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@6.0.6)(zod@3.25.76(patch_hash=n7m4wua237tsnvclvtauns7ije))':
+  '@walletconnect/sign-client@2.21.1(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@6.0.6)(zod@4.6.7)':
     dependencies:
-      '@walletconnect/core': 2.21.1(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@6.0.6)(zod@3.25.76(patch_hash=n7m4wua237tsnvclvtauns7ije))
+      '@walletconnect/core': 2.21.1(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@6.0.6)(zod@4.6.7)
       '@walletconnect/events': 1.0.1
       '@walletconnect/heartbeat': 1.2.2
       '@walletconnect/jsonrpc-utils': 1.0.8
       '@walletconnect/logger': 2.1.2
       '@walletconnect/time': 1.0.2
       '@walletconnect/types': 2.21.1
-      '@walletconnect/utils': 2.21.1(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@6.0.6)(zod@3.25.76(patch_hash=n7m4wua237tsnvclvtauns7ije))
+      '@walletconnect/utils': 2.21.1(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@6.0.6)(zod@4.6.7)
       events: 3.3.0
     transitivePeerDependencies:
       - '@azure/app-configuration'
@@ -11959,7 +11999,7 @@ snapshots:
       - ioredis
       - uploadthing
 
-  '@walletconnect/universal-provider@2.21.0(bufferutil@4.1.0)(encoding@0.1.13)(typescript@5.9.3)(utf-8-validate@6.0.6)(zod@3.25.76(patch_hash=n7m4wua237tsnvclvtauns7ije))':
+  '@walletconnect/universal-provider@2.21.0(bufferutil@4.1.0)(encoding@0.1.13)(typescript@5.9.3)(utf-8-validate@6.0.6)(zod@3.25.76(patch_hash=e3f278525e5c146b041a15d08a885b7c177099ea01b94159104fe8b26d1cd00f))':
     dependencies:
       '@walletconnect/events': 1.0.1
       '@walletconnect/jsonrpc-http-connection': 1.0.8(encoding@0.1.13)
@@ -11968,9 +12008,9 @@ snapshots:
       '@walletconnect/jsonrpc-utils': 1.0.8
       '@walletconnect/keyvaluestorage': 1.1.1
       '@walletconnect/logger': 2.1.2
-      '@walletconnect/sign-client': 2.21.0(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@6.0.6)(zod@3.25.76(patch_hash=n7m4wua237tsnvclvtauns7ije))
+      '@walletconnect/sign-client': 2.21.0(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@6.0.6)(zod@3.25.76(patch_hash=e3f278525e5c146b041a15d08a885b7c177099ea01b94159104fe8b26d1cd00f))
       '@walletconnect/types': 2.21.0
-      '@walletconnect/utils': 2.21.0(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@6.0.6)(zod@3.25.76(patch_hash=n7m4wua237tsnvclvtauns7ije))
+      '@walletconnect/utils': 2.21.0(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@6.0.6)(zod@3.25.76(patch_hash=e3f278525e5c146b041a15d08a885b7c177099ea01b94159104fe8b26d1cd00f))
       es-toolkit: 1.33.0
       events: 3.3.0
     transitivePeerDependencies:
@@ -11999,7 +12039,7 @@ snapshots:
       - utf-8-validate
       - zod
 
-  '@walletconnect/universal-provider@2.21.1(bufferutil@4.1.0)(encoding@0.1.13)(typescript@5.9.3)(utf-8-validate@6.0.6)(zod@3.25.76(patch_hash=n7m4wua237tsnvclvtauns7ije))':
+  '@walletconnect/universal-provider@2.21.1(bufferutil@4.1.0)(encoding@0.1.13)(typescript@5.9.3)(utf-8-validate@6.0.6)(zod@3.25.76(patch_hash=e3f278525e5c146b041a15d08a885b7c177099ea01b94159104fe8b26d1cd00f))':
     dependencies:
       '@walletconnect/events': 1.0.1
       '@walletconnect/jsonrpc-http-connection': 1.0.8(encoding@0.1.13)
@@ -12008,9 +12048,9 @@ snapshots:
       '@walletconnect/jsonrpc-utils': 1.0.8
       '@walletconnect/keyvaluestorage': 1.1.1
       '@walletconnect/logger': 2.1.2
-      '@walletconnect/sign-client': 2.21.1(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@6.0.6)(zod@3.25.76(patch_hash=n7m4wua237tsnvclvtauns7ije))
+      '@walletconnect/sign-client': 2.21.1(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@6.0.6)(zod@3.25.76(patch_hash=e3f278525e5c146b041a15d08a885b7c177099ea01b94159104fe8b26d1cd00f))
       '@walletconnect/types': 2.21.1
-      '@walletconnect/utils': 2.21.1(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@6.0.6)(zod@3.25.76(patch_hash=n7m4wua237tsnvclvtauns7ije))
+      '@walletconnect/utils': 2.21.1(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@6.0.6)(zod@3.25.76(patch_hash=e3f278525e5c146b041a15d08a885b7c177099ea01b94159104fe8b26d1cd00f))
       es-toolkit: 1.33.0
       events: 3.3.0
     transitivePeerDependencies:
@@ -12039,7 +12079,7 @@ snapshots:
       - utf-8-validate
       - zod
 
-  '@walletconnect/utils@2.21.0(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@6.0.6)(zod@3.25.76(patch_hash=n7m4wua237tsnvclvtauns7ije))':
+  '@walletconnect/utils@2.21.0(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@6.0.6)(zod@3.25.76(patch_hash=e3f278525e5c146b041a15d08a885b7c177099ea01b94159104fe8b26d1cd00f))':
     dependencies:
       '@noble/ciphers': 1.2.1
       '@noble/curves': 1.8.1
@@ -12057,7 +12097,7 @@ snapshots:
       detect-browser: 5.3.0
       query-string: 7.1.3
       uint8arrays: 3.1.0
-      viem: 2.23.2(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@6.0.6)(zod@3.25.76(patch_hash=n7m4wua237tsnvclvtauns7ije))
+      viem: 2.23.2(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@6.0.6)(zod@3.25.76(patch_hash=e3f278525e5c146b041a15d08a885b7c177099ea01b94159104fe8b26d1cd00f))
     transitivePeerDependencies:
       - '@azure/app-configuration'
       - '@azure/cosmos'
@@ -12083,7 +12123,7 @@ snapshots:
       - utf-8-validate
       - zod
 
-  '@walletconnect/utils@2.21.1(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@6.0.6)':
+  '@walletconnect/utils@2.21.1(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@6.0.6)(zod@3.25.76(patch_hash=e3f278525e5c146b041a15d08a885b7c177099ea01b94159104fe8b26d1cd00f))':
     dependencies:
       '@noble/ciphers': 1.2.1
       '@noble/curves': 1.8.1
@@ -12101,7 +12141,7 @@ snapshots:
       detect-browser: 5.3.0
       query-string: 7.1.3
       uint8arrays: 3.1.0
-      viem: 2.23.2(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@6.0.6)
+      viem: 2.23.2(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@6.0.6)(zod@3.25.76(patch_hash=e3f278525e5c146b041a15d08a885b7c177099ea01b94159104fe8b26d1cd00f))
     transitivePeerDependencies:
       - '@azure/app-configuration'
       - '@azure/cosmos'
@@ -12127,7 +12167,7 @@ snapshots:
       - utf-8-validate
       - zod
 
-  '@walletconnect/utils@2.21.1(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@6.0.6)(zod@3.25.76(patch_hash=n7m4wua237tsnvclvtauns7ije))':
+  '@walletconnect/utils@2.21.1(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@6.0.6)(zod@4.6.7)':
     dependencies:
       '@noble/ciphers': 1.2.1
       '@noble/curves': 1.8.1
@@ -12145,7 +12185,7 @@ snapshots:
       detect-browser: 5.3.0
       query-string: 7.1.3
       uint8arrays: 3.1.0
-      viem: 2.23.2(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@6.0.6)(zod@3.25.76(patch_hash=n7m4wua237tsnvclvtauns7ije))
+      viem: 2.23.2(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@6.0.6)(zod@4.6.7)
     transitivePeerDependencies:
       - '@azure/app-configuration'
       - '@azure/cosmos'
@@ -12182,13 +12222,13 @@ snapshots:
 
   '@x402/core@2.16.0':
     dependencies:
-      zod: 3.25.76(patch_hash=n7m4wua237tsnvclvtauns7ije)
+      zod: 3.25.76(patch_hash=e3f278525e5c146b041a15d08a885b7c177099ea01b94159104fe8b26d1cd00f)
 
   '@x402/evm@2.16.0(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@6.0.6)':
     dependencies:
       '@x402/core': 2.16.0
-      viem: 2.53.1(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@6.0.6)(zod@3.25.76(patch_hash=n7m4wua237tsnvclvtauns7ije))
-      zod: 3.25.76(patch_hash=n7m4wua237tsnvclvtauns7ije)
+      viem: 2.53.1(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@6.0.6)(zod@3.25.76(patch_hash=e3f278525e5c146b041a15d08a885b7c177099ea01b94159104fe8b26d1cd00f))
+      zod: 3.25.76(patch_hash=e3f278525e5c146b041a15d08a885b7c177099ea01b94159104fe8b26d1cd00f)
     transitivePeerDependencies:
       - bufferutil
       - typescript
@@ -12208,92 +12248,93 @@ snapshots:
     transitivePeerDependencies:
       - '@solana/sysvars'
 
-  '@zerodev/ecdsa-validator@5.4.9(@zerodev/sdk@5.5.10(viem@2.48.8(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@6.0.6)(zod@3.25.76(patch_hash=n7m4wua237tsnvclvtauns7ije))))(viem@2.38.3(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@6.0.6)(zod@3.25.76(patch_hash=n7m4wua237tsnvclvtauns7ije)))':
+  '@zerodev/ecdsa-validator@5.4.9(@zerodev/sdk@5.5.10(viem@2.48.8(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@6.0.6)(zod@3.25.76(patch_hash=e3f278525e5c146b041a15d08a885b7c177099ea01b94159104fe8b26d1cd00f))))(viem@2.38.3(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@6.0.6)(zod@3.25.76(patch_hash=e3f278525e5c146b041a15d08a885b7c177099ea01b94159104fe8b26d1cd00f)))':
     dependencies:
-      '@zerodev/sdk': 5.5.10(viem@2.38.3(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@6.0.6)(zod@3.25.76(patch_hash=n7m4wua237tsnvclvtauns7ije)))
-      viem: 2.38.3(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@6.0.6)(zod@3.25.76(patch_hash=n7m4wua237tsnvclvtauns7ije))
+      '@zerodev/sdk': 5.5.10(viem@2.38.3(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@6.0.6)(zod@3.25.76(patch_hash=e3f278525e5c146b041a15d08a885b7c177099ea01b94159104fe8b26d1cd00f)))
+      viem: 2.38.3(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@6.0.6)(zod@3.25.76(patch_hash=e3f278525e5c146b041a15d08a885b7c177099ea01b94159104fe8b26d1cd00f))
 
-  '@zerodev/intent@0.0.24(@zerodev/webauthn-key@5.5.0(viem@2.48.8(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@6.0.6)(zod@3.25.76(patch_hash=n7m4wua237tsnvclvtauns7ije))))(viem@2.38.3(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@6.0.6)(zod@3.25.76(patch_hash=n7m4wua237tsnvclvtauns7ije)))':
+  '@zerodev/intent@0.0.24(@zerodev/webauthn-key@5.5.0(viem@2.48.8(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@6.0.6)(zod@3.25.76(patch_hash=e3f278525e5c146b041a15d08a885b7c177099ea01b94159104fe8b26d1cd00f))))(viem@2.38.3(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@6.0.6)(zod@3.25.76(patch_hash=e3f278525e5c146b041a15d08a885b7c177099ea01b94159104fe8b26d1cd00f)))':
     dependencies:
-      '@zerodev/ecdsa-validator': 5.4.9(@zerodev/sdk@5.5.10(viem@2.48.8(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@6.0.6)(zod@3.25.76(patch_hash=n7m4wua237tsnvclvtauns7ije))))(viem@2.38.3(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@6.0.6)(zod@3.25.76(patch_hash=n7m4wua237tsnvclvtauns7ije)))
-      '@zerodev/multi-chain-ecdsa-validator': 5.4.5(@zerodev/sdk@5.5.10(viem@2.48.8(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@6.0.6)(zod@3.25.76(patch_hash=n7m4wua237tsnvclvtauns7ije))))(@zerodev/webauthn-key@5.5.0(viem@2.48.8(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@6.0.6)(zod@3.25.76(patch_hash=n7m4wua237tsnvclvtauns7ije))))(viem@2.38.3(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@6.0.6)(zod@3.25.76(patch_hash=n7m4wua237tsnvclvtauns7ije)))
-      '@zerodev/sdk': 5.5.10(viem@2.38.3(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@6.0.6)(zod@3.25.76(patch_hash=n7m4wua237tsnvclvtauns7ije)))
-      viem: 2.38.3(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@6.0.6)(zod@3.25.76(patch_hash=n7m4wua237tsnvclvtauns7ije))
+      '@zerodev/ecdsa-validator': 5.4.9(@zerodev/sdk@5.5.10(viem@2.48.8(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@6.0.6)(zod@3.25.76(patch_hash=e3f278525e5c146b041a15d08a885b7c177099ea01b94159104fe8b26d1cd00f))))(viem@2.38.3(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@6.0.6)(zod@3.25.76(patch_hash=e3f278525e5c146b041a15d08a885b7c177099ea01b94159104fe8b26d1cd00f)))
+      '@zerodev/multi-chain-ecdsa-validator': 5.4.5(@zerodev/sdk@5.5.10(viem@2.48.8(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@6.0.6)(zod@3.25.76(patch_hash=e3f278525e5c146b041a15d08a885b7c177099ea01b94159104fe8b26d1cd00f))))(@zerodev/webauthn-key@5.5.0(viem@2.48.8(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@6.0.6)(zod@3.25.76(patch_hash=e3f278525e5c146b041a15d08a885b7c177099ea01b94159104fe8b26d1cd00f))))(viem@2.38.3(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@6.0.6)(zod@3.25.76(patch_hash=e3f278525e5c146b041a15d08a885b7c177099ea01b94159104fe8b26d1cd00f)))
+      '@zerodev/sdk': 5.5.10(viem@2.38.3(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@6.0.6)(zod@3.25.76(patch_hash=e3f278525e5c146b041a15d08a885b7c177099ea01b94159104fe8b26d1cd00f)))
+      viem: 2.38.3(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@6.0.6)(zod@3.25.76(patch_hash=e3f278525e5c146b041a15d08a885b7c177099ea01b94159104fe8b26d1cd00f))
     transitivePeerDependencies:
       - '@zerodev/webauthn-key'
 
-  '@zerodev/multi-chain-ecdsa-validator@5.4.5(@zerodev/sdk@5.5.10(viem@2.48.8(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@6.0.6)(zod@3.25.76(patch_hash=n7m4wua237tsnvclvtauns7ije))))(@zerodev/webauthn-key@5.5.0(viem@2.48.8(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@6.0.6)(zod@3.25.76(patch_hash=n7m4wua237tsnvclvtauns7ije))))(viem@2.38.3(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@6.0.6)(zod@3.25.76(patch_hash=n7m4wua237tsnvclvtauns7ije)))':
+  '@zerodev/multi-chain-ecdsa-validator@5.4.5(@zerodev/sdk@5.5.10(viem@2.48.8(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@6.0.6)(zod@3.25.76(patch_hash=e3f278525e5c146b041a15d08a885b7c177099ea01b94159104fe8b26d1cd00f))))(@zerodev/webauthn-key@5.5.0(viem@2.48.8(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@6.0.6)(zod@3.25.76(patch_hash=e3f278525e5c146b041a15d08a885b7c177099ea01b94159104fe8b26d1cd00f))))(viem@2.38.3(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@6.0.6)(zod@3.25.76(patch_hash=e3f278525e5c146b041a15d08a885b7c177099ea01b94159104fe8b26d1cd00f)))':
     dependencies:
       '@simplewebauthn/browser': 9.0.1
       '@simplewebauthn/typescript-types': 8.3.4
-      '@zerodev/sdk': 5.5.10(viem@2.38.3(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@6.0.6)(zod@3.25.76(patch_hash=n7m4wua237tsnvclvtauns7ije)))
-      '@zerodev/webauthn-key': 5.5.0(viem@2.48.8(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@6.0.6)(zod@3.25.76(patch_hash=n7m4wua237tsnvclvtauns7ije)))
+      '@zerodev/sdk': 5.5.10(viem@2.38.3(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@6.0.6)(zod@3.25.76(patch_hash=e3f278525e5c146b041a15d08a885b7c177099ea01b94159104fe8b26d1cd00f)))
+      '@zerodev/webauthn-key': 5.5.0(viem@2.48.8(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@6.0.6)(zod@3.25.76(patch_hash=e3f278525e5c146b041a15d08a885b7c177099ea01b94159104fe8b26d1cd00f)))
       merkletreejs: 0.3.11
-      viem: 2.38.3(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@6.0.6)(zod@3.25.76(patch_hash=n7m4wua237tsnvclvtauns7ije))
+      viem: 2.38.3(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@6.0.6)(zod@3.25.76(patch_hash=e3f278525e5c146b041a15d08a885b7c177099ea01b94159104fe8b26d1cd00f))
 
-  '@zerodev/sdk@5.5.10(viem@2.38.3(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@6.0.6)(zod@3.25.76(patch_hash=n7m4wua237tsnvclvtauns7ije)))':
+  '@zerodev/sdk@5.5.10(viem@2.38.3(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@6.0.6)(zod@3.25.76(patch_hash=e3f278525e5c146b041a15d08a885b7c177099ea01b94159104fe8b26d1cd00f)))':
     dependencies:
       semver: 7.8.5
-      viem: 2.38.3(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@6.0.6)(zod@3.25.76(patch_hash=n7m4wua237tsnvclvtauns7ije))
+      viem: 2.38.3(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@6.0.6)(zod@3.25.76(patch_hash=e3f278525e5c146b041a15d08a885b7c177099ea01b94159104fe8b26d1cd00f))
 
-  '@zerodev/webauthn-key@5.5.0(viem@2.48.8(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@6.0.6)(zod@3.25.76(patch_hash=n7m4wua237tsnvclvtauns7ije)))':
+  '@zerodev/webauthn-key@5.5.0(viem@2.48.8(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@6.0.6)(zod@3.25.76(patch_hash=e3f278525e5c146b041a15d08a885b7c177099ea01b94159104fe8b26d1cd00f)))':
     dependencies:
       '@noble/curves': 1.9.7
       '@simplewebauthn/browser': 8.3.7
       '@simplewebauthn/types': 12.0.0
-      viem: 2.48.8(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@6.0.6)(zod@3.25.76(patch_hash=n7m4wua237tsnvclvtauns7ije))
+      viem: 2.48.8(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@6.0.6)(zod@3.25.76(patch_hash=e3f278525e5c146b041a15d08a885b7c177099ea01b94159104fe8b26d1cd00f))
 
-  '@zoralabs/coins-sdk@0.2.8(abitype@1.2.3(typescript@5.9.3)(zod@3.25.76(patch_hash=n7m4wua237tsnvclvtauns7ije)))(viem@2.38.3(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@6.0.6)(zod@3.25.76(patch_hash=n7m4wua237tsnvclvtauns7ije)))':
+  '@zoralabs/coins-sdk@0.2.8(abitype@1.2.3(typescript@5.9.3)(zod@3.25.76(patch_hash=e3f278525e5c146b041a15d08a885b7c177099ea01b94159104fe8b26d1cd00f)))(viem@2.38.3(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@6.0.6)(zod@3.25.76(patch_hash=e3f278525e5c146b041a15d08a885b7c177099ea01b94159104fe8b26d1cd00f)))':
     dependencies:
       '@hey-api/client-fetch': 0.8.4
       '@zoralabs/protocol-deployments': 0.6.1
-      abitype: 1.2.3(typescript@5.9.3)(zod@3.25.76(patch_hash=n7m4wua237tsnvclvtauns7ije))
-      viem: 2.38.3(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@6.0.6)(zod@3.25.76(patch_hash=n7m4wua237tsnvclvtauns7ije))
+      abitype: 1.2.3(typescript@5.9.3)(zod@3.25.76(patch_hash=e3f278525e5c146b041a15d08a885b7c177099ea01b94159104fe8b26d1cd00f))
+      viem: 2.38.3(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@6.0.6)(zod@3.25.76(patch_hash=e3f278525e5c146b041a15d08a885b7c177099ea01b94159104fe8b26d1cd00f))
 
   '@zoralabs/protocol-deployments@0.6.1': {}
 
-  abitype@1.0.6(typescript@5.9.3)(zod@3.25.76(patch_hash=n7m4wua237tsnvclvtauns7ije)):
+  abitype@1.0.6(typescript@5.9.3)(zod@3.25.76(patch_hash=e3f278525e5c146b041a15d08a885b7c177099ea01b94159104fe8b26d1cd00f)):
     optionalDependencies:
       typescript: 5.9.3
-      zod: 3.25.76(patch_hash=n7m4wua237tsnvclvtauns7ije)
+      zod: 3.25.76(patch_hash=e3f278525e5c146b041a15d08a885b7c177099ea01b94159104fe8b26d1cd00f)
 
-  abitype@1.0.8(typescript@5.9.3):
+  abitype@1.0.8(typescript@5.9.3)(zod@3.23.8(patch_hash=1ea8b436ae1aac51d4a282da8ebffa4ff9f3695541e2576864ac13ebee108189)):
     optionalDependencies:
       typescript: 5.9.3
+      zod: 3.23.8(patch_hash=1ea8b436ae1aac51d4a282da8ebffa4ff9f3695541e2576864ac13ebee108189)
 
-  abitype@1.0.8(typescript@5.9.3)(zod@3.23.8(patch_hash=wyyinfi5bq7wh4q2tey6ddudg4)):
+  abitype@1.0.8(typescript@5.9.3)(zod@3.25.76(patch_hash=e3f278525e5c146b041a15d08a885b7c177099ea01b94159104fe8b26d1cd00f)):
     optionalDependencies:
       typescript: 5.9.3
-      zod: 3.23.8(patch_hash=wyyinfi5bq7wh4q2tey6ddudg4)
+      zod: 3.25.76(patch_hash=e3f278525e5c146b041a15d08a885b7c177099ea01b94159104fe8b26d1cd00f)
 
-  abitype@1.0.8(typescript@5.9.3)(zod@3.25.76(patch_hash=n7m4wua237tsnvclvtauns7ije)):
+  abitype@1.0.8(typescript@5.9.3)(zod@4.6.7):
     optionalDependencies:
       typescript: 5.9.3
-      zod: 3.25.76(patch_hash=n7m4wua237tsnvclvtauns7ije)
+      zod: 4.6.7
 
-  abitype@1.1.0(typescript@5.9.3)(zod@3.25.76(patch_hash=n7m4wua237tsnvclvtauns7ije)):
+  abitype@1.1.0(typescript@5.9.3)(zod@3.25.76(patch_hash=e3f278525e5c146b041a15d08a885b7c177099ea01b94159104fe8b26d1cd00f)):
     optionalDependencies:
       typescript: 5.9.3
-      zod: 3.25.76(patch_hash=n7m4wua237tsnvclvtauns7ije)
+      zod: 3.25.76(patch_hash=e3f278525e5c146b041a15d08a885b7c177099ea01b94159104fe8b26d1cd00f)
 
   abitype@1.2.3(typescript@5.9.3):
     optionalDependencies:
       typescript: 5.9.3
 
-  abitype@1.2.3(typescript@5.9.3)(zod@3.22.4(patch_hash=3g53u5nuotvez33fgka6gn7khy)):
+  abitype@1.2.3(typescript@5.9.3)(zod@3.22.4(patch_hash=ccbaa35b90d202a6ec28cd0ebbfc82463ee5bc7f20eaa0583ac30d4b9d617ed3)):
     optionalDependencies:
       typescript: 5.9.3
-      zod: 3.22.4(patch_hash=3g53u5nuotvez33fgka6gn7khy)
+      zod: 3.22.4(patch_hash=ccbaa35b90d202a6ec28cd0ebbfc82463ee5bc7f20eaa0583ac30d4b9d617ed3)
 
-  abitype@1.2.3(typescript@5.9.3)(zod@3.23.8(patch_hash=wyyinfi5bq7wh4q2tey6ddudg4)):
+  abitype@1.2.3(typescript@5.9.3)(zod@3.23.8(patch_hash=1ea8b436ae1aac51d4a282da8ebffa4ff9f3695541e2576864ac13ebee108189)):
     optionalDependencies:
       typescript: 5.9.3
-      zod: 3.23.8(patch_hash=wyyinfi5bq7wh4q2tey6ddudg4)
+      zod: 3.23.8(patch_hash=1ea8b436ae1aac51d4a282da8ebffa4ff9f3695541e2576864ac13ebee108189)
 
-  abitype@1.2.3(typescript@5.9.3)(zod@3.25.76(patch_hash=n7m4wua237tsnvclvtauns7ije)):
+  abitype@1.2.3(typescript@5.9.3)(zod@3.25.76(patch_hash=e3f278525e5c146b041a15d08a885b7c177099ea01b94159104fe8b26d1cd00f)):
     optionalDependencies:
       typescript: 5.9.3
-      zod: 3.25.76(patch_hash=n7m4wua237tsnvclvtauns7ije)
+      zod: 3.25.76(patch_hash=e3f278525e5c146b041a15d08a885b7c177099ea01b94159104fe8b26d1cd00f)
 
   abitype@1.2.3(typescript@5.9.3)(zod@4.6.7):
     optionalDependencies:
@@ -12569,7 +12610,7 @@ snapshots:
 
   big.js@6.2.2: {}
 
-  bigint-buffer@1.1.5(patch_hash=dwoslng34vjzhshmn35zptcf4u):
+  bigint-buffer@1.1.5(patch_hash=aa24cb8411090a8519abdd8ee66401aa773b2356a0d83391b9ed864ca6aa9cdd):
     dependencies:
       bindings: 1.5.0
 
@@ -12699,7 +12740,7 @@ snapshots:
       browserify-rsa: 4.1.1
       create-hash: 1.2.0
       create-hmac: 1.1.7
-      elliptic: 6.6.1(patch_hash=xgakzvp3u6yq3iqh3ujxpryt74)
+      elliptic: 6.6.1(patch_hash=5ee290c3bdaf9354587016fbf02863812413e6dc0f9ae73318a2da6f10ca7cef)
       inherits: 2.0.4
       parse-asn1: 5.1.9
       readable-stream: 2.3.8
@@ -12834,13 +12875,13 @@ snapshots:
       safe-buffer: 5.2.1
       to-buffer: 1.2.2
 
-  clanker-sdk@4.2.16(@types/node@26.5.0)(typescript@5.9.3)(viem@2.38.3(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@6.0.6)(zod@3.25.76(patch_hash=n7m4wua237tsnvclvtauns7ije))):
+  clanker-sdk@4.2.16(@types/node@26.5.0)(typescript@5.9.3)(viem@2.38.3(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@6.0.6)(zod@3.25.76(patch_hash=e3f278525e5c146b041a15d08a885b7c177099ea01b94159104fe8b26d1cd00f))):
     dependencies:
       '@openzeppelin/merkle-tree': 1.0.8
       abitype: 1.2.3(typescript@5.9.3)(zod@4.6.7)
       commander: 14.0.3
       inquirer: 8.2.7(@types/node@26.5.0)
-      viem: 2.38.3(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@6.0.6)(zod@3.25.76(patch_hash=n7m4wua237tsnvclvtauns7ije))
+      viem: 2.38.3(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@6.0.6)(zod@3.25.76(patch_hash=e3f278525e5c146b041a15d08a885b7c177099ea01b94159104fe8b26d1cd00f))
       zod: 4.6.7
     transitivePeerDependencies:
       - '@types/node'
@@ -12956,7 +12997,7 @@ snapshots:
   create-ecdh@4.0.4:
     dependencies:
       bn.js: 4.12.3
-      elliptic: 6.6.1(patch_hash=xgakzvp3u6yq3iqh3ujxpryt74)
+      elliptic: 6.6.1(patch_hash=5ee290c3bdaf9354587016fbf02863812413e6dc0f9ae73318a2da6f10ca7cef)
 
   create-hash@1.2.0:
     dependencies:
@@ -13059,11 +13100,11 @@ snapshots:
 
   decimal.js@10.6.0: {}
 
-  decode-uri-component@0.5.1(patch_hash=y5ubmayoh54jgyyq7hcna73blm): {}
+  decode-uri-component@0.5.1(patch_hash=ea606e7cf7bbeffb3bbe1957a767b144eea1d8f27685d3e0268f0854b806e4d8): {}
 
   deep-is@0.1.4: {}
 
-  deepmerge@4.3.1(patch_hash=ojws7muqxh2p7lyc5bkjc2ulde): {}
+  deepmerge@4.3.1(patch_hash=cb5ef21dc9051b4c0f18e8d1d1b9ffe42203305f1b859f167c56972e90576163): {}
 
   defaults@1.0.4:
     dependencies:
@@ -13187,7 +13228,7 @@ snapshots:
 
   electron-to-chromium@1.5.420: {}
 
-  elliptic@6.6.1(patch_hash=xgakzvp3u6yq3iqh3ujxpryt74):
+  elliptic@6.6.1(patch_hash=5ee290c3bdaf9354587016fbf02863812413e6dc0f9ae73318a2da6f10ca7cef):
     dependencies:
       bn.js: 4.12.3
       brorand: 1.1.0
@@ -14803,7 +14844,7 @@ snapshots:
     transitivePeerDependencies:
       - zod
 
-  ox@0.14.20(typescript@5.9.3)(zod@3.22.4(patch_hash=3g53u5nuotvez33fgka6gn7khy)):
+  ox@0.14.20(typescript@5.9.3)(zod@3.22.4(patch_hash=ccbaa35b90d202a6ec28cd0ebbfc82463ee5bc7f20eaa0583ac30d4b9d617ed3)):
     dependencies:
       '@adraffy/ens-normalize': 1.11.1
       '@noble/ciphers': 1.3.0
@@ -14811,14 +14852,14 @@ snapshots:
       '@noble/hashes': 1.8.0
       '@scure/bip32': 1.7.0
       '@scure/bip39': 1.6.0
-      abitype: 1.2.3(typescript@5.9.3)(zod@3.22.4(patch_hash=3g53u5nuotvez33fgka6gn7khy))
+      abitype: 1.2.3(typescript@5.9.3)(zod@3.22.4(patch_hash=ccbaa35b90d202a6ec28cd0ebbfc82463ee5bc7f20eaa0583ac30d4b9d617ed3))
       eventemitter3: 5.0.1
     optionalDependencies:
       typescript: 5.9.3
     transitivePeerDependencies:
       - zod
 
-  ox@0.14.20(typescript@5.9.3)(zod@3.25.76(patch_hash=n7m4wua237tsnvclvtauns7ije)):
+  ox@0.14.20(typescript@5.9.3)(zod@3.25.76(patch_hash=e3f278525e5c146b041a15d08a885b7c177099ea01b94159104fe8b26d1cd00f)):
     dependencies:
       '@adraffy/ens-normalize': 1.11.1
       '@noble/ciphers': 1.3.0
@@ -14826,7 +14867,7 @@ snapshots:
       '@noble/hashes': 1.8.0
       '@scure/bip32': 1.7.0
       '@scure/bip39': 1.6.0
-      abitype: 1.2.3(typescript@5.9.3)(zod@3.25.76(patch_hash=n7m4wua237tsnvclvtauns7ije))
+      abitype: 1.2.3(typescript@5.9.3)(zod@3.25.76(patch_hash=e3f278525e5c146b041a15d08a885b7c177099ea01b94159104fe8b26d1cd00f))
       eventemitter3: 5.0.1
     optionalDependencies:
       typescript: 5.9.3
@@ -14848,7 +14889,7 @@ snapshots:
     transitivePeerDependencies:
       - zod
 
-  ox@0.14.29(typescript@5.9.3)(zod@3.25.76(patch_hash=n7m4wua237tsnvclvtauns7ije)):
+  ox@0.14.29(typescript@5.9.3)(zod@3.25.76(patch_hash=e3f278525e5c146b041a15d08a885b7c177099ea01b94159104fe8b26d1cd00f)):
     dependencies:
       '@adraffy/ens-normalize': 1.11.1
       '@noble/ciphers': 1.3.0
@@ -14856,7 +14897,7 @@ snapshots:
       '@noble/hashes': 1.8.0
       '@scure/bip32': 1.7.0
       '@scure/bip39': 1.6.0
-      abitype: 1.2.3(typescript@5.9.3)(zod@3.25.76(patch_hash=n7m4wua237tsnvclvtauns7ije))
+      abitype: 1.2.3(typescript@5.9.3)(zod@3.25.76(patch_hash=e3f278525e5c146b041a15d08a885b7c177099ea01b94159104fe8b26d1cd00f))
       eventemitter3: 5.0.1
     optionalDependencies:
       typescript: 5.9.3
@@ -14878,56 +14919,56 @@ snapshots:
     transitivePeerDependencies:
       - zod
 
-  ox@0.6.7(typescript@5.9.3):
+  ox@0.6.7(typescript@5.9.3)(zod@3.23.8(patch_hash=1ea8b436ae1aac51d4a282da8ebffa4ff9f3695541e2576864ac13ebee108189)):
     dependencies:
       '@adraffy/ens-normalize': 1.11.1
       '@noble/curves': 1.9.7
       '@noble/hashes': 1.8.0
       '@scure/bip32': 1.7.0
       '@scure/bip39': 1.6.0
-      abitype: 1.2.3(typescript@5.9.3)
+      abitype: 1.2.3(typescript@5.9.3)(zod@3.23.8(patch_hash=1ea8b436ae1aac51d4a282da8ebffa4ff9f3695541e2576864ac13ebee108189))
       eventemitter3: 5.0.1
     optionalDependencies:
       typescript: 5.9.3
     transitivePeerDependencies:
       - zod
 
-  ox@0.6.7(typescript@5.9.3)(zod@3.23.8(patch_hash=wyyinfi5bq7wh4q2tey6ddudg4)):
+  ox@0.6.7(typescript@5.9.3)(zod@3.25.76(patch_hash=e3f278525e5c146b041a15d08a885b7c177099ea01b94159104fe8b26d1cd00f)):
     dependencies:
       '@adraffy/ens-normalize': 1.11.1
       '@noble/curves': 1.9.7
       '@noble/hashes': 1.8.0
       '@scure/bip32': 1.7.0
       '@scure/bip39': 1.6.0
-      abitype: 1.2.3(typescript@5.9.3)(zod@3.23.8(patch_hash=wyyinfi5bq7wh4q2tey6ddudg4))
+      abitype: 1.2.3(typescript@5.9.3)(zod@3.25.76(patch_hash=e3f278525e5c146b041a15d08a885b7c177099ea01b94159104fe8b26d1cd00f))
       eventemitter3: 5.0.1
     optionalDependencies:
       typescript: 5.9.3
     transitivePeerDependencies:
       - zod
 
-  ox@0.6.7(typescript@5.9.3)(zod@3.25.76(patch_hash=n7m4wua237tsnvclvtauns7ije)):
+  ox@0.6.7(typescript@5.9.3)(zod@4.6.7):
     dependencies:
       '@adraffy/ens-normalize': 1.11.1
       '@noble/curves': 1.9.7
       '@noble/hashes': 1.8.0
       '@scure/bip32': 1.7.0
       '@scure/bip39': 1.6.0
-      abitype: 1.2.3(typescript@5.9.3)(zod@3.25.76(patch_hash=n7m4wua237tsnvclvtauns7ije))
+      abitype: 1.2.3(typescript@5.9.3)(zod@4.6.7)
       eventemitter3: 5.0.1
     optionalDependencies:
       typescript: 5.9.3
     transitivePeerDependencies:
       - zod
 
-  ox@0.6.9(typescript@5.9.3)(zod@3.25.76(patch_hash=n7m4wua237tsnvclvtauns7ije)):
+  ox@0.6.9(typescript@5.9.3)(zod@3.25.76(patch_hash=e3f278525e5c146b041a15d08a885b7c177099ea01b94159104fe8b26d1cd00f)):
     dependencies:
       '@adraffy/ens-normalize': 1.11.1
       '@noble/curves': 1.9.7
       '@noble/hashes': 1.8.0
       '@scure/bip32': 1.7.0
       '@scure/bip39': 1.6.0
-      abitype: 1.2.3(typescript@5.9.3)(zod@3.25.76(patch_hash=n7m4wua237tsnvclvtauns7ije))
+      abitype: 1.2.3(typescript@5.9.3)(zod@3.25.76(patch_hash=e3f278525e5c146b041a15d08a885b7c177099ea01b94159104fe8b26d1cd00f))
       eventemitter3: 5.0.1
     optionalDependencies:
       typescript: 5.9.3
@@ -14949,7 +14990,7 @@ snapshots:
     transitivePeerDependencies:
       - zod
 
-  ox@0.9.6(typescript@5.9.3)(zod@3.25.76(patch_hash=n7m4wua237tsnvclvtauns7ije)):
+  ox@0.9.6(typescript@5.9.3)(zod@3.25.76(patch_hash=e3f278525e5c146b041a15d08a885b7c177099ea01b94159104fe8b26d1cd00f)):
     dependencies:
       '@adraffy/ens-normalize': 1.11.1
       '@noble/ciphers': 1.3.0
@@ -14957,7 +14998,7 @@ snapshots:
       '@noble/hashes': 1.8.0
       '@scure/bip32': 1.7.0
       '@scure/bip39': 1.6.0
-      abitype: 1.2.3(typescript@5.9.3)(zod@3.25.76(patch_hash=n7m4wua237tsnvclvtauns7ije))
+      abitype: 1.2.3(typescript@5.9.3)(zod@3.25.76(patch_hash=e3f278525e5c146b041a15d08a885b7c177099ea01b94159104fe8b26d1cd00f))
       eventemitter3: 5.0.1
     optionalDependencies:
       typescript: 5.9.3
@@ -15150,21 +15191,21 @@ snapshots:
 
   pony-cause@2.1.11: {}
 
-  porto@0.2.35(@tanstack/react-query@5.101.0(react@19.2.6))(@types/react@19.2.17)(@wagmi/core@2.22.1(@tanstack/query-core@5.101.0)(@types/react@19.2.17)(react@19.2.6)(typescript@5.9.3)(use-sync-external-store@1.4.0(react@19.2.6))(viem@2.48.8(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@6.0.6)(zod@3.25.76(patch_hash=n7m4wua237tsnvclvtauns7ije))))(react@19.2.6)(typescript@5.9.3)(use-sync-external-store@1.4.0(react@19.2.6))(viem@2.48.8(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@6.0.6)(zod@3.25.76(patch_hash=n7m4wua237tsnvclvtauns7ije)))(wagmi@2.19.5(@tanstack/query-core@5.101.0)(@tanstack/react-query@5.101.0(react@19.2.6))(@types/react@19.2.17)(bufferutil@4.1.0)(encoding@0.1.13)(fastestsmallesttextencoderdecoder@1.0.22)(react@19.2.6)(typescript@5.9.3)(utf-8-validate@6.0.6)(viem@2.48.8(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@6.0.6)(zod@3.25.76(patch_hash=n7m4wua237tsnvclvtauns7ije)))(zod@3.25.76(patch_hash=n7m4wua237tsnvclvtauns7ije))):
+  porto@0.2.35(ba3bdb1f7f8c57d73bae1318a2a991f3):
     dependencies:
-      '@wagmi/core': 2.22.1(@tanstack/query-core@5.101.0)(@types/react@19.2.17)(react@19.2.6)(typescript@5.9.3)(use-sync-external-store@1.4.0(react@19.2.6))(viem@2.48.8(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@6.0.6)(zod@3.25.76(patch_hash=n7m4wua237tsnvclvtauns7ije)))
+      '@wagmi/core': 2.22.1(@tanstack/query-core@5.101.0)(@types/react@19.2.17)(react@19.2.6)(typescript@5.9.3)(use-sync-external-store@1.4.0(react@19.2.6))(viem@2.48.8(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@6.0.6)(zod@3.25.76(patch_hash=e3f278525e5c146b041a15d08a885b7c177099ea01b94159104fe8b26d1cd00f)))
       hono: 4.13.11
       idb-keyval: 6.2.5
       mipd: 0.0.7(typescript@5.9.3)
       ox: 0.9.17(typescript@5.9.3)(zod@4.6.7)
-      viem: 2.48.8(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@6.0.6)(zod@3.25.76(patch_hash=n7m4wua237tsnvclvtauns7ije))
+      viem: 2.48.8(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@6.0.6)(zod@3.25.76(patch_hash=e3f278525e5c146b041a15d08a885b7c177099ea01b94159104fe8b26d1cd00f))
       zod: 4.6.7
       zustand: 5.0.14(@types/react@19.2.17)(react@19.2.6)(use-sync-external-store@1.4.0(react@19.2.6))
     optionalDependencies:
       '@tanstack/react-query': 5.101.0(react@19.2.6)
       react: 19.2.6
       typescript: 5.9.3
-      wagmi: 2.19.5(@tanstack/query-core@5.101.0)(@tanstack/react-query@5.101.0(react@19.2.6))(@types/react@19.2.17)(bufferutil@4.1.0)(encoding@0.1.13)(fastestsmallesttextencoderdecoder@1.0.22)(react@19.2.6)(typescript@5.9.3)(utf-8-validate@6.0.6)(viem@2.48.8(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@6.0.6)(zod@3.25.76(patch_hash=n7m4wua237tsnvclvtauns7ije)))(zod@3.25.76(patch_hash=n7m4wua237tsnvclvtauns7ije))
+      wagmi: 2.19.5(@tanstack/query-core@5.101.0)(@tanstack/react-query@5.101.0(react@19.2.6))(@types/react@19.2.17)(bufferutil@4.1.0)(encoding@0.1.13)(fastestsmallesttextencoderdecoder@1.0.22)(react@19.2.6)(typescript@5.9.3)(utf-8-validate@6.0.6)(viem@2.48.8(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@6.0.6)(zod@3.25.76(patch_hash=e3f278525e5c146b041a15d08a885b7c177099ea01b94159104fe8b26d1cd00f)))(zod@3.25.76(patch_hash=e3f278525e5c146b041a15d08a885b7c177099ea01b94159104fe8b26d1cd00f))
     transitivePeerDependencies:
       - '@types/react'
       - immer
@@ -15297,7 +15338,7 @@ snapshots:
 
   query-string@7.1.3:
     dependencies:
-      decode-uri-component: 0.5.1(patch_hash=y5ubmayoh54jgyyq7hcna73blm)
+      decode-uri-component: 0.5.1(patch_hash=ea606e7cf7bbeffb3bbe1957a767b144eea1d8f27685d3e0268f0854b806e4d8)
       filter-obj: 1.1.0
       split-on-first: 1.1.0
       strict-uri-encode: 2.0.0
@@ -15584,7 +15625,7 @@ snapshots:
 
   secp256k1@5.0.1:
     dependencies:
-      elliptic: 6.6.1(patch_hash=xgakzvp3u6yq3iqh3ujxpryt74)
+      elliptic: 6.6.1(patch_hash=5ee290c3bdaf9354587016fbf02863812413e6dc0f9ae73318a2da6f10ca7cef)
       node-addon-api: 5.1.0
       node-gyp-build: 4.8.4
 
@@ -15885,7 +15926,7 @@ snapshots:
 
   supports-preserve-symlinks-flag@1.0.0: {}
 
-  sushi@6.2.1(typescript@5.9.3)(viem@2.38.3(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@6.0.6)(zod@3.25.76(patch_hash=n7m4wua237tsnvclvtauns7ije)))(zod@3.25.76(patch_hash=n7m4wua237tsnvclvtauns7ije)):
+  sushi@6.2.1(typescript@5.9.3)(viem@2.38.3(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@6.0.6)(zod@3.25.76(patch_hash=e3f278525e5c146b041a15d08a885b7c177099ea01b94159104fe8b26d1cd00f)))(zod@3.25.76(patch_hash=e3f278525e5c146b041a15d08a885b7c177099ea01b94159104fe8b26d1cd00f)):
     dependencies:
       '@uniswap/token-lists': 1.0.0-beta.33
       big.js: 6.1.1
@@ -15895,8 +15936,8 @@ snapshots:
       toformat: 2.0.0
     optionalDependencies:
       typescript: 5.9.3
-      viem: 2.38.3(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@6.0.6)(zod@3.25.76(patch_hash=n7m4wua237tsnvclvtauns7ije))
-      zod: 3.25.76(patch_hash=n7m4wua237tsnvclvtauns7ije)
+      viem: 2.38.3(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@6.0.6)(zod@3.25.76(patch_hash=e3f278525e5c146b041a15d08a885b7c177099ea01b94159104fe8b26d1cd00f))
+      zod: 3.25.76(patch_hash=e3f278525e5c146b041a15d08a885b7c177099ea01b94159104fe8b26d1cd00f)
 
   svix@1.96.0:
     dependencies:
@@ -16273,15 +16314,15 @@ snapshots:
 
   vary@1.1.2: {}
 
-  viem@2.23.2(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@6.0.6):
+  viem@2.23.2(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@6.0.6)(zod@3.25.76(patch_hash=e3f278525e5c146b041a15d08a885b7c177099ea01b94159104fe8b26d1cd00f)):
     dependencies:
       '@noble/curves': 1.8.1
       '@noble/hashes': 1.7.1
       '@scure/bip32': 1.6.2
       '@scure/bip39': 1.5.4
-      abitype: 1.0.8(typescript@5.9.3)
+      abitype: 1.0.8(typescript@5.9.3)(zod@3.25.76(patch_hash=e3f278525e5c146b041a15d08a885b7c177099ea01b94159104fe8b26d1cd00f))
       isows: 1.0.6(ws@8.21.0(bufferutil@4.1.0)(utf-8-validate@6.0.6))
-      ox: 0.6.7(typescript@5.9.3)
+      ox: 0.6.7(typescript@5.9.3)(zod@3.25.76(patch_hash=e3f278525e5c146b041a15d08a885b7c177099ea01b94159104fe8b26d1cd00f))
       ws: 8.21.0(bufferutil@4.1.0)(utf-8-validate@6.0.6)
     optionalDependencies:
       typescript: 5.9.3
@@ -16290,15 +16331,15 @@ snapshots:
       - utf-8-validate
       - zod
 
-  viem@2.23.2(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@6.0.6)(zod@3.25.76(patch_hash=n7m4wua237tsnvclvtauns7ije)):
+  viem@2.23.2(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@6.0.6)(zod@4.6.7):
     dependencies:
       '@noble/curves': 1.8.1
       '@noble/hashes': 1.7.1
       '@scure/bip32': 1.6.2
       '@scure/bip39': 1.5.4
-      abitype: 1.0.8(typescript@5.9.3)(zod@3.25.76(patch_hash=n7m4wua237tsnvclvtauns7ije))
+      abitype: 1.0.8(typescript@5.9.3)(zod@4.6.7)
       isows: 1.0.6(ws@8.21.0(bufferutil@4.1.0)(utf-8-validate@6.0.6))
-      ox: 0.6.7(typescript@5.9.3)(zod@3.25.76(patch_hash=n7m4wua237tsnvclvtauns7ije))
+      ox: 0.6.7(typescript@5.9.3)(zod@4.6.7)
       ws: 8.21.0(bufferutil@4.1.0)(utf-8-validate@6.0.6)
     optionalDependencies:
       typescript: 5.9.3
@@ -16307,15 +16348,15 @@ snapshots:
       - utf-8-validate
       - zod
 
-  viem@2.23.4(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@6.0.6)(zod@3.23.8(patch_hash=wyyinfi5bq7wh4q2tey6ddudg4)):
+  viem@2.23.4(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@6.0.6)(zod@3.23.8(patch_hash=1ea8b436ae1aac51d4a282da8ebffa4ff9f3695541e2576864ac13ebee108189)):
     dependencies:
       '@noble/curves': 1.8.1
       '@noble/hashes': 1.7.1
       '@scure/bip32': 1.6.2
       '@scure/bip39': 1.5.4
-      abitype: 1.0.8(typescript@5.9.3)(zod@3.23.8(patch_hash=wyyinfi5bq7wh4q2tey6ddudg4))
+      abitype: 1.0.8(typescript@5.9.3)(zod@3.23.8(patch_hash=1ea8b436ae1aac51d4a282da8ebffa4ff9f3695541e2576864ac13ebee108189))
       isows: 1.0.6(ws@8.21.0(bufferutil@4.1.0)(utf-8-validate@6.0.6))
-      ox: 0.6.7(typescript@5.9.3)(zod@3.23.8(patch_hash=wyyinfi5bq7wh4q2tey6ddudg4))
+      ox: 0.6.7(typescript@5.9.3)(zod@3.23.8(patch_hash=1ea8b436ae1aac51d4a282da8ebffa4ff9f3695541e2576864ac13ebee108189))
       ws: 8.21.0(bufferutil@4.1.0)(utf-8-validate@6.0.6)
     optionalDependencies:
       typescript: 5.9.3
@@ -16324,15 +16365,15 @@ snapshots:
       - utf-8-validate
       - zod
 
-  viem@2.38.3(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@6.0.6)(zod@3.25.76(patch_hash=n7m4wua237tsnvclvtauns7ije)):
+  viem@2.38.3(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@6.0.6)(zod@3.25.76(patch_hash=e3f278525e5c146b041a15d08a885b7c177099ea01b94159104fe8b26d1cd00f)):
     dependencies:
       '@noble/curves': 1.9.1
       '@noble/hashes': 1.8.0
       '@scure/bip32': 1.7.0
       '@scure/bip39': 1.6.0
-      abitype: 1.1.0(typescript@5.9.3)(zod@3.25.76(patch_hash=n7m4wua237tsnvclvtauns7ije))
+      abitype: 1.1.0(typescript@5.9.3)(zod@3.25.76(patch_hash=e3f278525e5c146b041a15d08a885b7c177099ea01b94159104fe8b26d1cd00f))
       isows: 1.0.7(ws@8.21.0(bufferutil@4.1.0)(utf-8-validate@6.0.6))
-      ox: 0.9.6(typescript@5.9.3)(zod@3.25.76(patch_hash=n7m4wua237tsnvclvtauns7ije))
+      ox: 0.9.6(typescript@5.9.3)(zod@3.25.76(patch_hash=e3f278525e5c146b041a15d08a885b7c177099ea01b94159104fe8b26d1cd00f))
       ws: 8.21.0(bufferutil@4.1.0)(utf-8-validate@6.0.6)
     optionalDependencies:
       typescript: 5.9.3
@@ -16358,15 +16399,15 @@ snapshots:
       - utf-8-validate
       - zod
 
-  viem@2.48.8(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@6.0.6)(zod@3.22.4(patch_hash=3g53u5nuotvez33fgka6gn7khy)):
+  viem@2.48.8(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@6.0.6)(zod@3.22.4(patch_hash=ccbaa35b90d202a6ec28cd0ebbfc82463ee5bc7f20eaa0583ac30d4b9d617ed3)):
     dependencies:
       '@noble/curves': 1.9.1
       '@noble/hashes': 1.8.0
       '@scure/bip32': 1.7.0
       '@scure/bip39': 1.6.0
-      abitype: 1.2.3(typescript@5.9.3)(zod@3.22.4(patch_hash=3g53u5nuotvez33fgka6gn7khy))
+      abitype: 1.2.3(typescript@5.9.3)(zod@3.22.4(patch_hash=ccbaa35b90d202a6ec28cd0ebbfc82463ee5bc7f20eaa0583ac30d4b9d617ed3))
       isows: 1.0.7(ws@8.21.0(bufferutil@4.1.0)(utf-8-validate@6.0.6))
-      ox: 0.14.20(typescript@5.9.3)(zod@3.22.4(patch_hash=3g53u5nuotvez33fgka6gn7khy))
+      ox: 0.14.20(typescript@5.9.3)(zod@3.22.4(patch_hash=ccbaa35b90d202a6ec28cd0ebbfc82463ee5bc7f20eaa0583ac30d4b9d617ed3))
       ws: 8.21.0(bufferutil@4.1.0)(utf-8-validate@6.0.6)
     optionalDependencies:
       typescript: 5.9.3
@@ -16375,15 +16416,15 @@ snapshots:
       - utf-8-validate
       - zod
 
-  viem@2.48.8(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@6.0.6)(zod@3.25.76(patch_hash=n7m4wua237tsnvclvtauns7ije)):
+  viem@2.48.8(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@6.0.6)(zod@3.25.76(patch_hash=e3f278525e5c146b041a15d08a885b7c177099ea01b94159104fe8b26d1cd00f)):
     dependencies:
       '@noble/curves': 1.9.1
       '@noble/hashes': 1.8.0
       '@scure/bip32': 1.7.0
       '@scure/bip39': 1.6.0
-      abitype: 1.2.3(typescript@5.9.3)(zod@3.25.76(patch_hash=n7m4wua237tsnvclvtauns7ije))
+      abitype: 1.2.3(typescript@5.9.3)(zod@3.25.76(patch_hash=e3f278525e5c146b041a15d08a885b7c177099ea01b94159104fe8b26d1cd00f))
       isows: 1.0.7(ws@8.21.0(bufferutil@4.1.0)(utf-8-validate@6.0.6))
-      ox: 0.14.20(typescript@5.9.3)(zod@3.25.76(patch_hash=n7m4wua237tsnvclvtauns7ije))
+      ox: 0.14.20(typescript@5.9.3)(zod@3.25.76(patch_hash=e3f278525e5c146b041a15d08a885b7c177099ea01b94159104fe8b26d1cd00f))
       ws: 8.21.0(bufferutil@4.1.0)(utf-8-validate@6.0.6)
     optionalDependencies:
       typescript: 5.9.3
@@ -16409,15 +16450,15 @@ snapshots:
       - utf-8-validate
       - zod
 
-  viem@2.53.1(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@6.0.6)(zod@3.25.76(patch_hash=n7m4wua237tsnvclvtauns7ije)):
+  viem@2.53.1(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@6.0.6)(zod@3.25.76(patch_hash=e3f278525e5c146b041a15d08a885b7c177099ea01b94159104fe8b26d1cd00f)):
     dependencies:
       '@noble/curves': 1.9.1
       '@noble/hashes': 1.8.0
       '@scure/bip32': 1.7.0
       '@scure/bip39': 1.6.0
-      abitype: 1.2.3(typescript@5.9.3)(zod@3.25.76(patch_hash=n7m4wua237tsnvclvtauns7ije))
+      abitype: 1.2.3(typescript@5.9.3)(zod@3.25.76(patch_hash=e3f278525e5c146b041a15d08a885b7c177099ea01b94159104fe8b26d1cd00f))
       isows: 1.0.7(ws@8.21.0(bufferutil@4.1.0)(utf-8-validate@6.0.6))
-      ox: 0.14.29(typescript@5.9.3)(zod@3.25.76(patch_hash=n7m4wua237tsnvclvtauns7ije))
+      ox: 0.14.29(typescript@5.9.3)(zod@3.25.76(patch_hash=e3f278525e5c146b041a15d08a885b7c177099ea01b94159104fe8b26d1cd00f))
       ws: 8.21.0(bufferutil@4.1.0)(utf-8-validate@6.0.6)
     optionalDependencies:
       typescript: 5.9.3
@@ -16543,14 +16584,14 @@ snapshots:
     dependencies:
       xml-name-validator: 5.0.0
 
-  wagmi@2.19.5(@tanstack/query-core@5.101.0)(@tanstack/react-query@5.101.0(react@19.2.6))(@types/react@19.2.17)(bufferutil@4.1.0)(encoding@0.1.13)(fastestsmallesttextencoderdecoder@1.0.22)(react@19.2.6)(typescript@5.9.3)(utf-8-validate@6.0.6)(viem@2.48.8(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@6.0.6)(zod@3.25.76(patch_hash=n7m4wua237tsnvclvtauns7ije)))(zod@3.25.76(patch_hash=n7m4wua237tsnvclvtauns7ije)):
+  wagmi@2.19.5(@tanstack/query-core@5.101.0)(@tanstack/react-query@5.101.0(react@19.2.6))(@types/react@19.2.17)(bufferutil@4.1.0)(encoding@0.1.13)(fastestsmallesttextencoderdecoder@1.0.22)(react@19.2.6)(typescript@5.9.3)(utf-8-validate@6.0.6)(viem@2.48.8(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@6.0.6)(zod@3.25.76(patch_hash=e3f278525e5c146b041a15d08a885b7c177099ea01b94159104fe8b26d1cd00f)))(zod@3.25.76(patch_hash=e3f278525e5c146b041a15d08a885b7c177099ea01b94159104fe8b26d1cd00f)):
     dependencies:
       '@tanstack/react-query': 5.101.0(react@19.2.6)
-      '@wagmi/connectors': 6.2.0(voefnx4x4svvt33epphglx3olm)
-      '@wagmi/core': 2.22.1(@tanstack/query-core@5.101.0)(@types/react@19.2.17)(react@19.2.6)(typescript@5.9.3)(use-sync-external-store@1.4.0(react@19.2.6))(viem@2.48.8(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@6.0.6)(zod@3.25.76(patch_hash=n7m4wua237tsnvclvtauns7ije)))
+      '@wagmi/connectors': 6.2.0(f59db6cec4ecb5d716f12ebdebe5843c)
+      '@wagmi/core': 2.22.1(@tanstack/query-core@5.101.0)(@types/react@19.2.17)(react@19.2.6)(typescript@5.9.3)(use-sync-external-store@1.4.0(react@19.2.6))(viem@2.48.8(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@6.0.6)(zod@3.25.76(patch_hash=e3f278525e5c146b041a15d08a885b7c177099ea01b94159104fe8b26d1cd00f)))
       react: 19.2.6
       use-sync-external-store: 1.4.0(react@19.2.6)
-      viem: 2.48.8(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@6.0.6)(zod@3.25.76(patch_hash=n7m4wua237tsnvclvtauns7ije))
+      viem: 2.48.8(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@6.0.6)(zod@3.25.76(patch_hash=e3f278525e5c146b041a15d08a885b7c177099ea01b94159104fe8b26d1cd00f))
     optionalDependencies:
       typescript: 5.9.3
     transitivePeerDependencies:
@@ -16714,9 +16755,9 @@ snapshots:
 
   x402-fetch@0.7.0(@tanstack/query-core@5.101.0)(@tanstack/react-query@5.101.0(react@19.2.6))(@types/react@19.2.17)(bufferutil@4.1.0)(encoding@0.1.13)(fastestsmallesttextencoderdecoder@1.0.22)(react@19.2.6)(typescript@5.9.3)(utf-8-validate@6.0.6):
     dependencies:
-      viem: 2.48.8(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@6.0.6)(zod@3.25.76(patch_hash=n7m4wua237tsnvclvtauns7ije))
+      viem: 2.48.8(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@6.0.6)(zod@3.25.76(patch_hash=e3f278525e5c146b041a15d08a885b7c177099ea01b94159104fe8b26d1cd00f))
       x402: 0.7.3(@tanstack/query-core@5.101.0)(@tanstack/react-query@5.101.0(react@19.2.6))(@types/react@19.2.17)(bufferutil@4.1.0)(encoding@0.1.13)(fastestsmallesttextencoderdecoder@1.0.22)(react@19.2.6)(typescript@5.9.3)(utf-8-validate@6.0.6)
-      zod: 3.25.76(patch_hash=n7m4wua237tsnvclvtauns7ije)
+      zod: 3.25.76(patch_hash=e3f278525e5c146b041a15d08a885b7c177099ea01b94159104fe8b26d1cd00f)
     transitivePeerDependencies:
       - '@azure/app-configuration'
       - '@azure/cosmos'
@@ -16764,9 +16805,9 @@ snapshots:
       '@solana-program/token-2022': 0.4.2(@solana/kit@2.3.0(fastestsmallesttextencoderdecoder@1.0.22)(typescript@5.9.3)(ws@8.21.0(bufferutil@4.1.0)(utf-8-validate@6.0.6)))
       '@solana/kit': 2.3.0(fastestsmallesttextencoderdecoder@1.0.22)(typescript@5.9.3)(ws@8.21.0(bufferutil@4.1.0)(utf-8-validate@6.0.6))
       '@solana/transaction-confirmation': 2.3.0(fastestsmallesttextencoderdecoder@1.0.22)(typescript@5.9.3)(ws@8.21.0(bufferutil@4.1.0)(utf-8-validate@6.0.6))
-      viem: 2.48.8(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@6.0.6)(zod@3.25.76(patch_hash=n7m4wua237tsnvclvtauns7ije))
-      wagmi: 2.19.5(@tanstack/query-core@5.101.0)(@tanstack/react-query@5.101.0(react@19.2.6))(@types/react@19.2.17)(bufferutil@4.1.0)(encoding@0.1.13)(fastestsmallesttextencoderdecoder@1.0.22)(react@19.2.6)(typescript@5.9.3)(utf-8-validate@6.0.6)(viem@2.48.8(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@6.0.6)(zod@3.25.76(patch_hash=n7m4wua237tsnvclvtauns7ije)))(zod@3.25.76(patch_hash=n7m4wua237tsnvclvtauns7ije))
-      zod: 3.25.76(patch_hash=n7m4wua237tsnvclvtauns7ije)
+      viem: 2.48.8(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@6.0.6)(zod@3.25.76(patch_hash=e3f278525e5c146b041a15d08a885b7c177099ea01b94159104fe8b26d1cd00f))
+      wagmi: 2.19.5(@tanstack/query-core@5.101.0)(@tanstack/react-query@5.101.0(react@19.2.6))(@types/react@19.2.17)(bufferutil@4.1.0)(encoding@0.1.13)(fastestsmallesttextencoderdecoder@1.0.22)(react@19.2.6)(typescript@5.9.3)(utf-8-validate@6.0.6)(viem@2.48.8(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@6.0.6)(zod@3.25.76(patch_hash=e3f278525e5c146b041a15d08a885b7c177099ea01b94159104fe8b26d1cd00f)))(zod@3.25.76(patch_hash=e3f278525e5c146b041a15d08a885b7c177099ea01b94159104fe8b26d1cd00f))
+      zod: 3.25.76(patch_hash=e3f278525e5c146b041a15d08a885b7c177099ea01b94159104fe8b26d1cd00f)
     transitivePeerDependencies:
       - '@azure/app-configuration'
       - '@azure/cosmos'
@@ -16819,9 +16860,9 @@ snapshots:
       '@wallet-standard/app': 1.1.1
       '@wallet-standard/base': 1.1.1
       '@wallet-standard/features': 1.1.1
-      viem: 2.48.8(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@6.0.6)(zod@3.25.76(patch_hash=n7m4wua237tsnvclvtauns7ije))
-      wagmi: 2.19.5(@tanstack/query-core@5.101.0)(@tanstack/react-query@5.101.0(react@19.2.6))(@types/react@19.2.17)(bufferutil@4.1.0)(encoding@0.1.13)(fastestsmallesttextencoderdecoder@1.0.22)(react@19.2.6)(typescript@5.9.3)(utf-8-validate@6.0.6)(viem@2.48.8(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@6.0.6)(zod@3.25.76(patch_hash=n7m4wua237tsnvclvtauns7ije)))(zod@3.25.76(patch_hash=n7m4wua237tsnvclvtauns7ije))
-      zod: 3.25.76(patch_hash=n7m4wua237tsnvclvtauns7ije)
+      viem: 2.48.8(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@6.0.6)(zod@3.25.76(patch_hash=e3f278525e5c146b041a15d08a885b7c177099ea01b94159104fe8b26d1cd00f))
+      wagmi: 2.19.5(@tanstack/query-core@5.101.0)(@tanstack/react-query@5.101.0(react@19.2.6))(@types/react@19.2.17)(bufferutil@4.1.0)(encoding@0.1.13)(fastestsmallesttextencoderdecoder@1.0.22)(react@19.2.6)(typescript@5.9.3)(utf-8-validate@6.0.6)(viem@2.48.8(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@6.0.6)(zod@3.25.76(patch_hash=e3f278525e5c146b041a15d08a885b7c177099ea01b94159104fe8b26d1cd00f)))(zod@3.25.76(patch_hash=e3f278525e5c146b041a15d08a885b7c177099ea01b94159104fe8b26d1cd00f))
+      zod: 3.25.76(patch_hash=e3f278525e5c146b041a15d08a885b7c177099ea01b94159104fe8b26d1cd00f)
     transitivePeerDependencies:
       - '@azure/app-configuration'
       - '@azure/cosmos'
@@ -16948,11 +16989,11 @@ snapshots:
     dependencies:
       zod: 4.6.7
 
-  zod@3.22.4(patch_hash=3g53u5nuotvez33fgka6gn7khy): {}
+  zod@3.22.4(patch_hash=ccbaa35b90d202a6ec28cd0ebbfc82463ee5bc7f20eaa0583ac30d4b9d617ed3): {}
 
-  zod@3.23.8(patch_hash=wyyinfi5bq7wh4q2tey6ddudg4): {}
+  zod@3.23.8(patch_hash=1ea8b436ae1aac51d4a282da8ebffa4ff9f3695541e2576864ac13ebee108189): {}
 
-  zod@3.25.76(patch_hash=n7m4wua237tsnvclvtauns7ije): {}
+  zod@3.25.76(patch_hash=e3f278525e5c146b041a15d08a885b7c177099ea01b94159104fe8b26d1cd00f): {}
 
   zod@4.6.7: {}
 

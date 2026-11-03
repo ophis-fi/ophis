@@ -7,3 +7,16 @@ packages:
   - "apps/safe-app"
   - "infra/rpc"
 # apps/frontend is excluded — cowswap upstream ships its own package manager
+
+# Enforce a 1-week delay (10080 minutes) before a newly published version can resolve.
+minimumReleaseAge: 10080
+
+# Fail the install when a dependency has a build script that is in neither
+# onlyBuiltDependencies nor ignoredBuiltDependencies (pnpm 10 only warns).
+strictDepBuilds: true
+
+minimumReleaseAgeExclude:
+  # Reviewed security patch releases already pinned in the lockfile; exact
+  # versions, so every other release of these packages still waits 7 days.
+  - fastify@5.12.8
+  - qs@6.17.1

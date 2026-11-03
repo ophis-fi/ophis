@@ -66,8 +66,8 @@ jobs:
           echo "tag matches package version $PKG_VERSION"
 
       # --ignore-scripts: do NOT run third-party dependency lifecycle scripts
-      # (preinstall/install/postinstall) during install. pnpm 9 runs them by
-      # default, and this token-bearing publish job installs a large transitive
+      # (preinstall/install/postinstall) during install. pnpm 10 still runs
+      # the onlyBuiltDependencies allowlist, and this token-bearing publish job installs a large transitive
       # tree (cow-sdk + IPFS/libp2p + http stack); a compromised dep's postinstall
       # could tamper with dist/ or exfiltrate NPM_TOKEN. The workspace packages
       # are built explicitly below, so disabling install scripts is safe.
@@ -92,6 +92,6 @@ jobs:
       - name: publish
         run: pnpm --filter @ophis/widget-react publish --no-git-checks --access public --provenance --ignore-scripts
         env:
-          # pnpm 9 drops --provenance when forwarding filtered publishes to npm.
+          # pnpm 9 dropped --provenance when forwarding filtered publishes to npm; kept for pnpm 10.
           NPM_CONFIG_PROVENANCE: 'true'
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}

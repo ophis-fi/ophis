@@ -68,7 +68,7 @@ jobs:
           echo "tag matches all four package versions ($TAG_VERSION)"
 
       # --ignore-scripts: do NOT run third-party dependency lifecycle scripts during install in this
-      # token-bearing job (pnpm 9 runs them by default). Each package's build is invoked explicitly
+      # token-bearing job (pnpm 10 still runs the onlyBuiltDependencies allowlist). Each package's build is invoked explicitly
       # below, so disabling dependency install scripts is safe and removes a supply-chain code-exec
       # surface on the runner that holds NPM_TOKEN.
       - name: install
@@ -102,27 +102,27 @@ jobs:
       - name: publish @ophis/agent-swap
         run: pnpm --filter @ophis/agent-swap publish --no-git-checks --access public --provenance --ignore-scripts
         env:
-          # pnpm 9 drops --provenance when forwarding filtered publishes to npm.
+          # pnpm 9 dropped --provenance when forwarding filtered publishes to npm; kept for pnpm 10.
           NPM_CONFIG_PROVENANCE: 'true'
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
       - name: publish @ophis/plugin-goat
         run: pnpm --filter @ophis/plugin-goat publish --no-git-checks --access public --provenance --ignore-scripts
         env:
-          # pnpm 9 drops --provenance when forwarding filtered publishes to npm.
+          # pnpm 9 dropped --provenance when forwarding filtered publishes to npm; kept for pnpm 10.
           NPM_CONFIG_PROVENANCE: 'true'
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
       - name: publish @ophis/agentkit-ophis
         run: pnpm --filter @ophis/agentkit-ophis publish --no-git-checks --access public --provenance --ignore-scripts
         env:
-          # pnpm 9 drops --provenance when forwarding filtered publishes to npm.
+          # pnpm 9 dropped --provenance when forwarding filtered publishes to npm; kept for pnpm 10.
           NPM_CONFIG_PROVENANCE: 'true'
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
       - name: publish @ophis/plugin-elizaos
         run: pnpm --filter @ophis/plugin-elizaos publish --no-git-checks --access public --provenance --ignore-scripts
         env:
-          # pnpm 9 drops --provenance when forwarding filtered publishes to npm.
+          # pnpm 9 dropped --provenance when forwarding filtered publishes to npm; kept for pnpm 10.
           NPM_CONFIG_PROVENANCE: 'true'
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}

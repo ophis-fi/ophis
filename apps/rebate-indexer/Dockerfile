@@ -2,7 +2,7 @@
 
 FROM node:24-alpine AS deps
 WORKDIR /app
-RUN corepack enable && corepack prepare pnpm@9.12.0 --activate
+RUN corepack enable && corepack prepare pnpm@10.34.9 --activate
 COPY pnpm-workspace.yaml pnpm-lock.yaml package.json ./
 COPY patches/ patches/
 COPY apps/rebate-indexer/package.json apps/rebate-indexer/
@@ -16,7 +16,7 @@ RUN pnpm install --frozen-lockfile --ignore-scripts --filter @ophis/rebate-index
 
 FROM node:24-alpine AS build
 WORKDIR /app
-RUN corepack enable && corepack prepare pnpm@9.12.0 --activate
+RUN corepack enable && corepack prepare pnpm@10.34.9 --activate
 COPY --from=deps /app /app
 COPY apps/rebate-indexer apps/rebate-indexer
 COPY packages/sdk packages/sdk
@@ -26,7 +26,7 @@ RUN pnpm --filter @ophis/rebate-indexer typecheck
 FROM node:24-alpine AS runtime
 WORKDIR /app
 ENV COREPACK_HOME=/opt/corepack
-RUN apk add --no-cache tini && corepack enable && corepack prepare pnpm@9.12.0 --activate
+RUN apk add --no-cache tini && corepack enable && corepack prepare pnpm@10.34.9 --activate
 ENV NODE_ENV=production
 COPY --from=build --chown=node:node /app /app
 WORKDIR /app/apps/rebate-indexer

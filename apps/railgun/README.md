@@ -118,7 +118,7 @@ On 2026-10-28, all four isolated Anvil forks completed native shielding, a real 
 
 See [VALIDATION.md](./VALIDATION.md) for the completed local checks and their limits.
 
-The standalone package pins pnpm10.33.2 and requires Node22.18 or newer. `railgun-ci.yml` runs its frozen scripts-disabled install, unit/dependency regressions, both TypeScript checks and production build without production credentials. Fork and browser roundtrips remain separate local checks.
+The standalone package pins pnpm10.34.9 and requires Node22.18 or newer. `railgun-ci.yml` runs its frozen scripts-disabled install, unit/dependency regressions, both TypeScript checks and production build without production credentials. Fork and browser roundtrips remain separate local checks.
 
 For the full shield → private proof → swap → reshield → withdrawal → account-recovery test, keep the dev server running and run:
 

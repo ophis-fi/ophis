@@ -9,7 +9,7 @@ name: Security
 # repo-wide red-CI surprise, PR #786). The weekly run closes that gap.
 #
 # WHICH jobs run on the cron: ONLY the time-sensitive advisory jobs
-# (cargo-audit, cargo-deny, pnpm-audit, pnpm-audit-frontend, pnpm-audit-docs, contracts-osv-audit, rust-osv-audit) plus the
+# (cargo-audit, cargo-deny, pnpm-audit, pnpm-audit-frontend, pnpm-audit-docs, pnpm-audit-railgun, contracts-osv-audit, rust-osv-audit) plus the
 # secret scan (gitleaks). The input-invariant gates (partner-fee / floor /
 # tier / erpc / policy-pack) and Slither depend only on repo contents a PR
 # already exercised, so they are skipped on schedule via
@@ -20,6 +20,7 @@ name: Security
 #   - pnpm-audit          root-workspace JS/TS dep advisories (FULL tree, osv-scanner)
 #   - pnpm-audit-frontend apps/frontend (separate workspace) dep advisories (osv-scanner)
 #   - pnpm-audit-docs     apps/docs-ophis (separate workspace) dep advisories (osv-scanner)
+#   - pnpm-audit-railgun  apps/railgun (standalone, ignore-workspace) dep advisories (osv-scanner)
 #   - contracts-osv-audit legacy contracts deploy/test toolchain advisories (osv-scanner)
 #   - cargo-audit         Rust dep advisories
 #   - cargo-deny          Rust supply-chain (advisories + sources)
@@ -28,7 +29,7 @@ name: Security
 # The JS/TS + contracts advisory jobs use osv-scanner (reads pnpm-lock.yaml /
 # yarn.lock directly against the OSV/GitHub advisory DB) after npm retired its
 # legacy audit endpoint (HTTP 410) which broke `pnpm audit` / `yarn audit`. The
-# three pnpm jobs block on new HIGH/CRITICAL advisories; contracts blocks on
+# four pnpm jobs block on new HIGH/CRITICAL advisories; contracts blocks on
 # regressions above a documented baseline. Shared gate: scripts/osv-gate.py.
 
 on:
@@ -248,7 +249,7 @@ jobs:
     # Skip on the weekly cron: Slither's findings only change when the
     # (vendored, frozen) contracts change, which a PR already exercises, so
     # it is not a time-sensitive advisory job. Only cargo-audit, cargo-deny,
-    # pnpm-audit, pnpm-audit-frontend, pnpm-audit-docs, and gitleaks run on schedule.
+    # pnpm-audit, pnpm-audit-frontend, pnpm-audit-docs, pnpm-audit-railgun, and gitleaks run on schedule.
     if: github.event_name != 'schedule'
     # Runs Trail of Bits' eth-security-toolbox container (digest-pinned
     # for reproducibility). The container ships slither 0.11.4, foundry,
@@ -494,6 +495,51 @@ jobs:
             --osv-rc "$rc"
           # braces GHSA-vfj7-8cjw-p6xm was withdrawn by GitHub on 2026-10-23, so its
           # exception is gone; the pnpm braces backport and its regression stay.
+
+  pnpm-audit-railgun:
+    name: pnpm audit (railgun deps)
+    runs-on: ubuntu-latest
+    # apps/railgun is a standalone pnpm project (.npmrc ignore-workspace, own
+    # lockfile), so none of the jobs above covered it. Same gate as docs-ophis:
+    # block on absolute HIGH/CRITICAL. Only the backported residuals are ignored.
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
+      - uses: ./.github/actions/install-osv-scanner
+      - name: Scan railgun project and block on HIGH/CRITICAL
+        run: |
+          test -s apps/railgun/pnpm-lock.yaml || { echo "lockfile apps/railgun/pnpm-lock.yaml missing or empty -- failing closed"; exit 1; }
+          rc=0
+          osv-scanner --lockfile apps/railgun/pnpm-lock.yaml --format json \
+            --output-file /tmp/osv-railgun.json || rc=$?
+          if [ "$rc" != 0 ] && [ "$rc" != 1 ]; then
+            echo "osv-scanner errored (rc=$rc) -- failing closed"; exit "$rc"
+          fi
+          # Version-matched residuals that ship a local backport with regression
+          # tests in railgun CI; osv cannot see pnpm patches. Re-check after any
+          # Railgun SDK, Waku client or bundler change.
+          # zod 3.22.4/3.25.76 GHSA-mrhx-c7xc-m3w5: patches/zod@3.*.patch.
+          # @graphql-tools/utils 8.13.1/9.2.1 GHSA-7mx3-vvmw-hjmv: mergeDeep backport.
+          # @libp2p/peer-store 11.2.7 GHSA-vrf4-mx87-p53w: peer-record identity backport.
+          # Review: audit/dependency-review-2026-11-03.md, apps/railgun/DEPENDENCIES.md
+          python3 scripts/osv-gate.py /tmp/osv-railgun.json --mode advisories \
+            --osv-rc "$rc" --ignore GHSA-mrhx-c7xc-m3w5:2026-12-03 \
+            --ignore GHSA-7mx3-vvmw-hjmv:2026-12-03 \
+            --ignore GHSA-vrf4-mx87-p53w:2026-12-03
+          # The ignores above match GHSA ids only; fail if any copy osv reports
+          # under them is not an exact pnpm.patchedDependencies key (a new
+          # unpatched version would otherwise pass silently).
+          python3 - <<'PY'
+          import json
+          ign = {"GHSA-mrhx-c7xc-m3w5", "GHSA-7mx3-vvmw-hjmv", "GHSA-vrf4-mx87-p53w"}
+          patched = set(json.load(open("apps/railgun/package.json"))["pnpm"]["patchedDependencies"])
+          bad = sorted({f"{p['package']['name']}@{p['package']['version']}"
+                        for r in json.load(open("/tmp/osv-railgun.json")).get("results", [])
+                        for p in r.get("packages", [])
+                        for v in p.get("vulnerabilities", [])
+                        if ({v.get("id")} | set(v.get("aliases", []))) & ign} - patched)
+          if bad: raise SystemExit(f"ignored GHSA hits an UNPATCHED version: {bad}")
+          print("ignored GHSAs hit only patched copies")
+          PY
 
   rust-osv-audit:
     name: Rust OSV (${{ matrix.lock }})

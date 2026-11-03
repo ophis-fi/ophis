@@ -21,6 +21,8 @@ on:
       - 'patches/**'
       - 'apps/mcp-server/**'
       - 'packages/sdk/**'
+      - 'tsconfig.base.json'
+      - '.dockerignore'
       - '.github/workflows/mcp-deploy.yml'
   pull_request:
     paths:
@@ -30,6 +32,9 @@ on:
       - 'patches/**'
       - 'apps/mcp-server/**'
       - 'packages/sdk/**'
+      - 'tsconfig.base.json'
+      - '.dockerignore'
+      - '.github/workflows/mcp-deploy.yml'
 
 permissions:
   contents: read
@@ -81,3 +86,15 @@ jobs:
         # `npx wrangler@4` tag. This step carries the deploy token, so it must not
         # fetch a compromised future 4.x release; dependabot tracks the pin via package.json.
         run: pnpm exec wrangler deploy
+
+  # Build the standalone stdio image (apps/mcp-server/Dockerfile, context = repo
+  # root, the layout .dockerignore is written for) so a pnpm/lockfile/Dockerfile
+  # change that breaks it fails on the PR. No push, no secrets, no environment.
+  docker-build:
+    name: docker build (stdio image)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+      - run: docker build -f apps/mcp-server/Dockerfile .

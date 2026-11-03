@@ -229,7 +229,7 @@ ophis/
 
 ## Build
 
-Root workspace (pnpm 9, Node 20.19+ or 22.12+, turborepo):
+Root workspace (pnpm 10, Node 20.19+ or 22.12+, turborepo):
 
 ```sh
 pnpm install      # all root-workspace deps

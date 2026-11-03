@@ -12,8 +12,12 @@ on:
     paths:
       - "apps/rebate-indexer/**"
       - "packages/sdk/**"
+      - "package.json"
+      - "pnpm-lock.yaml"
+      - "patches/**"
       - "pnpm-workspace.yaml"
       - "tsconfig.base.json"
+      - ".dockerignore"
       - ".github/workflows/rebate-indexer-ci.yml"
       - "scripts/test-rebate-proxy.py"
   push:
@@ -58,6 +62,18 @@ jobs:
       # Integration coverage therefore runs once, here, via the working config. The
       # `test:integration` npm script stays for local single-file runs.
       - run: pnpm --filter @ophis/rebate-indexer test
+
+  # Build the production image exactly as Cadia does (docker-compose.yml:
+  # context ../.. = repo root, dockerfile apps/rebate-indexer/Dockerfile), so a
+  # pnpm/lockfile/Dockerfile change that breaks the image fails here instead of
+  # in the main-branch deploy. No push, no secrets.
+  docker-build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
+        with:
+          persist-credentials: false
+      - run: docker build -f apps/rebate-indexer/Dockerfile .
 
   e2e:
     runs-on: ubuntu-latest
