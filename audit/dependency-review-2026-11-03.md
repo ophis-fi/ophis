@@ -68,7 +68,18 @@ Required by `apps/frontend/AGENTS.md` (dependency management).
 | `rollup-plugin-bundle-stats` removed (cowswap-frontend devDependency) | n/a | Only used in the opt-in `ANALYZE_BUNDLE` branch of `vite.config.mts`; `rollup-plugin-visualizer` still writes `build/cowswap/analyse.html`. Removes stream-json and its patch from every lockfile. | `build:cowswap`; `scripts/test-security-dependencies.cjs` now asserts no stream-json in the root and frontend graphs. |
 | fast-uri 3.1.9, ip-address 10.7.4, qs 6.17.0, serialize-javascript 7.1.4 | [fast-uri](https://github.com/fastify/fast-uri/releases/tag/v3.1.9), [ip-address](https://github.com/beaugunderson/ip-address/releases/tag/v10.7.4), [qs](https://github.com/ljharb/qs/blob/v6.17.0/CHANGELOG.md), [serialize-javascript](https://github.com/yahoo/serialize-javascript/releases/tag/v7.1.4) | Patch/minor releases on the existing major, none. | osv gate and `build:cowswap`. |
 
+## Other CI exceptions
+
+- **braces GHSA-vfj7-8cjw-p6xm: removed.** GitHub withdrew the advisory on 2026-10-23, so the
+  frontend and docs `--ignore` and the contracts baseline fingerprint are deleted (contracts high
+  ceiling 2 -> 1). The pnpm braces backport and its regression stay.
+- **crypto-bigint RUSTSEC-2026-0387: renewed to 2026-12-03.** Re-checked 2026-11-03: still no
+  patched 0.5.x (latest 0.5.5; fixed only in >=0.7.6), and the latest alloy-signer (2.5.0) still
+  requires k256/elliptic-curve ^0.13, so no upgrade path exists. The ignore is load-bearing: without
+  it, or with an expired date, the Rust OSV gate fails closed on the ungraded finding.
+
 ## Renewal criteria
 
-Remove the zod exception when the listed SDKs ship zod 4, or re-review by 2026-12-03. Re-check
+Re-review the zod and crypto-bigint exceptions together by 2026-12-03: remove zod's when the
+listed SDKs ship zod 4, and crypto-bigint's when alloy moves to k256/elliptic-curve 0.14. Re-check
 the railgun residuals after any Railgun SDK, Waku client or bundler change.

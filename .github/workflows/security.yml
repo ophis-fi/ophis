@@ -454,8 +454,7 @@ jobs:
             echo "osv-scanner errored (rc=$rc) -- failing closed"; exit "$rc"
           fi
           python3 scripts/osv-gate.py /tmp/osv-fe.json --mode advisories \
-            --osv-rc "$rc" --ignore GHSA-vfj7-8cjw-p6xm:2026-11-17 \
-            --ignore GHSA-mrhx-c7xc-m3w5:2026-12-03
+            --osv-rc "$rc" --ignore GHSA-mrhx-c7xc-m3w5:2026-12-03
           # zod GHSA-mrhx-c7xc-m3w5: upstream fixed only >=4.6.6; zod 4.x is
           # forced to >=4.6.6 by override and cowswap-frontend is on zod 4
           # (2026-11-03). The remaining third-party zod 3.x copies (reown
@@ -464,10 +463,8 @@ jobs:
           # scripts/test-zod3-security.cjs in frontend CI; osv cannot see it.
           # Drop when reown and cdp-sdk ship zod 4.
           # Review: audit/dependency-review-2026-11-03.md
-          # braces has a pnpm backport; installed depth/cycle regressions run in frontend CI.
-          # Keep the dated version-only exception until an upstream fixed release.
-          # Review and removal criteria: audit/dependency-review-2026-10-04.md;
-          # renewal: audit/dependency-review-2026-10-07.md.
+          # braces GHSA-vfj7-8cjw-p6xm was withdrawn by GitHub on 2026-10-23, so its
+          # exception is gone; the pnpm braces backport and its regression stay.
 
   pnpm-audit-docs:
     name: pnpm audit (docs-ophis deps)
@@ -494,11 +491,9 @@ jobs:
             echo "osv-scanner errored (rc=$rc) -- failing closed"; exit "$rc"
           fi
           python3 scripts/osv-gate.py /tmp/osv-docs.json --mode advisories \
-            --osv-rc "$rc" --ignore GHSA-vfj7-8cjw-p6xm:2026-11-17
-          # Docs uses the same braces backport, verified by its deployment build regression.
-          # Keep the dated version-only exception until an upstream fixed release.
-          # Review and removal criteria: audit/dependency-review-2026-10-04.md;
-          # renewal: audit/dependency-review-2026-10-07.md.
+            --osv-rc "$rc"
+          # braces GHSA-vfj7-8cjw-p6xm was withdrawn by GitHub on 2026-10-23, so its
+          # exception is gone; the pnpm braces backport and its regression stay.
 
   rust-osv-audit:
     name: Rust OSV (${{ matrix.lock }})
@@ -522,9 +517,10 @@ jobs:
           osv-scanner scan source --lockfile "$CARGO_LOCK" --format json \
             --no-call-analysis rust --output-file /tmp/osv-rust.json || rc=$?
           # RUSTSEC-2026-0387 (crypto-bigint 0.5.5, ungraded): no patched 0.5.x and no
-          # alloy release leaves elliptic-curve 0.13; reason in apps/backend/.cargo/audit.toml.
+          # alloy release leaves elliptic-curve 0.13 (re-checked 2026-11-03: alloy-signer
+          # 2.5.0 still needs k256/elliptic-curve ^0.13); reason in apps/backend/.cargo/audit.toml.
           python3 scripts/osv-gate.py /tmp/osv-rust.json --mode advisories \
-            --cargo-lock "$CARGO_LOCK" --osv-rc "$rc" --ignore RUSTSEC-2026-0387:2026-11-16
+            --cargo-lock "$CARGO_LOCK" --osv-rc "$rc" --ignore RUSTSEC-2026-0387:2026-12-03
 
   cargo-audit:
     name: cargo audit (Rust deps)
