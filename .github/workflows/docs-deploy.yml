@@ -21,6 +21,8 @@ on:
       - 'apps/docs-ophis/**'
       - 'patches/braces@3.0.3.patch'
       - 'scripts/test-braces.cjs'
+      - 'patches/deepmerge@4.3.1.patch'
+      - 'scripts/test-deepmerge-security.cjs'
       - 'scripts/test-dependency-advisories.cjs'
       - 'scripts/check-published-agent-docs.mjs'
       - '.github/workflows/docs-deploy.yml'
@@ -85,6 +87,8 @@ jobs:
           node scripts/test-http-cache-semantics.cjs apps/docs-ophis
           node scripts/test-dependency-advisories.cjs apps/docs-ophis
           node scripts/test-braces.cjs apps/docs-ophis
+          # deepmerge is not a direct docs dependency: load the patched copy through the virtual store.
+          node scripts/test-deepmerge-security.cjs apps/docs-ophis/node_modules/.pnpm/node_modules/package.json
 
       - name: build docs
         working-directory: apps/docs-ophis

@@ -29,14 +29,10 @@ async function importDependency(loader, name, subpath = '.') {
 
 describe('browser dependency security backports', () => {
   it('preserves leading nonce bytes during RFC6979 truncation on P-521', () => {
-    const engine = childLoader(root, '@railgun-community/engine')
-    const circom = childLoader(engine, '@railgun-community/circomlibjs')
-    const web3 = childLoader(circom, 'web3')
-    const bzz = childLoader(web3, 'web3-bzz')
-    const swarm = childLoader(bzz, 'swarm-js')
-    const eth = childLoader(swarm, 'eth-lib')
-    const elliptic = childLoader(eth, 'elliptic')
-    const { ec: EC } = eth('elliptic')
+    const crypto = childLoader(wallet, 'crypto-browserify')
+    const sign = childLoader(crypto, 'browserify-sign')
+    const elliptic = childLoader(sign, 'elliptic')
+    const { ec: EC } = sign('elliptic')
     const BN = elliptic('bn.js')
     const DRBG = elliptic('hmac-drbg')
     const generate = DRBG.prototype.generate
@@ -116,6 +112,51 @@ describe('browser dependency security backports', () => {
         expect(Object.hasOwn(result.nested, 'constructor')).toBe(false)
         expect(Object.hasOwn(result.nested, 'prototype')).toBe(false)
       }
+    })
+  }
+  it('legacy GraphQL WebSocket executor verifies TLS and keeps state per subscription', async () => {
+    const mesh = childLoader(wallet, '@graphql-mesh/graphql')
+    const urlLoader = childLoader(mesh, '@graphql-tools/url-loader')
+    const { buildWSLegacyExecutor } = urlLoader('@graphql-tools/executor-legacy-ws')
+    const sockets = []
+    class FakeSocket {
+      readyState = 1
+      sent = []
+      constructor(url, protocol, options) {
+        this.options = options
+        sockets.push(this)
+      }
+      send(message) {
+        this.sent.push(JSON.parse(message))
+      }
+      terminate() {}
+      receive(message) {
+        this.onmessage({ data: JSON.stringify(message) })
+      }
+    }
+    const executor = buildWSLegacyExecutor('wss://example.invalid/graphql', FakeSocket)
+    const document = urlLoader('graphql').parse('subscription { tick }')
+    const alice = executor({ document, extensions: { connectionParams: { token: 'alice' } } })
+    executor({ document })
+    for (const socket of sockets) socket.onopen()
+    expect(sockets.map((socket) => socket.options.rejectUnauthorized)).toEqual([true, true])
+    expect(sockets.map((socket) => socket.sent[0].payload)).toEqual([{ token: 'alice' }, {}])
+    sockets[0].receive({ type: 'connection_ack' })
+    const { id } = sockets[0].sent[1]
+    sockets[0].receive({ type: 'data', id: `${id}-other`, payload: { data: { tick: 'other' } } })
+    sockets[0].receive({ type: 'data', id, payload: { data: { tick: 'alice' } } })
+    expect((await alice.next()).value).toEqual({ data: { tick: 'alice' } })
+  })
+  const testZod3 = root('../../../scripts/test-zod3-security.cjs')
+  for (const [version, owner] of [
+    ['3.25.76', () => childLoader(childLoader(childLoader(wallet, '@graphql-mesh/http'), 'fets'), 'zod-to-json-schema')],
+    ['3.22.4', () => childLoader(childLoader(childLoader(root, '@walletconnect/ethereum-provider'), '@reown/appkit'), '@reown/appkit-wallet')],
+  ]) {
+    it(`zod ${version}: oversized arrays and sets fail before element parsing (CJS and ESM)`, async () => {
+      const loader = owner()
+      const esm = await importDependency(loader, 'zod')
+      await expect(testZod3(loader)).resolves.toBe(version)
+      await expect(testZod3((name) => (name === 'zod' ? esm : loader(name)))).resolves.toBe(version)
     })
   }
   it('rejects a peer record signed by a different peer before touching the datastore', async () => {

@@ -6,8 +6,8 @@
 // node scripts/test-security-dependencies.cjs node_modules/.pnpm apps/frontend/node_modules/.pnpm
 // node scripts/test-security-dependencies.cjs --workspace root
 // node scripts/test-security-dependencies.cjs --workspace frontend
-// A fixture needs query-string 5/7, minimatch 3/5, Solana 1 + jayson 5 (root), stream-json 1 (frontend),
-// file-type 21, uuid 11, workbox-build 6 and ip-address 10, using this repo's overrides/patches.
+// A fixture needs query-string 5/7, minimatch 3/5, Solana 1 + jayson 5 (root),
+// file-type 21, uuid 11, workbox-build 6, ip-address 10, deepmerge 4 and zod 3, using this repo's overrides/patches.
 const assert = require('node:assert/strict');
 const { spawnSync } = require('node:child_process');
 const { createHash } = require('node:crypto');
@@ -15,7 +15,7 @@ const { existsSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSyn
 const { createRequire, Module } = require('node:module');
 const { createServer } = require('node:http');
 const { tmpdir } = require('node:os');
-const { basename, join, resolve } = require('node:path');
+const { basename, dirname, join, resolve } = require('node:path');
 const { pathToFileURL } = require('node:url');
 const { parseArgs } = require('node:util');
 const { runInNewContext } = require('node:vm');
@@ -337,16 +337,9 @@ async function main() {
     }
   }
 
-  for (const pkg of workspace === 'root' ? [] : installed('stream-json', 1)) {
-    await require('./test-stream-json-security.cjs')(pkg.require);
-    console.log(`PASS stream-json ${pkg.version}: prototype parity, reviver, streamers, depth guards and JSONC exclusion`);
-  }
-
-  if (workspace === 'root') {
-    for (const { root } of stores) {
-      assert(!/^  stream-json@/m.test(readFileSync(join(root, 'lock.yaml'), 'utf8')),
-        'the root installed graph must no longer contain stream-json');
-    }
+  for (const { root } of stores) {
+    assert(!/^  stream-json@/m.test(readFileSync(join(root, 'lock.yaml'), 'utf8')),
+      'the installed graph must no longer contain stream-json');
   }
   for (const pkg of workspace === 'frontend' ? [] : installed('@solana/web3.js', 1)) {
     await require('./test-solana-rpc-security.cjs')(pkg.require);
@@ -408,6 +401,21 @@ async function main() {
     assert(uuid.validate(expected));
     assert.equal(uuid.version(expected), 5);
     console.log(`PASS uuid ${pkg.version}: named exports, v4/v5 buffer output, parse/stringify`);
+  }
+
+  for (const pkg of installed('deepmerge', 4)) {
+    require('./test-deepmerge-security.cjs')(pkg.require);
+    console.log(`PASS deepmerge ${pkg.version}: __proto__/constructor/prototype never copied; ordinary merges unchanged`);
+  }
+  for (const pkg of installed('zod', 3)) {
+    const testZod3 = require('./test-zod3-security.cjs');
+    await testZod3(pkg.require);
+    // Bundlers load the ESM entry (and some the UMD build); the patch edits those files separately.
+    const dir = dirname(pkg.require.resolve('zod/package.json'));
+    const builds = [await import(pathToFileURL(join(dir, pkg.exports['.'].import)).href)];
+    if (existsSync(join(dir, 'lib/index.umd.js'))) builds.push(pkg.require(join(dir, 'lib/index.umd.js')));
+    for (const zod of builds) await testZod3((name) => (name === 'zod' ? zod : pkg.require(name)));
+    console.log(`PASS zod ${pkg.version} (CJS, ESM${builds.length > 1 ? ', UMD' : ''}): oversized arrays/sets fail before element parsing; in-bound parsing unchanged`);
   }
 
   if (workspace === 'frontend') {

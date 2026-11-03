@@ -419,16 +419,17 @@ jobs:
           # is unreachable for Ophis, dev/test-only, not in any published tarball,
           # and NO patched release exists. (audit 2026-07)
           # IGNORE zod GHSA-mrhx-c7xc-m3w5 (HIGH, array-issue memory blowup) until
-          # 2026-11-16: fixed only in zod >=4.6.6, NO 3.x patch exists. zod 4.x is
-          # forced to >=4.6.6 by the root override, and apps/mcp-server (the only
-          # internet-facing server that zod-validates request input) is on zod 4.
-          # Remaining zod 3.x: rebate-indexer parses only upstream CoW/feed API
-          # responses (no request input); agentkit-ophis/plugin-goat (+ x402,
-          # goat-sdk, cdp-sdk, privy) validate local agent tool args; reown appkit
-          # runs in the user's browser. Drop when those move to zod 4. (2026-10-26)
+          # 2026-12-03: upstream fixed only zod >=4.6.6. zod 4.x is forced to
+          # >=4.6.6 by the root override; apps/mcp-server and (since 2026-11-03)
+          # apps/rebate-indexer are on zod 4. The remaining third-party zod 3.x
+          # (@coinbase/agentkit, @goat-sdk/*, x402, cdp-sdk, privy in the devDeps
+          # of agentkit-ophis/plugin-goat; reown appkit) carry the local backport
+          # patches/zod@3.*.patch, tested by scripts/test-zod3-security.cjs in CI;
+          # osv matches by version and cannot see it. Drop when those SDKs ship
+          # zod 4. Review: audit/dependency-review-2026-11-03.md
           python3 scripts/osv-gate.py /tmp/osv-root.json --mode advisories \
             --osv-rc "$rc" --ignore GHSA-3gc7-fjrx-p6mg \
-            --ignore GHSA-mrhx-c7xc-m3w5:2026-11-16
+            --ignore GHSA-mrhx-c7xc-m3w5:2026-12-03
 
   pnpm-audit-frontend:
     name: pnpm audit (frontend deps)
@@ -453,17 +454,17 @@ jobs:
             echo "osv-scanner errored (rc=$rc) -- failing closed"; exit "$rc"
           fi
           python3 scripts/osv-gate.py /tmp/osv-fe.json --mode advisories \
-            --osv-rc "$rc" --ignore GHSA-vfj7-8cjw-p6xm:2026-11-17 \
-            --ignore GHSA-mrhx-c7xc-m3w5:2026-11-16
-          # zod GHSA-mrhx-c7xc-m3w5: fixed only in >=4.6.6, NO 3.x patch exists;
-          # zod 4.x is forced to >=4.6.6 by override. The zod 3.x copies
-          # (cowswap-frontend, reown appkit-wallet, cdp-sdk) run in the user's
-          # browser (static SPA, no server parses with them); @vercel/config and
-          # chromium-bidi are build/test tooling. Drop when cowswap moves to zod 4.
-          # braces has a pnpm backport; installed depth/cycle regressions run in frontend CI.
-          # Keep the dated version-only exception until an upstream fixed release.
-          # Review and removal criteria: audit/dependency-review-2026-10-04.md;
-          # renewal: audit/dependency-review-2026-10-07.md.
+            --osv-rc "$rc" --ignore GHSA-mrhx-c7xc-m3w5:2026-12-03
+          # zod GHSA-mrhx-c7xc-m3w5: upstream fixed only >=4.6.6; zod 4.x is
+          # forced to >=4.6.6 by override and cowswap-frontend is on zod 4
+          # (2026-11-03). The remaining third-party zod 3.x copies (reown
+          # appkit-wallet, cdp-sdk, @vercel/config, chromium-bidi) carry the
+          # local backport patches/zod@3.*.patch, tested by
+          # scripts/test-zod3-security.cjs in frontend CI; osv cannot see it.
+          # Drop when reown and cdp-sdk ship zod 4.
+          # Review: audit/dependency-review-2026-11-03.md
+          # braces GHSA-vfj7-8cjw-p6xm was withdrawn by GitHub on 2026-10-23, so its
+          # exception is gone; the pnpm braces backport and its regression stay.
 
   pnpm-audit-docs:
     name: pnpm audit (docs-ophis deps)
@@ -490,11 +491,9 @@ jobs:
             echo "osv-scanner errored (rc=$rc) -- failing closed"; exit "$rc"
           fi
           python3 scripts/osv-gate.py /tmp/osv-docs.json --mode advisories \
-            --osv-rc "$rc" --ignore GHSA-vfj7-8cjw-p6xm:2026-11-17
-          # Docs uses the same braces backport, verified by its deployment build regression.
-          # Keep the dated version-only exception until an upstream fixed release.
-          # Review and removal criteria: audit/dependency-review-2026-10-04.md;
-          # renewal: audit/dependency-review-2026-10-07.md.
+            --osv-rc "$rc"
+          # braces GHSA-vfj7-8cjw-p6xm was withdrawn by GitHub on 2026-10-23, so its
+          # exception is gone; the pnpm braces backport and its regression stay.
 
   rust-osv-audit:
     name: Rust OSV (${{ matrix.lock }})
@@ -518,9 +517,10 @@ jobs:
           osv-scanner scan source --lockfile "$CARGO_LOCK" --format json \
             --no-call-analysis rust --output-file /tmp/osv-rust.json || rc=$?
           # RUSTSEC-2026-0387 (crypto-bigint 0.5.5, ungraded): no patched 0.5.x and no
-          # alloy release leaves elliptic-curve 0.13; reason in apps/backend/.cargo/audit.toml.
+          # alloy release leaves elliptic-curve 0.13 (re-checked 2026-11-03: alloy-signer
+          # 2.5.0 still needs k256/elliptic-curve ^0.13); reason in apps/backend/.cargo/audit.toml.
           python3 scripts/osv-gate.py /tmp/osv-rust.json --mode advisories \
-            --cargo-lock "$CARGO_LOCK" --osv-rc "$rc" --ignore RUSTSEC-2026-0387:2026-11-16
+            --cargo-lock "$CARGO_LOCK" --osv-rc "$rc" --ignore RUSTSEC-2026-0387:2026-12-03
 
   cargo-audit:
     name: cargo audit (Rust deps)

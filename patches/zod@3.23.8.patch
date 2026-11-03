@@ -1,0 +1,72 @@
+diff --git a/lib/index.mjs b/lib/index.mjs
+index 56bfb8f948c05032d5250123cc5c1a59a53ba8ff..3a3417578b9964d2e089fe6a859501d8f03278a6 100644
+--- a/lib/index.mjs
++++ b/lib/index.mjs
+@@ -2216,6 +2216,10 @@ class ZodArray extends ZodType {
+                 status.dirty();
+             }
+         }
++        // GHSA-mrhx-c7xc-m3w5: an oversized array fails before any element is parsed
++        if ((def.exactLength !== null && ctx.data.length > def.exactLength.value) || (def.maxLength !== null && ctx.data.length > def.maxLength.value)) {
++            return INVALID;
++        }
+         if (ctx.common.async) {
+             return Promise.all([...ctx.data].map((item, i) => {
+                 return def.type._parseAsync(new ParseInputLazyPath(ctx, item, ctx.path, i));
+@@ -3236,6 +3240,8 @@ class ZodSet extends ZodType {
+                     message: def.maxSize.message,
+                 });
+                 status.dirty();
++                // GHSA-mrhx-c7xc-m3w5: an oversized set fails before any element is parsed
++                return INVALID;
+             }
+         }
+         const valueType = this._def.valueType;
+diff --git a/lib/index.umd.js b/lib/index.umd.js
+index 5b15271fa65f0a31288578d0e35e3f2e17d4d741..69a1dc5c95c780a40e0b1a34d40061b96ff06785 100644
+--- a/lib/index.umd.js
++++ b/lib/index.umd.js
+@@ -2222,6 +2222,10 @@
+                     status.dirty();
+                 }
+             }
++            // GHSA-mrhx-c7xc-m3w5: an oversized array fails before any element is parsed
++            if ((def.exactLength !== null && ctx.data.length > def.exactLength.value) || (def.maxLength !== null && ctx.data.length > def.maxLength.value)) {
++                return INVALID;
++            }
+             if (ctx.common.async) {
+                 return Promise.all([...ctx.data].map((item, i) => {
+                     return def.type._parseAsync(new ParseInputLazyPath(ctx, item, ctx.path, i));
+@@ -3242,6 +3246,8 @@
+                         message: def.maxSize.message,
+                     });
+                     status.dirty();
++                    // GHSA-mrhx-c7xc-m3w5: an oversized set fails before any element is parsed
++                    return INVALID;
+                 }
+             }
+             const valueType = this._def.valueType;
+diff --git a/lib/types.js b/lib/types.js
+index 0eb943a350832a548f0c7c1b4bb43a4207ba44fd..58339dfe1184f161aec78a619d7f924ceee00d4d 100644
+--- a/lib/types.js
++++ b/lib/types.js
+@@ -1700,6 +1700,10 @@ class ZodArray extends ZodType {
+                 status.dirty();
+             }
+         }
++        // GHSA-mrhx-c7xc-m3w5: an oversized array fails before any element is parsed
++        if ((def.exactLength !== null && ctx.data.length > def.exactLength.value) || (def.maxLength !== null && ctx.data.length > def.maxLength.value)) {
++            return parseUtil_1.INVALID;
++        }
+         if (ctx.common.async) {
+             return Promise.all([...ctx.data].map((item, i) => {
+                 return def.type._parseAsync(new ParseInputLazyPath(ctx, item, ctx.path, i));
+@@ -2729,6 +2733,8 @@ class ZodSet extends ZodType {
+                     message: def.maxSize.message,
+                 });
+                 status.dirty();
++                // GHSA-mrhx-c7xc-m3w5: an oversized set fails before any element is parsed
++                return parseUtil_1.INVALID;
+             }
+         }
+         const valueType = this._def.valueType;

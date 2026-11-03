@@ -42,7 +42,7 @@ ignore = [
   # still requires elliptic-curve/k256 ^0.13, so no upgrade path exists yet.
   # Local key signing does touch it, but exploiting it needs fine-grained timing
   # measurement co-resident on our self-hosted, single-tenant signer hosts.
-  # Re-review by 2026-11-16 (same date as the dated OSV --ignore in security.yml,
-  # which enforces it); mirrored in deny.toml.
+  # Re-checked 2026-11-03 (unchanged). Re-review by 2026-12-03 (same date as the
+  # dated OSV --ignore in security.yml, which enforces it); mirrored in deny.toml.
   "RUSTSEC-2026-0387",
 ]

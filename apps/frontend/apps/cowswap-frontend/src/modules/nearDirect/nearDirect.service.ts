@@ -31,7 +31,7 @@ OpenAPI.TOKEN = process.env.REACT_APP_NEAR_API_KEY || undefined
 export function nearErrorMessage(error: unknown): string {
   if (error instanceof ApiError) {
     const body = z
-      .object({ message: z.string().max(500), correlationId: z.string().uuid().optional().catch(undefined) })
+      .object({ message: z.string().max(500), correlationId: z.guid().optional().catch(undefined) })
       .safeParse(error.body)
     if (body.success) {
       const message =
