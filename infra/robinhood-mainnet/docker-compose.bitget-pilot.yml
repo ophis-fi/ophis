@@ -1,0 +1,47 @@
+# Separate project; no driver registration and no background API polling.
+# Provision /budget/requests once (empty, uid 10001); never truncate on restart.
+services:
+  bitget-solver:
+    image: ${BITGET_SOLVER_IMAGE:?build the reviewed solver image first}
+    restart: "no"
+    mem_limit: 1g
+    read_only: true
+    environment:
+      ADDR: 0.0.0.0:80
+      BITGET_PARTNER_CODE: ${BITGET_PARTNER_CODE:?set the partner code}
+    ports:
+      - "127.0.0.1:9321:80"
+    networks:
+      - robinhood
+    secrets:
+      - bitget-api-key
+      - bitget-api-secret
+    tmpfs:
+      - /run/bitget:uid=10001,gid=10001,mode=0700
+      - /tmp:mode=1777
+    volumes:
+      - ./bitget-pilot.toml.tmpl:/config.toml.tmpl:ro
+      - type: bind
+        source: ${BITGET_BUDGET_DIR:?set the persistent budget directory}
+        target: /budget
+        bind:
+          create_host_path: false
+    entrypoint: ["sh", "-eu", "-c"]
+    command:
+      - |
+        umask 077
+        export BITGET_API_KEY="$$(cat /run/secrets/bitget-api-key)"
+        export BITGET_API_SECRET="$$(cat /run/secrets/bitget-api-secret)"
+        envsubst '$${BITGET_API_KEY} $${BITGET_API_SECRET} $${BITGET_PARTNER_CODE}' < /config.toml.tmpl > /run/bitget/config.toml
+        exec solvers bitget --config /run/bitget/config.toml
+
+secrets:
+  bitget-api-key:
+    file: ${BITGET_API_KEY_FILE:?set the private API key file path}
+  bitget-api-secret:
+    file: ${BITGET_API_SECRET_FILE:?set the private secret file path}
+
+networks:
+  robinhood:
+    external: true
+    name: robinhood-mainnet_default

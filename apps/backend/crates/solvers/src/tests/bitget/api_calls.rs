@@ -84,6 +84,7 @@ async fn swap_sell_all_chains() {
             partner_code: "cowswap".to_string(),
             settlement_contract: address!("0x9008d19f58aabd9ed0d60971565aa8510560ab41"),
             block_stream: None,
+            request_budget: None,
         };
 
         let order = Order {
@@ -159,6 +160,7 @@ async fn swap_buy_not_supported() {
         partner_code: "cowswap".to_string(),
         settlement_contract: address!("0x9008d19f58aabd9ed0d60971565aa8510560ab41"),
         block_stream: None,
+        request_budget: None,
     };
 
     let order = Order {
