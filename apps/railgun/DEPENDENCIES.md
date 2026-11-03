@@ -35,3 +35,19 @@ After the bn.js fix, the earlier audit reported 2 critical, 15 high, 11 moderate
 The current Rollup module graph and its importers were captured after the frozen install. The two critical packages, tar and form-data, remain absent from browser chunks. Any addition of SDK Node/server execution or dependency/bundler change invalidates these exclusions and requires reassessment. Existing backport regressions still pass.
 
 The installed wallet 11.2.0 cross-contract and broadcaster-fee estimator files were also compared with the integrity-verified official npm archive and match exactly. There is no uncommitted SDK edit required to reproduce the working live route.
+
+## Dependabot sweep — 2026-11-03
+
+Overrides now remove these vulnerable versions from the lockfile. Each consumer's call surface was checked first:
+
+- `eth-lib@0.1.29>servify` is removed. eth-lib declares servify but no eth-lib file requires it. This drops `request`, `express`, `body-parser` 1.20.8, `tough-cookie` 2.5.0, `form-data` 2.3.3, `qs` 6.5.5 and `uuid` 3.4.0.
+- `tar` resolves to 7.5.22, because swarm-js only calls `tar.x`. `minimatch@5` resolves to 11.0.4, because filelist only calls `minimatch.match`. `underscore` resolves to 1.13.8, `follow-redirects` to 1.16.2 and dev `undici@7` to 7.30.1. `vitest` is now 4.1.12, which updates `@vitest/mocker`.
+- `uuid` resolves to 11.1.1. Both web3-eth-accounts (`uuid.v4({ random })`) and Waku (`v4`) still use only v4. The rebuilt browser graph differs from the previous one only by `uuid` 9.0.1 → 11.1.1, through the same v4, rng, native and stringify modules.
+
+OSV still reports these remaining advisories:
+
+- `@graphql-tools/utils` 8/9, `@libp2p/peer-store` 11.2.7 and `elliptic` 6.6.1 have their local backports above.
+- `zod` 3.x is unchanged. The fix exists only in 4.6.6, and forcing it onto v3 consumers would be incompatible. The reachability assessment above still holds.
+- `web3-core-subscriptions` has no patched release and is not in the browser graph.
+- `decode-uri-component` 0.2.2 is not bundled. Every patched version is ESM-only and would break the CommonJS call in query-string 5. query-string decodes only in `parse()`, and its only importer, xhr-request, calls only `stringify()`.
+- `@graphql-tools/executor-legacy-ws` 0.0.11 is affected by GHSA-434m-5hcj-pxf3 (stale `connectionParams`) and GHSA-mp66-8ww2-pcwm (shared `onmessage`). Its module is bundled because url-loader imports it statically. However, url-loader calls `buildWSLegacyExecutor` only for `subscriptionsProtocol: 'LEGACY_WS'`, and every wallet GraphQL source sets only `endpoint`. The executor is never instantiated, so no backport was added. The patched 1.x line would add `@graphql-tools/utils` 10, which is also affected.
