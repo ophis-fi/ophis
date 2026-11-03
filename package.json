@@ -55,7 +55,7 @@
       "@modelcontextprotocol/sdk": "^1.31.0",
       "pbkdf2": "^3.1.7",
       "fastify": "^5.12.6",
-      "find-my-way": "^9.7.0",
+      "find-my-way": "^9.10.0",
       "postcss": "8.5.23",
       "fast-uri": "^3.1.9",
       "ip-address": "10.7.4",

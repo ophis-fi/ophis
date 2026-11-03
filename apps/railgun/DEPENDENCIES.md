@@ -41,7 +41,7 @@ The installed wallet 11.2.0 cross-contract and broadcaster-fee estimator files w
 Overrides now remove these vulnerable versions from the lockfile. Each consumer's call surface was checked first:
 
 - `eth-lib@0.1.29>servify` is removed. eth-lib declares servify but no eth-lib file requires it. This drops `request`, `express`, `body-parser` 1.20.8, `tough-cookie` 2.5.0, `form-data` 2.3.3, `qs` 6.5.5 and `uuid` 3.4.0.
-- `tar` resolves to 7.5.22, because swarm-js only calls `tar.x`. `minimatch@5` resolves to 11.0.4, because filelist only calls `minimatch.match`. `underscore` resolves to 1.13.8, `follow-redirects` to 1.16.2 and dev `undici@7` to 7.30.1. `vitest` is now 4.1.12, which updates `@vitest/mocker`.
+- `tar` resolves to 7.5.22. swarm-js's only use is `tar.x(from, to).then(...)` in its Node-only Swarm binary downloader (lib/files.js). That call shape returns a stream rather than a promise under every tar version, including the tar 4 it originally used, so the path was already broken. It is also absent from the browser and Worker graph, so the override changes nothing that runs. `minimatch@5` resolves to 11.0.4, because filelist only calls `minimatch.match`. `underscore` resolves to 1.13.8, `follow-redirects` to 1.16.2 and dev `undici@7` to 7.30.1. `vitest` is now 4.1.12, which updates `@vitest/mocker`.
 - `uuid` resolves to 11.1.1. Both web3-eth-accounts (`uuid.v4({ random })`) and Waku (`v4`) still use only v4. The rebuilt browser graph differs from the previous one only by `uuid` 9.0.1 → 11.1.1, through the same v4, rng, native and stringify modules.
 
 OSV still reports these remaining advisories:

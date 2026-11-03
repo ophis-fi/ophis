@@ -14,6 +14,10 @@ The zod GHSA-mrhx-c7xc-m3w5 exception in the root and frontend audit jobs is ren
 The remaining 3.x copies belong to SDKs with no zod 4 release (`@coinbase/agentkit`,
 `@goat-sdk/*`, `@reown/appkit-wallet`, `cdp-sdk`, `x402`, `privy`).
 
+docs-ophis `qs` is overridden to `^6.16.2` (resolves 6.17.1), which also fixes GHSA-w4cr-vjpx-p82q
+(CVE-2026-110910). Dependabot and osv-scanner do not flag that one because its OSV entry has git
+ranges only.
+
 ## Method
 
 For each alert: installed versions and dependency paths from the lockfile, the vulnerable function
@@ -49,7 +53,7 @@ claim was then checked by Jev against the post-fix lockfile, osv-scanner and tes
 | railgun | #1105 | `decode-uri-component` 0.2.2 | GHSA-vcc3-ghjq-m6fr | 0.13 / 0.47 | Not bundled. query-string decodes only in parse(), and its only importer, xhr-request, calls only stringify(). No CommonJS-compatible patched release exists. |
 | railgun | #1089 | `elliptic` 6.6.1 | GHSA-848j-6mx2-7j84 | 0.58 / 1.78 | No upstream patched release exists. The bundled 6.6.1 is the patched build, and the P-521 leading-zero regression test passes. |
 | railgun | #1087 | `web3-core-subscriptions` 1.10.4 | GHSA-hhf6-3xpg-pggx | 0.05 / 0.57 | Absent from the browser Rollup module list and the Worker. From web3 1.x, only web3-utils is bundled. |
-| docs-ophis | #1131 | `minimatch` 3.1.5 | GHSA-g3hv-75wg-m249 | 0.03 / 0.06 | Patched line is minimatch 11.x (ESM, named export only); serve-handler calls the 3.x default-function API (require('minimatch')(path, pattern)). minimatch 3.1.5 contains zero occurrences of firstPhasePreProcess/secondPhasePreProcess (the vulnerable code from 10.2.6; GHSA range overmatches). Used only by `docusaurus serve` local preview with config patterns; production is a static Cloudflare Pages build. Moderate, docs gate (HIGH/CRITICAL) passes. |
+| docs-ophis | #1131 | `minimatch` 3.1.5 | GHSA-g3hv-75wg-m249 | 0.03 / 0.06 | Patched line is minimatch 11.x (named exports only); serve-handler calls the 3.x default-function API (require('minimatch')(path, pattern)). minimatch 3.1.5 contains zero occurrences of firstPhasePreProcess/secondPhasePreProcess (the vulnerable code from 10.2.6; GHSA range overmatches). Used only by `docusaurus serve` local preview with config patterns; production is a static Cloudflare Pages build. Moderate, docs gate (HIGH/CRITICAL) passes. |
 | docs-ophis | #1123 | `deepmerge` 4.3.1 | GHSA-gcqx-w48m-w2h4 | 0.06 / 0.11 | No patched release (latest is 4.3.1). Sole dependent @svgr/plugin-svgo 8.1.0 declares but never requires it (dist/index.js requires only svgo and cosmiconfig); no docs-ophis source references it. Build-time only, static site. |
 | contracts | #1137 | `minimatch` unchanged | GHSA-g3hv-75wg-m249 | 0.04 / 0.01 | Patched 11.x is an incompatible major for consumers pinned ^3/^5 (eslint 8, glob 7/8, mocha 10). Installed 3.1.5/5.1.9 lack firstPhasePreProcess/secondPhasePreProcess, asserted in CI by contracts/test/security-dependencies.cjs. Dev/test toolchain over repo-controlled globs only. Both fingerprints already in audit/contracts-osv-baseline.json (review due 2026-11-15). |
 

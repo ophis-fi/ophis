@@ -72,7 +72,7 @@
       "nanoid@<3.3.17": "^3.3.17",
       "colord": "^2.9.4",
       "@swc/html": "1.16.2",
-      "qs": "6.16.1",
+      "qs": "^6.16.2",
       "image-size": "^2.0.4",
       "http-cache-semantics": "^4.3.0",
       "compression": "1.8.2",
