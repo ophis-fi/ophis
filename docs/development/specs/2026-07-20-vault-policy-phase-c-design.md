@@ -284,8 +284,14 @@ struct TokenRoute {
     Leg[]     legs;          // composed: legs[0] (UsdPrice) x each ExchangeRate leg
     Leg[]     anchor;        // optional, composed by the SAME rule as legs
     uint32    maxDivergenceBps;
-    // The per-token sanity band from the TokenAdd payload, PERSISTED so every
-    // later oracle read enforces it - not just the execute-time probe. Stored
+    // The per-token sanity band, PERSISTED as ABSOLUTE bounds so every
+    // later oracle read enforces it - not just the execute-time probe. The
+    // PAYLOAD (TokenAdd and RouteRecalibration alike) carries the band as
+    // 1e18-scaled RATIOS to the execute-time composed price PLUS a
+    // reviewed ABSOLUTE range the center must fall in ([execCenterLow,
+    // execCenterHigh] - sizing doc A.3); execute (and the constructor, at
+    // deploy) centers the ratios on the price it reads THEN, gated by that
+    // range, and stores the absolutes here. Stored
     // here (not only in calldata) because a privileged feed that later
     // publishes a fresh-but-erroneous extreme value passes staleness and the
     // rate bounds yet collapses the cross-rate floor; Phase B enforces its
@@ -298,6 +304,44 @@ struct TokenRoute {
     // case the depeg rule prices through, not an extra revert condition.
     uint256   sanityLow;
     uint256   sanityHigh;
+    // When the rail was last (re-)centered: set by the constructor,
+    // executeTokenAdd, and every NON-rateOnly executeRouteRecalibration;
+    // rateOnly refreshes leave it untouched. Persisted BECAUSE the
+    // deadline watcher polls it - lastRecalSubmittedAt tracks pending
+    // ordering, not rail freshness, and a rateOnly execution would
+    // otherwise make a stale rail look freshly serviced.
+    uint64    railCenteredAt;
+    // Reviewed turnover-charge gross-up (C4). The charge is the order
+    // NOTIONAL, exactly Phase B's _validateAndPrice shape with the price
+    // grossed up:
+    //   grossedPrice18 = mulDiv(routePrice18, 10_000 + uint256(turnoverGrossUpBps), 10_000)
+    //   sellUsd18      = sellAmount * grossedPrice18 / 10**sellTokenDecimals
+    // (a price-only formula would charge every order the same few dollars
+    // regardless of sellAmount, deleting the cap for large orders), where
+    // routePrice18 is ALWAYS the composed ROUTE price - never the C18
+    // depeg-selected min(route, anchor) the FLOOR validates at. The min()
+    // is conservative for the floor (a lower proceeds bound) but
+    // ANTI-conservative for the charge (a smaller reservation), and it
+    // would drag the ANCHOR's error envelope - market-ratio legs with
+    // their own landing and recovery terms - into a gross-up sized only
+    // from the route's legs. Charging at the route price keeps the
+    // stored envelope route-sized and sufficient whenever the route is
+    // in-band, whatever the anchor does; the overcharge on the
+    // detected-overvaluation branch (route high, anchor selected for the
+    // floor) is fail-closed -
+    // multiply-before-divide is NORMATIVE exactly as for RateBound (the
+    // literal `price * (1 + bps / 1e4)` truncates the quotient to zero
+    // for every value below 10_000 and charges the ungrossed price,
+    // silently deleting the entire reserve), and the addend WIDENS FIRST:
+    // at uint16 width `10_000 + g` overflows for g >= 55_536 and bricks
+    // every registration on the route. Submit and execute additionally
+    // REJECT turnoverGrossUpBps > 10_000 - a >100% gross-up exceeds every
+    // sized envelope (A.6) by an order of magnitude and is only reachable
+    // as a typo. Set at TokenAdd, refreshed by
+    // RouteRecalibration, sized per sizing doc A.6 (the route's own in-band
+    // composition envelope); the module cannot derive feed deviation sums
+    // on-chain, so the reviewed value is persisted here.
+    uint16    turnoverGrossUpBps;
 }
 ```
 
@@ -538,7 +582,34 @@ field:
   into a revert and the token into a policy-DoS), staleness bounds, live
   adapter probe, sequencer gate, and
   `allowedTokens.length < MAX_ALLOWED_TOKENS` (the cap that keeps
-  `removeToken`'s sweep statically bounded - see C15).
+  `removeToken`'s sweep statically bounded - see C15), and - because a
+  RateBound is INSTALLED here, not only refreshed by recalibration - the
+  SAME snapshot validations `executeRouteRecalibration` enforces - with
+  the ceiling TIGHTENED to what the add path can actually service:
+  `execTs - snapshotTs` in
+  [14 days, min(21 days + DELAY, 180 days - DELAY)] - because a refresh
+  CANNOT be pre-staged against a token that is not yet allowed: the
+  recalibration window alone would admit an install whose first
+  refresh, submitted the moment the add executes, matures past the
+  180-day outer term. NO extra lead is baked into the on-chain bound
+  (a -7d term would make the window EMPTY at DELAY = 90, where
+  snapshot-predates-submission already forces age >= DELAY at eta and
+  every snapshot-bearing add would revert); the resulting execution
+  window spans `180d - 2 x DELAY`, so it is comfortable at the
+  recommended 24h, keeps a week of slack up to DELAY ~86 days, and
+  DEGENERATES beyond that: a vault configured with DELAY > ~86 days
+  cannot practically list registration-only rate legs - a stated
+  deploy-time consequence of choosing a near-ceiling review delay
+  (feed-only routes are unaffected; the runbook, not the chain, carries
+  the submission-lead guidance). Plus the live ratio satisfying the new
+  bound at execTs, and the sanity rail centered per the RailSpec rules. Without this, an add (or remove-and-re-add) installs
+  an arbitrarily OLD observation and instantly pre-grants years of
+  accumulated growth headroom - `(cap - realized) x age` of slack - walking
+  around the 21-day cap the sizing doc's B.1 window exists to enforce. The
+  CONSTRUCTOR's initial `TokenAdd[]` enforces the same checks with no
+  timelock transit to account for: `deployTs - snapshotTs` in
+  [14 days, 21 days] - deployment prep simply takes its observations
+  14-21 days before deploy.
   **A liveness probe is not identity validation.** "The adapter returned a
   nonzero number" cannot distinguish a token/USD price from an exchange rate,
   a decimals-mismatched proxy, a deliberately capped TEST feed (Unichain ships
@@ -557,11 +628,14 @@ field:
   `decimals()` to be read, validated (<= 18) and cached as `feedDecimals` so
   every later raw read normalizes to 18-dec; each leg's declared `LegKind` to
   match its position in the route (a `UsdPrice` leg cannot sit where an
-  `ExchangeRate` is composed); and the composed price to fall inside the
-  per-token sanity band carried in the route - PERSISTED at execute and
-  enforced on every subsequent read, not just probed once - so the proposer
-  states what "right" looks like and the timelock makes that claim publicly
-  reviewable.
+  `ExchangeRate` is composed); and the sanity-band RATIOS carried in the
+  route (low < 1e18 < high) to be centered on the composed price read at
+  execute - REQUIRED to fall inside the payload's reviewed absolute
+  [execCenterLow, execCenterHigh] range, there being no prior rail on an
+  add to induct from - and PERSISTED as absolutes, enforced on every
+  subsequent read, not just probed once - so the proposer states what
+  "right" looks like (the reviewed width AND the reviewed center range)
+  and the timelock makes both claims publicly reviewable.
 - **Pendings expire, and execution is NOT permissionless.** Morpho, OZ
   TimelockController, and Aera pendings live forever and execute
   permissionless-after-delay - a forgotten pending add is a landmine anyone
@@ -964,7 +1038,25 @@ contract OphisVaultPolicyModuleV2 is ReentrancyGuard /*, ISafeSignatureVerifier 
     // Leg, RateBound and TokenRoute are defined normatively in the P2 lane.
     // fillEligible comes from the feed allowlist - never self-declared; a
     // fill-eligible leg is read by the MODULE from `feed` directly (no adapter).
-    struct TokenAdd  { address token; TokenRoute route; }   // sanity band lives IN the route (persisted; see P2 lane)
+    // The reviewed rail INPUT, carried by every path that installs or
+    // refreshes a band (TokenAdd, the constructor's initial set, and
+    // RouteRecalibration embeds the same four fields): ratios are applied
+    // to the composed price READ AT EXECUTE, the center range is the
+    // absolute gate that keeps that read reviewable (see the
+    // recalibration comment for the full semantics). TokenRoute itself
+    // stores only the RESULTING absolutes - without this struct the add
+    // path had no reviewed input at all and would have centered a new
+    // route's rail on an unchecked execution-time price, the exact
+    // laundering case the recalibration gate exists to prevent.
+    struct RailSpec {
+        uint256 railLowRatioE18;   // e.g. 0.2e18 / 8e18 = [P/5, 8P] (per-asset, sizing A.3)
+        uint256 railHighRatioE18;  // submit validates low < 1e18 < high
+        uint256 execCenterLow;     // reviewed ABSOLUTE center range, horizon DELAY +
+        uint256 execCenterHigh;    // EXECUTE_WINDOW (sizing A.3 120d columns when > 90d)
+    }
+    struct TokenAdd  { address token; TokenRoute route; RailSpec rail; }
+    // route.sanityLow/High in a PAYLOAD must be zero - execute computes and
+    // persists them from rail x the gated execute-time read (see P2 lane)
     // validTo is STORED, never re-read from a caller-supplied uid (see cancel).
     struct OrderState { address sellToken; address buyToken; uint32 validTo;
                         uint96 registeredAt; uint256 minBuyOverride; uint256 sellUsd18; }
@@ -1112,6 +1204,23 @@ contract OphisVaultPolicyModuleV2 is ReentrancyGuard /*, ISafeSignatureVerifier 
     // unreadable" (itself an alertable state), distinct from breached.
     function anchorBandState(address token) external view
         returns (uint256 routeValue, bool hasAnchor, uint256 anchorValue, uint32 maxDivergenceBps, bool breached);
+    // Watcher-facing views, NORMATIVE because the deadline monitoring
+    // below is impossible through the generated ABI otherwise: a public
+    // mapping getter cannot return the nested Leg[] (and their
+    // RateBound.snapshotTs), and anchorBandState exposes no timestamps.
+    function routeConfig(address token) external view
+        returns (uint64 railCenteredAt, uint256 sanityLow, uint256 sanityHigh, uint16 turnoverGrossUpBps);
+    // One row per REGISTRATION-ONLY rate leg (route legs first, then
+    // anchor legs), each (isAnchorLeg, legIndex, snapshotRatio,
+    // snapshotTs) - the exact identification scheme RouteRecalibration
+    // payloads use, so the watcher's rows map 1:1 onto the refresh it
+    // must submit. Fill-eligible FEED legs are EXCLUDED: they carry no
+    // governed snapshot (Leg.bound is meaningful only for
+    // registration-only source legs), and a zero-timestamp row would
+    // read as a permanently overdue refresh the payload could never
+    // satisfy.
+    function routeSnapshots(address token) external view
+        returns (LegSnapshot[] memory);
     function sweepResidual(address token) external;             // retry residual revocations that failed
     // The Safe-only WRITE-OFF for a residual whose call permanently reverts
     // (e.g. a bricked token's approve(0)): deletes exactly one recorded entry,
@@ -1123,6 +1232,227 @@ contract OphisVaultPolicyModuleV2 is ReentrancyGuard /*, ISafeSignatureVerifier 
     function rotateGuardian(address newGuardian) external;      // Safe-submitted, TIMELOCKED like a token add and
                                                                 // incumbent-guardian-cancelable (C16: instant rotation
                                                                 // = veto escape); full identity checks re-applied
+    // ROUTE RECALIBRATION - the non-disruptive refresh the sizing runbook
+    // (2026-08-02-phase-c-oracle-sizing.md) requires. Updates ONLY the
+    // bounds-class fields of an EXISTING allowed route: RateBound snapshot
+    // (snapshotRatio, snapshotTs) per registration-only leg, and the
+    // [sanityLow, sanityHigh] rail. It can NEVER touch legs, feeds,
+    // aggregator pins, kinds, staleness budgets or divergence values - those
+    // remain remove+timelocked-add territory (a bounds refresh is
+    // risk-equivalent to what the P2 lane already mandates: "the snapshot is
+    // advanced ONLY through the P3 timelock"; without a dedicated operation
+    // that sentence was unimplementable except via full removal, which the
+    // pending-invalidation rules make a per-quarter outage per token). Same
+    // pending discipline as every other P3 type: Safe-only submit + execute,
+    // [eta, eta+WINDOW], guardian-cancelable, per-token nonce. Execute-time
+    // validation, DELAY-AWARE because the observation is committed at submit
+    // but ages through the timelock: `execTs - snapshotTs` must lie in
+    // [14 days, 21 days + DELAY]. The 14-day floor is the sizing doc's spike
+    // cushion (auto-satisfied whenever DELAY >= 14d); the ceiling is the
+    // 21-day slack budget plus the unavoidable timelock transit - so the
+    // pre-granted headroom a stale observation grants scales with the
+    // vault's OWN governance delay, a tradeoff its owners chose at deploy.
+    // Every snapshot must also PREDATE ITS PENDING'S SUBMISSION
+    // (`snapshotTs <= pending.submittedAt`, all modes, TokenAdd path
+    // included; constructor: <= deployTs): with DELAY > 14 days, an
+    // execute-time-only age check would accept a snapshotTs AFTER
+    // submission - a fabricated observation that did not exist when the
+    // guardian's review window opened, chosen to match a later transient,
+    // yet 14 days old by execution. The review window must review a real,
+    // already-taken observation. Consequence for the pending lifecycle,
+    // stated so nobody discovers it by revert: for a snapshot-bearing
+    // payload the BINDING execution deadline is
+    // `min(eta + EXECUTE_WINDOW, snapshotTs + 21 days + DELAY)` - the age
+    // ceiling is not extended by the execution window (extending it would
+    // widen the pre-granted headroom the 21-day cap exists to bound), so
+    // a snapshot already 14 days old at submission is executable for only
+    // the first 7 post-eta days regardless of a 30-day window. The
+    // runbook takes observations `max(0, 14 days - DELAY)` BEFORE
+    // submission - NOT merely just-before: with DELAY = 24h a
+    // just-taken observation is only 1 day old at eta and fails the
+    // 14-day age FLOOR until 13 days later, leaving a <= 7-day window
+    // with NO executable instant at all. With the correct lead the
+    // observation turns exactly 14 days old at eta, and post-eta
+    // executability is min(WINDOW, 7 days + DELAY) - the full 21 days
+    // only when DELAY >= 14d makes the lead zero. Rail-only payloads
+    // (no snapshots) keep the full advertised window, and the deadline
+    // watcher computes the min, not the envelope
+    // (exactly [14, 21] is realized on the recommended sovereign config,
+    // DELAY = 24h with prompt execution). Runbook corollary (sizing doc
+    // B.2): the recalibration INTERVAL must keep every ACTIVE snapshot
+    // under the 180-day outer term the cadence is derived from - interval
+    // <= min(90 days, 159 days - DELAY) - because an observation can
+    // already be 21d + DELAY old when it goes live. Two further checks: the CURRENT
+    // live ratio must satisfy the NEW RateBound evaluated at execTs
+    // (installing a bound the present already violates would make every
+    // subsequent read revert - recalibration must never brick what it
+    // refreshes), and the new rail ratios are CENTERED on the composed
+    // price read at execute and persisted as absolutes - a center
+    // committed at submission would age through the whole timelock before
+    // service starts, and the sizing doc's drawdown envelope (A.3) is
+    // derived for the recalibration INTERVAL, not interval + DELAY; the
+    // ratio form also makes the old contains-current-price check
+    // structural (low < 1e18 < high, validated at submit) instead of a
+    // race against DELAY-long drift. The CENTER ITSELF IS NOT TRUSTED:
+    // an unchecked live read at execute would let a certified feed's
+    // fresh-but-erroneous extreme launder a fault into the accepted range
+    // (a 10x mis-scale the old rail rejects becoming the center of the
+    // new one). Two gates, so the absolute outcome stays reviewable and
+    // vetoable: (i) the center must fall inside the payload's REVIEWED
+    // absolute range [execCenterLow, execCenterHigh] - committed at
+    // submit, so the guardian sees the worst-case absolute rail during
+    // the veto window; (ii) defense in depth, the center must also lie
+    // inside the OLD stored rail - an induction chain of reviewed rails
+    // anchored at the constructor - waived ONLY when the old rail is
+    // itself the breached constraint (rail recovery: the composed price
+    // sits outside the old rail and every read already reverts), where
+    // the reviewed range of (i) plus the guardian veto is the authority,
+    // exactly symmetric with how rate-bound recovery waives only the
+    // breached leg's old bound. The centering read is the FULL validation
+    // read (staleness, sequencer, divergence band, rate bounds) minus
+    // exactly the breached constraint in a recovery - so an in-model
+    // fault (a diverged anchor, a stale leg, an out-of-bound ratio)
+    // cannot be centered on either. That gate creates one legitimate
+    // deadlock the design must not have: a PERSISTENT anchor divergence
+    // (the sizing doc's stETH 2022 row: 6-7% for ~5 months, longer than
+    // the refresh interval) would block every recalibration while the
+    // route stays intentionally usable for sell-side exits - snapshots
+    // would age past their envelope and force a disruptive remove+re-add.
+    // Hence `rateOnly = true`: a snapshots-ONLY refresh whose payload
+    // carries zeroed rail/center fields, touches neither the rail nor
+    // the divergence config, SKIPS the composed centering read entirely,
+    // and validates each leg against its OWN source (age window,
+    // snapshotTs <= submittedAt, live ratio within the new bound,
+    // monotonicity, staleness, sequencer - no divergence or rail
+    // consultation). ONE exception to the zero-fields rule:
+    // turnoverGrossUpBps may be RAISED in a rateOnly payload (zero =
+    // unchanged; any nonzero value must EXCEED the stored one, and the
+    // live-order supersession duty below applies) - a months-long
+    // divergence must not hand the market a veto over a RISK-REDUCING
+    // reserve correction while exit orders keep consuming the cap at
+    // the old undersized charge; a DECREASE still requires the full
+    // path with its centering read. The rail keeps its old center through such an
+    // event; the residual is stated rather than hidden: if a divergence
+    // outlives the rail's own re-center cadence AND the market
+    // simultaneously moves toward a stale rail edge, the route freezes
+    // fail-closed - the per-asset widths (sizing A.3) put that
+    // coincidence beyond every recorded 90-day path, and a freeze
+    // during depeg-plus-crash is the intended posture, not an outage
+    // bug. RECOVERY MODE: when a rate leg is ALREADY out of its old bound
+    // (reads reverting - a realized negative rebase below the floor, or
+    // sustained growth past a stale ceiling), those two checks are evaluated
+    // with the BREACHED leg's old bound disabled on an internal read path
+    // used only here, and the new-snapshot-satisfies-the-OLD-bound
+    // requirement is waived: recovery re-bases on current reality, and the
+    // same timelock + guardian veto that authorizes any recalibration is
+    // the authority for that - without recovery mode, the one situation the
+    // refresh exists for (a breached bound needing governance re-set) would
+    // be the one it cannot handle, forcing the remove+re-add outage.
+    // Recovery also WAIVES THE 14-DAY AGE FLOOR - but ONLY for a leg whose
+    // live ratio sits BELOW its old floor (the negative-rebase side,
+    // determined per leg on the same bounds-disabled internal read; its
+    // window becomes (0, 21 days + DELAY]): after a negative rebase, every
+    // honest observation old enough for the normal window PREDATES the
+    // rebase and so exceeds the live ratio - the live-vs-new-bound check
+    // would reject it and the route would stay dark ANOTHER 14 days after
+    // the timelock, recovery mode notwithstanding. A fresh post-rebase
+    // observation is exactly what re-basing needs; the spike cushion the
+    // 14-day floor buys in normal operation is provided here by the
+    // compensating controls (a DELAY-long public review of a visibly
+    // frozen route + guardian veto), and the risk direction is inverted -
+    // the cushion guards against ratcheting a bound UP off a transient
+    // spike, while a lower-breach recovery re-bases DOWN onto a realized
+    // loss. An UPPER-bound breach keeps the FULL [14d, 21d + DELAY]
+    // window: waiving it there would let a transiently inflated rate
+    // ratchet the ceiling up off a one-day-old observation - the exact
+    // spike the floor exists to exclude - and if realized growth is STILL
+    // above the cap across a 14-day observation, the correct outcome is
+    // remaining closed pending a growth-cap re-review (a sustained
+    // above-cap regime is a mis-sized cap, sizing doc B.3, not a
+    // recoverable transient). Non-breached legs in the same payload keep
+    // the normal window, and the live-vs-new-bound check is NOT waived in
+    // any case - so lower-breach recovery downtime is the timelock
+    // transit, not transit plus 14 days.
+    // The payload, fully specified so multi-leg routes are unambiguous:
+    //   struct LegSnapshot {
+    //       bool    isAnchorLeg;   // false => index into TokenRoute.legs, true => .anchor
+    //       uint8   legIndex;
+    //       uint256 snapshotRatio;
+    //       uint64  snapshotTs;    // the observation timestamp the age window validates
+    //   }
+    //   struct RouteRecalibration {
+    //       bool rateOnly;                // see below: snapshots-only refresh; rail and
+    //                                     // center-range fields MUST be zero; turnoverGrossUpBps
+    //                                     // MUST be zero (= unchanged) OR strictly greater than
+    //                                     // the stored value (the increase-only exception below)
+    //       LegSnapshot[] snapshots;      // EMPTY = preserve every existing bound (a
+    //                                     // rail-only or gross-up-only payload; no snapshot
+    //                                     // age deadline attaches, so the full execute
+    //                                     // window stays usable). When NON-empty it MUST
+    //                                     // cover EVERY registration-only rate leg EXACTLY
+    //                                     // ONCE (execute reverts on a missing, duplicate,
+    //                                     // or non-rate-leg entry) - PARTIAL refreshes would
+    //                                     // silently leave one leg's bound stale while
+    //                                     // appearing recalibrated; all-or-none, never some
+    //       uint256 railLowRatioE18;      // the new rail as 1e18-scaled RATIOS to the
+    //       uint256 railHighRatioE18;     // composed price READ AT EXECUTE (per-asset
+    //                                     // asymmetric, sizing doc A.3 - e.g. 0.2e18/8e18
+    //                                     // = [P/5, 8P] for ETH-exposure routes); submit
+    //                                     // validates low < 1e18 < high
+    //       uint256 execCenterLow;        // REVIEWED ABSOLUTE range the execute-time center
+    //       uint256 execCenterHigh;       // must fall in, around the submission-time
+    //                                     // composed price S. HORIZON-MATCHED to
+    //                                     // DELAY + EXECUTE_WINDOW via the sizing doc's
+    //                                     // A.3 table (8-day row on the recommended
+    //                                     // config) - a blanket rail-width range would
+    //                                     // re-admit the unanchored-route re-center
+    //                                     // ratchet A.3 documents. What keeps the
+    //                                     // resulting absolute rail guardian-reviewable:
+    //                                     // the worst case visible at submit is
+    //                                     // [execCenterLow x lowRatio, execCenterHigh x highRatio]
+    //       uint16  turnoverGrossUpBps;   // the reviewed charge gross-up (see C4)
+    //   }
+    // Pending key = keccak256(token, tokenNonce[token], abi.encode(r)) - same
+    // calldata-keyed discipline and per-token nonce as TokenAdd.
+    // EXECUTION of a TokenAdd ADVANCES tokenNonce[token] (a shape change
+    // must strand every stale pending, recalibrations included). Executing
+    // a RouteRecalibration does NOT advance it - serializing refreshes
+    // behind the nonce would make the sizing doc's B.2 cadence
+    // UNSCHEDULABLE at DELAY > ~79 days (the successor could only be
+    // submitted after the predecessor executes and would mature another
+    // DELAY later, while the required interval `159d - DELAY` is already
+    // SHORTER than DELAY at that point). Rollback protection is
+    // MONOTONICITY instead of serialization: execute stores the pending's
+    // submission timestamp as lastRecalSubmittedAt[token] and requires
+    // pending.submittedAt > stored value - an earlier-submitted payload
+    // can never land after a later-submitted one, whatever order they
+    // mature or however their windows overlap - plus, defense in depth for
+    // the bounds themselves, each supplied snapshotTs must be STRICTLY
+    // GREATER than the stored leg's. This is what restores PRE-STAGING
+    // (submitting a successor while its predecessor is still pending),
+    // which the long-DELAY refresh pipeline in B.2 depends on. Normative
+    // events, same loudness rule as token adds:
+    // RouteRecalibrationSubmitted(token, pendingKey, eta) /
+    // RouteRecalibrationCancelled(token, pendingKey) /
+    // RouteRecalibrationExecuted(token, pendingKey). One more execution
+    // duty: if the payload RAISES turnoverGrossUpBps and the token has an
+    // UNFILLED live order, execution SUPERSEDES that order through the
+    // standard mode-aware cancel path (deregister + invalidateOrder /
+    // setPreSignature(false), decayed refund per the C4 rule, allowance
+    // zeroing with the usual residual fallback - the same C15
+    // failure-isolation removeToken uses, bounded at one order by the
+    // one-live-order-per-sell-token invariant). The alternatives both
+    // fail: leaving the order lets it fill at the OLD undersized
+    // reservation for up to the TTL, defeating the corrective raise; and
+    // requiring no-live-order at execute hands a compromised curator an
+    // indefinite VETO over the correction (1h TTL, re-register forever).
+    // Equal-or-lower gross-up updates touch no live order. Pendings are stored
+    // under calldata hashes and are NOT enumerable on-chain, so without a
+    // submission event the guardian's only veto window on a rail/gross-up
+    // loosening would be invisible; the monitoring section alerts on
+    // submission accordingly.
+    function submitRouteRecalibration(address token, RouteRecalibration calldata r) external;  // ONLY address(safe)
+    function executeRouteRecalibration(address token, RouteRecalibration calldata r) external; // ONLY address(safe), [eta, eta+WINDOW]
     // Feed eligibility is the root of trust for C2/C17, so it gets its OWN
     // timelocked pending type - a TokenAdd must never certify its own feeds.
     // execute STORES the reviewed pair: feedCertifiedAggregator[feed] = aggregator
@@ -1229,14 +1559,79 @@ the verification log tracks which currently have no assigned target.
   `max(0, sellUsd18 - leaked(sellUsd18, block.timestamp - registeredAt))`,
   the charge decayed by the SAME leak schedule the bucket applies (OrderState
   already stores `registeredAt`), still saturating against the current bucket
-  level. The CHARGE itself is the in-band worst case: `sellUsd18` is computed
-  at the SELL route's `sanityHigh`, not the live route price. A correlated
-  underreport (sell and buy routes low by the same factor, both inside their
-  bands) cancels out of the cross-rate floor AND any same-denominated anchor
-  comparison - the floor is immune, but a route-price-based charge would
-  stretch the effective per-day turnover past the cap by exactly that factor.
-  Overcharging is fail-closed (a curator hits the cap sooner); operators size
-  `dailyUsdTurnoverCap` knowing charges land at top-of-band. Refund arithmetic saturates at zero: a naive
+  level. The CHARGE itself is the in-band worst case: `sellUsd18` = the live
+  route price GROSSED UP by the route's PERSISTED `turnoverGrossUpBps` - a
+  reviewed per-route field set at TokenAdd and refreshed by recalibration
+  (the module cannot derive feed deviation sums or sizing margins on-chain,
+  so the value is stored, not computed). SIZED (sizing doc A.6) as the
+  route's OWN worst in-band composition error in RECIPROCAL form -
+  `1/prod(1 - term_i) - 1`, rounded up - because an in-band-low route
+  reads `true x prod(1 - term_i)` and the charge must DIVIDE the
+  underreport back out, not mirror it with `(1 + term)`; the terms per
+  USD-composition leg: deviation threshold + the measured update-landing
+  allowance for market-priced legs; the rate FEED's own deviation
+  threshold + the sourced margin set for rate legs read from a feed, the
+  margins alone for registration-only live contract reads. The stored
+  value ALSO folds in the SELL asset's TTL-APPRECIATION envelope (A.6,
+  recommended: the ANY-START p99 bound of its measured 1-hour up-moves -
+  close-anchored sampling only covers hourly-close registrations; per-stable
+  measured recovery envelopes for stable-sell rotations, USD-DENOMINATED
+  per A.6 (Coinbase's USDT-USD book directly for USDT, synthetic
+  USDC/USD for USDC - never a stable-vs-stable cross, which cannot see
+  both stables recovering together from a common discount; a below-peg
+  registration can recover to peg inside the TTL), never zero): the composition envelope bounds mismeasurement AT the
+  charging instant, but between registration and fill the asset can
+  genuinely REPRICE, the fill check is a STATICCALL that cannot append
+  the difference to the bucket, and without the envelope a fill during
+  an in-TTL pump moves more USD than was reserved. Beyond-p99 repricing
+  is the documented tail: bounded by the recorded per-TTL maxima, it
+  requires the pump to land inside an open order's TTL, and the Phase-B
+  rolling-24h <= ~2x bound constrains CHARGED notional - actual USD in a
+  beat-the-reserve window carries the multiplier A.6 states
+  ((1 + recorded worst move)/(1 + reserve), ~1.16-1.50 on the ETH
+  record), so the tail is a stated multiplier on the guarantee, not a
+  breach of an unqualified one. The order TTL is the reviewable knob.
+  The SAME formula for anchored and unanchored routes, because the anchor
+  plays no role in the charge - NORMATIVELY: the charge prices at the
+  composed ROUTE value even when the C18 depeg rule validates the floor
+  at a lower anchor, since the depeg-selected min() would shrink the
+  reservation exactly when prices disagree and would import the anchor's
+  own error envelope into a route-sized gross-up (TokenRoute struct
+  comment) - and `maxDivergenceBps` would be the WRONG
+  bound anyway: the divergence band is anchor-RELATIVE and definitionally
+  blind to common-mode error (route and anchor low by the same factor read
+  as agreeing), while the composition envelope bounds the route's absolute
+  in-band underreport directly. NOT the sanity rail either: the rail is an
+  order-of-magnitude fault backstop sized in MULTIPLES of the price (sizing
+  doc A.3: per-asset asymmetric, e.g. [P/5, 8P] for ETH-exposure), and
+  charging at `sanityHigh` would bill every order ~5-8x its notional,
+  silently deleting most of the configured turnover budget.
+  The one in-model channel LEFT beyond the envelope, stated rather than
+  hidden: a market UP-move during a genuine update-landing outage that
+  stays inside a leg's `maxStaleness` (the write path normally lands
+  within ~2 minutes - which is what the allowance covers - so this
+  requires an extended landing failure coinciding with a violent pump).
+  Its size is absolutely bounded by the worst up-move over the staleness
+  window, computed from primary data in A.6 (ANY-START basis: ~61% over
+  1h-class windows, ~62% over 25h-class; close-anchored ~24%/~48% - an
+  outage can begin at any instant, so the any-start figures govern); it
+  lasts at most the stall; and the SAME stalled
+  reads corrupt the C2 oracle floor, the direct value path. `maxStaleness`
+  is therefore a TURNOVER parameter as well as a floor parameter, and
+  listing review sizes it with both in mind - folding the full staleness
+  envelope into every charge instead would permanently burn 20-50% of the
+  budget to prepay that coincidence. An in-band error on a FRESH leg
+  exceeding deviation-plus-landing requires a certified aggregator that no
+  longer updates past its own deviation threshold - a write-path
+  malfunction of the same root of trust the ORACLE FLOOR stands on, out of
+  model for the cap as for everything else. Overcharging by the gross-up is
+  fail-closed but NOT small at the recommended envelopes: A.6's worked
+  defaults land at ~10.4-11% for volatile-sell routes (composition
+  envelope x any-start TTL bound) and near the bare composition envelope
+  for stable-sell rotations - so the usable daily budget on volatile-sell
+  routes is ~89% of the configured cap, and operators size
+  `dailyUsdTurnoverCap` (and judge the TTL trade, A.6) knowing charges
+  land at top-of-band. Refund arithmetic saturates at zero: a naive
   subtraction underflow-reverts on a drained bucket and, through the shared
   cancel path, would propagate into `removeToken`. Bucket accounting never exceeds Phase-B
   bounds (instantaneous <= cap, rolling 24h <= ~2x cap). (Fuzz target: fill an
@@ -1504,7 +1899,62 @@ the verification log tracks which currently have no assigned target.
   the calls in the wrong order;
   watch-trial-order gains 1271-order awareness (status polling identical; add
   a floor-vs-fill assertion from the `Rebalanced` event vs the settled price).
-- **monitoring**: alert on `TokenAddSubmitted` (anywhere), on repeated
+- **monitoring**: alert on `TokenAddSubmitted` AND
+  `RouteRecalibrationSubmitted` (anywhere - a recalibration can loosen the
+  sanity rail or turnover gross-up under the same veto-gated model as an
+  add, so its submission is the same guardian-reaction event), on
+  RECALIBRATION DEADLINES, not just submissions - the B.2 cadence has no
+  on-chain expiry (a stale RateBound ceiling keeps expanding linearly and
+  a missed refresh silently operates past the approved slack envelope),
+  so the watcher polls every route's per-leg `snapshotTs` and the rail's
+  last re-center time from route storage (publicly readable; no event
+  needed) and alerts on EXECUTABLE DEADLINES, suppressed PER DEADLINE - an
+  alert for deadline D is silenced only by a pending that SATISFIES D:
+  its eta lands on or before D AND it carries what D is about (the
+  required snapshots for a snapshot deadline; non-rateOnly for a rail
+  deadline). Never by the in-flight PREDECESSOR whose execution D exists
+  to follow up on, and never by a TOO-LATE successor: a pending whose
+  eta overshoots D must neither suppress the alert NOR re-anchor the
+  formula (re-anchoring `referenceExec` to the most recent submission
+  unconditionally would let a day-80 submission with eta = day 170 move
+  a day-62 WARN to day 149, silencing exactly the alert that proves the
+  pending is too late - anchors ADVANCE only when a satisfying pending
+  executes): WARN when
+  `now > referenceExec + interval - DELAY - 7 days`, where referenceExec
+  = the SCHEDULED execution time (eta - known the moment it is
+  submitted) of the most recently submitted still-pending refresh THAT
+  SATISFIES THE CURRENT DEADLINE (eta on or before it, required
+  snapshots carried), else the last ACTUAL execution time (the last comfortable SUBMISSION date
+  from which an on-schedule execution is still reachable - with long
+  delays the successor's submission deadline lands BEFORE the
+  predecessor even executes, which is exactly the B.2 pre-staging
+  pipeline, so the anchor must be a deadline computable at SUBMISSION:
+  anchoring on the completed execution would fire 28 days too late at
+  DELAY = 90d, and a naive `age > interval - DELAY` goes negative
+  there),
+  CRITICAL when `now > snapshotTs + 180 days - DELAY` (the last instant
+  a fresh submission can still mature before the term is breached - a
+  flat 165-day trigger would leave 15 days of runway against a 90-day
+  DELAY). The RAIL runs its OWN deadline keyed on `railCenteredAt` and its
+  OWN 90-DAY interval (A.3's cadence - NOT the snapshot interval, which
+  shrinks to 69 days at DELAY = 90 and would mark a constructor-installed
+  route overdue before any refresh could possibly execute): rateOnly
+  refreshes advance the execution clock while INTENTIONALLY leaving the
+  rail stale, so a snapshot-keyed formula stays silent while the
+  re-center cadence expires and an obsolete absolute rail drifts toward
+  freezing valid trades. Rail WARN when
+  `now > railReference + 90 days - DELAY - 7 days`, where railReference
+  = the eta of the most recently submitted still-pending NON-rateOnly
+  recalibration THAT SATISFIES the current rail deadline, else
+  `railCenteredAt` (constructor routes start at deployTs) - the same
+  scheduled-execution anchoring as the snapshot WARN, because at long
+  DELAY the successor's submission is due before the predecessor
+  executes. Rail OVERDUE when `now > railCenteredAt + 90 days` -
+  ANCHORED ON ACTUAL EXECUTION, never on a pending's eta and never
+  suppressed: a pending may excuse the missing SUBMISSION, but only an
+  executed re-center changes the fact that the old rail has exceeded
+  its cadence, and eta-anchoring would keep the watcher quiet while the
+  Safe executes late in a 30-day window - or never executes at all. Also alert on repeated
   transient-revert simulation failures for a live order (floor blocking =
   expected but report it), and on `getMinDelay`-style wiring drift (fallback
   handler changed, verifier deregistered).
