@@ -153,7 +153,7 @@ Additional Guidelines:
 Problems detection:
 
 1. run `pnpm run analyze-build`
-2. check `build/cowswap/analyse.html` and `build/cowswap/bundle-stats.html`
+2. check `build/cowswap/analyse.html`
 
 Optimization rules:
 

@@ -164,7 +164,6 @@
     "jest-fetch-mock": "^3.0.3",
     "jotai-devtools": "0.8.0",
     "react-cosmos": "^7.0.0",
-    "rollup-plugin-bundle-stats": "^4.21.7",
     "ts-mockito": "^2.6.1"
   },
   "nx": {}

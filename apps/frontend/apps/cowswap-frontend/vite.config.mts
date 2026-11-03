@@ -2,7 +2,6 @@
 import { lingui } from '@lingui/vite-plugin'
 import react from '@vitejs/plugin-react'
 import stdLibBrowser from 'node-stdlib-browser'
-import { bundleStats } from 'rollup-plugin-bundle-stats'
 import { visualizer } from 'rollup-plugin-visualizer'
 import { defineConfig, searchForWorkspaceRoot } from 'vite'
 import macrosPlugin from 'vite-plugin-babel-macros'
@@ -107,7 +106,6 @@ export default defineConfig(({ mode }) => {
         filename: 'analyse.html', // will be saved in build/cowswap/analyse.html
       }) as PluginOption,
     )
-    plugins.push(bundleStats() as PluginOption)
   }
 
   // Disable page indexing for non-prod envs

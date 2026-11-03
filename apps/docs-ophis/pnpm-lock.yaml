@@ -41,6 +41,9 @@ patchedDependencies:
   braces@3.0.3:
     hash: orvbgohcz6onzqdkhlbaumhpzq
     path: ../../patches/braces@3.0.3.patch
+  deepmerge@4.3.1:
+    hash: ojws7muqxh2p7lyc5bkjc2ulde
+    path: ../../patches/deepmerge@4.3.1.patch
   gray-matter@4.0.3:
     hash: 7dvij2yy7s65yjvp5o2ymxrkkq
     path: patches/gray-matter@4.0.3.patch
@@ -8678,7 +8681,7 @@ snapshots:
     dependencies:
       '@svgr/core': 8.1.0(typescript@6.0.3)
       cosmiconfig: 8.3.6(typescript@6.0.3)
-      deepmerge: 4.3.1
+      deepmerge: 4.3.1(patch_hash=ojws7muqxh2p7lyc5bkjc2ulde)
       svgo: 3.3.5
     transitivePeerDependencies:
       - typescript
@@ -9735,7 +9738,7 @@ snapshots:
 
   deep-extend@0.6.0: {}
 
-  deepmerge@4.3.1: {}
+  deepmerge@4.3.1(patch_hash=ojws7muqxh2p7lyc5bkjc2ulde): {}
 
   default-browser-id@5.0.1: {}
 

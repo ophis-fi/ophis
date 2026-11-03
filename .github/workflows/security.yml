@@ -419,13 +419,14 @@ jobs:
           # is unreachable for Ophis, dev/test-only, not in any published tarball,
           # and NO patched release exists. (audit 2026-07)
           # IGNORE zod GHSA-mrhx-c7xc-m3w5 (HIGH, array-issue memory blowup) until
-          # 2026-12-03: fixed only in zod >=4.6.6, NO 3.x patch exists. zod 4.x is
-          # forced to >=4.6.6 by the root override; apps/mcp-server and (since
-          # 2026-11-03) apps/rebate-indexer are on zod 4. Remaining zod 3.x is
-          # third-party only: @coinbase/agentkit, @goat-sdk/* (peer ^3), x402,
-          # cdp-sdk and privy validate local agent tool args in the devDeps of
-          # agentkit-ophis/plugin-goat; reown appkit runs in the user's browser.
-          # Drop when those SDKs ship zod 4. Review: audit/dependency-review-2026-11-03.md
+          # 2026-12-03: upstream fixed only zod >=4.6.6. zod 4.x is forced to
+          # >=4.6.6 by the root override; apps/mcp-server and (since 2026-11-03)
+          # apps/rebate-indexer are on zod 4. The remaining third-party zod 3.x
+          # (@coinbase/agentkit, @goat-sdk/*, x402, cdp-sdk, privy in the devDeps
+          # of agentkit-ophis/plugin-goat; reown appkit) carry the local backport
+          # patches/zod@3.*.patch, tested by scripts/test-zod3-security.cjs in CI;
+          # osv matches by version and cannot see it. Drop when those SDKs ship
+          # zod 4. Review: audit/dependency-review-2026-11-03.md
           python3 scripts/osv-gate.py /tmp/osv-root.json --mode advisories \
             --osv-rc "$rc" --ignore GHSA-3gc7-fjrx-p6mg \
             --ignore GHSA-mrhx-c7xc-m3w5:2026-12-03
@@ -455,13 +456,14 @@ jobs:
           python3 scripts/osv-gate.py /tmp/osv-fe.json --mode advisories \
             --osv-rc "$rc" --ignore GHSA-vfj7-8cjw-p6xm:2026-11-17 \
             --ignore GHSA-mrhx-c7xc-m3w5:2026-12-03
-          # zod GHSA-mrhx-c7xc-m3w5: fixed only in >=4.6.6, NO 3.x patch exists;
-          # zod 4.x is forced to >=4.6.6 by override and cowswap-frontend is on
-          # zod 4 (2026-11-03). The remaining zod 3.x copies are third-party:
-          # reown appkit-wallet (pins 3.22.4) and cdp-sdk run in the user's
-          # browser (static SPA, no server parses with them); @vercel/config and
-          # chromium-bidi are build/test tooling. Drop when reown and cdp-sdk
-          # ship zod 4. Review: audit/dependency-review-2026-11-03.md
+          # zod GHSA-mrhx-c7xc-m3w5: upstream fixed only >=4.6.6; zod 4.x is
+          # forced to >=4.6.6 by override and cowswap-frontend is on zod 4
+          # (2026-11-03). The remaining third-party zod 3.x copies (reown
+          # appkit-wallet, cdp-sdk, @vercel/config, chromium-bidi) carry the
+          # local backport patches/zod@3.*.patch, tested by
+          # scripts/test-zod3-security.cjs in frontend CI; osv cannot see it.
+          # Drop when reown and cdp-sdk ship zod 4.
+          # Review: audit/dependency-review-2026-11-03.md
           # braces has a pnpm backport; installed depth/cycle regressions run in frontend CI.
           # Keep the dated version-only exception until an upstream fixed release.
           # Review and removal criteria: audit/dependency-review-2026-10-04.md;

@@ -84,7 +84,8 @@
     },
     "patchedDependencies": {
       "gray-matter@4.0.3": "patches/gray-matter@4.0.3.patch",
-      "braces@3.0.3": "../../patches/braces@3.0.3.patch"
+      "braces@3.0.3": "../../patches/braces@3.0.3.patch",
+      "deepmerge@4.3.1": "../../patches/deepmerge@4.3.1.patch"
     }
   }
 }
