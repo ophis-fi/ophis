@@ -57,6 +57,18 @@ Rows with a high Jev `reachable` (libp2p, elliptic, graphql-tools/utils) ship co
 the upstream fix as a local backport in `apps/railgun/patches`, with regression tests. See
 `apps/railgun/DEPENDENCIES.md`. The version-based alerts cannot see pnpm patches.
 
+## Frontend dependency bumps: compatibility record
+
+Required by `apps/frontend/AGENTS.md` (dependency management).
+
+| Bump | Release notes | Breaking changes for our consumers | Smoke tests run |
+| --- | --- | --- | --- |
+| glob 9.3.2/9.3.5/10.5.0/11.1.0 -> 14.0.3 (override `glob@>=9.0.0 <14.0.2`), with minimatch 11.0.4 and path-scurry 3.0.0 | [glob](https://github.com/isaacs/node-glob/blob/v14.0.3/changelog.md), [minimatch](https://github.com/isaacs/minimatch/blob/v11.0.4/changelog.md), [path-scurry](https://github.com/isaacs/path-scurry/blob/v3.0.0/README.md) | The `glob` CLI moved out (v13); absolute `ignore` patterns are anchored at `root`; minimatch 11 drops `makeRe` and the AST class; Node 20 or >=22 required. No consumer uses the CLI, `root` with absolute ignores, `signal`, `withFileTypes` or minimatch directly through glob. The named `glob`, `globSync` and `glob.sync` APIs used by @lingui/cli 5.5.1, @jest/reporters, jest-config and jest-runtime 30.2.0, react-cosmos 7.0.0 and @sentry/bundler-plugin-core 2.10/4.4 are unchanged. The frontend runs Node 22. | Each consumer's exact patterns and options run through the four old globs and 14.0.3 on the real repo: identical results in all 12 call shapes. Real `lingui extract` (1637 messages, locale files byte-identical). react-cosmos fixture discovery (57 cowswap / 303 explorer). Sentry 2.10 and 4.4 `writeBundle` upload hook. Jest coverage-threshold glob. `build:cowswap`, `explorer:build`, typecheck, CI dependency scripts. |
+| next 15.5.27 -> 15.5.28 (`libs/ui`) | [v15.5.28](https://github.com/vercel/next.js/releases/tag/v15.5.28) | Security patch release, none. Next is not run as a server: the only import is the `next/image` client component in `libs/ui` CmsImage, bundled into the Vite SPA. | cowswap typecheck and `build:cowswap`. |
+| astro 7.2.8 -> 7.3.5 (`@ophis/landing`, exact override) | [astro 7.3.5](https://github.com/withastro/astro/blob/astro@7.3.5/packages/astro/CHANGELOG.md) | Patch/minor releases, none for the landing. Held at 7.3.5 because 7.3.6+ needs vite ^8.3.1 and the existing `astro>vite` pin is 8.2.4. | Landing typecheck and full build, including the prebuild unit tests and the postbuild CSP-hash, CSP-guard (15/15) and FAQ-schema checks. |
+| zod 3.25.76 -> 4.6.7 (`cowswap-frontend`) | [zod 4 changelog](https://zod.dev/v4/changelog) | `z.string().uuid()` is RFC-strict in zod 4, so `nearDirect.service.ts` uses `z.guid()` to keep the zod 3 behaviour. Zod 4 also rejects unsafe integers under `.int()`, datetimes without seconds and `Infinity`; the NEAR and CCTP APIs do not send those. | cowswap typecheck; Jest over `src/modules/cctp`, `src/modules/nearDirect` and `partnerFeeMerge` (36 suites, 201 tests). |
+| fast-uri 3.1.9, ip-address 10.7.4, qs 6.17.0, serialize-javascript 7.1.4 | [fast-uri](https://github.com/fastify/fast-uri/releases/tag/v3.1.9), [ip-address](https://github.com/beaugunderson/ip-address/releases/tag/v10.7.4), [qs](https://github.com/ljharb/qs/blob/v6.17.0/CHANGELOG.md), [serialize-javascript](https://github.com/yahoo/serialize-javascript/releases/tag/v7.1.4) | Patch/minor releases on the existing major, none. | osv gate and `build:cowswap`. |
+
 ## Renewal criteria
 
 Remove the zod exception when the listed SDKs ship zod 4, or re-review by 2026-12-03. Re-check
