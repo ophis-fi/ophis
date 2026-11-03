@@ -18,6 +18,9 @@ const { metafile } = buildSync({
   target: 'node20',
   // Packages' ES builds first: some CommonJS builds hand a default import the whole module (SignClient.init fails).
   mainFields: ['module', 'main'],
+  // pino loads pino-pretty only when pretty printing is on, which WalletConnect's logger never enables. Keep it out of
+  // the bundle (pnpm 10 hoisting made it resolvable, adding 18 packages of dead code).
+  external: ['pino-pretty'],
   minify: true,
   legalComments: 'none',
   logLevel: 'warning',
