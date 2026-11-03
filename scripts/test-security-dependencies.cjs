@@ -15,7 +15,7 @@ const { existsSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSyn
 const { createRequire, Module } = require('node:module');
 const { createServer } = require('node:http');
 const { tmpdir } = require('node:os');
-const { basename, join, resolve } = require('node:path');
+const { basename, dirname, join, resolve } = require('node:path');
 const { pathToFileURL } = require('node:url');
 const { parseArgs } = require('node:util');
 const { runInNewContext } = require('node:vm');
@@ -408,8 +408,14 @@ async function main() {
     console.log(`PASS deepmerge ${pkg.version}: __proto__/constructor/prototype never copied; ordinary merges unchanged`);
   }
   for (const pkg of installed('zod', 3)) {
-    await require('./test-zod3-security.cjs')(pkg.require);
-    console.log(`PASS zod ${pkg.version}: oversized arrays/sets fail before element parsing; in-bound parsing unchanged`);
+    const testZod3 = require('./test-zod3-security.cjs');
+    await testZod3(pkg.require);
+    // Bundlers load the ESM entry (and some the UMD build); the patch edits those files separately.
+    const dir = dirname(pkg.require.resolve('zod/package.json'));
+    const builds = [await import(pathToFileURL(join(dir, pkg.exports['.'].import)).href)];
+    if (existsSync(join(dir, 'lib/index.umd.js'))) builds.push(pkg.require(join(dir, 'lib/index.umd.js')));
+    for (const zod of builds) await testZod3((name) => (name === 'zod' ? zod : pkg.require(name)));
+    console.log(`PASS zod ${pkg.version} (CJS, ESM${builds.length > 1 ? ', UMD' : ''}): oversized arrays/sets fail before element parsing; in-bound parsing unchanged`);
   }
 
   if (workspace === 'frontend') {

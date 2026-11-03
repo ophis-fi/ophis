@@ -6,6 +6,9 @@ on:
       - 'apps/railgun/**'
       - 'packages/sdk/src/partner-fee.ts'
       - 'patches/elliptic@6.6.1.patch'
+      - 'patches/zod@3.22.4.patch'
+      - 'patches/zod@3.25.76.patch'
+      - 'scripts/test-zod3-security.cjs'
       - '.github/workflows/railgun-ci.yml'
       - '.github/workflows/railgun-deploy.yml'
   push:
@@ -14,6 +17,9 @@ on:
       - 'apps/railgun/**'
       - 'packages/sdk/src/partner-fee.ts'
       - 'patches/elliptic@6.6.1.patch'
+      - 'patches/zod@3.22.4.patch'
+      - 'patches/zod@3.25.76.patch'
+      - 'scripts/test-zod3-security.cjs'
       - '.github/workflows/railgun-ci.yml'
       - '.github/workflows/railgun-deploy.yml'
   workflow_dispatch:
