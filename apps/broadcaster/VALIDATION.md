@@ -2,6 +2,36 @@
 
 # Local broadcaster validation
 
+
+## Release candidate — 4 November 2026
+
+The latest backend source checkpoint is `f0e0d746743046a430da5f007fd668e6ba5ddb47`, with current Ophis main `a46e940fd1453de9294ee77aee3f8d460ff130e1` merged. This includes #1623, #1624, #1626 and the subsequent #1627 rebate fix. The original dirty checkout, encrypted browser formats, saved proofs, live journals and historical pilot marker remain preserved. The candidate is staged on Baal; the live pilot has **not** been replaced and public mainnet admission requires explicit configuration and all existing financial/signing safeguards.
+
+| Final check | Evidence |
+| --- | --- |
+| Broadcaster | 151 tests, standalone typecheck and production build pass; the optional Waku test also passes separately through an isolated real nwaku relay |
+| Private client | 308 tests and browser/Worker typechecks pass; 12 optional fork/live cases remain skipped in that suite |
+| Current Ophis frontend | 39 scoped public/private flow tests, typecheck, scoped ESLint and the production build pass against the frozen current lockfile |
+| Production private runtime | Mainnet build with `/private/` assets and the existing Ophis WalletConnect project passes and stages into the actual Ophis build |
+| Real-proof protocol run | Two unrelated wallets complete two swaps and four withdrawals; six signatures produce six protected writes, six received fee notes authenticate through an independent real view-only SDK wallet, and a wrong transaction hash is rejected |
+| Spending controls | Fresh-rate underpayment and re-encrypted consumed-spend replays require no additional signature; delegation-change simulation is rejected; receipt expenses equal the native gas balance decrease |
+| Browser persistence | Both fork wallets reload with the same encrypted identities; cold synchronization is 139/124 seconds from cached public responses and warm reload is 16/4 seconds; these are not live first-use timings |
+| Operations | Finalized-loss resolution, retained gas expense, restore, metric-label validation and atomic textfile replacement pass; the actual CLI emits only valid metrics with a disconnected real RPC provider |
+| Custody | Dummy-key terminal checks pass for cancel, Enter, Ctrl-C and SIGTERM; noninteractive phrase recovery is refused before key access; no real fee mnemonic was displayed |
+| Security | Fresh Semgrep has no parse errors and three reviewed false positives (generated guard bytecode and a readable UI summary); repository-configured changed-source secret scanning has zero findings |
+
+The exact candidate bundle is `6dd1f655012c82e1098afb58424266dc36d7dca3ddd68984e49c5b3b83a1ef2f`. Image `ophis-broadcaster:release-637602ca0c1c15c7` is built on Baal, digest `sha256:da29919be79e8ede4c8acab56005049c3b17a1dd362fb3fd8609fdfc7d9197e7`. Its disposable fork CLI initializes successfully with networking disabled and without mounting production state. Required Docker-context files, excluded canaries and external SDK state are verified.
+
+Claude's readiness-race and terminal-interruption findings are fixed with reproduced regressions. Its final monitoring finding was also reproduced against the pinned ethers provider: network-detection output polluted metrics when RPC failed. Only monitoring now pins the provider network, checks the actual raw `eth_chainId` separately and passes the real disconnected-CLI regression. Jev's source checks included uncertain and contradictory results; they are retained as review input, not represented as approval. The unchanged guard retains fresh hosted Solidity tests and its preceding Slither result; no formal verification is claimed.
+
+Hosted broadcaster/client/security/CodeQL/CI checks passed at `b3b24dda840b4d7a561e610a7813df573b4e70fe`; hosted frontend tests and both production-build steps have passed. Later monitoring, parallel history-fetch and bounded-dialog changes have complete local tests and need their fresh hosted runs after publication. Both final standalone frozen installs pass, with upstream dependency versions unchanged. Independent V2 histories now fetch concurrently, matching the SDK V3 pattern, and a failed stream still rejects the whole history result. Progress is preserved during wallet opening; Merkle-root/proof verification remains required. The combined production preview passes with real WalletConnect pairing, cancellation/retry, disconnect, encrypted-wallet reload, actual CSP/cache headers, analytics exclusion and ordinary public navigation. No transaction request is made. Fresh network synchronization measured 382 and 533 seconds; the saved wallet opens in 3 seconds and reloads in 2 seconds. First use still takes several minutes; cached-fork timings are not substituted for these live-read measurements. Desktop, portrait and landscape QR dialogs also pass real-pointer cancellation checks. Actual rollout remains a separate recorded step.
+
+Live read-only preflight found two settled requests, no unresolved request, matching latest/pending nonce 3, an undelegated gas account and the exact reviewed operator-bound guard. The native gas balance is `0.003228908919581249 ETH`, above the existing 0.003 ETH refill target. Gas prices exceed the unchanged 0.5 gwei cap. An online critical-state backup was copied off-server and authenticated without writing a plaintext backup, and the actual Prometheus installation accepts both prepared alert rules. No monitor cron/rules or candidate service upgrade have been activated yet.
+
+The protocol fork uses a frozen initial oracle snapshot, modeled gas suggestions and receipt-based backend settlement; the independent fee-history decoder is real, while `fullWalletHistoryAssurance=false` remains explicit for the fixture's backend. No new Flashbots mainnet inclusion, live failing transaction or paid collection/refill was performed. An included outer revert can still spend operator gas without a fee; the durable hold and approved limits contain that exposure rather than guarantee reimbursement.
+
+Evidence and exact manifests: `~/ophis-railgun-evidence/release-20261104/`. Dated sections below describe historical checkpoints.
+
 ## Repeated-user admission checkpoint — 4 November 2026
 
 Stage 3 is implemented and validated locally, based on integration commit `44f27966876b6920dd921e1f0e314d286c9d237f`. The original dirty pilot checkout is preserved. Public mainnet startup remains explicitly held in source; no service, production state, keys or funds were changed.

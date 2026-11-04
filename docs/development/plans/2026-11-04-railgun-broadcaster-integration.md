@@ -1,6 +1,6 @@
 # RAILGUN broadcaster integration with current Ophis
 
-Status: stages 1–3 implemented and validated locally, 4 November 2026. Stages 4–6 and production rollout remain pending.
+Status, 4 November 2026: stages 1–3 are accepted locally; stages 4–5 are implemented with tests and a staged backend image. The combined production preview passes. Publication, fresh hosted checks and state-preserving rollout remain in progress. See the [current release-candidate evidence](../../../apps/broadcaster/VALIDATION.md#release-candidate--4-november-2026).
 
 Implementation checkpoint: stages 1–2 are implemented in `fix/railgun-broadcaster-security-integration` at `/Users/scep/ophis-railgun-integration`. The complete pilot snapshot is preserved; current main is integrated; backend frozen installation, dependency regressions, audit gate, Linux amd64 image build and disposable runtime smoke test now pass. Local evidence includes 95 backend tests, 286 client tests, both builds/typechecks and ten guard tests with 1,024 nonce fuzz cases. Five workflow-boundary regressions pass. Thirteen optional Waku/fork/live tests remain skipped. Hosted CI and the later production stages are not represented by these local results. Claude reviewed the dependency plan; Jev's claim checks support the bounded conclusions but include uncertainty requiring human/source review, not automatic release approval.
 
@@ -10,7 +10,7 @@ Stage 3 checkpoint: 117 backend and 287 client tests pass. Two distinct disposab
 
 Deliver Ethereum private swaps and withdrawals through Ophis's own broadcaster as part of the current Ophis application, retaining the recent security updates and existing public-swap behavior. The selected fee flow stays inside the private transaction, with authenticated coverage of the maximum signed gas cost plus at least the approved 15% margin.
 
-`origin/main` was fetched again on 4 November and remains `d5c7486a91becebb6120f0f927af08638107564b`, including #1623, #1624 and #1626. The original `fix/private-mev-protection` checkout at `f6792c6932f750cb433ee5193d17b659fc84eac4` and its uncommitted pilot changes are preserved. Work now uses `fix/railgun-broadcaster-security-integration`, based on current main. Recheck main before release if it advances.
+`origin/main` advanced on 4 November to `a46e940fd1453de9294ee77aee3f8d460ff130e1`; #1627 is merged into this integration alongside #1623, #1624 and #1626. The original `fix/private-mev-protection` checkout at `f6792c6932f750cb433ee5193d17b659fc84eac4` and its uncommitted pilot changes are preserved. Work now uses `fix/railgun-broadcaster-security-integration`, based on current main. Recheck main before release if it advances.
 
 Reference: [review of the three security PRs](../../../OPHIS_DIFFERENTIAL_REVIEW_2026-11-03.md).
 
@@ -110,4 +110,4 @@ Before merging another security/dependency PR during this work, compare its chan
 - Rejected attempts should not create a chain transaction. An included outer revert or an explicit paid cancellation can still consume operator gas without delivering the private fee. Record that residual exposure honestly; this plan does not make unconditional user-funded reimbursement possible. If zero operator loss becomes an absolute release requirement, the payment architecture must be revisited before public activation.
 - Added networks, asynchronous private CoW settlement, new paid infrastructure, automatic treasury access and unrelated frontend dependency migrations are outside this Ethereum release.
 
-Stages 1–3 now have reproducible builds and local compatibility/security evidence; see [validation and review closure](../../../apps/broadcaster/VALIDATION.md). The next implementation slice is stage 4: the existing Ophis user flow, including first-use synchronization, while preserving the live pilot's state and financial limits.
+The remaining release work is publication of the exact tested source, CI completion, and coordinated frontend/backend rollout with the prepared monitoring and rollback. Combined-browser acceptance now includes real WalletConnect pairing, accessible QR cancellation, encrypted-wallet reload and the ordinary public document. Stages 4–5 retain wallet caches, manually controlled custody and all approved financial limits; see [current validation](../../../apps/broadcaster/VALIDATION.md#release-candidate--4-november-2026).
