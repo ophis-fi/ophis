@@ -12,6 +12,8 @@
       <label>Private network<select id="private-network"><option value="1">Ethereum</option><option value="42161">Arbitrum</option><option value="137">Polygon</option><option value="56">BNB Chain</option></select></label>
       <small id="private-network-help">Choose the network before unlocking your private wallet.</small>
       <p id="status" role="status" aria-live="polite">Ready to start</p>
+      <progress id="history-progress" max="100" aria-label="Private history verification"></progress>
+      <p id="balance-sync">First use downloads and verifies private history. Keep this page open during setup. Verified history is saved in this browser; deposits and spending become available when synchronization finishes.</p>
       <section id="setup">
         <h1>Your balance, privately.</h1>
         <p>Use a dedicated recovery phrase for your private wallet. Never enter your MetaMask or hardware wallet recovery phrase.</p>
@@ -36,11 +38,11 @@
         <div class="balance-card">
           <small>Spendable private balance · selected sell token</small>
           <strong id="spendable-balance">Synchronizing…</strong>
-          <details><summary>Pending verification</summary><p id="pending-balances">Synchronizing…</p></details>
+          <details><summary>Pending balances</summary><p id="pending-balances">Synchronizing…</p></details>
         </div>
-        <p id="balance-sync">Balances are incomplete until the initial history sync finishes.</p>
         <details><summary>Wallet details and balances</summary><p id="address"></p><pre id="balances">Syncing…</pre></details>
         <div class="secondary-actions"><button id="refresh" type="button">Refresh balances</button><a id="withdraw-shortcut" href="#withdrawal">Withdraw to a public wallet</a><button id="lock" type="button">Lock wallet</button></div>
+        <fieldset id="ready-actions" disabled>
         <details id="deposit-details"><summary>Add funds</summary>
         <p>
           Shielding uses your public wallet. Protocol fees apply. Ophis does not require PPOI verification.
@@ -94,6 +96,7 @@
         <pre id="withdraw-details"></pre>
         <button id="withdraw" type="button" hidden>Prove and withdraw</button>
         </section>
+        </fieldset>
         <details id="recovery"><summary>Recovery and pending transactions</summary>
         <p>
           <span id="recovery-gas-help">Recovery requires native currency for gas. Funding a temporary account from your public wallet creates a public link.</span>

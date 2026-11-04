@@ -16,6 +16,10 @@ it('snapshots live WAL journals and encrypted keys without stopping the operator
   const transport = new DatabaseSync(join(root, 'protected-transactions.sqlite'))
   try {
     transport.exec('PRAGMA journal_mode=WAL; CREATE TABLE pending (raw TEXT); INSERT INTO pending VALUES (\'unknown signed bytes\')')
+    store.signed('loss', 'encrypted request', 'old signed bytes', 'old-hash', 100n, 1000n, 0)
+    store.confirmed('loss', 80n, Date.now())
+    store.acknowledgeLoss('loss', 'old-hash', 80n, 100, 'canonical-block', 'Dummy finalized gas loss')
+    store.db.prepare('INSERT INTO settings VALUES(?,?)').run('withdrawalPilot', 'historical-pilot')
     store.signed('pending', 'encrypted request', 'unknown signed bytes', 'hash', 100n, 1000n, 0)
     store.db.prepare('INSERT INTO settings VALUES(?,?)').run('walletId', 'live-view-id')
     const destination = join(root, '.backup-snapshot.test')
@@ -24,14 +28,17 @@ it('snapshots live WAL journals and encrypted keys without stopping the operator
     const savedTransport = new DatabaseSync(join(destination, 'state', 'protected-transactions.sqlite'))
     try {
       expect(saved.get('pending')?.raw).toBe('unknown signed bytes')
-      expect(saved.exposure()).toBe(100n)
+      expect(saved.exposure()).toBe(180n)
+      expect(saved.pending().map((row) => row.key)).toEqual(['pending'])
+      expect(saved.db.prepare('SELECT reason FROM settlement_resolutions WHERE key=?').get('loss')?.reason).toBe('Dummy finalized gas loss')
+      expect(saved.db.prepare('SELECT value FROM settings WHERE key=?').get('withdrawalPilot')?.value).toBe('historical-pilot')
       expect(savedTransport.prepare('SELECT raw FROM pending').get()?.raw).toBe('unknown signed bytes')
       expect(saved.db.prepare('SELECT value FROM settings WHERE key=?').get('walletId')).toBeUndefined()
       expect(store.db.prepare('SELECT value FROM settings WHERE key=?').get('walletId')?.value).toBe('live-view-id')
       expect(readFileSync(join(destination, 'state', 'secrets', 'operator.sealed.json'), 'utf8')).toBe('encrypted/dummy-public-data')
       store.confirmed('pending', 80n, Date.now())
-      expect(store.exposure()).toBe(80n)
-      expect(saved.exposure()).toBe(100n)
+      expect(store.exposure()).toBe(160n)
+      expect(saved.exposure()).toBe(180n)
     } finally { saved.close(); savedTransport.close() }
     await expect(snapshotCriticalState(root, join(root, 'outside'))).rejects.toThrow('private snapshot')
   } finally { store.close(); transport.close(); rmSync(root, { recursive: true, force: true }) }

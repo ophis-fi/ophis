@@ -1,5 +1,6 @@
 import {
   POI,
+  ByteUtils, ByteLength,
   POINodeInterface,
   type Chain,
   type TXIDVersion,
@@ -7,9 +8,10 @@ import {
   type POIsPerList,
 } from '@railgun-community/engine'
 import { balanceForERC20Token, fullWalletForID, pausePPOIBatchingForChain,
-  encryptDataWithSharedKey, getRailgunWalletAddressData, tryDecryptJSONDataWithSharedKey, createRailgunWallet } from '@railgun-community/wallet'
+  encryptDataWithSharedKey, getRailgunWalletAddressData, tryDecryptJSONDataWithSharedKey, createRailgunWallet,
+  createViewOnlyRailgunWallet, walletForID, refreshBalances } from '@railgun-community/wallet'
 import { calculateGasLimit, type SelectedBroadcaster } from '@railgun-community/shared-models'
-import { FeeData, JsonRpcProvider, Mnemonic, randomBytes, hexlify } from 'ethers'
+import { FeeData, JsonRpcProvider, Mnemonic, randomBytes, hexlify, getAddress } from 'ethers'
 import { CHAIN, CHAIN_ID, CHAIN_NAME, RPC_PATH, NATIVE_SYMBOL, WRAPPED_SYMBOL, CONFIG, FEE_SIGNER, MIN_SWAP_GAS, NETWORK, TOKENS, VERSION, type TokenSymbol } from '../src/config'
 import { openWallet, syncWallet, type WalletSession } from '../src/wallet'
 import { executePrivateSwap, preparePrivateSwap } from '../src/private-swap'
@@ -79,6 +81,27 @@ export async function loadForkSession(password: string): Promise<string> {
   POI.init([], new ForkPOI())
   if (await pendingSwap(active.session)) await reconcilePendingSwap(active.session)
   return active.session.info.railgunAddress
+}
+
+export async function verifyForkFeeHistory(input: {
+  viewingKey: string; fromBlock: number
+  ledger: { hash: string; commitment: string; token: string; fee: string }[]
+}): Promise<{ verifiedNotes: number; fees: Record<string, string> }> {
+  const current = session()
+  if (location.hostname !== '127.0.0.1' || !(await current.provider.send('anvil_metadata', [])).forkedNetwork)
+    throw new Error('Fee-history verification is restricted to the isolated fork.')
+  const view = await createViewOnlyRailgunWallet(current.key, input.viewingKey, { [NETWORK]: input.fromBlock })
+  await refreshBalances(CONFIG.chain, [view.id])
+  const notes = await walletForID(view.id).TXOs(VERSION, CONFIG.chain)
+  const fees: Record<string, bigint> = {}
+  for (const entry of input.ledger) {
+    const note = notes.find((item) => ByteUtils.formatToByteLength(item.txid, ByteLength.UINT_256, true).toLowerCase() === entry.hash.toLowerCase() &&
+      ByteUtils.nToHex(item.note.hash, ByteLength.UINT_256, true).toLowerCase() === entry.commitment.toLowerCase())
+    if (!note || note.note.value !== BigInt(entry.fee) || getAddress(note.note.tokenData.tokenAddress) !== getAddress(entry.token))
+      throw new Error('The view-only wallet did not authenticate the expected fee note and transaction hash.')
+    fees[entry.token] = (fees[entry.token] ?? 0n) + note.note.value
+  }
+  return { verifiedNotes: input.ledger.length, fees: Object.fromEntries(Object.entries(fees).map(([token, value]) => [token, value.toString()])) }
 }
 
 function session(): WalletSession {

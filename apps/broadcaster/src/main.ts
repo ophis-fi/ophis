@@ -2,6 +2,7 @@ import { createServer } from 'node:http'
 import { statfsSync } from 'node:fs'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
+import { DatabaseSync } from 'node:sqlite'
 import { setTimeout as delay } from 'node:timers/promises'
 import LevelDOWN from 'leveldown'
 import { JsonRpcProvider, Wallet } from 'ethers'
@@ -17,6 +18,7 @@ import { receiveUnlock, sendUnlock, stdinUnlock } from './unlock-socket'
 import { migrateOperator } from './migrate'
 import { snapshotCriticalState } from './backup'
 import { deployGuard, type GuardApproval } from './guard-deployment'
+import { accountingReport, acknowledgeLoss, localHealth, monitor, monitorMetrics } from './operations'
 
 process.umask(0o077)
 
@@ -30,10 +32,10 @@ async function run(): Promise<void> {
     return
   }
   const config = settings(process.env)
-  if (!['init', 'migrate', 'snapshot', 'check', 'status', 'retry', 'cancel', 'deploy-guard', 'sync', 'run'].includes(command))
-    throw new Error('Supported commands: init, migrate, snapshot, check, status, retry, cancel, deploy-guard, sync, run, unlock.')
+  if (!['init', 'migrate', 'snapshot', 'check', 'status', 'report', 'monitor', 'acknowledge-loss', 'retry', 'cancel', 'deploy-guard', 'sync', 'run'].includes(command))
+    throw new Error('Unsupported broadcaster command.')
   privateDirectory(config.state)
-  assertDisk(config.state)
+  if (command !== 'monitor') assertDisk(config.state)
   if (command === 'snapshot') {
     if (!process.argv[3]) throw new Error('A private snapshot directory is required.')
     await snapshotCriticalState(config.state, process.argv[3])
@@ -61,6 +63,30 @@ async function run(): Promise<void> {
       (config.mode === 'fork' && (!fork || typeof fork !== 'object' || !('forkedNetwork' in fork) || !fork.forkedNetwork)))
       throw new Error('Read node does not match the selected mainnet/fork environment.')
     const oracle = new FeeOracle(provider, config.marginBps)
+    const port = Number(process.env.OPHIS_BROADCASTER_PORT ?? '4340')
+    if (!Number.isSafeInteger(port) || port < 1024 || port > 65535) throw new Error('Invalid health port.')
+    if (command === 'monitor') {
+      if (process.argv.length > 3 && (process.argv.length !== 4 || process.argv[3] !== '--prometheus')) throw new Error('Invalid monitor output.')
+      const result = await monitor(config, provider, oracle, port)
+      if (process.argv[3] === '--prometheus') process.stdout.write(monitorMetrics(result))
+      else console.log(JSON.stringify(result))
+      process.exitCode = result.ok ? 0 : 2
+      return
+    }
+    if (command === 'report') {
+      const journal = new DatabaseSync(join(config.state, 'requests.sqlite'), { readOnly: true })
+      try {
+        const health = await localHealth(port).catch(() => undefined)
+        journal.exec('BEGIN')
+        const currentBalance = health?.synchronized === true && typeof health.feeBalancesAt === 'number' &&
+          Math.abs(Date.now() - health.feeBalancesAt) < 45_000
+        console.log(JSON.stringify({ ...accountingReport(journal), spendablePrivateFees: currentBalance ? health?.feeBalances : undefined,
+          privateBalanceSampledAt: currentBalance ? health?.feeBalancesAt : undefined, maximumWithdrawalGasWei: config.maxTransactionCost.toString(),
+          treasury: '0x58707c6C1E111c21cba4C9C8caE144175F84EceE',
+          collectionRequiresOwnerQuotes: true }))
+      } finally { journal.close() }
+      return
+    }
     if (command === 'check') {
       const rates = await oracle.rates(), disk = statfsSync(config.state)
       console.log(JSON.stringify({ chainId: 1, mode: config.mode, signingEnabled: config.enabled,
@@ -71,6 +97,12 @@ async function run(): Promise<void> {
     lock = new LevelDOWN(join(config.state, 'operator-lock'))
     await new Promise<void>((resolve, reject) => lock!.open((error) => error ? reject(error) : resolve()))
     store = new Store(config.state)
+    if (command === 'acknowledge-loss') {
+      if (process.argv.length !== 5) throw new Error('Provide the request key and an audit reason.')
+      await acknowledgeLoss(process.argv[3], process.argv[4], config, store, provider)
+      console.log(JSON.stringify({ status: 'finalized-gas-loss-acknowledged', feeReceived: false }))
+      return
+    }
     if (command === 'migrate') {
       const legacy = readSecrets(config.secrets), address = new Wallet(legacy.gasKey).address
       if (config.enabled || await provider.getBalance(address) !== 0n ||
@@ -91,9 +123,8 @@ async function run(): Promise<void> {
         })), feeAssurancePending: pending.filter((r) => r.confirmed && !r.assured).length }))
       return
     }
-    const metrics = { ready: false, errors: 0, locked: config.mode === 'mainnet' }
-    const port = Number(process.env.OPHIS_BROADCASTER_PORT ?? '4340')
-    if (!Number.isSafeInteger(port) || port < 1024 || port > 65535) throw new Error('Invalid health port.')
+    const metrics: { ready: boolean; errors: number; locked: boolean; feeBalances?: Record<string, string>; feeBalancesAt?: number } =
+      { ready: false, errors: 0, locked: config.mode === 'mainnet' }
     server = createServer((request, response) => {
       if (request.url !== '/health') { response.writeHead(404).end(); return }
       response.setHeader('Content-Type', 'application/json')
@@ -101,7 +132,8 @@ async function run(): Promise<void> {
       response.end(JSON.stringify({ mode: config.mode, admission: config.admission, enabled: config.enabled, ready: metrics.ready, locked: metrics.locked,
         synchronized: sdk?.ready() ?? false,
         pending: pending.filter((r) => !r.confirmed).length,
-        feeAssurancePending: pending.filter((r) => r.confirmed && !r.assured).length, errors: metrics.errors }))
+        feeAssurancePending: pending.filter((r) => r.confirmed && !r.assured).length, errors: metrics.errors,
+        feeBalances: metrics.feeBalances, feeBalancesAt: metrics.feeBalancesAt }))
     })
     await new Promise<void>((resolve, reject) => { server!.once('error', reject); server!.listen(port, '127.0.0.1', resolve) })
     let secrets: Secrets
@@ -148,6 +180,8 @@ async function run(): Promise<void> {
         if (Date.now() - lastRefresh >= 30_000) {
           lastRefresh = Date.now()
           metrics.ready = await broadcaster.available()
+          if (sdk.ready()) { metrics.feeBalances = await sdk.balances(); metrics.feeBalancesAt = Date.now() }
+          else { delete metrics.feeBalances; delete metrics.feeBalancesAt }
           if (!reconcile) reconcile = broadcaster.reconcile()
             .catch(() => { metrics.errors++ }).finally(() => { reconcile = undefined })
           if (command === 'run' && config.enabled && sdk.ready())
@@ -176,7 +210,7 @@ async function run(): Promise<void> {
 }
 
 // The SDK retains background timers after unload; exit only after every journal and provider closes.
-run().then(() => process.exit(0)).catch(() => {
+run().then(() => process.exit(process.exitCode ?? 0)).catch(() => {
   console.error('Broadcaster stopped: configuration, lock, storage or dependency checks failed. No secret values were logged.')
   process.exit(1)
 })

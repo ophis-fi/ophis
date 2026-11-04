@@ -6,7 +6,7 @@ import { ContractFactory, JsonRpcProvider, Wallet, Transaction, getAddress, type
 import { disablePPOI } from '../../railgun/poi-policy'
 import { POI } from '@railgun-community/engine'
 import { ArtifactStore, createRailgunWallet, getRailgunWalletPrivateViewingKey, getRailgunWalletAddressData,
-  setLoggers, startRailgunEngine, stopRailgunEngine } from '@railgun-community/wallet'
+  getWalletShareableViewingKey, setLoggers, startRailgunEngine, stopRailgunEngine } from '@railgun-community/wallet'
 import { settings, NETWORK, TOKENS } from '../src/config'
 import { initializeSecrets, readSecrets, Store, type RequestRecord } from '../src/storage'
 import { RailgunSDK } from '../src/sdk'
@@ -135,6 +135,7 @@ export async function forkOperator(rpcURL: string) {
         return Buffer.from(response).toString()
       },
       restart: () => { store.close(); store = new Store(root); service = makeService() },
+      feeHistoryIdentity: async () => ({ viewingKey: await getWalletShareableViewingKey(sdk.walletId), fromBlock: metadata.forkedNetwork.forkBlockNumber }),
       stats: async () => {
         const records = store.db.prepare('SELECT * FROM requests ORDER BY nonce').all() as unknown as RequestRecord[]
         const ledger = []
@@ -145,7 +146,7 @@ export async function forkOperator(rpcURL: string) {
           const [[token, amount]] = Object.entries(payment)
           const required = ceilDiv(BigInt(record.max_cost) * rates[getAddress(token)], 10n ** 18n)
           assert(amount >= required, 'Authenticated private fee must cover the full signed budget plus 15%.')
-          ledger.push({ hash: record.hash, nonce: record.nonce, maxCostWei: record.max_cost,
+          ledger.push({ hash: record.hash, commitment: JSON.parse(record.fee_data).commitment, nonce: record.nonce, maxCostWei: record.max_cost,
             actualCostWei: record.actual_cost, token, fee: amount.toString(), minimumFee: required.toString() })
         }
         return { submissions, signatures, journaled: store.pending().length, exposureWei: String(store.exposure()),

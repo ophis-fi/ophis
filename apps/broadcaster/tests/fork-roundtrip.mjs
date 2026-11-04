@@ -34,6 +34,7 @@ assert(freeDisk() >= 6 * 1024 ** 3, 'The browser test requires the existing 6 Gi
 let operator, context, heartbeat, diskGuard
 const result = { passed: false, livePPOI: false, liveProtectedInclusion: false, modeledPriorityFeeWei: '0',
   profile: root, wallets: [], synchronizationSeconds: [], operations: [] }
+result.warmSynchronizationSeconds = []
 let phase = 'operator-startup'
 try {
   operator = await forkOperator(url)
@@ -101,7 +102,8 @@ try {
     const syncStart = Date.now()
     for (let attempt = 0; attempt < 24; attempt++) {
       try {
-        await page.waitForFunction(() => /Complete|Incomplete/.test(document.querySelector('#status')?.textContent ?? ''), null, { timeout: 30_000 })
+        await page.waitForFunction(() => document.querySelector('#ready-actions')?.disabled === false ||
+          /Incomplete/.test(document.querySelector('#status')?.textContent ?? ''), null, { timeout: 30_000 })
         break
       } catch (error) {
         if (error.name !== 'TimeoutError' || attempt === 23) throw error
@@ -110,6 +112,7 @@ try {
       }
     }
     assert((await page.locator('#status').innerText()).includes('Complete'), (await page.locator('#error').innerText()).slice(0, 500))
+    assert(!(await page.locator('#ready-actions').isDisabled()), 'Deposits and spending must wait for verified wallet history.')
     result.synchronizationSeconds.push(Math.round((Date.now() - syncStart) / 1000))
     result.wallets.push(await page.evaluate(async (pass) => (await import('/tests/fork.fixture.ts')).loadForkSession(pass), password))
     const beforeWETH = BigInt(await page.evaluate(async () => (await import('/tests/fork.fixture.ts')).forkWethBalance()))
@@ -149,6 +152,23 @@ try {
       assert(received >= BigInt(withdrawal.minimum) && received <= BigInt(withdrawal.amount))
       result.operations.push({ wallet: index, type: 'withdrawal', token, recipient, received: received.toString(), ...withdrawal })
       await checkReplay(page, withdrawal.hash)
+    }
+    phase = `wallet-${index}-warm-reload`
+    const warmStart = Date.now()
+    await page.reload({ waitUntil: 'networkidle' })
+    await page.locator('#password').fill(password); await page.locator('#unlock').click()
+    await page.waitForFunction(() => !document.documentElement.dataset.busy)
+    await page.waitForFunction(() => document.querySelector('#ready-actions')?.disabled === false)
+    assert.equal(await page.evaluate(async (pass) => (await import('/tests/fork.fixture.ts')).loadForkSession(pass), password), result.wallets[index])
+    result.warmSynchronizationSeconds.push(Math.round((Date.now() - warmStart) / 1000))
+    if (index === 1) {
+      phase = 'independent-view-only-fee-history'
+      const input = { ...await operator.feeHistoryIdentity(), ledger: (await operator.stats()).ledger }
+      result.feeHistory = await page.evaluate(async (data) => (await import('/tests/fork.fixture.ts')).verifyForkFeeHistory(data), input)
+      assert.equal(result.feeHistory.verifiedNotes, 6)
+      await assert.rejects(() => page.evaluate(async (data) => (await import('/tests/fork.fixture.ts')).verifyForkFeeHistory(data),
+        { ...input, ledger: [{ ...input.ledger[0], hash: `0x${'12'.repeat(32)}` }] }), /did not authenticate/)
+      result.feeHistoryRejectsWrongHash = true
     }
     await context.close(); context = undefined
     if (index === 0) { phase = 'request-journal-restart'; operator.restart() }

@@ -93,7 +93,15 @@ export class Store {
         checked_at INTEGER NOT NULL DEFAULT 0, fee_expiration INTEGER NOT NULL DEFAULT 0
       );
       CREATE TABLE IF NOT EXISTS fees (id TEXT PRIMARY KEY, expiration INTEGER NOT NULL, rates TEXT NOT NULL);
-      CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT NOT NULL);`)
+      CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT NOT NULL);
+      CREATE TABLE IF NOT EXISTS settlement_resolutions (
+        key TEXT PRIMARY KEY, hash TEXT NOT NULL, actual_cost TEXT NOT NULL,
+        block_number INTEGER NOT NULL, block_hash TEXT NOT NULL, reason TEXT NOT NULL, created INTEGER NOT NULL
+      );
+      CREATE TRIGGER IF NOT EXISTS preserve_resolution_update BEFORE UPDATE ON settlement_resolutions
+        BEGIN SELECT RAISE(ABORT, 'Settlement resolutions are append-only'); END;
+      CREATE TRIGGER IF NOT EXISTS preserve_resolution_delete BEFORE DELETE ON settlement_resolutions
+        BEGIN SELECT RAISE(ABORT, 'Settlement resolutions are append-only'); END;`)
   }
   get(key: string): RequestRecord | undefined {
     return this.db.prepare('SELECT * FROM requests WHERE key=?').get(key) as RequestRecord | undefined
@@ -142,14 +150,41 @@ export class Store {
   confirmed(key: string, cost: bigint, minedAt: number): void {
     this.db.prepare('UPDATE requests SET confirmed=1,actual_cost=?,mined_at=? WHERE key=?').run(cost.toString(), minedAt, key)
   }
-  assured(key: string): void { this.db.prepare('UPDATE requests SET assured=1 WHERE key=?').run(key) }
+  assured(key: string, received = false): void {
+    const request = this.get(key)
+    if (!request) throw new Error('Missing fee settlement record.')
+    const proof = JSON.parse(request.fee_data)
+    this.db.prepare('UPDATE requests SET assured=1,fee_data=? WHERE key=?')
+      .run(JSON.stringify({ ...proof, settlement: received ? 'fee-received' : 'cancelled' }), key)
+  }
+  acknowledgeLoss(key: string, hash: string, cost: bigint, block: number, blockHash: string, reason: string): void {
+    if (!/^[\x20-\x7e]{10,200}$/.test(reason)) throw new Error('A 10–200 character audit reason is required.')
+    this.db.exec('BEGIN IMMEDIATE')
+    try {
+      const request = this.get(key)
+      if (!request || request.confirmed !== 1 || request.assured !== 0 || request.hash !== hash ||
+        request.actual_cost !== cost.toString() || cost <= 0n)
+        throw new Error('The confirmed unpaid record changed; reconcile before acknowledging a loss.')
+      this.db.prepare('INSERT INTO settlement_resolutions(key,hash,actual_cost,block_number,block_hash,reason,created) VALUES(?,?,?,?,?,?,?)')
+        .run(key, hash, cost.toString(), block, blockHash, reason, Date.now())
+      this.db.exec('COMMIT')
+    } catch (error) {
+      try { this.db.exec('ROLLBACK') } catch { /* Already rolled back. */ }
+      throw error
+    }
+  }
   checked(key: string): void { this.db.prepare('UPDATE requests SET checked_at=? WHERE key=?').run(Date.now(), key) }
   pending(): RequestRecord[] {
-    return this.db.prepare('SELECT * FROM requests WHERE hash IS NOT NULL AND (confirmed=0 OR assured=0) ORDER BY confirmed,checked_at,created LIMIT 20')
+    return this.db.prepare(`SELECT * FROM requests WHERE hash IS NOT NULL AND (confirmed=0 OR assured=0)
+      AND NOT EXISTS (SELECT 1 FROM settlement_resolutions s WHERE s.key=requests.key AND s.hash=requests.hash
+        AND s.actual_cost=requests.actual_cost AND requests.confirmed=1 AND requests.assured=0)
+      ORDER BY confirmed,checked_at,created LIMIT 20`)
       .all() as unknown as RequestRecord[]
   }
   hasPending(): boolean {
-    return !!this.db.prepare('SELECT 1 FROM requests WHERE hash IS NOT NULL AND (confirmed=0 OR assured=0) LIMIT 1').get()
+    return !!this.db.prepare(`SELECT 1 FROM requests WHERE hash IS NOT NULL AND (confirmed=0 OR assured=0)
+      AND NOT EXISTS (SELECT 1 FROM settlement_resolutions s WHERE s.key=requests.key AND s.hash=requests.hash
+        AND s.actual_cost=requests.actual_cost AND requests.confirmed=1 AND requests.assured=0) LIMIT 1`).get()
   }
   nonceBlocked(nonce: number): boolean {
     return !!this.db.prepare('SELECT 1 FROM requests WHERE confirmed=0 AND nonce>=? LIMIT 1').get(nonce)

@@ -181,8 +181,10 @@ export class Broadcaster {
       this.lastRequests.push(performance.now())
       const raw = await signApprovedTransaction(this.wallet, transaction)
       const hash = Transaction.from(raw).hash!
+      const [feeToken, feeAmount] = Object.entries(payment)[0]
       this.store.signed(request.key, request.envelope, raw, hash, budget, this.config.dailyBudget,
-        nonce, JSON.stringify(proof), feeQuote.expiration, this.config.admission === 'pilot' && !parsed.type4)
+        nonce, JSON.stringify({ ...proof, payment: { token: feeToken, amount: feeAmount.toString() } }),
+        feeQuote.expiration, this.config.admission === 'pilot' && !parsed.type4)
       phase = 'submit'
       const sent = await this.sender.broadcastTransaction(raw)
       if (sent.hash !== hash) throw new Error('Unexpected protected transaction hash.')
@@ -271,7 +273,7 @@ export class Broadcaster {
         }
         if (!item.confirmed) continue
         if (!item.assured && await this.sdk.assure(item.hash, JSON.parse(item.fee_data) as FeeProof))
-          this.store.assured(item.key)
+          this.store.assured(item.key, true)
         continue
       }
       if (blockNumber - receipt.blockNumber + 1 < 2) continue
@@ -284,7 +286,7 @@ export class Broadcaster {
       const request = await openRequest(Buffer.from(item.envelope), this.sdk.privateViewingKey, this.sdk.publicViewingKey)
       if (request) this.store.respond(item.key, encryptResponse({ txHash: item.hash }, request))
       if (receipt.status === 1 && !item.assured &&
-        await this.sdk.assure(item.hash, JSON.parse(item.fee_data) as FeeProof)) this.store.assured(item.key)
+        await this.sdk.assure(item.hash, JSON.parse(item.fee_data) as FeeProof)) this.store.assured(item.key, true)
       // An included sponsored revert paid no fee: retain the halt for operator review.
       } catch { /* Retain each failed assurance and continue with other requests. */ }
     }

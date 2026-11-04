@@ -12,7 +12,7 @@ FROM requests
 WHERE hash IS NOT NULL AND (confirmed=0 OR assured=0);
 ```
 
-An included sponsored revert now retains its unassured hold across restart. Monitoring and an owner-reviewed resolution procedure are required before public activation; no direct database edits or automatic release of the hold are supported. Explicit confirmed cancellations retain their existing resolution path and actual gas accounting. `/health` exposes the admission policy and pending fee-assurance count, in addition to readiness and pending nonces.
+An included sponsored revert retains its unassured hold across restart. The stopped-service `acknowledge-loss REQUEST_KEY 'audit reason'` command can release only an original reverted transaction whose canonical receipt is finalized and whose gas cost, operator address and consumed nonce match the retained journal. It records an append-only resolution without setting fee assurance, changing expenditure, clearing the pilot marker or deleting the signed request. Missing receipts, successful receipts without an authenticated fee, reorgs and ambiguous nonces remain held. Explicit confirmed cancellations retain their existing resolution path and actual gas accounting.
 
 The current restricted pilot can authorize one USDC withdrawal by setting `OPHIS_BROADCASTER_PILOT_WITHDRAWAL_RECIPIENT` to the owner-selected public destination. Keep the existing gas limits, reserve, pilot swap account and margin unchanged. The `withdrawalPilot` setting is committed with the signed request and prevents a second withdrawal even after restart; do not clear it automatically after a timeout or cancellation. Reconcile the saved request before considering a separately authorized pilot. Withdrawals use the existing protected privacy-contract route, with the fee and output in one proof. No guard deployment or refill is needed.
 
@@ -71,6 +71,28 @@ docker exec ophis-broadcaster-broadcaster-1 node -e 'fetch("http://127.0.0.1:434
 Unarmed synchronization uses `OPHIS_BROADCASTER_COMMAND=sync`. Before manual unlock, `locked:true`, `synchronized:false` and `ready:false` are expected. After scans finish in that mode, `locked:false`, `synchronized:true`, `enabled:false` and `ready:false` are expected. `run`, the verified public gas address, actual execution guard, an owner-controlled pilot swap account, a positive markup and all explicit financial limits are required for the restricted pilot. Admission covers that swap account and one positive USDC withdrawal to the configured recipient. A used withdrawal marker can keep an enabled, unlocked, synchronized service unavailable; do not clear it to bypass the restriction. General activation cannot be enabled merely by adding a frontend address.
 
 Docker health checks verify service liveness; the health response also reports synchronization, pending requests and errors. Resource ceilings and bounded container logs are installed. Gas balance, unresolved requests, fee assurance and backup/storage checks remain operator monitoring duties; no external alert destination has been configured.
+
+`monitor` and `report` are read-only commands that can run inside the live container without taking the signing lock or unlocking it. `monitor` exits 0 when healthy and 2 for an operational alert; failures stay sanitized. It checks the fresh read node and fee oracles, low disk, reserve plus one maximum transaction, synchronization, locked/unavailable service, pending nonce and fee assurance. It exports no private fee balances or proofs. The Prometheus form is `monitor --prometheus`.
+
+Use the existing Baal node-exporter text collector, with no new service or external notification account:
+
+```sh
+bash "$base/current/scripts/monitor.sh" "$base" /home/clement/eth-mainnet/prometheus/node-exporter-text/ophis-broadcaster.prom
+```
+
+Schedule that command every five minutes, appending errors to the private operator `monitor.log`. Successful status snapshots replace the textfile atomically; a failed check writes its alert state, while a failed invocation leaves the last timestamp stale. `monitoring.rules.yml` contains the sustained-failure and stale-monitor rules for the existing Prometheus installation. Alert routing uses the existing operator monitoring configuration; this code sends no email or Telegram message.
+
+## Fee collection and bounded replenishment
+
+Run `docker exec ophis-broadcaster-broadcaster-1 node dist/main.mjs report` for recorded gas expenditure, authenticated received fee totals by token, current spendable private fee balances and acknowledged losses. Current balances require an unlocked, synchronized service sample less than 45 seconds old. Historical records without the newer authenticated payment fields are counted explicitly rather than guessed. Recorded expense for an unknown consumed nonce can conservatively use its maximum signed cost until its receipt is reconciled. Received-fee totals are gross note receipts, not net profit or the available balance.
+
+Collection remains an owner action from a separate browser profile on the owner's Mac, using the dedicated fee-wallet recovery material retained in the encrypted retired operator record. The gas/view-only runtime payload must never receive that spending phrase. Never use the Ledger recovery phrase in Ophis. Verify the restored private receiving identity against the public `feeIdentity` in `operator-public.json`, then use the same reviewed withdrawal flow to the Ambire + Ledger treasury `0x58707c6C1E111c21cba4C9C8caE144175F84EceE`. Preserve the owner's personal wallet profile and its saved proofs.
+
+The owner can retrieve only that dedicated phrase using the released standalone Mac client: `node dist/unlock-client.mjs fee-phrase`. This mode refuses pipes/noninteractive sessions before reading the recovery key, asks for explicit terminal confirmation and displays the phrase in a temporary screen that clears on Enter, interruption or timeout. Turn off terminal recording and screen sharing first. Only encrypted retired material crosses SSH; the fee spending phrase is never uploaded to Baal. Run this personally, outside agent tools and shared terminal logs. The existing `unlock` mode still sends only the gas/view-only runtime payload.
+
+Before a collection, prepare the withdrawal quote without submitting and record the committed token fee, protocol deduction and net output. Obtain the Ambire quotes for any stablecoin conversion, WETH unwrap and ETH refill before approving them. A conservative comparison is `value received after withdrawal − conversion/unwrap/refill gas − recorded sponsorship gas`; do not treat the nominal 15% markup as net profit. Batch collection when these costs would consume the surplus. An internal fee paid by the fee wallet to itself is not new external revenue.
+
+The refill target is the existing reserve plus one maximum transaction: **0.003 ETH** under the approved limits. The proposed refill is `max(0, target − current gas balance)`, funded from collected earnings through the owner's Ambire + Ledger account. Review the destination and the wallet's current gas quote; the server cannot sign or trigger the refill. A balance already above target requires no refill. Do not increase the existing transaction, daily, reserve or gas-price limits to force collection or refill through.
 
 ## Recovery and backups
 

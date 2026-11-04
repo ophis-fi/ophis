@@ -33,8 +33,10 @@ export const ROUTER = SELECTED_NETWORK.router
 export const PERMIT2 = '0x000000000022D473030F116dDEE9F6B43aC78BA3'
 export const ROUTER_RECIPIENT = '0x0000000000000000000000000000000000000002'
 export const QUOTER = SELECTED_NETWORK.quoter
-// Terminal Wallet's published connect-waku.ts default; fee signatures are verified by the SDK.
-export const FEE_SIGNER =
+const OPHIS_ETHEREUM_BROADCASTER =
+  '0zk1qyjex88m96zw2kunzxw8r8g7007ak2qe082w5n0f038chhhkzfcdtrv7j6fe3z53law92j4q28j34xsacfqf9kmqw20ap8ek904q7j0hjllh8rpd3t96jq7xh98'
+// Ethereum uses the verified Ophis fee identity; other networks retain their existing discovery signer.
+export const FEE_SIGNER = CHAIN_ID === 1 ? OPHIS_ETHEREUM_BROADCASTER :
   '0zk1qyzgh9ctuxm6d06gmax39xutjgrawdsljtv80lqnjtqp3exxayuf0rv7j6fe3z53laetcl9u3cma0q9k4npgy8c8ga4h6mx83v09m8ewctsekw4a079dcl5sw4k'
 export const MIN_SWAP_GAS = 3_000_000n
 export const PRIVATE_SLIPPAGE_BPS = 10n
@@ -43,7 +45,7 @@ export const PILOT_WITHDRAWAL_RECIPIENT: string | undefined = undefined
 export const PROTECTED_BROADCASTERS: Readonly<Partial<Record<number, readonly {
   railgunAddress: string
   expiresAt: number
-}[]>>> = {}
+}[]>>> = { 1: [{ railgunAddress: OPHIS_ETHEREUM_BROADCASTER, expiresAt: Date.parse('2026-12-03T00:00:00Z') }] }
 export const ERC20 = new Interface([
   'function approve(address spender,uint256 amount) returns (bool)',
   'function allowance(address owner,address spender) view returns (uint256)',

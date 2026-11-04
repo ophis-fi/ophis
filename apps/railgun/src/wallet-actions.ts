@@ -99,6 +99,7 @@ export async function wireWalletActions(session: WalletSession): Promise<void> {
     return amountFromInput(shieldAmount.value, underlying)
   }
   const requireDepositBroadcaster = async (asset: ShieldToken): Promise<void> => {
+    requireWalletSync()
     if (ENVIRONMENT === 'fork') return
     publicTransactionStatus('Checking private-swap broadcaster availability before depositing…')
     await selectBroadcaster(tokenFor(asset === NATIVE_SYMBOL ? WRAPPED_SYMBOL : asset).address, true, broadcasterStatus)

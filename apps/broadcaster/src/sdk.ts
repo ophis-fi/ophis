@@ -10,13 +10,14 @@ import {
   walletForID, parseRailgunTokenAddress,
   getProver, refreshBalances,
   unloadProvider,
+  balanceForERC20Token,
   type SnarkJSGroth16,
 } from '@railgun-community/wallet'
 import { ByteUtils, ByteLength, POI } from '@railgun-community/engine'
 import { MerkletreeScanStatus, NetworkName,
   type PreTransactionPOIsPerTxidLeafPerList } from '@railgun-community/shared-models'
 import { getAddress, JsonRpcProvider } from 'ethers'
-import { NETWORK, VERSION, type Settings } from './config'
+import { NETWORK, TOKENS, VERSION, type Settings } from './config'
 import { assertDisk, privateDirectory, type Secrets, type Store } from './storage'
 import { PROXY, type ParsedRequest } from './transaction'
 import { disablePPOI } from '../../railgun/poi-policy'
@@ -97,6 +98,11 @@ export class RailgunSDK {
   }
 
   ready(): boolean { return this.started && !!this.address && this.utxoReady }
+  async balances(): Promise<Record<string, string>> {
+    if (!this.ready()) throw new Error('Private fee history is not synchronized.')
+    return Object.fromEntries(await Promise.all(TOKENS.map(async (token) => [getAddress(token.address),
+      String(await balanceForERC20Token(VERSION, walletForID(this.walletId), NetworkName.Ethereum, token.address, true))])))
+  }
   async sign(message: string): Promise<string> { return signWithWalletViewingKey(this.walletId, message) }
 
   async fee(request: ParsedRequest): Promise<Record<string, bigint>> {

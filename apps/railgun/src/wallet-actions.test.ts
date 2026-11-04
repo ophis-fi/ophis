@@ -11,6 +11,7 @@ const mocks = vi.hoisted(() => ({
   connect: vi.fn(), signer: vi.fn(), allowance: vi.fn(), approve: vi.fn(), network: vi.fn(), balance: vi.fn(),
   shield: vi.fn(),
   sync: vi.fn(),
+  requireSync: vi.fn(),
   pendingWithdrawal: vi.fn(),
   preserved: vi.fn(), preserve: vi.fn(), pilot: undefined as string | undefined,
   selectBroadcaster: vi.fn(), prepareSwap: vi.fn(), prepareMax: vi.fn(), prepareWithdrawal: vi.fn(), quoteSwap: vi.fn(), unused: vi.fn(),
@@ -43,7 +44,7 @@ vi.mock('./recipe', () => ({
 }))
 vi.mock('./recovery', () => ({ recoverToken: vi.fn(), recoveryIndex: vi.fn(), scanRecovery: vi.fn() }))
 vi.mock('./unshield', () => ({ executeUnshield: vi.fn(), prepareUnshield: mocks.prepareWithdrawal }))
-vi.mock('./wallet', () => ({ requireWalletSync: vi.fn(), syncWallet: mocks.sync }))
+vi.mock('./wallet', () => ({ requireWalletSync: mocks.requireSync, syncWallet: mocks.sync }))
 vi.mock('./account', () => ({ unusedSwapAccount: mocks.unused }))
 vi.mock('./cancel', () => ({ cancelPendingSwap: vi.fn() }))
 
@@ -68,6 +69,7 @@ beforeEach(() => {
   mocks.balance.mockReset().mockResolvedValue(undefined)
   mocks.shield.mockReset().mockResolvedValue({ hash: 'confirmed deposit' })
   mocks.sync.mockReset().mockResolvedValue(undefined)
+  mocks.requireSync.mockReset()
   mocks.pendingWithdrawal.mockReset().mockResolvedValue(undefined)
   mocks.preserved.mockReset().mockResolvedValue(undefined)
   mocks.preserve.mockReset()
@@ -530,6 +532,26 @@ it('rechecks a mainnet broadcaster immediately before shielding without sending 
   await elements.shield.onclick?.()
   expect(mocks.shield).not.toHaveBeenCalled()
   expect(elements['public-wallet-error'].textContent).toContain('Broadcaster disconnected')
+})
+
+it('blocks a deposit while history is incomplete, including after an earlier successful review', async () => {
+  mocks.environment = 'ethereum'
+  mocks.allowance.mockResolvedValue(1n)
+  mocks.selectBroadcaster.mockResolvedValue({ tokenAddress: 'fresh fee token' })
+  const { wireWalletActions } = await import('./wallet-actions')
+  await wireWalletActions({} as WalletSession)
+  mocks.requireSync.mockImplementation(() => { throw new Error('Private history is not synchronized.') })
+  await elements.connect.onclick?.()
+  expect(mocks.selectBroadcaster).not.toHaveBeenCalled()
+  expect(elements.approve.hidden).toBe(true)
+  expect(elements.shield.hidden).toBe(true)
+  mocks.requireSync.mockReset()
+  await elements['review-shield'].onclick?.()
+  expect(elements.shield.hidden).toBe(false)
+  mocks.requireSync.mockImplementation(() => { throw new Error('Private history is not synchronized.') })
+  await elements.shield.onclick?.()
+  expect(mocks.shield).not.toHaveBeenCalled()
+  expect(elements['public-wallet-error'].textContent).toContain('not synchronized')
 })
 
 it.each(['quote', 'max-swap'])('blocks %s before preparing a private output without a compatible broadcaster', async (action) => {

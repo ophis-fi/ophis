@@ -22,7 +22,7 @@ vi.mock('./withdrawal-journal', () => ({ pendingWithdrawal: async () => undefine
 beforeEach(() => {
   vi.resetModules()
   vi.doUnmock('./config')
-  vi.doMock('./config', async (original) => ({ ...await original<typeof import('./config')>(),
+  vi.doMock('./config', async (original) => ({ ...await original<typeof import('./config')>(), PROTECTED_BROADCASTERS: {},
     get PILOT_WITHDRAWAL_RECIPIENT() { return state.pilot } }))
   vi.clearAllMocks()
   vi.stubEnv('VITE_RAILGUN_ENVIRONMENT', 'mainnet')

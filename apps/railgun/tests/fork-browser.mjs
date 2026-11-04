@@ -127,11 +127,12 @@ try {
   for (const iteration of Array.from({ length: 120 }, (_, index) => index)) {
     const state = await page.locator('#status').innerText()
     console.log('SYNC', iteration, state)
-    if (state.includes('Complete')) break
+    if (!(await page.locator('#ready-actions').isDisabled())) break
     if (state.includes('Incomplete')) throw new Error('Fork history did not synchronize')
     await page.waitForTimeout(10_000)
   }
   assert((await page.locator('#status').innerText()).includes('Complete'), 'History sync deadline reached')
+  assert(!(await page.locator('#ready-actions').isDisabled()), 'Wallet history must be verified before depositing.')
   await page.evaluate(async () =>
     (await import('/tests/fork.fixture.ts')).loadForkSession('local-test-password-railgun'),
   )

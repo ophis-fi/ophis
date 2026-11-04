@@ -1,0 +1,19 @@
+groups:
+  - name: ophis-broadcaster
+    rules:
+      - alert: OphisBroadcasterNeedsAttention
+        expr: ophis_broadcaster_alert == 1
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: Ophis Ethereum broadcaster needs attention
+          description: 'The local monitor reports {{ $labels.reason }}. Inspect its private monitor log; never clear journals or refill automatically.'
+      - alert: OphisBroadcasterMonitorStale
+        expr: absent(ophis_broadcaster_last_check_seconds) or (time() - ophis_broadcaster_last_check_seconds > 600)
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: Ophis broadcaster monitoring is stale
+          description: Check the broadcaster monitor cron job and the existing node-exporter text collector.
