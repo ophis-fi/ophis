@@ -57,11 +57,6 @@ async function run(): Promise<void> {
   const stop = () => { stopping = true; abort.abort() }
   process.once('SIGINT', stop); process.once('SIGTERM', stop)
   try {
-    const fork: unknown = await provider.send('anvil_metadata', []).catch(() => undefined)
-    const hardhat: unknown = await provider.send('hardhat_metadata', []).catch(() => undefined)
-    if ((await provider.getNetwork()).chainId !== 1n || (config.mode === 'mainnet' && (fork || hardhat)) ||
-      (config.mode === 'fork' && (!fork || typeof fork !== 'object' || !('forkedNetwork' in fork) || !fork.forkedNetwork)))
-      throw new Error('Read node does not match the selected mainnet/fork environment.')
     const oracle = new FeeOracle(provider, config.marginBps)
     const port = Number(process.env.OPHIS_BROADCASTER_PORT ?? '4340')
     if (!Number.isSafeInteger(port) || port < 1024 || port > 65535) throw new Error('Invalid health port.')
@@ -73,6 +68,11 @@ async function run(): Promise<void> {
       process.exitCode = result.ok ? 0 : 2
       return
     }
+    const fork: unknown = await provider.send('anvil_metadata', []).catch(() => undefined)
+    const hardhat: unknown = await provider.send('hardhat_metadata', []).catch(() => undefined)
+    if ((await provider.getNetwork()).chainId !== 1n || (config.mode === 'mainnet' && (fork || hardhat)) ||
+      (config.mode === 'fork' && (!fork || typeof fork !== 'object' || !('forkedNetwork' in fork) || !fork.forkedNetwork)))
+      throw new Error('Read node does not match the selected mainnet/fork environment.')
     if (command === 'report') {
       const journal = new DatabaseSync(join(config.state, 'requests.sqlite'), { readOnly: true })
       try {

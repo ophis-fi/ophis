@@ -79,15 +79,24 @@ export async function monitor(config: Settings, provider: JsonRpcProvider, oracl
 }> {
   const alerts: string[] = []
   let health: Record<string, unknown> | undefined, gasBalanceWei: string | undefined
+  const bounded = async <T>(request: Promise<T>): Promise<T> => {
+    let timeout: ReturnType<typeof setTimeout> | undefined
+    try {
+      return await Promise.race([request, new Promise<T>((_resolve, reject) => {
+        timeout = setTimeout(() => reject(new Error('Monitoring read timed out.')), 15_000)
+      })])
+    } finally { clearTimeout(timeout) }
+  }
   try {
     const disk = statfsSync(config.state)
     if (disk.bavail * disk.bsize < 6 * 1024 ** 3) alerts.push('low-disk')
   } catch { alerts.push('storage-unavailable') }
   const checks = await Promise.allSettled([
-    localHealth(port), provider.getBlock('latest'), oracle.rates(),
-    config.operatorAddress ? provider.getBalance(config.operatorAddress) : Promise.reject(new Error('Missing operator address')),
+    bounded(localHealth(port)), bounded(provider.getBlock('latest')), bounded(oracle.rates()),
+    bounded(config.operatorAddress ? provider.getBalance(config.operatorAddress) : Promise.reject(new Error('Missing operator address'))),
+    bounded(provider.getNetwork()),
   ])
-  const [service, block, rates, balance] = checks
+  const [service, block, rates, balance, network] = checks
   if (service.status === 'fulfilled') {
     health = Object.fromEntries(['ready', 'locked', 'synchronized', 'pending', 'feeAssurancePending', 'errors']
       .map((key) => [key, service.value[key]]))
@@ -106,6 +115,7 @@ export async function monitor(config: Settings, provider: JsonRpcProvider, oracl
     Math.abs(Date.now() / 1000 - block.value.timestamp) > 45) alerts.push('stale-read-node')
   else if (block.value.baseFeePerGas + 1n > config.maxGasPrice) alerts.push('gas-price-cap')
   if (rates.status !== 'fulfilled' || !TOKENS.every((token) => rates.value[getAddress(token.address)] > 0n)) alerts.push('stale-fee-pricing')
+  if (network.status !== 'fulfilled' || network.value.chainId !== 1n) alerts.push('wrong-read-network')
   if (balance.status === 'fulfilled') {
     gasBalanceWei = balance.value.toString()
     if (balance.value < config.reserve + config.maxTransactionCost) alerts.push('low-gas-reserve')

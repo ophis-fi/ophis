@@ -25,7 +25,10 @@ try {
   if (mode === 'fee-phrase') {
     if (!process.stdin.isTTY || !process.stdout.isTTY) throw new Error('Fee recovery requires the owner’s interactive terminal.')
     process.once('SIGINT', interrupt)
+    process.once('SIGTERM', interrupt)
+    process.once('SIGHUP', interrupt)
     prompt = createInterface({ input: process.stdin, output: process.stdout })
+    prompt.on('SIGINT', interrupt)
     const answer = await prompt.question('Use a private terminal with screen sharing and recording off. Type SHOW FEE PHRASE to display only the dedicated fee-wallet phrase: ',
       { signal: AbortSignal.any([abort.signal, AbortSignal.timeout(120_000)]) })
     if (answer !== 'SHOW FEE PHRASE') throw new Error('Fee recovery cancelled.')
@@ -58,6 +61,7 @@ try {
   console.error('Operator unlock/verification failed. No secret values were logged.'); process.exitCode = 1
 } finally {
   if (displayed) process.stdout.write('\x1b[2J\x1b[H\x1b[?1049l')
-  prompt?.close(); process.off('SIGINT', interrupt)
+  prompt?.close()
+  for (const signal of ['SIGINT', 'SIGTERM', 'SIGHUP']) process.off(signal, interrupt)
   clear?.fill(0); recovery?.fill(0)
 }

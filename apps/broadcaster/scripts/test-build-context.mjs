@@ -13,6 +13,12 @@ const denied = ['apps/broadcaster/.env.context-canary', 'apps/broadcaster/data/c
   'apps/railgun/patches/context-canary', 'apps/unrelated/context-canary', 'patches/context-canary']
 const docker = args => execFileSync('docker', args, { encoding: 'utf8', timeout: 60_000, stdio: ['ignore', 'pipe', 'pipe'] })
 
+// A second bundled SDK instance splits cryptographic/POI state from the installed wallet SDK.
+const externalSDK = inputs => assert(!inputs.some(path => /(?:^|\/)node_modules\//.test(path)), 'Runtime dependencies must remain external.')
+const metadata = JSON.parse(readFileSync(new URL('../dist/build-meta.json', import.meta.url), 'utf8'))
+externalSDK(Object.keys(metadata.inputs))
+assert.throws(() => externalSDK([...Object.keys(metadata.inputs), 'node_modules/@railgun-community/engine/index.js']), /remain external/)
+
 function probe(ignore) {
   const root = mkdtempSync(join(tmpdir(), 'ophis-broadcaster-context-'))
   const image = `ophis-context-check:${randomUUID()}`

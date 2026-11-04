@@ -5,6 +5,7 @@ import { MerkletreeScanStatus, type MerkletreeHistoryScanEventData } from '@rail
 const sdk = vi.hoisted(() => ({ refresh: vi.fn(), publish: vi.fn(), scan: vi.fn(), wallet: {},
   callback: undefined as ((event: MerkletreeHistoryScanEventData) => void) | undefined,
   accounts: vi.fn().mockResolvedValue(0),
+  scanning: false,
 }))
 vi.mock('@railgun-community/wallet', () => ({
   refreshReceivePOIsForWallet: sdk.refresh,
@@ -13,7 +14,8 @@ vi.mock('@railgun-community/wallet', () => ({
   fullWalletForID: () => sdk.wallet,
   startRailgunEngine: vi.fn(), loadProvider: vi.fn(), stopRailgunEngine: vi.fn().mockResolvedValue(undefined),
   setOnBalanceUpdateCallback: vi.fn(), getProver: () => ({ setSnarkJSGroth16: vi.fn() }),
-  getEngine: () => ({ on: (_event: string, callback: typeof sdk.callback) => { sdk.callback = callback } }),
+  getEngine: () => ({ on: (_event: string, callback: typeof sdk.callback) => { sdk.callback = callback },
+    getUTXOMerkletree: () => ({ isScanning: sdk.scanning }) }),
 }))
 vi.mock('./storage', () => ({ walletDB: {}, artifacts: {} }))
 vi.mock('../poi-policy', () => ({ disablePPOI: vi.fn() }))
@@ -45,6 +47,7 @@ beforeEach(() => {
   for (const fn of [sdk.refresh, sdk.publish, sdk.scan]) fn.mockReset().mockResolvedValue(undefined)
   sdk.scan.mockImplementation(async () => { complete() })
   sdk.accounts.mockClear()
+  sdk.scanning = false
 })
 
 it('publishes balances without waiting for or contacting a PPOI provider', async () => {
@@ -112,6 +115,25 @@ it('verifies public history during setup and waits for it before a wallet scan',
   await pending
   expect(sdk.scan.mock.calls).toEqual([[CONFIG.chain, []], [CONFIG.chain, ['test-wallet']]])
   expect(report.mock.calls.filter(([, ready]) => ready)).toEqual([['Complete · private balances are ready.', true]])
+})
+
+it.each(['balances', 'indices'])('keeps an invalidated scan blocked while refreshing %s', async (stage) => {
+  const invalidate = async () => { complete(MerkletreeScanStatus.Incomplete) }
+  if (stage === 'balances') sdk.publish.mockImplementationOnce(invalidate)
+  else sdk.accounts.mockImplementationOnce(invalidate)
+  await expect(syncWallet(session)).rejects.toThrow(/changed during verification/)
+  expect(() => requireWalletSync()).toThrow(/not synchronized/)
+  await syncWallet(session)
+  expect(() => requireWalletSync()).not.toThrow()
+})
+
+it('does not treat another in-flight history scan as this wallet verification', async () => {
+  sdk.scanning = true
+  await expect(syncWallet(session)).rejects.toThrow(/already running/)
+  expect(sdk.scan).not.toHaveBeenCalled()
+  expect(() => requireWalletSync()).toThrow()
+  sdk.scanning = false
+  await syncWallet(session)
 })
 
 it('does not accept a different chain or proof version as completion of the wallet scan', async () => {

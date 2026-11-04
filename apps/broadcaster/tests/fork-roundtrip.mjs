@@ -33,7 +33,7 @@ const freeDisk = () => { const disk = statfsSync(root); return disk.bavail * dis
 assert(freeDisk() >= 6 * 1024 ** 3, 'The browser test requires the existing 6 GiB free-disk reserve.')
 let operator, context, heartbeat, diskGuard
 const result = { passed: false, livePPOI: false, liveProtectedInclusion: false, modeledPriorityFeeWei: '0',
-  profile: root, wallets: [], synchronizationSeconds: [], operations: [] }
+  modeledLegacyGasPriceWei: '7', profile: root, wallets: [], synchronizationSeconds: [], operations: [] }
 result.warmSynchronizationSeconds = []
 let phase = 'operator-startup'
 try {
@@ -70,11 +70,13 @@ try {
     await page.exposeBinding('ophisOperatorTest', async (_, message) => operator.handle(message))
     await page.route(`${origin}/rpc`, async (route) => {
       const body = route.request().postDataJSON()
-      const ids = new Set((Array.isArray(body) ? body : [body]).filter((call) => call.method === 'eth_maxPriorityFeePerGas').map((call) => call.id))
+      const ids = new Map((Array.isArray(body) ? body : [body])
+        .filter((call) => ['eth_maxPriorityFeePerGas', 'eth_gasPrice'].includes(call.method))
+        .map((call) => [call.id, call.method === 'eth_gasPrice' ? '0x7' : '0x0']))
       if (!ids.size) return route.continue()
       const response = await route.fetch()
       const payload = await response.json()
-      const update = (item) => ids.has(item.id) && !item.error ? { ...item, result: '0x0' } : item
+      const update = (item) => ids.has(item.id) && !item.error ? { ...item, result: ids.get(item.id) } : item
       await route.fulfill({ response, body: JSON.stringify(Array.isArray(payload) ? payload.map(update) : update(payload)) })
     })
     await page.route('https://rail-squid.squids.live/**/graphql', async (route) => {

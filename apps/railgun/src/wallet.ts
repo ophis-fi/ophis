@@ -40,14 +40,17 @@ const tab: { lock?: Promise<void> } = {}
 const scan: {
   ready: boolean
   timedOut: boolean
+  epoch: number
   warming?: Promise<void>
   syncing?: Promise<void>
   finished?: (complete: boolean) => void
   report: (status: string, ready: boolean) => void
-} = { ready: false, timedOut: false, report: () => {} }
+} = { ready: false, timedOut: false, epoch: 0, report: () => {} }
 
 async function verifyHistory(walletIds: string[]): Promise<void> {
   if (scan.timedOut) throw new Error('History verification timed out. Reload this page before retrying.')
+  if (getEngine().getUTXOMerkletree(VERSION, CONFIG.chain).isScanning)
+    throw new Error('A history scan is already running. Wait and refresh balances before depositing or spending.')
   let timeout: ReturnType<typeof setTimeout> | undefined
   const verified = new Promise<void>((resolve, reject) => {
     scan.finished = (complete) => complete ? resolve() : reject(new Error('Private history verification is incomplete. Refresh balances to retry before depositing or spending.'))
@@ -123,7 +126,7 @@ export async function startWalletEngine(
       if (event.chain.id !== CHAIN_ID || event.txidVersion !== VERSION) return
       if (event.scanStatus === MerkletreeScanStatus.Complete) scan.finished?.(true)
       if (event.scanStatus === MerkletreeScanStatus.Incomplete) scan.finished?.(false)
-      if (event.scanStatus === MerkletreeScanStatus.Incomplete) scan.ready = false
+      if (event.scanStatus === MerkletreeScanStatus.Incomplete) { scan.ready = false; scan.epoch++ }
       onStatus(
         event.scanStatus === MerkletreeScanStatus.Complete ? 'History verified. Updating private balances…' :
           `Synchronizing private history: ${event.scanStatus}${event.progress == null ? '' : ` ${Math.round(event.progress * 100)}%`}`,
@@ -205,9 +208,11 @@ export function syncWallet(session: WalletSession): Promise<void> {
     scan.ready = false
     scan.report('Synchronizing private history. Deposits and spending become available when verification finishes.', false)
     await scan.warming?.catch(() => {})
+    const epoch = scan.epoch
     await verifyHistory([session.info.id])
     await refreshReceivedBalances(session)
     await session.accounts.scanHistoryForEphemeralIndex(CONFIG.chain)
+    if (scan.epoch !== epoch) throw new Error('Private history changed during verification. Refresh balances to retry.')
     scan.ready = true
     scan.report('Complete · private balances are ready.', true)
   })().finally(() => { scan.syncing = undefined })

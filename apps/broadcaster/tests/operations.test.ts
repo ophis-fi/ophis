@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
-import { mkdtempSync, rmSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs'
+import { spawnSync } from 'node:child_process'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { getAddress, JsonRpcProvider, Transaction, Wallet } from 'ethers'
@@ -121,7 +122,7 @@ it('accounts only for authenticated received fees and reports historical gaps, c
   expect(JSON.stringify(accountingReport(store.db))).not.toContain('DO-NOT-EXPORT')
 })
 
-it.each(['healthy', 'low-reserve', 'pending', 'fee', 'pricing', 'stale', 'offline', 'disk'])('reports the %s operator condition without signing or logging upstream errors', async (condition) => {
+it.each(['healthy', 'low-reserve', 'pending', 'fee', 'pricing', 'stale', 'offline', 'disk', 'chain', 'rpc-down'])('reports the %s operator condition without signing or logging upstream errors', async (condition) => {
   const health = { ready: true, locked: false, synchronized: true, pending: 0, feeAssurancePending: 0, errors: 0 }
   if (condition === 'pending') health.pending = 1
   if (condition === 'fee') health.feeAssurancePending = 1
@@ -130,7 +131,11 @@ it.each(['healthy', 'low-reserve', 'pending', 'fee', 'pricing', 'stale', 'offlin
     return new Response(JSON.stringify(health))
   }))
   const provider = {
-    getBlock: async () => ({ timestamp: condition === 'stale' ? 0 : Math.floor(Date.now() / 1000), baseFeePerGas: 1n }),
+    getBlock: async () => {
+      if (condition === 'rpc-down') throw new Error('upstream-credential-must-not-leak')
+      return { timestamp: condition === 'stale' ? 0 : Math.floor(Date.now() / 1000), baseFeePerGas: 1n }
+    },
+    getNetwork: async () => ({ chainId: condition === 'chain' ? 56n : 1n }),
     getBalance: async () => condition === 'low-reserve' ? 0n : config.reserve + config.maxTransactionCost,
   }
   const oracle = { rates: async () => {
@@ -140,7 +145,8 @@ it.each(['healthy', 'low-reserve', 'pending', 'fee', 'pricing', 'stale', 'offlin
   if (condition === 'disk') mocks.disk.mockReturnValue({ bavail: 1, bsize: 1 })
   const result = await monitor({ ...config, state: path, operatorAddress: Wallet.createRandom().address }, provider as unknown as JsonRpcProvider, oracle, 4340)
   const expected = { 'low-reserve': 'low-gas-reserve', pending: 'pending-nonce', fee: 'missing-fee-assurance',
-    pricing: 'stale-fee-pricing', stale: 'stale-read-node', offline: 'health-unreachable', disk: 'low-disk' }[condition]
+    pricing: 'stale-fee-pricing', stale: 'stale-read-node', offline: 'health-unreachable', disk: 'low-disk',
+    chain: 'wrong-read-network', 'rpc-down': 'stale-read-node' }[condition]
   expect(result.ok).toBe(condition === 'healthy')
   if (expected) expect(result.alerts).toContain(expected)
   expect(JSON.stringify(result)).not.toContain('upstream-credential')
@@ -154,10 +160,45 @@ it('rejects metric-label injection and excludes private fee balances from monito
   const health = { ready: true, locked: false, synchronized: true, pending: 0, feeAssurancePending: 0, errors: 0,
     feeBalances: { privateFeeAmount: 'do-not-export' } }
   vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify(health))))
-  const provider = { getBlock: async () => ({ timestamp: Math.floor(Date.now() / 1000), baseFeePerGas: 1n }),
+  const provider = { getBlock: async () => ({ timestamp: Math.floor(Date.now() / 1000), baseFeePerGas: 1n }), getNetwork: async () => ({ chainId: 1n }),
     getBalance: async () => config.reserve + config.maxTransactionCost }
   const result = await monitor({ ...config, state: path, operatorAddress: Wallet.createRandom().address }, provider as unknown as JsonRpcProvider,
     { rates: async () => Object.fromEntries(TOKENS.map((token) => [getAddress(token.address), 1n])) }, 4340)
   expect(JSON.stringify(result)).not.toContain('do-not-export')
   expect(result.ok).toBe(true)
+})
+
+it('reports a bounded node timeout even when a JSON-RPC initialization never settles', async () => {
+  vi.useFakeTimers()
+  try {
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({ ready: true, locked: false,
+      synchronized: true, pending: 0, feeAssurancePending: 0, errors: 0 }))))
+    const provider = { getBlock: () => new Promise(() => {}), getNetwork: async () => ({ chainId: 1n }),
+      getBalance: async () => config.reserve + config.maxTransactionCost }
+    const pending = monitor({ ...config, state: path, operatorAddress: Wallet.createRandom().address }, provider as unknown as JsonRpcProvider,
+      { rates: async () => Object.fromEntries(TOKENS.map((token) => [getAddress(token.address), 1n])) }, 4340)
+    await vi.advanceTimersByTimeAsync(15_000)
+    expect((await pending).alerts).toEqual(['stale-read-node'])
+    expect(vi.getTimerCount()).toBe(0)
+  } finally { vi.useRealTimers() }
+})
+
+it('publishes healthy and alert textfiles atomically and retains the last sample after an invocation failure', () => {
+  const bin = join(path, 'bin'); mkdirSync(bin)
+  writeFileSync(join(path, 'compose.env'), '', { mode: 0o600 })
+  for (const [name, text] of Object.entries({
+    docker: '#!/bin/sh\nprintf "%s" "$OPHIS_TEST_MONITOR_TEXT"\nexit "$OPHIS_TEST_MONITOR_EXIT"\n',
+    timeout: '#!/bin/sh\nshift\nexec "$@"\n', flock: '#!/bin/sh\nexit 0\n',
+  })) writeFileSync(join(bin, name), text, { mode: 0o700 })
+  const output = join(path, 'broadcaster.prom')
+  for (const status of [0, 2, 1]) {
+    const previous = status === 0 ? '' : readFileSync(output, 'utf8')
+    const text = `ophis_broadcaster_monitor_ok ${status === 0 ? 1 : 0}\n`
+    const result = spawnSync('/bin/bash', [new URL('../scripts/monitor.sh', import.meta.url).pathname, path, output],
+      { timeout: 3000, env: { ...process.env, PATH: `${bin}:${process.env.PATH}`,
+        OPHIS_TEST_MONITOR_TEXT: text, OPHIS_TEST_MONITOR_EXIT: String(status) } })
+    expect(result.status).toBe(status)
+    expect(readFileSync(output, 'utf8')).toBe(status === 1 ? previous : text)
+    expect(readdirSync(path).some((name) => name.startsWith('.ophis-broadcaster.'))).toBe(false)
+  }
 })
