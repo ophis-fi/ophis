@@ -135,7 +135,7 @@ it.each(['healthy', 'low-reserve', 'pending', 'fee', 'pricing', 'stale', 'offlin
       if (condition === 'rpc-down') throw new Error('upstream-credential-must-not-leak')
       return { timestamp: condition === 'stale' ? 0 : Math.floor(Date.now() / 1000), baseFeePerGas: 1n }
     },
-    getNetwork: async () => ({ chainId: condition === 'chain' ? 56n : 1n }),
+    send: async () => condition === 'chain' ? '0x38' : '0x1',
     getBalance: async () => condition === 'low-reserve' ? 0n : config.reserve + config.maxTransactionCost,
   }
   const oracle = { rates: async () => {
@@ -160,7 +160,7 @@ it('rejects metric-label injection and excludes private fee balances from monito
   const health = { ready: true, locked: false, synchronized: true, pending: 0, feeAssurancePending: 0, errors: 0,
     feeBalances: { privateFeeAmount: 'do-not-export' } }
   vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify(health))))
-  const provider = { getBlock: async () => ({ timestamp: Math.floor(Date.now() / 1000), baseFeePerGas: 1n }), getNetwork: async () => ({ chainId: 1n }),
+  const provider = { getBlock: async () => ({ timestamp: Math.floor(Date.now() / 1000), baseFeePerGas: 1n }), send: async () => '0x1',
     getBalance: async () => config.reserve + config.maxTransactionCost }
   const result = await monitor({ ...config, state: path, operatorAddress: Wallet.createRandom().address }, provider as unknown as JsonRpcProvider,
     { rates: async () => Object.fromEntries(TOKENS.map((token) => [getAddress(token.address), 1n])) }, 4340)
@@ -173,7 +173,7 @@ it('reports a bounded node timeout even when a JSON-RPC initialization never set
   try {
     vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({ ready: true, locked: false,
       synchronized: true, pending: 0, feeAssurancePending: 0, errors: 0 }))))
-    const provider = { getBlock: () => new Promise(() => {}), getNetwork: async () => ({ chainId: 1n }),
+    const provider = { getBlock: () => new Promise(() => {}), send: async () => '0x1',
       getBalance: async () => config.reserve + config.maxTransactionCost }
     const pending = monitor({ ...config, state: path, operatorAddress: Wallet.createRandom().address }, provider as unknown as JsonRpcProvider,
       { rates: async () => Object.fromEntries(TOKENS.map((token) => [getAddress(token.address), 1n])) }, 4340)

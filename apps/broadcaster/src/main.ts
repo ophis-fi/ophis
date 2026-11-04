@@ -46,7 +46,7 @@ async function run(): Promise<void> {
     console.log(JSON.stringify({ gasWalletAddress: initializeSecrets(config.secrets, config.mode), funded: false }))
     return
   }
-  const provider = new JsonRpcProvider(config.rpc, 1, { batchMaxCount: 1, cacheTimeout: -1 })
+  const provider = new JsonRpcProvider(config.rpc, 1, { batchMaxCount: 1, cacheTimeout: -1, staticNetwork: command === 'monitor' })
   provider.pollingInterval = 15_000
   let store: Store | undefined, sdk: RailgunSDK | undefined, sender: ProtectedEthereumProvider | undefined
   let lock: ReturnType<typeof LevelDOWN> | undefined

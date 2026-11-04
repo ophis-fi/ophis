@@ -94,7 +94,7 @@ export async function monitor(config: Settings, provider: JsonRpcProvider, oracl
   const checks = await Promise.allSettled([
     bounded(localHealth(port)), bounded(provider.getBlock('latest')), bounded(oracle.rates()),
     bounded(config.operatorAddress ? provider.getBalance(config.operatorAddress) : Promise.reject(new Error('Missing operator address'))),
-    bounded(provider.getNetwork()),
+    bounded(provider.send('eth_chainId', [])),
   ])
   const [service, block, rates, balance, network] = checks
   if (service.status === 'fulfilled') {
@@ -115,7 +115,7 @@ export async function monitor(config: Settings, provider: JsonRpcProvider, oracl
     Math.abs(Date.now() / 1000 - block.value.timestamp) > 45) alerts.push('stale-read-node')
   else if (block.value.baseFeePerGas + 1n > config.maxGasPrice) alerts.push('gas-price-cap')
   if (rates.status !== 'fulfilled' || !TOKENS.every((token) => rates.value[getAddress(token.address)] > 0n)) alerts.push('stale-fee-pricing')
-  if (network.status !== 'fulfilled' || network.value.chainId !== 1n) alerts.push('wrong-read-network')
+  if (network.status !== 'fulfilled' || network.value !== '0x1') alerts.push('wrong-read-network')
   if (balance.status === 'fulfilled') {
     gasBalanceWei = balance.value.toString()
     if (balance.value < config.reserve + config.maxTransactionCost) alerts.push('low-gas-reserve')
