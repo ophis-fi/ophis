@@ -178,6 +178,13 @@ test('/defillama rejects missing and impossible dates', async () => {
   expect(impossible.statusCode).toBe(400);
 });
 
+test.each(['abc', '0', '01', '130x', '11155111', '1&chainId=10', '99999999999999999999'])(
+  '/defillama rejects invalid or unsupported chain scope %s', async (chainId) => {
+    app = await buildApiServer();
+    expect((await app.inject({ url: `/defillama?date=2026-08-03&chainId=${chainId}` })).statusCode).toBe(400);
+  },
+);
+
 test('/earnings/:appCode returns keyless per-appCode JSON, scoped + disclaimed, with no leak', async () => {
   app = await buildApiServer();
   // The mocked db returns [] for every query, so this exercises the route wiring +

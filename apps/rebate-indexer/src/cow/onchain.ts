@@ -34,7 +34,7 @@ type SqlTag = <T = Record<string, unknown>>(strings: TemplateStringsArray, ...ar
 export interface SettleDecoderDeps {
   sql: SqlTag;
   upsertTrades: (rows: PendingTrade[]) => Promise<number>;
-  reportProgress?: (chainId: number, complete: boolean) => Promise<void>;
+  reportProgress?: (chainId: number, complete: boolean, coveredThrough?: Date) => Promise<void>;
   /**
    * Optional settlement-fill persistence (defillama_fills). The decoder is the
    * ONLY source that sees UNTRACKED wallets' hosted-chain native-ETH (shared
@@ -395,7 +395,7 @@ export async function decodeWindow(
   return rows;
 }
 
-async function scanChain(chainId: number, deps: SettleDecoderDeps, discoveryOnly: boolean): Promise<{ inserted: number; complete: boolean }> {
+async function scanChain(chainId: number, deps: SettleDecoderDeps, discoveryOnly: boolean): Promise<{ inserted: number; complete: boolean; coveredThrough?: Date }> {
   // Misconfiguration guard: the resolver needs a CoW app_data endpoint for this
   // chain. A chain not served by the CoW API (a paused / sovereign-only chain) would
   // otherwise throw on every trade every run; skip it with one clear message.
@@ -417,13 +417,18 @@ async function scanChain(chainId: number, deps: SettleDecoderDeps, discoveryOnly
   // cron does not need the tip. Fall back to a confirmation lag only if a provider does
   // not serve the finalized tag.
   let safeHead: bigint;
+  let safeHeadTimestamp: bigint | undefined;
   try {
     const finalized = await client.getBlock({ blockTag: 'finalized' });
     safeHead = finalized.number ?? 0n;
+    safeHeadTimestamp = finalized.timestamp;
   } catch {
     safeHead = (await client.getBlockNumber()) - CONFIRMATIONS;
   }
   if (safeHead <= 0n) return { inserted: 0, complete: false };
+  safeHeadTimestamp ??= (await client.getBlock({ blockNumber: safeHead })).timestamp;
+  const coveredThrough = new Date(Number(safeHeadTimestamp) * 1_000);
+  if (!Number.isFinite(coveredThrough.getTime())) throw new Error('invalid decoder coverage timestamp');
 
   let cursor = await readCursor(chainId, deps.sql);
   if (cursor === null) {
@@ -434,7 +439,7 @@ async function scanChain(chainId: number, deps: SettleDecoderDeps, discoveryOnly
     }
     cursor = BigInt(seed) - 1n; // so the first scanned block is exactly the seed
   }
-  if (cursor >= safeHead) return { inserted: 0, complete: true };
+  if (cursor >= safeHead) return { inserted: 0, complete: true, coveredThrough };
 
   let inserted = 0;
   // The live Arc RPC accepts 10k-block windows; the old 100-block cap could not catch up.
@@ -481,7 +486,7 @@ async function scanChain(chainId: number, deps: SettleDecoderDeps, discoveryOnly
     from = to + 1n;
     if (window < maxWindow) window = maxWindow; // restore within the provider's cap
   }
-  return { inserted, complete: from > safeHead };
+  return { inserted, complete: from > safeHead, coveredThrough: from > safeHead ? coveredThrough : undefined };
 }
 
 /**
@@ -513,8 +518,8 @@ export async function runSettleDecoder(deps: SettleDecoderDeps): Promise<number>
   let inserted = 0;
   for (const chainId of chains) {
     try {
-      const { inserted: n, complete } = await scanChain(chainId, deps, discoveryOnly);
-      await deps.reportProgress?.(chainId, complete);
+      const { inserted: n, complete, coveredThrough } = await scanChain(chainId, deps, discoveryOnly);
+      await deps.reportProgress?.(chainId, complete, coveredThrough);
       if (n > 0) log.info({ chainId, inserted: n }, 'settle-decoder: chain scan complete');
       inserted += n;
     } catch (err) {

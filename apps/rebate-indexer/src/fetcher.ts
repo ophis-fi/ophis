@@ -1301,16 +1301,22 @@ export async function runFetcher(
       let reportingOk = true;
       for (const chainId of SUPPORTED_CHAIN_IDS) {
         const [state] = await sql<{ fresh: boolean }[]>`
-          SELECT (last_success_at >= ${staleBeforeIso}::timestamptz AND NOT failed) AS fresh
+          SELECT (covered_through >= GREATEST(${staleBeforeIso}::timestamptz, COALESCE((
+            SELECT s.backfill_started_at FROM defillama_reporting_state s
+            WHERE s.singleton = true AND EXISTS (
+              SELECT 1 FROM defillama_backfill_wallets q WHERE q.wallet = decode(${owner.slice(2)}, 'hex')
+            )
+          ), '-infinity'::timestamptz)) AND last_success_at IS NOT NULL AND NOT failed) AS fresh
           FROM wallet_chain_fetches WHERE wallet = decode(${owner.slice(2)}, 'hex') AND chain_id = ${chainId}
         `;
         if (state?.fresh) continue;
+        const coveredThrough = new Date().toISOString();
         try {
           await fetchChainTrades(chainId, owner, dbDeps);
-          await sql`INSERT INTO wallet_chain_fetches (wallet, chain_id, last_success_at)
-            VALUES (decode(${owner.slice(2)}, 'hex'), ${chainId}, now())
+          await sql`INSERT INTO wallet_chain_fetches (wallet, chain_id, last_success_at, covered_through)
+            VALUES (decode(${owner.slice(2)}, 'hex'), ${chainId}, now(), ${coveredThrough})
             ON CONFLICT (wallet, chain_id) DO UPDATE
-            SET last_attempt_at = now(), last_success_at = now(), failed = false`;
+            SET last_attempt_at = now(), last_success_at = now(), covered_through = EXCLUDED.covered_through, failed = false`;
         } catch (err) {
           await sql`INSERT INTO wallet_chain_fetches (wallet, chain_id, failed)
             VALUES (decode(${owner.slice(2)}, 'hex'), ${chainId}, true)
@@ -1324,7 +1330,14 @@ export async function runFetcher(
       // orderbook outage must not hold the public mainnet history closed forever.
       // Conversely, any production-chain failure keeps this wallet queued for retry.
       if (reportingOk) {
-        await sql`DELETE FROM defillama_backfill_wallets WHERE wallet = decode(${owner.slice(2)}, 'hex')`;
+        await sql`DELETE FROM defillama_backfill_wallets q WHERE q.wallet = decode(${owner.slice(2)}, 'hex')
+          AND NOT EXISTS (
+            SELECT 1 FROM unnest(${[...PRODUCTION_CHAIN_IDS]}::int[]) c(chain_id)
+            LEFT JOIN wallet_chain_fetches f ON f.wallet = q.wallet AND f.chain_id = c.chain_id
+            WHERE f.failed OR f.last_success_at IS NULL OR (f.covered_through >= (
+              SELECT backfill_started_at FROM defillama_reporting_state WHERE singleton = true
+            )) IS NOT TRUE
+          )`;
       }
       // Always record the attempt; advance last_fetched only when EVERY chain
       // succeeded. A transient CoW outage must not mark the wallet fully fetched
@@ -1347,11 +1360,13 @@ export async function runFetcher(
     for (const [chainIdStr, ethFlowOwner] of Object.entries(OPHIS_ETHFLOW_OWNER_BY_CHAIN)) {
       const chainId = Number(chainIdStr);
       if (!SUPPORTED_CHAIN_IDS.includes(chainId)) continue;
+      const coveredThrough = new Date().toISOString();
       try {
         await fetchChainTrades(chainId, ethFlowOwner, dbDeps);
-        await sql`INSERT INTO chain_source_fetches (source, chain_id, last_success_at) VALUES ('ethflow', ${chainId}, now())
+        await sql`INSERT INTO chain_source_fetches (source, chain_id, last_success_at, covered_through)
+          VALUES ('ethflow', ${chainId}, now(), ${coveredThrough})
           ON CONFLICT (source, chain_id) DO UPDATE
-          SET last_attempt_at = now(), last_success_at = now(), failed = false`;
+          SET last_attempt_at = now(), last_success_at = now(), covered_through = EXCLUDED.covered_through, failed = false`;
       } catch (err) {
         await sql`INSERT INTO chain_source_fetches (source, chain_id, failed) VALUES ('ethflow', ${chainId}, true)
           ON CONFLICT (source, chain_id) DO UPDATE SET last_attempt_at = now(), failed = true`;
@@ -1372,11 +1387,12 @@ export async function runFetcher(
         inserted += await runSettleDecoder({
           sql: sql as unknown as Parameters<typeof runSettleDecoder>[0]['sql'],
           upsertTrades,
-          reportProgress: async (chainId, complete) => {
-            await sql`INSERT INTO chain_source_fetches (source, chain_id, last_success_at, failed)
-              VALUES ('decoder', ${chainId}, CASE WHEN ${complete} THEN now() END, ${!complete})
+          reportProgress: async (chainId, complete, coveredThrough) => {
+            await sql`INSERT INTO chain_source_fetches (source, chain_id, last_success_at, covered_through, failed)
+              VALUES ('decoder', ${chainId}, CASE WHEN ${complete} THEN now() END, ${coveredThrough ?? null}, ${!complete})
               ON CONFLICT (source, chain_id) DO UPDATE SET last_attempt_at = now(),
                 last_success_at = COALESCE(EXCLUDED.last_success_at, chain_source_fetches.last_success_at),
+                covered_through = COALESCE(EXCLUDED.covered_through, chain_source_fetches.covered_through),
                 failed = EXCLUDED.failed`;
           },
           // Settlement-fill persistence for decoder-discovered trades: the only

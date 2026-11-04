@@ -689,7 +689,7 @@ export async function buildApiServer(): Promise<FastifyInstance> {
   // protocol-level totals only: no wallets, orders, referrals, current-cycle
   // payout state, or operational timing. Values come from settled trades after
   // appData attribution and USD pricing by this indexer.
-  app.get<{ Querystring: { date?: string } }>('/defillama', {
+  app.get<{ Querystring: { date?: string; chainId?: string } }>('/defillama', {
     config: {
       rateLimit: { max: 120, timeWindow: '1 minute' },
     },
@@ -702,18 +702,34 @@ export async function buildApiServer(): Promise<FastifyInstance> {
     if (Number.isNaN(parsed.getTime()) || parsed.toISOString().slice(0, 10) !== date) {
       return reply.code(400).send({ error: 'date must be a valid UTC calendar date' });
     }
-    if (!await isDefiLlamaBackfillComplete()) {
+    const rawChainId = req.query.chainId;
+    const chainId = rawChainId === undefined ? undefined : Number(rawChainId);
+    if (rawChainId !== undefined && (typeof rawChainId !== 'string' || !/^[1-9]\d*$/.test(rawChainId)
+      || !PRODUCTION_CHAIN_IDS.includes(chainId!))) {
+      return reply.code(400).send({ error: 'chainId must be a supported production chain ID' });
+    }
+    if (!await isDefiLlamaBackfillComplete(chainId)) {
       return reply.code(503).send({ error: 'DefiLlama settlement history backfill in progress' });
     }
+    if (chainId !== undefined) {
+      const { dataSources } = await readPublicDataFreshness(sql);
+      const source = dataSources?.find((s) => s.chainId === chainId);
+      // Successful ingestion through day-end distinguishes no activity from missing history.
+      if (source?.status !== 'fresh' || !source.coveredThrough
+        || !(Date.parse(source.coveredThrough) >= parsed.getTime() + 86_400_000)) {
+        return reply.code(503).send({ error: 'DefiLlama chain ingestion incomplete for requested day' });
+      }
+    }
+    const chainIds = chainId === undefined ? [...PRODUCTION_CHAIN_IDS] : [chainId];
 
     const chains = await computeDefiLlamaDay(
       sql,
       date,
-      [...PRODUCTION_CHAIN_IDS],
+      chainIds,
       [...SOVEREIGN_CHAIN_IDS],
       10_000 - COW_TAKE_BPS,
     );
-    const protocolUsers = await computeDefiLlamaDayUsers(sql, date, [...PRODUCTION_CHAIN_IDS]);
+    const protocolUsers = await computeDefiLlamaDayUsers(sql, date, chainIds);
     const additiveTotals = chains.reduce(
       (sum, chain) => ({
         volumeUsd: sum.volumeUsd + chain.volumeUsd,
@@ -736,7 +752,7 @@ export async function buildApiServer(): Promise<FastifyInstance> {
 
     return reply
       .header('cache-control', 'public, max-age=300')
-      .send({ ok: true, date, totals, chains });
+      .send({ ok: true, date, ...(chainId === undefined ? {} : { chainId }), totals, chains });
   });
 
   // PUBLIC, keyless, per-appCode integrator earnings - the trust surface that lets an

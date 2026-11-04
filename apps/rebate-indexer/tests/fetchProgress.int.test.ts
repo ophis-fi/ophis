@@ -1,6 +1,7 @@
 import { beforeAll, afterAll, beforeEach, afterEach, it, expect, vi } from 'vitest';
 import type { StartedPostgreSqlContainer } from '@testcontainers/postgresql';
 import { startPg, stopPg } from './fixtures/pgContainer.js';
+import { readFileSync } from 'node:fs';
 
 const mocks = vi.hoisted(() => ({ trades: vi.fn(), order: vi.fn() }));
 vi.mock('../src/cow/client.js', () => ({
@@ -32,7 +33,7 @@ afterAll(async () => {
 });
 
 beforeEach(async () => {
-  await sql`TRUNCATE tracked_wallets, trades, defillama_fills, non_ophis_orders, chain_source_fetches CASCADE`;
+  await sql`TRUNCATE tracked_wallets, trades, defillama_fills, defillama_backfill_wallets, non_ophis_orders, chain_source_fetches CASCADE`;
   await sql`INSERT INTO tracked_wallets (wallet) VALUES (decode(${owner.slice(2)}, 'hex'))`;
   mocks.trades.mockReset().mockImplementation(async ({ chainId, owner: account }) => {
     if (chainId === 130) throw new Error('Unichain VM unavailable');
@@ -55,10 +56,13 @@ afterEach(() => vi.unstubAllEnvs());
 it('records success independently and retries only the failed chain within a boundary', async () => {
   const boundary = new Date(Date.now() - 1_000);
   expect((await runFetcher(deps, { staleBefore: boundary })).inserted).toBe(1);
-  const first = await sql`SELECT chain_id, last_success_at, failed FROM wallet_chain_fetches ORDER BY chain_id`;
+  const first = await sql`SELECT chain_id, last_success_at, covered_through, failed FROM wallet_chain_fetches ORDER BY chain_id`;
   expect(first.map(r => [r.chain_id, r.failed])).toEqual([[100, false], [130, true]]);
   expect(first[0]!.last_success_at).not.toBeNull();
   expect(first[1]!.last_success_at).toBeNull();
+  expect(first[0]!.covered_through).not.toBeNull();
+  expect(new Date(first[0]!.covered_through).getTime()).toBeLessThanOrEqual(new Date(first[0]!.last_success_at).getTime());
+  expect(first[1]!.covered_through).toBeNull();
   expect((await runFetcher(deps, { staleBefore: boundary })).inserted).toBe(0);
   expect(mocks.trades.mock.calls.filter(([p]) => p.chainId === 100)).toHaveLength(1);
   expect(mocks.trades.mock.calls.filter(([p]) => p.chainId === 130 && p.owner === owner)).toHaveLength(2);
@@ -131,4 +135,73 @@ it('includes an incomplete configured decoder in chain coverage', async () => {
   const coverage = await (await import('../src/freshness.js')).readPublicDataFreshness(sql);
   expect(coverage.dataSources?.find(source => source.chainId === 5042)?.status).toBe('partial');
   expect(coverage.dataSources?.find(source => source.chainId === 5042)?.failedWallets).toBe(0);
+});
+
+it('refetches a cached chain after the wallet is requeued at a newer repair boundary', async () => {
+  const boundary = new Date(Date.now() - 1_000);
+  await runFetcher(deps, { staleBefore: boundary });
+  await sql`UPDATE defillama_reporting_state SET backfill_started_at = now()`;
+  await sql`INSERT INTO defillama_backfill_wallets (wallet) VALUES (decode(${owner.slice(2)}, 'hex'))`;
+  await runFetcher(deps, { staleBefore: boundary });
+  expect(mocks.trades.mock.calls.filter(([p]) => p.chainId === 100 && p.owner === owner)).toHaveLength(2);
+  expect((await sql`SELECT count(*)::int AS n FROM defillama_backfill_wallets`)[0]!.n).toBe(1);
+});
+
+it('does not dequeue a wallet until all production chain pairs cover the repair boundary', async () => {
+  const boundary = new Date(Date.now() - 1_000);
+  await sql`UPDATE defillama_reporting_state SET backfill_started_at = now()`;
+  await sql`INSERT INTO defillama_backfill_wallets (wallet) VALUES (decode(${owner.slice(2)}, 'hex'))`;
+  await sql`INSERT INTO wallet_chain_fetches (wallet, chain_id, last_success_at, covered_through)
+    SELECT decode(${owner.slice(2)}, 'hex'), c, now(), now() FROM unnest(ARRAY[100,130]) c`;
+  await runFetcher(deps, { staleBefore: boundary });
+  expect((await sql`SELECT count(*)::int AS n FROM defillama_backfill_wallets`)[0]!.n).toBe(1);
+  const { PRODUCTION_CHAIN_IDS } = await import('../src/stats-page.js');
+  await sql`INSERT INTO wallet_chain_fetches (wallet, chain_id, last_success_at, covered_through)
+    SELECT decode(${owner.slice(2)}, 'hex'), c, now(), now() FROM unnest(${[...PRODUCTION_CHAIN_IDS]}::int[]) c
+    ON CONFLICT (wallet, chain_id) DO UPDATE SET last_success_at = now(), covered_through = now(), failed = false`;
+  await runFetcher(deps, { staleBefore: boundary });
+  expect((await sql`SELECT count(*)::int AS n FROM defillama_backfill_wallets`)[0]!.n).toBe(0);
+});
+
+it('requires Arc discovery coverage even when the decoder flag is absent', async () => {
+  vi.stubEnv('SETTLE_DECODER_CHAINS', '');
+  await sql`INSERT INTO wallet_chain_fetches (wallet, chain_id, last_success_at, covered_through)
+    VALUES (decode(${owner.slice(2)}, 'hex'), 5042, now(), now())`;
+  await sql`INSERT INTO chain_source_fetches (source, chain_id, last_success_at, covered_through)
+    VALUES ('ethflow', 5042, now(), now())`;
+  const { readPublicDataFreshness } = await import('../src/freshness.js');
+  expect((await readPublicDataFreshness(sql)).dataSources?.find(s => s.chainId === 5042)?.status).toBe('pending');
+  await sql`INSERT INTO chain_source_fetches (source, chain_id, last_success_at, covered_through)
+    VALUES ('decoder', 5042, now(), now())`;
+  expect((await readPublicDataFreshness(sql)).dataSources?.find(s => s.chainId === 5042)?.status).toBe('fresh');
+  await sql`UPDATE chain_source_fetches SET covered_through = NULL WHERE source = 'decoder'`;
+  expect((await readPublicDataFreshness(sql)).dataSources?.find(s => s.chainId === 5042)?.coveredThrough).toBeNull();
+});
+
+it('keeps a previously recorded decoder required after its configuration is removed', async () => {
+  vi.stubEnv('SETTLE_DECODER_CHAINS', '');
+  mocks.trades.mockResolvedValue([]);
+  await runFetcher(deps);
+  const { readPublicDataFreshness } = await import('../src/freshness.js');
+  expect((await readPublicDataFreshness(sql)).dataSources?.find(s => s.chainId === 100)?.status).toBe('fresh');
+  await sql`INSERT INTO chain_source_fetches (source, chain_id, failed) VALUES ('decoder', 100, true)`;
+  expect((await readPublicDataFreshness(sql)).dataSources?.find(s => s.chainId === 100)?.status).toBe('partial');
+});
+
+it('retains decoder identities and invalidates coverage and cursors during a full replay', async () => {
+  await sql`INSERT INTO chain_source_fetches (source, chain_id, last_success_at, covered_through)
+    VALUES ('decoder', 100, now(), now())`;
+  await sql`INSERT INTO settle_scan_cursor (chain_id, last_block) VALUES (100, 20)`;
+  // Exercise the actual reset statements only, against this disposable database.
+  const source = readFileSync(new URL('../src/cli.ts', import.meta.url), 'utf8');
+  const reset = source.split("async ['replay-from-genesis']()", 2)[1]!.split('for (let i = 0;', 1)[0]!;
+  const statements = [...reset.matchAll(/await sql`([^`]+)`/g)];
+  expect(statements.length).toBeGreaterThan(0);
+  for (const [, statement] of statements) {
+    expect(statement).not.toContain('${');
+    await sql.unsafe(statement!);
+  }
+  const [decoder] = await sql`SELECT chain_id, last_success_at, covered_through, failed FROM chain_source_fetches`;
+  expect(decoder).toMatchObject({ chain_id: 100, last_success_at: null, covered_through: null, failed: true });
+  expect((await sql`SELECT count(*)::int AS n FROM settle_scan_cursor`)[0]!.n).toBe(0);
 });
