@@ -24,6 +24,9 @@ patchedDependencies:
   '@railgun-community/engine@9.9.1':
     hash: 9be2563017d98f6aea1c031714f42037dacad062da6efcb3dad0b29248303d04
     path: ../railgun/patches/@railgun-community__engine@9.9.1.patch
+  '@railgun-community/wallet@11.2.0':
+    hash: eacbb0b3ad10eda0342df211625ccd9201e46b307efc98675ee87355e584e492
+    path: ../railgun/patches/@railgun-community__wallet@11.2.0.patch
   elliptic@6.6.1:
     hash: 5ee290c3bdaf9354587016fbf02863812413e6dc0f9ae73318a2da6f10ca7cef
     path: ../../patches/elliptic@6.6.1.patch
@@ -49,7 +52,7 @@ importers:
         version: 8.2.1(ethers@6.14.3(bufferutil@4.1.0)(utf-8-validate@5.0.10))
       '@railgun-community/wallet':
         specifier: 11.2.0
-        version: 11.2.0(@graphql-tools/utils@9.2.1(patch_hash=2c415e3be78e5bbf1490de3f946903b701502be3ebea88d6d831747bebf6678b)(graphql@16.14.2))(@types/node@22.19.7)(bufferutil@4.1.0)(chai@5.3.3)(react-native@0.88.1(@babel/core@7.29.7)(bufferutil@4.1.0)(react@19.3.1)(utf-8-validate@5.0.10))(tslib@2.8.1)(utf-8-validate@5.0.10)
+        version: 11.2.0(patch_hash=eacbb0b3ad10eda0342df211625ccd9201e46b307efc98675ee87355e584e492)(@graphql-tools/utils@9.2.1(patch_hash=2c415e3be78e5bbf1490de3f946903b701502be3ebea88d6d831747bebf6678b)(graphql@16.14.2))(@types/node@22.19.7)(bufferutil@4.1.0)(chai@5.3.3)(react-native@0.88.1(@babel/core@7.29.7)(bufferutil@4.1.0)(react@19.3.1)(utf-8-validate@5.0.10))(tslib@2.8.1)(utf-8-validate@5.0.10)
       ethers:
         specifier: 6.14.3
         version: 6.14.3(bufferutil@4.1.0)(utf-8-validate@5.0.10)
@@ -3402,7 +3405,7 @@ snapshots:
     dependencies:
       ethers: 6.14.3(bufferutil@4.1.0)(utf-8-validate@5.0.10)
 
-  '@railgun-community/wallet@11.2.0(@graphql-tools/utils@9.2.1(patch_hash=2c415e3be78e5bbf1490de3f946903b701502be3ebea88d6d831747bebf6678b)(graphql@16.14.2))(@types/node@22.19.7)(bufferutil@4.1.0)(chai@5.3.3)(react-native@0.88.1(@babel/core@7.29.7)(bufferutil@4.1.0)(react@19.3.1)(utf-8-validate@5.0.10))(tslib@2.8.1)(utf-8-validate@5.0.10)':
+  '@railgun-community/wallet@11.2.0(patch_hash=eacbb0b3ad10eda0342df211625ccd9201e46b307efc98675ee87355e584e492)(@graphql-tools/utils@9.2.1(patch_hash=2c415e3be78e5bbf1490de3f946903b701502be3ebea88d6d831747bebf6678b)(graphql@16.14.2))(@types/node@22.19.7)(bufferutil@4.1.0)(chai@5.3.3)(react-native@0.88.1(@babel/core@7.29.7)(bufferutil@4.1.0)(react@19.3.1)(utf-8-validate@5.0.10))(tslib@2.8.1)(utf-8-validate@5.0.10)':
     dependencies:
       '@graphql-mesh/cache-localforage': 0.93.1(@graphql-mesh/types@0.93.2)(@graphql-mesh/utils@0.93.2)(graphql@16.14.2)(tslib@2.8.1)
       '@graphql-mesh/cross-helpers': 0.3.4(@graphql-tools/utils@9.2.1(patch_hash=2c415e3be78e5bbf1490de3f946903b701502be3ebea88d6d831747bebf6678b)(graphql@16.14.2))(graphql@16.14.2)(react-native@0.88.1(@babel/core@7.29.7)(bufferutil@4.1.0)(react@19.3.1)(utf-8-validate@5.0.10))

@@ -76,7 +76,8 @@
       "@libp2p/peer-store@11.2.7": "patches/@libp2p__peer-store@11.2.7.patch",
       "@railgun-community/engine@9.9.1": "patches/@railgun-community__engine@9.9.1.patch",
       "zod@3.22.4": "../../patches/zod@3.22.4.patch",
-      "zod@3.25.76": "../../patches/zod@3.25.76.patch"
+      "zod@3.25.76": "../../patches/zod@3.25.76.patch",
+      "@railgun-community/wallet@11.2.0": "patches/@railgun-community__wallet@11.2.0.patch"
     }
   }
 }

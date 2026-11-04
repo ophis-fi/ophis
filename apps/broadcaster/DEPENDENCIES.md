@@ -2,10 +2,11 @@
 
 This standalone Node service has its own lockfile. Browser bundle reachability and a green root-workspace audit do not establish its dependency safety. It now follows current Ophis's reviewed pnpm 10.34.9 pin, seven-day resolution age and scripts-disabled installation policy. Docker reads the integrity-pinned `packageManager` from the same manifest and includes `.npmrc` and every registered patch.
 
-The engine 9.9.1, wallet 11.2.0, shared-models 8.2.1, ethers 6.14.3, snarkjs 0.7.5, noble/ed25519 1.7.5 and elliptic 6.6.1 upstream archive versions/integrities are unchanged. The application bundle also reproduces the tested pilot bundle. External dependency changes are validated separately; matching application bytes alone is not a compatibility guarantee.
+The engine 9.9.1, wallet 11.2.0, shared-models 8.2.1, ethers 6.14.3, snarkjs 0.7.5, noble/ed25519 1.7.5 and elliptic 6.6.1 upstream archive versions/integrities are unchanged. The initial dependency checkpoint reproduced the pilot application bundle; later application changes have their own release hashes. External dependency changes are validated separately; matching application bytes alone is not a compatibility guarantee.
 
 | Package | Disposition and verification |
 | --- | --- |
+| `@railgun-community/wallet` 11.2.0 | Both standalone projects apply the same pinned V2 history-fetch patch. It uses the SDK's existing V3 parallel-fetch pattern for independent nullifier, unshield and commitment pagination. Limits, sorting, root verification and proof checks remain unchanged. Real installed-module tests verify concurrent startup and rejection of a failed history stream; both frozen installs pass without changing dependency versions. |
 | `@graphql-tools/executor-legacy-ws` | Exactly 1.1.39 replaces 0.0.11 and its deleted shared TLS patch. Tests exercise the Node SDK's actual `UrlLoader.buildWSLegacyExecutor` consumer in CJS and ESM for TLS verification, separate connection parameters and subscription-ID routing. |
 | `@graphql-tools/utils` | Direct 9.2.1 preserves the Mesh peer selection. Versions 8.13.1 and 9.2.1 retain the reviewed prototype-key backports, tested through real SDK consumers in CJS/ESM. The executor's own 12.1.0 is an upstream fixed release. |
 | `follow-redirects` | Exactly 1.16.2 replaces 1.16.1, matching the reviewed Ophis fix. |

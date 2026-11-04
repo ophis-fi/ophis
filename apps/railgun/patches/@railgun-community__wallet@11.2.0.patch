@@ -1,0 +1,32 @@
+--- a/dist/services/railgun/quick-sync/V2/quick-sync-events-graph-v2.js
++++ b/dist/services/railgun/quick-sync/V2/quick-sync-events-graph-v2.js
+@@ -48,17 +48,18 @@
+         return graph_query_1.EMPTY_EVENTS;
+     }
+     const sdk = getBuiltGraphSDK(network.name);
+-    const nullifiers = await (0, graph_query_1.autoPaginatingQuery)(async (blockNumber) => (await sdk.Nullifiers({
+-        blockNumber,
+-    })).nullifiers, startingBlock.toString(), MAX_QUERY_RESULTS);
+-    await (0, shared_models_1.delay)(100);
+-    const unshields = await (0, graph_query_1.autoPaginatingQuery)(async (blockNumber) => (await sdk.Unshields({
+-        blockNumber,
+-    })).unshields, startingBlock.toString(), MAX_QUERY_RESULTS);
+-    await (0, shared_models_1.delay)(100);
+-    const commitments = await (0, graph_query_1.autoPaginatingQuery)(async (blockNumber) => (await sdk.Commitments({
+-        blockNumber,
+-    })).commitments, startingBlock.toString(), MAX_QUERY_RESULTS);
++    // These independent histories retain their own pagination and limits.
++    const [nullifiers, unshields, commitments] = await Promise.all([
++        (0, graph_query_1.autoPaginatingQuery)(async (blockNumber) => (await sdk.Nullifiers({
++            blockNumber,
++        })).nullifiers, startingBlock.toString(), MAX_QUERY_RESULTS),
++        (0, graph_query_1.autoPaginatingQuery)(async (blockNumber) => (await sdk.Unshields({
++            blockNumber,
++        })).unshields, startingBlock.toString(), MAX_QUERY_RESULTS),
++        (0, graph_query_1.autoPaginatingQuery)(async (blockNumber) => (await sdk.Commitments({
++            blockNumber,
++        })).commitments, startingBlock.toString(), MAX_QUERY_RESULTS),
++    ]);
+     const filteredNullifiers = (0, graph_util_1.removeDuplicatesByID)(nullifiers);
+     const filteredUnshields = (0, graph_util_1.removeDuplicatesByID)(unshields);
+     const filteredCommitments = (0, graph_util_1.removeDuplicatesByID)(commitments);

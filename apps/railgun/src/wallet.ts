@@ -206,7 +206,8 @@ export async function openWallet(
 export function syncWallet(session: WalletSession): Promise<void> {
   scan.syncing ??= (async () => {
     scan.ready = false
-    scan.report('Synchronizing private history. Deposits and spending become available when verification finishes.', false)
+    if (!scan.warming)
+      scan.report('Synchronizing private history. Deposits and spending become available when verification finishes.', false)
     await scan.warming?.catch(() => {})
     const epoch = scan.epoch
     await verifyHistory([session.info.id])

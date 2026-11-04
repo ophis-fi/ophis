@@ -148,6 +148,21 @@ it('does not accept a different chain or proof version as completion of the wall
   complete(); await pending
 })
 
+it('preserves the public-history progress while the unlocked wallet waits for its warm-up', async () => {
+  complete(MerkletreeScanStatus.Incomplete)
+  let finish: (() => void) | undefined
+  sdk.scan.mockImplementationOnce(() => new Promise<void>((resolve) => { finish = resolve }))
+  const report = vi.fn()
+  await startWalletEngine(() => {}, report)
+  sdk.callback?.({ scanStatus: MerkletreeScanStatus.Updated, chain: CONFIG.chain, txidVersion: VERSION, progress: 0.25 })
+  const pending = syncWallet(session)
+  try {
+    expect(report).toHaveBeenLastCalledWith('Synchronizing private history: Updated 25%', false)
+    expect(() => requireWalletSync()).toThrow()
+  } finally { finish?.(); complete(); await pending }
+  expect(report).toHaveBeenLastCalledWith('Complete · private balances are ready.', true)
+})
+
 it('requires a reload after the scan deadline rather than overlapping a still-running SDK scan', async () => {
   vi.useFakeTimers()
   try {

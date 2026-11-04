@@ -99,7 +99,6 @@ for (const id of ['open', 'unlock']) {
       element('wallet').hidden = false
       element('address').textContent = session.current.info.railgunAddress
       await wireWalletActions(session.current)
-      status.textContent = 'Wallet unlocked. Synchronizing private balances.'
       void syncWallet(session.current).catch((error: unknown) => {
         element('error').textContent = error instanceof Error ? error.message : 'Private balance sync failed.'
       })

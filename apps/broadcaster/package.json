@@ -44,7 +44,8 @@
       "@graphql-tools/utils@8.13.1": "../railgun/patches/@graphql-tools__utils@8.13.1.patch",
       "@graphql-tools/utils@9.2.1": "../railgun/patches/@graphql-tools__utils@9.2.1.patch",
       "@railgun-community/engine@9.9.1": "../railgun/patches/@railgun-community__engine@9.9.1.patch",
-      "zod@3.25.76": "../../patches/zod@3.25.76.patch"
+      "zod@3.25.76": "../../patches/zod@3.25.76.patch",
+      "@railgun-community/wallet@11.2.0": "../railgun/patches/@railgun-community__wallet@11.2.0.patch"
     }
   }
 }
