@@ -2,7 +2,7 @@
 
 **4 November integration checkpoint:** the restricted funded swap/withdrawal pilot completed on 3 November. The new source branch integrates current main and repairs dependency installation/audit coverage; the existing service and its financial limits are unchanged. Fresh installations stay unarmed, and the used pilot withdrawal marker must be retained through upgrades and restores. The dated custody-installation descriptions below are historical. See [dependency scope](DEPENDENCIES.md) and the [development plan](../../docs/development/plans/2026-11-04-railgun-broadcaster-integration.md).
 
-Stage 3 is locally validated for repeated users. Admission defaults to `pilot`; `public` is currently a fork-validation policy, with enabled public mainnet startup explicitly blocked pending final acceptance. Do not change the live admission setting or clear the used withdrawal marker as part of this source integration.
+Admission defaults to `pilot`. The release supports explicit `public` mainnet admission with the verified operator-bound guard, dedicated gas address, positive margin and finite financial limits; public admission rejects conflicting pilot account/recipient settings. Activating the release is a separate, state-preserving deployment. Retain the used withdrawal marker and both journals.
 
 Before an eventual upgrade, inspect an authenticated journal snapshot for every unresolved or unassured row using the following read-only query. The new settlement gate deliberately holds availability for such rows regardless of the current outer nonce. Preserve the rows and verify their chain/fee outcomes; an old confirmed row with missing assurance is not safe to ignore.
 
