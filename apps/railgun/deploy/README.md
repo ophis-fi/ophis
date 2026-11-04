@@ -4,7 +4,7 @@ This separate stack connects the wallet gateway to Baal without publishing an Et
 
 The stack is running at `/home/clement/ophis-railgun` on Baal. Its images are pinned by digest. The scoped tunnel credentials and `.env` are mode 0600 and excluded from Git. The generated RPC token is also stored in the repository's protected `Production` environment as `RAILGUN_RPC_TOKEN`; it belongs only in the deployed Worker's secret binding, never a Vite variable or browser bundle.
 
-The deployment workflow is manual and main-only. It installs pinned dependencies with scripts disabled, runs the fork-scoped unit suite, builds the Ethereum wallet, deploys the Worker, sets the RPC secret and checks Ethereum reads plus administrative-method rejection. A first deployment remains unavailable until the secret is installed. Required release acceptance must pass before dispatching it. Enable the existing Ophis footer only after deployment checks by setting `REACT_APP_PRIVATE_WALLET_URL=https://private.ophis.fi` and rebuilding the frontend.
+The deployment workflow is manual and main-only. It installs pinned dependencies with scripts disabled, runs the fork-scoped unit suite, builds the wallet assets, deploys the RPC Worker, sets the RPC secret and checks Ethereum reads plus administrative-method rejection. A first deployment remains unavailable until the secret is installed. Required release acceptance must pass before dispatching it. Private swaps belong inside `swap.ophis.fi`, using its same-origin `/private/` assets and RPC routes; do not recreate the retired standalone wallet subdomain. The [protected submission release gate](../README.md#protected-submission-release-gate) must be satisfied before releasing this revision.
 
 ## Verification
 

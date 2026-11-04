@@ -1,0 +1,13 @@
+[profile.default]
+src = "contracts"
+test = "contracts/test"
+out = "guard-artifacts"
+cache_path = ".forge-cache"
+solc = "0.8.30"
+evm_version = "prague"
+optimizer = true
+optimizer_runs = 200
+bytecode_hash = "none"
+
+[profile.default.fuzz]
+runs = 1024

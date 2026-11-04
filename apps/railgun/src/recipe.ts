@@ -15,9 +15,12 @@ import {
   CHAIN_NAME,
   ERC20,
   OPHIS_FEE,
+  PRIVATE_SLIPPAGE_BPS,
   PERMIT,
   PERMIT2,
   PROXY,
+  QUOTE,
+  QUOTER,
   ROUTER,
   ROUTER_RECIPIENT,
   SWAP,
@@ -114,8 +117,11 @@ export async function quoteSwap(
   const grossExpected = best.amountOut
   const ophisFee = (grossExpected * OPHIS_FEE.bps) / 10_000n
   const expected = grossExpected - ophisFee
-  const minimum = (expected * 9950n) / 10_000n
-  const deadline = Math.floor(Date.now() / 1000) + 600
+  // Reserve half the tolerance for price movement while proving, without widening the signed minimum.
+  const minimum = expected - (expected * (PRIVATE_SLIPPAGE_BPS / 2n)) / 10_000n
+  const block = await provider.getBlock('latest')
+  if (!block) throw new Error(`${CHAIN_NAME} block unavailable.`)
+  const deadline = block.timestamp + 600
   const calls = recipeCalls(sell, buy, account, swapAmount, minimum, deadline, best.route.path)
   return {
     chainId: CHAIN_ID,
@@ -141,4 +147,35 @@ export function assertQuoteFresh(quote: SwapQuote, account: string): void {
   if (getAddress(quote.account) !== getAddress(account))
     throw new Error('Private account changed. Request another quote.')
   if (Date.now() / 1000 >= quote.deadline - 60) throw new Error('Quote expired. Request another quote.')
+}
+
+export interface FinalQuoteCheck { monotonic: number; wallTime: number }
+
+export function assertFinalQuoteFresh(checkedAt: FinalQuoteCheck | undefined): void {
+  // Browser monotonic clocks can pause during sleep; wall time also catches suspension.
+  const ages = [performance.now() - (checkedAt?.monotonic ?? NaN), Date.now() - (checkedAt?.wallTime ?? NaN)]
+  if (ages.some((age) => !Number.isFinite(age) || age < 0 || age >= 30_000))
+    throw new Error('Final price check expired. Check recovery before requesting another quote.')
+}
+
+export async function revalidateSwapQuote(provider: JsonRpcProvider, quote: SwapQuote): Promise<FinalQuoteCheck> {
+  if (!quote.route) throw new Error('Missing selected route. Request another quote.')
+  const expectedCalls = recipeCalls(quote.sell, quote.buy, quote.account, quote.swapAmount, quote.minimum, quote.deadline, quote.route.path)
+  if (quote.calls.length !== expectedCalls.length || expectedCalls.some((call, index) =>
+    getAddress(quote.calls[index].to) !== getAddress(call.to) ||
+    quote.calls[index].data !== call.data || (quote.calls[index].value ?? 0n) !== (call.value ?? 0n)))
+    throw new Error('Swap calls differ from the reviewed quote. Submission blocked.')
+  // Check only the proved route; changing its limits would invalidate the proof.
+  const checkedAt = { monotonic: performance.now(), wallTime: Date.now() }
+  const block = await provider.getBlock('latest')
+  if (!block || block.timestamp >= quote.deadline - 60) throw new Error('Quote expired. Request another quote.')
+  const result = await new Contract(QUOTER, QUOTE, provider).getFunction('quoteExactInput').staticCall(
+    quote.route.path, quote.swapAmount, { blockTag: block.number, gasLimit: 5_000_000n },
+  )
+  const gross = BigInt(result[0])
+  const net = gross - (gross * OPHIS_FEE.bps) / 10_000n
+  if (net < quote.minimum || (net - quote.minimum) * 10_000n > net * PRIVATE_SLIPPAGE_BPS)
+    throw new Error('Price moved outside the proved limits. Request another quote before submitting.')
+  assertFinalQuoteFresh(checkedAt)
+  return checkedAt
 }

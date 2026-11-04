@@ -13,8 +13,9 @@
 #      @ophis/sdk and the money-path @ophis/rebate-indexer). Watched
 #      security-only to mirror the frontend's low-noise posture; the
 #      merge-blocking pnpm-audit job in security.yml is the hard gate.
-#   4. docker: base-image advisories for the three Dockerfiles
-#      (apps/backend, apps/rebate-indexer, apps/mcp-server). Docker is
+#   4. npm (apps/broadcaster): security-only on its independent lockfile.
+#   5. docker: base-image advisories for the four Dockerfiles
+#      (apps/backend, apps/rebate-indexer, apps/mcp-server, apps/broadcaster). Docker is
 #      NOT in the repo's dependency graph, so repo-level Dependabot
 #      security updates never cover it. This is the only way those
 #      base images get bump PRs.
@@ -89,6 +90,23 @@ updates:
         patterns:
           - "*"
 
+  # npm (standalone broadcaster, outside the root workspace).
+  - package-ecosystem: npm
+    directory: /apps/broadcaster
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 0
+    commit-message:
+      prefix: "deps(broadcaster)"
+    labels:
+      - dependencies
+    groups:
+      broadcaster-security:
+        applies-to: security-updates
+        patterns:
+          - "*"
+
   # Docker base images. Not in the dependency graph, so repo-level security
   # updates never see these; this ecosystem is the ONLY automated coverage.
   # Weekly digest/tag bumps land as PRs; review and merge as normal.
@@ -118,6 +136,18 @@ updates:
 
   - package-ecosystem: docker
     directory: /apps/mcp-server
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: "deps(docker)"
+    labels:
+      - dependencies
+      - docker
+
+  - package-ecosystem: docker
+    directory: /apps/broadcaster
     schedule:
       interval: weekly
       day: monday

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { EVMGasType, type SelectedBroadcaster } from '@railgun-community/shared-models'
-import { broadcasterFee, startBroadcasters, submitPrivate } from './broadcaster'
+import { broadcasterFee, gasDetails, startBroadcasters, submitPrivate } from './broadcaster'
 import type { WalletSession } from './wallet'
 import { FEE_SIGNER, TOKENS } from './config'
 
@@ -24,6 +24,10 @@ const selected: SelectedBroadcaster = {
 }
 
 describe('broadcaster fee bounds', () => {
+  it('uses a one-wei minimum Ethereum priority fee when the own node suggests zero', async () => {
+    const session = { provider: { getFeeData: async () => ({ maxFeePerGas: 100n, maxPriorityFeePerGas: 0n }) } } as unknown as WalletSession
+    expect((await gasDetails(session)).maxPriorityFeePerGas).toBe(1n)
+  })
   it('blocks mainnet discovery and submission in the default fork build before touching a provider', async () => {
     await expect(startBroadcasters(() => {})).rejects.toThrow(/disabled/)
     await expect(

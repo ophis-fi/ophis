@@ -1,4 +1,4 @@
-import { CHAIN, CHAIN_NAME, CHAIN_ID, RPC_PATH, CONFIG, ENVIRONMENT, NETWORK, POI_NODES, VERSION } from './config'
+import { CHAIN, CHAIN_NAME, CHAIN_ID, RPC_PATH, CONFIG, ENVIRONMENT, NETWORK, VERSION } from './config'
 import {
   createRailgunWallet,
   loadWalletByID,
@@ -7,17 +7,15 @@ import {
   getProver,
   loadProvider,
   setOnBalanceUpdateCallback,
-  setOnUTXOMerkletreeScanCallback,
+  getEngine,
   fullWalletForID,
   EphemeralKeyManager,
   refreshBalances,
-  refreshReceivePOIsForWallet,
   onBalancesUpdate,
   stopRailgunEngine,
   type SnarkJSGroth16,
 } from '@railgun-community/wallet'
 import {
-  MerkletreeScanStatus,
   type RailgunBalancesEvent,
   type RailgunWalletInfo,
 } from '@railgun-community/shared-models'
@@ -25,6 +23,8 @@ import { JsonRpcProvider, Mnemonic, randomBytes, hexlify, getBytes } from 'ether
 import { groth16 } from 'snarkjs'
 import { artifacts, encryptionKey, readPreference, walletDB, writePreference } from './storage'
 import { RPC_BATCH_SIZE } from '../rpc-policy'
+import { disablePPOI } from '../poi-policy'
+import { EngineEvent, MerkletreeScanStatus, POI, type MerkletreeHistoryScanEventData } from '@railgun-community/engine'
 
 export interface WalletSession {
   info: RailgunWalletInfo
@@ -37,7 +37,35 @@ interface WalletMetadata {
   salt: string
 }
 const tab: { lock?: Promise<void> } = {}
-const scan = { ready: false }
+const scan: {
+  ready: boolean
+  timedOut: boolean
+  epoch: number
+  warming?: Promise<void>
+  syncing?: Promise<void>
+  finished?: (complete: boolean) => void
+  report: (status: string, ready: boolean) => void
+} = { ready: false, timedOut: false, epoch: 0, report: () => {} }
+
+async function verifyHistory(walletIds: string[]): Promise<void> {
+  if (scan.timedOut) throw new Error('History verification timed out. Reload this page before retrying.')
+  if (getEngine().getUTXOMerkletree(VERSION, CONFIG.chain).isScanning)
+    throw new Error('A history scan is already running. Wait and refresh balances before depositing or spending.')
+  let timeout: ReturnType<typeof setTimeout> | undefined
+  const verified = new Promise<void>((resolve, reject) => {
+    scan.finished = (complete) => complete ? resolve() : reject(new Error('Private history verification is incomplete. Refresh balances to retry before depositing or spending.'))
+    timeout = setTimeout(() => {
+      scan.timedOut = true
+      reject(new Error('History verification timed out. Keep your recovery phrase safe and reload to retry.'))
+    }, 10 * 60_000)
+  })
+  try {
+    await Promise.all([refreshBalances(CONFIG.chain, walletIds), verified])
+  } finally {
+    clearTimeout(timeout)
+    scan.finished = undefined
+  }
+}
 
 export function requireWalletSync(): void {
   if (!scan.ready)
@@ -74,6 +102,8 @@ export async function startWalletEngine(
   onStatus: (status: string, ready: boolean) => void,
 ): Promise<JsonRpcProvider> {
   await claimWalletTab()
+  scan.report = onStatus
+  onStatus('Connecting to private history…', false)
   const rpc = new URL(RPC_PATH, location.origin).href
   const provider = new JsonRpcProvider(rpc, undefined, { batchMaxCount: RPC_BATCH_SIZE })
   try {
@@ -87,15 +117,19 @@ export async function startWalletEngine(
       throw new Error(`The local build requires an Anvil ${CHAIN_NAME} fork.`)
     if (ENVIRONMENT === 'ethereum' && (anvil || hardhat))
       throw new Error('Mainnet mode cannot use a local fork.')
-    await startRailgunEngine('ophis', walletDB, false, artifacts, false, false, POI_NODES)
+    disablePPOI(POI, CONFIG)
+    await startRailgunEngine('ophis', walletDB, false, artifacts, false, false)
     // Upstream snarkjs types reject the sparse circuit inputs accepted by Railgun.
     getProver().setSnarkJSGroth16(groth16 as unknown as SnarkJSGroth16)
     setOnBalanceUpdateCallback(onBalance)
-    setOnUTXOMerkletreeScanCallback((event) => {
-      if (event.scanStatus === MerkletreeScanStatus.Complete) scan.ready = true
-      if (event.scanStatus === MerkletreeScanStatus.Incomplete) scan.ready = false
+    getEngine().on(EngineEvent.UTXOMerkletreeHistoryScanUpdate, (event: MerkletreeHistoryScanEventData) => {
+      if (event.chain.id !== CHAIN_ID || event.txidVersion !== VERSION) return
+      if (event.scanStatus === MerkletreeScanStatus.Complete) scan.finished?.(true)
+      if (event.scanStatus === MerkletreeScanStatus.Incomplete) scan.finished?.(false)
+      if (event.scanStatus === MerkletreeScanStatus.Incomplete) { scan.ready = false; scan.epoch++ }
       onStatus(
-        `Scanning private balances: ${event.scanStatus}${event.progress == null ? '' : ` ${Math.round(event.progress * 100)}%`}`,
+        event.scanStatus === MerkletreeScanStatus.Complete ? 'History verified. Updating private balances…' :
+          `Synchronizing private history: ${event.scanStatus}${event.progress == null ? '' : ` ${Math.round(event.progress * 100)}%`}`,
         scan.ready,
       )
     })
@@ -107,6 +141,9 @@ export async function startWalletEngine(
       NETWORK,
       15_000,
     )
+    // Verify public history during wallet setup; never decrypt an unopened wallet.
+    scan.warming = verifyHistory([]).finally(() => { scan.warming = undefined })
+    void scan.warming.catch(() => { onStatus('History synchronization needs a retry. Unlock the wallet and refresh balances.', false) })
     return provider
   } catch (error) {
     provider.destroy()
@@ -123,6 +160,7 @@ export async function openWallet(
   provider: JsonRpcProvider,
   password: string,
   mnemonic: string | undefined,
+  freshlyGenerated = false,
 ): Promise<WalletSession> {
   await claimWalletTab()
   mnemonic = mnemonic?.trim().toLowerCase().split(/\s+/).join(' ')
@@ -157,7 +195,7 @@ export async function openWallet(
   if (saved) await getWalletMnemonic(key, saved.id)
   const info = saved
     ? await loadWalletByID(key, saved.id, false)
-    : await createRailgunWallet(key, mnemonic || '', undefined)
+    : await createRailgunWallet(key, mnemonic || '', freshlyGenerated ? { [NETWORK]: await provider.getBlockNumber() } : undefined)
   if (!saved)
     await writePreference('wallet', { id: info.id, salt: hexlify(salt) } satisfies WalletMetadata)
   const accounts = new EphemeralKeyManager(fullWalletForID(info.id), key)
@@ -165,22 +203,23 @@ export async function openWallet(
   return { info, key, provider, accounts }
 }
 
-export async function syncWallet(session: WalletSession): Promise<void> {
-  await refreshBalances(CONFIG.chain, [session.info.id])
-  await refreshReceivedBalances(session)
+export function syncWallet(session: WalletSession): Promise<void> {
+  scan.syncing ??= (async () => {
+    scan.ready = false
+    if (!scan.warming)
+      scan.report('Synchronizing private history. Deposits and spending become available when verification finishes.', false)
+    await scan.warming?.catch(() => {})
+    const epoch = scan.epoch
+    await verifyHistory([session.info.id])
+    await refreshReceivedBalances(session)
+    await session.accounts.scanHistoryForEphemeralIndex(CONFIG.chain)
+    if (scan.epoch !== epoch) throw new Error('Private history changed during verification. Refresh balances to retry.')
+    scan.ready = true
+    scan.report('Complete · private balances are ready.', true)
+  })().finally(() => { scan.syncing = undefined })
+  return scan.syncing
 }
 
-const receiveRefreshes = new Map<string, Promise<void>>()
-
 export function refreshReceivedBalances(session: WalletSession): Promise<void> {
-  const id = session.info.id
-  let refresh = receiveRefreshes.get(id)
-  if (!refresh) {
-    refresh = (async () => {
-      await refreshReceivePOIsForWallet(VERSION, NETWORK, id)
-      await onBalancesUpdate(VERSION, fullWalletForID(id), CONFIG.chain)
-    })().finally(() => { receiveRefreshes.delete(id) })
-    receiveRefreshes.set(id, refresh)
-  }
-  return refresh
+  return onBalancesUpdate(VERSION, fullWalletForID(session.info.id), CONFIG.chain)
 }

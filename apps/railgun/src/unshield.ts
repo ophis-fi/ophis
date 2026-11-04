@@ -1,19 +1,23 @@
-import { CHAIN, CHAIN_NAME, CONFIG, NETWORK, PERMIT2, PROXY, ROUTER, TOKENS, VERSION, type TokenSymbol } from './config'
+import { CHAIN, CHAIN_ID, CHAIN_NAME, CONFIG, NETWORK, PERMIT2, PILOT_WITHDRAWAL_RECIPIENT, PROXY, ROUTER, TOKENS, VERSION, type TokenSymbol } from './config'
 import { getEVMGasTypeForTransaction, EVMGasType, type SelectedBroadcaster } from '@railgun-community/shared-models'
 import {
   gasEstimateForUnprovenUnshield,
   generateUnshieldProof,
   populateProvedUnshield,
+  fullWalletForID,
+  balanceForERC20Token,
 } from '@railgun-community/wallet'
 import { Contract, getAddress, ZeroAddress } from 'ethers'
-import { broadcasterFee, validateBroadcaster, type PrivateSubmitter } from './broadcaster'
+import { broadcasterFee, selectBroadcaster, validateBroadcaster, type PrivateSubmitter } from './broadcaster'
 import { amountFromInput, unshieldAmount } from './recipe'
 import { pendingSwap } from './journal'
+import { assertAtomicWithdrawal } from './execution'
 import {
   assertWithdrawalReceipt,
   pendingWithdrawal,
   reconcilePendingWithdrawal,
   savePendingWithdrawal,
+  withdrawalInputsSpent,
 } from './withdrawal-journal'
 import { refreshReceivedBalances, requireWalletSync, type WalletSession } from './wallet'
 
@@ -23,38 +27,52 @@ export async function prepareUnshield(
   value: string,
   recipient: string,
   selected: SelectedBroadcaster,
+  maximum = false,
 ) {
   requireWalletSync()
   if ((await pendingWithdrawal(session)) || (await pendingSwap(session)))
     throw new Error('Resolve the pending private transaction before preparing another withdrawal.')
   validateBroadcaster(selected, TOKENS[token].address, false)
   const destination = getAddress(recipient)
+  if (PILOT_WITHDRAWAL_RECIPIENT &&
+    (token !== 'USDC' || destination !== getAddress(PILOT_WITHDRAWAL_RECIPIENT)))
+    throw new Error('This pilot withdraws USDC to its selected public recipient. Choose USDC before preparing a proof.')
   assertWithdrawalRecipient(destination, (await session.accounts.getCurrentAccount(CHAIN)).address)
   await refreshReceivedBalances(session)
-  const amounts = [
-    { tokenAddress: TOKENS[token].address, amount: amountFromInput(value, token), recipientAddress: destination },
-  ]
+  const spendable = await balanceForERC20Token(VERSION, fullWalletForID(session.info.id), NETWORK, selected.tokenAddress, true)
+  const requested = maximum ? undefined : amountFromInput(value, token)
   const feeBps: bigint = await new Contract(CONFIG.proxyContract, PROXY, session.provider).getFunction('unshieldFee')()
-  const minimum = unshieldAmount(amounts[0].amount, feeBps)
-  if (getEVMGasTypeForTransaction(NETWORK, false) !== EVMGasType.Type1)
+  const evmGasType = getEVMGasTypeForTransaction(NETWORK, false)
+  if (evmGasType !== EVMGasType.Type0 && evmGasType !== EVMGasType.Type1)
     throw new Error('Review the updated Railgun broadcaster gas policy before continuing.')
-  const gasPrice = (await session.provider.getFeeData()).gasPrice
-  if (gasPrice == null) throw new Error(`${CHAIN_NAME} gas price unavailable.`)
-  const gas = { evmGasType: EVMGasType.Type1 as const, gasEstimate: 3_000_000n, gasPrice }
-  const estimate = await gasEstimateForUnprovenUnshield(
-    VERSION,
-    NETWORK,
-    session.info.id,
-    session.key,
-    amounts,
-    [],
-    gas,
-    { tokenAddress: selected.tokenAddress, feePerUnitGas: BigInt(selected.tokenFee.feePerUnitGas) },
-    false,
-  )
-  const withLimit = { ...gas, gasEstimate: estimate.gasEstimate }
-  const fee = broadcasterFee(selected, withLimit)
-  return { token, amounts, minimum, selected, gas: withLimit, fee }
+  let gasPrice = (await session.provider.getFeeData()).gasPrice
+  if (gasPrice == null || gasPrice <= 0n) throw new Error(`${CHAIN_NAME} gas price unavailable.`)
+  if (CHAIN_ID === 1) {
+    const block = await session.provider.getBlock('latest')
+    if (block?.baseFeePerGas == null) throw new Error(`${CHAIN_NAME} base fee unavailable.`)
+    // Match the broadcaster's positive-tip floor before committing the private fee.
+    if (gasPrice < block.baseFeePerGas + 1n) gasPrice = block.baseFeePerGas + 1n
+  }
+  let gas = { evmGasType, gasEstimate: 3_000_000n, gasPrice }
+  let fee = broadcasterFee(selected, gas)
+  for (let attempt = 0; attempt < 3; attempt++) {
+    const amount = requested ?? spendable - fee.amount
+    if (amount <= 0n || amount + fee.amount > spendable)
+      throw new Error(`Insufficient spendable ${token} for the withdrawal and broadcaster fee. Use Max withdrawal after fee.`)
+    const amounts = [{ tokenAddress: TOKENS[token].address, amount, recipientAddress: destination }]
+    const estimate = await gasEstimateForUnprovenUnshield(
+      VERSION, NETWORK, session.info.id, session.key, amounts, [], gas,
+      { tokenAddress: selected.tokenAddress, feePerUnitGas: BigInt(selected.tokenFee.feePerUnitGas) }, false,
+    )
+    // Round calldata gas jitter upward so a full-balance withdrawal can converge.
+    const rounded = maximum ? ((estimate.gasEstimate + 9_999n) / 10_000n) * 10_000n : estimate.gasEstimate
+    gas = { ...gas, gasEstimate: maximum && attempt > 0 && gas.gasEstimate > rounded ? gas.gasEstimate : rounded }
+    fee = broadcasterFee(selected, gas)
+    if (maximum && amount + fee.amount !== spendable) continue
+    if (amount + fee.amount > spendable) throw new Error(`Insufficient spendable ${token} for the withdrawal and broadcaster fee.`)
+    return { token, amounts, minimum: unshieldAmount(amount, feeBps), selected, gas, fee }
+  }
+  throw new Error('The withdrawal fee changed while estimating. Review the fee again.')
 }
 
 export async function executeUnshield(
@@ -100,6 +118,7 @@ export async function executeUnshield(
     BigInt(populated.transaction.value || 0) !== 0n
   )
     throw new Error('Invalid populated withdrawal.')
+  assertAtomicWithdrawal(populated.transaction.data)
   const pending = {
     token: prepared.token,
     recipient: amounts[0].recipientAddress,
@@ -134,4 +153,26 @@ export function assertWithdrawalRecipient(recipient: string, ephemeral: string):
   ].map(getAddress)
   if (forbidden.includes(getAddress(recipient)))
     throw new Error('Use a public recipient wallet, not a protocol contract or temporary account.')
+}
+
+export async function retrySavedUnshield(session: WalletSession, onProgress: (message: string) => void, submitter: PrivateSubmitter): Promise<string> {
+  requireWalletSync()
+  const pending = await pendingWithdrawal(session)
+  if (!pending) throw new Error('No saved withdrawal to retry.')
+  if (pending.hash) throw new Error('Check pending withdrawal first; a transaction hash is already saved.')
+  assertAtomicWithdrawal(pending.transaction.data)
+  if (await withdrawalInputsSpent(session, pending)) throw new Error('A withdrawal input is already spent. Check pending withdrawal first.')
+  const selected = await selectBroadcaster(TOKENS[pending.token].address, false, onProgress)
+  const evmGasType = getEVMGasTypeForTransaction(NETWORK, false)
+  if (evmGasType !== EVMGasType.Type0 && evmGasType !== EVMGasType.Type1) throw new Error('Unsupported withdrawal gas policy.')
+  const gas = { evmGasType, gasEstimate: 3_000_000n, gasPrice: BigInt(pending.minGasPrice) }
+  const hash = await submitter.send(session, { transaction: { ...pending.transaction, value: 0n },
+    nullifiers: pending.nullifiers, preTransactionPOIsPerTxidLeafPerList: {} }, selected, gas, false)
+  await savePendingWithdrawal(session, { ...pending, hash })
+  onProgress(`Waiting for two confirmations: ${hash}`)
+  const receipt = await session.provider.waitForTransaction(hash, 2, 180_000)
+  if (!receipt) throw new Error(`Withdrawal unconfirmed: ${hash}. Check pending withdrawal before retrying.`)
+  assertWithdrawalReceipt(receipt, pending)
+  await reconcilePendingWithdrawal(session)
+  return hash
 }

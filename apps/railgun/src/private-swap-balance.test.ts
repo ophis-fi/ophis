@@ -110,7 +110,7 @@ it('bounds Max recalculation when fees keep rising', async () => {
   expect(state.quote).toHaveBeenCalledTimes(4)
 })
 
-it('waits for received-note POI status before reading spendable funds', async () => {
+it('refreshes received balances before reading available funds', async () => {
   let complete: (() => void) | undefined
   state.refresh.mockImplementationOnce(() => new Promise<void>((resolve) => { complete = resolve }))
   state.balance.mockResolvedValue(quote.amount + finalFee)
@@ -123,8 +123,8 @@ it('waits for received-note POI status before reading spendable funds', async ()
 })
 
 it('blocks quoting if the received-balance refresh rejects', async () => {
-  state.refresh.mockRejectedValueOnce(new Error('POI refresh unavailable'))
-  await expect(preparePrivateSwap(session, quote, selected)).rejects.toThrow('POI refresh unavailable')
+  state.refresh.mockRejectedValueOnce(new Error('Balance refresh unavailable'))
+  await expect(preparePrivateSwap(session, quote, selected)).rejects.toThrow('Balance refresh unavailable')
   expect(state.balance).not.toHaveBeenCalled()
   expect(state.estimate).not.toHaveBeenCalled()
 })

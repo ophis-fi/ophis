@@ -15,6 +15,7 @@ export interface PendingSwap {
   hash?: string
   executeNonce: string
   fromBlock: number
+  inputs?: { tree: number; nullifier: string }[]
 }
 
 export async function pendingSwap(session: WalletSession): Promise<PendingSwap | undefined> {
@@ -48,6 +49,9 @@ export async function pendingSwap(session: WalletSession): Promise<PendingSwap |
     stored.fromBlock < 0 ||
     !/^\d+$/.test(stored.minimum) ||
     !/^0x[0-9a-f]{64}$/i.test(stored.npk) ||
+    ('inputs' in stored && (!Array.isArray(stored.inputs) || !stored.inputs.length || stored.inputs.length > 128 ||
+      stored.inputs.some((input) => !input || typeof input !== 'object' || !Number.isInteger(input.tree) ||
+        input.tree < 0 || input.tree > 65535 || typeof input.nullifier !== 'string' || !/^0x[0-9a-f]{64}$/i.test(input.nullifier)))) ||
     ('hash' in stored &&
       stored.hash !== undefined &&
       (typeof stored.hash !== 'string' || !/^0x[0-9a-f]{64}$/i.test(stored.hash)))
@@ -69,8 +73,12 @@ export async function reconcilePendingSwap(
 ): Promise<string> {
   const pending = await pendingSwap(session)
   if (!pending) return 'No pending private swap.'
+  const account = await session.accounts.getAccount(CHAIN, pending.index)
+  if (getAddress(account.address) !== getAddress(pending.account)) throw new Error('Recovery account mismatch.')
+  if (!pending.inputs?.length)
+    throw new Error('This older swap record has no saved input binding. Use recovery or cancel its authorization; the record has been preserved.')
   let receipt = pending.hash ? await session.provider.getTransactionReceipt(pending.hash) : null
-  if (!receipt || receipt.status === 0 || (receipt.to && getAddress(receipt.to) !== getAddress(pending.account))) {
+  if (!receipt || receipt.status === 0) {
     // The SDK's startingBlock filters input-note creation, not the spend's block.
     const history = await getWalletTransactionHistory(CONFIG.chain, session.info.id, undefined)
     const matched = history.find(
@@ -91,6 +99,14 @@ export async function reconcilePendingSwap(
   }
   if (!receipt || (await receipt.confirmations()) < 2)
     throw new Error('Pending swap needs two confirmations. Check again shortly.')
+  const nullifiers = receipt.logs.flatMap((log) => {
+    if (getAddress(log.address) !== getAddress(CONFIG.proxyContract)) return []
+    const event = PRIVACY.parseLog({ topics: [...log.topics], data: log.data })
+    return event?.name === 'Nullified' ? [...event.args.nullifier].map((n: string) => `${event.args[0]}:${n.toLowerCase()}`) : []
+  })
+  if (!(receipt.blockNumber >= pending.fromBlock) ||
+    !pending.inputs.every((input) => nullifiers.includes(`${input.tree}:${input.nullifier.toLowerCase()}`)))
+    throw new Error('The saved swap inputs are not confirmed in this transaction.')
   const failedCall = receipt.logs.some(
     (log) =>
       getAddress(log.address) === getAddress(pending.account) &&

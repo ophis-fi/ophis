@@ -1,0 +1,35 @@
+include:
+  - path: ./waku.compose.yml
+services:
+  broadcaster:
+    image: ${OPHIS_BROADCASTER_IMAGE:?Set the verified release image}
+    pull_policy: never
+    user: ${OPHIS_UID:-1000}:${OPHIS_GID:-1000}
+    init: true
+    restart: unless-stopped
+    command: [dist/main.mjs, "${OPHIS_BROADCASTER_COMMAND:-run}"]
+    read_only: true
+    tmpfs: ["/tmp:rw,noexec,nosuid,nodev,size=64m"]
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    cpus: 1.5
+    mem_limit: 3g
+    pids_limit: 128
+    ulimits:
+      nofile: { soft: 4096, hard: 4096 }
+    stop_grace_period: 90s
+    env_file: ["${OPHIS_OPERATOR_ENV:?Set the private operator env file}"]
+    environment:
+      OPHIS_BROADCASTER_WAKU: http://nwaku:8645
+      OPHIS_BROADCASTER_STATE: /var/lib/ophis-broadcaster
+      OPHIS_BROADCASTER_SECRETS: /var/lib/ophis-broadcaster/secrets/operator.sealed.json
+    volumes: ["${OPHIS_STATE_DIR:?Set the private persistent state directory}:/var/lib/ophis-broadcaster"]
+    healthcheck:
+      test: [CMD, node, -e, "fetch('http://127.0.0.1:4340/health').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+    logging:
+      driver: local
+      options: { max-size: 10m, max-file: "3" }

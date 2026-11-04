@@ -13,7 +13,7 @@ import { broadcasterFee, capGasPrice, gasDetails, minimumGasPrice, validateBroad
 import { assertExecutionNetwork, assertSameExecution, expectedOutputNpk, simulateRequest } from './execution'
 import { pendingSwap, savePendingSwap, reconcilePendingSwap } from './journal'
 import { pendingWithdrawal } from './withdrawal-journal'
-import { assertQuoteFresh, quoteSwap, type SwapQuote } from './recipe'
+import { assertFinalQuoteFresh, assertQuoteFresh, quoteSwap, revalidateSwapQuote, type SwapQuote } from './recipe'
 import { refreshReceivedBalances, requireWalletSync, type WalletSession } from './wallet'
 import { unusedSwapAccount } from './account'
 
@@ -177,6 +177,13 @@ export async function executePrivateSwap(
   )
   assertSameExecution(session, request, populated.transaction)
   if (request.executeNonce == null) throw new Error('Nonce-protected Railgun execution is required.')
+  onProgress('Re-checking the selected route price…')
+  const checkedAt = await revalidateSwapQuote(session.provider, quote)
+  const inputs = request.transactions.flatMap((transaction) => transaction.nullifiers.map((n) => ({
+    tree: Number(transaction.boundParams.treeNumber),
+    nullifier: `0x${String(n).replace(/^0x/, '').padStart(64, '0')}`,
+  })))
+  if (!populated.nullifiers?.length || !inputs.length) throw new Error('Private swap has no spend nullifiers.')
   const pending = {
     index,
     account: request.ephemeralAddress,
@@ -185,13 +192,17 @@ export async function executePrivateSwap(
     npk: expectedOutputNpk(request, TOKENS[quote.buy].address),
     executeNonce: request.executeNonce.toString(),
     fromBlock: await session.provider.getBlockNumber(),
+    inputs,
   }
+  assertFinalQuoteFresh(checkedAt)
   await savePendingSwap(session, pending)
   // Simulation discloses a signed executable batch to the trusted RPC.
+  assertFinalQuoteFresh(checkedAt)
   onProgress('Simulating the proved swap…')
   await simulateRequest(session, request, calculateGasLimit(gas.gasEstimate))
   assertQuoteFresh(quote, request.ephemeralAddress)
-  const hash = await submitter.send(session, populated, selected, gas, true)
+  assertFinalQuoteFresh(checkedAt)
+  const hash = await submitter.send(session, populated, selected, gas, true, checkedAt)
   await savePendingSwap(session, { ...pending, hash })
   await ratchetEphemeralAddress(session.info.id, NETWORK)
   onProgress(`Waiting for two confirmations: ${hash}`)

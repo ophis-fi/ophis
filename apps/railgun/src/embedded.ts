@@ -14,12 +14,15 @@ export function reportEmbeddedLayout(): void {
       window.parent.postMessage({
         type: 'ophis:private-layout-v1',
         chainId: CHAIN_ID,
-        height: Math.ceil(Math.max(main.getBoundingClientRect().height, (dialog?.scrollHeight || 0) + 40)),
+        // A modal must fit the host viewport, rather than the full expanded wallet page.
+        height: Math.ceil(dialog ? Math.min(dialog.scrollHeight + 40, window.parent.innerHeight - 80)
+          : main.getBoundingClientRect().height),
         busy: document.documentElement.dataset.busy === 'true',
       }, location.origin)
     })
   }
   new ResizeObserver(report).observe(main)
   new MutationObserver(report).observe(document.documentElement, { attributes: true, childList: true, subtree: true })
+  window.addEventListener('resize', report)
   report()
 }

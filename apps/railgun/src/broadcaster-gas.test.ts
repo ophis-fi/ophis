@@ -2,13 +2,18 @@ import { expect, it, vi } from 'vitest'
 import { EVMGasType, type SelectedBroadcaster } from '@railgun-community/shared-models'
 import type { WalletSession } from './wallet'
 
-vi.mock('./config', async (original) => ({ ...await original<typeof import('./config')>(), ENVIRONMENT: 'ethereum' }))
+vi.mock('./config', async (original) => {
+  const config = await original<typeof import('./config')>()
+  return { ...config, ENVIRONMENT: 'ethereum', PROTECTED_BROADCASTERS: {
+    [config.CHAIN_ID]: [{ railgunAddress: config.FEE_SIGNER, expiresAt: Number.MAX_SAFE_INTEGER }],
+  } }
+})
 import { assertSubmittable, broadcasterFee, capGasPrice, minimumGasPrice } from './broadcaster'
-import { FEE_SIGNER, TOKENS } from './config'
+import { CONFIG, FEE_SIGNER, TOKENS } from './config'
 
 const selected = {
   railgunAddress: FEE_SIGNER, tokenAddress: TOKENS.WETH.address,
-  tokenFee: { feePerUnitGas: '1000000000000000000', expiration: Date.now() + 600_000, feesID: 'test' },
+  tokenFee: { feePerUnitGas: '1000000000000000000', expiration: Date.now() + 600_000, feesID: 'test', relayAdapt7702: CONFIG.relayAdapt7702Contract },
 } as SelectedBroadcaster
 const gas = { evmGasType: EVMGasType.Type4 as const, gasEstimate: 3_098_193n, maxFeePerGas: 1_000_000_000n, maxPriorityFeePerGas: 1n }
 
@@ -28,7 +33,7 @@ it('rejects invalid fee budgets and rates', () => {
   expect(() => capGasPrice(gas, { ...selected, tokenFee: { ...selected.tokenFee, feePerUnitGas: '0' } }, 1n)).toThrow('Invalid broadcaster fee budget')
 })
 
-it('caps USDC fees in token base units using the same SDK formula', () => {
+it('caps USDC fees in token base units with upward reimbursement rounding', () => {
   const usdc = { ...selected, tokenAddress: TOKENS.USDC.address, tokenFee: { ...selected.tokenFee, feePerUnitGas: '2300000000' } }
   const capped = capGasPrice(gas, usdc, 1_000_000n)
   expect(capped.maxFeePerGas).toBeLessThan(gas.maxFeePerGas)
@@ -36,7 +41,7 @@ it('caps USDC fees in token base units using the same SDK formula', () => {
   expect(broadcasterFee(usdc, capped).tokenAddress).toBe(TOKENS.USDC.address)
 })
 
-it('matches the SDK rounding boundary for fractional rates and very small or large budgets', () => {
+it('fits the upward rounding boundary for fractional rates and very small or large budgets', () => {
   for (const rate of ['1000000000000000000', '805304349000000000', '2300000000']) {
     const broadcaster = { ...selected, tokenFee: { ...selected.tokenFee, feePerUnitGas: rate } }
     for (const budget of [1n, 1_000_000n, 716_490_555_332_357n, 10n ** 24n]) {

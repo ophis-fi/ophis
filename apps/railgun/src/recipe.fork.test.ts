@@ -1,7 +1,7 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { Contract, JsonRpcProvider, JsonRpcSigner, parseUnits } from 'ethers'
 import { CHAIN_ID, ERC20, OPHIS_FEE, SELECTED_NETWORK, TOKENS, WRAPPED_SYMBOL } from './config'
-import { quoteSwap, recipeCalls } from './recipe'
+import { quoteSwap, recipeCalls, revalidateSwapQuote } from './recipe'
 import { V3_FEES } from './routes'
 
 const enabled = process.env.RAILGUN_FORK_TEST === '1'
@@ -51,6 +51,7 @@ describe.skipIf(!enabled)(`${SELECTED_NETWORK.name} fork: private-swap pool call
     if (!signer) throw new Error('Missing fork signer')
     const account = await signer.getAddress()
     const quote = await quoteSwap(provider, 'USDC', '10', account)
+    await expect(revalidateSwapQuote(provider, quote)).resolves.toHaveProperty('monotonic')
     const usdc = new Contract(TOKENS.USDC.address, ERC20, provider)
     const weth = new Contract(TOKENS[WRAPPED_SYMBOL].address, ERC20, provider)
     const beforeFee: bigint = await weth.getFunction('balanceOf')(OPHIS_FEE.recipient)

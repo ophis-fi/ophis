@@ -1,0 +1,36 @@
+[Unit]
+Description=Ophis protected Ethereum broadcaster
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=simple
+User=ophis-broadcaster
+Group=ophis-broadcaster
+WorkingDirectory=/opt/ophis-broadcaster/apps/broadcaster
+EnvironmentFile=/etc/ophis-broadcaster/operator.env
+ExecStart=/usr/bin/node --max-old-space-size=2048 dist/main.mjs run
+Restart=on-failure
+RestartSec=30
+TimeoutStopSec=90
+StateDirectory=ophis-broadcaster
+StateDirectoryMode=0700
+UMask=0077
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+CPUQuota=150%
+MemoryHigh=2816M
+MemoryMax=3G
+TasksMax=128
+LimitNOFILE=4096
+
+[Install]
+WantedBy=multi-user.target

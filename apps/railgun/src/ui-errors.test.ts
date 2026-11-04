@@ -5,7 +5,7 @@ import { errorMessage } from './ui'
 it('shows the SDK broadcaster response cause without treating the attempt as safe to retry', () => {
   const error = new Error('Received response error from broadcaster.', { cause: new Error('Fee quote is no longer valid') })
   expect(errorMessage(error)).toContain('Reason: Fee quote is no longer valid')
-  expect(errorMessage(error)).toContain('Check pending swap before another attempt')
+  expect(errorMessage(error)).toContain('Check pending withdrawal for a withdrawal')
   expect(errorMessage(new Error('Received response error from broadcaster.'))).toContain('No reason was supplied')
 })
 

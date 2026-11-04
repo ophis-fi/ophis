@@ -12,6 +12,8 @@ header span, small { color: #687080; font-size: 12px; }
 h1 { font: 32px/1.15 Georgia, serif; margin: 18px 0; letter-spacing: -0.6px; }
 h2 { font-size: 17px; margin: 24px 0 12px; }
 section { margin: 16px 0; }
+fieldset { border: 0; padding: 0; margin: 0; min-width: 0; }
+progress { width: 100%; accent-color: #17191c; }
 label { display: block; margin: 16px 0; }
 input:not([type='checkbox']), textarea, select {
   display: block; box-sizing: border-box; width: 100%; padding: 13px 14px; margin-top: 6px;
@@ -26,7 +28,7 @@ button {
 #refresh, #lock, #generate, #broadcasters, #max-swap, #connect, #walletconnect, #disconnect-public {
   background: #f3f3f4; color: #17191c;
 }
-.secondary-actions { display: flex; justify-content: space-between; }
+.secondary-actions { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; }
 #amount { font-size: 28px; }
 #max-swap { font-size: 12px; margin-top: 0; }
 button:disabled { opacity: .5; cursor: default; }
@@ -44,8 +46,8 @@ summary { cursor: pointer; font-weight: 500; }
 #error, #public-wallet-error, #private-wallet-error { color: #a52626; white-space: pre-wrap; overflow-wrap: anywhere; }
 #error:empty, #private-wallet-error:empty, #public-wallet-error:empty, #quote-details:empty { display: none; }
 #address, pre { overflow-wrap: anywhere; white-space: pre-wrap; font: inherit; font-size: 12px; }
-#quote-details { background: #f3f3f4; border-radius: 14px; padding: 16px; line-height: 1.8; }
+#quote-details, #withdraw-details:not(:empty) { background: #f3f3f4; border-radius: 14px; padding: 16px; line-height: 1.8; }
 [hidden] { display: none !important; }
-dialog { max-width: min(400px, calc(100vw - 56px)); background: #fff; color: inherit; border: 1px solid #e5e6e9; border-radius: 20px; padding: 20px; }
+dialog { box-sizing: border-box; max-width: min(400px, calc(100vw - 56px)); max-height: calc(100dvh - 40px); overflow: auto; background: #fff; color: inherit; border: 1px solid #e5e6e9; border-radius: 20px; padding: 20px; }
 dialog::backdrop { background: #17191c88; }
 #walletconnect-qr { display: block; max-width: 100%; margin: auto; }

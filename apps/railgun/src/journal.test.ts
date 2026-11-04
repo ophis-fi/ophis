@@ -21,6 +21,8 @@ vi.mock('@railgun-community/wallet', async (original) => ({
 import { pendingSwap, reconcilePendingSwap } from './journal'
 
 const npk = `0x${'01'.padStart(64, '0')}`
+const nullifier = `0x${'33'.repeat(32)}`
+const spent = { address: CONFIG.proxyContract, ...PRIVACY.encodeEventLog('Nullified', [0, [nullifier]]) }
 const pending = {
   index: 3,
   account: '0x0000000000000000000000000000000000001234',
@@ -30,11 +32,13 @@ const pending = {
   hash: `0x${'11'.repeat(32)}`,
   executeNonce: '0',
   fromBlock: 123,
+  inputs: [{ tree: 0, nullifier }],
 }
 const receipt = vi.fn()
 const balance = vi.fn()
 const session = {
   info: { id: 'test-wallet' },
+  accounts: { getAccount: async () => ({ address: pending.account }) },
   provider: { getTransactionReceipt: receipt, call: balance },
 } as unknown as WalletSession
 
@@ -67,8 +71,10 @@ describe('pending swap recovery journal', () => {
       hash === replacement
         ? {
             status: 1,
+            blockNumber: 125,
             confirmations: async () => 2,
             logs: [
+              spent,
               { address: CONFIG.proxyContract, ...output },
               { address: pending.account, ...cleanup },
             ],
@@ -115,8 +121,9 @@ describe('pending swap recovery journal', () => {
     state.record = pending
     receipt.mockResolvedValue({
       status: 1,
+      blockNumber: 125,
       confirmations: async () => 2,
-      logs: [{ address: CONFIG.proxyContract, ...encoded }],
+      logs: [spent, { address: CONFIG.proxyContract, ...encoded }],
     })
     await expect(reconcilePendingSwap(session)).resolves.toMatch(/Private output confirmed/)
     expect(state.ratchet).toHaveBeenCalledWith(1n, 4)
@@ -124,8 +131,29 @@ describe('pending swap recovery journal', () => {
   })
   it('keeps a mined transaction with missing output pending', async () => {
     state.record = pending
-    receipt.mockResolvedValue({ status: 1, confirmations: async () => 2, logs: [] })
+    receipt.mockResolvedValue({ status: 1, blockNumber: 125, confirmations: async () => 2, logs: [spent] })
     await expect(reconcilePendingSwap(session, true)).rejects.toThrow(/not confirmed/)
     expect(state.remove).not.toHaveBeenCalled()
+  })
+  it('preserves older records for recovery instead of trusting an unrelated receipt', async () => {
+    state.record = { ...pending, inputs: undefined }
+    await expect(pendingSwap(session)).rejects.toThrow(/damaged/)
+    const { inputs: _inputs, ...legacy } = pending
+    state.record = legacy
+    await expect(reconcilePendingSwap(session)).rejects.toThrow(/older swap record/)
+    expect(state.remove).not.toHaveBeenCalled()
+  })
+  it.each(['missing-inputs', 'wrong-contract', 'wrong-tree', 'older-block'])('rejects %s even when the private output matches', async (reason) => {
+    state.record = pending
+    const output = PRIVACY.encodeEventLog('Shield', [0, 0,
+      [{ npk, token: { tokenAddress: TOKENS.WETH.address, tokenType: 0, tokenSubID: 0 }, value: 10n }], [], []])
+    receipt.mockResolvedValue({ status: 1, blockNumber: reason === 'older-block' ? 122 : 125,
+      confirmations: async () => 2, logs: [{ address: CONFIG.proxyContract, ...output },
+        ...(reason === 'missing-inputs' ? [] : [{ ...spent,
+          ...(reason === 'wrong-tree' ? PRIVACY.encodeEventLog('Nullified', [1, [nullifier]]) : {}),
+          address: reason === 'wrong-contract' ? pending.account : spent.address }])] })
+    await expect(reconcilePendingSwap(session, true)).rejects.toThrow(/saved swap inputs/)
+    expect(state.remove).not.toHaveBeenCalled()
+    expect(state.ratchet).not.toHaveBeenCalled()
   })
 })

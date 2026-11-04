@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { AbiCoder, type JsonRpcProvider } from 'ethers'
+import { EVMGasType, getEVMGasTypeForTransaction } from '@railgun-community/shared-models'
 import { PRIVATE_NETWORKS, privateNetwork } from './networks'
 import type { SwapQuote } from './recipe'
 
@@ -10,6 +11,7 @@ describe.each(PRIVATE_NETWORKS)('$name private swap configuration', (network) =>
     vi.resetModules()
     vi.stubGlobal('location', new URL(`http://localhost/?chainId=${network.chainId}`))
     const config = await import('./config')
+    expect(getEVMGasTypeForTransaction(config.NETWORK, false)).toBe(network.chainId === 56 ? EVMGasType.Type0 : EVMGasType.Type1)
     const { amountFromInput, recipeCalls, assertQuoteFresh, quoteSwap } = await import('./recipe')
     const { routeCandidates } = await import('./routes')
     expect(config.CHAIN).toBe(BigInt(network.chainId))
