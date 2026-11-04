@@ -402,8 +402,13 @@ export function readAssessedOphisFeeBps(
   if (appFees.length === 0) {
     // An explicitly empty execution list proves zero, including historical Arc fills.
     // Missing execution metadata is not evidence of a zero fee.
-    return chainId === ARC_CHAIN_ID && orderClass !== undefined && meta != null
-      && trade.executedProtocolFees?.length === 0 ? '0.00000000' : null;
+    if (chainId === ARC_CHAIN_ID && orderClass !== undefined && meta != null
+      && trade.executedProtocolFees?.length === 0) return '0.00000000';
+    // A proven zero operator fee needs no recipient correlation or positive-fee inference.
+    if (meta == null || typeof meta !== 'object' || Array.isArray(meta)
+      || !readAppCode(meta) || (raw !== undefined && !Array.isArray(raw))
+      || !SOVEREIGN_CHAIN_IDS.has(chainId) || executed.length !== 1
+      || BigInt(executed[0]!.amount) !== 0n) return null;
   }
   if (executed.length < appFees.length) return null;
 
