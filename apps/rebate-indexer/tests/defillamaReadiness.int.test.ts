@@ -62,6 +62,9 @@ describe('DefiLlama readiness', () => {
     expect(await completeDefiLlamaBackfillIfReady()).toBe(false);
     await sql`UPDATE defillama_reporting_state SET arc_reconciled_through_block = 23345455`;
     expect(await isDefiLlamaBackfillComplete()).toBe(true);
+    expect(await isDefiLlamaBackfillComplete([999999])).toBe(false);
+    expect(await isDefiLlamaBackfillComplete([])).toBe(false);
+    expect(await isDefiLlamaBackfillComplete([1, 1])).toBe(false);
   });
 
   it('ignores accidental testnet rows', async () => {
@@ -104,5 +107,106 @@ describe('DefiLlama readiness', () => {
       UPDATE trades SET defillama_expected_fill_count = 1, defillama_repair_checked_at = now()
       WHERE trade_uid = decode(${DECODER_UID}, 'hex')`;
     expect(await isDefiLlamaBackfillComplete()).toBe(true);
+  });
+
+  it('serves a proved chain while Unichain remains incomplete, without opening global reporting', async () => {
+    await sql`UPDATE defillama_reporting_state SET backfill_started_at = now(), arc_reconciled_through_block = NULL`;
+    await sql`INSERT INTO tracked_wallets (wallet) VALUES (decode(${WALLET}, 'hex')) ON CONFLICT DO NOTHING`;
+    await sql`INSERT INTO defillama_backfill_wallets (wallet) VALUES (decode(${WALLET}, 'hex'))`;
+    await sql`INSERT INTO wallet_chain_fetches (wallet, chain_id, last_success_at, covered_through)
+      SELECT wallet, 1, now(), now() FROM tracked_wallets`;
+    await sql`INSERT INTO trades (
+      trade_uid, chain_id, wallet, block_number, block_timestamp,
+      sell_token, buy_token, sell_amount, buy_amount, app_code, fee_verified)
+      VALUES (decode(${'88'.repeat(56)}, 'hex'), 130, decode(${WALLET}, 'hex'), 40, ${AT},
+      decode(${TOKEN}, 'hex'), decode(${TOKEN}, 'hex'), 100, 100, 'ophis', true)`;
+    await sql`INSERT INTO defillama_fills (
+      chain_id, block_number, log_index, trade_uid, transaction_hash, user_address,
+      settlement_timestamp, sell_token, sell_amount, fee_verified, value_usd)
+      VALUES (130, 40, 1, decode(${'88'.repeat(56)}, 'hex'), decode(${TX}, 'hex'),
+      decode(${WALLET}, 'hex'), ${AT}, decode(${TOKEN}, 'hex'), 100, true, 30)`;
+    await sql`UPDATE trades SET value_usd = 10 WHERE chain_id = 1`;
+
+    expect(await isDefiLlamaBackfillComplete([1])).toBe(true);
+    expect(await isDefiLlamaBackfillComplete([130])).toBe(false);
+    expect(await isDefiLlamaBackfillComplete([5042])).toBe(false);
+    expect(await isDefiLlamaBackfillComplete()).toBe(false);
+
+    const { buildApiServer } = await import('../src/api.js');
+    const app = await buildApiServer();
+    try {
+      const response = await app.inject({ url: '/defillama?date=2026-08-20&chainIds=1' });
+      expect(response.statusCode).toBe(200);
+      expect(response.json()).toMatchObject({ chainIds: [1], totals: { volumeUsd: 20, trades: 2, users: 1 } });
+      expect(response.json().chains.map((c: { chainId: number }) => c.chainId)).toEqual([1]);
+      expect((await app.inject({ url: '/defillama?date=2026-08-20&chainIds=130' })).statusCode).toBe(503);
+      expect((await app.inject({ url: '/defillama?date=2026-08-20' })).statusCode).toBe(503);
+      expect((await app.inject({ url: '/defillama?date=2026-08-20&chainIds=56' })).statusCode).toBe(503);
+      const future = new Date(Date.now() + 2 * 86_400_000).toISOString().slice(0, 10);
+      expect((await app.inject({ url: `/defillama?date=${future}&chainIds=1` })).statusCode).toBe(503);
+      await sql`DELETE FROM defillama_backfill_wallets`;
+      await sql`UPDATE wallet_chain_fetches SET covered_through = NULL WHERE chain_id = 1`;
+      expect((await app.inject({ url: '/defillama?date=2026-08-20&chainIds=1' })).statusCode).toBe(503);
+      await sql`UPDATE wallet_chain_fetches SET covered_through = '2026-08-20T23:59:59Z' WHERE chain_id = 1`;
+      expect((await app.inject({ url: '/defillama?date=2026-08-20&chainIds=1' })).statusCode).toBe(503);
+      await sql`UPDATE wallet_chain_fetches SET covered_through = '2026-08-21T00:00:00Z' WHERE chain_id = 1`;
+      expect((await app.inject({ url: '/defillama?date=2026-08-20&chainIds=1' })).statusCode).toBe(200);
+      await sql`INSERT INTO defillama_backfill_wallets (wallet) VALUES (decode(${WALLET}, 'hex'))`;
+      await sql`UPDATE wallet_chain_fetches SET last_success_at = now() - interval '27 hours' WHERE chain_id = 1`;
+      expect((await app.inject({ url: '/defillama?date=2026-08-20&chainIds=1' })).statusCode).toBe(503);
+    } finally {
+      await app.close();
+    }
+  });
+
+  it('requires post-backfill success for each queued wallet on the requested chain', async () => {
+    await sql`UPDATE wallet_chain_fetches SET covered_through = now() - interval '27 hours' WHERE chain_id = 1`;
+    expect(await isDefiLlamaBackfillComplete([1])).toBe(false);
+    await sql`UPDATE wallet_chain_fetches SET last_success_at = now(), failed = true WHERE chain_id = 1`;
+    expect(await isDefiLlamaBackfillComplete([1])).toBe(false);
+    await sql`UPDATE wallet_chain_fetches SET failed = false, last_success_at = NULL WHERE chain_id = 1`;
+    expect(await isDefiLlamaBackfillComplete([1])).toBe(false);
+    await sql`UPDATE wallet_chain_fetches SET last_success_at = now(), covered_through = now() WHERE chain_id = 1`;
+    expect(await isDefiLlamaBackfillComplete([1])).toBe(true);
+    await sql`UPDATE defillama_fills SET assessed_fee_bps = NULL WHERE chain_id = 1 AND block_number = 10`;
+    expect(await isDefiLlamaBackfillComplete([1])).toBe(false);
+    await sql`UPDATE defillama_fills SET assessed_fee_bps = 1 WHERE chain_id = 1 AND block_number = 10`;
+    await sql`UPDATE trades SET defillama_expected_fill_count = 2 WHERE chain_id = 1 AND block_number = 10`;
+    expect(await isDefiLlamaBackfillComplete([1])).toBe(false);
+    await sql`UPDATE trades SET defillama_expected_fill_count = 1 WHERE chain_id = 1 AND block_number = 10`;
+    const { completeDefiLlamaBackfillIfReady } = await import('../src/defillamaBackfill.js');
+    expect(await completeDefiLlamaBackfillIfReady()).toBe(false);
+    const [state] = await sql`SELECT completed_at FROM defillama_reporting_state`;
+    expect(state.completed_at).toBeNull();
+    expect((await sql`SELECT count(*)::int AS n FROM defillama_backfill_wallets`)[0].n).toBe(1);
+  });
+
+  it('deduplicates users over the explicit reporting set and requires every selected chain', async () => {
+    const otherUid = '99'.repeat(56);
+    await sql`INSERT INTO wallet_chain_fetches (wallet, chain_id, last_success_at, covered_through)
+      SELECT wallet, 56, now(), now() FROM tracked_wallets`;
+    await sql`INSERT INTO trades (
+      trade_uid, chain_id, wallet, block_number, block_timestamp,
+      sell_token, buy_token, sell_amount, buy_amount, app_code, fee_verified, value_usd, defillama_expected_fill_count)
+      VALUES (decode(${otherUid}, 'hex'), 56, decode(${WALLET}, 'hex'), 50, ${AT},
+      decode(${TOKEN}, 'hex'), decode(${TOKEN}, 'hex'), 100, 100, 'ophis', true, 30, 1)`;
+    await sql`INSERT INTO defillama_fills (
+      chain_id, block_number, log_index, trade_uid, transaction_hash, user_address, settlement_timestamp,
+      sell_token, sell_amount, buy_token, buy_amount, fee_verified, assessed_fee_bps, value_usd)
+      VALUES (56, 50, 1, decode(${otherUid}, 'hex'), decode(${'aa'.repeat(32)}, 'hex'), decode(${WALLET}, 'hex'), ${AT},
+      decode(${TOKEN}, 'hex'), 100, decode(${TOKEN}, 'hex'), 100, true, 1, 30)`;
+    expect(await isDefiLlamaBackfillComplete([1, 56])).toBe(true);
+    expect(await isDefiLlamaBackfillComplete([1, 130])).toBe(false);
+    const { buildApiServer } = await import('../src/api.js');
+    const app = await buildApiServer();
+    try {
+      const response = await app.inject({ url: '/defillama?date=2026-08-20&chainIds=1,56' });
+      expect(response.statusCode).toBe(200);
+      expect(response.json()).toMatchObject({ chainIds: [1, 56], totals: { volumeUsd: 50, trades: 3, users: 1 } });
+      expect(response.json().chains.map((c: { chainId: number }) => c.chainId)).toEqual([1, 56]);
+      expect((await app.inject({ url: '/defillama?date=2026-08-20&chainIds=1,130' })).statusCode).toBe(503);
+      await sql`UPDATE wallet_chain_fetches SET covered_through = NULL WHERE chain_id = 56`;
+      expect((await app.inject({ url: '/defillama?date=2026-08-20&chainIds=1,56' })).statusCode).toBe(503);
+    } finally { await app.close(); }
   });
 });

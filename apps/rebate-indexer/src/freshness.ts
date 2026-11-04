@@ -2,6 +2,7 @@ import type { Sql } from 'postgres';
 import { PRODUCTION_CHAIN_IDS } from './stats-page.js';
 import { OPHIS_ETHFLOW_OWNER_BY_CHAIN } from './fetcher.js';
 import { settleDecoderChains } from './cow/onchain.js';
+import { ARC_CHAIN_ID } from './affiliate/rates.js';
 
 /** Daily publication runs at 02:00 UTC. Two hours of grace avoids a false alarm
  * while a slow backfill/pricing pass finishes, while still paging on the same day. */
@@ -13,6 +14,7 @@ export interface PublicDataSource {
   chainId: number;
   status: 'fresh' | 'partial' | 'unavailable' | 'pending' | 'stale';
   lastSuccessAt: string | null;
+  coveredThrough: string | null;
   failedWallets: number;
   unpricedTrades: number;
 }
@@ -71,19 +73,23 @@ export async function readPublicDataFreshness(
   `;
   const sources = await sql<{
     chain_id: number; total: number; checked: number; failed: number; failed_wallets: number; overdue: number;
-    last_success_at: string | null; unpriced: number;
+    last_success_at: string | null; covered_through: string | null; unpriced: number;
   }[]>`
     WITH sources AS (
-      SELECT c.chain_id, true AS is_wallet, f.wallet IS NOT NULL AS checked, f.failed, f.last_success_at
+      SELECT c.chain_id, true AS is_wallet, f.wallet IS NOT NULL AS checked, f.failed, f.last_success_at, f.covered_through
       FROM unnest(${[...PRODUCTION_CHAIN_IDS]}::int[]) c(chain_id)
       CROSS JOIN tracked_wallets w
       LEFT JOIN wallet_chain_fetches f ON f.wallet = w.wallet AND f.chain_id = c.chain_id
       UNION ALL
-      SELECT c.chain_id, false AS is_wallet, f.chain_id IS NOT NULL AS checked, f.failed, f.last_success_at
+      SELECT c.chain_id, false AS is_wallet, f.chain_id IS NOT NULL AS checked, f.failed, f.last_success_at, f.covered_through
       FROM (
         SELECT 'ethflow' AS source, unnest(${Object.keys(OPHIS_ETHFLOW_OWNER_BY_CHAIN).map(Number)}::int[]) AS chain_id
-        UNION ALL
-        SELECT 'decoder', unnest(${settleDecoderChains()}::int[])
+        UNION
+        -- Arc needs forward discovery after its reconciliation snapshot.
+        SELECT 'decoder', unnest(${[...new Set([...settleDecoderChains(), ARC_CHAIN_ID])]}::int[])
+        UNION
+        SELECT source, chain_id FROM chain_source_fetches
+        WHERE source = 'decoder' AND chain_id = ANY(${[...PRODUCTION_CHAIN_IDS]})
       ) c
       LEFT JOIN chain_source_fetches f ON f.chain_id = c.chain_id AND f.source = c.source
     )
@@ -93,6 +99,8 @@ export async function readPublicDataFreshness(
       count(*) FILTER (WHERE c.last_success_at IS NULL OR c.last_success_at <
         ${new Date(nowMs - PUBLIC_DATA_MAX_AGE_MS).toISOString()}::timestamptz)::int AS overdue,
       min(c.last_success_at)::text AS last_success_at,
+      CASE WHEN count(*) FILTER (WHERE c.covered_through IS NULL) = 0
+        THEN min(c.covered_through)::text END AS covered_through,
       (SELECT count(*)::int FROM trades t WHERE t.chain_id = c.chain_id AND t.value_usd IS NULL) AS unpriced
     FROM sources c
     GROUP BY c.chain_id ORDER BY c.chain_id
@@ -102,6 +110,7 @@ export async function readPublicDataFreshness(
     status: s.checked < s.total ? 'pending' : s.failed === s.total ? 'unavailable'
       : s.failed > 0 || s.unpriced > 0 ? 'partial' : s.overdue > 0 ? 'stale' : 'fresh',
     lastSuccessAt: s.last_success_at,
+    coveredThrough: s.covered_through ?? null,
     failedWallets: s.failed_wallets,
     unpricedTrades: s.unpriced,
   }));

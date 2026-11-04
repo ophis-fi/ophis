@@ -7,7 +7,7 @@ vi.mock('node:timers/promises', () => ({ setTimeout: vi.fn(async () => {}) }));
 const getLogsSpy = vi.fn(async (_args: { address: `0x${string}`; fromBlock: bigint; toBlock: bigint }): Promise<never[]> => []);
 const mockClient = {
   getBlock: vi.fn(async (a: { blockTag?: string }) =>
-    a?.blockTag === 'finalized' ? { number: 200n } : { timestamp: 1_700_000_000n },
+    a?.blockTag === 'finalized' ? { number: 200n, timestamp: 1_700_000_000n } : { timestamp: 1_700_000_000n },
   ),
   getBlockNumber: vi.fn(async () => 200n),
   getLogs: getLogsSpy,
@@ -34,7 +34,7 @@ describe('settle decoder targets the sovereign settlement on sovereign chains', 
     process.env.SETTLE_DECODER_CHAINS = '5042';
     process.env.SETTLE_DECODER_DISCOVERY_ONLY = 'true';
     delete process.env.SETTLE_SCAN_START_BLOCK_5042;
-    vi.mocked(mockClient.getBlock).mockResolvedValueOnce({ number: 3_100_000n } as never);
+    vi.mocked(mockClient.getBlock).mockResolvedValueOnce({ number: 3_100_000n, timestamp: 1_700_000_000n } as never);
     let cursor: string | null = '99'; // reconciled snapshot, no archive-audit seed
     const sql = vi.fn(async (strings: TemplateStringsArray, ...values: unknown[]) => {
       if (strings.join('').includes('INSERT INTO settle_scan_cursor')) cursor = values[1] as string;
@@ -45,18 +45,18 @@ describe('settle decoder targets the sovereign settlement on sovereign chains', 
     await runSettleDecoder({ sql: sql as never, upsertTrades, reportProgress });
     expect(getLogsSpy).toHaveBeenCalledTimes(300);
     expect(cursor).toBe('3000099');
-    expect(reportProgress).toHaveBeenLastCalledWith(5042, false);
+    expect(reportProgress).toHaveBeenLastCalledWith(5042, false, undefined);
     for (const [args] of getLogsSpy.mock.calls) {
       expect(args.address).toBe('0x78799f98276efba1edeed32eae03a3fd8cdfec3a');
       expect(args.toBlock - args.fromBlock + 1n).toBeLessThanOrEqual(10_000n);
     }
     getLogsSpy.mockClear();
-    vi.mocked(mockClient.getBlock).mockResolvedValueOnce({ number: 3_005_000n } as never);
+    vi.mocked(mockClient.getBlock).mockResolvedValueOnce({ number: 3_005_000n, timestamp: 1_700_000_000n } as never);
     await runSettleDecoder({ sql: sql as never, upsertTrades, reportProgress });
     expect(getLogsSpy).toHaveBeenCalledTimes(1);
     expect(getLogsSpy.mock.calls[0]![0].fromBlock).toBe(3_000_100n);
     expect(cursor).toBe('3005000');
-    expect(reportProgress).toHaveBeenLastCalledWith(5042, true);
+    expect(reportProgress).toHaveBeenLastCalledWith(5042, true, expect.any(Date));
     expect(upsertTrades).not.toHaveBeenCalled();
   });
 
@@ -84,7 +84,8 @@ describe('settle decoder targets the sovereign settlement on sovereign chains', 
     expect(getLogsSpy.mock.calls[0]![0]).toEqual(getLogsSpy.mock.calls[1]![0]);
     expect(vi.mocked(sleep)).toHaveBeenCalledWith(1_000);
     expect(vi.mocked(sleep)).toHaveBeenCalledWith(2_000);
-    expect(reportProgress).toHaveBeenLastCalledWith(5042, failures < 3);
+    if (failures < 3) expect(reportProgress).toHaveBeenLastCalledWith(5042, true, expect.any(Date));
+    else expect(reportProgress).toHaveBeenLastCalledWith(5042, false);
     if (failures === 3) expect(sql).toHaveBeenCalledTimes(1);
   });
 
