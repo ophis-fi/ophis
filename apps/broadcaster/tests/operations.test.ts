@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
-import { mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs'
 import { spawnSync } from 'node:child_process'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -184,18 +184,15 @@ it('reports a bounded node timeout even when a JSON-RPC initialization never set
 })
 
 it('publishes healthy and alert textfiles atomically and retains the last sample after an invocation failure', () => {
-  const bin = join(path, 'bin'); mkdirSync(bin)
   writeFileSync(join(path, 'compose.env'), '', { mode: 0o600 })
-  for (const [name, text] of Object.entries({
-    docker: '#!/bin/sh\nprintf "%s" "$OPHIS_TEST_MONITOR_TEXT"\nexit "$OPHIS_TEST_MONITOR_EXIT"\n',
-    timeout: '#!/bin/sh\nshift\nexec "$@"\n', flock: '#!/bin/sh\nexit 0\n',
-  })) writeFileSync(join(bin, name), text, { mode: 0o700 })
+  const hooks = join(path, 'shell-test-hooks')
+  writeFileSync(hooks, 'docker() { printf "%s" "$OPHIS_TEST_MONITOR_TEXT"; return "$OPHIS_TEST_MONITOR_EXIT"; }\ntimeout() { shift; "$@"; }\nflock() { return 0; }\n', { mode: 0o600 })
   const output = join(path, 'broadcaster.prom')
   for (const status of [0, 2, 1]) {
     const previous = status === 0 ? '' : readFileSync(output, 'utf8')
     const text = `ophis_broadcaster_monitor_ok ${status === 0 ? 1 : 0}\n`
     const result = spawnSync('/bin/bash', [new URL('../scripts/monitor.sh', import.meta.url).pathname, path, output],
-      { timeout: 3000, env: { ...process.env, PATH: `${bin}:${process.env.PATH}`,
+      { timeout: 3000, env: { ...process.env, BASH_ENV: hooks,
         OPHIS_TEST_MONITOR_TEXT: text, OPHIS_TEST_MONITOR_EXIT: String(status) } })
     expect(result.status).toBe(status)
     expect(readFileSync(output, 'utf8')).toBe(status === 1 ? previous : text)

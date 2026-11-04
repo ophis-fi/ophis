@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict'
-import { mkdtempSync, mkdirSync, existsSync, writeFileSync, readFileSync, statfsSync, statSync } from 'node:fs'
+import { mkdtempSync, mkdirSync, existsSync, writeFileSync, readFileSync, statfsSync, statSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { createHash } from 'node:crypto'
@@ -173,6 +173,8 @@ try {
       result.feeHistoryRejectsWrongHash = true
     }
     await context.close(); context = undefined
+    // The completed disposable profile is no longer needed after its persisted-wallet check.
+    rmSync(profile, { recursive: true, force: true })
     if (index === 0) { phase = 'request-journal-restart'; operator.restart() }
   }
   assert.equal(new Set(result.wallets).size, 2)

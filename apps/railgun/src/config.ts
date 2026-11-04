@@ -45,7 +45,10 @@ export const PILOT_WITHDRAWAL_RECIPIENT: string | undefined = undefined
 export const PROTECTED_BROADCASTERS: Readonly<Partial<Record<number, readonly {
   railgunAddress: string
   expiresAt: number
-}[]>>> = { 1: [{ railgunAddress: OPHIS_ETHEREUM_BROADCASTER, expiresAt: Date.parse('2026-12-03T00:00:00Z') }] }
+  maxGasPrice: bigint
+  maxTransactionCost: bigint
+}[]>>> = { 1: [{ railgunAddress: OPHIS_ETHEREUM_BROADCASTER, expiresAt: Date.parse('2026-12-03T00:00:00Z'),
+  maxGasPrice: 500_000_000n, maxTransactionCost: 1_500_000_000_000_000n }] }
 export const ERC20 = new Interface([
   'function approve(address spender,uint256 amount) returns (bool)',
   'function allowance(address owner,address spender) view returns (uint256)',

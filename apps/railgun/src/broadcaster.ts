@@ -168,6 +168,9 @@ export async function assertSubmittable(
 ): Promise<void> {
   if (ENVIRONMENT !== 'ethereum') throw new Error('Mainnet broadcasting is disabled in this local fork build.')
   if (gas.evmGasType === EVMGasType.Type4) validateBroadcaster(selected, selected.tokenAddress, true)
+  const policy = PROTECTED_BROADCASTERS[CHAIN_ID]?.find((operator) => operator.railgunAddress === selected.railgunAddress)
+  if (policy && (calculateGasPrice(gas) > policy.maxGasPrice || calculateMaximumGas(gas) > policy.maxTransactionCost))
+    throw new Error('This gas quote exceeds the Ophis broadcaster limits. Wait for lower gas prices; check recovery before preparing another transaction.')
   // Detect known local forks even if the operator selected the wrong environment.
   const fork = await session.provider.send('anvil_metadata', []).catch(() => undefined)
   const hardhat = await session.provider.send('hardhat_metadata', []).catch(() => undefined)
