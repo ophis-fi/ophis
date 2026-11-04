@@ -1,0 +1,50 @@
+{
+  "name": "@ophis/broadcaster",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "packageManager": "pnpm@10.34.9+sha512.f49b5a8ea0fdedb44bb3c0c1d6575092a53c2950d95b7ad15df11f17974877a2de3a01c07e934e9b28ce716e51c09a94962c7306d09be2e1e4b18a8c8762fd32",
+  "engines": { "node": ">=22.18.0" },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "build:guard": "node scripts/guard-artifact.mjs",
+    "test:guard": "node scripts/guard-artifact.mjs --check && forge test -vv",
+    "test:fork": "esbuild tests/fork-driver.fixture.ts --bundle --platform=node --format=esm --packages=external --outfile=dist/fork-driver.mjs && node tests/fork-roundtrip.mjs",
+    "build": "pnpm typecheck && esbuild src/main.ts src/unlock-client.ts --bundle --platform=node --format=esm --packages=external --outdir=dist --out-extension:.js=.mjs",
+    "start": "node --max-old-space-size=2560 dist/main.mjs"
+  },
+  "dependencies": {
+    "@graphql-tools/utils": "9.2.1",
+    "@noble/ed25519": "1.7.5",
+    "@railgun-community/engine": "9.9.1",
+    "@railgun-community/shared-models": "8.2.1",
+    "@railgun-community/wallet": "11.2.0",
+    "ethers": "6.14.3",
+    "leveldown": "6.1.1",
+    "snarkjs": "0.7.5"
+  },
+  "devDependencies": {
+    "@types/leveldown": "4.0.6",
+    "@types/node": "22.19.7",
+    "@types/snarkjs": "0.7.9",
+    "esbuild": "0.28.1",
+    "typescript": "5.9.3",
+    "vitest": "4.1.12"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": ["leveldown", "esbuild", "keccak", "secp256k1", "bufferutil", "utf-8-validate"],
+    "overrides": {
+      "axios": "^1.20.0", "ws": "^8.21.0", "bn.js@4.11.6": "4.12.5", "chai": "5.3.3",
+      "underscore": "1.13.8", "@railgun-community/circomlibjs@0.0.8>web3": "-",
+      "@graphql-tools/executor-legacy-ws": "1.1.39", "follow-redirects": "1.16.2"
+    },
+    "patchedDependencies": {
+      "elliptic@6.6.1": "../../patches/elliptic@6.6.1.patch",
+      "@graphql-tools/utils@8.13.1": "../railgun/patches/@graphql-tools__utils@8.13.1.patch",
+      "@graphql-tools/utils@9.2.1": "../railgun/patches/@graphql-tools__utils@9.2.1.patch",
+      "@railgun-community/engine@9.9.1": "../railgun/patches/@railgun-community__engine@9.9.1.patch",
+      "zod@3.25.76": "../../patches/zod@3.25.76.patch"
+    }
+  }
+}

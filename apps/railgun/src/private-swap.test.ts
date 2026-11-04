@@ -2,7 +2,7 @@ import { beforeEach, expect, it, vi } from 'vitest'
 import type { WalletSession } from './wallet'
 import type { PrivateSubmitter } from './broadcaster'
 
-const state = vi.hoisted(() => ({ events: [] as string[], save: vi.fn(), simulate: vi.fn() }))
+const state = vi.hoisted(() => ({ events: [] as string[], save: vi.fn(), simulate: vi.fn(), requote: vi.fn() }))
 const account = '0x0000000000000000000000000000000000001234'
 vi.mock('./broadcaster', () => ({ broadcasterFee: vi.fn() }))
 vi.mock('./wallet', () => ({ requireWalletSync: vi.fn() }))
@@ -12,6 +12,7 @@ vi.mock('./journal', () => ({
   reconcilePendingSwap: vi.fn(),
 }))
 vi.mock('./withdrawal-journal', () => ({ pendingWithdrawal: async () => undefined }))
+vi.mock('./recipe', async (original) => ({ ...await original<typeof import('./recipe')>(), revalidateSwapQuote: state.requote }))
 vi.mock('./execution', () => ({
   assertExecutionNetwork: vi.fn(),
   assertSameExecution: vi.fn(),
@@ -23,8 +24,9 @@ vi.mock('@railgun-community/wallet', () => ({
   generateCrossContractCallsProof7702: async () => ({
     ephemeralAddress: '0x0000000000000000000000000000000000001234',
     executeNonce: 0n,
+    transactions: [{ boundParams: { treeNumber: 0 }, nullifiers: ['11'.repeat(32)] }],
   }),
-  populateProvedCrossContractCalls: async () => ({ transaction: {} }),
+  populateProvedCrossContractCalls: async () => ({ transaction: {}, nullifiers: ['11'.repeat(32)] }),
   ratchetEphemeralAddress: vi.fn(),
 }))
 import { executePrivateSwap } from './private-swap'
@@ -47,6 +49,7 @@ beforeEach(() => {
   vi.clearAllMocks()
   prepared.quote.deadline = Math.floor(Date.now() / 1000) + 600
   state.events = []
+  state.requote.mockImplementation(async () => ({ monotonic: performance.now(), wallTime: Date.now() }))
   state.save.mockImplementation(async () => {
     state.events.push('saved')
   })
@@ -61,7 +64,7 @@ it('persists recovery before disclosing a signed spend and retains it after simu
   const submitter: PrivateSubmitter = { assertReady: async () => {}, send }
   await expect(executePrivateSwap(session, prepared, () => {}, submitter)).rejects.toThrow(/RPC failed/)
   expect(state.events).toEqual(['saved', 'disclosed'])
-  expect(state.save.mock.calls[0][1]).toMatchObject({ index: 3, account, executeNonce: '0' })
+  expect(state.save.mock.calls[0][1]).toMatchObject({ index: 3, account, executeNonce: '0', inputs: [{ tree: 0, nullifier: `0x${'11'.repeat(32)}` }] })
   expect(send).not.toHaveBeenCalled()
 })
 
@@ -80,4 +83,26 @@ it('does not send a quote that expires during simulation, and retains recovery',
   await expect(executePrivateSwap(session, prepared, () => {}, { assertReady: async () => {}, send })).rejects.toThrow(/expired/)
   expect(state.save).toHaveBeenCalledOnce()
   expect(send).not.toHaveBeenCalled()
+})
+
+it('checks the price after proving and rejects movement before recording or disclosing the signed spend', async () => {
+  state.requote.mockRejectedValueOnce(new Error('Price moved outside the proved limits'))
+  const send = vi.fn()
+  await expect(executePrivateSwap(session, prepared, () => {}, { assertReady: async () => {}, send })).rejects.toThrow(/Price moved/)
+  expect(state.requote).toHaveBeenCalledWith(session.provider, prepared.quote)
+  expect(state.save).not.toHaveBeenCalled()
+  expect(state.simulate).not.toHaveBeenCalled()
+  expect(send).not.toHaveBeenCalled()
+})
+
+it('retains recovery without sending if the final price check ages during signed simulation', async () => {
+  const clock = vi.spyOn(performance, 'now').mockReturnValue(1000)
+  const send = vi.fn()
+  state.simulate.mockImplementationOnce(async () => { clock.mockReturnValue(31_000) })
+  try {
+    await expect(executePrivateSwap(session, prepared, () => {}, { assertReady: async () => {}, send })).rejects.toThrow(/Final price check expired/)
+    expect(state.save).toHaveBeenCalledOnce()
+    expect(state.simulate).toHaveBeenCalledOnce()
+    expect(send).not.toHaveBeenCalled()
+  } finally { clock.mockRestore() }
 })

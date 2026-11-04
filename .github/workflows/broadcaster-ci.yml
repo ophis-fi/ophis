@@ -1,0 +1,67 @@
+name: Broadcaster CI
+
+on:
+  pull_request:
+    paths: &inputs
+      - 'apps/broadcaster/**'
+      - 'apps/railgun/operator/**'
+      - 'apps/railgun/poi-policy.ts'
+      - 'apps/railgun/patches/**'
+      - 'patches/elliptic@6.6.1.patch'
+      - 'patches/zod@3.25.76.patch'
+      - 'scripts/test-zod3-security.cjs'
+      - 'scripts/test-deployment-boundaries.py'
+      - '.github/workflows/broadcaster-ci.yml'
+      - '.github/workflows/security.yml'
+  push:
+    branches: [main]
+    paths: *inputs
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: broadcaster-ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  checks:
+    name: Broadcaster (tests + production image)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: apps/broadcaster
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+      - uses: pnpm/action-setup@91ab88e2619ed1f46221f0ba42d1492c02baf788 # v6.0.6
+        with:
+          package_json_file: apps/broadcaster/package.json
+          run_install: false
+      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
+        with:
+          node-version: 22
+      - uses: foundry-rs/foundry-toolchain@dba66c27052e63476d886f22216e119ba7e615bf # v1
+        with:
+          version: v1.5.1
+          cache: false
+      - run: pnpm install --ignore-workspace --frozen-lockfile --ignore-scripts
+      - run: pnpm test:guard
+      - run: pnpm test
+      - run: pnpm build
+      - run: node scripts/test-build-context.mjs
+      - name: Build and smoke-test the production image
+        working-directory: .
+        run: |
+          bundle_hash=$(sha256sum apps/broadcaster/dist/main.mjs | cut -d ' ' -f 1)
+          docker build -f apps/broadcaster/Dockerfile --build-arg "OPHIS_BUNDLE_SHA256=$bundle_hash" -t ophis-broadcaster:ci .
+          # init uses disposable fork keys, imports the real CLI/native dependencies,
+          # and returns without RPC access. The journal disk check requires 6 GiB free.
+          docker run --rm --network=none --read-only --cap-drop=ALL --security-opt=no-new-privileges --memory=1g --pids-limit=64 \
+            --tmpfs /tmp:rw,nosuid,nodev,size=8g,mode=1777 \
+            -e OPHIS_BROADCASTER_MODE=fork -e OPHIS_BROADCASTER_RPC=http://127.0.0.1:9 \
+            -e OPHIS_BROADCASTER_STATE=/tmp/state -e OPHIS_BROADCASTER_SECRETS=/tmp/state/operator.json \
+            ophis-broadcaster:ci dist/main.mjs init

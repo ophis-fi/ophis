@@ -1,4 +1,4 @@
-import { defineConfig, loadEnv, searchForWorkspaceRoot } from 'vite'
+import { defineConfig, loadEnv, searchForWorkspaceRoot, type Connect } from 'vite'
 import { realpathSync } from 'node:fs'
 import { nodePolyfills } from 'vite-plugin-node-polyfills'
 
@@ -24,21 +24,27 @@ export default defineConfig(({ mode }) => {
   const proxy = Object.fromEntries(Object.entries(endpoints).flatMap(([path, target]) => target ? [[`^${path}$`, {
     target, changeOrigin: true, prependPath: false, rewrite: () => new URL(target).pathname + new URL(target).search,
   }]] : []))
+  const protectRPC = (server: { middlewares: Connect.Server }) => {
+    server.middlewares.use((request, response, next) => {
+      const path = request.url?.split('?')[0] || ''
+      if (path !== '/rpc' && !path.startsWith('/rpc/')) return next()
+      let status = 0
+      if (!endpoints[path]) status = 503
+      else if (request.headers.origin && request.headers.origin !== `http://${request.headers.host}`) status = 403
+      else if (request.method !== 'POST') status = 405
+      else if (request.headers['content-type']?.split(';')[0].trim().toLowerCase() !== 'application/json') status = 415
+      if (!status) return next()
+      response.writeHead(status, { 'Content-Type': 'application/json' })
+      response.end(JSON.stringify({ error: status === 503
+        ? 'A trusted RPC is not configured for this private network.' : 'RPC requires a same-origin JSON POST.' }))
+    })
+  }
   return {
     base: env.VITE_RAILGUN_ASSET_BASE || '/',
     plugins: [nodePolyfills({ protocolImports: true }), {
       name: 'private-network-rpc',
-      configureServer(server) {
-        server.middlewares.use((request, response, next) => {
-          const path = request.url?.split('?')[0] || ''
-          if ((path === '/rpc' || path.startsWith('/rpc/')) && !endpoints[path]) {
-            response.writeHead(503, { 'Content-Type': 'application/json' })
-            response.end(JSON.stringify({ error: 'A trusted RPC is not configured for this private network.' }))
-            return
-          }
-          next()
-        })
-      },
+      configureServer: protectRPC,
+      configurePreviewServer: protectRPC,
     }],
     optimizeDeps: {
       include: [

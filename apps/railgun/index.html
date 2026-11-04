@@ -14,7 +14,7 @@
       <p id="status" role="status" aria-live="polite">Ready to start</p>
       <section id="setup">
         <h1>Your balance, privately.</h1>
-        <p>Use a dedicated Railgun recovery phrase. Never enter your MetaMask or hardware wallet recovery phrase.</p>
+        <p>Use a dedicated recovery phrase for your private wallet. Never enter your MetaMask or hardware wallet recovery phrase.</p>
         <label
           >Password (at least 12 characters)<input
             id="password"
@@ -26,9 +26,9 @@
         <details><summary>Create or restore a private wallet</summary>
         <button id="generate" type="button">Generate recovery phrase</button>
         <label
-          >Railgun recovery phrase<textarea id="mnemonic" autocomplete="off" spellcheck="false" rows="3"></textarea>
+          >Private wallet recovery phrase<textarea id="mnemonic" autocomplete="off" spellcheck="false" rows="3"></textarea>
         </label>
-        <label><input id="backup" type="checkbox" /> I saved my Railgun recovery phrase offline.</label>
+        <label><input id="backup" type="checkbox" /> I saved my private wallet recovery phrase offline.</label>
         <button id="open" type="button">Create / restore wallet</button>
         </details>
       </section>
@@ -40,11 +40,11 @@
         </div>
         <p id="balance-sync">Balances are incomplete until the initial history sync finishes.</p>
         <details><summary>Wallet details and balances</summary><p id="address"></p><pre id="balances">Syncing…</pre></details>
-        <div class="secondary-actions"><button id="refresh" type="button">Refresh balances</button><button id="lock" type="button">Lock wallet</button></div>
+        <div class="secondary-actions"><button id="refresh" type="button">Refresh balances</button><a id="withdraw-shortcut" href="#withdrawal">Withdraw to a public wallet</a><button id="lock" type="button">Lock wallet</button></div>
         <details id="deposit-details"><summary>Add funds</summary>
         <p>
-          Shielding uses your public wallet. Railgun fees apply. New deposits usually remain ShieldPending for about
-          one hour while Railgun validates them. Use Refresh balances afterward; only Spendable funds can pay for private swaps.
+          Shielding uses your public wallet. Protocol fees apply. Ophis does not require PPOI verification.
+          Refresh balances after confirmation and synchronization. Other wallets may apply their own verification rules.
         </p>
         <p id="native-shield-help">Native funds are wrapped and shielded in one wallet transaction.</p>
         <label
@@ -67,7 +67,7 @@
         <p id="public-transaction-status" role="status" aria-live="polite"></p>
         </details>
         <h2>Swap privately</h2>
-        <label class="amount-card">You sell<select id="token"><option>WETH</option><option>USDC</option></select></label>
+        <label class="amount-card">Token to swap or withdraw<select id="token"><option>WETH</option><option>USDC</option></select></label>
         <label class="amount-card">You receive<select id="buy-token"><option>USDC</option><option>WETH</option></select></label>
         <label>Amount to sell / withdraw<input id="amount" type="text" inputmode="decimal" autocomplete="off" aria-describedby="swap-direction swap-fee-help" /></label>
         <button id="max-swap" type="button" aria-describedby="swap-fee-help">Max swap after fee</button>
@@ -84,18 +84,24 @@
         <button id="quote" type="button">Get private swap quote</button>
         <pre id="quote-details"></pre>
         <button id="swap" type="button" hidden>Prove and submit private swap</button>
-        <details><summary>Withdraw to a public wallet</summary>
+        <section id="withdrawal"><h2>Withdraw to a public wallet</h2>
+        <p id="withdraw-pending-help" role="status" hidden></p>
         <p>Withdrawing makes the destination and amount public.</p>
+        <p>Choose the token and amount above. The broadcaster fee comes from the same private balance.</p>
         <label>Public recipient<input id="recipient" type="text" autocomplete="off" spellcheck="false" /></label>
+        <button id="withdraw-max" type="button">Max withdrawal after fee</button>
         <button id="withdraw-quote" type="button">Review withdrawal fee</button>
         <pre id="withdraw-details"></pre>
         <button id="withdraw" type="button" hidden>Prove and withdraw</button>
-        </details>
-        <details><summary>Recovery and pending transactions</summary>
+        </section>
+        <details id="recovery"><summary>Recovery and pending transactions</summary>
         <p>
           <span id="recovery-gas-help">Recovery requires native currency for gas. Funding a temporary account from your public wallet creates a public link.</span>
         </p>
         <pre id="pending-details"></pre>
+        <button id="use-usdc-withdrawal" type="button" hidden>Keep WETH proof and withdraw USDC instead</button>
+        <pre id="preserved-withdrawal-details"></pre>
+        <button id="restore-preserved-withdrawal" type="button" hidden>Restore preserved withdrawal</button>
         <label>Temporary account index<input id="recovery-index" type="text" inputmode="numeric" value="0" /></label>
         <button id="scan" type="button">Check recovery balance</button>
         <button id="reconcile" type="button">Reconcile pending swap</button>
@@ -109,6 +115,7 @@
         </p>
         <button id="cancel-swap" type="button">Cancel pending swap using temporary account gas</button>
         <button id="reconcile-withdrawal" type="button">Check pending withdrawal</button>
+        <button id="retry-withdrawal" type="button">Retry saved withdrawal through broadcaster</button>
         <p>
           Resuming reuses the saved withdrawal proof so it cannot withdraw twice. Your public wallet pays gas, the
           committed broadcaster fee still applies, and the transaction becomes linked to that wallet.

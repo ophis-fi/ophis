@@ -1,0 +1,26 @@
+services:
+  nwaku:
+    image: harbor.status.im/wakuorg/nwaku@sha256:8ff9f04bdaebdfa9c6ebf4f596094a55bd7764e3356e01a191f98c437305e238
+    platform: linux/amd64
+    restart: unless-stopped
+    read_only: true
+    tmpfs: ["/tmp:rw,noexec,nosuid,nodev,size=64m"]
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    cpus: 0.5
+    mem_limit: 768m
+    pids_limit: 128
+    ports: [127.0.0.1:8645:8645]
+    command:
+      - --rest=true
+      - --rest-address=0.0.0.0
+      - --cluster-id=5
+      - --num-shards-in-network=6
+      - --shard=1
+      - --relay=true
+      - --relay-peer-exchange=true
+      - --max-connections=32
+      - --max-msg-size=600KiB
+      - --rest-relay-cache-capacity=256
+      - --log-level=ERROR
+      - --dns-discovery-url=enrtree://APMYHUVNQWHJNPI5L2KQ765EMCKUAMRWPUH3U2QIKPK6XEV3OW442@discovery.rootedinprivacy.com

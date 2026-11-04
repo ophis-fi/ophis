@@ -59,7 +59,7 @@ export function PrivateSwap({ publicSwap }: { publicSwap: ReactNode }): ReactNod
             <IncognitoIcon size={16} /> Private
           </button>
         </div>
-        {PRIVATE_SWAP_DOCUMENT && <small>RAILGUN · 0.1% Ophis fee</small>}
+        {PRIVATE_SWAP_DOCUMENT && <small>0.1% Ophis fee</small>}
       </styledEl.Mode>
       {PRIVATE_SWAP_DOCUMENT ? (
         <styledEl.Runtime

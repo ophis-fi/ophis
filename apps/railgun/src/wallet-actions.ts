@@ -2,13 +2,14 @@ import { formatUnits, type JsonRpcSigner } from 'ethers'
 import { selectBroadcaster, startBroadcasters, privateSubmitter } from './broadcaster'
 import { pendingSwap, reconcilePendingSwap } from './journal'
 import { cancelPendingSwap } from './cancel'
-import { pendingWithdrawal, reconcilePendingWithdrawal, resumePendingWithdrawal } from './withdrawal-journal'
-import { CHAIN_ID, ENVIRONMENT, NATIVE_SYMBOL, WRAPPED_SYMBOL, TOKENS, isTokenSymbol, tokenFor, type TokenSymbol } from './config'
+import { pendingWithdrawal, reconcilePendingWithdrawal, resumePendingWithdrawal, savedWithdrawalSummary,
+  canPreserveWethWithdrawal, preserveWethWithdrawal, preservedWithdrawal, restorePreservedWithdrawal } from './withdrawal-journal'
+import { CHAIN_ID, ENVIRONMENT, NATIVE_SYMBOL, PILOT_WITHDRAWAL_RECIPIENT, WRAPPED_SYMBOL, TOKENS, isTokenSymbol, tokenFor, type TokenSymbol } from './config'
 import { executePrivateSwap, prepareMaxPrivateSwap, preparePrivateSwap, SwapBalanceError } from './private-swap'
 import { amountFromInput, quoteSwap } from './recipe'
 import { recoverToken, recoveryIndex, scanRecovery } from './recovery'
 import { approveShield, assertPublicNetwork, publicSigner, requireShieldBalance, shield, shieldAllowance, PublicNetworkError, type ShieldToken } from './shield'
-import { executeUnshield, prepareUnshield } from './unshield'
+import { executeUnshield, prepareUnshield, retrySavedUnshield } from './unshield'
 import { element, errorMessage, run } from './ui'
 import { requireWalletSync, syncWallet, type WalletSession } from './wallet'
 import { unusedSwapAccount } from './account'
@@ -41,13 +42,32 @@ export async function wireWalletActions(session: WalletSession): Promise<void> {
   const refreshPending = async (): Promise<void> => {
     const pending = await pendingSwap(session)
     const withdrawal = await pendingWithdrawal(session)
+    const preserved = await preservedWithdrawal(session)
+    const unsupportedWeth = !!withdrawal && canPreserveWethWithdrawal(withdrawal)
     const identity = pending?.account || withdrawal?.recipient
+    const shortcut = element<HTMLAnchorElement>('withdraw-shortcut')
+    shortcut.href = identity ? '#recovery' : '#withdrawal'
+    shortcut.textContent = pending ? 'Check saved swap' : withdrawal ? 'Continue saved withdrawal' : 'Withdraw to a public wallet'
+    element<HTMLDetailsElement>('recovery').open = !!identity
+    for (const id of ['withdraw-max', 'withdraw-quote']) element(id).hidden = !!identity
+    element('reconcile-withdrawal').hidden = !withdrawal
+    for (const id of ['retry-withdrawal', 'resume-withdrawal']) element(id).hidden = !withdrawal || unsupportedWeth
+    element('use-usdc-withdrawal').hidden = !unsupportedWeth || !!pending
+    element('restore-preserved-withdrawal').hidden = !preserved || !!identity
+    element('preserved-withdrawal-details').textContent = preserved
+      ? `${savedWithdrawalSummary(preserved)}\nThis proof is retained in encrypted recovery storage. Setting it aside does not revoke it, and it is never retried automatically.` : ''
+    const help = element('withdraw-pending-help')
+    help.hidden = !identity
+    help.textContent = pending
+      ? 'A swap is already saved. Use Check saved swap beside Refresh balances before preparing a withdrawal.'
+      : unsupportedWeth ? 'The saved proof withdraws WETH. This pilot relays USDC. Keep the WETH proof and prepare a USDC withdrawal below.'
+      : 'A withdrawal is already saved. Use Continue saved withdrawal beside Refresh balances to retry that proof.'
     if (state.pendingIdentity !== identity) element<HTMLInputElement>('accept-leftovers').checked = false
     state.pendingIdentity = identity
     element('pending-details').textContent = pending
       ? `Pending swap: account ${pending.index}, ${pending.account}\n${pending.hash || 'Submission outcome unknown'}`
       : withdrawal
-        ? `Pending withdrawal to ${withdrawal.recipient}\n${withdrawal.hash || 'Submission outcome unknown'}`
+        ? `${savedWithdrawalSummary(withdrawal)}\n${withdrawal.hash || 'Submission outcome unknown'}`
         : 'No pending private transaction.'
   }
   await refreshPending()
@@ -223,7 +243,7 @@ export async function wireWalletActions(session: WalletSession): Promise<void> {
     amount.value = ''
     updateSwapDirection()
     invalidate()
-    status(`Shield confirmed: ${receipt.hash}. Railgun validation usually takes about one hour. Use Refresh balances afterward and wait for Spendable before a private swap.`)
+    status(`Shield confirmed: ${receipt.hash}. Refresh balances after confirmation and synchronization. Ophis does not require PPOI verification.`)
     void syncWallet(session).catch((error: unknown) => {
       element('private-wallet-error').textContent = error instanceof Error ? error.message : 'Private balance sync failed. The deposit is already confirmed.'
     })
@@ -237,7 +257,7 @@ export async function wireWalletActions(session: WalletSession): Promise<void> {
     amount.value = formatUnits(quote.amount, TOKENS[quote.sell].decimals)
     const minimumAfterShield = quote.minimum - (quote.minimum * quote.shieldFee) / 10_000n
     element('quote-details').textContent =
-      `Amount to swap: ${formatUnits(quote.amount, TOKENS[quote.sell].decimals)} ${quote.sell}\nMinimum private output: ${formatUnits(minimumAfterShield, TOKENS[quote.buy].decimals)} ${quote.buy}\nOphis fee: ${formatUnits(quote.ophisFee, TOKENS[quote.buy].decimals)} ${quote.buy}\nBroadcaster fee: ${formatUnits(prepared.fee.amount, TOKENS[quote.sell].decimals)} ${quote.sell}\nRailgun unshield / reshield: ${quote.unshieldFee} / ${quote.shieldFee} bp`
+      `Amount to swap: ${formatUnits(quote.amount, TOKENS[quote.sell].decimals)} ${quote.sell}\nMinimum private output: ${formatUnits(minimumAfterShield, TOKENS[quote.buy].decimals)} ${quote.buy}\nOphis fee: ${formatUnits(quote.ophisFee, TOKENS[quote.buy].decimals)} ${quote.buy}\nBroadcaster fee: ${formatUnits(prepared.fee.amount, TOKENS[quote.sell].decimals)} ${quote.sell}\nProtocol unshield / reshield: ${quote.unshieldFee} / ${quote.shieldFee} bp`
     if (prepared.gasCapped)
       element('quote-details').textContent += `\nGas price capped at ${formatUnits(prepared.gas.maxFeePerGas, 9)} gwei to fit your private balance. Rising gas prices can require a fresh quote.`
     if (quote.route)
@@ -283,12 +303,12 @@ export async function wireWalletActions(session: WalletSession): Promise<void> {
     status(`Swap mined: ${hash}. Confirming private balance.`)
     await syncWallet(session)
   })
-  button('withdraw-quote', 'Calculating fee…', async () => {
+  const reviewWithdrawal = async (maximum: boolean): Promise<void> => {
     state.withdrawal = undefined
     element('withdraw').hidden = true
     element('withdraw-details').textContent = ''
     requireWalletSync()
-    amountFromInput(amount.value, symbol())
+    if (!maximum) amountFromInput(amount.value, symbol())
     const selected = await selectBroadcaster(TOKENS[symbol()].address, false, broadcasterStatus)
     state.withdrawal = await prepareUnshield(
       session,
@@ -296,11 +316,15 @@ export async function wireWalletActions(session: WalletSession): Promise<void> {
       amount.value,
       recipient.value,
       selected,
+      maximum,
     )
+    if (maximum) amount.value = formatUnits(state.withdrawal.amounts[0].amount, TOKENS[symbol()].decimals)
     element('withdraw-details').textContent =
-      `Withdraw ${amount.value} ${symbol()} to ${recipient.value}\nBroadcaster fee: ${formatUnits(state.withdrawal.fee.amount, TOKENS[symbol()].decimals)} ${symbol()}\nRailgun's withdrawal fee is deducted from the amount.`
+      `Withdraw ${amount.value} ${symbol()} to ${recipient.value}\nBroadcaster fee: ${formatUnits(state.withdrawal.fee.amount, TOKENS[symbol()].decimals)} ${symbol()}\nThe broadcaster fee is paid from your private balance. The protocol withdrawal fee is deducted from the amount.\nYou receive: ${formatUnits(state.withdrawal.minimum, TOKENS[symbol()].decimals)} ${symbol()}`
     element('withdraw').hidden = false
-  })
+  }
+  button('withdraw-quote', 'Calculating fee…', () => reviewWithdrawal(false))
+  button('withdraw-max', 'Reserving withdrawal fee…', () => reviewWithdrawal(true))
   button('withdraw', 'Proving withdrawal…', async () => {
     const prepared = state.withdrawal
     invalidate()
@@ -326,6 +350,31 @@ export async function wireWalletActions(session: WalletSession): Promise<void> {
   button('reconcile-withdrawal', 'Checking withdrawal…', async () => {
     status(await reconcilePendingWithdrawal(session))
     await syncWallet(session)
+  })
+  button('retry-withdrawal', 'Retrying saved withdrawal…', async () => {
+    invalidate()
+    status(`Withdrawal confirmed: ${await retrySavedUnshield(session, status, privateSubmitter)}`)
+    await syncWallet(session)
+  })
+  button('use-usdc-withdrawal', 'Preserving WETH proof…', async () => {
+    requireWalletSync()
+    if (await pendingSwap(session)) throw new Error('Resolve the pending swap first.')
+    await preserveWethWithdrawal(session)
+    invalidate()
+    token.value = 'USDC'
+    token.dispatchEvent(new Event('input', { bubbles: true }))
+    amount.value = ''
+    recipient.value = PILOT_WITHDRAWAL_RECIPIENT!
+    status('WETH proof preserved. Preparing the USDC withdrawal for review.')
+    await reviewWithdrawal(true)
+    status('WETH proof preserved. Review the USDC amount and fee, then choose Prove and withdraw.')
+    element('withdraw-details').scrollIntoView({ block: 'center' })
+  })
+  button('restore-preserved-withdrawal', 'Restoring saved proof…', async () => {
+    if (await pendingSwap(session)) throw new Error('Resolve the pending swap first.')
+    await restorePreservedWithdrawal(session)
+    invalidate()
+    status('The preserved withdrawal is active again. Check its status before retrying.')
   })
   button('resume-withdrawal', 'Resuming saved withdrawal…', async () => {
     if (!state.provider) selectProvider(await connectPublicWallet(window.ethereum ? 'browser' : 'walletconnect'))

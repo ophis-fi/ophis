@@ -3,10 +3,13 @@ import { ZeroAddress, ZeroHash, type TransactionReceipt } from 'ethers'
 import { CONFIG, TOKENS } from './config'
 import { PRIVACY } from './execution'
 import type { WalletSession } from './wallet'
+import { withdrawalData } from '../tests/withdrawal.fixture'
 
-const state = vi.hoisted(() => ({ value: undefined as unknown, remove: vi.fn(), history: vi.fn(), save: vi.fn() }))
+const state = vi.hoisted(() => ({ value: undefined as unknown, preserved: undefined as unknown, remove: vi.fn(), history: vi.fn(), save: vi.fn() }))
+vi.mock('./config', async (original) => ({ ...await original<typeof import('./config')>(),
+  PILOT_WITHDRAWAL_RECIPIENT: '0x0000000000000000000000000000000000001234' }))
 vi.mock('./storage', () => ({
-  readPrivateState: async () => state.value,
+  readPrivateState: async (_session: unknown, key: string) => key === 'preservedWithdrawal' ? state.preserved : state.value,
   writePrivateState: state.save,
   deletePrivateState: state.remove,
 }))
@@ -18,6 +21,10 @@ import {
   assertWithdrawalReceipt,
   pendingWithdrawal,
   reconcilePendingWithdrawal,
+  resumePendingWithdrawal,
+  canPreserveWethWithdrawal,
+  preserveWethWithdrawal,
+  restorePreservedWithdrawal,
   type PendingWithdrawal,
 } from './withdrawal-journal'
 import { assertWithdrawalRecipient } from './unshield'
@@ -69,6 +76,7 @@ function receipt(): TransactionReceipt {
   if (!unshield || !nullified) throw new Error('Missing Railgun events')
   return {
     status: 1,
+    blockNumber: 102,
     confirmations: async () => 2,
     logs: [
       {
@@ -88,12 +96,61 @@ function receipt(): TransactionReceipt {
 beforeEach(() => {
   vi.clearAllMocks()
   state.value = pending
+  state.preserved = undefined
+  state.save.mockReset()
+  state.remove.mockReset()
   state.history.mockResolvedValue([])
   call.mockResolvedValue(PRIVACY.encodeFunctionResult('nullifiers', [false]))
 })
 
+it('keeps the full unsupported WETH proof encrypted before releasing its active slot, and restores it without loss', async () => {
+  const weth = { ...pending, token: 'WETH', transaction: { ...pending.transaction,
+    data: withdrawalData(1, 1, pending.recipient, TOKENS.WETH.address) }, nullifiers: [`0x${'11'.repeat(32)}`] }
+  state.value = weth
+  state.save.mockImplementation(async (_session, key, value) => {
+    if (key === 'preservedWithdrawal') state.preserved = value
+    else state.value = value
+  })
+  state.remove.mockImplementation(async (_session, key) => {
+    if (key === 'pendingWithdrawal') { expect(state.preserved).toEqual(weth); state.value = undefined }
+    else state.preserved = undefined
+  })
+  expect(canPreserveWethWithdrawal(weth as PendingWithdrawal)).toBe(true)
+  expect(canPreserveWethWithdrawal({ ...weth, transaction: { ...weth.transaction,
+    data: withdrawalData(1, 1, pending.recipient, TOKENS.USDC.address) } } as PendingWithdrawal)).toBe(false)
+  await expect(restorePreservedWithdrawal(session)).rejects.toThrow('Resolve the active withdrawal')
+  state.remove.mockImplementationOnce(async () => { throw new Error('Interrupted active-record update') })
+  await expect(preserveWethWithdrawal(session)).rejects.toThrow('Interrupted active-record update')
+  expect(state.value).toEqual(weth)
+  expect(state.preserved).toEqual(weth)
+  await preserveWethWithdrawal(session)
+  expect(state.value).toBeUndefined()
+  expect(state.preserved).toEqual(weth)
+  await restorePreservedWithdrawal(session)
+  expect(state.value).toEqual({ ...weth, chainId: 1 })
+  expect(state.preserved).toBeUndefined()
+})
+
+it('never releases a proof when preservation fails, a hash exists, inputs are spent, or another proof is preserved', async () => {
+  const weth = { ...pending, token: 'WETH', transaction: { ...pending.transaction,
+    data: withdrawalData(1, 1, pending.recipient, TOKENS.WETH.address) }, nullifiers: [`0x${'11'.repeat(32)}`] }
+  state.value = weth
+  state.save.mockRejectedValueOnce(new Error('Storage failure'))
+  await expect(preserveWethWithdrawal(session)).rejects.toThrow('Storage failure')
+  expect(state.remove).not.toHaveBeenCalled()
+  state.value = { ...weth, hash: `0x${'33'.repeat(32)}` }
+  await expect(preserveWethWithdrawal(session)).rejects.toThrow('without a transaction hash')
+  state.value = weth
+  call.mockResolvedValueOnce(PRIVACY.encodeFunctionResult('nullifiers', [true]))
+  await expect(preserveWethWithdrawal(session)).rejects.toThrow('input is spent')
+  state.preserved = { ...weth, transaction: { ...weth.transaction, data: withdrawalData(1, 1, pending.recipient, TOKENS.USDC.address) } }
+  await expect(preserveWethWithdrawal(session)).rejects.toThrow('Another preserved withdrawal exists')
+  expect(state.remove).not.toHaveBeenCalled()
+})
+
 it('retains unknown withdrawals and rejects damaged encrypted records', async () => {
   await expect(reconcilePendingWithdrawal(session)).rejects.toThrow(/not confirmed/)
+  await expect(reconcilePendingWithdrawal(session)).rejects.toThrow('Saved withdrawal: 0.001 USDC')
   expect(state.remove).not.toHaveBeenCalled()
   state.value = { ...pending, transaction: { ...pending.transaction, to: TOKENS.USDC.address } }
   await expect(pendingWithdrawal(session)).rejects.toThrow(/damaged/)
@@ -107,9 +164,28 @@ it('requires the saved nullifiers, correct token, recipient and minimum output',
     { ...pending, token: 'WETH' as const },
     { ...pending, recipient: TOKENS.WETH.address },
   ]) {
-    expect(() => assertWithdrawalReceipt(receipt(), invalid)).toThrow(/not confirmed/)
+    expect(() => assertWithdrawalReceipt(receipt(), invalid)).toThrow(/not confirmed|does not match/)
   }
   expect(() => assertWithdrawalReceipt({ ...receipt(), status: 0 } as TransactionReceipt, pending)).toThrow(/reverted/)
+})
+
+it.each(['wrong-tree', 'older-block'])('rejects a withdrawal receipt with %s even when nullifier bytes and output match', (reason) => {
+  const actual = receipt()
+  const modified = reason === 'wrong-tree'
+    ? { ...actual, logs: [actual.logs[0], { address: CONFIG.proxyContract, ...PRIVACY.encodeEventLog('Nullified', [1, [nullifier]]) }] }
+    : { ...actual, blockNumber: 99 }
+  expect(() => assertWithdrawalReceipt(modified as unknown as TransactionReceipt, pending)).toThrow(/not confirmed/)
+})
+
+it('preserves an older separable-fee proof and blocks public rebroadcast before contacting a signer', async () => {
+  state.value = { ...pending, transaction: { ...pending.transaction, data: withdrawalData(2) } }
+  const signer = { sendTransaction: vi.fn(), getAddress: vi.fn() }
+  await expect(resumePendingWithdrawal(session, signer as unknown as Parameters<typeof resumePendingWithdrawal>[1]))
+    .rejects.toThrow(/must share one proof/)
+  expect(signer.sendTransaction).not.toHaveBeenCalled()
+  expect(signer.getAddress).not.toHaveBeenCalled()
+  expect(state.remove).not.toHaveBeenCalled()
+  expect(state.save).not.toHaveBeenCalled()
 })
 
 it('recovers a lost response hash from wallet history before clearing', async () => {

@@ -9,10 +9,12 @@ import {
   assertPrivateOutput,
   assertTraceSuccess,
   assertSameExecution,
+  assertAtomicWithdrawal,
   encodeRequest,
 } from './execution'
 import { CONFIG, TOKENS } from './config'
 import type { WalletSession } from './wallet'
+import { withdrawalData } from '../tests/withdrawal.fixture'
 
 async function request(chainId = 1n, delegate = CONFIG.relayAdapt7702Contract): Promise<RelayAdapt7702Request> {
   const wallet = Wallet.createRandom()
@@ -28,6 +30,12 @@ async function request(chainId = 1n, delegate = CONFIG.relayAdapt7702Contract): 
 }
 
 describe('private execution guards', () => {
+  it('permits a single fee-and-unshield proof and blocks separable or fee-only common batches', () => {
+    expect(() => assertAtomicWithdrawal(withdrawalData())).not.toThrow()
+    expect(() => assertAtomicWithdrawal(withdrawalData(2))).toThrow(/must share one proof/)
+    expect(() => assertAtomicWithdrawal(withdrawalData(1, 0))).toThrow(/must share one proof/)
+    expect(() => assertAtomicWithdrawal(withdrawalData(1, 2))).toThrow(/must share one proof/)
+  })
   it('rejects a populated payload or authorization differing from the recorded and simulated request', async () => {
     const provider = new JsonRpcProvider('http://127.0.0.1:8549')
     const session = { provider } as WalletSession

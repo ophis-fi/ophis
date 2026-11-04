@@ -83,7 +83,7 @@ it('deposits native ETH through the canonical relay with the exact value and pri
     'Preparing your ETH deposit…',
     expect.stringContaining('Confirm the 0.001 ETH deposit'),
     expect.stringContaining('Deposit submitted:'),
-    'Deposit confirmed: native deposit. Railgun validation usually takes about one hour. Use Refresh balances afterward and wait for Spendable before a private swap.',
+    'Deposit confirmed: native deposit. Refresh balances after confirmation and synchronization. Ophis does not require PPOI verification.',
   ])
 })
 

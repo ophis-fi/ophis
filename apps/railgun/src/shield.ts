@@ -139,6 +139,6 @@ export async function shield(
   onStatus(`Deposit submitted: ${response.hash}. Waiting for ${CHAIN_NAME} confirmation. Do not submit it again.`)
   const receipt = await response.wait()
   if (!receipt || receipt.status !== 1) throw new Error('Shield was not confirmed.')
-  onStatus(`Deposit confirmed: ${receipt.hash}. Railgun validation usually takes about one hour. Use Refresh balances afterward and wait for Spendable before a private swap.`)
+  onStatus(`Deposit confirmed: ${receipt.hash}. Refresh balances after confirmation and synchronization. Ophis does not require PPOI verification.`)
   return receipt
 }

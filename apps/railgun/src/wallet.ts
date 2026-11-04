@@ -1,4 +1,4 @@
-import { CHAIN, CHAIN_NAME, CHAIN_ID, RPC_PATH, CONFIG, ENVIRONMENT, NETWORK, POI_NODES, VERSION } from './config'
+import { CHAIN, CHAIN_NAME, CHAIN_ID, RPC_PATH, CONFIG, ENVIRONMENT, NETWORK, VERSION } from './config'
 import {
   createRailgunWallet,
   loadWalletByID,
@@ -11,7 +11,6 @@ import {
   fullWalletForID,
   EphemeralKeyManager,
   refreshBalances,
-  refreshReceivePOIsForWallet,
   onBalancesUpdate,
   stopRailgunEngine,
   type SnarkJSGroth16,
@@ -25,6 +24,8 @@ import { JsonRpcProvider, Mnemonic, randomBytes, hexlify, getBytes } from 'ether
 import { groth16 } from 'snarkjs'
 import { artifacts, encryptionKey, readPreference, walletDB, writePreference } from './storage'
 import { RPC_BATCH_SIZE } from '../rpc-policy'
+import { disablePPOI } from '../poi-policy'
+import { POI } from '@railgun-community/engine'
 
 export interface WalletSession {
   info: RailgunWalletInfo
@@ -87,7 +88,8 @@ export async function startWalletEngine(
       throw new Error(`The local build requires an Anvil ${CHAIN_NAME} fork.`)
     if (ENVIRONMENT === 'ethereum' && (anvil || hardhat))
       throw new Error('Mainnet mode cannot use a local fork.')
-    await startRailgunEngine('ophis', walletDB, false, artifacts, false, false, POI_NODES)
+    disablePPOI(POI, CONFIG)
+    await startRailgunEngine('ophis', walletDB, false, artifacts, false, false)
     // Upstream snarkjs types reject the sparse circuit inputs accepted by Railgun.
     getProver().setSnarkJSGroth16(groth16 as unknown as SnarkJSGroth16)
     setOnBalanceUpdateCallback(onBalance)
@@ -170,17 +172,6 @@ export async function syncWallet(session: WalletSession): Promise<void> {
   await refreshReceivedBalances(session)
 }
 
-const receiveRefreshes = new Map<string, Promise<void>>()
-
 export function refreshReceivedBalances(session: WalletSession): Promise<void> {
-  const id = session.info.id
-  let refresh = receiveRefreshes.get(id)
-  if (!refresh) {
-    refresh = (async () => {
-      await refreshReceivePOIsForWallet(VERSION, NETWORK, id)
-      await onBalancesUpdate(VERSION, fullWalletForID(id), CONFIG.chain)
-    })().finally(() => { receiveRefreshes.delete(id) })
-    receiveRefreshes.set(id, refresh)
-  }
-  return refresh
+  return onBalancesUpdate(VERSION, fullWalletForID(session.info.id), CONFIG.chain)
 }

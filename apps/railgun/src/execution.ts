@@ -15,6 +15,13 @@ export const PRIVACY = new Interface(ABIRailgunSmartWallet)
 type Receipt = { status: number | null; logs: readonly { address: string; topics: readonly string[]; data: string }[] }
 const REGISTRY = new Interface(['function getContractAddress(string name) view returns (address)'])
 
+export function assertAtomicWithdrawal(data: string): void {
+  const [transactions] = PRIVACY.decodeFunctionData('transact', data)
+  // Common proofs have no signature binding the batch; fee and unshield must share one proof.
+  if (transactions.length !== 1 || transactions[0].boundParams.unshield !== 1n)
+    throw new Error('This withdrawal cannot be safely broadcast. Its fee and output must share one proof; try a smaller amount.')
+}
+
 export function assertAuthorization(request: RelayAdapt7702Request): void {
   const authorization = request.authorization
   if (authorization.chainId !== CHAIN || getAddress(authorization.address) !== getAddress(CONFIG.relayAdapt7702Contract))

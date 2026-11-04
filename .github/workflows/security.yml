@@ -497,43 +497,51 @@ jobs:
           # exception is gone; the pnpm braces backport and its regression stay.
 
   pnpm-audit-railgun:
-    name: pnpm audit (railgun deps)
+    name: pnpm audit (${{ matrix.project }} deps)
     runs-on: ubuntu-latest
-    # apps/railgun is a standalone pnpm project (.npmrc ignore-workspace, own
-    # lockfile), so none of the jobs above covered it. Same gate as docs-ophis:
-    # block on absolute HIGH/CRITICAL. Only the backported residuals are ignored.
+    strategy:
+      fail-fast: false
+      matrix:
+        project: [railgun, broadcaster]
+    env:
+      PROJECT_DIR: apps/${{ matrix.project }}
+    # Both projects have independent lockfiles outside the root workspace.
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
       - uses: ./.github/actions/install-osv-scanner
-      - name: Scan railgun project and block on HIGH/CRITICAL
+      - name: Scan standalone project and block on HIGH/CRITICAL
         run: |
-          test -s apps/railgun/pnpm-lock.yaml || { echo "lockfile apps/railgun/pnpm-lock.yaml missing or empty -- failing closed"; exit 1; }
+          test -s "$PROJECT_DIR/pnpm-lock.yaml" || { echo "missing project lockfile -- failing closed"; exit 1; }
           rc=0
-          osv-scanner --lockfile apps/railgun/pnpm-lock.yaml --format json \
-            --output-file /tmp/osv-railgun.json || rc=$?
+          osv-scanner --lockfile "$PROJECT_DIR/pnpm-lock.yaml" --format json \
+            --output-file /tmp/osv-private.json || rc=$?
           if [ "$rc" != 0 ] && [ "$rc" != 1 ]; then
             echo "osv-scanner errored (rc=$rc) -- failing closed"; exit "$rc"
           fi
           # Version-matched residuals that ship a local backport with regression
-          # tests in railgun CI; osv cannot see pnpm patches. Re-check after any
+          # tests in each project's CI; osv cannot see pnpm patches. Re-check after any
           # Railgun SDK, Waku client or bundler change.
           # zod 3.22.4/3.25.76 GHSA-mrhx-c7xc-m3w5: patches/zod@3.*.patch.
           # @graphql-tools/utils 8.13.1/9.2.1 GHSA-7mx3-vvmw-hjmv: mergeDeep backport.
           # @libp2p/peer-store 11.2.7 GHSA-vrf4-mx87-p53w: peer-record identity backport.
           # Review: audit/dependency-review-2026-11-03.md, apps/railgun/DEPENDENCIES.md
-          python3 scripts/osv-gate.py /tmp/osv-railgun.json --mode advisories \
-            --osv-rc "$rc" --ignore GHSA-mrhx-c7xc-m3w5:2026-12-03 \
-            --ignore GHSA-7mx3-vvmw-hjmv:2026-12-03 \
-            --ignore GHSA-vrf4-mx87-p53w:2026-12-03
+          exceptions=(--ignore GHSA-mrhx-c7xc-m3w5:2026-12-03 --ignore GHSA-7mx3-vvmw-hjmv:2026-12-03)
+          if [ "$PROJECT_DIR" = apps/railgun ]; then
+            exceptions+=(--ignore GHSA-vrf4-mx87-p53w:2026-12-03)
+          fi
+          python3 scripts/osv-gate.py /tmp/osv-private.json --mode advisories \
+            --osv-rc "$rc" "${exceptions[@]}"
           # The ignores above match GHSA ids only; fail if any copy osv reports
           # under them is not an exact pnpm.patchedDependencies key (a new
           # unpatched version would otherwise pass silently).
           python3 - <<'PY'
-          import json
-          ign = {"GHSA-mrhx-c7xc-m3w5", "GHSA-7mx3-vvmw-hjmv", "GHSA-vrf4-mx87-p53w"}
-          patched = set(json.load(open("apps/railgun/package.json"))["pnpm"]["patchedDependencies"])
+          import json, os
+          project = os.environ["PROJECT_DIR"]
+          ign = {"GHSA-mrhx-c7xc-m3w5", "GHSA-7mx3-vvmw-hjmv"}
+          if project == "apps/railgun": ign.add("GHSA-vrf4-mx87-p53w")
+          patched = set(json.load(open(project + "/package.json"))["pnpm"]["patchedDependencies"])
           bad = sorted({f"{p['package']['name']}@{p['package']['version']}"
-                        for r in json.load(open("/tmp/osv-railgun.json")).get("results", [])
+                        for r in json.load(open("/tmp/osv-private.json")).get("results", [])
                         for p in r.get("packages", [])
                         for v in p.get("vulnerabilities", [])
                         if ({v.get("id")} | set(v.get("aliases", []))) & ign} - patched)

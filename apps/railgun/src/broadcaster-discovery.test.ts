@@ -2,6 +2,12 @@ import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import type { SelectedBroadcaster } from '@railgun-community/shared-models'
 
 const mocks = vi.hoisted(() => ({ started: false, start: vi.fn(), find: vi.fn() }))
+vi.mock('./config', async (original) => {
+  const config = await original<typeof import('./config')>()
+  return { ...config, PROTECTED_BROADCASTERS: {
+    [config.CHAIN_ID]: [{ railgunAddress: config.FEE_SIGNER, expiresAt: Number.MAX_SAFE_INTEGER }],
+  } }
+})
 vi.mock('@railgun-community/waku-broadcaster-client-web', () => ({
   WakuBroadcasterClient: { isStarted: () => mocks.started, start: mocks.start, findBroadcastersForToken: mocks.find },
   BroadcasterTransaction: { create: vi.fn() },
@@ -49,6 +55,7 @@ it('keeps the 60-second freshness and canonical delegate guards while waiting fo
     { ...selected, tokenFee: { ...selected.tokenFee, expiration: Date.now() - 1 } },
     { ...selected, tokenFee: { ...selected.tokenFee, expiration: Date.now() + 60_000 } },
     { ...selected, tokenFee: { ...selected.tokenFee, relayAdapt7702: '0x0000000000000000000000000000000000000001' } },
+    { ...selected, railgunAddress: 'unapproved-operator', tokenFee: { ...selected.tokenFee, feePerUnitGas: '1' } },
   ]
   mocks.find.mockReturnValue(invalid)
   const { selectBroadcaster } = await import('./broadcaster')
@@ -57,6 +64,16 @@ it('keeps the 60-second freshness and canonical delegate guards while waiting fo
   mocks.find.mockReturnValue([...invalid, selected])
   await vi.advanceTimersByTimeAsync(1000)
   expect(await pending).toBe(selected)
+})
+
+it('does not fall back to an unapproved operator when the protected operator disappears', async () => {
+  const selected = await candidate()
+  mocks.find.mockReturnValue([{ ...selected, railgunAddress: 'unapproved-operator' }])
+  const { selectBroadcaster } = await import('./broadcaster')
+  const pending = selectBroadcaster(selected.tokenAddress, true, vi.fn())
+  const rejected = expect(pending).rejects.toThrow('No verified compatible broadcaster fee arrived')
+  await vi.advanceTimersByTimeAsync(45_000)
+  await rejected
 })
 
 it('times out without weakening fee checks and can use a fresh common withdrawal fee on retry', async () => {

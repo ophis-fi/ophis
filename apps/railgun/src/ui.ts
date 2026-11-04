@@ -4,7 +4,7 @@ export function errorMessage(error: unknown): string {
   if (error instanceof Error && error.message === 'Received response error from broadcaster.') {
     const reason = error.cause instanceof Error ? error.cause.message : 'No reason was supplied.'
     const detail = reason.replace(/0x[0-9a-f]{80,}/gi, '[transaction data omitted]').slice(0, 800)
-    return `${error.message}\nReason: ${detail}\nUse Recovery → Check pending swap before another attempt.`
+    return `${error.message}\nReason: ${detail}\nUse Recovery → Check pending withdrawal for a withdrawal, or Reconcile pending swap for a swap.`
   }
   if (isError(error, 'UNKNOWN_ERROR') && error.error && typeof error.error === 'object' &&
     'message' in error.error && typeof error.error.message === 'string')

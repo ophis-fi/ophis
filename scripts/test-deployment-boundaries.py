@@ -87,6 +87,24 @@ class DeploymentBoundaries(unittest.TestCase):
         self.assertNotIn('secrets.', str(build))
         self.assertIn('pnpm run build', str(build))
 
+    def test_broadcaster_build_has_no_production_access_and_its_own_dependency_gate(self):
+        workflow = yaml.safe_load((ROOT / '.github/workflows/broadcaster-ci.yml').read_text())
+        trigger = workflow.get('on', workflow.get(True))
+        self.assertEqual(trigger['pull_request']['paths'], trigger['push']['paths'])
+        self.assertIn('apps/broadcaster/**', trigger['pull_request']['paths'])
+        self.assertIn('apps/railgun/patches/**', trigger['pull_request']['paths'])
+        self.assertEqual(workflow['permissions'], {'contents': 'read'})
+        for job in workflow['jobs'].values():
+            self.assertNotIn('environment', job)
+            self.assertNotIn('secrets.', str(job))
+            self.assertIn('--frozen-lockfile --ignore-scripts', str(job))
+            self.assertIn('--network=none', str(job))
+            self.assertIn('OPHIS_BROADCASTER_MODE=fork', str(job))
+        security = yaml.safe_load((ROOT / '.github/workflows/security.yml').read_text())
+        projects = security['jobs']['pnpm-audit-railgun']['strategy']['matrix']['project']
+        self.assertIn('broadcaster', projects)
+        self.assertIn('railgun', projects)
+
 
 if __name__ == '__main__':
     unittest.main()

@@ -1,0 +1,8 @@
+node_modules/
+dist/
+.env*
+!.env.example
+data/
+secrets/
+guard-artifacts/
+.forge-cache/

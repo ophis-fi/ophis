@@ -1,0 +1,8 @@
+**
+!apps/broadcaster/package.json
+!apps/broadcaster/pnpm-lock.yaml
+!apps/broadcaster/.npmrc
+!apps/broadcaster/dist/main.mjs
+!apps/railgun/patches/*.patch
+!patches/elliptic@6.6.1.patch
+!patches/zod@3.25.76.patch
