@@ -7,6 +7,11 @@
     "strict": true,
     "skipLibCheck": true,
     "esModuleInterop": true,
+    "paths": {
+      "@railgun-community/engine": ["./node_modules/@railgun-community/engine"],
+      "@railgun-community/shared-models": ["./node_modules/@railgun-community/shared-models"],
+      "ethers": ["./node_modules/ethers"]
+    },
     "noEmit": true,
     "types": ["node", "vitest/globals"]
   },
