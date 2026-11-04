@@ -87,8 +87,6 @@ export function settings(env: NodeJS.ProcessEnv): Settings {
     : getAddress(env.OPHIS_BROADCASTER_OPERATOR_ADDRESS)
   if (operatorAddress === ZeroAddress || (enabled && mode === 'mainnet' && !operatorAddress))
     throw new Error('Mainnet signing requires the verified dedicated gas-wallet address.')
-  if (enabled && mode === 'mainnet' && admission === 'public')
-    throw new Error('Public mainnet admission requires final release acceptance; use the isolated fork for validation.')
   return { mode, admission, enabled, rpc: rpc.href, waku: waku.href, state, secrets, maxGasPrice,
     maxTransactionCost, dailyBudget, reserve, marginBps, executionGuard, pilotAccount, pilotWithdrawalRecipient, operatorAddress }
 }

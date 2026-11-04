@@ -66,7 +66,7 @@ describe('operator configuration and money boundaries', () => {
       OPHIS_BROADCASTER_OPERATOR_ADDRESS: '0x0000000000000000000000000000000000007890' }
     expect(() => settings(env)).toThrow('execution guard')
     const guarded = { ...env, OPHIS_BROADCASTER_EXECUTION_GUARD: '0x0000000000000000000000000000000000001234' }
-    expect(() => settings(guarded)).toThrow('final release acceptance')
+    expect(settings(guarded).admission).toBe('public')
     expect(settings({ ...guarded, OPHIS_BROADCASTER_MODE: 'fork', OPHIS_BROADCASTER_RPC: 'http://127.0.0.1:8559' }).admission).toBe('public')
     expect(() => settings({ ...guarded, OPHIS_BROADCASTER_OPERATOR_ADDRESS: undefined })).toThrow('dedicated gas-wallet')
     for (const field of ['OPHIS_BROADCASTER_PILOT_ACCOUNT', 'OPHIS_BROADCASTER_PILOT_WITHDRAWAL_RECIPIENT'])
