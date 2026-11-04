@@ -5,9 +5,10 @@ import { ARC_CHAIN_ID } from './affiliate/rates.js';
 
 const ROUTER_WALLETS: readonly string[] = Object.freeze([...DECODER_ETHFLOW_OWNERS]);
 
-async function reportingIsReady(chainId?: number): Promise<boolean> {
-  if (chainId !== undefined && !PRODUCTION_CHAIN_IDS.includes(chainId)) return false;
-  const chainIds = chainId === undefined ? [...PRODUCTION_CHAIN_IDS] : [chainId];
+async function reportingIsReady(requestedChainIds?: readonly number[]): Promise<boolean> {
+  const chainIds = requestedChainIds === undefined ? [...PRODUCTION_CHAIN_IDS] : [...requestedChainIds];
+  if (!chainIds.length || new Set(chainIds).size !== chainIds.length
+    || chainIds.some(id => !PRODUCTION_CHAIN_IDS.includes(id))) return false;
   const [row] = await sql<{ ready: boolean }[]>`
     WITH fill_counts AS (
       SELECT chain_id, trade_uid, COUNT(*)::int AS fill_count
@@ -18,14 +19,17 @@ async function reportingIsReady(chainId?: number): Promise<boolean> {
     SELECT
       EXISTS (SELECT 1 FROM defillama_reporting_state
         WHERE singleton = true
-          AND (${chainId !== undefined && chainId !== ARC_CHAIN_ID} OR arc_reconciled_through_block IS NOT NULL))
+          AND (${!chainIds.includes(ARC_CHAIN_ID)} OR arc_reconciled_through_block IS NOT NULL))
       AND NOT EXISTS (
         SELECT 1 FROM defillama_backfill_wallets q
-        WHERE ${chainId === undefined} OR NOT EXISTS (
-          SELECT 1 FROM wallet_chain_fetches f
-          WHERE f.wallet = q.wallet AND f.chain_id = ${chainId ?? 0}
-            AND NOT f.failed AND f.last_success_at IS NOT NULL AND f.covered_through >= (
-              SELECT backfill_started_at FROM defillama_reporting_state WHERE singleton = true
+        WHERE ${requestedChainIds === undefined} OR EXISTS (
+          SELECT 1 FROM unnest(${chainIds}::int[]) c(chain_id)
+          WHERE NOT EXISTS (
+            SELECT 1 FROM wallet_chain_fetches f
+            WHERE f.wallet = q.wallet AND f.chain_id = c.chain_id
+              AND NOT f.failed AND f.last_success_at IS NOT NULL AND f.covered_through >= (
+                SELECT backfill_started_at FROM defillama_reporting_state WHERE singleton = true
+              )
             )
         )
       )
@@ -76,6 +80,6 @@ export async function completeDefiLlamaBackfillIfReady(): Promise<boolean> {
 }
 
 /** Scoped reads never change global completion or dequeue another chain's work. */
-export async function isDefiLlamaBackfillComplete(chainId?: number): Promise<boolean> {
-  return reportingIsReady(chainId);
+export async function isDefiLlamaBackfillComplete(chainIds?: readonly number[]): Promise<boolean> {
+  return reportingIsReady(chainIds);
 }

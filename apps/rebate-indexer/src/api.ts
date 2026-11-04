@@ -689,7 +689,7 @@ export async function buildApiServer(): Promise<FastifyInstance> {
   // protocol-level totals only: no wallets, orders, referrals, current-cycle
   // payout state, or operational timing. Values come from settled trades after
   // appData attribution and USD pricing by this indexer.
-  app.get<{ Querystring: { date?: string; chainId?: string } }>('/defillama', {
+  app.get<{ Querystring: { date?: string; chainIds?: string } }>('/defillama', {
     config: {
       rateLimit: { max: 120, timeWindow: '1 minute' },
     },
@@ -702,25 +702,29 @@ export async function buildApiServer(): Promise<FastifyInstance> {
     if (Number.isNaN(parsed.getTime()) || parsed.toISOString().slice(0, 10) !== date) {
       return reply.code(400).send({ error: 'date must be a valid UTC calendar date' });
     }
-    const rawChainId = req.query.chainId;
-    const chainId = rawChainId === undefined ? undefined : Number(rawChainId);
-    if (rawChainId !== undefined && (typeof rawChainId !== 'string' || !/^[1-9]\d*$/.test(rawChainId)
-      || !PRODUCTION_CHAIN_IDS.includes(chainId!))) {
-      return reply.code(400).send({ error: 'chainId must be a supported production chain ID' });
+    const rawChainIds = req.query.chainIds;
+    if (rawChainIds !== undefined && (typeof rawChainIds !== 'string' || !/^[1-9]\d*(,[1-9]\d*)*$/.test(rawChainIds))) {
+      return reply.code(400).send({ error: 'chainIds must be a comma-separated list of supported production IDs' });
     }
-    if (!await isDefiLlamaBackfillComplete(chainId)) {
+    const scope = rawChainIds === undefined ? undefined : rawChainIds.split(',').map(Number);
+    if (scope && (new Set(scope).size !== scope.length || scope.some(id => !PRODUCTION_CHAIN_IDS.includes(id)))) {
+      return reply.code(400).send({ error: 'chainIds must contain unique supported production IDs' });
+    }
+    const chainIds = scope ?? [...PRODUCTION_CHAIN_IDS];
+    if (!await isDefiLlamaBackfillComplete(scope)) {
       return reply.code(503).send({ error: 'DefiLlama settlement history backfill in progress' });
     }
-    if (chainId !== undefined) {
+    if (scope !== undefined) {
       const { dataSources } = await readPublicDataFreshness(sql);
-      const source = dataSources?.find((s) => s.chainId === chainId);
       // Successful ingestion through day-end distinguishes no activity from missing history.
-      if (source?.status !== 'fresh' || !source.coveredThrough
-        || !(Date.parse(source.coveredThrough) >= parsed.getTime() + 86_400_000)) {
+      if (scope.some(id => {
+        const source = dataSources?.find(s => s.chainId === id);
+        return source?.status !== 'fresh' || !source.coveredThrough
+          || !(Date.parse(source.coveredThrough) >= parsed.getTime() + 86_400_000);
+      })) {
         return reply.code(503).send({ error: 'DefiLlama chain ingestion incomplete for requested day' });
       }
     }
-    const chainIds = chainId === undefined ? [...PRODUCTION_CHAIN_IDS] : [chainId];
 
     const chains = await computeDefiLlamaDay(
       sql,
@@ -752,7 +756,7 @@ export async function buildApiServer(): Promise<FastifyInstance> {
 
     return reply
       .header('cache-control', 'public, max-age=300')
-      .send({ ok: true, date, ...(chainId === undefined ? {} : { chainId }), totals, chains });
+      .send({ ok: true, date, ...(scope === undefined ? {} : { chainIds: scope }), totals, chains });
   });
 
   // PUBLIC, keyless, per-appCode integrator earnings - the trust surface that lets an
