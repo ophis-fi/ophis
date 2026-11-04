@@ -752,6 +752,59 @@ describe('readAssessedOphisFeeBps', () => {
   const OPHIS = '0x858f0F5eE954846D47155F5203c04aF1819eCeF8';
   const OTHER = '0x1111111111111111111111111111111111111111';
 
+  it.each([
+    { amount: '0', buyAmount: '802017', expected: '0.00000000' },
+    { amount: '5', buyAmount: '995', expected: null },
+  ])('assesses a sovereign operator-only fill without an appData partner fee: $amount', async ({ amount, buyAmount, expected }) => {
+    const [{ readAssessedOphisFeeBps }, { CowTrade }] = await Promise.all([
+      import('../src/fetcher.js'),
+      import('../src/cow/types.js'),
+    ]);
+    const token = '0x0b2c639c533813f4aa9d7837caf62653d097ff85';
+    const trade = CowTrade.parse({
+      ...sampleTrade('0x' + '91'.repeat(56), OTHER, '300000000000000', buyAmount),
+      buyToken: token,
+      executedProtocolFees: [{ amount, token,
+        policy: { priceImprovement: { factor: 0.8, maxVolumeFactor: 0.0099 } } }],
+    });
+    const meta = { appCode: 'Ophis', metadata: { bridging: { providerId: 'cow-sdk://bridging/providers/across' } } };
+
+    for (const chainId of [10, 130, 4663, 5042]) {
+      expect(readAssessedOphisFeeBps(chainId, 'limit', meta, trade)).toBe(expected);
+      expect(readAssessedOphisFeeBps(chainId, 'market', meta, trade)).toBe(expected);
+    }
+  });
+
+  it('keeps absent or ambiguous operator-only fee evidence unresolved', async () => {
+    const [{ readAssessedOphisFeeBps }, { CowTrade }] = await Promise.all([
+      import('../src/fetcher.js'),
+      import('../src/cow/types.js'),
+    ]);
+    const token = '0xddafbb505ad214d7b80b1f830fccc89b60fb7a83';
+    const fee = { amount: '0', token, policy: { priceImprovement: { factor: 0.8, maxVolumeFactor: 0.0099 } } };
+    const trade = CowTrade.parse({
+      ...sampleTrade('0x' + '90'.repeat(56), OTHER), executedProtocolFees: [fee],
+    });
+    const meta = { appCode: 'ophis' };
+
+    expect(readAssessedOphisFeeBps(10, 'limit', null, trade)).toBeNull();
+    expect(readAssessedOphisFeeBps(10, 'limit', 'unresolved', trade)).toBeNull();
+    expect(readAssessedOphisFeeBps(10, 'limit', [], trade)).toBeNull();
+    expect(readAssessedOphisFeeBps(10, 'limit', { appCode: 'Other' }, trade)).toBeNull();
+    expect(readAssessedOphisFeeBps(10, 'limit', {}, trade)).toBeNull();
+    for (const partnerFee of [null, false, 0, '']) {
+      expect(readAssessedOphisFeeBps(10, 'limit', { ...meta, metadata: { partnerFee } }, trade)).toBeNull();
+    }
+    expect(readAssessedOphisFeeBps(10, undefined, meta, trade)).toBeNull();
+    expect(readAssessedOphisFeeBps(10, 'liquidity', meta, trade)).toBeNull();
+    expect(readAssessedOphisFeeBps(1, 'limit', meta, trade)).toBeNull();
+    expect(readAssessedOphisFeeBps(10, 'limit', meta, { ...trade, executedProtocolFees: undefined })).toBeNull();
+    expect(readAssessedOphisFeeBps(10, 'limit', meta, { ...trade, executedProtocolFees: [] })).toBeNull();
+    expect(readAssessedOphisFeeBps(10, 'limit', meta, { ...trade, executedProtocolFees: [fee, fee] })).toBeNull();
+    expect(readAssessedOphisFeeBps(10, 'limit', meta, { ...trade, executedProtocolFees: [{ ...fee,
+      policy: { priceImprovement: { factor: 0.8, maxVolumeFactor: 0.006 } } }] })).toBeNull();
+  });
+
   it('uses appData ordering to exclude another recipient with an identical policy', async () => {
     const [{ readAssessedOphisFeeBps }, { CowTrade }] = await Promise.all([
       import('../src/fetcher.js'),
