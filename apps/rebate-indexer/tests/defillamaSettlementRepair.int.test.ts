@@ -788,4 +788,42 @@ describe('repairDefiLlamaSettlementIdentity', () => {
       GROUP BY t.defillama_expected_fill_count`;
     expect(audit).toEqual({ expected: 1, fills: '1' });
   });
+
+  it('repairs an existing operator-only zero-fee fill and completes its exact-UID audit', async () => {
+    const uid = UID('c0');
+    const trade = apiTrade(uid, 370, 8, 300_000n, 802_017n, true);
+    trade.executedProtocolFees![0]!.amount = '0';
+    API_TRADES.set(`10:${uid}`, [trade]);
+    ORDERS.set(`10:${uid}`, {
+      uid, owner: OWNER, receiver: null, sellToken: SELL, buyToken: BUY,
+      sellAmount: trade.sellAmount, buyAmount: trade.buyAmount,
+      appData: `0x${'00'.repeat(32)}`,
+      fullAppData: JSON.stringify({ appCode: 'Ophis', metadata: {} }),
+      creationDate: '2026-10-01T22:01:17.636Z', class: 'limit', status: 'fulfilled',
+    });
+    BLOCK_LOGS.set('10:370', [tradeLog(trade)]);
+    await insertAggregate(uid, 10, 300_000n, 802_017n, 0);
+    await sql`
+      INSERT INTO defillama_fills (
+        chain_id, block_number, log_index, trade_uid, transaction_hash, user_address,
+        settlement_timestamp, sell_token, sell_amount, buy_token, buy_amount,
+        volume_fee_bps, assessed_fee_bps, fee_verified)
+      VALUES (
+        10, 370, 8, decode(${uid.slice(2)}, 'hex'), decode(${trade.txHash.slice(2)}, 'hex'),
+        decode(${OWNER.slice(2)}, 'hex'), '2026-10-01T22:01:35.000Z',
+        decode(${SELL.slice(2)}, 'hex'), 300000, decode(${BUY.slice(2)}, 'hex'), 802017,
+        0, NULL, true)`;
+
+    await repairDefiLlamaSettlementIdentity();
+
+    const [row] = await sql`
+      SELECT t.defillama_expected_fill_count AS expected, COUNT(*)::int AS fills,
+        MIN(f.assessed_fee_bps)::text AS assessed, BOOL_AND(f.fee_verified) AS verified,
+        SUM(f.sell_amount)::text AS sell, SUM(f.buy_amount)::text AS buy
+      FROM trades t JOIN defillama_fills f USING (chain_id, trade_uid)
+      WHERE t.chain_id = 10 AND t.trade_uid = decode(${uid.slice(2)}, 'hex')
+      GROUP BY t.defillama_expected_fill_count`;
+    expect(row).toEqual({ expected: 1, fills: 1, assessed: '0.00000000', verified: true,
+      sell: '300000', buy: '802017' });
+  });
 });
