@@ -1,8 +1,10 @@
 # RAILGUN broadcaster integration with current Ophis
 
-Status: stages 1–2 implemented locally, 4 November 2026. Stages 3–6 and production rollout remain pending.
+Status: stages 1–3 implemented and validated locally, 4 November 2026. Stages 4–6 and production rollout remain pending.
 
 Implementation checkpoint: stages 1–2 are implemented in `fix/railgun-broadcaster-security-integration` at `/Users/scep/ophis-railgun-integration`. The complete pilot snapshot is preserved; current main is integrated; backend frozen installation, dependency regressions, audit gate, Linux amd64 image build and disposable runtime smoke test now pass. Local evidence includes 95 backend tests, 286 client tests, both builds/typechecks and ten guard tests with 1,024 nonce fuzz cases. Five workflow-boundary regressions pass. Thirteen optional Waku/fork/live tests remain skipped. Hosted CI and the later production stages are not represented by these local results. Claude reviewed the dependency plan; Jev's claim checks support the bounded conclusions but include uncertainty requiring human/source review, not automatic release approval.
+
+Stage 3 checkpoint: 117 backend and 287 client tests pass. Two distinct disposable wallets completed two real-proof swaps and four protected withdrawals across WETH, USDC and USDT; underpayment, consumed-spend replay and delegation-change controls passed without an extra operator signature. Settlement and fee holds survive restart, and the historical pilot marker is retained. A reproduced Ethereum positive-tip mismatch was fixed in withdrawal preparation. Mainnet/public startup remains blocked until final acceptance; these results do not activate the live service. See [current validation](../../../apps/broadcaster/VALIDATION.md#repeated-user-admission-checkpoint--4-november-2026).
 
 ## Objective and baseline
 
@@ -52,11 +54,14 @@ The production site's actual deployed commit must be recorded during release pre
 
 **Acceptance:** repeated swaps and withdrawals from separate disposable wallets succeed in the isolated integration environment; replay, underpayment, unsupported requests and authorization changes are rejected without an unnecessary signed transaction. Existing pending records still reconcile correctly.
 
+**Local acceptance passed.** The protocol fork checks authenticated received commitments with a frozen initial rate snapshot; full operator history and live-builder acceptance remain stage 6 work. Enabled public mainnet startup retains an explicit source hold.
+
 ### 4. Finish the existing Ophis user flow
 
 - Use the existing public/private navigation and private runtime. Keep RAILGUN's dependency graph separate from the ordinary frontend; avoid changing the main application's libraries merely to satisfy the private SDK.
 - Bind the verified Ophis fee identity to the Ethereum protected-broadcaster configuration, using an explicit review expiry. Replace the temporary localhost trust configuration through the release configuration.
 - Connect the existing WalletConnect setup, trusted RPC gateway and resource-budget controls to the final deployment. Verify that fee discovery works before inviting a deposit or generating a proof.
+- Reduce and clearly expose first-use history synchronization before inviting a deposit. The stage 3 wallets needed 140/138 seconds even with cached public responses; preserve proof/Merkle verification while improving startup and retaining existing wallet caches.
 - Present deposit, private swap, private balances, withdrawal and saved-transaction recovery with clear fee/amount summaries. Display WETH accurately when the user holds or receives wrapped ETH.
 - Preserve private-document navigation, CSP, analytics exclusion, validated frame messages, and protection from destructive cache/storage migrations. Verify the combined main-app shell and private runtime; an iframe alone is not proof of key isolation.
 - Keep ordinary Ophis quotes, approvals, public swaps, wallet connection and network navigation covered by regression checks. Public/private switching must remain safe while a private operation is pending.
@@ -68,6 +73,7 @@ The production site's actual deployed commit must be recorded during release pre
 - Prepare owner-controlled collection of earned private fees, conversion/unwrap into ETH where required, and bounded gas-wallet replenishment. The online fee wallet remains view-only; collection must not place its spending mnemonic or treasury authority in the broadcaster service.
 - Use existing Baal infrastructure and Ambire + Ledger treasury control. Batch collection when appropriate, and calculate collection, conversion and refill costs before recommending a sweep. Check that the fee policy remains profitable after these costs.
 - Define low-reserve, stale-node/price, missing-fee-assurance, pending-nonce and unavailable-service monitoring. Prepare alert delivery through the existing selected mechanism; no new paid service is assumed.
+- Prepare and test owner-reviewed resolution of confirmed unpaid/unknown holds with an audit reason, preserved signed records and retained gas expenditure. Ambiguous outcomes stay held; never clear a row or claim a missing fee was paid to restore availability.
 - Retain encrypted off-server backups, manual unlock after restart and documented recovery. Test restore/reconciliation in a disposable installation before relying on it operationally.
 
 **Acceptance:** an operator can reconcile received fees and native gas expenditure, prepare a costed collection/refill action, and recover the service from its backup. Tests and preparation do not require a new user deposit or an automatic treasury refill.
@@ -104,4 +110,4 @@ Before merging another security/dependency PR during this work, compare its chan
 - Rejected attempts should not create a chain transaction. An included outer revert or an explicit paid cancellation can still consume operator gas without delivering the private fee. Record that residual exposure honestly; this plan does not make unconditional user-funded reimbursement possible. If zero operator loss becomes an absolute release requirement, the payment architecture must be revisited before public activation.
 - Added networks, asynchronous private CoW settlement, new paid infrastructure, automatic treasury access and unrelated frontend dependency migrations are outside this Ethereum release.
 
-Stages 1–2 now have a reproducible integrated broadcaster image and matching local security evidence; see the [source/image manifest and review closure](../../../apps/broadcaster/VALIDATION.md#source-and-image-manifest). The next implementation slice is stage 3: repeated-user admission and recovery in isolation, retaining the live pilot's state and financial limits.
+Stages 1–3 now have reproducible builds and local compatibility/security evidence; see [validation and review closure](../../../apps/broadcaster/VALIDATION.md). The next implementation slice is stage 4: the existing Ophis user flow, including first-use synchronization, while preserving the live pilot's state and financial limits.

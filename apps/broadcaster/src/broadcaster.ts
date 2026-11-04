@@ -40,8 +40,9 @@ export class Broadcaster {
   }
 
   async available(): Promise<boolean> {
-    if (!this.config.enabled || this.busy || !this.sdk.ready()) return false
-    if (this.config.pilotWithdrawalRecipient && this.store.db.prepare('SELECT 1 FROM settings WHERE key=?').get('withdrawalPilot')) return false
+    if (!this.config.enabled || this.busy || !this.sdk.ready() || this.store.hasPending()) return false
+    if (this.config.admission === 'pilot' && this.config.pilotWithdrawalRecipient &&
+      this.store.db.prepare('SELECT 1 FROM settings WHERE key=?').get('withdrawalPilot')) return false
     const { nonce, confirmed, balance, block } = await this.state()
     return block.baseFeePerGas! + 1n <= this.config.maxGasPrice && nonce === confirmed &&
       balance >= this.config.reserve + this.config.maxTransactionCost &&
@@ -72,7 +73,10 @@ export class Broadcaster {
     let reserved = false
     try {
       if (existing?.raw) throw new Error('This signed request needs reconciliation.')
-      if (!this.config.enabled || this.busy || !this.sdk.ready()) throw new Error('Broadcaster not available.')
+      if (!this.config.enabled || !this.sdk.ready()) throw new Error('Broadcaster not available.')
+      phase = 'busy'
+      if (this.busy || this.store.hasPending()) throw new Error('Reconcile the preceding request and fee first.')
+      phase = 'admission'
       const now = performance.now()
       this.lastRequests = this.lastRequests.filter((time) => now - time < 60_000)
       this.attempts = this.attempts.filter((time) => now - time < 60_000)
@@ -82,27 +86,38 @@ export class Broadcaster {
       phase = 'format'
       const parsed = parseRequest(request.data, this.wallet.address, this.config)
       phase = 'pilot'
-      if (parsed.type4 && this.config.pilotAccount && getAddress(String(parsed.transaction.to)) !== this.config.pilotAccount)
+      if (parsed.type4 && this.config.admission === 'pilot' && this.config.pilotAccount &&
+        getAddress(String(parsed.transaction.to)) !== this.config.pilotAccount)
         throw new Error('This operator is restricted to its selected pilot account.')
+      let withdrawalToken: string | undefined
       if (!parsed.type4) {
         const withdrawal = parsed.transactions[0].unshieldPreimage
         phase = 'withdrawal-recipient'
-        if (!this.config.pilotWithdrawalRecipient || typeof withdrawal.npk !== 'string' ||
-          BigInt(withdrawal.npk) !== BigInt(this.config.pilotWithdrawalRecipient)) throw new Error('Wrong withdrawal recipient.')
+        if (typeof withdrawal.npk !== 'string') throw new Error('Wrong withdrawal recipient.')
+        const recipient = BigInt(withdrawal.npk)
+        if (recipient <= 0n || recipient >= 2n ** 160n || (this.config.admission === 'pilot' &&
+          (!this.config.pilotWithdrawalRecipient || recipient !== BigInt(this.config.pilotWithdrawalRecipient))))
+          throw new Error('Wrong withdrawal recipient.')
         phase = 'withdrawal-token'
-        if (typeof withdrawal.token.tokenAddress !== 'string' || BigInt(withdrawal.token.tokenType) !== 0n ||
-          BigInt(withdrawal.token.tokenSubID) !== 0n || getAddress(withdrawal.token.tokenAddress) !== getAddress(TOKENS[1].address) ||
+        if (typeof withdrawal.token.tokenAddress !== 'string') throw new Error('Wrong withdrawal token.')
+        withdrawalToken = getAddress(withdrawal.token.tokenAddress)
+        if (BigInt(withdrawal.token.tokenType) !== 0n || BigInt(withdrawal.token.tokenSubID) !== 0n ||
+          !TOKENS.some((token) => getAddress(token.address) === withdrawalToken) ||
+          (this.config.admission === 'pilot' && withdrawalToken !== getAddress(TOKENS[1].address)) ||
           BigInt(withdrawal.value) <= 0n) throw new Error('Wrong withdrawal token.')
         phase = 'withdrawal-used'
-        if (this.store.db.prepare('SELECT 1 FROM settings WHERE key=?').get('withdrawalPilot')) throw new Error('Withdrawal pilot used.')
+        if (this.config.admission === 'pilot' && this.store.db.prepare('SELECT 1 FROM settings WHERE key=?').get('withdrawalPilot'))
+          throw new Error('Withdrawal pilot used.')
       }
       const feeQuote = this.store.db.prepare('SELECT expiration FROM fees WHERE id=?').get(parsed.feesID) as { expiration: number } | undefined
       if (!feeQuote || feeQuote.expiration <= Date.now()) { phase = 'fee'; throw new Error('Fee quote expired.') }
       this.busy = true; this.activeKey = request.key; reserved = true
       phase = 'fee'
       const payment = await this.sdk.fee(parsed)
-      if (!parsed.type4 && (Object.keys(payment).length !== 1 || !payment[getAddress(TOKENS[1].address)]))
-        throw new Error('The withdrawal broadcaster fee must be paid in USDC.')
+      if (withdrawalToken && (Object.keys(payment).length !== 1 || !payment[withdrawalToken])) {
+        phase = 'withdrawal-fee'
+        throw new Error('The withdrawal broadcaster fee must use the withdrawn token.')
+      }
       validateFee(this.store, parsed.feesID, payment, 1n, await this.oracle.rates())
       const { nonce, confirmed, balance, block } = await this.state()
       if (nonce !== confirmed || this.store.nonceBlocked(nonce))
@@ -151,7 +166,7 @@ export class Broadcaster {
       // Recheck fee/reserve state after commitment authentication without mutating the user's batch.
       phase = 'state'
       const fresh = await this.state()
-      if (fresh.nonce !== nonce || fresh.confirmed !== nonce || fresh.balance < budget + this.config.reserve ||
+      if (this.store.hasPending() || fresh.nonce !== nonce || fresh.confirmed !== nonce || fresh.balance < budget + this.config.reserve ||
         price < fresh.block.baseFeePerGas! + tip) throw new Error('Execution state changed during validation.')
       phase = 'network'
       await this.validateNetworkAndAuthority(parsed, fresh.block.number)
@@ -167,7 +182,7 @@ export class Broadcaster {
       const raw = await signApprovedTransaction(this.wallet, transaction)
       const hash = Transaction.from(raw).hash!
       this.store.signed(request.key, request.envelope, raw, hash, budget, this.config.dailyBudget,
-        nonce, JSON.stringify(proof), feeQuote.expiration, !parsed.type4)
+        nonce, JSON.stringify(proof), feeQuote.expiration, this.config.admission === 'pilot' && !parsed.type4)
       phase = 'submit'
       const sent = await this.sender.broadcastTransaction(raw)
       if (sent.hash !== hash) throw new Error('Unexpected protected transaction hash.')
@@ -179,11 +194,18 @@ export class Broadcaster {
       const unknown = this.store.get(request.key)?.raw
       const errors: Record<string, string> = {
         request: 'Broadcaster is unavailable or the request is unsupported. Check recovery before preparing another request.',
+        busy: 'The broadcaster is finishing another transaction or checking its fee. Keep the saved proof and retry when the broadcaster is available.',
+        admission: 'The broadcaster request limit was reached. Keep the saved proof and retry later.',
         format: 'The broadcaster rejected the request format. Keep the saved withdrawal and use Retry saved withdrawal through broadcaster.',
         pilot: 'The swap account is outside this restricted pilot. Keep the saved transaction.',
-        'withdrawal-recipient': 'The withdrawal destination does not match the approved pilot recipient. Keep the saved withdrawal.',
-        'withdrawal-token': 'This pilot permits a positive USDC withdrawal only. Keep the saved withdrawal.',
+        'withdrawal-recipient': this.config.admission === 'pilot'
+          ? 'The withdrawal destination does not match the approved pilot recipient. Keep the saved withdrawal.'
+          : 'The withdrawal destination must be a nonzero Ethereum address. Keep the saved withdrawal.',
+        'withdrawal-token': this.config.admission === 'pilot'
+          ? 'This pilot permits a positive USDC withdrawal only. Keep the saved withdrawal.'
+          : 'A withdrawal requires a positive amount of WETH, USDC or USDT. Keep the saved withdrawal.',
         'withdrawal-used': 'The one-time withdrawal pilot is already used. Check the pending withdrawal before retrying.',
+        'withdrawal-fee': 'The withdrawal fee must be paid in the withdrawn token. Keep the saved withdrawal.',
         simulation: 'The private transaction did not pass execution simulation. Check recovery before retrying.',
         network: 'The broadcaster could not verify the current Ethereum privacy contracts. Keep the saved withdrawal.',
         pricing: 'Current gas pricing exceeds the permitted limits. Keep the saved proof and retry through the broadcaster later.',
@@ -263,7 +285,7 @@ export class Broadcaster {
       if (request) this.store.respond(item.key, encryptResponse({ txHash: item.hash }, request))
       if (receipt.status === 1 && !item.assured &&
         await this.sdk.assure(item.hash, JSON.parse(item.fee_data) as FeeProof)) this.store.assured(item.key)
-      if (receipt.status !== 1) this.store.assured(item.key)
+      // An included sponsored revert paid no fee: retain the halt for operator review.
       } catch { /* Retain each failed assurance and continue with other requests. */ }
     }
   }

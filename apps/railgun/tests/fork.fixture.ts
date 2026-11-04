@@ -52,7 +52,9 @@ class ForkPOI extends POINodeInterface {
   }
 }
 
-const active: { session?: WalletSession } = {}
+const active: { session?: WalletSession; operatorRequest?: {
+  data: Record<string, unknown>; key: Uint8Array; payload: string; sharedKey: Uint8Array
+} } = {}
 
 export async function createFreshForkWallet(password: string): Promise<void> {
   const provider = new JsonRpcProvider(new URL(RPC_PATH, location.origin).href)
@@ -84,11 +86,11 @@ function session(): WalletSession {
   return active.session
 }
 
-export async function forkBalance(): Promise<string> {
+export async function forkBalance(token: TokenSymbol = 'USDC'): Promise<string> {
   const current = session()
   await syncWallet(current)
   return String(
-    await balanceForERC20Token(VERSION, fullWalletForID(current.info.id), NETWORK, TOKENS.USDC.address, true),
+    await balanceForERC20Token(VERSION, fullWalletForID(current.info.id), NETWORK, TOKENS[token].address, true),
   )
 }
 
@@ -124,6 +126,55 @@ const localSubmitter: PrivateSubmitter = {
   },
 }
 
+const operatorSubmitter: PrivateSubmitter = { assertReady: localSubmitter.assertReady,
+  send: async (_session, populated, selected, gas) => {
+    if (gas.evmGasType !== 4 && gas.evmGasType !== 0 && gas.evmGasType !== 1)
+      throw new Error('The fork operator supports type-4 swaps and legacy withdrawals only.')
+    const transaction = populated.transaction
+    const key = getRailgunWalletAddressData(selected.railgunAddress).viewingPublicKey
+    const data = {
+      txidVersion: VERSION, to: transaction.to, data: transaction.data,
+      broadcasterViewingKey: Buffer.from(key).toString('hex'), chainType: 0, chainID: 1,
+      feesID: selected.tokenFee.feesID, useRelayAdapt: gas.evmGasType === 4, minVersion: '8.0.0', maxVersion: '8.999.0',
+      transactType: gas.evmGasType === 4 ? 'TX7702' : 'COMMON', preTransactionPOIsPerTxidLeafPerList: populated.preTransactionPOIsPerTxidLeafPerList,
+      ...(gas.evmGasType === 4 ? {
+        authorization: transaction.authorizationList?.[0], gasLimit: calculateGasLimit(gas.gasEstimate).toString(),
+        maxFeePerGas: gas.maxFeePerGas.toString(), maxPriorityFeePerGas: gas.maxPriorityFeePerGas.toString(),
+      } : { minGasPrice: gas.gasPrice.toString() }),
+    }
+    const encoded = JSON.parse(JSON.stringify(data, (_, value) => typeof value === 'bigint' ? value.toString() : value)) as Record<string, unknown>
+    const encrypted = await encryptDataWithSharedKey(encoded, key)
+    const payload = JSON.stringify({ method: 'transact', id: 1,
+      params: { pubkey: encrypted.randomPubKey, encryptedData: encrypted.encryptedData } })
+    active.operatorRequest = { data: encoded, key, payload, sharedKey: encrypted.sharedKey }
+    const result = await forkOperatorReplay()
+    if (!result?.txHash || result.error) throw new Error(result?.error ?? 'No encrypted operator response.')
+    return result.txHash
+  },
+}
+
+export async function forkOperatorReplay(reencrypt = false): Promise<{ txHash?: string; error?: string } | null> {
+  const stored = active.operatorRequest
+  if (!stored || !(await session().provider.send('anvil_metadata', [])).forkedNetwork)
+    throw new Error('A saved disposable fork request is required.')
+  const encrypted = reencrypt ? await encryptDataWithSharedKey(stored.data, stored.key) : undefined
+  const packet = JSON.parse(stored.payload)
+  packet.id = 99
+  if (encrypted) packet.params = { pubkey: encrypted.randomPubKey, encryptedData: encrypted.encryptedData }
+  const send = (window as unknown as { ophisOperatorTest: (payload: string) => Promise<string> }).ophisOperatorTest
+  const reply = await send(JSON.stringify(packet))
+  return tryDecryptJSONDataWithSharedKey(JSON.parse(reply).result, encrypted?.sharedKey ?? stored.sharedKey) as { txHash?: string; error?: string } | null
+}
+
+interface OperatorQuote { feeAddress: string; feesID: string; feePerUnitGas: string; expiration: number }
+
+function operatorFee(options: OperatorQuote, token: TokenSymbol): SelectedBroadcaster {
+  return { railgunAddress: options.feeAddress, tokenAddress: TOKENS[token].address, tokenFee: {
+    feePerUnitGas: options.feePerUnitGas, expiration: options.expiration, feesID: options.feesID,
+    availableWallets: 1, relayAdapt: CONFIG.relayAdaptContract, relayAdapt7702: CONFIG.relayAdapt7702Contract, reliability: 1,
+  } }
+}
+
 export async function forkPrepareSwap(sell: TokenSymbol, value: string, feePerUnitGas = '1000000',
   feeAddress = FEE_SIGNER, feesID = 'local-test-only') {
   const current = session()
@@ -155,34 +206,24 @@ export async function forkPrepareSwap(sell: TokenSymbol, value: string, feePerUn
   return prepared
 }
 
-export async function forkOperatorSwap(options: { feeAddress: string; feesID: string; feePerUnitGas: string }) {
+export async function forkOperatorSwap(options: OperatorQuote & { buy?: TokenSymbol }) {
   const current = session()
   if (!(await current.provider.send('anvil_metadata', [])).forkedNetwork || CHAIN_ID !== 1)
     throw new Error('The operator roundtrip test requires a local Ethereum fork.')
-  const prepared = await forkPrepareSwap('WETH', '0.001', options.feePerUnitGas, options.feeAddress, options.feesID)
-  const submitter: PrivateSubmitter = { assertReady: localSubmitter.assertReady,
-    send: async (_session, populated, selected, gas) => {
-      if (gas.evmGasType !== 4) throw new Error('Type-4 swap required.')
-      const transaction = populated.transaction
-      const key = getRailgunWalletAddressData(selected.railgunAddress).viewingPublicKey
-      const data = {
-        txidVersion: VERSION, to: transaction.to, data: transaction.data,
-        broadcasterViewingKey: Buffer.from(key).toString('hex'), chainType: 0, chainID: 1,
-        feesID: selected.tokenFee.feesID, useRelayAdapt: true, minVersion: '8.0.0', maxVersion: '8.999.0',
-        transactType: 'TX7702', preTransactionPOIsPerTxidLeafPerList: populated.preTransactionPOIsPerTxidLeafPerList,
-        authorization: transaction.authorizationList?.[0], gasLimit: calculateGasLimit(gas.gasEstimate).toString(),
-        maxFeePerGas: gas.maxFeePerGas.toString(), maxPriorityFeePerGas: gas.maxPriorityFeePerGas.toString(),
-      }
-      const encoded = JSON.parse(JSON.stringify(data, (_, value) => typeof value === 'bigint' ? value.toString() : value)) as object
-      const encrypted = await encryptDataWithSharedKey(encoded, key)
-      const send = (window as unknown as { ophisOperatorTest: (payload: string) => Promise<string> }).ophisOperatorTest
-      const reply = await send(JSON.stringify({ method: 'transact', id: 1,
-        params: { pubkey: encrypted.randomPubKey, encryptedData: encrypted.encryptedData } }))
-      const result = tryDecryptJSONDataWithSharedKey(JSON.parse(reply).result, encrypted.sharedKey) as { txHash?: string; error?: string } | null
-      if (!result?.txHash || result.error) throw new Error(result?.error ?? 'No encrypted operator response.')
-      return result.txHash
-    } }
-  return executePrivateSwap(current, prepared, (message) => console.info('[fork-proof]', message), submitter)
+  const account = await unusedSwapAccount(current)
+  const quote = await quoteSwap(current.provider, 'WETH', '0.001', account.address, options.buy)
+  const prepared = await preparePrivateSwap(current, quote, operatorFee(options, 'WETH'))
+  return executePrivateSwap(current, prepared, (message) => console.info('[fork-proof]', message), operatorSubmitter)
+}
+
+export async function forkOperatorWithdrawal(options: OperatorQuote & { token: TokenSymbol; recipient: string }) {
+  const current = session()
+  if (!(await current.provider.send('anvil_metadata', [])).forkedNetwork || CHAIN_ID !== 1)
+    throw new Error('The operator withdrawal test requires a local Ethereum fork.')
+  const value = options.token === 'WETH' ? '0.001' : '0.5'
+  const prepared = await prepareUnshield(current, options.token, value, options.recipient, operatorFee(options, options.token))
+  const hash = await executeUnshield(current, prepared, (message) => console.info('[fork-proof]', message), operatorSubmitter)
+  return { hash, minimum: prepared.minimum.toString(), amount: prepared.amounts[0].amount.toString(), fee: prepared.fee.amount.toString() }
 }
 
 export async function forkSwap(sell: TokenSymbol, value: string, feePerUnitGas = '1000000'): Promise<string> {

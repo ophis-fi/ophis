@@ -5,7 +5,7 @@ import { join } from 'node:path'
 import { randomBytes } from 'node:crypto'
 import * as ed from '@noble/ed25519'
 import { encryptDataWithSharedKey, tryDecryptJSONDataWithSharedKey } from '@railgun-community/wallet'
-import { getAddress, Interface, JsonRpcProvider, Transaction, Wallet } from 'ethers'
+import { getAddress, Interface, JsonRpcProvider, Transaction, Wallet, ZeroAddress, type TransactionReceipt } from 'ethers'
 import { Broadcaster } from '../src/broadcaster'
 import { Store } from '../src/storage'
 import { issueFee } from '../src/fees'
@@ -19,20 +19,31 @@ let directory: string, store: Store
 beforeEach(() => { directory = mkdtempSync(join(tmpdir(), 'ophis-broadcaster-gates-')); store = new Store(directory) })
 afterEach(() => { store.close(); rmSync(directory, { recursive: true, force: true }) })
 
-async function fixture(guard?: string, withdrawalRecipient?: string) {
-  const privateViewingKey = randomBytes(32), publicViewingKey = Buffer.from(await ed.getPublicKey(privateViewingKey)).toString('hex')
-  const wallet = new Wallet(Wallet.createRandom().privateKey)
-  const rates = withdrawalRecipient ? { [TOKENS[1].address]: 2_000_000_000n } : { [TOKENS[0].address]: 10n ** 18n }
-  const quote = issueFee(store, rates)
-  const data = withdrawalRecipient ? await withdrawalRequest(quote.id, publicViewingKey, withdrawalRecipient)
-    : await privateRequest(quote.id, publicViewingKey)
+async function packetFor(data: Record<string, unknown>, publicViewingKey: string) {
   const encrypted = await encryptDataWithSharedKey(data, Buffer.from(publicViewingKey, 'hex'))
   const packet = { method: 'transact', id: 1, params: { pubkey: encrypted.randomPubKey, encryptedData: encrypted.encryptedData } }
   const payload = Buffer.from(JSON.stringify(packet))
+  const decode = (response: Uint8Array | undefined) => {
+    expect(response).toBeDefined()
+    return tryDecryptJSONDataWithSharedKey(JSON.parse(Buffer.from(response!).toString()).result, encrypted.sharedKey) as { txHash?: string; error?: string }
+  }
+  return { packet, payload, decode }
+}
+
+async function fixture(guard?: string, withdrawalRecipient?: string) {
+  const privateViewingKey = randomBytes(32), publicViewingKey = Buffer.from(await ed.getPublicKey(privateViewingKey)).toString('hex')
+  const wallet = new Wallet(Wallet.createRandom().privateKey)
+  const rates = { [TOKENS[0].address]: 10n ** 18n, [TOKENS[1].address]: 2_000_000_000n, [TOKENS[2].address]: 2_000_000_000n }
+  const quote = issueFee(store, rates)
+  const data = withdrawalRecipient ? await withdrawalRequest(quote.id, publicViewingKey, withdrawalRecipient)
+    : await privateRequest(quote.id, publicViewingKey)
+  const wire = await packetFor(data, publicViewingKey)
   const provider = {
     getNetwork: vi.fn(async () => ({ chainId: 1n })),
     getBlock: vi.fn(async () => ({ number: 100, timestamp: Math.floor(Date.now() / 1000), baseFeePerGas: 1n })),
     getTransactionCount: vi.fn(async () => 0), getBalance: vi.fn(async () => 10n ** 18n),
+    getBlockNumber: vi.fn(async () => 100),
+    getTransactionReceipt: vi.fn(async (_hash?: string): Promise<Pick<TransactionReceipt, 'status' | 'blockNumber' | 'gasUsed' | 'gasPrice'> | null> => null),
     estimateGas: vi.fn(async () => 100_000n),
     getCode: vi.fn(async (address: string) => address === guard ? executionGuardCode(wallet.address, '0x6001') : '0x6001'),
     call: vi.fn(async (tx: { data: string }) => {
@@ -58,11 +69,15 @@ async function fixture(guard?: string, withdrawalRecipient?: string) {
   const sign = vi.spyOn(wallet, 'signTransaction')
   const service = new Broadcaster({ ...config, executionGuard: guard, pilotWithdrawalRecipient: withdrawalRecipient }, store, sdk, provider as unknown as JsonRpcProvider, wallet, sender,
     { rates: async () => rates })
-  const decode = (response: Uint8Array | undefined) => {
-    expect(response).toBeDefined()
-    return tryDecryptJSONDataWithSharedKey(JSON.parse(Buffer.from(response!).toString()).result, encrypted.sharedKey) as { txHash?: string; error?: string }
-  }
-  return { payload, packet, data, quote, service, decode, sdk, provider, sender, sign }
+  return { ...wire, data, quote, service, sdk, provider, sender, sign, rates }
+}
+
+async function confirm(f: Awaited<ReturnType<typeof fixture>>, hash: string, status = 1) {
+  const record = store.pending().find((r) => r.hash === hash)!
+  f.provider.getTransactionCount.mockImplementation(async (address?: string) => address === f.service.wallet.address ? record.nonce + 1 : 0)
+  f.provider.getTransactionReceipt.mockImplementation(async (requested?: string) => requested === hash
+    ? { status, blockNumber: 99, gasUsed: 100_000n, gasPrice: 2_000_000_000n } : null)
+  await f.service.reconcile()
 }
 
 describe('signing gate and duplicate recovery', () => {
@@ -118,10 +133,25 @@ describe('signing gate and duplicate recovery', () => {
     f.service.config.dailyBudget = f.service.config.maxTransactionCost
     store.signed('old', 'envelope', 'raw', 'oldhash', 1n, config.dailyBudget, 0)
     store.confirmed('old', 1n, Date.now())
+    store.assured('old')
     expect(await f.service.available()).toBe(true)
     f.service.config.dailyBudget = 2n
     expect(f.decode(await f.service.handle(f.payload)).error).toBeTruthy()
     expect(f.sign).not.toHaveBeenCalled()
+  })
+  it('halts new signing until a confirmed earlier request has its fee assured', async () => {
+    const f = await fixture()
+    store.signed('old', 'envelope', 'raw', 'oldhash', 1n, config.dailyBudget, 0)
+    store.confirmed('old', 1n, Date.now())
+    f.provider.getTransactionCount.mockImplementation(async (address?: string) => address === f.data.to ? 0 : 1)
+    expect(await f.service.available()).toBe(false)
+    expect(f.decode(await f.service.handle(f.payload)).error).toBeTruthy()
+    expect(f.sign).not.toHaveBeenCalled()
+    expect(f.sdk.fee).not.toHaveBeenCalled()
+    store.assured('old')
+    expect(await f.service.available()).toBe(true)
+    expect(f.decode(await f.service.handle(f.payload)).txHash).toBeTruthy()
+    expect(f.sign).toHaveBeenCalledOnce()
   })
   it('advertises fees with lowercase token keys for the RAILGUN client cache while preserving stored rates', async () => {
     const f = await fixture()
@@ -246,5 +276,165 @@ describe('signing gate and duplicate recovery', () => {
     f.sdk.fee.mockResolvedValue({ [TOKENS[0].address]: 2_000_000_000_000_000n })
     expect(f.decode(await f.service.handle(f.payload)).txHash).toBeTruthy()
     expect(f.sign).toHaveBeenCalledOnce()
+  })
+})
+
+describe('public admission and sequential settlement', () => {
+  it('resolves an explicit confirmed cancellation without claiming a private fee was delivered', async () => {
+    const f = await fixture(Wallet.createRandom().address)
+    f.service.config.admission = 'public'
+    expect(f.decode(await f.service.handle(f.payload)).txHash).toBeTruthy()
+    const record = store.pending()[0], cancelHash = `0x${'ab'.repeat(32)}`
+    store.cancel(record.key, 'saved-cancellation', cancelHash, 1n, config.dailyBudget)
+    f.provider.getTransactionCount.mockResolvedValue(1)
+    f.provider.getTransactionReceipt.mockImplementation(async (hash?: string) => hash === cancelHash
+      ? { status: 1, blockNumber: 99, gasUsed: 21_000n, gasPrice: 2_000_000_000n } : null)
+    await f.service.reconcile()
+    expect(store.hasPending()).toBe(false)
+    expect(await f.service.available()).toBe(true)
+    expect(f.sdk.assure).not.toHaveBeenCalled()
+    expect(store.get(record.key)?.actual_cost).toBe((21_000n * 2_000_000_000n).toString())
+    expect(store.get(record.key)?.cancel_hash).toBe(cancelHash)
+  })
+  it.each(TOKENS)('permits repeated $symbol withdrawals with the fee in that token and preserves a used pilot marker', async (token) => {
+    const f = await fixture(Wallet.createRandom().address, Wallet.createRandom().address)
+    f.service.config.admission = 'public'
+    f.service.config.pilotWithdrawalRecipient = undefined
+    store.db.prepare('INSERT INTO settings(key,value) VALUES(?,?)').run('withdrawalPilot', 'historical-pilot-hash')
+    for (let nonce = 0; nonce < 2; nonce++) {
+      const data = await withdrawalRequest(f.quote.id, f.sdk.publicViewingKey, Wallet.createRandom().address, 1, 1, token.address,
+        `0x${(nonce + 1).toString(16).padStart(64, '0')}`)
+      const wire = await packetFor(data, f.sdk.publicViewingKey)
+      f.sdk.fee.mockResolvedValue({ [getAddress(token.address)]: token.symbol === 'WETH' ? 2_000_000_000_000_000n : 2_000_000n })
+      f.provider.send.mockResolvedValue({ type: 'CALL', to: NETWORK.proxyContract, input: data.data })
+      const response = wire.decode(await f.service.handle(wire.payload))
+      expect(response.txHash).toBeTruthy()
+      const signed = Transaction.from(store.pending()[0].raw!)
+      expect(signed.nonce).toBe(nonce)
+      expect(signed.to).toBe(getAddress(NETWORK.proxyContract))
+      expect(await f.service.available()).toBe(false)
+      await confirm(f, response.txHash!)
+      expect(store.hasPending()).toBe(false)
+      expect(await f.service.available()).toBe(true)
+      expect(wire.decode(await f.service.handle(wire.payload))).toEqual(response)
+    }
+    expect(f.sign).toHaveBeenCalledTimes(2)
+    expect(store.db.prepare('SELECT value FROM settings WHERE key=?').get('withdrawalPilot')?.value).toBe('historical-pilot-hash')
+    f.service.config.admission = 'pilot'
+    f.service.config.pilotWithdrawalRecipient = Wallet.createRandom().address
+    expect(await f.service.available()).toBe(false)
+  })
+
+  it('serves unrelated swap accounts sequentially without replacing the operator or signing duplicates', async () => {
+    const f = await fixture(Wallet.createRandom().address)
+    f.service.config.admission = 'public'
+    const accounts = new Set<string>()
+    for (let nonce = 0; nonce < 2; nonce++) {
+      const data = await privateRequest(f.quote.id, f.sdk.publicViewingKey, `0x${(nonce + 1).toString(16).padStart(64, '0')}`)
+      accounts.add(String(data.to))
+      const wire = await packetFor(data, f.sdk.publicViewingKey)
+      f.provider.send.mockResolvedValue({ type: 'CALL', to: NETWORK.proxyContract,
+        input: PROXY.encodeFunctionData('transact', [ADAPT.decodeFunctionData('execute', String(data.data))._transactions]) })
+      const response = wire.decode(await f.service.handle(wire.payload))
+      expect(response.txHash).toBeTruthy()
+      const tx = Transaction.from(store.pending()[0].raw!)
+      expect(tx.from).toBe(f.service.wallet.address)
+      expect(tx.nonce).toBe(nonce)
+      expect(decodeGuardedExecution(tx.data).account).toBe(data.to)
+      await confirm(f, response.txHash!)
+      expect(wire.decode(await f.service.handle(Buffer.from(JSON.stringify({ ...wire.packet, id: 99 }))))).toEqual(response)
+    }
+    expect(accounts.size).toBe(2)
+    expect(f.sign).toHaveBeenCalledTimes(2)
+    expect(f.sender.broadcastTransaction).toHaveBeenCalledTimes(2)
+  })
+
+  it.each(['zero-recipient', 'high-recipient', 'token', 'zero-amount', 'nft', 'sub-id', 'fee-token', 'underpaid', 'expired'])('rejects an unsafe public withdrawal before signing: %s', async (kind) => {
+    const f = await fixture(undefined, Wallet.createRandom().address)
+    f.service.config.admission = 'public'
+    f.service.config.pilotWithdrawalRecipient = undefined
+    const recipient = kind === 'zero-recipient' ? ZeroAddress : kind === 'high-recipient'
+      ? `0x01${Wallet.createRandom().address.slice(2)}` : Wallet.createRandom().address
+    const data = await withdrawalRequest(f.quote.id, f.sdk.publicViewingKey, recipient, 1, 1,
+      kind === 'token' ? Wallet.createRandom().address : TOKENS[1].address)
+    if (['zero-amount', 'nft', 'sub-id'].includes(kind)) {
+      const transaction = PROXY.decodeFunctionData('transact', String(data.data))._transactions[0].toObject()
+      transaction.unshieldPreimage = transaction.unshieldPreimage.toObject()
+      transaction.unshieldPreimage.token = transaction.unshieldPreimage.token.toObject()
+      if (kind === 'zero-amount') transaction.unshieldPreimage.value = 0n
+      if (kind === 'nft') transaction.unshieldPreimage.token.tokenType = 1n
+      if (kind === 'sub-id') transaction.unshieldPreimage.token.tokenSubID = 1n
+      data.data = PROXY.encodeFunctionData('transact', [[transaction]])
+    }
+    if (kind === 'fee-token') f.sdk.fee.mockResolvedValue({ [TOKENS[0].address]: 2_000_000_000_000_000n })
+    if (kind === 'underpaid') f.sdk.fee.mockResolvedValue({ [TOKENS[1].address]: 1n })
+    if (kind === 'expired') store.db.prepare('UPDATE fees SET expiration=0 WHERE id=?').run(f.quote.id)
+    f.provider.send.mockResolvedValue({ type: 'CALL', to: NETWORK.proxyContract, input: data.data })
+    const wire = await packetFor(data, f.sdk.publicViewingKey)
+    const error = wire.decode(await f.service.handle(wire.payload)).error
+    const expected = ['zero-recipient', 'high-recipient'].includes(kind) ? 'nonzero Ethereum address'
+      : ['token', 'zero-amount', 'nft', 'sub-id'].includes(kind) ? 'WETH, USDC or USDT'
+      : kind === 'fee-token' ? 'withdrawn token' : kind === 'expired' ? 'fee quote expired' : 'does not cover execution'
+    expect(error).toContain(expected)
+    expect(f.sdk.validate).not.toHaveBeenCalled()
+    if (!['fee-token', 'underpaid'].includes(kind)) expect(f.sdk.fee).not.toHaveBeenCalled()
+    if (kind !== 'underpaid') expect(f.provider.send).not.toHaveBeenCalled()
+    expect(f.sign).not.toHaveBeenCalled()
+    expect(f.sender.broadcastTransaction).not.toHaveBeenCalled()
+    expect(store.hasPending()).toBe(false)
+  })
+
+  it('rejects another user while validation is in progress without consuming a second signature', async () => {
+    const f = await fixture(Wallet.createRandom().address)
+    f.service.config.admission = 'public'
+    let release!: () => void
+    const waiting = new Promise<void>((resolve) => { release = resolve })
+    const proof = await f.sdk.validate()
+    f.sdk.validate.mockImplementationOnce(async () => { await waiting; return proof })
+    f.sdk.validate.mockClear()
+    const first = f.service.handle(f.payload)
+    await vi.waitFor(() => expect(f.sdk.validate).toHaveBeenCalledOnce())
+    const other = await packetFor(await privateRequest(f.quote.id, f.sdk.publicViewingKey, `0x${'13'.repeat(32)}`), f.sdk.publicViewingKey)
+    expect(other.decode(await f.service.handle(other.payload)).error).toContain('finishing another transaction')
+    expect(f.sign).not.toHaveBeenCalled()
+    release()
+    expect(f.decode(await first).txHash).toBeTruthy()
+    expect(f.sign).toHaveBeenCalledOnce()
+  })
+
+  it.each(['unknown-submission', 'missing-fee', 'included-revert', 'unknown-nonce'])('preserves the halt across restart for %s', async (reason) => {
+    const f = await fixture(Wallet.createRandom().address)
+    f.service.config.admission = 'public'
+    if (reason === 'unknown-submission') f.sender.broadcastTransaction.mockRejectedValueOnce(new Error('unknown'))
+    const first = f.decode(await f.service.handle(f.payload))
+    const saved = store.pending()[0]
+    store.close(); store = new Store(directory)
+    f.service = new Broadcaster(f.service.config, store, f.sdk, f.service.provider, f.service.wallet, f.sender, { rates: async () => f.rates })
+    expect(f.decode(await f.service.handle(f.payload))).toEqual(first)
+    expect(await f.service.available()).toBe(false)
+    expect(store.hasPending()).toBe(true)
+    f.sdk.assure.mockResolvedValue(false)
+    if (reason === 'missing-fee' || reason === 'included-revert') await confirm(f, saved.hash!, reason === 'included-revert' ? 0 : 1)
+    if (reason === 'unknown-nonce') {
+      f.provider.getTransactionCount.mockResolvedValue(1)
+      await f.service.reconcile()
+    }
+    expect(await f.service.available()).toBe(false)
+    expect(store.get(saved.key)?.raw).toBe(saved.raw)
+    expect(store.get(saved.key)?.assured).toBe(0)
+    const other = await packetFor(await privateRequest(f.quote.id, f.sdk.publicViewingKey, `0x${'13'.repeat(32)}`), f.sdk.publicViewingKey)
+    expect(other.decode(await f.service.handle(other.payload)).error).toContain('finishing another transaction')
+    expect(f.sign).toHaveBeenCalledOnce()
+    expect(f.sender.broadcastTransaction).toHaveBeenCalledOnce()
+    if (reason === 'missing-fee') {
+      f.sdk.assure.mockResolvedValue(true)
+      await f.service.reconcile()
+      expect(await f.service.available()).toBe(true)
+    }
+    if (reason === 'included-revert') {
+      f.sdk.assure.mockResolvedValue(true)
+      await f.service.reconcile()
+      expect(await f.service.available()).toBe(false)
+    }
   })
 })

@@ -97,9 +97,11 @@ async function run(): Promise<void> {
     server = createServer((request, response) => {
       if (request.url !== '/health') { response.writeHead(404).end(); return }
       response.setHeader('Content-Type', 'application/json')
-      response.end(JSON.stringify({ mode: config.mode, enabled: config.enabled, ready: metrics.ready, locked: metrics.locked,
+      const pending = store!.pending()
+      response.end(JSON.stringify({ mode: config.mode, admission: config.admission, enabled: config.enabled, ready: metrics.ready, locked: metrics.locked,
         synchronized: sdk?.ready() ?? false,
-        pending: store!.pending().filter((r) => !r.confirmed).length, errors: metrics.errors }))
+        pending: pending.filter((r) => !r.confirmed).length,
+        feeAssurancePending: pending.filter((r) => r.confirmed && !r.assured).length, errors: metrics.errors }))
     })
     await new Promise<void>((resolve, reject) => { server!.once('error', reject); server!.listen(port, '127.0.0.1', resolve) })
     let secrets: Secrets

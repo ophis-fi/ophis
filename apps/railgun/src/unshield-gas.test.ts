@@ -41,7 +41,7 @@ it('reserves the USDC broadcaster fee from a full-balance withdrawal and rounds 
     tokenFee: { expiration: Date.now() + 600_000, feePerUnitGas: '1000000000000' } } as SelectedBroadcaster
   const session = { info: { id: 'test' }, key: 'test',
     accounts: { getCurrentAccount: async () => ({ address: '0x0000000000000000000000000000000000001234' }) },
-    provider: { getFeeData: async () => ({ gasPrice: 100n }) } } as unknown as WalletSession
+    provider: { getFeeData: async () => ({ gasPrice: 100n }), getBlock: async () => ({ baseFeePerGas: 0n }) } } as unknown as WalletSession
   state.estimate.mockResolvedValueOnce({ gasEstimate: 100_001n }).mockResolvedValue({ gasEstimate: 100_009n })
   const result = await prepareUnshield(session, 'USDC', '', '0x0000000000000000000000000000000000005678', selected, true)
   expect(result.amounts[0].amount + result.fee.amount).toBe(state.balance)
@@ -56,6 +56,28 @@ it('reserves the USDC broadcaster fee from a full-balance withdrawal and rounds 
     .rejects.toThrow('Insufficient spendable USDC')
 })
 afterEach(() => vi.unstubAllEnvs())
+
+it('covers the broadcaster positive-tip floor when Ethereum suggests only its base fee', async () => {
+  vi.stubEnv('VITE_RAILGUN_CHAIN_ID', '1')
+  const { TOKENS, FEE_SIGNER } = await import('./config')
+  const { prepareUnshield } = await import('./unshield')
+  state.balance = 10n ** 18n
+  const selected = { railgunAddress: FEE_SIGNER, tokenAddress: TOKENS.WETH.address,
+    tokenFee: { expiration: Date.now() + 600_000, feePerUnitGas: '1150000000000000000' } } as SelectedBroadcaster
+  const block = vi.fn(async (): Promise<{ baseFeePerGas: bigint } | null> => ({ baseFeePerGas: 7n }))
+  const session = { info: { id: 'test' }, key: 'test',
+    accounts: { getCurrentAccount: async () => ({ address: '0x0000000000000000000000000000000000001234' }) },
+    provider: { getFeeData: async () => ({ gasPrice: 7n }), getBlock: block } } as unknown as WalletSession
+  const result = await prepareUnshield(session, 'WETH', '0.001', '0x0000000000000000000000000000000000005678', selected)
+  expect(result.gas.gasPrice).toBe(8n)
+  expect(state.estimate.mock.calls[0][6].gasPrice).toBe(8n)
+  // Backend's full 110%-padded budget at eight wei, including the 15% margin.
+  expect(result.fee.amount).toBeGreaterThanOrEqual(1_012_000n)
+  state.estimate.mockClear(); block.mockResolvedValue(null)
+  await expect(prepareUnshield(session, 'WETH', '0.001', '0x0000000000000000000000000000000000005678', selected))
+    .rejects.toThrow('base fee unavailable')
+  expect(state.estimate).not.toHaveBeenCalled()
+})
 
 it('rejects a WETH quote before proving for the USDC withdrawal pilot', async () => {
   vi.stubEnv('VITE_RAILGUN_CHAIN_ID', '1')
@@ -78,6 +100,7 @@ it.each([1, 42161, 137, 56])('prepares and submits chain %s withdrawals with SDK
     info: { id: 'local-test-wallet' }, key: 'local-test-only',
     accounts: { getCurrentAccount: async () => ({ address: '0x0000000000000000000000000000000000001234' }) },
     provider: { getFeeData: async () => ({ gasPrice: 100n }),
+      getBlock: async () => ({ baseFeePerGas: 0n }),
       getNetwork: async () => ({ chainId: BigInt(chainId) }), send: async () => undefined },
   } as unknown as WalletSession
   const selected: SelectedBroadcaster = {

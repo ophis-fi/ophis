@@ -56,6 +56,22 @@ describe('operator configuration and money boundaries', () => {
       OPHIS_BROADCASTER_OPERATOR_ADDRESS: '0x0000000000000000000000000000000000007890' }).enabled).toBe(true)
     expect(settings({ ...env, OPHIS_BROADCASTER_ENABLED: '0' }).enabled).toBe(false)
   })
+  it('requires explicit public admission without conflicting pilot restrictions and retains mainnet signing safeguards', () => {
+    expect(settings({}).admission).toBe('pilot')
+    expect(() => settings({ OPHIS_BROADCASTER_ADMISSION: 'anything' })).toThrow('admission')
+    const env = { OPHIS_BROADCASTER_ADMISSION: 'public', OPHIS_BROADCASTER_ENABLED: '1',
+      OPHIS_BROADCASTER_MARGIN_BPS: '1500', OPHIS_BROADCASTER_MAX_GAS_PRICE_WEI: '500000000',
+      OPHIS_BROADCASTER_MAX_TX_COST_WEI: '1500000000000000', OPHIS_BROADCASTER_RESERVE_WEI: '1500000000000000',
+      OPHIS_BROADCASTER_DAILY_BUDGET_WEI: '1500000000000000',
+      OPHIS_BROADCASTER_OPERATOR_ADDRESS: '0x0000000000000000000000000000000000007890' }
+    expect(() => settings(env)).toThrow('execution guard')
+    const guarded = { ...env, OPHIS_BROADCASTER_EXECUTION_GUARD: '0x0000000000000000000000000000000000001234' }
+    expect(() => settings(guarded)).toThrow('final release acceptance')
+    expect(settings({ ...guarded, OPHIS_BROADCASTER_MODE: 'fork', OPHIS_BROADCASTER_RPC: 'http://127.0.0.1:8559' }).admission).toBe('public')
+    expect(() => settings({ ...guarded, OPHIS_BROADCASTER_OPERATOR_ADDRESS: undefined })).toThrow('dedicated gas-wallet')
+    for (const field of ['OPHIS_BROADCASTER_PILOT_ACCOUNT', 'OPHIS_BROADCASTER_PILOT_WITHDRAWAL_RECIPIENT'])
+      expect(() => settings({ ...guarded, [field]: '0x0000000000000000000000000000000000005678' })).toThrow('pilot restrictions')
+  })
   it('persists exact integer budget reservations and preserves unknown transactions across restart', () => {
     const directory = mkdtempSync(join(tmpdir(), 'ophis-broadcast-store-'))
     try {
@@ -72,6 +88,19 @@ describe('operator configuration and money boundaries', () => {
       expect(store.exposure()).toBe(cost - 123n)
       store.close()
     } finally { rmSync(directory, { recursive: true, force: true }) }
+  })
+  it('enforces the settlement gate atomically across independent journal connections', () => {
+    const directory = mkdtempSync(join(tmpdir(), 'ophis-settlement-gate-'))
+    const first = new Store(directory), second = new Store(directory)
+    try {
+      first.signed('one', 'envelope', 'raw', 'hash', 1n, 10n, 0)
+      expect(() => second.signed('two', 'envelope', 'raw2', 'hash2', 1n, 10n, 1)).toThrow('unresolved transaction')
+      first.confirmed('one', 1n, Date.now())
+      expect(() => second.signed('two', 'envelope', 'raw2', 'hash2', 1n, 10n, 1)).toThrow('unresolved transaction')
+      first.assured('one')
+      expect(() => second.signed('two', 'envelope', 'raw2', 'hash2', 1n, 10n, 1)).not.toThrow()
+      expect(first.pending().map((r) => r.key)).toEqual(['two'])
+    } finally { first.close(); second.close(); rmSync(directory, { recursive: true, force: true }) }
   })
   it('creates independent private operator secrets without overwriting or accepting loose permissions', () => {
     const directory = mkdtempSync(join(tmpdir(), 'ophis-broadcast-secrets-'))

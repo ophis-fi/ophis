@@ -22,6 +22,7 @@ export const TOKENS = [
 
 export interface Settings {
   mode: 'mainnet' | 'fork'
+  admission: 'pilot' | 'public'
   enabled: boolean
   rpc: string
   waku: string
@@ -41,6 +42,8 @@ export interface Settings {
 export function settings(env: NodeJS.ProcessEnv): Settings {
   const mode = env.OPHIS_BROADCASTER_MODE ?? 'mainnet'
   if (mode !== 'mainnet' && mode !== 'fork') throw new Error('Invalid broadcaster mode.')
+  const admission = env.OPHIS_BROADCASTER_ADMISSION ?? 'pilot'
+  if (admission !== 'pilot' && admission !== 'public') throw new Error('Invalid broadcaster admission policy.')
   const rpc = new URL(env.OPHIS_BROADCASTER_RPC ?? 'http://100.69.134.7:8547')
   const waku = new URL(env.OPHIS_BROADCASTER_WAKU ?? 'http://127.0.0.1:8645')
   if (!['http:', 'https:'].includes(rpc.protocol) || rpc.username || rpc.password ||
@@ -74,12 +77,18 @@ export function settings(env: NodeJS.ProcessEnv): Settings {
   const pilotWithdrawalRecipient = env.OPHIS_BROADCASTER_PILOT_WITHDRAWAL_RECIPIENT === undefined ? undefined
     : getAddress(env.OPHIS_BROADCASTER_PILOT_WITHDRAWAL_RECIPIENT)
   if (pilotWithdrawalRecipient === ZeroAddress) throw new Error('The withdrawal pilot requires a public recipient.')
-  if (enabled && mode === 'mainnet' && (!executionGuard || !pilotAccount))
-    throw new Error('Mainnet is restricted to an explicit pilot account and an operator-bound execution guard pending live acceptance.')
+  if (admission === 'public' && (pilotAccount || pilotWithdrawalRecipient))
+    throw new Error('Public admission must not specify pilot restrictions.')
+  if (enabled && mode === 'mainnet' && (!executionGuard || (admission === 'pilot' && !pilotAccount)))
+    throw new Error(admission === 'pilot'
+      ? 'Mainnet is restricted to an explicit pilot account and an operator-bound execution guard pending live acceptance.'
+      : 'Mainnet signing requires an operator-bound execution guard.')
   const operatorAddress = env.OPHIS_BROADCASTER_OPERATOR_ADDRESS === undefined ? undefined
     : getAddress(env.OPHIS_BROADCASTER_OPERATOR_ADDRESS)
   if (operatorAddress === ZeroAddress || (enabled && mode === 'mainnet' && !operatorAddress))
     throw new Error('Mainnet signing requires the verified dedicated gas-wallet address.')
-  return { mode, enabled, rpc: rpc.href, waku: waku.href, state, secrets, maxGasPrice,
+  if (enabled && mode === 'mainnet' && admission === 'public')
+    throw new Error('Public mainnet admission requires final release acceptance; use the isolated fork for validation.')
+  return { mode, admission, enabled, rpc: rpc.href, waku: waku.href, state, secrets, maxGasPrice,
     maxTransactionCost, dailyBudget, reserve, marginBps, executionGuard, pilotAccount, pilotWithdrawalRecipient, operatorAddress }
 }

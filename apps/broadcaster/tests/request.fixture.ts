@@ -1,7 +1,7 @@
 import { AbiCoder, Wallet } from 'ethers'
 import { signExecutionAuthorization, RelayAdapt7702Helper, RelayAdapt7702ExecutionType, type TransactionStructV2 } from '@railgun-community/engine'
 import { ADAPT, PROXY } from '../src/transaction'
-import { NETWORK, VERSION, settings } from '../src/config'
+import { NETWORK, TOKENS, VERSION, settings } from '../src/config'
 import { withdrawalData } from '../../railgun/tests/withdrawal.fixture'
 
 export const config = settings({ OPHIS_BROADCASTER_ENABLED: '1', OPHIS_BROADCASTER_MODE: 'fork',
@@ -10,11 +10,11 @@ export const config = settings({ OPHIS_BROADCASTER_ENABLED: '1', OPHIS_BROADCAST
   OPHIS_BROADCASTER_MAX_TX_COST_WEI: '10000000000000000', OPHIS_BROADCASTER_RESERVE_WEI: '10000000000000000',
   OPHIS_BROADCASTER_DAILY_BUDGET_WEI: '100000000000000000' })
 
-export async function privateRequest(feesID: string, publicViewingKey: string) {
+export async function privateRequest(feesID: string, publicViewingKey: string, nullifier = `0x${'12'.repeat(32)}`) {
   const ephemeral = Wallet.createRandom()
   const type = PROXY.getFunction('transact')!.inputs[0].arrayChildren!
   const tx = Array.from(AbiCoder.defaultAbiCoder().getDefaultValue([type])[0])
-  tx[type.components!.findIndex((p) => p.name === 'nullifiers')] = [`0x${'12'.repeat(32)}`]
+  tx[type.components!.findIndex((p) => p.name === 'nullifiers')] = [nullifier]
   tx[type.components!.findIndex((p) => p.name === 'commitments')] = [`0x${'34'.repeat(32)}`]
   const transactions = [tx as unknown as TransactionStructV2]
   const action = RelayAdapt7702Helper.getActionData(false, [], 0n)
@@ -30,8 +30,8 @@ export async function privateRequest(feesID: string, publicViewingKey: string) {
   }, (_, value) => typeof value === 'bigint' ? value.toString() : value)) as Record<string, unknown>
 }
 
-export async function withdrawalRequest(feesID: string, publicViewingKey: string, recipient: string, count = 1, unshield = 1) {
+export async function withdrawalRequest(feesID: string, publicViewingKey: string, recipient: string, count = 1, unshield = 1, token: string = TOKENS[1].address, nullifier = `0x${'11'.repeat(32)}`) {
   return { ...await privateRequest(feesID, publicViewingKey), transactType: 'COMMON', useRelayAdapt: false,
-    to: NETWORK.proxyContract, data: withdrawalData(count, unshield, recipient, '0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48'),
+    to: NETWORK.proxyContract, data: withdrawalData(count, unshield, recipient, token, nullifier),
     minGasPrice: '2000000000' }
 }

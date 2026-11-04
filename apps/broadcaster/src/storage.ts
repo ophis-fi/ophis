@@ -111,6 +111,7 @@ export class Store {
       if (withdrawalPilot && this.db.prepare('SELECT 1 FROM settings WHERE key=?').get('withdrawalPilot'))
         throw new Error('The withdrawal pilot is already used. Reconcile the saved transaction.')
       if (cost <= 0n || this.exposure() + cost > budget) throw new Error('Operator rolling 24-hour gas budget exhausted.')
+      if (this.hasPending()) throw new Error('Reconcile the unresolved transaction and its fee before another reservation.')
       this.db.prepare('INSERT INTO requests(key,envelope,raw,hash,created,max_cost,signed_at,fee_data,nonce,fee_expiration) VALUES(?,?,?,?,?,?,?,?,?,?)')
         .run(key, envelope, raw, hash, Date.now(), cost.toString(), Date.now(), feeData, nonce, expiration)
       if (withdrawalPilot) this.db.prepare('INSERT INTO settings(key,value) VALUES(?,?)').run('withdrawalPilot', hash)
@@ -146,6 +147,9 @@ export class Store {
   pending(): RequestRecord[] {
     return this.db.prepare('SELECT * FROM requests WHERE hash IS NOT NULL AND (confirmed=0 OR assured=0) ORDER BY confirmed,checked_at,created LIMIT 20')
       .all() as unknown as RequestRecord[]
+  }
+  hasPending(): boolean {
+    return !!this.db.prepare('SELECT 1 FROM requests WHERE hash IS NOT NULL AND (confirmed=0 OR assured=0) LIMIT 1').get()
   }
   nonceBlocked(nonce: number): boolean {
     return !!this.db.prepare('SELECT 1 FROM requests WHERE confirmed=0 AND nonce>=? LIMIT 1').get(nonce)

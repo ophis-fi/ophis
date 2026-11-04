@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict'
 import { createServer } from 'node:http'
-import { Transaction } from 'ethers'
+import { getAddress, Transaction } from 'ethers'
+import { NETWORK } from '../src/config'
 import { ProtectedEthereumProvider, PROTECTED_WRITE_RPC } from '../../railgun/operator/protected-provider'
 
 /** Exercises the real protected sender; all signed writes remain on the verified test fork. */
@@ -46,7 +47,9 @@ export async function forkProtectedSender(forkURL: string, operator: string, gua
       const call = JSON.parse(String(options?.body))
       assert.equal(call.method, 'eth_sendRawTransaction')
       const tx = Transaction.from(call.params[0])
-      assert.equal(tx.type, 4); assert.equal(tx.from, operator); assert.equal(tx.to, guard)
+      assert.equal(tx.from, operator)
+      if (tx.type === 4) assert.equal(tx.to, guard)
+      else { assert.equal(tx.type, 1); assert.equal(tx.to, getAddress(NETWORK.proxyContract)) }
       assert.equal(transport.pendingTransaction()?.hash, tx.hash, 'Protected journal must precede disclosure.')
       writes++
       return originalFetch(forkURL, options)

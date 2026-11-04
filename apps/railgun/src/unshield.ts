@@ -1,4 +1,4 @@
-import { CHAIN, CHAIN_NAME, CONFIG, NETWORK, PERMIT2, PILOT_WITHDRAWAL_RECIPIENT, PROXY, ROUTER, TOKENS, VERSION, type TokenSymbol } from './config'
+import { CHAIN, CHAIN_ID, CHAIN_NAME, CONFIG, NETWORK, PERMIT2, PILOT_WITHDRAWAL_RECIPIENT, PROXY, ROUTER, TOKENS, VERSION, type TokenSymbol } from './config'
 import { getEVMGasTypeForTransaction, EVMGasType, type SelectedBroadcaster } from '@railgun-community/shared-models'
 import {
   gasEstimateForUnprovenUnshield,
@@ -45,8 +45,14 @@ export async function prepareUnshield(
   const evmGasType = getEVMGasTypeForTransaction(NETWORK, false)
   if (evmGasType !== EVMGasType.Type0 && evmGasType !== EVMGasType.Type1)
     throw new Error('Review the updated Railgun broadcaster gas policy before continuing.')
-  const gasPrice = (await session.provider.getFeeData()).gasPrice
+  let gasPrice = (await session.provider.getFeeData()).gasPrice
   if (gasPrice == null || gasPrice <= 0n) throw new Error(`${CHAIN_NAME} gas price unavailable.`)
+  if (CHAIN_ID === 1) {
+    const block = await session.provider.getBlock('latest')
+    if (block?.baseFeePerGas == null) throw new Error(`${CHAIN_NAME} base fee unavailable.`)
+    // Match the broadcaster's positive-tip floor before committing the private fee.
+    if (gasPrice < block.baseFeePerGas + 1n) gasPrice = block.baseFeePerGas + 1n
+  }
   let gas = { evmGasType, gasEstimate: 3_000_000n, gasPrice }
   let fee = broadcasterFee(selected, gas)
   for (let attempt = 0; attempt < 3; attempt++) {

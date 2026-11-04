@@ -59,6 +59,7 @@ it('replaces a stale transport journal only after the preceding nonce is confirm
   const raw = await f.wallet.signTransaction({ ...original.toJSON(), nonce: 1, signature: undefined })
   const hash = Transaction.from(raw).hash!
   store.confirmed('one', 100n, Date.now())
+  store.assured('one')
   store.signed('two', 'encrypted request', raw, hash, 200_000_000_000_000n, config.dailyBudget, 1, '{}', Date.now() + 60_000)
   f.sender.pendingTransaction.mockReturnValue({ hash: f.hash, nonce: 0 })
   f.provider.getTransactionCount.mockResolvedValue(1)

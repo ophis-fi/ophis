@@ -2,7 +2,27 @@
 
 # Local broadcaster validation
 
-## Current integration checkpoint — 4 November 2026
+## Repeated-user admission checkpoint — 4 November 2026
+
+Stage 3 is implemented and validated locally, based on integration commit `44f27966876b6920dd921e1f0e314d286c9d237f`. The original dirty pilot checkout is preserved. Public mainnet startup remains explicitly held in source; no service, production state, keys or funds were changed.
+
+- 117 backend tests and 287 client tests pass, with both projects' builds and browser/server typechecks passing. Thirteen optional unit-suite integration tests remain skipped.
+- A separate six-minute real-proof fork run used two distinct new private wallets: two swaps and four withdrawals covering WETH, USDC and USDT. Six operator signatures produced six protected writes, zero signed writes reached the read connection, and every request was settled. The old pilot marker survived a request-journal reopen.
+- Original-envelope duplicates returned their saved hashes. Re-encrypted consumed spends reached EVM/authority rejection after settlement, without another signature. A valid proof was first rejected under higher fresh fee rates without signing, then accepted with the original rates and same proof. The delegation-change comparator reproduced the unguarded unpaid no-op; the guard rejected it before publication.
+- Each authenticated private fee covered the full signed gas budget plus 15%. The receipt-based expense ledger exactly matched the operator's native balance decrease, within the unchanged 0.0015 ETH daily ceiling and 0.5 gwei price cap. These are test-fork quantities, not live cost estimates.
+- The first fork attempt exposed a real client/backend pricing mismatch: the node suggested seven wei while the broadcaster required base fee plus a positive tip, eight wei. WETH was rejected before signing. The client now applies the same floor before fee estimation; its regression fails before the fix and passes after it. No extra gas padding or lower reimbursement requirement was introduced.
+
+The fork uses a frozen initial oracle snapshot, a modeled zero-tip suggestion and authenticated confirmed fee commitments. It explicitly reports `fullWalletHistoryAssurance=false` and no live protected-inclusion claim. A request-journal reopen is not a full service/custody restart. Both new wallets still needed 140/138 seconds to synchronize from cached public history; reducing this first-use delay remains part of stage 4.
+
+The rebuilt amd64 bundle is `0d090a789bb953bb4b268e117a294d53d20c955a8e1610c4ded93d97de8b11d7`; local image ID is `sha256:620f241d5f6fa5a8e1128f02350e119344bf05e7c5fa525fcbce1b72ca1816e3`. Its unfunded fork CLI smoke test passes without networking. Source/unit checks isolate the public-mainnet hold; the actual image refuses that configuration with a sanitized error and contains the verified bundle.
+
+Claude's initial review findings on release gating, rejection-test isolation and replay controls were fixed. Its follow-up reports no remaining blockers in the supplied scope. The cancellation-hold concern was disproved by the preserved receipt branch and a new regression. Jev supported five preliminary bounded claims with limited confidence; direct source checks, executable controls and Claude review provide the closure evidence. Ponytail kept the change to admission, settlement protection and the reproduced tip-floor bug. No formal verification or full audit certification is claimed.
+
+Evidence is under `~/ophis-railgun-evidence/admission-20261104/`. Hosted CI/CodeQL, full operator-history/final roundtrip acceptance, monitoring/hold resolution and hosted Ophis UX remain pending. The unchanged guard retains the preceding checkpoint's artifact, Solidity and Slither evidence. Included outer reverts can still consume operator gas; the new hold stops subsequent spending rather than reimbursing that loss.
+
+Semgrep reports zero findings and no production parsing errors. One pre-existing partial-parsing warning covers three generic-import spans in a test mock; those lines are unchanged and the test passes TypeScript and execution checks. Changed-source scans with default and repository secret rules report zero findings.
+
+## Dependency integration checkpoint — 4 November 2026
 
 The funded restricted swap and USDC withdrawal were confirmed on 3 November, including authentication and decoding of the exact owned broadcaster fees. This checkpoint integrates current main's security changes with that pilot source; public admission and deployment of the updated dependency image are still pending.
 
