@@ -77,6 +77,7 @@ export function configurePickers(): () => void {
     button.setAttribute('aria-haspopup', 'dialog')
     button.setAttribute('aria-controls', 'asset-picker')
     const refresh = (): void => {
+      for (const label of select.labels ?? []) label.htmlFor = button.id
       const option = select.selectedOptions[0]
       button.replaceChildren()
       const image = logo(select.value)
@@ -114,8 +115,11 @@ export function configurePickers(): () => void {
     refreshers.push(refresh)
     refresh()
   }
-  document.addEventListener('input', () => refreshers.forEach(refresh => refresh()))
-  document.addEventListener('change', () => refreshers.forEach(refresh => refresh()))
+  const refreshSelection = (event: Event): void => {
+    if (event.target instanceof HTMLSelectElement) refreshers.forEach(refresh => refresh())
+  }
+  document.addEventListener('input', refreshSelection)
+  document.addEventListener('change', refreshSelection)
   new MutationObserver(() => refreshers.forEach(refresh => refresh()))
     .observe(document.getElementById('ready-actions')!, { attributes: true, attributeFilter: ['disabled'] })
   return () => refreshers.forEach(refresh => refresh())

@@ -12,7 +12,7 @@ const mocks = vi.hoisted(() => ({
   shield: vi.fn(),
   sync: vi.fn(),
   requireSync: vi.fn(),
-  pendingWithdrawal: vi.fn(),
+  pendingWithdrawal: vi.fn(), pendingSwap: vi.fn(),
   preserved: vi.fn(), preserve: vi.fn(), pilot: undefined as string | undefined,
   selectBroadcaster: vi.fn(), prepareSwap: vi.fn(), prepareMax: vi.fn(), prepareWithdrawal: vi.fn(), quoteSwap: vi.fn(), unused: vi.fn(),
 }))
@@ -29,7 +29,7 @@ vi.mock('./shield', () => ({
   requireShieldBalance: mocks.balance,
   shield: mocks.shield, PublicNetworkError: class extends Error {},
 }))
-vi.mock('./journal', () => ({ pendingSwap: async () => undefined, reconcilePendingSwap: vi.fn() }))
+vi.mock('./journal', () => ({ pendingSwap: mocks.pendingSwap, reconcilePendingSwap: vi.fn() }))
 vi.mock('./withdrawal-journal', async (original) => ({ ...await original<typeof import('./withdrawal-journal')>(),
   pendingWithdrawal: mocks.pendingWithdrawal, preservedWithdrawal: mocks.preserved, preserveWethWithdrawal: mocks.preserve,
   reconcilePendingWithdrawal: vi.fn(), resumePendingWithdrawal: vi.fn() }))
@@ -73,6 +73,7 @@ beforeEach(() => {
   mocks.sync.mockReset().mockResolvedValue(undefined)
   mocks.requireSync.mockReset()
   mocks.pendingWithdrawal.mockReset().mockResolvedValue(undefined)
+  mocks.pendingSwap.mockReset().mockResolvedValue(undefined)
   mocks.preserved.mockReset().mockResolvedValue(undefined)
   mocks.preserve.mockReset()
   mocks.pilot = undefined
@@ -125,6 +126,22 @@ it('opens recovery and directs the user to the saved withdrawal instead of prepa
   expect(elements['withdraw-pending-help'].textContent).toContain('already saved')
   expect(elements['pending-details'].textContent).toContain('Saved withdrawal: 0.001 USDC')
   expect(mocks.prepareWithdrawal).not.toHaveBeenCalled()
+})
+
+it('selects the new pending swap recovery index and then preserves a manual selection', async () => {
+  const { wireWalletActions } = await import('./wallet-actions')
+  const { executePrivateSwap } = await import('./private-swap')
+  await wireWalletActions({} as WalletSession)
+  await elements.quote.onclick?.()
+  vi.mocked(executePrivateSwap).mockImplementationOnce(async () => {
+    mocks.pendingSwap.mockResolvedValue({ index: 7, account: 'fixture-recovery-account' })
+    throw new Error('Submission outcome unknown')
+  })
+  await elements.swap.onclick?.()
+  expect(elements['recovery-index'].value).toBe('7')
+  elements['recovery-index'].value = '8'
+  await elements.broadcasters.onclick?.()
+  expect(elements['recovery-index'].value).toBe('8')
 })
 
 it('keeps USDC withdrawal controls accessible when preparation fails after preserving the WETH proof', async () => {

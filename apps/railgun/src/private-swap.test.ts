@@ -68,6 +68,17 @@ it('persists recovery before disclosing a signed spend and retains it after simu
   expect(send).not.toHaveBeenCalled()
 })
 
+it('rejects a prepared swap during history synchronization before recording or disclosing a spend', async () => {
+  const { requireWalletSync } = await import('./wallet')
+  vi.mocked(requireWalletSync).mockImplementationOnce(() => { throw new Error('Wallet history is synchronizing') })
+  const send = vi.fn(), ready = vi.fn()
+  await expect(executePrivateSwap(session, prepared, () => {}, { assertReady: ready, send })).rejects.toThrow('synchronizing')
+  expect(state.save).not.toHaveBeenCalled()
+  expect(state.simulate).not.toHaveBeenCalled()
+  expect(ready).not.toHaveBeenCalled()
+  expect(send).not.toHaveBeenCalled()
+})
+
 it('checks transport readiness again after proving before recording or disclosing the spend', async () => {
   const ready = vi.fn().mockResolvedValueOnce(undefined).mockRejectedValueOnce(new Error('Fee expired'))
   await expect(executePrivateSwap(session, prepared, () => {}, { assertReady: ready, send: vi.fn() })).rejects.toThrow(

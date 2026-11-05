@@ -67,7 +67,10 @@ export async function wireWalletActions(session: WalletSession): Promise<void> {
       ? 'A swap is already saved. Use Check saved swap above before preparing a withdrawal.'
       : unsupportedWeth ? 'The saved proof withdraws WETH. This pilot relays USDC. Keep the WETH proof and prepare a USDC withdrawal below.'
       : 'A withdrawal is already saved. Use Continue saved withdrawal above to retry that proof.'
-    if (state.pendingIdentity !== identity) element<HTMLInputElement>('accept-leftovers').checked = false
+    if (state.pendingIdentity !== identity) {
+      element<HTMLInputElement>('accept-leftovers').checked = false
+      if (pending) element<HTMLInputElement>('recovery-index').value = String(pending.index)
+    }
     state.pendingIdentity = identity
     element('pending-details').textContent = pending
       ? `Pending swap: account ${pending.index}, ${pending.account}\n${pending.hash || 'Submission outcome unknown'}`
@@ -76,8 +79,6 @@ export async function wireWalletActions(session: WalletSession): Promise<void> {
         : 'No pending private transaction.'
   }
   await refreshPending()
-  const initialPending = await pendingSwap(session)
-  if (initialPending) element<HTMLInputElement>('recovery-index').value = String(initialPending.index)
   const symbol = (): TokenSymbol => {
     if (!isTokenSymbol(token.value)) throw new Error('Unsupported token.')
     return token.value

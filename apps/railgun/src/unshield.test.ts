@@ -28,6 +28,18 @@ vi.mock('@railgun-community/wallet', () => ({
 }))
 import { executeUnshield, retrySavedUnshield } from './unshield'
 
+it('rejects a prepared withdrawal during history synchronization before recording or disclosing a spend', async () => {
+  const { requireWalletSync } = await import('./wallet')
+  vi.mocked(requireWalletSync).mockImplementationOnce(() => { throw new Error('Wallet history is synchronizing') })
+  state.save.mockClear()
+  const send = vi.fn(), ready = vi.fn()
+  await expect(executeUnshield({} as WalletSession, {} as Parameters<typeof executeUnshield>[1], () => {}, { assertReady: ready, send }))
+    .rejects.toThrow('synchronizing')
+  expect(state.save).not.toHaveBeenCalled()
+  expect(ready).not.toHaveBeenCalled()
+  expect(send).not.toHaveBeenCalled()
+})
+
 it('retries the saved proof through the broadcaster without proving again, and blocks known or spent submissions', async () => {
   const transaction = { to: CONFIG.proxyContract, data: withdrawalData(), value: '0' }
   const saved = { transaction, token: 'USDC', minGasPrice: '100', nullifiers: [`0x${'11'.repeat(32)}`] }

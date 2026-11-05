@@ -11,7 +11,6 @@ import { configureWalletLayout, showSetup, startFirstFunding, updateFirstFunding
 import { element, run } from './ui'
 import { wireWalletActions } from './wallet-actions'
 
-const status = element('status')
 element('environment').textContent =
   ENVIRONMENT === 'fork' ? `Local ${CHAIN_NAME} fork · Test wallets only` : 'Mainnet'
 configurePrivateSelectors()
@@ -31,8 +30,11 @@ void readPreference<unknown>('wallet').then((stored) => {
   showSetup(setup.hasWallet)
 }).catch(() => {
   element('setup-title').textContent = 'Private wallet unavailable'
-  element('setup-help').textContent = 'Browser storage could not be read. Use a fresh browser profile to restore your private wallet safely.'
-  element('error').textContent = 'Saved wallet metadata could not be read. Restore your private wallet in a fresh browser profile.'
+  element('setup-help').textContent = 'Reload this page to retry. Keep this browser profile and do not clear site data; saved transactions remain here.'
+  element('error').textContent = 'Saved wallet metadata could not be read. Reload to retry without changing your saved data.'
+  element('setup-back').hidden = false
+  element('setup-back').textContent = 'Reload wallet'
+  element('setup-back').onclick = () => location.reload()
 })
 
 function renderSelectedBalance(): void {
@@ -63,6 +65,7 @@ element('setup-back').onclick = () => {
   setup.generated = undefined
   backup.checked = false
   showSetup(setup.hasWallet)
+  element('generate').focus()
 }
 
 function startHistory(): ReturnType<typeof startWalletEngine> {
@@ -91,7 +94,7 @@ function startHistory(): ReturnType<typeof startWalletEngine> {
         (message, ready) => {
           setup.ready = ready
           updateFirstFunding(setup.hasFunds, ready)
-          status.textContent = ready ? '' : message
+          element('balance-sync').textContent = message
           element('balance-sync').hidden = ready
           element<HTMLFieldSetElement>('ready-actions').disabled = !ready
           const progress = element<HTMLProgressElement>('history-progress')
@@ -142,7 +145,22 @@ for (const id of ['open', 'unlock']) {
       element('private-network-help').textContent = 'Lock the private wallet to change networks. Pending transactions stay saved on their original network.'
       element('wallet').hidden = false
       element('address').textContent = session.current.info.railgunAddress
-      await wireWalletActions(session.current)
+      try {
+        await wireWalletActions(session.current)
+      } catch {
+        element('wallet').hidden = true
+        element('setup').hidden = false
+        showSetup(true)
+        element('setup-title').textContent = 'Saved transactions unavailable'
+        element('setup-help').textContent = 'Lock and retry to read your saved transactions. Do not clear site data or create another wallet.'
+        element('wallet-password').hidden = true
+        element('unlock').hidden = true
+        element('setup-back').hidden = false
+        element('setup-back').textContent = 'Lock and retry'
+        element('setup-back').onclick = () => location.reload()
+        element('setup-title').focus()
+        throw new Error('Saved transactions could not be read. Lock and retry; your saved data has not been cleared.')
+      }
       if (fresh) { startFirstFunding(); updateFirstFunding(setup.hasFunds, setup.ready) }
       void syncWallet(session.current).catch((error: unknown) => {
         element('error').textContent = error instanceof Error ? error.message : 'Private balance sync failed.'

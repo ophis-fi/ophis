@@ -81,6 +81,7 @@ export async function executeUnshield(
   onProgress: (message: string) => void,
   submitter: PrivateSubmitter,
 ): Promise<string> {
+  requireWalletSync()
   const { amounts, selected, gas, fee } = prepared
   if ((await pendingWithdrawal(session)) || (await pendingSwap(session)))
     throw new Error('A private transaction is already pending. Reconcile it before spending again.')

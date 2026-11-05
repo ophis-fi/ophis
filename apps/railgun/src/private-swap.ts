@@ -131,6 +131,7 @@ export async function executePrivateSwap(
   onProgress: (message: string) => void,
   submitter: PrivateSubmitter,
 ): Promise<string> {
+  requireWalletSync()
   const { quote, selected, gas, fee, unshields, reshields } = prepared
   if ((await pendingSwap(session)) || (await pendingWithdrawal(session)))
     throw new Error('A private transaction is already pending. Reconcile it before spending again.')

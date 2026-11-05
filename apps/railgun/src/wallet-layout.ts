@@ -7,6 +7,11 @@ let firstFunding = false
 let pendingSeen = false
 let refreshTokenControls = (): void => {}
 
+function focusSwapAmount(): void {
+  const amount = element<HTMLInputElement>('amount')
+  ;(amount.matches(':disabled') ? element('wallet-menu-button') : amount).focus()
+}
+
 export function showWalletView(next: WalletView): void {
   view = next
   if (next !== 'swap') review = false
@@ -19,8 +24,13 @@ export function showWalletView(next: WalletView): void {
 }
 
 export function setSwapReview(visible: boolean): void {
+  const changed = review !== visible
   review = visible
   renderWalletLayout()
+  if (changed) {
+    if (visible) element('swap-review-title').focus()
+    else focusSwapAmount()
+  }
 }
 
 export function renderWalletLayout(): void {
@@ -63,6 +73,8 @@ export function showSetup(hasWallet: boolean, phase: 'welcome' | 'backup' = 'wel
   element('restore-setup').hidden = hasWallet || phase === 'backup'
   element('setup-back').hidden = phase !== 'backup'
   element('open').textContent = restore ? 'Restore private wallet' : 'Save and continue'
+  element<HTMLInputElement>('password').autocomplete = phase === 'backup' ? 'new-password' : 'current-password'
+  if (phase === 'backup') element('setup-title').focus()
 }
 
 export function startFirstFunding(): void {
@@ -78,7 +90,15 @@ export function finishFirstFunding(): void {
 }
 
 export function updateFirstFunding(hasFunds: boolean, ready: boolean): void {
-  if (firstFunding && hasFunds && ready) finishFirstFunding()
+  if (!firstFunding || !hasFunds || !ready) return
+  const moveFocus = element('deposit-details').contains(document.activeElement) || element('first-funding-guide').contains(document.activeElement)
+  firstFunding = false
+  element('first-funding-guide').hidden = true
+  if (view === 'deposit-details' && !document.documentElement.dataset.busy) showWalletView('swap')
+  if (moveFocus) {
+    if (view === 'swap') focusSwapAmount()
+    else element('wallet-view-title').focus()
+  }
 }
 
 export function setPendingNotice(pending: boolean): void {
@@ -105,14 +125,12 @@ export function configureWalletLayout(refreshPickers: () => void): void {
   }
   element('wallet-back').onclick = () => {
     showWalletView('swap')
-    const amount = element<HTMLInputElement>('amount')
-    ;(amount.matches(':disabled') ? trigger : amount).focus()
+    focusSwapAmount()
   }
   element('edit-swap').onclick = () => { review = false; renderWalletLayout(); element('amount').focus() }
   element('skip-funding').onclick = () => {
     finishFirstFunding()
-    const amount = element<HTMLInputElement>('amount')
-    ;(amount.matches(':disabled') ? trigger : amount).focus()
+    focusSwapAmount()
   }
   element('continue-pending').onclick = () => showWalletView('recovery')
   const connection = element<HTMLDialogElement>('public-connect-options')

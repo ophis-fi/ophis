@@ -2,11 +2,12 @@ import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 
 const mocks = vi.hoisted(() => ({
   persisted: false, failRead: false, open: vi.fn(), setup: vi.fn(), sync: vi.fn(),
-  provider: {},
+  provider: {}, wire: vi.fn(), report: undefined as ((message: string, ready: boolean) => void) | undefined,
 }))
 vi.mock('./wallet', () => ({ newMnemonic: () => 'disposable test phrase',
-  openWallet: mocks.open, syncWallet: mocks.sync, startWalletEngine: async () => mocks.provider }))
-vi.mock('./wallet-actions', () => ({ wireWalletActions: vi.fn().mockResolvedValue(undefined) }))
+  openWallet: mocks.open, syncWallet: mocks.sync,
+  startWalletEngine: async (_balance: unknown, report: typeof mocks.report) => { mocks.report = report; return mocks.provider } }))
+vi.mock('./wallet-actions', () => ({ wireWalletActions: mocks.wire }))
 vi.mock('./network-ui', () => ({ configurePrivateSelectors: vi.fn() }))
 vi.mock('./embedded', () => ({ reportEmbeddedLayout: vi.fn() }))
 vi.mock('./pickers', () => ({ configurePickers: () => () => {} }))
@@ -19,17 +20,19 @@ vi.mock('./storage', () => ({ readPreference: async () => {
 vi.mock('./config', () => ({ CHAIN_NAME: 'Ethereum', ENVIRONMENT: 'fork', TOKENS: {} }))
 
 type Field = { value: string; hidden: boolean; disabled: boolean; checked: boolean; textContent: string;
-  title: string; onclick?: () => Promise<void> | void; oninput?: () => void; addEventListener: () => void }
+  title: string; onclick?: () => Promise<void> | void; oninput?: () => void; addEventListener: () => void; focus: () => void; removeAttribute: () => void }
 let fields: Record<string, Field>
 beforeEach(() => {
   vi.resetModules(); vi.clearAllMocks()
   mocks.persisted = false; mocks.failRead = false
-  mocks.sync.mockResolvedValue(undefined)
+  mocks.open.mockReset(); mocks.sync.mockReset().mockResolvedValue(undefined)
+  mocks.wire.mockReset().mockResolvedValue(undefined); mocks.report = undefined
   fields = new Proxy({} as Record<string, Field>, { get: (target, id: string) => target[id] ??= {
-    value: '', hidden: false, disabled: false, checked: false, textContent: '', title: '', addEventListener: () => {},
+    value: '', hidden: false, disabled: false, checked: false, textContent: '', title: '', addEventListener: () => {}, focus: vi.fn(), removeAttribute: () => {},
   } })
   vi.stubGlobal('document', { documentElement: { dataset: {} },
     getElementById: (id: string) => fields[id], querySelectorAll: () => [fields['private-network']] })
+  vi.stubGlobal('location', { reload: vi.fn() })
 })
 afterEach(() => vi.unstubAllGlobals())
 
@@ -60,6 +63,39 @@ it('replaces the loading state with recovery guidance when metadata cannot be re
   await import('./main')
   await vi.dynamicImportSettled()
   expect(fields['setup-title'].textContent).toBe('Private wallet unavailable')
-  expect(fields['setup-help'].textContent).toContain('fresh browser profile')
+  expect(fields['setup-help'].textContent).toContain('do not clear site data')
+  expect(fields['setup-back'].textContent).toBe('Reload wallet')
+  await fields['setup-back'].onclick?.()
+  expect(location.reload).toHaveBeenCalledOnce()
   expect(mocks.open).not.toHaveBeenCalled()
+})
+
+it('preserves transaction results through sync progress and completion', async () => {
+  await import('./main')
+  await vi.dynamicImportSettled()
+  fields.status.textContent = 'Withdrawal confirmed: test-hash'
+  mocks.report?.('Synchronizing private history.', false)
+  expect(fields.status.textContent).toBe('Withdrawal confirmed: test-hash')
+  expect(fields['balance-sync'].textContent).toBe('Synchronizing private history.')
+  mocks.report?.('Complete · private balances are ready.', true)
+  expect(fields.status.textContent).toBe('Withdrawal confirmed: test-hash')
+  expect(fields['balance-sync'].hidden).toBe(true)
+})
+
+it('hides inactive wallet controls and offers a safe reload when saved transaction setup fails', async () => {
+  mocks.persisted = true
+  mocks.open.mockResolvedValue({ info: { id: 'fixture-wallet', railgunAddress: 'fixture-address' } })
+  mocks.wire.mockRejectedValueOnce(new Error('Journal decryption failed'))
+  await import('./main')
+  await vi.dynamicImportSettled()
+  await fields.unlock.onclick?.()
+  expect(fields.wallet.hidden).toBe(true)
+  expect(fields.setup.hidden).toBe(false)
+  expect(fields.unlock.hidden).toBe(true)
+  expect(fields['setup-back'].textContent).toBe('Lock and retry')
+  expect(fields['private-network'].disabled).toBe(true)
+  expect(fields.error.textContent).toContain('your saved data has not been cleared')
+  expect(mocks.sync).not.toHaveBeenCalled()
+  await fields['setup-back'].onclick?.()
+  expect(location.reload).toHaveBeenCalledOnce()
 })
