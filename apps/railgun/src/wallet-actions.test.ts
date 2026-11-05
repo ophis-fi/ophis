@@ -48,13 +48,13 @@ vi.mock('./wallet', () => ({ requireWalletSync: mocks.requireSync, syncWallet: m
 vi.mock('./account', () => ({ unusedSwapAccount: mocks.unused }))
 vi.mock('./cancel', () => ({ cancelPendingSwap: vi.fn() }))
 
-let elements: Record<string, { value: string, hidden: boolean, textContent: string, checked: boolean, onclick?: () => Promise<void>, oninput?: () => void, dispatchEvent: () => boolean, scrollIntoView: () => void }>
+let elements: Record<string, { value: string, hidden: boolean, textContent: string, className: string, checked: boolean, onclick?: () => Promise<void>, oninput?: () => void, dispatchEvent: () => boolean, scrollIntoView: () => void }>
 let provider: EventEmitter & { request: ReturnType<typeof vi.fn> }
 beforeEach(() => {
   mocks.environment = 'fork'
   elements = new Proxy({} as typeof elements, { get: (values, id: string) => values[id] ??= {
     value: ['token', 'shield-token'].includes(id) ? 'WETH' : '1', hidden: ['approve', 'shield', 'switch-network', 'review-shield'].includes(id),
-    textContent: '', checked: false, dispatchEvent: () => { elements[id].oninput?.(); return true }, scrollIntoView: () => {},
+    textContent: '', className: '', checked: false, dispatchEvent: () => { elements[id].oninput?.(); return true }, scrollIntoView: () => {},
   } })
   vi.stubGlobal('document', {
     getElementById: (id: string) => elements[id],
@@ -138,6 +138,9 @@ it('the normal quote button reserves fees for the exact full-balance amount and 
   expect(elements.amount.value).toBe('0.009425')
   expect(elements['quote-details'].textContent).toMatch(/^Broadcaster fee reserved/)
   expect(elements['quote-details'].textContent).toContain('Broadcaster fee: 0.00055 WETH')
+  expect(elements['receive-amount'].textContent).toBe('0.000998')
+  expect(elements.quote.className).toBe('secondary-action')
+  expect(elements.quote.textContent).toBe('Refresh quote')
   expect(elements.swap.hidden).toBe(false)
   expect(elements['private-wallet-error'].textContent).toBe('')
   const { executePrivateSwap } = await import('./private-swap')
@@ -337,7 +340,25 @@ it('clears an amount when the sell token changes so USDC units cannot become WET
   expect(elements.amount.value).toBe('')
   expect(elements.swap.hidden).toBe(true)
   expect(elements['quote-details'].textContent).toBe('')
+  expect(elements['receive-amount'].textContent).toBe('—')
+  expect(elements.quote.className).toBe('')
   expect(elements['swap-direction'].textContent).toBe('Sell USDC → receive WETH. Enter the amount of USDC to sell.')
+})
+
+it('keeps quote refresh accessible and clears the old minimum if refreshing fails', async () => {
+  const { wireWalletActions } = await import('./wallet-actions')
+  await wireWalletActions({} as WalletSession)
+  await elements.quote.onclick?.()
+  expect(elements.quote.hidden).toBe(false)
+  expect(elements.quote.textContent).toBe('Refresh quote')
+  expect(elements['receive-amount'].textContent).not.toBe('—')
+  mocks.quoteSwap.mockRejectedValueOnce(new Error('No route available'))
+  await elements.quote.onclick?.()
+  expect(elements['receive-amount'].textContent).toBe('—')
+  expect(elements.swap.hidden).toBe(true)
+  expect(elements.quote.hidden).toBe(false)
+  expect(elements.quote.textContent).toBe('Review swap')
+  expect(elements.quote.className).toBe('')
 })
 
 it.each(['ETH', 'USDC', 'WETH'])('selects the funded private token and clears a stale trade amount after a confirmed %s deposit', async (asset) => {

@@ -3,7 +3,7 @@ import { ABIRailgunSmartWallet, ABIRelayAdapt7702, RelayAdapt7702ExecutionType,
 import { versionCompare } from '@railgun-community/shared-models'
 import { authorizationify, getAddress, Interface, isHexString, Signature,
   type Authorization, type ContractTransaction } from 'ethers'
-import { BROADCASTER_VERSION, MAX_GAS, NETWORK, VERSION, type Settings } from './config'
+import { BROADCASTER_VERSION, CHAIN, CHAIN_ID, COMMON_TRANSACTION_TYPE, MAX_GAS, NETWORK, VERSION, type Settings } from './config'
 import { object } from './wire'
 
 export const ADAPT = new Interface(ABIRelayAdapt7702)
@@ -28,7 +28,7 @@ export interface ParsedRequest {
 }
 
 export function parseRequest(data: Record<string, unknown>, operator: string, settings: Settings): ParsedRequest {
-  if (data.chainType !== 0 || data.chainID !== 1 || data.txidVersion !== VERSION ||
+  if (settings.chainId !== CHAIN_ID || data.chainType !== 0 || data.chainID !== CHAIN_ID || data.txidVersion !== VERSION ||
     typeof data.minVersion !== 'string' || typeof data.maxVersion !== 'string' ||
     !/^8\.[0-9]{1,3}\.[0-9]{1,3}$/.test(data.minVersion) || !/^8\.[0-9]{1,3}\.[0-9]{1,3}$/.test(data.maxVersion) ||
     versionCompare(BROADCASTER_VERSION, data.minVersion) < 0 || versionCompare(BROADCASTER_VERSION, data.maxVersion) > 0 ||
@@ -48,7 +48,7 @@ export function parseRequest(data: Record<string, unknown>, operator: string, se
       nonce: uint(auth.nonce), signature: Signature.from({ r: String(sig.r), s: String(sig.s),
         ...(sig.yParity === 0 || sig.yParity === 1 ? { yParity: sig.yParity } : { v: Number(sig.v) }) }) })
     if (authorization.nonce >= 2n ** 64n - 1n) throw new Error('Invalid authorization nonce.')
-    RelayAdapt7702Validator.validateAuthorization(authorization, NETWORK.relayAdapt7702Contract, 1, to)
+    RelayAdapt7702Validator.validateAuthorization(authorization, NETWORK.relayAdapt7702Contract, CHAIN_ID, to)
     const decoded = ADAPT.parseTransaction({ data: calldata })
     if (decoded?.name !== 'execute' || ADAPT.encodeFunctionData(decoded.fragment, decoded.args) !== calldata)
       throw new Error('Canonical nonce-aware private execute calldata is required.')
@@ -56,7 +56,7 @@ export function parseRequest(data: Record<string, unknown>, operator: string, se
     executeNonce = BigInt(decoded.args._nonce)
     if (decoded.args._actionData.requireSuccess !== false || decoded.args._actionData.calls.length > 64)
       throw new Error('Unsupported private execution policy.')
-    RelayAdapt7702Validator.validateExecution(transactions, decoded.args._actionData, decoded.args._signature, 1, to,
+    RelayAdapt7702Validator.validateExecution(transactions, decoded.args._actionData, decoded.args._signature, CHAIN_ID, to,
       { executionType: RelayAdapt7702ExecutionType.ExecuteWithNonce, executeNonce })
     const gasLimit = uint(data.gasLimit, true), maxFeePerGas = uint(data.maxFeePerGas, true)
     const maxPriorityFeePerGas = uint(data.maxPriorityFeePerGas, true)
@@ -64,7 +64,7 @@ export function parseRequest(data: Record<string, unknown>, operator: string, se
       gasLimit * maxFeePerGas > settings.maxTransactionCost || BigInt(decoded.args._actionData.minGasLimit) > gasLimit)
       throw new Error('The request exceeds the operator gas budget.')
     transaction = { to, data: calldata, value: 0n, type: 4, gasLimit, maxFeePerGas, maxPriorityFeePerGas,
-      authorizationList: [authorization], chainId: 1n }
+      authorizationList: [authorization], chainId: CHAIN }
   } else {
     if (data.transactType !== 'COMMON' || data.useRelayAdapt !== false || to !== getAddress(NETWORK.proxyContract))
       throw new Error('Only canonical privacy-contract withdrawals are supported as common requests.')
@@ -76,7 +76,7 @@ export function parseRequest(data: Record<string, unknown>, operator: string, se
       throw new Error('The withdrawal and broadcaster fee must share one proof.')
     const gasPrice = uint(data.minGasPrice, true)
     if (gasPrice > settings.maxGasPrice) throw new Error('The request exceeds the operator gas-price limit.')
-    transaction = { to, data: calldata, value: 0n, type: 1, gasPrice, chainId: 1n }
+    transaction = { to, data: calldata, value: 0n, type: COMMON_TRANSACTION_TYPE, gasPrice, chainId: CHAIN }
   }
   const nullifiers = transactions.flatMap((tx) => Array.from(tx.nullifiers, String))
   if (!transactions.length || transactions.length > 8 || !nullifiers.length || nullifiers.length > 128 ||

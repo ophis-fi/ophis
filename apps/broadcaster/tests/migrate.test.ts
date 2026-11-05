@@ -1,6 +1,6 @@
 import { expect, it } from 'vitest'
 import { generateKeyPairSync } from 'node:crypto'
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { fullWalletForID, getWalletMnemonic, signWithWalletViewingKey, verifyBroadcasterSignature, getRailgunWalletAddressData } from '@railgun-community/wallet'
@@ -10,6 +10,7 @@ import { initializeSecrets, parseMainnetSecrets, readSecrets, Store } from '../s
 import { RailgunSDK } from '../src/sdk'
 import { snapshotCriticalState } from '../src/backup'
 import { config } from './request.fixture'
+import { CHAIN_ID } from '../src/config'
 
 it('preserves the fee address, rotates gas/DB keys, restarts view-only and retains a separate encrypted recovery record', async () => {
   const root = mkdtempSync(join(tmpdir(), 'custody-migration-'))
@@ -26,6 +27,8 @@ it('preserves the fee address, rotates gas/DB keys, restarts view-only and retai
     await expect(migrateOperator({ ...settings, enabled: true }, store, certificate)).rejects.toThrow('unarmed')
     const metadata = await migrateOperator(settings, store, certificate)
     expect(metadata.gasWalletAddress).not.toBe(metadata.retiredGasWalletAddress)
+    expect(() => store.bindIdentity(CHAIN_ID, metadata.gasWalletAddress)).not.toThrow()
+    expect(() => store.bindIdentity(CHAIN_ID, metadata.retiredGasWalletAddress)).toThrow('different network or gas wallet')
     const runtime = parseMainnetSecrets(openOperator(readFileSync(join(root, 'secrets', 'operator.sealed.json')), privateKey), metadata.gasWalletAddress)
     expect(runtime.feeMnemonic).toBeUndefined()
     expect(runtime.encryptionKey).not.toBe(legacy.encryptionKey)
@@ -43,9 +46,27 @@ it('preserves the fee address, rotates gas/DB keys, restarts view-only and retai
     await snapshotCriticalState(root, snapshot)
     const state = join(snapshot, 'state')
     restored = new Store(state)
+    expect(() => restored!.bindIdentity(CHAIN_ID, metadata.gasWalletAddress)).not.toThrow()
     sdk = new RailgunSDK({ ...settings, state }, runtime, restored)
     await sdk.start()
     expect(sdk.address).toBe(metadata.feeIdentity)
     expect(() => fullWalletForID(sdk!.walletId)).toThrow('View-Only')
   } finally { await sdk?.stop(); restored?.close(); store.close(); rmSync(root, { recursive: true, force: true }) }
 }, 20_000)
+
+it.each(['bound', 'historical'])( 'refuses %s custody rotation before creating recovery files', async (kind) => {
+  const root = mkdtempSync(join(tmpdir(), 'custody-identity-'))
+  const store = new Store(root)
+  try {
+    if (kind === 'bound') store.bindIdentity(CHAIN_ID, '0x0000000000000000000000000000000000001234')
+    else {
+      store.signed('old', 'encrypted', 'oldraw', 'oldhash', 1n, 10n, 0)
+      store.confirmed('old', 1n, Date.now()); store.assured('old')
+    }
+    const settings = { ...config, enabled: false, state: root, secrets: join(root, 'operator.json') }
+    await expect(migrateOperator(settings, store, join(root, 'not-read.pem'))).rejects.toThrow('empty, unbound legacy operator')
+    expect(existsSync(join(root, 'operator.sealed.json'))).toBe(false)
+    expect(existsSync(join(root, 'operator-retired.sealed.json'))).toBe(false)
+    if (kind === 'historical') expect(store.get('old')?.raw).toBe('oldraw')
+  } finally { store.close(); rmSync(root, { recursive: true, force: true }) }
+})

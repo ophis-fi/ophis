@@ -8,9 +8,10 @@
   </head>
   <body>
     <main>
-      <header><strong><img src="./incognito.svg" width="20" height="20" alt="" /> Private swap</strong><span id="environment"></span></header>
-      <label>Private network<select id="private-network"><option value="1">Ethereum</option><option value="42161">Arbitrum</option><option value="137">Polygon</option><option value="56">BNB Chain</option></select></label>
-      <small id="private-network-help">Choose the network before unlocking your private wallet.</small>
+      <header>
+        <div class="heading"><strong><img src="./incognito.svg" width="18" height="18" alt="" /> Private swap</strong><span id="environment"></span></div>
+        <label class="network-selector"><span class="sr-only">Private network</span><select id="private-network"><option value="1">Ethereum · ETH</option><option value="42161">Arbitrum · ETH</option><option value="137">Polygon · POL</option><option value="56">BNB Chain · BNB</option></select></label>
+      </header>
       <p id="status" role="status" aria-live="polite">Ready to start</p>
       <progress id="history-progress" max="100" aria-label="Private history verification"></progress>
       <p id="balance-sync">First use downloads and verifies private history. Keep this page open during setup. Verified history is saved in this browser; deposits and spending become available when synchronization finishes.</p>
@@ -35,15 +36,35 @@
         </details>
       </section>
       <section id="wallet" hidden>
-        <div class="balance-card">
-          <small>Spendable private balance · selected sell token</small>
-          <strong id="spendable-balance">Synchronizing…</strong>
-          <details><summary>Pending balances</summary><p id="pending-balances">Synchronizing…</p></details>
-        </div>
-        <details><summary>Wallet details and balances</summary><p id="address"></p><pre id="balances">Syncing…</pre></details>
-        <div class="secondary-actions"><button id="refresh" type="button">Refresh balances</button><a id="withdraw-shortcut" href="#withdrawal">Withdraw to a public wallet</a><button id="lock" type="button">Lock wallet</button></div>
+        <div class="wallet-tools"><a id="deposit-shortcut" href="#deposit-details">Add funds</a><a id="withdraw-shortcut" href="#withdrawal">Withdraw</a></div>
         <fieldset id="ready-actions" disabled>
-        <details id="deposit-details"><summary>Add funds</summary>
+        <div class="trade-cards">
+          <div class="amount-card">
+            <span class="card-label">You sell</span>
+            <div class="amount-row"><input id="amount" type="text" inputmode="decimal" autocomplete="off" placeholder="0.0" aria-label="Amount to sell or withdraw" aria-describedby="swap-direction swap-fee-help" /><select id="token" aria-label="Token to sell or withdraw"><option>WETH</option><option>USDC</option></select></div>
+            <div class="balance-row"><small>Balance: <span id="spendable-balance">Synchronizing…</span></small><button id="max-swap" type="button" aria-describedby="swap-fee-help">Max</button></div>
+          </div>
+          <div class="trade-arrow" aria-hidden="true">↓</div>
+          <div class="amount-card">
+            <span class="card-label">You receive</span>
+            <div class="amount-row"><output id="receive-amount" for="amount token buy-token" aria-label="Minimum private amount received" aria-live="polite">—</output><select id="buy-token" aria-label="Token to receive"><option>USDC</option><option>WETH</option></select></div>
+            <small>Minimum after fees</small>
+          </div>
+        </div>
+        <p id="private-wallet-error" role="alert"></p>
+        <button id="quote" type="button">Review swap</button>
+        <p id="broadcaster-status" role="status" aria-live="polite"></p>
+        <pre id="quote-details"></pre>
+        <button id="swap" type="button" hidden>Confirm private swap</button>
+        <details class="swap-info"><summary>Fees &amp; privacy</summary>
+          <p id="swap-fee-help">The broadcaster fee is paid from your private balance. Max reserves room for gas price changes; review the adjusted amount and all fees before confirming.</p>
+          <p id="swap-direction">Sell WETH → receive USDC. Enter the amount of WETH to sell.</p>
+          <p id="swap-route-help">Routes are quoted from supported pools on the selected network.</p>
+          <p id="private-submission-help">Private submission reduces exposure to frontrunning. Confirmed DEX trades and amounts are public; slippage still applies.</p>
+          <small id="private-network-help">Choose the network before unlocking your private wallet.</small>
+          <button id="broadcasters" type="button">Reconnect broadcaster</button>
+        </details>
+        <details id="deposit-details" name="wallet-action"><summary>Add funds</summary>
         <p>
           Shielding uses your public wallet. Protocol fees apply. Ophis does not require PPOI verification.
           Refresh balances after confirmation and synchronization. Other wallets may apply their own verification rules.
@@ -68,25 +89,7 @@
         <button id="shield" type="button" hidden>Shield amount</button>
         <p id="public-transaction-status" role="status" aria-live="polite"></p>
         </details>
-        <h2>Swap privately</h2>
-        <label class="amount-card">Token to swap or withdraw<select id="token"><option>WETH</option><option>USDC</option></select></label>
-        <label class="amount-card">You receive<select id="buy-token"><option>USDC</option><option>WETH</option></select></label>
-        <label>Amount to sell / withdraw<input id="amount" type="text" inputmode="decimal" autocomplete="off" aria-describedby="swap-direction swap-fee-help" /></label>
-        <button id="max-swap" type="button" aria-describedby="swap-fee-help">Max swap after fee</button>
-        <p id="swap-fee-help">The broadcaster fee comes from the same private balance. Max budgets extra room for gas price changes and shows the adjusted trade amount for review. This headroom can increase the committed broadcaster fee.</p>
-        <p id="swap-direction">Sell WETH → receive USDC. Enter the amount of WETH to sell.</p>
-        <p id="swap-route-help">Routes are quoted from supported pools on the selected network.</p>
-        <details class="privacy-disclosure"><summary>What stays private?</summary><p>
-          The DEX trade and its amounts are public and can be sandwiched within the slippage limit. The Ophis fee
-          identifies this route. Use a trusted RPC: simulation reveals the signed batch to it.
-        </p></details>
-        <button id="broadcasters" type="button">Connect private broadcasters</button>
-        <p id="broadcaster-status" role="status" aria-live="polite">Private quotes connect to broadcasters automatically.</p>
-        <p id="private-wallet-error" role="alert"></p>
-        <button id="quote" type="button">Get private swap quote</button>
-        <pre id="quote-details"></pre>
-        <button id="swap" type="button" hidden>Prove and submit private swap</button>
-        <section id="withdrawal"><h2>Withdraw to a public wallet</h2>
+        <details id="withdrawal" name="wallet-action"><summary>Withdraw to a public wallet</summary>
         <p id="withdraw-pending-help" role="status" hidden></p>
         <p>Withdrawing makes the destination and amount public.</p>
         <p>Choose the token and amount above. The broadcaster fee comes from the same private balance.</p>
@@ -94,9 +97,13 @@
         <button id="withdraw-max" type="button">Max withdrawal after fee</button>
         <button id="withdraw-quote" type="button">Review withdrawal fee</button>
         <pre id="withdraw-details"></pre>
-        <button id="withdraw" type="button" hidden>Prove and withdraw</button>
-        </section>
+        <button id="withdraw" type="button" hidden>Confirm withdrawal</button>
+        </details>
         </fieldset>
+        <details id="wallet-details"><summary>Wallet &amp; balances</summary><p id="address"></p><pre id="balances">Syncing…</pre>
+          <details><summary>Pending balances</summary><p id="pending-balances">Synchronizing…</p></details>
+          <div class="secondary-actions"><button id="refresh" type="button">Refresh balances</button><button id="lock" type="button">Lock wallet</button></div>
+        </details>
         <details id="recovery"><summary>Recovery and pending transactions</summary>
         <p>
           <span id="recovery-gas-help">Recovery requires native currency for gas. Funding a temporary account from your public wallet creates a public link.</span>

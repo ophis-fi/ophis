@@ -10,9 +10,16 @@ import { wireWalletActions } from './wallet-actions'
 
 const status = element('status')
 element('environment').textContent =
-  ENVIRONMENT === 'fork' ? `Local ${CHAIN_NAME} fork · Test wallets only` : `${CHAIN_NAME} mainnet`
+  ENVIRONMENT === 'fork' ? `Local ${CHAIN_NAME} fork · Test wallets only` : 'Mainnet'
 configurePrivateSelectors()
 reportEmbeddedLayout()
+for (const id of ['deposit-shortcut', 'withdraw-shortcut']) {
+  const shortcut = element<HTMLAnchorElement>(id)
+  shortcut.onclick = () => {
+    const panel = document.querySelector<HTMLDetailsElement>(shortcut.hash)
+    if (panel) panel.open = true
+  }
+}
 const password = element<HTMLInputElement>('password')
 const mnemonic = element<HTMLTextAreaElement>('mnemonic')
 const backup = element<HTMLInputElement>('backup')
@@ -24,7 +31,7 @@ const setup: { generated?: string; ready: boolean } = { ready: false }
 function renderSelectedBalance(): void {
   const selected = element<HTMLSelectElement>('token').value
   const spendable = buckets.get('Spendable')?.split('\n').find((line) => line.startsWith(`${selected}:`))
-  element('spendable-balance').textContent = setup.ready ? spendable || `0 ${selected}` : 'Synchronizing…'
+  element('spendable-balance').textContent = setup.ready ? `${spendable?.slice(selected.length + 1).trim() || '0'} ${selected}` : 'Synchronizing…'
   element('pending-balances').textContent = [...buckets.entries()]
     .filter(([name]) => name !== 'Spendable')
     .map(([, value]) => value).join('\n\n') || 'No pending deposits.'
@@ -59,7 +66,7 @@ function startHistory(): ReturnType<typeof startWalletEngine> {
         },
         (message, ready) => {
           setup.ready = ready
-          status.textContent = message
+          status.textContent = ready ? '' : message
           element('balance-sync').hidden = ready
           element<HTMLFieldSetElement>('ready-actions').disabled = !ready
           const progress = element<HTMLProgressElement>('history-progress')
@@ -95,6 +102,7 @@ for (const id of ['open', 'unlock']) {
       setup.generated = undefined
       element('setup').hidden = true
       element<HTMLSelectElement>('private-network').disabled = true
+      element('private-network').title = 'Lock your private wallet to change networks.'
       element('private-network-help').textContent = 'Lock the private wallet to change networks. Pending transactions stay saved on their original network.'
       element('wallet').hidden = false
       element('address').textContent = session.current.info.railgunAddress

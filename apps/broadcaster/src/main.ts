@@ -7,7 +7,7 @@ import { setTimeout as delay } from 'node:timers/promises'
 import LevelDOWN from 'leveldown'
 import { JsonRpcProvider, Wallet } from 'ethers'
 import { ProtectedEthereumProvider } from '../../railgun/operator/protected-provider'
-import { settings, TOPICS } from './config'
+import { CHAIN, CHAIN_ID, NATIVE_SYMBOL, settings, TOPICS } from './config'
 import { assertDisk, initializeSecrets, parseMainnetSecrets, privateDirectory, privateFile, readSecrets, Store, type Secrets } from './storage'
 import { RailgunSDK } from './sdk'
 import { FeeOracle } from './fees'
@@ -24,14 +24,15 @@ process.umask(0o077)
 
 async function run(): Promise<void> {
   const command = process.argv[2] ?? 'run'
-  const socketPath = join(tmpdir(), 'ophis-broadcaster', 'unlock.sock')
+  const config = settings(process.env)
+  const identity = { chainId: CHAIN_ID, nativeSymbol: NATIVE_SYMBOL, operatorAddress: config.operatorAddress ?? null }
+  const socketPath = join(tmpdir(), CHAIN_ID === 1 ? 'ophis-broadcaster' : `ophis-broadcaster-${CHAIN_ID}`, 'unlock.sock')
   if (command === 'unlock') {
     const data = await stdinUnlock()
     try { await sendUnlock(socketPath, data) } finally { data.fill(0) }
     console.log(JSON.stringify({ status: 'unlocked' }))
     return
   }
-  const config = settings(process.env)
   if (!['init', 'migrate', 'snapshot', 'check', 'status', 'report', 'monitor', 'acknowledge-loss', 'retry', 'cancel', 'deploy-guard', 'sync', 'run'].includes(command))
     throw new Error('Unsupported broadcaster command.')
   privateDirectory(config.state)
@@ -46,9 +47,10 @@ async function run(): Promise<void> {
     console.log(JSON.stringify({ gasWalletAddress: initializeSecrets(config.secrets, config.mode), funded: false }))
     return
   }
-  const provider = new JsonRpcProvider(config.rpc, 1, { batchMaxCount: 1, cacheTimeout: -1, staticNetwork: command === 'monitor' })
+  const provider = new JsonRpcProvider(config.rpc, CHAIN_ID, { batchMaxCount: 1, cacheTimeout: -1, staticNetwork: command === 'monitor' })
   provider.pollingInterval = 15_000
   let store: Store | undefined, sdk: RailgunSDK | undefined, sender: ProtectedEthereumProvider | undefined
+  let waku: WakuRelay | undefined
   let lock: ReturnType<typeof LevelDOWN> | undefined
   let server: ReturnType<typeof createServer> | undefined
   let reconcile: Promise<void> | undefined
@@ -70,17 +72,23 @@ async function run(): Promise<void> {
     }
     const fork: unknown = await provider.send('anvil_metadata', []).catch(() => undefined)
     const hardhat: unknown = await provider.send('hardhat_metadata', []).catch(() => undefined)
-    if ((await provider.getNetwork()).chainId !== 1n || (config.mode === 'mainnet' && (fork || hardhat)) ||
+    if ((await provider.getNetwork()).chainId !== CHAIN || (config.mode === 'mainnet' && (fork || hardhat)) ||
       (config.mode === 'fork' && (!fork || typeof fork !== 'object' || !('forkedNetwork' in fork) || !fork.forkedNetwork)))
       throw new Error('Read node does not match the selected mainnet/fork environment.')
     if (command === 'report') {
       const journal = new DatabaseSync(join(config.state, 'requests.sqlite'), { readOnly: true })
       try {
-        const health = await localHealth(port).catch(() => undefined)
         journal.exec('BEGIN')
+        const chain = journal.prepare('SELECT value FROM settings WHERE key=?').get('chainId')
+        const operator = journal.prepare('SELECT value FROM settings WHERE key=?').get('operatorAddress')
+        if (!config.operatorAddress || chain?.value !== String(CHAIN_ID) || operator?.value !== config.operatorAddress)
+          throw new Error('The report journal does not match the selected chain and gas wallet.')
+        const health = await localHealth(port).catch(() => undefined)
+        if (health && (health.chainId !== CHAIN_ID || health.nativeSymbol !== NATIVE_SYMBOL || health.operatorAddress !== config.operatorAddress))
+          throw new Error('The current health sample belongs to a different chain or gas wallet.')
         const currentBalance = health?.synchronized === true && typeof health.feeBalancesAt === 'number' &&
           Math.abs(Date.now() - health.feeBalancesAt) < 45_000
-        console.log(JSON.stringify({ ...accountingReport(journal), spendablePrivateFees: currentBalance ? health?.feeBalances : undefined,
+        console.log(JSON.stringify({ ...accountingReport(journal), ...identity, spendablePrivateFees: currentBalance ? health?.feeBalances : undefined,
           privateBalanceSampledAt: currentBalance ? health?.feeBalancesAt : undefined, maximumWithdrawalGasWei: config.maxTransactionCost.toString(),
           treasury: '0x58707c6C1E111c21cba4C9C8caE144175F84EceE',
           collectionRequiresOwnerQuotes: true }))
@@ -89,7 +97,7 @@ async function run(): Promise<void> {
     }
     if (command === 'check') {
       const rates = await oracle.rates(), disk = statfsSync(config.state)
-      console.log(JSON.stringify({ chainId: 1, mode: config.mode, signingEnabled: config.enabled,
+      console.log(JSON.stringify({ ...identity, mode: config.mode, signingEnabled: config.enabled,
         pricedFeeTokens: Object.keys(rates), freeDiskGiB: Math.floor(disk.bavail * disk.bsize / 1024 ** 3) }))
       return
     }
@@ -97,6 +105,7 @@ async function run(): Promise<void> {
     lock = new LevelDOWN(join(config.state, 'operator-lock'))
     await new Promise<void>((resolve, reject) => lock!.open((error) => error ? reject(error) : resolve()))
     store = new Store(config.state)
+    if (command !== 'migrate') store.bindIdentity(CHAIN_ID, config.operatorAddress)
     if (command === 'acknowledge-loss') {
       if (process.argv.length !== 5) throw new Error('Provide the request key and an audit reason.')
       await acknowledgeLoss(process.argv[3], process.argv[4], config, store, provider)
@@ -116,8 +125,10 @@ async function run(): Promise<void> {
     if (command === 'status') {
       const address = config.mode === 'mainnet' ? config.operatorAddress : new Wallet(readSecrets(config.secrets).gasKey).address
       if (!address) throw new Error('Configure the dedicated public gas address.')
+      store.bindIdentity(CHAIN_ID, address)
+      identity.operatorAddress = address
       const pending = store.pending()
-      console.log(JSON.stringify({ gasWalletAddress: address, balanceWei: String(await provider.getBalance(address)),
+      console.log(JSON.stringify({ ...identity, gasWalletAddress: address, balanceWei: String(await provider.getBalance(address)),
         exposureWei: String(store.exposure()), unresolved: pending.filter((r) => !r.confirmed).map((r) => ({
           hash: r.hash, nonce: r.nonce, cancellationHash: r.cancel_hash, feeExpired: r.fee_expiration <= Date.now(),
         })), feeAssurancePending: pending.filter((r) => r.confirmed && !r.assured).length }))
@@ -129,8 +140,9 @@ async function run(): Promise<void> {
       if (request.url !== '/health') { response.writeHead(404).end(); return }
       response.setHeader('Content-Type', 'application/json')
       const pending = store!.pending()
-      response.end(JSON.stringify({ mode: config.mode, admission: config.admission, enabled: config.enabled, ready: metrics.ready, locked: metrics.locked,
+      response.end(JSON.stringify({ ...identity, mode: config.mode, admission: config.admission, enabled: config.enabled, ready: metrics.ready, locked: metrics.locked,
         synchronized: sdk?.ready() ?? false,
+        wakuSaturated: waku?.saturated ?? false,
         pending: pending.filter((r) => !r.confirmed).length,
         feeAssurancePending: pending.filter((r) => r.confirmed && !r.assured).length, errors: metrics.errors,
         feeBalances: metrics.feeBalances, feeBalancesAt: metrics.feeBalancesAt }))
@@ -148,6 +160,8 @@ async function run(): Promise<void> {
       metrics.locked = false
     } else secrets = readSecrets(config.secrets)
     const wallet = new Wallet(secrets.gasKey)
+    store.bindIdentity(CHAIN_ID, wallet.address)
+    identity.operatorAddress = wallet.address
     if (await provider.getCode(wallet.address) !== '0x') throw new Error('The dedicated gas wallet must be undelegated.')
     if (command === 'deploy-guard') {
       if (store.pending().length) throw new Error('Reconcile outstanding user requests before deploying.')
@@ -155,7 +169,7 @@ async function run(): Promise<void> {
       console.log(JSON.stringify(await deployGuard(config, approval, provider, wallet)))
       return
     }
-    if (config.mode === 'mainnet') sender = new ProtectedEthereumProvider(config.rpc, wallet.address, config.state, config.executionGuard)
+    if (config.mode === 'mainnet') sender = new ProtectedEthereumProvider(config.rpc, wallet.address, config.state, config.executionGuard, CHAIN_ID)
     if (command === 'retry' || command === 'cancel') {
       if (!sender) throw new Error('Manual recovery is a mainnet protected-transport command; test its function on a fork.')
       const hash = await recover(command, process.argv.slice(3), config, store, provider, wallet, sender)
@@ -171,7 +185,7 @@ async function run(): Promise<void> {
     }
     await sdk.start(provider)
     console.log(JSON.stringify({ status: 'synchronizing', feeIdentity: sdk.address, gasWalletAddress: wallet.address }))
-    const waku = new WakuRelay(config.waku, config.mode === 'fork' ? '/waku/2/rs/0/0' : undefined)
+    waku = new WakuRelay(config.waku, config.mode === 'fork' ? '/waku/2/rs/0/0' : undefined)
     if (command === 'run') await waku.subscribe()
     let lastRefresh = 0, failures = 0
     while (!stopping) {

@@ -3,7 +3,7 @@ import { createHash, randomBytes } from 'node:crypto'
 import { dirname, join } from 'node:path'
 import { Wallet } from 'ethers'
 import { DatabaseSync } from 'node:sqlite'
-import type { Settings } from './config'
+import { CHAIN_ID, type Settings } from './config'
 import { sealOperator } from './custody'
 import { RailgunSDK } from './sdk'
 import { privateFile, readSecrets, type Secrets, type Store } from './storage'
@@ -17,11 +17,16 @@ function durableCreate(path: string, data: Buffer): void {
 
 export async function migrateOperator(config: Settings, store: Store, certificatePath: string) {
   if (config.enabled || store.pending().length) throw new Error('Migration requires an unarmed operator with no unresolved requests or fees.')
+  if (config.chainId !== CHAIN_ID || store.db.prepare('SELECT 1 FROM requests LIMIT 1').get() ||
+    store.db.prepare('SELECT 1 FROM settings WHERE key=?').get('operatorAddress'))
+    throw new Error('Custody migration requires an empty, unbound legacy operator. Preserve established installations; rotate into a separate installation.')
   const journalPath = join(config.state, 'protected-transactions.sqlite')
   if (existsSync(journalPath)) {
     privateFile(journalPath, true)
     const journal = new DatabaseSync(journalPath, { readOnly: true })
     try {
+      if (journal.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name='binding'").get())
+        throw new Error('Preserve the existing bound protected journal; use a separate operator installation.')
       if ((journal.prepare('SELECT COUNT(*) AS count FROM pending').get()?.count ?? 0) !== 0)
         throw new Error('Reconcile the protected transport journal before migration.')
     } finally { journal.close() }
@@ -29,6 +34,7 @@ export async function migrateOperator(config: Settings, store: Store, certificat
   const legacy = readSecrets(config.secrets)
   if (!legacy.feeMnemonic) throw new Error('Migration requires the original operator record.')
   const certificate = privateFile(certificatePath)
+  store.bindIdentity(CHAIN_ID)
   const root = dirname(config.secrets)
   const original = Buffer.from(JSON.stringify(legacy))
   let sdk: RailgunSDK | undefined
@@ -50,6 +56,7 @@ export async function migrateOperator(config: Settings, store: Store, certificat
       runtimeSha256: createHash('sha256').update(sealed).digest('hex'),
       retiredSha256: createHash('sha256').update(retired).digest('hex'), legacyRemovalPending: true }
     durableCreate(join(root, 'operator-public.json'), Buffer.from(JSON.stringify(metadata, null, 2)))
+    store.bindIdentity(CHAIN_ID, gas.address)
     store.db.prepare('INSERT OR REPLACE INTO settings(key,value) VALUES(?,?)').run('walletId', view.id)
     return metadata
   } finally { original.fill(0); await sdk?.stop() }

@@ -1,7 +1,7 @@
 import { constants, closeSync, fstatSync, lstatSync, mkdirSync, openSync, readFileSync, statfsSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { DatabaseSync } from 'node:sqlite'
-import { randomBytes, Mnemonic, Wallet } from 'ethers'
+import { getAddress, randomBytes, Mnemonic, Transaction, Wallet, ZeroAddress } from 'ethers'
 
 export function assertDisk(path: string): void {
   const fs = statfsSync(path)
@@ -101,7 +101,54 @@ export class Store {
       CREATE TRIGGER IF NOT EXISTS preserve_resolution_update BEFORE UPDATE ON settlement_resolutions
         BEGIN SELECT RAISE(ABORT, 'Settlement resolutions are append-only'); END;
       CREATE TRIGGER IF NOT EXISTS preserve_resolution_delete BEFORE DELETE ON settlement_resolutions
-        BEGIN SELECT RAISE(ABORT, 'Settlement resolutions are append-only'); END;`)
+        BEGIN SELECT RAISE(ABORT, 'Settlement resolutions are append-only'); END;
+      CREATE TRIGGER IF NOT EXISTS preserve_identity_update BEFORE UPDATE ON settings
+        WHEN OLD.key IN ('chainId','operatorAddress') OR NEW.key IN ('chainId','operatorAddress')
+        BEGIN SELECT RAISE(ABORT, 'Operator identity is immutable'); END;
+      CREATE TRIGGER IF NOT EXISTS preserve_identity_delete BEFORE DELETE ON settings
+        WHEN OLD.key IN ('chainId','operatorAddress')
+        BEGIN SELECT RAISE(ABORT, 'Operator identity is immutable'); END;
+      CREATE TRIGGER IF NOT EXISTS preserve_identity_replace BEFORE INSERT ON settings
+        WHEN NEW.key IN ('chainId','operatorAddress') AND EXISTS(SELECT 1 FROM settings WHERE key=NEW.key)
+        BEGIN SELECT RAISE(ABORT, 'Operator identity is immutable'); END;`)
+  }
+  bindIdentity(chainId: number, operatorAddress?: string): void {
+    const supported = (value: number) => [1, 42161, 56, 137].includes(value)
+    if (!supported(chainId)) throw new Error('Unsupported operator journal network.')
+    const requested = operatorAddress === undefined ? undefined : getAddress(operatorAddress)
+    if (requested === ZeroAddress) throw new Error('Invalid operator journal identity.')
+    this.db.exec('BEGIN IMMEDIATE')
+    try {
+      const chain = this.db.prepare('SELECT value FROM settings WHERE key=?').get('chainId')
+      const saved = this.db.prepare('SELECT value FROM settings WHERE key=?').get('operatorAddress')
+      if ((chain && (typeof chain.value !== 'string' || !supported(Number(chain.value)) || String(Number(chain.value)) !== chain.value)) ||
+        (saved && (!chain || typeof saved.value !== 'string' || getAddress(saved.value) !== saved.value || saved.value === ZeroAddress)))
+        throw new Error('The persisted operator journal identity is corrupt.')
+      if ((chain && chain.value !== String(chainId)) || (saved && requested && saved.value !== requested))
+        throw new Error('The operator journal belongs to a different network or gas wallet.')
+      if (!chain && chainId !== 1 && this.db.prepare(`SELECT 1 FROM requests UNION ALL SELECT 1 FROM fees
+        UNION ALL SELECT 1 FROM settings UNION ALL SELECT 1 FROM settlement_resolutions LIMIT 1`).get())
+        throw new Error('A populated legacy journal may only be bound to Ethereum.')
+      let operator = requested ?? (saved?.value as string | undefined)
+      for (const row of this.db.prepare('SELECT raw,hash,nonce,cancel_raw,cancel_hash FROM requests').iterate()) {
+        const transactions = [[row.raw, row.hash]]
+        if (row.cancel_raw != null || row.cancel_hash != null) transactions.push([row.cancel_raw, row.cancel_hash])
+        for (const [raw, hash] of transactions) {
+          let tx: Transaction
+          try { tx = Transaction.from(String(raw)) } catch { throw new Error('The journal contains an invalid signed transaction.') }
+          if (!tx.isSigned() || tx.serialized !== raw || tx.hash !== hash || tx.chainId !== BigInt(chainId) ||
+            tx.nonce !== row.nonce || (operator && tx.from !== operator))
+            throw new Error('The journal contains an inconsistent signed transaction.')
+          operator ??= tx.from!
+        }
+      }
+      if (!chain) this.db.prepare('INSERT INTO settings(key,value) VALUES(?,?)').run('chainId', String(chainId))
+      if (!saved && operator) this.db.prepare('INSERT INTO settings(key,value) VALUES(?,?)').run('operatorAddress', operator)
+      this.db.exec('COMMIT')
+    } catch (error) {
+      try { this.db.exec('ROLLBACK') } catch { /* SQLite may already have rolled back. */ }
+      throw error
+    }
   }
   get(key: string): RequestRecord | undefined {
     return this.db.prepare('SELECT * FROM requests WHERE key=?').get(key) as RequestRecord | undefined

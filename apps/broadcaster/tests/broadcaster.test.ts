@@ -10,11 +10,12 @@ import { Broadcaster } from '../src/broadcaster'
 import { Store } from '../src/storage'
 import { issueFee } from '../src/fees'
 import { ADAPT, PROXY } from '../src/transaction'
-import { NETWORK, TOKENS } from '../src/config'
+import { CHAIN, COMMON_TRANSACTION_TYPE, NETWORK, TOKENS } from '../src/config'
 import { config, privateRequest, withdrawalRequest } from './request.fixture'
 import { decodeGuardedExecution, executionGuardCode } from '../../railgun/operator/execution-guard'
 
 const registry = new Interface(['function getContractAddress(string name) view returns (address)'])
+const blockHash = `0x${'55'.repeat(32)}`
 let directory: string, store: Store
 beforeEach(() => { directory = mkdtempSync(join(tmpdir(), 'ophis-broadcaster-gates-')); store = new Store(directory) })
 afterEach(() => { store.close(); rmSync(directory, { recursive: true, force: true }) })
@@ -39,13 +40,15 @@ async function fixture(guard?: string, withdrawalRecipient?: string) {
     : await privateRequest(quote.id, publicViewingKey)
   const wire = await packetFor(data, publicViewingKey)
   const provider = {
-    getNetwork: vi.fn(async () => ({ chainId: 1n })),
-    getBlock: vi.fn(async () => ({ number: 100, timestamp: Math.floor(Date.now() / 1000), baseFeePerGas: 1n })),
+    getNetwork: vi.fn(async () => ({ chainId: CHAIN })),
+    getFeeData: vi.fn(async () => ({ gasPrice: 2n })),
+    getBlock: vi.fn(async () => ({ number: 100, hash: blockHash, timestamp: Math.floor(Date.now() / 1000), baseFeePerGas: 1n })),
     getTransactionCount: vi.fn(async () => 0), getBalance: vi.fn(async () => 10n ** 18n),
     getBlockNumber: vi.fn(async () => 100),
-    getTransactionReceipt: vi.fn(async (_hash?: string): Promise<Pick<TransactionReceipt, 'status' | 'blockNumber' | 'gasUsed' | 'gasPrice'> | null> => null),
+    getTransactionReceipt: vi.fn(async (_hash?: string): Promise<Pick<TransactionReceipt, 'status' | 'blockNumber' | 'blockHash' | 'gasUsed' | 'gasPrice'> | null> => null),
     estimateGas: vi.fn(async () => 100_000n),
-    getCode: vi.fn(async (address: string) => address === guard ? executionGuardCode(wallet.address, '0x6001') : '0x6001'),
+    getCode: vi.fn(async (address: string) => address === guard
+      ? executionGuardCode(wallet.address, '0x6001', NETWORK.relayAdapt7702Contract) : '0x6001'),
     call: vi.fn(async (tx: { data: string }) => {
       if (tx.data.startsWith(registry.getFunction('getContractAddress')!.selector))
         return registry.encodeFunctionResult('getContractAddress', [NETWORK.relayAdapt7702Contract])
@@ -76,11 +79,34 @@ async function confirm(f: Awaited<ReturnType<typeof fixture>>, hash: string, sta
   const record = store.pending().find((r) => r.hash === hash)!
   f.provider.getTransactionCount.mockImplementation(async (address?: string) => address === f.service.wallet.address ? record.nonce + 1 : 0)
   f.provider.getTransactionReceipt.mockImplementation(async (requested?: string) => requested === hash
-    ? { status, blockNumber: 99, gasUsed: 100_000n, gasPrice: 2_000_000_000n } : null)
+    ? { status, blockNumber: 99, blockHash, gasUsed: 100_000n, gasPrice: 2_000_000_000n } : null)
   await f.service.reconcile()
 }
 
 describe('signing gate and duplicate recovery', () => {
+  it.each([false, true])('repeats the trace after a same-height reorg and rejects an expired final head: %s', async (expires) => {
+    const f = await fixture(Wallet.createRandom().address)
+    const now = Date.now(), clock = vi.spyOn(Date, 'now').mockReturnValue(now)
+    let heads = 0, traces = 0
+    f.provider.getBlock.mockImplementation(async (tag?: string | number) => {
+      if (tag === 'latest') heads++
+      return { number: 100, hash: heads < 2 ? blockHash : `0x${'66'.repeat(32)}`,
+        timestamp: Math.floor(now / 1000), baseFeePerGas: 1n }
+    })
+    const originalTrace = await f.provider.send()
+    f.provider.send.mockImplementation(async () => {
+      traces++
+      if (expires && traces === 2) clock.mockReturnValue(now + 46_000)
+      return originalTrace
+    })
+    try {
+      const result = f.decode(await f.service.handle(f.payload))
+      expect(traces).toBe(2)
+      expect(f.sign).toHaveBeenCalledTimes(expires ? 0 : 1)
+      if (expires) expect(result.error).toContain('signing')
+      else expect(result.txHash).toBeTruthy()
+    } finally { clock.mockRestore() }
+  })
   it('permits one atomic USDC withdrawal to the pinned recipient, persists the one-time gate, and replays duplicates', async () => {
     const recipient = Wallet.createRandom().address
     const f = await fixture(Wallet.createRandom().address, recipient)
@@ -89,7 +115,7 @@ describe('signing gate and duplicate recovery', () => {
     expect(result.txHash).toMatch(/^0x[0-9a-f]{64}$/)
     const signed = Transaction.from(store.get((store.db.prepare('SELECT key FROM requests').get() as { key: string }).key)!.raw!)
     expect(signed.to).toBe(getAddress(NETWORK.proxyContract))
-    expect(signed.type).toBe(1)
+    expect(signed.type).toBe(COMMON_TRANSACTION_TYPE)
     expect(store.db.prepare('SELECT value FROM settings WHERE key=?').get('withdrawalPilot')?.value).toBe(result.txHash)
     expect(await f.service.available()).toBe(false)
     expect(f.decode(await f.service.handle(f.payload))).toEqual(result)
@@ -110,7 +136,7 @@ describe('signing gate and duplicate recovery', () => {
   it('prices a common withdrawal above the current base fee without changing its proof or fee', async () => {
     const f = await fixture(undefined, Wallet.createRandom().address)
     const minimum = BigInt(f.data.minGasPrice as string)
-    f.provider.getBlock.mockResolvedValue({ number: 100, timestamp: Math.floor(Date.now() / 1000), baseFeePerGas: minimum })
+    f.provider.getBlock.mockResolvedValue({ number: 100, hash: blockHash, timestamp: Math.floor(Date.now() / 1000), baseFeePerGas: minimum })
     expect(f.decode(await f.service.handle(f.payload)).txHash).toBeTruthy()
     const row = store.pending()[0]
     const signed = Transaction.from(row.raw!)
@@ -122,7 +148,7 @@ describe('signing gate and duplicate recovery', () => {
   it.each(['cap', 'payment'])('never signs a repriced withdrawal exceeding its %s', async (reason) => {
     const f = await fixture(undefined, Wallet.createRandom().address)
     const base = reason === 'cap' ? config.maxGasPrice : BigInt(f.data.minGasPrice as string)
-    f.provider.getBlock.mockResolvedValue({ number: 100, timestamp: Math.floor(Date.now() / 1000), baseFeePerGas: base })
+    f.provider.getBlock.mockResolvedValue({ number: 100, hash: blockHash, timestamp: Math.floor(Date.now() / 1000), baseFeePerGas: base })
     if (reason === 'payment') f.sdk.fee.mockResolvedValue({ [TOKENS[1].address]: 440_000n })
     expect(f.decode(await f.service.handle(f.payload)).error).toBeTruthy()
     expect(f.sign).not.toHaveBeenCalled()
@@ -195,7 +221,7 @@ describe('signing gate and duplicate recovery', () => {
   })
   it('does not advertise availability when the current base fee exceeds the operator cap', async () => {
     const f = await fixture()
-    f.provider.getBlock.mockResolvedValue({ number: 100, timestamp: Math.floor(Date.now() / 1000), baseFeePerGas: config.maxGasPrice })
+    f.provider.getBlock.mockResolvedValue({ number: 100, hash: blockHash, timestamp: Math.floor(Date.now() / 1000), baseFeePerGas: config.maxGasPrice })
     expect(await f.service.available()).toBe(false)
     expect(f.sign).not.toHaveBeenCalled()
   })
@@ -288,7 +314,7 @@ describe('public admission and sequential settlement', () => {
     store.cancel(record.key, 'saved-cancellation', cancelHash, 1n, config.dailyBudget)
     f.provider.getTransactionCount.mockResolvedValue(1)
     f.provider.getTransactionReceipt.mockImplementation(async (hash?: string) => hash === cancelHash
-      ? { status: 1, blockNumber: 99, gasUsed: 21_000n, gasPrice: 2_000_000_000n } : null)
+      ? { status: 1, blockNumber: 99, blockHash, gasUsed: 21_000n, gasPrice: 2_000_000_000n } : null)
     await f.service.reconcile()
     expect(store.hasPending()).toBe(false)
     expect(await f.service.available()).toBe(true)
@@ -305,7 +331,7 @@ describe('public admission and sequential settlement', () => {
       const data = await withdrawalRequest(f.quote.id, f.sdk.publicViewingKey, Wallet.createRandom().address, 1, 1, token.address,
         `0x${(nonce + 1).toString(16).padStart(64, '0')}`)
       const wire = await packetFor(data, f.sdk.publicViewingKey)
-      f.sdk.fee.mockResolvedValue({ [getAddress(token.address)]: token.symbol === 'WETH' ? 2_000_000_000_000_000n : 2_000_000n })
+      f.sdk.fee.mockResolvedValue({ [getAddress(token.address)]: token.address === TOKENS[0].address ? 2_000_000_000_000_000n : 2_000_000n })
       f.provider.send.mockResolvedValue({ type: 'CALL', to: NETWORK.proxyContract, input: data.data })
       const response = wire.decode(await f.service.handle(wire.payload))
       expect(response.txHash).toBeTruthy()
@@ -372,8 +398,8 @@ describe('public admission and sequential settlement', () => {
     f.provider.send.mockResolvedValue({ type: 'CALL', to: NETWORK.proxyContract, input: data.data })
     const wire = await packetFor(data, f.sdk.publicViewingKey)
     const error = wire.decode(await f.service.handle(wire.payload)).error
-    const expected = ['zero-recipient', 'high-recipient'].includes(kind) ? 'nonzero Ethereum address'
-      : ['token', 'zero-amount', 'nft', 'sub-id'].includes(kind) ? 'WETH, USDC or USDT'
+    const expected = ['zero-recipient', 'high-recipient'].includes(kind) ? 'nonzero public address'
+      : ['token', 'zero-amount', 'nft', 'sub-id'].includes(kind) ? 'supported fee token'
       : kind === 'fee-token' ? 'withdrawn token' : kind === 'expired' ? 'fee quote expired' : 'does not cover execution'
     expect(error).toContain(expected)
     expect(f.sdk.validate).not.toHaveBeenCalled()

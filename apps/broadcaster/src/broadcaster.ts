@@ -1,6 +1,6 @@
 import { fromUTF8String } from '@railgun-community/wallet'
 import { getAddress, Interface, JsonRpcProvider, Transaction, type TransactionResponse } from 'ethers'
-import { BROADCASTER_VERSION, MAX_GAS, NETWORK, TOKENS, VERSION, type Settings } from './config'
+import { assertSigningNetwork, BROADCASTER_VERSION, CHAIN, CHAIN_ID, MAX_GAS, NETWORK, TOKENS, type Settings } from './config'
 import { issueFee, validateFee, ceilDiv } from './fees'
 import { Store } from './storage'
 import { ADAPT, PROXY, assertPrivateExecution, parseRequest, type ParsedRequest } from './transaction'
@@ -9,6 +9,7 @@ import type { FeeOracle } from './fees'
 import type { RailgunSDK, FeeProof } from './sdk'
 import { assertExecutionGuardCode, guardedExecution } from '../../railgun/operator/execution-guard'
 import { signApprovedTransaction, type GasSigner } from './signer'
+import { readChainState } from './chain-state'
 
 const REGISTRY = new Interface(['function getContractAddress(string name) view returns (address)'])
 type SDK = Pick<RailgunSDK, 'address' | 'privateViewingKey' | 'publicViewingKey' | 'ready' | 'sign' | 'fee' | 'validate' | 'assure'>
@@ -27,24 +28,24 @@ export class Broadcaster {
   ) {}
 
   private async state() {
-    if ((await this.provider.getNetwork()).chainId !== 1n) throw new Error('Wrong Ethereum read node.')
-    const block = await this.provider.getBlock('latest')
-    if (!block || block.baseFeePerGas == null || Math.abs(Date.now() / 1000 - block.timestamp) > 45)
-      throw new Error('Ethereum read node is stale.')
+    if (this.config.chainId !== CHAIN_ID || (await this.provider.getNetwork()).chainId !== CHAIN)
+      throw new Error('Wrong broadcaster read network.')
+    const state = await readChainState(this.provider)
+    const { block, settled } = state
     const [nonce, confirmed, balance] = await Promise.all([
       this.provider.getTransactionCount(this.wallet.address, block.number),
-      this.provider.getTransactionCount(this.wallet.address, Math.max(0, block.number - 1)),
+      this.provider.getTransactionCount(this.wallet.address, settled),
       this.provider.getBalance(this.wallet.address, block.number),
     ])
-    return { block, nonce, confirmed, balance }
+    return { ...state, nonce, confirmed, balance }
   }
 
   async available(): Promise<boolean> {
     if (!this.config.enabled || this.busy || !this.sdk.ready() || this.store.hasPending()) return false
     if (this.config.admission === 'pilot' && this.config.pilotWithdrawalRecipient &&
       this.store.db.prepare('SELECT 1 FROM settings WHERE key=?').get('withdrawalPilot')) return false
-    const { nonce, confirmed, balance, block } = await this.state()
-    return block.baseFeePerGas! + 1n <= this.config.maxGasPrice && nonce === confirmed &&
+    const { nonce, confirmed, balance, minimumGasPrice } = await this.state()
+    return minimumGasPrice <= this.config.maxGasPrice && nonce === confirmed &&
       balance >= this.config.reserve + this.config.maxTransactionCost &&
       this.store.exposure() < this.config.dailyBudget &&
       !this.store.nonceBlocked(confirmed)
@@ -56,7 +57,7 @@ export class Broadcaster {
     const data = fromUTF8String(JSON.stringify({
       fees: Object.fromEntries(Object.entries(quote.rates).map(([token, rate]) => [token.toLowerCase(), rate])),
       feeExpiration: quote.expiration, feesID: quote.id, railgunAddress: this.sdk.address,
-      identifier: 'ophis-ethereum', availableWallets: available ? 1 : 0, version: BROADCASTER_VERSION,
+      identifier: `ophis-${CHAIN_ID}`, availableWallets: available ? 1 : 0, version: BROADCASTER_VERSION,
       relayAdapt: NETWORK.relayAdaptContract, relayAdapt7702: NETWORK.relayAdapt7702Contract,
       requiredPOIListKeys: [], reliability: 0.75,
     }))
@@ -74,6 +75,7 @@ export class Broadcaster {
     try {
       if (existing?.raw) throw new Error('This signed request needs reconciliation.')
       if (!this.config.enabled || !this.sdk.ready()) throw new Error('Broadcaster not available.')
+      assertSigningNetwork(this.config)
       phase = 'busy'
       if (this.busy || this.store.hasPending()) throw new Error('Reconcile the preceding request and fee first.')
       phase = 'admission'
@@ -119,7 +121,7 @@ export class Broadcaster {
         throw new Error('The withdrawal broadcaster fee must use the withdrawn token.')
       }
       validateFee(this.store, parsed.feesID, payment, 1n, await this.oracle.rates())
-      const { nonce, confirmed, balance, block } = await this.state()
+      const { nonce, confirmed, balance, block, baseFee, minimumGasPrice } = await this.state()
       if (nonce !== confirmed || this.store.nonceBlocked(nonce))
         throw new Error('The operator has an unresolved transaction.')
       phase = 'network'
@@ -134,7 +136,7 @@ export class Broadcaster {
           const minimum = BigInt(item.boundParams.minGasPrice)
           if (minimum > gasPrice) gasPrice = minimum
         }
-        if (block.baseFeePerGas! + 1n > gasPrice) gasPrice = block.baseFeePerGas! + 1n
+        if (minimumGasPrice > gasPrice) gasPrice = minimumGasPrice
         if (gasPrice > this.config.maxGasPrice) throw new Error('Current gas price exceeds the operator cap.')
         execution = { ...execution, gasPrice }
       }
@@ -148,7 +150,7 @@ export class Broadcaster {
       const price = parsed.type4 ? BigInt(parsed.transaction.maxFeePerGas!) : BigInt(populated.gasPrice!)
       const tip = parsed.type4 ? BigInt(parsed.transaction.maxPriorityFeePerGas!) : 1n
       phase = 'pricing'
-      if (price < block.baseFeePerGas! + tip) throw new Error('Gas price exceeds the signed cap.')
+      if (price < baseFee + tip || price < minimumGasPrice) throw new Error('Gas price exceeds the signed cap.')
       const budget = gasLimit * price
       phase = 'reserve'
       if (budget > this.config.maxTransactionCost || balance < budget + this.config.reserve)
@@ -167,16 +169,17 @@ export class Broadcaster {
       phase = 'state'
       const fresh = await this.state()
       if (this.store.hasPending() || fresh.nonce !== nonce || fresh.confirmed !== nonce || fresh.balance < budget + this.config.reserve ||
-        price < fresh.block.baseFeePerGas! + tip) throw new Error('Execution state changed during validation.')
+        price < fresh.baseFee + tip || price < fresh.minimumGasPrice) throw new Error('Execution state changed during validation.')
       phase = 'network'
       await this.validateNetworkAndAuthority(parsed, fresh.block.number)
       phase = 'trace'
-      if (fresh.block.number !== block.number) assertPrivateExecution(await this.provider.send('debug_traceCall', [
+      if (fresh.block.hash !== block.hash) assertPrivateExecution(await this.provider.send('debug_traceCall', [
         this.provider.getRpcTransaction(transaction), `0x${fresh.block.number.toString(16)}`, { tracer: 'callTracer', timeout: '10s' },
       ]), privateCalldata)
       phase = 'fee'
       validateFee(this.store, parsed.feesID, payment, budget, await this.oracle.rates())
       phase = 'sign'
+      if (Math.abs(Date.now() / 1000 - fresh.block.timestamp) > 45) throw new Error('The validated head expired before signing.')
       if (this.store.exposure() + budget > this.config.dailyBudget) throw new Error('Operator gas budget exhausted.')
       this.lastRequests.push(performance.now())
       const raw = await signApprovedTransaction(this.wallet, transaction)
@@ -202,16 +205,16 @@ export class Broadcaster {
         pilot: 'The swap account is outside this restricted pilot. Keep the saved transaction.',
         'withdrawal-recipient': this.config.admission === 'pilot'
           ? 'The withdrawal destination does not match the approved pilot recipient. Keep the saved withdrawal.'
-          : 'The withdrawal destination must be a nonzero Ethereum address. Keep the saved withdrawal.',
+          : 'The withdrawal destination must be a nonzero public address. Keep the saved withdrawal.',
         'withdrawal-token': this.config.admission === 'pilot'
           ? 'This pilot permits a positive USDC withdrawal only. Keep the saved withdrawal.'
-          : 'A withdrawal requires a positive amount of WETH, USDC or USDT. Keep the saved withdrawal.',
+          : 'A withdrawal requires a positive amount of a supported fee token. Keep the saved withdrawal.',
         'withdrawal-used': 'The one-time withdrawal pilot is already used. Check the pending withdrawal before retrying.',
         'withdrawal-fee': 'The withdrawal fee must be paid in the withdrawn token. Keep the saved withdrawal.',
         simulation: 'The private transaction did not pass execution simulation. Check recovery before retrying.',
-        network: 'The broadcaster could not verify the current Ethereum privacy contracts. Keep the saved withdrawal.',
+        network: 'The broadcaster could not verify the current privacy contracts. Keep the saved withdrawal.',
         pricing: 'Current gas pricing exceeds the permitted limits. Keep the saved proof and retry through the broadcaster later.',
-        estimate: 'Ethereum rejected the saved transaction during gas estimation. Keep the saved proof.',
+        estimate: 'The network rejected the saved transaction during gas estimation. Keep the saved proof.',
         allowance: 'Estimated gas exceeds the permitted transaction allowance. Keep the saved proof.',
         reserve: 'The transaction exceeds the operator gas budget or protected reserve. Keep the saved proof.',
         trace: 'The saved transaction failed its exact execution trace. Keep the saved proof.',
@@ -234,7 +237,7 @@ export class Broadcaster {
         this.provider.getCode(this.config.executionGuard, blockTag),
         this.provider.getCode(NETWORK.relayAdapt7702Contract, blockTag),
       ])
-      assertExecutionGuardCode(this.wallet.address, code, delegateCode)
+      assertExecutionGuardCode(this.wallet.address, code, delegateCode, NETWORK.relayAdapt7702Contract)
     }
     const registered = await this.provider.call({ to: NETWORK.railgunRegistryContract,
       data: REGISTRY.encodeFunctionData('getContractAddress', ['RelayAdapt7702']), blockTag })
@@ -255,7 +258,7 @@ export class Broadcaster {
   }
 
   async reconcile(): Promise<void> {
-    const blockNumber = await this.provider.getBlockNumber()
+    const { block: head, confirmed, settled } = await this.state()
     for (const item of this.store.pending()) {
       if (!item.hash) continue
       this.store.checked(item.key)
@@ -263,23 +266,19 @@ export class Broadcaster {
       const original = await this.provider.getTransactionReceipt(item.hash)
       const receipt = original ?? (item.cancel_hash ? await this.provider.getTransactionReceipt(item.cancel_hash) : null)
       if (!receipt) {
-        const confirmed = await this.provider.getTransactionCount(this.wallet.address, Math.max(0, blockNumber - 1))
         if (confirmed > item.nonce) {
-          const block = await this.provider.getBlock(blockNumber)
-          if (block) {
             // Only the operator nonce is consumed; the user's proof/recovery state is not cleared.
-            this.store.confirmed(item.key, BigInt(item.max_cost), block.timestamp * 1000)
-          }
+            this.store.confirmed(item.key, BigInt(item.max_cost), head.timestamp * 1000)
         }
         if (!item.confirmed) continue
         if (!item.assured && await this.sdk.assure(item.hash, JSON.parse(item.fee_data) as FeeProof))
           this.store.assured(item.key, true)
         continue
       }
-      if (blockNumber - receipt.blockNumber + 1 < 2) continue
+      if (receipt.blockNumber > settled) continue
       {
         const block = await this.provider.getBlock(receipt.blockNumber)
-        if (!block) continue
+        if (!block || block.hash !== receipt.blockHash) continue
         this.store.confirmed(item.key, receipt.gasUsed * receipt.gasPrice, block.timestamp * 1000)
       }
       if (!original) { this.store.assured(item.key); continue }

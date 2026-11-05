@@ -1,11 +1,12 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { createServer, type Server } from 'node:http'
-import { chmodSync, mkdtempSync, rmSync, statSync, writeFileSync } from 'node:fs'
+import { chmodSync, existsSync, mkdtempSync, rmSync, statSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import { DatabaseSync } from 'node:sqlite'
 import { NETWORK_CONFIG, NetworkName } from '@railgun-community/shared-models'
 import { decodeRlp, encodeRlp, FetchRequest, Transaction, Wallet } from 'ethers'
-import { PROTECTED_WRITE_RPC, ProtectedEthereumProvider } from './protected-provider'
+import { PROTECTED_WRITE_RPC, protectedWriteRPC, ProtectedEthereumProvider } from './protected-provider'
 import { EXECUTION_GUARD, executionGuardCode } from './execution-guard'
 
 const config = NETWORK_CONFIG[NetworkName.Ethereum]
@@ -26,25 +27,27 @@ let write: ReturnType<typeof vi.fn>
 let executionGuard: string | undefined
 let guardCode: string | undefined
 
-async function signed(overrides = {}): Promise<string> {
-  const auth = await ephemeral.authorize({ address: config.relayAdapt7702Contract, chainId: 1, nonce: 0 })
+async function signed(overrides = {}, chainId = 1): Promise<string> {
+  const network = NETWORK_CONFIG[chainId === 56 ? NetworkName.BNBChain : chainId === 42161 ? NetworkName.Arbitrum
+    : chainId === 137 ? NetworkName.Polygon : NetworkName.Ethereum]
+  const auth = await ephemeral.authorize({ address: network.relayAdapt7702Contract, chainId, nonce: 0 })
   return operator.signTransaction({
-    type: 4, chainId: 1, nonce: 0, to: ephemeral.address, authorizationList: [auth],
+    type: 4, chainId, nonce: 0, to: ephemeral.address, authorizationList: [auth],
     data: '0x12345678', value: 0n, gasLimit: 1_000_000n,
     maxFeePerGas: 2_000_000_000n, maxPriorityFeePerGas: 1_000_000_000n, ...overrides,
   })
 }
 
-function provider(guard?: string): ProtectedEthereumProvider {
+function provider(guard?: string, chainId = 1, operatorAddress = operator.address): ProtectedEthereumProvider {
   const request = new FetchRequest(readURL)
   request.setHeader('Authorization', 'private-read-node-credential')
-  const result = new ProtectedEthereumProvider(request, operator.address, directory, guard)
+  const result = new ProtectedEthereumProvider(request, operatorAddress, directory, guard, chainId)
   providers.push(result)
   return result
 }
 
-function signedCancellation(overrides = {}): Promise<string> {
-  return operator.signTransaction({ type: 2, chainId: 1, nonce: 0, to: operator.address,
+function signedCancellation(overrides = {}, chainId = 1): Promise<string> {
+  return operator.signTransaction({ type: 2, chainId, nonce: 0, to: operator.address,
     value: 0n, data: '0x', gasLimit: 21_000n, maxFeePerGas: 3_000_000_000n,
     maxPriorityFeePerGas: 1_000_000_000n, ...overrides })
 }
@@ -100,6 +103,129 @@ afterEach(async () => {
 })
 
 describe('protected operator transport', () => {
+  it('allows only fixed qualified endpoints and rejects unsupported chains before creating state', () => {
+    expect(protectedWriteRPC()).toBe(PROTECTED_WRITE_RPC)
+    expect(protectedWriteRPC(56)).toBe('https://rpc.48.club')
+    for (const chainId of [42161, 137, 8453]) expect(() => protectedWriteRPC(chainId)).toThrow('no qualified')
+    const rejectedDirectory = join(directory, 'unsupported')
+    expect(() => new ProtectedEthereumProvider(readURL, operator.address, rejectedDirectory, undefined, 8453))
+      .toThrow('Unsupported')
+    expect(existsSync(rejectedDirectory)).toBe(false)
+    expect(reads).toEqual([])
+    expect(write).not.toHaveBeenCalled()
+  })
+
+  it.each([42161, 56, 137])('stages chain %s requests while rejecting replayed outer chains, authorizations and delegates', async (chainId) => {
+    chain = `0x${chainId.toString(16)}`
+    const current = provider(undefined, chainId)
+    const network = NETWORK_CONFIG[chainId === 56 ? NetworkName.BNBChain : chainId === 42161 ? NetworkName.Arbitrum : NetworkName.Polygon]
+    const raw = await signed({}, chainId)
+    expect(await current.stageSigned(raw)).toBe(Transaction.from(raw).hash)
+    const wrongChain = await ephemeral.authorize({ address: network.relayAdapt7702Contract, chainId: 1, nonce: 0 })
+    const wrongDelegate = await ephemeral.authorize({ address: config.relayAdapt7702Contract, chainId, nonce: 0 })
+    for (const rejected of [await signed(), await signed({ authorizationList: [wrongChain] }, chainId),
+      await signed({ authorizationList: [wrongDelegate] }, chainId)]) {
+      await expect(current.stageSigned(rejected)).rejects.toThrow()
+    }
+    expect(current.pendingTransaction()).toEqual({ hash: Transaction.from(raw).hash, nonce: 0 })
+    expect(reads.filter((call) => call.method === 'eth_getTransactionCount').map((call) => call.params[1]))
+      .toEqual(['latest', 'finalized'])
+    expect(write).not.toHaveBeenCalled()
+  })
+
+  it.each([42161, 137])('keeps chain %s unpublishable without weakening its staged recovery lock', async (chainId) => {
+    chain = `0x${chainId.toString(16)}`
+    const current = provider(undefined, chainId)
+    const raw = await signed({}, chainId)
+    await current.stageSigned(raw)
+    await expect(current.send('eth_sendRawTransaction', [raw])).rejects.toThrow('no qualified')
+    await expect(current.retryPending()).rejects.toThrow('no qualified')
+    await expect(current.cancelPending(await signedCancellation({ gasLimit: 24_000n }, chainId))).rejects.toThrow('no qualified')
+    expect(current.pendingTransaction()).toEqual({ hash: Transaction.from(raw).hash, nonce: 0 })
+    expect(write).not.toHaveBeenCalled()
+    expect(reads.some((call) => call.method.startsWith('eth_send'))).toBe(false)
+  })
+
+  it('pins BNB guarded publication to its selected delegate and fixed private endpoint', async () => {
+    chain = '0x38'
+    const delegate = NETWORK_CONFIG[NetworkName.BNBChain].relayAdapt7702Contract
+    executionGuard = Wallet.createRandom().address
+    guardCode = executionGuardCode(operator.address, '0x6001')
+    const current = provider(executionGuard, 56)
+    const data = EXECUTION_GUARD.encodeFunctionData('execute', [ephemeral.address, '0x3e12cc2e', 0n])
+    const raw = await signed({ to: executionGuard, data }, 56)
+    await expect(current.send('eth_sendRawTransaction', [raw])).rejects.toThrow('reviewed artifact')
+    expect(current.pendingTransaction()).toBeUndefined()
+    guardCode = executionGuardCode(operator.address, '0x6001', delegate)
+    expect(await current.send('eth_sendRawTransaction', [raw])).toBe(Transaction.from(raw).hash)
+    expect(write).toHaveBeenCalledOnce()
+    expect(write.mock.calls[0][0]).toBe('https://rpc.48.club')
+    expect(reads.some((call) => call.method.startsWith('eth_send'))).toBe(false)
+  })
+
+  it('retains BNB unknown outcomes across restart and permits only bounded empty cancellation through the private endpoint', async () => {
+    chain = '0x38'
+    const current = provider(undefined, 56)
+    const raw = await signed({}, 56)
+    write.mockImplementationOnce(() => { throw new Error('timeout') })
+    await expect(current.send('eth_sendRawTransaction', [raw])).rejects.toThrow('outcome is unknown')
+    current.destroy()
+    const restarted = provider(undefined, 56)
+    await expect(restarted.send('eth_sendRawTransaction', [await signed({ nonce: 1 }, 56)])).rejects.toThrow('nonce is unresolved')
+    for (const overrides of [{ gasLimit: 20_999n }, { gasLimit: 30_000_001n }, { data: '0x1234' }, { value: 1n },
+      { to: ephemeral.address }]) {
+      await expect(restarted.cancelPending(await signedCancellation(overrides, 56))).rejects.toThrow()
+    }
+    const cancellation = await signedCancellation({ gasLimit: 24_000n }, 56)
+    expect(await restarted.cancelPending(cancellation)).toBe(Transaction.from(cancellation).hash)
+    expect(restarted.pendingTransaction()).toEqual({ hash: Transaction.from(raw).hash, nonce: 0,
+      cancellationHash: Transaction.from(cancellation).hash })
+    expect(write.mock.calls.map(([url]) => url)).toEqual(['https://rpc.48.club', 'https://rpc.48.club'])
+    expect(reads.some((call) => call.method.startsWith('eth_send'))).toBe(false)
+    latest = 1n
+    await expect(restarted.stageSigned(await signed({ nonce: 1 }, 56))).rejects.toThrow('nonce is unresolved')
+    confirmed = 1n
+    expect(await restarted.stageSigned(await signed({ nonce: 1 }, 56))).toMatch(/^0x[0-9a-f]{64}$/)
+  })
+
+  it('durably binds even an empty journal directory to one chain and operator', () => {
+    const first = provider()
+    first.destroy()
+    expect(() => provider(undefined, 56)).toThrow('another chain or operator')
+    expect(() => provider(undefined, 1, ephemeral.address)).toThrow('another chain or operator')
+    expect(provider().pendingTransaction()).toBeUndefined()
+    expect(write).not.toHaveBeenCalled()
+  })
+
+  it('migrates a verified signed legacy Ethereum journal while preserving its cancellation', async () => {
+    const current = provider()
+    const raw = await signed(), cancellation = await signedCancellation()
+    await current.stageSigned(raw)
+    await current.cancelPending(cancellation)
+    current.destroy()
+    const legacy = new DatabaseSync(join(directory, 'protected-transactions.sqlite'))
+    legacy.exec('DROP TABLE binding')
+    legacy.close()
+    expect(provider().pendingTransaction()).toEqual({ hash: Transaction.from(raw).hash, nonce: 0,
+      cancellationHash: Transaction.from(cancellation).hash })
+    expect(write).toHaveBeenCalledOnce()
+  })
+
+  it.each(['wrong chain', 'wrong operator', 'wrong hash', 'wrong cancellation'])('refuses unbound legacy journal migration with %s', async (kind) => {
+    const current = provider()
+    const raw = await signed()
+    await current.stageSigned(raw)
+    current.destroy()
+    const legacy = new DatabaseSync(join(directory, 'protected-transactions.sqlite'))
+    legacy.exec('DROP TABLE binding')
+    if (kind === 'wrong hash') legacy.prepare('UPDATE pending SET hash = ?').run('0x1234')
+    if (kind === 'wrong cancellation') legacy.prepare('UPDATE pending SET cancel_raw = ?').run(await signedCancellation())
+    legacy.close()
+    expect(() => provider(undefined, kind === 'wrong chain' ? 56 : 1, kind === 'wrong operator' ? ephemeral.address : operator.address))
+      .toThrow()
+    expect(write).not.toHaveBeenCalled()
+  })
+
   it('can stage a legacy crash-gap original for cancellation without allowing its publication', async () => {
     const current = provider(Wallet.createRandom().address)
     const original = await signed()

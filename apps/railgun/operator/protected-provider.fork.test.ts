@@ -96,7 +96,7 @@ describe.skipIf(!enabled)('protected sender on an isolated Ethereum fork', () =>
   it('mines a private operator cancellation and permits the next nonce after two confirmations', async () => {
     const recoveryOperator = Wallet.createRandom()
     await read.send('anvil_setBalance', [recoveryOperator.address, '0xde0b6b3a7640000'])
-    const recovery = new ProtectedEthereumProvider(readURL, recoveryOperator.address, directory)
+    const recovery = new ProtectedEthereumProvider(readURL, recoveryOperator.address, join(directory, 'recovery'))
     try {
       const block = await read.getBlock('latest')
       if (!block?.baseFeePerGas) throw new Error('Fork block has no base fee.')

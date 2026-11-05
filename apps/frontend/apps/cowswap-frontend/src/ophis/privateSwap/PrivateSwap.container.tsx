@@ -12,7 +12,7 @@ const PRIVATE_CHAINS = new Set([1, 42161, 137, 56])
 export function PrivateSwap({ publicSwap }: { publicSwap: ReactNode }): ReactNode {
   const isMobileSwap = useIsMobileSwap()
   const frame = useRef<HTMLIFrameElement>(null)
-  const [height, setHeight] = useState(740)
+  const [height, setHeight] = useState(520)
   const [busy, setBusy] = useState(false)
   const [chainId] = useState(() => {
     const requested = Number(new URLSearchParams(window.location.search).get('privateChain') || 1)
@@ -59,7 +59,6 @@ export function PrivateSwap({ publicSwap }: { publicSwap: ReactNode }): ReactNod
             <IncognitoIcon size={16} /> Private
           </button>
         </div>
-        {PRIVATE_SWAP_DOCUMENT && <small>0.1% Ophis fee</small>}
       </styledEl.Mode>
       {PRIVATE_SWAP_DOCUMENT ? (
         <styledEl.Runtime

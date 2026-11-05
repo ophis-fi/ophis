@@ -19,6 +19,7 @@ export async function boundedJSON(response: Response, maxBytes: number): Promise
 }
 
 export class WakuRelay {
+  saturated = false
   private readonly topicPath: string
   constructor(private readonly endpoint: string, private readonly pubsubTopic = PUBSUB_TOPIC) {
     this.topicPath = `relay/v1/messages/${encodeURIComponent(pubsubTopic)}`
@@ -40,11 +41,13 @@ export class WakuRelay {
   async messages(): Promise<Uint8Array[]> {
     const value = await this.request(this.topicPath)
     if (!Array.isArray(value)) throw new Error('Waku REST returned an invalid message list.')
+    // shortcut: relay GET clears its cache before delivery, use an acknowledged inbox if client retries become insufficient.
+    this.saturated ||= value.length >= 16
     return value.flatMap((entry) => {
       if (!object(entry) || entry.contentTopic !== TOPICS.transact || typeof entry.payload !== 'string' ||
         entry.payload.length > Math.ceil(MAX_MESSAGE_BYTES / 3) * 4 || !/^[A-Za-z0-9+/]*={0,2}$/.test(entry.payload)) return []
       const bytes = Buffer.from(entry.payload, 'base64')
       return bytes.length <= MAX_MESSAGE_BYTES ? [bytes] : []
-    }).slice(0, 128)
+    })
   }
 }

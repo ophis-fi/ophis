@@ -10,7 +10,10 @@ const mode = process.argv[2] ?? 'unlock'
 if (!['unlock', 'recovery', 'verify', 'verify-retired', 'fee-phrase'].includes(mode)) {
   console.error('Use unlock, recovery, verify, verify-retired or fee-phrase.'); process.exit(1)
 }
-const base = '/home/clement/.local/share/ophis-broadcaster'
+const instance = ({ 1: 'ophis-broadcaster', 42161: 'ophis-broadcaster-42161',
+  56: 'ophis-broadcaster-56', 137: 'ophis-broadcaster-137' } as Record<string, string>)[process.env.OPHIS_BROADCASTER_CHAIN_ID ?? '1']
+if (!instance) { console.error('Unsupported operator chain. No secret values were logged.'); process.exit(1) }
+const base = `/home/clement/.local/share/${instance}`
 const ssh = (command: string, input?: Buffer) => {
   const result = spawnSync('ssh', ['-o', 'BatchMode=yes', '-o', 'ConnectTimeout=8', '-o', 'StrictHostKeyChecking=yes',
     'clement@100.69.134.7', command], { input, timeout: 30_000, maxBuffer: 64 * 1024 })
@@ -52,7 +55,7 @@ try {
     await prompt!.question('Press Enter to clear this screen. ', { signal: AbortSignal.any([abort.signal, AbortSignal.timeout(120_000)]) })
   } else if (mode === 'verify' || mode === 'verify-retired') console.log(JSON.stringify({ status: 'verified', file }))
   else {
-    const container = mode === 'recovery' ? 'ophis-broadcaster-recovery' : 'ophis-broadcaster-broadcaster-1'
+    const container = mode === 'recovery' ? `${instance}-recovery` : `${instance}-broadcaster-1`
     const reply = ssh(`docker exec -i ${container} node dist/main.mjs unlock`, clear)
     if (reply.toString().trim() !== '{"status":"unlocked"}') throw new Error('Unexpected unlock acknowledgment.')
     console.log(JSON.stringify({ status: 'unlocked', container }))

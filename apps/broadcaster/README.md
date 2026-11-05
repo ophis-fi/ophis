@@ -1,4 +1,27 @@
-# Ophis Ethereum broadcaster
+# Ophis private broadcaster
+
+**Multichain development, 5 November 2026:** this branch extends transaction validation, fee pricing, guard attestation, journals, recovery and monitoring to Arbitrum, BNB Chain and Polygon. Their live signing remains disabled in source pending qualified private delivery, deployment and acceptance. These changes do not modify the running Ethereum installation. Base is excluded until the owner gives a separate go-ahead.
+
+| Chain | ID | Native gas / wrapped fee token | Live release gate |
+| --- | --- | --- | --- |
+| Ethereum | 1 | ETH / WETH | Preserve the existing operator, guard, journals and approved limits. |
+| Arbitrum | 42161 | ETH / WETH | A reviewed private route with revert filtering; the ordinary sequencer alone does not establish that policy. |
+| BNB Chain | 56 | BNB / WBNB | Private route qualification and live type-4 acceptance, followed by funded operator/guard checks. |
+| Polygon | 137 | POL / WPOL | Provisioned private-provider access, followed by funded operator/guard checks. |
+
+Every new chain also requires its own approved financial limits and native gas reserve, deployed operator-bound guard, exact fee-receipt verification, the requested security reviews and independent Codex approval before merge/deployment. A local fork or simulation does not satisfy live private-delivery acceptance.
+
+One process serves one immutable `OPHIS_BROADCASTER_CHAIN_ID`. Use separate Compose projects (`ophis-broadcaster`, `ophis-broadcaster-42161`, `ophis-broadcaster-56`, `ophis-broadcaster-137`), installation/state directories, encrypted operator files and nwaku relays. Set `COMPOSE_PROJECT_NAME` in each private `compose.env` and a distinct loopback `OPHIS_WAKU_REST_PORT`; never share a Waku REST cache. Changing a populated journal's chain or operator is rejected. Only verified legacy Ethereum journals can acquire a missing binding.
+
+The owner unlock client defaults to the existing Ethereum installation. For another prepared installation, set `OPHIS_BROADCASTER_CHAIN_ID` when running it. This selects only the four fixed installation/container names; it cannot select Base or an arbitrary remote path. Unlocking never enables signing.
+
+BNB common withdrawals use legacy pricing and a positive network gas-price floor even when the base fee is absent or zero. Arbitrum estimates already include their L1 component; it is not charged twice. Non-Ethereum nonce release and receipt settlement require the node's finalized boundary; the single-sender service remains unavailable while that boundary catches up. Canonical block hashes are checked before receipt accounting on all chains. Non-Ethereum cancellations estimate and pad gas instead of assuming 21,000.
+
+Non-Ethereum oracle addresses, descriptions, precision and published heartbeats are pinned; Arbitrum additionally checks its sequencer and recovery grace. BNB stablecoin precision is 18 decimals. Underlying-asset USD feeds do not establish redemption value for bridged assets. All fees round upward and must cover the full signed gas ceiling plus the configured positive margin. Revert filtering is a provider policy, not a guarantee that Ophis can never lose gas.
+
+Waku cache capacity is bounded to 16 messages so maximum-sized batches fit the 16 MiB response limit. Every valid message in a bounded returned batch is processed; a sticky saturation warning reaches health/metrics. GET still clears the relay cache before admission, so unadmitted messages can require client retry. Monitoring and accounting include chain/operator identity; Prometheus samples carry `chain_id`.
+
+The dated pilot notes below record the earlier Ethereum rollout. The multichain gates above govern this branch.
 
 **Current checkpoint, 4 November 2026:** the restricted Ethereum swap and USDC withdrawal succeeded on 3 November, with exact private fee receipts verified. The guard is deployed and the approved pilot margin is 15%. General production admission and public frontend activation remain pending. The integration branch includes current Ophis security changes and repairs the broadcaster's independent dependency tree; this does not upgrade the running pilot automatically. See [dependency scope](DEPENDENCIES.md) and [validation](VALIDATION.md).
 

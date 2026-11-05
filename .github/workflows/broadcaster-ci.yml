@@ -6,6 +6,7 @@ on:
       - 'apps/broadcaster/**'
       - 'apps/railgun/operator/**'
       - 'apps/railgun/poi-policy.ts'
+      - 'apps/railgun/src/networks.ts'
       - 'apps/railgun/patches/**'
       - 'patches/elliptic@6.6.1.patch'
       - 'patches/zod@3.25.76.patch'
@@ -51,6 +52,11 @@ jobs:
       - run: pnpm install --ignore-workspace --frozen-lockfile --ignore-scripts
       - run: pnpm test:guard
       - run: pnpm test
+      - name: Additional-chain signatures, fees and settlement
+        run: |
+          for chain in 42161 56 137; do
+            OPHIS_BROADCASTER_CHAIN_ID="$chain" pnpm exec vitest run tests/broadcaster.test.ts tests/transaction.test.ts tests/sdk-fee.test.ts --silent
+          done
       - run: pnpm build
       - run: node scripts/test-build-context.mjs
       - name: Build and smoke-test the production image

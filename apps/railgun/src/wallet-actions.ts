@@ -47,7 +47,7 @@ export async function wireWalletActions(session: WalletSession): Promise<void> {
     const identity = pending?.account || withdrawal?.recipient
     const shortcut = element<HTMLAnchorElement>('withdraw-shortcut')
     shortcut.href = identity ? '#recovery' : '#withdrawal'
-    shortcut.textContent = pending ? 'Check saved swap' : withdrawal ? 'Continue saved withdrawal' : 'Withdraw to a public wallet'
+    shortcut.textContent = pending ? 'Check saved swap' : withdrawal ? 'Continue saved withdrawal' : 'Withdraw'
     element<HTMLDetailsElement>('recovery').open = !!identity
     for (const id of ['withdraw-max', 'withdraw-quote']) element(id).hidden = !!identity
     element('reconcile-withdrawal').hidden = !withdrawal
@@ -59,9 +59,9 @@ export async function wireWalletActions(session: WalletSession): Promise<void> {
     const help = element('withdraw-pending-help')
     help.hidden = !identity
     help.textContent = pending
-      ? 'A swap is already saved. Use Check saved swap beside Refresh balances before preparing a withdrawal.'
+      ? 'A swap is already saved. Use Check saved swap above before preparing a withdrawal.'
       : unsupportedWeth ? 'The saved proof withdraws WETH. This pilot relays USDC. Keep the WETH proof and prepare a USDC withdrawal below.'
-      : 'A withdrawal is already saved. Use Continue saved withdrawal beside Refresh balances to retry that proof.'
+      : 'A withdrawal is already saved. Use Continue saved withdrawal above to retry that proof.'
     if (state.pendingIdentity !== identity) element<HTMLInputElement>('accept-leftovers').checked = false
     state.pendingIdentity = identity
     element('pending-details').textContent = pending
@@ -105,6 +105,11 @@ export async function wireWalletActions(session: WalletSession): Promise<void> {
     await selectBroadcaster(tokenFor(asset === NATIVE_SYMBOL ? WRAPPED_SYMBOL : asset).address, true, broadcasterStatus)
     publicTransactionStatus('A compatible private-swap broadcaster is available. Review the deposit amount and fees.')
   }
+  const renderQuoteAction = (): void => {
+    const quote = element<HTMLButtonElement>('quote')
+    quote.className = state.swap ? 'secondary-action' : ''
+    quote.textContent = state.swap ? 'Refresh quote' : 'Review swap'
+  }
   const button = (id: string, label: string, action: () => Promise<void>): void => {
     const target = element<HTMLButtonElement>(id)
     target.onclick = () =>
@@ -129,7 +134,7 @@ export async function wireWalletActions(session: WalletSession): Promise<void> {
         } finally {
           await refreshPending()
         }
-      })
+      }).finally(renderQuoteAction)
   }
   const invalidate = (): void => {
     const previousError = element('private-wallet-error').textContent
@@ -146,6 +151,8 @@ export async function wireWalletActions(session: WalletSession): Promise<void> {
     element('review-shield').hidden = !state.signer
     element('switch-network').hidden = true
     element('quote-details').textContent = ''
+    element('receive-amount').textContent = '—'
+    renderQuoteAction()
     element('withdraw-details').textContent = ''
   }
   const publicWalletChanged = (): void => {
@@ -257,12 +264,14 @@ export async function wireWalletActions(session: WalletSession): Promise<void> {
     const { quote } = prepared
     amount.value = formatUnits(quote.amount, TOKENS[quote.sell].decimals)
     const minimumAfterShield = quote.minimum - (quote.minimum * quote.shieldFee) / 10_000n
+    element('receive-amount').textContent = formatUnits(minimumAfterShield, TOKENS[quote.buy].decimals)
     element('quote-details').textContent =
       `Amount to swap: ${formatUnits(quote.amount, TOKENS[quote.sell].decimals)} ${quote.sell}\nMinimum private output: ${formatUnits(minimumAfterShield, TOKENS[quote.buy].decimals)} ${quote.buy}\nOphis fee: ${formatUnits(quote.ophisFee, TOKENS[quote.buy].decimals)} ${quote.buy}\nBroadcaster fee: ${formatUnits(prepared.fee.amount, TOKENS[quote.sell].decimals)} ${quote.sell}\nProtocol unshield / reshield: ${quote.unshieldFee} / ${quote.shieldFee} bp`
     if (prepared.gasCapped)
       element('quote-details').textContent += `\nGas price capped at ${formatUnits(prepared.gas.maxFeePerGas, 9)} gwei to fit your private balance. Rising gas prices can require a fresh quote.`
     if (quote.route)
       element('quote-details').textContent += `\nUniswap v3: ${quote.route.tokens.join(' → ')}; pool fees ${quote.route.fees.map((fee) => `${fee / 10_000}%`).join(' + ')}. ${quote.availableRoutes} routes returned positive quotes.`
+    renderQuoteAction()
     element('swap').hidden = false
   }
   button('max-swap', 'Reserving broadcaster fee…', async () => {
@@ -276,9 +285,7 @@ export async function wireWalletActions(session: WalletSession): Promise<void> {
     element('quote-details').textContent = 'Max includes gas price headroom in the fee budget. Review the trade and committed fee below.\n' + element('quote-details').textContent
   })
   button('quote', 'Preparing quote…', async () => {
-    state.swap = undefined
-    element('swap').hidden = true
-    element('quote-details').textContent = ''
+    invalidate()
     requireWalletSync()
     amountFromInput(amount.value, symbol())
     const selected = await selectBroadcaster(TOKENS[symbol()].address, true, broadcasterStatus)
@@ -296,7 +303,7 @@ export async function wireWalletActions(session: WalletSession): Promise<void> {
     if (prepared.quote.amount < quote.amount)
       element('quote-details').textContent = 'Broadcaster fee reserved from your full-balance amount. Review the adjusted trade below.\n' + element('quote-details').textContent
   })
-  button('swap', 'Proving and submitting…', async () => {
+  button('swap', 'Preparing private swap…', async () => {
     const prepared = state.swap
     invalidate()
     if (!prepared) throw new Error('Get a fresh private swap quote first.')

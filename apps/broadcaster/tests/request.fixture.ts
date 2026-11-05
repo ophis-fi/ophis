@@ -1,10 +1,11 @@
 import { AbiCoder, Wallet } from 'ethers'
 import { signExecutionAuthorization, RelayAdapt7702Helper, RelayAdapt7702ExecutionType, type TransactionStructV2 } from '@railgun-community/engine'
 import { ADAPT, PROXY } from '../src/transaction'
-import { NETWORK, TOKENS, VERSION, settings } from '../src/config'
+import { CHAIN_ID, NETWORK, TOKENS, VERSION, settings } from '../src/config'
 import { withdrawalData } from '../../railgun/tests/withdrawal.fixture'
 
 export const config = settings({ OPHIS_BROADCASTER_ENABLED: '1', OPHIS_BROADCASTER_MODE: 'fork',
+  OPHIS_BROADCASTER_CHAIN_ID: String(CHAIN_ID),
   OPHIS_BROADCASTER_MARGIN_BPS: '1500',
   OPHIS_BROADCASTER_RPC: 'http://127.0.0.1:8559', OPHIS_BROADCASTER_MAX_GAS_PRICE_WEI: '10000000000',
   OPHIS_BROADCASTER_MAX_TX_COST_WEI: '10000000000000000', OPHIS_BROADCASTER_RESERVE_WEI: '10000000000000000',
@@ -18,11 +19,11 @@ export async function privateRequest(feesID: string, publicViewingKey: string, n
   tx[type.components!.findIndex((p) => p.name === 'commitments')] = [`0x${'34'.repeat(32)}`]
   const transactions = [tx as unknown as TransactionStructV2]
   const action = RelayAdapt7702Helper.getActionData(false, [], 0n)
-  const signature = await signExecutionAuthorization(ephemeral, transactions, action, 1,
+  const signature = await signExecutionAuthorization(ephemeral, transactions, action, CHAIN_ID,
     { executionType: RelayAdapt7702ExecutionType.ExecuteWithNonce, executeNonce: 0n })
-  const auth = await ephemeral.authorize({ chainId: 1, nonce: 0, address: NETWORK.relayAdapt7702Contract })
+  const auth = await ephemeral.authorize({ chainId: CHAIN_ID, nonce: 0, address: NETWORK.relayAdapt7702Contract })
   return JSON.parse(JSON.stringify({
-    txidVersion: VERSION, chainType: 0, chainID: 1, minVersion: '8.0.0', maxVersion: '8.999.0',
+    txidVersion: VERSION, chainType: 0, chainID: CHAIN_ID, minVersion: '8.0.0', maxVersion: '8.999.0',
     feesID, broadcasterViewingKey: publicViewingKey, transactType: 'TX7702', useRelayAdapt: true,
     to: ephemeral.address, data: ADAPT.encodeFunctionData('execute', [transactions, action, 0n, signature]),
     gasLimit: '1000000', maxFeePerGas: '2000000000', maxPriorityFeePerGas: '1000000000',

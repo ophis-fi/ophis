@@ -52,7 +52,7 @@ try {
     const duplicate = await page.evaluate(async () => (await import('/tests/fork.fixture.ts')).forkOperatorReplay())
     assert.equal(duplicate.txHash, hash)
     const replay = await page.evaluate(async () => (await import('/tests/fork.fixture.ts')).forkOperatorReplay(true))
-    assert(!replay.txHash && /verify the current Ethereum privacy contracts|during gas estimation/.test(replay.error ?? ''),
+    assert(!replay.txHash && /verify the current privacy contracts|during gas estimation/.test(replay.error ?? ''),
       'A consumed private spend must fail EVM/authority validation, rather than a busy or expired-quote gate.')
     assert.equal((await operator.stats()).signatures, before.signatures)
   }

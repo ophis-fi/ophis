@@ -1,53 +1,57 @@
-:root {
-  color-scheme: light;
-  font: 14px/1.6 Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-  background: #fff;
-  color: #17191c;
-}
+:root { color-scheme: light; font: 14px/1.45 Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; background: #fff; color: #17191c; }
 body { margin: 0; }
-main { max-width: 470px; margin: 0 auto; padding: 20px 18px 24px; box-sizing: border-box; }
-header, header strong { display: flex; align-items: center; gap: 8px; }
-header { justify-content: space-between; margin-bottom: 20px; }
-header span, small { color: #687080; font-size: 12px; }
-h1 { font: 32px/1.15 Georgia, serif; margin: 18px 0; letter-spacing: -0.6px; }
-h2 { font-size: 17px; margin: 24px 0 12px; }
-section { margin: 16px 0; }
+main { max-width: 470px; margin: 0 auto; padding: 18px; box-sizing: border-box; }
+header, header strong { display: flex; align-items: center; gap: 7px; }
+header { justify-content: space-between; gap: 12px; margin-bottom: 12px; }
+.heading { display: grid; gap: 2px; flex-shrink: 0; }
+header strong { font-size: 14px; font-weight: 600; }
+#environment, small, .card-label { color: #687080; font-size: 12px; }
+#environment { font-size: 10px; padding-left: 25px; }
+h1 { font: 28px/1.15 Georgia, serif; margin: 18px 0; letter-spacing: -0.6px; }
+h2 { font-size: 17px; margin: 18px 0 10px; }
+section { margin: 12px 0; }
+#wallet { margin: 0; }
 fieldset { border: 0; padding: 0; margin: 0; min-width: 0; }
-progress { width: 100%; accent-color: #17191c; }
-label { display: block; margin: 16px 0; }
-input:not([type='checkbox']), textarea, select {
-  display: block; box-sizing: border-box; width: 100%; padding: 13px 14px; margin-top: 6px;
-  background: #f3f3f4; color: inherit; border: 1px solid #e5e6e9; border-radius: 12px; font: inherit;
-}
+progress { width: 100%; height: 5px; accent-color: #17191c; }
+label { display: block; margin: 12px 0; }
+input:not([type='checkbox']), textarea, select { display: block; box-sizing: border-box; width: 100%; padding: 11px 12px; margin-top: 6px; background: #f3f3f4; color: inherit; border: 1px solid #e5e6e9; border-radius: 12px; font: inherit; }
 textarea { resize: vertical; }
-button {
-  background: #17191c; color: #fff; border: 0; border-radius: 999px;
-  padding: 13px 18px; margin: 6px 8px 6px 0; font: inherit; cursor: pointer;
-}
-#unlock, #quote, #swap, #shield, #open { width: 100%; }
-#refresh, #lock, #generate, #broadcasters, #max-swap, #connect, #walletconnect, #disconnect-public {
-  background: #f3f3f4; color: #17191c;
-}
-.secondary-actions { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; }
-#amount { font-size: 28px; }
-#max-swap { font-size: 12px; margin-top: 0; }
+.network-selector { margin: 0; min-width: 0; }
+.network-selector select { margin: 0; min-height: 40px; padding: 9px 10px; font-size: 12px; border-radius: 999px; }
+button { background: #17191c; color: #fff; border: 0; border-radius: 999px; padding: 11px 16px; margin: 5px 6px 5px 0; font: inherit; cursor: pointer; }
+#unlock, #quote, #swap, #shield, #open { width: 100%; min-height: 46px; margin-right: 0; }
+#quote.secondary-action { min-height: 28px; padding: 4px; background: transparent; color: #687080; text-decoration: underline; text-underline-offset: 3px; }
+#refresh, #lock, #generate, #broadcasters, #max-swap, #connect, #walletconnect, #disconnect-public { background: #f3f3f4; color: #17191c; }
+.wallet-tools, .secondary-actions { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; }
+.wallet-tools { justify-content: flex-end; gap: 16px; margin-bottom: 8px; }
+a { color: inherit; text-underline-offset: 3px; }
+.wallet-tools a { font-size: 12px; min-height: 24px; display: inline-flex; align-items: center; }
+.trade-cards { position: relative; display: grid; gap: 6px; margin-bottom: 10px; }
+.amount-card { background: #f3f3f4; border: 1px solid transparent; border-radius: 16px; padding: 12px 14px; }
+.amount-card:focus-within { border-color: #a8adb6; }
+.amount-row { display: grid; grid-template-columns: minmax(0, 1fr) 108px; align-items: center; gap: 12px; margin: 5px 0; }
+.amount-row input, .amount-row output { background: transparent; border: 0; padding: 0; margin: 0; min-width: 0; font-size: 28px; font-weight: 500; line-height: 1.2; font-variant-numeric: tabular-nums; }
+.amount-row output { overflow-wrap: anywhere; }
+.amount-row input::placeholder { color: #9ca1ab; opacity: 1; }
+.amount-row select { margin: 0; padding: 8px 10px; min-height: 40px; background: white; border-color: #e5e6e9; border-radius: 999px; font-weight: 500; }
+.balance-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-height: 24px; }
+#max-swap { font-size: 11px; font-weight: 600; margin: 0; padding: 4px 9px; min-height: 24px; background: white; }
+.trade-arrow { position: relative; justify-self: center; margin: -18px 0; z-index: 1; display: grid; place-items: center; width: 28px; height: 28px; background: white; border: 3px solid white; border-radius: 10px; color: #687080; pointer-events: none; }
 button:disabled { opacity: .5; cursor: default; }
-button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-visible, summary:focus-visible {
-  outline: 2px solid #17191c; outline-offset: 3px;
-}
-details { border-top: 1px solid #e5e6e9; padding: 14px 0; margin-top: 12px; }
-summary { cursor: pointer; font-weight: 500; }
-.balance-card { background: #f3f3f4; border-radius: 16px; padding: 16px; }
-#spendable-balance { display: block; font-size: 20px; font-weight: 500; margin-top: 5px; }
-#pending-balances, #private-network-help, #swap-fee-help, #swap-direction, #swap-route-help, #status, #balance-sync, #broadcaster-status {
-  color: #687080; font-size: 12px;
-}
+button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-visible, summary:focus-visible, a:focus-visible { outline: 2px solid #17191c; outline-offset: 3px; }
+details { border-top: 1px solid #e5e6e9; padding: 11px 0; margin-top: 0; }
+summary { cursor: pointer; font-weight: 500; font-size: 12px; min-height: 22px; display: list-item; align-content: center; }
+details > p { margin: 10px 0; font-size: 12px; color: #687080; }
 #pending-balances { white-space: pre-wrap; }
-#error, #public-wallet-error, #private-wallet-error { color: #a52626; white-space: pre-wrap; overflow-wrap: anywhere; }
-#error:empty, #private-wallet-error:empty, #public-wallet-error:empty, #quote-details:empty { display: none; }
+#private-network-help, #swap-fee-help, #swap-direction, #swap-route-help, #status, #balance-sync, #broadcaster-status { color: #687080; font-size: 12px; }
+#status, #balance-sync, #broadcaster-status { margin: 8px 0; }
+#error, #public-wallet-error, #private-wallet-error { color: #a52626; white-space: pre-wrap; overflow-wrap: anywhere; font-size: 12px; }
+#error:empty, #private-wallet-error:empty, #public-wallet-error:empty, #quote-details:empty, #withdraw-details:empty, #status:empty, #broadcaster-status:empty, #public-wallet-status:empty, #public-transaction-status:empty { display: none; }
 #address, pre { overflow-wrap: anywhere; white-space: pre-wrap; font: inherit; font-size: 12px; }
-#quote-details, #withdraw-details:not(:empty) { background: #f3f3f4; border-radius: 14px; padding: 16px; line-height: 1.8; }
-[hidden] { display: none !important; }
+#quote-details, #withdraw-details:not(:empty) { background: #f3f3f4; border-radius: 12px; padding: 12px; line-height: 1.65; }
+.sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+#deposit-details:not([open]), [hidden] { display: none !important; }
 dialog { box-sizing: border-box; max-width: min(400px, calc(100vw - 56px)); max-height: calc(100dvh - 40px); overflow: auto; background: #fff; color: inherit; border: 1px solid #e5e6e9; border-radius: 20px; padding: 20px; }
 dialog::backdrop { background: #17191c88; }
 #walletconnect-qr { display: block; max-width: 100%; margin: auto; }
+@media (max-width: 360px) { main { padding: 14px; } header { gap: 6px; } header strong { font-size: 13px; } .network-selector select { font-size: 11px; padding: 9px 7px; } .amount-row { grid-template-columns: minmax(0, 1fr) 96px; gap: 8px; } .amount-row input, .amount-row output { font-size: 24px; } }

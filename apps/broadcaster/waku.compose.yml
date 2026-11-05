@@ -10,7 +10,7 @@ services:
     cpus: 0.5
     mem_limit: 768m
     pids_limit: 128
-    ports: [127.0.0.1:8645:8645]
+    ports: ["127.0.0.1:${OPHIS_WAKU_REST_PORT:-8645}:8645"]
     command:
       - --rest=true
       - --rest-address=0.0.0.0
@@ -21,6 +21,6 @@ services:
       - --relay-peer-exchange=true
       - --max-connections=32
       - --max-msg-size=600KiB
-      - --rest-relay-cache-capacity=256
+      - --rest-relay-cache-capacity=16
       - --log-level=ERROR
       - --dns-discovery-url=enrtree://APMYHUVNQWHJNPI5L2KQ765EMCKUAMRWPUH3U2QIKPK6XEV3OW442@discovery.rootedinprivacy.com

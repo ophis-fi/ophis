@@ -10,6 +10,7 @@ import { config } from './request.fixture'
 import { NETWORK } from '../src/config'
 
 const directories: string[] = []
+const blockHash = `0x${'55'.repeat(32)}`
 afterEach(() => { vi.unstubAllGlobals(); for (const path of directories.splice(0)) rmSync(path, { recursive: true, force: true }) })
 
 function fixture() {
@@ -22,7 +23,7 @@ function fixture() {
     gasFundingApproved: true, approvedDeploymentCostCeilingWei: '250000000000000',
     proposal: { maxGasPriceWei: '500000000', reserveWei: '1500000000000000', maxTransactionCostWei: '1500000000000000' } }
   const registry = new Interface(['function getContractAddress(string) view returns (address)'])
-  const provider = { getBlock: vi.fn(async () => ({ number: 100, timestamp: Math.floor(Date.now() / 1000), baseFeePerGas: 100_000_000n })),
+  const provider = { getBlock: vi.fn(async () => ({ number: 100, hash: blockHash, timestamp: Math.floor(Date.now() / 1000), baseFeePerGas: 100_000_000n })),
     getNetwork: vi.fn(async () => ({ chainId: 1n })), getCode: vi.fn(async (address: string) => address === NETWORK.relayAdapt7702Contract ? delegateCode : '0x'),
     getTransactionCount: vi.fn(async () => 0), call: vi.fn(async () => registry.encodeFunctionResult('getContractAddress', [NETWORK.relayAdapt7702Contract])),
     estimateGas: vi.fn(async () => 364_662n), getBalance: vi.fn(async () => 3_500_000_000_000_000n), send: vi.fn(async () => expected) }
@@ -56,7 +57,7 @@ it.each(['ceiling', 'reserve', 'nonce', 'runtime', 'fee', 'approval'])(
     if (change === 'reserve') f.provider.getBalance.mockResolvedValue(1_500_000_000_000_000n)
     if (change === 'nonce') f.provider.getTransactionCount.mockResolvedValue(1)
     if (change === 'runtime') f.provider.send.mockResolvedValue('0x6000')
-    if (change === 'fee') f.provider.getBlock.mockResolvedValue({ number: 100, timestamp: Math.floor(Date.now() / 1000), baseFeePerGas: 300_000_000n })
+    if (change === 'fee') f.provider.getBlock.mockResolvedValue({ number: 100, hash: blockHash, timestamp: Math.floor(Date.now() / 1000), baseFeePerGas: 300_000_000n })
     if (change === 'approval') f.approval.gasFundingApproved = false
     await expect(f.run()).rejects.toThrow()
     expect(f.sign).not.toHaveBeenCalled(); expect(f.publish).not.toHaveBeenCalled(); expect(existsSync(f.path)).toBe(false)
