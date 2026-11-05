@@ -14,6 +14,7 @@ import { element, errorMessage, run } from './ui'
 import { requireWalletSync, syncWallet, type WalletSession } from './wallet'
 import { unusedSwapAccount } from './account'
 import { connectPublicWallet, type PublicWalletProvider } from './public-connection'
+import { setPendingNotice, setSwapReview } from './wallet-layout'
 
 export async function wireWalletActions(session: WalletSession): Promise<void> {
   const state: {
@@ -45,10 +46,13 @@ export async function wireWalletActions(session: WalletSession): Promise<void> {
     const preserved = await preservedWithdrawal(session)
     const unsupportedWeth = !!withdrawal && canPreserveWethWithdrawal(withdrawal)
     const identity = pending?.account || withdrawal?.recipient
+    setPendingNotice(!!identity)
     const shortcut = element<HTMLAnchorElement>('withdraw-shortcut')
     shortcut.href = identity ? '#recovery' : '#withdrawal'
     shortcut.textContent = pending ? 'Check saved swap' : withdrawal ? 'Continue saved withdrawal' : 'Withdraw'
     element<HTMLDetailsElement>('recovery').open = !!identity
+    element('reconcile').hidden = !pending
+    element('cancel-swap').hidden = !pending
     for (const id of ['withdraw-max', 'withdraw-quote']) element(id).hidden = !!identity
     element('reconcile-withdrawal').hidden = !withdrawal
     for (const id of ['retry-withdrawal', 'resume-withdrawal']) element(id).hidden = !withdrawal || unsupportedWeth
@@ -107,8 +111,9 @@ export async function wireWalletActions(session: WalletSession): Promise<void> {
   }
   const renderQuoteAction = (): void => {
     const quote = element<HTMLButtonElement>('quote')
-    quote.className = state.swap ? 'secondary-action' : ''
-    quote.textContent = state.swap ? 'Refresh quote' : 'Review swap'
+    quote.className = ''
+    quote.textContent = 'Review swap'
+    setSwapReview(!!state.swap)
   }
   const button = (id: string, label: string, action: () => Promise<void>): void => {
     const target = element<HTMLButtonElement>(id)
@@ -251,7 +256,7 @@ export async function wireWalletActions(session: WalletSession): Promise<void> {
     amount.value = ''
     updateSwapDirection()
     invalidate()
-    status(`Shield confirmed: ${receipt.hash}. Refresh balances after confirmation and synchronization. Ophis does not require PPOI verification.`)
+    status(`Deposit confirmed: ${receipt.hash}. Updating your private balance automatically.`)
     void syncWallet(session).catch((error: unknown) => {
       element('private-wallet-error').textContent = error instanceof Error ? error.message : 'Private balance sync failed. The deposit is already confirmed.'
     })

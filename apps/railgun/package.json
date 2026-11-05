@@ -11,6 +11,7 @@
     "dev": "vite --host 127.0.0.1 --port 4319 --strictPort",
     "build": "pnpm typecheck && vite build",
     "test": "vitest run",
+    "test:layout": "node tests/compact-layout.mjs",
     "test:fork": "RAILGUN_FORK_TEST=1 vitest run src/recipe.fork.test.ts src/cancel.fork.test.ts --no-file-parallelism",
     "test:wallet": "node tests/browser-wallet.mjs",
     "test:walletconnect": "node --env-file=.env.local tests/browser-walletconnect.mjs",

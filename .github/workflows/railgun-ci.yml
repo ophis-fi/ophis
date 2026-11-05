@@ -56,4 +56,6 @@ jobs:
           node-version: 22
       - run: pnpm install --ignore-workspace --frozen-lockfile --ignore-scripts
       - run: pnpm test
+      - run: pnpm exec playwright install --with-deps chromium
+      - run: pnpm test:layout
       - run: pnpm build

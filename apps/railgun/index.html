@@ -10,76 +10,72 @@
     <main>
       <header>
         <div class="heading"><strong><img src="./incognito.svg" width="18" height="18" alt="" /> Private swap</strong><span id="environment"></span></div>
-        <label class="network-selector"><span class="sr-only">Private network</span><select id="private-network"><option value="1">Ethereum · ETH</option><option value="42161">Arbitrum · ETH</option><option value="137">Polygon · POL</option><option value="56">BNB Chain · BNB</option></select></label>
+        <label class="network-selector"><span class="sr-only">Private network</span><select id="private-network" aria-label="Private network"><option value="1">Ethereum</option><option value="42161">Arbitrum</option><option value="137">Polygon</option><option value="56">BNB Chain</option></select></label>
       </header>
       <p id="status" role="status" aria-live="polite">Ready to start</p>
       <progress id="history-progress" max="100" aria-label="Private history verification"></progress>
-      <p id="balance-sync">First use downloads and verifies private history. Keep this page open during setup. Verified history is saved in this browser; deposits and spending become available when synchronization finishes.</p>
+      <p id="balance-sync">Verifying private history automatically. Your saved balance becomes available when verification finishes.</p>
       <section id="setup">
-        <h1>Your balance, privately.</h1>
-        <p>Use a dedicated recovery phrase for your private wallet. Never enter your MetaMask or hardware wallet recovery phrase.</p>
-        <label
-          >Password (at least 12 characters)<input
-            id="password"
-            type="password"
-            autocomplete="current-password"
-            minlength="12"
-        /></label>
-        <button id="unlock" type="button">Unlock private wallet</button>
-        <details><summary>Create or restore a private wallet</summary>
-        <button id="generate" type="button">Generate recovery phrase</button>
-        <label
-          >Private wallet recovery phrase<textarea id="mnemonic" autocomplete="off" spellcheck="false" rows="3"></textarea>
-        </label>
-        <label><input id="backup" type="checkbox" /> I saved my private wallet recovery phrase offline.</label>
-        <button id="open" type="button">Create / restore wallet</button>
-        </details>
+        <h1 id="setup-title">Your private wallet</h1>
+        <p id="setup-help">Loading your saved wallet…</p>
+        <div id="setup-intro"><button id="generate" type="button" hidden>Create private wallet</button></div>
+        <label id="wallet-password" hidden>Password (at least 12 characters)<input id="password" type="password" autocomplete="current-password" minlength="12" /></label>
+        <button id="unlock" type="button" hidden>Unlock private wallet</button>
+        <div id="new-wallet-form" hidden>
+          <label>Private wallet recovery phrase<textarea id="mnemonic" autocomplete="off" spellcheck="false" rows="3"></textarea></label>
+          <label class="backup-check"><input id="backup" type="checkbox" /> I saved my private wallet recovery phrase offline.</label>
+          <button id="open" type="button">Save and continue</button>
+        </div>
+        <button id="restore-setup" class="secondary-action" type="button" hidden>Restore a private wallet</button>
+        <button id="setup-back" class="secondary-action" type="button" hidden>Back</button>
       </section>
       <section id="wallet" hidden>
-        <div class="wallet-tools"><a id="deposit-shortcut" href="#deposit-details">Add funds</a><a id="withdraw-shortcut" href="#withdrawal">Withdraw</a></div>
+        <div class="wallet-tools"><small>Private balance</small><button id="wallet-menu-button" class="text-action" type="button" aria-haspopup="dialog" aria-controls="wallet-menu">Wallet ⌄</button></div>
+        <div id="first-funding-guide" hidden><ol class="setup-progress" aria-label="Private wallet setup"><li>✓ Wallet</li><li aria-current="step">2 Add funds</li><li>3 Swap</li></ol><p>Add funds when you are ready. Your balance updates automatically after confirmation.</p><button id="skip-funding" class="text-action" type="button">I'll add funds later</button></div>
+        <p id="pending-notice" hidden>A saved transaction needs attention. <button id="continue-pending" class="text-action" type="button">Continue saved transaction</button></p>
+        <button id="wallet-back" class="text-action" type="button" hidden>← Private swap</button>
+        <h2 id="wallet-view-title"></h2>
         <fieldset id="ready-actions" disabled>
-        <div class="trade-cards">
+        <div id="trade-cards" class="trade-cards">
           <div class="amount-card">
-            <span class="card-label">You sell</span>
+            <span id="sell-label" class="card-label">You sell</span>
             <div class="amount-row"><input id="amount" type="text" inputmode="decimal" autocomplete="off" placeholder="0.0" aria-label="Amount to sell or withdraw" aria-describedby="swap-direction swap-fee-help" /><select id="token" aria-label="Token to sell or withdraw"><option>WETH</option><option>USDC</option></select></div>
             <div class="balance-row"><small>Balance: <span id="spendable-balance">Synchronizing…</span></small><button id="max-swap" type="button" aria-describedby="swap-fee-help">Max</button></div>
           </div>
-          <div class="trade-arrow" aria-hidden="true">↓</div>
-          <div class="amount-card">
+          <div id="trade-arrow" class="trade-arrow" aria-hidden="true">↓</div>
+          <div id="receive-card" class="amount-card">
             <span class="card-label">You receive</span>
             <div class="amount-row"><output id="receive-amount" for="amount token buy-token" aria-label="Minimum private amount received" aria-live="polite">—</output><select id="buy-token" aria-label="Token to receive"><option>USDC</option><option>WETH</option></select></div>
             <small>Minimum after fees</small>
           </div>
         </div>
         <p id="private-wallet-error" role="alert"></p>
-        <button id="quote" type="button">Review swap</button>
+        <div id="trade-actions"><button id="quote" type="button">Review swap</button><p class="fee-caption">Fees paid from your private balance. Review all fees before confirming.</p></div>
         <p id="broadcaster-status" role="status" aria-live="polite"></p>
-        <pre id="quote-details"></pre>
-        <button id="swap" type="button" hidden>Confirm private swap</button>
+        <section id="swap-review" hidden><h2>Review private swap</h2><pre id="quote-details"></pre><button id="swap" type="button" hidden>Confirm private swap</button><button id="edit-swap" class="secondary-action" type="button">Edit amount or tokens</button>
         <details class="swap-info"><summary>Fees &amp; privacy</summary>
           <p id="swap-fee-help">The broadcaster fee is paid from your private balance. Max reserves room for gas price changes; review the adjusted amount and all fees before confirming.</p>
           <p id="swap-direction">Sell WETH → receive USDC. Enter the amount of WETH to sell.</p>
           <p id="swap-route-help">Routes are quoted from supported pools on the selected network.</p>
           <p id="private-submission-help">Private submission reduces exposure to frontrunning. Confirmed DEX trades and amounts are public; slippage still applies.</p>
           <small id="private-network-help">Choose the network before unlocking your private wallet.</small>
-          <button id="broadcasters" type="button">Reconnect broadcaster</button>
         </details>
+        </section>
         <details id="deposit-details" name="wallet-action"><summary>Add funds</summary>
         <p>
           Shielding uses your public wallet. Protocol fees apply. Ophis does not require PPOI verification.
-          Refresh balances after confirmation and synchronization. Other wallets may apply their own verification rules.
+          Balances update after confirmation and synchronization. Other wallets may apply their own verification rules.
         </p>
         <p id="native-shield-help">Native funds are wrapped and shielded in one wallet transaction.</p>
         <label
-          >Deposit asset<select id="shield-token">
+          >Deposit asset<select id="shield-token" aria-label="Deposit asset">
             <option>ETH</option>
             <option>USDC</option>
             <option>WETH</option>
           </select></label
         >
         <label>Deposit amount<input id="shield-amount" type="text" inputmode="decimal" autocomplete="off" /></label>
-        <button id="connect" type="button">Connect browser wallet</button>
-        <button id="walletconnect" type="button">Connect with WalletConnect</button>
+        <button id="deposit-connect" type="button" aria-haspopup="dialog" aria-controls="public-connect-options">Connect public wallet</button>
         <button id="disconnect-public" type="button" hidden>Disconnect public wallet</button>
         <p id="public-wallet-status" role="status" aria-live="polite"></p>
         <p id="public-wallet-error" role="alert"></p>
@@ -94,7 +90,7 @@
         <p>Withdrawing makes the destination and amount public.</p>
         <p>Choose the token and amount above. The broadcaster fee comes from the same private balance.</p>
         <label>Public recipient<input id="recipient" type="text" autocomplete="off" spellcheck="false" /></label>
-        <button id="withdraw-max" type="button">Max withdrawal after fee</button>
+        <button id="withdraw-max" class="secondary-action" type="button">Max withdrawal after fee</button>
         <button id="withdraw-quote" type="button">Review withdrawal fee</button>
         <pre id="withdraw-details"></pre>
         <button id="withdraw" type="button" hidden>Confirm withdrawal</button>
@@ -102,19 +98,22 @@
         </fieldset>
         <details id="wallet-details"><summary>Wallet &amp; balances</summary><p id="address"></p><pre id="balances">Syncing…</pre>
           <details><summary>Pending balances</summary><p id="pending-balances">Synchronizing…</p></details>
-          <div class="secondary-actions"><button id="refresh" type="button">Refresh balances</button><button id="lock" type="button">Lock wallet</button></div>
+          <div class="secondary-actions"><button id="refresh" class="secondary-action" type="button">Refresh balances</button><a id="recovery-shortcut" href="#recovery">Troubleshoot a transaction</a></div>
         </details>
         <details id="recovery"><summary>Recovery and pending transactions</summary>
-        <p>
+        <pre id="pending-details"></pre>
+        <button id="reconcile" type="button">Reconcile pending swap</button>
+        <button id="reconcile-withdrawal" type="button">Check pending withdrawal</button>
+        <button id="retry-withdrawal" class="secondary-action" type="button">Retry saved withdrawal through broadcaster</button>
+        <button id="use-usdc-withdrawal" class="secondary-action" type="button" hidden>Keep WETH proof and withdraw USDC instead</button>
+        <pre id="preserved-withdrawal-details"></pre>
+        <button id="restore-preserved-withdrawal" class="secondary-action" type="button" hidden>Restore preserved withdrawal</button>
+        <details id="advanced-recovery"><summary>Advanced recovery · public gas may be required</summary>
+<p>
           <span id="recovery-gas-help">Recovery requires native currency for gas. Funding a temporary account from your public wallet creates a public link.</span>
         </p>
-        <pre id="pending-details"></pre>
-        <button id="use-usdc-withdrawal" type="button" hidden>Keep WETH proof and withdraw USDC instead</button>
-        <pre id="preserved-withdrawal-details"></pre>
-        <button id="restore-preserved-withdrawal" type="button" hidden>Restore preserved withdrawal</button>
         <label>Temporary account index<input id="recovery-index" type="text" inputmode="numeric" value="0" /></label>
         <button id="scan" type="button">Check recovery balance</button>
-        <button id="reconcile" type="button">Reconcile pending swap</button>
         <label
           ><input id="accept-leftovers" type="checkbox" /> Keep the displayed recovery account index: any public
           leftovers remain there after clearing the pending swap.</label
@@ -123,9 +122,7 @@
           Canceling invalidates the old swap authorization; it does not move or recover tokens. The temporary account
           needs <span id="cancel-gas-symbol">native currency</span> for gas. Funding it from your public wallet creates a public link.
         </p>
-        <button id="cancel-swap" type="button">Cancel pending swap using temporary account gas</button>
-        <button id="reconcile-withdrawal" type="button">Check pending withdrawal</button>
-        <button id="retry-withdrawal" type="button">Retry saved withdrawal through broadcaster</button>
+        <button id="cancel-swap" class="secondary-action" type="button">Cancel pending swap using temporary account gas</button>
         <p>
           Resuming reuses the saved withdrawal proof so it cannot withdraw twice. Your public wallet pays gas, the
           committed broadcaster fee still applies, and the transaction becomes linked to that wallet.
@@ -133,10 +130,24 @@
         <button id="resume-withdrawal" type="button">Resume saved withdrawal with public gas</button>
         <pre id="recovery-details"></pre>
         <button id="recover" type="button">Reshield selected token</button>
+        <button id="broadcasters" class="secondary-action" type="button">Reconnect broadcaster</button>
+        </details>
         </details>
       </section>
       <p id="error" role="alert"></p>
     </main>
+    <dialog id="wallet-menu" aria-labelledby="wallet-menu-title">
+      <div class="dialog-heading"><h2 id="wallet-menu-title">Private wallet</h2><button id="wallet-menu-close" class="dialog-close" type="button" aria-label="Close wallet menu">×</button></div>
+      <nav class="wallet-menu-links" aria-label="Private wallet actions"><a id="deposit-shortcut" href="#deposit-details">Add funds</a><a id="withdraw-shortcut" href="#withdrawal">Withdraw</a><a id="activity-shortcut" href="#wallet-details">Wallet &amp; activity</a><button id="lock" class="text-action" type="button">Lock wallet</button></nav>
+    </dialog>
+    <dialog id="public-connect-options" aria-labelledby="public-connect-title">
+      <div class="dialog-heading"><h2 id="public-connect-title">Connect your public wallet</h2><button id="public-connect-close" class="dialog-close" type="button" aria-label="Close wallet connection options">×</button></div>
+      <p>Choose how to connect. Connecting does not move funds.</p><button id="walletconnect" class="connection-option" type="button">WalletConnect · phone wallet</button><button id="connect" class="connection-option" type="button">Browser wallet</button>
+    </dialog>
+    <dialog id="asset-picker" aria-labelledby="asset-title">
+      <div class="dialog-heading"><h2 id="asset-title">Choose an asset</h2><button id="asset-close" class="dialog-close" type="button" aria-label="Close asset picker">×</button></div>
+      <input id="asset-search" type="search" autocomplete="off" aria-label="Search assets" placeholder="Search assets" /><div id="asset-options" class="picker-options"></div>
+    </dialog>
     <dialog id="walletconnect-dialog" aria-labelledby="walletconnect-title">
       <h2 id="walletconnect-title">Connect with WalletConnect</h2>
       <p>Scan this QR code with your wallet app. Connecting does not send funds.</p>

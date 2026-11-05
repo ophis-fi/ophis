@@ -47,6 +47,7 @@ vi.mock('./unshield', () => ({ executeUnshield: vi.fn(), prepareUnshield: mocks.
 vi.mock('./wallet', () => ({ requireWalletSync: mocks.requireSync, syncWallet: mocks.sync }))
 vi.mock('./account', () => ({ unusedSwapAccount: mocks.unused }))
 vi.mock('./cancel', () => ({ cancelPendingSwap: vi.fn() }))
+vi.mock('./wallet-layout', () => ({ setSwapReview: vi.fn(), setPendingNotice: vi.fn() }))
 
 let elements: Record<string, { value: string, hidden: boolean, textContent: string, className: string, checked: boolean, onclick?: () => Promise<void>, oninput?: () => void, dispatchEvent: () => boolean, scrollIntoView: () => void }>
 let provider: EventEmitter & { request: ReturnType<typeof vi.fn> }
@@ -139,8 +140,8 @@ it('the normal quote button reserves fees for the exact full-balance amount and 
   expect(elements['quote-details'].textContent).toMatch(/^Broadcaster fee reserved/)
   expect(elements['quote-details'].textContent).toContain('Broadcaster fee: 0.00055 WETH')
   expect(elements['receive-amount'].textContent).toBe('0.000998')
-  expect(elements.quote.className).toBe('secondary-action')
-  expect(elements.quote.textContent).toBe('Refresh quote')
+  expect(elements.quote.className).toBe('')
+  expect(elements.quote.textContent).toBe('Review swap')
   expect(elements.swap.hidden).toBe(false)
   expect(elements['private-wallet-error'].textContent).toBe('')
   const { executePrivateSwap } = await import('./private-swap')
@@ -322,7 +323,7 @@ it('deposits ETH with no token approval, independently of private swap inputs', 
   expect(elements['public-wallet-error'].textContent).toMatch(/Native deposits do not need token approval/)
   await elements.shield.onclick?.()
   expect(mocks.shield).toHaveBeenCalledWith(session, expect.anything(), 'ETH', 1n, expect.any(Function))
-  expect(elements.status.textContent).toContain('Shield confirmed')
+  expect(elements.status.textContent).toContain('Deposit confirmed')
   expect(elements.token.value).toBe('WETH')
   expect(elements.amount.value).toBe('')
   expect(elements['swap-direction'].textContent).toContain('Sell WETH → receive USDC')
@@ -350,7 +351,7 @@ it('keeps quote refresh accessible and clears the old minimum if refreshing fail
   await wireWalletActions({} as WalletSession)
   await elements.quote.onclick?.()
   expect(elements.quote.hidden).toBe(false)
-  expect(elements.quote.textContent).toBe('Refresh quote')
+  expect(elements.quote.textContent).toBe('Review swap')
   expect(elements['receive-amount'].textContent).not.toBe('—')
   mocks.quoteSwap.mockRejectedValueOnce(new Error('No route available'))
   await elements.quote.onclick?.()

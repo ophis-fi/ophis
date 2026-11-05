@@ -23,13 +23,14 @@ export async function run(button: HTMLButtonElement, label: string, action: () =
   const original = button.textContent
   const enabled = [
     ...document.querySelectorAll<HTMLInputElement | HTMLButtonElement | HTMLSelectElement | HTMLTextAreaElement>(
-      'button:not(:disabled):not(#lock):not(dialog button),input:not(:disabled):not(dialog input),select:not(:disabled),textarea:not(:disabled)',
+      'button:not(:disabled):not(#lock):not(#wallet-menu-button):not(dialog button),input:not(:disabled):not(dialog input),select:not(:disabled),textarea:not(:disabled)',
     ),
   ]
   document.documentElement.dataset.busy = 'true'
   enabled.forEach((item) => {
     item.disabled = true
   })
+  button.disabled = true
   button.textContent = label
   element('error').textContent = ''
   try {
@@ -41,6 +42,7 @@ export async function run(button: HTMLButtonElement, label: string, action: () =
     enabled.forEach((item) => {
       item.disabled = false
     })
+    button.disabled = false
     button.textContent = original
   }
 }

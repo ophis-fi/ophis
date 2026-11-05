@@ -4,7 +4,7 @@ import { element } from './ui'
 
 export function configurePrivateSelectors(): void {
   const network = element<HTMLSelectElement>('private-network')
-  network.replaceChildren(...PRIVATE_NETWORKS.map((item) => new Option(`${item.name} · ${item.nativeSymbol}`, String(item.chainId))))
+  network.replaceChildren(...PRIVATE_NETWORKS.map((item) => new Option(item.name, String(item.chainId))))
   network.value = String(CHAIN_ID)
   network.onchange = () => {
     const selected = privateNetwork(Number(network.value))
