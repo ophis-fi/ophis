@@ -13,7 +13,7 @@ import { readChainState } from './chain-state'
 
 const REGISTRY = new Interface(['function getContractAddress(string name) view returns (address)'])
 type SDK = Pick<RailgunSDK, 'address' | 'privateViewingKey' | 'publicViewingKey' | 'ready' | 'sign' | 'fee' | 'validate' | 'assure'>
-type Sender = { broadcastTransaction(raw: string): Promise<Pick<TransactionResponse, 'hash'>> }
+type Sender = { broadcastTransaction(raw: string, validUntilMs?: number): Promise<Pick<TransactionResponse, 'hash'>> }
 
 export class Broadcaster {
   // shortcut: one gas wallet; add independently journaled senders when measured demand needs concurrency.
@@ -190,7 +190,7 @@ export class Broadcaster {
         nonce, JSON.stringify({ ...proof, payment: { token: feeToken, amount: feeAmount.toString() } }),
         feeQuote.expiration, this.config.admission === 'pilot' && !parsed.type4)
       phase = 'submit'
-      const sent = await this.sender.broadcastTransaction(raw)
+      const sent = await this.sender.broadcastTransaction(raw, feeQuote.expiration)
       if (sent.hash !== hash) throw new Error('Unexpected protected transaction hash.')
       const encrypted = encryptResponse({ txHash: hash }, request)
       this.store.respond(request.key, encrypted)

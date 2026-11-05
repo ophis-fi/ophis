@@ -4,6 +4,7 @@ import { ContractFactory, getAddress, getCreateAddress, Interface, keccak256, Tr
 import { GUARD_ARTIFACT } from '../../railgun/operator/execution-guard-artifact'
 import { executionGuardCode } from '../../railgun/operator/execution-guard'
 import { protectedWriteRPC } from '../../railgun/operator/protected-provider'
+import { assertBnbBundleUnexpired, assertBnbHead, createBnbBundle, submitProtected } from '../../railgun/operator/protected-submission'
 import { assertSigningNetwork, CHAIN, CHAIN_ID, NETWORK, type Settings } from './config'
 import { signApprovedTransaction, type GasSigner } from './signer'
 import { privateDirectory } from './storage'
@@ -19,7 +20,7 @@ const registry = new Interface(['function getContractAddress(string) view return
 
 export async function deployGuard(config: Settings, approval: GuardApproval, provider: JsonRpcProvider, signer: GasSigner) {
   assertSigningNetwork(config)
-  const writeRPC = protectedWriteRPC(CHAIN_ID)
+  protectedWriteRPC(CHAIN_ID)
   const operator = getAddress(signer.address), guard = getCreateAddress({ from: operator, nonce: 0 })
   if (config.chainId !== CHAIN_ID || config.mode !== 'mainnet' || config.enabled || approval.chainId !== CHAIN_ID || approval.gasFundingApproved !== true ||
     operator !== config.operatorAddress || getAddress(approval.gasOperator) !== operator ||
@@ -62,20 +63,35 @@ export async function deployGuard(config: Settings, approval: GuardApproval, pro
     type: '0x2', nonce: '0x0', maxFeePerGas: `0x${price.toString(16)}`, maxPriorityFeePerGas: `0x${tip.toString(16)}`, gas: `0x${gasLimit.toString(16)}` }, tag])
   if (simulated.toLowerCase() !== expected.toLowerCase() || await provider.getTransactionCount(operator, 'pending') !== 0)
     throw new Error('The exact funded constructor simulation or nonce check failed.')
+  if (CHAIN_ID === 56) {
+    try { assertBnbHead(block) } catch { throw new Error('The validated BNB head expired before deployment signing.') }
+  }
   const raw = await signApprovedTransaction(signer, { ...transaction, gasLimit })
   const hash = Transaction.from(raw).hash!
+  let submission: string | undefined
+  let publicationHeight = block.number
+  if (CHAIN_ID === 56) {
+    try {
+      const { block: publicationHead } = await readChainState(provider)
+      submission = createBnbBundle(raw, publicationHead)
+      publicationHeight = publicationHead.number
+    } catch { /* A delayed signature must still be durably retained below. */ }
+  }
   const record = { chainId: CHAIN_ID, hash, raw, operator, guard, expectedRuntimeKeccak256: approval.expectedRuntimeKeccak256,
-    maximumCostWei: (gasLimit * price).toString(), createdAt: Date.now(), confirmed: false }
+    maximumCostWei: (gasLimit * price).toString(), createdAt: Date.now(), confirmed: false,
+    ...(submission ? { submission } : CHAIN_ID === 56 ? { submissionHeld: true } : {}) }
   const fd = openSync(path, constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL | constants.O_NOFOLLOW, 0o600)
   try { writeFileSync(fd, JSON.stringify(record)); fsyncSync(fd) } finally { closeSync(fd) }
   const directory = openSync(config.state, constants.O_RDONLY | constants.O_DIRECTORY)
   try { fsyncSync(directory) } finally { closeSync(directory) }
+  if (CHAIN_ID === 56 && !submission)
+    throw new Error('The BNB deployment signature remains journaled without a valid bundle. Publication is held; reconcile before any further deployment.')
   try {
-    const response = await fetch(writeRPC, { method: 'POST', headers: { 'Content-Type': 'application/json' },
-      redirect: 'error', signal: AbortSignal.timeout(15_000),
-      body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'eth_sendRawTransaction', params: [raw] }) })
-    const result = await response.json() as { jsonrpc?: unknown; id?: unknown; result?: unknown; error?: unknown }
-    if (!response.ok || result.jsonrpc !== '2.0' || result.id !== 1 || result.error || result.result !== hash) throw new Error()
+    if (submission) assertBnbBundleUnexpired(submission, raw, BigInt(publicationHeight))
+    const bundleHash = await submitProtected(CHAIN_ID, submission ?? JSON.stringify({
+      jsonrpc: '2.0', id: 1, method: 'eth_sendRawTransaction', params: [raw],
+    }), hash)
+    return { status: 'protected-deployment-submitted', hash, guard, maximumCostWei: record.maximumCostWei,
+      ...(bundleHash ? { bundleHash } : {}) }
   } catch { throw new Error('Deployment outcome is unknown. Its signed bytes are journaled; no public fallback or new signature was attempted.') }
-  return { status: 'protected-deployment-submitted', hash, guard, maximumCostWei: record.maximumCostWei }
 }

@@ -26,6 +26,9 @@ let nextBlockRead: (() => Promise<void>) | undefined
 let write: ReturnType<typeof vi.fn>
 let executionGuard: string | undefined
 let guardCode: string | undefined
+let height: bigint
+let headTimestamp: number
+const bundleHash = `0x${'ab'.repeat(32)}`
 
 async function signed(overrides = {}, chainId = 1): Promise<string> {
   const network = NETWORK_CONFIG[chainId === 56 ? NetworkName.BNBChain : chainId === 42161 ? NetworkName.Arbitrum
@@ -56,6 +59,7 @@ beforeEach(async () => {
   directory = mkdtempSync(join(tmpdir(), 'ophis-protected-provider-'))
   providers = []; reads = []; latest = 0n; confirmed = 0n; chain = '0x1'; fork = false; forkError = false; nextBlockRead = undefined
   executionGuard = undefined; guardCode = undefined
+  height = 100n; headTimestamp = Math.floor(Date.now() / 1000)
   server = createServer(async (req, res) => {
     let body = ''
     for await (const chunk of req) body += chunk
@@ -73,7 +77,8 @@ beforeEach(async () => {
     let result: unknown
     switch (call.method) {
       case 'eth_chainId': result = chain; break
-      case 'eth_blockNumber': result = '0x64'; break
+      case 'eth_blockNumber': result = `0x${height.toString(16)}`; break
+      case 'eth_getBlockByNumber': result = { number: `0x${height.toString(16)}`, timestamp: `0x${headTimestamp.toString(16)}`, hash: `0x${'cd'.repeat(32)}` }; break
       case 'eth_getTransactionCount': result = `0x${(call.params[1] === 'latest' ? latest : confirmed).toString(16)}`; break
       case 'eth_getBalance': result = '0x1'; break
       case 'eth_getCode': result = call.params[0] === executionGuard ? guardCode : '0x6001'; break
@@ -88,8 +93,8 @@ beforeEach(async () => {
   if (!address || typeof address === 'string') throw new Error('Missing local read server.')
   readURL = `http://127.0.0.1:${address.port}`
   write = vi.fn(async (_url: string, options: RequestInit) => {
-    const { params } = JSON.parse(options.body as string)
-    return Response.json({ jsonrpc: '2.0', id: 1, result: Transaction.from(params[0]).hash })
+    const { method, params } = JSON.parse(options.body as string)
+    return Response.json({ jsonrpc: '2.0', id: 1, result: method === 'eth_sendBundle' ? bundleHash : Transaction.from(params[0]).hash })
   })
   // Ethers uses its own HTTP transport for reads. No test can send a transaction outside this process.
   vi.stubGlobal('fetch', write)
@@ -100,12 +105,13 @@ afterEach(async () => {
   await new Promise<void>((resolve) => server.close(() => resolve()))
   rmSync(directory, { recursive: true, force: true })
   vi.unstubAllGlobals()
+  vi.restoreAllMocks()
 })
 
 describe('protected operator transport', () => {
   it('allows only fixed qualified endpoints and rejects unsupported chains before creating state', () => {
     expect(protectedWriteRPC()).toBe(PROTECTED_WRITE_RPC)
-    expect(protectedWriteRPC(56)).toBe('https://rpc.48.club')
+    expect(protectedWriteRPC(56)).toBe('https://puissant-builder.48.club/')
     for (const chainId of [42161, 137, 8453]) expect(() => protectedWriteRPC(chainId)).toThrow('no qualified')
     const rejectedDirectory = join(directory, 'unsupported')
     expect(() => new ProtectedEthereumProvider(readURL, operator.address, rejectedDirectory, undefined, 8453))
@@ -154,12 +160,12 @@ describe('protected operator transport', () => {
     const current = provider(executionGuard, 56)
     const data = EXECUTION_GUARD.encodeFunctionData('execute', [ephemeral.address, '0x3e12cc2e', 0n])
     const raw = await signed({ to: executionGuard, data }, 56)
-    await expect(current.send('eth_sendRawTransaction', [raw])).rejects.toThrow('reviewed artifact')
+    await expect(current.broadcastTransaction(raw, Date.now() + 60_000)).rejects.toThrow('reviewed artifact')
     expect(current.pendingTransaction()).toBeUndefined()
     guardCode = executionGuardCode(operator.address, '0x6001', delegate)
-    expect(await current.send('eth_sendRawTransaction', [raw])).toBe(Transaction.from(raw).hash)
+    expect((await current.broadcastTransaction(raw, Date.now() + 60_000)).hash).toBe(Transaction.from(raw).hash)
     expect(write).toHaveBeenCalledOnce()
-    expect(write.mock.calls[0][0]).toBe('https://rpc.48.club')
+    expect(write.mock.calls[0][0]).toBe('https://puissant-builder.48.club/')
     expect(reads.some((call) => call.method.startsWith('eth_send'))).toBe(false)
   })
 
@@ -168,10 +174,10 @@ describe('protected operator transport', () => {
     const current = provider(undefined, 56)
     const raw = await signed({}, 56)
     write.mockImplementationOnce(() => { throw new Error('timeout') })
-    await expect(current.send('eth_sendRawTransaction', [raw])).rejects.toThrow('outcome is unknown')
+    await expect(current.broadcastTransaction(raw, Date.now() + 60_000)).rejects.toThrow('outcome is unknown')
     current.destroy()
     const restarted = provider(undefined, 56)
-    await expect(restarted.send('eth_sendRawTransaction', [await signed({ nonce: 1 }, 56)])).rejects.toThrow('nonce is unresolved')
+    await expect(restarted.broadcastTransaction(await signed({ nonce: 1 }, 56), Date.now() + 60_000)).rejects.toThrow('nonce is unresolved')
     for (const overrides of [{ gasLimit: 20_999n }, { gasLimit: 30_000_001n }, { data: '0x1234' }, { value: 1n },
       { to: ephemeral.address }]) {
       await expect(restarted.cancelPending(await signedCancellation(overrides, 56))).rejects.toThrow()
@@ -180,12 +186,244 @@ describe('protected operator transport', () => {
     expect(await restarted.cancelPending(cancellation)).toBe(Transaction.from(cancellation).hash)
     expect(restarted.pendingTransaction()).toEqual({ hash: Transaction.from(raw).hash, nonce: 0,
       cancellationHash: Transaction.from(cancellation).hash })
-    expect(write.mock.calls.map(([url]) => url)).toEqual(['https://rpc.48.club', 'https://rpc.48.club'])
+    expect(write.mock.calls.map(([url]) => url)).toEqual(['https://puissant-builder.48.club/', 'https://puissant-builder.48.club/'])
     expect(reads.some((call) => call.method.startsWith('eth_send'))).toBe(false)
     latest = 1n
     await expect(restarted.stageSigned(await signed({ nonce: 1 }, 56))).rejects.toThrow('nonce is unresolved')
     confirmed = 1n
     expect(await restarted.stageSigned(await signed({ nonce: 1 }, 56))).toMatch(/^0x[0-9a-f]{64}$/)
+  })
+
+  it('persists the exact one-transaction BNB bundle and authenticated expiry before disclosure, separately from its acknowledgment', async () => {
+    chain = '0x38'
+    const current = provider(undefined, 56), raw = await signed({}, 56), expiry = Date.now() + 12_000
+    const hash = Transaction.from(raw).hash!
+    write.mockImplementationOnce(async (_url, options) => {
+      const database = new DatabaseSync(join(directory, 'protected-transactions.sqlite'), { readOnly: true })
+      try {
+        expect(database.prepare('SELECT hash,body,valid_until_ms FROM protected_bundles').get())
+          .toEqual({ hash, body: options.body, valid_until_ms: expiry })
+        expect(database.prepare('SELECT raw FROM pending').get()?.raw).toBe(raw)
+      } finally { database.close() }
+      expect(JSON.parse(options.body as string)).toEqual({ jsonrpc: '2.0', id: 1, method: 'eth_sendBundle', params: [{
+        txs: [raw], maxBlockNumber: 120, maxTimestamp: Math.floor(expiry / 1000), revertingTxHashes: [], noMerge: true,
+      }] })
+      return Response.json({ jsonrpc: '2.0', id: 1, result: bundleHash })
+    })
+    expect((await current.broadcastTransaction(raw, expiry)).hash).toBe(hash)
+    expect(current.pendingTransaction()).toEqual({ hash, nonce: 0 })
+    const database = new DatabaseSync(join(directory, 'protected-transactions.sqlite'))
+    try {
+      expect(database.prepare('SELECT hash,bundle_hash FROM bundle_acknowledgments').all()).toEqual([{ hash, bundle_hash: bundleHash }])
+      for (const sql of ["UPDATE protected_bundles SET body='changed'", 'DELETE FROM protected_bundles',
+        'INSERT OR REPLACE INTO protected_bundles SELECT * FROM protected_bundles']) expect(() => database.exec(sql)).toThrow('append-only')
+      for (const sql of ["UPDATE bundle_acknowledgments SET bundle_hash='changed'", 'DELETE FROM bundle_acknowledgments',
+        'INSERT OR REPLACE INTO bundle_acknowledgments SELECT * FROM bundle_acknowledgments']) expect(() => database.exec(sql)).toThrow('append-only')
+    } finally { database.close() }
+    expect(reads.some((call) => call.method.startsWith('eth_send'))).toBe(false)
+  })
+
+  it('retries the identical BNB body after timeout and restart without extending either bound', async () => {
+    chain = '0x38'
+    const current = provider(undefined, 56), raw = await signed({}, 56)
+    write.mockImplementationOnce(() => { throw new Error('sensitive timeout') })
+    await expect(current.broadcastTransaction(raw, Date.now() + 60_000)).rejects.toThrow('outcome is unknown')
+    const originalBody = write.mock.calls[0][1].body
+    current.destroy()
+    height += 1n
+    const restarted = provider(undefined, 56)
+    expect(await restarted.retryPending()).toBe(Transaction.from(raw).hash)
+    expect(write.mock.calls[1][1].body).toBe(originalBody)
+    expect(write.mock.calls).toHaveLength(2)
+  })
+
+  it.each(['missing', 'expired', 'invalid'])('refuses a fresh BNB user bundle with %s authenticated fee expiry', async (kind) => {
+    chain = '0x38'
+    const current = provider(undefined, 56), raw = await signed({}, 56)
+    const expiration = kind === 'missing' ? undefined : kind === 'expired' ? Date.now() - 1 : NaN
+    await expect(current.broadcastTransaction(raw, expiration)).rejects.toThrow()
+    expect(write).not.toHaveBeenCalled()
+    expect(current.pendingTransaction()).toBeUndefined()
+    const database = new DatabaseSync(join(directory, 'protected-transactions.sqlite'), { readOnly: true })
+    try { expect(database.prepare('SELECT COUNT(*) AS n FROM protected_bundles').get()?.n).toBe(0) } finally { database.close() }
+  })
+
+  it('rejects a fresh direct raw BNB submission without creating a pending nonce row', async () => {
+    chain = '0x38'
+    const current = provider(undefined, 56), raw = await signed({}, 56)
+    await expect(current.send('eth_sendRawTransaction', [raw])).rejects.toThrow('No raw submission was staged')
+    expect(current.pendingTransaction()).toBeUndefined()
+    expect(write).not.toHaveBeenCalled()
+    current.destroy()
+    expect(provider(undefined, 56).pendingTransaction()).toBeUndefined()
+  })
+
+  it.each([-2, 2])('caps BNB bundle time against local time and a trusted head offset of %ss', async (offset) => {
+    chain = '0x38'
+    const now = Date.now()
+    vi.spyOn(Date, 'now').mockReturnValue(now)
+    headTimestamp = Math.floor(now / 1000) + offset
+    const current = provider(undefined, 56), raw = await signed({}, 56)
+    await current.broadcastTransaction(raw, now + 60_000)
+    const bundle = JSON.parse(write.mock.calls[0][1].body as string).params[0]
+    expect(bundle.maxTimestamp).toBe(Math.min(Math.floor(now / 1000) + 30, headTimestamp + 30))
+    expect(bundle.maxBlockNumber).toBe(120)
+  })
+
+  it('does not refresh a legacy raw-only BNB journal but permits an explicitly signed cancellation bundle', async () => {
+    chain = '0x38'
+    const original = provider(undefined, 56), raw = await signed({}, 56)
+    await original.stageSigned(raw)
+    original.destroy()
+    const legacy = new DatabaseSync(join(directory, 'protected-transactions.sqlite'))
+    try { legacy.exec('DROP TABLE protected_bundles; DROP TABLE bundle_acknowledgments') } finally { legacy.close() }
+    const current = provider(undefined, 56)
+    await expect(current.send('eth_sendRawTransaction', [raw])).rejects.toThrow('no journaled bundle')
+    await expect(current.broadcastTransaction(raw, Date.now() + 60_000)).rejects.toThrow('no journaled bundle')
+    const cancellation = await signedCancellation({ gasLimit: 24_000n }, 56)
+    expect(await current.cancelPending(cancellation)).toBe(Transaction.from(cancellation).hash)
+    expect(write).toHaveBeenCalledOnce()
+    expect(JSON.parse(write.mock.calls[0][1].body as string).params[0].txs).toEqual([cancellation])
+  })
+
+  it.each(['block', 'time'])('retains an expired BNB %s envelope and nonce across restart until an explicit cancellation', async (kind) => {
+    chain = '0x38'
+    const current = provider(undefined, 56), raw = await signed({}, 56)
+    await current.broadcastTransaction(raw, Date.now() + 60_000)
+    const firstBody = write.mock.calls[0][1].body
+    if (kind === 'block') height += 20n
+    else {
+      const now = Date.now() + 31_000
+      vi.spyOn(Date, 'now').mockReturnValue(now)
+      headTimestamp = Math.floor(now / 1000)
+    }
+    current.destroy()
+    const restarted = provider(undefined, 56)
+    await expect(restarted.retryPending()).rejects.toThrow('expired')
+    await expect(restarted.broadcastTransaction(raw, Date.now() + 60_000)).rejects.toThrow('expired')
+    expect(restarted.pendingTransaction()).toEqual({ hash: Transaction.from(raw).hash, nonce: 0 })
+    expect(write).toHaveBeenCalledOnce()
+    const cancellation = await signedCancellation({ gasLimit: 24_000n }, 56)
+    await restarted.cancelPending(cancellation)
+    restarted.destroy()
+    const again = provider(undefined, 56)
+    expect(await again.retryPending()).toBe(Transaction.from(cancellation).hash)
+    expect(write.mock.calls[2][1].body).toBe(write.mock.calls[1][1].body)
+    const database = new DatabaseSync(join(directory, 'protected-transactions.sqlite'), { readOnly: true })
+    try { expect(database.prepare('SELECT body FROM protected_bundles ORDER BY rowid').all().map((row) => row.body))
+      .toEqual([firstBody, write.mock.calls[1][1].body]) } finally { database.close() }
+  })
+
+  it.each([
+    ['duplicate', () => Response.json({ jsonrpc: '2.0', id: 1, error: { code: -38000, message: 'sensitive duplicate' } })],
+    ['malformed bundle hash', () => Response.json({ jsonrpc: '2.0', id: 1, result: '0x1234' })],
+    ['wrong id', () => Response.json({ jsonrpc: '2.0', id: 2, result: bundleHash })],
+    ['malformed JSON', () => new Response('sensitive invalid JSON')],
+  ])('keeps BNB signed state after %s without leaking endpoint diagnostics', async (_kind, response) => {
+    chain = '0x38'
+    const current = provider(undefined, 56), raw = await signed({}, 56)
+    write.mockImplementationOnce(response)
+    await expect(current.broadcastTransaction(raw, Date.now() + 60_000)).rejects.toThrow('outcome is unknown')
+    expect(current.pendingTransaction()?.hash).toBe(Transaction.from(raw).hash)
+    current.destroy()
+    const restarted = provider(undefined, 56)
+    expect(await restarted.retryPending()).toBe(Transaction.from(raw).hash)
+    expect(write.mock.calls[1][1].body).toBe(write.mock.calls[0][1].body)
+  })
+
+  it('does not disclose a BNB operation if durable envelope persistence fails', async () => {
+    chain = '0x38'
+    const current = provider(undefined, 56), raw = await signed({}, 56)
+    const database = new DatabaseSync(join(directory, 'protected-transactions.sqlite'))
+    try { database.exec(`CREATE TRIGGER test_bundle_failure BEFORE INSERT ON protected_bundles
+      BEGIN SELECT RAISE(ABORT, 'Disk write failure'); END;`) } finally { database.close() }
+    await expect(current.broadcastTransaction(raw, Date.now() + 60_000)).rejects.toThrow('Disk write failure')
+    expect(current.pendingTransaction()).toBeUndefined()
+    expect(write).not.toHaveBeenCalled()
+  })
+
+  it('keeps the original BNB retry target and history if cancellation envelope persistence fails', async () => {
+    chain = '0x38'
+    const current = provider(undefined, 56), raw = await signed({}, 56)
+    await current.broadcastTransaction(raw, Date.now() + 60_000)
+    const database = new DatabaseSync(join(directory, 'protected-transactions.sqlite'))
+    try { database.exec(`CREATE TRIGGER test_bundle_failure BEFORE INSERT ON protected_bundles
+      BEGIN SELECT RAISE(ABORT, 'Disk write failure'); END;`) } finally { database.close() }
+    await expect(current.cancelPending(await signedCancellation({ gasLimit: 24_000n }, 56))).rejects.toThrow('Disk write failure')
+    expect(current.pendingTransaction()).toEqual({ hash: Transaction.from(raw).hash, nonce: 0 })
+    expect(write).toHaveBeenCalledOnce()
+    const saved = new DatabaseSync(join(directory, 'protected-transactions.sqlite'), { readOnly: true })
+    try {
+      expect(saved.prepare('SELECT COUNT(*) AS n FROM cancellation_history').get()?.n).toBe(0)
+      expect(saved.prepare('SELECT COUNT(*) AS n FROM protected_bundles').get()?.n).toBe(1)
+    } finally { saved.close() }
+  })
+
+  it('retries equivalent cancellation hex casing using the unchanged stored BNB envelope', async () => {
+    chain = '0x38'
+    const current = provider(undefined, 56), raw = await signed({}, 56)
+    await current.broadcastTransaction(raw, Date.now() + 60_000)
+    const cancellation = await signedCancellation({ gasLimit: 24_000n }, 56)
+    const upper = `0x${cancellation.slice(2).toUpperCase()}`
+    await current.cancelPending(upper)
+    const originalBody = write.mock.calls[1][1].body
+    expect(JSON.parse(originalBody as string).params[0].txs).toEqual([upper])
+    expect(await current.cancelPending(cancellation)).toBe(Transaction.from(cancellation).hash)
+    expect(write.mock.calls[2][1].body).toBe(originalBody)
+    current.destroy()
+    const restarted = provider(undefined, 56)
+    expect(await restarted.retryPending()).toBe(Transaction.from(cancellation).hash)
+    expect(write.mock.calls[3][1].body).toBe(originalBody)
+  })
+
+  it('sanitizes acknowledgment persistence failure after BNB publication and retains the exact retry envelope', async () => {
+    chain = '0x38'
+    const current = provider(undefined, 56), raw = await signed({}, 56)
+    const database = new DatabaseSync(join(directory, 'protected-transactions.sqlite'))
+    try { database.exec(`CREATE TRIGGER test_ack_failure BEFORE INSERT ON bundle_acknowledgments
+      BEGIN SELECT RAISE(ABORT, 'sensitive raw signature and endpoint credentials'); END;`) } finally { database.close() }
+    const error = await current.broadcastTransaction(raw, Date.now() + 60_000).then(() => undefined, (failure) => failure)
+    expect(error).toBeInstanceOf(Error)
+    expect(error.message).toContain('outcome is unknown')
+    expect(error.message).not.toContain('sensitive')
+    expect(error.message).not.toContain(raw)
+    expect(current.pendingTransaction()).toEqual({ hash: Transaction.from(raw).hash, nonce: 0 })
+    expect(write).toHaveBeenCalledOnce()
+    current.destroy()
+    const saved = new DatabaseSync(join(directory, 'protected-transactions.sqlite'))
+    try { saved.exec('DROP TRIGGER test_ack_failure') } finally { saved.close() }
+    const restarted = provider(undefined, 56)
+    expect(await restarted.retryPending()).toBe(Transaction.from(raw).hash)
+    expect(write.mock.calls[1][1].body).toBe(write.mock.calls[0][1].body)
+    expect(await restarted.retryPending()).toBe(Transaction.from(raw).hash)
+    const acknowledgments = new DatabaseSync(join(directory, 'protected-transactions.sqlite'), { readOnly: true })
+    try { expect(acknowledgments.prepare('SELECT COUNT(*) AS n FROM bundle_acknowledgments').get()?.n).toBe(1) }
+    finally { acknowledgments.close() }
+  })
+
+  it.each(['body', 'raw', 'fee expiry', 'binding'])('rejects a corrupted persisted BNB %s before any restart disclosure', async (kind) => {
+    chain = '0x38'
+    const current = provider(undefined, 56), raw = await signed({}, 56)
+    await current.broadcastTransaction(raw, Date.now() + 60_000)
+    current.destroy()
+    const database = new DatabaseSync(join(directory, 'protected-transactions.sqlite'))
+    try {
+      database.exec('DROP TRIGGER preserve_bundle_update')
+      if (kind === 'body') database.exec("UPDATE protected_bundles SET body='invalid signed body'")
+      if (kind === 'raw') database.prepare('UPDATE protected_bundles SET hash=?').run(`0x${'ef'.repeat(32)}`)
+      if (kind === 'fee expiry') database.exec('UPDATE protected_bundles SET valid_until_ms=1')
+      if (kind === 'binding') database.prepare('UPDATE protected_bundles SET operator=?').run(ephemeral.address)
+    } finally { database.close() }
+    expect(() => provider(undefined, 56)).toThrow()
+    expect(write).toHaveBeenCalledOnce()
+  })
+
+  it('rejects a stale trusted BNB head before creating or disclosing an envelope', async () => {
+    chain = '0x38'; headTimestamp -= 4
+    const current = provider(undefined, 56)
+    await expect(current.broadcastTransaction(await signed({}, 56), Date.now() + 60_000)).rejects.toThrow('fresh')
+    expect(current.pendingTransaction()).toBeUndefined()
+    expect(write).not.toHaveBeenCalled()
   })
 
   it('durably binds even an empty journal directory to one chain and operator', () => {

@@ -5,19 +5,13 @@ import { NETWORK_CONFIG, NetworkName } from '@railgun-community/shared-models'
 import { FetchRequest, getAddress, JsonRpcProvider, Transaction, verifyAuthorization,
   type JsonRpcPayload, type JsonRpcResult, type JsonRpcError } from 'ethers'
 import { assertExecutionGuardCode, decodeGuardedExecution } from './execution-guard'
+import { assertBnbBundleUnexpired, createBnbBundle, protectedWriteRPC, readBnbBundle, submitProtected } from './protected-submission'
+export { PROTECTED_WRITE_RPC, protectedWriteRPC } from './protected-submission'
 
-// No fast mode or calldata/log hints, and no public write endpoint.
-export const PROTECTED_WRITE_RPC = 'https://rpc.flashbots.net?hint=hash'
 const NETWORKS: Record<number, NetworkName | undefined> = {
   1: NetworkName.Ethereum, 42161: NetworkName.Arbitrum, 56: NetworkName.BNBChain, 137: NetworkName.Polygon,
 }
 
-export function protectedWriteRPC(chainId = 1): string {
-  if (chainId === 1) return PROTECTED_WRITE_RPC
-  // The operator's separate live-acceptance gate must pass before BNB signing is armed.
-  if (chainId === 56) return 'https://rpc.48.club'
-  throw new Error('This chain has no qualified protected submission policy; publication remains disabled.')
-}
 const READ_METHODS = new Set([
   'eth_chainId', 'net_version', 'web3_clientVersion', 'eth_blockNumber',
   'eth_getBlockByNumber', 'eth_getBlockByHash', 'eth_getBlockTransactionCountByNumber',
@@ -81,14 +75,36 @@ export class ProtectedEthereumProvider extends JsonRpcProvider {
         BEGIN SELECT RAISE(ABORT, 'Cancellation history is append-only'); END;
       CREATE TRIGGER IF NOT EXISTS preserve_cancellation_replace BEFORE INSERT ON cancellation_history
         WHEN EXISTS(SELECT 1 FROM cancellation_history WHERE operator=NEW.operator AND hash=NEW.hash)
-        BEGIN SELECT RAISE(ABORT, 'Cancellation history is append-only'); END;`)
+        BEGIN SELECT RAISE(ABORT, 'Cancellation history is append-only'); END;
+      CREATE TABLE IF NOT EXISTS protected_bundles (
+        operator TEXT NOT NULL, hash TEXT NOT NULL, body TEXT NOT NULL, valid_until_ms INTEGER, PRIMARY KEY(operator,hash)
+      );
+      CREATE TABLE IF NOT EXISTS bundle_acknowledgments (
+        operator TEXT NOT NULL, hash TEXT NOT NULL, bundle_hash TEXT NOT NULL, PRIMARY KEY(operator,hash,bundle_hash)
+      );
+      CREATE TRIGGER IF NOT EXISTS preserve_bundle_update BEFORE UPDATE ON protected_bundles
+        BEGIN SELECT RAISE(ABORT, 'Protected bundle history is append-only'); END;
+      CREATE TRIGGER IF NOT EXISTS preserve_bundle_delete BEFORE DELETE ON protected_bundles
+        BEGIN SELECT RAISE(ABORT, 'Protected bundle history is append-only'); END;
+      CREATE TRIGGER IF NOT EXISTS preserve_bundle_replace BEFORE INSERT ON protected_bundles
+        WHEN EXISTS(SELECT 1 FROM protected_bundles WHERE operator=NEW.operator AND hash=NEW.hash)
+        BEGIN SELECT RAISE(ABORT, 'Protected bundle history is append-only'); END;
+      CREATE TRIGGER IF NOT EXISTS preserve_bundle_ack_update BEFORE UPDATE ON bundle_acknowledgments
+        BEGIN SELECT RAISE(ABORT, 'Builder acknowledgment history is append-only'); END;
+      CREATE TRIGGER IF NOT EXISTS preserve_bundle_ack_delete BEFORE DELETE ON bundle_acknowledgments
+        BEGIN SELECT RAISE(ABORT, 'Builder acknowledgment history is append-only'); END;
+      CREATE TRIGGER IF NOT EXISTS preserve_bundle_ack_replace BEFORE INSERT ON bundle_acknowledgments
+        WHEN EXISTS(SELECT 1 FROM bundle_acknowledgments WHERE operator=NEW.operator AND hash=NEW.hash AND bundle_hash=NEW.bundle_hash)
+        BEGIN SELECT RAISE(ABORT, 'Builder acknowledgment history is append-only'); END;`)
       const binding = this.journal.prepare('SELECT chain_id, operator FROM binding WHERE id = 1').get() as
         { chain_id: number; operator: string } | undefined
       if (binding) {
         if (binding.chain_id !== chainId || binding.operator !== this.operator)
           throw new Error('The protected journal belongs to another chain or operator.')
-      } else if (chainId !== 1 && (this.journal.prepare('SELECT 1 FROM pending UNION ALL SELECT 1 FROM cancellation_history LIMIT 1').get() ||
-        this.journal.prepare(`SELECT 1 FROM sqlite_master WHERE type='table' AND name NOT IN ('pending','binding','cancellation_history')
+      } else if (chainId !== 1 && (this.journal.prepare(`SELECT 1 FROM pending UNION ALL SELECT 1 FROM cancellation_history
+        UNION ALL SELECT 1 FROM protected_bundles UNION ALL SELECT 1 FROM bundle_acknowledgments LIMIT 1`).get() ||
+        this.journal.prepare(`SELECT 1 FROM sqlite_master WHERE type='table'
+          AND name NOT IN ('pending','binding','cancellation_history','protected_bundles','bundle_acknowledgments')
           AND name NOT LIKE 'sqlite_%' LIMIT 1`).get())) {
         throw new Error('Only verified Ethereum journals can be migrated without a chain binding.')
       }
@@ -113,6 +129,23 @@ export class ProtectedEthereumProvider extends JsonRpcProvider {
           pending.some((original) => original.nonce === item.nonce && original.hash !== item.original_hash))
           throw new Error('The retained protected cancellation record is inconsistent.')
       }
+      for (const item of this.journal.prepare('SELECT * FROM protected_bundles').iterate()) {
+        if (chainId !== 56 || item.operator !== this.operator || typeof item.body !== 'string')
+          throw new Error('The protected bundle journal has an inconsistent binding.')
+        const { raw, maxTimestamp } = readBnbBundle(item.body)
+        let cancellation: boolean
+        try { cancellation = Transaction.from(raw).data === '0x' } catch { throw new Error('Invalid journaled bundle transaction.') }
+        if (this.validate(raw, cancellation).hash !== item.hash)
+          throw new Error('The protected bundle journal has an inconsistent transaction.')
+        if (cancellation ? item.valid_until_ms !== null : typeof item.valid_until_ms !== 'number' ||
+          !Number.isSafeInteger(item.valid_until_ms) || maxTimestamp > Math.floor(item.valid_until_ms / 1000))
+          throw new Error('The protected bundle journal has an inconsistent fee expiration.')
+      }
+      for (const item of this.journal.prepare('SELECT * FROM bundle_acknowledgments').iterate()) {
+        if (item.operator !== this.operator || typeof item.bundle_hash !== 'string' || !/^0x[0-9a-f]{64}$/i.test(item.bundle_hash) ||
+          !this.journal.prepare('SELECT 1 FROM protected_bundles WHERE operator=? AND hash=?').get(this.operator, item.hash))
+          throw new Error('The protected builder acknowledgment is inconsistent.')
+      }
       if (!binding) this.journal.prepare('INSERT INTO binding (id, chain_id, operator) VALUES (1, ?, ?)').run(chainId, this.operator)
       this.journal.exec('COMMIT')
     } catch (error) {
@@ -134,6 +167,16 @@ export class ProtectedEthereumProvider extends JsonRpcProvider {
     if (calls.some((call) => !READ_METHODS.has(call.method)))
       throw new Error('This provider permits reads and protected raw submissions only.')
     return super._send(payload)
+  }
+
+  override async broadcastTransaction(raw: string, validUntilMs?: number) {
+    if (this.chainId === 56 && validUntilMs !== undefined) {
+      const tx = this.validate(raw, false)
+      if (this.executionGuard && tx.type === 4 && tx.to !== this.executionGuard)
+        throw new Error('This operator requires guarded private execution.')
+      await this.journalSigned(raw, tx, false, undefined, validUntilMs)
+    }
+    return super.broadcastTransaction(raw)
   }
 
   pendingTransaction(): { hash: string; nonce: number; cancellationHash?: string } | undefined {
@@ -236,7 +279,17 @@ export class ProtectedEthereumProvider extends JsonRpcProvider {
     return BigInt(result)
   }
 
-  private async journalSigned(raw: string, tx: Transaction, cancellation: boolean, retryHash?: string): Promise<string> {
+  private async bnbHead(height: bigint): Promise<{ number: number; timestamp: number }> {
+    const tag = `0x${height.toString(16)}`
+    const block = await this.read('eth_getBlockByNumber', [tag, false]) as { number?: unknown; timestamp?: unknown; hash?: unknown } | null
+    if (typeof block?.number !== 'string' || block.number.toLowerCase() !== tag ||
+      typeof block.hash !== 'string' || !/^0x[0-9a-f]{64}$/i.test(block.hash) || /^0x0{64}$/i.test(block.hash) ||
+      typeof block.timestamp !== 'string' || !/^0x(?:0|[1-9a-f][0-9a-f]*)$/i.test(block.timestamp))
+      throw new Error('The trusted BNB head identity or timestamp is invalid.')
+    return { number: Number(height), timestamp: Number(BigInt(block.timestamp)) }
+  }
+
+  private async journalSigned(raw: string, tx: Transaction, cancellation: boolean, retryHash?: string, validUntilMs?: number): Promise<string> {
     const hash = tx.hash!
     this.forkCheck ??= this.checkFork().catch((error) => { this.forkCheck = undefined; throw error })
     await this.forkCheck
@@ -251,6 +304,7 @@ export class ProtectedEthereumProvider extends JsonRpcProvider {
       assertExecutionGuardCode(this.operator, code, delegateCode, this.config.relayAdapt7702Contract)
     }
     const height = await this.quantity('eth_blockNumber', [])
+    const bnbHead = this.chainId === 56 ? await this.bnbHead(height) : undefined
     // Read confirmed state, not a public pending pool that cannot see private submissions.
     const [latest, confirmed] = await Promise.all([
       this.quantity('eth_getTransactionCount', [this.operator, 'latest']),
@@ -261,6 +315,8 @@ export class ProtectedEthereumProvider extends JsonRpcProvider {
     this.journal.exec('BEGIN IMMEDIATE')
     try {
       const pending = this.pending()
+      const retained = pending?.hash === hash || !!this.journal.prepare('SELECT 1 FROM cancellation_history WHERE operator=? AND hash=?')
+        .get(this.operator, hash)
       if (retryHash && (pending?.cancel_hash ?? pending?.hash) !== retryHash)
         throw new Error('The pending transaction changed while retrying. Read the current journal before retrying.')
       if (cancellation && (!pending || pending.nonce !== tx.nonce))
@@ -281,6 +337,11 @@ export class ProtectedEthereumProvider extends JsonRpcProvider {
         this.journal.prepare('INSERT OR IGNORE INTO pending (operator, hash, nonce, raw) VALUES (?, ?, ?, ?)')
           .run(this.operator, hash, tx.nonce, raw)
       }
+      // Existing raw-only BNB records stay held: adding a fresh wrapper would silently renew an unknown publication.
+      if (bnbHead && !retained && (cancellation || validUntilMs !== undefined) &&
+        !this.journal.prepare('SELECT 1 FROM protected_bundles WHERE operator=? AND hash=?').get(this.operator, hash))
+        this.journal.prepare('INSERT INTO protected_bundles(operator,hash,body,valid_until_ms) VALUES(?,?,?,?)')
+          .run(this.operator, hash, createBnbBundle(raw, bnbHead, cancellation ? undefined : validUntilMs), cancellation ? null : validUntilMs!)
       this.journal.exec('COMMIT')
     } catch (error) {
       try { this.journal.exec('ROLLBACK') } catch { /* COMMIT may have already rolled back. */ }
@@ -290,25 +351,32 @@ export class ProtectedEthereumProvider extends JsonRpcProvider {
   }
 
   private async sendProtected(raw: string, cancellation = false, retryHash?: string): Promise<string> {
-    const endpoint = protectedWriteRPC(this.chainId)
+    protectedWriteRPC(this.chainId)
     const tx = this.validate(raw, cancellation)
     if (this.executionGuard && !cancellation && tx.type === 4 && tx.to !== this.executionGuard)
       throw new Error('This operator requires guarded private execution.')
+    if (this.chainId === 56 && !cancellation &&
+      !this.journal.prepare('SELECT 1 FROM protected_bundles WHERE operator=? AND hash=?').get(this.operator, tx.hash!))
+      throw new Error('This BNB transaction has no journaled bundle with authenticated fee expiration. No raw submission was staged; reconcile any existing held record.')
     const hash = await this.journalSigned(raw, tx, cancellation, retryHash)
-    try {
-      const response = await fetch(endpoint, {
-        method: 'POST', headers: { 'Content-Type': 'application/json' }, redirect: 'error',
-        body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'eth_sendRawTransaction', params: [raw] }),
-        signal: AbortSignal.timeout(15_000),
-      })
-      if (!response.ok) throw new Error('Protected endpoint rejected submission.')
-      const result = await response.json() as { jsonrpc?: unknown; id?: unknown; result?: unknown; error?: unknown }
-      if (result.jsonrpc !== '2.0' || result.id !== 1 || result.error || result.result !== hash)
-        throw new Error('Protected endpoint did not acknowledge the expected hash.')
-      return hash
-    } catch {
-      // Even a rejection or timeout may follow acceptance: keep the nonce locked durably.
-      throw new Error('Protected submission was not acknowledged. Its outcome is unknown; the signed transaction remains journaled. No public fallback was attempted.')
+    let body = JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'eth_sendRawTransaction', params: [raw] })
+    if (this.chainId === 56) {
+      const stored = this.journal.prepare('SELECT body FROM protected_bundles WHERE operator=? AND hash=?').get(this.operator, hash)
+      if (typeof stored?.body !== 'string')
+        throw new Error('This BNB transaction has no journaled bundle with authenticated fee expiration. Its signed bytes and nonce remain held; reconcile or explicitly cancel.')
+      body = stored.body
+      assertBnbBundleUnexpired(body, raw, await this.quantity('eth_blockNumber', []))
     }
+    const bundleHash = await submitProtected(this.chainId, body, hash)
+    if (bundleHash) {
+      try {
+        this.journal.prepare(`INSERT INTO bundle_acknowledgments(operator,hash,bundle_hash) SELECT ?,?,?
+          WHERE NOT EXISTS(SELECT 1 FROM bundle_acknowledgments WHERE operator=? AND hash=? AND bundle_hash=?)`)
+          .run(this.operator, hash, bundleHash, this.operator, hash, bundleHash)
+      } catch {
+        throw new Error('Protected submission outcome is unknown; its signed transaction and envelope remain journaled. The builder acknowledgment could not be retained. No public fallback was attempted.')
+      }
+    }
+    return hash
   }
 }

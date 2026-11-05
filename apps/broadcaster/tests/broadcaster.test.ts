@@ -68,7 +68,7 @@ async function fixture(guard?: string, withdrawalRecipient?: string) {
     validate: vi.fn(async () => ({ railgunTxid: 'test-txid', utxoTreeIn: 0, commitment: 'test-commitment', notePublicKey: 'test-npk', pois: {} })),
     assure: vi.fn(async () => true),
   }
-  const sender = { broadcastTransaction: vi.fn(async (raw: string) => ({ hash: Transaction.from(raw).hash! })) }
+  const sender = { broadcastTransaction: vi.fn(async (raw: string, _validUntilMs?: number) => ({ hash: Transaction.from(raw).hash! })) }
   const sign = vi.spyOn(wallet, 'signTransaction')
   const service = new Broadcaster({ ...config, executionGuard: guard, pilotWithdrawalRecipient: withdrawalRecipient }, store, sdk, provider as unknown as JsonRpcProvider, wallet, sender,
     { rates: async () => rates })
@@ -277,8 +277,10 @@ describe('signing gate and duplicate recovery', () => {
   it('journals the request and raw transaction before private disclosure, then replays the response without signing again', async () => {
     const f = await fixture()
     let journaledBeforeSend = false
-    f.sender.broadcastTransaction.mockImplementationOnce(async (raw) => {
+    f.sender.broadcastTransaction.mockImplementationOnce(async (raw, validUntilMs) => {
       const row = store.pending()[0]
+      expect(validUntilMs).toBe(f.quote.expiration)
+      expect(row.fee_expiration).toBe(validUntilMs)
       journaledBeforeSend = row?.raw === raw && row.fee_data.includes('test-commitment')
       return { hash: Transaction.from(raw).hash! }
     })

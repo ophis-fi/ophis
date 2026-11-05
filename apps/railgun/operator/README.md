@@ -61,4 +61,14 @@ Production activation still requires an operator-controlled sender using this tr
 
 Chain-bound transport, journals and validation are implemented for Ethereum, Arbitrum, Polygon and BNB Chain, but all three added-chain mainnet signing paths remain blocked in source. Arbitrum and Polygon have no configured protected write route; BNB's candidate route still requires qualification. Each added chain needs verified type-4 delivery and revert filtering, an approved operator/guard and native budgets, and live fee-receipt/recovery acceptance before activation. Base remains excluded.
 
+### BNB candidate bundle transport
+
+BNB publication uses `https://puissant-builder.48.club/` and a single-transaction `eth_sendBundle`, with an empty revert allowlist and `noMerge: true`. The broadcaster passes its authenticated fee expiration into `broadcastTransaction(raw, validUntilMs)`. A fresh user send without an existing authenticated envelope is rejected before creating a transport nonce hold; `stageSigned` remains an explicit held-record recovery operation.
+
+The trusted head must be at most three seconds old. Every envelope has a fixed 20-block limit and a timestamp no later than local time plus 30 seconds, head time plus 30 seconds, or the authenticated fee expiration. The exact body is durably stored before disclosure. Retries and restarts preserve it; an expired envelope or legacy raw-only record stays held. Expiry does not revoke the signature, and there is no automatic renewal. A new explicitly approved cancellation can have its own bounded envelope and can spend operator gas.
+
+Bundle acknowledgments are stored separately from transaction hashes and never prove settlement. Only the trusted chain receipt and existing fee assurance resolve accounting. Deployment stores its exact envelope in the fsynced deployment record; a signature without a usable envelope is retained as held, and repeating deployment cannot sign again. Existing backups include these records. Preserve the reviewed transport version when restoring BNB journals.
+
+No builder-tip transaction or membership signature is added. Production type-4 acceptance, privacy and inclusion-time revert enforcement remain unverified; the non-Ethereum signing gate is unchanged. Ethereum continues using its existing Flashbots raw-transaction route.
+
 Flashbots documents the [hash-only privacy setting, default builder, positive-tip requirement and 25-block lifetime](https://docs.flashbots.net/flashbots-protect/settings-guide). Its [EIP-7702 example](https://github.com/flashbots/mevrepl) demonstrates type-4 submission support. The builder still receives transaction contents; private submission reduces public-mempool exposure and is not an absolute guarantee against every form of MEV.
