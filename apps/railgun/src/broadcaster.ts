@@ -108,13 +108,13 @@ export function validateBroadcaster(selected: SelectedBroadcaster, tokenAddress:
 
 export async function gasDetails(session: WalletSession): Promise<TransactionGasDetailsType4> {
   const fee = await session.provider.getFeeData()
-  // BSC supports type-4 authorizations but its RPC reports legacy transaction pricing.
-  const legacy = CHAIN_ID === 56 && fee.maxFeePerGas == null && fee.gasPrice != null && fee.gasPrice > 0n
+  // BNB's admission floor uses gasPrice even when its RPC also returns EIP-1559 hints.
+  const legacy = CHAIN_ID === 56
   const maxFeePerGas = legacy ? fee.gasPrice : fee.maxFeePerGas
   const suggestedPriorityFee = legacy ? fee.gasPrice : fee.maxPriorityFeePerGas
-  // Flashbots rejects zero-tip private transactions; Baal can legitimately suggest zero.
-  const maxPriorityFeePerGas = CHAIN_ID === 1 && suggestedPriorityFee === 0n ? 1n : suggestedPriorityFee
-  if (maxFeePerGas == null || maxPriorityFeePerGas == null || maxFeePerGas <= 0n || maxPriorityFeePerGas < 0n || maxPriorityFeePerGas > maxFeePerGas)
+  // Private operators require a positive tip even when the read node suggests zero.
+  const maxPriorityFeePerGas = suggestedPriorityFee === 0n ? 1n : suggestedPriorityFee
+  if (maxFeePerGas == null || maxPriorityFeePerGas == null || maxFeePerGas <= 0n || maxPriorityFeePerGas <= 0n || maxPriorityFeePerGas > maxFeePerGas)
     throw new Error(`${CHAIN_NAME} fee estimate unavailable.`)
   return {
     evmGasType: EVMGasType.Type4,
@@ -127,10 +127,8 @@ export async function gasDetails(session: WalletSession): Promise<TransactionGas
 export async function minimumGasPrice(session: WalletSession, gas: TransactionGasDetailsType4): Promise<bigint> {
   if (CHAIN_ID === 56) {
     const fee = await session.provider.getFeeData()
-    if (fee.maxFeePerGas == null) {
-      if (fee.gasPrice == null || fee.gasPrice <= 0n) throw new Error('BNB Chain gas price unavailable.')
-      return fee.gasPrice
-    }
+    if (fee.gasPrice == null || fee.gasPrice <= 0n) throw new Error('BNB Chain gas price unavailable.')
+    return fee.gasPrice
   }
   const block = await session.provider.getBlock('latest')
   if (block?.baseFeePerGas == null) throw new Error(`${CHAIN_NAME} base fee unavailable.`)

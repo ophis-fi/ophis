@@ -4,7 +4,6 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { JsonRpcProvider, Transaction, Wallet } from 'ethers'
 import { Store } from '../src/storage'
-import { NETWORK } from '../src/config'
 import { config } from './request.fixture'
 
 let directory: string, store: Store
@@ -15,9 +14,10 @@ async function fixture(chainId = 1) {
   vi.resetModules()
   vi.stubEnv('OPHIS_BROADCASTER_CHAIN_ID', String(chainId))
   const { recover } = await import('../src/recovery')
+  const { NETWORK: network } = await import('../src/config')
   const selectedConfig = { ...config, chainId }
   const wallet = new Wallet(Wallet.createRandom().privateKey)
-  const raw = await wallet.signTransaction({ to: NETWORK.proxyContract, data: '0x12345678', value: 0n,
+  const raw = await wallet.signTransaction({ to: network.proxyContract, data: '0x12345678', value: 0n,
     type: 2, chainId, nonce: 0, gasLimit: 100_000n, maxFeePerGas: 2_000_000_000n, maxPriorityFeePerGas: 1_000_000_000n })
   const hash = Transaction.from(raw).hash!
   store.signed('one', 'encrypted request', raw, hash, 200_000_000_000_000n, config.dailyBudget, 0, '{}', Date.now() + 60_000)
@@ -25,11 +25,11 @@ async function fixture(chainId = 1) {
     getNetwork: vi.fn(async () => ({ chainId: BigInt(chainId) })),
     getBlock: vi.fn(async (tag: string) => ({ number: tag === 'finalized' ? 80 : 100,
       hash: `0x${'12'.repeat(32)}`, timestamp: Math.floor(Date.now() / 1000), baseFeePerGas: chainId === 56 ? null : 1n })),
-    getFeeData: vi.fn(async () => ({ gasPrice: 2_000_000_000n })),
+    getFeeData: vi.fn(async () => ({ gasPrice: 2_000_000_000n, maxPriorityFeePerGas: 1n })),
     estimateGas: vi.fn(async () => 21_221n),
     getBalance: vi.fn(async () => 10n ** 18n), getTransactionCount: vi.fn(async () => 0),
     getRpcTransaction: vi.fn((tx) => tx),
-    send: vi.fn(async () => ({ type: 'CALL', to: NETWORK.proxyContract, input: '0x12345678' })),
+    send: vi.fn(async () => ({ type: 'CALL', to: network.proxyContract, input: '0x12345678' })),
   }
   const sender = { pendingTransaction: vi.fn((): { hash: string; nonce: number } | undefined => undefined),
     stageSigned: vi.fn(async () => hash), retryPending: vi.fn(async () => hash),
@@ -38,7 +38,7 @@ async function fixture(chainId = 1) {
   const sign = vi.spyOn(wallet, 'signTransaction')
   const run = (command: 'retry' | 'cancel', args: string[] = []) => recover(command, args, selectedConfig, store,
     provider as unknown as JsonRpcProvider, wallet, sender)
-  return { wallet, raw, hash, provider, sender, sign, run, recover }
+  return { wallet, raw, hash, provider, sender, sign, run, recover, network }
 }
 
 it('stages a crash-gap transaction and retries identical signed bytes without signing again', async () => {
@@ -169,12 +169,37 @@ it('preserves recovery journals when non-Ethereum cancellation gas estimation fa
 
 it('enforces the current BNB gas-price floor for cancellation and retry even without a base fee', async () => {
   const f = await fixture(56)
-  f.provider.getFeeData.mockResolvedValue({ gasPrice: 4_000_000_000n })
+  f.provider.getFeeData.mockResolvedValue({ gasPrice: 4_000_000_000n, maxPriorityFeePerGas: 1n })
   await expect(f.run('cancel', ['3000000000', '2000000000'])).rejects.toThrow('limits')
   await expect(f.run('retry')).rejects.toThrow('limits')
   expect(f.sign).not.toHaveBeenCalled()
   expect(f.provider.send).not.toHaveBeenCalled()
   expect(f.sender.stageSigned).not.toHaveBeenCalled()
+})
+
+it.each([56, 137])('rejects chain %i recovery when only the nominal EIP-1559 cap covers the network floor', async (chainId) => {
+  const f = await fixture(chainId)
+  f.provider.getFeeData.mockResolvedValue({ gasPrice: 2_500_000_000n, maxPriorityFeePerGas: 2_500_000_000n })
+  await expect(f.run('cancel', ['3000000000', '2000000000'])).rejects.toThrow('limits')
+  f.provider.getFeeData.mockResolvedValue({ gasPrice: 1_500_000_000n, maxPriorityFeePerGas: 1_500_000_000n })
+  await expect(f.run('retry')).rejects.toThrow('limits')
+  expect(f.sign).not.toHaveBeenCalled()
+  expect(f.provider.send).not.toHaveBeenCalled()
+  expect(f.sender.stageSigned).not.toHaveBeenCalled()
+  expect(f.sender.cancelPending).not.toHaveBeenCalled()
+})
+
+it('uses a legacy recovery transaction’s actual gas price instead of an implied one-wei priority fee', async () => {
+  const f = await fixture(56)
+  const raw = await f.wallet.signTransaction({ to: f.network.proxyContract, data: '0x12345678', value: 0n,
+    type: 0, chainId: 56, nonce: 0, gasLimit: 100_000n, gasPrice: 2_000_000_000n })
+  store.db.prepare('UPDATE requests SET raw=?,hash=? WHERE key=?').run(raw, Transaction.from(raw).hash!, 'one')
+  f.sign.mockClear()
+  await f.run('retry')
+  expect(f.provider.send).toHaveBeenCalledOnce()
+  expect(f.sender.stageSigned).toHaveBeenCalledWith(raw)
+  expect(f.sender.retryPending).toHaveBeenCalledOnce()
+  expect(f.sign).not.toHaveBeenCalled()
 })
 
 it('rejects a recovery read node on another chain before tracing, estimating or signing', async () => {

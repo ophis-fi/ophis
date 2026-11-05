@@ -11,7 +11,7 @@ async function fixture(chainId = 1) {
   const { readChainState } = await import('../src/chain-state')
   const block: Partial<Block> = { number: 100, timestamp: now, hash: `0x${'12'.repeat(32)}`, baseFeePerGas: 2n }
   const finalized: Partial<Block> = { number: 80, hash: `0x${'34'.repeat(32)}` }
-  const fees = { gasPrice: 5n }
+  const fees = { gasPrice: 5n, maxPriorityFeePerGas: 1n }
   const provider = {
     getBlock: vi.fn(async (tag: string): Promise<Partial<Block> | null> => tag === 'latest' ? block : finalized),
     getFeeData: vi.fn(async () => fees),
@@ -27,11 +27,18 @@ it('retains Ethereum head-minus-one settlement and its base-fee floor without ad
   expect(f.provider.getFeeData).not.toHaveBeenCalled()
 })
 
-it.each([42161, 137])('requires finalized settlement and uses only the total chain gas price on chain %i', async (chainId) => {
-  const f = await fixture(chainId)
+it('requires finalized Arbitrum settlement without adding a separate L1 gas fee', async () => {
+  const f = await fixture(42161)
   expect(await f.run()).toEqual({ block: f.block, settled: 80, baseFee: 2n, minimumGasPrice: 3n })
   expect(f.provider.getBlock.mock.calls).toEqual([['latest'], ['finalized']])
   expect(f.provider.getFeeData).not.toHaveBeenCalled()
+})
+
+it('uses Polygon base fee plus its positive priority suggestion, independent of the buffered legacy price', async () => {
+  const f = await fixture(137)
+  Object.assign(f.fees, { gasPrice: 100n, maxPriorityFeePerGas: 3n })
+  expect(await f.run()).toEqual({ block: f.block, settled: 80, baseFee: 2n, minimumGasPrice: 5n })
+  expect(f.provider.getFeeData).toHaveBeenCalledOnce()
 })
 
 it.each([undefined, null, 0n, 2n])('accepts BNB base fee %s while obtaining its positive minimum gas price from the read node', async (baseFee) => {
@@ -70,6 +77,12 @@ it.each([
 it.each([null, 0n, -1n, '5'])('rejects an unavailable or malformed BNB minimum gas price %s', async (gasPrice) => {
   const f = await fixture(56)
   Object.assign(f.fees, { gasPrice })
+  await expect(f.run()).rejects.toThrow('minimum gas price')
+})
+
+it.each([null, 0n, -1n, '5'])('rejects an unavailable or malformed Polygon priority fee %s', async (maxPriorityFeePerGas) => {
+  const f = await fixture(137)
+  Object.assign(f.fees, { maxPriorityFeePerGas })
   await expect(f.run()).rejects.toThrow('minimum gas price')
 })
 

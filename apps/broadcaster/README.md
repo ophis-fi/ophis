@@ -91,6 +91,10 @@ The application journals encrypted requests, signed raw transactions, maximum ga
 
 Operator nonces remain reserved after settlement. If a reorganization rolls the chain counter back into journaled history, availability and a new reservation both fail closed; preserve the two journals for operator reconciliation. Ethereum's two-confirmation policy still does not establish finality or make its earlier fee accounting irreversible.
 
+Both journals retain every signed cancellation so reconciliation can recognize an earlier cancellation mined after a later replacement. Existing latest-cancellation fields remain the retry target. Cancellations already overwritten by an older version cannot be reconstructed from those files. Unidentified nonce consumption or cached wallet notes without a canonical successful receipt retain the fee-assurance halt.
+
+BNB fee checks use the effective EIP-1559 price as well as the cap; Polygon also requires its positive suggested priority fee. Guard deployment derives a sufficient tip, and configured guards are attested before common withdrawals as well as swaps. The owner unlock client checks socket ownership, private permissions and inode identity before sending its payload; a malicious peer with the same UID remains outside that protection.
+
 Stop the service before these commands and keep `OPHIS_BROADCASTER_ENABLED=0`; the native exclusive lock prevents simultaneous service/recovery signers:
 
 ```sh

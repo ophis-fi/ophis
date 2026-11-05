@@ -36,7 +36,7 @@ async function fixture(chainId = CHAIN_ID, acknowledge = acknowledgeLoss) {
     getNetwork: vi.fn(async () => ({ chainId: BigInt(chainId) })),
     getBlock: vi.fn(async (tag: string | number) => ({ number: tag === 'latest' ? 100 : tag === 'finalized' ? 90 : Number(tag),
       timestamp: Math.floor(Date.now() / 1000), baseFeePerGas: chainId === 56 ? 0n : 1n, hash: receipt.blockHash })),
-    getFeeData: vi.fn(async () => ({ gasPrice: 1n })),
+    getFeeData: vi.fn(async () => ({ gasPrice: 1n, maxPriorityFeePerGas: 1n })),
     getTransactionReceipt: vi.fn(async () => receipt), getTransactionCount: vi.fn(async () => 1),
     getCode: vi.fn(async () => '0x'),
   }
@@ -56,7 +56,7 @@ async function selectedMonitor(chainId: number) {
   const provider = {
     getBlock: vi.fn(async (tag: string) => ({ number: tag === 'finalized' ? 90 : 100, hash: blockHash,
       timestamp: Math.floor(Date.now() / 1000), baseFeePerGas: chainId === 56 ? 0n : 1n })),
-    getFeeData: vi.fn(async () => ({ gasPrice: 50_000_000n as bigint | null })),
+    getFeeData: vi.fn(async () => ({ gasPrice: 50_000_000n as bigint | null, maxPriorityFeePerGas: 1n })),
     getBalance: vi.fn(async () => settings.reserve + settings.maxTransactionCost),
     send: vi.fn(async () => `0x${chainId.toString(16)}`),
   }
@@ -228,14 +228,14 @@ it.each([56, 137, 42161])('monitors chain %i with its own identity, settlement s
   expect(result.health).toMatchObject({ chainId, operatorAddress, wakuSaturated: false })
   expect(f.provider.getBlock).toHaveBeenCalledWith('finalized')
   expect(f.operations.monitorMetrics(result).trim().split('\n').every((line) => line.includes(`chain_id="${chainId}"`))).toBe(true)
-  expect(f.provider.getFeeData).toHaveBeenCalledTimes(chainId === 56 ? 1 : 0)
+  expect(f.provider.getFeeData).toHaveBeenCalledTimes(chainId === 56 || chainId === 137 ? 1 : 0)
 })
 
 it.each(['gas cap', 'missing minimum', 'missing finality', 'wrong network'])(
   'fails closed for BNB %s while permitting its zero base fee', async (condition) => {
     const f = await selectedMonitor(56)
-    if (condition === 'gas cap') f.provider.getFeeData.mockResolvedValue({ gasPrice: config.maxGasPrice + 1n })
-    if (condition === 'missing minimum') f.provider.getFeeData.mockResolvedValue({ gasPrice: null })
+    if (condition === 'gas cap') f.provider.getFeeData.mockResolvedValue({ gasPrice: config.maxGasPrice + 1n, maxPriorityFeePerGas: 1n })
+    if (condition === 'missing minimum') f.provider.getFeeData.mockResolvedValue({ gasPrice: null, maxPriorityFeePerGas: 1n })
     if (condition === 'missing finality') f.provider.getBlock.mockImplementation(async (tag) => ({
       number: tag === 'finalized' ? 101 : 100, hash: blockHash, timestamp: Math.floor(Date.now() / 1000), baseFeePerGas: 0n }))
     if (condition === 'wrong network') f.provider.send.mockResolvedValue('0x89')

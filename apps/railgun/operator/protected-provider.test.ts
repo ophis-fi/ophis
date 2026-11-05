@@ -197,6 +197,44 @@ describe('protected operator transport', () => {
     expect(write).not.toHaveBeenCalled()
   })
 
+  it('rolls first schema creation back with a failed binding and can retry on a non-Ethereum chain', () => {
+    const originalExec = DatabaseSync.prototype.exec
+    const fault = vi.spyOn(DatabaseSync.prototype, 'exec').mockImplementation(function (this: DatabaseSync, sql: string) {
+      originalExec.call(this, sql)
+      if (sql.includes('CREATE TABLE IF NOT EXISTS pending')) throw new Error('Interrupted first initialization')
+    })
+    try { expect(() => provider(undefined, 56)).toThrow('Interrupted') } finally { fault.mockRestore() }
+    const database = new DatabaseSync(join(directory, 'protected-transactions.sqlite'), { readOnly: true })
+    try { expect(database.prepare("SELECT COUNT(*) AS count FROM sqlite_master WHERE type='table'").get()?.count).toBe(0) }
+    finally { database.close() }
+    expect(provider(undefined, 56).pendingTransaction()).toBeUndefined()
+    expect(write).not.toHaveBeenCalled()
+  })
+
+  it('recovers a demonstrably empty pending schema left by an interrupted previous non-Ethereum startup', () => {
+    const database = new DatabaseSync(join(directory, 'protected-transactions.sqlite'))
+    database.exec(`CREATE TABLE pending (operator TEXT PRIMARY KEY,hash TEXT NOT NULL,nonce INTEGER NOT NULL,raw TEXT NOT NULL,
+      cancel_hash TEXT,cancel_raw TEXT)`)
+    database.close()
+    chmodSync(join(directory, 'protected-transactions.sqlite'), 0o600)
+    expect(provider(undefined, 56).pendingTransaction()).toBeUndefined()
+    expect(write).not.toHaveBeenCalled()
+  })
+
+  it.each(['pending', 'unrecognized-table'])('refuses a populated or unrelated unbound foreign-chain %s journal', async (kind) => {
+    const database = new DatabaseSync(join(directory, 'protected-transactions.sqlite'))
+    database.exec(`CREATE TABLE pending (operator TEXT PRIMARY KEY,hash TEXT NOT NULL,nonce INTEGER NOT NULL,raw TEXT NOT NULL,
+      cancel_hash TEXT,cancel_raw TEXT)`)
+    if (kind === 'pending') {
+      const raw = await signed({}, 56)
+      database.prepare('INSERT INTO pending(operator,hash,nonce,raw) VALUES(?,?,?,?)').run(operator.address, Transaction.from(raw).hash!, 0, raw)
+    } else database.exec('CREATE TABLE other_state (value TEXT)')
+    database.close()
+    chmodSync(join(directory, 'protected-transactions.sqlite'), 0o600)
+    expect(() => provider(undefined, 56)).toThrow('without a chain binding')
+    expect(write).not.toHaveBeenCalled()
+  })
+
   it('migrates a verified signed legacy Ethereum journal while preserving its cancellation', async () => {
     const current = provider()
     const raw = await signed(), cancellation = await signedCancellation()
@@ -483,4 +521,55 @@ describe('protected operator transport', () => {
     expect(await restarted.retryPending()).toBe(replacementHash)
     expect(JSON.parse(write.mock.calls.at(-1)![1].body as string).params).toEqual([replacement])
   })
+
+  it('retains older cancellations after replacement, exact retries, restart and pending nonce turnover', async () => {
+    const current = provider(), original = await signed()
+    const first = await signedCancellation(), latestCancellation = await signedCancellation({ maxFeePerGas: 4_000_000_000n })
+    const firstHash = Transaction.from(first).hash!, latestHash = Transaction.from(latestCancellation).hash!
+    await current.send('eth_sendRawTransaction', [original])
+    await current.cancelPending(first); await current.cancelPending(latestCancellation)
+    current.destroy(); providers = []
+    const restarted = provider()
+    expect(await restarted.retryPending()).toBe(latestHash)
+    expect(JSON.parse(write.mock.calls.at(-1)![1].body as string).params).toEqual([latestCancellation])
+    const calls = write.mock.calls.length
+    await expect(restarted.cancelPending(first)).rejects.toThrow('earlier cancellation')
+    expect(write).toHaveBeenCalledTimes(calls)
+    expect(restarted.pendingTransaction()?.cancellationHash).toBe(latestHash)
+    latest = confirmed = 1n
+    await restarted.stageSigned(await signed({ nonce: 1 }))
+    restarted.destroy(); providers = []
+    const again = provider()
+    await expect(again.cancelPending(first)).rejects.toThrow('existing journaled operator nonce')
+    const history = new DatabaseSync(join(directory, 'protected-transactions.sqlite'))
+    try {
+      expect(history.prepare('SELECT hash,raw,nonce FROM cancellation_history ORDER BY rowid').all()).toEqual([
+        { hash: firstHash, raw: first, nonce: 0 }, { hash: latestHash, raw: latestCancellation, nonce: 0 },
+      ])
+      for (const sql of ['UPDATE cancellation_history SET raw=\'changed\'', 'DELETE FROM cancellation_history',
+        'INSERT OR REPLACE INTO cancellation_history SELECT * FROM cancellation_history LIMIT 1'])
+        expect(() => history.exec(sql)).toThrow('append-only')
+    } finally { history.close() }
+  })
+
+  it.each(['chain', 'operator', 'nonce', 'hash', 'original', 'raw'])(
+    'validates an older retained cancellation with wrong %s when reopening a bound journal', async (kind) => {
+      const current = provider(), original = await signed(), first = await signedCancellation()
+      const firstHash = Transaction.from(first).hash!
+      await current.stageSigned(original)
+      await current.cancelPending(first)
+      await current.cancelPending(await signedCancellation({ maxFeePerGas: 4_000_000_000n }))
+      current.destroy(); providers = []
+      const damaged = new DatabaseSync(join(directory, 'protected-transactions.sqlite'))
+      damaged.exec('DROP TRIGGER preserve_cancellation_update')
+      if (kind === 'chain') damaged.prepare('UPDATE cancellation_history SET raw=? WHERE hash=?').run(await signedCancellation({}, 56), firstHash)
+      if (kind === 'operator') damaged.prepare('UPDATE cancellation_history SET operator=? WHERE hash=?').run(ephemeral.address, firstHash)
+      if (kind === 'nonce') damaged.prepare('UPDATE cancellation_history SET nonce=1 WHERE hash=?').run(firstHash)
+      if (kind === 'hash') damaged.prepare('UPDATE cancellation_history SET hash=? WHERE hash=?').run(`0x${'ab'.repeat(32)}`, firstHash)
+      if (kind === 'original') damaged.prepare('UPDATE cancellation_history SET original_hash=? WHERE hash=?').run(`0x${'cd'.repeat(32)}`, firstHash)
+      if (kind === 'raw') damaged.prepare('UPDATE cancellation_history SET raw=? WHERE hash=?').run('invalid-signed-payload', firstHash)
+      damaged.close()
+      expect(() => provider()).toThrow()
+    },
+  )
 })

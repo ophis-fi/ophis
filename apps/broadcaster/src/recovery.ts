@@ -61,7 +61,8 @@ export async function recover(command: 'retry' | 'cancel', args: string[], confi
     if (args.length) throw new Error('Retry accepts no replacement parameters.')
     if (!item.cancel_raw && item.fee_expiration <= Date.now())
       throw new Error('The original fee quote expired; cancel the outer gas nonce or reconcile it.')
-    checkLimits(tx.gasLimit, tx.maxFeePerGas ?? tx.gasPrice ?? 0n, tx.maxPriorityFeePerGas ?? 1n,
+    checkLimits(tx.gasLimit, tx.maxFeePerGas ?? tx.gasPrice ?? 0n,
+      tx.type === 2 || tx.type === 4 ? tx.maxPriorityFeePerGas ?? 0n : undefined,
       baseFee, minimumGasPrice, balance, config)
     if (store.exposure() > config.dailyBudget) throw new Error('The rolling gas budget is exhausted.')
     const trace: unknown = await provider.send('debug_traceCall', [provider.getRpcTransaction({
@@ -82,8 +83,10 @@ export async function recover(command: 'retry' | 'cancel', args: string[], confi
   return sender.retryPending()
 }
 
-function checkLimits(gas: bigint, price: bigint, tip: bigint, base: bigint, minimum: bigint, balance: bigint, config: Settings): void {
-  if (gas <= 0n || gas > MAX_GAS || tip <= 0n || tip > price || price < base + tip || price < minimum ||
+function checkLimits(gas: bigint, price: bigint, tip: bigint | undefined, base: bigint, minimum: bigint, balance: bigint, config: Settings): void {
+  const effectivePrice = tip !== undefined && base + tip < price ? base + tip : price
+  if (gas <= 0n || gas > MAX_GAS || price <= 0n ||
+    (tip !== undefined && (tip <= 0n || tip > price || price < base + tip)) || effectivePrice < minimum ||
     price > config.maxGasPrice || gas * price > config.maxTransactionCost ||
     balance < gas * price + config.reserve || !config.dailyBudget)
     throw new Error('Recovery exceeds the explicit gas, balance or price limits.')

@@ -22,7 +22,14 @@ export async function readChainState(provider: Pick<JsonRpcProvider, 'getBlock' 
       throw new Error('The selected chain finalized block is unavailable or invalid.')
     settled = finalized.number
   }
-  let minimumGasPrice = CHAIN_ID === 56 ? (await provider.getFeeData())?.gasPrice : baseFee + 1n
+  let minimumGasPrice = baseFee + 1n
+  if (CHAIN_ID === 56 || CHAIN_ID === 137) {
+    const fee = await provider.getFeeData()
+    const suggested = CHAIN_ID === 56 ? fee?.gasPrice : fee?.maxPriorityFeePerGas
+    if (typeof suggested !== 'bigint' || suggested <= 0n)
+      throw new Error('The selected chain minimum gas price is unavailable or invalid.')
+    minimumGasPrice = CHAIN_ID === 56 ? suggested : baseFee + suggested
+  }
   if (typeof minimumGasPrice !== 'bigint' || minimumGasPrice <= 0n)
     throw new Error('The selected chain minimum gas price is unavailable or invalid.')
   if (minimumGasPrice < baseFee + 1n) minimumGasPrice = baseFee + 1n

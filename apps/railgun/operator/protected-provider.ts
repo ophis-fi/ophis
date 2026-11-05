@@ -50,12 +50,10 @@ export class ProtectedEthereumProvider extends JsonRpcProvider {
       throw new Error('The operator journal needs an owned, private directory (0700).')
     const path = join(privateStateDirectory, 'protected-transactions.sqlite')
     const file = openSync(path, constants.O_CREAT | constants.O_RDWR | constants.O_NOFOLLOW, 0o600)
-    let legacy = false
     try {
       const stat = fstatSync(file)
       if (!stat.isFile() || stat.uid !== directory.uid || (stat.mode & 0o077))
         throw new Error('The operator journal must be a private file (0600).')
-      legacy = stat.size > 0
     } finally { closeSync(file) }
     this.journal = new DatabaseSync(path)
     try {
@@ -63,37 +61,59 @@ export class ProtectedEthereumProvider extends JsonRpcProvider {
       PRAGMA busy_timeout = 5000;
       PRAGMA journal_mode = WAL;
       PRAGMA synchronous = FULL;
+    `)
+      this.journal.exec('BEGIN IMMEDIATE')
+      this.journal.exec(`
       CREATE TABLE IF NOT EXISTS pending (
         operator TEXT PRIMARY KEY, hash TEXT NOT NULL, nonce INTEGER NOT NULL, raw TEXT NOT NULL,
         cancel_hash TEXT, cancel_raw TEXT
       );
-    `)
-      this.journal.exec('BEGIN IMMEDIATE')
-      this.journal.exec(`CREATE TABLE IF NOT EXISTS binding (
+      CREATE TABLE IF NOT EXISTS binding (
         id INTEGER PRIMARY KEY CHECK (id = 1), chain_id INTEGER NOT NULL, operator TEXT NOT NULL
-      )`)
+      );
+      CREATE TABLE IF NOT EXISTS cancellation_history (
+        operator TEXT NOT NULL, original_hash TEXT NOT NULL, nonce INTEGER NOT NULL, hash TEXT NOT NULL, raw TEXT NOT NULL,
+        PRIMARY KEY (operator,hash)
+      );
+      CREATE TRIGGER IF NOT EXISTS preserve_cancellation_update BEFORE UPDATE ON cancellation_history
+        BEGIN SELECT RAISE(ABORT, 'Cancellation history is append-only'); END;
+      CREATE TRIGGER IF NOT EXISTS preserve_cancellation_delete BEFORE DELETE ON cancellation_history
+        BEGIN SELECT RAISE(ABORT, 'Cancellation history is append-only'); END;
+      CREATE TRIGGER IF NOT EXISTS preserve_cancellation_replace BEFORE INSERT ON cancellation_history
+        WHEN EXISTS(SELECT 1 FROM cancellation_history WHERE operator=NEW.operator AND hash=NEW.hash)
+        BEGIN SELECT RAISE(ABORT, 'Cancellation history is append-only'); END;`)
       const binding = this.journal.prepare('SELECT chain_id, operator FROM binding WHERE id = 1').get() as
         { chain_id: number; operator: string } | undefined
       if (binding) {
         if (binding.chain_id !== chainId || binding.operator !== this.operator)
           throw new Error('The protected journal belongs to another chain or operator.')
-      } else {
-        if (legacy && chainId !== 1) throw new Error('Only verified Ethereum journals can be migrated without a chain binding.')
-        const pending = this.journal.prepare('SELECT operator, hash, nonce, raw, cancel_hash, cancel_raw FROM pending').all() as
-          (Pending & { operator: string })[]
-        for (const item of pending) {
-          const tx = this.validate(item.raw, false)
-          if (item.operator !== this.operator || tx.hash !== item.hash || tx.nonce !== item.nonce ||
-            !!item.cancel_hash !== !!item.cancel_raw)
-            throw new Error('The legacy protected journal cannot be verified for this operator.')
-          if (item.cancel_raw) {
-            const cancellation = this.validate(item.cancel_raw, true)
-            if (cancellation.hash !== item.cancel_hash || cancellation.nonce !== item.nonce)
-              throw new Error('The legacy protected cancellation record is inconsistent.')
-          }
-        }
-        this.journal.prepare('INSERT INTO binding (id, chain_id, operator) VALUES (1, ?, ?)').run(chainId, this.operator)
+      } else if (chainId !== 1 && (this.journal.prepare('SELECT 1 FROM pending UNION ALL SELECT 1 FROM cancellation_history LIMIT 1').get() ||
+        this.journal.prepare(`SELECT 1 FROM sqlite_master WHERE type='table' AND name NOT IN ('pending','binding','cancellation_history')
+          AND name NOT LIKE 'sqlite_%' LIMIT 1`).get())) {
+        throw new Error('Only verified Ethereum journals can be migrated without a chain binding.')
       }
+      const pending = this.journal.prepare('SELECT operator, hash, nonce, raw, cancel_hash, cancel_raw FROM pending').all() as
+        (Pending & { operator: string })[]
+      for (const item of pending) {
+        const tx = this.validate(item.raw, false)
+        if (item.operator !== this.operator || tx.hash !== item.hash || tx.nonce !== item.nonce ||
+          (item.cancel_hash == null) !== (item.cancel_raw == null))
+          throw new Error('The protected journal cannot be verified for this operator.')
+        if (item.cancel_raw != null) {
+          const cancellation = this.validate(item.cancel_raw, true)
+          if (cancellation.hash !== item.cancel_hash || cancellation.nonce !== item.nonce)
+            throw new Error('The protected cancellation record is inconsistent.')
+          this.retainCancellation(item.hash, cancellation, item.cancel_raw)
+        }
+      }
+      for (const item of this.journal.prepare('SELECT * FROM cancellation_history').iterate()) {
+        const tx = this.validate(String(item.raw), true)
+        if (item.operator !== this.operator || tx.hash !== item.hash || tx.nonce !== item.nonce ||
+          typeof item.original_hash !== 'string' || !/^0x[0-9a-f]{64}$/.test(item.original_hash) ||
+          pending.some((original) => original.nonce === item.nonce && original.hash !== item.original_hash))
+          throw new Error('The retained protected cancellation record is inconsistent.')
+      }
+      if (!binding) this.journal.prepare('INSERT INTO binding (id, chain_id, operator) VALUES (1, ?, ?)').run(chainId, this.operator)
       this.journal.exec('COMMIT')
     } catch (error) {
       try { this.journal.exec('ROLLBACK') } catch { /* Initialization may have failed before BEGIN. */ }
@@ -148,6 +168,16 @@ export class ProtectedEthereumProvider extends JsonRpcProvider {
   private pending(): Pending | undefined {
     return this.journal.prepare('SELECT hash, nonce, raw, cancel_hash, cancel_raw FROM pending WHERE operator = ?')
       .get(this.operator) as Pending | undefined
+  }
+
+  private retainCancellation(originalHash: string, tx: Transaction, raw: string): void {
+    const previous = this.journal.prepare('SELECT original_hash,nonce,raw FROM cancellation_history WHERE operator=? AND hash=?')
+      .get(this.operator, tx.hash!)
+    if (previous) {
+      if (previous.original_hash !== originalHash || previous.nonce !== tx.nonce || String(previous.raw).toLowerCase() !== raw.toLowerCase())
+        throw new Error('The retained protected cancellation record is inconsistent.')
+    } else this.journal.prepare('INSERT INTO cancellation_history(operator,original_hash,nonce,hash,raw) VALUES(?,?,?,?,?)')
+      .run(this.operator, originalHash, tx.nonce, tx.hash!, raw)
   }
 
   private validate(raw: string, cancellation: boolean): Transaction {
@@ -242,6 +272,9 @@ export class ProtectedEthereumProvider extends JsonRpcProvider {
       }
       if (latest !== BigInt(tx.nonce)) throw new Error('The signed operator nonce must match mined state.')
       if (cancellation) {
+        if (pending!.cancel_hash !== hash && this.journal.prepare('SELECT 1 FROM cancellation_history WHERE operator=? AND hash=?').get(this.operator, hash))
+          throw new Error('An earlier cancellation cannot replace the latest retry target.')
+        this.retainCancellation(pending!.hash, tx, raw)
         this.journal.prepare('UPDATE pending SET cancel_hash = ?, cancel_raw = ? WHERE operator = ?')
           .run(hash, raw, this.operator)
       } else {

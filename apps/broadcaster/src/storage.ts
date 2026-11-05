@@ -98,6 +98,20 @@ export class Store {
         key TEXT PRIMARY KEY, hash TEXT NOT NULL, actual_cost TEXT NOT NULL,
         block_number INTEGER NOT NULL, block_hash TEXT NOT NULL, reason TEXT NOT NULL, created INTEGER NOT NULL
       );
+      CREATE TABLE IF NOT EXISTS cancellation_history (
+        key TEXT NOT NULL, hash TEXT NOT NULL, raw TEXT NOT NULL, nonce INTEGER NOT NULL,
+        PRIMARY KEY (key,hash)
+      );
+      INSERT INTO cancellation_history(key,hash,raw,nonce)
+        SELECT key,cancel_hash,cancel_raw,nonce FROM requests r WHERE cancel_hash IS NOT NULL AND cancel_raw IS NOT NULL
+        AND NOT EXISTS (SELECT 1 FROM cancellation_history h WHERE h.key=r.key AND h.hash=r.cancel_hash);
+      CREATE TRIGGER IF NOT EXISTS preserve_cancellation_update BEFORE UPDATE ON cancellation_history
+        BEGIN SELECT RAISE(ABORT, 'Cancellation history is append-only'); END;
+      CREATE TRIGGER IF NOT EXISTS preserve_cancellation_delete BEFORE DELETE ON cancellation_history
+        BEGIN SELECT RAISE(ABORT, 'Cancellation history is append-only'); END;
+      CREATE TRIGGER IF NOT EXISTS preserve_cancellation_replace BEFORE INSERT ON cancellation_history
+        WHEN EXISTS(SELECT 1 FROM cancellation_history WHERE key=NEW.key AND hash=NEW.hash)
+        BEGIN SELECT RAISE(ABORT, 'Cancellation history is append-only'); END;
       CREATE TRIGGER IF NOT EXISTS preserve_resolution_update BEFORE UPDATE ON settlement_resolutions
         BEGIN SELECT RAISE(ABORT, 'Settlement resolutions are append-only'); END;
       CREATE TRIGGER IF NOT EXISTS preserve_resolution_delete BEFORE DELETE ON settlement_resolutions
@@ -127,20 +141,19 @@ export class Store {
       if ((chain && chain.value !== String(chainId)) || (saved && requested && saved.value !== requested))
         throw new Error('The operator journal belongs to a different network or gas wallet.')
       if (!chain && chainId !== 1 && this.db.prepare(`SELECT 1 FROM requests UNION ALL SELECT 1 FROM fees
-        UNION ALL SELECT 1 FROM settings UNION ALL SELECT 1 FROM settlement_resolutions LIMIT 1`).get())
+        UNION ALL SELECT 1 FROM settings UNION ALL SELECT 1 FROM settlement_resolutions
+        UNION ALL SELECT 1 FROM cancellation_history LIMIT 1`).get())
         throw new Error('A populated legacy journal may only be bound to Ethereum.')
       let operator = requested ?? (saved?.value as string | undefined)
-      for (const row of this.db.prepare('SELECT raw,hash,nonce,cancel_raw,cancel_hash FROM requests').iterate()) {
-        const transactions = [[row.raw, row.hash]]
-        if (row.cancel_raw != null || row.cancel_hash != null) transactions.push([row.cancel_raw, row.cancel_hash])
-        for (const [raw, hash] of transactions) {
-          let tx: Transaction
-          try { tx = Transaction.from(String(raw)) } catch { throw new Error('The journal contains an invalid signed transaction.') }
-          if (!tx.isSigned() || tx.serialized !== raw || tx.hash !== hash || tx.chainId !== BigInt(chainId) ||
-            tx.nonce !== row.nonce || (operator && tx.from !== operator))
-            throw new Error('The journal contains an inconsistent signed transaction.')
-          operator ??= tx.from!
-        }
+      for (const row of this.db.prepare(`SELECT raw,hash,nonce,nonce AS expected_nonce FROM requests
+        UNION ALL SELECT cancel_raw,cancel_hash,nonce,nonce FROM requests WHERE cancel_raw IS NOT NULL OR cancel_hash IS NOT NULL
+        UNION ALL SELECT h.raw,h.hash,h.nonce,r.nonce FROM cancellation_history h LEFT JOIN requests r ON h.key=r.key`).iterate()) {
+        let tx: Transaction
+        try { tx = Transaction.from(String(row.raw)) } catch { throw new Error('The journal contains an invalid signed transaction.') }
+        if (!tx.isSigned() || tx.serialized !== row.raw || tx.hash !== row.hash || tx.chainId !== BigInt(chainId) ||
+          tx.nonce !== row.nonce || row.nonce !== row.expected_nonce || (operator && tx.from !== operator))
+          throw new Error('The journal contains an inconsistent signed transaction.')
+        operator ??= tx.from!
       }
       if (!chain) this.db.prepare('INSERT INTO settings(key,value) VALUES(?,?)').run('chainId', String(chainId))
       if (!saved && operator) this.db.prepare('INSERT INTO settings(key,value) VALUES(?,?)').run('operatorAddress', operator)
@@ -187,6 +200,13 @@ export class Store {
       if (!request || request.confirmed) throw new Error('No unresolved request to cancel.')
       const oldCost = BigInt(request.max_cost), maxCost = oldCost > cost ? oldCost : cost
       if (this.exposure() + maxCost - oldCost > budget) throw new Error('Cancellation exceeds the rolling gas budget.')
+      if (request.cancel_raw != null || request.cancel_hash != null) {
+        if (!request.cancel_raw || !request.cancel_hash) throw new Error('The current cancellation record is incomplete.')
+        this.retainCancellation(key, request.cancel_raw, request.cancel_hash, request.nonce)
+      }
+      const previous = this.db.prepare('SELECT raw,nonce FROM cancellation_history WHERE key=? AND hash=?').get(key, hash)
+      if (previous && request.cancel_hash !== hash) throw new Error('An earlier cancellation cannot replace the latest retry target.')
+      this.retainCancellation(key, raw, hash, request.nonce)
       this.db.prepare('UPDATE requests SET cancel_raw=?,cancel_hash=?,max_cost=? WHERE key=?')
         .run(raw, hash, maxCost.toString(), key)
       this.db.exec('COMMIT')
@@ -194,6 +214,26 @@ export class Store {
       try { this.db.exec('ROLLBACK') } catch { /* Already rolled back. */ }
       throw error
     }
+  }
+  private retainCancellation(key: string, raw: string, hash: string, nonce: number): void {
+    const previous = this.db.prepare('SELECT raw,nonce FROM cancellation_history WHERE key=? AND hash=?').get(key, hash)
+    if (previous) {
+      if (previous.raw !== raw || previous.nonce !== nonce) throw new Error('The retained cancellation record is inconsistent.')
+    } else this.db.prepare('INSERT INTO cancellation_history(key,hash,raw,nonce) VALUES(?,?,?,?)').run(key, hash, raw, nonce)
+  }
+  cancellations(key: string): { hash: string; raw: string; nonce: number }[] {
+    const request = this.get(key)
+    if (request && (request.cancel_raw != null || request.cancel_hash != null) && (!request.cancel_raw || !request.cancel_hash))
+      throw new Error('The current cancellation record is incomplete.')
+    if (this.db.prepare(`SELECT 1 FROM cancellation_history h LEFT JOIN requests r ON h.key=r.key
+      WHERE h.key=? AND (r.key IS NULL OR h.nonce<>r.nonce OR (h.hash=r.cancel_hash AND h.raw<>r.cancel_raw)) LIMIT 1`).get(key))
+      throw new Error('The retained cancellation record is inconsistent.')
+    return this.db.prepare(`SELECT hash,raw,nonce FROM (
+      SELECT cancel_hash AS hash,cancel_raw AS raw,nonce,1 AS current,0 AS sequence FROM requests
+        WHERE key=? AND cancel_hash IS NOT NULL AND cancel_raw IS NOT NULL
+      UNION ALL SELECT hash,raw,nonce,0,rowid FROM cancellation_history WHERE key=?
+        AND hash IS NOT (SELECT cancel_hash FROM requests WHERE key=?)
+      ) ORDER BY current DESC,sequence DESC`).all(key, key, key) as { hash: string; raw: string; nonce: number }[]
   }
   confirmed(key: string, cost: bigint, minedAt: number): void {
     this.db.prepare('UPDATE requests SET confirmed=1,actual_cost=?,mined_at=? WHERE key=?').run(cost.toString(), minedAt, key)

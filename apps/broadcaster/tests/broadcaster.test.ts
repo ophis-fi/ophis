@@ -10,7 +10,7 @@ import { Broadcaster } from '../src/broadcaster'
 import { Store } from '../src/storage'
 import { issueFee } from '../src/fees'
 import { ADAPT, PROXY } from '../src/transaction'
-import { CHAIN, COMMON_TRANSACTION_TYPE, NETWORK, TOKENS } from '../src/config'
+import { CHAIN, CHAIN_ID, COMMON_TRANSACTION_TYPE, NETWORK, TOKENS } from '../src/config'
 import { config, privateRequest, withdrawalRequest } from './request.fixture'
 import { decodeGuardedExecution, executionGuardCode } from '../../railgun/operator/execution-guard'
 
@@ -41,7 +41,7 @@ async function fixture(guard?: string, withdrawalRecipient?: string) {
   const wire = await packetFor(data, publicViewingKey)
   const provider = {
     getNetwork: vi.fn(async () => ({ chainId: CHAIN })),
-    getFeeData: vi.fn(async () => ({ gasPrice: 2n })),
+    getFeeData: vi.fn(async () => ({ gasPrice: 2n, maxPriorityFeePerGas: 1n })),
     getBlock: vi.fn(async () => ({ number: 100, hash: blockHash, timestamp: Math.floor(Date.now() / 1000), baseFeePerGas: 1n })),
     getTransactionCount: vi.fn(async () => 0), getBalance: vi.fn(async () => 10n ** 18n),
     getBlockNumber: vi.fn(async () => 100),
@@ -145,6 +145,40 @@ describe('signing gate and duplicate recovery', () => {
     expect(BigInt(row.max_cost)).toBe(signed.gasLimit * (minimum + 1n))
     expect(f.sdk.fee).toHaveBeenCalledOnce()
   })
+  it.runIf(CHAIN_ID === 56 || CHAIN_ID === 137)('prices COMMON withdrawals at their actual network minimum', async () => {
+    const f = await fixture(undefined, Wallet.createRandom().address)
+    f.provider.getFeeData.mockResolvedValue({ gasPrice: CHAIN_ID === 56 ? 3_000_000_000n : 12_000_000_000n,
+      maxPriorityFeePerGas: 3_000_000_000n })
+    expect(f.decode(await f.service.handle(f.payload)).txHash).toBeTruthy()
+    const signed = Transaction.from(store.pending()[0].raw!)
+    expect(signed.type).toBe(COMMON_TRANSACTION_TYPE)
+    expect(signed.gasPrice).toBe(CHAIN_ID === 56 ? 3_000_000_000n : 3_000_000_001n)
+  })
+  it.runIf(CHAIN_ID === 56 || CHAIN_ID === 137)('rejects type-4 execution whose fee cap covers the network minimum but effective price does not', async () => {
+    const f = await fixture(Wallet.createRandom().address)
+    f.provider.getFeeData.mockResolvedValue({ gasPrice: 1_500_000_000n, maxPriorityFeePerGas: 1_500_000_000n })
+    expect(f.decode(await f.service.handle(f.payload)).error).toContain('gas pricing')
+    expect(f.sdk.validate).not.toHaveBeenCalled()
+    expect(f.sign).not.toHaveBeenCalled()
+    expect(f.sender.broadcastTransaction).not.toHaveBeenCalled()
+  })
+  it.runIf(CHAIN_ID === 56)('rechecks BNB effective gas price after a falling base fee during proof validation', async () => {
+    const f = await fixture(Wallet.createRandom().address)
+    f.provider.getFeeData.mockResolvedValue({ gasPrice: 1_500_000_000n, maxPriorityFeePerGas: 1n })
+    f.provider.getBlock.mockResolvedValue({ number: 100, hash: blockHash,
+      timestamp: Math.floor(Date.now() / 1000), baseFeePerGas: 600_000_000n })
+    const proof = await f.sdk.validate()
+    f.sdk.validate.mockClear()
+    f.sdk.validate.mockImplementationOnce(async () => {
+      f.provider.getBlock.mockResolvedValue({ number: 100, hash: blockHash,
+        timestamp: Math.floor(Date.now() / 1000), baseFeePerGas: 400_000_000n })
+      return proof
+    })
+    expect(f.decode(await f.service.handle(f.payload)).error).toContain('conditions changed')
+    expect(f.sdk.validate).toHaveBeenCalledOnce()
+    expect(f.sign).not.toHaveBeenCalled()
+    expect(f.sender.broadcastTransaction).not.toHaveBeenCalled()
+  })
   it.each(['cap', 'payment'])('never signs a repriced withdrawal exceeding its %s', async (reason) => {
     const f = await fixture(undefined, Wallet.createRandom().address)
     const base = reason === 'cap' ? config.maxGasPrice : BigInt(f.data.minGasPrice as string)
@@ -219,6 +253,20 @@ describe('signing gate and duplicate recovery', () => {
     expect(f.decode(await f.service.handle(f.payload)).error).toBeTruthy()
     expect(f.sign).not.toHaveBeenCalled()
     expect(f.sender.broadcastTransaction).not.toHaveBeenCalled()
+  })
+  it.each(['missing', 'changed', 'removed-during-proof'])('attests the configured guard for COMMON withdrawals: %s', async (reason) => {
+    const guard = Wallet.createRandom().address
+    const f = await fixture(guard, Wallet.createRandom().address)
+    if (reason === 'removed-during-proof') {
+      const proof = await f.sdk.validate()
+      f.sdk.validate.mockClear()
+      f.sdk.validate.mockImplementationOnce(async () => { f.provider.getCode.mockResolvedValue('0x'); return proof })
+    } else f.provider.getCode.mockResolvedValue(reason === 'missing' ? '0x' : '0x6002')
+    expect(f.decode(await f.service.handle(f.payload)).error).toContain('privacy contracts')
+    expect(f.provider.getCode).toHaveBeenCalledWith(guard, 100)
+    expect(f.sign).not.toHaveBeenCalled()
+    expect(f.sender.broadcastTransaction).not.toHaveBeenCalled()
+    expect(store.pending()).toEqual([])
   })
   it('does not advertise availability when the current base fee exceeds the operator cap', async () => {
     const f = await fixture()
@@ -307,6 +355,39 @@ describe('signing gate and duplicate recovery', () => {
 })
 
 describe('public admission and sequential settlement', () => {
+  it.each(['unsettled', 'orphaned'])('resolves an earlier mined cancellation when the newest replacement is %s', async (newest) => {
+    const f = await fixture(Wallet.createRandom().address)
+    expect(f.decode(await f.service.handle(f.payload)).txHash).toBeTruthy()
+    const record = store.pending()[0]
+    const first = `0x${'aa'.repeat(32)}`, second = `0x${'bb'.repeat(32)}`
+    store.cancel(record.key, 'first-saved-cancellation', first, 1n, config.dailyBudget)
+    store.cancel(record.key, 'replacement-cancellation', second, 1n, config.dailyBudget)
+    f.provider.getTransactionCount.mockResolvedValue(1)
+    f.provider.getTransactionReceipt.mockImplementation(async (hash?: string) => hash === first
+      ? { status: 1, blockNumber: 99, blockHash, gasUsed: 21_000n, gasPrice: 2_000_000_000n }
+      : hash === second ? { status: 1, blockNumber: newest === 'unsettled' ? 101 : 99,
+        blockHash: `0x${'66'.repeat(32)}`, gasUsed: 21_000n, gasPrice: 3_000_000_000n } : null)
+    await f.service.reconcile()
+    expect(f.provider.getTransactionReceipt).toHaveBeenCalledWith(second)
+    expect(f.provider.getTransactionReceipt).toHaveBeenCalledWith(first)
+    expect(store.hasPending()).toBe(false)
+    expect(store.get(record.key)?.actual_cost).toBe((21_000n * 2_000_000_000n).toString())
+    expect(store.get(record.key)?.cancel_hash).toBe(second)
+    expect(f.sdk.assure).not.toHaveBeenCalled()
+  })
+  it.each(['unsettled', 'orphaned'])('retains the halt when the only cancellation receipt is %s', async (reason) => {
+    const f = await fixture(Wallet.createRandom().address)
+    expect(f.decode(await f.service.handle(f.payload)).txHash).toBeTruthy()
+    const record = store.pending()[0], cancellation = `0x${'aa'.repeat(32)}`
+    store.cancel(record.key, 'saved-cancellation', cancellation, 1n, config.dailyBudget)
+    f.provider.getTransactionCount.mockResolvedValue(1)
+    f.provider.getTransactionReceipt.mockImplementation(async (hash?: string) => hash === cancellation
+      ? { status: 1, blockNumber: reason === 'unsettled' ? 101 : 99, blockHash: `0x${'66'.repeat(32)}`,
+        gasUsed: 21_000n, gasPrice: 2_000_000_000n } : null)
+    await f.service.reconcile()
+    expect(store.hasPending()).toBe(true)
+    expect(store.get(record.key)?.assured).toBe(0)
+  })
   it('resolves an explicit confirmed cancellation without claiming a private fee was delivered', async () => {
     const f = await fixture(Wallet.createRandom().address)
     f.service.config.admission = 'public'
@@ -467,6 +548,13 @@ describe('public admission and sequential settlement', () => {
     if (reason === 'included-revert') {
       f.sdk.assure.mockResolvedValue(true)
       await f.service.reconcile()
+      expect(await f.service.available()).toBe(false)
+    }
+    if (reason === 'unknown-nonce') {
+      f.sdk.assure.mockResolvedValue(true)
+      await f.service.reconcile()
+      expect(f.sdk.assure).not.toHaveBeenCalled()
+      expect(store.get(saved.key)?.assured).toBe(0)
       expect(await f.service.available()).toBe(false)
     }
   })

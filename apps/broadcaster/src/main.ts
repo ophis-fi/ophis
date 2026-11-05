@@ -164,7 +164,7 @@ async function run(): Promise<void> {
     identity.operatorAddress = wallet.address
     if (await provider.getCode(wallet.address) !== '0x') throw new Error('The dedicated gas wallet must be undelegated.')
     if (command === 'deploy-guard') {
-      if (store.pending().length) throw new Error('Reconcile outstanding user requests before deploying.')
+      if (store.pending().length || store.nonceBlocked(0)) throw new Error('Reconcile outstanding or historically reserved operator nonces before deploying.')
       const approval = JSON.parse(privateFile(join(config.state, 'guard-deployment-approval.json')).toString()) as GuardApproval
       console.log(JSON.stringify(await deployGuard(config, approval, provider, wallet)))
       return

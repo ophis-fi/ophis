@@ -36,6 +36,7 @@ export async function deployGuard(config: Settings, approval: GuardApproval, pro
         ceiling > config.maxTransactionCost || pilot > config.maxTransactionCost || reserve < config.reserve))
     throw new Error('Deployment exceeds the approved financial limits.')
   const { block, baseFee, minimumGasPrice } = await readChainState(provider)
+  const tip = minimumGasPrice > baseFee ? minimumGasPrice - baseFee : 1n
   if (baseFee * 2n + 1n > price || minimumGasPrice > price || (await provider.getNetwork()).chainId !== CHAIN)
     throw new Error('Wait for a fresh head whose fee fits the approved deployment cap.')
   const tag = `0x${block.number.toString(16)}`
@@ -53,12 +54,12 @@ export async function deployGuard(config: Settings, approval: GuardApproval, pro
   const creation = await new ContractFactory(GUARD_ARTIFACT.abi, GUARD_ARTIFACT.bytecode)
     .getDeployTransaction(operator, NETWORK.relayAdapt7702Contract)
   const transaction = { ...creation, from: operator, value: 0n, type: 2, chainId: CHAIN, nonce: 0,
-    maxFeePerGas: price, maxPriorityFeePerGas: 1n }
+    maxFeePerGas: price, maxPriorityFeePerGas: tip }
   const estimate = await provider.estimateGas(transaction), gasLimit = (estimate * 120n + 99n) / 100n
   if (gasLimit * price > ceiling || await provider.getBalance(operator) < reserve + pilot + gasLimit * price)
     throw new Error('Deployment would exceed its ceiling or consume the reserved pilot balance.')
   const simulated = await provider.send('eth_call', [{ from: operator, value: '0x0', data: creation.data,
-    type: '0x2', nonce: '0x0', maxFeePerGas: `0x${price.toString(16)}`, maxPriorityFeePerGas: '0x1', gas: `0x${gasLimit.toString(16)}` }, tag])
+    type: '0x2', nonce: '0x0', maxFeePerGas: `0x${price.toString(16)}`, maxPriorityFeePerGas: `0x${tip.toString(16)}`, gas: `0x${gasLimit.toString(16)}` }, tag])
   if (simulated.toLowerCase() !== expected.toLowerCase() || await provider.getTransactionCount(operator, 'pending') !== 0)
     throw new Error('The exact funded constructor simulation or nonce check failed.')
   const raw = await signApprovedTransaction(signer, { ...transaction, gasLimit })

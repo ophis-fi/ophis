@@ -61,9 +61,9 @@ export async function acknowledgeLoss(key: string, reason: string, config: Setti
   const [block, nonce, code, cancellation] = await Promise.all([
     provider.getBlock(receipt.blockNumber), provider.getTransactionCount(config.operatorAddress, head.number),
     provider.getCode(config.operatorAddress, head.number),
-    item.cancel_hash ? provider.getTransactionReceipt(item.cancel_hash) : null,
+    Promise.all(store.cancellations(item.key).map((item) => provider.getTransactionReceipt(item.hash))),
   ])
-  if (!block || block.hash !== receipt.blockHash || nonce !== item.nonce + 1 || code !== '0x' || cancellation)
+  if (!block || block.hash !== receipt.blockHash || nonce !== item.nonce + 1 || code !== '0x' || cancellation.some(Boolean))
     throw new Error('The canonical block, operator nonce or cancellation is unresolved.')
   store.acknowledgeLoss(key, item.hash, BigInt(item.actual_cost), receipt.blockNumber, receipt.blockHash, reason)
 }

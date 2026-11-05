@@ -149,8 +149,9 @@ export class Broadcaster {
       if (gasLimit > allowed || gasLimit > MAX_GAS) throw new Error('Gas estimate exceeds the client allowance.')
       const price = parsed.type4 ? BigInt(parsed.transaction.maxFeePerGas!) : BigInt(populated.gasPrice!)
       const tip = parsed.type4 ? BigInt(parsed.transaction.maxPriorityFeePerGas!) : 1n
+      const effectivePrice = (base: bigint) => parsed.type4 && base + tip < price ? base + tip : price
       phase = 'pricing'
-      if (price < baseFee + tip || price < minimumGasPrice) throw new Error('Gas price exceeds the signed cap.')
+      if (price < baseFee + tip || effectivePrice(baseFee) < minimumGasPrice) throw new Error('Gas price exceeds the signed cap.')
       const budget = gasLimit * price
       phase = 'reserve'
       if (budget > this.config.maxTransactionCost || balance < budget + this.config.reserve)
@@ -169,7 +170,7 @@ export class Broadcaster {
       phase = 'state'
       const fresh = await this.state()
       if (this.store.hasPending() || fresh.nonce !== nonce || fresh.confirmed !== nonce || fresh.balance < budget + this.config.reserve ||
-        price < fresh.baseFee + tip || price < fresh.minimumGasPrice) throw new Error('Execution state changed during validation.')
+        price < fresh.baseFee + tip || effectivePrice(fresh.baseFee) < fresh.minimumGasPrice) throw new Error('Execution state changed during validation.')
       phase = 'network'
       await this.validateNetworkAndAuthority(parsed, fresh.block.number)
       phase = 'trace'
@@ -232,7 +233,7 @@ export class Broadcaster {
   }
 
   private async validateNetworkAndAuthority(request: ParsedRequest, blockTag: number): Promise<void> {
-    if (request.type4 && this.config.executionGuard) {
+    if (this.config.executionGuard) {
       const [code, delegateCode] = await Promise.all([
         this.provider.getCode(this.config.executionGuard, blockTag),
         this.provider.getCode(NETWORK.relayAdapt7702Contract, blockTag),
@@ -264,15 +265,18 @@ export class Broadcaster {
       this.store.checked(item.key)
       try {
       const original = await this.provider.getTransactionReceipt(item.hash)
-      const receipt = original ?? (item.cancel_hash ? await this.provider.getTransactionReceipt(item.cancel_hash) : null)
+      let receipt = original
+      if (!receipt) for (const cancellation of this.store.cancellations(item.key)) {
+        const candidate = await this.provider.getTransactionReceipt(cancellation.hash)
+        if (!candidate || candidate.blockNumber > settled) continue
+        const block = await this.provider.getBlock(candidate.blockNumber)
+        if (block?.hash === candidate.blockHash) { receipt = candidate; break }
+      }
       if (!receipt) {
         if (confirmed > item.nonce) {
-            // Only the operator nonce is consumed; the user's proof/recovery state is not cleared.
-            this.store.confirmed(item.key, BigInt(item.max_cost), head.timestamp * 1000)
+          // An unidentified nonce consumption never proves fee delivery.
+          this.store.confirmed(item.key, BigInt(item.max_cost), head.timestamp * 1000)
         }
-        if (!item.confirmed) continue
-        if (!item.assured && await this.sdk.assure(item.hash, JSON.parse(item.fee_data) as FeeProof))
-          this.store.assured(item.key, true)
         continue
       }
       if (receipt.blockNumber > settled) continue
