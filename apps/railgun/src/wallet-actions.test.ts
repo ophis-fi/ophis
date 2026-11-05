@@ -47,7 +47,7 @@ vi.mock('./unshield', () => ({ executeUnshield: vi.fn(), prepareUnshield: mocks.
 vi.mock('./wallet', () => ({ requireWalletSync: mocks.requireSync, syncWallet: mocks.sync }))
 vi.mock('./account', () => ({ unusedSwapAccount: mocks.unused }))
 vi.mock('./cancel', () => ({ cancelPendingSwap: vi.fn() }))
-vi.mock('./wallet-layout', () => ({ setSwapReview: vi.fn(), setPendingNotice: vi.fn() }))
+vi.mock('./wallet-layout', () => ({ renderWalletLayout: vi.fn(), setSwapReview: vi.fn(), setPendingNotice: vi.fn(), showWalletView: vi.fn() }))
 
 let elements: Record<string, { value: string, hidden: boolean, textContent: string, className: string, checked: boolean, onclick?: () => Promise<void>, oninput?: () => void, dispatchEvent: () => boolean, scrollIntoView: () => void }>
 let provider: EventEmitter & { request: ReturnType<typeof vi.fn> }
@@ -106,6 +106,8 @@ it('preserves the WETH proof and prepares a USDC review without submitting eithe
   expect(mocks.prepareWithdrawal.mock.calls[0][5]).toBe(true)
   expect(elements['preserved-withdrawal-details'].textContent).toContain('WETH')
   expect(elements.withdraw.hidden).toBe(false)
+  const { showWalletView } = await import('./wallet-layout')
+  expect(showWalletView).toHaveBeenCalledWith('withdrawal')
   const { executeUnshield } = await import('./unshield')
   expect(executeUnshield).not.toHaveBeenCalled()
 })
@@ -161,6 +163,17 @@ it('does not automatically reduce a fixed trade below the full balance or retry 
   await elements.quote.onclick?.()
   expect(mocks.prepareMax).not.toHaveBeenCalled()
   expect(elements['private-wallet-error'].textContent).toBe('Gas estimation unavailable')
+})
+
+it('opens review for a prepared quote and does not reopen it after an unrelated wallet action', async () => {
+  const { setSwapReview } = await import('./wallet-layout')
+  const { wireWalletActions } = await import('./wallet-actions')
+  await wireWalletActions({} as WalletSession)
+  await elements.quote.onclick?.()
+  expect(setSwapReview).toHaveBeenLastCalledWith(true)
+  vi.mocked(setSwapReview).mockClear()
+  await elements.walletconnect.onclick?.()
+  expect(setSwapReview).not.toHaveBeenCalledWith(true)
 })
 
 it('shows the Max amount and its committed fee for review without executing a swap', async () => {

@@ -8,8 +8,7 @@ const fixture = { showSetup, showWalletView, setSwapReview, setPendingNotice, st
   updateFirstFunding, finishFirstFunding, run }
 declare global { interface Window { ophisUiFixture: typeof fixture } }
 window.ophisUiFixture = fixture
-configurePickers()
-configureWalletLayout()
+configureWalletLayout(configurePickers())
 document.getElementById('setup')!.hidden = true
 document.getElementById('wallet')!.hidden = false
 for (const id of ['history-progress', 'balance-sync']) document.getElementById(id)!.hidden = true

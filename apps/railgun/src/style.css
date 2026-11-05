@@ -62,6 +62,9 @@ dialog::backdrop { background: #17191c88; }
 .network-selector .asset-picker-button img { width: 18px; height: 18px; }
 .amount-row { grid-template-columns: minmax(0, 1fr) 116px; }
 .amount-row .asset-picker-button { width: 100%; }
+#sell-token-home, #sell-token-control { display: block; min-width: 0; }
+#recovery-token-target { display: block; margin-top: 6px; }
+#recovery-token-target .asset-picker-button { width: 100%; justify-content: flex-start; }
 .picker-options { display: grid; margin-top: 10px; gap: 3px; }
 .picker-option { display: flex; align-items: center; gap: 12px; width: 100%; min-height: 52px; margin: 0; padding: 10px 8px; text-align: left; background: white; color: #17191c; border-radius: 10px; font-size: 13px; }
 .picker-option:hover { background: #f3f3f4; }

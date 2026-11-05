@@ -13,7 +13,7 @@ function logo(value: string): HTMLImageElement | undefined {
   return image
 }
 
-export function configurePickers(): void {
+export function configurePickers(): () => void {
   const dialog = document.getElementById('asset-picker') as HTMLDialogElement
   const search = document.getElementById('asset-search') as HTMLInputElement
   const list = document.getElementById('asset-options') as HTMLDivElement
@@ -45,6 +45,7 @@ export function configurePickers(): void {
       }
       row.onclick = () => {
         if (!active || active.matches(':disabled') || document.documentElement.dataset.busy) { dismiss(); return }
+        if (active.value === option.value) { dismiss(); return }
         active.value = option.value
         // Preserve the existing invalidation and network-session handlers.
         active.dispatchEvent(new Event('input', { bubbles: true }))
@@ -63,7 +64,9 @@ export function configurePickers(): void {
     if (!rows.length) return
     event.preventDefault()
     const index = rows.indexOf(document.activeElement as HTMLButtonElement)
-    rows[(index + (event.key === 'ArrowDown' ? 1 : rows.length - 1) + rows.length) % rows.length].focus()
+    const next = index < 0 ? (event.key === 'ArrowDown' ? 0 : rows.length - 1)
+      : (index + (event.key === 'ArrowDown' ? 1 : rows.length - 1)) % rows.length
+    rows[next].focus()
   }
   for (const id of ['private-network', 'token', 'buy-token', 'shield-token']) {
     const select = document.getElementById(id) as HTMLSelectElement
@@ -115,4 +118,5 @@ export function configurePickers(): void {
   document.addEventListener('change', () => refreshers.forEach(refresh => refresh()))
   new MutationObserver(() => refreshers.forEach(refresh => refresh()))
     .observe(document.getElementById('ready-actions')!, { attributes: true, attributeFilter: ['disabled'] })
+  return () => refreshers.forEach(refresh => refresh())
 }

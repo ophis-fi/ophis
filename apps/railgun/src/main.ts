@@ -15,8 +15,7 @@ const status = element('status')
 element('environment').textContent =
   ENVIRONMENT === 'fork' ? `Local ${CHAIN_NAME} fork · Test wallets only` : 'Mainnet'
 configurePrivateSelectors()
-configurePickers()
-configureWalletLayout()
+configureWalletLayout(configurePickers())
 reportEmbeddedLayout()
 const password = element<HTMLInputElement>('password')
 const mnemonic = element<HTMLTextAreaElement>('mnemonic')
@@ -30,8 +29,9 @@ const setup: { generated?: string; ready: boolean; hasWallet: boolean; hasFunds:
 void readPreference<unknown>('wallet').then((stored) => {
   setup.hasWallet = stored !== undefined
   showSetup(setup.hasWallet)
-  element('restore-setup').hidden = false
 }).catch(() => {
+  element('setup-title').textContent = 'Private wallet unavailable'
+  element('setup-help').textContent = 'Browser storage could not be read. Use a fresh browser profile to restore your private wallet safely.'
   element('error').textContent = 'Saved wallet metadata could not be read. Restore your private wallet in a fresh browser profile.'
 })
 
@@ -121,8 +121,18 @@ for (const id of ['open', 'unlock']) {
         throw new Error('Save the recovery phrase before creating or restoring the wallet.')
       const fresh = id === 'open' && setup.generated === mnemonic.value.trim()
       const provider = await startHistory()
-      session.current = await openWallet(provider, password.value, id === 'open' ? mnemonic.value.trim() : undefined,
-        fresh)
+      try {
+        session.current = await openWallet(provider, password.value, id === 'open' ? mnemonic.value.trim() : undefined, fresh)
+      } catch (error) {
+        if (await readPreference<unknown>('wallet').catch(() => undefined) !== undefined) {
+          setup.hasWallet = true
+          setup.generated = undefined
+          mnemonic.value = password.value = ''
+          backup.checked = false
+          showSetup(true)
+        }
+        throw error
+      }
       password.value = ''
       mnemonic.value = ''
       setup.generated = undefined

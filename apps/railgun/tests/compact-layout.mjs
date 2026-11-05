@@ -53,6 +53,9 @@ try {
   assert.deepEqual(await page.locator('#private-network option').allTextContents(), ['Ethereum', 'Arbitrum', 'Polygon', 'BNB Chain'])
   await page.locator('#private-network-picker').click()
   await expect(page.locator('#asset-options img')).toHaveCount(4)
+  await page.keyboard.press('ArrowUp')
+  await expect(page.locator('#asset-options button').last()).toBeFocused()
+  await page.locator('#asset-search').focus()
   await page.locator('#asset-search').fill('BNB')
   await expect(page.locator('#asset-options button')).toHaveCount(1)
   await page.keyboard.press('ArrowDown'); await page.keyboard.press('Enter')
@@ -68,6 +71,9 @@ try {
   await page.locator('#asset-options button').filter({ hasText: 'USDC' }).click()
   assert.deepEqual(await page.evaluate(() => window.selectionEvents), ['input', 'change'])
   await expect(page.locator('#token-picker')).toBeFocused()
+  await page.locator('#token-picker').click()
+  await page.locator('#asset-options button').filter({ hasText: 'USDC' }).click()
+  assert.deepEqual(await page.evaluate(() => window.selectionEvents), ['input', 'change'], 'Reselecting an asset preserves the existing quote and amount')
   await page.locator('#token-picker').click(); await page.keyboard.press('Escape')
   await expect(page.locator('#token-picker')).toBeFocused()
   await page.locator('#token-picker').click()
@@ -82,12 +88,15 @@ try {
   await page.locator('#ready-actions').evaluate(fieldset => { fieldset.disabled = false })
   await page.locator('#wallet-menu-button').click(); await page.locator('#withdraw-shortcut').click()
   await expect(page.locator('#recipient')).toBeVisible(); await expect(page.locator('#amount')).toBeVisible()
+  await expect(page.locator('#max-swap')).not.toBeVisible()
+  await expect(page.locator('#withdraw-max')).toBeVisible()
   await expect(page.locator('#buy-token-picker')).not.toBeVisible()
   await page.locator('#wallet-menu-button').click(); await page.locator('#deposit-shortcut').click()
   await expect(page.locator('#shield-amount')).toBeVisible()
   await page.locator('#deposit-connect').click(); await expect(page.locator('#walletconnect')).toBeVisible()
   await page.keyboard.press('Escape'); await expect(page.locator('#deposit-connect')).toBeFocused()
   await page.locator('#wallet-back').click()
+  await expect(page.locator('#amount')).toBeFocused()
   await page.evaluate(() => {
     document.getElementById('swap').hidden = false
     document.getElementById('quote-details').textContent = 'Illustrative fee review'
@@ -104,6 +113,7 @@ try {
   await expect(page.locator('#mnemonic')).toBeVisible(); await expect(page.locator('#backup')).toBeVisible()
   await page.evaluate(() => window.ophisUiFixture.showSetup(true))
   await expect(page.locator('#unlock')).toBeVisible(); await expect(page.locator('#generate')).not.toBeVisible()
+  await expect(page.locator('#restore-setup')).not.toBeVisible()
   await page.evaluate(() => {
     document.getElementById('setup').hidden = true; document.getElementById('wallet').hidden = false
     window.ophisUiFixture.startFirstFunding(); window.ophisUiFixture.updateFirstFunding(true, false)
@@ -118,7 +128,16 @@ try {
   await expect(page.locator('#pending-details')).toBeVisible(); await expect(page.locator('#pending-notice')).toBeVisible()
   await expect(page.locator('#recovery-index')).not.toBeVisible()
   await page.locator('#advanced-recovery > summary').click(); await expect(page.locator('#recovery-index')).toBeVisible()
+  await expect(page.locator('#recovery-token-target #token-picker')).toBeVisible()
+  await page.locator('#ready-actions').evaluate(fieldset => { fieldset.disabled = true })
+  await expect(page.locator('#recovery-token-target #token-picker')).toBeEnabled()
+  await page.locator('#token-picker').click()
+  await page.locator('#asset-options button').filter({ hasText: 'USDC' }).click()
+  await page.evaluate(() => window.ophisUiFixture.showWalletView('recovery'))
+  await expect(page.locator('#recover')).toHaveText('Reshield USDC')
+  await page.locator('#ready-actions').evaluate(fieldset => { fieldset.disabled = false })
   await page.evaluate(() => { window.ophisUiFixture.setPendingNotice(false); window.ophisUiFixture.showWalletView('swap') })
+  await expect(page.locator('#sell-token-home #token-picker')).toBeVisible()
   await page.evaluate(() => {
     window.busyAction = window.ophisUiFixture.run(document.getElementById('quote'), 'Checking…',
       () => new Promise(resolve => { window.finishBusyAction = resolve }))

@@ -5,11 +5,17 @@ let view: WalletView = 'swap'
 let review = false
 let firstFunding = false
 let pendingSeen = false
+let refreshTokenControls = (): void => {}
 
 export function showWalletView(next: WalletView): void {
   view = next
   if (next !== 'swap') review = false
   renderWalletLayout()
+  if (next !== 'swap') {
+    const heading = element('wallet-view-title')
+    heading.tabIndex = -1
+    heading.focus()
+  }
 }
 
 export function setSwapReview(visible: boolean): void {
@@ -21,6 +27,12 @@ export function renderWalletLayout(): void {
   element('trade-cards').hidden = !['swap', 'withdrawal'].includes(view) || (view === 'swap' && review)
   element('receive-card').hidden = view === 'withdrawal'
   element('trade-arrow').hidden = view === 'withdrawal'
+  element('max-swap').hidden = view !== 'swap'
+  const control = element('sell-token-control')
+  element('token').setAttribute('aria-label', view === 'recovery' ? 'Token to recover' : view === 'withdrawal' ? 'Token to withdraw' : 'Token to sell')
+  const tokenHome = element(view === 'recovery' ? 'recovery-token-target' : 'sell-token-home')
+  if (control.parentElement !== tokenHome) { tokenHome.append(control); refreshTokenControls() }
+  if (!document.documentElement.dataset.busy) element('recover').textContent = `Reshield ${element<HTMLSelectElement>('token').value}`
   element('sell-label').textContent = view === 'withdrawal' ? 'You withdraw' : 'You sell'
   element('amount').setAttribute('aria-label', view === 'withdrawal' ? 'Amount to withdraw' : 'Amount to sell')
   element('trade-actions').hidden = view !== 'swap' || review
@@ -48,7 +60,7 @@ export function showSetup(hasWallet: boolean, phase: 'welcome' | 'backup' = 'wel
   element('unlock').hidden = !hasWallet || phase === 'backup'
   element('wallet-password').hidden = !hasWallet && phase !== 'backup'
   element('new-wallet-form').hidden = phase !== 'backup'
-  element('restore-setup').hidden = phase === 'backup'
+  element('restore-setup').hidden = hasWallet || phase === 'backup'
   element('setup-back').hidden = phase !== 'backup'
   element('open').textContent = restore ? 'Restore private wallet' : 'Save and continue'
 }
@@ -75,7 +87,8 @@ export function setPendingNotice(pending: boolean): void {
   pendingSeen = pending
 }
 
-export function configureWalletLayout(): void {
+export function configureWalletLayout(refreshPickers: () => void): void {
+  refreshTokenControls = refreshPickers
   const menu = element<HTMLDialogElement>('wallet-menu')
   const trigger = element<HTMLButtonElement>('wallet-menu-button')
   trigger.onclick = () => menu.showModal()
@@ -88,10 +101,13 @@ export function configureWalletLayout(): void {
       if (document.documentElement.dataset.busy) return
       menu.close()
       showWalletView(link.hash.slice(1) as WalletView)
-      element('wallet-back').focus()
     }
   }
-  element('wallet-back').onclick = () => showWalletView('swap')
+  element('wallet-back').onclick = () => {
+    showWalletView('swap')
+    const amount = element<HTMLInputElement>('amount')
+    ;(amount.matches(':disabled') ? trigger : amount).focus()
+  }
   element('edit-swap').onclick = () => { review = false; renderWalletLayout(); element('amount').focus() }
   element('skip-funding').onclick = finishFirstFunding
   element('continue-pending').onclick = () => showWalletView('recovery')

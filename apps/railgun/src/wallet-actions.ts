@@ -14,7 +14,7 @@ import { element, errorMessage, run } from './ui'
 import { requireWalletSync, syncWallet, type WalletSession } from './wallet'
 import { unusedSwapAccount } from './account'
 import { connectPublicWallet, type PublicWalletProvider } from './public-connection'
-import { setPendingNotice, setSwapReview } from './wallet-layout'
+import { renderWalletLayout, setPendingNotice, setSwapReview, showWalletView } from './wallet-layout'
 
 export async function wireWalletActions(session: WalletSession): Promise<void> {
   const state: {
@@ -53,6 +53,7 @@ export async function wireWalletActions(session: WalletSession): Promise<void> {
     element<HTMLDetailsElement>('recovery').open = !!identity
     element('reconcile').hidden = !pending
     element('cancel-swap').hidden = !pending
+    element('leftovers-consent').hidden = !pending
     for (const id of ['withdraw-max', 'withdraw-quote']) element(id).hidden = !!identity
     element('reconcile-withdrawal').hidden = !withdrawal
     for (const id of ['retry-withdrawal', 'resume-withdrawal']) element(id).hidden = !withdrawal || unsupportedWeth
@@ -113,7 +114,7 @@ export async function wireWalletActions(session: WalletSession): Promise<void> {
     const quote = element<HTMLButtonElement>('quote')
     quote.className = ''
     quote.textContent = 'Review swap'
-    setSwapReview(!!state.swap)
+    renderWalletLayout()
   }
   const button = (id: string, label: string, action: () => Promise<void>): void => {
     const target = element<HTMLButtonElement>(id)
@@ -159,6 +160,7 @@ export async function wireWalletActions(session: WalletSession): Promise<void> {
     element('receive-amount').textContent = '—'
     renderQuoteAction()
     element('withdraw-details').textContent = ''
+    setSwapReview(false)
   }
   const publicWalletChanged = (): void => {
     state.publicEpoch += 1
@@ -278,6 +280,7 @@ export async function wireWalletActions(session: WalletSession): Promise<void> {
       element('quote-details').textContent += `\nUniswap v3: ${quote.route.tokens.join(' → ')}; pool fees ${quote.route.fees.map((fee) => `${fee / 10_000}%`).join(' + ')}. ${quote.availableRoutes} routes returned positive quotes.`
     renderQuoteAction()
     element('swap').hidden = false
+    setSwapReview(true)
   }
   button('max-swap', 'Reserving broadcaster fee…', async () => {
     invalidate()
@@ -380,6 +383,7 @@ export async function wireWalletActions(session: WalletSession): Promise<void> {
     recipient.value = PILOT_WITHDRAWAL_RECIPIENT!
     status('WETH proof preserved. Preparing the USDC withdrawal for review.')
     await reviewWithdrawal(true)
+    showWalletView('withdrawal')
     status('WETH proof preserved. Review the USDC amount and fee, then choose Prove and withdraw.')
     element('withdraw-details').scrollIntoView({ block: 'center' })
   })

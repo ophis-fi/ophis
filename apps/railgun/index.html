@@ -39,7 +39,7 @@
         <div id="trade-cards" class="trade-cards">
           <div class="amount-card">
             <span id="sell-label" class="card-label">You sell</span>
-            <div class="amount-row"><input id="amount" type="text" inputmode="decimal" autocomplete="off" placeholder="0.0" aria-label="Amount to sell or withdraw" aria-describedby="swap-direction swap-fee-help" /><select id="token" aria-label="Token to sell or withdraw"><option>WETH</option><option>USDC</option></select></div>
+            <div class="amount-row"><input id="amount" type="text" inputmode="decimal" autocomplete="off" placeholder="0.0" aria-label="Amount to sell or withdraw" aria-describedby="swap-direction swap-fee-help" /><span id="sell-token-home"><span id="sell-token-control"><select id="token" aria-label="Token to sell or withdraw"><option>WETH</option><option>USDC</option></select></span></span></div>
             <div class="balance-row"><small>Balance: <span id="spendable-balance">Synchronizing…</span></small><button id="max-swap" type="button" aria-describedby="swap-fee-help">Max</button></div>
           </div>
           <div id="trade-arrow" class="trade-arrow" aria-hidden="true">↓</div>
@@ -102,6 +102,10 @@
         </details>
         <details id="recovery"><summary>Recovery and pending transactions</summary>
         <pre id="pending-details"></pre>
+        <div id="leftovers-consent" hidden><label
+          ><input id="accept-leftovers" type="checkbox" /> Keep the displayed recovery account index: any public
+          leftovers remain there after clearing the pending swap.</label
+        ></div>
         <button id="reconcile" type="button">Reconcile pending swap</button>
         <button id="reconcile-withdrawal" type="button">Check pending withdrawal</button>
         <button id="retry-withdrawal" class="secondary-action" type="button">Retry saved withdrawal through broadcaster</button>
@@ -114,10 +118,6 @@
         </p>
         <label>Temporary account index<input id="recovery-index" type="text" inputmode="numeric" value="0" /></label>
         <button id="scan" type="button">Check recovery balance</button>
-        <label
-          ><input id="accept-leftovers" type="checkbox" /> Keep the displayed recovery account index: any public
-          leftovers remain there after clearing the pending swap.</label
-        >
         <p>
           Canceling invalidates the old swap authorization; it does not move or recover tokens. The temporary account
           needs <span id="cancel-gas-symbol">native currency</span> for gas. Funding it from your public wallet creates a public link.
@@ -129,6 +129,7 @@
         </p>
         <button id="resume-withdrawal" type="button">Resume saved withdrawal with public gas</button>
         <pre id="recovery-details"></pre>
+        <label>Token to recover<span id="recovery-token-target"></span></label>
         <button id="recover" type="button">Reshield selected token</button>
         <button id="broadcasters" class="secondary-action" type="button">Reconnect broadcaster</button>
         </details>
