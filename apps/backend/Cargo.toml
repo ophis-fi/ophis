@@ -1,7 +1,11 @@
 [workspace]
 resolver = "3"
 members = ["crates/*"]
-exclude = ["contracts/"]
+exclude = ["contracts/", "vendor/wasmtimer"]
+
+[patch.crates-io]
+# Alloy 1.x's WASM timer: keep its API while replacing archived pin-utils.
+wasmtimer = { path = "vendor/wasmtimer" }
 
 [workspace.package]
 # `Mutex::clear_poison()` and `RwLock::clear_poison()` are stable since
