@@ -64,8 +64,11 @@ Rust release workflow is manual; no Rust release was dispatched here.
    reverting RAILGUN transaction. BNB's raw private RPC does not establish the
    separate bundle route's no-revert semantics. Polygon's official free Private
    Mempool route requires access before the endpoint and its policy can be
-   qualified. No vendor was contacted or paid; an access-request draft is ready.
-   Existing non-Ethereum mainnet signing gates remain enforced.
+   qualified. The owner requested access and received an offer requiring a paid
+   plan and screening integrations. That offer is incompatible with the existing
+   no-paid-services constraint; the earlier assumption of an available free tier
+   is withdrawn pending explicit provider clarification. No purchase or agent
+   contact was made. Existing non-Ethereum signing gates remain enforced.
 2. **Chain commissioning.** Approved operator identities, owner pins, guards,
    native budgets, fee-token valuation, funded protected inclusion, authenticated
    fee receipts and recovery still need acceptance on each added chain. Protocol
