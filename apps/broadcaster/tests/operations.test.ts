@@ -75,7 +75,8 @@ it('acknowledges a finalized failure without changing the signed request, fee fl
   expect(store.exposure()).toBe(exposure)
   expect(store.db.prepare('SELECT value FROM settings WHERE key=?').get('withdrawalPilot')).toEqual(pilot)
   expect(store.pending()).toEqual([]); expect(store.hasPending()).toBe(false)
-  expect(store.nonceBlocked(0)).toBe(false)
+  expect(store.nonceBlocked(0)).toBe(true)
+  expect(store.nonceBlocked(1)).toBe(false)
   for (const sql of ['UPDATE settlement_resolutions SET reason=\'changed\'', 'DELETE FROM settlement_resolutions'])
     expect(() => store.db.exec(sql)).toThrow('append-only')
   await expect(f.run()).rejects.toThrow()
@@ -153,13 +154,13 @@ it('does not let twenty resolved losses hide an unresolved request behind the re
 it('accounts only for authenticated received fees and reports historical gaps, cancellations and gas losses separately', async () => {
   const f = await fixture(); await f.run()
   const proof = JSON.stringify({ payment: { token: TOKENS[0].address, amount: '9007199254740993' } })
-  for (const key of ['paid', 'cancelled', 'historical']) {
-    store.signed(key, 'DO-NOT-EXPORT-ENVELOPE', 'DO-NOT-EXPORT-RAW', `${key}-hash`, 100n, config.dailyBudget, 1, proof)
+  for (const [index, key] of ['paid', 'cancelled', 'historical'].entries()) {
+    store.signed(key, 'DO-NOT-EXPORT-ENVELOPE', 'DO-NOT-EXPORT-RAW', `${key}-hash`, 100n, config.dailyBudget, index + 1, proof)
     store.confirmed(key, 80n, Date.now())
     store.assured(key, key === 'paid')
   }
   store.db.prepare('UPDATE requests SET fee_data=? WHERE key=?').run('{}', 'historical')
-  store.signed('pending', 'encrypted', 'signed bytes', 'pending-hash', 200n, config.dailyBudget, 2)
+  store.signed('pending', 'encrypted', 'signed bytes', 'pending-hash', 200n, config.dailyBudget, 4)
   expect(accountingReport(store.db)).toEqual({ requests: 5, recordedGasExpenseWei: '21240', unresolvedMaximumWei: '200',
     acknowledgedLossWei: '21000', acknowledgedLosses: 1, historicalSettlementsWithoutFeeAmounts: 1,
     receivedFees: { [getAddress(TOKENS[0].address)]: '9007199254740993' } })

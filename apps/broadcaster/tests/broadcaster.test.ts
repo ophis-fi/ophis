@@ -160,6 +160,7 @@ describe('signing gate and duplicate recovery', () => {
     store.signed('old', 'envelope', 'raw', 'oldhash', 1n, config.dailyBudget, 0)
     store.confirmed('old', 1n, Date.now())
     store.assured('old')
+    f.provider.getTransactionCount.mockImplementation(async (address?: string) => address === f.service.wallet.address ? 1 : 0)
     expect(await f.service.available()).toBe(true)
     f.service.config.dailyBudget = 2n
     expect(f.decode(await f.service.handle(f.payload)).error).toBeTruthy()
@@ -320,6 +321,12 @@ describe('public admission and sequential settlement', () => {
     expect(await f.service.available()).toBe(true)
     expect(f.sdk.assure).not.toHaveBeenCalled()
     expect(store.get(record.key)?.actual_cost).toBe((21_000n * 2_000_000_000n).toString())
+    expect(store.get(record.key)?.cancel_hash).toBe(cancelHash)
+    f.provider.getTransactionCount.mockResolvedValue(0)
+    f.provider.getTransactionReceipt.mockResolvedValue(null)
+    await f.service.reconcile()
+    expect(await f.service.available()).toBe(false)
+    expect(f.sign).toHaveBeenCalledOnce()
     expect(store.get(record.key)?.cancel_hash).toBe(cancelHash)
   })
   it.each(TOKENS)('permits repeated $symbol withdrawals with the fee in that token and preserves a used pilot marker', async (token) => {

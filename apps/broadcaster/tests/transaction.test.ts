@@ -5,6 +5,10 @@ import { config, privateRequest } from './request.fixture'
 import { CHAIN, CHAIN_ID } from '../src/config'
 
 describe('EIP-7702 request boundary', () => {
+  it('rejects a validly signed type-4 proof with a gas-price floor that can fail after base-fee changes', async () => {
+    const request = await privateRequest('ab'.repeat(32), 'viewing-public-key', `0x${'12'.repeat(32)}`, 1n)
+    expect(() => parseRequest(request, Wallet.createRandom().address, config)).toThrow('zero gas-price floor')
+  })
   it('accepts nonce-bound SDK execution signatures and the actual SDK JSON authorization shape', async () => {
     const raw = await privateRequest('ab'.repeat(32), 'viewing-public-key')
     const parsed = parseRequest(raw, Wallet.createRandom().address, config)

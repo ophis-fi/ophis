@@ -20,7 +20,7 @@ it('snapshots live WAL journals and encrypted keys without stopping the operator
     store.confirmed('loss', 80n, Date.now())
     store.acknowledgeLoss('loss', 'old-hash', 80n, 100, 'canonical-block', 'Dummy finalized gas loss')
     store.db.prepare('INSERT INTO settings VALUES(?,?)').run('withdrawalPilot', 'historical-pilot')
-    store.signed('pending', 'encrypted request', 'unknown signed bytes', 'hash', 100n, 1000n, 0)
+    store.signed('pending', 'encrypted request', 'unknown signed bytes', 'hash', 100n, 1000n, 1)
     store.db.prepare('INSERT INTO settings VALUES(?,?)').run('walletId', 'live-view-id')
     const destination = join(root, '.backup-snapshot.test')
     await snapshotCriticalState(root, destination)

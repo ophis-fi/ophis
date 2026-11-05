@@ -89,6 +89,8 @@ Fork execution requires an explicit gas-price cap, maximum ETH cost per transact
 
 The application journals encrypted requests, signed raw transactions, maximum gas exposure and fee-assurance context before submission. The protected transport maintains a second durable nonce journal before private disclosure. An error or timeout preserves both records. Identical client retries return the stored encrypted response, without another signature. Fee assurance confirms the exact owned note and transaction hash under the selected PPOI-free policy.
 
+Operator nonces remain reserved after settlement. If a reorganization rolls the chain counter back into journaled history, availability and a new reservation both fail closed; preserve the two journals for operator reconciliation. Ethereum's two-confirmation policy still does not establish finality or make its earlier fee accounting irreversible.
+
 Stop the service before these commands and keep `OPHIS_BROADCASTER_ENABLED=0`; the native exclusive lock prevents simultaneous service/recovery signers:
 
 ```sh

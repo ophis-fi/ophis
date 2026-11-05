@@ -53,6 +53,9 @@ export function parseRequest(data: Record<string, unknown>, operator: string, se
     if (decoded?.name !== 'execute' || ADAPT.encodeFunctionData(decoded.fragment, decoded.args) !== calldata)
       throw new Error('Canonical nonce-aware private execute calldata is required.')
     transactions = Array.from(decoded.args._transactions) as TransactionStructV2[]
+    // EIP-1559 effective gas prices can fall after simulation; canonical 7702 SDK proofs use zero.
+    if (transactions.some((tx) => BigInt(tx.boundParams.minGasPrice) !== 0n))
+      throw new Error('Private type-4 proofs must use a zero gas-price floor.')
     executeNonce = BigInt(decoded.args._nonce)
     if (decoded.args._actionData.requireSuccess !== false || decoded.args._actionData.calls.length > 64)
       throw new Error('Unsupported private execution policy.')

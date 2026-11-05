@@ -46,7 +46,7 @@ export function checkedAnswer(round: readonly bigint[], timestamp: number, maxAg
 
 export class FeeOracle {
   private feeds?: Contract[]
-  private cached?: { at: number; rates: Record<string, bigint> }
+  private cached?: { expires: number; rates: Record<string, bigint> }
   private refreshing?: Promise<Record<string, bigint>>
   constructor(private readonly provider: JsonRpcProvider, private readonly marginBps: bigint) {
     if (!FEEDS[CHAIN_ID]) throw new Error('Fee pricing is unavailable for this broadcaster chain.')
@@ -54,7 +54,7 @@ export class FeeOracle {
 
   async rates(): Promise<Record<string, bigint>> {
     // Check Arbitrum's sequencer on every request, including while prices would otherwise be cached.
-    if (CHAIN_ID !== 42161 && this.cached && Date.now() - this.cached.at < 30_000) return this.cached.rates
+    if (CHAIN_ID !== 42161 && this.cached && Date.now() < this.cached.expires) return this.cached.rates
     this.refreshing ??= this.refresh().finally(() => { this.refreshing = undefined })
     return this.refreshing
   }
@@ -73,7 +73,8 @@ export class FeeOracle {
       }))
     }
     const block = await this.provider.getBlock('latest')
-    if (!block || Math.abs(Date.now() / 1000 - block.timestamp) > 45) throw new Error('The pricing read node is stale.')
+    const sampledAt = Date.now()
+    if (!block || Math.abs(sampledAt / 1000 - block.timestamp) > 45) throw new Error('The pricing read node is stale.')
     if (CHAIN_ID === 42161) {
       const round = await this.feeds[feeds.length].getFunction('latestRoundData').staticCall({ blockTag: block.number })
       const [id, status, started, updated, answered] = Array.from(round, BigInt)
@@ -81,9 +82,14 @@ export class FeeOracle {
       if (!id || status !== 0n || started <= 0n || updated < started || updated > now || answered < id || now - started <= 3600n)
         throw new Error('The Arbitrum sequencer is unavailable or its recovery grace period has not passed.')
     }
+    let expires = Math.min(sampledAt + 30_000, (block.timestamp + 45) * 1000)
     const answers = await Promise.all(this.feeds.slice(0, feeds.length).map(async (feed, i) => {
-      const round = await feed.getFunction('latestRoundData').staticCall({ blockTag: block.number })
-      return checkedAnswer(Array.from(round, BigInt), block.timestamp, feeds[i].age)
+      const round = Array.from(await feed.getFunction('latestRoundData').staticCall({ blockTag: block.number }), BigInt)
+      const answer = checkedAnswer(round, block.timestamp, feeds[i].age)
+      const lastValid = round[3] + BigInt(feeds[i].age) + 1n
+      expires = Math.min(expires, Number(lastValid) * 1000,
+        Math.floor(sampledAt / 1000) * 1000 + Number(lastValid - BigInt(block.timestamp)) * 1000)
+      return answer
     }))
     const rates: Record<string, bigint> = { [getAddress(TOKENS[0].address)]: 10n ** 18n }
     for (let i = 1; i < TOKENS.length; i++) {
@@ -93,7 +99,8 @@ export class FeeOracle {
       rates[getAddress(TOKENS[i].address)] = ceilDiv(answers[0] * 10n ** BigInt(TOKENS[i].decimals), answers[i])
     }
     for (const token of Object.keys(rates)) rates[token] = ceilDiv(rates[token] * (10_000n + this.marginBps), 10_000n)
-    this.cached = { at: Date.now(), rates }
+    if (Date.now() >= expires) throw new Error('Fee pricing expired during refresh.')
+    this.cached = { expires, rates }
     return rates
   }
 }

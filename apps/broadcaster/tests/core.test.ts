@@ -98,6 +98,8 @@ describe('operator configuration and money boundaries', () => {
       first.confirmed('one', 1n, Date.now())
       expect(() => second.signed('two', 'envelope', 'raw2', 'hash2', 1n, 10n, 1)).toThrow('unresolved transaction')
       first.assured('one')
+      expect(first.nonceBlocked(0)).toBe(true)
+      expect(() => second.signed('reorg', 'envelope', 'raw2', 'hash2', 1n, 10n, 0)).toThrow('already reserved')
       expect(() => second.signed('two', 'envelope', 'raw2', 'hash2', 1n, 10n, 1)).not.toThrow()
       expect(first.pending().map((r) => r.key)).toEqual(['two'])
     } finally { first.close(); second.close(); rmSync(directory, { recursive: true, force: true }) }

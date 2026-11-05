@@ -72,6 +72,42 @@ it('rounds BNB stablecoin reimbursement upward with non-integral prices and a ma
   expect((rate - 2n) * feeds[1].round[1] * 10_000n).toBeLessThan(required)
 })
 
+it.each([[1, 0, 3720], [56, 0, 87], [56, 1, 960], [137, 1, 87]])(
+  'does not let chain %i cache extend feed %i freshness past %is', async (chainId, feed, age) => {
+    const f = await fixture(chainId)
+    f.feeds[feed].round[3] = BigInt(now - age)
+    await expect(f.oracle.rates()).resolves.toBeDefined()
+    const reads = f.provider.call.mock.calls.length
+    vi.spyOn(Date, 'now').mockReturnValue((now + 1) * 1000)
+    f.provider.getBlock.mockResolvedValue({ number: 101, timestamp: now + 1 })
+    await expect(f.oracle.rates()).rejects.toThrow('stale or invalid')
+    expect(f.provider.call.mock.calls.length).toBeGreaterThan(reads)
+  },
+)
+
+it('bounds cached freshness relative to a permitted future head as well as wall time', async () => {
+  const f = await fixture(137)
+  f.provider.getBlock.mockResolvedValue({ number: 100, timestamp: now + 1 })
+  f.feeds[1].round[3] = BigInt(now + 1 - 87)
+  await expect(f.oracle.rates()).resolves.toBeDefined()
+  vi.spyOn(Date, 'now').mockReturnValue((now + 1) * 1000)
+  f.provider.getBlock.mockResolvedValue({ number: 101, timestamp: now + 2 })
+  await expect(f.oracle.rates()).rejects.toThrow('stale or invalid')
+})
+
+it('rejects a refresh whose source freshness expires during asynchronous reads', async () => {
+  const f = await fixture(137)
+  f.feeds[1].round[3] = BigInt(now - 87)
+  const read = f.provider.call.getMockImplementation()!
+  f.provider.call.mockImplementation(async (request) => {
+    const value = await read(request)
+    if (abi.parseTransaction({ data: request.data })!.name === 'latestRoundData')
+      vi.spyOn(Date, 'now').mockReturnValue((now + 1) * 1000)
+    return value
+  })
+  await expect(f.oracle.rates()).rejects.toThrow('expired during refresh')
+})
+
 it.each([
   ['missing code', 'unavailable'], ['wrong precision', 'identity or precision'], ['wrong native identity', 'identity or precision'],
   ['stale price', 'stale or invalid'], ['future price', 'stale or invalid'], ['zero price', 'stale or invalid'],

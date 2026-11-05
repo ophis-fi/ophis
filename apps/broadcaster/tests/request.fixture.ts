@@ -11,12 +11,16 @@ export const config = settings({ OPHIS_BROADCASTER_ENABLED: '1', OPHIS_BROADCAST
   OPHIS_BROADCASTER_MAX_TX_COST_WEI: '10000000000000000', OPHIS_BROADCASTER_RESERVE_WEI: '10000000000000000',
   OPHIS_BROADCASTER_DAILY_BUDGET_WEI: '100000000000000000' })
 
-export async function privateRequest(feesID: string, publicViewingKey: string, nullifier = `0x${'12'.repeat(32)}`) {
+export async function privateRequest(feesID: string, publicViewingKey: string, nullifier = `0x${'12'.repeat(32)}`, minimumGasPrice = 0n) {
   const ephemeral = Wallet.createRandom()
   const type = PROXY.getFunction('transact')!.inputs[0].arrayChildren!
   const tx = Array.from(AbiCoder.defaultAbiCoder().getDefaultValue([type])[0])
   tx[type.components!.findIndex((p) => p.name === 'nullifiers')] = [nullifier]
   tx[type.components!.findIndex((p) => p.name === 'commitments')] = [`0x${'34'.repeat(32)}`]
+  const index = type.components!.findIndex((p) => p.name === 'boundParams')
+  const bound = Array.from(tx[index] as unknown[])
+  bound[type.components![index].components!.findIndex((p) => p.name === 'minGasPrice')] = minimumGasPrice
+  tx[index] = bound
   const transactions = [tx as unknown as TransactionStructV2]
   const action = RelayAdapt7702Helper.getActionData(false, [], 0n)
   const signature = await signExecutionAuthorization(ephemeral, transactions, action, CHAIN_ID,

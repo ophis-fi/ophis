@@ -167,6 +167,7 @@ export class Store {
         throw new Error('The withdrawal pilot is already used. Reconcile the saved transaction.')
       if (cost <= 0n || this.exposure() + cost > budget) throw new Error('Operator rolling 24-hour gas budget exhausted.')
       if (this.hasPending()) throw new Error('Reconcile the unresolved transaction and its fee before another reservation.')
+      if (this.nonceBlocked(nonce)) throw new Error('The operator nonce was already reserved. Reconcile a chain rollback before new signing.')
       this.db.prepare('INSERT INTO requests(key,envelope,raw,hash,created,max_cost,signed_at,fee_data,nonce,fee_expiration) VALUES(?,?,?,?,?,?,?,?,?,?)')
         .run(key, envelope, raw, hash, Date.now(), cost.toString(), Date.now(), feeData, nonce, expiration)
       if (withdrawalPilot) this.db.prepare('INSERT INTO settings(key,value) VALUES(?,?)').run('withdrawalPilot', hash)
@@ -234,7 +235,7 @@ export class Store {
         AND s.actual_cost=requests.actual_cost AND requests.confirmed=1 AND requests.assured=0) LIMIT 1`).get()
   }
   nonceBlocked(nonce: number): boolean {
-    return !!this.db.prepare('SELECT 1 FROM requests WHERE confirmed=0 AND nonce>=? LIMIT 1').get(nonce)
+    return !!this.db.prepare('SELECT 1 FROM requests WHERE nonce>=? LIMIT 1').get(nonce)
   }
   close(): void { this.db.close() }
 }
