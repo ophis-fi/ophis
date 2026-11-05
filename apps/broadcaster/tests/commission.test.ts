@@ -27,12 +27,17 @@ beforeAll(() => {
   privateKey = Buffer.from(pair.privateKey.export({ type: 'pkcs8', format: 'pem' }))
   weakPublicKey = Buffer.from(generateKeyPairSync('rsa', { modulusLength: 2048 }).publicKey.export({ type: 'spki', format: 'pem' }))
   otherExponentKey = Buffer.from(generateKeyPairSync('rsa', { modulusLength: 3072, publicExponent: 3 }).publicKey.export({ type: 'spki', format: 'pem' }))
-  // Pipe the synthetic test key to OpenSSL; no plaintext private-key fixture is written.
-  const signed = spawnSync('/usr/bin/openssl', ['req', '-new', '-x509', '-key', '/dev/stdin',
-    '-subj', '/CN=Ophis Synthetic BNB Commission Test', '-days', '1', '-sha256'], { input: privateKey, timeout: 10_000 })
-  if (signed.status !== 0) throw new Error('Synthetic X.509 fixture creation failed.')
-  x509Certificate = signed.stdout
-  expect(Buffer.from(new X509Certificate(x509Certificate).publicKey.export({ type: 'spki', format: 'pem' })).equals(publicKey)).toBe(true)
+  // Linux cannot reopen Node's socket-backed child stdin as a file; use a disposable synthetic key.
+  const fixture = mkdtempSync(join(tmpdir(), 'bnb-test-certificate-'))
+  try {
+    const keyFile = join(fixture, 'synthetic-key.pem')
+    writeFileSync(keyFile, privateKey, { mode: 0o600, flag: 'wx' })
+    const signed = spawnSync('/usr/bin/openssl', ['req', '-new', '-x509', '-key', keyFile,
+      '-subj', '/CN=Ophis Synthetic BNB Commission Test', '-days', '1', '-sha256'], { timeout: 10_000 })
+    if (signed.status !== 0) throw new Error('Synthetic X.509 fixture creation failed.')
+    x509Certificate = signed.stdout
+    expect(Buffer.from(new X509Certificate(x509Certificate).publicKey.export({ type: 'spki', format: 'pem' })).equals(publicKey)).toBe(true)
+  } finally { rmSync(fixture, { recursive: true, force: true }) }
 }, 20_000)
 beforeEach(() => {
   root = mkdtempSync(join(tmpdir(), 'bnb-commission-test-'))

@@ -1,7 +1,7 @@
 import { afterEach, beforeAll, expect, it } from 'vitest'
 import { createPublicKey, generateKeyPairSync } from 'node:crypto'
 import { spawnSync } from 'node:child_process'
-import { mkdtempSync, rmSync, statSync } from 'node:fs'
+import { mkdtempSync, rmSync, statSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
 import { Wallet } from 'ethers'
@@ -16,10 +16,15 @@ beforeAll(() => {
   pkcs1PublicKey = Buffer.from(pair.publicKey.export({ type: 'pkcs1', format: 'pem' }))
   privateKey = Buffer.from(pair.privateKey.export({ type: 'pkcs8', format: 'pem' }))
   wrongKey = Buffer.from(generateKeyPairSync('rsa', { modulusLength: 3072 }).privateKey.export({ type: 'pkcs8', format: 'pem' }))
-  const signed = spawnSync('/usr/bin/openssl', ['req', '-new', '-x509', '-key', '/dev/stdin',
-    '-subj', '/CN=Ophis Synthetic Custody Test', '-days', '1', '-sha256'], { input: privateKey, timeout: 10_000 })
-  if (signed.status !== 0) throw new Error('Synthetic X.509 fixture creation failed.')
-  x509Certificate = signed.stdout
+  const fixture = mkdtempSync(join(tmpdir(), 'custody-test-certificate-'))
+  try {
+    const keyFile = join(fixture, 'synthetic-key.pem')
+    writeFileSync(keyFile, privateKey, { mode: 0o600, flag: 'wx' })
+    const signed = spawnSync('/usr/bin/openssl', ['req', '-new', '-x509', '-key', keyFile,
+      '-subj', '/CN=Ophis Synthetic Custody Test', '-days', '1', '-sha256'], { timeout: 10_000 })
+    if (signed.status !== 0) throw new Error('Synthetic X.509 fixture creation failed.')
+    x509Certificate = signed.stdout
+  } finally { rmSync(fixture, { recursive: true, force: true }) }
 }, 20_000)
 
 it.each(['SPKI', 'PKCS1', 'X509'])('encrypts all operator fields with randomized authenticated encryption using %s and an off-server recovery key', (format) => {
