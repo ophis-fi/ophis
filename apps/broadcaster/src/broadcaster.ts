@@ -273,7 +273,7 @@ export class Broadcaster {
         if (block?.hash === candidate.blockHash) { receipt = candidate; break }
       }
       if (!receipt) {
-        if (confirmed > item.nonce) {
+        if (!item.confirmed && confirmed > item.nonce) {
           // An unidentified nonce consumption never proves fee delivery.
           this.store.confirmed(item.key, BigInt(item.max_cost), head.timestamp * 1000)
         }

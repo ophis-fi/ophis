@@ -30,13 +30,19 @@ Use the selected Ambire + Ledger account to control treasury funds and approve b
 
 Automatic swaps use the dedicated software gas wallet on existing Baal infrastructure. The operator files use AES-256-GCM with a fixed 128-bit authentication tag and a fresh data key wrapped with RSA-OAEP/SHA-256 under the existing 3072-bit backup certificate. Only the public certificate is on Baal. The recovery private key remains on the owner's Mac, outside the repository and server. It is protected by local file permissions, not by the Ledger. The gas key is available in process memory only after manual unlock. No new password or automatic unlock credential is stored on Baal.
 
-After every service restart, run this from the owner's Mac:
+After every service restart, run the freshly built client from the approved checkout on the owner's Mac:
 
 ```sh
-node /Users/scep/ophis-private-swap-design/apps/broadcaster/dist/unlock-client.mjs unlock
+node apps/broadcaster/dist/unlock-client.mjs unlock
 ```
 
-The standalone client uses the existing off-server recovery key at `~/.local/share/ophis-broadcaster-backup-key/restore-key.pem`. It authenticates the encrypted payload before sending only runtime gas/viewing keys over SSH to a 0600 Unix socket in the private container temporary directory. It never prints keys. `verify` and `verify-retired` check the encrypted runtime/retired records without uploading their plaintext. There is no HTTP unlock route. Unlocking never enables signing or changes financial limits. Keep a separate secure copy of the recovery key; losing every copy loses access to the encrypted gas key and retired fee-spending material.
+The standalone client uses the existing off-server recovery key at `~/.local/share/ophis-broadcaster-backup-key/restore-key.pem`. It checks a trusted local encrypted-record pin before decryption and validates the expected role and gas identity before sending only runtime gas/viewing keys over SSH to a 0600 Unix socket in the private container temporary directory. It never prints keys. `verify` and `verify-retired` perform these same role-specific checks without uploading their plaintext. There is no HTTP unlock route. Unlocking never enables signing or changes financial limits. Keep a separate secure copy of the recovery key and identity pins; losing every recovery-key copy loses access to the encrypted gas key and retired fee-spending material.
+
+### Owner identity pins
+
+The client requires `operator-identities.json` beside the selected recovery key, in an owned private directory (0700), with an owned regular file (0600). Its schema is `{"version":1,"chains":{"1":{"gasWalletAddress":"<checksummed address>","runtimeSha256":"<64 lowercase hex digits>","retiredSha256":"<64 lowercase hex digits>"}}}`. Allowed chain keys are `1`, `42161`, `56` and `137`; provision each explicitly before use. A missing chain or changed record fails closed before plaintext can leave the Mac.
+
+Obtain the address and exact ciphertext SHA-256 values from the authenticated, off-server commissioning record. Runtime and retired archives have separate pins. Never learn or replace these pins from the server being unlocked: encryption under a public certificate alone does not authenticate who created a record. Keep the existing Ethereum commissioning pins through upgrades. Planned key rotation requires independently verified replacement records and pins; do not overwrite a failed pin to make an unlock succeed. Older client copies must not be used.
 
 Retain the exact request/fee/proof validation, guard attestation, zero native value, nonce checks, aggregate gas limits, durable journals and private-only publication. The shared PPOI-free policy remains in force. These checks defend admission of user requests; they cannot constrain an attacker who controls the host and its unlocked key. In that case, the full online gas balance is exposed regardless of configured per-transaction or daily limits. Keep the main reserves under Ledger control and provide no automatic refills, treasury signing key or treasury spending allowance to Baal. An independent signer on separately controlled existing hardware could improve separation later, but neither new hardware nor a paid HSM/KMS is assumed or required by this plan.
 

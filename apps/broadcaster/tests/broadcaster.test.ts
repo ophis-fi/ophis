@@ -516,6 +516,23 @@ describe('public admission and sequential settlement', () => {
     expect(f.sign).toHaveBeenCalledOnce()
   })
 
+  it('preserves recorded gas expense when a confirmed receipt temporarily disappears', async () => {
+    const f = await fixture(Wallet.createRandom().address)
+    const result = f.decode(await f.service.handle(f.payload))
+    const saved = store.pending()[0]
+    f.sdk.assure.mockResolvedValue(false)
+    await confirm(f, result.txHash!)
+    const recorded = store.get(saved.key)!
+    expect(recorded.confirmed).toBe(1)
+    expect(recorded.actual_cost).toBe((100_000n * 2_000_000_000n).toString())
+    f.provider.getTransactionReceipt.mockResolvedValue(null)
+    await f.service.reconcile()
+    expect(store.get(saved.key)?.actual_cost).toBe(recorded.actual_cost)
+    expect(store.get(saved.key)?.mined_at).toBe(recorded.mined_at)
+    expect(store.get(saved.key)?.assured).toBe(0)
+    expect(store.hasPending()).toBe(true)
+  })
+
   it.each(['unknown-submission', 'missing-fee', 'included-revert', 'unknown-nonce'])('preserves the halt across restart for %s', async (reason) => {
     const f = await fixture(Wallet.createRandom().address)
     f.service.config.admission = 'public'
