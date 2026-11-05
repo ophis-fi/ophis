@@ -1,7 +1,8 @@
-import { CHAIN_ID, isTokenSymbol, CONFIG, TOKENS, PILOT_WITHDRAWAL_RECIPIENT, type TokenSymbol } from './config'
-import { getWalletTransactionHistory } from '@railgun-community/wallet'
-import { Contract, formatUnits, getAddress, type JsonRpcSigner, type TransactionReceipt } from 'ethers'
-import { assertAtomicWithdrawal, PRIVACY } from './execution'
+import { CHAIN, CHAIN_ID, isTokenSymbol, CONFIG, TOKENS, PILOT_WITHDRAWAL_RECIPIENT, type TokenSymbol } from './config'
+import { fullWalletForID, getWalletTransactionHistory } from '@railgun-community/wallet'
+import { authorizationify, Contract, formatUnits, getAddress, Interface, type JsonRpcSigner, type TransactionReceipt } from 'ethers'
+import { RelayAdapt7702ExecutionType } from '@railgun-community/engine'
+import { ADAPT, assertAuthorization, assertAtomicWithdrawal, assertBoundWithdrawal, assertReceipt, withdrawalOutput, PRIVACY } from './execution'
 import { deletePrivateState, readPrivateState, writePrivateState } from './storage'
 import type { WalletSession } from './wallet'
 import { assertPublicNetwork } from './shield'
@@ -9,6 +10,11 @@ import { assertPublicNetwork } from './shield'
 export interface PendingWithdrawal {
   chainId?: number
   token: TokenSymbol
+  feeToken?: TokenSymbol
+  broadcaster?: string
+  execution?: { index: number; account: string; executeNonce: string;
+    authorization: { address: string; chainId: string; nonce: string; signature: string };
+    gasEstimate: string; maxFeePerGas: string; maxPriorityFeePerGas: string }
   recipient: string
   minimum: string
   fromBlock: number
@@ -35,6 +41,7 @@ async function readWithdrawal(session: WalletSession, key: 'pendingWithdrawal' |
     ('chainId' in stored ? stored.chainId !== CHAIN_ID : CHAIN_ID !== 1) ||
     !('token' in stored) ||
     !isTokenSymbol(stored.token) ||
+    ('feeToken' in stored && !isTokenSymbol(stored.feeToken)) ||
     !('recipient' in stored) ||
     typeof stored.recipient !== 'string' ||
     !('minimum' in stored) ||
@@ -53,7 +60,6 @@ async function readWithdrawal(session: WalletSession, key: 'pendingWithdrawal' |
     typeof stored.transaction !== 'object' ||
     !('to' in stored.transaction) ||
     typeof stored.transaction.to !== 'string' ||
-    getAddress(stored.transaction.to) !== getAddress(CONFIG.proxyContract) ||
     !('data' in stored.transaction) ||
     typeof stored.transaction.data !== 'string' ||
     !/^0x[0-9a-f]+$/i.test(stored.transaction.data) ||
@@ -68,6 +74,21 @@ async function readWithdrawal(session: WalletSession, key: 'pendingWithdrawal' |
   )
     throw new Error('Pending withdrawal record is damaged. Restore or repair it before spending again.')
   getAddress(stored.recipient)
+  const pending = stored as PendingWithdrawal
+  if (pending.execution) {
+    const e = pending.execution
+    if (CHAIN_ID !== 56 || pending.feeToken !== 'WBNB' || typeof pending.broadcaster !== 'string' ||
+      !Number.isSafeInteger(e.index) || e.index < 0 || typeof e.account !== 'string' ||
+      getAddress(e.account) !== getAddress(pending.transaction.to) ||
+      ![e.executeNonce, e.gasEstimate, e.maxFeePerGas, e.maxPriorityFeePerGas].every((n) => typeof n === 'string' && /^\d+$/.test(n)) ||
+      BigInt(e.gasEstimate) <= 0n || BigInt(e.maxPriorityFeePerGas) <= 0n || BigInt(e.maxPriorityFeePerGas) > BigInt(e.maxFeePerGas))
+      throw new Error('Saved withdrawal execution is damaged. Keep its proof and recovery account.')
+    const checked = assertBoundWithdrawal(pending.transaction.data, e.account, pending.token, pending.recipient, BigInt(pending.minimum))
+    if (checked.executeNonce !== BigInt(e.executeNonce)) throw new Error('Saved withdrawal nonce differs from its signature.')
+    const [transactions, actionData, , executionSignature] = ADAPT.decodeFunctionData('execute', pending.transaction.data)
+    assertAuthorization({ transactions, actionData, executionSignature, ephemeralAddress: e.account,
+      authorization: authorizationify(e.authorization), executionType: RelayAdapt7702ExecutionType.ExecuteWithNonce, executeNonce: BigInt(e.executeNonce) })
+  } else if (getAddress(pending.transaction.to) !== getAddress(CONFIG.proxyContract)) throw new Error('Pending withdrawal record is damaged.')
   return stored as PendingWithdrawal
 }
 
@@ -77,11 +98,12 @@ export async function savePendingWithdrawal(session: WalletSession, pending: Pen
 }
 
 export function savedWithdrawalSummary(pending: PendingWithdrawal): string {
-  const note = PRIVACY.decodeFunctionData('transact', pending.transaction.data)[0][0].unshieldPreimage
+  if (pending.execution) return `Saved withdrawal: ${formatUnits(pending.minimum, TOKENS[pending.token].decimals)} ${pending.token} to ${pending.recipient}; broadcaster fee in WBNB. Recovery account ${pending.execution.index}: ${pending.execution.account}`
+  const note = withdrawalOutput(pending.transaction.data)
   const asset = Object.values(TOKENS).find((item) => getAddress(item.address) === getAddress(note.token.tokenAddress))
   const amount = asset ? `${formatUnits(note.value, asset.decimals)} ${asset.symbol}` : `unknown token ${note.token.tokenAddress}`
   const format = BigInt(note.token.tokenType) === 0n && BigInt(note.token.tokenSubID) === 0n ? '' : ' (unsupported token format)'
-  return `Saved withdrawal: ${amount}${format} to ${pending.recipient}`
+  return `Saved withdrawal: ${amount}${format} to ${pending.recipient}${pending.feeToken ? `; broadcaster fee in ${pending.feeToken}` : ''}`
 }
 
 export function canPreserveWethWithdrawal(pending: PendingWithdrawal): boolean {
@@ -116,8 +138,12 @@ export async function restorePreservedWithdrawal(session: WalletSession): Promis
   await deletePrivateState(session, 'preservedWithdrawal')
 }
 
+function withdrawalTransactions(pending: PendingWithdrawal) {
+  return pending.execution ? ADAPT.decodeFunctionData('execute', pending.transaction.data)[0] : PRIVACY.decodeFunctionData('transact', pending.transaction.data)[0]
+}
+
 function withdrawalInputs(pending: PendingWithdrawal) {
-  const [transactions] = PRIVACY.decodeFunctionData('transact', pending.transaction.data)
+  const transactions = withdrawalTransactions(pending)
   const inputs = [...transactions].flatMap((transaction) => [...transaction.nullifiers].map((nullifier) => ({
     tree: transaction.boundParams.treeNumber,
     nullifier: String(nullifier).toLowerCase(),
@@ -137,7 +163,7 @@ export function assertWithdrawalReceipt(receipt: TransactionReceipt, pending: Pe
   const nullifiers = events.flatMap((event) =>
     event?.name === 'Nullified' ? [...event.args.nullifier].map((n: string) => `${event.args[0]}:${n.toLowerCase()}`) : [],
   )
-  const output = events.reduce(
+  let output = events.reduce(
     (sum, event) =>
       event?.name === 'Unshield' &&
       getAddress(event.args.to) === getAddress(pending.recipient) &&
@@ -146,6 +172,16 @@ export function assertWithdrawalReceipt(receipt: TransactionReceipt, pending: Pe
         : sum,
     0n,
   )
+  if (pending.execution) {
+    assertReceipt(receipt, pending.execution.account)
+    const token = new Interface(['event Transfer(address indexed from,address indexed to,uint256 value)'])
+    output = receipt.logs.filter((log) => getAddress(log.address) === getAddress(TOKENS[pending.token].address)).reduce((sum, log) => {
+      let event
+      try { event = token.parseLog({ topics: [...log.topics], data: log.data }) } catch { return sum }
+      return event && getAddress(event.args.from) === getAddress(pending.execution!.account) &&
+        getAddress(event.args.to) === getAddress(pending.recipient) ? sum + BigInt(event.args.value) : sum
+    }, 0n)
+  }
   if (
     BigInt(pending.minimum) <= 0n ||
     output < BigInt(pending.minimum) ||
@@ -164,7 +200,7 @@ export async function reconcilePendingWithdrawal(session: WalletSession): Promis
       (item) =>
         (item.blockNumber == null || item.blockNumber >= pending.fromBlock) &&
         item.unshieldERC20Amounts.some(
-          (amount) => amount.recipientAddress && getAddress(amount.recipientAddress) === getAddress(pending.recipient),
+          (amount) => amount.recipientAddress && getAddress(amount.recipientAddress) === getAddress(pending.execution?.account ?? pending.recipient),
         ),
     )
     .map((item) => (item.txid.startsWith('0x') ? item.txid : `0x${item.txid}`))
@@ -177,10 +213,21 @@ export async function reconcilePendingWithdrawal(session: WalletSession): Promis
     } catch {
       continue
     }
+    if (pending.execution)
+      await fullWalletForID(session.info.id).setEphemeralKeyIndexIfGreater(CHAIN, pending.execution.index + 1)
     await deletePrivateState(session, 'pendingWithdrawal')
     return `Withdrawal confirmed: ${hash}`
   }
-  if (await withdrawalInputsSpent(session, pending)) {
+  const spent = await withdrawalInputStates(session, pending)
+  let offset = 0
+  const proofsDead: boolean[] = [...withdrawalTransactions(pending)].map((tx) => {
+    const dead = spent.slice(offset, offset + tx.nullifiers.length).some(Boolean)
+    offset += tx.nullifiers.length
+    return dead
+  })
+  if (spent.some(Boolean) && (!proofsDead.every(Boolean) || pending.execution))
+    throw new Error(`Withdrawal inputs were spent without a confirmed recipient output. The complete saved proof is preserved.${pending.execution ? ` Check recovery account ${pending.execution.index} (${pending.execution.account}); invalidate its authorization before clearing.` : ' Remaining principal proofs must be recovered before clearing.'}`)
+  if (proofsDead.every(Boolean)) {
     await deletePrivateState(session, 'pendingWithdrawal')
     return 'Saved withdrawal proof is no longer executable: an input was spent. Check wallet history for the actual outcome; this does not confirm the requested output.'
   }
@@ -190,22 +237,44 @@ export async function reconcilePendingWithdrawal(session: WalletSession): Promis
 }
 
 export async function withdrawalInputsSpent(session: WalletSession, pending: PendingWithdrawal): Promise<boolean> {
+  return (await withdrawalInputStates(session, pending)).some(Boolean)
+}
+
+async function withdrawalInputStates(session: WalletSession, pending: PendingWithdrawal): Promise<boolean[]> {
   const inputs = withdrawalInputs(pending)
   const confirmedBlock = Math.max(0, (await session.provider.getBlockNumber()) - 1)
   const proxy = new Contract(CONFIG.proxyContract, PRIVACY, session.provider)
   const spent: boolean[] = await Promise.all(
     inputs.map((input) => proxy.getFunction('nullifiers')(input.tree, input.nullifier, { blockTag: confirmedBlock })),
   )
-  return spent.some(Boolean)
+  return spent
 }
 
 export async function resumePendingWithdrawal(session: WalletSession, sponsor: JsonRpcSigner): Promise<string> {
   const pending = await pendingWithdrawal(session)
   if (!pending) throw new Error('No saved withdrawal to resume.')
+  if (pending.execution) {
+    if (await withdrawalInputsSpent(session, pending)) throw new Error('A saved input is spent. Check the recovery account before retrying.')
+    await assertPublicNetwork(session, sponsor)
+    const e = pending.execution
+    const sent = await sponsor.sendTransaction({ ...pending.transaction, value: 0n, type: 4, chainId: CHAIN,
+      authorizationList: [authorizationify(e.authorization)], maxFeePerGas: BigInt(e.maxFeePerGas), maxPriorityFeePerGas: BigInt(e.maxPriorityFeePerGas) })
+    await savePendingWithdrawal(session, { ...pending, hash: sent.hash })
+    if (!await sent.wait(2)) throw new Error('Withdrawal confirmation is pending. Keep the saved record.')
+    return reconcilePendingWithdrawal(session)
+  }
   assertAtomicWithdrawal(pending.transaction.data)
   // Reusing the exact proof cannot withdraw twice: its nullifiers can only be spent once.
   await assertPublicNetwork(session, sponsor)
   const fees = await session.provider.getFeeData()
+  if (CHAIN_ID === 56) {
+    const gasPrice = BigInt(pending.minGasPrice) > (fees.gasPrice || 0n) ? BigInt(pending.minGasPrice) : fees.gasPrice || 0n
+    if (gasPrice <= 0n) throw new Error('BNB Chain gas price unavailable.')
+    const sent = await sponsor.sendTransaction({ ...pending.transaction, value: BigInt(pending.transaction.value), type: 0, gasPrice })
+    await savePendingWithdrawal(session, { ...pending, hash: sent.hash })
+    if (!await sent.wait(2)) throw new Error('Withdrawal confirmation is pending. Keep the saved record.')
+    return reconcilePendingWithdrawal(session)
+  }
   const maxPriorityFeePerGas =
     BigInt(pending.minGasPrice) > (fees.maxPriorityFeePerGas || 0n)
       ? BigInt(pending.minGasPrice)

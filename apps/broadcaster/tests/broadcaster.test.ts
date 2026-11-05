@@ -10,8 +10,8 @@ import { Broadcaster } from '../src/broadcaster'
 import { Store } from '../src/storage'
 import { issueFee } from '../src/fees'
 import { ADAPT, PROXY } from '../src/transaction'
-import { CHAIN, CHAIN_ID, COMMON_TRANSACTION_TYPE, NETWORK, TOKENS } from '../src/config'
-import { config, privateRequest, withdrawalRequest } from './request.fixture'
+import { CHAIN, CHAIN_ID, COMMON_TRANSACTION_TYPE, FEE_TOKENS, NETWORK, TOKENS } from '../src/config'
+import { config, privateRequest, signedWithdrawalRequest, withdrawalRequest } from './request.fixture'
 import { decodeGuardedExecution, executionGuardCode } from '../../railgun/operator/execution-guard'
 
 const registry = new Interface(['function getContractAddress(string name) view returns (address)'])
@@ -31,12 +31,21 @@ async function packetFor(data: Record<string, unknown>, publicViewingKey: string
   return { packet, payload, decode }
 }
 
-async function fixture(guard?: string, withdrawalRecipient?: string) {
+function privateCalldata(data: Record<string, unknown>): string {
+  return data.transactType === 'COMMON' ? String(data.data) : PROXY.encodeFunctionData('transact', [
+    ADAPT.decodeFunctionData('execute', String(data.data))._transactions,
+  ])
+}
+
+async function fixture(guard?: string, withdrawalRecipient?: string, commonWithdrawal = false) {
+  if (CHAIN_ID === 56 && withdrawalRecipient && !commonWithdrawal) guard ??= Wallet.createRandom().address
   const privateViewingKey = randomBytes(32), publicViewingKey = Buffer.from(await ed.getPublicKey(privateViewingKey)).toString('hex')
   const wallet = new Wallet(Wallet.createRandom().privateKey)
-  const rates = { [TOKENS[0].address]: 10n ** 18n, [TOKENS[1].address]: 2_000_000_000n, [TOKENS[2].address]: 2_000_000_000n }
+  const rates = Object.fromEntries(FEE_TOKENS.map((token, index) => [token.address, index === 0 ? 10n ** 18n : 2_000_000_000n]))
   const quote = issueFee(store, rates)
-  const data = withdrawalRecipient ? await withdrawalRequest(quote.id, publicViewingKey, withdrawalRecipient)
+  const data = withdrawalRecipient ? CHAIN_ID === 56 && !commonWithdrawal
+    ? await signedWithdrawalRequest(quote.id, publicViewingKey, withdrawalRecipient)
+    : await withdrawalRequest(quote.id, publicViewingKey, withdrawalRecipient, 1, 1, TOKENS[CHAIN_ID === 56 ? 0 : 1].address)
     : await privateRequest(quote.id, publicViewingKey)
   const wire = await packetFor(data, publicViewingKey)
   const provider = {
@@ -57,20 +66,20 @@ async function fixture(guard?: string, withdrawalRecipient?: string) {
       return ADAPT.encodeFunctionResult('nonce', [0n])
     }),
     getRpcTransaction: vi.fn((value) => value), send: vi.fn(async (): Promise<unknown> => ({ type: 'CALL', calls: [
-      { type: 'CALL', to: NETWORK.proxyContract, input: withdrawalRecipient ? String(data.data) : PROXY.encodeFunctionData('transact', [
-        ADAPT.decodeFunctionData('execute', String(data.data))._transactions,
-      ]) },
+      { type: 'CALL', to: NETWORK.proxyContract, input: privateCalldata(data) },
     ] })),
   }
   const sdk = { address: 'test-fee-identity', privateViewingKey, publicViewingKey, ready: () => true,
     sign: vi.fn(async () => 'signature'),
-    fee: vi.fn(async () => withdrawalRecipient ? { [TOKENS[1].address]: 2_000_000n } : { [TOKENS[0].address]: 2_000_000_000_000_000n }),
+    fee: vi.fn(async () => withdrawalRecipient && CHAIN_ID !== 56 ? { [TOKENS[1].address]: 2_000_000n } : { [TOKENS[0].address]: 2_000_000_000_000_000n }),
     validate: vi.fn(async () => ({ railgunTxid: 'test-txid', utxoTreeIn: 0, commitment: 'test-commitment', notePublicKey: 'test-npk', pois: {} })),
     assure: vi.fn(async () => true),
   }
   const sender = { broadcastTransaction: vi.fn(async (raw: string, _validUntilMs?: number) => ({ hash: Transaction.from(raw).hash! })) }
   const sign = vi.spyOn(wallet, 'signTransaction')
-  const service = new Broadcaster({ ...config, executionGuard: guard, pilotWithdrawalRecipient: withdrawalRecipient }, store, sdk, provider as unknown as JsonRpcProvider, wallet, sender,
+  const service = new Broadcaster({ ...config, executionGuard: guard,
+    ...(commonWithdrawal ? { admission: 'public' as const } : {}), pilotWithdrawalRecipient: commonWithdrawal ? undefined : withdrawalRecipient },
+    store, sdk, provider as unknown as JsonRpcProvider, wallet, sender,
     { rates: async () => rates })
   return { ...wire, data, quote, service, sdk, provider, sender, sign, rates }
 }
@@ -107,34 +116,77 @@ describe('signing gate and duplicate recovery', () => {
       else expect(result.txHash).toBeTruthy()
     } finally { clock.mockRestore() }
   })
-  it('permits one atomic USDC withdrawal to the pinned recipient, persists the one-time gate, and replays duplicates', async () => {
+  it('permits one atomic USDC pilot withdrawal with its required fee asset, persists the one-time gate, and replays duplicates', async () => {
     const recipient = Wallet.createRandom().address
     const f = await fixture(Wallet.createRandom().address, recipient)
     f.service.config.pilotAccount = Wallet.createRandom().address
     const result = f.decode(await f.service.handle(f.payload))
     expect(result.txHash).toMatch(/^0x[0-9a-f]{64}$/)
     const signed = Transaction.from(store.get((store.db.prepare('SELECT key FROM requests').get() as { key: string }).key)!.raw!)
-    expect(signed.to).toBe(getAddress(NETWORK.proxyContract))
-    expect(signed.type).toBe(COMMON_TRANSACTION_TYPE)
+    expect(signed.to).toBe(CHAIN_ID === 56 ? f.service.config.executionGuard : getAddress(NETWORK.proxyContract))
+    expect(signed.type).toBe(CHAIN_ID === 56 ? 4 : COMMON_TRANSACTION_TYPE)
+    const batch = CHAIN_ID === 56 ? ADAPT.decodeFunctionData('execute', decodeGuardedExecution(signed.data).execution)._transactions
+      : PROXY.decodeFunctionData('transact', signed.data)._transactions
+    expect(batch).toHaveLength(CHAIN_ID === 56 ? 2 : 1)
+    expect(batch[batch.length - 1].unshieldPreimage.token.tokenAddress).toBe(TOKENS[1].address)
+    if (CHAIN_ID === 56) {
+      expect(BigInt(batch[0].boundParams.unshield)).toBe(0n)
+      expect(JSON.parse(store.pending()[0].fee_data!).payment.token).toBe(TOKENS[0].address)
+    }
     expect(store.db.prepare('SELECT value FROM settings WHERE key=?').get('withdrawalPilot')?.value).toBe(result.txHash)
     expect(await f.service.available()).toBe(false)
     expect(f.decode(await f.service.handle(f.payload))).toEqual(result)
     expect(f.sign).toHaveBeenCalledOnce()
     expect(f.sdk.validate).toHaveBeenCalledOnce()
   })
+  it('keeps the restricted pilot principal in USDC rather than selecting it from the fee asset', async () => {
+    const recipient = Wallet.createRandom().address
+    const f = await fixture(undefined, recipient)
+    const data = await withdrawalRequest(f.quote.id, f.sdk.publicViewingKey, recipient, 1, 1, TOKENS[0].address)
+    const wire = await packetFor(data, f.sdk.publicViewingKey)
+    expect(wire.decode(await f.service.handle(wire.payload)).error).toContain('USDC withdrawal only')
+    expect(f.sdk.fee).not.toHaveBeenCalled()
+    expect(f.sign).not.toHaveBeenCalled()
+    expect(f.sender.broadcastTransaction).not.toHaveBeenCalled()
+  })
+  it.runIf(CHAIN_ID === 56)('rejects a correctly bound USDT exit from the USDC-only pilot', async () => {
+    const recipient = Wallet.createRandom().address
+    const f = await fixture(Wallet.createRandom().address, recipient)
+    const data = await signedWithdrawalRequest(f.quote.id, f.sdk.publicViewingKey, recipient, TOKENS[2].address)
+    const wire = await packetFor(data, f.sdk.publicViewingKey)
+    expect(wire.decode(await f.service.handle(wire.payload)).error).toContain('USDC withdrawal only')
+    expect(f.sdk.fee).not.toHaveBeenCalled()
+    expect(f.sign).not.toHaveBeenCalled()
+    expect(f.sender.broadcastTransaction).not.toHaveBeenCalled()
+  })
+  it.runIf(CHAIN_ID === 56).each([false, true])('rejects a bound withdrawal if its exact net amount changes%s', async (duringValidation) => {
+    const f = await fixture(Wallet.createRandom().address, Wallet.createRandom().address)
+    const call = f.provider.call.getMockImplementation()!
+    let fee = duringValidation ? 0n : 25n
+    f.provider.call.mockImplementation(async (request) => request.data === PROXY.encodeFunctionData('unshieldFee')
+      ? PROXY.encodeFunctionResult('unshieldFee', [fee]) : call(request))
+    if (duringValidation) {
+      const proof = await f.sdk.validate()
+      f.sdk.validate.mockClear()
+      f.sdk.validate.mockImplementationOnce(async () => { fee = 25n; return proof })
+    }
+    expect(f.decode(await f.service.handle(f.payload)).error).toContain('privacy contracts')
+    expect(f.sign).not.toHaveBeenCalled()
+    expect(f.sender.broadcastTransaction).not.toHaveBeenCalled()
+  })
   it.each(['unconfigured', 'recipient', 'fee-token', 'underpaid', 'used'])('rejects an unsafe withdrawal pilot: %s', async (kind) => {
     const f = await fixture(undefined, Wallet.createRandom().address)
     if (kind === 'unconfigured') f.service.config.pilotWithdrawalRecipient = undefined
     if (kind === 'recipient') f.service.config.pilotWithdrawalRecipient = Wallet.createRandom().address
-    if (kind === 'fee-token') f.sdk.fee.mockResolvedValue({ [TOKENS[0].address]: 2_000_000_000_000_000n })
-    if (kind === 'underpaid') f.sdk.fee.mockResolvedValue({ [TOKENS[1].address]: 1n })
+    if (kind === 'fee-token') f.sdk.fee.mockResolvedValue({ [TOKENS[CHAIN_ID === 56 ? 1 : 0].address]: 2_000_000_000_000_000n })
+    if (kind === 'underpaid') f.sdk.fee.mockResolvedValue({ [TOKENS[CHAIN_ID === 56 ? 0 : 1].address]: 1n })
     if (kind === 'used') store.db.prepare('INSERT INTO settings(key,value) VALUES(?,?)').run('withdrawalPilot', 'previous-hash')
     expect(f.decode(await f.service.handle(f.payload)).error).toBeTruthy()
     expect(f.sign).not.toHaveBeenCalled()
     expect(f.sender.broadcastTransaction).not.toHaveBeenCalled()
   })
   it('prices a common withdrawal above the current base fee without changing its proof or fee', async () => {
-    const f = await fixture(undefined, Wallet.createRandom().address)
+    const f = await fixture(undefined, Wallet.createRandom().address, true)
     const minimum = BigInt(f.data.minGasPrice as string)
     f.provider.getBlock.mockResolvedValue({ number: 100, hash: blockHash, timestamp: Math.floor(Date.now() / 1000), baseFeePerGas: minimum })
     expect(f.decode(await f.service.handle(f.payload)).txHash).toBeTruthy()
@@ -146,7 +198,7 @@ describe('signing gate and duplicate recovery', () => {
     expect(f.sdk.fee).toHaveBeenCalledOnce()
   })
   it.runIf(CHAIN_ID === 56 || CHAIN_ID === 137)('prices COMMON withdrawals at their actual network minimum', async () => {
-    const f = await fixture(undefined, Wallet.createRandom().address)
+    const f = await fixture(undefined, Wallet.createRandom().address, true)
     f.provider.getFeeData.mockResolvedValue({ gasPrice: CHAIN_ID === 56 ? 3_000_000_000n : 12_000_000_000n,
       maxPriorityFeePerGas: 3_000_000_000n })
     expect(f.decode(await f.service.handle(f.payload)).txHash).toBeTruthy()
@@ -180,10 +232,10 @@ describe('signing gate and duplicate recovery', () => {
     expect(f.sender.broadcastTransaction).not.toHaveBeenCalled()
   })
   it.each(['cap', 'payment'])('never signs a repriced withdrawal exceeding its %s', async (reason) => {
-    const f = await fixture(undefined, Wallet.createRandom().address)
+    const f = await fixture(undefined, Wallet.createRandom().address, true)
     const base = reason === 'cap' ? config.maxGasPrice : BigInt(f.data.minGasPrice as string)
     f.provider.getBlock.mockResolvedValue({ number: 100, hash: blockHash, timestamp: Math.floor(Date.now() / 1000), baseFeePerGas: base })
-    if (reason === 'payment') f.sdk.fee.mockResolvedValue({ [TOKENS[1].address]: 440_000n })
+    if (reason === 'payment') f.sdk.fee.mockResolvedValue({ [TOKENS[CHAIN_ID === 56 ? 0 : 1].address]: 440_000n })
     expect(f.decode(await f.service.handle(f.payload)).error).toBeTruthy()
     expect(f.sign).not.toHaveBeenCalled()
     expect(f.sender.broadcastTransaction).not.toHaveBeenCalled()
@@ -412,22 +464,25 @@ describe('public admission and sequential settlement', () => {
     expect(f.sign).toHaveBeenCalledOnce()
     expect(store.get(record.key)?.cancel_hash).toBe(cancelHash)
   })
-  it.each(TOKENS)('permits repeated $symbol withdrawals with the fee in that token and preserves a used pilot marker', async (token) => {
+  it.each(TOKENS)('permits repeated $symbol withdrawals with the required fee asset and preserves a used pilot marker', async (token) => {
     const f = await fixture(Wallet.createRandom().address, Wallet.createRandom().address)
     f.service.config.admission = 'public'
     f.service.config.pilotWithdrawalRecipient = undefined
     store.db.prepare('INSERT INTO settings(key,value) VALUES(?,?)').run('withdrawalPilot', 'historical-pilot-hash')
     for (let nonce = 0; nonce < 2; nonce++) {
-      const data = await withdrawalRequest(f.quote.id, f.sdk.publicViewingKey, Wallet.createRandom().address, 1, 1, token.address,
-        `0x${(nonce + 1).toString(16).padStart(64, '0')}`)
+      const nullifier = `0x${(nonce + 1).toString(16).padStart(64, '0')}`
+      const data = CHAIN_ID === 56 && token.address !== TOKENS[0].address
+        ? await signedWithdrawalRequest(f.quote.id, f.sdk.publicViewingKey, Wallet.createRandom().address, token.address, nullifier)
+        : await withdrawalRequest(f.quote.id, f.sdk.publicViewingKey, Wallet.createRandom().address, 1, 1, token.address, nullifier)
       const wire = await packetFor(data, f.sdk.publicViewingKey)
-      f.sdk.fee.mockResolvedValue({ [getAddress(token.address)]: token.address === TOKENS[0].address ? 2_000_000_000_000_000n : 2_000_000n })
-      f.provider.send.mockResolvedValue({ type: 'CALL', to: NETWORK.proxyContract, input: data.data })
+      f.sdk.fee.mockResolvedValue({ [getAddress(CHAIN_ID === 56 ? TOKENS[0].address : token.address)]:
+        CHAIN_ID === 56 || token.address === TOKENS[0].address ? 2_000_000_000_000_000n : 2_000_000n })
+      f.provider.send.mockResolvedValue({ type: 'CALL', to: NETWORK.proxyContract, input: privateCalldata(data) })
       const response = wire.decode(await f.service.handle(wire.payload))
       expect(response.txHash).toBeTruthy()
       const signed = Transaction.from(store.pending()[0].raw!)
       expect(signed.nonce).toBe(nonce)
-      expect(signed.to).toBe(getAddress(NETWORK.proxyContract))
+      expect(signed.to).toBe(data.transactType === 'TX7702' ? f.service.config.executionGuard : getAddress(NETWORK.proxyContract))
       expect(await f.service.available()).toBe(false)
       await confirm(f, response.txHash!)
       expect(store.hasPending()).toBe(false)
@@ -472,25 +527,27 @@ describe('public admission and sequential settlement', () => {
     const recipient = kind === 'zero-recipient' ? ZeroAddress : kind === 'high-recipient'
       ? `0x01${Wallet.createRandom().address.slice(2)}` : Wallet.createRandom().address
     const data = await withdrawalRequest(f.quote.id, f.sdk.publicViewingKey, recipient, 1, 1,
-      kind === 'token' ? Wallet.createRandom().address : TOKENS[1].address)
+      kind === 'token' ? Wallet.createRandom().address : TOKENS[CHAIN_ID === 56 ? 0 : 1].address)
     if (['zero-amount', 'nft', 'sub-id'].includes(kind)) {
-      const transaction = PROXY.decodeFunctionData('transact', String(data.data))._transactions[0].toObject()
+      const batch = Array.from(PROXY.decodeFunctionData('transact', String(data.data))._transactions)
+      const transaction = (batch[batch.length - 1] as { toObject(): Record<string, any> }).toObject()
       transaction.unshieldPreimage = transaction.unshieldPreimage.toObject()
       transaction.unshieldPreimage.token = transaction.unshieldPreimage.token.toObject()
       if (kind === 'zero-amount') transaction.unshieldPreimage.value = 0n
       if (kind === 'nft') transaction.unshieldPreimage.token.tokenType = 1n
       if (kind === 'sub-id') transaction.unshieldPreimage.token.tokenSubID = 1n
-      data.data = PROXY.encodeFunctionData('transact', [[transaction]])
+      batch[batch.length - 1] = transaction
+      data.data = PROXY.encodeFunctionData('transact', [batch])
     }
-    if (kind === 'fee-token') f.sdk.fee.mockResolvedValue({ [TOKENS[0].address]: 2_000_000_000_000_000n })
-    if (kind === 'underpaid') f.sdk.fee.mockResolvedValue({ [TOKENS[1].address]: 1n })
+    if (kind === 'fee-token') f.sdk.fee.mockResolvedValue({ [TOKENS[CHAIN_ID === 56 ? 1 : 0].address]: 2_000_000_000_000_000n })
+    if (kind === 'underpaid') f.sdk.fee.mockResolvedValue({ [TOKENS[CHAIN_ID === 56 ? 0 : 1].address]: 1n })
     if (kind === 'expired') store.db.prepare('UPDATE fees SET expiration=0 WHERE id=?').run(f.quote.id)
     f.provider.send.mockResolvedValue({ type: 'CALL', to: NETWORK.proxyContract, input: data.data })
     const wire = await packetFor(data, f.sdk.publicViewingKey)
     const error = wire.decode(await f.service.handle(wire.payload)).error
     const expected = ['zero-recipient', 'high-recipient'].includes(kind) ? 'nonzero public address'
-      : ['token', 'zero-amount', 'nft', 'sub-id'].includes(kind) ? 'supported fee token'
-      : kind === 'fee-token' ? 'withdrawn token' : kind === 'expired' ? 'fee quote expired' : 'does not cover execution'
+      : ['token', 'zero-amount', 'nft', 'sub-id'].includes(kind) ? (CHAIN_ID === 56 ? 'request format' : 'supported fee token')
+      : kind === 'fee-token' ? (CHAIN_ID === 56 ? 'WBNB' : 'withdrawn token') : kind === 'expired' ? 'fee quote expired' : 'does not cover execution'
     expect(error).toContain(expected)
     expect(f.sdk.validate).not.toHaveBeenCalled()
     if (!['fee-token', 'underpaid'].includes(kind)) expect(f.sdk.fee).not.toHaveBeenCalled()

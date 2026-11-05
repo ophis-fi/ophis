@@ -34,12 +34,12 @@ export async function migrateOperator(config: Settings, store: Store, certificat
   const legacy = readSecrets(config.secrets)
   if (!legacy.feeMnemonic) throw new Error('Migration requires the original operator record.')
   const certificate = privateFile(certificatePath)
-  store.bindIdentity(CHAIN_ID)
   const root = dirname(config.secrets)
   const original = Buffer.from(JSON.stringify(legacy))
   let sdk: RailgunSDK | undefined
   try {
     const retired = sealOperator(original, certificate)
+    store.bindIdentity(CHAIN_ID)
     durableCreate(join(root, 'operator-retired.sealed.json'), retired)
     sdk = new RailgunSDK(config, legacy, store)
     await sdk.start()

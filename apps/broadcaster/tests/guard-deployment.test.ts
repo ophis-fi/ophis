@@ -81,9 +81,6 @@ async function bnbFixture() {
   const f = fixture()
   vi.resetModules()
   vi.stubEnv('OPHIS_BROADCASTER_CHAIN_ID', '56')
-  // Bypass only the release hold in this isolated test; every publication stays intercepted.
-  vi.doMock('../src/config', async () => ({ ...await vi.importActual<typeof import('../src/config')>('../src/config'),
-    assertSigningNetwork: vi.fn() }))
   const { NETWORK: bnb } = await import('../src/config')
   const { deployGuard: deployBNB } = await import('../src/guard-deployment')
   const expected = executionGuardCode(f.wallet.address, f.delegateCode, bnb.relayAdapt7702Contract)
@@ -118,6 +115,72 @@ async function bnbFixture() {
   })
   return { ...f, run: () => deployBNB(f.settings, f.approval, f.provider as unknown as JsonRpcProvider, f.wallet) }
 }
+
+it.each(['missing approval', 'unapproved funding', 'enabled sponsorship', 'wrong approval chain'])(
+  'keeps BNB commissioning closed for %s before signing or publication', async (change) => {
+    const f = await bnbFixture()
+    if (change === 'unapproved funding') f.approval.gasFundingApproved = false
+    if (change === 'enabled sponsorship') f.settings.enabled = true
+    if (change === 'wrong approval chain') f.approval.chainId = 137
+    const { assertSigningNetwork } = await import('../src/config')
+    expect(() => assertSigningNetwork(f.settings)).toThrow('awaits qualified private delivery')
+    const { deployGuard: deployBNB } = await import('../src/guard-deployment')
+    await expect(deployBNB(f.settings, change === 'missing approval' ? undefined as never : f.approval,
+      f.provider as unknown as JsonRpcProvider, f.wallet)).rejects.toThrow('awaits qualified private delivery')
+    expect(f.sign).not.toHaveBeenCalled()
+    expect(f.publish).not.toHaveBeenCalled()
+    expect(existsSync(f.path)).toBe(false)
+  },
+)
+
+it('refuses the BNB guard commissioning operation in fork mode', async () => {
+  const f = await bnbFixture()
+  const { deployGuard: deployBNB } = await import('../src/guard-deployment')
+  await expect(deployBNB({ ...f.settings, mode: 'fork' }, f.approval,
+    f.provider as unknown as JsonRpcProvider, f.wallet)).rejects.toThrow('unarmed, explicitly approved')
+  expect(f.sign).not.toHaveBeenCalled()
+  expect(f.publish).not.toHaveBeenCalled()
+  expect(existsSync(f.path)).toBe(false)
+})
+
+it.each(['cost ceiling', 'missing limits', 'operator identity', 'guard address', 'delegate identity', 'used nonce', 'runtime code'])(
+  'rejects BNB commissioning with invalid %s before signing or publication', async (change) => {
+    const f = await bnbFixture()
+    if (change === 'cost ceiling') f.approval.approvedDeploymentCostCeilingWei = '1'
+    if (change === 'missing limits') f.settings.maxGasPrice = 0n
+    if (change === 'operator identity') f.settings.operatorAddress = Wallet.createRandom().address
+    if (change === 'guard address') f.approval.predictedGuard = Wallet.createRandom().address
+    if (change === 'delegate identity') f.approval.canonicalDelegate = Wallet.createRandom().address
+    if (change === 'used nonce') f.provider.getTransactionCount.mockResolvedValue(1)
+    if (change === 'runtime code') f.provider.send.mockResolvedValue('0x6000')
+    await expect(f.run()).rejects.toThrow()
+    expect(f.sign).not.toHaveBeenCalled()
+    expect(f.publish).not.toHaveBeenCalled()
+    expect(existsSync(f.path)).toBe(false)
+  },
+)
+
+it.each(['price cap', 'ceiling cap', 'pilot cap', 'reserve floor', 'balance', 'network', 'registry', 'operator code', 'guard code'])(
+  'holds the approved BNB deployment before signing when %s changes', async (change) => {
+    const f = await bnbFixture()
+    if (change === 'price cap') f.approval.proposal.maxGasPriceWei = (f.settings.maxGasPrice + 1n).toString()
+    if (change === 'ceiling cap') f.approval.approvedDeploymentCostCeilingWei = (f.settings.maxTransactionCost + 1n).toString()
+    if (change === 'pilot cap') f.approval.proposal.maxTransactionCostWei = (f.settings.maxTransactionCost + 1n).toString()
+    if (change === 'reserve floor') f.approval.proposal.reserveWei = (f.settings.reserve - 1n).toString()
+    if (change === 'balance') f.provider.getBalance.mockResolvedValue(0n)
+    if (change === 'network') f.provider.getNetwork.mockResolvedValue({ chainId: 1n })
+    if (change === 'registry') f.provider.call.mockResolvedValue(f.registry.encodeFunctionResult('getContractAddress', [Wallet.createRandom().address]))
+    if (change === 'operator code' || change === 'guard code') {
+      const target = change === 'operator code' ? f.wallet.address : f.approval.predictedGuard
+      const original = f.provider.getCode.getMockImplementation()!
+      f.provider.getCode.mockImplementation(async (address) => address === target ? '0x6000' : original(address))
+    }
+    await expect(f.run()).rejects.toThrow()
+    expect(f.sign).not.toHaveBeenCalled()
+    expect(f.publish).not.toHaveBeenCalled()
+    expect(existsSync(f.path)).toBe(false)
+  },
+)
 
 it('persists the exact BNB deployment bundle and returns its acknowledgment separately from the signed transaction hash', async () => {
   const f = await bnbFixture()

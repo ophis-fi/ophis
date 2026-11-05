@@ -1,25 +1,72 @@
-import { CHAIN, CHAIN_NAME, CONFIG } from './config'
+import { CHAIN, CHAIN_ID, CHAIN_NAME, CONFIG, TOKENS, type TokenSymbol } from './config'
 import {
   ABIRailgunSmartWallet,
   ABIRelayAdapt7702,
   ABIRelayAdapt7702_Legacy_PreExecuteNonce,
   RelayAdapt7702Helper,
   RelayAdapt7702ExecutionType,
+  RelayAdapt7702Validator,
+  type TransactionStructV2,
   type RelayAdapt7702Request,
 } from '@railgun-community/engine'
-import { Contract, getAddress, Interface, verifyAuthorization, type TransactionRequest } from 'ethers'
+import { Contract, getAddress, Interface, verifyAuthorization, ZeroAddress, ZeroHash, type TransactionRequest } from 'ethers'
 import type { WalletSession } from './wallet'
 
 export const ADAPT = new Interface(ABIRelayAdapt7702)
 export const PRIVACY = new Interface(ABIRailgunSmartWallet)
 type Receipt = { status: number | null; logs: readonly { address: string; topics: readonly string[]; data: string }[] }
 const REGISTRY = new Interface(['function getContractAddress(string name) view returns (address)'])
+type WithdrawalTransaction = {
+  nullifiers: readonly string[]
+  commitments: readonly string[]
+  boundParams: { unshield: bigint; minGasPrice: bigint; treeNumber: bigint; chainID: bigint; adaptContract: string; adaptParams: string; commitmentCiphertext: readonly unknown[] }
+  unshieldPreimage: { npk: string; value: bigint; token: { tokenAddress: string; tokenType: bigint; tokenSubID: bigint } }
+}
 
-export function assertAtomicWithdrawal(data: string): void {
-  const [transactions] = PRIVACY.decodeFunctionData('transact', data)
-  // Common proofs have no signature binding the batch; fee and unshield must share one proof.
-  if (transactions.length !== 1 || transactions[0].boundParams.unshield !== 1n)
-    throw new Error('This withdrawal cannot be safely broadcast. Its fee and output must share one proof; try a smaller amount.')
+export function assertAtomicWithdrawal(data: string, feeToken?: TokenSymbol): void {
+  const transactions = PRIVACY.decodeFunctionData('transact', data)[0] as readonly WithdrawalTransaction[]
+  if (PRIVACY.encodeFunctionData('transact', [transactions]) !== data.toLowerCase()) throw new Error('Canonical withdrawal calldata is required.')
+  if (transactions.length === 1 && transactions[0].boundParams.unshield === 1n) {
+    if (CHAIN_ID === 56 && feeToken === 'WBNB' &&
+      getAddress(transactions[0].unshieldPreimage.token.tokenAddress) !== getAddress(TOKENS.WBNB.address))
+      throw new Error('A stablecoin withdrawal requires its separate WBNB fee proof in the same atomic batch.')
+    return
+  }
+  throw new Error('This withdrawal cannot be safely broadcast. Its fee and output must share one proof; stablecoin withdrawals paid in WBNB require a signed private execution.')
+}
+
+export function withdrawalOutput(data: string) {
+  const transactions = PRIVACY.decodeFunctionData('transact', data)[0] as readonly WithdrawalTransaction[]
+  const withdrawals = transactions.filter((transaction) => transaction.boundParams.unshield === 1n)
+  if (withdrawals.length !== 1) throw new Error('Saved withdrawal output is ambiguous. Keep the complete saved proof.')
+  return withdrawals[0].unshieldPreimage
+}
+
+export function assertBoundWithdrawal(data: string, account: string, token: TokenSymbol, recipient: string, minimum: bigint) {
+  const decoded = ADAPT.parseTransaction({ data })
+  if (CHAIN_ID !== 56 || !['USDC', 'USDT'].includes(token) || decoded?.name !== 'execute' ||
+    ADAPT.encodeFunctionData(decoded.fragment, decoded.args) !== data.toLowerCase()) throw new Error('Canonical signed stablecoin withdrawal required.')
+  const transactions = decoded.args._transactions as readonly WithdrawalTransaction[]
+  const action = decoded.args._actionData
+  const nullifiers = transactions.flatMap((tx) => [...tx.nullifiers])
+  if (transactions.length !== 2 || transactions[0].boundParams.unshield !== 0n || transactions[1].boundParams.unshield !== 1n ||
+    !action.requireSuccess || action.calls.length !== 1 || new Set(nullifiers).size !== nullifiers.length ||
+    transactions.some((tx) => tx.boundParams.chainID !== CHAIN || tx.boundParams.minGasPrice !== 0n ||
+      getAddress(tx.boundParams.adaptContract) !== getAddress(account) || tx.boundParams.adaptParams !== ZeroHash ||
+      !tx.nullifiers.length || tx.nullifiers.includes(ZeroHash) || !tx.commitments.length)) throw new Error('Withdrawal proofs must be bound to the signed execution account.')
+  const call = action.calls[0]
+  const [transfers] = ADAPT.decodeFunctionData('transfer', call.data)
+  const note = transactions[1].unshieldPreimage
+  if (getAddress(call.to) !== getAddress(account) || BigInt(call.value) !== 0n || transfers.length !== 1 ||
+    ADAPT.encodeFunctionData('transfer', [transfers]) !== call.data.toLowerCase() ||
+    getAddress(transfers[0].token.tokenAddress) !== getAddress(TOKENS[token].address) ||
+    transfers[0].token.tokenType !== 0n || transfers[0].token.tokenSubID !== 0n ||
+    getAddress(transfers[0].to) !== getAddress(recipient) || minimum <= 0n || transfers[0].value !== minimum ||
+    getAddress(note.token.tokenAddress) !== getAddress(TOKENS[token].address) || note.token.tokenType !== 0n || note.token.tokenSubID !== 0n ||
+    BigInt(note.npk) !== BigInt(account) || note.value <= 0n) throw new Error('Signed withdrawal transfer differs from the reviewed recipient or amount.')
+  RelayAdapt7702Validator.validateExecution(transactions as unknown as TransactionStructV2[], action, decoded.args._signature, CHAIN_ID, account,
+    { executionType: RelayAdapt7702ExecutionType.ExecuteWithNonce, executeNonce: BigInt(decoded.args._nonce) })
+  return { transactions, executeNonce: BigInt(decoded.args._nonce) }
 }
 
 export function assertAuthorization(request: RelayAdapt7702Request): void {

@@ -48,7 +48,7 @@ async function fixture(chainId = CHAIN_ID, acknowledge = acknowledgeLoss) {
 async function selectedMonitor(chainId: number) {
   vi.resetModules(); vi.stubEnv('OPHIS_BROADCASTER_CHAIN_ID', String(chainId))
   const operations = await import('../src/operations')
-  const { TOKENS: tokens } = await import('../src/config')
+  const { FEE_TOKENS: tokens } = await import('../src/config')
   const settings = { ...config, chainId, operatorAddress, state: path }
   const health = { chainId, operatorAddress, ready: true, locked: false, synchronized: true,
     pending: 0, feeAssurancePending: 0, errors: 0, wakuSaturated: false }
@@ -60,9 +60,9 @@ async function selectedMonitor(chainId: number) {
     getBalance: vi.fn(async () => settings.reserve + settings.maxTransactionCost),
     send: vi.fn(async () => `0x${chainId.toString(16)}`),
   }
-  const oracle = { rates: async () => Object.fromEntries(tokens.map((token) => [getAddress(token.address), 1n])) }
+  const oracle = { rates: vi.fn(async () => Object.fromEntries(tokens.map((token) => [getAddress(token.address), 1n]))) }
   const run = () => operations.monitor(settings, provider as unknown as JsonRpcProvider, oracle, 4340)
-  return { operations, settings, health, provider, run }
+  return { operations, settings, health, provider, oracle, run }
 }
 
 it('acknowledges a finalized failure without changing the signed request, fee flag, gas expense or pilot marker', async () => {
@@ -99,14 +99,14 @@ it.each(['missing', 'success', 'unconfirmed', 'assured', 'cost', 'hash', 'from',
   if (reason === 'hash') f.receipt.hash = `0x${'bb'.repeat(32)}`
   if (reason === 'from') f.receipt.from = Wallet.createRandom().address
   if (reason === 'nonce') f.provider.getTransactionCount.mockResolvedValue(2)
-  if (reason === 'chain') f.provider.getNetwork.mockResolvedValue({ chainId: 56n })
+  if (reason === 'chain') f.provider.getNetwork.mockResolvedValue({ chainId: CHAIN_ID === 56 ? 1n : 56n })
   if (reason === 'unfinalized') f.receipt.blockNumber = 91
   if (reason === 'reorg') f.provider.getBlock.mockImplementation(async (tag) => ({ number: tag === 'latest' ? 100 : 90,
     timestamp: Math.floor(Date.now() / 1000), baseFeePerGas: 1n, hash: `0x${'cc'.repeat(32)}` }))
   if (reason === 'stale') f.provider.getBlock.mockResolvedValue({ number: 100, timestamp: 0, baseFeePerGas: 1n, hash: f.receipt.blockHash })
   if (reason === 'delegated') f.provider.getCode.mockResolvedValue('0xef0100')
   if (reason === 'cancellation') store.db.prepare('UPDATE requests SET cancel_hash=?').run('cancel-hash')
-  if (reason === 'settings-chain') f.settings.chainId = 56
+  if (reason === 'settings-chain') f.settings.chainId = CHAIN_ID === 56 ? 1 : 56
   if (reason === 'malformed-finality') f.provider.getBlock.mockImplementation(async (tag) => ({
     number: tag === 'latest' ? 100 : tag === 'finalized' ? NaN : Number(tag),
     timestamp: Math.floor(Date.now() / 1000), baseFeePerGas: 1n, hash: f.receipt.blockHash }))
@@ -173,7 +173,7 @@ it.each(['healthy', 'low-reserve', 'pending', 'fee', 'pricing', 'stale', 'offlin
     pending: 0, feeAssurancePending: 0, errors: 0, wakuSaturated: false }
   if (condition === 'pending') health.pending = 1
   if (condition === 'fee') health.feeAssurancePending = 1
-  if (condition === 'wrong-service-chain') health.chainId = 56
+  if (condition === 'wrong-service-chain') health.chainId = CHAIN_ID === 56 ? 1 : 56
   if (condition === 'wrong-service-operator') health.operatorAddress = Wallet.createRandom().address
   if (condition === 'waku') health.wakuSaturated = true
   vi.stubGlobal('fetch', vi.fn(async () => {
@@ -185,7 +185,8 @@ it.each(['healthy', 'low-reserve', 'pending', 'fee', 'pricing', 'stale', 'offlin
       if (condition === 'rpc-down') throw new Error('upstream-credential-must-not-leak')
       return { number: 100, hash: blockHash, timestamp: condition === 'stale' ? 0 : Math.floor(Date.now() / 1000), baseFeePerGas: 1n }
     },
-    send: async () => condition === 'chain' ? '0x38' : '0x1',
+    getFeeData: async () => ({ gasPrice: 1n, maxPriorityFeePerGas: 1n }),
+    send: async () => `0x${(condition === 'chain' ? (CHAIN_ID === 56 ? 1 : 56) : CHAIN_ID).toString(16)}`,
     getBalance: async () => condition === 'low-reserve' ? 0n : config.reserve + config.maxTransactionCost,
   }
   const oracle = { rates: async () => {
@@ -213,7 +214,8 @@ it('rejects metric-label injection and excludes private fee balances from monito
     pending: 0, feeAssurancePending: 0, errors: 0, wakuSaturated: false,
     feeBalances: { privateFeeAmount: 'do-not-export' } }
   vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify(health))))
-  const provider = { getBlock: async () => ({ number: 100, hash: blockHash, timestamp: Math.floor(Date.now() / 1000), baseFeePerGas: 1n }), send: async () => '0x1',
+  const provider = { getBlock: async () => ({ number: 100, hash: blockHash, timestamp: Math.floor(Date.now() / 1000), baseFeePerGas: 1n }),
+    getFeeData: async () => ({ gasPrice: 1n, maxPriorityFeePerGas: 1n }), send: async () => `0x${CHAIN_ID.toString(16)}`,
     getBalance: async () => config.reserve + config.maxTransactionCost }
   const result = await monitor({ ...config, state: path, operatorAddress }, provider as unknown as JsonRpcProvider,
     { rates: async () => Object.fromEntries(TOKENS.map((token) => [getAddress(token.address), 1n])) }, 4340)
@@ -229,6 +231,21 @@ it.each([56, 137, 42161])('monitors chain %i with its own identity, settlement s
   expect(f.provider.getBlock).toHaveBeenCalledWith('finalized')
   expect(f.operations.monitorMetrics(result).trim().split('\n').every((line) => line.includes(`chain_id="${chainId}"`))).toBe(true)
   expect(f.provider.getFeeData).toHaveBeenCalledTimes(chainId === 56 || chainId === 137 ? 1 : 0)
+})
+
+it('requires WBNB pricing rather than stablecoin quotes when monitoring BNB', async () => {
+  const f = await selectedMonitor(56)
+  expect((await f.run()).ok).toBe(true)
+  f.oracle.rates.mockResolvedValue({})
+  expect((await f.run()).alerts).toEqual(['stale-fee-pricing'])
+})
+
+it.each(TOKENS.slice(1))('retains historical received $symbol fee accounting', (token) => {
+  store.signed('old-stable-fee', 'encrypted', 'raw', 'old-fee-hash', 100n, config.dailyBudget, 0,
+    JSON.stringify({ payment: { token: token.address, amount: '12345' } }))
+  store.confirmed('old-stable-fee', 80n, Date.now())
+  store.assured('old-stable-fee', true)
+  expect(accountingReport(store.db).receivedFees).toEqual({ [getAddress(token.address)]: '12345' })
 })
 
 it.each(['gas cap', 'missing minimum', 'missing finality', 'wrong network'])(
@@ -269,7 +286,7 @@ it('reports a bounded node timeout even when a JSON-RPC initialization never set
   try {
     vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({ chainId: CHAIN_ID, operatorAddress, ready: true, locked: false,
       synchronized: true, pending: 0, feeAssurancePending: 0, errors: 0, wakuSaturated: false }))))
-    const provider = { getBlock: () => new Promise(() => {}), send: async () => '0x1',
+    const provider = { getBlock: () => new Promise(() => {}), send: async () => `0x${CHAIN_ID.toString(16)}`,
       getBalance: async () => config.reserve + config.maxTransactionCost }
     const pending = monitor({ ...config, state: path, operatorAddress }, provider as unknown as JsonRpcProvider,
       { rates: async () => Object.fromEntries(TOKENS.map((token) => [getAddress(token.address), 1n])) }, 4340)

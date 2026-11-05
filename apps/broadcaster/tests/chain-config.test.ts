@@ -16,6 +16,8 @@ it.each([[1, 'ETH', 'WETH', 1], [42161, 'ETH', 'WETH', 1], [56, 'BNB', 'WBNB', 0
     expect(Object.values(config.TOPICS)).toEqual(['fees', 'transact', 'transact-response']
       .map((kind) => `/railgun/v2/0-${chainId}-${kind}/json`))
     expect(config.TOKENS.every((token) => token.address === getAddress(token.address))).toBe(true)
+    expect(config.TOKENS).toHaveLength(3)
+    expect(config.FEE_TOKENS).toEqual(chainId === 56 ? config.TOKENS.slice(0, 1) : config.TOKENS)
     expect(config.settings({ OPHIS_BROADCASTER_CHAIN_ID: String(chainId), OPHIS_BROADCASTER_RPC: 'http://127.0.0.1:9' }).chainId).toBe(chainId)
     expect(() => config.settings({ OPHIS_BROADCASTER_CHAIN_ID: chainId === 1 ? '56' : '1' })).toThrow('match the process')
     if (chainId !== 1) {
@@ -30,6 +32,9 @@ it.each([[1, 'ETH', 'WETH', 1], [42161, 'ETH', 'WETH', 1], [56, 'BNB', 'WBNB', 0
           .rejects.toThrow('awaits qualified private delivery')
       await expect(deployGuard(disabled, null as never, null as never, null as never))
         .rejects.toThrow('awaits qualified private delivery')
+      if (chainId !== 56)
+        await expect(deployGuard(disabled, { chainId, gasFundingApproved: true } as never, null as never, null as never))
+          .rejects.toThrow('awaits qualified private delivery')
     }
   },
 )

@@ -88,12 +88,13 @@ export class Broadcaster {
       phase = 'format'
       const parsed = parseRequest(request.data, this.wallet.address, this.config)
       phase = 'pilot'
-      if (parsed.type4 && this.config.admission === 'pilot' && this.config.pilotAccount &&
+      if (parsed.type4 && !parsed.withdrawal && this.config.admission === 'pilot' && this.config.pilotAccount &&
         getAddress(String(parsed.transaction.to)) !== this.config.pilotAccount)
         throw new Error('This operator is restricted to its selected pilot account.')
       let withdrawalToken: string | undefined
-      if (!parsed.type4) {
-        const withdrawal = parsed.transactions[0].unshieldPreimage
+      if (!parsed.type4 || parsed.withdrawal) {
+        const withdrawal = parsed.withdrawal ? { npk: parsed.withdrawal.recipient, value: parsed.withdrawal.amount,
+          token: { tokenAddress: parsed.withdrawal.token, tokenType: 0n, tokenSubID: 0n } } : parsed.transactions[0].unshieldPreimage
         phase = 'withdrawal-recipient'
         if (typeof withdrawal.npk !== 'string') throw new Error('Wrong withdrawal recipient.')
         const recipient = BigInt(withdrawal.npk)
@@ -116,9 +117,9 @@ export class Broadcaster {
       this.busy = true; this.activeKey = request.key; reserved = true
       phase = 'fee'
       const payment = await this.sdk.fee(parsed)
-      if (withdrawalToken && (Object.keys(payment).length !== 1 || !payment[withdrawalToken])) {
+      if (withdrawalToken && (Object.keys(payment).length !== 1 || !payment[CHAIN_ID === 56 ? TOKENS[0].address : withdrawalToken])) {
         phase = 'withdrawal-fee'
-        throw new Error('The withdrawal broadcaster fee must use the withdrawn token.')
+        throw new Error(CHAIN_ID === 56 ? 'The withdrawal broadcaster fee must use WBNB.' : 'The withdrawal broadcaster fee must use the withdrawn token.')
       }
       validateFee(this.store, parsed.feesID, payment, 1n, await this.oracle.rates())
       const { nonce, confirmed, balance, block, baseFee, minimumGasPrice } = await this.state()
@@ -188,7 +189,7 @@ export class Broadcaster {
       const [feeToken, feeAmount] = Object.entries(payment)[0]
       this.store.signed(request.key, request.envelope, raw, hash, budget, this.config.dailyBudget,
         nonce, JSON.stringify({ ...proof, payment: { token: feeToken, amount: feeAmount.toString() } }),
-        feeQuote.expiration, this.config.admission === 'pilot' && !parsed.type4)
+        feeQuote.expiration, this.config.admission === 'pilot' && (!parsed.type4 || !!parsed.withdrawal))
       phase = 'submit'
       const sent = await this.sender.broadcastTransaction(raw, feeQuote.expiration)
       if (sent.hash !== hash) throw new Error('Unexpected protected transaction hash.')
@@ -209,9 +210,10 @@ export class Broadcaster {
           : 'The withdrawal destination must be a nonzero public address. Keep the saved withdrawal.',
         'withdrawal-token': this.config.admission === 'pilot'
           ? 'This pilot permits a positive USDC withdrawal only. Keep the saved withdrawal.'
-          : 'A withdrawal requires a positive amount of a supported fee token. Keep the saved withdrawal.',
+          : `A withdrawal requires a positive amount of a supported ${CHAIN_ID === 56 ? 'withdrawal' : 'fee'} token. Keep the saved withdrawal.`,
         'withdrawal-used': 'The one-time withdrawal pilot is already used. Check the pending withdrawal before retrying.',
-        'withdrawal-fee': 'The withdrawal fee must be paid in the withdrawn token. Keep the saved withdrawal.',
+        'withdrawal-fee': CHAIN_ID === 56 ? 'The withdrawal fee must be paid in WBNB. Keep the saved withdrawal.'
+          : 'The withdrawal fee must be paid in the withdrawn token. Keep the saved withdrawal.',
         simulation: 'The private transaction did not pass execution simulation. Check recovery before retrying.',
         network: 'The broadcaster could not verify the current privacy contracts. Keep the saved withdrawal.',
         pricing: 'Current gas pricing exceeds the permitted limits. Keep the saved proof and retry through the broadcaster later.',
@@ -233,6 +235,12 @@ export class Broadcaster {
   }
 
   private async validateNetworkAndAuthority(request: ParsedRequest, blockTag: number): Promise<void> {
+    if (request.withdrawal) {
+      const result = await this.provider.call({ to: NETWORK.proxyContract, data: PROXY.encodeFunctionData('unshieldFee'), blockTag })
+      const fee = BigInt(PROXY.decodeFunctionResult('unshieldFee', result)[0])
+      if (fee < 0n || fee > 5000n || request.withdrawal.amount !== request.withdrawal.grossAmount - request.withdrawal.grossAmount * fee / 10_000n)
+        throw new Error('The signed withdrawal transfer does not match its current net unshield amount.')
+    }
     if (this.config.executionGuard) {
       const [code, delegateCode] = await Promise.all([
         this.provider.getCode(this.config.executionGuard, blockTag),

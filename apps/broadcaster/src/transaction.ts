@@ -1,9 +1,9 @@
 import { ABIRailgunSmartWallet, ABIRelayAdapt7702, RelayAdapt7702ExecutionType,
   RelayAdapt7702Validator, type TransactionStructV2 } from '@railgun-community/engine'
 import { versionCompare } from '@railgun-community/shared-models'
-import { authorizationify, getAddress, Interface, isHexString, Signature,
+import { authorizationify, getAddress, Interface, isHexString, Signature, ZeroAddress, ZeroHash,
   type Authorization, type ContractTransaction } from 'ethers'
-import { BROADCASTER_VERSION, CHAIN, CHAIN_ID, COMMON_TRANSACTION_TYPE, MAX_GAS, NETWORK, VERSION, type Settings } from './config'
+import { BROADCASTER_VERSION, CHAIN, CHAIN_ID, COMMON_TRANSACTION_TYPE, MAX_GAS, NETWORK, TOKENS, VERSION, type Settings } from './config'
 import { object } from './wire'
 
 export const ADAPT = new Interface(ABIRelayAdapt7702)
@@ -25,6 +25,31 @@ export interface ParsedRequest {
   nullifiers: string[]
   pois: Record<string, unknown>
   feesID: string
+  withdrawal?: { recipient: string; token: string; amount: bigint; grossAmount: bigint }
+}
+
+function boundStableWithdrawal(transactions: TransactionStructV2[], call: { to: unknown; data: unknown; value: unknown }, account: string): NonNullable<ParsedRequest['withdrawal']> {
+  if (transactions.length !== 2 || BigInt(transactions[0].boundParams.unshield) !== 0n ||
+    BigInt(transactions[1].boundParams.unshield) !== 1n || typeof call.to !== 'string' || getAddress(call.to) !== account ||
+    typeof call.data !== 'string' || BigInt(String(call.value)) !== 0n)
+    throw new Error('A bound stablecoin withdrawal requires one canonical self transfer and its private WBNB fee.')
+  const transfer = ADAPT.parseTransaction({ data: call.data })
+  if (transfer?.name !== 'transfer' || ADAPT.encodeFunctionData(transfer.fragment, transfer.args) !== call.data || transfer.args[0].length !== 1)
+    throw new Error('A bound stablecoin withdrawal requires one canonical self transfer.')
+  const output = transfer.args[0][0], principal = transactions[1].unshieldPreimage
+  if (typeof output.token.tokenAddress !== 'string' || typeof output.to !== 'string' ||
+    typeof principal.token.tokenAddress !== 'string' || typeof principal.npk !== 'string')
+    throw new Error('Invalid bound withdrawal token or recipient.')
+  const token = getAddress(output.token.tokenAddress), recipient = getAddress(output.to)
+  const amount = BigInt(output.value), grossAmount = BigInt(principal.value)
+  if (!TOKENS.slice(1).some((item) => item.address === token) || getAddress(principal.token.tokenAddress) !== token ||
+    BigInt(principal.token.tokenType) !== 0n || BigInt(principal.token.tokenSubID) !== 0n ||
+    BigInt(output.token.tokenType) !== 0n || BigInt(output.token.tokenSubID) !== 0n ||
+    BigInt(principal.npk) !== BigInt(account) || recipient === account || amount <= 0n || amount > grossAmount ||
+    transactions.some((tx) => !tx.nullifiers.length || !tx.commitments.length ||
+      tx.boundParams.commitmentCiphertext.length !== tx.commitments.length - Number(tx.boundParams.unshield)))
+    throw new Error('Invalid bound stablecoin withdrawal proof or transfer.')
+  return { recipient, token, amount, grossAmount }
 }
 
 export function parseRequest(data: Record<string, unknown>, operator: string, settings: Settings): ParsedRequest {
@@ -38,6 +63,7 @@ export function parseRequest(data: Record<string, unknown>, operator: string, se
   const to = getAddress(data.to), calldata = data.data.toLowerCase()
   let transaction: ContractTransaction, transactions: TransactionStructV2[], authorization: Authorization | undefined
   let executeNonce: bigint | undefined
+  let withdrawal: ParsedRequest['withdrawal']
   const type4 = data.transactType === 'TX7702'
   if (type4) {
     if (!object(data.authorization) || !object(data.authorization.signature) || data.useRelayAdapt !== true || to === getAddress(operator))
@@ -57,10 +83,22 @@ export function parseRequest(data: Record<string, unknown>, operator: string, se
     if (transactions.some((tx) => BigInt(tx.boundParams.minGasPrice) !== 0n))
       throw new Error('Private type-4 proofs must use a zero gas-price floor.')
     executeNonce = BigInt(decoded.args._nonce)
-    if (decoded.args._actionData.requireSuccess !== false || decoded.args._actionData.calls.length > 64)
+    const action = decoded.args._actionData
+    if (action.calls.length > 64 || (action.requireSuccess !== false && action.requireSuccess !== true))
       throw new Error('Unsupported private execution policy.')
+    if (CHAIN_ID === 56 && transactions.some((tx) => BigInt(tx.boundParams.chainID) !== CHAIN ||
+      typeof tx.boundParams.adaptContract !== 'string' || getAddress(tx.boundParams.adaptContract) !== to || tx.boundParams.adaptParams !== ZeroHash))
+      throw new Error('Every BNB private proof must be bound to its signed execution account.')
+    if (CHAIN_ID === 56 && !action.requireSuccess && action.calls.length === 1 &&
+      action.calls[0].to === to && typeof action.calls[0].data === 'string' && action.calls[0].data.startsWith(ADAPT.getFunction('transfer')!.selector))
+      throw new Error('A BNB public withdrawal must require its signed transfer to succeed.')
     RelayAdapt7702Validator.validateExecution(transactions, decoded.args._actionData, decoded.args._signature, CHAIN_ID, to,
       { executionType: RelayAdapt7702ExecutionType.ExecuteWithNonce, executeNonce })
+    if (action.requireSuccess) {
+      if (CHAIN_ID !== 56 || !settings.executionGuard || action.calls.length !== 1)
+        throw new Error('Only guarded BNB stablecoin withdrawals may require all actions to succeed.')
+      withdrawal = boundStableWithdrawal(transactions, action.calls[0], to)
+    }
     const gasLimit = uint(data.gasLimit, true), maxFeePerGas = uint(data.maxFeePerGas, true)
     const maxPriorityFeePerGas = uint(data.maxPriorityFeePerGas, true)
     if (gasLimit > MAX_GAS || maxFeePerGas > settings.maxGasPrice || maxPriorityFeePerGas > maxFeePerGas ||
@@ -75,7 +113,19 @@ export function parseRequest(data: Record<string, unknown>, operator: string, se
     if (decoded?.name !== 'transact' || PROXY.encodeFunctionData(decoded.fragment, decoded.args) !== calldata)
       throw new Error('Canonical privacy transact calldata is required.')
     transactions = Array.from(decoded.args._transactions) as TransactionStructV2[]
-    if (transactions.length !== 1 || BigInt(transactions[0].boundParams.unshield) !== 1n)
+    if (CHAIN_ID === 56) {
+      const withdrawal = transactions[transactions.length - 1]
+      const tokenAddress = withdrawal?.unshieldPreimage.token.tokenAddress
+      const token = typeof tokenAddress === 'string' ? getAddress(tokenAddress) : undefined
+      if (transactions.length !== 1 || !withdrawal || token !== TOKENS[0].address || BigInt(withdrawal.boundParams.unshield) !== 1n ||
+        BigInt(withdrawal.unshieldPreimage.token.tokenType) !== 0n || BigInt(withdrawal.unshieldPreimage.token.tokenSubID) !== 0n ||
+        BigInt(withdrawal.unshieldPreimage.value) <= 0n ||
+        transactions.some((tx) => !tx.nullifiers.length || !tx.commitments.length ||
+          tx.boundParams.commitmentCiphertext.length !== tx.commitments.length - Number(tx.boundParams.unshield) ||
+          BigInt(tx.boundParams.chainID) !== CHAIN || typeof tx.boundParams.adaptContract !== 'string' || getAddress(tx.boundParams.adaptContract) !== ZeroAddress ||
+          tx.boundParams.adaptParams !== ZeroHash))
+        throw new Error('BNB COMMON withdrawals require one WBNB proof; stablecoin withdrawals require signed bound execution.')
+    } else if (transactions.length !== 1 || BigInt(transactions[0].boundParams.unshield) !== 1n)
       throw new Error('The withdrawal and broadcaster fee must share one proof.')
     const gasPrice = uint(data.minGasPrice, true)
     if (gasPrice > settings.maxGasPrice) throw new Error('The request exceeds the operator gas-price limit.')
@@ -86,7 +136,7 @@ export function parseRequest(data: Record<string, unknown>, operator: string, se
     nullifiers.some((n) => !isHexString(n, 32)) || new Set(nullifiers).size !== nullifiers.length)
     throw new Error('Invalid private transaction or nullifier set.')
   return { transaction, transactions, type4, authorization, executeNonce, nullifiers,
-    pois: data.preTransactionPOIsPerTxidLeafPerList, feesID: data.feesID }
+    pois: data.preTransactionPOIsPerTxidLeafPerList, feesID: data.feesID, withdrawal }
 }
 
 export function assertTraceSuccess(trace: unknown, count = { nodes: 0 }, depth = 0): void {

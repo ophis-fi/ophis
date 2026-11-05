@@ -51,7 +51,7 @@ async function fixture(chainId: number) {
 }
 
 it.each([
-  [1, 2_875_000_000n], [42161, 2_875_000_000n], [56, 805_000_000_000_000_000_000n], [137, 115_000n],
+  [1, 2_875_000_000n], [42161, 2_875_000_000n], [137, 115_000n],
 ])('prices the selected native currency and stablecoin precision on chain %i', async (chainId, stableRate) => {
   const { oracle, provider, TOKENS } = await fixture(chainId)
   expect(await oracle.rates()).toEqual({ [getAddress(TOKENS[0].address)]: 1_150_000_000_000_000_000n,
@@ -62,17 +62,27 @@ it.each([
     if (abi.parseTransaction({ data: call.data })!.name === 'latestRoundData') expect(call.blockTag).toBe(100)
 })
 
-it('rounds BNB stablecoin reimbursement upward with non-integral prices and a markup', async () => {
-  const { oracle, feeds, TOKENS } = await fixture(56)
-  feeds[0].round[1] = 70_000_000_001n
-  feeds[1].round[1] = 99_000_001n
-  const rate = (await oracle.rates())[getAddress(TOKENS[1].address)]
-  const required = feeds[0].round[1] * 10n ** 18n * 11_500n
-  expect(rate * feeds[1].round[1] * 10_000n).toBeGreaterThanOrEqual(required)
-  expect((rate - 2n) * feeds[1].round[1] * 10_000n).toBeLessThan(required)
+it('prices only WBNB with margin without a native or stablecoin USD feed dependency', async () => {
+  const { oracle, feeds, provider, TOKENS } = await fixture(56)
+  for (const feed of feeds) { feed.code = '0x'; feed.round[1] = 0n; feed.round[3] = 0n }
+  expect(await oracle.rates()).toEqual({ [getAddress(TOKENS[0].address)]: 1_150_000_000_000_000_000n })
+  expect(provider.resolveName).not.toHaveBeenCalled()
+  expect(provider.getCode).not.toHaveBeenCalled()
+  expect(provider.call).not.toHaveBeenCalled()
+  expect(provider.getBlock).toHaveBeenCalledWith('latest')
 })
 
-it.each([[1, 0, 3720], [56, 0, 87], [56, 1, 960], [137, 1, 87]])(
+it('rechecks BNB head freshness on each WBNB quote and rejects stale or future heads', async () => {
+  const f = await fixture(56)
+  await expect(f.oracle.rates()).resolves.toBeDefined()
+  for (const timestamp of [now - 46, now + 46]) {
+    f.provider.getBlock.mockResolvedValue({ number: 101, timestamp })
+    await expect(f.oracle.rates()).rejects.toThrow('read node is stale')
+  }
+  expect(f.provider.getBlock).toHaveBeenCalledTimes(3)
+})
+
+it.each([[1, 0, 3720], [137, 1, 87]])(
   'does not let chain %i cache extend feed %i freshness past %is', async (chainId, feed, age) => {
     const f = await fixture(chainId)
     f.feeds[feed].round[3] = BigInt(now - age)
@@ -128,7 +138,7 @@ it.each([
   await expect(oracle.rates()).rejects.toThrow(error)
 })
 
-it.each([[56, 0, 87], [56, 1, 960], [137, 1, 87], [42161, 0, 1815], [42161, 1, 315]])(
+it.each([[137, 1, 87], [42161, 0, 1815], [42161, 1, 315]])(
   'bounds chain %i feed %i freshness by its published heartbeat plus tolerance', async (chainId, index, age) => {
     const { oracle, feeds } = await fixture(chainId)
     feeds[index].round[3] = BigInt(now - age - 1)

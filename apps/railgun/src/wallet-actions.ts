@@ -15,6 +15,7 @@ import { requireWalletSync, syncWallet, type WalletSession } from './wallet'
 import { unusedSwapAccount } from './account'
 import { connectPublicWallet, type PublicWalletProvider } from './public-connection'
 import { renderWalletLayout, setPendingNotice, setSwapReview, showWalletView } from './wallet-layout'
+import { feeTokenFor, usesBoundWithdrawal } from './fee-asset'
 
 export async function wireWalletActions(session: WalletSession): Promise<void> {
   const state: {
@@ -40,11 +41,16 @@ export async function wireWalletActions(session: WalletSession): Promise<void> {
   const publicTransactionStatus = (message: string): void => {
     element('public-transaction-status').textContent = message
   }
+  if (CHAIN_ID === 56) {
+    element('swap-fee-help').textContent = 'Broadcaster fees are paid automatically from your private WBNB balance. Keep private WBNB for fees when swapping or withdrawing stablecoins.'
+    element('withdraw-fee-help').textContent = 'Choose the token and amount above. The broadcaster fee is paid separately in private WBNB.'
+  }
   const refreshPending = async (): Promise<void> => {
     const pending = await pendingSwap(session)
     const withdrawal = await pendingWithdrawal(session)
     const preserved = await preservedWithdrawal(session)
     const unsupportedWeth = !!withdrawal && canPreserveWethWithdrawal(withdrawal)
+    const boundWithdrawal = withdrawal?.execution
     const identity = pending?.account || withdrawal?.recipient
     setPendingNotice(!!identity)
     const shortcut = element<HTMLAnchorElement>('withdraw-shortcut')
@@ -52,8 +58,9 @@ export async function wireWalletActions(session: WalletSession): Promise<void> {
     shortcut.textContent = pending ? 'Check saved swap' : withdrawal ? 'Continue saved withdrawal' : 'Withdraw'
     element<HTMLDetailsElement>('recovery').open = !!identity
     element('reconcile').hidden = !pending
-    element('cancel-swap').hidden = !pending
-    element('leftovers-consent').hidden = !pending
+    element('cancel-swap').hidden = !pending && !boundWithdrawal
+    element('leftovers-consent').hidden = !pending && !boundWithdrawal
+    element('cancel-swap').textContent = boundWithdrawal ? 'Invalidate saved withdrawal authorization' : 'Cancel pending swap using temporary account gas'
     for (const id of ['withdraw-max', 'withdraw-quote']) element(id).hidden = !!identity
     element('reconcile-withdrawal').hidden = !withdrawal
     for (const id of ['retry-withdrawal', 'resume-withdrawal']) element(id).hidden = !withdrawal || unsupportedWeth
@@ -70,6 +77,7 @@ export async function wireWalletActions(session: WalletSession): Promise<void> {
     if (state.pendingIdentity !== identity) {
       element<HTMLInputElement>('accept-leftovers').checked = false
       if (pending) element<HTMLInputElement>('recovery-index').value = String(pending.index)
+      else if (boundWithdrawal) element<HTMLInputElement>('recovery-index').value = String(boundWithdrawal.index)
     }
     state.pendingIdentity = identity
     element('pending-details').textContent = pending
@@ -108,7 +116,9 @@ export async function wireWalletActions(session: WalletSession): Promise<void> {
     requireWalletSync()
     if (ENVIRONMENT === 'fork') return
     publicTransactionStatus('Checking private-swap broadcaster availability before depositing…')
-    await selectBroadcaster(tokenFor(asset === NATIVE_SYMBOL ? WRAPPED_SYMBOL : asset).address, true, broadcasterStatus)
+    const principal = asset === NATIVE_SYMBOL ? WRAPPED_SYMBOL : asset
+    if (!isTokenSymbol(principal)) throw new Error('Unsupported deposit asset.')
+    await selectBroadcaster(tokenFor(feeTokenFor(principal)).address, true, broadcasterStatus)
     publicTransactionStatus('A compatible private-swap broadcaster is available. Review the deposit amount and fees.')
   }
   const renderQuoteAction = (): void => {
@@ -274,7 +284,7 @@ export async function wireWalletActions(session: WalletSession): Promise<void> {
     const minimumAfterShield = quote.minimum - (quote.minimum * quote.shieldFee) / 10_000n
     element('receive-amount').textContent = formatUnits(minimumAfterShield, TOKENS[quote.buy].decimals)
     element('quote-details').textContent =
-      `Amount to swap: ${formatUnits(quote.amount, TOKENS[quote.sell].decimals)} ${quote.sell}\nMinimum private output: ${formatUnits(minimumAfterShield, TOKENS[quote.buy].decimals)} ${quote.buy}\nOphis fee: ${formatUnits(quote.ophisFee, TOKENS[quote.buy].decimals)} ${quote.buy}\nBroadcaster fee: ${formatUnits(prepared.fee.amount, TOKENS[quote.sell].decimals)} ${quote.sell}\nProtocol unshield / reshield: ${quote.unshieldFee} / ${quote.shieldFee} bp`
+      `Amount to swap: ${formatUnits(quote.amount, TOKENS[quote.sell].decimals)} ${quote.sell}\nMinimum private output: ${formatUnits(minimumAfterShield, TOKENS[quote.buy].decimals)} ${quote.buy}\nOphis fee: ${formatUnits(quote.ophisFee, TOKENS[quote.buy].decimals)} ${quote.buy}\nBroadcaster fee: ${formatUnits(prepared.fee.amount, TOKENS[feeTokenFor(quote.sell)].decimals)} ${feeTokenFor(quote.sell)}\nProtocol unshield / reshield: ${quote.unshieldFee} / ${quote.shieldFee} bp`
     if (prepared.gasCapped)
       element('quote-details').textContent += `\nGas price capped at ${formatUnits(prepared.gas.maxFeePerGas, 9)} gwei to fit your private balance. Rising gas prices can require a fresh quote.`
     if (quote.route)
@@ -287,8 +297,8 @@ export async function wireWalletActions(session: WalletSession): Promise<void> {
     invalidate()
     requireWalletSync()
     const sell = symbol()
-    const selected = await selectBroadcaster(TOKENS[sell].address, true, broadcasterStatus)
-    if (ENVIRONMENT === 'ethereum') await selectBroadcaster(TOKENS[buySymbol()].address, true, broadcasterStatus)
+    const selected = await selectBroadcaster(TOKENS[feeTokenFor(sell)].address, true, broadcasterStatus)
+    if (ENVIRONMENT === 'ethereum' && feeTokenFor(buySymbol()) !== feeTokenFor(sell)) await selectBroadcaster(TOKENS[feeTokenFor(buySymbol())].address, true, broadcasterStatus)
     const prepared = await prepareMaxPrivateSwap(session, sell, selected, undefined, buySymbol())
     showSwapQuote(prepared)
     element('quote-details').textContent = 'Max includes gas price headroom in the fee budget. Review the trade and committed fee below.\n' + element('quote-details').textContent
@@ -297,8 +307,8 @@ export async function wireWalletActions(session: WalletSession): Promise<void> {
     invalidate()
     requireWalletSync()
     amountFromInput(amount.value, symbol())
-    const selected = await selectBroadcaster(TOKENS[symbol()].address, true, broadcasterStatus)
-    if (ENVIRONMENT === 'ethereum') await selectBroadcaster(TOKENS[buySymbol()].address, true, broadcasterStatus)
+    const selected = await selectBroadcaster(TOKENS[feeTokenFor(symbol())].address, true, broadcasterStatus)
+    if (ENVIRONMENT === 'ethereum' && feeTokenFor(buySymbol()) !== feeTokenFor(symbol())) await selectBroadcaster(TOKENS[feeTokenFor(buySymbol())].address, true, broadcasterStatus)
     const account = await unusedSwapAccount(session)
     const quote = await quoteSwap(session.provider, symbol(), amount.value, account.address, buySymbol())
     let prepared: Awaited<ReturnType<typeof preparePrivateSwap>>
@@ -324,7 +334,7 @@ export async function wireWalletActions(session: WalletSession): Promise<void> {
     invalidate()
     requireWalletSync()
     if (!maximum) amountFromInput(amount.value, symbol())
-    const selected = await selectBroadcaster(TOKENS[symbol()].address, false, broadcasterStatus)
+    const selected = await selectBroadcaster(TOKENS[feeTokenFor(symbol())].address, usesBoundWithdrawal(symbol()), broadcasterStatus)
     state.withdrawal = await prepareUnshield(
       session,
       symbol(),
@@ -335,7 +345,7 @@ export async function wireWalletActions(session: WalletSession): Promise<void> {
     )
     if (maximum) amount.value = formatUnits(state.withdrawal.amounts[0].amount, TOKENS[symbol()].decimals)
     element('withdraw-details').textContent =
-      `Withdraw ${amount.value} ${symbol()} to ${recipient.value}\nBroadcaster fee: ${formatUnits(state.withdrawal.fee.amount, TOKENS[symbol()].decimals)} ${symbol()}\nThe broadcaster fee is paid from your private balance. The protocol withdrawal fee is deducted from the amount.\nYou receive: ${formatUnits(state.withdrawal.minimum, TOKENS[symbol()].decimals)} ${symbol()}`
+      `Withdraw ${amount.value} ${symbol()} to ${recipient.value}\nBroadcaster fee: ${formatUnits(state.withdrawal.fee.amount, TOKENS[feeTokenFor(symbol())].decimals)} ${feeTokenFor(symbol())}\nThe broadcaster fee is paid from your private balance. The protocol withdrawal fee is deducted from the amount.\nYou receive: ${formatUnits(state.withdrawal.minimum, TOKENS[symbol()].decimals)} ${symbol()}`
     element('withdraw').hidden = false
   }
   button('withdraw-quote', 'Calculating fee…', () => reviewWithdrawal(false))
@@ -359,7 +369,10 @@ export async function wireWalletActions(session: WalletSession): Promise<void> {
     await syncWallet(session)
   })
   button('cancel-swap', 'Invalidating old authorization…', async () => {
-    status(await cancelPendingSwap(session, element<HTMLInputElement>('accept-leftovers').checked))
+    const withdrawal = await pendingWithdrawal(session)
+    status(withdrawal?.execution
+      ? await cancelPendingSwap(session, element<HTMLInputElement>('accept-leftovers').checked, true)
+      : await cancelPendingSwap(session, element<HTMLInputElement>('accept-leftovers').checked))
     await syncWallet(session)
   })
   button('reconcile-withdrawal', 'Checking withdrawal…', async () => {

@@ -17,6 +17,7 @@ import {
 import { validateRailgunAddress } from '@railgun-community/wallet'
 import { getAddress, isAddress, type TransactionRequest } from 'ethers'
 import type { WalletSession } from './wallet'
+import { feeAddressFor } from './fee-asset'
 
 let starting: Promise<void> | undefined
 let reportConnection: (status: string) => void = () => {}
@@ -64,7 +65,9 @@ export async function selectBroadcaster(
   tokenAddress: string,
   use7702: boolean,
   onStatus: (status: string) => void,
+  expectedBroadcaster?: string,
 ): Promise<SelectedBroadcaster> {
+  tokenAddress = feeAddressFor(tokenAddress)
   if (use7702 && ENVIRONMENT === 'ethereum' && !protectedBroadcasters().length)
     throw new Error('Protected private swaps are not available on this network yet. Withdrawals and recovery remain available.')
   await startBroadcasters(onStatus)
@@ -76,6 +79,7 @@ export async function selectBroadcaster(
       .filter(
         (candidate) =>
           candidate.tokenFee.expiration > Date.now() + 60_000 &&
+          (!expectedBroadcaster || candidate.railgunAddress === expectedBroadcaster) &&
           (!use7702 || (supportsCanonicalDelegate(candidate) && isProtectedBroadcaster(candidate))),
       )
       .sort((a, b) => (BigInt(a.tokenFee.feePerUnitGas) < BigInt(b.tokenFee.feePerUnitGas) ? -1 : 1))[0]
@@ -95,7 +99,7 @@ export async function selectBroadcaster(
 
 export function validateBroadcaster(selected: SelectedBroadcaster, tokenAddress: string, use7702: boolean): void {
   if (
-    getAddress(selected.tokenAddress) !== getAddress(tokenAddress) ||
+    getAddress(selected.tokenAddress) !== getAddress(feeAddressFor(tokenAddress)) ||
     !validateRailgunAddress(selected.railgunAddress) ||
     BigInt(selected.tokenFee.feePerUnitGas) <= 0n
   )
@@ -197,7 +201,7 @@ export async function submitPrivate(
     gas.evmGasType !== getEVMGasTypeForTransaction(NETWORK, false) || transaction.authorizationList?.length ||
     getAddress(transaction.to) !== getAddress(CONFIG.proxyContract)))
     throw new Error('Common submissions must be withdrawals through the selected privacy contract.')
-  if (!use7702) assertAtomicWithdrawal(transaction.data)
+  if (!use7702) assertAtomicWithdrawal(transaction.data, CHAIN_ID === 56 ? 'WBNB' : undefined)
   const authorization = use7702 ? transaction.authorizationList?.[0] : undefined
   if (use7702 && !authorization) throw new Error('Missing 7702 authorization.')
   const type4 =

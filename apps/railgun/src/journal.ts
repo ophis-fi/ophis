@@ -10,6 +10,7 @@ export interface PendingSwap {
   index: number
   account: string
   token: TokenSymbol
+  feeToken?: TokenSymbol
   npk: string
   minimum: string
   hash?: string
@@ -31,6 +32,7 @@ export async function pendingSwap(session: WalletSession): Promise<PendingSwap |
     typeof stored.account !== 'string' ||
     !('token' in stored) ||
     !isTokenSymbol(stored.token) ||
+    ('feeToken' in stored && !isTokenSymbol(stored.feeToken)) ||
     !('minimum' in stored) ||
     typeof stored.minimum !== 'string' ||
     !('npk' in stored) ||

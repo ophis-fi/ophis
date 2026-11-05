@@ -1,0 +1,105 @@
+import { Contract, getAddress, Signature, type Authorization } from 'ethers'
+import { calculateGasLimit, type SelectedBroadcaster, type TransactionGasDetailsType4 } from '@railgun-community/shared-models'
+import { fullWalletForID, balanceForERC20Token, gasEstimateForUnprovenCrossContractCalls7702,
+  generateCrossContractCallsProof7702, ratchetEphemeralAddress } from '@railgun-community/wallet'
+import { CHAIN, CONFIG, MIN_SWAP_GAS, NETWORK, PROXY, TOKENS, VERSION, type TokenSymbol } from './config'
+import { unusedSwapAccount } from './account'
+import { broadcasterFee, gasDetails, validateBroadcaster, type PrivateSubmitter } from './broadcaster'
+import { ADAPT, assertBoundWithdrawal, assertSameExecution, encodeRequest, simulateRequest } from './execution'
+import { amountFromInput, unshieldAmount } from './recipe'
+import { requireFeeBalance } from './fee-asset'
+import { refreshReceivedBalances, type WalletSession } from './wallet'
+import { assertWithdrawalReceipt, reconcilePendingWithdrawal, savePendingWithdrawal } from './withdrawal-journal'
+
+export interface PreparedBoundWithdrawal {
+  kind: 'TX7702'
+  token: TokenSymbol
+  feeToken: 'WBNB'
+  amounts: { tokenAddress: string; amount: bigint; recipientAddress: string }[]
+  minimum: bigint
+  selected: SelectedBroadcaster
+  gas: TransactionGasDetailsType4
+  fee: ReturnType<typeof broadcasterFee>
+  account: string
+  index: number
+  feeBps: bigint
+  calls: { to: string; data: string; value: bigint }[]
+}
+
+export async function prepareBoundWithdrawal(session: WalletSession, token: TokenSymbol, value: string, recipient: string,
+  selected: SelectedBroadcaster, maximum: boolean): Promise<PreparedBoundWithdrawal> {
+  validateBroadcaster(selected, TOKENS.WBNB.address, true)
+  await refreshReceivedBalances(session)
+  const wallet = fullWalletForID(session.info.id)
+  const principal = await balanceForERC20Token(VERSION, wallet, NETWORK, TOKENS[token].address, true)
+  const reserve = await balanceForERC20Token(VERSION, wallet, NETWORK, TOKENS.WBNB.address, true)
+  const amount = maximum ? principal : amountFromInput(value, token)
+  if (amount <= 0n || amount > principal) throw new Error(`Insufficient spendable ${token} for the withdrawal.`)
+  const account = await unusedSwapAccount(session)
+  const feeBps: bigint = await new Contract(CONFIG.proxyContract, PROXY, session.provider).getFunction('unshieldFee')()
+  const minimum = unshieldAmount(amount, feeBps)
+  const calls = [{ to: account.address, value: 0n, data: ADAPT.encodeFunctionData('transfer', [[{
+    token: { tokenType: 0, tokenAddress: TOKENS[token].address, tokenSubID: 0 }, to: recipient, value: minimum,
+  }]]) }]
+  let gas = await gasDetails(session)
+  requireFeeBalance(reserve, broadcasterFee(selected, gas).amount, 'WBNB')
+  const estimated = await gasEstimateForUnprovenCrossContractCalls7702(VERSION, NETWORK, session.info.id, session.key,
+    [{ tokenAddress: TOKENS[token].address, amount }], [], [], [], calls, gas,
+    { tokenAddress: TOKENS.WBNB.address, feePerUnitGas: BigInt(selected.tokenFee.feePerUnitGas) }, false, MIN_SWAP_GAS)
+  gas = { ...gas, gasEstimate: estimated.gasEstimate > gas.gasEstimate ? estimated.gasEstimate : gas.gasEstimate }
+  const fee = broadcasterFee(selected, gas)
+  requireFeeBalance(reserve, fee.amount, 'WBNB')
+  return { kind: 'TX7702', token, feeToken: 'WBNB', amounts: [{ tokenAddress: TOKENS[token].address, amount, recipientAddress: recipient }],
+    minimum, selected, gas, fee, account: account.address, index: await wallet.getEphemeralKeyIndex(CHAIN), feeBps, calls }
+}
+
+export function storedAuthorization(authorization: Authorization) {
+  return { address: authorization.address, chainId: authorization.chainId.toString(), nonce: authorization.nonce.toString(),
+    signature: Signature.from(authorization.signature).serialized }
+}
+
+export async function executeBoundWithdrawal(session: WalletSession, prepared: PreparedBoundWithdrawal,
+  onProgress: (message: string) => void, submitter: PrivateSubmitter): Promise<string> {
+  const { token, amounts, selected, gas, fee } = prepared
+  await submitter.assertReady(session, selected, gas)
+  const request = await generateCrossContractCallsProof7702(VERSION, NETWORK, session.info.id, session.key,
+    amounts.map(({ tokenAddress, amount }) => ({ tokenAddress, amount })), [], [], [], prepared.calls, fee, false, 0n,
+    MIN_SWAP_GAS, (progress, status) => onProgress(`${status}: ${Math.round(progress)}%`))
+  if (getAddress(request.ephemeralAddress) !== getAddress(prepared.account) || request.executeNonce == null)
+    throw new Error('Withdrawal execution account changed. Keep the private funds; prepare another quote.')
+  const wallet = fullWalletForID(session.info.id)
+  // The SDK creates a broadcaster action with requireSuccess=false. Sign the
+  // unchanged proof order again with the strict action before disclosing it.
+  const actionData = { ...request.actionData, requireSuccess: true }
+  const signed = await wallet.sign7702Request(session.key, CONFIG.relayAdapt7702Contract, CHAIN, request.transactions,
+    actionData, Number(request.authorization.nonce), request, undefined, request.ephemeralAddress)
+  const strict = { ...request, actionData, authorization: signed.authorization, executionSignature: signed.signature }
+  const encoded = encodeRequest(strict)
+  const transaction = { to: prepared.account, data: String(encoded.data), value: 0n, type: 4, authorizationList: [strict.authorization], chainId: CHAIN, gasLimit: calculateGasLimit(gas.gasEstimate),
+    maxFeePerGas: gas.maxFeePerGas, maxPriorityFeePerGas: gas.maxPriorityFeePerGas }
+  assertSameExecution(session, strict, transaction)
+  assertBoundWithdrawal(String(transaction.data), prepared.account, token, amounts[0].recipientAddress, prepared.minimum)
+  if (await new Contract(CONFIG.proxyContract, PROXY, session.provider).getFunction('unshieldFee')() !== prepared.feeBps)
+    throw new Error('The withdrawal protocol fee changed. Prepare another quote before submitting.')
+  await submitter.assertReady(session, selected, gas)
+  const checkedAt = { monotonic: performance.now(), wallTime: Date.now() }
+  const pending = { token, feeToken: 'WBNB' as const, broadcaster: selected.railgunAddress, recipient: amounts[0].recipientAddress,
+    minimum: prepared.minimum.toString(), fromBlock: await session.provider.getBlockNumber(),
+    nullifiers: strict.transactions.flatMap((tx) => tx.nullifiers.map(String)),
+    transaction: { to: prepared.account, data: String(transaction.data), value: '0' }, minGasPrice: '0',
+    execution: { index: prepared.index, account: prepared.account, executeNonce: strict.executeNonce!.toString(),
+      authorization: storedAuthorization(strict.authorization), gasEstimate: gas.gasEstimate.toString(),
+      maxFeePerGas: gas.maxFeePerGas.toString(), maxPriorityFeePerGas: gas.maxPriorityFeePerGas.toString() } }
+  await savePendingWithdrawal(session, pending)
+  await simulateRequest(session, strict, calculateGasLimit(gas.gasEstimate))
+  const hash = await submitter.send(session, { transaction, nullifiers: pending.nullifiers,
+    preTransactionPOIsPerTxidLeafPerList: {} }, selected, gas, true, checkedAt)
+  await savePendingWithdrawal(session, { ...pending, hash })
+  await ratchetEphemeralAddress(session.info.id, NETWORK)
+  onProgress(`Waiting for two confirmations: ${hash}`)
+  const receipt = await session.provider.waitForTransaction(hash, 2, 180_000)
+  if (!receipt) throw new Error(`Withdrawal unconfirmed: ${hash}. Keep the saved signed execution.`)
+  assertWithdrawalReceipt(receipt, pending)
+  await reconcilePendingWithdrawal(session)
+  return hash
+}

@@ -1,6 +1,6 @@
-import { expect, it } from 'vitest'
+import { expect, it, vi } from 'vitest'
 import { generateKeyPairSync } from 'node:crypto'
-import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { fullWalletForID, getWalletMnemonic, signWithWalletViewingKey, verifyBroadcasterSignature, getRailgunWalletAddressData } from '@railgun-community/wallet'
@@ -69,4 +69,21 @@ it.each(['bound', 'historical'])( 'refuses %s custody rotation before creating r
     expect(existsSync(join(root, 'operator-retired.sealed.json'))).toBe(false)
     if (kind === 'historical') expect(store.get('old')?.raw).toBe('oldraw')
   } finally { store.close(); rmSync(root, { recursive: true, force: true }) }
+})
+
+it('rejects a malformed certificate before binding identity or creating migration files', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'custody-invalid-certificate-')), path = join(root, 'secrets', 'operator.json')
+  initializeSecrets(path, 'fork')
+  const certificate = join(root, 'invalid-certificate.pem')
+  writeFileSync(certificate, '-----BEGIN PUBLIC KEY-----\nAA=A\n-----END PUBLIC KEY-----\n', { mode: 0o600 })
+  const store = new Store(root), bound = vi.spyOn(store, 'bindIdentity'), started = vi.spyOn(RailgunSDK.prototype, 'start')
+  const before = readdirSync(root).sort(), legacy = readFileSync(path)
+  try {
+    await expect(migrateOperator({ ...config, enabled: false, state: root, secrets: path }, store, certificate)).rejects.toThrow('Invalid operator public certificate.')
+    expect(bound.mock.calls.length).toBe(0); expect(started.mock.calls.length).toBe(0)
+    expect(store.db.prepare('SELECT COUNT(*) AS count FROM settings').get()?.count).toBe(0)
+    expect(readdirSync(root).sort()).toEqual(before)
+    expect(readdirSync(join(root, 'secrets'))).toEqual(['operator.json'])
+    expect(readFileSync(path).equals(legacy)).toBe(true)
+  } finally { bound.mockRestore(); started.mockRestore(); store.close(); rmSync(root, { recursive: true, force: true }) }
 })

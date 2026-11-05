@@ -1,5 +1,5 @@
 import { Contract, getAddress, hexlify, JsonRpcProvider, randomBytes } from 'ethers'
-import { CHAIN_ID, FEE_LIFETIME_MS, TOKENS } from './config'
+import { CHAIN_ID, FEE_LIFETIME_MS, FEE_TOKENS } from './config'
 import type { Store } from './storage'
 
 const FEED_ABI = [
@@ -20,11 +20,7 @@ const FEEDS: Record<number, readonly Feed[]> = {
     { target: '0x50834F3163758fcC1Df9973b6e91f0F0F0434aD3', description: 'USDC / USD', age: 315 },
     { target: '0x3f3f5dF88dC9F13eac63DF89EC16ef6e7E25DdE7', description: 'USDT / USD', age: 315 },
   ],
-  56: [
-    { target: '0x0567F2323251f0Aab15c8dFb1967E4e8A7D42aeE', description: 'BNB / USD', age: 87 },
-    { target: '0x51597f405303C4377E36123cBc172b13269EA163', description: 'USDC / USD', age: 960 },
-    { target: '0xB97Ad0E74fa7d920791E90258A6E2085088b4320', description: 'USDT / USD', age: 960 },
-  ],
+  56: [], // WBNB fees reimburse native BNB directly; no USD conversion is required.
   137: [
     { target: '0xAB594600376Ec9fD91F8e885dADF0CE036862dE0', description: 'MATIC / USD', age: 87 },
     { target: '0xfE4A8cc5b5B2366C1B58Bea3858e81843581b2F7', description: 'USDC / USD', age: 87 },
@@ -53,8 +49,8 @@ export class FeeOracle {
   }
 
   async rates(): Promise<Record<string, bigint>> {
-    // Check Arbitrum's sequencer on every request, including while prices would otherwise be cached.
-    if (CHAIN_ID !== 42161 && this.cached && Date.now() < this.cached.expires) return this.cached.rates
+    // Recheck Arbitrum's sequencer and BNB's trusted head even while a price cache would be young.
+    if (CHAIN_ID !== 42161 && CHAIN_ID !== 56 && this.cached && Date.now() < this.cached.expires) return this.cached.rates
     this.refreshing ??= this.refresh().finally(() => { this.refreshing = undefined })
     return this.refreshing
   }
@@ -91,12 +87,12 @@ export class FeeOracle {
         Math.floor(sampledAt / 1000) * 1000 + Number(lastValid - BigInt(block.timestamp)) * 1000)
       return answer
     }))
-    const rates: Record<string, bigint> = { [getAddress(TOKENS[0].address)]: 10n ** 18n }
-    for (let i = 1; i < TOKENS.length; i++) {
+    const rates: Record<string, bigint> = { [getAddress(FEE_TOKENS[0].address)]: 10n ** 18n }
+    for (let i = 1; i < FEE_TOKENS.length; i++) {
       // Halt stablecoin fee acceptance outside this band; never assume a one-dollar peg.
       if (answers[i] < 98_000_000n || answers[i] > 102_000_000n) throw new Error('Stablecoin fee pricing is outside the accepted band.')
       // shortcut: underlying USD feeds exclude bridge risk; disable affected fee tokens if redemption parity is uncertain.
-      rates[getAddress(TOKENS[i].address)] = ceilDiv(answers[0] * 10n ** BigInt(TOKENS[i].decimals), answers[i])
+      rates[getAddress(FEE_TOKENS[i].address)] = ceilDiv(answers[0] * 10n ** BigInt(FEE_TOKENS[i].decimals), answers[i])
     }
     for (const token of Object.keys(rates)) rates[token] = ceilDiv(rates[token] * (10_000n + this.marginBps), 10_000n)
     if (Date.now() >= expires) throw new Error('Fee pricing expired during refresh.')
@@ -123,6 +119,7 @@ export function validateFee(
   if (entries.length !== 1 || gasBudgetWei <= 0n) throw new Error('A single supported broadcaster fee payment is required.')
   const [rawToken, amount] = entries[0], token = getAddress(rawToken)
   const freshRate = Object.entries(freshRates).find(([address]) => getAddress(address) === token)?.[1]
-  if (!issued[token] || !freshRate || amount <= 0n || amount < ceilDiv(gasBudgetWei * freshRate, 10n ** 18n))
+  if (!FEE_TOKENS.some((item) => item.address === token) || !issued[token] || !freshRate || amount <= 0n ||
+    amount < ceilDiv(gasBudgetWei * freshRate, 10n ** 18n))
     throw new Error('The private broadcaster fee does not cover the signed execution budget.')
 }

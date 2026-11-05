@@ -1,7 +1,7 @@
 import { statfsSync } from 'node:fs'
 import type { DatabaseSync } from 'node:sqlite'
 import { getAddress, isAddress, JsonRpcProvider, Transaction } from 'ethers'
-import { CHAIN, CHAIN_ID, TOKENS, type Settings } from './config'
+import { CHAIN, CHAIN_ID, FEE_TOKENS, TOKENS, type Settings } from './config'
 import { readChainState } from './chain-state'
 import type { FeeOracle } from './fees'
 import type { Store } from './storage'
@@ -124,7 +124,7 @@ export async function monitor(config: Settings, provider: JsonRpcProvider, oracl
   } else alerts.push('health-unreachable')
   if (block.status !== 'fulfilled') alerts.push('stale-read-node')
   else if (block.value.baseFee + 1n > config.maxGasPrice || block.value.minimumGasPrice > config.maxGasPrice) alerts.push('gas-price-cap')
-  if (rates.status !== 'fulfilled' || !TOKENS.every((token) => rates.value[getAddress(token.address)] > 0n)) alerts.push('stale-fee-pricing')
+  if (rates.status !== 'fulfilled' || !FEE_TOKENS.every((token) => rates.value[getAddress(token.address)] > 0n)) alerts.push('stale-fee-pricing')
   if (network.status !== 'fulfilled' || network.value !== `0x${CHAIN.toString(16)}`) alerts.push('wrong-read-network')
   if (balance.status === 'fulfilled') {
     gasBalanceWei = balance.value.toString()

@@ -33,6 +33,7 @@ export const TOKENS: readonly PrivateToken[] = [
   { symbol: selected.wrappedSymbol, address: NETWORK.baseToken.wrappedAddress, decimals: 18 },
   ...selected.stables,
 ].map((token) => ({ ...token, address: getAddress(token.address) }))
+export const FEE_TOKENS: readonly PrivateToken[] = CHAIN_ID === 56 ? TOKENS.slice(0, 1) : TOKENS
 
 export interface Settings {
   chainId: number

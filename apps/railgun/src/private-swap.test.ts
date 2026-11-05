@@ -4,7 +4,7 @@ import type { PrivateSubmitter } from './broadcaster'
 
 const state = vi.hoisted(() => ({ events: [] as string[], save: vi.fn(), simulate: vi.fn(), requote: vi.fn() }))
 const account = '0x0000000000000000000000000000000000001234'
-vi.mock('./broadcaster', () => ({ broadcasterFee: vi.fn() }))
+vi.mock('./broadcaster', () => ({ broadcasterFee: vi.fn(), validateBroadcaster: vi.fn() }))
 vi.mock('./wallet', () => ({ requireWalletSync: vi.fn() }))
 vi.mock('./journal', () => ({
   pendingSwap: async () => undefined,
@@ -37,7 +37,7 @@ const session = {
   provider: { getBlockNumber: async () => 100 },
 } as unknown as WalletSession
 const prepared = {
-  quote: { chainId: 1, account, deadline: Math.floor(Date.now() / 1000) + 600, buy: 'WETH', minimum: 100n, shieldFee: 25n },
+  quote: { chainId: 1, account, deadline: Math.floor(Date.now() / 1000) + 600, sell: 'USDC', buy: 'WETH', minimum: 100n, shieldFee: 25n },
   selected: {},
   gas: { gasEstimate: 3_000_000n },
   fee: {},

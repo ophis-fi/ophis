@@ -19,7 +19,10 @@ export interface GuardApproval {
 const registry = new Interface(['function getContractAddress(string) view returns (address)'])
 
 export async function deployGuard(config: Settings, approval: GuardApproval, provider: JsonRpcProvider, signer: GasSigner) {
-  assertSigningNetwork(config)
+  // Guard commissioning has explicit owner limits below; ordinary BNB sponsorship stays gated.
+  if (!(CHAIN_ID === 56 && config.chainId === CHAIN_ID && config.mode === 'mainnet' &&
+      !config.enabled && approval?.chainId === CHAIN_ID && approval.gasFundingApproved === true))
+    assertSigningNetwork(config)
   protectedWriteRPC(CHAIN_ID)
   const operator = getAddress(signer.address), guard = getCreateAddress({ from: operator, nonce: 0 })
   if (config.chainId !== CHAIN_ID || config.mode !== 'mainnet' || config.enabled || approval.chainId !== CHAIN_ID || approval.gasFundingApproved !== true ||
