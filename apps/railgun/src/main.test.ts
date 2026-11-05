@@ -2,7 +2,7 @@ import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 
 const mocks = vi.hoisted(() => ({
   persisted: false, failRead: false, open: vi.fn(), setup: vi.fn(), sync: vi.fn(),
-  provider: {}, wire: vi.fn(), report: undefined as ((message: string, ready: boolean) => void) | undefined,
+  provider: {}, wire: vi.fn(), funding: vi.fn(), report: undefined as ((message: string, ready: boolean) => void) | undefined,
 }))
 vi.mock('./wallet', () => ({ newMnemonic: () => 'disposable test phrase',
   openWallet: mocks.open, syncWallet: mocks.sync,
@@ -12,7 +12,7 @@ vi.mock('./network-ui', () => ({ configurePrivateSelectors: vi.fn() }))
 vi.mock('./embedded', () => ({ reportEmbeddedLayout: vi.fn() }))
 vi.mock('./pickers', () => ({ configurePickers: () => () => {} }))
 vi.mock('./wallet-layout', () => ({ configureWalletLayout: vi.fn(), showSetup: mocks.setup,
-  startFirstFunding: vi.fn(), updateFirstFunding: vi.fn() }))
+  startFirstFunding: vi.fn(), updateFirstFunding: mocks.funding }))
 vi.mock('./storage', () => ({ readPreference: async () => {
   if (mocks.failRead) throw new Error('Storage unavailable')
   return mocks.persisted ? { id: 'fixture-wallet', salt: 'fixture-salt' } : undefined
@@ -27,6 +27,7 @@ beforeEach(() => {
   mocks.persisted = false; mocks.failRead = false
   mocks.open.mockReset(); mocks.sync.mockReset().mockResolvedValue(undefined)
   mocks.wire.mockReset().mockResolvedValue(undefined); mocks.report = undefined
+  mocks.funding.mockReset()
   fields = new Proxy({} as Record<string, Field>, { get: (target, id: string) => target[id] ??= {
     value: '', hidden: false, disabled: false, checked: false, textContent: '', title: '', addEventListener: () => {}, focus: vi.fn(), removeAttribute: () => {},
   } })
@@ -77,9 +78,16 @@ it('preserves transaction results through sync progress and completion', async (
   mocks.report?.('Synchronizing private history.', false)
   expect(fields.status.textContent).toBe('Withdrawal confirmed: test-hash')
   expect(fields['balance-sync'].textContent).toBe('Synchronizing private history.')
+  expect(fields['history-announcement'].textContent).toBe('Synchronizing private history.')
+  mocks.report?.('Synchronizing private history: 50%', false)
+  expect(fields['history-announcement'].textContent).toBe('Synchronizing private history.')
+  mocks.funding.mockImplementation((_funds: boolean, ready: boolean) => {
+    if (ready) expect(fields['ready-actions'].disabled).toBe(false)
+  })
   mocks.report?.('Complete · private balances are ready.', true)
   expect(fields.status.textContent).toBe('Withdrawal confirmed: test-hash')
   expect(fields['balance-sync'].hidden).toBe(true)
+  expect(fields['history-announcement'].textContent).toBe('Complete · private balances are ready.')
 })
 
 it('hides inactive wallet controls and offers a safe reload when saved transaction setup fails', async () => {

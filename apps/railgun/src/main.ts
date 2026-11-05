@@ -93,13 +93,15 @@ function startHistory(): ReturnType<typeof startWalletEngine> {
         },
         (message, ready) => {
           setup.ready = ready
-          updateFirstFunding(setup.hasFunds, ready)
           element('balance-sync').textContent = message
           element('balance-sync').hidden = ready
           element<HTMLFieldSetElement>('ready-actions').disabled = !ready
+          updateFirstFunding(setup.hasFunds, ready)
           const progress = element<HTMLProgressElement>('history-progress')
           progress.hidden = ready
           const percentage = /(\d+)%/.exec(message)
+          const announcement = element('history-announcement')
+          if (!percentage && announcement.textContent !== message) announcement.textContent = message
           if (percentage) progress.value = Number(percentage[1])
           else progress.removeAttribute('value')
           renderSelectedBalance()
