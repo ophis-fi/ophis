@@ -60,7 +60,7 @@ try {
   await expect(page.locator('#asset-options button')).toHaveCount(1)
   await page.keyboard.press('ArrowDown'); await page.keyboard.press('Enter')
   await expect(page.locator('#private-network')).toHaveValue('56')
-  await expect(page.locator('#private-network-picker')).toHaveText('BNB Chain⌄')
+  await expect(page.locator('#private-network-picker')).toHaveText('BNB Chain')
   await page.locator('#private-network-picker').click()
   await page.locator('#asset-options button').filter({ hasText: 'Ethereum' }).click()
   await page.locator('#token').evaluate(select => {

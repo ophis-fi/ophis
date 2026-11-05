@@ -89,7 +89,7 @@ export function configurePickers(): () => void {
         label.append(bridged)
       }
       const chevron = document.createElement('span')
-      chevron.textContent = '⌄'
+      chevron.className = 'chevron'
       chevron.setAttribute('aria-hidden', 'true')
       button.append(label, chevron)
       button.disabled = select.matches(':disabled')

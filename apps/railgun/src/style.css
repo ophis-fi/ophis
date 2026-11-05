@@ -58,6 +58,8 @@ dialog::backdrop { background: #17191c88; }
 .asset-picker-button img, .picker-option img { flex-shrink: 0; object-fit: contain; border-radius: 50%; }
 .asset-picker-button small { display: block; font-size: 9px; font-weight: 400; }
 .asset-picker-button:disabled { opacity: .55; }
+.chevron { display: inline-block; flex: 0 0 6px; width: 6px; height: 6px; box-sizing: border-box; border-right: 1.5px solid currentColor; border-bottom: 1.5px solid currentColor; transform: translateY(-2px) rotate(45deg); }
+#wallet-menu-button { display: inline-flex; align-items: center; gap: 7px; }
 .network-selector .asset-picker-button { background: #f3f3f4; font-size: 12px; }
 .network-selector .asset-picker-button img { width: 18px; height: 18px; }
 .amount-row { grid-template-columns: minmax(0, 1fr) 116px; }
