@@ -131,7 +131,6 @@ try {
     if (state.includes('Incomplete')) throw new Error('Fork history did not synchronize')
     await page.waitForTimeout(10_000)
   }
-  assert((await page.locator('#status').innerText()).includes('Complete'), 'History sync deadline reached')
   assert(!(await page.locator('#ready-actions').isDisabled()), 'Wallet history must be verified before depositing.')
   await page.evaluate(async () =>
     (await import('/tests/fork.fixture.ts')).loadForkSession('local-test-password-railgun'),

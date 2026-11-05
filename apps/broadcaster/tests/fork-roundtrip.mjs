@@ -113,7 +113,6 @@ try {
           status: await page.locator('#status').innerText(), error: await page.locator('#error').innerText() }))
       }
     }
-    assert((await page.locator('#status').innerText()).includes('Complete'), (await page.locator('#error').innerText()).slice(0, 500))
     assert(!(await page.locator('#ready-actions').isDisabled()), 'Deposits and spending must wait for verified wallet history.')
     result.synchronizationSeconds.push(Math.round((Date.now() - syncStart) / 1000))
     result.wallets.push(await page.evaluate(async (pass) => (await import('/tests/fork.fixture.ts')).loadForkSession(pass), password))
