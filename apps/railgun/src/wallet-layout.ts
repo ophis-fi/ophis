@@ -109,7 +109,11 @@ export function configureWalletLayout(refreshPickers: () => void): void {
     ;(amount.matches(':disabled') ? trigger : amount).focus()
   }
   element('edit-swap').onclick = () => { review = false; renderWalletLayout(); element('amount').focus() }
-  element('skip-funding').onclick = finishFirstFunding
+  element('skip-funding').onclick = () => {
+    finishFirstFunding()
+    const amount = element<HTMLInputElement>('amount')
+    ;(amount.matches(':disabled') ? trigger : amount).focus()
+  }
   element('continue-pending').onclick = () => showWalletView('recovery')
   const connection = element<HTMLDialogElement>('public-connect-options')
   element('deposit-connect').onclick = () => { if (!document.documentElement.dataset.busy) connection.showModal() }

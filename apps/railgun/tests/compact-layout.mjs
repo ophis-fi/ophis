@@ -121,6 +121,10 @@ try {
   await expect(page.locator('#first-funding-guide')).toBeVisible()
   await page.evaluate(() => window.ophisUiFixture.updateFirstFunding(true, true))
   await expect(page.locator('#first-funding-guide')).not.toBeVisible(); await expect(page.locator('#quote')).toBeVisible()
+  await page.evaluate(() => window.ophisUiFixture.startFirstFunding())
+  await page.locator('#skip-funding').click()
+  await expect(page.locator('#amount')).toBeFocused()
+  await expect(page.locator('#quote')).toBeVisible()
   await page.evaluate(() => {
     document.getElementById('pending-details').textContent = 'Saved transaction · UI fixture only'
     window.ophisUiFixture.setPendingNotice(true)

@@ -52,6 +52,7 @@ vi.mock('./wallet-layout', () => ({ renderWalletLayout: vi.fn(), setSwapReview: 
 let elements: Record<string, { value: string, hidden: boolean, textContent: string, className: string, checked: boolean, onclick?: () => Promise<void>, oninput?: () => void, dispatchEvent: () => boolean, scrollIntoView: () => void }>
 let provider: EventEmitter & { request: ReturnType<typeof vi.fn> }
 beforeEach(() => {
+  vi.clearAllMocks()
   mocks.environment = 'fork'
   elements = new Proxy({} as typeof elements, { get: (values, id: string) => values[id] ??= {
     value: ['token', 'shield-token'].includes(id) ? 'WETH' : '1', hidden: ['approve', 'shield', 'switch-network', 'review-shield'].includes(id),
@@ -126,6 +127,26 @@ it('opens recovery and directs the user to the saved withdrawal instead of prepa
   expect(mocks.prepareWithdrawal).not.toHaveBeenCalled()
 })
 
+it('keeps USDC withdrawal controls accessible when preparation fails after preserving the WETH proof', async () => {
+  mocks.pilot = '0x0000000000000000000000000000000000001234'
+  const saved = { token: 'WETH', recipient: mocks.pilot,
+    transaction: { data: withdrawalData(1, 1, mocks.pilot, TOKENS.WETH.address) } }
+  mocks.pendingWithdrawal.mockResolvedValue(saved)
+  mocks.preserve.mockImplementation(async () => {
+    mocks.pendingWithdrawal.mockResolvedValue(undefined)
+    mocks.preserved.mockResolvedValue(saved)
+  })
+  mocks.prepareWithdrawal.mockRejectedValueOnce(new Error('Broadcaster unavailable'))
+  const { wireWalletActions } = await import('./wallet-actions')
+  const { showWalletView } = await import('./wallet-layout')
+  await wireWalletActions({} as WalletSession)
+  await elements['use-usdc-withdrawal'].onclick?.()
+  expect(showWalletView).toHaveBeenCalledWith('withdrawal')
+  expect(elements.withdraw.hidden).toBe(true)
+  expect(elements['private-wallet-error'].textContent).toBe('Broadcaster unavailable')
+  expect(elements['preserved-withdrawal-details'].textContent).toContain('WETH')
+})
+
 it('the normal quote button reserves fees for the exact full-balance amount and discloses the adjustment', async () => {
   const full = 9_975_000_000_000_000n
   const quote = { sell: 'WETH', buy: 'USDC', amount: full, minimum: 1000n, shieldFee: 25n, ophisFee: 1n }
@@ -174,6 +195,18 @@ it('opens review for a prepared quote and does not reopen it after an unrelated 
   vi.mocked(setSwapReview).mockClear()
   await elements.walletconnect.onclick?.()
   expect(setSwapReview).not.toHaveBeenCalledWith(true)
+})
+
+it('clears the swap quote when preparing a maximum withdrawal changes the shared amount', async () => {
+  const { wireWalletActions } = await import('./wallet-actions')
+  await wireWalletActions({} as WalletSession)
+  await elements.quote.onclick?.()
+  expect(elements['receive-amount'].textContent).not.toBe('—')
+  await elements['withdraw-max'].onclick?.()
+  expect(elements['receive-amount'].textContent).toBe('—')
+  expect(elements['quote-details'].textContent).toBe('')
+  expect(elements.swap.hidden).toBe(true)
+  expect(elements.withdraw.hidden).toBe(false)
 })
 
 it('shows the Max amount and its committed fee for review without executing a swap', async () => {

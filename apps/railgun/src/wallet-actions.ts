@@ -320,9 +320,7 @@ export async function wireWalletActions(session: WalletSession): Promise<void> {
     await syncWallet(session)
   })
   const reviewWithdrawal = async (maximum: boolean): Promise<void> => {
-    state.withdrawal = undefined
-    element('withdraw').hidden = true
-    element('withdraw-details').textContent = ''
+    invalidate()
     requireWalletSync()
     if (!maximum) amountFromInput(amount.value, symbol())
     const selected = await selectBroadcaster(TOKENS[symbol()].address, false, broadcasterStatus)
@@ -382,9 +380,9 @@ export async function wireWalletActions(session: WalletSession): Promise<void> {
     amount.value = ''
     recipient.value = PILOT_WITHDRAWAL_RECIPIENT!
     status('WETH proof preserved. Preparing the USDC withdrawal for review.')
-    await reviewWithdrawal(true)
     showWalletView('withdrawal')
-    status('WETH proof preserved. Review the USDC amount and fee, then choose Prove and withdraw.')
+    await reviewWithdrawal(true)
+    status('WETH proof preserved. Review the USDC amount and fee, then choose Confirm withdrawal.')
     element('withdraw-details').scrollIntoView({ block: 'center' })
   })
   button('restore-preserved-withdrawal', 'Restoring saved proof…', async () => {
