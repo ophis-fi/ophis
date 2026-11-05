@@ -1,11 +1,10 @@
 import { afterAll, afterEach, beforeAll, expect, it } from 'vitest'
 import { createHash, generateKeyPairSync } from 'node:crypto'
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { spawnSync } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
-import { buildSync } from 'esbuild'
 import { Wallet } from 'ethers'
 import { sealOperator } from '../src/custody'
 import type { OwnerIdentity } from '../src/owner-pins'
@@ -19,9 +18,10 @@ const fixtures: string[] = []
 beforeAll(() => {
   directory = mkdtempSync(join(tmpdir(), 'ophis-owner-client-'))
   target = join(directory, 'unlock-client.mjs')
-  buildSync({ entryPoints: [fileURLToPath(new URL('../src/unlock-client.ts', import.meta.url))], outfile: target,
-    bundle: true, packages: 'external', platform: 'node', format: 'esm', logLevel: 'silent' })
-  symlinkSync(fileURLToPath(new URL('../node_modules', import.meta.url)), join(directory, 'node_modules'), 'dir')
+  const built = spawnSync(process.execPath, [fileURLToPath(new URL('../scripts/build-owner-client.mjs', import.meta.url)), target],
+    { timeout: 10_000, encoding: 'utf8' })
+  expect(built.status).toBe(0)
+  expect(existsSync(join(directory, 'node_modules'))).toBe(false)
   const pair = generateKeyPairSync('rsa', { modulusLength: 3072 })
   publicKey = Buffer.from(pair.publicKey.export({ type: 'spki', format: 'pem' }))
   privateKey = Buffer.from(pair.privateKey.export({ type: 'pkcs8', format: 'pem' }))
@@ -114,7 +114,7 @@ it.each(['unlock', 'recovery', 'verify', 'verify-retired'])('preserves the pinne
   if (mode === 'verify-retired') writeFileSync(f.sealed, sealedRetired)
   const result = f.run(mode)
   expect(result.status).toBe(0)
-  expect(result.stderr).toMatch(/^(?:\(node:\d+\) ExperimentalWarning: SQLite is an experimental feature and might change at any time\n\(Use `node --trace-warnings \.\.\.` to show where the warning was created\)\n)?$/)
+  expect(result.stderr).toBe('')
   const sending = mode === 'unlock' || mode === 'recovery'
   expect(JSON.parse(result.stdout).status).toBe(sending ? 'unlocked' : 'verified')
   expect(f.calls()).toBe(sending ? 'download\nupload\n' : 'download\n')

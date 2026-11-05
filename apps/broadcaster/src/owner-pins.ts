@@ -3,7 +3,7 @@ import { lstatSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { getAddress, ZeroAddress } from 'ethers'
 import { openOperator } from './custody'
-import { parseMainnetSecrets, parseSecrets, privateDirectory, privateFile } from './storage'
+import { parseMainnetSecrets, parseSecrets, privateDirectory, privateFile } from './secrets'
 
 export interface OwnerIdentity { gasWalletAddress: string; runtimeSha256: string; retiredSha256: string }
 const chains = new Set(['1', '42161', '56', '137'])

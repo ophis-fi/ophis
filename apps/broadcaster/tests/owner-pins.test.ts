@@ -95,6 +95,10 @@ it('checks ciphertext origin and role pins before parsing any recovery key', () 
   expect(() => openPinnedOperator(forged, Buffer.from('not a private key'), identity, 'runtime')).toThrow('owner pin')
 })
 
+it('checks the retired role pin before decrypting a runtime substitution', () => {
+  expect(() => openPinnedOperator(sealedRuntime, Buffer.from('not a private key'), identity, 'retired')).toThrow('owner pin')
+})
+
 it.each(['wrong gas wallet', 'retired mnemonic', 'extra mnemonic', 'extra field'])(
   'rejects a pinned runtime payload containing %s', (condition) => {
     let payload = { ...runtime } as Record<string, unknown>

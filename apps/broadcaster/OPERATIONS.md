@@ -30,7 +30,7 @@ Use the selected Ambire + Ledger account to control treasury funds and approve b
 
 Automatic swaps use the dedicated software gas wallet on existing Baal infrastructure. The operator files use AES-256-GCM with a fixed 128-bit authentication tag and a fresh data key wrapped with RSA-OAEP/SHA-256 under the existing 3072-bit backup certificate. Only the public certificate is on Baal. The recovery private key remains on the owner's Mac, outside the repository and server. It is protected by local file permissions, not by the Ledger. The gas key is available in process memory only after manual unlock. No new password or automatic unlock credential is stored on Baal.
 
-After every service restart, run the freshly built client from the approved checkout on the owner's Mac:
+After every service restart, run the freshly built client from the approved checkout on the owner's Mac. The owner-client build bundles its JavaScript dependencies; the copied `dist/unlock-client.mjs` requires Node 22.18 or later, without an installed project checkout or SQLite:
 
 ```sh
 node apps/broadcaster/dist/unlock-client.mjs unlock
