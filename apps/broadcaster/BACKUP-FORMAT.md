@@ -2,6 +2,8 @@
 
 `scripts/backup.sh INSTALLATION [critical|full]` resolves the broadcaster's bind mount at `/var/lib/ophis-broadcaster` through `docker compose config --format json`. This uses Compose's interpretation of `OPHIS_STATE_DIR` and never sources `compose.env` as shell code. The host needs Python 3 in addition to the existing Docker Compose, tar, OpenSSL and flock commands.
 
+Both modes require exactly one existing broadcaster container, compare its actual state bind mount with the configured directory, and require the request journal and sealed operator record before any stop or archive. Configuration drift fails the backup rather than selecting another directory. Configuration files are archived directly from the installation directory, never copied into the container-writable snapshot.
+
 Both modes preserve existing archives and include `operator.env` and `compose.env` inside the encrypted archive. Their state layouts differ:
 
 | Mode | Archive layout | Runtime behavior |

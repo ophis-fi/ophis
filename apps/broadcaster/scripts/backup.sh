@@ -31,6 +31,32 @@ if [[ ! -d "$state" || -L "$state" ]]; then
   echo 'Configured broadcaster state must be a real directory, not a symlink.' >&2
   exit 1
 fi
+container=$("${compose[@]}" ps -aq broadcaster)
+if [[ -z "$container" || "$container" = *$'\n'* ]]; then
+  echo 'Backup requires exactly one existing broadcaster container.' >&2
+  exit 1
+fi
+mounted=$(docker inspect --format '{{json .Mounts}}' "$container" | python3 -I -c '
+import json, os, sys
+try:
+    selected = [v for v in json.load(sys.stdin) if v.get("Destination") == "/var/lib/ophis-broadcaster"]
+    if len(selected) != 1 or selected[0].get("Type") != "bind":
+        raise ValueError()
+    source = selected[0]["Source"]
+    if not isinstance(source, str) or not os.path.isabs(source) or "\n" in source or "\r" in source:
+        raise ValueError()
+    print(source)
+except (KeyError, TypeError, ValueError, AttributeError):
+    sys.exit("Cannot resolve the existing broadcaster state bind mount.")
+')
+if [[ ! "$mounted" -ef "$state" ]]; then
+  echo 'Existing broadcaster state mount differs from the configured state.' >&2
+  exit 1
+fi
+if [[ ! -f "$state/requests.sqlite" || ! -f "$state/secrets/operator.sealed.json" ]]; then
+  echo 'Broadcaster state is missing its request journal or sealed operator record.' >&2
+  exit 1
+fi
 running=$("${compose[@]}" ps --status running -q broadcaster)
 temporary=$(mktemp "$base/backups/.incomplete.XXXXXXXX")
 snapshot=
@@ -52,10 +78,9 @@ else
   [[ -n "$running" && -f "$state/secrets/operator.sealed.json" ]]
   snapshot=$(mktemp -d "$state/.backup-snapshot.XXXXXXXX")
   "${compose[@]}" exec -T broadcaster node dist/main.mjs snapshot "/var/lib/ophis-broadcaster/${snapshot##*/}"
-  cp -- "$base/operator.env" "$base/compose.env" "$snapshot/"
   source=$snapshot
   # Critical snapshots normalize their contents to state/; restore to the configured mount.
-  entries=(state operator.env compose.env)
+  entries=(state -C "$base" operator.env compose.env)
 fi
 tar -C "$source" -cf - "${entries[@]}" |
   openssl cms -encrypt -binary -aes-256-gcm -outform DER -recip "$base/backup-cert.pem" \
