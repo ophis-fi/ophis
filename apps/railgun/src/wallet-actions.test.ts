@@ -157,6 +157,73 @@ it('selects the new pending swap recovery index and then preserves a manual sele
   expect(elements['recovery-index'].value).toBe('8')
 })
 
+it('clears the spent amount only after swap confirmation and finishes the balance-refresh status', async () => {
+  const { wireWalletActions } = await import('./wallet-actions')
+  const { executePrivateSwap } = await import('./private-swap')
+  let confirm!: (hash: string) => void, finishSync!: () => void
+  vi.mocked(executePrivateSwap).mockImplementationOnce(() => new Promise((resolve) => { confirm = resolve }))
+  mocks.sync.mockImplementationOnce(() => new Promise<void>((resolve) => { finishSync = resolve }))
+  await wireWalletActions({} as WalletSession)
+  await elements.quote.onclick?.()
+  const reviewedAmount = elements.amount.value
+  const executing = elements.swap.onclick?.()
+  await vi.waitFor(() => expect(executePrivateSwap).toHaveBeenCalledOnce())
+  expect(elements.amount.value).toBe(reviewedAmount)
+  expect(mocks.sync).not.toHaveBeenCalled()
+  confirm('confirmed swap hash')
+  await vi.waitFor(() => expect(mocks.sync).toHaveBeenCalledOnce())
+  expect(elements.amount.value).toBe('')
+  expect(elements.status.textContent).toBe('Swap confirmed: confirmed swap hash. Updating private balance.')
+  finishSync()
+  await executing
+  expect(elements.status.textContent).toBe('Swap confirmed: confirmed swap hash. Private balance updated.')
+  expect(elements.swap.hidden).toBe(true)
+  expect(elements['quote-details'].textContent).toBe('')
+  expect(elements['receive-amount'].textContent).toBe('—')
+  await elements.quote.onclick?.()
+  expect(mocks.quoteSwap).toHaveBeenCalledOnce()
+  expect(elements['private-wallet-error'].textContent).toBe('Enter a positive token amount.')
+})
+
+it('keeps a confirmed swap distinct from a failed balance refresh and does not restore its spent amount', async () => {
+  const { wireWalletActions } = await import('./wallet-actions')
+  const { executePrivateSwap } = await import('./private-swap')
+  vi.mocked(executePrivateSwap).mockResolvedValueOnce('confirmed swap hash')
+  mocks.sync.mockRejectedValueOnce(new Error('History verification timed out.'))
+  await wireWalletActions({} as WalletSession)
+  await elements.quote.onclick?.()
+  await elements.swap.onclick?.()
+  expect(elements.amount.value).toBe('')
+  expect(elements.status.textContent).toBe('Swap confirmed: confirmed swap hash. Private balance refresh is incomplete. Refresh balances to retry.')
+  expect(elements['private-wallet-error'].textContent).toBe('History verification timed out.')
+  expect(elements.swap.hidden).toBe(true)
+  expect(executePrivateSwap).toHaveBeenCalledOnce()
+})
+
+it('preserves the amount and recovery record when swap confirmation remains uncertain', async () => {
+  const { wireWalletActions } = await import('./wallet-actions')
+  const { executePrivateSwap } = await import('./private-swap')
+  const { deletePrivateState } = await import('./storage')
+  const saved = { index: 7, account: 'fixture-recovery-account', hash: 'pending swap hash' }
+  vi.mocked(executePrivateSwap).mockImplementationOnce(async (_session, _prepared, report) => {
+    mocks.pendingSwap.mockResolvedValue(saved)
+    report('Waiting for two confirmations: pending swap hash')
+    throw new Error('Confirmation pending. Check recovery before retrying.')
+  })
+  await wireWalletActions({} as WalletSession)
+  await elements.quote.onclick?.()
+  const reviewedAmount = elements.amount.value
+  await elements.swap.onclick?.()
+  expect(elements.amount.value).toBe(reviewedAmount)
+  expect(elements.status.textContent).toBe('Waiting for two confirmations: pending swap hash')
+  expect(elements['pending-details'].textContent).toContain(saved.hash)
+  expect(elements.reconcile.hidden).toBe(false)
+  expect(elements['recovery-index'].value).toBe('7')
+  expect(mocks.sync).not.toHaveBeenCalled()
+  expect(deletePrivateState).not.toHaveBeenCalled()
+  expect(await mocks.pendingSwap()).toBe(saved)
+})
+
 it('keeps USDC withdrawal controls accessible when preparation fails after preserving the WETH proof', async () => {
   mocks.pilot = '0x0000000000000000000000000000000000001234'
   const saved = { token: 'WETH', recipient: mocks.pilot,

@@ -331,8 +331,15 @@ export async function wireWalletActions(session: WalletSession): Promise<void> {
     invalidate()
     if (!prepared) throw new Error('Get a fresh private swap quote first.')
     const hash = await executePrivateSwap(session, prepared, status, privateSubmitter)
-    status(`Swap mined: ${hash}. Confirming private balance.`)
-    await syncWallet(session)
+    amount.value = ''
+    status(`Swap confirmed: ${hash}. Updating private balance.`)
+    try {
+      await syncWallet(session)
+    } catch (error) {
+      status(`Swap confirmed: ${hash}. Private balance refresh is incomplete. Refresh balances to retry.`)
+      throw error
+    }
+    status(`Swap confirmed: ${hash}. Private balance updated.`)
   })
   const reviewWithdrawal = async (maximum: boolean): Promise<void> => {
     invalidate()

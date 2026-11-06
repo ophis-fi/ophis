@@ -1,5 +1,15 @@
 # Private swap release
 
+## Current release scope — 7 November 2026
+
+Ethereum's replacement ANON operator has passed a finalized user-paid swap and withdrawal, including authenticated private fees above signed gas ceilings plus 15%. The client binds that fee identity and retains the existing 0.5 gwei / 0.0015 ETH caps. A completed swap clears its spent amount only after reconciliation and distinguishes a later balance-refresh failure from a failed transaction.
+
+BNB's guard and bounded private-builder inclusion/revert-exclusion tests passed. Its real user-paid swap/withdrawal remains outstanding; the owner currently has no separate BNB test funds. Only restricted pilot signing is permitted in source, and no public BNB identity is approved. Arbitrum and Polygon remain closed for protected swaps; Base is outside this release. Do not advertise all four chains as live. The unchanged gateway can continue providing reads and owner-signed recovery.
+
+The owner requested launch of Ethereum and BNB. This permits releasing each chain after its existing security and acceptance gates pass; it does not supply missing BNB acceptance or authorize using operator reserves as user principal. Preserve all journals, chain-specific storage and owner-only unlock. Never restart a retired signer. Public Ethereum configuration must remove pilot account/recipient pins, keep the used pilot marker, and preserve the existing financial limits.
+
+The earlier integration checklist below describes the gateway and deployment mechanics. Its historical provider and acceptance statements do not supersede the current chain status above.
+
 This release integrates the reviewed runtime inside `swap.ophis.fi`, using the existing Ophis swap page and supplied incognito icon. It does not restore `private.ophis.fi`. The private fee is 10 bp (0.1%) of final swap output; the public SDK remains at 1 bp. No new contract deployment, SDK release or f(x) work is included.
 
 ## Release order

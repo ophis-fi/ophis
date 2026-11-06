@@ -38,7 +38,7 @@ async function fixture(chainId = 1) {
   const sign = vi.spyOn(wallet, 'signTransaction')
   const run = (command: 'retry' | 'cancel', args: string[] = []) => recover(command, args, selectedConfig, store,
     provider as unknown as JsonRpcProvider, wallet, sender)
-  return { wallet, raw, hash, provider, sender, sign, run, recover, network }
+  return { wallet, raw, hash, provider, sender, sign, run, recover, network, selectedConfig }
 }
 
 it('stages a crash-gap transaction and retries identical signed bytes without signing again', async () => {
@@ -49,9 +49,9 @@ it('stages a crash-gap transaction and retries identical signed bytes without si
   expect(f.sign).not.toHaveBeenCalled()
 })
 
-it('blocks an original mainnet retry before any execution or disclosure', async () => {
-  const f = await fixture()
-  await expect(f.recover('retry', [], { ...config, mode: 'mainnet', enabled: false }, store,
+it.each([1, 56])('blocks an original chain %i mainnet pilot retry before any execution or disclosure', async (chainId) => {
+  const f = await fixture(chainId)
+  await expect(f.recover('retry', [], { ...f.selectedConfig, mode: 'mainnet', enabled: false }, store,
     f.provider as unknown as JsonRpcProvider, f.wallet, f.sender)).rejects.toThrow('Unsecured mainnet sponsorship retries')
   expect(f.provider.send).not.toHaveBeenCalled()
   expect(f.sender.stageSigned).not.toHaveBeenCalled()
@@ -75,9 +75,9 @@ it('replaces a stale transport journal only after the preceding nonce is confirm
   expect(f.sender.retryPending).toHaveBeenCalledOnce()
 })
 
-it('preserves explicit mainnet cancellation and identical cancellation retry while unarmed', async () => {
-  const f = await fixture()
-  const unarmed = { ...config, mode: 'mainnet' as const, enabled: false }
+it.each([1, 56])('preserves explicit chain %i mainnet pilot cancellation and identical cancellation retry while unarmed', async (chainId) => {
+  const f = await fixture(chainId)
+  const unarmed = { ...f.selectedConfig, mode: 'mainnet' as const, enabled: false }
   const hash = await f.recover('cancel', ['3000000000', '2000000000'], unarmed, store,
     f.provider as unknown as JsonRpcProvider, f.wallet, f.sender)
   expect(store.get('one')?.cancel_hash).toBe(hash)

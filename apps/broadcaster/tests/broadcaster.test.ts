@@ -288,6 +288,26 @@ describe('signing gate and duplicate recovery', () => {
     f.service.config.pilotAccount = String(f.data.to)
     expect(f.decode(await f.service.handle(f.payload)).txHash).toBeTruthy()
   })
+  it.runIf(CHAIN_ID === 56)('permits a BNB mainnet pilot request while rejecting public admission and other pilot accounts before signing', async () => {
+    const f = await fixture(Wallet.createRandom().address)
+    f.service.config.mode = 'mainnet'
+    f.service.config.admission = 'public'
+    expect(f.decode(await f.service.handle(f.payload)).error).toBeTruthy()
+    expect(f.sdk.fee).not.toHaveBeenCalled()
+    expect(f.provider.getNetwork).not.toHaveBeenCalled()
+    expect(f.sign).not.toHaveBeenCalled()
+    expect(f.sender.broadcastTransaction).not.toHaveBeenCalled()
+    f.service.config.admission = 'pilot'
+    f.service.config.pilotAccount = Wallet.createRandom().address
+    expect(f.decode(await f.service.handle(f.payload)).error).toBeTruthy()
+    expect(f.sdk.fee).not.toHaveBeenCalled()
+    expect(f.sign).not.toHaveBeenCalled()
+    f.service.config.pilotAccount = String(f.data.to)
+    expect(f.decode(await f.service.handle(f.payload)).txHash).toBeTruthy()
+    expect(f.sdk.validate).toHaveBeenCalledOnce()
+    expect(f.sign).toHaveBeenCalledOnce()
+    expect(f.sender.broadcastTransaction).toHaveBeenCalledOnce()
+  })
   it('wraps the exact fee-validated request without changing the user authorization or execution', async () => {
     const guard = Wallet.createRandom().address
     const f = await fixture(guard)

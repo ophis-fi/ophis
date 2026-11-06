@@ -79,6 +79,7 @@ export async function selectBroadcaster(
       .filter(
         (candidate) =>
           candidate.tokenFee.expiration > Date.now() + 60_000 &&
+          (CHAIN_ID !== 1 || ENVIRONMENT !== 'ethereum' || candidate.railgunAddress === FEE_SIGNER) &&
           (!expectedBroadcaster || candidate.railgunAddress === expectedBroadcaster) &&
           (!use7702 || (supportsCanonicalDelegate(candidate) && isProtectedBroadcaster(candidate))),
       )
@@ -98,6 +99,8 @@ export async function selectBroadcaster(
 }
 
 export function validateBroadcaster(selected: SelectedBroadcaster, tokenAddress: string, use7702: boolean): void {
+  if (CHAIN_ID === 1 && ENVIRONMENT === 'ethereum' && selected.railgunAddress !== FEE_SIGNER)
+    throw new Error('Ethereum submissions require the reviewed Ophis fee identity.')
   if (
     getAddress(selected.tokenAddress) !== getAddress(feeAddressFor(tokenAddress)) ||
     !validateRailgunAddress(selected.railgunAddress) ||
@@ -169,7 +172,7 @@ export async function assertSubmittable(
   gas: BroadcasterGas,
 ): Promise<void> {
   if (ENVIRONMENT !== 'ethereum') throw new Error('Mainnet broadcasting is disabled in this local fork build.')
-  if (gas.evmGasType === EVMGasType.Type4) validateBroadcaster(selected, selected.tokenAddress, true)
+  validateBroadcaster(selected, selected.tokenAddress, gas.evmGasType === EVMGasType.Type4)
   const policy = PROTECTED_BROADCASTERS[CHAIN_ID]?.find((operator) => operator.railgunAddress === selected.railgunAddress)
   if (policy && (calculateGasPrice(gas) > policy.maxGasPrice || calculateMaximumGas(gas) > policy.maxTransactionCost))
     throw new Error('This gas quote exceeds the Ophis broadcaster limits. Wait for lower gas prices; check recovery before preparing another transaction.')

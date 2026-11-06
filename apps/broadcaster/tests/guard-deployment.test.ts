@@ -119,14 +119,15 @@ async function bnbFixture() {
 it.each(['missing approval', 'unapproved funding', 'enabled sponsorship', 'wrong approval chain'])(
   'keeps BNB commissioning closed for %s before signing or publication', async (change) => {
     const f = await bnbFixture()
+    f.settings.admission = 'public'
     if (change === 'unapproved funding') f.approval.gasFundingApproved = false
     if (change === 'enabled sponsorship') f.settings.enabled = true
     if (change === 'wrong approval chain') f.approval.chainId = 137
     const { assertSigningNetwork } = await import('../src/config')
-    expect(() => assertSigningNetwork(f.settings)).toThrow('awaits qualified private delivery')
+    expect(() => assertSigningNetwork(f.settings)).toThrow('restricted to pilot admission')
     const { deployGuard: deployBNB } = await import('../src/guard-deployment')
     await expect(deployBNB(f.settings, change === 'missing approval' ? undefined as never : f.approval,
-      f.provider as unknown as JsonRpcProvider, f.wallet)).rejects.toThrow('awaits qualified private delivery')
+      f.provider as unknown as JsonRpcProvider, f.wallet)).rejects.toThrow('restricted to pilot admission')
     expect(f.sign).not.toHaveBeenCalled()
     expect(f.publish).not.toHaveBeenCalled()
     expect(existsSync(f.path)).toBe(false)

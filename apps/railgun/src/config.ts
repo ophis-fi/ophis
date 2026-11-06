@@ -56,7 +56,7 @@ export const PERMIT2 = '0x000000000022D473030F116dDEE9F6B43aC78BA3'
 export const ROUTER_RECIPIENT = '0x0000000000000000000000000000000000000002'
 export const QUOTER = SELECTED_NETWORK.quoter
 const OPHIS_ETHEREUM_BROADCASTER =
-  '0zk1qyjex88m96zw2kunzxw8r8g7007ak2qe082w5n0f038chhhkzfcdtrv7j6fe3z53law92j4q28j34xsacfqf9kmqw20ap8ek904q7j0hjllh8rpd3t96jq7xh98'
+  '0zk1qy08nqrftxezyxdegx6ca055tr65f2hf3u24j9urx04e5fnzepv6nrv7j6fe3z53luvr6qkgtjukzmkcp856gs5a6wzdd3pnesr9r6ljvym9l3a4fcepgkvek3f'
 // Ethereum uses the verified Ophis fee identity; other networks retain their existing discovery signer.
 export const FEE_SIGNER = CHAIN_ID === 1 ? OPHIS_ETHEREUM_BROADCASTER :
   '0zk1qyzgh9ctuxm6d06gmax39xutjgrawdsljtv80lqnjtqp3exxayuf0rv7j6fe3z53laetcl9u3cma0q9k4npgy8c8ga4h6mx83v09m8ewctsekw4a079dcl5sw4k'
@@ -69,7 +69,7 @@ export const PROTECTED_BROADCASTERS: Readonly<Partial<Record<number, readonly {
   expiresAt: number
   maxGasPrice: bigint
   maxTransactionCost: bigint
-}[]>>> = { 1: [{ railgunAddress: OPHIS_ETHEREUM_BROADCASTER, expiresAt: Date.parse('2026-12-03T00:00:00Z'),
+}[]>>> = { 1: [{ railgunAddress: OPHIS_ETHEREUM_BROADCASTER, expiresAt: Date.parse('2026-11-13T00:00:00Z'),
   maxGasPrice: 500_000_000n, maxTransactionCost: 1_500_000_000_000_000n }] }
 export const ERC20 = new Interface([
   'function approve(address spender,uint256 amount) returns (bool)',
