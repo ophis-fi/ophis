@@ -15,6 +15,7 @@ const built = await build({ configFile: false, envDir: false, publicDir: false, 
 const output = (Array.isArray(built) ? built[0] : built).output
 const resources = new Map(output.map(item => [`/${item.fileName}`, item.type === 'chunk' ? item.code : item.source]))
 resources.set('/incognito.svg', await readFile(join(root, 'public/incognito.svg')))
+resources.set('/logos/token-unknown.png', await readFile(join(root, 'public/logos/token-unknown.png')))
 for (const name of ['chain-ethereum.png', 'chain-arbitrum.jpg', 'chain-polygon.png', 'chain-bnb.png',
   'token-weth.png', 'token-usdc.png', 'token-usdt.png']) {
   const bytes = await readFile(join(root, 'public/logos', name))
@@ -187,6 +188,36 @@ try {
     await page.locator('main').screenshot({ path: file })
     results.push({ viewport, primaryActionBottom: Math.round(action.y + action.height), screenshot: file })
   }
+  await page.locator('#token').evaluate(select => {
+    const spoof = new Option('0x0000000000000000000000000000000000001234', '0x0000000000000000000000000000000000009999')
+    spoof.dataset.address = spoof.value
+    spoof.dataset.symbol = spoof.text
+    select.append(spoof)
+  })
+  await page.locator('#token-picker').click()
+  await page.locator('#asset-search').fill('0x0000000000000000000000000000000000001234')
+  await expect(page.locator('#asset-options button')).toHaveCount(1)
+  await page.getByRole('button', { name: 'Find token by contract address' }).click()
+  await expect(page.locator('#token')).toHaveValue('0x0000000000000000000000000000000000001234')
+  await expect(page.locator('#token-picker')).toHaveText('CUSTOM0x0000…1234')
+  await expect(page.locator('#token-picker img')).toHaveAttribute('src', /token-unknown\.png$/)
+  await expect(page.locator('#token-picker')).toBeFocused()
+  await page.locator('#token-picker').click()
+  await page.locator('#asset-search').fill('0x0000000000000000000000000000000000001234')
+  await expect(page.locator('#asset-options button')).toHaveCount(1)
+  assert(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth))
+  await page.locator('#asset-close').click()
+  await page.locator('#token').evaluate(select => {
+    const pending = new Option('Token in your private wallet · 0x0000000000000000000000000000000000005555', '0x0000000000000000000000000000000000005555')
+    pending.dataset.address = pending.value
+    pending.dataset.pendingMetadata = 'true'
+    select.append(pending)
+  })
+  await page.locator('#token-picker').click()
+  await page.locator('#asset-search').fill('0x0000000000000000000000000000000000005555')
+  await page.locator('#asset-options button').click()
+  await expect(page.locator('#token')).toHaveValue('0x0000000000000000000000000000000000005555')
+  await expect(page.locator('#token-picker')).toHaveText('CUSTOM0x0000…5555')
   assert.deepEqual(errors, [])
   assert(requests.every(request => request.url.startsWith(origin + '/') && request.method === 'GET'))
   await writeFile(join(artifacts, 'layout-result.json'), JSON.stringify({ passed: true, fixtureOnly: true, results }, null, 2))

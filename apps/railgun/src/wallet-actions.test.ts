@@ -4,7 +4,7 @@ import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import type { WalletSession } from './wallet'
 import { SwapBalanceError } from './private-swap'
 import { withdrawalData } from '../tests/withdrawal.fixture'
-import { TOKENS } from './config'
+import { TOKENS, registerToken, tokenFor } from './config'
 
 const mocks = vi.hoisted(() => ({
   environment: 'fork',
@@ -85,6 +85,19 @@ beforeEach(() => {
   mocks.unused.mockReset().mockResolvedValue({ address: '0x0000000000000000000000000000000000000001' })
 })
 afterEach(() => vi.unstubAllGlobals())
+
+it('shows the full contract address when reviewing an imported token with a familiar ticker', async () => {
+  const custom = registerToken({ address: '0x0000000000000000000000000000000000001234', symbol: 'USDC', decimals: 8 })
+  elements.token.value = custom
+  mocks.selectBroadcaster.mockResolvedValue({ tokenAddress: 'verified fee token' })
+  const { wireWalletActions } = await import('./wallet-actions')
+  await wireWalletActions({} as WalletSession)
+  await elements['withdraw-quote'].onclick?.()
+  expect(elements['withdraw-details'].textContent).toContain(`Token contract: ${tokenFor(custom).address}`)
+  mocks.quoteSwap.mockResolvedValue({ sell: custom, buy: 'USDC', amount: 1000n, minimum: 1000n, shieldFee: 25n, ophisFee: 1n })
+  await elements.quote.onclick?.()
+  expect(elements['quote-details'].textContent).toContain(`Sell token contract: ${tokenFor(custom).address}`)
+})
 
 it('preserves the WETH proof and prepares a USDC review without submitting either proof', async () => {
   mocks.pilot = '0x0000000000000000000000000000000000001234'
@@ -570,7 +583,7 @@ it('prepares Max withdrawal after fee without connecting or charging a public wa
   const { wireWalletActions } = await import('./wallet-actions')
   await wireWalletActions({} as WalletSession)
   await elements['withdraw-max'].onclick?.()
-  expect(mocks.prepareWithdrawal).toHaveBeenCalledWith(expect.anything(), 'USDC', '', elements.recipient.value, selected, true)
+  expect(mocks.prepareWithdrawal).toHaveBeenCalledWith(expect.anything(), 'USDC', '', elements.recipient.value, selected, true, false)
   expect(elements.amount.value).toBe('0.000999')
   expect(elements['withdraw-details'].textContent).toContain('You receive: 0.0009 USDC')
   expect(elements.withdraw.hidden).toBe(false)

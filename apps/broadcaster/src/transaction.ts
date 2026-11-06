@@ -28,27 +28,39 @@ export interface ParsedRequest {
   withdrawal?: { recipient: string; token: string; amount: bigint; grossAmount: bigint }
 }
 
-function boundStableWithdrawal(transactions: TransactionStructV2[], call: { to: unknown; data: unknown; value: unknown }, account: string): NonNullable<ParsedRequest['withdrawal']> {
-  if (transactions.length !== 2 || BigInt(transactions[0].boundParams.unshield) !== 0n ||
-    BigInt(transactions[1].boundParams.unshield) !== 1n || typeof call.to !== 'string' || getAddress(call.to) !== account ||
-    typeof call.data !== 'string' || BigInt(String(call.value)) !== 0n)
-    throw new Error('A bound stablecoin withdrawal requires one canonical self transfer and its private WBNB fee.')
-  const transfer = ADAPT.parseTransaction({ data: call.data })
+function boundWithdrawal(transactions: TransactionStructV2[], calls: readonly { to: unknown; data: unknown; value: unknown }[], account: string): NonNullable<ParsedRequest['withdrawal']> {
+  const native = calls.length === 2
+  if ((calls.length !== 1 && !native) || (native && CHAIN_ID !== 56) || transactions.length !== (native ? 1 : 2) ||
+    (!native && BigInt(transactions[0].boundParams.unshield) !== 0n) ||
+    BigInt(transactions[native ? 0 : 1].boundParams.unshield) !== 1n ||
+    calls.some((call) => typeof call.to !== 'string' || getAddress(call.to) !== account ||
+      typeof call.data !== 'string' || BigInt(String(call.value)) !== 0n))
+    throw new Error('A bound withdrawal requires its exact canonical self transfer and private WBNB fee.')
+  const call = calls[native ? 1 : 0]
+  const transfer = ADAPT.parseTransaction({ data: String(call.data) })
   if (transfer?.name !== 'transfer' || ADAPT.encodeFunctionData(transfer.fragment, transfer.args) !== call.data || transfer.args[0].length !== 1)
-    throw new Error('A bound stablecoin withdrawal requires one canonical self transfer.')
-  const output = transfer.args[0][0], principal = transactions[1].unshieldPreimage
+    throw new Error('A bound withdrawal requires one canonical self transfer.')
+  const output = transfer.args[0][0], principal = transactions[native ? 0 : 1].unshieldPreimage
   if (typeof output.token.tokenAddress !== 'string' || typeof output.to !== 'string' ||
     typeof principal.token.tokenAddress !== 'string' || typeof principal.npk !== 'string')
     throw new Error('Invalid bound withdrawal token or recipient.')
-  const token = getAddress(output.token.tokenAddress), recipient = getAddress(output.to)
+  const token = getAddress(principal.token.tokenAddress), recipient = getAddress(output.to)
+  const outputToken = getAddress(output.token.tokenAddress)
   const amount = BigInt(output.value), grossAmount = BigInt(principal.value)
-  if (!TOKENS.slice(1).some((item) => item.address === token) || getAddress(principal.token.tokenAddress) !== token ||
+  if (token === ZeroAddress || (native ? token !== TOKENS[0].address || outputToken !== ZeroAddress || transactions[0].commitments.length < 2
+      : token === TOKENS[0].address || outputToken !== token) ||
     BigInt(principal.token.tokenType) !== 0n || BigInt(principal.token.tokenSubID) !== 0n ||
     BigInt(output.token.tokenType) !== 0n || BigInt(output.token.tokenSubID) !== 0n ||
-    BigInt(principal.npk) !== BigInt(account) || recipient === account || amount <= 0n || amount > grossAmount ||
+    BigInt(principal.npk) !== BigInt(account) || recipient === account || recipient === ZeroAddress || amount <= 0n || amount > grossAmount ||
     transactions.some((tx) => !tx.nullifiers.length || !tx.commitments.length ||
+      tx.nullifiers.some((nullifier) => String(nullifier) === ZeroHash) ||
       tx.boundParams.commitmentCiphertext.length !== tx.commitments.length - Number(tx.boundParams.unshield)))
-    throw new Error('Invalid bound stablecoin withdrawal proof or transfer.')
+    throw new Error('Invalid bound withdrawal proof or transfer.')
+  if (native) {
+    const unwrap = ADAPT.parseTransaction({ data: String(calls[0].data) })
+    if (unwrap?.name !== 'unwrapBase' || ADAPT.encodeFunctionData(unwrap.fragment, unwrap.args) !== calls[0].data || BigInt(unwrap.args[0]) !== amount)
+      throw new Error('Native BNB withdrawal must unwrap and send the exact positive net amount.')
+  }
   return { recipient, token, amount, grossAmount }
 }
 
@@ -86,18 +98,25 @@ export function parseRequest(data: Record<string, unknown>, operator: string, se
     const action = decoded.args._actionData
     if (action.calls.length > 64 || (action.requireSuccess !== false && action.requireSuccess !== true))
       throw new Error('Unsupported private execution policy.')
-    if (CHAIN_ID === 56 && transactions.some((tx) => BigInt(tx.boundParams.chainID) !== CHAIN ||
+    if ((CHAIN_ID === 56 || action.requireSuccess) && transactions.some((tx) => BigInt(tx.boundParams.chainID) !== CHAIN ||
       typeof tx.boundParams.adaptContract !== 'string' || getAddress(tx.boundParams.adaptContract) !== to || tx.boundParams.adaptParams !== ZeroHash))
-      throw new Error('Every BNB private proof must be bound to its signed execution account.')
-    if (CHAIN_ID === 56 && !action.requireSuccess && action.calls.length === 1 &&
-      action.calls[0].to === to && typeof action.calls[0].data === 'string' && action.calls[0].data.startsWith(ADAPT.getFunction('transfer')!.selector))
+      throw new Error('Every guarded private proof must be bound to its signed execution account and chain.')
+    if (CHAIN_ID === 56 && !action.requireSuccess &&
+      ((action.calls.length === 1 && action.calls[0].to === to && typeof action.calls[0].data === 'string' &&
+        action.calls[0].data.startsWith(ADAPT.getFunction('transfer')!.selector)) ||
+       (action.calls.length === 2 && action.calls.every((call: { to: unknown }) => call.to === to) &&
+        action.calls[0].data.startsWith(ADAPT.getFunction('unwrapBase')!.selector) &&
+        action.calls[1].data.startsWith(ADAPT.getFunction('transfer')!.selector))))
       throw new Error('A BNB public withdrawal must require its signed transfer to succeed.')
     RelayAdapt7702Validator.validateExecution(transactions, decoded.args._actionData, decoded.args._signature, CHAIN_ID, to,
       { executionType: RelayAdapt7702ExecutionType.ExecuteWithNonce, executeNonce })
     if (action.requireSuccess) {
-      if (CHAIN_ID !== 56 || !settings.executionGuard || action.calls.length !== 1)
-        throw new Error('Only guarded BNB stablecoin withdrawals may require all actions to succeed.')
-      withdrawal = boundStableWithdrawal(transactions, action.calls[0], to)
+      if (!settings.executionGuard)
+        throw new Error('Only guarded withdrawals may require all actions to succeed.')
+      withdrawal = boundWithdrawal(transactions, action.calls, to)
+      if ([to, getAddress(operator), getAddress(NETWORK.proxyContract), getAddress(NETWORK.relayAdapt7702Contract),
+        getAddress(settings.executionGuard)].includes(withdrawal.token))
+        throw new Error('A protocol or operator account cannot be the withdrawal principal token.')
     }
     const gasLimit = uint(data.gasLimit, true), maxFeePerGas = uint(data.maxFeePerGas, true)
     const maxPriorityFeePerGas = uint(data.maxPriorityFeePerGas, true)
@@ -124,7 +143,7 @@ export function parseRequest(data: Record<string, unknown>, operator: string, se
           tx.boundParams.commitmentCiphertext.length !== tx.commitments.length - Number(tx.boundParams.unshield) ||
           BigInt(tx.boundParams.chainID) !== CHAIN || typeof tx.boundParams.adaptContract !== 'string' || getAddress(tx.boundParams.adaptContract) !== ZeroAddress ||
           tx.boundParams.adaptParams !== ZeroHash))
-        throw new Error('BNB COMMON withdrawals require one WBNB proof; stablecoin withdrawals require signed bound execution.')
+        throw new Error('BNB COMMON withdrawals require one WBNB proof; other tokens require signed bound execution.')
     } else if (transactions.length !== 1 || BigInt(transactions[0].boundParams.unshield) !== 1n)
       throw new Error('The withdrawal and broadcaster fee must share one proof.')
     const gasPrice = uint(data.minGasPrice, true)

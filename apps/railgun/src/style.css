@@ -56,6 +56,7 @@ dialog::backdrop { background: #17191c88; }
 #walletconnect-qr { display: block; max-width: 100%; margin: auto; }
 .asset-picker-button { display: inline-flex; align-items: center; justify-content: center; gap: 7px; min-height: 40px; margin: 0; padding: 8px 10px; border: 1px solid #e5e6e9; border-radius: 999px; background: white; color: #17191c; font-size: 12px; font-weight: 500; white-space: nowrap; }
 .asset-picker-button img, .picker-option img { flex-shrink: 0; object-fit: contain; border-radius: 50%; }
+.asset-picker-button > span:not(.chevron) { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .asset-picker-button small { display: block; font-size: 9px; font-weight: 400; }
 .asset-picker-button:disabled { opacity: .55; }
 .chevron { display: inline-block; flex: 0 0 6px; width: 6px; height: 6px; box-sizing: border-box; border-right: 1.5px solid currentColor; border-bottom: 1.5px solid currentColor; transform: translateY(-2px) rotate(45deg); }
@@ -71,6 +72,8 @@ dialog::backdrop { background: #17191c88; }
 .picker-option { display: flex; align-items: center; gap: 12px; width: 100%; min-height: 52px; margin: 0; padding: 10px 8px; text-align: left; background: white; color: #17191c; border-radius: 10px; font-size: 13px; }
 .picker-option:hover { background: #f3f3f4; }
 .picker-option img { width: 28px; height: 28px; }
+.picker-option > span { min-width: 0; overflow-wrap: anywhere; }
+.picker-option small { display: block; font-size: 10px; color: #667085; direction: ltr; unicode-bidi: isolate; }
 .picker-selected { margin-left: auto; font-size: 10px; color: #687080; }
 .dialog-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 12px; }
 .dialog-heading h2 { margin: 0; font-size: 17px; }

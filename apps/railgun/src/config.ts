@@ -1,5 +1,5 @@
 import { NETWORK_CONFIG, TXIDVersion } from '@railgun-community/shared-models'
-import { Interface } from 'ethers'
+import { getAddress, Interface, ZeroAddress } from 'ethers'
 import { OPHIS_PARTNER_FEE_RECIPIENT } from '../../../packages/sdk/src/partner-fee'
 import { privateNetwork, type PrivateToken, type TokenSymbol } from './networks'
 
@@ -16,11 +16,33 @@ export const CONFIG = NETWORK_CONFIG[NETWORK]
 export const VERSION = TXIDVersion.V2_PoseidonMerkle
 export const NATIVE_SYMBOL = SELECTED_NETWORK.nativeSymbol
 export const WRAPPED_SYMBOL = SELECTED_NETWORK.wrappedSymbol
-export const TOKENS: Readonly<Record<string, PrivateToken>> = Object.fromEntries([
+const tokens: Record<string, PrivateToken> = Object.fromEntries([
   ...SELECTED_NETWORK.stables.map((token) => [token.symbol, token]),
   [WRAPPED_SYMBOL, { address: CONFIG.baseToken.wrappedAddress, decimals: 18, symbol: WRAPPED_SYMBOL }],
 ])
+export const TOKENS: Readonly<Record<string, PrivateToken>> = tokens
+export const ROUTE_INTERMEDIATES = Object.keys(tokens) as TokenSymbol[]
+const tokenIds = new Map(Object.entries(tokens).map(([id, token]) => [getAddress(token.address), id as TokenSymbol]))
 export type { TokenSymbol } from './networks'
+export function tokenIdFor(address: string): TokenSymbol | undefined {
+  const normalized = getAddress(address)
+  return tokenIds.get(normalized)
+}
+export function registerToken(token: PrivateToken): TokenSymbol {
+  const address = getAddress(token.address)
+  if (address === ZeroAddress || !Number.isInteger(token.decimals) || token.decimals < 0 || token.decimals > 77 ||
+    typeof token.symbol !== 'string' || !token.symbol.trim() || token.symbol.length > 64 || /[\p{Cc}\p{Cf}\p{Zl}\p{Zp}]/u.test(token.symbol))
+    throw new Error('Invalid token metadata.')
+  const existing = tokenIdFor(address)
+  if (existing) {
+    if (tokens[existing].decimals !== token.decimals) throw new Error('Token decimals changed. Review this asset before spending.')
+    return existing
+  }
+  const id = address.toLowerCase() as TokenSymbol
+  tokens[id] = Object.freeze({ address, decimals: token.decimals, symbol: token.symbol.trim() })
+  tokenIds.set(address, id)
+  return id
+}
 export function isTokenSymbol(value: unknown): value is TokenSymbol {
   return typeof value === 'string' && Object.hasOwn(TOKENS, value)
 }

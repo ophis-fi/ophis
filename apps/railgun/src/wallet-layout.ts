@@ -42,7 +42,7 @@ export function renderWalletLayout(): void {
   element('token').setAttribute('aria-label', view === 'recovery' ? 'Token to recover' : view === 'withdrawal' ? 'Token to withdraw' : 'Token to sell')
   const tokenHome = element(view === 'recovery' ? 'recovery-token-target' : 'sell-token-home')
   if (control.parentElement !== tokenHome) { tokenHome.append(control); refreshTokenControls() }
-  if (!document.documentElement.dataset.busy) element('recover').textContent = `Reshield ${element<HTMLSelectElement>('token').value}`
+  if (!document.documentElement.dataset.busy) element('recover').textContent = `Reshield ${element<HTMLSelectElement>('token').selectedOptions[0]?.dataset.symbol || element<HTMLSelectElement>('token').value}`
   element('sell-label').textContent = view === 'withdrawal' ? 'You withdraw' : 'You sell'
   element('amount').setAttribute('aria-label', view === 'withdrawal' ? 'Amount to withdraw' : 'Amount to sell')
   element('trade-actions').hidden = view !== 'swap' || review

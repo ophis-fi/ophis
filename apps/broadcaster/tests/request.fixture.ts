@@ -1,4 +1,4 @@
-import { AbiCoder, keccak256, Wallet, zeroPadValue } from 'ethers'
+import { AbiCoder, keccak256, Wallet, zeroPadValue, ZeroAddress } from 'ethers'
 import { signExecutionAuthorization, RelayAdapt7702Helper, RelayAdapt7702ExecutionType, type TransactionStructV2 } from '@railgun-community/engine'
 import { ADAPT, PROXY } from '../src/transaction'
 import { CHAIN_ID, NETWORK, TOKENS, VERSION, settings } from '../src/config'
@@ -39,9 +39,9 @@ export async function privateRequest(feesID: string, publicViewingKey: string, n
   }, (_, value) => typeof value === 'bigint' ? value.toString() : value)) as Record<string, unknown>
 }
 
-export async function withdrawalRequest(feesID: string, publicViewingKey: string, recipient: string, count = 1, unshield = 1, token: string = TOKENS[1].address, nullifier = `0x${'11'.repeat(32)}`) {
+export async function withdrawalRequest(feesID: string, publicViewingKey: string, recipient: string, count = 1, unshield = 1, token: string = TOKENS[1].address, nullifier = `0x${'11'.repeat(32)}`, boundFee = false) {
   let calldata = withdrawalData(count, unshield, recipient, token, nullifier)
-  if (CHAIN_ID === 56) {
+  if (CHAIN_ID === 56 || boundFee) {
     const decoded = PROXY.decodeFunctionData('transact', calldata)._transactions
     const transactions: Array<Record<string, unknown> & { boundParams: Record<string, unknown> }> = Array.from(decoded,
       (tx: { toObject(): Record<string, unknown>; boundParams: { toObject(): Record<string, unknown> } }) => ({
@@ -66,13 +66,13 @@ export async function signedWithdrawalRequest(feesID: string, publicViewingKey: 
   token: string = TOKENS[1].address, nullifier = `0x${'11'.repeat(32)}`,
   mutate?: (transactions: any[], action: any, account: string) => void) {
   const ephemeral = Wallet.createRandom()
-  const common = await withdrawalRequest(feesID, publicViewingKey, recipient, 1, 1, token, nullifier)
-  const transactions = Array.from(PROXY.decodeFunctionData('transact', common.data)._transactions, (tx: any, index) => ({
+  const common = await withdrawalRequest(feesID, publicViewingKey, recipient, 1, 1, token, nullifier, true)
+  const transactions = Array.from(PROXY.decodeFunctionData('transact', common.data)._transactions, (tx: any) => ({
     ...tx.toObject(), nullifiers: Array.from(tx.nullifiers), commitments: Array.from(tx.commitments),
     boundParams: { ...tx.boundParams.toObject(), adaptContract: ephemeral.address, chainID: CHAIN_ID,
       commitmentCiphertext: Array.from(tx.boundParams.commitmentCiphertext) },
     unshieldPreimage: { ...tx.unshieldPreimage.toObject(), token: { ...tx.unshieldPreimage.token.toObject() },
-      npk: index === 1 ? zeroPadValue(ephemeral.address, 32) : tx.unshieldPreimage.npk },
+      npk: BigInt(tx.boundParams.unshield) === 1n ? zeroPadValue(ephemeral.address, 32) : tx.unshieldPreimage.npk },
   }))
   const action = { ...RelayAdapt7702Helper.getActionData(true, [], 0n), calls: [{ to: ephemeral.address, value: 0n,
     data: ADAPT.encodeFunctionData('transfer', [[{ token: { tokenType: 0, tokenAddress: token, tokenSubID: 0 },
@@ -84,4 +84,20 @@ export async function signedWithdrawalRequest(feesID: string, publicViewingKey: 
   return { ...common, transactType: 'TX7702', useRelayAdapt: true, to: ephemeral.address,
     authorization: JSON.parse(JSON.stringify(authorization, (_, value) => typeof value === 'bigint' ? value.toString() : value)),
     data: ADAPT.encodeFunctionData('execute', [transactions, action, 0n, signature]) }
+}
+
+export async function signedNativeWithdrawalRequest(feesID: string, publicViewingKey: string, recipient: string,
+  nullifier = `0x${'11'.repeat(32)}`, mutate?: (transactions: any[], action: any, account: string) => void) {
+  return signedWithdrawalRequest(feesID, publicViewingKey, recipient, TOKENS[0].address, nullifier, (transactions, action, account) => {
+    const proofType = PROXY.getFunction('transact')!.inputs[0].arrayChildren!
+    const ciphertextType = proofType.components!.find((field) => field.name === 'boundParams')!.components!
+      .find((field) => field.name === 'commitmentCiphertext')!.arrayChildren!
+    transactions[0].commitments.unshift(keccak256(transactions[0].commitments[0]))
+    transactions[0].boundParams.commitmentCiphertext.push(AbiCoder.defaultAbiCoder().getDefaultValue([ciphertextType])[0])
+    action.calls = [{ to: account, value: 0n, data: ADAPT.encodeFunctionData('unwrapBase', [1000n]) },
+      { to: account, value: 0n, data: ADAPT.encodeFunctionData('transfer', [[{
+        token: { tokenType: 0, tokenAddress: ZeroAddress, tokenSubID: 0 }, to: recipient, value: 1000n,
+      }]]) }]
+    mutate?.(transactions, action, account)
+  })
 }

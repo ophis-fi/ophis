@@ -11,7 +11,7 @@ import { Store } from '../src/storage'
 import { issueFee } from '../src/fees'
 import { ADAPT, PROXY } from '../src/transaction'
 import { CHAIN, CHAIN_ID, COMMON_TRANSACTION_TYPE, FEE_TOKENS, NETWORK, TOKENS } from '../src/config'
-import { config, privateRequest, signedWithdrawalRequest, withdrawalRequest } from './request.fixture'
+import { config, privateRequest, signedNativeWithdrawalRequest, signedWithdrawalRequest, withdrawalRequest } from './request.fixture'
 import { decodeGuardedExecution, executionGuardCode } from '../../railgun/operator/execution-guard'
 
 const registry = new Interface(['function getContractAddress(string name) view returns (address)'])
@@ -405,6 +405,66 @@ describe('signing gate and duplicate recovery', () => {
     f.sdk.fee.mockResolvedValue({ [TOKENS[0].address]: 2_000_000_000_000_000n })
     expect(f.decode(await f.service.handle(f.payload)).txHash).toBeTruthy()
     expect(f.sign).toHaveBeenCalledOnce()
+  })
+})
+
+describe('permissionless guarded principal admission', () => {
+  const outputs = CHAIN_ID === 56 ? [false, true] : [false]
+  async function publicWithdrawal(native: boolean) {
+    const recipient = Wallet.createRandom().address, principalToken = native ? TOKENS[0].address : Wallet.createRandom().address
+    const f = await fixture(Wallet.createRandom().address, recipient)
+    f.service.config.admission = 'public'; f.service.config.pilotWithdrawalRecipient = undefined
+    f.sdk.fee.mockResolvedValue({ [TOKENS[0].address]: 2_000_000_000_000_000n })
+    const data = native ? await signedNativeWithdrawalRequest(f.quote.id, f.sdk.publicViewingKey, recipient)
+      : await signedWithdrawalRequest(f.quote.id, f.sdk.publicViewingKey, recipient, principalToken)
+    const wire = await packetFor(data, f.sdk.publicViewingKey)
+    f.provider.send.mockResolvedValue({ type: 'CALL', to: NETWORK.proxyContract, input: privateCalldata(data) })
+    return { ...f, ...wire, data, principalToken, recipient }
+  }
+  it.each(outputs)('admits an exact guarded withdrawal with only wrapped-native payment (native: %s)', async (native) => {
+    const f = await publicWithdrawal(native)
+    expect(f.decode(await f.service.handle(f.payload)).txHash).toBeTruthy()
+    const record = store.pending()[0], signed = Transaction.from(record.raw!)
+    expect(signed.to).toBe(f.service.config.executionGuard)
+    expect(decodeGuardedExecution(signed.data).execution).toBe(f.data.data)
+    expect(JSON.parse(record.fee_data!).payment.token).toBe(TOKENS[0].address)
+    expect(f.sign).toHaveBeenCalledOnce()
+  })
+  it.each(outputs)('never accepts the principal as a replacement fee asset (native: %s)', async (native) => {
+    const f = await publicWithdrawal(native)
+    f.sdk.fee.mockResolvedValue({ [native ? TOKENS[1].address : f.principalToken]: 2_000_000_000_000_000n })
+    expect(f.decode(await f.service.handle(f.payload)).error).toContain(TOKENS[0].symbol)
+    expect(f.sign).not.toHaveBeenCalled(); expect(f.sender.broadcastTransaction).not.toHaveBeenCalled()
+  })
+  it.each(outputs)('preserves the USDC-only restricted pilot (native: %s)', async (native) => {
+    const f = await publicWithdrawal(native)
+    f.service.config.admission = 'pilot'
+    f.service.config.pilotWithdrawalRecipient = f.recipient
+    expect(f.decode(await f.service.handle(f.payload)).error).toContain('USDC withdrawal only')
+    expect(f.sdk.fee).not.toHaveBeenCalled(); expect(f.sign).not.toHaveBeenCalled()
+  })
+  it.each(['0x', '0x0', 'not-code'])('rejects an unqualified principal contract response: %s', async (code) => {
+    const f = await publicWithdrawal(false), original = f.provider.getCode.getMockImplementation()!
+    f.provider.getCode.mockImplementation(async (address) => address === f.principalToken ? code : original(address))
+    expect(f.decode(await f.service.handle(f.payload)).error).toContain('could not verify')
+    expect(f.provider.send).not.toHaveBeenCalled(); expect(f.sign).not.toHaveBeenCalled()
+  })
+  it.each(outputs)('blocks an untrusted token or native-recipient failure in the execution trace (native: %s)', async (native) => {
+    const f = await publicWithdrawal(native)
+    f.provider.send.mockResolvedValue({ type: 'CALL', calls: [
+      { type: 'CALL', to: NETWORK.proxyContract, input: privateCalldata(f.data) },
+      { type: 'CALL', to: f.principalToken, error: 'execution reverted', output: '0x' },
+    ] })
+    expect(f.decode(await f.service.handle(f.payload)).error).toContain('exact execution trace')
+    expect(f.sign).not.toHaveBeenCalled(); expect(f.sender.broadcastTransaction).not.toHaveBeenCalled()
+    expect(store.hasPending()).toBe(false)
+  })
+  it.runIf(CHAIN_ID === 56)('checks native unwrap/send against the current exact net unshield amount before signing', async () => {
+    const f = await publicWithdrawal(true), original = f.provider.call.getMockImplementation()!
+    f.provider.call.mockImplementation(async (tx) => tx.data === PROXY.encodeFunctionData('unshieldFee')
+      ? PROXY.encodeFunctionResult('unshieldFee', [25n]) : original(tx))
+    expect(f.decode(await f.service.handle(f.payload)).error).toContain('could not verify')
+    expect(f.sign).not.toHaveBeenCalled(); expect(f.sender.broadcastTransaction).not.toHaveBeenCalled()
   })
 })
 

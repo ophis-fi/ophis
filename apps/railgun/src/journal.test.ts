@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { CONFIG, TOKENS } from './config'
+import { CONFIG, TOKENS, registerToken, ROUTE_INTERMEDIATES } from './config'
 import { ADAPT, PRIVACY } from './execution'
 import type { WalletSession } from './wallet'
 
@@ -18,12 +18,12 @@ vi.mock('@railgun-community/wallet', async (original) => ({
   fullWalletForID: () => ({ setEphemeralKeyIndexIfGreater: state.ratchet }),
   getWalletTransactionHistory: state.history,
 }))
-import { pendingSwap, reconcilePendingSwap } from './journal'
+import { pendingSwap, reconcilePendingSwap, savePendingSwap, type PendingSwap } from './journal'
 
 const npk = `0x${'01'.padStart(64, '0')}`
 const nullifier = `0x${'33'.repeat(32)}`
 const spent = { address: CONFIG.proxyContract, ...PRIVACY.encodeEventLog('Nullified', [0, [nullifier]]) }
-const pending = {
+const pending: PendingSwap = {
   index: 3,
   account: '0x0000000000000000000000000000000000001234',
   token: 'WETH',
@@ -90,7 +90,7 @@ describe('pending swap recovery journal', () => {
     } else {
       await expect(reconcilePendingSwap(session)).resolves.toMatch(/Private output confirmed.*cleanup call failed/)
     }
-    expect(balance).toHaveBeenCalledTimes(Object.keys(TOKENS).length)
+    expect(balance).toHaveBeenCalledTimes(ROUTE_INTERMEDIATES.length)
     expect(state.history).toHaveBeenCalledWith(CONFIG.chain, 'test-wallet', undefined)
     expect(state.remove).toHaveBeenCalledOnce()
   })
@@ -156,4 +156,59 @@ describe('pending swap recovery journal', () => {
     expect(state.remove).not.toHaveBeenCalled()
     expect(state.ratchet).not.toHaveBeenCalled()
   })
+})
+
+function cleanupFailureReceipt(token = pending.token) {
+  const output = PRIVACY.encodeEventLog('Shield', [0, 0,
+    [{ npk, token: { tokenAddress: TOKENS[token].address, tokenType: 0, tokenSubID: 0 }, value: 10n }], [], []])
+  return { status: 1, blockNumber: 125, confirmations: async () => 2, logs: [spent,
+    { address: CONFIG.proxyContract, ...output },
+    { address: pending.account, ...ADAPT.encodeEventLog('CallError', [4, '0xdeadbeef']) }] }
+}
+
+it.each([false, true])('does not query an unrelated hostile imported token during cleanup (legacy: %s)', async (legacy) => {
+  const selected = registerToken({ address: '0x0000000000000000000000000000000000005678', symbol: 'USED', decimals: 18 })
+  const unrelated = registerToken({ address: '0x0000000000000000000000000000000000009876', symbol: 'HOSTILE', decimals: 18 })
+  state.record = legacy ? { ...pending, token: selected } : { ...pending, feeToken: 'WETH', recoveryTokens: ['WETH', selected] }
+  receipt.mockResolvedValue(cleanupFailureReceipt(legacy ? selected : pending.token))
+  balance.mockImplementation(async (request: { to: string }) => {
+    if (request.to.toLowerCase() === TOKENS[unrelated].address.toLowerCase()) throw new Error('Unrelated token reverted')
+    return `0x${'00'.repeat(32)}`
+  })
+  await expect(reconcilePendingSwap(session)).resolves.toContain('Private output confirmed')
+  const queried = balance.mock.calls.map(([request]) => String(request.to).toLowerCase())
+  const expected = legacy ? [...ROUTE_INTERMEDIATES, selected] : ['WETH', selected]
+  expect(queried.sort()).toEqual(expected.map(id => TOKENS[id].address.toLowerCase()).sort())
+  expect(queried).not.toContain(TOKENS[unrelated].address.toLowerCase())
+  for (const [request] of balance.mock.calls) expect(request.gasLimit).toBe(100_000n)
+  expect(state.remove).toHaveBeenCalledOnce()
+})
+
+it('retains a failed-cleanup record when a relevant token cannot be checked, unless leftovers are explicitly accepted', async () => {
+  const selected = registerToken({ address: '0x0000000000000000000000000000000000005678', symbol: 'USED', decimals: 18 })
+  const record = { ...pending, recoveryTokens: ['WETH', selected] }
+  state.record = record; receipt.mockResolvedValue(cleanupFailureReceipt())
+  balance.mockRejectedValue(new Error('Relevant token reverted'))
+  await expect(reconcilePendingSwap(session)).rejects.toThrow('balances could not be verified')
+  expect(state.record).toBe(record); expect(state.remove).not.toHaveBeenCalled(); expect(state.ratchet).not.toHaveBeenCalled()
+  await expect(reconcilePendingSwap(session, false, true)).resolves.toContain('Private output confirmed')
+  expect(state.remove).toHaveBeenCalledOnce()
+})
+
+it('round-trips a bounded recovery list and refuses damaged lists before replacing or clearing saved data', async () => {
+  const valid = { ...pending, feeToken: 'USDC' as const, recoveryTokens: ['WETH', 'USDC'] as PendingSwap['recoveryTokens'] }
+  await savePendingSwap(session, valid)
+  expect((await pendingSwap(session))?.recoveryTokens).toEqual(['WETH', 'USDC'])
+  const excessive = ['WETH', 'USDC', ...Array.from({ length: 7 }, (_, index) => registerToken({
+    address: `0x${(20_000 + index).toString(16).padStart(40, '0')}`, symbol: 'X', decimals: 18,
+  }))]
+  for (const ids of [undefined, [], ['WETH', 'USDC', 'WETH'], ['WETH', 'USDC', 'UNKNOWN'], ['USDC'], ['WETH'], excessive, 'WETH']) {
+    const saved = state.record, damaged = { ...valid, recoveryTokens: ids } as unknown as PendingSwap
+    await expect(savePendingSwap(session, damaged)).rejects.toThrow('recovery assets are damaged')
+    expect(state.record).toBe(saved)
+    state.record = damaged
+    await expect(pendingSwap(session)).rejects.toThrow('recovery assets are damaged')
+    expect(state.remove).not.toHaveBeenCalled()
+    state.record = saved
+  }
 })

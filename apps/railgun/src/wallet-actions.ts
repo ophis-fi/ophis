@@ -42,7 +42,7 @@ export async function wireWalletActions(session: WalletSession): Promise<void> {
     element('public-transaction-status').textContent = message
   }
   if (CHAIN_ID === 56) {
-    element('swap-fee-help').textContent = 'Broadcaster fees are paid automatically from your private WBNB balance. Keep private WBNB for fees when swapping or withdrawing stablecoins.'
+    element('swap-fee-help').textContent = 'Broadcaster fees are paid automatically from your private WBNB balance. Keep private WBNB for fees when swapping or withdrawing other tokens.'
     element('withdraw-fee-help').textContent = 'Choose the token and amount above. The broadcaster fee is paid separately in private WBNB.'
   }
   const refreshPending = async (): Promise<void> => {
@@ -95,10 +95,12 @@ export async function wireWalletActions(session: WalletSession): Promise<void> {
     if (!isTokenSymbol(buyToken.value) || buyToken.value === symbol()) throw new Error('Choose a different receive token.')
     return buyToken.value
   }
+  const assetLabel = (id: TokenSymbol): string => `${tokenFor(id).symbol}${id.startsWith('0x') ? ` (${tokenFor(id).address})` : ''}`
   const updateSwapDirection = (): void => {
     const sell = symbol()
     if (buyToken.value === sell || !isTokenSymbol(buyToken.value)) buyToken.value = sell === 'USDC' ? WRAPPED_SYMBOL : 'USDC'
-    element('swap-direction').textContent = `Sell ${sell} → receive ${buySymbol()}. Enter the amount of ${sell} to sell.`
+    element('swap-direction').textContent = `Sell ${assetLabel(sell)} → receive ${assetLabel(buySymbol())}. Enter the amount of ${tokenFor(sell).symbol} to sell.`
+    element('native-withdrawal-option').hidden = CHAIN_ID !== 56 || sell !== 'WBNB'
   }
   updateSwapDirection()
   const depositToken = (): ShieldToken => {
@@ -192,7 +194,7 @@ export async function wireWalletActions(session: WalletSession): Promise<void> {
   const assertPublicEpoch = (epoch: number): void => {
     if (state.publicEpoch !== epoch) throw new Error('Public wallet changed. Reconnect before shielding.')
   }
-  for (const input of [token, buyToken, amount, recipient, shieldToken, shieldAmount]) input.oninput = invalidate
+  for (const input of [token, buyToken, amount, recipient, shieldToken, shieldAmount, element<HTMLInputElement>('withdraw-native')]) input.oninput = invalidate
   buyToken.oninput = () => { invalidate(); updateSwapDirection() }
   token.oninput = () => {
     amount.value = ''
@@ -284,7 +286,9 @@ export async function wireWalletActions(session: WalletSession): Promise<void> {
     const minimumAfterShield = quote.minimum - (quote.minimum * quote.shieldFee) / 10_000n
     element('receive-amount').textContent = formatUnits(minimumAfterShield, TOKENS[quote.buy].decimals)
     element('quote-details').textContent =
-      `Amount to swap: ${formatUnits(quote.amount, TOKENS[quote.sell].decimals)} ${quote.sell}\nMinimum private output: ${formatUnits(minimumAfterShield, TOKENS[quote.buy].decimals)} ${quote.buy}\nOphis fee: ${formatUnits(quote.ophisFee, TOKENS[quote.buy].decimals)} ${quote.buy}\nBroadcaster fee: ${formatUnits(prepared.fee.amount, TOKENS[feeTokenFor(quote.sell)].decimals)} ${feeTokenFor(quote.sell)}\nProtocol unshield / reshield: ${quote.unshieldFee} / ${quote.shieldFee} bp`
+      `Amount to swap: ${formatUnits(quote.amount, TOKENS[quote.sell].decimals)} ${tokenFor(quote.sell).symbol}\nMinimum private output: ${formatUnits(minimumAfterShield, TOKENS[quote.buy].decimals)} ${tokenFor(quote.buy).symbol}\nOphis fee: ${formatUnits(quote.ophisFee, TOKENS[quote.buy].decimals)} ${tokenFor(quote.buy).symbol}\nBroadcaster fee: ${formatUnits(prepared.fee.amount, TOKENS[feeTokenFor(quote.sell)].decimals)} ${tokenFor(feeTokenFor(quote.sell)).symbol}\nProtocol unshield / reshield: ${quote.unshieldFee} / ${quote.shieldFee} bp`
+    if (quote.sell.startsWith('0x')) element('quote-details').textContent += `\nSell token contract: ${tokenFor(quote.sell).address}`
+    if (quote.buy.startsWith('0x')) element('quote-details').textContent += `\nReceive token contract: ${tokenFor(quote.buy).address}`
     if (prepared.gasCapped)
       element('quote-details').textContent += `\nGas price capped at ${formatUnits(prepared.gas.maxFeePerGas, 9)} gwei to fit your private balance. Rising gas prices can require a fresh quote.`
     if (quote.route)
@@ -334,7 +338,8 @@ export async function wireWalletActions(session: WalletSession): Promise<void> {
     invalidate()
     requireWalletSync()
     if (!maximum) amountFromInput(amount.value, symbol())
-    const selected = await selectBroadcaster(TOKENS[feeTokenFor(symbol())].address, usesBoundWithdrawal(symbol()), broadcasterStatus)
+    const nativeOutput = CHAIN_ID === 56 && symbol() === 'WBNB' && element<HTMLInputElement>('withdraw-native').checked
+    const selected = await selectBroadcaster(TOKENS[feeTokenFor(symbol())].address, usesBoundWithdrawal(symbol(), nativeOutput), broadcasterStatus)
     state.withdrawal = await prepareUnshield(
       session,
       symbol(),
@@ -342,10 +347,12 @@ export async function wireWalletActions(session: WalletSession): Promise<void> {
       recipient.value,
       selected,
       maximum,
+      nativeOutput,
     )
     if (maximum) amount.value = formatUnits(state.withdrawal.amounts[0].amount, TOKENS[symbol()].decimals)
     element('withdraw-details').textContent =
-      `Withdraw ${amount.value} ${symbol()} to ${recipient.value}\nBroadcaster fee: ${formatUnits(state.withdrawal.fee.amount, TOKENS[feeTokenFor(symbol())].decimals)} ${feeTokenFor(symbol())}\nThe broadcaster fee is paid from your private balance. The protocol withdrawal fee is deducted from the amount.\nYou receive: ${formatUnits(state.withdrawal.minimum, TOKENS[symbol()].decimals)} ${symbol()}`
+      `Withdraw ${amount.value} ${tokenFor(symbol()).symbol} to ${recipient.value}\nBroadcaster fee: ${formatUnits(state.withdrawal.fee.amount, TOKENS[feeTokenFor(symbol())].decimals)} ${tokenFor(feeTokenFor(symbol())).symbol}\nThe broadcaster fee is paid from your private balance. The protocol withdrawal fee is deducted from the amount.\nYou receive: ${formatUnits(state.withdrawal.minimum, TOKENS[symbol()].decimals)} ${nativeOutput ? 'BNB' : tokenFor(symbol()).symbol}`
+    if (symbol().startsWith('0x')) element('withdraw-details').textContent += `\nToken contract: ${tokenFor(symbol()).address}`
     element('withdraw').hidden = false
   }
   button('withdraw-quote', 'Calculating fee…', () => reviewWithdrawal(false))
@@ -359,9 +366,14 @@ export async function wireWalletActions(session: WalletSession): Promise<void> {
     await syncWallet(session)
   })
   button('scan', 'Scanning…', async () => {
+    const index = recoveryIndex(element<HTMLInputElement>('recovery-index').value)
+    const swap = await pendingSwap(session), withdrawal = await pendingWithdrawal(session)
+    const related = [symbol(), ...(swap?.index === index ? swap.recoveryTokens ?? [swap.token, ...(swap.feeToken ? [swap.feeToken] : [])] : []),
+      ...(withdrawal?.execution?.index === index ? [withdrawal.token, ...(withdrawal.feeToken ? [withdrawal.feeToken] : [])] : [])]
     element('recovery-details').textContent = await scanRecovery(
       session,
-      recoveryIndex(element<HTMLInputElement>('recovery-index').value),
+      index,
+      [...new Set(related)],
     )
   })
   button('reconcile', 'Checking pending swap…', async () => {

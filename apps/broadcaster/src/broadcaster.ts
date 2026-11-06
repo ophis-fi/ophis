@@ -105,7 +105,8 @@ export class Broadcaster {
         if (typeof withdrawal.token.tokenAddress !== 'string') throw new Error('Wrong withdrawal token.')
         withdrawalToken = getAddress(withdrawal.token.tokenAddress)
         if (BigInt(withdrawal.token.tokenType) !== 0n || BigInt(withdrawal.token.tokenSubID) !== 0n ||
-          !TOKENS.some((token) => getAddress(token.address) === withdrawalToken) ||
+          (!(parsed.withdrawal && this.config.admission === 'public') &&
+            !TOKENS.some((token) => getAddress(token.address) === withdrawalToken)) ||
           (this.config.admission === 'pilot' && withdrawalToken !== getAddress(TOKENS[1].address)) ||
           BigInt(withdrawal.value) <= 0n) throw new Error('Wrong withdrawal token.')
         phase = 'withdrawal-used'
@@ -117,9 +118,9 @@ export class Broadcaster {
       this.busy = true; this.activeKey = request.key; reserved = true
       phase = 'fee'
       const payment = await this.sdk.fee(parsed)
-      if (withdrawalToken && (Object.keys(payment).length !== 1 || !payment[CHAIN_ID === 56 ? TOKENS[0].address : withdrawalToken])) {
-        phase = 'withdrawal-fee'
-        throw new Error(CHAIN_ID === 56 ? 'The withdrawal broadcaster fee must use WBNB.' : 'The withdrawal broadcaster fee must use the withdrawn token.')
+      if (withdrawalToken && (Object.keys(payment).length !== 1 || !payment[parsed.withdrawal ? TOKENS[0].address : withdrawalToken])) {
+        phase = parsed.withdrawal ? 'bound-withdrawal-fee' : 'withdrawal-fee'
+        throw new Error(parsed.withdrawal ? `The withdrawal broadcaster fee must use ${TOKENS[0].symbol}.` : 'The withdrawal broadcaster fee must use the withdrawn token.')
       }
       validateFee(this.store, parsed.feesID, payment, 1n, await this.oracle.rates())
       const { nonce, confirmed, balance, block, baseFee, minimumGasPrice } = await this.state()
@@ -214,6 +215,7 @@ export class Broadcaster {
         'withdrawal-used': 'The one-time withdrawal pilot is already used. Check the pending withdrawal before retrying.',
         'withdrawal-fee': CHAIN_ID === 56 ? 'The withdrawal fee must be paid in WBNB. Keep the saved withdrawal.'
           : 'The withdrawal fee must be paid in the withdrawn token. Keep the saved withdrawal.',
+        'bound-withdrawal-fee': `The withdrawal fee must be paid in ${TOKENS[0].symbol}. Keep the saved withdrawal.`,
         simulation: 'The private transaction did not pass execution simulation. Check recovery before retrying.',
         network: 'The broadcaster could not verify the current privacy contracts. Keep the saved withdrawal.',
         pricing: 'Current gas pricing exceeds the permitted limits. Keep the saved proof and retry through the broadcaster later.',
@@ -248,6 +250,8 @@ export class Broadcaster {
       ])
       assertExecutionGuardCode(this.wallet.address, code, delegateCode, NETWORK.relayAdapt7702Contract)
     }
+    if (request.withdrawal && !/^0x(?:[0-9a-f]{2})+$/i.test(await this.provider.getCode(request.withdrawal.token, blockTag)))
+      throw new Error('The withdrawal principal must be a token contract.')
     const registered = await this.provider.call({ to: NETWORK.railgunRegistryContract,
       data: REGISTRY.encodeFunctionData('getContractAddress', ['RelayAdapt7702']), blockTag })
     if (getAddress(REGISTRY.decodeFunctionResult('getContractAddress', registered)[0]) !== getAddress(NETWORK.relayAdapt7702Contract))

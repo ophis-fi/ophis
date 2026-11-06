@@ -42,7 +42,7 @@ it('accepts only a guarded signed safe stablecoin exit with both proofs bound to
   expect(parsed.transactions.every((tx) => tx.boundParams.adaptContract === request.to)).toBe(true)
   expect(parsed.withdrawal).toEqual({ recipient: f.recipient, token: f.config.TOKENS[1].address, amount: 1000n, grossAmount: 1000n })
   expect(new Set(parsed.nullifiers).size).toBe(2)
-  expect(() => f.boundary.parseRequest(request, f.recipient, f.requests.config)).toThrow('Only guarded BNB')
+  expect(() => f.boundary.parseRequest(request, f.recipient, f.requests.config)).toThrow('Only guarded withdrawals')
 })
 
 it.each(['fee unshield', 'redirect withdrawal', 'missing fee', 'empty fee', 'empty fee inputs', 'empty withdrawal inputs',
@@ -110,7 +110,7 @@ it('rejects an unbound fee proof even when a valid signer presents the batch as 
       action.requireSuccess = false
       action.calls = []
     })
-  expect(() => f.boundary.parseRequest(request, f.recipient, f.requests.config)).toThrow('Every BNB private proof must be bound')
+  expect(() => f.boundary.parseRequest(request, f.recipient, f.requests.config)).toThrow('Every guarded private proof must be bound')
 })
 
 it('keeps the canonical single-proof WBNB withdrawal and rejects a removable fee transaction', async () => {

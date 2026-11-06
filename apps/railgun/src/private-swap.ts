@@ -213,6 +213,7 @@ export async function executePrivateSwap(
     account: request.ephemeralAddress,
     token: quote.buy,
     feeToken: feeTokenFor(quote.sell),
+    recoveryTokens: [...new Set([quote.sell, quote.buy, feeTokenFor(quote.sell), ...(quote.route?.tokens ?? [])])],
     minimum: (quote.minimum - (quote.minimum * quote.shieldFee) / 10_000n).toString(),
     npk: expectedOutputNpk(request, TOKENS[quote.buy].address),
     executeNonce: request.executeNonce.toString(),

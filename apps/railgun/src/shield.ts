@@ -8,6 +8,7 @@ import {
   isError,
   type Eip1193Provider,
   type JsonRpcSigner,
+  type Signer,
   type TransactionReceipt,
 } from 'ethers'
 import { populateShield, populateShieldBaseToken } from '@railgun-community/wallet'
@@ -61,8 +62,44 @@ export async function shieldAllowance(signer: JsonRpcSigner, token: TokenSymbol)
   )
 }
 
+// Both public deposits and temporary-account recovery approve this one trusted
+// spender for an exact amount. Probe raw returndata to support no-return ERC20s.
+export async function approveExactShieldToken(signer: Signer, token: TokenSymbol, amount: bigint,
+  beforeSend: () => Promise<void>, onStatus: (message: string) => void = () => {}): Promise<TransactionReceipt> {
+  if (amount <= 0n || amount >= 2n ** 120n) throw new Error('Token amount is out of range.')
+  if (!signer.provider) throw new Error('Token approval provider is unavailable.')
+  const owner = await signer.getAddress(), asset = tokenFor(token)
+  const contract = new Contract(asset.address, ERC20, signer)
+  const canApprove = async (value: bigint): Promise<boolean> => {
+    try {
+      const result = await signer.provider!.call({ from: owner, to: asset.address, value: 0n, gasLimit: 200_000n,
+        data: ERC20.encodeFunctionData('approve', [CONFIG.proxyContract, value]) })
+      return result === '0x' || /^0x0{63}1$/i.test(result)
+    } catch { return false }
+  }
+  const allowance: bigint = await contract.getFunction('allowance')(owner, CONFIG.proxyContract)
+  if (allowance > 0n && await canApprove(0n)) {
+    await beforeSend()
+    onStatus('Clear the existing token allowance before setting the exact deposit amount. Confirm the reset in your wallet.')
+    const reset = await contract.getFunction('approve')(CONFIG.proxyContract, 0n)
+    const cleared = await reset.wait()
+    if (!cleared || cleared.status !== 1 || await contract.getFunction('allowance')(owner, CONFIG.proxyContract) !== 0n)
+      throw new Error('Token allowance reset was not confirmed.')
+  }
+  await beforeSend()
+  if (!await canApprove(amount)) throw new Error('This token does not support the exact approval required for shielding. No further approval was submitted.')
+  onStatus(`Confirm the ${asset.symbol} approval in your connected wallet. Open your wallet app and check its requests. A request can remain pending; do not submit it again.`)
+  const response = await contract.getFunction('approve')(CONFIG.proxyContract, amount)
+  onStatus(`Approval submitted: ${response.hash}. Waiting for ${CHAIN_NAME} confirmation.`)
+  const receipt = await response.wait()
+  if (!receipt || receipt.status !== 1 || await contract.getFunction('allowance')(owner, CONFIG.proxyContract) !== amount)
+    throw new Error('Exact token approval was not confirmed.')
+  return receipt
+}
+
 export async function requireShieldBalance(signer: JsonRpcSigner, token: ShieldToken, amount: bigint): Promise<void> {
   if (amount <= 0n) throw new Error('Enter a positive token amount.')
+  if (amount >= 2n ** 120n) throw new Error('Token amount is out of range.')
   const owner = await signer.getAddress()
   const decimals = token === NATIVE_SYMBOL ? 18 : tokenFor(token).decimals
   const balance: bigint = token === NATIVE_SYMBOL
@@ -89,22 +126,10 @@ export async function approveShield(
 ): Promise<TransactionReceipt> {
   await assertPublicNetwork(session, signer)
   await requireShieldBalance(signer, token, amount)
-  if (token === 'USDT' && await shieldAllowance(signer, token) > 0n) {
-    onStatus('USDT requires clearing its existing allowance first. Confirm the reset in your wallet.')
-    const reset = await new Contract(tokenFor(token).address, ERC20, signer).getFunction('approve')(CONFIG.proxyContract, 0n)
-    const cleared = await reset.wait()
-    if (!cleared || cleared.status !== 1) throw new Error('USDT allowance reset was not confirmed.')
+  const receipt = await approveExactShieldToken(signer, token, amount, async () => {
     await assertPublicNetwork(session, signer)
     await requireShieldBalance(signer, token, amount)
-  }
-  onStatus(`Confirm the ${token} approval in your connected wallet. Open your wallet app and check its requests. A request can remain pending; do not submit it again.`)
-  const response = await new Contract(tokenFor(token).address, ERC20, signer).getFunction('approve')(
-    CONFIG.proxyContract,
-    amount,
-  )
-  onStatus(`Approval submitted: ${response.hash}. Waiting for ${CHAIN_NAME} confirmation.`)
-  const receipt = await response.wait()
-  if (!receipt || receipt.status !== 1) throw new Error('Approval was not confirmed.')
+  }, onStatus)
   onStatus(`Approval confirmed: ${receipt.hash}. Next: click Shield amount and confirm the separate deposit in your wallet.`)
   return receipt
 }

@@ -1,8 +1,10 @@
 import './style.css'
 import { formatUnits } from 'ethers'
 import { newMnemonic, openWallet, startWalletEngine, syncWallet, type WalletSession } from './wallet'
-import { CHAIN_NAME, ENVIRONMENT, TOKENS } from './config'
-import { configurePrivateSelectors } from './network-ui'
+import { CHAIN_NAME, ENVIRONMENT, TOKENS, tokenIdFor } from './config'
+import { configurePrivateSelectors, refreshTokenSelectors } from './network-ui'
+import { importPrivateToken, loadTokenCatalog } from './token-catalog'
+import type { RailgunBalancesEvent } from '@railgun-community/shared-models'
 import { reportEmbeddedLayout } from './embedded'
 import { configurePickers } from './pickers'
 import { readPreference } from './storage'
@@ -14,13 +16,20 @@ import { wireWalletActions } from './wallet-actions'
 element('environment').textContent =
   ENVIRONMENT === 'fork' ? `Local ${CHAIN_NAME} fork · Test wallets only` : 'Mainnet'
 configurePrivateSelectors()
-configureWalletLayout(configurePickers())
+configureWalletLayout(configurePickers(async address => {
+  if (!session.current) throw new Error('Unlock your private wallet before adding a token.')
+  const id = await importPrivateToken(session.current, address)
+  refreshAssetSelectors()
+  for (const event of balanceEvents.values()) renderBalanceEvent(event)
+  return id
+}))
 reportEmbeddedLayout()
 const password = element<HTMLInputElement>('password')
 const mnemonic = element<HTMLTextAreaElement>('mnemonic')
 const backup = element<HTMLInputElement>('backup')
 const session: { current?: WalletSession } = {}
 const buckets = new Map<string, string>()
+const balanceEvents = new Map<string, RailgunBalancesEvent>()
 const started: { provider?: ReturnType<typeof startWalletEngine> } = {}
 const setup: { generated?: string; ready: boolean; hasWallet: boolean; hasFunds: boolean } = {
   ready: false, hasWallet: false, hasFunds: false,
@@ -39,11 +48,29 @@ void readPreference<unknown>('wallet').then((stored) => {
 
 function renderSelectedBalance(): void {
   const selected = element<HTMLSelectElement>('token').value
-  const spendable = buckets.get('Spendable')?.split('\n').find((line) => line.startsWith(`${selected}:`))
-  element('spendable-balance').textContent = setup.ready ? `${spendable?.slice(selected.length + 1).trim() || '0'} ${selected}` : 'Synchronizing…'
+  const token = TOKENS[selected]
+  const spendable = balanceEvents.get('Spendable')?.erc20Amounts.find(balance => balance.tokenAddress.toLowerCase() === token?.address.toLowerCase())
+  element('spendable-balance').textContent = setup.ready ? `${spendable && token ? formatUnits(spendable.amount, token.decimals) : '0'} ${token?.symbol || selected}` : 'Synchronizing…'
   element('pending-balances').textContent = [...buckets.entries()]
     .filter(([name]) => name !== 'Spendable')
     .map(([, value]) => value).join('\n\n') || 'No pending deposits.'
+}
+function refreshAssetSelectors(): void {
+  refreshTokenSelectors([...balanceEvents.values()].flatMap(event => event.erc20Amounts
+    .filter(balance => balance.amount > 0n).map(balance => balance.tokenAddress)))
+}
+function renderBalanceEvent(event: RailgunBalancesEvent): void {
+  const values = event.erc20Amounts.map(balance => {
+    const key = tokenIdFor(balance.tokenAddress)
+    const token = key ? TOKENS[key] : undefined
+    return token ? `${token.symbol}${key?.startsWith('0x') ? ` (${token.address})` : ''}: ${formatUnits(balance.amount, token.decimals)}`
+      : `${balance.tokenAddress}: ${balance.amount} units (token details unavailable)`
+  })
+  buckets.set(event.balanceBucket, `${event.balanceBucket}\n${values.join('\n') || 'No balance in this category.'}`)
+  if (event.balanceBucket === 'Spendable') setup.hasFunds = event.erc20Amounts.some(balance => balance.amount > 0n)
+  updateFirstFunding(setup.hasFunds, setup.ready)
+  element('balances').textContent = [...buckets.values()].join('\n\n')
+  renderSelectedBalance()
 }
 element<HTMLSelectElement>('token').addEventListener('input', renderSelectedBalance)
 
@@ -72,24 +99,10 @@ function startHistory(): ReturnType<typeof startWalletEngine> {
   started.provider ??= startWalletEngine(
         (event) => {
           if (session.current && event.railgunWalletID !== session.current.info.id) return
-          let spendable = false
-          const values = event.erc20Amounts.map((balance) => {
-            const token = Object.entries(TOKENS).find(
-              ([, value]) => value.address.toLowerCase() === balance.tokenAddress.toLowerCase(),
-            )
-            if (token && balance.amount > 0n) spendable = true
-            return token
-              ? `${token[0]}: ${formatUnits(balance.amount, token[1].decimals)}`
-              : `${balance.tokenAddress}: ${balance.amount} units`
-          })
-          buckets.set(
-            event.balanceBucket,
-            `${event.balanceBucket}\n${values.join('\n') || 'No balance in this category.'}`,
-          )
-          if (event.balanceBucket === 'Spendable') setup.hasFunds = spendable
-          updateFirstFunding(setup.hasFunds, setup.ready)
-          element('balances').textContent = [...buckets.values()].join('\n\n')
-          renderSelectedBalance()
+          balanceEvents.set(event.balanceBucket, event)
+          renderBalanceEvent(event)
+          // Unsolicited private tokens must not trigger identifying RPC probes or catalog writes.
+          refreshAssetSelectors()
         },
         (message, ready) => {
           setup.ready = ready
@@ -148,6 +161,8 @@ for (const id of ['open', 'unlock']) {
       element('wallet').hidden = false
       element('address').textContent = session.current.info.railgunAddress
       try {
+        await loadTokenCatalog(session.current)
+        refreshAssetSelectors()
         await wireWalletActions(session.current)
       } catch {
         element('wallet').hidden = true

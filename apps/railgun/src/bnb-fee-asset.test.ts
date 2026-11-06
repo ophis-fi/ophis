@@ -123,7 +123,7 @@ it('rejects every unbound mixed COMMON batch while preserving its actual stablec
     mutate(changed)
     expect(() => assertAtomicWithdrawal(PRIVACY.encodeFunctionData('transact', [changed]), 'WBNB')).toThrow()
   }
-  expect(() => assertAtomicWithdrawal(withdrawalData(1, 1, recipient, TOKENS.USDC.address), 'WBNB')).toThrow(/separate WBNB fee proof/)
+  expect(() => assertAtomicWithdrawal(withdrawalData(1, 1, recipient, TOKENS.USDC.address), 'WBNB')).toThrow(/signed private execution/)
   expect(() => assertAtomicWithdrawal(withdrawalData(1, 1, recipient, TOKENS.USDC.address))).not.toThrow() // exact legacy proof remains recoverable
 })
 
@@ -146,26 +146,29 @@ it('preserves unsafe legacy mixed proof bytes and never retries them through a b
   expect(send).not.toHaveBeenCalled();expect(state.select).not.toHaveBeenCalled();expect(state.prove).not.toHaveBeenCalled()
 })
 
-it('retries exactly the signed strict withdrawal through its original fee recipient without re-proving', async () => {
+it.each([false, true])('retries exactly the signed strict withdrawal through its original fee recipient without re-proving (native: %s)', async (native) => {
   const { CONFIG, TOKENS } = await import('./config')
   const { ADAPT, assertBoundWithdrawal } = await import('./execution')
   const { retrySavedUnshield } = await import('./unshield')
   const owner = Wallet.createRandom()
   const recipient = '0x0000000000000000000000000000000000005678'
-  const proofs = mixedWithdrawalTransactions(TOKENS.USDC.address, recipient).map((tx) => ({ ...tx, txidVersion: TXIDVersion.V2_PoseidonMerkle })) as unknown as TransactionStructV2[]
+  const token = native ? 'WBNB' : 'USDC'
+  const mixed = mixedWithdrawalTransactions(TOKENS[token].address, recipient)
+  const proofs = (native ? [mixed[1]] : mixed).map((tx) => ({ ...tx, txidVersion: TXIDVersion.V2_PoseidonMerkle })) as unknown as TransactionStructV2[]
   for (const proof of proofs) proof.boundParams.adaptContract = owner.address
-  proofs[1].unshieldPreimage.npk = `0x${owner.address.slice(2).padStart(64, '0')}`
-  const calls = [{ to: owner.address, value: 0n, data: ADAPT.encodeFunctionData('transfer', [[{
-    token: { tokenType: 0, tokenAddress: TOKENS.USDC.address, tokenSubID: 0 }, to: recipient, value: 998n,
-  }]]) }]
+  proofs[proofs.length - 1].unshieldPreimage.npk = `0x${owner.address.slice(2).padStart(64, '0')}`
+  const transfer = { to: owner.address, value: 0n, data: ADAPT.encodeFunctionData('transfer', [[{
+    token: { tokenType: 0, tokenAddress: native ? '0x0000000000000000000000000000000000000000' : TOKENS.USDC.address, tokenSubID: 0 }, to: recipient, value: 998n,
+  }]]) }
+  const calls = native ? [{ to: owner.address, value: 0n, data: ADAPT.encodeFunctionData('unwrapBase', [998n]) }, transfer] : [transfer]
   const actionData = RelayAdapt7702Helper.getActionData(true, calls, 0n)
   const details = { executionType: RelayAdapt7702ExecutionType.ExecuteWithNonce, executeNonce: 0n }
   const authorization = await owner.authorize({ address: CONFIG.relayAdapt7702Contract, chainId: 56, nonce: 0 })
   const signature = await RelayAdapt7702Helper.signExecutionAuthorization(owner, proofs, actionData, 56n, details)
   const data = RelayAdapt7702Helper.encodeExecute(ADAPT, proofs, actionData, signature, details)
-  expect(() => assertBoundWithdrawal(data, owner.address, 'USDC', recipient, 998n)).not.toThrow()
+  expect(() => assertBoundWithdrawal(data, owner.address, token, recipient, 998n, native ? 'native' : undefined)).not.toThrow()
   const broadcaster = await selected()
-  state.pending = { token: 'USDC', feeToken: 'WBNB', broadcaster: broadcaster.railgunAddress, recipient, minimum: '998',
+  state.pending = { token, feeToken: 'WBNB', broadcaster: broadcaster.railgunAddress, recipient, minimum: '998', ...(native ? { output: 'native' } : {}),
     nullifiers: proofs.flatMap((proof) => proof.nullifiers), minGasPrice: '0', transaction: { to: owner.address, data, value: '0' },
     execution: { account: owner.address, index: 0, executeNonce: '0', authorization: { address: authorization.address,
       chainId: '56', nonce: '0', signature: authorization.signature.serialized }, gasEstimate: '3000000', maxFeePerGas: '100', maxPriorityFeePerGas: '100' } }
@@ -175,5 +178,8 @@ it('retries exactly the signed strict withdrawal through its original fee recipi
   expect(state.select).toHaveBeenCalledWith(TOKENS.WBNB.address, true, expect.any(Function), broadcaster.railgunAddress)
   expect(send.mock.calls[0][1].transaction.data).toBe(data)
   expect(send.mock.calls[0][1].transaction.authorizationList[0].signature.serialized).toBe(authorization.signature.serialized)
+  expect(send.mock.calls[0][1].transaction.maxFeePerGas).toBe(100n)
+  expect(send.mock.calls[0][1].transaction.maxPriorityFeePerGas).toBe(100n)
+  expect(state.save.mock.calls[0][1].output).toBe(native ? 'native' : undefined)
   expect(state.prove).not.toHaveBeenCalled()
 })

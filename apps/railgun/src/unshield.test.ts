@@ -1,5 +1,6 @@
 import { expect, it, vi } from 'vitest'
 import { EVMGasType } from '@railgun-community/shared-models'
+import { ZeroAddress } from 'ethers'
 import { CONFIG, TOKENS } from './config'
 import type { WalletSession } from './wallet'
 import { withdrawalData } from '../tests/withdrawal.fixture'
@@ -20,7 +21,7 @@ vi.mock('./withdrawal-journal', async (original) => ({
 vi.mock('@railgun-community/wallet', () => ({
   generateUnshieldProof: async () => {},
   populateProvedUnshield: async () => ({
-    transaction: { to: CONFIG.proxyContract, data: withdrawalData(state.count) },
+    transaction: { to: CONFIG.proxyContract, data: withdrawalData(state.count, 1, ZeroAddress, TOKENS.USDC.address) },
     nullifiers: [`0x${'11'.repeat(32)}`],
   }),
   gasEstimateForUnprovenUnshield: vi.fn(),
@@ -41,7 +42,7 @@ it('rejects a prepared withdrawal during history synchronization before recordin
 })
 
 it('retries the saved proof through the broadcaster without proving again, and blocks known or spent submissions', async () => {
-  const transaction = { to: CONFIG.proxyContract, data: withdrawalData(), value: '0' }
+  const transaction = { to: CONFIG.proxyContract, data: withdrawalData(1, 1, ZeroAddress, TOKENS.USDC.address), value: '0' }
   const saved = { transaction, token: 'USDC', minGasPrice: '100', nullifiers: [`0x${'11'.repeat(32)}`] }
   state.pending = saved
   state.select.mockResolvedValue({ tokenAddress: TOKENS.USDC.address })

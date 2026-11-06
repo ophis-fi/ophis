@@ -1,14 +1,17 @@
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
+import type { RailgunBalancesEvent } from '@railgun-community/shared-models'
 
 const mocks = vi.hoisted(() => ({
   persisted: false, failRead: false, open: vi.fn(), setup: vi.fn(), sync: vi.fn(),
   provider: {}, wire: vi.fn(), funding: vi.fn(), report: undefined as ((message: string, ready: boolean) => void) | undefined,
+  balance: undefined as ((event: RailgunBalancesEvent) => void) | undefined, importToken: vi.fn(), refreshTokens: vi.fn(),
 }))
 vi.mock('./wallet', () => ({ newMnemonic: () => 'disposable test phrase',
   openWallet: mocks.open, syncWallet: mocks.sync,
-  startWalletEngine: async (_balance: unknown, report: typeof mocks.report) => { mocks.report = report; return mocks.provider } }))
+  startWalletEngine: async (balance: typeof mocks.balance, report: typeof mocks.report) => { mocks.balance = balance; mocks.report = report; return mocks.provider } }))
 vi.mock('./wallet-actions', () => ({ wireWalletActions: mocks.wire }))
-vi.mock('./network-ui', () => ({ configurePrivateSelectors: vi.fn() }))
+vi.mock('./network-ui', () => ({ configurePrivateSelectors: vi.fn(), refreshTokenSelectors: mocks.refreshTokens }))
+vi.mock('./token-catalog', () => ({ loadTokenCatalog: vi.fn(), importPrivateToken: mocks.importToken }))
 vi.mock('./embedded', () => ({ reportEmbeddedLayout: vi.fn() }))
 vi.mock('./pickers', () => ({ configurePickers: () => () => {} }))
 vi.mock('./wallet-layout', () => ({ configureWalletLayout: vi.fn(), showSetup: mocks.setup,
@@ -17,7 +20,7 @@ vi.mock('./storage', () => ({ readPreference: async () => {
   if (mocks.failRead) throw new Error('Storage unavailable')
   return mocks.persisted ? { id: 'fixture-wallet', salt: 'fixture-salt' } : undefined
 } }))
-vi.mock('./config', () => ({ CHAIN_NAME: 'Ethereum', ENVIRONMENT: 'fork', TOKENS: {} }))
+vi.mock('./config', () => ({ CHAIN_NAME: 'Ethereum', ENVIRONMENT: 'fork', TOKENS: {}, tokenIdFor: () => undefined }))
 
 type Field = { value: string; hidden: boolean; disabled: boolean; checked: boolean; textContent: string;
   title: string; onclick?: () => Promise<void> | void; oninput?: () => void; addEventListener: () => void; focus: () => void; removeAttribute: () => void }
@@ -36,6 +39,16 @@ beforeEach(() => {
   vi.stubGlobal('location', { reload: vi.fn() })
 })
 afterEach(() => vi.unstubAllGlobals())
+
+it('shows an unsolicited private token by address without probing metadata or persisting a catalog entry', async () => {
+  await import('./main')
+  await vi.dynamicImportSettled()
+  const address = '0x0000000000000000000000000000000000001234'
+  mocks.balance?.({ railgunWalletID: 'fixture-wallet', balanceBucket: 'Spendable', erc20Amounts: [{ tokenAddress: address, amount: 1n }] } as RailgunBalancesEvent)
+  expect(fields.balances.textContent).toContain(`${address}: 1 units`)
+  expect(mocks.refreshTokens).toHaveBeenLastCalledWith([address])
+  expect(mocks.importToken).not.toHaveBeenCalled()
+})
 
 it('offers unlock after a first open persists metadata but fails, and keeps the network locked after retry', async () => {
   mocks.open.mockImplementationOnce(async () => { mocks.persisted = true; throw new Error('History scan interrupted') })

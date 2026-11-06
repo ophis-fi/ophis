@@ -1,20 +1,21 @@
-import { CHAIN_ID, tokenFor, type TokenSymbol } from './config'
+import { CHAIN_ID, WRAPPED_SYMBOL, tokenFor, tokenIdFor, type TokenSymbol } from './config'
 import { formatUnits } from 'ethers'
 
 export function feeTokenFor(principal: TokenSymbol): TokenSymbol {
-  return CHAIN_ID === 56 ? 'WBNB' : principal
+  return CHAIN_ID === 56 || principal.startsWith('0x') ? WRAPPED_SYMBOL : principal
 }
 
-export function usesBoundWithdrawal(token: TokenSymbol): boolean {
-  return CHAIN_ID === 56 && (token === 'USDC' || token === 'USDT')
+export function usesBoundWithdrawal(token: TokenSymbol, nativeOutput = false): boolean {
+  return nativeOutput || tokenFor(token).address.toLowerCase() !== tokenFor(feeTokenFor(token)).address.toLowerCase()
 }
 
 export function feeAddressFor(principalAddress: string): string {
-  return CHAIN_ID === 56 ? tokenFor('WBNB').address : principalAddress
+  const principal = tokenIdFor(principalAddress)
+  return tokenFor(principal ? feeTokenFor(principal) : WRAPPED_SYMBOL).address
 }
 
 export function requireFeeBalance(spendable: bigint, required: bigint, token: TokenSymbol): void {
   if (spendable >= required) return
   const asset = tokenFor(token)
-  throw new Error(`Insufficient spendable private ${token} for the broadcaster fee. Available: ${formatUnits(spendable, asset.decimals)} ${token}; required: ${formatUnits(required, asset.decimals)} ${token}. Add ${token === 'WBNB' ? 'BNB or WBNB' : token} to your private wallet for fees. Your swap or withdrawal amount is separate.`)
+  throw new Error(`Insufficient spendable private ${asset.symbol} for the broadcaster fee. Available: ${formatUnits(spendable, asset.decimals)} ${asset.symbol}; required: ${formatUnits(required, asset.decimals)} ${asset.symbol}. Add ${token === 'WBNB' ? 'BNB or WBNB' : asset.symbol} to your private wallet for fees. Your swap or withdrawal amount is separate.`)
 }

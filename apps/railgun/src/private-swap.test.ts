@@ -64,8 +64,18 @@ it('persists recovery before disclosing a signed spend and retains it after simu
   const submitter: PrivateSubmitter = { assertReady: async () => {}, send }
   await expect(executePrivateSwap(session, prepared, () => {}, submitter)).rejects.toThrow(/RPC failed/)
   expect(state.events).toEqual(['saved', 'disclosed'])
-  expect(state.save.mock.calls[0][1]).toMatchObject({ index: 3, account, executeNonce: '0', inputs: [{ tree: 0, nullifier: `0x${'11'.repeat(32)}` }] })
+  expect(state.save.mock.calls[0][1]).toMatchObject({ index: 3, account, executeNonce: '0', recoveryTokens: ['USDC', 'WETH'], inputs: [{ tree: 0, nullifier: `0x${'11'.repeat(32)}` }] })
   expect(send).not.toHaveBeenCalled()
+})
+
+it('saves the selected principal, output, actual fee and route assets before disclosing a custom-token swap', async () => {
+  const { registerToken } = await import('./config')
+  const sell = registerToken({ address: '0x0000000000000000000000000000000000005678', symbol: 'CUSTOM', decimals: 18 })
+  const custom = { ...prepared, quote: { ...prepared.quote, sell,
+    route: { tokens: [sell, 'USDT', 'WETH'], fees: [500, 500], path: '0x' } } } as Parameters<typeof executePrivateSwap>[1]
+  await expect(executePrivateSwap(session, custom, () => {}, { assertReady: async () => {}, send: vi.fn() })).rejects.toThrow('RPC failed')
+  expect(state.save.mock.calls[0][1]).toMatchObject({ feeToken: 'WETH', recoveryTokens: [sell, 'WETH', 'USDT'] })
+  expect(state.events).toEqual(['saved', 'disclosed'])
 })
 
 it('rejects a prepared swap during history synchronization before recording or disclosing a spend', async () => {

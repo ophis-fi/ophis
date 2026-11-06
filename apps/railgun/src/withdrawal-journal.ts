@@ -1,17 +1,19 @@
-import { CHAIN, CHAIN_ID, isTokenSymbol, CONFIG, TOKENS, PILOT_WITHDRAWAL_RECIPIENT, type TokenSymbol } from './config'
+import { CHAIN, CHAIN_ID, isTokenSymbol, CONFIG, NATIVE_SYMBOL, TOKENS, tokenFor, PILOT_WITHDRAWAL_RECIPIENT, type TokenSymbol } from './config'
 import { fullWalletForID, getWalletTransactionHistory } from '@railgun-community/wallet'
 import { authorizationify, Contract, formatUnits, getAddress, Interface, type JsonRpcSigner, type TransactionReceipt } from 'ethers'
 import { RelayAdapt7702ExecutionType } from '@railgun-community/engine'
-import { ADAPT, assertAuthorization, assertAtomicWithdrawal, assertBoundWithdrawal, assertReceipt, withdrawalOutput, PRIVACY } from './execution'
+import { ADAPT, assertAuthorization, assertAtomicWithdrawal, assertBoundWithdrawal, assertNativeExecutionBinding, assertReceipt, withdrawalOutput, PRIVACY } from './execution'
 import { deletePrivateState, readPrivateState, writePrivateState } from './storage'
 import type { WalletSession } from './wallet'
 import { assertPublicNetwork } from './shield'
+import { feeTokenFor } from './fee-asset'
 
 export interface PendingWithdrawal {
   chainId?: number
   token: TokenSymbol
   feeToken?: TokenSymbol
   broadcaster?: string
+  output?: 'native'
   execution?: { index: number; account: string; executeNonce: string;
     authorization: { address: string; chainId: string; nonce: string; signature: string };
     gasEstimate: string; maxFeePerGas: string; maxPriorityFeePerGas: string }
@@ -42,6 +44,7 @@ async function readWithdrawal(session: WalletSession, key: 'pendingWithdrawal' |
     !('token' in stored) ||
     !isTokenSymbol(stored.token) ||
     ('feeToken' in stored && !isTokenSymbol(stored.feeToken)) ||
+    ('output' in stored && stored.output !== 'native') ||
     !('recipient' in stored) ||
     typeof stored.recipient !== 'string' ||
     !('minimum' in stored) ||
@@ -75,15 +78,16 @@ async function readWithdrawal(session: WalletSession, key: 'pendingWithdrawal' |
     throw new Error('Pending withdrawal record is damaged. Restore or repair it before spending again.')
   getAddress(stored.recipient)
   const pending = stored as PendingWithdrawal
+  if (pending.output === 'native' && !pending.execution) throw new Error('Native withdrawal requires its saved signed execution.')
   if (pending.execution) {
     const e = pending.execution
-    if (CHAIN_ID !== 56 || pending.feeToken !== 'WBNB' || typeof pending.broadcaster !== 'string' ||
+    if (pending.feeToken !== feeTokenFor(pending.token) || typeof pending.broadcaster !== 'string' ||
       !Number.isSafeInteger(e.index) || e.index < 0 || typeof e.account !== 'string' ||
       getAddress(e.account) !== getAddress(pending.transaction.to) ||
       ![e.executeNonce, e.gasEstimate, e.maxFeePerGas, e.maxPriorityFeePerGas].every((n) => typeof n === 'string' && /^\d+$/.test(n)) ||
       BigInt(e.gasEstimate) <= 0n || BigInt(e.maxPriorityFeePerGas) <= 0n || BigInt(e.maxPriorityFeePerGas) > BigInt(e.maxFeePerGas))
       throw new Error('Saved withdrawal execution is damaged. Keep its proof and recovery account.')
-    const checked = assertBoundWithdrawal(pending.transaction.data, e.account, pending.token, pending.recipient, BigInt(pending.minimum))
+    const checked = assertBoundWithdrawal(pending.transaction.data, e.account, pending.token, pending.recipient, BigInt(pending.minimum), pending.output)
     if (checked.executeNonce !== BigInt(e.executeNonce)) throw new Error('Saved withdrawal nonce differs from its signature.')
     const [transactions, actionData, , executionSignature] = ADAPT.decodeFunctionData('execute', pending.transaction.data)
     assertAuthorization({ transactions, actionData, executionSignature, ephemeralAddress: e.account,
@@ -98,10 +102,11 @@ export async function savePendingWithdrawal(session: WalletSession, pending: Pen
 }
 
 export function savedWithdrawalSummary(pending: PendingWithdrawal): string {
-  if (pending.execution) return `Saved withdrawal: ${formatUnits(pending.minimum, TOKENS[pending.token].decimals)} ${pending.token} to ${pending.recipient}; broadcaster fee in WBNB. Recovery account ${pending.execution.index}: ${pending.execution.account}`
+  const asset = tokenFor(pending.token)
+  if (pending.execution) return `Saved withdrawal: ${formatUnits(pending.minimum, asset.decimals)} ${pending.output === 'native' ? NATIVE_SYMBOL : asset.symbol}${pending.token.startsWith('0x') ? ` (${asset.address})` : ''} to ${pending.recipient}; broadcaster fee in ${tokenFor(pending.feeToken ?? feeTokenFor(pending.token)).symbol}. Recovery account ${pending.execution.index}: ${pending.execution.account}`
   const note = withdrawalOutput(pending.transaction.data)
-  const asset = Object.values(TOKENS).find((item) => getAddress(item.address) === getAddress(note.token.tokenAddress))
-  const amount = asset ? `${formatUnits(note.value, asset.decimals)} ${asset.symbol}` : `unknown token ${note.token.tokenAddress}`
+  const listedAsset = Object.values(TOKENS).find((item) => getAddress(item.address) === getAddress(note.token.tokenAddress))
+  const amount = listedAsset ? `${formatUnits(note.value, listedAsset.decimals)} ${listedAsset.symbol}` : `unknown token ${note.token.tokenAddress}`
   const format = BigInt(note.token.tokenType) === 0n && BigInt(note.token.tokenSubID) === 0n ? '' : ' (unsupported token format)'
   return `Saved withdrawal: ${amount}${format} to ${pending.recipient}${pending.feeToken ? `; broadcaster fee in ${pending.feeToken}` : ''}`
 }
@@ -167,20 +172,40 @@ export function assertWithdrawalReceipt(receipt: TransactionReceipt, pending: Pe
     (sum, event) =>
       event?.name === 'Unshield' &&
       getAddress(event.args.to) === getAddress(pending.recipient) &&
-      getAddress(event.args.token.tokenAddress) === getAddress(TOKENS[pending.token].address)
+      getAddress(event.args.token.tokenAddress) === getAddress(tokenFor(pending.token).address)
         ? sum + BigInt(event.args.amount)
         : sum,
     0n,
   )
   if (pending.execution) {
     assertReceipt(receipt, pending.execution.account)
-    const token = new Interface(['event Transfer(address indexed from,address indexed to,uint256 value)'])
-    output = receipt.logs.filter((log) => getAddress(log.address) === getAddress(TOKENS[pending.token].address)).reduce((sum, log) => {
-      let event
-      try { event = token.parseLog({ topics: [...log.topics], data: log.data }) } catch { return sum }
-      return event && getAddress(event.args.from) === getAddress(pending.execution!.account) &&
-        getAddress(event.args.to) === getAddress(pending.recipient) ? sum + BigInt(event.args.value) : sum
-    }, 0n)
+    if (pending.output === 'native') {
+      assertBoundWithdrawal(pending.transaction.data, pending.execution.account, pending.token, pending.recipient, BigInt(pending.minimum), 'native')
+      const unshielded = events.reduce((sum, event) => event?.name === 'Unshield' &&
+        getAddress(event.args.to) === getAddress(pending.execution!.account) &&
+        getAddress(event.args.token.tokenAddress) === getAddress(tokenFor('WBNB').address) ? sum + BigInt(event.args.amount) : sum, 0n)
+      const wrapper = new Interface(['event Withdrawal(address indexed src,uint256 wad)'])
+      const unwrapped = receipt.logs.filter((log) => getAddress(log.address) === getAddress(tokenFor('WBNB').address)).reduce((sum, log) => {
+        let event
+        try { event = wrapper.parseLog({ topics: [...log.topics], data: log.data }) } catch { return sum }
+        return event && getAddress(event.args.src) === getAddress(pending.execution!.account) ? sum + BigInt(event.args.wad) : sum
+      }, 0n)
+      const feeCommitment = withdrawalTransactions(pending)[0].commitments[0]
+      if (unshielded !== BigInt(pending.minimum) || unwrapped !== BigInt(pending.minimum) ||
+        !events.some((event) => event?.name === 'Transact' && [...event.args.hash].includes(feeCommitment)))
+        throw new Error('Native withdrawal unshield, unwrap and fee commitment are not confirmed.')
+      // Native transfer has no ERC20 event. Reconciliation also verifies the
+      // actual transaction and canonical delegate/guard before clearing.
+      output = unwrapped
+    } else {
+      const token = new Interface(['event Transfer(address indexed from,address indexed to,uint256 value)'])
+      output = receipt.logs.filter((log) => getAddress(log.address) === getAddress(tokenFor(pending.token).address)).reduce((sum, log) => {
+        let event
+        try { event = token.parseLog({ topics: [...log.topics], data: log.data }) } catch { return sum }
+        return event && getAddress(event.args.from) === getAddress(pending.execution!.account) &&
+          getAddress(event.args.to) === getAddress(pending.recipient) ? sum + BigInt(event.args.value) : sum
+      }, 0n)
+    }
   }
   if (
     BigInt(pending.minimum) <= 0n ||
@@ -210,6 +235,7 @@ export async function reconcilePendingWithdrawal(session: WalletSession): Promis
     if (!receipt || (await receipt.confirmations()) < 2) continue
     try {
       assertWithdrawalReceipt(receipt, pending)
+      if (pending.output === 'native') await assertNativeExecutionBinding(session, receipt, pending, hash)
     } catch {
       continue
     }
