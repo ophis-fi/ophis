@@ -116,18 +116,27 @@ async function bnbFixture() {
   return { ...f, run: () => deployBNB(f.settings, f.approval, f.provider as unknown as JsonRpcProvider, f.wallet) }
 }
 
-it.each(['missing approval', 'unapproved funding', 'enabled sponsorship', 'wrong approval chain'])(
-  'keeps BNB commissioning closed for %s before signing or publication', async (change) => {
+it.each((['pilot', 'public'] as const).flatMap((admission) =>
+  ['missing approval', 'unapproved funding', 'enabled sponsorship', 'wrong approval chain']
+    .map((change) => ({ admission, change }))))(
+  'keeps BNB $admission commissioning closed for $change before signing or publication', async ({ admission, change }) => {
     const f = await bnbFixture()
-    f.settings.admission = 'public'
+    f.settings.admission = admission
     if (change === 'unapproved funding') f.approval.gasFundingApproved = false
     if (change === 'enabled sponsorship') f.settings.enabled = true
     if (change === 'wrong approval chain') f.approval.chainId = 137
     const { assertSigningNetwork } = await import('../src/config')
-    expect(() => assertSigningNetwork(f.settings)).toThrow('restricted to pilot admission')
+    if (admission === 'pilot') expect(() => assertSigningNetwork(f.settings)).not.toThrow()
+    else expect(() => assertSigningNetwork(f.settings)).toThrow('restricted to pilot admission')
     const { deployGuard: deployBNB } = await import('../src/guard-deployment')
-    await expect(deployBNB(f.settings, change === 'missing approval' ? undefined as never : f.approval,
-      f.provider as unknown as JsonRpcProvider, f.wallet)).rejects.toThrow('restricted to pilot admission')
+    const result = deployBNB(f.settings, change === 'missing approval' ? undefined as never : f.approval,
+      f.provider as unknown as JsonRpcProvider, f.wallet)
+    if (admission === 'public') await expect(result).rejects.toThrow('restricted to pilot admission')
+    else if (change === 'missing approval') await expect(result).rejects.toThrow()
+    else await expect(result).rejects.toThrow('unarmed, explicitly approved')
+    expect(f.provider.getBlock).not.toHaveBeenCalled()
+    expect(f.provider.estimateGas).not.toHaveBeenCalled()
+    expect(f.provider.send).not.toHaveBeenCalled()
     expect(f.sign).not.toHaveBeenCalled()
     expect(f.publish).not.toHaveBeenCalled()
     expect(existsSync(f.path)).toBe(false)

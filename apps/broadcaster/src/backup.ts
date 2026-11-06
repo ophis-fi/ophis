@@ -1,4 +1,4 @@
-import { existsSync, writeFileSync } from 'node:fs'
+import { existsSync, lstatSync, writeFileSync } from 'node:fs'
 import { join, resolve, sep } from 'node:path'
 import { backup, DatabaseSync } from 'node:sqlite'
 import { privateDirectory, privateFile } from './storage'
@@ -9,7 +9,11 @@ export async function snapshotCriticalState(state: string, destination: string):
   privateDirectory(target)
   const root = join(target, 'state'), secrets = join(root, 'secrets')
   privateDirectory(root); privateDirectory(secrets)
-  for (const name of ['operator.sealed.json', 'operator-retired.sealed.json', 'operator-public.json', 'backup-cert.pem'])
+  // Owner custody keeps separate sealed gas/fee records; legacy custody retains its original required files.
+  const custodyFiles = lstatSync(join(state, 'secrets', 'owner-manifest.json'), { throwIfNoEntry: false })
+    ? ['owner-manifest.json', 'operator.sealed.json', 'fee-wallet-public.json', 'fee-wallet.sealed.json']
+    : ['operator.sealed.json', 'operator-retired.sealed.json', 'operator-public.json', 'backup-cert.pem']
+  for (const name of custodyFiles)
     writeFileSync(join(secrets, name), privateFile(join(state, 'secrets', name)), { flag: 'wx', mode: 0o600 })
   for (const name of ['guard-deployment-approval.json', 'guard-deployment-signed.json', 'guard-deployment-receipt.json'])
     if (existsSync(join(state, name))) writeFileSync(join(root, name), privateFile(join(state, name)), { flag: 'wx', mode: 0o600 })

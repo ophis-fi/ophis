@@ -142,6 +142,8 @@ The fork operator fixture deploys a fresh guard on its verified loopback fork. `
 
 ## Local verification and deployment files
 
+See [backup formats and restore mapping](BACKUP-FORMAT.md) for the current ANON `owner-state` installation. Historical `state` archives and retired signer configuration must not replace it.
+
 Unit tests cover integer budgets, permissions, SDK encryption, real fee-note decryption, canonical 7702 signatures, exact private-call traces, concurrent duplicate requests, restart journals and bounded cancellation. To exercise a real local nwaku relay, set `OPHIS_TEST_WAKU` to its loopback REST URL when running tests; the integration test uses isolated cluster 0 only.
 
 `pnpm test:fork` requires an Ethereum Anvil fork on `127.0.0.1:8559` and the existing Railgun Vite fork UI on `127.0.0.1:4357`; `OPHIS_TEST_FORK_RPC` and `OPHIS_TEST_BROWSER_ORIGIN` select other loopback ports. It creates two fresh wallets, shields test ETH, swaps into USDC/USDT and withdraws both those tokens and WETH. The actual protected sender and both journals are exercised, including a request-journal reopen, duplicate replies, consumed-spend re-encryption, underpayment and the delegation-change comparator. The final ledger checks decoded fees against the full signed gas budget plus 15%, and native expenditure against confirmed receipts.

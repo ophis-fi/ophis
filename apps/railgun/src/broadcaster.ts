@@ -1,4 +1,4 @@
-import { CHAIN, CHAIN_NAME, CHAIN_ID, CONFIG, ENVIRONMENT, FEE_SIGNER, NETWORK, PROTECTED_BROADCASTERS, VERSION } from './config'
+import { CHAIN, CHAIN_NAME, CHAIN_ID, CONFIG, ENVIRONMENT, FEE_SIGNER, NETWORK, OPHIS_BROADCASTER, PROTECTED_BROADCASTERS, VERSION } from './config'
 import { assertFinalQuoteFresh, type FinalQuoteCheck } from './recipe'
 import { assertAtomicWithdrawal } from './execution'
 import { BroadcasterTransaction, WakuBroadcasterClient } from '@railgun-community/waku-broadcaster-client-web'
@@ -67,6 +67,8 @@ export async function selectBroadcaster(
   onStatus: (status: string) => void,
   expectedBroadcaster?: string,
 ): Promise<SelectedBroadcaster> {
+  if (CHAIN_ID === 1 && ENVIRONMENT === 'ethereum' && expectedBroadcaster && expectedBroadcaster !== FEE_SIGNER)
+    throw new Error('This saved proof belongs to a retired Ethereum broadcaster. Keep it and use public-wallet recovery; do not prepare another withdrawal.')
   tokenAddress = feeAddressFor(tokenAddress)
   if (use7702 && ENVIRONMENT === 'ethereum' && !protectedBroadcasters().length)
     throw new Error('Protected private swaps are not available on this network yet. Withdrawals and recovery remain available.')
@@ -79,7 +81,7 @@ export async function selectBroadcaster(
       .filter(
         (candidate) =>
           candidate.tokenFee.expiration > Date.now() + 60_000 &&
-          (CHAIN_ID !== 1 || ENVIRONMENT !== 'ethereum' || candidate.railgunAddress === FEE_SIGNER) &&
+          isPermittedBroadcasterIdentity(candidate.railgunAddress) &&
           (!expectedBroadcaster || candidate.railgunAddress === expectedBroadcaster) &&
           (!use7702 || (supportsCanonicalDelegate(candidate) && isProtectedBroadcaster(candidate))),
       )
@@ -99,8 +101,9 @@ export async function selectBroadcaster(
 }
 
 export function validateBroadcaster(selected: SelectedBroadcaster, tokenAddress: string, use7702: boolean): void {
-  if (CHAIN_ID === 1 && ENVIRONMENT === 'ethereum' && selected.railgunAddress !== FEE_SIGNER)
-    throw new Error('Ethereum submissions require the reviewed Ophis fee identity.')
+  if (!isPermittedBroadcasterIdentity(selected.railgunAddress))
+    throw new Error(CHAIN_ID === 1 ? 'Ethereum submissions require the reviewed Ophis fee identity.'
+      : 'The Ophis broadcaster is not approved for public submissions on this network. Keep any saved proof for recovery.')
   if (
     getAddress(selected.tokenAddress) !== getAddress(feeAddressFor(tokenAddress)) ||
     !validateRailgunAddress(selected.railgunAddress) ||
@@ -230,8 +233,8 @@ export async function submitPrivate(
     authorization,
     type4,
   )
+  validateBroadcaster(selected, selected.tokenAddress, use7702)
   if (use7702) {
-    validateBroadcaster(selected, selected.tokenAddress, true)
     broadcasterFee(selected, gas)
     assertFinalQuoteFresh(checkedAt)
   }
@@ -252,6 +255,15 @@ function supportsCanonicalDelegate(selected: SelectedBroadcaster): boolean {
 function protectedBroadcasters() {
   // Approval must cover the router deadline and SDK retry window, not just the first send.
   return (PROTECTED_BROADCASTERS[CHAIN_ID] ?? []).filter((operator) => operator.expiresAt > Date.now() + 15 * 60_000)
+}
+
+function isPermittedBroadcasterIdentity(address: string): boolean {
+  if (ENVIRONMENT !== 'ethereum') return true
+  if (CHAIN_ID === 1) return address === FEE_SIGNER
+  // A trusted fee signer establishes a price band, not an operator allowlist.
+  // Keep other COMMON operators available while excluding our unapproved pilot.
+  return address.toLowerCase() !== OPHIS_BROADCASTER.toLowerCase() ||
+    protectedBroadcasters().some((operator) => operator.railgunAddress === address)
 }
 
 function isProtectedBroadcaster(selected: SelectedBroadcaster): boolean {
