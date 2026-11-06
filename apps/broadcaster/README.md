@@ -1,6 +1,8 @@
 # Ophis private broadcaster
 
-**Multichain development, 5 November 2026:** this branch extends transaction validation, fee pricing, guard attestation, journals, recovery and monitoring to Arbitrum, BNB Chain and Polygon. Their live signing remains disabled in source pending qualified private delivery, deployment and acceptance. These changes do not modify the running Ethereum installation. Base is excluded until the owner gives a separate go-ahead.
+**Custody decision, 6 November 2026:** the owner requires `0x58707c6C1E111c21cba4C9C8caE144175F84EceE` as the default gas/signing account. The generated Ethereum signer is retired and the prepared BNB signer remains disabled. Identified funds were returned under the owner's explicit instruction; receipts and limits are in the [current custody and recovery policy](../../docs/development/plans/2026-11-06-owner-wallet-custody.md). Do not generate replacement keys or treat the selected address as only a refill treasury. This policy supersedes the historical setup notes below. Hardware signing must be connected before broadcasting resumes.
+
+**Multichain development, 5 November 2026:** this branch extends transaction validation, fee pricing, guard attestation, journals, recovery and monitoring to Arbitrum, BNB Chain and Polygon. Their live signing remains disabled in source pending qualified private delivery, deployment and acceptance. Base is excluded until the owner gives a separate go-ahead.
 
 | Chain | ID | Native gas / wrapped fee token | Live release gate |
 | --- | --- | --- | --- |
