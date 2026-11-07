@@ -63,7 +63,8 @@ it.each([
   { ...valid, chainId: '56' },
 ])('rejects malformed layout data: %j', (data) => {
   receive(data)
-  expect(screen.getByTitle('Ophis private swap wallet').getAttribute('height')).toBe('740')
+  expect(screen.getByTitle('Ophis private swap wallet').getAttribute('height')).toBe('520')
+  expect(screen.queryByText('0.1% Ophis fee')).toBeNull()
   expect(window.location.search).toBe('')
 })
 

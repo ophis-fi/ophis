@@ -14,6 +14,8 @@ import { element, errorMessage, run } from './ui'
 import { requireWalletSync, syncWallet, type WalletSession } from './wallet'
 import { unusedSwapAccount } from './account'
 import { connectPublicWallet, type PublicWalletProvider } from './public-connection'
+import { renderWalletLayout, setPendingNotice, setSwapReview, showWalletView } from './wallet-layout'
+import { feeTokenFor, usesBoundWithdrawal } from './fee-asset'
 
 export async function wireWalletActions(session: WalletSession): Promise<void> {
   const state: {
@@ -39,16 +41,26 @@ export async function wireWalletActions(session: WalletSession): Promise<void> {
   const publicTransactionStatus = (message: string): void => {
     element('public-transaction-status').textContent = message
   }
+  if (CHAIN_ID === 56) {
+    element('swap-fee-help').textContent = 'Broadcaster fees are paid automatically from your private WBNB balance. Keep private WBNB for fees when swapping or withdrawing other tokens.'
+    element('withdraw-fee-help').textContent = 'Choose the token and amount above. The broadcaster fee is paid separately in private WBNB.'
+  }
   const refreshPending = async (): Promise<void> => {
     const pending = await pendingSwap(session)
     const withdrawal = await pendingWithdrawal(session)
     const preserved = await preservedWithdrawal(session)
     const unsupportedWeth = !!withdrawal && canPreserveWethWithdrawal(withdrawal)
+    const boundWithdrawal = withdrawal?.execution
     const identity = pending?.account || withdrawal?.recipient
+    setPendingNotice(!!identity)
     const shortcut = element<HTMLAnchorElement>('withdraw-shortcut')
     shortcut.href = identity ? '#recovery' : '#withdrawal'
-    shortcut.textContent = pending ? 'Check saved swap' : withdrawal ? 'Continue saved withdrawal' : 'Withdraw to a public wallet'
+    shortcut.textContent = pending ? 'Check saved swap' : withdrawal ? 'Continue saved withdrawal' : 'Withdraw'
     element<HTMLDetailsElement>('recovery').open = !!identity
+    element('reconcile').hidden = !pending
+    element('cancel-swap').hidden = !pending && !boundWithdrawal
+    element('leftovers-consent').hidden = !pending && !boundWithdrawal
+    element('cancel-swap').textContent = boundWithdrawal ? 'Invalidate saved withdrawal authorization' : 'Cancel pending swap using temporary account gas'
     for (const id of ['withdraw-max', 'withdraw-quote']) element(id).hidden = !!identity
     element('reconcile-withdrawal').hidden = !withdrawal
     for (const id of ['retry-withdrawal', 'resume-withdrawal']) element(id).hidden = !withdrawal || unsupportedWeth
@@ -59,10 +71,14 @@ export async function wireWalletActions(session: WalletSession): Promise<void> {
     const help = element('withdraw-pending-help')
     help.hidden = !identity
     help.textContent = pending
-      ? 'A swap is already saved. Use Check saved swap beside Refresh balances before preparing a withdrawal.'
+      ? 'A swap is already saved. Use Check saved swap above before preparing a withdrawal.'
       : unsupportedWeth ? 'The saved proof withdraws WETH. This pilot relays USDC. Keep the WETH proof and prepare a USDC withdrawal below.'
-      : 'A withdrawal is already saved. Use Continue saved withdrawal beside Refresh balances to retry that proof.'
-    if (state.pendingIdentity !== identity) element<HTMLInputElement>('accept-leftovers').checked = false
+      : 'A withdrawal is already saved. Use Continue saved withdrawal above to retry that proof.'
+    if (state.pendingIdentity !== identity) {
+      element<HTMLInputElement>('accept-leftovers').checked = false
+      if (pending) element<HTMLInputElement>('recovery-index').value = String(pending.index)
+      else if (boundWithdrawal) element<HTMLInputElement>('recovery-index').value = String(boundWithdrawal.index)
+    }
     state.pendingIdentity = identity
     element('pending-details').textContent = pending
       ? `Pending swap: account ${pending.index}, ${pending.account}\n${pending.hash || 'Submission outcome unknown'}`
@@ -71,8 +87,6 @@ export async function wireWalletActions(session: WalletSession): Promise<void> {
         : 'No pending private transaction.'
   }
   await refreshPending()
-  const initialPending = await pendingSwap(session)
-  if (initialPending) element<HTMLInputElement>('recovery-index').value = String(initialPending.index)
   const symbol = (): TokenSymbol => {
     if (!isTokenSymbol(token.value)) throw new Error('Unsupported token.')
     return token.value
@@ -81,10 +95,12 @@ export async function wireWalletActions(session: WalletSession): Promise<void> {
     if (!isTokenSymbol(buyToken.value) || buyToken.value === symbol()) throw new Error('Choose a different receive token.')
     return buyToken.value
   }
+  const assetLabel = (id: TokenSymbol): string => `${tokenFor(id).symbol}${id.startsWith('0x') ? ` (${tokenFor(id).address})` : ''}`
   const updateSwapDirection = (): void => {
     const sell = symbol()
     if (buyToken.value === sell || !isTokenSymbol(buyToken.value)) buyToken.value = sell === 'USDC' ? WRAPPED_SYMBOL : 'USDC'
-    element('swap-direction').textContent = `Sell ${sell} → receive ${buySymbol()}. Enter the amount of ${sell} to sell.`
+    element('swap-direction').textContent = `Sell ${assetLabel(sell)} → receive ${assetLabel(buySymbol())}. Enter the amount of ${tokenFor(sell).symbol} to sell.`
+    element('native-withdrawal-option').hidden = CHAIN_ID !== 56 || sell !== 'WBNB'
   }
   updateSwapDirection()
   const depositToken = (): ShieldToken => {
@@ -102,8 +118,16 @@ export async function wireWalletActions(session: WalletSession): Promise<void> {
     requireWalletSync()
     if (ENVIRONMENT === 'fork') return
     publicTransactionStatus('Checking private-swap broadcaster availability before depositing…')
-    await selectBroadcaster(tokenFor(asset === NATIVE_SYMBOL ? WRAPPED_SYMBOL : asset).address, true, broadcasterStatus)
+    const principal = asset === NATIVE_SYMBOL ? WRAPPED_SYMBOL : asset
+    if (!isTokenSymbol(principal)) throw new Error('Unsupported deposit asset.')
+    await selectBroadcaster(tokenFor(feeTokenFor(principal)).address, true, broadcasterStatus)
     publicTransactionStatus('A compatible private-swap broadcaster is available. Review the deposit amount and fees.')
+  }
+  const renderQuoteAction = (): void => {
+    const quote = element<HTMLButtonElement>('quote')
+    quote.className = ''
+    quote.textContent = 'Review swap'
+    renderWalletLayout()
   }
   const button = (id: string, label: string, action: () => Promise<void>): void => {
     const target = element<HTMLButtonElement>(id)
@@ -129,7 +153,7 @@ export async function wireWalletActions(session: WalletSession): Promise<void> {
         } finally {
           await refreshPending()
         }
-      })
+      }).finally(renderQuoteAction)
   }
   const invalidate = (): void => {
     const previousError = element('private-wallet-error').textContent
@@ -146,7 +170,10 @@ export async function wireWalletActions(session: WalletSession): Promise<void> {
     element('review-shield').hidden = !state.signer
     element('switch-network').hidden = true
     element('quote-details').textContent = ''
+    element('receive-amount').textContent = '—'
+    renderQuoteAction()
     element('withdraw-details').textContent = ''
+    setSwapReview(false)
   }
   const publicWalletChanged = (): void => {
     state.publicEpoch += 1
@@ -167,7 +194,7 @@ export async function wireWalletActions(session: WalletSession): Promise<void> {
   const assertPublicEpoch = (epoch: number): void => {
     if (state.publicEpoch !== epoch) throw new Error('Public wallet changed. Reconnect before shielding.')
   }
-  for (const input of [token, buyToken, amount, recipient, shieldToken, shieldAmount]) input.oninput = invalidate
+  for (const input of [token, buyToken, amount, recipient, shieldToken, shieldAmount, element<HTMLInputElement>('withdraw-native')]) input.oninput = invalidate
   buyToken.oninput = () => { invalidate(); updateSwapDirection() }
   token.oninput = () => {
     amount.value = ''
@@ -244,7 +271,7 @@ export async function wireWalletActions(session: WalletSession): Promise<void> {
     amount.value = ''
     updateSwapDirection()
     invalidate()
-    status(`Shield confirmed: ${receipt.hash}. Refresh balances after confirmation and synchronization. Ophis does not require PPOI verification.`)
+    status(`Deposit confirmed: ${receipt.hash}. Updating your private balance automatically.`)
     void syncWallet(session).catch((error: unknown) => {
       element('private-wallet-error').textContent = error instanceof Error ? error.message : 'Private balance sync failed. The deposit is already confirmed.'
     })
@@ -257,32 +284,35 @@ export async function wireWalletActions(session: WalletSession): Promise<void> {
     const { quote } = prepared
     amount.value = formatUnits(quote.amount, TOKENS[quote.sell].decimals)
     const minimumAfterShield = quote.minimum - (quote.minimum * quote.shieldFee) / 10_000n
+    element('receive-amount').textContent = formatUnits(minimumAfterShield, TOKENS[quote.buy].decimals)
     element('quote-details').textContent =
-      `Amount to swap: ${formatUnits(quote.amount, TOKENS[quote.sell].decimals)} ${quote.sell}\nMinimum private output: ${formatUnits(minimumAfterShield, TOKENS[quote.buy].decimals)} ${quote.buy}\nOphis fee: ${formatUnits(quote.ophisFee, TOKENS[quote.buy].decimals)} ${quote.buy}\nBroadcaster fee: ${formatUnits(prepared.fee.amount, TOKENS[quote.sell].decimals)} ${quote.sell}\nProtocol unshield / reshield: ${quote.unshieldFee} / ${quote.shieldFee} bp`
+      `Amount to swap: ${formatUnits(quote.amount, TOKENS[quote.sell].decimals)} ${tokenFor(quote.sell).symbol}\nMinimum private output: ${formatUnits(minimumAfterShield, TOKENS[quote.buy].decimals)} ${tokenFor(quote.buy).symbol}\nOphis fee: ${formatUnits(quote.ophisFee, TOKENS[quote.buy].decimals)} ${tokenFor(quote.buy).symbol}\nBroadcaster fee: ${formatUnits(prepared.fee.amount, TOKENS[feeTokenFor(quote.sell)].decimals)} ${tokenFor(feeTokenFor(quote.sell)).symbol}\nProtocol unshield / reshield: ${quote.unshieldFee} / ${quote.shieldFee} bp`
+    if (quote.sell.startsWith('0x')) element('quote-details').textContent += `\nSell token contract: ${tokenFor(quote.sell).address}`
+    if (quote.buy.startsWith('0x')) element('quote-details').textContent += `\nReceive token contract: ${tokenFor(quote.buy).address}`
     if (prepared.gasCapped)
       element('quote-details').textContent += `\nGas price capped at ${formatUnits(prepared.gas.maxFeePerGas, 9)} gwei to fit your private balance. Rising gas prices can require a fresh quote.`
     if (quote.route)
       element('quote-details').textContent += `\nUniswap v3: ${quote.route.tokens.join(' → ')}; pool fees ${quote.route.fees.map((fee) => `${fee / 10_000}%`).join(' + ')}. ${quote.availableRoutes} routes returned positive quotes.`
+    renderQuoteAction()
     element('swap').hidden = false
+    setSwapReview(true)
   }
   button('max-swap', 'Reserving broadcaster fee…', async () => {
     invalidate()
     requireWalletSync()
     const sell = symbol()
-    const selected = await selectBroadcaster(TOKENS[sell].address, true, broadcasterStatus)
-    if (ENVIRONMENT === 'ethereum') await selectBroadcaster(TOKENS[buySymbol()].address, true, broadcasterStatus)
+    const selected = await selectBroadcaster(TOKENS[feeTokenFor(sell)].address, true, broadcasterStatus)
+    if (ENVIRONMENT === 'ethereum' && feeTokenFor(buySymbol()) !== feeTokenFor(sell)) await selectBroadcaster(TOKENS[feeTokenFor(buySymbol())].address, true, broadcasterStatus)
     const prepared = await prepareMaxPrivateSwap(session, sell, selected, undefined, buySymbol())
     showSwapQuote(prepared)
     element('quote-details').textContent = 'Max includes gas price headroom in the fee budget. Review the trade and committed fee below.\n' + element('quote-details').textContent
   })
   button('quote', 'Preparing quote…', async () => {
-    state.swap = undefined
-    element('swap').hidden = true
-    element('quote-details').textContent = ''
+    invalidate()
     requireWalletSync()
     amountFromInput(amount.value, symbol())
-    const selected = await selectBroadcaster(TOKENS[symbol()].address, true, broadcasterStatus)
-    if (ENVIRONMENT === 'ethereum') await selectBroadcaster(TOKENS[buySymbol()].address, true, broadcasterStatus)
+    const selected = await selectBroadcaster(TOKENS[feeTokenFor(symbol())].address, true, broadcasterStatus)
+    if (ENVIRONMENT === 'ethereum' && feeTokenFor(buySymbol()) !== feeTokenFor(symbol())) await selectBroadcaster(TOKENS[feeTokenFor(buySymbol())].address, true, broadcasterStatus)
     const account = await unusedSwapAccount(session)
     const quote = await quoteSwap(session.provider, symbol(), amount.value, account.address, buySymbol())
     let prepared: Awaited<ReturnType<typeof preparePrivateSwap>>
@@ -296,21 +326,27 @@ export async function wireWalletActions(session: WalletSession): Promise<void> {
     if (prepared.quote.amount < quote.amount)
       element('quote-details').textContent = 'Broadcaster fee reserved from your full-balance amount. Review the adjusted trade below.\n' + element('quote-details').textContent
   })
-  button('swap', 'Proving and submitting…', async () => {
+  button('swap', 'Preparing private swap…', async () => {
     const prepared = state.swap
     invalidate()
     if (!prepared) throw new Error('Get a fresh private swap quote first.')
     const hash = await executePrivateSwap(session, prepared, status, privateSubmitter)
-    status(`Swap mined: ${hash}. Confirming private balance.`)
-    await syncWallet(session)
+    amount.value = ''
+    status(`Swap confirmed: ${hash}. Updating private balance.`)
+    try {
+      await syncWallet(session)
+    } catch (error) {
+      status(`Swap confirmed: ${hash}. Private balance refresh is incomplete. Refresh balances to retry.`)
+      throw error
+    }
+    status(`Swap confirmed: ${hash}. Private balance updated.`)
   })
   const reviewWithdrawal = async (maximum: boolean): Promise<void> => {
-    state.withdrawal = undefined
-    element('withdraw').hidden = true
-    element('withdraw-details').textContent = ''
+    invalidate()
     requireWalletSync()
     if (!maximum) amountFromInput(amount.value, symbol())
-    const selected = await selectBroadcaster(TOKENS[symbol()].address, false, broadcasterStatus)
+    const nativeOutput = CHAIN_ID === 56 && symbol() === 'WBNB' && element<HTMLInputElement>('withdraw-native').checked
+    const selected = await selectBroadcaster(TOKENS[feeTokenFor(symbol())].address, usesBoundWithdrawal(symbol(), nativeOutput), broadcasterStatus)
     state.withdrawal = await prepareUnshield(
       session,
       symbol(),
@@ -318,10 +354,12 @@ export async function wireWalletActions(session: WalletSession): Promise<void> {
       recipient.value,
       selected,
       maximum,
+      nativeOutput,
     )
     if (maximum) amount.value = formatUnits(state.withdrawal.amounts[0].amount, TOKENS[symbol()].decimals)
     element('withdraw-details').textContent =
-      `Withdraw ${amount.value} ${symbol()} to ${recipient.value}\nBroadcaster fee: ${formatUnits(state.withdrawal.fee.amount, TOKENS[symbol()].decimals)} ${symbol()}\nThe broadcaster fee is paid from your private balance. The protocol withdrawal fee is deducted from the amount.\nYou receive: ${formatUnits(state.withdrawal.minimum, TOKENS[symbol()].decimals)} ${symbol()}`
+      `Withdraw ${amount.value} ${tokenFor(symbol()).symbol} to ${recipient.value}\nBroadcaster fee: ${formatUnits(state.withdrawal.fee.amount, TOKENS[feeTokenFor(symbol())].decimals)} ${tokenFor(feeTokenFor(symbol())).symbol}\nThe broadcaster fee is paid from your private balance. The protocol withdrawal fee is deducted from the amount.\nYou receive: ${formatUnits(state.withdrawal.minimum, TOKENS[symbol()].decimals)} ${nativeOutput ? 'BNB' : tokenFor(symbol()).symbol}`
+    if (symbol().startsWith('0x')) element('withdraw-details').textContent += `\nToken contract: ${tokenFor(symbol()).address}`
     element('withdraw').hidden = false
   }
   button('withdraw-quote', 'Calculating fee…', () => reviewWithdrawal(false))
@@ -335,9 +373,14 @@ export async function wireWalletActions(session: WalletSession): Promise<void> {
     await syncWallet(session)
   })
   button('scan', 'Scanning…', async () => {
+    const index = recoveryIndex(element<HTMLInputElement>('recovery-index').value)
+    const swap = await pendingSwap(session), withdrawal = await pendingWithdrawal(session)
+    const related = [symbol(), ...(swap?.index === index ? swap.recoveryTokens ?? [swap.token, ...(swap.feeToken ? [swap.feeToken] : [])] : []),
+      ...(withdrawal?.execution?.index === index ? [withdrawal.token, ...(withdrawal.feeToken ? [withdrawal.feeToken] : [])] : [])]
     element('recovery-details').textContent = await scanRecovery(
       session,
-      recoveryIndex(element<HTMLInputElement>('recovery-index').value),
+      index,
+      [...new Set(related)],
     )
   })
   button('reconcile', 'Checking pending swap…', async () => {
@@ -345,7 +388,10 @@ export async function wireWalletActions(session: WalletSession): Promise<void> {
     await syncWallet(session)
   })
   button('cancel-swap', 'Invalidating old authorization…', async () => {
-    status(await cancelPendingSwap(session, element<HTMLInputElement>('accept-leftovers').checked))
+    const withdrawal = await pendingWithdrawal(session)
+    status(withdrawal?.execution
+      ? await cancelPendingSwap(session, element<HTMLInputElement>('accept-leftovers').checked, true)
+      : await cancelPendingSwap(session, element<HTMLInputElement>('accept-leftovers').checked))
     await syncWallet(session)
   })
   button('reconcile-withdrawal', 'Checking withdrawal…', async () => {
@@ -367,8 +413,9 @@ export async function wireWalletActions(session: WalletSession): Promise<void> {
     amount.value = ''
     recipient.value = PILOT_WITHDRAWAL_RECIPIENT!
     status('WETH proof preserved. Preparing the USDC withdrawal for review.')
+    showWalletView('withdrawal')
     await reviewWithdrawal(true)
-    status('WETH proof preserved. Review the USDC amount and fee, then choose Prove and withdraw.')
+    status('WETH proof preserved. Review the USDC amount and fee, then choose Confirm withdrawal.')
     element('withdraw-details').scrollIntoView({ block: 'center' })
   })
   button('restore-preserved-withdrawal', 'Restoring saved proof…', async () => {

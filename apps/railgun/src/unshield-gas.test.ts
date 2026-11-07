@@ -69,6 +69,7 @@ it('covers the broadcaster positive-tip floor when Ethereum suggests only its ba
     accounts: { getCurrentAccount: async () => ({ address: '0x0000000000000000000000000000000000001234' }) },
     provider: { getFeeData: async () => ({ gasPrice: 7n }), getBlock: block } } as unknown as WalletSession
   const result = await prepareUnshield(session, 'WETH', '0.001', '0x0000000000000000000000000000000000005678', selected)
+  if (result.kind !== 'COMMON') throw new Error('Expected a common WETH withdrawal')
   expect(result.gas.gasPrice).toBe(8n)
   expect(state.estimate.mock.calls[0][6].gasPrice).toBe(8n)
   // Backend's full 110%-padded budget at eight wei, including the 15% margin.
@@ -104,18 +105,20 @@ it.each([1, 42161, 137, 56])('prepares and submits chain %s withdrawals with SDK
       getNetwork: async () => ({ chainId: BigInt(chainId) }), send: async () => undefined },
   } as unknown as WalletSession
   const selected: SelectedBroadcaster = {
-    railgunAddress: FEE_SIGNER, tokenAddress: TOKENS.USDC.address,
+    railgunAddress: FEE_SIGNER, tokenAddress: chainId === 56 ? TOKENS.WBNB.address : TOKENS.USDC.address,
     tokenFee: { expiration: Date.now() + 600_000, feesID: 'test-fee', feePerUnitGas: '1000000000000',
       availableWallets: 1, relayAdapt: '', reliability: 1 },
   }
   expect(PROTECTED_BROADCASTERS[chainId]).toBeUndefined()
   state.balance = 10n ** BigInt(TOKENS.USDC.decimals + 1)
-  const prepared = await prepareUnshield(session, 'USDC', '1', '0x0000000000000000000000000000000000005678', selected)
+  const token = chainId === 56 ? 'WBNB' : 'USDC'
+  const prepared = await prepareUnshield(session, token, '1', '0x0000000000000000000000000000000000005678', selected)
+  if (prepared.kind !== 'COMMON') throw new Error('Expected a same-asset common withdrawal')
   const expectedType = chainId === 56 ? EVMGasType.Type0 : EVMGasType.Type1
   expect(prepared.gas.evmGasType).toBe(expectedType)
   expect(prepared.gas.evmGasType).toBe(getEVMGasTypeForTransaction(NETWORK, false))
   expect(state.estimate.mock.calls[0][6].evmGasType).toBe(expectedType)
-  const populated = { transaction: { to: CONFIG.proxyContract, data: withdrawalData() },
+  const populated = { transaction: { to: CONFIG.proxyContract, data: withdrawalData(1, 1, '0x0000000000000000000000000000000000005678', TOKENS[token].address) },
     nullifiers: ['test-nullifier'] } as Parameters<typeof submitPrivate>[1]
   await expect(submitPrivate(session, populated, selected, prepared.gas, false)).resolves.toBe('withdrawal-test-hash')
   const wrongType = expectedType === EVMGasType.Type0 ? EVMGasType.Type1 : EVMGasType.Type0

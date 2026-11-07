@@ -1,5 +1,5 @@
 import { Contract, solidityPacked, type JsonRpcProvider } from 'ethers'
-import { QUOTE, QUOTER, TOKENS, isTokenSymbol, tokenFor, type TokenSymbol } from './config'
+import { QUOTE, QUOTER, ROUTE_INTERMEDIATES, isTokenSymbol, tokenFor, type TokenSymbol } from './config'
 
 export const V3_FEES = [100, 500, 3000, 10_000] as const
 // Canonical deployment also pinned by packages/sdk/src/preflight.ts.
@@ -17,7 +17,7 @@ export function routeCandidates(sell: TokenSymbol, buy: TokenSymbol): PrivateRou
       tokens: [sell, buy], fees: [fee],
     })
   }
-  for (const middle of Object.keys(TOKENS).filter(isTokenSymbol).filter((token) => token !== sell && token !== buy)) {
+  for (const middle of ROUTE_INTERMEDIATES.filter((token) => token !== sell && token !== buy)) {
     for (const first of V3_FEES) for (const second of V3_FEES) {
       routes.push({
         path: solidityPacked(['address', 'uint24', 'address', 'uint24', 'address'],

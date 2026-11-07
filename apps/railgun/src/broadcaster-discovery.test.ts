@@ -76,6 +76,18 @@ it('does not fall back to an unapproved operator when the protected operator dis
   await rejected
 })
 
+it('rejects a saved Ethereum proof for a retired operator immediately and points to public-wallet recovery', async () => {
+  const selected = await candidate()
+  const { selectBroadcaster } = await import('./broadcaster')
+  const status = vi.fn()
+  await expect(selectBroadcaster(selected.tokenAddress, false, status,
+    '0zk1qyjex88m96zw2kunzxw8r8g7007ak2qe082w5n0f038chhhkzfcdtrv7j6fe3z53law92j4q28j34xsacfqf9kmqw20ap8ek904q7j0hjllh8rpd3t96jq7xh98'))
+    .rejects.toThrow(/saved proof.*retired Ethereum broadcaster.*Keep it and use public-wallet recovery/)
+  expect(mocks.start).not.toHaveBeenCalled()
+  expect(mocks.find).not.toHaveBeenCalled()
+  expect(status).not.toHaveBeenCalled()
+})
+
 it('times out without weakening fee checks and can use a fresh common withdrawal fee on retry', async () => {
   const selected = await candidate()
   const { selectBroadcaster } = await import('./broadcaster')

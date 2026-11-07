@@ -26,7 +26,7 @@ it('emits only Prometheus metrics when the real CLI cannot reach its read node',
     })
     expect(result.error).toBeUndefined()
     expect(result.status).toBe(2)
-    expect(result.stdout).toContain('ophis_broadcaster_monitor_ok 0\n')
+    expect(result.stdout).toContain('ophis_broadcaster_monitor_ok{chain_id="1"} 0\n')
     expect(result.stdout).toContain('reason="stale-read-node"')
     expect(result.stdout.trim().split('\n').every((line) => line.startsWith('ophis_broadcaster_'))).toBe(true)
   } finally { rmSync(directory, { recursive: true, force: true }) }

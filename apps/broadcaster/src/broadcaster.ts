@@ -1,6 +1,6 @@
 import { fromUTF8String } from '@railgun-community/wallet'
 import { getAddress, Interface, JsonRpcProvider, Transaction, type TransactionResponse } from 'ethers'
-import { BROADCASTER_VERSION, MAX_GAS, NETWORK, TOKENS, VERSION, type Settings } from './config'
+import { assertSigningNetwork, BROADCASTER_VERSION, CHAIN, CHAIN_ID, MAX_GAS, NETWORK, TOKENS, type Settings } from './config'
 import { issueFee, validateFee, ceilDiv } from './fees'
 import { Store } from './storage'
 import { ADAPT, PROXY, assertPrivateExecution, parseRequest, type ParsedRequest } from './transaction'
@@ -9,10 +9,11 @@ import type { FeeOracle } from './fees'
 import type { RailgunSDK, FeeProof } from './sdk'
 import { assertExecutionGuardCode, guardedExecution } from '../../railgun/operator/execution-guard'
 import { signApprovedTransaction, type GasSigner } from './signer'
+import { readChainState } from './chain-state'
 
 const REGISTRY = new Interface(['function getContractAddress(string name) view returns (address)'])
 type SDK = Pick<RailgunSDK, 'address' | 'privateViewingKey' | 'publicViewingKey' | 'ready' | 'sign' | 'fee' | 'validate' | 'assure'>
-type Sender = { broadcastTransaction(raw: string): Promise<Pick<TransactionResponse, 'hash'>> }
+type Sender = { broadcastTransaction(raw: string, validUntilMs?: number): Promise<Pick<TransactionResponse, 'hash'>> }
 
 export class Broadcaster {
   // shortcut: one gas wallet; add independently journaled senders when measured demand needs concurrency.
@@ -27,24 +28,24 @@ export class Broadcaster {
   ) {}
 
   private async state() {
-    if ((await this.provider.getNetwork()).chainId !== 1n) throw new Error('Wrong Ethereum read node.')
-    const block = await this.provider.getBlock('latest')
-    if (!block || block.baseFeePerGas == null || Math.abs(Date.now() / 1000 - block.timestamp) > 45)
-      throw new Error('Ethereum read node is stale.')
+    if (this.config.chainId !== CHAIN_ID || (await this.provider.getNetwork()).chainId !== CHAIN)
+      throw new Error('Wrong broadcaster read network.')
+    const state = await readChainState(this.provider)
+    const { block, settled } = state
     const [nonce, confirmed, balance] = await Promise.all([
       this.provider.getTransactionCount(this.wallet.address, block.number),
-      this.provider.getTransactionCount(this.wallet.address, Math.max(0, block.number - 1)),
+      this.provider.getTransactionCount(this.wallet.address, settled),
       this.provider.getBalance(this.wallet.address, block.number),
     ])
-    return { block, nonce, confirmed, balance }
+    return { ...state, nonce, confirmed, balance }
   }
 
   async available(): Promise<boolean> {
     if (!this.config.enabled || this.busy || !this.sdk.ready() || this.store.hasPending()) return false
     if (this.config.admission === 'pilot' && this.config.pilotWithdrawalRecipient &&
       this.store.db.prepare('SELECT 1 FROM settings WHERE key=?').get('withdrawalPilot')) return false
-    const { nonce, confirmed, balance, block } = await this.state()
-    return block.baseFeePerGas! + 1n <= this.config.maxGasPrice && nonce === confirmed &&
+    const { nonce, confirmed, balance, minimumGasPrice } = await this.state()
+    return minimumGasPrice <= this.config.maxGasPrice && nonce === confirmed &&
       balance >= this.config.reserve + this.config.maxTransactionCost &&
       this.store.exposure() < this.config.dailyBudget &&
       !this.store.nonceBlocked(confirmed)
@@ -56,7 +57,7 @@ export class Broadcaster {
     const data = fromUTF8String(JSON.stringify({
       fees: Object.fromEntries(Object.entries(quote.rates).map(([token, rate]) => [token.toLowerCase(), rate])),
       feeExpiration: quote.expiration, feesID: quote.id, railgunAddress: this.sdk.address,
-      identifier: 'ophis-ethereum', availableWallets: available ? 1 : 0, version: BROADCASTER_VERSION,
+      identifier: `ophis-${CHAIN_ID}`, availableWallets: available ? 1 : 0, version: BROADCASTER_VERSION,
       relayAdapt: NETWORK.relayAdaptContract, relayAdapt7702: NETWORK.relayAdapt7702Contract,
       requiredPOIListKeys: [], reliability: 0.75,
     }))
@@ -74,6 +75,7 @@ export class Broadcaster {
     try {
       if (existing?.raw) throw new Error('This signed request needs reconciliation.')
       if (!this.config.enabled || !this.sdk.ready()) throw new Error('Broadcaster not available.')
+      assertSigningNetwork(this.config)
       phase = 'busy'
       if (this.busy || this.store.hasPending()) throw new Error('Reconcile the preceding request and fee first.')
       phase = 'admission'
@@ -86,12 +88,13 @@ export class Broadcaster {
       phase = 'format'
       const parsed = parseRequest(request.data, this.wallet.address, this.config)
       phase = 'pilot'
-      if (parsed.type4 && this.config.admission === 'pilot' && this.config.pilotAccount &&
+      if (parsed.type4 && !parsed.withdrawal && this.config.admission === 'pilot' && this.config.pilotAccount &&
         getAddress(String(parsed.transaction.to)) !== this.config.pilotAccount)
         throw new Error('This operator is restricted to its selected pilot account.')
       let withdrawalToken: string | undefined
-      if (!parsed.type4) {
-        const withdrawal = parsed.transactions[0].unshieldPreimage
+      if (!parsed.type4 || parsed.withdrawal) {
+        const withdrawal = parsed.withdrawal ? { npk: parsed.withdrawal.recipient, value: parsed.withdrawal.amount,
+          token: { tokenAddress: parsed.withdrawal.token, tokenType: 0n, tokenSubID: 0n } } : parsed.transactions[0].unshieldPreimage
         phase = 'withdrawal-recipient'
         if (typeof withdrawal.npk !== 'string') throw new Error('Wrong withdrawal recipient.')
         const recipient = BigInt(withdrawal.npk)
@@ -102,7 +105,8 @@ export class Broadcaster {
         if (typeof withdrawal.token.tokenAddress !== 'string') throw new Error('Wrong withdrawal token.')
         withdrawalToken = getAddress(withdrawal.token.tokenAddress)
         if (BigInt(withdrawal.token.tokenType) !== 0n || BigInt(withdrawal.token.tokenSubID) !== 0n ||
-          !TOKENS.some((token) => getAddress(token.address) === withdrawalToken) ||
+          (!(parsed.withdrawal && this.config.admission === 'public') &&
+            !TOKENS.some((token) => getAddress(token.address) === withdrawalToken)) ||
           (this.config.admission === 'pilot' && withdrawalToken !== getAddress(TOKENS[1].address)) ||
           BigInt(withdrawal.value) <= 0n) throw new Error('Wrong withdrawal token.')
         phase = 'withdrawal-used'
@@ -114,12 +118,12 @@ export class Broadcaster {
       this.busy = true; this.activeKey = request.key; reserved = true
       phase = 'fee'
       const payment = await this.sdk.fee(parsed)
-      if (withdrawalToken && (Object.keys(payment).length !== 1 || !payment[withdrawalToken])) {
-        phase = 'withdrawal-fee'
-        throw new Error('The withdrawal broadcaster fee must use the withdrawn token.')
+      if (withdrawalToken && (Object.keys(payment).length !== 1 || !payment[parsed.withdrawal ? TOKENS[0].address : withdrawalToken])) {
+        phase = parsed.withdrawal ? 'bound-withdrawal-fee' : 'withdrawal-fee'
+        throw new Error(parsed.withdrawal ? `The withdrawal broadcaster fee must use ${TOKENS[0].symbol}.` : 'The withdrawal broadcaster fee must use the withdrawn token.')
       }
       validateFee(this.store, parsed.feesID, payment, 1n, await this.oracle.rates())
-      const { nonce, confirmed, balance, block } = await this.state()
+      const { nonce, confirmed, balance, block, baseFee, minimumGasPrice } = await this.state()
       if (nonce !== confirmed || this.store.nonceBlocked(nonce))
         throw new Error('The operator has an unresolved transaction.')
       phase = 'network'
@@ -134,7 +138,7 @@ export class Broadcaster {
           const minimum = BigInt(item.boundParams.minGasPrice)
           if (minimum > gasPrice) gasPrice = minimum
         }
-        if (block.baseFeePerGas! + 1n > gasPrice) gasPrice = block.baseFeePerGas! + 1n
+        if (minimumGasPrice > gasPrice) gasPrice = minimumGasPrice
         if (gasPrice > this.config.maxGasPrice) throw new Error('Current gas price exceeds the operator cap.')
         execution = { ...execution, gasPrice }
       }
@@ -147,8 +151,9 @@ export class Broadcaster {
       if (gasLimit > allowed || gasLimit > MAX_GAS) throw new Error('Gas estimate exceeds the client allowance.')
       const price = parsed.type4 ? BigInt(parsed.transaction.maxFeePerGas!) : BigInt(populated.gasPrice!)
       const tip = parsed.type4 ? BigInt(parsed.transaction.maxPriorityFeePerGas!) : 1n
+      const effectivePrice = (base: bigint) => parsed.type4 && base + tip < price ? base + tip : price
       phase = 'pricing'
-      if (price < block.baseFeePerGas! + tip) throw new Error('Gas price exceeds the signed cap.')
+      if (price < baseFee + tip || effectivePrice(baseFee) < minimumGasPrice) throw new Error('Gas price exceeds the signed cap.')
       const budget = gasLimit * price
       phase = 'reserve'
       if (budget > this.config.maxTransactionCost || balance < budget + this.config.reserve)
@@ -167,16 +172,17 @@ export class Broadcaster {
       phase = 'state'
       const fresh = await this.state()
       if (this.store.hasPending() || fresh.nonce !== nonce || fresh.confirmed !== nonce || fresh.balance < budget + this.config.reserve ||
-        price < fresh.block.baseFeePerGas! + tip) throw new Error('Execution state changed during validation.')
+        price < fresh.baseFee + tip || effectivePrice(fresh.baseFee) < fresh.minimumGasPrice) throw new Error('Execution state changed during validation.')
       phase = 'network'
       await this.validateNetworkAndAuthority(parsed, fresh.block.number)
       phase = 'trace'
-      if (fresh.block.number !== block.number) assertPrivateExecution(await this.provider.send('debug_traceCall', [
+      if (fresh.block.hash !== block.hash) assertPrivateExecution(await this.provider.send('debug_traceCall', [
         this.provider.getRpcTransaction(transaction), `0x${fresh.block.number.toString(16)}`, { tracer: 'callTracer', timeout: '10s' },
       ]), privateCalldata)
       phase = 'fee'
       validateFee(this.store, parsed.feesID, payment, budget, await this.oracle.rates())
       phase = 'sign'
+      if (Math.abs(Date.now() / 1000 - fresh.block.timestamp) > 45) throw new Error('The validated head expired before signing.')
       if (this.store.exposure() + budget > this.config.dailyBudget) throw new Error('Operator gas budget exhausted.')
       this.lastRequests.push(performance.now())
       const raw = await signApprovedTransaction(this.wallet, transaction)
@@ -184,9 +190,9 @@ export class Broadcaster {
       const [feeToken, feeAmount] = Object.entries(payment)[0]
       this.store.signed(request.key, request.envelope, raw, hash, budget, this.config.dailyBudget,
         nonce, JSON.stringify({ ...proof, payment: { token: feeToken, amount: feeAmount.toString() } }),
-        feeQuote.expiration, this.config.admission === 'pilot' && !parsed.type4)
+        feeQuote.expiration, this.config.admission === 'pilot' && (!parsed.type4 || !!parsed.withdrawal))
       phase = 'submit'
-      const sent = await this.sender.broadcastTransaction(raw)
+      const sent = await this.sender.broadcastTransaction(raw, feeQuote.expiration)
       if (sent.hash !== hash) throw new Error('Unexpected protected transaction hash.')
       const encrypted = encryptResponse({ txHash: hash }, request)
       this.store.respond(request.key, encrypted)
@@ -202,16 +208,18 @@ export class Broadcaster {
         pilot: 'The swap account is outside this restricted pilot. Keep the saved transaction.',
         'withdrawal-recipient': this.config.admission === 'pilot'
           ? 'The withdrawal destination does not match the approved pilot recipient. Keep the saved withdrawal.'
-          : 'The withdrawal destination must be a nonzero Ethereum address. Keep the saved withdrawal.',
+          : 'The withdrawal destination must be a nonzero public address. Keep the saved withdrawal.',
         'withdrawal-token': this.config.admission === 'pilot'
           ? 'This pilot permits a positive USDC withdrawal only. Keep the saved withdrawal.'
-          : 'A withdrawal requires a positive amount of WETH, USDC or USDT. Keep the saved withdrawal.',
+          : `A withdrawal requires a positive amount of a supported ${CHAIN_ID === 56 ? 'withdrawal' : 'fee'} token. Keep the saved withdrawal.`,
         'withdrawal-used': 'The one-time withdrawal pilot is already used. Check the pending withdrawal before retrying.',
-        'withdrawal-fee': 'The withdrawal fee must be paid in the withdrawn token. Keep the saved withdrawal.',
+        'withdrawal-fee': CHAIN_ID === 56 ? 'The withdrawal fee must be paid in WBNB. Keep the saved withdrawal.'
+          : 'The withdrawal fee must be paid in the withdrawn token. Keep the saved withdrawal.',
+        'bound-withdrawal-fee': `The withdrawal fee must be paid in ${TOKENS[0].symbol}. Keep the saved withdrawal.`,
         simulation: 'The private transaction did not pass execution simulation. Check recovery before retrying.',
-        network: 'The broadcaster could not verify the current Ethereum privacy contracts. Keep the saved withdrawal.',
+        network: 'The broadcaster could not verify the current privacy contracts. Keep the saved withdrawal.',
         pricing: 'Current gas pricing exceeds the permitted limits. Keep the saved proof and retry through the broadcaster later.',
-        estimate: 'Ethereum rejected the saved transaction during gas estimation. Keep the saved proof.',
+        estimate: 'The network rejected the saved transaction during gas estimation. Keep the saved proof.',
         allowance: 'Estimated gas exceeds the permitted transaction allowance. Keep the saved proof.',
         reserve: 'The transaction exceeds the operator gas budget or protected reserve. Keep the saved proof.',
         trace: 'The saved transaction failed its exact execution trace. Keep the saved proof.',
@@ -229,13 +237,21 @@ export class Broadcaster {
   }
 
   private async validateNetworkAndAuthority(request: ParsedRequest, blockTag: number): Promise<void> {
-    if (request.type4 && this.config.executionGuard) {
+    if (request.withdrawal) {
+      const result = await this.provider.call({ to: NETWORK.proxyContract, data: PROXY.encodeFunctionData('unshieldFee'), blockTag })
+      const fee = BigInt(PROXY.decodeFunctionResult('unshieldFee', result)[0])
+      if (fee < 0n || fee > 5000n || request.withdrawal.amount !== request.withdrawal.grossAmount - request.withdrawal.grossAmount * fee / 10_000n)
+        throw new Error('The signed withdrawal transfer does not match its current net unshield amount.')
+    }
+    if (this.config.executionGuard) {
       const [code, delegateCode] = await Promise.all([
         this.provider.getCode(this.config.executionGuard, blockTag),
         this.provider.getCode(NETWORK.relayAdapt7702Contract, blockTag),
       ])
-      assertExecutionGuardCode(this.wallet.address, code, delegateCode)
+      assertExecutionGuardCode(this.wallet.address, code, delegateCode, NETWORK.relayAdapt7702Contract)
     }
+    if (request.withdrawal && !/^0x(?:[0-9a-f]{2})+$/i.test(await this.provider.getCode(request.withdrawal.token, blockTag)))
+      throw new Error('The withdrawal principal must be a token contract.')
     const registered = await this.provider.call({ to: NETWORK.railgunRegistryContract,
       data: REGISTRY.encodeFunctionData('getContractAddress', ['RelayAdapt7702']), blockTag })
     if (getAddress(REGISTRY.decodeFunctionResult('getContractAddress', registered)[0]) !== getAddress(NETWORK.relayAdapt7702Contract))
@@ -255,31 +271,30 @@ export class Broadcaster {
   }
 
   async reconcile(): Promise<void> {
-    const blockNumber = await this.provider.getBlockNumber()
+    const { block: head, confirmed, settled } = await this.state()
     for (const item of this.store.pending()) {
       if (!item.hash) continue
       this.store.checked(item.key)
       try {
       const original = await this.provider.getTransactionReceipt(item.hash)
-      const receipt = original ?? (item.cancel_hash ? await this.provider.getTransactionReceipt(item.cancel_hash) : null)
+      let receipt = original
+      if (!receipt) for (const cancellation of this.store.cancellations(item.key)) {
+        const candidate = await this.provider.getTransactionReceipt(cancellation.hash)
+        if (!candidate || candidate.blockNumber > settled) continue
+        const block = await this.provider.getBlock(candidate.blockNumber)
+        if (block?.hash === candidate.blockHash) { receipt = candidate; break }
+      }
       if (!receipt) {
-        const confirmed = await this.provider.getTransactionCount(this.wallet.address, Math.max(0, blockNumber - 1))
-        if (confirmed > item.nonce) {
-          const block = await this.provider.getBlock(blockNumber)
-          if (block) {
-            // Only the operator nonce is consumed; the user's proof/recovery state is not cleared.
-            this.store.confirmed(item.key, BigInt(item.max_cost), block.timestamp * 1000)
-          }
+        if (!item.confirmed && confirmed > item.nonce) {
+          // An unidentified nonce consumption never proves fee delivery.
+          this.store.confirmed(item.key, BigInt(item.max_cost), head.timestamp * 1000)
         }
-        if (!item.confirmed) continue
-        if (!item.assured && await this.sdk.assure(item.hash, JSON.parse(item.fee_data) as FeeProof))
-          this.store.assured(item.key, true)
         continue
       }
-      if (blockNumber - receipt.blockNumber + 1 < 2) continue
+      if (receipt.blockNumber > settled) continue
       {
         const block = await this.provider.getBlock(receipt.blockNumber)
-        if (!block) continue
+        if (!block || block.hash !== receipt.blockHash) continue
         this.store.confirmed(item.key, receipt.gasUsed * receipt.gasPrice, block.timestamp * 1000)
       }
       if (!original) { this.store.assured(item.key); continue }

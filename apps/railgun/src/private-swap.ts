@@ -16,6 +16,7 @@ import { pendingWithdrawal } from './withdrawal-journal'
 import { assertFinalQuoteFresh, assertQuoteFresh, quoteSwap, revalidateSwapQuote, type SwapQuote } from './recipe'
 import { refreshReceivedBalances, requireWalletSync, type WalletSession } from './wallet'
 import { unusedSwapAccount } from './account'
+import { feeTokenFor, requireFeeBalance } from './fee-asset'
 
 export async function preparePrivateSwap(session: WalletSession, quote: SwapQuote, selected: SelectedBroadcaster) {
   requireWalletSync()
@@ -23,12 +24,24 @@ export async function preparePrivateSwap(session: WalletSession, quote: SwapQuot
     throw new Error('Resolve the pending private transaction in recovery before preparing another.')
   const account = await unusedSwapAccount(session)
   assertQuoteFresh(quote, account.address)
-  validateBroadcaster(selected, TOKENS[quote.sell].address, true)
+  const feeToken = feeTokenFor(quote.sell)
+  const sameAsset = feeToken === quote.sell
+  validateBroadcaster(selected, TOKENS[feeToken].address, true)
   await refreshReceivedBalances(session)
   let gas = await gasDetails(session)
   const recommendedMaxFeePerGas = gas.maxFeePerGas
   const wallet = fullWalletForID(session.info.id)
-  let spendable = await balanceForERC20Token(VERSION, wallet, NETWORK, selected.tokenAddress, true)
+  const balances = async () => {
+    const principal = await balanceForERC20Token(VERSION, wallet, NETWORK, TOKENS[quote.sell].address, true)
+    const reserve = sameAsset ? principal : await balanceForERC20Token(VERSION, wallet, NETWORK, TOKENS[feeToken].address, true)
+    return { principal, reserve }
+  }
+  let available = await balances()
+  const requireBalances = (fee: bigint, minimum: boolean) => {
+    if (sameAsset) return requireSwapBalance(available.principal, quote.amount, fee, quote.sell, minimum)
+    if (available.principal < quote.amount) throw new Error(`Insufficient spendable ${quote.sell} for the swap amount.`)
+    requireFeeBalance(available.reserve, fee, feeToken)
+  }
   const unshields = [{ tokenAddress: TOKENS[quote.sell].address, amount: quote.amount }]
   const reshields = [...new Set([quote.sell, quote.buy, ...(quote.route?.tokens || [])])].map((symbol) => ({
     tokenAddress: tokenFor(symbol).address,
@@ -37,8 +50,9 @@ export async function preparePrivateSwap(session: WalletSession, quote: SwapQuot
   for (let attempt = 0; attempt < 3; attempt += 1) {
     const networkPrice = await minimumGasPrice(session, gas)
     const minimumFee = broadcasterFee(selected, { ...gas, maxFeePerGas: networkPrice })
-    requireSwapBalance(spendable, quote.amount, minimumFee.amount, quote.sell, attempt === 0)
-    gas = capGasPrice(gas, selected, spendable - quote.amount)
+    requireBalances(minimumFee.amount, attempt === 0)
+    const budget = sameAsset ? available.principal - quote.amount : available.reserve
+    gas = capGasPrice(gas, selected, budget)
     if (gas.maxFeePerGas < networkPrice) throw new Error(`${CHAIN_NAME} gas price changed. Request a fresh quote.`)
     const estimated = await gasEstimateForUnprovenCrossContractCalls7702(
       VERSION,
@@ -61,14 +75,15 @@ export async function preparePrivateSwap(session: WalletSession, quote: SwapQuot
     if (gas.maxFeePerGas < recommendedMaxFeePerGas) estimate = ((estimate + 9_999n) / 10_000n) * 10_000n
     gas = { ...gas, gasEstimate: estimate > gas.gasEstimate ? estimate : gas.gasEstimate }
     const fee = broadcasterFee(selected, gas)
-    spendable = await balanceForERC20Token(VERSION, wallet, NETWORK, selected.tokenAddress, true)
-    if (spendable >= quote.amount + fee.amount) {
+    available = await balances()
+    if (available.principal >= quote.amount && available.reserve >= fee.amount + (sameAsset ? quote.amount : 0n)) {
       if (gas.maxFeePerGas < await minimumGasPrice(session, gas))
         throw new Error(`${CHAIN_NAME} gas price changed. Request a fresh quote.`)
-      return { quote, selected, gas, fee, unshields, reshields, gasCapped: gas.maxFeePerGas < recommendedMaxFeePerGas }
+      return { quote, selected, gas, fee, feeToken, unshields, reshields, gasCapped: gas.maxFeePerGas < recommendedMaxFeePerGas }
     }
-    if (spendable <= quote.amount || capGasPrice(gas, selected, spendable - quote.amount).maxFeePerGas >= gas.maxFeePerGas)
-      requireSwapBalance(spendable, quote.amount, fee.amount, quote.sell, false)
+    const remaining = sameAsset ? available.principal - quote.amount : available.reserve
+    if (available.principal < quote.amount || remaining <= 0n || capGasPrice(gas, selected, remaining).maxFeePerGas >= gas.maxFeePerGas)
+      requireBalances(fee.amount, false)
   }
   throw new Error('Gas estimate kept changing while fitting the fee budget. Request a fresh quote.')
 }
@@ -80,6 +95,13 @@ export async function prepareMaxPrivateSwap(session: WalletSession, sell: TokenS
   if (budget != null && budget < amount) amount = budget
   if (amount <= 0n) throw new Error(`No spendable ${sell} is available for a swap.`)
   const limit = amount
+  if (feeTokenFor(sell) !== sell) {
+    const account = await unusedSwapAccount(session)
+    const quote = await quoteSwap(session.provider, sell, formatUnits(amount, TOKENS[sell].decimals), account.address, buy)
+    const prepared = await preparePrivateSwap(session, quote, selected)
+    if (prepared.quote.amount > limit) throw new Error('The swap amount exceeds the remaining principal budget.')
+    return prepared
+  }
   for (let attempt = 0; attempt < 4; attempt += 1) {
     const account = await unusedSwapAccount(session)
     const quote = await quoteSwap(session.provider, sell, formatUnits(amount, TOKENS[sell].decimals), account.address, buy)
@@ -131,7 +153,9 @@ export async function executePrivateSwap(
   onProgress: (message: string) => void,
   submitter: PrivateSubmitter,
 ): Promise<string> {
+  requireWalletSync()
   const { quote, selected, gas, fee, unshields, reshields } = prepared
+  validateBroadcaster(selected, TOKENS[feeTokenFor(quote.sell)].address, true)
   if ((await pendingSwap(session)) || (await pendingWithdrawal(session)))
     throw new Error('A private transaction is already pending. Reconcile it before spending again.')
   assertQuoteFresh(quote, (await session.accounts.getCurrentAccount(CHAIN)).address)
@@ -188,6 +212,8 @@ export async function executePrivateSwap(
     index,
     account: request.ephemeralAddress,
     token: quote.buy,
+    feeToken: feeTokenFor(quote.sell),
+    recoveryTokens: [...new Set([quote.sell, quote.buy, feeTokenFor(quote.sell), ...(quote.route?.tokens ?? [])])],
     minimum: (quote.minimum - (quote.minimum * quote.shieldFee) / 10_000n).toString(),
     npk: expectedOutputNpk(request, TOKENS[quote.buy].address),
     executeNonce: request.executeNonce.toString(),

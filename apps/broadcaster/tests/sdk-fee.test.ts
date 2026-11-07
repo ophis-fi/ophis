@@ -13,11 +13,10 @@ import { ArtifactStore, createRailgunWallet, fullWalletForID, getRailgunWalletAd
 import { Broadcaster } from '../src/broadcaster'
 import { RailgunSDK } from '../src/sdk'
 import { initializeSecrets, readSecrets, Store } from '../src/storage'
-import { NETWORK, TOKENS, VERSION } from '../src/config'
+import { NETWORK, NETWORK_NAME, TOKENS, VERSION } from '../src/config'
 import { PROXY, parseRequest } from '../src/transaction'
 import { config, privateRequest } from './request.fixture'
 import { disablePPOI } from '../../railgun/poi-policy'
-import { NetworkName } from '@railgun-community/shared-models'
 
 // Pinned SDK internals only create test ciphertext; production uses public full-wallet APIs.
 const require = createRequire(import.meta.url)
@@ -136,6 +135,6 @@ it('makes fresh confirmed notes available without PPOI and never counts spent no
     blindedCommitment: undefined, commitmentType: CommitmentType.ShieldCommitment, transactCreationRailgunTxid: undefined }
   const read = vi.spyOn(wallet, 'TXOs').mockResolvedValue([fresh, { ...fresh, position: 1, spendtxid: `0x${'99'.repeat(32)}` }])
   try {
-    expect(await balanceForERC20Token(VERSION, wallet, NetworkName.Ethereum, TOKENS[0].address, true)).toBe(700n)
+    expect(await balanceForERC20Token(VERSION, wallet, NETWORK_NAME, TOKENS[0].address, true)).toBe(700n)
   } finally { read.mockRestore() }
 })

@@ -8,15 +8,16 @@ import { fullWalletForID } from '@railgun-community/wallet'
 import { Contract, getAddress } from 'ethers'
 import { ADAPT, encodeRequest } from './execution'
 import { pendingSwap } from './journal'
+import { pendingWithdrawal } from './withdrawal-journal'
 import { deletePrivateState } from './storage'
 import type { WalletSession } from './wallet'
 import { gasDetails } from './broadcaster'
 
-export async function cancelPendingSwap(session: WalletSession, acceptLeftovers: boolean): Promise<string> {
+export async function cancelPendingSwap(session: WalletSession, acceptLeftovers: boolean, withdrawal = false): Promise<string> {
   if (!acceptLeftovers)
     throw new Error('Acknowledge that public leftovers remain recoverable at the recorded account index.')
-  const pending = await pendingSwap(session)
-  if (!pending) throw new Error('No pending swap to cancel.')
+  const pending = withdrawal ? (await pendingWithdrawal(session))?.execution : await pendingSwap(session)
+  if (!pending) throw new Error('No pending signed execution to cancel.')
   if ((await session.provider.getNetwork()).chainId !== CHAIN) throw new Error(`${CHAIN_NAME} RPC required.`)
   const account = await session.accounts.getAccount(CHAIN, pending.index)
   if (getAddress(account.address) !== getAddress(pending.account)) throw new Error('Recovery account mismatch.')
@@ -76,6 +77,6 @@ export async function cancelPendingSwap(session: WalletSession, acceptLeftovers:
   if (advanced <= BigInt(pending.executeNonce))
     throw new Error('Old execution authorization is not confirmed invalid. Keep the pending record.')
   await fullWalletForID(session.info.id).setEphemeralKeyIndexIfGreater(CHAIN, pending.index + 1)
-  await deletePrivateState(session, 'pendingSwap')
-  return `Old swap authorization invalidated. Account ${pending.index} (${pending.account}) remains recoverable; check its balances.`
+  await deletePrivateState(session, withdrawal ? 'pendingWithdrawal' : 'pendingSwap')
+  return `Old ${withdrawal ? 'withdrawal' : 'swap'} authorization invalidated. Account ${pending.index} (${pending.account}) remains recoverable; check its balances.`
 }

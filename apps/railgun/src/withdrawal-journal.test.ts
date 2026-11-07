@@ -3,7 +3,7 @@ import { ZeroAddress, ZeroHash, type TransactionReceipt } from 'ethers'
 import { CONFIG, TOKENS } from './config'
 import { PRIVACY } from './execution'
 import type { WalletSession } from './wallet'
-import { withdrawalData } from '../tests/withdrawal.fixture'
+import { mixedWithdrawalData, mixedWithdrawalTransactions, withdrawalData } from '../tests/withdrawal.fixture'
 
 const state = vi.hoisted(() => ({ value: undefined as unknown, preserved: undefined as unknown, remove: vi.fn(), history: vi.fn(), save: vi.fn() }))
 vi.mock('./config', async (original) => ({ ...await original<typeof import('./config')>(),
@@ -214,6 +214,40 @@ it('can dismiss a proof only after a saved input is spent at a confirmed block',
   await expect(reconcilePendingWithdrawal(session)).resolves.toMatch(/no longer executable/)
   expect(state.remove).toHaveBeenCalledOnce()
   expect(call.mock.calls[0][0].blockTag).toBe(101)
+})
+
+it('preserves both original proofs when only the independent legacy fee input is spent', async () => {
+  const legacy = mixedWithdrawalData(TOKENS.USDC.address, pending.recipient)
+  state.value = { ...pending, nullifiers: [`0x${'11'.repeat(32)}`, `0x${'22'.repeat(32)}`], transaction: { ...pending.transaction, data: legacy } }
+  call.mockResolvedValueOnce(PRIVACY.encodeFunctionResult('nullifiers', [true]))
+    .mockResolvedValueOnce(PRIVACY.encodeFunctionResult('nullifiers', [false]))
+  await expect(reconcilePendingWithdrawal(session)).rejects.toThrow('Remaining principal proofs must be recovered before clearing')
+  expect(state.remove).not.toHaveBeenCalled()
+  expect(state.save).not.toHaveBeenCalled()
+  expect((state.value as PendingWithdrawal).transaction.data).toBe(legacy)
+})
+
+it('keeps the original single-proof invariant when one of its multiple inputs is spent', async () => {
+  const tx = PRIVACY.decodeFunctionData('transact', pending.transaction.data)[0][0]
+  const extra = `0x${'55'.repeat(32)}`
+  const transaction = { proof: tx.proof, merkleRoot: tx.merkleRoot, nullifiers: [nullifier, extra],
+    boundParams: tx.boundParams, commitments: tx.commitments, unshieldPreimage: tx.unshieldPreimage }
+  state.value = { ...pending, nullifiers: [nullifier, extra], transaction: { ...pending.transaction,
+    data: PRIVACY.encodeFunctionData('transact', [[transaction]]) } }
+  call.mockResolvedValueOnce(PRIVACY.encodeFunctionResult('nullifiers', [true]))
+    .mockResolvedValueOnce(PRIVACY.encodeFunctionResult('nullifiers', [false]))
+  await expect(reconcilePendingWithdrawal(session)).resolves.toContain('no longer executable')
+  expect(state.remove).toHaveBeenCalledOnce()
+})
+
+it('clears a legacy mixed record only when every proof has an invalidating spent input', async () => {
+  const txs = mixedWithdrawalTransactions(TOKENS.USDC.address, pending.recipient)
+  txs[0].nullifiers.push(`0x${'44'.repeat(32)}`);txs[1].nullifiers.push(`0x${'55'.repeat(32)}`)
+  state.value = { ...pending, nullifiers: txs.flatMap((tx) => tx.nullifiers), transaction: { ...pending.transaction,
+    data: PRIVACY.encodeFunctionData('transact', [txs]) } }
+  for (const flag of [true, false, true, false]) call.mockResolvedValueOnce(PRIVACY.encodeFunctionResult('nullifiers', [flag]))
+  await expect(reconcilePendingWithdrawal(session)).resolves.toContain('no longer executable')
+  expect(state.remove).toHaveBeenCalledOnce()
 })
 
 it('rejects protocol contracts and the temporary account as withdrawal recipients', () => {

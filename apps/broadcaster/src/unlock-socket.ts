@@ -1,4 +1,4 @@
-import { chmodSync, unlinkSync } from 'node:fs'
+import { chmodSync, lstatSync, unlinkSync } from 'node:fs'
 import { createConnection, createServer, type Socket } from 'node:net'
 import { dirname } from 'node:path'
 import { MAX_UNLOCK_BYTES } from './custody'
@@ -52,13 +52,33 @@ export async function receiveUnlock<T>(path: string, accept: (data: Buffer) => T
   } }
 }
 
+function unlockEndpoint(path: string) {
+  const directory = lstatSync(dirname(path))
+  if ((directory.mode & 0o777) !== 0o700) throw new Error('The unlock directory must have private permissions (0700).')
+  privateDirectory(dirname(path))
+  const endpoint = lstatSync(path)
+  if (!endpoint.isSocket() || endpoint.uid !== process.getuid?.() || (endpoint.mode & 0o077))
+    throw new Error('The unlock endpoint must be an owned private socket.')
+  return { directory, endpoint }
+}
+
 export async function sendUnlock(path: string, data: Buffer): Promise<void> {
   if (!data.length || data.length > MAX_UNLOCK_BYTES) throw new Error('Invalid operator unlock payload.')
+  const expected = unlockEndpoint(path)
   await new Promise<void>((resolve, reject) => {
     const socket = createConnection(path)
     let response = ''
     socket.setTimeout(5000, () => socket.destroy(new Error('Operator unlock timed out.')))
-    socket.once('connect', () => socket.end(data))
+    socket.once('connect', () => {
+      try {
+        // shortcut: path checks cannot authenticate same-UID peers; add OS peer credentials if that threat enters scope.
+        const current = unlockEndpoint(path)
+        if (current.directory.dev !== expected.directory.dev || current.directory.ino !== expected.directory.ino ||
+          current.endpoint.dev !== expected.endpoint.dev || current.endpoint.ino !== expected.endpoint.ino)
+          throw new Error()
+        socket.end(data)
+      } catch { socket.destroy(new Error('The operator unlock endpoint changed or became unsafe.')) }
+    })
     socket.on('data', (chunk) => { response += chunk.toString(); if (response.length > 64) socket.destroy(new Error('Invalid unlock response.')) })
     socket.once('error', reject)
     socket.once('end', () => { if (response === 'unlocked\n') resolve(); else reject(new Error('Operator unlock rejected.')) })

@@ -3,6 +3,21 @@ import { constants, createCipheriv, createDecipheriv, createPrivateKey, createPu
 const aad = Buffer.from('ophis-broadcaster-operator-v1')
 export const MAX_UNLOCK_BYTES = 8192
 
+export function parseOperatorPublicKey(certificate: Buffer) {
+  if (!certificate.length || certificate.length > 32 * 1024) throw new Error('Invalid operator public certificate.')
+  const pem = certificate.toString('utf8')
+  const block = /^-----BEGIN (CERTIFICATE|(?:RSA )?PUBLIC KEY)-----\r?\n([A-Za-z0-9+/]+={0,2}(?:\r?\n[A-Za-z0-9+/]+={0,2})*)\r?\n-----END \1-----(?:\r?\n)?$/.exec(pem)
+  if (!block || block[0].length !== pem.length) throw new Error('Invalid operator public certificate.')
+  const body = block[2].replace(/\r?\n/g, '')
+  if (Buffer.from(body, 'base64').toString('base64') !== body) throw new Error('Invalid operator public certificate.')
+  const publicKey = createPublicKey(certificate)
+  if (publicKey.asymmetricKeyType !== 'rsa' || (publicKey.asymmetricKeyDetails?.modulusLength ?? 0) < 3072 ||
+    (publicKey.asymmetricKeyDetails?.modulusLength ?? 0) > 8192)
+    throw new Error('Operator encryption requires an RSA certificate of at least 3072 bits.')
+  if (publicKey.asymmetricKeyDetails?.publicExponent !== 65537n) throw new Error('Operator encryption requires RSA exponent 65537.')
+  return publicKey
+}
+
 function envelope(data: Buffer): { version: number; wrappedKey: string; iv: string; tag: string; ciphertext: string } {
   if (data.length > 24 * 1024) throw new Error('Invalid encrypted operator file.')
   const value = JSON.parse(data.toString())
@@ -14,10 +29,7 @@ function envelope(data: Buffer): { version: number; wrappedKey: string; iv: stri
 
 export function sealOperator(data: Buffer, certificate: Buffer): Buffer {
   if (!data.length || data.length > MAX_UNLOCK_BYTES) throw new Error('Invalid operator payload size.')
-  const publicKey = createPublicKey(certificate)
-  if (publicKey.asymmetricKeyType !== 'rsa' || (publicKey.asymmetricKeyDetails?.modulusLength ?? 0) < 3072 ||
-    (publicKey.asymmetricKeyDetails?.modulusLength ?? 0) > 8192)
-    throw new Error('Operator encryption requires an RSA certificate of at least 3072 bits.')
+  const publicKey = parseOperatorPublicKey(certificate)
   const key = randomBytes(32), iv = randomBytes(12)
   try {
     const cipher = createCipheriv('aes-256-gcm', key, iv, { authTagLength: 16 })

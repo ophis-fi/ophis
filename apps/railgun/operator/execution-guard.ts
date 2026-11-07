@@ -4,10 +4,11 @@ import { concat, getAddress, getBytes, hexlify, Interface, keccak256, zeroPadVal
 import { GUARD_ARTIFACT } from './execution-guard-artifact'
 
 export const EXECUTION_GUARD = new Interface(GUARD_ARTIFACT.abi)
-const delegate = NETWORK_CONFIG[NetworkName.Ethereum].relayAdapt7702Contract
+const ethereumDelegate = NETWORK_CONFIG[NetworkName.Ethereum].relayAdapt7702Contract
 
-export function executionGuardCode(operator: string, delegateCode: string): string {
+export function executionGuardCode(operator: string, delegateCode: string, selectedDelegate = ethereumDelegate): string {
   if (delegateCode === '0x') throw new Error('Canonical execution delegate is unavailable.')
+  const delegate = getAddress(selectedDelegate)
   const values = { operator: zeroPadValue(getAddress(operator), 32), delegate: zeroPadValue(delegate, 32),
     delegateCodeHash: keccak256(delegateCode), authorizationCodeHash: keccak256(concat(['0xef0100', delegate])) }
   const bytes = getBytes(GUARD_ARTIFACT.runtime)
@@ -16,8 +17,8 @@ export function executionGuardCode(operator: string, delegateCode: string): stri
   return hexlify(bytes)
 }
 
-export function assertExecutionGuardCode(operator: string, code: string, delegateCode: string): void {
-  if (keccak256(code) !== keccak256(executionGuardCode(operator, delegateCode)))
+export function assertExecutionGuardCode(operator: string, code: string, delegateCode: string, selectedDelegate = ethereumDelegate): void {
+  if (keccak256(code) !== keccak256(executionGuardCode(operator, delegateCode, selectedDelegate)))
     throw new Error('Execution guard code or pinned operator/delegate differs from the reviewed artifact.')
 }
 

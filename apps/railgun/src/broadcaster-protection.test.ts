@@ -16,7 +16,8 @@ vi.mock('@railgun-community/waku-broadcaster-client-web', () => ({
   BroadcasterTransaction: { create: state.create },
 }))
 import { selectBroadcaster, submitPrivate, validateBroadcaster } from './broadcaster'
-import { CONFIG, FEE_SIGNER, TOKENS } from './config'
+import { CONFIG, FEE_SIGNER, TOKENS, registerToken, tokenFor } from './config'
+import { usesBoundWithdrawal } from './fee-asset'
 
 const selected: SelectedBroadcaster = {
   railgunAddress: FEE_SIGNER, tokenAddress: TOKENS.WETH.address,
@@ -71,6 +72,15 @@ it('preserves common withdrawal discovery and submission when protected swaps ar
   await expect(submitPrivate(session, withdrawal, selected, {
     evmGasType: EVMGasType.Type1, gasEstimate: 3_000_000n, gasPrice: 101n,
   }, false)).resolves.toBe('0xprotected-test-hash')
+})
+
+it('holds Ethereum imported-token withdrawals at the approval safety cutoff while COMMON discovery remains available', async () => {
+  const token = registerToken({ address: '0x0000000000000000000000000000000000001234', symbol: 'CUSTOM', decimals: 18 })
+  expect(usesBoundWithdrawal(token)).toBe(true)
+  state.policy[1] = [{ railgunAddress: FEE_SIGNER, expiresAt: Date.now() + 15 * 60_000 }]
+  await expect(selectBroadcaster(tokenFor(token).address, true, vi.fn())).rejects.toThrow(/withdrawals with fees paid in another token/)
+  expect(state.find).not.toHaveBeenCalled()
+  await expect(selectBroadcaster(selected.tokenAddress, false, vi.fn())).resolves.toBe(selected)
 })
 
 it('cannot bypass the protected swap gate by labelling a delegated call as a common withdrawal', async () => {

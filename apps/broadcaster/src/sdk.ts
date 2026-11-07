@@ -14,10 +14,10 @@ import {
   type SnarkJSGroth16,
 } from '@railgun-community/wallet'
 import { ByteUtils, ByteLength, POI } from '@railgun-community/engine'
-import { MerkletreeScanStatus, NetworkName,
+import { MerkletreeScanStatus,
   type PreTransactionPOIsPerTxidLeafPerList } from '@railgun-community/shared-models'
 import { getAddress, JsonRpcProvider } from 'ethers'
-import { NETWORK, TOKENS, VERSION, type Settings } from './config'
+import { CHAIN_ID, NETWORK, NETWORK_NAME, TOKENS, VERSION, type Settings } from './config'
 import { assertDisk, privateDirectory, type Secrets, type Store } from './storage'
 import { PROXY, type ParsedRequest } from './transaction'
 import { disablePPOI } from '../../railgun/poi-policy'
@@ -38,6 +38,8 @@ export class RailgunSDK {
   constructor(private readonly config: Settings, private readonly secrets: Secrets, private readonly store: Store) {}
 
   async start(provider?: JsonRpcProvider): Promise<void> {
+    if (this.config.chainId !== CHAIN_ID || (provider && (await provider.getNetwork()).chainId !== BigInt(CHAIN_ID)))
+      throw new Error('The fee wallet must use its bound broadcaster chain.')
     const root = join(this.config.state, 'artifacts')
     privateDirectory(root)
     const artifactPath = (path: string): string => {
@@ -61,11 +63,12 @@ export class RailgunSDK {
     await startRailgunEngine('ophisrelay', new LevelDOWN(join(this.config.state, 'wallet-db')), false,
       artifacts, false, false)
     setOnUTXOMerkletreeScanCallback((event) => {
-      if (event.chain.id === 1) this.utxoReady = event.scanStatus === MerkletreeScanStatus.Complete
+      if (event.chain.id === CHAIN_ID && event.chain.type === NETWORK.chain.type)
+        this.utxoReady = event.scanStatus === MerkletreeScanStatus.Complete
     })
     getProver().setSnarkJSGroth16(groth16 as unknown as SnarkJSGroth16)
     const existing = this.store.db.prepare('SELECT value FROM settings WHERE key=?').get('walletId') as { value: string } | undefined
-    const creation = provider ? { [NetworkName.Ethereum]: await provider.getBlockNumber() } : undefined
+    const creation = provider ? { [NETWORK_NAME]: await provider.getBlockNumber() } : undefined
     const wallet = existing
       ? await loadWalletByID(this.secrets.encryptionKey, existing.value, !!this.secrets.feeViewingKey)
       : this.secrets.feeViewingKey
@@ -82,8 +85,8 @@ export class RailgunSDK {
     this.store.db.prepare('INSERT OR REPLACE INTO settings(key,value) VALUES(?,?)').run('walletId', this.walletId)
     if (provider) {
       this.providerLoaded = true
-      await loadProvider({ chainId: 1, providers: [{ provider: this.config.rpc, priority: 1, weight: 2, maxLogsPerBatch: 1000 }] },
-        NetworkName.Ethereum, 15_000)
+      await loadProvider({ chainId: CHAIN_ID, providers: [{ provider: this.config.rpc, priority: 1, weight: 2, maxLogsPerBatch: 1000 }] },
+        NETWORK_NAME, 15_000)
       await refreshBalances(NETWORK.chain, [this.walletId])
     }
   }
@@ -101,7 +104,7 @@ export class RailgunSDK {
   async balances(): Promise<Record<string, string>> {
     if (!this.ready()) throw new Error('Private fee history is not synchronized.')
     return Object.fromEntries(await Promise.all(TOKENS.map(async (token) => [getAddress(token.address),
-      String(await balanceForERC20Token(VERSION, walletForID(this.walletId), NetworkName.Ethereum, token.address, true))])))
+      String(await balanceForERC20Token(VERSION, walletForID(this.walletId), NETWORK_NAME, token.address, true))])))
   }
   async sign(message: string): Promise<string> { return signWithWalletViewingKey(this.walletId, message) }
 
@@ -138,6 +141,6 @@ export class RailgunSDK {
   async stop(): Promise<void> {
     if (!this.started) return
     this.started = false
-    try { await stopRailgunEngine() } finally { if (this.providerLoaded) await unloadProvider(NetworkName.Ethereum); this.providerLoaded = false }
+    try { await stopRailgunEngine() } finally { if (this.providerLoaded) await unloadProvider(NETWORK_NAME); this.providerLoaded = false }
   }
 }

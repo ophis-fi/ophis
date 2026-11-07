@@ -1,10 +1,11 @@
-import { expect, it, vi } from 'vitest'
+import { afterEach, expect, it, vi } from 'vitest'
 import { EVMGasType, type SelectedBroadcaster } from '@railgun-community/shared-models'
 import type { WalletSession } from './wallet'
 
+const selectedNetwork = vi.hoisted(() => ({ chainId: 1 }))
 vi.mock('./config', async (original) => {
   const config = await original<typeof import('./config')>()
-  return { ...config, ENVIRONMENT: 'ethereum', PROTECTED_BROADCASTERS: {
+  return { ...config, get CHAIN_ID() { return selectedNetwork.chainId }, ENVIRONMENT: 'ethereum', PROTECTED_BROADCASTERS: {
     [config.CHAIN_ID]: [{ railgunAddress: config.FEE_SIGNER, expiresAt: Number.MAX_SAFE_INTEGER }],
   } }
 })
@@ -16,6 +17,36 @@ const selected = {
   tokenFee: { feePerUnitGas: '1000000000000000000', expiration: Date.now() + 600_000, feesID: 'test', relayAdapt7702: CONFIG.relayAdapt7702Contract },
 } as SelectedBroadcaster
 const gas = { evmGasType: EVMGasType.Type4 as const, gasEstimate: 3_098_193n, maxFeePerGas: 1_000_000_000n, maxPriorityFeePerGas: 1n }
+
+afterEach(() => { selectedNetwork.chainId = 1; vi.unstubAllGlobals(); vi.resetModules() })
+
+it.each([1, 42161, 137])('normalizes a zero priority suggestion to a backend-compatible positive tip on chain %i', async (chainId) => {
+  vi.resetModules()
+  selectedNetwork.chainId = chainId
+  vi.stubGlobal('location', new URL(`http://localhost/?chainId=${chainId}`))
+  const { gasDetails } = await import('./broadcaster')
+  const session = { provider: { getFeeData: async () => ({ maxFeePerGas: 100n, maxPriorityFeePerGas: 0n }) } } as unknown as WalletSession
+  expect((await gasDetails(session)).maxPriorityFeePerGas).toBe(1n)
+})
+
+it('uses BNB gasPrice for both type-4 fee fields despite generic EIP-1559 hints', async () => {
+  vi.resetModules()
+  selectedNetwork.chainId = 56
+  vi.stubGlobal('location', new URL('http://localhost/?chainId=56'))
+  const { gasDetails, minimumGasPrice } = await import('./broadcaster')
+  const fee = { gasPrice: 50_000_000n, maxFeePerGas: 3_000_000_000n, maxPriorityFeePerGas: 1_000_000_000n }
+  const block = vi.fn()
+  const session = { provider: { getFeeData: async () => fee, getBlock: block } } as unknown as WalletSession
+  const priced = await gasDetails(session)
+  expect(priced.maxFeePerGas).toBe(fee.gasPrice)
+  expect(priced.maxPriorityFeePerGas).toBe(fee.gasPrice)
+  fee.gasPrice = 75_000_000n
+  expect(await minimumGasPrice(session, priced)).toBe(fee.gasPrice)
+  expect(block).not.toHaveBeenCalled()
+  fee.gasPrice = 0n
+  await expect(gasDetails(session)).rejects.toThrow('unavailable')
+  await expect(minimumGasPrice(session, priced)).rejects.toThrow('unavailable')
+})
 
 it('fits the fee budget without reducing gas units or the tip, and rounds the cap downward', () => {
   const budget = 716_490_555_332_357n

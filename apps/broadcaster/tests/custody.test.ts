@@ -1,6 +1,7 @@
 import { afterEach, beforeAll, expect, it } from 'vitest'
-import { generateKeyPairSync } from 'node:crypto'
-import { mkdtempSync, rmSync, statSync } from 'node:fs'
+import { createPublicKey, generateKeyPairSync } from 'node:crypto'
+import { spawnSync } from 'node:child_process'
+import { mkdtempSync, rmSync, statSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
 import { Wallet } from 'ethers'
@@ -8,21 +9,65 @@ import { MAX_UNLOCK_BYTES, openOperator, sealOperator } from '../src/custody'
 import { receiveUnlock, sendUnlock } from '../src/unlock-socket'
 import { parseMainnetSecrets } from '../src/storage'
 
-let publicKey: Buffer, privateKey: Buffer, wrongKey: Buffer
+let publicKey: Buffer, pkcs1PublicKey: Buffer, x509Certificate: Buffer, privateKey: Buffer, wrongKey: Buffer
 beforeAll(() => {
   const pair = generateKeyPairSync('rsa', { modulusLength: 3072 })
   publicKey = Buffer.from(pair.publicKey.export({ type: 'spki', format: 'pem' }))
+  pkcs1PublicKey = Buffer.from(pair.publicKey.export({ type: 'pkcs1', format: 'pem' }))
   privateKey = Buffer.from(pair.privateKey.export({ type: 'pkcs8', format: 'pem' }))
   wrongKey = Buffer.from(generateKeyPairSync('rsa', { modulusLength: 3072 }).privateKey.export({ type: 'pkcs8', format: 'pem' }))
+  const fixture = mkdtempSync(join(tmpdir(), 'custody-test-certificate-'))
+  try {
+    const keyFile = join(fixture, 'synthetic-key.pem')
+    writeFileSync(keyFile, privateKey, { mode: 0o600, flag: 'wx' })
+    const signed = spawnSync('/usr/bin/openssl', ['req', '-new', '-x509', '-key', keyFile,
+      '-subj', '/CN=Ophis Synthetic Custody Test', '-days', '1', '-sha256'], { timeout: 10_000 })
+    if (signed.status !== 0) throw new Error('Synthetic X.509 fixture creation failed.')
+    x509Certificate = signed.stdout
+  } finally { rmSync(fixture, { recursive: true, force: true }) }
 }, 20_000)
 
-it('encrypts all operator fields with randomized authenticated encryption and an off-server recovery key', () => {
+it.each(['SPKI', 'PKCS1', 'X509'])('encrypts all operator fields with randomized authenticated encryption using %s and an off-server recovery key', (format) => {
   const data = Buffer.from(JSON.stringify({ gasKey: 'dummy gas secret', feeMnemonic: 'dummy fee secret', encryptionKey: 'dummy database secret' }))
-  const a = sealOperator(data, publicKey), b = sealOperator(data, publicKey)
+  const certificate = format === 'X509' ? x509Certificate : format === 'PKCS1' ? pkcs1PublicKey : publicKey
+  const a = sealOperator(data, certificate), b = sealOperator(data, certificate)
   expect(a.equals(b)).toBe(false)
   expect(a.toString()).not.toContain('dummy')
   expect(openOperator(a, privateKey)).toEqual(data)
   expect(() => openOperator(a, wrongKey)).toThrow()
+})
+
+it.each([
+  ['concatenated public keys', () => Buffer.concat([publicKey, Buffer.from(createPublicKey(wrongKey).export({ type: 'spki', format: 'pem' }))])],
+  ['certificate plus another public key', () => Buffer.concat([x509Certificate, Buffer.from(createPublicKey(wrongKey).export({ type: 'spki', format: 'pem' }))])],
+  ['public plus private key', () => Buffer.concat([publicKey, privateKey])],
+  ['bare private key', () => privateKey],
+  ['mismatched footer', () => Buffer.from(publicKey.toString().replace('-----END PUBLIC KEY-----', '-----END RSA PUBLIC KEY-----'))],
+  ['trailing block', () => Buffer.concat([publicKey, Buffer.from('-----BEGIN COMMENT-----\nYQ==\n-----END COMMENT-----\n')])],
+  ['DER instead of PEM', () => createPublicKey(publicKey).export({ type: 'spki', format: 'der' })],
+  ['oversized certificate', () => Buffer.alloc(32 * 1024 + 1, 'A')],
+  ['noncanonical Base64', () => Buffer.from('-----BEGIN PUBLIC KEY-----\nAA=A\n-----END PUBLIC KEY-----\n')],
+  ['weak RSA', () => Buffer.from(generateKeyPairSync('rsa', { modulusLength: 2048 }).publicKey.export({ type: 'spki', format: 'pem' }))],
+  ['RSA above the 8192-bit envelope limit', () => createPublicKey({ key: { kty: 'RSA', n: Buffer.alloc(1025, 0xff).toString('base64url'), e: 'AQAB' }, format: 'jwk' }).export({ type: 'spki', format: 'pem' })],
+  ['nonstandard RSA exponent', () => Buffer.from(generateKeyPairSync('rsa', { modulusLength: 3072, publicExponent: 3 }).publicKey.export({ type: 'spki', format: 'pem' }))],
+  ['non-RSA public key', () => Buffer.from(generateKeyPairSync('ec', { namedCurve: 'prime256v1' }).publicKey.export({ type: 'spki', format: 'pem' }))],
+] as const)('rejects %s through the shared sealer before encryption', (_kind, input) => {
+  const certificate = Buffer.from(input())
+  if (_kind === 'RSA above the 8192-bit envelope limit') expect(createPublicKey(certificate).asymmetricKeyDetails?.modulusLength).toBeGreaterThan(8192)
+  expect(() => sealOperator(Buffer.from('synthetic operator secret'), certificate)).toThrow()
+})
+
+it('rejects nonzero unused Base64 pad bits even when Node accepts the identical public-key DER', () => {
+  const canonical = publicKey.toString().split('\n').filter((line) => line && !line.startsWith('-----')).join('')
+  const padding = canonical.endsWith('==') ? 2 : canonical.endsWith('=') ? 1 : 0
+  expect(padding).toBeGreaterThan(0)
+  const alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/', index = canonical.length - padding - 1
+  const altered = canonical.slice(0, index) + alphabet[alphabet.indexOf(canonical[index]) | 1] + canonical.slice(index + 1)
+  const certificate = Buffer.from('-----BEGIN PUBLIC KEY-----\n' + altered.match(/.{1,64}/g)!.join('\n') + '\n-----END PUBLIC KEY-----\n')
+  const actualDER = createPublicKey(certificate).export({ type: 'spki', format: 'der' })
+  expect(actualDER.equals(createPublicKey(publicKey).export({ type: 'spki', format: 'der' }))).toBe(true)
+  expect(altered === canonical).toBe(false)
+  expect(() => sealOperator(Buffer.from('synthetic operator secret'), certificate)).toThrow('Invalid operator public certificate.')
 })
 
 it.each(['iv', 'tag', 'ciphertext', 'wrappedKey'])('rejects changed %s without returning unauthenticated plaintext', (field) => {

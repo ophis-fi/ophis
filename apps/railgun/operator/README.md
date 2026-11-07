@@ -1,8 +1,8 @@
-# Protected Ethereum broadcaster transport
+# Protected broadcaster transport
 
-This is a Node-only sender for a **compatible broadcaster operator**, not a browser RPC setting or a complete broadcaster server. It routes signed Ethereum transactions to `https://rpc.flashbots.net?hint=hash` exclusively. Reads continue through the operator's trusted Ethereum node. It never falls back to that node for writes.
+This is the Node-only sender used by [Ophis's broadcaster](../../broadcaster/README.md), not a browser RPC setting or a complete broadcaster server. The Ethereum profile routes signed transactions to `https://rpc.flashbots.net?hint=hash` exclusively. Reads continue through the operator's trusted node. It never falls back to that node for writes. Endpoint, confirmation and cancellation-gas examples below describe Ethereum.
 
-The existing browser integration still uses Waku to request execution from an external operator. Installing this file in Ophis's frontend cannot change that operator's sender. `PROTECTED_BROADCASTERS` therefore stays empty until a real operator adopts and verifies this submission path.
+The browser uses Waku to request execution from Ophis's broadcaster. Its fee identity and protected chain configuration must be verified before being trusted; an advertised name is insufficient. Installing frontend code alone does not qualify private delivery or activate another chain.
 
 ## Integration
 
@@ -18,7 +18,7 @@ const provider = new ProtectedEthereumProvider(
 )
 const gasWallet = existingGasWallet.connect(provider)
 
-// Keep the operator's existing decryption, proof-of-innocence, fee,
+// Keep the operator's existing decryption, proof-policy, fee,
 // nullifier, gas-cap, calldata and execution-signature validation before this step.
 const transaction = await gasWallet.sendTransaction(validatedTransaction)
 await transaction.wait(2)
@@ -29,7 +29,7 @@ provider.destroy()
 
 The directory must be owned by the service user and have mode `0700`; the SQLite journal has mode `0600`. Mount it on persistent local storage, not an ephemeral container filesystem. It contains signed, potentially executable transactions; exclude it from logs, public backups and web roots. Do not enable Ethers RPC debug logging or log transaction requests.
 
-The provider validates the signed operator, chain, canonical proxy/delegate, chain-bound EIP-7702 authorization, fee fields and mined nonce. **It does not replace the broadcaster's Railgun/PPOI/fee/calldata validation.** The public `ppoi-safe-broadcaster-example` at `ec49691533b4edc2dafefbd8cdb5f611290b2115` does not accept the current type-4 flow; changing its provider alone will not make it compatible.
+The provider validates the signed operator, chain, canonical proxy/delegate, chain-bound EIP-7702 authorization, fee fields and mined nonce. **It does not replace the broadcaster's Railgun/proof-policy/fee/calldata validation.** The public `ppoi-safe-broadcaster-example` at `ec49691533b4edc2dafefbd8cdb5f611290b2115` does not accept the current type-4 flow; changing its provider alone will not make it compatible.
 
 ## Unknown outcomes and recovery
 
@@ -59,6 +59,16 @@ The fork test requires an existing loopback Anvil Ethereum fork. It generates te
 
 Production activation still requires an operator-controlled sender using this transport, a verified binding to its advertised `0zk` fee identity, and a supervised protected inclusion test with an agreed gas budget. None of those are established by a signed Waku fee advertisement. Do not approve an identity merely because its display name looks familiar.
 
-This transport currently supports Ethereum only. Arbitrum, Polygon and BNB need their own verified protected submission paths and compatible operators before approval. No API keys, customer wallets, contracts, RPC quotas or frontend fees are changed here.
+Chain-bound transport, journals and validation are implemented for Ethereum, Arbitrum, Polygon and BNB Chain. Arbitrum and Polygon signing remain blocked without a qualified protected write route. BNB permits restricted pilot signing with its verified ANON operator/guard and bounded native budgets; its mainnet inclusion and revert-exclusion qualification passed, while real user-paid swap and withdrawal acceptance remain outstanding. Public BNB admission and recovery signing remain blocked. Base remains excluded.
+
+### BNB restricted pilot bundle transport
+
+BNB publication uses `https://puissant-builder.48.club/` and a single-transaction `eth_sendBundle`, with an empty revert allowlist and `noMerge: true`. The broadcaster passes its authenticated fee expiration into `broadcastTransaction(raw, validUntilMs)`. A fresh user send without an existing authenticated envelope is rejected before creating a transport nonce hold; `stageSigned` remains an explicit held-record recovery operation.
+
+The trusted head must be at most three seconds old. Every envelope has a fixed 20-block limit and a timestamp no later than local time plus 30 seconds, head time plus 30 seconds, or the authenticated fee expiration. The exact body is durably stored before disclosure. Retries and restarts preserve it; an expired envelope or legacy raw-only record stays held. Expiry does not revoke the signature, and there is no automatic renewal. A new explicitly approved cancellation can have its own bounded envelope and can spend operator gas.
+
+Bundle acknowledgments are stored separately from transaction hashes and never prove settlement. Only the trusted chain receipt and existing fee assurance resolve accounting. Deployment stores its exact envelope in the fsynced deployment record; a signature without a usable envelope is retained as held, and repeating deployment cannot sign again. Existing backups include these records. Preserve the reviewed transport version when restoring BNB journals.
+
+No builder-tip transaction or membership signature is added. Bounded mainnet tests verified type-4 inclusion and exclusion of the tested reverting transactions. Those tests do not prove absolute privacy or that every future revert will be excluded. Public BNB activation still requires user-paid swap and withdrawal acceptance and final release review. Ethereum continues using its existing Flashbots raw-transaction route.
 
 Flashbots documents the [hash-only privacy setting, default builder, positive-tip requirement and 25-block lifetime](https://docs.flashbots.net/flashbots-protect/settings-guide). Its [EIP-7702 example](https://github.com/flashbots/mevrepl) demonstrates type-4 submission support. The builder still receives transaction contents; private submission reduces public-mempool exposure and is not an absolute guarantee against every form of MEV.

@@ -114,15 +114,17 @@ async function fundUSDC(address, amount) {
 try {
   await page.goto('http://127.0.0.1:4319/')
   await page.evaluate(async () => (await import('/tests/diagnostics.fixture.ts')).enableForkDiagnostics())
-  await page.locator('#password').fill('local-test-password-railgun')
-  await page.locator('#unlock').click()
-  await idle()
-  if ((await page.locator('#error').innerText()).includes('Create or restore')) {
+  await page.waitForFunction(() => !document.querySelector('#generate').hidden || !document.querySelector('#unlock').hidden)
+  if (await page.locator('#generate').isVisible()) {
     await page.locator('#generate').click()
+    await page.locator('#password').fill('local-test-password-railgun')
     await page.locator('#backup').check()
     await page.locator('#open').click()
-    await idle()
+  } else {
+    await page.locator('#password').fill('local-test-password-railgun')
+    await page.locator('#unlock').click()
   }
+  await idle()
   assert(await page.locator('#wallet').isVisible(), await page.locator('#error').innerText())
   for (const iteration of Array.from({ length: 120 }, (_, index) => index)) {
     const state = await page.locator('#status').innerText()
@@ -131,7 +133,6 @@ try {
     if (state.includes('Incomplete')) throw new Error('Fork history did not synchronize')
     await page.waitForTimeout(10_000)
   }
-  assert((await page.locator('#status').innerText()).includes('Complete'), 'History sync deadline reached')
   assert(!(await page.locator('#ready-actions').isDisabled()), 'Wallet history must be verified before depositing.')
   await page.evaluate(async () =>
     (await import('/tests/fork.fixture.ts')).loadForkSession('local-test-password-railgun'),
@@ -165,8 +166,12 @@ try {
   )
   const publicWallet = await rpc.getSigner(0)
   await fundUSDC(await publicWallet.getAddress(), 100_000_000n)
-  await page.locator('#shield-token').selectOption('USDC')
+  await page.locator('#wallet-menu-button').click()
+  await page.locator('#deposit-shortcut').click()
+  await page.locator('#shield-token-picker').click()
+  await page.locator('#asset-options button').filter({ hasText: 'USDC' }).click()
   await page.locator('#shield-amount').fill('50')
+  await page.locator('#deposit-connect').click()
   await page.locator('#connect').click()
   await idle()
   if (await page.locator('#approve').isVisible()) {

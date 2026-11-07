@@ -1,5 +1,5 @@
 import { NETWORK_CONFIG, TXIDVersion } from '@railgun-community/shared-models'
-import { Interface } from 'ethers'
+import { getAddress, Interface, ZeroAddress } from 'ethers'
 import { OPHIS_PARTNER_FEE_RECIPIENT } from '../../../packages/sdk/src/partner-fee'
 import { privateNetwork, type PrivateToken, type TokenSymbol } from './networks'
 
@@ -16,11 +16,33 @@ export const CONFIG = NETWORK_CONFIG[NETWORK]
 export const VERSION = TXIDVersion.V2_PoseidonMerkle
 export const NATIVE_SYMBOL = SELECTED_NETWORK.nativeSymbol
 export const WRAPPED_SYMBOL = SELECTED_NETWORK.wrappedSymbol
-export const TOKENS: Readonly<Record<string, PrivateToken>> = Object.fromEntries([
+const tokens: Record<string, PrivateToken> = Object.fromEntries([
   ...SELECTED_NETWORK.stables.map((token) => [token.symbol, token]),
   [WRAPPED_SYMBOL, { address: CONFIG.baseToken.wrappedAddress, decimals: 18, symbol: WRAPPED_SYMBOL }],
 ])
+export const TOKENS: Readonly<Record<string, PrivateToken>> = tokens
+export const ROUTE_INTERMEDIATES = Object.keys(tokens) as TokenSymbol[]
+const tokenIds = new Map(Object.entries(tokens).map(([id, token]) => [getAddress(token.address), id as TokenSymbol]))
 export type { TokenSymbol } from './networks'
+export function tokenIdFor(address: string): TokenSymbol | undefined {
+  const normalized = getAddress(address)
+  return tokenIds.get(normalized)
+}
+export function registerToken(token: PrivateToken): TokenSymbol {
+  const address = getAddress(token.address)
+  if (address === ZeroAddress || !Number.isInteger(token.decimals) || token.decimals < 0 || token.decimals > 77 ||
+    typeof token.symbol !== 'string' || !token.symbol.trim() || token.symbol.length > 64 || /[\p{Cc}\p{Cf}\p{Zl}\p{Zp}]/u.test(token.symbol))
+    throw new Error('Invalid token metadata.')
+  const existing = tokenIdFor(address)
+  if (existing) {
+    if (tokens[existing].decimals !== token.decimals) throw new Error('Token decimals changed. Review this asset before spending.')
+    return existing
+  }
+  const id = address.toLowerCase() as TokenSymbol
+  tokens[id] = Object.freeze({ address, decimals: token.decimals, symbol: token.symbol.trim() })
+  tokenIds.set(address, id)
+  return id
+}
 export function isTokenSymbol(value: unknown): value is TokenSymbol {
   return typeof value === 'string' && Object.hasOwn(TOKENS, value)
 }
@@ -33,10 +55,10 @@ export const ROUTER = SELECTED_NETWORK.router
 export const PERMIT2 = '0x000000000022D473030F116dDEE9F6B43aC78BA3'
 export const ROUTER_RECIPIENT = '0x0000000000000000000000000000000000000002'
 export const QUOTER = SELECTED_NETWORK.quoter
-const OPHIS_ETHEREUM_BROADCASTER =
-  '0zk1qyjex88m96zw2kunzxw8r8g7007ak2qe082w5n0f038chhhkzfcdtrv7j6fe3z53law92j4q28j34xsacfqf9kmqw20ap8ek904q7j0hjllh8rpd3t96jq7xh98'
+export const OPHIS_BROADCASTER =
+  '0zk1qy08nqrftxezyxdegx6ca055tr65f2hf3u24j9urx04e5fnzepv6nrv7j6fe3z53luvr6qkgtjukzmkcp856gs5a6wzdd3pnesr9r6ljvym9l3a4fcepgkvek3f'
 // Ethereum uses the verified Ophis fee identity; other networks retain their existing discovery signer.
-export const FEE_SIGNER = CHAIN_ID === 1 ? OPHIS_ETHEREUM_BROADCASTER :
+export const FEE_SIGNER = CHAIN_ID === 1 ? OPHIS_BROADCASTER :
   '0zk1qyzgh9ctuxm6d06gmax39xutjgrawdsljtv80lqnjtqp3exxayuf0rv7j6fe3z53laetcl9u3cma0q9k4npgy8c8ga4h6mx83v09m8ewctsekw4a079dcl5sw4k'
 export const MIN_SWAP_GAS = 3_000_000n
 export const PRIVATE_SLIPPAGE_BPS = 10n
@@ -47,7 +69,7 @@ export const PROTECTED_BROADCASTERS: Readonly<Partial<Record<number, readonly {
   expiresAt: number
   maxGasPrice: bigint
   maxTransactionCost: bigint
-}[]>>> = { 1: [{ railgunAddress: OPHIS_ETHEREUM_BROADCASTER, expiresAt: Date.parse('2026-12-03T00:00:00Z'),
+}[]>>> = { 1: [{ railgunAddress: OPHIS_BROADCASTER, expiresAt: Date.parse('2026-11-13T00:00:00Z'),
   maxGasPrice: 500_000_000n, maxTransactionCost: 1_500_000_000_000_000n }] }
 export const ERC20 = new Interface([
   'function approve(address spender,uint256 amount) returns (bool)',
