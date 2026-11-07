@@ -41,7 +41,7 @@ export function configurePickers(importToken?: (address: string) => Promise<stri
       label.textContent = option.value.startsWith('0x') ? option.dataset.symbol || 'Token in your private wallet' : option.text
       if (option.value.startsWith('0x')) {
         const address = document.createElement('small')
-        address.textContent = `Contract: ${option.dataset.address || option.value}`
+        address.textContent = `Custom token · Contract: ${option.dataset.address || option.value}`
         label.append(address)
       }
       row.append(label)
@@ -134,7 +134,7 @@ export function configurePickers(importToken?: (address: string) => Promise<stri
       }
       if (select.value.startsWith('0x')) {
         const address = document.createElement('small')
-        address.textContent = `${select.value.slice(0, 6)}…${select.value.slice(-4)}`
+        address.textContent = `Custom · ${select.value.slice(0, 6)}…${select.value.slice(-4)}`
         label.append(address)
       }
       const chevron = document.createElement('span')
@@ -143,7 +143,7 @@ export function configurePickers(importToken?: (address: string) => Promise<stri
       button.append(label, chevron)
       button.disabled = select.matches(':disabled')
       button.title = select.title || option?.text || ''
-      button.setAttribute('aria-label', `${select.getAttribute('aria-label') || 'Choose asset'}: ${option?.text || label.textContent}`)
+      button.setAttribute('aria-label', `${select.getAttribute('aria-label') || 'Choose asset'}: ${select.value.startsWith('0x') ? 'Custom token · ' : ''}${option?.text || label.textContent}`)
     }
     button.onclick = () => {
       if (select.matches(':disabled') || document.documentElement.dataset.busy) return

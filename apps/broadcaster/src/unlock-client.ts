@@ -5,6 +5,9 @@ import { join } from 'node:path'
 import { createInterface, type Interface } from 'node:readline/promises'
 import { loadOwnerIdentity, openPinnedOperator } from './owner-pins'
 
+// Legacy commissioning client: state/ and operator-identities.json retain their original pins.
+// Current ANON owner-state uses the separately reviewed baal-owner helper and owner manifest.
+// Do not repoint this client's path or pins to substitute for that custody workflow.
 // This client runs on the owner's Mac. Only encrypted files cross back from Baal.
 const mode = process.argv[2] ?? 'unlock'
 if (!['unlock', 'recovery', 'verify', 'verify-retired', 'fee-phrase'].includes(mode)) {

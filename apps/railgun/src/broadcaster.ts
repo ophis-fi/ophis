@@ -71,7 +71,7 @@ export async function selectBroadcaster(
     throw new Error('This saved proof belongs to a retired Ethereum broadcaster. Keep it and use public-wallet recovery; do not prepare another withdrawal.')
   tokenAddress = feeAddressFor(tokenAddress)
   if (use7702 && ENVIRONMENT === 'ethereum' && !protectedBroadcasters().length)
-    throw new Error('Protected private swaps are not available on this network yet. Withdrawals and recovery remain available.')
+    throw new Error('Protected execution is not available on this network. Swaps, native withdrawals and withdrawals with fees paid in another token require it. Same-token withdrawals and public-wallet recovery may still be available.')
   await startBroadcasters(onStatus)
   onStatus('Waiting for a fresh compatible broadcaster fee…')
   const deadline = Date.now() + DISCOVERY_TIMEOUT_MS

@@ -93,6 +93,33 @@ async function confirm(f: Awaited<ReturnType<typeof fixture>>, hash: string, sta
 }
 
 describe('signing gate and duplicate recovery', () => {
+  it('retains the nonce when a custom-token withdrawal passes the head trace but is excluded later', async () => {
+    const f = await fixture(Wallet.createRandom().address)
+    f.service.config.admission = 'public'
+    const data = await signedWithdrawalRequest(f.quote.id, f.sdk.publicViewingKey,
+      Wallet.createRandom().address, Wallet.createRandom().address)
+    const wire = await packetFor(data, f.sdk.publicViewingKey)
+    f.provider.send.mockResolvedValue({ type: 'CALL', calls: [
+      { type: 'CALL', to: NETWORK.proxyContract, input: privateCalldata(data) },
+    ] })
+    f.sender.broadcastTransaction.mockRejectedValue(new Error('Private builder: token execution reverted at target block'))
+    expect(wire.decode(await f.service.handle(wire.payload)).error).toContain('Submission outcome is unknown')
+    expect(f.provider.send).toHaveBeenCalled()
+    expect(f.sdk.validate).toHaveBeenCalledOnce()
+    expect(f.sign).toHaveBeenCalledOnce()
+    expect(store.pending()).toHaveLength(1)
+    const held = store.pending()[0]
+    expect(held.raw).toBeTruthy()
+    expect(held.nonce).toBe(0)
+    const clock = vi.spyOn(Date, 'now').mockReturnValue(f.quote.expiration + 60_000)
+    try {
+      await f.service.reconcile()
+      expect(store.pending()[0].raw).toBe(held.raw)
+      expect(store.exposure()).toBe(BigInt(held.max_cost))
+      expect(await f.service.available()).toBe(false)
+      expect(f.sdk.assure).not.toHaveBeenCalled()
+    } finally { clock.mockRestore() }
+  })
   it.each([false, true])('repeats the trace after a same-height reorg and rejects an expired final head: %s', async (expires) => {
     const f = await fixture(Wallet.createRandom().address)
     const now = Date.now(), clock = vi.spyOn(Date, 'now').mockReturnValue(now)

@@ -1,4 +1,6 @@
 //! Host-clock harness for the exact two patched source modules; no JS clock is invoked.
+#![cfg(feature = "tokio")]
+
 use ::std::{
     cell::Cell,
     future::{pending, ready, Future},
@@ -158,4 +160,23 @@ fn intervals_keep_their_unpin_and_tick_reset_behavior() {
         Duration::from_secs(3600),
     );
     assert!(later.poll_tick(&mut cx).is_pending());
+}
+
+#[test]
+fn zero_period_skip_stays_ready_after_a_late_tick_in_both_constructors() {
+    let mut cx = Context::from_waker(noop_waker_ref());
+    let mut intervals = [
+        tokio::interval::interval(Duration::ZERO),
+        tokio::interval::interval_at(Instant::now() - Duration::from_secs(1), Duration::ZERO),
+    ];
+    for interval in &mut intervals {
+        interval.set_missed_tick_behavior(tokio::interval::MissedTickBehavior::Skip);
+    }
+    // Exercise the >5ms missed-tick branch, not just the immediate first tick.
+    ::std::thread::sleep(Duration::from_millis(10));
+    for interval in &mut intervals {
+        assert!(interval.poll_tick(&mut cx).is_ready());
+        assert!(interval.poll_tick(&mut cx).is_ready());
+        assert_eq!(interval.period(), Duration::ZERO);
+    }
 }

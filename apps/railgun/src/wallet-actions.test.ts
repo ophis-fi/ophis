@@ -141,6 +141,20 @@ it('opens recovery and directs the user to the saved withdrawal instead of prepa
   expect(mocks.prepareWithdrawal).not.toHaveBeenCalled()
 })
 
+it('explains bound public-resume compatibility while keeping all recovery choices available', async () => {
+  const account = '0x0000000000000000000000000000000000001234'
+  mocks.pendingWithdrawal.mockResolvedValue({ token: 'USDC', feeToken: 'WETH', recipient: account, minimum: '997',
+    execution: { index: 7, account } })
+  const { wireWalletActions } = await import('./wallet-actions')
+  await wireWalletActions({} as WalletSession)
+  expect(elements['pending-details'].textContent).toContain('requires support for externally signed EIP-7702 authorizations')
+  expect(elements['pending-details'].textContent).toContain('some wallets reject')
+  for (const action of ['resume-withdrawal', 'retry-withdrawal', 'cancel-swap']) expect(elements[action].hidden).toBe(false)
+  expect(elements['cancel-swap'].textContent).toContain('Invalidate saved withdrawal authorization')
+  expect(mocks.connect).not.toHaveBeenCalled()
+  expect(mocks.signer).not.toHaveBeenCalled()
+})
+
 it('selects the new pending swap recovery index and then preserves a manual selection', async () => {
   const { wireWalletActions } = await import('./wallet-actions')
   const { executePrivateSwap } = await import('./private-swap')

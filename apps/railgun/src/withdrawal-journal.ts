@@ -103,7 +103,7 @@ export async function savePendingWithdrawal(session: WalletSession, pending: Pen
 
 export function savedWithdrawalSummary(pending: PendingWithdrawal): string {
   const asset = tokenFor(pending.token)
-  if (pending.execution) return `Saved withdrawal: ${formatUnits(pending.minimum, asset.decimals)} ${pending.output === 'native' ? NATIVE_SYMBOL : asset.symbol}${pending.token.startsWith('0x') ? ` (${asset.address})` : ''} to ${pending.recipient}; broadcaster fee in ${tokenFor(pending.feeToken ?? feeTokenFor(pending.token)).symbol}. Recovery account ${pending.execution.index}: ${pending.execution.account}`
+  if (pending.execution) return `Saved withdrawal: ${formatUnits(pending.minimum, asset.decimals)} ${pending.output === 'native' ? NATIVE_SYMBOL : asset.symbol}${pending.token.startsWith('0x') ? ` (${asset.address})` : ''} to ${pending.recipient}; broadcaster fee in ${tokenFor(pending.feeToken ?? feeTokenFor(pending.token)).symbol}. Recovery account ${pending.execution.index}: ${pending.execution.account}\nPublic wallet resume requires support for externally signed EIP-7702 authorizations; some wallets reject these requests. Broadcaster retry and authorization invalidation remain available.`
   const note = withdrawalOutput(pending.transaction.data)
   const listedAsset = Object.values(TOKENS).find((item) => getAddress(item.address) === getAddress(note.token.tokenAddress))
   const amount = listedAsset ? `${formatUnits(note.value, listedAsset.decimals)} ${listedAsset.symbol}` : `unknown token ${note.token.tokenAddress}`
@@ -284,7 +284,15 @@ export async function resumePendingWithdrawal(session: WalletSession, sponsor: J
     await assertPublicNetwork(session, sponsor)
     const e = pending.execution
     const sent = await sponsor.sendTransaction({ ...pending.transaction, value: 0n, type: 4, chainId: CHAIN,
-      authorizationList: [authorizationify(e.authorization)], maxFeePerGas: BigInt(e.maxFeePerGas), maxPriorityFeePerGas: BigInt(e.maxPriorityFeePerGas) })
+      authorizationList: [authorizationify(e.authorization)], maxFeePerGas: BigInt(e.maxFeePerGas), maxPriorityFeePerGas: BigInt(e.maxPriorityFeePerGas) }).catch((error: unknown) => {
+      // Match an explicit wallet rejection, including ethers' RPC error wrappers.
+      // Atomic wallet_sendCalls capability does not establish support for this request.
+      const detail = error as { message?: unknown; error?: { message?: unknown }; info?: { error?: { message?: unknown } } } | null
+      if ([detail?.message, detail?.error?.message, detail?.info?.error?.message].some((message) =>
+        typeof message === 'string' && message.includes('External EIP-7702 transactions are not supported')))
+        throw new Error('This public wallet rejects externally signed EIP-7702 authorizations. The complete saved proof is preserved. Retry through the broadcaster, resume with a compatible public wallet, or invalidate the saved authorization.', { cause: error })
+      throw error
+    })
     await savePendingWithdrawal(session, { ...pending, hash: sent.hash })
     if (!await sent.wait(2)) throw new Error('Withdrawal confirmation is pending. Keep the saved record.')
     return reconcilePendingWithdrawal(session)

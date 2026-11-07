@@ -81,9 +81,9 @@ export async function preparePrivateSwap(session: WalletSession, quote: SwapQuot
         throw new Error(`${CHAIN_NAME} gas price changed. Request a fresh quote.`)
       return { quote, selected, gas, fee, feeToken, unshields, reshields, gasCapped: gas.maxFeePerGas < recommendedMaxFeePerGas }
     }
-    if (!sameAsset) requireBalances(fee.amount, false)
-    if (available.principal <= quote.amount || capGasPrice(gas, selected, available.principal - quote.amount).maxFeePerGas >= gas.maxFeePerGas)
-      requireSwapBalance(available.principal, quote.amount, fee.amount, quote.sell, false)
+    const remaining = sameAsset ? available.principal - quote.amount : available.reserve
+    if (available.principal < quote.amount || remaining <= 0n || capGasPrice(gas, selected, remaining).maxFeePerGas >= gas.maxFeePerGas)
+      requireBalances(fee.amount, false)
   }
   throw new Error('Gas estimate kept changing while fitting the fee budget. Request a fresh quote.')
 }

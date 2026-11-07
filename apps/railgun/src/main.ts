@@ -160,23 +160,29 @@ for (const id of ['open', 'unlock']) {
       element('private-network-help').textContent = 'Lock the private wallet to change networks. Pending transactions stay saved on their original network.'
       element('wallet').hidden = false
       element('address').textContent = session.current.info.railgunAddress
+      let loadingCatalog = true
       try {
         await loadTokenCatalog(session.current)
         refreshAssetSelectors()
+        loadingCatalog = false
         await wireWalletActions(session.current)
-      } catch {
+      } catch (error) {
         element('wallet').hidden = true
         element('setup').hidden = false
         showSetup(true)
-        element('setup-title').textContent = 'Saved transactions unavailable'
-        element('setup-help').textContent = 'Lock and retry to read your saved transactions. Do not clear site data or create another wallet.'
+        element('setup-title').textContent = loadingCatalog ? 'Saved token catalog unavailable' : 'Saved transactions unavailable'
+        element('setup-help').textContent = loadingCatalog
+          ? 'Your saved token catalog could not be validated. Lock and retry; do not clear site data or create another wallet.'
+          : 'Lock and retry to read your saved transactions. Do not clear site data or create another wallet.'
         element('wallet-password').hidden = true
         element('unlock').hidden = true
         element('setup-back').hidden = false
         element('setup-back').textContent = 'Lock and retry'
         element('setup-back').onclick = () => location.reload()
         element('setup-title').focus()
-        throw new Error('Saved transactions could not be read. Lock and retry; your saved data has not been cleared.')
+        throw new Error(loadingCatalog
+          ? `Saved token catalog could not be validated${error instanceof Error ? `: ${error.message}` : '.'} Lock and retry; your saved data has not been cleared.`
+          : 'Saved transactions could not be read. Lock and retry; your saved data has not been cleared.')
       }
       if (fresh) { startFirstFunding(); updateFirstFunding(setup.hasFunds, setup.ready) }
       void syncWallet(session.current).catch((error: unknown) => {

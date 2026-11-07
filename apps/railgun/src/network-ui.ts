@@ -1,4 +1,4 @@
-import { CHAIN_ID, CHAIN_NAME, ENVIRONMENT, NATIVE_SYMBOL, PILOT_WITHDRAWAL_RECIPIENT, PRIVATE_SLIPPAGE_BPS, TOKENS, WRAPPED_SYMBOL, tokenIdFor } from './config'
+import { CHAIN_ID, CHAIN_NAME, ENVIRONMENT, NATIVE_SYMBOL, PILOT_WITHDRAWAL_RECIPIENT, PRIVATE_SLIPPAGE_BPS, PROTECTED_BROADCASTERS, TOKENS, WRAPPED_SYMBOL, tokenIdFor } from './config'
 import { PRIVATE_NETWORKS, privateNetwork } from './networks'
 import { element } from './ui'
 import { getAddress } from 'ethers'
@@ -47,7 +47,19 @@ export function configurePrivateSelectors(): void {
   element('recovery-gas-help').textContent = `Recovery requires ${NATIVE_SYMBOL} for gas. Funding a temporary account from your public wallet creates a public link.`
   element('cancel-gas-symbol').textContent = NATIVE_SYMBOL
   element('swap-route-help').textContent = `Best supported pool route on ${CHAIN_NAME}. Slippage ${Number(PRIVATE_SLIPPAGE_BPS) / 100}%. Ophis, protocol and broadcaster fees are shown before confirmation.`
-  element('private-submission-help').textContent = CHAIN_ID === 1
-    ? 'Ethereum swaps use private submission to reduce frontrunning. Trade details are visible to the simulation node and block builders, and public after confirmation. Slippage still applies.'
-    : 'Ophis protected swaps are not available on this network. Existing balances and recovery remain accessible.'
+  updatePrivateSubmissionHelp()
+}
+
+let submissionHelpTimer: ReturnType<typeof setTimeout> | undefined
+export function updatePrivateSubmissionHelp(): void {
+  clearTimeout(submissionHelpTimer)
+  const approved = ENVIRONMENT === 'ethereum'
+    ? (PROTECTED_BROADCASTERS[CHAIN_ID] ?? []).filter(operator => operator.expiresAt > Date.now() + 15 * 60_000) : []
+  element('private-submission-help').textContent = ENVIRONMENT === 'fork'
+    ? 'Local fork: mainnet broadcaster submission is disabled.'
+    : approved.length
+      ? `${CHAIN_NAME} swaps use private submission to reduce frontrunning. Trade details are visible to the simulation node and block builders, and public after confirmation. Slippage still applies.`
+      : 'Protected swaps, native withdrawals and withdrawals with fees paid in another token are not available on this network. Balances and saved-transaction recovery remain accessible.'
+  if (approved.length) submissionHelpTimer = setTimeout(updatePrivateSubmissionHelp,
+    Math.min(Math.max(...approved.map(operator => operator.expiresAt)) - Date.now() - 15 * 60_000, 2_147_483_647))
 }

@@ -109,6 +109,9 @@ impl MissedTickBehavior {
         match self {
             Self::Burst => timeout + period,
             Self::Delay => now + period,
+            // Zero periods are accepted by both constructors. Keep them ready
+            // on every poll without dividing by zero after a delayed tick.
+            Self::Skip if period.is_zero() => now,
             Self::Skip => {
                 now + period
                     - Duration::from_nanos(

@@ -138,7 +138,9 @@ jobs:
           CARGO_TARGET_DIR: ../../target
         run: |
           set -o pipefail
-          cargo test --offline --locked --test pinning
+          cargo test --offline --locked --test pinning --test scheduling
+          cargo test --offline --locked --features tokio-test-util --test scheduling -- --test-threads=1
+          cargo test --offline --locked --no-default-features --tests
           cargo test --offline --locked --doc -- --nocapture 2>&1 | tee /tmp/wasmtimer-doctests.log
           grep -Fq 'error[E0277]: `PhantomPinned` cannot be unpinned' /tmp/wasmtimer-doctests.log
       - name: Check maintained timer on its WASM target
@@ -148,6 +150,7 @@ jobs:
         run: |
           rustup target add wasm32-unknown-unknown
           cargo check --offline --locked --target wasm32-unknown-unknown
+          cargo check --offline --locked --target wasm32-unknown-unknown --all-features
       # COMPILE GATE for the WHOLE workspace, including test-only targets.
       #
       # Why this exists: the cargo test step below builds only the crates it

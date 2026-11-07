@@ -45,6 +45,18 @@ it('discovers BNB stablecoin exits through the automatic WBNB fee asset', async 
   expect(mocks.find).toHaveBeenCalledWith(CONFIG.chain, TOKENS.WBNB.address, false, false)
 })
 
+it.each(['USDC', 'USDT', 'custom'] as const)('holds a BNB %s bound withdrawal before discovery when no operator is approved', async (principal) => {
+  const { registerToken, tokenFor } = await import('./config')
+  const token = principal === 'custom'
+    ? registerToken({ address: '0x0000000000000000000000000000000000001234', symbol: 'CUSTOM', decimals: 18 }) : principal
+  const { usesBoundWithdrawal } = await import('./fee-asset')
+  const { selectBroadcaster } = await import('./broadcaster')
+  expect(usesBoundWithdrawal(token)).toBe(true)
+  await expect(selectBroadcaster(tokenFor(token).address, true, vi.fn())).rejects.toThrow(/withdrawals with fees paid in another token/)
+  expect(mocks.find).not.toHaveBeenCalled()
+  expect(mocks.create).not.toHaveBeenCalled()
+})
+
 it.each(['missing', 'expired', 'near-expiry', 'other-chain'])('excludes our cheaper BNB pilot quote with %s approval while retaining other COMMON operators', async (condition) => {
   const pilot = await candidate(true), other = await candidate()
   if (condition === 'expired') mocks.policy[56] = [await approval(Date.now())]

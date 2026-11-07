@@ -29,5 +29,14 @@
     "src/tokio_util/wheel/mod.rs": "1c0365c01d6d58d40e4a4147d83c899a2a0a4ff928007c5249071fbb3f4a4124",
     "src/tokio_util/wheel/stack.rs": "d6797086246c7a26fde7d68dd891492cd30f6aaf600e7af45aab927a0e0dfcd4",
     "src/tokio_util/wheel/level.rs": "d90ee3d4422ef1dd24c44eb74a36faea5a52ab4fa555f886e7f6934e8d42ea45"
+  },
+  "patchedFiles": {
+    "Cargo.toml": "73cb4faa2cf0913263b9a0b03a85fce7eea97a11e40493d2b34cd0276ef046d1",
+    "src/js.rs": "afc01e8488ca26bff1ad837fa806e15b5fca6ca80708cee200fef1d845212ebb",
+    "src/timer/global.rs": "49ddeb6deaef8c328bde09f70c8f0564f2255f731434634d137ab10782f778a4",
+    "src/tokio/interval.rs": "b1f2a0452fecd433ca75ca159aa4f93e44a98d96446bbfd848cc46564a181917",
+    "src/tokio/timeout.rs": "5d222085ee9ce711e047ab9bb5ea8d30daf135d03a6f45eaefecf82236e4792b",
+    "tests/pinning.rs": "cb7d435e3a3afdf298ac741f9ffc63de948513593f3d7beeb0acc125e9de09d4",
+    "tests/scheduling.rs": "6a6e95011985f0e4a15ac9668e7cd2b7a8581d6dd8309355ee558635370742bd"
   }
 }

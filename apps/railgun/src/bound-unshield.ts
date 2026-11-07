@@ -82,6 +82,8 @@ export async function executeBoundWithdrawal(session: WalletSession, prepared: P
     MIN_SWAP_GAS, (progress, status) => onProgress(`${status}: ${Math.round(progress)}%`))
   if (getAddress(request.ephemeralAddress) !== getAddress(prepared.account) || request.executeNonce == null)
     throw new Error('Withdrawal execution account changed. Keep the private funds; prepare another quote.')
+  if (getAddress((await session.accounts.getAccount(CHAIN, prepared.index)).address) !== getAddress(request.ephemeralAddress))
+    throw new Error('Recovery account does not match the signed transaction.')
   const wallet = fullWalletForID(session.info.id)
   // The SDK creates a broadcaster action with requireSuccess=false. Sign the
   // unchanged proof order again with the strict action before disclosing it.

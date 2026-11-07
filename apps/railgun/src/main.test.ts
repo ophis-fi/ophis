@@ -4,14 +4,14 @@ import type { RailgunBalancesEvent } from '@railgun-community/shared-models'
 const mocks = vi.hoisted(() => ({
   persisted: false, failRead: false, open: vi.fn(), setup: vi.fn(), sync: vi.fn(),
   provider: {}, wire: vi.fn(), funding: vi.fn(), report: undefined as ((message: string, ready: boolean) => void) | undefined,
-  balance: undefined as ((event: RailgunBalancesEvent) => void) | undefined, importToken: vi.fn(), refreshTokens: vi.fn(),
+  balance: undefined as ((event: RailgunBalancesEvent) => void) | undefined, importToken: vi.fn(), refreshTokens: vi.fn(), catalog: vi.fn(),
 }))
 vi.mock('./wallet', () => ({ newMnemonic: () => 'disposable test phrase',
   openWallet: mocks.open, syncWallet: mocks.sync,
   startWalletEngine: async (balance: typeof mocks.balance, report: typeof mocks.report) => { mocks.balance = balance; mocks.report = report; return mocks.provider } }))
 vi.mock('./wallet-actions', () => ({ wireWalletActions: mocks.wire }))
 vi.mock('./network-ui', () => ({ configurePrivateSelectors: vi.fn(), refreshTokenSelectors: mocks.refreshTokens }))
-vi.mock('./token-catalog', () => ({ loadTokenCatalog: vi.fn(), importPrivateToken: mocks.importToken }))
+vi.mock('./token-catalog', () => ({ loadTokenCatalog: mocks.catalog, importPrivateToken: mocks.importToken }))
 vi.mock('./embedded', () => ({ reportEmbeddedLayout: vi.fn() }))
 vi.mock('./pickers', () => ({ configurePickers: () => () => {} }))
 vi.mock('./wallet-layout', () => ({ configureWalletLayout: vi.fn(), showSetup: mocks.setup,
@@ -30,6 +30,7 @@ beforeEach(() => {
   mocks.persisted = false; mocks.failRead = false
   mocks.open.mockReset(); mocks.sync.mockReset().mockResolvedValue(undefined)
   mocks.wire.mockReset().mockResolvedValue(undefined); mocks.report = undefined
+  mocks.catalog.mockReset().mockResolvedValue(undefined)
   mocks.funding.mockReset()
   fields = new Proxy({} as Record<string, Field>, { get: (target, id: string) => target[id] ??= {
     value: '', hidden: false, disabled: false, checked: false, textContent: '', title: '', addEventListener: () => {}, focus: vi.fn(), removeAttribute: () => {},
@@ -119,4 +120,20 @@ it('hides inactive wallet controls and offers a safe reload when saved transacti
   expect(mocks.sync).not.toHaveBeenCalled()
   await fields['setup-back'].onclick?.()
   expect(location.reload).toHaveBeenCalledOnce()
+})
+
+it('identifies an invalid token catalog before wiring transactions and keeps wallet actions closed', async () => {
+  mocks.persisted = true
+  mocks.open.mockResolvedValue({ info: { id: 'fixture-wallet', railgunAddress: 'fixture-address' } })
+  mocks.catalog.mockRejectedValueOnce(new Error('Invalid token catalog version'))
+  await import('./main')
+  await vi.dynamicImportSettled()
+  await fields.unlock.onclick?.()
+  expect(fields['setup-title'].textContent).toBe('Saved token catalog unavailable')
+  expect(fields.error.textContent).toContain('Invalid token catalog version')
+  expect(fields.error.textContent).not.toContain('Saved transactions could not be read')
+  expect(fields.wallet.hidden).toBe(true)
+  expect(fields.unlock.hidden).toBe(true)
+  expect(mocks.wire).not.toHaveBeenCalled()
+  expect(mocks.sync).not.toHaveBeenCalled()
 })

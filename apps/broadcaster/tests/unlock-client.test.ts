@@ -43,6 +43,11 @@ function fixture() {
 const fs = require('node:fs');
 const command = process.argv.at(-1);
 if (command.startsWith('cat ')) {
+  const chain = process.env.OPHIS_BROADCASTER_CHAIN_ID;
+  const instance = chain === '1' ? 'ophis-broadcaster' : 'ophis-broadcaster-' + chain;
+  const retired = ['verify-retired', 'fee-phrase'].includes(process.env.OPHIS_TEST_MODE);
+  const file = retired ? 'operator-retired.sealed.json' : 'operator.sealed.json';
+  if (command !== "cat '/home/clement/.local/share/" + instance + "/state/secrets/" + file + "'") process.exit(3);
   fs.appendFileSync(process.env.OPHIS_TEST_SSH_LOG, 'download\\n');
   process.stdout.write(fs.readFileSync(process.env.OPHIS_TEST_SEALED));
 } else if (command.startsWith('docker exec ')) {
@@ -56,7 +61,7 @@ if (command.startsWith('cat ')) {
   pins()
   const run = (mode = 'unlock', chainId = '1') => spawnSync(process.execPath, [target, mode, key], {
     timeout: 5000, encoding: 'utf8', env: { PATH: bin, OPHIS_BROADCASTER_CHAIN_ID: chainId,
-      OPHIS_TEST_SSH_LOG: log, OPHIS_TEST_SEALED: sealed, OPHIS_TEST_UPLOAD: uploaded },
+      OPHIS_TEST_MODE: mode, OPHIS_TEST_SSH_LOG: log, OPHIS_TEST_SEALED: sealed, OPHIS_TEST_UPLOAD: uploaded },
   })
   return { root, key, sealed, uploaded, pins, run, calls: () => existsSync(log) ? readFileSync(log, 'utf8') : '' }
 }
@@ -109,7 +114,7 @@ it.each(['wrong gas wallet', 'mnemonic in runtime', 'retired under runtime pin',
   },
 )
 
-it.each(['unlock', 'recovery', 'verify', 'verify-retired'])('preserves the pinned %s owner workflow', (mode) => {
+it.each(['unlock', 'recovery', 'verify', 'verify-retired'])('preserves the pinned legacy %s workflow and original state path', (mode) => {
   const f = fixture()
   if (mode === 'verify-retired') writeFileSync(f.sealed, sealedRetired)
   const result = f.run(mode)

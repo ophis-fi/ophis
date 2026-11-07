@@ -68,6 +68,10 @@ path = "tests/web.rs"
 name = "pinning"
 path = "tests/pinning.rs"
 
+[[test]]
+name = "scheduling"
+path = "tests/scheduling.rs"
+
 [dependencies.futures]
 version = "^0.3"
 optional = true

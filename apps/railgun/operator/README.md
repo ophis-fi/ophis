@@ -59,9 +59,9 @@ The fork test requires an existing loopback Anvil Ethereum fork. It generates te
 
 Production activation still requires an operator-controlled sender using this transport, a verified binding to its advertised `0zk` fee identity, and a supervised protected inclusion test with an agreed gas budget. None of those are established by a signed Waku fee advertisement. Do not approve an identity merely because its display name looks familiar.
 
-Chain-bound transport, journals and validation are implemented for Ethereum, Arbitrum, Polygon and BNB Chain, but all three added-chain mainnet signing paths remain blocked in source. Arbitrum and Polygon have no configured protected write route; BNB's candidate route still requires qualification. Each added chain needs verified type-4 delivery and revert filtering, an approved operator/guard and native budgets, and live fee-receipt/recovery acceptance before activation. Base remains excluded.
+Chain-bound transport, journals and validation are implemented for Ethereum, Arbitrum, Polygon and BNB Chain. Arbitrum and Polygon signing remain blocked without a qualified protected write route. BNB permits restricted pilot signing with its verified ANON operator/guard and bounded native budgets; its mainnet inclusion and revert-exclusion qualification passed, while real user-paid swap and withdrawal acceptance remain outstanding. Public BNB admission and recovery signing remain blocked. Base remains excluded.
 
-### BNB candidate bundle transport
+### BNB restricted pilot bundle transport
 
 BNB publication uses `https://puissant-builder.48.club/` and a single-transaction `eth_sendBundle`, with an empty revert allowlist and `noMerge: true`. The broadcaster passes its authenticated fee expiration into `broadcastTransaction(raw, validUntilMs)`. A fresh user send without an existing authenticated envelope is rejected before creating a transport nonce hold; `stageSigned` remains an explicit held-record recovery operation.
 
@@ -69,6 +69,6 @@ The trusted head must be at most three seconds old. Every envelope has a fixed 2
 
 Bundle acknowledgments are stored separately from transaction hashes and never prove settlement. Only the trusted chain receipt and existing fee assurance resolve accounting. Deployment stores its exact envelope in the fsynced deployment record; a signature without a usable envelope is retained as held, and repeating deployment cannot sign again. Existing backups include these records. Preserve the reviewed transport version when restoring BNB journals.
 
-No builder-tip transaction or membership signature is added. Production type-4 acceptance, privacy and inclusion-time revert enforcement remain unverified; the non-Ethereum signing gate is unchanged. Ethereum continues using its existing Flashbots raw-transaction route.
+No builder-tip transaction or membership signature is added. Bounded mainnet tests verified type-4 inclusion and exclusion of the tested reverting transactions. Those tests do not prove absolute privacy or that every future revert will be excluded. Public BNB activation still requires user-paid swap and withdrawal acceptance and final release review. Ethereum continues using its existing Flashbots raw-transaction route.
 
 Flashbots documents the [hash-only privacy setting, default builder, positive-tip requirement and 25-block lifetime](https://docs.flashbots.net/flashbots-protect/settings-guide). Its [EIP-7702 example](https://github.com/flashbots/mevrepl) demonstrates type-4 submission support. The builder still receives transaction contents; private submission reduces public-mempool exposure and is not an absolute guarantee against every form of MEV.
