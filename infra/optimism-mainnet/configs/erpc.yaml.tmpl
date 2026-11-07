@@ -1,5 +1,5 @@
-# 2026-10-31: official OP + keyed Alchemy + keyed dRPC; ZAN exhausted its plan.
-# Alchemy requires the allowed Origin and ten-block historical log pages.
+# 2026-11-07: official OP + keyed ZAN + keyed dRPC; Alchemy exhausted its monthly cap.
+# ZAN was revalidated for protected state, historical logs, and receipts.
 # Compose pins official OP and dRPC DNS while retaining HTTPS hostname checks.
 # Their independent Google/dRPC ingress cannot be redirected through shared CF DNS.
 # shortcut: free allowances remain finite; revalidate a free replacement before exhaustion.
@@ -12,7 +12,7 @@
 # shortcut: dRPC free tier still throttles; replace it when another free route passes admission.
 # eRPC multi-provider proxy for Optimism mainnet (chain 10).
 #
-# **Current shape (2026-10-31): 2-of-3 across official OP + Alchemy + dRPC.**
+# **Current shape (2026-11-07): 2-of-3 across official OP + ZAN + dRPC.**
 # Consensus wait caps match the 12s network timeout: the v0.2.0 adaptive
 # default can cancel slower independent voters only 5ms after the first reply.
 #
@@ -214,7 +214,7 @@ rateLimiters:
         - method: "*"
           maxCount: 180
           period: minute
-    - id: alchemy-op-budget
+    - id: zan-op-budget
       rules:
         - method: "*"
           maxCount: 180
@@ -241,7 +241,7 @@ projects:
                 .whenEmpty(() => upstreams)
                 .sortByScore(PREFER_FASTEST);
               if (["eth_blockNumber", "eth_getBlockByNumber"].includes(ctx.method)) {
-                const order = {"official-op": 0, "alchemy-op": 1, "drpc-op": 2};
+                const order = {"official-op": 0, "zan-op": 1, "drpc-op": 2};
                 return ranked.sort((a, b) => order[a.id] - order[b.id]);
               }
               return ranked;
@@ -636,40 +636,18 @@ projects:
               successThresholdCount: 2
               successThresholdCapacity: 4
 
-      - id: alchemy-op
-        # Existing account; Origin is required by its endpoint allowlist.
-        endpoint: https://opt-mainnet.g.alchemy.com/v2/${ALCHEMY_API_KEY}
-        jsonRpc:
-          headers:
-            Origin: https://swap.ophis.fi
-        rateLimitBudget: alchemy-op-budget
+      - id: zan-op
+        # Existing account; revalidated after Alchemy's monthly cap was exhausted.
+        endpoint: https://api.zan.top/node/v1/opt/mainnet/${ZAN_API_KEY}
+        rateLimitBudget: zan-op-budget
         rateLimitCountMode: credit
-        # A wildcard overrides only unlisted vendor methods, so pin called methods.
         creditUnits:
           "*": 1
-          eth_call: 1
-          eth_getBalance: 1
-          eth_getCode: 1
-          eth_getStorageAt: 1
-          eth_getLogs: 1
-          eth_getTransactionByHash: 1
-          eth_estimateGas: 1
-          eth_feeHistory: 1
-          eth_getTransactionCount: 1
-          eth_getTransactionReceipt: 1
-          eth_blockNumber: 1
-          eth_getBlockByNumber: 1
-          eth_getBlockByHash: 1
-          eth_chainId: 1
-          net_version: 1
-          eth_syncing: 1
-          eth_gasPrice: 1
-          eth_maxPriorityFeePerGas: 1
         rateLimitAutoTune:
           enabled: false
         evm:
-          # The free plan rejects larger ranges; preserve every historical log.
-          getLogsAutoSplittingRangeThreshold: 10
+          # Bound historical catch-up work; preserve every historical log.
+          getLogsAutoSplittingRangeThreshold: 100
         failsafe:
           - matchMethod: "*"
             timeout:

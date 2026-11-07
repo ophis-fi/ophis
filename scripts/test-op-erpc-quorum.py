@@ -27,8 +27,7 @@ class MockRpc(BaseHTTPRequestHandler):
     healthy = {1}
     log_ranges = []
     drpc_log_ranges = []
-    alchemy_log_ranges = []
-    alchemy_origins = []
+    zan_log_ranges = []
     balance_reads = []
     header_reads = []
     failed_headers = set()
@@ -41,12 +40,6 @@ class MockRpc(BaseHTTPRequestHandler):
     def do_POST(self):
         request = json.loads(self.rfile.read(int(self.headers["Content-Length"])))
         method = request["method"]
-        if self.path == "/2":
-            self.alchemy_origins.append(self.headers.get("Origin"))
-            if self.headers.get("Origin") != "https://swap.ophis.fi":
-                self.send_response(403)
-                self.end_headers()
-                return
         if method in ("eth_getBlockByHash", "eth_getBlockByNumber"):
             self.header_reads.append(int(self.path[1:]))
             if method == "eth_getBlockByHash":
@@ -69,8 +62,8 @@ class MockRpc(BaseHTTPRequestHandler):
             if self.path == "/3":
                 self.drpc_log_ranges.append(size)
             if self.path == "/2":
-                self.alchemy_log_ranges.append(size)
-            if size > (10 if self.path == "/2" else 500):
+                self.zan_log_ranges.append(size)
+            if size > (100 if self.path in ("/2", "/3") else 500):
                 self.send_response(413)
                 self.end_headers()
                 return
@@ -118,8 +111,6 @@ def main():
     thread.start()
     for index, upstream in enumerate(project["upstreams"], 1):
         upstream["endpoint"] = f"http://host.docker.internal:{server.server_port}/{index}"
-    # Endpoint replacement must not hide the real vendor's method-price defaults.
-    project["upstreams"][1]["vendorName"] = "alchemy"
     upstreams = list(project["upstreams"])
     cache = Path.home() / ".cache"
     cache.mkdir(exist_ok=True)
@@ -131,8 +122,7 @@ def main():
                 MockRpc.healthy = {healthy} if isolated else healthy
                 MockRpc.log_ranges.clear()
                 MockRpc.drpc_log_ranges.clear()
-                MockRpc.alchemy_log_ranges.clear()
-                MockRpc.alchemy_origins.clear()
+                MockRpc.zan_log_ranges.clear()
                 MockRpc.hash_reads.clear()
                 MockRpc.forged_headers = {1} if healthy == {1, 2, 3} else set()
                 if isolated:
@@ -212,10 +202,9 @@ def main():
                         if method == "eth_getLogs":
                             assert MockRpc.log_ranges and max(MockRpc.log_ranges) <= 500, MockRpc.log_ranges
                             if 2 in healthy:
-                                assert MockRpc.alchemy_log_ranges and max(MockRpc.alchemy_log_ranges) <= 10, MockRpc.alchemy_log_ranges
+                                assert MockRpc.zan_log_ranges and max(MockRpc.zan_log_ranges) <= 100, MockRpc.zan_log_ranges
                             if 3 in healthy:
                                 assert MockRpc.drpc_log_ranges and max(MockRpc.drpc_log_ranges) <= 100, MockRpc.drpc_log_ranges
-                        assert MockRpc.alchemy_origins and set(MockRpc.alchemy_origins) == {"https://swap.ophis.fi"}
                         print(f"PASS {method}: healthy voters {sorted(healthy)}", flush=True)
                     if healthy == {1, 3}:
                         body = json.dumps({"jsonrpc": "2.0", "id": 2,
