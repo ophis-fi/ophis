@@ -129,6 +129,8 @@ it('excludes historical router enrollments before filling a bounded wallet batch
     FROM wallet_chain_fetches WHERE chain_id = 100`;
   expect(coverage!.wallets).toBe(501);
   expect(mocks.trades.mock.calls.some(([request]) => request.owner === router)).toBe(false);
+  const freshness = await (await import('../src/freshness.js')).readPublicDataFreshness(sql);
+  expect(freshness.dataSources?.find(source => source.chainId === 100)?.status).toBe('fresh');
 });
 
 it('reports a synthetic-owner failure even when the tracked wallet succeeds', async () => {

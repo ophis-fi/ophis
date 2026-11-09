@@ -1,6 +1,6 @@
 import type { Sql } from 'postgres';
 import { PRODUCTION_CHAIN_IDS } from './stats-page.js';
-import { OPHIS_ETHFLOW_OWNER_BY_CHAIN } from './fetcher.js';
+import { DECODER_ETHFLOW_OWNERS, OPHIS_ETHFLOW_OWNER_BY_CHAIN } from './fetcher.js';
 import { settleDecoderChains } from './cow/onchain.js';
 import { ARC_CHAIN_ID } from './affiliate/rates.js';
 
@@ -86,6 +86,7 @@ export async function readPublicDataFreshness(
       FROM unnest(${[...PRODUCTION_CHAIN_IDS]}::int[]) c(chain_id)
       CROSS JOIN tracked_wallets w
       LEFT JOIN wallet_chain_fetches f ON f.wallet = w.wallet AND f.chain_id = c.chain_id
+      WHERE ('0x' || encode(w.wallet, 'hex')) <> ALL(${[...DECODER_ETHFLOW_OWNERS]})
       UNION ALL
       SELECT c.chain_id, false AS is_wallet, f.chain_id IS NOT NULL AS checked, f.failed, f.last_success_at, f.covered_through
       FROM (
