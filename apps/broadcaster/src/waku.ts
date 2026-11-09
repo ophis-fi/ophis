@@ -1,4 +1,5 @@
-import { MAX_MESSAGE_BYTES, PUBSUB_TOPIC, TOPICS } from './config'
+import { CHAIN_ID, MAX_MESSAGE_BYTES, PUBSUB_TOPIC, TOPICS } from './config'
+import { creditTopics, encryptedCreditTopic } from '../../railgun/credit-protocol'
 import { object } from './wire'
 
 export async function boundedJSON(response: Response, maxBytes: number): Promise<unknown> {
@@ -38,16 +39,18 @@ export class WakuRelay {
     await this.request(this.topicPath, 'POST', { payload: Buffer.from(payload).toString('base64'),
       contentTopic, version: 0, timestamp: Date.now() * 1_000_000, ephemeral: false })
   }
-  async messages(): Promise<Uint8Array[]> {
+  async messages(): Promise<{ payload: Uint8Array; responseTopic: string }[]> {
     const value = await this.request(this.topicPath)
     if (!Array.isArray(value)) throw new Error('Waku REST returned an invalid message list.')
     // shortcut: relay GET clears its cache before delivery, use an acknowledged inbox if client retries become insufficient.
     this.saturated ||= value.length >= 16
     return value.flatMap((entry) => {
-      if (!object(entry) || entry.contentTopic !== TOPICS.transact || typeof entry.payload !== 'string' ||
+      const prepaid = creditTopics(CHAIN_ID)
+      if (!object(entry) || (entry.contentTopic !== TOPICS.transact && entry.contentTopic !== encryptedCreditTopic(prepaid.request)) || typeof entry.payload !== 'string' ||
         entry.payload.length > Math.ceil(MAX_MESSAGE_BYTES / 3) * 4 || !/^[A-Za-z0-9+/]*={0,2}$/.test(entry.payload)) return []
       const bytes = Buffer.from(entry.payload, 'base64')
-      return bytes.length <= MAX_MESSAGE_BYTES ? [bytes] : []
+      return bytes.length <= MAX_MESSAGE_BYTES ? [{ payload: bytes, responseTopic: entry.contentTopic === TOPICS.transact
+        ? TOPICS.response : encryptedCreditTopic(prepaid.response) }] : []
     })
   }
 }

@@ -55,6 +55,81 @@ function signedCancellation(overrides = {}, chainId = 1): Promise<string> {
     maxPriorityFeePerGas: 1_000_000_000n, ...overrides })
 }
 
+describe('explicit reorg recovery staging', () => {
+  it('retains both original operations and the newest cancellation while recovering lower nonces across restart', async () => {
+    const current = provider(), first = await signed(), second = await signed({ nonce: 1 })
+    await current.stageSigned(first)
+    latest = confirmed = 1n
+    await current.stageSigned(second)
+    const cancelled = await signedCancellation({ nonce: 1 })
+    await current.cancelPending(cancelled)
+    const displaced = current.pendingTransaction()!
+    latest = confirmed = 0n
+    await expect(current.stageSigned(first)).rejects.toThrow('nonce is unresolved')
+    await current.stageRecovery(first, displaced)
+    expect(current.pendingTransaction()).toEqual({ hash: Transaction.from(first).hash, nonce: 0 })
+    expect(write).toHaveBeenCalledTimes(1)
+    current.destroy()
+    const restarted = provider()
+    expect(await restarted.retryPending()).toBe(Transaction.from(first).hash)
+    latest = confirmed = 1n
+    await restarted.stageSigned(second)
+    expect(restarted.pendingTransaction()).toEqual(displaced)
+    expect(await restarted.retryPending()).toBe(Transaction.from(cancelled).hash)
+    const saved = new DatabaseSync(join(directory, 'protected-transactions.sqlite'))
+    try {
+      expect(saved.prepare('SELECT raw FROM operation_history ORDER BY nonce').all().map(row => row.raw)).toEqual([first, second])
+      expect(saved.prepare('SELECT raw FROM cancellation_history').get()?.raw).toBe(cancelled)
+      expect(() => saved.exec('DELETE FROM operation_history')).toThrow('append-only')
+    } finally { saved.close() }
+  })
+
+  it('rejects changed snapshots, different signed bytes for a retained nonce, and writes that cannot commit', async () => {
+    const current = provider(), first = await signed(), second = await signed({ nonce: 1 })
+    await current.stageSigned(first)
+    latest = confirmed = 1n
+    await current.stageSigned(second)
+    const displaced = current.pendingTransaction()!
+    latest = confirmed = 0n
+    await expect(current.stageRecovery(first, { ...displaced, cancellationHash: `0x${'11'.repeat(32)}` })).rejects.toThrow('pointer')
+    await expect(current.stageRecovery(await signed({ data: '0x87654321' }), displaced)).rejects.toThrow('already owns')
+    expect(current.pendingTransaction()).toEqual(displaced)
+    const saved = new DatabaseSync(join(directory, 'protected-transactions.sqlite'))
+    try {
+      saved.exec(`CREATE TRIGGER fail_recovery_insert BEFORE INSERT ON pending WHEN NEW.nonce=0
+        BEGIN SELECT RAISE(ABORT, 'Synthetic interrupted pointer write'); END`)
+      await expect(current.stageRecovery(first, displaced)).rejects.toThrow('interrupted pointer write')
+      expect(current.pendingTransaction()).toEqual(displaced)
+      expect(saved.prepare('SELECT COUNT(*) AS count FROM operation_history').get()?.count).toBe(2)
+      saved.exec('DROP TRIGGER fail_recovery_insert')
+    } finally { saved.close() }
+    expect(write).not.toHaveBeenCalled()
+    current.destroy()
+    expect(await provider().stageRecovery(first, displaced)).toBe(Transaction.from(first).hash)
+  })
+
+  it('does not renew an expired original BNB envelope when rewinding its pending pointer', async () => {
+    chain = '0x38'
+    const current = provider(undefined, 56), first = await signed({}, 56), second = await signed({ nonce: 1 }, 56)
+    await current.broadcastTransaction(first, Date.now() + 60_000)
+    latest = confirmed = 1n
+    await current.broadcastTransaction(second, Date.now() + 60_000)
+    const displaced = current.pendingTransaction()!
+    const saved = new DatabaseSync(join(directory, 'protected-transactions.sqlite'))
+    try {
+      const body = String(saved.prepare('SELECT body FROM protected_bundles WHERE hash=?').get(Transaction.from(first).hash!)?.body)
+      height = BigInt(JSON.parse(body).params[0].maxBlockNumber) + 1n
+      latest = confirmed = 0n
+      await current.stageRecovery(first, displaced)
+      await expect(current.retryPending()).rejects.toThrow(/expired/i)
+      expect(saved.prepare('SELECT body FROM protected_bundles WHERE hash=?').get(Transaction.from(first).hash!)?.body).toBe(body)
+      expect(current.pendingTransaction()?.hash).toBe(Transaction.from(first).hash)
+      expect(saved.prepare('SELECT COUNT(*) AS count FROM operation_history').get()?.count).toBe(2)
+      expect(write).toHaveBeenCalledTimes(2)
+    } finally { saved.close() }
+  })
+})
+
 beforeEach(async () => {
   directory = mkdtempSync(join(tmpdir(), 'ophis-protected-provider-'))
   providers = []; reads = []; latest = 0n; confirmed = 0n; chain = '0x1'; fork = false; forkError = false; nextBlockRead = undefined

@@ -1,0 +1,87 @@
+# Owner-controlled prepaid refunds and native fee collection
+
+These commands describe the reviewed prepaid build. Deployment, production pricing and live owner acceptance remain separate release gates. The server holds only the fee wallet's viewing authority. The owner signs private payments in the existing ANON wallet; this procedure does not request its recovery phrase or spending key.
+
+**Stock ANON compatibility is not yet accepted.** Static review of the signed ANON 0.12.4 unshield path found amount, recipient, route and fee confirmation, but no exposed exact private-input/proof/change review or unsigned private-proof export. Do not instruct the owner to use an export or proof-selection feature that this path does not provide. The commands below describe the operator journal lifecycle; they are not permission to send a production payment through an unqualified wallet route. An explicitly approved, bounded owner pilot must establish actual wallet compatibility before activation. A synthetic gateway proof does not establish that compatibility.
+
+Customer credit is a liability. Earned fees are settled execution charges plus completed refund fees, less verified owner payment costs and collections. Unclaimed deposits and apparent wallet surplus are never earnings. Every operator reservation requires canonical accounted backing for all liabilities and earnings, and enough value in one accounted note to recover earnings, outstanding execution maxima, queued refund gross amounts and the proposed charge. A refund quote advertises `maximumRefundGross`; a larger request is rejected before creating a hold. Only one refund per owner may be pending. Refunds also preserve one maximum attempt charge when another customer has enough available credit to use it; a dust-only second account does not prevent the first customer's full exit. Customers may request a smaller partial refund.
+
+## Inspect and budget
+
+Use the correct chain configuration and the stopped-service operator lock. The commands acquire the lock themselves.
+
+```sh
+node dist/main.mjs refunds
+node dist/main.mjs report
+```
+
+The customer first signs a refund request specifying its exact private recipient and net amount. `refunds` lists the pending requests without unlocking a key. A refund to the fee wallet itself is rejected.
+
+Review ANON's complete private WETH/WBNB quote for the payout and for later native collection. The retained refund fee is `gross − net`; it must cover both costs, the protocol unshield fee, ANON's 13 bps gateway fee on the pool-net amount and the configured margin. Pricing and owner preflight verify the pinned gateway runtime and current 13 bps fee; unsupported changes close new pricing. Keep the customer's signed net amount unchanged. The optional read-only arithmetic check is:
+
+```sh
+node dist/main.mjs owner-cost-preflight /absolute/path/refund-cost-quote.json
+```
+
+The owner-reviewed JSON file must have 0600 permissions and contain `kind: "refund"`, exact `chainId`, `ledgerId`, `operator`, wrapped `token`, saved `refundKey`, and `expiresAt` in milliseconds no more than five minutes ahead. `costs` has exactly `payout` and `collection`. A complete ANON private quote is `{ "privateFeeWei": "..." }`. An unsigned gas-budget estimate can instead use decimal-string `gasLimit` and `maxFeePerGas`; it is advisory arithmetic, not permission to use a different spending path. There are no manual unwrap/refill steps: supported collection sends native ETH/BNB directly to the authorized gas operator.
+
+Exit 0 means the supplied budgets fit; exit 2 reports a shortfall. This command neither verifies quote provenance nor creates an owner intent. Its health balance sample is advisory. Actual canonical backing is checked by the next command.
+
+## Prepare the owner intent before signing
+
+Create a private 0600 operation-plan file containing `chainId`, `ledgerId`, `operator`, wrapped `token`, `expiresAt`, `kind`, `maximumPrivateFee`, `minimumNative`, `inputLimit`, `outputLimit`, `proofLimit` and `marginBps`. Quantities are decimal strings except the chain, expiry and three integer shape limits. Actual owner input/output/proof limits and margin must exactly match the explicitly qualified configuration; they default to disabled. For `kind: "refund"`, include `refundKey` and set `minimumNative: "0"`.
+
+```sh
+node dist/main.mjs prepare-owner-operation /absolute/path/owner-operation.json
+```
+
+Preparation uses the existing owner unlock and wallet synchronization procedure to read the fee wallet. It does not sign or send a payment. It verifies canonical backing before saving an immutable intent and halting new operator spending. All earlier operator attempts must already be settled. Refund preparation reserves capacity for the full pending gross amounts, including their future retained fees. Collection preparation covers the exact remaining earned amount and preserves queued refunds; it reads current pool and gateway fees and rejects a minimum native amount that the approved maximum private fee cannot leave after those deductions. A nonempty journal predating this accounting version requires explicit history reconciliation; lifetime earnings are not assumed to remain uncollected.
+
+During an explicitly approved owner pilot, only after the command succeeds compare its exact amounts with the fields ANON actually exposes. Use private WETH/WBNB for the ANON fee. A refund must send exactly the saved `net` to its private recipient. A collection must debit exactly the intent's `debit`, including ANON's private fee, and send at least `minimum_native` directly to the authorized gas operator through the pinned ANON gateway. If the visible quote cannot establish those amount and fee terms, stop before sending. The recovery capacity is secured by one note even though the verifier's hard ceiling permits up to two inputs. The measured native fixture currently uses **1 input / 3 outputs / 1 proof**; a larger configuration is not qualified by that run. Do not manually unwrap from the gas operator or authorize an EIP-7702 delegation for that operator: its nonce belongs to the broadcaster journal.
+
+The verifier permits one owned change note. Stock ANON's reviewed confirmation cannot establish the exact hidden shape before sending. The restricted pilot must therefore verify the resulting canonical proof shape, owned input selection, private debit and native receipt afterward; this is a compatibility test with a bounded approved cost, not a preapproval guarantee. Unsupported shapes, unclaimed inputs, costs above the saved cap or insufficient native proceeds retain the hold after a wallet fee may already have been paid. A changed quote is not permission to spend beyond the intent. Broad activation still requires acceptance of the actual owner route; no server-held fee-wallet spending key or undocumented ANON API is a substitute.
+
+## Associate and verify the payment
+
+After successful finality, record the transaction under the same chain configuration:
+
+```sh
+node dist/main.mjs record-refund-payout REFUND_KEY FINALIZED_TRANSACTION_HASH
+# For native fee collection:
+node dist/main.mjs record-owner-payout OWNER_INTENT_KEY FINALIZED_TRANSACTION_HASH
+```
+
+These commands associate canonical evidence without unlocking a spending key, sending funds or marking the operation settled. Resume the reviewed service with its normal unlock procedure. Reconciliation verifies the exact owned input nullifiers and their credited positions, values and canonical origin ciphertexts; all owned change; and the actual private debit. Unclaimed incoming notes cannot subsidize a collection or become accounted change.
+
+For refunds, it also verifies the exact outgoing private recipient, net amount and unused canonical commitment. For collection, it verifies the pinned ANON gateway calldata, bounded proof shape, canonical Unshield event and successful native transfer under that same successful trace branch. An outer receipt with status 1 is insufficient. Missing or truncated transaction traces fail closed. The payout must not consume the gas operator's transaction or authorization nonce. Only verified finalized evidence releases the intent and updates earned amounts; partial or duplicate collections cannot debit lifetime earnings again.
+
+## Mistakes, unknown outcomes and recovery
+
+Never send another payment because confirmation is slow. An owner intent has no automatic expiry or cancellation that could make a previously signed payment unsafe.
+
+If the wrong hash was associated, the following narrow recovery is available:
+
+```sh
+node dist/main.mjs reject-owner-payout OWNER_INTENT_KEY WRONG_FINALIZED_TRANSACTION_HASH
+```
+
+That no-unlock rejection succeeds only when the unchanged finalized receipt has **no RAILGUN Nullified event**, proving it spent no pool inputs. If the mistaken hash is another user's private transaction, synchronize the existing view wallet and use:
+
+```sh
+node dist/main.mjs reject-unrelated-owner-payout OWNER_INTENT_KEY WRONG_FINALIZED_TRANSACTION_HASH
+```
+
+This second command requires complete fee-wallet history and verifies that none of the transaction's nullifiers belongs to any fee-wallet note, including unclaimed incoming funds. Missing history, any owned input, reorged receipt or stale evidence keeps the candidate held. Both procedures retain the immutable candidate/rejection and active intent; they permit associating the correct existing payment, not paying again. A transaction that spent any fee-wallet input cannot be dismissed by either command.
+
+Unknown outcomes, reorgs, incomplete wallet scans and restored backups keep spending closed. Backups include the owner intent, candidate, both rejection journals, settlement and change journals. There is currently no command that clears a legacy-migration, restore or owner-history-reorg recovery flag: those cases require an independently reviewed canonical history reconciliation before any future recovery tooling is authorized. Likewise, an actual owner payment outside its approved shape or fee cap remains held; this build has no automatic overrun settlement. Live acceptance must confirm the actual ANON route and the configured cost/proof bounds before public release.
+
+
+## Preparing an explicit prepaid pilot without resetting history
+
+Use plain `sync` first for view-only wallet and balance inspection. It forces submission off, does not subscribe to Waku, and does not create a credit ledger or reconcile payment journals. Inspect existing historical/unclaimed fee notes before depositing new customer credit. Any owner-approved historical fee cleanup or gas-wallet transfer must finish before the new ledger anchors its initial operator nonce; do not infer permission to move funds from a positive balance.
+
+After that inspection and any separately approved owner fund moves, run `sync --initialize-credit` under the existing operator lock and owner unlock procedure. This also forces submission off and creates or reloads the immutable ledger only once. Its `credit-ledger-ready` output contains the public `credit.ledgerId` and scope; verify the chain, operator and fee identity. First creation requires the latest, pending and finalized operator nonces to agree, so an in-flight fund move cannot anchor an obsolete nonce. Repeating this command preserves the ID, initial nonce and historical withdrawal marker. Plain `sync` never performs this initialization implicitly.
+
+A new restricted prepaid pilot requires explicit owner approval of that inspected ledger ID and the existing private wallet's stable public credit-owner address (account zero). Set both `OPHIS_BROADCASTER_PREPAID_PILOT_LEDGER_ID` and `OPHIS_BROADCASTER_PREPAID_PILOT_OWNER`, alongside the separately approved current `OPHIS_BROADCASTER_PILOT_ACCOUNT` and public withdrawal recipient. The ratcheted swap account and stable credit owner can differ; obtain both public addresses from the existing wallet, without creating another wallet or asking for secret material. This opt-in is valid only for Ethereum/BNB pilot admission. It is not an activation or budget approval.
+
+The opt-in permits one prepaid withdrawal attempt in that exact immutable ledger while retaining the historic `withdrawalPilot` marker. The new marker is reserved atomically before signing; a failed attempt, replay, restart, swap-account change or recipient change cannot reopen it. Without the explicit paired opt-in, or after the new marker is consumed, new prepaid execution quotes are closed. Authenticated credit balance, claims, refunds and saved-request recovery remain available. Never clear a marker, rotate the ledger or start an empty journal to bypass this restriction.

@@ -105,3 +105,22 @@ it.each(['0', '-1', '01', '1.0', '1e0', '8453', '10', '9999999999999999999999999
     await expect(import('../src/config')).rejects.toThrow(/chain/i)
   },
 )
+
+
+it.each([1, 56])('requires an exact nonzero prepaid pilot ledger opt-in on chain%i', async (chainId) => {
+  vi.stubEnv('OPHIS_BROADCASTER_CHAIN_ID', String(chainId))
+  const { settings } = await import('../src/config')
+  const env = { OPHIS_BROADCASTER_CHAIN_ID: String(chainId), OPHIS_BROADCASTER_RPC: 'http://127.0.0.1:9' }
+  const approvedOwner = '0x0000000000000000000000000000000000001234'
+  const ledger = `0x${'AB'.repeat(32)}`
+  expect(settings(env).prepaidPilotLedgerId).toBeUndefined()
+  expect(settings({ ...env, OPHIS_BROADCASTER_PREPAID_PILOT_OWNER: approvedOwner, OPHIS_BROADCASTER_PREPAID_PILOT_LEDGER_ID: ledger }).prepaidPilotLedgerId).toBe(ledger.toLowerCase())
+  expect(() => settings({ ...env, OPHIS_BROADCASTER_PREPAID_PILOT_LEDGER_ID: ledger })).toThrow('both')
+  expect(() => settings({ ...env, OPHIS_BROADCASTER_PREPAID_PILOT_OWNER: approvedOwner })).toThrow('both')
+  expect(() => settings({ ...env, OPHIS_BROADCASTER_PREPAID_PILOT_LEDGER_ID: ledger,
+    OPHIS_BROADCASTER_PREPAID_PILOT_OWNER: '0x0000000000000000000000000000000000000000' })).toThrow('nonzero')
+  for (const invalid of ['', '0x12', `0x${'00'.repeat(32)}`, `0x${'gg'.repeat(32)}`])
+    expect(() => settings({ ...env, OPHIS_BROADCASTER_PREPAID_PILOT_OWNER: approvedOwner, OPHIS_BROADCASTER_PREPAID_PILOT_LEDGER_ID: invalid })).toThrow('prepaid pilot')
+  expect(() => settings({ ...env, OPHIS_BROADCASTER_ADMISSION: 'public',
+    OPHIS_BROADCASTER_PREPAID_PILOT_LEDGER_ID: ledger, OPHIS_BROADCASTER_PREPAID_PILOT_OWNER: approvedOwner })).toThrow('prepaid pilot')
+})

@@ -28,11 +28,12 @@ export interface ParsedRequest {
   withdrawal?: { recipient: string; token: string; amount: bigint; grossAmount: bigint }
 }
 
-function boundWithdrawal(transactions: TransactionStructV2[], calls: readonly { to: unknown; data: unknown; value: unknown }[], account: string): NonNullable<ParsedRequest['withdrawal']> {
+function boundWithdrawal(transactions: TransactionStructV2[], calls: readonly { to: unknown; data: unknown; value: unknown }[], account: string, prepaid: boolean): NonNullable<ParsedRequest['withdrawal']> {
   const native = calls.length === 2
-  if ((calls.length !== 1 && !native) || (native && CHAIN_ID !== 56) || transactions.length !== (native ? 1 : 2) ||
-    (!native && BigInt(transactions[0].boundParams.unshield) !== 0n) ||
-    BigInt(transactions[native ? 0 : 1].boundParams.unshield) !== 1n ||
+  const principalIndex = native || prepaid ? 0 : 1
+  if ((calls.length !== 1 && !native) || (native && CHAIN_ID !== 56) || transactions.length !== principalIndex + 1 ||
+    (principalIndex === 1 && BigInt(transactions[0].boundParams.unshield) !== 0n) ||
+    BigInt(transactions[principalIndex].boundParams.unshield) !== 1n ||
     calls.some((call) => typeof call.to !== 'string' || getAddress(call.to) !== account ||
       typeof call.data !== 'string' || BigInt(String(call.value)) !== 0n))
     throw new Error('A bound withdrawal requires its exact canonical self transfer and private WBNB fee.')
@@ -40,15 +41,15 @@ function boundWithdrawal(transactions: TransactionStructV2[], calls: readonly { 
   const transfer = ADAPT.parseTransaction({ data: String(call.data) })
   if (transfer?.name !== 'transfer' || ADAPT.encodeFunctionData(transfer.fragment, transfer.args) !== call.data || transfer.args[0].length !== 1)
     throw new Error('A bound withdrawal requires one canonical self transfer.')
-  const output = transfer.args[0][0], principal = transactions[native ? 0 : 1].unshieldPreimage
+  const output = transfer.args[0][0], principal = transactions[principalIndex].unshieldPreimage
   if (typeof output.token.tokenAddress !== 'string' || typeof output.to !== 'string' ||
     typeof principal.token.tokenAddress !== 'string' || typeof principal.npk !== 'string')
     throw new Error('Invalid bound withdrawal token or recipient.')
   const token = getAddress(principal.token.tokenAddress), recipient = getAddress(output.to)
   const outputToken = getAddress(output.token.tokenAddress)
   const amount = BigInt(output.value), grossAmount = BigInt(principal.value)
-  if (token === ZeroAddress || (native ? token !== TOKENS[0].address || outputToken !== ZeroAddress || transactions[0].commitments.length < 2
-      : token === TOKENS[0].address || outputToken !== token) ||
+  if (token === ZeroAddress || (native ? token !== TOKENS[0].address || outputToken !== ZeroAddress || (!prepaid && transactions[0].commitments.length < 2)
+      : (!prepaid && token === TOKENS[0].address) || outputToken !== token) ||
     BigInt(principal.token.tokenType) !== 0n || BigInt(principal.token.tokenSubID) !== 0n ||
     BigInt(output.token.tokenType) !== 0n || BigInt(output.token.tokenSubID) !== 0n ||
     BigInt(principal.npk) !== BigInt(account) || recipient === account || recipient === ZeroAddress || amount <= 0n || amount > grossAmount ||
@@ -64,7 +65,7 @@ function boundWithdrawal(transactions: TransactionStructV2[], calls: readonly { 
   return { recipient, token, amount, grossAmount }
 }
 
-export function parseRequest(data: Record<string, unknown>, operator: string, settings: Settings): ParsedRequest {
+export function parseRequest(data: Record<string, unknown>, operator: string, settings: Settings, prepaid = false): ParsedRequest {
   if (settings.chainId !== CHAIN_ID || data.chainType !== 0 || data.chainID !== CHAIN_ID || data.txidVersion !== VERSION ||
     typeof data.minVersion !== 'string' || typeof data.maxVersion !== 'string' ||
     !/^8\.[0-9]{1,3}\.[0-9]{1,3}$/.test(data.minVersion) || !/^8\.[0-9]{1,3}\.[0-9]{1,3}$/.test(data.maxVersion) ||
@@ -113,7 +114,7 @@ export function parseRequest(data: Record<string, unknown>, operator: string, se
     if (action.requireSuccess) {
       if (!settings.executionGuard)
         throw new Error('Only guarded withdrawals may require all actions to succeed.')
-      withdrawal = boundWithdrawal(transactions, action.calls, to)
+      withdrawal = boundWithdrawal(transactions, action.calls, to, prepaid)
       if ([to, getAddress(operator), getAddress(NETWORK.proxyContract), getAddress(NETWORK.relayAdapt7702Contract),
         getAddress(settings.executionGuard)].includes(withdrawal.token))
         throw new Error('A protocol or operator account cannot be the withdrawal principal token.')

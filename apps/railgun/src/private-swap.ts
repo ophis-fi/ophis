@@ -1,4 +1,4 @@
-import { CHAIN, CHAIN_NAME, tokenFor, MIN_SWAP_GAS, NETWORK, TOKENS, VERSION, type TokenSymbol } from './config'
+import { CHAIN, CHAIN_NAME, tokenFor, MIN_SWAP_GAS, NETWORK, TOKENS, VERSION, WRAPPED_SYMBOL, type TokenSymbol } from './config'
 import {
   fullWalletForID,
   balanceForERC20Token,
@@ -9,7 +9,8 @@ import {
 } from '@railgun-community/wallet'
 import { formatUnits, getAddress } from 'ethers'
 import { calculateGasLimit, type SelectedBroadcaster } from '@railgun-community/shared-models'
-import { broadcasterFee, capGasPrice, gasDetails, minimumGasPrice, validateBroadcaster, type PrivateSubmitter } from './broadcaster'
+import { broadcasterFee, capGasPrice, capPrepaidGasPrice, gasDetails, minimumGasPrice, prepaidFee, validateBroadcaster, type PrivateSubmitter } from './broadcaster'
+import type { PreparedCredit } from './prepaid'
 import { assertExecutionNetwork, assertSameExecution, expectedOutputNpk, simulateRequest } from './execution'
 import { pendingSwap, savePendingSwap, reconcilePendingSwap } from './journal'
 import { pendingWithdrawal } from './withdrawal-journal'
@@ -18,26 +19,34 @@ import { refreshReceivedBalances, requireWalletSync, type WalletSession } from '
 import { unusedSwapAccount } from './account'
 import { feeTokenFor, requireFeeBalance } from './fee-asset'
 
-export async function preparePrivateSwap(session: WalletSession, quote: SwapQuote, selected: SelectedBroadcaster) {
+export async function preparePrivateSwap(session: WalletSession, quote: SwapQuote, selected: SelectedBroadcaster, prepaid?: PreparedCredit) {
   requireWalletSync()
   if ((await pendingSwap(session)) || (await pendingWithdrawal(session)))
     throw new Error('Resolve the pending private transaction in recovery before preparing another.')
   const account = await unusedSwapAccount(session)
   assertQuoteFresh(quote, account.address)
-  const feeToken = feeTokenFor(quote.sell)
+  const feeToken = prepaid ? WRAPPED_SYMBOL : feeTokenFor(quote.sell)
   const sameAsset = feeToken === quote.sell
-  validateBroadcaster(selected, TOKENS[feeToken].address, true)
+  if (!prepaid) validateBroadcaster(selected, TOKENS[feeToken].address, true)
   await refreshReceivedBalances(session)
   let gas = await gasDetails(session)
   const recommendedMaxFeePerGas = gas.maxFeePerGas
+  if (prepaid) {
+    gas = capPrepaidGasPrice(gas, prepaid)
+    await (await import('./prepaid')).assertPrepaidContext(session, selected, gas, prepaid)
+  }
   const wallet = fullWalletForID(session.info.id)
   const balances = async () => {
     const principal = await balanceForERC20Token(VERSION, wallet, NETWORK, TOKENS[quote.sell].address, true)
-    const reserve = sameAsset ? principal : await balanceForERC20Token(VERSION, wallet, NETWORK, TOKENS[feeToken].address, true)
+    const reserve = prepaid ? 0n : sameAsset ? principal : await balanceForERC20Token(VERSION, wallet, NETWORK, TOKENS[feeToken].address, true)
     return { principal, reserve }
   }
   let available = await balances()
   const requireBalances = (fee: bigint, minimum: boolean) => {
+    if (prepaid) {
+      if (available.principal < quote.amount) throw new Error(`Insufficient spendable ${quote.sell} for the swap amount.`)
+      return
+    }
     if (sameAsset) return requireSwapBalance(available.principal, quote.amount, fee, quote.sell, minimum)
     if (available.principal < quote.amount) throw new Error(`Insufficient spendable ${quote.sell} for the swap amount.`)
     requireFeeBalance(available.reserve, fee, feeToken)
@@ -49,10 +58,10 @@ export async function preparePrivateSwap(session: WalletSession, quote: SwapQuot
   }))
   for (let attempt = 0; attempt < 3; attempt += 1) {
     const networkPrice = await minimumGasPrice(session, gas)
-    const minimumFee = broadcasterFee(selected, { ...gas, maxFeePerGas: networkPrice })
+    const minimumFee = prepaid ? prepaidFee(prepaid, { ...gas, maxFeePerGas: networkPrice }) : broadcasterFee(selected, { ...gas, maxFeePerGas: networkPrice })
     requireBalances(minimumFee.amount, attempt === 0)
     const budget = sameAsset ? available.principal - quote.amount : available.reserve
-    gas = capGasPrice(gas, selected, budget)
+    gas = prepaid ? capPrepaidGasPrice(gas, prepaid) : capGasPrice(gas, selected, budget)
     if (gas.maxFeePerGas < networkPrice) throw new Error(`${CHAIN_NAME} gas price changed. Request a fresh quote.`)
     const estimated = await gasEstimateForUnprovenCrossContractCalls7702(
       VERSION,
@@ -65,8 +74,8 @@ export async function preparePrivateSwap(session: WalletSession, quote: SwapQuot
       [],
       quote.calls,
       gas,
-      { tokenAddress: selected.tokenAddress, feePerUnitGas: BigInt(selected.tokenFee.feePerUnitGas) },
-      false,
+      prepaid ? undefined : { tokenAddress: selected.tokenAddress, feePerUnitGas: BigInt(selected.tokenFee.feePerUnitGas) },
+      !!prepaid,
       MIN_SWAP_GAS,
     )
     if (estimated.gasEstimate < MIN_SWAP_GAS) throw new Error('SDK gas estimate is below the required swap allowance.')
@@ -74,12 +83,14 @@ export async function preparePrivateSwap(session: WalletSession, quote: SwapQuot
     // Calldata bytes jitter between estimates; round upward so an exact fee cap converges.
     if (gas.maxFeePerGas < recommendedMaxFeePerGas) estimate = ((estimate + 9_999n) / 10_000n) * 10_000n
     gas = { ...gas, gasEstimate: estimate > gas.gasEstimate ? estimate : gas.gasEstimate }
-    const fee = broadcasterFee(selected, gas)
+    if (prepaid) gas = capPrepaidGasPrice(gas, prepaid)
+    const fee = prepaid ? prepaidFee(prepaid, gas) : broadcasterFee(selected, gas)
     available = await balances()
-    if (available.principal >= quote.amount && available.reserve >= fee.amount + (sameAsset ? quote.amount : 0n)) {
+    if (available.principal >= quote.amount && (prepaid || available.reserve >= fee.amount + (sameAsset ? quote.amount : 0n))) {
       if (gas.maxFeePerGas < await minimumGasPrice(session, gas))
         throw new Error(`${CHAIN_NAME} gas price changed. Request a fresh quote.`)
-      return { quote, selected, gas, fee, feeToken, unshields, reshields, gasCapped: gas.maxFeePerGas < recommendedMaxFeePerGas }
+      if (prepaid) await (await import('./prepaid')).assertPrepaidContext(session, selected, gas, prepaid)
+      return { quote, selected, gas, fee, feeToken, unshields, reshields, prepaid, gasCapped: gas.maxFeePerGas < recommendedMaxFeePerGas }
     }
     const remaining = sameAsset ? available.principal - quote.amount : available.reserve
     if (available.principal < quote.amount || remaining <= 0n || capGasPrice(gas, selected, remaining).maxFeePerGas >= gas.maxFeePerGas)
@@ -88,17 +99,17 @@ export async function preparePrivateSwap(session: WalletSession, quote: SwapQuot
   throw new Error('Gas estimate kept changing while fitting the fee budget. Request a fresh quote.')
 }
 
-export async function prepareMaxPrivateSwap(session: WalletSession, sell: TokenSymbol, selected: SelectedBroadcaster, budget?: bigint, buy?: TokenSymbol) {
+export async function prepareMaxPrivateSwap(session: WalletSession, sell: TokenSymbol, selected: SelectedBroadcaster, budget?: bigint, buy?: TokenSymbol, prepaid?: PreparedCredit) {
   requireWalletSync()
   await refreshReceivedBalances(session)
   let amount = await balanceForERC20Token(VERSION, fullWalletForID(session.info.id), NETWORK, TOKENS[sell].address, true)
   if (budget != null && budget < amount) amount = budget
   if (amount <= 0n) throw new Error(`No spendable ${sell} is available for a swap.`)
   const limit = amount
-  if (feeTokenFor(sell) !== sell) {
+  if (prepaid || feeTokenFor(sell) !== sell) {
     const account = await unusedSwapAccount(session)
     const quote = await quoteSwap(session.provider, sell, formatUnits(amount, TOKENS[sell].decimals), account.address, buy)
-    const prepared = await preparePrivateSwap(session, quote, selected)
+    const prepared = await preparePrivateSwap(session, quote, selected, prepaid)
     if (prepared.quote.amount > limit) throw new Error('The swap amount exceeds the remaining principal budget.')
     return prepared
   }
@@ -154,13 +165,13 @@ export async function executePrivateSwap(
   submitter: PrivateSubmitter,
 ): Promise<string> {
   requireWalletSync()
-  const { quote, selected, gas, fee, unshields, reshields } = prepared
-  validateBroadcaster(selected, TOKENS[feeTokenFor(quote.sell)].address, true)
+  const { quote, selected, gas, fee, unshields, reshields, prepaid } = prepared
+  if (!prepaid) validateBroadcaster(selected, TOKENS[feeTokenFor(quote.sell)].address, true)
   if ((await pendingSwap(session)) || (await pendingWithdrawal(session)))
     throw new Error('A private transaction is already pending. Reconcile it before spending again.')
   assertQuoteFresh(quote, (await session.accounts.getCurrentAccount(CHAIN)).address)
-  broadcasterFee(selected, gas)
-  await submitter.assertReady(session, selected, gas)
+  if (!prepaid) broadcasterFee(selected, gas)
+  await submitter.assertReady(session, selected, gas, prepaid)
   const index = await fullWalletForID(session.info.id).getEphemeralKeyIndex(CHAIN)
   const request = await generateCrossContractCallsProof7702(
     VERSION,
@@ -172,8 +183,8 @@ export async function executePrivateSwap(
     reshields,
     [],
     quote.calls,
-    fee,
-    false,
+    prepaid ? undefined : fee,
+    !!prepaid,
     0n,
     MIN_SWAP_GAS,
     (progress, status) => onProgress(`${status}: ${Math.round(progress)}%`),
@@ -183,7 +194,7 @@ export async function executePrivateSwap(
   if (getAddress((await session.accounts.getAccount(CHAIN, index)).address) !== getAddress(request.ephemeralAddress))
     throw new Error('Recovery account does not match the signed transaction.')
   assertQuoteFresh(quote, request.ephemeralAddress)
-  await submitter.assertReady(session, selected, gas)
+  await submitter.assertReady(session, selected, gas, prepaid)
   await assertExecutionNetwork(session)
   const populated = await populateProvedCrossContractCalls(
     VERSION,
@@ -194,8 +205,8 @@ export async function executePrivateSwap(
     reshields,
     [],
     quote.calls,
-    fee,
-    false,
+    prepaid ? undefined : fee,
+    !!prepaid,
     0n,
     gas,
   )
@@ -212,8 +223,9 @@ export async function executePrivateSwap(
     index,
     account: request.ephemeralAddress,
     token: quote.buy,
-    feeToken: feeTokenFor(quote.sell),
-    recoveryTokens: [...new Set([quote.sell, quote.buy, feeTokenFor(quote.sell), ...(quote.route?.tokens ?? [])])],
+    feeToken: prepaid ? WRAPPED_SYMBOL : feeTokenFor(quote.sell),
+    ...(prepaid ? { feeMode: 'prepaid' as const } : {}),
+    recoveryTokens: [...new Set([quote.sell, quote.buy, prepaid ? WRAPPED_SYMBOL : feeTokenFor(quote.sell), ...(quote.route?.tokens ?? [])])],
     minimum: (quote.minimum - (quote.minimum * quote.shieldFee) / 10_000n).toString(),
     npk: expectedOutputNpk(request, TOKENS[quote.buy].address),
     executeNonce: request.executeNonce.toString(),
@@ -228,7 +240,7 @@ export async function executePrivateSwap(
   await simulateRequest(session, request, calculateGasLimit(gas.gasEstimate))
   assertQuoteFresh(quote, request.ephemeralAddress)
   assertFinalQuoteFresh(checkedAt)
-  const hash = await submitter.send(session, populated, selected, gas, true, checkedAt)
+  const hash = await submitter.send(session, populated, selected, gas, true, checkedAt, prepaid)
   await savePendingSwap(session, { ...pending, hash })
   await ratchetEphemeralAddress(session.info.id, NETWORK)
   onProgress(`Waiting for two confirmations: ${hash}`)

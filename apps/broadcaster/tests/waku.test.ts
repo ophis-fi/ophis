@@ -1,5 +1,6 @@
 import { afterEach, expect, it, vi } from 'vitest'
-import { MAX_MESSAGE_BYTES, TOPICS } from '../src/config'
+import { CHAIN_ID, MAX_MESSAGE_BYTES, TOPICS } from '../src/config'
+import { creditTopics, encryptedCreditTopic } from '../../railgun/credit-protocol'
 import { boundedJSON, WakuRelay } from '../src/waku'
 
 afterEach(() => vi.unstubAllGlobals())
@@ -11,10 +12,18 @@ const relay = (body: unknown) => {
   return new WakuRelay('http://127.0.0.1:8645')
 }
 
+it('routes prepaid replies to their encrypted chain topic without mixing legacy or other-chain requests', async () => {
+  const topics = creditTopics(CHAIN_ID), other = creditTopics(CHAIN_ID === 1 ? 56 : 1)
+  const waku = relay([entry('prepaid', encryptedCreditTopic(topics.request)), entry('legacy'),
+    entry('other-chain', encryptedCreditTopic(other.request)), entry('response', encryptedCreditTopic(topics.response))])
+  expect((await waku.messages()).map(({ payload, responseTopic }) => ({ body: Buffer.from(payload).toString(), responseTopic })))
+    .toEqual([{ body: 'prepaid', responseTopic: encryptedCreditTopic(topics.response) }, { body: 'legacy', responseTopic: TOPICS.response }])
+})
+
 it('returns all 129 small payloads from a cleared relay batch and reports saturation', async () => {
   const expected = Array.from({ length: 129 }, (_, index) => String(index))
   const waku = relay(expected.map((payload) => entry(payload)))
-  expect((await waku.messages()).map((payload) => Buffer.from(payload).toString())).toEqual(expected)
+  expect((await waku.messages()).map(({ payload }) => Buffer.from(payload).toString())).toEqual(expected)
   expect(waku.saturated).toBe(true)
 })
 
@@ -22,7 +31,7 @@ it('accepts a configured full batch of 16 maximum-size payloads within the 16MiB
   const waku = relay(Array.from({ length: 16 }, () => entry(Buffer.alloc(MAX_MESSAGE_BYTES, 1))))
   const messages = await waku.messages()
   expect(messages).toHaveLength(16)
-  expect(messages.every((message) => message.length === MAX_MESSAGE_BYTES && message[0] === 1)).toBe(true)
+  expect(messages.every((message) => message.payload.length === MAX_MESSAGE_BYTES && message.payload[0] === 1)).toBe(true)
   expect(waku.saturated).toBe(true)
 })
 
@@ -37,7 +46,7 @@ it('counts full upstream caches before filtering other topics and keeps the warn
 it('filters unrelated topics and invalid or oversized individual payloads', async () => {
   const waku = relay([null, entry('other', TOPICS.response), { contentTopic: TOPICS.transact, payload: 7 },
     { contentTopic: TOPICS.transact, payload: '@invalid' }, entry(Buffer.alloc(MAX_MESSAGE_BYTES + 1)), entry('accepted')])
-  expect((await waku.messages()).map((payload) => Buffer.from(payload).toString())).toEqual(['accepted'])
+  expect((await waku.messages()).map(({ payload }) => Buffer.from(payload).toString())).toEqual(['accepted'])
   expect(waku.saturated).toBe(false)
 })
 

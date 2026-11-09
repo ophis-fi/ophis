@@ -2,7 +2,7 @@ import { beforeEach, expect, it, vi } from 'vitest'
 import type { WalletSession } from './wallet'
 import type { PrivateSubmitter } from './broadcaster'
 
-const state = vi.hoisted(() => ({ events: [] as string[], save: vi.fn(), simulate: vi.fn(), requote: vi.fn() }))
+const state = vi.hoisted(() => ({ events: [] as string[], save: vi.fn(), simulate: vi.fn(), requote: vi.fn(), proof: vi.fn(), populate: vi.fn() }))
 const account = '0x0000000000000000000000000000000000001234'
 vi.mock('./broadcaster', () => ({ broadcasterFee: vi.fn(), validateBroadcaster: vi.fn() }))
 vi.mock('./wallet', () => ({ requireWalletSync: vi.fn() }))
@@ -21,12 +21,12 @@ vi.mock('./execution', () => ({
 }))
 vi.mock('@railgun-community/wallet', () => ({
   fullWalletForID: () => ({ getEphemeralKeyIndex: async () => 3 }),
-  generateCrossContractCallsProof7702: async () => ({
+  generateCrossContractCallsProof7702: state.proof.mockImplementation(async () => ({
     ephemeralAddress: '0x0000000000000000000000000000000000001234',
     executeNonce: 0n,
     transactions: [{ boundParams: { treeNumber: 0 }, nullifiers: ['11'.repeat(32)] }],
-  }),
-  populateProvedCrossContractCalls: async () => ({ transaction: {}, nullifiers: ['11'.repeat(32)] }),
+  })),
+  populateProvedCrossContractCalls: state.populate.mockImplementation(async () => ({ transaction: {}, nullifiers: ['11'.repeat(32)] })),
   ratchetEphemeralAddress: vi.fn(),
 }))
 import { executePrivateSwap } from './private-swap'
@@ -65,6 +65,20 @@ it('persists recovery before disclosing a signed spend and retains it after simu
   await expect(executePrivateSwap(session, prepared, () => {}, submitter)).rejects.toThrow(/RPC failed/)
   expect(state.events).toEqual(['saved', 'disclosed'])
   expect(state.save.mock.calls[0][1]).toMatchObject({ index: 3, account, executeNonce: '0', recoveryTokens: ['USDC', 'WETH'], inputs: [{ tree: 0, nullifier: `0x${'11'.repeat(32)}` }] })
+  expect(send).not.toHaveBeenCalled()
+})
+
+it('omits the proof fee only for an explicit prepaid preparation and saves that recovery mode', async () => {
+  const prepaid = { feesID: 'synthetic-reviewed-credit' } as NonNullable<Parameters<typeof executePrivateSwap>[1]['prepaid']>
+  const ready = vi.fn(), send = vi.fn()
+  await expect(executePrivateSwap(session, { ...prepared, prepaid }, () => {}, { assertReady: ready, send })).rejects.toThrow('RPC failed')
+  expect(state.proof.mock.calls[0][9]).toBeUndefined()
+  expect(state.proof.mock.calls[0][10]).toBe(true)
+  expect(state.populate.mock.calls[0][8]).toBeUndefined()
+  expect(state.populate.mock.calls[0][9]).toBe(true)
+  expect(ready.mock.calls.every((args) => args[3] === prepaid)).toBe(true)
+  expect(state.save.mock.calls[0][1]).toMatchObject({ feeMode: 'prepaid', feeToken: 'WETH', inputs: [{ tree: 0, nullifier: `0x${'11'.repeat(32)}` }] })
+  expect(state.events).toEqual(['saved', 'disclosed'])
   expect(send).not.toHaveBeenCalled()
 })
 

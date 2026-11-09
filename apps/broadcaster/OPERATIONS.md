@@ -1,4 +1,8 @@
-# Ethereum broadcaster operations
+# Broadcaster operations and historical installation notes
+
+**Current release policy, 9 November:** use [PREPAID-REFUNDS.md](PREPAID-REFUNDS.md) for Ethereum/BNB credit, refund, collection and owner-intent operations, and the [current qualification plan](../../docs/development/plans/2026-11-09-prepaid-native-recovery-pricing.md) for activation gates. Finalized prepaid credit, exact earned-value accounting and default-closed collection limits supersede the earlier sponsorship model below. Actual stock-ANON owner compatibility remains pending; its reviewed UI exposes no exact private-proof shape/export control. Earlier successful live swaps do not accept this new payment flow.
+
+**Do not use the historical activation or manual collection/refill instructions below for the prepaid build.** They predate customer credit liabilities and the owner-intent journal. Native collection for the new build must follow the current runbook and preserve the gas operator's nonce. Existing custody, state and backup records remain important, but their preservation is not activation approval. No additional funding, wallet, signing authority or production setting is authorized by this documentation.
 
 **Latest custody decision, 6 November 2026:** use the owner's existing ANON public account `0x001486E70A0c9291f5F55c68914eE0e4E4A604d4` for automatic gas signing on Baal. The owner explicitly accepted administrator access to the unlocked software key. The Ledger address remains the treasury, and the ANON private fee wallet remains view-only. The owner import, BNB operator-bound guard and bounded mainnet inclusion/revert-exclusion tests are complete. All BNB test nonces are finalized and resolved. Ethereum's replacement guard is also deployed, finalized, verified against the exact runtime and configured; its one-shot process exited successfully. The owner-paid Ethereum swap and withdrawal confirmed under the replacement identity, with both authenticated fees received and gas costs reconciled. Both receipts are finalized on two read RPCs. Both restricted services exited successfully and have restart disabled; the operator configuration is disabled. Public activation remains separate. Both generated signers stay retired; no new wallet should be generated. This supersedes the earlier Ledger-signing and Mac mini account proposals below. See the [current custody decision](../../docs/development/plans/2026-11-06-owner-wallet-custody.md#latest-owner-decision).
 
@@ -68,7 +72,7 @@ The running private fee wallet is view-only. Its receiving identity is unchanged
 
 The pilot's margin/funding approval, operator-bound guard deployment and first funded swap/withdrawal are complete. This integration does not change those identities or authorize another deposit, deployment or refill.
 
-## Payment policy
+## Historical payment policy — superseded for the prepaid build
 
 The minimum private fee is `ceil(maximum signed gas cost × current token conversion rate × (1 + markup))`. Both the advertised conversion rate and the final fee round upward. The broadcaster rechecks the current rate and its actual signed gas limit before signing. An enabled instance requires an explicitly positive markup; the approved pilot minimum is 15%.
 
@@ -104,7 +108,7 @@ bash "$base/current/scripts/monitor.sh" "$base" /home/clement/eth-mainnet/promet
 
 Schedule that command every five minutes, appending errors to the private operator `monitor.log`. Successful status snapshots replace the textfile atomically; a failed check writes its alert state, while a failed invocation leaves the last timestamp stale. `monitoring.rules.yml` contains the sustained-failure and stale-monitor rules for the existing Prometheus installation. Alert routing uses the existing operator monitoring configuration; this code sends no email or Telegram message.
 
-## Fee collection and bounded replenishment
+## Historical fee collection and replenishment — do not use for prepaid credit
 
 For the current ANON installation, the owner collects fees directly from their existing ANON wallet. Its spending phrase never belonged in the broadcaster runtime or the retired operator archive. The legacy `fee-phrase` instructions below apply only to the historical generated wallet; do not use them for the ANON wallet. The current runtime holds only its viewing key, and received private fees do not automatically refill native gas.
 
@@ -138,7 +142,7 @@ Retain an off-server encrypted copy. For restore, decrypt into a private tempora
 
 Track backup growth along with the state directory against the planned 50 GiB operating allowance; the application refuses work with less than 6 GiB free on its filesystem. Backup pruning is manual after a newer off-server copy is verified.
 
-## Restricted pilot and public activation
+## Historical pilot and activation checklist — not prepaid release approval
 
 The restricted pilot's custody, funding, guard deployment, swap, withdrawal and exact fee-receipt checks are complete. Preserve its used withdrawal marker and both journals. Public activation still requires the following work in the development plan:
 

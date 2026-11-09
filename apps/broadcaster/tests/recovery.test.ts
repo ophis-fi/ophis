@@ -2,9 +2,11 @@ import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { JsonRpcProvider, Transaction, Wallet } from 'ethers'
+import { id, JsonRpcProvider, Transaction, Wallet, type TransactionReceipt } from 'ethers'
 import { Store } from '../src/storage'
 import { config } from './request.fixture'
+import { cliBacking } from './main-sdk.fixture'
+import { CreditLedger, creditCharge } from '../src/credit'
 
 let directory: string, store: Store
 beforeEach(() => { directory = mkdtempSync(join(tmpdir(), 'ophis-recovery-')); store = new Store(directory) })
@@ -31,8 +33,9 @@ async function fixture(chainId = 1) {
     getRpcTransaction: vi.fn((tx) => tx),
     send: vi.fn(async () => ({ type: 'CALL', to: network.proxyContract, input: '0x12345678' })),
   }
-  const sender = { pendingTransaction: vi.fn((): { hash: string; nonce: number } | undefined => undefined),
-    stageSigned: vi.fn(async () => hash), retryPending: vi.fn(async () => hash),
+  const sender = { pendingTransaction: vi.fn((): { hash: string; nonce: number; cancellationHash?: string } | undefined => undefined),
+    stageSigned: vi.fn(async (_raw: string) => hash), retryPending: vi.fn(async () => hash),
+    stageRecovery: vi.fn(async (raw: string, _pending: { hash: string; nonce: number; cancellationHash?: string }) => Transaction.from(raw).hash!),
     cancelPending: vi.fn(async (signed: string) => Transaction.from(signed).hash!),
   }
   const sign = vi.spyOn(wallet, 'signTransaction')
@@ -40,6 +43,94 @@ async function fixture(chainId = 1) {
     provider as unknown as JsonRpcProvider, wallet, sender)
   return { wallet, raw, hash, provider, sender, sign, run, recover, network, selectedConfig }
 }
+
+async function reorgedPrepaid(f: Awaited<ReturnType<typeof fixture>>, chainId: number) {
+  store.db.exec('DELETE FROM requests')
+  if (chainId === 56) f.provider.getFeeData.mockResolvedValue({ gasPrice: 1_000_000_000n, maxPriorityFeePerGas: 1n })
+  const ledger = new CreditLedger(store, { chainId, operator: f.wallet.address, token: f.network.baseToken.wrappedAddress,
+    recipient: '0zk1qy08nqrftxezyxdegx6ca055tr65f2hf3u24j9urx04e5fnzepv6nrv7j6fe3z53luvr6qkgtjukzmkcp856gs5a6wzdd3pnesr9r6ljvym9l3a4fcepgkvek3f' })
+  const owner = Wallet.createRandom().address, rate = 115n * 10n ** 16n, gasBudget = 200_000_000_000_000n
+  ledger.deposit({ owner, amount: 10n ** 18n, tree: 0, position: 0, commitment: id('reorg-deposit'),
+    transactionHash: id('reorg-topup'), blockHash: id('funded-block'), blockNumber: 1 })
+  const operations = []
+  for (const nonce of [0, 1]) {
+    const raw = await f.wallet.signTransaction({ ...Transaction.from(f.raw).toJSON(), nonce, signature: undefined })
+    const key = id(`reorg-${nonce}`), tx = Transaction.from(raw)
+    ledger.reserve({ key, owner, sequence: ledger.nextSequence(owner), unsigned: tx.unsignedSerialized, envelope: 'synthetic encrypted request', nonce,
+      gasBudget, rate, maximumCharge: creditCharge(gasBudget, rate, 0n), collectionAllowance: 0n,
+      expiration: Date.now() + 60_000, dailyBudget: config.dailyBudget, backing: await cliBacking(ledger.accountedNotes()) })
+    ledger.attachSignature(key, raw)
+    const receipt = { hash: tx.hash!, status: 1, blockHash: id(`orphan-${nonce}`), blockNumber: 90 + nonce,
+      gasUsed: 50_000n, gasPrice: 1_000_000_000n } as TransactionReceipt
+    ledger.observeInclusion(key, receipt)
+    operations.push({ key, raw, hash: tx.hash!, nonce, receipt })
+  }
+  // The service's canonical reconciliation calls this for each disappeared prefinal inclusion.
+  for (const item of operations) ledger.forgetInclusion(item.key)
+  let pointer = { hash: operations[1].hash, nonce: 1 }
+  f.sender.pendingTransaction.mockImplementation(() => pointer)
+  const stage = async (raw: string) => { const tx = Transaction.from(raw); pointer = { hash: tx.hash!, nonce: tx.nonce }; return tx.hash! }
+  f.sender.stageSigned.mockImplementation(stage)
+  f.sender.stageRecovery.mockImplementation(stage)
+  f.sender.retryPending.mockImplementation(async () => pointer.hash)
+  f.sign.mockClear()
+  return { ledger, owner, operations, maximum: 2n * creditCharge(gasBudget, rate, 0n) }
+}
+
+it.each([1, 56])('recovers multiple reorged chain %i nonces in order without re-signing or releasing credit holds', async (chainId) => {
+  const f = await fixture(chainId), state = await reorgedPrepaid(f, chainId)
+  expect(await f.run('retry')).toBe(state.operations[0].hash)
+  expect(f.sender.stageRecovery).toHaveBeenCalledWith(state.operations[0].raw, { hash: state.operations[1].hash, nonce: 1 })
+  expect(state.ledger.balance(state.owner).reserved).toBe(state.maximum)
+  state.ledger.observeInclusion(state.operations[0].key, state.operations[0].receipt)
+  f.provider.getTransactionCount.mockResolvedValue(1)
+  expect(await f.run('retry')).toBe(state.operations[1].hash)
+  expect(f.sender.stageSigned).toHaveBeenCalledWith(state.operations[1].raw)
+  expect(f.sign).not.toHaveBeenCalled()
+  expect(state.ledger.balance(state.owner).reserved).toBe(state.maximum)
+  for (const item of state.operations) expect(store.get(item.key)?.raw).toBe(item.raw)
+})
+
+it.each(['missing-hold', 'transport-mismatch', 'unknown-cancellation', 'restored-backup'])('retains every reorg hold when %s prevents recovery', async (reason) => {
+  const f = await fixture(), state = await reorgedPrepaid(f, 1)
+  if (reason === 'missing-hold') store.db.prepare('DELETE FROM credit_attempts WHERE key=?').run(state.operations[1].key)
+  if (reason === 'transport-mismatch') f.sender.pendingTransaction.mockReturnValue({ hash: id('unknown'), nonce: 1 })
+  if (reason === 'unknown-cancellation') f.sender.pendingTransaction.mockReturnValue({ hash: state.operations[1].hash, nonce: 1, cancellationHash: id('unknown-cancel') })
+  if (reason === 'restored-backup') store.db.prepare('INSERT INTO settings(key,value) VALUES(?,?)').run('creditRecoveryRequired', '1')
+  await expect(f.run('cancel', ['3000000000', '2000000000'])).rejects.toThrow()
+  expect(f.sign).not.toHaveBeenCalled()
+  expect(f.sender.stageRecovery).not.toHaveBeenCalled()
+  expect(f.sender.cancelPending).not.toHaveBeenCalled()
+  expect(f.sender.retryPending).not.toHaveBeenCalled()
+  for (const item of state.operations) {
+    expect(store.get(item.key)?.raw).toBe(item.raw)
+    expect(store.get(item.key)?.confirmed).toBe(0)
+  }
+})
+
+it.each([1, 56])('recovers a chain %i reservation before signature without publishing a second operation', async (chainId) => {
+  const f = await fixture(chainId)
+  store.db.exec('DELETE FROM requests')
+  const scope = { chainId, operator: f.wallet.address, token: f.network.baseToken.wrappedAddress,
+    recipient: '0zk1qy08nqrftxezyxdegx6ca055tr65f2hf3u24j9urx04e5fnzepv6nrv7j6fe3z53luvr6qkgtjukzmkcp856gs5a6wzdd3pnesr9r6ljvym9l3a4fcepgkvek3f' }
+  const ledger = new CreditLedger(store, scope), owner = Wallet.createRandom().address, key = id('prepaid reservation')
+  ledger.deposit({ owner, amount: 10n ** 18n, commitment: id('deposit'), transactionHash: id('topup'), blockHash: id('block'), blockNumber: 1, tree: 0, position: 0 })
+  const gasBudget = 200_000_000_000_000n, rate = 115n * 10n ** 16n
+  ledger.reserve({ key, owner, sequence: ledger.nextSequence(owner), unsigned: Transaction.from(f.raw).unsignedSerialized, envelope: 'encrypted', nonce: 0,
+    gasBudget, rate, maximumCharge: creditCharge(gasBudget, rate, 0n), collectionAllowance: 0n,
+    expiration: Date.now() + 60_000, dailyBudget: config.dailyBudget, backing: await cliBacking(ledger.accountedNotes()) })
+  await expect(f.run('cancel', ['9999999999', '2000000000'])).rejects.toThrow('secured prepaid budget')
+  expect(f.sign).not.toHaveBeenCalled()
+  expect(store.get(key)?.raw).toBeNull()
+  const hash = await f.run('cancel', ['3000000000', '2000000000'])
+  expect(store.get(key)?.hash).toBe(f.hash)
+  expect(store.get(key)?.cancel_hash).toBe(hash)
+  expect(f.sender.stageSigned).toHaveBeenCalledWith(f.raw)
+  expect(f.sender.cancelPending).toHaveBeenCalledOnce()
+  expect(f.sender.retryPending).not.toHaveBeenCalled()
+  expect(f.sign).toHaveBeenCalledTimes(2)
+  expect(ledger.balance(owner).reserved).toBe(creditCharge(gasBudget, rate, 0n))
+})
 
 it('stages a crash-gap transaction and retries identical signed bytes without signing again', async () => {
   const f = await fixture()

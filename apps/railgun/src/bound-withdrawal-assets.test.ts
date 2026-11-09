@@ -5,9 +5,11 @@ import { mixedWithdrawalTransactions, withdrawalData } from '../tests/withdrawal
 import { EXECUTION_GUARD, executionGuardCode } from '../operator/execution-guard'
 import type { WalletSession } from './wallet'
 import type { PendingWithdrawal } from './withdrawal-journal'
+import type { PreparedCredit } from './prepaid'
 
 const state = vi.hoisted(() => ({ pending: undefined as unknown, balances: new Map<string, bigint>(), estimate: vi.fn(),
-  remove: vi.fn(), ratchet: vi.fn(), history: vi.fn() }))
+  remove: vi.fn(), ratchet: vi.fn(), history: vi.fn(), credit: vi.fn() }))
+vi.mock('./prepaid', () => ({ assertPrepaidContext: state.credit }))
 vi.mock('@railgun-community/wallet', async (original) => ({ ...await original<typeof import('@railgun-community/wallet')>(),
   fullWalletForID: () => ({ getEphemeralKeyIndex: async () => 0, setEphemeralKeyIndexIfGreater: state.ratchet }),
   balanceForERC20Token: async (_v: unknown, _w: unknown, _n: unknown, address: string) => state.balances.get(address.toLowerCase()) ?? 0n,
@@ -86,6 +88,37 @@ it('reserves the exact fee from a native BNB Max exit and signs exact positive u
   expect(prepared.minimum).toBeGreaterThan(0n)
 })
 
+it.each([1, 56])('uses prepaid credit without requiring a private fee balance for a full custom-token exit on chain %s', async (chainId) => {
+  const { config, token, selected, session } = await setup(chainId)
+  const { prepareUnshield } = await import('./unshield')
+  state.balances.set(config.tokenFor(config.WRAPPED_SYMBOL).address.toLowerCase(), 0n)
+  const prepaid = { scope: { token: selected.tokenAddress, recipient: selected.railgunAddress }, selected,
+    rate: 1_150_000_000_000_000_000n, collectionAllowance: 100n, maximumGasPrice: 100n,
+    maximumGasCost: 1_000_000_000n, maximumCharge: 2_000_000_000n } as PreparedCredit
+  const result = await prepareUnshield(session, token, '', recipient, selected, true, false, prepaid)
+  expect(result.prepaid).toBe(prepaid)
+  expect(result.amounts[0].amount).toBe(123_456_789n)
+  expect(result.fee.amount).toBeGreaterThan(0n)
+  expect(result.feeToken).toBe(config.WRAPPED_SYMBOL)
+  expect(state.estimate.mock.calls[0][10]).toBeUndefined()
+  expect(state.estimate.mock.calls[0][11]).toBe(true)
+})
+
+it('uses the entire private WBNB principal for prepaid native output, with its fee outside the proof', async () => {
+  const { selected, session } = await setup()
+  const { prepareUnshield } = await import('./unshield')
+  const prepaid = { scope: { token: selected.tokenAddress, recipient: selected.railgunAddress }, selected,
+    rate: 1_150_000_000_000_000_000n, collectionAllowance: 100n, maximumGasPrice: 100n,
+    maximumGasCost: 1_000_000_000n, maximumCharge: 2_000_000_000n } as PreparedCredit
+  const result = await prepareUnshield(session, 'WBNB', '', recipient, selected, true, true, prepaid)
+  expect(result.kind).toBe('TX7702')
+  expect(result.output).toBe('native')
+  expect(result.amounts[0].amount).toBe(10n ** 16n)
+  expect(result.minimum).toBe(10n ** 16n - 10n ** 16n * 25n / 10_000n)
+  expect(state.estimate.mock.calls[0][10]).toBeUndefined()
+  expect(state.estimate.mock.calls[0][11]).toBe(true)
+})
+
 it('reports a missing private fee reserve before estimating an arbitrary ERC20 exit', async () => {
   const { config, token, selected, session } = await setup(1)
   state.balances.set(config.tokenFor(config.WRAPPED_SYMBOL).address.toLowerCase(), 0n)
@@ -148,6 +181,26 @@ async function signedRecord(native = true, chainId = 56,
   state.pending = pending
   return { config, owner, pending, receipt, session, provider, delegateCode }
 }
+
+it.each([1, 56])('accepts one real signed principal proof only with the saved prepaid mode on chain %s', async (chainId) => {
+  const { pending, owner, session } = await signedRecord(false, chainId, (proofs) => { proofs.shift() })
+  const { assertBoundWithdrawal } = await import('./execution')
+  const validate = (feeMode?: 'prepaid') => assertBoundWithdrawal(pending.transaction.data, owner.address, pending.token, recipient, 998n, undefined, feeMode)
+  expect(() => validate()).toThrow('Withdrawal proofs must be bound')
+  expect(() => validate('prepaid')).not.toThrow()
+  pending.feeMode = 'prepaid'
+  const { pendingWithdrawal } = await import('./withdrawal-journal')
+  await expect(pendingWithdrawal(session)).resolves.toMatchObject({ feeMode: 'prepaid', transaction: pending.transaction })
+  delete pending.feeMode
+  await expect(pendingWithdrawal(session)).rejects.toThrow('Withdrawal proofs must be bound')
+})
+
+it('never accepts a legacy two-proof fee leg as a prepaid one-principal withdrawal', async () => {
+  const { pending, owner } = await signedRecord(false, 56)
+  const { assertBoundWithdrawal } = await import('./execution')
+  expect(() => assertBoundWithdrawal(pending.transaction.data, owner.address, pending.token, recipient, 998n)).not.toThrow()
+  expect(() => assertBoundWithdrawal(pending.transaction.data, owner.address, pending.token, recipient, 998n, undefined, 'prepaid')).toThrow('Withdrawal proofs must be bound')
+})
 
 it.each([1, 42161, 137, 56])('validates real execution signatures binding both arbitrary ERC20 proofs on chain %s', async (chainId) => {
   const { owner, pending } = await signedRecord(false, chainId)

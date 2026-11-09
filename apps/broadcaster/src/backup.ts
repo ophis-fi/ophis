@@ -28,6 +28,10 @@ export async function snapshotCriticalState(state: string, destination: string):
     try { await backup(database, path) } finally { database.close() }
   }
   const requests = new DatabaseSync(join(root, 'requests.sqlite'))
-  try { requests.prepare('DELETE FROM settings WHERE key=?').run('walletId') } finally { requests.close() }
+  try {
+    requests.prepare('DELETE FROM settings WHERE key=?').run('walletId')
+    if (requests.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name='credit_identity'").get())
+      requests.prepare('INSERT OR REPLACE INTO settings(key,value) VALUES(?,?)').run('creditRecoveryRequired', '1')
+  } finally { requests.close() }
   writeFileSync(join(root, 'backup-kind.json'), JSON.stringify({ kind: 'critical-state', walletHistoryMustResync: true }), { flag: 'wx', mode: 0o600 })
 }

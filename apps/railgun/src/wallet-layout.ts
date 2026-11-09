@@ -114,7 +114,7 @@ export function configureWalletLayout(refreshPickers: () => void): void {
   trigger.onclick = () => menu.showModal()
   element('wallet-menu-close').onclick = () => { menu.close(); trigger.focus() }
   menu.addEventListener('cancel', () => queueMicrotask(() => trigger.focus()))
-  for (const id of ['deposit-shortcut', 'withdraw-shortcut', 'activity-shortcut', 'recovery-shortcut']) {
+  for (const id of ['deposit-shortcut', 'withdraw-shortcut', 'activity-shortcut', 'recovery-shortcut', 'fee-credit-shortcut']) {
     const link = element<HTMLAnchorElement>(id)
     link.onclick = (event) => {
       event.preventDefault()

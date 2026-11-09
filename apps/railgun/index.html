@@ -51,7 +51,7 @@
           </div>
         </div>
         <p id="private-wallet-error" role="alert"></p>
-        <div id="trade-actions"><button id="quote" type="button">Review swap</button><p class="fee-caption">Fees paid from your private balance. Review all fees before confirming.</p></div>
+        <div id="trade-actions"><button id="quote" type="button">Review swap</button><p id="fee-caption" class="fee-caption">Fees paid from your private balance. Review all fees before confirming.</p><a id="fee-credit-shortcut" href="#wallet-details" hidden>Fee credit</a></div>
         <p id="broadcaster-status" role="status" aria-live="polite"></p>
         <section id="swap-review" hidden><h2 id="swap-review-title" tabindex="-1">Review private swap</h2><pre id="quote-details"></pre><button id="swap" type="button" hidden>Confirm private swap</button><button id="edit-swap" class="secondary-action" type="button">Edit amount or tokens</button>
         <details class="swap-info"><summary>Fees &amp; privacy</summary>
@@ -99,6 +99,30 @@
         </details>
         </fieldset>
         <details id="wallet-details"><summary>Wallet &amp; balances</summary><p id="address"></p><pre id="balances">Syncing…</pre>
+          <section id="fee-credit-panel" hidden aria-labelledby="fee-credit-title">
+            <h3 id="fee-credit-title">Ophis fee credit</h3>
+            <p id="fee-credit-balance" role="status">Check your available and reserved fee credit.</p>
+            <button id="refresh-fee-credit" class="secondary-action" type="button">Check fee credit</button>
+            <p id="fee-credit-help"></p>
+            <p id="fee-credit-timing"></p>
+            <label id="fee-credit-amount-label">Add wrapped-native fee credit<input id="fee-credit-amount" type="text" inputmode="decimal" autocomplete="off" placeholder="0.0" /></label>
+            <label><input id="fee-credit-consent" type="checkbox" /> I understand that my public wallet pays the top-up gas and is linked to that transfer.</label>
+            <button id="add-fee-credit" type="button">Add fee credit</button>
+            <button id="check-fee-topup" class="secondary-action" type="button" hidden>Check top-up</button>
+            <button id="retry-fee-topup" class="secondary-action" type="button" hidden>Retry saved top-up</button>
+            <button id="check-fee-attempt" class="secondary-action" type="button" hidden>Check fee-credit transaction</button>
+            <button id="retry-fee-attempt" class="secondary-action" type="button" hidden>Retry saved fee-credit request</button>
+            <p id="fee-credit-status" role="status" aria-live="polite"></p>
+            <p>Unused credit remains available for later fees. Refunds require the operator to process a private transfer; they are not automatic.</p>
+            <details><summary>Request unused credit back</summary>
+              <p>A refund reserves the requested credit and returns the reviewed net amount to this private wallet after operator processing.</p>
+              <label>Credit to refund<input id="fee-refund-amount" type="text" inputmode="decimal" autocomplete="off" placeholder="0.0" /></label>
+              <button id="review-fee-refund" class="secondary-action" type="button">Review refund fee</button>
+              <pre id="fee-refund-review"></pre>
+              <button id="request-fee-refund" type="button" hidden>Request reviewed private refund</button>
+              <button id="check-fee-refund" class="secondary-action" type="button" hidden>Check or resume refund</button>
+            </details>
+          </section>
           <details><summary>Pending balances</summary><p id="pending-balances">Synchronizing…</p></details>
           <div class="secondary-actions"><button id="refresh" class="secondary-action" type="button">Refresh balances</button><a id="recovery-shortcut" href="#recovery">Troubleshoot a transaction</a></div>
         </details>

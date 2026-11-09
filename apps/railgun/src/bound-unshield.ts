@@ -2,9 +2,10 @@ import { Contract, getAddress, Signature, ZeroAddress, type Authorization } from
 import { calculateGasLimit, type SelectedBroadcaster, type TransactionGasDetailsType4 } from '@railgun-community/shared-models'
 import { fullWalletForID, balanceForERC20Token, gasEstimateForUnprovenCrossContractCalls7702,
   generateCrossContractCallsProof7702, ratchetEphemeralAddress } from '@railgun-community/wallet'
-import { CHAIN, CHAIN_ID, CONFIG, MIN_SWAP_GAS, NETWORK, PROXY, tokenFor, VERSION, type TokenSymbol } from './config'
+import { CHAIN, CHAIN_ID, CONFIG, MIN_SWAP_GAS, NETWORK, PROXY, tokenFor, VERSION, WRAPPED_SYMBOL, type TokenSymbol } from './config'
 import { unusedSwapAccount } from './account'
-import { broadcasterFee, gasDetails, validateBroadcaster, type PrivateSubmitter } from './broadcaster'
+import { broadcasterFee, capPrepaidGasPrice, gasDetails, prepaidFee, validateBroadcaster, type PrivateSubmitter } from './broadcaster'
+import type { PreparedCredit } from './prepaid'
 import { ADAPT, assertBoundWithdrawal, assertSameExecution, encodeRequest, simulateRequest } from './execution'
 import { amountFromInput, unshieldAmount } from './recipe'
 import { feeTokenFor, requireFeeBalance } from './fee-asset'
@@ -20,6 +21,7 @@ export interface PreparedBoundWithdrawal {
   selected: SelectedBroadcaster
   gas: TransactionGasDetailsType4
   fee: ReturnType<typeof broadcasterFee>
+  prepaid?: PreparedCredit
   account: string
   index: number
   feeBps: bigint
@@ -28,26 +30,30 @@ export interface PreparedBoundWithdrawal {
 }
 
 export async function prepareBoundWithdrawal(session: WalletSession, token: TokenSymbol, value: string, recipient: string,
-  selected: SelectedBroadcaster, maximum: boolean, nativeOutput = false): Promise<PreparedBoundWithdrawal> {
-  const feeToken = feeTokenFor(token)
+  selected: SelectedBroadcaster, maximum: boolean, nativeOutput = false, prepaid?: PreparedCredit): Promise<PreparedBoundWithdrawal> {
+  const feeToken = prepaid ? WRAPPED_SYMBOL : feeTokenFor(token)
   const asset = tokenFor(token), feeAsset = tokenFor(feeToken)
   const sameAsset = getAddress(asset.address) === getAddress(feeAsset.address)
   if (nativeOutput && (CHAIN_ID !== 56 || !sameAsset)) throw new Error('Native BNB withdrawal requires private WBNB on BNB Chain.')
-  if (!nativeOutput && sameAsset) throw new Error('A same-token withdrawal uses one atomic private proof.')
-  validateBroadcaster(selected, feeAsset.address, true)
+  if (!nativeOutput && sameAsset && !prepaid) throw new Error('A same-token withdrawal uses one atomic private proof.')
+  if (!prepaid) validateBroadcaster(selected, feeAsset.address, true)
   await refreshReceivedBalances(session)
   const wallet = fullWalletForID(session.info.id)
   const principal = await balanceForERC20Token(VERSION, wallet, NETWORK, asset.address, true)
-  const reserve = sameAsset ? principal : await balanceForERC20Token(VERSION, wallet, NETWORK, feeAsset.address, true)
+  const reserve = prepaid ? 0n : sameAsset ? principal : await balanceForERC20Token(VERSION, wallet, NETWORK, feeAsset.address, true)
   const requested = maximum ? undefined : amountFromInput(value, token)
   const account = await unusedSwapAccount(session)
   const feeBps: bigint = await new Contract(CONFIG.proxyContract, PROXY, session.provider).getFunction('unshieldFee')()
   let gas = await gasDetails(session)
-  let fee = broadcasterFee(selected, gas)
+  if (prepaid) {
+    gas = capPrepaidGasPrice(gas, prepaid)
+    await (await import('./prepaid')).assertPrepaidContext(session, selected, gas, prepaid)
+  }
+  let fee = prepaid ? prepaidFee(prepaid, gas) : broadcasterFee(selected, gas)
   for (let attempt = 0; attempt < 3; attempt++) {
-    const amount = requested ?? principal - (sameAsset ? fee.amount : 0n)
+    const amount = requested ?? principal - (!prepaid && sameAsset ? fee.amount : 0n)
     if (amount <= 0n || amount > principal) throw new Error(`Insufficient spendable ${asset.symbol} for the withdrawal.`)
-    requireFeeBalance(reserve - (sameAsset ? amount : 0n), fee.amount, feeToken)
+    if (!prepaid) requireFeeBalance(reserve - (sameAsset ? amount : 0n), fee.amount, feeToken)
     const minimum = unshieldAmount(amount, feeBps)
     const transfer = { to: account.address, value: 0n, data: ADAPT.encodeFunctionData('transfer', [[{
       token: { tokenType: 0, tokenAddress: nativeOutput ? ZeroAddress : asset.address, tokenSubID: 0 }, to: recipient, value: minimum,
@@ -56,13 +62,15 @@ export async function prepareBoundWithdrawal(session: WalletSession, token: Toke
       ? [{ to: account.address, value: 0n, data: ADAPT.encodeFunctionData('unwrapBase', [minimum]) }, transfer] : [transfer]
     const estimated = await gasEstimateForUnprovenCrossContractCalls7702(VERSION, NETWORK, session.info.id, session.key,
       [{ tokenAddress: asset.address, amount }], [], [], [], calls, gas,
-      { tokenAddress: feeAsset.address, feePerUnitGas: BigInt(selected.tokenFee.feePerUnitGas) }, false, MIN_SWAP_GAS)
+      prepaid ? undefined : { tokenAddress: feeAsset.address, feePerUnitGas: BigInt(selected.tokenFee.feePerUnitGas) }, !!prepaid, MIN_SWAP_GAS)
     gas = { ...gas, gasEstimate: estimated.gasEstimate > gas.gasEstimate ? estimated.gasEstimate : gas.gasEstimate }
-    fee = broadcasterFee(selected, gas)
-    if (sameAsset && maximum && amount + fee.amount !== principal) continue
-    requireFeeBalance(reserve - (sameAsset ? amount : 0n), fee.amount, feeToken)
+    if (prepaid) gas = capPrepaidGasPrice(gas, prepaid)
+    fee = prepaid ? prepaidFee(prepaid, gas) : broadcasterFee(selected, gas)
+    if (!prepaid && sameAsset && maximum && amount + fee.amount !== principal) continue
+    if (prepaid) await (await import('./prepaid')).assertPrepaidContext(session, selected, gas, prepaid)
+    else requireFeeBalance(reserve - (sameAsset ? amount : 0n), fee.amount, feeToken)
     return { kind: 'TX7702', token, feeToken, amounts: [{ tokenAddress: asset.address, amount, recipientAddress: recipient }],
-      minimum, selected, gas, fee, account: account.address, index: await wallet.getEphemeralKeyIndex(CHAIN), feeBps, calls,
+      minimum, selected, gas, fee, prepaid, account: account.address, index: await wallet.getEphemeralKeyIndex(CHAIN), feeBps, calls,
       ...(nativeOutput ? { output: 'native' as const } : {}) }
   }
   throw new Error(`The withdrawal fee changed while reserving the ${feeAsset.symbol} fee. Review the quote again.`)
@@ -75,10 +83,10 @@ export function storedAuthorization(authorization: Authorization) {
 
 export async function executeBoundWithdrawal(session: WalletSession, prepared: PreparedBoundWithdrawal,
   onProgress: (message: string) => void, submitter: PrivateSubmitter): Promise<string> {
-  const { token, amounts, selected, gas, fee } = prepared
-  await submitter.assertReady(session, selected, gas)
+  const { token, amounts, selected, gas, fee, prepaid } = prepared
+  await submitter.assertReady(session, selected, gas, prepaid)
   const request = await generateCrossContractCallsProof7702(VERSION, NETWORK, session.info.id, session.key,
-    amounts.map(({ tokenAddress, amount }) => ({ tokenAddress, amount })), [], [], [], prepared.calls, fee, false, 0n,
+    amounts.map(({ tokenAddress, amount }) => ({ tokenAddress, amount })), [], [], [], prepared.calls, prepaid ? undefined : fee, !!prepaid, 0n,
     MIN_SWAP_GAS, (progress, status) => onProgress(`${status}: ${Math.round(progress)}%`))
   if (getAddress(request.ephemeralAddress) !== getAddress(prepared.account) || request.executeNonce == null)
     throw new Error('Withdrawal execution account changed. Keep the private funds; prepare another quote.')
@@ -95,12 +103,13 @@ export async function executeBoundWithdrawal(session: WalletSession, prepared: P
   const transaction = { to: prepared.account, data: String(encoded.data), value: 0n, type: 4, authorizationList: [strict.authorization], chainId: CHAIN, gasLimit: calculateGasLimit(gas.gasEstimate),
     maxFeePerGas: gas.maxFeePerGas, maxPriorityFeePerGas: gas.maxPriorityFeePerGas }
   assertSameExecution(session, strict, transaction)
-  assertBoundWithdrawal(String(transaction.data), prepared.account, token, amounts[0].recipientAddress, prepared.minimum, prepared.output)
+  assertBoundWithdrawal(String(transaction.data), prepared.account, token, amounts[0].recipientAddress, prepared.minimum, prepared.output, prepaid ? 'prepaid' : undefined)
   if (await new Contract(CONFIG.proxyContract, PROXY, session.provider).getFunction('unshieldFee')() !== prepared.feeBps)
     throw new Error('The withdrawal protocol fee changed. Prepare another quote before submitting.')
-  await submitter.assertReady(session, selected, gas)
+  await submitter.assertReady(session, selected, gas, prepaid)
   const checkedAt = { monotonic: performance.now(), wallTime: Date.now() }
   const pending = { token, feeToken: prepared.feeToken, broadcaster: selected.railgunAddress, recipient: amounts[0].recipientAddress,
+    ...(prepaid ? { feeMode: 'prepaid' as const } : {}),
     ...(prepared.output ? { output: prepared.output } : {}),
     minimum: prepared.minimum.toString(), fromBlock: await session.provider.getBlockNumber(),
     nullifiers: strict.transactions.flatMap((tx) => tx.nullifiers.map(String)),
@@ -111,7 +120,7 @@ export async function executeBoundWithdrawal(session: WalletSession, prepared: P
   await savePendingWithdrawal(session, pending)
   await simulateRequest(session, strict, calculateGasLimit(gas.gasEstimate))
   const hash = await submitter.send(session, { transaction, nullifiers: pending.nullifiers,
-    preTransactionPOIsPerTxidLeafPerList: {} }, selected, gas, true, checkedAt)
+    preTransactionPOIsPerTxidLeafPerList: {} }, selected, gas, true, checkedAt, prepaid)
   await savePendingWithdrawal(session, { ...pending, hash })
   await ratchetEphemeralAddress(session.info.id, NETWORK)
   onProgress(`Waiting for two confirmations: ${hash}`)

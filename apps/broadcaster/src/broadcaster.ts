@@ -1,3 +1,4 @@
+import { withdrawalPilotKey } from './prepaid-pilot'
 import { fromUTF8String } from '@railgun-community/wallet'
 import { getAddress, Interface, JsonRpcProvider, Transaction, type TransactionResponse } from 'ethers'
 import { assertSigningNetwork, BROADCASTER_VERSION, CHAIN, CHAIN_ID, MAX_GAS, NETWORK, TOKENS, type Settings } from './config'
@@ -10,9 +11,15 @@ import type { RailgunSDK, FeeProof } from './sdk'
 import { assertExecutionGuardCode, guardedExecution } from '../../railgun/operator/execution-guard'
 import { signApprovedTransaction, type GasSigner } from './signer'
 import { readChainState } from './chain-state'
+import { CREDIT_PROTOCOL } from '../../railgun/credit-protocol'
+import { CreditService, type SecuredRequest } from './credit-service'
+import { object } from './wire'
+import { finalizedCreditReceipt } from './credit-payment'
+import { CreditQueryLimit } from './credit-query-limit'
 
 const REGISTRY = new Interface(['function getContractAddress(string name) view returns (address)'])
-type SDK = Pick<RailgunSDK, 'address' | 'privateViewingKey' | 'publicViewingKey' | 'ready' | 'sign' | 'fee' | 'validate' | 'assure'>
+type SDK = Pick<RailgunSDK, 'address' | 'privateViewingKey' | 'publicViewingKey' | 'ready' | 'sign' | 'fee' | 'validate' | 'assure'> &
+  Partial<Pick<RailgunSDK, 'confirmedCredits' | 'confirmedRefund' | 'accountedCreditBacking' | 'confirmedOwnerCollection' | 'validatePrepaid'>>
 type Sender = { broadcastTransaction(raw: string, validUntilMs?: number): Promise<Pick<TransactionResponse, 'hash'>> }
 
 export class Broadcaster {
@@ -21,11 +28,38 @@ export class Broadcaster {
   private activeKey?: string
   private lastRequests: number[] = []
   private attempts: number[] = []
+  private readonly creditQueries = new CreditQueryLimit()
+  private discoveryQueries: number[] = []
+  private creditService?: CreditService
   constructor(
     readonly config: Settings, readonly store: Store, private readonly sdk: SDK,
     readonly provider: JsonRpcProvider, readonly wallet: GasSigner, private readonly sender: Sender,
     private readonly oracle: Pick<FeeOracle, 'rates'>,
   ) {}
+
+  private async credits(): Promise<CreditService> {
+    if (!this.sdk.ready() || !this.sdk.confirmedCredits || !this.sdk.confirmedRefund || !this.sdk.accountedCreditBacking ||
+      !this.sdk.confirmedOwnerCollection || !this.sdk.validatePrepaid)
+      throw new Error('The prepaid fee wallet is unavailable.')
+    if (this.creditService) return this.creditService
+    const initialNonce = await this.provider.getTransactionCount(this.wallet.address, 'latest')
+    const hasIdentityTable = this.store.db.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name='credit_identity'").get()
+    const hasIdentity = hasIdentityTable && this.store.db.prepare('SELECT 1 FROM credit_identity WHERE singleton=1').get()
+    if (!hasIdentity) {
+      const [pending, finalized] = await Promise.all([
+        this.provider.getTransactionCount(this.wallet.address, 'pending'),
+        this.provider.getTransactionCount(this.wallet.address, 'finalized'),
+      ])
+      if (!Number.isSafeInteger(initialNonce) || initialNonce < 0 || pending !== initialNonce || finalized !== initialNonce)
+        throw new Error('Finalize every operator transaction before initializing prepaid credit.')
+    }
+    return this.creditService ??= new CreditService(this.config, this.store,
+      { address: this.sdk.address, confirmedCredits: this.sdk.confirmedCredits.bind(this.sdk), confirmedRefund: this.sdk.confirmedRefund.bind(this.sdk),
+        accountedCreditBacking: this.sdk.accountedCreditBacking.bind(this.sdk), confirmedOwnerCollection: this.sdk.confirmedOwnerCollection.bind(this.sdk) },
+      this.provider, this.wallet.address, initialNonce)
+  }
+
+  async creditInfo() { return (await this.credits()).info() }
 
   private async state() {
     if (this.config.chainId !== CHAIN_ID || (await this.provider.getNetwork()).chainId !== CHAIN)
@@ -42,8 +76,16 @@ export class Broadcaster {
 
   async available(): Promise<boolean> {
     if (!this.config.enabled || this.busy || !this.sdk.ready() || this.store.hasPending()) return false
+    if (this.config.mode === 'mainnet' && (!this.config.creditCollectionGas || !this.config.creditCollectionInputs ||
+      !this.config.creditCollectionOutputs || !this.config.creditCollectionProofs)) return false
+    if (this.creditService?.ledger.pendingOwnerIntent()) return false
+    // Advertising availability must never create or rotate a credit identity.
+    if (this.config.prepaidPilotLedgerId !== undefined && (this.config.admission !== 'pilot' ||
+      !this.config.prepaidPilotOwner || !this.creditService || this.creditService.ledger.id !== this.config.prepaidPilotLedgerId)) return false
+    const pilotKey = this.config.prepaidPilotLedgerId === undefined ? 'withdrawalPilot'
+      : withdrawalPilotKey(this.creditService!.ledger.id, this.config.prepaidPilotLedgerId)
     if (this.config.admission === 'pilot' && this.config.pilotWithdrawalRecipient &&
-      this.store.db.prepare('SELECT 1 FROM settings WHERE key=?').get('withdrawalPilot')) return false
+      this.store.db.prepare('SELECT 1 FROM settings WHERE key=?').get(pilotKey)) return false
     const { nonce, confirmed, balance, minimumGasPrice } = await this.state()
     return minimumGasPrice <= this.config.maxGasPrice && nonce === confirmed &&
       balance >= this.config.reserve + this.config.maxTransactionCost &&
@@ -60,6 +102,7 @@ export class Broadcaster {
       identifier: `ophis-${CHAIN_ID}`, availableWallets: available ? 1 : 0, version: BROADCASTER_VERSION,
       relayAdapt: NETWORK.relayAdaptContract, relayAdapt7702: NETWORK.relayAdapt7702Contract,
       requiredPOIListKeys: [], reliability: 0.75,
+      ophisPaymentProtocol: CREDIT_PROTOCOL,
     }))
     return Buffer.from(JSON.stringify({ data, signature: await this.sdk.sign(data) }))
   }
@@ -67,6 +110,46 @@ export class Broadcaster {
   async handle(payload: Uint8Array): Promise<Uint8Array | undefined> {
     const request = await openRequest(payload, this.sdk.privateViewingKey, this.sdk.publicViewingKey)
     if (!request) return
+    let secured: SecuredRequest | undefined
+    const prepaid = request.data.protocol === CREDIT_PROTOCOL
+    const correlation = request.data.correlation
+    const reply = (body: Record<string, unknown>) => encryptResponse(prepaid
+      ? { ...body, protocol: CREDIT_PROTOCOL, correlation, key: request.key } : body, request)
+    if (prepaid) {
+      try {
+        if (typeof correlation !== 'string' || !/^0x[0-9a-f]{64}$/i.test(correlation))
+          throw new Error('Prepaid service unavailable.')
+        const credits = await this.credits()
+        if (request.data.kind === 'info') {
+          const now = performance.now()
+          this.discoveryQueries = this.discoveryQueries.filter((time) => now - time < 60_000)
+          if (this.discoveryQueries.length >= 300) throw new Error('Prepaid discovery limit reached.')
+          this.discoveryQueries.push(now)
+          return responseEnvelope(reply(credits.info()), request.id)
+        }
+        const authorized = credits.authenticate(request.data.authorization)
+        request.key = authorized.key
+        if (authorized.payload.kind !== 'execute') {
+          this.creditQueries.accept(authorized.owner, credits.ledger.hasDeposit(authorized.owner), String(authorized.payload.kind))
+          return responseEnvelope(reply(await credits.read(authorized)), request.id)
+        }
+        const previous = credits.ledger.attempt(request.key)
+        if (previous) {
+          if (previous.owner !== authorized.owner) throw new Error('Wrong prepaid attempt owner.')
+          const saved = this.store.get(request.key)!
+          return responseEnvelope(reply({ kind: 'attempt', txHash: saved.hash,
+            settlementHash: previous.settlement_hash,
+            state: previous.charged !== null ? 'settled' : 'reserved-or-submitted', charged: previous.charged }), request.id)
+        }
+        secured = await credits.secure(authorized)
+        if (!object(authorized.payload.request)) throw new Error('Invalid prepaid operation.')
+        request.data = authorized.payload.request
+      } catch {
+        return responseEnvelope(reply({ error: 'Prepaid request rejected. Check the confirmed balance and refresh the quote; retain any saved attempt.' }), request.id)
+      }
+    } else if (this.config.mode === 'mainnet') {
+      return responseEnvelope(reply({ error: 'Ophis now requires confirmed prepaid fees. Keep saved transactions for recovery and update the private wallet.' }), request.id)
+    }
     if (this.activeKey === request.key) return
     const existing = this.store.get(request.key)
     if (existing?.response) return responseEnvelope(existing.response, request.id)
@@ -86,7 +169,7 @@ export class Broadcaster {
       this.attempts.push(now)
       if (this.lastRequests.length >= 30) throw new Error('Broadcaster request limit reached.')
       phase = 'format'
-      const parsed = parseRequest(request.data, this.wallet.address, this.config)
+      const parsed = parseRequest(request.data, this.wallet.address, this.config, !!secured)
       phase = 'pilot'
       if (parsed.type4 && !parsed.withdrawal && this.config.admission === 'pilot' && this.config.pilotAccount &&
         getAddress(String(parsed.transaction.to)) !== this.config.pilotAccount)
@@ -110,19 +193,20 @@ export class Broadcaster {
           (this.config.admission === 'pilot' && withdrawalToken !== getAddress(TOKENS[1].address)) ||
           BigInt(withdrawal.value) <= 0n) throw new Error('Wrong withdrawal token.')
         phase = 'withdrawal-used'
-        if (this.config.admission === 'pilot' && this.store.db.prepare('SELECT 1 FROM settings WHERE key=?').get('withdrawalPilot'))
+        const pilotKey = secured ? withdrawalPilotKey((await this.credits()).ledger.id, this.config.prepaidPilotLedgerId) : 'withdrawalPilot'
+        if (this.config.admission === 'pilot' && this.store.db.prepare('SELECT 1 FROM settings WHERE key=?').get(pilotKey))
           throw new Error('Withdrawal pilot used.')
       }
       const feeQuote = this.store.db.prepare('SELECT expiration FROM fees WHERE id=?').get(parsed.feesID) as { expiration: number } | undefined
       if (!feeQuote || feeQuote.expiration <= Date.now()) { phase = 'fee'; throw new Error('Fee quote expired.') }
       this.busy = true; this.activeKey = request.key; reserved = true
       phase = 'fee'
-      const payment = await this.sdk.fee(parsed)
-      if (withdrawalToken && (Object.keys(payment).length !== 1 || !payment[parsed.withdrawal ? TOKENS[0].address : withdrawalToken])) {
+      const payment = secured ? {} : await this.sdk.fee(parsed)
+      if (!secured && withdrawalToken && (Object.keys(payment).length !== 1 || !payment[parsed.withdrawal ? TOKENS[0].address : withdrawalToken])) {
         phase = parsed.withdrawal ? 'bound-withdrawal-fee' : 'withdrawal-fee'
         throw new Error(parsed.withdrawal ? `The withdrawal broadcaster fee must use ${TOKENS[0].symbol}.` : 'The withdrawal broadcaster fee must use the withdrawn token.')
       }
-      validateFee(this.store, parsed.feesID, payment, 1n, await this.oracle.rates())
+      if (!secured) validateFee(this.store, parsed.feesID, payment, 1n, await this.oracle.rates())
       const { nonce, confirmed, balance, block, baseFee, minimumGasPrice } = await this.state()
       if (nonce !== confirmed || this.store.nonceBlocked(nonce))
         throw new Error('The operator has an unresolved transaction.')
@@ -165,9 +249,9 @@ export class Broadcaster {
       const privateCalldata = PROXY.encodeFunctionData('transact', [parsed.transactions])
       assertPrivateExecution(trace, privateCalldata)
       phase = 'fee'
-      validateFee(this.store, parsed.feesID, payment, budget, await this.oracle.rates())
+      if (!secured) validateFee(this.store, parsed.feesID, payment, budget, await this.oracle.rates())
       phase = 'proof'
-      const proof = await this.sdk.validate(parsed)
+      const proof = secured ? await this.sdk.validatePrepaid!(parsed) : await this.sdk.validate(parsed)
       // Recheck fee/reserve state after commitment authentication without mutating the user's batch.
       phase = 'state'
       const fresh = await this.state()
@@ -180,26 +264,37 @@ export class Broadcaster {
         this.provider.getRpcTransaction(transaction), `0x${fresh.block.number.toString(16)}`, { tracer: 'callTracer', timeout: '10s' },
       ]), privateCalldata)
       phase = 'fee'
-      validateFee(this.store, parsed.feesID, payment, budget, await this.oracle.rates())
+      if (!secured) validateFee(this.store, parsed.feesID, payment, budget, await this.oracle.rates())
+      else {
+        secured.backing = await (await this.credits()).assertBacked(secured.maximumCharge)
+        if (secured.expiration <= Date.now()) throw new Error('Prepaid quote expired before signing.')
+      }
       phase = 'sign'
       if (Math.abs(Date.now() / 1000 - fresh.block.timestamp) > 45) throw new Error('The validated head expired before signing.')
       if (this.store.exposure() + budget > this.config.dailyBudget) throw new Error('Operator gas budget exhausted.')
       this.lastRequests.push(performance.now())
+      if (secured) (await this.credits()).ledger.reserve({ key: request.key, envelope: request.envelope,
+        unsigned: Transaction.from({ ...transaction, from: undefined }).unsignedSerialized, nonce, gasBudget: budget,
+        dailyBudget: this.config.dailyBudget, withdrawalPilot: this.config.admission === 'pilot' && (!parsed.type4 || !!parsed.withdrawal),
+        prepaidPilotLedgerId: this.config.prepaidPilotLedgerId, ...secured })
       const raw = await signApprovedTransaction(this.wallet, transaction)
       const hash = Transaction.from(raw).hash!
-      const [feeToken, feeAmount] = Object.entries(payment)[0]
-      this.store.signed(request.key, request.envelope, raw, hash, budget, this.config.dailyBudget,
-        nonce, JSON.stringify({ ...proof, payment: { token: feeToken, amount: feeAmount.toString() } }),
-        feeQuote.expiration, this.config.admission === 'pilot' && (!parsed.type4 || !!parsed.withdrawal))
+      if (secured) (await this.credits()).ledger.attachSignature(request.key, raw)
+      else {
+        const [feeToken, feeAmount] = Object.entries(payment)[0]
+        this.store.signed(request.key, request.envelope, raw, hash, budget, this.config.dailyBudget,
+          nonce, JSON.stringify({ ...proof, payment: { token: feeToken, amount: feeAmount.toString() } }),
+          feeQuote.expiration, this.config.admission === 'pilot' && (!parsed.type4 || !!parsed.withdrawal))
+      }
       phase = 'submit'
       const sent = await this.sender.broadcastTransaction(raw, feeQuote.expiration)
       if (sent.hash !== hash) throw new Error('Unexpected protected transaction hash.')
-      const encrypted = encryptResponse({ txHash: hash }, request)
+      const encrypted = reply({ txHash: hash })
       this.store.respond(request.key, encrypted)
       return responseEnvelope(encrypted, request.id)
     } catch {
       console.error(JSON.stringify({ status: 'request-rejected', phase }))
-      const unknown = this.store.get(request.key)?.raw
+      const unknown = this.store.get(request.key)
       const errors: Record<string, string> = {
         request: 'Broadcaster is unavailable or the request is unsupported. Check recovery before preparing another request.',
         busy: 'The broadcaster is finishing another transaction or checking its fee. Keep the saved proof and retry when the broadcaster is available.',
@@ -228,9 +323,9 @@ export class Broadcaster {
         proof: 'The private fee commitment could not be authenticated.',
         sign: 'Operator signing or spending limits prevented execution.',
       }
-      const encrypted = encryptResponse({ error: unknown
+      const encrypted = reply({ error: unknown
         ? 'Submission outcome is unknown. The signed transaction is retained; check recovery before retrying.'
-        : errors[phase] ?? 'Protected submission failed.' }, request)
+        : errors[phase] ?? 'Protected submission failed.' })
       if (unknown) this.store.respond(request.key, encrypted)
       return responseEnvelope(encrypted, request.id)
     } finally { if (reserved) { this.busy = false; this.activeKey = undefined } }
@@ -272,10 +367,27 @@ export class Broadcaster {
 
   async reconcile(): Promise<void> {
     const { block: head, confirmed, settled } = await this.state()
+    if (this.store.db.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name='credit_identity'").get())
+      await (await this.credits()).reconcileRefunds()
     for (const item of this.store.pending()) {
       if (!item.hash) continue
       this.store.checked(item.key)
       try {
+      if (JSON.parse(item.fee_data).kind === 'prepaid') {
+        const credits = await this.credits()
+        let included = false
+        for (const hash of [item.hash, ...this.store.cancellations(item.key).map((tx) => tx.hash)]) {
+          const receipt = await this.provider.getTransactionReceipt(hash)
+          if (!receipt || receipt.blockNumber > settled || (await this.provider.getBlock(receipt.blockNumber))?.hash !== receipt.blockHash) continue
+          included = true
+          credits.ledger.observeInclusion(item.key, receipt)
+          const finalized = await finalizedCreditReceipt(this.provider, hash)
+          credits.ledger.settle(item.key, finalized)
+          break
+        }
+        if (!included && item.confirmed && confirmed <= item.nonce) credits.ledger.forgetInclusion(item.key)
+        continue
+      }
       const original = await this.provider.getTransactionReceipt(item.hash)
       let receipt = original
       if (!receipt) for (const cancellation of this.store.cancellations(item.key)) {

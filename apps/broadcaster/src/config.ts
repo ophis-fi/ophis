@@ -1,7 +1,8 @@
 import { NETWORK_CONFIG, TXIDVersion, getEVMGasTypeForTransaction, EVMGasType } from '@railgun-community/shared-models'
 import { isAbsolute, resolve } from 'node:path'
-import { getAddress, ZeroAddress } from 'ethers'
+import { getAddress, isHexString, ZeroAddress, ZeroHash } from 'ethers'
 import { PRIVATE_NETWORKS, privateNetwork, type PrivateToken } from '../../railgun/src/networks'
+import { traceRpcURL } from './bnb-trace-provider'
 
 function chainId(value: string | undefined): number {
   if (value !== undefined && !/^[1-9][0-9]*$/.test(value)) throw new Error('Invalid broadcaster chain ID.')
@@ -41,6 +42,7 @@ export interface Settings {
   admission: 'pilot' | 'public'
   enabled: boolean
   rpc: string
+  traceRpc?: string
   waku: string
   state: string
   secrets: string
@@ -49,9 +51,15 @@ export interface Settings {
   dailyBudget: bigint
   reserve: bigint
   marginBps: bigint
+  creditCollectionGas?: bigint
+  creditCollectionInputs?: number
+  creditCollectionOutputs?: number
+  creditCollectionProofs?: number
   executionGuard: string | undefined
   pilotAccount?: string
   pilotWithdrawalRecipient?: string
+  prepaidPilotLedgerId?: string
+  prepaidPilotOwner?: string
   operatorAddress?: string
 }
 
@@ -80,6 +88,7 @@ export function settings(env: NodeJS.ProcessEnv): Settings {
     throw new Error('Use an explicit trusted read RPC and a private local Waku REST endpoint.')
   if (mode === 'fork' && (rpc.protocol !== 'http:' || !['127.0.0.1', '[::1]'].includes(rpc.hostname)))
     throw new Error('Fork mode requires a loopback Anvil RPC.')
+  const traceRpc = traceRpcURL(env.OPHIS_BROADCASTER_TRACE_RPC, CHAIN_ID, mode)
   const state = resolve(env.OPHIS_BROADCASTER_STATE ?? './data')
   const secrets = env.OPHIS_BROADCASTER_SECRETS ?? resolve(mode === 'fork' ? './secrets/operator.json' : './secrets/operator.sealed.json')
   if (!isAbsolute(secrets)) throw new Error('The operator secrets path must be absolute.')
@@ -95,6 +104,13 @@ export function settings(env: NodeJS.ProcessEnv): Settings {
   const reserve = integer('OPHIS_BROADCASTER_RESERVE_WEI', '0')
   const dailyBudget = integer('OPHIS_BROADCASTER_DAILY_BUDGET_WEI', '0')
   const marginBps = integer('OPHIS_BROADCASTER_MARGIN_BPS', '0')
+  const creditCollectionGas = integer('OPHIS_BROADCASTER_CREDIT_COLLECTION_GAS', '0')
+  const creditCollectionInputs = Number(integer('OPHIS_BROADCASTER_CREDIT_COLLECTION_INPUTS', '0'))
+  const creditCollectionOutputs = Number(integer('OPHIS_BROADCASTER_CREDIT_COLLECTION_OUTPUTS', '0'))
+  const creditCollectionProofs = Number(integer('OPHIS_BROADCASTER_CREDIT_COLLECTION_PROOFS', '0'))
+  if (creditCollectionInputs > 2 || creditCollectionOutputs > 4 || creditCollectionProofs > 2)
+    throw new Error('Credit collection proof shape exceeds the supported qualification range.')
+  if (creditCollectionGas > MAX_GAS) throw new Error('Credit collection gas exceeds the operator gas limit.')
   if (marginBps > 10_000n || (enabled && (!marginBps || !maxGasPrice || !maxTransactionCost || reserve < maxTransactionCost || dailyBudget < maxTransactionCost)))
     throw new Error('Enabling requires a positive margin and explicit gas-price, transaction-cost and gas-reserve limits.')
   const executionGuard = env.OPHIS_BROADCASTER_EXECUTION_GUARD === undefined ? undefined
@@ -106,6 +122,14 @@ export function settings(env: NodeJS.ProcessEnv): Settings {
   const pilotWithdrawalRecipient = env.OPHIS_BROADCASTER_PILOT_WITHDRAWAL_RECIPIENT === undefined ? undefined
     : getAddress(env.OPHIS_BROADCASTER_PILOT_WITHDRAWAL_RECIPIENT)
   if (pilotWithdrawalRecipient === ZeroAddress) throw new Error('The withdrawal pilot requires a public recipient.')
+  const prepaidPilotLedgerId = env.OPHIS_BROADCASTER_PREPAID_PILOT_LEDGER_ID
+  const prepaidPilotOwner = env.OPHIS_BROADCASTER_PREPAID_PILOT_OWNER === undefined ? undefined
+    : getAddress(env.OPHIS_BROADCASTER_PREPAID_PILOT_OWNER)
+  if ((prepaidPilotLedgerId === undefined) !== (prepaidPilotOwner === undefined) || prepaidPilotOwner === ZeroAddress)
+    throw new Error('A prepaid pilot approval requires both its ledger ID and nonzero credit owner address.')
+  if (prepaidPilotLedgerId !== undefined && (admission !== 'pilot' || ![1, 56].includes(CHAIN_ID) ||
+    !isHexString(prepaidPilotLedgerId, 32) || prepaidPilotLedgerId.toLowerCase() === ZeroHash))
+    throw new Error('A prepaid pilot opt-in requires its exact nonzero ledger ID and qualified pilot admission.')
   if (admission === 'public' && (pilotAccount || pilotWithdrawalRecipient))
     throw new Error('Public admission must not specify pilot restrictions.')
   if (enabled && mode === 'mainnet' && (!executionGuard || (admission === 'pilot' && !pilotAccount)))
@@ -116,6 +140,8 @@ export function settings(env: NodeJS.ProcessEnv): Settings {
     : getAddress(env.OPHIS_BROADCASTER_OPERATOR_ADDRESS)
   if (operatorAddress === ZeroAddress || (enabled && mode === 'mainnet' && !operatorAddress))
     throw new Error('Mainnet signing requires the verified dedicated gas-wallet address.')
-  return { chainId: CHAIN_ID, mode, admission, enabled, rpc: rpc.href, waku: waku.href, state, secrets, maxGasPrice,
-    maxTransactionCost, dailyBudget, reserve, marginBps, executionGuard, pilotAccount, pilotWithdrawalRecipient, operatorAddress }
+  return { chainId: CHAIN_ID, mode, admission, enabled, rpc: rpc.href, traceRpc, waku: waku.href, state, secrets, maxGasPrice,
+    maxTransactionCost, dailyBudget, reserve, marginBps, creditCollectionGas, creditCollectionInputs, creditCollectionOutputs,
+    creditCollectionProofs, executionGuard, pilotAccount, pilotWithdrawalRecipient,
+    prepaidPilotLedgerId: prepaidPilotLedgerId?.toLowerCase(), prepaidPilotOwner, operatorAddress }
 }

@@ -10,11 +10,44 @@ export function accountingReport(db: DatabaseSync): {
   requests: number; recordedGasExpenseWei: string; unresolvedMaximumWei: string
   acknowledgedLossWei: string; acknowledgedLosses: number; historicalSettlementsWithoutFeeAmounts: number
   receivedFees: Record<string, string>
+  prepaidCredit?: { token: string; deposited: string; charged: string; reserved: string; pendingRefunds: string;
+    completedRefunds: string; refundFees: string; liability: string; remainingEarned: string; collectedGross: string;
+    ownerPrivateFees: string; nativeCollected: string; ownerPaymentsPending: number }
 } {
   const records = db.prepare('SELECT key,hash,confirmed,assured,max_cost,actual_cost,fee_data FROM requests').all()
   const resolutions = db.prepare('SELECT key,hash,actual_cost FROM settlement_resolutions').all()
   const resolved = new Map(resolutions.map((row) => [row.key, row]))
   const fees: Record<string, bigint> = {}
+  let prepaidCredit: ReturnType<typeof accountingReport>['prepaidCredit']
+  if (db.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name='credit_identity'").get()) {
+    const identity = db.prepare('SELECT scope FROM credit_identity WHERE singleton=1').get()
+    const scope = JSON.parse(String(identity?.scope)), token = getAddress(scope.token)
+    if (scope.chainId !== CHAIN_ID || token !== getAddress(TOKENS[0].address)) throw new Error('Invalid credit accounting scope.')
+    const sum = (sql: string) => db.prepare(sql).all().reduce((total, row) => {
+      if (typeof row.amount !== 'string' || !/^(0|[1-9]\d*)$/.test(row.amount)) throw new Error('Invalid credit accounting amount.')
+      return total + BigInt(row.amount)
+    }, 0n)
+    const deposited = sum('SELECT amount FROM credit_deposits')
+    const charged = sum('SELECT charged AS amount FROM credit_attempts WHERE charged IS NOT NULL')
+    const reserved = sum('SELECT maximum_charge AS amount FROM credit_attempts WHERE charged IS NULL')
+    const pendingRefunds = sum('SELECT gross AS amount FROM credit_refunds WHERE transaction_hash IS NULL')
+    const completedRefunds = sum('SELECT gross AS amount FROM credit_refunds WHERE transaction_hash IS NOT NULL')
+    const refundFees = completedRefunds - sum('SELECT net AS amount FROM credit_refunds WHERE transaction_hash IS NOT NULL')
+    const liability = deposited - charged - completedRefunds
+    const ownerJournal = !!db.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name='credit_owner_settlements'").get()
+    const collectedGross = ownerJournal ? sum('SELECT unshield_gross AS amount FROM credit_owner_settlements') : 0n
+    const ownerPrivateFees = ownerJournal ? sum('SELECT private_fee AS amount FROM credit_owner_settlements') : 0n
+    const nativeCollected = ownerJournal ? sum('SELECT native_received AS amount FROM credit_owner_settlements') : 0n
+    const remainingEarned = charged + refundFees - collectedGross - ownerPrivateFees
+    const ownerPaymentsPending = ownerJournal ? Number(db.prepare(`SELECT COUNT(*) AS count FROM credit_owner_intents i
+      WHERE NOT EXISTS(SELECT 1 FROM credit_owner_settlements s WHERE s.intent_key=i.key)`).get()?.count) : 0
+    if (refundFees < 0n || liability < reserved + pendingRefunds || remainingEarned < 0n) throw new Error('Credit accounting is inconsistent.')
+    prepaidCredit = { token, deposited: String(deposited), charged: String(charged), reserved: String(reserved),
+      pendingRefunds: String(pendingRefunds), completedRefunds: String(completedRefunds), refundFees: String(refundFees), liability: String(liability),
+      remainingEarned: String(remainingEarned), collectedGross: String(collectedGross), ownerPrivateFees: String(ownerPrivateFees),
+      nativeCollected: String(nativeCollected), ownerPaymentsPending }
+    fees[token] = charged + refundFees
+  }
   let gas = 0n, unresolved = 0n, losses = 0n, historical = 0, lossCount = 0
   for (const row of records) {
     const expense = row.actual_cost == null ? 0n : BigInt(String(row.actual_cost))
@@ -22,10 +55,16 @@ export function accountingReport(db: DatabaseSync): {
     const resolution = resolved.get(row.key)
     const acknowledged = row.confirmed === 1 && row.assured === 0 && resolution?.hash === row.hash && resolution?.actual_cost === row.actual_cost
     if (acknowledged) { losses += expense; lossCount++ }
-    if (!row.confirmed) unresolved += BigInt(String(row.max_cost))
+    if (!row.confirmed || (!row.assured && row.actual_cost == null)) unresolved += BigInt(String(row.max_cost))
     else if (!row.assured && !acknowledged) unresolved += expense
     if (!row.assured) continue
     const proof = JSON.parse(String(row.fee_data))
+    if (proof.kind === 'prepaid') {
+      const attempt = db.prepare('SELECT charged,settlement_hash FROM credit_attempts WHERE key=?').get(row.key)
+      if (!prepaidCredit || !attempt || attempt.charged !== proof.charged || attempt.settlement_hash !== proof.receiptHash)
+        throw new Error('Invalid prepaid settlement accounting record.')
+      continue
+    }
     if (proof.settlement === 'cancelled') continue
     if (proof.settlement !== 'fee-received' || !proof.payment) { historical++; continue }
     const token = getAddress(proof.payment.token)
@@ -35,7 +74,8 @@ export function accountingReport(db: DatabaseSync): {
   }
   return { requests: records.length, recordedGasExpenseWei: gas.toString(), unresolvedMaximumWei: unresolved.toString(),
     acknowledgedLossWei: losses.toString(), acknowledgedLosses: lossCount, historicalSettlementsWithoutFeeAmounts: historical,
-    receivedFees: Object.fromEntries(Object.entries(fees).map(([token, amount]) => [token, amount.toString()])) }
+    receivedFees: Object.fromEntries(Object.entries(fees).map(([token, amount]) => [token, amount.toString()])),
+    ...(prepaidCredit ? { prepaidCredit } : {}) }
 }
 
 /** Exclusive stopped-service lock is held by the CLI; this function never signs or submits. */

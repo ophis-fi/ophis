@@ -4,6 +4,7 @@ import type { WalletSession } from './wallet'
 import { withdrawalData } from '../tests/withdrawal.fixture'
 
 const state = vi.hoisted(() => ({ estimate: vi.fn(), create: vi.fn(), send: vi.fn(), balance: 10_000_000n, pilot: undefined as string | undefined }))
+vi.mock('./prepaid', () => ({ assertPrepaidContext: vi.fn() }))
 vi.mock('ethers', async (original) => ({
   ...await original<typeof import('ethers')>(),
   Contract: class { getFunction() { return async () => 25n } },
@@ -80,6 +81,26 @@ it('covers the broadcaster positive-tip floor when Ethereum suggests only its ba
   expect(state.estimate).not.toHaveBeenCalled()
 })
 
+it('prepares a full USDC common withdrawal without a fee commitment using explicit WETH credit', async () => {
+  vi.stubEnv('VITE_RAILGUN_CHAIN_ID', '1')
+  const { TOKENS, FEE_SIGNER } = await import('./config')
+  const { prepareUnshield } = await import('./unshield')
+  const selected = { railgunAddress: FEE_SIGNER, tokenAddress: TOKENS.WETH.address,
+    tokenFee: { expiration: Date.now() + 600_000, feePerUnitGas: '1150000000000000000' } } as SelectedBroadcaster
+  const credit = { scope: { token: TOKENS.WETH.address, recipient: FEE_SIGNER }, rate: 1_150_000_000_000_000_000n,
+    collectionAllowance: 100n } as NonNullable<Parameters<typeof prepareUnshield>[7]>
+  const session = { info: { id: 'test' }, key: 'test',
+    accounts: { getCurrentAccount: async () => ({ address: '0x0000000000000000000000000000000000001234' }) },
+    provider: { getFeeData: async () => ({ gasPrice: 100n }), getBlock: async () => ({ baseFeePerGas: 0n }) } } as unknown as WalletSession
+  const prepared = await prepareUnshield(session, 'USDC', '', '0x0000000000000000000000000000000000005678', selected, true, false, credit)
+  expect(prepared.kind).toBe('COMMON')
+  expect(prepared.amounts[0].amount).toBe(state.balance)
+  expect(prepared.feeToken).toBe('WETH')
+  expect(prepared.prepaid).toBe(credit)
+  expect(state.estimate.mock.calls[0][7]).toBeUndefined()
+  expect(state.estimate.mock.calls[0][8]).toBe(true)
+})
+
 it('rejects a WETH quote before proving for the USDC withdrawal pilot', async () => {
   vi.stubEnv('VITE_RAILGUN_CHAIN_ID', '1')
   const { TOKENS, FEE_SIGNER } = await import('./config')
@@ -92,7 +113,7 @@ it('rejects a WETH quote before proving for the USDC withdrawal pilot', async ()
   expect(state.estimate).not.toHaveBeenCalled()
 })
 
-it.each([1, 42161, 137, 56])('prepares and submits chain %s withdrawals with SDK gas policy when no swap operator is approved', async (chainId) => {
+it.each([1, 42161, 137, 56])('preserves SDK withdrawal gas policy on chain %s and blocks legacy Ophis submission', async (chainId) => {
   vi.stubEnv('VITE_RAILGUN_CHAIN_ID', String(chainId))
   const { CONFIG, FEE_SIGNER, NETWORK, PROTECTED_BROADCASTERS, TOKENS } = await import('./config')
   const { prepareUnshield } = await import('./unshield')
@@ -120,6 +141,12 @@ it.each([1, 42161, 137, 56])('prepares and submits chain %s withdrawals with SDK
   expect(state.estimate.mock.calls[0][6].evmGasType).toBe(expectedType)
   const populated = { transaction: { to: CONFIG.proxyContract, data: withdrawalData(1, 1, '0x0000000000000000000000000000000000005678', TOKENS[token].address) },
     nullifiers: ['test-nullifier'] } as Parameters<typeof submitPrivate>[1]
+  if (chainId === 1) {
+    await expect(submitPrivate(session, populated, selected, prepared.gas, false)).rejects.toThrow('requires confirmed prepaid fee credit')
+    expect(state.create).not.toHaveBeenCalled()
+    expect(state.send).not.toHaveBeenCalled()
+    return
+  }
   await expect(submitPrivate(session, populated, selected, prepared.gas, false)).resolves.toBe('withdrawal-test-hash')
   const wrongType = expectedType === EVMGasType.Type0 ? EVMGasType.Type1 : EVMGasType.Type0
   await expect(submitPrivate(session, populated, selected, { ...prepared.gas, evmGasType: wrongType }, false))

@@ -18,11 +18,24 @@ import { validateRailgunAddress } from '@railgun-community/wallet'
 import { getAddress, isAddress, type TransactionRequest } from 'ethers'
 import type { WalletSession } from './wallet'
 import { feeAddressFor } from './fee-asset'
+import type { PreparedCredit } from './prepaid'
+import { prepaidAttemptFee } from './prepaid-pricing'
 
 let starting: Promise<void> | undefined
 let reportConnection: (status: string) => void = () => {}
 const DISCOVERY_TIMEOUT_MS = 45_000
-type BroadcasterGas = TransactionGasDetailsType4 | TransactionGasDetailsType1 | TransactionGasDetailsType0
+export type BroadcasterGas = TransactionGasDetailsType4 | TransactionGasDetailsType1 | TransactionGasDetailsType0
+
+export function prepaidFee(credit: PreparedCredit, gas: BroadcasterGas) {
+  return { tokenAddress: credit.scope.token, recipientAddress: credit.scope.recipient, amount: prepaidAttemptFee(credit, gas) }
+}
+
+export function capPrepaidGasPrice(gas: TransactionGasDetailsType4, credit: PreparedCredit): TransactionGasDetailsType4 {
+  const budgetCap = credit.maximumGasCost / calculateGasLimit(gas.gasEstimate)
+  const maxFeePerGas = [gas.maxFeePerGas, credit.maximumGasPrice, budgetCap].reduce((a, b) => a < b ? a : b)
+  if (maxFeePerGas <= 0n) throw new Error('The prepaid gas allowance is too small for this transaction.')
+  return { ...gas, maxFeePerGas, maxPriorityFeePerGas: gas.maxPriorityFeePerGas > maxFeePerGas ? maxFeePerGas : gas.maxPriorityFeePerGas }
+}
 
 export async function startBroadcasters(onStatus: (status: string) => void): Promise<void> {
   if (ENVIRONMENT !== 'ethereum')
@@ -173,9 +186,11 @@ export async function assertSubmittable(
   session: WalletSession,
   selected: SelectedBroadcaster,
   gas: BroadcasterGas,
+  prepaid?: PreparedCredit,
 ): Promise<void> {
   if (ENVIRONMENT !== 'ethereum') throw new Error('Mainnet broadcasting is disabled in this local fork build.')
-  validateBroadcaster(selected, selected.tokenAddress, gas.evmGasType === EVMGasType.Type4)
+  if (prepaid) await (await import('./prepaid')).assertPrepaidContext(session, selected, gas, prepaid)
+  else validateBroadcaster(selected, selected.tokenAddress, gas.evmGasType === EVMGasType.Type4)
   const policy = PROTECTED_BROADCASTERS[CHAIN_ID]?.find((operator) => operator.railgunAddress === selected.railgunAddress)
   if (policy && (calculateGasPrice(gas) > policy.maxGasPrice || calculateMaximumGas(gas) > policy.maxTransactionCost))
     throw new Error('This gas quote exceeds the Ophis broadcaster limits. Wait for lower gas prices; check recovery before preparing another transaction.')
@@ -184,7 +199,7 @@ export async function assertSubmittable(
   const hardhat = await session.provider.send('hardhat_metadata', []).catch(() => undefined)
   if (fork || hardhat) throw new Error('Broadcaster submission is disabled on local forks.')
   if ((await session.provider.getNetwork()).chainId !== CHAIN) throw new Error(`${CHAIN_NAME} RPC required.`)
-  broadcasterFee(selected, gas)
+  if (!prepaid) broadcasterFee(selected, gas)
   if (gas.evmGasType === EVMGasType.Type4 && gas.maxFeePerGas < await minimumGasPrice(session, gas))
     throw new Error(`${CHAIN_NAME} gas price exceeds this quote’s cap. Check recovery before requesting a fresh quote.`)
 }
@@ -196,8 +211,11 @@ export async function submitPrivate(
   gas: BroadcasterGas,
   use7702: boolean,
   checkedAt?: FinalQuoteCheck,
+  prepaid?: PreparedCredit,
 ): Promise<string> {
-  await assertSubmittable(session, selected, gas)
+  if (!prepaid && ENVIRONMENT === 'ethereum' && [1, 56].includes(CHAIN_ID) && selected.railgunAddress === OPHIS_BROADCASTER)
+    throw new Error('Ophis now requires confirmed prepaid fee credit. Keep this saved proof and use public-wallet recovery; it will not be rebuilt or converted automatically.')
+  await assertSubmittable(session, selected, gas, prepaid)
   if (use7702) assertFinalQuoteFresh(checkedAt)
   if (!populated.nullifiers?.length) throw new Error('Private transaction has no spend nullifiers.')
   const transaction = populated.transaction as TransactionRequest
@@ -207,7 +225,7 @@ export async function submitPrivate(
     gas.evmGasType !== getEVMGasTypeForTransaction(NETWORK, false) || transaction.authorizationList?.length ||
     getAddress(transaction.to) !== getAddress(CONFIG.proxyContract)))
     throw new Error('Common submissions must be withdrawals through the selected privacy contract.')
-  if (!use7702) assertAtomicWithdrawal(transaction.data, CHAIN_ID === 56 ? 'WBNB' : undefined)
+  if (!use7702) assertAtomicWithdrawal(transaction.data, !prepaid && CHAIN_ID === 56 ? 'WBNB' : undefined)
   const authorization = use7702 ? transaction.authorizationList?.[0] : undefined
   if (use7702 && !authorization) throw new Error('Missing 7702 authorization.')
   const type4 =
@@ -219,6 +237,7 @@ export async function submitPrivate(
         }
       : undefined
   if (use7702 && !type4) throw new Error('Type-4 fees required for a private swap.')
+  if (prepaid) return (await import('./prepaid')).submitPrepaid(session, populated, selected, gas, use7702, checkedAt, prepaid)
   const broadcast = await BroadcasterTransaction.create(
     VERSION,
     transaction.to,

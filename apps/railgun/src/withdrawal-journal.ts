@@ -1,4 +1,4 @@
-import { CHAIN, CHAIN_ID, isTokenSymbol, CONFIG, NATIVE_SYMBOL, TOKENS, tokenFor, PILOT_WITHDRAWAL_RECIPIENT, type TokenSymbol } from './config'
+import { CHAIN, CHAIN_ID, isTokenSymbol, CONFIG, NATIVE_SYMBOL, TOKENS, tokenFor, PILOT_WITHDRAWAL_RECIPIENT, WRAPPED_SYMBOL, type TokenSymbol } from './config'
 import { fullWalletForID, getWalletTransactionHistory } from '@railgun-community/wallet'
 import { authorizationify, Contract, formatUnits, getAddress, Interface, type JsonRpcSigner, type TransactionReceipt } from 'ethers'
 import { RelayAdapt7702ExecutionType } from '@railgun-community/engine'
@@ -12,6 +12,7 @@ export interface PendingWithdrawal {
   chainId?: number
   token: TokenSymbol
   feeToken?: TokenSymbol
+  feeMode?: 'prepaid'
   broadcaster?: string
   output?: 'native'
   execution?: { index: number; account: string; executeNonce: string;
@@ -44,6 +45,7 @@ async function readWithdrawal(session: WalletSession, key: 'pendingWithdrawal' |
     !('token' in stored) ||
     !isTokenSymbol(stored.token) ||
     ('feeToken' in stored && !isTokenSymbol(stored.feeToken)) ||
+    ('feeMode' in stored && stored.feeMode !== 'prepaid') ||
     ('output' in stored && stored.output !== 'native') ||
     !('recipient' in stored) ||
     typeof stored.recipient !== 'string' ||
@@ -81,13 +83,13 @@ async function readWithdrawal(session: WalletSession, key: 'pendingWithdrawal' |
   if (pending.output === 'native' && !pending.execution) throw new Error('Native withdrawal requires its saved signed execution.')
   if (pending.execution) {
     const e = pending.execution
-    if (pending.feeToken !== feeTokenFor(pending.token) || typeof pending.broadcaster !== 'string' ||
+    if (pending.feeToken !== (pending.feeMode === 'prepaid' ? WRAPPED_SYMBOL : feeTokenFor(pending.token)) || typeof pending.broadcaster !== 'string' ||
       !Number.isSafeInteger(e.index) || e.index < 0 || typeof e.account !== 'string' ||
       getAddress(e.account) !== getAddress(pending.transaction.to) ||
       ![e.executeNonce, e.gasEstimate, e.maxFeePerGas, e.maxPriorityFeePerGas].every((n) => typeof n === 'string' && /^\d+$/.test(n)) ||
       BigInt(e.gasEstimate) <= 0n || BigInt(e.maxPriorityFeePerGas) <= 0n || BigInt(e.maxPriorityFeePerGas) > BigInt(e.maxFeePerGas))
       throw new Error('Saved withdrawal execution is damaged. Keep its proof and recovery account.')
-    const checked = assertBoundWithdrawal(pending.transaction.data, e.account, pending.token, pending.recipient, BigInt(pending.minimum), pending.output)
+    const checked = assertBoundWithdrawal(pending.transaction.data, e.account, pending.token, pending.recipient, BigInt(pending.minimum), pending.output, pending.feeMode)
     if (checked.executeNonce !== BigInt(e.executeNonce)) throw new Error('Saved withdrawal nonce differs from its signature.')
     const [transactions, actionData, , executionSignature] = ADAPT.decodeFunctionData('execute', pending.transaction.data)
     assertAuthorization({ transactions, actionData, executionSignature, ephemeralAddress: e.account,
@@ -180,7 +182,7 @@ export function assertWithdrawalReceipt(receipt: TransactionReceipt, pending: Pe
   if (pending.execution) {
     assertReceipt(receipt, pending.execution.account)
     if (pending.output === 'native') {
-      assertBoundWithdrawal(pending.transaction.data, pending.execution.account, pending.token, pending.recipient, BigInt(pending.minimum), 'native')
+      assertBoundWithdrawal(pending.transaction.data, pending.execution.account, pending.token, pending.recipient, BigInt(pending.minimum), 'native', pending.feeMode)
       const unshielded = events.reduce((sum, event) => event?.name === 'Unshield' &&
         getAddress(event.args.to) === getAddress(pending.execution!.account) &&
         getAddress(event.args.token.tokenAddress) === getAddress(tokenFor('WBNB').address) ? sum + BigInt(event.args.amount) : sum, 0n)

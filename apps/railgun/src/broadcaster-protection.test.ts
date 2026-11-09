@@ -10,6 +10,9 @@ const state = vi.hoisted(() => ({
 }))
 vi.mock('./config', async (original) => ({
   ...await original<typeof import('./config')>(), ENVIRONMENT: 'ethereum', PROTECTED_BROADCASTERS: state.policy,
+  // These legacy transport regressions model another operator. The actual
+  // Ophis pin is tested separately and cannot use this unsecured transport.
+  OPHIS_BROADCASTER: 'synthetic-different-prepaid-operator',
 }))
 vi.mock('@railgun-community/waku-broadcaster-client-web', () => ({
   WakuBroadcasterClient: { isStarted: () => true, start: state.start, findBroadcastersForToken: state.find },

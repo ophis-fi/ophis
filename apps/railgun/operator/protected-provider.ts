@@ -21,6 +21,7 @@ const READ_METHODS = new Set([
   'debug_traceCall',
 ])
 type Pending = { hash: string; nonce: number; raw: string; cancel_hash: string | null; cancel_raw: string | null }
+type PendingSummary = { hash: string; nonce: number; cancellationHash?: string }
 
 /** Node-only transport for an operator's existing, validated Railgun transaction sender. */
 export class ProtectedEthereumProvider extends JsonRpcProvider {
@@ -65,6 +66,17 @@ export class ProtectedEthereumProvider extends JsonRpcProvider {
       CREATE TABLE IF NOT EXISTS binding (
         id INTEGER PRIMARY KEY CHECK (id = 1), chain_id INTEGER NOT NULL, operator TEXT NOT NULL
       );
+      CREATE TABLE IF NOT EXISTS operation_history (
+        operator TEXT NOT NULL, hash TEXT NOT NULL, nonce INTEGER NOT NULL, raw TEXT NOT NULL,
+        PRIMARY KEY(operator,hash), UNIQUE(operator,nonce)
+      );
+      CREATE TRIGGER IF NOT EXISTS preserve_operation_update BEFORE UPDATE ON operation_history
+        BEGIN SELECT RAISE(ABORT, 'Operation history is append-only'); END;
+      CREATE TRIGGER IF NOT EXISTS preserve_operation_delete BEFORE DELETE ON operation_history
+        BEGIN SELECT RAISE(ABORT, 'Operation history is append-only'); END;
+      CREATE TRIGGER IF NOT EXISTS preserve_operation_replace BEFORE INSERT ON operation_history
+        WHEN EXISTS(SELECT 1 FROM operation_history WHERE operator=NEW.operator AND (hash=NEW.hash OR nonce=NEW.nonce))
+        BEGIN SELECT RAISE(ABORT, 'Operation history is append-only'); END;
       CREATE TABLE IF NOT EXISTS cancellation_history (
         operator TEXT NOT NULL, original_hash TEXT NOT NULL, nonce INTEGER NOT NULL, hash TEXT NOT NULL, raw TEXT NOT NULL,
         PRIMARY KEY (operator,hash)
@@ -102,9 +114,9 @@ export class ProtectedEthereumProvider extends JsonRpcProvider {
         if (binding.chain_id !== chainId || binding.operator !== this.operator)
           throw new Error('The protected journal belongs to another chain or operator.')
       } else if (chainId !== 1 && (this.journal.prepare(`SELECT 1 FROM pending UNION ALL SELECT 1 FROM cancellation_history
-        UNION ALL SELECT 1 FROM protected_bundles UNION ALL SELECT 1 FROM bundle_acknowledgments LIMIT 1`).get() ||
+        UNION ALL SELECT 1 FROM operation_history UNION ALL SELECT 1 FROM protected_bundles UNION ALL SELECT 1 FROM bundle_acknowledgments LIMIT 1`).get() ||
         this.journal.prepare(`SELECT 1 FROM sqlite_master WHERE type='table'
-          AND name NOT IN ('pending','binding','cancellation_history','protected_bundles','bundle_acknowledgments')
+          AND name NOT IN ('pending','binding','operation_history','cancellation_history','protected_bundles','bundle_acknowledgments')
           AND name NOT LIKE 'sqlite_%' LIMIT 1`).get())) {
         throw new Error('Only verified Ethereum journals can be migrated without a chain binding.')
       }
@@ -115,6 +127,7 @@ export class ProtectedEthereumProvider extends JsonRpcProvider {
         if (item.operator !== this.operator || tx.hash !== item.hash || tx.nonce !== item.nonce ||
           (item.cancel_hash == null) !== (item.cancel_raw == null))
           throw new Error('The protected journal cannot be verified for this operator.')
+        this.retainOperation(tx, item.raw)
         if (item.cancel_raw != null) {
           const cancellation = this.validate(item.cancel_raw, true)
           if (cancellation.hash !== item.cancel_hash || cancellation.nonce !== item.nonce)
@@ -122,10 +135,18 @@ export class ProtectedEthereumProvider extends JsonRpcProvider {
           this.retainCancellation(item.hash, cancellation, item.cancel_raw)
         }
       }
+      for (const item of this.journal.prepare('SELECT * FROM operation_history').iterate()) {
+        const tx = this.validate(String(item.raw), false)
+        if (item.operator !== this.operator || tx.hash !== item.hash || tx.nonce !== item.nonce)
+          throw new Error('The retained protected operation record is inconsistent.')
+      }
       for (const item of this.journal.prepare('SELECT * FROM cancellation_history').iterate()) {
         const tx = this.validate(String(item.raw), true)
+        const original = this.journal.prepare('SELECT hash FROM operation_history WHERE operator=? AND nonce=?')
+          .get(this.operator, tx.nonce)
         if (item.operator !== this.operator || tx.hash !== item.hash || tx.nonce !== item.nonce ||
           typeof item.original_hash !== 'string' || !/^0x[0-9a-f]{64}$/.test(item.original_hash) ||
+          (original && original.hash !== item.original_hash) ||
           pending.some((original) => original.nonce === item.nonce && original.hash !== item.original_hash))
           throw new Error('The retained protected cancellation record is inconsistent.')
       }
@@ -179,7 +200,7 @@ export class ProtectedEthereumProvider extends JsonRpcProvider {
     return super.broadcastTransaction(raw)
   }
 
-  pendingTransaction(): { hash: string; nonce: number; cancellationHash?: string } | undefined {
+  pendingTransaction(): PendingSummary | undefined {
     const pending = this.pending()
     return pending && { hash: pending.hash, nonce: pending.nonce,
       ...(pending.cancel_hash ? { cancellationHash: pending.cancel_hash } : {}) }
@@ -202,6 +223,11 @@ export class ProtectedEthereumProvider extends JsonRpcProvider {
     return this.journalSigned(raw, this.validate(raw, false), false)
   }
 
+  /** Local recovery only: preserve the newer pointer before selecting a journaled lower nonce after a reorg. */
+  async stageRecovery(raw: string, expectedPending: PendingSummary): Promise<string> {
+    return this.journalSigned(raw, this.validate(raw, false), false, undefined, undefined, expectedPending)
+  }
+
   override destroy(): void {
     if (this.destroyed) return
     this.journal.close()
@@ -211,6 +237,19 @@ export class ProtectedEthereumProvider extends JsonRpcProvider {
   private pending(): Pending | undefined {
     return this.journal.prepare('SELECT hash, nonce, raw, cancel_hash, cancel_raw FROM pending WHERE operator = ?')
       .get(this.operator) as Pending | undefined
+  }
+
+  private retainOperation(tx: Transaction, raw: string): void {
+    if (this.journal.prepare('SELECT 1 FROM cancellation_history WHERE operator=? AND nonce=? AND original_hash<>?')
+      .get(this.operator, tx.nonce, tx.hash!))
+      throw new Error('The retained cancellation belongs to another operation at this nonce.')
+    const previous = this.journal.prepare('SELECT hash,nonce,raw FROM operation_history WHERE operator=? AND (hash=? OR nonce=?)')
+      .get(this.operator, tx.hash!, tx.nonce)
+    if (previous) {
+      if (previous.hash !== tx.hash || previous.nonce !== tx.nonce || String(previous.raw).toLowerCase() !== raw.toLowerCase())
+        throw new Error('Another signed operation already owns this protected nonce.')
+    } else this.journal.prepare('INSERT INTO operation_history(operator,hash,nonce,raw) VALUES(?,?,?,?)')
+      .run(this.operator, tx.hash!, tx.nonce, raw)
   }
 
   private retainCancellation(originalHash: string, tx: Transaction, raw: string): void {
@@ -289,7 +328,8 @@ export class ProtectedEthereumProvider extends JsonRpcProvider {
     return { number: Number(height), timestamp: Number(BigInt(block.timestamp)) }
   }
 
-  private async journalSigned(raw: string, tx: Transaction, cancellation: boolean, retryHash?: string, validUntilMs?: number): Promise<string> {
+  private async journalSigned(raw: string, tx: Transaction, cancellation: boolean, retryHash?: string, validUntilMs?: number,
+    recovery?: PendingSummary): Promise<string> {
     const hash = tx.hash!
     this.forkCheck ??= this.checkFork().catch((error) => { this.forkCheck = undefined; throw error })
     await this.forkCheck
@@ -315,13 +355,20 @@ export class ProtectedEthereumProvider extends JsonRpcProvider {
     this.journal.exec('BEGIN IMMEDIATE')
     try {
       const pending = this.pending()
-      const retained = pending?.hash === hash || !!this.journal.prepare('SELECT 1 FROM cancellation_history WHERE operator=? AND hash=?')
-        .get(this.operator, hash)
+      const retained = pending?.hash === hash || !!this.journal.prepare(`SELECT 1 FROM cancellation_history WHERE operator=? AND hash=?
+        UNION ALL SELECT 1 FROM operation_history WHERE operator=? AND hash=? LIMIT 1`).get(this.operator, hash, this.operator, hash)
       if (retryHash && (pending?.cancel_hash ?? pending?.hash) !== retryHash)
         throw new Error('The pending transaction changed while retrying. Read the current journal before retrying.')
       if (cancellation && (!pending || pending.nonce !== tx.nonce))
         throw new Error('Cancellation must use the existing journaled operator nonce.')
-      if (pending && confirmed > BigInt(pending.nonce)) {
+      if (recovery) {
+        if (cancellation || !pending || pending.hash !== recovery.hash || pending.nonce !== recovery.nonce ||
+          (pending.cancel_hash ?? undefined) !== recovery.cancellationHash || pending.nonce <= tx.nonce ||
+          latest !== confirmed || latest !== BigInt(tx.nonce))
+          throw new Error('The reorg recovery pointer or confirmed nonce changed; preserve both journals.')
+        this.retainOperation(this.validate(pending.raw, false), pending.raw)
+        this.journal.prepare('DELETE FROM pending WHERE operator=?').run(this.operator)
+      } else if (pending && confirmed > BigInt(pending.nonce)) {
         this.journal.prepare('DELETE FROM pending WHERE operator = ?').run(this.operator)
       } else if (!cancellation && pending && (pending.hash !== hash || pending.cancel_hash)) {
         throw new Error('Operator nonce is unresolved. Reconcile or retry the identical journaled transaction.')
@@ -334,8 +381,13 @@ export class ProtectedEthereumProvider extends JsonRpcProvider {
         this.journal.prepare('UPDATE pending SET cancel_hash = ?, cancel_raw = ? WHERE operator = ?')
           .run(hash, raw, this.operator)
       } else {
+        this.retainOperation(tx, raw)
+        const cancellation = this.journal.prepare(`SELECT hash,raw FROM cancellation_history
+          WHERE operator=? AND original_hash=? ORDER BY rowid DESC LIMIT 1`).get(this.operator, hash)
         this.journal.prepare('INSERT OR IGNORE INTO pending (operator, hash, nonce, raw) VALUES (?, ?, ?, ?)')
           .run(this.operator, hash, tx.nonce, raw)
+        if (cancellation) this.journal.prepare('UPDATE pending SET cancel_hash=?,cancel_raw=? WHERE operator=?')
+          .run(cancellation.hash, cancellation.raw, this.operator)
       }
       // Existing raw-only BNB records stay held: adding a fresh wrapper would silently renew an unknown publication.
       if (bnbHead && !retained && (cancellation || validUntilMs !== undefined) &&

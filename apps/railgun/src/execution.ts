@@ -44,17 +44,19 @@ export function withdrawalOutput(data: string) {
   return withdrawals[0].unshieldPreimage
 }
 
-export function assertBoundWithdrawal(data: string, account: string, token: TokenSymbol, recipient: string, minimum: bigint, output?: 'native') {
+export function assertBoundWithdrawal(data: string, account: string, token: TokenSymbol, recipient: string, minimum: bigint,
+  output?: 'native', feeMode?: 'prepaid') {
   const decoded = ADAPT.parseTransaction({ data })
   const asset = tokenFor(token)
   const native = output === 'native'
+  const prepaid = feeMode === 'prepaid'
   const sameFeeAsset = getAddress(asset.address) === getAddress(tokenFor(feeTokenFor(token)).address)
-  if ((native ? CHAIN_ID !== 56 || !sameFeeAsset : sameFeeAsset) || decoded?.name !== 'execute' ||
+  if ((native ? CHAIN_ID !== 56 || !sameFeeAsset : sameFeeAsset && !prepaid) || decoded?.name !== 'execute' ||
     ADAPT.encodeFunctionData(decoded.fragment, decoded.args) !== data.toLowerCase()) throw new Error('Canonical signed withdrawal required.')
   const transactions = decoded.args._transactions as readonly WithdrawalTransaction[]
   const action = decoded.args._actionData
   const nullifiers = transactions.flatMap((tx) => [...tx.nullifiers])
-  if (transactions.length !== (native ? 1 : 2) || (!native && transactions[0].boundParams.unshield !== 0n) ||
+  if (transactions.length !== (native || prepaid ? 1 : 2) || (!native && !prepaid && transactions[0].boundParams.unshield !== 0n) ||
     transactions[transactions.length - 1].boundParams.unshield !== 1n ||
     !action.requireSuccess || action.calls.length !== (native ? 2 : 1) || new Set(nullifiers).size !== nullifiers.length ||
     transactions.some((tx) => tx.boundParams.chainID !== CHAIN || tx.boundParams.minGasPrice !== 0n ||
@@ -99,7 +101,7 @@ export async function assertNativeExecutionBinding(session: WalletSession, recei
   const e = pending.execution
   if (pending.output !== 'native' || !e || (await session.provider.getNetwork()).chainId !== CHAIN)
     throw new Error('Native withdrawal requires its bound execution on the selected chain.')
-  assertBoundWithdrawal(pending.transaction.data, e.account, pending.token, pending.recipient, BigInt(pending.minimum), 'native')
+  assertBoundWithdrawal(pending.transaction.data, e.account, pending.token, pending.recipient, BigInt(pending.minimum), 'native', pending.feeMode)
   const transaction = await session.provider.getTransaction(hash)
   if (!transaction?.to || transaction.hash.toLowerCase() !== hash.toLowerCase() || transaction.blockNumber !== receipt.blockNumber ||
     transaction.value !== 0n) throw new Error('Native receipt is not bound to the saved signed execution.')

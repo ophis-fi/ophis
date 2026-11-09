@@ -5,6 +5,7 @@ on:
     paths: &inputs
       - 'apps/broadcaster/**'
       - 'apps/railgun/operator/**'
+      - 'apps/railgun/credit-protocol.ts'
       - 'apps/railgun/poi-policy.ts'
       - 'apps/railgun/src/networks.ts'
       - 'apps/railgun/patches/**'
@@ -57,6 +58,8 @@ jobs:
           for chain in 42161 56 137; do
             OPHIS_BROADCASTER_CHAIN_ID="$chain" pnpm exec vitest run tests/broadcaster.test.ts tests/transaction.test.ts tests/sdk-fee.test.ts --silent
           done
+      - name: BNB prepaid credit and recovery
+        run: OPHIS_BROADCASTER_CHAIN_ID=56 pnpm exec vitest run tests/credit*.test.ts tests/sdk-prepaid.test.ts tests/anon-native-collection.test.ts --silent
       - run: pnpm build
       - run: node scripts/test-build-context.mjs
       - name: Build and smoke-test the production image

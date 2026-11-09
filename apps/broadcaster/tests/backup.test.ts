@@ -1,16 +1,49 @@
 import { expect, it } from 'vitest'
-import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync, symlinkSync, writeFileSync } from 'node:fs'
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, renameSync, rmSync, statSync, symlinkSync, writeFileSync } from 'node:fs'
 import { spawnSync } from 'node:child_process'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
 import { DatabaseSync } from 'node:sqlite'
+import { id, Wallet } from 'ethers'
 import { snapshotCriticalState } from '../src/backup'
 import { privateDirectory, privateFile, Store } from '../src/storage'
+import { cliBacking } from './main-sdk.fixture'
+import { CreditLedger } from '../src/credit'
 
 const custodyLayouts = {
   legacy: ['operator.sealed.json', 'operator-retired.sealed.json', 'operator-public.json', 'backup-cert.pem'],
   owner: ['owner-manifest.json', 'operator.sealed.json', 'fee-wallet-public.json', 'fee-wallet.sealed.json'],
 }
+
+it('keeps a restored credit snapshot blocked when a newer refund hold is invisible to the operator nonce', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'credit-restore-history-'))
+  privateDirectory(join(root, 'secrets'))
+  for (const name of custodyLayouts.owner) writeFileSync(join(root, 'secrets', name), 'synthetic-sealed-record', { mode: 0o600 })
+  const store = new Store(root), owner = Wallet.createRandom().address
+  const scope = { chainId: 1, operator: Wallet.createRandom().address, token: Wallet.createRandom().address,
+    recipient: '0zk1qy08nqrftxezyxdegx6ca055tr65f2hf3u24j9urx04e5fnzepv6nrv7j6fe3z53luvr6qkgtjukzmkcp856gs5a6wzdd3pnesr9r6ljvym9l3a4fcepgkvek3f' }
+  try {
+    const ledger = new CreditLedger(store, scope)
+    ledger.deposit({ owner, tree: 0, position: 0, amount: 1_000n, commitment: id('restore-note'),
+      transactionHash: id('restore-topup'), blockHash: id('restore-block'), blockNumber: 1 })
+    const backing = await cliBacking(ledger.accountedNotes())
+    const destination = join(root, '.backup-snapshot.credit')
+    await snapshotCriticalState(root, destination)
+    // This later liability change sends no operator transaction and cannot be inferred from nonce 0.
+    ledger.reserveRefund(id('later-refund'), owner, '0zk1qycrffu7psx6udqv62vjfrx85kf9fxvzcwzjxfpj5nw59urf46c0trv7j6fe3z53lu9xnx4de52xjyewrs8me5u49mte0sc06unkwkppmyx05qyrsvjt7yqt7sm', 300n, 250n, ledger.nextSequence(owner), backing, 1n)
+    expect(() => ledger.assertChainNonce(0)).not.toThrow()
+    const restoredStore = new Store(join(destination, 'state'))
+    try {
+      const restored = CreditLedger.load(restoredStore)
+      expect(restored.balance(owner).available).toBe(1_000n)
+      expect(ledger.balance(owner).available).toBe(700n)
+      expect(() => restored.assertChainNonce(0)).toThrow('recovery review')
+      expect(() => restored.reserveRefund(id('duplicate-refund'), owner, '0zk1qycrffu7psx6udqv62vjfrx85kf9fxvzcwzjxfpj5nw59urf46c0trv7j6fe3z53lu9xnx4de52xjyewrs8me5u49mte0sc06unkwkppmyx05qyrsvjt7yqt7sm', 300n, 250n, restored.nextSequence(owner), backing, 1n)).toThrow('recovery review')
+      expect(restoredStore.db.prepare('SELECT value FROM settings WHERE key=?').get('creditRecoveryRequired')?.value).toBe('1')
+      expect(restored.balance(owner).available).toBe(1_000n)
+    } finally { restoredStore.close() }
+  } finally { store.close(); rmSync(root, { recursive: true, force: true }) }
+})
 
 it.each(['legacy', 'owner'] as const)('snapshots %s custody and live WAL journals without stopping the operator or losing unknown transactions', async (layout) => {
   const root = mkdtempSync(join(tmpdir(), 'critical-backup-'))
@@ -28,6 +61,7 @@ it.each(['legacy', 'owner'] as const)('snapshots %s custody and live WAL journal
     store.db.prepare('INSERT INTO settings VALUES(?,?)').run('withdrawalPilot', 'historical-pilot')
     store.signed('pending', 'encrypted request', 'unknown signed bytes', 'hash', 100n, 1000n, 1)
     store.db.prepare('INSERT INTO settings VALUES(?,?)').run('walletId', 'live-view-id')
+    store.db.exec('CREATE TABLE credit_identity (id TEXT)')
     const destination = join(root, '.backup-snapshot.test')
     await snapshotCriticalState(root, destination)
     const saved = new Store(join(destination, 'state'))
@@ -40,6 +74,8 @@ it.each(['legacy', 'owner'] as const)('snapshots %s custody and live WAL journal
       expect(saved.db.prepare('SELECT value FROM settings WHERE key=?').get('withdrawalPilot')?.value).toBe('historical-pilot')
       expect(savedTransport.prepare('SELECT raw FROM pending').get()?.raw).toBe('unknown signed bytes')
       expect(saved.db.prepare('SELECT value FROM settings WHERE key=?').get('walletId')).toBeUndefined()
+      expect(() => saved.assertCreditJournalActive()).toThrow('recovery review')
+      expect(() => store.assertCreditJournalActive()).not.toThrow()
       expect(store.db.prepare('SELECT value FROM settings WHERE key=?').get('walletId')?.value).toBe('live-view-id')
       expect(readFileSync(join(destination, 'state', 'secrets', 'operator.sealed.json'), 'utf8')).toBe('encrypted/dummy-public-data')
       expect(readdirSync(join(destination, 'state', 'secrets')).sort()).toEqual([...custodyLayouts[layout]].sort())
@@ -111,6 +147,10 @@ function shellFixture(layout: 'state' | 'owner-state', running = true) {
   actualMounts([{ Type: 'bind', Source: state, Destination: '/var/lib/ophis-broadcaster' }])
   const existingContainer = (value: string) => writeFileSync(container, value)
   existingContainer('synthetic-container\n')
+  const liveMount = join(root, 'actual-mounted-directory'), image = join(root, 'image-id'), challengeFault = join(root, 'challenge-fault')
+  const mountFrom = (value: string) => writeFileSync(liveMount, value)
+  const imageId = `sha256:${'12'.repeat(32)}`
+  mountFrom(state); writeFileSync(image, imageId); writeFileSync(challengeFault, '')
   const attack = join(root, 'snapshot-attack'), sentinel = join(root, 'host-sentinel')
   writeFileSync(sentinel, 'must-not-overwrite')
   // Compose is a synthetic container, while the actual backup shell and tar run unchanged.
@@ -118,11 +158,44 @@ function shellFixture(layout: 'state' | 'owner-state', running = true) {
   writeFileSync(hooks, `
 flock() { return 0; }
 cp() { printf 'Host cp must not write into a container snapshot.\\n' >&2; return 94; }
+tar() {
+  if compgen -G "$OPHIS_TEST_STATE/.backup-mount-check.*" >/dev/null; then return 96; fi
+  printf 'archive\\n' >> "$OPHIS_TEST_CALLS"
+  command tar "$@"
+}
+mounted_challenge() {
+  [[ "$2" = /var/lib/ophis-broadcaster/.backup-mount-check.* && "\${2##*/}" != */* ]] || return 95
+  local source fault
+  source=$(cat "$OPHIS_TEST_LIVE_MOUNT")
+  fault=$(cat "$OPHIS_TEST_CHALLENGE_FAULT")
+  [[ "$fault" != error ]] || return 96
+  if [[ "$fault" = wrong ]]; then printf '%064d' 0; return; fi
+  "$OPHIS_TEST_NODE" -e "$1" "$source/\${2##*/}"
+}
 docker() {
   if [[ "$1" = inspect ]]; then
     printf '%s\\n' "$*" >> "$OPHIS_TEST_CALLS"
-    [[ "$2" = --format && "$3" = '{{json .Mounts}}' && "$4" = synthetic-container ]] || return 93
-    cat "$OPHIS_TEST_MOUNTS"
+    [[ "$2" = --format && "$4" = synthetic-container ]] || return 93
+    if [[ "$3" = '{{json .Mounts}}' ]]; then cat "$OPHIS_TEST_MOUNTS"
+    elif [[ "$3" = '{{.Image}}' ]]; then cat "$OPHIS_TEST_IMAGE"
+    else return 93; fi
+    return
+  fi
+  if [[ "$1" = exec ]]; then
+    printf '%s\\n' "$*" >> "$OPHIS_TEST_CALLS"
+    [[ "$2" = --user && "$3" = "$(id -u):$(id -g)" && "$4" = synthetic-container && "$5" = node && "$6" = -e && $# = 8 ]] || return 95
+    mounted_challenge "$7" "$8"
+    return
+  fi
+  if [[ "$1" = run ]]; then
+    printf '%s\\n' "$*" >> "$OPHIS_TEST_CALLS"
+    shift
+    [[ "$1" = --rm && "$2" = --pull && "$3" = never && "$4" = --network && "$5" = none && "$6" = --read-only ]] || return 95
+    shift 6
+    [[ "$1" = --cap-drop && "$2" = ALL && "$3" = --security-opt && "$4" = no-new-privileges && "$5" = --user && "$6" = "$(id -u):$(id -g)" ]] || return 95
+    shift 6
+    [[ "$1" = --volumes-from && "$2" = synthetic-container:ro && "$3" = --entrypoint && "$4" = node && "$5" = "$(cat "$OPHIS_TEST_IMAGE")" && "$6" = -e && $# = 8 ]] || return 95
+    mounted_challenge "$7" "$8"
     return
   fi
   [[ "$1" = compose ]] || return 90
@@ -160,6 +233,7 @@ openssl() {
       timeout: 5000, encoding: 'utf8', env: { ...process.env, BASH_ENV: hooks,
         OPHIS_TEST_COMPOSE: config, OPHIS_TEST_STATE: state, OPHIS_TEST_CALLS: calls,
         OPHIS_TEST_MOUNTS: inspect, OPHIS_TEST_CONTAINER: container, OPHIS_TEST_ATTACK: attack, OPHIS_TEST_SENTINEL: sentinel,
+        OPHIS_TEST_LIVE_MOUNT: liveMount, OPHIS_TEST_IMAGE: image, OPHIS_TEST_CHALLENGE_FAULT: challengeFault, OPHIS_TEST_NODE: process.execPath,
         OPHIS_TEST_RUNNING: running ? '1' : '0', OPHIS_TEST_ENCRYPT_FAIL: fail ? '1' : '0' },
     })
   const checkPreserved = () => {
@@ -168,9 +242,12 @@ openssl() {
     if (layout !== 'state') expect(readFileSync(join(base, 'state', 'journal.marker'), 'utf8')).toBe('retired-state')
     expect(existsSync(executed)).toBe(false)
     expect(readdirSync(state).some((name) => name.startsWith('.backup-snapshot.'))).toBe(false)
+    expect(readdirSync(state).some((name) => name.startsWith('.backup-mount-check.'))).toBe(false)
     expect(readdirSync(join(base, 'backups')).some((name) => name.startsWith('.incomplete.'))).toBe(false)
   }
-  return { root, base, state, calls, configure, actualMounts, existingContainer, run, checkPreserved,
+  return { root, base, state, calls, configure, actualMounts, existingContainer, run, checkPreserved, mountFrom, imageId,
+    changeImage: (value: string) => writeFileSync(image, value),
+    failChallenge: (value: 'error' | 'wrong') => writeFileSync(challengeFault, value),
     attackSnapshot: () => writeFileSync(attack, ''), sentinel }
 }
 
@@ -187,9 +264,14 @@ it.each((['state', 'owner-state'] as const).flatMap((layout) => [
     const files = spawnSync('tar', ['-tf', archive], { encoding: 'utf8' })
     expect(files.status, files.stderr).toBe(0)
     expect(files.stdout.split('\n')).toContain(`${prefix}/journal.marker`)
+    expect(files.stdout).not.toContain('.backup-mount-check.')
     const content = (name: string) => spawnSync('tar', ['-xOf', archive, name], { encoding: 'utf8' }).stdout
     expect(content(`${prefix}/journal.marker`)).toBe('current-state')
     expect(content(`${prefix}/requests.sqlite`)).toBe('current-journal')
+    if (mode === 'full') {
+      expect(content(`${prefix}/.prepaid-restore-review-required`)).toContain('reconcile credit history')
+      expect(existsSync(join(f.state, '.prepaid-restore-review-required'))).toBe(false)
+    }
     expect(content(`${prefix}/secrets/operator.sealed.json`)).toBe('sealed-current')
     expect(content('operator.env')).toBe(readFileSync(join(f.base, 'operator.env'), 'utf8'))
     expect(content('compose.env')).toBe(readFileSync(join(f.base, 'compose.env'), 'utf8'))
@@ -197,11 +279,99 @@ it.each((['state', 'owner-state'] as const).flatMap((layout) => [
     expect(calls[0]).toBe('config --format json')
     expect(calls[1]).toBe('ps -aq broadcaster')
     expect(calls[2]).toBe('inspect --format {{json .Mounts}} synthetic-container')
+    const challengeCall = calls.findIndex((call) => call.startsWith(running ? 'exec --user ' : 'run --rm --pull never '))
+    expect(challengeCall).toBeGreaterThan(2)
+    expect(calls[challengeCall]).toContain('/var/lib/ophis-broadcaster/.backup-mount-check.')
+    if (!running) {
+      expect(calls[challengeCall]).toContain('--network none --read-only --cap-drop ALL --security-opt no-new-privileges')
+      expect(calls[challengeCall]).toContain(`--volumes-from synthetic-container:ro --entrypoint node ${f.imageId}`)
+    }
+    expect(calls.indexOf('archive')).toBeGreaterThan(challengeCall)
+    if (mode === 'full') expect(calls.indexOf('stop broadcaster')).toBeGreaterThan(challengeCall)
     expect(calls.includes('stop broadcaster')).toBe(mode === 'full')
     expect(calls.includes('start broadcaster')).toBe(mode === 'full' && running)
     expect(calls.some((call) => call.startsWith('exec -T broadcaster node dist/main.mjs snapshot /var/lib/ophis-broadcaster/.backup-snapshot.')))
       .toBe(mode === 'critical')
     f.checkPreserved()
+  } finally { rmSync(f.root, { recursive: true, force: true }) }
+})
+
+it.each([
+  { mode: 'critical' as const, running: true },
+  { mode: 'full' as const, running: true },
+  { mode: 'full' as const, running: false },
+].flatMap((scenario) => ['different daemon mount', 'wrong', 'error'].map((failure) => ({ ...scenario, failure }))))(
+  'rejects $failure despite matching reported host paths before $mode archive (running=$running)', ({ mode, running, failure }) => {
+    const f = shellFixture('owner-state', running)
+    try {
+      // Both Compose and docker inspect still report the exact same host path.
+      if (failure === 'different daemon mount') {
+        const other = join(f.root, 'daemon-side-state')
+        mkdirSync(other)
+        f.mountFrom(other)
+      } else f.failChallenge(failure as 'wrong' | 'error')
+      const result = f.run(mode)
+      expect(result.status).not.toBe(0)
+      expect(result.stderr).toContain(failure === 'wrong' ? 'differs from the configured host directory' : 'Cannot verify')
+      const calls = readFileSync(f.calls, 'utf8').split('\n')
+      expect(calls).not.toContain('stop broadcaster')
+      expect(calls).not.toContain('start broadcaster')
+      expect(calls).not.toContain('archive')
+      expect(calls.some((call) => call.startsWith('exec -T broadcaster'))).toBe(false)
+      expect(existsSync(join(f.state, '.prepaid-restore-review-required'))).toBe(false)
+      expect(readdirSync(join(f.base, 'backups'))).toEqual(['retired.cms'])
+      f.checkPreserved()
+    } finally { rmSync(f.root, { recursive: true, force: true }) }
+  },
+)
+
+it.each(['critical', 'full'] as const)('rejects a renamed live bind replaced by an apparently identical host path for %s', (mode) => {
+  const f = shellFixture('owner-state')
+  try {
+    const mountedOriginal = join(f.base, 'renamed-mounted-state')
+    renameSync(f.state, mountedOriginal)
+    f.mountFrom(mountedOriginal)
+    mkdirSync(join(f.state, 'secrets'), { recursive: true })
+    writeFileSync(join(f.state, 'journal.marker'), 'current-state')
+    writeFileSync(join(f.state, 'requests.sqlite'), 'current-journal')
+    writeFileSync(join(f.state, 'secrets', 'operator.sealed.json'), 'sealed-current')
+    const result = f.run(mode)
+    expect(result.status).not.toBe(0)
+    expect(result.stderr).toContain('Cannot verify the existing container state mount')
+    const calls = readFileSync(f.calls, 'utf8').split('\n')
+    expect(calls).not.toContain('stop broadcaster')
+    expect(calls).not.toContain('archive')
+    expect(readFileSync(join(mountedOriginal, 'journal.marker'), 'utf8')).toBe('current-state')
+    expect(readdirSync(mountedOriginal).some((name) => name.startsWith('.backup-mount-check.'))).toBe(false)
+    expect(readdirSync(join(f.base, 'backups'))).toEqual(['retired.cms'])
+    f.checkPreserved()
+  } finally { rmSync(f.root, { recursive: true, force: true }) }
+})
+
+it.each(['untrusted:tag', '', `sha256:${'12'.repeat(32)}\nsecond-image`])('refuses stopped-container verification with an unpinned image %j', (image) => {
+  const f = shellFixture('owner-state', false)
+  try {
+    f.changeImage(image)
+    const result = f.run('full')
+    expect(result.status).not.toBe(0)
+    expect(result.stderr).toContain('immutable image ID')
+    const calls = readFileSync(f.calls, 'utf8').split('\n')
+    expect(calls.some((call) => call.startsWith('run '))).toBe(false)
+    expect(calls).not.toContain('stop broadcaster')
+    expect(calls).not.toContain('archive')
+    f.checkPreserved()
+  } finally { rmSync(f.root, { recursive: true, force: true }) }
+})
+
+it('preserves an existing restore hold in both the full backup and the original state', () => {
+  const f = shellFixture('owner-state')
+  try {
+    writeFileSync(join(f.state, '.prepaid-restore-review-required'), 'unreviewed restore', { mode: 0o600 })
+    const result = f.run('full')
+    expect(result.status, result.stderr).toBe(0)
+    expect(readFileSync(join(f.state, '.prepaid-restore-review-required'), 'utf8')).toBe('unreviewed restore')
+    expect(spawnSync('tar', ['-xOf', result.stdout.trim(), './owner-state/.prepaid-restore-review-required'], { encoding: 'utf8' }).stdout)
+      .toBe('unreviewed restore')
   } finally { rmSync(f.root, { recursive: true, force: true }) }
 })
 

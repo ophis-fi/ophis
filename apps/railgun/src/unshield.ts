@@ -1,4 +1,4 @@
-import { CHAIN, CHAIN_ID, CHAIN_NAME, CONFIG, NETWORK, PERMIT2, PILOT_WITHDRAWAL_RECIPIENT, PROXY, ROUTER, TOKENS, tokenFor, VERSION, type TokenSymbol } from './config'
+import { CHAIN, CHAIN_ID, CHAIN_NAME, CONFIG, NETWORK, PERMIT2, PILOT_WITHDRAWAL_RECIPIENT, PROXY, ROUTER, TOKENS, tokenFor, VERSION, WRAPPED_SYMBOL, type TokenSymbol } from './config'
 import { calculateGasLimit, getEVMGasTypeForTransaction, EVMGasType, type SelectedBroadcaster } from '@railgun-community/shared-models'
 import { RelayAdapt7702ExecutionType } from '@railgun-community/engine'
 import {
@@ -9,7 +9,8 @@ import {
   balanceForERC20Token,
 } from '@railgun-community/wallet'
 import { authorizationify, Contract, getAddress, ZeroAddress } from 'ethers'
-import { broadcasterFee, selectBroadcaster, validateBroadcaster, type PrivateSubmitter } from './broadcaster'
+import { broadcasterFee, prepaidFee, selectBroadcaster, validateBroadcaster, type PrivateSubmitter } from './broadcaster'
+import type { PreparedCredit } from './prepaid'
 import { amountFromInput, unshieldAmount } from './recipe'
 import { pendingSwap } from './journal'
 import { ADAPT, assertAtomicWithdrawal, assertBoundWithdrawal, simulateRequest } from './execution'
@@ -33,26 +34,27 @@ export async function prepareUnshield(
   selected: SelectedBroadcaster,
   maximum = false,
   nativeOutput = false,
+  prepaid?: PreparedCredit,
 ) {
   requireWalletSync()
   if ((await pendingWithdrawal(session)) || (await pendingSwap(session)))
     throw new Error('Resolve the pending private transaction before preparing another withdrawal.')
-  const feeToken = feeTokenFor(token)
+  const feeToken = prepaid ? WRAPPED_SYMBOL : feeTokenFor(token)
   const asset = tokenFor(token), feeAsset = tokenFor(feeToken)
   const sameAsset = getAddress(asset.address) === getAddress(feeAsset.address)
   if (nativeOutput && (CHAIN_ID !== 56 || getAddress(asset.address) !== getAddress(tokenFor('WBNB').address)))
     throw new Error('Native BNB withdrawal requires private WBNB on BNB Chain.')
-  validateBroadcaster(selected, feeAsset.address, usesBoundWithdrawal(token, nativeOutput))
+  if (!prepaid) validateBroadcaster(selected, feeAsset.address, usesBoundWithdrawal(token, nativeOutput))
   const destination = getAddress(recipient)
   if (PILOT_WITHDRAWAL_RECIPIENT &&
     (token !== 'USDC' || destination !== getAddress(PILOT_WITHDRAWAL_RECIPIENT)))
     throw new Error('This pilot withdraws USDC to its selected public recipient. Choose USDC before preparing a proof.')
   assertWithdrawalRecipient(destination, (await session.accounts.getCurrentAccount(CHAIN)).address)
-  if (usesBoundWithdrawal(token, nativeOutput)) return prepareBoundWithdrawal(session, token, value, destination, selected, maximum, nativeOutput)
+  if (usesBoundWithdrawal(token, nativeOutput)) return prepareBoundWithdrawal(session, token, value, destination, selected, maximum, nativeOutput, prepaid)
   await refreshReceivedBalances(session)
   const wallet = fullWalletForID(session.info.id)
   const spendable = await balanceForERC20Token(VERSION, wallet, NETWORK, asset.address, true)
-  const feeBalance = sameAsset ? spendable : await balanceForERC20Token(VERSION, wallet, NETWORK, feeAsset.address, true)
+  const feeBalance = prepaid ? 0n : sameAsset ? spendable : await balanceForERC20Token(VERSION, wallet, NETWORK, feeAsset.address, true)
   const requested = maximum ? undefined : amountFromInput(value, token)
   const feeBps: bigint = await new Contract(CONFIG.proxyContract, PROXY, session.provider).getFunction('unshieldFee')()
   const evmGasType = getEVMGasTypeForTransaction(NETWORK, false)
@@ -67,25 +69,26 @@ export async function prepareUnshield(
     if (gasPrice < block.baseFeePerGas + 1n) gasPrice = block.baseFeePerGas + 1n
   }
   let gas = { evmGasType, gasEstimate: 3_000_000n, gasPrice }
-  let fee = broadcasterFee(selected, gas)
+  let fee = prepaid ? prepaidFee(prepaid, gas) : broadcasterFee(selected, gas)
   for (let attempt = 0; attempt < 3; attempt++) {
-    const amount = requested ?? spendable - (sameAsset ? fee.amount : 0n)
-    if (!sameAsset) requireFeeBalance(feeBalance, fee.amount, feeToken)
-    if (amount <= 0n || amount + (sameAsset ? fee.amount : 0n) > spendable)
+    const amount = requested ?? spendable - (!prepaid && sameAsset ? fee.amount : 0n)
+    if (!prepaid && !sameAsset) requireFeeBalance(feeBalance, fee.amount, feeToken)
+    if (amount <= 0n || amount + (!prepaid && sameAsset ? fee.amount : 0n) > spendable)
       throw new Error(`Insufficient spendable ${token} for the withdrawal and broadcaster fee. Use Max withdrawal after fee.`)
     const amounts = [{ tokenAddress: asset.address, amount, recipientAddress: destination }]
     const estimate = await gasEstimateForUnprovenUnshield(
       VERSION, NETWORK, session.info.id, session.key, amounts, [], gas,
-      { tokenAddress: selected.tokenAddress, feePerUnitGas: BigInt(selected.tokenFee.feePerUnitGas) }, false,
+      prepaid ? undefined : { tokenAddress: selected.tokenAddress, feePerUnitGas: BigInt(selected.tokenFee.feePerUnitGas) }, !!prepaid,
     )
     // Round calldata gas jitter upward so a full-balance withdrawal can converge.
     const rounded = maximum ? ((estimate.gasEstimate + 9_999n) / 10_000n) * 10_000n : estimate.gasEstimate
     gas = { ...gas, gasEstimate: maximum && attempt > 0 && gas.gasEstimate > rounded ? gas.gasEstimate : rounded }
-    fee = broadcasterFee(selected, gas)
-    if (!sameAsset) requireFeeBalance(feeBalance, fee.amount, feeToken)
-    if (maximum && sameAsset && amount + fee.amount !== spendable) continue
-    if (amount + (sameAsset ? fee.amount : 0n) > spendable) throw new Error(`Insufficient spendable ${token} for the withdrawal and broadcaster fee.`)
-    return { kind: 'COMMON' as const, token, feeToken, amounts, minimum: unshieldAmount(amount, feeBps), selected, gas, fee, output: undefined }
+    fee = prepaid ? prepaidFee(prepaid, gas) : broadcasterFee(selected, gas)
+    if (!prepaid && !sameAsset) requireFeeBalance(feeBalance, fee.amount, feeToken)
+    if (!prepaid && maximum && sameAsset && amount + fee.amount !== spendable) continue
+    if (amount + (!prepaid && sameAsset ? fee.amount : 0n) > spendable) throw new Error(`Insufficient spendable ${token} for the withdrawal and broadcaster fee.`)
+    if (prepaid) await (await import('./prepaid')).assertPrepaidContext(session, selected, gas, prepaid)
+    return { kind: 'COMMON' as const, token, feeToken, amounts, minimum: unshieldAmount(amount, feeBps), selected, gas, fee, prepaid, output: undefined }
   }
   throw new Error('The withdrawal fee changed while estimating. Review the fee again.')
 }
@@ -100,10 +103,12 @@ export async function executeUnshield(
   if ((await pendingWithdrawal(session)) || (await pendingSwap(session)))
     throw new Error('A private transaction is already pending. Reconcile it before spending again.')
   if (prepared.kind === 'TX7702') return executeBoundWithdrawal(session, prepared, onProgress, submitter)
-  const { amounts, selected, gas, fee } = prepared
-  validateBroadcaster(selected, tokenFor(feeTokenFor(prepared.token)).address, false)
-  broadcasterFee(selected, gas)
-  await submitter.assertReady(session, selected, gas)
+  const { amounts, selected, gas, fee, prepaid } = prepared
+  if (!prepaid) {
+    validateBroadcaster(selected, tokenFor(feeTokenFor(prepared.token)).address, false)
+    broadcasterFee(selected, gas)
+  }
+  await submitter.assertReady(session, selected, gas, prepaid)
   await generateUnshieldProof(
     VERSION,
     NETWORK,
@@ -111,8 +116,8 @@ export async function executeUnshield(
     session.key,
     amounts,
     [],
-    fee,
-    false,
+    prepaid ? undefined : fee,
+    !!prepaid,
     gas.gasPrice,
     (progress, status) => onProgress(`${status}: ${Math.round(progress)}%`),
   )
@@ -122,12 +127,16 @@ export async function executeUnshield(
     session.info.id,
     amounts,
     [],
-    fee,
-    false,
+    prepaid ? undefined : fee,
+    !!prepaid,
     gas.gasPrice,
-    gas,
+    // Fee-free SDK population uses its self-signed gas format; broadcaster admission retains the quoted COMMON gas below.
+    prepaid && getEVMGasTypeForTransaction(NETWORK, true) === EVMGasType.Type2
+      ? { evmGasType: EVMGasType.Type2, gasEstimate: gas.gasEstimate,
+          maxFeePerGas: gas.gasPrice, maxPriorityFeePerGas: gas.gasPrice }
+      : gas,
   )
-  await submitter.assertReady(session, selected, gas)
+  await submitter.assertReady(session, selected, gas, prepaid)
   if (
     !populated.nullifiers?.length ||
     typeof populated.transaction.to !== 'string' ||
@@ -136,10 +145,11 @@ export async function executeUnshield(
     BigInt(populated.transaction.value || 0) !== 0n
   )
     throw new Error('Invalid populated withdrawal.')
-  assertAtomicWithdrawal(populated.transaction.data, feeTokenFor(prepared.token))
+  assertAtomicWithdrawal(populated.transaction.data, prepaid ? undefined : feeTokenFor(prepared.token))
   const pending = {
     token: prepared.token,
-    feeToken: feeTokenFor(prepared.token),
+    feeToken: prepaid ? WRAPPED_SYMBOL : feeTokenFor(prepared.token),
+    ...(prepaid ? { feeMode: 'prepaid' as const } : {}),
     broadcaster: selected.railgunAddress,
     recipient: amounts[0].recipientAddress,
     minimum: prepared.minimum.toString(),
@@ -149,7 +159,7 @@ export async function executeUnshield(
     minGasPrice: gas.gasPrice.toString(),
   }
   await savePendingWithdrawal(session, pending)
-  const hash = await submitter.send(session, populated, selected, gas, false)
+  const hash = await submitter.send(session, populated, selected, gas, false, undefined, prepaid)
   await savePendingWithdrawal(session, { ...pending, hash })
   onProgress(`Waiting for two confirmations: ${hash}`)
   const receipt = await session.provider.waitForTransaction(hash, 2, 180_000)
@@ -179,6 +189,7 @@ export async function retrySavedUnshield(session: WalletSession, onProgress: (me
   requireWalletSync()
   const pending = await pendingWithdrawal(session)
   if (!pending) throw new Error('No saved withdrawal to retry.')
+  if (pending.feeMode === 'prepaid') throw new Error('Use Check fee-credit transaction to resume its exact prepaid request. Keep the saved withdrawal; do not prepare another proof.')
   if (pending.hash) throw new Error('Check pending withdrawal first; a transaction hash is already saved.')
   if (pending.execution) return retryBoundWithdrawal(session, pending, onProgress, submitter)
   // Older proofs retain their original fee token; never re-label or re-prove them.

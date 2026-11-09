@@ -93,7 +93,7 @@ it.each(['missing', 'expired'])('rejects direct COMMON validation and submission
   await expect(assertSubmittable(session, pilot, gas)).rejects.toThrow(/not approved for public submissions/)
   await expect(submitPrivate(session, { transaction: { to: pilot.tokenAddress, data: '0x' }, nullifiers: ['synthetic-nullifier'],
     preTransactionPOIsPerTxidLeafPerList: {} }, pilot, gas, false))
-    .rejects.toThrow(/not approved for public submissions/)
+    .rejects.toThrow(/requires confirmed prepaid fee credit/)
   expect(read).not.toHaveBeenCalled()
   expect(mocks.create).not.toHaveBeenCalled()
   expect(mocks.send).not.toHaveBeenCalled()
@@ -114,7 +114,7 @@ it('preserves COMMON submission through another existing BNB operator without an
   expect(mocks.send).toHaveBeenCalledOnce()
 })
 
-it('permits our reviewed BNB pilot overlay and rechecks its approval before a COMMON send', async () => {
+it('does not let a legacy BNB pilot overlay authorize an unsecured Ophis COMMON send', async () => {
   const pilot = await candidate(true)
   mocks.policy[56] = [await approval()]
   mocks.find.mockReturnValue([pilot])
@@ -127,13 +127,9 @@ it('permits our reviewed BNB pilot overlay and rechecks its approval before a CO
   const populated = { transaction: { to: CONFIG.proxyContract,
     data: withdrawalData(1, 1, '0x0000000000000000000000000000000000001234', pilot.tokenAddress) },
     nullifiers: ['synthetic-nullifier'], preTransactionPOIsPerTxidLeafPerList: {} }
-  await expect(submitPrivate(session, populated, pilot, gas, false)).resolves.toBe('synthetic-withdrawal-hash')
-  mocks.send.mockClear()
-  mocks.create.mockImplementationOnce(async () => {
-    mocks.policy[56][0].expiresAt = Date.now()
-    return { send: mocks.send }
-  })
-  await expect(submitPrivate(session, populated, pilot, gas, false)).rejects.toThrow(/not approved for public submissions/)
+  await expect(submitPrivate(session, populated, pilot, gas, false)).rejects.toThrow(/requires confirmed prepaid fee credit/)
+  expect(session.provider.send).not.toHaveBeenCalled()
+  expect(mocks.create).not.toHaveBeenCalled()
   expect(mocks.send).not.toHaveBeenCalled()
 })
 

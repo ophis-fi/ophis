@@ -74,6 +74,19 @@ it('fails closed if the recovery account cannot be derived', async () => {
   expect(send).not.toHaveBeenCalled()
 })
 
+it('builds a fee-free prepaid principal proof, re-signs strict execution, and journals its mode before disclosure', async () => {
+  const prepaid = { feesID: 'synthetic-reviewed-credit' } as NonNullable<PreparedBoundWithdrawal['prepaid']>
+  const ready = vi.fn(), send = vi.fn()
+  await expect(executeBoundWithdrawal(session, { ...prepared, prepaid }, () => {}, { assertReady: ready, send })).rejects.toThrow('Synthetic simulation stopped')
+  expect(state.proof.mock.calls[0][9]).toBeUndefined()
+  expect(state.proof.mock.calls[0][10]).toBe(true)
+  expect(state.sign.mock.calls[0][4]).toMatchObject({ requireSuccess: true })
+  expect(ready.mock.calls.every((args) => args[3] === prepaid)).toBe(true)
+  expect(state.save.mock.calls[0][1]).toMatchObject({ feeMode: 'prepaid', feeToken: 'WETH', execution: { index: 7 } })
+  expect(state.events).toEqual(['saved', 'disclosed'])
+  expect(send).not.toHaveBeenCalled()
+})
+
 it('persists the matching recovery index before disclosure and keeps it after simulation failure', async () => {
   const send = vi.fn()
   await expect(executeBoundWithdrawal(session, prepared, () => {}, { assertReady: async () => {}, send }))
