@@ -31,8 +31,8 @@ describe('renderStatsPage', () => {
   });
 
   it('shows actual chain coverage separately from a newer publication', () => {
-    const html = renderStatsPage({ ...sample, dataSources: [
-      { chainId: 10, status: 'fresh', lastSuccessAt: sample.dataAsOf, coveredThrough: '2026-06-21T13:00:00.000Z', failedWallets: 0, unpricedTrades: 0 },
+    const html = renderStatsPage({ ...sample, dataFresh: false, dataStatus: 'degraded', dataStaleReason: 'ingestion_incomplete', dataSources: [
+      { chainId: 10, status: 'stale', lastSuccessAt: sample.dataAsOf, coveredThrough: '2026-06-21T13:00:00.000Z', failedWallets: 0, unpricedTrades: 0 },
       { chainId: 8453, status: 'unavailable', lastSuccessAt: null, coveredThrough: null, failedWallets: 1, unpricedTrades: 0 },
     ] });
     const table = html.slice(html.indexOf('<tbody>'), html.indexOf('</tbody>'));
@@ -42,6 +42,8 @@ describe('renderStatsPage', () => {
     expect(table).toContain('Not yet verified');
     expect(table).not.toContain('2026-06-21 14:58 UTC');
     expect(html).toContain('Published 2026-06-21 14:58 UTC');
+    expect(html).toContain('Updates continue for available chains. Last published at 2026-06-21 14:58 UTC.');
+    expect(html).not.toMatch(/Optimism: stale|Base: unavailable/);
   });
 
   it('filters each column, sorts numerically, and leaves lifetime totals unchanged', () => {
