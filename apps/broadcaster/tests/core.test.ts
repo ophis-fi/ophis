@@ -1,4 +1,14 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi, afterAll } from 'vitest'
+// These fixtures model Ethereum explicitly; chain-specific suites exercise the BNB policy separately.
+const originalFixtureChain = vi.hoisted(() => {
+  const previous = process.env.OPHIS_BROADCASTER_CHAIN_ID
+  process.env.OPHIS_BROADCASTER_CHAIN_ID = '1'
+  return previous
+})
+afterAll(() => {
+  if (originalFixtureChain === undefined) delete process.env.OPHIS_BROADCASTER_CHAIN_ID
+  else process.env.OPHIS_BROADCASTER_CHAIN_ID = originalFixtureChain
+})
 import { mkdtempSync, rmSync, chmodSync, existsSync } from 'node:fs'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'

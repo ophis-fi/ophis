@@ -18,7 +18,7 @@ export function recoveryEnvironment(container) {
   // Exact keys consumed by config.ts/main.ts, plus inert metadata from the pinned Node image.
   // An OPHIS_ prefix is not a blanket permission for future or unknown process controls.
   const allowed = new Set(['PATH', 'NODE_VERSION', 'YARN_VERSION',
-    'OPHIS_BROADCASTER_ADMISSION', 'OPHIS_BROADCASTER_CHAIN_ID',
+    'OPHIS_BROADCASTER_ADMISSION', 'OPHIS_BROADCASTER_CHAIN_ID', 'OPHIS_BROADCASTER_CREDIT_PAYMENT_MODE',
     'OPHIS_BROADCASTER_CREDIT_COLLECTION_GAS', 'OPHIS_BROADCASTER_CREDIT_COLLECTION_INPUTS',
     'OPHIS_BROADCASTER_CREDIT_COLLECTION_OUTPUTS', 'OPHIS_BROADCASTER_CREDIT_COLLECTION_PROOFS',
     'OPHIS_BROADCASTER_DAILY_BUDGET_WEI', 'OPHIS_BROADCASTER_ENABLED', 'OPHIS_BROADCASTER_EXECUTION_GUARD',
@@ -39,6 +39,9 @@ export function recoveryEnvironment(container) {
   if (env.PATH !== '/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin' ||
     ['NODE_VERSION', 'YARN_VERSION'].some(key => env[key] !== undefined && !/^\d+\.\d+\.\d+$/.test(env[key])))
     throw Error('Unsupported image environment.')
+  if (env.OPHIS_BROADCASTER_CREDIT_PAYMENT_MODE !== undefined &&
+    !['private-wrapped', 'public-native'].includes(env.OPHIS_BROADCASTER_CREDIT_PAYMENT_MODE))
+    throw Error('Unsupported recovery payment mode.')
   return env
 }
 export function recoverySource(source, plan) {

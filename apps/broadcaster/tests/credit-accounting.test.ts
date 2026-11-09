@@ -2,7 +2,7 @@ import { afterEach, beforeEach, expect, it } from 'vitest'
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { id, Wallet } from 'ethers'
+import { id, Wallet, ZeroAddress } from 'ethers'
 import { Store } from '../src/storage'
 import { CreditLedger } from '../src/credit'
 import { cliBacking } from './main-sdk.fixture'
@@ -68,4 +68,21 @@ it('keeps a refund-only deposit as customer liability until payout and exposes o
   expect(completed.prepaidCredit!.liability).toBe('200')
   expect(remainingPrivateTokens - BigInt(completed.receivedFees[TOKENS[0].address])).toBe(ledger.liability())
   expect(completed.recordedGasExpenseWei).toBe('0')
+})
+
+
+it('keeps repeated native payments in customer liability without reporting them as spendable credit or earned fees', () => {
+  const ledger = new CreditLedger(store, { chainId: CHAIN_ID, operator, recipient: operator, token: ZeroAddress, funding: 'native' })
+  const insert = (table: string, paymentId: string, transactionHash: string, amount: string) =>
+    store.db.prepare(`INSERT INTO ${table}(payment_id,owner,transaction_hash,block_number,block_hash,amount) VALUES(?,?,?,?,?,?)`)
+      .run(paymentId, owner, transactionHash, 10, id('native block'), amount)
+  // Report-only persisted-history fixture; native payment verification is independently exercised before ledger insertion.
+  insert('credit_native_deposits', id('native id'), id('native payment'), '1000')
+  insert('credit_native_duplicate_deposits', id('native id'), id('native repeated payment'), '250')
+  const report = accountingReport(store.db)
+  expect(report.prepaidCredit).toMatchObject({ funding: 'native', token: ZeroAddress, deposited: '1250',
+    quarantined: '250', liability: '1250', charged: '0', remainingEarned: '0', nativeCollected: '0' })
+  expect(report.receivedFees).toEqual({ [ZeroAddress]: '0' })
+  expect(ledger.balance(owner).available).toBe(1000n)
+  expect(ledger.liability()).toBe(1250n)
 })

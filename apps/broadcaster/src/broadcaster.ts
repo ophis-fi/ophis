@@ -12,10 +12,11 @@ import { assertExecutionGuardCode, guardedExecution } from '../../railgun/operat
 import { signApprovedTransaction, type GasSigner } from './signer'
 import { readChainState } from './chain-state'
 import { CREDIT_PROTOCOL } from '../../railgun/credit-protocol'
-import { CreditService, type SecuredRequest } from './credit-service'
+import { CreditService, type SecuredRequest, type CreditRequest } from './credit-service'
 import { object } from './wire'
 import { finalizedCreditReceipt } from './credit-payment'
 import { CreditQueryLimit } from './credit-query-limit'
+import { assertNativeRefundTrace } from './credit-native-payment'
 
 const REGISTRY = new Interface(['function getContractAddress(string name) view returns (address)'])
 type SDK = Pick<RailgunSDK, 'address' | 'privateViewingKey' | 'publicViewingKey' | 'ready' | 'sign' | 'fee' | 'validate' | 'assure'> &
@@ -38,8 +39,8 @@ export class Broadcaster {
   ) {}
 
   private async credits(): Promise<CreditService> {
-    if (!this.sdk.ready() || !this.sdk.confirmedCredits || !this.sdk.confirmedRefund || !this.sdk.accountedCreditBacking ||
-      !this.sdk.confirmedOwnerCollection || !this.sdk.validatePrepaid)
+    if (!this.sdk.ready() || !this.sdk.validatePrepaid || (this.config.creditPaymentMode !== 'public-native' &&
+      (!this.sdk.confirmedCredits || !this.sdk.confirmedRefund || !this.sdk.accountedCreditBacking || !this.sdk.confirmedOwnerCollection)))
       throw new Error('The prepaid fee wallet is unavailable.')
     if (this.creditService) return this.creditService
     const initialNonce = await this.provider.getTransactionCount(this.wallet.address, 'latest')
@@ -54,8 +55,8 @@ export class Broadcaster {
         throw new Error('Finalize every operator transaction before initializing prepaid credit.')
     }
     return this.creditService ??= new CreditService(this.config, this.store,
-      { address: this.sdk.address, confirmedCredits: this.sdk.confirmedCredits.bind(this.sdk), confirmedRefund: this.sdk.confirmedRefund.bind(this.sdk),
-        accountedCreditBacking: this.sdk.accountedCreditBacking.bind(this.sdk), confirmedOwnerCollection: this.sdk.confirmedOwnerCollection.bind(this.sdk) },
+      { address: this.sdk.address, confirmedCredits: this.sdk.confirmedCredits?.bind(this.sdk), confirmedRefund: this.sdk.confirmedRefund?.bind(this.sdk),
+        accountedCreditBacking: this.sdk.accountedCreditBacking?.bind(this.sdk), confirmedOwnerCollection: this.sdk.confirmedOwnerCollection?.bind(this.sdk) },
       this.provider, this.wallet.address, initialNonce)
   }
 
@@ -76,9 +77,13 @@ export class Broadcaster {
 
   async available(): Promise<boolean> {
     if (!this.config.enabled || this.busy || !this.sdk.ready() || this.store.hasPending()) return false
-    if (this.config.mode === 'mainnet' && (!this.config.creditCollectionGas || !this.config.creditCollectionInputs ||
+    if (this.config.mode === 'mainnet' && this.config.creditPaymentMode !== 'public-native' && (!this.config.creditCollectionGas || !this.config.creditCollectionInputs ||
       !this.config.creditCollectionOutputs || !this.config.creditCollectionProofs)) return false
     if (this.creditService?.ledger.pendingOwnerIntent()) return false
+    if (this.config.creditPaymentMode === 'public-native') {
+      if (!this.creditService) return false
+      try { await this.creditService.qualifyNativeFundingReads(); await this.creditService.assertBacked(1n) } catch { return false }
+    }
     // Advertising availability must never create or rotate a credit identity.
     if (this.config.prepaidPilotLedgerId !== undefined && (this.config.admission !== 'pilot' ||
       !this.config.prepaidPilotOwner || !this.creditService || this.creditService.ledger.id !== this.config.prepaidPilotLedgerId)) return false
@@ -95,7 +100,8 @@ export class Broadcaster {
 
   async feeAdvertisement(): Promise<Uint8Array> {
     const available = await this.available()
-    const quote = issueFee(this.store, await this.oracle.rates())
+    const quote = issueFee(this.store, this.config.creditPaymentMode === 'public-native'
+      ? { [TOKENS[0].address]: ceilDiv(10n ** 18n * (10_000n + this.config.marginBps), 10_000n) } : await this.oracle.rates())
     const data = fromUTF8String(JSON.stringify({
       fees: Object.fromEntries(Object.entries(quote.rates).map(([token, rate]) => [token.toLowerCase(), rate])),
       feeExpiration: quote.expiration, feesID: quote.id, railgunAddress: this.sdk.address,
@@ -125,10 +131,16 @@ export class Broadcaster {
           this.discoveryQueries = this.discoveryQueries.filter((time) => now - time < 60_000)
           if (this.discoveryQueries.length >= 300) throw new Error('Prepaid discovery limit reached.')
           this.discoveryQueries.push(now)
-          return responseEnvelope(reply(credits.info()), request.id)
+          return responseEnvelope(reply(await credits.info()), request.id)
         }
         const authorized = credits.authenticate(request.data.authorization)
         request.key = authorized.key
+        if (authorized.payload.kind === 'refund' && credits.ledger.isNative) {
+          this.creditQueries.accept(authorized.owner, credits.ledger.hasDeposit(authorized.owner), 'refund')
+          const previous = credits.ledger.attempt(request.key)
+          if (previous) return responseEnvelope(reply(await credits.read(authorized)), request.id)
+          return responseEnvelope(reply(await this.nativeRefund(credits, authorized, request.envelope)), request.id)
+        }
         if (authorized.payload.kind !== 'execute') {
           this.creditQueries.accept(authorized.owner, credits.ledger.hasDeposit(authorized.owner), String(authorized.payload.kind))
           return responseEnvelope(reply(await credits.read(authorized)), request.id)
@@ -137,7 +149,7 @@ export class Broadcaster {
         if (previous) {
           if (previous.owner !== authorized.owner) throw new Error('Wrong prepaid attempt owner.')
           const saved = this.store.get(request.key)!
-          return responseEnvelope(reply({ kind: 'attempt', txHash: saved.hash,
+          return responseEnvelope(reply({ kind: 'attempt', txHash: saved.hash, ...(credits.ledger.isNative ? { nonce: saved.nonce } : {}),
             settlementHash: previous.settlement_hash,
             state: previous.charged !== null ? 'settled' : 'reserved-or-submitted', charged: previous.charged }), request.id)
         }
@@ -289,7 +301,7 @@ export class Broadcaster {
       phase = 'submit'
       const sent = await this.sender.broadcastTransaction(raw, feeQuote.expiration)
       if (sent.hash !== hash) throw new Error('Unexpected protected transaction hash.')
-      const encrypted = reply({ txHash: hash })
+      const encrypted = reply({ txHash: hash, ...(secured?.nativeReserve !== undefined ? { nonce } : {}) })
       this.store.respond(request.key, encrypted)
       return responseEnvelope(encrypted, request.id)
     } catch {
@@ -329,6 +341,54 @@ export class Broadcaster {
       if (unknown) this.store.respond(request.key, encrypted)
       return responseEnvelope(encrypted, request.id)
     } finally { if (reserved) { this.busy = false; this.activeKey = undefined } }
+  }
+
+  private async nativeRefund(credits: CreditService, request: CreditRequest, envelope: string): Promise<Record<string, unknown>> {
+    if (this.busy || this.store.hasPending() || !this.sdk.ready()) throw new Error('Resolve the preceding operator request first.')
+    assertSigningNetwork(this.config)
+    this.busy = true; this.activeKey = request.key
+    try {
+      const secured = await credits.secureNativeRefund(request)
+      const initial = await this.state()
+      const tip = initial.minimumGasPrice > initial.baseFee ? initial.minimumGasPrice - initial.baseFee : 1n
+      const price = initial.baseFee * 2n + tip
+      if (initial.nonce !== initial.confirmed || this.store.nonceBlocked(initial.nonce) || price < initial.baseFee + tip ||
+        price * 5n > this.config.maxGasPrice * 4n)
+        throw new Error('Native refund nonce or gas pricing is unavailable.')
+      const transaction = { to: secured.recipient, value: secured.net, data: '0x', type: 2, chainId: CHAIN,
+        nonce: initial.nonce, maxFeePerGas: price, maxPriorityFeePerGas: tip }
+      const estimate = await this.provider.estimateGas({ ...transaction, from: this.wallet.address })
+      if (typeof estimate !== 'bigint' || estimate < 21_000n) throw new Error('Invalid native refund gas estimate.')
+      const gasLimit = ceilDiv(estimate * 110n, 100n), budget = gasLimit * price
+      if (gasLimit > MAX_GAS || budget > this.config.maxTransactionCost ||
+        initial.balance < secured.net + budget + this.config.reserve)
+        throw new Error('Native refund exceeds the approved gas or balance limit.')
+      const populated = { ...transaction, gasLimit }
+      const trace = async (block: number) => assertNativeRefundTrace(await this.provider.send('debug_traceCall', [
+        this.provider.getRpcTransaction({ ...populated, from: this.wallet.address }),
+        `0x${block.toString(16)}`, { tracer: 'callTracer', timeout: '10s' },
+      ]), { from: this.wallet.address, to: secured.recipient, value: secured.net })
+      await trace(initial.block.number)
+      secured.backing = await credits.assertBacked(secured.maximumCharge)
+      const fresh = await this.state()
+      const effectivePrice = fresh.baseFee + tip < price ? fresh.baseFee + tip : price
+      if (this.store.hasPending() || fresh.nonce !== initial.nonce || fresh.confirmed !== initial.nonce ||
+        fresh.balance < secured.net + budget + this.config.reserve || price < fresh.baseFee + tip ||
+        effectivePrice < fresh.minimumGasPrice || secured.expiration <= Date.now() ||
+        Math.abs(Date.now() / 1000 - fresh.block.timestamp) > 45 || this.store.exposure() + budget > this.config.dailyBudget)
+        throw new Error('Native refund execution conditions changed.')
+      if (fresh.block.hash !== initial.block.hash) await trace(fresh.block.number)
+      // The user's net refund and worst-case gas are held atomically with the operator nonce before any signature.
+      credits.ledger.reserve({ key: request.key, envelope,
+        unsigned: Transaction.from(populated).unsignedSerialized, nonce: initial.nonce, gasBudget: budget,
+        dailyBudget: this.config.dailyBudget, ...secured, nativeRefund: { recipient: secured.recipient, net: secured.net } })
+      const raw = await signApprovedTransaction(this.wallet, populated)
+      credits.ledger.attachSignature(request.key, raw)
+      const hash = Transaction.from(raw).hash!
+      const sent = await this.sender.broadcastTransaction(raw, secured.expiration)
+      if (sent.hash !== hash) throw new Error('Unexpected protected native refund hash.')
+      return credits.read(request)
+    } finally { this.busy = false; this.activeKey = undefined }
   }
 
   private async validateNetworkAndAuthority(request: ParsedRequest, blockTag: number): Promise<void> {

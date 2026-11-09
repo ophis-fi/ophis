@@ -181,3 +181,13 @@ it('requires the pinned Arbitrum sequencer feed identity', async () => {
   feeds[3].description = 'ETH / USD'
   await expect(oracle.rates()).rejects.toThrow('identity or precision')
 })
+
+
+it.each([1, 56])('native prepaid discovery on chain %i has no USD feed or ANON pricing dependency', async (chainId) => {
+  vi.stubEnv('OPHIS_BROADCASTER_CHAIN_ID', String(chainId))
+  const { FeeOracle } = await import('../src/fees'), { TOKENS } = await import('../src/config')
+  const provider = new Proxy({}, { get: () => { throw new Error('No provider access is needed for native rate arithmetic') } })
+  expect(await new FeeOracle(provider as JsonRpcProvider, 1500n, true).rates())
+    .toEqual({ [getAddress(TOKENS[0].address)]: 1_150_000_000_000_000_000n })
+  await expect(new FeeOracle(provider as JsonRpcProvider, 0n, true).rates()).rejects.toThrow('margin')
+})

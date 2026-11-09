@@ -190,3 +190,21 @@ it('retains inert source version strings without substituting its old image for 
   expect(environment!.NODE_VERSION).toBe('22.23.1')
   expect(args).toContain(image); expect(args).not.toContain(f.source.Image)
 })
+
+
+it.each(['private-wrapped', 'public-native'])('preserves explicit %s funding mode in stopped recovery and attests the same mode before unlock', mode => {
+  const f = fixture()
+  f.source.Config.Env.push(`OPHIS_BROADCASTER_CREDIT_PAYMENT_MODE=${mode}`)
+  f.target.Config.Env.push(`OPHIS_BROADCASTER_CREDIT_PAYMENT_MODE=${mode}`)
+  expect(prepareRecovery(f.argv, f.docker)).toMatchObject({ status: 'created-stopped' })
+  const environment = f.docker.mock.calls.find(([args]) => args[0] === 'create')![1]!
+  expect(environment.OPHIS_BROADCASTER_CREDIT_PAYMENT_MODE).toBe(mode)
+  f.target.Config.Env = f.target.Config.Env.map(value => value.startsWith('OPHIS_BROADCASTER_CREDIT_PAYMENT_MODE=')
+    ? `OPHIS_BROADCASTER_CREDIT_PAYMENT_MODE=${mode === 'public-native' ? 'private-wrapped' : 'public-native'}` : value)
+  expect(() => recoveryTarget(f.target, f.source, f.plan, false)).toThrow('environment changed')
+})
+it.each(['', 'native', 'public', 'public-native '])('rejects invalid recovery payment mode %s before container creation', mode => {
+  const f = fixture(); f.source.Config.Env.push(`OPHIS_BROADCASTER_CREDIT_PAYMENT_MODE=${mode}`)
+  expect(() => prepareRecovery(f.argv, f.docker)).toThrow('payment mode')
+  expect(f.docker.mock.calls.map(([args]) => args[0])).toEqual(['inspect'])
+})

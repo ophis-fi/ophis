@@ -124,3 +124,15 @@ it.each([1, 56])('requires an exact nonzero prepaid pilot ledger opt-in on chain
   expect(() => settings({ ...env, OPHIS_BROADCASTER_ADMISSION: 'public',
     OPHIS_BROADCASTER_PREPAID_PILOT_LEDGER_ID: ledger, OPHIS_BROADCASTER_PREPAID_PILOT_OWNER: approvedOwner })).toThrow('prepaid pilot')
 })
+
+
+it.each([1, 56])('requires explicit native payment mode and preserves independent admission on chain %i', async (chainId) => {
+  vi.stubEnv('OPHIS_BROADCASTER_CHAIN_ID', String(chainId))
+  const { settings } = await import('../src/config')
+  const env = { OPHIS_BROADCASTER_CHAIN_ID: String(chainId), OPHIS_BROADCASTER_RPC: 'http://127.0.0.1:9' }
+  expect(settings(env).creditPaymentMode).toBe('private-wrapped')
+  expect(settings({ ...env, OPHIS_BROADCASTER_CREDIT_PAYMENT_MODE: 'public-native' })).toMatchObject({
+    creditPaymentMode: 'public-native', enabled: false, admission: 'pilot', creditCollectionGas: 0n,
+  })
+  expect(() => settings({ ...env, OPHIS_BROADCASTER_CREDIT_PAYMENT_MODE: 'native' })).toThrow('payment mode')
+})

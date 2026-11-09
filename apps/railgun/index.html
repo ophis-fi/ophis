@@ -105,21 +105,23 @@
             <button id="refresh-fee-credit" class="secondary-action" type="button">Check fee credit</button>
             <p id="fee-credit-help"></p>
             <p id="fee-credit-timing"></p>
-            <label id="fee-credit-amount-label">Add wrapped-native fee credit<input id="fee-credit-amount" type="text" inputmode="decimal" autocomplete="off" placeholder="0.0" /></label>
+            <label id="fee-credit-amount-label"><span id="fee-credit-amount-text">Add fee credit</span><input id="fee-credit-amount" type="text" inputmode="decimal" autocomplete="off" placeholder="0.0" /></label>
             <label><input id="fee-credit-consent" type="checkbox" /> I understand that my public wallet pays the top-up gas and is linked to that transfer.</label>
             <button id="add-fee-credit" type="button">Add fee credit</button>
+            <label id="fee-topup-hash-label" hidden>Payment transaction hash (only if the wallet sent it but this page lost the result)<input id="fee-topup-hash" type="text" autocomplete="off" placeholder="0x…" /></label>
             <button id="check-fee-topup" class="secondary-action" type="button" hidden>Check top-up</button>
             <button id="retry-fee-topup" class="secondary-action" type="button" hidden>Retry saved top-up</button>
             <button id="check-fee-attempt" class="secondary-action" type="button" hidden>Check fee-credit transaction</button>
             <button id="retry-fee-attempt" class="secondary-action" type="button" hidden>Retry saved fee-credit request</button>
             <p id="fee-credit-status" role="status" aria-live="polite"></p>
-            <p>Unused credit remains available for later fees. Refunds require the operator to process a private transfer; they are not automatic.</p>
+            <p id="fee-refund-help">Unused credit remains available for later fees. Review the refund destination and network fee before requesting it.</p>
             <details><summary>Request unused credit back</summary>
-              <p>A refund reserves the requested credit and returns the reviewed net amount to this private wallet after operator processing.</p>
+              <p id="fee-refund-timing">A refund reserves the requested credit until its transaction is confirmed.</p>
               <label>Credit to refund<input id="fee-refund-amount" type="text" inputmode="decimal" autocomplete="off" placeholder="0.0" /></label>
+              <label id="fee-refund-recipient-label" hidden>Public refund address<input id="fee-refund-recipient" type="text" autocomplete="off" placeholder="0x…" /></label>
               <button id="review-fee-refund" class="secondary-action" type="button">Review refund fee</button>
               <pre id="fee-refund-review"></pre>
-              <button id="request-fee-refund" type="button" hidden>Request reviewed private refund</button>
+              <button id="request-fee-refund" type="button" hidden>Confirm reviewed refund</button>
               <button id="check-fee-refund" class="secondary-action" type="button" hidden>Check or resume refund</button>
             </details>
           </section>

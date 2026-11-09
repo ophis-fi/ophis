@@ -113,12 +113,18 @@ export class Store {
           const proof = JSON.parse(String(row.fee_data))
           if (proof.kind !== 'prepaid') throw new Error('The journal contains an incomplete signed transaction.')
           const reserved = this.db.prepare('SELECT owner,unsigned FROM credit_attempts WHERE key=?').get(row.key)
-          const identity = this.db.prepare('SELECT id FROM credit_identity WHERE singleton=1').get()
+          const identity = this.db.prepare('SELECT id,scope FROM credit_identity WHERE singleton=1').get()
           const unsigned = Transaction.from(String(reserved?.unsigned))
+          const refund = identity && JSON.parse(String(identity.scope)).funding === 'native'
+            ? this.db.prepare('SELECT recipient,net FROM credit_native_refund_attempts WHERE key=?').get(row.key) : undefined
+          const validValue = refund ? typeof refund.net === 'string' && /^[1-9][0-9]{0,77}$/.test(refund.net) &&
+            unsigned.value === BigInt(refund.net) && typeof refund.recipient === 'string' && unsigned.to === refund.recipient &&
+            refund.recipient !== operator && refund.recipient !== ZeroAddress && unsigned.data === '0x' &&
+            [0,2].includes(unsigned.type ?? -1) && !(unsigned.authorizationList?.length) : unsigned.value === 0n
           if (!operator || !reserved || !identity || proof.kind !== 'prepaid' || proof.owner !== reserved.owner ||
             proof.ledgerId !== identity.id || unsigned.isSigned() || unsigned.unsignedSerialized !== reserved.unsigned ||
             unsigned.chainId !== BigInt(chainId) || unsigned.nonce !== row.nonce || row.nonce !== row.expected_nonce ||
-            unsigned.value !== 0n || unsigned.gasLimit * (unsigned.maxFeePerGas ?? unsigned.gasPrice ?? 0n) !== BigInt(String(row.max_cost)))
+            !validValue || unsigned.gasLimit * (unsigned.maxFeePerGas ?? unsigned.gasPrice ?? 0n) !== BigInt(String(row.max_cost)))
             throw new Error('The journal contains an inconsistent prepaid reservation.')
           continue
         }
@@ -194,8 +200,22 @@ export class Store {
     const request = this.get(key)
     if (!request || JSON.parse(request.fee_data).kind !== 'prepaid') return
     this.assertCreditJournalActive()
-    const attempt = this.db.prepare('SELECT unsigned,charged FROM credit_attempts WHERE key=?').get(key)
+    const attempt = this.db.prepare('SELECT unsigned,charged,maximum_charge,rate,collection_allowance FROM credit_attempts WHERE key=?').get(key)
     if (!attempt || attempt.charged !== null) throw new Error('Missing secured prepaid cancellation budget.')
+    const identity = this.db.prepare('SELECT scope FROM credit_identity WHERE singleton=1').get()
+    if (identity && JSON.parse(String(identity.scope)).funding === 'native') {
+      const refund = this.db.prepare('SELECT net FROM credit_native_refund_attempts WHERE key=?').get(key)
+      if (refund) {
+        const numbers = [attempt.maximum_charge,attempt.rate,attempt.collection_allowance,refund.net]
+        if (numbers.some(value => typeof value !== 'string' || !/^(0|[1-9][0-9]{0,77})$/.test(value)))
+          throw new Error('Invalid native refund cancellation reservation.')
+        const maximum = BigInt(String(attempt.maximum_charge)), net = BigInt(String(refund.net)), rate = BigInt(String(attempt.rate))
+        if (maximum <= net || net <= 0n || rate < 10n ** 18n || attempt.collection_allowance !== '0' ||
+          cost <= 0n || (cost * rate + 10n ** 18n - 1n) / 10n ** 18n > maximum - net)
+          throw new Error('Cancellation exceeds its secured prepaid gas budget, excluding the refund principal.')
+        return
+      }
+    }
     const original = Transaction.from(String(attempt.unsigned))
     const maximum = original.gasLimit * (original.maxFeePerGas ?? original.gasPrice ?? 0n)
     if (cost <= 0n || cost > maximum || BigInt(request.max_cost) !== maximum)

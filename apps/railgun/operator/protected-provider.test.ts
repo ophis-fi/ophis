@@ -41,10 +41,10 @@ async function signed(overrides = {}, chainId = 1): Promise<string> {
   })
 }
 
-function provider(guard?: string, chainId = 1, operatorAddress = operator.address): ProtectedEthereumProvider {
+function provider(guard?: string, chainId = 1, operatorAddress = operator.address, nativeRefunds = false): ProtectedEthereumProvider {
   const request = new FetchRequest(readURL)
   request.setHeader('Authorization', 'private-read-node-credential')
-  const result = new ProtectedEthereumProvider(request, operatorAddress, directory, guard, chainId)
+  const result = new ProtectedEthereumProvider(request, operatorAddress, directory, guard, chainId, nativeRefunds)
   providers.push(result)
   return result
 }
@@ -54,6 +54,38 @@ function signedCancellation(overrides = {}, chainId = 1): Promise<string> {
     value: 0n, data: '0x', gasLimit: 21_000n, maxFeePerGas: 3_000_000_000n,
     maxPriorityFeePerGas: 1_000_000_000n, ...overrides })
 }
+
+describe('explicit native prepaid refunds', () => {
+  it.each([1, 56])('keeps chain %s refunds and cancellation in the protected durable nonce journal', async (chainId) => {
+    chain = `0x${chainId.toString(16)}`
+    const raw = await signedCancellation({ to: ephemeral.address, value: 100n }, chainId)
+    const disabled = provider(undefined, chainId)
+    await expect(disabled.stageSigned(raw)).rejects.toThrow()
+    disabled.destroy()
+    const current = provider(undefined, chainId, operator.address, true)
+    expect((await current.broadcastTransaction(raw, Date.now() + 60_000)).hash).toBe(Transaction.from(raw).hash)
+    expect(current.pendingTransaction()?.hash).toBe(Transaction.from(raw).hash)
+    current.destroy()
+    expect(() => provider(undefined, chainId)).toThrow()
+    const restarted = provider(undefined, chainId, operator.address, true)
+    expect(await restarted.retryPending()).toBe(Transaction.from(raw).hash)
+    const cancellation = await signedCancellation({}, chainId)
+    expect(await restarted.cancelPending(cancellation)).toBe(Transaction.from(cancellation).hash)
+    expect(reads.some((call) => call.method.startsWith('eth_send'))).toBe(false)
+    expect(write.mock.calls.every(([url]) => url === protectedWriteRPC(chainId))).toBe(true)
+  })
+  it('does not widen native refunds to arbitrary calls, authorization, self-payment or zero-value transfers', async () => {
+    const current = provider(undefined, 1, operator.address, true)
+    for (const changes of [{ data: '0xab' }, { value: 0n }, { to: operator.address },
+      { to: '0x0000000000000000000000000000000000000000' }, { gasLimit: 20_999n }]) {
+      const raw = await signedCancellation({ to: ephemeral.address, value: 100n, ...changes })
+      await expect(current.stageSigned(raw)).rejects.toThrow()
+    }
+    await expect(current.stageSigned(await signed({ value: 100n, data: '0x' }))).rejects.toThrow()
+    expect(current.pendingTransaction()).toBeUndefined()
+    expect(write).not.toHaveBeenCalled()
+  })
+})
 
 describe('explicit reorg recovery staging', () => {
   it('retains both original operations and the newest cancellation while recovering lower nonces across restart', async () => {

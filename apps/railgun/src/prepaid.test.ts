@@ -1,16 +1,16 @@
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
-import { getAddress, hexlify, id, keccak256, toUtf8Bytes, Wallet, type JsonRpcSigner } from 'ethers'
+import { getAddress, hexlify, id, keccak256, toUtf8Bytes, Wallet, ZeroAddress, type JsonRpcSigner } from 'ethers'
 import { CREDIT_MAX_PAYLOAD, CREDIT_PROTOCOL, authenticateCreditRequest, creditMemo, creditRefundMemo, creditRequestKey } from '../credit-protocol'
 import type { WalletSession } from './wallet'
 
 const state = vi.hoisted(() => ({
-  record: undefined as unknown, events: [] as string[], messages: [] as Record<string, unknown>[],
+  record: undefined as unknown, recordKey: undefined as string | undefined, records: new Map<string, unknown>(), events: [] as string[], messages: [] as Record<string, unknown>[],
   privateSwap: undefined as unknown, privateWithdrawal: undefined as unknown,
   callback: undefined as ((value: unknown) => void) | undefined, core: {},
   send: vi.fn(), encrypt: vi.fn(), signPublic: vi.fn(), finalized: 100, canonical: true, available: '2000000000000000',
   nextSequence: 1, executionEnabled: true, completedHash: undefined as string | undefined, publicLatest: 0, publicPending: 0, receiptStatus: 1,
   policy: { operator: '0x001486E70A0c9291f5F55c68914eE0e4E4A604d4', railgunAddress: '',
-    expiresAt: Number.MAX_SAFE_INTEGER, maxGasPrice: 500_000_000n, maxTransactionCost: 1_500_000_000_000_000n },
+    expiresAt: Number.MAX_SAFE_INTEGER, maxGasPrice: 500_000_000n, maxTransactionCost: 1_500_000_000_000_000n, funding: undefined as 'native' | undefined },
 }))
 vi.mock('./config', async (original) => {
   const config = await original<typeof import('./config')>()
@@ -18,9 +18,9 @@ vi.mock('./config', async (original) => {
   return { ...config, CHAIN_ID: 1, CHAIN: 1n, PREPAID_BROADCASTERS: { 1: state.policy } }
 })
 vi.mock('./broadcaster', () => ({ startBroadcasters: vi.fn() }))
-vi.mock('./storage', () => ({ readPrivateState: async () => structuredClone(state.record),
+vi.mock('./storage', () => ({ readPrivateState: async (_session: unknown, key: string) => structuredClone(state.recordKey === undefined || state.recordKey === key ? state.record : state.records.get(key)),
   writePrivateState: async (_session: unknown, _key: string, value: unknown) => {
-    state.events.push('saved'); state.record = structuredClone(value)
+    state.events.push('saved'); state.recordKey = _key; state.record = structuredClone(value); state.records.set(_key, structuredClone(value))
   } }))
 vi.mock('./wallet', () => ({ requireWalletSync: vi.fn(), refreshReceivedBalances: vi.fn() }))
 vi.mock('./shield', () => ({ assertPublicNetwork: vi.fn() }))
@@ -51,13 +51,16 @@ import { retryPrepaidTopUp } from './prepaid'
 const owner = new Wallet(`0x${'11'.repeat(32)}`), publicOwner = new Wallet(`0x${'22'.repeat(32)}`)
 const ledgerId = id('credit-ledger'), hash = id('transaction'), blockHash = id('block')
 const proxy = getAddress(CONFIG.proxyContract)
-const scope = () => ({ chainId: 1, operator: state.policy.operator, recipient: state.policy.railgunAddress,
-  token: getAddress(CONFIG.baseToken.wrappedAddress) })
+const scope = () => ({ chainId: 1, operator: state.policy.operator,
+  recipient: state.policy.funding === 'native' ? state.policy.operator : state.policy.railgunAddress,
+  token: state.policy.funding === 'native' ? ZeroAddress : getAddress(CONFIG.baseToken.wrappedAddress),
+  ...(state.policy.funding && { funding: state.policy.funding }) })
 const session = { info: { id: 'isolated-test-wallet', railgunAddress: state.policy.railgunAddress }, key: 'test-only',
   accounts: { getAccount: vi.fn(async () => ({ signer: owner })) },
   provider: {
+    getCode: vi.fn(async () => '0x'),
     getNetwork: async () => ({ chainId: 1n }),
-    getTransactionReceipt: vi.fn(async (requested: string) => ({ status: state.receiptStatus, blockNumber: 99, blockHash, hash: requested })),
+    getTransactionReceipt: vi.fn(async (requested: string) => ({ status: state.receiptStatus, blockNumber: 99, blockHash, hash: requested, gasUsed: 1000n, gasPrice: 1n })),
     getBlock: async (tag: string | number) => tag === 'finalized' ? { number: state.finalized } : { hash: state.canonical ? blockHash : id('reorg') },
     getTransaction: vi.fn(async () => ({ from: publicOwner.address, to: proxy, data: '0xaabb', value: 0n, chainId: 1n, nonce: 0 })),
   },
@@ -65,6 +68,7 @@ const session = { info: { id: 'isolated-test-wallet', railgunAddress: state.poli
 const gas = { evmGasType: 1 as const, gasEstimate: 100_000n, gasPrice: 100n }
 const populated = { transaction: { to: proxy, data: '0xaabb', value: 0n }, nullifiers: [id('input')], preTransactionPOIsPerTxidLeafPerList: {} }
 const publicSigner = { provider: { getFeeData: async () => ({ gasPrice: 10n, maxFeePerGas: 10n, maxPriorityFeePerGas: 1n }),
+  getCode: vi.fn(async () => '0x'),
   getTransactionCount: async (_address: string, block: string) => block === 'pending' ? state.publicPending : state.publicLatest },
   getAddress: async () => publicOwner.address, sendTransaction: (...args: unknown[]) => state.signPublic(...args),
 } as unknown as JsonRpcSigner
@@ -79,24 +83,29 @@ async function server(packet: Parameters<typeof respond>[0]) {
   const request = JSON.parse(packet.params.encryptedData[0])
   state.messages.push(request)
   if (request.kind === 'info') {
-    respond(packet, request, { scope: scope(), ledgerId, funding: 'user-submitted-private-transfer', confirmation: 'finalized', executionEnabled: state.executionEnabled })
+    respond(packet, request, { scope: scope(), ledgerId, funding: state.policy.funding === 'native' ? 'user-submitted-native-transfer' : 'user-submitted-private-transfer', confirmation: 'finalized', executionEnabled: state.executionEnabled })
     return
   }
   const authorized = authenticateCreditRequest(scope(), ledgerId, request.authorization)
   const payload = authorized.payload
   const result: Record<string, unknown> = payload.kind === 'quote'
     ? { kind: 'quote', nextSequence: state.nextSequence, feesID: 'ab'.repeat(32), expires: Date.now() + 240_000, rate: '1100000000000000000',
-      collectionAllowance: '10000', maximumGasCost: '1500000000000000', maximumGasPrice: '500000000', maximumCharge: '1650000000011000', ...(payload.refund === true && { maximumRefundGross: state.available }) }
-    : payload.kind === 'execute' ? { txHash: hash }
-    : { kind: 'balance', owner: owner.address, memo: creditMemo(scope(), ledgerId, owner.address),
+      collectionAllowance: state.policy.funding === 'native' ? '0' : '10000', maximumGasCost: '1500000000000000', maximumGasPrice: '500000000',
+      maximumCharge: state.policy.funding === 'native' ? '1650000000000000' : '1650000000011000',
+      ...(state.policy.funding === 'native' && { refundGasAllowance: '10000' }), ...(payload.refund === true && { maximumRefundGross: state.available }) }
+    : payload.kind === 'execute' ? { txHash: hash, ...(state.policy.funding === 'native' && { nonce: 3 }) }
+    : { kind: 'balance', owner: owner.address, ...(state.policy.funding === 'native' ? {} : { memo: creditMemo(scope(), ledgerId, owner.address) }),
       available: state.available, deposited: state.available, charged: '0', reserved: '0', refunds: '0' }
   respond(packet, request, result, authorized.key)
 }
 beforeEach(() => {
   vi.clearAllMocks()
-  state.record = undefined; state.events = []; state.messages = []; state.core = {}; state.finalized = 100; state.canonical = true
+  state.record = undefined; state.recordKey = undefined; state.records.clear(); state.events = []; state.messages = []; state.core = {}; state.finalized = 100; state.canonical = true
   state.privateSwap = undefined; state.privateWithdrawal = undefined
   state.policy.expiresAt = Number.MAX_SAFE_INTEGER
+  state.policy.funding = undefined
+  vi.mocked(session.provider.getCode).mockResolvedValue('0x')
+  vi.mocked(publicSigner.provider.getCode).mockResolvedValue('0x')
   state.available = '2000000000000000'
   state.nextSequence = 1; state.executionEnabled = true; state.completedHash = hash; state.publicLatest = 0; state.publicPending = 0; state.receiptStatus = 1
   state.send.mockImplementation(server)
@@ -106,9 +115,166 @@ beforeEach(() => {
   vi.mocked(session.accounts.getAccount).mockResolvedValue({ signer: owner } as unknown as Awaited<ReturnType<typeof session.accounts.getAccount>>)
   vi.mocked(session.provider.getTransaction).mockResolvedValue({ from: publicOwner.address, to: proxy, data: '0xaabb', value: 0n, chainId: 1n, nonce: 0 } as Awaited<ReturnType<typeof session.provider.getTransaction>>)
   vi.mocked(session.provider.getTransactionReceipt).mockImplementation(async (requested) => ({ status: state.receiptStatus,
-    blockNumber: 99, blockHash, hash: requested } as Awaited<ReturnType<typeof session.provider.getTransactionReceipt>>))
+    blockNumber: 99, blockHash, hash: requested, gasUsed: 1000n, gasPrice: 1n } as Awaited<ReturnType<typeof session.provider.getTransactionReceipt>>))
 })
 afterEach(() => vi.useRealTimers())
+
+it('uses opaque public native prepayment without generating a private transfer proof', async () => {
+  state.policy.funding = 'native'
+  const credit = await preparePrepaid(session)
+  expect(credit.collectionAllowance).toBe(0n)
+  expect(prepaidRefundFee(credit)).toBe(11_000n)
+  expect(credit.selected.railgunAddress).toBe(state.policy.railgunAddress)
+  expect((await prepaidBalance(session)).available).toBe(2_000_000_000_000_000n)
+  await expect(topUpPrepaid(session, publicSigner, 100_000n, () => {}, credit)).resolves.toBe(hash)
+  const tx = state.signPublic.mock.calls[0][0]
+  expect(tx).toMatchObject({ to: state.policy.operator, value: 100_000n, chainId: 1n, nonce: 0 })
+  expect(tx.data).toHaveLength(130)
+  expect(tx.data.toLowerCase()).not.toContain(owner.address.slice(2).toLowerCase())
+  expect(state.events).not.toContain('proved')
+  expect(state.events.indexOf('saved')).toBeLessThan(state.events.indexOf('public'))
+  vi.mocked(session.provider.getTransaction).mockResolvedValue({ ...tx, hash, from: publicOwner.address } as Awaited<ReturnType<typeof session.provider.getTransaction>>)
+  state.finalized = 98
+  await expect(claimPrepaidTopUp(session)).rejects.toThrow('not finalized')
+  state.finalized = 100
+  expect((await claimPrepaidTopUp(session)).available).toBeGreaterThan(0n)
+  const claim = JSON.parse((state.messages.at(-1)!.authorization as { payload: string }).payload)
+  expect(claim).toMatchObject({ kind: 'claim', transactionHash: hash, paymentId: expect.stringMatching(/^0x[0-9a-f]{64}$/) })
+  expect((await pendingPrepaid(session))?.topUpPending).toBe(false)
+})
+
+it('starts native credit in a separate encrypted journal while preserving the old private-credit record', async () => {
+  await preparePrepaid(session)
+  const legacy = structuredClone(state.record)
+  expect(state.recordKey).toBe('prepaidCredit')
+  state.policy.funding = 'native'
+  expect((await preparePrepaid(session)).scope.funding).toBe('native')
+  expect(state.recordKey).toBe('nativePrepaidCredit')
+  expect(state.records.get('prepaidCredit')).toEqual(legacy)
+  state.policy.funding = undefined
+  expect((await prepaidBalance(session)).funding).toBeUndefined()
+})
+
+it.each(['payer', 'operator'])('rejects delegated %s before asking for a native payment', async (role) => {
+  state.policy.funding = 'native'
+  const credit = await preparePrepaid(session)
+  vi.mocked(role === 'payer' ? publicSigner.provider.getCode : session.provider.getCode).mockResolvedValue('0xef0100')
+  await expect(topUpPrepaid(session, publicSigner, 100_000n, () => {}, credit)).rejects.toThrow('without smart-account delegation')
+  expect(state.signPublic).not.toHaveBeenCalled()
+  expect(state.record).not.toHaveProperty('topUp')
+})
+
+it('recovers a lost native payment hash only for the saved sender and exact payment', async () => {
+  state.policy.funding = 'native'
+  const credit = await preparePrepaid(session)
+  state.signPublic.mockRejectedValueOnce(new Error('Wallet result lost'))
+  await expect(topUpPrepaid(session, publicSigner, 100_000n, () => {}, credit)).rejects.toThrow('lost')
+  const saved = (state.record as { topUp: { transaction: { to: string; data: string; value: string }; nonce: number } }).topUp
+  const tx = { ...saved.transaction, value: 100_000n, from: publicOwner.address, chainId: 1n, nonce: saved.nonce, hash, type: 2 }
+  for (const change of [{ value: 99_999n }, { from: owner.address }, { data: '0x' }, { chainId: 56n }]) {
+    vi.mocked(session.provider.getTransaction).mockResolvedValue({ ...tx, ...change } as Awaited<ReturnType<typeof session.provider.getTransaction>>)
+    await expect(claimPrepaidTopUp(session, hash)).rejects.toThrow('does not match')
+    expect((await pendingPrepaid(session))?.topUpPending).toBe(true)
+  }
+  // A wallet may override the requested nonce; a finalized exact payment is still claimable.
+  vi.mocked(session.provider.getTransaction).mockResolvedValue({ ...tx, nonce: saved.nonce + 1 } as Awaited<ReturnType<typeof session.provider.getTransaction>>)
+  await expect(claimPrepaidTopUp(session, hash)).resolves.toMatchObject({ available: 2_000_000_000_000_000n })
+})
+
+it('retries unknown native payment with its same nonce and amount, never a second payment', async () => {
+  state.policy.funding = 'native'
+  const credit = await preparePrepaid(session)
+  state.signPublic.mockRejectedValueOnce(new Error('Unknown'))
+  await expect(topUpPrepaid(session, publicSigner, 100_000n, () => {}, credit)).rejects.toThrow('Unknown')
+  const original = state.signPublic.mock.calls[0][0]
+  await expect(retryPrepaidTopUp(session, publicSigner, () => {})).resolves.toBe(hash)
+  expect(state.signPublic.mock.calls[1][0]).toEqual(original)
+})
+
+it.each(['refunded', 'failed'])('binds native refund destination and retains the record until valid %s accounting', async (terminal) => {
+  state.policy.funding = 'native'
+  await preparePrepaid(session)
+  const credit = await preparePrepaidRefund(session)
+  await expect(requestPrepaidRefund(session, credit, 100_000n, state.policy.operator)).rejects.toThrow('different from the broadcaster')
+  let final = false, invalid = false
+  state.send.mockImplementation(async (packet) => {
+    const request = JSON.parse(packet.params.encryptedData[0]), authorized = authenticateCreditRequest(scope(), ledgerId, request.authorization)
+    const payload = authorized.payload
+    respond(packet, request, { kind: 'refund', recipient: payload.recipient, gross: payload.gross, net: payload.net,
+      state: final ? terminal : 'submitted-or-unknown', nonce: 10, transactionHash: hash, settlementHash: final ? hash : null,
+      cancellationHash: null, charged: final ? invalid ? '100001' : terminal === 'refunded' ? '90100' : '1100' : null,
+      netPaid: final ? terminal === 'refunded' ? payload.net : '0' : null }, authorized.key)
+  })
+  const refund = await requestPrepaidRefund(session, credit, 100_000n, publicOwner.address)
+  expect(JSON.parse((state.record as { refund: { payload: string } }).refund.payload))
+    .toMatchObject({ refundGasAllowance: '10000', collectionAllowance: '0' })
+  expect(refund).toMatchObject({ recipient: publicOwner.address, net: 89_000n, state: 'submitted-or-unknown' })
+  expect((await pendingPrepaid(session))?.refundPending).toBe(true)
+  final = true; invalid = true
+  await expect(submitPrepaid(session, populated, credit.selected, gas, false, undefined, credit)).rejects.toThrow('Reconcile')
+  await expect(checkPrepaidRefund(session)).rejects.toThrow('accounting')
+  expect((await pendingPrepaid(session))?.refundPending).toBe(true)
+  invalid = false
+  vi.mocked(session.provider.getTransaction).mockResolvedValue({ from: state.policy.operator, to: publicOwner.address,
+    data: '0x', value: 89_000n, chainId: 1n, hash, nonce: 10 } as Awaited<ReturnType<typeof session.provider.getTransaction>>)
+  state.receiptStatus = terminal === 'refunded' ? 1 : 0
+  state.finalized = 98
+  await expect(checkPrepaidRefund(session)).rejects.toThrow('not finalized')
+  expect((await pendingPrepaid(session))?.refundPending).toBe(true)
+  state.finalized = 100
+  expect((await checkPrepaidRefund(session)).state).toBe(terminal)
+  expect((await pendingPrepaid(session))?.refundPending).toBe(false)
+})
+
+it('does not retire an acknowledged native refund and accepts an older mined cancellation only at its original nonce', async () => {
+  state.policy.funding = 'native'
+  await preparePrepaid(session)
+  const credit = await preparePrepaidRefund(session)
+  state.send.mockImplementation(async (packet) => {
+    const request = JSON.parse(packet.params.encryptedData[0]), auth = authenticateCreditRequest(scope(), ledgerId, request.authorization)
+    respond(packet, request, { kind: 'refund', recipient: publicOwner.address, gross: '100000', net: '89000',
+      state: 'submitted-or-unknown', nonce: 10, transactionHash: hash, settlementHash: null, charged: null, netPaid: null }, auth.key)
+  })
+  await requestPrepaidRefund(session, credit, 100_000n, publicOwner.address)
+  const original = structuredClone((state.record as { refund: { key: string; payload: string } }).refund)
+  state.send.mockImplementation(async (packet) => {
+    const request = JSON.parse(packet.params.encryptedData[0]), auth = authenticateCreditRequest(scope(), ledgerId, request.authorization)
+    if (auth.payload.kind === 'refund') throw new Error('Lost state')
+    respond(packet, request, { kind: 'recovery', recoveredKey: original.key, operation: 'refund', sequence: 1, retiredThrough: 1, state: 'not-reserved' }, auth.key)
+  })
+  await expect(checkPrepaidRefund(session)).rejects.toThrow('acknowledged refund')
+  expect((await pendingPrepaid(session))?.refundPending).toBe(true)
+  const older = id('earlier cancellation'), latest = id('latest cancellation')
+  state.send.mockImplementation(async (packet) => {
+    const request = JSON.parse(packet.params.encryptedData[0]), auth = authenticateCreditRequest(scope(), ledgerId, request.authorization)
+    respond(packet, request, { kind: 'refund', recipient: publicOwner.address, gross: '100000', net: '89000',
+      state: 'failed', nonce: 10, transactionHash: hash, cancellationHash: latest, settlementHash: older, charged: '1100', netPaid: '0' }, auth.key)
+  })
+  vi.mocked(session.provider.getTransaction).mockImplementation(async (requested) => ({ hash: requested, from: state.policy.operator,
+    to: requested === hash ? publicOwner.address : state.policy.operator, value: requested === hash ? 89_000n : 0n,
+    data: '0x', chainId: 1n, nonce: 10 } as Awaited<ReturnType<typeof session.provider.getTransaction>>))
+  expect((await checkPrepaidRefund(session)).state).toBe('failed')
+  expect((await pendingPrepaid(session))?.refundPending).toBe(false)
+})
+
+it('checks actual native attempt gas charges and saved execution before releasing the client record', async () => {
+  state.policy.funding = 'native'
+  const credit = await preparePrepaid(session)
+  await submitPrepaid(session, populated, credit.selected, gas, false, undefined, credit)
+  let charge = '1200'
+  state.send.mockImplementation(async (packet) => {
+    const request = JSON.parse(packet.params.encryptedData[0]), auth = authenticateCreditRequest(scope(), ledgerId, request.authorization)
+    respond(packet, request, { kind: 'attempt', hash, nonce: 3, settlementHash: hash, cancellationHash: null, state: 'settled', charged: charge }, auth.key)
+  })
+  vi.mocked(session.provider.getTransaction).mockResolvedValue({ from: state.policy.operator, to: proxy, data: '0xaabb', value: 0n,
+    chainId: 1n, nonce: 3, hash } as Awaited<ReturnType<typeof session.provider.getTransaction>>)
+  await expect(checkPrepaid(session)).rejects.toThrow('actual gas')
+  charge = '1100'
+  vi.mocked(session.provider.getTransaction).mockResolvedValueOnce({ from: state.policy.operator, to: proxy, data: '0xaacc', value: 0n,
+    chainId: 1n, nonce: 3, hash } as Awaited<ReturnType<typeof session.provider.getTransaction>>)
+  await expect(checkPrepaid(session)).rejects.toThrow('saved request')
+  expect((await checkPrepaid(session)).charged).toBe(1100n)
+})
 
 it('authenticates the pinned scope and signs credit queries with account zero without funding it', async () => {
   const credit = await preparePrepaid(session)

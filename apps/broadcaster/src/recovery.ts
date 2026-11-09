@@ -7,6 +7,7 @@ import { ADAPT, PROXY, assertPrivateExecution, assertTraceSuccess, uint } from '
 import { decodeGuardedExecution } from '../../railgun/operator/execution-guard'
 import { signApprovedTransaction, type GasSigner } from './signer'
 import { CreditLedger } from './credit'
+import { assertNativeRefundTrace, verifyNativeBacking } from './credit-native-payment'
 
 type Sender = Pick<ProtectedEthereumProvider, 'stageSigned' | 'stageRecovery' | 'pendingTransaction' | 'retryPending' | 'cancelPending'>
 
@@ -24,12 +25,18 @@ export async function recover(command: 'retry' | 'cancel', args: string[], confi
   if (!rows.length) throw new Error('Recovery requires an unresolved request.')
   let item = rows[0]
   const prepaid = JSON.parse(item.fee_data).kind === 'prepaid'
+  let nativeLedger: CreditLedger | undefined
+  const verifyNative = async () => {
+    if (nativeLedger) nativeLedger.assertNativeBacked(await verifyNativeBacking(provider, nativeLedger.scope, nativeLedger.id,
+      nativeLedger.nativeDeposits(), nativeLedger.nativeSettlements()), config.reserve, item.nonce)
+  }
   if (rows.length > 1) {
     if (!prepaid) throw new Error('Multiple unresolved operations require complete prepaid journals.')
     assertHeldRange(store, CreditLedger.load(store), item.nonce, rows[rows.length - 1].nonce, wallet.address)
   }
   if (prepaid) {
     const ledger = CreditLedger.load(store)
+    if (ledger.isNative) nativeLedger = ledger
     if (ledger.scope.chainId !== CHAIN_ID || ledger.scope.operator !== wallet.address || (await provider.getNetwork()).chainId !== CHAIN)
       throw new Error('Prepaid recovery belongs to another chain or operator.')
     ledger.assertChainNonce(await provider.getTransactionCount(wallet.address, 'latest'))
@@ -56,8 +63,9 @@ export async function recover(command: 'retry' | 'cancel', args: string[], confi
         store.assertPrepaidCancellationCovered(item.key, gas * price)
       } else checkLimits(tx.gasLimit, tx.maxFeePerGas ?? tx.gasPrice ?? 0n,
         tx.type === 2 || tx.type === 4 ? tx.maxPriorityFeePerGas ?? 0n : undefined,
-        state.baseFee, state.minimumGasPrice, balance, config)
+        state.baseFee, state.minimumGasPrice, balance - tx.value, config)
       // Recreate only the exact already-funded outer signature; cancellation never publishes this original.
+      await verifyNative()
       const raw = await signApprovedTransaction(wallet, tx.toJSON())
       ledger.attachSignature(item.key, raw)
       item = store.get(item.key)!
@@ -114,6 +122,7 @@ export async function recover(command: 'retry' | 'cancel', args: string[], confi
     store.assertPrepaidCancellationCovered(item.key, cost)
     const extra = cost > BigInt(item.max_cost) ? cost - BigInt(item.max_cost) : 0n
     if (store.exposure() + extra > config.dailyBudget) throw new Error('Cancellation exceeds the rolling gas budget.')
+    await verifyNative()
     raw = await signApprovedTransaction(wallet, transaction)
     store.cancel(item.key, raw, Transaction.from(raw).hash!, cost, config.dailyBudget)
   } else {
@@ -122,7 +131,7 @@ export async function recover(command: 'retry' | 'cancel', args: string[], confi
       throw new Error('The original fee quote expired; cancel the outer gas nonce or reconcile it.')
     checkLimits(tx.gasLimit, tx.maxFeePerGas ?? tx.gasPrice ?? 0n,
       tx.type === 2 || tx.type === 4 ? tx.maxPriorityFeePerGas ?? 0n : undefined,
-      baseFee, minimumGasPrice, balance, config)
+      baseFee, minimumGasPrice, balance - tx.value, config)
     if (store.exposure() > config.dailyBudget) throw new Error('The rolling gas budget is exhausted.')
     const trace: unknown = await provider.send('debug_traceCall', [provider.getRpcTransaction({
       to: tx.to, data: tx.data, value: tx.value, from: wallet.address, type: tx.type,
@@ -131,11 +140,14 @@ export async function recover(command: 'retry' | 'cancel', args: string[], confi
       authorizationList: tx.authorizationList,
     }), `0x${block.number.toString(16)}`, { tracer: 'callTracer', timeout: '10s' }])
     if (item.cancel_raw) assertTraceSuccess(trace)
+    else if (nativeLedger?.nativeRefund(item.key)) assertNativeRefundTrace(trace, { from: wallet.address, to: tx.to!, value: tx.value })
     else assertPrivateExecution(trace, original.type === 4 ? PROXY.encodeFunctionData('transact', [
       ADAPT.decodeFunctionData('execute', config.executionGuard
         ? decodeGuardedExecution(original.data).execution : original.data)._transactions,
     ]) : original.data)
   }
+  // Recheck native liabilities/origins after simulation and before any saved signature is disclosed.
+  await verifyNative()
   // The transport can still retain the previous confirmed nonce after a crash before staging this one.
   if (rewind) await sender.stageRecovery(item.raw, rewind)
   else if (!pending || pending.hash !== item.hash) await sender.stageSigned(item.raw)

@@ -51,6 +51,7 @@ export interface Settings {
   dailyBudget: bigint
   reserve: bigint
   marginBps: bigint
+  creditPaymentMode?: 'private-wrapped' | 'public-native'
   creditCollectionGas?: bigint
   creditCollectionInputs?: number
   creditCollectionOutputs?: number
@@ -77,6 +78,11 @@ export function settings(env: NodeJS.ProcessEnv): Settings {
     throw new Error('Settings must match the process broadcaster chain.')
   const mode = env.OPHIS_BROADCASTER_MODE ?? 'mainnet'
   if (mode !== 'mainnet' && mode !== 'fork') throw new Error('Invalid broadcaster mode.')
+  const creditPaymentMode = env.OPHIS_BROADCASTER_CREDIT_PAYMENT_MODE ?? 'private-wrapped'
+  if (creditPaymentMode !== 'private-wrapped' && creditPaymentMode !== 'public-native')
+    throw new Error('Invalid prepaid payment mode.')
+  if (creditPaymentMode === 'public-native' && CHAIN_ID !== 1 && CHAIN_ID !== 56)
+    throw new Error('Native prepaid fees are supported only on Ethereum and BNB.')
   const admission = env.OPHIS_BROADCASTER_ADMISSION ?? 'pilot'
   if (admission !== 'pilot' && admission !== 'public') throw new Error('Invalid broadcaster admission policy.')
   if (CHAIN_ID !== 1 && !env.OPHIS_BROADCASTER_RPC) throw new Error('Configure a trusted RPC for this broadcaster chain.')
@@ -141,7 +147,7 @@ export function settings(env: NodeJS.ProcessEnv): Settings {
   if (operatorAddress === ZeroAddress || (enabled && mode === 'mainnet' && !operatorAddress))
     throw new Error('Mainnet signing requires the verified dedicated gas-wallet address.')
   return { chainId: CHAIN_ID, mode, admission, enabled, rpc: rpc.href, traceRpc, waku: waku.href, state, secrets, maxGasPrice,
-    maxTransactionCost, dailyBudget, reserve, marginBps, creditCollectionGas, creditCollectionInputs, creditCollectionOutputs,
+    maxTransactionCost, dailyBudget, reserve, marginBps, creditPaymentMode, creditCollectionGas, creditCollectionInputs, creditCollectionOutputs,
     creditCollectionProofs, executionGuard, pilotAccount, pilotWithdrawalRecipient,
     prepaidPilotLedgerId: prepaidPilotLedgerId?.toLowerCase(), prepaidPilotOwner, operatorAddress }
 }

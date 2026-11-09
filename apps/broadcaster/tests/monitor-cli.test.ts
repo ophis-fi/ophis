@@ -19,7 +19,7 @@ it('emits only Prometheus metrics when the real CLI cannot reach its read node',
     buildSync({ entryPoints: [new URL('../src/main.ts', import.meta.url).pathname], outfile: output,
       bundle: true, platform: 'node', format: 'esm', packages: 'external', logLevel: 'silent' })
     const result = spawnSync(process.execPath, [output, 'monitor', '--prometheus'], {
-      env: { ...process.env, OPHIS_BROADCASTER_MODE: 'fork', OPHIS_BROADCASTER_ENABLED: '0',
+      env: { ...process.env, OPHIS_BROADCASTER_CHAIN_ID: '1', OPHIS_BROADCASTER_MODE: 'fork', OPHIS_BROADCASTER_ENABLED: '0',
         OPHIS_BROADCASTER_RPC: `http://127.0.0.1:${address.port}`, OPHIS_BROADCASTER_STATE: directory,
         OPHIS_BROADCASTER_OPERATOR_ADDRESS: '0x0000000000000000000000000000000000001234' },
       timeout: 25_000, encoding: 'utf8', maxBuffer: 64 * 1024,

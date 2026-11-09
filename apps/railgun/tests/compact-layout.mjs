@@ -236,15 +236,18 @@ try {
     document.getElementById('fee-credit-panel').hidden = false
     document.getElementById('check-fee-topup').hidden = false
     document.getElementById('retry-fee-topup').hidden = false
-    document.getElementById('fee-credit-balance').textContent = 'Available: 0.001 WETH · Reserved: 0.0002 WETH'
+    document.getElementById('fee-refund-recipient-label').hidden = false
+    document.getElementById('fee-topup-hash-label').hidden = false
+    document.getElementById('fee-credit-balance').textContent = 'Available: 0.001 ETH · Reserved: 0.0002 ETH'
     document.getElementById('fee-credit-help').textContent = 'Your public wallet pays top-up gas and is linked to that transfer. Later attempts use confirmed credit; fees can be charged even on failure.'
   })
   await page.locator('#fee-credit-shortcut').click()
   await expect(page.locator('#fee-credit-panel')).toBeVisible()
   await expect(page.locator('#fee-credit-consent')).not.toBeChecked()
   await expect(page.locator('#request-fee-refund')).toBeHidden()
-  await expect(page.locator('#fee-credit-panel')).toContainText('not automatic')
+  await expect(page.locator('#fee-credit-panel')).toContainText('network fee')
   await page.getByText('Request unused credit back', { exact: true }).click()
+  await expect(page.getByLabel('Public refund address', { exact: true })).toBeVisible()
   for (const viewport of [{ width: 390, height: 844 }, { width: 320, height: 640 }]) {
     await page.setViewportSize(viewport)
     assert(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth))

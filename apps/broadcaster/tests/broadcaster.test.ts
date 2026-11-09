@@ -8,6 +8,7 @@ import { encryptDataWithSharedKey, tryDecryptJSONDataWithSharedKey } from '@rail
 import { getAddress, id, Interface, JsonRpcProvider, Transaction, Wallet, ZeroAddress, type TransactionReceipt } from 'ethers'
 import { Broadcaster } from '../src/broadcaster'
 import { Store } from '../src/storage'
+import { accountingReport } from '../src/operations'
 import { issueFee } from '../src/fees'
 import { ADAPT, PROXY } from '../src/transaction'
 import { CHAIN, CHAIN_ID, COMMON_TRANSACTION_TYPE, FEE_TOKENS, NETWORK, TOKENS } from '../src/config'
@@ -19,7 +20,7 @@ const anonRuntime = readFileSync(new URL('./fixtures/anon-gateway-runtime.hex', 
 import { verifyCreditBacking, type CreditBacking } from '../src/credit-backing'
 import type { AccountedNote } from '../src/credit-owner-payment'
 import { chainFixture, syntheticNote, provenance } from './credit-owner.fixture'
-import { CREDIT_PROTOCOL, CREDIT_AUTHORIZATION_TYPES, CREDIT_MAX_PAYLOAD, creditAuthorizationValue, creditDomain, creditRequestKey, creditRequestKeyFromPayloadHash } from '../../railgun/credit-protocol'
+import { CREDIT_PROTOCOL, CREDIT_AUTHORIZATION_TYPES, CREDIT_MAX_PAYLOAD, creditAuthorizationValue, creditDomain, nativeCreditData, creditRequestKey, creditRequestKeyFromPayloadHash } from '../../railgun/credit-protocol'
 
 const registry = new Interface(['function getContractAddress(string name) view returns (address)'])
 const blockHash = `0x${'55'.repeat(32)}`
@@ -64,7 +65,7 @@ async function fixture(guard?: string, withdrawalRecipient?: string, commonWithd
     getBlockNumber: vi.fn(async () => 100),
     getTransactionReceipt: vi.fn(async (_hash?: string): Promise<Pick<TransactionReceipt, 'status' | 'blockNumber' | 'blockHash' | 'gasUsed' | 'gasPrice'> | null> => null),
     estimateGas: vi.fn(async () => 100_000n),
-    getCode: vi.fn(async (address: string) => address.toLowerCase() === ANON_COLLECTION_GATEWAY.toLowerCase() ? anonRuntime : address === guard
+    getCode: vi.fn(async (address: string, _tag?: string | number) => address.toLowerCase() === ANON_COLLECTION_GATEWAY.toLowerCase() ? anonRuntime : address === guard
       ? executionGuardCode(wallet.address, '0x6001', NETWORK.relayAdapt7702Contract) : '0x6001'),
     call: vi.fn(async (tx: { data: string }) => {
       if (tx.data === ANON_COLLECTION_ABI.encodeFunctionData('baseFeeBP'))
@@ -112,14 +113,24 @@ it.runIf(![1, 56].includes(CHAIN_ID))('keeps prepaid funding unavailable on an u
 
 describe.runIf([1, 56].includes(CHAIN_ID))('prepaid execution through the encrypted protocol', () => {
   const recovery = (original: Record<string, unknown>) => ({ kind: 'recover', payloadHash: id(JSON.stringify(original)), operation: original.kind, sequence: original.sequence })
-  async function prepaidFixture() {
+  async function prepaidFixture(native = false) {
     const f = await fixture(Wallet.createRandom().address)
     f.service.config.admission = 'public'
+    if (native) f.service.config.creditPaymentMode = 'public-native'
     f.sdk.address = '0zk1qy08nqrftxezyxdegx6ca055tr65f2hf3u24j9urx04e5fnzepv6nrv7j6fe3z53luvr6qkgtjukzmkcp856gs5a6wzdd3pnesr9r6ljvym9l3a4fcepgkvek3f'
     f.service.config.creditCollectionGas = 100_000n
     f.service.config.creditCollectionInputs = 2
     f.service.config.creditCollectionOutputs = 4
     f.service.config.creditCollectionProofs = 2
+    if (native) {
+      f.service.config.creditCollectionGas = 0n
+      f.service.config.creditCollectionInputs = f.service.config.creditCollectionOutputs = f.service.config.creditCollectionProofs = 0
+      f.provider.getBalance.mockResolvedValue(2n * 10n ** 18n)
+      f.provider.getBlock.mockImplementation(async (tag) => ({ number: typeof tag === 'number' ? tag : 100,
+        hash: blockHash, timestamp: Math.floor(Date.now() / 1000), baseFeePerGas: 1n }))
+      const code = f.provider.getCode.getMockImplementation()!
+      f.provider.getCode.mockImplementation(async (address) => address === f.wallet.address ? '0x' : code(address))
+    }
     const originalCall = f.provider.call.getMockImplementation()!
     f.provider.call.mockImplementation(async (tx) => tx.data === PROXY.encodeFunctionData('unshieldFee')
       ? PROXY.encodeFunctionResult('unshieldFee', [25n]) : originalCall(tx))
@@ -150,11 +161,154 @@ describe.runIf([1, 56].includes(CHAIN_ID))('prepaid execution through the encryp
     const execution = { kind: 'execute', sequence: quote.nextSequence, request: { ...f.data, feesID: quote.feesID }, maximumCharge: quote.maximumCharge,
       collectionAllowance: quote.collectionAllowance }
     async function fund() {
+      if (native) {
+        const paymentId = id('native topup'), transactionHash = id('native funding'), payer = Wallet.createRandom().address
+        const transaction = { hash: transactionHash, chainId: CHAIN, type: 2, authorizationList: [], to: f.wallet.address, from: payer,
+          value: 10n ** 18n, data: nativeCreditData(info.scope, info.ledgerId, owner.address, paymentId), blockNumber: 100, blockHash }
+        const receipt = { hash: transactionHash, from: payer, to: f.wallet.address, blockNumber: 100, blockHash, status: 1, gasUsed: 22000n, gasPrice: 1n }
+        Object.assign(f.provider, { getTransaction: vi.fn(async () => transaction) })
+        f.provider.getTransactionReceipt.mockImplementation(async (hash) => hash === transactionHash ? receipt : null)
+        const code = f.provider.getCode.getMockImplementation()!
+        f.provider.getCode.mockImplementation(async (address) => address === payer ? '0x' : code(address))
+        expect((await send({ kind: 'claim', transactionHash, paymentId })).available).toBe((10n ** 18n).toString())
+        return { transactionHash, paymentId, transaction, receipt }
+      }
       f.sdk.confirmedCredits.mockResolvedValueOnce([{ ...provenance(note), owner: owner.address, amount: 10n ** 18n }])
       expect((await send({ kind: 'claim', transactionHash: id('funding') })).available).toBe((10n ** 18n).toString())
     }
     return { ...f, owner, info, quote, execution, request, send, fund, backing, addBacking }
   }
+  it('uses explicit native funding and fee quotes without ANON fees, note collection or a pricing oracle', async () => {
+    const f = await prepaidFixture(true)
+    expect(f.info.scope).toMatchObject({ funding: 'native', token: ZeroAddress, recipient: f.wallet.address })
+    expect(f.info).toMatchObject({ executionEnabled: true, funding: 'user-submitted-native-transfer', refund: 'operator-executed-native-transfer' })
+    expect(f.quote).toMatchObject({ collectionAllowance: '0', refundGasAllowance: f.service.config.maxTransactionCost.toString(), rate: '1150000000000000000' })
+    await f.fund()
+    expect(f.sdk.confirmedCredits).not.toHaveBeenCalled()
+    expect(f.sdk.accountedCreditBacking).not.toHaveBeenCalled()
+    expect(f.provider.call).not.toHaveBeenCalled()
+    const result = await f.send(f.execution)
+    expect(result.txHash).toMatch(/^0x[0-9a-f]{64}$/)
+    expect(result.nonce).toBe(0)
+    const replay = await f.send(f.execution)
+    expect(replay.nonce).toBe(0)
+    const attemptStatus = await f.send({ kind: 'attempt', key: store.pending()[0].key })
+    expect(attemptStatus.nonce).toBe(0)
+    expect(f.sdk.validatePrepaid).toHaveBeenCalledOnce()
+    expect(f.sdk.fee).not.toHaveBeenCalled()
+    expect(f.sdk.confirmedOwnerCollection).not.toHaveBeenCalled()
+    const saved = store.pending()[0], ledger = CreditLedger.load(store)
+    expect(ledger.attempt(saved.key)?.collection_allowance).toBe('0')
+  })
+  it.each(['unsupported', 'canonical-change'])('closes native funding on historical read failure %s while keeping existing balance recovery available', async (failure) => {
+    const f = await prepaidFixture(true); await f.fund()
+    const historical = f.provider.getCode.getMockImplementation()!
+    f.provider.getCode.mockImplementation(async (address, ...args: unknown[]) => {
+      const block = args[0]
+      if (typeof block === 'number' && block < 100) {
+        if (failure === 'unsupported') throw new Error('historical state unavailable')
+        f.provider.getBlock.mockImplementation(async (tag) => ({ number: typeof tag === 'number' ? tag : 100,
+          hash: tag === 0 ? id('changed historical block') : blockHash, timestamp: Math.floor(Date.now() / 1000), baseFeePerGas: 1n }))
+      }
+      return historical(address)
+    })
+    const restarted = new Broadcaster(f.service.config, store, f.sdk, f.provider as unknown as JsonRpcProvider,
+      f.wallet, f.sender, { rates: async () => f.rates })
+    expect((await restarted.creditInfo()).executionEnabled).toBe(false)
+    f.provider.getCode.mockRejectedValue(new Error('historical state remains unavailable'))
+    const wire = await f.request({ kind: 'quote' })
+    expect(wire.decode(await restarted.handle(wire.payload)).error).toBeDefined()
+    const check = await f.request({ kind: 'balance' })
+    expect(check.decode(await restarted.handle(check.payload)).available).toBe((10n ** 18n).toString())
+    expect(await restarted.available()).toBe(false)
+    expect(f.sign).not.toHaveBeenCalled()
+  })
+  it('does not reinterpret an existing private ledger when native mode is selected', async () => {
+    const f = await prepaidFixture(); await f.fund()
+    const restarted = new Broadcaster({ ...f.service.config, creditPaymentMode: 'public-native' }, store, f.sdk,
+      f.provider as unknown as JsonRpcProvider, f.wallet, f.sender, { rates: async () => f.rates })
+    await expect(restarted.creditInfo()).rejects.toThrow()
+    expect(CreditLedger.load(store).scope.funding).toBeUndefined()
+    expect(CreditLedger.load(store).balance(f.owner.address).available).toBe(10n ** 18n)
+    expect(f.sign).not.toHaveBeenCalled()
+  })
+  it('holds native refund principal plus gas before signing, then returns the saved refund on replay', async () => {
+    const f = await prepaidFixture(true); await f.fund()
+    const quote = await f.send({ kind: 'quote', refund: true }), recipient = Wallet.createRandom().address
+    const net = 10n ** 16n, gross = net + BigInt(quote.maximumCharge)
+    const payload = { kind: 'refund', sequence: quote.nextSequence, recipient, gross: gross.toString(), net: net.toString(),
+      feesID: quote.feesID, collectionAllowance: '0', refundGasAllowance: quote.refundGasAllowance }
+    f.provider.send.mockResolvedValue({ type: 'CALL', from: f.wallet.address, to: recipient, input: '0x', value: `0x${net.toString(16)}` })
+    const result = await f.send(payload)
+    expect(result).toMatchObject({ kind: 'refund', recipient, net: net.toString(), gross: gross.toString(), state: 'submitted-or-unknown', nonce: 0 })
+    expect(f.sign).toHaveBeenCalledOnce()
+    const saved = store.pending()[0], raw = Transaction.from(saved.raw!)
+    expect(raw.to).toBe(recipient); expect(raw.value).toBe(net); expect(raw.data).toBe('0x')
+    expect(CreditLedger.load(store).balance(f.owner.address).reserved).toBe(gross)
+    expect((await f.send(payload)).transactionHash).toBe(result.transactionHash)
+    expect(f.sign).toHaveBeenCalledOnce()
+    expect((await f.send(f.execution)).error).toBeDefined()
+    expect(f.sdk.confirmedRefund).not.toHaveBeenCalled()
+  })
+  it.each([1, 0])('settles a finalized native refund with status %i and releases its unused maximum hold', async (status) => {
+    const f = await prepaidFixture(true), payment = (await f.fund())!
+    const quote = await f.send({ kind: 'quote', refund: true }), recipient = Wallet.createRandom().address, net = 10n ** 16n
+    const payload = { kind: 'refund', sequence: quote.nextSequence, recipient, gross: (net + BigInt(quote.maximumCharge)).toString(),
+      net: net.toString(), feesID: quote.feesID, collectionAllowance: '0', refundGasAllowance: quote.refundGasAllowance }
+    f.provider.send.mockResolvedValue({ type: 'CALL', from: f.wallet.address, to: recipient, input: '0x', value: `0x${net.toString(16)}` })
+    const result = await f.send(payload), saved = store.pending()[0]
+    const receipt = { hash: result.transactionHash, from: f.wallet.address, to: recipient,
+      blockNumber: 100, blockHash, status, gasUsed: 21000n, gasPrice: 2n }
+    f.provider.getTransactionReceipt.mockImplementation(async (hash) => hash === result.transactionHash ? receipt
+      : hash === payment.transactionHash ? payment.receipt : null)
+    f.provider.getTransactionCount.mockResolvedValue(1)
+    f.provider.getBlock.mockImplementation(async (tag) => ({ number: tag === 'latest' ? 101 : 100, hash: blockHash,
+      timestamp: Math.floor(Date.now() / 1000), baseFeePerGas: 1n }))
+    await f.service.reconcile()
+    const updated = await f.send({ kind: 'refund-status', key: saved.key })
+    const fee = 48_300n, paid = status === 1 ? net : 0n
+    expect(updated).toMatchObject({ state: status === 1 ? 'refunded' : 'failed', netPaid: paid.toString(),
+      charged: (paid + fee).toString(), settlementHash: result.transactionHash })
+    const balance = CreditLedger.load(store).balance(f.owner.address)
+    expect(balance.reserved).toBe(0n)
+    expect(balance.available).toBe(10n ** 18n - paid - fee)
+    const report = accountingReport(store.db)
+    expect(report.receivedFees).toEqual({ [ZeroAddress]: fee.toString() })
+    expect(report.prepaidCredit).toMatchObject({ funding: 'native', charged: fee.toString(),
+      completedRefunds: paid.toString(), liability: balance.available.toString(), remainingEarned: '6300',
+      nativeRefundReservations: '0', ownerPrivateFees: '0', ownerPaymentsPending: 0 })
+    expect(f.sign).toHaveBeenCalledOnce()
+    expect((await f.send(payload)).netPaid).toBe(paid.toString())
+    await f.service.reconcile()
+    expect(CreditLedger.load(store).balance(f.owner.address)).toEqual(balance)
+  })
+  it('retains a native refund hold after an unknown submission outcome without signing a replay', async () => {
+    const f = await prepaidFixture(true); await f.fund()
+    const quote = await f.send({ kind: 'quote', refund: true }), recipient = Wallet.createRandom().address, net = 10n ** 16n
+    const payload = { kind: 'refund', sequence: quote.nextSequence, recipient, gross: (net + BigInt(quote.maximumCharge)).toString(),
+      net: net.toString(), feesID: quote.feesID, collectionAllowance: '0', refundGasAllowance: quote.refundGasAllowance }
+    f.provider.send.mockResolvedValue({ type: 'CALL', from: f.wallet.address, to: recipient, input: '0x', value: `0x${net.toString(16)}` })
+    f.sender.broadcastTransaction.mockRejectedValueOnce(new Error('unknown protected submission'))
+    expect((await f.send(payload)).error).toBeDefined()
+    const saved = store.pending()[0]
+    expect(saved.raw).toBeTruthy()
+    expect(CreditLedger.load(store).balance(f.owner.address).reserved).toBe(BigInt(payload.gross))
+    expect((await f.send(payload)).state).toBe('submitted-or-unknown')
+    expect(f.sign).toHaveBeenCalledOnce(); expect(f.sender.broadcastTransaction).toHaveBeenCalledOnce()
+  })
+  it.each(['self', 'zero', 'underpaid', 'wrong-allowance', 'trace', 'reserve'])('rejects an unsafe native refund (%s) before reserving or signing', async (failure) => {
+    const f = await prepaidFixture(true); await f.fund()
+    const quote = await f.send({ kind: 'quote', refund: true }), net = 10n ** 16n
+    const recipient = failure === 'self' ? f.wallet.address : failure === 'zero' ? ZeroAddress : Wallet.createRandom().address
+    const payload = { kind: 'refund', sequence: quote.nextSequence, recipient,
+      gross: (net + BigInt(quote.maximumCharge) - (failure === 'underpaid' ? 1n : 0n)).toString(), net: net.toString(),
+      feesID: quote.feesID, collectionAllowance: '0', refundGasAllowance: failure === 'wrong-allowance' ? '1' : quote.refundGasAllowance }
+    f.provider.send.mockResolvedValue({ type: 'CALL', from: f.wallet.address, to: recipient, input: '0x',
+      value: `0x${net.toString(16)}`, ...(failure === 'trace' ? { error: 'revert' } : {}) })
+    if (failure === 'reserve') f.provider.getBalance.mockResolvedValue(10n ** 18n)
+    expect((await f.send(payload)).error).toBeDefined()
+    expect(store.pending()).toHaveLength(0); expect(f.sign).not.toHaveBeenCalled()
+  })
   it.each(['pending', 'unfinalized', 'empty-table'])('does not create a credit identity while an operator transfer is %s', async (stage) => {
     const f = await fixture(Wallet.createRandom().address)
     f.sdk.address = '0zk1qy08nqrftxezyxdegx6ca055tr65f2hf3u24j9urx04e5fnzepv6nrv7j6fe3z53luvr6qkgtjukzmkcp856gs5a6wzdd3pnesr9r6ljvym9l3a4fcepgkvek3f'
@@ -194,6 +348,18 @@ describe.runIf([1, 56].includes(CHAIN_ID))('prepaid execution through the encryp
     f.provider.send.mockResolvedValue({ type: 'CALL', calls: [{ type: 'CALL', to: NETWORK.proxyContract, input: privateCalldata(data) }] })
     return { ...f.execution, sequence: CreditLedger.load(store).nextSequence(f.owner.address), request: data }
   }
+  it('uses native prepaid credit for a private token withdrawal without an embedded private fee', async () => {
+    const f = await prepaidFixture(true); await f.fund()
+    const payload = await scopedPilotWithdrawal(f, Wallet.createRandom().address)
+    f.service.config.prepaidPilotLedgerId = f.info.ledgerId
+    f.service.config.prepaidPilotOwner = f.owner.address
+    expect((await f.send(payload)).txHash).toBeTruthy()
+    expect(f.sdk.validatePrepaid).toHaveBeenCalledOnce()
+    expect(f.sdk.fee).not.toHaveBeenCalled()
+    expect(f.sdk.accountedCreditBacking).not.toHaveBeenCalled()
+    expect(CreditLedger.load(store).scope.funding).toBe('native')
+    expect(store.db.prepare('SELECT COUNT(*) AS n FROM credit_deposits').get()?.n).toBe(0)
+  })
   it('keeps the historical pilot halt without an explicit exact prepaid ledger approval', async () => {
     const f = await prepaidFixture(); await f.fund()
     const payload = await scopedPilotWithdrawal(f, Wallet.createRandom().address)

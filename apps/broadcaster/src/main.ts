@@ -72,7 +72,7 @@ async function run(): Promise<void> {
   const stop = () => { stopping = true; abort.abort() }
   process.once('SIGINT', stop); process.once('SIGTERM', stop)
   try {
-    const oracle = new FeeOracle(provider, config.marginBps)
+    const oracle = new FeeOracle(provider, config.marginBps, config.creditPaymentMode === 'public-native')
     const port = Number(process.env.OPHIS_BROADCASTER_PORT ?? '4340')
     if (!Number.isSafeInteger(port) || port < 1024 || port > 65535) throw new Error('Invalid health port.')
     if (command === 'monitor') {
@@ -135,7 +135,9 @@ async function run(): Promise<void> {
     if (command !== 'migrate') store.bindIdentity(CHAIN_ID, config.operatorAddress)
     if (command === 'record-owner-payout' || command === 'reject-owner-payout') {
       if (process.argv.length !== 5) throw new Error('Provide the saved owner intent and exact payout transaction hash.')
-      const ledger = CreditLedger.load(store), receipt = await finalizedCreditReceipt(provider, process.argv[4])
+      const ledger = CreditLedger.load(store)
+      if (ledger.isNative) throw new Error('Native refunds use the operator transaction journal, not owner private payouts.')
+      const receipt = await finalizedCreditReceipt(provider, process.argv[4])
       if (command === 'reject-owner-payout') ledger.rejectOwnerPayout(process.argv[3], receipt)
       else ledger.recordOwnerPayout(process.argv[3], receipt)
       console.log(JSON.stringify({ ...identity, status: command === 'reject-owner-payout'
@@ -147,9 +149,13 @@ async function run(): Promise<void> {
       const ledger = CreditLedger.load(store)
       if (command === 'refunds') {
         if (process.argv.length !== 3) throw new Error('Refund listing accepts no arguments.')
-        const pending = store.db.prepare('SELECT key,recipient,gross,net,created FROM credit_refunds WHERE transaction_hash IS NULL ORDER BY created,key').all()
+        const pending = ledger.isNative ? store.db.prepare(`SELECT i.key,i.recipient,a.maximum_charge AS gross,i.net,r.created
+          FROM credit_native_refund_attempts i JOIN credit_attempts a ON a.key=i.key JOIN requests r ON r.key=i.key
+          WHERE a.charged IS NULL ORDER BY r.created,i.key`).all()
+          : store.db.prepare('SELECT key,recipient,gross,net,created FROM credit_refunds WHERE transaction_hash IS NULL ORDER BY created,key').all()
         console.log(JSON.stringify({ ...identity, token: ledger.scope.token, pending, privateOperatorOutput: true }))
       } else {
+        if (ledger.isNative) throw new Error('Native refunds use the operator transaction journal, not owner private payouts.')
         if (process.argv.length !== 5) throw new Error('Provide the saved refund key and exact owner payout transaction hash.')
         ledger.recordRefundPayout(process.argv[3], await finalizedCreditReceipt(provider, process.argv[4]))
         console.log(JSON.stringify({ ...identity, status: 'owner-payout-recorded-awaiting-private-verification',
@@ -221,7 +227,7 @@ async function run(): Promise<void> {
       console.log(JSON.stringify(await deployGuard(config, approval, provider, wallet)))
       return
     }
-    if (config.mode === 'mainnet') sender = new ProtectedEthereumProvider(config.rpc, wallet.address, config.state, config.executionGuard, CHAIN_ID)
+    if (config.mode === 'mainnet') sender = new ProtectedEthereumProvider(config.rpc, wallet.address, config.state, config.executionGuard, CHAIN_ID, config.creditPaymentMode === 'public-native')
     if (command === 'retry' || command === 'cancel') {
       if (!sender) throw new Error('Manual recovery is a mainnet protected-transport command; test its function on a fork.')
       const hash = await recover(command, process.argv.slice(3), config, store, provider, wallet, sender)

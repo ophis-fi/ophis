@@ -32,7 +32,7 @@ export class ProtectedEthereumProvider extends JsonRpcProvider {
   private readonly config: (typeof NETWORK_CONFIG)[NetworkName]
 
   constructor(readRPC: string | FetchRequest, operatorAddress: string, privateStateDirectory: string, executionGuard?: string,
-    private readonly chainId = 1) {
+    private readonly chainId = 1, private readonly nativeRefunds = false) {
     const network = Number.isSafeInteger(chainId) ? NETWORKS[chainId] : undefined
     if (!network) throw new Error('Unsupported protected operator chain.')
     super(readRPC, chainId, { batchMaxCount: 1, cacheTimeout: -1 })
@@ -155,7 +155,7 @@ export class ProtectedEthereumProvider extends JsonRpcProvider {
           throw new Error('The protected bundle journal has an inconsistent binding.')
         const { raw, maxTimestamp } = readBnbBundle(item.body)
         let cancellation: boolean
-        try { cancellation = Transaction.from(raw).data === '0x' } catch { throw new Error('Invalid journaled bundle transaction.') }
+        try { const tx = Transaction.from(raw); cancellation = tx.data === '0x' && tx.value === 0n } catch { throw new Error('Invalid journaled bundle transaction.') }
         if (this.validate(raw, cancellation).hash !== item.hash)
           throw new Error('The protected bundle journal has an inconsistent transaction.')
         if (cancellation ? item.valid_until_ms !== null : typeof item.valid_until_ms !== 'number' ||
@@ -267,13 +267,18 @@ export class ProtectedEthereumProvider extends JsonRpcProvider {
     let tx: Transaction
     try { tx = Transaction.from(raw) } catch { throw new Error('Invalid signed transaction.') }
     if (tx.serialized !== raw.toLowerCase()) throw new Error('Canonical transaction encoding is required.')
-    if (!tx.isSigned() || !tx.hash || tx.from !== this.operator || tx.chainId !== BigInt(this.chainId) || tx.value !== 0n ||
+    // The caller reserves and signs the exact native refund in the same operator nonce journal.
+    const nativeRefund = this.nativeRefunds && !cancellation && tx.type === 2 && tx.value > 0n && tx.data === '0x' &&
+      !!tx.to && !/^0x0{40}$/i.test(tx.to) && tx.to !== this.operator && !tx.authorizationList?.length
+    if (!tx.isSigned() || !tx.hash || tx.from !== this.operator || tx.chainId !== BigInt(this.chainId) || (tx.value !== 0n && !nativeRefund) ||
       !tx.to || tx.gasLimit <= 0n || tx.gasLimit > 30_000_000n)
       throw new Error('Only this operator’s signed Railgun transactions on the selected chain are accepted.')
     if (cancellation) {
       if (tx.type !== 2 || tx.to !== this.operator || tx.data !== '0x' || tx.gasLimit < 21_000n ||
         (this.chainId === 1 && tx.gasLimit !== 21_000n) || tx.authorizationList?.length)
         throw new Error('Cancellation must be a signed type-2, zero-value self-transfer within the selected chain gas bounds.')
+    } else if (nativeRefund) {
+      if (tx.gasLimit < 21_000n) throw new Error('Native refund gas limit is below the transaction minimum.')
     } else if (tx.data === '0x') {
       throw new Error('Railgun calldata is required.')
     } else if (tx.type === 4) {

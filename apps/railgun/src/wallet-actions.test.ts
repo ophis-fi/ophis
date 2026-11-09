@@ -95,7 +95,7 @@ beforeEach(() => {
   mocks.creditBalance.mockReset().mockResolvedValue({ available: 1000n, reserved: 2n })
   mocks.topUp.mockReset().mockResolvedValue(`0x${'44'.repeat(32)}`)
   mocks.retryTopUp.mockReset().mockResolvedValue(`0x${'55'.repeat(32)}`)
-  mocks.refundCredit.mockReset().mockResolvedValue({ selected: { tokenAddress: TOKENS.WETH.address }, maximumRefundGross: 1_000n })
+  mocks.refundCredit.mockReset().mockResolvedValue({ scope: {}, selected: { tokenAddress: TOKENS.WETH.address }, maximumRefundGross: 1_000n })
   mocks.claimCredit.mockReset().mockResolvedValue({ available: 2000n, reserved: 0n })
   mocks.checkCredit.mockReset()
   mocks.retryCredit.mockReset()
@@ -815,7 +815,7 @@ it('keeps checking a saved top-up separate from its explicit consented retry', a
   expect(mocks.credit).not.toHaveBeenCalled()
   expect(mocks.prepareSwap).not.toHaveBeenCalled()
   expect(elements['fee-credit-consent'].checked).toBe(false)
-  expect(elements['fee-credit-status'].textContent).toContain('private proof was preserved')
+  expect(elements['fee-credit-status'].textContent).toContain('payment details were preserved')
 })
 
 it('does not resume a saved top-up when the public wallet changes during signer access', async () => {
@@ -854,7 +854,7 @@ it('reviews a private refund without reserving credit until the separate explici
   const { wireWalletActions } = await import('./wallet-actions')
   await wireWalletActions({} as WalletSession)
   await elements['review-fee-refund'].onclick?.()
-  expect(elements['fee-refund-review'].textContent).toContain('Net private refund: 0.00000000000000009 WETH')
+  expect(elements['fee-refund-review'].textContent).toContain('Net refund: 0.00000000000000009 WETH')
   expect(elements['fee-refund-review'].textContent).toContain('operator must process')
   expect(mocks.requestRefund).not.toHaveBeenCalled()
   expect(mocks.topUp).not.toHaveBeenCalled()
@@ -862,14 +862,49 @@ it('reviews a private refund without reserving credit until the separate explici
   expect(mocks.refundCredit).toHaveBeenCalledOnce()
   expect(mocks.credit).not.toHaveBeenCalled()
   await elements['request-fee-refund'].onclick?.()
-  expect(mocks.requestRefund).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ selected: expect.anything() }), 100n)
+  expect(mocks.requestRefund).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ selected: expect.anything() }), 100n, undefined)
   expect(elements['fee-credit-status'].textContent).toContain('awaiting-owner-transfer')
+})
+
+it('reviews a native refund in ETH and binds the explicit public destination until confirmation', async () => {
+  mocks.environment = 'ethereum'
+  const recipient = '0x0000000000000000000000000000000000000123'
+  mocks.refundCredit.mockResolvedValue({ scope: { funding: 'native' }, selected: { tokenAddress: TOKENS.WETH.address }, maximumRefundGross: 1000n })
+  mocks.creditBalance.mockResolvedValue({ funding: 'native', available: 1000n, reserved: 2n })
+  mocks.requestRefund.mockResolvedValue({ funding: 'native', state: 'submitted-or-unknown', net: 90n })
+  const { amountFromInput } = await import('./recipe')
+  vi.mocked(amountFromInput).mockReturnValueOnce(100n)
+  const { wireWalletActions } = await import('./wallet-actions')
+  await wireWalletActions({} as WalletSession)
+  elements['fee-refund-recipient'].value = recipient
+  await elements['review-fee-refund'].onclick?.()
+  expect(elements['fee-refund-review'].textContent).toContain(`Destination: ${recipient}`)
+  expect(elements['fee-refund-review'].textContent).toContain('Net refund: 0.00000000000000009 ETH')
+  expect(elements['fee-refund-review'].textContent).toContain('This payment is public')
+  expect(mocks.requestRefund).not.toHaveBeenCalled()
+  await elements['request-fee-refund'].onclick?.()
+  expect(mocks.requestRefund).toHaveBeenCalledWith(expect.anything(), expect.anything(), 100n, recipient)
+  expect(elements['fee-credit-status'].textContent).toContain('submitted-or-unknown')
+})
+
+it('invalidates native refund consent when the public destination changes', async () => {
+  mocks.environment = 'ethereum'
+  mocks.refundCredit.mockResolvedValue({ scope: { funding: 'native' }, selected: {}, maximumRefundGross: 1000n })
+  const { amountFromInput } = await import('./recipe')
+  vi.mocked(amountFromInput).mockReturnValueOnce(100n)
+  const { wireWalletActions } = await import('./wallet-actions')
+  await wireWalletActions({} as WalletSession)
+  elements['fee-refund-recipient'].value = '0x0000000000000000000000000000000000000123'
+  await elements['review-fee-refund'].onclick?.()
+  elements['fee-refund-recipient'].oninput?.()
+  await elements['request-fee-refund'].onclick?.()
+  expect(mocks.requestRefund).not.toHaveBeenCalled()
 })
 
 
 it('shows the payable refund limit before allowing an oversized request', async () => {
   mocks.environment = 'ethereum'
-  mocks.refundCredit.mockResolvedValue({ selected: { tokenAddress: TOKENS.WETH.address }, maximumRefundGross: 50n })
+  mocks.refundCredit.mockResolvedValue({ scope: {}, selected: { tokenAddress: TOKENS.WETH.address }, maximumRefundGross: 50n })
   const { amountFromInput } = await import('./recipe')
   vi.mocked(amountFromInput).mockReturnValueOnce(100n)
   const { wireWalletActions } = await import('./wallet-actions')
@@ -892,7 +927,7 @@ it('invalidates a reviewed refund if its amount changes and never treats awaitin
   await elements['request-fee-refund'].onclick?.()
   expect(mocks.requestRefund).not.toHaveBeenCalled()
   await elements['check-fee-refund'].onclick?.()
-  expect(elements['fee-credit-status'].textContent).toContain('not paid yet')
+  expect(elements['fee-credit-status'].textContent).toContain('not confirmed yet')
   expect(mocks.sync).not.toHaveBeenCalled()
 })
 

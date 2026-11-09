@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
-import { id, Wallet } from 'ethers'
+import { id, Wallet, ZeroAddress } from 'ethers'
 import { authenticateCreditRequest, creditAuthorizationValue, creditDomain, creditMemo, creditRequestKey,
-  CREDIT_AUTHORIZATION_TYPES, type CreditAuthorization } from '../../railgun/credit-protocol'
+  CREDIT_AUTHORIZATION_TYPES, nativeCreditData, type CreditAuthorization } from '../../railgun/credit-protocol'
 
 const owner = Wallet.createRandom(), operator = Wallet.createRandom().address
 const scope = { chainId: 1, operator, recipient: '0zk1fee-identity', token: Wallet.createRandom().address }
@@ -11,6 +11,28 @@ async function authorize(payload = JSON.stringify({ kind: 'execute', maximumChar
     CREDIT_AUTHORIZATION_TYPES, creditAuthorizationValue(scope, owner.address, payload, expires)) }
 }
 describe('prepaid request ownership', () => {
+  it('isolates native authorization and binds opaque funding data without publishing the claimant or payment secret', async () => {
+    const native = { chainId: 1, operator, recipient: operator, token: ZeroAddress, funding: 'native' as const }
+    const paymentId = id('private random payment identifier')
+    const data = nativeCreditData(native, ledgerId, owner.address, paymentId)
+    expect(data.length).toBe(130)
+    expect(data.toLowerCase()).not.toContain(owner.address.slice(2).toLowerCase())
+    expect(data.toLowerCase()).not.toContain(paymentId.slice(2))
+    for (const [changed, ledger, claimant, payment] of [
+      [{ ...native, chainId: 56 }, ledgerId, owner.address, paymentId],
+      [{ ...native, operator: owner.address, recipient: owner.address }, ledgerId, owner.address, paymentId],
+      [native, id('other ledger'), owner.address, paymentId], [native, ledgerId, operator, paymentId],
+      [native, ledgerId, owner.address, id('other payment')],
+    ] as const) expect(nativeCreditData(changed, ledger, claimant, payment)).not.toBe(data)
+    const payload = JSON.stringify({ kind: 'balance' }), expires = now + 60_000
+    const request = { owner: owner.address, payload, expires, signature: await owner.signTypedData(creditDomain(native, ledgerId),
+      CREDIT_AUTHORIZATION_TYPES, creditAuthorizationValue(native, owner.address, payload, expires)) }
+    expect(authenticateCreditRequest(native, ledgerId, request, now).owner).toBe(owner.address)
+    expect(() => authenticateCreditRequest(scope, ledgerId, request, now)).toThrow('signature')
+    expect(() => creditDomain({ ...native, funding: undefined }, ledgerId)).toThrow()
+    expect(() => creditDomain({ ...native, recipient: owner.address }, ledgerId)).toThrow()
+    expect(() => creditDomain({ ...native, funding: 'invalid' as 'native' }, ledgerId)).toThrow()
+  })
   it('binds every request byte, charge, fee identity, token, ledger, operator and chain', async () => {
     const request = await authorize()
     expect(authenticateCreditRequest(scope, ledgerId, request, now).owner).toBe(owner.address)

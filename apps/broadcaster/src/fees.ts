@@ -44,11 +44,16 @@ export class FeeOracle {
   private feeds?: Contract[]
   private cached?: { expires: number; rates: Record<string, bigint> }
   private refreshing?: Promise<Record<string, bigint>>
-  constructor(private readonly provider: JsonRpcProvider, private readonly marginBps: bigint) {
+  constructor(private readonly provider: JsonRpcProvider, private readonly marginBps: bigint, private readonly nativeCredit = false) {
     if (!FEEDS[CHAIN_ID]) throw new Error('Fee pricing is unavailable for this broadcaster chain.')
   }
 
   async rates(): Promise<Record<string, bigint>> {
+    if (this.nativeCredit) {
+      if (this.marginBps <= 0n || this.marginBps > 10_000n) throw new Error('Native prepaid fees require a positive bounded margin.')
+      // Discovery still uses the SDK wrapped-token key. Actual native quotes use the zero-address credit scope.
+      return { [getAddress(FEE_TOKENS[0].address)]: ceilDiv(10n ** 18n * (10_000n + this.marginBps), 10_000n) }
+    }
     // Recheck Arbitrum's sequencer and BNB's trusted head even while a price cache would be young.
     if (CHAIN_ID !== 42161 && CHAIN_ID !== 56 && this.cached && Date.now() < this.cached.expires) return this.cached.rates
     this.refreshing ??= this.refresh().finally(() => { this.refreshing = undefined })

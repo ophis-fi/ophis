@@ -4,7 +4,7 @@ import { pendingSwap, reconcilePendingSwap, savePendingSwap } from './journal'
 import { cancelPendingSwap } from './cancel'
 import { pendingWithdrawal, reconcilePendingWithdrawal, resumePendingWithdrawal, savedWithdrawalSummary, savePendingWithdrawal,
   canPreserveWethWithdrawal, preserveWethWithdrawal, preservedWithdrawal, restorePreservedWithdrawal } from './withdrawal-journal'
-import { CHAIN_ID, ENVIRONMENT, NATIVE_SYMBOL, PILOT_WITHDRAWAL_RECIPIENT, WRAPPED_SYMBOL, TOKENS, isTokenSymbol, tokenFor, type TokenSymbol } from './config'
+import { CHAIN_ID, ENVIRONMENT, NATIVE_SYMBOL, PILOT_WITHDRAWAL_RECIPIENT, PREPAID_BROADCASTERS, WRAPPED_SYMBOL, TOKENS, isTokenSymbol, tokenFor, type TokenSymbol } from './config'
 import { executePrivateSwap, prepareMaxPrivateSwap, preparePrivateSwap, SwapBalanceError } from './private-swap'
 import { amountFromInput, quoteSwap } from './recipe'
 import { recoverToken, recoveryIndex, scanRecovery } from './recovery'
@@ -27,7 +27,7 @@ export async function wireWalletActions(session: WalletSession): Promise<void> {
     signer?: JsonRpcSigner
     swap?: Awaited<ReturnType<typeof preparePrivateSwap>>
     withdrawal?: Awaited<ReturnType<typeof prepareUnshield>>
-    refund?: { credit: PreparedCredit; gross: bigint; net: bigint }
+    refund?: { credit: PreparedCredit; gross: bigint; net: bigint; recipient?: string }
     pendingIdentity?: string
   } = { publicEpoch: 0 }
   const token = element<HTMLSelectElement>('token')
@@ -46,9 +46,12 @@ export async function wireWalletActions(session: WalletSession): Promise<void> {
     element('public-transaction-status').textContent = message
   }
   const usesPrepaid = ENVIRONMENT === 'ethereum' && [1, 56].includes(CHAIN_ID)
+  const nativePrepaid = PREPAID_BROADCASTERS[CHAIN_ID]?.funding === 'native'
+  const creditSymbol = nativePrepaid ? NATIVE_SYMBOL : WRAPPED_SYMBOL
   const creditStatus = (message: string): void => { element('fee-credit-status').textContent = message }
   const showCredit = (balance: CreditBalance): void => {
-    element('fee-credit-balance').textContent = `Available: ${formatUnits(balance.available, 18)} ${WRAPPED_SYMBOL} · Reserved: ${formatUnits(balance.reserved, 18)} ${WRAPPED_SYMBOL}`
+    const creditSymbol = balance.funding === 'native' ? NATIVE_SYMBOL : WRAPPED_SYMBOL
+    element('fee-credit-balance').textContent = `Available: ${formatUnits(balance.available, 18)} ${creditSymbol} · Reserved: ${formatUnits(balance.reserved, 18)} ${creditSymbol}`
   }
   element('fee-credit-panel').hidden = !usesPrepaid
   element('fee-credit-shortcut').hidden = !usesPrepaid
@@ -56,12 +59,23 @@ export async function wireWalletActions(session: WalletSession): Promise<void> {
     element('fee-caption').textContent = 'Ophis uses prepaid fee credit. Review the maximum attempt charge before confirming.'
     element('swap-fee-help').textContent = 'Your swap uses confirmed fee credit separately from its principal. Up to the reviewed maximum attempt fee can be charged even if execution fails.'
     element('withdraw-fee-help').textContent = 'Choose the token and amount above. Ophis fees use prepaid credit; the protocol fee is deducted from the withdrawal amount.'
-    element('fee-credit-help').textContent = `Add a small reusable balance with a separate private ${WRAPPED_SYMBOL} transfer. Your connected public wallet pays ${NATIVE_SYMBOL} gas for that top-up, linking it to the transfer. Ophis can link requests using the same credit balance. Later attempts use confirmed credit and may incur fees even on failure.`
+    element('fee-credit-help').textContent = nativePrepaid
+      ? `Add reusable fee credit with a public ${NATIVE_SYMBOL} payment to Ophis. Use an ordinary account without smart-account delegation. The sender, recipient and amount are public; your wallet also pays this payment's gas. Ophis holds the credit and can link requests using it. Later attempts, including failed or cancelled attempts, charge their gas and the reviewed margin from this credit.`
+      : `Add a small reusable balance with a separate private ${WRAPPED_SYMBOL} transfer. Your connected public wallet pays ${NATIVE_SYMBOL} gas for that top-up, linking it to the transfer. Ophis can link requests using the same credit balance. Later attempts use confirmed credit and may incur fees even on failure.`
     element('fee-credit-timing').textContent = (CHAIN_ID === 1
       ? 'Ethereum final confirmation normally takes 13–19 minutes after inclusion.'
       : 'BNB final confirmation normally takes seconds after inclusion.') +
-      ' Wallet synchronization can add time. Top-ups must finish confirming before use. This wallet also waits for each attempt’s final fee settlement before starting another swap or withdrawal.'
-    element('fee-credit-amount').setAttribute('aria-label', `Fee credit to add in ${WRAPPED_SYMBOL}`)
+      (nativePrepaid ? ' This public payment has no PPOI waiting period.' : ' Wallet synchronization can add time.') +
+      ' Top-ups must finish confirming before use. This wallet also waits for each attempt’s final fee settlement before starting another swap or withdrawal.'
+    element('fee-credit-amount').setAttribute('aria-label', `Fee credit to add in ${creditSymbol}`)
+    element('fee-credit-amount-text').textContent = `Add ${creditSymbol} fee credit`
+    element('fee-refund-recipient-label').hidden = !nativePrepaid
+    element('fee-refund-help').textContent = nativePrepaid
+      ? 'Unused credit stays available. Refunds send native currency to your public address and charge network gas plus the reviewed margin. Small balances below the refund allowance remain usable as credit.'
+      : 'Unused credit stays available. Private refunds require operator processing.'
+    element('fee-refund-timing').textContent = nativePrepaid
+      ? 'A refund reserves the reviewed amount. Unused gas allowance returns to credit after final confirmation. Failed or cancelled refunds charge only gas plus the reviewed margin.'
+      : 'A refund reserves credit until the operator processes the private transfer.'
     element('withdraw-max').textContent = 'Max withdrawal'
   } else if (CHAIN_ID === 56) {
     element('swap-fee-help').textContent = 'Broadcaster fees are paid automatically from your private WBNB balance. Keep private WBNB for fees when swapping or withdrawing other tokens.'
@@ -78,6 +92,7 @@ export async function wireWalletActions(session: WalletSession): Promise<void> {
       const credit = await pendingPrepaid(session)
       element('check-fee-topup').hidden = !credit?.topUpPending
       element('retry-fee-topup').hidden = !credit?.topUpPending
+      element('fee-topup-hash-label').hidden = !credit?.topUpPending || credit.funding !== 'native' || !!credit.topUpHash
       element('check-fee-attempt').hidden = !credit?.key
       element('retry-fee-attempt').hidden = !credit?.key || !!credit.hash || !!credit.completed
       element('add-fee-credit').hidden = !!credit?.topUpPending || (!!credit?.key && !credit.completed)
@@ -333,7 +348,8 @@ export async function wireWalletActions(session: WalletSession): Promise<void> {
     creditStatus(`Top-up submitted: ${hash}. Wait for finality, then choose Check top-up. Do not send another top-up while this one is pending.`)
   })
   button('check-fee-topup', 'Checking top-up…', async () => {
-    showCredit(await claimPrepaidTopUp(session))
+    showCredit(await claimPrepaidTopUp(session, element<HTMLInputElement>('fee-topup-hash').value.trim() || undefined))
+    element<HTMLInputElement>('fee-topup-hash').value = ''
     creditStatus('Top-up confirmed and credited. This balance can pay for later Ophis attempts.')
     await syncWallet(session)
   })
@@ -347,7 +363,7 @@ export async function wireWalletActions(session: WalletSession): Promise<void> {
     const hash = await retryPrepaidTopUp(session, signer, creditStatus)
     invalidate()
     element<HTMLInputElement>('fee-credit-consent').checked = false
-    creditStatus(`Saved top-up transaction: ${hash}. Its private proof was preserved. Use Check top-up after finality.`)
+    creditStatus(`Saved top-up transaction: ${hash}. Its payment details were preserved. Use Check top-up after finality.`)
   })
   button('check-fee-attempt', 'Checking prepaid transaction…', async () => {
     const saved = await pendingPrepaid(session)
@@ -384,7 +400,7 @@ export async function wireWalletActions(session: WalletSession): Promise<void> {
     await attachCreditHash(saved.request, hash)
     creditStatus(`Saved request acknowledged: ${hash}. Check its status and the private recovery record; no proof was rebuilt.`)
   })
-  element<HTMLInputElement>('fee-refund-amount').oninput = () => {
+  for (const id of ['fee-refund-amount', 'fee-refund-recipient']) element<HTMLInputElement>(id).oninput = () => {
     state.refund = undefined
     element('fee-refund-review').textContent = ''
     element('request-fee-refund').hidden = true
@@ -394,33 +410,40 @@ export async function wireWalletActions(session: WalletSession): Promise<void> {
     element('request-fee-refund').hidden = true
     const gross = amountFromInput(element<HTMLInputElement>('fee-refund-amount').value, WRAPPED_SYMBOL)
     const credit = await preparePrepaidRefund(session, creditStatus)
+    const nativePrepaid = credit.scope.funding === 'native'
+    const creditSymbol = nativePrepaid ? NATIVE_SYMBOL : WRAPPED_SYMBOL
     const fee = prepaidRefundFee(credit), net = gross - fee
     const balance = await prepaidBalance(session)
     showCredit(balance)
     if (gross > balance.available) throw new Error('The refund exceeds your available credit; reserved credit cannot be refunded.')
-    if (net <= 0n) throw new Error('This refund would not cover its collection fee. The credit remains available for later attempts.')
+    if (net <= 0n) throw new Error('This refund would not cover its network fee allowance. The credit remains available for later attempts.')
     if (credit.maximumRefundGross === undefined) throw new Error('Refresh the refund quote before continuing.')
-    if (gross > credit.maximumRefundGross) throw new Error(`Maximum refundable now: ${formatUnits(credit.maximumRefundGross, 18)} ${WRAPPED_SYMBOL}, including the refund fee. Choose a smaller amount or try again later. Your credit remains available.`)
-    state.refund = { credit, gross, net }
-    element('fee-refund-review').textContent = `Reserve ${formatUnits(gross, 18)} ${WRAPPED_SYMBOL} credit\nRefund fee: ${formatUnits(fee, 18)} ${WRAPPED_SYMBOL}\nNet private refund: ${formatUnits(net, 18)} ${WRAPPED_SYMBOL}\nDestination: this private wallet. The operator must process the refund; no automatic payout is promised.`
+    if (gross > credit.maximumRefundGross) throw new Error(`Maximum refundable now: ${formatUnits(credit.maximumRefundGross, 18)} ${creditSymbol}, including the refund fee. Choose a smaller amount or try again later. Your credit remains available.`)
+    const destination = nativePrepaid ? getAddress(element<HTMLInputElement>('fee-refund-recipient').value.trim()) : undefined
+    state.refund = { credit, gross, net, recipient: destination }
+    element('fee-refund-review').textContent = `Reserve ${formatUnits(gross, 18)} ${creditSymbol} credit\nMaximum processing fee: ${formatUnits(fee, 18)} ${creditSymbol}\nNet refund: ${formatUnits(net, 18)} ${creditSymbol}\nDestination: ${destination ?? 'this private wallet'}. ` +
+      (nativePrepaid ? 'This payment is public. Unused gas allowance returns to credit; a failed or cancelled refund charges gas plus the reviewed margin only.' : 'The operator must process the private transfer.')
     element('request-fee-refund').hidden = false
   })
-  button('request-fee-refund', 'Requesting private refund…', async () => {
+  button('request-fee-refund', 'Requesting refund…', async () => {
     const reviewed = state.refund
     state.refund = undefined
     element('request-fee-refund').hidden = true
     if (!reviewed) throw new Error('Review the refund amount and fee first.')
-    const result = await requestPrepaidRefund(session, reviewed.credit, reviewed.gross)
-    creditStatus(`Refund ${result.state}: ${formatUnits(result.net, 18)} ${WRAPPED_SYMBOL} net to this private wallet. Reserved credit stays unavailable while the operator processes it.`)
+    const result = await requestPrepaidRefund(session, reviewed.credit, reviewed.gross, reviewed.recipient)
+    const creditSymbol = result.funding === 'native' ? NATIVE_SYMBOL : WRAPPED_SYMBOL
+    creditStatus(`Refund ${result.state}: ${formatUnits(result.net, 18)} ${creditSymbol} net to ${reviewed.recipient ?? 'this private wallet'}. Use Check or resume refund for confirmation.`)
     showCredit(await prepaidBalance(session))
   })
   button('check-fee-refund', 'Checking refund…', async () => {
     const result = await checkPrepaidRefund(session)
+    const creditSymbol = result.funding === 'native' ? NATIVE_SYMBOL : WRAPPED_SYMBOL
     creditStatus(result.state === 'not-reserved'
       ? 'The refund request was not accepted and no credit was reserved for it. Review a new refund request to continue.'
       : result.state === 'refunded'
-      ? `Private refund verified: ${formatUnits(result.net, 18)} ${WRAPPED_SYMBOL} · ${result.transactionHash}`
-      : 'The refund is awaiting an operator transfer. It is not paid yet; its credit remains reserved.')
+      ? `Refund verified: ${formatUnits(result.net, 18)} ${creditSymbol} · ${result.transactionHash}`
+      : result.state === 'failed' ? `Refund failed or was cancelled. No refund amount was paid. Processing charge: ${formatUnits(result.charged ?? 0n, 18)} ${creditSymbol}; the remaining hold is available as credit.`
+      : 'The refund is not confirmed yet; its credit remains reserved. Check again without creating another request.')
     showCredit(await prepaidBalance(session))
     if (result.state === 'refunded') await syncWallet(session)
   })
@@ -431,8 +454,8 @@ export async function wireWalletActions(session: WalletSession): Promise<void> {
     const minimumAfterShield = quote.minimum - (quote.minimum * quote.shieldFee) / 10_000n
     element('receive-amount').textContent = formatUnits(minimumAfterShield, TOKENS[quote.buy].decimals)
     element('quote-details').textContent =
-      `Amount to swap: ${formatUnits(quote.amount, TOKENS[quote.sell].decimals)} ${tokenFor(quote.sell).symbol}\nMinimum private output: ${formatUnits(minimumAfterShield, TOKENS[quote.buy].decimals)} ${tokenFor(quote.buy).symbol}\nOphis fee: ${formatUnits(quote.ophisFee, TOKENS[quote.buy].decimals)} ${tokenFor(quote.buy).symbol}\n${prepared.prepaid ? 'Maximum attempt charge from prepaid credit' : 'Broadcaster fee'}: ${formatUnits(prepared.fee.amount, tokenFor(prepared.prepaid ? WRAPPED_SYMBOL : feeTokenFor(quote.sell)).decimals)} ${tokenFor(prepared.prepaid ? WRAPPED_SYMBOL : feeTokenFor(quote.sell)).symbol}\nProtocol unshield / reshield: ${quote.unshieldFee} / ${quote.shieldFee} bp`
-    if (prepared.prepaid) element('quote-details').textContent += '\nThe attempt fee can be charged even if the swap fails. Unused credit remains available; refunds require operator processing.'
+      `Amount to swap: ${formatUnits(quote.amount, TOKENS[quote.sell].decimals)} ${tokenFor(quote.sell).symbol}\nMinimum private output: ${formatUnits(minimumAfterShield, TOKENS[quote.buy].decimals)} ${tokenFor(quote.buy).symbol}\nOphis fee: ${formatUnits(quote.ophisFee, TOKENS[quote.buy].decimals)} ${tokenFor(quote.buy).symbol}\n${prepared.prepaid ? 'Maximum attempt charge from prepaid credit' : 'Broadcaster fee'}: ${formatUnits(prepared.fee.amount, tokenFor(prepared.prepaid ? WRAPPED_SYMBOL : feeTokenFor(quote.sell)).decimals)} ${prepared.prepaid ? creditSymbol : tokenFor(feeTokenFor(quote.sell)).symbol}\nProtocol unshield / reshield: ${quote.unshieldFee} / ${quote.shieldFee} bp`
+    if (prepared.prepaid) element('quote-details').textContent += '\nThe attempt fee can be charged even if the swap fails. Unused credit remains available; refunds have a separate network fee.'
     if (quote.sell.startsWith('0x')) element('quote-details').textContent += `\nSell token contract: ${tokenFor(quote.sell).address}`
     if (quote.buy.startsWith('0x')) element('quote-details').textContent += `\nReceive token contract: ${tokenFor(quote.buy).address}`
     if (prepared.gasCapped)
@@ -509,7 +532,7 @@ export async function wireWalletActions(session: WalletSession): Promise<void> {
     )
     if (maximum) amount.value = formatUnits(state.withdrawal.amounts[0].amount, TOKENS[symbol()].decimals)
     element('withdraw-details').textContent =
-      `Withdraw ${amount.value} ${tokenFor(symbol()).symbol} to ${recipient.value}\n${prepaid ? 'Maximum attempt charge from prepaid credit' : 'Broadcaster fee'}: ${formatUnits(state.withdrawal.fee.amount, tokenFor(prepaid ? WRAPPED_SYMBOL : feeTokenFor(symbol())).decimals)} ${tokenFor(prepaid ? WRAPPED_SYMBOL : feeTokenFor(symbol())).symbol}\n${prepaid ? 'The attempt fee can be charged even if the withdrawal fails.' : 'The broadcaster fee is paid from your private balance.'} The protocol withdrawal fee is deducted from the amount.\nYou receive: ${formatUnits(state.withdrawal.minimum, TOKENS[symbol()].decimals)} ${nativeOutput ? 'BNB' : tokenFor(symbol()).symbol}`
+      `Withdraw ${amount.value} ${tokenFor(symbol()).symbol} to ${recipient.value}\n${prepaid ? 'Maximum attempt charge from prepaid credit' : 'Broadcaster fee'}: ${formatUnits(state.withdrawal.fee.amount, tokenFor(prepaid ? WRAPPED_SYMBOL : feeTokenFor(symbol())).decimals)} ${prepaid ? creditSymbol : tokenFor(feeTokenFor(symbol())).symbol}\n${prepaid ? 'The attempt fee can be charged even if the withdrawal fails.' : 'The broadcaster fee is paid from your private balance.'} The protocol withdrawal fee is deducted from the amount.\nYou receive: ${formatUnits(state.withdrawal.minimum, TOKENS[symbol()].decimals)} ${nativeOutput ? 'BNB' : tokenFor(symbol()).symbol}`
     if (symbol().startsWith('0x')) element('withdraw-details').textContent += `\nToken contract: ${tokenFor(symbol()).address}`
     element('withdraw').hidden = false
   }

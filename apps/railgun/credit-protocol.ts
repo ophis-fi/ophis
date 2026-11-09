@@ -3,7 +3,7 @@ import { AbiCoder, getAddress, id, isHexString, keccak256, toUtf8Bytes, verifyTy
 export const CREDIT_PROTOCOL = 'ophis.prepaid.v1'
 export const CREDIT_REQUEST_LIFETIME = 5 * 60_000
 export const CREDIT_MAX_PAYLOAD = 300_000
-export interface CreditScope { chainId: number; operator: string; recipient: string; token: string }
+export interface CreditScope { chainId: number; operator: string; recipient: string; token: string; funding?: 'native' }
 export interface CreditAuthorization { owner: string; payload: string; expires: number; signature: string }
 export const creditTopics = (chainId: number) => ({ request: `ophis-prepaid-v1-${chainId}`, response: `ophis-prepaid-v1-${chainId}-response` })
 export const encryptedCreditTopic = (topic: string) => `/railgun/v2/encrypted-${topic}/json`
@@ -13,10 +13,25 @@ export const CREDIT_AUTHORIZATION_TYPES = { CreditRequest: [
   { name: 'expires', type: 'uint64' }, { name: 'feeRecipient', type: 'bytes32' }, { name: 'feeToken', type: 'address' },
 ] }
 export function creditDomain(scope: CreditScope, ledgerId: string) {
-  if (![1, 56].includes(scope.chainId) || !isHexString(ledgerId, 32) || /^0x0{64}$/i.test(ledgerId) ||
-    getAddress(scope.operator) === ZeroAddress || getAddress(scope.token) === ZeroAddress || !scope.recipient.startsWith('0zk1'))
+  const native = scope.funding === 'native'
+  if ((scope.funding !== undefined && !native) || ![1, 56].includes(scope.chainId) || !isHexString(ledgerId, 32) || /^0x0{64}$/i.test(ledgerId) ||
+    getAddress(scope.operator) === ZeroAddress || (native
+      ? getAddress(scope.token) !== ZeroAddress || getAddress(scope.recipient) !== getAddress(scope.operator)
+      : getAddress(scope.token) === ZeroAddress || !scope.recipient.startsWith('0zk1')))
     throw new Error('Invalid prepaid broadcaster identity.')
-  return { name: 'Ophis prepaid broadcaster', version: '1', chainId: scope.chainId, verifyingContract: scope.operator, salt: ledgerId }
+  return { name: 'Ophis prepaid broadcaster', version: native ? '2-native' : '1', chainId: scope.chainId, verifyingContract: scope.operator, salt: ledgerId }
+}
+
+const NATIVE_PAYMENT_TYPES = ['bytes32', 'uint256', 'address', 'bytes32', 'address', 'bytes32']
+const NATIVE_PAYMENT_TAG = id('ophis.native-credit.v1')
+export function nativeCreditData(scope: CreditScope, ledgerId: string, owner: string, paymentId: string): string {
+  creditDomain(scope, ledgerId)
+  if (scope.funding !== 'native' || getAddress(owner) === ZeroAddress || !isHexString(paymentId, 32) || /^0x0{64}$/i.test(paymentId))
+    throw new Error('Invalid native prepaid payment identity.')
+  // The random payment ID stays in the encrypted claim, hiding the derived credit owner on-chain.
+  const commitment = keccak256(AbiCoder.defaultAbiCoder().encode(NATIVE_PAYMENT_TYPES,
+    [NATIVE_PAYMENT_TAG, scope.chainId, getAddress(scope.operator), ledgerId, getAddress(owner), paymentId]))
+  return AbiCoder.defaultAbiCoder().encode(['bytes32', 'bytes32'], [NATIVE_PAYMENT_TAG, commitment])
 }
 export function creditAuthorizationValue(scope: CreditScope, owner: string, payload: string, expires: number) {
   if (getAddress(owner) === ZeroAddress || typeof payload !== 'string' || payload.length > CREDIT_MAX_PAYLOAD ||

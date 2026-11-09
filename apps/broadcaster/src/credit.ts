@@ -11,6 +11,8 @@ import { assertUnrelatedOwnerPayout, ownerDebitEvidence, type AccountedNote, typ
 import { ANON_COLLECTION_BASE_FEE_BPS, nativeCollectionEvidence, type VerifiedNativeCollection } from './anon-native-collection'
 import { PROXY } from './transaction'
 import { NETWORK } from './config'
+import { nativeBackingEvidence, nativeDepositEvidence, nativeHistoryCatalog, nativeScope, type NativeCreditBacking,
+  type NativeDepositAnchor, type NativeSettlementAnchor, type VerifiedNativeDeposit } from './credit-native-payment'
 
 export type { CreditScope } from '../../railgun/credit-protocol'
 export interface ConfirmedCredit {
@@ -34,7 +36,9 @@ export interface CreditAttempt {
   expiration: number; dailyBudget: bigint
   withdrawalPilot?: boolean
   prepaidPilotLedgerId?: string
-  backing: CreditBacking
+  backing: CreditBacking | NativeCreditBacking
+  nativeReserve?: bigint
+  nativeRefund?: { recipient: string; net: bigint }
 }
 interface AttemptRow {
   key: string; owner: string; unsigned: string; maximum_charge: string; rate: string
@@ -87,9 +91,18 @@ export class CreditLedger {
     return new CreditLedger(store, JSON.parse(saved.scope) as CreditScope)
   }
   constructor(private readonly store: Store, scope: CreditScope, initialNonce = 0) {
-    if (![1, 56].includes(scope.chainId) || !validateRailgunAddress(scope.recipient)) throw new Error('Unsupported credit scope.')
+    const native = scope.funding === 'native'
+    if (![1, 56].includes(scope.chainId) || (scope.funding !== undefined && !native) ||
+      (native ? getAddress(scope.recipient) !== getAddress(scope.operator) || getAddress(scope.token) !== ZeroAddress : !validateRailgunAddress(scope.recipient)))
+      throw new Error('Unsupported credit scope.')
     if (!Number.isSafeInteger(initialNonce) || initialNonce < 0) throw new Error('Invalid initial operator nonce.')
-    this.scope = { chainId: scope.chainId, operator: ownerAddress(scope.operator), recipient: scope.recipient, token: ownerAddress(scope.token) }
+    this.scope = { chainId: scope.chainId, operator: ownerAddress(scope.operator), recipient: native ? getAddress(scope.operator) : scope.recipient,
+      token: native ? ZeroAddress : ownerAddress(scope.token), ...(native ? { funding: 'native' as const } : {}) }
+    // A funding switch cannot reinterpret even an empty existing private ledger, or mutate it before rejection.
+    if (store.db.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name='credit_identity'").get()) {
+      const prior = store.db.prepare('SELECT scope FROM credit_identity WHERE singleton=1').get()
+      if (prior && prior.scope !== JSON.stringify(this.scope)) throw new Error('Credit ledger identity changed; use a separately reviewed fresh ledger.')
+    }
     store.bindIdentity(this.scope.chainId, this.scope.operator)
     const db = store.db
     db.exec(`CREATE TABLE IF NOT EXISTS credit_identity (
@@ -202,6 +215,27 @@ export class CreditLedger {
         tree INTEGER NOT NULL, position INTEGER NOT NULL, commitment TEXT NOT NULL, transaction_hash TEXT NOT NULL,
         block_number INTEGER NOT NULL, block_hash TEXT NOT NULL, amount TEXT NOT NULL, intent_key TEXT NOT NULL,
         PRIMARY KEY(tree,position));`)
+    if (native) {
+      db.exec(`CREATE TABLE IF NOT EXISTS credit_native_deposits (
+        payment_id TEXT PRIMARY KEY,owner TEXT NOT NULL,transaction_hash TEXT UNIQUE NOT NULL,
+        block_number INTEGER NOT NULL,block_hash TEXT NOT NULL,amount TEXT NOT NULL);
+        CREATE TABLE IF NOT EXISTS credit_native_duplicate_deposits (
+        payment_id TEXT NOT NULL,owner TEXT NOT NULL,transaction_hash TEXT PRIMARY KEY,
+        block_number INTEGER NOT NULL,block_hash TEXT NOT NULL,amount TEXT NOT NULL);
+        CREATE TABLE IF NOT EXISTS credit_native_refund_attempts (key TEXT PRIMARY KEY,recipient TEXT NOT NULL,net TEXT NOT NULL);
+        CREATE TABLE IF NOT EXISTS credit_native_refund_settlements (key TEXT PRIMARY KEY,paid TEXT NOT NULL,
+        transaction_hash TEXT UNIQUE NOT NULL,block_number INTEGER NOT NULL,block_hash TEXT NOT NULL,status INTEGER NOT NULL);`)
+      for (const table of ['credit_native_deposits','credit_native_duplicate_deposits','credit_native_refund_attempts','credit_native_refund_settlements']) {
+        const unique = table === 'credit_native_deposits' ? 'payment_id=NEW.payment_id OR transaction_hash=NEW.transaction_hash'
+          : table === 'credit_native_duplicate_deposits' ? 'transaction_hash=NEW.transaction_hash' : 'key=NEW.key'
+        db.exec(`CREATE TRIGGER IF NOT EXISTS immutable_${table}_update BEFORE UPDATE ON ${table}
+          BEGIN SELECT RAISE(ABORT,'Native credit history is immutable'); END;
+          CREATE TRIGGER IF NOT EXISTS immutable_${table}_delete BEFORE DELETE ON ${table}
+          BEGIN SELECT RAISE(ABORT,'Native credit history is immutable'); END;
+          CREATE TRIGGER IF NOT EXISTS immutable_${table}_replace BEFORE INSERT ON ${table}
+          WHEN EXISTS(SELECT 1 FROM ${table} WHERE ${unique}) BEGIN SELECT RAISE(ABORT,'Native credit history is immutable'); END;`)
+      }
+    }
     const policy = db.prepare('SELECT ledger_id,version FROM credit_owner_policy WHERE singleton=1').get()
     if (policy && (policy.ledger_id !== this.id || policy.version !== 1)) throw new Error('Owner journal version or ledger identity changed.')
     if (!policy) {
@@ -222,6 +256,59 @@ export class CreditLedger {
         BEGIN SELECT RAISE(ABORT,'Owner payment journal is immutable'); END;`)
     }
   }
+  get isNative(): boolean { return this.scope.funding === 'native' }
+  private depositTable(): string { return this.isNative ? 'credit_native_deposits' : 'credit_deposits' }
+  private assertPrivateCredit(): void { if (this.isNative) throw new Error('Private owner operations cannot spend native customer credit.') }
+  nativeDeposits(): NativeDepositAnchor[] {
+    if (!this.isNative) throw new Error('This ledger is not native-funded.')
+    return this.store.db.prepare(`SELECT payment_id AS paymentId,owner,transaction_hash AS transactionHash,
+      block_number AS blockNumber,block_hash AS blockHash,amount FROM credit_native_deposits UNION ALL
+      SELECT payment_id AS paymentId,owner,transaction_hash AS transactionHash,block_number AS blockNumber,
+      block_hash AS blockHash,amount FROM credit_native_duplicate_deposits`).all() as unknown as NativeDepositAnchor[]
+  }
+  nativeSettlements(): NativeSettlementAnchor[] {
+    if (!this.isNative) throw new Error('This ledger is not native-funded.')
+    return this.store.db.prepare(`SELECT a.settlement_hash AS transactionHash,
+      json_extract(r.fee_data,'$.blockNumber') AS blockNumber,json_extract(r.fee_data,'$.blockHash') AS blockHash
+      FROM credit_attempts a JOIN requests r ON r.key=a.key WHERE a.charged IS NOT NULL`).all() as unknown as NativeSettlementAnchor[]
+  }
+  nativeRefund(key: string): { key: string; recipient: string; net: string; paid: string | null;
+    transaction_hash: string | null; status: number | null } | undefined {
+    if (!this.isNative) return undefined
+    return this.store.db.prepare(`SELECT i.key,i.recipient,i.net,s.paid,s.transaction_hash,s.status
+      FROM credit_native_refund_attempts i LEFT JOIN credit_native_refund_settlements s ON s.key=i.key WHERE i.key=?`)
+      .get(hash(key)) as ReturnType<CreditLedger['nativeRefund']>
+  }
+  depositNative(proof: VerifiedNativeDeposit): boolean {
+    if (!this.isNative) throw new Error('Native payment cannot fund a private ledger.')
+    const payment = nativeDepositEvidence(proof)
+    if (payment.ledgerId !== this.id || payment.scope !== nativeScope(this.scope, this.id)) throw new Error('Native payment belongs to another ledger.')
+    const result = this.atomic(() => {
+      const byHash = this.store.db.prepare(`SELECT * FROM credit_native_deposits WHERE transaction_hash=? UNION ALL
+        SELECT * FROM credit_native_duplicate_deposits WHERE transaction_hash=?`).get(payment.transactionHash, payment.transactionHash)
+      if (byHash) {
+        if (byHash.payment_id !== payment.paymentId || byHash.owner !== payment.owner || byHash.amount !== payment.amount ||
+          byHash.block_number !== payment.blockNumber || byHash.block_hash !== payment.blockHash) throw new Error('Native payment was already assigned differently.')
+        return this.store.db.prepare('SELECT 1 FROM credit_native_duplicate_deposits WHERE transaction_hash=?').get(payment.transactionHash) ? 'duplicate' : 'replay'
+      }
+      const duplicate = !!this.store.db.prepare('SELECT 1 FROM credit_native_deposits WHERE payment_id=?').get(payment.paymentId)
+      const table = duplicate ? 'credit_native_duplicate_deposits' : 'credit_native_deposits'
+      this.store.db.prepare(`INSERT INTO ${table}(payment_id,owner,transaction_hash,block_number,block_hash,amount) VALUES(?,?,?,?,?,?)`)
+        .run(payment.paymentId,payment.owner,payment.transactionHash,payment.blockNumber,payment.blockHash,payment.amount)
+      return duplicate ? 'duplicate' : 'inserted'
+    })
+    if (result === 'duplicate') throw new Error('Repeated native payment ID: additional funds are recorded as quarantined customer liability pending recovery.')
+    return result === 'inserted'
+  }
+  assertNativeBacked(proof: NativeCreditBacking, reserve: bigint, nonce?: number): void {
+    if (!this.isNative || reserve <= 0n) throw new Error('An explicit native reserve is required.')
+    quantity(reserve.toString(), true)
+    const value = nativeBackingEvidence(proof)
+    if (value.ledgerId !== this.id || value.scope !== nativeScope(this.scope, this.id) ||
+      value.catalog !== nativeHistoryCatalog(this.nativeDeposits(), this.nativeSettlements()) ||
+      value.available < this.liability() + reserve || (nonce !== undefined && value.nonce !== nonce))
+      throw new Error('Native balance or canonical history does not cover all customer liabilities and reserve.')
+  }
   private atomic<T>(run: () => T): T {
     this.store.db.exec('BEGIN IMMEDIATE')
     try {
@@ -234,6 +321,7 @@ export class CreditLedger {
     }
   }
   deposit(payment: ConfirmedCredit): boolean {
+    this.assertPrivateCredit()
     const owner = ownerAddress(payment.owner), commitment = hash(payment.commitment)
     const transactionHash = hash(payment.transactionHash), blockHash = hash(payment.blockHash)
     const amount = quantity(payment.amount.toString(), true).toString()
@@ -255,9 +343,9 @@ export class CreditLedger {
       return true
     })
   }
-  balance(rawOwner: string): { deposited: bigint; charged: bigint; reserved: bigint; refunds: bigint; available: bigint } {
+  balance(rawOwner: string): { deposited: bigint; charged: bigint; reserved: bigint; refunds: bigint; available: bigint; quarantined?: bigint } {
     const owner = ownerAddress(rawOwner), db = this.store.db
-    const deposited = db.prepare('SELECT amount FROM credit_deposits WHERE owner=?').all(owner)
+    const deposited = db.prepare(`SELECT amount FROM ${this.depositTable()} WHERE owner=?`).all(owner)
       .reduce((total, row) => total + quantity(row.amount, true), 0n)
     let charged = 0n, reserved = 0n
     for (const row of db.prepare('SELECT maximum_charge,charged FROM credit_attempts WHERE owner=?').all(owner)) {
@@ -269,23 +357,34 @@ export class CreditLedger {
         charged += actual
       }
     }
-    const refunds = db.prepare('SELECT gross FROM credit_refunds WHERE owner=?').all(owner)
-      .reduce((total, row) => total + quantity(row.gross, true), 0n)
+    const refunds = this.isNative ? db.prepare(`SELECT s.paid FROM credit_native_refund_settlements s
+      JOIN credit_attempts a ON a.key=s.key WHERE a.owner=?`).all(owner).reduce((total,row) => total + quantity(row.paid), 0n)
+      : db.prepare('SELECT gross FROM credit_refunds WHERE owner=?').all(owner).reduce((total, row) => total + quantity(row.gross, true), 0n)
+    if (this.isNative) charged -= refunds
     const available = deposited - charged - reserved - refunds
     if (available < 0n) throw new Error('Credit ledger is inconsistent.')
-    return { deposited, charged, reserved, refunds, available }
+    const quarantined = this.isNative ? db.prepare('SELECT amount FROM credit_native_duplicate_deposits WHERE owner=?').all(owner)
+      .reduce((total,row) => total + quantity(row.amount,true),0n) : undefined
+    return { deposited, charged, reserved, refunds, available, ...(quarantined !== undefined ? { quarantined } : {}) }
   }
   hasDeposit(rawOwner: string): boolean {
-    return !!this.store.db.prepare('SELECT 1 FROM credit_deposits WHERE owner=? LIMIT 1').get(ownerAddress(rawOwner))
+    return !!this.store.db.prepare(`SELECT 1 FROM ${this.depositTable()} WHERE owner=? LIMIT 1`).get(ownerAddress(rawOwner))
   }
   liability(): bigint {
     const sum = (sql: string) => this.store.db.prepare(sql).all().reduce((value, row) => value + quantity(row.amount), 0n)
-    const total = sum('SELECT amount FROM credit_deposits') - sum('SELECT charged AS amount FROM credit_attempts WHERE charged IS NOT NULL') -
+    const total = sum(`SELECT amount FROM ${this.depositTable()}`) + (this.isNative ? sum('SELECT amount FROM credit_native_duplicate_deposits') : 0n) - sum('SELECT charged AS amount FROM credit_attempts WHERE charged IS NOT NULL') -
       sum('SELECT gross AS amount FROM credit_refunds WHERE transaction_hash IS NOT NULL')
     if (total < 0n) throw new Error('Credit liabilities are inconsistent.')
     return total
   }
   earned(): bigint {
+    if (this.isNative) {
+      const charges = this.store.db.prepare(`SELECT a.charged,r.actual_cost FROM credit_attempts a JOIN requests r ON r.key=a.key
+        WHERE a.charged IS NOT NULL`).all().reduce((total,row) => total + quantity(row.charged) - quantity(row.actual_cost),0n)
+      const paid = this.store.db.prepare('SELECT paid FROM credit_native_refund_settlements').all().reduce((total,row) => total + quantity(row.paid),0n)
+      if (charges < paid) throw new Error('Native earned fees are inconsistent.')
+      return charges - paid
+    }
     const sum = (sql: string) => this.store.db.prepare(sql).all().reduce((total, row) => total + quantity(row.amount), 0n)
     const earned = sum('SELECT charged AS amount FROM credit_attempts WHERE charged IS NOT NULL') +
       sum('SELECT gross AS amount FROM credit_refunds WHERE transaction_hash IS NOT NULL') -
@@ -295,7 +394,7 @@ export class CreditLedger {
     if (earned < 0n) throw new Error('Owner collections exceed accounted earned fees.')
     return earned
   }
-  requiredBacking(): bigint { return this.liability() + this.earned() }
+  requiredBacking(): bigint { return this.liability() + (this.isNative ? 0n : this.earned()) }
   maximumPendingCharges(): bigint {
     return this.store.db.prepare('SELECT maximum_charge FROM credit_attempts WHERE charged IS NULL').all()
       .reduce((total, row) => total + quantity(row.maximum_charge, true), 0n)
@@ -305,6 +404,7 @@ export class CreditLedger {
       .reduce((total, row) => total + quantity(row.gross, true), 0n)
   }
   accountedNotes(): AccountedNote[] {
+    this.assertPrivateCredit()
     return this.store.db.prepare(`SELECT tree,position,commitment,transaction_hash AS transactionHash,
       block_number AS blockNumber,block_hash AS blockHash,amount FROM credit_deposits UNION ALL
       SELECT tree,position,commitment,transaction_hash AS transactionHash,block_number AS blockNumber,
@@ -338,6 +438,7 @@ export class CreditLedger {
   prepareOwnerOperation(input: { kind: 'refund' | 'collection'; refundKey?: string; maximumPrivateFee: bigint;
     minimumNative: bigint; inputLimit: number; outputLimit: number; proofLimit: number; marginBps: bigint;
     collectionFees?: { unshieldFeeBps: bigint; gatewayFeeBps: bigint } }, proof: CreditBacking): OwnerIntent {
+    this.assertPrivateCredit()
     quantity(input.maximumPrivateFee.toString()); quantity(input.minimumNative.toString())
     if (!['refund', 'collection'].includes(input.kind) || !Number.isSafeInteger(input.inputLimit) || input.inputLimit < 1 || input.inputLimit > 2 ||
       !Number.isSafeInteger(input.outputLimit) || input.outputLimit < 1 || input.outputLimit > 4 ||
@@ -389,6 +490,7 @@ export class CreditLedger {
     })
   }
   recordOwnerPayout(key: string, receipt: TransactionReceipt): void {
+    this.assertPrivateCredit()
     key = hash(key)
     const evidence = finalizedCreditEvidence(receipt)
     this.atomic(() => {
@@ -409,6 +511,7 @@ export class CreditLedger {
   }
   /** Reject only no-pool spends or complete-view-wallet evidence that no owned input was consumed; retain the intent. */
   rejectOwnerPayout(key: string, receipt: TransactionReceipt, unrelated?: VerifiedUnrelatedOwnerPayout): void {
+    this.assertPrivateCredit()
     key = hash(key)
     const evidence = finalizedCreditEvidence(receipt)
     if (!Array.isArray(receipt.logs) || receipt.logs.length > 1024) throw new Error('Canonical owner payout logs are required.')
@@ -454,6 +557,7 @@ export class CreditLedger {
       .run(output.tree, output.position, output.commitment, output.transactionHash, output.blockNumber, output.blockHash, output.amount, intent.key)
   }
   settleOwnerCollection(key: string, payment: ConfirmedCollection): void {
+    this.assertPrivateCredit()
     key = hash(key)
     this.atomic(() => {
       this.store.assertCreditJournalActive()
@@ -486,7 +590,7 @@ export class CreditLedger {
     const current = this.currentSequence(owner)
     if (creditSequence(sequence) !== current + 1) throw new Error('The prepaid request sequence is already consumed or not next.')
     if (current === 0) {
-      if (!this.store.db.prepare('SELECT 1 FROM credit_deposits WHERE owner=? LIMIT 1').get(owner))
+      if (!this.hasDeposit(owner))
         throw new Error('Confirmed prepaid deposit history is required to advance a request sequence.')
       this.store.db.prepare('INSERT INTO credit_owner_sequences(owner,sequence) VALUES(?,?)').run(owner, sequence)
     } else this.store.db.prepare('UPDATE credit_owner_sequences SET sequence=? WHERE owner=?').run(sequence, owner)
@@ -499,11 +603,12 @@ export class CreditLedger {
     if (operation !== 'execute' && operation !== 'refund') throw new Error('Invalid prepaid recovery operation.')
     return this.atomic(() => {
       this.store.assertCreditJournalActive()
-      const attempt = this.attempt(key), request = this.store.get(key), refund = this.refund(key)
+      const attempt = this.attempt(key), request = this.store.get(key), refund = this.refund(key), nativeRefund = this.nativeRefund(key)
       const retired = this.store.db.prepare('SELECT owner,operation FROM credit_retired_requests WHERE key=?').get(key)
       if (attempt || request || refund) {
         if (retired) throw new Error('A retired request has inconsistent reserved state.')
-        if (operation === 'execute' && attempt?.owner === owner && request && !refund) {
+        if (attempt?.owner === owner && request && !refund &&
+          (operation === 'execute' ? !nativeRefund : !!nativeRefund)) {
           const proof = JSON.parse(request.fee_data)
           if (proof.kind === 'prepaid' && proof.ledgerId === this.id && proof.owner === owner) return false
         }
@@ -536,6 +641,7 @@ export class CreditLedger {
   }
   /** Privileged stopped-service CLI only; public requests cannot assign an owner payout. */
   recordRefundPayout(key: string, receipt: TransactionReceipt): void {
+    this.assertPrivateCredit()
     key = hash(key)
     const evidence = finalizedCreditEvidence(receipt)
     const intent = this.pendingOwnerIntent()
@@ -566,20 +672,31 @@ export class CreditLedger {
   }
   reserve(attempt: CreditAttempt): void {
     const key = hash(attempt.key), owner = ownerAddress(attempt.owner), tx = Transaction.from(attempt.unsigned)
+    const refund = attempt.nativeRefund
+    if (refund && (!this.isNative || ![0,2].includes(tx.type ?? -1) || !tx.to || tx.data !== '0x' ||
+      getAddress(tx.to) !== ownerAddress(refund.recipient) || getAddress(tx.to) === this.scope.operator ||
+      tx.value !== quantity(refund.net.toString(),true) || (tx.authorizationList?.length ?? 0))) throw new Error('Invalid native refund reservation.')
+    if (this.isNative && attempt.collectionAllowance !== 0n) throw new Error('Native prepaid attempts have no private collection allowance.')
     if (![0, 1, 2, 4].includes(tx.type ?? -1) || tx.isSigned() || tx.unsignedSerialized !== attempt.unsigned || tx.chainId !== BigInt(this.scope.chainId) ||
-      tx.nonce !== attempt.nonce || !Number.isSafeInteger(attempt.nonce) || attempt.nonce < 0 || tx.value !== 0n ||
+      tx.nonce !== attempt.nonce || !Number.isSafeInteger(attempt.nonce) || attempt.nonce < 0 || tx.value !== (refund?.net ?? 0n) ||
       attempt.gasBudget <= 0n || tx.gasLimit * (tx.maxFeePerGas ?? tx.gasPrice ?? 0n) !== attempt.gasBudget ||
       !Number.isSafeInteger(attempt.expiration) || attempt.expiration <= Date.now() ||
-      attempt.maximumCharge < creditCharge(attempt.gasBudget, attempt.rate, attempt.collectionAllowance))
+      attempt.maximumCharge < (refund?.net ?? 0n) + creditCharge(attempt.gasBudget, attempt.rate, attempt.collectionAllowance))
       throw new Error('Invalid prepaid attempt reservation.')
     const maximum = quantity(attempt.maximumCharge.toString(), true)
     quantity(attempt.rate.toString(), true); quantity(attempt.collectionAllowance.toString())
     this.atomic(() => {
       this.assertChainNonce(attempt.nonce)
       this.assertOwnerJournalReady()
-      const backing = creditBackingEvidence(attempt.backing)
-      if (backing.available < this.requiredBacking() || backing.bounded < this.earned() + this.maximumPendingCharges() + this.pendingRefundGross() + maximum)
-        throw new Error('Accounted backing changed before reservation.')
+      if (this.isNative) {
+        if (this.store.db.prepare('SELECT 1 FROM credit_attempts WHERE charged IS NULL LIMIT 1').get())
+          throw new Error('Finalize the outstanding native attempt before another signature.')
+        this.assertNativeBacked(attempt.backing as NativeCreditBacking, attempt.nativeReserve ?? 0n, attempt.nonce)
+      } else {
+        const backing = creditBackingEvidence(attempt.backing as CreditBacking)
+        if (backing.available < this.requiredBacking() || backing.bounded < this.earned() + this.maximumPendingCharges() + this.pendingRefundGross() + maximum)
+          throw new Error('Accounted backing changed before reservation.')
+      }
       this.assertNotRetired(key)
       if (this.store.get(key) || this.attempt(key)) throw new Error('This prepaid attempt is already reserved.')
       const pilotKey = withdrawalPilotKey(this.id, attempt.prepaidPilotLedgerId)
@@ -595,6 +712,8 @@ export class CreditLedger {
       this.store.db.prepare(`INSERT INTO requests(key,envelope,created,max_cost,signed_at,fee_data,nonce,fee_expiration)
         VALUES(?,?,?,?,?,?,?,?)`).run(key, attempt.envelope, now, attempt.gasBudget.toString(), now,
         JSON.stringify({ kind: 'prepaid', ledgerId: this.id, owner, sequence: attempt.sequence }), attempt.nonce, attempt.expiration)
+      if (refund) this.store.db.prepare('INSERT INTO credit_native_refund_attempts(key,recipient,net) VALUES(?,?,?)')
+        .run(key,ownerAddress(refund.recipient),refund.net.toString())
       if (attempt.withdrawalPilot) this.store.db.prepare('INSERT INTO settings(key,value) VALUES(?,?)').run(pilotKey, key)
     })
   }
@@ -612,9 +731,9 @@ export class CreditLedger {
     })
   }
   assertCancellationCovered(key: string, cost: bigint): void {
-    const attempt = this.attempt(key), request = this.store.get(key)
-    if (!attempt || !request || attempt.charged !== null || cost <= 0n || cost > quantity(request.max_cost, true) ||
-      creditCharge(cost, quantity(attempt.rate, true), quantity(attempt.collection_allowance)) > quantity(attempt.maximum_charge, true))
+    const attempt = this.attempt(key), request = this.store.get(key), refund = this.nativeRefund(key)
+    if (!attempt || !request || attempt.charged !== null || cost <= 0n || (!refund && cost > quantity(request.max_cost, true)) ||
+      creditCharge(cost, quantity(attempt.rate, true), quantity(attempt.collection_allowance)) > quantity(attempt.maximum_charge, true) - (refund ? quantity(refund.net,true) : 0n))
       throw new Error('Cancellation exceeds its secured prepaid budget.')
   }
   observeInclusion(key: string, receipt: TransactionReceipt): void {
@@ -655,7 +774,9 @@ export class CreditLedger {
         transaction.nonce !== request.nonce || evidence.gasUsed > transaction.gasLimit ||
         evidence.gasPrice > (transaction.maxFeePerGas ?? transaction.gasPrice ?? 0n))
         throw new Error('Finalized receipt does not match its secured transaction.')
-      const charged = creditCharge(cost, quantity(attempt.rate, true), quantity(attempt.collection_allowance))
+      const refund = this.nativeRefund(key)
+      const paid = refund && request.hash === receiptHash && evidence.status === 1 ? quantity(refund.net,true) : 0n
+      const charged = quantity((paid + creditCharge(cost, quantity(attempt.rate, true), quantity(attempt.collection_allowance))).toString())
       if (cost > quantity(request.max_cost, true) || charged > quantity(attempt.maximum_charge, true))
         throw new Error('Confirmed cost exceeds secured credit.')
       if (attempt.charged !== null) {
@@ -665,6 +786,8 @@ export class CreditLedger {
       }
       this.store.db.prepare('UPDATE credit_attempts SET charged=?,settlement_hash=? WHERE key=?')
         .run(charged.toString(), receiptHash, key)
+      if (refund) this.store.db.prepare(`INSERT INTO credit_native_refund_settlements(key,paid,transaction_hash,block_number,block_hash,status)
+        VALUES(?,?,?,?,?,?)`).run(key,paid.toString(),receiptHash,evidence.blockNumber,evidence.blockHash,evidence.status)
       this.store.confirmed(key, cost, evidence.minedAt)
       this.store.db.prepare('UPDATE requests SET assured=1,fee_data=? WHERE key=?')
         .run(JSON.stringify({ kind: 'prepaid', ledgerId: this.id, owner: attempt.owner, charged: charged.toString(), receiptHash,
@@ -673,6 +796,8 @@ export class CreditLedger {
     })
   }
   hasPendingRefund(rawOwner: string): boolean {
+    if (this.isNative) return !!this.store.db.prepare(`SELECT 1 FROM credit_native_refund_attempts r
+      JOIN credit_attempts a ON a.key=r.key WHERE a.owner=? AND a.charged IS NULL LIMIT 1`).get(ownerAddress(rawOwner))
     return !!this.store.db.prepare('SELECT 1 FROM credit_refunds WHERE owner=? AND transaction_hash IS NULL LIMIT 1').get(ownerAddress(rawOwner))
   }
   refundExecutionHeadroom(rawOwner: string, maximumExecutionCharge: bigint): bigint {
@@ -699,6 +824,7 @@ export class CreditLedger {
   }
   reserveRefund(key: string, rawOwner: string, recipient: string, gross: bigint, net: bigint, sequence: number,
     proof: CreditBacking, maximumExecutionCharge: bigint): void {
+    this.assertPrivateCredit()
     key = hash(key)
     const owner = ownerAddress(rawOwner)
     quantity(gross.toString(), true); quantity(net.toString(), true); quantity(maximumExecutionCharge.toString(), true)
@@ -725,6 +851,7 @@ export class CreditLedger {
     })
   }
   settleRefund(key: string, payment: ConfirmedRefund): void {
+    this.assertPrivateCredit()
     const receipt = finalizedCreditEvidence(payment.receipt)
     key = hash(key)
     const transactionHash = hash(receipt.hash), commitment = hash(payment.commitment)

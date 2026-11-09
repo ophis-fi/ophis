@@ -1,6 +1,6 @@
 import { statfsSync } from 'node:fs'
 import type { DatabaseSync } from 'node:sqlite'
-import { getAddress, isAddress, JsonRpcProvider, Transaction } from 'ethers'
+import { getAddress, isAddress, JsonRpcProvider, Transaction, ZeroAddress } from 'ethers'
 import { CHAIN, CHAIN_ID, FEE_TOKENS, TOKENS, type Settings } from './config'
 import { readChainState } from './chain-state'
 import type { FeeOracle } from './fees'
@@ -12,7 +12,8 @@ export function accountingReport(db: DatabaseSync): {
   receivedFees: Record<string, string>
   prepaidCredit?: { token: string; deposited: string; charged: string; reserved: string; pendingRefunds: string;
     completedRefunds: string; refundFees: string; liability: string; remainingEarned: string; collectedGross: string;
-    ownerPrivateFees: string; nativeCollected: string; ownerPaymentsPending: number }
+    ownerPrivateFees: string; nativeCollected: string; ownerPaymentsPending: number;
+    funding?: 'native'; quarantined?: string; nativeRefundReservations?: string }
 } {
   const records = db.prepare('SELECT key,hash,confirmed,assured,max_cost,actual_cost,fee_data FROM requests').all()
   const resolutions = db.prepare('SELECT key,hash,actual_cost FROM settlement_resolutions').all()
@@ -22,31 +23,57 @@ export function accountingReport(db: DatabaseSync): {
   if (db.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name='credit_identity'").get()) {
     const identity = db.prepare('SELECT scope FROM credit_identity WHERE singleton=1').get()
     const scope = JSON.parse(String(identity?.scope)), token = getAddress(scope.token)
-    if (scope.chainId !== CHAIN_ID || token !== getAddress(TOKENS[0].address)) throw new Error('Invalid credit accounting scope.')
+    const native = scope.funding === 'native'
+    if (scope.chainId !== CHAIN_ID || (scope.funding !== undefined && !native) ||
+      (native ? token !== ZeroAddress || getAddress(scope.recipient) !== getAddress(scope.operator) : token !== getAddress(TOKENS[0].address)))
+      throw new Error('Invalid credit accounting scope.')
     const sum = (sql: string) => db.prepare(sql).all().reduce((total, row) => {
       if (typeof row.amount !== 'string' || !/^(0|[1-9]\d*)$/.test(row.amount)) throw new Error('Invalid credit accounting amount.')
       return total + BigInt(row.amount)
     }, 0n)
-    const deposited = sum('SELECT amount FROM credit_deposits')
-    const charged = sum('SELECT charged AS amount FROM credit_attempts WHERE charged IS NOT NULL')
-    const reserved = sum('SELECT maximum_charge AS amount FROM credit_attempts WHERE charged IS NULL')
-    const pendingRefunds = sum('SELECT gross AS amount FROM credit_refunds WHERE transaction_hash IS NULL')
-    const completedRefunds = sum('SELECT gross AS amount FROM credit_refunds WHERE transaction_hash IS NOT NULL')
-    const refundFees = completedRefunds - sum('SELECT net AS amount FROM credit_refunds WHERE transaction_hash IS NOT NULL')
-    const liability = deposited - charged - completedRefunds
-    const ownerJournal = !!db.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name='credit_owner_settlements'").get()
-    const collectedGross = ownerJournal ? sum('SELECT unshield_gross AS amount FROM credit_owner_settlements') : 0n
-    const ownerPrivateFees = ownerJournal ? sum('SELECT private_fee AS amount FROM credit_owner_settlements') : 0n
-    const nativeCollected = ownerJournal ? sum('SELECT native_received AS amount FROM credit_owner_settlements') : 0n
-    const remainingEarned = charged + refundFees - collectedGross - ownerPrivateFees
-    const ownerPaymentsPending = ownerJournal ? Number(db.prepare(`SELECT COUNT(*) AS count FROM credit_owner_intents i
-      WHERE NOT EXISTS(SELECT 1 FROM credit_owner_settlements s WHERE s.intent_key=i.key)`).get()?.count) : 0
-    if (refundFees < 0n || liability < reserved + pendingRefunds || remainingEarned < 0n) throw new Error('Credit accounting is inconsistent.')
-    prepaidCredit = { token, deposited: String(deposited), charged: String(charged), reserved: String(reserved),
-      pendingRefunds: String(pendingRefunds), completedRefunds: String(completedRefunds), refundFees: String(refundFees), liability: String(liability),
-      remainingEarned: String(remainingEarned), collectedGross: String(collectedGross), ownerPrivateFees: String(ownerPrivateFees),
-      nativeCollected: String(nativeCollected), ownerPaymentsPending }
-    fees[token] = charged + refundFees
+    if (native) {
+      const quarantined = sum('SELECT amount FROM credit_native_duplicate_deposits')
+      const deposited = sum('SELECT amount FROM credit_native_deposits') + quarantined
+      const debited = sum('SELECT charged AS amount FROM credit_attempts WHERE charged IS NOT NULL')
+      const completedRefunds = sum('SELECT paid AS amount FROM credit_native_refund_settlements')
+      const charged = debited - completedRefunds
+      const reserved = sum('SELECT maximum_charge AS amount FROM credit_attempts WHERE charged IS NULL')
+      const refundFees = sum(`SELECT a.charged AS amount FROM credit_native_refund_settlements s
+        JOIN credit_attempts a ON a.key=s.key`) - completedRefunds
+      const nativeRefundReservations = sum(`SELECT a.maximum_charge AS amount FROM credit_native_refund_attempts i
+        JOIN credit_attempts a ON a.key=i.key WHERE a.charged IS NULL`)
+      const gas = sum(`SELECT r.actual_cost AS amount FROM credit_attempts a JOIN requests r ON r.key=a.key WHERE a.charged IS NOT NULL`)
+      const liability = deposited - debited, remainingEarned = charged - gas
+      if (charged < 0n || refundFees < 0n || remainingEarned < 0n || liability < reserved + quarantined)
+        throw new Error('Native credit accounting is inconsistent.')
+      // Native refund reservations already belong to reserved; adding them again would double-count the same liability.
+      prepaidCredit = { funding: 'native', token, deposited: String(deposited), charged: String(charged), reserved: String(reserved),
+        pendingRefunds: '0', completedRefunds: String(completedRefunds), refundFees: String(refundFees), liability: String(liability),
+        remainingEarned: String(remainingEarned), collectedGross: '0', ownerPrivateFees: '0', nativeCollected: String(charged),
+        ownerPaymentsPending: 0, quarantined: String(quarantined), nativeRefundReservations: String(nativeRefundReservations) }
+      fees[token] = charged
+    } else {
+      const deposited = sum('SELECT amount FROM credit_deposits')
+      const charged = sum('SELECT charged AS amount FROM credit_attempts WHERE charged IS NOT NULL')
+      const reserved = sum('SELECT maximum_charge AS amount FROM credit_attempts WHERE charged IS NULL')
+      const pendingRefunds = sum('SELECT gross AS amount FROM credit_refunds WHERE transaction_hash IS NULL')
+      const completedRefunds = sum('SELECT gross AS amount FROM credit_refunds WHERE transaction_hash IS NOT NULL')
+      const refundFees = completedRefunds - sum('SELECT net AS amount FROM credit_refunds WHERE transaction_hash IS NOT NULL')
+      const liability = deposited - charged - completedRefunds
+      const ownerJournal = !!db.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name='credit_owner_settlements'").get()
+      const collectedGross = ownerJournal ? sum('SELECT unshield_gross AS amount FROM credit_owner_settlements') : 0n
+      const ownerPrivateFees = ownerJournal ? sum('SELECT private_fee AS amount FROM credit_owner_settlements') : 0n
+      const nativeCollected = ownerJournal ? sum('SELECT native_received AS amount FROM credit_owner_settlements') : 0n
+      const remainingEarned = charged + refundFees - collectedGross - ownerPrivateFees
+      const ownerPaymentsPending = ownerJournal ? Number(db.prepare(`SELECT COUNT(*) AS count FROM credit_owner_intents i
+        WHERE NOT EXISTS(SELECT 1 FROM credit_owner_settlements s WHERE s.intent_key=i.key)`).get()?.count) : 0
+      if (refundFees < 0n || liability < reserved + pendingRefunds || remainingEarned < 0n) throw new Error('Credit accounting is inconsistent.')
+      prepaidCredit = { token, deposited: String(deposited), charged: String(charged), reserved: String(reserved),
+        pendingRefunds: String(pendingRefunds), completedRefunds: String(completedRefunds), refundFees: String(refundFees), liability: String(liability),
+        remainingEarned: String(remainingEarned), collectedGross: String(collectedGross), ownerPrivateFees: String(ownerPrivateFees),
+        nativeCollected: String(nativeCollected), ownerPaymentsPending }
+      fees[token] = charged + refundFees
+    }
   }
   let gas = 0n, unresolved = 0n, losses = 0n, historical = 0, lossCount = 0
   for (const row of records) {
