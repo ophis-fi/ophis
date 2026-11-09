@@ -35,6 +35,11 @@ ignore = [
   # yet, not a vulnerability. Mirrors apps/backend/deny.toml, which already
   # ignores it (this file had drifted out of sync).
   "RUSTSEC-2026-0173",
+  # pin-utils — archived, with no patched release; maintenance-only advisory.
+  # Transitive via futures-util, hyper, aws-smithy and wasmtimer; no direct use.
+  # Reviewed 2026-11-09; remove when those upstreams drop pin-utils.
+  # Mirrors apps/backend/deny.toml.
+  "RUSTSEC-2026-0441",
 
   # crypto-bigint 0.5.5 - constant-time violations (RUSTSEC-2026-0387)
   # Only fix is crypto-bigint >=0.7.6; no patched 0.5.x exists. Reached only via
