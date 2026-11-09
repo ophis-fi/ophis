@@ -115,6 +115,24 @@ it('rotates proven wallets by attempt age and preserves FIFO for unattempted wal
     .toEqual([older, owner, unproven, retry, newcomer]);
 });
 
+it('excludes historical router enrollments before filling a bounded wallet batch', async () => {
+  const router = '0x764fe4aa1ff493cf39931c7923c8ff5837596504';
+  await sql`INSERT INTO tracked_wallets (wallet, first_seen)
+    VALUES (decode(${router.slice(2)}, 'hex'), now() - interval '1 day')`;
+  await sql`INSERT INTO tracked_wallets (wallet)
+    SELECT decode(lpad(to_hex(n), 40, '0'), 'hex') FROM generate_series(1, 500) n`;
+  mocks.trades.mockResolvedValue([]);
+  const cutoff = new Date();
+  expect((await runFetcher(deps, { staleBefore: cutoff })).owners).toBe(500);
+  expect((await runFetcher(deps, { staleBefore: cutoff })).owners).toBe(1);
+  const [coverage] = await sql`SELECT count(DISTINCT wallet)::int AS wallets
+    FROM wallet_chain_fetches WHERE chain_id = 100`;
+  expect(coverage!.wallets).toBe(501);
+  expect(mocks.trades.mock.calls.some(([request]) => request.owner === router)).toBe(false);
+  const freshness = await (await import('../src/freshness.js')).readPublicDataFreshness(sql);
+  expect(freshness.dataSources?.find(source => source.chainId === 100)?.status).toBe('fresh');
+});
+
 it('reports a synthetic-owner failure even when the tracked wallet succeeds', async () => {
   mocks.trades.mockImplementation(async ({ chainId, owner: account }) => {
     if (chainId === 130 && account !== owner) throw new Error('router metadata unavailable');
@@ -223,6 +241,21 @@ it('keeps a previously recorded decoder required after its configuration is remo
   expect((await readPublicDataFreshness(sql)).dataSources?.find(s => s.chainId === 100)?.status).toBe('fresh');
   await sql`INSERT INTO chain_source_fetches (source, chain_id, failed) VALUES ('decoder', 100, true)`;
   expect((await readPublicDataFreshness(sql)).dataSources?.find(s => s.chainId === 100)?.status).toBe('partial');
+});
+
+it('a recent publication cannot make old or missing source coverage fresh', async () => {
+  vi.stubEnv('REBATES_REFRESH_MINUTES', '60');
+  await sql`INSERT INTO public_data_refresh_state (singleton, refreshed_at) VALUES (true, now())
+    ON CONFLICT (singleton) DO UPDATE SET refreshed_at = now()`;
+  await sql`INSERT INTO wallet_chain_fetches (wallet, chain_id, last_success_at, covered_through)
+    VALUES (decode(${owner.slice(2)}, 'hex'), 100, now(), now() - INTERVAL '3 hours')`;
+  const { readPublicDataFreshness } = await import('../src/freshness.js');
+  const status = async () => (await readPublicDataFreshness(sql)).dataSources?.find(s => s.chainId === 100)?.status;
+  expect(await status()).toBe('stale');
+  await sql`UPDATE wallet_chain_fetches SET covered_through = NULL WHERE chain_id = 100`;
+  expect(await status()).toBe('stale');
+  await sql`UPDATE wallet_chain_fetches SET covered_through = now() WHERE chain_id = 100`;
+  expect(await status()).toBe('fresh');
 });
 
 it('retains decoder identities and invalidates coverage and cursors during a full replay', async () => {

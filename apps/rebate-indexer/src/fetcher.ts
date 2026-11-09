@@ -1152,9 +1152,10 @@ export async function runFetcher(
     const ownerRows = await sql<{ wallet: string }[]>`
       SELECT '0x' || encode(wallet, 'hex') AS wallet
       FROM tracked_wallets
-      WHERE last_fetched IS NULL
+      WHERE (last_fetched IS NULL
          OR last_fetched < ${staleBeforeIso}::timestamptz
-         OR wallet IN (SELECT wallet FROM defillama_backfill_wallets)
+         OR wallet IN (SELECT wallet FROM defillama_backfill_wallets))
+        AND ('0x' || encode(wallet, 'hex')) <> ALL(${[...DECODER_ETHFLOW_OWNERS]})
       -- Proven traders keep priority over public enrollment spam. Rotate by
       -- attempt age so a busy registry cannot starve older registrations.
       ORDER BY (wallet IN (SELECT wallet FROM trades)) DESC,

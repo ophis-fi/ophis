@@ -18,6 +18,8 @@ import { alerts } from './telegram/alerter.js';
 import { logger } from './logger.js';
 import { sql } from './db/index.js';
 import { completeDefiLlamaBackfillIfReady } from './defillamaBackfill.js';
+import { refreshIntervalMs } from './freshness.js';
+export { refreshIntervalMs } from './freshness.js';
 
 const log = logger.child({ module: 'cron' });
 
@@ -606,27 +608,6 @@ async function nightlyTick(): Promise<void> {
   } finally {
     nightlyStartedAt = 0;
   }
-}
-
-/**
- * Intraday refresh cadence, in minutes. Default 60.
- *
- * The 02:00 nightly is untouched and still owns registry maintenance, repairs,
- * partner fees, reconciliation, accrual, the batcher and the monthly report.
- * This lighter tick exists only so the PUBLIC surface stops being up to 24h
- * behind.
- *
- * COST NOTE: runFetcher pages the CoW API per (chain, owner) with
- * FETCHER_MAX_OWNERS_PER_RUN = 500, so with 13 production chains and ~29 tracked
- * wallets one pass is roughly 380 calls -- about 9k/day at 60 minutes.
- */
-export function refreshIntervalMs(): number {
-  const raw = process.env['REBATES_REFRESH_MINUTES'];
-  const mins = raw === undefined ? 60 : Number(raw);
-  // Reject junk, and anything under 10 minutes: the poll loop ticks every 10, so
-  // a smaller boundary is unreachable and would merely look broken.
-  if (!Number.isFinite(mins) || mins < 10 || mins > 24 * 60) return 60 * 60_000;
-  return Math.floor(mins) * 60_000;
 }
 
 /** Most recent refresh boundary at or before `nowMs`. Pure. */

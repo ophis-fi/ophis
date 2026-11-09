@@ -716,10 +716,13 @@ export async function buildApiServer(): Promise<FastifyInstance> {
     }
     if (scope !== undefined) {
       const { dataSources } = await readPublicDataFreshness(sql);
-      // Successful ingestion through day-end distinguishes no activity from missing history.
+      // Historical days need day-end coverage and a recent successful check,
+      // even when that coverage is too old for the live stats freshness window.
       if (scope.some(id => {
         const source = dataSources?.find(s => s.chainId === id);
-        return source?.status !== 'fresh' || !source.coveredThrough
+        return !source || (source.status !== 'fresh' && source.status !== 'stale')
+          || !source.lastSuccessAt || !(Date.parse(source.lastSuccessAt) >= Date.now() - 26 * 60 * 60_000)
+          || !source.coveredThrough
           || !(Date.parse(source.coveredThrough) >= parsed.getTime() + 86_400_000);
       })) {
         return reply.code(503).send({ error: 'DefiLlama chain ingestion incomplete for requested day' });
