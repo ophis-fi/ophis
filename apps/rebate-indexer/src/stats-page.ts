@@ -159,11 +159,7 @@ export function renderStatsPage(s: PublicStats, query = new URLSearchParams()): 
   const freshnessWarning = s.dataFresh
     ? ''
     : s.dataStaleReason === 'ingestion_incomplete'
-      ? `<div class="warning"><strong>Some chain data is incomplete.</strong> Updates continue for available chains. ${
-        (s.dataSources ?? []).filter(source => source.status !== 'fresh')
-          .map(source => `${esc(CHAIN_NAME[source.chainId] ?? `Chain ${source.chainId}`)}: ${esc(source.status)}`)
-          .join('; ')
-      }. Last published${updated ? ` at ${updated}` : ' time unavailable'}.</div>`
+      ? `<div class="warning"><strong>Some chain data is incomplete.</strong> Updates continue for available chains. Last published${updated ? ` at ${updated}` : ' time unavailable'}.</div>`
       : `<div class="warning"><strong>Data refresh delayed.</strong> These figures show the last successful publication${updated ? ` at ${updated}` : ''}. A delayed publication does not itself indicate a failed settlement.</div>`;
 
   return `<!doctype html><html lang="en"><head>
