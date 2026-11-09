@@ -81,7 +81,7 @@ export class Broadcaster {
       !this.config.creditCollectionOutputs || !this.config.creditCollectionProofs)) return false
     if (this.creditService?.ledger.pendingOwnerIntent()) return false
     if (this.config.creditPaymentMode === 'public-native') {
-      if (!this.creditService) return false
+      if (!this.creditService || this.creditService.ledger.hasUnsettledNativeAttempt()) return false
       try { await this.creditService.qualifyNativeFundingReads(); await this.creditService.assertBacked(1n) } catch { return false }
     }
     // Advertising availability must never create or rotate a credit identity.

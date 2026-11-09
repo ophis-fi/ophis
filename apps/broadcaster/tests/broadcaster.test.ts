@@ -232,6 +232,70 @@ describe.runIf([1, 56].includes(CHAIN_ID))('prepaid execution through the encryp
     expect(CreditLedger.load(store).balance(f.owner.address).available).toBe(10n ** 18n)
     expect(f.sign).not.toHaveBeenCalled()
   })
+  it.each(['execute', 'refund'])('keeps native funding closed until the included %s settles, with recovery still accessible', async (kind) => {
+    const f = await prepaidFixture(true), payment = (await f.fund())!
+    let payload: Record<string, unknown> = f.execution
+    if (kind === 'refund') {
+      const quote = await f.send({ kind: 'quote', refund: true }), recipient = Wallet.createRandom().address, net = 10n ** 16n
+      payload = { kind, sequence: quote.nextSequence, recipient, gross: (net + BigInt(quote.maximumCharge)).toString(),
+        net: net.toString(), feesID: quote.feesID, collectionAllowance: '0', refundGasAllowance: quote.refundGasAllowance }
+      f.provider.send.mockResolvedValue({ type: 'CALL', from: f.wallet.address, to: recipient, input: '0x', value: `0x${net.toString(16)}` })
+    }
+    const sent = await f.send(payload)
+    expect(sent.error).toBeUndefined()
+    const saved = store.pending()[0], ledger = CreditLedger.load(store), tx = Transaction.from(saved.raw!)
+    expect(ledger.hasUnsettledNativeAttempt()).toBe(true)
+    expect((await f.service.creditInfo()).executionEnabled).toBe(false)
+    ledger.observeInclusion(saved.key, { hash: saved.hash!, blockNumber: 100, blockHash, gasUsed: 21_000n,
+      gasPrice: tx.maxFeePerGas ?? tx.gasPrice!, status: 1 } as TransactionReceipt)
+    // Inclusion releases the legacy pending flag, but cannot release the native finality hold.
+    expect(store.hasPending()).toBe(false)
+    f.provider.getTransactionCount.mockResolvedValue(1)
+    expect(await f.service.available()).toBe(false)
+    expect((await f.service.creditInfo()).executionEnabled).toBe(false)
+    expect((await f.send({ kind: 'quote' })).error).toBeTruthy()
+    expect((await f.send({ kind: 'balance' })).reserved).toBe(ledger.balance(f.owner.address).reserved.toString())
+    expect((await f.send({ kind: kind === 'refund' ? 'refund-status' : 'attempt', key: saved.key })).state).toBe('submitted-or-unknown')
+    const restarted = new Broadcaster(f.service.config, store, f.sdk, f.provider as unknown as JsonRpcProvider,
+      f.wallet, f.sender, { rates: async () => f.rates })
+    expect((await restarted.creditInfo()).executionEnabled).toBe(false)
+    expect(await restarted.available()).toBe(false)
+    const restartSend = async (payload: Record<string, unknown>) => {
+      const wire = await f.request(payload)
+      return wire.decode(await restarted.handle(wire.payload))
+    }
+    const heldBalance = ledger.balance(f.owner.address)
+    for (let retry = 0; retry < 2; retry++) {
+      const claim = await restartSend({ kind: 'claim', transactionHash: payment.transactionHash, paymentId: payment.paymentId })
+      expect(claim).toMatchObject({ kind: 'balance', available: heldBalance.available.toString(), reserved: heldBalance.reserved.toString() })
+    }
+    expect(ledger.nativeDeposits()).toHaveLength(1)
+    expect(ledger.balance(f.owner.address)).toEqual(heldBalance)
+    expect((await restartSend(recovery(payload))).state).toBe('submitted-or-unknown')
+    const replay = await restartSend(payload)
+    expect(kind === 'refund' ? replay.transactionHash : replay.txHash).toBe(saved.hash)
+    expect(f.sign).toHaveBeenCalledOnce()
+  })
+  it('records already-paid native credit when disabled and preserves refunds after pilot admission changes', async () => {
+    const f = await prepaidFixture(true)
+    f.service.config.admission = 'pilot'
+    f.service.config.prepaidPilotLedgerId = f.info.ledgerId
+    f.service.config.prepaidPilotOwner = Wallet.createRandom().address
+    f.service.config.enabled = false
+    await f.fund()
+    expect((await f.send({ kind: 'quote' })).error).toBeTruthy()
+    expect((await f.send({ kind: 'balance' })).available).toBe((10n ** 18n).toString())
+    const quote = await f.send({ kind: 'quote', refund: true }), recipient = Wallet.createRandom().address, net = 10n ** 16n
+    expect(quote.kind).toBe('quote')
+    const payload = { kind: 'refund', sequence: quote.nextSequence, recipient, gross: (net + BigInt(quote.maximumCharge)).toString(),
+      net: net.toString(), feesID: quote.feesID, collectionAllowance: '0', refundGasAllowance: quote.refundGasAllowance }
+    expect((await f.send(payload)).error).toBeTruthy()
+    expect(f.sign).not.toHaveBeenCalled()
+    f.service.config.enabled = true
+    f.provider.send.mockResolvedValue({ type: 'CALL', from: f.wallet.address, to: recipient, input: '0x', value: `0x${net.toString(16)}` })
+    expect((await f.send(payload)).state).toBe('submitted-or-unknown')
+    expect(f.sign).toHaveBeenCalledOnce()
+  })
   it('holds native refund principal plus gas before signing, then returns the saved refund on replay', async () => {
     const f = await prepaidFixture(true); await f.fund()
     const quote = await f.send({ kind: 'quote', refund: true }), recipient = Wallet.createRandom().address
@@ -270,13 +334,15 @@ describe.runIf([1, 56].includes(CHAIN_ID))('prepaid execution through the encryp
     expect(updated).toMatchObject({ state: status === 1 ? 'refunded' : 'failed', netPaid: paid.toString(),
       charged: (paid + fee).toString(), settlementHash: result.transactionHash })
     const balance = CreditLedger.load(store).balance(f.owner.address)
+    expect(CreditLedger.load(store).hasUnsettledNativeAttempt()).toBe(false)
+    expect((await f.service.creditInfo()).executionEnabled).toBe(true)
     expect(balance.reserved).toBe(0n)
     expect(balance.available).toBe(10n ** 18n - paid - fee)
     const report = accountingReport(store.db)
     expect(report.receivedFees).toEqual({ [ZeroAddress]: fee.toString() })
     expect(report.prepaidCredit).toMatchObject({ funding: 'native', charged: fee.toString(),
       completedRefunds: paid.toString(), liability: balance.available.toString(), remainingEarned: '6300',
-      nativeRefundReservations: '0', ownerPrivateFees: '0', ownerPaymentsPending: 0 })
+      nativeRefundReservations: '0', ownerPrivateFees: '0', ownerPaymentsPending: 0, nativeCollected: '0' })
     expect(f.sign).toHaveBeenCalledOnce()
     expect((await f.send(payload)).netPaid).toBe(paid.toString())
     await f.service.reconcile()

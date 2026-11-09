@@ -257,6 +257,9 @@ export class CreditLedger {
     }
   }
   get isNative(): boolean { return this.scope.funding === 'native' }
+  hasUnsettledNativeAttempt(): boolean {
+    return this.isNative && !!this.store.db.prepare('SELECT 1 FROM credit_attempts WHERE charged IS NULL LIMIT 1').get()
+  }
   private depositTable(): string { return this.isNative ? 'credit_native_deposits' : 'credit_deposits' }
   private assertPrivateCredit(): void { if (this.isNative) throw new Error('Private owner operations cannot spend native customer credit.') }
   nativeDeposits(): NativeDepositAnchor[] {
@@ -689,7 +692,7 @@ export class CreditLedger {
       this.assertChainNonce(attempt.nonce)
       this.assertOwnerJournalReady()
       if (this.isNative) {
-        if (this.store.db.prepare('SELECT 1 FROM credit_attempts WHERE charged IS NULL LIMIT 1').get())
+        if (this.hasUnsettledNativeAttempt())
           throw new Error('Finalize the outstanding native attempt before another signature.')
         this.assertNativeBacked(attempt.backing as NativeCreditBacking, attempt.nativeReserve ?? 0n, attempt.nonce)
       } else {

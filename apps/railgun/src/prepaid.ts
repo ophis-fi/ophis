@@ -5,7 +5,7 @@ import { balanceForERC20Token, encryptDataWithSharedKey, fullWalletForID, genera
 import { calculateGasLimit, calculateGasPrice, calculateMaximumGas, EVMGasType, getEVMGasTypeForTransaction,
   type RailgunPopulateTransactionResponse, type SelectedBroadcaster, type TransactionGasDetails } from '@railgun-community/shared-models'
 import { authorizationify, getAddress, hexlify, isHexString, keccak256, randomBytes, toUtf8Bytes, verifyAuthorization, ZeroAddress,
-  type JsonRpcSigner, type TransactionRequest } from 'ethers'
+  type JsonRpcSigner, type TransactionRequest, type TransactionResponse } from 'ethers'
 import { Buffer } from 'buffer'
 import { CREDIT_AUTHORIZATION_TYPES, CREDIT_PROTOCOL, CREDIT_REQUEST_LIFETIME, creditAuthorizationValue,
   creditDomain, creditMemo, creditRefundMemo, creditRequestKey, creditTopics, nativeCreditData, type CreditScope } from '../credit-protocol'
@@ -37,9 +37,10 @@ interface SavedTopUp {
 }
 interface SavedRefund { payload: string; key: string; hash?: string; rate?: string; nonce?: number }
 interface CreditJournal extends CreditIdentity {
-  attempt?: SavedAttempt; topUp?: SavedTopUp; refund?: SavedRefund
+  attempt?: SavedAttempt; topUp?: SavedTopUp; deferredTopUps?: SavedTopUp[]; refund?: SavedRefund
   completed?: { attempt: SavedAttempt; cancellationHash?: string; charged: string; cancelled: boolean; state?: 'not-reserved' }
 }
+const MAX_NATIVE_PAYMENT_HISTORY = 32
 const journalKey = () => PREPAID_BROADCASTERS[CHAIN_ID]?.funding === 'native' ? 'nativePrepaidCredit' : 'prepaidCredit'
 const subscribers = new Map<string, (message: unknown) => void>()
 let subscribedCore: ReturnType<typeof WakuBroadcasterClient.getWakuCore>
@@ -114,20 +115,41 @@ async function saved(session: WalletSession): Promise<CreditJournal | undefined>
       record.completed.attempt.hash !== undefined || record.completed.cancellationHash !== undefined ||
       record.completed.charged !== '0' || record.completed.cancelled))))
     throw new Error('The saved prepaid settlement is damaged.')
-  if (record.topUp) {
-    const topUp = record.topUp
-    if (!object(topUp) || !object(topUp.transaction) || typeof topUp.transaction.data !== 'string' ||
-      !isHexString(topUp.transaction.data) || !Array.isArray(topUp.nullifiers)) throw new Error('The saved prepaid top-up is damaged.')
+  if (record.deferredTopUps !== undefined && (record.scope.funding !== 'native' || !Array.isArray(record.deferredTopUps))) throw new Error('The saved deferred payments are damaged. Preserve the journal.')
+  const paymentIds = new Set<string>()
+  for (const topUp of [...(record.topUp !== undefined ? [record.topUp] : []), ...(record.deferredTopUps ?? [])]) {
+    validateTopUp(record, topUp)
     if (record.scope.funding === 'native') {
-      if (topUp.transaction.to !== getAddress(record.scope.operator) || quantity(topUp.transaction.value, true) >= 2n ** 120n ||
-        typeof topUp.paymentId !== 'string' || topUp.transaction.data !== nativeCreditData(record.scope, record.ledgerId, record.owner, topUp.paymentId) ||
-        topUp.nullifiers.length || getAddress(topUp.from) === getAddress(record.scope.operator))
-        throw new Error('The saved native payment is damaged. Preserve it for recovery.')
-    } else if (topUp.transaction.to !== getAddress(CONFIG.proxyContract) || topUp.transaction.value !== '0' ||
-      topUp.paymentId !== undefined || !topUp.nullifiers.length || !topUp.nullifiers.every((n) => isHexString(n, 32)))
-      throw new Error('The saved prepaid top-up is damaged.')
+      if (paymentIds.has(topUp.paymentId!.toLowerCase())) throw new Error('Duplicate saved native payment identity. Preserve the journal.')
+      paymentIds.add(topUp.paymentId!.toLowerCase())
+    }
   }
   return record
+}
+
+function validateTopUp(record: CreditIdentity, topUp: SavedTopUp): void {
+  if (!object(topUp) || !object(topUp.transaction) || typeof topUp.transaction.data !== 'string' ||
+    !isHexString(topUp.transaction.data) || !Array.isArray(topUp.nullifiers) || typeof topUp.from !== 'string' ||
+    getAddress(topUp.from) === ZeroAddress || (topUp.hash !== undefined && !isHexString(topUp.hash, 32)) ||
+    (topUp.nonce !== undefined && (!Number.isSafeInteger(topUp.nonce) || topUp.nonce < 0)) ||
+    (topUp.previous !== undefined && (!Array.isArray(topUp.previous) || topUp.previous.some(item => !object(item) ||
+      !Number.isSafeInteger(item.nonce) || item.nonce < 0 || (item.hash !== undefined && !isHexString(item.hash, 32))))))
+    throw new Error('The saved prepaid top-up is damaged. Preserve it for recovery.')
+  if (record.scope.funding === 'native') {
+    if (topUp.transaction.to !== getAddress(record.scope.operator) || quantity(topUp.transaction.value, true) >= 2n ** 120n ||
+      typeof topUp.paymentId !== 'string' || topUp.transaction.data !== nativeCreditData(record.scope, record.ledgerId, record.owner, topUp.paymentId) ||
+      topUp.nullifiers.length || topUp.nonce === undefined || (topUp.previous?.length ?? 0) > MAX_NATIVE_PAYMENT_HISTORY ||
+      getAddress(topUp.from) === getAddress(record.scope.operator))
+      throw new Error('The saved native payment is damaged. Preserve it for recovery.')
+  } else if (topUp.transaction.to !== getAddress(CONFIG.proxyContract) || topUp.transaction.value !== '0' ||
+    topUp.paymentId !== undefined || !topUp.nullifiers.length || !topUp.nullifiers.every((n) => isHexString(n, 32)))
+    throw new Error('The saved prepaid top-up is damaged.')
+}
+function retainNativePaymentHash(topUp: SavedTopUp): void {
+  if (!topUp.hash || topUp.nonce === undefined || topUp.previous?.some(item => item.hash === topUp.hash && item.nonce === topUp.nonce)) return
+  if ((topUp.previous?.length ?? 0) >= MAX_NATIVE_PAYMENT_HISTORY)
+    throw new Error('Saved payment history is full. Defer this payment and reconcile it by transaction hash; no retry was requested.')
+  topUp.previous = [...(topUp.previous ?? []), { hash: topUp.hash, nonce: topUp.nonce }]
 }
 
 async function exchange(data: Record<string, unknown>, recipient: string, expectedKey?: string,
@@ -211,7 +233,7 @@ async function prepareQuote(session: WalletSession, onStatus: (message: string) 
   policy(admission)
   const current = await identity(session)
   if (admission) validateIdentity(current, true)
-  if (admission && !current.executionEnabled) throw new Error('Prepaid execution is paused. Existing credit recovery remains available.')
+  if (admission && !current.executionEnabled) throw new Error('Prepaid execution is paused. You can still check credit and saved transactions. New refunds may need to wait.')
   const response = await authorize(session, current, json({ kind: 'quote', ...(!admission && { refund: true }) }))
   if (response.kind !== 'quote' || typeof response.feesID !== 'string' || !/^[0-9a-f]{64}$/.test(response.feesID) ||
     typeof response.expires !== 'number' || !Number.isSafeInteger(response.expires) || response.expires <= Date.now() + 60_000 ||
@@ -322,7 +344,7 @@ export async function pendingPrepaid(session: WalletSession) {
   return record && { key: attempt?.key, hash: attempt?.hash, state: attempt?.state, completed: !record.attempt && !!record.completed,
     request: object(request) && typeof request.to === 'string' && typeof request.data === 'string'
       ? { to: request.to, data: request.data } : undefined,
-    topUpPending: !!record.topUp, topUpHash: record.topUp?.hash, refundPending: !!record.refund, funding: record.scope.funding }
+    topUpPending: !!record.topUp, topUpHash: record.topUp?.hash, deferredTopUpCount: record.deferredTopUps?.length ?? 0, refundPending: !!record.refund, funding: record.scope.funding }
 }
 
 export async function checkPrepaid(session: WalletSession) {
@@ -639,13 +661,15 @@ export async function retryPrepaidTopUp(session: WalletSession, signer: JsonRpcS
         receipt ? session.provider.getBlock(receipt.blockNumber) : null])
       if (!receipt || receipt.status !== 0 || !finalized || receipt.blockNumber > finalized.number || canonical?.hash !== receipt.blockHash)
         throw new Error('The public nonce was consumed without a finalized failed top-up. Reconcile it before retrying.')
-      topUp.previous = [...(topUp.previous ?? []), { hash: topUp.hash, nonce }]
+      if (record.scope.funding === 'native') retainNativePaymentHash(topUp)
+      else topUp.previous = [...(topUp.previous ?? []), { hash: topUp.hash, nonce }]
       topUp.nonce = pending
       delete topUp.hash
     } else {
       if (!transaction && pending > nonce) throw new Error('The public nonce has an unknown pending transaction. Reconcile it before retrying.')
       topUp.nonce = nonce
     }
+    if (record.scope.funding === 'native') retainNativePaymentHash(topUp)
     await writePrivateState(session, journalKey(), record)
     await assertPublicNetwork(session, signer)
     if (getAddress(await signer.getAddress()) !== getAddress(topUp.from)) throw new Error('The public gas wallet changed.')
@@ -659,21 +683,56 @@ export async function retryPrepaidTopUp(session: WalletSession, signer: JsonRpcS
     return sent.hash
   })
 }
+/** Explicitly defer an uncertain native payment; retain all encrypted evidence and never resend it automatically. */
+export async function deferPrepaidTopUp(session: WalletSession): Promise<number> {
+  return exclusive(session, async () => {
+    const record = await saved(session)
+    if (!record?.topUp || record.scope.funding !== 'native') throw new Error('No active native payment is available to defer.')
+    record.deferredTopUps = [...(record.deferredTopUps ?? []), record.topUp]
+    delete record.topUp
+    await writePrivateState(session, journalKey(), record)
+    return record.deferredTopUps.length
+  })
+}
+function matchesNativePayment(topUp: SavedTopUp, tx: TransactionResponse | null): boolean {
+  return !!tx && tx.chainId === CHAIN && getAddress(tx.from) === getAddress(topUp.from) &&
+    getAddress(tx.to ?? ZeroAddress) === topUp.transaction.to && tx.data.toLowerCase() === topUp.transaction.data.toLowerCase() &&
+    tx.value === BigInt(topUp.transaction.value) && [0, 2].includes(tx.type) && !(tx.authorizationList?.length)
+}
+async function claimNativeTopUp(session: WalletSession, record: CreditJournal, recoveredHash?: string): Promise<CreditBalance> {
+  const payments = [...(record.topUp ? [record.topUp] : []), ...(record.deferredTopUps ?? [])]
+  if (!payments.length) throw new Error('No native top-up is saved.')
+  if (recoveredHash && !isHexString(recoveredHash, 32)) throw new Error('A valid native payment transaction hash is required.')
+  // Deferred records are owner-authored local history, never a remote work queue. Scan only active hashes automatically.
+  const selectedPayments = recoveredHash ? payments : record.topUp ? [record.topUp] : []
+  const candidates = recoveredHash ? [recoveredHash] : [...new Set(selectedPayments.flatMap(payment =>
+    [payment.hash, ...(payment.previous ?? []).map(item => item.hash)].filter((hash): hash is string => !!hash)))]
+  if (!candidates.length) throw new Error('Payment outcome is unknown. Paste its transaction hash when available; saved payments were kept.')
+  const finalized = await session.provider.getBlock('finalized')
+  if (!finalized) throw new Error('Payment finality is unavailable. Saved payments were kept.')
+  for (const hash of candidates) {
+    const [receipt, transaction] = await Promise.all([session.provider.getTransactionReceipt(hash), session.provider.getTransaction(hash)])
+    const selected = selectedPayments.find(payment => matchesNativePayment(payment, transaction))
+    if (recoveredHash && !selected) throw new Error('That transaction does not match any saved native payment. Keep the saved records.')
+    if (!selected || !transaction || !receipt || receipt.status !== 1 || receipt.blockNumber > finalized.number) continue
+    if (transaction.hash.toLowerCase() !== hash.toLowerCase() || receipt.hash.toLowerCase() !== hash.toLowerCase() ||
+      (await session.provider.getBlock(receipt.blockNumber))?.hash !== receipt.blockHash)
+      throw new Error('The finalized native payment changed canonical history. Saved payments were kept.')
+    const response = balance(await authorize(session, record, json({ kind: 'claim', transactionHash: hash, paymentId: selected.paymentId })), record)
+    if (record.topUp === selected) delete record.topUp
+    else record.deferredTopUps = record.deferredTopUps!.filter(payment => payment !== selected)
+    await writePrivateState(session, journalKey(), record)
+    return response
+  }
+  throw new Error('Saved top-ups are not finalized successfully yet. Keep the saved payments and check again.')
+}
 export async function claimPrepaidTopUp(session: WalletSession, recoveredHash?: string): Promise<CreditBalance> {
   return exclusive(session, async () => {
     const record = await saved(session)
+    if (record?.scope.funding === 'native') return claimNativeTopUp(session, record, recoveredHash || undefined)
     if (!record?.topUp) throw new Error('No top-up is saved.')
+    if (recoveredHash) throw new Error('A recovered public payment hash is supported only for native fee credit.')
     const topUp = record.topUp
-    if (recoveredHash !== undefined && recoveredHash !== '') {
-      if (record.scope.funding !== 'native' || !isHexString(recoveredHash, 32)) throw new Error('A valid native payment transaction hash is required.')
-      const tx = await session.provider.getTransaction(recoveredHash)
-      if (!tx || tx.chainId !== CHAIN || getAddress(tx.from) !== getAddress(topUp.from) ||
-        getAddress(tx.to ?? '') !== topUp.transaction.to || tx.data.toLowerCase() !== topUp.transaction.data.toLowerCase() ||
-        tx.value !== BigInt(topUp.transaction.value) || ![0, 2].includes(tx.type) || tx.authorizationList?.length)
-        throw new Error('That transaction does not match the saved native payment. Keep the saved record.')
-      topUp.hash = tx.hash
-      await writePrivateState(session, journalKey(), record)
-    }
     await resolveTopUp(session, record)
     if (!topUp.hash) throw new Error('Top-up outcome is unknown. Keep the saved proof and check again after history sync.')
     const [receipt, finalized, transaction] = await Promise.all([session.provider.getTransactionReceipt(topUp.hash),
@@ -682,12 +741,9 @@ export async function claimPrepaidTopUp(session: WalletSession, recoveredHash?: 
       throw new Error('Top-up is not finalized successfully yet. Keep the saved proof and check again.')
     if (!transaction || getAddress(transaction.to ?? '') !== topUp.transaction.to ||
       transaction.data.toLowerCase() !== topUp.transaction.data.toLowerCase() || transaction.value !== BigInt(topUp.transaction.value) || transaction.chainId !== CHAIN ||
-      (record.scope.funding === 'native' && (getAddress(transaction.from) !== getAddress(topUp.from) ||
-        ![0, 2].includes(transaction.type) || transaction.authorizationList?.length)) ||
       (await session.provider.getBlock(receipt.blockNumber))?.hash !== receipt.blockHash)
       throw new Error('The finalized top-up differs from the saved proof. Keep the record for recovery.')
-    const response = balance(await authorize(session, record, json({ kind: 'claim', transactionHash: topUp.hash,
-      ...(record.scope.funding === 'native' ? { paymentId: topUp.paymentId } : {}) })), record)
+    const response = balance(await authorize(session, record, json({ kind: 'claim', transactionHash: topUp.hash })), record)
     delete record.topUp
     await writePrivateState(session, journalKey(), record)
     return response

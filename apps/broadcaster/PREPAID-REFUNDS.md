@@ -16,7 +16,11 @@ The user reviews a **public refund address**, gross reserved credit, maximum pro
 
 The initial refund quote conservatively reserves the configured maximum transaction cost. Consequently, it may leave a credit remainder, and a balance below that allowance cannot currently be refunded; it remains usable for later fees. This is not an automatic full-balance withdrawal. Refund admission requires the reviewed runtime enabled; paused read/recovery remains available.
 
-An unknown top-up keeps its sender, nonce, amount and reference. Retry uses the same nonce, or advances only after the exact earlier transaction has finalized as failed. If the wallet sent a payment but lost its response, the user may supply that transaction hash through **Check top-up**; the client verifies it against the saved payment. Never clear a pending record to create a second payment. Unknown refund/operation outcomes use their saved request and existing recovery controls.
+An unknown top-up keeps its sender, nonce, amount and reference. Retry uses the same nonce, or advances only after the exact earlier transaction has finalized as failed. Known replacement hashes remain saved; an older transaction can win. The user may supply a replacement or lost-response hash through **Check top-up**; the client verifies it against the saved payment. An explicitly confirmed **Set payment aside** action preserves the record in the same encrypted ledger for later claims while allowing use of existing credit. This does not cancel or resend a public transaction. A new payment uses a fresh reference and adds more credit. Unknown refund/operation outcomes use their saved request and existing recovery controls.
+
+New native refunds require the signing service to be enabled. During an incident pause, balance queries and saved-request reconciliation remain available, but a new payout must wait for the reviewed signing service to resume. There is no disabled-service native payout command in this version.
+
+The gas operator must never sign out-of-band transfers, earnings sweeps, wallet delegations or manual refunds after ledger initialization. Its nonce belongs to the journal. Native charges are received directly and margin remains in that account; this version does not implement a journaled earnings-withdrawal or quarantine-payout operation. Such an external spend would halt nonce reconciliation. Incoming treasury funding does not consume the operator nonce.
 
 ### Migration and activation
 

@@ -38,7 +38,7 @@ export class CreditService {
     return authenticateCreditRequest(this.ledger.scope, this.ledger.id, input)
   }
   private executionEnabled(): boolean {
-    if (!this.config.enabled || (this.ledger.isNative && !this.nativeFundingReadsReady()) || (!this.ledger.isNative && (!this.config.creditCollectionGas || !this.config.creditCollectionInputs ||
+    if (!this.config.enabled || this.ledger.hasUnsettledNativeAttempt() || (this.ledger.isNative && !this.nativeFundingReadsReady()) || (!this.ledger.isNative && (!this.config.creditCollectionGas || !this.config.creditCollectionInputs ||
       !this.config.creditCollectionOutputs || !this.config.creditCollectionProofs))) return false
     try {
       this.ledger.assertOwnerJournalReady()

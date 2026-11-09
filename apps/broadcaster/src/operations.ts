@@ -49,7 +49,8 @@ export function accountingReport(db: DatabaseSync): {
       // Native refund reservations already belong to reserved; adding them again would double-count the same liability.
       prepaidCredit = { funding: 'native', token, deposited: String(deposited), charged: String(charged), reserved: String(reserved),
         pendingRefunds: '0', completedRefunds: String(completedRefunds), refundFees: String(refundFees), liability: String(liability),
-        remainingEarned: String(remainingEarned), collectedGross: '0', ownerPrivateFees: '0', nativeCollected: String(charged),
+        // Native payments arrive directly; there is no separate private-to-native collection.
+        remainingEarned: String(remainingEarned), collectedGross: '0', ownerPrivateFees: '0', nativeCollected: '0',
         ownerPaymentsPending: 0, quarantined: String(quarantined), nativeRefundReservations: String(nativeRefundReservations) }
       fees[token] = charged
     } else {

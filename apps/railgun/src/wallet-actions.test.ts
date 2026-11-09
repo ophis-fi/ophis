@@ -16,11 +16,12 @@ const mocks = vi.hoisted(() => ({
   preserved: vi.fn(), preserve: vi.fn(), pilot: undefined as string | undefined,
   selectBroadcaster: vi.fn(), prepareSwap: vi.fn(), prepareMax: vi.fn(), prepareWithdrawal: vi.fn(), quoteSwap: vi.fn(), unused: vi.fn(),
   credit: vi.fn(), creditBalance: vi.fn(), pendingCredit: vi.fn(), topUp: vi.fn(), claimCredit: vi.fn(), checkCredit: vi.fn(), retryCredit: vi.fn(),
-  refundCredit: vi.fn(), retryTopUp: vi.fn(), refundFee: vi.fn(), requestRefund: vi.fn(), checkRefund: vi.fn(),
+  refundCredit: vi.fn(), retryTopUp: vi.fn(), deferTopUp: vi.fn(), refundFee: vi.fn(), requestRefund: vi.fn(), checkRefund: vi.fn(),
 }))
 vi.mock('./prepaid', () => ({ preparePrepaid: mocks.credit, preparePrepaidRefund: mocks.refundCredit, prepaidBalance: mocks.creditBalance,
   pendingPrepaid: mocks.pendingCredit, topUpPrepaid: mocks.topUp, claimPrepaidTopUp: mocks.claimCredit,
   retryPrepaidTopUp: mocks.retryTopUp,
+  deferPrepaidTopUp: mocks.deferTopUp,
   checkPrepaid: mocks.checkCredit, retryPrepaid: mocks.retryCredit, prepaidRefundFee: mocks.refundFee,
   requestPrepaidRefund: mocks.requestRefund, checkPrepaidRefund: mocks.checkRefund }))
 vi.mock('./storage', () => ({ readPrivateState: vi.fn(), writePrivateState: vi.fn(), deletePrivateState: vi.fn() }))
@@ -95,6 +96,7 @@ beforeEach(() => {
   mocks.creditBalance.mockReset().mockResolvedValue({ available: 1000n, reserved: 2n })
   mocks.topUp.mockReset().mockResolvedValue(`0x${'44'.repeat(32)}`)
   mocks.retryTopUp.mockReset().mockResolvedValue(`0x${'55'.repeat(32)}`)
+  mocks.deferTopUp.mockReset().mockResolvedValue(undefined)
   mocks.refundCredit.mockReset().mockResolvedValue({ scope: {}, selected: { tokenAddress: TOKENS.WETH.address }, maximumRefundGross: 1_000n })
   mocks.claimCredit.mockReset().mockResolvedValue({ available: 2000n, reserved: 0n })
   mocks.checkCredit.mockReset()
@@ -844,6 +846,23 @@ it('refreshes confirmed available/reserved credit without starting a transfer or
   expect(mocks.topUp).not.toHaveBeenCalled()
   expect(mocks.retryCredit).not.toHaveBeenCalled()
   expect(mocks.connect).not.toHaveBeenCalled()
+})
+
+it('keeps native replacement-hash recovery visible and requires consent before setting a payment aside', async () => {
+  mocks.environment = 'ethereum'
+  mocks.pendingCredit.mockResolvedValue({ funding: 'native', topUpPending: true, topUpHash: `0x${'11'.repeat(32)}`, deferredTopUpCount: 1 })
+  const { wireWalletActions } = await import('./wallet-actions')
+  await wireWalletActions({} as WalletSession)
+  expect(elements['fee-topup-hash-label'].hidden).toBe(false)
+  expect(elements['defer-fee-topup'].hidden).toBe(false)
+  await elements['defer-fee-topup-action'].onclick?.()
+  expect(mocks.deferTopUp).not.toHaveBeenCalled()
+  elements['defer-fee-topup-consent'].checked = true
+  await elements['defer-fee-topup-action'].onclick?.()
+  expect(mocks.deferTopUp).toHaveBeenCalledOnce()
+  expect(elements['fee-credit-status'].textContent).toContain('does not cancel')
+  expect(mocks.topUp).not.toHaveBeenCalled()
+  expect(mocks.retryTopUp).not.toHaveBeenCalled()
 })
 
 it('reviews a private refund without reserving credit until the separate explicit request', async () => {

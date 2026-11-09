@@ -17,7 +17,7 @@ import { connectPublicWallet, type PublicWalletProvider } from './public-connect
 import { renderWalletLayout, setPendingNotice, setSwapReview, showWalletView } from './wallet-layout'
 import { feeTokenFor, usesBoundWithdrawal } from './fee-asset'
 import { preparePrepaid, preparePrepaidRefund, prepaidBalance, pendingPrepaid, topUpPrepaid, retryPrepaidTopUp, claimPrepaidTopUp, checkPrepaid,
-  retryPrepaid, prepaidRefundFee, requestPrepaidRefund, checkPrepaidRefund, type PreparedCredit, type CreditBalance } from './prepaid'
+  retryPrepaid, prepaidRefundFee, requestPrepaidRefund, checkPrepaidRefund, deferPrepaidTopUp, type PreparedCredit, type CreditBalance } from './prepaid'
 import { ADAPT } from './execution'
 
 export async function wireWalletActions(session: WalletSession): Promise<void> {
@@ -90,9 +90,13 @@ export async function wireWalletActions(session: WalletSession): Promise<void> {
     const identity = pending?.account || withdrawal?.recipient
     if (usesPrepaid) {
       const credit = await pendingPrepaid(session)
-      element('check-fee-topup').hidden = !credit?.topUpPending
+      const deferred = credit?.deferredTopUpCount ?? 0
+      element('check-fee-topup').hidden = !credit?.topUpPending && !deferred
       element('retry-fee-topup').hidden = !credit?.topUpPending
-      element('fee-topup-hash-label').hidden = !credit?.topUpPending || credit.funding !== 'native' || !!credit.topUpHash
+      element('fee-topup-hash-label').hidden = credit?.funding !== 'native' || (!credit.topUpPending && !deferred)
+      element('defer-fee-topup').hidden = credit?.funding !== 'native' || !credit.topUpPending
+      element('deferred-fee-topups').hidden = !deferred
+      element('deferred-fee-topups').textContent = `${deferred} payment(s) kept for recovery. Paste a transaction hash above to claim a confirmed payment.`
       element('check-fee-attempt').hidden = !credit?.key
       element('retry-fee-attempt').hidden = !credit?.key || !!credit.hash || !!credit.completed
       element('add-fee-credit').hidden = !!credit?.topUpPending || (!!credit?.key && !credit.completed)
@@ -364,6 +368,15 @@ export async function wireWalletActions(session: WalletSession): Promise<void> {
     invalidate()
     element<HTMLInputElement>('fee-credit-consent').checked = false
     creditStatus(`Saved top-up transaction: ${hash}. Its payment details were preserved. Use Check top-up after finality.`)
+  })
+  button('defer-fee-topup-action', 'Preserving payment…', async () => {
+    if (!element<HTMLInputElement>('defer-fee-topup-consent').checked)
+      throw new Error('Review the saved-payment notice and confirm before setting it aside.')
+    await deferPrepaidTopUp(session)
+    element<HTMLInputElement>('defer-fee-topup-consent').checked = false
+    element<HTMLInputElement>('fee-credit-consent').checked = false
+    invalidate()
+    creditStatus('Payment kept for later recovery. This does not cancel a public transaction. You can use existing credit and claim this payment later with its transaction hash.')
   })
   button('check-fee-attempt', 'Checking prepaid transaction…', async () => {
     const saved = await pendingPrepaid(session)

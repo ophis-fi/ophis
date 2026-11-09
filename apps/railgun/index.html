@@ -108,9 +108,15 @@
             <label id="fee-credit-amount-label"><span id="fee-credit-amount-text">Add fee credit</span><input id="fee-credit-amount" type="text" inputmode="decimal" autocomplete="off" placeholder="0.0" /></label>
             <label><input id="fee-credit-consent" type="checkbox" /> I understand that my public wallet pays the top-up gas and is linked to that transfer.</label>
             <button id="add-fee-credit" type="button">Add fee credit</button>
-            <label id="fee-topup-hash-label" hidden>Payment transaction hash (only if the wallet sent it but this page lost the result)<input id="fee-topup-hash" type="text" autocomplete="off" placeholder="0x…" /></label>
+            <label id="fee-topup-hash-label" hidden>Payment transaction hash (for a replacement or saved payment)<input id="fee-topup-hash" type="text" autocomplete="off" placeholder="0x…" /></label>
             <button id="check-fee-topup" class="secondary-action" type="button" hidden>Check top-up</button>
             <button id="retry-fee-topup" class="secondary-action" type="button" hidden>Retry saved top-up</button>
+            <p id="deferred-fee-topups" hidden></p>
+            <details id="defer-fee-topup" hidden><summary>Payment rejected or outcome uncertain?</summary>
+              <p>Check your public wallet's activity first. Setting this payment aside does not cancel it. Its details stay saved, and you can claim it later using its transaction hash. A new payment would add more credit.</p>
+              <label><input id="defer-fee-topup-consent" type="checkbox" /> Keep this payment for later recovery and let me use my existing credit.</label>
+              <button id="defer-fee-topup-action" class="secondary-action" type="button">Set payment aside</button>
+            </details>
             <button id="check-fee-attempt" class="secondary-action" type="button" hidden>Check fee-credit transaction</button>
             <button id="retry-fee-attempt" class="secondary-action" type="button" hidden>Retry saved fee-credit request</button>
             <p id="fee-credit-status" role="status" aria-live="polite"></p>

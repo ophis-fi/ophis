@@ -4,7 +4,7 @@ import { CREDIT_MAX_PAYLOAD, CREDIT_PROTOCOL, authenticateCreditRequest, creditM
 import type { WalletSession } from './wallet'
 
 const state = vi.hoisted(() => ({
-  record: undefined as unknown, recordKey: undefined as string | undefined, records: new Map<string, unknown>(), events: [] as string[], messages: [] as Record<string, unknown>[],
+  writeError: false, record: undefined as unknown, recordKey: undefined as string | undefined, records: new Map<string, unknown>(), events: [] as string[], messages: [] as Record<string, unknown>[],
   privateSwap: undefined as unknown, privateWithdrawal: undefined as unknown,
   callback: undefined as ((value: unknown) => void) | undefined, core: {},
   send: vi.fn(), encrypt: vi.fn(), signPublic: vi.fn(), finalized: 100, canonical: true, available: '2000000000000000',
@@ -20,6 +20,7 @@ vi.mock('./config', async (original) => {
 vi.mock('./broadcaster', () => ({ startBroadcasters: vi.fn() }))
 vi.mock('./storage', () => ({ readPrivateState: async (_session: unknown, key: string) => structuredClone(state.recordKey === undefined || state.recordKey === key ? state.record : state.records.get(key)),
   writePrivateState: async (_session: unknown, _key: string, value: unknown) => {
+    if (state.writeError) throw new Error('Local storage quota exceeded')
     state.events.push('saved'); state.recordKey = _key; state.record = structuredClone(value); state.records.set(_key, structuredClone(value))
   } }))
 vi.mock('./wallet', () => ({ requireWalletSync: vi.fn(), refreshReceivedBalances: vi.fn() }))
@@ -45,7 +46,7 @@ vi.mock('@railgun-community/wallet', async (original) => ({
 }))
 import { CONFIG } from './config'
 import { assertPrepaidContext, checkPrepaid, checkPrepaidRefund, claimPrepaidTopUp, pendingPrepaid, preparePrepaid, preparePrepaidRefund,
-  prepaidAttemptFee, prepaidBalance, prepaidRefundFee, requestPrepaidRefund, retryPrepaid, submitPrepaid, topUpPrepaid } from './prepaid'
+  deferPrepaidTopUp, prepaidAttemptFee, prepaidBalance, prepaidRefundFee, requestPrepaidRefund, retryPrepaid, submitPrepaid, topUpPrepaid } from './prepaid'
 import { retryPrepaidTopUp } from './prepaid'
 
 const owner = new Wallet(`0x${'11'.repeat(32)}`), publicOwner = new Wallet(`0x${'22'.repeat(32)}`)
@@ -100,7 +101,7 @@ async function server(packet: Parameters<typeof respond>[0]) {
 }
 beforeEach(() => {
   vi.clearAllMocks()
-  state.record = undefined; state.recordKey = undefined; state.records.clear(); state.events = []; state.messages = []; state.core = {}; state.finalized = 100; state.canonical = true
+  state.writeError = false; state.record = undefined; state.recordKey = undefined; state.records.clear(); state.events = []; state.messages = []; state.core = {}; state.finalized = 100; state.canonical = true
   state.privateSwap = undefined; state.privateWithdrawal = undefined
   state.policy.expiresAt = Number.MAX_SAFE_INTEGER
   state.policy.funding = undefined
@@ -709,4 +710,149 @@ it('reconciles a finalized earlier cancellation even when a later replacement ha
   vi.mocked(session.provider.getTransaction).mockResolvedValue({ from: scope().operator, chainId: 1n } as Awaited<ReturnType<typeof session.provider.getTransaction>>)
   expect(await checkPrepaid(session)).toMatchObject({ hash, cancellationHash: earlier, cancelled: true, state: 'settled' })
   expect((await pendingPrepaid(session))?.completed).toBe(true)
+})
+
+
+interface NativePaymentFixture {
+  transaction: { to: string; data: string; value: string }; from: string; hash?: string; nonce: number;
+  paymentId: string; nullifiers: string[]; previous?: { hash?: string; nonce: number }[]
+}
+const nativeRecord = () => state.record as { topUp?: NativePaymentFixture; deferredTopUps?: NativePaymentFixture[]; refund?: unknown }
+const paymentTransaction = (payment: NativePaymentFixture, txHash: string) => ({ ...payment.transaction,
+  value: BigInt(payment.transaction.value), from: payment.from, nonce: payment.nonce, type: 2, chainId: 1n, hash: txHash,
+} as Awaited<ReturnType<typeof session.provider.getTransaction>>)
+const paymentReceipt = (txHash: string) => ({ hash: txHash,status:1,blockNumber:99,blockHash,gasUsed:1000n,gasPrice:1n,
+} as Awaited<ReturnType<typeof session.provider.getTransactionReceipt>>)
+
+it('retains a same-nonce replacement history before the wallet prompt and credits the earlier payment when it mines',async()=>{
+  state.policy.funding='native';const credit=await preparePrepaid(session)
+  await topUpPrepaid(session,publicSigner,100_000n,()=>{},credit)
+  const original=structuredClone(nativeRecord().topUp!),replacement=id('same nonce replacement')
+  vi.mocked(session.provider.getTransactionReceipt).mockResolvedValue(null)
+  vi.mocked(session.provider.getTransaction).mockResolvedValue(paymentTransaction(original,hash))
+  state.signPublic.mockImplementationOnce(async()=>{
+    expect(nativeRecord().topUp?.previous).toEqual([{hash,nonce:0}])
+    return{hash:replacement}
+  })
+  expect(await retryPrepaidTopUp(session,publicSigner,()=>{})).toBe(replacement)
+  expect(nativeRecord().topUp).toMatchObject({hash:replacement,nonce:0,previous:[{hash,nonce:0}]})
+  vi.mocked(session.provider.getTransactionReceipt).mockImplementation(async candidate=>candidate===hash?paymentReceipt(hash):null)
+  vi.mocked(session.provider.getTransaction).mockImplementation(async candidate=>paymentTransaction(original,candidate))
+  await expect(claimPrepaidTopUp(session)).resolves.toHaveProperty('available')
+  expect(JSON.parse((state.messages.at(-1)!.authorization as {payload:string}).payload).transactionHash).toBe(hash)
+  expect((await pendingPrepaid(session))?.topUpPending).toBe(false)
+})
+
+it('accepts an exact pasted replacement payment even when another payment hash was already saved',async()=>{
+  state.policy.funding='native';const credit=await preparePrepaid(session)
+  await topUpPrepaid(session,publicSigner,100_000n,()=>{},credit)
+  const payment=structuredClone(nativeRecord().topUp!),replacement=id('wallet replacement')
+  vi.mocked(session.provider.getTransaction).mockResolvedValue(paymentTransaction(payment,replacement))
+  await expect(claimPrepaidTopUp(session,replacement)).resolves.toHaveProperty('available')
+  expect(JSON.parse((state.messages.at(-1)!.authorization as {payload:string}).payload).transactionHash).toBe(replacement)
+})
+
+it('explicitly defers a rejected prompt after unrelated nonce consumption and permits a refund without another payment',async()=>{
+  state.policy.funding='native';const credit=await preparePrepaid(session)
+  state.signPublic.mockRejectedValueOnce(new Error('Wallet prompt rejected'))
+  await expect(topUpPrepaid(session,publicSigner,100_000n,()=>{},credit)).rejects.toThrow('rejected')
+  const retained=structuredClone(nativeRecord().topUp!)
+  state.publicLatest=1;state.publicPending=1
+  await expect(retryPrepaidTopUp(session,publicSigner,()=>{})).rejects.toThrow('nonce was consumed')
+  const publicCalls=state.signPublic.mock.calls.length
+  expect(await deferPrepaidTopUp(session)).toBe(1)
+  expect(nativeRecord().deferredTopUps).toEqual([retained]);expect(nativeRecord().topUp).toBeUndefined()
+  expect(await pendingPrepaid(session)).toMatchObject({topUpPending:false,deferredTopUpCount:1})
+  const refund=await preparePrepaidRefund(session)
+  state.send.mockImplementation(async packet=>{
+    const request=JSON.parse(packet.params.encryptedData[0]),auth=authenticateCreditRequest(scope(),ledgerId,request.authorization),payload=auth.payload
+    respond(packet,request,{kind:'refund',recipient:payload.recipient,gross:payload.gross,net:payload.net,
+      state:'submitted-or-unknown',nonce:10,transactionHash:id('refund after defer'),settlementHash:null,charged:null,netPaid:null},auth.key)
+  })
+  await expect(requestPrepaidRefund(session,refund,100_000n,publicOwner.address)).resolves.toHaveProperty('state','submitted-or-unknown')
+  expect(nativeRecord().deferredTopUps).toEqual([retained]);expect(state.signPublic).toHaveBeenCalledTimes(publicCalls)
+})
+
+it('claims a late deferred payment without clearing a different active payment or another archived record',async()=>{
+  state.policy.funding='native';let credit=await preparePrepaid(session)
+  await topUpPrepaid(session,publicSigner,100_000n,()=>{},credit)
+  const old=structuredClone(nativeRecord().topUp!)
+  await deferPrepaidTopUp(session)
+  credit=await preparePrepaid(session);state.signPublic.mockResolvedValueOnce({hash:id('second payment')})
+  await topUpPrepaid(session,publicSigner,200_000n,()=>{},credit)
+  const second=structuredClone(nativeRecord().topUp!);await deferPrepaidTopUp(session)
+  credit=await preparePrepaid(session);state.signPublic.mockResolvedValueOnce({hash:id('active third payment')})
+  await topUpPrepaid(session,publicSigner,300_000n,()=>{},credit)
+  const active=structuredClone(nativeRecord().topUp!)
+  vi.mocked(session.provider.getTransaction).mockResolvedValue(paymentTransaction(old,hash))
+  await expect(claimPrepaidTopUp(session,hash)).resolves.toHaveProperty('available')
+  expect(nativeRecord().topUp).toEqual(active);expect(nativeRecord().deferredTopUps).toEqual([second])
+  expect((await pendingPrepaid(session))?.deferredTopUpCount).toBe(1)
+})
+
+it('requires a pasted hash for archived payments instead of automatically scanning all local history',async()=>{
+  state.policy.funding='native';const credit=await preparePrepaid(session)
+  await topUpPrepaid(session,publicSigner,100_000n,()=>{},credit);const old=structuredClone(nativeRecord().topUp!)
+  await deferPrepaidTopUp(session)
+  vi.mocked(session.provider.getTransaction).mockResolvedValue(paymentTransaction(old,hash))
+  await expect(claimPrepaidTopUp(session)).rejects.toThrow('Paste its transaction hash')
+  expect(session.provider.getTransaction).not.toHaveBeenCalled()
+  await expect(claimPrepaidTopUp(session,hash)).resolves.toHaveProperty('available')
+  expect((await pendingPrepaid(session))?.deferredTopUpCount).toBe(0)
+  expect(state.signPublic).toHaveBeenCalledOnce()
+})
+
+it('retains the archived payment on canonical failure or a rejected/quarantined claim',async()=>{
+  state.policy.funding='native';const credit=await preparePrepaid(session)
+  await topUpPrepaid(session,publicSigner,100_000n,()=>{},credit);const old=structuredClone(nativeRecord().topUp!)
+  await deferPrepaidTopUp(session)
+  vi.mocked(session.provider.getTransaction).mockResolvedValue(paymentTransaction(old,hash))
+  state.canonical=false
+  await expect(claimPrepaidTopUp(session,hash)).rejects.toThrow('canonical history')
+  expect(nativeRecord().deferredTopUps).toEqual([old])
+  state.canonical=true;state.send.mockRejectedValueOnce(new Error('quarantined liability'))
+  await expect(claimPrepaidTopUp(session,hash)).rejects.toThrow('quarantined')
+  expect(nativeRecord().deferredTopUps).toEqual([old])
+})
+
+it.each(['payment-data','previous-hash','previous-nonce','duplicate-id','not-array'])('rejects damaged deferred payment data: %s',async damage=>{
+  state.policy.funding='native';const credit=await preparePrepaid(session)
+  await topUpPrepaid(session,publicSigner,100_000n,()=>{},credit);await deferPrepaidTopUp(session)
+  const record=nativeRecord(),payment=record.deferredTopUps![0]
+  if(damage==='payment-data')payment.transaction.data='0x'
+  if(damage==='previous-hash')payment.previous=[{hash:'0x1234',nonce:0}]
+  if(damage==='previous-nonce')payment.previous=[{hash,nonce:-1}]
+  if(damage==='duplicate-id')record.deferredTopUps!.push(structuredClone(payment))
+  if(damage==='not-array')record.deferredTopUps={} as never
+  await expect(pendingPrepaid(session)).rejects.toThrow(/damaged|Duplicate/)
+})
+
+it('repeated explicit deferrals do not create a lifetime funding cap or silently delete uncertain records',async()=>{
+  state.policy.funding='native'
+  for(let i=0;i<17;i++){
+    const credit=await preparePrepaid(session);state.signPublic.mockRejectedValueOnce(new Error('user rejected'))
+    await expect(topUpPrepaid(session,publicSigner,100_000n,()=>{},credit)).rejects.toThrow('user rejected')
+    expect(await deferPrepaidTopUp(session)).toBe(i+1)
+  }
+  const prior=structuredClone(nativeRecord().deferredTopUps),credit=await preparePrepaid(session)
+  await expect(topUpPrepaid(session,publicSigner,100_000n,()=>{},credit)).resolves.toBe(hash)
+  expect(nativeRecord().deferredTopUps).toEqual(prior);expect(nativeRecord().topUp?.hash).toBe(hash)
+  expect(state.signPublic).toHaveBeenCalledTimes(18)
+})
+
+it('never defers a private proof as if it were a native public payment',async()=>{
+  const credit=await preparePrepaid(session);await topUpPrepaid(session,publicSigner,100_000n,()=>{},credit)
+  await expect(deferPrepaidTopUp(session)).rejects.toThrow('No active native')
+  expect((await pendingPrepaid(session))?.topUpPending).toBe(true)
+})
+
+it('storage failure prevents a payment prompt and leaves active payment evidence intact if deferral cannot persist',async()=>{
+  state.policy.funding='native';const credit=await preparePrepaid(session)
+  const identity=structuredClone(state.record);state.writeError=true
+  await expect(topUpPrepaid(session,publicSigner,100_000n,()=>{},credit)).rejects.toThrow('storage quota')
+  expect(state.signPublic).not.toHaveBeenCalled();expect(state.record).toEqual(identity)
+  state.writeError=false;await topUpPrepaid(session,publicSigner,100_000n,()=>{},credit)
+  const retained=structuredClone(state.record);state.writeError=true
+  await expect(deferPrepaidTopUp(session)).rejects.toThrow('storage quota')
+  expect(state.record).toEqual(retained);expect(state.signPublic).toHaveBeenCalledOnce()
 })
