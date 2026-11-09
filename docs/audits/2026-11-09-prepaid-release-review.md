@@ -6,6 +6,8 @@ Date: 2026-11-09. This is an engineering review and release checklist, not produ
 
 The implementation and isolated proof tests establish a prepaid route that charges a user's reserved credit for included gas, including a reverted operation, and verifies owner-controlled refunds and native fee recovery. The read/trace adapter is implemented; its public read-only qualification and final static review passed. **Public release remains blocked** by exact-commit CI and actual ANON owner-wallet acceptance.
 
+Release follow-up: candidate `506bf952` passed 48 hosted checks with one skipped. The review branch now incorporates main `00af56f9` (PRs #1634 and #1635); fresh checks and review must cover that combined candidate. The merged SQLite advisory exception is removed because this branch already uses the fixed dependency. A successful owner-paid withdrawal of historical fees does not qualify the prepaid customer flow or ongoing native collection: those still require restricted live acceptance on each chain. Merge/deployment authorization does not waive these acceptance checks.
+
 | Area | Current evidence | Remaining gate |
 | --- | --- | --- |
 | Ethereum and BNB prepaid accounting | Durable reservations, finalized payment attribution, replay protection, refund liabilities and native recovery implemented; real SDK proofs passed on isolated forks | Restricted live acceptance |

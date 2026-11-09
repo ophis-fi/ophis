@@ -73,6 +73,47 @@ afterAll(async () => {
 });
 
 describe('computePublicStats', () => {
+  it('uses the settlement payer without multiplying partial fills or changing reward ownership', async () => {
+    const uid = UID('cc');
+    const recipient = W('cc');
+    await ins('cc', 1, recipient, '100');
+    await sql`UPDATE defillama_fills SET user_address = decode(${HUMAN_A}, 'hex')
+      WHERE trade_uid = decode(${uid}, 'hex')`;
+    await sql`INSERT INTO defillama_fills (
+      chain_id, block_number, log_index, trade_uid, transaction_hash, user_address,
+      settlement_timestamp, sell_token, sell_amount, volume_fee_bps, fee_verified)
+      VALUES (1, 2, ${fillLogIndex++}, decode(${uid}, 'hex'), decode(${'ab'.repeat(32)}, 'hex'),
+      decode(${HUMAN_A}, 'hex'), ${RECENT}, decode(${W('5e11')}, 'hex'), 1, 1, true)`;
+    await sql`INSERT INTO trade_reward_tickets (
+      wallet, ticket_id, amount_usdg, qualifying_trade_uid, qualifying_chain_id,
+      qualifying_value_usd, assignment_signature, signer_epoch, assignment_status)
+      VALUES (decode(${recipient}, 'hex'), 1, 1000000, decode(${uid}, 'hex'), 1,
+      100, decode(${'ab'.repeat(65)}, 'hex'), 1, 'confirmed')`;
+    try {
+      const s = await computePublicStats(sql, [1, 100]);
+      expect(s.distinctTraders).toBe(2);
+      expect(s.totalTrades).toBe(TOTAL_TRADES + 1);
+      expect(s.totalVolumeUsd).toBe(TOTAL_VOLUME + 100);
+      expect(s.avgTradeUsd).toBeCloseTo((TOTAL_VOLUME + 100) / (TOTAL_TRADES + 1), 2);
+      const [ticket] = await sql`SELECT encode(wallet, 'hex') AS wallet, assignment_status
+        FROM trade_reward_tickets WHERE ticket_id = 1`;
+      expect(ticket).toEqual({ wallet: recipient, assignment_status: 'confirmed' });
+      await sql`UPDATE defillama_fills SET fee_verified = false WHERE trade_uid = decode(${uid}, 'hex')`;
+      expect((await computePublicStats(sql, [1, 100])).distinctTraders).toBe(3);
+      await sql`UPDATE defillama_fills SET fee_verified = true WHERE trade_uid = decode(${uid}, 'hex')`;
+      // Missing or conflicting settlement identities must not be guessed.
+      await sql`UPDATE defillama_fills SET user_address = decode(${HUMAN_B}, 'hex')
+        WHERE trade_uid = decode(${uid}, 'hex') AND block_number = 2`;
+      expect((await computePublicStats(sql, [1, 100])).distinctTraders).toBe(3);
+      await sql`DELETE FROM defillama_fills WHERE trade_uid = decode(${uid}, 'hex')`;
+      expect((await computePublicStats(sql, [1, 100])).distinctTraders).toBe(3);
+    } finally {
+      await sql`DELETE FROM trade_reward_tickets WHERE ticket_id = 1`;
+      await sql`DELETE FROM defillama_fills WHERE trade_uid = decode(${uid}, 'hex')`;
+      await sql`DELETE FROM trades WHERE trade_uid = decode(${uid}, 'hex')`;
+    }
+  });
+
   it('excludes EVERY eth-flow router from distinctTraders but counts their trades + volume', async () => {
     const s = await computePublicStats(sql, [1, 100]);
     expect(s.totalTrades).toBe(TOTAL_TRADES); // humans + all routers are real trades

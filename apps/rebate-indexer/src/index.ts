@@ -7,7 +7,6 @@ import { runScorer } from './scorer.js';
 import { logger } from './logger.js';
 import { completeDefiLlamaBackfillIfReady } from './defillamaBackfill.js';
 import { repairRouterTrades } from './repair/routerTrades.js';
-import { repairDefiLlamaSettlementIdentity } from './repair/defillamaSettlement.js';
 import { runScheduledTradeRewards, startTradeRewardsScheduler } from './tradeRewards/scheduler.js';
 
 async function main() {
@@ -33,23 +32,22 @@ async function main() {
       const ran = await withPipelineLock(async () => {
         let inserted = 0;
         let priced = { priced: 0, failed: 0 };
+        const staleBefore = new Date();
         // Migration 0024 can requeue more owners than runFetcher's bounded batch.
         // Drain successive successful batches now; a persistent failure remains
         // fail-closed through defillama_reporting_state instead of serving partial data.
         for (let i = 0; i < 100; i++) {
-          const fetched = await runFetcher();
+          const fetched = await runFetcher(undefined, { staleBefore });
           inserted += fetched.inserted;
           const pass = await runPricer();
           priced = { priced: priced.priced + pass.priced, failed: priced.failed + pass.failed };
-          if (await completeDefiLlamaBackfillIfReady()) break;
+          await completeDefiLlamaBackfillIfReady();
           // A short batch means every currently eligible owner was attempted. Do
           // not hammer a persistently failing owner or an unpriceable fill 100 times;
           // readiness stays false and the nightly pipeline retries it safely.
           if (fetched.owners < FETCHER_MAX_OWNERS_PER_RUN) break;
           if (i === 99) logger.error('DefiLlama startup backfill hit guard limit');
         }
-        // Publish the priced primary data while historical audits retain the payout lock.
-        await runScorer();
         // A migration can requeue eth-flow routers. runFetcher intentionally
         // filters every router out before its owner loop, so those queue rows can
         // never delete themselves and the DefiLlama readiness gate stays closed.
@@ -64,18 +62,8 @@ async function main() {
         } catch (err) {
           logger.error({ err }, 'startup router repair failed (pipeline continues)');
         }
-        try {
-          const reportingRepair = await repairDefiLlamaSettlementIdentity();
-          logger.info(reportingRepair, 'startup DefiLlama settlement repair complete');
-        } catch (err) {
-          logger.error({ err }, 'startup DefiLlama settlement repair failed (reporting remains fail-closed)');
-        }
-        // Newly reconstructed fills need pricing before readiness can reopen.
-        const repairedPrices = await runPricer();
-        priced = {
-          priced: priced.priced + repairedPrices.priced,
-          failed: priced.failed + repairedPrices.failed,
-        };
+        // Archive reconciliation stays in the nightly pipeline: restarting must
+        // not monopolize the refresh lock or repeat full-history RPC scans.
         await completeDefiLlamaBackfillIfReady();
         const scored = await runScorer();
         logger.info({ inserted, priced, scored }, 'initial backfill complete');
