@@ -225,6 +225,21 @@ it('keeps a previously recorded decoder required after its configuration is remo
   expect((await readPublicDataFreshness(sql)).dataSources?.find(s => s.chainId === 100)?.status).toBe('partial');
 });
 
+it('a recent publication cannot make old or missing source coverage fresh', async () => {
+  vi.stubEnv('REBATES_REFRESH_MINUTES', '60');
+  await sql`INSERT INTO public_data_refresh_state (singleton, refreshed_at) VALUES (true, now())
+    ON CONFLICT (singleton) DO UPDATE SET refreshed_at = now()`;
+  await sql`INSERT INTO wallet_chain_fetches (wallet, chain_id, last_success_at, covered_through)
+    VALUES (decode(${owner.slice(2)}, 'hex'), 100, now(), now() - INTERVAL '3 hours')`;
+  const { readPublicDataFreshness } = await import('../src/freshness.js');
+  const status = async () => (await readPublicDataFreshness(sql)).dataSources?.find(s => s.chainId === 100)?.status;
+  expect(await status()).toBe('stale');
+  await sql`UPDATE wallet_chain_fetches SET covered_through = NULL WHERE chain_id = 100`;
+  expect(await status()).toBe('stale');
+  await sql`UPDATE wallet_chain_fetches SET covered_through = now() WHERE chain_id = 100`;
+  expect(await status()).toBe('fresh');
+});
+
 it('retains decoder identities and invalidates coverage and cursors during a full replay', async () => {
   await sql`INSERT INTO chain_source_fetches (source, chain_id, last_success_at, covered_through)
     VALUES ('decoder', 100, now(), now())`;

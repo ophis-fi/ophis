@@ -126,18 +126,35 @@ export async function computeDefiLlamaDay(
  */
 export async function computePublicStats(sql: Sql, chainIds: number[]): Promise<PublicStatsData> {
   const totalsRows = await sql<{ vol: string | null; trades: string; traders: string; chains: string; avg_trade: string | null }[]>`
+    WITH public_trades AS (
+      SELECT t.*, COALESCE(payer.wallet, t.wallet) AS trader_wallet
+      FROM trades t
+      -- Reward-backed aggregates can retain an old recipient. Reporting uses
+      -- the unambiguous settlement payer without rewriting reward history.
+      LEFT JOIN LATERAL (
+        SELECT decode(min(encode(f.user_address, 'hex')), 'hex') AS wallet
+        FROM defillama_fills f
+        WHERE f.chain_id = t.chain_id AND f.trade_uid = t.trade_uid
+          AND f.fee_verified = true
+          AND f.transaction_hash IS NOT NULL
+          AND octet_length(f.user_address) = 20
+          AND f.user_address <> decode(repeat('00', 20), 'hex')
+          AND ('0x' || encode(f.user_address, 'hex')) <> ALL(${ROUTER_WALLETS})
+        HAVING count(DISTINCT f.user_address) = 1
+      ) payer ON true
+      WHERE t.chain_id = ANY(${chainIds})
+    )
     SELECT
       COALESCE(SUM(value_usd), 0)::text        AS vol,
       COUNT(*)::text                           AS trades,
       -- distinct HUMANS: exclude eth-flow routers (never a person). Volume/trades
       -- above still include the router rows (real settled Ophis volume).
-      COUNT(DISTINCT wallet) FILTER (
-        WHERE ('0x' || encode(wallet, 'hex')) <> ALL(${ROUTER_WALLETS})
+      COUNT(DISTINCT trader_wallet) FILTER (
+        WHERE ('0x' || encode(trader_wallet, 'hex')) <> ALL(${ROUTER_WALLETS})
       )::text                                  AS traders,
       COUNT(DISTINCT chain_id)::text           AS chains,
       ROUND(AVG(value_usd)::numeric, 2)::text  AS avg_trade
-    FROM trades
-    WHERE chain_id = ANY(${chainIds})
+    FROM public_trades
   `;
   const byChainRows = await sql<{ chain_id: number; vol: string | null; n: string }[]>`
     SELECT chain_id, COALESCE(SUM(value_usd), 0)::text AS vol, COUNT(*)::text AS n

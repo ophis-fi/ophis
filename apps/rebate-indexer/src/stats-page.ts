@@ -139,7 +139,11 @@ export function renderStatsPage(s: PublicStats, query = new URLSearchParams()): 
   const rows = filtered.map(c => {
     const name = CHAIN_NAME[c.chainId] ?? `Chain ${c.chainId}`;
     const icon = CHAIN_ICON[c.chainId];
-    return `<tr><th scope="row"><span class="chain">${icon ? `<img src="/chain-icons/${c.chainId}" width="24" height="24" alt="" decoding="async">` : ''}${esc(name)}</span></th><td class="num">${fmtUsd(c.volumeUsd)}</td><td class="num">${fmtInt(c.trades)}</td></tr>`;
+    const source = s.dataSources?.find(source => source.chainId === c.chainId);
+    const covered = source?.coveredThrough
+      ? esc(source.coveredThrough.slice(0, 16).replace('T', ' ')) + ' UTC'
+      : source?.status === 'unavailable' ? 'Unavailable' : 'Not yet verified';
+    return `<tr><th scope="row"><span class="chain">${icon ? `<img src="/chain-icons/${c.chainId}" width="24" height="24" alt="" decoding="async">` : ''}${esc(name)}</span></th><td class="num">${fmtUsd(c.volumeUsd)}</td><td class="num">${fmtInt(c.trades)}</td><td class="num">${covered}</td></tr>`;
   }).join('');
   const heading = (key: string, label: string): string => {
     const selected = key === column;
@@ -246,9 +250,9 @@ ${freshnessWarning}
 <div class="actions"><button name="sort" value="${activeSort}">Apply filters</button><a href="/stats#chains">Reset</a><p>Showing ${filtered.length} of ${s.byChain.length} chains with indexed records. Lifetime totals below include all reporting chains.</p></div>
 <div class="table-scroll" role="region" aria-label="Settled volume by chain" tabindex="0">
 <table>
-  <caption>Lifetime indexed volume by chain. Select a column heading to sort.</caption>
-  <thead><tr>${heading('chain', 'Chain')}${heading('volume', 'Volume settled')}${heading('trades', 'Trades')}</tr></thead>
-  <tbody>${rows || `<tr><td colspan="3">${s.byChain.length ? 'No chains match these filters.' : 'No settled volume indexed yet.'}</td></tr>`}</tbody>
+  <caption>Lifetime indexed volume by chain. Data through is the oldest verified source coverage; publication time can be newer. Select a column heading to sort.</caption>
+  <thead><tr>${heading('chain', 'Chain')}${heading('volume', 'Volume settled')}${heading('trades', 'Trades')}<th scope="col" class="num">Data through</th></tr></thead>
+  <tbody>${rows || `<tr><td colspan="4">${s.byChain.length ? 'No chains match these filters.' : 'No settled volume indexed yet.'}</td></tr>`}</tbody>
 </table>
 </div>
 </form>
@@ -261,6 +265,6 @@ ${freshnessWarning}
   <div class="card"><div class="n">${fmtInt(s.chainsActive)}</div><div class="l">Chains with indexed trades</div></div>
 </div>
 <p class="note">Standard batch-auction fees combine a 1 bp Ophis base with capped price-improvement capture. CoW-hosted chains also apply upstream fees. Arc uses the same capped backend improvement policy for in-market orders. Bridge and conversion costs differ; check the final route quote. Volume is priced in USD at index time and refreshed periodically. Source: <a href="https://github.com/ophis-fi/ophis">github.com/ophis-fi/ophis</a>.</p>
-<div class="foot"><span><a href="https://docs.ophis.fi/fees">Fee model</a> &middot; <a href="https://docs.ophis.fi/comparison">How Ophis compares</a> &middot; <a href="https://swap.ophis.fi/">Open the app</a></span><span>${updated ? `Data as of ${updated}` : 'Data publication time unavailable'}</span></div>
+<div class="foot"><span><a href="https://docs.ophis.fi/fees">Fee model</a> &middot; <a href="https://docs.ophis.fi/comparison">How Ophis compares</a> &middot; <a href="https://swap.ophis.fi/">Open the app</a></span><span>${updated ? `Published ${updated}` : 'Data publication time unavailable'}</span></div>
 </main></body></html>`;
 }

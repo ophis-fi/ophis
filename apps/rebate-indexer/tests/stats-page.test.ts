@@ -27,7 +27,21 @@ describe('renderStatsPage', () => {
     expect(html).toContain('Optimism');
     expect(html).toContain('Base');
     expect(html).toContain('Ethereum');
-    expect(html).toContain('Data as of 2026-06-21 14:58 UTC');
+    expect(html).toContain('Published 2026-06-21 14:58 UTC');
+  });
+
+  it('shows actual chain coverage separately from a newer publication', () => {
+    const html = renderStatsPage({ ...sample, dataSources: [
+      { chainId: 10, status: 'fresh', lastSuccessAt: sample.dataAsOf, coveredThrough: '2026-06-21T13:00:00.000Z', failedWallets: 0, unpricedTrades: 0 },
+      { chainId: 8453, status: 'unavailable', lastSuccessAt: null, coveredThrough: null, failedWallets: 1, unpricedTrades: 0 },
+    ] });
+    const table = html.slice(html.indexOf('<tbody>'), html.indexOf('</tbody>'));
+    expect(html).toContain('Data through');
+    expect(table).toContain('2026-06-21 13:00 UTC');
+    expect(table).toContain('Unavailable');
+    expect(table).toContain('Not yet verified');
+    expect(table).not.toContain('2026-06-21 14:58 UTC');
+    expect(html).toContain('Published 2026-06-21 14:58 UTC');
   });
 
   it('filters each column, sorts numerically, and leaves lifetime totals unchanged', () => {

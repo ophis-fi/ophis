@@ -4,9 +4,14 @@ import { OPHIS_ETHFLOW_OWNER_BY_CHAIN } from './fetcher.js';
 import { settleDecoderChains } from './cow/onchain.js';
 import { ARC_CHAIN_ID } from './affiliate/rates.js';
 
-/** Daily publication runs at 02:00 UTC. Two hours of grace avoids a false alarm
- * while a slow backfill/pricing pass finishes, while still paging on the same day. */
-export const PUBLIC_DATA_MAX_AGE_MS = 26 * 60 * 60 * 1000;
+/** Shared by the scheduler and its public freshness checks. */
+export function refreshIntervalMs(): number {
+  const raw = process.env['REBATES_REFRESH_MINUTES'];
+  const mins = raw === undefined ? 60 : Number(raw);
+  // The scheduler polls every ten minutes.
+  if (!Number.isFinite(mins) || mins < 10 || mins > 24 * 60) return 60 * 60_000;
+  return Math.floor(mins) * 60_000;
+}
 
 export type PublicDataStaleReason = 'never_refreshed' | 'refresh_overdue' | 'invalid_refresh_timestamp' | 'ingestion_incomplete';
 
@@ -27,8 +32,8 @@ export interface PublicDataFreshness {
   dataSources?: PublicDataSource[];
 }
 
-/** Pure freshness assessment, kept separate from the database read for exact
- * boundary and clock tests. `dataAsOf` is the completed scorer publication time. */
+/** Allow one scheduled refresh interval plus one interval of grace.
+ * `dataAsOf` is the completed scorer publication time, not source coverage. */
 export function assessPublicDataFreshness(
   refreshedAt: string | null,
   nowMs = Date.now(),
@@ -52,7 +57,7 @@ export function assessPublicDataFreshness(
     };
   }
 
-  const dataFresh = nowMs - refreshedMs <= PUBLIC_DATA_MAX_AGE_MS;
+  const dataFresh = nowMs - refreshedMs <= 2 * refreshIntervalMs();
   return {
     dataAsOf: refreshedAt,
     dataFresh,
@@ -96,8 +101,8 @@ export async function readPublicDataFreshness(
     SELECT c.chain_id, count(*)::int AS total, count(*) FILTER (WHERE c.checked)::int AS checked,
       count(*) FILTER (WHERE c.failed)::int AS failed,
       count(*) FILTER (WHERE c.failed AND c.is_wallet)::int AS failed_wallets,
-      count(*) FILTER (WHERE c.last_success_at IS NULL OR c.last_success_at <
-        ${new Date(nowMs - PUBLIC_DATA_MAX_AGE_MS).toISOString()}::timestamptz)::int AS overdue,
+      count(*) FILTER (WHERE c.covered_through IS NULL OR c.covered_through <
+        ${new Date(nowMs - 2 * refreshIntervalMs()).toISOString()}::timestamptz)::int AS overdue,
       min(c.last_success_at)::text AS last_success_at,
       CASE WHEN count(*) FILTER (WHERE c.covered_through IS NULL) = 0
         THEN min(c.covered_through)::text END AS covered_through,
