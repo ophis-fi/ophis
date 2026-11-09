@@ -115,6 +115,22 @@ it('rotates proven wallets by attempt age and preserves FIFO for unattempted wal
     .toEqual([older, owner, unproven, retry, newcomer]);
 });
 
+it('excludes historical router enrollments before filling a bounded wallet batch', async () => {
+  const router = '0x764fe4aa1ff493cf39931c7923c8ff5837596504';
+  await sql`INSERT INTO tracked_wallets (wallet, first_seen)
+    VALUES (decode(${router.slice(2)}, 'hex'), now() - interval '1 day')`;
+  await sql`INSERT INTO tracked_wallets (wallet)
+    SELECT decode(lpad(to_hex(n), 40, '0'), 'hex') FROM generate_series(1, 500) n`;
+  mocks.trades.mockResolvedValue([]);
+  const cutoff = new Date();
+  expect((await runFetcher(deps, { staleBefore: cutoff })).owners).toBe(500);
+  expect((await runFetcher(deps, { staleBefore: cutoff })).owners).toBe(1);
+  const [coverage] = await sql`SELECT count(DISTINCT wallet)::int AS wallets
+    FROM wallet_chain_fetches WHERE chain_id = 100`;
+  expect(coverage!.wallets).toBe(501);
+  expect(mocks.trades.mock.calls.some(([request]) => request.owner === router)).toBe(false);
+});
+
 it('reports a synthetic-owner failure even when the tracked wallet succeeds', async () => {
   mocks.trades.mockImplementation(async ({ chainId, owner: account }) => {
     if (chainId === 130 && account !== owner) throw new Error('router metadata unavailable');

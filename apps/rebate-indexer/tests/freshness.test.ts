@@ -49,6 +49,13 @@ describe('assessPublicDataFreshness', () => {
       dataStaleReason: 'invalid_refresh_timestamp',
     });
   });
+
+  it('keeps aging data stale during the planned nightly quiet window', () => {
+    vi.stubEnv('REBATES_REFRESH_MINUTES', '60');
+    const published = '2026-11-08T23:00:00.000Z';
+    expect(assessPublicDataFreshness(published, Date.parse('2026-11-09T01:30:00.000Z')))
+      .toMatchObject({ dataAsOf: published, dataFresh: false, dataStaleReason: 'refresh_overdue' });
+  });
 });
 
 

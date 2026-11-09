@@ -33,6 +33,7 @@ export interface PublicDataFreshness {
 }
 
 /** Allow one scheduled refresh interval plus one interval of grace.
+ * Planned quiet windows still expose aging data as stale.
  * `dataAsOf` is the completed scorer publication time, not source coverage. */
 export function assessPublicDataFreshness(
   refreshedAt: string | null,
