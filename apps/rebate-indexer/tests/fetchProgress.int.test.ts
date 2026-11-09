@@ -3,7 +3,11 @@ import type { StartedPostgreSqlContainer } from '@testcontainers/postgresql';
 import { startPg, stopPg } from './fixtures/pgContainer.js';
 import { readFileSync } from 'node:fs';
 
-const mocks = vi.hoisted(() => ({ trades: vi.fn(), order: vi.fn() }));
+const mocks = vi.hoisted(() => ({ trades: vi.fn(), order: vi.fn(), decoder: vi.fn() }));
+vi.mock('../src/cow/onchain.js', async (importOriginal) => ({
+  ...await importOriginal<typeof import('../src/cow/onchain.js')>(),
+  runSettleDecoder: mocks.decoder,
+}));
 vi.mock('../src/cow/client.js', () => ({
   SUPPORTED_CHAIN_IDS: [100, 130],
   listTrades: mocks.trades,
@@ -33,6 +37,7 @@ afterAll(async () => {
 });
 
 beforeEach(async () => {
+  mocks.decoder.mockReset().mockResolvedValue(0);
   await sql`TRUNCATE tracked_wallets, trades, defillama_fills, defillama_backfill_wallets, non_ophis_orders, chain_source_fetches CASCADE`;
   await sql`INSERT INTO tracked_wallets (wallet) VALUES (decode(${owner.slice(2)}, 'hex'))`;
   mocks.trades.mockReset().mockImplementation(async ({ chainId, owner: account }) => {
@@ -135,6 +140,38 @@ it('includes an incomplete configured decoder in chain coverage', async () => {
   const coverage = await (await import('../src/freshness.js')).readPublicDataFreshness(sql);
   expect(coverage.dataSources?.find(source => source.chainId === 5042)?.status).toBe('partial');
   expect(coverage.dataSources?.find(source => source.chainId === 5042)?.failedWallets).toBe(0);
+});
+
+it('records decoder completion after a null timestamp and preserves coverage on an incomplete retry', async () => {
+  vi.stubEnv('SETTLE_DECODER_CHAINS', '5042');
+  mocks.trades.mockResolvedValue([]);
+  let coveredThrough: Date | undefined;
+  mocks.decoder.mockImplementation(async ({ reportProgress }) => {
+    await reportProgress(5042, coveredThrough !== undefined, coveredThrough);
+    return 0;
+  });
+  await runFetcher(deps);
+  const [initial] = await sql`SELECT * FROM chain_source_fetches WHERE source = 'decoder' AND chain_id = 5042`;
+  expect(initial).toMatchObject({ failed: true, last_success_at: null, covered_through: null });
+
+  coveredThrough = new Date('2026-11-09T07:00:00.000Z');
+  await runFetcher(deps);
+  const [complete] = await sql`SELECT * FROM chain_source_fetches WHERE source = 'decoder' AND chain_id = 5042`;
+  expect(complete!.failed).toBe(false);
+  expect(complete!.last_success_at).not.toBeNull();
+  expect(new Date(complete!.covered_through)).toEqual(coveredThrough);
+
+  coveredThrough = undefined;
+  await runFetcher(deps);
+  const [retry] = await sql`SELECT * FROM chain_source_fetches WHERE source = 'decoder' AND chain_id = 5042`;
+  expect(retry).toMatchObject({ failed: true, last_success_at: complete!.last_success_at,
+    covered_through: complete!.covered_through });
+
+  coveredThrough = new Date('2026-11-09T08:00:00.000Z');
+  await runFetcher(deps);
+  const [recovered] = await sql`SELECT * FROM chain_source_fetches WHERE source = 'decoder' AND chain_id = 5042`;
+  expect(recovered!.failed).toBe(false);
+  expect(new Date(recovered!.covered_through)).toEqual(coveredThrough);
 });
 
 it('refetches a cached chain after the wallet is requeued at a newer repair boundary', async () => {

@@ -1389,7 +1389,7 @@ export async function runFetcher(
           upsertTrades,
           reportProgress: async (chainId, complete, coveredThrough) => {
             await sql`INSERT INTO chain_source_fetches (source, chain_id, last_success_at, covered_through, failed)
-              VALUES ('decoder', ${chainId}, CASE WHEN ${complete} THEN now() END, ${coveredThrough ?? null}, ${!complete})
+              VALUES ('decoder', ${chainId}, CASE WHEN ${complete} THEN now() END, ${coveredThrough?.toISOString() ?? null}, ${!complete})
               ON CONFLICT (source, chain_id) DO UPDATE SET last_attempt_at = now(),
                 last_success_at = COALESCE(EXCLUDED.last_success_at, chain_source_fetches.last_success_at),
                 covered_through = COALESCE(EXCLUDED.covered_through, chain_source_fetches.covered_through),
