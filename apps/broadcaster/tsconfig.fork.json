@@ -1,0 +1,5 @@
+{
+  "extends": "./tsconfig.typecheck.json",
+  "include": ["tests/prepaid-fork.fixture.ts"],
+  "exclude": []
+}

@@ -6,5 +6,6 @@
       "@railgun-community/shared-models": ["./node_modules/@railgun-community/shared-models"],
       "ethers": ["./node_modules/ethers"]
     }
-  }
+  },
+  "exclude": ["tests/prepaid-fork.fixture.ts"]
 }

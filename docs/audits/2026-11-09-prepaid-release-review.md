@@ -49,6 +49,10 @@ The latest reported regression checkpoint includes the dual-RPC adapter:
 | Adapter-inclusive static scan | Completed on the immutable v6 source snapshot; findings and limits below |
 | Exact-commit CI | Pending at this checkpoint; recheck main compatibility at the final candidate commit |
 
+The standalone broadcaster build was also reproduced without any installed client dependencies and produced the same executable digest. The cross-workspace proof fixture has a separate strict typecheck after both locked dependency trees are installed; CI runs both checks and watches the client sources and dependency manifests. This build-configuration follow-up does not change the runtime bundle or discard fixture coverage.
+
+The backend lockfile now resolves fixed `libsqlite3-sys` 0.39.1 through a one-manifest compatibility patch to the complete upstream SQLx SQLite 0.8.6 driver. Ten upstream driver tests, real bundled SQLite 3.54.1 queries and focused PostgreSQL compilation passed; other lockfile package records and the active PostgreSQL dependency graph are unchanged. The patch adds no advisory exception. Provenance, exact differences and limits are documented in [SQLX-SQLITE-PATCH.md](../../apps/backend/vendor/SQLX-SQLITE-PATCH.md). Hosted dependency gates must still pass on the combined commit.
+
 Two isolated mainnet forks completed six real SDK proofs and four operator submissions each: top-up/claim, swap, withdrawal, included failure accounting, owner refund, and native collection. They exercised the actual pinned pool and ANON gateway with synthetic accounts; the production accounting and native-transfer verifier accepted the resulting evidence. Owner gas costs were measured, a real private-fee output was included, and remaining customer credit stayed backed.
 
 | Evidence | BNB v7 | Ethereum v9 |
@@ -76,6 +80,8 @@ The latest completed static report is `codeql-final-v6/REPORT.md`, snapshot `94a
 
 - CodeQL 2.27.4 extracted all expected JS/TS/HTML files. Official security/quality and extended queries, additional Security Lab queries, and custom decrypted-Waku/SQLite models produced 53 baseline and 47 modeled alerts, reviewed with no newly identified exploitable production finding. The one new alert is an intentional loopback mock-RPC error response in `bnb-trace-provider.test.ts`, used to verify production error sanitization. These counts are not zero findings.
 - Semgrep OSS 1.136.0 scanned the 214-file snapshot with 163 applicable rules, including security-audit, secrets, JavaScript, Node.js and additional Trail of Bits/elttam/Apiiro rules. Thirteen unchanged matches were reviewed as nonblocking. Four test-only timeouts cleared on targeted retry. One invalid third-party rule and 31 test-only partial-parsing warnings remain; there was no production parsing failure. OSS analysis does not provide Semgrep Pro interprocedural coverage.
+
+The later typecheck/CI configuration split and SQLite dependency compatibility patch have separate independent reviews and the validation above. They do not alter the scanned private-client, credit-accounting or RPC-adapter runtime sources; the SQLite driver source is byte-identical to its checksummed upstream archive. The v6 scan is not presented as a new Rust dependency audit.
 
 Slither/Pashov-method evidence belongs to earlier unchanged Solidity guard scope. The new TypeScript/SQLite implementation has not been described as freshly Slither-audited, Pashov-certified or formally verified with Verity. Existing Rust dependency/timer fixes are retained in this PR; their recorded audit/gate results do not replace final CI on the combined commit.
 

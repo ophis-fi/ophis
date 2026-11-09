@@ -1,6 +1,14 @@
 # Isolated prepaid proof qualification
 
-Run from `apps/broadcaster` with Node 22 and the existing dependencies:
+The cross-workspace fixture uses both client and server dependencies. From `apps/broadcaster`, install each locked dependency tree and typecheck it separately from the standalone broadcaster build:
+
+```sh
+pnpm install --ignore-workspace --frozen-lockfile --ignore-scripts
+pnpm --dir ../railgun install --ignore-workspace --frozen-lockfile --ignore-scripts
+pnpm exec tsc --noEmit -p tsconfig.fork.json
+```
+
+Run with Node 22:
 
 ```sh
 node --max-old-space-size=4096 tests/prepaid-fork-roundtrip.mjs
