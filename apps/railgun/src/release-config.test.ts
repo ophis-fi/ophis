@@ -8,10 +8,11 @@ import type { WalletSession } from './wallet'
 vi.mock('./config', async (original) => ({ ...await original<typeof import('./config')>(), ENVIRONMENT: 'ethereum' }))
 afterEach(() => vi.restoreAllMocks())
 
-it('approves native Ethereum prepayment within the protected route limits while BNB remains gated', () => {
+it('pins native Ethereum and BNB prepayment to the owner identity and approved limits', () => {
   const protectedRoute = PROTECTED_BROADCASTERS[1]![0]
   expect(PREPAID_BROADCASTERS[1]).toEqual({ ...protectedRoute, operator: PREPAID_OPERATOR, funding: 'native' })
-  expect(PREPAID_BROADCASTERS[56]!.expiresAt).toBe(0)
+  expect(PREPAID_BROADCASTERS[56]).toEqual({ operator: PREPAID_OPERATOR, railgunAddress: FEE_SIGNER, funding: 'native',
+    expiresAt: protectedRoute.expiresAt, maxGasPrice: 100_000_000n, maxTransactionCost: 250_000_000_000_000n })
 })
 
 it('binds Ethereum discovery and protection to the reviewed Ophis fee identity with an explicit review expiry', () => {
@@ -20,7 +21,7 @@ it('binds Ethereum discovery and protection to the reviewed Ophis fee identity w
   expect(Object.keys(PROTECTED_BROADCASTERS)).toEqual(['1'])
   expect(PROTECTED_BROADCASTERS[1]).toEqual([
     { railgunAddress: FEE_SIGNER, expiresAt: Date.parse('2026-11-13T00:00:00Z'),
-      maxGasPrice: 500_000_000n, maxTransactionCost: 1_500_000_000_000_000n },
+      maxGasPrice: 1_000_000_000n, maxTransactionCost: 3_000_000_000_000_000n },
   ])
 })
 
@@ -38,7 +39,7 @@ it('preserves common withdrawals after swap approval expiry with the pinned iden
   await expect(assertSubmittable(session, selected,
     { evmGasType: EVMGasType.Type1, gasEstimate: 100_000n, gasPrice: 100_000_000n })).resolves.toBeUndefined()
   await expect(assertSubmittable(session, selected,
-    { evmGasType: EVMGasType.Type1, gasEstimate: 100_000n, gasPrice: 600_000_000n })).rejects.toThrow(/broadcaster limits/)
+    { evmGasType: EVMGasType.Type1, gasEstimate: 100_000n, gasPrice: 1_100_000_000n })).rejects.toThrow(/broadcaster limits/)
 })
 
 it.each(['price', 'budget', 'valid'])('checks the reviewed %s limit before a proof or submission', async (condition) => {
@@ -48,8 +49,8 @@ it.each(['price', 'budget', 'valid'])('checks the reviewed %s limit before a pro
   const selected = { railgunAddress: FEE_SIGNER, tokenAddress: TOKENS.WETH.address,
     tokenFee: { feePerUnitGas: '1150000000000000000', expiration: Date.now() + 600_000,
       relayAdapt7702: CONFIG.relayAdapt7702Contract } } as SelectedBroadcaster
-  const gas = { evmGasType: EVMGasType.Type4 as const, gasEstimate: condition === 'price' ? 100_000n : condition === 'budget' ? 4_000_000n : 3_000_000n,
-    maxFeePerGas: condition === 'price' ? 600_000_000n : 400_000_000n, maxPriorityFeePerGas: 1n }
+  const gas = { evmGasType: EVMGasType.Type4 as const, gasEstimate: condition === 'price' ? 100_000n : condition === 'budget' ? 8_000_000n : 3_000_000n,
+    maxFeePerGas: condition === 'price' ? 1_100_000_000n : 400_000_000n, maxPriorityFeePerGas: 1n }
   if (condition === 'valid') await expect(assertSubmittable(session, selected, gas)).resolves.toBeUndefined()
   else {
     await expect(assertSubmittable(session, selected, gas)).rejects.toThrow(/exceeds the Ophis broadcaster limits/)

@@ -86,7 +86,7 @@ it.each(['OPHIS_BROADCASTER_OPERATOR_ADDRESS', 'OPHIS_BROADCASTER_EXECUTION_GUAR
   },
 )
 
-it('blocks BNB public startup and unarmed recovery before any read, signature or disclosure', async () => {
+it('blocks BNB public startup and recovery without native prepayment before any read, signature or disclosure', async () => {
   vi.stubEnv('OPHIS_BROADCASTER_CHAIN_ID', '56')
   const { settings } = await import('../src/config')
   const env = { ...pilotEnv, OPHIS_BROADCASTER_ADMISSION: 'public',
@@ -97,6 +97,24 @@ it('blocks BNB public startup and unarmed recovery before any read, signature or
   for (const command of ['retry', 'cancel'] as const)
     await expect(recover(command, [], disabled, null as never, null as never, null as never, null as never))
       .rejects.toThrow('restricted to pilot admission')
+})
+
+it('allows BNB public native prepayment while retaining the signing and money prerequisites', async () => {
+  vi.stubEnv('OPHIS_BROADCASTER_CHAIN_ID', '56')
+  const { settings, assertSigningNetwork } = await import('../src/config')
+  const env = { ...pilotEnv, OPHIS_BROADCASTER_ADMISSION: 'public', OPHIS_BROADCASTER_CREDIT_PAYMENT_MODE: 'public-native',
+    OPHIS_BROADCASTER_PILOT_ACCOUNT: undefined, OPHIS_BROADCASTER_PILOT_WITHDRAWAL_RECIPIENT: undefined }
+  const config = settings(env)
+  expect(config).toMatchObject({ chainId: 56, enabled: true, admission: 'public', creditPaymentMode: 'public-native',
+    executionGuard: pilotEnv.OPHIS_BROADCASTER_EXECUTION_GUARD, operatorAddress: pilotEnv.OPHIS_BROADCASTER_OPERATOR_ADDRESS,
+    maxGasPrice: 500_000_000n, maxTransactionCost: 500_000_000_000_000n, reserve: 19_500_000_000_000_000n, marginBps: 1500n })
+  expect(() => assertSigningNetwork(config)).not.toThrow()
+  for (const field of ['OPHIS_BROADCASTER_OPERATOR_ADDRESS', 'OPHIS_BROADCASTER_EXECUTION_GUARD',
+    'OPHIS_BROADCASTER_MAX_GAS_PRICE_WEI', 'OPHIS_BROADCASTER_MAX_TX_COST_WEI', 'OPHIS_BROADCASTER_DAILY_BUDGET_WEI',
+    'OPHIS_BROADCASTER_RESERVE_WEI', 'OPHIS_BROADCASTER_MARGIN_BPS']) {
+    expect(() => settings({ ...env, [field]: undefined })).toThrow()
+  }
+  expect(() => settings({ ...env, OPHIS_BROADCASTER_PILOT_ACCOUNT: pilotEnv.OPHIS_BROADCASTER_PILOT_ACCOUNT })).toThrow('pilot restrictions')
 })
 
 it.each(['0', '-1', '01', '1.0', '1e0', '8453', '10', '999999999999999999999999999999'])(

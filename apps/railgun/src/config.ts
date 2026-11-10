@@ -58,8 +58,7 @@ export const QUOTER = SELECTED_NETWORK.quoter
 export const OPHIS_BROADCASTER =
   '0zk1qy08nqrftxezyxdegx6ca055tr65f2hf3u24j9urx04e5fnzepv6nrv7j6fe3z53luvr6qkgtjukzmkcp856gs5a6wzdd3pnesr9r6ljvym9l3a4fcepgkvek3f'
 export const PREPAID_OPERATOR = '0x001486E70A0c9291f5F55c68914eE0e4E4A604d4'
-// Prepaid approval never opens the legacy, unsecured broadcaster path. BNB's
-// reviewed pilot limits remain disabled in the public build pending acceptance.
+// These approvals cover native prepayment only; legacy requests remain rejected by Ophis.
 export const PREPAID_BROADCASTERS: Readonly<Partial<Record<number, {
   operator: string
   railgunAddress: string
@@ -69,9 +68,9 @@ export const PREPAID_BROADCASTERS: Readonly<Partial<Record<number, {
   funding?: 'native'
 }>>> = {
   1: { operator: PREPAID_OPERATOR, railgunAddress: OPHIS_BROADCASTER, funding: 'native',
-    expiresAt: Date.parse('2026-11-13T00:00:00Z'), maxGasPrice: 500_000_000n, maxTransactionCost: 1_500_000_000_000_000n },
+    expiresAt: Date.parse('2026-11-13T00:00:00Z'), maxGasPrice: 1_000_000_000n, maxTransactionCost: 3_000_000_000_000_000n },
   56: { operator: PREPAID_OPERATOR, railgunAddress: OPHIS_BROADCASTER, funding: 'native',
-    expiresAt: 0, maxGasPrice: 100_000_000n, maxTransactionCost: 250_000_000_000_000n },
+    expiresAt: Date.parse('2026-11-13T00:00:00Z'), maxGasPrice: 100_000_000n, maxTransactionCost: 250_000_000_000_000n },
 }
 // Ethereum uses the verified Ophis fee identity; other networks retain their existing discovery signer.
 export const FEE_SIGNER = CHAIN_ID === 1 ? OPHIS_BROADCASTER :
@@ -86,7 +85,7 @@ export const PROTECTED_BROADCASTERS: Readonly<Partial<Record<number, readonly {
   maxGasPrice: bigint
   maxTransactionCost: bigint
 }[]>>> = { 1: [{ railgunAddress: OPHIS_BROADCASTER, expiresAt: Date.parse('2026-11-13T00:00:00Z'),
-  maxGasPrice: 500_000_000n, maxTransactionCost: 1_500_000_000_000_000n }] }
+  maxGasPrice: 1_000_000_000n, maxTransactionCost: 3_000_000_000_000_000n }] }
 export const ERC20 = new Interface([
   'function approve(address spender,uint256 amount) returns (bool)',
   'function allowance(address owner,address spender) view returns (uint256)',

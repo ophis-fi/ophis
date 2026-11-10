@@ -840,7 +840,8 @@ describe('BNB withdrawal admission', () => {
 
   it.each(['withdraw-quote', 'withdraw-max'])('retains external COMMON discovery for %s with expired prepaid approval', async (action) => {
     const { wireWalletActions } = await import('./wallet-actions')
-    const { TOKENS } = await import('./config')
+    const { PREPAID_BROADCASTERS, TOKENS } = await import('./config')
+    PREPAID_BROADCASTERS[56]!.expiresAt = Date.now() - 1
     await wireWalletActions({} as WalletSession)
     await elements[action].onclick?.()
     expect(mocks.credit).not.toHaveBeenCalled()
