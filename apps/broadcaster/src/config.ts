@@ -64,11 +64,11 @@ export interface Settings {
   operatorAddress?: string
 }
 
-export function assertSigningNetwork(config: Pick<Settings, 'chainId' | 'mode' | 'admission'>): void {
+export function assertSigningNetwork(config: Pick<Settings, 'chainId' | 'mode' | 'admission' | 'creditPaymentMode'>): void {
   if (config.chainId !== CHAIN_ID) throw new Error('Signing must match the process broadcaster chain.')
-  // BNB private-delivery qualification permits its restricted pilot; fee-paid live acceptance is still outstanding.
-  if (config.mode === 'mainnet' && CHAIN_ID === 56 && config.admission !== 'pilot')
-    throw new Error('BNB mainnet signing is restricted to pilot admission pending live fee-paid acceptance.')
+  // Public BNB execution requires native prepayment; the older fee mode stays in its pilot.
+  if (config.mode === 'mainnet' && CHAIN_ID === 56 && config.admission !== 'pilot' && config.creditPaymentMode !== 'public-native')
+    throw new Error('BNB mainnet signing without native prepayment is restricted to pilot admission pending live fee-paid acceptance.')
   if (config.mode === 'mainnet' && CHAIN_ID !== 1 && CHAIN_ID !== 56)
     throw new Error('Mainnet signing on this chain awaits qualified private delivery and live acceptance.')
 }
@@ -104,7 +104,7 @@ export function settings(env: NodeJS.ProcessEnv): Settings {
     return BigInt(raw)
   }
   const enabled = env.OPHIS_BROADCASTER_ENABLED === '1'
-  if (enabled) assertSigningNetwork({ chainId: CHAIN_ID, mode, admission })
+  if (enabled) assertSigningNetwork({ chainId: CHAIN_ID, mode, admission, creditPaymentMode })
   const maxGasPrice = integer('OPHIS_BROADCASTER_MAX_GAS_PRICE_WEI', '0')
   const maxTransactionCost = integer('OPHIS_BROADCASTER_MAX_TX_COST_WEI', '0')
   const reserve = integer('OPHIS_BROADCASTER_RESERVE_WEI', '0')
