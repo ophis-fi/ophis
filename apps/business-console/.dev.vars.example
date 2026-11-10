@@ -1,0 +1,3 @@
+# Copy to .dev.vars (git-ignored). "pnpm seed" creates the file with a fresh random key when it is missing.
+# HMAC key for the stateless passkey challenges. At least 32 random bytes: openssl rand -base64 32
+CHALLENGE_KEY=

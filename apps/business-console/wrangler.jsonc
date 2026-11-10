@@ -1,0 +1,24 @@
+{
+  "$schema": "https://developers.cloudflare.com/workers/wrangler/config-schema.json",
+  "name": "ophis-business-console",
+  "main": "src/server/index.ts",
+  "compatibility_date": "2026-10-21",
+  // Static pages cost no Worker request and take their headers from public/_headers. Only /api/* runs the Worker.
+  "assets": { "directory": "./dist", "binding": "ASSETS", "run_worker_first": ["/api/*"] },
+  // One hostname only (security-design.md section 1, condition 6).
+  "workers_dev": false,
+  "preview_urls": false,
+  "observability": { "enabled": false },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "ophis-business",
+      // Placeholder: local only so far. Create the real database with --jurisdiction=eu; it cannot be changed later.
+      "database_id": "00000000-0000-0000-0000-000000000000",
+      "migrations_dir": "migrations",
+    },
+  ],
+  // Selects the constants in src/server/passkeys.ts. The relying-party id and origin are never read from a request.
+  "vars": { "ENVIRONMENT": "local" },
+  "dev": { "ip": "127.0.0.1", "port": 8787 },
+}
