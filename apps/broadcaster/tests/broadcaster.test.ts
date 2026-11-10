@@ -309,25 +309,45 @@ describe.runIf([1, 56].includes(CHAIN_ID))('prepaid execution through the encryp
     expect(kind === 'refund' ? replay.transactionHash : replay.txHash).toBe(saved.hash)
     expect(f.sign).toHaveBeenCalledOnce()
   })
-  it('records already-paid native credit when disabled and preserves refunds after pilot admission changes', async () => {
+  it.each(['wrong-owner', 'wrong-ledger', 'missing-policy', 'public-with-pilot'])('holds new native refunds for %s while preserving paid claims and saved recovery', async (failure) => {
     const f = await prepaidFixture(true)
-    f.service.config.admission = 'pilot'
-    f.service.config.prepaidPilotLedgerId = f.info.ledgerId
-    f.service.config.prepaidPilotOwner = Wallet.createRandom().address
-    f.service.config.enabled = false
     await f.fund()
-    expect((await f.send({ kind: 'quote' })).error).toBeTruthy()
-    expect((await f.send({ kind: 'balance' })).available).toBe((10n ** 18n).toString())
     const quote = await f.send({ kind: 'quote', refund: true }), recipient = Wallet.createRandom().address, net = 10n ** 16n
     expect(quote.kind).toBe('quote')
     const payload = { kind: 'refund', sequence: quote.nextSequence, recipient, gross: (net + BigInt(quote.maximumCharge)).toString(),
       net: net.toString(), feesID: quote.feesID, collectionAllowance: '0', refundGasAllowance: quote.refundGasAllowance }
-    expect((await f.send(payload)).error).toBeTruthy()
-    expect(f.sign).not.toHaveBeenCalled()
-    f.service.config.enabled = true
-    f.provider.send.mockResolvedValue({ type: 'CALL', from: f.wallet.address, to: recipient, input: '0x', value: `0x${net.toString(16)}` })
-    expect((await f.send(payload)).state).toBe('submitted-or-unknown')
-    expect(f.sign).toHaveBeenCalledOnce()
+    const clock = vi.spyOn(performance, 'now').mockReturnValue(performance.now() + 60_001)
+    try {
+      f.service.config.admission = 'pilot'
+      f.service.config.prepaidPilotLedgerId = f.info.ledgerId
+      f.service.config.prepaidPilotOwner = f.owner.address
+      if (failure === 'wrong-owner') f.service.config.prepaidPilotOwner = Wallet.createRandom().address
+      if (failure === 'wrong-ledger') f.service.config.prepaidPilotLedgerId = id('unapproved ledger')
+      if (failure === 'missing-policy') { f.service.config.prepaidPilotLedgerId = undefined; f.service.config.prepaidPilotOwner = undefined }
+      if (failure === 'public-with-pilot') f.service.config.admission = 'public'
+      f.service.config.enabled = false
+      await f.fund()
+      expect((await f.send({ kind: 'quote' })).error).toBeTruthy()
+      expect((await f.send({ kind: 'balance' })).available).toBe((10n ** 18n).toString())
+      expect((await f.send({ kind: 'quote', refund: true })).error).toBeTruthy()
+      expect((await f.send(payload)).error).toBeTruthy()
+      clock.mockReturnValue(performance.now() + 60_001)
+      f.service.config.enabled = true
+      expect((await f.send(payload)).error).toBeTruthy()
+      expect(CreditLedger.load(store).hasUnsettledNativeAttempt()).toBe(false)
+      expect(store.pending()).toHaveLength(0)
+      expect(f.sign).not.toHaveBeenCalled()
+      f.service.config.admission = 'pilot'
+      f.service.config.prepaidPilotOwner = f.owner.address
+      f.service.config.prepaidPilotLedgerId = f.info.ledgerId
+      store.db.prepare('INSERT INTO settings VALUES(?,?)').run(`prepaidWithdrawalPilot:${f.info.ledgerId}`, 'used')
+      f.provider.send.mockResolvedValue({ type: 'CALL', from: f.wallet.address, to: recipient, input: '0x', value: `0x${net.toString(16)}` })
+      expect((await f.send(payload)).state).toBe('submitted-or-unknown')
+      f.service.config.prepaidPilotOwner = Wallet.createRandom().address
+      expect((await f.send(payload)).state).toBe('submitted-or-unknown')
+      expect((await f.send({ kind: 'refund-status', key: store.pending()[0].key })).state).toBe('submitted-or-unknown')
+      expect(f.sign).toHaveBeenCalledOnce()
+    } finally { clock.mockRestore() }
   })
   it('holds native refund principal plus gas before signing, then returns the saved refund on replay', async () => {
     const f = await prepaidFixture(true); await f.fund()

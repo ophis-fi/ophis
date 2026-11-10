@@ -20,6 +20,8 @@ An unknown top-up keeps its sender, nonce, amount and reference. Retry uses the 
 
 New native refunds require the signing service to be enabled. During an incident pause, balance queries and saved-request reconciliation remain available, but a new payout must wait for the reviewed signing service to resume. There is no disabled-service native payout command in this version.
 
+Restricted pilots admit new native refund quotes and requests only for the approved credit owner and exact ledger, including when the caller already holds credit. Already-paid claims, balance queries and saved refund status/replay remain available after admission changes. Before moving a service with existing customers into a restricted pilot, account for their pending refunds and restore their admission before processing any new payout; their balances remain liabilities. This pilot restriction does not replace public-service capacity controls.
+
 The gas operator must never sign out-of-band transfers, earnings sweeps, wallet delegations or manual refunds after ledger initialization. Its nonce belongs to the journal. Native charges are received directly and margin remains in that account; this version does not implement a journaled earnings-withdrawal or quarantine-payout operation. Such an external spend would halt nonce reconciliation. Incoming treasury funding does not consume the operator nonce.
 
 ### Migration and activation

@@ -140,6 +140,7 @@ export class Broadcaster {
           this.creditQueries.accept(authorized.owner, credits.ledger.hasDeposit(authorized.owner), 'refund')
           const previous = credits.ledger.attempt(request.key)
           if (previous) return responseEnvelope(reply(await credits.read(authorized)), request.id)
+          credits.assertNativeRefundAdmission(authorized.owner)
           return responseEnvelope(reply(await this.nativeRefund(credits, authorized, request.envelope)), request.id)
         }
         if (authorized.payload.kind !== 'execute') {

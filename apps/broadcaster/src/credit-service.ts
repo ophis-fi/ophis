@@ -54,6 +54,12 @@ export class CreditService {
     if (!this.executionEnabled() || (this.config.admission === 'pilot' && owner !== this.config.prepaidPilotOwner))
       throw new Error('Prepaid execution is unavailable for this approved credit owner.')
   }
+  assertNativeRefundAdmission(owner: string): void {
+    if (!this.ledger.isNative || (this.config.admission === 'pilot' &&
+      (owner !== this.config.prepaidPilotOwner || this.config.prepaidPilotLedgerId?.toLowerCase() !== this.ledger.id)) ||
+      (this.config.admission === 'public' && (this.config.prepaidPilotOwner || this.config.prepaidPilotLedgerId)))
+      throw new Error('A new native refund requires admission for this credit owner and ledger.')
+  }
   async info() {
     if (this.ledger.isNative) { try { await this.qualifyNativeFundingReads() } catch { /* Recovery queries remain available without admitting more payments. */ } }
     return { protocol: CREDIT_PROTOCOL, ledgerId: this.ledger.id, scope: this.ledger.scope,
@@ -139,6 +145,7 @@ export class CreditService {
         for (const payment of payments) if (this.ledger.deposit(payment)) this.backingCache = undefined
       }
     } else if (payload.kind === 'quote') {
+      if (payload.refund === true && this.ledger.isNative) this.assertNativeRefundAdmission(owner)
       if (payload.refund !== true) {
         await this.qualifyNativeFundingReads()
         this.assertExecutionAdmission(owner)
@@ -266,6 +273,7 @@ export class CreditService {
     const { owner, payload } = request
     if (!this.ledger.isNative || !this.config.enabled || payload.kind !== 'refund')
       throw new Error('Native refunds are unavailable.')
+    this.assertNativeRefundAdmission(owner)
     const sequence = creditSequence(payload.sequence)
     if (sequence !== this.ledger.nextSequence(owner)) throw new Error('Refresh the prepaid request sequence.')
     if (typeof payload.recipient !== 'string') throw new Error('A public native refund recipient is required.')
