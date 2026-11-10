@@ -131,6 +131,33 @@ describe('a. a passkey answers for this site only', () => {
     now += 5 * MIN + 1
     expect((await call('POST', '/api/signin/finish', { body: { response } })).status).toBe(401)
   })
+  it('judges expiry when the body has arrived, not when the request began', async () => {
+    const m = await member()
+    const start = await call('POST', '/api/signin/start')
+    const text = JSON.stringify({ response: await m.key.authenticate(start.body.options) })
+    // A slow sender: the clock passes the challenge's 5 minutes while the body is still on its way.
+    const body = new ReadableStream<Uint8Array>({
+      pull(controller) {
+        now += 5 * MIN + 1
+        controller.enqueue(new TextEncoder().encode(text))
+        controller.close()
+      },
+    }, { highWaterMark: 0 })
+    const headers = { 'sec-fetch-site': 'same-origin', origin: SITE.origin, 'content-type': 'application/json' }
+    const response = await handle(new Request(`${SITE.origin}/api/signin/finish`, { method: 'POST', body, headers }), testEnv, () => now)
+    expect(now).toBe(START + 5 * MIN + 1)
+    expect(response.status).toBe(401)
+  })
+  it('refuses a passkey whose counter goes backwards (a copied key), and the stored counter never goes down', async () => {
+    const m = await member() // counter 1 at enrolment, 2 at sign-in
+    expect((await signIn(m.key)).status).toBe(200) // 3
+    expect((await signIn(m.key, { counter: 2 })).status).toBe(401)
+    const stored = () => db.prepare('SELECT counter FROM credentials WHERE id = ?').bind(m.key.id).first<{ counter: number }>()
+    expect((await stored())!.counter).toBe(3)
+    // Two sign-ins verified at the same moment commit out of order: the lower counter must not win.
+    await data.createSession(db, { orgId: m.orgId, seatId: m.seatId, credentialId: m.key.id, counter: 2, tokenHash: data.randomId(), challengeHash: data.randomId(), now, userAgent: null, country: null, asn: null })
+    expect((await stored())!.counter).toBe(3)
+  })
   it('rejects a challenge it did not issue', async () => {
     const m = await member()
     const start = await call('POST', '/api/signin/start', { env: { ...testEnv, CHALLENGE_KEY: 'another key, another key, another key!' } })
@@ -180,7 +207,9 @@ describe('b. only an active credential signs in', () => {
     const m = await member()
     await db.prepare(`UPDATE seats SET state = 'frozen' WHERE id = ?`).bind(m.seatId).run()
     expect((await signIn(m.key)).status).toBe(401)
+    expect((await call('GET', '/api/me', { cookie: m.cookie })).status).toBe(401)
     await db.prepare(`UPDATE seats SET state = 'active' WHERE id = ?`).bind(m.seatId).run()
+    expect((await call('GET', '/api/me', { cookie: m.cookie })).status).toBe(200)
     await db.prepare(`UPDATE organisations SET state = 'frozen' WHERE id = ?`).bind(m.orgId).run()
     expect((await signIn(m.key)).status).toBe(401)
     expect((await call('GET', '/api/me', { cookie: m.cookie })).status).toBe(401)
@@ -194,6 +223,38 @@ describe('b. only an active credential signs in', () => {
     expect(await count('credentials', org.orgId)).toBe(0)
     const viewer = await invite(org.orgId, org.seatId, 'viewer')
     expect((await enrol(viewer.ticket, synced)).status).toBe(200)
+    // An Admin may, once the organisation allows synced keys. An Owner never may.
+    const admin = await invite(org.orgId, org.seatId, 'admin')
+    const second = await softwareAuthenticator(SITE, { backupEligible: true })
+    expect((await enrol(admin.ticket, second)).body.error).toBe('device_bound_required')
+    await db.prepare('UPDATE organisations SET synced_keys_allowed = 1 WHERE id = ?').bind(org.orgId).run()
+    expect((await enrol(org.ticket, second)).body.error).toBe('device_bound_required')
+    expect((await enrol(admin.ticket, second)).status).toBe(200)
+  })
+  it('the seat decides the key rule: a ticket that names another role than its seat is dead', async () => {
+    const org = await organisation()
+    const ticket = await ticketFor(org.orgId, org.seatId, 'viewer', 're_enrolment', org.seatId)
+    expect((await enrol(ticket, await softwareAuthenticator(SITE, { backupEligible: true }))).status).toBe(404)
+    expect(await count('credentials', org.orgId)).toBe(0)
+  })
+  it('a ticket is dead once its seat is removed or its organisation frozen', async () => {
+    const org = await organisation()
+    const seat = await invite(org.orgId, org.seatId, 'viewer')
+    await db.prepare(`UPDATE seats SET state = 'removed' WHERE id = ?`).bind(seat.seatId).run()
+    expect((await enrol(seat.ticket, await softwareAuthenticator(SITE))).status).toBe(404)
+    await db.prepare(`UPDATE organisations SET state = 'frozen' WHERE id = ?`).bind(org.orgId).run()
+    expect((await enrol(org.ticket, await softwareAuthenticator(SITE))).status).toBe(404)
+    expect(await count('credentials', org.orgId)).toBe(0)
+  })
+  it('a key label is short plain text', async () => {
+    const org = await organisation()
+    const key = await softwareAuthenticator(SITE)
+    for (const label of ['', '<b>key</b>', 'x'.repeat(41), 7]) {
+      const start = await call('POST', '/api/enrol/start', { body: { ticket: org.ticket } })
+      const finish = await call('POST', '/api/enrol/finish', { body: { ticket: org.ticket, label, response: await key.register(start.body.options) } })
+      expect(finish.body).toEqual({ error: 'label_invalid' })
+    }
+    expect(await count('credentials', org.orgId)).toBe(0)
   })
   it('a ticket stores one credential, once', async () => {
     const org = await organisation()
@@ -241,7 +302,9 @@ describe('c. sessions', () => {
   it('a revoked session fails on the next request', async () => {
     const m = await member()
     expect((await call('GET', '/api/me', { cookie: m.cookie })).status).toBe(200)
-    expect((await call('POST', `/api/sessions/${m.sessionId}/revoke`, { cookie: m.cookie })).status).toBe(200)
+    const revoke = await call('POST', `/api/sessions/${m.sessionId}/revoke`, { cookie: m.cookie })
+    expect(revoke.status).toBe(200)
+    expect(revoke.headers.get('set-cookie')).toMatch(/^__Host-session=; .*Max-Age=0$/)
     expect((await call('GET', '/api/me', { cookie: m.cookie })).status).toBe(401)
     expect((await call('GET', '/api/org', { cookie: m.cookie })).status).toBe(401)
   })
@@ -274,6 +337,13 @@ describe('c. sessions', () => {
     const m = await member()
     const second = await signIn(m.key)
     await call('POST', '/api/signout', { cookie: second.cookie })
+    const ids = async () => (await call('GET', '/api/org', { cookie: m.cookie })).body.sessions.map((s: { id: string }) => s.id)
+    expect(await ids()).toEqual([m.sessionId])
+    await signIn(m.key) // a third session, left idle past its 15 minutes while the first stays in use
+    expect(await ids()).toHaveLength(2)
+    now += 10 * MIN
+    await call('GET', '/api/me', { cookie: m.cookie })
+    now += 6 * MIN
     const org = await call('GET', '/api/org', { cookie: m.cookie })
     expect(org.body.sessions.map((s: { id: string }) => s.id)).toEqual([m.sessionId])
     expect(org.body.currentSessionId).toBe(m.sessionId)
@@ -287,10 +357,8 @@ describe('d. request checks', () => {
     it(`refuses an API call with Sec-Fetch-Site ${site ?? 'missing'}`, async () => {
       const m = await member()
       const headers = { 'sec-fetch-site': site }
-      expect((await call('GET', '/api/me', { cookie: m.cookie, headers })).status).toBe(403)
-      expect((await call('GET', '/api/org', { cookie: m.cookie, headers })).status).toBe(403)
-      expect((await call('POST', '/api/signin/start', { headers })).status).toBe(403)
-      expect((await call('POST', '/api/signout', { cookie: m.cookie, headers })).status).toBe(403)
+      // The route table decides the list: a route added later is checked without touching this test.
+      for (const route of routes) expect((await call(route.method, route.path.replace(':id', m.sessionId), { cookie: m.cookie, headers })).status).toBe(403)
       expect((await call('GET', '/api/me', { cookie: m.cookie })).status).toBe(200)
     })
   }
@@ -298,9 +366,7 @@ describe('d. request checks', () => {
     it(`refuses a state change with Origin ${origin ?? 'missing'}`, async () => {
       const m = await member()
       const headers = { origin }
-      expect((await call('POST', '/api/signout', { cookie: m.cookie, headers })).status).toBe(403)
-      expect((await call('POST', `/api/sessions/${m.sessionId}/revoke`, { cookie: m.cookie, headers })).status).toBe(403)
-      expect((await call('POST', '/api/signin/start', { headers })).status).toBe(403)
+      for (const route of routes.filter((r) => r.method === 'POST')) expect((await call('POST', route.path.replace(':id', m.sessionId), { cookie: m.cookie, headers })).status).toBe(403)
       expect((await call('GET', '/api/me', { cookie: m.cookie })).status).toBe(200)
     })
   }

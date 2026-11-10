@@ -183,7 +183,7 @@ async function sessionOf(request: Request, env: Env, now: number) {
   return session
 }
 
-async function api(request: Request, env: Env, now: number): Promise<Response> {
+async function api(request: Request, env: Env, clock: () => number): Promise<Response> {
   const config = configFor(env.ENVIRONMENT)
   // Every API route, GET included. A sibling *.ophis.fi host is same-site, so same-site is not enough.
   if (request.headers.get('sec-fetch-site') !== 'same-origin') return fail(403, 'cross_site')
@@ -204,6 +204,8 @@ async function api(request: Request, env: Env, now: number): Promise<Response> {
     }
     if (!body || typeof body !== 'object' || Array.isArray(body)) return fail(400, 'bad_json')
   }
+  // Read once the body has arrived: a slow sender cannot stretch a challenge, a ticket or a session past its end.
+  const now = clock()
   const context = { request, env, now, config, body, params: patterns[index].exec({ pathname })?.pathname.groups ?? {} } as Context
   if (route.session) {
     const session = await sessionOf(request, env, now)
@@ -222,7 +224,7 @@ export async function handle(request: Request, env: Env, now: () => number = Dat
   if (!pathname.startsWith('/api/')) return env.ASSETS.fetch(request)
   let response: Response
   try {
-    response = await api(request, env, now())
+    response = await api(request, env, now)
   } catch (error) {
     // Logs carry route names and error names only: no ids of people, no values, no tokens.
     console.error('api failure', request.method, pathname, error instanceof Error ? error.name : 'unknown')

@@ -27,7 +27,8 @@ function der(raw: Uint8Array) {
 }
 
 export interface Site { origin: string; rpId: string }
-interface Answer { as?: Partial<Site>; userVerified?: boolean; userHandle?: string }
+// counter: answer with this signature counter instead of the next one, as a copy of the key would.
+interface Answer { as?: Partial<Site>; userVerified?: boolean; userHandle?: string; counter?: number }
 
 // counts: false is a passkey whose signature counter stays 0, as most synced and many hardware keys do.
 export async function softwareAuthenticator(site: Site, { backupEligible = false, counts = true } = {}) {
@@ -44,7 +45,7 @@ export async function softwareAuthenticator(site: Site, { backupEligible = false
     if (counts) counter += 1
     return join(
       await sha256(text.encode(a.as?.rpId ?? site.rpId)),
-      [flags, 0, 0, counter >> 8, counter & 255],
+      [flags, 0, 0, (a.counter ?? counter) >> 8, (a.counter ?? counter) & 255],
       attested ? join(new Uint8Array(16), [0, credentialId.length], credentialId, cose) : [],
     )
   }

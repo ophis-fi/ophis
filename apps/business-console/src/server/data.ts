@@ -61,12 +61,14 @@ export async function verifyAudit(db: D1Database, orgId: string): Promise<{ ok: 
 // ---- before a session exists ----
 
 export interface Ticket { id: string; org_id: string; seat_id: string; role: Role; display_name: string; org_name: string; synced_keys_allowed: number }
+// The ticket's role must be its seat's role: the key rule (Owners: hardware only) is read from the ticket,
+// the rights of the session from the seat, so a ticket that disagrees with its seat is dead.
 export function ticketByToken(db: D1Database, tokenHash: string, now: number) {
   return db
     .prepare(
       `SELECT t.id, t.org_id, t.seat_id, t.role, s.display_name, o.name AS org_name, o.synced_keys_allowed
        FROM enrolment_tickets t
-       JOIN seats s ON s.org_id = t.org_id AND s.id = t.seat_id AND s.state IN ('invited', 'active')
+       JOIN seats s ON s.org_id = t.org_id AND s.id = t.seat_id AND s.role = t.role AND s.state IN ('invited', 'active')
        JOIN organisations o ON o.id = t.org_id AND o.state IN ('unverified', 'active')
        WHERE t.token_hash = ? AND t.state = 'issued' AND t.expires_at > ?`,
     )
@@ -115,7 +117,8 @@ export async function createSession(
     db.prepare(`INSERT INTO sessions (id, token_hash, challenge_hash, org_id, seat_id, credential_id, created_at, last_seen_at, step_up_at, user_agent, country, asn)
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
       .bind(id, s.tokenHash, s.challengeHash, s.orgId, s.seatId, s.credentialId, s.now, s.now, s.now, s.userAgent, s.country, s.asn),
-    db.prepare('UPDATE credentials SET counter = ?, last_used_at = ? WHERE org_id = ? AND id = ?').bind(s.counter, s.now, s.orgId, s.credentialId),
+    // max(): two sign-ins verified at the same moment may commit out of order; the counter never goes down.
+    db.prepare('UPDATE credentials SET counter = max(counter, ?), last_used_at = ? WHERE org_id = ? AND id = ?').bind(s.counter, s.now, s.orgId, s.credentialId),
   ])
   return id
 }
