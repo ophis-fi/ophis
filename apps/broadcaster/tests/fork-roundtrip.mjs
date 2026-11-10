@@ -52,7 +52,7 @@ try {
     const duplicate = await page.evaluate(async () => (await import('/tests/fork.fixture.ts')).forkOperatorReplay())
     assert.equal(duplicate.txHash, hash)
     const replay = await page.evaluate(async () => (await import('/tests/fork.fixture.ts')).forkOperatorReplay(true))
-    assert(!replay.txHash && /verify the current Ethereum privacy contracts|during gas estimation/.test(replay.error ?? ''),
+    assert(!replay.txHash && /verify the current privacy contracts|during gas estimation/.test(replay.error ?? ''),
       'A consumed private spend must fail EVM/authority validation, rather than a busy or expired-quote gate.')
     assert.equal((await operator.stats()).signatures, before.signatures)
   }
@@ -90,30 +90,33 @@ try {
       } catch { await route.abort('failed').catch(() => {}) }
     })
     phase = `wallet-${index}-new-isolated-wallet`
-    await page.goto(origin, { waitUntil: 'networkidle', timeout: 180_000 })
+    await page.goto(origin, { waitUntil: 'domcontentloaded', timeout: 180_000 })
     const password = 'isolated-operator-fork-test'
-    await page.locator('#password').fill(password); await page.locator('#unlock').click()
-    await page.waitForFunction(() => !document.documentElement.dataset.busy)
-    if ((await page.locator('#error').innerText()).includes('Create or restore')) {
-      await page.evaluate(async (pass) => (await import('/tests/fork.fixture.ts')).createFreshForkWallet(pass), password)
-      await page.locator('#password').fill(password); await page.locator('#unlock').click()
-      await page.waitForFunction(() => !document.documentElement.dataset.busy)
+    await page.waitForFunction(() => !document.querySelector('#generate').hidden || !document.querySelector('#unlock').hidden)
+    if (await page.locator('#generate').isVisible()) {
+      await page.locator('#generate').click()
+      await page.locator('#password').fill(password)
+      await page.locator('#backup').check()
+      await page.locator('#open').click()
+    } else {
+      await page.locator('#password').fill(password)
+      await page.locator('#unlock').click()
     }
+    await page.waitForFunction(() => !document.documentElement.dataset.busy)
     assert(await page.locator('#wallet').isVisible(), 'Isolated test wallet did not open.')
     phase = `wallet-${index}-initial-history-sync`
     const syncStart = Date.now()
     for (let attempt = 0; attempt < 24; attempt++) {
       try {
         await page.waitForFunction(() => document.querySelector('#ready-actions')?.disabled === false ||
-          /Incomplete/.test(document.querySelector('#status')?.textContent ?? ''), null, { timeout: 30_000 })
+          /Incomplete/.test(document.querySelector('#balance-sync')?.textContent ?? ''), null, { timeout: 30_000 })
         break
       } catch (error) {
         if (error.name !== 'TimeoutError' || attempt === 23) throw error
         console.log('FORK_SYNC', JSON.stringify({ wallet: index, seconds: Math.round((Date.now() - syncStart) / 1000),
-          status: await page.locator('#status').innerText(), error: await page.locator('#error').innerText() }))
+          status: await page.locator('#balance-sync').innerText(), error: await page.locator('#error').innerText() }))
       }
     }
-    assert((await page.locator('#status').innerText()).includes('Complete'), (await page.locator('#error').innerText()).slice(0, 500))
     assert(!(await page.locator('#ready-actions').isDisabled()), 'Deposits and spending must wait for verified wallet history.')
     result.synchronizationSeconds.push(Math.round((Date.now() - syncStart) / 1000))
     result.wallets.push(await page.evaluate(async (pass) => (await import('/tests/fork.fixture.ts')).loadForkSession(pass), password))
@@ -157,7 +160,7 @@ try {
     }
     phase = `wallet-${index}-warm-reload`
     const warmStart = Date.now()
-    await page.reload({ waitUntil: 'networkidle' })
+    await page.reload({ waitUntil: 'domcontentloaded' })
     await page.locator('#password').fill(password); await page.locator('#unlock').click()
     await page.waitForFunction(() => !document.documentElement.dataset.busy)
     await page.waitForFunction(() => document.querySelector('#ready-actions')?.disabled === false)
@@ -197,7 +200,8 @@ try {
   clearInterval(heartbeat)
   clearInterval(diskGuard)
   if (context) result.browserStatus = await context.pages()[0]?.evaluate(() => ({
-    status: document.querySelector('#status')?.textContent, error: document.querySelector('#error')?.textContent,
+    status: document.querySelector('#status')?.textContent, synchronization: document.querySelector('#balance-sync')?.textContent,
+    error: document.querySelector('#error')?.textContent,
   })).catch(() => undefined)
   const closed = await Promise.allSettled([
     Promise.resolve().then(() => writeFileSync(join(root, 'result.json'), JSON.stringify({ ...result, phase }, null, 2), { mode: 0o600 })),

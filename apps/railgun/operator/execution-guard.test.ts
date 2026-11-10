@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { Wallet } from 'ethers'
+import { NETWORK_CONFIG, NetworkName } from '@railgun-community/shared-models'
 import { assertExecutionGuardCode, decodeGuardedExecution, EXECUTION_GUARD, executionGuardCode, guardedExecution } from './execution-guard'
 
 describe('operator-bound execution guard', () => {
@@ -21,6 +22,14 @@ describe('operator-bound execution guard', () => {
     expect(() => assertExecutionGuardCode(operator, code, '0x6002')).toThrow('reviewed artifact')
     expect(() => assertExecutionGuardCode(operator, code.slice(0, -2) + 'ff', '0x6001')).toThrow('reviewed artifact')
     expect(() => executionGuardCode(operator, '0x')).toThrow('unavailable')
+  })
+  it('attests the selected chain delegate address even when implementation bytes are identical', () => {
+    const operator = Wallet.createRandom().address
+    const delegate = NETWORK_CONFIG[NetworkName.Arbitrum].relayAdapt7702Contract
+    const code = executionGuardCode(operator, '0x6001', delegate)
+    expect(() => assertExecutionGuardCode(operator, code, '0x6001', delegate)).not.toThrow()
+    expect(() => assertExecutionGuardCode(operator, code, '0x6001')).toThrow('reviewed artifact')
+    expect(() => assertExecutionGuardCode(operator, code, '0x6001', Wallet.createRandom().address)).toThrow('reviewed artifact')
   })
   it('refuses alternate selectors, trailing ABI bytes and unvalidated transaction types', () => {
     const account = Wallet.createRandom().address

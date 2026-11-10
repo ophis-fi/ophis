@@ -1,4 +1,4 @@
-import { CHAIN_ID, isTokenSymbol, CHAIN, ERC20, TOKENS, CONFIG, type TokenSymbol } from './config'
+import { CHAIN_ID, isTokenSymbol, CHAIN, ERC20, TOKENS, CONFIG, ROUTE_INTERMEDIATES, type TokenSymbol } from './config'
 import { Contract, getAddress } from 'ethers'
 import { fullWalletForID, getWalletTransactionHistory } from '@railgun-community/wallet'
 import { assertReceipt, assertPrivateOutput, PRIVACY, ADAPT } from './execution'
@@ -10,12 +10,26 @@ export interface PendingSwap {
   index: number
   account: string
   token: TokenSymbol
+  feeToken?: TokenSymbol
+  feeMode?: 'prepaid'
+  recoveryTokens?: TokenSymbol[]
   npk: string
   minimum: string
   hash?: string
   executeNonce: string
   fromBlock: number
   inputs?: { tree: number; nullifier: string }[]
+}
+
+function recoveryTokens(pending: PendingSwap): TokenSymbol[] {
+  // Legacy records predate the catalog; unrelated imports must never expand their cleanup scan.
+  if (!Object.hasOwn(pending, 'recoveryTokens')) return [...new Set([...ROUTE_INTERMEDIATES, pending.token])]
+  const tokens = pending.recoveryTokens
+  if (!Array.isArray(tokens) || !tokens.length || tokens.length > 8 || !tokens.every(isTokenSymbol) ||
+    new Set(tokens).size !== tokens.length || !tokens.includes(pending.token) ||
+    (pending.feeToken !== undefined && !tokens.includes(pending.feeToken)))
+    throw new Error('Saved swap recovery assets are damaged. Keep the record and repair it before spending.')
+  return tokens
 }
 
 export async function pendingSwap(session: WalletSession): Promise<PendingSwap | undefined> {
@@ -31,6 +45,8 @@ export async function pendingSwap(session: WalletSession): Promise<PendingSwap |
     typeof stored.account !== 'string' ||
     !('token' in stored) ||
     !isTokenSymbol(stored.token) ||
+    ('feeToken' in stored && !isTokenSymbol(stored.feeToken)) ||
+    ('feeMode' in stored && stored.feeMode !== 'prepaid') ||
     !('minimum' in stored) ||
     typeof stored.minimum !== 'string' ||
     !('npk' in stored) ||
@@ -58,11 +74,13 @@ export async function pendingSwap(session: WalletSession): Promise<PendingSwap |
   )
     throw new Error('Pending swap record is damaged.')
   getAddress(stored.account)
+  recoveryTokens(stored as PendingSwap)
   return stored as PendingSwap
 }
 
 export async function savePendingSwap(session: WalletSession, pending: PendingSwap): Promise<void> {
   if (pending.chainId !== undefined && pending.chainId !== CHAIN_ID) throw new Error('Pending swap network changed.')
+  recoveryTokens(pending)
   await writePrivateState(session, 'pendingSwap', { ...pending, chainId: CHAIN_ID })
 }
 
@@ -128,10 +146,10 @@ export async function reconcilePendingSwap(
   }
   if (failedCall && !acceptLeftovers) {
     const balances = await Promise.all(
-      Object.values(TOKENS).map((token) =>
-        new Contract(token.address, ERC20, session.provider).getFunction('balanceOf')(pending.account),
+      recoveryTokens(pending).map((id) =>
+        new Contract(TOKENS[id].address, ERC20, session.provider).getFunction('balanceOf')(pending.account, { gasLimit: 100_000n }),
       ),
-    )
+    ).catch(() => { throw new Error(`Recovery account ${pending.index} asset balances could not be verified. Keep the record; recover its assets or explicitly accept leftovers.`) })
     if (balances.some((balance) => BigInt(balance) !== 0n))
       throw new Error(`Recovery account ${pending.index} still holds funds after a failed cleanup call. Recover them before reconciling, or explicitly accept leftovers.`)
   }

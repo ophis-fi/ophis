@@ -17,7 +17,7 @@ it.runIf(!!process.env.OPHIS_TEST_WAKU)('carries SDK encrypted requests and resp
   await relay.publish(TOPICS.transact, Buffer.from(JSON.stringify({ method: 'transact', id: 1,
     params: { pubkey: data.randomPubKey, encryptedData: data.encryptedData } })))
   const messages = await relay.messages()
-  const request = await openRequest(messages[0], privateKey, viewingKey)
+  const request = await openRequest(messages[0].payload, privateKey, viewingKey)
   expect(request).toBeDefined()
   const encrypted = encryptResponse({ txHash: 'local-test-only' }, request!)
   await relay.publish(TOPICS.response, Buffer.from(JSON.stringify({ result: JSON.parse(encrypted) })))

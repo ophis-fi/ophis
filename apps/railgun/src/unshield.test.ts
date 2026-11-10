@@ -1,11 +1,14 @@
 import { expect, it, vi } from 'vitest'
+import { createRequire } from 'node:module'
+import { dirname, join } from 'node:path'
 import { EVMGasType } from '@railgun-community/shared-models'
+import { ZeroAddress } from 'ethers'
 import { CONFIG, TOKENS } from './config'
 import type { WalletSession } from './wallet'
 import { withdrawalData } from '../tests/withdrawal.fixture'
 import type { PrivateSubmitter } from './broadcaster'
 
-const state = vi.hoisted(() => ({ reconcile: vi.fn(), save: vi.fn(), select: vi.fn(), count: 1, pending: undefined as unknown, spent: false }))
+const state = vi.hoisted(() => ({ reconcile: vi.fn(), save: vi.fn(), select: vi.fn(), proof: vi.fn(), populate: vi.fn(), count: 1, pending: undefined as unknown, spent: false }))
 vi.mock('./storage', () => ({}))
 vi.mock('./journal', () => ({ pendingSwap: async () => undefined }))
 vi.mock('./wallet', () => ({ requireWalletSync: vi.fn() }))
@@ -18,18 +21,49 @@ vi.mock('./withdrawal-journal', async (original) => ({
   reconcilePendingWithdrawal: state.reconcile,
 }))
 vi.mock('@railgun-community/wallet', () => ({
-  generateUnshieldProof: async () => {},
-  populateProvedUnshield: async () => ({
-    transaction: { to: CONFIG.proxyContract, data: withdrawalData(state.count) },
-    nullifiers: [`0x${'11'.repeat(32)}`],
-  }),
+  generateUnshieldProof: state.proof,
+  populateProvedUnshield: async (...args: Parameters<typeof import('@railgun-community/wallet')['populateProvedUnshield']>) => {
+    const transaction = { to: CONFIG.proxyContract, data: withdrawalData(state.count, 1, ZeroAddress, TOKENS.USDC.address) }
+    if (args[6]) {
+      const require = createRequire(import.meta.url)
+      const { setGasDetailsForTransaction } = require(join(dirname(require.resolve('@railgun-community/wallet')), 'services/transactions/tx-gas-details.js'))
+      setGasDetailsForTransaction(args[1], transaction, args[8], true)
+    }
+    state.populate(...args)
+    return { transaction, nullifiers: [`0x${'11'.repeat(32)}`] }
+  },
   gasEstimateForUnprovenUnshield: vi.fn(),
   getWalletTransactionHistory: vi.fn(),
 }))
 import { executeUnshield, retrySavedUnshield } from './unshield'
 
+it('routes a saved prepaid withdrawal to its exact request recovery without proving or legacy broadcasting', async () => {
+  state.pending = { feeMode: 'prepaid', transaction: { data: 'unchanged-saved-proof' } }
+  const send = vi.fn()
+  state.select.mockClear(); state.proof.mockClear()
+  try {
+    await expect(retrySavedUnshield({} as WalletSession, () => {}, { assertReady: vi.fn(), send })).rejects.toThrow('Check fee-credit transaction')
+    expect(send).not.toHaveBeenCalled()
+    expect(state.select).not.toHaveBeenCalled()
+    expect(state.proof).not.toHaveBeenCalled()
+    expect(state.pending).toMatchObject({ transaction: { data: 'unchanged-saved-proof' } })
+  } finally { state.pending = undefined }
+})
+
+it('rejects a prepared withdrawal during history synchronization before recording or disclosing a spend', async () => {
+  const { requireWalletSync } = await import('./wallet')
+  vi.mocked(requireWalletSync).mockImplementationOnce(() => { throw new Error('Wallet history is synchronizing') })
+  state.save.mockClear()
+  const send = vi.fn(), ready = vi.fn()
+  await expect(executeUnshield({} as WalletSession, {} as Parameters<typeof executeUnshield>[1], () => {}, { assertReady: ready, send }))
+    .rejects.toThrow('synchronizing')
+  expect(state.save).not.toHaveBeenCalled()
+  expect(ready).not.toHaveBeenCalled()
+  expect(send).not.toHaveBeenCalled()
+})
+
 it('retries the saved proof through the broadcaster without proving again, and blocks known or spent submissions', async () => {
-  const transaction = { to: CONFIG.proxyContract, data: withdrawalData(), value: '0' }
+  const transaction = { to: CONFIG.proxyContract, data: withdrawalData(1, 1, ZeroAddress, TOKENS.USDC.address), value: '0' }
   const saved = { transaction, token: 'USDC', minGasPrice: '100', nullifiers: [`0x${'11'.repeat(32)}`] }
   state.pending = saved
   state.select.mockResolvedValue({ tokenAddress: TOKENS.USDC.address })
@@ -89,4 +123,25 @@ it('rejects separable fee proofs before recording or disclosing a new withdrawal
     expect(state.save).not.toHaveBeenCalled()
     expect(send).not.toHaveBeenCalled()
   } finally { state.count = 1 }
+})
+
+it('uses fee-free common proof mode only with explicit prepaid context and preserves its journal binding', async () => {
+  state.count = 1; state.pending = undefined
+  state.save.mockClear(); state.proof.mockClear(); state.populate.mockClear()
+  const prepaid = { feesID: 'synthetic-credit' } as NonNullable<Parameters<typeof executeUnshield>[1]['prepaid']>
+  const session = { info: { id: 'synthetic-wallet' }, provider: { getBlockNumber: async () => 100,
+    waitForTransaction: async () => ({ status: 1, logs: [] }) } } as unknown as WalletSession
+  const prepared = { kind: 'COMMON', token: 'USDC', feeToken: 'WETH', prepaid,
+    amounts: [{ recipientAddress: '0x0000000000000000000000000000000000001234' }], minimum: 1n,
+    selected: {}, gas: { evmGasType: EVMGasType.Type1, gasEstimate: 100_000n, gasPrice: 1n }, fee: { amount: 9n } } as unknown as Parameters<typeof executeUnshield>[1]
+  const ready = vi.fn(), send = vi.fn().mockResolvedValue(`0x${'22'.repeat(32)}`)
+  await expect(executeUnshield(session, prepared, () => {}, { assertReady: ready, send })).rejects.toThrow('output and nullifiers are not confirmed')
+  expect(state.proof.mock.calls[0][6]).toBeUndefined()
+  expect(state.proof.mock.calls[0][7]).toBe(true)
+  expect(ready.mock.calls.every((args) => args[3] === prepaid)).toBe(true)
+  expect(send.mock.calls[0][6]).toBe(prepaid)
+  expect(state.populate.mock.calls[0][8]).toEqual({ evmGasType: EVMGasType.Type2, gasEstimate: 100_000n,
+    maxFeePerGas: 1n, maxPriorityFeePerGas: 1n })
+  expect(send.mock.calls[0][3]).toBe(prepared.gas)
+  expect(state.save.mock.calls[0][1]).toMatchObject({ feeMode: 'prepaid', token: 'USDC', feeToken: 'WETH' })
 })

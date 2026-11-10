@@ -44,10 +44,6 @@ export const Mode = styled.nav`
     color: var(--ophis-steep-ink);
     box-shadow: 0 1px 3px #17191c14;
   }
-  small {
-    color: var(--ophis-steep-muted);
-    font-size: 11px;
-  }
 `
 
 export const Runtime = styled.iframe`

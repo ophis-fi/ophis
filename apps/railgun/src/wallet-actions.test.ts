@@ -1,10 +1,10 @@
 import { EventEmitter } from 'node:events'
 import { makeError } from 'ethers'
-import { afterEach, beforeEach, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { WalletSession } from './wallet'
 import { SwapBalanceError } from './private-swap'
 import { withdrawalData } from '../tests/withdrawal.fixture'
-import { TOKENS } from './config'
+import { TOKENS, registerToken, tokenFor } from './config'
 
 const mocks = vi.hoisted(() => ({
   environment: 'fork',
@@ -12,16 +12,26 @@ const mocks = vi.hoisted(() => ({
   shield: vi.fn(),
   sync: vi.fn(),
   requireSync: vi.fn(),
-  pendingWithdrawal: vi.fn(),
+  pendingWithdrawal: vi.fn(), pendingSwap: vi.fn(),
   preserved: vi.fn(), preserve: vi.fn(), pilot: undefined as string | undefined,
   selectBroadcaster: vi.fn(), prepareSwap: vi.fn(), prepareMax: vi.fn(), prepareWithdrawal: vi.fn(), quoteSwap: vi.fn(), unused: vi.fn(),
+  credit: vi.fn(), creditBalance: vi.fn(), pendingCredit: vi.fn(), topUp: vi.fn(), claimCredit: vi.fn(), checkCredit: vi.fn(), retryCredit: vi.fn(),
+  refundCredit: vi.fn(), retryTopUp: vi.fn(), deferTopUp: vi.fn(), refundFee: vi.fn(), requestRefund: vi.fn(), checkRefund: vi.fn(),
 }))
+vi.mock('./prepaid', () => ({ preparePrepaid: mocks.credit, preparePrepaidRefund: mocks.refundCredit, prepaidBalance: mocks.creditBalance,
+  pendingPrepaid: mocks.pendingCredit, topUpPrepaid: mocks.topUp, claimPrepaidTopUp: mocks.claimCredit,
+  retryPrepaidTopUp: mocks.retryTopUp,
+  deferPrepaidTopUp: mocks.deferTopUp,
+  checkPrepaid: mocks.checkCredit, retryPrepaid: mocks.retryCredit, prepaidRefundFee: mocks.refundFee,
+  requestPrepaidRefund: mocks.requestRefund, checkPrepaidRefund: mocks.checkRefund }))
 vi.mock('./storage', () => ({ readPrivateState: vi.fn(), writePrivateState: vi.fn(), deletePrivateState: vi.fn() }))
-vi.mock('./config', async (original) => ({
-  ...await original<typeof import('./config')>(),
-  get ENVIRONMENT() { return mocks.environment },
-  get PILOT_WITHDRAWAL_RECIPIENT() { return mocks.pilot },
-}))
+async function mockConfig() {
+  return { ...await vi.importActual<typeof import('./config')>('./config'),
+    get ENVIRONMENT() { return mocks.environment },
+    get PILOT_WITHDRAWAL_RECIPIENT() { return mocks.pilot },
+  }
+}
+vi.mock('./config', () => mockConfig())
 vi.mock('./public-connection', () => ({ connectPublicWallet: mocks.connect }))
 vi.mock('./shield', () => ({
   publicSigner: mocks.signer, shieldAllowance: mocks.allowance, approveShield: mocks.approve,
@@ -29,17 +39,17 @@ vi.mock('./shield', () => ({
   requireShieldBalance: mocks.balance,
   shield: mocks.shield, PublicNetworkError: class extends Error {},
 }))
-vi.mock('./journal', () => ({ pendingSwap: async () => undefined, reconcilePendingSwap: vi.fn() }))
+vi.mock('./journal', () => ({ pendingSwap: mocks.pendingSwap, reconcilePendingSwap: vi.fn() }))
 vi.mock('./withdrawal-journal', async (original) => ({ ...await original<typeof import('./withdrawal-journal')>(),
   pendingWithdrawal: mocks.pendingWithdrawal, preservedWithdrawal: mocks.preserved, preserveWethWithdrawal: mocks.preserve,
   reconcilePendingWithdrawal: vi.fn(), resumePendingWithdrawal: vi.fn() }))
 vi.mock('./broadcaster', () => ({ selectBroadcaster: mocks.selectBroadcaster, startBroadcasters: vi.fn(), privateSubmitter: vi.fn() }))
 vi.mock('./private-swap', async (original) => ({ ...await original<typeof import('./private-swap')>(), executePrivateSwap: vi.fn(), preparePrivateSwap: mocks.prepareSwap, prepareMaxPrivateSwap: mocks.prepareMax }))
 vi.mock('./recipe', () => ({
-  amountFromInput: (value: string) => {
+  amountFromInput: vi.fn((value: string) => {
     if (!value.trim()) throw new Error('Enter a positive token amount.')
     return 1n
-  },
+  }),
   quoteSwap: mocks.quoteSwap,
 }))
 vi.mock('./recovery', () => ({ recoverToken: vi.fn(), recoveryIndex: vi.fn(), scanRecovery: vi.fn() }))
@@ -47,14 +57,16 @@ vi.mock('./unshield', () => ({ executeUnshield: vi.fn(), prepareUnshield: mocks.
 vi.mock('./wallet', () => ({ requireWalletSync: mocks.requireSync, syncWallet: mocks.sync }))
 vi.mock('./account', () => ({ unusedSwapAccount: mocks.unused }))
 vi.mock('./cancel', () => ({ cancelPendingSwap: vi.fn() }))
+vi.mock('./wallet-layout', () => ({ renderWalletLayout: vi.fn(), setSwapReview: vi.fn(), setPendingNotice: vi.fn(), showWalletView: vi.fn() }))
 
-let elements: Record<string, { value: string, hidden: boolean, textContent: string, checked: boolean, onclick?: () => Promise<void>, oninput?: () => void, dispatchEvent: () => boolean, scrollIntoView: () => void }>
+let elements: Record<string, { value: string, hidden: boolean, textContent: string, className: string, checked: boolean, onclick?: () => Promise<void>, oninput?: () => void, onchange?: () => void, dispatchEvent: () => boolean, scrollIntoView: () => void, setAttribute: () => void }>
 let provider: EventEmitter & { request: ReturnType<typeof vi.fn> }
 beforeEach(() => {
+  vi.clearAllMocks()
   mocks.environment = 'fork'
   elements = new Proxy({} as typeof elements, { get: (values, id: string) => values[id] ??= {
     value: ['token', 'shield-token'].includes(id) ? 'WETH' : '1', hidden: ['approve', 'shield', 'switch-network', 'review-shield'].includes(id),
-    textContent: '', checked: false, dispatchEvent: () => { elements[id].oninput?.(); return true }, scrollIntoView: () => {},
+    textContent: '', className: '', checked: false, dispatchEvent: () => { elements[id].oninput?.(); return true }, scrollIntoView: () => {}, setAttribute: () => {},
   } })
   vi.stubGlobal('document', {
     getElementById: (id: string) => elements[id],
@@ -71,6 +83,7 @@ beforeEach(() => {
   mocks.sync.mockReset().mockResolvedValue(undefined)
   mocks.requireSync.mockReset()
   mocks.pendingWithdrawal.mockReset().mockResolvedValue(undefined)
+  mocks.pendingSwap.mockReset().mockResolvedValue(undefined)
   mocks.preserved.mockReset().mockResolvedValue(undefined)
   mocks.preserve.mockReset()
   mocks.pilot = undefined
@@ -80,8 +93,34 @@ beforeEach(() => {
   mocks.prepareWithdrawal.mockReset().mockResolvedValue({ fee: { amount: 1n }, minimum: 900n, amounts: [{ amount: 999n }] })
   mocks.quoteSwap.mockReset().mockResolvedValue({ sell: 'WETH', buy: 'USDC', amount: 1000n, minimum: 1000n, shieldFee: 25n, ophisFee: 1n })
   mocks.unused.mockReset().mockResolvedValue({ address: '0x0000000000000000000000000000000000000001' })
+  mocks.credit.mockReset().mockResolvedValue({ selected: { tokenAddress: TOKENS.WETH.address } })
+  mocks.pendingCredit.mockReset().mockResolvedValue(undefined)
+  mocks.creditBalance.mockReset().mockResolvedValue({ available: 1000n, reserved: 2n })
+  mocks.topUp.mockReset().mockResolvedValue(`0x${'44'.repeat(32)}`)
+  mocks.retryTopUp.mockReset().mockResolvedValue(`0x${'55'.repeat(32)}`)
+  mocks.deferTopUp.mockReset().mockResolvedValue(undefined)
+  mocks.refundCredit.mockReset().mockResolvedValue({ scope: {}, selected: { tokenAddress: TOKENS.WETH.address }, maximumRefundGross: 1_000n })
+  mocks.claimCredit.mockReset().mockResolvedValue({ available: 2000n, reserved: 0n })
+  mocks.checkCredit.mockReset()
+  mocks.retryCredit.mockReset()
+  mocks.refundFee.mockReset().mockReturnValue(10n)
+  mocks.requestRefund.mockReset().mockResolvedValue({ state: 'awaiting-owner-transfer', net: 90n })
+  mocks.checkRefund.mockReset().mockResolvedValue({ state: 'awaiting-owner-transfer', net: 90n })
 })
 afterEach(() => vi.unstubAllGlobals())
+
+it('shows the full contract address when reviewing an imported token with a familiar ticker', async () => {
+  const custom = registerToken({ address: '0x0000000000000000000000000000000000001234', symbol: 'USDC', decimals: 8 })
+  elements.token.value = custom
+  mocks.selectBroadcaster.mockResolvedValue({ tokenAddress: 'verified fee token' })
+  const { wireWalletActions } = await import('./wallet-actions')
+  await wireWalletActions({} as WalletSession)
+  await elements['withdraw-quote'].onclick?.()
+  expect(elements['withdraw-details'].textContent).toContain(`Token contract: ${tokenFor(custom).address}`)
+  mocks.quoteSwap.mockResolvedValue({ sell: custom, buy: 'USDC', amount: 1000n, minimum: 1000n, shieldFee: 25n, ophisFee: 1n })
+  await elements.quote.onclick?.()
+  expect(elements['quote-details'].textContent).toContain(`Sell token contract: ${tokenFor(custom).address}`)
+})
 
 it('preserves the WETH proof and prepares a USDC review without submitting either proof', async () => {
   mocks.pilot = '0x0000000000000000000000000000000000001234'
@@ -105,6 +144,8 @@ it('preserves the WETH proof and prepares a USDC review without submitting eithe
   expect(mocks.prepareWithdrawal.mock.calls[0][5]).toBe(true)
   expect(elements['preserved-withdrawal-details'].textContent).toContain('WETH')
   expect(elements.withdraw.hidden).toBe(false)
+  const { showWalletView } = await import('./wallet-layout')
+  expect(showWalletView).toHaveBeenCalledWith('withdrawal')
   const { executeUnshield } = await import('./unshield')
   expect(executeUnshield).not.toHaveBeenCalled()
 })
@@ -123,6 +164,123 @@ it('opens recovery and directs the user to the saved withdrawal instead of prepa
   expect(mocks.prepareWithdrawal).not.toHaveBeenCalled()
 })
 
+it('explains bound public-resume compatibility while keeping all recovery choices available', async () => {
+  const account = '0x0000000000000000000000000000000000001234'
+  mocks.pendingWithdrawal.mockResolvedValue({ token: 'USDC', feeToken: 'WETH', recipient: account, minimum: '997',
+    execution: { index: 7, account } })
+  const { wireWalletActions } = await import('./wallet-actions')
+  await wireWalletActions({} as WalletSession)
+  expect(elements['pending-details'].textContent).toContain('requires support for externally signed EIP-7702 authorizations')
+  expect(elements['pending-details'].textContent).toContain('some wallets reject')
+  for (const action of ['resume-withdrawal', 'retry-withdrawal', 'cancel-swap']) expect(elements[action].hidden).toBe(false)
+  expect(elements['cancel-swap'].textContent).toContain('Invalidate saved withdrawal authorization')
+  expect(mocks.connect).not.toHaveBeenCalled()
+  expect(mocks.signer).not.toHaveBeenCalled()
+})
+
+it('selects the new pending swap recovery index and then preserves a manual selection', async () => {
+  const { wireWalletActions } = await import('./wallet-actions')
+  const { executePrivateSwap } = await import('./private-swap')
+  await wireWalletActions({} as WalletSession)
+  await elements.quote.onclick?.()
+  vi.mocked(executePrivateSwap).mockImplementationOnce(async () => {
+    mocks.pendingSwap.mockResolvedValue({ index: 7, account: 'fixture-recovery-account' })
+    throw new Error('Submission outcome unknown')
+  })
+  await elements.swap.onclick?.()
+  expect(elements['recovery-index'].value).toBe('7')
+  elements['recovery-index'].value = '8'
+  await elements.broadcasters.onclick?.()
+  expect(elements['recovery-index'].value).toBe('8')
+})
+
+it('clears the spent amount only after swap confirmation and finishes the balance-refresh status', async () => {
+  const { wireWalletActions } = await import('./wallet-actions')
+  const { executePrivateSwap } = await import('./private-swap')
+  let confirm!: (hash: string) => void, finishSync!: () => void
+  vi.mocked(executePrivateSwap).mockImplementationOnce(() => new Promise((resolve) => { confirm = resolve }))
+  mocks.sync.mockImplementationOnce(() => new Promise<void>((resolve) => { finishSync = resolve }))
+  await wireWalletActions({} as WalletSession)
+  await elements.quote.onclick?.()
+  const reviewedAmount = elements.amount.value
+  const executing = elements.swap.onclick?.()
+  await vi.waitFor(() => expect(executePrivateSwap).toHaveBeenCalledOnce())
+  expect(elements.amount.value).toBe(reviewedAmount)
+  expect(mocks.sync).not.toHaveBeenCalled()
+  confirm('confirmed swap hash')
+  await vi.waitFor(() => expect(mocks.sync).toHaveBeenCalledOnce())
+  expect(elements.amount.value).toBe('')
+  expect(elements.status.textContent).toBe('Swap confirmed: confirmed swap hash. Updating private balance.')
+  finishSync()
+  await executing
+  expect(elements.status.textContent).toBe('Swap confirmed: confirmed swap hash. Private balance updated.')
+  expect(elements.swap.hidden).toBe(true)
+  expect(elements['quote-details'].textContent).toBe('')
+  expect(elements['receive-amount'].textContent).toBe('—')
+  await elements.quote.onclick?.()
+  expect(mocks.quoteSwap).toHaveBeenCalledOnce()
+  expect(elements['private-wallet-error'].textContent).toBe('Enter a positive token amount.')
+})
+
+it('keeps a confirmed swap distinct from a failed balance refresh and does not restore its spent amount', async () => {
+  const { wireWalletActions } = await import('./wallet-actions')
+  const { executePrivateSwap } = await import('./private-swap')
+  vi.mocked(executePrivateSwap).mockResolvedValueOnce('confirmed swap hash')
+  mocks.sync.mockRejectedValueOnce(new Error('History verification timed out.'))
+  await wireWalletActions({} as WalletSession)
+  await elements.quote.onclick?.()
+  await elements.swap.onclick?.()
+  expect(elements.amount.value).toBe('')
+  expect(elements.status.textContent).toBe('Swap confirmed: confirmed swap hash. Private balance refresh is incomplete. Refresh balances to retry.')
+  expect(elements['private-wallet-error'].textContent).toBe('History verification timed out.')
+  expect(elements.swap.hidden).toBe(true)
+  expect(executePrivateSwap).toHaveBeenCalledOnce()
+})
+
+it('preserves the amount and recovery record when swap confirmation remains uncertain', async () => {
+  const { wireWalletActions } = await import('./wallet-actions')
+  const { executePrivateSwap } = await import('./private-swap')
+  const { deletePrivateState } = await import('./storage')
+  const saved = { index: 7, account: 'fixture-recovery-account', hash: 'pending swap hash' }
+  vi.mocked(executePrivateSwap).mockImplementationOnce(async (_session, _prepared, report) => {
+    mocks.pendingSwap.mockResolvedValue(saved)
+    report('Waiting for two confirmations: pending swap hash')
+    throw new Error('Confirmation pending. Check recovery before retrying.')
+  })
+  await wireWalletActions({} as WalletSession)
+  await elements.quote.onclick?.()
+  const reviewedAmount = elements.amount.value
+  await elements.swap.onclick?.()
+  expect(elements.amount.value).toBe(reviewedAmount)
+  expect(elements.status.textContent).toBe('Waiting for two confirmations: pending swap hash')
+  expect(elements['pending-details'].textContent).toContain(saved.hash)
+  expect(elements.reconcile.hidden).toBe(false)
+  expect(elements['recovery-index'].value).toBe('7')
+  expect(mocks.sync).not.toHaveBeenCalled()
+  expect(deletePrivateState).not.toHaveBeenCalled()
+  expect(await mocks.pendingSwap()).toBe(saved)
+})
+
+it('keeps USDC withdrawal controls accessible when preparation fails after preserving the WETH proof', async () => {
+  mocks.pilot = '0x0000000000000000000000000000000000001234'
+  const saved = { token: 'WETH', recipient: mocks.pilot,
+    transaction: { data: withdrawalData(1, 1, mocks.pilot, TOKENS.WETH.address) } }
+  mocks.pendingWithdrawal.mockResolvedValue(saved)
+  mocks.preserve.mockImplementation(async () => {
+    mocks.pendingWithdrawal.mockResolvedValue(undefined)
+    mocks.preserved.mockResolvedValue(saved)
+  })
+  mocks.prepareWithdrawal.mockRejectedValueOnce(new Error('Broadcaster unavailable'))
+  const { wireWalletActions } = await import('./wallet-actions')
+  const { showWalletView } = await import('./wallet-layout')
+  await wireWalletActions({} as WalletSession)
+  await elements['use-usdc-withdrawal'].onclick?.()
+  expect(showWalletView).toHaveBeenCalledWith('withdrawal')
+  expect(elements.withdraw.hidden).toBe(true)
+  expect(elements['private-wallet-error'].textContent).toBe('Broadcaster unavailable')
+  expect(elements['preserved-withdrawal-details'].textContent).toContain('WETH')
+})
+
 it('the normal quote button reserves fees for the exact full-balance amount and discloses the adjustment', async () => {
   const full = 9_975_000_000_000_000n
   const quote = { sell: 'WETH', buy: 'USDC', amount: full, minimum: 1000n, shieldFee: 25n, ophisFee: 1n }
@@ -138,6 +296,9 @@ it('the normal quote button reserves fees for the exact full-balance amount and 
   expect(elements.amount.value).toBe('0.009425')
   expect(elements['quote-details'].textContent).toMatch(/^Broadcaster fee reserved/)
   expect(elements['quote-details'].textContent).toContain('Broadcaster fee: 0.00055 WETH')
+  expect(elements['receive-amount'].textContent).toBe('0.000998')
+  expect(elements.quote.className).toBe('')
+  expect(elements.quote.textContent).toBe('Review swap')
   expect(elements.swap.hidden).toBe(false)
   expect(elements['private-wallet-error'].textContent).toBe('')
   const { executePrivateSwap } = await import('./private-swap')
@@ -157,6 +318,29 @@ it('does not automatically reduce a fixed trade below the full balance or retry 
   await elements.quote.onclick?.()
   expect(mocks.prepareMax).not.toHaveBeenCalled()
   expect(elements['private-wallet-error'].textContent).toBe('Gas estimation unavailable')
+})
+
+it('opens review for a prepared quote and does not reopen it after an unrelated wallet action', async () => {
+  const { setSwapReview } = await import('./wallet-layout')
+  const { wireWalletActions } = await import('./wallet-actions')
+  await wireWalletActions({} as WalletSession)
+  await elements.quote.onclick?.()
+  expect(setSwapReview).toHaveBeenLastCalledWith(true)
+  vi.mocked(setSwapReview).mockClear()
+  await elements.walletconnect.onclick?.()
+  expect(setSwapReview).not.toHaveBeenCalledWith(true)
+})
+
+it('clears the swap quote when preparing a maximum withdrawal changes the shared amount', async () => {
+  const { wireWalletActions } = await import('./wallet-actions')
+  await wireWalletActions({} as WalletSession)
+  await elements.quote.onclick?.()
+  expect(elements['receive-amount'].textContent).not.toBe('—')
+  await elements['withdraw-max'].onclick?.()
+  expect(elements['receive-amount'].textContent).toBe('—')
+  expect(elements['quote-details'].textContent).toBe('')
+  expect(elements.swap.hidden).toBe(true)
+  expect(elements.withdraw.hidden).toBe(false)
 })
 
 it('shows the Max amount and its committed fee for review without executing a swap', async () => {
@@ -318,8 +502,8 @@ it('deposits ETH with no token approval, independently of private swap inputs', 
   expect(mocks.approve).not.toHaveBeenCalled()
   expect(elements['public-wallet-error'].textContent).toMatch(/Native deposits do not need token approval/)
   await elements.shield.onclick?.()
-  expect(mocks.shield).toHaveBeenCalledWith(session, expect.anything(), 'ETH', 1n, expect.any(Function))
-  expect(elements.status.textContent).toContain('Shield confirmed')
+  expect(mocks.shield).toHaveBeenCalledWith(session, expect.anything(), 'ETH', 1n, expect.any(Function), expect.any(Function))
+  expect(elements.status.textContent).toContain('Deposit confirmed')
   expect(elements.token.value).toBe('WETH')
   expect(elements.amount.value).toBe('')
   expect(elements['swap-direction'].textContent).toContain('Sell WETH → receive USDC')
@@ -337,7 +521,25 @@ it('clears an amount when the sell token changes so USDC units cannot become WET
   expect(elements.amount.value).toBe('')
   expect(elements.swap.hidden).toBe(true)
   expect(elements['quote-details'].textContent).toBe('')
+  expect(elements['receive-amount'].textContent).toBe('—')
+  expect(elements.quote.className).toBe('')
   expect(elements['swap-direction'].textContent).toBe('Sell USDC → receive WETH. Enter the amount of USDC to sell.')
+})
+
+it('keeps quote refresh accessible and clears the old minimum if refreshing fails', async () => {
+  const { wireWalletActions } = await import('./wallet-actions')
+  await wireWalletActions({} as WalletSession)
+  await elements.quote.onclick?.()
+  expect(elements.quote.hidden).toBe(false)
+  expect(elements.quote.textContent).toBe('Review swap')
+  expect(elements['receive-amount'].textContent).not.toBe('—')
+  mocks.quoteSwap.mockRejectedValueOnce(new Error('No route available'))
+  await elements.quote.onclick?.()
+  expect(elements['receive-amount'].textContent).toBe('—')
+  expect(elements.swap.hidden).toBe(true)
+  expect(elements.quote.hidden).toBe(false)
+  expect(elements.quote.textContent).toBe('Review swap')
+  expect(elements.quote.className).toBe('')
 })
 
 it.each(['ETH', 'USDC', 'WETH'])('selects the funded private token and clears a stale trade amount after a confirmed %s deposit', async (asset) => {
@@ -446,6 +648,49 @@ it.each(['approval', 'allowance'])('does not re-enable shielding after a network
   expect(elements.walletconnect.hidden).toBe(false)
 })
 
+it.each(['approve', 'shield'])('passes a live session check that stops %s after a wallet event', async action => {
+  const { wireWalletActions } = await import('./wallet-actions')
+  await wireWalletActions({} as WalletSession)
+  await elements.walletconnect.onclick?.()
+  const submit = vi.fn()
+  ;(action === 'approve' ? mocks.approve : mocks.shield).mockImplementationOnce(async (...args: unknown[]) => {
+    provider.emit('accountsChanged', [])
+    ;(args[5] as () => void)()
+    submit()
+  })
+  await elements[action].onclick?.()
+  expect(submit).not.toHaveBeenCalled()
+  expect(elements.error.textContent).toMatch(/wallet changed/)
+})
+
+it('exposes older credit as a separate recovery choice and clears refund consent when switching', async () => {
+  mocks.environment = 'ethereum'
+  mocks.pendingCredit.mockImplementation(async (_session, funding) => funding === 'private'
+    ? { topUpPending: true, funding: undefined } : undefined)
+  const session = {} as WalletSession
+  const { wireWalletActions } = await import('./wallet-actions')
+  await wireWalletActions(session)
+  expect(elements['fee-credit-funding-label'].hidden).toBe(false)
+  expect(elements['fee-credit-funding'].value).toBe('native')
+  elements['fee-credit-funding'].value = 'private'
+  elements['fee-credit-funding'].onchange?.()
+  await vi.waitFor(() => expect(elements['legacy-fee-credit-help'].hidden).toBe(false))
+  expect(elements['add-fee-credit'].hidden).toBe(true)
+  expect(elements['check-fee-topup'].hidden).toBe(false)
+  expect(elements['request-fee-refund'].hidden).toBe(true)
+  await elements['refresh-fee-credit'].onclick?.()
+  expect(mocks.creditBalance).toHaveBeenCalledWith(session, 'private')
+  await elements['check-fee-topup'].onclick?.()
+  expect(mocks.claimCredit).toHaveBeenCalledWith(session, undefined, 'private')
+  await elements['add-fee-credit'].onclick?.()
+  expect(mocks.topUp).not.toHaveBeenCalled()
+  expect(mocks.credit).not.toHaveBeenCalled()
+  elements['fee-credit-funding'].value = 'native'
+  elements['fee-credit-funding'].onchange?.()
+  await vi.waitFor(() => expect(elements['legacy-fee-credit-help'].hidden).toBe(true))
+  expect(elements['add-fee-credit'].hidden).toBe(false)
+})
+
 it('switches the selected WalletConnect provider and keeps only one listener per event on reconnect', async () => {
   const { PublicNetworkError } = await import('./shield')
   mocks.signer.mockRejectedValueOnce(new PublicNetworkError())
@@ -485,7 +730,7 @@ it('prepares Max withdrawal after fee without connecting or charging a public wa
   const { wireWalletActions } = await import('./wallet-actions')
   await wireWalletActions({} as WalletSession)
   await elements['withdraw-max'].onclick?.()
-  expect(mocks.prepareWithdrawal).toHaveBeenCalledWith(expect.anything(), 'USDC', '', elements.recipient.value, selected, true)
+  expect(mocks.prepareWithdrawal).toHaveBeenCalledWith(expect.anything(), 'USDC', '', elements.recipient.value, selected, true, false)
   expect(elements.amount.value).toBe('0.000999')
   expect(elements['withdraw-details'].textContent).toContain('You receive: 0.0009 USDC')
   expect(elements.withdraw.hidden).toBe(false)
@@ -509,7 +754,7 @@ it('removes an earlier prepared withdrawal and shows discovery failures beside t
 
 it('blocks a mainnet deposit before approval when no compatible private-swap broadcaster is available', async () => {
   mocks.environment = 'ethereum'
-  mocks.selectBroadcaster.mockRejectedValue(new Error('No compatible broadcaster is available.'))
+  mocks.credit.mockRejectedValue(new Error('No compatible broadcaster is available.'))
   const { wireWalletActions } = await import('./wallet-actions')
   await wireWalletActions({} as WalletSession)
   await elements.connect.onclick?.()
@@ -523,12 +768,11 @@ it('blocks a mainnet deposit before approval when no compatible private-swap bro
 it('rechecks a mainnet broadcaster immediately before shielding without sending after discovery fails', async () => {
   mocks.environment = 'ethereum'
   mocks.allowance.mockResolvedValue(1n)
-  mocks.selectBroadcaster.mockResolvedValue({ tokenAddress: 'fresh fee token' })
   const { wireWalletActions } = await import('./wallet-actions')
   await wireWalletActions({} as WalletSession)
   await elements.connect.onclick?.()
   expect(elements.shield.hidden).toBe(false)
-  mocks.selectBroadcaster.mockRejectedValueOnce(new Error('Broadcaster disconnected.'))
+  mocks.credit.mockRejectedValueOnce(new Error('Broadcaster disconnected.'))
   await elements.shield.onclick?.()
   expect(mocks.shield).not.toHaveBeenCalled()
   expect(elements['public-wallet-error'].textContent).toContain('Broadcaster disconnected')
@@ -537,12 +781,11 @@ it('rechecks a mainnet broadcaster immediately before shielding without sending 
 it('blocks a deposit while history is incomplete, including after an earlier successful review', async () => {
   mocks.environment = 'ethereum'
   mocks.allowance.mockResolvedValue(1n)
-  mocks.selectBroadcaster.mockResolvedValue({ tokenAddress: 'fresh fee token' })
   const { wireWalletActions } = await import('./wallet-actions')
   await wireWalletActions({} as WalletSession)
   mocks.requireSync.mockImplementation(() => { throw new Error('Private history is not synchronized.') })
   await elements.connect.onclick?.()
-  expect(mocks.selectBroadcaster).not.toHaveBeenCalled()
+  expect(mocks.credit).not.toHaveBeenCalled()
   expect(elements.approve.hidden).toBe(true)
   expect(elements.shield.hidden).toBe(true)
   mocks.requireSync.mockReset()
@@ -554,15 +797,293 @@ it('blocks a deposit while history is incomplete, including after an earlier suc
   expect(elements['public-wallet-error'].textContent).toContain('not synchronized')
 })
 
-it.each(['quote', 'max-swap'])('blocks %s before preparing a private output without a compatible broadcaster', async (action) => {
+it.each(['quote', 'max-swap'])('blocks %s before preparing a proof without an approved prepaid quote', async (action) => {
   mocks.environment = 'ethereum'
-  mocks.selectBroadcaster.mockResolvedValueOnce({ tokenAddress: 'input fee token' })
-    .mockRejectedValueOnce(new Error('No compatible broadcaster for the receive token.'))
+  mocks.credit.mockRejectedValueOnce(new Error('Prepaid execution is not approved.'))
   const { wireWalletActions } = await import('./wallet-actions')
   await wireWalletActions({} as WalletSession)
   await elements[action].onclick?.()
   expect(mocks.prepareSwap).not.toHaveBeenCalled()
   expect(mocks.prepareMax).not.toHaveBeenCalled()
   expect(elements.swap.hidden).toBe(true)
-  expect(elements['private-wallet-error'].textContent).toContain('receive token')
+  expect(elements['private-wallet-error'].textContent).toContain('not approved')
+  expect(mocks.selectBroadcaster).not.toHaveBeenCalled()
+})
+
+it.each(['quote', 'max-swap', 'withdraw-quote'])('passes the explicit prepared credit to mainnet %s without legacy discovery', async (action) => {
+  mocks.environment = 'ethereum'
+  const credit = { selected: { tokenAddress: TOKENS.WETH.address }, feesID: 'reviewed-credit' }
+  mocks.credit.mockResolvedValue(credit)
+  mocks.prepareMax.mockResolvedValue({ quote: { sell: 'WETH', buy: 'USDC', amount: 1000n, minimum: 1000n, shieldFee: 25n, ophisFee: 1n }, fee: { amount: 1n }, prepaid: credit })
+  const { wireWalletActions } = await import('./wallet-actions')
+  await wireWalletActions({} as WalletSession)
+  await elements[action].onclick?.()
+  const prepare = action === 'quote' ? mocks.prepareSwap : action === 'max-swap' ? mocks.prepareMax : mocks.prepareWithdrawal
+  expect(prepare.mock.calls[0].at(-1)).toBe(credit)
+  expect(mocks.selectBroadcaster).not.toHaveBeenCalled()
+  expect(mocks.connect).not.toHaveBeenCalled()
+  expect(mocks.topUp).not.toHaveBeenCalled()
+  expect(elements.error.textContent).toBe('')
+})
+
+describe('BNB withdrawal admission', () => {
+  beforeEach(() => {
+    vi.resetModules()
+    vi.stubEnv('VITE_RAILGUN_CHAIN_ID', '56')
+    vi.doMock('./config', mockConfig)
+    mocks.environment = 'ethereum'
+    elements.token.value = 'WBNB'
+    mocks.credit.mockRejectedValue(new Error('Prepaid execution is not approved.'))
+    mocks.selectBroadcaster.mockResolvedValue({ tokenAddress: 'verified external fee token' })
+  })
+  afterEach(() => { vi.unstubAllEnvs(); vi.resetModules(); vi.doMock('./config', mockConfig) })
+
+  it.each(['withdraw-quote', 'withdraw-max'])('retains external COMMON discovery for %s with expired prepaid approval', async (action) => {
+    const { wireWalletActions } = await import('./wallet-actions')
+    const { TOKENS } = await import('./config')
+    await wireWalletActions({} as WalletSession)
+    await elements[action].onclick?.()
+    expect(mocks.credit).not.toHaveBeenCalled()
+    expect(mocks.selectBroadcaster).toHaveBeenCalledWith(TOKENS.WBNB.address, false, expect.any(Function))
+    expect(mocks.prepareWithdrawal.mock.calls[0]).toHaveLength(7)
+    expect(elements.withdraw.hidden).toBe(false)
+  })
+
+  it('uses approved prepaid credit for COMMON withdrawals when available', async () => {
+    const { PREPAID_BROADCASTERS, TOKENS } = await import('./config')
+    PREPAID_BROADCASTERS[56]!.expiresAt = Date.now() + 3_600_000
+    const credit = { selected: { tokenAddress: TOKENS.WBNB.address } }
+    mocks.credit.mockResolvedValue(credit)
+    const { wireWalletActions } = await import('./wallet-actions')
+    await wireWalletActions({} as WalletSession)
+    await elements['withdraw-quote'].onclick?.()
+    expect(mocks.selectBroadcaster).not.toHaveBeenCalled()
+    expect(mocks.prepareWithdrawal.mock.calls[0].at(-1)).toBe(credit)
+  })
+
+  it.each(['USDC', 'USDT', 'native', 'swap'])('keeps %s on the prepaid path when approval is expired', async (kind) => {
+    if (kind === 'native') elements['withdraw-native'].checked = true
+    else if (kind !== 'swap') elements.token.value = kind
+    const { wireWalletActions } = await import('./wallet-actions')
+    await wireWalletActions({} as WalletSession)
+    await elements[kind === 'swap' ? 'quote' : 'withdraw-quote'].onclick?.()
+    expect(mocks.credit).toHaveBeenCalled()
+    expect(mocks.selectBroadcaster).not.toHaveBeenCalled()
+    expect(mocks.prepareWithdrawal).not.toHaveBeenCalled()
+    expect(mocks.prepareSwap).not.toHaveBeenCalled()
+    expect(elements['private-wallet-error'].textContent).toContain('not approved')
+  })
+})
+
+it('requires separate top-up gas/privacy consent before requesting wallet access or transferring funds', async () => {
+  mocks.environment = 'ethereum'
+  const { wireWalletActions } = await import('./wallet-actions')
+  await wireWalletActions({} as WalletSession)
+  await elements['add-fee-credit'].onclick?.()
+  expect(elements['private-wallet-error'].textContent).toContain('gas and privacy notice')
+  expect(mocks.connect).not.toHaveBeenCalled()
+  expect(mocks.signer).not.toHaveBeenCalled()
+  expect(mocks.topUp).not.toHaveBeenCalled()
+  expect(mocks.credit).not.toHaveBeenCalled()
+})
+
+it('keeps checking a saved top-up separate from its explicit consented retry', async () => {
+  mocks.environment = 'ethereum'
+  mocks.pendingCredit.mockResolvedValue({ topUpPending: true })
+  mocks.claimCredit.mockRejectedValue(new Error('Top-up is not finalized.'))
+  vi.stubGlobal('window', { ethereum: provider })
+  const { wireWalletActions } = await import('./wallet-actions')
+  const session = {} as WalletSession
+  await wireWalletActions(session)
+  expect(elements['add-fee-credit'].hidden).toBe(true)
+  expect(elements['retry-fee-topup'].hidden).toBe(false)
+  await elements['check-fee-topup'].onclick?.()
+  expect(mocks.claimCredit).toHaveBeenCalledOnce()
+  expect(mocks.retryTopUp).not.toHaveBeenCalled()
+  await elements['retry-fee-topup'].onclick?.()
+  expect(elements['private-wallet-error'].textContent).toContain('gas and privacy notice')
+  expect(mocks.connect).not.toHaveBeenCalled()
+  expect(mocks.retryTopUp).not.toHaveBeenCalled()
+  elements['fee-credit-consent'].checked = true
+  await elements['retry-fee-topup'].onclick?.()
+  expect(mocks.retryTopUp).toHaveBeenCalledWith(session, expect.objectContaining({ getAddress: expect.any(Function) }), expect.any(Function), 'native')
+  expect(mocks.topUp).not.toHaveBeenCalled()
+  expect(mocks.credit).not.toHaveBeenCalled()
+  expect(mocks.prepareSwap).not.toHaveBeenCalled()
+  expect(elements['fee-credit-consent'].checked).toBe(false)
+  expect(elements['fee-credit-status'].textContent).toContain('payment details were preserved')
+})
+
+it('does not resume a saved top-up when the public wallet changes during signer access', async () => {
+  mocks.environment = 'ethereum'
+  mocks.pendingCredit.mockResolvedValue({ topUpPending: true })
+  vi.stubGlobal('window', { ethereum: provider })
+  mocks.signer.mockImplementation(async () => {
+    provider.emit('accountsChanged', [])
+    return { getAddress: async () => '0x0000000000000000000000000000000000000001' }
+  })
+  const { wireWalletActions } = await import('./wallet-actions')
+  await wireWalletActions({} as WalletSession)
+  elements['fee-credit-consent'].checked = true
+  await elements['retry-fee-topup'].onclick?.()
+  expect(mocks.retryTopUp).not.toHaveBeenCalled()
+  expect(elements['private-wallet-error'].textContent).toContain('Public wallet changed')
+})
+
+it('refreshes confirmed available/reserved credit without starting a transfer or retry', async () => {
+  mocks.environment = 'ethereum'
+  const { wireWalletActions } = await import('./wallet-actions')
+  await wireWalletActions({} as WalletSession)
+  await elements['refresh-fee-credit'].onclick?.()
+  expect(elements['fee-credit-balance'].textContent).toContain('Available: 0.000000000000001 WETH')
+  expect(elements['fee-credit-balance'].textContent).toContain('Reserved: 0.000000000000000002 WETH')
+  expect(mocks.topUp).not.toHaveBeenCalled()
+  expect(mocks.retryCredit).not.toHaveBeenCalled()
+  expect(mocks.connect).not.toHaveBeenCalled()
+})
+
+it('keeps native replacement-hash recovery visible and requires consent before setting a payment aside', async () => {
+  mocks.environment = 'ethereum'
+  mocks.pendingCredit.mockResolvedValue({ funding: 'native', topUpPending: true, topUpHash: `0x${'11'.repeat(32)}`, deferredTopUpCount: 1 })
+  const { wireWalletActions } = await import('./wallet-actions')
+  await wireWalletActions({} as WalletSession)
+  expect(elements['fee-topup-hash-label'].hidden).toBe(false)
+  expect(elements['defer-fee-topup'].hidden).toBe(false)
+  await elements['defer-fee-topup-action'].onclick?.()
+  expect(mocks.deferTopUp).not.toHaveBeenCalled()
+  elements['defer-fee-topup-consent'].checked = true
+  await elements['defer-fee-topup-action'].onclick?.()
+  expect(mocks.deferTopUp).toHaveBeenCalledOnce()
+  expect(elements['fee-credit-status'].textContent).toContain('does not cancel')
+  expect(mocks.topUp).not.toHaveBeenCalled()
+  expect(mocks.retryTopUp).not.toHaveBeenCalled()
+})
+
+it('reviews a private refund without reserving credit until the separate explicit request', async () => {
+  mocks.environment = 'ethereum'
+  mocks.credit.mockRejectedValue(new Error('The execution approval expired.'))
+  const { amountFromInput } = await import('./recipe')
+  vi.mocked(amountFromInput).mockReturnValueOnce(100n)
+  const { wireWalletActions } = await import('./wallet-actions')
+  await wireWalletActions({} as WalletSession)
+  await elements['review-fee-refund'].onclick?.()
+  expect(elements['fee-refund-review'].textContent).toContain('Net refund: 0.00000000000000009 WETH')
+  expect(elements['fee-refund-review'].textContent).toContain('operator must process')
+  expect(mocks.requestRefund).not.toHaveBeenCalled()
+  expect(mocks.topUp).not.toHaveBeenCalled()
+  expect(mocks.connect).not.toHaveBeenCalled()
+  expect(mocks.refundCredit).toHaveBeenCalledOnce()
+  expect(mocks.credit).not.toHaveBeenCalled()
+  await elements['request-fee-refund'].onclick?.()
+  expect(mocks.requestRefund).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ selected: expect.anything() }), 100n, undefined)
+  expect(elements['fee-credit-status'].textContent).toContain('awaiting-owner-transfer')
+})
+
+it('reviews a native refund in ETH and binds the explicit public destination until confirmation', async () => {
+  mocks.environment = 'ethereum'
+  const recipient = '0x0000000000000000000000000000000000000123'
+  mocks.refundCredit.mockResolvedValue({ scope: { funding: 'native' }, selected: { tokenAddress: TOKENS.WETH.address }, maximumRefundGross: 1000n })
+  mocks.creditBalance.mockResolvedValue({ funding: 'native', available: 1000n, reserved: 2n })
+  mocks.requestRefund.mockResolvedValue({ funding: 'native', state: 'submitted-or-unknown', net: 90n })
+  const { amountFromInput } = await import('./recipe')
+  vi.mocked(amountFromInput).mockReturnValueOnce(100n)
+  const { wireWalletActions } = await import('./wallet-actions')
+  await wireWalletActions({} as WalletSession)
+  elements['fee-refund-recipient'].value = recipient
+  await elements['review-fee-refund'].onclick?.()
+  expect(elements['fee-refund-review'].textContent).toContain(`Destination: ${recipient}`)
+  expect(elements['fee-refund-review'].textContent).toContain('Net refund: 0.00000000000000009 ETH')
+  expect(elements['fee-refund-review'].textContent).toContain('This payment is public')
+  expect(mocks.requestRefund).not.toHaveBeenCalled()
+  await elements['request-fee-refund'].onclick?.()
+  expect(mocks.requestRefund).toHaveBeenCalledWith(expect.anything(), expect.anything(), 100n, recipient)
+  expect(elements['fee-credit-status'].textContent).toContain('submitted-or-unknown')
+})
+
+it('invalidates native refund consent when the public destination changes', async () => {
+  mocks.environment = 'ethereum'
+  mocks.refundCredit.mockResolvedValue({ scope: { funding: 'native' }, selected: {}, maximumRefundGross: 1000n })
+  const { amountFromInput } = await import('./recipe')
+  vi.mocked(amountFromInput).mockReturnValueOnce(100n)
+  const { wireWalletActions } = await import('./wallet-actions')
+  await wireWalletActions({} as WalletSession)
+  elements['fee-refund-recipient'].value = '0x0000000000000000000000000000000000000123'
+  await elements['review-fee-refund'].onclick?.()
+  elements['fee-refund-recipient'].oninput?.()
+  await elements['request-fee-refund'].onclick?.()
+  expect(mocks.requestRefund).not.toHaveBeenCalled()
+})
+
+
+it('shows the payable refund limit before allowing an oversized request', async () => {
+  mocks.environment = 'ethereum'
+  mocks.refundCredit.mockResolvedValue({ scope: {}, selected: { tokenAddress: TOKENS.WETH.address }, maximumRefundGross: 50n })
+  const { amountFromInput } = await import('./recipe')
+  vi.mocked(amountFromInput).mockReturnValueOnce(100n)
+  const { wireWalletActions } = await import('./wallet-actions')
+  await wireWalletActions({} as WalletSession)
+  await elements['review-fee-refund'].onclick?.()
+  expect(elements['private-wallet-error'].textContent).toContain('Maximum refundable now: 0.00000000000000005 WETH')
+  expect(elements['request-fee-refund'].hidden).toBe(true)
+  expect(mocks.requestRefund).not.toHaveBeenCalled()
+  expect(mocks.connect).not.toHaveBeenCalled()
+})
+
+it('invalidates a reviewed refund if its amount changes and never treats awaiting-owner status as paid', async () => {
+  mocks.environment = 'ethereum'
+  const { amountFromInput } = await import('./recipe')
+  vi.mocked(amountFromInput).mockReturnValueOnce(100n)
+  const { wireWalletActions } = await import('./wallet-actions')
+  await wireWalletActions({} as WalletSession)
+  await elements['review-fee-refund'].onclick?.()
+  elements['fee-refund-amount'].oninput?.()
+  await elements['request-fee-refund'].onclick?.()
+  expect(mocks.requestRefund).not.toHaveBeenCalled()
+  await elements['check-fee-refund'].onclick?.()
+  expect(elements['fee-credit-status'].textContent).toContain('not confirmed yet')
+  expect(mocks.sync).not.toHaveBeenCalled()
+})
+
+it('explains retired fee requests without clearing or cancelling the saved private swap', async () => {
+  mocks.environment = 'ethereum'
+  const saved = { account: '0x0000000000000000000000000000000000000001', index: 0, feeMode: 'prepaid' }
+  mocks.pendingSwap.mockResolvedValue(saved)
+  mocks.pendingCredit.mockResolvedValue({ key: 'saved fee key', completed: true, state: 'not-reserved' })
+  mocks.checkCredit.mockResolvedValue({ state: 'not-reserved', charged: 0n, cancelled: false })
+  const { wireWalletActions } = await import('./wallet-actions')
+  await wireWalletActions({} as WalletSession)
+  await elements['check-fee-attempt'].onclick?.()
+  expect(elements['fee-credit-status'].textContent).toContain('No fee was charged for it')
+  expect(elements['fee-credit-status'].textContent).toContain('signed private transaction remains saved')
+  expect(elements['fee-credit-status'].textContent).not.toContain('cancelled')
+  expect(elements['retry-fee-attempt'].hidden).toBe(true)
+  expect(elements['reconcile'].hidden).toBe(false)
+  expect(elements['cancel-swap'].hidden).toBe(false)
+  expect(elements['review-fee-refund'].hidden).toBe(false)
+  expect(mocks.retryCredit).not.toHaveBeenCalled()
+  expect(mocks.connect).not.toHaveBeenCalled()
+  const { deletePrivateState } = await import('./storage')
+  const { cancelPendingSwap } = await import('./cancel')
+  expect(deletePrivateState).not.toHaveBeenCalled()
+  expect(cancelPendingSwap).not.toHaveBeenCalled()
+})
+
+it('reopens refund review after terminal retirement without calling it a completed payout', async () => {
+  mocks.environment = 'ethereum'
+  mocks.pendingCredit.mockResolvedValue({ refundPending: true })
+  mocks.checkRefund.mockImplementation(async () => {
+    mocks.pendingCredit.mockResolvedValue({ refundPending: false })
+    return { state: 'not-reserved', net: 90n }
+  })
+  const { wireWalletActions } = await import('./wallet-actions')
+  await wireWalletActions({} as WalletSession)
+  expect(elements['review-fee-refund'].hidden).toBe(true)
+  await elements['check-fee-refund'].onclick?.()
+  expect(elements['fee-credit-status'].textContent).toContain('Review a new refund request')
+  expect(elements['fee-credit-status'].textContent).not.toContain('refund verified')
+  expect(elements['review-fee-refund'].hidden).toBe(false)
+  expect(elements['check-fee-refund'].hidden).toBe(true)
+  expect(mocks.sync).not.toHaveBeenCalled()
+  expect(mocks.requestRefund).not.toHaveBeenCalled()
+  expect(mocks.connect).not.toHaveBeenCalled()
 })

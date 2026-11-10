@@ -2,9 +2,10 @@ import { beforeEach, expect, it, vi } from 'vitest'
 import { calculateGasLimit, EVMGasType } from '@railgun-community/shared-models'
 import { parseUnits } from 'ethers'
 import type { WalletSession } from './wallet'
-import { TOKENS } from './config'
+import { TOKENS, registerToken } from './config'
 
-const state = vi.hoisted(() => ({ balance: vi.fn(), estimate: vi.fn(), fee: vi.fn(), refresh: vi.fn(), quote: vi.fn() }))
+const state = vi.hoisted(() => ({ balance: vi.fn(), estimate: vi.fn(), fee: vi.fn(), refresh: vi.fn(), quote: vi.fn(), credit: vi.fn() }))
+vi.mock('./prepaid', () => ({ assertPrepaidContext: state.credit }))
 vi.mock('@railgun-community/wallet', () => ({
   fullWalletForID: () => ({}), balanceForERC20Token: state.balance,
   gasEstimateForUnprovenCrossContractCalls7702: state.estimate,
@@ -28,11 +29,39 @@ const minimumFee = 200_000_000_000_000n
 const finalFee = 400_000_000_000_000n
 
 beforeEach(() => {
+  state.credit.mockReset().mockResolvedValue(undefined)
   state.quote.mockReset().mockImplementation(async (_provider, sell, value, account) => ({ ...quote, sell, amount: parseUnits(value, TOKENS[sell as keyof typeof TOKENS].decimals), account }))
   state.refresh.mockReset().mockResolvedValue(undefined)
   state.balance.mockReset()
   state.estimate.mockReset().mockResolvedValue({ gasEstimate: 6_000_000n })
   state.fee.mockReset().mockReturnValueOnce({ amount: minimumFee }).mockReturnValue({ amount: finalFee })
+})
+
+it.each(['WETH', 'USDC'] as const)('keeps the full %s principal for Max with explicit reusable prepaid credit', async (sell) => {
+  const balance = parseUnits('2', TOKENS[sell].decimals)
+  state.balance.mockImplementation(async (_v, _w, _n, address) => address === TOKENS[sell].address ? balance : 0n)
+  const credit = { scope: { token: TOKENS.WETH.address, recipient: 'reviewed-credit' },
+    rate: 1_150_000_000_000_000_000n, collectionAllowance: 1_000n,
+    maximumGasCost: 1_500_000_000_000_000n, maximumGasPrice: 500_000_000n, maximumCharge: 2_000_000_000_000_000n,
+  } as NonNullable<Parameters<typeof preparePrivateSwap>[3]>
+  const prepared = await prepareMaxPrivateSwap(session, sell, selected, undefined, sell === 'USDC' ? 'WETH' : 'USDC', credit)
+  expect(prepared.quote.amount).toBe(balance)
+  expect(prepared.prepaid).toBe(credit)
+  expect(prepared.feeToken).toBe('WETH')
+  expect(prepared.fee.amount).toBeGreaterThan(0n)
+  expect(state.fee).not.toHaveBeenCalled()
+  expect(state.estimate.mock.calls[0][10]).toBeUndefined()
+  expect(state.estimate.mock.calls[0][11]).toBe(true)
+  expect(state.balance.mock.calls.every((args) => args[3] === TOKENS[sell].address)).toBe(true)
+  expect(state.credit).toHaveBeenCalled()
+})
+
+it('rejects insufficient or changed prepaid context before estimating or creating a Max proof', async () => {
+  state.balance.mockResolvedValue(parseUnits('1', 18))
+  state.credit.mockRejectedValue(new Error('Insufficient confirmed fee credit'))
+  const credit = { maximumGasCost: 1_500_000_000_000_000n, maximumGasPrice: 500_000_000n } as NonNullable<Parameters<typeof preparePrivateSwap>[3]>
+  await expect(preparePrivateSwap(session, quote, selected, credit)).rejects.toThrow('Insufficient confirmed fee credit')
+  expect(state.estimate).not.toHaveBeenCalled()
 })
 
 it('reserves the final SDK fee when Max starts with the entire current WETH balance', async () => {
@@ -180,6 +209,56 @@ it('caps the gas price for a fixed 0.0005 WETH trade, then re-estimates without 
   expect(state.estimate).toHaveBeenCalledTimes(2)
   expect(state.estimate.mock.calls.every((call) => call[12] === 3_000_000n)).toBe(true)
   await expect(preparePrivateSwap(current, { ...trade, amount: 1_000_000_000_000_000n }, broadcaster)).rejects.toThrow('Required private balance')
+})
+
+it('reprices a larger imported-token swap estimate against its separate WETH reserve', async () => {
+  const sell = registerToken({ address: '0x0000000000000000000000000000000000005678', symbol: 'CUSTOM', decimals: 8 })
+  const trade = { ...quote, sell, amount: 100_000_000n }
+  const reserve = 716_490_555_332_357n
+  const broadcaster = { ...selected, tokenFee: { ...selected.tokenFee, feePerUnitGas: '1000000000000000000' } }
+  const current = { ...session, provider: { getBlock: async () => ({ baseFeePerGas: 180_000_000n }) } } as unknown as WalletSession
+  state.balance.mockImplementation(async (_version, _wallet, _network, address) => address === TOKENS.WETH.address ? reserve : trade.amount)
+  state.estimate.mockResolvedValue({ gasEstimate: 3_098_193n })
+  state.fee.mockReset().mockImplementation((_selected, gas) => ({ amount: calculateGasLimit(gas.gasEstimate) * gas.maxFeePerGas }))
+
+  const prepared = await preparePrivateSwap(current, trade, broadcaster)
+
+  expect(prepared.quote.amount).toBe(trade.amount)
+  expect(prepared.unshields[0].amount).toBe(trade.amount)
+  expect(prepared.feeToken).toBe('WETH')
+  expect(prepared.fee.amount).toBeLessThanOrEqual(reserve)
+  expect(prepared.gas.gasEstimate).toBe(3_100_000n)
+  expect(prepared.gas.maxFeePerGas).toBeGreaterThanOrEqual(180_000_001n)
+  expect(prepared.gas.maxFeePerGas).toBeLessThan(state.estimate.mock.calls[0][9].maxFeePerGas)
+  expect(prepared.gasCapped).toBe(true)
+  expect(state.estimate).toHaveBeenCalledTimes(2)
+  expect(state.estimate.mock.calls.every((call) => call[12] === 3_000_000n)).toBe(true)
+})
+
+it('rejects a larger separate-token estimate when the reserve cannot cover the network minimum', async () => {
+  const sell = registerToken({ address: '0x0000000000000000000000000000000000005678', symbol: 'CUSTOM', decimals: 8 })
+  const trade = { ...quote, sell, amount: 100_000_000n }
+  const reserve = 700_000_000_000_000n
+  const broadcaster = { ...selected, tokenFee: { ...selected.tokenFee, feePerUnitGas: '1000000000000000000' } }
+  const current = { ...session, provider: { getBlock: async () => ({ baseFeePerGas: 190_000_000n }) } } as unknown as WalletSession
+  state.balance.mockImplementation(async (_version, _wallet, _network, address) => address === TOKENS.WETH.address ? reserve : trade.amount)
+  state.estimate.mockResolvedValue({ gasEstimate: 3_100_000n })
+  state.fee.mockReset().mockImplementation((_selected, gas) => ({ amount: calculateGasLimit(gas.gasEstimate) * gas.maxFeePerGas }))
+
+  await expect(preparePrivateSwap(current, trade, broadcaster)).rejects.toThrow('Insufficient spendable private WETH')
+  expect(state.fee.mock.calls.at(-1)?.[1].maxFeePerGas).toBe(190_000_001n)
+  expect(state.estimate).toHaveBeenCalledTimes(1)
+})
+
+it('does not fund missing imported-token principal from the separate fee reserve after estimation', async () => {
+  const sell = registerToken({ address: '0x0000000000000000000000000000000000005678', symbol: 'CUSTOM', decimals: 8 })
+  const trade = { ...quote, sell, amount: 100_000_000n }
+  state.balance.mockImplementation(async (_version, _wallet, _network, address) => address === TOKENS.WETH.address
+    ? 10n ** 18n : trade.amount - (state.estimate.mock.calls.length ? 1n : 0n))
+  state.fee.mockReset().mockReturnValue({ amount: finalFee })
+
+  await expect(preparePrivateSwap(session, trade, selected)).rejects.toThrow('for the swap amount')
+  expect(state.estimate).toHaveBeenCalledTimes(1)
 })
 
 it('rejects a capped quote when the network price rises before the quote is ready', async () => {

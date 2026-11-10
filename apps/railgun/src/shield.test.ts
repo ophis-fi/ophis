@@ -7,14 +7,15 @@ import { forkMarker } from './fork-marker'
 it('rechecks the exact fork instance and rejects mainnet, other forks and wallet network changes', async () => {
   const metadata = { forkedNetwork: { chainId: 1 }, instanceId: 'same-local-instance' }
   const marker = forkMarker(metadata)
-  const send = vi.fn().mockResolvedValue(marker.code)
+  const owner = '0x0000000000000000000000000000000000001234'
+  const send = vi.fn().mockImplementation(async (method) => method === 'eth_accounts' ? [owner] : marker.code)
   const network = vi.fn().mockResolvedValue({ chainId: 1n })
   const session = {
     provider: {
       send: async (method: string) => (method === 'anvil_metadata' ? metadata : marker.code),
     },
   } as unknown as WalletSession
-  const signer = { provider: { send, getNetwork: network } } as unknown as JsonRpcSigner
+  const signer = { getAddress: async () => owner, provider: { send, getNetwork: network } } as unknown as JsonRpcSigner
   await expect(assertPublicNetwork(session, signer)).resolves.toBeUndefined()
   expect(send).toHaveBeenCalledWith('eth_getCode', [marker.address, 'latest'])
   send.mockResolvedValue(forkMarker({ ...metadata, instanceId: 'other-fork-instance' }).code)

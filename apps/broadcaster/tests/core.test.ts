@@ -1,4 +1,14 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi, afterAll } from 'vitest'
+// These fixtures model Ethereum explicitly; chain-specific suites exercise the BNB policy separately.
+const originalFixtureChain = vi.hoisted(() => {
+  const previous = process.env.OPHIS_BROADCASTER_CHAIN_ID
+  process.env.OPHIS_BROADCASTER_CHAIN_ID = '1'
+  return previous
+})
+afterAll(() => {
+  if (originalFixtureChain === undefined) delete process.env.OPHIS_BROADCASTER_CHAIN_ID
+  else process.env.OPHIS_BROADCASTER_CHAIN_ID = originalFixtureChain
+})
 import { mkdtempSync, rmSync, chmodSync, existsSync } from 'node:fs'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
@@ -98,6 +108,8 @@ describe('operator configuration and money boundaries', () => {
       first.confirmed('one', 1n, Date.now())
       expect(() => second.signed('two', 'envelope', 'raw2', 'hash2', 1n, 10n, 1)).toThrow('unresolved transaction')
       first.assured('one')
+      expect(first.nonceBlocked(0)).toBe(true)
+      expect(() => second.signed('reorg', 'envelope', 'raw2', 'hash2', 1n, 10n, 0)).toThrow('already reserved')
       expect(() => second.signed('two', 'envelope', 'raw2', 'hash2', 1n, 10n, 1)).not.toThrow()
       expect(first.pending().map((r) => r.key)).toEqual(['two'])
     } finally { first.close(); second.close(); rmSync(directory, { recursive: true, force: true }) }

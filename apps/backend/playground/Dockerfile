@@ -31,11 +31,17 @@ CMD ["migrate"]
 FROM chef AS builder
 COPY --from=planner /src/recipe.json recipe.json
 COPY --from=chef /.cargo /.cargo
+# The local patch must exist while cargo-chef resolves the recipe.
+COPY ./vendor/wasmtimer/ ./vendor/wasmtimer
+COPY ./vendor/sqlx-sqlite/ ./vendor/sqlx-sqlite
 RUN CARGO_PROFILE_RELEASE_DEBUG=1 cargo chef cook --release --features tokio-console --recipe-path recipe.json
 
 # Copy only the library crates for now
 COPY --from=chef /.cargo /.cargo
 COPY Cargo.toml Cargo.lock ./
+# Restore the real patch after cargo-chef's dummy dependency sources.
+COPY ./vendor/wasmtimer/ ./vendor/wasmtimer
+COPY ./vendor/sqlx-sqlite/ ./vendor/sqlx-sqlite
 COPY ./crates/app-data/ ./crates/app-data
 COPY ./crates/database/ ./crates/database
 COPY ./crates/bytes-hex/ ./crates/bytes-hex

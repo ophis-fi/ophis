@@ -1,33 +1,76 @@
 import './style.css'
 import { formatUnits } from 'ethers'
 import { newMnemonic, openWallet, startWalletEngine, syncWallet, type WalletSession } from './wallet'
-import { CHAIN_NAME, ENVIRONMENT, TOKENS } from './config'
-import { configurePrivateSelectors } from './network-ui'
+import { CHAIN_NAME, ENVIRONMENT, TOKENS, tokenIdFor } from './config'
+import { configurePrivateSelectors, refreshTokenSelectors } from './network-ui'
+import { importPrivateToken, loadTokenCatalog } from './token-catalog'
+import type { RailgunBalancesEvent } from '@railgun-community/shared-models'
 import { reportEmbeddedLayout } from './embedded'
+import { configurePickers } from './pickers'
+import { readPreference } from './storage'
+import { configureWalletLayout, showSetup, startFirstFunding, updateFirstFunding } from './wallet-layout'
 
 import { element, run } from './ui'
 import { wireWalletActions } from './wallet-actions'
 
-const status = element('status')
 element('environment').textContent =
-  ENVIRONMENT === 'fork' ? `Local ${CHAIN_NAME} fork · Test wallets only` : `${CHAIN_NAME} mainnet`
+  ENVIRONMENT === 'fork' ? `Local ${CHAIN_NAME} fork · Test wallets only` : 'Mainnet'
 configurePrivateSelectors()
+configureWalletLayout(configurePickers(async address => {
+  if (!session.current) throw new Error('Unlock your private wallet before adding a token.')
+  const id = await importPrivateToken(session.current, address)
+  refreshAssetSelectors()
+  for (const event of balanceEvents.values()) renderBalanceEvent(event)
+  return id
+}))
 reportEmbeddedLayout()
 const password = element<HTMLInputElement>('password')
 const mnemonic = element<HTMLTextAreaElement>('mnemonic')
 const backup = element<HTMLInputElement>('backup')
 const session: { current?: WalletSession } = {}
 const buckets = new Map<string, string>()
+const balanceEvents = new Map<string, RailgunBalancesEvent>()
 const started: { provider?: ReturnType<typeof startWalletEngine> } = {}
-const setup: { generated?: string; ready: boolean } = { ready: false }
+const setup: { generated?: string; ready: boolean; hasWallet: boolean; hasFunds: boolean } = {
+  ready: false, hasWallet: false, hasFunds: false,
+}
+void readPreference<unknown>('wallet').then((stored) => {
+  setup.hasWallet = stored !== undefined
+  showSetup(setup.hasWallet)
+}).catch(() => {
+  element('setup-title').textContent = 'Private wallet unavailable'
+  element('setup-help').textContent = 'Reload this page to retry. Keep this browser profile and do not clear site data; saved transactions remain here.'
+  element('error').textContent = 'Saved wallet metadata could not be read. Reload to retry without changing your saved data.'
+  element('setup-back').hidden = false
+  element('setup-back').textContent = 'Reload wallet'
+  element('setup-back').onclick = () => location.reload()
+})
 
 function renderSelectedBalance(): void {
   const selected = element<HTMLSelectElement>('token').value
-  const spendable = buckets.get('Spendable')?.split('\n').find((line) => line.startsWith(`${selected}:`))
-  element('spendable-balance').textContent = setup.ready ? spendable || `0 ${selected}` : 'Synchronizing…'
+  const token = TOKENS[selected]
+  const spendable = balanceEvents.get('Spendable')?.erc20Amounts.find(balance => balance.tokenAddress.toLowerCase() === token?.address.toLowerCase())
+  element('spendable-balance').textContent = setup.ready ? `${spendable && token ? formatUnits(spendable.amount, token.decimals) : '0'} ${token?.symbol || selected}` : 'Synchronizing…'
   element('pending-balances').textContent = [...buckets.entries()]
     .filter(([name]) => name !== 'Spendable')
     .map(([, value]) => value).join('\n\n') || 'No pending deposits.'
+}
+function refreshAssetSelectors(): void {
+  refreshTokenSelectors([...balanceEvents.values()].flatMap(event => event.erc20Amounts
+    .filter(balance => balance.amount > 0n).map(balance => balance.tokenAddress)))
+}
+function renderBalanceEvent(event: RailgunBalancesEvent): void {
+  const values = event.erc20Amounts.map(balance => {
+    const key = tokenIdFor(balance.tokenAddress)
+    const token = key ? TOKENS[key] : undefined
+    return token ? `${token.symbol}${key?.startsWith('0x') ? ` (${token.address})` : ''}: ${formatUnits(balance.amount, token.decimals)}`
+      : `${balance.tokenAddress}: ${balance.amount} units (token details unavailable)`
+  })
+  buckets.set(event.balanceBucket, `${event.balanceBucket}\n${values.join('\n') || 'No balance in this category.'}`)
+  if (event.balanceBucket === 'Spendable') setup.hasFunds = event.erc20Amounts.some(balance => balance.amount > 0n)
+  updateFirstFunding(setup.hasFunds, setup.ready)
+  element('balances').textContent = [...buckets.values()].join('\n\n')
+  renderSelectedBalance()
 }
 element<HTMLSelectElement>('token').addEventListener('input', renderSelectedBalance)
 
@@ -35,36 +78,43 @@ element<HTMLButtonElement>('generate').onclick = () => {
   setup.generated = newMnemonic()
   mnemonic.value = setup.generated
   backup.checked = false
+  showSetup(setup.hasWallet, 'backup')
 }
 mnemonic.oninput = () => { setup.generated = undefined; backup.checked = false }
+element('restore-setup').onclick = () => {
+  setup.generated = undefined
+  mnemonic.value = ''
+  backup.checked = false
+  showSetup(setup.hasWallet, 'backup', true)
+}
+element('setup-back').onclick = () => {
+  mnemonic.value = password.value = ''
+  setup.generated = undefined
+  backup.checked = false
+  showSetup(setup.hasWallet)
+  element('generate').focus()
+}
 
 function startHistory(): ReturnType<typeof startWalletEngine> {
   started.provider ??= startWalletEngine(
         (event) => {
           if (session.current && event.railgunWalletID !== session.current.info.id) return
-          const values = event.erc20Amounts.map((balance) => {
-            const token = Object.entries(TOKENS).find(
-              ([, value]) => value.address.toLowerCase() === balance.tokenAddress.toLowerCase(),
-            )
-            return token
-              ? `${token[0]}: ${formatUnits(balance.amount, token[1].decimals)}`
-              : `${balance.tokenAddress}: ${balance.amount} units`
-          })
-          buckets.set(
-            event.balanceBucket,
-            `${event.balanceBucket}\n${values.join('\n') || 'No balance in this category.'}`,
-          )
-          element('balances').textContent = [...buckets.values()].join('\n\n')
-          renderSelectedBalance()
+          balanceEvents.set(event.balanceBucket, event)
+          renderBalanceEvent(event)
+          // Unsolicited private tokens must not trigger identifying RPC probes or catalog writes.
+          refreshAssetSelectors()
         },
         (message, ready) => {
           setup.ready = ready
-          status.textContent = message
+          element('balance-sync').textContent = message
           element('balance-sync').hidden = ready
           element<HTMLFieldSetElement>('ready-actions').disabled = !ready
+          updateFirstFunding(setup.hasFunds, ready)
           const progress = element<HTMLProgressElement>('history-progress')
           progress.hidden = ready
           const percentage = /(\d+)%/.exec(message)
+          const announcement = element('history-announcement')
+          if (!percentage && announcement.textContent !== message) announcement.textContent = message
           if (percentage) progress.value = Number(percentage[1])
           else progress.removeAttribute('value')
           renderSelectedBalance()
@@ -87,21 +137,59 @@ for (const id of ['open', 'unlock']) {
     run(button, 'Opening wallet…', async () => {
       if (id === 'open' && !backup.checked)
         throw new Error('Save the recovery phrase before creating or restoring the wallet.')
+      const fresh = id === 'open' && setup.generated === mnemonic.value.trim()
       const provider = await startHistory()
-      session.current = await openWallet(provider, password.value, id === 'open' ? mnemonic.value.trim() : undefined,
-        id === 'open' && setup.generated === mnemonic.value.trim())
+      try {
+        session.current = await openWallet(provider, password.value, id === 'open' ? mnemonic.value.trim() : undefined, fresh)
+      } catch (error) {
+        if (await readPreference<unknown>('wallet').catch(() => undefined) !== undefined) {
+          setup.hasWallet = true
+          setup.generated = undefined
+          mnemonic.value = password.value = ''
+          backup.checked = false
+          showSetup(true)
+        }
+        throw error
+      }
       password.value = ''
       mnemonic.value = ''
       setup.generated = undefined
       element('setup').hidden = true
       element<HTMLSelectElement>('private-network').disabled = true
+      element('private-network').title = 'Lock your private wallet to change networks.'
       element('private-network-help').textContent = 'Lock the private wallet to change networks. Pending transactions stay saved on their original network.'
       element('wallet').hidden = false
       element('address').textContent = session.current.info.railgunAddress
-      await wireWalletActions(session.current)
+      let loadingCatalog = true
+      try {
+        await loadTokenCatalog(session.current)
+        refreshAssetSelectors()
+        loadingCatalog = false
+        await wireWalletActions(session.current)
+      } catch (error) {
+        element('wallet').hidden = true
+        element('setup').hidden = false
+        showSetup(true)
+        element('setup-title').textContent = loadingCatalog ? 'Saved token catalog unavailable' : 'Saved transactions unavailable'
+        element('setup-help').textContent = loadingCatalog
+          ? 'Your saved token catalog could not be validated. Lock and retry; do not clear site data or create another wallet.'
+          : 'Lock and retry to read your saved transactions. Do not clear site data or create another wallet.'
+        element('wallet-password').hidden = true
+        element('unlock').hidden = true
+        element('setup-back').hidden = false
+        element('setup-back').textContent = 'Lock and retry'
+        element('setup-back').onclick = () => location.reload()
+        element('setup-title').focus()
+        throw new Error(loadingCatalog
+          ? `Saved token catalog could not be validated${error instanceof Error ? `: ${error.message}` : '.'} Lock and retry; your saved data has not been cleared.`
+          : 'Saved transactions could not be read. Lock and retry; your saved data has not been cleared.')
+      }
+      if (fresh) { startFirstFunding(); updateFirstFunding(setup.hasFunds, setup.ready) }
       void syncWallet(session.current).catch((error: unknown) => {
         element('error').textContent = error instanceof Error ? error.message : 'Private balance sync failed.'
       })
+    }).finally(() => {
+      if (session.current) element<HTMLSelectElement>('private-network').disabled = true
     })
 }
 

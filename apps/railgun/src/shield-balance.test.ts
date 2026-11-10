@@ -14,18 +14,18 @@ vi.mock('./config', async (original) => ({ ...await original<typeof import('./co
 const { approveShield, requireShieldBalance, shield } = await import('./shield')
 const { CONFIG, TOKENS } = await import('./config')
 
-it('resets an existing USDT allowance before approving the requested amount', async () => {
+it.each(['USDT', 'WETH'] as const)('resets an existing %s allowance before approving the exact requested amount', async (asset) => {
   mocks.balance.mockResolvedValue(2_000_000n)
-  mocks.allowance.mockResolvedValue(1n)
+  mocks.allowance.mockResolvedValueOnce(1n).mockResolvedValueOnce(0n).mockResolvedValueOnce(1_000_000n)
   mocks.approve.mockResolvedValue({ wait: async () => ({ status: 1 }) })
-  await approveShield(session, signer, 'USDT', 1_000_000n)
-  expect(mocks.approve).toHaveBeenNthCalledWith(1, CONFIG.proxyContract, 0n)
-  expect(mocks.approve).toHaveBeenNthCalledWith(2, CONFIG.proxyContract, 1_000_000n)
+  await approveShield(session, signer, asset, 1_000_000n)
+  expect(mocks.approve).toHaveBeenNthCalledWith(1, CONFIG.proxyContract, 0n, { chainId: 1n, from: owner })
+  expect(mocks.approve).toHaveBeenNthCalledWith(2, CONFIG.proxyContract, 1_000_000n, { chainId: 1n, from: owner })
 })
 
 it('stops a USDT approval if the public wallet changes networks during its reset', async () => {
   mocks.balance.mockResolvedValue(2_000_000n)
-  mocks.allowance.mockResolvedValue(1n)
+  mocks.allowance.mockResolvedValueOnce(1n).mockResolvedValueOnce(0n)
   mocks.approve.mockResolvedValue({ wait: async () => { network.mockResolvedValue({ chainId: 56n }); return { status: 1 } } })
   await expect(approveShield(session, signer, 'USDT', 1_000_000n)).rejects.toThrow(/Switch your public wallet/)
   expect(mocks.approve).toHaveBeenCalledTimes(1)
@@ -36,9 +36,10 @@ const session = { info: { railgunAddress: 'private recipient' } } as unknown as 
 const send = vi.fn()
 const nativeBalance = vi.fn()
 const network = vi.fn()
+const probe = vi.fn()
 const signer = {
   getAddress: async () => owner,
-  provider: { getNetwork: network, getBalance: nativeBalance },
+  provider: { getNetwork: network, getBalance: nativeBalance, call: probe, send: async () => [owner] },
   sendTransaction: send,
 } as unknown as JsonRpcSigner
 beforeEach(() => {
@@ -49,6 +50,7 @@ beforeEach(() => {
   mocks.populateBase.mockReset()
   nativeBalance.mockReset().mockResolvedValue(parseEther('0.01'))
   network.mockReset().mockResolvedValue({ chainId: 1n })
+  probe.mockReset().mockResolvedValue(`0x${'1'.padStart(64, '0')}`)
   send.mockReset()
 })
 
@@ -77,7 +79,7 @@ it('deposits native ETH through the canonical relay with the exact value and pri
   expect(mocks.populateBase).toHaveBeenCalledWith(expect.anything(), expect.anything(), session.info.railgunAddress, expect.stringMatching(/^0x[0-9a-f]{64}$/), {
     tokenAddress: TOKENS.WETH.address, amount, recipientAddress: session.info.railgunAddress,
   })
-  expect(send).toHaveBeenCalledExactlyOnceWith(transaction)
+  expect(send).toHaveBeenCalledExactlyOnceWith({ ...transaction, chainId: 1n })
   expect(report.mock.calls.map(([message]) => message)).toEqual([
     'Checking your public wallet network and balance…',
     'Preparing your ETH deposit…',
@@ -132,6 +134,6 @@ it('allows an exactly funded WETH shield and retains the allowance check and con
   mocks.populate.mockResolvedValue({ transaction })
   send.mockResolvedValue({ wait: async () => receipt })
   await expect(shield(session, signer, 'WETH', parseEther('0.001'))).resolves.toBe(receipt)
-  expect(send).toHaveBeenCalledExactlyOnceWith(transaction)
+  expect(send).toHaveBeenCalledExactlyOnceWith({ ...transaction, chainId: 1n })
   expect(mocks.populate.mock.calls[0][3]).toEqual([{ tokenAddress: expect.any(String), amount: parseEther('0.001'), recipientAddress: 'private recipient' }])
 })

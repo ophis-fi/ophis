@@ -2,9 +2,9 @@ import { beforeEach, expect, it, vi } from 'vitest'
 import type { WalletSession } from './wallet'
 import type { PrivateSubmitter } from './broadcaster'
 
-const state = vi.hoisted(() => ({ events: [] as string[], save: vi.fn(), simulate: vi.fn(), requote: vi.fn() }))
+const state = vi.hoisted(() => ({ events: [] as string[], save: vi.fn(), simulate: vi.fn(), requote: vi.fn(), proof: vi.fn(), populate: vi.fn() }))
 const account = '0x0000000000000000000000000000000000001234'
-vi.mock('./broadcaster', () => ({ broadcasterFee: vi.fn() }))
+vi.mock('./broadcaster', () => ({ broadcasterFee: vi.fn(), validateBroadcaster: vi.fn() }))
 vi.mock('./wallet', () => ({ requireWalletSync: vi.fn() }))
 vi.mock('./journal', () => ({
   pendingSwap: async () => undefined,
@@ -21,12 +21,12 @@ vi.mock('./execution', () => ({
 }))
 vi.mock('@railgun-community/wallet', () => ({
   fullWalletForID: () => ({ getEphemeralKeyIndex: async () => 3 }),
-  generateCrossContractCallsProof7702: async () => ({
+  generateCrossContractCallsProof7702: state.proof.mockImplementation(async () => ({
     ephemeralAddress: '0x0000000000000000000000000000000000001234',
     executeNonce: 0n,
     transactions: [{ boundParams: { treeNumber: 0 }, nullifiers: ['11'.repeat(32)] }],
-  }),
-  populateProvedCrossContractCalls: async () => ({ transaction: {}, nullifiers: ['11'.repeat(32)] }),
+  })),
+  populateProvedCrossContractCalls: state.populate.mockImplementation(async () => ({ transaction: {}, nullifiers: ['11'.repeat(32)] })),
   ratchetEphemeralAddress: vi.fn(),
 }))
 import { executePrivateSwap } from './private-swap'
@@ -37,7 +37,7 @@ const session = {
   provider: { getBlockNumber: async () => 100 },
 } as unknown as WalletSession
 const prepared = {
-  quote: { chainId: 1, account, deadline: Math.floor(Date.now() / 1000) + 600, buy: 'WETH', minimum: 100n, shieldFee: 25n },
+  quote: { chainId: 1, account, deadline: Math.floor(Date.now() / 1000) + 600, sell: 'USDC', buy: 'WETH', minimum: 100n, shieldFee: 25n },
   selected: {},
   gas: { gasEstimate: 3_000_000n },
   fee: {},
@@ -64,7 +64,42 @@ it('persists recovery before disclosing a signed spend and retains it after simu
   const submitter: PrivateSubmitter = { assertReady: async () => {}, send }
   await expect(executePrivateSwap(session, prepared, () => {}, submitter)).rejects.toThrow(/RPC failed/)
   expect(state.events).toEqual(['saved', 'disclosed'])
-  expect(state.save.mock.calls[0][1]).toMatchObject({ index: 3, account, executeNonce: '0', inputs: [{ tree: 0, nullifier: `0x${'11'.repeat(32)}` }] })
+  expect(state.save.mock.calls[0][1]).toMatchObject({ index: 3, account, executeNonce: '0', recoveryTokens: ['USDC', 'WETH'], inputs: [{ tree: 0, nullifier: `0x${'11'.repeat(32)}` }] })
+  expect(send).not.toHaveBeenCalled()
+})
+
+it('omits the proof fee only for an explicit prepaid preparation and saves that recovery mode', async () => {
+  const prepaid = { feesID: 'synthetic-reviewed-credit' } as NonNullable<Parameters<typeof executePrivateSwap>[1]['prepaid']>
+  const ready = vi.fn(), send = vi.fn()
+  await expect(executePrivateSwap(session, { ...prepared, prepaid }, () => {}, { assertReady: ready, send })).rejects.toThrow('RPC failed')
+  expect(state.proof.mock.calls[0][9]).toBeUndefined()
+  expect(state.proof.mock.calls[0][10]).toBe(true)
+  expect(state.populate.mock.calls[0][8]).toBeUndefined()
+  expect(state.populate.mock.calls[0][9]).toBe(true)
+  expect(ready.mock.calls.every((args) => args[3] === prepaid)).toBe(true)
+  expect(state.save.mock.calls[0][1]).toMatchObject({ feeMode: 'prepaid', feeToken: 'WETH', inputs: [{ tree: 0, nullifier: `0x${'11'.repeat(32)}` }] })
+  expect(state.events).toEqual(['saved', 'disclosed'])
+  expect(send).not.toHaveBeenCalled()
+})
+
+it('saves the selected principal, output, actual fee and route assets before disclosing a custom-token swap', async () => {
+  const { registerToken } = await import('./config')
+  const sell = registerToken({ address: '0x0000000000000000000000000000000000005678', symbol: 'CUSTOM', decimals: 18 })
+  const custom = { ...prepared, quote: { ...prepared.quote, sell,
+    route: { tokens: [sell, 'USDT', 'WETH'], fees: [500, 500], path: '0x' } } } as Parameters<typeof executePrivateSwap>[1]
+  await expect(executePrivateSwap(session, custom, () => {}, { assertReady: async () => {}, send: vi.fn() })).rejects.toThrow('RPC failed')
+  expect(state.save.mock.calls[0][1]).toMatchObject({ feeToken: 'WETH', recoveryTokens: [sell, 'WETH', 'USDT'] })
+  expect(state.events).toEqual(['saved', 'disclosed'])
+})
+
+it('rejects a prepared swap during history synchronization before recording or disclosing a spend', async () => {
+  const { requireWalletSync } = await import('./wallet')
+  vi.mocked(requireWalletSync).mockImplementationOnce(() => { throw new Error('Wallet history is synchronizing') })
+  const send = vi.fn(), ready = vi.fn()
+  await expect(executePrivateSwap(session, prepared, () => {}, { assertReady: ready, send })).rejects.toThrow('synchronizing')
+  expect(state.save).not.toHaveBeenCalled()
+  expect(state.simulate).not.toHaveBeenCalled()
+  expect(ready).not.toHaveBeenCalled()
   expect(send).not.toHaveBeenCalled()
 })
 

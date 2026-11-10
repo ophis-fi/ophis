@@ -1,0 +1,37 @@
+async function main() {
+  process.umask(63);
+  const [mode, chain, image, bundle, cid, command, ...caps] = process.argv.slice(2);
+  if (mode !== 'unlock' || !/^[a-f0-9]{64}$/.test(cid ?? '')) throw Error('Invalid recovery unlock arguments.');
+  const plan = recoveryArgs([chain, image, bundle, command, ...caps]);
+  if (!process.stdin.isTTY || !process.stdout.isTTY || !process.stderr.isTTY) throw Error('Use an interactive private terminal.');
+  const ssh = (command, input) => {
+    const result = spawnSync('/usr/bin/ssh', ['-T', '-o', 'BatchMode=yes', '-o', 'ConnectTimeout=8', '-o',
+      'StrictHostKeyChecking=yes', 'clement@100.69.134.7', command], { input, timeout: 30_000, maxBuffer: 1_048_576 });
+    if (result.status !== 0 || result.error) throw Error('Recovery connection failed.');
+    return result.stdout;
+  };
+  const remoteDocker = '/usr/bin/env -i PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin /usr/bin/docker --host unix:///var/run/docker.sock';
+  // Public configuration attestation precedes every owner-file read or decryption.
+  const [target, source] = JSON.parse(ssh(`${remoteDocker} inspect ${cid} ${plan.source}`).toString());
+  if (target?.Id !== cid) throw Error('Recovery container changed.');
+  recoveryTarget(target, source, plan, true);
+  let recovery, clear;
+  try {
+    ownedDirectory(OUTPUT);
+    ownedDirectory(dirname(FEE_FILE));
+    ownedDirectory(dirname(RECOVERY));
+    const certificate = publicCertificate(), feeSealed = privateFile(FEE_FILE);
+    if (sha2563(feeSealed) !== POLICY.feeSourceSha256) throw failure();
+    recovery = privateFile(RECOVERY);
+    const manifest = JSON.parse(privateFile(join(OUTPUT, 'owner-manifest.json')).toString());
+    clear = openRuntime(privateFile(join(OUTPUT, 'operator.sealed.json')), recovery, certificate, manifest, feeSealed);
+    // Immutable container ID prevents a name replacement between attestation and unlock.
+    const reply = ssh(`${remoteDocker} exec -i ${cid} node dist/main.mjs unlock`, clear);
+    if (reply.toString().trim() !== '{"status":"unlocked"}') throw failure();
+    console.log(JSON.stringify({ status: 'unlocked-recovery', chainId: Number(chain), containerId: cid,
+      gasWalletAddress: POLICY.gasWalletAddress, feeIdentity: POLICY.feeIdentity }));
+  } finally { recovery?.fill(0); clear?.fill(0); }
+}
+if (process.argv[1] && import.meta.url === pathToFileURL(realpathSync(process.argv[1])).href) {
+  main().catch(() => { console.error('Recovery unlock failed. No secret values were logged.'); process.exitCode = 1; });
+}

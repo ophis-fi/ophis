@@ -19,14 +19,14 @@ it('emits only Prometheus metrics when the real CLI cannot reach its read node',
     buildSync({ entryPoints: [new URL('../src/main.ts', import.meta.url).pathname], outfile: output,
       bundle: true, platform: 'node', format: 'esm', packages: 'external', logLevel: 'silent' })
     const result = spawnSync(process.execPath, [output, 'monitor', '--prometheus'], {
-      env: { ...process.env, OPHIS_BROADCASTER_MODE: 'fork', OPHIS_BROADCASTER_ENABLED: '0',
+      env: { ...process.env, OPHIS_BROADCASTER_CHAIN_ID: '1', OPHIS_BROADCASTER_MODE: 'fork', OPHIS_BROADCASTER_ENABLED: '0',
         OPHIS_BROADCASTER_RPC: `http://127.0.0.1:${address.port}`, OPHIS_BROADCASTER_STATE: directory,
         OPHIS_BROADCASTER_OPERATOR_ADDRESS: '0x0000000000000000000000000000000000001234' },
       timeout: 25_000, encoding: 'utf8', maxBuffer: 64 * 1024,
     })
     expect(result.error).toBeUndefined()
     expect(result.status).toBe(2)
-    expect(result.stdout).toContain('ophis_broadcaster_monitor_ok 0\n')
+    expect(result.stdout).toContain('ophis_broadcaster_monitor_ok{chain_id="1"} 0\n')
     expect(result.stdout).toContain('reason="stale-read-node"')
     expect(result.stdout.trim().split('\n').every((line) => line.startsWith('ophis_broadcaster_'))).toBe(true)
   } finally { rmSync(directory, { recursive: true, force: true }) }

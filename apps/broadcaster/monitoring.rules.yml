@@ -7,8 +7,8 @@ groups:
         labels:
           severity: warning
         annotations:
-          summary: Ophis Ethereum broadcaster needs attention
-          description: 'The local monitor reports {{ $labels.reason }}. Inspect its private monitor log; never clear journals or refill automatically.'
+          summary: Ophis broadcaster needs attention
+          description: 'Chain {{ $labels.chain_id }} reports {{ $labels.reason }}. Inspect its private monitor log; never clear journals or refill automatically.'
       - alert: OphisBroadcasterMonitorStale
         expr: absent(ophis_broadcaster_last_check_seconds) or (time() - ophis_broadcaster_last_check_seconds > 600)
         for: 5m

@@ -38,7 +38,7 @@ export async function openRequest(
   } catch { return undefined }
 }
 
-export function encryptResponse(body: { txHash: string } | { error: string }, request: OpenRequest): string {
+export function encryptResponse(body: Record<string, unknown>, request: OpenRequest): string {
   return JSON.stringify(encryptJSONDataWithSharedKey(body, request.sharedKey))
 }
 

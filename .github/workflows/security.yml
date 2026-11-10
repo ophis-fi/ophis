@@ -559,6 +559,7 @@ jobs:
           - apps/backend/Cargo.lock
           - apps/backend/contracts/Cargo.lock
           - apps/backend/contracts/generated/Cargo.lock
+          - apps/backend/vendor/wasmtimer/Cargo.lock
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
       - uses: ./.github/actions/install-osv-scanner
@@ -606,7 +607,7 @@ jobs:
         # coverage (including records not yet mirrored into RustSec).
         run: |
           cd apps/backend
-          for lock in Cargo.lock contracts/Cargo.lock contracts/generated/Cargo.lock; do
+          for lock in Cargo.lock contracts/Cargo.lock contracts/generated/Cargo.lock vendor/wasmtimer/Cargo.lock; do
             compatibility=$(python3 ../../scripts/webpki_compat.py "$lock")
             args=()
             if [[ -n "$compatibility" ]]; then args=(--ignore "$compatibility"); fi
@@ -648,8 +649,11 @@ jobs:
           cd apps/backend
           config=$(mktemp .deny-compat.XXXXXX.toml)
           trap 'rm -f "$config"' EXIT
-          python3 ../../scripts/webpki_compat.py Cargo.lock --deny-config deny.toml > "$config"
-          cargo deny --locked check --config "$config" advisories sources
+          for manifest in Cargo.toml vendor/wasmtimer/Cargo.toml; do
+            lock="${manifest%Cargo.toml}Cargo.lock"
+            python3 ../../scripts/webpki_compat.py "$lock" --deny-config deny.toml > "$config"
+            cargo deny --manifest-path "$manifest" --locked check --config "$config" advisories sources
+          done
 
       - name: Run cargo deny (bans + licenses, informational)
         # Non-gating; surfaces workspace-internal noise (path-dep

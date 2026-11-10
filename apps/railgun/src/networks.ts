@@ -1,7 +1,8 @@
 import { NetworkName } from '@railgun-community/shared-models'
 
-export type TokenSymbol = 'USDC' | 'USDT' | 'WETH' | 'WPOL' | 'WBNB'
-export interface PrivateToken { address: string; decimals: number; symbol: TokenSymbol; bridged?: boolean }
+// Existing symbol IDs remain valid for saved transactions; additional assets use addresses.
+export type TokenSymbol = 'USDC' | 'USDT' | 'WETH' | 'WPOL' | 'WBNB' | `0x${string}`
+export interface PrivateToken { address: string; decimals: number; symbol: string; bridged?: boolean }
 
 // Router V2 pins: github.com/Uniswap/universal-router/tree/main/deploy-addresses.
 // Stablecoins mirror Ophis's existing token catalogue; decimals are verified on each chain.
