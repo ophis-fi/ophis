@@ -3,6 +3,8 @@
 import { applyD1Migrations, env } from 'cloudflare:test'
 import { beforeAll, beforeEach, describe, expect, it } from 'vitest'
 import pageHeaders from '../public/_headers?raw'
+import routerSource from '../src/server/index.ts?raw'
+import passkeySource from '../src/server/passkeys.ts?raw'
 import * as data from '../src/server/data.ts'
 import { handle, routes, type Env } from '../src/server/index.ts'
 import { userHandle } from '../src/server/passkeys.ts'
@@ -405,6 +407,9 @@ describe('e. an organisation never sees another', () => {
   for (const [route, run] of Object.entries(isolation)) {
     it(route, async () => run(await member('Alder Asset Management'), await member('Birchfield Capital')))
   }
+  it('SQL lives in the data module only: elsewhere the database handle is passed on, never used', () => {
+    for (const source of [routerSource, passkeySource]) expect(source).not.toMatch(/\.prepare\(|\.batch\(|\bDB\.\w/)
+  })
   it('inside an organisation, a Viewer sees only its own seat and cannot revoke a colleague', async () => {
     const owner = await member()
     const seat = await invite(owner.orgId, owner.seatId, 'viewer')
