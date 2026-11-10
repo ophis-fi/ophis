@@ -3,6 +3,7 @@ import {
   BrowserProvider,
   Contract,
   formatUnits,
+  getAddress,
   hexlify,
   randomBytes,
   isError,
@@ -35,24 +36,31 @@ export async function publicSigner(
 export async function assertPublicNetwork(
   session: WalletSession,
   signer: JsonRpcSigner,
+  beforeSend: () => void = () => {},
 ): Promise<void> {
   const network = await signer.provider.getNetwork().catch((error: unknown) => {
     if (isError(error, 'NETWORK_ERROR')) throw new PublicNetworkError()
     throw error
   })
   if (network.chainId !== CHAIN) throw new PublicNetworkError()
-  if (ENVIRONMENT !== 'fork') return
-  const marker = forkMarker(await session.provider.send('anvil_metadata', []))
-  // MetaMask filters anvil_metadata; a per-instance marker uses standard wallet RPC instead.
-  const codes: unknown[] = await Promise.all(
-    [session.provider, signer.provider].map((provider) =>
-      provider.send('eth_getCode', [marker.address, 'latest']),
-    ),
-  )
-  if (!codes.every((code) => code === marker.code))
-    throw new Error(
-      'Prepare the local fork marker, then connect your test wallet to that fork. Other forks and mainnet wallets cannot fund this test build.',
+  if (ENVIRONMENT === 'fork') {
+    const marker = forkMarker(await session.provider.send('anvil_metadata', []))
+    // MetaMask filters anvil_metadata; a per-instance marker uses standard wallet RPC instead.
+    const codes: unknown[] = await Promise.all(
+      [session.provider, signer.provider].map((provider) =>
+        provider.send('eth_getCode', [marker.address, 'latest']),
+      ),
     )
+    if (!codes.every((code) => code === marker.code))
+      throw new Error(
+        'Prepare the local fork marker, then connect your test wallet to that fork. Other forks and mainnet wallets cannot fund this test build.',
+      )
+  }
+  const accounts: unknown = await signer.provider.send('eth_accounts', [])
+  if (!Array.isArray(accounts) || typeof accounts[0] !== 'string' ||
+    getAddress(accounts[0]) !== getAddress(await signer.getAddress()))
+    throw new Error('Your public wallet account changed. Reconnect before continuing.')
+  beforeSend()
 }
 
 export async function shieldAllowance(signer: JsonRpcSigner, token: TokenSymbol): Promise<bigint> {
@@ -79,17 +87,17 @@ export async function approveExactShieldToken(signer: Signer, token: TokenSymbol
   }
   const allowance: bigint = await contract.getFunction('allowance')(owner, CONFIG.proxyContract)
   if (allowance > 0n && await canApprove(0n)) {
-    await beforeSend()
     onStatus('Clear the existing token allowance before setting the exact deposit amount. Confirm the reset in your wallet.')
-    const reset = await contract.getFunction('approve')(CONFIG.proxyContract, 0n)
+    await beforeSend()
+    const reset = await contract.getFunction('approve')(CONFIG.proxyContract, 0n, { chainId: CHAIN, from: owner })
     const cleared = await reset.wait()
     if (!cleared || cleared.status !== 1 || await contract.getFunction('allowance')(owner, CONFIG.proxyContract) !== 0n)
       throw new Error('Token allowance reset was not confirmed.')
   }
-  await beforeSend()
   if (!await canApprove(amount)) throw new Error('This token does not support the exact approval required for shielding. No further approval was submitted.')
   onStatus(`Confirm the ${asset.symbol} approval in your connected wallet. Open your wallet app and check its requests. A request can remain pending; do not submit it again.`)
-  const response = await contract.getFunction('approve')(CONFIG.proxyContract, amount)
+  await beforeSend()
+  const response = await contract.getFunction('approve')(CONFIG.proxyContract, amount, { chainId: CHAIN, from: owner })
   onStatus(`Approval submitted: ${response.hash}. Waiting for ${CHAIN_NAME} confirmation.`)
   const receipt = await response.wait()
   if (!receipt || receipt.status !== 1 || await contract.getFunction('allowance')(owner, CONFIG.proxyContract) !== amount)
@@ -123,12 +131,13 @@ export async function approveShield(
   token: TokenSymbol,
   amount: bigint,
   onStatus: (message: string) => void = () => {},
+  beforeSend: () => void = () => {},
 ): Promise<TransactionReceipt> {
   await assertPublicNetwork(session, signer)
   await requireShieldBalance(signer, token, amount)
   const receipt = await approveExactShieldToken(signer, token, amount, async () => {
-    await assertPublicNetwork(session, signer)
     await requireShieldBalance(signer, token, amount)
+    await assertPublicNetwork(session, signer, beforeSend)
   }, onStatus)
   onStatus(`Approval confirmed: ${receipt.hash}. Next: click Shield amount and confirm the separate deposit in your wallet.`)
   return receipt
@@ -140,6 +149,7 @@ export async function shield(
   token: ShieldToken,
   amount: bigint,
   onStatus: (message: string) => void = () => {},
+  beforeSend: () => void = () => {},
 ): Promise<TransactionReceipt> {
   onStatus('Checking your public wallet network and balance…')
   await assertPublicNetwork(session, signer)
@@ -158,9 +168,9 @@ export async function shield(
     : await populateShield(VERSION, NETWORK, shieldKey, [recipient], [])
   if (token === NATIVE_SYMBOL && (transaction.to?.toLowerCase() !== CONFIG.relayAdaptContract.toLowerCase() || transaction.value !== amount))
     throw new Error(`${NATIVE_SYMBOL} deposit transaction does not match the expected Railgun contract and amount.`)
-  await assertPublicNetwork(session, signer)
   onStatus(`Confirm the ${formatUnits(amount, token === NATIVE_SYMBOL ? 18 : tokenFor(token).decimals)} ${token} deposit in your connected wallet. Open your wallet app and check its requests. A request can remain pending; do not submit it again.`)
-  const response = await signer.sendTransaction(transaction)
+  await assertPublicNetwork(session, signer, beforeSend)
+  const response = await signer.sendTransaction({ ...transaction, chainId: CHAIN })
   onStatus(`Deposit submitted: ${response.hash}. Waiting for ${CHAIN_NAME} confirmation. Do not submit it again.`)
   const receipt = await response.wait()
   if (!receipt || receipt.status !== 1) throw new Error('Shield was not confirmed.')

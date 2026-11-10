@@ -41,7 +41,11 @@ interface CreditJournal extends CreditIdentity {
   completed?: { attempt: SavedAttempt; cancellationHash?: string; charged: string; cancelled: boolean; state?: 'not-reserved' }
 }
 const MAX_NATIVE_PAYMENT_HISTORY = 32
-const journalKey = () => PREPAID_BROADCASTERS[CHAIN_ID]?.funding === 'native' ? 'nativePrepaidCredit' : 'prepaidCredit'
+export type CreditFunding = 'native' | 'private'
+const currentFunding = (): CreditFunding => PREPAID_BROADCASTERS[CHAIN_ID]?.funding === 'native' ? 'native' : 'private'
+const journalKey = (funding: CreditFunding = currentFunding()) => funding === 'native' ? 'nativePrepaidCredit' : 'prepaidCredit'
+const save = (session: WalletSession, record: CreditJournal) =>
+  writePrivateState(session, journalKey(record.scope.funding === 'native' ? 'native' : 'private'), record)
 const subscribers = new Map<string, (message: unknown) => void>()
 let subscribedCore: ReturnType<typeof WakuBroadcasterClient.getWakuCore>
 let subscribing: Promise<void> | undefined
@@ -88,13 +92,15 @@ function validateIdentity(identity: CreditIdentity, fresh = false): void {
     throw new Error('Prepaid broadcaster scope changed. Keep the saved credit records.')
   getAddress(identity.owner)
 }
-async function saved(session: WalletSession): Promise<CreditJournal | undefined> {
-  const value = await readPrivateState(session, journalKey())
+async function saved(session: WalletSession, funding: CreditFunding = currentFunding()): Promise<CreditJournal | undefined> {
+  const value = await readPrivateState(session, journalKey(funding))
   if (value === undefined) return
   if (!object(value) || !object(value.scope) || typeof value.ledgerId !== 'string' || typeof value.owner !== 'string')
     throw new Error('Prepaid recovery data is damaged. Keep it for recovery.')
   const record = value as unknown as CreditJournal
   validateIdentity(record)
+  if ((record.scope.funding === 'native' ? 'native' : 'private') !== funding)
+    throw new Error('The saved credit funding mode changed. Keep both journals for recovery.')
   if (record.attempt && (!object(record.attempt) || typeof record.attempt.payload !== 'string' ||
     record.attempt.key !== creditRequestKey(record.ledgerId, record.owner, record.attempt.payload)))
     throw new Error('The saved prepaid attempt is damaged.')
@@ -200,9 +206,14 @@ async function authorize(session: WalletSession, identity: CreditIdentity, paylo
   return exchange({ authorization: { owner: identity.owner, payload, expires, signature } }, policy(false).railgunAddress,
     creditRequestKey(identity.ledgerId, identity.owner, payload), beforeSend)
 }
-async function identity(session: WalletSession): Promise<CreditIdentity> {
+async function identity(session: WalletSession, funding: CreditFunding = currentFunding()): Promise<CreditIdentity> {
   const approved = policy(false)
-  const previous = await saved(session)
+  const previous = await saved(session, funding)
+  // Recovery keeps the original ledger/domain; current service discovery must not replace it.
+  if (funding !== currentFunding()) {
+    if (!previous) throw new Error('No saved credit exists for this funding mode.')
+    return previous
+  }
   const response = await exchange({ kind: 'info' }, approved.railgunAddress)
   if (!object(response.scope) || typeof response.ledgerId !== 'string' || response.confirmation !== 'finalized' ||
     response.scope.funding !== (previous ? previous.scope.funding : approved.funding) || response.funding !== (response.scope.funding === 'native'
@@ -212,7 +223,7 @@ async function identity(session: WalletSession): Promise<CreditIdentity> {
   validateIdentity(result)
   if (previous && (previous.ledgerId !== result.ledgerId || previous.scope.funding !== result.scope.funding || getAddress(previous.owner) !== getAddress(result.owner)))
     throw new Error('The prepaid ledger or claimant changed. Keep the previous credit records for recovery.')
-  if (!previous) await writePrivateState(session, journalKey(), result)
+  if (!previous) await save(session, result)
   return result
 }
 function balance(response: Record<string, unknown>, expected: CreditIdentity): CreditBalance {
@@ -224,14 +235,14 @@ function balance(response: Record<string, unknown>, expected: CreditIdentity): C
     throw new Error('The prepaid balance is inconsistent.')
   return result
 }
-export async function prepaidBalance(session: WalletSession): Promise<CreditBalance> {
-  const current = await identity(session)
+export async function prepaidBalance(session: WalletSession, funding?: CreditFunding): Promise<CreditBalance> {
+  const current = await identity(session, funding)
   return balance(await authorize(session, current, json({ kind: 'balance' })), current)
 }
-async function prepareQuote(session: WalletSession, onStatus: (message: string) => void, admission: boolean): Promise<PreparedCredit> {
+async function prepareQuote(session: WalletSession, onStatus: (message: string) => void, admission: boolean, funding?: CreditFunding): Promise<PreparedCredit> {
   onStatus('Checking the prepaid broadcaster and gas limits…')
   policy(admission)
-  const current = await identity(session)
+  const current = await identity(session, funding)
   if (admission) validateIdentity(current, true)
   if (admission && !current.executionEnabled) throw new Error('Prepaid execution is paused. You can still check credit and saved transactions. New refunds may need to wait.')
   const response = await authorize(session, current, json({ kind: 'quote', ...(!admission && { refund: true }) }))
@@ -256,9 +267,10 @@ async function prepareQuote(session: WalletSession, onStatus: (message: string) 
 export function preparePrepaid(session: WalletSession, onStatus: (message: string) => void = () => {}): Promise<PreparedCredit> {
   return prepareQuote(session, onStatus, true)
 }
-export async function preparePrepaidRefund(session: WalletSession, onStatus: (message: string) => void = () => {}): Promise<PreparedCredit> {
-  if (!await saved(session)) throw new Error('Load the balance of the pinned prepaid ledger before requesting a refund.')
-  return prepareQuote(session, onStatus, false)
+export async function preparePrepaidRefund(session: WalletSession, onStatus: (message: string) => void = () => {},
+  funding?: CreditFunding): Promise<PreparedCredit> {
+  if (!await saved(session, funding)) throw new Error('Load the balance of the pinned prepaid ledger before requesting a refund.')
+  return prepareQuote(session, onStatus, false, funding)
 }
 export async function assertPrepaidContext(session: WalletSession, selected: SelectedBroadcaster,
   gas: TransactionGasDetails, credit: PreparedCredit): Promise<void> {
@@ -310,7 +322,7 @@ export async function submitPrepaid(session: WalletSession, populated: RailgunPo
     const record: CreditJournal = { ...previous, scope: credit.scope, ledgerId: credit.ledgerId, owner: credit.owner,
       attempt: { payload, key: creditRequestKey(credit.ledgerId, credit.owner, payload),
         ...(credit.scope.funding === 'native' && { rate: credit.rate.toString() }) } }
-    await writePrivateState(session, journalKey(), record)
+    await save(session, record)
     if (use7702) assertFinalQuoteFresh(checkedAt)
     return sendSaved(session, record, () => {
       validateIdentity(credit, true)
@@ -327,18 +339,18 @@ async function sendSaved(session: WalletSession, record: CreditJournal, beforeSe
   if (attempt.hash && attempt.hash !== hash) throw new Error('The prepaid operation hash changed. Keep the saved attempt.')
   if (record.scope.funding === 'native') pinNativeNonce(response, attempt)
   attempt.hash = hash; attempt.state = typeof response.state === 'string' ? response.state : 'submitted-or-unknown'
-  await writePrivateState(session, journalKey(), record)
+  await save(session, record)
   return hash
 }
-export async function retryPrepaid(session: WalletSession): Promise<string> {
+export async function retryPrepaid(session: WalletSession, funding?: CreditFunding): Promise<string> {
   return exclusive(session, async () => {
-    const record = await saved(session)
+    const record = await saved(session, funding)
     if (!record?.attempt) throw new Error('No prepaid attempt is saved.')
     return sendSaved(session, record)
   })
 }
-export async function pendingPrepaid(session: WalletSession) {
-  const record = await saved(session)
+export async function pendingPrepaid(session: WalletSession, funding?: CreditFunding) {
+  const record = await saved(session, funding)
   const attempt = record?.attempt ?? record?.completed?.attempt
   const request: unknown = attempt && JSON.parse(attempt.payload).request
   return record && { key: attempt?.key, hash: attempt?.hash, state: attempt?.state, completed: !record.attempt && !!record.completed,
@@ -347,9 +359,9 @@ export async function pendingPrepaid(session: WalletSession) {
     topUpPending: !!record.topUp, topUpHash: record.topUp?.hash, deferredTopUpCount: record.deferredTopUps?.length ?? 0, refundPending: !!record.refund, funding: record.scope.funding }
 }
 
-export async function checkPrepaid(session: WalletSession) {
+export async function checkPrepaid(session: WalletSession, funding?: CreditFunding) {
   return exclusive(session, async () => {
-    const record = await saved(session)
+    const record = await saved(session, funding)
     if (!record?.attempt) {
       if (record?.completed) return { key: record.completed.attempt.key, hash: record.completed.attempt.hash,
         cancellationHash: record.completed.cancellationHash, state: record.completed.state ?? 'settled', charged: quantity(record.completed.charged),
@@ -362,7 +374,7 @@ export async function checkPrepaid(session: WalletSession) {
       // Retirement closes only the fee request; the private proof may already have reached an RPC.
       record.completed = { attempt: { ...record.attempt, state: 'not-reserved' }, state: 'not-reserved', charged: '0', cancelled: false }
       delete record.attempt
-      await writePrivateState(session, journalKey(), record)
+      await save(session, record)
       return { key: record.completed.attempt.key, hash: undefined, cancellationHash: undefined,
         state: 'not-reserved', charged: 0n, cancelled: false }
     }
@@ -416,7 +428,7 @@ export async function checkPrepaid(session: WalletSession) {
         charged: result.charged.toString(), cancelled: result.cancelled }
       delete record.attempt
     }
-    await writePrivateState(session, journalKey(), record)
+    await save(session, record)
     return result
   })
 }
@@ -447,14 +459,14 @@ export async function topUpPrepaid(session: WalletSession, signer: JsonRpcSigner
       const transaction = { to: getAddress(credit.scope.operator), data: nativeCreditData(credit.scope, credit.ledgerId, credit.owner, paymentId), value: amount.toString() }
       const record: CreditJournal = { ...previous, scope: credit.scope, ledgerId: credit.ledgerId, owner: credit.owner,
         topUp: { transaction, paymentId, nullifiers: [], from, nonce } }
-      await writePrivateState(session, journalKey(), record)
+      await save(session, record)
       validateIdentity(credit, true)
       await assertPublicNetwork(session, signer)
       if (getAddress(await signer.getAddress()) !== from) throw new Error('The public payment wallet changed. Keep the saved payment.')
       onProgress('Confirm the public native fee payment. Its sender, recipient and amount are public; your wallet also pays its gas.')
       const sent = await signer.sendTransaction({ ...transaction, value: amount, nonce, chainId: CHAIN, type: 2 })
       record.topUp!.hash = sent.hash
-      await writePrivateState(session, journalKey(), record)
+      await save(session, record)
       onProgress(`Native top-up submitted: ${sent.hash}. Credit requires finalized payment; do not send another payment.`)
       return sent.hash
     }
@@ -483,7 +495,7 @@ export async function topUpPrepaid(session: WalletSession, signer: JsonRpcSigner
     const record: CreditJournal = { ...previous, scope: credit.scope, ledgerId: credit.ledgerId, owner: credit.owner,
       topUp: { transaction: { to: getAddress(tx.to), data: tx.data, value: '0' }, from,
         nonce, nullifiers: populated.nullifiers.map((n) => `0x${n.replace(/^0x/, '').padStart(64, '0')}`) } }
-    await writePrivateState(session, journalKey(), record)
+    await save(session, record)
     if (!(await identity(session)).executionEnabled) throw new Error('Prepaid execution paused. Keep the saved top-up proof for recovery.')
     validateIdentity(credit, true)
     await assertPublicNetwork(session, signer)
@@ -491,7 +503,7 @@ export async function topUpPrepaid(session: WalletSession, signer: JsonRpcSigner
     onProgress('Confirm the private top-up in your connected wallet. It pays public gas.')
     const sent = await signer.sendTransaction({ ...tx, nonce, chainId: CHAIN })
     record.topUp!.hash = sent.hash
-    await writePrivateState(session, journalKey(), record)
+    await save(session, record)
     onProgress(`Top-up submitted: ${sent.hash}. Credit becomes available after finality; use Check top-up.`)
     return sent.hash
   })
@@ -551,7 +563,7 @@ function refundResult(response: Record<string, unknown>, record: CreditJournal) 
 export async function requestPrepaidRefund(session: WalletSession, credit: PreparedCredit, gross: bigint, publicRecipient?: string) {
   return exclusive(session, async () => {
     validateIdentity(credit)
-    const record = await saved(session)
+    const record = await saved(session, credit.scope.funding === 'native' ? 'native' : 'private')
     if (!record || record.attempt || record.topUp || record.refund || record.ledgerId !== credit.ledgerId || record.owner !== credit.owner ||
       credit.expires <= Date.now() + 60_000 || (credit.scope.funding !== 'native' && !validateRailgunAddress(session.info.railgunAddress)))
       throw new Error('Reconcile the prepaid operation and refresh the quote before requesting a refund.')
@@ -567,15 +579,15 @@ export async function requestPrepaidRefund(session: WalletSession, credit: Prepa
       ...(credit.scope.funding === 'native' && { refundGasAllowance: credit.refundGasAllowance!.toString() }) })
     record.refund = { payload, key: creditRequestKey(record.ledgerId, record.owner, payload),
       ...(credit.scope.funding === 'native' && { rate: credit.rate.toString() }) }
-    await writePrivateState(session, journalKey(), record)
+    await save(session, record)
     const result = refundResult(await authorize(session, record, payload), record)
-    await writePrivateState(session, journalKey(), record)
+    await save(session, record)
     return result
   })
 }
-export async function checkPrepaidRefund(session: WalletSession) {
+export async function checkPrepaidRefund(session: WalletSession, funding?: CreditFunding) {
   return exclusive(session, async () => {
-    const record = await saved(session)
+    const record = await saved(session, funding)
     if (!record?.refund) throw new Error('No prepaid refund is saved.')
     let response: Record<string, unknown>
     try { response = await authorize(session, record, record.refund.payload) }
@@ -586,7 +598,7 @@ export async function checkPrepaidRefund(session: WalletSession) {
       const result = { key: record.refund.key, funding: record.scope.funding, recipient: String(payload.recipient), gross: quantity(payload.gross, true),
         net: quantity(payload.net, true), state: 'not-reserved' as const, transactionHash: undefined, charged: undefined, netPaid: undefined }
       delete record.refund
-      await writePrivateState(session, journalKey(), record)
+      await save(session, record)
       return result
     }
     const result = refundResult(response, record)
@@ -609,7 +621,7 @@ export async function checkPrepaidRefund(session: WalletSession) {
         throw new Error('The native refund outcome differs from the saved request. Keep the saved refund.')
     }
     if (result.state === 'refunded' || result.state === 'failed') delete record.refund
-    await writePrivateState(session, journalKey(), record)
+    await save(session, record)
     return result
   })
 }
@@ -626,15 +638,15 @@ async function resolveTopUp(session: WalletSession, record: CreditJournal): Prom
   if (hash !== topUp.hash) {
     if (topUp.hash && topUp.nonce !== undefined) topUp.previous = [...(topUp.previous ?? []), { hash: topUp.hash, nonce: topUp.nonce }]
     topUp.hash = hash
-    await writePrivateState(session, journalKey(), record)
+    await save(session, record)
   }
 }
 export async function retryPrepaidTopUp(session: WalletSession, signer: JsonRpcSigner,
-  onProgress: (message: string) => void): Promise<string> {
+  onProgress: (message: string) => void, funding?: CreditFunding): Promise<string> {
   return exclusive(session, async () => {
-    const record = await saved(session)
+    const record = await saved(session, funding)
     if (!record?.topUp || record.attempt) throw new Error('No saved top-up is available to retry.')
-    await identity(session)
+    await prepaidBalance(session, funding)
     await assertPublicNetwork(session, signer)
     const topUp = record.topUp
     if (getAddress(await signer.getAddress()) !== getAddress(topUp.from))
@@ -670,7 +682,7 @@ export async function retryPrepaidTopUp(session: WalletSession, signer: JsonRpcS
       topUp.nonce = nonce
     }
     if (record.scope.funding === 'native') retainNativePaymentHash(topUp)
-    await writePrivateState(session, journalKey(), record)
+    await save(session, record)
     await assertPublicNetwork(session, signer)
     if (getAddress(await signer.getAddress()) !== getAddress(topUp.from)) throw new Error('The public gas wallet changed.')
     if (record.scope.funding === 'native' && (await signer.provider.getCode(topUp.from) !== '0x' ||
@@ -679,18 +691,18 @@ export async function retryPrepaidTopUp(session: WalletSession, signer: JsonRpcS
     const sent = await signer.sendTransaction({ ...topUp.transaction, value: BigInt(topUp.transaction.value), nonce: topUp.nonce, chainId: CHAIN,
       ...(record.scope.funding === 'native' && { type: 2 }) })
     topUp.hash = sent.hash
-    await writePrivateState(session, journalKey(), record)
+    await save(session, record)
     return sent.hash
   })
 }
 /** Explicitly defer an uncertain native payment; retain all encrypted evidence and never resend it automatically. */
-export async function deferPrepaidTopUp(session: WalletSession): Promise<number> {
+export async function deferPrepaidTopUp(session: WalletSession, funding?: CreditFunding): Promise<number> {
   return exclusive(session, async () => {
-    const record = await saved(session)
+    const record = await saved(session, funding)
     if (!record?.topUp || record.scope.funding !== 'native') throw new Error('No active native payment is available to defer.')
     record.deferredTopUps = [...(record.deferredTopUps ?? []), record.topUp]
     delete record.topUp
-    await writePrivateState(session, journalKey(), record)
+    await save(session, record)
     return record.deferredTopUps.length
   })
 }
@@ -721,14 +733,14 @@ async function claimNativeTopUp(session: WalletSession, record: CreditJournal, r
     const response = balance(await authorize(session, record, json({ kind: 'claim', transactionHash: hash, paymentId: selected.paymentId })), record)
     if (record.topUp === selected) delete record.topUp
     else record.deferredTopUps = record.deferredTopUps!.filter(payment => payment !== selected)
-    await writePrivateState(session, journalKey(), record)
+    await save(session, record)
     return response
   }
   throw new Error('Saved top-ups are not finalized successfully yet. Keep the saved payments and check again.')
 }
-export async function claimPrepaidTopUp(session: WalletSession, recoveredHash?: string): Promise<CreditBalance> {
+export async function claimPrepaidTopUp(session: WalletSession, recoveredHash?: string, funding?: CreditFunding): Promise<CreditBalance> {
   return exclusive(session, async () => {
-    const record = await saved(session)
+    const record = await saved(session, funding)
     if (record?.scope.funding === 'native') return claimNativeTopUp(session, record, recoveredHash || undefined)
     if (!record?.topUp) throw new Error('No top-up is saved.')
     if (recoveredHash) throw new Error('A recovered public payment hash is supported only for native fee credit.')
@@ -745,7 +757,7 @@ export async function claimPrepaidTopUp(session: WalletSession, recoveredHash?: 
       throw new Error('The finalized top-up differs from the saved proof. Keep the record for recovery.')
     const response = balance(await authorize(session, record, json({ kind: 'claim', transactionHash: topUp.hash })), record)
     delete record.topUp
-    await writePrivateState(session, journalKey(), record)
+    await save(session, record)
     return response
   })
 }

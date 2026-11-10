@@ -117,6 +117,7 @@ export class Broadcaster {
     const request = await openRequest(payload, this.sdk.privateViewingKey, this.sdk.publicViewingKey)
     if (!request) return
     let secured: SecuredRequest | undefined
+    let creditRequest: CreditRequest | undefined
     const prepaid = request.data.protocol === CREDIT_PROTOCOL
     const correlation = request.data.correlation
     const reply = (body: Record<string, unknown>) => encryptResponse(prepaid
@@ -153,7 +154,8 @@ export class Broadcaster {
             settlementHash: previous.settlement_hash,
             state: previous.charged !== null ? 'settled' : 'reserved-or-submitted', charged: previous.charged }), request.id)
         }
-        secured = await credits.secure(authorized)
+        this.creditQueries.accept(authorized.owner, credits.ledger.hasDeposit(authorized.owner), 'execute')
+        creditRequest = authorized
         if (!object(authorized.payload.request)) throw new Error('Invalid prepaid operation.')
         request.data = authorized.payload.request
       } catch {
@@ -181,7 +183,7 @@ export class Broadcaster {
       this.attempts.push(now)
       if (this.lastRequests.length >= 30) throw new Error('Broadcaster request limit reached.')
       phase = 'format'
-      const parsed = parseRequest(request.data, this.wallet.address, this.config, !!secured)
+      const parsed = parseRequest(request.data, this.wallet.address, this.config, !!creditRequest)
       phase = 'pilot'
       if (parsed.type4 && !parsed.withdrawal && this.config.admission === 'pilot' && this.config.pilotAccount &&
         getAddress(String(parsed.transaction.to)) !== this.config.pilotAccount)
@@ -205,13 +207,16 @@ export class Broadcaster {
           (this.config.admission === 'pilot' && withdrawalToken !== getAddress(TOKENS[1].address)) ||
           BigInt(withdrawal.value) <= 0n) throw new Error('Wrong withdrawal token.')
         phase = 'withdrawal-used'
-        const pilotKey = secured ? withdrawalPilotKey((await this.credits()).ledger.id, this.config.prepaidPilotLedgerId) : 'withdrawalPilot'
+        const pilotKey = creditRequest ? withdrawalPilotKey((await this.credits()).ledger.id, this.config.prepaidPilotLedgerId) : 'withdrawalPilot'
         if (this.config.admission === 'pilot' && this.store.db.prepare('SELECT 1 FROM settings WHERE key=?').get(pilotKey))
           throw new Error('Withdrawal pilot used.')
       }
       const feeQuote = this.store.db.prepare('SELECT expiration FROM fees WHERE id=?').get(parsed.feesID) as { expiration: number } | undefined
       if (!feeQuote || feeQuote.expiration <= Date.now()) { phase = 'fee'; throw new Error('Fee quote expired.') }
       this.busy = true; this.activeKey = request.key; reserved = true
+      // Admission and parsing must bound RPC work even when an execution never reserves credit.
+      phase = 'prepaid'
+      if (creditRequest) secured = await (await this.credits()).secure(creditRequest)
       phase = 'fee'
       const payment = secured ? {} : await this.sdk.fee(parsed)
       if (!secured && withdrawalToken && (Object.keys(payment).length !== 1 || !payment[parsed.withdrawal ? TOKENS[0].address : withdrawalToken])) {
@@ -308,6 +313,7 @@ export class Broadcaster {
       console.error(JSON.stringify({ status: 'request-rejected', phase }))
       const unknown = this.store.get(request.key)
       const errors: Record<string, string> = {
+        prepaid: 'Prepaid request rejected. Check the confirmed balance and refresh the quote; retain any saved attempt.',
         request: 'Broadcaster is unavailable or the request is unsupported. Check recovery before preparing another request.',
         busy: 'The broadcaster is finishing another transaction or checking its fee. Keep the saved proof and retry when the broadcaster is available.',
         admission: 'The broadcaster request limit was reached. Keep the saved proof and retry later.',

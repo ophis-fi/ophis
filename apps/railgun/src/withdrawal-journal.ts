@@ -278,12 +278,13 @@ async function withdrawalInputStates(session: WalletSession, pending: PendingWit
   return spent
 }
 
-export async function resumePendingWithdrawal(session: WalletSession, sponsor: JsonRpcSigner): Promise<string> {
+export async function resumePendingWithdrawal(session: WalletSession, sponsor: JsonRpcSigner,
+  beforeSend: () => void = () => {}): Promise<string> {
   const pending = await pendingWithdrawal(session)
   if (!pending) throw new Error('No saved withdrawal to resume.')
   if (pending.execution) {
     if (await withdrawalInputsSpent(session, pending)) throw new Error('A saved input is spent. Check the recovery account before retrying.')
-    await assertPublicNetwork(session, sponsor)
+    await assertPublicNetwork(session, sponsor, beforeSend)
     const e = pending.execution
     const sent = await sponsor.sendTransaction({ ...pending.transaction, value: 0n, type: 4, chainId: CHAIN,
       authorizationList: [authorizationify(e.authorization)], maxFeePerGas: BigInt(e.maxFeePerGas), maxPriorityFeePerGas: BigInt(e.maxPriorityFeePerGas) }).catch((error: unknown) => {
@@ -303,10 +304,11 @@ export async function resumePendingWithdrawal(session: WalletSession, sponsor: J
   // Reusing the exact proof cannot withdraw twice: its nullifiers can only be spent once.
   await assertPublicNetwork(session, sponsor)
   const fees = await session.provider.getFeeData()
+  await assertPublicNetwork(session, sponsor, beforeSend)
   if (CHAIN_ID === 56) {
     const gasPrice = BigInt(pending.minGasPrice) > (fees.gasPrice || 0n) ? BigInt(pending.minGasPrice) : fees.gasPrice || 0n
     if (gasPrice <= 0n) throw new Error('BNB Chain gas price unavailable.')
-    const sent = await sponsor.sendTransaction({ ...pending.transaction, value: BigInt(pending.transaction.value), type: 0, gasPrice })
+    const sent = await sponsor.sendTransaction({ ...pending.transaction, value: BigInt(pending.transaction.value), chainId: CHAIN, type: 0, gasPrice })
     await savePendingWithdrawal(session, { ...pending, hash: sent.hash })
     if (!await sent.wait(2)) throw new Error('Withdrawal confirmation is pending. Keep the saved record.')
     return reconcilePendingWithdrawal(session)
@@ -320,6 +322,7 @@ export async function resumePendingWithdrawal(session: WalletSession, sponsor: J
   const sent = await sponsor.sendTransaction({
     ...pending.transaction,
     value: BigInt(pending.transaction.value),
+    chainId: CHAIN,
     type: 2,
     maxPriorityFeePerGas,
     maxFeePerGas,

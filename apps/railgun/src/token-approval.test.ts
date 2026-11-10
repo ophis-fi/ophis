@@ -20,7 +20,7 @@ const owner = '0x0000000000000000000000000000000000001234'
 const abi = new Interface(['function approve(address spender,uint256 amount) returns (bool)'])
 const trueResult = abi.encodeFunctionResult('approve', [true])
 const falseResult = abi.encodeFunctionResult('approve', [false])
-const provider = { call: state.call, getNetwork: state.network, getBalance: async () => 1n }
+const provider = { call: state.call, getNetwork: state.network, getBalance: async () => 1n, send: vi.fn(async () => [owner]) }
 const signer = { getAddress: async () => owner, provider, sendTransaction: state.send } as unknown as JsonRpcSigner
 const session = { info: { railgunAddress: 'generated-test-private-address' }, provider,
   accounts: { getAccount: async () => ({ address: owner, signer: { connect: () => signer } }) } } as unknown as WalletSession
@@ -31,6 +31,7 @@ beforeEach(() => {
   state.resetStatus = 1
   state.exactStatus = 1
   state.applyApproval = true
+  provider.send.mockReset().mockResolvedValue([owner])
   state.network.mockReset().mockResolvedValue({ chainId: 1n })
   state.call.mockReset().mockResolvedValue(trueResult)
   state.approve.mockReset().mockImplementation(async (_spender: string, amount: bigint) => ({ hash: `approval-${amount}`,
@@ -55,7 +56,7 @@ it.each(['standard', 'no-return', 'reset-required'])('preflights %s token approv
     return behavior === 'no-return' ? '0x' : trueResult
   })
   await expect(approveShield(session, signer, 'USDC', 100n)).resolves.toMatchObject({ status: 1 })
-  expect(state.approve.mock.calls).toEqual([[CONFIG.proxyContract, 0n], [CONFIG.proxyContract, 100n]])
+  expect(state.approve.mock.calls).toEqual([[CONFIG.proxyContract, 0n, { chainId: 1n, from: owner }], [CONFIG.proxyContract, 100n, { chainId: 1n, from: owner }]])
   expect(state.allowance).toBe(100n)
   expect(state.call).toHaveBeenCalledTimes(2)
 })
@@ -70,7 +71,7 @@ it.each(['revert', 'false', 'malformed'])('uses a preflighted direct exact appro
     return zeroBehavior === 'false' ? falseResult : '0x01'
   })
   await expect(approveShield(session, signer, 'USDC', 100n)).resolves.toMatchObject({ status: 1 })
-  expect(state.approve.mock.calls).toEqual([[CONFIG.proxyContract, 100n]])
+  expect(state.approve.mock.calls).toEqual([[CONFIG.proxyContract, 100n, { chainId: 1n, from: owner }]])
   expect(state.allowance).toBe(100n)
 })
 
@@ -112,7 +113,7 @@ it('reuses the same no-return/reset-required approval policy for temporary-accou
     return '0x'
   })
   await expect(recoverToken(session, 0, 'USDC')).resolves.toBe('recovered-shield')
-  expect(state.approve.mock.calls).toEqual([[CONFIG.proxyContract, 0n], [CONFIG.proxyContract, 1000n]])
+  expect(state.approve.mock.calls).toEqual([[CONFIG.proxyContract, 0n, { chainId: 1n, from: owner }], [CONFIG.proxyContract, 1000n, { chainId: 1n, from: owner }]])
   expect(state.populate.mock.calls[0][3]).toEqual([{ tokenAddress: TOKENS.USDC.address, amount: 1000n, recipientAddress: session.info.railgunAddress }])
   expect(state.send).toHaveBeenCalledTimes(1)
 })
@@ -134,5 +135,31 @@ it('rejects an oversized public shield before approval, transaction population, 
   expect(state.approve).not.toHaveBeenCalled()
   expect(state.call).not.toHaveBeenCalled()
   expect(state.populate).not.toHaveBeenCalled()
+  expect(state.send).not.toHaveBeenCalled()
+})
+
+it.each(['network', 'account', 'session'])('rejects a %s change during exact approval preparation before sending', async (change) => {
+  const { approveShield } = await import('./shield')
+  state.allowance = 0n
+  let changed = false
+  const status = () => {
+    changed = true
+    if (change === 'network') state.network.mockResolvedValue({ chainId: 56n })
+    if (change === 'account') provider.send.mockResolvedValue(['0x0000000000000000000000000000000000004321'])
+  }
+  const current = () => { if (change === 'session' && changed) throw new Error('Public session changed') }
+  await expect(approveShield(session, signer, 'USDC', 100n, status, current)).rejects.toThrow(/changed|Switch your public wallet/)
+  expect(state.approve).not.toHaveBeenCalled()
+})
+
+it('binds deposits to the selected chain and stops a changed account before the wallet request', async () => {
+  const { shield } = await import('./shield')
+  state.allowance = 100n
+  await shield(session, signer, 'USDC', 100n)
+  expect(state.send).toHaveBeenCalledWith(expect.objectContaining({ chainId: 1n }))
+  state.send.mockClear()
+  await expect(shield(session, signer, 'USDC', 100n, message => {
+    if (message.startsWith('Confirm the')) provider.send.mockResolvedValue([])
+  })).rejects.toThrow('account changed')
   expect(state.send).not.toHaveBeenCalled()
 })

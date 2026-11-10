@@ -156,6 +156,87 @@ it('starts native credit in a separate encrypted journal while preserving the ol
   expect((await prepaidBalance(session)).funding).toBeUndefined()
 })
 
+it.each(['execute', 'refund', 'top-up'] as const)('recovers an earlier %s under native policy without rewriting either ledger identity', async (operation) => {
+  const credit = operation === 'refund'
+    ? (await prepaidBalance(session), await preparePrepaidRefund(session)) : await preparePrepaid(session)
+  if (operation === 'top-up') await topUpPrepaid(session, publicSigner, 100_000n, () => {}, credit)
+  else {
+    state.send.mockImplementation(async packet => {
+      const request = JSON.parse(packet.params.encryptedData[0])
+      if (request.authorization && JSON.parse(request.authorization.payload).kind === operation) throw new Error('Unknown submission')
+      return server(packet)
+    })
+    await expect(operation === 'execute' ? submitPrepaid(session, populated, credit.selected, gas, false, undefined, credit)
+      : requestPrepaidRefund(session, credit, 100_000n)).rejects.toThrow('Unknown submission')
+  }
+  const legacy = structuredClone(state.record) as { scope: ReturnType<typeof scope>; ledgerId: string;
+    attempt?: { key: string }; refund?: { key: string } }
+  state.policy.funding = 'native'
+  await preparePrepaid(session)
+  const native = structuredClone(state.records.get('nativePrepaidCredit'))
+  expect(await pendingPrepaid(session, 'private')).toMatchObject(operation === 'top-up' ? { topUpPending: true }
+    : operation === 'refund' ? { refundPending: true } : { key: legacy.attempt!.key })
+  expect(await pendingPrepaid(session)).toMatchObject({ topUpPending: false, refundPending: false })
+  state.signPublic.mockClear()
+  state.send.mockImplementation(async packet => {
+    const request = JSON.parse(packet.params.encryptedData[0])
+    expect(request.kind).not.toBe('info')
+    expect(() => authenticateCreditRequest(scope(), ledgerId, request.authorization)).toThrow()
+    const authorized = authenticateCreditRequest(legacy.scope, legacy.ledgerId, request.authorization)
+    if (authorized.payload.kind === 'refund') throw new Error('Original execution admission is paused')
+    const body = authorized.payload.kind === 'recover'
+      ? { kind: 'recovery', recoveredKey: (legacy.attempt ?? legacy.refund)!.key, operation, state: 'not-reserved', sequence: 1, retiredThrough: 1 }
+      : { kind: 'balance', owner: owner.address, memo: creditMemo(legacy.scope, legacy.ledgerId, owner.address),
+        available: '1000', deposited: '1000', charged: '0', reserved: '0', refunds: '0' }
+    respond(packet, request, body, authorized.key)
+  })
+  expect((await prepaidBalance(session, 'private')).available).toBe(1000n)
+  if (operation === 'top-up') expect((await claimPrepaidTopUp(session, undefined, 'private')).available).toBe(1000n)
+  else await expect(operation === 'execute' ? checkPrepaid(session, 'private') : checkPrepaidRefund(session, 'private'))
+    .resolves.toMatchObject({ state: 'not-reserved' })
+  expect(state.policy.funding).toBe('native')
+  expect(state.records.get('nativePrepaidCredit')).toEqual(native)
+  expect((state.records.get('prepaidCredit') as { scope: unknown }).scope).toEqual(legacy.scope)
+  expect(state.signPublic).not.toHaveBeenCalled()
+})
+
+it('preserves both journals when the original ledger is unavailable and rejects cross-mode stored identities', async () => {
+  await preparePrepaid(session)
+  const legacy = structuredClone(state.record)
+  state.policy.funding = 'native'
+  await preparePrepaid(session)
+  const native = structuredClone(state.record)
+  state.send.mockRejectedValue(new Error('Original ledger unavailable'))
+  await expect(prepaidBalance(session, 'private')).rejects.toThrow('Original ledger unavailable')
+  expect(state.records.get('prepaidCredit')).toEqual(legacy)
+  expect(state.records.get('nativePrepaidCredit')).toEqual(native)
+  state.records.set('prepaidCredit', native)
+  await expect(pendingPrepaid(session, 'private')).rejects.toThrow('funding mode changed')
+  expect(state.signPublic).not.toHaveBeenCalled()
+})
+
+it('retries only the exact legacy authorization without creating new legacy credit under native policy', async () => {
+  const credit = await preparePrepaid(session)
+  await submitPrepaid(session, populated, credit.selected, gas, false, undefined, credit)
+  const original = structuredClone(state.record) as { scope: ReturnType<typeof scope>; ledgerId: string;
+    attempt: { payload: string; key: string } }
+  state.policy.funding = 'native'
+  await preparePrepaid(session)
+  const native = structuredClone(state.record)
+  state.send.mockImplementation(async packet => {
+    const request = JSON.parse(packet.params.encryptedData[0])
+    const authorized = authenticateCreditRequest(original.scope, original.ledgerId, request.authorization)
+    expect(authorized.authorization.payload).toBe(original.attempt.payload)
+    expect(authorized.key).toBe(original.attempt.key)
+    respond(packet, request, { txHash: hash }, authorized.key)
+  })
+  await expect(retryPrepaid(session, 'private')).resolves.toBe(hash)
+  expect(state.records.get('nativePrepaidCredit')).toEqual(native)
+  await expect(topUpPrepaid(session, publicSigner, 100_000n, () => {}, credit)).rejects.toThrow('scope changed')
+  await expect(submitPrepaid(session, populated, credit.selected, gas, false, undefined, credit)).rejects.toThrow('scope changed')
+  expect(state.signPublic).not.toHaveBeenCalled()
+})
+
 it.each(['payer', 'operator'])('rejects delegated %s before asking for a native payment', async (role) => {
   state.policy.funding = 'native'
   const credit = await preparePrepaid(session)

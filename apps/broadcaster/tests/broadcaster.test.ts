@@ -200,6 +200,39 @@ describe.runIf([1, 56].includes(CHAIN_ID))('prepaid execution through the encryp
     const saved = store.pending()[0], ledger = CreditLedger.load(store)
     expect(ledger.attempt(saved.key)?.collection_allowance).toBe('0')
   })
+  it.each(['owner', 'global', 'busy'])('rejects new prepaid work before RPC reads when %s admission is exhausted', async (limit) => {
+    const f = await prepaidFixture(true); await f.fund()
+    const admission = f.service as unknown as { attempts: number[]; busy: boolean;
+      creditQueries: { accept(owner: string, funded: boolean, kind: string): void } }
+    if (limit === 'global') admission.attempts = Array(300).fill(performance.now())
+    if (limit === 'busy') admission.busy = true
+    if (limit === 'owner') for (let i = 0; i < 10; i++) admission.creditQueries.accept(f.owner.address, true, 'execute')
+    const ledger = CreditLedger.load(store), before = ledger.balance(f.owner.address)
+    const reads = Object.values(f.provider).filter(vi.isMockFunction)
+    reads.forEach(read => read.mockClear())
+    for (let i = 0; i < 2; i++) expect((await f.send(f.execution)).error).toBeDefined()
+    reads.forEach(read => expect(read).not.toHaveBeenCalled())
+    expect(f.sign).not.toHaveBeenCalled()
+    expect(f.sender.broadcastTransaction).not.toHaveBeenCalled()
+    expect(ledger.balance(f.owner.address)).toEqual(before)
+    expect(ledger.nextSequence(f.owner.address)).toBe(f.quote.nextSequence)
+    expect((await f.send({ kind: 'balance' })).available).toBe(before.available.toString())
+  })
+  it('returns a saved prepaid attempt even after new-execution budgets are exhausted', async () => {
+    const f = await prepaidFixture(true); await f.fund()
+    const accepted = await f.send(f.execution)
+    expect(accepted.txHash).toBeDefined()
+    const admission = f.service as unknown as { attempts: number[];
+      creditQueries: { accept(owner: string, funded: boolean, kind: string): void } }
+    admission.attempts = Array(300).fill(performance.now())
+    for (let i = 0; i < 9; i++) admission.creditQueries.accept(f.owner.address, true, 'execute')
+    const reads = Object.values(f.provider).filter(vi.isMockFunction)
+    reads.forEach(read => read.mockClear())
+    expect((await f.send(f.execution)).txHash).toBe(accepted.txHash)
+    reads.forEach(read => expect(read).not.toHaveBeenCalled())
+    expect(f.sign).toHaveBeenCalledOnce()
+    expect(f.sender.broadcastTransaction).toHaveBeenCalledOnce()
+  })
   it.each(['unsupported', 'canonical-change'])('closes native funding on historical read failure %s while keeping existing balance recovery available', async (failure) => {
     const f = await prepaidFixture(true); await f.fund()
     const historical = f.provider.getCode.getMockImplementation()!

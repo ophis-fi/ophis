@@ -17,7 +17,7 @@ import { connectPublicWallet, type PublicWalletProvider } from './public-connect
 import { renderWalletLayout, setPendingNotice, setSwapReview, showWalletView } from './wallet-layout'
 import { feeTokenFor, usesBoundWithdrawal } from './fee-asset'
 import { preparePrepaid, preparePrepaidRefund, prepaidBalance, pendingPrepaid, topUpPrepaid, retryPrepaidTopUp, claimPrepaidTopUp, checkPrepaid,
-  retryPrepaid, prepaidRefundFee, requestPrepaidRefund, checkPrepaidRefund, deferPrepaidTopUp, type PreparedCredit, type CreditBalance } from './prepaid'
+  retryPrepaid, prepaidRefundFee, requestPrepaidRefund, checkPrepaidRefund, deferPrepaidTopUp, type PreparedCredit, type CreditBalance, type CreditFunding } from './prepaid'
 import { ADAPT } from './execution'
 
 export async function wireWalletActions(session: WalletSession): Promise<void> {
@@ -47,6 +47,9 @@ export async function wireWalletActions(session: WalletSession): Promise<void> {
   }
   const usesPrepaid = ENVIRONMENT === 'ethereum' && [1, 56].includes(CHAIN_ID)
   const nativePrepaid = PREPAID_BROADCASTERS[CHAIN_ID]?.funding === 'native'
+  const fundingSelect = element<HTMLSelectElement>('fee-credit-funding')
+  fundingSelect.value = nativePrepaid ? 'native' : 'private'
+  const selectedFunding = (): CreditFunding => fundingSelect.value === 'private' ? 'private' : 'native'
   const creditSymbol = nativePrepaid ? NATIVE_SYMBOL : WRAPPED_SYMBOL
   const creditStatus = (message: string): void => { element('fee-credit-status').textContent = message }
   const showCredit = (balance: CreditBalance): void => {
@@ -89,7 +92,15 @@ export async function wireWalletActions(session: WalletSession): Promise<void> {
     const boundWithdrawal = withdrawal?.execution
     const identity = pending?.account || withdrawal?.recipient
     if (usesPrepaid) {
-      const credit = await pendingPrepaid(session)
+      const legacy = nativePrepaid && await pendingPrepaid(session, 'private')
+      element('fee-credit-funding-label').hidden = !legacy
+      const legacySelected = nativePrepaid && selectedFunding() === 'private'
+      const credit = await pendingPrepaid(session, selectedFunding())
+      element('legacy-fee-credit-help').hidden = !legacySelected
+      for (const id of ['fee-credit-help', 'fee-credit-timing', 'fee-credit-amount-label', 'fee-refund-help', 'fee-refund-timing'])
+        element(id).hidden = legacySelected
+      element('fee-credit-consent-label').hidden = legacySelected && !credit?.topUpPending
+      element('fee-refund-recipient-label').hidden = selectedFunding() !== 'native'
       const deferred = credit?.deferredTopUpCount ?? 0
       element('check-fee-topup').hidden = !credit?.topUpPending && !deferred
       element('retry-fee-topup').hidden = !credit?.topUpPending
@@ -99,7 +110,7 @@ export async function wireWalletActions(session: WalletSession): Promise<void> {
       element('deferred-fee-topups').textContent = `${deferred} payment(s) kept for recovery. Paste a transaction hash above to claim a confirmed payment.`
       element('check-fee-attempt').hidden = !credit?.key
       element('retry-fee-attempt').hidden = !credit?.key || !!credit.hash || !!credit.completed
-      element('add-fee-credit').hidden = !!credit?.topUpPending || (!!credit?.key && !credit.completed)
+      element('add-fee-credit').hidden = legacySelected || !!credit?.topUpPending || (!!credit?.key && !credit.completed)
       element('check-fee-refund').hidden = !credit?.refundPending
       element('review-fee-refund').hidden = !!credit?.refundPending
     }
@@ -307,7 +318,7 @@ export async function wireWalletActions(session: WalletSession): Promise<void> {
     const asset = depositToken()
     if (!isTokenSymbol(asset)) throw new Error('Native deposits do not need token approval.')
     const required = depositAmount()
-    await approveShield(session, signer, asset, required, publicTransactionStatus)
+    await approveShield(session, signer, asset, required, publicTransactionStatus, () => assertPublicEpoch(epoch))
     assertPublicEpoch(epoch)
     const approved = (await shieldAllowance(signer, asset)) >= required
     assertPublicEpoch(epoch)
@@ -316,10 +327,12 @@ export async function wireWalletActions(session: WalletSession): Promise<void> {
     status('Approval confirmed. Next: click Shield amount and confirm the deposit in your wallet.')
   })
   button('shield', 'Shielding…', async () => {
-    if (!state.signer) throw new Error('Connect your public wallet first.')
+    const signer = state.signer, epoch = state.publicEpoch
+    if (!signer) throw new Error('Connect your public wallet first.')
     const asset = depositToken()
     await requireDepositBroadcaster(asset)
-    const receipt = await shield(session, state.signer, asset, depositAmount(), publicTransactionStatus)
+    assertPublicEpoch(epoch)
+    const receipt = await shield(session, signer, asset, depositAmount(), publicTransactionStatus, () => assertPublicEpoch(epoch))
     token.value = asset === NATIVE_SYMBOL ? WRAPPED_SYMBOL : asset
     amount.value = ''
     updateSwapDirection()
@@ -333,10 +346,23 @@ export async function wireWalletActions(session: WalletSession): Promise<void> {
     await startBroadcasters(broadcasterStatus)
   })
   button('refresh-fee-credit', 'Checking credit…', async () => {
-    showCredit(await prepaidBalance(session))
-    creditStatus('Confirmed credit is reusable on this network. Reserved credit is unavailable until the attempt is reconciled.')
+    showCredit(await prepaidBalance(session, selectedFunding()))
+    creditStatus(nativePrepaid && selectedFunding() === 'private'
+      ? 'Earlier private credit is available for recovery or refund through its original ledger. New swaps use public fee credit.'
+      : 'Confirmed credit is reusable on this network. Reserved credit is unavailable until the attempt is reconciled.')
   })
+  fundingSelect.onchange = () => {
+    state.refund = undefined
+    element('request-fee-refund').hidden = true
+    element('fee-refund-review').textContent = ''
+    element('fee-credit-balance').textContent = 'Check the selected fee credit balance.'
+    element('fee-credit-status').textContent = ''
+    element<HTMLInputElement>('fee-topup-hash').value = ''
+    element<HTMLInputElement>('fee-credit-consent').checked = false
+    void run(element<HTMLButtonElement>('refresh-fee-credit'), 'Loading saved credit…', refreshPending)
+  }
   button('add-fee-credit', 'Preparing fee credit…', async () => {
+    if (nativePrepaid && selectedFunding() === 'private') throw new Error('Earlier private credit is available for recovery only. Select public fee credit to add a new payment.')
     requireWalletSync()
     if (!element<HTMLInputElement>('fee-credit-consent').checked)
       throw new Error('Review and accept the top-up gas and privacy notice first.')
@@ -352,9 +378,11 @@ export async function wireWalletActions(session: WalletSession): Promise<void> {
     creditStatus(`Top-up submitted: ${hash}. Wait for finality, then choose Check top-up. Do not send another top-up while this one is pending.`)
   })
   button('check-fee-topup', 'Checking top-up…', async () => {
-    showCredit(await claimPrepaidTopUp(session, element<HTMLInputElement>('fee-topup-hash').value.trim() || undefined))
+    showCredit(await claimPrepaidTopUp(session, element<HTMLInputElement>('fee-topup-hash').value.trim() || undefined, selectedFunding()))
     element<HTMLInputElement>('fee-topup-hash').value = ''
-    creditStatus('Top-up confirmed and credited. This balance can pay for later Ophis attempts.')
+    creditStatus(nativePrepaid && selectedFunding() === 'private'
+      ? 'Earlier payment confirmed in its original private-credit ledger. You can review its refund here.'
+      : 'Top-up confirmed and credited. This balance can pay for later Ophis attempts.')
     await syncWallet(session)
   })
   button('retry-fee-topup', 'Resuming saved top-up…', async () => {
@@ -364,7 +392,7 @@ export async function wireWalletActions(session: WalletSession): Promise<void> {
     const epoch = state.publicEpoch
     const signer = await publicSigner(state.provider!, session)
     assertPublicEpoch(epoch)
-    const hash = await retryPrepaidTopUp(session, signer, creditStatus)
+    const hash = await retryPrepaidTopUp(session, signer, creditStatus, selectedFunding())
     invalidate()
     element<HTMLInputElement>('fee-credit-consent').checked = false
     creditStatus(`Saved top-up transaction: ${hash}. Its payment details were preserved. Use Check top-up after finality.`)
@@ -372,20 +400,20 @@ export async function wireWalletActions(session: WalletSession): Promise<void> {
   button('defer-fee-topup-action', 'Preserving payment…', async () => {
     if (!element<HTMLInputElement>('defer-fee-topup-consent').checked)
       throw new Error('Review the saved-payment notice and confirm before setting it aside.')
-    await deferPrepaidTopUp(session)
+    await deferPrepaidTopUp(session, selectedFunding())
     element<HTMLInputElement>('defer-fee-topup-consent').checked = false
     element<HTMLInputElement>('fee-credit-consent').checked = false
     invalidate()
     creditStatus('Payment kept for later recovery. This does not cancel a public transaction. You can use existing credit and claim this payment later with its transaction hash.')
   })
   button('check-fee-attempt', 'Checking prepaid transaction…', async () => {
-    const saved = await pendingPrepaid(session)
-    const result = await checkPrepaid(session)
+    const saved = await pendingPrepaid(session, selectedFunding())
+    const result = await checkPrepaid(session, selectedFunding())
     if (result.hash && !result.cancelled && saved?.request) await attachCreditHash(saved.request, result.hash)
     creditStatus(result.state === 'not-reserved'
       ? 'This fee request was not accepted. No fee was charged for it. The signed private transaction remains saved; use its recovery controls before starting another swap or withdrawal.'
       : `Fee-credit transaction: ${result.state}${result.hash ? ` · ${result.hash}` : ''}${result.cancelled ? ' · original attempt cancelled' : ''}. Check recovery for the private transaction outcome.`)
-    showCredit(await prepaidBalance(session))
+    showCredit(await prepaidBalance(session, selectedFunding()))
   })
   const attachCreditHash = async (request: { to: string; data: string }, hash: string): Promise<void> => {
     const withdrawal = await pendingWithdrawal(session)
@@ -407,9 +435,9 @@ export async function wireWalletActions(session: WalletSession): Promise<void> {
     }
   }
   button('retry-fee-attempt', 'Retrying exact saved request…', async () => {
-    const saved = await pendingPrepaid(session)
+    const saved = await pendingPrepaid(session, selectedFunding())
     if (!saved?.request) throw new Error('No complete prepaid request is saved. Keep the private proof for recovery.')
-    const hash = await retryPrepaid(session)
+    const hash = await retryPrepaid(session, selectedFunding())
     await attachCreditHash(saved.request, hash)
     creditStatus(`Saved request acknowledged: ${hash}. Check its status and the private recovery record; no proof was rebuilt.`)
   })
@@ -422,11 +450,11 @@ export async function wireWalletActions(session: WalletSession): Promise<void> {
     state.refund = undefined
     element('request-fee-refund').hidden = true
     const gross = amountFromInput(element<HTMLInputElement>('fee-refund-amount').value, WRAPPED_SYMBOL)
-    const credit = await preparePrepaidRefund(session, creditStatus)
+    const credit = await preparePrepaidRefund(session, creditStatus, selectedFunding())
     const nativePrepaid = credit.scope.funding === 'native'
     const creditSymbol = nativePrepaid ? NATIVE_SYMBOL : WRAPPED_SYMBOL
     const fee = prepaidRefundFee(credit), net = gross - fee
-    const balance = await prepaidBalance(session)
+    const balance = await prepaidBalance(session, selectedFunding())
     showCredit(balance)
     if (gross > balance.available) throw new Error('The refund exceeds your available credit; reserved credit cannot be refunded.')
     if (net <= 0n) throw new Error('This refund would not cover its network fee allowance. The credit remains available for later attempts.')
@@ -446,10 +474,10 @@ export async function wireWalletActions(session: WalletSession): Promise<void> {
     const result = await requestPrepaidRefund(session, reviewed.credit, reviewed.gross, reviewed.recipient)
     const creditSymbol = result.funding === 'native' ? NATIVE_SYMBOL : WRAPPED_SYMBOL
     creditStatus(`Refund ${result.state}: ${formatUnits(result.net, 18)} ${creditSymbol} net to ${reviewed.recipient ?? 'this private wallet'}. Use Check or resume refund for confirmation.`)
-    showCredit(await prepaidBalance(session))
+    showCredit(await prepaidBalance(session, selectedFunding()))
   })
   button('check-fee-refund', 'Checking refund…', async () => {
-    const result = await checkPrepaidRefund(session)
+    const result = await checkPrepaidRefund(session, selectedFunding())
     const creditSymbol = result.funding === 'native' ? NATIVE_SYMBOL : WRAPPED_SYMBOL
     creditStatus(result.state === 'not-reserved'
       ? 'The refund request was not accepted and no credit was reserved for it. Review a new refund request to continue.'
@@ -457,7 +485,7 @@ export async function wireWalletActions(session: WalletSession): Promise<void> {
       ? `Refund verified: ${formatUnits(result.net, 18)} ${creditSymbol} · ${result.transactionHash}`
       : result.state === 'failed' ? `Refund failed or was cancelled. No refund amount was paid. Processing charge: ${formatUnits(result.charged ?? 0n, 18)} ${creditSymbol}; the remaining hold is available as credit.`
       : 'The refund is not confirmed yet; its credit remains reserved. Check again without creating another request.')
-    showCredit(await prepaidBalance(session))
+    showCredit(await prepaidBalance(session, selectedFunding()))
     if (result.state === 'refunded') await syncWallet(session)
   })
   const showSwapQuote = (prepared: Awaited<ReturnType<typeof preparePrivateSwap>>): void => {
@@ -616,7 +644,7 @@ export async function wireWalletActions(session: WalletSession): Promise<void> {
     const epoch = state.publicEpoch
     const signer = await publicSigner(state.provider!, session)
     assertPublicEpoch(epoch)
-    status(await resumePendingWithdrawal(session, signer))
+    status(await resumePendingWithdrawal(session, signer, () => assertPublicEpoch(epoch)))
     await syncWallet(session)
   })
   button('recover', 'Recovering…', async () => {

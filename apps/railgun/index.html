@@ -101,12 +101,14 @@
         <details id="wallet-details"><summary>Wallet &amp; balances</summary><p id="address"></p><pre id="balances">Syncing…</pre>
           <section id="fee-credit-panel" hidden aria-labelledby="fee-credit-title">
             <h3 id="fee-credit-title">Ophis fee credit</h3>
+            <label id="fee-credit-funding-label" hidden>Fee credit to manage<select id="fee-credit-funding"><option value="native">Public fee credit</option><option value="private">Earlier private fee credit</option></select></label>
+            <p id="legacy-fee-credit-help" hidden>Earlier private credit is separate from public fee credit. Check or recover its saved payments and refunds here. If the original ledger service is unavailable, keep these records; do not repeat the payment.</p>
             <p id="fee-credit-balance" role="status">Check your available and reserved fee credit.</p>
             <button id="refresh-fee-credit" class="secondary-action" type="button">Check fee credit</button>
             <p id="fee-credit-help"></p>
             <p id="fee-credit-timing"></p>
             <label id="fee-credit-amount-label"><span id="fee-credit-amount-text">Add fee credit</span><input id="fee-credit-amount" type="text" inputmode="decimal" autocomplete="off" placeholder="0.0" /></label>
-            <label><input id="fee-credit-consent" type="checkbox" /> I understand that my public wallet pays the top-up gas and is linked to that transfer.</label>
+            <label id="fee-credit-consent-label"><input id="fee-credit-consent" type="checkbox" /> I understand that my public wallet pays the top-up gas and is linked to that transfer.</label>
             <button id="add-fee-credit" type="button">Add fee credit</button>
             <label id="fee-topup-hash-label" hidden>Payment transaction hash (for a replacement or saved payment)<input id="fee-topup-hash" type="text" autocomplete="off" placeholder="0x…" /></label>
             <button id="check-fee-topup" class="secondary-action" type="button" hidden>Check top-up</button>

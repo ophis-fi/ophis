@@ -57,7 +57,7 @@ vi.mock('./account', () => ({ unusedSwapAccount: mocks.unused }))
 vi.mock('./cancel', () => ({ cancelPendingSwap: vi.fn() }))
 vi.mock('./wallet-layout', () => ({ renderWalletLayout: vi.fn(), setSwapReview: vi.fn(), setPendingNotice: vi.fn(), showWalletView: vi.fn() }))
 
-let elements: Record<string, { value: string, hidden: boolean, textContent: string, className: string, checked: boolean, onclick?: () => Promise<void>, oninput?: () => void, dispatchEvent: () => boolean, scrollIntoView: () => void, setAttribute: () => void }>
+let elements: Record<string, { value: string, hidden: boolean, textContent: string, className: string, checked: boolean, onclick?: () => Promise<void>, oninput?: () => void, onchange?: () => void, dispatchEvent: () => boolean, scrollIntoView: () => void, setAttribute: () => void }>
 let provider: EventEmitter & { request: ReturnType<typeof vi.fn> }
 beforeEach(() => {
   vi.clearAllMocks()
@@ -500,7 +500,7 @@ it('deposits ETH with no token approval, independently of private swap inputs', 
   expect(mocks.approve).not.toHaveBeenCalled()
   expect(elements['public-wallet-error'].textContent).toMatch(/Native deposits do not need token approval/)
   await elements.shield.onclick?.()
-  expect(mocks.shield).toHaveBeenCalledWith(session, expect.anything(), 'ETH', 1n, expect.any(Function))
+  expect(mocks.shield).toHaveBeenCalledWith(session, expect.anything(), 'ETH', 1n, expect.any(Function), expect.any(Function))
   expect(elements.status.textContent).toContain('Deposit confirmed')
   expect(elements.token.value).toBe('WETH')
   expect(elements.amount.value).toBe('')
@@ -644,6 +644,49 @@ it.each(['approval', 'allowance'])('does not re-enable shielding after a network
   expect(elements.shield.hidden).toBe(true)
   expect(elements.approve.hidden).toBe(true)
   expect(elements.walletconnect.hidden).toBe(false)
+})
+
+it.each(['approve', 'shield'])('passes a live session check that stops %s after a wallet event', async action => {
+  const { wireWalletActions } = await import('./wallet-actions')
+  await wireWalletActions({} as WalletSession)
+  await elements.walletconnect.onclick?.()
+  const submit = vi.fn()
+  ;(action === 'approve' ? mocks.approve : mocks.shield).mockImplementationOnce(async (...args: unknown[]) => {
+    provider.emit('accountsChanged', [])
+    ;(args[5] as () => void)()
+    submit()
+  })
+  await elements[action].onclick?.()
+  expect(submit).not.toHaveBeenCalled()
+  expect(elements.error.textContent).toMatch(/wallet changed/)
+})
+
+it('exposes older credit as a separate recovery choice and clears refund consent when switching', async () => {
+  mocks.environment = 'ethereum'
+  mocks.pendingCredit.mockImplementation(async (_session, funding) => funding === 'private'
+    ? { topUpPending: true, funding: undefined } : undefined)
+  const session = {} as WalletSession
+  const { wireWalletActions } = await import('./wallet-actions')
+  await wireWalletActions(session)
+  expect(elements['fee-credit-funding-label'].hidden).toBe(false)
+  expect(elements['fee-credit-funding'].value).toBe('native')
+  elements['fee-credit-funding'].value = 'private'
+  elements['fee-credit-funding'].onchange?.()
+  await vi.waitFor(() => expect(elements['legacy-fee-credit-help'].hidden).toBe(false))
+  expect(elements['add-fee-credit'].hidden).toBe(true)
+  expect(elements['check-fee-topup'].hidden).toBe(false)
+  expect(elements['request-fee-refund'].hidden).toBe(true)
+  await elements['refresh-fee-credit'].onclick?.()
+  expect(mocks.creditBalance).toHaveBeenCalledWith(session, 'private')
+  await elements['check-fee-topup'].onclick?.()
+  expect(mocks.claimCredit).toHaveBeenCalledWith(session, undefined, 'private')
+  await elements['add-fee-credit'].onclick?.()
+  expect(mocks.topUp).not.toHaveBeenCalled()
+  expect(mocks.credit).not.toHaveBeenCalled()
+  elements['fee-credit-funding'].value = 'native'
+  elements['fee-credit-funding'].onchange?.()
+  await vi.waitFor(() => expect(elements['legacy-fee-credit-help'].hidden).toBe(true))
+  expect(elements['add-fee-credit'].hidden).toBe(false)
 })
 
 it('switches the selected WalletConnect provider and keeps only one listener per event on reconnect', async () => {
@@ -812,7 +855,7 @@ it('keeps checking a saved top-up separate from its explicit consented retry', a
   expect(mocks.retryTopUp).not.toHaveBeenCalled()
   elements['fee-credit-consent'].checked = true
   await elements['retry-fee-topup'].onclick?.()
-  expect(mocks.retryTopUp).toHaveBeenCalledWith(session, expect.objectContaining({ getAddress: expect.any(Function) }), expect.any(Function))
+  expect(mocks.retryTopUp).toHaveBeenCalledWith(session, expect.objectContaining({ getAddress: expect.any(Function) }), expect.any(Function), 'native')
   expect(mocks.topUp).not.toHaveBeenCalled()
   expect(mocks.credit).not.toHaveBeenCalled()
   expect(mocks.prepareSwap).not.toHaveBeenCalled()
