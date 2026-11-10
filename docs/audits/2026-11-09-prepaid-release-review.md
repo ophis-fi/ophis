@@ -2,6 +2,8 @@
 
 Date: 2026-11-09. This is an engineering review and release checklist, not production approval. It supersedes earlier readiness statements for the prepaid payment path. No merge, deployment, service activation or real payment is authorized by this document.
 
+**Superseded payment policy:** On 9 November, the owner selected public native prepayment, now implemented as the separate `public-native` mode. Its current release gates are documented in [Public native prepayment](2026-11-09-public-native-prepayment.md). The review below records the earlier private-credit design; its collectability defect still applies to historical private credit, which remains separate.
+
 ## Current readiness
 
 The implementation and isolated proof tests establish prepaid accounting for included gas, including a reverted operation, and verify owner-controlled refunds and native fee recovery. They do not establish that newly received private credit is spendable through the owner's stock ANON wallet. **Public release remains blocked by the fee-credit collectability defect below**, exact-commit review and restricted live acceptance.

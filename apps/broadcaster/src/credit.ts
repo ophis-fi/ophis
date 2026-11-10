@@ -774,7 +774,7 @@ export class CreditLedger {
       if (!attempt || !request || !raw) throw new Error('A known finalized transaction is required to settle credit.')
       const transaction = Transaction.from(raw)
       if (transaction.hash !== receiptHash || transaction.from !== this.scope.operator || transaction.chainId !== BigInt(this.scope.chainId) ||
-        transaction.nonce !== request.nonce || evidence.gasUsed > transaction.gasLimit ||
+        transaction.nonce !== request.nonce || evidence.gasUsed > transaction.gasLimit || evidence.gasPrice <= 0n ||
         evidence.gasPrice > (transaction.maxFeePerGas ?? transaction.gasPrice ?? 0n))
         throw new Error('Finalized receipt does not match its secured transaction.')
       const refund = this.nativeRefund(key)

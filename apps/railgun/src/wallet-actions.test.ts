@@ -1,6 +1,6 @@
 import { EventEmitter } from 'node:events'
 import { makeError } from 'ethers'
-import { afterEach, beforeEach, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { WalletSession } from './wallet'
 import { SwapBalanceError } from './private-swap'
 import { withdrawalData } from '../tests/withdrawal.fixture'
@@ -25,11 +25,13 @@ vi.mock('./prepaid', () => ({ preparePrepaid: mocks.credit, preparePrepaidRefund
   checkPrepaid: mocks.checkCredit, retryPrepaid: mocks.retryCredit, prepaidRefundFee: mocks.refundFee,
   requestPrepaidRefund: mocks.requestRefund, checkPrepaidRefund: mocks.checkRefund }))
 vi.mock('./storage', () => ({ readPrivateState: vi.fn(), writePrivateState: vi.fn(), deletePrivateState: vi.fn() }))
-vi.mock('./config', async (original) => ({
-  ...await original<typeof import('./config')>(),
-  get ENVIRONMENT() { return mocks.environment },
-  get PILOT_WITHDRAWAL_RECIPIENT() { return mocks.pilot },
-}))
+async function mockConfig() {
+  return { ...await vi.importActual<typeof import('./config')>('./config'),
+    get ENVIRONMENT() { return mocks.environment },
+    get PILOT_WITHDRAWAL_RECIPIENT() { return mocks.pilot },
+  }
+}
+vi.mock('./config', () => mockConfig())
 vi.mock('./public-connection', () => ({ connectPublicWallet: mocks.connect }))
 vi.mock('./shield', () => ({
   publicSigner: mocks.signer, shieldAllowance: mocks.allowance, approveShield: mocks.approve,
@@ -822,6 +824,55 @@ it.each(['quote', 'max-swap', 'withdraw-quote'])('passes the explicit prepared c
   expect(mocks.connect).not.toHaveBeenCalled()
   expect(mocks.topUp).not.toHaveBeenCalled()
   expect(elements.error.textContent).toBe('')
+})
+
+describe('BNB withdrawal admission', () => {
+  beforeEach(() => {
+    vi.resetModules()
+    vi.stubEnv('VITE_RAILGUN_CHAIN_ID', '56')
+    vi.doMock('./config', mockConfig)
+    mocks.environment = 'ethereum'
+    elements.token.value = 'WBNB'
+    mocks.credit.mockRejectedValue(new Error('Prepaid execution is not approved.'))
+    mocks.selectBroadcaster.mockResolvedValue({ tokenAddress: 'verified external fee token' })
+  })
+  afterEach(() => { vi.unstubAllEnvs(); vi.resetModules(); vi.doMock('./config', mockConfig) })
+
+  it.each(['withdraw-quote', 'withdraw-max'])('retains external COMMON discovery for %s with expired prepaid approval', async (action) => {
+    const { wireWalletActions } = await import('./wallet-actions')
+    const { TOKENS } = await import('./config')
+    await wireWalletActions({} as WalletSession)
+    await elements[action].onclick?.()
+    expect(mocks.credit).not.toHaveBeenCalled()
+    expect(mocks.selectBroadcaster).toHaveBeenCalledWith(TOKENS.WBNB.address, false, expect.any(Function))
+    expect(mocks.prepareWithdrawal.mock.calls[0]).toHaveLength(7)
+    expect(elements.withdraw.hidden).toBe(false)
+  })
+
+  it('uses approved prepaid credit for COMMON withdrawals when available', async () => {
+    const { PREPAID_BROADCASTERS, TOKENS } = await import('./config')
+    PREPAID_BROADCASTERS[56]!.expiresAt = Date.now() + 3_600_000
+    const credit = { selected: { tokenAddress: TOKENS.WBNB.address } }
+    mocks.credit.mockResolvedValue(credit)
+    const { wireWalletActions } = await import('./wallet-actions')
+    await wireWalletActions({} as WalletSession)
+    await elements['withdraw-quote'].onclick?.()
+    expect(mocks.selectBroadcaster).not.toHaveBeenCalled()
+    expect(mocks.prepareWithdrawal.mock.calls[0].at(-1)).toBe(credit)
+  })
+
+  it.each(['USDC', 'USDT', 'native', 'swap'])('keeps %s on the prepaid path when approval is expired', async (kind) => {
+    if (kind === 'native') elements['withdraw-native'].checked = true
+    else if (kind !== 'swap') elements.token.value = kind
+    const { wireWalletActions } = await import('./wallet-actions')
+    await wireWalletActions({} as WalletSession)
+    await elements[kind === 'swap' ? 'quote' : 'withdraw-quote'].onclick?.()
+    expect(mocks.credit).toHaveBeenCalled()
+    expect(mocks.selectBroadcaster).not.toHaveBeenCalled()
+    expect(mocks.prepareWithdrawal).not.toHaveBeenCalled()
+    expect(mocks.prepareSwap).not.toHaveBeenCalled()
+    expect(elements['private-wallet-error'].textContent).toContain('not approved')
+  })
 })
 
 it('requires separate top-up gas/privacy consent before requesting wallet access or transferring funds', async () => {

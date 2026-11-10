@@ -55,4 +55,13 @@ describe('canonical private credit evidence', () => {
     canonicalHash = receipt.blockHash; chain = CHAIN === 1n ? 56n : 1n
     await expect(finalizedCreditReceipt(provider, receipt.hash)).rejects.toThrow('network')
   })
+  it.each([0n, -1n, 0, '0', undefined])('validates funding receipt gas price %s independently of the transferred value', async (gasPrice) => {
+    const { receipt } = evidence()
+    Object.assign(receipt, { gasPrice })
+    const provider = { getNetwork: async () => ({ chainId: CHAIN }), getTransactionReceipt: async () => receipt,
+      getBlock: async () => ({ number: receipt.blockNumber, hash: receipt.blockHash, timestamp: 1234567890 }),
+    } as unknown as JsonRpcProvider
+    if (gasPrice === 0n) expect(await finalizedCreditReceipt(provider, receipt.hash)).toBe(receipt)
+    else await expect(finalizedCreditReceipt(provider, receipt.hash)).rejects.toThrow('canonical')
+  })
 })

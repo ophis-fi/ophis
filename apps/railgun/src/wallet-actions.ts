@@ -559,8 +559,10 @@ export async function wireWalletActions(session: WalletSession): Promise<void> {
     requireWalletSync()
     if (!maximum) amountFromInput(amount.value, symbol())
     const nativeOutput = CHAIN_ID === 56 && symbol() === 'WBNB' && element<HTMLInputElement>('withdraw-native').checked
-    const prepaid = usesPrepaid ? await preparePrepaid(session, broadcasterStatus) : undefined
-    const selected = prepaid?.selected ?? await selectBroadcaster(TOKENS[feeTokenFor(symbol())].address, usesBoundWithdrawal(symbol(), nativeOutput), broadcasterStatus)
+    const bound = usesBoundWithdrawal(symbol(), nativeOutput)
+    const externalCommon = CHAIN_ID === 56 && !bound && (PREPAID_BROADCASTERS[56]?.expiresAt ?? 0) <= Date.now()
+    const prepaid = usesPrepaid && !externalCommon ? await preparePrepaid(session, broadcasterStatus) : undefined
+    const selected = prepaid?.selected ?? await selectBroadcaster(TOKENS[feeTokenFor(symbol())].address, bound, broadcasterStatus)
     state.withdrawal = await prepareUnshield(
       session,
       symbol(),

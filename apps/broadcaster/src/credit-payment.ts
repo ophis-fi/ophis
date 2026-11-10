@@ -29,7 +29,7 @@ export async function finalizedCreditReceipt(provider: ReceiptProvider, transact
     (finalized.number === receipt.blockNumber && finalized.hash !== receipt.blockHash) ||
     !Number.isSafeInteger(canonical.timestamp) || canonical.timestamp <= 0 ||
     (receipt.status !== 0 && receipt.status !== 1) || typeof receipt.gasUsed !== 'bigint' || receipt.gasUsed <= 0n ||
-    typeof receipt.gasPrice !== 'bigint' || receipt.gasPrice <= 0n)
+    typeof receipt.gasPrice !== 'bigint' || receipt.gasPrice < 0n)
     throw new Error('The credit receipt is not on the canonical finalized chain.')
   verifiedReceipts.set(receipt, Object.freeze({ hash: receipt.hash, blockNumber: receipt.blockNumber, blockHash: receipt.blockHash,
     gasUsed: receipt.gasUsed, gasPrice: receipt.gasPrice, status: receipt.status, minedAt: canonical.timestamp * 1000 }))

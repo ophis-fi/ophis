@@ -8,9 +8,11 @@ pnpm --dir ../railgun install --ignore-workspace --frozen-lockfile --ignore-scri
 pnpm exec tsc --noEmit -p tsconfig.fork.json
 ```
 
-Run with Node 22:
+Run with Node 22 and explicit read RPC and evidence directory:
 
 ```sh
+OPHIS_PREPAID_TEST_UPSTREAM=https://YOUR_TRUSTED_ETHEREUM_READ_RPC \
+OPHIS_PREPAID_TEST_EVIDENCE=/absolute/private/evidence/directory \
 node --max-old-space-size=4096 tests/prepaid-fork-roundtrip.mjs
 ```
 
@@ -19,12 +21,13 @@ Select BNB explicitly, with a public-state read RPC whose chain ID is 56:
 ```sh
 OPHIS_PREPAID_TEST_CHAIN_ID=56 \
 OPHIS_PREPAID_TEST_UPSTREAM=https://YOUR_TRUSTED_BNB_READ_RPC \
+OPHIS_PREPAID_TEST_EVIDENCE=/absolute/private/evidence/directory \
 node --max-old-space-size=4096 tests/prepaid-fork-roundtrip.mjs
 ```
 
-Use separate sequential processes for the two chains. The launcher fixes both the backend environment and client compile-time chain; it rejects a conflicting preexisting broadcaster chain. On another host, set `OPHIS_PREPAID_TEST_EVIDENCE` to a private task directory and `OPHIS_PREPAID_TEST_ANVIL` to its verified Anvil executable. Node 22, Anvil with Prague support, `ps`, and `lsof` are required. Apply host resource limits independently; the launcher disk reserve alone is not a memory or CPU limit.
+Use separate sequential processes for the two chains. The launcher fixes both the backend environment and client compile-time chain; it rejects a conflicting preexisting broadcaster chain. Set `OPHIS_PREPAID_TEST_ANVIL` if the verified Anvil executable is not at `~/.foundry/bin/anvil`. Node 22, Anvil with Prague support, `ps`, and `lsof` are required. Apply host resource limits independently; the launcher disk reserve alone is not a memory or CPU limit.
 
-This separate fixture never attaches to an existing Anvil or owner browser. It starts a new loopback Anvil, pins the current finalized upstream block, and verifies its PID, UID, listener, process start identity, fork block, chain, and instance ID before local mutations. The default read-only upstream is the existing Ophis Ethereum endpoint; `OPHIS_PREPAID_TEST_UPSTREAM` can select another public-state RPC. `OPHIS_PREPAID_TEST_FORK_BLOCK` optionally pins an explicit available snapshot. No transaction is sent to that upstream.
+This separate fixture never attaches to an existing Anvil or owner browser. It starts a new loopback Anvil, pins the current finalized upstream block, and verifies its PID, UID, listener, process start identity, fork block, chain, and instance ID before local mutations. Both `OPHIS_PREPAID_TEST_UPSTREAM` and `OPHIS_PREPAID_TEST_EVIDENCE` are required before any network access. `OPHIS_PREPAID_TEST_FORK_BLOCK` optionally pins an explicit available snapshot. No transaction is sent to that upstream.
 
 The runner uses newly generated synthetic keys, a fresh SDK database, and in-memory public proving artifacts. Synthetic state is removed when the invocation exits; evidence retains process metadata, results, phase/failure details, compiled fixture, and node logs. `OPHIS_PREPAID_TEST_EVIDENCE` and `OPHIS_PREPAID_TEST_ANVIL` select the evidence directory and absolute Anvil executable. It enforces the existing 6 GiB free-space reserve and stops its owned node before that reserve is exhausted. Anvil keeps at most 64 persisted historical states in the invocation's private temporary directory, which is removed during cleanup; disabling RPC storage caching alone does not bound those states. Keep additional headroom for the public Merkle tree and the operating system's memory swap.
 

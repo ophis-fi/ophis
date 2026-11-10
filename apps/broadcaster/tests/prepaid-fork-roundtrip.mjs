@@ -16,10 +16,12 @@ const chainId = Number(process.env.OPHIS_PREPAID_TEST_CHAIN_ID ?? 1)
 assert([1, 56].includes(chainId), 'Only Ethereum and BNB have isolated prepaid fixtures.')
 assert(!process.env.OPHIS_BROADCASTER_CHAIN_ID || process.env.OPHIS_BROADCASTER_CHAIN_ID === String(chainId), 'Conflicting immutable broadcaster chain.')
 process.env.OPHIS_BROADCASTER_CHAIN_ID = String(chainId)
-assert(chainId === 1 || process.env.OPHIS_PREPAID_TEST_UPSTREAM, 'Select an explicit public-state BNB read RPC.')
-const upstream = process.env.OPHIS_PREPAID_TEST_UPSTREAM ?? 'http://100.69.134.7:8547'
+assert(process.env.OPHIS_PREPAID_TEST_UPSTREAM, 'Select an explicit public-state read RPC.')
+const upstream = process.env.OPHIS_PREPAID_TEST_UPSTREAM
 assert(['http:', 'https:'].includes(new URL(upstream).protocol))
 assert(!new URL(upstream).username && !new URL(upstream).password, 'Use a public-state read endpoint without embedded credentials.')
+assert(process.env.OPHIS_PREPAID_TEST_EVIDENCE, 'Select an explicit private evidence directory.')
+const evidence = resolve(process.env.OPHIS_PREPAID_TEST_EVIDENCE)
 const readOnly = new JsonRpcProvider(upstream, chainId, { batchMaxCount: 1, cacheTimeout: -1 })
 let forkBlock
 try {
@@ -28,7 +30,6 @@ try {
     ? (await readOnly.getBlock('finalized'))?.number : Number(process.env.OPHIS_PREPAID_TEST_FORK_BLOCK)
 } finally { readOnly.destroy() }
 assert(Number.isSafeInteger(forkBlock) && forkBlock > 0, 'A finalized public-state snapshot is required.')
-const evidence = resolve(process.env.OPHIS_PREPAID_TEST_EVIDENCE ?? '/Users/scep/ophis-railgun-evidence/prepaid-20261108/real-proof-fork')
 mkdirSync(evidence, { recursive: true, mode: 0o700 })
 const root = mkdtempSync(join(evidence, chainId === 56 ? 'bnb-' : 'ethereum-'))
 const anvilTemporary = join(root, 'anvil-tmp')

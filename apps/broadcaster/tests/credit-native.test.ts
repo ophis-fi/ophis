@@ -66,6 +66,18 @@ it('credits exact finalized direct native funding once and rejects fabricated ev
   expect(f.ledger.depositNative(await p.proof())).toBe(true);expect(f.ledger.depositNative(await p.proof())).toBe(false)
   expect(f.ledger.balance(f.owner).available).toBe(100_000_000n);expect(f.ledger.liability()).toBe(100_000_000n);expect(f.ledger.earned()).toBe(0n)
 })
+it('credits zero-price funding but keeps positive operator inclusion and settlement costs mandatory', async () => {
+  const f=fixture(),p=await f.payment()
+  Object.assign(p.receipt,{gasPrice:0n})
+  expect(f.ledger.depositNative(await p.proof())).toBe(true)
+  expect(f.ledger.balance(f.owner).available).toBe(100_000_000n)
+  const {attempt,raw}=await f.reserveAndSign(),before=f.ledger.balance(f.owner)
+  const receipt=await f.include(raw,1,21_000n,0n)
+  expect(()=>f.ledger.observeInclusion(attempt.key,receipt)).toThrow('Invalid prepaid inclusion cost')
+  expect(()=>f.ledger.settle(attempt.key,receipt)).toThrow('does not match')
+  expect(f.ledger.balance(f.owner)).toEqual(before)
+  expect(f.ledger.earned()).toBe(0n)
+})
 it('quarantines duplicate payment IDs as owed funds, never spendable credit or revenue', async () => {
   const f=fixture(),p=await f.payment();f.ledger.depositNative(await p.proof())
   const duplicate=await f.payment(p.paymentId,'duplicate',5_000_000n),proof=await duplicate.proof()
