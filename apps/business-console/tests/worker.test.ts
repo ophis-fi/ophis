@@ -1,5 +1,5 @@
 // Security invariants of milestone 1. Each test here was seen to fail once with its control removed
-// (the list of mutations is in ARCHITECTURE.md). Runs in the Workers runtime against a local D1.
+// (ARCHITECTURE.md, security invariants). Runs in the Workers runtime against a local D1.
 import { applyD1Migrations, env } from 'cloudflare:test'
 import { beforeAll, beforeEach, describe, expect, it } from 'vitest'
 import pageHeaders from '../public/_headers?raw'
