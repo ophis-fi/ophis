@@ -59,6 +59,7 @@ export const OPHIS_BROADCASTER =
   '0zk1qy08nqrftxezyxdegx6ca055tr65f2hf3u24j9urx04e5fnzepv6nrv7j6fe3z53luvr6qkgtjukzmkcp856gs5a6wzdd3pnesr9r6ljvym9l3a4fcepgkvek3f'
 export const PREPAID_OPERATOR = '0x001486E70A0c9291f5F55c68914eE0e4E4A604d4'
 // These approvals cover native prepayment only; legacy requests remain rejected by Ophis.
+// Ophis approval has no calendar cutoff; fee quotes and signed authorizations still expire.
 export const PREPAID_BROADCASTERS: Readonly<Partial<Record<number, {
   operator: string
   railgunAddress: string
@@ -68,9 +69,9 @@ export const PREPAID_BROADCASTERS: Readonly<Partial<Record<number, {
   funding?: 'native'
 }>>> = {
   1: { operator: PREPAID_OPERATOR, railgunAddress: OPHIS_BROADCASTER, funding: 'native',
-    expiresAt: Date.parse('2026-11-13T00:00:00Z'), maxGasPrice: 1_000_000_000n, maxTransactionCost: 3_000_000_000_000_000n },
+    expiresAt: Number.POSITIVE_INFINITY, maxGasPrice: 1_000_000_000n, maxTransactionCost: 3_000_000_000_000_000n },
   56: { operator: PREPAID_OPERATOR, railgunAddress: OPHIS_BROADCASTER, funding: 'native',
-    expiresAt: Date.parse('2026-11-13T00:00:00Z'), maxGasPrice: 100_000_000n, maxTransactionCost: 250_000_000_000_000n },
+    expiresAt: Number.POSITIVE_INFINITY, maxGasPrice: 100_000_000n, maxTransactionCost: 250_000_000_000_000n },
 }
 // Ethereum uses the verified Ophis fee identity; other networks retain their existing discovery signer.
 export const FEE_SIGNER = CHAIN_ID === 1 ? OPHIS_BROADCASTER :
@@ -84,7 +85,7 @@ export const PROTECTED_BROADCASTERS: Readonly<Partial<Record<number, readonly {
   expiresAt: number
   maxGasPrice: bigint
   maxTransactionCost: bigint
-}[]>>> = { 1: [{ railgunAddress: OPHIS_BROADCASTER, expiresAt: Date.parse('2026-11-13T00:00:00Z'),
+}[]>>> = { 1: [{ railgunAddress: OPHIS_BROADCASTER, expiresAt: Number.POSITIVE_INFINITY,
   maxGasPrice: 1_000_000_000n, maxTransactionCost: 3_000_000_000_000_000n }] }
 export const ERC20 = new Interface([
   'function approve(address spender,uint256 amount) returns (bool)',

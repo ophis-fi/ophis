@@ -478,6 +478,19 @@ it('retains unknown top-up proof and claims only its exact finalized canonical t
   expect((await pendingPrepaid(session))?.topUpPending).toBe(false)
 })
 
+it.each([1, 56])('keeps chain %s production approval usable after the former cutoff without accepting expired quotes', async (chainId) => {
+  const { PREPAID_BROADCASTERS } = await vi.importActual<typeof import('./config')>('./config')
+  state.policy.expiresAt = PREPAID_BROADCASTERS[chainId]!.expiresAt
+  expect(state.policy.expiresAt).toBe(Number.POSITIVE_INFINITY)
+  state.policy.funding = 'native'
+  vi.useFakeTimers({ toFake: ['Date'] })
+  vi.setSystemTime(new Date('2100-01-01T00:00:00Z'))
+  const credit = await preparePrepaid(session)
+  await expect(submitPrepaid(session, populated, credit.selected, gas, false, undefined, credit)).resolves.toBe(hash)
+  vi.setSystemTime(new Date(Date.now() + 300_000))
+  await expect(assertPrepaidContext(session, credit.selected, gas, credit)).rejects.toThrow(/prepaid quote/)
+})
+
 it('permits read/recovery after approval expiry but forbids new execution and preserves unfinalized reservations', async () => {
   const credit = await preparePrepaid(session)
   await submitPrepaid(session, populated, credit.selected, gas, false, undefined, credit)

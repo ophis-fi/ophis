@@ -24,6 +24,16 @@ it('removes the private-submission claim at the actual approval safety cutoff', 
   expect(state.text.textContent).toContain('saved-transaction recovery')
 })
 
+it('keeps non-expiring approval available without overflowing the refresh timer', async () => {
+  vi.setSystemTime(new Date('2100-01-01T00:00:00Z'))
+  state.policy[1] = [{ expiresAt: Number.POSITIVE_INFINITY }]
+  const { updatePrivateSubmissionHelp } = await import('./network-ui')
+  updatePrivateSubmissionHelp()
+  await vi.advanceTimersByTimeAsync(2_147_483_647)
+  expect(state.text.textContent).toContain('Ethereum swaps use private submission')
+  expect(vi.getTimerCount()).toBe(1)
+})
+
 it('does not describe mainnet private submission in a fork even with an approval', async () => {
   state.environment = 'fork'
   state.policy[1] = [{ expiresAt: Date.now() + 3_600_000 }]
