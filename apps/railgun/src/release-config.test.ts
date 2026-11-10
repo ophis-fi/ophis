@@ -1,12 +1,18 @@
 import { afterEach, expect, it, vi } from 'vitest'
 import { validateRailgunAddress } from '@railgun-community/wallet'
-import { CONFIG, FEE_SIGNER, PROTECTED_BROADCASTERS, TOKENS } from './config'
+import { CONFIG, FEE_SIGNER, PREPAID_BROADCASTERS, PREPAID_OPERATOR, PROTECTED_BROADCASTERS, TOKENS } from './config'
 import { assertSubmittable, validateBroadcaster } from './broadcaster'
 import { EVMGasType, type SelectedBroadcaster } from '@railgun-community/shared-models'
 import type { WalletSession } from './wallet'
 
 vi.mock('./config', async (original) => ({ ...await original<typeof import('./config')>(), ENVIRONMENT: 'ethereum' }))
 afterEach(() => vi.restoreAllMocks())
+
+it('approves native Ethereum prepayment within the protected route limits while BNB remains gated', () => {
+  const protectedRoute = PROTECTED_BROADCASTERS[1]![0]
+  expect(PREPAID_BROADCASTERS[1]).toEqual({ ...protectedRoute, operator: PREPAID_OPERATOR, funding: 'native' })
+  expect(PREPAID_BROADCASTERS[56]!.expiresAt).toBe(0)
+})
 
 it('binds Ethereum discovery and protection to the reviewed Ophis fee identity with an explicit review expiry', () => {
   expect(validateRailgunAddress(FEE_SIGNER)).toBe(true)
