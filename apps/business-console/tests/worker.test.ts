@@ -45,17 +45,20 @@ async function organisation(name = 'Northwind Vaults') {
   const ids = await data.seedOrganisation(db, { name, kind: 'partner', ownerName: `Owner of ${name}`, ticketHash: await data.sha256Hex(ticket), now })
   return { ...ids, name, ticket }
 }
-// A second seat with its ticket, written straight to the tables: inviting is milestone 2.
+// A ticket and a second seat, written straight to the tables: issuing tickets is milestone 2.
+async function ticketFor(orgId: string, seatId: string, role: string, kind: string, issuerSeatId: string) {
+  const ticket = data.randomToken()
+  await db
+    .prepare(`INSERT INTO enrolment_tickets (id, org_id, seat_id, kind, role, issuer_seat_id, token_hash, nonce, state, expires_at, created_at)
+              VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'issued', ?, ?)`)
+    .bind(data.randomId(), orgId, seatId, kind, role, issuerSeatId, await data.sha256Hex(ticket), data.randomId(), now + 10 * MIN, now)
+    .run()
+  return ticket
+}
 async function invite(orgId: string, issuerSeatId: string, role: string) {
   const seatId = data.randomId()
-  const ticket = data.randomToken()
-  await db.batch([
-    db.prepare(`INSERT INTO seats (id, org_id, display_name, role, state, created_at) VALUES (?, ?, ?, ?, 'invited', ?)`).bind(seatId, orgId, `A ${role}`, role, now),
-    db.prepare(`INSERT INTO enrolment_tickets (id, org_id, seat_id, kind, role, issuer_seat_id, token_hash, nonce, state, expires_at, created_at)
-                VALUES (?, ?, ?, 'invitation', ?, ?, ?, ?, 'issued', ?, ?)`)
-      .bind(data.randomId(), orgId, seatId, role, issuerSeatId, await data.sha256Hex(ticket), data.randomId(), now + 10 * MIN, now),
-  ])
-  return { seatId, ticket }
+  await db.prepare(`INSERT INTO seats (id, org_id, display_name, role, state, created_at) VALUES (?, ?, ?, ?, 'invited', ?)`).bind(seatId, orgId, `A ${role}`, role, now).run()
+  return { seatId, ticket: await ticketFor(orgId, seatId, role, 'invitation', issuerSeatId) }
 }
 async function enrol(ticket: string, key: Key, answer: Answer = {}, cookie?: string) {
   const start = await call('POST', '/api/enrol/start', { body: { ticket }, cookie })
@@ -154,6 +157,12 @@ describe('b. only an active credential signs in', () => {
     expect(stored.body).toEqual({ state: 'pending' })
     expect((await signIn(key)).status).toBe(401)
     expect(await count('sessions', org.orgId)).toBe(0)
+    // The same on a seat that is already active: a member's new passkey waits for its confirmation.
+    const m = await member()
+    const second = await softwareAuthenticator(SITE)
+    expect((await enrol(await ticketFor(m.orgId, m.seatId, 'owner', 're_enrolment', m.seatId), second)).status).toBe(200)
+    expect((await signIn(second)).status).toBe(401)
+    expect((await signIn(m.key)).status).toBe(200)
   })
   it('a suspended or revoked credential cannot sign in, and its session ends', async () => {
     const m = await member()
@@ -293,6 +302,15 @@ describe('d. request checks', () => {
       expect((await call('GET', '/api/me', { cookie: m.cookie })).status).toBe(200)
     })
   }
+  it('the expected origin is the configured one, not the host the request arrived on', async () => {
+    const elsewhere = 'https://business.evil.example'
+    const response = await handle(
+      new Request(`${elsewhere}/api/signin/start`, { method: 'POST', body: '{}', headers: { 'sec-fetch-site': 'same-origin', origin: elsewhere, 'content-type': 'application/json' } }),
+      testEnv,
+      () => now,
+    )
+    expect(response.status).toBe(403)
+  })
   it('a state change is a JSON POST: no other method, no other content type', async () => {
     const m = await member()
     expect(routes.filter((route) => route.method !== 'GET').every((route) => route.method === 'POST')).toBe(true)
@@ -489,9 +507,16 @@ describe('f. audit log', () => {
     await db.batch([db.prepare('DROP TRIGGER audit_log_no_update'), db.prepare('DROP TRIGGER audit_log_no_delete')])
     await db.prepare(`UPDATE audit_log SET subject_id = 'another-credential' WHERE org_id = ? AND seq = 2`).bind(m.orgId).run()
     expect(await data.verifyAudit(db, m.orgId)).toEqual({ ok: false, seq: 2 })
+    // A forger who also recomputes the hash of the row they changed is caught at the next row's link.
+    // The recipe is written out here on purpose: a checker that imports what it checks proves nothing.
+    const forged = await member()
+    const row = (await db.prepare('SELECT * FROM audit_log WHERE org_id = ? AND seq = 2').bind(forged.orgId).first<Record<string, unknown>>())!
+    const fields = [row.org_id, row.seq, row.at, row.actor_kind, 'someone-else', row.session_id, row.action, row.subject_id, row.detail, row.country, row.asn, row.prev_hash]
+    await db.prepare(`UPDATE audit_log SET actor_id = 'someone-else', hash = ? WHERE org_id = ? AND seq = 2`).bind(await data.sha256Hex(JSON.stringify(fields)), forged.orgId).run()
+    expect(await data.verifyAudit(db, forged.orgId)).toEqual({ ok: false, seq: 3 })
     const other = await member()
     await db.prepare('DELETE FROM audit_log WHERE org_id = ? AND seq = 3').bind(other.orgId).run()
-    expect(await data.verifyAudit(db, other.orgId)).toEqual({ ok: false, seq: 3 })
+    expect(await data.verifyAudit(db, other.orgId)).toEqual({ ok: false, seq: 4 }) // the row after the gap no longer links
     const third = await member()
     await db.prepare(`INSERT INTO audit_log (org_id, seq, at, actor_kind, action, prev_hash, hash) VALUES (?, 5, ?, 'system', 'forged', ?, ?)`)
       .bind(third.orgId, now, '0'.repeat(64), 'f'.repeat(64)).run()
@@ -576,5 +601,45 @@ describe('h. sign-in start', () => {
       expect(failure.headers.get('set-cookie')).toBeNull()
     }
     expect(await snapshot()).toBe(before)
+  })
+})
+
+describe('i. the schema refuses what the code must never do', () => {
+  it('a row cannot point at a seat of another organisation', async () => {
+    const a = await member()
+    const b = await member()
+    await expect(
+      db.prepare(`INSERT INTO credentials (id, org_id, seat_id, public_key, device_bound, label, state, created_at) VALUES (?, ?, ?, 'key', 1, 'label', 'pending', 0)`)
+        .bind(data.randomId(), a.orgId, b.seatId).run(),
+    ).rejects.toThrow(/FOREIGN KEY/)
+    await expect(
+      db.prepare(`INSERT INTO sessions (id, token_hash, challenge_hash, org_id, seat_id, credential_id, created_at, last_seen_at, step_up_at) VALUES (?, ?, ?, ?, ?, ?, 0, 0, 0)`)
+        .bind(data.randomId(), data.randomId(), data.randomId(), a.orgId, a.seatId, b.key.id).run(),
+    ).rejects.toThrow(/FOREIGN KEY/)
+  })
+  it('the maker of a change is never its checker', async () => {
+    const m = await member()
+    const approval = (checker: string | null) =>
+      db.prepare(`INSERT INTO approvals (id, org_id, action, subject_id, payload_hash, requester_seat_id, checker_seat_id, state, expires_at, created_at) VALUES (?, ?, 'wallet.link', 'subject', 'hash', ?, ?, 'pending', 1, 0)`)
+        .bind(data.randomId(), m.orgId, m.seatId, checker).run()
+    await approval(null)
+    await expect(approval(m.seatId)).rejects.toThrow(/CHECK/)
+  })
+  it('an organisation has one recovery anchor in force', async () => {
+    const m = await member()
+    const wallet = (digit: string, anchor: string | null) =>
+      db.prepare(`INSERT INTO wallets (id, org_id, chain_id, address, kind, label, state, proof_nonce, proof_digest, proof_signature, proof_checked_at, linked_at, anchor)
+                  VALUES (?, ?, 1, ?, 'safe', 'Treasury', 'linked', ?, 'digest', '0x', 0, 0, ?)`)
+        .bind(data.randomId(), m.orgId, `0x${digit.repeat(40)}`, data.randomId(), anchor).run()
+    await wallet('1', 'current')
+    await wallet('2', null)
+    await wallet('3', 'next')
+    await expect(wallet('4', 'current')).rejects.toThrow(/UNIQUE/)
+  })
+  it('the audit sequence of an organisation cannot fork', async () => {
+    const m = await member()
+    await expect(
+      db.prepare(`INSERT INTO audit_log (org_id, seq, at, actor_kind, action, prev_hash, hash) VALUES (?, 4, 0, 'system', 'second-writer', 'p', 'h')`).bind(m.orgId).run(),
+    ).rejects.toThrow(/UNIQUE/)
   })
 })

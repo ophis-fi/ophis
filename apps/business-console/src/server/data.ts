@@ -51,8 +51,8 @@ async function commit(db: D1Database, e: Entry, changes: Sql[]) {
 export async function verifyAudit(db: D1Database, orgId: string): Promise<{ ok: true; rows: number; head: string } | { ok: false; seq: number }> {
   const { results } = await db.prepare('SELECT * FROM audit_log WHERE org_id = ? ORDER BY seq').bind(orgId).all<AuditRow>()
   let prev = FIRST
-  for (const [index, row] of results.entries()) {
-    if (row.seq !== index + 1 || row.prev_hash !== prev || row.hash !== (await auditHash(row))) return { ok: false, seq: index + 1 }
+  for (const row of results) {
+    if (row.prev_hash !== prev || row.hash !== (await auditHash(row))) return { ok: false, seq: row.seq }
     prev = row.hash
   }
   return { ok: true, rows: results.length, head: prev }
