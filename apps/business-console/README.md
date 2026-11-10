@@ -16,5 +16,5 @@ npx -y pnpm@10.34.9 activate    # local stand-in for the confirmation ceremony: 
 Open the enrolment link in Chrome, create the passkey, run `activate`, then sign in at http://localhost:8787.
 `seed` writes `.dev.vars` with a fresh random challenge key when the file is missing (see `.dev.vars.example`).
 
-Test: `npx -y pnpm@10.34.9 test` (63 invariant tests in the Workers runtime), `npx -y pnpm@10.34.9 typecheck`, and
+Test: `npx -y pnpm@10.34.9 test` (invariant tests in the Workers runtime), `npx -y pnpm@10.34.9 typecheck`, and
 `npx -y pnpm@10.34.9 test:e2e` (headless Chrome with a virtual authenticator; needs port 8787 free; screenshots in `.shots/`).

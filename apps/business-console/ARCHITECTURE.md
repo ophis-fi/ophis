@@ -86,19 +86,22 @@ Every `/api/*` call: `Sec-Fetch-Site: same-origin` or 403. Every state change: P
 | 6 | POST /api/support/ask | session | any | no | no |
 
 ## Security invariants and the tests that prove them
-Each test (in `tests/worker.test.ts`) was seen to fail with its control removed once: 58 single mutations, all caught.
+Each test (in `tests/worker.test.ts`) was seen to fail with its control removed once. Independent review, 2026-11-11: 71 single mutations, 70 caught.
+The survivor is the purpose label inside the challenge HMAC, which changes nothing while sign-in and enrolment bind different values. Four checks of `tests/e2e.mjs` were mutated too.
 
 | Invariant | Test |
 |---|---|
 | A passkey answers only for the configured origin and relying-party id, with user verification | a: `rejects an assertion made for another origin`, `...another relying-party id`, `...without user verification`, `rejects a registration made for another origin...`; d: `the expected origin is the configured one...` |
 | A challenge is ours, fresh (5 min), bound to its ticket, and opens one session | a: `rejects a challenge after 5 minutes`, `rejects a challenge it did not issue`, `opens one session per assertion: a replay is refused`; e: `POST /api/enrol/finish` |
+| Expiry (challenge, ticket, session) is judged once the request body has arrived | a: `judges expiry when the body has arrived...` |
+| A signature counter that goes backwards is refused, and the stored counter never goes down | a: `refuses a passkey whose counter goes backwards...` |
 | Only an active passkey of an active seat in an active organisation signs in | b: `a pending credential cannot sign in`, `a suspended or revoked credential cannot sign in, and its session ends`, `a frozen seat or a frozen organisation cannot sign in` |
-| Owners enrol device-bound keys only | b: `an Owner cannot enrol a synced passkey; a Viewer can` |
-| A ticket works once, and for 10 minutes | b: `a ticket stores one credential, once`, `a key-role ticket is dead after 10 minutes...` |
+| Owners enrol device-bound keys only, whatever the organisation allows; other key roles unless it allows synced keys. A ticket whose role is not its seat's role is dead | b: `an Owner cannot enrol a synced passkey; a Viewer can`, `the seat decides the key rule...` |
+| A ticket works once, for 10 minutes, for a live seat in a live organisation; the key label is short plain text | b: `a ticket stores one credential, once`, `a key-role ticket is dead after 10 minutes...`, `a ticket is dead once its seat is removed...`, `a key label is short plain text` |
 | Activation by command is local only | b: `activation by command refuses anything but the local database` |
 | Cookie: `__Host-`, Secure, HttpOnly, SameSite=Strict, Path=/, no Domain; only the token's hash is stored | c: `the cookie carries every required attribute and the database holds only its hash` |
 | Revoke, sign-out, 15 min idle and 12 h absolute are enforced by the server | c: `a revoked session fails on the next request`, `sign-out ends the session...`, `a session ends after 15 minutes idle`, `a session ends 12 hours after sign-in...` |
-| Fetch-metadata, Origin, JSON POST, body cap, no CORS | d: `refuses an API call with Sec-Fetch-Site ...` (4), `refuses a state change with Origin ...` (5), `a state change is a JSON POST...`, `refuses a body over the size cap`, `grants no CORS access...` |
+| Fetch-metadata, Origin, JSON POST, body cap, no CORS | d: `refuses an API call with Sec-Fetch-Site ...` (4, every route of the table), `refuses a state change with Origin ...` (5, every POST route), `a state change is a JSON POST...`, `refuses a body over the size cap`, `grants no CORS access...` |
 | No organisation sees another, on every route; a route without an isolation case fails the suite | e: `every route has an isolation case` and one test per route; `SQL lives in the data module only...`; `inside an organisation, a Viewer sees only its own seat...` |
 | A state change and its audit row are one batch; rows hold ids only; the chain detects a rewrite | f: `each state change writes one row...`, `<action>: the change and its audit row succeed or fail together` (6), `rows hold ids only`, `a changed row, a removed row and a forged tail are detected` |
 | Pages and API responses carry the headers and the policy | g: `every API response carries them...`, `pages carry them: public/_headers...`; e2e checks the live page and counts zero violations |
