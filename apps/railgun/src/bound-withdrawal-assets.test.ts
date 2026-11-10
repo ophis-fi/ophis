@@ -166,7 +166,9 @@ async function signedRecord(native = true, chainId = 56,
     { address: config.CONFIG.proxyContract, ...PRIVACY.encodeEventLog('Unshield', [owner.address, { tokenType: 0, tokenAddress: principal, tokenSubID: 0 }, 998n, 2n]) },
     ...(native ? [
       { address: principal, ...wrapper.encodeEventLog('Withdrawal', [owner.address, 998n]) },
-      { address: config.CONFIG.proxyContract, ...PRIVACY.encodeEventLog('Transact', [0, 0, [proofs[0].commitments[0]], [proofs[0].boundParams.commitmentCiphertext[0]]]) },
+      ...(proofs[0].boundParams.commitmentCiphertext.length ? [
+        { address: config.CONFIG.proxyContract, ...PRIVACY.encodeEventLog('Transact', [0, 0, [proofs[0].commitments[0]], [proofs[0].boundParams.commitmentCiphertext[0]]]) },
+      ] : []),
     ] : [{ address: principal, ...new Interface(['event Transfer(address indexed from,address indexed to,uint256 value)']).encodeEventLog('Transfer', [owner.address, recipient, 998n]) }]),
   ] } as unknown as TransactionReceipt
   const delegateCode = '0x6001600055'
@@ -225,6 +227,25 @@ it('checks native canonical logs without inventing a native recipient Transfer e
   const changed = { ...receipt, logs: receipt.logs.map((log, i) => i !== 2 ? log : { ...log,
     ...new Interface(['event Withdrawal(address indexed src,uint256 wad)']).encodeEventLog('Withdrawal', [recipient, 998n]) }) } as unknown as TransactionReceipt
   expect(() => assertWithdrawalReceipt(changed, pending)).toThrow(/not confirmed/)
+})
+
+it('confirms a prepaid full native unshield without a private fee/change event and clears its saved record', async () => {
+  const { pending, receipt, session } = await signedRecord(true, 56, (proofs) => {
+    proofs[0].commitments = [proofs[0].commitments[proofs[0].commitments.length - 1]]
+    proofs[0].boundParams.commitmentCiphertext = []
+  })
+  pending.feeMode = 'prepaid'
+  const { assertWithdrawalReceipt, reconcilePendingWithdrawal } = await import('./withdrawal-journal')
+  expect(receipt.logs).toHaveLength(3)
+  expect(() => assertWithdrawalReceipt(receipt, pending)).not.toThrow()
+  for (const index of [1, 2]) {
+    const missing = { ...receipt, logs: receipt.logs.filter((_log, i) => i !== index) } as unknown as TransactionReceipt
+    expect(() => assertWithdrawalReceipt(missing, pending)).toThrow(/not confirmed/)
+  }
+  expect(() => assertWithdrawalReceipt(receipt, { ...pending, feeMode: undefined })).toThrow(/not confirmed/)
+  await expect(reconcilePendingWithdrawal(session)).resolves.toContain('Withdrawal confirmed')
+  expect(state.ratchet).toHaveBeenCalledWith(56n, 8)
+  expect(state.remove).toHaveBeenCalledWith(session, 'pendingWithdrawal')
 })
 
 it('requires the exact signed unwrap and native transfer amounts even when a changed action is authentically signed', async () => {

@@ -192,9 +192,11 @@ export function assertWithdrawalReceipt(receipt: TransactionReceipt, pending: Pe
         try { event = wrapper.parseLog({ topics: [...log.topics], data: log.data }) } catch { return sum }
         return event && getAddress(event.args.src) === getAddress(pending.execution!.account) ? sum + BigInt(event.args.wad) : sum
       }, 0n)
-      const feeCommitment = withdrawalTransactions(pending)[0].commitments[0]
+      const proof = withdrawalTransactions(pending)[0]
+      const prepaidFullUnshield = pending.feeMode === 'prepaid' && proof.commitments.length === 1 &&
+        proof.boundParams.commitmentCiphertext.length === 0
       if (unshielded !== BigInt(pending.minimum) || unwrapped !== BigInt(pending.minimum) ||
-        !events.some((event) => event?.name === 'Transact' && [...event.args.hash].includes(feeCommitment)))
+        (!prepaidFullUnshield && !events.some((event) => event?.name === 'Transact' && [...event.args.hash].includes(proof.commitments[0]))))
         throw new Error('Native withdrawal unshield, unwrap and fee commitment are not confirmed.')
       // Native transfer has no ERC20 event. Reconciliation also verifies the
       // actual transaction and canonical delegate/guard before clearing.
