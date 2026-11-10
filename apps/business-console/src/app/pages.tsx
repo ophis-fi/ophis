@@ -10,7 +10,7 @@ export interface Me {
 
 const passkeysWork = () => typeof PublicKeyCredential !== 'undefined' && 'parseRequestOptionsFromJSON' in PublicKeyCredential
 const NO_PASSKEYS = 'This browser cannot use passkeys. Use a current version of Chrome, Edge, Firefox or Safari.'
-const Problem = ({ children }: { children: string }) => <p className="note bad" role="alert"><Icon name="triangle-alert" /><span className="grow">{children}</span></p>
+export const Problem = ({ children }: { children: string }) => <p className="note bad" role="alert"><Icon name="triangle-alert" /><span className="grow">{children}</span></p>
 
 function Trust() {
   return (

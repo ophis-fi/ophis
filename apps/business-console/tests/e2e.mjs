@@ -90,9 +90,20 @@ try {
   await page.getByRole('button', { name: 'Revoke' }).waitFor()
   check('the session survives a reload', (await status('/api/me')) === 200)
 
+  // The server cannot end the session: the app must not pretend that it did.
+  await page.route('**/api/signout', (route) => route.fulfill({ status: 500, contentType: 'application/json', body: '{"error":"internal"}' }))
+  await page.getByRole('button', { name: 'Sign out' }).click()
+  await page.getByText('Sign-out did not work.').waitFor({ timeout: 5000 })
+  check('a failed sign-out keeps the app signed in and says so', await page.getByRole('button', { name: 'Revoke' }).isVisible() && (await status('/api/me')) === 200)
+  await page.unroute('**/api/signout')
+
+  // The revoke also clears the cookie, so the browser alone cannot show that the server forgot the token: replay it.
+  const replay = () => fetch(`${ORIGIN}/api/me`, { headers: { cookie: `__Host-session=${cookie.value}`, 'sec-fetch-site': 'same-origin' } }).then((response) => response.status)
+  const before = await replay()
   await page.getByRole('button', { name: 'Revoke' }).click()
   await page.getByRole('button', { name: 'Sign in with a passkey' }).waitFor()
   check('after the revoke the app is back on sign-in and the session is dead', (await status('/api/me')) === 401)
+  check('the revoked token is dead on the server: it worked before the revoke, not after', before === 200 && (await replay()) === 401)
 
   check(`no policy violation in the browser (${violations.length})`, violations.length === 0)
   check(`no request left the origin (${foreign.length})`, foreign.length === 0)

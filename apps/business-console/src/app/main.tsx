@@ -4,7 +4,7 @@ import { createRoot } from 'react-dom/client'
 import './kit.css'
 import './app.css'
 import mark from './assets/ophis-icon-mono-dark.svg'
-import { Enrol, Organisation, Security, SignIn, type Me } from './pages.tsx'
+import { Enrol, Organisation, Problem, Security, SignIn, type Me } from './pages.tsx'
 import { api, Icon, ROLE, Status } from './ui.tsx'
 
 const onHashChange = (listener: () => void) => {
@@ -29,6 +29,7 @@ function App() {
   const [me, setMe] = useState<Me | null>() // undefined while the first answer is on its way
   const [menu, setMenu] = useState(false)
   const [ticket, setTicket] = useState(firstTicket)
+  const [stillOpen, setStillOpen] = useState(false)
   useEffect(() => {
     const next = takeTicket() // a link opened in a tab where the app is already running
     if (next) setTicket(next)
@@ -37,7 +38,10 @@ function App() {
     const result = await api<Me>('/api/me')
     setMe(result.status === 200 ? result.data : null)
   }, [])
-  const signedOut = useCallback(() => setMe(null), [])
+  const signedOut = useCallback(() => {
+    setMe(null)
+    setStillOpen(false)
+  }, [])
   useEffect(() => void loadMe(), [loadMe])
 
   const page = hash.startsWith('#/security') ? 'security' : hash.startsWith('#/enrol') ? 'enrol' : me ? 'organisation' : 'signin'
@@ -48,7 +52,11 @@ function App() {
   useEffect(() => setMenu(false), [hash])
 
   async function signOut() {
-    await api('/api/signout', {})
+    const result = await api('/api/signout', {})
+    // 401: the session was already over. Any other failure: it may still be open, so the app does not pretend otherwise.
+    const open = result.status !== 200 && result.status !== 401
+    setStillOpen(open)
+    if (open) return
     setMe(null)
     location.hash = '#/'
   }
@@ -88,6 +96,7 @@ function App() {
         </nav>
         <div className="col">
           <main id="main" tabIndex={-1}>
+            {me && stillOpen && <Problem>Sign-out did not work. Your session is still open. Try again.</Problem>}
             {page === 'security' ? <Security />
             : page === 'enrol' ? <Enrol ticket={ticket} />
             : me === undefined ? null
