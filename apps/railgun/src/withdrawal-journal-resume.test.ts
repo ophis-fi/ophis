@@ -66,8 +66,9 @@ it('still sends the exact authorization and proof with a compatible wallet and r
   const wait = vi.fn().mockResolvedValue(null)
   const sendTransaction = vi.fn().mockResolvedValue({ hash: newHash, wait })
   const sponsor = { sendTransaction } as unknown as JsonRpcSigner
-  await expect(resumePendingWithdrawal(session, sponsor)).rejects.toThrow('Withdrawal confirmation is pending')
-  expect(state.network).toHaveBeenCalledWith(session, sponsor)
+  const beforeSend = vi.fn()
+  await expect(resumePendingWithdrawal(session, sponsor, beforeSend)).rejects.toThrow('Withdrawal confirmation is pending')
+  expect(state.network).toHaveBeenCalledWith(session, sponsor, beforeSend)
   expect(sendTransaction).toHaveBeenCalledWith({ ...pending.transaction, value: 0n, type: 4, chainId: CHAIN,
     authorizationList: [authorizationify(pending.execution!.authorization)], maxFeePerGas: 100n, maxPriorityFeePerGas: 10n })
   expect(wait).toHaveBeenCalledWith(2)
