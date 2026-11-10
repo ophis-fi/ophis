@@ -15,12 +15,12 @@ it('pins native Ethereum and BNB prepayment to the owner identity and approved l
     expiresAt: protectedRoute.expiresAt, maxGasPrice: 100_000_000n, maxTransactionCost: 250_000_000_000_000n })
 })
 
-it('binds Ethereum discovery and protection to the reviewed Ophis fee identity with an explicit review expiry', () => {
+it('binds Ethereum discovery and protection to the reviewed Ophis fee identity without a calendar cutoff', () => {
   expect(validateRailgunAddress(FEE_SIGNER)).toBe(true)
   expect(FEE_SIGNER).toBe('0zk1qy08nqrftxezyxdegx6ca055tr65f2hf3u24j9urx04e5fnzepv6nrv7j6fe3z53luvr6qkgtjukzmkcp856gs5a6wzdd3pnesr9r6ljvym9l3a4fcepgkvek3f')
   expect(Object.keys(PROTECTED_BROADCASTERS)).toEqual(['1'])
   expect(PROTECTED_BROADCASTERS[1]).toEqual([
-    { railgunAddress: FEE_SIGNER, expiresAt: Date.parse('2026-11-13T00:00:00Z'),
+    { railgunAddress: FEE_SIGNER, expiresAt: Number.POSITIVE_INFINITY,
       maxGasPrice: 1_000_000_000n, maxTransactionCost: 3_000_000_000_000_000n },
   ])
 })
@@ -31,15 +31,20 @@ it.each([true, false])('rejects retired fee identity for delegated=%s submission
   expect(() => validateBroadcaster(selected, selected.tokenAddress, delegated)).toThrow(/reviewed Ophis fee identity/)
 })
 
-it('preserves common withdrawals after swap approval expiry with the pinned identity and gas caps', async () => {
-  vi.spyOn(Date, 'now').mockReturnValue(Date.parse('2026-11-13T00:00:00Z'))
-  const session = { provider: { send: async () => undefined, getNetwork: async () => ({ chainId: 1n }) } } as unknown as WalletSession
+it.each(['2026-11-12T23:45:00Z', '2026-11-13T00:00:00Z', '2100-01-01T00:00:00Z'])(
+  'preserves withdrawals and delegated submissions at %s with the pinned identity and gas caps', async (date) => {
+  vi.spyOn(Date, 'now').mockReturnValue(Date.parse(date))
+  const session = { provider: { send: async () => undefined, getNetwork: async () => ({ chainId: 1n }),
+    getBlock: async () => ({ baseFeePerGas: 100_000_000n }) } } as unknown as WalletSession
   const selected = { railgunAddress: FEE_SIGNER, tokenAddress: TOKENS.USDC.address,
     tokenFee: { feePerUnitGas: '1150000000000000000', expiration: Date.now() + 600_000 } } as SelectedBroadcaster
   await expect(assertSubmittable(session, selected,
     { evmGasType: EVMGasType.Type1, gasEstimate: 100_000n, gasPrice: 100_000_000n })).resolves.toBeUndefined()
   await expect(assertSubmittable(session, selected,
     { evmGasType: EVMGasType.Type1, gasEstimate: 100_000n, gasPrice: 1_100_000_000n })).rejects.toThrow(/broadcaster limits/)
+  const delegated = { ...selected, tokenFee: { ...selected.tokenFee, relayAdapt7702: CONFIG.relayAdapt7702Contract } }
+  await expect(assertSubmittable(session, delegated,
+    { evmGasType: EVMGasType.Type4, gasEstimate: 3_000_000n, maxFeePerGas: 400_000_000n, maxPriorityFeePerGas: 1n })).resolves.toBeUndefined()
 })
 
 it.each(['price', 'budget', 'valid'])('checks the reviewed %s limit before a proof or submission', async (condition) => {
