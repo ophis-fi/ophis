@@ -569,6 +569,32 @@ describe('f. audit log', () => {
       .toEqual(['/api/enrol/finish', '/api/enrol/start', '/api/sessions/:id/revoke', '/api/signin/finish', '/api/signin/start', '/api/signout'])
   })
 
+  // A database handle whose next batch() calls let a competing write of the same organisation land first.
+  const racing = (m: Member, collisions: number) =>
+    new Proxy(db, {
+      get(target, property) {
+        const value = Reflect.get(target, property)
+        if (property !== 'batch') return typeof value === 'function' ? value.bind(target) : value
+        return async (statements: D1PreparedStatement[]) => {
+          if (collisions-- > 0) expect((await signIn(m.key)).status).toBe(200)
+          return target.batch(statements)
+        }
+      },
+    })
+  it('two writes of one organisation that collide on the audit sequence: the later one is retried, once', async () => {
+    const m = await member()
+    const finish = async (collisions: number) => {
+      const start = await call('POST', '/api/signin/start')
+      const response = await m.key.authenticate(start.body.options)
+      return call('POST', '/api/signin/finish', { body: { response }, env: { ...testEnv, DB: racing(m, collisions) } })
+    }
+    expect((await finish(1)).status).toBe(200)
+    expect(await count('sessions', m.orgId)).toBe(3) // the member's own, the competing one, the retried one
+    expect((await finish(2)).status).toBe(401) // one retry, not a loop: the caller is told to try again
+    expect(await count('sessions', m.orgId)).toBe(5)
+    expect(await data.verifyAudit(db, m.orgId)).toMatchObject({ ok: true, rows: 8 })
+  })
+
   it('a changed row, a removed row and a forged tail are detected', async () => {
     const m = await member()
     expect(await data.verifyAudit(db, m.orgId)).toMatchObject({ ok: true, rows: 4 })

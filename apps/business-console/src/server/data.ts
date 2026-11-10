@@ -24,26 +24,39 @@ interface AuditRow {
   prev_hash: string; hash: string
 }
 interface Entry {
-  orgId: string; at: number; actorKind: 'seat' | 'operator' | 'anchor' | 'system'; actorId: string | null; sessionId: string | null
-  action: string; subjectId: string | null; country?: string | null; asn?: number | null
+  at: number; actorKind: 'seat' | 'operator' | 'anchor' | 'system'; actorId: string | null; sessionId: string | null
+  action: string; subjectId: string | null; detail?: string | null; country?: string | null; asn?: number | null
 }
 const FIRST = '0'.repeat(64)
 const auditHash = (r: Omit<AuditRow, 'hash'>) =>
   sha256Hex(JSON.stringify([r.org_id, r.seq, r.at, r.actor_kind, r.actor_id, r.session_id, r.action, r.subject_id, r.detail, r.country, r.asn, r.prev_hash]))
 
-// ponytail: writes of one organisation are serialised by the audit sequence. Two at the same instant
-// collide on the primary key (org_id, seq); one fails whole and the caller answers "try again".
-// Ceiling: an organisation with many concurrent writers. Then retry here, once.
-async function commit(db: D1Database, e: Entry, changes: Sql[]) {
-  const head = await db.prepare('SELECT seq, hash FROM audit_log WHERE org_id = ? ORDER BY seq DESC LIMIT 1').bind(e.orgId).first<{ seq: number; hash: string }>()
-  const row = {
-    org_id: e.orgId, seq: (head?.seq ?? 0) + 1, at: e.at, actor_kind: e.actorKind, actor_id: e.actorId, session_id: e.sessionId,
-    action: e.action, subject_id: e.subjectId, detail: null, country: e.country ?? null, asn: e.asn ?? null, prev_hash: head?.hash ?? FIRST,
+// Writes of one organisation are serialised by the audit sequence: two at the same instant collide on
+// the primary key (org_id, seq) and the later one fails whole. So plan() runs after the head is read:
+// what it reads is still true when its batch commits, or the batch fails. It returns the audit entry
+// and the changes, or null to change nothing.
+// ponytail: one retry after a collision, then the caller answers "try again". Ceiling: an organisation
+// with many writers at the same instant. Then queue its writes (a Durable Object per organisation).
+async function commit(db: D1Database, orgId: string, plan: () => [Entry, Sql[]] | null | Promise<[Entry, Sql[]] | null>) {
+  for (let attempt = 0; ; attempt++) {
+    const head = await db.prepare('SELECT seq, hash FROM audit_log WHERE org_id = ? ORDER BY seq DESC LIMIT 1').bind(orgId).first<{ seq: number; hash: string }>()
+    const planned = await plan()
+    if (!planned) return false
+    const [e, changes] = planned
+    const row = {
+      org_id: orgId, seq: (head?.seq ?? 0) + 1, at: e.at, actor_kind: e.actorKind, actor_id: e.actorId, session_id: e.sessionId,
+      action: e.action, subject_id: e.subjectId, detail: e.detail ?? null, country: e.country ?? null, asn: e.asn ?? null, prev_hash: head?.hash ?? FIRST,
+    }
+    const audit = db
+      .prepare('INSERT INTO audit_log (org_id, seq, at, actor_kind, actor_id, session_id, action, subject_id, detail, country, asn, prev_hash, hash) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
+      .bind(row.org_id, row.seq, row.at, row.actor_kind, row.actor_id, row.session_id, row.action, row.subject_id, row.detail, row.country, row.asn, row.prev_hash, await auditHash(row))
+    try {
+      await db.batch([...changes, audit])
+      return true
+    } catch (error) {
+      if (attempt > 0 || !/audit_log\.seq/.test(String((error as Error)?.message))) throw error
+    }
   }
-  const audit = db
-    .prepare('INSERT INTO audit_log (org_id, seq, at, actor_kind, actor_id, session_id, action, subject_id, detail, country, asn, prev_hash, hash) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
-    .bind(row.org_id, row.seq, row.at, row.actor_kind, row.actor_id, row.session_id, row.action, row.subject_id, row.detail, row.country, row.asn, row.prev_hash, await auditHash(row))
-  await db.batch([...changes, audit])
 }
 
 // ponytail: reads the whole chain of one organisation. Page it, or start from the last anchored
@@ -84,13 +97,13 @@ export async function storePendingCredential(
   label: string,
   now: number,
 ) {
-  await commit(db, { orgId: ticket.org_id, at: now, actorKind: 'seat', actorId: ticket.seat_id, sessionId: null, action: 'credential.store', subjectId: credential.id }, [
+  await commit(db, ticket.org_id, () => [{ at: now, actorKind: 'seat', actorId: ticket.seat_id, sessionId: null, action: 'credential.store', subjectId: credential.id }, [
     // credentials.ticket_id is UNIQUE: a second passkey for the same ticket fails the whole batch.
     db.prepare(`INSERT INTO credentials (id, org_id, seat_id, public_key, counter, device_bound, transports, label, state, ticket_id, created_at)
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?)`)
       .bind(credential.id, ticket.org_id, ticket.seat_id, credential.publicKey, credential.counter, credential.deviceBound ? 1 : 0, JSON.stringify(credential.transports), label, ticket.id, now),
     db.prepare(`UPDATE enrolment_tickets SET state = 'stored', stored_at = ? WHERE org_id = ? AND id = ?`).bind(now, ticket.org_id, ticket.id),
-  ])
+  ]])
 }
 
 /** Only an active passkey of an active seat in an active organisation. Pending, suspended and revoked ones do not exist here. */
@@ -112,14 +125,14 @@ export async function createSession(
   s: { orgId: string; seatId: string; credentialId: string; counter: number; tokenHash: string; challengeHash: string; now: number; userAgent: string | null; country: string | null; asn: number | null },
 ) {
   const id = randomId()
-  await commit(db, { orgId: s.orgId, at: s.now, actorKind: 'seat', actorId: s.seatId, sessionId: id, action: 'session.create', subjectId: id, country: s.country, asn: s.asn }, [
+  await commit(db, s.orgId, () => [{ at: s.now, actorKind: 'seat', actorId: s.seatId, sessionId: id, action: 'session.create', subjectId: id, country: s.country, asn: s.asn }, [
     // sessions.challenge_hash is UNIQUE: the same assertion cannot open a second session.
     db.prepare(`INSERT INTO sessions (id, token_hash, challenge_hash, org_id, seat_id, credential_id, created_at, last_seen_at, step_up_at, user_agent, country, asn)
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
       .bind(id, s.tokenHash, s.challengeHash, s.orgId, s.seatId, s.credentialId, s.now, s.now, s.now, s.userAgent, s.country, s.asn),
     // max(): two sign-ins verified at the same moment may commit out of order; the counter never goes down.
     db.prepare('UPDATE credentials SET counter = max(counter, ?), last_used_at = ? WHERE org_id = ? AND id = ?').bind(s.counter, s.now, s.orgId, s.credentialId),
-  ])
+  ]])
   return id
 }
 
@@ -158,9 +171,9 @@ export async function revokeSession(db: D1Database, actor: Actor, sessionId: str
     .bind(actor.orgId, sessionId, actor.seatId, seesAll(actor))
     .first()
   if (!found) return false
-  await commit(db, { orgId: actor.orgId, at: now, actorKind: 'seat', actorId: actor.seatId, sessionId: actor.sessionId, action, subjectId: sessionId, country: actor.country, asn: actor.asn }, [
+  await commit(db, actor.orgId, () => [{ at: now, actorKind: 'seat', actorId: actor.seatId, sessionId: actor.sessionId, action, subjectId: sessionId, country: actor.country, asn: actor.asn }, [
     db.prepare('UPDATE sessions SET revoked_at = ? WHERE org_id = ? AND id = ?').bind(now, actor.orgId, sessionId),
-  ])
+  ]])
   return true
 }
 
@@ -189,12 +202,12 @@ export async function seedOrganisation(db: D1Database, o: { name: string; kind: 
   const orgId = randomId()
   const seatId = randomId()
   const ticketId = randomId()
-  await commit(db, { orgId, at: o.now, actorKind: 'system', actorId: null, sessionId: null, action: 'organisation.seed', subjectId: orgId }, [
+  await commit(db, orgId, () => [{ at: o.now, actorKind: 'system', actorId: null, sessionId: null, action: 'organisation.seed', subjectId: orgId }, [
     db.prepare(`INSERT INTO organisations (id, kind, name, state, created_at) VALUES (?, ?, ?, 'active', ?)`).bind(orgId, o.kind, o.name, o.now),
     db.prepare(`INSERT INTO seats (id, org_id, display_name, role, state, created_at) VALUES (?, ?, ?, 'owner', 'invited', ?)`).bind(seatId, orgId, o.ownerName, o.now),
     db.prepare(`INSERT INTO enrolment_tickets (id, org_id, seat_id, kind, role, token_hash, nonce, state, expires_at, created_at)
                 VALUES (?, ?, ?, 'first_owner', 'owner', ?, ?, 'issued', ?, ?)`).bind(ticketId, orgId, seatId, o.ticketHash, randomId(), o.now + 10 * 60_000, o.now),
-  ])
+  ]])
   return { orgId, seatId }
 }
 
@@ -204,11 +217,11 @@ export async function devActivatePending(db: D1Database, environment: string, no
   if (environment !== 'local') throw new Error('refused: activation by command is for the local database only')
   const { results } = await db.prepare(`SELECT id, org_id, seat_id, ticket_id FROM credentials WHERE state = 'pending'`).all<{ id: string; org_id: string; seat_id: string; ticket_id: string | null }>()
   for (const c of results) {
-    await commit(db, { orgId: c.org_id, at: now, actorKind: 'system', actorId: null, sessionId: null, action: 'credential.activate.dev', subjectId: c.id }, [
+    await commit(db, c.org_id, () => [{ at: now, actorKind: 'system', actorId: null, sessionId: null, action: 'credential.activate.dev', subjectId: c.id }, [
       db.prepare(`UPDATE credentials SET state = 'active' WHERE org_id = ? AND id = ? AND state = 'pending'`).bind(c.org_id, c.id),
       db.prepare(`UPDATE seats SET state = 'active' WHERE org_id = ? AND id = ? AND state = 'invited'`).bind(c.org_id, c.seat_id),
       db.prepare(`UPDATE enrolment_tickets SET state = 'confirmed' WHERE org_id = ? AND id = ?`).bind(c.org_id, c.ticket_id),
-    ])
+    ]])
   }
   return results.length
 }
