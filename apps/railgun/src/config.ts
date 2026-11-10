@@ -69,7 +69,7 @@ export const PREPAID_BROADCASTERS: Readonly<Partial<Record<number, {
   funding?: 'native'
 }>>> = {
   1: { operator: PREPAID_OPERATOR, railgunAddress: OPHIS_BROADCASTER, funding: 'native',
-    expiresAt: 0, maxGasPrice: 500_000_000n, maxTransactionCost: 1_500_000_000_000_000n },
+    expiresAt: Date.parse('2026-11-13T00:00:00Z'), maxGasPrice: 500_000_000n, maxTransactionCost: 1_500_000_000_000_000n },
   56: { operator: PREPAID_OPERATOR, railgunAddress: OPHIS_BROADCASTER, funding: 'native',
     expiresAt: 0, maxGasPrice: 100_000_000n, maxTransactionCost: 250_000_000_000_000n },
 }
