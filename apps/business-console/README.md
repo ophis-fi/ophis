@@ -1,15 +1,15 @@
 # Ophis Business console
 
-Local only for now: passkey sign-in core, the enrolment and recovery ceremony for members, and roles with two-person approval and the audit log (milestones 1 to 3 of 6). Design, schema, routes and invariants: `ARCHITECTURE.md`.
+Local only for now: passkey sign-in core, the enrolment and recovery ceremony for members, roles with two-person approval and the audit log, and wallets with the recovery wallet (milestones 1 to 4a of 6). Design, schema, routes and invariants: `ARCHITECTURE.md`.
 Never deploy from a laptop, and never run a remote wrangler command from here.
 
 Needs Node 22.18 or later and Google Chrome. Run everything from this folder, with pnpm as `npx -y pnpm@10.34.9`.
 
 ```sh
 npx -y pnpm@10.34.9 install --ignore-workspace   # the flag is required: without it pnpm installs the root workspace
-npx -y pnpm@10.34.9 migrate     # creates or updates the local D1 database (.wrangler/); run it again after pulling: milestone 3 adds 0002
+npx -y pnpm@10.34.9 migrate     # creates or updates the local D1 database (.wrangler/); run it again after pulling: milestone 3 adds 0002, milestone 4 adds 0003
 npx -y pnpm@10.34.9 seed        # one organisation, one Owner seat; prints a one-time enrolment link (10 minutes)
-npx -y pnpm@10.34.9 dev         # builds the app and serves it with the Worker on http://localhost:8787
+npx -y pnpm@10.34.9 dev         # builds the console and the signing page, and serves both with the Worker: console http://localhost:8787, signing page http://127.0.0.1:8787/sign/
 npx -y pnpm@10.34.9 activate    # first Owner only: local stand-in for the activation by the recovery wallet (milestone 4)
 ```
 
@@ -25,8 +25,19 @@ Then, in the app (each person needs their own security key, or a Chrome virtual 
 6. Unfreezing a seat, removing a member, changing a role and changing the passkey rule for key roles take two people: one asks ("Manage", or the passkey rule section), a different member with a key role approves under "Approvals" after a passkey check. Each button is preceded by what it will do.
 7. Compliance (Owner, Compliance officer, Viewer): the audit log in plain words with both hashes per row, "Chain verified" computed by the server, and "Export CSV".
 8. Two passkeys of one seat need different names. If the local database already holds two with the same name, `migrate` fails: delete `.wrangler/` and seed again.
+9. Wallets (Organisation, Wallets): an Owner or Admin uses "Link a wallet" and gets a signing link, valid 7 days. Nothing is stored yet. The link opens the signing page on its own address (`http://127.0.0.1:8787/sign/` locally), in the browser that holds the wallet. The wallet signs one typed message that names the organisation. A wallet with one key, or a custodian's browser extension, signs through the browser. A Safe signs inside the Safe interface (below).
+10. With colleagues in key roles the link then waits under "Approvals" for a different member. An organisation with a single key-role member links at once. "Manage" on a wallet: "Unlink" (one person; never the recovery wallet), "Set as recovery wallet" (an Owner asks, a second person approves, in force 72 hours later), "Cancel change" (any Owner, during the 72 hours).
+11. Security and data, for an Owner: "Recovery readiness" says Ready, At risk with the next step, or Not recoverable. A Safe that is the recovery wallet is read on the chain at that moment: green needs a threshold of 2 or more, no module, and the owners it had when it was approved.
+
+Dry run with a real Safe (not yet tried inside the real Safe interface; `test:chain` proves the server side against a real Safe 1.4.1 on a fork):
+1. Run `dev`, sign in as an Owner with two keys, and use "Link a wallet" with the Safe's address and its chain (Ethereum, OP Mainnet, Base or Arbitrum One). Copy the signing link.
+2. In the Safe interface (https://app.safe.global), open the Safe, then Apps, "My custom apps", "Add custom app", and enter `http://127.0.0.1:8787/sign/`. The interface reads `manifest.json` from there.
+3. Open the app and paste the request code (the whole link works) into the box. Compare the action, site, organisation id, chain, wallet and expiry with the console.
+4. Press "Sign with this Safe". Offchain: each owner signs the message in the Safe interface, with this window left open, and the page posts the result by itself. If the Safe is set to sign onchain: execute the transaction, then press "Check again".
+5. Back in the console the wallet shows as "Safe 2 of 3" (or its own numbers), pending or linked. Set it as the recovery wallet and read "Recovery readiness" 72 hours later, or see amber "in force from" at once.
 
 Word list: EFF short word list 2.0, Creative Commons Attribution 4.0 (`src/server/words.ts`).
 
-Test: `npx -y pnpm@10.34.9 test` (invariant tests in the Workers runtime), `npx -y pnpm@10.34.9 typecheck`, and
+Test: `npx -y pnpm@10.34.9 test` (builds, then the invariant tests in the Workers runtime, with a stubbed JSON-RPC for the two endpoints and real signatures from the public anvil test keys), `npx -y pnpm@10.34.9 typecheck`,
+`npx -y pnpm@10.34.9 test:chain` (on demand, needs the network and `anvil`: forks OP Mainnet on port 8546, creates a real 2 of 3 Safe 1.4.1, and checks the verifier and the Safe reads against it), and
 `npx -y pnpm@10.34.9 test:e2e` (headless Chrome, one browser context per person with a virtual authenticator each; needs port 8787 free; screenshots in `.shots/`).

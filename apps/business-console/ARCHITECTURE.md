@@ -1,29 +1,33 @@
 # Ophis Business console: architecture
 
-Local only. Milestones 1 (sign-in core), 2 (enrolment and recovery ceremony for members, step-up) and 3 (roles, two-person approval, freeze rules, audit log page) are built. Milestones 4 to 6 are designed here so that they need no schema rework.
+Local only. Milestones 1 (sign-in core), 2 (enrolment and recovery ceremony for members, step-up), 3 (roles, two-person approval, freeze rules, audit log page) and 4a (wallets, the signing page, the recovery wallet, readiness) are built. Milestones 4b to 6 are designed here.
 Design sources: `security-design.md`, `recovery.md`, `key-custody.md` (owner research folder). The login identifies people. It never signs a trade.
 
 ## Modules
 ```
 index.html              page shell; the Lucide icon symbols are inlined at the top of the body
 public/_headers         security headers and the strict policy for the static pages
-migrations/0001_init.sql  the full D1 schema (authoritative; summary below); 0002_labels.sql: one label per live passkey of a seat
+migrations/0001_init.sql  the full D1 schema (authoritative; summary below); 0002_labels.sql: one label per live passkey of a seat; 0003_wallets.sql: the wallets table again, with `pending` and `snapshot`
 src/server/index.ts     Worker entry: request checks, the route table (which is the role table) and its gates, handlers, audit words, CSV, API headers, session limits
 src/server/data.ts      the ONE data module: every SQL statement, the audit chain, tickets, activation, stop, freeze, requests and approvals, alerts
 src/server/passkeys.ts  per-environment constants, stateless challenges, the two WebAuthn verifications, the three-word phrase
+src/server/chain.ts     JSON-RPC over fetch to the two endpoints of a chain, the one signature verifier, the Safe reads, the colour of a recovery wallet
+src/server/typed.ts     the EIP-712 `Link` typed data, shared with the signing page; it imports nothing
+sign/                   the signing page: index.html, main.ts, sign.css, public/manifest.json and icon.svg; its own build (`vite build --mode sign`) into dist/sign/
 src/server/words.ts     data file: EFF short word list 2.0 (1,296 words, CC BY 4.0, attribution in its header)
 src/app/main.tsx        React shell: band, bar, rail, footer line, routes in the URL fragment, alerts before the page
-src/app/pages.tsx       sign-in, replaced-passkey and frozen-seat pages, enrolment, Organisation (approvals, members, manage dialog, passkeys, role table), Compliance (audit log), Security and data
-src/app/ui.tsx          API call, passkey check, step-up retry, icons, badges; kit.css is the brand kit unchanged, app.css the mockup's app layer
+src/app/pages.tsx       sign-in, replaced-passkey and frozen-seat pages, enrolment, Organisation (approvals, members, manage dialog, wallets, passkeys, role table), Compliance (audit log), Security and data (readiness)
+src/app/ui.tsx          API call, passkey check, step-up retry, icons, badges; kit.css is the brand kit (its two font faces are in fonts.css), app.css the mockup's app layer
 scripts/dev.mjs         local seed and activate commands (local D1 only)
 tests/worker.test.ts    invariants, in the Workers runtime with a local D1; tests/authenticator.ts is a software passkey
-tests/e2e.mjs           the same flows in headless Chrome: one browser context per person, each with its own virtual authenticator
+tests/e2e.mjs           the same flows in headless Chrome: one browser context per person, each with its own virtual authenticator; the wallet is a test key behind a fake provider
+tests/chain.mjs         on demand (`test:chain`): a real 2 of 3 Safe 1.4.1 on an anvil fork of OP Mainnet, asked through chain.ts
 ```
-Static pages never run the Worker (`run_worker_first: ["/api/*"]`). Dependencies: `@simplewebauthn/server`, `react`, `react-dom`.
+The Worker runs first on every path (`run_worker_first: true`) and decides by hostname what a host serves. Dependencies: `@simplewebauthn/server`, `react`, `react-dom`, `viem` (server and signing page), `@safe-global/safe-apps-sdk` (signing page). The console bundle holds no wallet code (a test reads it).
 
 ## Configuration
-- `ENVIRONMENT` (wrangler var) selects a constant pair in `passkeys.ts`: relying-party id and origin. Neither is ever read from a request.
-  Today only `local` exists: `localhost`, `http://localhost:8787`. An unknown value fails every API call with 500.
+- `ENVIRONMENT` (wrangler var) selects the constants in `passkeys.ts`: relying-party id, origin, the signing page's origin, and two JSON-RPC endpoints from different operators per chain (1, 10, 8453, 42161). None is ever read from a request.
+  Today only `local` exists: `localhost`, `http://localhost:8787`, signing page `http://127.0.0.1:8787`, public endpoints (each answered its `eth_chainId` on 2026-11-11). An unknown value fails every call with 500.
 - A production entry is added once the hostname is chosen. The relying-party id is the full hostname, and it is final: passkeys are tied to it.
 - `CHALLENGE_KEY` (secret, `.dev.vars`): HMAC key of the stateless challenges, 32 characters or more. Nothing else is secret.
 - D1 binding `DB`. The real database must be created with `--jurisdiction=eu`. The id in `wrangler.jsonc` is a placeholder.
@@ -39,7 +43,7 @@ Rules: every tenant row has `org_id`; children reference parents by `(org_id, id
 | credentials | id, org_id, seat_id, public_key, counter, device_bound, transports, label, state (pending, active, suspended, revoked), spare, ticket_id (unique), stop_right_until, created_at, last_used_at | Public material only. One credential per ticket. Unique `(org_id, seat_id, label)` among passkeys that are not revoked (0002). |
 | sessions | id, token_hash, challenge_hash (unique), org_id, seat_id, credential_id, created_at, last_seen_at, step_up_at, revoked_at, user_agent, country, asn | No IP address. A used sign-in challenge is recorded here. |
 | approvals | id, org_id, action, subject_id, payload, payload_hash, requester_seat_id, checker_seat_id, state, not_before, expires_at, created_at, decided_at | `CHECK`: the checker is never the requester. Holds the ticket confirmations (M2) and the requests (M3). |
-| wallets | id, org_id, chain_id, address, kind (safe, custodian, single_key), label, state, proof_nonce (unique), proof_digest, proof_signature, proof_checked_at, linked_at, anchor (current, next), anchor_effective_at | Unique index on `(org_id, anchor)`: one recovery anchor in force, at most one waiting 72 h to replace it. |
+| wallets | id, org_id, chain_id, address, kind (safe, custodian, single_key), label, state (pending, linked, unlinked), proof_nonce (unique), proof_digest, proof_signature, proof_checked_at, linked_at, anchor (current, next), anchor_effective_at, snapshot | 0003. Unique `(org_id, anchor)`: one recovery wallet in force, at most one waiting. Unique `(org_id, chain_id, address)` among rows that are not unlinked. A row is never deleted, so a proof is accepted once. |
 | recovery_requests | id, org_id, wallet_id, seat_id, action, credential_hash, nonce (unique), digest, signature, owners_snapshot, state (waiting, cancelled, ready, completed, lapsed), wait_until, objected, created_at, closed_at | Last-Owner recovery. One open request per organisation. |
 | kyb_records | id, org_id, legal_name, registration_number, country, tier, source, evidence_ref, evidence_sha256, signer_cert_sha256, screening_outcome, screening_lists, screening_list_version_hash, screened_at, decision, decided_at, recheck_at, created_at | The result, never the documents. One row per review. |
 | sealed_items | id, org_id, kind (kyb_pack, declaration, screening_detail), key_generation, ciphertext (2 MB cap), sha256, uploaded_by_seat_id, kyb_record_id, created_at | Sealed in the browser (age v1). No key at the server. |
@@ -74,16 +78,21 @@ Rule for new code: whatever decides a write is read inside the plan. A read made
 - Limits: 10 new invited seats per issuer per 24 h. A ticket not confirmed 12 days after it was made (its longest life is 11 days) is deleted with its pending passkey when a ticket is next issued. Two live passkeys of one seat never share a label.
 - Audit page: `GET /api/audit?before=<seq>`, 50 rows, names resolved at read time, events in words from the one table `EVENTS` (`index.ts`), chain state from `verifyAudit`. `POST /api/audit/export` writes its audit row, then answers the whole log as CSV text inside JSON (a state change is a POST; the page saves the file). Every cell is quoted; a cell a spreadsheet would run gets an apostrophe.
 
-### Wallets and the recovery anchor (M4): typed data and contract wallets
-- A proof is EIP-712 typed data (`recovery.md` section 5). Domain: name `Ophis Business`, version `1`, `chainId` of the wallet's pinned chain. There is no `verifyingContract`: no contract verifies it. The binding to this app is inside the message: `site`, `organisationId`, `wallet`.
-- Replay protection is in the message and in D1: a `bytes32` nonce accepted once (`proof_nonce`, `recovery_requests.nonce` are unique), `issuedAt`, `expiresAt`, and an `action` that is one of four fixed sentences.
-- The server rebuilds the typed data and the digest from its own fields, never from client text, and stores that digest.
-- Single key: recover the signer; it must equal the wallet. Refuse a high-s or malformed signature. Try recovery first and ERC-1271 second; do not classify by code size, because an EOA with an EIP-7702 delegation has code.
-- Contract wallet: `isValidSignature(bytes32,bytes)` on the pinned chain must return `0x1626ba7e`, from two independent RPC endpoints that agree. An onchain Safe message arrives with signature `0x`. Check again at every use: owners and modules change. A Safe with a module is amber, not green.
-- Addresses are stored lower-case with their chain id; EIP-55 case is for display. No contract address is typed from memory: any Safe singleton allow-list is verified onchain before it enters the code.
+### Wallets and the recovery wallet as built (M4a; owner decisions D1 to D13 of 2026-11-11). On screen: "recovery wallet"
+- One signing format, EIP-712. Domain `{ name: "Ophis Business", version: "1", chainId }` of the wallet's pinned chain, no `verifyingContract`. Struct `Link { string action, string site, string organisationId, address wallet, bytes32 nonce, uint64 issuedAt, uint64 expiresAt }`; action `Link this wallet to this organisation`, site the console hostname, times in Unix seconds.
+- One verifier, `verify()` in `chain.ts`, for any struct (4b adds its own): the caller builds the typed data from server-held fields; a 65-byte signature with a low `s` that recovers to the wallet is valid with no chain call (never classified by code size: EIP-7702); otherwise `isValidSignature(bytes32,bytes)` must return `0x1626ba7e`, as one 32-byte word, on both endpoints, each of which first answers the pinned `eth_chainId`. An error, a timeout (5 s), an answer over 16 KB or a disagreement is a refusal. `0x` is a Safe message signed onchain.
+- Kind: `safe` when `getThreshold()`, `getOwners()` and `getModulesPaginated(0x…01, 10)` answer on both endpoints; else `custodian` when the requester declared it; else `single_key`. A wallet whose own key signed is never read as a Safe.
+- Intent: `seal()` in `passkeys.ts`, base64url(JSON) "." HMAC with the challenge key under the label `wallet-intent`; stateless, 7 days. Fields: organisation, requester seat, chain, wallet (EIP-55), label, custodian flag, 32-byte nonce, issuedAt, expiresAt, site. `POST /api/wallets/intent` writes nothing.
+- Proof (`POST /api/proof`, signing host): the MAC first, before any read or chain call; expiry; the signature over typed data rebuilt from the intent and the environment's site. Then one commit, `linkWallet()`: the intent's seat is read again (active Owner or Admin, not in quarantine), the nonce was never accepted (`proof_nonce` is unique and rows stay), the address is not live; it writes the wallet `pending` with a `wallet.link` request of that seat, or `linked` at once where the 30 day rule lets one person stand for two. A pending wallet is live only while its request is open; a reject, a cancel or the 7 days leave a row that the next link sweeps to `unlinked`.
+- `wallet.link` and `anchor.set` go through `judge()`, `change()` and `decide()`: the maker is never the checker and every rule is judged again at the approval. Unlink (`wallet.unlink`) and cancel (`anchor.cancel`) are one-person changes through the same `judge()`.
+- Recovery wallet: an Owner asks on a linked wallet; a different key-role member approves (alone only under the 30 day rule; a single key only there). It is `next` with `anchor_effective_at` = approval + 72 h. "In force" is computed at read (`standing()`); `promote()` writes it down in the next wallet write. No scheduled job. Until then the one in force stays and any Owner cancels (also in quarantine). One change at a time. Never unlinked, in force or waiting.
+- Snapshot `{owners, threshold, modules}`: read on both endpoints before the commit, by the handler, at the link and again at the approval as recovery wallet; a Safe that cannot be read is not approved.
+- Colour (`colour()`), computed on demand for `GET /api/readiness`: green = Safe, in force, threshold 2 or more, no module, owners and threshold equal to the snapshot. Anything else amber, with its reason. Readiness (Owner): Owners green (2 or more, each two device-bound keys), amber (one, two keys), red (an Owner with fewer); "Ready" = green Owners, or amber Owners with a green wallet; "Not recoverable" = one Owner and no recovery wallet; else "At risk" with the next step.
+- Hosts: the signing page has its own hostname. It serves `/sign/*` (CSP `default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self'; connect-src 'self'; frame-ancestors https://app.safe.global https://*.safe.global`; `Access-Control-Allow-Origin: *` on `manifest.json` only) and `POST /api/proof`, and refuses everything else; the console host refuses those. No cookie is read there. The page takes the request from the fragment or a paste box, shows the fields, and signs by the injected provider (`eth_requestAccounts`, account = wallet, `wallet_switchEthereumChain`, `eth_signTypedData_v4`) or inside Safe (`getInfo` = wallet and chain, `setSafeSettings offChainSigning`, `signTypedMessage`, poll `getOffChainSignature`; "Check again" posts `0x`).
+- Not in 4a: last-Owner recovery, cancel by the old recovery wallet's signature, the recovery sheet, rate limits.
 
 ## Routes
-Every `/api/*` call: `Sec-Fetch-Site: same-origin` or 403. Every state change: POST, JSON, `Origin` equal to the configured origin, body under 64 KB. No CORS grant.
+Every `/api/*` call: `Sec-Fetch-Site: same-origin` or 403. Every state change: POST, JSON, `Origin` equal to the configured origin of its host (console or signing page), body under 64 KB. No CORS grant.
 The route table is the role table (M3): the role first, then the gates. `twoKeys`: the seat holds two active passkeys, device-bound ones for an Owner; with fewer it can sign in, pass a check and add its second key. `fresh`: a passkey check in the last 5 minutes ("Step-up: yes"). `settled`: not in quarantine.
 
 | M | Route | Authentication | Roles | Step-up | Second person |
@@ -93,7 +102,7 @@ The route table is the role table (M3): the role first, then the gates. `twoKeys
 | 1 | POST /api/signin/start | none; writes nothing | any | no | no |
 | 1 | POST /api/signin/finish | active passkey with user verification | any active seat | no | no |
 | 1 | GET /api/me | session | any; M2 adds the alerts | no | no |
-| 1 | GET /api/org | session | Owner, Admin: the organisation and every open ticket; others: own seat, and tickets waiting for their words | no | no |
+| 1 | GET /api/org | session | Owner, Admin: the organisation and every open ticket; others: own seat, and tickets waiting for their words; M4: the wallets, for every role | no | no |
 | 1 | POST /api/sessions/:id/revoke | session | own session: any; a colleague's: Owner, Admin | no | no |
 | 1 | POST /api/signout | session | any | no | no |
 | 2 | POST /api/stepup/start, /finish | session and an active passkey of the own seat | any | it is the step-up: 5 min window, new session token | no |
@@ -109,9 +118,13 @@ The route table is the role table (M3): the role first, then the gates. `twoKeys
 | 3 | POST /api/approvals/:id/approve, /reject | session, two passkeys; approve: not in quarantine | key roles; never the requester | yes | this is the second person |
 | 3 | POST /api/approvals/:id/cancel | session | the requester (Owner, Admin) | no | no |
 | 3 | GET /api/audit; POST /api/audit/export | session | Owner, Compliance officer, Viewer | export: yes | no |
-| 4 | POST /api/wallets/link/start, /finish; /api/wallets/:id/unlink | session and a wallet signature | Owner, Admin | yes | link: yes |
-| 4 | POST /api/anchor | session | Owner | yes | yes; counts after 72 h |
-| 4 | POST /recover/intent, /recover/proof | no cookie; anchor signature; proof-page origin only | the anchor's signers | no | 72 h wait, cancel and veto |
+| 4a | POST /api/wallets/intent | session, two passkeys, not in quarantine | Owner, Admin | yes | writes nothing |
+| 4a | POST /api/proof (signing host only) | none: a MAC-signed intent and the wallet's signature | the wallet | no | link: yes, or the 30 day rule |
+| 4a | POST /api/wallets/:id/unlink | session, two passkeys | Owner, Admin; never the recovery wallet | yes | no |
+| 4a | POST /api/wallets/:id/anchor | session, two passkeys, not in quarantine | Owner | yes | yes, or the 30 day rule; in force after 72 h |
+| 4a | POST /api/wallets/:id/anchor/cancel | session, two passkeys | Owner, during the 72 h | yes | no |
+| 4a | GET /api/readiness | session | Owner | no | no |
+| 4b | POST /recover/intent, /recover/proof | no cookie; the recovery wallet's signature; signing host only | the recovery wallet's signers | no | 72 h wait, cancel and veto |
 | 5 | POST /api/apply | none, Turnstile first; company email domain, DNS record | applicant | no | operator KYB decision |
 | 5 | POST /api/kyb/sealed; GET /api/kyb | session | Owner, Compliance officer | yes | no |
 | 5 | operator console, own hostname | Cloudflare Access token, checked on every request | Ops, Compliance | hardware key | none: one operator today |
@@ -123,6 +136,7 @@ Milestone 2, independent review, 2026-11-11: 137 single mutations written and ru
 Milestone 2, builder, 2026-11-11: 110 single mutations of its controls, all caught, and four more against `tests/e2e.mjs`. Not separately provable, because another check covers the same case: the ticket id inside the confirmation binding (the credential hash is already unique per ticket), and the early stop-right check a handler could add (the write checks it).
 Milestone 3, builder, 2026-11-11: 74 single mutations of its controls, 73 caught, and three more against `tests/e2e.mjs`, all caught. The survivor has no effect: a seat that is no longer active has no role, and no role passes `judge()` either way. Two checks that no test could prove were deleted (a requester's seat state at the approval: closing the seat cancels its requests first).
 Milestone 3, independent review, 2026-11-11: 101 single mutations written and run from scratch on the builder's code, 94 caught. Of the 7 survivors, 2 were test gaps, now closed in section x (an approver lowered at the same instant; a request judged again with its requester's role after its target rose), 1 was a rule that was too strict (a replaced synced passkey blocked a key role for ever), 3 were checks with no effect and were deleted (the role filter of the 30 day rule, the subject check of the passkey rule, the gate on the frozen list), and 1 stays as a second line (`state = 'pending'` in the UPDATE that closes a request; the audit sequence already serialises it). The review and one Codex pass found six defects, each fixed with a test in section x that was seen failing first: a freeze took the stop right away; a seat in quarantine could be promoted (its passkey may be an issuer's own); a role lowered during quarantine broke the order a stop reads from the stop dates; the M2 writes used the session's role; a write whose session had ended at the same instant still committed (a synced passkey on a seat promoted meanwhile); a retried write could answer with the result of its first run. On the final code: 110 single mutations, 104 caught. The 6 survivors are second lines: the one above, and 5 parts of `roleNow` and its users (seat state, key role of the approver, Owner for the passkey rule, the role passed to `judge`, the seat in the session join) that the session check inside the commit already covers, because every change of a role or a seat ends that seat's sessions in the same commit.
+Milestone 4a, builder, 2026-11-11: 99 single mutations of its controls. 5 survived at first: 2 were gaps in the fake endpoints (no timeout; an error status with the value in its body), 2 a missing case (a wallet write during the 72 hours must promote and clear nothing), 1 is caught by the role table test, not the unlink test. All are caught now. One check no test could prove was deleted (a sanity check on what a Safe answers). No mutation was run against `tests/e2e.mjs`.
 
 | Invariant | Test |
 |---|---|
@@ -166,27 +180,36 @@ Milestone 3, independent review, 2026-11-11: 101 single mutations written and ru
 | 10 new seats per issuer per day; unconfirmed tickets swept after 12 days; one label per live passkey of a seat | v: three tests |
 | A freeze takes no stop right away; no role change during quarantine; every write that depends on the actor reads the role, the seat and the session inside its commit; a request is judged again with its requester's role; an approval and its cancel at the same instant | x: six tests |
 | Audit page: own rows only, words not codes, chain state from the server, pages of 50; export: fresh check, one audit row, formula-safe cells, never cached | w: four tests; e: `GET /api/audit`, `POST /api/audit/export` |
+| An intent is the server's own text: MAC first, before any read or chain call; 7 days; nothing written; EIP-55 checked, case variants one wallet | y: `an intent is the server's own text...`, `the MAC is checked first...`, `an intent lives 7 days...` |
+| A proof is accepted once; the wallet signs exactly these fields (organisation, site, chain, wallet, action, nonce, expiry); another signer or the upper half of `s` is refused; a key wallet asks no endpoint | y: `a proof is accepted once...`, `the wallet signs exactly these fields...` |
+| A contract wallet: the ERC-1271 value on both endpoints, each on the pinned chain; a no, a disagreement, an error, a timeout or an oversized answer refuses; nothing is written; the kind | y: `a contract wallet is valid only...`, `the kind: a Safe when...`; `test:chain` on a real Safe |
+| A link is pending until a different key-role member approves; the requester is read again inside the commit; reject, cancel and expiry leave no linked wallet; one person only under the 30 day rule | y: `with colleagues a link is pending...`, `a reject, a cancel and the 7 days...`, `in an organisation of one...` |
+| Unlink: one manager, open in quarantine, never the recovery wallet. Recovery wallet: Owner plus second person, in force after 72 h and not before, one change at a time, cancel by an Owner only, a single key only for one person, quarantine refuses, the snapshot is of the approval | y: `unlink...`, `the recovery wallet...`, `during the 72 hours...`, `a seat in quarantine...`, `a single key...`, `a Safe is read on both endpoints...` |
+| The colour table and readiness; each host serves its own pages and routes, no cookie on the signing host, the signing page's policy and its one grant; the schema; no wallet code in the console bundle | y: `the colour table...`, `readiness, for an Owner...`, `each host serves its own...`, `the schema keeps...`, `the console holds no wallet code...`; d, e, f, r cover the new routes |
 
 ## Deliberate shortcuts (`ponytail:` in the code)
 - The idle clock is written at most once a minute: a session can end up to 60 s early, never late.
 - Writes of one organisation are serialised by the audit sequence, with one retry. Many writers at the same instant would need a queue.
 - `verifyAudit` reads a whole chain. A removed tail is only detectable with the external hourly anchor, which is not built.
-- `scripts/dev.mjs activate` stands in for the first Owner's activation by the recovery anchor (M4). Members no longer need it.
+- `scripts/dev.mjs activate` stands in for the first Owner's activation by the recovery wallet (M4b). Members no longer need it.
 - Alerts are read from rows of the last 7 days; the server keeps no "seen" mark.
 - The audit page verifies the whole chain on every load, and the export answers the whole log at once: fine to about 10,000 rows.
 - Relaxing the passkey rule waits before its approval, not after it. Tightening it does not remove synced passkeys already enrolled.
 - The actor's role, seat and session are read again inside the commit for every write that depends on them. Quarantine, the two passkeys and the fresh check still come from the session read at the start of the request.
 - One person alone can re-enrol a Trader or Viewer seat (M2). Once its quarantine is over, that seat can be promoted by two people like any other: the second person is the control, and is told of the re-enrolment by the 7 day alert only.
 - The link is shown as text with a copy button: no QR code (it would need a dependency).
+- Proof checks have no rate limit: an intent comes only from a signed-in manager and a forged one stops at the MAC. Before production: 10 per organisation per hour.
+- Local endpoints are public ones; production endpoints are decided later. A Safe is read at `latest` on each endpoint: a change in the last block can refuse once. Its first 10 modules are read. The proof is not checked again when the link is approved.
+- One Worker request per static file, so that the Worker can gate by hostname. The signing page uses the system font (its policy has no `font-src`; `src/app/fonts.css` holds the kit's two font faces).
 - Not built yet: rate limits, Turnstile, a passkey check on a change of country or network, the spare key, linked Google or Microsoft identity, the production hostname.
 
 ## Commands
-`npx -y pnpm@10.34.9 install --ignore-workspace`, then `pnpm migrate`, `pnpm seed`, `pnpm dev`, `pnpm activate`, `pnpm test`, `pnpm test:e2e`, `pnpm typecheck` (see README.md).
+`npx -y pnpm@10.34.9 install --ignore-workspace`, then `pnpm migrate`, `pnpm seed`, `pnpm dev`, `pnpm activate`, `pnpm test` (builds first), `pnpm test:e2e`, `pnpm test:chain` (needs the network), `pnpm typecheck` (see README.md).
 
 ## Milestones
 - M1 sign-in core: passkey enrolment (pending), sign-in, sessions, request checks, audit chain, console shell. Built.
 - M2 enrolment and recovery ceremony: tickets, three-word phrase, confirmations, step-up, second key, stop right, quarantine, alerts at sign-in. Built (paths A and B; path C is M4).
 - M3 roles and two-person approval: role table, requests and approvals, freeze and unfreeze, the 30 day rule, audit log page and export. Built.
-- M4 wallets and recovery anchor: wallet link, anchor, EIP-712 proof, ERC-1271, last-Owner recovery.
+- M4a wallets and the recovery wallet: link by EIP-712 signature (key or ERC-1271), signing page, recovery wallet, readiness. Built. M4b: last-Owner recovery.
 - M5 registration, KYB and sealing: application, DNS domain proof, sealed uploads, operator console.
 - M6 support: assistant, hand-over by a mailto link to the operator's mailbox. The label is "Support".
