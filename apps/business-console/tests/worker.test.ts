@@ -7357,10 +7357,10 @@ describe('G. company sign-in: a company account proves who a new passkey belongs
     // The same person in another browser signs in again with the same account and may go on there; another account may not.
     const again = await begin('/api/enrol/company', { ticket })
     expect(again.status).toBe(200)
-    expect((await back(again, claimsFor('microsoft', again, `mallory@${o.domain}`))).outcome).toBe('account')
+    expect((await back(again, claimsFor('microsoft', again, `mallory@${o.domain}`))).outcome).toBe('email')
     const sameAddress = await begin('/api/enrol/company', { ticket })
     const imposter = await back(sameAddress, claimsFor('microsoft', sameAddress, email, { sub: 'sub-someone-else' }))
-    expect([imposter.outcome, imposter.pass]).toEqual(['account', ''])
+    expect([imposter.outcome, imposter.pass]).toEqual(['email', ''])
     const second = await begin('/api/enrol/company', { ticket })
     const came3 = await back(second, claimsFor('microsoft', second, email))
     expect([came3.outcome, came3.pass === '', await snapshot()]).toEqual(['ok', false, rows]) // nothing is written a second time

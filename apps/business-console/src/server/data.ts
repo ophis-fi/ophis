@@ -599,7 +599,7 @@ export async function confirmCompany(db: D1Database, seen: Ticket, who: Identity
     ).bind(seen.org_id, seen.id, who.provider, who.tenant, who.subject).first<{ email: string | null; at: number | null; confirmed: string | null; idp: string | null; tenant: string | null; subject: string | null; taken: number }>()
     outcome = !t ? 'link'
       // Confirmed before, no passkey yet: the same account may come back, in another browser (review R1). Nothing is written again.
-      : t.at !== null ? (t.confirmed === who.subject ? 'ok' : 'account')
+      : t.at !== null ? (t.confirmed === who.subject ? 'ok' : t.email !== null ? 'email' : 'account')
       : t.email !== null ? (t.email === who.email ? 'ok' : 'email') // both in lower case: the link's by emailAt(), the token's by verifyIdToken()
       : t.idp === who.provider && t.tenant === who.tenant && t.subject === who.subject ? 'ok' : 'account'
     if (outcome !== 'ok' || t!.at !== null) return null
