@@ -73,6 +73,14 @@ const FIRST = '0'.repeat(64)
 const auditHash = (r: Omit<AuditRow, 'hash'>) =>
   sha256Hex(JSON.stringify([r.org_id, r.seq, r.at, r.actor_kind, r.actor_id, r.session_id, r.action, r.subject_id, r.detail, r.country, r.asn, r.prev_hash]))
 
+// G3 (registration): what the operator compares in a review, as one text: every Owner seat with its state, every
+// passkey of an Owner seat with its state, and the recovery wallet that waits. ?1 is the organisation. "Submit for
+// review" stores it; commit() below compares it again at the end of every batch of that organisation, whatever the
+// write was, and a difference puts the organisation back to "not submitted".
+export const REVIEWED = `(SELECT COALESCE(group_concat(x, ' '), '') FROM (
+  SELECT s.id || s.state || COALESCE(k.id || k.state, '') AS x FROM seats s LEFT JOIN credentials k ON k.org_id = s.org_id AND k.seat_id = s.id WHERE s.org_id = ?1 AND s.role = 'owner'
+  UNION ALL SELECT id FROM wallets WHERE org_id = ?1 AND state = 'pending' ORDER BY 1))`
+
 // Writes of one organisation are serialised by the audit sequence: two at the same instant collide on
 // the primary key (org_id, seq) and the later one fails whole. So plan() runs after the head is read:
 // what it reads is still true when its batch commits, or the batch fails. It returns the audit entry
@@ -93,7 +101,10 @@ export async function commit(db: D1Database, orgId: string, plan: () => [Entry, 
       .prepare('INSERT INTO audit_log (org_id, seq, at, actor_kind, actor_id, session_id, action, subject_id, detail, country, asn, prev_hash, hash) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
       .bind(row.org_id, row.seq, row.at, row.actor_kind, row.actor_id, row.session_id, row.action, row.subject_id, row.detail, row.country, row.asn, row.prev_hash, await auditHash(row))
     try {
-      await db.batch([db.prepare(`UPDATE seats SET state = 'removed' WHERE org_id = ? AND ${gone('seats')}`).bind(orgId, e.at), ...changes, audit])
+      await db.batch([
+        db.prepare(`UPDATE seats SET state = 'removed' WHERE org_id = ? AND ${gone('seats')}`).bind(orgId, e.at), ...changes,
+        db.prepare(`UPDATE organisations SET review_at = NULL WHERE id = ?1 AND review_at IS NOT NULL AND review_print IS NOT ${REVIEWED}`).bind(orgId), audit,
+      ])
       return true
     } catch (error) {
       if (attempt > 0 || !/audit_log\.seq/.test(String((error as Error)?.message))) throw error

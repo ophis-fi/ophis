@@ -5,7 +5,7 @@
 // This file holds its own handlers and, in its first half, its own rows: every statement is prepared with bound
 // parameters, and every change goes through commit() of the data module, with what decides it read inside the plan.
 import { checksum, colour, parseAddress, readCapped, safeState, verify, verifyDigest, type SafeState } from './chain.ts'
-import { commit, randomId, sha256Hex, type Actor, type WalletKind } from './data.ts'
+import { commit, randomId, REVIEWED, sha256Hex, type Actor, type WalletKind } from './data.ts'
 import { challengeIsOurs, creationOptions, credentialHash, fromBase64Url, newChallenge, phraseFor, seal, unseal, verifyRegistration, type Config } from './passkeys.ts'
 import { CHAIN_NAME, typedProof } from './typed.ts'
 
@@ -110,7 +110,8 @@ interface Proved { orgId: string; seatId: string; chainId: number; address: stri
 // A valid activation proof arrived. One commit: the organisation is still unverified, the seat that asked for it (G2:
 // the intent names it) is still an active Owner, the passkey the wallet confirmed is still the first Owner's and active, the proof was never accepted (proof_nonce is unique and rows stay). The wallet
 // is stored as pending with its proof and replaces an earlier one. No approval request: the operator's decision is the
-// second check. A new proof is a new thing to review, so an organisation under review is no longer submitted.
+// second check. A new proof is a new thing to review, so an organisation under review is no longer submitted: commit()
+// sees that the wallet differs from the one that was submitted (G3).
 async function storeProof(db: D1Database, w: Proved, now: number) {
   const id = randomId()
   let outcome = 'not_unverified'
@@ -124,13 +125,13 @@ async function storeProof(db: D1Database, w: Proved, now: number) {
       db.prepare(`UPDATE wallets SET state = 'unlinked' WHERE org_id = ? AND state = 'pending'`).bind(w.orgId),
       db.prepare(`INSERT INTO wallets (id, org_id, chain_id, address, kind, label, state, proof_nonce, proof_digest, proof_signature, proof_checked_at, linked_at, snapshot) VALUES (?, ?, ?, ?, ?, ?, 'pending', ?, ?, ?, ?, ?, ?)`)
         .bind(id, w.orgId, w.chainId, w.address, w.kind, w.label, w.nonce, w.digest, w.signature, now, now, w.snapshot),
-      db.prepare('UPDATE organisations SET review_at = NULL WHERE id = ?').bind(w.orgId),
     ]]
   })
   return outcome
 }
 
 // "Submit for review": the Owner, the session and the organisation's state are read inside the commit, and so is A7.
+// G3: it also stores what the operator will compare (REVIEWED): any later change to it un-submits the organisation.
 async function submitForReview(db: D1Database, actor: Actor, now: number) {
   let outcome = 'forbidden'
   await commit(db, actor.orgId, async () => {
@@ -140,7 +141,7 @@ async function submitForReview(db: D1Database, actor: Actor, now: number) {
     outcome = !who ? 'forbidden' : who.state !== 'unverified' ? 'not_unverified' : who.reviewAt !== null ? 'already_submitted' : (await missing(db, actor.orgId)) ?? 'ok'
     if (outcome !== 'ok') return null
     return [{ at: now, actorKind: 'seat', actorId: actor.seatId, sessionId: actor.sessionId, action: 'review.submit', subjectId: actor.orgId, country: actor.country, asn: actor.asn },
-      [db.prepare('UPDATE organisations SET review_at = ? WHERE id = ?').bind(now, actor.orgId)]]
+      [db.prepare(`UPDATE organisations SET review_at = ?2, review_print = ${REVIEWED} WHERE id = ?1`).bind(actor.orgId, now)]]
   })
   return outcome
 }
@@ -169,9 +170,9 @@ const underReview = async (db: D1Database) =>
 
 interface Kyb { decision: Decision; reason: string | null; tier: string; source: string; evidenceRef: string | null; evidenceSha256: string | null; nextReview: number | null }
 // The operator's decision, in one commit with its row in the client's own audit log (actor kind "operator"). Read
-// inside the plan: the organisation is unverified and under review, and for an approval A7 still holds. The wallet the
-// handler just checked on the chain is still the one that waits: a new proof takes the organisation out of review
-// (storeProof), so a decision that follows it is refused here. Approve: the organisation is active and that wallet is
+// inside the plan, all of it again: the organisation is unverified and under review (any change to its Owner seats,
+// their passkeys or the named wallet since the submit has taken it out of review: G3), for an approval A7 still holds,
+// and the wallet the handler just checked on the chain is the wallet that waits now, by its id: else "try again". Approve: the organisation is active and that wallet is
 // the recovery wallet in force at once. Refuse: archived. More information: back to the Owner. The KYB row copies the
 // organisation's own name, number and country: the operator sets no field of the organisation, no member, no passkey
 // and no wallet address.
@@ -182,7 +183,7 @@ async function decideKyb(db: D1Database, orgId: string, d: Kyb, checked: { id: s
     const o = await db.prepare('SELECT name, country, registration_number AS registration, state, review_at AS reviewAt FROM organisations WHERE id = ?')
       .bind(orgId).first<{ name: string; country: string; registration: string | null; state: string; reviewAt: number | null }>()
     outcome = !o ? 'not_found' : o.state !== 'unverified' || o.reviewAt === null ? 'not_under_review'
-      : d.decision !== 'approve' ? 'ok' : (await missing(db, orgId)) ? 'not_ready' : 'ok'
+      : d.decision !== 'approve' ? 'ok' : (await missing(db, orgId)) ? 'not_ready' : ((await walletOf(db, orgId))?.id ?? null) !== (checked?.id ?? null) ? 'try_again' : 'ok'
     if (outcome !== 'ok' || !o) return null
     return [{ at: now, actorKind: 'operator', actorId: null, sessionId: null, action: KYB_ACTION[d.decision], subjectId: id, detail: d.decision === 'approve' ? d.evidenceSha256 : d.reason }, [
       db.prepare(`INSERT INTO kyb_records (id, org_id, legal_name, registration_number, country, tier, source, evidence_ref, evidence_sha256, decision, decided_at, recheck_at, reason, created_at)

@@ -6021,6 +6021,74 @@ describe('E. onboarding: a company applies, proves its domain, is activated and 
     expect((await submit(second)).body).toEqual({ state: 'under_review' })
   })
 
+  it('G3: after "Submit for review" any change to what the operator compares (Owner seats, their passkeys, the named wallet) puts the organisation back to not submitted', async () => {
+    const a = await underReview()
+    const submitted = async () => (await orgRow(a.orgId))!.review_at !== null
+    const again2 = async () => expect((await submit(a)).body).toEqual({ state: 'under_review' })
+    // What is not compared changes nothing: a sign-in, a passkey check, a Viewer invited and enrolled, a question to Support.
+    await again(a)
+    expect((await stepUp(a, a.key)).status).toBe(200)
+    await ceremony(a, { displayName: 'Vera Viewer', role: 'viewer' })
+    expect(await submitted()).toBe(true)
+    expect((await op('GET', '/api/operator/organisations')).body.organisations.map((o: { id: string }) => o.id)).toContain(a.orgId)
+    // A passkey added to an Owner seat, and one revoked.
+    const third = await addKey(a)
+    expect([third.status, await submitted()]).toEqual([200, false])
+    expect((await op('GET', '/api/operator/organisations')).body.organisations.map((o: { id: string }) => o.id)).not.toContain(a.orgId)
+    expect((await decideOn(a.orgId)).body).toEqual({ error: 'not_under_review' })
+    expect((await call('GET', '/api/onboarding', { cookie: a.cookie })).body.review.status).toBe('not_submitted')
+    await again2()
+    expect((await post(`/api/passkeys/${third.key.id}/revoke`, a)).status).toBe(200)
+    expect(await submitted()).toBe(false)
+    await again2()
+    // A second Owner: the invited seat, the passkey on the link, its confirmation.
+    const invited = await issue(a, { displayName: 'Second Owner', role: 'owner' })
+    expect([invited.status, await submitted()]).toEqual([200, false])
+    await again2()
+    const joined = await enrolLink(invited.body.link)
+    expect([joined.status, await submitted()]).toEqual([200, false])
+    await again2()
+    expect((await confirm(a, invited.body.ticketId, joined.words, a.key)).body.state).toBe('wait')
+    expect(await submitted()).toBe(true) // the words typed: neither a seat nor a passkey changed
+    now += WAIT + MIN
+    expect((await signIn(joined.key)).status).toBe(200) // the passkey becomes active
+    expect(await submitted()).toBe(false)
+    await again(a)
+    await again2()
+    // Another wallet named and proved.
+    expect((await activation(a, accounts[1])).body).toEqual({ state: 'stored' })
+    expect(await submitted()).toBe(false)
+    // An Owner seat that changes while no passkey does (no route does that in an unverified organisation): the next write sees it.
+    await again2()
+    await db.prepare(`UPDATE seats SET state = 'frozen' WHERE id = ?`).bind(invited.body.seatId).run()
+    expect((await signIn(a.key)).status).toBe(200)
+    expect(await submitted()).toBe(false)
+  })
+
+  it('G3: the operator\'s approve reads everything again inside its commit, and the wallet it checked on the chain is the wallet it activates, by its id: else "try again"', async () => {
+    const a = await underReview()
+    const waiting = await row<{ id: string }>(`SELECT id FROM wallets WHERE org_id = ? AND state = 'pending'`, a.orgId)
+    // At the same instant the wallet that waits is another row (same proof, another id), with the organisation still under review.
+    const swapped = racing(async () => {
+      await db.batch([
+        db.prepare(`UPDATE wallets SET state = 'unlinked' WHERE id = ?`).bind(waiting!.id),
+        db.prepare(`INSERT INTO wallets (id, org_id, chain_id, address, kind, label, state, proof_nonce, proof_digest, proof_signature, proof_checked_at, linked_at, snapshot)
+                    SELECT 'f' || substr(id, 2), org_id, chain_id, address, kind, label, 'pending', '0x' || ?2, proof_digest, proof_signature, proof_checked_at, linked_at, snapshot FROM wallets WHERE id = ?1`).bind(waiting!.id, 'ee'.repeat(32)),
+        db.prepare(`UPDATE organisations SET review_print = ${data.REVIEWED} WHERE id = ?1`).bind(a.orgId),
+      ])
+      await signIn(a.key) // takes the next audit number, as any write of the organisation would
+    })
+    const rows = async () => JSON.stringify([await orgRow(a.orgId), await count('kyb_records', a.orgId), (await db.prepare('SELECT id, state, anchor FROM wallets WHERE org_id = ? ORDER BY id').bind(a.orgId).all()).results])
+    const refused = await decideOn(a.orgId, APPROVE, { env: { ...swapped, OPERATOR_TOKEN: TOKEN } as unknown as Env })
+    const before = await rows()
+    expect([refused.status, refused.body]).toEqual([409, { error: 'try_again' }])
+    expect((await orgRow(a.orgId))!.state).toBe('unverified')
+    expect(await rows()).toBe(before)
+    // Tried again, the wallet that waits is the one that is checked and activated.
+    expect((await decideOn(a.orgId)).body).toEqual({ state: 'active' })
+    expect((await db.prepare(`SELECT id, state, anchor FROM wallets WHERE org_id = ? AND state = 'linked'`).bind(a.orgId).all()).results).toEqual([{ id: `f${waiting!.id.slice(1)}`, state: 'linked', anchor: 'current' }])
+  })
+
   // ---- A8: the operator ----
 
   it('A8: the operator\'s routes answer on their own hostname only, in the local environment only, and to the token only', async () => {
@@ -6154,9 +6222,10 @@ describe('E. onboarding: a company applies, proves its domain, is activated and 
   })
 
   it('A8: approve needs A7 again, and checks the wallet again: a contract wallet on both endpoints, a Safe as it is now', async () => {
-    // A7 no longer holds: the Owner revoked a passkey after submitting.
+    // A7 no longer holds, with the organisation still under review. (Through the routes a revoked passkey takes it out
+    // of review, G3: this second line is reached only by a row changed underneath.)
     const a = await underReview()
-    expect((await post(`/api/passkeys/${a.key2.id}/revoke`, a)).status).toBe(200)
+    await db.prepare(`UPDATE credentials SET state = 'revoked' WHERE id = ?`).bind(a.key2.id).run()
     let rows = await snapshot()
     expect((await decideOn(a.orgId)).body).toEqual({ error: 'not_ready' })
     expect(await snapshot()).toBe(rows)
@@ -6292,7 +6361,7 @@ describe('E. onboarding: a company applies, proves its domain, is activated and 
     for (const action of written) expect(EVENTS[action], action).toEqual(expect.any(String))
     expect(Object.keys(onboarding.ONBOARDING_EVENTS).sort()).toEqual(written)
     // Every statement of this file is prepared with bound parameters: no value of a request is written into SQL text.
-    for (const [, inserted] of onboardingSource.matchAll(/prepare\(`[^`]*?\$\{(\w+)\}/g)) expect(['COMPANY', 'owner']).toContain(inserted)
+    for (const [, inserted] of onboardingSource.matchAll(/prepare\(`[^`]*?\$\{(\w+)\}/g)) expect(['COMPANY', 'owner', 'REVIEWED']).toContain(inserted)
   })
 
   // One isolation case per new route (the standing rule of section e), added to the table and run here. The Sec-Fetch-Site
