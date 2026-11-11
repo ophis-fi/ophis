@@ -1030,7 +1030,7 @@ const WHY: Record<string, (w: Ready['wallet']) => string> = {
   custodian: (w) => `${w.label} is a custodian wallet: its approval rules cannot be checked from outside.`,
   module: (w) => `${w.label} is a Safe with a module enabled. A module can sign without the owners.`,
   threshold: (w) => `${w.label} is a Safe that one owner can sign for alone.`,
-  changed: (w) => `The owners or the threshold of ${w.label} changed since it was approved. Set it as the recovery wallet again to confirm them.`,
+  changed: (w) => `The owners or the threshold of ${w.label} changed since it was approved. Check with its owners that the change was theirs.`,
   unreadable: (w) => `${w.label} could not be read on both network endpoints just now. Reload the page to try again.`,
 }
 const LEVEL: Record<string, string> = { green: 'Green', amber: 'Amber', red: 'Red', none: 'None' }
