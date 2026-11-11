@@ -106,9 +106,9 @@ async function missing(db: D1Database, orgId: string): Promise<null | 'not_found
   return !seen.own ? 'second_key' : (seen.proof && first.active) || seen.others ? null : 'proof_or_owner'
 }
 
-interface Proved { orgId: string; chainId: number; address: string; kind: WalletKind; label: string; snapshot: string | null; credentialHash: string; nonce: string; digest: string; signature: string }
-// A valid activation proof arrived. One commit: the organisation is still unverified, the passkey the wallet confirmed
-// is still the first Owner's and active, the proof was never accepted (proof_nonce is unique and rows stay). The wallet
+interface Proved { orgId: string; seatId: string; chainId: number; address: string; kind: WalletKind; label: string; snapshot: string | null; credentialHash: string; nonce: string; digest: string; signature: string }
+// A valid activation proof arrived. One commit: the organisation is still unverified, the seat that asked for it (G2:
+// the intent names it) is still an active Owner, the passkey the wallet confirmed is still the first Owner's and active, the proof was never accepted (proof_nonce is unique and rows stay). The wallet
 // is stored as pending with its proof and replaces an earlier one. No approval request: the operator's decision is the
 // second check. A new proof is a new thing to review, so an organisation under review is no longer submitted.
 async function storeProof(db: D1Database, w: Proved, now: number) {
@@ -116,7 +116,8 @@ async function storeProof(db: D1Database, w: Proved, now: number) {
   let outcome = 'not_unverified'
   await commit(db, w.orgId, async () => {
     const first = await firstOf(db, w.orgId)
-    outcome = first?.state !== 'unverified' ? 'not_unverified' : !first.active || first.hash !== w.credentialHash ? 'first_passkey_gone'
+    const asker = await db.prepare(`SELECT 1 FROM seats WHERE org_id = ? AND id = ? AND role = 'owner' AND state = 'active'`).bind(w.orgId, w.seatId).first()
+    outcome = first?.state !== 'unverified' ? 'not_unverified' : !asker ? 'forbidden' : !first.active || first.hash !== w.credentialHash ? 'first_passkey_gone'
       : (await db.prepare('SELECT 1 FROM wallets WHERE proof_nonce = ?').bind(w.nonce).first()) ? 'proof_used' : 'stored'
     if (outcome !== 'stored') return null
     return [{ at: now, actorKind: 'anchor', actorId: id, sessionId: null, action: 'activation.proof', subjectId: id, detail: w.kind }, [
@@ -366,7 +367,7 @@ export async function onboarding(c: Member) {
 
 /** What the Owner asked the recovery wallet to sign, held nowhere. The fields of a recovery intent, with the wallet named. */
 export interface ActivateIntent {
-  kind: 'activate'; org: string; chainId: number; wallet: string; label: string; custodian: boolean
+  kind: 'activate'; org: string; seat: string; chainId: number; wallet: string; label: string; custodian: boolean
   credentialHash: string; phrase: string; nonce: string; issuedAt: number; expiresAt: number; site: string
 }
 // POST /api/onboarding/wallet (Owner, fresh, two passkeys): chain and address of the recovery wallet in, a signing
@@ -385,7 +386,7 @@ export async function activationIntent(c: Member) {
   const phrase = await wordsOf(c, c.actor.orgId, first)
   const issuedAt = Math.floor(c.now / 1000)
   const intent: ActivateIntent = {
-    kind: 'activate', org: c.actor.orgId, chainId, wallet: checksum(address), label, custodian, credentialHash: first.hash, phrase: phrase.join(' '),
+    kind: 'activate', org: c.actor.orgId, seat: c.actor.seatId, chainId, wallet: checksum(address), label, custodian, credentialHash: first.hash, phrase: phrase.join(' '),
     nonce: `0x${randomId()}${randomId()}`, issuedAt, expiresAt: issuedAt + WEEK_S, site: c.config.rpId,
   }
   const sealed = await seal(c.env.CHALLENGE_KEY, ACTIVATE, intent)
@@ -408,7 +409,7 @@ export async function activationProof(c: Ctx, intent: ActivateIntent, signature:
   if (!proved) return fail(403, 'signature_rejected')
   const safe = proved.by === 'contract' ? await safeState(endpoints, intent.chainId, intent.wallet) : null
   const outcome = await storeProof(c.env.DB, {
-    orgId: intent.org, chainId: intent.chainId, address: intent.wallet.toLowerCase(), label: intent.label, credentialHash: intent.credentialHash,
+    orgId: intent.org, seatId: intent.seat, chainId: intent.chainId, address: intent.wallet.toLowerCase(), label: intent.label, credentialHash: intent.credentialHash,
     kind: safe ? 'safe' : intent.custodian && proved.by === 'key' ? 'custodian' : 'single_key', snapshot: safe && JSON.stringify(safe),
     nonce: intent.nonce, digest: proved.digest, signature,
   }, c.now)

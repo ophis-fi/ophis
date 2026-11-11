@@ -5852,7 +5852,7 @@ describe('E. onboarding: a company applies, proves its domain, is activated and 
     const nonce = Array.from(fromBase64Url((await seal(testEnv.CHALLENGE_KEY, 'activation-phrase', { org: a.orgId, credential: a.key.id })).split('.')[1]).subarray(0, 16), (b) => b.toString(16).padStart(2, '0')).join('')
     const words = await phraseFor({ site: 'localhost', orgId: a.orgId, seatId: a.seatId, role: 'owner', purpose: 'activation', credentialHash: hash, nonce })
     expect(f).toEqual({
-      kind: 'activate', org: a.orgId, chainId: CHAIN, wallet: accounts[0].address, label: 'Treasury', custodian: false, phrase: words.join(' '), site: 'localhost',
+      kind: 'activate', org: a.orgId, seat: a.seatId, chainId: CHAIN, wallet: accounts[0].address, label: 'Treasury', custodian: false, phrase: words.join(' '), site: 'localhost',
       credentialHash: `0x${Array.from(hash, (b) => b.toString(16).padStart(2, '0')).join('')}`, nonce: expect.stringMatching(/^0x[0-9a-f]{64}$/), issuedAt: START / 1000, expiresAt: START / 1000 + 7 * 24 * 3600,
     })
     expect(asked.body).toMatchObject({ link: `${SIGN}/sign/#${asked.body.intent}`, phrase: words, expiresAt: START + 7 * DAY })
@@ -5948,6 +5948,28 @@ describe('E. onboarding: a company applies, proves its domain, is activated and 
     expect(await snapshot()).toBe(rows)
     expect((await nameWallet(b, accounts[3].address)).body).toEqual({ error: 'first_passkey_gone' })
     expect((await call('GET', '/api/onboarding', { cookie: b.cookie })).body).toMatchObject({ first: { active: false }, missing: 'proof_or_owner' })
+  })
+
+  it('G2: the activation request names the seat that made it, and inside the proof\'s commit that seat must still be an active Owner', async () => {
+    const a = await applicantWithTwoKeys()
+    const second = await ceremony(a, { displayName: 'Second Owner', role: 'owner' })
+    now += WAIT + MIN
+    await again(second)
+    expect((await addKey(second)).status).toBe(200)
+    const asked = await nameWallet(second, accounts[0].address)
+    const fields = fieldsOf<ActivateFields & { seat: string }>(asked.body.intent)
+    expect(fields.seat).toBe(second.seatId) // under the MAC: the caller cannot name another seat
+    const signature = await accounts[0].signTypedData(typedActivate(fields))
+    // Lowered, frozen or removed since: nothing is stored.
+    for (const change of [`role = 'admin'`, `state = 'frozen'`, `state = 'removed'`]) {
+      await db.prepare(`UPDATE seats SET ${change} WHERE id = ?`).bind(second.seatId).run()
+      const rows = await snapshot()
+      const refused = await prove(asked.body.intent, signature)
+      expect([refused.status, refused.body], change).toEqual([403, { error: 'forbidden' }])
+      expect(await snapshot()).toBe(rows)
+      await db.prepare(`UPDATE seats SET role = 'owner', state = 'active' WHERE id = ?`).bind(second.seatId).run()
+    }
+    expect((await prove(asked.body.intent, signature)).body).toEqual({ state: 'stored' })
   })
 
   // ---- A7: submit for review ----
