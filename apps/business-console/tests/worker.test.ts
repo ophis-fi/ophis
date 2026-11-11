@@ -506,7 +506,7 @@ describe('b. only an active credential signs in', () => {
     expect((await call('GET', '/api/me', { cookie: m.cookie })).status).toBe(200)
     await db.prepare(`UPDATE organisations SET state = 'frozen' WHERE id = ?`).bind(m.orgId).run()
     expect((await signIn(m.key)).status).toBe(401)
-    expect((await call('GET', '/api/me', { cookie: m.cookie })).status).toBe(401)
+    expect((await call('GET', '/api/me', { cookie: m.cookie })).body).toEqual({ error: 'org_frozen' }) // milestone 5: the session is told so, and reaches nothing but its sign-out (section E)
   })
   it('an Owner cannot enrol a synced passkey; a Viewer can', async () => {
     const org = await organisation()
@@ -683,7 +683,7 @@ describe('d. request checks', () => {
   it('a state change is a JSON POST: no other method, no other content type', async () => {
     const m = await member()
     expect(routes.filter((route) => route.method !== 'GET').every((route) => route.method === 'POST')).toBe(true)
-    expect(routes.filter((route) => route.method === 'GET').map((route) => route.path).sort()).toEqual(['/api/audit', '/api/me', '/api/org', '/api/readiness'])
+    expect(routes.filter((route) => route.method === 'GET').map((route) => route.path).sort()).toEqual(['/api/audit', '/api/me', '/api/onboarding', '/api/org', '/api/readiness'])
     expect((await call('GET', '/api/signout', { cookie: m.cookie })).status).toBe(404)
     for (const type of ['text/plain', 'application/x-www-form-urlencoded', 'multipart/form-data', null]) {
       expect((await call('POST', '/api/signout', { cookie: m.cookie, headers: { 'content-type': type } })).status).toBe(415)
@@ -1153,8 +1153,11 @@ describe('f. audit log', () => {
   it('the list above covers every state-changing route', () => {
     expect(routes.filter((route) => route.method === 'POST').map((route) => route.path).sort()).toEqual([
       // /api/audit/export writes its audit row and nothing else: section w proves that no file leaves without the row.
+      // Milestone 5: /api/apply and /api/onboarding/wallet write nothing; apply/check and onboarding/submit are in section E.
+      '/api/apply', '/api/apply/check',
       '/api/approvals/:id/approve', '/api/approvals/:id/cancel', '/api/approvals/:id/reject', '/api/audit/export',
       '/api/enrol/finish', '/api/enrol/start', '/api/members/:id/freeze', '/api/members/:id/remove', '/api/members/:id/role', '/api/members/:id/unfreeze',
+      '/api/onboarding/submit', '/api/onboarding/wallet',
       // /api/wallets/intent writes nothing at all (section y); /api/proof is the first write of a link.
       '/api/passkeys/:id/revoke', '/api/passkeys/finish', '/api/passkeys/start', '/api/policy', '/api/proof',
       // The intent routes and continue/start write nothing (section B). The proof opens a request or cancels one; continue/finish completes or lapses one.
@@ -1403,9 +1406,10 @@ describe('k. step-up: a fresh passkey check before a sensitive action', () => {
     const paths = (flag: 'fresh' | 'twoKeys') => routes.filter((route) => route[flag]).map((route) => route.path).sort()
     const m3 = ['/api/approvals/:id/approve', '/api/approvals/:id/reject', '/api/members/:id/freeze', '/api/members/:id/remove', '/api/members/:id/role', '/api/members/:id/unfreeze']
     const m4 = ['/api/wallets/:id/anchor', '/api/wallets/:id/anchor/cancel', '/api/wallets/:id/unlink', '/api/wallets/intent']
-    expect(paths('fresh')).toEqual([...m3.slice(0, 2), '/api/audit/export', ...m3.slice(2), '/api/passkeys/:id/revoke', '/api/passkeys/finish', '/api/passkeys/start', '/api/policy', '/api/recovery/:id/cancel', '/api/recovery/:id/object', '/api/tickets', '/api/tickets/:id/cancel', ...m4])
+    const m5 = ['/api/onboarding/submit', '/api/onboarding/wallet']
+    expect(paths('fresh')).toEqual([...m3.slice(0, 2), '/api/audit/export', ...m3.slice(2), ...m5, '/api/passkeys/:id/revoke', '/api/passkeys/finish', '/api/passkeys/start', '/api/policy', '/api/recovery/:id/cancel', '/api/recovery/:id/object', '/api/tickets', '/api/tickets/:id/cancel', ...m4])
     // Confirming carries its own passkey check, made for the ticket.
-    expect(paths('twoKeys')).toEqual([...m3, '/api/passkeys/:id/revoke', '/api/policy', '/api/tickets', '/api/tickets/:id/cancel', '/api/tickets/:id/confirm', '/api/tickets/:id/confirm/start', ...m4])
+    expect(paths('twoKeys')).toEqual([...m3, ...m5, '/api/passkeys/:id/revoke', '/api/policy', '/api/tickets', '/api/tickets/:id/cancel', '/api/tickets/:id/confirm', '/api/tickets/:id/confirm/start', ...m4])
     expect(routes.filter((route) => (route.fresh || route.twoKeys || route.settled || route.second) && route.roles === 'public')).toEqual([])
   })
 
@@ -2502,6 +2506,8 @@ describe('r. the role table', () => {
       'POST /api/recover/intent': 'public', 'POST /api/recover/cancel-intent': 'public', 'POST /api/recover/continue/start': 'public', 'POST /api/recover/continue/finish': 'public',
       'POST /api/recovery/:id/cancel': 'owner fresh', 'POST /api/recovery/:id/object': 'admin,approver,compliance fresh',
       'POST /api/support/ask': any,
+      'POST /api/apply': 'public', 'POST /api/apply/check': 'public',
+      'GET /api/onboarding': 'owner,compliance', 'POST /api/onboarding/wallet': 'owner fresh twoKeys', 'POST /api/onboarding/submit': 'owner fresh twoKeys',
     })
     // The signing host has one route, and it is the only one without the console.
     expect(routes.filter((r) => r.sign).map((r) => r.path)).toEqual(['/api/proof'])
@@ -2515,7 +2521,7 @@ describe('r. the role table', () => {
     for (const role of ['admin', 'trader', 'approver', 'compliance', 'viewer']) people[role] = await colleague(o, role)
     // Sign-out last: it ends the session the other calls need.
     const gated = routes.filter((r) => r.roles !== 'public').sort((x, y) => Number(x.path === '/api/signout') - Number(y.path === '/api/signout'))
-    expect(gated.length).toBe(routes.length - 11)
+    expect(gated.length).toBe(routes.length - 13)
     for (const route of gated) {
       for (const [role, m] of Object.entries(people)) {
         const answer = await call(route.method, route.path.replace(':id', '0'.repeat(32)), { cookie: m.cookie })
@@ -4203,7 +4209,7 @@ describe('B. last-Owner recovery by the recovery wallet', () => {
     const asked = await askRecovery(o.orgId)
     const f = recoverOf(asked.intent)
     const wallet = accounts[0].address
-    expect(PROOF_ACTION).toEqual({ replace: 'Replace all Owner passkeys of this organisation', override: 'Replace all Owner passkeys of this organisation, overriding its Owners', cancel: 'Cancel account recovery' })
+    expect(PROOF_ACTION).toEqual({ replace: 'Replace all Owner passkeys of this organisation', override: 'Replace all Owner passkeys of this organisation, overriding its Owners', cancel: 'Cancel account recovery', activate: 'Activate this organisation and confirm its first Owner passkey' })
     expect(typedRecover(f, wallet)).toEqual({
       domain: { name: 'Ophis Business', version: '1', chainId: 10 }, primaryType: 'Proof',
       types: {
@@ -5006,5 +5012,932 @@ describe('D. Support: the model selects, the server decides', () => {
     expect(supportPage).toContain('const MAX = 500')
     expect(supportPage).not.toMatch(banned)
     expect(supportPage).not.toMatch(/dangerouslySetInnerHTML|innerHTML/)
+  })
+})
+
+// ---- milestone 5a: application, domain proof, activation, review, the operator's API. One appended section. DNS and
+// the chain are a stubbed fetch. (Import declarations are hoisted: they sit here so that the section stays in one piece.) ----
+import onboardingSource from '../src/server/onboarding.ts?raw'
+import onboardingPage from '../src/app/onboarding.tsx?raw'
+import * as onboarding from '../src/server/onboarding.ts'
+
+describe('E. onboarding: a company applies, proves its domain, is activated and reviewed', () => {
+  const [DNS1, DNS2] = onboarding.RESOLVERS.local
+  // The two resolvers. Each answers in its real form, copied from what `pnpm test:dns` printed on 2026-11-11:
+  // Cloudflare quotes the value and gives the name as asked, Google gives the bare value and the name with a dot.
+  const dns = { records: new Map<string, string[]>(), asked: [] as { url: string; init?: RequestInit }[], twist: (_which: number, answer: unknown, _init?: RequestInit): unknown => answer }
+  function fakeNet(input: RequestInfo | URL, init?: RequestInit) {
+    const url = String(input)
+    const which = url.startsWith(`${DNS1}?`) ? 0 : url.startsWith(`${DNS2}?`) ? 1 : -1
+    if (which < 0) return fakeRpc(input, init)
+    dns.asked.push({ url, init })
+    const name = new URL(url).searchParams.get('name')!
+    const Answer = (dns.records.get(name) ?? []).map((value) => ({ name: which ? `${name}.` : name, type: 16, TTL: 300, data: which ? value : `"${value}"` }))
+    const twisted = dns.twist(which, { Status: 0, TC: false, RD: true, RA: true, AD: true, CD: false, Question: [{ name: which ? `${name}.` : name, type: 16 }], Answer }, init)
+    return Promise.resolve(twisted instanceof Response || twisted instanceof Promise ? twisted : Response.json(twisted))
+  }
+  beforeEach(async () => {
+    vi.stubGlobal('fetch', fakeNet)
+    dns.records.clear()
+    dns.asked = []
+    dns.twist = (_which, answer) => answer
+    onboarding.DNS.timeoutMs = 5000
+    // The tests share one database and one clock: the applications of earlier tests are made a day old, so that the
+    // backstop of 20 a day counts each test's own, and no test counts the proof checks of another.
+    await db.prepare('UPDATE organisations SET domain_verified_at = 1 WHERE domain_verified_at IS NOT NULL').run()
+    await uncount()
+  })
+
+  const fieldsOf = <T,>(sealed: string) => JSON.parse(new TextDecoder().decode(fromBase64Url(sealed.split('.')[0]))) as T
+  const resealed = (sealed: string, change: object) => `${toBase64Url(new TextEncoder().encode(JSON.stringify({ ...fieldsOf<object>(sealed), ...change })))}.${sealed.split('.')[1]}`
+  let domains = 0
+  const form = (domain: string) => ({ legalName: 'Alder Custody S.A.', country: 'LU', registration: 'B123456', kind: 'institution', domain, email: `ops@${domain}`, name: 'Maren Okafor' })
+  // The applicant: the form, then a new passkey. Nothing is written.
+  async function applyFor(domain = `alder${++domains}.example`, more: Record<string, unknown> = {}, keyOptions: { backupEligible?: boolean } = {}, answer: Answer = {}) {
+    const key = await softwareAuthenticator(SITE, keyOptions)
+    const body = { ...form(domain), ...more }
+    const start = await call('POST', '/api/apply', { body })
+    if (start.status !== 200) return { ...start, key, domain, seat: '', intent: '' }
+    const done = await call('POST', '/api/apply', { body: { ...body, seat: start.body.seat, response: await key.register(start.body.options, answer) } })
+    return { ...done, key, domain, seat: start.body.seat as string, intent: done.body.intent as string }
+  }
+  const publish = (record: { name: string; value: string }) => dns.records.set(record.name, [...(dns.records.get(record.name) ?? []), record.value])
+  const checkDns = (intent: string, options: Options = {}) => call('POST', '/api/apply/check', { ...options, body: { intent } })
+  // An organisation made by an application whose DNS record both resolvers hold. Its first Owner is signed in.
+  async function applied(domain?: string) {
+    const a = await applyFor(domain)
+    publish(a.body.record)
+    expect((await checkDns(a.intent)).body).toEqual({ state: 'unverified' })
+    const session = await signIn(a.key)
+    const me = await call('GET', '/api/me', { cookie: session.cookie })
+    return { orgId: me.body.organisation.id as string, seatId: a.seat, key: a.key, cookie: session.cookie, domain: a.domain, intent: a.intent, name: 'Alder Custody S.A.', sessionId: me.body.session.id as string, ticket: '' }
+  }
+  // The same with two passkeys on the Owner seat: what every further step needs.
+  async function applicantWithTwoKeys(domain?: string) {
+    const a = await applied(domain)
+    const second = await addKey(a)
+    expect(second.status).toBe(200)
+    return { ...a, key2: second.key }
+  }
+  interface ActivateFields { kind: 'activate'; org: string; chainId: number; wallet: string; label: string; custodian: boolean; credentialHash: string; phrase: string; nonce: string; issuedAt: number; expiresAt: number; site: string }
+  const typedActivate = (i: ActivateFields, change: Partial<Parameters<typeof typedProof>[0]> = {}) =>
+    typedProof({ kind: 'activate', chainId: i.chainId, site: i.site, organisationId: i.org, wallet: i.wallet, credentialHash: i.credentialHash, phrase: i.phrase, nonce: i.nonce, issuedAt: i.issuedAt, expiresAt: i.expiresAt, ...change }) as never
+  const nameWallet = (m: Holder, address: string, more: Record<string, unknown> = {}) => post('/api/onboarding/wallet', m, { chainId: CHAIN, address, label: 'Treasury', custodian: false, ...more })
+  // The Owner names the recovery wallet, the wallet signs with its own key, the signing page posts the proof.
+  async function activation(m: Holder, account = accounts[0], more: Record<string, unknown> = {}) {
+    const asked = await nameWallet(m, account.address, more)
+    expect(asked.status).toBe(200)
+    const fields = fieldsOf<ActivateFields>(asked.body.intent)
+    const signature = await account.signTypedData(typedActivate(fields))
+    return { ...(await prove(asked.body.intent, signature)), intent: asked.body.intent as string, fields, signature }
+  }
+  const submit = (m: Holder, body: unknown = {}) => post('/api/onboarding/submit', m, body)
+  // Two passkeys, the activation proof of a single key, submitted: what the operator finds under review.
+  async function underReview(domain?: string) {
+    const a = await applicantWithTwoKeys(domain)
+    expect((await activation(a)).body).toEqual({ state: 'stored' })
+    expect((await submit(a)).body).toEqual({ state: 'under_review' })
+    return a
+  }
+  const orgRow = (orgId: string) => row<{ state: string; review_at: number | null }>('SELECT state, review_at FROM organisations WHERE id = ?', orgId)
+
+  // The operator: its own hostname, the request checks of every host, and a bearer token.
+  const OP = onboarding.OPERATOR.local
+  const TOKEN = `operator-${crypto.randomUUID()}${crypto.randomUUID()}`
+  const opEnv = { ...testEnv, OPERATOR_TOKEN: TOKEN } as unknown as Env
+  async function op(method: string, path: string, options: { body?: unknown; headers?: Record<string, string | null>; env?: Env; host?: string; cookie?: string } = {}) {
+    const headers = new Headers({ 'sec-fetch-site': 'same-origin', authorization: `Bearer ${TOKEN}` })
+    if (method === 'POST') {
+      headers.set('origin', options.host ?? OP)
+      headers.set('content-type', 'application/json')
+    }
+    if (options.cookie) headers.set('cookie', options.cookie)
+    for (const [name, value] of Object.entries(options.headers ?? {})) value === null ? headers.delete(name) : headers.set(name, value)
+    const response = await handle(new Request((options.host ?? OP) + path, { method, headers, body: method === 'POST' ? JSON.stringify(options.body ?? {}) : undefined }), options.env ?? opEnv, () => now)
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    return { status: response.status, headers: response.headers, body: (await response.json().catch(() => null)) as any }
+  }
+  const APPROVE = { decision: 'approve', tier: 'standard', source: 'registry', evidenceRef: 'LBR extract B123456', evidenceSha256: 'ab'.repeat(32), nextReview: '2027-11-11' }
+  const MORE = { decision: 'more', reason: 'details_differ', tier: 'standard', source: 'registry' }
+  const decideOn = (orgId: string, body: unknown = APPROVE, options: Parameters<typeof op>[2] = {}) => op('POST', `/api/operator/organisations/${orgId}/decision`, { ...options, body })
+  const opPaths = (id: string) => onboarding.operatorRoutes.map((r) => [r.method, r.path.replace(':id', id)] as const)
+
+  // ---- A1, A2: the application ----
+
+  it('A1, A2: /apply is public, reads and writes nothing; the intent is the server\'s own text and the DNS record is bound to the domain and to this passkey', async () => {
+    const rows = await snapshot([...TABLES, COUNTER])
+    const a = await applyFor('alder.example')
+    expect(a.status).toBe(200)
+    expect(await snapshot([...TABLES, COUNTER])).toBe(rows)
+    expect(dns.asked).toHaveLength(0)
+    const f = fieldsOf<Record<string, unknown> & { credential: { id: string; publicKey: string; transports: string[] }; credentialHash: string; issuedAt: number; expiresAt: number }>(a.intent)
+    expect(f).toMatchObject({ ...form('alder.example'), seat: a.seat, site: 'localhost', credential: { id: a.key.id, transports: ['usb'] } })
+    expect(f.credentialHash).toBe(`0x${Array.from(await credentialHash(f.credential.id, f.credential.publicKey), (b) => b.toString(16).padStart(2, '0')).join('')}`)
+    expect([f.issuedAt, f.expiresAt, a.body.expiresAt]).toEqual([START / 1000, START / 1000 + 7 * 24 * 3600, START + 7 * DAY])
+    // The record: TXT at _ophis-verify.<domain>, "ophis-verify=" and a short code that is a MAC over domain and passkey.
+    expect(a.body.record).toEqual({ name: '_ophis-verify.alder.example', type: 'TXT', value: expect.stringMatching(/^ophis-verify=[A-Za-z0-9_-]{20}$/) })
+    expect(a.body.record.value).toBe(await onboarding.dnsValue(testEnv.CHALLENGE_KEY, 'alder.example', f.credentialHash))
+    expect(a.body.record.value).toBe(`ophis-verify=${(await seal(testEnv.CHALLENGE_KEY, 'apply-dns', { domain: 'alder.example', credentialHash: f.credentialHash })).split('.')[1].slice(0, 20)}`)
+    expect((await applyFor('alder.example')).body.record.value).not.toBe(a.body.record.value) // another passkey
+    expect(await onboarding.dnsValue(testEnv.CHALLENGE_KEY, 'birch.example', f.credentialHash)).not.toBe(a.body.record.value) // another domain
+    expect(await onboarding.dnsValue(`${testEnv.CHALLENGE_KEY}x`, 'alder.example', f.credentialHash)).not.toBe(a.body.record.value) // another key
+    // The Owner rule: a device-bound passkey with user verification, for a challenge made for this seat and this domain.
+    expect((await applyFor('alder.example', {}, { backupEligible: true })).body).toEqual({ error: 'device_bound_required' })
+    expect((await applyFor('alder.example', {}, {}, { userVerified: false })).body).toEqual({ error: 'passkey_rejected' })
+    expect((await applyFor('alder.example', {}, {}, { as: { origin: 'https://evil.example' } })).body).toEqual({ error: 'passkey_rejected' })
+    const key = await softwareAuthenticator(SITE)
+    const start = await call('POST', '/api/apply', { body: form('alder.example') })
+    const response = await key.register(start.body.options)
+    expect((await call('POST', '/api/apply', { body: { ...form('birch.example'), seat: start.body.seat, response } })).body).toEqual({ error: 'passkey_rejected' })
+    expect((await call('POST', '/api/apply', { body: { ...form('alder.example'), seat: data.randomId(), response } })).body).toEqual({ error: 'passkey_rejected' })
+    const other = await call('POST', '/api/recover/intent', { body: { organisationId: start.body.seat } })
+    expect((await call('POST', '/api/apply', { body: { ...form('alder.example'), seat: other.body.seat, response: await key.register(other.body.options) } })).body).toEqual({ error: 'passkey_rejected' })
+    expect((await call('POST', '/api/apply', { body: { ...form('alder.example'), seat: start.body.seat, response } })).status).toBe(200)
+    expect(await snapshot([...TABLES, COUNTER])).toBe(rows)
+  })
+
+  it('A1: the form is checked, and the contact address must be at the company domain or a subdomain of it', async () => {
+    const bad: [Record<string, unknown>, string][] = [
+      [{ legalName: 'A' }, 'legal_name_invalid'], [{ legalName: '<b>Alder</b>' }, 'legal_name_invalid'], [{ country: 'Luxembourg' }, 'country_invalid'], [{ registration: '' }, 'registration_invalid'],
+      [{ kind: 'bank' }, 'kind_invalid'], [{ domain: 'localhost' }, 'domain_invalid'], [{ domain: 'alder..example' }, 'domain_invalid'], [{ domain: 'https://alder.example' }, 'domain_invalid'],
+      [{ domain: '-alder.example' }, 'domain_invalid'], [{ domain: 'alder.123' }, 'domain_invalid'], [{ name: '' }, 'name_invalid'], [{ name: 'x'.repeat(61) }, 'name_invalid'],
+      // Not at the domain: another company's, a free-mail provider's, a look-alike, the domain as a prefix, two addresses.
+      [{ email: 'ops@birch.example' }, 'email_not_at_domain'], [{ email: 'maren@gmail.com' }, 'email_not_at_domain'], [{ email: 'ops@evilalder.example' }, 'email_not_at_domain'],
+      [{ email: 'ops@alder.example.evil.example' }, 'email_not_at_domain'], [{ email: 'ops@alder.example@gmail.com' }, 'email_not_at_domain'], [{ email: 'ops' }, 'email_not_at_domain'],
+      [{ email: 'ops@.alder.example' }, 'email_not_at_domain'], [{ email: 'o ps@alder.example' }, 'email_not_at_domain'],
+    ]
+    for (const [change, error] of bad) expect((await call('POST', '/api/apply', { body: { ...form('alder.example'), ...change } })).body, JSON.stringify(change)).toEqual({ error })
+    for (const email of ['ops@alder.example', 'Ops@Mail.Alder.Example']) expect((await call('POST', '/api/apply', { body: { ...form('alder.example'), email } })).status, email).toBe(200)
+    // Every field is under the MAC of the intent: the address that is stored is the one that was checked.
+    const a = await applyFor('alder.example', { email: 'Ops@Mail.Alder.Example', country: 'lu', domain: 'Alder.Example' })
+    expect(fieldsOf(a.intent)).toMatchObject({ email: 'ops@mail.alder.example', country: 'LU', domain: 'alder.example' })
+  })
+
+  // ---- A3: Check DNS ----
+
+  it('A3: the MAC is checked first, before any lookup, then the expiry', async () => {
+    const a = await applyFor()
+    publish(a.body.record)
+    const rows = await snapshot()
+    const f = fieldsOf<{ domain: string }>(a.intent)
+    const forged = [
+      resealed(a.intent, { domain: 'birch.example' }), resealed(a.intent, { expiresAt: START / 1000 + 365 * 24 * 3600 }), resealed(a.intent, {}).replace(/.$/, (c) => (c === 'A' ? 'B' : 'A')),
+      await seal(testEnv.CHALLENGE_KEY, 'recover-intent', fieldsOf<object>(a.intent)), await seal(`${testEnv.CHALLENGE_KEY}x`, 'apply-intent', fieldsOf<object>(a.intent)),
+      a.intent.split('.')[0], `${a.intent}.x`, '', 7,
+    ]
+    for (const intent of forged) expect((await call('POST', '/api/apply/check', { body: { intent } })).body, String(intent).slice(0, 12)).toEqual({ error: 'intent_invalid' })
+    // The request checks come before it too.
+    expect((await checkDns(a.intent, { headers: { 'sec-fetch-site': 'cross-site' } })).body).toEqual({ error: 'cross_site' })
+    expect((await checkDns(a.intent, { headers: { origin: SIGN } })).body).toEqual({ error: 'bad_origin' })
+    expect((await checkDns(a.intent, { sign: true })).status).toBe(404)
+    now = START + 7 * DAY
+    expect((await checkDns(a.intent)).body).toEqual({ error: 'intent_expired' })
+    expect(dns.asked).toHaveLength(0)
+    expect(await snapshot()).toBe(rows)
+    now -= 1000
+    expect((await checkDns(a.intent)).body).toEqual({ state: 'unverified' })
+    // Two lookups, one per resolver, each for the one name, in the JSON form. Nothing about the applicant leaves.
+    expect(dns.asked.map((x) => x.url)).toEqual([`${DNS1}?name=_ophis-verify.${f.domain}&type=TXT`, `${DNS2}?name=_ophis-verify.${f.domain}&type=TXT`])
+    for (const x of dns.asked) {
+      expect(new Headers(x.init?.headers).get('accept')).toBe('application/dns-json')
+      expect(x.init?.body).toBeUndefined()
+      expect(x.init?.signal).toBeInstanceOf(AbortSignal)
+    }
+  })
+
+  it('A3: both resolvers must return the exact value of this domain and this passkey; a disagreement, an error, a timeout or an oversized answer refuses, and nothing is written before the proof', async () => {
+    const domain = `both${++domains}.example`
+    const a = await applyFor(domain)
+    const { name, value } = a.body.record as { name: string; value: string }
+    const rows = await snapshot([...TABLES, COUNTER])
+    const refused = async (why: string) => {
+      expect((await checkDns(a.intent)).body, why).toEqual({ error: 'dns_not_proved', record: a.body.record })
+      expect(await snapshot([...TABLES, COUNTER]), why).toBe(rows)
+    }
+    await refused('no record')
+    // A record left by another application for the same domain, the value of this passkey for another domain, and near misses.
+    const other = await applyFor(domain)
+    publish(other.body.record)
+    await refused('another passkey')
+    const hash = fieldsOf<{ credentialHash: string }>(a.intent).credentialHash
+    for (const near of [await onboarding.dnsValue(testEnv.CHALLENGE_KEY, 'birch.example', hash), `${value}x`, `x${value}`, value.toUpperCase(), value.replace('ophis-verify=', ''), ` ${value}`]) {
+      dns.records.set(name, [near])
+      await refused(near)
+    }
+    dns.records.clear()
+    dns.records.set('_ophis-verify.birch.example', [value])
+    dns.records.set(domain, [value])
+    await refused('the value under another name')
+    dns.records.clear()
+    publish(a.body.record)
+    // From here both resolvers hold the record: each twist changes what one of them says.
+    type Dns = { Status: number; Answer: { name: string; type: number; data: string }[] }
+    const twists: [string, (answer: Dns, init?: RequestInit) => unknown][] = [
+      ['no answer section', ({ Answer: _, ...rest }) => rest],
+      ['an empty answer', (answer) => ({ ...answer, Answer: [] })],
+      ['another value', (answer) => ({ ...answer, Answer: answer.Answer.map((r) => ({ ...r, data: r.data.replace('ophis-verify=', 'ophis-verify=x') })) })],
+      ['a failure status with the record in it', (answer) => ({ ...answer, Status: 2 })],
+      ['no status', ({ Status: _, ...rest }) => rest],
+      ['an HTTP error with the record in its body', (answer) => Response.json(answer, { status: 500 })],
+      ['not JSON', () => new Response('<html>')],
+      ['an answer that is no object', () => Response.json(null)],
+      ['an answer section that is no list', (answer) => ({ ...answer, Answer: 'x' })],
+      ['a record of another type', (answer) => ({ ...answer, Answer: answer.Answer.map((r) => ({ ...r, type: 5 })) })],
+      ['a record of another name', (answer) => ({ ...answer, Answer: answer.Answer.map((r) => ({ ...r, name: domain })) })],
+      ['an oversized answer', (answer) => ({ ...answer, Comment: 'x'.repeat(onboarding.DNS.maxBytes) })],
+      ['a thrown error', () => Promise.reject(new Error('network'))],
+      ['a timeout', (_answer, init) => new Promise((_resolve, reject) => init!.signal!.addEventListener('abort', () => reject(new Error('aborted'))))],
+    ]
+    onboarding.DNS.timeoutMs = 30
+    for (const which of [0, 1]) {
+      for (const [why, twist] of twists) {
+        dns.twist = (resolver, answer, init) => (resolver === which ? twist(answer as Dns, init) : answer)
+        await refused(`resolver ${which + 1}: ${why}`)
+      }
+    }
+    dns.twist = (_which, answer) => answer
+    expect((await checkDns(a.intent)).body).toEqual({ state: 'unverified' })
+    // The other application for the same domain, whose record is there too, comes second: one organisation per domain.
+    publish(other.body.record)
+    expect((await checkDns(other.intent)).body).toEqual({ error: 'domain_taken' })
+  })
+
+  it('A3, A4: the parser reads the JSON form of both resolvers, and the resolvers are constants per environment', () => {
+    // What Cloudflare and Google answered for example.com on 2026-11-11 (pnpm test:dns), shortened.
+    const cloudflare = '{"Status":0,"TC":false,"RD":true,"RA":true,"AD":true,"CD":false,"Question":[{"name":"example.com","type":16}],"Answer":[{"name":"example.com","type":16,"TTL":300,"data":"\\"v=spf1 -all\\""},{"name":"example.com","type":16,"TTL":300,"data":"\\"_k2n1y4vw3qtb4skdx9e7dxt97qrmmq9\\""}]}'
+    const google = '{"Status":0,"TC":false,"RD":true,"RA":true,"AD":true,"CD":false,"Question":[{"name":"example.com.","type":16}],"Answer":[{"name":"example.com.","type":16,"TTL":300,"data":"_k2n1y4vw3qtb4skdx9e7dxt97qrmmq9"},{"name":"example.com.","type":16,"TTL":300,"data":"v=spf1 -all"}],"Comment":"Response from 172.64.32.162."}'
+    expect(onboarding.txtValues(cloudflare, 'example.com')).toEqual(['v=spf1 -all', '_k2n1y4vw3qtb4skdx9e7dxt97qrmmq9'])
+    expect(onboarding.txtValues(google, 'example.com')).toEqual(['_k2n1y4vw3qtb4skdx9e7dxt97qrmmq9', 'v=spf1 -all'])
+    // A value in several character strings is one value; an escaped quote is a quote.
+    expect(onboarding.txtValues('{"Status":0,"Answer":[{"name":"A.example.","type":16,"data":"\\"ab\\" \\"c\\\\\\"d\\""}]}', 'a.example')).toEqual(['abc"d'])
+    expect(onboarding.txtValues('{"Status":3}', 'a.example')).toBeNull()
+    expect(onboarding.txtValues('{"Status":0}', 'a.example')).toEqual([])
+    expect(onboarding.txtValues(null, 'a.example')).toBeNull()
+    expect(onboarding.RESOLVERS).toEqual({ local: ['http://127.0.0.1:8790/dns-query', 'http://127.0.0.1:8791/resolve'] })
+    expect(onboarding.PUBLIC_RESOLVERS).toEqual(['https://cloudflare-dns.com/dns-query', 'https://dns.google/resolve'])
+    expect(onboarding.DNS).toEqual({ timeoutMs: 5000, maxBytes: 16 * 1024 })
+    // No stub and no switch in the Worker: the resolver is never taken from the request or from a variable of the environment.
+    expect(onboardingSource).not.toMatch(/env\.\w*(RESOLVER|DNS|STUB)|body\.resolver|searchParams/i)
+  })
+
+  it('A3: one commit: the organisation, unverified, with its fields and domain, its first Owner seat, the active passkey and one audit row; the applicant then signs in', async () => {
+    const a = await applyFor('alder-commit.example')
+    publish(a.body.record)
+    expect((await checkDns(a.intent)).body).toEqual({ state: 'unverified' })
+    const org = (await row<Record<string, unknown>>('SELECT * FROM organisations WHERE email_domain = ?', 'alder-commit.example'))!
+    expect(org).toMatchObject({ kind: 'institution', name: 'Alder Custody S.A.', state: 'unverified', domain_challenge: a.body.record.value, domain_verified_at: now, country: 'LU', registration_number: 'B123456', review_at: null, created_at: now })
+    expect(await row('SELECT id, display_name, email, role, state FROM seats WHERE org_id = ?', org.id)).toEqual({ id: a.seat, display_name: 'Maren Okafor', email: 'ops@alder-commit.example', role: 'owner', state: 'active' })
+    expect(await row('SELECT id, seat_id, state, device_bound, label FROM credentials WHERE org_id = ?', org.id)).toEqual({ id: a.key.id, seat_id: a.seat, state: 'active', device_bound: 1, label: 'First key' })
+    const hash = fieldsOf<{ credentialHash: string }>(a.intent).credentialHash
+    expect((await db.prepare('SELECT seq, actor_kind, actor_id, action, subject_id, detail FROM audit_log WHERE org_id = ?').bind(org.id).all()).results)
+      .toEqual([{ seq: 1, actor_kind: 'seat', actor_id: a.seat, action: 'organisation.apply', subject_id: a.key.id, detail: hash }])
+    expect(await data.verifyAudit(db, org.id as string)).toMatchObject({ ok: true, rows: 1 })
+    for (const table of ['kyb_records', 'wallets', 'sessions', 'enrolment_tickets', 'approvals']) expect(await count(table, org.id as string), table).toBe(0)
+    const session = await signIn(a.key)
+    expect(session.status).toBe(200)
+    expect((await call('GET', '/api/me', { cookie: session.cookie })).body).toMatchObject({ organisation: { id: org.id, name: 'Alder Custody S.A.', kind: 'institution', state: 'unverified' }, seat: { id: a.seat, role: 'owner', keys: 1 } })
+    // The same intent again makes nothing, also once the first organisation is archived: its seat and passkey exist.
+    const rows = await snapshot()
+    expect((await checkDns(a.intent)).body).toEqual({ error: 'domain_taken' })
+    await db.prepare(`UPDATE organisations SET state = 'archived' WHERE id = ?`).bind(org.id).run()
+    const archived = await snapshot()
+    expect((await checkDns(a.intent)).body).toEqual({ error: 'not_stored' })
+    expect(await snapshot()).toBe(archived)
+    await db.prepare(`UPDATE organisations SET state = 'unverified' WHERE id = ?`).bind(org.id).run()
+    expect(await snapshot()).toBe(rows)
+  })
+
+  it('A3: one organisation per domain among those that are not archived, also for two checks at the same instant; the database says so itself', async () => {
+    const one = 'alder-one.example'
+    const [a, b, c] = [await applyFor(one), await applyFor(one), await applyFor(one)]
+    for (const x of [a, b, c]) publish(x.body.record)
+    // b's check lands just before a's batch: a must make nothing.
+    expect((await checkDns(a.intent, { env: racing(() => checkDns(b.intent)) as Env })).body).toEqual({ error: 'domain_taken' })
+    expect((await db.prepare('SELECT id FROM organisations WHERE email_domain = ?').bind(one).all()).results).toHaveLength(1)
+    expect(await row('SELECT seat_id FROM credentials WHERE id = ?', a.key.id)).toBeNull()
+    expect((await checkDns(c.intent)).body).toEqual({ error: 'domain_taken' })
+    const insert = (state: string) => db.prepare(`INSERT INTO organisations (id, kind, name, state, email_domain, created_at) VALUES (?, 'partner', 'Copy', ?, 'alder-one.example', ?)`).bind(data.randomId(), state, now).run()
+    await expect(insert('unverified')).rejects.toThrow(/UNIQUE/)
+    await expect(insert('active')).rejects.toThrow(/UNIQUE/)
+    for (const state of ['frozen', 'active']) {
+      await db.prepare('UPDATE organisations SET state = ? WHERE email_domain = ?').bind(state, one).run()
+      expect((await checkDns(c.intent)).body, state).toEqual({ error: 'domain_taken' })
+    }
+    // A refused application is archived (below) and frees its domain.
+    await db.prepare(`UPDATE organisations SET state = 'archived' WHERE email_domain = ?`).bind(one).run()
+    expect((await checkDns(c.intent)).body).toEqual({ state: 'unverified' })
+    expect((await db.prepare('SELECT state FROM organisations WHERE email_domain = ? ORDER BY state').bind(one).all()).results).toEqual([{ state: 'archived' }, { state: 'unverified' }])
+    // A subdomain is another domain.
+    expect((await applied(`eu.${one}`)).domain).toBe(`eu.${one}`)
+  })
+
+  it('A3: a backstop of 20 new organisations per day', async () => {
+    for (let i = 0; i < 19; i++) {
+      await db.prepare(`INSERT INTO organisations (id, kind, name, state, email_domain, domain_verified_at, created_at) VALUES (?, 'partner', 'Filler', 'unverified', ?, ?, ?)`).bind(data.randomId(), `filler${i}-${domains}.example`, now, now).run()
+    }
+    await applied() // the 20th
+    const late = await applyFor()
+    publish(late.body.record)
+    const rows = await snapshot()
+    expect((await checkDns(late.intent)).status).toBe(429)
+    expect((await checkDns(late.intent)).body).toEqual({ error: 'too_many' })
+    expect(await snapshot()).toBe(rows)
+    now += DAY - MIN
+    expect((await checkDns(late.intent)).body).toEqual({ error: 'too_many' })
+    now += MIN // 19 of them are a day old now
+    expect((await checkDns(late.intent)).body).toEqual({ state: 'unverified' })
+    await db.prepare(`DELETE FROM organisations WHERE name = 'Filler'`).run()
+  })
+
+  // ---- A5: the organisation's state decides what a session reaches ----
+
+  const EARLY = [
+    'GET /api/me', 'GET /api/org', 'POST /api/sessions/:id/revoke', 'POST /api/signout', 'POST /api/stepup/start', 'POST /api/stepup/finish',
+    'POST /api/passkeys/start', 'POST /api/passkeys/finish', 'POST /api/passkeys/:id/revoke',
+    'POST /api/tickets', 'POST /api/tickets/:id/confirm/start', 'POST /api/tickets/:id/confirm', 'POST /api/tickets/:id/cancel',
+    'POST /api/support/ask', 'GET /api/onboarding', 'POST /api/onboarding/wallet', 'POST /api/onboarding/submit',
+  ]
+  it('A5: an unverified organisation reaches the rows marked for it and no other, for every role; a frozen or archived one reaches nothing but its sign-out', async () => {
+    expect(routes.filter((r) => r.unverified).map((r) => `${r.method} ${r.path}`).sort()).toEqual([...EARLY].sort())
+    expect(routes.filter((r) => r.unverified && r.roles === 'public')).toEqual([])
+    const o = await owner()
+    const people: Record<string, Holder> = { owner: o }
+    for (const role of ['admin', 'trader', 'approver', 'compliance', 'viewer']) people[role] = await colleague(o, role)
+    const gated = routes.filter((r) => r.roles !== 'public')
+    const ask = (r: (typeof routes)[number], m: Holder) => call(r.method, r.path.replace(':id', '0'.repeat(32)), { cookie: m.cookie })
+    const setState = (state: string) => db.prepare('UPDATE organisations SET state = ? WHERE id = ?').bind(state, o.orgId).run()
+    await setState('unverified')
+    for (const route of gated.filter((r) => r.path !== '/api/signout')) {
+      for (const [role, m] of Object.entries(people)) {
+        const answer = await ask(route, m)
+        expect(answer.status === 403 && answer.body.error === 'unverified', `${role} ${route.method} ${route.path}`).toBe(!route.unverified)
+        // A marked row keeps its own rule: the role first.
+        if (route.unverified) expect(answer.status === 403 && answer.body.error === 'forbidden', `${role} ${route.path}`).toBe(!(route.roles as string[]).includes(role))
+      }
+    }
+    expect((await call('GET', '/api/me', { cookie: o.cookie })).body.organisation.state).toBe('unverified')
+    for (const [state, error] of [['frozen', 'org_frozen'], ['archived', 'org_closed']]) {
+      await setState(state)
+      for (const route of gated.filter((r) => r.path !== '/api/signout')) {
+        for (const [role, m] of Object.entries(people)) expect((await ask(route, m)).body, `${state} ${role} ${route.method} ${route.path}`).toEqual({ error })
+      }
+      expect((await signIn((o as unknown as { key: Key }).key)).status).toBe(401) // no new session either
+    }
+    // The public routes carry no session and are not gated.
+    expect((await call('POST', '/api/signin/start', { cookie: o.cookie })).status).toBe(200)
+    // The sign-out works in every state, and ends the session.
+    const out = Object.values(people)
+    for (const [i, state] of ['archived', 'frozen', 'unverified', 'active'].entries()) {
+      await setState(state)
+      expect((await post('/api/signout', out[i])).status, state).toBe(200)
+      await setState('active')
+      expect((await call('GET', '/api/me', { cookie: out[i].cookie })).status, state).toBe(401)
+    }
+    expect((await call('GET', '/api/me', { cookie: out[4].cookie })).body.organisation.state).toBe('active')
+  })
+
+  it('A5: what an unverified organisation is for: a second passkey, a colleague invited and enrolled, Support, and its own page', async () => {
+    const a = await applied()
+    expect((await nameWallet(a, accounts[0].address)).body).toEqual({ error: 'second_key_required' })
+    expect((await submit(a)).body).toEqual({ error: 'second_key_required' })
+    expect((await addKey(a)).status).toBe(200)
+    const viewer = await ceremony(a, { displayName: 'Vera Lindqvist', role: 'viewer' })
+    expect(viewer.state).toBe('active')
+    expect((await signIn(viewer.key)).status).toBe(200)
+    expect((await call('GET', '/api/org', { cookie: a.cookie })).body.members).toHaveLength(2)
+    expect((await call('POST', '/api/support/ask', { cookie: a.cookie, body: { question: 'how do roles work' } })).body).toEqual({ handover: true })
+    for (const [method, path] of [['GET', '/api/audit'], ['GET', '/api/readiness'], ['POST', '/api/wallets/intent'], ['POST', '/api/policy'], ['POST', `/api/members/${viewer.seatId}/freeze`], ['POST', '/api/audit/export']]) {
+      expect((await call(method, path, { cookie: a.cookie })).body, path).toEqual({ error: 'unverified' })
+    }
+    // A wallet link made for another state of things is refused by its own commit too.
+    expect(await count('wallets', a.orgId)).toBe(0)
+  })
+
+  // ---- A6: activation by the recovery wallet ----
+
+  it('A6: the Owner names the wallet and gets the server\'s own text: the fourth action, the first Owner\'s passkey hash and three words; nothing is written', async () => {
+    const a = await applicantWithTwoKeys()
+    const rows = await snapshot([...TABLES, COUNTER])
+    const asked = await nameWallet(a, accounts[0].address.toLowerCase())
+    expect(asked.status).toBe(200)
+    expect(await snapshot([...TABLES, COUNTER])).toBe(rows)
+    const f = fieldsOf<ActivateFields>(asked.body.intent)
+    const first = (await row<{ public_key: string }>('SELECT public_key FROM credentials WHERE id = ?', a.key.id))!
+    const hash = await credentialHash(a.key.id, first.public_key)
+    // The words: the recipe of every phrase, purpose "activation", with a nonce that is a MAC over organisation and passkey.
+    const nonce = Array.from(fromBase64Url((await seal(testEnv.CHALLENGE_KEY, 'activation-phrase', { org: a.orgId, credential: a.key.id })).split('.')[1]).subarray(0, 16), (b) => b.toString(16).padStart(2, '0')).join('')
+    const words = await phraseFor({ site: 'localhost', orgId: a.orgId, seatId: a.seatId, role: 'owner', purpose: 'activation', credentialHash: hash, nonce })
+    expect(f).toEqual({
+      kind: 'activate', org: a.orgId, chainId: CHAIN, wallet: accounts[0].address, label: 'Treasury', custodian: false, phrase: words.join(' '), site: 'localhost',
+      credentialHash: `0x${Array.from(hash, (b) => b.toString(16).padStart(2, '0')).join('')}`, nonce: expect.stringMatching(/^0x[0-9a-f]{64}$/), issuedAt: START / 1000, expiresAt: START / 1000 + 7 * 24 * 3600,
+    })
+    expect(asked.body).toMatchObject({ link: `${SIGN}/sign/#${asked.body.intent}`, phrase: words, expiresAt: START + 7 * DAY })
+    for (const word of words) expect(WORDS).toContain(word)
+    // The same words on the Owner's page, whoever looks and whenever; the second passkey has others.
+    const view = await call('GET', '/api/onboarding', { cookie: a.cookie })
+    expect(view.body.first).toEqual({ phrase: words, credentialHash: f.credentialHash, active: true })
+    expect(fieldsOf<ActivateFields>((await nameWallet(a, accounts[1].address)).body.intent)).toMatchObject({ phrase: f.phrase, credentialHash: f.credentialHash })
+    expect(typedActivate(f)).toMatchObject({ primaryType: 'Proof', domain: { name: 'Ophis Business', version: '1', chainId: CHAIN }, message: { action: 'Activate this organisation and confirm its first Owner passkey', organisationId: a.orgId, wallet: accounts[0].address, credentialHash: f.credentialHash, phrase: f.phrase } })
+    for (const [body, error] of [[{ chainId: 5 }, 'chain_invalid'], [{ address: '0x12' }, 'address_invalid'], [{ label: '<b>' }, 'label_invalid'], [{ custodian: 'yes' }, 'invalid']] as const) {
+      expect((await nameWallet(a, accounts[0].address, body)).body, error).toEqual({ error })
+    }
+    // Only for an organisation that is not yet verified, and only one that applied.
+    const o = await owner()
+    expect((await nameWallet(o, accounts[0].address)).body).toEqual({ error: 'not_unverified' })
+    await db.prepare(`UPDATE organisations SET state = 'active' WHERE id = ?`).bind(a.orgId).run()
+    expect((await nameWallet(a, accounts[0].address)).body).toEqual({ error: 'not_unverified' })
+  })
+
+  it('A6: the wallet signs exactly these fields; a valid proof stores the wallet as pending with its proof, once, with no approval request', async () => {
+    const a = await applicantWithTwoKeys()
+    const asked = await nameWallet(a, accounts[0].address)
+    const intent = asked.body.intent as string
+    const f = fieldsOf<ActivateFields>(intent)
+    const rows = await snapshot()
+    const changes: Partial<Parameters<typeof typedProof>[0]>[] = [
+      { kind: 'replace' }, { kind: 'override' }, { kind: 'cancel' }, { site: 'evil.example' }, { organisationId: '0'.repeat(32) }, { wallet: accounts[1].address }, { chainId: 1 },
+      { credentialHash: `0x${'11'.repeat(32)}` }, { phrase: WRONG }, { nonce: `0x${'22'.repeat(32)}` }, { issuedAt: f.issuedAt + 1 }, { expiresAt: f.expiresAt + 1 },
+    ]
+    for (const change of changes) {
+      expect((await prove(intent, await accounts[0].signTypedData(typedActivate(f, change)))).body, JSON.stringify(change)).toEqual({ error: 'signature_rejected' })
+      await uncount() // 10 proof checks per organisation per hour, as for every proof (section B)
+    }
+    expect((await prove(intent, await accounts[1].signTypedData(typedActivate(f)))).body).toEqual({ error: 'signature_rejected' })
+    // A Link message with the same fields is not this Proof.
+    expect((await prove(intent, await accounts[0].signTypedData(typedLink({ chainId: CHAIN, site: f.site, organisationId: f.org, wallet: f.wallet, nonce: f.nonce, issuedAt: f.issuedAt, expiresAt: f.expiresAt }) as never))).body).toEqual({ error: 'signature_rejected' })
+    // The MAC and the expiry come first, as for every proof.
+    expect((await prove(resealed(intent, { wallet: accounts[1].address }), await accounts[1].signTypedData(typedActivate({ ...f, wallet: accounts[1].address })))).body).toEqual({ error: 'intent_invalid' })
+    expect((await prove(await seal(testEnv.CHALLENGE_KEY, 'wallet-intent', f), '0x')).body).not.toEqual({ state: 'stored' })
+    expect(await snapshot()).toBe(rows)
+    const signature = await accounts[0].signTypedData(typedActivate(f))
+    chain.calls = []
+    expect((await prove(intent, signature)).body).toEqual({ state: 'stored' })
+    const wallet = (await row<Record<string, unknown>>('SELECT * FROM wallets WHERE org_id = ?', a.orgId))!
+    expect(wallet).toMatchObject({ chain_id: CHAIN, address: accounts[0].address.toLowerCase(), kind: 'single_key', label: 'Treasury', state: 'pending', proof_nonce: f.nonce, proof_digest: hashTypedData(typedActivate(f)), proof_signature: signature, proof_checked_at: now, anchor: null, snapshot: null })
+    expect(await count('approvals', a.orgId)).toBe(0)
+    expect(await row('SELECT actor_kind, actor_id, action, subject_id, detail FROM audit_log WHERE org_id = ? ORDER BY seq DESC', a.orgId)).toEqual({ actor_kind: 'anchor', actor_id: wallet.id, action: 'activation.proof', subject_id: wallet.id, detail: 'single_key' })
+    expect(chain.calls).toEqual([]) // a key's signature asks no endpoint
+    // The organisation's list of wallets does not show it: it is not linked. The onboarding page does.
+    expect(await walletsOf(a)).toEqual([])
+    expect((await call('GET', '/api/onboarding', { cookie: a.cookie })).body.wallet).toEqual({ chainId: CHAIN, chain: 'OP Mainnet', address: accounts[0].address, kind: 'single_key', label: 'Treasury', inForce: false })
+    const stored = await snapshot()
+    expect((await prove(intent, signature)).body).toEqual({ error: 'proof_used' })
+    expect(await snapshot()).toBe(stored)
+    now = START + 7 * DAY
+    expect((await prove((await nameWallet(await again(a), accounts[2].address)).body.intent, '0x')).status).not.toBe(410)
+    expect((await prove(intent, signature)).body).toEqual({ error: 'intent_expired' })
+  })
+
+  it('A6: a later proof replaces the earlier wallet; a custodian is a declaration, a Safe a genuine one whose answer both endpoints give; an organisation that is no longer unverified, or whose first passkey is gone, stores nothing', async () => {
+    const a = await applicantWithTwoKeys()
+    expect((await activation(a, accounts[0])).body).toEqual({ state: 'stored' })
+    expect((await activation(a, accounts[1], { custodian: true })).body).toEqual({ state: 'stored' })
+    expect((await db.prepare('SELECT address, kind, state FROM wallets WHERE org_id = ? ORDER BY rowid').bind(a.orgId).all()).results)
+      .toEqual([{ address: accounts[0].address.toLowerCase(), kind: 'single_key', state: 'unlinked' }, { address: accounts[1].address.toLowerCase(), kind: 'custodian', state: 'pending' }])
+    // A Safe signs onchain: the proof is the empty signature, and both endpoints must say yes.
+    const safe = safeAt(accounts[4].address)
+    const asked = await nameWallet(a, accounts[4].address)
+    chain.twist = (url, method, result) => (url === RPC2 && method === 'eth_call' ? undefined : result)
+    expect((await prove(asked.body.intent, '0x')).body).toEqual({ error: 'signature_rejected' })
+    chain.twist = (_url, _method, result) => result
+    expect((await prove(asked.body.intent, '0x')).body).toEqual({ state: 'stored' })
+    expect(await row(`SELECT kind, snapshot FROM wallets WHERE org_id = ? AND state = 'pending'`, a.orgId)).toEqual({ kind: 'safe', snapshot: JSON.stringify({ threshold: 2, owners: safe.owners, modules: [], handler: true }) })
+    expect(await count('wallets', a.orgId)).toBe(3)
+    // The same address again: the earlier row is history, so the one live row per address stands.
+    expect((await activation(a, accounts[1])).body).toEqual({ state: 'stored' })
+    // Held intents, proved after the organisation changed.
+    const held = await nameWallet(a, accounts[2].address)
+    const sign = (intent: string) => accounts[2].signTypedData(typedActivate(fieldsOf<ActivateFields>(intent)))
+    for (const state of ['active', 'frozen', 'archived']) {
+      await db.prepare('UPDATE organisations SET state = ? WHERE id = ?').bind(state, a.orgId).run()
+      const rows = await snapshot()
+      expect((await prove(held.body.intent, await sign(held.body.intent))).body, state).toEqual({ error: 'not_unverified' })
+      expect(await snapshot()).toBe(rows)
+    }
+    await db.prepare(`UPDATE organisations SET state = 'unverified' WHERE id = ?`).bind(a.orgId).run()
+    // The first passkey is revoked: the wallet would confirm a passkey that no longer signs in.
+    expect((await addKey(a)).status).toBe(200)
+    expect((await post(`/api/passkeys/${a.key.id}/revoke`, a)).status).toBe(200)
+    const b = await again({ ...a, key: a.key2 })
+    const rows = await snapshot()
+    expect((await prove(held.body.intent, await sign(held.body.intent))).body).toEqual({ error: 'first_passkey_gone' })
+    expect(await snapshot()).toBe(rows)
+    expect((await nameWallet(b, accounts[3].address)).body).toEqual({ error: 'first_passkey_gone' })
+    expect((await call('GET', '/api/onboarding', { cookie: b.cookie })).body).toMatchObject({ first: { active: false }, missing: 'proof_or_owner' })
+  })
+
+  // ---- A7: submit for review ----
+
+  it('A7: "Submit for review" needs two passkeys on the Owner seat, and the activation proof or a second Owner with two passkeys', async () => {
+    const a = await applicantWithTwoKeys()
+    const rows = await snapshot()
+    expect((await submit(a)).body).toEqual({ error: 'proof_or_owner' })
+    expect(await snapshot()).toBe(rows)
+    expect((await call('GET', '/api/onboarding', { cookie: a.cookie })).body).toMatchObject({ missing: 'proof_or_owner', review: { status: 'not_submitted', since: null, reason: null }, record: null })
+    expect((await activation(a)).body).toEqual({ state: 'stored' })
+    expect((await call('GET', '/api/onboarding', { cookie: a.cookie })).body.missing).toBeNull()
+    expect((await submit(a)).body).toEqual({ state: 'under_review' })
+    expect(await orgRow(a.orgId)).toEqual({ state: 'unverified', review_at: now })
+    expect(await row('SELECT actor_kind, actor_id, session_id, action, subject_id FROM audit_log WHERE org_id = ? ORDER BY seq DESC', a.orgId)).toEqual({ actor_kind: 'seat', actor_id: a.seatId, session_id: a.sessionId, action: 'review.submit', subject_id: a.orgId })
+    expect((await call('GET', '/api/onboarding', { cookie: a.cookie })).body.review).toEqual({ status: 'under_review', since: now, reason: null })
+    expect((await submit(a)).body).toEqual({ error: 'already_submitted' })
+    // A new proof is a new thing to review: the organisation is no longer submitted.
+    expect((await activation(a, accounts[1])).body).toEqual({ state: 'stored' })
+    expect(await orgRow(a.orgId)).toEqual({ state: 'unverified', review_at: null })
+    // The proof counts while the passkey it confirmed is active. The second key alone is not two.
+    expect((await addKey(a)).status).toBe(200)
+    expect((await post(`/api/passkeys/${a.key.id}/revoke`, a)).status).toBe(200)
+    expect((await submit(await again({ ...a, key: a.key2 }))).body).toEqual({ error: 'proof_or_owner' })
+    // An active organisation has nothing to submit.
+    expect((await submit(await owner())).body).toEqual({ error: 'not_unverified' })
+  })
+
+  it('A7: without a wallet, a second Owner with two passkeys; the first Owner\'s seat needs its two as well, read inside the commit', async () => {
+    const a = await applicantWithTwoKeys()
+    const second = await ceremony(a, { displayName: 'Second Owner', role: 'owner' })
+    expect(second.state).toBe('wait') // nobody else holds a key role: 72 hours
+    now += WAIT + MIN
+    expect((await again(second)).cookie).not.toBe('')
+    expect((await submit(await again(a))).body).toEqual({ error: 'proof_or_owner' }) // the second Owner holds one passkey
+    expect((await addKey(second)).status).toBe(200)
+    // The second Owner submits while the first holds one passkey: the router's gate reads the caller's seat, the commit the first Owner's.
+    expect((await post(`/api/passkeys/${a.key2.id}/revoke`, a)).status).toBe(200)
+    expect((await submit(second)).body).toEqual({ error: 'second_key' })
+    expect((await addKey(a)).status).toBe(200)
+    // The Owner is lowered at the same instant: the role is read inside the commit.
+    // (A sign-in of the first Owner takes the next audit number, as the commit of a real role change would.)
+    const lowered = racing(async () => {
+      await db.prepare(`UPDATE seats SET role = 'admin' WHERE id = ?`).bind(second.seatId).run()
+      await signIn(a.key)
+    }) as Env
+    expect((await call('POST', '/api/onboarding/submit', { cookie: second.cookie, env: lowered })).body).toEqual({ error: 'forbidden' })
+    await db.prepare(`UPDATE seats SET role = 'owner' WHERE id = ?`).bind(second.seatId).run()
+    expect((await submit(second)).body).toEqual({ state: 'under_review' })
+  })
+
+  // ---- A8: the operator ----
+
+  it('A8: the operator\'s routes answer on their own hostname only, in the local environment only, and to the token only', async () => {
+    const a = await underReview()
+    expect(onboarding.operatorRoutes.map((r) => `${r.method} ${r.path}`)).toEqual([
+      'GET /api/operator/organisations', 'POST /api/operator/organisations/:id/decision', 'POST /api/operator/organisations/:id/freeze', 'POST /api/operator/organisations/:id/unfreeze',
+    ])
+    expect(OP).toBe('http://operator.localhost:8787')
+    const rows = await snapshot()
+    for (const [method, path] of opPaths(a.orgId)) {
+      const body = path.endsWith('decision') ? APPROVE : {}
+      // The console's and the signing page's hostnames, with the token and an Owner's session; any other name.
+      for (const host of [SITE.origin, SIGN, 'http://operator.localhost:8788', 'https://operator.localhost:8787', 'http://operator.evil.example']) expect((await op(method, path, { host, body, cookie: a.cookie })).status, `${host} ${path}`).toBe(404)
+      // Outside the local environment: 404, whatever the token.
+      const request = () => new Request(OP + path, { method, headers: { 'sec-fetch-site': 'same-origin', authorization: `Bearer ${TOKEN}`, origin: OP, 'content-type': 'application/json' }, body: method === 'POST' ? JSON.stringify(body) : undefined })
+      for (const ENVIRONMENT of ['production', 'staging', '']) expect((await onboarding.operator(request(), { ...opEnv, ENVIRONMENT }, () => now, configFor('local'), {})).status, ENVIRONMENT).toBe(404)
+      // The token: missing, wrong, another scheme, a prefix, none configured, a short one configured.
+      for (const authorization of [null, 'Bearer wrong', `Basic ${TOKEN}`, TOKEN, `Bearer ${TOKEN.slice(0, -1)}`, `Bearer ${TOKEN}x`, 'Bearer ', `bearer ${TOKEN}`]) {
+        expect((await op(method, path, { body, headers: { authorization } })).body, `${authorization} ${path}`).toEqual({ error: 'operator_token' })
+      }
+      expect((await op(method, path, { body, env: testEnv })).body).toEqual({ error: 'operator_token' })
+      expect((await op(method, path, { body, env: { ...testEnv, OPERATOR_TOKEN: '' } as unknown as Env, headers: { authorization: 'Bearer ' } })).body).toEqual({ error: 'operator_token' })
+      expect((await op(method, path, { body, env: { ...testEnv, OPERATOR_TOKEN: 'short' } as unknown as Env, headers: { authorization: 'Bearer short' } })).body).toEqual({ error: 'operator_token' })
+      // The request checks of every host.
+      for (const site of ['same-site', 'cross-site', 'none', null]) expect((await op(method, path, { body, headers: { 'sec-fetch-site': site } })).body, `${site} ${path}`).toEqual({ error: 'cross_site' })
+      if (method === 'POST') {
+        for (const origin of ['https://evil.example', SITE.origin, SIGN, 'null', null]) expect((await op(method, path, { body, headers: { origin } })).body, `${origin} ${path}`).toEqual({ error: 'bad_origin' })
+        expect((await op(method, path, { body, headers: { 'content-type': 'text/plain' } })).status).toBe(415)
+      }
+      expect((await op(method === 'GET' ? 'POST' : 'GET', path, { body })).status).toBe(404)
+    }
+    expect(await snapshot()).toBe(rows)
+    // The hostname serves nothing else: no page, no route of the console or of the signing page, no session.
+    for (const [method, path] of [['GET', '/'], ['GET', '/apply'], ['GET', '/sign/'], ['GET', '/api/me'], ['POST', '/api/signin/start'], ['POST', '/api/proof'], ['GET', '/api/operator'], ['GET', '/api/onboarding']]) {
+      expect((await op(method, path, { cookie: a.cookie })).status, path).toBe(404)
+    }
+    const listed = await op('GET', '/api/operator/organisations')
+    expect(listed.status).toBe(200)
+    expect(listed.headers.get('cache-control')).toBe('no-store')
+    expect(listed.headers.get('content-security-policy')).toContain("default-src 'none'")
+    expect([...listed.headers.keys()].filter((name) => name.startsWith('access-control-'))).toEqual([])
+    expect(onboardingSource).toContain(`if (env.ENVIRONMENT !== 'local') return fail(404, 'not_found')`)
+  })
+
+  it('A8: the list holds what is under review, with what the operator compares: the domain, the first Owner\'s words and passkey hash, the recovery wallet, its kind and colour', async () => {
+    const a = await applicantWithTwoKeys('alder-list.example')
+    const mine = async () => ((await op('GET', '/api/operator/organisations')).body.organisations as { id: string }[]).filter((o) => o.id === a.orgId)
+    expect(await mine()).toEqual([]) // not submitted
+    const safe = safeAt(accounts[4].address)
+    const asked = await nameWallet(a, accounts[4].address)
+    expect((await prove(asked.body.intent, '0x')).body).toEqual({ state: 'stored' })
+    expect((await submit(a)).body).toEqual({ state: 'under_review' })
+    const view = (await call('GET', '/api/onboarding', { cookie: a.cookie })).body
+    expect(await mine()).toEqual([{
+      id: a.orgId, legalName: 'Alder Custody S.A.', kind: 'institution', country: 'LU', registration: 'B123456', domain: 'alder-list.example', submittedAt: now,
+      phrase: view.first.phrase, credentialHash: view.first.credentialHash, missing: null,
+      wallet: { chainId: CHAIN, chain: 'OP Mainnet', address: accounts[4].address, kind: 'safe', label: 'Treasury', inForce: false, threshold: 2, owners: 3, colour: { level: 'green', why: null } },
+    }])
+    // The colour is read on the chain now: a module added since the proof shows.
+    safe.modules = [accounts[3].address.toLowerCase()]
+    expect((await mine())[0]).toMatchObject({ wallet: { colour: { level: 'amber' } } })
+    expect((await activation(a, accounts[0])).body).toEqual({ state: 'stored' }) // a new proof: no longer under review
+    expect(await mine()).toEqual([])
+    expect((await submit(a)).body).toEqual({ state: 'under_review' })
+    expect((await mine())[0]).toMatchObject({ wallet: { address: accounts[0].address, kind: 'single_key', colour: { level: 'amber' } } })
+    // An organisation that is active, frozen or archived is not under review.
+    expect((await decideOn(a.orgId)).body).toEqual({ state: 'active' })
+    expect(await mine()).toEqual([])
+    // No name of a person and no address of a member is in the list.
+    const text = JSON.stringify((await op('GET', '/api/operator/organisations')).body)
+    for (const personal of ['Maren Okafor', 'ops@']) expect(text).not.toContain(personal)
+  })
+
+  it('A8: a decision is codes from fixed lists, a reference, a hash and a date; it is recorded only for an organisation under review', async () => {
+    const a = await underReview()
+    const early = await applicantWithTwoKeys()
+    expect((await activation(early, accounts[1])).body).toEqual({ state: 'stored' })
+    const o = await owner()
+    const rows = await snapshot()
+    const bad: Record<string, unknown>[] = [
+      { ...APPROVE, decision: 'activate' }, { ...APPROVE, decision: undefined }, { ...APPROVE, tier: 'gold' }, { ...APPROVE, source: 'a phone call' }, { ...APPROVE, source: undefined },
+      { ...APPROVE, evidenceRef: undefined }, { ...APPROVE, evidenceRef: '<script>' }, { ...APPROVE, evidenceRef: 'x'.repeat(121) }, { ...APPROVE, evidenceSha256: undefined }, { ...APPROVE, evidenceSha256: 'AB'.repeat(32) },
+      { ...APPROVE, evidenceSha256: 'ab'.repeat(31) }, { ...APPROVE, nextReview: undefined }, { ...APPROVE, nextReview: '2026-11-10' }, { ...APPROVE, nextReview: 'next year' }, { ...APPROVE, nextReview: 1830000000000 },
+      { ...APPROVE, reason: 'details_differ' }, { ...MORE, reason: undefined }, { ...MORE, reason: 'They did not answer the phone' }, { ...MORE, nextReview: '2027-11-11' }, { ...MORE, decision: 'refuse', reason: 'no' },
+      { ...MORE, evidenceSha256: 'zz' }, { ...MORE, evidenceRef: 7 },
+    ]
+    for (const body of bad) expect((await decideOn(a.orgId, body)).body, JSON.stringify(body)).toEqual({ error: 'invalid' })
+    expect((await decideOn('not-an-id')).body).toEqual({ error: 'invalid' })
+    expect((await decideOn(data.randomId())).status).toBe(404)
+    // Not under review: never submitted, active, and one whose decision was already made.
+    for (const id of [early.orgId, o.orgId]) for (const body of [APPROVE, MORE, { ...MORE, decision: 'refuse' }]) expect((await decideOn(id, body)).body, body.decision).toEqual({ error: 'not_under_review' })
+    expect(await snapshot()).toBe(rows)
+    expect(onboarding.REASONS).toEqual(['entity_not_found', 'details_differ', 'authority_unclear', 'wallet_differs', 'declaration_needed', 'not_eligible'])
+    expect(onboarding.SOURCES).toEqual(['registry', 'gleif', 'supervisor_register', 'declaration'])
+    expect((await decideOn(a.orgId, MORE)).body).toEqual({ state: 'unverified' })
+    expect((await decideOn(a.orgId, MORE)).body).toEqual({ error: 'not_under_review' })
+  })
+
+  it('A8: approve writes the KYB row and a row of the operator in the client\'s own log, makes the organisation active and puts the recovery wallet in force at once', async () => {
+    const a = await underReview('alder-approve.example')
+    const before = await snapshot(['seats', 'credentials', 'sessions'])
+    // Fields no route of the operator reads: a passkey, a member, a wallet address.
+    expect((await decideOn(a.orgId, { ...APPROVE, address: accounts[3].address, wallet: accounts[3].address, credential: 'x', seat: 'y', role: 'owner', legalName: 'Other', domain: 'evil.example' })).body).toEqual({ state: 'active' })
+    expect(await snapshot(['seats', 'credentials', 'sessions'])).toBe(before)
+    expect(await orgRow(a.orgId)).toEqual({ state: 'active', review_at: null })
+    const kyb = (await db.prepare('SELECT * FROM kyb_records WHERE org_id = ?').bind(a.orgId).all<Record<string, unknown>>()).results
+    expect(kyb).toEqual([expect.objectContaining({
+      legal_name: 'Alder Custody S.A.', registration_number: 'B123456', country: 'LU', tier: 'standard', source: 'registry', evidence_ref: 'LBR extract B123456', evidence_sha256: 'ab'.repeat(32),
+      decision: 'approved', decided_at: now, recheck_at: Date.UTC(2027, 10, 11), reason: null, created_at: now,
+    })])
+    expect(await row('SELECT actor_kind, actor_id, session_id, action, subject_id, detail FROM audit_log WHERE org_id = ? ORDER BY seq DESC', a.orgId))
+      .toEqual({ actor_kind: 'operator', actor_id: null, session_id: null, action: 'kyb.approve', subject_id: kyb[0].id, detail: 'ab'.repeat(32) })
+    expect(await data.verifyAudit(db, a.orgId)).toMatchObject({ ok: true })
+    // The wallet: linked, in force now, with no 72 hours. Only its address as the Owner named it.
+    expect(await row('SELECT address, state, anchor, anchor_effective_at AS at, linked_at FROM wallets WHERE org_id = ?', a.orgId)).toEqual({ address: accounts[0].address.toLowerCase(), state: 'linked', anchor: 'current', at: now, linked_at: now })
+    expect(await walletsOf(a)).toMatchObject([{ address: accounts[0].address, state: 'linked', recovery: 'in_force', recoveryAt: now }])
+    expect(chain.calls).toEqual([]) // a key's proof is checked again without an endpoint
+    // The client reads the operator's row in its own log, and now reaches every route of its role.
+    const log = await call('GET', '/api/audit', { cookie: a.cookie })
+    expect(log.body.rows[0]).toMatchObject({ event: 'Ophis operator: verification approved, organisation active', who: 'System' })
+    expect(log.body.chain).toMatchObject({ ok: true })
+    expect((await call('GET', '/api/readiness', { cookie: a.cookie })).body).toMatchObject({ sheet: { wallet: { address: accounts[0].address } } })
+    expect((await call('GET', '/api/onboarding', { cookie: a.cookie })).body).toMatchObject({
+      missing: null, wallet: { inForce: true }, review: { status: 'verified', since: null, reason: null },
+      record: { legalName: 'Alder Custody S.A.', registration: 'B123456', country: 'LU', tier: 'standard', source: 'registry', evidenceSha256: 'ab'.repeat(32), decision: 'approved', decidedAt: now, nextReview: Date.UTC(2027, 10, 11), reason: null },
+    })
+    expect((await call('GET', '/api/onboarding', { cookie: a.cookie })).body.record).not.toHaveProperty('evidenceRef')
+    expect((await call('GET', '/api/me', { cookie: a.cookie })).body.organisation.state).toBe('active')
+    // The last-Owner recovery works from this wallet at once.
+    expect((await requestRecovery(a.orgId)).proved.body).toMatchObject({ state: 'waiting' })
+  })
+
+  it('A8: approve needs A7 again, and checks the wallet again: a contract wallet on both endpoints, a Safe as it is now', async () => {
+    // A7 no longer holds: the Owner revoked a passkey after submitting.
+    const a = await underReview()
+    expect((await post(`/api/passkeys/${a.key2.id}/revoke`, a)).status).toBe(200)
+    let rows = await snapshot()
+    expect((await decideOn(a.orgId)).body).toEqual({ error: 'not_ready' })
+    expect(await snapshot()).toBe(rows)
+    expect((await op('GET', '/api/operator/organisations')).body.organisations.find((o: { id: string }) => o.id === a.orgId)).toMatchObject({ missing: 'second_key' })
+    expect((await decideOn(a.orgId, MORE)).body).toEqual({ state: 'unverified' }) // the other decisions do not need it
+    // A Safe that signed onchain.
+    const b = await applicantWithTwoKeys()
+    const SAFE = accounts[4].address
+    const safe = () => chain.contracts.get(SAFE.toLowerCase())!
+    safeAt(SAFE)
+    expect((await prove((await nameWallet(b, SAFE)).body.intent, '0x')).body).toEqual({ state: 'stored' })
+    expect((await submit(b)).body).toEqual({ state: 'under_review' })
+    rows = await snapshot()
+    const refusals: [string, () => void][] = [
+      ['the Safe no longer accepts the message', () => (safe().accepts = () => false)],
+      ['one endpoint says no', () => (chain.twist = (url, method, result) => (url === RPC1 && method === 'eth_call' ? undefined : result))],
+      ['one endpoint fails', () => (chain.twist = (url, _method, result) => (url === RPC2 ? new Response('', { status: 502 }) : result))],
+      ['one endpoint is on another chain', () => (chain.twist = (url, method, result) => (url === RPC2 && method === 'eth_chainId' ? '0x1' : result))],
+      ['it is no longer a genuine Safe', () => (safe().singleton = accounts[3].address)],
+    ]
+    for (const [why, arrange] of refusals) {
+      arrange()
+      expect((await decideOn(b.orgId)).body, why).toEqual({ error: 'wallet_unreadable' })
+      expect(await snapshot(), why).toBe(rows)
+      safeAt(SAFE)
+      chain.twist = (_url, _method, result) => result
+    }
+    // The owners changed since the proof: the snapshot of the recovery wallet in force is the Safe of the approval.
+    const owners = accounts.slice(1, 4).map((x) => x.address.toLowerCase()).sort()
+    safeAt(SAFE, { owners })
+    chain.calls = []
+    expect((await decideOn(b.orgId)).body).toEqual({ state: 'active' })
+    expect(chain.calls.filter((x) => x.endsWith('eth_call')).length).toBeGreaterThanOrEqual(2)
+    expect(await row('SELECT state, anchor, snapshot FROM wallets WHERE org_id = ?', b.orgId)).toEqual({ state: 'linked', anchor: 'current', snapshot: JSON.stringify({ threshold: 2, owners, modules: [], handler: true }) })
+    expect((await call('GET', '/api/readiness', { cookie: b.cookie })).body.wallet).toMatchObject({ level: 'green' })
+    // The wallet changes between the operator's check and the commit: nothing is approved.
+    const c = await underReview()
+    const swap = racing(async () => void (await activation(c, accounts[2]))) as Env
+    expect((await decideOn(c.orgId, APPROVE, { env: { ...swap, OPERATOR_TOKEN: TOKEN } as unknown as Env })).body).toEqual({ error: 'not_under_review' })
+    expect(await orgRow(c.orgId)).toEqual({ state: 'unverified', review_at: null })
+    expect(await count('kyb_records', c.orgId)).toBe(0)
+  })
+
+  it('A8: with a second Owner and no wallet the approval sets no recovery wallet; refuse archives and frees the domain; more information sends the review back with its reason', async () => {
+    const a = await applicantWithTwoKeys('alder-refuse.example')
+    const second = await ceremony(a, { displayName: 'Second Owner', role: 'owner' })
+    now += WAIT + MIN
+    await again(second)
+    expect((await addKey(second)).status).toBe(200)
+    expect((await submit(await again(a))).body).toEqual({ state: 'under_review' })
+    // More information: a KYB row "pending" with the reason, a row in the client's log, and the Owner submits again.
+    expect((await decideOn(a.orgId, { ...MORE, reason: 'declaration_needed' })).body).toEqual({ state: 'unverified' })
+    expect(await orgRow(a.orgId)).toEqual({ state: 'unverified', review_at: null })
+    expect(await row('SELECT decision, reason, decided_at, recheck_at, evidence_sha256 FROM kyb_records WHERE org_id = ?', a.orgId)).toEqual({ decision: 'pending', reason: 'declaration_needed', decided_at: now, recheck_at: null, evidence_sha256: null })
+    expect(await row('SELECT actor_kind, action, detail FROM audit_log WHERE org_id = ? ORDER BY seq DESC', a.orgId)).toEqual({ actor_kind: 'operator', action: 'kyb.more', detail: 'declaration_needed' })
+    expect((await call('GET', '/api/onboarding', { cookie: a.cookie })).body).toMatchObject({ review: { status: 'more_information', since: null, reason: 'declaration_needed' }, record: { decision: 'pending', reason: 'declaration_needed' } })
+    expect((await submit(a)).body).toEqual({ state: 'under_review' })
+    expect((await call('GET', '/api/onboarding', { cookie: a.cookie })).body.review).toEqual({ status: 'under_review', since: now, reason: null })
+    expect((await decideOn(a.orgId)).body).toEqual({ state: 'active' })
+    expect(await count('wallets', a.orgId)).toBe(0)
+    expect((await call('GET', '/api/readiness', { cookie: a.cookie })).body).toMatchObject({ owners: { level: 'green', count: 2 }, wallet: { level: 'none' } })
+    expect((await db.prepare('SELECT decision FROM kyb_records WHERE org_id = ? ORDER BY rowid').bind(a.orgId).all()).results).toEqual([{ decision: 'pending' }, { decision: 'approved' }])
+    // Refuse.
+    const b = await underReview('alder-refuse.example'.replace('alder', 'birch'))
+    expect((await decideOn(b.orgId, { ...MORE, decision: 'refuse', reason: 'not_eligible' })).body).toEqual({ state: 'archived' })
+    expect(await orgRow(b.orgId)).toEqual({ state: 'archived', review_at: null })
+    expect(await row('SELECT decision, reason FROM kyb_records WHERE org_id = ?', b.orgId)).toEqual({ decision: 'rejected', reason: 'not_eligible' })
+    expect(await row('SELECT actor_kind, action, detail FROM audit_log WHERE org_id = ? ORDER BY seq DESC', b.orgId)).toEqual({ actor_kind: 'operator', action: 'kyb.refuse', detail: 'not_eligible' })
+    expect(await row('SELECT state, anchor FROM wallets WHERE org_id = ?', b.orgId)).toEqual({ state: 'pending', anchor: null })
+    expect((await call('GET', '/api/me', { cookie: b.cookie })).body).toEqual({ error: 'org_closed' })
+    expect((await signIn(b.key)).status).toBe(401)
+    expect((await applied(b.domain)).orgId).not.toBe(b.orgId)
+  })
+
+  it('A8: freeze and unfreeze, each a row in the client\'s log; only an active organisation is frozen, only a frozen one unfrozen', async () => {
+    const a = await underReview()
+    const freeze = (id: string, what = 'freeze') => op('POST', `/api/operator/organisations/${id}/${what}`)
+    // Unverified: an unfreeze would make it active with no review.
+    const rows = await snapshot()
+    for (const what of ['freeze', 'unfreeze']) expect((await freeze(a.orgId, what)).body, what).toEqual({ error: 'wrong_state' })
+    for (const what of ['freeze', 'unfreeze']) expect((await freeze(data.randomId(), what)).status, what).toBe(404)
+    expect((await freeze('x')).status).toBe(404)
+    expect(await snapshot()).toBe(rows)
+    expect((await decideOn(a.orgId)).body).toEqual({ state: 'active' })
+    expect((await freeze(a.orgId, 'unfreeze')).body).toEqual({ error: 'wrong_state' })
+    const before = await snapshot(['seats', 'credentials', 'sessions', 'wallets', 'kyb_records'])
+    expect((await freeze(a.orgId)).body).toEqual({ state: 'frozen' })
+    expect((await freeze(a.orgId)).body).toEqual({ error: 'wrong_state' })
+    expect(await orgRow(a.orgId)).toMatchObject({ state: 'frozen' })
+    expect((await call('GET', '/api/me', { cookie: a.cookie })).body).toEqual({ error: 'org_frozen' })
+    expect((await call('GET', '/api/onboarding', { cookie: a.cookie })).body).toEqual({ error: 'org_frozen' })
+    expect((await signIn(a.key)).status).toBe(401)
+    expect((await freeze(a.orgId, 'unfreeze')).body).toEqual({ state: 'active' })
+    expect(await snapshot(['seats', 'credentials', 'sessions', 'wallets', 'kyb_records'])).toBe(before)
+    expect((await db.prepare(`SELECT actor_kind, actor_id, action, subject_id FROM audit_log WHERE org_id = ? ORDER BY seq DESC LIMIT 2`).bind(a.orgId).all()).results).toEqual([
+      { actor_kind: 'operator', actor_id: null, action: 'organisation.unfreeze', subject_id: a.orgId }, { actor_kind: 'operator', actor_id: null, action: 'organisation.freeze', subject_id: a.orgId },
+    ])
+    const log = await call('GET', '/api/audit', { cookie: a.cookie })
+    expect(log.body.rows.slice(0, 3).map((r: { event: string }) => r.event)).toEqual(['Ophis operator: organisation unfrozen', 'Ophis operator: organisation frozen', 'Ophis operator: verification approved, organisation active'])
+    const csv = (await post('/api/audit/export', a)).body.csv as string
+    for (const event of ['Ophis operator: organisation frozen', 'Ophis operator: organisation unfrozen', 'Ophis operator: verification approved, organisation active', 'Organisation submitted for review', 'Recovery wallet signed the activation and confirmed the first Owner passkey']) expect(csv).toContain(event)
+    expect(csv).not.toContain('Unlisted event')
+    // A frozen organisation is not unfrozen by anything but this route, and an archived one by nothing.
+    await db.prepare(`UPDATE organisations SET state = 'archived' WHERE id = ?`).bind(a.orgId).run()
+    for (const what of ['freeze', 'unfreeze']) expect((await freeze(a.orgId, what)).body, what).toEqual({ error: 'wrong_state' })
+  })
+
+  // ---- the standing rules ----
+
+  it('every change of this section and its audit row succeed or fail together, and every action it writes has its words', async () => {
+    const a = await applyFor()
+    publish(a.body.record)
+    const b = await applicantWithTwoKeys()
+    const asked = await nameWallet(b, accounts[0].address)
+    const signature = await accounts[0].signTypedData(typedActivate(fieldsOf<ActivateFields>(asked.body.intent)))
+    const c = await applicantWithTwoKeys()
+    expect((await activation(c)).body).toEqual({ state: 'stored' })
+    const d = await underReview()
+    const e = await underReview()
+    expect((await decideOn(e.orgId)).body).toEqual({ state: 'active' })
+    const steps: [string, () => Promise<{ status: number }>][] = [
+      ['organisation.apply', () => checkDns(a.intent)], ['activation.proof', () => prove(asked.body.intent, signature)], ['review.submit', () => submit(c)],
+      ['kyb.approve', () => decideOn(d.orgId)], ['kyb.more', () => decideOn(d.orgId, MORE)], ['kyb.refuse', () => decideOn(d.orgId, { ...MORE, decision: 'refuse' })],
+      ['organisation.freeze', () => op('POST', `/api/operator/organisations/${e.orgId}/freeze`)],
+    ]
+    const rows = await snapshot()
+    await withTrigger('INSERT ON audit_log', async () => {
+      for (const [action, run] of steps) expect((await run()).status, action).toBe(500)
+    })
+    expect(await snapshot()).toBe(rows)
+    const written = [...new Set([...onboardingSource.matchAll(/'([a-z_]+(?:\.[a-z_]+)+)'/g)].map((match) => match[1]))]
+    expect(written.sort()).toEqual([...steps.map(([action]) => action), 'organisation.unfreeze'].sort())
+    for (const action of written) expect(EVENTS[action], action).toEqual(expect.any(String))
+    expect(Object.keys(onboarding.ONBOARDING_EVENTS).sort()).toEqual(written)
+    // Every statement of this file is prepared with bound parameters: no value of a request is written into SQL text.
+    for (const [, inserted] of onboardingSource.matchAll(/prepare\(`[^`]*?\$\{(\w+)\}/g)) expect(['COMPANY', 'owner']).toContain(inserted)
+  })
+
+  // One isolation case per new route (the standing rule of section e), added to the table and run here. The Sec-Fetch-Site
+  // and Origin cases of the five routes run in section d, which reads the route table.
+  const fresh = <T extends Holder>(m: T) => m
+  isolation['POST /api/apply'] = async (a, b) => {
+    // A session is nothing here: the answer is the same with it, names no organisation, and nothing is written.
+    const rows = await snapshot([...TABLES, COUNTER])
+    const key = await softwareAuthenticator(SITE)
+    const start = await call('POST', '/api/apply', { body: form('cedar.example'), cookie: a.cookie })
+    const done = await call('POST', '/api/apply', { body: { ...form('cedar.example'), seat: start.body.seat, response: await key.register(start.body.options), organisationId: b.orgId }, cookie: a.cookie })
+    expect(done.status).toBe(200)
+    for (const secret of [a.orgId, b.orgId, a.seatId, b.seatId, a.name, b.name]) expect(JSON.stringify([start.body, done.body, fieldsOf(done.body.intent)])).not.toContain(secret)
+    expect(await snapshot([...TABLES, COUNTER])).toBe(rows)
+  }
+  isolation['POST /api/apply/check'] = async (a, b) => {
+    // A proved application makes a new organisation, whoever is signed in: no row of A or B changes.
+    const mine = () => Promise.all([a, b].flatMap((m) => TABLES.filter((table) => table !== 'organisations').map((table) => count(table, m.orgId))))
+    const before = await mine()
+    const x = await applyFor('cedar-check.example')
+    publish(x.body.record)
+    expect((await call('POST', '/api/apply/check', { body: { intent: x.intent, organisationId: b.orgId }, cookie: a.cookie })).body).toEqual({ state: 'unverified' })
+    expect(await mine()).toEqual(before)
+    const made = (await row<{ id: string }>('SELECT id FROM organisations WHERE email_domain = ?', 'cedar-check.example'))!.id
+    expect([a.orgId, b.orgId]).not.toContain(made)
+    expect((await call('GET', '/api/me', { cookie: a.cookie })).body.organisation.id).toBe(a.orgId)
+  }
+  isolation['GET /api/onboarding'] = async (a, b) => {
+    // B has a KYB row and a recovery wallet. A's page shows A's organisation and nothing of B, whatever A sends.
+    await db.prepare(`INSERT INTO kyb_records (id, org_id, legal_name, country, tier, source, decision, created_at) VALUES (?, ?, 'Birchfield Capital Ltd', 'GB', 'enhanced', 'registry', 'approved', ?)`).bind(data.randomId(), b.orgId, now).run()
+    await addKey(b)
+    const wallet = await linked(b, undefined, { custodian: true })
+    expect((await post(`/api/wallets/${wallet.id}/anchor`, b)).body).toEqual({ state: 'applied' })
+    for (const path of ['/api/onboarding', `/api/onboarding?organisationId=${b.orgId}`, `/api/onboarding?org=${b.orgId}`]) {
+      const view = await call('GET', path, { cookie: a.cookie })
+      expect(view.body).toEqual({ company: { legalName: a.name, kind: 'partner', country: null, registration: null, domain: null, domainVerifiedAt: null }, first: null, wallet: null, missing: null, review: { status: 'verified', since: null, reason: null }, record: null, chains: expect.any(Array) })
+    }
+    expect((await call('GET', '/api/onboarding', { cookie: b.cookie })).body).toMatchObject({ company: { legalName: b.name }, record: { legalName: 'Birchfield Capital Ltd', tier: 'enhanced' }, wallet: { address: accounts[0].address } })
+    expect((await call('GET', `/api/onboarding/${b.orgId}`, { cookie: a.cookie })).status).toBe(404)
+  }
+  isolation['POST /api/onboarding/wallet'] = async (a, b) => {
+    // The organisation of the intent is the session's, whatever the body says; the proof lands there and nowhere else.
+    const [x, y] = [await applicantWithTwoKeys(), await applicantWithTwoKeys()]
+    const asked = await nameWallet(x, accounts[0].address, { organisationId: y.orgId, org: y.orgId })
+    const f = fieldsOf<ActivateFields>(asked.body.intent)
+    expect(f.org).toBe(x.orgId)
+    expect(f.credentialHash).not.toBe((await call('GET', '/api/onboarding', { cookie: y.cookie })).body.first.credentialHash)
+    expect((await prove(asked.body.intent, await accounts[0].signTypedData(typedActivate(f)))).body).toEqual({ state: 'stored' })
+    expect([await count('wallets', x.orgId), await count('wallets', y.orgId), await count('wallets', a.orgId), await count('wallets', b.orgId)]).toEqual([1, 0, 0, 0])
+    // A proof signed for X's intent with Y's organisation id in the message is not X's message.
+    const again2 = await nameWallet(x, accounts[1].address)
+    expect((await prove(again2.body.intent, await accounts[1].signTypedData(typedActivate(fieldsOf<ActivateFields>(again2.body.intent), { organisationId: y.orgId })))).body).toEqual({ error: 'signature_rejected' })
+    expect((await call('GET', '/api/onboarding', { cookie: y.cookie })).body.wallet).toBeNull()
+  }
+  isolation['POST /api/onboarding/submit'] = async (a, b) => {
+    // X submits X, whatever id it sends. No client route writes a KYB row, for the own organisation or for another.
+    const [x, y] = [await applicantWithTwoKeys(), await applicantWithTwoKeys()]
+    for (const m of [x, y]) expect((await activation(m, m === x ? accounts[0] : accounts[1])).body).toEqual({ state: 'stored' })
+    expect((await submit(x, { organisationId: y.orgId, id: y.orgId, org: y.orgId, decision: 'approve' })).body).toEqual({ state: 'under_review' })
+    expect([(await orgRow(x.orgId))!.review_at, (await orgRow(y.orgId))!.review_at]).toEqual([now, null])
+    const rows = await snapshot(['kyb_records', 'organisations'])
+    for (const m of [x, fresh(a)]) {
+      for (const route of routes.filter((r) => r.method === 'POST' && !r.sign && r.path !== '/api/signout')) {
+        await call('POST', route.path.replace(':id', y.orgId), { cookie: m.cookie, body: { ...APPROVE, organisationId: y.orgId, id: y.orgId, org: y.orgId } })
+      }
+      for (const [method, path] of opPaths(y.orgId)) expect((await call(method, path, { cookie: m.cookie, body: APPROVE })).status, path).toBe(404)
+    }
+    expect(JSON.parse(await snapshot(['kyb_records'])).kyb_records).toEqual(JSON.parse(rows).kyb_records)
+    for (const m of [x, y, a, b]) expect(await count('kyb_records', m.orgId)).toBe(0)
+    expect(JSON.parse(await snapshot(['organisations'])).organisations.filter((o: { id: string }) => [y.orgId, b.orgId].includes(o.id))).toEqual(JSON.parse(rows).organisations.filter((o: { id: string }) => [y.orgId, b.orgId].includes(o.id)))
+    expect(onboardingSource.match(/INSERT INTO kyb_records/g)).toHaveLength(1)
+    expect(dataSource).not.toContain('INSERT INTO kyb_records')
+  }
+  for (const route of ['POST /api/apply', 'POST /api/apply/check', 'GET /api/onboarding', 'POST /api/onboarding/wallet', 'POST /api/onboarding/submit']) {
+    it(`${route}: the isolation case`, async () => isolation[route](await member('Alder Asset Management'), await member('Birchfield Capital')))
+  }
+
+  it('A9: the page and the block read one route, for an Owner and a Compliance officer; the words of the interface', async () => {
+    const { o, a, v } = await trio()
+    const c = await colleague(o, 'compliance')
+    expect(routes.find((r) => r.path === '/api/onboarding')).toMatchObject({ method: 'GET', roles: ['owner', 'compliance'], unverified: true })
+    for (const m of [o, c]) expect((await call('GET', '/api/onboarding', { cookie: m.cookie })).status).toBe(200)
+    for (const m of [a, v]) expect((await call('GET', '/api/onboarding', { cookie: m.cookie })).body).toEqual({ error: 'forbidden' })
+    expect((await call('GET', '/api/onboarding')).status).toBe(401)
+    // "Recovery wallet", never the internal word. No claim about a licence. No document is stored: the block says so.
+    for (const banned of [/anchor/i, /licen[cs]ed|regulated|authorised|authorized|MiCA|compliant/i, /—/, /honest/i]) {
+      expect(onboardingPage).not.toMatch(banned)
+      expect(Object.values(onboarding.ONBOARDING_EVENTS).join(' ')).not.toMatch(banned)
+    }
+    expect(onboardingPage).toContain('No document is stored')
+    expect(onboardingPage).not.toMatch(/dangerouslySetInnerHTML|innerHTML/)
+    for (const reason of onboarding.REASONS) expect(onboardingPage, reason).toContain(`${reason}:`)
   })
 })
