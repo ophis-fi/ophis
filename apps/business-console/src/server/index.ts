@@ -4,6 +4,7 @@ import { checksum, colour, parseAddress, readCapped, safeState, verify, verifyDi
 import { challengeIsOurs, configFor, creationOptions, credentialHash, newChallenge, phraseFor, requestOptions, seal, toBase64Url, unseal, userHandle, verifyAssertion, verifyRegistration, type Config, type Purpose } from './passkeys.ts'
 import { CHAIN_NAME, typedLink, typedProof, type ProofKind } from './typed.ts'
 import { ask } from './support.ts'
+import { activateIntent, activationIntent, activationProof, apply, applyCheck, onboarding, ONBOARDING_EVENTS, operator, OPERATOR, submit } from './onboarding.ts'
 import { WORDS } from './words.ts'
 
 export interface Env { DB: D1Database; ASSETS: Fetcher; ENVIRONMENT: string; CHALLENGE_KEY: string }
@@ -55,6 +56,8 @@ interface Context {
 interface Route {
   method: 'GET' | 'POST'; path: string; roles: 'public' | readonly data.Role[]; fresh?: boolean; twoKeys?: boolean; settled?: boolean
   second?: data.Kind; sign?: boolean; can?: string; handler?: (c: Context) => Promise<Response>
+  /** Milestone 5: open to an organisation that is not yet verified. Every other signed-in route answers 403 "unverified" there. */
+  unverified?: boolean
 }
 
 const json = (status: number, body: unknown, headers: Record<string, string> = {}) => Response.json(body, { status, headers })
@@ -200,7 +203,7 @@ async function stopFinish(c: Context) {
 async function me(c: Context) {
   const s = c.session
   return json(200, {
-    organisation: { id: s.org_id, name: s.org_name, kind: s.org_kind, quarantineUntil: (s.org_quarantine_until ?? 0) > c.now ? s.org_quarantine_until : null },
+    organisation: { id: s.org_id, name: s.org_name, kind: s.org_kind, quarantineUntil: (s.org_quarantine_until ?? 0) > c.now ? s.org_quarantine_until : null, state: s.org_state },
     seat: { id: s.seat_id, displayName: s.display_name, role: s.role, keys: s.strong_keys, quarantineUntil: c.actor.quarantineUntil },
     session: { id: s.id, endsAt: s.created_at + ABSOLUTE_MS, stepUpUntil: s.step_up_at + STEP_UP_MS },
     // The quarantine alert says which one it is: the seat's own, or the organisation's after an account recovery.
@@ -378,13 +381,15 @@ async function proof(c: Context) {
   const sealed = typeof c.body.intent === 'string' ? c.body.intent : ''
   const link = (await unseal(c.env.CHALLENGE_KEY, INTENT, sealed)) as Intent | null
   const recover = link ? null : ((await unseal(c.env.CHALLENGE_KEY, RECOVER, sealed)) as RecoverIntent | null)
-  const intent = link ?? recover
+  // Milestone 5: the third kind, the activation of a new organisation by the recovery wallet it names (onboarding.ts).
+  const activate = link || recover ? null : await activateIntent(c.env.CHALLENGE_KEY, sealed)
+  const intent = link ?? recover ?? activate
   if (!intent) return fail(400, 'intent_invalid')
   if (intent.expiresAt * 1000 <= c.now) return fail(410, 'intent_expired')
   if (!(await data.countProof(c.env.DB, intent.org, c.now))) return fail(429, 'too_many')
   const { signature } = c.body
   if (typeof signature !== 'string' || signature.length > 8194 || !/^0x(?:[0-9a-fA-F]{2})*$/.test(signature)) return fail(400, 'signature_invalid')
-  return link ? linkProof(c, link, signature as `0x${string}`) : recoveryProof(c, recover!, signature as `0x${string}`)
+  return link ? linkProof(c, link, signature as `0x${string}`) : recover ? recoveryProof(c, recover, signature as `0x${string}`) : activationProof(c, activate!, signature as `0x${string}`)
 }
 
 // A wallet link: the wallet's signature, over typed data rebuilt from the intent.
@@ -628,6 +633,7 @@ export const EVENTS: Record<string, string> = {
   'recovery.complete/override': 'Account recovery completed, overriding the Owners: new Owner signed in, the other Owners removed, organisation in quarantine for 7 days',
   'recovery.lapse': 'Account recovery lapsed: the recovery wallet changed since the request',
   'recovery.stop': 'Account recovery stopped by a replaced Owner passkey: the new Owner removed, the Owner passkeys restored',
+  ...ONBOARDING_EVENTS,
 }
 function said(action: string, detail: string | null) {
   const words = EVENTS[`${action}/${detail}`] ?? EVENTS[action] ?? 'Unlisted event'
@@ -672,19 +678,19 @@ export const routes: Route[] = [
   { method: 'POST', path: '/api/enrol/finish', roles: 'public', handler: enrolFinish },
   { method: 'POST', path: '/api/signin/start', roles: 'public', handler: signinStart },
   { method: 'POST', path: '/api/signin/finish', roles: 'public', handler: signinFinish },
-  { method: 'GET', path: '/api/me', roles: ANY, can: SELF, handler: me },
-  { method: 'GET', path: '/api/org', roles: ANY, can: 'See the own seat, its passkeys and sessions (Owner and Admin: those of every member)', handler: organisation },
-  { method: 'POST', path: '/api/sessions/:id/revoke', roles: ANY, can: 'End a session of the own seat (Owner and Admin: of any member)', handler: revoke },
-  { method: 'POST', path: '/api/signout', roles: ANY, can: SELF, handler: signout },
-  { method: 'POST', path: '/api/stepup/start', roles: ANY, can: SELF, handler: stepupStart },
-  { method: 'POST', path: '/api/stepup/finish', roles: ANY, can: SELF, handler: stepupFinish },
-  { method: 'POST', path: '/api/passkeys/start', roles: ANY, fresh: true, can: ADD, handler: passkeyStart },
-  { method: 'POST', path: '/api/passkeys/finish', roles: ANY, fresh: true, can: ADD, handler: passkeyFinish },
-  { method: 'POST', path: '/api/passkeys/:id/revoke', roles: ANY, fresh: true, twoKeys: true, can: 'Revoke a passkey of the own seat, never the last (Owner and Admin: also of a member at or below their role)', handler: passkeyRevoke },
-  { method: 'POST', path: '/api/tickets', roles: MANAGERS, fresh: true, twoKeys: true, can: 'Invite a member, or re-enrol one who lost every passkey', handler: ticketIssue },
-  { method: 'POST', path: '/api/tickets/:id/confirm/start', roles: data.KEY_ROLES, twoKeys: true, can: WORDS3, handler: confirmStart },
-  { method: 'POST', path: '/api/tickets/:id/confirm', roles: data.KEY_ROLES, twoKeys: true, can: WORDS3, handler: confirmFinish },
-  { method: 'POST', path: '/api/tickets/:id/cancel', roles: ['owner'], fresh: true, twoKeys: true, can: 'Cancel an enrolment that waits', handler: ticketCancel },
+  { method: 'GET', path: '/api/me', roles: ANY, unverified: true, can: SELF, handler: me },
+  { method: 'GET', path: '/api/org', roles: ANY, unverified: true, can: 'See the own seat, its passkeys and sessions (Owner and Admin: those of every member)', handler: organisation },
+  { method: 'POST', path: '/api/sessions/:id/revoke', roles: ANY, unverified: true, can: 'End a session of the own seat (Owner and Admin: of any member)', handler: revoke },
+  { method: 'POST', path: '/api/signout', roles: ANY, unverified: true, can: SELF, handler: signout },
+  { method: 'POST', path: '/api/stepup/start', roles: ANY, unverified: true, can: SELF, handler: stepupStart },
+  { method: 'POST', path: '/api/stepup/finish', roles: ANY, unverified: true, can: SELF, handler: stepupFinish },
+  { method: 'POST', path: '/api/passkeys/start', roles: ANY, fresh: true, unverified: true, can: ADD, handler: passkeyStart },
+  { method: 'POST', path: '/api/passkeys/finish', roles: ANY, fresh: true, unverified: true, can: ADD, handler: passkeyFinish },
+  { method: 'POST', path: '/api/passkeys/:id/revoke', roles: ANY, fresh: true, twoKeys: true, unverified: true, can: 'Revoke a passkey of the own seat, never the last (Owner and Admin: also of a member at or below their role)', handler: passkeyRevoke },
+  { method: 'POST', path: '/api/tickets', roles: MANAGERS, fresh: true, twoKeys: true, unverified: true, can: 'Invite a member, or re-enrol one who lost every passkey', handler: ticketIssue },
+  { method: 'POST', path: '/api/tickets/:id/confirm/start', roles: data.KEY_ROLES, twoKeys: true, unverified: true, can: WORDS3, handler: confirmStart },
+  { method: 'POST', path: '/api/tickets/:id/confirm', roles: data.KEY_ROLES, twoKeys: true, unverified: true, can: WORDS3, handler: confirmFinish },
+  { method: 'POST', path: '/api/tickets/:id/cancel', roles: ['owner'], fresh: true, twoKeys: true, unverified: true, can: 'Cancel an enrolment that waits', handler: ticketCancel },
   { method: 'POST', path: '/api/stop/start', roles: 'public', handler: stopStart },
   { method: 'POST', path: '/api/stop/finish', roles: 'public', handler: stopFinish },
   { method: 'POST', path: '/api/members/:id/freeze', roles: MANAGERS, fresh: true, twoKeys: true, settled: true, can: 'Freeze a seat at once, in an emergency (Admin: a seat at or below Admin)', handler: (c) => change(c, 'seat.freeze') },
@@ -709,7 +715,13 @@ export const routes: Route[] = [
   { method: 'POST', path: '/api/recovery/:id/object', roles: ['admin', 'approver', 'compliance'], fresh: true, can: 'Object once to an account recovery that waits, which adds 72 hours', handler: recoveryObject },
   { method: 'GET', path: '/api/audit', roles: READERS, can: 'Read the audit log', handler: audit },
   { method: 'POST', path: '/api/audit/export', roles: READERS, fresh: true, can: 'Export the audit log', handler: auditExport },
-  { method: 'POST', path: '/api/support/ask', roles: ANY, can: 'Ask Support a question, which is matched to the fixed help texts', handler: ask },
+  { method: 'POST', path: '/api/support/ask', roles: ANY, unverified: true, can: 'Ask Support a question, which is matched to the fixed help texts', handler: ask },
+  // Milestone 5 (onboarding.ts). The operator's routes are not here: they have their own hostname and no role.
+  { method: 'POST', path: '/api/apply', roles: 'public', handler: apply },
+  { method: 'POST', path: '/api/apply/check', roles: 'public', handler: applyCheck },
+  { method: 'GET', path: '/api/onboarding', roles: ['owner', 'compliance'], unverified: true, can: 'See the onboarding steps, the review status and the KYB record', handler: onboarding },
+  { method: 'POST', path: '/api/onboarding/wallet', roles: ['owner'], fresh: true, twoKeys: true, unverified: true, can: 'Name the recovery wallet of a new organisation, which the wallet then confirms with a signature', handler: activationIntent },
+  { method: 'POST', path: '/api/onboarding/submit', roles: ['owner'], fresh: true, twoKeys: true, unverified: true, can: 'Submit a new organisation for review', handler: submit },
 ]
 // "What each role can do": the rows of the table above that a session can reach. Routes that share a sentence are one row.
 const rights = [...new Map(routes.flatMap((r) => (r.can ? [[r.can, { can: r.can, roles: r.roles, fresh: Boolean(r.fresh), second: Boolean(r.second) }] as const] : []))).values()]
@@ -766,6 +778,11 @@ async function api(request: Request, env: Env, clock: () => number, config: Conf
       // whichever ends later: during the second, what a seat in quarantine cannot do is refused for every seat.
       quarantineUntil: Math.max(session.quarantine_until ?? 0, session.org_quarantine_until ?? 0) > now ? Math.max(session.quarantine_until ?? 0, session.org_quarantine_until ?? 0) : null,
     }
+    // Milestone 5: the organisation's state, read with the session, before anything else is decided. Not yet verified:
+    // the rows marked `unverified` and no other. Frozen by the operator, or archived: nothing but the sign-out.
+    const state = session.org_state
+    const closed = state === 'active' ? null : state === 'unverified' ? (route.unverified ? null : 'unverified') : route.handler === signout ? null : state === 'frozen' ? 'org_frozen' : 'org_closed'
+    if (closed) return fail(403, closed)
     // The role table, enforced here for every route: the role, then the gates of the row.
     if (!route.roles.includes(session.role)) return fail(403, 'forbidden')
     if (route.twoKeys && session.strong_keys < 2) return fail(403, 'second_key_required')
@@ -782,7 +799,7 @@ async function pages(request: Request, env: Env, signing: boolean) {
   const { pathname } = new URL(request.url)
   if (signing !== (pathname === '/sign' || pathname.startsWith('/sign/'))) return new Response('Not found', { status: 404, headers: HEADERS })
   // /recover is a page of the console's one shell (the app reads the path): public, and it needs no session.
-  const asset = await env.ASSETS.fetch(pathname === '/recover' ? new Request(new URL('/', request.url), request) : request)
+  const asset = await env.ASSETS.fetch(pathname === '/recover' || pathname === '/apply' ? new Request(new URL('/', request.url), request) : request)
   if (!signing) return asset // public/_headers sets the console's headers
   const headers = new Headers(SIGN_HEADERS)
   for (const name of ['content-type', 'location', 'etag']) if (asset.headers.has(name)) headers.set(name, asset.headers.get(name)!)
@@ -798,6 +815,8 @@ export async function handle(request: Request, env: Env, now: () => number = Dat
     const config = configFor(env.ENVIRONMENT)
     // The host decides, from the environment's constants: the signing page's own hostname, or the console.
     const signing = origin === config.signOrigin
+    // Milestone 5: the operator's API, on a third hostname (onboarding.ts). It serves no page.
+    if (origin === OPERATOR[env.ENVIRONMENT]) return await operator(request, env, now, config, HEADERS)
     // Any other host is not ours: a request that arrives under another name gets nothing, not even a refusal with a reason.
     if (!signing && origin !== config.origin) return new Response('Not found', { status: 404, headers: HEADERS })
     if (!pathname.startsWith('/api/')) return await pages(request, env, signing)

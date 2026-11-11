@@ -28,6 +28,8 @@ export const PROOF_ACTION = {
   replace: 'Replace all Owner passkeys of this organisation',
   override: 'Replace all Owner passkeys of this organisation, overriding its Owners',
   cancel: 'Cancel account recovery',
+  // Milestone 5: the recovery wallet a new organisation names confirms the first Owner's passkey (recovery.md section 3).
+  activate: 'Activate this organisation and confirm its first Owner passkey',
 } as const
 export type ProofKind = keyof typeof PROOF_ACTION
 /** credentialHash: SHA-256(credential id, public key) of the new passkey. phrase: the three words its holder reads out. A cancel names no passkey: 32 zero bytes and no words. */
