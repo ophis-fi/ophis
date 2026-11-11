@@ -461,7 +461,6 @@ export async function confirmTicket(db: D1Database, actor: Actor, seen: OpenTick
         // approvals has CHECK (checker <> requester): the issuer can never be recorded as the second person.
         db.prepare(`INSERT INTO approvals (id, org_id, action, subject_id, payload_hash, requester_seat_id, state, not_before, expires_at, created_at) VALUES (?, ?, 'ticket.confirm', ?, ?, ?, 'pending', ?, ?, ?)`)
           .bind(randomId(), actor.orgId, t.id, x.credentialHash, actor.seatId, waitUntil, waitUntil === null ? t.stored_at! + CONFIRM_MS : waitUntil + WAIT_OPEN_MS, now),
-        db.prepare('UPDATE enrolment_tickets SET wait_until = ? WHERE org_id = ? AND id = ?').bind(waitUntil, actor.orgId, t.id),
       ]]
     }
     outcome = { state: 'active' }
