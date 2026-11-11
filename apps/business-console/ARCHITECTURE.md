@@ -48,6 +48,7 @@ Rules: every tenant row has `org_id`; children reference parents by `(org_id, id
 Audit chain: `hash = SHA-256(JSON([org_id, seq, at, actor_kind, actor_id, session_id, action, subject_id, detail, country, asn, prev_hash]))`; the first `prev_hash` is 64 zeros.
 Every state change goes through `commit()` in `data.ts`: the change and its audit row are one `db.batch()`, one transaction.
 `commit()` reads the head, then runs the caller's plan, then writes with the next sequence number. Any other write of the organisation in between takes that number and the batch fails, so what a plan read is still true when it commits. One retry.
+Rule for new code: whatever decides a write is read inside the plan. A read made by the handler before `commit()` is stale by then (the review found one: a cancelled ticket came back when its link was used at the same instant).
 
 ### The ceremony as built (M2; `recovery.md` sections 1 and 2)
 - Ticket: 256-bit token, only in the link fragment and in one response; SHA-256 stored. 10 min for key roles, 24 h for Trader and Viewer. 3 per issuer and seat per 24 h. Issuer: Owner or Admin, never above the own role, never the own seat. The seat decides the kind: `invited` gives an invitation, `active` a re-enrolment.
@@ -56,8 +57,10 @@ Every state change goes through `commit()` in `data.ts`: the change and its audi
 - Key roles: the issuer's words write an `approvals` row (`ticket.confirm`, requester = issuer). A second key-role member (not issuer, not target) types the words within the same 60 min and becomes its checker. If no such active seat exists: `not_before` = 72 h, and the pending passkey becomes active at its first sign-in in the 7 days after. No scheduled job.
 - Activation: new passkey `active`; on a re-enrolment the seat's active passkeys become `suspended` with `stop_right_until`, and the seat gets `quarantine_until` (24 h Trader and Viewer, 72 h key roles); the seat's sessions end; its other open tickets die.
 - Stop: a suspended passkey with a running stop right opens no session. `signin/finish` tells it so (403 `passkey_replaced`) once its check passed; `stop/finish` then revokes the seat's active passkeys, restores the suspended ones, freezes the seat. Unfreezing needs two people: milestone 3.
+- A seat is frozen by a stop, or when a colleague revokes its last active passkey (so that nobody clears the way for a re-enrolment the member could not stop). A freeze closes, in the tables, the open tickets for that seat and the ones it issued; a frozen seat gets no ticket. A ticket is also dead when read if its issuer is not active.
+- Only active passkeys count: toward the two a seat needs and toward the 10 it may hold. Replaced and pending ones do not.
 - A sign-in with a passkey the member still holds kills every open ticket of that seat (audit detail `ticket_killed`): this is how the target cancels during the wait.
-- Alerts are computed at `GET /api/me` from rows of the last 7 days (no table, no email): quarantine, new passkey on the seat, re-enrolment started or completed, a colleague re-enrolled, a frozen seat, words waiting for this member. The app shows them before the page; the browser remembers what was read.
+- Alerts are computed at `GET /api/me` from rows of the last 7 days (no table, no email): quarantine, new passkey on the seat, re-enrolment started or completed, a colleague re-enrolled or joined (not shown to the issuer), a frozen seat, words waiting for this member, and for Owners and Admins a sign-in that closed a re-enrolment ("the issuer is flagged"). The app shows them before the page; the browser remembers what was read.
 
 ### Wallets and the recovery anchor (M4): typed data and contract wallets
 - A proof is EIP-712 typed data (`recovery.md` section 5). Domain: name `Ophis Business`, version `1`, `chainId` of the wallet's pinned chain. There is no `verifyingContract`: no contract verifies it. The binding to this app is inside the message: `site`, `organisationId`, `wallet`.
@@ -101,7 +104,8 @@ Two gates in the route table (M2). `twoKeys`: the seat holds two active passkeys
 
 ## Security invariants and the tests that prove them
 Each test (in `tests/worker.test.ts`) was seen to fail with its control removed once. Milestone 1, independent review, 2026-11-11: 71 single mutations, 70 caught; the survivor was the purpose label inside the challenge HMAC, which milestone 2 now tests.
-Milestone 2, 2026-11-11: 110 single mutations of its controls, all caught, and four more against `tests/e2e.mjs`. Not separately provable, because another check covers the same case: the ticket id inside the confirmation binding (the credential hash is already unique per ticket), and the early stop-right check a handler could add (the write checks it).
+Milestone 2, independent review, 2026-11-11: 137 single mutations written and run from scratch. 10 survived: 4 were real test gaps, now closed (a stop must revoke passkeys the replacement added; a replaced passkey on a frozen seat; replaced and pending passkeys in the two-key count; a sign-in must not close tickets the member issued), 1 was a comparison that could never differ (deleted), 5 have no security effect (among them the two below). The defects the review fixed each have a test in section q that was seen failing first.
+Milestone 2, builder, 2026-11-11: 110 single mutations of its controls, all caught, and four more against `tests/e2e.mjs`. Not separately provable, because another check covers the same case: the ticket id inside the confirmation binding (the credential hash is already unique per ticket), and the early stop-right check a handler could add (the write checks it).
 
 | Invariant | Test |
 |---|---|
@@ -132,7 +136,10 @@ Milestone 2, 2026-11-11: 110 single mutations of its controls, all caught, and f
 | 3 wrong tries kill ticket and passkey, exact counter, one try per passkey check; 60 minutes | n: `three wrong tries kill the ticket...`, `the words must be typed within 60 minutes...` |
 | Key roles: a second person, not issuer, not target, a key role; else 72 h, cancellable by an Owner or the target's old passkey | n: `a key role needs a second person...`, `with no second person, a 72 hour wait...`, `during the wait any Owner can cancel...` |
 | Re-enrolment suspends, never deletes; a suspended passkey can only stop, until quarantine ends; quarantine blocks | o: seven tests |
-| Alerts reach the member, the confirmers and every member, and no other organisation | p: two tests |
+| Alerts reach the member, the confirmers and every member, and no other organisation | p: two tests; q: `every member is told when a colleague joins...` |
+| Nobody clears the way for a re-enrolment: a colleague's last revoke freezes the seat; a freeze closes the seat's tickets and the ones it issued, for good | q: `a colleague cannot clear the way...`, `a ticket is dead once the seat that issued it...` |
+| Races: one link in two browsers, a link used while its ticket is cancelled or killed, two confirmations, a second person appearing during the wait | q: four tests |
+| Only active passkeys count toward the two a seat needs and the 10 it may hold; the second person is never shown the words; a stop revokes what the replacement added | q: three tests |
 
 ## Deliberate shortcuts (`ponytail:` in the code)
 - The idle clock is written at most once a minute: a session can end up to 60 s early, never late.

@@ -21,6 +21,7 @@ Then, in the app (each person needs their own security key, or a Chrome virtual 
 2. "Invite member" gives a one-time link (10 minutes for key roles, 24 hours for Trader and Viewer). The member opens it on their own device, creates a passkey and reads three words aloud.
 3. Under "Waiting for confirmation" the inviter types the words and confirms with a passkey. Key roles need a second key-role member too, or wait 72 hours.
 4. "Re-enrol" does the same for a member who lost every passkey. The old passkeys are suspended: for 24 or 72 hours one of them can still sign in to a page with one action, "Stop this replacement".
+5. A stop freezes the seat. So does revoking a colleague's last passkey (the button says so). Nothing unfreezes a seat yet: milestone 3.
 
 Word list: EFF short word list 2.0, Creative Commons Attribution 4.0 (`src/server/words.ts`).
 
