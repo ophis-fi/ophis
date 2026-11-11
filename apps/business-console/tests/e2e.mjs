@@ -730,6 +730,7 @@ try {
   const address = await on.evaluate(() => location.search + location.hash)
   check(`the outcome word left the address bar (${address})`, address === '#/onboarding')
   await on.getByText('Microsoft: members you invite sign in once with their company account').waitFor()
+  check('a step that is done offers a change, not a "Continue"', await on.getByRole('button', { name: 'Change to Google' }).isVisible() && await on.getByRole('button', { name: 'Change to none: three words' }).isVisible() && (await on.getByRole('button', { name: /^Continue with/ }).count()) === 0)
   check('back on the Onboarding page the company sign-in is Microsoft, pinned to the tenant', await on.getByText('Your own company account is linked to your seat.').isVisible() && await both(on, '37-company-signin-step'))
   await on.getByLabel('Wallet address').fill(key.address)
   await on.getByLabel('Chain').selectOption({ label: 'OP Mainnet' })

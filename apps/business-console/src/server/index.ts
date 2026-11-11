@@ -441,8 +441,10 @@ async function companyCallback(c: Context) {
   // An Owner sets the company sign-in. Google: the hosted domain is the organisation's proven domain. Microsoft: the
   // verified address is at that domain. The session and the Owner role of the flow are read inside the commit.
   // The session cookie is Strict and did not travel here: the session of the flow is read as the router reads one
-  // (not revoked, its passkey and seat active, inside both time limits), or nothing is asked (review).
-  if ((await liveSession(c.env, flow.key ?? '', c.now))?.id !== flow.session) return back('forbidden', to)
+  // (not revoked, its passkey and seat active, inside both time limits, in an organisation that is active or not yet
+  // verified), or nothing is asked (review).
+  const session = await liveSession(c.env, flow.key ?? '', c.now)
+  if (!session || session.id !== flow.session || (session.org_state !== 'active' && session.org_state !== 'unverified')) return back('forbidden', to)
   const domain = await data.domainOf(c.env.DB, flow.org!)
   if (!(who.provider === 'google' ? who.tenant === domain : data.emailAt(who.email, domain))) return back('domain', to)
   const cf = (c.request as Request<unknown, IncomingRequestCfProperties>).cf

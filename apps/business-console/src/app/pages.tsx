@@ -210,7 +210,8 @@ export function Enrol({ ticket }: { ticket: string }) {
     try {
       // A fresh challenge for each attempt: the first one may have aged while the page was open.
       const start = await api<Invitation>('/api/enrol/start', { ticket })
-      if (start.status !== 200 || !start.data.options) return setInvitation(null)
+      if (start.status !== 200) return setInvitation(null)
+      if (!start.data.options) return setInvitation(start.data) // the company sign-in is asked again: this browser no longer holds its confirmation
       const passkey = (await navigator.credentials.create({ publicKey: PublicKeyCredential.parseCreationOptionsFromJSON(start.data.options) })) as PublicKeyCredential
       const finish = await api<{ error?: string; phrase?: string[]; confirmBy?: number }>('/api/enrol/finish', { ticket, label, response: passkey.toJSON() })
       if (finish.status === 200) return setStored(finish.data)

@@ -296,8 +296,8 @@ export function Onboarding({ owner, onSignedOut }: { owner: boolean; onSignedOut
               : 'Choose how a new member shows who they are. With Microsoft or Google they sign in once with their company account, and no words are needed. Passkeys stay the only way to sign in.'}</p>
             {!verified && owner && keys && (
               <div className="acts">
-                {(['microsoft', 'google'] as const).filter((p) => p !== signin.setting).map((p) => <button key={p} className="btn ghost md" type="button" title={`You sign in with your own ${PROVIDER[p]} company account. That pins your organisation there.`} onClick={() => signIn(p)}><Icon name="building-2" size={16} />Continue with {PROVIDER[p]}</button>)}
-                {signin.setting !== 'none' && <button className="btn ghost md" type="button" onClick={() => act('/api/policy/company', {}, () => undefined)}>None: three words</button>}
+                {(['microsoft', 'google'] as const).filter((p) => p !== signin.setting).map((p) => <button key={p} className="btn ghost md" type="button" title={`You sign in with your own ${PROVIDER[p]} company account. That pins your organisation there.`} onClick={() => signIn(p)}><Icon name="building-2" size={16} />{signin.setting === null ? 'Continue with' : 'Change to'} {PROVIDER[p]}</button>)}
+                {signin.setting !== 'none' && <button className="btn ghost md" type="button" onClick={() => act('/api/policy/company', {}, () => undefined)}>{signin.setting === null ? 'None: three words' : 'Change to none: three words'}</button>}
               </div>
             )}
             {!verified && owner && !keys && <p className="fine"><Icon name="info" size={16} /><span>Add your second passkey first.</span></p>}

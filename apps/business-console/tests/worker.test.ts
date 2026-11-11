@@ -7318,8 +7318,42 @@ describe('G. company sign-in: a company account proves who a new passkey belongs
       await db.prepare(`UPDATE sessions SET ${column} = ${column} + ? WHERE token_hash = ?`).bind(12 * HOUR + 1, await data.sha256Hex(other.cookie.split('=')[1])).run()
     }
     expect(await snapshot()).toBe(before)
+    // An organisation that was closed or frozen meanwhile reaches nothing, as on every other route (its sessions may still be open).
+    for (const state of ['archived', 'frozen']) {
+      await db.prepare('UPDATE organisations SET state = ? WHERE id = ?').bind(state, o.orgId).run()
+      const rows2 = await snapshot()
+      expect([(await back(t, claimsFor('microsoft', t, email))).location, await snapshot()], state).toEqual(['/?company=forbidden#/organisation', rows2])
+    }
+    await db.prepare(`UPDATE organisations SET state = 'active' WHERE id = ?`).bind(o.orgId).run()
     // In time, the same sign-in is a request.
     expect((await back(t, claimsFor('microsoft', t, email))).location).toBe('/?company=requested#/organisation')
+  })
+
+  it('review: attacks on the company sign-in: a look-alike or decorated address, an audience list, the callback by POST', async () => {
+    const o = await company('microsoft')
+    const email = `vera@${o.domain}`
+    const asked = await inviteTo(o, { displayName: 'Vera Viewer', role: 'viewer', email })
+    const ticket = ticketOfLink(asked.body.link)
+    const rows = await snapshot()
+    // The address the provider confirms is the invited one, character for character (case apart): a Cyrillic or full-width
+    // letter, a plus tag, a subdomain, a dot or a space more are another account, also inside the pinned tenant.
+    for (const other of [`vеra@${o.domain}`, `ｖera@${o.domain}`, `vera+x@${o.domain}`, `vera@sub.${o.domain}`, `vera@${o.domain}.`, ` vera@${o.domain}`, `vera@${o.domain}​`]) {
+      const s = await begin('/api/enrol/company', { ticket })
+      const came = await back(s, claimsFor('microsoft', s, other, { ...pinned(o), sub: 'sub-other' }))
+      expect([came.outcome, came.pass], JSON.stringify(other)).toEqual(['email', ''])
+    }
+    // The audience is this client and nothing else: a list, even one that holds it, is refused.
+    for (const aud of [[IDP.microsoft.clientId], [IDP.microsoft.clientId, 'another-client'], 'another-client']) {
+      const s = await begin('/api/enrol/company', { ticket })
+      expect((await back(s, claimsFor('microsoft', s, email, { aud }))).outcome, JSON.stringify(aud)).toBe('rejected')
+    }
+    // The callback is a GET: a POST with the same cookie, code and state reaches no handler.
+    const s = await begin('/api/enrol/company', { ticket })
+    idp.codes.set('code-post', { challenge: s.q('code_challenge'), token: await jwt(claimsFor('microsoft', s, email)) })
+    const exchanges = idp.tokens.length
+    const posted = await navigate(`/api/company/callback?${new URLSearchParams({ code: 'code-post', state: s.q('state') })}`, s.flow, {}, 'POST')
+    expect([[403, 404].includes(posted.status), posted.location, idp.tokens.length - exchanges]).toEqual([true, null, 0])
+    expect(await snapshot()).toBe(rows)
   })
 
   // ---- the independent review of 2026-11-11: R1, R2 ----
@@ -7388,6 +7422,11 @@ describe('G. company sign-in: a company account proves who a new passkey belongs
     expect((await back(sc, claimsFor('microsoft', sc, `tom@${o.domain}`))).outcome).toBe('ok')
     const sd = await begin('/api/enrol/company', { ticket: ticketOfLink(d.body.link) })
     expect((await back(sd, claimsFor('microsoft', sd, `tom@${o.domain}`))).outcome).toBe('in_use')
+    // A second link for the same seat (the inviter made a new one) takes the same account: it is the same person's seat.
+    const renewed = await inviteTo(o, { seatId: c.body.seatId, email: `tom@${o.domain}` })
+    const sr = await begin('/api/enrol/company', { ticket: ticketOfLink(renewed.body.link) })
+    expect([renewed.body.kind, (await back(sr, claimsFor('microsoft', sr, `tom@${o.domain}`))).outcome]).toEqual(['invitation', 'ok'])
+    expect((await post(`/api/tickets/${renewed.body.ticketId}/cancel`, await again(o))).status).toBe(200)
     // A link that is closed or past its time no longer holds the account.
     expect((await post(`/api/tickets/${c.body.ticketId}/cancel`, await again(o))).status).toBe(200)
     const free = await begin('/api/enrol/company', { ticket: ticketOfLink(d.body.link) })
