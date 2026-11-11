@@ -7,7 +7,7 @@ Needs Node 22.18 or later and Google Chrome. Run everything from this folder, wi
 
 ```sh
 npx -y pnpm@10.34.9 install --ignore-workspace   # the flag is required: without it pnpm installs the root workspace
-npx -y pnpm@10.34.9 migrate     # creates or updates the local D1 database (.wrangler/); run it again after pulling: milestone 3 adds 0002, milestone 4 adds 0003 and 0004
+npx -y pnpm@10.34.9 migrate     # creates or updates the local D1 database (.wrangler/); run it again after pulling: milestone 3 adds 0002, milestone 4 adds 0003 and 0004, the recovery fixes add 0005
 npx -y pnpm@10.34.9 seed        # one organisation, one Owner seat; prints a one-time enrolment link (10 minutes)
 npx -y pnpm@10.34.9 dev         # builds the console and the signing page, and serves both with the Worker: console http://localhost:8787, signing page http://127.0.0.1:8787/sign/
 npx -y pnpm@10.34.9 activate    # first Owner only: local stand-in for the activation by the recovery wallet (milestone 5)

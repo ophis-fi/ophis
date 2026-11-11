@@ -616,6 +616,11 @@ try {
     (await page.locator('[data-support]').getAttribute('href')) === '/#/support' && await page.getByText(FOOTER).isVisible() && await page.getByText('Leave out names and anything secret.').isVisible()
     && await page.getByText('An outside provider, TypeSafe AI (USA), matches your question to our help texts. It receives your question without your name, organisation or wallet. Ophis does not store your question.').isVisible())
   const write = page.getByRole('link', { name: 'Write to Ophis' })
+  // A wallet recovery phrase (a public test vector) is refused by the server and the page says so; nothing is asked of the provider.
+  await page.getByLabel('Your question').fill('legal winner thank year wave sausage worth useful legal winner thank yellow')
+  await page.getByRole('button', { name: 'Ask' }).click()
+  check('a recovery phrase typed into the box is refused, and the page says that it was not passed on',
+    await page.getByText('This looks like a wallet recovery phrase (seed phrase). It was not passed on and not stored.').waitFor({ timeout: 5000 }).then(() => true, () => false) && !(await write.count()))
   await page.getByLabel('Your question').fill('How do I add a second passkey?')
   await page.getByRole('button', { name: 'Ask' }).click()
   await page.getByText('Did this answer your question?').or(write).first().waitFor({ timeout: 10000 })

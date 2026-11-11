@@ -5152,7 +5152,11 @@ describe('E. account recovery: a stop undoes all of it, the organisation is read
     const bad = await again(await ceremony(n, { seatId: x.seatId }))
     const badMore = await addKey(bad)
     now += MIN
-    const good = await again(await ceremony(ad, { seatId: x.seatId }))
+    const link2 = await issue(ad, { seatId: x.seatId })
+    const made = await enrolLink(link2.body.link)
+    now += MIN
+    expect((await confirm(ad, link2.body.ticketId, made.words, ad.key)).body.state).toBe('active')
+    const good = await again({ key: made.key, cookie: '' })
     const goodMore = await addKey(good)
     // Not under the recovery: the Admin, whom nobody re-enrolled yet, re-enrols a Trader.
     const clean = await ceremony(ad, { seatId: t2.seatId })
@@ -5277,7 +5281,9 @@ describe('E. account recovery: a stop undoes all of it, the organisation is read
 
 // ---- Support, independent review of milestone 6: what the attacks found (each test was seen failing first), and what they did not. ----
 describe('F. Support: attacks tried by the review of milestone 6', () => {
-  const keyed = { ...testEnv, TYPESAFE_API_KEY: `ts-test-${crypto.randomUUID()}` } as Env
+  const KEY = `ts-test-${crypto.randomUUID()}`
+  const keyed = { ...testEnv, TYPESAFE_API_KEY: KEY } as Env
+  let consoles: ReturnType<typeof vi.spyOn>[] = []
   const IDS = [...ANSWERS.map((a) => a.id), 'none']
   const ADDRESS = '52908400098527886E0F7030069857D2E4169EE7'
   let sent: RequestInit[] = []
@@ -5289,8 +5295,8 @@ describe('F. Support: attacks tried by the review of milestone 6', () => {
       sent.push(init)
       return reply()
     })
-    const logged = vi.spyOn(console, 'error').mockImplementation(() => {})
-    return () => logged.mockRestore()
+    consoles = (['error', 'warn', 'log', 'info', 'debug'] as const).map((method) => vi.spyOn(console, method).mockImplementation(() => {}))
+    return () => consoles.forEach((spy) => spy.mockRestore())
   })
   const ask = (m: Holder, question: unknown) => call('POST', '/api/support/ask', { cookie: m.cookie, body: { question }, env: keyed })
   const counted = async (seatId: string) => (await row<{ n: number }>(`SELECT COALESCE(sum(n), 0) AS n FROM ${COUNTER} WHERE org_id = ?`, `seat:${seatId}`))!.n
@@ -5310,6 +5316,9 @@ describe('F. Support: attacks tried by the review of milestone 6', () => {
       ['ask admin@localhost or see http://localhost:8787/x please', 'ask or see please'],
       ['call ٠١٢٣٤٥٦٧ now', 'call now'],
       ['phone +1 (212) 555-1234 now', 'phone + now'],
+      ['is acme.io down', 'is down'],
+      ['ids abcdefabcdefab1 or abcdefabcdefab12 ok', 'ids abcdefabcdefab1 or ok'],
+      [['invite', 'maren.okafor@northwind.example', 'as viewer'].join(String.fromCharCode(10)), 'invite as viewer'],
       ['is 0xaaaa bbbb cccc dddd eeee ffff aaaa bbbb cccc dddd linked', 'is linked'],
       ['a bad decade added a fee facade', 'a bad decade added a fee facade'],
       ['add 2 of 3, e.g. after 72 hours at 10:30', 'add 2 of 3, e.g. after 72 hours at 10:30'],
@@ -5324,7 +5333,8 @@ describe('F. Support: attacks tried by the review of milestone 6', () => {
     const m = await member()
     const twelve = 'legal winner thank year wave sausage worth useful legal winner thank yellow'
     const twentyFour = 'letter advice cage absurd amount doctor acoustic avoid letter advice cage absurd amount doctor acoustic avoid letter advice cage absurd amount doctor acoustic bless'
-    for (const phrase of [twelve, twentyFour, `Is this safe: ${twelve.toUpperCase()}?`, twelve.split(' ').map((word, i) => `${i + 1}. ${word},`).join('\n'), twelve.replace(/ /g, '​ ​')]) expect((await ask(m, phrase)).body, phrase).toEqual({ error: 'secret' })
+    const wide = [...twelve].map((letter) => (letter === ' ' ? letter : String.fromCharCode(letter.charCodeAt(0) + 0xfee0))).join('')
+    for (const phrase of [twelve, twentyFour, `Is this safe: ${twelve.toUpperCase()}?`, twelve.split(' ').map((word, i) => `${i + 1}. ${word},`).join('\n'), twelve.replace(/ /g, '​ ​'), twelve.replace('sausage', `sau${String.fromCharCode(0x200b)}sage`), wide]) expect((await ask(m, phrase)).body, phrase).toEqual({ error: 'secret' })
     expect((await ask(m, twelve)).status).toBe(400)
     expect([sent.length, await counted(m.seatId)]).toEqual([0, 0])
     expect((await ask(m, twelve.split(' ').slice(0, 11).join(' '))).status).toBe(200)
@@ -5334,7 +5344,9 @@ describe('F. Support: attacks tried by the review of milestone 6', () => {
     for (const plain of ['can you cancel this account change before any other company owner can approve', 'can you confirm this company can allow any other member account access']) expect((await ask(m, plain)).status, plain).toBe(200)
     // 16 list words in a row are refused whatever their checksum: a phrase of 24 words with one of them mistyped.
     expect((await ask(m, twentyFour.replace('bless', 'bliss'))).body).toEqual({ error: 'secret' })
-    expect(sent).toHaveLength(4)
+    // The checksum plays no part from 16 words on: 16 times the last word of the list is refused, 15 times is not (no window of it is a phrase).
+    expect([(await ask(m, Array(16).fill('zoo').join(' '))).status, (await ask(m, Array(15).fill('zoo').join(' '))).status]).toEqual([400, 200])
+    expect(sent).toHaveLength(5)
     expect(supportPage).toContain('This looks like a wallet recovery phrase')
     expect(supportPage).toContain('<span>{PRIVACY} {CARE}</span>')
   })
@@ -5347,6 +5359,15 @@ describe('F. Support: attacks tried by the review of milestone 6', () => {
     reply = () => new Response(null, { status: 307, headers: { location: 'https://elsewhere.example/v1/systemone' } })
     expect((await ask(m, 'how do roles work')).body).toEqual({ handover: true })
     expect(sent).toHaveLength(2)
+    // An answer over 16 KB is not read to its end: a hand-over, whatever it says.
+    const answer = { answers: { entry: { probabilities: { ...Object.fromEntries(IDS.map((id) => [id, 0])), 'KB-03': 1 } }, answered: { noul: 0.99 } } }
+    reply = () => Response.json({ ...answer, pad: 'x'.repeat(16 * 1024) })
+    expect((await ask(m, 'how do roles work')).body).toEqual({ handover: true })
+    reply = () => Response.json({ ...answer, pad: 'x'.repeat(16 * 1024 - 2000) })
+    expect((await ask(m, 'how do roles work')).body).toMatchObject({ answers: [{ id: 'KB-03' }] })
+    // Through an answer, a failure and a redirect: the key was written to no console, by any method.
+    expect(JSON.stringify(consoles.flatMap((spy) => spy.mock.calls))).not.toContain(KEY)
+    expect(consoles[0].mock.calls).toEqual([['support failure', 'provider_status'], ['support failure', 'provider_shape']])
   })
 
   it('found nothing: an answer that names an unknown id, repeats an id or carries markup shows only texts of the answer base, whatever the question orders; two sessions of one seat share its limit', async () => {
