@@ -1,23 +1,23 @@
 # Ophis Business console: architecture
 
-Local only. Milestones 1 (sign-in core) and 2 (enrolment and recovery ceremony for members, step-up) are built. Milestones 3 to 6 are designed here so that they need no schema rework.
+Local only. Milestones 1 (sign-in core), 2 (enrolment and recovery ceremony for members, step-up) and 3 (roles, two-person approval, freeze rules, audit log page) are built. Milestones 4 to 6 are designed here so that they need no schema rework.
 Design sources: `security-design.md`, `recovery.md`, `key-custody.md` (owner research folder). The login identifies people. It never signs a trade.
 
 ## Modules
 ```
 index.html              page shell; the Lucide icon symbols are inlined at the top of the body
 public/_headers         security headers and the strict policy for the static pages
-migrations/0001_init.sql  the full D1 schema (authoritative; summary below)
-src/server/index.ts     Worker entry: request checks, route table and its two gates, handlers, API headers, session limits
-src/server/data.ts      the ONE data module: every SQL statement, the audit chain, tickets, activation, stop, alerts
+migrations/0001_init.sql  the full D1 schema (authoritative; summary below); 0002_labels.sql: one label per live passkey of a seat
+src/server/index.ts     Worker entry: request checks, the route table (which is the role table) and its gates, handlers, audit words, CSV, API headers, session limits
+src/server/data.ts      the ONE data module: every SQL statement, the audit chain, tickets, activation, stop, freeze, requests and approvals, alerts
 src/server/passkeys.ts  per-environment constants, stateless challenges, the two WebAuthn verifications, the three-word phrase
 src/server/words.ts     data file: EFF short word list 2.0 (1,296 words, CC BY 4.0, attribution in its header)
 src/app/main.tsx        React shell: band, bar, rail, footer line, routes in the URL fragment, alerts before the page
-src/app/pages.tsx       sign-in, replaced-passkey page, enrolment, Organisation (invite, re-enrol, waiting list, passkeys), Security and data
+src/app/pages.tsx       sign-in, replaced-passkey and frozen-seat pages, enrolment, Organisation (approvals, members, manage dialog, passkeys, role table), Compliance (audit log), Security and data
 src/app/ui.tsx          API call, passkey check, step-up retry, icons, badges; kit.css is the brand kit unchanged, app.css the mockup's app layer
 scripts/dev.mjs         local seed and activate commands (local D1 only)
 tests/worker.test.ts    invariants, in the Workers runtime with a local D1; tests/authenticator.ts is a software passkey
-tests/e2e.mjs           the same flows in headless Chrome: three browser contexts, each with its own virtual authenticator
+tests/e2e.mjs           the same flows in headless Chrome: one browser context per person, each with its own virtual authenticator
 ```
 Static pages never run the Worker (`run_worker_first: ["/api/*"]`). Dependencies: `@simplewebauthn/server`, `react`, `react-dom`.
 
@@ -36,9 +36,9 @@ Rules: every tenant row has `org_id`; children reference parents by `(org_id, id
 | organisations | id, kind (partner, institution), name, state (unverified, active, frozen, archived), email_domain, domain_challenge, domain_verified_at, synced_keys_allowed, quarantine_until, created_at | Company domain proved by DNS (M5). |
 | seats | id, org_id, display_name, email, role (owner, admin, trader, approver, compliance, viewer), state (invited, active, frozen, removed), quarantine_until, created_at | One person in one organisation. Email is optional and never a key. |
 | enrolment_tickets | id, org_id, seat_id, kind (first_owner, invitation, re_enrolment), role, issuer_seat_id, token_hash, nonce, state (issued, stored, confirmed, cancelled, dead), attempts (0 to 3), expires_at, stored_at, wait_until, created_at | Single use. The nonce feeds the three-word phrase. `wait_until` is not written: the 72 h wait lives in one place, `approvals.not_before`. |
-| credentials | id, org_id, seat_id, public_key, counter, device_bound, transports, label, state (pending, active, suspended, revoked), spare, ticket_id (unique), stop_right_until, created_at, last_used_at | Public material only. One credential per ticket. |
+| credentials | id, org_id, seat_id, public_key, counter, device_bound, transports, label, state (pending, active, suspended, revoked), spare, ticket_id (unique), stop_right_until, created_at, last_used_at | Public material only. One credential per ticket. Unique `(org_id, seat_id, label)` among passkeys that are not revoked (0002). |
 | sessions | id, token_hash, challenge_hash (unique), org_id, seat_id, credential_id, created_at, last_seen_at, step_up_at, revoked_at, user_agent, country, asn | No IP address. A used sign-in challenge is recorded here. |
-| approvals | id, org_id, action, subject_id, payload, payload_hash, requester_seat_id, checker_seat_id, state, not_before, expires_at, created_at, decided_at | `CHECK`: the checker is never the requester. |
+| approvals | id, org_id, action, subject_id, payload, payload_hash, requester_seat_id, checker_seat_id, state, not_before, expires_at, created_at, decided_at | `CHECK`: the checker is never the requester. Holds the ticket confirmations (M2) and the requests (M3). |
 | wallets | id, org_id, chain_id, address, kind (safe, custodian, single_key), label, state, proof_nonce (unique), proof_digest, proof_signature, proof_checked_at, linked_at, anchor (current, next), anchor_effective_at | Unique index on `(org_id, anchor)`: one recovery anchor in force, at most one waiting 72 h to replace it. |
 | recovery_requests | id, org_id, wallet_id, seat_id, action, credential_hash, nonce (unique), digest, signature, owners_snapshot, state (waiting, cancelled, ready, completed, lapsed), wait_until, objected, created_at, closed_at | Last-Owner recovery. One open request per organisation. |
 | kyb_records | id, org_id, legal_name, registration_number, country, tier, source, evidence_ref, evidence_sha256, signer_cert_sha256, screening_outcome, screening_lists, screening_list_version_hash, screened_at, decision, decided_at, recheck_at, created_at | The result, never the documents. One row per review. |
@@ -54,13 +54,25 @@ Rule for new code: whatever decides a write is read inside the plan. A read made
 - Ticket: 256-bit token, only in the link fragment and in one response; SHA-256 stored. 10 min for key roles, 24 h for Trader and Viewer. 3 per issuer and seat per 24 h. Issuer: Owner or Admin, never above the own role, never the own seat. The seat decides the kind: `invited` gives an invitation, `active` a re-enrolment.
 - Phrase: `words3(SHA-256("ophis-enrol-v1" ‖ site ‖ org ‖ seat ‖ role ‖ purpose ‖ credentialHash ‖ nonce))`, every field with a 4-byte length; site is the relying-party id, purpose the ticket kind, the nonce 128 server bits that never leave the server. Never stored. Returned once, by `enrol/finish`, to the member's device.
 - Confirmation: the issuer types the words within 60 min, in a request that carries its own passkey check (challenge bound to ticket id, credential hash and try number). 3 wrong tries kill the ticket and the pending passkey. Words that are not on the list are a typing slip, not a try.
-- Key roles: the issuer's words write an `approvals` row (`ticket.confirm`, requester = issuer). A second key-role member (not issuer, not target) types the words within the same 60 min and becomes its checker. If no such active seat exists: `not_before` = 72 h, and the pending passkey becomes active at its first sign-in in the 7 days after. No scheduled job.
+- Key roles: the issuer's words write an `approvals` row (`ticket.confirm`, requester = issuer). A second key-role member (not issuer, not target) types the words within the same 60 min and becomes its checker. Only where the 30 day rule (M3, below) allows it: `not_before` = 72 h, and the pending passkey becomes active at its first sign-in in the 7 days after. No scheduled job.
 - Activation: new passkey `active`; on a re-enrolment the seat's active passkeys become `suspended` with `stop_right_until`, and the seat gets `quarantine_until` (24 h Trader and Viewer, 72 h key roles); the seat's sessions end; its other open tickets die.
-- Stop: a suspended passkey with a running stop right opens no session. `signin/finish` tells it so (403 `passkey_replaced`) once its check passed; `stop/finish` then revokes the seat's active passkeys, restores the suspended ones, freezes the seat. Unfreezing needs two people: milestone 3.
-- A seat is frozen by a stop, or when a colleague revokes its last active passkey (so that nobody clears the way for a re-enrolment the member could not stop). A freeze closes, in the tables, the open tickets for that seat and the ones it issued; a frozen seat gets no ticket. A ticket is also dead when read if its issuer is not active.
+- Stop: a suspended passkey with a running stop right opens no session. `signin/finish` tells it so (403 `passkey_replaced`) once its check passed; `stop/finish` then revokes the seat's active passkeys, restores the stopping passkey and the ones replaced with or before it, revokes every passkey added after it was replaced, and freezes the seat.
+- A seat is frozen by a stop or by a colleague's freeze (M3). Nobody revokes the last active passkey of a seat, so nobody clears the way for a re-enrolment the member could not stop. A freeze closes, in the tables, the open tickets for that seat and the ones it issued; a frozen seat gets no ticket. A ticket is also dead when read if its issuer is not active.
 - Only active passkeys count: toward the two a seat needs and toward the 10 it may hold. Replaced and pending ones do not.
 - A sign-in with a passkey the member still holds kills every open ticket of that seat (audit detail `ticket_killed`): this is how the target cancels during the wait.
-- Alerts are computed at `GET /api/me` from rows of the last 7 days (no table, no email): quarantine, new passkey on the seat, re-enrolment started or completed, a colleague re-enrolled or joined (not shown to the issuer), a frozen seat, words waiting for this member, and for Owners and Admins a sign-in that closed a re-enrolment ("the issuer is flagged"). The app shows them before the page; the browser remembers what was read.
+- Alerts are computed at `GET /api/me` from rows of the last 7 days (no table, no email): quarantine, new passkey on the seat, re-enrolment started or completed, a colleague re-enrolled or joined (not shown to the issuer), a frozen seat (who froze it and when), words or a request waiting for this member, a change two people made (not shown to its approver), and for Owners and Admins a sign-in that closed a re-enrolment ("the issuer is flagged"). The app shows them before the page; the browser remembers what was read.
+
+### Roles, two-person changes and freezes as built (M3; owner decision of 2026-11-11)
+- Role table: `routes` in `index.ts` is the table. A row holds the roles (or `public`), `fresh`, `twoKeys`, `settled` (refused in quarantine), `second` (the kind of change) and `can` (its sentence). `api()` enforces the role, then the gates. A `second` route has no handler: all the router can do is file its request. `GET /api/org` returns the rows as `rights`, and the page "What each role can do" renders them.
+- Request: an `approvals` row (action = kind, subject, payload `{"value"}`, requester, 7 days). Kinds: `seat.unfreeze`, `seat.remove`, `seat.role`, `policy.synced_keys`. One open request per kind and subject. The requester cancels. A different key-role member rejects, or approves after a fresh check: the change is applied in the commit of the approval (audit action = the kind, actor = the approver).
+- `judge()` in `data.ts` decides every change, when it is asked and again inside the approving commit, with the roles read inside the commit: nobody acts on a role above their own (an Admin: at or below Admin); a new role is never above the requester's; the last active Owner is never frozen, removed or lowered; a role that needs hardware keys is not given to a seat that holds a synced passkey.
+- One person is enough in two cases: a freeze (it only tightens), and the removal of an invited seat nobody enrolled on.
+- Freeze: seat `frozen`; its active passkeys `suspended` with no stop-right date; sessions end; its open tickets, the tickets it issued and the requests it made are closed. A passkey of a frozen seat that passes its sign-in check gets 403 `seat_frozen` with who froze it and when (from the audit rows), and no session.
+- Unfreeze: the passkeys the freeze suspended are active again; what a stop revoked stays revoked; a passkey replaced before the freeze stays suspended. Remove: passkeys revoked, sessions ended, everything open closed. Role change: sessions end, and what the seat issued or asked for is closed.
+- Passkey rule for key roles (`synced_keys_allowed`): an Owner asks. Tightening applies at the approval. Relaxing gets `not_before` = request + 24 h and cannot be approved earlier.
+- The 30 day rule: the 72 hour wait replaces the second person only if no seat but the issuer's is, or in the last 30 days was, a key-role seat: active, frozen, removed by two people, or lowered from a key role (dates from the audit rows `seat.remove` and `seat.role`). A key-role re-enrolment therefore never waits: it needs a real second person, or the recovery wallet (M4).
+- Limits: 10 new invited seats per issuer per 24 h. A ticket not confirmed 12 days after it was made (its longest life is 11 days) is deleted with its pending passkey when a ticket is next issued. Two live passkeys of one seat never share a label.
+- Audit page: `GET /api/audit?before=<seq>`, 50 rows, names resolved at read time, events in words from the one table `EVENTS` (`index.ts`), chain state from `verifyAudit`. `POST /api/audit/export` writes its audit row, then answers the whole log as CSV text inside JSON (a state change is a POST; the page saves the file). Every cell is quoted; a cell a spreadsheet would run gets an apostrophe.
 
 ### Wallets and the recovery anchor (M4): typed data and contract wallets
 - A proof is EIP-712 typed data (`recovery.md` section 5). Domain: name `Ophis Business`, version `1`, `chainId` of the wallet's pinned chain. There is no `verifyingContract`: no contract verifies it. The binding to this app is inside the message: `site`, `organisationId`, `wallet`.
@@ -72,7 +84,7 @@ Rule for new code: whatever decides a write is read inside the plan. A read made
 
 ## Routes
 Every `/api/*` call: `Sec-Fetch-Site: same-origin` or 403. Every state change: POST, JSON, `Origin` equal to the configured origin, body under 64 KB. No CORS grant.
-Two gates in the route table (M2). `twoKeys`: the seat holds two active passkeys, device-bound ones for an Owner; with fewer it can sign in, pass a check and add its second key. `fresh`: a passkey check in the last 5 minutes ("Step-up: yes").
+The route table is the role table (M3): the role first, then the gates. `twoKeys`: the seat holds two active passkeys, device-bound ones for an Owner; with fewer it can sign in, pass a check and add its second key. `fresh`: a passkey check in the last 5 minutes ("Step-up: yes"). `settled`: not in quarantine.
 
 | M | Route | Authentication | Roles | Step-up | Second person |
 |---|---|---|---|---|---|
@@ -86,14 +98,17 @@ Two gates in the route table (M2). `twoKeys`: the seat holds two active passkeys
 | 1 | POST /api/signout | session | any | no | no |
 | 2 | POST /api/stepup/start, /finish | session and an active passkey of the own seat | any | it is the step-up: 5 min window, new session token | no |
 | 2 | POST /api/passkeys/start, /finish | session | own seat; the new passkey is active at once; other sessions of the seat end | yes | no |
-| 2 | POST /api/passkeys/:id/revoke | session, two passkeys | own active passkey (never the last); a colleague's: Owner, Admin, not above own role, not in quarantine, seat not frozen | yes | no |
+| 2 | POST /api/passkeys/:id/revoke | session, two passkeys | an active passkey, never the last of its seat; a colleague's: Owner, Admin, not above own role, not in quarantine, seat not frozen | yes | no |
 | 2 | POST /api/tickets | session, two passkeys | Owner, Admin; rules above; an invitation is blocked in quarantine | yes | no |
 | 2 | POST /api/tickets/:id/confirm/start, /confirm | session, two passkeys; three words typed | the issuer, then another key-role member for key roles; an invitation is blocked in quarantine | own passkey check, bound to the ticket | key roles: yes, or the 72 h wait |
 | 2 | POST /api/tickets/:id/cancel | session, two passkeys | Owner | yes | no |
 | 2 | POST /api/stop/start, /finish | check of a suspended passkey; no session | the replaced passkey, until its stop right ends | passkey check | no |
-| 3 | GET /api/approvals; POST /api/approvals/:id/approve, /reject | session | key roles; never the requester | yes | this is the second person |
-| 3 | POST /api/members/:id/role, /remove | session | Owner, Admin; never the last Owner | yes | yes |
-| 3 | GET /api/audit, /api/audit/export | session | Owner, Viewer, Compliance officer | export: yes | no |
+| 3 | POST /api/members/:id/freeze | session, two passkeys, not in quarantine | Owner; Admin for a seat at or below Admin; never the last Owner | yes | no: it only tightens |
+| 3 | POST /api/members/:id/unfreeze, /role, /remove | same | same; a role never above the requester's | yes | yes (an invited seat nobody enrolled on: removed at once) |
+| 3 | POST /api/policy | same | Owner | yes | yes; relaxing also waits 24 h |
+| 3 | POST /api/approvals/:id/approve, /reject | session, two passkeys; approve: not in quarantine | key roles; never the requester | yes | this is the second person |
+| 3 | POST /api/approvals/:id/cancel | session | the requester (Owner, Admin) | no | no |
+| 3 | GET /api/audit; POST /api/audit/export | session | Owner, Compliance officer, Viewer | export: yes | no |
 | 4 | POST /api/wallets/link/start, /finish; /api/wallets/:id/unlink | session and a wallet signature | Owner, Admin | yes | link: yes |
 | 4 | POST /api/anchor | session | Owner | yes | yes; counts after 72 h |
 | 4 | POST /recover/intent, /recover/proof | no cookie; anchor signature; proof-page origin only | the anchor's signers | no | 72 h wait, cancel and veto |
@@ -106,6 +121,7 @@ Two gates in the route table (M2). `twoKeys`: the seat holds two active passkeys
 Each test (in `tests/worker.test.ts`) was seen to fail with its control removed once. Milestone 1, independent review, 2026-11-11: 71 single mutations, 70 caught; the survivor was the purpose label inside the challenge HMAC, which milestone 2 now tests.
 Milestone 2, independent review, 2026-11-11: 137 single mutations written and run from scratch. 10 survived: 4 were real test gaps, now closed (a stop must revoke passkeys the replacement added; a replaced passkey on a frozen seat; replaced and pending passkeys in the two-key count; a sign-in must not close tickets the member issued), 1 was a comparison that could never differ (deleted), 5 have no security effect (among them the two below). The defects the review fixed each have a test in section q that was seen failing first.
 Milestone 2, builder, 2026-11-11: 110 single mutations of its controls, all caught, and four more against `tests/e2e.mjs`. Not separately provable, because another check covers the same case: the ticket id inside the confirmation binding (the credential hash is already unique per ticket), and the early stop-right check a handler could add (the write checks it).
+Milestone 3, builder, 2026-11-11: 74 single mutations of its controls, 73 caught, and three more against `tests/e2e.mjs`, all caught. The survivor has no effect: a seat that is no longer active has no role, and no role passes `judge()` either way. Two checks that no test could prove were deleted (a requester's seat state at the approval: closing the seat cancels its requests first).
 
 | Invariant | Test |
 |---|---|
@@ -140,16 +156,26 @@ Milestone 2, builder, 2026-11-11: 110 single mutations of its controls, all caug
 | Nobody clears the way for a re-enrolment: a colleague's last revoke freezes the seat; a freeze closes the seat's tickets and the ones it issued, for good | q: `a colleague cannot clear the way...`, `a ticket is dead once the seat that issued it...` |
 | Races: one link in two browsers, a link used while its ticket is cancelled or killed, two confirmations, a second person appearing during the wait | q: four tests |
 | Only active passkeys count toward the two a seat needs and the 10 it may hold; the second person is never shown the words; a stop revokes what the replacement added | q: three tests |
+| Every route is in the role table; the router refuses a role that is not; the page shows that table; a second-person route only files a request | r: four tests |
+| The maker is never the checker (code and schema); the checker is a key role with a fresh check, two passkeys, out of quarantine; one application when two approve at once; none after a cancel, a reject or 7 days; a ticket confirmation is not a request | s: `a request names the change...`, `the maker is never the checker...`, `the second person passes...`, `two approvers at the same instant...`, `a request that was cancelled...`, `the confirmation of a new passkey...` |
+| A change is judged when asked and again when approved, with roles read inside the commit: never above the requester's role, never the last Owner, hardware keys for a key role | s: `a role change never goes above...`, `the last Owner is never...`, `a role that needs hardware keys...`, `a role that changes at the same instant...` |
+| Removal takes two people, an invited seat one; the passkey rule tightens at once and relaxes 24 h after the request at the earliest | s: `removing a member...`, `the passkey rule for key roles...` |
+| Freeze: one person, passkeys suspended, everything open closed, every member told; a frozen member reaches no route and is told who and when; unfreeze: two people, and which passkeys stand | t: five tests; q: `a colleague cannot clear the way...` |
+| The 72 hour wait only where no other key-role seat was held in 30 days: active, frozen, removed or lowered ones refuse it | u: four tests |
+| 10 new seats per issuer per day; unconfirmed tickets swept after 12 days; one label per live passkey of a seat | v: three tests |
+| Audit page: own rows only, words not codes, chain state from the server, pages of 50; export: fresh check, one audit row, formula-safe cells, never cached | w: four tests; e: `GET /api/audit`, `POST /api/audit/export` |
 
 ## Deliberate shortcuts (`ponytail:` in the code)
 - The idle clock is written at most once a minute: a session can end up to 60 s early, never late.
 - Writes of one organisation are serialised by the audit sequence, with one retry. Many writers at the same instant would need a queue.
 - `verifyAudit` reads a whole chain. A removed tail is only detectable with the external hourly anchor, which is not built.
 - `scripts/dev.mjs activate` stands in for the first Owner's activation by the recovery anchor (M4). Members no longer need it.
-- Alerts are read from rows of the last 7 days; the server keeps no "seen" mark. Expired tickets stay in the table: nothing sweeps.
-- After two re-enrolments inside one quarantine a stop restores the passkeys of both earlier rounds. The freeze makes that safe until M3 decides.
+- Alerts are read from rows of the last 7 days; the server keeps no "seen" mark.
+- The audit page verifies the whole chain on every load, and the export answers the whole log at once: fine to about 10,000 rows.
+- Relaxing the passkey rule waits before its approval, not after it. Tightening it does not remove synced passkeys already enrolled.
+- The actor's role is read again inside the commit for the M3 writes only. The M2 writes (issue a ticket, revoke a passkey) still use the session's role.
 - The link is shown as text with a copy button: no QR code (it would need a dependency).
-- Not built yet: unfreezing a seat (M3), rate limits, Turnstile, a passkey check on a change of country or network, the spare key, linked Google or Microsoft identity, the production hostname.
+- Not built yet: rate limits, Turnstile, a passkey check on a change of country or network, the spare key, linked Google or Microsoft identity, the production hostname.
 
 ## Commands
 `npx -y pnpm@10.34.9 install --ignore-workspace`, then `pnpm migrate`, `pnpm seed`, `pnpm dev`, `pnpm activate`, `pnpm test`, `pnpm test:e2e`, `pnpm typecheck` (see README.md).
@@ -157,7 +183,7 @@ Milestone 2, builder, 2026-11-11: 110 single mutations of its controls, all caug
 ## Milestones
 - M1 sign-in core: passkey enrolment (pending), sign-in, sessions, request checks, audit chain, console shell. Built.
 - M2 enrolment and recovery ceremony: tickets, three-word phrase, confirmations, step-up, second key, stop right, quarantine, alerts at sign-in. Built (paths A and B; path C is M4).
-- M3 roles and two-person approval: approvals, member and role changes, audit view and export.
+- M3 roles and two-person approval: role table, requests and approvals, freeze and unfreeze, the 30 day rule, audit log page and export. Built.
 - M4 wallets and recovery anchor: wallet link, anchor, EIP-712 proof, ERC-1271, last-Owner recovery.
 - M5 registration, KYB and sealing: application, DNS domain proof, sealed uploads, operator console.
 - M6 support: assistant, hand-over by a mailto link to the operator's mailbox. The label is "Support".
