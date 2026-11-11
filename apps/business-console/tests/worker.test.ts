@@ -5605,10 +5605,11 @@ describe('E. onboarding: a company applies, proves its domain, is activated and 
     const domain = `both${++domains}.example`
     const a = await applyFor(domain)
     const { name, value } = a.body.record as { name: string; value: string }
-    const rows = await snapshot([...TABLES, COUNTER])
+    const rows = await snapshot()
     const refused = async (why: string) => {
+      await uncount() // G6 counts the checks of a domain; that limit has its own test
       expect((await checkDns(a.intent)).body, why).toEqual({ error: 'dns_not_proved', record: a.body.record })
-      expect(await snapshot([...TABLES, COUNTER]), why).toBe(rows)
+      expect(await snapshot(), why).toBe(rows)
     }
     await refused('no record')
     // A record left by another application for the same domain, the value of this passkey for another domain, and near misses.
@@ -5656,6 +5657,29 @@ describe('E. onboarding: a company applies, proves its domain, is activated and 
     // The other application for the same domain, whose record is there too, comes second: one organisation per domain.
     publish(other.body.record)
     expect((await checkDns(other.intent)).body).toEqual({ error: 'domain_taken' })
+  })
+
+  it('G6: at most 10 DNS checks per domain per hour, counted after the MAC and the expiry and before any lookup', async () => {
+    const domain = `limit${++domains}.example`
+    const [a, b, other] = [await applyFor(domain), await applyFor(domain), await applyFor()]
+    // What is not an intent of ours, or is too old, is not counted.
+    expect((await checkDns(resealed(a.intent, { domain: other.domain }))).body).toEqual({ error: 'intent_invalid' })
+    now = START + 7 * DAY
+    expect((await checkDns(a.intent)).body).toEqual({ error: 'intent_expired' })
+    now = START
+    expect(await counted(`dns:${domain}`)).toBe(0)
+    // Two applications for one domain share its 10.
+    for (let i = 0; i < 10; i++) expect((await checkDns(i % 2 ? a.intent : b.intent)).body.error, `check ${i + 1}`).toBe('dns_not_proved')
+    expect(await counted(`dns:${domain}`)).toBe(10)
+    publish(a.body.record) // the record is there now: the 11th check still asks nobody
+    dns.asked = []
+    const rows = await snapshot()
+    const over = await checkDns(a.intent)
+    expect([over.status, over.body]).toEqual([429, { error: 'too_many' }])
+    expect([dns.asked.length, await snapshot()]).toEqual([0, rows])
+    expect((await checkDns(other.intent)).body.error).toBe('dns_not_proved') // another domain has its own
+    now = START + HOUR // the next clock hour
+    expect((await checkDns(a.intent)).body).toEqual({ state: 'unverified' })
   })
 
   it('A3, A4: the parser reads the JSON form of both resolvers, and the resolvers are constants per environment', () => {

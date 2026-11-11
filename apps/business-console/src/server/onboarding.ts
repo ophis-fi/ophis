@@ -5,7 +5,7 @@
 // This file holds its own handlers and, in its first half, its own rows: every statement is prepared with bound
 // parameters, and every change goes through commit() of the data module, with what decides it read inside the plan.
 import { checksum, colour, parseAddress, readCapped, safeState, verify, verifyDigest, type SafeState } from './chain.ts'
-import { commit, PEOPLE, randomId, REVIEWED, sha256Hex, type Actor, type WalletKind } from './data.ts'
+import { commit, countHour, PEOPLE, randomId, REVIEWED, sha256Hex, type Actor, type WalletKind } from './data.ts'
 import { challengeIsOurs, creationOptions, credentialHash, fromBase64Url, newChallenge, phraseFor, seal, unseal, verifyRegistration, type Config } from './passkeys.ts'
 import { CHAIN_NAME, typedProof } from './typed.ts'
 
@@ -21,6 +21,7 @@ export const OPERATOR: Record<string, string> = { local: 'http://operator.localh
 export const DNS = { timeoutMs: 5000, maxBytes: 16 * 1024 }
 const WEEK_S = 7 * 24 * 60 * 60
 const INVITE_S = 14 * 24 * 60 * 60 // an application code lives 14 days
+const MAX_DNS = 10 // DNS checks per domain per clock hour
 const MAX_BODY = 64 * 1024
 const ID = /^[0-9a-f]{32}$/
 const LABEL = /^[\p{L}\p{N} ._()-]{1,40}$/u
@@ -324,12 +325,13 @@ export async function lookup(resolver: string, name: string) {
 
 // POST /api/apply/check, "Check DNS". The MAC first, before any lookup; the expiry; then both resolvers must return
 // the exact value, which is made again here from the intent's domain and passkey. Only then the one commit.
-// ponytail: no counter before the proof (nothing is written before it), so an intent can be checked as often as its
-// holder likes: two lookups each. Turnstile is the brake, and it is not built.
+// G6: at most 10 checks per domain per clock hour, whoever holds its intents (countHour, under the key "dns:<domain>"):
+// the one write before the proof, made after the MAC and the expiry and before any lookup.
 export async function applyCheck(c: Ctx) {
   const intent = (await unseal(c.env.CHALLENGE_KEY, APPLY, typeof c.body.intent === 'string' ? c.body.intent : '')) as ApplyIntent | null
   if (!intent) return fail(400, 'intent_invalid')
   if (intent.expiresAt * 1000 <= c.now) return fail(410, 'intent_expired')
+  if (!(await countHour(c.env.DB, `dns:${intent.domain}`, c.now, MAX_DNS))) return fail(429, 'too_many')
   const value = await dnsValue(c.env.CHALLENGE_KEY, intent.domain, intent.credentialHash)
   const answers = await Promise.all(RESOLVERS[c.env.ENVIRONMENT].map((resolver) => lookup(resolver, dnsName(intent.domain))))
   // The refusal names the record again: whoever holds the intent may know what to publish (a resumed application reads it here).
