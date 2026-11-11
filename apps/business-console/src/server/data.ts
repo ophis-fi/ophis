@@ -318,6 +318,7 @@ export async function revokeCredential(db: D1Database, session: Actor, credentia
   let outcome: 'ok' | 'not_found' | 'forbidden' | 'quarantine' | 'last_passkey' = 'not_found'
   await commit(db, session.orgId, async () => {
     const actor = await actorNow(db, session)
+    outcome = 'not_found' // a second run of the plan starts again
     if (!actor) return null
     const c = await db
       .prepare(`SELECT c.seat_id, s.role, (SELECT count(*) FROM credentials k WHERE k.org_id = c.org_id AND k.seat_id = c.seat_id AND k.state = 'active') AS active
@@ -349,10 +350,8 @@ export async function issueTicket(db: D1Database, session: Actor, target: Target
   let outcome: Issued = { error: 'not_found' }
   await commit(db, session.orgId, async () => {
     const actor = await actorNow(db, session)
-    if (!actor) {
-      outcome = { error: 'forbidden' }
-      return null
-    }
+    outcome = { error: actor ? 'not_found' : 'forbidden' } // a second run of the plan starts again
+    if (!actor) return null
     let seat: { id: string; role: Role; state: string } | null = 'seatId' in target ? null : { id: newSeatId, role: target.role, state: 'new' }
     // A member does not re-enrol their own seat: they add a passkey after a check from one they hold.
     if ('seatId' in target && target.seatId !== actor.seatId) {
@@ -548,9 +547,11 @@ export function stopReplacement(db: D1Database, credential: StoredCredential, co
 
 export type Kind = 'seat.unfreeze' | 'seat.remove' | 'seat.role' | 'policy.synced_keys'
 // The actor's role as it is inside the commit. The session's copy was read before this write took its turn: a
-// member lowered, frozen or removed at the same instant must not act with the role they had. Null: not active.
+// member lowered, frozen or removed at the same instant must not act with the role they had. Null: the seat is
+// not active, or the session has ended since (a role change, a freeze, a re-enrolment and a revoke all end it).
 const roleNow = async (db: D1Database, actor: Actor) =>
-  (await db.prepare(`SELECT role FROM seats WHERE org_id = ? AND id = ? AND state = 'active'`).bind(actor.orgId, actor.seatId).first<{ role: Role }>())?.role ?? null
+  (await db.prepare(`SELECT s.role FROM seats s JOIN sessions x ON x.org_id = s.org_id AND x.seat_id = s.id AND x.id = ? AND x.revoked_at IS NULL
+                     WHERE s.org_id = ? AND s.id = ? AND s.state = 'active'`).bind(actor.sessionId, actor.orgId, actor.seatId).first<{ role: Role }>())?.role ?? null
 /** The actor with the role of this moment, for the plans of the milestone 2 writes. Null: the seat is no longer active. */
 const actorNow = async (db: D1Database, actor: Actor) => {
   const role = await roleNow(db, actor)
@@ -568,11 +569,11 @@ async function judge(db: D1Database, orgId: string, role: Role, kind: Kind | 'se
     return { apply: [db.prepare('UPDATE organisations SET synced_keys_allowed = ? WHERE id = ?').bind(Number(value), orgId)], detail: value === '1' ? 'synced' : 'hardware', relax: value === '1' }
   }
   const seat = await db
-    .prepare(`SELECT s.role, s.state, o.synced_keys_allowed AS synced,
+    .prepare(`SELECT s.role, s.state, s.quarantine_until AS quarantine, o.synced_keys_allowed AS synced,
                 (SELECT count(*) FROM seats x WHERE x.org_id = s.org_id AND x.id <> s.id AND x.role = 'owner' AND x.state = 'active') AS owners,
-                (SELECT count(*) FROM credentials k WHERE k.org_id = s.org_id AND k.seat_id = s.id AND k.device_bound = 0 AND (k.state = 'active' OR (k.state = 'suspended' AND k.stop_right_until > ?))) AS soft
+                (SELECT count(*) FROM credentials k WHERE k.org_id = s.org_id AND k.seat_id = s.id AND k.state = 'active' AND k.device_bound = 0) AS soft
               FROM seats s JOIN organisations o ON o.id = s.org_id WHERE s.org_id = ? AND s.id = ? AND s.state <> 'removed'`)
-    .bind(now, orgId, subjectId).first<{ role: Role; state: string; synced: number; owners: number; soft: number }>()
+    .bind(orgId, subjectId).first<{ role: Role; state: string; quarantine: number | null; synced: number; owners: number; soft: number }>()
   if (!seat) return 'not_found'
   if (!mayManage(role, seat.role)) return 'forbidden'
   // The last Owner is never frozen, removed or lowered: nobody would be left who can manage the organisation.
@@ -608,6 +609,9 @@ async function judge(db: D1Database, orgId: string, role: Role, kind: Kind | 'se
   const to = value as Role
   if (seat.state !== 'active' || !ROLES.includes(to) || to === seat.role) return 'invalid'
   if (!mayManage(role, to)) return 'forbidden' // never above the requester's own role
+  // While a re-enrolment of the seat can still be stopped, the passkey on it may be an issuer's own: a promotion would
+  // give that issuer a second key-role seat. A lowered role would also shorten the stop right of the next replacement.
+  if ((seat.quarantine ?? 0) > now) return 'seat_in_quarantine'
   if (lastOwner) return 'last_owner'
   if (needsHardware(to, seat.synced) && seat.soft > 0) return 'device_bound_required'
   // The sessions end: the new role starts at the next sign-in. What the seat issued or asked for under the old role is closed.
