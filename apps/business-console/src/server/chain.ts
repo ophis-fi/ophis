@@ -87,12 +87,11 @@ export async function safeState(endpoints: Endpoints, chainId: number, wallet: s
     encodeFunctionData({ abi: ABI, functionName: 'getModulesPaginated', args: ['0x0000000000000000000000000000000000000001', 10n] }),
   ])
   try {
-    const state = {
+    return {
       threshold: Number(decodeFunctionResult({ abi: ABI, functionName: 'getThreshold', data: threshold! })),
       owners: decodeFunctionResult({ abi: ABI, functionName: 'getOwners', data: owners! }).map(lower).sort(),
       modules: decodeFunctionResult({ abi: ABI, functionName: 'getModulesPaginated', data: modules! })[0].map(lower).sort(),
     }
-    return state.threshold >= 1 && state.owners.length >= state.threshold ? state : null
   } catch {
     return null
   }

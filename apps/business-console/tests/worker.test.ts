@@ -3241,8 +3241,9 @@ describe('y. wallets and the recovery wallet', () => {
       'an endpoint is on another chain': (url, method, result) => (url === RPC1 && method === 'eth_chainId' ? '0x1' : result),
       'both endpoints are on another chain': (_url, method, result) => (method === 'eth_chainId' ? '0x1' : result),
       'an endpoint fails': (url, _method, result) => (url === RPC2 ? new Response('down', { status: 502 }) : result),
+      'an endpoint fails with the value in its body': (url, method, result) => (url === RPC2 && method === 'eth_call' ? Response.json({ jsonrpc: '2.0', id: 1, result: magic }, { status: 500 }) : result),
       'an endpoint answers no JSON': (url, _method, result) => (url === RPC1 ? new Response('<html>') : result),
-      'an endpoint does not answer in time': (url, method, result, init) => (url === RPC2 && method === 'eth_call' ? new Promise((_, reject) => init!.signal!.addEventListener('abort', () => reject(new Error('aborted')))) : result),
+      'an endpoint does not answer in time': (url, method, result, init) => (url === RPC2 && method === 'eth_call' ? new Promise((_, reject) => init?.signal?.addEventListener('abort', () => reject(new Error('aborted')))) : result),
       'an endpoint answers too much': (url, method, result) => (url === RPC1 && method === 'eth_call' ? padded.clone() : result),
       'the wallet says another value': (_url, method) => (method === 'eth_call' ? `0xffffffff${'0'.repeat(56)}` : '0xa'),
       'the wallet says the value with more behind it': (_url, method) => (method === 'eth_call' ? `${magic}00` : '0xa'),
@@ -3427,6 +3428,10 @@ describe('y. wallets and the recovery wallet', () => {
     await recovery(o, a, second.id)
     expect([(await walletAt(accounts[0].address)).anchor, (await walletAt(accounts[1].address)).anchor]).toEqual(['current', 'next'])
     expect((await walletsOf(o)).map((w) => w.recovery)).toEqual(['in_force', 'waiting'])
+    // Another wallet write during the 72 hours promotes nothing and clears nothing.
+    const third = await linked(o, a, { custodian: true }, accounts[2])
+    expect((await post(`/api/wallets/${third.id}/unlink`, o)).body).toEqual({ state: 'applied' })
+    expect([(await walletAt(accounts[0].address)).anchor, (await walletAt(accounts[1].address)).anchor]).toEqual(['current', 'next'])
     now += WAIT
     await again(o)
     expect((await walletsOf(o)).map((w) => w.recovery)).toEqual([null, 'in_force'])
