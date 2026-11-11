@@ -30,7 +30,7 @@ const HEADERS = {
 // The signing page, on its own hostname: its own scripts and styles only, and it may be framed by the Safe interface,
 // which is how Safe owners sign. No cross-origin grant but one: the Safe interface reads manifest.json.
 const SIGN_HEADERS = {
-  'content-security-policy': "default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self'; connect-src 'self'; frame-ancestors https://app.safe.global https://*.safe.global",
+  'content-security-policy': "default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self'; font-src 'self'; connect-src 'self'; frame-ancestors https://app.safe.global https://*.safe.global",
   'cache-control': 'no-cache',
   'x-content-type-options': 'nosniff',
   'referrer-policy': 'no-referrer',
@@ -383,11 +383,13 @@ async function proof(c: Context) {
   const typed = typedLink({ chainId: intent.chainId, site: c.config.rpId, organisationId: intent.org, wallet: intent.wallet, nonce: intent.nonce, issuedAt: intent.issuedAt, expiresAt: intent.expiresAt })
   const proved = await verify(endpoints, typed, intent.wallet, signature as `0x${string}`)
   if (!proved) return fail(403, 'signature_rejected')
-  // A wallet whose own key signed is never read as a Safe: no endpoint is asked about it.
+  // A wallet whose own key signed is never read as a Safe: no endpoint is asked about it. A contract is a Safe only
+  // when it is a genuine one (chain.ts). Any other contract is stored as a single key, the strictest kind, whatever
+  // the requester declared: what answers for it cannot be checked, and "custodian" is the word for a key a custodian holds.
   const safe = proved.by === 'contract' ? await safeState(endpoints, intent.chainId, intent.wallet) : null
   const outcome = await data.linkWallet(c.env.DB, {
     orgId: intent.org, seatId: intent.seat, chainId: intent.chainId, address: intent.wallet.toLowerCase(), label: intent.label,
-    kind: safe ? 'safe' : intent.custodian ? 'custodian' : 'single_key', snapshot: safe && JSON.stringify(safe),
+    kind: safe ? 'safe' : intent.custodian && proved.by === 'key' ? 'custodian' : 'single_key', snapshot: safe && JSON.stringify(safe),
     nonce: intent.nonce, digest: proved.digest, signature, now: c.now,
   })
   return 'error' in outcome ? refuse(outcome.error) : json(200, outcome)
@@ -629,6 +631,8 @@ export async function handle(request: Request, env: Env, now: () => number = Dat
     const config = configFor(env.ENVIRONMENT)
     // The host decides, from the environment's constants: the signing page's own hostname, or the console.
     const signing = origin === config.signOrigin
+    // Any other host is not ours: a request that arrives under another name gets nothing, not even a refusal with a reason.
+    if (!signing && origin !== config.origin) return new Response('Not found', { status: 404, headers: HEADERS })
     if (!pathname.startsWith('/api/')) return await pages(request, env, signing)
     response = await api(request, env, now, config, signing)
   } catch (error) {

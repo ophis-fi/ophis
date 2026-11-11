@@ -11,7 +11,7 @@ import passkeySource from '../src/server/passkeys.ts?raw'
 import * as data from '../src/server/data.ts'
 import { csvCell, EVENTS, handle, routes, type Env } from '../src/server/index.ts'
 import { challengeIsOurs, configFor, credentialHash, fromBase64Url, newChallenge, phraseFor, seal, toBase64Url, userHandle } from '../src/server/passkeys.ts'
-import { colour, LIMITS, type SafeState } from '../src/server/chain.ts'
+import { colour, LIMITS, SAFES, type SafeState } from '../src/server/chain.ts'
 import { LINK_ACTION, typedLink } from '../src/server/typed.ts'
 import { WORDS } from '../src/server/words.ts'
 import { softwareAuthenticator } from './authenticator.ts'
@@ -202,8 +202,14 @@ const SAFE_ABI = parseAbi([
   'function getOwners() view returns (address[])', 'function getModulesPaginated(address start, uint256 pageSize) view returns (address[] array, address next)',
 ])
 const ONE = '0x0000000000000000000000000000000000000001'
+// The runtime code of a real Safe proxy 1.4.1, read on the fork by tests/chain.mjs (eth_getCode of a Safe that the
+// official factory had just created). Its hash is in the allow-list of chain.ts; no other code here is.
+const PROXY_CODE = '0x608060405273ffffffffffffffffffffffffffffffffffffffff600054167fa619486e0000000000000000000000000000000000000000000000000000000060003514156050578060005260206000f35b3660008037600080366000845af43d6000803e60008114156070573d6000fd5b3d6000f3fea264697066735822122003d1488ee65e08fa41e58e888a9865554c535f2c77126a82cb4c0f917f31441364736f6c63430007060033'
+const OFFICIAL = SAFES.find((safe) => safe.version === '1.4.1')!
+const word = (address: string) => `0x${address.slice(2).toLowerCase().padStart(64, '0')}`
 // A contract wallet on the fake chain. plain: it answers isValidSignature and nothing a Safe answers.
-interface Contract extends SafeState { accepts: (digest: string, signature: string) => boolean; plain?: boolean }
+// code, singleton (storage slot 0) and fallback (the handler slot): by default those of a genuine Safe 1.4.1. bigThreshold: what getThreshold really says.
+interface Contract extends Omit<SafeState, 'handler'> { accepts: (digest: string, signature: string) => boolean; plain?: boolean; code: string; singleton: string; fallback: string; bigThreshold?: bigint }
 const chain = {
   contracts: new Map<string, Contract>(),
   calls: [] as string[],
@@ -214,13 +220,17 @@ function fakeRpc(input: RequestInfo | URL, init?: RequestInit) {
   const { method, params } = JSON.parse(String(init?.body)) as { method: string; params: [{ to: string; data: `0x${string}` }] }
   chain.calls.push(`${String(input)} ${method}`)
   let result: unknown = '0xa'
-  if (method === 'eth_call') {
+  if (method === 'eth_getCode' || method === 'eth_getStorageAt') {
+    const [address, slot] = params as unknown as string[]
+    const contract = chain.contracts.get(address.toLowerCase())
+    result = method === 'eth_getCode' ? contract?.code ?? '0x' : word(!contract ? '0x0' : slot === '0x0' ? contract.singleton : contract.fallback)
+  } else if (method === 'eth_call') {
     const contract = chain.contracts.get(params[0].to.toLowerCase())
     const asked = contract && decodeFunctionData({ abi: SAFE_ABI, data: params[0].data })
     result = !contract || !asked ? '0x' // no code at the address
       : asked.functionName === 'isValidSignature' ? (contract.accepts(...(asked.args as [string, string])) ? encodeFunctionResult({ abi: SAFE_ABI, functionName: 'isValidSignature', result: '0x1626ba7e' }) : undefined)
       : contract.plain ? undefined // a revert
-      : asked.functionName === 'getThreshold' ? encodeFunctionResult({ abi: SAFE_ABI, functionName: 'getThreshold', result: BigInt(contract.threshold) })
+      : asked.functionName === 'getThreshold' ? encodeFunctionResult({ abi: SAFE_ABI, functionName: 'getThreshold', result: contract.bigThreshold ?? BigInt(contract.threshold) })
       : asked.functionName === 'getOwners' ? encodeFunctionResult({ abi: SAFE_ABI, functionName: 'getOwners', result: contract.owners as `0x${string}`[] })
       : encodeFunctionResult({ abi: SAFE_ABI, functionName: 'getModulesPaginated', result: [contract.modules as `0x${string}`[], ONE] })
   }
@@ -237,7 +247,10 @@ beforeEach(() => {
 })
 // A 2 of 3 Safe with no module at this address, which accepts what `accepts` says (by default every onchain message: 0x).
 function safeAt(address: string, more: Partial<Contract> = {}) {
-  const contract: Contract = { owners: accounts.slice(0, 3).map((a) => a.address.toLowerCase()).sort(), threshold: 2, modules: [], accepts: (_digest, signature) => signature === '0x', ...more }
+  const contract: Contract = {
+    owners: accounts.slice(0, 3).map((a) => a.address.toLowerCase()).sort(), threshold: 2, modules: [], accepts: (_digest, signature) => signature === '0x',
+    code: PROXY_CODE, singleton: OFFICIAL.singletons[1], fallback: OFFICIAL.handler, ...more,
+  }
   chain.contracts.set(address.toLowerCase(), contract)
   return contract
 }
@@ -608,7 +621,9 @@ describe('d. request checks', () => {
       testEnv,
       () => now,
     )
-    expect(response.status).toBe(403)
+    expect(response.status).toBe(404) // not our host at all (H3, section A)
+    // On our own host, an Origin that is the host of some other request is still refused.
+    expect((await call('POST', '/api/signin/start', { headers: { origin: elsewhere } })).status).toBe(403)
   })
   it('a state change is a JSON POST: no other method, no other content type', async () => {
     const m = await member()
@@ -3261,11 +3276,11 @@ describe('y. wallets and the recovery wallet', () => {
     // The digest the wallet was asked about is the one the server built, and each endpoint said its chain first.
     expect(new Set(seen)).toEqual(new Set([digest]))
     expect(chain.calls.slice(0, 2).sort()).toEqual([`${RPC1} eth_chainId`, `${RPC2} eth_chainId`].sort())
-    expect(await walletAt(address)).toMatchObject({ kind: 'safe', snapshot: JSON.stringify({ threshold: 2, owners: safe.owners, modules: [] }) })
+    expect(await walletAt(address)).toMatchObject({ kind: 'safe', snapshot: JSON.stringify({ threshold: 2, owners: safe.owners, modules: [], handler: true }) })
     expect((await walletsOf(o))[0]).toMatchObject({ kind: 'safe', threshold: 2, owners: 3 })
   })
 
-  it('the kind: a Safe when it answers as one on both endpoints, else a custodian wallet when declared, else a single key', async () => {
+  it('the kind: a genuine Safe when both endpoints say so; a custodian wallet only when declared and its own key signed; any other contract a single key', async () => {
     const o = await owner()
     const kindOf = async (address: string, custodian: boolean, signature = '0x') => {
       const asked = await askLink(o, address, { custodian })
@@ -3275,7 +3290,8 @@ describe('y. wallets and the recovery wallet', () => {
     safeAt(accounts[1].address, { plain: true })
     safeAt(accounts[2].address, { plain: true })
     safeAt(accounts[3].address)
-    expect(await kindOf(accounts[1].address, true)).toBe('custodian')
+    // H1: a contract that is not a genuine Safe is a single key, the strictest kind, whatever was declared.
+    expect(await kindOf(accounts[1].address, true)).toBe('single_key')
     expect(await kindOf(accounts[2].address, false)).toBe('single_key')
     // Declared a custodian wallet, but it is a Safe: the chain decides.
     expect(await kindOf(accounts[3].address, true)).toBe('safe')
@@ -3521,7 +3537,7 @@ describe('y. wallets and the recovery wallet', () => {
     expect(await snapshot()).toBe(before)
     chain.twist = (_url, _method, result) => result
     expect((await decide(a, asked.body.id, 'approve')).body).toEqual({ state: 'applied' })
-    expect(await walletAt(address)).toMatchObject({ anchor: 'next', snapshot: JSON.stringify({ threshold: 2, owners: safe.owners, modules: [] }) })
+    expect(await walletAt(address)).toMatchObject({ anchor: 'next', snapshot: JSON.stringify({ threshold: 2, owners: safe.owners, modules: [], handler: true }) })
     // Asked while the endpoints disagree: no request is filed.
     const other = await linkedSafe(o, a, accounts[3].address)
     await post(`/api/wallets/${wallet.id}/anchor/cancel`, o)
@@ -3531,7 +3547,7 @@ describe('y. wallets and the recovery wallet', () => {
 
   it('the colour table: green is a Safe in force, 2 or more of its owners, no module, unchanged since its approval; every other recovery wallet is amber', async () => {
     const owners = ['0xa', '0xb', '0xc']
-    const live: SafeState = { owners, threshold: 2, modules: [] }
+    const live: SafeState = { owners, threshold: 2, modules: [], handler: true }
     const snapshotOf = JSON.stringify(live)
     const safe = { kind: 'safe', snapshot: snapshotOf, inForce: true }
     const table: [string | null, Parameters<typeof colour>[0], SafeState | null][] = [
@@ -3541,6 +3557,8 @@ describe('y. wallets and the recovery wallet', () => {
       ['waiting', { ...safe, kind: 'custodian', inForce: false }, live],
       ['unreadable', safe, null],
       ['module', safe, { ...live, modules: ['0xd'] }],
+      ['handler', safe, { ...live, handler: false }],
+      ['threshold', safe, { ...live, threshold: 0 }], // what safeState() says when the threshold is not between 1 and the number of owners
       ['threshold', { ...safe, snapshot: JSON.stringify({ ...live, threshold: 1 }) }, { ...live, threshold: 1 }],
       ['changed', safe, { ...live, threshold: 3 }],
       ['changed', safe, { ...live, owners: ['0xa', '0xb', '0xd'] }],
@@ -3605,7 +3623,7 @@ describe('y. wallets and the recovery wallet', () => {
       const page = await get(SIGN, path)
       expect([page.status, page.text], path).toEqual([200, `file ${path}`])
       expect(Object.fromEntries(page.headers), path).toEqual({
-        'content-security-policy': "default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self'; connect-src 'self'; frame-ancestors https://app.safe.global https://*.safe.global",
+        'content-security-policy': "default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self'; font-src 'self'; connect-src 'self'; frame-ancestors https://app.safe.global https://*.safe.global",
         'cache-control': 'no-cache', 'x-content-type-options': 'nosniff', 'referrer-policy': 'no-referrer', 'strict-transport-security': 'max-age=63072000',
         'content-type': 'text/html', etag: '"1"', ...(path === '/sign/manifest.json' && { 'access-control-allow-origin': '*' }),
       })
@@ -3770,5 +3788,80 @@ describe('z. attacks tried by the review of milestone 4a', () => {
     const before = await snapshot()
     expect((await prove(intent, signature)).body).toEqual({ error: 'forbidden' })
     expect(await snapshot()).toBe(before)
+  })
+})
+
+// ---- milestone 4b, part 1: hardening. Each test was seen to fail with its control removed. ----
+const builtSign = import.meta.glob('../dist/sign/index.html', { query: '?raw', import: 'default', eager: true }) as Record<string, string>
+const builtSignFiles = Object.keys(import.meta.glob('../dist/sign/assets/*'))
+
+describe('A. hardening after milestone 4a', () => {
+  // An Owner alone, whose recovery wallet is this contract, in force. What the list and the readiness block say of it.
+  async function asRecoveryWallet(address: string) {
+    const o = await owner()
+    const asked = await askLink(o, address)
+    expect((await prove(asked.body.intent, '0x')).body).toEqual({ state: 'linked' })
+    const wallet = await walletAt(address)
+    await post(`/api/wallets/${wallet.id}/anchor`, o)
+    now += WAIT
+    await again(o)
+    const [listed] = await walletsOf(o)
+    return { kind: wallet.kind, snapshot: wallet.snapshot, listed, ready: (await call('GET', '/api/readiness', { cookie: o.cookie })).body.wallet as { level: string; why: string | null; threshold?: number; owners?: number } }
+  }
+
+  it('H1: a contract that answers the three Safe reads and the ERC-1271 value with other code is a single key, never green, and its owners are never shown', async () => {
+    safeAt(accounts[4].address, { code: `${PROXY_CODE}00` })
+    const w = await asRecoveryWallet(accounts[4].address)
+    expect([w.kind, w.snapshot]).toEqual(['single_key', null])
+    expect(w.ready).toEqual({ level: 'amber', why: 'single_key', label: 'Treasury', at: expect.any(Number) })
+    expect(w.listed).not.toHaveProperty('threshold')
+    expect(w.listed).not.toHaveProperty('owners')
+  })
+  it('H1: the official proxy code in front of another singleton is not a Safe either; in front of each official singleton it is', async () => {
+    safeAt(accounts[4].address, { singleton: accounts[3].address })
+    expect((await asRecoveryWallet(accounts[4].address)).kind).toBe('single_key')
+    for (const official of SAFES) for (const singleton of official.singletons) {
+      safeAt(accounts[4].address, { singleton, fallback: official.handler })
+      expect(await asRecoveryWallet(accounts[4].address), `${official.version} ${singleton}`).toMatchObject({ kind: 'safe', ready: { level: 'green', why: null, threshold: 2, owners: 3 } })
+    }
+  })
+  it('H1: a genuine Safe is green only with the official fallback handler of its version, and a threshold between 1 and its owners, compared as bigint', async () => {
+    // The handler of another official version is not this version's.
+    for (const fallback of [accounts[3].address, SAFES[0].handler]) {
+      safeAt(accounts[4].address, { fallback })
+      expect(await asRecoveryWallet(accounts[4].address), fallback).toMatchObject({ kind: 'safe', ready: { level: 'amber', why: 'handler' } })
+    }
+    // 2 ** 64 + 2 reads as 2 once it is cut to 64 bits, and as "2 or more" as a number: it is neither.
+    for (const bigThreshold of [2n ** 64n + 2n, 4n, 0n]) {
+      safeAt(accounts[4].address, { bigThreshold })
+      expect(await asRecoveryWallet(accounts[4].address), String(bigThreshold)).toMatchObject({ kind: 'safe', ready: { level: 'amber', why: 'threshold' } })
+    }
+    safeAt(accounts[4].address, { bigThreshold: 3n, threshold: 3 })
+    expect(await asRecoveryWallet(accounts[4].address)).toMatchObject({ kind: 'safe', ready: { level: 'green' } })
+  })
+
+  it('H3: a request whose host is neither the console nor the signing page gets 404, for a page and for an API call', async () => {
+    const m = await member()
+    for (const host of ['https://business.evil.example', 'http://localhost:8788', 'https://localhost:8787', 'http://127.0.0.1:8788', 'http://sign.localhost:8787']) {
+      for (const [method, path] of [['GET', '/'], ['GET', '/sign/'], ['GET', '/api/me'], ['POST', '/api/signin/start'], ['POST', '/api/proof']]) {
+        const response = await handle(new Request(host + path, { method, body: method === 'POST' ? '{}' : undefined, headers: { 'sec-fetch-site': 'same-origin', origin: host, 'content-type': 'application/json', cookie: m.cookie } }), testEnv, () => now)
+        expect([response.status, await response.text()], `${method} ${host}${path}`).toEqual([404, 'Not found'])
+        expect(response.headers.get('content-security-policy')).toContain("default-src 'none'")
+      }
+    }
+    expect((await call('GET', '/api/me', { cookie: m.cookie })).status).toBe(200)
+  })
+
+  it('H4: the signing page shows the console\'s black logo and loads Inter from its own folder, which its policy allows', () => {
+    const html = builtSign['../dist/sign/index.html']
+    expect(html, 'build first: pnpm build').toMatch(/<img src="\/sign\/assets\/ophis-icon-mono-dark-[\w-]+\.svg"/)
+    // The font files are in the page's own folder (tests/e2e.mjs sees the page load them, with no policy violation).
+    for (const font of ['Inter-roman', 'Inter-italic']) expect(builtSignFiles.filter((name) => new RegExp(`/dist/sign/assets/${font}\\.var-[\\w-]+\\.woff2$`).test(name)), font).toHaveLength(1)
+    expect(routerSource).toMatch(/SIGN_HEADERS = \{\s+'content-security-policy': "[^"]*font-src 'self'/)
+  })
+  it('H2: "custodian" is shown as a declaration, in the wallet list and on both approval cards (they share one sentence)', () => {
+    const bundle = Object.values(builtConsole).join('\n')
+    expect(bundle).toContain('Custodian wallet (declared, not checked by Ophis)')
+    expect(bundle.match(/Custodian wallet/g)).toHaveLength(1)
   })
 })

@@ -436,7 +436,7 @@ const CHANGE: Record<string, string> = {
   'wallet.link': 'Link a wallet', 'anchor.set': 'Set the recovery wallet',
 }
 // The same for a wallet. `on` is the chain's name.
-const kindOf = (w: Wallet) => (w.kind === 'safe' ? `Safe ${w.threshold ?? '?'} of ${w.owners ?? '?'}` : w.kind === 'custodian' ? 'Custodian wallet' : 'Single key')
+const kindOf = (w: Wallet) => (w.kind === 'safe' ? `Safe ${w.threshold ?? '?'} of ${w.owners ?? '?'}` : w.kind === 'custodian' ? 'Custodian wallet (declared, not checked by Ophis)' : 'Single key')
 function walletEffect(kind: string, w: Wallet, on: string) {
   const which = `${w.label} (${w.address} on ${on}, ${kindOf(w)})`
   return kind === 'wallet.link' ? `Links the wallet ${which} to the organisation. The wallet signed a message that names this organisation, and the server checked the signature. Every member sees linked wallets.`
@@ -1028,6 +1028,7 @@ const WHY: Record<string, (w: Ready['wallet']) => string> = {
   single_key: (w) => `${w.label} is a single key: whoever holds that key restores access alone.`,
   custodian: (w) => `${w.label} is a custodian wallet: its approval rules cannot be checked from outside.`,
   module: (w) => `${w.label} is a Safe with a module enabled. A module can sign without the owners.`,
+  handler: (w) => `${w.label} is a Safe whose fallback handler is not the official one of its version. That handler answers for the Safe's signatures, so they cannot be relied on.`,
   threshold: (w) => `${w.label} is a Safe that one owner can sign for alone.`,
   changed: (w) => `The owners or the threshold of ${w.label} changed since it was approved. Check with its owners that the change was theirs.`,
   unreadable: (w) => `${w.label} could not be read on both network endpoints just now. Reload the page to try again.`,

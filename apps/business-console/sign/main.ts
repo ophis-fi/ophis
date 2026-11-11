@@ -2,6 +2,7 @@
 // will be signed, asks the wallet for one EIP-712 signature and posts it to the proof route of this host.
 // It holds no session and calls nothing else. Wallet code lives here and on the server, never in the console.
 import SafeAppsSDK from '@safe-global/safe-apps-sdk'
+import '../src/app/fonts.css' // Inter, copied by this build into /sign/assets/: the page's policy has font-src 'self'
 import '../src/app/kit.css'
 import '../src/app/app.css'
 import './sign.css'
