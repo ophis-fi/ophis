@@ -5143,10 +5143,17 @@ describe('E. account recovery: a stop undoes all of it, the organisation is read
     const t2 = await colleague(o, 'trader')
     const v2 = await colleague(o, 'viewer')
     const w = await colleague(o, 'viewer')
+    const x = await colleague(o, 'viewer')
     const asked = await requestRecovery(o.orgId)
     now += WAIT
     const n = await completed(asked)
     for (const m of [ad, c]) await again(m)
+    // A seat the new Owner re-enrolled, whose holder adds a passkey, and that the Admin, whom nobody re-enrolled yet, re-enrols afterwards.
+    const bad = await again(await ceremony(n, { seatId: x.seatId }))
+    const badMore = await addKey(bad)
+    now += MIN
+    const good = await again(await ceremony(ad, { seatId: x.seatId }))
+    const goodMore = await addKey(good)
     // Not under the recovery: the Admin, whom nobody re-enrolled yet, re-enrols a Trader.
     const clean = await ceremony(ad, { seatId: t2.seatId })
     now += MIN
@@ -5177,6 +5184,9 @@ describe('E. account recovery: a stop undoes all of it, the organisation is read
     // The Trader's passkey from the Admin's own re-enrolment is the one the rolled-back link replaced: it is back, and what it had replaced stays replaced.
     expect(await states(clean.key, t2.key, t2.key2, c.key, v2.key)).toEqual(['active', 'suspended', 'suspended', 'active', 'active'])
     expect((await seatOf(w.seatId))?.state).toBe('frozen')
+    // The Admin's own link came last on that seat: its passkey and what its holder added stay, and what it replaced stays replaced.
+    expect(await states(bad.key, badMore.key, good.key, goodMore.key, x.key, x.key2)).toEqual(['revoked', 'revoked', 'active', 'active', 'suspended', 'suspended'])
+    expect([(await signIn(good.key)).status, (await signIn(bad.key)).status]).toEqual([200, 401])
     expect((await call('GET', '/api/me', { cookie: live.cookie })).status).toBe(401)
     expect(await row('SELECT count(*) AS n FROM sessions WHERE revoked_at IS NULL AND seat_id IN (?, ?, ?, ?)', v.seatId, a.seatId, ad.seatId, t.seatId)).toEqual({ n: 0 })
     expect(await row('SELECT state FROM enrolment_tickets WHERE id = ?', open.body.ticketId)).toEqual({ state: 'dead' })
@@ -5220,6 +5230,8 @@ describe('E. account recovery: a stop undoes all of it, the organisation is read
     expect([await active(), await owners(), (await seatOf(o.seatId))?.state]).toEqual([[asked.seat], 1, 'active'])
     // The new Owner is the last Owner: the seat that is gone does not stand in for one.
     expect((await act(n, asked.seat, 'freeze')).body).toEqual({ error: 'last_owner' })
+    // The seat that is gone is nobody's to freeze: it would come back as a frozen Owner seat.
+    expect([(await act(n, o.seatId, 'freeze')).status, (await seatOf(o.seatId))?.state]).toEqual([404, 'active'])
     expect((await link(n, accounts[1])).body).toEqual({ state: 'linked' })
     expect((await seatOf(o.seatId))?.state).toBe('removed')
     expect((await stop(o.key)).status).toBe(401)
@@ -5239,6 +5251,27 @@ describe('E. account recovery: a stop undoes all of it, the organisation is read
     now += WEEK
     await again(m)
     expect(await Promise.all([team.o.seatId, o2.seatId, o3.seatId, team.v.seatId, again2.seat].map(async (id) => (await seatOf(id))?.state))).toEqual(['removed', 'active', 'active', 'active', 'active'])
+    // The re-enrolled Owner is frozen later: its passkey is suspended, and the seat stays what it is, frozen.
+    expect((await act(m, o2.seatId, 'freeze')).status).toBe(200)
+    await again(m)
+    expect((await seatOf(o2.seatId))?.state).toBe('frozen')
+  })
+
+  it('F4: a stop at the last instant, when a write with a later clock has already removed the replaced Owner seat, stops nothing: the organisation keeps its Owner', async () => {
+    const { o } = await teamWithWallet()
+    const asked = await requestRecovery(o.orgId)
+    now += WAIT
+    const n = await completed(asked)
+    now += WEEK - 1
+    const start = await call('POST', '/api/stop/start')
+    const later = racing(async () => {
+      now += 1
+      await again(n)
+      now -= 1
+    }) as unknown as Env
+    expect((await call('POST', '/api/stop/finish', { body: { response: await o.key.authenticate(start.body.options) }, env: later })).status).toBe(401)
+    expect([(await seatOf(o.seatId))?.state, (await seatOf(asked.seat))?.state, await credentialState(asked.key), await credentialState(o.key)]).toEqual(['removed', 'active', 'active', 'suspended'])
+    expect((await signIn(o.key)).status).toBe(401)
   })
 })
 
@@ -5276,6 +5309,8 @@ describe('F. Support: attacks tried by the review of milestone 6', () => {
       ['is northwind.example or treasury.eth linked', 'is or linked'],
       ['ask admin@localhost or see http://localhost:8787/x please', 'ask or see please'],
       ['call ٠١٢٣٤٥٦٧ now', 'call now'],
+      ['phone +1 (212) 555-1234 now', 'phone + now'],
+      ['is 0xaaaa bbbb cccc dddd eeee ffff aaaa bbbb cccc dddd linked', 'is linked'],
       ['a bad decade added a fee facade', 'a bad decade added a fee facade'],
       ['add 2 of 3, e.g. after 72 hours at 10:30', 'add 2 of 3, e.g. after 72 hours at 10:30'],
     ]
@@ -5295,7 +5330,11 @@ describe('F. Support: attacks tried by the review of milestone 6', () => {
     expect((await ask(m, twelve.split(' ').slice(0, 11).join(' '))).status).toBe(200)
     // 21 of these 31 words are on the list, 7 in a row at most.
     expect((await ask(m, 'can you help with that issue because our team will need access again very soon, and then we want to add a second key for the new member of this group')).status).toBe(200)
-    expect(sent).toHaveLength(2)
+    // Questions of this product can be list words only (13 and 12 here): they are no phrase, the last word of one is a checksum.
+    for (const plain of ['can you cancel this account change before any other company owner can approve', 'can you confirm this company can allow any other member account access']) expect((await ask(m, plain)).status, plain).toBe(200)
+    // 16 list words in a row are refused whatever their checksum: a phrase of 24 words with one of them mistyped.
+    expect((await ask(m, twentyFour.replace('bless', 'bliss'))).body).toEqual({ error: 'secret' })
+    expect(sent).toHaveLength(4)
     expect(supportPage).toContain('This looks like a wallet recovery phrase')
     expect(supportPage).toContain('<span>{PRIVACY} {CARE}</span>')
   })

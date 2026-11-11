@@ -39,7 +39,7 @@ const KEY_SQL = `('owner', 'admin', 'approver', 'compliance')`
 // An Owner seat that a recovery replaced for good: the 7 days in which its passkeys could stop that recovery are over
 // and it holds no active passkey. Computed wherever seats are counted or listed (one bound
 // value: now); commit() writes it down with the organisation's next write. No scheduled job, no audit row of its own.
-const gone = (s: string) => `(${s}.role = 'owner'
+const gone = (s: string) => `(${s}.role = 'owner' AND ${s}.state = 'active'
   AND NOT EXISTS (SELECT 1 FROM credentials k WHERE k.org_id = ${s}.org_id AND k.seat_id = ${s}.id AND k.state = 'active')
   AND EXISTS (SELECT 1 FROM credentials k JOIN recovery_requests r ON r.org_id = k.org_id AND r.state = 'completed' AND r.closed_at + ${STOP_MS} = k.stop_right_until
               WHERE k.org_id = ${s}.org_id AND k.seat_id = ${s}.id AND k.state = 'suspended' AND k.stop_right_until <= ?))`
@@ -173,8 +173,8 @@ export function credentialById(db: D1Database, credentialId: string) {
     .bind(credentialId)
     .first<StoredCredential>()
 }
-/** A replaced passkey keeps one right until quarantine ends: to stop its replacement. A freeze of the seat does not take it away. */
-export const hasStopRight = (c: StoredCredential, now: number) => c.state === 'suspended' && (c.stop_right_until ?? 0) > now
+/** A replaced passkey keeps one right until quarantine ends: to stop its replacement. A freeze of the seat does not take it away; a seat that is removed has none (also one that a write with a later clock removed 7 days after a recovery, an instant before this stop). */
+export const hasStopRight = (c: StoredCredential, now: number) => c.state === 'suspended' && c.seat_state !== 'removed' && (c.stop_right_until ?? 0) > now
 
 // Ends one ticket, with its pending passkey and its waiting confirmation.
 const closeTicket = (db: D1Database, orgId: string, ticketId: string, state: 'dead' | 'cancelled', now: number): Sql[] => [
@@ -555,25 +555,35 @@ export function stopReplacement(db: D1Database, credential: StoredCredential, co
     const recovered = await recoveryToStop(db, current)
     if (recovered) {
       // Every enrolment made under the recovery is rolled back, in the order it was made: a passkey activated on a link
-      // whose issuer, or whose last confirmer, is a seat under the recovery puts its own seat under it from then on.
-      // (Only re-enrolments: the organisation quarantine lets nobody join.) On such a seat the passkey of that link and
-      // every passkey made since go, the passkeys that link replaced (they carry its date) are active again whether or
-      // not their own stop right has ended, and what the seat opened is closed.
+      // whose issuer, or whose last confirmer, is a seat under the recovery puts its own seat under it, until the stop.
+      // (Only re-enrolments: the organisation quarantine lets nobody join.) On such a seat the passkey of each such link
+      // goes, with what its holder added until the next link replaced it. If the last link of the seat is such a link,
+      // the passkeys that the run of them replaced (they carry the date of its first) are active again, whether or not
+      // their own stop right has ended; after a link nobody under the recovery touched, that link's passkey stands.
+      // What the seat opened is closed.
       const made = (await db.prepare(`SELECT a.at, a.actor_id AS by, k.id, k.seat_id AS seat, t.issuer_seat_id AS issuer, t.role
                                       FROM audit_log a JOIN credentials k ON k.org_id = a.org_id AND k.id = a.subject_id JOIN enrolment_tickets t ON t.org_id = k.org_id AND t.id = k.ticket_id
                                       WHERE a.org_id = ? AND a.action = 'credential.activate' AND a.at >= ? ORDER BY a.seq`)
         .bind(orgId, recovered.closed_at).all<{ at: number; by: string; id: string; seat: string; issuer: string; role: Role }>()).results
       const under = new Set([recovered.seat_id])
-      const rollback: Sql[] = []
+      const links = new Map<string, { at: number; id: string; role: Role; bad: boolean }[]>()
       for (const e of made) {
-        if (!under.has(e.issuer) && !under.has(e.by)) continue
-        under.add(e.seat)
-        rollback.push(
-          db.prepare(`UPDATE credentials SET state = 'revoked' WHERE org_id = ? AND seat_id = ? AND state <> 'revoked' AND (id = ? OR created_at >= ?)`).bind(orgId, e.seat, e.id, e.at),
-          db.prepare(`UPDATE credentials SET state = 'active', stop_right_until = NULL WHERE org_id = ? AND seat_id = ? AND state = 'suspended' AND stop_right_until = ?`).bind(orgId, e.seat, e.at + quarantineMs(e.role)),
-          ...closeOpen(db, orgId, e.seat, now, true),
-        )
+        const bad = under.has(e.issuer) || under.has(e.by)
+        if (bad) under.add(e.seat)
+        links.set(e.seat, [...(links.get(e.seat) ?? []), { ...e, bad }])
       }
+      under.delete(recovered.seat_id)
+      const rollback = [...under].flatMap((seat) => {
+        const of = links.get(seat)!
+        const first = of.findLastIndex((e) => !e.bad) + 1
+        return [
+          ...of.flatMap((e, i) => (!e.bad ? [] : [db.prepare(`UPDATE credentials SET state = 'revoked' WHERE org_id = ? AND seat_id = ? AND state <> 'revoked' AND (id = ? OR (ticket_id IS NULL AND created_at >= ? AND created_at < ?))`)
+            .bind(orgId, seat, e.id, e.at, of[i + 1]?.at ?? Number.MAX_SAFE_INTEGER)])),
+          ...(first === of.length ? [] : [db.prepare(`UPDATE credentials SET state = 'active', stop_right_until = NULL WHERE org_id = ? AND seat_id = ? AND state = 'suspended' AND stop_right_until = ?`)
+            .bind(orgId, seat, of[first].at + quarantineMs(of[first].role))]),
+          ...closeOpen(db, orgId, seat, now, true),
+        ]
+      })
       const wallets = recovered.undo === null ? null : (JSON.parse(recovered.undo) as { id: string; anchor: string; at: number | null }[])
       return [{ at: now, actorKind: 'seat', actorId: seatId, sessionId: null, action: 'recovery.stop', subjectId: recovered.id }, [
         db.prepare(`UPDATE credentials SET state = 'revoked' WHERE org_id = ? AND seat_id = ? AND state <> 'revoked'`).bind(orgId, recovered.seat_id),
@@ -670,8 +680,8 @@ async function judge(db: D1Database, orgId: string, role: Role, kind: Kind | Dir
     .prepare(`SELECT s.role, s.state, s.quarantine_until AS quarantine, o.synced_keys_allowed AS synced,
                 (SELECT count(*) FROM seats x WHERE x.org_id = s.org_id AND x.id <> s.id AND x.role = 'owner' AND x.state = 'active' AND NOT ${gone('x')}) AS owners,
                 (SELECT count(*) FROM credentials k WHERE k.org_id = s.org_id AND k.seat_id = s.id AND k.state = 'active' AND k.device_bound = 0) AS soft
-              FROM seats s JOIN organisations o ON o.id = s.org_id WHERE s.org_id = ? AND s.id = ? AND s.state <> 'removed'`)
-    .bind(now, orgId, subjectId).first<{ role: Role; state: string; quarantine: number | null; synced: number; owners: number; soft: number }>()
+              FROM seats s JOIN organisations o ON o.id = s.org_id WHERE s.org_id = ? AND s.id = ? AND s.state <> 'removed' AND NOT ${gone('s')}`)
+    .bind(now, orgId, subjectId, now).first<{ role: Role; state: string; quarantine: number | null; synced: number; owners: number; soft: number }>()
   // The seat of an open recovery request is nobody's to remove: that would cancel the request, which an Owner may
   // only do through the cancel route, and never for an override.
   if (!seat || (seat.state === 'invited' && (await recoveryRow(db, orgId, now, 'seat_id', subjectId)))) return 'not_found'
