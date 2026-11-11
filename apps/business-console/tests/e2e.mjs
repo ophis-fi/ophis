@@ -3,9 +3,12 @@
 // session. Milestone 2: the Owner adds a second key and invites a Viewer; the Viewer enrols in a second
 // browser context with its own authenticator and reads three words; the Owner types them; the Viewer signs
 // in. Then the Viewer is re-enrolled from a third context, and the Viewer's old passkey stops that.
+// Milestone 3: a second Owner and an Admin join (the Admin with the second Owner as second person), two people
+// unfreeze the Viewer, the Admin asks for a role change, an Owner approves it, the audit page shows the rows and
+// "Chain verified", and the export downloads.
 // Starts and stops its own local server on a throwaway database. Run: pnpm test:e2e
 import { execFileSync, spawn } from 'node:child_process'
-import { mkdirSync, rmSync } from 'node:fs'
+import { mkdirSync, readFileSync, rmSync } from 'node:fs'
 import { chromium } from 'playwright-core'
 
 process.chdir(new URL('..', import.meta.url).pathname)
@@ -123,8 +126,9 @@ try {
     return shown
   }
   // The member's side of the ceremony, on their own device: open the link, create the passkey, read the words.
-  async function enrolAt(link, who) {
+  async function enrolAt(link, who, label) {
     await who.page.goto(link)
+    if (label) await who.page.getByLabel('Name for this key (no personal data)').fill(label)
     await who.page.getByRole('button', { name: 'Create passkey' }).click()
     await who.page.getByRole('heading', { name: 'Read these three words aloud.' }).waitFor()
     return who.page.locator('.phrase span').allTextContents()
@@ -140,9 +144,9 @@ try {
     await page.getByRole('button', { name: 'Done' }).click()
     return link
   }
-  async function typeWords(words, name) {
-    await page.getByLabel(`Three words heard from ${name}`).fill(words.join(' '))
-    await page.getByRole('button', { name: 'Confirm with passkey' }).click()
+  async function typeWords(words, name, on = page) {
+    await on.getByLabel(`Three words heard from ${name}`).fill(words.join(' '))
+    await on.getByRole('button', { name: 'Confirm with passkey' }).click()
   }
 
   check('an Owner with one key is asked for the second and cannot invite yet',
@@ -205,7 +209,11 @@ try {
   // Re-enrolment: someone with a third device gets the Viewer's seat a new passkey, and the Owner is talked into the words.
   const second = await issue(() => page.getByRole('button', { name: 'Re-enrol Ada Viewer' }).click())
   const replacement = await person()
-  const newWords = await enrolAt(second, replacement)
+  await replacement.page.goto(second)
+  await replacement.page.getByRole('button', { name: 'Create passkey' }).click()
+  await replacement.page.getByText('This seat already has a passkey with that name.').waitFor()
+  check('a second passkey with the same name on one seat is refused', (await replacement.page.locator('.phrase').count()) === 0)
+  const newWords = await enrolAt(second, replacement, 'Replacement key')
   await organisation()
   await readAlerts('A new passkey of Ada Viewer waits for the three words from you')
   await typeWords(newWords, 'Ada Viewer')
@@ -236,14 +244,127 @@ try {
   await page.screenshot({ path: '.shots/06-after-stop.png', fullPage: true })
   await page.getByText('Frozen').waitFor()
   check('the Organisation page shows the frozen seat and the revoked passkey', await page.getByText('Revoked').first().isVisible() && (await page.getByRole('button', { name: /Re-enrol|New link/ }).count()) === 0)
+
+  // ---- milestone 3 ----
+  // The frozen member signs in with a passkey that was restored: a page that says who and when, and nothing else.
+  await viewer.page.getByRole('button', { name: 'Back to sign-in' }).click()
+  await viewer.page.getByRole('button', { name: 'Sign in with a passkey' }).click()
+  await viewer.page.getByRole('heading', { name: 'Your seat is frozen.' }).waitFor()
+  check('a frozen member lands on a page that says how the seat was frozen, with one way out and no session',
+    await viewer.page.getByText('A replaced passkey of this seat stopped its replacement on').isVisible() && (await viewer.page.getByRole('button', { name: /Stop|freeze|Sign in/i }).count()) === 0
+    && (await status('/api/me', viewer.page)) === 401 && await viewer.page.getByText(FOOTER).isVisible() && await both(viewer.page, '11-frozen'))
   await viewer.context.close()
   await replacement.context.close()
+
+  // Sign in on a person's own device, read what is shown at the door, and arrive on the Organisation page.
+  async function arrive(who, signIn = true) {
+    if (signIn) {
+      await who.page.goto(ORIGIN)
+      await who.page.getByRole('button', { name: 'Sign in with a passkey' }).click()
+    } else await organisation(who.page)
+    await who.page.getByRole('heading', { name: /People, wallets|Read this before you continue/ }).waitFor()
+    if (await who.page.getByRole('button', { name: 'I have read this' }).count()) await who.page.getByRole('button', { name: 'I have read this' }).click()
+    await who.page.getByRole('button', { name: 'End session' }).first().waitFor()
+  }
+  // The second key of a seat: the first goes back in the drawer, a new one is plugged in.
+  async function secondKey(who) {
+    await who.devtools.send('WebAuthn.removeVirtualAuthenticator', { authenticatorId: who.authenticatorId })
+    await who.devtools.send('WebAuthn.addVirtualAuthenticator', { options: KEY })
+    await who.page.getByRole('button', { name: 'Add a passkey' }).click()
+    await who.page.getByRole('button', { name: 'Invite member' }).waitFor()
+  }
+  const invite = (name, role) => issue(async () => {
+    await page.getByRole('button', { name: 'Invite member' }).click()
+    await page.getByLabel('Name shown to colleagues').fill(name)
+    await page.getByLabel('Role').selectOption(role)
+  })
+  const owner = { page }
+
+  // A second Owner. The organisation has one key-role member, so a 72 hour wait stands in for the second person;
+  // the local activate command stands in for the wait.
+  const bo = await person()
+  const boWords = await enrolAt(await invite('Bo Owner', 'owner'), bo)
+  await arrive(owner, false)
+  await typeWords(boWords, 'Bo Owner')
+  await page.getByText('a 72 hour wait stands in for the second person').waitFor()
+  check('with no other key-role member, the second Owner waits 72 hours', (await status('/api/me', bo.page)) === 401)
+  check('the activate command stood in for the wait', run('node', ['scripts/dev.mjs', 'activate', '--persist', STATE]).includes('Activated 1 pending'))
+  await arrive(bo)
+  await secondKey(bo)
+
+  // An Admin, through the full ceremony: the first Owner types the words, then the second Owner does.
+  const cy = await person()
+  const cyWords = await enrolAt(await invite('Cy Admin', 'admin'), cy)
+  await arrive(owner, false)
+  await typeWords(cyWords, 'Cy Admin')
+  await page.getByText('Waiting for a second person with a key role').waitFor()
+  check('after the first Owner\'s words the Admin still cannot sign in', (await status('/api/me', cy.page)) === 401)
+  await arrive(bo, false)
+  await typeWords(cyWords, 'Cy Admin', bo.page)
+  check('the second person is told at once that the member joined', await readAlerts('Cy Admin joined on a link issued on', bo.page))
+  await bo.page.getByRole('button', { name: 'Re-enrol Cy Admin' }).waitFor()
+  await arrive(cy)
+  await secondKey(cy)
+  check('the Admin joined with a second Owner as second person, and holds two keys', await cy.page.getByRole('button', { name: 'Manage Ada Viewer' }).isVisible())
+
+  // Unfreeze the Viewer: one Owner asks, the other approves. The requester has no Approve button.
+  await arrive(owner, false)
+  await page.getByRole('button', { name: 'Manage Ada Viewer' }).click()
+  await page.getByRole('heading', { name: 'Manage Ada Viewer' }).waitFor()
+  check('each choice of the Manage dialog says what it does before its button, and fits a phone',
+    await page.getByText('The passkeys that were active before the freeze work again').isVisible() && await page.getByText('This cannot be undone').isVisible() && await both(page, '13-manage'))
+  await page.getByRole('button', { name: 'Request unfreeze' }).click()
+  await page.getByRole('button', { name: 'Cancel request' }).waitFor()
+  check('the request waits under Approvals, and its requester cannot approve it', await page.getByText('Requested by you').isVisible() && (await page.getByRole('button', { name: 'Approve' }).count()) === 0)
+  await arrive(bo, false)
+  await bo.page.getByRole('button', { name: 'Review' }).click()
+  check('the second person sees what will change in plain words before approving', await bo.page.getByText('Unfreezes the seat of Ada Viewer (Viewer).').isVisible() && await bo.page.getByText('Requested by Maren Okafor (Owner)').first().isVisible() && await both(bo.page, '12-approvals'))
+  await bo.page.getByRole('button', { name: 'Approve' }).click()
+  await bo.page.getByText('Nothing waits.').waitFor()
+  check('two people unfroze the seat', await bo.page.getByRole('row', { name: /Ada Viewer.*Active/ }).first().isVisible())
+
+  // The Admin asks for a role change of the Viewer; an Owner approves it.
+  await arrive(cy, false)
+  await cy.page.getByRole('button', { name: 'Manage Ada Viewer' }).click()
+  await cy.page.getByLabel('New role').selectOption('trader')
+  await cy.page.getByRole('button', { name: 'Request role change' }).click()
+  await cy.page.getByRole('button', { name: 'Cancel request' }).waitFor()
+  check('an Admin cannot give the Owner role', (await cy.page.getByRole('button', { name: 'Manage Maren Okafor' }).count()) === 0)
+  await arrive(owner, false)
+  check('the Owner is shown the change in plain words', await page.getByText('Changes the role of Ada Viewer from Viewer to Trader.').isVisible() && await page.getByText('Requested by Cy Admin (Admin)').isVisible())
+  await page.getByRole('button', { name: 'Approve' }).click()
+  await page.getByText('Nothing waits.').waitFor()
+  check('the Owner approved it: the Viewer is a Trader', await page.getByRole('row', { name: /Ada Viewer.*Trader/ }).first().isVisible())
+  check('"What each role can do" is on the page, from the server\'s table', await page.getByRole('heading', { name: 'What each role can do' }).isVisible() && await page.getByRole('cell', { name: 'Export the audit log' }).isVisible())
+
+  // The audit log: rows in plain words, the chain state, and the export.
+  await page.getByRole('link', { name: 'Compliance' }).first().click()
+  await page.getByRole('heading', { name: 'Records and the audit trail.' }).waitFor()
+  await page.getByText('Chain verified').waitFor()
+  check('the audit page shows the rows in plain words and "Chain verified"',
+    await page.getByRole('row', { name: /Bo Owner.*Role changed: Viewer to Trader.*Ada Viewer/ }).isVisible() || await page.getByRole('row', { name: /Maren Okafor.*Role changed: Viewer to Trader.*Ada Viewer/ }).isVisible())
+  check('the request and the freeze are there too, and no raw code', await page.getByRole('row', { name: /Cy Admin.*Change requested: change a role.*Ada Viewer/ }).isVisible()
+    && await page.getByRole('cell', { name: 'Seat unfrozen' }).isVisible() && !/session\.create|seat\.role|approval\./.test(await page.locator('main').innerText()))
+  check('the audit page carries the footer line and fits a phone', await page.getByText(FOOTER).isVisible() && await both(page, '14-audit'))
+  const [download] = await Promise.all([page.waitForEvent('download'), page.getByRole('button', { name: 'Export CSV' }).click()])
+  const csv = readFileSync(await download.path(), 'utf8')
+  check('the export downloads: every row with both hashes, the export itself last',
+    /^ophis-audit-log-\d{4}-\d\d-\d\d\.csv$/.test(download.suggestedFilename()) && csv.startsWith('"No.","Time (UTC)","Who","Event","Target","Previous row hash","Row hash"\r\n')
+    && csv.includes('"Role changed: Viewer to Trader","Ada Viewer"') && /"Maren Okafor","Audit log exported","","[0-9a-f]{64}","[0-9a-f]{64}"\r\n$/.test(csv))
+  await page.getByRole('cell', { name: 'Audit log exported' }).waitFor()
+  check('the export is a row of the log', await page.getByText('Chain verified').isVisible())
+  await cy.page.goto(`${ORIGIN}/#/compliance`)
+  await cy.page.getByText('The audit log is open to Owners, Compliance officers and Viewers.').waitFor()
+  check('an Admin does not read the audit log', (await status('/api/audit', cy.page)) === 403)
+  await bo.context.close()
+  await cy.context.close()
+  await arrive(owner, false)
 
   // The server cannot end the session: the app must not pretend that it did.
   await page.route('**/api/signout', (route) => route.fulfill({ status: 500, contentType: 'application/json', body: '{"error":"internal"}' }))
   await page.getByRole('button', { name: 'Sign out' }).click()
   await page.getByText('Sign-out did not work.').waitFor({ timeout: 5000 })
-  check('a failed sign-out keeps the app signed in and says so', await page.getByRole('button', { name: 'End session' }).isVisible() && (await status('/api/me')) === 200)
+  check('a failed sign-out keeps the app signed in and says so', await page.getByRole('button', { name: 'End session' }).first().isVisible() && (await status('/api/me')) === 200)
   await page.unroute('**/api/signout')
 
   // The revoke also clears the cookie, so the browser alone cannot show that the server forgot the token: replay it.
@@ -257,7 +378,7 @@ try {
 
   check(`no policy violation in the browser (${violations.length})`, violations.length === 0)
   check(`no request left the origin (${foreign.length})`, foreign.length === 0)
-  console.log('\nEnd-to-end run passed. Screenshots in .shots/: 01-signin to 10-quarantine-phone')
+  console.log('\nEnd-to-end run passed. Screenshots in .shots/: 01-signin to 14-audit-phone')
 } catch (error) {
   console.error(error.message)
   process.exitCode = 1

@@ -1,8 +1,8 @@
-// The screens of milestones 1 and 2, with the markup and classes of the approved mockup.
+// The screens of milestones 1 to 3, with the markup and classes of the approved mockup.
 import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react'
 import { api, CANCELLED, capital, Icon, minute, passkeyCheck, ROLE, say, Section, sensitive, stamp, Status, Tile } from './ui.tsx'
 
-export interface Alert { key: string; kind: string; at?: number; until?: number; name?: string }
+export interface Alert { key: string; kind: string; at?: number | null; until?: number; name?: string; by?: string | null; stopped?: boolean; what?: string; detail?: string | null; mine?: boolean }
 export interface Me {
   organisation: { id: string; name: string; kind: string }
   seat: { id: string; displayName: string; role: string; keys: number; quarantineUntil: number | null }
@@ -66,7 +66,7 @@ function Replaced({ until, onBack }: { until: number; onBack: () => void }) {
           <>
             <p className="lede">The replacement is stopped.</p>
             <div className="methods">
-              <p className="note ok" role="status"><Icon name="circle-check" /><span className="grow"><b>Replacement stopped.</b> The new passkey is revoked and your previous passkeys are valid again. Your seat is frozen until an Owner and a second person decide which passkeys stand. Call an Owner now.</span></p>
+              <p className="note ok" role="status"><Icon name="circle-check" /><span className="grow"><b>Replacement stopped.</b> The new passkey is revoked and your previous passkeys are valid again. Your seat is frozen until two people unfreeze it: an Owner or Admin asks, a second member with a key role approves. Call an Owner now.</span></p>
               <button className="btn ghost" type="button" onClick={onBack}><Icon name="fingerprint" />Back to sign-in</button>
             </div>
           </>
@@ -94,7 +94,41 @@ function Replaced({ until, onBack }: { until: number; onBack: () => void }) {
           </ul></div>
           <div><span className="cap">Stopping does not</span><ul className="x">
             <li><Icon name="x" size={16} />Sign you in</li>
-            <li><Icon name="x" size={16} />Unfreeze the seat: an Owner and a second person do</li>
+            <li><Icon name="x" size={16} />Unfreeze the seat: two colleagues do</li>
+          </ul></div>
+        </div>
+      </aside>
+    </section>
+  )
+}
+
+// Where a passkey of a frozen seat lands. It opens no session, and nothing can be done from here.
+interface FrozenInfo { by: string | null; at: number | null; stopped: boolean }
+function Frozen({ info, onBack }: { info: FrozenInfo; onBack: () => void }) {
+  const when = info.at ? ` on ${minute(info.at)}` : ''
+  return (
+    <section className="signin">
+      <div>
+        <span className="cap eyebrow rise">Frozen seat</span>
+        <h1 className="h-hero rise d1">Your seat <em>is frozen</em>.</h1>
+        <p className="lede rise d2">{info.stopped ? `A replaced passkey of this seat stopped its replacement${when}. That froze the seat.` : `${info.by ?? 'A colleague'} froze this seat${when}.`}</p>
+        <div className="methods rise d3">
+          <p className="note warn" role="status"><Icon name="ban" /><span className="grow"><b>This passkey opens no session until the seat is unfrozen.</b> Call an Owner or Admin of your organisation. One of them asks to unfreeze the seat, and a second member with a key role approves.</span></p>
+          <button className="btn ghost" type="button" onClick={onBack}><Icon name="fingerprint" />Back to sign-in</button>
+        </div>
+      </div>
+      <aside className="panel trust rise d2" aria-label="What a freeze does">
+        <Tile name="shield" />
+        <h2>Frozen, <em>not deleted</em>.</h2>
+        <p className="muted">One Owner or Admin can freeze a seat at once when something looks wrong. Undoing it takes two people.</p>
+        <div className="cancan">
+          <div><span className="cap">While frozen</span><ul className="x">
+            <li><Icon name="x" size={16} />No sign-in, no session</li>
+            <li><Icon name="x" size={16} />No new passkey for this seat</li>
+          </ul></div>
+          <div><span className="cap">After the unfreeze</span><ul>
+            <li><Icon name="check" size={16} />The passkeys that were active before the freeze work again</li>
+            <li><Icon name="check" size={16} />You are told at sign-in</li>
           </ul></div>
         </div>
       </aside>
@@ -105,15 +139,17 @@ function Replaced({ until, onBack }: { until: number; onBack: () => void }) {
 export function SignIn({ onSignedIn }: { onSignedIn: () => void }) {
   const [busy, setBusy] = useState(false)
   const [replacedUntil, setReplacedUntil] = useState(0)
+  const [frozen, setFrozen] = useState<FrozenInfo>()
   const [problem, setProblem] = useState(passkeysWork() ? '' : NO_PASSKEYS)
 
   async function signIn() {
     setBusy(true)
     setProblem('')
     try {
-      const finish = await passkeyCheck<{ error?: string; until?: number }>('/api/signin/start', '/api/signin/finish')
+      const finish = await passkeyCheck<{ error?: string; until?: number } & FrozenInfo>('/api/signin/start', '/api/signin/finish')
       if (finish.status === 200) return onSignedIn()
       if (finish.status === 403 && finish.data.error === 'passkey_replaced') return setReplacedUntil(finish.data.until ?? 0)
+      if (finish.status === 403 && finish.data.error === 'seat_frozen') return setFrozen(finish.data)
       // One message for every other refusal: the server does not say why, and neither do we.
       setProblem(finish.status === 401 ? 'Sign-in did not work. Use a passkey that is active for your organisation.' : 'Sign-in is not available right now. Try again in a moment.')
     } catch {
@@ -124,6 +160,7 @@ export function SignIn({ onSignedIn }: { onSignedIn: () => void }) {
   }
 
   if (replacedUntil) return <Replaced until={replacedUntil} onBack={() => setReplacedUntil(0)} />
+  if (frozen) return <Frozen info={frozen} onBack={() => setFrozen(undefined)} />
   return (
     <section className="signin">
       <div>
@@ -244,7 +281,12 @@ export function Enrol({ ticket }: { ticket: string }) {
 interface Member { id: string; displayName: string; role: string; state: string }
 interface Passkey { id: string; seatId: string; label: string; state: string; deviceBound: boolean; createdAt: number; lastUsedAt: number | null; stopRightUntil: number | null }
 interface Ticket { id: string; kind: string; role: string; seatId: string; name: string; issuerSeatId: string | null; status: 'link' | 'issuer' | 'second' | 'wait'; myStep: 'issuer' | 'second' | null; until: number }
+interface Request { id: string; kind: string; subjectId: string; name: string | null; role: string | null; value: string | null; requester: string; requesterRole: string; createdAt: number; expiresAt: number; notBefore: number | null; mine: boolean }
 interface View {
+  approvals: Request[]
+  frozen: ({ id: string } & FrozenInfo)[]
+  syncedKeysAllowed: boolean
+  rights: { can: string; roles: string[]; fresh: boolean; second: boolean }[]
   members: Member[]
   passkeys: Passkey[]
   sessions: { id: string; seatId: string; createdAt: number; lastSeenAt: number; userAgent: string | null; country: string | null }[]
@@ -341,7 +383,7 @@ function TicketDialog({ seat, mayOwner, onClose }: { seat: Member | null; mayOwn
 }
 
 // One open ticket: what it waits for, and the three-word input when it waits for this member.
-function Waiting({ ticket, issuer, mayCancel, act }: { ticket: Ticket; issuer: string; mayCancel: boolean; act: (action: () => Promise<Result>) => Promise<void> }) {
+function Waiting({ ticket, issuer, mayCancel, act }: { ticket: Ticket; issuer: string; mayCancel: boolean; act: Act }) {
   const [words, setWords] = useState('')
   const path = `/api/tickets/${ticket.id}`
   const text =
@@ -349,8 +391,8 @@ function Waiting({ ticket, issuer, mayCancel, act }: { ticket: Ticket; issuer: s
     : ticket.myStep === 'issuer' ? `${ticket.name} has created a passkey. Type the three words they read to you, before ${minute(ticket.until)}.`
     : ticket.myStep === 'second' ? `${issuer} typed the words. You are the second person: type the three words ${ticket.name} reads to you, before ${minute(ticket.until)}.`
     : ticket.status === 'issuer' ? `Waiting for ${issuer} to type the three words.`
-    : ticket.status === 'second' ? `${issuer} typed the words. Waiting for a second person with a key role, other than ${issuer} and ${ticket.name}.`
-    : `No second person exists. The passkey becomes active at its first sign-in after ${minute(ticket.until)}. Any Owner can cancel until then.`
+    : ticket.status === 'second' ? `${issuer} typed the words. Waiting for a second person with a key role, other than ${issuer} and ${ticket.name}, before ${minute(ticket.until)}. No wait replaces that person here.`
+    : `This organisation has had no other member with a key role in the last 30 days, so a 72 hour wait stands in for the second person. The passkey becomes active at its first sign-in after ${minute(ticket.until)}. Any Owner can cancel until then.`
   function confirm(event: FormEvent) {
     event.preventDefault()
     void act(() => passkeyCheck<Result['data']>(`${path}/confirm/start`, `${path}/confirm`, { words })).then(() => setWords(''))
@@ -376,10 +418,117 @@ function Waiting({ ticket, issuer, mayCancel, act }: { ticket: Ticket; issuer: s
   )
 }
 
+// What a change does, in plain words. Shown before the click that asks for it and before the click that approves it.
+const role = (code: string | null | undefined) => ROLE[code ?? ''] ?? code ?? ''
+function effect(kind: string, name: string, was: string | null, value?: string | null) {
+  return kind === 'seat.freeze' ? `Freezes the seat of ${name} (${role(was)}) at once. Their passkeys are suspended, not deleted, and their sessions end. Links they issued and changes they asked for are cancelled. Every member is told. Unfreezing takes two people.`
+    : kind === 'seat.unfreeze' ? `Unfreezes the seat of ${name} (${role(was)}). The passkeys that were active before the freeze work again and they can sign in.`
+    : kind === 'seat.remove' ? `Removes ${name} (${role(was)}) from the organisation. Their passkeys are revoked, their sessions end, and their open links and requests are cancelled. This cannot be undone: coming back takes a new invitation.`
+    : kind === 'seat.role' ? `Changes the role of ${name} from ${role(was)} to ${role(value)}. Their sessions end, and the new role starts at their next sign-in.`
+    : value === '1' ? 'Allows passkeys that sync to a cloud account for Admins, Approvers and Compliance officers. Owners still need hardware keys. This lowers a security setting.'
+    : 'Requires hardware security keys again for Admins, Approvers and Compliance officers. Passkeys already enrolled stay.'
+}
+const CHANGE: Record<string, string> = { 'seat.unfreeze': 'Unfreeze a seat', 'seat.remove': 'Remove a member', 'seat.role': 'Change a role', 'policy.synced_keys': 'Change the passkey rule for key roles' }
+type Act = (action: () => Promise<Result>) => Promise<void>
+
+// One request that waits for its second person: what will change, who asked, and the buttons this member may use.
+function Approval({ request, mayDecide, act }: { request: Request; mayDecide: boolean; act: Act }) {
+  const [open, setOpen] = useState(false)
+  const path = `/api/approvals/${request.id}`
+  const early = (request.notBefore ?? 0) > Date.now()
+  const what = effect(request.kind, request.name ?? '', request.role, request.value)
+  return (
+    <article className="appr">
+      <Tile name={request.kind === 'policy.synced_keys' ? 'key-round' : 'user'} />
+      <div>
+        <h3 className="h-card">{CHANGE[request.kind] ?? 'A change'}</h3>
+        <p>{what}</p>
+        <p className="fine">Requested by {request.mine ? 'you' : `${request.requester} (${role(request.requesterRole)})`} on {stamp(request.createdAt)}. One of two approvals.{early && ` Can be approved from ${minute(request.notBefore!)}.`}</p>
+        {open && (
+          <dl className="kv">
+            <dt>Change</dt><dd>{CHANGE[request.kind]}</dd>
+            {request.name && <><dt>Member</dt><dd>{request.name}</dd></>}
+            {request.kind === 'seat.role' && <><dt>Role now</dt><dd>{role(request.role)}</dd><dt>Role after</dt><dd>{role(request.value)}</dd></>}
+            <dt>Requested by</dt><dd>{request.requester} ({role(request.requesterRole)})</dd>
+            <dt>Second person</dt><dd>Any Owner, Admin, Approver or Compliance officer other than the requester, after a passkey check</dd>
+            <dt>Applied</dt><dd>At the moment of the approval{early ? `, not before ${minute(request.notBefore!)}` : ''}</dd>
+            <dt>Expires</dt><dd>{minute(request.expiresAt)}</dd>
+          </dl>
+        )}
+      </div>
+      <div className="acts">
+        <button className="btn ghost md" type="button" aria-expanded={open} onClick={() => setOpen(!open)}><Icon name="eye" size={16} />Review</button>
+        {request.mine ? <button className="btn ghost md" type="button" onClick={() => act(() => api(`${path}/cancel`, {}))}><Icon name="x" size={16} />Cancel request</button>
+        : mayDecide && (
+          <>
+            <button className="btn ghost md" type="button" onClick={() => act(() => sensitive(`${path}/reject`))}><Icon name="x" size={16} />Reject</button>
+            <button className="btn primary md" type="button" disabled={early} onClick={() => act(() => sensitive(`${path}/approve`))}><Icon name="check" size={16} />Approve</button>
+          </>
+        )}
+      </div>
+    </article>
+  )
+}
+
+// What an Owner or Admin can do with one seat. Every choice says what it does before its button.
+function ManageDialog({ seat, frozen, mayOwner, act, onClose }: { seat: Member; frozen?: FrozenInfo; mayOwner: boolean; act: Act; onClose: () => void }) {
+  const dialog = useRef<HTMLDialogElement>(null)
+  const roles = Object.keys(ROLE).filter((code) => code !== seat.role && (mayOwner || code !== 'owner'))
+  const [to, setTo] = useState(roles[0])
+  useEffect(() => {
+    if (!dialog.current?.open) dialog.current?.showModal()
+  }, [])
+  const run = (what: string, body: unknown = {}) => {
+    dialog.current?.close()
+    void act(() => sensitive(`/api/members/${seat.id}/${what}`, body))
+  }
+  const two = 'It needs a second person: the request waits under Approvals for 7 days.'
+  return (
+    <dialog ref={dialog} className="drawer" aria-labelledby="mg-h" onClose={onClose}>
+      <header className="dh"><Tile name="settings" /><div className="grow"><h2 className="h-panel" id="mg-h">Manage {seat.displayName}</h2><span className="cap">{role(seat.role)}, {seat.state}</span></div>
+        <button className="ib" type="button" aria-label="Close" onClick={() => dialog.current?.close()}><Icon name="x" /></button></header>
+      <div className="db">
+        <ul className="choices">
+          {seat.state === 'active' && (
+            <li><Tile name="ban" /><h3 className="h-card">Freeze seat</h3>
+              <div className="body"><p>{effect('seat.freeze', seat.displayName, seat.role)}</p>
+                <button className="btn primary md" type="button" onClick={() => run('freeze')}><Icon name="ban" size={16} />Freeze seat now</button></div></li>
+          )}
+          {seat.state === 'frozen' && (
+            <li><Tile name="circle-check" /><h3 className="h-card">Request unfreeze</h3>
+              <div className="body"><p>{frozen && (frozen.stopped ? 'A replaced passkey of this seat stopped its replacement' : `Frozen by ${frozen.by ?? 'a colleague'}`)}{frozen?.at ? ` on ${minute(frozen.at)}. ` : ''}{effect('seat.unfreeze', seat.displayName, seat.role)} {two}</p>
+                <button className="btn primary md" type="button" onClick={() => run('unfreeze')}><Icon name="users" size={16} />Request unfreeze</button></div></li>
+          )}
+          {seat.state === 'active' && (
+            <li><Tile name="users" /><h3 className="h-card">Request role change</h3>
+              <div className="body">
+                <label className="field">New role
+                  <select className="input" value={to} onChange={(event) => setTo(event.target.value)}>{roles.map((code) => <option key={code} value={code}>{ROLE[code]}</option>)}</select>
+                </label>
+                <p>{effect('seat.role', seat.displayName, seat.role, to)} {two}</p>
+                <button className="btn primary md" type="button" onClick={() => run('role', { role: to })}><Icon name="users" size={16} />Request role change</button></div></li>
+          )}
+          {seat.state === 'invited' ? (
+            <li><Tile name="x" /><h3 className="h-card">Remove invitation</h3>
+              <div className="body"><p>Removes the invited seat of {seat.displayName} and cancels its link. Nobody enrolled on it, so this is done at once, by you alone.</p>
+                <button className="btn primary md" type="button" onClick={() => run('remove')}><Icon name="x" size={16} />Remove invitation now</button></div></li>
+          ) : (
+            <li><Tile name="x" /><h3 className="h-card">Request removal</h3>
+              <div className="body"><p>{effect('seat.remove', seat.displayName, seat.role)} {two}</p>
+                <button className="btn primary md" type="button" onClick={() => run('remove')}><Icon name="users" size={16} />Request removal</button></div></li>
+          )}
+        </ul>
+      </div>
+      <footer className="df"><button className="btn ghost md" type="button" onClick={() => dialog.current?.close()}>Close</button></footer>
+    </dialog>
+  )
+}
+
 export function Organisation({ me, onSignedOut, onChanged }: { me: Me; onSignedOut: () => void; onChanged: () => void }) {
   const [view, setView] = useState<View>()
   const [problem, setProblem] = useState('')
   const [ticketFor, setTicketFor] = useState<Member | null>() // undefined: closed. null: a new member. A member: a new link for that seat.
+  const [managed, setManaged] = useState<Member>()
   const [label, setLabel] = useState('Security key 2')
   const load = useCallback(async () => {
     const result = await api<View>('/api/org')
@@ -390,7 +539,7 @@ export function Organisation({ me, onSignedOut, onChanged }: { me: Me; onSignedO
   useEffect(() => void load(), [load])
 
   // Every action goes through here: run it, say what went wrong, then show the new state.
-  async function act(action: () => Promise<Result>) {
+  const act: Act = async (action) => {
     setProblem('')
     try {
       const result = await action()
@@ -426,8 +575,8 @@ export function Organisation({ me, onSignedOut, onChanged }: { me: Me; onSignedO
       <td>{stamp(key.createdAt)}</td>
       <td>{key.lastUsedAt ? stamp(key.lastUsedAt) : 'Never'}</td>
       <td><Status>{capital(key.state)}</Status>{key.state === 'suspended' && key.stopRightUntil && <small>Can stop its replacement until {minute(key.stopRightUntil)}</small>}</td>
-      <td>{key.state === 'active' && ready && (own || (!quarantined && view?.members.some((member) => member.id === key.seatId && member.state === 'active' && mayManage(member.role)))) && (
-        <button className="btn ghost sm" type="button" aria-label={`Revoke ${key.label}${own ? '' : ` of ${name(key.seatId)}${last(key) ? ' and freeze the seat' : ''}`}`} onClick={() => act(() => sensitive(`/api/passkeys/${key.id}/revoke`))}><Icon name={!own && last(key) ? 'ban' : 'x'} size={16} />{!own && last(key) ? 'Revoke and freeze seat' : 'Revoke'}</button>
+      <td>{key.state === 'active' && ready && !last(key) && (own || (!quarantined && view?.members.some((member) => member.id === key.seatId && member.state === 'active' && mayManage(member.role)))) && (
+        <button className="btn ghost sm" type="button" aria-label={`Revoke ${key.label}${own ? '' : ` of ${name(key.seatId)}`}`} title="The passkey stops working at once. The seat keeps its other passkey." onClick={() => act(() => sensitive(`/api/passkeys/${key.id}/revoke`))}><Icon name="x" size={16} />Revoke</button>
       )}</td>
     </tr>
   ))
@@ -438,7 +587,7 @@ export function Organisation({ me, onSignedOut, onChanged }: { me: Me; onSignedO
       <header className="ph"><div>
         <span className="cap eyebrow">Organisation</span>
         <h1 className="h-page">People, wallets and <em>two-person approval</em>.</h1>
-        <p className="lede">Members, their passkeys and their sessions. Wallets and approvals arrive in later milestones.</p>
+        <p className="lede">Members, their passkeys and sessions, and the changes that need a second person. Wallets arrive in a later milestone.</p>
       </div></header>
       <div className="stack">
         {!ready && <p className="note warn" role="status"><Icon name="key-round" /><span className="grow"><b>Add your second {hardware ? 'hardware key' : 'passkey'}.</b> A seat needs two before it can invite, confirm or revoke. Use <a href="#my-passkeys">My passkeys</a> below.</span></p>}
@@ -452,25 +601,39 @@ export function Organisation({ me, onSignedOut, onChanged }: { me: Me; onSignedO
         </Section>
       )}
 
+      {view && (
+        <Section id="approvals" icon="users" title="Approvals" hint="Approving asks for your passkey. The requester cannot approve.">
+          <div className="stack">
+            {view.approvals.map((request) => <Approval key={request.id} request={request} mayDecide={KEY_ROLES.includes(me.seat.role) && ready && !quarantined} act={act} />)}
+            {view.approvals.length === 0 && <p className="note ok"><Icon name="circle-check" /><span className="grow"><b>Nothing waits.</b> A request to unfreeze a seat, remove a member, change a role or change the passkey rule appears here, and in the audit log.</span></p>}
+          </div>
+        </Section>
+      )}
+
       <Section icon="user" title="Members and roles" action={manages && ready && !quarantined && <button className="btn ghost sm" type="button" onClick={() => setTicketFor(null)}><Icon name="user" size={16} />Invite member</button>}>
         <div className="table-wrap"><table className="t">
-          <thead><tr><th>Member</th><th>Role</th><th>Passkeys</th><th>Active sessions</th><th>Status</th>{manages && <th><span className="sr">Enrolment</span></th>}</tr></thead>
+          <thead><tr><th>Member</th><th>Role</th><th>Passkeys</th><th>Active sessions</th><th>Status</th>{manages && <th><span className="sr">Enrolment and changes</span></th>}</tr></thead>
           <tbody>{view?.members.map((member) => {
             const keys = view.passkeys.filter((key) => key.seatId === member.id && key.state === 'active')
             const again = manages && ready && member.id !== me.seat.id && mayManage(member.role) && (member.state === 'active' || (member.state === 'invited' && !quarantined))
+            const frozen = view.frozen.find((seat) => seat.id === member.id)
             return (
               <tr key={member.id}>
                 <td>{member.displayName}</td>
                 <td>{ROLE[member.role] ?? member.role}</td>
                 <td>{keys.length ? `${keys.length}: ${keys.map((key) => key.label).join(', ')}` : 'None'}</td>
                 <td>{view.sessions.filter((session) => session.seatId === member.id).length || 'None'}</td>
-                <td><Status>{capital(member.state)}</Status></td>
-                {manages && <td>{again && <button className="btn ghost sm" type="button" aria-label={`${member.state === 'active' ? 'Re-enrol' : 'New link for'} ${member.displayName}`} onClick={() => setTicketFor(member)}><Icon name="history" size={16} />{member.state === 'active' ? 'Re-enrol' : 'New link'}</button>}</td>}
+                <td><Status>{capital(member.state)}</Status>{frozen && <small>{frozen.stopped ? 'A replaced passkey stopped its replacement' : `By ${frozen.by ?? 'a colleague'}`}{frozen.at ? ` on ${minute(frozen.at)}` : ''}</small>}</td>
+                {manages && <td><div className="acts">
+                  {again && <button className="btn ghost sm" type="button" aria-label={`${member.state === 'active' ? 'Re-enrol' : 'New link for'} ${member.displayName}`} onClick={() => setTicketFor(member)}><Icon name="history" size={16} />{member.state === 'active' ? 'Re-enrol' : 'New link'}</button>}
+                  {ready && !quarantined && mayManage(member.role) && member.state !== 'removed' && <button className="btn ghost sm" type="button" aria-label={`Manage ${member.displayName}`} onClick={() => setManaged(member)}><Icon name="settings" size={16} />Manage</button>}
+                </div></td>}
               </tr>
             )
           })}</tbody>
         </table></div>
       </Section>
+      {managed && <ManageDialog seat={managed} frozen={view?.frozen.find((seat) => seat.id === managed.id)} mayOwner={me.seat.role === 'owner'} act={act} onClose={() => setManaged(undefined)} />}
       {ticketFor !== undefined && <TicketDialog seat={ticketFor} mayOwner={me.seat.role === 'owner'} onClose={() => { setTicketFor(undefined); void load() }} />}
 
       <Section id="my-passkeys" icon="key-round" title="My passkeys" hint={`Public keys only. Keep two${hardware ? ' hardware keys' : ''}: if you lose one, sign in with the other, revoke the lost one and add a new one.`}>
@@ -485,7 +648,7 @@ export function Organisation({ me, onSignedOut, onChanged }: { me: Me; onSignedO
       </Section>
 
       {manages && (
-        <Section icon="key-square" title="Passkeys of colleagues" hint="A new passkey stays pending until it is confirmed. A replaced passkey is suspended, not deleted: it can stop its replacement. Revoking a member's last passkey freezes their seat: to replace lost passkeys, re-enrol the member instead.">
+        <Section icon="key-square" title="Passkeys of colleagues" hint="A new passkey stays pending until it is confirmed. A replaced passkey is suspended, not deleted: it can stop its replacement. A member's last passkey is never revoked: re-enrol the member to replace lost passkeys, or freeze the seat in an emergency.">
           <div className="table-wrap"><table className="t">{keyHead(false)}<tbody>{view && keyRows(view.passkeys.filter((key) => key.seatId !== me.seat.id), false)}</tbody></table></div>
         </Section>
       )}
@@ -505,7 +668,34 @@ export function Organisation({ me, onSignedOut, onChanged }: { me: Me; onSignedO
         </table></div>
       </Section>
 
-      <Section later icon="users" title="Approvals" hint="Changes to wallets, members and security settings will need a second person. The requester cannot approve." />
+      {view && (
+        <Section icon="key-square" title="Passkey rule for key roles" hint="Owners always need hardware security keys. This rule is for Admins, Approvers and Compliance officers.">
+          <article className="appr">
+            <Tile name="key-round" />
+            <div>
+              <h3 className="h-card">{view.syncedKeysAllowed ? 'Synced passkeys are allowed' : 'Hardware security keys only'}</h3>
+              <p>An Owner can ask to change it. {effect('policy.synced_keys', '', null, view.syncedKeysAllowed ? '0' : '1')} {view.syncedKeysAllowed ? 'It needs a second person.' : 'It needs a second person, who can approve 24 hours after the request at the earliest.'}</p>
+            </div>
+            {me.seat.role === 'owner' && ready && !quarantined && <button className="btn ghost sm" type="button" onClick={() => act(() => sensitive('/api/policy', { syncedKeys: !view.syncedKeysAllowed }))}><Icon name="users" size={16} />{view.syncedKeysAllowed ? 'Request hardware keys only' : 'Request to allow synced passkeys'}</button>}
+          </article>
+        </Section>
+      )}
+
+      {view && (
+        <Section icon="list-checks" title="What each role can do" hint="No role can sign a trade. Signatures come from the wallet. This table is read from the rules the server enforces.">
+          <div className="table-wrap"><table className="t">
+            <thead><tr><th>Action</th>{Object.values(ROLE).map((text) => <th key={text}>{text}</th>)}<th>Passkey check first</th><th>Second person</th></tr></thead>
+            <tbody>{view.rights.map((right) => (
+              <tr key={right.can}>
+                <td className="wrap">{right.can}</td>
+                {Object.keys(ROLE).map((code) => <td key={code}>{right.roles.includes(code) ? <span className="yes"><Icon name="check" size={16} /><span className="sr">Yes</span></span> : <span className="no"><Icon name="minus" size={16} /><span className="sr">No</span></span>}</td>)}
+                <td>{right.fresh ? 'Yes' : 'No'}</td>
+                <td>{right.second ? 'Yes' : 'No'}</td>
+              </tr>
+            ))}</tbody>
+          </table></div>
+        </Section>
+      )}
       <Section later icon="wallet" title="Linked wallets and recovery wallet" hint="Ownership will be proved with a signed message. One wallet per organisation restores access if every Owner is locked out." />
       <Section later icon="key-round" title="API keys" hint="Read-only keys for reports come after the first release. No key will be able to move funds." />
     </>
@@ -521,7 +711,16 @@ const ALERT: Record<string, (alert: Alert) => string> = {
   colleague_re_enrolled: (a) => `${a.name} was re-enrolled on ${minute(a.at!)}: a new passkey replaced their previous ones. If that surprises you, call them.`,
   colleague_joined: (a) => `${a.name} joined on a link issued on ${minute(a.at!)}: a colleague confirmed their first passkey. If you do not know this member, tell an Owner.`,
   re_enrolment_closed: (a) => `${a.name} signed in on ${minute(a.at!)} with a passkey they still hold, while a re-enrolment of their seat was open. It was closed. If you started it, the request may not have come from ${a.name}: call them.`,
-  seat_frozen: (a) => `The seat of ${a.name} is frozen: a replaced passkey stopped its replacement, or a colleague revoked its last passkey. It cannot sign in until an Owner and a second person decide which passkeys stand.`,
+  seat_frozen: (a) => `The seat of ${a.name} is frozen: ${a.stopped ? 'a replaced passkey stopped its replacement' : `${a.by ?? 'a colleague'} froze it`}${a.at ? ` on ${minute(a.at)}` : ''}. It cannot sign in until two people unfreeze it: an Owner or Admin asks, a second member with a key role approves.`,
+  approval_waiting: (a) => `${a.name} asked for a change that needs a second person. Review it under Approvals.`,
+  changed: (a) => {
+    const [from, to] = (a.detail ?? '').split('.')
+    const when = `on ${minute(a.at!)}`
+    return a.what === 'seat.role' ? `${a.mine ? 'Your role' : `The role of ${a.name}`} was changed ${when}, from ${role(from)} to ${role(to)}. Two people decided it.`
+      : a.what === 'seat.remove' ? `${a.name} was removed from the organisation ${when}. Two people decided it.`
+      : a.what === 'seat.unfreeze' ? `${a.mine ? 'Your seat' : `The seat of ${a.name}`} was unfrozen ${when}. Two people decided it.`
+      : `The passkey rule for key roles was changed ${when}: ${a.detail === 'synced' ? 'synced passkeys are allowed for Admins, Approvers and Compliance officers' : 'hardware security keys only'}. Two people decided it.`
+  },
   confirmation_waiting: (a) => `A new passkey of ${a.name} waits for the three words from you, under Waiting for confirmation.`,
 }
 export function Alerts({ alerts, onRead }: { alerts: Alert[]; onRead: () => void }) {
@@ -533,6 +732,83 @@ export function Alerts({ alerts, onRead }: { alerts: Alert[]; onRead: () => void
       <p className="fine"><Icon name="info" size={16} />Ophis sends no email about these events. They are shown here, when you sign in.</p>
       <div><button className="btn primary" type="button" autoFocus onClick={onRead}><Icon name="check" />I have read this</button></div>
     </section>
+  )
+}
+
+interface AuditPage {
+  rows: { seq: number; at: number; who: string; event: string; target: string; prevHash: string; hash: string }[]
+  next: number | null
+  chain: { ok: boolean; rows?: number; head?: string; seq?: number }
+}
+const short = (hash: string) => `${hash.slice(0, 10)}...${hash.slice(-4)}`
+// Compliance: the audit log of the organisation. The server says whether the chain holds; the export carries every hash in full.
+export function Compliance({ onSignedOut }: { onSignedOut: () => void }) {
+  const [page, setPage] = useState<AuditPage>()
+  const [cursors, setCursors] = useState<number[]>([]) // the pages gone through, newest first: the last one is shown
+  const [problem, setProblem] = useState('')
+  const before = cursors.at(-1)
+  const load = useCallback(async () => {
+    const result = await api<AuditPage>(`/api/audit${before ? `?before=${before}` : ''}`)
+    if (result.status === 401) return onSignedOut()
+    if (result.status === 200) return setPage(result.data)
+    setProblem(result.status === 403 ? 'The audit log is open to Owners, Compliance officers and Viewers.' : 'The audit log could not be loaded. Reload the page.')
+  }, [before, onSignedOut])
+  useEffect(() => void load(), [load])
+
+  async function exportCsv() {
+    setProblem('')
+    try {
+      const out = await sensitive<{ name: string; csv: string }>('/api/audit/export')
+      if (out.status === 401) return onSignedOut()
+      if (out.status !== 200) return setProblem(say(out.data))
+      const link = document.createElement('a')
+      link.href = URL.createObjectURL(new Blob([out.data.csv], { type: 'text/csv' }))
+      link.download = out.data.name
+      link.click()
+      URL.revokeObjectURL(link.href)
+      await load() // the export is itself a row of the log
+    } catch {
+      setProblem(CANCELLED)
+    }
+  }
+
+  return (
+    <>
+      <header className="ph"><div>
+        <span className="cap eyebrow">Compliance</span>
+        <h1 className="h-page">Records and <em>the audit trail</em>.</h1>
+        <p className="lede">Every change in your organisation, in the order it happened. All times UTC.</p>
+      </div></header>
+      {problem && <div className="stack"><Problem>{problem}</Problem></div>}
+      {page && (
+        <Section icon="scroll-text" title="Audit log" hint="Each row carries the hash of the row before it. A changed row breaks the chain."
+          action={<button className="btn ghost sm" type="button" title="Asks for your passkey, writes a row in this log, then downloads every row with both hashes in full." onClick={exportCsv}><Icon name="download" size={16} />Export CSV</button>}>
+          <p className="chain" role="status">
+            <Status>{page.chain.ok ? 'Chain verified' : 'Chain broken'}</Status>
+            {page.chain.ok ? `The server checked all ${page.chain.rows} rows just now. Newest row hash ${short(page.chain.head ?? '')}.` : `The chain does not hold at row ${page.chain.seq}. Keep your last export and tell Ophis.`}
+          </p>
+          <div className="table-wrap"><table className="t">
+            <thead><tr><th className="num">No.</th><th>Time (UTC)</th><th>Who</th><th>Event</th><th>Target</th><th>Previous row hash</th><th>Row hash</th></tr></thead>
+            <tbody>{page.rows.map((row) => (
+              <tr key={row.seq}>
+                <td className="num">{row.seq}</td>
+                <td>{stamp(row.at)}</td>
+                <td>{row.who}</td>
+                <td className="wrap">{row.event}</td>
+                <td>{row.target}</td>
+                <td>{/^0+$/.test(row.prevHash) ? <span className="muted">First row</span> : <span className="mono muted" title={row.prevHash}>{short(row.prevHash)}</span>}</td>
+                <td><span className="mono" title={row.hash}>{short(row.hash)}</span></td>
+              </tr>
+            ))}</tbody>
+          </table></div>
+          <div className="pager">
+            <button className="btn ghost sm" type="button" disabled={!cursors.length} onClick={() => setCursors(cursors.slice(0, -1))}>Newer rows</button>
+            <button className="btn ghost sm" type="button" disabled={!page.next} onClick={() => setCursors([...cursors, page.next!])}>Older rows</button>
+          </div>
+        </Section>
+      )}
+      <Section later icon="shield-check" title="Screening and the stored KYB record" hint="Screening results by linked wallet and the stored verification record arrive with onboarding." />
+    </>
   )
 }
 

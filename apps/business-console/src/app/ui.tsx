@@ -40,7 +40,13 @@ const SAY: Record<string, string> = {
   device_bound_required: 'This role needs a hardware security key. A passkey that syncs to a cloud account is not accepted.',
   label_invalid: 'Give the key a short name: letters, digits and spaces, 40 characters at most.',
   not_stored: 'The passkey was not stored. It may already be on this seat.',
-  last_passkey: 'This is the last passkey of the seat. Add another first.',
+  last_passkey: 'This is the last passkey of the seat and cannot be revoked. Add another first. In an emergency, freeze the seat.',
+  label_taken: 'This seat already has a passkey with that name. Choose another name.',
+  seat_limit: 'Ten new members in 24 hours is the limit for one inviter. Another Owner or Admin can invite.',
+  last_owner: 'This is the last active Owner. An organisation always keeps one.',
+  already_requested: 'This change already waits for a second person, under Approvals.',
+  own_request: 'You asked for this change. A different member with a key role approves or rejects it.',
+  too_early: 'This lowers a security setting. It can be approved 24 hours after it was asked.',
   invalid: 'Check the name and the role.',
 }
 export const say = (data: { error?: string; left?: number }) =>
@@ -58,7 +64,7 @@ const STATUS: Record<string, [tone: string, icon: string]> = {
   Active: ['ok', 'check'], 'In place today': ['ok', 'check'], 'This session': ['ok', 'circle-check'], Done: ['ok', 'check'],
   Pending: ['warn', 'clock'], Invited: ['warn', 'clock'],
   Suspended: ['draft', 'history'], Planned: ['draft', 'calendar'], Later: ['draft', 'calendar'],
-  Revoked: ['bad', 'x'], Frozen: ['bad', 'ban'], Removed: ['bad', 'x'],
+  Revoked: ['bad', 'x'], Frozen: ['bad', 'ban'], Removed: ['bad', 'x'], 'Chain verified': ['ok', 'shield-check'], 'Chain broken': ['bad', 'triangle-alert'],
 }
 export function Status({ children }: { children: string }) {
   const [tone, icon] = STATUS[children] ?? ['', 'circle-check']

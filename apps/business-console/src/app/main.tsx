@@ -4,7 +4,7 @@ import { createRoot } from 'react-dom/client'
 import './kit.css'
 import './app.css'
 import mark from './assets/ophis-icon-mono-dark.svg'
-import { Alerts, Enrol, Organisation, Problem, Security, SignIn, type Me } from './pages.tsx'
+import { Alerts, Compliance, Enrol, Organisation, Problem, Security, SignIn, type Me } from './pages.tsx'
 import { api, Icon, ROLE, Status } from './ui.tsx'
 
 const onHashChange = (listener: () => void) => {
@@ -57,7 +57,7 @@ function App() {
   }, [])
   useEffect(() => void loadMe(), [loadMe])
 
-  const page = hash.startsWith('#/security') ? 'security' : hash.startsWith('#/enrol') ? 'enrol' : me ? 'organisation' : 'signin'
+  const page = hash.startsWith('#/security') ? 'security' : hash.startsWith('#/enrol') ? 'enrol' : !me ? 'signin' : hash.startsWith('#/compliance') ? 'compliance' : 'organisation'
   useEffect(() => {
     document.body.dataset.route = me ? page : 'signin'
     document.body.classList.toggle('menu-open', menu)
@@ -88,7 +88,7 @@ function App() {
   return (
     <>
       <button className="skip btn primary sm" type="button" onClick={() => document.getElementById('main')?.focus()}>Skip to content</button>
-      <div className="band" role="note"><Icon name="info" size={16} /><span><strong>Local build.</strong> Milestone 2 of 6: enrolment and recovery ceremony. Test data only.</span></div>
+      <div className="band" role="note"><Icon name="info" size={16} /><span><strong>Local build.</strong> Milestone 3 of 6: roles, two-person approval and the audit log. Test data only.</span></div>
       <header className="bar">
         <a className="brand" href="#/" aria-label="Ophis Business"><img src={mark} alt="" />ophis.<small>Business</small></a>
         {me && <div className="org"><span>{me.organisation.name}</span></div>}
@@ -103,7 +103,7 @@ function App() {
         <nav className="rail" aria-label="Main">
           <Later icon="layout-dashboard" label="Overview" />
           <Later icon="arrow-left-right" label="Desk" />
-          <Later icon="shield-check" label="Compliance" />
+          <a className="nav" href="#/compliance" data-tip="Compliance" aria-current={current('compliance')}><Icon name="shield-check" /><span className="lbl">Compliance</span></a>
           <a className="nav" href="#/organisation" data-tip="Organisation" aria-current={current('organisation')}><Icon name="building-2" /><span className="lbl">Organisation</span></a>
           <Later icon="clipboard-check" label="Onboarding" />
           <span className="cap">Trust and help</span>
@@ -124,6 +124,7 @@ function App() {
             : page === 'enrol' ? <Enrol ticket={ticket} />
             : me === undefined ? null
             : me && unread.length ? <Alerts alerts={unread} onRead={markRead} />
+            : me && page === 'compliance' ? <Compliance onSignedOut={signedOut} />
             : me ? <Organisation me={me} onSignedOut={signedOut} onChanged={loadMe} />
             : <SignIn onSignedIn={loadMe} />}
           </main>
