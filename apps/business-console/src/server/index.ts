@@ -412,8 +412,8 @@ async function readiness(c: Context) {
   const live = endpoints ? await safeState(endpoints, wallet!.chainId, wallet!.address) : null
   const shade = wallet ? colour({ ...wallet, inForce }, live) : { level: 'none' as const, why: null }
   const overall = people === 'green' || (people === 'amber' && shade.level === 'green') ? 'ready' : owners.length === 1 && !wallet ? 'not_recoverable' : 'at_risk'
-  // The one step that comes next: the second key of an Owner, then a second Owner; with one Owner and no recovery wallet, the wallet.
-  const step = overall === 'ready' ? null : overall === 'not_recoverable' ? 'recovery_wallet' : people === 'red' ? 'second_key' : 'second_owner'
+  // The one step that comes next: the second key of an Owner (without it that Owner can set nothing), then the recovery wallet where there is one Owner and none, then a second Owner.
+  const step = overall === 'ready' ? null : people === 'red' ? 'second_key' : overall === 'not_recoverable' ? 'recovery_wallet' : 'second_owner'
   return json(200, {
     owners: { level: people, count: owners.length }, overall, step,
     wallet: { ...shade, label: wallet?.label ?? null, at: wallet?.recoveryAt ?? null, ...(live && { threshold: live.threshold, owners: live.owners.length }) },

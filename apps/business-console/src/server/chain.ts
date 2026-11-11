@@ -44,7 +44,7 @@ async function rpc(url: string, method: string, params: unknown[]) {
   })
   const text = response.ok ? await readCapped(response.body, LIMITS.maxBytes) : null
   const result = text === null ? null : (JSON.parse(text) as { result?: unknown }).result
-  if (typeof result !== 'string' || !/^0x[0-9a-fA-F]*$/.test(result)) throw new Error('rpc')
+  if (typeof result !== 'string') throw new Error('rpc') // not hex: no caller can decode it or match it, so it counts as no answer
   return lower(result)
 }
 
@@ -103,8 +103,8 @@ export async function safeState(endpoints: Endpoints, chainId: number, wallet: s
  */
 export function colour(wallet: { kind: string; snapshot: string | null; inForce: boolean }, live: SafeState | null) {
   const seen = wallet.snapshot ? (JSON.parse(wallet.snapshot) as SafeState) : null
-  const why = wallet.kind !== 'safe' ? wallet.kind
-    : !wallet.inForce ? 'waiting'
+  const why = !wallet.inForce ? 'waiting' // first: until its 72 hours pass it does not count, whatever it is
+    : wallet.kind !== 'safe' ? wallet.kind
     : !live ? 'unreadable'
     : live.modules.length > 0 ? 'module'
     : live.threshold < 2 ? 'threshold'

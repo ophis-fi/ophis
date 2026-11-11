@@ -2,7 +2,7 @@
 // (ARCHITECTURE.md, security invariants). Runs in the Workers runtime against a local D1.
 import { applyD1Migrations, env } from 'cloudflare:test'
 import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
-import { decodeFunctionData, encodeFunctionResult, parseAbi, recoverAddress, serializeSignature, parseSignature, hashTypedData } from 'viem'
+import { decodeFunctionData, encodeFunctionData, encodeFunctionResult, parseAbi, recoverAddress, serializeSignature, parseSignature, hashTypedData } from 'viem'
 import { mnemonicToAccount } from 'viem/accounts'
 import pageHeaders from '../public/_headers?raw'
 import routerSource from '../src/server/index.ts?raw'
@@ -3497,7 +3497,7 @@ describe('y. wallets and the recovery wallet', () => {
     expect((await post(`/api/wallets/${own.id}/anchor`, solo)).body).toEqual({ state: 'applied' })
     expect(await lastAudit(solo.orgId)).toEqual({ action: 'anchor.set', actor_id: solo.seatId, subject_id: own.id, detail: 'alone' })
     expect(await walletAt(accounts[1].address)).toMatchObject({ anchor: 'next', at: now + WAIT })
-    expect((await call('GET', '/api/readiness', { cookie: solo.cookie })).body).toMatchObject({ wallet: { level: 'amber', why: 'single_key' }, overall: 'at_risk', step: 'second_owner' })
+    expect((await call('GET', '/api/readiness', { cookie: solo.cookie })).body).toMatchObject({ wallet: { level: 'amber', why: 'waiting' }, overall: 'at_risk', step: 'second_owner' })
     const { o: o3, a: a3 } = await trio()
     const stale = await linked(o3, a3, {}, accounts[2])
     const id = data.randomId()
@@ -3538,6 +3538,7 @@ describe('y. wallets and the recovery wallet', () => {
       [null, safe, live],
       [null, safe, { ...live, owners: [...owners] }],
       ['waiting', { ...safe, inForce: false }, live],
+      ['waiting', { ...safe, kind: 'custodian', inForce: false }, live],
       ['unreadable', safe, null],
       ['module', safe, { ...live, modules: ['0xd'] }],
       ['threshold', { ...safe, snapshot: JSON.stringify({ ...live, threshold: 1 }) }, { ...live, threshold: 1 }],
@@ -3555,7 +3556,7 @@ describe('y. wallets and the recovery wallet', () => {
     const o = await member()
     const ready = async (m: Holder = o) => (await call('GET', '/api/readiness', { cookie: m.cookie })).body
     // One Owner with one key and no recovery wallet.
-    expect(await ready()).toEqual({ owners: { level: 'red', count: 1 }, wallet: { level: 'none', why: null, label: null, at: null }, overall: 'not_recoverable', step: 'recovery_wallet' })
+    expect(await ready()).toEqual({ owners: { level: 'red', count: 1 }, wallet: { level: 'none', why: null, label: null, at: null }, overall: 'not_recoverable', step: 'second_key' })
     expect((await addKey(o)).status).toBe(200)
     expect(await ready()).toMatchObject({ owners: { level: 'amber', count: 1 }, overall: 'not_recoverable' })
     // A Safe as recovery wallet: amber while it waits, green once in force.
@@ -3644,6 +3645,7 @@ describe('y. wallets and the recovery wallet', () => {
     await expect(copy(columns('pending', `'n2'`))).rejects.toThrow(/UNIQUE/)
     await expect(copy(columns('unlinked', 'proof_nonce'))).rejects.toThrow(/UNIQUE/)
     await expect(copy(columns('gone', `'n3'`))).rejects.toThrow(/CHECK/)
+    await expect(copy(columns('unlinked', `'n6'`).replace(' address,', ' upper(address),'))).rejects.toThrow(/CHECK/) // one address, one spelling
     await copy(columns('unlinked', `'n4'`))
     await copy(columns('linked', `'n5'`, '1'))
     expect(await count('wallets', o.orgId)).toBe(3)
@@ -3658,5 +3660,115 @@ describe('y. wallets and the recovery wallet', () => {
     const page = Object.values(signSource).join('\n')
     expect(page).toContain('eth_signTypedData_v4')
     expect(page).not.toMatch(/document\.cookie|credentials|\/api\/(?!proof)/)
+  })
+})
+
+describe('z. attacks tried by the review of milestone 4a', () => {
+  it('what a seat in quarantine asked for is not approved: neither a link nor a recovery wallet, until the quarantine ends', async () => {
+    const { o, a } = await trio()
+    const wallet = await linked(o, a, { custodian: true })
+    expect((await link(o, accounts[1])).body).toEqual({ state: 'pending' })
+    const linkId = await requestFor((await walletAt(accounts[1].address)).id)
+    const anchorId = (await post(`/api/wallets/${wallet.id}/anchor`, o)).body.id as string
+    // The seat is re-enrolled: whoever holds it now is not known to be who asked.
+    await db.prepare('UPDATE seats SET quarantine_until = ? WHERE id = ?').bind(now + HOUR, o.seatId).run()
+    const before = await snapshot(['wallets', 'approvals', 'audit_log'])
+    for (const id of [linkId, anchorId]) expect((await decide(a, id, 'approve')).body).toEqual({ error: 'requester_quarantine' })
+    expect(await snapshot(['wallets', 'approvals', 'audit_log'])).toBe(before)
+    // The member could cancel meanwhile. Once the seat is settled, the request stands again.
+    now += HOUR
+    await again(a)
+    expect((await decide(a, linkId, 'approve')).body).toEqual({ state: 'applied' })
+  })
+
+  it('a requester frozen, lowered or removed through the routes: the link it asked for is closed and never approved', async () => {
+    const { o, a } = await trio()
+    const ends: ((seatId: string) => Promise<unknown>)[] = [
+      (seatId) => act(o, seatId, 'freeze'),
+      async (seatId) => decide(a, (await act(o, seatId, 'role', { role: 'trader' })).body.id, 'approve'),
+      async (seatId) => decide(a, (await act(o, seatId, 'remove')).body.id, 'approve'),
+    ]
+    for (const [i, end] of ends.entries()) {
+      const admin = await colleague(o, 'admin')
+      for (const m of [o, a]) await again(m)
+      expect((await link(admin, accounts[i])).body, String(i)).toEqual({ state: 'pending' })
+      const id = await requestFor((await walletAt(accounts[i].address)).id)
+      await end(admin.seatId)
+      expect((await seatOf(admin.seatId))!, String(i)).not.toEqual({ role: 'admin', state: 'active' })
+      expect((await decide(a, id, 'approve')).status, String(i)).toBe(404)
+      expect(await walletsOf(o), String(i)).toEqual([])
+    }
+  })
+
+  it('one nonce, one wallet row: the other forms of an accepted signature are refused', async () => {
+    const o = await owner()
+    const { intent } = (await askLink(o, accounts[0].address)).body as { intent: string }
+    const signature = await accounts[0].signTypedData(typedOf(intentOf(intent)))
+    const [r, s, v] = [signature.slice(2, 66), BigInt(`0x${signature.slice(66, 130)}`), parseInt(signature.slice(130), 16)]
+    const N = 0xfffffffffffffffffffffffffffffffebaaedce6af48a03bbfd25e8cd0364141n
+    const twin = `0x${r}${(N - s).toString(16).padStart(64, '0')}${(v === 27 ? 28 : 27).toString(16)}` // the same point, s in the upper half
+    const parity = `0x${r}${signature.slice(66, 130)}${(v - 27).toString(16).padStart(2, '0')}` // v written as 0 or 1
+    const compact = `0x${r}${(s | (BigInt(v - 27) << 255n)).toString(16).padStart(64, '0')}` // EIP-2098, 64 bytes
+    for (const form of [twin, compact]) expect((await prove(intent, form)).body, form).toEqual({ error: 'signature_rejected' })
+    expect(await count('wallets', o.orgId)).toBe(0)
+    expect((await prove(intent, parity)).body).toEqual({ state: 'linked' })
+    for (const form of [signature, parity]) expect((await prove(intent, form)).body).toEqual({ error: 'proof_used' })
+    expect((await prove(intent, twin)).body).toEqual({ error: 'signature_rejected' })
+    expect(await count('wallets', o.orgId)).toBe(1)
+    expect(chain.calls.every((call) => call.startsWith(RPC1) || call.startsWith(RPC2))).toBe(true)
+  })
+
+  it('the signing page writes text, never markup', () => {
+    expect(Object.keys(signSource).length).toBeGreaterThan(0)
+    for (const source of Object.values(signSource)) expect(source).not.toMatch(/innerHTML|outerHTML|insertAdjacentHTML|document\.write|createContextualFragment|srcdoc/)
+  })
+
+  it('a Safe is one only when each of the three reads answers', async () => {
+    const o = await owner()
+    for (const [i, name] of (['getThreshold', 'getOwners', 'getModulesPaginated'] as const).entries()) {
+      const selector = encodeFunctionData({ abi: SAFE_ABI, functionName: name, args: name === 'getModulesPaginated' ? [ONE, 10n] : [] } as never).slice(0, 10)
+      safeAt(accounts[i].address)
+      chain.twist = (_url, method, result, init) => (method === 'eth_call' && String(init?.body).includes(selector) ? undefined : result)
+      expect((await prove((await askLink(o, accounts[i].address)).body.intent, '0x')).body, name).toEqual({ state: 'linked' })
+      expect(await walletAt(accounts[i].address), name).toMatchObject({ kind: 'single_key', snapshot: null })
+    }
+  })
+
+  it('readiness names what is true now: the wallet in force before one that waits, a wait before a kind, and the second key before any other step', async () => {
+    const ready = async (m: Holder) => (await call('GET', '/api/readiness', { cookie: m.cookie })).body
+    const lone = await member()
+    expect(await ready(lone)).toMatchObject({ overall: 'not_recoverable', step: 'second_key' })
+    // Two Owners, one of them with one key, and no recovery wallet: at risk, not lost.
+    const o = await owner()
+    const seat = await invite(o.orgId, o.seatId, 'owner')
+    expect((await enrol(seat.ticket, await softwareAuthenticator(SITE))).status).toBe(200)
+    await data.devActivatePending(db, 'local', now)
+    expect(await ready(o)).toMatchObject({ overall: 'at_risk', step: 'second_key', owners: { level: 'red', count: 2 } })
+    // One Owner. A custodian wallet that waits is amber because it waits; once in force, because of its kind.
+    const one = await owner()
+    expect(await ready(one)).toMatchObject({ overall: 'not_recoverable', step: 'recovery_wallet' })
+    const custody = await linked(one, undefined, { custodian: true })
+    expect((await post(`/api/wallets/${custody.id}/anchor`, one)).body).toEqual({ state: 'applied' })
+    expect(await ready(one)).toMatchObject({ overall: 'at_risk', wallet: { level: 'amber', why: 'waiting' } })
+    now += WAIT
+    await again(one)
+    expect(await ready(one)).toMatchObject({ overall: 'at_risk', wallet: { level: 'amber', why: 'custodian' } })
+    // A Safe replaces it. While the Safe waits the custodian wallet is the one shown; then the Safe, green.
+    const safe = await linkedSafe(one)
+    expect((await post(`/api/wallets/${safe.id}/anchor`, one)).body).toEqual({ state: 'applied' })
+    expect(await ready(one)).toMatchObject({ overall: 'at_risk', wallet: { level: 'amber', why: 'custodian' } })
+    now += WAIT
+    await again(one)
+    expect(await ready(one)).toMatchObject({ overall: 'ready', step: null, wallet: { level: 'green', why: null } })
+  })
+
+  it('a proof for an organisation that is no longer active writes nothing', async () => {
+    const o = await owner()
+    const { intent } = (await askLink(o, accounts[0].address)).body as { intent: string }
+    const signature = await accounts[0].signTypedData(typedOf(intentOf(intent)))
+    await db.prepare(`UPDATE organisations SET state = 'frozen' WHERE id = ?`).bind(o.orgId).run()
+    const before = await snapshot()
+    expect((await prove(intent, signature)).body).toEqual({ error: 'forbidden' })
+    expect(await snapshot()).toBe(before)
   })
 })

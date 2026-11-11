@@ -699,10 +699,10 @@ export async function decide(db: D1Database, actor: Actor, id: string, decision:
   let outcome = 'not_found'
   await commit(db, actor.orgId, async () => {
     const a = await db
-      .prepare(`SELECT a.action, a.subject_id, a.payload, a.requester_seat_id, a.not_before, r.role FROM approvals a
+      .prepare(`SELECT a.action, a.subject_id, a.payload, a.requester_seat_id, a.not_before, r.role, r.quarantine_until AS quarantine FROM approvals a
                 JOIN seats r ON r.org_id = a.org_id AND r.id = a.requester_seat_id
                 WHERE a.org_id = ? AND a.id = ? AND ${OPEN_REQUEST}`)
-      .bind(actor.orgId, id, now).first<{ action: Kind; subject_id: string; payload: string; requester_seat_id: string; not_before: number | null; role: Role }>()
+      .bind(actor.orgId, id, now).first<{ action: Kind; subject_id: string; payload: string; requester_seat_id: string; not_before: number | null; role: Role; quarantine: number | null }>()
     const mine = a?.requester_seat_id === actor.seatId
     // The requester cancels and nobody else does. The requester never approves or rejects: approvals also has
     // CHECK (checker <> requester), so the database refuses the row even if this line were gone.
@@ -710,6 +710,7 @@ export async function decide(db: D1Database, actor: Actor, id: string, decision:
     outcome = !a || (decision === 'cancel' && !mine) ? 'not_found'
       : decision !== 'cancel' && mine ? 'own_request'
       : decision !== 'cancel' && !(role && KEY_ROLES.includes(role)) ? 'forbidden' // the checker is a key role, now
+      : decision === 'approve' && (a.quarantine ?? 0) > now ? 'requester_quarantine' // a re-enrolled seat is contested: what it asked for waits, and its member can cancel
       : decision === 'approve' && (a.not_before ?? 0) > now ? 'too_early'
       : 'ok'
     if (!a || outcome !== 'ok') return null

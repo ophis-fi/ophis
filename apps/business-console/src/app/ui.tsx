@@ -31,6 +31,7 @@ const SAY: Record<string, string> = {
   step_up_required: 'A passkey check is needed first. Try again.',
   passkey_rejected: 'The passkey check did not pass. Use an active passkey of your own seat.',
   quarantine: 'Your seat is in quarantine after a re-enrolment. This is blocked until it ends.',
+  requester_quarantine: 'The member who asked for this is in quarantine after a re-enrolment. It can be approved when the quarantine ends. Until then that member can cancel it.',
   seat_in_quarantine: 'That seat was re-enrolled and is still in quarantine. Its role can change when quarantine ends.',
   forbidden: 'Your role cannot do this.',
   ticket_limit: 'Three links for one member in 24 hours is the limit. Another Owner or Admin can issue one.',
