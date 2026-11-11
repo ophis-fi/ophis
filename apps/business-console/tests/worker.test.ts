@@ -4686,8 +4686,8 @@ describe('C. attacks tried by the review of milestone 4b', () => {
     expect((await signIn(extra.key)).status).toBe(401)
     expect([await credentialState(half.key), await row('SELECT state FROM enrolment_tickets WHERE id = ?', open.body.ticketId), await credentialState(v2.key)]).toEqual(['revoked', { state: 'dead' }, 'active'])
     expect(await row('SELECT count(*) AS n FROM sessions WHERE seat_id = ? AND revoked_at IS NULL', asked.seat)).toEqual({ n: 0 })
-    // The Viewer's passkey from before the recovery keeps what a re-enrolment leaves it: suspended, with its stop right.
-    expect(await credentialState(v.key)).toBe('suspended')
+    // The Viewer's passkeys from before the recovery, which that link replaced, are active again (F2, section E).
+    expect([await credentialState(v.key), await credentialState(v.key2)]).toEqual(['active', 'active'])
   })
 
   it('an Owner\'s stop, like an Owner\'s cancel, lets a green recovery wallet override within 30 days', async () => {
@@ -4755,7 +4755,9 @@ describe('C. attacks tried by the review of milestone 4b', () => {
     let stopped = 0
     const late = await call('POST', '/api/passkeys/finish', { cookie: taken.cookie, body: { label: 'Late key', response: await key.register(start.body.options) }, env: racing(async () => (stopped = (await stop(o.key)).status)) as unknown as Env })
     expect([stopped, late.status]).toEqual([200, 409])
-    expect(await row(`SELECT count(*) AS n FROM credentials WHERE seat_id = ? AND state = 'active'`, v.seatId)).toEqual({ n: 0 })
+    // The seat holds the two passkeys the link had replaced (F2, section E), and nothing made since.
+    expect([await credentialState(key), await credentialState(taken.key), await credentialState(v.key), await credentialState(v.key2)]).toEqual([undefined, 'revoked', 'active', 'active'])
+    expect(await row(`SELECT count(*) AS n FROM credentials WHERE seat_id = ? AND state = 'active'`, v.seatId)).toEqual({ n: 2 })
     expect(await row('SELECT count(*) AS n FROM sessions WHERE seat_id = ? AND revoked_at IS NULL', v.seatId)).toEqual({ n: 0 })
   })
 
@@ -5088,5 +5090,154 @@ describe('D. Support: the model selects, the server decides', () => {
     expect(supportPage).toContain('const MAX = 500')
     expect(supportPage).not.toMatch(banned)
     expect(supportPage).not.toMatch(/dangerouslySetInnerHTML|innerHTML/)
+  })
+})
+
+// ---- Account recovery, four fixes (F1 to F4) asked for after the review of milestone 4b. ----
+describe('E. account recovery: a stop undoes all of it, the organisation is read in the commit, a replaced Owner seat goes after 7 days', () => {
+  const walletRow = (id: string) => row('SELECT state, anchor, anchor_effective_at AS at FROM wallets WHERE id = ?', id)
+  const states = (...keys: Key[]) => Promise.all(keys.map(credentialState))
+  // The new Owner of a completed recovery, signed in, with its second key.
+  const completed = async (asked: { key: Key; seat: string }) => {
+    const n = { cookie: (await continueRecovery(asked.key)).cookie, key: asked.key, seatId: asked.seat }
+    expect((await addKey(n)).status).toBe(200)
+    return n
+  }
+
+  it('F1: a stop puts the recovery wallet back as the completion found it: the one in force, the one that waited and its date, linked again if the new Owner unlinked it', async () => {
+    const { o, a, wallet } = await teamWithWallet()
+    const next = await linked(o, a, { custodian: true }, accounts[1])
+    const asked = await requestRecovery(o.orgId)
+    now += HOUR
+    for (const m of [o, a]) await again(m)
+    await recovery(o, a, next.id)
+    const before = [await walletRow(wallet.id), await walletRow(next.id)]
+    expect(before[1]).toEqual({ state: 'linked', anchor: 'next', at: now + WAIT })
+    now += WAIT - HOUR
+    const n = await completed(asked)
+    expect((await post(`/api/wallets/${next.id}/unlink`, n)).status).toBe(200)
+    expect(await walletRow(next.id)).toEqual({ state: 'unlinked', anchor: null, at: null })
+    now += DAY
+    expect((await stop(o.key)).status).toBe(200)
+    expect([await walletRow(wallet.id), await walletRow(next.id)]).toEqual(before)
+    expect((await walletsOf(await again(o))).map((w) => [w.id, w.recovery])).toEqual(expect.arrayContaining([[wallet.id, null], [next.id, 'in_force']]))
+    // A change that had come into force, and was written down, before the completion: the stop puts that wallet back in force.
+    const late = await teamWithWallet()
+    const other = await linked(late.o, late.a, { custodian: true }, accounts[1])
+    const second = await requestRecovery(late.o.orgId)
+    await recovery(late.o, late.a, other.id)
+    now += WAIT
+    await db.batch([db.prepare('UPDATE wallets SET anchor = NULL, anchor_effective_at = NULL WHERE id = ?').bind(late.wallet.id), db.prepare(`UPDATE wallets SET anchor = 'current' WHERE id = ?`).bind(other.id)]) // as the next wallet write would
+    const was = [await walletRow(late.wallet.id), await walletRow(other.id)]
+    expect((await continueRecovery(second.key)).status).toBe(200)
+    expect([await walletRow(late.wallet.id), await walletRow(other.id)]).toEqual([{ state: 'linked', anchor: 'current', at: now }, { state: 'linked', anchor: null, at: null }])
+    expect((await stop(late.o.key)).status).toBe(200)
+    expect([await walletRow(late.wallet.id), await walletRow(other.id)]).toEqual(was)
+  })
+
+  it('F2: a stop rolls back every enrolment made under the recovery: on a link the new Owner issued, or confirmed as the second person, and on the links of seats re-enrolled that way; the passkeys they replaced are active again, their sessions end, what they opened closes; an enrolment none of them touched stays', async () => {
+    const { o, a, v } = await teamWithWallet()
+    const ad = await colleague(o, 'admin')
+    const c = await colleague(o, 'compliance')
+    const t = await colleague(o, 'trader')
+    const t2 = await colleague(o, 'trader')
+    const v2 = await colleague(o, 'viewer')
+    const w = await colleague(o, 'viewer')
+    const asked = await requestRecovery(o.orgId)
+    now += WAIT
+    const n = await completed(asked)
+    for (const m of [ad, c]) await again(m)
+    // Not under the recovery: the Admin, whom nobody re-enrolled yet, re-enrols a Trader.
+    const clean = await ceremony(ad, { seatId: t2.seatId })
+    now += MIN
+    // 1. A link of the new Owner, confirmed a minute after its passkey was made. 2. A link of the Admin, the new Owner its second person.
+    const link1 = await issue(n, { seatId: v.seatId })
+    const one = await enrolLink(link1.body.link)
+    now += MIN
+    expect((await confirm(n, link1.body.ticketId, one.words, n.key)).body.state).toBe('active')
+    const two = await ceremony(ad, { seatId: a.seatId }, n)
+    // A member the new Owner re-enrolled stops that with the passkey they hold: their seat is frozen and their passkeys are back already.
+    const five = await ceremony(n, { seatId: w.seatId })
+    expect((await stop(w.key)).status).toBe(200)
+    now += MIN
+    // 3. The Admin's seat, on a link of the new Owner with a second person nobody re-enrolled. From that seat: a Trader, the
+    // Trader the Admin had re-enrolled before, and a link that is still open at the stop.
+    const three = await again(await ceremony(n, { seatId: ad.seatId }, c))
+    const extra = await addKey(three)
+    const four = await ceremony(three, { seatId: t.seatId })
+    const six = await ceremony(three, { seatId: t2.seatId })
+    const seven = await ceremony(three, { seatId: v.seatId }) // a seat the new Owner re-enrolled, re-enrolled once more
+    const open = await issue(three, { seatId: v2.seatId })
+    const half = await enrolLink(open.body.link)
+    const live = await again(four)
+    now += DAY
+    expect((await stop(o.key)).status).toBe(200)
+    expect(await states(one.key, two.key, three.key, extra.key, four.key, five.key, six.key, seven.key, half.key)).toEqual(Array(9).fill('revoked'))
+    expect(await states(v.key, v.key2, a.key, a.key2, ad.key, ad.key2, t.key, t.key2, w.key, w.key2)).toEqual(Array(10).fill('active'))
+    // The Trader's passkey from the Admin's own re-enrolment is the one the rolled-back link replaced: it is back, and what it had replaced stays replaced.
+    expect(await states(clean.key, t2.key, t2.key2, c.key, v2.key)).toEqual(['active', 'suspended', 'suspended', 'active', 'active'])
+    expect((await seatOf(w.seatId))?.state).toBe('frozen')
+    expect((await call('GET', '/api/me', { cookie: live.cookie })).status).toBe(401)
+    expect(await row('SELECT count(*) AS n FROM sessions WHERE revoked_at IS NULL AND seat_id IN (?, ?, ?, ?)', v.seatId, a.seatId, ad.seatId, t.seatId)).toEqual({ n: 0 })
+    expect(await row('SELECT state FROM enrolment_tickets WHERE id = ?', open.body.ticketId)).toEqual({ state: 'dead' })
+    expect((await signIn(ad.key)).status).toBe(200)
+  })
+
+  it('F3: completion, an Owner\'s cancel and an objection read the organisation inside their commit: frozen at the same instant, none of them is applied', async () => {
+    const { o, a, v } = await teamWithWallet()
+    const asked = await requestRecovery(o.orgId)
+    const r = await recoveryOf(o.orgId)
+    // A write of the organisation lands first (a sign-in), so the call's own plan runs again, and by then the organisation is frozen.
+    const frozen = () => racing(async () => {
+      await again(v)
+      await db.prepare(`UPDATE organisations SET state = 'frozen' WHERE id = ?`).bind(o.orgId).run()
+    }) as unknown as Env
+    const thawed = async () => {
+      await db.prepare(`UPDATE organisations SET state = 'active' WHERE id = ?`).bind(o.orgId).run()
+      return [await recoveryOf(o.orgId), await credentialState(asked.key)]
+    }
+    expect((await call('POST', `/api/recovery/${r.id}/object`, { cookie: a.cookie, body: {}, env: frozen() })).status).toBe(404)
+    expect(await thawed()).toEqual([r, 'pending'])
+    expect((await call('POST', `/api/recovery/${r.id}/cancel`, { cookie: (await again(o)).cookie, body: {}, env: frozen() })).status).toBe(404)
+    expect(await thawed()).toEqual([r, 'pending'])
+    now += WAIT
+    expect((await continueRecovery(asked.key, { env: frozen() })).status).toBe(401)
+    expect(await thawed()).toEqual([r, 'pending'])
+    expect((await continueRecovery(asked.key)).status).toBe(200)
+  })
+
+  it('F4: 7 days after a recovery a replaced Owner seat with no active passkey is removed: gone when read, written at the next write, and no other key-role seat under the 30 day rule, so a one-person organisation links a wallet alone again', async () => {
+    const { o } = await soloWithWallet(await owner())
+    const asked = await requestRecovery(o.orgId)
+    now += WAIT
+    const n = await completed(asked)
+    const active = async () => ((await call('GET', '/api/org', { cookie: n.cookie })).body.members as { id: string; state: string }[]).filter((m) => m.state === 'active').map((m) => m.id)
+    const owners = async () => (await call('GET', '/api/readiness', { cookie: n.cookie })).body.owners.count
+    now += WEEK - MIN
+    await again(n)
+    expect([await active(), await owners()]).toEqual([[o.seatId, asked.seat], 2])
+    now += MIN
+    expect([await active(), await owners(), (await seatOf(o.seatId))?.state]).toEqual([[asked.seat], 1, 'active'])
+    // The new Owner is the last Owner: the seat that is gone does not stand in for one.
+    expect((await act(n, asked.seat, 'freeze')).body).toEqual({ error: 'last_owner' })
+    expect((await link(n, accounts[1])).body).toEqual({ state: 'linked' })
+    expect((await seatOf(o.seatId))?.state).toBe('removed')
+    expect((await stop(o.key)).status).toBe(401)
+    // With colleagues: an Owner seat that was re-enrolled since holds an active passkey and stays; so does the seat of a recovery that can still be stopped.
+    const team = await teamWithWallet()
+    const o2 = await colleague(team.o, 'owner')
+    const o3 = await colleague(team.o, 'owner')
+    const again2 = await requestRecovery(team.o.orgId)
+    now += WAIT
+    const m = await completed(again2)
+    await ceremony(m, { seatId: o2.seatId }, await again(team.a))
+    // Not this rule's: an Owner seat whose passkeys something else replaced (another date), and a Viewer seat whose replaced passkeys happen to carry the recovery's date.
+    await db.batch([
+      db.prepare(`UPDATE credentials SET stop_right_until = stop_right_until - 1 WHERE seat_id = ?`).bind(o3.seatId),
+      db.prepare(`UPDATE credentials SET state = 'suspended', stop_right_until = ? WHERE seat_id = ?`).bind(now + WEEK, team.v.seatId),
+    ])
+    now += WEEK
+    await again(m)
+    expect(await Promise.all([team.o.seatId, o2.seatId, o3.seatId, team.v.seatId, again2.seat].map(async (id) => (await seatOf(id))?.state))).toEqual(['removed', 'active', 'active', 'active', 'active'])
   })
 })

@@ -209,7 +209,7 @@ async function me(c: Context) {
 }
 
 async function organisation(c: Context) {
-  const view = await data.organisationView(c.env.DB, c.actor, c.now - IDLE_MS, c.now - ABSOLUTE_MS)
+  const view = await data.organisationView(c.env.DB, c.actor, c.now, c.now - IDLE_MS, c.now - ABSOLUTE_MS)
   return json(200, {
     ...view, tickets: await data.openTickets(c.env.DB, c.actor, c.now), currentSessionId: c.session.id,
     approvals: await data.openRequests(c.env.DB, c.actor, c.now),
