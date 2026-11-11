@@ -3,12 +3,21 @@
 // of the allow-list (chain.ts, SAFES) and compares code hash, slot 0 and fallback handler with that list; then it asks
 // the server's own verifier and Safe reads about a real 2 of 3 Safe 1.4.1, and runs a whole last-Owner recovery on it.
 // Keys: the public test accounts of anvil. If the public endpoint cannot be reached, it says so and checks nothing.
-import { spawn } from 'node:child_process'
-import { concat, createPublicClient, createWalletClient, encodeFunctionData, http, keccak256, parseAbi, zeroAddress } from 'viem'
+import { execFileSync, spawn } from 'node:child_process'
+import { randomBytes } from 'node:crypto'
+import { rmSync } from 'node:fs'
+import { concat, createPublicClient, createWalletClient, encodeFunctionData, hashTypedData, http, keccak256, parseAbi, zeroAddress } from 'viem'
 import { mnemonicToAccount } from 'viem/accounts'
 import { optimism } from 'viem/chains'
 import { colour, SAFES, safeState, verify } from '../src/server/chain.ts'
-import { typedLink } from '../src/server/typed.ts'
+import { typedLink, typedProof } from '../src/server/typed.ts'
+import { getPlatformProxy } from 'wrangler'
+import * as data from '../src/server/data.ts'
+import { handle } from '../src/server/index.ts'
+import { configFor, fromBase64Url } from '../src/server/passkeys.ts'
+import { softwareAuthenticator } from './authenticator.ts'
+
+process.chdir(new URL('..', import.meta.url).pathname)
 
 const FORK = 'https://mainnet.optimism.io'
 const RPC = 'http://127.0.0.1:8546'
@@ -20,7 +29,7 @@ const abi = parseAbi([
   'function createProxyWithNonce(address singleton, bytes initializer, uint256 saltNonce) returns (address proxy)',
   'function setup(address[] owners, uint256 threshold, address to, bytes data, address fallbackHandler, address paymentToken, uint256 payment, address paymentReceiver)',
   'function execTransaction(address to, uint256 value, bytes data, uint8 operation, uint256 safeTxGas, uint256 baseGas, uint256 gasPrice, address gasToken, address refundReceiver, bytes signatures) payable returns (bool)',
-  'function nonce() view returns (uint256)', 'function signMessage(bytes data)', 'function enableModule(address module)',
+  'function nonce() view returns (uint256)', 'function signMessage(bytes data)', 'function enableModule(address module)', 'function addOwnerWithThreshold(address owner, uint256 threshold)',
 ])
 const check = (what, ok) => {
   if (!ok && process.env.CHAIN_KEEP_GOING) return console.log(`FAILED  ${what}`)
@@ -76,7 +85,7 @@ try {
   const now = Math.floor(Date.now() / 1000)
   const typed = typedLink({ chainId: 10, site: 'localhost', organisationId: '0'.repeat(32), wallet: safe, nonce: `0x${'ab'.repeat(32)}`, issuedAt: now, expiresAt: now + 7 * 86400 })
   // Owners sign the Safe's own wrapping of that digest (SafeMessage under the Safe's domain), in the order of their addresses.
-  const under = (types, primaryType, message) => ({ domain: { chainId: 10, verifyingContract: safe }, types, primaryType, message })
+  const under = (types, primaryType, message, of = safe) => ({ domain: { chainId: 10, verifyingContract: of }, types, primaryType, message })
   const signed = async (signers, data) => concat(await Promise.all([...signers].sort((a, b) => (a.address.toLowerCase() < b.address.toLowerCase() ? -1 : 1)).map((signer) => signer.signTypedData(data))))
   const { digest } = (await verify(ends, typed, owners[0].address, await owners[0].signTypedData(typed))) ?? {}
   check('the same verifier accepts a key wallet with no chain call (the digest is the EIP-712 hash)', /^0x[0-9a-f]{64}$/.test(digest ?? ''))
@@ -90,11 +99,11 @@ try {
   check('a pin on another chain is refused: the endpoints say chain 10', (await verify(ends, { ...typed, domain: { ...typed.domain, chainId: 1 } }, safe, await signed(owners.slice(0, 2), message))) === null)
 
   // A Safe transaction, signed by two owners and executed by the first.
-  const exec = async (to, data, operation) => {
-    const tx = { to, value: 0n, data, operation, safeTxGas: 0n, baseGas: 0n, gasPrice: 0n, gasToken: zeroAddress, refundReceiver: zeroAddress, nonce: await pub.readContract({ address: safe, abi, functionName: 'nonce' }) }
+  const exec = async (to, data, operation, of = safe) => {
+    const tx = { to, value: 0n, data, operation, safeTxGas: 0n, baseGas: 0n, gasPrice: 0n, gasToken: zeroAddress, refundReceiver: zeroAddress, nonce: await pub.readContract({ address: of, abi, functionName: 'nonce' }) }
     const types = { SafeTx: Object.keys(tx).map((name) => ({ name, type: name === 'data' ? 'bytes' : name === 'operation' ? 'uint8' : typeof tx[name] === 'bigint' ? 'uint256' : 'address' })) }
-    const signatures = await signed(owners.slice(0, 2), under(types, 'SafeTx', tx))
-    await mined(await wallet.writeContract({ address: safe, abi, functionName: 'execTransaction', args: [to, 0n, data, operation, 0n, 0n, 0n, zeroAddress, zeroAddress, signatures] }))
+    const signatures = await signed(owners.slice(0, 2), under(types, 'SafeTx', tx, of))
+    await mined(await wallet.writeContract({ address: of, abi, functionName: 'execTransaction', args: [to, 0n, data, operation, 0n, 0n, 0n, zeroAddress, zeroAddress, signatures] }))
   }
   await exec(SAFE.signLib, encodeFunctionData({ abi, functionName: 'signMessage', args: [digest] }), 1)
   check('the onchain route: after SignMessageLib.signMessage, the empty signature is valid', (await verify(ends, typed, safe, '0x'))?.by === 'contract')
@@ -107,6 +116,89 @@ try {
   const after = await safeState(ends, 10, safe)
   check('after enableModule the server reads the module, and the colour is amber', after.modules.length === 1 && after.modules[0] === accounts[3].address.toLowerCase() && JSON.stringify(colour({ kind: 'safe', snapshot, inForce: true }, after)) === '{"level":"amber","why":"module"}')
   check('an address with no code is not a Safe', (await safeState(ends, 10, accounts[3].address)) === null)
+
+  // ---- a whole last-Owner recovery through the Worker's own routes, against a real Safe ----
+  // The Worker runs here in Node (24 or later: it needs URLPattern) on a throwaway local D1. Its two OP Mainnet
+  // endpoints are answered by the fork. The clock is the server's own: the chain's time is never moved.
+  check('this Node has URLPattern, which the Worker\'s router needs', typeof URLPattern === 'function')
+  const STATE = '.wrangler/chain'
+  rmSync(STATE, { recursive: true, force: true })
+  execFileSync('node_modules/.bin/wrangler', ['d1', 'migrations', 'apply', 'DB', '--local', '--persist-to', STATE], { env: { ...process.env, WRANGLER_SEND_METRICS: 'false' }, stdio: 'ignore' })
+  const proxy = await getPlatformProxy({ configPath: 'wrangler.jsonc', remoteBindings: false, persist: { path: `${STATE}/v3` } })
+  const realFetch = globalThis.fetch
+  try {
+    const config = configFor('local')
+    globalThis.fetch = (input, init) => realFetch(config.chains[10].includes(String(input)) ? RPC : input, init)
+    const env = { DB: proxy.env.DB, ASSETS: { fetch: async () => new Response('') }, ENVIRONMENT: 'local', CHALLENGE_KEY: randomBytes(32).toString('base64url') }
+    const site = { origin: config.origin, rpId: config.rpId }
+    let clock = Date.now()
+    const HOURS72 = 72 * 60 * 60_000
+    const call = async (path, body, { cookie, sign } = {}) => {
+      const origin = sign ? config.signOrigin : config.origin
+      const headers = { 'sec-fetch-site': 'same-origin', origin, 'content-type': 'application/json', ...(cookie && { cookie }) }
+      const response = await handle(new Request(origin + path, { method: body === undefined ? 'GET' : 'POST', headers, body: body === undefined ? undefined : JSON.stringify(body) }), env, () => clock)
+      return { status: response.status, body: await response.json(), cookie: response.headers.get('set-cookie')?.split(';')[0] ?? '' }
+    }
+    const signIn = async (key) => (await call('/api/signin/finish', { response: await key.authenticate((await call('/api/signin/start', {})).body.options) })).cookie
+    const fieldsOf = (sealed) => JSON.parse(new TextDecoder().decode(fromBase64Url(sealed.split('.')[0])))
+    // Two owners sign the Safe's wrapping of the digest, as the Safe interface does offchain.
+    const safeSignature = (of, typedData) => signed(owners.slice(0, 2), under({ SafeMessage: [{ name: 'message', type: 'bytes' }] }, 'SafeMessage', { message: hashTypedData(typedData) }, of))
+
+    // One Owner with two keys, whose recovery wallet is a new 2 of 3 Safe.
+    const ticket = data.randomToken()
+    const { orgId } = await data.seedOrganisation(env.DB, { name: 'Fork Vaults', kind: 'partner', ownerName: 'Fork Owner', ticketHash: await data.sha256Hex(ticket), now: clock })
+    const key1 = await softwareAuthenticator(site)
+    await call('/api/enrol/finish', { ticket, label: 'Key 1', response: await key1.register((await call('/api/enrol/start', { ticket })).body.options) })
+    await data.devActivatePending(env.DB, 'local', clock)
+    let cookie = await signIn(key1)
+    const key2 = await softwareAuthenticator(site)
+    check('an Owner with two keys exists in the Worker', (await call('/api/passkeys/finish', { label: 'Key 2', response: await key2.register((await call('/api/passkeys/start', {}, { cookie })).body.options) }, { cookie })).status === 200)
+    const vault = await create(SAFE.factory, SAFE.singleton, SAFE.fallback)
+    const asked = (await call('/api/wallets/intent', { chainId: 10, address: vault, label: 'Vault', custodian: false }, { cookie })).body.intent
+    const i = fieldsOf(asked)
+    const linked = await call('/api/proof', { intent: asked, signature: await safeSignature(vault, typedLink({ chainId: 10, site: i.site, organisationId: i.org, wallet: i.wallet, nonce: i.nonce, issuedAt: i.issuedAt, expiresAt: i.expiresAt })) }, { sign: true })
+    const [listed] = (await call('/api/org', undefined, { cookie })).body.wallets
+    check('two owners of the real Safe signed the link, and the Worker stored it as a genuine Safe, 2 of 3', linked.body.state === 'linked' && listed.kind === 'safe' && listed.threshold === 2 && listed.owners === 3)
+    check('it is set as the recovery wallet', (await call(`/api/wallets/${listed.id}/anchor`, {}, { cookie })).body.state === 'applied')
+    clock += HOURS72
+    check('72 hours later, by the server\'s clock, it is in force and green', (await call('/api/readiness', undefined, { cookie: await signIn(key1) })).body.wallet.level === 'green')
+
+    // The request: a new passkey, the Proof signed by two owners, the wait, the completion.
+    const recover = async () => {
+      const key = await softwareAuthenticator(site)
+      const start = (await call('/api/recover/intent', { organisationId: orgId })).body
+      const { intent } = (await call('/api/recover/intent', { organisationId: orgId, seat: start.seat, response: await key.register(start.options) })).body
+      const f = fieldsOf(intent)
+      const typedData = typedProof({ kind: f.kind, chainId: 10, site: f.site, organisationId: f.org, wallet: vault, credentialHash: f.credentialHash, phrase: f.phrase, nonce: f.nonce, issuedAt: f.issuedAt, expiresAt: f.expiresAt })
+      const one = await call('/api/proof', { intent, signature: await signed(owners.slice(0, 1), under({ SafeMessage: [{ name: 'message', type: 'bytes' }] }, 'SafeMessage', { message: hashTypedData(typedData) }, vault)) }, { sign: true })
+      return { key, one: one.body.error, opened: (await call('/api/proof', { intent, signature: await safeSignature(vault, typedData) }, { sign: true })).body }
+    }
+    const resume = async (key) => call('/api/recover/continue/finish', { response: await key.authenticate((await call('/api/recover/continue/start', {})).body.options) })
+    const first = await recover()
+    check('one owner of the Safe opens nothing; two owners open the request, which waits 72 hours', first.one === 'proof_rejected' && first.opened.state === 'waiting' && first.opened.until === clock + HOURS72)
+    clock += HOURS72 - 60_000
+    check('at 71 h 59 min the completion is refused', (await resume(first.key)).body.error === 'too_early')
+    clock += 60_000
+    const done = await resume(first.key)
+    const me = (await call('/api/me', undefined, { cookie: done.cookie })).body
+    check('at 72 hours the Worker verifies the proof again on the Safe, finds its owners unchanged, and the new passkey is an Owner in a session',
+      done.status === 200 && me.seat.role === 'owner' && me.organisation.id === orgId && me.organisation.quarantineUntil === clock + 7 * 24 * 60 * 60_000)
+    check('the old Owner passkey opens no session and is told it can stop the recovery', (await call('/api/signin/finish', { response: await key1.authenticate((await call('/api/signin/start', {})).body.options) })).body.recovery === true)
+
+    // A second request. During its wait an owner is added to the Safe on the fork: the completion lapses.
+    const second = await recover()
+    check('a second request opens', second.opened.state === 'waiting')
+    await exec(vault, encodeFunctionData({ abi, functionName: 'addOwnerWithThreshold', args: [accounts[3].address, 2n] }), 0, vault)
+    check('the Safe on the fork now has four owners', (await safeState(ends, 10, vault)).owners.length === 4)
+    clock += HOURS72
+    const lapsed = await resume(second.key)
+    check('after an owner was added on the fork, the completion lapses: the Safe is not the one that signed', lapsed.status === 410 && lapsed.body.error === 'recovery_lapsed')
+    check('and the pending passkey is worth nothing any more', (await resume(second.key)).status === 401)
+  } finally {
+    globalThis.fetch = realFetch
+    await proxy.dispose()
+    rmSync(STATE, { recursive: true, force: true })
+  }
   console.log('The real-chain check passed.')
 } finally {
   anvil.kill()

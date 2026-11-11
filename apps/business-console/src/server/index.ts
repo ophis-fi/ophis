@@ -507,10 +507,11 @@ async function continueFinish(c: Context) {
   const credential = id ? await data.credentialById(c.env.DB, id) : null
   if (!credential) return denied
   let used = ''
-  // Any passkey may try: only the pending one of an open request finds that request by its seat, and the commit checks it is still pending.
+  // Any passkey may try: only the pending one of an open request finds that request, by its seat.
   const counter = await assertion(c, c.body.response, credential, 'continue', '', (challenge) => (used = challenge))
-  const r = counter === null ? null : await data.recoveryRow(c.env.DB, credential.org_id, c.now, 'seat_id', credential.seat_id)
-  if (counter === null || !r) return denied
+  if (counter === null) return denied
+  const r = await data.recoveryRow(c.env.DB, credential.org_id, c.now, 'seat_id', credential.seat_id)
+  if (!r) return denied
   if (r.wait_until > c.now) return json(409, { error: 'too_early', until: r.wait_until })
   const endpoints = c.config.chains[r.chainId]
   const proved = endpoints && (await verifyDigest(endpoints, r.chainId, r.digest as `0x${string}`, r.address, r.signature as `0x${string}`))

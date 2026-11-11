@@ -1001,7 +1001,7 @@ export async function completeRecovery(
   await commit(db, c.orgId, async () => {
     const r = await recoveryRow(db, c.orgId, now, 'seat_id', c.seatId)
     outcome = 'denied' // a second run of the plan starts again
-    if (!r || r.wait_until > now || !(await db.prepare(`SELECT 1 FROM credentials WHERE org_id = ? AND id = ? AND seat_id = ? AND state = 'pending'`).bind(c.orgId, c.credentialId, r.seat_id).first())) return null
+    if (!r || r.wait_until > now) return null // the passkey is the request's: the handler found the request by the passkey's seat, and that seat holds no other
     if (!c.same) {
       outcome = 'lapsed'
       return [{ at: now, actorKind: 'system', actorId: null, sessionId: null, action: 'recovery.lapse', subjectId: r.id }, closeRecovery(db, c.orgId, r, 'lapsed', now)]

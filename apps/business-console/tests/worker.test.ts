@@ -4169,6 +4169,31 @@ describe('B. last-Owner recovery by the recovery wallet', () => {
     expect((await requestRecovery(o.orgId, accounts[0])).proved.body).toMatchObject({ state: 'waiting' })
   })
 
+  it('P3: the wallet whose signature was checked is still the recovery wallet in force when the request is written', async () => {
+    const { o, a } = await trio()
+    const first = await linked(o, a, { custodian: true })
+    const next = await linked(o, a, { custodian: true }, accounts[1])
+    await recovery(o, a, first.id)
+    now += WAIT
+    for (const m of [o, a]) await again(m)
+    await recovery(o, a, next.id)
+    // The second wallet comes into force between the check of the first wallet's signature and the commit.
+    let batches = 0
+    const meanwhile = { ...testEnv, DB: new Proxy(db, { get: (target, property) => (property !== 'batch' ? Reflect.get(target, property).bind(target) : async (statements: D1PreparedStatement[]) => {
+      if (++batches === 2) {
+        await db.prepare('UPDATE wallets SET anchor_effective_at = ? WHERE id = ?').bind(now, next.id).run()
+        await post('/api/signout', a)
+      }
+      return target.batch(statements)
+    }) }) } as unknown as Env
+    const asked = await askRecovery(o.orgId)
+    const signature = await accounts[0].signTypedData(typedRecover(recoverOf(asked.intent), accounts[0].address))
+    expect((await prove(asked.intent, signature, { env: meanwhile })).body).toEqual({ error: 'no_recovery_wallet' })
+    expect(batches).toBeGreaterThan(1)
+    expect(await count('recovery_requests', o.orgId)).toBe(0)
+    expect((await requestRecovery(o.orgId, accounts[1])).proved.body).toMatchObject({ state: 'waiting' })
+  })
+
   it('P1: the recovery wallet signs exactly these fields: another organisation, site, chain, wallet, sentence, passkey, phrase, nonce or date is refused, and so is an organisation that is not active', async () => {
     const { o } = await soloWithWallet(await owner())
     const other = await owner('Another organisation')
@@ -4319,6 +4344,8 @@ describe('B. last-Owner recovery by the recovery wallet', () => {
     now += WAIT - MIN
     const rows = await snapshot()
     expect((await continueRecovery(asked.key)).body).toEqual({ error: 'too_early', until: r.wait_until })
+    // Only to the passkey itself: an answer that fails its check learns nothing, not even the date.
+    expect((await continueRecovery(asked.key, {}, { userVerified: false })).body).toEqual({ error: 'sign_in_failed' })
     expect((await signIn(asked.key)).status).toBe(401)
     expect(await snapshot()).toBe(rows)
     now += MIN
