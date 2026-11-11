@@ -6024,7 +6024,9 @@ describe('E. onboarding: a company applies, proves its domain, is activated and 
   })
 
   it('G3: after "Submit for review" any change to what the operator compares (Owner seats, their passkeys, the named wallet) puts the organisation back to not submitted', async () => {
-    const a = await underReview()
+    const a = await applicantWithTwoKeys()
+    expect((await activation(a, accounts[0], { custodian: true })).body).toEqual({ state: 'stored' }) // members join below: a single key would be refused (G5)
+    expect((await submit(a)).body).toEqual({ state: 'under_review' })
     const submitted = async () => (await orgRow(a.orgId))!.review_at !== null
     const again2 = async () => expect((await submit(a)).body).toEqual({ state: 'under_review' })
     // What is not compared changes nothing: a sign-in, a passkey check, a Viewer invited and enrolled, a question to Support.
@@ -6058,7 +6060,7 @@ describe('E. onboarding: a company applies, proves its domain, is activated and 
     await again(a)
     await again2()
     // Another wallet named and proved.
-    expect((await activation(a, accounts[1])).body).toEqual({ state: 'stored' })
+    expect((await activation(a, accounts[1], { custodian: true })).body).toEqual({ state: 'stored' })
     expect(await submitted()).toBe(false)
     // An Owner seat that changes while no passkey does (no route does that in an unverified organisation): the next write sees it.
     await again2()
@@ -6089,6 +6091,35 @@ describe('E. onboarding: a company applies, proves its domain, is activated and 
     // Tried again, the wallet that waits is the one that is checked and activated.
     expect((await decideOn(a.orgId)).body).toEqual({ state: 'active' })
     expect((await db.prepare(`SELECT id, state, anchor FROM wallets WHERE org_id = ? AND state = 'linked'`).bind(a.orgId).all()).results).toEqual([{ id: `f${waiting!.id.slice(1)}`, state: 'linked', anchor: 'current' }])
+  })
+
+  it('G5: "Submit for review" refuses a recovery wallet with a single key when the organisation has other members, as a recovery does; approve checks again', async () => {
+    const a = await applicantWithTwoKeys()
+    expect((await activation(a)).body).toEqual({ state: 'stored' }) // a single key, and one person: accepted
+    expect((await call('GET', '/api/onboarding', { cookie: a.cookie })).body.missing).toBeNull()
+    // An invited seat nobody enrolled on is not a person yet; a member with a passkey is.
+    const link = await issue(a, { displayName: 'Vera Viewer', role: 'viewer' })
+    expect((await call('GET', '/api/onboarding', { cookie: a.cookie })).body.missing).toBeNull()
+    const joined = await enrolLink(link.body.link)
+    expect((await confirm(a, link.body.ticketId, joined.words, a.key)).body.state).toBe('active')
+    const rows = await snapshot()
+    const refused = await submit(a)
+    expect([refused.status, refused.body]).toEqual([409, { error: 'single_key' }])
+    expect(await snapshot()).toBe(rows)
+    expect((await call('GET', '/api/onboarding', { cookie: a.cookie })).body.missing).toBe('single_key')
+    // A custodian wallet (a declaration) and a Safe are not single keys.
+    expect((await activation(a, accounts[1], { custodian: true })).body).toEqual({ state: 'stored' })
+    expect((await submit(a)).body).toEqual({ state: 'under_review' })
+    // Approve checks again: submitted alone with a single key, and a member joined since (not an Owner: the review stands).
+    const b = await underReview()
+    const late = await ceremony(b, { displayName: 'Vera Viewer', role: 'viewer' })
+    expect((await orgRow(b.orgId))!.review_at).not.toBeNull()
+    const before = await snapshot()
+    expect((await decideOn(b.orgId)).body).toEqual({ error: 'not_ready' })
+    expect(await snapshot()).toBe(before)
+    expect((await op('GET', '/api/operator/organisations')).body.organisations.find((o: { id: string }) => o.id === b.orgId)).toMatchObject({ missing: 'single_key' })
+    await db.prepare(`UPDATE credentials SET state = 'revoked' WHERE seat_id = ?`).bind(late.seatId).run() // one person again
+    expect((await decideOn(b.orgId)).body).toEqual({ state: 'active' })
   })
 
   // ---- A8: the operator ----

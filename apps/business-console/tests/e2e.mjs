@@ -749,7 +749,7 @@ try {
   check('the operator unfreezes it', operator('unfreeze', newOrg.id).includes(`${newOrg.id} is now active`))
   await on.getByRole('button', { name: 'Back to sign-in' }).click()
   await on.getByRole('button', { name: 'Sign in with a passkey' }).click()
-  await on.getByRole('heading', { name: /People, wallets|Read this before you continue/ }).waitFor()
+  await on.getByRole('button', { name: 'Sign out' }).first().waitFor()
   check('after the unfreeze the member signs in again', (await status('/api/me', on)) === 200)
   await applicant.context.close()
 

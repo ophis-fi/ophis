@@ -28,6 +28,7 @@ const SAY: Record<string, string> = {
   not_stored: 'This application was already used. Sign in with the passkey you created for it.',
   second_key: 'The first Owner needs two passkeys. Add the second under Organisation, My passkeys.',
   proof_or_owner: 'One of two things is still missing: the signature of the recovery wallet, or a second Owner with two passkeys.',
+  single_key: 'A recovery wallet with a single key is accepted only while the organisation has one member. Name a Safe or a custodian wallet instead.',
   already_submitted: 'The organisation is already under review.',
   not_unverified: 'The organisation is already verified.',
   first_passkey_gone: 'The first Owner passkey is no longer active, so a wallet cannot confirm it. Enrol a second Owner with two passkeys instead.',

@@ -959,6 +959,9 @@ const closeRecovery = (db: D1Database, orgId: string, r: { id: string; seat_id: 
   db.prepare(`UPDATE seats SET state = 'removed' WHERE org_id = ? AND id = ?`).bind(orgId, r.seat_id),
 ]
 
+/** The people of an organisation: its seats that hold a passkey which signs in or can still stop something. A recovery wallet with a single key stands only for one (here, and at "Submit for review": G5). */
+export const PEOPLE = (org: string, now: string) => `(SELECT count(*) FROM seats s WHERE s.org_id = ${org} AND s.state IN ('active', 'frozen') AND EXISTS (SELECT 1 FROM credentials k WHERE k.org_id = s.org_id AND k.seat_id = s.id
+  AND (k.state = 'active' OR (k.state = 'suspended' AND (k.stop_right_until IS NULL OR k.stop_right_until > ${now})))))`
 export interface RecoveryAsk { orgId: string; override: boolean; seatId: string; credential: { id: string; publicKey: string; counter: number; transports: string[] }; credentialHash: string; nonce: string }
 export interface Anchor { id: string; chainId: number; address: string; kind: WalletKind; snapshot: string | null }
 /**
@@ -978,8 +981,7 @@ export async function recoverable(db: D1Database, ask: Pick<RecoveryAsk, 'orgId'
                                          (SELECT max(closed_at) FROM recovery_requests WHERE org_id = ? AND state = 'cancelled') AS cancelled,
                                          (SELECT count(*) FROM credentials k JOIN recovery_requests r ON r.org_id = k.org_id AND r.state = 'completed' AND r.closed_at + ${STOP_MS} = k.stop_right_until
                                           WHERE k.org_id = ? AND k.state = 'suspended' AND k.stop_right_until > ?) AS stoppable,
-                                         (SELECT count(*) FROM seats s WHERE s.org_id = ? AND s.state IN ('active', 'frozen') AND EXISTS (SELECT 1 FROM credentials k WHERE k.org_id = s.org_id AND k.seat_id = s.id
-                                            AND (k.state = 'active' OR (k.state = 'suspended' AND (k.stop_right_until IS NULL OR k.stop_right_until > ?))))) AS people`)
+                                         ${PEOPLE('?', '?')} AS people`)
     .bind(ask.nonce, ask.credential.id, ask.orgId, ask.orgId, now, ask.orgId, now).first<{ used: number; cancelled: number | null; stoppable: number; people: number }>())!
   if (seen.used) return { error: 'proof_used' }
   if ((seen.cancelled ?? -DAY) + DAY > now) return { error: 'wait_after_cancel' }

@@ -5,7 +5,7 @@
 // This file holds its own handlers and, in its first half, its own rows: every statement is prepared with bound
 // parameters, and every change goes through commit() of the data module, with what decides it read inside the plan.
 import { checksum, colour, parseAddress, readCapped, safeState, verify, verifyDigest, type SafeState } from './chain.ts'
-import { commit, randomId, REVIEWED, sha256Hex, type Actor, type WalletKind } from './data.ts'
+import { commit, PEOPLE, randomId, REVIEWED, sha256Hex, type Actor, type WalletKind } from './data.ts'
 import { challengeIsOurs, creationOptions, credentialHash, fromBase64Url, newChallenge, phraseFor, seal, unseal, verifyRegistration, type Config } from './passkeys.ts'
 import { CHAIN_NAME, typedProof } from './typed.ts'
 
@@ -95,15 +95,18 @@ const firstOf = (db: D1Database, orgId: string) =>
 /**
  * A7: what a review needs, from the rows as they are now. Two device-bound passkeys on the first Owner's seat, and
  * either the activation proof (a wallet stored as pending, while the passkey it confirmed is still active) or a second
- * Owner with two device-bound passkeys. Null: it holds. Read when the Owner submits and again when the operator approves.
+ * Owner with two device-bound passkeys. G5: a named wallet with a single key is refused when the organisation has
+ * other members, by the rule of a recovery (PEOPLE). Null: it holds. Read when the Owner submits and again when the operator approves.
  */
-async function missing(db: D1Database, orgId: string): Promise<null | 'not_found' | 'second_key' | 'proof_or_owner'> {
+async function missing(db: D1Database, orgId: string, now: number): Promise<null | 'not_found' | 'second_key' | 'proof_or_owner' | 'single_key'> {
   const first = await firstOf(db, orgId)
   if (!first) return 'not_found'
   const owner = `s.org_id = ?1 AND s.role = 'owner' AND s.state = 'active' AND (SELECT count(*) FROM credentials k WHERE k.org_id = s.org_id AND k.seat_id = s.id AND k.state = 'active' AND k.device_bound = 1) >= 2`
   const seen = (await db.prepare(`SELECT (SELECT count(*) FROM seats s WHERE ${owner} AND s.id = ?2) AS own, (SELECT count(*) FROM seats s WHERE ${owner} AND s.id <> ?2) AS others,
-                                         (SELECT count(*) FROM wallets w WHERE w.org_id = ?1 AND w.state = 'pending') AS proof`).bind(orgId, first.seatId).first<{ own: number; others: number; proof: number }>())!
-  return !seen.own ? 'second_key' : (seen.proof && first.active) || seen.others ? null : 'proof_or_owner'
+                                         (SELECT count(*) FROM wallets w WHERE w.org_id = ?1 AND w.state = 'pending') AS proof,
+                                         (SELECT count(*) FROM wallets w WHERE w.org_id = ?1 AND w.state = 'pending' AND w.kind = 'single_key') AS single, ${PEOPLE('?1', '?3')} AS people`)
+    .bind(orgId, first.seatId, now).first<{ own: number; others: number; proof: number; single: number; people: number }>())!
+  return !seen.own ? 'second_key' : !((seen.proof && first.active) || seen.others) ? 'proof_or_owner' : seen.single && seen.people > 1 ? 'single_key' : null
 }
 
 interface Proved { orgId: string; seatId: string; chainId: number; address: string; kind: WalletKind; label: string; snapshot: string | null; credentialHash: string; nonce: string; digest: string; signature: string }
@@ -138,7 +141,7 @@ async function submitForReview(db: D1Database, actor: Actor, now: number) {
     const who = await db.prepare(`SELECT o.state, o.review_at AS reviewAt FROM seats s JOIN sessions x ON x.org_id = s.org_id AND x.seat_id = s.id AND x.id = ? AND x.revoked_at IS NULL
                                   JOIN organisations o ON o.id = s.org_id WHERE s.org_id = ? AND s.id = ? AND s.state = 'active' AND s.role = 'owner'`)
       .bind(actor.sessionId, actor.orgId, actor.seatId).first<{ state: string; reviewAt: number | null }>()
-    outcome = !who ? 'forbidden' : who.state !== 'unverified' ? 'not_unverified' : who.reviewAt !== null ? 'already_submitted' : (await missing(db, actor.orgId)) ?? 'ok'
+    outcome = !who ? 'forbidden' : who.state !== 'unverified' ? 'not_unverified' : who.reviewAt !== null ? 'already_submitted' : (await missing(db, actor.orgId, now)) ?? 'ok'
     if (outcome !== 'ok') return null
     return [{ at: now, actorKind: 'seat', actorId: actor.seatId, sessionId: actor.sessionId, action: 'review.submit', subjectId: actor.orgId, country: actor.country, asn: actor.asn },
       [db.prepare(`UPDATE organisations SET review_at = ?2, review_print = ${REVIEWED} WHERE id = ?1`).bind(actor.orgId, now)]]
@@ -183,7 +186,7 @@ async function decideKyb(db: D1Database, orgId: string, d: Kyb, checked: { id: s
     const o = await db.prepare('SELECT name, country, registration_number AS registration, state, review_at AS reviewAt FROM organisations WHERE id = ?')
       .bind(orgId).first<{ name: string; country: string; registration: string | null; state: string; reviewAt: number | null }>()
     outcome = !o ? 'not_found' : o.state !== 'unverified' || o.reviewAt === null ? 'not_under_review'
-      : d.decision !== 'approve' ? 'ok' : (await missing(db, orgId)) ? 'not_ready' : ((await walletOf(db, orgId))?.id ?? null) !== (checked?.id ?? null) ? 'try_again' : 'ok'
+      : d.decision !== 'approve' ? 'ok' : (await missing(db, orgId, now)) ? 'not_ready' : ((await walletOf(db, orgId))?.id ?? null) !== (checked?.id ?? null) ? 'try_again' : 'ok'
     if (outcome !== 'ok' || !o) return null
     return [{ at: now, actorKind: 'operator', actorId: null, sessionId: null, action: KYB_ACTION[d.decision], subjectId: id, detail: d.decision === 'approve' ? d.evidenceSha256 : d.reason }, [
       db.prepare(`INSERT INTO kyb_records (id, org_id, legal_name, registration_number, country, tier, source, evidence_ref, evidence_sha256, decision, decided_at, recheck_at, reason, created_at)
@@ -361,7 +364,7 @@ export async function onboarding(c: Member) {
     first: first && { phrase: await wordsOf(c, orgId, first), credentialHash: first.hash, active: first.active === 1 },
     wallet: wallet && walletView(wallet),
     // What "Submit for review" would answer now: null when everything is there.
-    missing: company.state === 'unverified' ? await missing(c.env.DB, orgId) : null,
+    missing: company.state === 'unverified' ? await missing(c.env.DB, orgId, c.now) : null,
     review: { status, since: company.reviewAt, reason: status === 'more_information' ? record!.reason : null },
     record: record && { ...record, reason: record.decision === 'approved' ? null : record.reason },
     chains: Object.keys(c.config.chains).map((id) => ({ id: Number(id), name: CHAIN_NAME[Number(id)] ?? `Chain ${id}` })),
@@ -445,7 +448,7 @@ async function list(c: Ctx) {
     const live = endpoints ? await safeState(endpoints, wallet!.chainId, wallet!.address) : null
     organisations.push({
       id: o.id, legalName: o.legalName, kind: o.kind, country: o.country, registration: o.registration, domain: o.domain, submittedAt: o.reviewAt,
-      phrase: await wordsOf(c, o.id, first), credentialHash: first.hash, missing: await missing(c.env.DB, o.id),
+      phrase: await wordsOf(c, o.id, first), credentialHash: first.hash, missing: await missing(c.env.DB, o.id, c.now),
       wallet: wallet && { ...walletView(wallet), colour: colour({ kind: wallet.kind, snapshot: wallet.snapshot, inForce: true }, live) },
     })
   }
