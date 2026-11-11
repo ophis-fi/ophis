@@ -6617,6 +6617,29 @@ describe('E. onboarding: a company applies, proves its domain, is activated and 
     expect(onboardingPage).not.toMatch(/dangerouslySetInnerHTML|innerHTML/)
     for (const reason of onboarding.REASONS) expect(onboardingPage, reason).toContain(`${reason}:`)
   })
+
+  // ---- milestone 5b: the signed declaration, sealed in the browser (key-custody.md sections 3 and 4) ----
+
+  it('B1: the declaration is built from the server\'s values and the page offers no way to edit them', async () => {
+    const a = await applicantWithTwoKeys('alder-decl.example')
+    const view = async () => (await call('GET', '/api/onboarding', { cookie: a.cookie })).body
+    const hash = (await row<{ detail: string }>('SELECT detail FROM audit_log WHERE org_id = ? AND seq = 1', a.orgId))!.detail
+    expect(await view()).toMatchObject({
+      company: { legalName: 'Alder Custody S.A.', registration: 'B123456', country: 'LU', domain: 'alder-decl.example' },
+      first: { name: 'Maren Okafor', credentialHash: hash }, wallet: null, signin: { setting: null },
+    })
+    // The name is the first Owner's seat's, whoever asks: a second Owner sees the same.
+    await db.prepare(`UPDATE seats SET display_name = 'Maren O. Okafor' WHERE org_id = ? AND id = ?`).bind(a.orgId, a.seatId).run()
+    expect((await view()).first.name).toBe('Maren O. Okafor')
+    expect((await activation(a)).body).toEqual({ state: 'stored' })
+    expect((await view()).wallet).toMatchObject({ address: accounts[0].address, chain: 'OP Mainnet' })
+    // The sheet: every line of the brief, as text. No field, no editable element, and the sentence about binding the company.
+    const sheet = onboardingPage.slice(onboardingPage.indexOf('function Declaration('), onboardingPage.indexOf('// end of the declaration sheet'))
+    for (const line of ['Legal name', 'Registration number or LEI', 'Country', 'Email domain', 'First Owner', 'passkey (hash)', 'Recovery wallet', 'Chain', 'Company sign-in', 'Name of the signatory', 'Role', 'Date', 'Signature', 'may bind the company', 'Ophis is a software provider. It is not a crypto-asset service provider.']) expect(sheet, line).toContain(line)
+    expect(sheet.length).toBeGreaterThan(500)
+    expect(sheet).not.toMatch(/<input|<textarea|<select|contentEditable|useState|onChange/)
+    expect(sheet).toMatch(/wallet \? wallet\.address : 'none'/)
+  })
 })
 
 // ---- company sign-in (owner decision of 2026-11-11): OpenID Connect at Microsoft or Google proves who a new passkey belongs to ----

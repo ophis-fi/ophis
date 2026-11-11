@@ -85,10 +85,10 @@ async function createOrganisation(db: D1Database, a: ApplyIntent, value: string,
   return outcome
 }
 
-/** The first Owner of an organisation that applied: the seat, the passkey and its hash from the first audit row, the organisation's state, and whether that passkey is still active on that Owner seat. */
-interface First { seatId: string; credentialId: string; hash: string; state: string; reviewAt: number | null; active: number }
+/** The first Owner of an organisation that applied: the seat, the passkey and its hash from the first audit row, the organisation's state, whether that passkey is still active on that Owner seat, and the seat's name (for the declaration). */
+interface First { seatId: string; credentialId: string; hash: string; state: string; reviewAt: number | null; active: number; name: string }
 const firstOf = (db: D1Database, orgId: string) =>
-  db.prepare(`SELECT a.actor_id AS seatId, a.subject_id AS credentialId, a.detail AS hash, o.state, o.review_at AS reviewAt,
+  db.prepare(`SELECT a.actor_id AS seatId, a.subject_id AS credentialId, a.detail AS hash, o.state, o.review_at AS reviewAt, (SELECT display_name FROM seats WHERE org_id = a.org_id AND id = a.actor_id) AS name,
                      (SELECT count(*) FROM credentials k JOIN seats s ON s.org_id = k.org_id AND s.id = k.seat_id AND s.role = 'owner' AND s.state = 'active'
                       WHERE k.org_id = a.org_id AND k.id = a.subject_id AND k.seat_id = a.actor_id AND k.state = 'active') AS active
               FROM audit_log a JOIN organisations o ON o.id = a.org_id WHERE a.org_id = ? AND a.seq = 1 AND a.action = 'organisation.apply'`).bind(orgId).first<First>()
@@ -369,7 +369,7 @@ export async function onboarding(c: Member) {
     company: { legalName: company.legalName, kind: company.kind, country: company.country, registration: company.registration, domain: company.domain, domainVerifiedAt: company.domainVerifiedAt },
     // The company sign-in: null until an Owner has chosen (the step of the Onboarding page), which works as "none".
     signin: { setting: company.signin, tenant: company.tenant },
-    first: first && { phrase: await wordsOf(c, orgId, first), credentialHash: first.hash, active: first.active === 1 },
+    first: first && { phrase: await wordsOf(c, orgId, first), credentialHash: first.hash, active: first.active === 1, name: first.name },
     wallet: wallet && walletView(wallet),
     // What "Submit for review" would answer now: null when everything is there.
     missing: company.state === 'unverified' ? await missing(c.env.DB, orgId, c.now) : null,

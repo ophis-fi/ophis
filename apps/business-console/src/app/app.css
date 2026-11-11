@@ -144,10 +144,12 @@ dialog::backdrop { background: rgba(23, 25, 28, .3); } dialog[open] { display: f
 .note.recovery { margin-bottom: 24px; } .note.recovery p { color: inherit; } .note.recovery .mono, .sheet .mono { overflow-wrap: anywhere; } .note.recovery .fine { color: inherit; }
 .sheet { border: 1px solid var(--hair); border-radius: 18px; padding: 28px; display: grid; gap: 18px; background: var(--fog); } .sheet ol { margin: 8px 0 0; padding-left: 20px; display: grid; gap: 4px; font-size: 14px; line-height: 1.5; }
 @media print {
-  .band, .bar, .rail, .tabbar, .scrim, .skip, .foot-line, main > :not(.groups), .groups > :not(#readiness), #readiness > :not(.sheet) { display: none !important; }
-  .shell, .col, main, .groups, #readiness { display: block !important; margin: 0 !important; padding: 0 !important; border: 0 !important; }
+  .band, .bar, .rail, .tabbar, .scrim, .skip, .foot-line, main > :not(.groups), .groups > :not(.printable), .printable > :not(.sheet) { display: none !important; }
+  .shell, .col, main, .groups, .printable { display: block !important; margin: 0 !important; padding: 0 !important; border: 0 !important; }
   .sheet { border: 0; padding: 0; background: none; } @page { margin: 16mm; }
 }
+/* Milestone 5b, the declaration: four ruled lines for the signatory. */
+.sheet dl.sign dd { border-bottom: 1px solid var(--ink); min-height: 30px; }
 /* Support (milestone 6): one readable column; the answer text is the member's main reading. */
 .support > .panel, .support > .stack { max-width: 760px; } .support > .stack { margin-top: 16px; } .support textarea.input { resize: vertical; }
 p a.btn { text-decoration: none; } /* a link drawn as a button is not underlined like a link in a sentence */

@@ -208,7 +208,7 @@ export function Apply() {
 interface KybRow { legalName: string; registration: string | null; country: string; tier: string; source: string; evidenceSha256: string | null; decision: string; reason: string | null; decidedAt: number | null; nextReview: number | null }
 interface View {
   company: { legalName: string; kind: string; country: string | null; registration: string | null; domain: string | null; domainVerifiedAt: number | null }
-  first: { phrase: string[]; credentialHash: string; active: boolean } | null
+  first: { phrase: string[]; credentialHash: string; active: boolean; name: string } | null
   signin: { setting: 'none' | 'microsoft' | 'google' | null; tenant: string | null }
   wallet: { chainId: number; chain: string; address: string; kind: string; label: string; inForce: boolean; threshold?: number; owners?: number } | null
   missing: string | null
@@ -231,6 +231,41 @@ function useOnboarding(onSignedOut: () => void) {
 const Step = ({ icon, title, done, later, children }: { icon: string; title: string; done?: boolean; later?: boolean; children: ReactNode }) => (
   <div className="srow"><Icon name={icon} size={20} /><b>{title}</b><Status>{later ? 'Later' : done ? 'Done' : 'Pending'}</Status><div className="stack">{children}</div></div>
 )
+
+// Milestone 5b: the declaration, one page to print, sign and scan (the print stylesheet leaves it alone on the page, like
+// the recovery sheet). Every value is the server's, shown as text: nothing on it can be typed or changed here.
+function Declaration({ view }: { view: View }) {
+  const { company, first, wallet, signin } = view
+  return (
+    <div className="groups"><section className="sg printable" aria-labelledby="dc-h">
+      <header><Tile name="scroll-text" /><div><h2 className="h-panel" id="dc-h">Declaration to print</h2><p>One page. A person who may bind the company signs it. Then scan it, and seal and upload the scan in the step "Declaration".</p>
+        <p><button className="btn ghost sm" type="button" onClick={() => print()}><Icon name="download" size={16} />Print the declaration</button></p></div></header>
+      <article className="sheet" aria-label="Declaration">
+        <h3 className="h-panel">Declaration of the company to Ophis</h3>
+        <dl className="kv">
+          <dt>Legal name</dt><dd>{company.legalName}</dd>
+          <dt>Registration number or LEI</dt><dd className="mono">{company.registration ?? 'none'}</dd>
+          <dt>Country</dt><dd>{company.country ?? 'none'}</dd>
+          <dt>Email domain</dt><dd className="mono">{company.domain ?? 'none'}</dd>
+          <dt>First Owner</dt><dd>{first?.name ?? 'none'}</dd>
+          <dt>First Owner passkey (hash)</dt><dd className="mono">{first?.credentialHash ?? 'none'}</dd>
+          <dt>Recovery wallet</dt><dd className="mono">{wallet ? wallet.address : 'none'}</dd>
+          <dt>Chain</dt><dd>{wallet?.chain ?? 'none'}</dd>
+          <dt>Company sign-in</dt><dd>{PROVIDER[signin.setting ?? ''] ?? 'none'}</dd>
+        </dl>
+        <p>The undersigned declares that the details above are those of the company, that the first Owner named above acts for the company in the Ophis Business console, and that the undersigned may bind the company.</p>
+        <dl className="kv sign">
+          <dt>Name of the signatory</dt><dd />
+          <dt>Role</dt><dd />
+          <dt>Date</dt><dd />
+          <dt>Signature</dt><dd />
+        </dl>
+        <p className="fine">Ophis is a software provider. It is not a crypto-asset service provider.</p>
+      </article>
+    </section></div>
+  )
+}
+// end of the declaration sheet
 
 export function Onboarding({ owner, onSignedOut }: { owner: boolean; onSignedOut: () => void }) {
   const { view, problem, setProblem, load } = useOnboarding(onSignedOut)
@@ -357,6 +392,7 @@ export function Onboarding({ owner, onSignedOut }: { owner: boolean; onSignedOut
           </Step>
         </div>
       </section>
+      {owner && !verified && first && <Declaration view={view} />}
     </>
   )
 }

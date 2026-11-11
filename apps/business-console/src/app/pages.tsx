@@ -1306,7 +1306,7 @@ function Readiness() {
   const { owners, wallet } = ready
   const [badge, sentence] = OVERALL[ready.overall] ?? OVERALL.at_risk
   return (
-    <section className="sg" id="readiness" aria-labelledby="rd-h">
+    <section className="sg printable" id="readiness" aria-labelledby="rd-h">
       <header><Tile name="life-buoy" /><div><h2 className="h-panel" id="rd-h">Recovery readiness</h2><p><Status>{badge}</Status></p><p>{sentence} {ready.step && STEP[ready.step]}</p></div></header>
       <div>
         <div className="srow"><Icon name="users" size={20} /><b>Owners</b><Status>{LEVEL[owners.level]}</Status>
