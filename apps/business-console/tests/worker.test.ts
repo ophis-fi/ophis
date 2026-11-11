@@ -5434,20 +5434,21 @@ describe('E. onboarding: a company applies, proves its domain, is activated and 
     dns.asked = []
     dns.twist = (_which, answer) => answer
     onboarding.DNS.timeoutMs = 5000
-    // The tests share one database and one clock: the applications of earlier tests are made a day old, so that the
-    // backstop of 20 a day counts each test's own, and no test counts the proof checks of another.
-    await db.prepare('UPDATE organisations SET domain_verified_at = 1 WHERE domain_verified_at IS NOT NULL').run()
-    await uncount()
+    await uncount() // the tests share one database and one clock: no test counts the checks of another
+    INVITE = await newCode()
   })
+  // G1: an application code from the operator. One is enough for any number of first calls; each organisation uses one up.
+  let INVITE = ''
+  const newCode = async () => (await op('POST', '/api/operator/invites')).body.code as string
 
   const fieldsOf = <T,>(sealed: string) => JSON.parse(new TextDecoder().decode(fromBase64Url(sealed.split('.')[0]))) as T
   const resealed = (sealed: string, change: object) => `${toBase64Url(new TextEncoder().encode(JSON.stringify({ ...fieldsOf<object>(sealed), ...change })))}.${sealed.split('.')[1]}`
   let domains = 0
-  const form = (domain: string) => ({ legalName: 'Alder Custody S.A.', country: 'LU', registration: 'B123456', kind: 'institution', domain, email: `ops@${domain}`, name: 'Maren Okafor' })
+  const form = (domain: string) => ({ invite: INVITE, legalName: 'Alder Custody S.A.', country: 'LU', registration: 'B123456', kind: 'institution', domain, email: `ops@${domain}`, name: 'Maren Okafor' })
   // The applicant: the form, then a new passkey. Nothing is written.
   async function applyFor(domain = `alder${++domains}.example`, more: Record<string, unknown> = {}, keyOptions: { backupEligible?: boolean } = {}, answer: Answer = {}) {
     const key = await softwareAuthenticator(SITE, keyOptions)
-    const body = { ...form(domain), ...more }
+    const body = { ...form(domain), invite: await newCode(), ...more }
     const start = await call('POST', '/api/apply', { body })
     if (start.status !== 200) return { ...start, key, domain, seat: '', intent: '' }
     const done = await call('POST', '/api/apply', { body: { ...body, seat: start.body.seat, response: await key.register(start.body.options, answer) } })
@@ -5523,7 +5524,9 @@ describe('E. onboarding: a company applies, proves its domain, is activated and 
     expect(await snapshot([...TABLES, COUNTER])).toBe(rows)
     expect(dns.asked).toHaveLength(0)
     const f = fieldsOf<Record<string, unknown> & { credential: { id: string; publicKey: string; transports: string[] }; credentialHash: string; issuedAt: number; expiresAt: number }>(a.intent)
-    expect(f).toMatchObject({ ...form('alder.example'), seat: a.seat, site: 'localhost', credential: { id: a.key.id, transports: ['usb'] } })
+    const { invite: _code, ...asked } = form('alder.example')
+    expect(f.invite).toBeUndefined() // the code itself is not carried on: its hash is
+    expect(f).toMatchObject({ ...asked, inviteHash: expect.stringMatching(/^[0-9a-f]{64}$/), seat: a.seat, site: 'localhost', credential: { id: a.key.id, transports: ['usb'] } })
     expect(f.credentialHash).toBe(`0x${Array.from(await credentialHash(f.credential.id, f.credential.publicKey), (b) => b.toString(16).padStart(2, '0')).join('')}`)
     expect([f.issuedAt, f.expiresAt, a.body.expiresAt]).toEqual([START / 1000, START / 1000 + 7 * 24 * 3600, START + 7 * DAY])
     // The record: TXT at _ophis-verify.<domain>, "ophis-verify=" and a short code that is a MAC over domain and passkey.
@@ -5690,7 +5693,7 @@ describe('E. onboarding: a company applies, proves its domain, is activated and 
     expect((await call('GET', '/api/me', { cookie: session.cookie })).body).toMatchObject({ organisation: { id: org.id, name: 'Alder Custody S.A.', kind: 'institution', state: 'unverified' }, seat: { id: a.seat, role: 'owner', keys: 1 } })
     // The same intent again makes nothing, also once the first organisation is archived: its seat and passkey exist.
     const rows = await snapshot()
-    expect((await checkDns(a.intent)).body).toEqual({ error: 'domain_taken' })
+    expect((await checkDns(a.intent)).body).toEqual({ error: 'not_stored' })
     await db.prepare(`UPDATE organisations SET state = 'archived' WHERE id = ?`).bind(org.id).run()
     const archived = await snapshot()
     expect((await checkDns(a.intent)).body).toEqual({ error: 'not_stored' })
@@ -5723,21 +5726,50 @@ describe('E. onboarding: a company applies, proves its domain, is activated and 
     expect((await applied(`eu.${one}`)).domain).toBe(`eu.${one}`)
   })
 
-  it('A3: a backstop of 20 new organisations per day', async () => {
-    for (let i = 0; i < 19; i++) {
+  it('G1: applications are by invitation: without a valid, unused application code /apply refuses before anything else; a code makes one organisation, once; no daily cap', async () => {
+    const issued = await op('POST', '/api/operator/invites')
+    const code = issued.body.code as string
+    expect([issued.status, issued.body.expiresAt, fieldsOf<{ expiresAt: number }>(code).expiresAt]).toEqual([200, START + 14 * DAY, START / 1000 + 14 * 24 * 3600])
+    expect((await op('POST', '/api/operator/invites')).body.code).not.toBe(code)
+    const rows = await snapshot([...TABLES, COUNTER])
+    // Refused before the form is read, on the first call and on the second: no code, a changed one, a longer life, another label, another key.
+    const key = await softwareAuthenticator(SITE)
+    const start = await call('POST', '/api/apply', { body: { ...form('alder.example'), invite: code } })
+    expect(start.status).toBe(200)
+    const response = await key.register(start.body.options)
+    const bad = [undefined, '', 7, 'x', code.replace(/\.(.)/, (_, c) => (c === 'A' ? '.B' : '.A')), resealed(code, { expiresAt: START / 1000 + 365 * 24 * 3600 }), await seal(testEnv.CHALLENGE_KEY, 'apply-intent', fieldsOf<object>(code)), await seal(`${testEnv.CHALLENGE_KEY}x`, 'apply-invite', fieldsOf<object>(code))]
+    for (const invite of bad) {
+      const refused = await call('POST', '/api/apply', { body: { ...form('alder.example'), invite } })
+      expect([refused.status, refused.body], String(invite).slice(0, 12)).toEqual([403, { error: 'invite_invalid' }])
+      expect((await call('POST', '/api/apply', { body: { invite, legalName: '' } })).body).toEqual({ error: 'invite_invalid' })
+      expect((await call('POST', '/api/apply', { body: { ...form('alder.example'), invite, seat: start.body.seat, response } })).body).toEqual({ error: 'invite_invalid' })
+    }
+    expect((await call('POST', '/api/apply', { body: { invite: code, legalName: '' } })).body).toEqual({ error: 'legal_name_invalid' })
+    now = START + 14 * DAY // 14 days and not a second more
+    expect((await call('POST', '/api/apply', { body: { ...form('alder.example'), invite: code } })).body).toEqual({ error: 'invite_invalid' })
+    now -= 1000
+    expect((await call('POST', '/api/apply', { body: { ...form('alder.example'), invite: code } })).status).toBe(200)
+    now = START
+    expect(await snapshot([...TABLES, COUNTER])).toBe(rows)
+    // One organisation per code: two applications made with it, the second finds it used (the unique index), and so does a new first call.
+    const [a, b] = [await applyFor(undefined, { invite: code }), await applyFor(undefined, { invite: code })]
+    publish(a.body.record)
+    publish(b.body.record)
+    expect((await checkDns(a.intent)).body).toEqual({ state: 'unverified' })
+    expect((await row('SELECT invite_hash FROM organisations WHERE email_domain = ?', a.domain))!.invite_hash).toBe(await data.sha256Hex(code))
+    const made = await snapshot()
+    expect((await checkDns(b.intent)).body).toEqual({ error: 'invite_used' })
+    expect(await snapshot()).toBe(made)
+    const used = await call('POST', '/api/apply', { body: { ...form('birch.example'), invite: code } })
+    expect([used.status, used.body]).toEqual([403, { error: 'invite_used' }])
+    // A refused application does not free its code.
+    await db.prepare(`UPDATE organisations SET state = 'archived' WHERE email_domain = ?`).bind(a.domain).run()
+    expect((await call('POST', '/api/apply', { body: { ...form('birch.example'), invite: code } })).body).toEqual({ error: 'invite_used' })
+    // No cap per day any more: 25 organisations proved today, and the next application is created.
+    for (let i = 0; i < 25; i++) {
       await db.prepare(`INSERT INTO organisations (id, kind, name, state, email_domain, domain_verified_at, created_at) VALUES (?, 'partner', 'Filler', 'unverified', ?, ?, ?)`).bind(data.randomId(), `filler${i}-${domains}.example`, now, now).run()
     }
-    await applied() // the 20th
-    const late = await applyFor()
-    publish(late.body.record)
-    const rows = await snapshot()
-    expect((await checkDns(late.intent)).status).toBe(429)
-    expect((await checkDns(late.intent)).body).toEqual({ error: 'too_many' })
-    expect(await snapshot()).toBe(rows)
-    now += DAY - MIN
-    expect((await checkDns(late.intent)).body).toEqual({ error: 'too_many' })
-    now += MIN // 19 of them are a day old now
-    expect((await checkDns(late.intent)).body).toEqual({ state: 'unverified' })
+    await applied()
     await db.prepare(`DELETE FROM organisations WHERE name = 'Filler'`).run()
   })
 
@@ -5972,7 +6004,7 @@ describe('E. onboarding: a company applies, proves its domain, is activated and 
   it('A8: the operator\'s routes answer on their own hostname only, in the local environment only, and to the token only', async () => {
     const a = await underReview()
     expect(onboarding.operatorRoutes.map((r) => `${r.method} ${r.path}`)).toEqual([
-      'GET /api/operator/organisations', 'POST /api/operator/organisations/:id/decision', 'POST /api/operator/organisations/:id/freeze', 'POST /api/operator/organisations/:id/unfreeze',
+      'GET /api/operator/organisations', 'POST /api/operator/organisations/:id/decision', 'POST /api/operator/organisations/:id/freeze', 'POST /api/operator/organisations/:id/unfreeze', 'POST /api/operator/invites',
     ])
     expect(OP).toBe('http://operator.localhost:8787')
     const rows = await snapshot()

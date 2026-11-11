@@ -22,7 +22,9 @@ const SAY: Record<string, string> = {
   intent_expired: 'This application is older than 7 days. Start again.',
   dns_not_proved: 'The record is not there yet on both resolvers, or its value differs. DNS changes can take some minutes. Check the name and the value, then try again.',
   domain_taken: 'An organisation already exists for this domain. Ask its Owner to invite you, or write to Ophis.',
-  too_many: 'Too many organisations were created today. Try again tomorrow.',
+  invite_invalid: 'This application code is not one Ophis issued, or it is older than 14 days. Ask Ophis for a new one.',
+  invite_used: 'This application code was already used. Ask Ophis for a new one.',
+  too_many: 'Too many DNS checks for this domain in the last hour. Try again later.',
   not_stored: 'This application was already used. Sign in with the passkey you created for it.',
   second_key: 'The first Owner needs two passkeys. Add the second under Organisation, My passkeys.',
   proof_or_owner: 'One of two things is still missing: the signature of the recovery wallet, or a second Owner with two passkeys.',
@@ -61,7 +63,7 @@ const keep = (intent: string) => {
   }
 }
 interface DnsRecord { name: string; type: string; value: string }
-const FIELDS = { legalName: '', country: '', registration: '', kind: 'partner', domain: '', email: '', name: '' }
+const FIELDS = { invite: '', legalName: '', country: '', registration: '', kind: 'partner', domain: '', email: '', name: '' }
 
 export function Apply() {
   const [form, setForm] = useState(FIELDS)
@@ -91,7 +93,7 @@ export function Apply() {
       return setDone(true)
     }
     if (result.data.record) setRecord(result.data.record)
-    else if (['intent_invalid', 'intent_expired', 'domain_taken', 'not_stored'].includes(result.data.error ?? '')) {
+    else if (['intent_invalid', 'intent_expired', 'domain_taken', 'not_stored', 'invite_used'].includes(result.data.error ?? '')) {
       // Not an application any more: changed, expired, used, or its domain taken. Any other failure keeps it.
       keep('')
       setIntent('')
@@ -126,7 +128,7 @@ export function Apply() {
       <header className="ph"><div>
         <span className="cap eyebrow">Apply</span>
         <h1 className="h-page">Open an organisation, <em>prove your company domain</em>.</h1>
-        <p className="lede">For companies only. You enter the company, create a passkey on a hardware security key, and your DNS administrator publishes one record. Nothing is stored until that record is found.</p>
+        <p className="lede">For companies only, by invitation: Ophis gives you an application code. You enter the company, create a passkey on a hardware security key, and your DNS administrator publishes one record. Nothing is stored until that record is found.</p>
       </div></header>
       {problem && <Problem>{problem}</Problem>}
       {done ? (
@@ -164,6 +166,9 @@ export function Apply() {
         </div>
       ) : (
         <form className="panel stack" onSubmit={start}>
+          <label className="field">Application code, from Ophis
+            <input className="input mono" value={form.invite} required maxLength={400} spellCheck={false} autoComplete="off" onChange={set('invite')} />
+          </label>
           <label className="field">Legal name of the company
             <input className="input" value={form.legalName} required maxLength={120} autoComplete="organization" onChange={set('legalName')} />
           </label>

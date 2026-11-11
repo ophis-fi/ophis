@@ -19,9 +19,8 @@ export const RESOLVERS: Record<string, readonly [string, string]> = { local: ['h
 export const OPERATOR: Record<string, string> = { local: 'http://operator.localhost:8787' }
 
 export const DNS = { timeoutMs: 5000, maxBytes: 16 * 1024 }
-const DAY = 24 * 60 * 60_000
 const WEEK_S = 7 * 24 * 60 * 60
-const MAX_NEW = 20 // new organisations per day, all applicants together: a backstop
+const INVITE_S = 14 * 24 * 60 * 60 // an application code lives 14 days
 const MAX_BODY = 64 * 1024
 const ID = /^[0-9a-f]{32}$/
 const LABEL = /^[\p{L}\p{N} ._()-]{1,40}$/u
@@ -55,35 +54,32 @@ const bytesOf = (hex0x: string) => Uint8Array.from(hex0x.slice(2).match(/../g) ?
 interface Passkey { id: string; publicKey: string; counter: number; transports: string[] }
 interface Applicant { legalName: string; country: string; registration: string; kind: 'partner' | 'institution'; domain: string; email: string; name: string }
 /** What /apply asked for, signed by the server and held nowhere: nothing is written before the DNS record is seen. Times are Unix seconds. */
-interface ApplyIntent extends Applicant { seat: string; credential: Passkey; credentialHash: string; issuedAt: number; expiresAt: number; site: string }
+interface ApplyIntent extends Applicant { inviteHash: string; seat: string; credential: Passkey; credentialHash: string; issuedAt: number; expiresAt: number; site: string }
 
 // The one write of an application, after its DNS proof: the organisation (unverified), its first Owner seat, that
 // seat's passkey (active) and the first row of its audit log, which names the seat, the passkey and the passkey's
 // hash for good. One organisation per domain among those that are not archived is the database's rule (the unique
-// index of 0006), and so is "an intent makes one organisation, once" (the primary keys of its seat and passkey).
-// Read inside the plan: fewer than 20 organisations were made in the last 24 hours.
-// ponytail: the daily count is read, not locked: two applications at the same instant can make it 21.
+// index of 0006), and so are "an intent makes one organisation, once" (the primary keys of its seat and passkey) and
+// "an application code makes one organisation, once" (the unique index of 0007 on its hash).
 async function createOrganisation(db: D1Database, a: ApplyIntent, value: string, now: number) {
   const orgId = randomId()
   let outcome = 'not_stored'
   try {
-    await commit(db, orgId, async () => {
-      const made = (await db.prepare('SELECT count(*) AS n FROM organisations WHERE domain_verified_at > ?').bind(now - DAY).first<{ n: number }>())!
-      outcome = made.n >= MAX_NEW ? 'too_many' : 'ok'
-      if (outcome !== 'ok') return null
+    await commit(db, orgId, () => {
+      outcome = 'ok'
       return [{ at: now, actorKind: 'seat', actorId: a.seat, sessionId: null, action: 'organisation.apply', subjectId: a.credential.id, detail: a.credentialHash }, [
-        db.prepare(`INSERT INTO organisations (id, kind, name, state, email_domain, domain_challenge, domain_verified_at, country, registration_number, created_at)
-                    VALUES (?, ?, ?, 'unverified', ?, ?, ?, ?, ?, ?)`).bind(orgId, a.kind, a.legalName, a.domain, value, now, a.country, a.registration, now),
+        db.prepare(`INSERT INTO organisations (id, kind, name, state, email_domain, domain_challenge, domain_verified_at, country, registration_number, invite_hash, created_at)
+                    VALUES (?, ?, ?, 'unverified', ?, ?, ?, ?, ?, ?, ?)`).bind(orgId, a.kind, a.legalName, a.domain, value, now, a.country, a.registration, a.inviteHash, now),
         db.prepare(`INSERT INTO seats (id, org_id, display_name, email, role, state, created_at) VALUES (?, ?, ?, ?, 'owner', 'active', ?)`).bind(a.seat, orgId, a.name, a.email, now),
         db.prepare(`INSERT INTO credentials (id, org_id, seat_id, public_key, counter, device_bound, transports, label, state, created_at) VALUES (?, ?, ?, ?, ?, 1, ?, 'First key', 'active', ?)`)
           .bind(a.credential.id, orgId, a.seat, a.credential.publicKey, a.credential.counter, JSON.stringify(a.credential.transports), now),
       ]]
     })
   } catch (error) {
-    // What the database refuses: the domain is taken (also at the same instant), or this intent's seat or passkey exists.
-    const constraint = /UNIQUE constraint failed: (organisations\.email_domain|seats\.id|credentials\.id)/.exec(String((error as Error)?.message))?.[1]
-    if (!constraint) throw error
-    return constraint.startsWith('organisations') ? 'domain_taken' : 'not_stored'
+    // What the database refuses (also at the same instant): this intent's seat or passkey exists, the domain is taken, or the code is used.
+    if (!/UNIQUE constraint failed: (organisations\.(email_domain|invite_hash)|seats\.id|credentials\.id)/.test(String((error as Error)?.message))) throw error
+    const seen = (await db.prepare(`SELECT (SELECT count(*) FROM seats WHERE id = ?) AS own, (SELECT count(*) FROM organisations WHERE email_domain = ? AND state <> 'archived') AS domain`).bind(a.seat, a.domain).first<{ own: number; domain: number }>())!
+    return seen.own ? 'not_stored' : seen.domain ? 'domain_taken' : 'invite_used'
   }
   return outcome
 }
@@ -241,6 +237,18 @@ function applicant(body: Record<string, unknown>): Applicant | string {
 }
 
 const APPLY = 'apply-intent' // the labels of this file's texts under the challenge key
+const INVITE = 'apply-invite'
+// G1: applications are by invitation. An application code is the server's own text (MAC label "apply-invite": an id
+// and an expiry), made by the operator's command, valid 14 days, good for one organisation: its SHA-256 is stored
+// unique on the organisation it makes. Checked before anything else on every call of /apply; "unused" is the one
+// read of that route. The code never leaves the browser again: the intent carries its hash.
+async function invited(c: Ctx) {
+  const code = typeof c.body.invite === 'string' ? c.body.invite.trim() : ''
+  const fields = (await unseal(c.env.CHALLENGE_KEY, INVITE, code)) as { expiresAt: number } | null
+  if (!fields || fields.expiresAt * 1000 <= c.now) return 'invite_invalid'
+  const hash = await sha256Hex(code)
+  return (await c.env.DB.prepare('SELECT 1 FROM organisations WHERE invite_hash = ?').bind(hash).first()) ? 'invite_used' : { hash }
+}
 const ACTIVATE = 'activate-intent'
 export const dnsName = (domain: string) => `_ophis-verify.${domain}`
 /** What the DNS administrator publishes: a MAC over the domain and the hash of this passkey. A record left by another application, or made for another domain, proves nothing. */
@@ -248,9 +256,11 @@ export const dnsValue = async (key: string, domain: string, hash: string) => `op
 
 // POST /api/apply, two calls, no session. First: the form in, the options for a device-bound passkey out, for a seat
 // id made here. Second: the form and that passkey's registration in, a MAC-signed intent and the DNS record out.
-// Nothing is read and nothing is written.
-// ponytail: Turnstile comes before this route in production; it is not built. Each intent costs a passkey registration.
+// Nothing is written, and the one read is whether the application code was used.
+// ponytail: Turnstile comes before this route in production; it is not built. Each intent costs a code and a passkey registration.
 export async function apply(c: Ctx) {
+  const code = await invited(c)
+  if (typeof code === 'string') return fail(403, code)
   const a = applicant(c.body)
   if (typeof a === 'string') return fail(400, a)
   const { seat } = c.body
@@ -268,7 +278,7 @@ export async function apply(c: Ctx) {
   const hash = `0x${hex(await credentialHash(credential.id, credential.publicKey))}`
   const issuedAt = Math.floor(c.now / 1000)
   const intent: ApplyIntent = {
-    ...a, seat, credential: { id: credential.id, publicKey: credential.publicKey, counter: credential.counter, transports: credential.transports },
+    ...a, inviteHash: code.hash, seat, credential: { id: credential.id, publicKey: credential.publicKey, counter: credential.counter, transports: credential.transports },
     credentialHash: hash, issuedAt, expiresAt: issuedAt + WEEK_S, site: c.config.rpId,
   }
   return json(200, {
@@ -415,7 +425,7 @@ export async function submit(c: Member) {
 // ponytail: these routes exist in the local environment only and answer 404 anywhere else, until the validation of a
 // Cloudflare Access token is added here, before a first deploy (security-design.md, "Insider at the operator").
 // Locally the caller holds OPERATOR_TOKEN (.dev.vars, made by the seed script). The operator can: list what is under
-// review, record a KYB decision, freeze and unfreeze. Nothing else: no route here takes a passkey, a member or a
+// review, record a KYB decision, freeze and unfreeze, and make an application code. Nothing else: no route here takes a passkey, a member or a
 // wallet address.
 
 interface OperatorEnv { DB: D1Database; ENVIRONMENT: string; CHALLENGE_KEY: string; OPERATOR_TOKEN?: string }
@@ -465,6 +475,12 @@ async function decide(c: Ctx) {
   }, checked, c.now)
   return outcome === 'ok' ? json(200, { state: { approve: 'active', refuse: 'archived', more: 'unverified' }[decision as Decision] }) : refuse(outcome)
 }
+// G1: a new application code. Nothing is written: the code is the server's own text, and it is used up by the
+// organisation it makes. ponytail: issued codes are not listed anywhere; whoever holds the operator's token makes them.
+async function invite(c: Ctx) {
+  const expiresAt = Math.floor(c.now / 1000) + INVITE_S
+  return json(200, { code: await seal(c.env.CHALLENGE_KEY, INVITE, { id: randomId(), expiresAt }), expiresAt: expiresAt * 1000 })
+}
 const freeze = (frozen: boolean) => async (c: Ctx) => {
   const outcome = ID.test(c.params.id ?? '') ? await setFrozen(c.env.DB, c.params.id!, frozen, c.now) : 'not_found'
   return outcome === 'ok' ? json(200, { state: frozen ? 'frozen' : 'active' }) : refuse(outcome)
@@ -475,6 +491,7 @@ export const operatorRoutes: { method: 'GET' | 'POST'; path: string; handler: (c
   { method: 'POST', path: '/api/operator/organisations/:id/decision', handler: decide },
   { method: 'POST', path: '/api/operator/organisations/:id/freeze', handler: freeze(true) },
   { method: 'POST', path: '/api/operator/organisations/:id/unfreeze', handler: freeze(false) },
+  { method: 'POST', path: '/api/operator/invites', handler: invite },
 ]
 
 // The same request checks as on the other two hosts, then the token. Digests are compared, so the time it takes says

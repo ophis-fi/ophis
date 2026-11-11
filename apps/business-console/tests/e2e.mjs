@@ -672,7 +672,11 @@ try {
   const applicant = await person()
   const on = applicant.page
   const domain = `e2e-${Date.now().toString(36)}.example`
+  const operator = (...args) => run('node', ['scripts/operator.mjs', ...args])
+  const code = operator('invite').trim().split('\n').pop() // G1: applications are by invitation
+  check('the operator command issues an application code', /^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]{43}$/.test(code))
   await on.goto(`${ORIGIN}/apply`)
+  await on.getByLabel('Application code, from Ophis').fill(code)
   await on.getByLabel('Legal name of the company').fill('Alder Custody S.A.')
   await on.getByLabel('Country, two-letter code').fill('LU')
   await on.getByLabel('Registration number or LEI').fill('B123456')
@@ -722,7 +726,6 @@ try {
   await on.getByText('It signed the activation.').waitFor()
   await on.getByRole('button', { name: 'Submit for review' }).click()
   await on.getByText('Under review since').waitFor()
-  const operator = (...args) => run('node', ['scripts/operator.mjs', ...args])
   const listed = operator('list')
   check('the operator command lists the organisation with its domain, the three words and the wallet', listed.includes(newOrg.id) && listed.includes(domain) && listed.includes(firstWords) && listed.includes(key.address) && listed.includes('ready           yes'))
   check('the operator approves', operator('decide', newOrg.id, 'approve', '--tier', 'standard', '--source', 'registry', '--evidence', 'e2e register extract', '--sha256', 'ab'.repeat(32), '--next-review', '2030-01-01').includes(`${newOrg.id} is now active`))

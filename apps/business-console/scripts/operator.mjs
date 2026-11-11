@@ -1,5 +1,6 @@
 // The operator's command, local only. It calls the operator's API of the local server (src/server/onboarding.ts) on
 // that API's own hostname, with OPERATOR_TOKEN from .dev.vars (made by "pnpm seed"). The token is never printed.
+//   node scripts/operator.mjs invite    a new application code: one use, valid 14 days; give it to the company that may apply
 //   node scripts/operator.mjs list
 //   node scripts/operator.mjs decide <organisation id> approve --tier standard --source registry --evidence "<reference>" --sha256 <64 hex> --next-review 2027-11-11
 //   node scripts/operator.mjs decide <organisation id> more|refuse --reason <code> --tier standard --source registry
@@ -47,18 +48,20 @@ function call(method, path, body) {
 }
 const base = '/api/operator/organisations'
 const answer = command === 'list' ? await call('GET', base)
+  : command === 'invite' ? await call('POST', '/api/operator/invites', {})
   : command === 'decide' && id && decision ? await call('POST', `${base}/${id}/decision`, { decision, tier: values.tier, source: values.source, reason: values.reason, evidenceRef: values.evidence, evidenceSha256: values.sha256, nextReview: values['next-review'] })
   : (command === 'freeze' || command === 'unfreeze') && id ? await call('POST', `${base}/${id}/${command}`, {})
   : null
 if (!answer) {
-  console.error('usage: node scripts/operator.mjs list | decide <id> approve|more|refuse [--tier --source --reason --evidence --sha256 --next-review] | freeze <id> | unfreeze <id>')
+  console.error('usage: node scripts/operator.mjs invite | list | decide <id> approve|more|refuse [--tier --source --reason --evidence --sha256 --next-review] | freeze <id> | unfreeze <id>')
   process.exit(1)
 }
 if (answer.status !== 200) {
   console.error(`Refused (${answer.status}): ${answer.body?.error ?? 'no answer from the operator API: is "pnpm dev" running?'}`)
   process.exit(1)
 }
-if (command !== 'list') console.log(`Done: ${id} is now ${answer.body.state}.`)
+if (command === 'invite') console.log(`Application code, one use, valid until ${new Date(answer.body.expiresAt).toISOString().slice(0, 16).replace('T', ' ')} UTC:\n${answer.body.code}`)
+else if (command !== 'list') console.log(`Done: ${id} is now ${answer.body.state}.`)
 else if (!answer.body.organisations.length) console.log('Nothing is under review.')
 else {
   for (const o of answer.body.organisations) {
