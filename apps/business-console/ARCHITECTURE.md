@@ -1,6 +1,6 @@
 # Ophis Business console: architecture
 
-Local only. Milestone 1 (sign-in core) is built. Milestones 2 to 6 are designed here so that they need no schema rework.
+Local only. Milestones 1 (sign-in core) and 2 (enrolment and recovery ceremony for members, step-up) are built. Milestones 3 to 6 are designed here so that they need no schema rework.
 Design sources: `security-design.md`, `recovery.md`, `key-custody.md` (owner research folder). The login identifies people. It never signs a trade.
 
 ## Modules
@@ -8,15 +8,16 @@ Design sources: `security-design.md`, `recovery.md`, `key-custody.md` (owner res
 index.html              page shell; the Lucide icon symbols are inlined at the top of the body
 public/_headers         security headers and the strict policy for the static pages
 migrations/0001_init.sql  the full D1 schema (authoritative; summary below)
-src/server/index.ts     Worker entry: request checks, route table, handlers, API headers, session limits
-src/server/data.ts      the ONE data module: every SQL statement, the audit chain, verifyAudit
-src/server/passkeys.ts  per-environment constants, stateless challenges, the two WebAuthn verifications
-src/app/main.tsx        React shell: band, bar, rail, footer line, routes in the URL fragment
-src/app/pages.tsx       sign-in, enrolment, Organisation, Security and data
-src/app/ui.tsx          API call, icons, badges; kit.css is the brand kit unchanged, app.css the mockup's app layer
+src/server/index.ts     Worker entry: request checks, route table and its two gates, handlers, API headers, session limits
+src/server/data.ts      the ONE data module: every SQL statement, the audit chain, tickets, activation, stop, alerts
+src/server/passkeys.ts  per-environment constants, stateless challenges, the two WebAuthn verifications, the three-word phrase
+src/server/words.ts     data file: EFF short word list 2.0 (1,296 words, CC BY 4.0, attribution in its header)
+src/app/main.tsx        React shell: band, bar, rail, footer line, routes in the URL fragment, alerts before the page
+src/app/pages.tsx       sign-in, replaced-passkey page, enrolment, Organisation (invite, re-enrol, waiting list, passkeys), Security and data
+src/app/ui.tsx          API call, passkey check, step-up retry, icons, badges; kit.css is the brand kit unchanged, app.css the mockup's app layer
 scripts/dev.mjs         local seed and activate commands (local D1 only)
 tests/worker.test.ts    invariants, in the Workers runtime with a local D1; tests/authenticator.ts is a software passkey
-tests/e2e.mjs           the same flow in headless Chrome with a virtual authenticator
+tests/e2e.mjs           the same flows in headless Chrome: three browser contexts, each with its own virtual authenticator
 ```
 Static pages never run the Worker (`run_worker_first: ["/api/*"]`). Dependencies: `@simplewebauthn/server`, `react`, `react-dom`.
 
@@ -46,6 +47,17 @@ Rules: every tenant row has `org_id`; children reference parents by `(org_id, id
 
 Audit chain: `hash = SHA-256(JSON([org_id, seq, at, actor_kind, actor_id, session_id, action, subject_id, detail, country, asn, prev_hash]))`; the first `prev_hash` is 64 zeros.
 Every state change goes through `commit()` in `data.ts`: the change and its audit row are one `db.batch()`, one transaction.
+`commit()` reads the head, then runs the caller's plan, then writes with the next sequence number. Any other write of the organisation in between takes that number and the batch fails, so what a plan read is still true when it commits. One retry.
+
+### The ceremony as built (M2; `recovery.md` sections 1 and 2)
+- Ticket: 256-bit token, only in the link fragment and in one response; SHA-256 stored. 10 min for key roles, 24 h for Trader and Viewer. 3 per issuer and seat per 24 h. Issuer: Owner or Admin, never above the own role, never the own seat. The seat decides the kind: `invited` gives an invitation, `active` a re-enrolment.
+- Phrase: `words3(SHA-256("ophis-enrol-v1" ‖ site ‖ org ‖ seat ‖ role ‖ purpose ‖ credentialHash ‖ nonce))`, every field with a 4-byte length; site is the relying-party id, purpose the ticket kind, the nonce 128 server bits that never leave the server. Never stored. Returned once, by `enrol/finish`, to the member's device.
+- Confirmation: the issuer types the words within 60 min, in a request that carries its own passkey check (challenge bound to ticket id, credential hash and try number). 3 wrong tries kill the ticket and the pending passkey. Words that are not on the list are a typing slip, not a try.
+- Key roles: the issuer's words write an `approvals` row (`ticket.confirm`, requester = issuer). A second key-role member (not issuer, not target) types the words within the same 60 min and becomes its checker. If no such active seat exists: `not_before` = 72 h, and the pending passkey becomes active at its first sign-in in the 7 days after. No scheduled job.
+- Activation: new passkey `active`; on a re-enrolment the seat's active passkeys become `suspended` with `stop_right_until`, and the seat gets `quarantine_until` (24 h Trader and Viewer, 72 h key roles); the seat's sessions end; its other open tickets die.
+- Stop: a suspended passkey with a running stop right opens no session. `signin/finish` tells it so (403 `passkey_replaced`) once its check passed; `stop/finish` then revokes the seat's active passkeys, restores the suspended ones, freezes the seat. Unfreezing needs two people: milestone 3.
+- A sign-in with a passkey the member still holds kills every open ticket of that seat (audit detail `ticket_killed`): this is how the target cancels during the wait.
+- Alerts are computed at `GET /api/me` from rows of the last 7 days (no table, no email): quarantine, new passkey on the seat, re-enrolment started or completed, a colleague re-enrolled, a frozen seat, words waiting for this member. The app shows them before the page; the browser remembers what was read.
 
 ### Wallets and the recovery anchor (M4): typed data and contract wallets
 - A proof is EIP-712 typed data (`recovery.md` section 5). Domain: name `Ophis Business`, version `1`, `chainId` of the wallet's pinned chain. There is no `verifyingContract`: no contract verifies it. The binding to this app is inside the message: `site`, `organisationId`, `wallet`.
@@ -57,23 +69,25 @@ Every state change goes through `commit()` in `data.ts`: the change and its audi
 
 ## Routes
 Every `/api/*` call: `Sec-Fetch-Site: same-origin` or 403. Every state change: POST, JSON, `Origin` equal to the configured origin, body under 64 KB. No CORS grant.
+Two gates in the route table (M2). `twoKeys`: the seat holds two active passkeys, device-bound ones for an Owner; with fewer it can sign in, pass a check and add its second key. `fresh`: a passkey check in the last 5 minutes ("Step-up: yes").
 
 | M | Route | Authentication | Roles | Step-up | Second person |
 |---|---|---|---|---|---|
 | 1 | POST /api/enrol/start | ticket token in the body | the ticket's seat | no | no |
-| 1 | POST /api/enrol/finish | ticket token and a new passkey with user verification | the ticket's seat; Owner must be device-bound | no | result is pending; the dev command confirms (M2: colleagues) |
+| 1 | POST /api/enrol/finish | ticket token and a new passkey with user verification | the ticket's seat; Owner must be device-bound | no | result is pending; answers the three words (M2). First Owner: the dev command confirms |
 | 1 | POST /api/signin/start | none; writes nothing | any | no | no |
 | 1 | POST /api/signin/finish | active passkey with user verification | any active seat | no | no |
-| 1 | GET /api/me | session | any | no | no |
-| 1 | GET /api/org | session | Owner, Admin: the organisation; others: own seat | no | no |
+| 1 | GET /api/me | session | any; M2 adds the alerts | no | no |
+| 1 | GET /api/org | session | Owner, Admin: the organisation and every open ticket; others: own seat, and tickets waiting for their words | no | no |
 | 1 | POST /api/sessions/:id/revoke | session | own session: any; a colleague's: Owner, Admin | no | no |
 | 1 | POST /api/signout | session | any | no | no |
-| 2 | POST /api/stepup/start, /finish | session and passkey | any | it is the step-up; new session token | no |
-| 2 | POST /api/tickets | session | Owner, Admin; never above own role; 3 per issuer and seat per 24 h | yes | no |
-| 2 | POST /api/tickets/:id/confirm | session; three words typed | the issuer, then another key-role member for key roles | yes; challenge covers ticket and credential hash | key roles: yes, or a 72 h wait |
-| 2 | POST /api/tickets/:id/cancel | session | Owner; the target's own passkey | yes | no |
-| 2 | POST /api/passkeys, /api/passkeys/:id/revoke | session | own seat; Owner, Admin revoke | yes | no |
-| 2 | POST /api/passkeys/:id/stop | check of a suspended passkey | the replaced passkey, until its stop right ends | passkey check | no |
+| 2 | POST /api/stepup/start, /finish | session and an active passkey of the own seat | any | it is the step-up: 5 min window, new session token | no |
+| 2 | POST /api/passkeys/start, /finish | session | own seat; the new passkey is active at once; other sessions of the seat end | yes | no |
+| 2 | POST /api/passkeys/:id/revoke | session, two passkeys | own active passkey (never the last); a colleague's: Owner, Admin, not above own role, not in quarantine, seat not frozen | yes | no |
+| 2 | POST /api/tickets | session, two passkeys | Owner, Admin; rules above; an invitation is blocked in quarantine | yes | no |
+| 2 | POST /api/tickets/:id/confirm/start, /confirm | session, two passkeys; three words typed | the issuer, then another key-role member for key roles; an invitation is blocked in quarantine | own passkey check, bound to the ticket | key roles: yes, or the 72 h wait |
+| 2 | POST /api/tickets/:id/cancel | session, two passkeys | Owner | yes | no |
+| 2 | POST /api/stop/start, /finish | check of a suspended passkey; no session | the replaced passkey, until its stop right ends | passkey check | no |
 | 3 | GET /api/approvals; POST /api/approvals/:id/approve, /reject | session | key roles; never the requester | yes | this is the second person |
 | 3 | POST /api/members/:id/role, /remove | session | Owner, Admin; never the last Owner | yes | yes |
 | 3 | GET /api/audit, /api/audit/export | session | Owner, Viewer, Compliance officer | export: yes | no |
@@ -86,8 +100,8 @@ Every `/api/*` call: `Sec-Fetch-Site: same-origin` or 403. Every state change: P
 | 6 | POST /api/support/ask | session | any | no | no |
 
 ## Security invariants and the tests that prove them
-Each test (in `tests/worker.test.ts`) was seen to fail with its control removed once. Independent review, 2026-11-11: 71 single mutations, 70 caught.
-The survivor is the purpose label inside the challenge HMAC, which changes nothing while sign-in and enrolment bind different values. Four checks of `tests/e2e.mjs` were mutated too.
+Each test (in `tests/worker.test.ts`) was seen to fail with its control removed once. Milestone 1, independent review, 2026-11-11: 71 single mutations, 70 caught; the survivor was the purpose label inside the challenge HMAC, which milestone 2 now tests.
+Milestone 2, 2026-11-11: 110 single mutations of its controls, all caught, and four more against `tests/e2e.mjs`. Not separately provable, because another check covers the same case: the ticket id inside the confirmation binding (the credential hash is already unique per ticket), and the early stop-right check a handler could add (the write checks it).
 
 | Invariant | Test |
 |---|---|
@@ -107,20 +121,35 @@ The survivor is the purpose label inside the challenge HMAC, which changes nothi
 | Pages and API responses carry the headers and the policy | g: `every API response carries them...`, `pages carry them: public/_headers...`; e2e checks the live page and counts zero violations |
 | Sign-in start writes no row; a failed sign-in says nothing | h: `writes no row, however often it is called...`, `a failed sign-in looks the same whatever the reason...` |
 | The schema refuses cross-organisation rows, self-approval, a second anchor, a forked audit sequence | i: four tests |
+| Two writes that collide on the audit sequence: the later one is retried once, and a plan never commits on stale reads | f: `two writes of one organisation that collide...`; k, n, o: the three `...at the same instant` tests |
+| A challenge serves one purpose: sign-in, enrol, step-up, add, confirm, stop | j: `a challenge made for one purpose does not pass for another...`; k: `a step-up answers only a step-up challenge...`; o: `a stop answers only a stop challenge...` |
+| The phrase is derived as specified, changes with every input, from the 1,296-word list | j: three tests (the recipe is written out in the test) |
+| Step-up: 5 minutes, a new token, once, by an active passkey of the own seat | k: `a sensitive call more than 5 minutes...`, `step-up gives the session a new token...`, `a step-up answers only...`, `the routes that need a fresh check...` |
+| A seat with fewer than two passkeys (device-bound for an Owner) does nothing sensitive but add its second | k: `an Owner seat with fewer than two device-bound keys...`, `every seat needs two active passkeys...` |
+| Own passkeys: fresh check, session-bound challenge, key rule of the role, cap of 10, other sessions end; revoke rules | l: four tests |
+| Tickets: who issues for whom, token hashed, lifetimes, 3 per issuer and seat, Owner cancels, dead with its seat | m: seven tests; n: `a ticket is dead once its seat is not in the right state` |
+| The issuer's API never returns the phrase or the nonce; only the issuer confirms, with a check bound to the ticket | n: `a Viewer joins...`, `only the issuer confirms...` |
+| 3 wrong tries kill ticket and passkey, exact counter, one try per passkey check; 60 minutes | n: `three wrong tries kill the ticket...`, `the words must be typed within 60 minutes...` |
+| Key roles: a second person, not issuer, not target, a key role; else 72 h, cancellable by an Owner or the target's old passkey | n: `a key role needs a second person...`, `with no second person, a 72 hour wait...`, `during the wait any Owner can cancel...` |
+| Re-enrolment suspends, never deletes; a suspended passkey can only stop, until quarantine ends; quarantine blocks | o: seven tests |
+| Alerts reach the member, the confirmers and every member, and no other organisation | p: two tests |
 
 ## Deliberate shortcuts (`ponytail:` in the code)
 - The idle clock is written at most once a minute: a session can end up to 60 s early, never late.
-- Writes of one organisation are serialised by the audit sequence. A simultaneous write fails whole; there is no retry yet.
+- Writes of one organisation are serialised by the audit sequence, with one retry. Many writers at the same instant would need a queue.
 - `verifyAudit` reads a whole chain. A removed tail is only detectable with the external hourly anchor, which is not built.
-- `scripts/dev.mjs activate` stands in for the three-word ceremony. Milestone 2 replaces it.
-- Not built yet: rate limits, Turnstile, step-up, alerts, the second Owner key, the production hostname.
+- `scripts/dev.mjs activate` stands in for the first Owner's activation by the recovery anchor (M4). Members no longer need it.
+- Alerts are read from rows of the last 7 days; the server keeps no "seen" mark. Expired tickets stay in the table: nothing sweeps.
+- After two re-enrolments inside one quarantine a stop restores the passkeys of both earlier rounds. The freeze makes that safe until M3 decides.
+- The link is shown as text with a copy button: no QR code (it would need a dependency).
+- Not built yet: unfreezing a seat (M3), rate limits, Turnstile, a passkey check on a change of country or network, the spare key, linked Google or Microsoft identity, the production hostname.
 
 ## Commands
 `npx -y pnpm@10.34.9 install --ignore-workspace`, then `pnpm migrate`, `pnpm seed`, `pnpm dev`, `pnpm activate`, `pnpm test`, `pnpm test:e2e`, `pnpm typecheck` (see README.md).
 
 ## Milestones
 - M1 sign-in core: passkey enrolment (pending), sign-in, sessions, request checks, audit chain, console shell. Built.
-- M2 enrolment and recovery ceremony: tickets, three-word phrase, confirmations, step-up, second key, stop right, quarantine.
+- M2 enrolment and recovery ceremony: tickets, three-word phrase, confirmations, step-up, second key, stop right, quarantine, alerts at sign-in. Built (paths A and B; path C is M4).
 - M3 roles and two-person approval: approvals, member and role changes, audit view and export.
 - M4 wallets and recovery anchor: wallet link, anchor, EIP-712 proof, ERC-1271, last-Owner recovery.
 - M5 registration, KYB and sealing: application, DNS domain proof, sealed uploads, operator console.
