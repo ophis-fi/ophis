@@ -21,6 +21,17 @@ const ALERT_MS = 7 * 24 * HOUR
 const MAX_ATTEMPTS = 3
 const MAX_TICKETS = 3 // per issuer and seat per 24 hours
 const MAX_PASSKEYS = 10 // active ones, per seat
+const MAX_SEATS = 10 // new invited seats per issuer per 24 hours
+const DAY = 24 * HOUR
+// The longest a ticket can live: 24 h link, 60 min for the words, 72 h wait, 7 days to sign in. After 12 days
+// a ticket that is not confirmed is dead whatever its state, and no limit or alert (24 h, 7 days) still reads it.
+const SWEEP_MS = 12 * DAY
+const REQUEST_MS = 7 * DAY // a change waits 7 days for its second person
+const RELAX_MS = DAY // lowering a security setting can be approved only 24 hours after it was asked
+const NO_WAIT_MS = 30 * DAY // the 72 hour wait is for an organisation with no other key-role seat in the last 30 days
+const KEY_SQL = `('owner', 'admin', 'approver', 'compliance')`
+/** Owners: hardware keys only, no exception. Other key roles: hardware keys unless the organisation allowed synced ones. */
+export const needsHardware = (role: Role, syncedKeysAllowed: number) => role === 'owner' || (KEY_ROLES.includes(role) && syncedKeysAllowed !== 1)
 /** Quarantine and the stop right last 24 hours for a Trader or Viewer, 72 hours for a key role. */
 const quarantineMs = (role: Role) => (KEY_ROLES.includes(role) ? 72 : 24) * HOUR
 const quarantined = (actor: Actor, now: number) => (actor.quarantineUntil ?? 0) > now
@@ -160,7 +171,8 @@ const closeTicket = (db: D1Database, orgId: string, ticketId: string, state: 'de
 ]
 // The same for every ticket a seat still has open. Run after the statements that settle the ticket that
 // wins, if any: whatever is still open then is dead. `issuedToo`: also the tickets the seat issued for
-// others, when it is frozen, so that unfreezing it later brings none of them back.
+// others and the changes it asked for, when it is frozen, removed or changes role, so that nothing it
+// started goes on without it and unfreezing it later brings none of it back.
 function closeOpen(db: D1Database, orgId: string, seatId: string, now: number, issuedToo = false): Sql[] {
   const tickets = `SELECT id FROM enrolment_tickets WHERE org_id = ? AND (seat_id = ? OR (? = 1 AND issuer_seat_id = ?)) AND state IN ('issued', 'stored')`
   const scope = [orgId, orgId, seatId, issuedToo ? 1 : 0, seatId]
@@ -168,6 +180,7 @@ function closeOpen(db: D1Database, orgId: string, seatId: string, now: number, i
     db.prepare(`UPDATE credentials SET state = 'revoked' WHERE org_id = ? AND state = 'pending' AND ticket_id IN (${tickets})`).bind(...scope),
     db.prepare(`UPDATE approvals SET state = 'cancelled', decided_at = ? WHERE org_id = ? AND action = 'ticket.confirm' AND state = 'pending' AND subject_id IN (${tickets})`).bind(now, ...scope),
     db.prepare(`UPDATE enrolment_tickets SET state = 'dead' WHERE org_id = ? AND id IN (${tickets})`).bind(...scope),
+    db.prepare(`UPDATE approvals SET state = 'cancelled', decided_at = ? WHERE org_id = ? AND requester_seat_id = ? AND state = 'pending' AND ? = 1`).bind(now, orgId, seatId, issuedToo ? 1 : 0),
   ]
 }
 
@@ -259,7 +272,7 @@ export async function organisationView(db: D1Database, actor: Actor, idleSince: 
 
 // ---- step-up and the member's own passkeys ----
 
-const seatEntry = (actor: Actor, now: number, action: string, subjectId: string, detail: string | null = null): Entry =>
+const seatEntry = (actor: Actor, now: number, action: string, subjectId: string | null, detail: string | null = null): Entry =>
   ({ at: now, actorKind: 'seat', actorId: actor.seatId, sessionId: actor.sessionId, action, subjectId, detail, country: actor.country, asn: actor.asn })
 const used = (db: D1Database, orgId: string, credentialId: string, counter: number, now: number) =>
   db.prepare('UPDATE credentials SET counter = max(counter, ?), last_used_at = ? WHERE org_id = ? AND id = ?').bind(counter, now, orgId, credentialId)
@@ -300,7 +313,7 @@ export function addCredential(db: D1Database, actor: Actor, credential: { id: st
   })
 }
 
-/** Active passkeys of active seats only: a replaced (suspended) one keeps its stop right, and a frozen seat waits for two people. A colleague's last one freezes the seat. */
+/** Active passkeys of active seats only: a replaced (suspended) one keeps its stop right, and a frozen seat waits for two people. */
 export async function revokeCredential(db: D1Database, actor: Actor, credentialId: string, now: number) {
   let outcome: 'ok' | 'not_found' | 'forbidden' | 'quarantine' | 'last_passkey' = 'not_found'
   await commit(db, actor.orgId, async () => {
@@ -309,18 +322,16 @@ export async function revokeCredential(db: D1Database, actor: Actor, credentialI
                 FROM credentials c JOIN seats s ON s.org_id = c.org_id AND s.id = c.seat_id AND s.state = 'active'
                 WHERE c.org_id = ? AND c.id = ? AND c.state = 'active' AND (c.seat_id = ? OR ? = 1)`)
       .bind(actor.orgId, credentialId, actor.seatId, seesAll(actor)).first<{ seat_id: string; role: Role; active: number }>()
-    if (!c) outcome = 'not_found'
-    else if (c.seat_id === actor.seatId) outcome = c.active < 2 ? 'last_passkey' : 'ok'
-    else outcome = !mayManage(actor.role, c.role) ? 'forbidden' : quarantined(actor, now) ? 'quarantine' : 'ok'
-    if (!c || outcome !== 'ok') return null
-    // A colleague who removes the last passkey of a seat leaves its member nothing to stop a replacement with.
-    // So that seat is frozen, with what it had open: no ticket is issued for a frozen seat, and unfreezing
-    // takes two people (milestone 3). To replace lost passkeys, a colleague re-enrols; they do not revoke.
-    const freeze = c.seat_id !== actor.seatId && c.active < 2
-    return [seatEntry(actor, now, 'credential.revoke', credentialId, freeze ? 'seat_frozen' : null), [
-      db.prepare(`UPDATE credentials SET state = 'revoked' WHERE org_id = ? AND id = ?`).bind(actor.orgId, credentialId),
-      ...(freeze ? [db.prepare(`UPDATE seats SET state = 'frozen' WHERE org_id = ? AND id = ?`).bind(actor.orgId, c.seat_id), ...closeOpen(db, actor.orgId, c.seat_id, now, true)] : []),
-    ]]
+    // The last passkey of a seat is never revoked, by anyone: a colleague who took it would leave the member
+    // nothing to stop a replacement with. In an emergency the seat is frozen (one person); lost passkeys are
+    // replaced by a re-enrolment.
+    outcome = !c ? 'not_found'
+      : c.seat_id !== actor.seatId && !mayManage(actor.role, c.role) ? 'forbidden'
+      : c.seat_id !== actor.seatId && quarantined(actor, now) ? 'quarantine'
+      : c.active < 2 ? 'last_passkey'
+      : 'ok'
+    if (outcome !== 'ok') return null
+    return [seatEntry(actor, now, 'credential.revoke', credentialId), [db.prepare(`UPDATE credentials SET state = 'revoked' WHERE org_id = ? AND id = ?`).bind(actor.orgId, credentialId)]]
   })
   return outcome as 'ok' | 'not_found' | 'forbidden' | 'quarantine' | 'last_passkey' // the plan assigns it; the compiler cannot see that
 }
@@ -332,7 +343,7 @@ type Target = { seatId: string } | { displayName: string; role: Role }
 export async function issueTicket(db: D1Database, actor: Actor, target: Target, tokenHash: string, now: number) {
   const ticketId = randomId()
   const newSeatId = randomId()
-  type Issued = { error: 'not_found' | 'forbidden' | 'quarantine' | 'ticket_limit' } | { error?: undefined; ticketId: string; seatId: string; kind: string; role: Role; expiresAt: number }
+  type Issued = { error: 'not_found' | 'forbidden' | 'quarantine' | 'ticket_limit' | 'seat_limit' } | { error?: undefined; ticketId: string; seatId: string; kind: string; role: Role; expiresAt: number }
   let outcome: Issued = { error: 'not_found' }
   await commit(db, actor.orgId, async () => {
     let seat: { id: string; role: Role; state: string } | null = 'seatId' in target ? null : { id: newSeatId, role: target.role, state: 'new' }
@@ -344,9 +355,13 @@ export async function issueTicket(db: D1Database, actor: Actor, target: Target, 
     const kind = seat.state === 'active' ? 're_enrolment' : 'invitation'
     const issued = await db.prepare('SELECT count(*) AS n FROM enrolment_tickets WHERE org_id = ? AND issuer_seat_id = ? AND seat_id = ? AND created_at > ?')
       .bind(actor.orgId, actor.seatId, seat.id, now - 24 * HOUR).first<{ n: number }>()
+    // New seats this issuer made in 24 hours: a seat and its first ticket are written at the same moment.
+    const seats = await db.prepare(`SELECT count(DISTINCT t.seat_id) AS n FROM enrolment_tickets t JOIN seats s ON s.org_id = t.org_id AND s.id = t.seat_id AND s.created_at = t.created_at
+                                    WHERE t.org_id = ? AND t.issuer_seat_id = ? AND t.created_at > ?`).bind(actor.orgId, actor.seatId, now - DAY).first<{ n: number }>()
     const refused = !mayManage(actor.role, seat.role) ? 'forbidden'
       : kind === 'invitation' && quarantined(actor, now) ? 'quarantine' // a new member; re-enrolling an existing seat stays open
       : issued!.n >= MAX_TICKETS ? 'ticket_limit'
+      : seat.state === 'new' && seats!.n >= MAX_SEATS ? 'seat_limit'
       : null
     if (refused) {
       outcome = { error: refused }
@@ -358,6 +373,9 @@ export async function issueTicket(db: D1Database, actor: Actor, target: Target, 
       ...('seatId' in target ? [] : [db.prepare(`INSERT INTO seats (id, org_id, display_name, role, state, created_at) VALUES (?, ?, ?, ?, 'invited', ?)`).bind(seat.id, actor.orgId, target.displayName, seat.role, now)]),
       db.prepare(`INSERT INTO enrolment_tickets (id, org_id, seat_id, kind, role, issuer_seat_id, token_hash, nonce, state, expires_at, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'issued', ?, ?)`)
         .bind(ticketId, actor.orgId, seat.id, kind, seat.role, actor.seatId, tokenHash, randomId(), expiresAt, now),
+      // The sweep: tickets that were never confirmed, and the pending passkeys stored on them, once nothing reads them.
+      db.prepare(`DELETE FROM credentials WHERE org_id = ? AND ticket_id IN (SELECT id FROM enrolment_tickets WHERE org_id = ? AND state <> 'confirmed' AND created_at < ?)`).bind(actor.orgId, actor.orgId, now - SWEEP_MS),
+      db.prepare(`DELETE FROM enrolment_tickets WHERE org_id = ? AND state <> 'confirmed' AND created_at < ?`).bind(actor.orgId, now - SWEEP_MS),
     ]]
   })
   return outcome as Issued
@@ -452,8 +470,17 @@ export async function confirmTicket(db: D1Database, actor: Actor, seen: OpenTick
       ]]
     }
     if (t.myStep === 'issuer' && KEY_ROLES.includes(t.role)) {
-      const others = await db.prepare(`SELECT count(*) AS n FROM seats WHERE org_id = ? AND state = 'active' AND role IN ('owner', 'admin', 'approver', 'compliance') AND id NOT IN (?, ?)`)
-        .bind(actor.orgId, actor.seatId, t.seat_id).first<{ n: number }>()
+      // The 72 hour wait stands in for the second person only in an organisation that has had no key-role seat but
+      // the issuer's in the last 30 days: active, frozen, removed, or lowered from a key role (the audit rows give
+      // the dates). Otherwise one Owner could freeze or remove every colleague and then pass every two-person rule
+      // alone after a wait. A re-enrolled key-role member is such a seat: their seat never comes back by a wait.
+      const others = await db.prepare(
+        `SELECT count(*) AS n FROM seats s WHERE s.org_id = ? AND s.id <> ? AND (
+           (s.role IN ${KEY_SQL} AND (s.state IN ('active', 'frozen') OR (s.state = 'removed' AND EXISTS
+             (SELECT 1 FROM audit_log a WHERE a.org_id = s.org_id AND a.subject_id = s.id AND a.action = 'seat.remove' AND a.detail IS NULL AND a.at > ?))))
+           OR EXISTS (SELECT 1 FROM audit_log a WHERE a.org_id = s.org_id AND a.subject_id = s.id AND a.action = 'seat.role' AND a.at > ?
+                      AND substr(a.detail, 1, instr(a.detail, '.') - 1) IN ${KEY_SQL}))`,
+      ).bind(actor.orgId, actor.seatId, now - NO_WAIT_MS, now - NO_WAIT_MS).first<{ n: number }>()
       const waitUntil = others!.n ? null : now + WAIT_MS
       outcome = waitUntil === null ? { state: 'second' } : { state: 'wait', waitUntil }
       return [seatEntry(actor, now, 'ticket.confirm', t.id, waitUntil === null ? 'second' : 'wait'), [
@@ -488,17 +515,17 @@ export function cancelTicket(db: D1Database, actor: Actor, ticketId: string, now
 }
 
 // The stop right (recovery.md section 1): the replacement and everything it added is revoked, the replaced
-// passkeys are active again, and the seat is frozen until an Owner and a second person decide (milestone 3).
-// ponytail: after two re-enrolments inside one quarantine, the passkeys of both earlier rounds come back.
-// The freeze is what makes that safe; milestone 3 chooses which stand.
+// passkeys are active again, and the seat is frozen until two people unfreeze it. After two re-enrolments
+// inside one quarantine, the stopping passkey and the ones replaced before it come back; every passkey
+// added after it was replaced is revoked, whether it is the active one or was itself replaced since.
 export function stopReplacement(db: D1Database, credential: StoredCredential, counter: number, now: number) {
   const { org_id: orgId, seat_id: seatId } = credential
   return commit(db, orgId, async () => {
     const current = await credentialById(db, credential.id)
     if (!current || !hasStopRight(current, now)) return null
     return [{ at: now, actorKind: 'seat', actorId: seatId, sessionId: null, action: 'credential.stop', subjectId: credential.id }, [
-      db.prepare(`UPDATE credentials SET state = CASE state WHEN 'suspended' THEN 'active' ELSE 'revoked' END, stop_right_until = NULL
-                  WHERE org_id = ? AND seat_id = ? AND (state = 'active' OR (state = 'suspended' AND stop_right_until > ?))`).bind(orgId, seatId, now),
+      db.prepare(`UPDATE credentials SET state = CASE WHEN state = 'suspended' AND stop_right_until <= ? THEN 'active' ELSE 'revoked' END, stop_right_until = NULL
+                  WHERE org_id = ? AND seat_id = ? AND (state = 'active' OR (state = 'suspended' AND stop_right_until > ?))`).bind(current.stop_right_until, orgId, seatId, now),
       used(db, orgId, credential.id, counter, now),
       db.prepare(`UPDATE seats SET state = 'frozen', quarantine_until = NULL WHERE org_id = ? AND id = ?`).bind(orgId, seatId),
       db.prepare('UPDATE sessions SET revoked_at = ? WHERE org_id = ? AND seat_id = ? AND revoked_at IS NULL').bind(now, orgId, seatId),
@@ -507,24 +534,194 @@ export function stopReplacement(db: D1Database, credential: StoredCredential, co
   })
 }
 
+// ---- milestone 3: one person freezes, two people change ----
+
+export type Kind = 'seat.unfreeze' | 'seat.remove' | 'seat.role' | 'policy.synced_keys'
+interface Change { apply: Sql[]; detail: string | null; direct?: boolean; relax?: boolean }
+// One change, judged against the rows as they are now, for a requester with this role. It runs inside the commit
+// that files the request and again inside the commit that applies it, so an approval never applies what has
+// become forbidden since. `direct`: one person is enough (a freeze only tightens; an invited seat was never a member).
+async function judge(db: D1Database, orgId: string, role: Role, kind: Kind | 'seat.freeze', subjectId: string, value: string | null, now: number): Promise<string | Change> {
+  if (kind === 'policy.synced_keys') {
+    const org = await db.prepare('SELECT synced_keys_allowed AS allowed FROM organisations WHERE id = ?').bind(orgId).first<{ allowed: number }>()
+    if (subjectId !== orgId || (value !== '0' && value !== '1') || Number(value) === org!.allowed) return 'invalid'
+    if (role !== 'owner') return 'forbidden'
+    return { apply: [db.prepare('UPDATE organisations SET synced_keys_allowed = ? WHERE id = ?').bind(Number(value), orgId)], detail: value === '1' ? 'synced' : 'hardware', relax: value === '1' }
+  }
+  const seat = await db
+    .prepare(`SELECT s.role, s.state, o.synced_keys_allowed AS synced,
+                (SELECT count(*) FROM seats x WHERE x.org_id = s.org_id AND x.id <> s.id AND x.role = 'owner' AND x.state = 'active') AS owners,
+                (SELECT count(*) FROM credentials k WHERE k.org_id = s.org_id AND k.seat_id = s.id AND k.state IN ('active', 'suspended') AND k.device_bound = 0) AS soft
+              FROM seats s JOIN organisations o ON o.id = s.org_id WHERE s.org_id = ? AND s.id = ? AND s.state <> 'removed'`)
+    .bind(orgId, subjectId).first<{ role: Role; state: string; synced: number; owners: number; soft: number }>()
+  if (!seat) return 'not_found'
+  if (!mayManage(role, seat.role)) return 'forbidden'
+  // The last Owner is never frozen, removed or lowered: nobody would be left who can manage the organisation.
+  const lastOwner = seat.role === 'owner' && seat.state === 'active' && seat.owners === 0
+  const at = [orgId, subjectId] as const
+  const setSeat = (column: 'state' | 'role', to: string) => db.prepare(`UPDATE seats SET ${column} = ? WHERE org_id = ? AND id = ?`).bind(to, ...at)
+  const endSessions = db.prepare('UPDATE sessions SET revoked_at = ? WHERE org_id = ? AND seat_id = ? AND revoked_at IS NULL').bind(now, ...at)
+  if (kind === 'seat.freeze') {
+    if (seat.state !== 'active') return 'not_found'
+    if (lastOwner) return 'last_owner'
+    return { direct: true, detail: null, apply: [
+      setSeat('state', 'frozen'),
+      // Suspended, not revoked, and with no stop right: the unfreeze gives exactly these back.
+      db.prepare(`UPDATE credentials SET state = 'suspended' WHERE org_id = ? AND seat_id = ? AND state = 'active'`).bind(...at),
+      endSessions, ...closeOpen(db, orgId, subjectId, now, true),
+    ] }
+  }
+  if (kind === 'seat.unfreeze') {
+    if (seat.state !== 'frozen') return 'not_found'
+    // The passkeys that were active before the freeze stand. What a stop revoked stays revoked, and a passkey
+    // that was replaced before the freeze stays suspended (it has a stop right date; a frozen one has none).
+    return { detail: null, apply: [setSeat('state', 'active'), db.prepare(`UPDATE credentials SET state = 'active' WHERE org_id = ? AND seat_id = ? AND state = 'suspended' AND stop_right_until IS NULL`).bind(...at)] }
+  }
+  if (kind === 'seat.remove') {
+    if (lastOwner) return 'last_owner'
+    return { direct: seat.state === 'invited', detail: seat.state === 'invited' ? 'invited' : null, apply: [
+      setSeat('state', 'removed'),
+      db.prepare(`UPDATE credentials SET state = 'revoked' WHERE org_id = ? AND seat_id = ? AND state <> 'revoked'`).bind(...at),
+      endSessions, ...closeOpen(db, orgId, subjectId, now, true),
+      db.prepare(`UPDATE approvals SET state = 'cancelled', decided_at = ? WHERE org_id = ? AND subject_id = ? AND state = 'pending'`).bind(now, ...at),
+    ] }
+  }
+  const to = value as Role
+  if (seat.state !== 'active' || !ROLES.includes(to) || to === seat.role) return 'invalid'
+  if (!mayManage(role, to)) return 'forbidden' // never above the requester's own role
+  if (lastOwner) return 'last_owner'
+  if (needsHardware(to, seat.synced) && seat.soft > 0) return 'device_bound_required'
+  // The sessions end: the new role starts at the next sign-in. What the seat issued or asked for under the old role is closed.
+  return { detail: `${seat.role}.${to}`, apply: [setSeat('role', to), endSessions, ...closeOpen(db, orgId, subjectId, now, true)] }
+}
+
+type Changed = { error: string } | { state: 'applied' } | { state: 'requested'; id: string; notBefore: number | null }
+/** A freeze, applied at once; or a change for two people, filed as a request (applied at once only for an invited seat that never enrolled). */
+export async function change(db: D1Database, actor: Actor, kind: Kind | 'seat.freeze', subjectId: string, value: string | null, now: number) {
+  const id = randomId()
+  const payload = JSON.stringify({ value })
+  const payloadHash = await sha256Hex(payload)
+  let outcome: Changed = { error: 'not_found' }
+  await commit(db, actor.orgId, async () => {
+    const judged = await judge(db, actor.orgId, actor.role, kind, subjectId, value, now)
+    if (typeof judged === 'string') {
+      outcome = { error: judged }
+      return null
+    }
+    if (judged.direct) {
+      outcome = { state: 'applied' }
+      return [seatEntry(actor, now, kind, subjectId, judged.detail), judged.apply]
+    }
+    if (await db.prepare(`SELECT 1 FROM approvals WHERE org_id = ? AND action = ? AND subject_id = ? AND state = 'pending' AND expires_at > ?`).bind(actor.orgId, kind, subjectId, now).first()) {
+      outcome = { error: 'already_requested' }
+      return null
+    }
+    const notBefore = judged.relax ? now + RELAX_MS : null
+    outcome = { state: 'requested', id, notBefore }
+    return [seatEntry(actor, now, 'approval.request', id, kind), [
+      db.prepare(`INSERT INTO approvals (id, org_id, action, subject_id, payload, payload_hash, requester_seat_id, state, not_before, expires_at, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?, ?)`)
+        .bind(id, actor.orgId, kind, subjectId, payload, payloadHash, actor.seatId, notBefore, now + REQUEST_MS, now),
+    ]]
+  })
+  return outcome as Changed
+}
+
+// A request is open while it is pending, younger than 7 days, and its requester's seat is still active. The
+// confirmation of a new passkey (ticket.confirm) lives in the same table and is never decided here.
+const OPEN_REQUEST = `a.state = 'pending' AND a.expires_at > ? AND a.action <> 'ticket.confirm'`
+/** Approve (and apply, in the same commit), reject, or cancel. The router has checked the role; the rest is read here, inside the commit. */
+export async function decide(db: D1Database, actor: Actor, id: string, decision: 'approve' | 'reject' | 'cancel', now: number) {
+  let outcome = 'not_found'
+  await commit(db, actor.orgId, async () => {
+    const a = await db
+      .prepare(`SELECT a.action, a.subject_id, a.payload, a.requester_seat_id, a.not_before, r.role FROM approvals a
+                JOIN seats r ON r.org_id = a.org_id AND r.id = a.requester_seat_id AND r.state = 'active'
+                WHERE a.org_id = ? AND a.id = ? AND ${OPEN_REQUEST}`)
+      .bind(actor.orgId, id, now).first<{ action: Kind; subject_id: string; payload: string; requester_seat_id: string; not_before: number | null; role: Role }>()
+    const mine = a?.requester_seat_id === actor.seatId
+    // The requester cancels and nobody else does. The requester never approves or rejects: approvals also has
+    // CHECK (checker <> requester), so the database refuses the row even if this line were gone.
+    outcome = !a || (decision === 'cancel' && !mine) ? 'not_found' : decision !== 'cancel' && mine ? 'own_request' : decision === 'approve' && (a.not_before ?? 0) > now ? 'too_early' : 'ok'
+    if (!a || outcome !== 'ok') return null
+    const close = (state: string) => db.prepare(`UPDATE approvals SET state = ?, checker_seat_id = ?, decided_at = ? WHERE org_id = ? AND id = ? AND state = 'pending'`)
+      .bind(state, decision === 'cancel' ? null : actor.seatId, now, actor.orgId, id)
+    if (decision === 'reject') return [seatEntry(actor, now, 'approval.reject', id, a.action), [close('rejected')]]
+    if (decision === 'cancel') return [seatEntry(actor, now, 'approval.cancel', id, a.action), [close('cancelled')]]
+    const judged = await judge(db, actor.orgId, a.role, a.action, a.subject_id, (JSON.parse(a.payload) as { value: string | null }).value, now)
+    if (typeof judged === 'string') {
+      outcome = judged
+      return null
+    }
+    return [seatEntry(actor, now, a.action, a.subject_id, judged.detail), [close('applied'), ...judged.apply]]
+  })
+  return outcome
+}
+
+/** The requests that wait: all of them for a key role (who may decide), their own for anyone else. With names, since most roles see no member list. */
+export async function openRequests(db: D1Database, actor: Actor, now: number) {
+  const { results } = await db
+    .prepare(`SELECT a.id, a.action AS kind, a.subject_id AS subjectId, t.display_name AS name, t.role, a.payload, a.requester_seat_id AS requesterSeatId, r.display_name AS requester, r.role AS requesterRole,
+                     a.created_at AS createdAt, a.expires_at AS expiresAt, a.not_before AS notBefore
+              FROM approvals a JOIN seats r ON r.org_id = a.org_id AND r.id = a.requester_seat_id AND r.state = 'active'
+              LEFT JOIN seats t ON t.org_id = a.org_id AND t.id = a.subject_id
+              WHERE a.org_id = ? AND ${OPEN_REQUEST} AND (? = 1 OR a.requester_seat_id = ?) ORDER BY a.created_at, a.id`)
+    .bind(actor.orgId, now, KEY_ROLES.includes(actor.role) ? 1 : 0, actor.seatId).all<{ id: string; kind: Kind; subjectId: string; name: string | null; role: Role | null; payload: string; requesterSeatId: string; requester: string; requesterRole: Role; createdAt: number; expiresAt: number; notBefore: number | null }>()
+  return results.map(({ payload, ...a }) => ({ ...a, value: (JSON.parse(payload) as { value: string | null }).value, mine: a.requesterSeatId === actor.seatId }))
+}
+
+/** Frozen seats, with who froze each and when: read from the audit rows. A stop is a freeze by the seat's own replaced passkey. */
+export async function frozenSeats(db: D1Database, orgId: string, seatId: string | null = null) {
+  const { results } = await db
+    .prepare(`SELECT s.id, s.display_name AS name, f.display_name AS by, a.at, a.action FROM seats s
+              LEFT JOIN audit_log a ON a.org_id = s.org_id AND a.seq = (SELECT max(x.seq) FROM audit_log x WHERE x.org_id = s.org_id
+                AND ((x.action = 'seat.freeze' AND x.subject_id = s.id) OR (x.action = 'credential.stop' AND x.actor_id = s.id)))
+              LEFT JOIN seats f ON f.org_id = a.org_id AND f.id = a.actor_id
+              WHERE s.org_id = ? AND s.state = 'frozen' AND (? IS NULL OR s.id = ?) ORDER BY s.created_at, s.id`)
+    .bind(orgId, seatId, seatId).all<{ id: string; name: string; by: string | null; at: number | null; action: string | null }>()
+  return results.map((seat) => ({ id: seat.id, name: seat.name, by: seat.by, at: seat.at, stopped: seat.action === 'credential.stop' }))
+}
+
+// ---- the audit log, as its readers see it: names instead of ids, newest first ----
+
+export interface AuditLine { seq: number; at: number; action: string; detail: string | null; who: string | null; target: string | null; prevHash: string; hash: string }
+/** One page before `before` (newest first), or the whole chain in order for the export (`limit` -1). */
+export async function auditRows(db: D1Database, actor: Actor, before: number | null, limit: number) {
+  const named = (table: string, seat: string) => `(SELECT n.display_name FROM ${table} x JOIN seats n ON n.org_id = x.org_id AND n.id = x.${seat} WHERE x.org_id = a.org_id AND x.id = a.subject_id)`
+  const { results } = await db
+    .prepare(`SELECT a.seq, a.at, a.action, a.detail, w.display_name AS who, a.prev_hash AS prevHash, a.hash,
+                     COALESCE(t.display_name, ${named('credentials', 'seat_id')}, ${named('enrolment_tickets', 'seat_id')}, ${named('sessions', 'seat_id')}, ${named('approvals', 'subject_id')}) AS target
+              FROM audit_log a LEFT JOIN seats w ON w.org_id = a.org_id AND w.id = a.actor_id LEFT JOIN seats t ON t.org_id = a.org_id AND t.id = a.subject_id
+              WHERE a.org_id = ? AND (? IS NULL OR a.seq < ?) ORDER BY a.seq * ? LIMIT ?`)
+    .bind(actor.orgId, before, before, limit < 0 ? 1 : -1, limit).all<AuditLine>()
+  return results
+}
+/** The export writes its row first: if that fails, no file leaves. The row is part of the file. */
+export async function exportAudit(db: D1Database, actor: Actor, now: number) {
+  await commit(db, actor.orgId, () => [seatEntry(actor, now, 'audit.export', null), []])
+  return auditRows(db, actor, null, -1)
+}
+
 // ---- alerts: no email exists, so a member is told at sign-in (recovery.md section 1) ----
 
-export interface Alert { key: string; kind: string; at?: number; until?: number; name?: string }
+export interface Alert { key: string; kind: string; at?: number | null; until?: number; name?: string; by?: string | null; stopped?: boolean; what?: string; detail?: string | null; mine?: boolean }
 // ponytail: alerts are read from the rows of the last 7 days on each /api/me; the server keeps no "seen"
 // mark (the browser remembers what was read). Add a table if an alert must be acknowledged by name.
 export async function alertsFor(db: D1Database, actor: Actor, now: number) {
   const since = now - ALERT_MS
-  const [tickets, added, frozen, closed] = await db.batch([
+  const [tickets, added, closed, changed] = await db.batch([
     // The member's own re-enrolments, and every confirmed ticket of a colleague that this member did not issue.
     db.prepare(`SELECT t.id, t.kind, t.state, t.seat_id, t.created_at, s.display_name FROM enrolment_tickets t JOIN seats s ON s.org_id = t.org_id AND s.id = t.seat_id
                 WHERE t.org_id = ? AND t.created_at > ? AND ((t.kind = 're_enrolment' AND t.seat_id = ?) OR (t.state = 'confirmed' AND t.seat_id <> ? AND t.issuer_seat_id <> ?))
                 ORDER BY t.created_at, t.id`).bind(actor.orgId, since, actor.seatId, actor.seatId, actor.seatId),
     db.prepare(`SELECT subject_id, at FROM audit_log WHERE org_id = ? AND actor_id = ? AND action = 'credential.add' AND at > ? AND session_id <> ? ORDER BY seq`).bind(actor.orgId, actor.seatId, since, actor.sessionId),
-    db.prepare(`SELECT id, display_name FROM seats WHERE org_id = ? AND state = 'frozen' ORDER BY created_at, id`).bind(actor.orgId),
     // "The issuer is flagged": a sign-in that closed a re-enrolment is shown to the people who can issue one.
     db.prepare(`SELECT a.subject_id AS id, a.at, s.display_name FROM audit_log a JOIN seats s ON s.org_id = a.org_id AND s.id = a.actor_id
                 WHERE a.org_id = ? AND a.action = 'session.create' AND a.detail = 'ticket_killed' AND a.at > ? AND a.actor_id <> ? AND ? = 1 ORDER BY a.seq`).bind(actor.orgId, since, actor.seatId, seesAll(actor)),
+    // What two people changed: told to every member but the one who approved it.
+    db.prepare(`SELECT a.seq, a.at, a.action, a.detail, a.subject_id, s.display_name FROM audit_log a LEFT JOIN seats s ON s.org_id = a.org_id AND s.id = a.subject_id
+                WHERE a.org_id = ? AND a.at > ? AND a.actor_id <> ? AND a.action IN ('seat.unfreeze', 'seat.remove', 'seat.role', 'policy.synced_keys') AND a.detail IS NOT 'invited' ORDER BY a.seq`).bind(actor.orgId, since, actor.seatId),
   ])
+  const requests = KEY_ROLES.includes(actor.role) ? (await openRequests(db, actor, now)).filter((request) => !request.mine) : []
   const waiting = (await openTickets(db, actor, now)).filter((t) => t.myStep)
   return [
     ...(quarantined(actor, now) ? [{ key: `quarantine:${actor.quarantineUntil}`, kind: 'quarantine', until: actor.quarantineUntil! }] : []),
@@ -532,9 +729,12 @@ export async function alertsFor(db: D1Database, actor: Actor, now: number) {
       t.seat_id !== actor.seatId ? { key: `re:${t.id}`, kind: t.kind === 're_enrolment' ? 'colleague_re_enrolled' : 'colleague_joined', at: t.created_at, name: t.display_name }
       : { key: `re:${t.id}:${t.state}`, kind: t.state === 'confirmed' ? 're_enrolment_completed' : 're_enrolment_started', at: t.created_at }),
     ...(added.results as { subject_id: string; at: number }[]).map((c) => ({ key: `key:${c.subject_id}`, kind: 'new_passkey', at: c.at })),
-    ...(frozen.results as { id: string; display_name: string }[]).map((seat) => ({ key: `frozen:${seat.id}`, kind: 'seat_frozen', name: seat.display_name })),
+    ...(await frozenSeats(db, actor.orgId)).map((seat) => ({ key: `frozen:${seat.id}:${seat.at}`, kind: 'seat_frozen', name: seat.name, by: seat.by, at: seat.at, stopped: seat.stopped })),
     ...(closed.results as { id: string; at: number; display_name: string }[]).map((s) => ({ key: `closed:${s.id}`, kind: 're_enrolment_closed', at: s.at, name: s.display_name })),
     ...waiting.map((t) => ({ key: `wait:${t.id}:${t.myStep}`, kind: 'confirmation_waiting', name: t.name })),
+    ...requests.map((request) => ({ key: `request:${request.id}`, kind: 'approval_waiting', name: request.requester })),
+    ...(changed.results as { seq: number; at: number; action: string; detail: string | null; subject_id: string; display_name: string | null }[]).map((c) =>
+      ({ key: `change:${c.seq}`, kind: 'changed', what: c.action, detail: c.detail, at: c.at, name: c.display_name ?? '', mine: c.subject_id === actor.seatId })),
   ] satisfies Alert[]
 }
 
