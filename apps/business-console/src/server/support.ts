@@ -19,32 +19,17 @@ const IDS = [...ANSWERS.map((a) => a.id), NONE]
 // One form per character before anything is judged: full-width letters and digits become plain ones (NFKC), and
 // characters that take no room (zero-width space and joiners, soft hyphen, direction marks) go, so that neither splits a value.
 const plain = (raw: string) => raw.normalize('NFKC').replace(/\p{Cf}/gu, '')
-const SEED = new Map(english.map((word, i) => [word, i]))
-// BIP-39: each word is an 11-bit number; the last bits of a phrase (one per 3 words) are the first bits of the SHA-256 of the rest.
-async function checksum(words: string[]) {
-  const bits = words.map((word) => SEED.get(word)!.toString(2).padStart(11, '0')).join('')
-  const split = bits.length - words.length / 3
-  const hash = new Uint8Array(await crypto.subtle.digest('SHA-256', Uint8Array.from(bits.slice(0, split).match(/.{8}/g)!, (byte) => parseInt(byte, 2))))
-  return bits.slice(split) === hash[0].toString(2).padStart(8, '0').slice(0, words.length / 3)
-}
+const SEED = new Set(english)
 /**
- * A wallet recovery phrase: words of the BIP-39 English list in a row, whatever stands between them (numbers, commas,
- * lines): 12 or 15 of them with a valid checksum, or 16 or more whatever the checksum (a phrase of 24, also mistyped
- * or cut). Such a question is refused whole, so that no part of the phrase leaves and its member is told. A plain
- * question of 12 to 15 list words ("can you cancel this account change ...") passes unless its last word happens to
- * be a checksum: 1 in 16 for a window of 12.
- * ponytail: the English list only (it ships with viem); a phrase in another language, or 12 words of which one is
- * mistyped or missing, is not seen.
+ * A wallet recovery phrase: 12 or more words of the BIP-39 English list in a row, whatever stands between them
+ * (numbers, commas, lines) and whatever their checksum (G8: a mistyped or cut phrase is still a phrase). Such a
+ * question is refused whole, so that no part of the phrase leaves and its member is told. The price: a plain question
+ * that happens to be 12 list words in a row is refused too, and its member says it in other words.
+ * ponytail: the English list only (it ships with viem); a phrase in another language is not seen.
  */
-export async function secret(raw: string): Promise<boolean> {
-  const words = plain(raw).toLowerCase().split(/[^a-z]+/)
-  for (let i = 0, start = 0; i <= words.length; i++) {
-    if (SEED.has(words[i])) continue
-    const run = words.slice(start, i)
-    start = i + 1
-    if (run.length >= 16) return true
-    for (const size of [12, 15]) for (let at = 0; at + size <= run.length; at++) if (await checksum(run.slice(at, at + size))) return true
-  }
+export function secret(raw: string): boolean {
+  let run = 0
+  for (const word of plain(raw).toLowerCase().split(/[^a-z]+/)) if ((run = SEED.has(word) ? run + 1 : 0) >= 12) return true
   return false
 }
 
@@ -121,7 +106,7 @@ interface Asked {
 /** POST /api/support/ask. Answers { answers: [one or two entries] } or { handover: true }; a failure is a hand-over. */
 export async function ask(c: Asked): Promise<Response> {
   const raw = typeof c.body.question === 'string' ? c.body.question : ''
-  if (await secret(raw)) return Response.json({ error: 'secret' }, { status: 400 })
+  if (secret(raw)) return Response.json({ error: 'secret' }, { status: 400 })
   const question = clean(raw)
   if (!question) return Response.json({ error: 'invalid' }, { status: 400 })
   if (!(await countHour(c.env.DB, `seat:${c.actor.seatId}`, c.now, LIMITS.perHour))) return Response.json({ error: 'too_many' }, { status: 429 })

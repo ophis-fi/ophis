@@ -60,7 +60,7 @@ export function Support({ onSignedOut }: { onSignedOut: () => void }) {
       <div className="stack" aria-live="polite">
         {view.kind === 'busy' && <p className="fine" role="status">Looking for the matching help text.</p>}
         {view.kind === 'empty' && <div className="note warn" role="status"><Icon name="info" /><span>Type your question in words. Addresses, email addresses, links and long numbers are removed before it is matched.</span></div>}
-        {view.kind === 'secret' && <div className="note warn" role="status"><Icon name="info" /><span>This looks like a wallet recovery phrase (seed phrase). It was not passed on and not stored. Never type one into a website, an email or a chat.</span></div>}
+        {view.kind === 'secret' && <div className="note warn" role="status"><Icon name="info" /><span>This looks like a wallet recovery phrase (seed phrase): 12 or more of its words in a row. It was not passed on and not stored. Never type one into a website, an email or a chat. If it was a plain question, ask it in other words.</span></div>}
         {view.kind === 'thanks' && <div className="note ok" role="status"><Icon name="check" /><span>Good. You can ask another question at any time.</span></div>}
         {entry && view.kind === 'answer' && (
           <section className="panel stack" aria-labelledby="sp-answer">

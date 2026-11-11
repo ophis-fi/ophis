@@ -5366,13 +5366,16 @@ describe('F. Support: attacks tried by the review of milestone 6', () => {
     expect((await ask(m, twelve.split(' ').slice(0, 11).join(' '))).status).toBe(200)
     // 21 of these 31 words are on the list, 7 in a row at most.
     expect((await ask(m, 'can you help with that issue because our team will need access again very soon, and then we want to add a second key for the new member of this group')).status).toBe(200)
-    // Questions of this product can be list words only (13 and 12 here): they are no phrase, the last word of one is a checksum.
-    for (const plain of ['can you cancel this account change before any other company owner can approve', 'can you confirm this company can allow any other member account access']) expect((await ask(m, plain)).status, plain).toBe(200)
-    // 16 list words in a row are refused whatever their checksum: a phrase of 24 words with one of them mistyped.
-    expect((await ask(m, twentyFour.replace('bless', 'bliss'))).body).toEqual({ error: 'secret' })
-    // The checksum plays no part from 16 words on: 16 times the last word of the list is refused, 15 times is not (no window of it is a phrase).
-    expect([(await ask(m, Array(16).fill('zoo').join(' '))).status, (await ask(m, Array(15).fill('zoo').join(' '))).status]).toEqual([400, 200])
-    expect(sent).toHaveLength(5)
+    // G8: the checksum plays no part. 12 list words in a row are refused: a phrase with its last word mistyped or
+    // swapped, a phrase of 24 with a slip, and also a plain question that is 13 or 12 list words in a row.
+    for (const phrase of [twelve.replace('yellow', 'zoo'), twentyFour.replace('bless', 'bliss'), 'can you cancel this account change before any other company owner can approve', 'can you confirm this company can allow any other member account access']) {
+      expect((await ask(m, phrase)).body, phrase).toEqual({ error: 'secret' })
+    }
+    // Exactly 12: 12 times the last word of the list is refused, 11 times is not, and a word that is not on the list starts the count again.
+    expect([(await ask(m, Array(12).fill('zoo').join(' '))).status, (await ask(m, Array(11).fill('zoo').join(' '))).status]).toEqual([400, 200])
+    expect((await ask(m, `${Array(11).fill('zoo').join(' ')} ophis ${Array(11).fill('zoo').join(' ')}`)).status).toBe(200)
+    expect([sent.length, await counted(m.seatId)]).toEqual([4, 4])
+    expect(supportServer).not.toMatch(/checksum\(/)
     expect(supportPage).toContain('This looks like a wallet recovery phrase')
     expect(supportPage).toContain('<span>{PRIVACY} {CARE}</span>')
   })
