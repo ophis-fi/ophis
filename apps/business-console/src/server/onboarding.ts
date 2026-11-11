@@ -98,17 +98,19 @@ const firstOf = (db: D1Database, orgId: string) =>
  * A7: what a review needs, from the rows as they are now. Two device-bound passkeys on the first Owner's seat, and
  * either the activation proof (a wallet stored as pending, while the passkey it confirmed is still active) or a second
  * Owner with two device-bound passkeys. G5: a named wallet with a single key is refused when the organisation has
- * other members, by the rule of a recovery (PEOPLE). Null: it holds. Read when the Owner submits and again when the operator approves.
+ * other members, by the rule of a recovery (PEOPLE). Milestone 5b: and the signed declaration, sealed. Null: it holds.
+ * Read when the Owner submits and again when the operator approves.
  */
-async function missing(db: D1Database, orgId: string, now: number): Promise<null | 'not_found' | 'second_key' | 'proof_or_owner' | 'single_key'> {
+async function missing(db: D1Database, orgId: string, now: number): Promise<null | 'not_found' | 'second_key' | 'proof_or_owner' | 'single_key' | 'declaration'> {
   const first = await firstOf(db, orgId)
   if (!first) return 'not_found'
   const owner = `s.org_id = ?1 AND s.role = 'owner' AND s.state = 'active' AND (SELECT count(*) FROM credentials k WHERE k.org_id = s.org_id AND k.seat_id = s.id AND k.state = 'active' AND k.device_bound = 1) >= 2`
   const seen = (await db.prepare(`SELECT (SELECT count(*) FROM seats s WHERE ${owner} AND s.id = ?2) AS own, (SELECT count(*) FROM seats s WHERE ${owner} AND s.id <> ?2) AS others,
                                          (SELECT count(*) FROM wallets w WHERE w.org_id = ?1 AND w.state = 'pending') AS proof,
-                                         (SELECT count(*) FROM wallets w WHERE w.org_id = ?1 AND w.state = 'pending' AND w.kind = 'single_key') AS single, ${PEOPLE('?1', '?3')} AS people`)
-    .bind(orgId, first.seatId, now).first<{ own: number; others: number; proof: number; single: number; people: number }>())!
-  return !seen.own ? 'second_key' : !((seen.proof && first.active) || seen.others) ? 'proof_or_owner' : seen.single && seen.people > 1 ? 'single_key' : null
+                                         (SELECT count(*) FROM wallets w WHERE w.org_id = ?1 AND w.state = 'pending' AND w.kind = 'single_key') AS single, ${PEOPLE('?1', '?3')} AS people,
+                                         (SELECT count(*) FROM sealed_items i WHERE i.org_id = ?1 AND i.kind = 'declaration') AS declared`)
+    .bind(orgId, first.seatId, now).first<{ own: number; others: number; proof: number; single: number; people: number; declared: number }>())!
+  return !seen.own ? 'second_key' : !((seen.proof && first.active) || seen.others) ? 'proof_or_owner' : seen.single && seen.people > 1 ? 'single_key' : !seen.declared ? 'declaration' : null
 }
 
 interface Proved { orgId: string; seatId: string; chainId: number; address: string; kind: WalletKind; label: string; snapshot: string | null; credentialHash: string; nonce: string; digest: string; signature: string }
@@ -527,7 +529,8 @@ export async function submit(c: Member) {
 interface OperatorEnv { DB: D1Database; SEALED: R2Bucket; ENVIRONMENT: string; CHALLENGE_KEY: string; OPERATOR_TOKEN?: string }
 
 // What the operator compares before a decision: the domain, the first Owner's words and passkey hash, the recovery
-// wallet with its kind and its colour (read on both endpoints now, as if it were in force), and whether A7 holds.
+// wallet with its kind and its colour (read on both endpoints now, as if it were in force), whether A7 holds, and the
+// sealed declaration: its id, size, date and SHA-256.
 async function list(c: Ctx) {
   const organisations = []
   for (const o of await underReview(c.env.DB)) {
@@ -538,6 +541,8 @@ async function list(c: Ctx) {
     organisations.push({
       id: o.id, legalName: o.legalName, kind: o.kind, country: o.country, registration: o.registration, domain: o.domain, submittedAt: o.reviewAt, submission: await submissionOf(o.print),
       phrase: await wordsOf(c, o.id, first), credentialHash: first.hash, missing: await missing(c.env.DB, o.id, c.now),
+      // Milestone 5b: that the sealed declaration exists, and what the server knows of it. "items" and "get" are the way to the file.
+      declaration: (await sealedOf(c.env.DB, o.id)).find((item) => item.kind === 'declaration') ?? null,
       wallet: wallet && { ...walletView(wallet), colour: colour({ kind: wallet.kind, snapshot: wallet.snapshot, inForce: true }, live) },
     })
   }

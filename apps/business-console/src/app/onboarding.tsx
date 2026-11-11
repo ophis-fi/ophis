@@ -29,6 +29,11 @@ const SAY: Record<string, string> = {
   second_key: 'The first Owner needs two passkeys. Add the second under Organisation, My passkeys.',
   proof_or_owner: 'One of two things is still missing: the signature of the recovery wallet, or a second Owner with two passkeys.',
   single_key: 'A recovery wallet with a single key is accepted only while the organisation has one member. Name a Safe or a custodian wallet instead.',
+  declaration: 'The signed declaration is still missing. Print it, have it signed, then seal and upload the scan.',
+  not_sealed: 'This is not a file sealed by this page. Choose the scan again and use "Seal and upload".',
+  too_large: 'The file is larger than 10 MB. Scan the page again at a lower resolution.',
+  not_configured: 'Sealing is not configured here yet. No file can be uploaded.',
+  key_changed: 'This page was built for another sealing key. Reload it and try again.',
   already_submitted: 'The organisation is already under review.',
   not_unverified: 'The organisation is already verified.',
   first_passkey_gone: 'The first Owner passkey is no longer active, so a wallet cannot confirm it. Enrol a second Owner with two passkeys instead.',
@@ -349,7 +354,7 @@ export function Onboarding({ owner, onSignedOut }: { owner: boolean; onSignedOut
   const { company, first, review, missing, signin } = view
   const verified = review.status === 'verified'
   const keys = verified || (missing !== 'second_key' && missing !== 'not_found')
-  const proved = verified || missing === null
+  const proved = verified || missing === null || missing === 'declaration' // the declaration is asked for last
 
   return (
     <>

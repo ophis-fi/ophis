@@ -5506,13 +5506,16 @@ describe('E. onboarding: a company applies, proves its domain, is activated and 
     const me = await call('GET', '/api/me', { cookie: session.cookie })
     return { orgId: me.body.organisation.id as string, seatId: a.seat, key: a.key, cookie: session.cookie, domain: a.domain, intent: a.intent, name: 'Alder Custody S.A.', sessionId: me.body.session.id as string, ticket: '' }
   }
-  // The same with two passkeys on the Owner seat: what every further step needs.
-  async function applicantWithTwoKeys(domain?: string) {
+  // The same with two passkeys on the Owner seat: what every further step needs. Milestone 5b: and with the signed
+  // declaration, sealed and uploaded, which "Submit for review" needs; `declare: false` leaves that step open.
+  async function applicantWithTwoKeys(domain?: string, declare = true) {
     const a = await applied(domain)
     const second = await addKey(a)
     expect(second.status).toBe(200)
+    if (declare) expect((await upload(a, await sealedFile())).status).toBe(200)
     return { ...a, key2: second.key }
   }
+  const undeclared = (domain?: string) => applicantWithTwoKeys(domain, false)
   interface ActivateFields { kind: 'activate'; org: string; chainId: number; wallet: string; label: string; custodian: boolean; credentialHash: string; phrase: string; nonce: string; issuedAt: number; expiresAt: number; site: string }
   const typedActivate = (i: ActivateFields, change: Partial<Parameters<typeof typedProof>[0]> = {}) =>
     typedProof({ kind: 'activate', chainId: i.chainId, site: i.site, organisationId: i.org, wallet: i.wallet, credentialHash: i.credentialHash, phrase: i.phrase, nonce: i.nonce, issuedAt: i.issuedAt, expiresAt: i.expiresAt, ...change }) as never
@@ -5526,13 +5529,10 @@ describe('E. onboarding: a company applies, proves its domain, is activated and 
     return { ...(await prove(asked.body.intent, signature)), intent: asked.body.intent as string, fields, signature }
   }
   const submit = (m: Holder, body: unknown = {}) => post('/api/onboarding/submit', m, body)
-  // Milestone 5b: the signed declaration, sealed as a browser seals it, uploaded by the Owner.
-  const declared = async (m: Holder) => expect((await upload(m, await sealedFile())).status).toBe(200)
   // Two passkeys, the activation proof of a single key, the sealed declaration, submitted: what the operator finds under review.
   async function underReview(domain?: string) {
     const a = await applicantWithTwoKeys(domain)
     expect((await activation(a)).body).toEqual({ state: 'stored' })
-    await declared(a)
     expect((await submit(a)).body).toEqual({ state: 'under_review' })
     return a
   }
@@ -6312,7 +6312,7 @@ describe('E. onboarding: a company applies, proves its domain, is activated and 
     const view = (await call('GET', '/api/onboarding', { cookie: a.cookie })).body
     expect(await mine()).toEqual([{
       id: a.orgId, legalName: 'Alder Custody S.A.', kind: 'institution', country: 'LU', registration: 'B123456', domain: 'alder-list.example', submittedAt: now, submission: await submissionOf(a.orgId),
-      phrase: view.first.phrase, credentialHash: view.first.credentialHash, missing: null,
+      phrase: view.first.phrase, credentialHash: view.first.credentialHash, missing: null, declaration: view.sealed,
       wallet: { chainId: CHAIN, chain: 'OP Mainnet', address: accounts[4].address, kind: 'safe', label: 'Treasury', inForce: false, threshold: 2, owners: 3, colour: { level: 'green', why: null } },
     }])
     // The colour is read on the chain now: a module added since the proof shows.
@@ -6545,7 +6545,6 @@ describe('E. onboarding: a company applies, proves its domain, is activated and 
       ['kyb.approve', () => decideOn(d.orgId)], ['kyb.more', () => decideOn(d.orgId, MORE)], ['kyb.refuse', () => decideOn(d.orgId, { ...MORE, decision: 'refuse' })],
       ['organisation.freeze', () => op('POST', `/api/operator/organisations/${e.orgId}/freeze`)],
     ]
-    await declared(c)
     const rows = await snapshot()
     const kept = await objects()
     await withTrigger('INSERT ON audit_log', async () => {
@@ -6632,9 +6631,46 @@ describe('E. onboarding: a company applies, proves its domain, is activated and 
     expect(onboardingSource.match(/INSERT INTO kyb_records/g)).toHaveLength(1)
     expect(dataSource).not.toContain('INSERT INTO kyb_records')
   }
+  it('B4: "Submit for review" needs the sealed declaration, read inside the commit; the operator\'s list shows that it exists, with its size, date and SHA-256', async () => {
+    const a = await undeclared()
+    const view = async (m: Holder = a) => (await call('GET', '/api/onboarding', { cookie: m.cookie })).body
+    // The steps in their order: the declaration is asked for last.
+    expect((await view()).missing).toBe('proof_or_owner')
+    expect((await activation(a)).body).toEqual({ state: 'stored' })
+    expect((await view()).missing).toBe('declaration')
+    const refused = await submit(a)
+    expect([refused.status, refused.body]).toEqual([409, { error: 'declaration' }])
+    expect(await orgRow(a.orgId)).toEqual({ state: 'unverified', review_at: null })
+    // Another organisation's declaration is not this one's.
+    const other = await underReview()
+    expect((await submit(a)).body).toEqual({ error: 'declaration' })
+    const file = await sealedFile()
+    expect((await upload(a, file)).status).toBe(200)
+    expect((await view()).missing).toBeNull()
+    // Read inside the commit: a declaration that goes at the same instant leaves nothing to submit.
+    const gone = racing(async () => {
+      await db.prepare('DELETE FROM sealed_items WHERE org_id = ?').bind(a.orgId).run()
+      await signIn(a.key)
+    }) as Env
+    expect((await call('POST', '/api/onboarding/submit', { cookie: a.cookie, env: gone })).body).toEqual({ error: 'declaration' })
+    const again2 = await sealedFile()
+    expect((await upload(a, again2)).status).toBe(200)
+    expect((await submit(a)).body).toEqual({ state: 'under_review' })
+    // The operator sees that it exists and what the server knows of it. Not a byte of it.
+    const list = (await op('GET', '/api/operator/organisations')).body.organisations as { id: string; declaration: unknown; missing: unknown }[]
+    const [item] = await itemsOf(a.orgId)
+    expect(list.find((o) => o.id === a.orgId)).toMatchObject({ missing: null, declaration: { id: item.id, size: again2.length, at: now, sha256: await sha256Of(again2), key: KEY, generation: 'g1' } })
+    expect(list.find((o) => o.id === other.orgId)!.declaration).toMatchObject({ id: (await itemsOf(other.orgId))[0].id })
+    // An approval reads it again: without the declaration nothing is approved.
+    await db.prepare('DELETE FROM sealed_items WHERE org_id = ?').bind(a.orgId).run()
+    expect((await op('GET', '/api/operator/organisations')).body.organisations.find((o: { id: string }) => o.id === a.orgId)).toMatchObject({ missing: 'declaration', declaration: null })
+    expect((await decideOn(a.orgId)).body).toEqual({ error: 'not_ready' })
+    expect(onboardingPage).toContain('declaration:')
+  })
+
   isolation['POST /api/onboarding/declaration'] = async (a) => {
     // X's upload is X's, whatever X sends. Y's item, its object and its review are untouched, and X's page shows nothing of Y.
-    const [x, y] = [await applicantWithTwoKeys(), await underReview()]
+    const [x, y] = [await undeclared(), await underReview()]
     const [theirs] = await itemsOf(y.orgId)
     const object = await objectOf(theirs.id)
     const done = await call('POST', `/api/onboarding/declaration?organisationId=${y.orgId}&org=${y.orgId}&id=${theirs.id}`, { cookie: x.cookie, body: await sealedFile(), headers: { 'x-seal-key': KEY, 'x-organisation': y.orgId, 'x-id': theirs.id } })
@@ -6675,7 +6711,7 @@ describe('E. onboarding: a company applies, proves its domain, is activated and 
   // ---- milestone 5b: the signed declaration, sealed in the browser (key-custody.md sections 3 and 4) ----
 
   it('B1: the declaration is built from the server\'s values and the page offers no way to edit them', async () => {
-    const a = await applicantWithTwoKeys('alder-decl.example')
+    const a = await undeclared('alder-decl.example')
     const view = async () => (await call('GET', '/api/onboarding', { cookie: a.cookie })).body
     const hash = (await row<{ detail: string }>('SELECT detail FROM audit_log WHERE org_id = ? AND seq = 1', a.orgId))!.detail
     expect(await view()).toMatchObject({
@@ -6720,7 +6756,7 @@ describe('E. onboarding: a company applies, proves its domain, is activated and 
   }) as unknown as Env
 
   it('B3: the upload is an age file with one hybrid stanza; the Worker stores the ciphertext under a random key and a row with its own SHA-256, and never a clear byte', async () => {
-    const a = await applicantWithTwoKeys()
+    const a = await undeclared()
     const before = await objects()
     const file = await sealedFile()
     expect(latin1(file)).not.toContain(MARKER)
@@ -6784,7 +6820,7 @@ describe('E. onboarding: a company applies, proves its domain, is activated and 
   })
 
   it('B3: the size cap is the server\'s: 10 MB of clear file and the age overhead, read only after the gates, and a session that ends while the file arrives stores nothing', async () => {
-    const a = await applicantWithTwoKeys()
+    const a = await undeclared()
     expect(onboarding.SEAL.maxBytes).toBe(10 * 1024 * 1024 + 8192)
     expect(routes.find((r) => r.path === '/api/onboarding/declaration')).toMatchObject({ method: 'POST', roles: ['owner'], fresh: true, twoKeys: true, unverified: true, raw: onboarding.SEAL.maxBytes })
     expect(routes.filter((r) => r.raw).length).toBe(1) // every other route takes JSON of 64 KB at most
@@ -6824,7 +6860,7 @@ describe('E. onboarding: a company applies, proves its domain, is activated and 
   })
 
   it('B3: only an Owner uploads, with a fresh check and two passkeys, while the organisation is unverified; role and state are read again inside the commit; the key is the environment\'s', async () => {
-    const a = await applicantWithTwoKeys()
+    const a = await undeclared()
     const file = await sealedFile()
     const kept = await objects()
     // Every other role: refused by the router, and nothing ever reaches the bucket.
