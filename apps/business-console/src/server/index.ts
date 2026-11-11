@@ -101,11 +101,7 @@ async function enrolFinish(c: Context) {
     return fail(400, 'passkey_rejected')
   }
   if (mustBeDeviceBound(ticket) && !credential.deviceBound) return fail(400, 'device_bound_required')
-  try {
-    await data.storePendingCredential(c.env.DB, ticket, credential, label, c.now)
-  } catch {
-    return fail(409, 'not_stored')
-  }
+  if (!(await data.storePendingCredential(c.env.DB, ticket, credential, label, c.now).catch(() => false))) return fail(409, 'not_stored')
   // Shown on the member's device only. No route gives it to anyone else: the colleague types what they hear.
   const phrase = await phraseOf(c, { ...ticket, credential_id: credential.id, public_key: credential.publicKey })
   return json(200, { state: 'pending', phrase: phrase.words, confirmBy: c.now + data.CONFIRM_MS })

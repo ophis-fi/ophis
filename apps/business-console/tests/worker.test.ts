@@ -1784,11 +1784,19 @@ describe('o. re-enrolment: suspended passkeys, the stop right, quarantine', () =
     expect((await enrolLink(invitation.body.link)).status).toBe(200)
     await again(viewer)
     expect(await row('SELECT action, detail FROM audit_log WHERE org_id = ? ORDER BY seq DESC LIMIT 1', o.orgId)).toEqual({ action: 'session.create', detail: null })
+    // The sign-in closes the tickets for the member's own seat, not the ones the member issued for others.
+    const admin = await colleague(o, 'admin')
+    const theirs = await issue(admin, { displayName: 'Bea Viewer', role: 'viewer' })
+    const onAdmin = await issue(o, { seatId: admin.seatId })
+    await again(admin)
+    expect(await row('SELECT state FROM enrolment_tickets WHERE id = ?', onAdmin.body.ticketId)).toEqual({ state: 'dead' })
+    expect(await row('SELECT state FROM enrolment_tickets WHERE id = ?', theirs.body.ticketId)).toEqual({ state: 'issued' })
   })
 })
 
 describe('p. alerts shown at sign-in (no email is sent)', () => {
-  const alerts = async (m: Holder) => (await call('GET', '/api/me', { cookie: m.cookie })).body.alerts as { kind: string; name?: string; until?: number }[]
+  // (The colleagues of these tests joined minutes ago, which is an alert of its own: section q.)
+  const alerts = async (m: Holder) => ((await call('GET', '/api/me', { cookie: m.cookie })).body.alerts as { kind: string; name?: string; until?: number }[]).filter((alert) => alert.kind !== 'colleague_joined')
   const kinds = async (m: Holder) => (await alerts(m)).map((alert) => alert.kind).sort()
 
   it('a new passkey on the seat: the next sign-in is told, the session that added it is not', async () => {
@@ -1885,20 +1893,30 @@ describe('q. attacks tried by the reviewer', () => {
     const half = await issue(thief, { seatId: compliance.seatId })
     const joined = await enrolLink(half.body.link)
     expect((await confirm(thief, half.body.ticketId, joined.words, thief.key)).body).toEqual({ state: 'second' })
-    // The real Admin stops the replacement.
+    // The real Admin stops the replacement. What the seat had issued is dead in the tables, so that
+    // unfreezing the seat later (two people, milestone 3) brings none of it back.
     expect((await stop(admin.key)).status).toBe(200)
+    for (const ticket of [link, half]) expect(await row('SELECT state FROM enrolment_tickets WHERE id = ?', ticket.body.ticketId)).toEqual({ state: 'dead' })
+    expect(await credentialState(joined.key)).toBe('revoked')
+    await db.prepare(`UPDATE seats SET state = 'active' WHERE id = ?`).bind(admin.seatId).run()
     expect((await call('POST', '/api/enrol/start', { body: { ticket: link.body.link.split('#/enrol/')[1] } })).status).toBe(404)
     await again(o)
     expect((await call('GET', '/api/org', { cookie: o.cookie })).body.tickets).toEqual([])
     expect((await confirm(o, half.body.ticketId, joined.words, o.key)).status).toBe(404)
-    expect(await credentialState(joined.key)).toBe('pending')
     expect(await credentialState(compliance.key)).toBe('active')
-    // The 72 hour wait does not outlive its issuer either.
+    // The same when a colleague freezes the issuer by revoking its last passkey.
+    const frozen = await colleague(o, 'admin')
+    const theirs = await issue(frozen, { displayName: 'Ada Viewer', role: 'viewer' })
+    for (const key of [frozen.key2, frozen.key]) expect((await post(`/api/passkeys/${key.id}/revoke`, o)).status).toBe(200)
+    expect(await row('SELECT state FROM enrolment_tickets WHERE id = ?', theirs.body.ticketId)).toEqual({ state: 'dead' })
+    // And whatever takes a seat out of the active state (removal, milestone 3): its link and its 72 hour wait are dead when read.
     const lonely = await owner()
     const invited = await issue(lonely, { displayName: 'First Admin', role: 'admin' })
     const waiting = await enrolLink(invited.body.link)
     expect((await confirm(lonely, invited.body.ticketId, waiting.words, lonely.key)).body.state).toBe('wait')
-    await db.prepare(`UPDATE seats SET state = 'frozen' WHERE id = ?`).bind(lonely.seatId).run()
+    const unused = await issue(lonely, { displayName: 'Ada Viewer', role: 'viewer' })
+    await db.prepare(`UPDATE seats SET state = 'removed' WHERE id = ?`).bind(lonely.seatId).run()
+    expect((await call('POST', '/api/enrol/start', { body: { ticket: unused.body.link.split('#/enrol/')[1] } })).status).toBe(404)
     now += 72 * HOUR
     expect((await signIn(waiting.key)).status).toBe(401)
     expect(await credentialState(waiting.key)).toBe('pending')
@@ -1944,6 +1962,117 @@ describe('q. attacks tried by the reviewer', () => {
     now = START + 72 * HOUR - 1
     expect((await signIn(joined.key)).status).toBe(401)
     expect(await credentialState(joined.key)).toBe('pending')
+  })
+
+  it('a ticket cancelled or killed while its link is being used stays dead: no passkey is stored and no words are shown', async () => {
+    const o = await owner()
+    const viewer = await colleague(o, 'viewer')
+    const finishing = async (link: string) => {
+      const token = link.split('#/enrol/')[1]
+      const key = await softwareAuthenticator(SITE)
+      return { key, body: { ticket: token, label: 'Key', response: await key.register((await call('POST', '/api/enrol/start', { body: { ticket: token } })).body.options) } }
+    }
+    // The Owner cancels at the instant the link is used.
+    const invitation = await issue(o, { displayName: 'Ada Viewer', role: 'viewer' })
+    const first = await finishing(invitation.body.link)
+    let cancelled = { status: 0 }
+    const late = await call('POST', '/api/enrol/finish', { body: first.body, env: racing(async () => (cancelled = await post(`/api/tickets/${invitation.body.ticketId}/cancel`, o))) })
+    expect([cancelled.status, late.status]).toEqual([200, 409])
+    expect(late.body).toEqual({ error: 'not_stored' })
+    expect(await row('SELECT state FROM enrolment_tickets WHERE id = ?', invitation.body.ticketId)).toEqual({ state: 'cancelled' })
+    expect(await credentialState(first.key)).toBeUndefined()
+    // The member signs in with a passkey they still hold at the instant a re-enrolment link is used.
+    const re = await issue(o, { seatId: viewer.seatId })
+    const second = await finishing(re.body.link)
+    const stolen = await call('POST', '/api/enrol/finish', { body: second.body, env: racing(() => again(viewer)) })
+    expect(stolen.status).toBe(409)
+    expect(await row('SELECT state FROM enrolment_tickets WHERE id = ?', re.body.ticketId)).toEqual({ state: 'dead' })
+    expect(await credentialState(second.key)).toBeUndefined()
+    expect((await call('GET', '/api/org', { cookie: (await again(o)).cookie })).body.tickets).toEqual([])
+  })
+
+  it('replaced and pending passkeys do not count: not toward the two a seat needs, not toward the 10 it may hold', async () => {
+    const o = await owner()
+    const admin = await colleague(o, 'admin')
+    const viewer = await colleague(o, 'viewer')
+    // The Viewer is re-enrolled: one active passkey, two suspended ones, and then a pending one from a second link.
+    const done = await ceremony(admin, { seatId: viewer.seatId })
+    const fresh = await again({ key: done.key, cookie: '' })
+    await enrolLink((await issue(o, { seatId: viewer.seatId })).body.link)
+    expect(await row(`SELECT group_concat(state) AS states FROM (SELECT state FROM credentials WHERE seat_id = ? ORDER BY state)`, viewer.seatId)).toEqual({ states: 'active,pending,suspended,suspended' })
+    expect((await call('GET', '/api/me', { cookie: fresh.cookie })).body.seat.keys).toBe(1)
+    expect((await post(`/api/passkeys/${done.key.id}/revoke`, fresh)).body).toEqual({ error: 'second_key_required' })
+    // Eight replaced passkeys from earlier rounds do not stop the member from adding the second one.
+    for (let n = 0; n < 6; n++) {
+      await db.prepare(`INSERT INTO credentials (id, org_id, seat_id, public_key, counter, device_bound, transports, label, state, created_at) VALUES (?, ?, ?, 'AA', 0, 1, '[]', 'Old key', 'suspended', ?)`)
+        .bind(data.randomId(), o.orgId, viewer.seatId, now).run()
+    }
+    expect(await row('SELECT count(*) AS n FROM credentials WHERE seat_id = ?', viewer.seatId)).toEqual({ n: 10 })
+    expect((await addKey(fresh)).status).toBe(200)
+    expect((await call('GET', '/api/me', { cookie: fresh.cookie })).body.seat.keys).toBe(2)
+  })
+
+  it('a stop revokes every passkey the replacement added; on a frozen seat a replaced passkey is told nothing and stops nothing', async () => {
+    const o = await owner()
+    const target = await colleague(o, 'viewer')
+    const done = await ceremony(o, { seatId: target.seatId })
+    const thief = await again({ key: done.key, cookie: '' })
+    const added = await addKey(thief)
+    expect(added.status).toBe(200)
+    expect((await post(`/api/passkeys/${done.key.id}/revoke`, thief)).status).toBe(200) // the thief keeps only the key it added itself
+    expect((await stop(target.key)).status).toBe(200)
+    expect(await credentialState(added.key)).toBe('revoked')
+    expect((await signIn(added.key)).status).toBe(401)
+    // A seat frozen by a colleague while its replaced passkeys still had their right.
+    const other = await colleague(o, 'viewer')
+    const again2 = await ceremony(await again(o), { seatId: other.seatId })
+    expect((await post(`/api/passkeys/${again2.key.id}/revoke`, o)).status).toBe(200)
+    expect(await row('SELECT state FROM seats WHERE id = ?', other.seatId)).toEqual({ state: 'frozen' })
+    expect((await signIn(other.key)).body).toEqual({ error: 'sign_in_failed' })
+    expect((await stop(other.key)).status).toBe(401)
+    expect(await credentialState(other.key)).toBe('suspended')
+  })
+
+  it('the second person is never shown the words either', async () => {
+    const o = await owner()
+    const approver = await colleague(o, 'approver')
+    const ticket = await issue(o, { displayName: 'New Admin', role: 'admin' })
+    const joined = await enrolLink(ticket.body.link)
+    const id = ticket.body.ticketId
+    expect((await confirm(o, id, joined.words, o.key)).body).toEqual({ state: 'second' })
+    const seen: unknown[] = [(await call('GET', '/api/org', { cookie: approver.cookie })).body, (await call('GET', '/api/me', { cookie: approver.cookie })).body]
+    const start = await post(`/api/tickets/${id}/confirm/start`, approver)
+    seen.push(start.body, (await post(`/api/tickets/${id}/confirm`, approver, { words: WRONG, response: await approver.key.authenticate(start.body.options) })).body)
+    const done = await confirm(approver, id, joined.words, approver.key)
+    expect(done.body).toEqual({ state: 'active' })
+    seen.push(done.body, (await call('GET', '/api/org', { cookie: approver.cookie })).body, (await call('GET', '/api/me', { cookie: approver.cookie })).body)
+    expect(seen).toHaveLength(7)
+    expect(shows(seen, joined.body.phrase)).toBe(false)
+  })
+
+  it('every member is told when a colleague joins, and Owners and Admins when a sign-in closed a re-enrolment', async () => {
+    const o = await owner()
+    const admin = await colleague(o, 'admin')
+    const trader = await colleague(o, 'trader')
+    const alerts = async (m: Holder) => (await call('GET', '/api/me', { cookie: m.cookie })).body.alerts as { kind: string; name?: string }[]
+    const joiners = async (m: Holder) => (await alerts(m)).filter((alert) => alert.kind === 'colleague_joined').map((alert) => alert.name).sort()
+    // A new member: everyone but the issuer and the new member is told (recovery.md step 8).
+    // (The Owner issued the tickets of the Admin and the Trader, so the Owner is not told about those two.)
+    const joined = await ceremony(admin, { displayName: 'Ada Viewer', role: 'viewer' })
+    expect(await joiners(o)).toEqual(['Ada Viewer'])
+    expect(await joiners(trader)).toEqual(['A admin', 'Ada Viewer'])
+    expect(await joiners(admin)).toEqual(['A trader'])
+    expect(await joiners(await again({ key: joined.key, cookie: '' }))).toEqual(['A admin', 'A trader'])
+    // An invitation that was never confirmed tells nobody.
+    await enrolLink((await issue(admin, { displayName: 'Bea Viewer', role: 'viewer' })).body.link)
+    expect(await joiners(o)).toEqual(['Ada Viewer'])
+    // The Admin starts a re-enrolment of the Trader; the Trader signs in with a passkey they still hold.
+    await issue(admin, { seatId: trader.seatId })
+    await again(trader)
+    for (const m of [o, admin]) expect(await alerts(m), m === o ? 'owner' : 'admin').toContainEqual(expect.objectContaining({ kind: 're_enrolment_closed', name: 'A trader' }))
+    for (const m of [trader, await again({ key: joined.key, cookie: '' })]) expect((await alerts(m)).map((alert) => alert.kind)).not.toContain('re_enrolment_closed')
+    const elsewhere = await owner()
+    expect(await alerts(elsewhere)).toEqual([])
   })
 
   it('the session of a replaced passkey reaches no route', async () => {

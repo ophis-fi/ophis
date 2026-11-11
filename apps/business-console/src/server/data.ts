@@ -20,7 +20,7 @@ const WAIT_OPEN_MS = 7 * 24 * HOUR // after the wait, the new passkey has 7 days
 const ALERT_MS = 7 * 24 * HOUR
 const MAX_ATTEMPTS = 3
 const MAX_TICKETS = 3 // per issuer and seat per 24 hours
-const MAX_PASSKEYS = 10 // per seat, revoked ones excluded
+const MAX_PASSKEYS = 10 // active ones, per seat
 /** Quarantine and the stop right last 24 hours for a Trader or Viewer, 72 hours for a key role. */
 const quarantineMs = (role: Role) => (KEY_ROLES.includes(role) ? 72 : 24) * HOUR
 const quarantined = (actor: Actor, now: number) => (actor.quarantineUntil ?? 0) > now
@@ -95,7 +95,8 @@ export interface Ticket { id: string; org_id: string; seat_id: string; kind: str
 // The ticket's role must be its seat's role: the key rule (Owners: hardware only) is read from the ticket,
 // the rights of the session from the seat, so a ticket that disagrees with its seat is dead.
 // A ticket is also dead once the seat that issued it is no longer active (ISSUER_ACTIVE): what a stopped or
-// frozen seat had started does not go on without it. The first Owner's ticket has no issuer.
+// frozen seat had started does not go on without it. (A freeze also closes those tickets in the tables: closeOpen.)
+// The first Owner's ticket has no issuer.
 const ISSUER_ACTIVE = `(t.issuer_seat_id IS NULL OR EXISTS (SELECT 1 FROM seats i WHERE i.org_id = t.org_id AND i.id = t.issuer_seat_id AND i.state = 'active'))`
 export function ticketByToken(db: D1Database, tokenHash: string, now: number) {
   return db
@@ -110,21 +111,25 @@ export function ticketByToken(db: D1Database, tokenHash: string, now: number) {
     .first<Ticket>()
 }
 
-/** Stores the new passkey as pending and kills the ticket. A pending passkey opens no session. */
-export async function storePendingCredential(
+/** Stores the new passkey as pending and kills the ticket. A pending passkey opens no session. False: the ticket was used, cancelled or killed meanwhile. */
+export function storePendingCredential(
   db: D1Database,
   ticket: Ticket,
   credential: { id: string; publicKey: string; counter: number; deviceBound: boolean; transports: string[] },
   label: string,
   now: number,
 ) {
-  await commit(db, ticket.org_id, () => [{ at: now, actorKind: 'seat', actorId: ticket.seat_id, sessionId: null, action: 'credential.store', subjectId: credential.id }, [
-    // credentials.ticket_id is UNIQUE: a second passkey for the same ticket fails the whole batch.
-    db.prepare(`INSERT INTO credentials (id, org_id, seat_id, public_key, counter, device_bound, transports, label, state, ticket_id, created_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?)`)
-      .bind(credential.id, ticket.org_id, ticket.seat_id, credential.publicKey, credential.counter, credential.deviceBound ? 1 : 0, JSON.stringify(credential.transports), label, ticket.id, now),
-    db.prepare(`UPDATE enrolment_tickets SET state = 'stored', stored_at = ? WHERE org_id = ? AND id = ?`).bind(now, ticket.org_id, ticket.id),
-  ]])
+  return commit(db, ticket.org_id, async () => {
+    // Read again here: the handler found the ticket before this write took its turn.
+    if (!(await db.prepare(`SELECT 1 FROM enrolment_tickets WHERE org_id = ? AND id = ? AND state = 'issued'`).bind(ticket.org_id, ticket.id).first())) return null
+    return [{ at: now, actorKind: 'seat', actorId: ticket.seat_id, sessionId: null, action: 'credential.store', subjectId: credential.id }, [
+      // credentials.ticket_id is UNIQUE: a second passkey for the same ticket fails the whole batch.
+      db.prepare(`INSERT INTO credentials (id, org_id, seat_id, public_key, counter, device_bound, transports, label, state, ticket_id, created_at)
+                  VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?)`)
+        .bind(credential.id, ticket.org_id, ticket.seat_id, credential.publicKey, credential.counter, credential.deviceBound ? 1 : 0, JSON.stringify(credential.transports), label, ticket.id, now),
+      db.prepare(`UPDATE enrolment_tickets SET state = 'stored', stored_at = ? WHERE org_id = ? AND id = ?`).bind(now, ticket.org_id, ticket.id),
+    ]]
+  })
 }
 
 export interface StoredCredential {
@@ -154,10 +159,11 @@ const closeTicket = (db: D1Database, orgId: string, ticketId: string, state: 'de
   db.prepare('UPDATE enrolment_tickets SET state = ? WHERE org_id = ? AND id = ?').bind(state, orgId, ticketId),
 ]
 // The same for every ticket a seat still has open. Run after the statements that settle the ticket that
-// wins, if any: whatever is still open then is dead.
-function closeOpen(db: D1Database, orgId: string, seatId: string, now: number): Sql[] {
-  const tickets = `SELECT id FROM enrolment_tickets WHERE org_id = ? AND seat_id = ? AND state IN ('issued', 'stored')`
-  const scope = [orgId, orgId, seatId]
+// wins, if any: whatever is still open then is dead. `issuedToo`: also the tickets the seat issued for
+// others, when it is frozen, so that unfreezing it later brings none of them back.
+function closeOpen(db: D1Database, orgId: string, seatId: string, now: number, issuedToo = false): Sql[] {
+  const tickets = `SELECT id FROM enrolment_tickets WHERE org_id = ? AND (seat_id = ? OR (? = 1 AND issuer_seat_id = ?)) AND state IN ('issued', 'stored')`
+  const scope = [orgId, orgId, seatId, issuedToo ? 1 : 0, seatId]
   return [
     db.prepare(`UPDATE credentials SET state = 'revoked' WHERE org_id = ? AND state = 'pending' AND ticket_id IN (${tickets})`).bind(...scope),
     db.prepare(`UPDATE approvals SET state = 'cancelled', decided_at = ? WHERE org_id = ? AND action = 'ticket.confirm' AND state = 'pending' AND subject_id IN (${tickets})`).bind(now, ...scope),
@@ -285,7 +291,7 @@ export function stepUp(db: D1Database, actor: Actor, seenTokenHash: string, x: {
 /** The member's own new passkey, active at once. The seat's other sessions end: whoever held one must sign in again and sees the alert. */
 export function addCredential(db: D1Database, actor: Actor, credential: { id: string; publicKey: string; counter: number; deviceBound: boolean; transports: string[] }, label: string, now: number) {
   return commit(db, actor.orgId, async () => {
-    if ((await seatCredentialIds(db, actor, false)).length >= MAX_PASSKEYS) return null
+    if ((await seatCredentialIds(db, actor, true)).length >= MAX_PASSKEYS) return null
     return [seatEntry(actor, now, 'credential.add', credential.id), [
       db.prepare(`INSERT INTO credentials (id, org_id, seat_id, public_key, counter, device_bound, transports, label, state, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'active', ?)`)
         .bind(credential.id, actor.orgId, actor.seatId, credential.publicKey, credential.counter, credential.deviceBound ? 1 : 0, JSON.stringify(credential.transports), label, now),
@@ -313,7 +319,7 @@ export async function revokeCredential(db: D1Database, actor: Actor, credentialI
     const freeze = c.seat_id !== actor.seatId && c.active < 2
     return [seatEntry(actor, now, 'credential.revoke', credentialId, freeze ? 'seat_frozen' : null), [
       db.prepare(`UPDATE credentials SET state = 'revoked' WHERE org_id = ? AND id = ?`).bind(actor.orgId, credentialId),
-      ...(freeze ? [db.prepare(`UPDATE seats SET state = 'frozen' WHERE org_id = ? AND id = ?`).bind(actor.orgId, c.seat_id), ...closeOpen(db, actor.orgId, c.seat_id, now)] : []),
+      ...(freeze ? [db.prepare(`UPDATE seats SET state = 'frozen' WHERE org_id = ? AND id = ?`).bind(actor.orgId, c.seat_id), ...closeOpen(db, actor.orgId, c.seat_id, now, true)] : []),
     ]]
   })
   return outcome as 'ok' | 'not_found' | 'forbidden' | 'quarantine' | 'last_passkey' // the plan assigns it; the compiler cannot see that
@@ -433,7 +439,7 @@ export async function confirmTicket(db: D1Database, actor: Actor, seen: OpenTick
   await commit(db, actor.orgId, async () => {
     const t = await ticketToConfirm(db, actor, seen.id, now)
     outcome = { state: 'gone' }
-    if (!t || t.attempts !== seen.attempts || t.myStep !== seen.myStep || t.credential_id !== seen.credential_id) return null
+    if (!t || t.attempts !== seen.attempts || t.credential_id !== seen.credential_id) return null
     const check = used(db, actor.orgId, x.credentialId, x.counter, now)
     if (!x.correct) {
       // The counter is exact: it is added to in the database, in the same batch as its audit row.
@@ -497,7 +503,7 @@ export function stopReplacement(db: D1Database, credential: StoredCredential, co
       used(db, orgId, credential.id, counter, now),
       db.prepare(`UPDATE seats SET state = 'frozen', quarantine_until = NULL WHERE org_id = ? AND id = ?`).bind(orgId, seatId),
       db.prepare('UPDATE sessions SET revoked_at = ? WHERE org_id = ? AND seat_id = ? AND revoked_at IS NULL').bind(now, orgId, seatId),
-      ...closeOpen(db, orgId, seatId, now),
+      ...closeOpen(db, orgId, seatId, now, true),
     ]]
   })
 }
@@ -509,21 +515,26 @@ export interface Alert { key: string; kind: string; at?: number; until?: number;
 // mark (the browser remembers what was read). Add a table if an alert must be acknowledged by name.
 export async function alertsFor(db: D1Database, actor: Actor, now: number) {
   const since = now - ALERT_MS
-  const [tickets, added, frozen] = await db.batch([
-    db.prepare(`SELECT t.id, t.state, t.seat_id, t.created_at, s.display_name FROM enrolment_tickets t JOIN seats s ON s.org_id = t.org_id AND s.id = t.seat_id
-                WHERE t.org_id = ? AND t.kind = 're_enrolment' AND t.created_at > ? AND (t.seat_id = ? OR (t.state = 'confirmed' AND t.issuer_seat_id <> ?))
-                ORDER BY t.created_at, t.id`).bind(actor.orgId, since, actor.seatId, actor.seatId),
+  const [tickets, added, frozen, closed] = await db.batch([
+    // The member's own re-enrolments, and every confirmed ticket of a colleague that this member did not issue.
+    db.prepare(`SELECT t.id, t.kind, t.state, t.seat_id, t.created_at, s.display_name FROM enrolment_tickets t JOIN seats s ON s.org_id = t.org_id AND s.id = t.seat_id
+                WHERE t.org_id = ? AND t.created_at > ? AND ((t.kind = 're_enrolment' AND t.seat_id = ?) OR (t.state = 'confirmed' AND t.seat_id <> ? AND t.issuer_seat_id <> ?))
+                ORDER BY t.created_at, t.id`).bind(actor.orgId, since, actor.seatId, actor.seatId, actor.seatId),
     db.prepare(`SELECT subject_id, at FROM audit_log WHERE org_id = ? AND actor_id = ? AND action = 'credential.add' AND at > ? AND session_id <> ? ORDER BY seq`).bind(actor.orgId, actor.seatId, since, actor.sessionId),
     db.prepare(`SELECT id, display_name FROM seats WHERE org_id = ? AND state = 'frozen' ORDER BY created_at, id`).bind(actor.orgId),
+    // "The issuer is flagged": a sign-in that closed a re-enrolment is shown to the people who can issue one.
+    db.prepare(`SELECT a.subject_id AS id, a.at, s.display_name FROM audit_log a JOIN seats s ON s.org_id = a.org_id AND s.id = a.actor_id
+                WHERE a.org_id = ? AND a.action = 'session.create' AND a.detail = 'ticket_killed' AND a.at > ? AND a.actor_id <> ? AND ? = 1 ORDER BY a.seq`).bind(actor.orgId, since, actor.seatId, seesAll(actor)),
   ])
   const waiting = (await openTickets(db, actor, now)).filter((t) => t.myStep)
   return [
     ...(quarantined(actor, now) ? [{ key: `quarantine:${actor.quarantineUntil}`, kind: 'quarantine', until: actor.quarantineUntil! }] : []),
-    ...(tickets.results as { id: string; state: string; seat_id: string; created_at: number; display_name: string }[]).map((t) =>
-      t.seat_id !== actor.seatId ? { key: `re:${t.id}`, kind: 'colleague_re_enrolled', at: t.created_at, name: t.display_name }
+    ...(tickets.results as { id: string; kind: string; state: string; seat_id: string; created_at: number; display_name: string }[]).map((t) =>
+      t.seat_id !== actor.seatId ? { key: `re:${t.id}`, kind: t.kind === 're_enrolment' ? 'colleague_re_enrolled' : 'colleague_joined', at: t.created_at, name: t.display_name }
       : { key: `re:${t.id}:${t.state}`, kind: t.state === 'confirmed' ? 're_enrolment_completed' : 're_enrolment_started', at: t.created_at }),
     ...(added.results as { subject_id: string; at: number }[]).map((c) => ({ key: `key:${c.subject_id}`, kind: 'new_passkey', at: c.at })),
     ...(frozen.results as { id: string; display_name: string }[]).map((seat) => ({ key: `frozen:${seat.id}`, kind: 'seat_frozen', name: seat.display_name })),
+    ...(closed.results as { id: string; at: number; display_name: string }[]).map((s) => ({ key: `closed:${s.id}`, kind: 're_enrolment_closed', at: s.at, name: s.display_name })),
     ...waiting.map((t) => ({ key: `wait:${t.id}:${t.myStep}`, kind: 'confirmation_waiting', name: t.name })),
   ] satisfies Alert[]
 }
