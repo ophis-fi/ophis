@@ -471,7 +471,7 @@ function Approval({ request, mayDecide, act }: { request: Request; mayDecide: bo
 }
 
 // What an Owner or Admin can do with one seat. Every choice says what it does before its button.
-function ManageDialog({ seat, frozen, mayOwner, act, onClose }: { seat: Member; frozen?: FrozenInfo; mayOwner: boolean; act: Act; onClose: () => void }) {
+function ManageDialog({ seat, frozen, mayOwner, quarantined, act, onClose }: { seat: Member; frozen?: FrozenInfo; mayOwner: boolean; quarantined: boolean; act: Act; onClose: () => void }) {
   const dialog = useRef<HTMLDialogElement>(null)
   const roles = Object.keys(ROLE).filter((code) => code !== seat.role && (mayOwner || code !== 'owner'))
   const [to, setTo] = useState(roles[0])
@@ -494,12 +494,13 @@ function ManageDialog({ seat, frozen, mayOwner, act, onClose }: { seat: Member; 
               <div className="body"><p>{effect('seat.freeze', seat.displayName, seat.role)}</p>
                 <button className="btn primary md" type="button" onClick={() => run('freeze')}><Icon name="ban" size={16} />Freeze seat now</button></div></li>
           )}
-          {seat.state === 'frozen' && (
+          {quarantined && <li><Tile name="clock" /><h3 className="h-card">Your seat is in quarantine</h3><div className="body"><p>Until it ends you can freeze a seat, and nothing else here.</p></div></li>}
+          {seat.state === 'frozen' && !quarantined && (
             <li><Tile name="circle-check" /><h3 className="h-card">Request unfreeze</h3>
               <div className="body"><p>{frozen && (frozen.stopped ? 'A replaced passkey of this seat stopped its replacement' : `Frozen by ${frozen.by ?? 'a colleague'}`)}{frozen?.at ? ` on ${minute(frozen.at)}. ` : ''}{effect('seat.unfreeze', seat.displayName, seat.role)} {two}</p>
                 <button className="btn primary md" type="button" onClick={() => run('unfreeze')}><Icon name="users" size={16} />Request unfreeze</button></div></li>
           )}
-          {seat.state === 'active' && (
+          {seat.state === 'active' && !quarantined && (
             <li><Tile name="users" /><h3 className="h-card">Request role change</h3>
               <div className="body">
                 <label className="field">New role
@@ -508,7 +509,7 @@ function ManageDialog({ seat, frozen, mayOwner, act, onClose }: { seat: Member; 
                 <p>{effect('seat.role', seat.displayName, seat.role, to)} {two}</p>
                 <button className="btn primary md" type="button" onClick={() => run('role', { role: to })}><Icon name="users" size={16} />Request role change</button></div></li>
           )}
-          {seat.state === 'invited' ? (
+          {quarantined ? null : seat.state === 'invited' ? (
             <li><Tile name="x" /><h3 className="h-card">Remove invitation</h3>
               <div className="body"><p>Removes the invited seat of {seat.displayName} and cancels its link. Nobody enrolled on it, so this is done at once, by you alone.</p>
                 <button className="btn primary md" type="button" onClick={() => run('remove')}><Icon name="x" size={16} />Remove invitation now</button></div></li>
@@ -626,14 +627,14 @@ export function Organisation({ me, onSignedOut, onChanged }: { me: Me; onSignedO
                 <td><Status>{capital(member.state)}</Status>{frozen && <small>{frozen.stopped ? 'A replaced passkey stopped its replacement' : `By ${frozen.by ?? 'a colleague'}`}{frozen.at ? ` on ${minute(frozen.at)}` : ''}</small>}</td>
                 {manages && <td><div className="acts">
                   {again && <button className="btn ghost sm" type="button" aria-label={`${member.state === 'active' ? 'Re-enrol' : 'New link for'} ${member.displayName}`} onClick={() => setTicketFor(member)}><Icon name="history" size={16} />{member.state === 'active' ? 'Re-enrol' : 'New link'}</button>}
-                  {ready && !quarantined && mayManage(member.role) && member.state !== 'removed' && <button className="btn ghost sm" type="button" aria-label={`Manage ${member.displayName}`} onClick={() => setManaged(member)}><Icon name="settings" size={16} />Manage</button>}
+                  {ready && (!quarantined || member.state === 'active') && mayManage(member.role) && member.state !== 'removed' && <button className="btn ghost sm" type="button" aria-label={`Manage ${member.displayName}`} onClick={() => setManaged(member)}><Icon name="settings" size={16} />Manage</button>}
                 </div></td>}
               </tr>
             )
           })}</tbody>
         </table></div>
       </Section>
-      {managed && <ManageDialog seat={managed} frozen={view?.frozen.find((seat) => seat.id === managed.id)} mayOwner={me.seat.role === 'owner'} act={act} onClose={() => setManaged(undefined)} />}
+      {managed && <ManageDialog seat={managed} frozen={view?.frozen.find((seat) => seat.id === managed.id)} mayOwner={me.seat.role === 'owner'} quarantined={quarantined} act={act} onClose={() => setManaged(undefined)} />}
       {ticketFor !== undefined && <TicketDialog seat={ticketFor} mayOwner={me.seat.role === 'owner'} onClose={() => { setTicketFor(undefined); void load() }} />}
 
       <Section id="my-passkeys" icon="key-round" title="My passkeys" hint={`Public keys only. Keep two${hardware ? ' hardware keys' : ''}: if you lose one, sign in with the other, revoke the lost one and add a new one.`}>

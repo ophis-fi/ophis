@@ -198,7 +198,7 @@ async function organisation(c: Context) {
   return json(200, {
     ...view, tickets: await data.openTickets(c.env.DB, c.actor, c.now), currentSessionId: c.session.id,
     approvals: await data.openRequests(c.env.DB, c.actor, c.now),
-    frozen: MANAGERS.includes(c.actor.role) ? await data.frozenSeats(c.env.DB, c.actor.orgId) : [],
+    frozen: await data.frozenSeats(c.env.DB, c.actor.orgId),
     syncedKeysAllowed: c.session.synced_keys_allowed === 1, rights,
   })
 }
@@ -421,7 +421,7 @@ export const routes: Route[] = [
   { method: 'POST', path: '/api/tickets/:id/cancel', roles: ['owner'], fresh: true, twoKeys: true, can: 'Cancel an enrolment that waits', handler: ticketCancel },
   { method: 'POST', path: '/api/stop/start', roles: 'public', handler: stopStart },
   { method: 'POST', path: '/api/stop/finish', roles: 'public', handler: stopFinish },
-  { method: 'POST', path: '/api/members/:id/freeze', roles: MANAGERS, fresh: true, twoKeys: true, settled: true, can: 'Freeze a seat at once, in an emergency (Admin: a seat at or below Admin)', handler: (c) => change(c, 'seat.freeze') },
+  { method: 'POST', path: '/api/members/:id/freeze', roles: MANAGERS, fresh: true, twoKeys: true, can: 'Freeze a seat at once, in an emergency (Admin: a seat at or below Admin)', handler: (c) => change(c, 'seat.freeze') },
   { method: 'POST', path: '/api/members/:id/unfreeze', roles: MANAGERS, fresh: true, twoKeys: true, settled: true, second: 'seat.unfreeze', can: 'Ask to unfreeze a seat' },
   { method: 'POST', path: '/api/members/:id/role', roles: MANAGERS, fresh: true, twoKeys: true, settled: true, second: 'seat.role', can: 'Ask to change a member\'s role, never above the own role' },
   { method: 'POST', path: '/api/members/:id/remove', roles: MANAGERS, fresh: true, twoKeys: true, settled: true, second: 'seat.remove', can: 'Ask to remove a member (an invited seat nobody enrolled on: removed at once)' },

@@ -2089,7 +2089,7 @@ describe('q. attacks tried by the reviewer', () => {
     expect((await call('GET', '/api/me', { cookie: fresh.cookie })).body.seat.keys).toBe(2)
   })
 
-  it('a stop revokes every passkey the replacement added; on a frozen seat a replaced passkey is told nothing and stops nothing', async () => {
+  it('a stop revokes every passkey the replacement added; on a frozen seat a replaced passkey keeps its right and no more', async () => {
     const o = await owner()
     const target = await colleague(o, 'viewer')
     const done = await ceremony(o, { seatId: target.seatId })
@@ -2105,8 +2105,7 @@ describe('q. attacks tried by the reviewer', () => {
     await ceremony(await again(o), { seatId: other.seatId })
     expect((await act(o, other.seatId, 'freeze')).status).toBe(200)
     expect(await row('SELECT state FROM seats WHERE id = ?', other.seatId)).toEqual({ state: 'frozen' })
-    expect((await signIn(other.key)).body).toEqual({ error: 'sign_in_failed' })
-    expect((await stop(other.key)).status).toBe(401)
+    expect((await signIn(other.key)).body).toMatchObject({ error: 'passkey_replaced' }) // told so, and given no session (section x)
     expect(await credentialState(other.key)).toBe('suspended')
   })
 
@@ -2185,6 +2184,7 @@ describe('r. the role table', () => {
     const any = 'owner,admin,trader,approver,compliance,viewer'
     const key = 'owner,admin,approver,compliance'
     const change = 'owner,admin fresh twoKeys settled'
+    // A freeze stays open in quarantine: it only tightens (recovery.md, "still open: freezing").
     expect(Object.fromEntries(routes.map((r) => [`${r.method} ${r.path}`, rule(r)]))).toEqual({
       'POST /api/enrol/start': 'public', 'POST /api/enrol/finish': 'public', 'POST /api/signin/start': 'public', 'POST /api/signin/finish': 'public',
       'POST /api/stop/start': 'public', 'POST /api/stop/finish': 'public',
@@ -2192,7 +2192,7 @@ describe('r. the role table', () => {
       'POST /api/passkeys/start': `${any} fresh`, 'POST /api/passkeys/finish': `${any} fresh`, 'POST /api/passkeys/:id/revoke': `${any} fresh twoKeys`,
       'POST /api/tickets': 'owner,admin fresh twoKeys', 'POST /api/tickets/:id/confirm/start': `${key} twoKeys`, 'POST /api/tickets/:id/confirm': `${key} twoKeys`,
       'POST /api/tickets/:id/cancel': 'owner fresh twoKeys',
-      'POST /api/members/:id/freeze': change, 'POST /api/members/:id/unfreeze': `${change} second:seat.unfreeze`,
+      'POST /api/members/:id/freeze': 'owner,admin fresh twoKeys', 'POST /api/members/:id/unfreeze': `${change} second:seat.unfreeze`,
       'POST /api/members/:id/role': `${change} second:seat.role`, 'POST /api/members/:id/remove': `${change} second:seat.remove`,
       'POST /api/policy': 'owner fresh twoKeys settled second:policy.synced_keys',
       'POST /api/approvals/:id/approve': `${key} fresh twoKeys settled`, 'POST /api/approvals/:id/reject': `${key} fresh twoKeys`, 'POST /api/approvals/:id/cancel': 'owner,admin',
@@ -2301,7 +2301,7 @@ describe('s. two-person approval', () => {
     expect((await decide(a, id, 'approve')).status).toBe(200)
   })
 
-  it('the second person passes a fresh passkey check and holds two passkeys; a seat in quarantine neither freezes, asks nor approves', async () => {
+  it('the second person passes a fresh passkey check and holds two passkeys; a seat in quarantine neither asks nor approves', async () => {
     const { o, a, v } = await trio()
     const { id } = (await act(o, v.seatId, 'role', { role: 'trader' })).body
     now += 5 * MIN + 1
@@ -2312,7 +2312,7 @@ describe('s. two-person approval', () => {
     await quarantine(a.seatId, now + HOUR)
     expect((await decide(a, id, 'approve')).body).toEqual({ error: 'quarantine' })
     await quarantine(o.seatId, now + HOUR)
-    for (const what of ['freeze', 'unfreeze', 'role', 'remove'] as const) expect((await act(o, v.seatId, what, { role: 'admin' })).body, what).toEqual({ error: 'quarantine' })
+    for (const what of ['unfreeze', 'role', 'remove'] as const) expect((await act(o, v.seatId, what, { role: 'admin' })).body, what).toEqual({ error: 'quarantine' })
     expect((await post('/api/policy', o, { syncedKeys: true })).body).toEqual({ error: 'quarantine' })
     await quarantine(a.seatId, null)
     expect((await post(`/api/passkeys/${a.key2.id}/revoke`, a)).status).toBe(200)
@@ -2583,8 +2583,7 @@ describe('t. freezing a seat: one person in an emergency, two to undo it', () =>
     const accepted = await ceremony(o, { seatId: v.seatId })
     expect((await act(o, v.seatId, 'freeze')).status).toBe(200)
     expect([await credentialState(v.key), await credentialState(accepted.key)]).toEqual(['suspended', 'suspended'])
-    expect((await stop(v.key)).status).toBe(401)
-    expect((await signIn(v.key)).status).toBe(401)
+    expect((await signIn(v.key)).status).toBe(403) // it may still stop the replacement (section x); it does not
     await unfreeze()
     expect([await credentialState(v.key), await credentialState(v.key2), await credentialState(accepted.key)]).toEqual(['suspended', 'suspended', 'active'])
     expect((await signIn(accepted.key)).status).toBe(200)
@@ -2810,5 +2809,103 @@ describe('w. the audit log page and its export', () => {
     expect(['=1', '+1', '-1', '@a', '\ta', '\ra', 'a=1', 'say "hi"', 7, null].map(csvCell)).toEqual([`"'=1"`, `"'+1"`, `"'-1"`, `"'@a"`, `"'\ta"`, `"'\ra"`, '"a=1"', '"say ""hi"""', '"7"', '""'])
     // No file leaves without its audit row.
     await withTrigger('INSERT ON audit_log', async () => expect((await post('/api/audit/export', c)).body).toEqual({ error: 'internal' }))
+  })
+})
+
+describe('x. attacks tried by the review of milestone 3', () => {
+  const unfreeze = async (o: Holder, a: Holder, seatId: string) => expect((await decide(a, (await act(o, seatId, 'unfreeze')).body.id, 'approve')).status).toBe(200)
+
+  it('a freeze takes no stop right away: a re-enrolment frozen during quarantine can still be stopped, and after the unfreeze the member\'s passkeys stand', async () => {
+    const { o, a, v } = await trio()
+    // One Owner puts a passkey of their own on a colleague's seat, and freezes the seat at once so that nobody can stop it.
+    const taken = await ceremony(o, { seatId: v.seatId })
+    expect((await act(o, v.seatId, 'freeze')).status).toBe(200)
+    now += 24 * HOUR - 1
+    expect((await signIn(taken.key)).body).toMatchObject({ error: 'seat_frozen' })
+    expect((await signIn(v.key)).body).toEqual({ error: 'passkey_replaced', until: now + 1 })
+    expect((await stop(v.key)).status).toBe(200)
+    expect([await credentialState(v.key), await credentialState(v.key2), await credentialState(taken.key)]).toEqual(['active', 'active', 'revoked'])
+    expect(await seatOf(v.seatId)).toEqual({ role: 'viewer', state: 'frozen' })
+    expect((await signIn(v.key)).body).toMatchObject({ error: 'seat_frozen', stopped: true })
+    await unfreeze(await again(o), await again(a), v.seatId)
+    expect((await signIn(v.key)).status).toBe(200)
+    expect((await signIn(taken.key)).status).toBe(401)
+    // The right ends when it would have ended without the freeze, and not later: then the replacement stands.
+    const late = await ceremony(o, { seatId: v.seatId })
+    expect((await act(o, v.seatId, 'freeze')).status).toBe(200)
+    now += 24 * HOUR
+    expect((await signIn(v.key)).body).toEqual({ error: 'sign_in_failed' })
+    expect((await stop(v.key)).status).toBe(401)
+    await unfreeze(await again(o), await again(a), v.seatId)
+    expect([await credentialState(v.key), await credentialState(late.key)]).toEqual(['suspended', 'active'])
+  })
+
+  it('a seat in quarantine can still freeze a colleague: a freeze only tightens', async () => {
+    const { o, v } = await trio()
+    await db.prepare('UPDATE seats SET quarantine_until = ? WHERE id = ?').bind(now + HOUR, o.seatId).run()
+    expect((await act(o, v.seatId, 'freeze')).body).toEqual({ state: 'applied' })
+    expect((await act(o, v.seatId, 'unfreeze')).body).toEqual({ error: 'quarantine' })
+  })
+
+  it('a request is judged again with its requester\'s role: an Admin\'s request does not remove a member who became an Owner meanwhile', async () => {
+    const o = await owner()
+    const admin = await colleague(o, 'admin')
+    const b = await colleague(o, 'admin')
+    const c = await colleague(o, 'compliance')
+    const remove = (await act(admin, b.seatId, 'remove')).body.id
+    expect((await decide(c, (await act(o, b.seatId, 'role', { role: 'owner' })).body.id, 'approve')).status).toBe(200)
+    expect((await decide(c, remove, 'approve')).body).toEqual({ error: 'forbidden' })
+    expect(await seatOf(b.seatId)).toEqual({ role: 'owner', state: 'active' })
+  })
+
+  it('a replaced synced passkey blocks a key role only while it can still come back', async () => {
+    const { o, v } = await trio()
+    expect((await addKey(v, { backupEligible: true })).status).toBe(200)
+    await ceremony(o, { seatId: v.seatId })
+    expect((await act(o, v.seatId, 'role', { role: 'approver' })).body).toEqual({ error: 'device_bound_required' })
+    now += 24 * HOUR
+    expect((await act(await again(o), v.seatId, 'role', { role: 'approver' })).body).toMatchObject({ state: 'requested' })
+  })
+
+  it('a role or a seat that changes at the same instant: the milestone 2 writes are judged inside the commit too', async () => {
+    const o = await owner()
+    const admin = await colleague(o, 'admin')
+    const a = await colleague(o, 'approver')
+    const c = await colleague(o, 'compliance')
+    const second = await colleague(o, 'owner')
+    const v = await colleague(o, 'viewer')
+    const at = (m: Holder, path: string, body: unknown, compete: () => Promise<unknown>) => call('POST', path, { cookie: m.cookie, body, env: racing(compete) })
+    // The second Owner is lowered at the instant it cancels a link.
+    const link = await issue(o, { displayName: 'Ada Viewer', role: 'viewer' })
+    const down = (await act(o, second.seatId, 'role', { role: 'admin' })).body.id
+    expect((await at(second, `/api/tickets/${link.body.ticketId}/cancel`, {}, () => decide(c, down, 'approve'))).status).toBe(404)
+    expect(await row('SELECT state FROM enrolment_tickets WHERE id = ?', link.body.ticketId)).toEqual({ state: 'issued' })
+    // The Compliance officer is lowered at the instant it approves, and at the instant it types the words as the second person.
+    const ask = (await act(o, v.seatId, 'role', { role: 'trader' })).body.id
+    let lower = (await act(o, c.seatId, 'role', { role: 'viewer' })).body.id
+    expect((await at(c, `/api/approvals/${ask}/approve`, {}, () => decide(a, lower, 'approve'))).body).toEqual({ error: 'forbidden' })
+    expect(await seatOf(v.seatId)).toEqual({ role: 'viewer', state: 'active' })
+    const c2 = await colleague(o, 'compliance')
+    const joining = await ceremony(o, { displayName: 'New Approver', role: 'approver' })
+    lower = (await act(o, c2.seatId, 'role', { role: 'viewer' })).body.id
+    const words = await post(`/api/tickets/${joining.ticketId}/confirm/start`, c2)
+    const typed = await at(c2, `/api/tickets/${joining.ticketId}/confirm`, { words: joining.words, response: await c2.key.authenticate(words.body.options) }, () => decide(a, lower, 'approve'))
+    expect(typed.status).toBe(409)
+    expect(await credentialState(joining.key)).toBe('pending')
+    // The Admin is lowered at the instant it issues a link, and at the instant it revokes a colleague's passkey.
+    const seats = await count('seats', o.orgId)
+    for (const [path, body] of [['/api/tickets', { displayName: 'Late Viewer', role: 'viewer' }], [`/api/passkeys/${v.key2.id}/revoke`, {}]] as const) {
+      const m = path === '/api/tickets' ? admin : await colleague(o, 'admin')
+      lower = (await act(o, m.seatId, 'role', { role: 'viewer' })).body.id
+      expect((await at(m, path, body, () => decide(a, lower, 'approve'))).status, path).toBe(path === '/api/tickets' ? 403 : 404) // a Viewer sees no colleague's passkey
+    }
+    expect(await count('seats', o.orgId)).toBe(seats + 1) // the Admin of the second round, and no invited seat
+    expect(await credentialState(v.key2)).toBe('active')
+    // The Viewer is frozen at the instant it adds a passkey: a frozen seat gets none.
+    const key = await softwareAuthenticator(SITE)
+    const start = await post('/api/passkeys/start', v)
+    const added = await at(v, '/api/passkeys/finish', { label: 'Raced key', response: await key.register(start.body.options) }, () => act(o, v.seatId, 'freeze'))
+    expect(added.status).toBe(409)
+    expect(await credentialState(key)).toBeUndefined()
   })
 })
