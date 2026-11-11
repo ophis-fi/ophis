@@ -445,15 +445,17 @@ try {
   await bo.page.getByRole('button', { name: 'Approve' }).click()
   await bo.page.getByText('Nothing waits.').waitFor()
   check('the wallet carries the "Recovery wallet" badge with the date it is in force, and an Owner can still cancel',
-    await bo.page.getByRole('row', { name: /Custody wallet.*Linked.*Recovery wallet.*In force from \d{4}-\d\d-\d\d \d\d:\d\d UTC/ }).isVisible() && await both(bo.page, '20-wallets', '#wallets'))
+    await bo.page.getByRole('row', { name: /Custody wallet.*Linked.*Recovery wallet.*In force from \d{4}-\d\d-\d\d \d\d:\d\d UTC/ }).isVisible()
+      && await bo.page.locator('#wallets .table-wrap').evaluate((wrap) => wrap.scrollWidth <= wrap.clientWidth) // at 1440 the whole row shows, Manage included
+      && await both(bo.page, '20-wallets', '#wallets'))
 
   // The Security page, for an Owner: readiness, read on demand.
   await arrive(owner, false)
   await page.goto(`${ORIGIN}/#/security`)
   await page.getByRole('heading', { name: 'Recovery readiness' }).waitFor()
   const readiness = await page.locator('#readiness').innerText()
-  check('the Security page shows the readiness state: two Owners with two hardware keys are Ready, and a custodian recovery wallet is amber',
-    ['Ready', '2 Owners, each with two hardware keys.', 'Amber', 'Custody wallet is a custodian wallet'].every((text) => readiness.includes(text)) && await both(page, '21-readiness'))
+  check('the Security page shows the readiness state: two Owners with two hardware keys are Ready, and a recovery wallet that still waits is amber and says so',
+    ['Ready', '2 Owners, each with two hardware keys.', 'Amber', 'Custody wallet is in force from', 'Until then it does not count.'].every((text) => readiness.includes(text)) && await both(page, '21-readiness'))
   check('an Admin gets no readiness block', (await status('/api/readiness', cy.page)) === 403)
 
   // Unlinking the recovery wallet is refused: by the page, and by the server when asked directly.

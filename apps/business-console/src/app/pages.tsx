@@ -776,11 +776,10 @@ export function Organisation({ me, onSignedOut, onChanged }: { me: Me; onSignedO
         action={manages && ready && !quarantined && <button className="btn ghost sm" type="button" onClick={() => setLinking(true)}><Icon name="wallet" size={16} />Link a wallet</button>}>
         {view && view.wallets.length === 0 ? <p className="note"><Icon name="info" /><span className="grow"><b>No wallet is linked.</b> {manages ? 'Use "Link a wallet": the console gives a signing link, and the wallet signs on a separate page.' : 'An Owner or Admin links one.'}</span></p> : (
           <div className="table-wrap"><table className="t">
-            <thead><tr><th>Wallet</th><th>Address</th><th>Chain</th><th>Kind</th><th>Status</th><th><span className="sr">Changes</span></th></tr></thead>
+            <thead><tr><th>Wallet</th><th>Chain</th><th>Kind</th><th>Status</th><th><span className="sr">Changes</span></th></tr></thead>
             <tbody>{view?.wallets.map((w) => (
               <tr key={w.id}>
-                <td>{w.label}</td>
-                <td><span className="mono">{w.address}</span> <button className="ib" type="button" aria-label={`Copy the address of ${w.label}`} title={copiedId === w.id ? 'Copied' : 'Copy the address'} onClick={() => navigator.clipboard.writeText(w.address).then(() => setCopiedId(w.id), () => setCopiedId(''))}><Icon name={copiedId === w.id ? 'check' : 'clipboard-check'} size={16} /></button></td>
+                <td>{w.label}<small><span className="mono">{w.address}</span> <button className="ib" type="button" aria-label={`Copy the address of ${w.label}`} title={copiedId === w.id ? 'Copied' : 'Copy the address'} onClick={() => navigator.clipboard.writeText(w.address).then(() => setCopiedId(w.id), () => setCopiedId(''))}><Icon name={copiedId === w.id ? 'check' : 'clipboard-check'} size={16} /></button></small></td>
                 <td>{chain(w.chainId)}</td>
                 <td>{kindOf(w)}</td>
                 <td className="wrap"><Status>{w.state === 'linked' ? 'Linked' : 'Pending'}</Status>{w.state === 'pending' && <small>Waits for a second person, under Approvals</small>}
@@ -878,8 +877,8 @@ const ALERT: Record<string, (alert: Alert) => string> = {
     return a.what === 'seat.role' ? `${a.mine ? 'Your role' : `The role of ${a.name}`} was changed ${when}, from ${role(from)} to ${role(to)}. Two people decided it.`
       : a.what === 'seat.remove' ? `${a.name} was removed from the organisation ${when}. Two people decided it.`
       : a.what === 'seat.unfreeze' ? `${a.mine ? 'Your seat' : `The seat of ${a.name}`} was unfrozen ${when}. Two people decided it.`
-      : a.what === 'wallet.link' ? `The wallet ${a.name} was linked ${when}. Two people decided it.`
-      : a.what === 'anchor.set' ? `The wallet ${a.name} was approved as the recovery wallet ${when}. It is in force 72 hours later. Until then an Owner can cancel the change, under Wallets.`
+      : a.what === 'wallet.link' ? `The wallet ${a.name} was linked ${when}. ${a.detail === 'alone' ? 'The only key-role member did it alone.' : 'Two people decided it.'}`
+      : a.what === 'anchor.set' ? `The wallet ${a.name} was ${a.detail === 'alone' ? 'set as the recovery wallet by the only key-role member' : 'approved as the recovery wallet'} ${when}. It is in force 72 hours later. Until then an Owner can cancel the change, under Wallets.`
       : `The passkey rule for key roles was changed ${when}: ${a.detail === 'synced' ? 'synced passkeys are allowed for Admins, Approvers and Compliance officers' : 'hardware security keys only'}. Two people decided it.`
   },
   confirmation_waiting: (a) => `A new passkey of ${a.name} waits for the three words from you, under Waiting for confirmation.`,
