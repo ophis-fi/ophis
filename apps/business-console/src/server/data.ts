@@ -545,7 +545,6 @@ async function judge(db: D1Database, orgId: string, role: Role, kind: Kind | 'se
   if (kind === 'policy.synced_keys') {
     const org = await db.prepare('SELECT synced_keys_allowed AS allowed FROM organisations WHERE id = ?').bind(orgId).first<{ allowed: number }>()
     if (subjectId !== orgId || (value !== '0' && value !== '1') || Number(value) === org!.allowed) return 'invalid'
-    if (role !== 'owner') return 'forbidden'
     return { apply: [db.prepare('UPDATE organisations SET synced_keys_allowed = ? WHERE id = ?').bind(Number(value), orgId)], detail: value === '1' ? 'synced' : 'hardware', relax: value === '1' }
   }
   const seat = await db
@@ -626,8 +625,9 @@ export async function change(db: D1Database, actor: Actor, kind: Kind | 'seat.fr
   return outcome as Changed
 }
 
-// A request is open while it is pending, younger than 7 days, and its requester's seat is still active. The
-// confirmation of a new passkey (ticket.confirm) lives in the same table and is never decided here.
+// A request is open while it is pending and younger than 7 days. (Its requester is still an active Owner or Admin:
+// a freeze, a removal and a role change cancel what the seat had asked for, in closeOpen.) The confirmation of
+// a new passkey (ticket.confirm) lives in the same table and is never decided here.
 const OPEN_REQUEST = `a.state = 'pending' AND a.expires_at > ? AND a.action <> 'ticket.confirm'`
 /** Approve (and apply, in the same commit), reject, or cancel. The router has checked the role; the rest is read here, inside the commit. */
 export async function decide(db: D1Database, actor: Actor, id: string, decision: 'approve' | 'reject' | 'cancel', now: number) {
@@ -635,7 +635,7 @@ export async function decide(db: D1Database, actor: Actor, id: string, decision:
   await commit(db, actor.orgId, async () => {
     const a = await db
       .prepare(`SELECT a.action, a.subject_id, a.payload, a.requester_seat_id, a.not_before, r.role FROM approvals a
-                JOIN seats r ON r.org_id = a.org_id AND r.id = a.requester_seat_id AND r.state = 'active'
+                JOIN seats r ON r.org_id = a.org_id AND r.id = a.requester_seat_id
                 WHERE a.org_id = ? AND a.id = ? AND ${OPEN_REQUEST}`)
       .bind(actor.orgId, id, now).first<{ action: Kind; subject_id: string; payload: string; requester_seat_id: string; not_before: number | null; role: Role }>()
     const mine = a?.requester_seat_id === actor.seatId
@@ -662,7 +662,7 @@ export async function openRequests(db: D1Database, actor: Actor, now: number) {
   const { results } = await db
     .prepare(`SELECT a.id, a.action AS kind, a.subject_id AS subjectId, t.display_name AS name, t.role, a.payload, a.requester_seat_id AS requesterSeatId, r.display_name AS requester, r.role AS requesterRole,
                      a.created_at AS createdAt, a.expires_at AS expiresAt, a.not_before AS notBefore
-              FROM approvals a JOIN seats r ON r.org_id = a.org_id AND r.id = a.requester_seat_id AND r.state = 'active'
+              FROM approvals a JOIN seats r ON r.org_id = a.org_id AND r.id = a.requester_seat_id
               LEFT JOIN seats t ON t.org_id = a.org_id AND t.id = a.subject_id
               WHERE a.org_id = ? AND ${OPEN_REQUEST} AND (? = 1 OR a.requester_seat_id = ?) ORDER BY a.created_at, a.id`)
     .bind(actor.orgId, now, KEY_ROLES.includes(actor.role) ? 1 : 0, actor.seatId).all<{ id: string; kind: Kind; subjectId: string; name: string | null; role: Role | null; payload: string; requesterSeatId: string; requester: string; requesterRole: Role; createdAt: number; expiresAt: number; notBefore: number | null }>()

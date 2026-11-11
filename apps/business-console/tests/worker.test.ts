@@ -2414,6 +2414,7 @@ describe('s. two-person approval', () => {
     const { o, a, v } = await trio()
     const invited = await issue(o, { displayName: 'Never Came', role: 'admin' })
     const reEnrol = await issue(o, { seatId: v.seatId })
+    const other = await act(o, v.seatId, 'role', { role: 'trader' })
     const asked = await act(o, v.seatId, 'remove')
     expect(asked.body).toMatchObject({ state: 'requested' })
     expect(await seatOf(v.seatId)).toEqual({ role: 'viewer', state: 'active' })
@@ -2423,7 +2424,9 @@ describe('s. two-person approval', () => {
     expect([await credentialState(v.key), await credentialState(v.key2)]).toEqual(['revoked', 'revoked'])
     expect((await call('GET', '/api/me', { cookie: v.cookie })).status).toBe(401)
     expect((await signIn(v.key)).status).toBe(401)
+    expect((await call('GET', '/api/org', { cookie: o.cookie })).body.sessions.filter((session: { seatId: string }) => session.seatId === v.seatId)).toEqual([])
     expect(await row('SELECT state FROM enrolment_tickets WHERE id = ?', reEnrol.body.ticketId)).toEqual({ state: 'dead' })
+    expect((await approvalOf(other.body.id))!.state).toBe('cancelled') // the other request about this seat
     expect((await act(o, v.seatId, 'remove')).status).toBe(404)
     // The invited seat: no passkey was ever confirmed on it, so one person is enough.
     expect((await act(o, invited.body.seatId, 'remove')).body).toEqual({ state: 'applied' })
@@ -2490,6 +2493,10 @@ describe('t. freezing a seat: one person in an emergency, two to undo it', () =>
     expect(await seatOf(admin.seatId)).toEqual({ role: 'admin', state: 'frozen' })
     expect([await credentialState(admin.key), await credentialState(admin.key2)]).toEqual(['suspended', 'suspended'])
     expect((await call('GET', '/api/me', { cookie: admin.cookie })).status).toBe(401)
+    const view = (await call('GET', '/api/org', { cookie: o.cookie })).body
+    expect(view.sessions.filter((session: { seatId: string }) => [admin.seatId, v.seatId].includes(session.seatId))).toEqual([])
+    expect(view.frozen).toHaveLength(2)
+    expect(view.frozen).toEqual(expect.arrayContaining([{ id: admin.seatId, name: 'A admin', by: OWNER_NAME, at: now, stopped: false }, { id: v.seatId, name: 'A viewer', by: 'A admin', at: now - MIN, stopped: false }]))
     expect(await row('SELECT state FROM enrolment_tickets WHERE id = ?', ticket.body.ticketId)).toEqual({ state: 'dead' })
     expect((await approvalOf(asked.body.id))!.state).toBe('cancelled')
     // Every member is told who froze which seat, and when.
@@ -2530,6 +2537,8 @@ describe('t. freezing a seat: one person in an emergency, two to undo it', () =>
     expect((await decide(a, asked.body.id, 'approve')).body).toEqual({ state: 'applied' })
     expect(await seatOf(v.seatId)).toEqual({ role: 'viewer', state: 'active' })
     expect([await credentialState(v.key), await credentialState(v.key2)]).toEqual(['active', 'active'])
+    // The session from before the freeze does not come back with the passkeys.
+    expect((await call('GET', '/api/me', { cookie: v.cookie })).status).toBe(401)
     expect((await signIn(v.key)).status).toBe(200)
   })
 
@@ -2577,7 +2586,9 @@ describe('u. the 72 hour wait replaces the second person only where no other key
     const o = await owner()
     await colleague(o, 'viewer')
     await colleague(o, 'trader')
-    await issue(o, { displayName: 'Invited Approver', role: 'approver' }) // a seat nobody enrolled on is no person
+    // A seat nobody enrolled on is no person, and neither is one that was removed before anyone did.
+    await issue(o, { displayName: 'Invited Approver', role: 'approver' })
+    expect((await act(o, (await issue(o, { displayName: 'Invited Compliance', role: 'compliance' })).body.seatId, 'remove')).body).toEqual({ state: 'applied' })
     expect((await invite(o, 'New Admin')).state).toBe('wait')
   })
 
@@ -2628,13 +2639,16 @@ describe('v. limits asked for by the review of milestone 2', () => {
     now += DAY // the helper wrote the Admin's seat as invited by the Owner: that day is over
     await again(admin)
     await again(o)
-    for (let i = 0; i < 10; i++) expect((await issue(o, { displayName: `Viewer ${i}`, role: 'viewer' })).status).toBe(200)
+    for (let i = 0; i < 9; i++) expect((await issue(o, { displayName: `Viewer ${i}`, role: 'viewer' })).status).toBe(200)
+    // A new link for a seat that exists is not a new seat: before the limit and after it.
+    const first = await row<{ id: string }>(`SELECT id FROM seats WHERE org_id = ? AND display_name = 'Viewer 0'`, o.orgId)
+    expect((await issue(o, { seatId: first!.id })).status).toBe(200)
+    expect((await issue(o, { displayName: 'Viewer 9', role: 'viewer' })).status).toBe(200)
     const more = await issue(o, { displayName: 'Viewer 10', role: 'viewer' })
     expect([more.status, more.body]).toEqual([429, { error: 'seat_limit' }])
     expect(await count('seats', o.orgId)).toBe(12)
-    // A new link for a seat that exists is not a new seat; another issuer has its own ten; the day passes.
-    const first = await row<{ id: string }>(`SELECT id FROM seats WHERE org_id = ? AND display_name = 'Viewer 0'`, o.orgId)
     expect((await issue(o, { seatId: first!.id })).status).toBe(200)
+    // Another issuer has its own ten; the day passes.
     expect((await issue(admin, { displayName: 'Viewer 10', role: 'viewer' })).status).toBe(200)
     now += DAY - 1
     expect((await issue(await again(o), { displayName: 'Viewer 11', role: 'viewer' })).status).toBe(429)
