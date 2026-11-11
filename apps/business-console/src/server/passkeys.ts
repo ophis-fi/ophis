@@ -26,6 +26,9 @@ export function configFor(environment: string): Config {
   if (!Object.hasOwn(ENVIRONMENTS, environment)) throw new Error('unknown ENVIRONMENT')
   return ENVIRONMENTS[environment]
 }
+// Milestone 6: the hostname of the Support provider (TypeSafe AI, USA), per environment like the constants above and
+// never read from a request. Its key is the Worker secret TYPESAFE_API_KEY (support.ts).
+export const SUPPORT_HOSTS: Record<string, string> = { local: 'api.typesafe.ai' }
 
 const ALGORITHMS = [-7, -8, -257] // ES256, EdDSA, RS256
 const CHALLENGE_MS = 5 * 60_000

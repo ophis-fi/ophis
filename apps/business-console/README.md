@@ -44,3 +44,7 @@ Word list: EFF short word list 2.0, Creative Commons Attribution 4.0 (`src/serve
 Test: `npx -y pnpm@10.34.9 test` (builds, then the invariant tests in the Workers runtime, with a stubbed JSON-RPC for the two endpoints and real signatures from the public anvil test keys), `npx -y pnpm@10.34.9 typecheck`,
 `npx -y pnpm@10.34.9 test:chain` (on demand, needs the network, `anvil` and Node 24 or later: forks OP Mainnet on port 8546, creates a Safe through every official proxy factory and compares it with the allow-list, checks the verifier and the Safe reads on a real 2 of 3 Safe 1.4.1, and runs a whole recovery through the Worker on a throwaway local database), and
 `npx -y pnpm@10.34.9 test:e2e` (headless Chrome, one browser context per person with a virtual authenticator each; needs port 8787 free; screenshots in `.shots/`).
+
+Support (milestone 6): the rail entry and the top button open `#/support`. The Worker needs the secret `TYPESAFE_API_KEY`: add the line `TYPESAFE_API_KEY=...` to `.dev.vars` (git-ignored; never commit or print it). Without it every question gets the hand-over card.
+`npx -y pnpm@10.34.9 test:jev` (on demand, needs the network and `TYPESAFE_API_KEY` in the environment): sends the 32 questions of the prototype through the server's own functions and prints each outcome, the accuracy and the median latency, never the key.
+`test:e2e` includes the Support flow; with the key in `.dev.vars` that part needs the network too.

@@ -17,6 +17,7 @@
     "dev": "vite build && vite build --mode sign && wrangler dev",
     "test": "vite build && vite build --mode sign && vitest run",
     "test:chain": "node tests/chain.mjs",
+    "test:jev": "node tests/jev.mjs",
     "test:e2e": "vite build && vite build --mode sign && node tests/e2e.mjs"
   },
   "dependencies": {

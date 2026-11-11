@@ -1161,6 +1161,8 @@ describe('f. audit log', () => {
       '/api/recover/cancel-intent', '/api/recover/continue/finish', '/api/recover/continue/start', '/api/recover/intent', '/api/recovery/:id/cancel', '/api/recovery/:id/object',
       '/api/sessions/:id/revoke',
       '/api/signin/finish', '/api/signin/start', '/api/signout', '/api/stepup/finish', '/api/stepup/start', '/api/stop/finish', '/api/stop/start',
+      // /api/support/ask writes no audit row: its one write is the hourly counter of the seat (section D).
+      '/api/support/ask',
       '/api/tickets', '/api/tickets/:id/cancel', '/api/tickets/:id/confirm', '/api/tickets/:id/confirm/start',
       '/api/wallets/:id/anchor', '/api/wallets/:id/anchor/cancel', '/api/wallets/:id/unlink', '/api/wallets/intent',
     ])
@@ -2499,6 +2501,7 @@ describe('r. the role table', () => {
       'GET /api/readiness': 'owner', 'POST /api/proof': 'public',
       'POST /api/recover/intent': 'public', 'POST /api/recover/cancel-intent': 'public', 'POST /api/recover/continue/start': 'public', 'POST /api/recover/continue/finish': 'public',
       'POST /api/recovery/:id/cancel': 'owner fresh', 'POST /api/recovery/:id/object': 'admin,approver,compliance fresh',
+      'POST /api/support/ask': any,
     })
     // The signing host has one route, and it is the only one without the console.
     expect(routes.filter((r) => r.sign).map((r) => r.path)).toEqual(['/api/proof'])
@@ -4776,5 +4779,314 @@ describe('C. attacks tried by the review of milestone 4b', () => {
     const r = await recoveryOf(o.orgId)
     await expect(data.devSkipWaits(db, 'production', now)).rejects.toThrow(/local/)
     expect((await recoveryOf(o.orgId)).wait_until).toBe(r.wait_until)
+  })
+})
+
+// ---- milestone 6: Support. One appended section; nothing above it was changed. The provider is a stubbed fetch. ----
+// (Import declarations are hoisted: they sit here so that the section stays in one piece.)
+import supportServer from '../src/server/support.ts?raw'
+import supportPage from '../src/app/support.tsx?raw'
+import { ANSWERS } from '../src/server/answers.ts'
+import { LIMITS as SUPPORT, MODEL } from '../src/server/support.ts'
+
+// The standing rule of section e: every route has an isolation case. It is added to the table here and run in section D.
+isolation['POST /api/support/ask'] = async (a, b) => {
+  // One seat uses up its hour. A seat of another organisation still asks, and the request names neither organisation.
+  const env = { ...testEnv, TYPESAFE_API_KEY: 'k' } as Env
+  const seen: string[] = []
+  vi.stubGlobal('fetch', async (url: string, init: RequestInit) => {
+    seen.push(url + JSON.stringify(init.headers) + String(init.body))
+    return Response.json({ answers: { entry: { probabilities: { ...Object.fromEntries(ANSWERS.map((x) => [x.id, 0])), none: 1 } }, answered: { noul: 0 } } })
+  })
+  for (let i = 0; i < SUPPORT.perHour; i++) expect((await call('POST', '/api/support/ask', { cookie: a.cookie, body: { question: 'how do roles work' }, env })).status).toBe(200)
+  expect((await call('POST', '/api/support/ask', { cookie: a.cookie, body: { question: 'how do roles work' }, env })).status).toBe(429)
+  expect((await call('POST', '/api/support/ask', { cookie: b.cookie, body: { question: 'how do roles work' }, env })).body).toEqual({ handover: true })
+  for (const secret of [a.orgId, b.orgId, a.seatId, b.seatId, a.name, b.name, a.sessionId, b.sessionId]) expect(seen.join('\n')).not.toContain(secret)
+}
+
+describe('D. Support: the model selects, the server decides', () => {
+  const KEY = `ts-test-${crypto.randomUUID()}`
+  const keyed = { ...testEnv, TYPESAFE_API_KEY: KEY } as Env
+  const DEFAULT_TIMEOUT = SUPPORT.timeoutMs
+  const IDS = [...ANSWERS.map((a) => a.id), 'none']
+  const ask = (m: Holder, question: unknown, env: Env = keyed) => call('POST', '/api/support/ask', { cookie: m.cookie, body: { question }, env })
+  // The provider's answer, in the shape the prototype recorded (jev-smoke/smoke2_raw.json): every option has a probability.
+  const jev = (probabilities: Record<string, number>, answered: number) => Response.json({
+    model: MODEL, usage: { input_tokens: 900, output_tokens: 60 },
+    answers: { entry: { type: 'choice', choice: 'KB-03', confidence: 1, probabilities: { ...Object.fromEntries(IDS.map((id) => [id, 0])), ...probabilities } }, answered: { type: 'noul', noul: answered } },
+  })
+  let sent: { url: string; init: RequestInit }[] = []
+  let reply: (init: RequestInit) => Response | Promise<Response> = () => jev({ 'KB-03': 1 }, 0.99)
+  let logged: ReturnType<typeof vi.spyOn>
+  beforeEach(() => {
+    sent = []
+    reply = () => jev({ 'KB-03': 1 }, 0.99)
+    vi.stubGlobal('fetch', async (url: string, init: RequestInit) => {
+      sent.push({ url, init })
+      return reply(init)
+    })
+    logged = vi.spyOn(console, 'error').mockImplementation(() => {})
+    SUPPORT.timeoutMs = DEFAULT_TIMEOUT
+    return () => logged.mockRestore()
+  })
+  const question = () => JSON.parse(String(sent.at(-1)!.init.body)).state.question as string
+  const shown = (id: string) => (({ id: i, title, text, link }) => ({ id: i, title, text, link }))(ANSWERS.find((a) => a.id === id)!)
+  const supportCount = async (seatId: string) => (await row<{ n: number }>(`SELECT COALESCE(sum(n), 0) AS n FROM ${COUNTER} WHERE org_id = ?`, `seat:${seatId}`))!.n
+
+  it('the question is cleaned before it leaves: 0x values, long hex strings, email addresses, URLs and runs of 6 or more digits are removed, spaces are single', async () => {
+    const m = await member()
+    const cases: [string, string][] = [
+      ['is 0x52908400098527886E0F7030069857D2E4169EE7 linked', 'is linked'],
+      ['why did 0x4e3a3754410177e6937ef1f84bba68ea139e8d1a2258c5f85db9f1cd715a1bdd fail', 'why did fail'],
+      ['what is 0xdeadbeef here', 'what is here'],
+      ['my key is 4e3a3754410177e6937ef1f84bba68ea139e8d1a2258c5f85db9f1cd715a1bdd ok', 'my key is ok'],
+      ['a decade of feedback', 'a decade of feedback'],
+      ['invite maren.okafor@northwind.example as viewer', 'invite as viewer'],
+      ['see https://app.example/orders?id=7 please', 'see please'],
+      ['see www.example.org please', 'see please'],
+      ['the code 123456 came', 'the code came'],
+      ['call +352 621 123 456 now', 'call + now'],
+      ['account 12-34-56-78', 'account'],
+      ['wait 12345 or 72 hours for 2 of 3', 'wait 12345 or 72 hours for 2 of 3'],
+      ['  how \n do\t\troles   work  ', 'how do roles work'],
+    ]
+    for (const [raw, clean] of cases) {
+      expect((await ask(m, raw)).status, raw).toBe(200)
+      expect(question(), raw).toBe(clean)
+    }
+  })
+
+  it('500 characters at most leave, and a question with nothing left is refused: no request, no count', async () => {
+    const m = await member()
+    await ask(m, 'word '.repeat(200))
+    expect(question()).toBe('word '.repeat(100).trim())
+    await ask(m, `${'x'.repeat(498)} yz`)
+    expect(question()).toBe(`${'x'.repeat(498)} y`)
+    expect(SUPPORT.chars).toBe(500)
+    sent = []
+    const before = await supportCount(m.seatId)
+    for (const nothing of ['', '   \n ', '0x52908400098527886E0F7030069857D2E4169EE7', 'a@b.example https://x.example', 123456, null, ['how'], undefined]) expect((await ask(m, nothing)).body, String(nothing)).toEqual({ error: 'invalid' })
+    expect((await ask(m, '')).status).toBe(400)
+    expect(sent).toHaveLength(0)
+    expect(await supportCount(m.seatId)).toBe(before)
+  })
+
+  it('one request leaves, to the provider of this environment, and it holds the cleaned question and the answer base (ids, titles, one line each) and nothing else', async () => {
+    const m = await owner('Northwind Vaults')
+    expect((await ask(m, 'How do I add a second passkey?')).status).toBe(200)
+    expect(sent).toHaveLength(1)
+    const { url, init } = sent[0]
+    expect(url).toBe('https://api.typesafe.ai/v1/systemone')
+    expect(init.method).toBe('POST')
+    expect(init.headers).toEqual({ authorization: `Bearer ${KEY}`, 'content-type': 'application/json' })
+    const body = JSON.parse(String(init.body))
+    // Written out here, not taken from the server's own builder.
+    expect(Object.keys(body).sort()).toEqual(['model', 'questions', 'state'])
+    expect(body.model).toBe('jev-1.14.0')
+    expect(body.state).toEqual({ question: 'How do I add a second passkey?', entries: Object.fromEntries(ANSWERS.map((a) => [a.id, { title: a.title, description: a.about }])) })
+    expect(Object.keys(body.questions)).toEqual(['entry', 'answered'])
+    expect(body.questions.entry.type).toBe('choice')
+    expect(Object.keys(body.questions.entry.criteria)).toEqual(IDS)
+    for (const a of ANSWERS) expect(body.questions.entry.criteria[a.id]).toBe(a.title)
+    expect(body.questions.answered.type).toBe('noul')
+    const me = await call('GET', '/api/me', { cookie: m.cookie })
+    const all = url + JSON.stringify(init.headers) + String(init.body)
+    for (const secret of [m.orgId, m.seatId, m.sessionId, m.name, me.body.seat.displayName, m.cookie.split('=')[1], testEnv.CHALLENGE_KEY, ANSWERS[2].text]) {
+      expect(secret.length).toBeGreaterThan(8)
+      expect(all).not.toContain(secret)
+    }
+  })
+
+  it('the thresholds: an answer needs "answered" at 0.7 or more and an entry that is not "none"; below 0.7 for the best entry the second best comes too; never more than two', async () => {
+    const m = await member()
+    const outcome = async (probabilities: Record<string, number>, answered: number) => {
+      reply = () => jev(probabilities, answered)
+      const response = await ask(m, 'how do roles work')
+      expect(response.status).toBe(200)
+      return response.body
+    }
+    expect(await outcome({ 'KB-06': 0.7, 'KB-08': 0.3 }, 0.7)).toEqual({ answers: [shown('KB-06')] })
+    expect(await outcome({ 'KB-06': 1 }, 0.69)).toEqual({ handover: true })
+    expect(await outcome({ 'KB-06': 0.69, 'KB-08': 0.2, 'KB-09': 0.11 }, 0.99)).toEqual({ answers: [shown('KB-06'), shown('KB-08')] })
+    expect(await outcome({ 'KB-06': 0.4, 'KB-08': 0.3, 'KB-09': 0.3 }, 0.99)).toEqual({ answers: [shown('KB-06'), shown('KB-08')] })
+    // "none": the hand-over at once, however sure the other answer is; as second best it is never shown.
+    expect(await outcome({ none: 0.5, 'KB-06': 0.49 }, 0.99)).toEqual({ handover: true })
+    expect(await outcome({ none: 1 }, 0.99)).toEqual({ handover: true })
+    expect(await outcome({ 'KB-06': 0.6, none: 0.4 }, 0.99)).toEqual({ answers: [shown('KB-06')] })
+    // Only the four fields of an entry are answered: the text is the answer base's, word for word.
+    expect(Object.keys((await outcome({ 'KB-22': 1 }, 1)).answers[0])).toEqual(['id', 'title', 'text', 'link'])
+    // A hand-over by the rules is an outcome, not a failure: nothing is logged.
+    expect(logged.mock.calls).toEqual([])
+  })
+
+  it('a provider error, a timeout or an unexpected answer gives the hand-over, never an error, and is logged by name only', async () => {
+    const m = await member()
+    const good = () => jev({ 'KB-03': 1 }, 0.99)
+    const withAnswers = (answers: unknown) => () => Response.json({ model: MODEL, answers })
+    const entry = (probabilities: Record<string, unknown>) => ({ type: 'choice', probabilities: { ...Object.fromEntries(IDS.map((id) => [id, 0])), ...probabilities } })
+    const failures: [string, typeof reply, string][] = [
+      ['status 500', () => new Response(good().body, { status: 500 }), 'provider_status'],
+      ['status 429', () => new Response(good().body, { status: 429 }), 'provider_status'],
+      ['status 400 with a detail', () => Response.json({ detail: 'no' }, { status: 400 }), 'provider_status'],
+      ['no connection', () => { throw new TypeError('fetch failed') }, 'TypeError'],
+      ['not JSON', () => new Response('<html>'), 'provider_shape'],
+      ['JSON null', () => Response.json(null), 'provider_shape'],
+      ['no answers', () => Response.json({ model: MODEL }), 'provider_shape'],
+      ['no "answered"', withAnswers({ entry: entry({ 'KB-03': 1 }) }), 'provider_shape'],
+      ['"answered" as text', withAnswers({ entry: entry({ 'KB-03': 1 }), answered: { noul: '0.99' } }), 'provider_shape'],
+      ['"answered" above 1', withAnswers({ entry: entry({ 'KB-03': 1 }), answered: { noul: 1.5 } }), 'provider_shape'],
+      ['no entry', withAnswers({ answered: { noul: 0.99 } }), 'provider_shape'],
+      ['an entry without a probability', withAnswers({ entry: { probabilities: { 'KB-03': 1 } }, answered: { noul: 0.99 } }), 'provider_shape'],
+      ['a probability that is not a number', withAnswers({ entry: entry({ 'KB-03': 'high' }), answered: { noul: 0.99 } }), 'provider_shape'],
+      ['a negative probability', withAnswers({ entry: entry({ 'KB-03': 1, 'KB-04': -1 }), answered: { noul: 0.99 } }), 'provider_shape'],
+      ['an answer over the size cap', async () => new Response(`${' '.repeat(SUPPORT.answerBytes)}${await good().text()}`), 'provider_shape'],
+    ]
+    for (const [what, failing, name] of failures) {
+      logged.mockClear()
+      reply = failing
+      const response = await ask(m, 'how do I add a passkey marker-word')
+      expect([response.status, response.body], what).toEqual([200, { handover: true }])
+      expect(logged.mock.calls, what).toEqual([['support failure', name]])
+    }
+    // The timeout: 3 seconds by default. The provider here answers well after 300 ms, the limit is 20 ms.
+    expect(DEFAULT_TIMEOUT).toBe(3000)
+    SUPPORT.timeoutMs = 20
+    logged.mockClear()
+    reply = (init) => new Promise((resolve, reject) => {
+      const timer = setTimeout(() => resolve(good()), 300)
+      init.signal?.addEventListener('abort', () => {
+        clearTimeout(timer)
+        reject(init.signal!.reason)
+      })
+    })
+    expect((await ask(m, 'how do I add a passkey marker-word')).body).toEqual({ handover: true })
+    expect(logged.mock.calls).toEqual([['support failure', 'TimeoutError']])
+    // Without the secret no request is made at all.
+    logged.mockClear()
+    sent = []
+    reply = good
+    expect((await ask(m, 'how do I add a passkey', testEnv)).body).toEqual({ handover: true })
+    expect((await ask(m, 'how do I add a passkey', { ...testEnv, TYPESAFE_API_KEY: '' } as Env)).body).toEqual({ handover: true })
+    expect(sent).toHaveLength(0)
+    expect(logged.mock.calls).toEqual([['support failure', 'no_key'], ['support failure', 'no_key']])
+  })
+
+  it('20 questions per seat per hour: the next is refused with 429 before any request leaves; a colleague and the next hour are not', async () => {
+    const o = await owner()
+    const v = await colleague(o, 'viewer')
+    for (let i = 0; i < 20; i++) expect((await ask(o, 'how do roles work')).status).toBe(200)
+    expect(sent).toHaveLength(20)
+    const over = await ask(o, 'how do roles work')
+    expect([over.status, over.body]).toEqual([429, { error: 'too_many' }])
+    expect(sent).toHaveLength(20)
+    expect((await ask(v, 'how do roles work')).status).toBe(200)
+    // A hand-over counts like an answer: the question went out.
+    reply = () => jev({ none: 1 }, 0)
+    for (let i = 0; i < 19; i++) expect((await ask(v, 'how do roles work')).body).toEqual({ handover: true })
+    expect((await ask(v, 'how do roles work')).status).toBe(429)
+    now += HOUR
+    expect((await ask(await again(o), 'how do roles work')).status).toBe(200)
+  })
+
+  it('any signed-in role asks, with one passkey, without a fresh check and in quarantine; nobody without a session', async () => {
+    const o = await owner()
+    for (const role of data.ROLES.filter((r) => r !== 'owner')) expect((await ask(await colleague(o, role), 'how do roles work')).body, role).toEqual({ answers: [shown('KB-03')] })
+    const single = await member()
+    expect((await ask(single, 'how do roles work')).status).toBe(200)
+    // No fresh check: 6 minutes after sign-in a route that needs one refuses, this one answers.
+    now += 6 * MIN
+    expect((await post('/api/audit/export', o)).body).toEqual({ error: 'step_up_required' })
+    expect((await ask(o, 'how do roles work')).status).toBe(200)
+    // Open in quarantine: a route that is not refuses, this one answers.
+    await db.prepare('UPDATE seats SET quarantine_until = ? WHERE id = ?').bind(now + HOUR, o.seatId).run()
+    expect((await stepUp(o, o.key)).status).toBe(200)
+    expect((await post('/api/wallets/intent', o, { chainId: 10, address: '0x52908400098527886E0F7030069857D2E4169EE7', label: 'Treasury' })).body).toEqual({ error: 'quarantine' })
+    expect((await ask(o, 'how do roles work')).status).toBe(200)
+    sent = []
+    expect((await call('POST', '/api/support/ask', { body: { question: 'how do roles work' }, env: keyed })).status).toBe(401)
+    expect((await call('POST', '/api/support/ask', { cookie: '__Host-session=nobody', body: { question: 'how do roles work' }, env: keyed })).status).toBe(401)
+    expect(sent).toHaveLength(0)
+    expect(routes.find((r) => r.path === '/api/support/ask')).toMatchObject({ method: 'POST', roles: data.ROLES })
+  })
+
+  it('POST /api/support/ask: the isolation case, and the request checks (Sec-Fetch-Site, Origin, JSON) come before the provider and the counter', async () => {
+    await isolation['POST /api/support/ask'](await member('Alder Asset Management'), await member('Birchfield Capital'))
+    vi.stubGlobal('fetch', async (url: string, init: RequestInit) => {
+      sent.push({ url, init })
+      return reply(init)
+    })
+    const m = await member()
+    const refused = (headers: Record<string, string | null>) => call('POST', '/api/support/ask', { cookie: m.cookie, body: { question: 'how do roles work' }, env: keyed, headers })
+    for (const site of ['same-site', 'cross-site', 'none', null]) expect((await refused({ 'sec-fetch-site': site })).body, String(site)).toEqual({ error: 'cross_site' })
+    for (const origin of ['https://evil.example', 'http://localhost:8788', SIGN, 'null', null]) expect((await refused({ origin })).body, String(origin)).toEqual({ error: 'bad_origin' })
+    expect((await refused({ 'content-type': 'text/plain' })).status).toBe(415)
+    expect((await call('GET', '/api/support/ask', { cookie: m.cookie, env: keyed })).status).toBe(404)
+    expect((await call('POST', '/api/support/ask', { cookie: m.cookie, body: { question: 'how do roles work' }, env: keyed, sign: true })).status).toBe(404)
+    expect(sent).toHaveLength(0)
+    expect(await supportCount(m.seatId)).toBe(0)
+  })
+
+  it('nothing is written but the counter of the seat: no audit row, no other row, and the question is in no table and no log', async () => {
+    const m = await member()
+    const rows = await snapshot()
+    const marker = 'zebrafinch'
+    expect((await ask(m, `how do roles work ${marker}`)).body).toEqual({ answers: [shown('KB-03')] })
+    reply = () => jev({ none: 1 }, 0)
+    expect((await ask(m, `how do roles work ${marker}`)).body).toEqual({ handover: true })
+    reply = () => new Response('', { status: 500 })
+    expect((await ask(m, `how do roles work ${marker}`)).body).toEqual({ handover: true })
+    expect((await ask(m, '')).status).toBe(400)
+    expect(await snapshot()).toBe(rows)
+    expect(await count('audit_log', m.orgId)).toBe(JSON.parse(rows).audit_log.filter((r: { org_id: string }) => r.org_id === m.orgId).length)
+    // The counter: one row for this seat and hour, which holds a number.
+    expect((await db.prepare(`SELECT * FROM ${COUNTER} WHERE org_id LIKE ?`).bind(`%${m.seatId}%`).all()).results).toEqual([{ org_id: `seat:${m.seatId}`, hour: Math.floor(now / HOUR), n: 3 }])
+    expect(await snapshot([...TABLES, COUNTER])).not.toContain(marker)
+    expect(JSON.stringify(logged.mock.calls)).not.toContain(marker)
+    expect(logged.mock.calls).toEqual([['support failure', 'provider_status']])
+    // The SQL of the counter lives in the data module, like every other statement.
+    expect(supportServer).not.toMatch(/\.prepare\(|\.batch\(|\bDB\.\w/)
+  })
+
+  it('the key is in no response, no log and not in the console bundle; the page never calls the provider', async () => {
+    const m = await member()
+    const answers = [await ask(m, 'how do roles work')]
+    for (const failing of [() => jev({ none: 1 }, 0), () => new Response(KEY, { status: 500 }), () => new Response(KEY), () => { throw new Error(KEY) }]) {
+      reply = failing
+      answers.push(await ask(m, 'how do roles work'))
+    }
+    answers.push(await ask(m, ''), await ask(m, KEY))
+    reply = () => jev({ 'KB-03': 1 }, 0.99)
+    for (let i = 0; i < 20; i++) answers.push(await ask(m, 'how do roles work'))
+    expect(answers.map((a) => a.status)).toContain(429)
+    for (const a of answers) expect(JSON.stringify(a.body) + JSON.stringify([...a.headers])).not.toContain(KEY)
+    expect(JSON.stringify(logged.mock.calls)).not.toContain(KEY)
+    const bundle = Object.values(builtConsole).join('\n')
+    expect(bundle.length, 'build the app first: pnpm build').toBeGreaterThan(50_000)
+    for (const mark of ['TYPESAFE_API_KEY', 'api.typesafe.ai', 'systemone', 'jev-1', ANSWERS[2].text.slice(0, 40)]) expect(bundle + supportPage, mark).not.toContain(mark)
+    expect(bundle).toContain('/api/support/ask')
+    expect(pageHeaders).toContain("connect-src 'self'")
+  })
+
+  it('the answer base: 25 entries, each true to its rules (80 words at most, a console page, plain words), and the page says what the decision asks for', () => {
+    expect(ANSWERS.map((a) => a.id)).toEqual(Array.from({ length: 25 }, (_, i) => `KB-${String(i + 1).padStart(2, '0')}`))
+    const banned = /licen[cs]ed|regulated|authori[sz]ed|MiCA|compliant|\u2014|honest/i
+    for (const a of ANSWERS) {
+      expect(a.text.split(/\s+/).length, a.id).toBeLessThanOrEqual(80)
+      expect(a.text.length, a.id).toBeGreaterThan(60)
+      expect(['/#/organisation', '/#/compliance', '/#/security', '/#/support', '/recover'], a.id).toContain(a.link)
+      expect(a.about, a.id).not.toMatch(/\n/)
+      expect(a.title + a.text, a.id).not.toMatch(banned)
+    }
+    expect(new Set(ANSWERS.map((a) => a.title)).size).toBe(25)
+    // What is not built says so.
+    for (const id of ['KB-01', 'KB-13', 'KB-16', 'KB-19']) expect(ANSWERS.find((a) => a.id === id)!.text, id).toMatch(/^Not available yet\./)
+    expect(supportPage).toContain("'An outside provider, TypeSafe AI (USA), matches your question to our help texts. It receives your question without your name, organisation or wallet. Ophis does not store your question.'")
+    expect(supportPage).toContain('Did this answer your question?')
+    expect(supportPage).toContain("mailto:clement@ophis.fi?subject=${encodeURIComponent('Ophis Business support')}&body=${encodeURIComponent('What I was doing:\\r\\n\\r\\nWhat I expected:\\r\\n\\r\\nWhat happened:\\r\\n')}")
+    expect(supportPage).toContain('>Write to Ophis</a>')
+    expect(supportPage).toContain('maxLength={MAX}')
+    expect(supportPage).toContain('const MAX = 500')
+    expect(supportPage).not.toMatch(banned)
+    expect(supportPage).not.toMatch(/dangerouslySetInnerHTML|innerHTML/)
   })
 })

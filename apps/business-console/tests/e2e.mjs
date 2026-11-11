@@ -13,6 +13,7 @@
 // signs on the signing page; a member sees the banner and an Owner cancels; a second request waits (the local "skip"
 // command stands in for the waits), is completed with the new passkey, and an old Owner passkey stops it; the
 // recovery sheet prints alone.
+// Milestone 6: the Owner opens Support, asks a question, reads a help text, presses "No" and gets the hand-over card.
 // Starts and stops its own local server on a throwaway database. Run: pnpm test:e2e
 import { execFileSync, spawn } from 'node:child_process'
 import { mkdirSync, readFileSync, rmSync } from 'node:fs'
@@ -604,6 +605,31 @@ try {
   await cy.context.close()
   await arrive(owner, false)
 
+  // Milestone 6: Support. A question, the help text the server selected, "No" until the hand-over card. With no
+  // TYPESAFE_API_KEY in .dev.vars the server answers the hand-over at once, and only that path is checked.
+  // With the key this part needs the network: the Worker asks the provider, the browser never does.
+  const withKey = /^TYPESAFE_API_KEY=.+/m.test(readFileSync('.dev.vars', 'utf8'))
+  await page.locator('.rail').getByRole('link', { name: 'Support' }).click()
+  await page.getByRole('heading', { name: /Ask a question/ }).waitFor()
+  check('Support opens from the rail and from the top button, with the provider notice under the box and the footer line',
+    (await page.locator('[data-support]').getAttribute('href')) === '/#/support' && await page.getByText(FOOTER).isVisible()
+    && await page.getByText('An outside provider, TypeSafe AI (USA), matches your question to our help texts. It receives your question without your name, organisation or wallet. Ophis does not store your question.').isVisible())
+  const write = page.getByRole('link', { name: 'Write to Ophis' })
+  await page.getByLabel('Your question').fill('How do I add a second passkey?')
+  await page.getByRole('button', { name: 'Ask' }).click()
+  await page.getByText('Did this answer your question?').or(write).first().waitFor({ timeout: 10000 })
+  if (withKey) {
+    check('a question gets a help text of the answer base', await page.getByRole('heading', { name: 'Add a second passkey' }).isVisible())
+    await page.screenshot({ path: '.shots/30-support-answer.png', fullPage: true })
+    // "No" shows the second best once, if the server sent one, then the hand-over card: two presses at most.
+    for (let i = 0; i < 2 && !(await write.isVisible()); i++) await page.getByRole('button', { name: 'No' }).click()
+  }
+  await write.waitFor({ timeout: 5000 })
+  check(`the hand-over card ${withKey ? 'follows "No"' : 'is shown at once without the key'}: an email to Ophis with the subject and three empty lines, nothing else`,
+    (await write.getAttribute('href')) === 'mailto:clement@ophis.fi?subject=Ophis%20Business%20support&body=What%20I%20was%20doing%3A%0D%0A%0D%0AWhat%20I%20expected%3A%0D%0A%0D%0AWhat%20happened%3A%0D%0A')
+  await page.screenshot({ path: '.shots/31-support-handover.png', fullPage: true })
+  await arrive(owner, false)
+
   // The server cannot end the session: the app must not pretend that it did.
   await page.route('**/api/signout', (route) => route.fulfill({ status: 500, contentType: 'application/json', body: '{"error":"internal"}' }))
   await page.getByRole('button', { name: 'Sign out' }).click()
@@ -623,7 +649,7 @@ try {
   if (violations.length) console.error(violations.join("\n"))
   check(`no policy violation in the browser (${violations.length})`, violations.length === 0)
   check(`no request left the origin (${foreign.length})`, foreign.length === 0)
-  console.log('\nEnd-to-end run passed. Screenshots in .shots/: 01-signin to 29-recovery-sheet-print')
+  console.log('\nEnd-to-end run passed. Screenshots in .shots/: 01-signin to 31-support-handover')
 } catch (error) {
   console.error(error.message)
   process.exitCode = 1

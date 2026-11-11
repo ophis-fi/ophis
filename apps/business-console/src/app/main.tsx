@@ -7,6 +7,7 @@ import './app.css'
 import mark from './assets/ophis-icon-mono-dark.svg'
 import { Alerts, Compliance, Enrol, Organisation, Problem, Recover, RecoveryBanner, Security, SignIn, type Me } from './pages.tsx'
 import { api, Icon, ROLE, Status } from './ui.tsx'
+import { Support } from './support.tsx'
 
 const onHashChange = (listener: () => void) => {
   addEventListener('hashchange', listener)
@@ -59,7 +60,7 @@ function App() {
   useEffect(() => void loadMe(), [loadMe])
 
   // /recover is a path, not a fragment: a public page that holds no session, reached from the recovery sheet.
-  const page = location.pathname === '/recover' ? 'recover' : hash.startsWith('#/security') ? 'security' : hash.startsWith('#/enrol') ? 'enrol' : !me ? 'signin' : hash.startsWith('#/compliance') ? 'compliance' : 'organisation'
+  const page = location.pathname === '/recover' ? 'recover' : hash.startsWith('#/security') ? 'security' : hash.startsWith('#/enrol') ? 'enrol' : !me ? 'signin' : hash.startsWith('#/compliance') ? 'compliance' : hash.startsWith('#/support') ? 'support' : 'organisation'
   useEffect(() => {
     document.body.dataset.route = me ? page : 'signin'
     document.body.classList.toggle('menu-open', menu)
@@ -100,7 +101,7 @@ function App() {
           <a href="/#/" aria-current={current('signin')}><Icon name="fingerprint" size={16} />Sign in</a>
           <a href="/#/security" aria-current={current('security')}><Icon name="lock-keyhole" size={16} />Security and data</a>
         </nav>
-        <button className="btn primary sm" type="button" data-support disabled title="Support arrives in a later milestone"><Icon name="life-buoy" size={16} />Support</button>
+        <a className="btn primary sm" data-support href="/#/support" aria-current={current('support')}><Icon name="life-buoy" size={16} />Support</a>
       </header>
 
       <div className="shell">
@@ -112,7 +113,7 @@ function App() {
           <Later icon="clipboard-check" label="Onboarding" />
           <span className="cap">Trust and help</span>
           <a className="nav" href="/#/security" data-tip="Security and data" aria-current={current('security')}><Icon name="lock-keyhole" /><span className="lbl">Security and data</span></a>
-          <Later icon="life-buoy" label="Support" />
+          <a className="nav" href="/#/support" data-tip="Support" aria-current={current('support')}><Icon name="life-buoy" /><span className="lbl">Support</span></a>
           {me && (
             <div className="who" data-tip="Signed in with a passkey">
               <span className="av" aria-hidden="true">{me.seat.displayName.split(' ').map((word) => word[0]).join('').slice(0, 2)}</span>
@@ -131,6 +132,7 @@ function App() {
             : me === undefined ? null
             : me && unread.length ? <Alerts alerts={unread} onRead={markRead} />
             : me && page === 'compliance' ? <Compliance onSignedOut={signedOut} />
+            : me && page === 'support' ? <Support onSignedOut={signedOut} />
             : me ? <Organisation me={me} onSignedOut={signedOut} onChanged={loadMe} />
             : <SignIn onSignedIn={loadMe} />}
           </main>
