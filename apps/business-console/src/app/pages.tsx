@@ -417,6 +417,7 @@ export function Organisation({ me, onSignedOut, onChanged }: { me: Me; onSignedO
   const quarantined = (me.seat.quarantineUntil ?? 0) > Date.now()
   const mayManage = (role: string) => me.seat.role === 'owner' || (me.seat.role === 'admin' && role !== 'owner')
   const hardware = me.seat.role === 'owner'
+  const last = (key: Passkey) => view?.passkeys.filter((other) => other.seatId === key.seatId && other.state === 'active').length === 1
   const keyRows = (keys: Passkey[], own: boolean) => keys.map((key) => (
     <tr key={key.id}>
       <td>{key.label}</td>
@@ -426,7 +427,7 @@ export function Organisation({ me, onSignedOut, onChanged }: { me: Me; onSignedO
       <td>{key.lastUsedAt ? stamp(key.lastUsedAt) : 'Never'}</td>
       <td><Status>{capital(key.state)}</Status>{key.state === 'suspended' && key.stopRightUntil && <small>Can stop its replacement until {minute(key.stopRightUntil)}</small>}</td>
       <td>{key.state === 'active' && ready && (own || (!quarantined && view?.members.some((member) => member.id === key.seatId && member.state === 'active' && mayManage(member.role)))) && (
-        <button className="btn ghost sm" type="button" aria-label={`Revoke ${key.label}${own ? '' : ` of ${name(key.seatId)}`}`} onClick={() => act(() => sensitive(`/api/passkeys/${key.id}/revoke`))}><Icon name="x" size={16} />Revoke</button>
+        <button className="btn ghost sm" type="button" aria-label={`Revoke ${key.label}${own ? '' : ` of ${name(key.seatId)}${last(key) ? ' and freeze the seat' : ''}`}`} onClick={() => act(() => sensitive(`/api/passkeys/${key.id}/revoke`))}><Icon name={!own && last(key) ? 'ban' : 'x'} size={16} />{!own && last(key) ? 'Revoke and freeze seat' : 'Revoke'}</button>
       )}</td>
     </tr>
   ))
@@ -484,7 +485,7 @@ export function Organisation({ me, onSignedOut, onChanged }: { me: Me; onSignedO
       </Section>
 
       {manages && (
-        <Section icon="key-square" title="Passkeys of colleagues" hint="A new passkey stays pending until it is confirmed. A replaced passkey is suspended, not deleted: it can stop its replacement.">
+        <Section icon="key-square" title="Passkeys of colleagues" hint="A new passkey stays pending until it is confirmed. A replaced passkey is suspended, not deleted: it can stop its replacement. Revoking a member's last passkey freezes their seat: to replace lost passkeys, re-enrol the member instead.">
           <div className="table-wrap"><table className="t">{keyHead(false)}<tbody>{view && keyRows(view.passkeys.filter((key) => key.seatId !== me.seat.id), false)}</tbody></table></div>
         </Section>
       )}
@@ -518,7 +519,9 @@ const ALERT: Record<string, (alert: Alert) => string> = {
   re_enrolment_completed: (a) => `Your seat was re-enrolled on ${minute(a.at!)}: a new passkey replaced the previous ones.`,
   quarantine: (a) => `Your seat is in quarantine until ${minute(a.until!)}. It cannot add a member or revoke a colleague's passkey, and a replaced passkey can still stop the replacement.`,
   colleague_re_enrolled: (a) => `${a.name} was re-enrolled on ${minute(a.at!)}: a new passkey replaced their previous ones. If that surprises you, call them.`,
-  seat_frozen: (a) => `The seat of ${a.name} is frozen: a replaced passkey stopped its replacement. An Owner and a second person decide which passkeys stand.`,
+  colleague_joined: (a) => `${a.name} joined on a link issued on ${minute(a.at!)}: a colleague confirmed their first passkey. If you do not know this member, tell an Owner.`,
+  re_enrolment_closed: (a) => `${a.name} signed in on ${minute(a.at!)} with a passkey they still hold, while a re-enrolment of their seat was open. It was closed. If you started it, the request may not have come from ${a.name}: call them.`,
+  seat_frozen: (a) => `The seat of ${a.name} is frozen: a replaced passkey stopped its replacement, or a colleague revoked its last passkey. It cannot sign in until an Owner and a second person decide which passkeys stand.`,
   confirmation_waiting: (a) => `A new passkey of ${a.name} waits for the three words from you, under Waiting for confirmation.`,
 }
 export function Alerts({ alerts, onRead }: { alerts: Alert[]; onRead: () => void }) {

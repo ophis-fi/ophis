@@ -105,9 +105,19 @@ try {
     await on.reload()
     await on.getByRole('heading', { name: /People, wallets|Read this before you continue/ }).waitFor()
   }
-  const readAlerts = async (text, on = page) => {
+  // One screen at desk width and at phone width. True when the phone page does not scroll sideways.
+  async function both(on, name) {
+    await on.screenshot({ path: `.shots/${name}.png` })
+    await on.setViewportSize({ width: 390, height: 844 })
+    await on.waitForTimeout(200) // let the narrow layout paint: a shot taken at once shows the old frame in part
+    await on.screenshot({ path: `.shots/${name}-phone.png` })
+    const fits = await on.evaluate(() => document.documentElement.scrollWidth <= innerWidth)
+    await on.setViewportSize({ width: 1440, height: 900 })
+    return fits
+  }
+  const readAlerts = async (text, on = page, shot = '') => {
     await on.getByRole('heading', { name: 'Read this before you continue.' }).waitFor()
-    const shown = await on.getByText(text).isVisible()
+    const shown = await on.getByText(text).isVisible() && (!shot || await both(on, shot))
     await on.getByRole('button', { name: 'I have read this' }).click()
     await on.getByRole('heading', { name: 'People, wallets and two-person approval.' }).waitFor()
     return shown
@@ -126,7 +136,7 @@ try {
     const link = await page.getByLabel('Enrolment link').inputValue()
     await page.getByRole('button', { name: 'Copy the link' }).click()
     await page.getByRole('button', { name: 'Copied' }).waitFor()
-    await page.screenshot({ path: '.shots/07-link-dialog.png' })
+    if (!(await both(page, '07-link-dialog'))) check('the link dialog fits a phone', false)
     await page.getByRole('button', { name: 'Done' }).click()
     return link
   }
@@ -166,7 +176,7 @@ try {
     words.length === 3 && words.every((word) => /^[a-z-]{3,10}$/.test(word)) && await viewer.page.getByText('Never type them or send them by message, email or chat.').isVisible()
     && (await viewer.page.locator('.phrase').evaluate((node) => parseFloat(getComputedStyle(node).fontSize))) >= 34)
   check('the footer line is on the three-word page', await viewer.page.getByText(FOOTER).isVisible())
-  await viewer.page.screenshot({ path: '.shots/03-three-words.png' })
+  check('the three-word page fits a phone', await both(viewer.page, '03-three-words'))
 
   await organisation()
   check('the Owner is told at the door that a passkey waits for the words', await readAlerts('A new passkey of Ada Viewer waits for the three words from you'))
@@ -204,7 +214,8 @@ try {
     await page.getByText('Suspended').first().isVisible() && (await status('/api/me', viewer.page)) === 401)
   await replacement.page.getByRole('link', { name: 'Go to sign-in' }).click()
   await replacement.page.getByRole('button', { name: 'Sign in with a passkey' }).click()
-  check('the new passkey signs in, and is told about the quarantine first', await readAlerts('Your seat is in quarantine until', replacement.page))
+  check('the new passkey signs in, and is told about the quarantine first, on a panel that fits a phone', await readAlerts('Your seat is in quarantine until', replacement.page, '09-alerts'))
+  check('the quarantine banner is on the page behind, and fits a phone', await replacement.page.getByText('Your seat is in quarantine until').isVisible() && await both(replacement.page, '10-quarantine'))
 
   // The real Viewer comes back with the old passkey: no session, one action.
   await viewer.page.goto(ORIGIN)
@@ -246,7 +257,7 @@ try {
 
   check(`no policy violation in the browser (${violations.length})`, violations.length === 0)
   check(`no request left the origin (${foreign.length})`, foreign.length === 0)
-  console.log('\nEnd-to-end run passed. Screenshots in .shots/: 01-signin to 08-waiting-phone')
+  console.log('\nEnd-to-end run passed. Screenshots in .shots/: 01-signin to 10-quarantine-phone')
 } catch (error) {
   console.error(error.message)
   process.exitCode = 1

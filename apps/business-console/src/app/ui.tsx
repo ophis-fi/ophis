@@ -66,7 +66,12 @@ export function Status({ children }: { children: string }) {
 }
 
 export const stamp = (time: number) => `${new Date(time).toISOString().slice(0, 19).replace('T', ' ')}Z`
-export const minute = (time: number) => `${new Date(time).toISOString().slice(0, 16).replace('T', ' ')} UTC`
+// A deadline: UTC, as everywhere in the console, and the reader's own clock next to it when the two differ.
+export function minute(time: number) {
+  const utc = new Date(time).toISOString().slice(0, 16).replace('T', ' ')
+  const local = new Date(time).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })
+  return `${utc} UTC${local === utc.slice(11) ? '' : ` (${local} your time)`}`
+}
 export const capital = (word: string) => word.charAt(0).toUpperCase() + word.slice(1)
 export const ROLE: Record<string, string> = { owner: 'Owner', admin: 'Admin', trader: 'Trader', approver: 'Approver', compliance: 'Compliance officer', viewer: 'Viewer' }
 
