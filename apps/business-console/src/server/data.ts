@@ -82,12 +82,13 @@ const auditHash = (r: Omit<AuditRow, 'hash'>) =>
   sha256Hex(JSON.stringify([r.org_id, r.seq, r.at, r.actor_kind, r.actor_id, r.session_id, r.action, r.subject_id, r.detail, r.country, r.asn, r.prev_hash]))
 
 // G3 (registration): what the operator compares in a review, as one text: every Owner seat with its state, every
-// passkey of an Owner seat with its state, and the recovery wallet that waits. ?1 is the organisation. "Submit for
+// passkey of an Owner seat with its state, the recovery wallet that waits, and (milestone 5b) the sealed declaration. ?1 is the organisation. "Submit for
 // review" stores it; commit() below compares it again at the end of every batch of that organisation, whatever the
 // write was, and a difference puts the organisation back to "not submitted".
 export const REVIEWED = `(SELECT COALESCE(group_concat(x, ' '), '') FROM (
   SELECT s.id || s.state || COALESCE(k.id || k.state, '') AS x FROM seats s LEFT JOIN credentials k ON k.org_id = s.org_id AND k.seat_id = s.id WHERE s.org_id = ?1 AND s.role = 'owner'
-  UNION ALL SELECT id FROM wallets WHERE org_id = ?1 AND state = 'pending' ORDER BY 1))`
+  UNION ALL SELECT id FROM wallets WHERE org_id = ?1 AND state = 'pending'
+  UNION ALL SELECT id FROM sealed_items WHERE org_id = ?1 AND kind = 'declaration' ORDER BY 1))`
 
 // Writes of one organisation are serialised by the audit sequence: two at the same instant collide on
 // the primary key (org_id, seq) and the later one fails whole. So plan() runs after the head is read:

@@ -34,6 +34,7 @@ export const ONBOARDING_EVENTS: Record<string, string> = {
   'organisation.apply': 'Organisation created by an application: its DNS record proved the company domain, first Owner passkey active',
   'activation.proof': 'Recovery wallet signed the activation and confirmed the first Owner passkey',
   'review.submit': 'Organisation submitted for review',
+  'declaration.upload': 'Signed declaration uploaded, sealed in the browser (the detail is the SHA-256 of the sealed file)',
   'kyb.approve': 'Ophis operator: verification approved, organisation active',
   'kyb.refuse': 'Ophis operator: verification refused, organisation closed',
   'kyb.more': 'Ophis operator: more information asked, the review was sent back',
@@ -134,14 +135,18 @@ async function storeProof(db: D1Database, w: Proved, now: number) {
   return outcome
 }
 
+/** Inside a commit: the organisation's state, if this actor is still an active Owner there with this session. */
+const ownerNow = (db: D1Database, actor: Actor) =>
+  db.prepare(`SELECT o.state, o.review_at AS reviewAt FROM seats s JOIN sessions x ON x.org_id = s.org_id AND x.seat_id = s.id AND x.id = ? AND x.revoked_at IS NULL
+              JOIN organisations o ON o.id = s.org_id WHERE s.org_id = ? AND s.id = ? AND s.state = 'active' AND s.role = 'owner'`)
+    .bind(actor.sessionId, actor.orgId, actor.seatId).first<{ state: string; reviewAt: number | null }>()
+
 // "Submit for review": the Owner, the session and the organisation's state are read inside the commit, and so is A7.
 // G3: it also stores what the operator will compare (REVIEWED): any later change to it un-submits the organisation.
 async function submitForReview(db: D1Database, actor: Actor, now: number) {
   let outcome = 'forbidden'
   await commit(db, actor.orgId, async () => {
-    const who = await db.prepare(`SELECT o.state, o.review_at AS reviewAt FROM seats s JOIN sessions x ON x.org_id = s.org_id AND x.seat_id = s.id AND x.id = ? AND x.revoked_at IS NULL
-                                  JOIN organisations o ON o.id = s.org_id WHERE s.org_id = ? AND s.id = ? AND s.state = 'active' AND s.role = 'owner'`)
-      .bind(actor.sessionId, actor.orgId, actor.seatId).first<{ state: string; reviewAt: number | null }>()
+    const who = await ownerNow(db, actor)
     outcome = !who ? 'forbidden' : who.state !== 'unverified' ? 'not_unverified' : who.reviewAt !== null ? 'already_submitted' : (await missing(db, actor.orgId, now)) ?? 'ok'
     if (outcome !== 'ok') return null
     return [{ at: now, actorKind: 'seat', actorId: actor.seatId, sessionId: actor.sessionId, action: 'review.submit', subjectId: actor.orgId, country: actor.country, asn: actor.asn },
@@ -233,12 +238,49 @@ export const SEAL = { maxBytes: 10 * 1024 * 1024 + 8192, generation: 'g1' } // 1
 const RECIPIENT = /^age1pq1[a-z0-9]{1500,2500}$/
 export const sealKey = async (env: { ENVIRONMENT: string; SEAL_RECIPIENT?: string }) =>
   env.ENVIRONMENT === 'local' && RECIPIENT.test(env.SEAL_RECIPIENT ?? '') ? sha256Hex(env.SEAL_RECIPIENT!) : null
+/**
+ * What the Worker can check without a key (key-custody.md section 3): an age v1 file with exactly one stanza, of the
+ * hybrid type, a header MAC line, and a payload that holds at least a nonce and one tag. A classic X25519 stanza, a
+ * second stanza and anything that is not age are refused. The stanza does not say whose key it is.
+ */
+export function sealedShape(bytes: Uint8Array) {
+  const head = String.fromCharCode(...bytes.subarray(0, 4096))
+  const end = head.indexOf('\n--- ')
+  return head.startsWith('age-encryption.org/v1\n-> mlkem768x25519 ') && end > 0 && head.slice(0, end).split('\n-> ').length === 2
+    && /^\n--- [A-Za-z0-9+/]{43}\n/.test(head.slice(end)) && bytes.length >= end + 49 + 32
+}
+
+interface Sealed { id: string; kind: string; size: number; sha256: string; key: string; generation: string; at: number }
+const SEALED = `id, kind, size, sha256, key_fingerprint AS key, key_generation AS generation, created_at AS at FROM sealed_items`
+/** The sealed items of one organisation: what the server knows of each, never a byte of it. */
+const sealedOf = async (db: D1Database, orgId: string) => (await db.prepare(`SELECT ${SEALED} WHERE org_id = ? ORDER BY created_at, id`).bind(orgId).all<Sealed>()).results
+
+// The row of an upload, in one commit with its audit row, which carries the hash. Read inside the plan: the uploader is
+// still an active Owner with this session, and the organisation is still unverified (once it is active the declaration
+// it was approved with stays). The new declaration takes the place of the old one; commit() then sees that what was
+// submitted has changed (REVIEWED names the item) and the organisation is no longer under review.
+async function storeSealed(db: D1Database, actor: Actor, item: { id: string; size: number; sha256: string; key: string }, now: number) {
+  let outcome = 'failed'
+  let old: string | null = null
+  await commit(db, actor.orgId, async () => {
+    const who = await ownerNow(db, actor)
+    outcome = !who ? 'forbidden' : who.state !== 'unverified' ? 'not_unverified' : 'ok'
+    if (outcome !== 'ok') return null
+    old = (await db.prepare(`SELECT id FROM sealed_items WHERE org_id = ? AND kind = 'declaration'`).bind(actor.orgId).first<{ id: string }>())?.id ?? null
+    return [{ at: now, actorKind: 'seat', actorId: actor.seatId, sessionId: actor.sessionId, action: 'declaration.upload', subjectId: item.id, detail: item.sha256, country: actor.country, asn: actor.asn }, [
+      db.prepare(`DELETE FROM sealed_items WHERE org_id = ? AND kind = 'declaration'`).bind(actor.orgId),
+      db.prepare(`INSERT INTO sealed_items (id, org_id, kind, key_generation, key_fingerprint, size, sha256, uploaded_by_seat_id, created_at) VALUES (?, ?, 'declaration', ?, ?, ?, ?, ?, ?)`)
+        .bind(item.id, actor.orgId, SEAL.generation, item.key, item.size, item.sha256, actor.seatId, now),
+    ]]
+  })
+  return { outcome, old: old as string | null }
+}
 
 // ---- the application (public, console host) ----
 
 // The route's context, as much as these handlers read (index.ts builds it).
 interface Ctx {
-  env: { DB: D1Database; ENVIRONMENT: string; CHALLENGE_KEY: string }
+  env: { DB: D1Database; SEALED: R2Bucket; ENVIRONMENT: string; CHALLENGE_KEY: string; SEAL_RECIPIENT?: string }
   now: number; config: Config; body: Record<string, unknown>; params: Record<string, string | undefined>
 }
 interface Member extends Ctx { actor: Actor }
@@ -376,12 +418,16 @@ export async function onboarding(c: Member) {
   const { company, record } = await reviewOf(c.env.DB, orgId)
   const first = await firstOf(c.env.DB, orgId)
   const wallet = await walletOf(c.env.DB, orgId)
+  const sealed = await sealedOf(c.env.DB, orgId)
   const status = company.state !== 'unverified' ? 'verified' : company.reviewAt !== null ? 'under_review' : record?.decision === 'pending' ? 'more_information' : 'not_submitted'
   return json(200, {
     company: { legalName: company.legalName, kind: company.kind, country: company.country, registration: company.registration, domain: company.domain, domainVerifiedAt: company.domainVerifiedAt },
     // The company sign-in: null until an Owner has chosen (the step of the Onboarding page), which works as "none".
     signin: { setting: company.signin, tenant: company.tenant },
     first: first && { phrase: await wordsOf(c, orgId, first), credentialHash: first.hash, active: first.active === 1, name: first.name },
+    // Milestone 5b: the sealing key of this environment (its fingerprint; null: none configured), and the sealed declaration as the server knows it.
+    seal: { key: await sealKey(c.env), generation: SEAL.generation },
+    sealed: sealed.find((item) => item.kind === 'declaration') ?? null,
     wallet: wallet && walletView(wallet),
     // What "Submit for review" would answer now: null when everything is there.
     missing: company.state === 'unverified' ? await missing(c.env.DB, orgId, c.now) : null,
@@ -442,6 +488,29 @@ export async function activationProof(c: Ctx, intent: ActivateIntent, signature:
   return outcome === 'stored' ? json(200, { state: 'stored' }) : refuse(outcome)
 }
 
+// POST /api/onboarding/declaration (Owner, fresh, two passkeys). The body is the sealed file and nothing else; the
+// router has capped its size. The header x-seal-key names the key the browser sealed to: a console built for another
+// key is told so, and a row never names a key that this console's page did not use. The SHA-256 is computed here, of
+// the bytes that arrived. The object goes into the bucket first, under the item's random id, then the row: when the
+// row is refused or fails, the object is taken out again; when it replaces an older item, that one's object goes.
+// ponytail: a Worker that dies between the two leaves an object that no row names. Sweep the bucket against the table if that ever matters.
+export async function sealDeclaration(c: Member & { request: Request; bytes: Uint8Array }) {
+  const key = await sealKey(c.env)
+  if (!key) return fail(503, 'not_configured')
+  if (c.request.headers.get('x-seal-key') !== key) return fail(409, 'key_changed')
+  if (!sealedShape(c.bytes)) return fail(400, 'not_sealed')
+  const item = { id: randomId(), size: c.bytes.length, sha256: hex(new Uint8Array(await crypto.subtle.digest('SHA-256', c.bytes))), key }
+  await c.env.SEALED.put(item.id, c.bytes)
+  let stored: Awaited<ReturnType<typeof storeSealed>> = { outcome: 'failed', old: null }
+  try {
+    stored = await storeSealed(c.env.DB, c.actor, item, c.now)
+  } finally {
+    const gone = stored.outcome === 'ok' ? stored.old : item.id
+    if (gone) await c.env.SEALED.delete(gone)
+  }
+  return stored.outcome === 'ok' ? json(200, { ...item, at: c.now, generation: SEAL.generation }) : refuse(stored.outcome)
+}
+
 // POST /api/onboarding/submit (Owner, fresh, two passkeys).
 export async function submit(c: Member) {
   const outcome = await submitForReview(c.env.DB, c.actor, c.now)
@@ -455,7 +524,7 @@ export async function submit(c: Member) {
 // review, record a KYB decision, freeze and unfreeze, and make an application code. Nothing else: no route here takes a passkey, a member or a
 // wallet address.
 
-interface OperatorEnv { DB: D1Database; ENVIRONMENT: string; CHALLENGE_KEY: string; OPERATOR_TOKEN?: string }
+interface OperatorEnv { DB: D1Database; SEALED: R2Bucket; ENVIRONMENT: string; CHALLENGE_KEY: string; OPERATOR_TOKEN?: string }
 
 // What the operator compares before a decision: the domain, the first Owner's words and passkey hash, the recovery
 // wallet with its kind and its colour (read on both endpoints now, as if it were in force), and whether A7 holds.

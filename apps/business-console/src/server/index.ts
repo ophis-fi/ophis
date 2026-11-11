@@ -1,14 +1,14 @@
 // Worker entry: answers /api/* and leaves every other path to the static assets.
 import * as data from './data.ts'
-import { checksum, colour, parseAddress, readCapped, safeState, verify, verifyDigest, type SafeState } from './chain.ts'
+import { checksum, colour, parseAddress, readBytes, readCapped, safeState, verify, verifyDigest, type SafeState } from './chain.ts'
 import { challengeIsOurs, configFor, creationOptions, credentialHash, newChallenge, phraseFor, requestOptions, seal, toBase64Url, unseal, userHandle, verifyAssertion, verifyRegistration, type Config, type Purpose } from './passkeys.ts'
 import { CHAIN_NAME, typedLink, typedProof, type ProofKind } from './typed.ts'
 import { ask } from './support.ts'
-import { activateIntent, activationIntent, activationProof, apply, applyCheck, onboarding, ONBOARDING_EVENTS, operator, OPERATOR, submit } from './onboarding.ts'
+import { activateIntent, activationIntent, activationProof, apply, applyCheck, onboarding, ONBOARDING_EVENTS, operator, OPERATOR, SEAL, sealDeclaration, submit } from './onboarding.ts'
 import { WORDS } from './words.ts'
 import { authorizeUrl, exchange, IDPS, newFlow, PROVIDERS, verifyIdToken, type Provider } from './oidc.ts'
 
-export interface Env { DB: D1Database; ASSETS: Fetcher; ENVIRONMENT: string; CHALLENGE_KEY: string; MICROSOFT_CLIENT_SECRET?: string; GOOGLE_CLIENT_SECRET?: string }
+export interface Env { DB: D1Database; ASSETS: Fetcher; SEALED: R2Bucket; ENVIRONMENT: string; CHALLENGE_KEY: string; MICROSOFT_CLIENT_SECRET?: string; GOOGLE_CLIENT_SECRET?: string; SEAL_RECIPIENT?: string }
 
 const IDLE_MS = 15 * 60_000
 const ABSOLUTE_MS = 12 * 60 * 60_000
@@ -43,6 +43,8 @@ const SIGN_HEADERS = {
 interface Context {
   request: Request; env: Env; now: number; config: Config
   body: Record<string, unknown>; params: Record<string, string | undefined>
+  /** The body of a route marked `raw` (milestone 5b: a sealed file), and only there. */
+  bytes: Uint8Array
   /** Set on routes marked session: true, and only there. */
   session: data.Session & { token_hash: string }; actor: data.Actor
 }
@@ -61,6 +63,8 @@ interface Route {
   unverified?: boolean
   /** Company sign-in: the one route a provider sends the browser back to. It takes a cross-site navigation, and has gates of its own. */
   callback?: boolean
+  /** Milestone 5b: the body is a file sealed in the browser, not JSON, of at most this many bytes. Read after the gates of the row, never before. */
+  raw?: number
 }
 
 const json = (status: number, body: unknown, headers: Record<string, string> = {}) => Response.json(body, { status, headers })
@@ -854,6 +858,8 @@ export const routes: Route[] = [
   { method: 'GET', path: '/api/onboarding', roles: ['owner', 'compliance'], unverified: true, can: 'See the onboarding steps, the review status and the KYB record', handler: onboarding },
   { method: 'POST', path: '/api/onboarding/wallet', roles: ['owner'], fresh: true, twoKeys: true, unverified: true, can: 'Name the recovery wallet of a new organisation, which the wallet then confirms with a signature', handler: activationIntent },
   { method: 'POST', path: '/api/onboarding/submit', roles: ['owner'], fresh: true, twoKeys: true, unverified: true, can: 'Submit a new organisation for review', handler: submit },
+  // Milestone 5b: the one route whose body is not JSON: the signed declaration, sealed in the browser.
+  { method: 'POST', path: '/api/onboarding/declaration', roles: ['owner'], fresh: true, twoKeys: true, unverified: true, raw: SEAL.maxBytes, can: 'Upload the signed declaration of a new organisation, sealed in the browser', handler: sealDeclaration },
 ]
 // "What each role can do": the rows of the table above that a session can reach. Routes that share a sentence are one row.
 const rights = [...new Map(routes.flatMap((r) => (r.can ? [[r.can, { can: r.can, roles: r.roles, fresh: Boolean(r.fresh), second: Boolean(r.second) }] as const] : []))).values()]
@@ -886,8 +892,8 @@ async function api(request: Request, env: Env, clock: () => number, config: Conf
   if (route?.callback ? request.headers.get('sec-fetch-mode') !== 'navigate' || request.headers.get('sec-fetch-dest') !== 'document' : request.headers.get('sec-fetch-site') !== 'same-origin') return fail(403, 'cross_site')
   if (index < 0) return fail(404, 'not_found')
   let body: Record<string, unknown> = {}
-  if (route.method === 'POST') {
-    if (request.headers.get('origin') !== (signing ? config.signOrigin : config.origin)) return fail(403, 'bad_origin')
+  if (route.method === 'POST' && request.headers.get('origin') !== (signing ? config.signOrigin : config.origin)) return fail(403, 'bad_origin')
+  if (route.method === 'POST' && !route.raw) {
     if (!/^application\/json\s*(;|$)/i.test(request.headers.get('content-type') ?? '')) return fail(415, 'json_only')
     const text = await readCapped(request.body, MAX_BODY)
     if (text === null) return fail(413, 'too_large')
@@ -924,6 +930,17 @@ async function api(request: Request, env: Env, clock: () => number, config: Conf
     if (route.twoKeys && session.strong_keys < 2) return fail(403, 'second_key_required')
     if (route.settled && context.actor.quarantineUntil) return fail(403, 'quarantine')
     if (route.fresh && now - session.step_up_at > STEP_UP_MS) return fail(403, 'step_up_required')
+  }
+  // Milestone 5b: a sealed file is megabytes, so it is read only now, for a caller who passed every gate of the row,
+  // and never for anybody else. The content type is no "simple" one: a cross-site page cannot send it without a
+  // preflight, which is never granted. The clock is read again once the body has arrived, and the session with it.
+  if (route.raw) {
+    if (!/^application\/octet-stream\s*(;|$)/i.test(request.headers.get('content-type') ?? '')) return fail(415, 'binary_only')
+    const bytes = await readBytes(request.body, route.raw)
+    if (!bytes) return fail(413, 'too_large')
+    context.bytes = bytes
+    context.now = clock()
+    if (!(await sessionOf(request, env, context.now))) return fail(401, 'signed_out')
   }
   // A change for two people has no handler of its own: all this route can do is file the request.
   return route.second ? change(context, route.second) : route.handler!(context)

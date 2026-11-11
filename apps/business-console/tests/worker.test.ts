@@ -15,6 +15,8 @@ import { colour, LIMITS, SAFES, type SafeState } from '../src/server/chain.ts'
 import { LINK_ACTION, PROOF_ACTION, typedLink, typedProof } from '../src/server/typed.ts'
 import { WORDS } from '../src/server/words.ts'
 import { softwareAuthenticator } from './authenticator.ts'
+// Milestone 5b: the age library, here only to make what a browser makes (a sealed file) and to open it as the operator would.
+import * as age from 'age-encryption'
 
 const SITE = { origin: 'http://localhost:8787', rpId: 'localhost' }
 const MIN = 60_000
@@ -26,7 +28,10 @@ const db = env.DB
 // The challenge key is made per run: no secret lives in the repository.
 // The static files: a stand-in that answers every path, with a header only the console's pages may keep.
 const ASSETS = { fetch: async (request: Request) => new Response(`file ${new URL(request.url).pathname}`, { headers: { 'content-type': 'text/html', 'x-frame-options': 'DENY', etag: '"1"' } }) }
-const testEnv = { DB: db, ASSETS, ENVIRONMENT: 'local', CHALLENGE_KEY: crypto.randomUUID() + crypto.randomUUID() } as unknown as Env
+// Milestone 5b: the sealing key pair of this run, made here: no key lives in the repository. The Worker gets the recipient only.
+const IDENTITY = await age.generateHybridIdentity()
+const RECIPIENT = await age.identityToRecipient(IDENTITY)
+const testEnv = { DB: db, ASSETS, SEALED: env.SEALED, ENVIRONMENT: 'local', CHALLENGE_KEY: crypto.randomUUID() + crypto.randomUUID(), SEAL_RECIPIENT: RECIPIENT } as unknown as Env
 const SIGN = configFor('local').signOrigin
 let now = START
 
@@ -44,11 +49,11 @@ async function call(method: string, path: string, options: Options = {}) {
   const headers = new Headers({ 'sec-fetch-site': 'same-origin' })
   if (method === 'POST') {
     headers.set('origin', options.sign ? SIGN : SITE.origin)
-    headers.set('content-type', 'application/json')
+    headers.set('content-type', options.body instanceof Uint8Array ? 'application/octet-stream' : 'application/json') // bytes: a sealed file (milestone 5b)
   }
   if (options.cookie) headers.set('cookie', options.cookie)
   for (const [name, value] of Object.entries(options.headers ?? {})) value === null ? headers.delete(name) : headers.set(name, value)
-  const body = method === 'POST' ? (typeof options.body === 'string' ? options.body : JSON.stringify(options.body ?? {})) : undefined
+  const body = method === 'POST' ? (typeof options.body === 'string' || options.body instanceof Uint8Array ? options.body : JSON.stringify(options.body ?? {})) : undefined
   const response = await handle(new Request((options.sign ? SIGN : SITE.origin) + path, { method, headers, body }), options.env ?? testEnv, () => now)
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   return { status: response.status, headers: response.headers, body: (await response.json()) as any }
@@ -1154,13 +1159,13 @@ describe('f. audit log', () => {
   it('the list above covers every state-changing route', () => {
     expect(routes.filter((route) => route.method === 'POST').map((route) => route.path).sort()).toEqual([
       // /api/audit/export writes its audit row and nothing else: section w proves that no file leaves without the row.
-      // Milestone 5: /api/apply and /api/onboarding/wallet write nothing; apply/check and onboarding/submit are in section E.
+      // Milestone 5: /api/apply and /api/onboarding/wallet write nothing; apply/check, onboarding/submit and onboarding/declaration are in section E.
       '/api/apply', '/api/apply/check',
       '/api/approvals/:id/approve', '/api/approvals/:id/cancel', '/api/approvals/:id/reject', '/api/audit/export',
       // Company sign-in: company/start and enrol/company write nothing (they set the flow cookie); the callback (a GET) and policy/company are in section G.
       '/api/company/start', '/api/enrol/company',
       '/api/enrol/finish', '/api/enrol/start', '/api/members/:id/freeze', '/api/members/:id/remove', '/api/members/:id/role', '/api/members/:id/unfreeze',
-      '/api/onboarding/submit', '/api/onboarding/wallet',
+      '/api/onboarding/declaration', '/api/onboarding/submit', '/api/onboarding/wallet',
       // /api/wallets/intent writes nothing at all (section y); /api/proof is the first write of a link.
       '/api/passkeys/:id/revoke', '/api/passkeys/finish', '/api/passkeys/start', '/api/policy', '/api/policy/company', '/api/proof',
       // The intent routes and continue/start write nothing (section B). The proof opens a request or cancels one; continue/finish completes or lapses one.
@@ -1409,7 +1414,7 @@ describe('k. step-up: a fresh passkey check before a sensitive action', () => {
     const paths = (flag: 'fresh' | 'twoKeys') => routes.filter((route) => route[flag]).map((route) => route.path).sort()
     const m3 = ['/api/approvals/:id/approve', '/api/approvals/:id/reject', '/api/members/:id/freeze', '/api/members/:id/remove', '/api/members/:id/role', '/api/members/:id/unfreeze']
     const m4 = ['/api/wallets/:id/anchor', '/api/wallets/:id/anchor/cancel', '/api/wallets/:id/unlink', '/api/wallets/intent']
-    const m5 = ['/api/onboarding/submit', '/api/onboarding/wallet']
+    const m5 = ['/api/onboarding/declaration', '/api/onboarding/submit', '/api/onboarding/wallet']
     expect(paths('fresh')).toEqual([...m3.slice(0, 2), '/api/audit/export', '/api/company/start', ...m3.slice(2), ...m5, '/api/passkeys/:id/revoke', '/api/passkeys/finish', '/api/passkeys/start', '/api/policy', '/api/policy/company', '/api/recovery/:id/cancel', '/api/recovery/:id/object', '/api/tickets', '/api/tickets/:id/cancel', ...m4])
     // Confirming carries its own passkey check, made for the ticket.
     expect(paths('twoKeys')).toEqual([...m3.slice(0, 2), '/api/company/start', ...m3.slice(2), ...m5, '/api/passkeys/:id/revoke', '/api/policy', '/api/policy/company', '/api/tickets', '/api/tickets/:id/cancel', '/api/tickets/:id/confirm', '/api/tickets/:id/confirm/start', ...m4])
@@ -2512,7 +2517,7 @@ describe('r. the role table', () => {
       'POST /api/recovery/:id/cancel': 'owner fresh', 'POST /api/recovery/:id/object': 'admin,approver,compliance fresh',
       'POST /api/support/ask': any,
       'POST /api/apply': 'public', 'POST /api/apply/check': 'public',
-      'GET /api/onboarding': 'owner,compliance', 'POST /api/onboarding/wallet': 'owner fresh twoKeys', 'POST /api/onboarding/submit': 'owner fresh twoKeys',
+      'GET /api/onboarding': 'owner,compliance', 'POST /api/onboarding/wallet': 'owner fresh twoKeys', 'POST /api/onboarding/submit': 'owner fresh twoKeys', 'POST /api/onboarding/declaration': 'owner fresh twoKeys',
     })
     // The signing host has one route, and it is the only one without the console.
     expect(routes.filter((r) => r.sign).map((r) => r.path)).toEqual(['/api/proof'])
@@ -5423,14 +5428,29 @@ describe('F. Support: attacks tried by the review of milestone 6', () => {
 // the chain are a stubbed fetch. (Import declarations are hoisted: they sit here so that the section stays in one piece.) ----
 import onboardingSource from '../src/server/onboarding.ts?raw'
 import onboardingPage from '../src/app/onboarding.tsx?raw'
-// Milestone 5b: the age library, here only to make what a browser makes (a sealed file) and to open it as the operator would.
-import * as age from 'age-encryption'
 import packageJson from '../package.json'
 const serverSources = import.meta.glob('../src/server/*.ts', { query: '?raw', import: 'default', eager: true }) as Record<string, string>
-// A test key pair of this run: no key lives in the repository.
-const IDENTITY = await age.generateHybridIdentity()
-const RECIPIENT = await age.identityToRecipient(IDENTITY)
 const sealEnv = { ENVIRONMENT: 'local', SEAL_RECIPIENT: RECIPIENT }
+const KEY = await data.sha256Hex(RECIPIENT) // the fingerprint of this run's sealing key
+const bucket = env.SEALED
+// What a browser makes: a file sealed with the age library to a recipient. MARKER stands in the clear file only.
+const MARKER = 'CLEAR-TEXT-MARKER-5b'
+async function sealedFile(text = `%PDF-1.7 ${MARKER} ${crypto.randomUUID()}`, recipient = RECIPIENT) {
+  const encrypter = new age.Encrypter()
+  encrypter.addRecipient(recipient)
+  return encrypter.encrypt(new TextEncoder().encode(text))
+}
+const latin1 = (bytes: Uint8Array) => Array.from(bytes, (byte) => String.fromCharCode(byte)).join('')
+const fromLatin1 = (text: string) => Uint8Array.from(text, (char) => char.charCodeAt(0))
+const sha256Of = async (bytes: Uint8Array) => Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256', bytes)), (byte) => byte.toString(16).padStart(2, '0')).join('')
+const objects = async () => (await bucket.list()).objects.map((object) => object.key).sort()
+const objectOf = async (id: string) => {
+  const object = await bucket.get(id)
+  return object ? new Uint8Array(await object.arrayBuffer()) : null
+}
+const upload = (m: Holder, bytes: Uint8Array, options: Options = {}) => call('POST', '/api/onboarding/declaration', { ...options, cookie: m.cookie, body: bytes, headers: { 'x-seal-key': KEY, ...options.headers } })
+interface Item { id: string; org_id: string; kind: string; key_generation: string; key_fingerprint: string; size: number; sha256: string; uploaded_by_seat_id: string | null; kyb_record_id: string | null; created_at: number }
+const itemsOf = async (orgId: string) => (await db.prepare('SELECT * FROM sealed_items WHERE org_id = ? ORDER BY created_at, id').bind(orgId).all<Item>()).results
 import * as onboarding from '../src/server/onboarding.ts'
 import signHtml from '../sign/index.html?raw'
 
@@ -5506,10 +5526,13 @@ describe('E. onboarding: a company applies, proves its domain, is activated and 
     return { ...(await prove(asked.body.intent, signature)), intent: asked.body.intent as string, fields, signature }
   }
   const submit = (m: Holder, body: unknown = {}) => post('/api/onboarding/submit', m, body)
-  // Two passkeys, the activation proof of a single key, submitted: what the operator finds under review.
+  // Milestone 5b: the signed declaration, sealed as a browser seals it, uploaded by the Owner.
+  const declared = async (m: Holder) => expect((await upload(m, await sealedFile())).status).toBe(200)
+  // Two passkeys, the activation proof of a single key, the sealed declaration, submitted: what the operator finds under review.
   async function underReview(domain?: string) {
     const a = await applicantWithTwoKeys(domain)
     expect((await activation(a)).body).toEqual({ state: 'stored' })
+    await declared(a)
     expect((await submit(a)).body).toEqual({ state: 'under_review' })
     return a
   }
@@ -5861,7 +5884,7 @@ describe('E. onboarding: a company applies, proves its domain, is activated and 
     'GET /api/me', 'GET /api/org', 'POST /api/sessions/:id/revoke', 'POST /api/signout', 'POST /api/stepup/start', 'POST /api/stepup/finish',
     'POST /api/passkeys/start', 'POST /api/passkeys/finish', 'POST /api/passkeys/:id/revoke',
     'POST /api/tickets', 'POST /api/tickets/:id/confirm/start', 'POST /api/tickets/:id/confirm', 'POST /api/tickets/:id/cancel',
-    'POST /api/support/ask', 'GET /api/onboarding', 'POST /api/onboarding/wallet', 'POST /api/onboarding/submit',
+    'POST /api/support/ask', 'GET /api/onboarding', 'POST /api/onboarding/wallet', 'POST /api/onboarding/submit', 'POST /api/onboarding/declaration',
     'POST /api/policy/company', 'POST /api/company/start', // the company sign-in is chosen on the Onboarding page
   ]
   it('A5: an unverified organisation reaches the rows marked for it and no other, for every role; a frozen or archived one reaches nothing but its sign-out', async () => {
@@ -5943,7 +5966,7 @@ describe('E. onboarding: a company applies, proves its domain, is activated and 
     for (const word of words) expect(WORDS).toContain(word)
     // The same words on the Owner's page, whoever looks and whenever; the second passkey has others.
     const view = await call('GET', '/api/onboarding', { cookie: a.cookie })
-    expect(view.body.first).toEqual({ phrase: words, credentialHash: f.credentialHash, active: true })
+    expect(view.body.first).toEqual({ phrase: words, credentialHash: f.credentialHash, active: true, name: 'Maren Okafor' })
     expect(fieldsOf<ActivateFields>((await nameWallet(a, accounts[1].address)).body.intent)).toMatchObject({ phrase: f.phrase, credentialHash: f.credentialHash })
     expect(typedActivate(f)).toMatchObject({ primaryType: 'Proof', domain: { name: 'Ophis Business', version: '1', chainId: CHAIN }, message: { action: 'Activate this organisation and confirm its first Owner passkey', organisationId: a.orgId, wallet: accounts[0].address, credentialHash: f.credentialHash, phrase: f.phrase } })
     for (const [body, error] of [[{ chainId: 5 }, 'chain_invalid'], [{ address: '0x12' }, 'address_invalid'], [{ label: '<b>' }, 'label_invalid'], [{ custodian: 'yes' }, 'invalid']] as const) {
@@ -6516,22 +6539,26 @@ describe('E. onboarding: a company applies, proves its domain, is activated and 
     const d = await underReview()
     const e = await underReview()
     expect((await decideOn(e.orgId)).body).toEqual({ state: 'active' })
+    const file = await sealedFile()
     const steps: [string, () => Promise<{ status: number }>][] = [
-      ['organisation.apply', () => checkDns(a.intent)], ['activation.proof', () => prove(asked.body.intent, signature)], ['review.submit', () => submit(c)],
+      ['organisation.apply', () => checkDns(a.intent)], ['activation.proof', () => prove(asked.body.intent, signature)], ['review.submit', () => submit(c)], ['declaration.upload', () => upload(b, file)],
       ['kyb.approve', () => decideOn(d.orgId)], ['kyb.more', () => decideOn(d.orgId, MORE)], ['kyb.refuse', () => decideOn(d.orgId, { ...MORE, decision: 'refuse' })],
       ['organisation.freeze', () => op('POST', `/api/operator/organisations/${e.orgId}/freeze`)],
     ]
+    await declared(c)
     const rows = await snapshot()
+    const kept = await objects()
     await withTrigger('INSERT ON audit_log', async () => {
       for (const [action, run] of steps) expect((await run()).status, action).toBe(500)
     })
     expect(await snapshot()).toBe(rows)
+    expect(await objects()).toEqual(kept) // milestone 5b: an upload whose row failed leaves no object behind
     const written = [...new Set([...onboardingSource.matchAll(/'([a-z_]+(?:\.[a-z_]+)+)'/g)].map((match) => match[1]))]
     expect(written.sort()).toEqual([...steps.map(([action]) => action), 'organisation.unfreeze'].sort())
     for (const action of written) expect(EVENTS[action], action).toEqual(expect.any(String))
     expect(Object.keys(onboarding.ONBOARDING_EVENTS).sort()).toEqual(written)
     // Every statement of this file is prepared with bound parameters: no value of a request is written into SQL text.
-    for (const [, inserted] of onboardingSource.matchAll(/prepare\(`[^`]*?\$\{(\w+)\}/g)) expect(['COMPANY', 'owner', 'REVIEWED']).toContain(inserted)
+    for (const [, inserted] of onboardingSource.matchAll(/prepare\(`[^`]*?\$\{(\w+)\}/g)) expect(['COMPANY', 'owner', 'REVIEWED', 'SEALED']).toContain(inserted)
   })
 
   // One isolation case per new route (the standing rule of section e), added to the table and run here. The Sec-Fetch-Site
@@ -6567,7 +6594,7 @@ describe('E. onboarding: a company applies, proves its domain, is activated and 
     expect((await post(`/api/wallets/${wallet.id}/anchor`, b)).body).toEqual({ state: 'applied' })
     for (const path of ['/api/onboarding', `/api/onboarding?organisationId=${b.orgId}`, `/api/onboarding?org=${b.orgId}`]) {
       const view = await call('GET', path, { cookie: a.cookie })
-      expect(view.body).toEqual({ company: { legalName: a.name, kind: 'partner', country: null, registration: null, domain: null, domainVerifiedAt: null }, signin: { setting: 'none', tenant: null }, first: null, wallet: null, missing: null, review: { status: 'verified', since: null, reason: null }, record: null, chains: expect.any(Array) })
+      expect(view.body).toEqual({ company: { legalName: a.name, kind: 'partner', country: null, registration: null, domain: null, domainVerifiedAt: null }, signin: { setting: 'none', tenant: null }, first: null, seal: { key: KEY, generation: 'g1' }, sealed: null, wallet: null, missing: null, review: { status: 'verified', since: null, reason: null }, record: null, chains: expect.any(Array) })
     }
     expect((await call('GET', '/api/onboarding', { cookie: b.cookie })).body).toMatchObject({ company: { legalName: b.name }, record: { legalName: 'Birchfield Capital Ltd', tier: 'enhanced' }, wallet: { address: accounts[0].address } })
     expect((await call('GET', `/api/onboarding/${b.orgId}`, { cookie: a.cookie })).status).toBe(404)
@@ -6605,7 +6632,26 @@ describe('E. onboarding: a company applies, proves its domain, is activated and 
     expect(onboardingSource.match(/INSERT INTO kyb_records/g)).toHaveLength(1)
     expect(dataSource).not.toContain('INSERT INTO kyb_records')
   }
-  for (const route of ['POST /api/apply', 'POST /api/apply/check', 'GET /api/onboarding', 'POST /api/onboarding/wallet', 'POST /api/onboarding/submit']) {
+  isolation['POST /api/onboarding/declaration'] = async (a) => {
+    // X's upload is X's, whatever X sends. Y's item, its object and its review are untouched, and X's page shows nothing of Y.
+    const [x, y] = [await applicantWithTwoKeys(), await underReview()]
+    const [theirs] = await itemsOf(y.orgId)
+    const object = await objectOf(theirs.id)
+    const done = await call('POST', `/api/onboarding/declaration?organisationId=${y.orgId}&org=${y.orgId}&id=${theirs.id}`, { cookie: x.cookie, body: await sealedFile(), headers: { 'x-seal-key': KEY, 'x-organisation': y.orgId, 'x-id': theirs.id } })
+    expect(done.status).toBe(200)
+    expect(await itemsOf(x.orgId)).toEqual([expect.objectContaining({ id: done.body.id, org_id: x.orgId, uploaded_by_seat_id: x.seatId })])
+    expect(await itemsOf(y.orgId)).toEqual([theirs])
+    expect(await objectOf(theirs.id)).toEqual(object)
+    expect((await orgRow(y.orgId))!.review_at).toBe(now)
+    expect(await count('audit_log', y.orgId)).toBe((await row<{ seq: number }>(`SELECT seq FROM audit_log WHERE org_id = ? AND action = 'review.submit'`, y.orgId))!.seq)
+    const view = JSON.stringify((await call('GET', `/api/onboarding?organisationId=${y.orgId}`, { cookie: x.cookie })).body)
+    expect(view).toContain(done.body.id)
+    for (const value of [theirs.id, theirs.sha256, y.orgId]) expect(view).not.toContain(value)
+    // An organisation that is active (a seeded one) uploads nothing.
+    expect((await upload(await owner(), await sealedFile())).body).toEqual({ error: 'not_unverified' })
+    expect(await count('sealed_items', a.orgId)).toBe(0)
+  }
+  for (const route of ['POST /api/apply', 'POST /api/apply/check', 'GET /api/onboarding', 'POST /api/onboarding/wallet', 'POST /api/onboarding/submit', 'POST /api/onboarding/declaration']) {
     it(`${route}: the isolation case`, async () => isolation[route](await member('Alder Asset Management'), await member('Birchfield Capital')))
   }
 
@@ -6664,6 +6710,197 @@ describe('E. onboarding: a company applies, proves its domain, is activated and 
     expect(await onboarding.sealKey(sealEnv)).toMatch(/^[0-9a-f]{64}$/)
     for (const ENVIRONMENT of ['production', 'staging', '']) expect(await onboarding.sealKey({ ...sealEnv, ENVIRONMENT }), ENVIRONMENT).toBeNull()
     for (const SEAL_RECIPIENT of [undefined, '', 'age1pq1', await age.identityToRecipient(await age.generateX25519Identity()), `${RECIPIENT} `, IDENTITY]) expect(await onboarding.sealKey({ ENVIRONMENT: 'local', SEAL_RECIPIENT })).toBeNull()
+  })
+
+  // An env whose bucket runs something just before an object is stored: after the gates of the router, before the commit.
+  const storing = (before: () => Promise<unknown>, puts: string[] = []) => ({
+    ...testEnv,
+    SEALED: new Proxy(bucket, { get: (target, property) => (property !== 'put' ? (typeof Reflect.get(target, property) === 'function' ? Reflect.get(target, property).bind(target) : Reflect.get(target, property))
+      : async (key: string, value: Uint8Array) => { puts.push(key); await before(); return target.put(key, value) }) }),
+  }) as unknown as Env
+
+  it('B3: the upload is an age file with one hybrid stanza; the Worker stores the ciphertext under a random key and a row with its own SHA-256, and never a clear byte', async () => {
+    const a = await applicantWithTwoKeys()
+    const before = await objects()
+    const file = await sealedFile()
+    expect(latin1(file)).not.toContain(MARKER)
+    // The client cannot name the hash, the size, the key, the organisation or the id: whatever it sends, the row is the server's.
+    const done = await upload(a, file, { headers: { 'x-sha256': 'f'.repeat(64), 'x-size': '1', 'x-id': '0'.repeat(32), 'x-organisation': '0'.repeat(32) } })
+    expect(done.status).toBe(200)
+    const [item, more] = await itemsOf(a.orgId)
+    expect(more).toBeUndefined()
+    expect(item).toEqual({ id: expect.stringMatching(/^[0-9a-f]{32}$/), org_id: a.orgId, kind: 'declaration', key_generation: 'g1', key_fingerprint: KEY, size: file.length, sha256: await sha256Of(file), uploaded_by_seat_id: a.seatId, kyb_record_id: null, created_at: now })
+    expect(done.body).toEqual({ id: item.id, size: file.length, sha256: item.sha256, key: KEY, generation: 'g1', at: now })
+    expect(item.id).not.toBe('0'.repeat(32))
+    // The object: exactly the bytes that arrived, under the item's random id, and one object more than before.
+    expect(await objectOf(item.id)).toEqual(file)
+    expect((await objects()).filter((key) => !before.includes(key))).toEqual([item.id])
+    // The audit row carries the same hash. No table and no object holds the marker of the clear file.
+    expect(await row('SELECT actor_kind, actor_id, session_id, action, subject_id, detail FROM audit_log WHERE org_id = ? ORDER BY seq DESC', a.orgId))
+      .toEqual({ actor_kind: 'seat', actor_id: a.seatId, session_id: a.sessionId, action: 'declaration.upload', subject_id: item.id, detail: item.sha256 })
+    expect(await snapshot()).not.toContain(MARKER)
+    // Only the identity opens it, offline: the file is what the member sealed.
+    const opener = new age.Decrypter()
+    opener.addIdentity(IDENTITY)
+    expect(new TextDecoder().decode(await opener.decrypt((await objectOf(item.id))!))).toContain(MARKER)
+
+    // What is not such a file is refused, and nothing is stored: no row, no object, no audit row.
+    const rows = await snapshot()
+    const kept = await objects()
+    const head = latin1(file.subarray(0, 4096))
+    const end = head.indexOf('\n--- ')
+    const stanza = head.slice(head.indexOf('\n-> '), end)
+    const classic = await sealedFile(undefined, await age.identityToRecipient(await age.generateX25519Identity()))
+    const twoClassic = new age.Encrypter()
+    for (let i = 0; i < 2; i++) twoClassic.addRecipient(await age.identityToRecipient(await age.generateX25519Identity()))
+    const bad: Record<string, Uint8Array> = {
+      'the clear file': new TextEncoder().encode(`%PDF-1.7 ${MARKER} ${'x'.repeat(4000)}`),
+      'nothing': new Uint8Array(0),
+      'the first line only': new TextEncoder().encode('age-encryption.org/v1\n'),
+      'another version': fromLatin1(latin1(file).replace('age-encryption.org/v1', 'age-encryption.org/v2')),
+      'bytes before the header': fromLatin1(`\n${latin1(file)}`),
+      'a classic X25519 stanza': classic,
+      'two classic stanzas': await twoClassic.encrypt(new TextEncoder().encode('x')),
+      'a second stanza after the hybrid one': fromLatin1(`${head.slice(0, end)}${stanza}${latin1(file.subarray(end))}`),
+      'a second stanza of the classic type': fromLatin1(`${head.slice(0, end)}\n-> X25519 ${'A'.repeat(43)}\n${'B'.repeat(43)}${latin1(file.subarray(end))}`),
+      'no MAC line': fromLatin1(head.slice(0, end) + '\n' + 'x'.repeat(200)),
+      'a short MAC': fromLatin1(`${head.slice(0, end)}\n--- ${'A'.repeat(42)}\n${'x'.repeat(64)}`),
+      'a header and no payload': file.subarray(0, end + 49),
+      'a payload shorter than a nonce and a tag': file.subarray(0, end + 49 + 31),
+      'armoured text': new TextEncoder().encode(age.armor.encode(file)),
+    }
+    for (const [what, bytes] of Object.entries(bad)) expect((await upload(a, bytes)).body, what).toEqual({ error: 'not_sealed' })
+    expect(onboarding.sealedShape(file.subarray(0, end + 49 + 32))).toBe(true) // the shortest file: an empty clear file
+    expect(await snapshot()).toBe(rows)
+    expect(await objects()).toEqual(kept)
+    // The request checks of a state change, on this route too; and it takes no JSON.
+    expect((await upload(a, file, { headers: { 'sec-fetch-site': 'cross-site' } })).body).toEqual({ error: 'cross_site' })
+    for (const origin of ['https://evil.example', SIGN, null]) expect((await upload(a, file, { headers: { origin } })).body).toEqual({ error: 'bad_origin' })
+    for (const type of ['application/json', 'text/plain', 'multipart/form-data', 'application/x-www-form-urlencoded', null]) expect((await upload(a, file, { headers: { 'content-type': type } })).body, String(type)).toEqual({ error: 'binary_only' })
+    expect((await call('POST', '/api/onboarding/declaration', { cookie: a.cookie, body: { file: toBase64Url(file) }, headers: { 'x-seal-key': KEY } })).status).toBe(415)
+    expect((await upload({ cookie: '' }, file)).body).toEqual({ error: 'signed_out' })
+    expect(await snapshot()).toBe(rows)
+    expect(await objects()).toEqual(kept)
+  })
+
+  it('B3: the size cap is the server\'s: 10 MB of clear file and the age overhead, read only after the gates, and a session that ends while the file arrives stores nothing', async () => {
+    const a = await applicantWithTwoKeys()
+    expect(onboarding.SEAL.maxBytes).toBe(10 * 1024 * 1024 + 8192)
+    expect(routes.find((r) => r.path === '/api/onboarding/declaration')).toMatchObject({ method: 'POST', roles: ['owner'], fresh: true, twoKeys: true, unverified: true, raw: onboarding.SEAL.maxBytes })
+    expect(routes.filter((r) => r.raw).length).toBe(1) // every other route takes JSON of 64 KB at most
+    // What the age library adds to 10 MB fits under the cap: the header, a nonce, and a tag per 64 KiB.
+    const small = await sealedFile('')
+    expect(small.length + 10 * 1024 * 1024 + 16 * Math.ceil((10 * 1024 * 1024) / 65536)).toBeLessThanOrEqual(onboarding.SEAL.maxBytes)
+    const sized = (size: number) => {
+      const bytes = new Uint8Array(size)
+      bytes.set(small)
+      return bytes
+    }
+    const rows = await snapshot()
+    const kept = await objects()
+    const over = await upload(a, sized(onboarding.SEAL.maxBytes + 1))
+    expect([over.status, over.body]).toEqual([413, { error: 'too_large' }])
+    expect(await snapshot()).toBe(rows)
+    expect(await objects()).toEqual(kept)
+    // A body is read for nobody who has not passed the gates: no session, another role, no fresh check. The stream is never pulled.
+    const v = await colleague(a, 'viewer')
+    for (const [who, error] of [[{ cookie: '' }, 'signed_out'], [v, 'forbidden']] as const) {
+      let pulled = 0
+      const body = new ReadableStream<Uint8Array>({ pull(controller) { pulled++; controller.enqueue(small); controller.close() } }, { highWaterMark: 0 })
+      const headers = { 'sec-fetch-site': 'same-origin', origin: SITE.origin, 'content-type': 'application/octet-stream', 'x-seal-key': KEY, cookie: who.cookie }
+      const response = await handle(new Request(`${SITE.origin}/api/onboarding/declaration`, { method: 'POST', body, headers, duplex: 'half' } as RequestInit), testEnv, () => now)
+      expect([await response.json(), pulled]).toEqual([{ error }, 0])
+    }
+    // A slow sender: the session's 15 idle minutes pass while the file is on its way. Nothing is stored.
+    const slow = new ReadableStream<Uint8Array>({ pull(controller) { now += 15 * MIN + 1; controller.enqueue(small); controller.close() } }, { highWaterMark: 0 })
+    const late = await handle(new Request(`${SITE.origin}/api/onboarding/declaration`, { method: 'POST', body: slow, duplex: 'half', headers: { 'sec-fetch-site': 'same-origin', origin: SITE.origin, 'content-type': 'application/octet-stream', 'x-seal-key': KEY, cookie: a.cookie } } as RequestInit), testEnv, () => now)
+    expect([late.status, await late.json()]).toEqual([401, { error: 'signed_out' }])
+    expect(await objects()).toEqual(kept)
+    // Exactly at the cap it is stored.
+    const b = await again(a)
+    const exact = await upload(b, sized(onboarding.SEAL.maxBytes))
+    expect([exact.status, exact.body.size]).toEqual([200, onboarding.SEAL.maxBytes])
+    await bucket.delete(exact.body.id) // 10 MB: not left behind for the other tests
+  })
+
+  it('B3: only an Owner uploads, with a fresh check and two passkeys, while the organisation is unverified; role and state are read again inside the commit; the key is the environment\'s', async () => {
+    const a = await applicantWithTwoKeys()
+    const file = await sealedFile()
+    const kept = await objects()
+    // Every other role: refused by the router, and nothing ever reaches the bucket.
+    const puts: string[] = []
+    const watched = storing(async () => undefined, puts)
+    for (const role of ['admin', 'trader', 'approver', 'compliance', 'viewer']) expect((await upload(await colleague(a, role), file, { env: watched })).body, role).toEqual({ error: 'forbidden' })
+    expect(puts).toEqual([])
+    // An Owner who is lowered at the same instant (after the router's gates): refused by the commit, and the object is taken out again.
+    const second = await colleague(a, 'owner')
+    const lowered = storing(async () => { await db.prepare(`UPDATE seats SET role = 'admin' WHERE id = ?`).bind(second.seatId).run() }, puts)
+    expect((await upload(second, file, { env: lowered })).body).toEqual({ error: 'forbidden' })
+    expect(puts).toHaveLength(1)
+    await db.prepare(`UPDATE seats SET role = 'owner' WHERE id = ?`).bind(second.seatId).run()
+    // A session that ends at the same instant: the same.
+    const third = await again(second)
+    expect((await upload(third, file, { env: storing(() => db.prepare('UPDATE sessions SET revoked_at = ? WHERE seat_id = ? AND revoked_at IS NULL').bind(now, second.seatId).run(), puts) })).body).toEqual({ error: 'forbidden' })
+    expect([await itemsOf(a.orgId), await objects()]).toEqual([[], kept])
+    // The gates of the row: a fresh passkey check, two passkeys.
+    const one = await applied()
+    expect((await upload(one, file)).body).toEqual({ error: 'second_key_required' })
+    now += 5 * MIN + 1
+    const stale = await again(a)
+    now += 5 * MIN + 1
+    expect((await upload(stale, file)).body).toEqual({ error: 'step_up_required' })
+    expect((await stepUp(stale, a.key)).status).toBe(200)
+    // The key: the page names the key it sealed to. Another key, or none: told so. An environment without a key: not configured.
+    for (const key of ['0'.repeat(64), KEY.toUpperCase(), '', null]) expect((await upload(stale, file, { headers: { 'x-seal-key': key } })).body, String(key)).toEqual({ error: 'key_changed' })
+    for (const SEAL_RECIPIENT of [undefined, '', 'age1pq1']) {
+      const none = await upload(stale, file, { env: { ...testEnv, SEAL_RECIPIENT } as unknown as Env })
+      expect([none.status, none.body]).toEqual([503, { error: 'not_configured' }])
+    }
+    expect([await itemsOf(a.orgId), await objects()]).toEqual([[], kept])
+    // Once the organisation is active the declaration it was approved with stays: no upload. Also when it becomes active at the same instant.
+    const u = await underReview()
+    const approved = (await itemsOf(u.orgId))[0]
+    const racingApproval = storing(async () => expect((await decideOn(u.orgId)).body).toEqual({ state: 'active' }), puts)
+    const raced = await upload(u, file, { env: racingApproval })
+    expect([raced.status, raced.body]).toEqual([409, { error: 'not_unverified' }])
+    expect((await upload(await again(u), file)).body).toEqual({ error: 'not_unverified' })
+    expect(await itemsOf(u.orgId)).toEqual([approved])
+    expect(await objectOf(approved.id)).not.toBeNull()
+    expect(await objects()).toEqual([...kept, approved.id].sort())
+    // A seeded organisation, active from the start: the same.
+    expect((await upload(await owner(), file)).body).toEqual({ error: 'not_unverified' })
+    // A frozen or archived organisation reaches nothing (the router).
+    expect((await op('POST', `/api/operator/organisations/${u.orgId}/freeze`)).body).toEqual({ state: 'frozen' })
+    expect((await upload(u, file)).status).toBe(401) // the freeze ended its sessions
+    await db.prepare('UPDATE sessions SET revoked_at = NULL WHERE org_id = ?').bind(u.orgId).run()
+    expect((await upload(u, file)).body).toEqual({ error: 'org_frozen' })
+  })
+
+  it('B3: a new upload takes the place of the old one: one row, one object, and an organisation under review is back to "not submitted"', async () => {
+    const a = await underReview()
+    const [first] = await itemsOf(a.orgId)
+    expect(await orgRow(a.orgId)).toEqual({ state: 'unverified', review_at: now })
+    const kept = await objects()
+    const file = await sealedFile()
+    const done = await upload(a, file)
+    expect(done.status).toBe(200)
+    expect(await itemsOf(a.orgId)).toEqual([expect.objectContaining({ id: done.body.id, sha256: await sha256Of(file) })])
+    expect(done.body.id).not.toBe(first.id)
+    expect(await objectOf(first.id)).toBeNull()
+    expect(await objects()).toEqual([...kept.filter((key) => key !== first.id), done.body.id].sort())
+    // The existing mechanism (G3): what was submitted names the item, so the review is off, and the operator's list no longer holds it.
+    expect(await orgRow(a.orgId)).toEqual({ state: 'unverified', review_at: null })
+    expect((await call('GET', '/api/onboarding', { cookie: a.cookie })).body).toMatchObject({ review: { status: 'not_submitted' }, missing: null, sealed: { id: done.body.id } })
+    expect((await decideOn(a.orgId)).body).toEqual({ error: 'not_under_review' })
+    const submission = await submissionOf(a.orgId)
+    expect((await submit(a)).body).toEqual({ state: 'under_review' })
+    expect(await submissionOf(a.orgId)).not.toBe(submission) // a new submission, by name
+    // The schema: one declaration per organisation, a size within the cap, hashes of 64 characters.
+    const insert = (id: string, size: number, sha = 'a'.repeat(64), key = KEY) => db.prepare(`INSERT INTO sealed_items (id, org_id, kind, key_fingerprint, size, sha256, created_at) VALUES (?, ?, 'declaration', ?, ?, ?, ?)`).bind(id, a.orgId, key, size, sha, now).run()
+    await expect(insert(data.randomId(), 100)).rejects.toThrow(/UNIQUE/)
+    await db.prepare('DELETE FROM sealed_items WHERE org_id = ?').bind(a.orgId).run()
+    for (const [size, sha, key] of [[0, undefined, undefined], [onboarding.SEAL.maxBytes + 1, undefined, undefined], [100, 'a'.repeat(63), undefined], [100, undefined, 'b'.repeat(65)]] as const) await expect(insert(data.randomId(), size, sha, key)).rejects.toThrow(/CHECK/)
+    await insert(done.body.id, onboarding.SEAL.maxBytes)
   })
 })
 

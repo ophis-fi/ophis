@@ -31,23 +31,28 @@ export const SAFES = [
 const HANDLER_SLOT = keccak256(toHex('fallback_manager.handler.address')) // where a Safe keeps its fallback handler
 const inSlot = (word: string) => `0x${word.slice(26)}` // the address in a 32-byte storage word, lower case
 
-/** The text of a body, or null once it passes `max` bytes. */
-export async function readCapped(body: ReadableStream<Uint8Array> | null, max: number) {
+/** The bytes of a body, or null once it passes `max` bytes. readCapped: the same as text. */
+export async function readBytes(body: ReadableStream<Uint8Array> | null, max: number) {
   const reader = body?.getReader()
-  if (!reader) return ''
-  const decoder = new TextDecoder()
-  let text = ''
+  const chunks: Uint8Array[] = []
   let size = 0
   for (;;) {
-    const { value, done } = await reader.read()
-    if (done) return text + decoder.decode()
+    const { value, done } = (await reader?.read()) ?? { done: true }
+    if (done || !value) break
     size += value.byteLength
     if (size > max) {
-      await reader.cancel()
+      await reader!.cancel()
       return null
     }
-    text += decoder.decode(value, { stream: true })
+    chunks.push(value)
   }
+  const bytes = new Uint8Array(size)
+  chunks.reduce((at, chunk) => (bytes.set(chunk, at), at + chunk.byteLength), 0)
+  return bytes
+}
+export async function readCapped(body: ReadableStream<Uint8Array> | null, max: number) {
+  const bytes = await readBytes(body, max)
+  return bytes && new TextDecoder().decode(bytes)
 }
 
 async function rpc(url: string, method: string, params: unknown[]) {

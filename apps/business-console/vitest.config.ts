@@ -9,6 +9,7 @@ export default defineConfig(async () => ({
       miniflare: {
         compatibilityDate: '2026-10-21',
         d1Databases: ['DB'],
+        r2Buckets: ['SEALED'],
         bindings: { MIGRATIONS: await readD1Migrations(new URL('./migrations', import.meta.url).pathname) },
       },
     }),

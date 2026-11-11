@@ -20,6 +20,9 @@
       "migrations_dir": "migrations",
     },
   ],
+  // Milestone 5b: the sealed items (ciphertext only; the Worker holds no key). Local simulation only so far: the name is
+  // a placeholder. Create the real bucket in the EU jurisdiction and add "jurisdiction": "eu" here before a deploy.
+  "r2_buckets": [{ "binding": "SEALED", "bucket_name": "ophis-business-sealed" }],
   // Selects the constants in src/server/passkeys.ts. The relying-party id and origin are never read from a request.
   "vars": { "ENVIRONMENT": "local" },
   "dev": { "ip": "127.0.0.1", "port": 8787 },
