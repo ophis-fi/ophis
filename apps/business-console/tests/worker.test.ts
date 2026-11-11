@@ -5416,6 +5416,7 @@ describe('F. Support: attacks tried by the review of milestone 6', () => {
 import onboardingSource from '../src/server/onboarding.ts?raw'
 import onboardingPage from '../src/app/onboarding.tsx?raw'
 import * as onboarding from '../src/server/onboarding.ts'
+import signHtml from '../sign/index.html?raw'
 
 describe('E. onboarding: a company applies, proves its domain, is activated and reviewed', () => {
   const [DNS1, DNS2] = onboarding.RESOLVERS.local
@@ -5999,6 +6000,11 @@ describe('E. onboarding: a company applies, proves its domain, is activated and 
       await db.prepare(`UPDATE seats SET role = 'owner', state = 'active' WHERE id = ?`).bind(second.seatId).run()
     }
     expect((await prove(asked.body.intent, signature)).body).toEqual({ state: 'stored' })
+  })
+
+  it('G7: on the signing page an activation shows "First Owner passkey (hash)", a recovery "New passkey (hash)" (the browser run reads both pages)', () => {
+    expect(signHtml).toContain('<dt class="rec" id="l-passkey">New passkey (hash)</dt>')
+    expect(Object.values(signSource).join('\n')).toContain("$('l-passkey').textContent = kind === 'activate' ? 'First Owner passkey (hash)' : 'New passkey (hash)'")
   })
 
   // ---- A7: submit for review ----

@@ -627,7 +627,7 @@ try {
   await page.getByLabel('Your question').fill('legal winner thank year wave sausage worth useful legal winner thank yellow')
   await page.getByRole('button', { name: 'Ask' }).click()
   check('a recovery phrase typed into the box is refused, and the page says that it was not passed on',
-    await page.getByText('This looks like a wallet recovery phrase (seed phrase). It was not passed on and not stored.').waitFor({ timeout: 5000 }).then(() => true, () => false) && !(await write.count()))
+    await page.getByText('This looks like a wallet recovery phrase (seed phrase): 12 or more of its words in a row. It was not passed on and not stored.').waitFor({ timeout: 5000 }).then(() => true, () => false) && !(await write.count()))
   await page.getByLabel('Your question').fill('How do I add a second passkey?')
   await page.getByRole('button', { name: 'Ask' }).click()
   await page.getByText('Did this answer your question?').or(write).first().waitFor({ timeout: 10000 })
@@ -720,7 +720,7 @@ try {
   check('the Onboarding page gives a signing link on the signing host and three words', activationLink.startsWith(`${SIGN}/sign/#`) && firstWords.split(' ').length === 3 && await both(on, '33-onboarding'))
   const activated = await sign(activationLink, '34-activation-sign')
   check('the signing page shows the fourth action, the organisation id and the same three words, and the wallet signs',
-    activated.before.includes('Activate this organisation and confirm its first Owner passkey') && activated.before.includes(newOrg.id) && activated.before.includes(firstWords) && activated.before.includes(key.address)
+    activated.before.includes('Activate this organisation and confirm its first Owner passkey') && activated.before.includes('First Owner passkey (hash)') && !activated.before.includes('New passkey (hash)') && activated.before.includes(newOrg.id) && activated.before.includes(firstWords) && activated.before.includes(key.address)
     && activated.after.includes('Signed and checked. The wallet is stored') && activated.asked.includes('eth_signTypedData_v4') && activated.fits)
   await on.getByRole('button', { name: 'The wallet has signed' }).click()
   await on.getByText('It signed the activation.').waitFor()
