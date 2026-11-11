@@ -1,7 +1,5 @@
 /* Ophis brand kit for the business interface. Values come from origin/main. See brand-kit.md for the source of each rule. */
-/* 1. FONTS (same files as business.ophis.fi) */
-@font-face { font-family: 'Ophis Inter'; src: url('assets/Inter-roman.var.woff2') format('woff2'); font-weight: 100 900; font-style: normal; font-display: swap; }
-@font-face { font-family: 'Ophis Inter'; src: url('assets/Inter-italic.var.woff2') format('woff2'); font-weight: 100 900; font-style: italic; font-display: swap; }
+/* 1. FONTS (same files as business.ophis.fi): the two @font-face rules are in fonts.css */
 /* 2. TOKENS */
 :root {
   --paper: #ffffff;  --fog: #fafafb;  --mist: #f2f2f3;

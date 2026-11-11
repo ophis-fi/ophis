@@ -6,13 +6,18 @@
 // Milestone 3: a second Owner and an Admin join (the Admin with the second Owner as second person), two people
 // unfreeze the Viewer, the Admin asks for a role change, an Owner approves it, the audit page shows the rows and
 // "Chain verified", and the export downloads.
+// Milestone 4: an Owner asks to link a wallet; the wallet (a test key behind a fake injected provider, no network)
+// signs on the signing page, which lives on its own hostname; the second Owner approves the link, then the wallet
+// as recovery wallet; the Security page shows the readiness state; unlinking the recovery wallet is refused.
 // Starts and stops its own local server on a throwaway database. Run: pnpm test:e2e
 import { execFileSync, spawn } from 'node:child_process'
 import { mkdirSync, readFileSync, rmSync } from 'node:fs'
 import { chromium } from 'playwright-core'
+import { mnemonicToAccount } from 'viem/accounts'
 
 process.chdir(new URL('..', import.meta.url).pathname)
 const ORIGIN = 'http://localhost:8787'
+const SIGN = 'http://127.0.0.1:8787' // the signing page's own hostname
 const STATE = '.wrangler/e2e'
 const CHROME = '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome'
 const env = { ...process.env, WRANGLER_SEND_METRICS: 'false' }
@@ -109,10 +114,12 @@ try {
     await on.getByRole('heading', { name: /People, wallets|Read this before you continue/ }).waitFor()
   }
   // One screen at desk width and at phone width. True when the phone page does not scroll sideways.
-  async function both(on, name) {
+  async function both(on, name, focus) {
+    if (focus) await on.locator(focus).evaluate((element) => element.scrollIntoView())
     await on.screenshot({ path: `.shots/${name}.png` })
     await on.setViewportSize({ width: 390, height: 844 })
     await on.waitForTimeout(200) // let the narrow layout paint: a shot taken at once shows the old frame in part
+    if (focus) await on.locator(focus).evaluate((element) => element.scrollIntoView())
     await on.screenshot({ path: `.shots/${name}-phone.png` })
     const fits = await on.evaluate(() => document.documentElement.scrollWidth <= innerWidth)
     await on.setViewportSize({ width: 1440, height: 900 })
@@ -356,6 +363,108 @@ try {
   await cy.page.goto(`${ORIGIN}/#/compliance`)
   await cy.page.getByText('The audit log is open to Owners, Compliance officers and Viewers.').waitFor()
   check('an Admin does not read the audit log', (await status('/api/audit', cy.page)) === 403)
+
+  // ---- milestone 4: a wallet is linked by its own signature, then set as the recovery wallet, by two people ----
+  // The wallet: the first public test key of anvil, held by a custodian as far as the console is told.
+  const key = mnemonicToAccount('test test test test test test test test test test test junk')
+  await arrive(owner, false)
+  await page.getByRole('button', { name: 'Link a wallet' }).click()
+  await page.getByLabel('Name in the console').fill('Custody wallet')
+  await page.getByLabel('Address').fill(key.address)
+  await page.getByLabel('Chain').selectOption({ label: 'OP Mainnet' })
+  await page.getByLabel(/A custodian holds this wallet/).check()
+  check('the link dialog says what the button does before the click', await page.getByText('This creates a signing link and stores nothing.').isVisible())
+  await page.getByRole('button', { name: 'Create the signing link' }).click()
+  const signingLink = await page.getByLabel('Signing link').inputValue()
+  await page.getByRole('button', { name: 'Copy the link' }).click()
+  await page.getByRole('button', { name: 'Copied' }).waitFor()
+  check('the signing link is on the signing host, with the request in the fragment only, and the dialog says where to open it',
+    /^http:\/\/127\.0\.0\.1:8787\/sign\/#[A-Za-z0-9_-]+\.[A-Za-z0-9_-]{43}$/.test(signingLink) && await page.getByText('in the Safe interface open Apps').isVisible() && await both(page, '15-link-wallet'))
+  await page.getByRole('button', { name: 'Done' }).click()
+  check('nothing is stored before the wallet signs', await page.getByText('No wallet is linked.').isVisible())
+
+  // The signing page, in the browser that holds the wallet: no session, no passkey, a fake injected provider.
+  const holder = await browser.newContext({ viewport: { width: 1440, height: 900 }, reducedMotion: 'reduce' })
+  const calls = []
+  await holder.exposeFunction('walletCall', async (method, params) => {
+    calls.push(method)
+    return method === 'eth_requestAccounts' ? [key.address] : method === 'eth_signTypedData_v4' ? key.signTypedData(JSON.parse(params[1])) : null
+  })
+  await holder.addInitScript(() => { window.ethereum = { request: ({ method, params }) => window.walletCall(method, params) } })
+  const signing = await holder.newPage()
+  const elsewhere = []
+  signing.on('console', (message) => /content security policy|refused to/i.test(message.text()) && violations.push(message.text()))
+  signing.on('request', (request) => request.url().startsWith(`${SIGN}/`) || elsewhere.push(request.url()))
+  const opened = await signing.goto(signingLink)
+  await signing.getByRole('heading', { name: 'What the wallet will sign' }).waitFor()
+  const policy = opened.headers()['content-security-policy'] ?? ''
+  check('the signing page carries its own policy and may be framed by the Safe interface only',
+    policy === "default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self'; connect-src 'self'; frame-ancestors https://app.safe.global https://*.safe.global" && !opened.headers()['x-frame-options'])
+  const shown = await signing.locator('dl.kv').innerText()
+  check('it shows the action, the site, the organisation id, the chain, the wallet and the expiry as text',
+    ['Link this wallet to this organisation', 'localhost', 'OP Mainnet (chain id 10)', key.address, 'UTC'].every((text) => shown.includes(text)) && /[0-9a-f]{32}/.test(shown))
+  check('the signing page carries the footer line and fits a phone', await signing.getByText(FOOTER).isVisible() && await both(signing, '16-signing-page'))
+  const at = (url, on) => on.evaluate((target) => fetch(target).then((response) => response.status, () => 0), url)
+  check('the signing host serves no console page and no console route; the console host serves no signing page',
+    (await at('/', signing)) === 404 && (await at('/api/me', signing)) === 404 && (await at('/assets/', signing)) === 404 && (await status('/sign/')) === 404 && (await status('/sign/manifest.json')) === 404)
+  const manifest = await signing.evaluate(() => fetch('/sign/manifest.json').then(async (response) => ({ grant: response.headers.get('access-control-allow-origin'), ...(await response.json()) })))
+  check('the manifest for the Safe interface is there, readable from any origin', manifest.grant === '*' && manifest.iconPath === 'icon.svg' && manifest.name.startsWith('Ophis Business'))
+  check('no cookie of the console exists on the signing host', (await holder.cookies()).length === 0 && (await signing.evaluate(() => document.cookie)) === '')
+  await signing.getByRole('button', { name: 'Sign with the wallet in this browser' }).click()
+  await signing.getByText('The link now waits for a second person').waitFor()
+  check('the wallet was asked for its account, the chain and one typed signature, and the result is stated in plain words',
+    calls.join() === 'eth_requestAccounts,wallet_switchEthereumChain,eth_signTypedData_v4' && await both(signing, '17-signed'))
+  await signing.getByRole('button', { name: 'Sign with the wallet in this browser' }).click()
+  await signing.getByText('This request was already used.').waitFor()
+  check('the same request does not work twice', true)
+  check(`the signing page asked nothing of another origin (${elsewhere.length})`, elsewhere.length === 0)
+  await holder.close()
+
+  // The link waits for a second person. The requester cannot approve it; the second Owner does.
+  await arrive(owner, false)
+  check('the wallet is pending, in EIP-55 form, and its request waits under Approvals',
+    await page.getByRole('row', { name: new RegExp(`Custody wallet.*${key.address}.*OP Mainnet.*Custodian wallet.*Pending`) }).isVisible() && await page.getByText('Requested by you').isVisible() && (await page.getByRole('button', { name: 'Approve' }).count()) === 0)
+  await arrive(bo, false)
+  await bo.page.getByRole('button', { name: 'Review' }).click()
+  check('the second person reads what the link does, in plain words, before approving',
+    await bo.page.getByText(`Links the wallet Custody wallet (${key.address} on OP Mainnet, Custodian wallet) to the organisation.`).isVisible() && await both(bo.page, '18-approve-wallet'))
+  await bo.page.getByRole('button', { name: 'Approve' }).click()
+  await bo.page.getByText('Nothing waits.').waitFor()
+  check('two people linked the wallet', await bo.page.getByRole('row', { name: /Custody wallet.*Linked/ }).isVisible())
+
+  // The recovery wallet: one Owner asks, the other approves; in force 72 hours later.
+  await arrive(owner, false)
+  await page.getByRole('button', { name: 'Manage Custody wallet' }).click()
+  await page.getByRole('heading', { name: 'Manage Custody wallet' }).waitFor()
+  check('each choice for a wallet says what it does before its button, and fits a phone',
+    await page.getByText('if every Owner is locked out, only this wallet can restore access').isVisible() && await page.getByText('The wallet itself is not touched.').isVisible() && await both(page, '19-manage-wallet'))
+  await page.getByRole('button', { name: 'Request recovery wallet' }).click()
+  await page.getByRole('button', { name: 'Cancel request' }).waitFor()
+  await arrive(bo, false)
+  check('the second person reads what the recovery wallet is before approving', await bo.page.getByText('It is in force 72 hours after the approval.').first().isVisible())
+  await bo.page.getByRole('button', { name: 'Approve' }).click()
+  await bo.page.getByText('Nothing waits.').waitFor()
+  check('the wallet carries the "Recovery wallet" badge with the date it is in force, and an Owner can still cancel',
+    await bo.page.getByRole('row', { name: /Custody wallet.*Linked.*Recovery wallet.*In force from \d{4}-\d\d-\d\d \d\d:\d\d UTC/ }).isVisible() && await both(bo.page, '20-wallets', '#wallets'))
+
+  // The Security page, for an Owner: readiness, read on demand.
+  await arrive(owner, false)
+  await page.goto(`${ORIGIN}/#/security`)
+  await page.getByRole('heading', { name: 'Recovery readiness' }).waitFor()
+  const readiness = await page.locator('#readiness').innerText()
+  check('the Security page shows the readiness state: two Owners with two hardware keys are Ready, and a custodian recovery wallet is amber',
+    ['Ready', '2 Owners, each with two hardware keys.', 'Amber', 'Custody wallet is a custodian wallet'].every((text) => readiness.includes(text)) && await both(page, '21-readiness'))
+  check('an Admin gets no readiness block', (await status('/api/readiness', cy.page)) === 403)
+
+  // Unlinking the recovery wallet is refused: by the page, and by the server when asked directly.
+  await arrive(owner, false)
+  await page.getByRole('button', { name: 'Manage Custody wallet' }).click()
+  const walletId = await page.evaluate(() => fetch('/api/org').then((response) => response.json()).then((view) => view.wallets[0].id))
+  const direct = await page.evaluate((id) => fetch(`/api/wallets/${id}/unlink`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: '{}' }).then(async (response) => [response.status, (await response.json()).error]), walletId)
+  check('unlinking the recovery wallet is refused', await page.getByRole('button', { name: 'Unlink now' }).isDisabled() && await page.getByText('It cannot be unlinked.').isVisible() && direct.join() === '409,recovery_wallet')
+  await page.getByRole('button', { name: 'Close' }).last().click()
+  check('the wallet is still linked and still the recovery wallet', await page.getByRole('row', { name: /Custody wallet.*Linked.*Recovery wallet/ }).isVisible())
+
   await bo.context.close()
   await cy.context.close()
   await arrive(owner, false)
@@ -376,9 +485,10 @@ try {
   check('after the revoke the app is back on sign-in and the session is dead', (await status('/api/me')) === 401)
   check('the revoked token is dead on the server: it worked before the revoke, not after', before === 200 && (await replay()) === 401)
 
+  if (violations.length) console.error(violations.join("\n"))
   check(`no policy violation in the browser (${violations.length})`, violations.length === 0)
   check(`no request left the origin (${foreign.length})`, foreign.length === 0)
-  console.log('\nEnd-to-end run passed. Screenshots in .shots/: 01-signin to 14-audit-phone')
+  console.log('\nEnd-to-end run passed. Screenshots in .shots/: 01-signin to 21-readiness-phone')
 } catch (error) {
   console.error(error.message)
   process.exitCode = 1

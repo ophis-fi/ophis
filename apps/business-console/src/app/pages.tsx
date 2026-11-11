@@ -783,7 +783,7 @@ export function Organisation({ me, onSignedOut, onChanged }: { me: Me; onSignedO
                 <td><span className="mono">{w.address}</span> <button className="ib" type="button" aria-label={`Copy the address of ${w.label}`} title={copiedId === w.id ? 'Copied' : 'Copy the address'} onClick={() => navigator.clipboard.writeText(w.address).then(() => setCopiedId(w.id), () => setCopiedId(''))}><Icon name={copiedId === w.id ? 'check' : 'clipboard-check'} size={16} /></button></td>
                 <td>{chain(w.chainId)}</td>
                 <td>{kindOf(w)}</td>
-                <td><Status>{w.state === 'linked' ? 'Linked' : 'Pending'}</Status>{w.state === 'pending' && <small>Waits for a second person, under Approvals</small>}
+                <td className="wrap"><Status>{w.state === 'linked' ? 'Linked' : 'Pending'}</Status>{w.state === 'pending' && <small>Waits for a second person, under Approvals</small>}
                   {w.recovery && <><span className={`badge bi ${w.recovery === 'in_force' ? 'ok' : 'warn'}`}><Icon name={w.recovery === 'in_force' ? 'shield-check' : 'clock'} size={16} />Recovery wallet</span>
                     <small>{w.recovery === 'in_force' ? `In force since ${minute(w.recoveryAt!)}` : `In force from ${minute(w.recoveryAt!)}. Until then an Owner can cancel.`}</small></>}</td>
                 <td>{w.state === 'linked' && manages && <button className="btn ghost sm" type="button" aria-label={`Manage ${w.label}`} onClick={() => setWalletId(w.id)}><Icon name="settings" size={16} />Manage</button>}</td>

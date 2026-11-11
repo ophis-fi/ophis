@@ -44,7 +44,7 @@ function read(code: string) {
     if (![request.org, request.wallet, request.nonce, request.site].every((value) => typeof value === 'string') || ![request.chainId, request.issuedAt, request.expiresAt].every(Number.isSafeInteger)) throw new Error('fields')
   } catch {
     $('request').hidden = true
-    return alert('This is not a request code. Copy the whole link from the console and paste it here.')
+    return say('This is not a request code. Copy the whole link from the console and paste it here.', 'bad')
   }
   typed = typedLink({ chainId: request.chainId, site: request.site, organisationId: request.org, wallet: request.wallet, nonce: request.nonce, issuedAt: request.issuedAt, expiresAt: request.expiresAt })
   $('f-action').textContent = String(typed.message.action)
