@@ -505,15 +505,16 @@ async function continueFinish(c: Context) {
   const denied = fail(401, 'sign_in_failed')
   const id = responseId(c)
   const credential = id ? await data.credentialById(c.env.DB, id) : null
-  if (!credential || credential.state !== 'pending' || credential.ticket_id) return denied
+  if (!credential) return denied
   let used = ''
+  // Any passkey may try: only the pending one of an open request finds that request by its seat, and the commit checks it is still pending.
   const counter = await assertion(c, c.body.response, credential, 'continue', '', (challenge) => (used = challenge))
   const r = counter === null ? null : await data.recoveryRow(c.env.DB, credential.org_id, c.now, 'seat_id', credential.seat_id)
   if (counter === null || !r) return denied
   if (r.wait_until > c.now) return json(409, { error: 'too_early', until: r.wait_until })
   const endpoints = c.config.chains[r.chainId]
   const proved = endpoints && (await verifyDigest(endpoints, r.chainId, r.digest as `0x${string}`, r.address, r.signature as `0x${string}`))
-  const live = proved && r.kind === 'safe' ? await safeState(endpoints, r.chainId, r.address) : null
+  const live = endpoints && r.kind === 'safe' ? await safeState(endpoints, r.chainId, r.address) : null
   if (!proved || (r.kind === 'safe' && !live)) return fail(409, 'wallet_unreadable')
   // An override was green at its proof. Unchanged since, it is green now: the snapshot of its approval cannot change while it is in force.
   const same = JSON.stringify(live) === r.owners_snapshot
@@ -776,7 +777,7 @@ async function pages(request: Request, env: Env, signing: boolean) {
   const { pathname } = new URL(request.url)
   if (signing !== (pathname === '/sign' || pathname.startsWith('/sign/'))) return new Response('Not found', { status: 404, headers: HEADERS })
   // /recover is a page of the console's one shell (the app reads the path): public, and it needs no session.
-  const asset = await env.ASSETS.fetch(!signing && pathname === '/recover' ? new Request(new URL('/', request.url), request) : request)
+  const asset = await env.ASSETS.fetch(pathname === '/recover' ? new Request(new URL('/', request.url), request) : request)
   if (!signing) return asset // public/_headers sets the console's headers
   const headers = new Headers(SIGN_HEADERS)
   for (const name of ['content-type', 'location', 'etag']) if (asset.headers.has(name)) headers.set(name, asset.headers.get(name)!)

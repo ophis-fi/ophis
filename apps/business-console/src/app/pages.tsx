@@ -1,10 +1,13 @@
-// The screens of milestones 1 to 3, with the markup and classes of the approved mockup.
+// The screens of milestones 1 to 4, with the markup and classes of the approved mockup.
 import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react'
 import { api, CANCELLED, capital, Icon, minute, passkeyCheck, ROLE, say, Section, sensitive, stamp, Status, Tile } from './ui.tsx'
 
-export interface Alert { key: string; kind: string; at?: number | null; until?: number; name?: string; by?: string | null; stopped?: boolean; what?: string; detail?: string | null; mine?: boolean }
+export interface Alert {
+  key: string; kind: string; at?: number | null; until?: number; name?: string; by?: string | null; stopped?: boolean; what?: string; detail?: string | null; mine?: boolean
+  id?: string; nonce?: string; override?: boolean; objected?: boolean; lapses?: number; may?: 'cancel' | 'object' | null
+}
 export interface Me {
-  organisation: { id: string; name: string; kind: string }
+  organisation: { id: string; name: string; kind: string; quarantineUntil: number | null }
   seat: { id: string; displayName: string; role: string; keys: number; quarantineUntil: number | null }
   session: { id: string; endsAt: number; stepUpUntil: number }
   alerts: Alert[]
@@ -38,7 +41,7 @@ function Trust() {
 }
 
 // Where a replaced passkey lands. It opens no session. Until quarantine ends it can do one thing.
-function Replaced({ until, onBack }: { until: number; onBack: () => void }) {
+function Replaced({ until, recovery, onBack }: { until: number; recovery: boolean; onBack: () => void }) {
   const [busy, setBusy] = useState(false)
   const [stopped, setStopped] = useState(false)
   const [problem, setProblem] = useState('')
@@ -66,17 +69,19 @@ function Replaced({ until, onBack }: { until: number; onBack: () => void }) {
           <>
             <p className="lede">The replacement is stopped.</p>
             <div className="methods">
-              <p className="note ok" role="status"><Icon name="circle-check" /><span className="grow"><b>Replacement stopped.</b> The new passkey is revoked and your previous passkeys are valid again. Your seat is frozen until two people unfreeze it: an Owner or Admin asks, a second member with a key role approves. Call an Owner now.</span></p>
+              {recovery
+                ? <p className="note ok" role="status"><Icon name="circle-check" /><span className="grow"><b>Account recovery stopped.</b> The new Owner seat is removed and its passkeys are revoked. The Owner passkeys it replaced are valid again and the organisation is out of quarantine. Sign in now and check the recovery wallet with its signers.</span></p>
+                : <p className="note ok" role="status"><Icon name="circle-check" /><span className="grow"><b>Replacement stopped.</b> The new passkey is revoked and your previous passkeys are valid again. Your seat is frozen until two people unfreeze it: an Owner or Admin asks, a second member with a key role approves. Call an Owner now.</span></p>}
               <button className="btn ghost" type="button" onClick={onBack}><Icon name="fingerprint" />Back to sign-in</button>
             </div>
           </>
         ) : (
           <>
-            <p className="lede rise d2">A colleague confirmed a new passkey for your seat, so this one no longer signs in. Until <b>{minute(until)}</b> it can do one thing.</p>
+            <p className="lede rise d2">{recovery ? 'The recovery wallet of your organisation replaced all Owner passkeys, so this one no longer signs in.' : 'A colleague confirmed a new passkey for your seat, so this one no longer signs in.'} Until <b>{minute(until)}</b> it can do one thing.</p>
             <div className="methods rise d3">
-              <button className="btn primary" type="button" onClick={stop} disabled={busy}><Icon name="ban" />Stop this replacement</button>
+              <button className="btn primary" type="button" onClick={stop} disabled={busy}><Icon name="ban" />{recovery ? 'Stop this account recovery' : 'Stop this replacement'}</button>
               {problem && <Problem>{problem}</Problem>}
-              <p className="fine"><Icon name="info" size={16} />Stop it if you did not ask for a new passkey. If you did ask, do nothing: sign in with the new one.</p>
+              <p className="fine"><Icon name="info" size={16} />{recovery ? 'Stop it if the Owners did not ask the recovery wallet for this. It removes the new Owner and makes the Owner passkeys valid again. If the recovery was wanted, do nothing.' : 'Stop it if you did not ask for a new passkey. If you did ask, do nothing: sign in with the new one.'}</p>
               <button className="btn ghost" type="button" onClick={onBack}><Icon name="fingerprint" />Back to sign-in</button>
             </div>
           </>
@@ -85,16 +90,16 @@ function Replaced({ until, onBack }: { until: number; onBack: () => void }) {
       <aside className="panel trust rise d2" aria-label="What stopping does">
         <Tile name="shield" />
         <h2>One right, <em>for a short time</em>.</h2>
-        <p className="muted">A replaced passkey is kept for 24 hours, or 72 hours for Owners, Admins, Approvers and Compliance officers. It cannot open a session.</p>
+        <p className="muted">{recovery ? 'After an account recovery the replaced Owner passkeys are kept for 7 days. They cannot open a session.' : 'A replaced passkey is kept for 24 hours, or 72 hours for Owners, Admins, Approvers and Compliance officers. It cannot open a session.'}</p>
         <div className="cancan">
           <div><span className="cap">Stopping does</span><ul>
-            <li><Icon name="check" size={16} />Revoke the new passkey</li>
-            <li><Icon name="check" size={16} />Make your previous passkeys valid again</li>
-            <li><Icon name="check" size={16} />Freeze the seat and tell every member</li>
+            <li><Icon name="check" size={16} />{recovery ? 'Remove the new Owner and revoke its passkeys' : 'Revoke the new passkey'}</li>
+            <li><Icon name="check" size={16} />{recovery ? 'Make the replaced Owner passkeys valid again' : 'Make your previous passkeys valid again'}</li>
+            <li><Icon name="check" size={16} />{recovery ? 'End the quarantine and tell every member' : 'Freeze the seat and tell every member'}</li>
           </ul></div>
           <div><span className="cap">Stopping does not</span><ul className="x">
-            <li><Icon name="x" size={16} />Sign you in</li>
-            <li><Icon name="x" size={16} />Unfreeze the seat: two colleagues do</li>
+            <li><Icon name="x" size={16} />Sign you in{recovery && ': sign in afterwards'}</li>
+            <li><Icon name="x" size={16} />{recovery ? 'Change the recovery wallet' : 'Unfreeze the seat: two colleagues do'}</li>
           </ul></div>
         </div>
       </aside>
@@ -138,7 +143,7 @@ function Frozen({ info, onBack }: { info: FrozenInfo; onBack: () => void }) {
 
 export function SignIn({ onSignedIn }: { onSignedIn: () => void }) {
   const [busy, setBusy] = useState(false)
-  const [replacedUntil, setReplacedUntil] = useState(0)
+  const [replaced, setReplaced] = useState<{ until: number; recovery: boolean }>()
   const [frozen, setFrozen] = useState<FrozenInfo>()
   const [problem, setProblem] = useState(passkeysWork() ? '' : NO_PASSKEYS)
 
@@ -146,9 +151,9 @@ export function SignIn({ onSignedIn }: { onSignedIn: () => void }) {
     setBusy(true)
     setProblem('')
     try {
-      const finish = await passkeyCheck<{ error?: string; until?: number } & FrozenInfo>('/api/signin/start', '/api/signin/finish')
+      const finish = await passkeyCheck<{ error?: string; until?: number; recovery?: boolean } & FrozenInfo>('/api/signin/start', '/api/signin/finish')
       if (finish.status === 200) return onSignedIn()
-      if (finish.status === 403 && finish.data.error === 'passkey_replaced') return setReplacedUntil(finish.data.until ?? 0)
+      if (finish.status === 403 && finish.data.error === 'passkey_replaced') return setReplaced({ until: finish.data.until ?? 0, recovery: finish.data.recovery === true })
       if (finish.status === 403 && finish.data.error === 'seat_frozen') return setFrozen(finish.data)
       // One message for every other refusal: the server does not say why, and neither do we.
       setProblem(finish.status === 401 ? 'Sign-in did not work. Use a passkey that is active for your organisation.' : 'Sign-in is not available right now. Try again in a moment.')
@@ -159,7 +164,7 @@ export function SignIn({ onSignedIn }: { onSignedIn: () => void }) {
     }
   }
 
-  if (replacedUntil) return <Replaced until={replacedUntil} onBack={() => setReplacedUntil(0)} />
+  if (replaced) return <Replaced {...replaced} onBack={() => setReplaced(undefined)} />
   if (frozen) return <Frozen info={frozen} onBack={() => setFrozen(undefined)} />
   return (
     <section className="signin">
@@ -172,6 +177,7 @@ export function SignIn({ onSignedIn }: { onSignedIn: () => void }) {
           {problem && <Problem>{problem}</Problem>}
           <p className="fine"><Icon name="info" size={16} />No username is asked. Your passkey tells us which organisation and seat you hold.</p>
           <p className="fine"><Icon name="building-2" size={16} /><span>New organisation? Access is by application, after business verification.</span></p>
+          <p className="fine"><Icon name="life-buoy" size={16} /><span>No Owner can sign in any more? <a href="/recover">Recover access with the recovery wallet</a>.</span></p>
         </div>
       </div>
       <Trust />
@@ -724,7 +730,9 @@ export function Organisation({ me, onSignedOut, onChanged }: { me: Me; onSignedO
       </div></header>
       <div className="stack">
         {!ready && <p className="note warn" role="status"><Icon name="key-round" /><span className="grow"><b>Add your second {hardware ? 'hardware key' : 'passkey'}.</b> A seat needs two before it can invite, confirm or revoke. Use <a href="#my-passkeys">My passkeys</a> below.</span></p>}
-        {quarantined && <p className="note warn" role="status"><Icon name="clock" /><span className="grow"><b>Your seat is in quarantine until {minute(me.seat.quarantineUntil!)}.</b> It was re-enrolled. Until then it cannot add a member or revoke a colleague's passkey, and a replaced passkey can still stop the replacement.</span></p>}
+        {quarantined && (me.organisation.quarantineUntil === me.seat.quarantineUntil
+          ? <p className="note warn" role="status"><Icon name="clock" /><span className="grow"><b>The organisation is in quarantine until {minute(me.seat.quarantineUntil!)}.</b> The recovery wallet replaced all Owner passkeys. Until then nobody adds or removes a member, changes a role, links a wallet, sets the recovery wallet or approves a change, and a replaced Owner passkey can still stop the recovery. Re-enrolling an existing member stays open.</span></p>
+          : <p className="note warn" role="status"><Icon name="clock" /><span className="grow"><b>Your seat is in quarantine until {minute(me.seat.quarantineUntil!)}.</b> It was re-enrolled. Until then it cannot add a member or revoke a colleague's passkey, and a replaced passkey can still stop the replacement.</span></p>)}
         {problem && <Problem>{problem}</Problem>}
       </div>
 
@@ -865,7 +873,13 @@ const ALERT: Record<string, (alert: Alert) => string> = {
   new_passkey: (a) => `A passkey was added to your seat on ${minute(a.at!)}. If that was not you, tell an Owner now and revoke it under My passkeys.`,
   re_enrolment_started: (a) => `A re-enrolment of your seat was started on ${minute(a.at!)}. Signing in with a passkey you already hold closes it. If you did not ask for it, tell an Owner.`,
   re_enrolment_completed: (a) => `Your seat was re-enrolled on ${minute(a.at!)}: a new passkey replaced the previous ones.`,
-  quarantine: (a) => `Your seat is in quarantine until ${minute(a.until!)}. It cannot add a member or revoke a colleague's passkey, and a replaced passkey can still stop the replacement.`,
+  quarantine: (a) => a.detail === 'organisation'
+    ? `The organisation is in quarantine until ${minute(a.until!)}, after an account recovery. Nobody adds or removes a member, changes a role, links a wallet, sets the recovery wallet or approves a change, and a replaced Owner passkey can still stop the recovery.`
+    : `Your seat is in quarantine until ${minute(a.until!)}. It cannot add a member or revoke a colleague's passkey, and a replaced passkey can still stop the replacement.`,
+  recovery: (a) => recoveryText(a),
+  recovery_cancelled: (a) => `An account recovery${a.override ? ' that overrode the Owners' : ''} was cancelled on ${minute(a.at!)}. Nothing changed. The recovery wallet can ask again 24 hours later.`,
+  recovery_lapsed: (a) => `An account recovery lapsed on ${minute(a.at!)}: the recovery wallet had changed since the request, or its 7 days ran out. Nothing changed.`,
+  recovery_completed: (a) => `An account recovery was completed on ${minute(a.at!)}. The recovery wallet replaced all Owner passkeys: a new Owner signed in${a.override ? ' and the previous Owners were removed' : ', and the previous Owner passkeys can stop this for 7 days'}. If that surprises you, call the people who sign for the recovery wallet.`,
   colleague_re_enrolled: (a) => `${a.name} was re-enrolled on ${minute(a.at!)}: a new passkey replaced their previous ones. If that surprises you, call them.`,
   colleague_joined: (a) => `${a.name} joined on a link issued on ${minute(a.at!)}: a colleague confirmed their first passkey. If you do not know this member, tell an Owner.`,
   re_enrolment_closed: (a) => `${a.name} signed in on ${minute(a.at!)} with a passkey they still hold, while a re-enrolment of their seat was open. It was closed. If you started it, the request may not have come from ${a.name}: call them.`,
@@ -878,11 +892,172 @@ const ALERT: Record<string, (alert: Alert) => string> = {
       : a.what === 'seat.remove' ? `${a.name} was removed from the organisation ${when}. Two people decided it.`
       : a.what === 'seat.unfreeze' ? `${a.mine ? 'Your seat' : `The seat of ${a.name}`} was unfrozen ${when}. Two people decided it.`
       : a.what === 'wallet.link' ? `The wallet ${a.name} was linked ${when}. ${a.detail === 'alone' ? 'The only key-role member did it alone.' : 'Two people decided it.'}`
+      : a.what === 'recovery.stop' ? `An account recovery was stopped ${when} by an Owner passkey it had replaced. The new Owner was removed, the Owner passkeys are valid again and the quarantine is over.`
       : a.what === 'anchor.set' ? `The wallet ${a.name} was ${a.detail === 'alone' ? 'set as the recovery wallet by the only key-role member' : 'approved as the recovery wallet'} ${when}. It is in force 72 hours later. Until then an Owner can cancel the change, under Wallets.`
       : `The passkey rule for key roles was changed ${when}: ${a.detail === 'synced' ? 'synced passkeys are allowed for Admins, Approvers and Compliance officers' : 'hardware security keys only'}. Two people decided it.`
   },
   confirmation_waiting: (a) => `A new passkey of ${a.name} waits for the three words from you, under Waiting for confirmation.`,
 }
+// An open account recovery, in one sentence: what is happening, until when, and who can cancel.
+function recoveryText(a: Alert) {
+  const ready = (a.until ?? 0) <= Date.now()
+  return `${a.override ? 'The recovery wallet asked to replace all Owner passkeys, overriding the Owners' : 'The recovery wallet asked to replace all Owner passkeys'}, on ${minute(a.at!)}. `
+    + (ready ? `The wait is over: until ${minute(a.lapses!)} the requester can complete it with the new passkey. ` : `Nothing changes before ${minute(a.until!)}${a.objected ? ' (72 hours were added by an objection)' : ''}. Then the requester has 7 days to complete it. `)
+    + (a.override ? 'No Owner can cancel this one. Only the recovery wallet can, by signing a cancellation. ' : 'Any Owner can cancel it after a passkey check, and so can the recovery wallet, by signing a cancellation. ')
+    + (a.objected || ready ? '' : 'An Admin, Approver or Compliance officer can object once, which adds 72 hours.')
+}
+// Shown on every page while a recovery is open. Each button is preceded by what it does.
+export function RecoveryBanner({ alert, organisationId, onChanged }: { alert: Alert; organisationId: string; onChanged: () => void }) {
+  const [problem, setProblem] = useState('')
+  const [busy, setBusy] = useState(false)
+  async function act(what: 'cancel' | 'object') {
+    setBusy(true)
+    setProblem('')
+    try {
+      const result = await sensitive(`/api/recovery/${alert.id}/${what}`)
+      if (result.status === 200) return onChanged()
+      setProblem(result.data.error === 'override' ? 'This recovery overrides the Owners. No Owner can cancel it.' : result.data.error === 'already_objected' ? 'Someone already objected. The wait grows once.' : say(result.data))
+    } catch {
+      setProblem(CANCELLED)
+    } finally {
+      setBusy(false)
+    }
+  }
+  return (
+    <section className="note warn recovery" role="alert" aria-labelledby="rc-h">
+      <Icon name="triangle-alert" />
+      <div className="grow stack">
+        <p><b id="rc-h">Account recovery in progress.</b> {recoveryText(alert)}</p>
+        <p>If nobody in your organisation asked for this, tell an Owner and the people who sign for the recovery wallet now.</p>
+        {alert.may === 'cancel' && <p><b>Cancel</b> ends the request at once: the new passkey is revoked and nothing else changes. The recovery wallet can ask again 24 hours later.</p>}
+        {alert.may === 'object' && <p><b>Object</b> adds 72 hours to the wait. It can be done once for this request, by one person.</p>}
+        {alert.may && <div><button className="btn primary md" type="button" disabled={busy} onClick={() => act(alert.may!)}><Icon name={alert.may === 'cancel' ? 'x' : 'clock'} size={16} />{alert.may === 'cancel' ? 'Cancel this recovery' : 'Object: add 72 hours'}</button></div>}
+        {problem && <Problem>{problem}</Problem>}
+        <p className="fine"><Icon name="wallet" size={16} /><span>To cancel with the recovery wallet, its signers open <a href={`/recover#cancel=${organisationId}.${alert.nonce}`}>the recovery page</a>. Organisation id <span className="mono">{organisationId}</span>, request number <span className="mono">{alert.nonce}</span>.</span></p>
+      </div>
+    </section>
+  )
+}
+
+// /recover: public, no session. Three things: start a recovery (a new passkey and a signing link for the recovery
+// wallet), continue one whose wait is over, or get the link with which the recovery wallet cancels one.
+const ORG_ID = /^[0-9a-f]{32}$/
+export function Recover() {
+  const prefill = location.hash.match(/^#cancel=([0-9a-f]{32})\.(0x[0-9a-f]{64})$/)
+  const [org, setOrg] = useState(prefill?.[1] ?? '')
+  const [override, setOverride] = useState(false)
+  const [nonce, setNonce] = useState(prefill?.[2] ?? '')
+  const [issued, setIssued] = useState<{ link: string; phrase?: string[]; expiresAt: number }>()
+  const [copied, setCopied] = useState(false)
+  const [busy, setBusy] = useState(false)
+  const [problem, setProblem] = useState(passkeysWork() ? '' : NO_PASSKEYS)
+  const run = async (action: () => Promise<string | void>) => {
+    setBusy(true)
+    setProblem('')
+    try {
+      setProblem((await action()) ?? '')
+    } catch {
+      setProblem(CANCELLED)
+    } finally {
+      setBusy(false)
+    }
+  }
+  const BAD_ID = 'An organisation id is 32 characters: digits and the letters a to f. It is on the recovery sheet.'
+  const start = (event: FormEvent) => {
+    event.preventDefault()
+    if (!ORG_ID.test(org.trim())) return setProblem(BAD_ID)
+    void run(async () => {
+      const organisationId = org.trim()
+      const begun = await api<{ seat: string; options: PublicKeyCredentialCreationOptionsJSON }>('/api/recover/intent', { organisationId })
+      if (begun.status !== 200) return 'That did not work. Try again in a moment.'
+      const passkey = (await navigator.credentials.create({ publicKey: PublicKeyCredential.parseCreationOptionsFromJSON(begun.data.options) })) as PublicKeyCredential
+      const done = await api<{ link: string; phrase: string[]; expiresAt: number; error?: string }>('/api/recover/intent', { organisationId, seat: begun.data.seat, override, response: passkey.toJSON() })
+      if (done.status !== 200) return done.data.error === 'device_bound_required' ? say(done.data) : 'The passkey was not accepted. Use a hardware security key and try again.'
+      setIssued(done.data)
+    })
+  }
+  const cancel = (event: FormEvent) => {
+    event.preventDefault()
+    if (!ORG_ID.test(org.trim())) return setProblem(BAD_ID)
+    if (!/^0x[0-9a-f]{64}$/.test(nonce.trim())) return setProblem('A request number starts with 0x and has 64 more characters. Members see it in the console, and it is the nonce on the signing page.')
+    void run(async () => {
+      const done = await api<{ link: string; expiresAt: number }>('/api/recover/cancel-intent', { organisationId: org.trim(), nonce: nonce.trim() })
+      if (done.status !== 200) return 'That did not work. Try again in a moment.'
+      setIssued(done.data)
+    })
+  }
+  const resume = () => run(async () => {
+    const done = await passkeyCheck<{ error?: string; until?: number }>('/api/recover/continue/start', '/api/recover/continue/finish')
+    if (done.status === 200) return void location.assign('/#/organisation')
+    return done.data.error === 'too_early' ? `The wait is not over. Come back after ${minute(done.data.until!)}.`
+      : done.data.error === 'recovery_lapsed' ? 'This recovery has lapsed: the recovery wallet changed since it signed. Nothing was changed. Start again.'
+      : done.data.error === 'wallet_unreadable' ? 'The recovery wallet could not be checked on both network endpoints just now, or its signature no longer holds. Nothing was changed. Try again in a minute.'
+      : 'That did not work. Use the passkey you created for this recovery. A recovery that was cancelled, or is older than 7 days after its wait, cannot be continued.'
+  })
+  return (
+    <section className="recover">
+      <header className="ph"><div>
+        <span className="cap eyebrow">Account recovery</span>
+        <h1 className="h-page">No Owner can sign in? <em>The recovery wallet restores access</em>.</h1>
+        <p className="lede">The wallet your organisation named as its recovery wallet signs one message. After a wait of 72 hours a new Owner replaces all Owner passkeys. This page stores nothing and asks for no name.</p>
+      </div></header>
+      {problem && <Problem>{problem}</Problem>}
+      {issued ? (
+        <div className="panel stack">
+          {issued.phrase ? (
+            <>
+              <h2 className="h-panel">Read these three words to the signers of the recovery wallet.</h2>
+              <p className="phrase" aria-label="Your three words">{issued.phrase.map((word, index) => <span key={index}>{word}</span>)}</p>
+              <p className="note warn" role="status"><Icon name="triangle-alert" /><span className="grow"><b>Read the words aloud, face to face or on a call.</b> The signers compare them with the words on the signing page, and the organisation id with the recovery sheet. They sign only if both match.</span></p>
+            </>
+          ) : <h2 className="h-panel">Give this link to the signers of the recovery wallet.</h2>}
+          <label className="field">Signing link, valid until {minute(issued.expiresAt)}
+            <input className="input mono" readOnly value={issued.link} onFocus={(event) => event.target.select()} />
+          </label>
+          <div><button className="btn ghost md" type="button" onClick={() => navigator.clipboard.writeText(issued.link).then(() => setCopied(true), () => setCopied(false))}><Icon name="clipboard-check" size={16} />{copied ? 'Copied' : 'Copy the link'}</button></div>
+          <p className="fine"><Icon name="info" size={16} /><span><b>A wallet in a browser, or a custodian's browser extension:</b> open the link in that browser. <b>A Safe:</b> in the Safe interface open Apps, add <span className="mono">{issued.link.split('#')[0]}</span> as a custom app, open it and paste the link.</span></p>
+          {issued.phrase && <p className="fine"><Icon name="clock" size={16} />Once the wallet has signed, every member of the organisation sees the request at sign-in. 72 hours later, come back to this page on this device and use "Continue with the new passkey". Keep the security key you just used.</p>}
+        </div>
+      ) : (
+        <div className="groups">
+          <section className="sg" aria-labelledby="rv-1">
+            <header><Tile name="key-round" /><div><h2 className="h-panel" id="rv-1">Start a recovery</h2><p>For the person who will be the new Owner.</p></div></header>
+            <form className="stack" onSubmit={start}>
+              <label className="field">Organisation id, from the recovery sheet
+                <input className="input mono" value={org} required spellCheck={false} autoComplete="off" maxLength={32} onChange={(event) => setOrg(event.target.value)} />
+              </label>
+              <label className="check"><input type="checkbox" checked={override} onChange={(event) => setOverride(event.target.checked)} /><span>Override the Owners. Only after an Owner cancelled or stopped a recovery in the last 30 days, and only if the recovery wallet is a Safe with two or more signers and no module. No Owner can cancel or stop an override.</span></label>
+              <p>This creates a passkey on your hardware security key and gives you three words and a signing link. Nothing is stored until the recovery wallet has signed. Then a wait of 72 hours starts, during which an Owner or the recovery wallet can cancel.</p>
+              <div><button className="btn primary md" type="submit" disabled={busy || !passkeysWork()}><Icon name="key-round" size={16} />Create the passkey and the signing link</button></div>
+            </form>
+          </section>
+          <section className="sg" aria-labelledby="rv-2">
+            <header><Tile name="fingerprint" /><div><h2 className="h-panel" id="rv-2">Continue a recovery</h2><p>72 hours after the wallet signed, for 7 days.</p></div></header>
+            <div className="stack">
+              <p>This checks the recovery wallet again and, if nothing about it changed, makes you an Owner and signs you in. All other Owner passkeys stop working. For 7 days one of them can stop the recovery, and the organisation is in quarantine.</p>
+              <div><button className="btn primary md" type="button" disabled={busy || !passkeysWork()} onClick={resume}><Icon name="fingerprint" size={16} />Continue with the new passkey</button></div>
+            </div>
+          </section>
+          <section className="sg" aria-labelledby="rv-3">
+            <header><Tile name="ban" /><div><h2 className="h-panel" id="rv-3">Cancel with the recovery wallet</h2><p>For the signers of the recovery wallet.</p></div></header>
+            <form className="stack" onSubmit={cancel}>
+              <label className="field">Organisation id
+                <input className="input mono" value={org} required spellCheck={false} autoComplete="off" maxLength={32} onChange={(event) => setOrg(event.target.value)} />
+              </label>
+              <label className="field">Request number
+                <input className="input mono" value={nonce} required spellCheck={false} autoComplete="off" maxLength={66} placeholder="0x" onChange={(event) => setNonce(event.target.value)} />
+              </label>
+              <p>This gives a signing link and changes nothing. The recovery is cancelled once the recovery wallet has signed "Cancel account recovery" for that request.</p>
+              <div><button className="btn ghost md" type="submit" disabled={busy}><Icon name="ban" size={16} />Create the cancellation link</button></div>
+            </form>
+          </section>
+        </div>
+      )}
+      <p className="fine"><Icon name="info" size={16} /><span>Still holding a passkey? <a href="/#/">Sign in</a> instead. A colleague who is an Owner or Admin can re-enrol a member who lost every passkey.</span></p>
+    </section>
+  )
+}
+
 export function Alerts({ alerts, onRead }: { alerts: Alert[]; onRead: () => void }) {
   return (
     <section className="panel alerts" role="alertdialog" aria-labelledby="al-h" aria-describedby="al-b">
@@ -1012,7 +1187,8 @@ const SECURITY: [group: string, icon: string, summary: string, rows: Row[]][] = 
   ]],
 ]
 
-interface Ready { owners: { level: string; count: number }; wallet: { level: string; why: string | null; label: string | null; at: number | null; threshold?: number; owners?: number }; overall: string; step: string | null }
+interface Ready { owners: { level: string; count: number }; wallet: { level: string; why: string | null; label: string | null; at: number | null; threshold?: number; owners?: number }; overall: string; step: string | null
+  sheet: { organisationId: string; console: string; signPage: string; wallet: { address: string; chain: string } | null } }
 const OVERALL: Record<string, [badge: string, sentence: string]> = {
   ready: ['Ready', 'Access can be restored if a passkey, or an Owner, is lost.'],
   at_risk: ['At risk', 'Access can still be restored, with little margin.'],
@@ -1047,10 +1223,59 @@ function Readiness() {
       <div>
         <div className="srow"><Icon name="users" size={20} /><b>Owners</b><Status>{LEVEL[owners.level]}</Status>
           <p>{owners.level === 'green' ? `${owners.count} Owners, each with two hardware keys.` : owners.level === 'amber' ? 'One Owner, with two hardware keys. If that person is locked out, only the recovery wallet restores access.' : 'An Owner holds fewer than two hardware keys. One lost key locks that Owner out.'}</p></div>
+        <div className="srow"><Icon name="key-round" size={20} /><b>Last-Owner recovery</b><Status>{ready.sheet.wallet ? 'In place today' : 'None'}</Status>
+          <p>{ready.sheet.wallet ? `If no Owner can sign in, the signers of ${wallet.label} can replace all Owner passkeys: 72 hours of wait, which an Owner or the wallet can cancel, then 7 days in which a replaced Owner passkey can stop it. Print the recovery sheet below and keep it where the signers find it.` : 'Not possible yet: no recovery wallet is in force. If every Owner is locked out, nobody can restore access.'}</p></div>
         <div className="srow"><Icon name="wallet" size={20} /><b>Recovery wallet</b><Status>{LEVEL[wallet.level]}</Status>
           <p>{wallet.level === 'none' ? 'No recovery wallet is set.' : wallet.level === 'green' ? `${wallet.label}: a Safe, ${wallet.threshold} of ${wallet.owners}, no module, owners unchanged since its approval. In force since ${minute(wallet.at!)}.` : WHY[wallet.why ?? '']?.(wallet)}</p></div>
       </div>
+      <Sheet sheet={ready.sheet} />
     </section>
+  )
+}
+
+// The recovery sheet: one page to print and keep. Nothing on it is secret.
+function Sheet({ sheet }: { sheet: Ready['sheet'] }) {
+  const host = sheet.console.replace(/^https?:\/\//, '')
+  const ways: [string, string[]][] = [
+    ['1. You still hold one of your passkeys', [
+      `Sign in at ${host} with the passkey you still hold.`,
+      'Open Organisation, My passkeys.',
+      'Revoke the passkey you lost.',
+      'Use "Add a passkey" for a new hardware key, and name it.',
+      'Keep the two keys in different places. Nothing waits: this works at once.',
+    ]],
+    ['2. You lost every passkey, and a colleague can sign in', [
+      'Ask an Owner or an Admin (an Owner, if you are one) to use "Re-enrol" on your seat. You get a one-time link.',
+      'Open the link on your own device and create a new passkey.',
+      'Read the three words on your screen aloud to that colleague, face to face or on a call. Never send them in writing.',
+      'The colleague types the words. For an Owner, Admin, Approver or Compliance officer a second member with such a role types them too.',
+      'Your old passkeys can stop the replacement for 24 hours (72 hours for those roles). Sign in with the new passkey and add a second one.',
+    ]],
+    ['3. No Owner can sign in: the recovery wallet', [
+      `Open ${host}/recover, enter the organisation id above and create a passkey on a new hardware key.`,
+      'Read the three words on your screen to the signers of the recovery wallet, and give them the signing link.',
+      `They open ${sheet.signPage} (a Safe: as a custom app in the Safe interface), compare the organisation id and the three words, and sign.`,
+      'A wait of 72 hours follows. Every member sees it at sign-in. An Owner or the recovery wallet can cancel it. An Admin, Approver or Compliance officer can add 72 hours, once.',
+      `Then open ${host}/recover again within 7 days and continue with the new passkey. Add a second key. For 7 days a replaced Owner passkey can stop the recovery.`,
+    ]],
+  ]
+  return (
+    <>
+      <header><Tile name="clipboard-check" /><div><h2 className="h-panel">Recovery sheet</h2><p>One page to print and keep with the people who sign for the recovery wallet. It holds no secret.</p>
+        <p><button className="btn ghost sm" type="button" onClick={() => print()}><Icon name="download" size={16} />Print the recovery sheet</button></p></div></header>
+      <article className="sheet" aria-label="Recovery sheet">
+        <h3 className="h-panel">Ophis Business: recovery sheet</h3>
+        <dl className="kv">
+          <dt>Console</dt><dd className="mono">{host}</dd>
+          <dt>Organisation id</dt><dd className="mono">{sheet.organisationId}</dd>
+          <dt>Recovery wallet</dt><dd className="mono">{sheet.wallet ? sheet.wallet.address : 'None in force yet'}</dd>
+          <dt>Chain</dt><dd>{sheet.wallet?.chain ?? 'None'}</dd>
+          <dt>Signing page</dt><dd className="mono">{sheet.signPage}</dd>
+        </dl>
+        {ways.map(([title, lines]) => <section key={title}><h4 className="h-card">{title}</h4><ol>{lines.map((line) => <li key={line}>{line}</li>)}</ol></section>)}
+        <p className="fine">This sheet holds no secret: no key, no passkey, no password. Ophis never asks for one. Ophis is a software provider. It is not a crypto-asset service provider.</p>
+      </article>
+    </>
   )
 }
 

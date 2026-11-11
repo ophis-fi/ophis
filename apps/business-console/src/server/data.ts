@@ -978,7 +978,7 @@ export async function objectRecovery(db: D1Database, actor: Actor, id: string, n
     const role = await roleNow(db, actor)
     outcome = !r || r.wait_until <= now ? 'not_found' : !role || role === 'owner' || !KEY_ROLES.includes(role) ? 'forbidden' : r.objected ? 'already_objected' : 'ok'
     if (!r || outcome !== 'ok') return null
-    return [seatEntry(actor, now, 'recovery.object', r.id), [db.prepare('UPDATE recovery_requests SET objected = 1, wait_until = wait_until + ? WHERE org_id = ? AND id = ? AND objected = 0').bind(WAIT_MS, actor.orgId, r.id)]]
+    return [seatEntry(actor, now, 'recovery.object', r.id), [db.prepare('UPDATE recovery_requests SET objected = 1, wait_until = wait_until + ? WHERE org_id = ? AND id = ?').bind(WAIT_MS, actor.orgId, r.id)]]
   })
   return outcome
 }
@@ -1027,10 +1027,9 @@ export async function completeRecovery(
   return outcome as 'denied' | 'lapsed' | 'completed'
 }
 
-/** The completed recovery that suspended this passkey: its completion date plus 7 days is the passkey's stop right date. An override suspends nothing. */
+/** The completed recovery that suspended this passkey: its completion date plus 7 days is the passkey's stop right date, which no re-enrolment gives. An override suspends nothing. */
 export const recoveryToStop = async (db: D1Database, c: StoredCredential) => (c.stop_right_until === null ? null
-  : db.prepare(`SELECT r.id, r.seat_id FROM recovery_requests r JOIN seats s ON s.org_id = r.org_id AND s.id = ? AND s.role = 'owner'
-                WHERE r.org_id = ? AND r.state = 'completed' AND r.closed_at + ${STOP_MS} = ? AND r.seat_id <> ?`).bind(c.seat_id, c.org_id, c.stop_right_until, c.seat_id).first<{ id: string; seat_id: string }>())
+  : db.prepare(`SELECT id, seat_id FROM recovery_requests WHERE org_id = ? AND state = 'completed' AND closed_at + ${STOP_MS} = ?`).bind(c.org_id, c.stop_right_until).first<{ id: string; seat_id: string }>())
 
 /** Frozen seats, with who froze each and when: read from the audit rows. A stop is a freeze by the seat's own replaced passkey. */
 export async function frozenSeats(db: D1Database, orgId: string, seatId: string | null = null) {

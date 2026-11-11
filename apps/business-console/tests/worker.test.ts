@@ -4052,6 +4052,13 @@ describe('B. last-Owner recovery by the recovery wallet', () => {
     expect(await finish({})).toBeUndefined()
   })
 
+  it('P2: /recover is a page of the console host, the one shell under another path, with the console\'s headers; the signing host has no such page', async () => {
+    const page = await handle(new Request(`${SITE.origin}/recover`), testEnv, () => now)
+    expect([page.status, await page.text(), page.headers.get('x-frame-options')]).toEqual([200, 'file /', 'DENY'])
+    expect((await handle(new Request(`${SIGN}/recover`), testEnv, () => now)).status).toBe(404)
+    expect((await handle(new Request(`${SITE.origin}/recover/x`), testEnv, () => now).then((response) => response.text()))).toBe('file /recover/x')
+  })
+
   it('P3: the MAC first, then the expiry: a forged or expired intent reads no row, asks no endpoint and is not counted', async () => {
     const { o } = await teamWithWallet('safe')
     const asked = await askRecovery(o.orgId)
@@ -4332,6 +4339,7 @@ describe('B. last-Owner recovery by the recovery wallet', () => {
     expect(await recoveryOf(o.orgId)).toMatchObject({ state: 'completed', closed_at: now })
     expect(await row('SELECT quarantine_until AS until FROM organisations WHERE id = ?', o.orgId)).toEqual({ until: now + WEEK })
     expect((await call('GET', '/api/me', { cookie: o.cookie })).status).toBe(401)
+    expect(await row('SELECT count(*) AS n FROM sessions WHERE seat_id = ? AND revoked_at IS NULL', o.seatId)).toEqual({ n: 0 }) // ended, not only unusable: a stop does not bring them back
     for (const key of [o.key, o.key2]) expect(await row('SELECT state, stop_right_until AS until FROM credentials WHERE id = ?', key.id)).toEqual({ state: 'suspended', until: now + WEEK })
     // Members who are not Owners keep their passkeys and their sessions.
     expect((await call('GET', '/api/me', { cookie: a.cookie })).status).toBe(200)
@@ -4440,6 +4448,7 @@ describe('B. last-Owner recovery by the recovery wallet', () => {
 
   it('P6: for 7 days, and not one minute later, a replaced Owner passkey stops the completed recovery: the new seat and its passkeys go, exactly the replaced passkeys are active again, the organisation quarantine ends', async () => {
     const { o, a, v } = await teamWithWallet()
+    const v2 = await colleague(o, 'viewer')
     // Two passkeys of the Owner seat that the completion must not touch and the stop must not bring back.
     const plant = async (state: string, until: number | null) => {
       const id = data.randomId()
@@ -4458,6 +4467,10 @@ describe('B. last-Owner recovery by the recovery wallet', () => {
     const taken = await ceremony(fresh, { seatId: v.seatId })
     expect(await credentialState(taken.key)).toBe('active')
     const completed = now
+    // A passkey replaced by a re-enrolment of its own seat stops that re-enrolment, as ever, and not the recovery.
+    await ceremony(fresh, { seatId: v2.seatId })
+    expect((await stop(v2.key)).status).toBe(200)
+    expect([(await seatOf(v2.seatId))?.state, (await recoveryOf(o.orgId)).state, await credentialState(asked.key)]).toEqual(['frozen', 'completed', 'active'])
     now = completed + WEEK
     expect((await signIn(o.key)).status).toBe(401)
     expect((await stop(o.key)).status).toBe(401)

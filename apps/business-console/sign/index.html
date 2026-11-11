@@ -12,8 +12,8 @@
 <main class="sign">
   <div>
     <span class="cap eyebrow">Wallet signature</span>
-    <h1 class="h-page">Link a wallet <em>with one signature</em>.</h1>
-    <p class="lede">A member of your organisation asked to link a wallet in the Ophis Business console. This page asks that wallet to sign a message. It moves no funds. It holds no session and cannot read or change anything in the console.</p>
+    <h1 class="h-page" id="title">One signature <em>from your wallet</em>.</h1>
+    <p class="lede" id="lede">The Ophis Business console asks a wallet to sign a message: to link the wallet to an organisation, or to restore access to an organisation whose Owners are locked out. This page moves no funds. It holds no session and cannot read or change anything in the console.</p>
   </div>
   <form id="paste" class="panel">
     <label class="field">Request code, or the whole link
@@ -29,9 +29,12 @@
       <dt>Organisation id</dt><dd id="f-org" class="mono"></dd>
       <dt>Chain</dt><dd id="f-chain"></dd>
       <dt>Wallet</dt><dd id="f-wallet" class="mono"></dd>
+      <dt class="rec">Three words</dt><dd class="rec" id="f-phrase"></dd>
+      <dt class="rec">New passkey (hash)</dt><dd class="rec mono" id="f-passkey"></dd>
+      <dt class="rec">Request number (nonce)</dt><dd class="rec mono" id="f-nonce"></dd>
       <dt>Expires</dt><dd id="f-expires"></dd>
     </dl>
-    <p class="fine">Your wallet shows the same fields. Sign only if they match, and if a colleague you know asked for this link.</p>
+    <p class="fine" id="advice">Your wallet shows the same fields. Sign only if they match, and if a colleague you know asked for this link.</p>
     <div class="methods wide">
       <button id="by-wallet" class="btn primary" type="button">Sign with the wallet in this browser</button>
       <button id="by-safe" class="btn primary" type="button" hidden>Sign with this Safe</button>
