@@ -6119,7 +6119,7 @@ describe('E. onboarding: a company applies, proves its domain, is activated and 
       await db.batch([
         db.prepare(`UPDATE wallets SET state = 'unlinked' WHERE id = ?`).bind(waiting!.id),
         db.prepare(`INSERT INTO wallets (id, org_id, chain_id, address, kind, label, state, proof_nonce, proof_digest, proof_signature, proof_checked_at, linked_at, snapshot)
-                    SELECT 'f' || substr(id, 2), org_id, chain_id, address, kind, label, 'pending', '0x' || ?2, proof_digest, proof_signature, proof_checked_at, linked_at, snapshot FROM wallets WHERE id = ?1`).bind(waiting!.id, 'ee'.repeat(32)),
+                    SELECT substr(id, 2) || substr(id, 1, 1), org_id, chain_id, address, kind, label, 'pending', '0x' || ?2, proof_digest, proof_signature, proof_checked_at, linked_at, snapshot FROM wallets WHERE id = ?1`).bind(waiting!.id, 'ee'.repeat(32)),
         db.prepare(`UPDATE organisations SET review_print = ${data.REVIEWED} WHERE id = ?1`).bind(a.orgId),
       ])
       await signIn(a.key) // takes the next audit number, as any write of the organisation would
@@ -6132,7 +6132,7 @@ describe('E. onboarding: a company applies, proves its domain, is activated and 
     expect(await rows()).toBe(before)
     // Tried again, the wallet that waits is the one that is checked and activated.
     expect((await decideOn(a.orgId)).body).toEqual({ state: 'active' })
-    expect((await db.prepare(`SELECT id, state, anchor FROM wallets WHERE org_id = ? AND state = 'linked'`).bind(a.orgId).all()).results).toEqual([{ id: `f${waiting!.id.slice(1)}`, state: 'linked', anchor: 'current' }])
+    expect((await db.prepare(`SELECT id, state, anchor FROM wallets WHERE org_id = ? AND state = 'linked'`).bind(a.orgId).all()).results).toEqual([{ id: `${waiting!.id.slice(1)}${waiting!.id[0]}`, state: 'linked', anchor: 'current' }])
   })
 
   it('G5: "Submit for review" refuses a recovery wallet with a single key when the organisation has other members, as a recovery does; approve checks again', async () => {
@@ -6497,7 +6497,7 @@ describe('E. onboarding: a company applies, proves its domain, is activated and 
     expect((await post(`/api/wallets/${wallet.id}/anchor`, b)).body).toEqual({ state: 'applied' })
     for (const path of ['/api/onboarding', `/api/onboarding?organisationId=${b.orgId}`, `/api/onboarding?org=${b.orgId}`]) {
       const view = await call('GET', path, { cookie: a.cookie })
-      expect(view.body).toEqual({ company: { legalName: a.name, kind: 'partner', country: null, registration: null, domain: null, domainVerifiedAt: null }, first: null, wallet: null, missing: null, review: { status: 'verified', since: null, reason: null }, record: null, chains: expect.any(Array) })
+      expect(view.body).toEqual({ company: { legalName: a.name, kind: 'partner', country: null, registration: null, domain: null, domainVerifiedAt: null }, signin: { setting: 'none', tenant: null }, first: null, wallet: null, missing: null, review: { status: 'verified', since: null, reason: null }, record: null, chains: expect.any(Array) })
     }
     expect((await call('GET', '/api/onboarding', { cookie: b.cookie })).body).toMatchObject({ company: { legalName: b.name }, record: { legalName: 'Birchfield Capital Ltd', tier: 'enhanced' }, wallet: { address: accounts[0].address } })
     expect((await call('GET', `/api/onboarding/${b.orgId}`, { cookie: a.cookie })).status).toBe(404)
@@ -6560,6 +6560,8 @@ describe('E. onboarding: a company applies, proves its domain, is activated and 
 // ---- company sign-in (owner decision of 2026-11-11): OpenID Connect at Microsoft or Google proves who a new passkey belongs to ----
 import { CONSUMER_TENANT, IDPS, OIDC, REAL_ENDPOINTS, type Provider } from '../src/server/oidc.ts'
 import idpStub from '../scripts/idp-stub.mjs?raw'
+import uiSource from '../src/app/ui.tsx?raw'
+import pagesSource from '../src/app/pages.tsx?raw'
 
 describe('G. company sign-in: a company account proves who a new passkey belongs to', () => {
   const IDP = IDPS.local
@@ -7172,6 +7174,17 @@ describe('G. company sign-in: a company account proves who a new passkey belongs
     // The stand-in is a script of its own: the Worker imports nothing of it, and it refuses any redirect but the local console's callback.
     for (const source of [routerSource, dataSource]) expect(source).not.toMatch(/idp-stub|8792/)
     expect(idpStub).toContain(`const CALLBACK = 'http://localhost:8787/api/company/callback'`)
+  })
+
+  it('C4, C7: the words of the interface: the three words are sent over a trusted channel, not read aloud; no claim of a licence; the stand-in says what it is', () => {
+    const came = /export const CAME: Record<string, string> = \{([\s\S]*?)\n\}/.exec(uiSource)![1]
+    const events = Object.entries(EVENTS).filter(([action]) => /company/.test(action)).map(([, words]) => words).join(' ')
+    for (const banned of [/licen[cs]ed|regulated|authorised|authorized|MiCA|compliant/i, /—/, /honest/i, /\banchor\b/i]) for (const said of [came, events, idpStub.replace(/^\/\/.*$/gm, '')]) expect(said).not.toMatch(banned)
+    // Every outcome of the callback has its sentence, except "ok", after which the page goes on.
+    for (const outcome of ['applied', 'requested', 'expired', 'state', 'cancelled', 'unavailable', 'rejected', 'link', 'tenant', 'email', 'account', 'in_use', 'domain', 'forbidden', 'invalid', 'account_in_use', 'already_requested']) expect(came, outcome).toMatch(new RegExp(`\\n  ${outcome}: '`))
+    expect(pagesSource).not.toMatch(/aloud to the colleague|Three words heard|they read to you/)
+    expect(pagesSource).toContain('Send these words to the colleague who invited you, over a channel you both trust')
+    expect(idpStub).toContain('Test only. This is not ${NAME[provider]}: no real account and no password.')
   })
 
   isolation['POST /api/enrol/company'] = async (a, b) => {

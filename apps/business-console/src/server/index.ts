@@ -777,7 +777,7 @@ const MANAGERS: readonly data.Role[] = ['owner', 'admin']
 const READERS: readonly data.Role[] = ['owner', 'compliance', 'viewer']
 const SELF = 'Sign in, pass a passkey check, sign out'
 const ADD = 'Add a passkey to the own seat'
-const WORDS3 = 'Type the three words that confirm a colleague\'s new passkey'
+const WORDS3 = 'Confirm a colleague\'s new passkey: approve what the company account showed, or type the three words'
 // The route table, which is the role table. A state change is a POST. tests/worker.test.ts fails if a route is
 // missing from its copy of this table, or has no isolation case.
 export const routes: Route[] = [
