@@ -19,10 +19,10 @@ const IDS = [...ANSWERS.map((a) => a.id), NONE]
 // One form per character before anything is judged: full-width letters and digits become plain ones (NFKC), and
 // characters that take no room (zero-width space and joiners, soft hyphen, direction marks) go, so that neither splits a value.
 const plain = (raw: string) => raw.normalize('NFKC').replace(/\p{Cf}/gu, '')
-const SEED = new Set(english)
+const SEED = new Map(english.map((word, i) => [word, i]))
 // BIP-39: each word is an 11-bit number; the last bits of a phrase (one per 3 words) are the first bits of the SHA-256 of the rest.
 async function checksum(words: string[]) {
-  const bits = words.map((word) => english.indexOf(word).toString(2).padStart(11, '0')).join('')
+  const bits = words.map((word) => SEED.get(word)!.toString(2).padStart(11, '0')).join('')
   const split = bits.length - words.length / 3
   const hash = new Uint8Array(await crypto.subtle.digest('SHA-256', Uint8Array.from(bits.slice(0, split).match(/.{8}/g)!, (byte) => parseInt(byte, 2))))
   return bits.slice(split) === hash[0].toString(2).padStart(8, '0').slice(0, words.length / 3)
@@ -49,17 +49,18 @@ export async function secret(raw: string): Promise<boolean> {
 }
 
 /**
- * What may leave: the question without a word that holds an email address, a URL or a domain name (a company's, or a
- * wallet name such as an ENS name), without 0x values and long hex strings (addresses, transactions, keys), also
- * when typed in groups, without runs of 6 or more digits (also when spaced: phone, account numbers), with single
- * spaces, 500 characters at most. Whole words go, so nothing of them is left behind.
+ * What may leave: the question without a word that holds an email address, a URL or a domain name in any script (a
+ * company's, or a wallet name such as an ENS name), without a word of 24 or more characters that holds a digit (an
+ * address or key of another chain, a token), without 0x values and long hex strings (addresses, transactions, keys),
+ * also when typed in groups, without runs of 6 or more digits (phone, account numbers), whatever parts the groups or
+ * the digits short of a letter, with single spaces, 500 characters at most. Whole words go, so nothing of them is left behind.
  */
 export function clean(raw: string): string {
-  return plain(raw).split(/\s+/).filter((word) => !/@|:\/\/|[a-z0-9]\.[a-z]{2,}/i.test(word)).join(' ')
+  return plain(raw).split(/\s+/).filter((word) => !/@|:\/\/|[\p{L}\p{Nd}]\.\p{L}{2,}|^(?=.*\p{Nd}).{24,}$/u.test(word)).join(' ')
     // Hex in groups: 16 or more hex characters in all with a digit among them (the 0 of 0x is one). Words such as "a bad decade" hold none.
-    .replace(/(?<![0-9a-z])(?:0x)?[0-9a-f]+(?:[ .:-][0-9a-f]+)+(?![0-9a-z])/gi, (run) => (/\d/.test(run) && run.replace(/[^0-9a-f]/gi, '').length >= 16 ? ' ' : run))
+    .replace(/(?<![0-9a-z])(?:0x)?[0-9a-f]+(?:[^0-9a-z]{1,3}[0-9a-f]+)+(?![0-9a-z])/gi, (run) => (/\d/.test(run) && run.replace(/[^0-9a-f]/gi, '').length >= 16 ? ' ' : run))
     .replace(/0x[0-9a-f]+|[0-9a-f]{16,}/gi, ' ')
-    .replace(/\p{Nd}(?:[ .()/-]{0,2}\p{Nd}){5,}/gu, ' ')
+    .replace(/\p{Nd}(?:[^\p{L}\p{Nd}]{0,3}\p{Nd}){5,}/gu, ' ')
     .replace(/\s+/g, ' ').trim().slice(0, LIMITS.chars).trim()
 }
 

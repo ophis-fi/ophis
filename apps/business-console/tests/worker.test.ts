@@ -5329,6 +5329,25 @@ describe('F. Support: attacks tried by the review of milestone 6', () => {
     }
   })
 
+  it('groups parted by a comma or an underscore, a domain with an accent or in another script, and a long word that holds a digit (an address or key of another chain) do not leave; short numbers between words stay', async () => {
+    const m = await member()
+    const cases: [string, string][] = [
+      [`is ${ADDRESS.match(/.{4}/g)!.join('_')} linked`, 'is linked'],
+      [`is ${ADDRESS.match(/.{8}/g)!.join(', ')} linked`, 'is linked'],
+      [`is ${ADDRESS.match(/.{8}/g)!.join(',')} linked`, 'is linked'],
+      ['account 12, 34, 56, 78 ok', 'account ok'],
+      ['is caf\u00e9.fr or \u043f\u0440\u0438\u043c\u0435\u0440.\u0440\u0444 down', 'is or down'],
+      ['can I link bc1qar0srrr7xfkvy5l643lydnw9re59gtzzwf5mdq here', 'can I link here'],
+      ['key 5HueCGU8rMjxEXxiPuD5BDku4MkFqeZyd4dZ1jvhTVqvbTLvyTJ ok', 'key ok'],
+      ['a word of 23 characters: abcdefghijklmnopqrstuv1 and of 24: abcdefghijklmnopqrstuvw1 end', 'a word of 23 characters: abcdefghijklmnopqrstuv1 and of 24: end'],
+      ['I have 2 passkeys, 1 wallet, 3 colleagues and a 2-of-3 Safe (e.g. 2 owners of 3)', 'I have 2 passkeys, 1 wallet, 3 colleagues and a 2-of-3 Safe (e.g. 2 owners of 3)'],
+    ]
+    for (const [raw, clean] of cases) {
+      expect((await ask(m, raw)).status, raw).toBe(200)
+      expect(JSON.parse(String(sent.at(-1)!.body)).state.question, raw).toBe(clean)
+    }
+  })
+
   it('a wallet recovery phrase is refused before anything leaves or is counted: 12 words of the BIP-39 list in a row, however they are numbered or spaced; 11 of them, or 12 plain words, are a question', async () => {
     const m = await member()
     const twelve = 'legal winner thank year wave sausage worth useful legal winner thank yellow'
