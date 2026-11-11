@@ -40,7 +40,7 @@ export const fromBase64Url = (value: string) =>
 // therefore writes no row: the server recognises its own challenge when it comes back.
 // A used sign-in challenge is recorded with the session it opened (sessions.challenge_hash), so a replay fails.
 // Every other purpose binds a value that its own use changes (see index.ts), so it also works once.
-export type Purpose = 'signin' | 'enrol' | 'stepup' | 'add' | 'confirm' | 'stop'
+export type Purpose = 'signin' | 'enrol' | 'stepup' | 'add' | 'confirm' | 'stop' | 'recover' | 'continue'
 function hmacKey(secret: string) {
   if (typeof secret !== 'string' || secret.length < 32) throw new Error('CHALLENGE_KEY is missing or too short')
   return crypto.subtle.importKey('raw', text.encode(secret), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign', 'verify'])

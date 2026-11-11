@@ -5,6 +5,8 @@
 // Every state change goes through commit(): the change and its audit row are one db.batch(), which D1
 // runs as one transaction. If the audit row cannot be written, the change is not made.
 
+import { colour, type SafeState } from './chain.ts'
+
 export type Role = 'owner' | 'admin' | 'trader' | 'approver' | 'compliance' | 'viewer'
 export const ROLES: Role[] = ['owner', 'admin', 'trader', 'approver', 'compliance', 'viewer']
 /** Issuers are Owners and Admins. The second person is any other key role. A Trader or Viewer is never either. */
@@ -29,6 +31,10 @@ const SWEEP_MS = 12 * DAY
 const REQUEST_MS = 7 * DAY // a change waits 7 days for its second person
 const RELAX_MS = DAY // lowering a security setting can be approved only 24 hours after it was asked
 const NO_WAIT_MS = 30 * DAY // the 72 hour wait is for an organisation with no other key-role seat in the last 30 days
+const STOP_MS = 7 * DAY // after a completed recovery: the replaced Owner passkeys can stop it, and the organisation is in quarantine
+const READY_MS = 7 * DAY // once its wait is over a recovery request can be completed for 7 days; then it has lapsed
+const OVERRIDE_MS = 30 * DAY // a green recovery wallet overrides the Owners only this long after one of them cancelled or stopped a request
+const MAX_PROOFS = 10 // proof checks per organisation per hour
 const KEY_SQL = `('owner', 'admin', 'approver', 'compliance')`
 /** Owners: hardware keys only, no exception. Other key roles: hardware keys unless the organisation allowed synced ones. */
 export const needsHardware = (role: Role, syncedKeysAllowed: number) => role === 'owner' || (KEY_ROLES.includes(role) && syncedKeysAllowed !== 1)
@@ -209,7 +215,7 @@ export async function createSession(
 
 export interface Session {
   id: string; org_id: string; seat_id: string; credential_id: string; created_at: number; last_seen_at: number; step_up_at: number
-  role: Role; display_name: string; quarantine_until: number | null; org_name: string; org_kind: string; synced_keys_allowed: number
+  role: Role; display_name: string; quarantine_until: number | null; org_quarantine_until: number | null; org_name: string; org_kind: string; synced_keys_allowed: number
   /** Active passkeys of the seat; for an Owner, the device-bound ones only. Two are needed before anything sensitive. */
   strong_keys: number
 }
@@ -217,7 +223,7 @@ export interface Session {
 export function sessionByToken(db: D1Database, tokenHash: string) {
   return db
     .prepare(
-      `SELECT x.id, x.org_id, x.seat_id, x.credential_id, x.created_at, x.last_seen_at, x.step_up_at, s.role, s.display_name, s.quarantine_until,
+      `SELECT x.id, x.org_id, x.seat_id, x.credential_id, x.created_at, x.last_seen_at, x.step_up_at, s.role, s.display_name, s.quarantine_until, o.quarantine_until AS org_quarantine_until,
               o.name AS org_name, o.kind AS org_kind, o.synced_keys_allowed,
               (SELECT count(*) FROM credentials k WHERE k.org_id = x.org_id AND k.seat_id = x.seat_id AND k.state = 'active' AND (s.role <> 'owner' OR k.device_bound = 1)) AS strong_keys
        FROM sessions x
@@ -232,7 +238,7 @@ export function sessionByToken(db: D1Database, tokenHash: string) {
 
 // ---- for a signed-in member: the organisation comes from the Actor ----
 
-/** The one write with no audit row: it only moves the idle clock. */
+/** A write with no audit row (the other is countProof): it only moves the idle clock. */
 export async function touchSession(db: D1Database, actor: Pick<Actor, 'orgId' | 'sessionId'>, now: number) {
   await db.prepare('UPDATE sessions SET last_seen_at = ? WHERE org_id = ? AND id = ?').bind(now, actor.orgId, actor.sessionId).run()
 }
@@ -357,7 +363,8 @@ export async function issueTicket(db: D1Database, session: Actor, target: Target
     if ('seatId' in target && target.seatId !== actor.seatId) {
       seat = await db.prepare(`SELECT id, role, state FROM seats WHERE org_id = ? AND id = ? AND state IN ('invited', 'active')`).bind(actor.orgId, target.seatId).first<{ id: string; role: Role; state: string }>()
     }
-    if (!seat) return null
+    // The seat a recovery request made is not a colleague's to enrol on: only the request's own passkey ever sits on it.
+    if (!seat || (seat.state === 'invited' && (await recoveryRow(db, actor.orgId, now, 'seat_id', seat.id)))) return null
     const kind = seat.state === 'active' ? 're_enrolment' : 'invitation'
     const issued = await db.prepare('SELECT count(*) AS n FROM enrolment_tickets WHERE org_id = ? AND issuer_seat_id = ? AND seat_id = ? AND created_at > ?')
       .bind(actor.orgId, actor.seatId, seat.id, now - 24 * HOUR).first<{ n: number }>()
@@ -535,6 +542,19 @@ export function stopReplacement(db: D1Database, credential: StoredCredential, co
   return commit(db, orgId, async () => {
     const current = await credentialById(db, credential.id)
     if (!current || !hasStopRight(current, now)) return null
+    // A passkey that a completed recovery replaced stops that recovery, not a re-enrolment of its own seat: the new
+    // Owner seat goes, with every passkey on it and every passkey enrolled on a link it issued; the Owner passkeys the
+    // completion suspended (they carry its date) are active again; the organisation quarantine ends. No seat is frozen.
+    const recovered = await recoveryToStop(db, current)
+    if (recovered) return [{ at: now, actorKind: 'seat', actorId: seatId, sessionId: null, action: 'recovery.stop', subjectId: recovered.id }, [
+      db.prepare(`UPDATE credentials SET state = 'revoked' WHERE org_id = ? AND state <> 'revoked' AND (seat_id = ? OR ticket_id IN (SELECT id FROM enrolment_tickets WHERE org_id = ? AND issuer_seat_id = ?))`).bind(orgId, recovered.seat_id, orgId, recovered.seat_id),
+      db.prepare(`UPDATE seats SET state = 'removed' WHERE org_id = ? AND id = ?`).bind(orgId, recovered.seat_id),
+      db.prepare('UPDATE sessions SET revoked_at = ? WHERE org_id = ? AND seat_id = ? AND revoked_at IS NULL').bind(now, orgId, recovered.seat_id),
+      ...closeOpen(db, orgId, recovered.seat_id, now, true),
+      db.prepare(`UPDATE credentials SET state = 'active', stop_right_until = NULL WHERE org_id = ? AND state = 'suspended' AND stop_right_until = ?`).bind(orgId, current.stop_right_until),
+      used(db, orgId, credential.id, counter, now),
+      db.prepare('UPDATE organisations SET quarantine_until = NULL WHERE id = ?').bind(orgId),
+    ]]
     return [{ at: now, actorKind: 'seat', actorId: seatId, sessionId: null, action: 'credential.stop', subjectId: credential.id }, [
       db.prepare(`UPDATE credentials SET state = CASE WHEN state = 'suspended' AND stop_right_until <= ? THEN 'active' ELSE 'revoked' END, stop_right_until = NULL
                   WHERE org_id = ? AND seat_id = ? AND (state = 'active' OR (state = 'suspended' AND (stop_right_until IS NULL OR stop_right_until > ?)))`).bind(current.stop_right_until, orgId, seatId, now),
@@ -614,7 +634,9 @@ async function judge(db: D1Database, orgId: string, role: Role, kind: Kind | Dir
                 (SELECT count(*) FROM credentials k WHERE k.org_id = s.org_id AND k.seat_id = s.id AND k.state = 'active' AND k.device_bound = 0) AS soft
               FROM seats s JOIN organisations o ON o.id = s.org_id WHERE s.org_id = ? AND s.id = ? AND s.state <> 'removed'`)
     .bind(orgId, subjectId).first<{ role: Role; state: string; quarantine: number | null; synced: number; owners: number; soft: number }>()
-  if (!seat) return 'not_found'
+  // The seat of an open recovery request is nobody's to remove: that would cancel the request, which an Owner may
+  // only do through the cancel route, and never for an override.
+  if (!seat || (seat.state === 'invited' && (await recoveryRow(db, orgId, now, 'seat_id', subjectId)))) return 'not_found'
   if (!mayManage(role, seat.role)) return 'forbidden'
   // The last Owner is never frozen, removed or lowered: nobody would be left who can manage the organisation.
   const lastOwner = seat.role === 'owner' && seat.state === 'active' && seat.owners === 0
@@ -799,7 +821,7 @@ export async function linkWallet(
   const { now } = w
   let outcome: Linked = { error: 'forbidden' }
   await commit(db, w.orgId, async () => {
-    const seat = await db.prepare(`SELECT s.role, s.quarantine_until AS quarantine FROM seats s JOIN organisations o ON o.id = s.org_id AND o.state = 'active'
+    const seat = await db.prepare(`SELECT s.role, max(COALESCE(s.quarantine_until, 0), COALESCE(o.quarantine_until, 0)) AS quarantine FROM seats s JOIN organisations o ON o.id = s.org_id AND o.state = 'active'
                                    WHERE s.org_id = ? AND s.id = ? AND s.state = 'active'`).bind(w.orgId, w.seatId).first<{ role: Role; quarantine: number | null }>()
     const refused = !seat || (seat.role !== 'owner' && seat.role !== 'admin') ? 'forbidden'
       : (seat.quarantine ?? 0) > now ? 'quarantine'
@@ -832,6 +854,184 @@ export async function readiness(db: D1Database, actor: Actor, now: number) {
   return { owners: owners.results.map((owner) => owner.keys), wallet: all.find((w) => w.recovery === 'in_force') ?? all.find((w) => w.recovery === 'waiting') ?? null }
 }
 
+// ---- milestone 4b: last-Owner recovery (recovery.md section 4) ----
+
+/**
+ * Counts one proof check of this organisation in this hour and says whether it is within the limit. The only write a
+ * proof makes before its commit, and it has no audit row: the organisation id comes from a MAC-signed intent and no
+ * other row is read.
+ * ponytail: a fixed window per clock hour, so up to 20 checks can straddle an hour. One table for link proofs and
+ * recovery proofs: whoever holds valid intents of an organisation can use up its hour (Turnstile, not built, is the brake).
+ */
+export async function countProof(db: D1Database, orgId: string, now: number) {
+  const hour = Math.floor(now / HOUR)
+  const [, counted] = await db.batch<{ n: number }>([
+    db.prepare('DELETE FROM proof_checks WHERE hour < ?').bind(hour),
+    db.prepare('INSERT INTO proof_checks (org_id, hour, n) VALUES (?, ?, 1) ON CONFLICT (org_id, hour) DO UPDATE SET n = n + 1 RETURNING n').bind(orgId, hour),
+  ])
+  return counted.results[0].n <= MAX_PROOFS
+}
+
+// A request is open from its proof until it is cancelled, completed or lapsed. 'ready' is never written: a waiting
+// request whose wait is over is ready, and 7 days later it has lapsed, whatever its row says. No scheduled job.
+const OPEN_RECOVERY = `r.state = 'waiting' AND r.wait_until + ${READY_MS} > ?`
+export interface RecoveryRow {
+  id: string; seat_id: string; wallet_id: string; action: 'replace_owners' | 'override_owners'; nonce: string; digest: string; signature: string; owners_snapshot: string
+  wait_until: number; objected: number; chainId: number; address: string; kind: WalletKind; snapshot: string | null
+}
+/** The open request of an active organisation, with the wallet that signed it: by its id, its nonce or its seat, or whichever is open. */
+export const recoveryRow = (db: D1Database, orgId: string, now: number, by: 'id' | 'nonce' | 'seat_id' = 'id', value: string | null = null) =>
+  db.prepare(`SELECT r.id, r.seat_id, r.wallet_id, r.action, r.nonce, r.digest, r.signature, r.owners_snapshot, r.wait_until, r.objected, w.chain_id AS chainId, w.address, w.kind, w.snapshot
+              FROM recovery_requests r JOIN wallets w ON w.org_id = r.org_id AND w.id = r.wallet_id JOIN organisations o ON o.id = r.org_id AND o.state = 'active'
+              WHERE r.org_id = ? AND ${OPEN_RECOVERY} AND (? IS NULL OR r.${by} = ?)`).bind(orgId, now, value, value).first<RecoveryRow>()
+// Ends a request that did not complete: its pending passkey is revoked and its seat, which nobody ever held, is removed.
+const closeRecovery = (db: D1Database, orgId: string, r: { id: string; seat_id: string }, state: 'cancelled' | 'lapsed', now: number): Sql[] => [
+  db.prepare(`UPDATE recovery_requests SET state = ?, closed_at = ? WHERE org_id = ? AND id = ? AND state = 'waiting'`).bind(state, now, orgId, r.id),
+  db.prepare(`UPDATE credentials SET state = 'revoked' WHERE org_id = ? AND seat_id = ? AND state <> 'revoked'`).bind(orgId, r.seat_id),
+  db.prepare(`UPDATE seats SET state = 'removed' WHERE org_id = ? AND id = ?`).bind(orgId, r.seat_id),
+]
+
+export interface RecoveryAsk { orgId: string; override: boolean; seatId: string; credential: { id: string; publicKey: string; counter: number; transports: string[] }; credentialHash: string; nonce: string }
+export interface Anchor { id: string; chainId: number; address: string; kind: WalletKind; snapshot: string | null }
+/**
+ * The rows that decide whether a request can open, as they are now: the organisation is active, it has a recovery
+ * wallet in force, no other request is open, this proof (nonce, passkey) was never accepted, the last cancel is 24
+ * hours old, and a single key stands only for an organisation of one person (one seat that holds a passkey which
+ * signs in or can still stop something). Read by the handler before the signature is checked, so that no endpoint is
+ * asked for a request that cannot open, and again inside the commit.
+ */
+export async function recoverable(db: D1Database, ask: Pick<RecoveryAsk, 'orgId' | 'nonce' | 'credential'>, now: number): Promise<{ error: string } | { wallet: Anchor }> {
+  const inForce = (await anchors(db, ask.orgId, now)).inForce
+  const wallet = inForce === null ? null : await db.prepare(`SELECT w.id, w.chain_id AS chainId, w.address, w.kind, w.snapshot FROM wallets w JOIN organisations o ON o.id = w.org_id AND o.state = 'active'
+                                                             WHERE w.org_id = ? AND w.id = ? AND w.state = 'linked'`).bind(ask.orgId, inForce).first<Anchor>()
+  if (!wallet) return { error: 'no_recovery_wallet' }
+  if (await recoveryRow(db, ask.orgId, now)) return { error: 'request_open' }
+  const seen = (await db.prepare(`SELECT (SELECT count(*) FROM recovery_requests WHERE nonce = ?) + (SELECT count(*) FROM credentials WHERE id = ?) AS used,
+                                         (SELECT max(closed_at) FROM recovery_requests WHERE org_id = ? AND state = 'cancelled') AS cancelled,
+                                         (SELECT count(*) FROM seats s WHERE s.org_id = ? AND s.state IN ('active', 'frozen') AND EXISTS (SELECT 1 FROM credentials k WHERE k.org_id = s.org_id AND k.seat_id = s.id
+                                            AND (k.state = 'active' OR (k.state = 'suspended' AND (k.stop_right_until IS NULL OR k.stop_right_until > ?))))) AS people`)
+    .bind(ask.nonce, ask.credential.id, ask.orgId, ask.orgId, now).first<{ used: number; cancelled: number | null; people: number }>())!
+  if (seen.used) return { error: 'proof_used' }
+  if ((seen.cancelled ?? -DAY) + DAY > now) return { error: 'wait_after_cancel' }
+  if (wallet.kind === 'single_key' && seen.people > 1) return { error: 'single_key' }
+  return { wallet }
+}
+
+type Opened = { error: string } | { state: 'waiting'; until: number }
+/**
+ * A valid proof of the recovery wallet arrived: the first write of the whole request, in one commit. The request
+ * waits 72 hours, with the Safe as both endpoints saw it just now (`live`, read by the handler); a new Owner seat is
+ * invited and holds the pending passkey; the audit row names the wallet. Every member is told from these rows.
+ * An override also needs the wallet green now, and an Owner's cancel or stop in the last 30 days (the audit rows).
+ */
+export async function openRecovery(db: D1Database, ask: RecoveryAsk, proof: { walletId: string; digest: string; signature: string; live: SafeState | null }, now: number) {
+  const id = randomId()
+  let outcome: Opened = { error: 'no_recovery_wallet' }
+  await commit(db, ask.orgId, async () => {
+    const can = await recoverable(db, ask, now)
+    const wallet = 'wallet' in can && can.wallet.id === proof.walletId ? can.wallet : null
+    const refused = 'error' in can ? can.error
+      : !wallet ? 'no_recovery_wallet'
+      : wallet.kind === 'safe' && !proof.live ? 'wallet_unreadable'
+      : ask.override && colour({ ...wallet, inForce: true }, proof.live).level !== 'green' ? 'override_refused'
+      : ask.override && !(await db.prepare(`SELECT 1 FROM audit_log WHERE org_id = ? AND at > ? AND ((action = 'recovery.cancel' AND actor_kind = 'seat') OR action = 'recovery.stop')`).bind(ask.orgId, now - OVERRIDE_MS).first()) ? 'override_refused'
+      : null
+    if (refused || !wallet) {
+      outcome = { error: refused ?? 'no_recovery_wallet' }
+      return null
+    }
+    outcome = { state: 'waiting', until: now + WAIT_MS }
+    const lapsed = `SELECT seat_id FROM recovery_requests WHERE org_id = ? AND state = 'waiting' AND wait_until + ${READY_MS} <= ?`
+    return [{ at: now, actorKind: 'anchor', actorId: wallet.id, sessionId: null, action: 'recovery.open', subjectId: id, detail: ask.override ? 'override' : null }, [
+      // Requests that lapsed by the clock are written down as lapsed first: the index allows one open row per organisation.
+      db.prepare(`UPDATE credentials SET state = 'revoked' WHERE org_id = ? AND state <> 'revoked' AND seat_id IN (${lapsed})`).bind(ask.orgId, ask.orgId, now),
+      db.prepare(`UPDATE seats SET state = 'removed' WHERE org_id = ? AND id IN (${lapsed})`).bind(ask.orgId, ask.orgId, now),
+      db.prepare(`UPDATE recovery_requests SET state = 'lapsed', closed_at = wait_until + ${READY_MS} WHERE org_id = ? AND state = 'waiting' AND wait_until + ${READY_MS} <= ?`).bind(ask.orgId, now),
+      db.prepare(`INSERT INTO seats (id, org_id, display_name, role, state, created_at) VALUES (?, ?, 'Recovery Owner', 'owner', 'invited', ?)`).bind(ask.seatId, ask.orgId, now),
+      db.prepare(`INSERT INTO credentials (id, org_id, seat_id, public_key, counter, device_bound, transports, label, state, created_at) VALUES (?, ?, ?, ?, ?, 1, ?, 'Recovery key', 'pending', ?)`)
+        .bind(ask.credential.id, ask.orgId, ask.seatId, ask.credential.publicKey, ask.credential.counter, JSON.stringify(ask.credential.transports), now),
+      db.prepare(`INSERT INTO recovery_requests (id, org_id, wallet_id, seat_id, action, credential_hash, nonce, digest, signature, owners_snapshot, state, wait_until, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'waiting', ?, ?)`)
+        .bind(id, ask.orgId, wallet.id, ask.seatId, ask.override ? 'override_owners' : 'replace_owners', ask.credentialHash, ask.nonce, proof.digest, proof.signature, JSON.stringify(proof.live), now + WAIT_MS, now),
+    ]]
+  })
+  return outcome as Opened
+}
+
+/** Cancel, while the request is open: an Owner (never an override), or the recovery wallet, which signed "Cancel account recovery" with the request's nonce. */
+export async function cancelRecovery(db: D1Database, orgId: string, by: Actor | { nonce: string }, id: string, now: number) {
+  let outcome = 'not_found'
+  await commit(db, orgId, async () => {
+    const r = 'nonce' in by ? await recoveryRow(db, orgId, now, 'nonce', by.nonce) : await recoveryRow(db, orgId, now, 'id', id)
+    outcome = !r ? 'not_found' : 'nonce' in by ? 'ok' : (await roleNow(db, by)) !== 'owner' ? 'forbidden' : r.action === 'override_owners' ? 'override' : 'ok'
+    if (!r || outcome !== 'ok') return null
+    const entry: Entry = 'nonce' in by ? { at: now, actorKind: 'anchor', actorId: r.wallet_id, sessionId: null, action: 'recovery.cancel', subjectId: r.id, detail: 'wallet' } : seatEntry(by, now, 'recovery.cancel', r.id)
+    return [entry, closeRecovery(db, orgId, r, 'cancelled', now)]
+  })
+  return outcome
+}
+
+/** An objection, during the wait: an Admin, Approver or Compliance officer adds 72 hours, once per request. */
+export async function objectRecovery(db: D1Database, actor: Actor, id: string, now: number) {
+  let outcome = 'not_found'
+  await commit(db, actor.orgId, async () => {
+    const r = await recoveryRow(db, actor.orgId, now, 'id', id)
+    const role = await roleNow(db, actor)
+    outcome = !r || r.wait_until <= now ? 'not_found' : !role || role === 'owner' || !KEY_ROLES.includes(role) ? 'forbidden' : r.objected ? 'already_objected' : 'ok'
+    if (!r || outcome !== 'ok') return null
+    return [seatEntry(actor, now, 'recovery.object', r.id), [db.prepare('UPDATE recovery_requests SET objected = 1, wait_until = wait_until + ? WHERE org_id = ? AND id = ? AND objected = 0').bind(WAIT_MS, actor.orgId, r.id)]]
+  })
+  return outcome
+}
+
+/**
+ * Completion, by the pending passkey after its check, in one commit. `same`: the handler verified the proof again and
+ * read the wallet on both endpoints, and it is as the request's snapshot says.
+ * Not the same: the request lapses. The same: the seat is an active Owner and its session opens; every other Owner
+ * seat loses its sessions, its open links and requests, and its active passkeys, which are suspended with a stop
+ * right of 7 days (an override revokes them and removes those seats: nobody stops it); the organisation is in
+ * quarantine for 7 days.
+ */
+export async function completeRecovery(
+  db: D1Database,
+  c: { orgId: string; seatId: string; credentialId: string; counter: number; same: boolean; tokenHash: string; challengeHash: string; userAgent: string | null; country: string | null; asn: number | null },
+  now: number,
+) {
+  const sessionId = randomId()
+  let outcome: 'denied' | 'lapsed' | 'completed' = 'denied'
+  await commit(db, c.orgId, async () => {
+    const r = await recoveryRow(db, c.orgId, now, 'seat_id', c.seatId)
+    outcome = 'denied' // a second run of the plan starts again
+    if (!r || r.wait_until > now || !(await db.prepare(`SELECT 1 FROM credentials WHERE org_id = ? AND id = ? AND seat_id = ? AND state = 'pending'`).bind(c.orgId, c.credentialId, r.seat_id).first())) return null
+    if (!c.same) {
+      outcome = 'lapsed'
+      return [{ at: now, actorKind: 'system', actorId: null, sessionId: null, action: 'recovery.lapse', subjectId: r.id }, closeRecovery(db, c.orgId, r, 'lapsed', now)]
+    }
+    const override = r.action === 'override_owners'
+    const owners = `SELECT id FROM seats WHERE org_id = ? AND role = 'owner' AND id <> ?`
+    const others = (await db.prepare(`${owners} AND state <> 'removed'`).bind(c.orgId, r.seat_id).all<{ id: string }>()).results
+    outcome = 'completed'
+    return [{ at: now, actorKind: 'seat', actorId: r.seat_id, sessionId, action: 'recovery.complete', subjectId: r.id, detail: override ? 'override' : null, country: c.country, asn: c.asn }, [
+      db.prepare(`UPDATE credentials SET state = ?, stop_right_until = ? WHERE org_id = ? AND state = 'active' AND seat_id IN (${owners})`).bind(override ? 'revoked' : 'suspended', override ? null : now + STOP_MS, c.orgId, c.orgId, r.seat_id),
+      db.prepare(`UPDATE sessions SET revoked_at = ? WHERE org_id = ? AND revoked_at IS NULL AND seat_id IN (${owners})`).bind(now, c.orgId, c.orgId, r.seat_id),
+      ...others.flatMap((seat) => closeOpen(db, c.orgId, seat.id, now, true)),
+      ...(override ? [db.prepare(`UPDATE seats SET state = 'removed' WHERE org_id = ? AND id IN (${owners})`).bind(c.orgId, c.orgId, r.seat_id)] : []),
+      db.prepare(`UPDATE credentials SET state = 'active', counter = max(counter, ?), last_used_at = ? WHERE org_id = ? AND id = ?`).bind(c.counter, now, c.orgId, c.credentialId),
+      db.prepare(`UPDATE seats SET state = 'active' WHERE org_id = ? AND id = ?`).bind(c.orgId, r.seat_id),
+      db.prepare('UPDATE organisations SET quarantine_until = ? WHERE id = ?').bind(now + STOP_MS, c.orgId),
+      db.prepare(`UPDATE recovery_requests SET state = 'completed', closed_at = ? WHERE org_id = ? AND id = ? AND state = 'waiting'`).bind(now, c.orgId, r.id),
+      // sessions.challenge_hash is UNIQUE: the same passkey check cannot open a second session.
+      db.prepare(`INSERT INTO sessions (id, token_hash, challenge_hash, org_id, seat_id, credential_id, created_at, last_seen_at, step_up_at, user_agent, country, asn) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+        .bind(sessionId, c.tokenHash, c.challengeHash, c.orgId, r.seat_id, c.credentialId, now, now, now, c.userAgent, c.country, c.asn),
+    ]]
+  })
+  return outcome as 'denied' | 'lapsed' | 'completed'
+}
+
+/** The completed recovery that suspended this passkey: its completion date plus 7 days is the passkey's stop right date. An override suspends nothing. */
+export const recoveryToStop = async (db: D1Database, c: StoredCredential) => (c.stop_right_until === null ? null
+  : db.prepare(`SELECT r.id, r.seat_id FROM recovery_requests r JOIN seats s ON s.org_id = r.org_id AND s.id = ? AND s.role = 'owner'
+                WHERE r.org_id = ? AND r.state = 'completed' AND r.closed_at + ${STOP_MS} = ? AND r.seat_id <> ?`).bind(c.seat_id, c.org_id, c.stop_right_until, c.seat_id).first<{ id: string; seat_id: string }>())
+
 /** Frozen seats, with who froze each and when: read from the audit rows. A stop is a freeze by the seat's own replaced passkey. */
 export async function frozenSeats(db: D1Database, orgId: string, seatId: string | null = null) {
   const { results } = await db
@@ -851,8 +1051,9 @@ export interface AuditLine { seq: number; at: number; action: string; detail: st
 export async function auditRows(db: D1Database, actor: Actor, before: number | null, limit: number) {
   const named = (table: string, seat: string) => `(SELECT n.display_name FROM ${table} x JOIN seats n ON n.org_id = x.org_id AND n.id = x.${seat} WHERE x.org_id = a.org_id AND x.id = a.subject_id)`
   const { results } = await db
-    .prepare(`SELECT a.seq, a.at, a.action, a.detail, w.display_name AS who, a.prev_hash AS prevHash, a.hash,
-                     COALESCE(t.display_name, ${named('credentials', 'seat_id')}, ${named('enrolment_tickets', 'seat_id')}, ${named('sessions', 'seat_id')}, ${named('approvals', 'subject_id')},
+    .prepare(`SELECT a.seq, a.at, a.action, a.detail, a.prev_hash AS prevHash, a.hash,
+                     COALESCE(w.display_name, (SELECT 'Recovery wallet ' || x.label FROM wallets x WHERE x.org_id = a.org_id AND x.id = a.actor_id AND a.actor_kind = 'anchor')) AS who,
+                     COALESCE(t.display_name, ${named('credentials', 'seat_id')}, ${named('enrolment_tickets', 'seat_id')}, ${named('sessions', 'seat_id')}, ${named('approvals', 'subject_id')}, ${named('recovery_requests', 'seat_id')},
                        (SELECT x.label FROM wallets x WHERE x.org_id = a.org_id AND x.id = a.subject_id)) AS target
               FROM audit_log a LEFT JOIN seats w ON w.org_id = a.org_id AND w.id = a.actor_id LEFT JOIN seats t ON t.org_id = a.org_id AND t.id = a.subject_id
               WHERE a.org_id = ? AND (? IS NULL OR a.seq < ?) ORDER BY a.seq * ? LIMIT ?`)
@@ -867,7 +1068,11 @@ export async function exportAudit(db: D1Database, actor: Actor, now: number) {
 
 // ---- alerts: no email exists, so a member is told at sign-in (recovery.md section 1) ----
 
-export interface Alert { key: string; kind: string; at?: number | null; until?: number; name?: string; by?: string | null; stopped?: boolean; what?: string; detail?: string | null; mine?: boolean }
+export interface Alert {
+  key: string; kind: string; at?: number | null; until?: number; name?: string; by?: string | null; stopped?: boolean; what?: string; detail?: string | null; mine?: boolean
+  /** An open recovery request: its id and nonce, whether it overrides the Owners, whether someone objected, when it lapses, and what this member may do. */
+  id?: string; nonce?: string; override?: boolean; objected?: boolean; lapses?: number; may?: 'cancel' | 'object' | null
+}
 // ponytail: alerts are read from the rows of the last 7 days on each /api/me; the server keeps no "seen"
 // mark (the browser remembers what was read). Add a table if an alert must be acknowledged by name.
 export async function alertsFor(db: D1Database, actor: Actor, now: number) {
@@ -884,11 +1089,21 @@ export async function alertsFor(db: D1Database, actor: Actor, now: number) {
     // What two people changed: told to every member but the one who approved it.
     db.prepare(`SELECT a.seq, a.at, a.action, a.detail, a.subject_id, COALESCE(s.display_name, (SELECT x.label FROM wallets x WHERE x.org_id = a.org_id AND x.id = a.subject_id)) AS display_name
                 FROM audit_log a LEFT JOIN seats s ON s.org_id = a.org_id AND s.id = a.subject_id
-                WHERE a.org_id = ? AND a.at > ? AND a.actor_id <> ? AND a.action IN ('seat.unfreeze', 'seat.remove', 'seat.role', 'policy.synced_keys', 'wallet.link', 'anchor.set') AND a.detail IS NOT 'invited' ORDER BY a.seq`).bind(actor.orgId, since, actor.seatId),
+                WHERE a.org_id = ? AND a.at > ? AND a.actor_id <> ? AND a.action IN ('seat.unfreeze', 'seat.remove', 'seat.role', 'policy.synced_keys', 'wallet.link', 'anchor.set', 'recovery.stop') AND a.detail IS NOT 'invited' ORDER BY a.seq`).bind(actor.orgId, since, actor.seatId),
   ])
+  // Account recovery: the open request, for every member and at every sign-in (the key holds the session), and what became of each request closed in the last 7 days.
+  const recoveries = (await db.prepare(`SELECT r.id, r.action, r.state, r.wait_until, r.objected, r.nonce, r.created_at, r.closed_at FROM recovery_requests r
+                                        WHERE r.org_id = ? AND ((${OPEN_RECOVERY}) OR r.closed_at > ?) ORDER BY r.created_at, r.id`).bind(actor.orgId, now, since)
+    .all<{ id: string; action: string; state: string; wait_until: number; objected: number; nonce: string; created_at: number; closed_at: number | null }>()).results
   const requests = KEY_ROLES.includes(actor.role) ? (await openRequests(db, actor, now)).filter((request) => !request.mine) : []
   const waiting = (await openTickets(db, actor, now)).filter((t) => t.myStep)
   return [
+    ...recoveries.map((r) => {
+      const override = r.action === 'override_owners'
+      if (r.state !== 'waiting') return { key: `recovery:${r.id}:${r.state}`, kind: `recovery_${r.state}`, at: r.closed_at, override }
+      const may = actor.role === 'owner' ? (override ? null : ('cancel' as const)) : KEY_ROLES.includes(actor.role) && !r.objected && r.wait_until > now ? ('object' as const) : null
+      return { key: `recovery:${r.id}:${r.objected}:${actor.sessionId}`, kind: 'recovery', id: r.id, nonce: r.nonce, at: r.created_at, until: r.wait_until, lapses: r.wait_until + READY_MS, override, objected: r.objected === 1, may }
+    }),
     ...(quarantined(actor, now) ? [{ key: `quarantine:${actor.quarantineUntil}`, kind: 'quarantine', until: actor.quarantineUntil! }] : []),
     ...(tickets.results as { id: string; kind: string; state: string; seat_id: string; created_at: number; display_name: string }[]).map((t) =>
       t.seat_id !== actor.seatId ? { key: `re:${t.id}`, kind: t.kind === 're_enrolment' ? 'colleague_re_enrolled' : 'colleague_joined', at: t.created_at, name: t.display_name }
@@ -920,10 +1135,11 @@ export async function seedOrganisation(db: D1Database, o: { name: string; kind: 
 }
 
 // ponytail: stands in for the first Owner's activation, which the recovery anchor confirms in milestone 4
-// (recovery.md section 3). It activates every pending passkey, so it must never see a real database.
+// (recovery.md section 3). It activates every pending passkey of a ticket, so it must never see a real database.
+// The pending passkey of a recovery request has no ticket and is never activated here.
 export async function devActivatePending(db: D1Database, environment: string, now: number) {
   if (environment !== 'local') throw new Error('refused: activation by command is for the local database only')
-  const { results } = await db.prepare(`SELECT id, org_id, seat_id, ticket_id FROM credentials WHERE state = 'pending'`).all<{ id: string; org_id: string; seat_id: string; ticket_id: string | null }>()
+  const { results } = await db.prepare(`SELECT id, org_id, seat_id, ticket_id FROM credentials WHERE state = 'pending' AND ticket_id IS NOT NULL`).all<{ id: string; org_id: string; seat_id: string; ticket_id: string | null }>()
   for (const c of results) {
     await commit(db, c.org_id, () => [{ at: now, actorKind: 'system', actorId: null, sessionId: null, action: 'credential.activate.dev', subjectId: c.id }, [
       db.prepare(`UPDATE credentials SET state = 'active' WHERE org_id = ? AND id = ? AND state = 'pending'`).bind(c.org_id, c.id),
@@ -932,4 +1148,15 @@ export async function devActivatePending(db: D1Database, environment: string, no
     ]])
   }
   return results.length
+}
+
+// ponytail: stands in for the passing of time, for the local end-to-end flow: every wait that runs is over (a
+// recovery wallet's 72 hours, a recovery request's wait, the 24 hours after a cancel). No audit row. Local database only.
+export async function devSkipWaits(db: D1Database, environment: string, now: number) {
+  if (environment !== 'local') throw new Error('refused: skipping waits is for the local database only')
+  await db.batch([
+    db.prepare(`UPDATE wallets SET anchor_effective_at = ? WHERE anchor = 'next' AND anchor_effective_at > ?`).bind(now, now),
+    db.prepare(`UPDATE recovery_requests SET wait_until = ? WHERE state = 'waiting' AND wait_until > ?`).bind(now, now),
+    db.prepare(`UPDATE recovery_requests SET closed_at = ? WHERE state = 'cancelled' AND closed_at > ?`).bind(now - DAY, now - DAY),
+  ])
 }

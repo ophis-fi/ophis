@@ -1,6 +1,7 @@
 // The typed data a wallet signs (EIP-712), shared by the server and the signing page. It imports nothing.
 // Domain: no verifyingContract, because no contract verifies it. The binding to this app is in the message:
-// site, organisationId and wallet. Milestone 4b adds its own struct next to Link; the verifier takes any of them.
+// site, organisationId and wallet. Two structs, one verifier: Link (a wallet joins an organisation) and Proof (the
+// recovery wallet replaces the Owner passkeys, or cancels that).
 export interface Typed {
   domain: { name: string; version: string; chainId: number }
   types: Record<string, { name: string; type: string }[]>
@@ -20,4 +21,23 @@ export const typedLink = (f: LinkFields): Typed => ({
   },
   primaryType: 'Link',
   message: { action: LINK_ACTION, site: f.site, organisationId: f.organisationId, wallet: f.wallet, nonce: f.nonce, issuedAt: f.issuedAt, expiresAt: f.expiresAt },
+})
+
+// Last-Owner recovery (recovery.md sections 4 and 5). Three fixed sentences; the server picks one, never the caller.
+export const PROOF_ACTION = {
+  replace: 'Replace all Owner passkeys of this organisation',
+  override: 'Replace all Owner passkeys of this organisation, overriding its Owners',
+  cancel: 'Cancel account recovery',
+} as const
+export type ProofKind = keyof typeof PROOF_ACTION
+/** credentialHash: SHA-256(credential id, public key) of the new passkey. phrase: the three words its holder reads out. A cancel names no passkey: 32 zero bytes and no words. */
+export interface ProofFields extends LinkFields { kind: ProofKind; credentialHash: string; phrase: string }
+export const typedProof = (f: ProofFields): Typed => ({
+  domain: { name: 'Ophis Business', version: '1', chainId: f.chainId },
+  types: {
+    EIP712Domain: [field('string')('name'), field('string')('version'), field('uint256')('chainId')],
+    Proof: [...['action', 'site', 'organisationId'].map(field('string')), field('address')('wallet'), field('bytes32')('credentialHash'), field('string')('phrase'), field('bytes32')('nonce'), ...['issuedAt', 'expiresAt'].map(field('uint64'))],
+  },
+  primaryType: 'Proof',
+  message: { action: PROOF_ACTION[f.kind], site: f.site, organisationId: f.organisationId, wallet: f.wallet, credentialHash: f.credentialHash, phrase: f.phrase, nonce: f.nonce, issuedAt: f.issuedAt, expiresAt: f.expiresAt },
 })

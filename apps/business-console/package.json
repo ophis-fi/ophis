@@ -13,6 +13,7 @@
     "migrate": "wrangler d1 migrations apply DB --local",
     "seed": "node scripts/dev.mjs seed",
     "activate": "node scripts/dev.mjs activate",
+    "skip": "node scripts/dev.mjs skip",
     "dev": "vite build && vite build --mode sign && wrangler dev",
     "test": "vite build && vite build --mode sign && vitest run",
     "test:chain": "node tests/chain.mjs",

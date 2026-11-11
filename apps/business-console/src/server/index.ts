@@ -1,8 +1,8 @@
 // Worker entry: answers /api/* and leaves every other path to the static assets.
 import * as data from './data.ts'
-import { checksum, colour, parseAddress, readCapped, safeState, verify, type SafeState } from './chain.ts'
+import { checksum, colour, parseAddress, readCapped, safeState, verify, verifyDigest, type SafeState } from './chain.ts'
 import { challengeIsOurs, configFor, creationOptions, credentialHash, newChallenge, phraseFor, requestOptions, seal, toBase64Url, unseal, userHandle, verifyAssertion, verifyRegistration, type Config, type Purpose } from './passkeys.ts'
-import { CHAIN_NAME, typedLink } from './typed.ts'
+import { CHAIN_NAME, typedLink, typedProof, type ProofKind } from './typed.ts'
 import { WORDS } from './words.ts'
 
 export interface Env { DB: D1Database; ASSETS: Fetcher; ENVIRONMENT: string; CHALLENGE_KEY: string }
@@ -63,7 +63,7 @@ const NAME = /^[\p{L}\p{N} .'-]{1,60}$/u
 
 const mustBeDeviceBound = (t: { role: data.Role; synced_keys_allowed: number }) => data.needsHardware(t.role, t.synced_keys_allowed)
 // What a refusal of the data module answers. Everything not listed is a conflict with the present state: 409.
-const STATUS: Record<string, number> = { not_found: 404, forbidden: 403, own_request: 403, quarantine: 403, invalid: 400, ticket_limit: 429, seat_limit: 429 }
+const STATUS: Record<string, number> = { not_found: 404, forbidden: 403, own_request: 403, quarantine: 403, override: 403, invalid: 400, ticket_limit: 429, seat_limit: 429 }
 const refuse = (error: string) => fail(STATUS[error] ?? 409, error)
 // The database refuses a second passkey with the same label on one seat (migrations/0002_labels.sql).
 const labelTaken = (error: unknown) => /credentials\.label/.test(String((error as Error)?.message))
@@ -160,7 +160,8 @@ async function signinFinish(c: Context) {
   let used = ''
   const counter = await assertion(c, c.body.response, credential, 'signin', '', (challenge) => (used = challenge))
   if (counter === null) return denied
-  if (replaced) return json(403, { error: 'passkey_replaced', until: credential.stop_right_until })
+  // recovery: what this passkey would stop is a completed account recovery, not a re-enrolment of its own seat.
+  if (replaced) return json(403, { error: 'passkey_replaced', until: credential.stop_right_until, recovery: Boolean(await data.recoveryToStop(c.env.DB, credential)) })
   if (frozen) {
     const [seat] = await data.frozenSeats(c.env.DB, credential.org_id, credential.seat_id)
     return json(403, { error: 'seat_frozen', by: seat?.by ?? null, at: seat?.at ?? null, stopped: seat?.stopped ?? false })
@@ -198,10 +199,11 @@ async function stopFinish(c: Context) {
 async function me(c: Context) {
   const s = c.session
   return json(200, {
-    organisation: { id: s.org_id, name: s.org_name, kind: s.org_kind },
+    organisation: { id: s.org_id, name: s.org_name, kind: s.org_kind, quarantineUntil: (s.org_quarantine_until ?? 0) > c.now ? s.org_quarantine_until : null },
     seat: { id: s.seat_id, displayName: s.display_name, role: s.role, keys: s.strong_keys, quarantineUntil: c.actor.quarantineUntil },
     session: { id: s.id, endsAt: s.created_at + ABSOLUTE_MS, stepUpUntil: s.step_up_at + STEP_UP_MS },
-    alerts: await data.alertsFor(c.env.DB, c.actor, c.now),
+    // The quarantine alert says which one it is: the seat's own, or the organisation's after an account recovery.
+    alerts: ((await data.alertsFor(c.env.DB, c.actor, c.now)) as data.Alert[]).map((alert) => (alert.kind === 'quarantine' && alert.until === s.org_quarantine_until ? { ...alert, detail: 'organisation' } : alert)),
   })
 }
 
@@ -368,20 +370,29 @@ async function walletIntent(c: Context) {
 }
 
 // The one route of the signing host. No session and no cookie: the caller proves nothing about itself. The intent
-// is the server's own text, made for a signed-in manager; its MAC is checked first, before anything is read from
-// the database or asked of an endpoint. Then the wallet's signature, over typed data rebuilt from that text.
-// ponytail: no rate limit on proof checks. Intents come only from signed-in managers and a forged one stops at the
-// MAC. Before production: 10 checks per organisation per hour (recovery.md section 5).
+// is the server's own text (a wallet link made for a signed-in manager, or a recovery intent anyone may ask for); its
+// MAC is checked first, before anything is read from the database or asked of an endpoint. Then its expiry, then the
+// counter: 10 proof checks per organisation per hour, the only write before the commit. Then the kind decides.
 async function proof(c: Context) {
-  const intent = typeof c.body.intent === 'string' ? ((await unseal(c.env.CHALLENGE_KEY, INTENT, c.body.intent)) as Intent | null) : null
+  const sealed = typeof c.body.intent === 'string' ? c.body.intent : ''
+  const link = (await unseal(c.env.CHALLENGE_KEY, INTENT, sealed)) as Intent | null
+  const recover = link ? null : ((await unseal(c.env.CHALLENGE_KEY, RECOVER, sealed)) as RecoverIntent | null)
+  const intent = link ?? recover
   if (!intent) return fail(400, 'intent_invalid')
   if (intent.expiresAt * 1000 <= c.now) return fail(410, 'intent_expired')
+  if (!(await data.countProof(c.env.DB, intent.org, c.now))) return fail(429, 'too_many')
   const { signature } = c.body
+  if (typeof signature !== 'string' || signature.length > 8194 || !/^0x(?:[0-9a-fA-F]{2})*$/.test(signature)) return fail(400, 'signature_invalid')
+  return link ? linkProof(c, link, signature as `0x${string}`) : recoveryProof(c, recover!, signature as `0x${string}`)
+}
+
+// A wallet link: the wallet's signature, over typed data rebuilt from the intent.
+async function linkProof(c: Context, intent: Intent, signature: `0x${string}`) {
   const endpoints = c.config.chains[intent.chainId]
-  if (!endpoints || typeof signature !== 'string' || signature.length > 8194 || !/^0x(?:[0-9a-fA-F]{2})*$/.test(signature)) return fail(400, 'signature_invalid')
+  if (!endpoints) return fail(400, 'signature_invalid')
   // The site is this environment's constant; every other field was under the MAC. Nothing here is the caller's text.
   const typed = typedLink({ chainId: intent.chainId, site: c.config.rpId, organisationId: intent.org, wallet: intent.wallet, nonce: intent.nonce, issuedAt: intent.issuedAt, expiresAt: intent.expiresAt })
-  const proved = await verify(endpoints, typed, intent.wallet, signature as `0x${string}`)
+  const proved = await verify(endpoints, typed, intent.wallet, signature)
   if (!proved) return fail(403, 'signature_rejected')
   // A wallet whose own key signed is never read as a Safe: no endpoint is asked about it. A contract is a Safe only
   // when it is a genuine one (chain.ts). Any other contract is stored as a single key, the strictest kind, whatever
@@ -393,6 +404,135 @@ async function proof(c: Context) {
     nonce: intent.nonce, digest: proved.digest, signature, now: c.now,
   })
   return 'error' in outcome ? refuse(outcome.error) : json(200, outcome)
+}
+
+// ---- milestone 4b: last-Owner recovery (recovery.md sections 4 and 5) ----
+
+const ID = /^[0-9a-f]{32}$/
+const RECOVER = 'recover-intent' // the label of a recovery intent under the challenge key
+const NO_HASH = `0x${'0'.repeat(64)}`
+/** What /recover asked for, signed by the server and held nowhere. A cancel names the request's nonce and no passkey. */
+interface RecoverIntent {
+  kind: ProofKind; org: string; nonce: string; credentialHash: string; phrase: string; issuedAt: number; expiresAt: number; site: string
+  seat?: string; credential?: data.RecoveryAsk['credential']
+}
+const sealedRecover = async (c: Context, fields: Omit<RecoverIntent, 'issuedAt' | 'expiresAt' | 'site'>) => {
+  const issuedAt = Math.floor(c.now / 1000)
+  const sealed = await seal(c.env.CHALLENGE_KEY, RECOVER, { ...fields, issuedAt, expiresAt: issuedAt + WEEK_S, site: c.config.rpId } satisfies RecoverIntent)
+  return { intent: sealed, link: `${c.config.signOrigin}/sign/#${sealed}`, expiresAt: (issuedAt + WEEK_S) * 1000 }
+}
+
+// The start of a last-Owner recovery, for anyone: no session, and the server writes nothing and reads no row. It
+// answers the same for any well-formed organisation id, so it says nothing about any organisation. First call:
+// the options for a new device-bound passkey, for a seat id made here. Second call: that passkey's registration
+// in, a MAC-signed intent out, with the three words its holder reads to the signers of the recovery wallet.
+// ponytail: Turnstile comes before this route in production (recovery.md section 4); it is not built. Until then
+// anyone can ask for intents; each costs a passkey registration, writes nothing, and its proofs are counted per organisation.
+async function recoverIntent(c: Context) {
+  const { organisationId: org, seat } = c.body
+  if (typeof org !== 'string' || !ID.test(org)) return fail(400, 'invalid')
+  if (typeof seat !== 'string' || !ID.test(seat)) {
+    const made = data.randomId()
+    const challenge = await newChallenge(c.env.CHALLENGE_KEY, 'recover', `${org}.${made}`, c.now)
+    return json(200, { seat: made, options: creationOptions(c.config, challenge, { id: made, name: 'Recovery Owner' }, true) })
+  }
+  let credential
+  try {
+    credential = await verifyRegistration(c.config, c.body.response, (challenge) => challengeIsOurs(c.env.CHALLENGE_KEY, 'recover', `${org}.${seat}`, challenge, c.now))
+  } catch {
+    return fail(400, 'passkey_rejected')
+  }
+  if (!credential.deviceBound) return fail(400, 'device_bound_required') // the new passkey is an Owner's
+  const nonce = data.randomId() + data.randomId()
+  const hash = await credentialHash(credential.id, credential.publicKey)
+  const words = await phraseFor({ site: c.config.rpId, orgId: org, seatId: seat, role: 'owner', purpose: 'recovery', credentialHash: hash, nonce })
+  const sealed = await sealedRecover(c, {
+    kind: c.body.override === true ? 'override' : 'replace', org, seat, nonce: `0x${nonce}`, phrase: words.join(' '),
+    credentialHash: `0x${Array.from(hash, (byte) => byte.toString(16).padStart(2, '0')).join('')}`,
+    credential: { id: credential.id, publicKey: credential.publicKey, counter: credential.counter, transports: credential.transports },
+  })
+  return json(200, { ...sealed, phrase: words })
+}
+// The same for a cancel by the recovery wallet: an organisation id and the nonce of the request in, an intent out.
+// Nothing is read: whether such a request exists is decided when the wallet's signature arrives.
+async function recoverCancelIntent(c: Context) {
+  const { organisationId: org, nonce } = c.body
+  if (typeof org !== 'string' || !ID.test(org) || typeof nonce !== 'string' || !/^0x[0-9a-f]{64}$/.test(nonce)) return fail(400, 'invalid')
+  return json(200, await sealedRecover(c, { kind: 'cancel', org, nonce, credentialHash: NO_HASH, phrase: '' }))
+}
+
+// A recovery proof, after the MAC, the expiry and the counter. The rows first (recoverable(), or the open request a
+// cancel names), so that no endpoint is asked for a request that cannot open; then the signature, over typed data
+// rebuilt from the intent and from the recovery wallet the server holds, never from the caller's text; then the Safe
+// as both endpoints see it; then one commit, which reads the rows again. Until the signature is valid every refusal
+// is the same answer: the caller is anyone, and learns nothing about the organisation.
+async function recoveryProof(c: Context, intent: RecoverIntent, signature: `0x${string}`) {
+  const rejected = fail(403, 'proof_rejected')
+  const ask = intent.kind !== 'cancel' && intent.seat && intent.credential
+    ? { orgId: intent.org, override: intent.kind === 'override', seatId: intent.seat, credential: intent.credential, credentialHash: intent.credentialHash, nonce: intent.nonce } : null
+  let wallet: data.Anchor | null = null
+  if (ask) {
+    const can = await data.recoverable(c.env.DB, ask, c.now)
+    if ('wallet' in can) wallet = can.wallet
+  } else if (intent.kind === 'cancel') {
+    const open = await data.recoveryRow(c.env.DB, intent.org, c.now, 'nonce', intent.nonce)
+    wallet = open && { ...open, id: open.wallet_id }
+  }
+  const endpoints = wallet ? c.config.chains[wallet.chainId] : undefined
+  if (!wallet || !endpoints) return rejected
+  const typed = typedProof({
+    kind: intent.kind, chainId: wallet.chainId, site: c.config.rpId, organisationId: intent.org, wallet: checksum(wallet.address),
+    credentialHash: intent.credentialHash, phrase: intent.phrase, nonce: intent.nonce, issuedAt: intent.issuedAt, expiresAt: intent.expiresAt,
+  })
+  const proved = await verify(endpoints, typed, wallet.address, signature)
+  if (!proved) return rejected
+  if (!ask) return (await data.cancelRecovery(c.env.DB, intent.org, { nonce: intent.nonce }, '', c.now)) === 'ok' ? json(200, { state: 'cancelled' }) : rejected
+  const live = wallet.kind === 'safe' ? await safeState(endpoints, wallet.chainId, wallet.address) : null
+  const outcome = await data.openRecovery(c.env.DB, ask, { walletId: wallet.id, digest: proved.digest, signature, live }, c.now)
+  return 'error' in outcome ? refuse(outcome.error) : json(200, outcome)
+}
+
+// Completion, on /recover: a normal passkey check against the pending passkey. Start takes no input and writes nothing.
+async function continueStart(c: Context) {
+  return json(200, { options: requestOptions(c.config, await newChallenge(c.env.CHALLENGE_KEY, 'continue', '', c.now)) })
+}
+// One answer for every failure, as at sign-in, and two more for a passkey that passed its check: the wait still runs
+// (with its end), or the request has lapsed. The proof is verified again, from the digest the server stored, and
+// the wallet is read on both endpoints: a proof that no longer verifies, or a Safe that cannot be read, completes
+// nothing and changes nothing; a Safe that differs from the snapshot (owners, threshold, modules, handler) makes the
+// request lapse.
+async function continueFinish(c: Context) {
+  const denied = fail(401, 'sign_in_failed')
+  const id = responseId(c)
+  const credential = id ? await data.credentialById(c.env.DB, id) : null
+  if (!credential || credential.state !== 'pending' || credential.ticket_id) return denied
+  let used = ''
+  const counter = await assertion(c, c.body.response, credential, 'continue', '', (challenge) => (used = challenge))
+  const r = counter === null ? null : await data.recoveryRow(c.env.DB, credential.org_id, c.now, 'seat_id', credential.seat_id)
+  if (counter === null || !r) return denied
+  if (r.wait_until > c.now) return json(409, { error: 'too_early', until: r.wait_until })
+  const endpoints = c.config.chains[r.chainId]
+  const proved = endpoints && (await verifyDigest(endpoints, r.chainId, r.digest as `0x${string}`, r.address, r.signature as `0x${string}`))
+  const live = proved && r.kind === 'safe' ? await safeState(endpoints, r.chainId, r.address) : null
+  if (!proved || (r.kind === 'safe' && !live)) return fail(409, 'wallet_unreadable')
+  // An override was green at its proof. Unchanged since, it is green now: the snapshot of its approval cannot change while it is in force.
+  const same = JSON.stringify(live) === r.owners_snapshot
+  const token = data.randomToken()
+  const cf = (c.request as Request<unknown, IncomingRequestCfProperties>).cf
+  const outcome = await data.completeRecovery(c.env.DB, {
+    orgId: credential.org_id, seatId: credential.seat_id, credentialId: credential.id, counter, same,
+    tokenHash: await data.sha256Hex(token), challengeHash: await data.sha256Hex(used),
+    userAgent: c.request.headers.get('user-agent')?.slice(0, 200) ?? null, country: cf?.country ?? null, asn: cf?.asn ?? null,
+  }, c.now).catch(() => 'denied' as const)
+  return outcome === 'completed' ? json(200, { ok: true }, { 'set-cookie': cookie(token, ABSOLUTE_MS / 1000) }) : outcome === 'lapsed' ? fail(410, 'recovery_lapsed') : denied
+}
+const recoveryCancel = async (c: Context) => {
+  const outcome = await data.cancelRecovery(c.env.DB, c.actor.orgId, c.actor, c.params.id ?? '', c.now)
+  return outcome === 'ok' ? json(200, { ok: true }) : refuse(outcome)
+}
+const recoveryObject = async (c: Context) => {
+  const outcome = await data.objectRecovery(c.env.DB, c.actor, c.params.id ?? '', c.now)
+  return outcome === 'ok' ? json(200, { ok: true }) : refuse(outcome)
 }
 
 // The Safe as both endpoints see it now, for a wallet that is about to become the recovery wallet (by its id, or by
@@ -419,6 +559,8 @@ async function readiness(c: Context) {
   return json(200, {
     owners: { level: people, count: owners.length }, overall, step,
     wallet: { ...shade, label: wallet?.label ?? null, at: wallet?.recoveryAt ?? null, ...(live && { threshold: live.threshold, owners: live.owners.length }) },
+    // For the recovery sheet: nothing here is secret.
+    sheet: { organisationId: c.actor.orgId, console: c.config.origin, signPage: `${c.config.signOrigin}/sign/`, wallet: wallet && inForce ? { address: checksum(wallet.address), chain: CHAIN_NAME[wallet.chainId] ?? `Chain ${wallet.chainId}` } : null },
   })
 }
 const walletView = ({ snapshot, ...w }: Awaited<ReturnType<typeof data.wallets>>[number]) => {
@@ -472,6 +614,15 @@ export const EVENTS: Record<string, string> = {
   'anchor.set': 'Recovery wallet set, in force after 72 hours',
   'anchor.set/alone': 'Recovery wallet set by the only key-role member, in force after 72 hours',
   'anchor.cancel': 'Change of recovery wallet cancelled',
+  'recovery.open': 'Account recovery requested by the recovery wallet, 72 hour wait started',
+  'recovery.open/override': 'Account recovery requested by the recovery wallet, overriding the Owners, 72 hour wait started',
+  'recovery.cancel': 'Account recovery cancelled by an Owner',
+  'recovery.cancel/wallet': 'Account recovery cancelled by the recovery wallet',
+  'recovery.object': 'Objection to the account recovery, 72 hours added',
+  'recovery.complete': 'Account recovery completed: new Owner signed in, the other Owner passkeys suspended, organisation in quarantine for 7 days',
+  'recovery.complete/override': 'Account recovery completed, overriding the Owners: new Owner signed in, the other Owners removed, organisation in quarantine for 7 days',
+  'recovery.lapse': 'Account recovery lapsed: the recovery wallet changed since the request',
+  'recovery.stop': 'Account recovery stopped by a replaced Owner passkey: the new Owner removed, the Owner passkeys restored',
 }
 function said(action: string, detail: string | null) {
   const words = EVENTS[`${action}/${detail}`] ?? EVENTS[action] ?? 'Unlisted event'
@@ -545,6 +696,12 @@ export const routes: Route[] = [
   { method: 'POST', path: '/api/wallets/:id/anchor/cancel', roles: ['owner'], fresh: true, twoKeys: true, can: 'Cancel a change of recovery wallet during its 72 hours', handler: (c) => change(c, 'anchor.cancel') },
   { method: 'GET', path: '/api/readiness', roles: ['owner'], can: 'See how ready the organisation is to recover access', handler: readiness },
   { method: 'POST', path: '/api/proof', roles: 'public', sign: true, handler: proof },
+  { method: 'POST', path: '/api/recover/intent', roles: 'public', handler: recoverIntent },
+  { method: 'POST', path: '/api/recover/cancel-intent', roles: 'public', handler: recoverCancelIntent },
+  { method: 'POST', path: '/api/recover/continue/start', roles: 'public', handler: continueStart },
+  { method: 'POST', path: '/api/recover/continue/finish', roles: 'public', handler: continueFinish },
+  { method: 'POST', path: '/api/recovery/:id/cancel', roles: ['owner'], fresh: true, can: 'Cancel an account recovery that is open (never one that overrides the Owners)', handler: recoveryCancel },
+  { method: 'POST', path: '/api/recovery/:id/object', roles: ['admin', 'approver', 'compliance'], fresh: true, can: 'Object once to an account recovery that waits, which adds 72 hours', handler: recoveryObject },
   { method: 'GET', path: '/api/audit', roles: READERS, can: 'Read the audit log', handler: audit },
   { method: 'POST', path: '/api/audit/export', roles: READERS, fresh: true, can: 'Export the audit log', handler: auditExport },
 ]
@@ -598,7 +755,10 @@ async function api(request: Request, env: Env, clock: () => number, config: Conf
     // The organisation of every later query comes from here, never from the request.
     context.actor = {
       orgId: session.org_id, seatId: session.seat_id, sessionId: session.id, role: session.role,
-      quarantineUntil: (session.quarantine_until ?? 0) > now ? session.quarantine_until : null, country: cf?.country ?? null, asn: cf?.asn ?? null,
+      country: cf?.country ?? null, asn: cf?.asn ?? null,
+      // The seat's own quarantine (after its re-enrolment), or the organisation's (7 days after a last-Owner recovery),
+      // whichever ends later: during the second, what a seat in quarantine cannot do is refused for every seat.
+      quarantineUntil: Math.max(session.quarantine_until ?? 0, session.org_quarantine_until ?? 0) > now ? Math.max(session.quarantine_until ?? 0, session.org_quarantine_until ?? 0) : null,
     }
     // The role table, enforced here for every route: the role, then the gates of the row.
     if (!route.roles.includes(session.role)) return fail(403, 'forbidden')
@@ -615,7 +775,8 @@ async function api(request: Request, env: Env, clock: () => number, config: Conf
 async function pages(request: Request, env: Env, signing: boolean) {
   const { pathname } = new URL(request.url)
   if (signing !== (pathname === '/sign' || pathname.startsWith('/sign/'))) return new Response('Not found', { status: 404, headers: HEADERS })
-  const asset = await env.ASSETS.fetch(request)
+  // /recover is a page of the console's one shell (the app reads the path): public, and it needs no session.
+  const asset = await env.ASSETS.fetch(!signing && pathname === '/recover' ? new Request(new URL('/', request.url), request) : request)
   if (!signing) return asset // public/_headers sets the console's headers
   const headers = new Headers(SIGN_HEADERS)
   for (const name of ['content-type', 'location', 'etag']) if (asset.headers.has(name)) headers.set(name, asset.headers.get(name)!)

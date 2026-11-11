@@ -12,7 +12,7 @@ import * as data from '../src/server/data.ts'
 import { csvCell, EVENTS, handle, routes, type Env } from '../src/server/index.ts'
 import { challengeIsOurs, configFor, credentialHash, fromBase64Url, newChallenge, phraseFor, seal, toBase64Url, userHandle } from '../src/server/passkeys.ts'
 import { colour, LIMITS, SAFES, type SafeState } from '../src/server/chain.ts'
-import { LINK_ACTION, typedLink } from '../src/server/typed.ts'
+import { LINK_ACTION, PROOF_ACTION, typedLink, typedProof } from '../src/server/typed.ts'
 import { WORDS } from '../src/server/words.ts'
 import { softwareAuthenticator } from './authenticator.ts'
 
@@ -20,6 +20,8 @@ const SITE = { origin: 'http://localhost:8787', rpId: 'localhost' }
 const MIN = 60_000
 const START = Date.UTC(2026, 10, 10, 9)
 const TABLES = ['approvals', 'audit_log', 'credentials', 'enrolment_tickets', 'kyb_records', 'organisations', 'recovery_requests', 'sealed_items', 'seats', 'sessions', 'wallets']
+// The one table outside the snapshots: the hourly counter of proof checks, which a proof writes before its commit (section B).
+const COUNTER = 'proof_checks'
 const db = env.DB
 // The challenge key is made per run: no secret lives in the repository.
 // The static files: a stand-in that answers every path, with a header only the console's pages may keep.
@@ -305,6 +307,59 @@ async function crossWallet(a: Member, b: Member, what: 'unlink' | 'anchor' | 'an
   expect((await post(`/api/wallets/${id}/${what}`, a)).status).toBe(404)
   expect(await snapshot()).toBe(before)
   expect(await walletsOf(a)).toEqual([])
+}
+
+// ---- milestone 4b helpers: the requester on /recover, the recovery wallet that signs, the pending passkey that continues ----
+type Signer = (typeof accounts)[number]
+interface RecoverFields { kind: 'replace' | 'override' | 'cancel'; org: string; nonce: string; credentialHash: string; phrase: string; issuedAt: number; expiresAt: number; site: string; seat?: string; credential?: { id: string; publicKey: string } }
+const recoverOf = (sealed: string) => JSON.parse(new TextDecoder().decode(fromBase64Url(sealed.split('.')[0]))) as RecoverFields
+// What the signing page builds from a recovery intent, with the wallet its signer reports. `change`: one field made different.
+const typedRecover = (i: RecoverFields, wallet: string, change: Partial<Parameters<typeof typedProof>[0]> = {}) =>
+  typedProof({ kind: i.kind, chainId: CHAIN, site: i.site, organisationId: i.org, wallet, credentialHash: i.credentialHash, phrase: i.phrase, nonce: i.nonce, issuedAt: i.issuedAt, expiresAt: i.expiresAt, ...change }) as never
+// The requester: an organisation id, a new device-bound passkey, and the intent for it.
+async function askRecovery(orgId: string, more: Record<string, unknown> = {}, options: Options & { backupEligible?: boolean } = {}) {
+  const key = await softwareAuthenticator(SITE, options)
+  const start = await call('POST', '/api/recover/intent', { ...options, body: { organisationId: orgId } })
+  const done = await call('POST', '/api/recover/intent', { ...options, body: { organisationId: orgId, seat: start.body.seat, response: await key.register(start.body.options), ...more } })
+  return { ...done, key, intent: done.body.intent as string, seat: start.body.seat as string }
+}
+// The whole request: asked on /recover, signed by the recovery wallet (its own key; null: a Safe that signed onchain, '0x'), posted by the signing page.
+async function requestRecovery(orgId: string, signer: Signer | null = accounts[0], more: Record<string, unknown> = {}) {
+  const asked = await askRecovery(orgId, more)
+  const fields = recoverOf(asked.intent)
+  const signature = signer ? await signer.signTypedData(typedRecover(fields, signer.address)) : '0x'
+  return { ...asked, fields, signature, proved: await prove(asked.intent, signature) }
+}
+async function continueRecovery(key: Key, options: Options = {}, answer: Answer = {}) {
+  const start = await call('POST', '/api/recover/continue/start')
+  const finish = await call('POST', '/api/recover/continue/finish', { ...options, body: { response: await key.authenticate(start.body.options, answer) } })
+  return { ...finish, cookie: cookieOf(finish) }
+}
+// The recovery wallet cancels: the public form gives the intent for the request's nonce, the wallet signs it.
+async function cancelByWallet(orgId: string, nonce: string, signer: Signer | null = accounts[0], change: Partial<Parameters<typeof typedProof>[0]> = {}) {
+  const asked = await call('POST', '/api/recover/cancel-intent', { body: { organisationId: orgId, nonce } })
+  const signature = signer ? await signer.signTypedData(typedRecover(recoverOf(asked.body.intent), signer.address, change)) : '0x'
+  return prove(asked.body.intent, signature)
+}
+interface RecoveryState { id: string; state: string; action: string; wait_until: number; objected: number; seat_id: string; nonce: string; closed_at: number | null; owners_snapshot: string; wallet_id: string }
+const recoveryOf = async (orgId: string) => (await row<RecoveryState>('SELECT * FROM recovery_requests WHERE org_id = ? ORDER BY created_at DESC, rowid DESC', orgId))!
+const counted = async (orgId: string) => (await row<{ n: number }>(`SELECT COALESCE(sum(n), 0) AS n FROM ${COUNTER} WHERE org_id = ?`, orgId))!.n
+const uncount = () => db.prepare(`DELETE FROM ${COUNTER}`).run()
+// One person, whose own wallet (a single key, accounts[0]) is the recovery wallet in force.
+async function soloWithWallet<T extends Holder & { key: Key }>(o: T) {
+  const wallet = await linked(o)
+  expect((await post(`/api/wallets/${wallet.id}/anchor`, o)).body).toEqual({ state: 'applied' })
+  now += WAIT
+  return { o: await again(o), wallet }
+}
+// An Owner, an Approver and a Viewer. Their recovery wallet in force is a custodian's key (accounts[0]) or a genuine 2 of 3 Safe (accounts[4].address, which signs onchain: null).
+async function teamWithWallet(kind: 'custodian' | 'safe' = 'custodian') {
+  const { o, a, v } = await trio()
+  const wallet = kind === 'safe' ? await linkedSafe(o, a) : await linked(o, a, { custodian: true })
+  await recovery(o, a, wallet.id)
+  now += WAIT
+  for (const m of [o, a, v]) await again(m)
+  return { o, a, v, wallet, signer: kind === 'safe' ? null : accounts[0] }
 }
 
 const racing = (compete: () => Promise<unknown>, collisions = 1) => ({
@@ -866,6 +921,56 @@ const isolation: Record<string, (a: Member, b: Member) => Promise<void>> = {
   'POST /api/wallets/:id/unlink': (a, b) => crossWallet(a, b, 'unlink'),
   'POST /api/wallets/:id/anchor': (a, b) => crossWallet(a, b, 'anchor'),
   'POST /api/wallets/:id/anchor/cancel': (a, b) => crossWallet(a, b, 'anchor/cancel'),
+  // Milestone 4b. The public routes of /recover name their organisation themselves: a session changes nothing.
+  'POST /api/recover/intent': async (a, b) => {
+    const before = await snapshot()
+    const asked = await askRecovery(b.orgId, { org: a.orgId }, { cookie: a.cookie })
+    expect(recoverOf(asked.intent)).toMatchObject({ org: b.orgId, kind: 'replace' })
+    expect(await snapshot()).toBe(before)
+  },
+  'POST /api/recover/cancel-intent': async (a, b) => {
+    const before = await snapshot()
+    const asked = await call('POST', '/api/recover/cancel-intent', { cookie: a.cookie, body: { organisationId: b.orgId, nonce: `0x${'ab'.repeat(32)}` } })
+    expect(recoverOf(asked.body.intent)).toMatchObject({ org: b.orgId, kind: 'cancel' })
+    expect(await snapshot()).toBe(before)
+  },
+  'POST /api/recover/continue/start': async (a) => {
+    const before = await snapshot()
+    expect((await call('POST', '/api/recover/continue/start', { cookie: a.cookie })).status).toBe(200)
+    expect(await snapshot()).toBe(before)
+  },
+  'POST /api/recover/continue/finish': async (a, b) => {
+    // The pending passkey decides the organisation: it completes the recovery of B, whatever session comes along, and A keeps its Owner.
+    await addKey(b)
+    await soloWithWallet(b)
+    const asked = await requestRecovery(b.orgId)
+    now += WAIT
+    const ofA = async () => JSON.stringify([await count('seats', a.orgId), await count('recovery_requests', a.orgId), await count('audit_log', a.orgId), await credentialState(a.key)])
+    const before = await ofA()
+    const done = await continueRecovery(asked.key, { cookie: a.cookie })
+    expect((await call('GET', '/api/me', { cookie: done.cookie })).body).toMatchObject({ organisation: { id: b.orgId }, seat: { id: asked.seat } })
+    expect(await ofA()).toBe(before)
+  },
+  'POST /api/recovery/:id/cancel': async (a, b) => {
+    await addKey(b)
+    await soloWithWallet(b)
+    await requestRecovery(b.orgId)
+    const { id } = await recoveryOf(b.orgId)
+    await again(a)
+    const before = await snapshot()
+    expect((await post(`/api/recovery/${id}/cancel`, a)).status).toBe(404)
+    expect(await snapshot()).toBe(before)
+  },
+  'POST /api/recovery/:id/object': async (a, b) => {
+    await addKey(b)
+    await soloWithWallet(b)
+    await requestRecovery(b.orgId)
+    const { id } = await recoveryOf(b.orgId)
+    const approver = await colleague(a, 'approver')
+    const before = await snapshot()
+    expect((await post(`/api/recovery/${id}/object`, approver)).status).toBe(404)
+    expect(await snapshot()).toBe(before)
+  },
   'GET /api/readiness': async (a, b) => {
     await addKey(b)
     const { id } = await linked(b)
@@ -991,6 +1096,21 @@ describe('f. audit log', () => {
       },
       run: (m, w) => post(`/api/wallets/${w.id}/anchor/cancel`, m),
     },
+    // Milestone 4b, in an organisation of one person whose own wallet is the recovery wallet: the three large commits.
+    'recovery.open': { blocks: 'INSERT ON recovery_requests', prepare: async (m) => (await anchored(m), askRecovery(m.orgId)), run: async (_, asked) => prove(asked.intent, await accounts[0].signTypedData(typedRecover(recoverOf(asked.intent), accounts[0].address))) },
+    'recovery.complete': { blocks: 'INSERT ON sessions', prepare: (m) => ready(m), run: (_, key) => continueRecovery(key) },
+    'recovery.stop': { blocks: 'UPDATE ON organisations', prepare: async (m) => void ((await row(`SELECT 1 FROM recovery_requests WHERE org_id = ? AND state = 'completed'`, m.orgId)) ?? (await continueRecovery(await ready(m)))), run: (m) => stop(m.key) },
+  }
+  const anchored = async (m: Full) => void ((await row('SELECT 1 FROM wallets WHERE org_id = ?', m.orgId)) ?? (await soloWithWallet(m)))
+  // The pending passkey of a request whose wait is over, made once per organisation.
+  const pending = new Map<string, Key>()
+  async function ready(m: Full) {
+    await anchored(m)
+    if (!pending.has(m.orgId)) {
+      pending.set(m.orgId, (await requestRecovery(m.orgId)).key)
+      now += WAIT
+    }
+    return pending.get(m.orgId)!
   }
   let turn = 0
   let waits = ''
@@ -1024,7 +1144,7 @@ describe('f. audit log', () => {
       prepared = await change.prepare?.(m)
       rows = await rowsBefore()
       await change.run(m, prepared)
-      const last = await db.prepare('SELECT action FROM audit_log ORDER BY at DESC, rowid DESC LIMIT 1').first<{ action: string }>()
+      const last = await db.prepare('SELECT action FROM audit_log ORDER BY rowid DESC LIMIT 1').first<{ action: string }>()
       expect(last!.action).toBe(action)
       expect(await rowsBefore()).toBe(rows + 1)
       expect(before).not.toBe(await snapshot())
@@ -1036,7 +1156,10 @@ describe('f. audit log', () => {
       '/api/approvals/:id/approve', '/api/approvals/:id/cancel', '/api/approvals/:id/reject', '/api/audit/export',
       '/api/enrol/finish', '/api/enrol/start', '/api/members/:id/freeze', '/api/members/:id/remove', '/api/members/:id/role', '/api/members/:id/unfreeze',
       // /api/wallets/intent writes nothing at all (section y); /api/proof is the first write of a link.
-      '/api/passkeys/:id/revoke', '/api/passkeys/finish', '/api/passkeys/start', '/api/policy', '/api/proof', '/api/sessions/:id/revoke',
+      '/api/passkeys/:id/revoke', '/api/passkeys/finish', '/api/passkeys/start', '/api/policy', '/api/proof',
+      // The intent routes and continue/start write nothing (section B). The proof opens a request or cancels one; continue/finish completes or lapses one.
+      '/api/recover/cancel-intent', '/api/recover/continue/finish', '/api/recover/continue/start', '/api/recover/intent', '/api/recovery/:id/cancel', '/api/recovery/:id/object',
+      '/api/sessions/:id/revoke',
       '/api/signin/finish', '/api/signin/start', '/api/signout', '/api/stepup/finish', '/api/stepup/start', '/api/stop/finish', '/api/stop/start',
       '/api/tickets', '/api/tickets/:id/cancel', '/api/tickets/:id/confirm', '/api/tickets/:id/confirm/start',
       '/api/wallets/:id/anchor', '/api/wallets/:id/anchor/cancel', '/api/wallets/:id/unlink', '/api/wallets/intent',
@@ -1134,7 +1257,7 @@ describe('g. security headers', () => {
 describe('h. sign-in start', () => {
   it('the snapshot below covers every table', async () => {
     const { results } = await db.prepare(`SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%' AND name NOT LIKE '_cf_%' AND name <> 'd1_migrations' ORDER BY name`).all<{ name: string }>()
-    expect(results.map((row) => row.name)).toEqual(TABLES)
+    expect(results.map((row) => row.name)).toEqual([...TABLES, COUNTER].sort())
   })
   it('writes no row, however often it is called, signed in or not', async () => {
     const m = await member()
@@ -1242,7 +1365,7 @@ describe('j. the three-word phrase', () => {
   })
   it('a challenge made for one purpose does not pass for another, with the same binding', async () => {
     const key = testEnv.CHALLENGE_KEY
-    for (const [made, used] of [['signin', 'stepup'], ['stepup', 'signin'], ['signin', 'stop'], ['confirm', 'stepup'], ['enrol', 'add']] as const) {
+    for (const [made, used] of [['signin', 'stepup'], ['stepup', 'signin'], ['signin', 'stop'], ['confirm', 'stepup'], ['enrol', 'add'], ['signin', 'continue'], ['continue', 'signin'], ['enrol', 'recover'], ['recover', 'add']] as const) {
       const challenge = await newChallenge(key, made, 'same', now)
       expect(await challengeIsOurs(key, made, 'same', challenge, now)).toBe(true)
       expect(await challengeIsOurs(key, used, 'same', challenge, now), `${made} as ${used}`).toBe(false)
@@ -1278,7 +1401,7 @@ describe('k. step-up: a fresh passkey check before a sensitive action', () => {
     const paths = (flag: 'fresh' | 'twoKeys') => routes.filter((route) => route[flag]).map((route) => route.path).sort()
     const m3 = ['/api/approvals/:id/approve', '/api/approvals/:id/reject', '/api/members/:id/freeze', '/api/members/:id/remove', '/api/members/:id/role', '/api/members/:id/unfreeze']
     const m4 = ['/api/wallets/:id/anchor', '/api/wallets/:id/anchor/cancel', '/api/wallets/:id/unlink', '/api/wallets/intent']
-    expect(paths('fresh')).toEqual([...m3.slice(0, 2), '/api/audit/export', ...m3.slice(2), '/api/passkeys/:id/revoke', '/api/passkeys/finish', '/api/passkeys/start', '/api/policy', '/api/tickets', '/api/tickets/:id/cancel', ...m4])
+    expect(paths('fresh')).toEqual([...m3.slice(0, 2), '/api/audit/export', ...m3.slice(2), '/api/passkeys/:id/revoke', '/api/passkeys/finish', '/api/passkeys/start', '/api/policy', '/api/recovery/:id/cancel', '/api/recovery/:id/object', '/api/tickets', '/api/tickets/:id/cancel', ...m4])
     // Confirming carries its own passkey check, made for the ticket.
     expect(paths('twoKeys')).toEqual([...m3, '/api/passkeys/:id/revoke', '/api/policy', '/api/tickets', '/api/tickets/:id/cancel', '/api/tickets/:id/confirm', '/api/tickets/:id/confirm/start', ...m4])
     expect(routes.filter((route) => (route.fresh || route.twoKeys || route.settled || route.second) && route.roles === 'public')).toEqual([])
@@ -1902,7 +2025,7 @@ describe('o. re-enrolment: suspended passkeys, the stop right, quarantine', () =
     const sessions = await count('sessions', v.o.orgId)
     const refused = await signIn(v.target.key)
     expect(refused.status).toBe(403)
-    expect(refused.body).toEqual({ error: 'passkey_replaced', until: v.at + 24 * HOUR })
+    expect(refused.body).toEqual({ error: 'passkey_replaced', until: v.at + 24 * HOUR, recovery: false })
     expect(refused.headers.get('set-cookie')).toBeNull()
     expect(await count('sessions', v.o.orgId)).toBe(sessions)
     // A passkey nobody verified learns nothing about the replacement.
@@ -2374,6 +2497,8 @@ describe('r. the role table', () => {
       'POST /api/wallets/intent': change, 'POST /api/wallets/:id/unlink': 'owner,admin fresh twoKeys',
       'POST /api/wallets/:id/anchor': 'owner fresh twoKeys settled second:anchor.set', 'POST /api/wallets/:id/anchor/cancel': 'owner fresh twoKeys',
       'GET /api/readiness': 'owner', 'POST /api/proof': 'public',
+      'POST /api/recover/intent': 'public', 'POST /api/recover/cancel-intent': 'public', 'POST /api/recover/continue/start': 'public', 'POST /api/recover/continue/finish': 'public',
+      'POST /api/recovery/:id/cancel': 'owner fresh', 'POST /api/recovery/:id/object': 'admin,approver,compliance fresh',
     })
     // The signing host has one route, and it is the only one without the console.
     expect(routes.filter((r) => r.sign).map((r) => r.path)).toEqual(['/api/proof'])
@@ -2387,7 +2512,7 @@ describe('r. the role table', () => {
     for (const role of ['admin', 'trader', 'approver', 'compliance', 'viewer']) people[role] = await colleague(o, role)
     // Sign-out last: it ends the session the other calls need.
     const gated = routes.filter((r) => r.roles !== 'public').sort((x, y) => Number(x.path === '/api/signout') - Number(y.path === '/api/signout'))
-    expect(gated.length).toBe(routes.length - 7)
+    expect(gated.length).toBe(routes.length - 11)
     for (const route of gated) {
       for (const [role, m] of Object.entries(people)) {
         const answer = await call(route.method, route.path.replace(':id', '0'.repeat(32)), { cookie: m.cookie })
@@ -3004,7 +3129,7 @@ describe('x. attacks tried by the review of milestone 3', () => {
     expect((await act(o, v.seatId, 'freeze')).status).toBe(200)
     now += 24 * HOUR - 1
     expect((await signIn(taken.key)).body).toMatchObject({ error: 'seat_frozen' })
-    expect((await signIn(v.key)).body).toEqual({ error: 'passkey_replaced', until: now + 1 })
+    expect((await signIn(v.key)).body).toEqual({ error: 'passkey_replaced', until: now + 1, recovery: false })
     expect((await stop(v.key)).status).toBe(200)
     expect([await credentialState(v.key), await credentialState(v.key2), await credentialState(taken.key)]).toEqual(['active', 'active', 'revoked'])
     expect(await seatOf(v.seatId)).toEqual({ role: 'viewer', state: 'frozen' })
@@ -3228,6 +3353,7 @@ describe('y. wallets and the recovery wallet', () => {
     const twin = serializeSignature({ r, s: `0x${(0xfffffffffffffffffffffffffffffffebaaedce6af48a03bbfd25e8cd0364141n - BigInt(s)).toString(16).padStart(64, '0')}`, yParity: yParity ? 0 : 1 })
     expect(await recoverAddress({ hash: hashTypedData(typedOf(fields)), signature: twin })).toBe(accounts[0].address)
     expect((await prove(asked.body.intent, twin)).body).toEqual({ error: 'signature_rejected' })
+    await uncount() // more than 10 proof checks in this test: the counter has its own (section B)
     for (const signature of ['', '0x1', 'ab', `0x${'zz'.repeat(65)}`, `0x${'00'.repeat(4097)}`, 5, null]) expect((await call('POST', '/api/proof', { sign: true, body: { intent: asked.body.intent, signature } })).body, String(signature).slice(0, 8)).toEqual({ error: 'signature_invalid' })
     expect(await snapshot()).toBe(before)
     // A signature that recovers to the wallet needs no endpoint: none is asked, and the wallet is never read as a Safe.
@@ -3264,6 +3390,7 @@ describe('y. wallets and the recovery wallet', () => {
       'the wallet says the value with more behind it': (_url, method) => (method === 'eth_call' ? `${magic}00` : '0xa'),
     }
     for (const [what, twist] of Object.entries(twists)) {
+      await uncount() // more than 10 proof checks in this test: the counter has its own (section B)
       chain.twist = twist
       expect((await prove(asked.body.intent, '0x')).body, what).toEqual({ error: 'signature_rejected' })
     }
@@ -3574,7 +3701,7 @@ describe('y. wallets and the recovery wallet', () => {
     const o = await member()
     const ready = async (m: Holder = o) => (await call('GET', '/api/readiness', { cookie: m.cookie })).body
     // One Owner with one key and no recovery wallet.
-    expect(await ready()).toEqual({ owners: { level: 'red', count: 1 }, wallet: { level: 'none', why: null, label: null, at: null }, overall: 'not_recoverable', step: 'second_key' })
+    expect(await ready()).toEqual({ owners: { level: 'red', count: 1 }, wallet: { level: 'none', why: null, label: null, at: null }, overall: 'not_recoverable', step: 'second_key', sheet: { organisationId: o.orgId, console: SITE.origin, signPage: `${SIGN}/sign/`, wallet: null } })
     expect((await addKey(o)).status).toBe(200)
     expect(await ready()).toMatchObject({ owners: { level: 'amber', count: 1 }, overall: 'not_recoverable' })
     // A Safe as recovery wallet: amber while it waits, green once in force.
@@ -3587,7 +3714,8 @@ describe('y. wallets and the recovery wallet', () => {
     expect(chain.calls).toEqual([])
     now += WAIT
     await again(o)
-    expect(await ready()).toEqual({ owners: { level: 'amber', count: 1 }, wallet: { level: 'green', why: null, label: 'Treasury', at: now, threshold: 2, owners: 3 }, overall: 'ready', step: null })
+    expect(await ready()).toEqual({ owners: { level: 'amber', count: 1 }, wallet: { level: 'green', why: null, label: 'Treasury', at: now, threshold: 2, owners: 3 }, overall: 'ready', step: null,
+      sheet: { organisationId: o.orgId, console: SITE.origin, signPage: `${SIGN}/sign/`, wallet: { address, chain: 'OP Mainnet' } } })
     expect(chain.calls.length).toBeGreaterThan(0)
     // What the chain says now decides: a module, a threshold of one, other owners, or endpoints that disagree.
     safe.modules = [accounts[3].address.toLowerCase()]
@@ -3863,5 +3991,568 @@ describe('A. hardening after milestone 4a', () => {
     const bundle = Object.values(builtConsole).join('\n')
     expect(bundle).toContain('Custodian wallet (declared, not checked by Ophis)')
     expect(bundle.match(/Custodian wallet/g)).toHaveLength(1)
+  })
+})
+
+// ---- milestone 4b, part 2: last-Owner recovery. Each test was seen to fail with its control removed. ----
+describe('B. last-Owner recovery by the recovery wallet', () => {
+  // A database that fails on any use, and one that only counts: proofs that must read nothing run against them.
+  const noDatabase = { ...testEnv, DB: new Proxy({}, { get: () => { throw new Error('the database was used') } }) } as unknown as Env
+  const countsOnly = { ...testEnv, DB: new Proxy(db, { get: (target, property) => (property === 'prepare' ? (sql: string) => { if (/^\s*SELECT/i.test(sql)) throw new Error('a row was read'); return target.prepare(sql) } : Reflect.get(target, property).bind(target)) }) } as unknown as Env
+  const everything = () => snapshot([...TABLES, COUNTER])
+  const REJECTED = { error: 'proof_rejected' }
+  const hexOf = (bytes: Uint8Array) => [...bytes].map((byte) => byte.toString(16).padStart(2, '0')).join('')
+  const banner = async (m: Holder) => (await alertsOf(m)).find((alert) => alert.kind === 'recovery')
+  const theSafe = () => chain.contracts.get(accounts[4].address.toLowerCase())!
+  const audited = (orgId: string) => row('SELECT actor_kind, actor_id, action, subject_id, detail FROM audit_log WHERE org_id = ? ORDER BY seq DESC LIMIT 1', orgId)
+  const cancelAs = (m: Holder, id: string) => post(`/api/recovery/${id}/cancel`, m)
+  const objectAs = (m: Holder, id: string) => post(`/api/recovery/${id}/object`, m)
+
+  it('P2: /recover is public and holds nothing: the intent routes read no row and write none, answer any well-formed organisation id alike, and the intent is the server\'s own text', async () => {
+    const { o } = await soloWithWallet(await owner())
+    const before = await everything()
+    const asked = await askRecovery(o.orgId, {}, { env: noDatabase })
+    const nowhere = await askRecovery('f'.repeat(32), {}, { env: noDatabase })
+    expect([asked.status, nowhere.status]).toEqual([200, 200])
+    expect(Object.keys(nowhere.body).sort()).toEqual(['expiresAt', 'intent', 'link', 'phrase'])
+    expect(Object.keys(asked.body).sort()).toEqual(['expiresAt', 'intent', 'link', 'phrase'])
+    const nonce = `0x${'ab'.repeat(32)}`
+    const cancel = await call('POST', '/api/recover/cancel-intent', { env: noDatabase, body: { organisationId: o.orgId, nonce } })
+    expect(recoverOf(cancel.body.intent)).toEqual({ kind: 'cancel', org: o.orgId, nonce, credentialHash: `0x${'0'.repeat(64)}`, phrase: '', issuedAt: now / 1000, expiresAt: now / 1000 + WEEK / 1000, site: 'localhost' })
+    expect((await call('POST', '/api/recover/continue/start', { env: noDatabase })).status).toBe(200)
+    expect(await everything()).toBe(before)
+    const i = recoverOf(asked.intent)
+    const hash = await credentialHash(asked.key.id, i.credential!.publicKey)
+    expect(i).toEqual({
+      kind: 'replace', org: o.orgId, seat: asked.seat, nonce: expect.stringMatching(/^0x[0-9a-f]{64}$/), phrase: asked.body.phrase.join(' '), credentialHash: `0x${hexOf(hash)}`,
+      credential: { id: asked.key.id, publicKey: expect.any(String), counter: expect.any(Number), transports: expect.any(Array) }, issuedAt: now / 1000, expiresAt: now / 1000 + WEEK / 1000, site: 'localhost',
+    })
+    expect(asked.body).toMatchObject({ link: `${SIGN}/sign/#${asked.intent}`, expiresAt: now + WEEK })
+    // The three words: as in the enrolment ceremony (section j), for the seat made here, an Owner, with the purpose "recovery".
+    expect(asked.body.phrase).toEqual(await phraseFor({ site: 'localhost', orgId: o.orgId, seatId: asked.seat, role: 'owner', purpose: 'recovery', credentialHash: hash, nonce: i.nonce.slice(2) }))
+    expect(recoverOf((await askRecovery(o.orgId, { override: true })).intent).kind).toBe('override')
+    expect(recoverOf((await askRecovery(o.orgId, { override: 'yes', kind: 'cancel' })).intent).kind).toBe('replace')
+    for (const organisationId of ['', 'x', o.orgId.toUpperCase(), `${o.orgId}0`, 5, null]) {
+      expect((await call('POST', '/api/recover/intent', { body: { organisationId } })).status, String(organisationId)).toBe(400)
+      expect((await call('POST', '/api/recover/cancel-intent', { body: { organisationId, nonce } })).status, String(organisationId)).toBe(400)
+    }
+    for (const bad of ['', nonce.slice(2), nonce.toUpperCase(), `${nonce}00`, 7]) expect((await call('POST', '/api/recover/cancel-intent', { body: { organisationId: o.orgId, nonce: bad } })).status, String(bad)).toBe(400)
+    // The new passkey: device-bound, with user verification, for a challenge made for this organisation and this seat, within 5 minutes.
+    expect((await askRecovery(o.orgId, {}, { backupEligible: true })).body).toEqual({ error: 'device_bound_required' })
+    const key = await softwareAuthenticator(SITE)
+    const start = await call('POST', '/api/recover/intent', { body: { organisationId: o.orgId } })
+    const finish = async (body: Record<string, unknown>, answer: Answer = {}) => (await call('POST', '/api/recover/intent', { body: { organisationId: o.orgId, seat: start.body.seat, response: await key.register(start.body.options, answer), ...body } })).body.error
+    expect(await finish({ organisationId: 'f'.repeat(32) })).toBe('passkey_rejected')
+    expect(await finish({ seat: 'e'.repeat(32) })).toBe('passkey_rejected')
+    expect(await finish({}, { userVerified: false })).toBe('passkey_rejected')
+    expect(await finish({}, { as: { origin: 'https://evil.example' } })).toBe('passkey_rejected')
+    now += 5 * MIN + 1
+    expect(await finish({})).toBe('passkey_rejected')
+    now -= 1
+    expect(await finish({})).toBeUndefined()
+  })
+
+  it('P3: the MAC first, then the expiry: a forged or expired intent reads no row, asks no endpoint and is not counted', async () => {
+    const { o } = await teamWithWallet('safe')
+    const asked = await askRecovery(o.orgId)
+    const before = await everything()
+    chain.calls = []
+    const [body, mac] = asked.intent.split('.')
+    const forged = `${toBase64Url(new TextEncoder().encode(JSON.stringify({ ...recoverOf(asked.intent), kind: 'override' })))}.${mac}`
+    // The same fields under the label of a wallet link, or of anything else, are not a recovery intent.
+    for (const intent of [forged, `${body}.${mac.slice(0, -2)}AA`, await seal(testEnv.CHALLENGE_KEY, 'recover-intents', recoverOf(asked.intent)), 'x', '']) expect((await prove(intent, '0x', { env: noDatabase })).body, intent.slice(0, 12)).toEqual({ error: 'intent_invalid' })
+    now += WEEK
+    expect((await prove(asked.intent, '0x', { env: noDatabase })).body).toEqual({ error: 'intent_expired' })
+    expect(chain.calls).toEqual([])
+    expect(await everything()).toBe(before)
+    now -= 1000
+    expect((await prove(asked.intent, '0x')).body).toEqual({ state: 'waiting', until: now + WAIT })
+  })
+
+  it('P3: 10 proof checks per organisation per hour, link proofs included: the 11th is refused before a row is read or an endpoint asked, and the counter is the only write before the commit', async () => {
+    const { o } = await teamWithWallet('safe')
+    const other = await owner('Another organisation')
+    const asked = await askRecovery(o.orgId)
+    const link = await askLink(o, accounts[1].address)
+    const bad = `0x${'11'.repeat(65)}`
+    theSafe().accepts = () => false
+    const rows = await snapshot()
+    for (let i = 0; i < 7; i++) expect((await prove(asked.intent, bad)).body, String(i)).toEqual(REJECTED)
+    for (let i = 0; i < 3; i++) expect((await prove(link.body.intent, bad)).body, String(i)).toEqual({ error: 'signature_rejected' })
+    expect(await snapshot()).toBe(rows)
+    expect(await counted(o.orgId)).toBe(10)
+    theSafe().accepts = (_digest, signature) => signature === '0x'
+    chain.calls = []
+    for (const intent of [asked.intent, link.body.intent]) {
+      const refused = await prove(intent, '0x', { env: countsOnly })
+      expect([refused.status, refused.body]).toEqual([429, { error: 'too_many' }])
+    }
+    expect(chain.calls).toEqual([])
+    expect(await snapshot()).toBe(rows)
+    // Another organisation has its own count, and the next hour a new one.
+    expect((await link_(other)).body).toEqual({ state: 'linked' })
+    now += HOUR
+    expect((await prove(asked.intent, '0x')).body).toMatchObject({ state: 'waiting' })
+    expect(await row(`SELECT count(*) AS n FROM ${COUNTER} WHERE hour < ?`, Math.floor(now / HOUR))).toEqual({ n: 0 })
+  })
+  const link_ = (m: Holder) => link(m, accounts[2])
+
+  it('P3: a valid proof opens the request in one commit: 72 hours, the Safe as both endpoints see it, a new Owner seat invited with the pending passkey, an audit row of the wallet, a banner for every member', async () => {
+    const { o, a, v, wallet } = await teamWithWallet('safe')
+    const asked = await askRecovery(o.orgId)
+    const fields = recoverOf(asked.intent)
+    const digest = hashTypedData(typedRecover(fields, accounts[4].address))
+    const seen: string[] = []
+    theSafe().accepts = (hash, signature) => (seen.push(hash), signature === '0x')
+    const rows = await count('audit_log', o.orgId)
+    expect((await prove(asked.intent, '0x')).body).toEqual({ state: 'waiting', until: now + WAIT })
+    // The server asked the Safe about one digest: the fields of the intent, with the wallet and the chain it holds itself.
+    expect(new Set(seen)).toEqual(new Set([digest]))
+    const r = await recoveryOf(o.orgId)
+    expect(r).toMatchObject({
+      state: 'waiting', action: 'replace_owners', wallet_id: wallet.id, seat_id: asked.seat, nonce: fields.nonce, wait_until: now + WAIT, objected: 0, credential_hash: fields.credentialHash, digest, signature: '0x',
+      owners_snapshot: JSON.stringify({ threshold: 2, owners: theSafe().owners, modules: [], handler: true }),
+    })
+    expect(await seatOf(asked.seat)).toEqual({ role: 'owner', state: 'invited' })
+    expect(await row('SELECT state, seat_id, device_bound, ticket_id FROM credentials WHERE id = ?', asked.key.id)).toEqual({ state: 'pending', seat_id: asked.seat, device_bound: 1, ticket_id: null })
+    expect(await count('audit_log', o.orgId)).toBe(rows + 1)
+    expect(await audited(o.orgId)).toEqual({ actor_kind: 'anchor', actor_id: wallet.id, action: 'recovery.open', subject_id: r.id, detail: null })
+    expect((await call('GET', '/api/audit', { cookie: o.cookie })).body.rows[0]).toMatchObject({ who: 'Recovery wallet Treasury', event: 'Account recovery requested by the recovery wallet, 72 hour wait started', target: 'Recovery Owner' })
+    // Every member is told at sign-in, and again at the next one: what, until when, and what this member may do.
+    expect(await banner(o)).toMatchObject({ id: r.id, nonce: fields.nonce, at: now, until: now + WAIT, lapses: now + WAIT + WEEK, override: false, objected: false, may: 'cancel' })
+    expect(await banner(a)).toMatchObject({ id: r.id, may: 'object' })
+    expect(await banner(v)).toMatchObject({ id: r.id, may: null })
+    const first = (await banner(v))!.key
+    expect((await banner(await again(v)))!.key).not.toBe(first)
+    expect(await banner(await member('Elsewhere'))).toBeUndefined()
+    // A second request while this one is open: refused on the rows, before an endpoint is asked.
+    chain.calls = []
+    const before = await snapshot()
+    expect((await requestRecovery(o.orgId, null)).proved.body).toEqual(REJECTED)
+    expect(chain.calls).toEqual([])
+    expect(await snapshot()).toBe(before)
+    // The pending passkey opens no session.
+    expect((await signIn(asked.key)).status).toBe(401)
+  })
+
+  it('P3: a Safe that both endpoints cannot read alike at the proof opens nothing', async () => {
+    const { o } = await teamWithWallet('safe')
+    const rows = await snapshot()
+    chain.twist = (url, method, result) => (url === RPC2 && method === 'eth_getStorageAt' ? undefined : result)
+    expect((await requestRecovery(o.orgId, null)).proved.body).toEqual({ error: 'wallet_unreadable' })
+    expect(await snapshot()).toBe(rows)
+    chain.twist = (_url, _method, result) => result
+    expect((await requestRecovery(o.orgId, null)).proved.body).toMatchObject({ state: 'waiting' })
+  })
+
+  it('P3: only the recovery wallet in force: one whose 72 hours still run, and another linked wallet of the organisation, open nothing', async () => {
+    const { o, a } = await trio()
+    const first = await linked(o, a, { custodian: true })
+    await linked(o, a, { custodian: true }, accounts[1])
+    await recovery(o, a, first.id)
+    now += WAIT - MIN
+    const rows = await snapshot()
+    expect((await requestRecovery(o.orgId, accounts[0])).proved.body).toEqual(REJECTED)
+    now += MIN
+    expect((await requestRecovery(o.orgId, accounts[1])).proved.body).toEqual(REJECTED)
+    // The other wallet's key, over a message that names the recovery wallet.
+    const asked = await askRecovery(o.orgId)
+    expect((await prove(asked.intent, await accounts[1].signTypedData(typedRecover(recoverOf(asked.intent), accounts[0].address)))).body).toEqual(REJECTED)
+    expect(await snapshot()).toBe(rows)
+    expect((await requestRecovery(o.orgId, accounts[0])).proved.body).toMatchObject({ state: 'waiting' })
+  })
+
+  it('P1: the recovery wallet signs exactly these fields: another organisation, site, chain, wallet, sentence, passkey, phrase, nonce or date is refused, and so is an organisation that is not active', async () => {
+    const { o } = await soloWithWallet(await owner())
+    const other = await owner('Another organisation')
+    const asked = await askRecovery(o.orgId)
+    const f = recoverOf(asked.intent)
+    const wallet = accounts[0].address
+    expect(PROOF_ACTION).toEqual({ replace: 'Replace all Owner passkeys of this organisation', override: 'Replace all Owner passkeys of this organisation, overriding its Owners', cancel: 'Cancel account recovery' })
+    expect(typedRecover(f, wallet)).toEqual({
+      domain: { name: 'Ophis Business', version: '1', chainId: 10 }, primaryType: 'Proof',
+      types: {
+        EIP712Domain: [{ name: 'name', type: 'string' }, { name: 'version', type: 'string' }, { name: 'chainId', type: 'uint256' }],
+        Proof: [{ name: 'action', type: 'string' }, { name: 'site', type: 'string' }, { name: 'organisationId', type: 'string' }, { name: 'wallet', type: 'address' }, { name: 'credentialHash', type: 'bytes32' },
+          { name: 'phrase', type: 'string' }, { name: 'nonce', type: 'bytes32' }, { name: 'issuedAt', type: 'uint64' }, { name: 'expiresAt', type: 'uint64' }],
+      },
+      message: { action: PROOF_ACTION.replace, site: 'localhost', organisationId: o.orgId, wallet, credentialHash: f.credentialHash, phrase: f.phrase, nonce: f.nonce, issuedAt: f.issuedAt, expiresAt: f.expiresAt },
+    })
+    const changes: Record<string, Partial<Parameters<typeof typedProof>[0]>> = {
+      'another organisation': { organisationId: other.orgId }, 'another site': { site: 'business.evil.example' }, 'another chain': { chainId: 1 }, 'another wallet': { wallet: accounts[1].address },
+      'the cancel sentence': { kind: 'cancel' }, 'the override sentence': { kind: 'override' }, 'another passkey': { credentialHash: `0x${'22'.repeat(32)}` }, 'other words': { phrase: `${f.phrase} ` },
+      'another nonce': { nonce: `0x${'33'.repeat(32)}` }, 'another issue date': { issuedAt: f.issuedAt + 1 }, 'another expiry': { expiresAt: f.expiresAt + 1 },
+    }
+    const rows = await snapshot()
+    for (const [what, change] of Object.entries(changes)) {
+      await uncount()
+      expect((await prove(asked.intent, await accounts[0].signTypedData(typedRecover(f, wallet, change)))).body, what).toEqual(REJECTED)
+    }
+    // A Link message with the same organisation, wallet, nonce and dates is not a Proof.
+    expect((await prove(asked.intent, await accounts[0].signTypedData(typedLink({ chainId: CHAIN, site: f.site, organisationId: f.org, wallet, nonce: f.nonce, issuedAt: f.issuedAt, expiresAt: f.expiresAt }) as never))).body).toEqual(REJECTED)
+    const signature = await accounts[0].signTypedData(typedRecover(f, wallet))
+    await db.prepare(`UPDATE organisations SET state = 'frozen' WHERE id = ?`).bind(o.orgId).run()
+    expect((await prove(asked.intent, signature)).body).toEqual(REJECTED)
+    await db.prepare(`UPDATE organisations SET state = 'active' WHERE id = ?`).bind(o.orgId).run()
+    expect(await snapshot()).toBe(rows)
+    expect((await prove(asked.intent, signature)).body).toMatchObject({ state: 'waiting' })
+  })
+
+  it('P3: a single key is a recovery wallet only while the organisation is one person', async () => {
+    const { o } = await soloWithWallet(await owner())
+    const joined = await colleague(o, 'approver')
+    const rows = await snapshot()
+    expect((await requestRecovery(o.orgId)).proved.body).toEqual(REJECTED)
+    expect(await snapshot()).toBe(rows)
+    await db.prepare(`UPDATE seats SET state = 'removed' WHERE id = ?`).bind(joined.seatId).run()
+    expect((await requestRecovery(o.orgId)).proved.body).toMatchObject({ state: 'waiting' })
+  })
+
+  it('P4: an Owner cancels after a fresh check, and nobody else; the proof of a closed request is never accepted again; the next request opens 24 hours after a cancel', async () => {
+    const { o, a, v } = await teamWithWallet()
+    const first = await requestRecovery(o.orgId)
+    expect(first.proved.body).toMatchObject({ state: 'waiting' })
+    const r = await recoveryOf(o.orgId)
+    for (const m of [a, v]) expect((await cancelAs(m, r.id)).body).toEqual({ error: 'forbidden' })
+    now += 5 * MIN + 1
+    expect((await cancelAs(o, r.id)).body).toEqual({ error: 'step_up_required' })
+    expect((await stepUp(o, o.key)).status).toBe(200)
+    expect((await cancelAs(o, '0'.repeat(32))).status).toBe(404)
+    expect((await recoveryOf(o.orgId)).state).toBe('waiting')
+    expect((await cancelAs(o, r.id)).status).toBe(200)
+    expect(await recoveryOf(o.orgId)).toMatchObject({ state: 'cancelled', closed_at: now })
+    expect(await seatOf(first.seat)).toEqual({ role: 'owner', state: 'removed' })
+    expect(await credentialState(first.key)).toBe('revoked')
+    expect(await audited(o.orgId)).toEqual({ actor_kind: 'seat', actor_id: o.seatId, action: 'recovery.cancel', subject_id: r.id, detail: null })
+    expect((await cancelAs(o, r.id)).status).toBe(404)
+    expect(await banner(v)).toBeUndefined()
+    expect((await alertsOf(v)).find((alert) => alert.kind === 'recovery_cancelled')).toMatchObject({ at: now, override: false })
+    // 23 hours 59 minutes after the cancel nothing opens; at 24 hours a new request does, and the old proof still does not.
+    now += DAY - MIN
+    const rows = await snapshot()
+    expect((await requestRecovery(o.orgId)).proved.body).toEqual(REJECTED)
+    now += MIN
+    expect((await prove(first.intent, first.signature)).body).toEqual(REJECTED)
+    expect(await snapshot()).toBe(rows)
+    expect((await requestRecovery(o.orgId)).proved.body).toMatchObject({ state: 'waiting' })
+    // The same after a request was completed: its proof is spent.
+    const second = await recoveryOf(o.orgId)
+    expect((await cancelByWallet(o.orgId, second.nonce)).body).toEqual({ state: 'cancelled' })
+  })
+
+  it('P4: the recovery wallet cancels by signing "Cancel account recovery" with the nonce of the request, and nothing else cancels it', async () => {
+    const { o, wallet } = await teamWithWallet()
+    const first = await requestRecovery(o.orgId)
+    const r = await recoveryOf(o.orgId)
+    const elsewhere = await owner('Another organisation')
+    const rows = await snapshot()
+    expect((await cancelByWallet(o.orgId, `0x${'cd'.repeat(32)}`)).body).toEqual(REJECTED)
+    expect((await cancelByWallet(o.orgId, r.nonce, accounts[1])).body).toEqual(REJECTED)
+    expect((await cancelByWallet(o.orgId, r.nonce, accounts[0], { kind: 'replace' })).body).toEqual(REJECTED)
+    expect((await cancelByWallet(elsewhere.orgId, r.nonce)).body).toEqual(REJECTED)
+    // The signature that opened the request does not cancel it.
+    const intent = (await call('POST', '/api/recover/cancel-intent', { body: { organisationId: o.orgId, nonce: r.nonce } })).body.intent
+    expect((await prove(intent, first.signature)).body).toEqual(REJECTED)
+    expect(await snapshot()).toBe(rows)
+    expect((await cancelByWallet(o.orgId, r.nonce)).body).toEqual({ state: 'cancelled' })
+    expect(await recoveryOf(o.orgId)).toMatchObject({ state: 'cancelled', closed_at: now })
+    expect(await audited(o.orgId)).toEqual({ actor_kind: 'anchor', actor_id: wallet.id, action: 'recovery.cancel', subject_id: r.id, detail: 'wallet' })
+    expect((await cancelByWallet(o.orgId, r.nonce)).body).toEqual(REJECTED)
+  })
+
+  it('P4: an Admin, Approver or Compliance officer objects once per request, which adds 72 hours once; an Owner, Trader or Viewer cannot; completion waits for the longer clock', async () => {
+    const { o, a, v } = await teamWithWallet()
+    const c = await colleague(o, 'compliance')
+    const t = await colleague(o, 'trader')
+    const asked = await requestRecovery(o.orgId)
+    const r = await recoveryOf(o.orgId)
+    for (const m of [o, t, v]) expect((await objectAs(m, r.id)).body).toEqual({ error: 'forbidden' })
+    expect((await objectAs(a, '0'.repeat(32))).status).toBe(404)
+    expect((await recoveryOf(o.orgId)).wait_until).toBe(now + WAIT)
+    expect((await objectAs(a, r.id)).status).toBe(200)
+    expect(await recoveryOf(o.orgId)).toMatchObject({ state: 'waiting', objected: 1, wait_until: now + 2 * WAIT })
+    expect(await audited(o.orgId)).toEqual({ actor_kind: 'seat', actor_id: a.seatId, action: 'recovery.object', subject_id: r.id, detail: null })
+    // A second objection, by the same member or by another, does not move the clock.
+    for (const m of [a, c]) expect((await objectAs(m, r.id)).body).toEqual({ error: 'already_objected' })
+    expect((await recoveryOf(o.orgId)).wait_until).toBe(now + 2 * WAIT)
+    expect(await banner(c)).toMatchObject({ objected: true, may: null, until: now + 2 * WAIT })
+    now += WAIT
+    expect((await continueRecovery(asked.key)).body).toEqual({ error: 'too_early', until: r.wait_until + WAIT })
+    now += WAIT - MIN
+    expect((await continueRecovery(asked.key)).body).toEqual({ error: 'too_early', until: r.wait_until + WAIT })
+    now += MIN
+    expect((await continueRecovery(asked.key)).status).toBe(200)
+  })
+
+  it('P4: once the wait is over nobody objects; a cancel and an objection read the role inside their commit', async () => {
+    const { o, a, v } = await teamWithWallet()
+    await requestRecovery(o.orgId)
+    const r = await recoveryOf(o.orgId)
+    // The Owner is lowered, and the Approver made an Owner, at the same instant as their calls: each acts with the role of that moment.
+    const swap = (seatId: string, role: string, by: Holder) => racing(async () => {
+      await db.prepare('UPDATE seats SET role = ? WHERE id = ?').bind(role, seatId).run()
+      await post('/api/signout', by) // a write of the organisation that lands first: the call's own batch collides and its plan runs again
+    })
+    expect((await call('POST', `/api/recovery/${r.id}/cancel`, { cookie: o.cookie, env: swap(o.seatId, 'admin', v) })).body).toEqual({ error: 'forbidden' })
+    expect((await recoveryOf(o.orgId)).state).toBe('waiting')
+    const c = await colleague(o, 'compliance')
+    expect((await call('POST', `/api/recovery/${r.id}/object`, { cookie: a.cookie, env: swap(a.seatId, 'owner', c) })).body).toEqual({ error: 'forbidden' })
+    expect((await recoveryOf(o.orgId)).objected).toBe(0)
+    now += WAIT
+    const late = await colleague(o, 'approver')
+    expect((await objectAs(late, r.id)).status).toBe(404)
+    expect(await banner(late)).toMatchObject({ may: null })
+    expect((await recoveryOf(o.orgId)).objected).toBe(0)
+  })
+
+  it('P5: completion is refused at 71 h 59 min; at 72 h the pending passkey, after its check, completes in one commit: an Owner seat and a session, the other Owner passkeys suspended for 7 days, the organisation in quarantine', async () => {
+    const { o, a, v } = await teamWithWallet('safe')
+    const asked = await requestRecovery(o.orgId, null)
+    const r = await recoveryOf(o.orgId)
+    now += WAIT - MIN
+    const rows = await snapshot()
+    expect((await continueRecovery(asked.key)).body).toEqual({ error: 'too_early', until: r.wait_until })
+    expect((await signIn(asked.key)).status).toBe(401)
+    expect(await snapshot()).toBe(rows)
+    now += MIN
+    for (const m of [o, a, v]) await again(m)
+    // Not another passkey, not without user verification, not an answer to a sign-in challenge.
+    expect((await continueRecovery(o.key)).status).toBe(401)
+    expect((await continueRecovery(asked.key, {}, { userVerified: false })).status).toBe(401)
+    const other = await call('POST', '/api/signin/start')
+    expect((await call('POST', '/api/recover/continue/finish', { body: { response: await asked.key.authenticate(other.body.options) } })).status).toBe(401)
+    expect((await recoveryOf(o.orgId)).state).toBe('waiting')
+    chain.calls = []
+    const done = await continueRecovery(asked.key)
+    expect(done.status).toBe(200)
+    // The proof was checked again and the Safe read again, on both endpoints.
+    for (const method of ['eth_call', 'eth_getCode', 'eth_getStorageAt']) for (const url of [RPC1, RPC2]) expect(chain.calls, method).toContain(`${url} ${method}`)
+    const me = (await call('GET', '/api/me', { cookie: done.cookie })).body
+    expect(me).toMatchObject({ seat: { id: asked.seat, role: 'owner', displayName: 'Recovery Owner', keys: 1, quarantineUntil: now + WEEK }, organisation: { id: o.orgId, quarantineUntil: now + WEEK } })
+    expect(await recoveryOf(o.orgId)).toMatchObject({ state: 'completed', closed_at: now })
+    expect(await row('SELECT quarantine_until AS until FROM organisations WHERE id = ?', o.orgId)).toEqual({ until: now + WEEK })
+    expect((await call('GET', '/api/me', { cookie: o.cookie })).status).toBe(401)
+    for (const key of [o.key, o.key2]) expect(await row('SELECT state, stop_right_until AS until FROM credentials WHERE id = ?', key.id)).toEqual({ state: 'suspended', until: now + WEEK })
+    // Members who are not Owners keep their passkeys and their sessions.
+    expect((await call('GET', '/api/me', { cookie: a.cookie })).status).toBe(200)
+    expect([await credentialState(a.key), await credentialState(v.key)]).toEqual(['active', 'active'])
+    expect(await row('SELECT actor_kind, actor_id, action, subject_id, detail, session_id FROM audit_log WHERE org_id = ? ORDER BY seq DESC LIMIT 1', o.orgId))
+      .toEqual({ actor_kind: 'seat', actor_id: asked.seat, action: 'recovery.complete', subject_id: r.id, detail: null, session_id: me.session.id })
+    expect((await alertsOf(a)).map((alert) => [alert.kind, alert.detail])).toEqual(expect.arrayContaining([['recovery_completed', undefined], ['quarantine', 'organisation']]))
+    expect(await banner(a)).toBeUndefined()
+    // A replaced Owner passkey opens no session and is told what it can still do. The new Owner adds a second key.
+    expect((await signIn(o.key)).body).toEqual({ error: 'passkey_replaced', until: now + WEEK, recovery: true })
+    expect((await addKey({ cookie: done.cookie })).status).toBe(200)
+    expect((await continueRecovery(asked.key)).status).toBe(401)
+  })
+
+  it('P5: a Safe that differs from the snapshot at completion (an owner, the threshold, a module, the fallback handler) makes the request lapse, and nothing of the Owners changes', async () => {
+    const changes: Record<string, (safe: Contract) => void> = {
+      'an owner added': (safe) => (safe.owners = [...safe.owners, accounts[3].address.toLowerCase()].sort()),
+      'an owner replaced': (safe) => (safe.owners = [...safe.owners.slice(1), accounts[3].address.toLowerCase()].sort()),
+      'the threshold': (safe) => (safe.threshold = 3),
+      'a module': (safe) => (safe.modules = [accounts[3].address.toLowerCase()]),
+      'the fallback handler': (safe) => (safe.fallback = SAFES[0].handler),
+    }
+    for (const [what, change] of Object.entries(changes)) {
+      const { o } = await teamWithWallet('safe')
+      const asked = await requestRecovery(o.orgId, null)
+      now += WAIT
+      change(theSafe())
+      expect((await continueRecovery(asked.key)).body, what).toEqual({ error: 'recovery_lapsed' })
+      expect(await recoveryOf(o.orgId), what).toMatchObject({ state: 'lapsed', closed_at: now })
+      expect([await credentialState(asked.key), (await seatOf(asked.seat))?.state, await credentialState(o.key)], what).toEqual(['revoked', 'removed', 'active'])
+      expect(await audited(o.orgId), what).toMatchObject({ actor_kind: 'system', action: 'recovery.lapse' })
+      expect((await continueRecovery(asked.key)).status).toBe(401)
+    }
+  })
+
+  it('P5: at completion the proof is verified again and the Safe read on both endpoints: a Safe that says no, or that cannot be read, completes nothing and changes nothing', async () => {
+    const { o } = await teamWithWallet('safe')
+    const asked = await requestRecovery(o.orgId, null)
+    now += WAIT
+    const rows = await snapshot()
+    theSafe().accepts = () => false
+    expect((await continueRecovery(asked.key)).body).toEqual({ error: 'wallet_unreadable' })
+    theSafe().accepts = (_digest, signature) => signature === '0x'
+    chain.twist = (url, method, result) => (url === RPC2 && method === 'eth_getCode' ? '0x' : result)
+    expect((await continueRecovery(asked.key)).body).toEqual({ error: 'wallet_unreadable' })
+    expect(await snapshot()).toBe(rows)
+    chain.twist = (_url, _method, result) => result
+    expect((await continueRecovery(asked.key)).status).toBe(200)
+  })
+
+  it('P5: a request can be completed for 7 days after its wait and not after: then it has lapsed, and a new one can open', async () => {
+    const { o } = await soloWithWallet(await owner())
+    const first = await requestRecovery(o.orgId)
+    const r = await recoveryOf(o.orgId)
+    now += WAIT + WEEK
+    expect((await continueRecovery(first.key)).status).toBe(401)
+    expect(await credentialState(o.key)).toBe('active')
+    expect(await banner(await again(o))).toBeUndefined()
+    const second = await requestRecovery(o.orgId)
+    expect(second.proved.body).toMatchObject({ state: 'waiting' })
+    expect(await row('SELECT state, closed_at FROM recovery_requests WHERE id = ?', r.id)).toEqual({ state: 'lapsed', closed_at: r.wait_until + WEEK })
+    expect([(await seatOf(first.seat))?.state, await credentialState(first.key)]).toEqual(['removed', 'revoked'])
+    now += WAIT + WEEK - 1
+    expect((await continueRecovery(second.key)).status).toBe(200)
+  })
+
+  it('P5: completion sent twice at the same instant applies once', async () => {
+    const { o } = await soloWithWallet(await owner())
+    const asked = await requestRecovery(o.orgId)
+    now += WAIT
+    let second = { status: 0 }
+    const first = await continueRecovery(asked.key, { env: racing(async () => void (second = await continueRecovery(asked.key))) })
+    expect([first.status, second.status].sort()).toEqual([200, 401])
+    expect(await row('SELECT count(*) AS n FROM sessions WHERE seat_id = ?', asked.seat)).toEqual({ n: 1 })
+    expect(await row(`SELECT count(*) AS n FROM audit_log WHERE org_id = ? AND action = 'recovery.complete'`, o.orgId)).toEqual({ n: 1 })
+  })
+
+  it('P5: during the organisation quarantine every route a seat in quarantine cannot use answers "quarantine" for every seat; re-enrolling an existing seat stays open; it ends after 7 days', async () => {
+    const { o, a, v } = await teamWithWallet()
+    const admin = await colleague(o, 'admin')
+    const early = await askLink(admin, accounts[2].address)
+    const asked = await requestRecovery(o.orgId)
+    now += WAIT
+    const done = await continueRecovery(asked.key)
+    expect((await addKey({ cookie: done.cookie })).status).toBe(200)
+    for (const m of [a, v, admin]) await again(m)
+    const people: Record<string, Holder> = { owner: { cookie: done.cookie }, admin, approver: a }
+    const settled = routes.filter((route) => route.settled)
+    expect(settled.map((route) => route.path).sort()).toEqual(['/api/approvals/:id/approve', '/api/members/:id/freeze', '/api/members/:id/remove', '/api/members/:id/role', '/api/members/:id/unfreeze', '/api/policy', '/api/wallets/:id/anchor', '/api/wallets/intent'])
+    for (const route of settled) {
+      for (const [role, m] of Object.entries(people)) {
+        if ((route.roles as string[]).includes(role)) expect((await call('POST', route.path.replace(':id', '0'.repeat(32)), { cookie: m.cookie })).body, `${role} ${route.path}`).toEqual({ error: 'quarantine' })
+      }
+    }
+    // What the data module refuses in quarantine: a new member, a colleague's passkey, a wallet whose link was asked before.
+    expect((await issue(admin, { displayName: 'New Person', role: 'viewer' })).body).toEqual({ error: 'quarantine' })
+    expect((await post(`/api/passkeys/${v.key.id}/revoke`, admin)).body).toEqual({ error: 'quarantine' })
+    expect((await prove(early.body.intent, await accounts[2].signTypedData(typedOf(intentOf(early.body.intent))))).body).toEqual({ error: 'quarantine' })
+    expect((await issue(admin, { seatId: v.seatId })).status).toBe(200)
+    expect((await call('GET', '/api/me', { cookie: admin.cookie })).body.seat.quarantineUntil).toBe(now + WEEK)
+    now += WEEK
+    await again(admin)
+    expect((await call('GET', '/api/me', { cookie: admin.cookie })).body).toMatchObject({ seat: { quarantineUntil: null }, organisation: { quarantineUntil: null } })
+    expect((await issue(admin, { displayName: 'New Person', role: 'viewer' })).status).toBe(200)
+  })
+
+  it('P6: for 7 days, and not one minute later, a replaced Owner passkey stops the completed recovery: the new seat and its passkeys go, exactly the replaced passkeys are active again, the organisation quarantine ends', async () => {
+    const { o, a, v } = await teamWithWallet()
+    // Two passkeys of the Owner seat that the completion must not touch and the stop must not bring back.
+    const plant = async (state: string, until: number | null) => {
+      const id = data.randomId()
+      await db.prepare(`INSERT INTO credentials (id, org_id, seat_id, public_key, device_bound, label, state, stop_right_until, created_at) VALUES (?, ?, ?, 'x', 1, ?, ?, ?, ?)`).bind(id, o.orgId, o.seatId, id, state, until, now).run()
+      return id
+    }
+    const [gone, old] = [await plant('revoked', null), await plant('suspended', now - DAY)]
+    const asked = await requestRecovery(o.orgId)
+    const r = await recoveryOf(o.orgId)
+    now += WAIT
+    const done = await continueRecovery(asked.key)
+    const fresh = { cookie: done.cookie, key: asked.key }
+    const added = await addKey(fresh)
+    expect(added.status).toBe(200)
+    // The new Owner re-enrols the Viewer on a link of its own (open in quarantine): that passkey goes with a stop too.
+    const taken = await ceremony(fresh, { seatId: v.seatId })
+    expect(await credentialState(taken.key)).toBe('active')
+    const completed = now
+    now = completed + WEEK
+    expect((await signIn(o.key)).status).toBe(401)
+    expect((await stop(o.key)).status).toBe(401)
+    expect((await recoveryOf(o.orgId)).state).toBe('completed')
+    expect(await credentialState(asked.key)).toBe('active')
+    now -= MIN
+    expect((await signIn(o.key2)).body).toEqual({ error: 'passkey_replaced', until: completed + WEEK, recovery: true })
+    // Not a passkey of a member who is not an Owner, not the new Owner's own.
+    expect((await stop(a.key)).status).toBe(401)
+    expect((await stop(asked.key)).status).toBe(401)
+    expect((await stop(o.key2)).status).toBe(200)
+    expect([await credentialState(asked.key), await credentialState(added.key), await credentialState(taken.key), (await seatOf(asked.seat))?.state]).toEqual(['revoked', 'revoked', 'revoked', 'removed'])
+    expect((await call('GET', '/api/me', { cookie: done.cookie })).status).toBe(401)
+    for (const key of [o.key, o.key2]) expect(await row('SELECT state, stop_right_until AS until FROM credentials WHERE id = ?', key.id)).toEqual({ state: 'active', until: null })
+    expect([await row('SELECT state FROM credentials WHERE id = ?', gone), await row('SELECT state, stop_right_until AS until FROM credentials WHERE id = ?', old)]).toEqual([{ state: 'revoked' }, { state: 'suspended', until: completed - WAIT - DAY }])
+    expect(await seatOf(o.seatId)).toEqual({ role: 'owner', state: 'active' })
+    expect(await row('SELECT quarantine_until AS until FROM organisations WHERE id = ?', o.orgId)).toEqual({ until: null })
+    expect(await audited(o.orgId)).toEqual({ actor_kind: 'seat', actor_id: o.seatId, action: 'recovery.stop', subject_id: r.id, detail: null })
+    // The Owner signs in again, out of quarantine; every other member is told; there is nothing left to stop.
+    expect((await call('GET', '/api/me', { cookie: (await again(o)).cookie })).body).toMatchObject({ seat: { role: 'owner', quarantineUntil: null }, organisation: { quarantineUntil: null } })
+    expect((await alertsOf(await again(a))).find((alert) => alert.kind === 'changed' && alert.what === 'recovery.stop')).toMatchObject({ at: now })
+    expect((await stop(o.key)).status).toBe(401)
+  })
+
+  it('P7: an override opens only for a green recovery wallet, and only within 30 days of an Owner\'s cancel or stop', async () => {
+    const override = async (orgId: string, signer: Signer | null) => (await requestRecovery(orgId, signer, { override: true })).proved.body
+    // Amber: a custodian wallet, one day after an Owner cancelled a request.
+    const amber = await teamWithWallet()
+    await requestRecovery(amber.o.orgId)
+    expect((await cancelAs(amber.o, (await recoveryOf(amber.o.orgId)).id)).status).toBe(200)
+    now += DAY
+    let rows = await snapshot()
+    expect(await override(amber.o.orgId, accounts[0])).toEqual({ error: 'override_refused' })
+    expect(await snapshot()).toBe(rows)
+    expect((await requestRecovery(amber.o.orgId)).proved.body).toMatchObject({ state: 'waiting' })
+    // Green: a genuine Safe, 2 of 3, no module. Nobody cancelled or stopped anything yet.
+    const { o } = await teamWithWallet('safe')
+    rows = await snapshot()
+    expect(await override(o.orgId, null)).toEqual({ error: 'override_refused' })
+    expect(await snapshot()).toBe(rows)
+    // A cancel by the wallet itself is not an Owner's.
+    await requestRecovery(o.orgId, null)
+    expect((await cancelByWallet(o.orgId, (await recoveryOf(o.orgId)).nonce, null)).body).toEqual({ state: 'cancelled' })
+    now += DAY
+    expect(await override(o.orgId, null)).toEqual({ error: 'override_refused' })
+    // An Owner cancels one. A day later the Safe has a module: not green.
+    await requestRecovery(o.orgId, null)
+    expect((await cancelAs(await again(o), (await recoveryOf(o.orgId)).id)).status).toBe(200)
+    const cancelled = now
+    now += DAY
+    theSafe().modules = [accounts[3].address.toLowerCase()]
+    expect(await override(o.orgId, null)).toEqual({ error: 'override_refused' })
+    theSafe().modules = []
+    // 30 days after the cancel it no longer counts; one millisecond earlier it does.
+    now = cancelled + 30 * DAY
+    rows = await snapshot()
+    expect(await override(o.orgId, null)).toEqual({ error: 'override_refused' })
+    expect(await snapshot()).toBe(rows)
+    now -= 1
+    expect(await override(o.orgId, null)).toEqual({ state: 'waiting', until: now + WAIT })
+    expect(await recoveryOf(o.orgId)).toMatchObject({ state: 'waiting', action: 'override_owners' })
+    expect(await audited(o.orgId)).toMatchObject({ actor_kind: 'anchor', action: 'recovery.open', detail: 'override' })
+  })
+
+  it('P7: no Owner cancels or stops an override, nor removes its seat; an objection still adds 72 hours once; it runs the full wait; its completion revokes the Owner passkeys and removes the Owner seats', async () => {
+    const { o, a } = await teamWithWallet('safe')
+    const o2 = await colleague(o, 'owner')
+    await requestRecovery(o.orgId, null)
+    expect((await cancelAs(o, (await recoveryOf(o.orgId)).id)).status).toBe(200)
+    now += DAY
+    const asked = await requestRecovery(o.orgId, null, { override: true })
+    expect(asked.proved.body).toMatchObject({ state: 'waiting' })
+    const r = await recoveryOf(o.orgId)
+    for (const m of [o, o2]) expect((await cancelAs(await again(m), r.id)).body).toEqual({ error: 'override' })
+    expect(await banner(o)).toMatchObject({ override: true, may: null })
+    // The seat of an open request is nobody's to remove, or to enrol a passkey on.
+    expect((await act(o, asked.seat, 'remove')).status).toBe(404)
+    expect((await issue(o, { seatId: asked.seat })).status).toBe(404)
+    expect([(await recoveryOf(o.orgId)).state, (await seatOf(asked.seat))?.state, await credentialState(asked.key)]).toEqual(['waiting', 'invited', 'pending'])
+    // An invitation of an Owner that waits for its second person: it dies with the override.
+    const waiting = await ceremony(o, { displayName: 'A Friend', role: 'owner' })
+    expect(waiting.state).toBe('second')
+    expect((await objectAs(await again(a), r.id)).status).toBe(200)
+    now += 2 * WAIT - MIN
+    expect((await continueRecovery(asked.key)).body).toMatchObject({ error: 'too_early' })
+    now += MIN
+    expect((await continueRecovery(asked.key)).status).toBe(200)
+    for (const m of [o, o2]) {
+      expect(await seatOf(m.seatId)).toEqual({ role: 'owner', state: 'removed' })
+      expect([await credentialState(m.key), await credentialState(m.key2)]).toEqual(['revoked', 'revoked'])
+      expect([(await signIn(m.key)).status, (await stop(m.key)).status]).toEqual([401, 401])
+    }
+    expect([await credentialState(waiting.key), (await row<{ state: string }>('SELECT state FROM enrolment_tickets WHERE id = ?', waiting.ticketId))?.state]).toEqual(['revoked', 'dead'])
+    expect(await recoveryOf(o.orgId)).toMatchObject({ state: 'completed' })
+    expect(await audited(o.orgId)).toMatchObject({ action: 'recovery.complete', detail: 'override' })
+    expect(await credentialState(a.key)).toBe('active')
   })
 })
