@@ -1,6 +1,8 @@
 // Worker entry: answers /api/* and leaves every other path to the static assets.
 import * as data from './data.ts'
-import { challengeIsOurs, configFor, creationOptions, credentialHash, newChallenge, phraseFor, requestOptions, toBase64Url, userHandle, verifyAssertion, verifyRegistration, type Config, type Purpose } from './passkeys.ts'
+import { checksum, colour, parseAddress, readCapped, safeState, verify, type SafeState } from './chain.ts'
+import { challengeIsOurs, configFor, creationOptions, credentialHash, newChallenge, phraseFor, requestOptions, seal, toBase64Url, unseal, userHandle, verifyAssertion, verifyRegistration, type Config, type Purpose } from './passkeys.ts'
+import { typedLink } from './typed.ts'
 import { WORDS } from './words.ts'
 
 export interface Env { DB: D1Database; ASSETS: Fetcher; ENVIRONMENT: string; CHALLENGE_KEY: string }
@@ -25,6 +27,15 @@ const HEADERS = {
   'x-frame-options': 'DENY',
   'strict-transport-security': 'max-age=63072000',
 }
+// The signing page, on its own hostname: its own scripts and styles only, and it may be framed by the Safe interface,
+// which is how Safe owners sign. No cross-origin grant but one: the Safe interface reads manifest.json.
+const SIGN_HEADERS = {
+  'content-security-policy': "default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self'; connect-src 'self'; frame-ancestors https://app.safe.global https://*.safe.global",
+  'cache-control': 'no-cache',
+  'x-content-type-options': 'nosniff',
+  'referrer-policy': 'no-referrer',
+  'strict-transport-security': 'max-age=63072000',
+}
 
 interface Context {
   request: Request; env: Env; now: number; config: Config
@@ -38,10 +49,11 @@ interface Context {
 // ones for an Owner; until then it can sign in, pass a check and add its second key, and nothing else that is sensitive.
 // settled: refused while the seat is in quarantine after a re-enrolment.
 // second: the change needs a second person. Such a route has no handler: the router files the request.
+// sign: the route lives on the signing host, and only there; every other route lives on the console host only.
 // can: the sentence of this row on the page "What each role can do", which is built from this table.
 interface Route {
   method: 'GET' | 'POST'; path: string; roles: 'public' | readonly data.Role[]; fresh?: boolean; twoKeys?: boolean; settled?: boolean
-  second?: data.Kind; can?: string; handler?: (c: Context) => Promise<Response>
+  second?: data.Kind; sign?: boolean; can?: string; handler?: (c: Context) => Promise<Response>
 }
 
 const json = (status: number, body: unknown, headers: Record<string, string> = {}) => Response.json(body, { status, headers })
@@ -199,6 +211,7 @@ async function organisation(c: Context) {
     ...view, tickets: await data.openTickets(c.env.DB, c.actor, c.now), currentSessionId: c.session.id,
     approvals: await data.openRequests(c.env.DB, c.actor, c.now),
     frozen: await data.frozenSeats(c.env.DB, c.actor.orgId),
+    wallets: (await data.wallets(c.env.DB, c.actor.orgId, c.now)).map(walletView),
     syncedKeysAllowed: c.session.synced_keys_allowed === 1, rights,
   })
 }
@@ -315,18 +328,106 @@ async function ticketCancel(c: Context) {
 
 // A freeze (one person), or one of the changes that need two. For the passkey rule the subject is the session's
 // organisation; for the rest it is the seat in the path. The new value is a role, or '1' (synced passkeys allowed) or '0'.
-async function change(c: Context, kind: data.Kind | 'seat.freeze') {
+async function change(c: Context, kind: data.Kind | data.Direct) {
   const value = kind === 'seat.role' ? c.body.role : kind === 'policy.synced_keys' && typeof c.body.syncedKeys === 'boolean' ? (c.body.syncedKeys ? '1' : '0') : null
-  const outcome = await data.change(c.env.DB, c.actor, kind, kind === 'policy.synced_keys' ? c.actor.orgId : c.params.id ?? '', typeof value === 'string' ? value : null, c.now)
+  const subject = kind === 'policy.synced_keys' ? c.actor.orgId : c.params.id ?? ''
+  const outcome = await data.change(c.env.DB, c.actor, kind, subject, typeof value === 'string' ? value : null, c.now, kind === 'anchor.set' ? await snapshotOf(c, subject) : null)
   return 'error' in outcome ? refuse(outcome.error) : json(200, outcome)
 }
 const decide = (decision: 'approve' | 'reject' | 'cancel') => async (c: Context) => {
-  const outcome = await data.decide(c.env.DB, c.actor, c.params.id ?? '', decision, c.now)
+  const id = c.params.id ?? ''
+  const outcome = await data.decide(c.env.DB, c.actor, id, decision, c.now, decision === 'approve' ? await snapshotOf(c, id) : null)
   return outcome === 'ok' ? json(200, decision === 'approve' ? { state: 'applied' } : { ok: true }) : refuse(outcome)
 }
 
+// ---- milestone 4a: wallets, the proof of the signing page, the recovery wallet ----
+
+const WEEK_S = 7 * 24 * 60 * 60
+const INTENT = 'wallet-intent' // the label of an intent under the challenge key
+/** What a manager asked for, signed by the server and held nowhere. Times are Unix seconds, as the wallet signs them. */
+interface Intent { org: string; seat: string; chainId: number; wallet: string; label: string; custodian: boolean; nonce: string; issuedAt: number; expiresAt: number; site: string }
+
+// Writes nothing. The link goes to the people who hold the wallet; the wallet row appears when its signature does.
+async function walletIntent(c: Context) {
+  const { chainId, custodian } = c.body
+  const address = parseAddress(c.body.address)
+  const label = typeof c.body.label === 'string' ? c.body.label.trim() : ''
+  if (typeof chainId !== 'number' || !Object.hasOwn(c.config.chains, chainId)) return fail(400, 'chain_invalid')
+  if (!address) return fail(400, 'address_invalid')
+  if (!LABEL.test(label)) return fail(400, 'label_invalid')
+  if (typeof custodian !== 'boolean') return fail(400, 'invalid')
+  if (await data.walletLive(c.env.DB, c.actor.orgId, chainId, address, c.now)) return fail(409, 'already_linked')
+  const issuedAt = Math.floor(c.now / 1000)
+  const intent: Intent = {
+    org: c.actor.orgId, seat: c.actor.seatId, chainId, wallet: checksum(address), label, custodian,
+    nonce: `0x${data.randomId()}${data.randomId()}`, issuedAt, expiresAt: issuedAt + WEEK_S, site: c.config.rpId,
+  }
+  const sealed = await seal(c.env.CHALLENGE_KEY, INTENT, intent)
+  return json(200, { intent: sealed, link: `${c.config.signOrigin}/sign/#${sealed}`, expiresAt: intent.expiresAt * 1000 })
+}
+
+// The one route of the signing host. No session and no cookie: the caller proves nothing about itself. The intent
+// is the server's own text, made for a signed-in manager; its MAC is checked first, before anything is read from
+// the database or asked of an endpoint. Then the wallet's signature, over typed data rebuilt from that text.
+// ponytail: no rate limit on proof checks. Intents come only from signed-in managers and a forged one stops at the
+// MAC. Before production: 10 checks per organisation per hour (recovery.md section 5).
+async function proof(c: Context) {
+  const intent = typeof c.body.intent === 'string' ? ((await unseal(c.env.CHALLENGE_KEY, INTENT, c.body.intent)) as Intent | null) : null
+  if (!intent) return fail(400, 'intent_invalid')
+  if (intent.expiresAt * 1000 <= c.now) return fail(410, 'intent_expired')
+  const { signature } = c.body
+  const endpoints = c.config.chains[intent.chainId]
+  if (!endpoints || typeof signature !== 'string' || signature.length > 8194 || !/^0x(?:[0-9a-fA-F]{2})*$/.test(signature)) return fail(400, 'signature_invalid')
+  // The site is this environment's constant; every other field was under the MAC. Nothing here is the caller's text.
+  const typed = typedLink({ chainId: intent.chainId, site: c.config.rpId, organisationId: intent.org, wallet: intent.wallet, nonce: intent.nonce, issuedAt: intent.issuedAt, expiresAt: intent.expiresAt })
+  const proved = await verify(endpoints, typed, intent.wallet, signature as `0x${string}`)
+  if (!proved) return fail(403, 'signature_rejected')
+  // A wallet whose own key signed is never read as a Safe: no endpoint is asked about it.
+  const safe = proved.by === 'contract' ? await safeState(endpoints, intent.chainId, intent.wallet) : null
+  const outcome = await data.linkWallet(c.env.DB, {
+    orgId: intent.org, seatId: intent.seat, chainId: intent.chainId, address: intent.wallet.toLowerCase(), label: intent.label,
+    kind: safe ? 'safe' : intent.custodian ? 'custodian' : 'single_key', snapshot: safe && JSON.stringify(safe),
+    nonce: intent.nonce, digest: proved.digest, signature, now: c.now,
+  })
+  return 'error' in outcome ? refuse(outcome.error) : json(200, outcome)
+}
+
+// The Safe as both endpoints see it now, for a wallet that is about to become the recovery wallet (by its id, or by
+// the id of the request that asks for it). Null: not a Safe, or not readable; the data module then refuses a Safe.
+async function snapshotOf(c: Context, id: string) {
+  const w = await data.walletFor(c.env.DB, c.actor, id, c.now)
+  const endpoints = w?.kind === 'safe' ? c.config.chains[w.chainId] : undefined
+  const state = endpoints ? await safeState(endpoints, w!.chainId, w!.address) : null
+  return state && JSON.stringify(state)
+}
+
+// Readiness to recover (recovery.md section 10, without the spare key). The recovery wallet is read on both endpoints
+// now, on demand: its colour is never stored.
+async function readiness(c: Context) {
+  const { owners, wallet } = await data.readiness(c.env.DB, c.actor, c.now)
+  const people = owners.some((keys) => keys < 2) ? 'red' : owners.length > 1 ? 'green' : 'amber'
+  const inForce = wallet?.recovery === 'in_force'
+  const endpoints = wallet?.kind === 'safe' && inForce ? c.config.chains[wallet.chainId] : undefined
+  const live = endpoints ? await safeState(endpoints, wallet!.chainId, wallet!.address) : null
+  const shade = wallet ? colour({ ...wallet, inForce }, live) : { level: 'none' as const, why: null }
+  const overall = people === 'green' || (people === 'amber' && shade.level === 'green') ? 'ready' : owners.length === 1 && !wallet ? 'not_recoverable' : 'at_risk'
+  // The one step that comes next: the second key of an Owner, then a second Owner; with one Owner and no recovery wallet, the wallet.
+  const step = overall === 'ready' ? null : overall === 'not_recoverable' ? 'recovery_wallet' : people === 'red' ? 'second_key' : 'second_owner'
+  return json(200, {
+    owners: { level: people, count: owners.length }, overall, step,
+    wallet: { ...shade, label: wallet?.label ?? null, at: wallet?.recoveryAt ?? null, ...(live && { threshold: live.threshold, owners: live.owners.length }) },
+  })
+}
+const walletView = ({ snapshot, ...w }: Awaited<ReturnType<typeof data.wallets>>[number]) => {
+  const seen = snapshot ? (JSON.parse(snapshot) as SafeState) : null
+  return { ...w, address: checksum(w.address), ...(seen && { threshold: seen.threshold, owners: seen.owners.length }) }
+}
+
 const ROLE_NAME: Record<string, string> = { owner: 'Owner', admin: 'Admin', trader: 'Trader', approver: 'Approver', compliance: 'Compliance officer', viewer: 'Viewer' }
-const CHANGES: Record<string, string> = { 'seat.unfreeze': 'unfreeze a seat', 'seat.remove': 'remove a member', 'seat.role': 'change a role', 'policy.synced_keys': 'change the passkey rule for key roles' }
+const CHANGES: Record<string, string> = {
+  'seat.unfreeze': 'unfreeze a seat', 'seat.remove': 'remove a member', 'seat.role': 'change a role', 'policy.synced_keys': 'change the passkey rule for key roles',
+  'wallet.link': 'link a wallet', 'anchor.set': 'set the recovery wallet',
+}
 // The one table that turns an audit action into words, for the page and the export alike: neither ever shows a
 // code. A key with a slash is the action with that detail. A test fails if data.ts writes an action that is not here.
 export const EVENTS: Record<string, string> = {
@@ -362,6 +463,12 @@ export const EVENTS: Record<string, string> = {
   'approval.reject': 'Change rejected',
   'approval.cancel': 'Request cancelled by its requester',
   'audit.export': 'Audit log exported',
+  'wallet.link': 'Wallet linked',
+  'wallet.link/alone': 'Wallet linked by the only key-role member',
+  'wallet.unlink': 'Wallet unlinked',
+  'anchor.set': 'Recovery wallet set, in force after 72 hours',
+  'anchor.set/alone': 'Recovery wallet set by the only key-role member, in force after 72 hours',
+  'anchor.cancel': 'Change of recovery wallet cancelled',
 }
 function said(action: string, detail: string | null) {
   const words = EVENTS[`${action}/${detail}`] ?? EVENTS[action] ?? 'Unlisted event'
@@ -429,30 +536,18 @@ export const routes: Route[] = [
   { method: 'POST', path: '/api/approvals/:id/approve', roles: data.KEY_ROLES, fresh: true, twoKeys: true, settled: true, can: 'Approve a colleague\'s request as the second person', handler: decide('approve') },
   { method: 'POST', path: '/api/approvals/:id/reject', roles: data.KEY_ROLES, fresh: true, twoKeys: true, can: 'Reject a colleague\'s request', handler: decide('reject') },
   { method: 'POST', path: '/api/approvals/:id/cancel', roles: MANAGERS, can: 'Cancel the own request', handler: decide('cancel') },
+  { method: 'POST', path: '/api/wallets/intent', roles: MANAGERS, fresh: true, twoKeys: true, settled: true, can: 'Start the link of a wallet, which the wallet then proves with a signature', handler: walletIntent },
+  { method: 'POST', path: '/api/wallets/:id/unlink', roles: MANAGERS, fresh: true, twoKeys: true, can: 'Unlink a wallet, never the recovery wallet', handler: (c) => change(c, 'wallet.unlink') },
+  { method: 'POST', path: '/api/wallets/:id/anchor', roles: ['owner'], fresh: true, twoKeys: true, settled: true, second: 'anchor.set', can: 'Ask to make a linked wallet the recovery wallet' },
+  { method: 'POST', path: '/api/wallets/:id/anchor/cancel', roles: ['owner'], fresh: true, twoKeys: true, can: 'Cancel a change of recovery wallet during its 72 hours', handler: (c) => change(c, 'anchor.cancel') },
+  { method: 'GET', path: '/api/readiness', roles: ['owner'], can: 'See how ready the organisation is to recover access', handler: readiness },
+  { method: 'POST', path: '/api/proof', roles: 'public', sign: true, handler: proof },
   { method: 'GET', path: '/api/audit', roles: READERS, can: 'Read the audit log', handler: audit },
   { method: 'POST', path: '/api/audit/export', roles: READERS, fresh: true, can: 'Export the audit log', handler: auditExport },
 ]
 // "What each role can do": the rows of the table above that a session can reach. Routes that share a sentence are one row.
 const rights = [...new Map(routes.flatMap((r) => (r.can ? [[r.can, { can: r.can, roles: r.roles, fresh: Boolean(r.fresh), second: Boolean(r.second) }] as const] : []))).values()]
 const patterns = routes.map((route) => new URLPattern({ pathname: route.path }))
-
-async function readBody(request: Request) {
-  const reader = request.body?.getReader()
-  if (!reader) return ''
-  const decoder = new TextDecoder()
-  let text = ''
-  let size = 0
-  for (;;) {
-    const { value, done } = await reader.read()
-    if (done) return text + decoder.decode()
-    size += value.byteLength
-    if (size > MAX_BODY) {
-      await reader.cancel()
-      return null
-    }
-    text += decoder.decode(value, { stream: true })
-  }
-}
 
 async function sessionOf(request: Request, env: Env, now: number) {
   const token = request.headers.get('cookie')?.split(/;\s*/).find((part) => part.startsWith(`${COOKIE}=`))?.slice(COOKIE.length + 1)
@@ -468,19 +563,19 @@ async function sessionOf(request: Request, env: Env, now: number) {
   return { ...session, token_hash }
 }
 
-async function api(request: Request, env: Env, clock: () => number): Promise<Response> {
-  const config = configFor(env.ENVIRONMENT)
+async function api(request: Request, env: Env, clock: () => number, config: Config, signing: boolean): Promise<Response> {
   // Every API route, GET included. A sibling *.ophis.fi host is same-site, so same-site is not enough.
   if (request.headers.get('sec-fetch-site') !== 'same-origin') return fail(403, 'cross_site')
   const { pathname } = new URL(request.url)
-  const index = routes.findIndex((route, i) => route.method === request.method && patterns[i].test({ pathname }))
+  // Each host has its own routes: the signing host answers the proof route and no other, the console host every other.
+  const index = routes.findIndex((route, i) => route.method === request.method && Boolean(route.sign) === signing && patterns[i].test({ pathname }))
   if (index < 0) return fail(404, 'not_found')
   const route = routes[index]
   let body: Record<string, unknown> = {}
   if (route.method === 'POST') {
-    if (request.headers.get('origin') !== config.origin) return fail(403, 'bad_origin')
+    if (request.headers.get('origin') !== (signing ? config.signOrigin : config.origin)) return fail(403, 'bad_origin')
     if (!/^application\/json\s*(;|$)/i.test(request.headers.get('content-type') ?? '')) return fail(415, 'json_only')
-    const text = await readBody(request)
+    const text = await readCapped(request.body, MAX_BODY)
     if (text === null) return fail(413, 'too_large')
     try {
       body = JSON.parse(text)
@@ -512,13 +607,29 @@ async function api(request: Request, env: Env, clock: () => number): Promise<Res
   return route.second ? change(context, route.second) : route.handler!(context)
 }
 
+// The pages. Each host serves its own and nothing of the other's: the signing host the signing page under /sign/
+// (with its script, style, icon and manifest.json), the console host everything else.
+async function pages(request: Request, env: Env, signing: boolean) {
+  const { pathname } = new URL(request.url)
+  if (signing !== (pathname === '/sign' || pathname.startsWith('/sign/'))) return new Response('Not found', { status: 404, headers: HEADERS })
+  const asset = await env.ASSETS.fetch(request)
+  if (!signing) return asset // public/_headers sets the console's headers
+  const headers = new Headers(SIGN_HEADERS)
+  for (const name of ['content-type', 'location', 'etag']) if (asset.headers.has(name)) headers.set(name, asset.headers.get(name)!)
+  if (pathname === '/sign/manifest.json') headers.set('access-control-allow-origin', '*')
+  return new Response(asset.body, { status: asset.status, headers })
+}
+
 /** `now` is injectable so that tests own the clock. */
 export async function handle(request: Request, env: Env, now: () => number = Date.now): Promise<Response> {
-  const { pathname } = new URL(request.url)
-  if (!pathname.startsWith('/api/')) return env.ASSETS.fetch(request)
+  const { pathname, origin } = new URL(request.url)
   let response: Response
   try {
-    response = await api(request, env, now)
+    const config = configFor(env.ENVIRONMENT)
+    // The host decides, from the environment's constants: the signing page's own hostname, or the console.
+    const signing = origin === config.signOrigin
+    if (!pathname.startsWith('/api/')) return await pages(request, env, signing)
+    response = await api(request, env, now, config, signing)
   } catch (error) {
     // Logs carry route names and error names only: no ids of people, no values, no tokens.
     console.error('api failure', request.method, pathname, error instanceof Error ? error.name : 'unknown')

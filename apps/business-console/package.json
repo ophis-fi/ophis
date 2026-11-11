@@ -8,19 +8,22 @@
     "node": ">=22.18.0"
   },
   "scripts": {
-    "build": "vite build",
+    "build": "vite build && vite build --mode sign",
     "typecheck": "tsc --noEmit && tsc --noEmit -p tsconfig.server.json",
     "migrate": "wrangler d1 migrations apply DB --local",
     "seed": "node scripts/dev.mjs seed",
     "activate": "node scripts/dev.mjs activate",
-    "dev": "vite build && wrangler dev",
-    "test": "vitest run",
-    "test:e2e": "vite build && node tests/e2e.mjs"
+    "dev": "vite build && vite build --mode sign && wrangler dev",
+    "test": "vite build && vite build --mode sign && vitest run",
+    "test:chain": "node tests/chain.mjs",
+    "test:e2e": "vite build && vite build --mode sign && node tests/e2e.mjs"
   },
   "dependencies": {
+    "@safe-global/safe-apps-sdk": "9.1.0",
     "@simplewebauthn/server": "14.0.3",
     "react": "19.3.1",
-    "react-dom": "19.3.1"
+    "react-dom": "19.3.1",
+    "viem": "2.57.16"
   },
   "devDependencies": {
     "@cloudflare/vitest-plugin": "1.5.0",

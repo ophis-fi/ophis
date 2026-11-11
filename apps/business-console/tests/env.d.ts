@@ -8,3 +8,6 @@ declare module '*?raw' {
   const text: string
   export default text
 }
+interface ImportMeta {
+  glob(pattern: string, options: { query: string; import: string; eager: true }): Record<string, unknown>
+}

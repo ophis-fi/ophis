@@ -1,0 +1,5 @@
+{
+  "name": "Ophis Business: wallet signature",
+  "description": "Sign the message that links this Safe to an organisation in the Ophis Business console. One signature, no transfer.",
+  "iconPath": "icon.svg"
+}

@@ -455,6 +455,15 @@ function activation(db: D1Database, orgId: string, t: OpenTicket, now: number, c
   ]
 }
 
+/** The 30 day predicate: no seat but this one is, or in the last 30 days was, a key-role seat. Only then does one person stand for two. */
+const alone = async (db: D1Database, orgId: string, seatId: string, now: number) =>
+  !(await db.prepare(
+    `SELECT count(*) AS n FROM seats s WHERE s.org_id = ? AND s.id <> ? AND (
+       (s.role IN ${KEY_SQL} AND (s.state IN ('active', 'frozen') OR (s.state = 'removed' AND EXISTS
+         (SELECT 1 FROM audit_log a WHERE a.org_id = s.org_id AND a.subject_id = s.id AND a.action = 'seat.remove' AND a.detail IS NULL AND a.at > ?))))
+       OR EXISTS (SELECT 1 FROM audit_log a WHERE a.org_id = s.org_id AND a.subject_id = s.id AND a.action = 'seat.role' AND a.at > ?))`,
+  ).bind(orgId, seatId, now - NO_WAIT_MS, now - NO_WAIT_MS).first<{ n: number }>())!.n
+
 type Confirmed = { state: 'active' | 'second' | 'gone' | 'dead' } | { state: 'wait'; waitUntil: number } | { state: 'wrong'; left: number }
 /** The words were typed and the passkey check passed. `seen` is the ticket as the check saw it: if it moved since, nothing is written. */
 export async function confirmTicket(db: D1Database, session: Actor, seen: OpenTicket, x: { correct: boolean; credentialHash: string; credentialId: string; counter: number; now: number }) {
@@ -482,13 +491,7 @@ export async function confirmTicket(db: D1Database, session: Actor, seen: OpenTi
       // the dates). Otherwise one Owner could freeze or remove every colleague and then pass every two-person rule
       // alone after a wait. A re-enrolled key-role member is such a seat: their seat never comes back by a wait.
       // A role changed in those 30 days counts whatever the role was: the change took two key-role people.
-      const others = await db.prepare(
-        `SELECT count(*) AS n FROM seats s WHERE s.org_id = ? AND s.id <> ? AND (
-           (s.role IN ${KEY_SQL} AND (s.state IN ('active', 'frozen') OR (s.state = 'removed' AND EXISTS
-             (SELECT 1 FROM audit_log a WHERE a.org_id = s.org_id AND a.subject_id = s.id AND a.action = 'seat.remove' AND a.detail IS NULL AND a.at > ?))))
-           OR EXISTS (SELECT 1 FROM audit_log a WHERE a.org_id = s.org_id AND a.subject_id = s.id AND a.action = 'seat.role' AND a.at > ?))`,
-      ).bind(actor.orgId, actor.seatId, now - NO_WAIT_MS, now - NO_WAIT_MS).first<{ n: number }>()
-      const waitUntil = others!.n ? null : now + WAIT_MS
+      const waitUntil = (await alone(db, actor.orgId, actor.seatId, now)) ? now + WAIT_MS : null
       outcome = waitUntil === null ? { state: 'second' } : { state: 'wait', waitUntil }
       return [seatEntry(actor, now, 'ticket.confirm', t.id, waitUntil === null ? 'second' : 'wait'), [
         check,
@@ -545,7 +548,9 @@ export function stopReplacement(db: D1Database, credential: StoredCredential, co
 
 // ---- milestone 3: one person freezes, two people change ----
 
-export type Kind = 'seat.unfreeze' | 'seat.remove' | 'seat.role' | 'policy.synced_keys'
+export type Kind = 'seat.unfreeze' | 'seat.remove' | 'seat.role' | 'policy.synced_keys' | 'wallet.link' | 'anchor.set'
+/** Changes one person makes: each only tightens, or undoes what has not taken effect yet. */
+export type Direct = 'seat.freeze' | 'wallet.unlink' | 'anchor.cancel'
 // The actor's role as it is inside the commit. The session's copy was read before this write took its turn: a
 // member lowered, frozen or removed at the same instant must not act with the role they had. Null: the seat is
 // not active, or the session has ended since (a role change, a freeze, a re-enrolment and a revoke all end it).
@@ -561,7 +566,42 @@ interface Change { apply: Sql[]; detail: string | null; direct?: boolean; relax?
 // One change, judged against the rows as they are now, for a requester with this role. It runs inside the commit
 // that files the request and again inside the commit that applies it, so an approval never applies what has
 // become forbidden since. `direct`: one person is enough (a freeze only tightens; an invited seat was never a member).
-async function judge(db: D1Database, orgId: string, role: Role, kind: Kind | 'seat.freeze', subjectId: string, value: string | null, now: number): Promise<string | Change> {
+// `by` is the seat that asks. `snapshot`: the Safe as both endpoints see it now, read by the caller before the commit.
+async function judge(db: D1Database, orgId: string, role: Role, kind: Kind | Direct, subjectId: string, value: string | null, now: number, by: string, snapshot: string | null): Promise<string | Change> {
+  if (kind === 'wallet.link' || kind === 'wallet.unlink' || kind === 'anchor.set' || kind === 'anchor.cancel') {
+    const at = [orgId, subjectId] as const
+    const w = await db.prepare('SELECT state, kind FROM wallets WHERE org_id = ? AND id = ?').bind(...at).first<{ state: string; kind: string }>()
+    if (!w || w.state !== (kind === 'wallet.link' ? 'pending' : 'linked')) return 'not_found'
+    // Wallets are linked and unlinked by an Owner or Admin. The recovery wallet is an Owner's matter.
+    if (role !== 'owner' && (role !== 'admin' || kind === 'anchor.set' || kind === 'anchor.cancel')) return 'forbidden'
+    if (kind === 'wallet.link') return { detail: null, apply: [db.prepare(`UPDATE wallets SET state = 'linked', linked_at = ? WHERE org_id = ? AND id = ? AND state = 'pending'`).bind(now, ...at)] }
+    const a = await anchors(db, orgId, now)
+    if (kind === 'wallet.unlink') {
+      // Never the recovery wallet, in force or waiting: the last resort is replaced first, by two people and 72 hours.
+      if (subjectId === a.inForce || subjectId === a.waiting) return 'recovery_wallet'
+      return { direct: true, detail: null, apply: [
+        ...promote(db, orgId, now),
+        db.prepare(`UPDATE wallets SET state = 'unlinked' WHERE org_id = ? AND id = ?`).bind(...at),
+        db.prepare(`UPDATE approvals SET state = 'cancelled', decided_at = ? WHERE org_id = ? AND subject_id = ? AND state = 'pending'`).bind(now, ...at),
+      ] }
+    }
+    if (kind === 'anchor.cancel') {
+      if (subjectId !== a.waiting) return 'not_found' // after its 72 hours it is in force: it is replaced, not cancelled
+      return { direct: true, detail: null, apply: [db.prepare(`UPDATE wallets SET anchor = NULL, anchor_effective_at = NULL WHERE org_id = ? AND id = ? AND anchor = 'next'`).bind(...at)] }
+    }
+    if (a.waiting) return 'change_waiting' // one change at a time: an Owner cancels the one that waits first
+    if (subjectId === a.inForce) return 'invalid'
+    // One person is enough only where the 72 hour wait stands for the second person (the 30 day rule). A single key
+    // is a recovery wallet only there: with colleagues, one key would outrank them all.
+    const direct = await alone(db, orgId, by, now)
+    if (w.kind === 'single_key' && !direct) return 'single_key'
+    if (w.kind === 'safe' && !snapshot) return 'wallet_unreadable'
+    // In force 72 hours from now. Until then the one in force stays, and any Owner can cancel.
+    return { direct, detail: direct ? 'alone' : null, apply: [
+      ...promote(db, orgId, now),
+      db.prepare(`UPDATE wallets SET anchor = 'next', anchor_effective_at = ?, snapshot = COALESCE(?, snapshot) WHERE org_id = ? AND id = ?`).bind(now + WAIT_MS, snapshot, ...at),
+    ] }
+  }
   if (kind === 'policy.synced_keys') {
     const org = await db.prepare('SELECT synced_keys_allowed AS allowed FROM organisations WHERE id = ?').bind(orgId).first<{ allowed: number }>()
     if ((value !== '0' && value !== '1') || Number(value) === org!.allowed) return 'invalid'
@@ -620,14 +660,14 @@ async function judge(db: D1Database, orgId: string, role: Role, kind: Kind | 'se
 
 type Changed = { error: string } | { state: 'applied' } | { state: 'requested'; id: string; notBefore: number | null }
 /** A freeze, applied at once; or a change for two people, filed as a request (applied at once only for an invited seat that never enrolled). */
-export async function change(db: D1Database, actor: Actor, kind: Kind | 'seat.freeze', subjectId: string, value: string | null, now: number) {
+export async function change(db: D1Database, actor: Actor, kind: Kind | Direct, subjectId: string, value: string | null, now: number, snapshot: string | null = null) {
   const id = randomId()
   const payload = JSON.stringify({ value })
   const payloadHash = await sha256Hex(payload)
   let outcome: Changed = { error: 'not_found' }
   await commit(db, actor.orgId, async () => {
     const role = await roleNow(db, actor)
-    const judged = role ? await judge(db, actor.orgId, role, kind, subjectId, value, now) : 'forbidden'
+    const judged = role ? await judge(db, actor.orgId, role, kind, subjectId, value, now, actor.seatId, snapshot) : 'forbidden'
     if (typeof judged === 'string') {
       outcome = { error: judged }
       return null
@@ -655,7 +695,7 @@ export async function change(db: D1Database, actor: Actor, kind: Kind | 'seat.fr
 // a new passkey (ticket.confirm) lives in the same table and is never decided here.
 const OPEN_REQUEST = `a.state = 'pending' AND a.expires_at > ? AND a.action <> 'ticket.confirm'`
 /** Approve (and apply, in the same commit), reject, or cancel. Everything that decides it is read here, inside the commit. */
-export async function decide(db: D1Database, actor: Actor, id: string, decision: 'approve' | 'reject' | 'cancel', now: number) {
+export async function decide(db: D1Database, actor: Actor, id: string, decision: 'approve' | 'reject' | 'cancel', now: number, snapshot: string | null = null) {
   let outcome = 'not_found'
   await commit(db, actor.orgId, async () => {
     const a = await db
@@ -677,7 +717,7 @@ export async function decide(db: D1Database, actor: Actor, id: string, decision:
       .bind(state, decision === 'cancel' ? null : actor.seatId, now, actor.orgId, id)
     if (decision === 'reject') return [seatEntry(actor, now, 'approval.reject', id, a.action), [close('rejected')]]
     if (decision === 'cancel') return [seatEntry(actor, now, 'approval.cancel', id, a.action), [close('cancelled')]]
-    const judged = await judge(db, actor.orgId, a.role, a.action, a.subject_id, (JSON.parse(a.payload) as { value: string | null }).value, now)
+    const judged = await judge(db, actor.orgId, a.role, a.action, a.subject_id, (JSON.parse(a.payload) as { value: string | null }).value, now, a.requester_seat_id, snapshot)
     if (typeof judged === 'string') {
       outcome = judged
       return null
@@ -697,6 +737,98 @@ export async function openRequests(db: D1Database, actor: Actor, now: number) {
               WHERE a.org_id = ? AND ${OPEN_REQUEST} AND (? = 1 OR a.requester_seat_id = ?) ORDER BY a.created_at, a.id`)
     .bind(actor.orgId, now, KEY_ROLES.includes(actor.role) ? 1 : 0, actor.seatId).all<{ id: string; kind: Kind; subjectId: string; name: string | null; role: Role | null; payload: string; requesterSeatId: string; requester: string; requesterRole: Role; createdAt: number; expiresAt: number; notBefore: number | null }>()
   return results.map(({ payload, ...a }) => ({ ...a, value: (JSON.parse(payload) as { value: string | null }).value, mine: a.requesterSeatId === actor.seatId }))
+}
+
+// ---- milestone 4a: wallets and the recovery wallet ----
+
+// A pending wallet is live only while its request is open. A reject, a cancel or the 7 days leave a row that no
+// list shows and that the next link sweeps to 'unlinked'; the row stays, so its proof is never accepted again.
+const OPEN_LINK = `EXISTS (SELECT 1 FROM approvals a WHERE a.org_id = w.org_id AND a.subject_id = w.id AND a.action = 'wallet.link' AND a.state = 'pending' AND a.expires_at > ?)`
+const LIVE = `(w.state = 'linked' OR (w.state = 'pending' AND ${OPEN_LINK}))`
+// "In force" is computed at read: a waiting recovery wallet whose 72 hours have passed is the one in force, and the
+// one it replaced no longer is. promote() writes that down in the next wallet write. No scheduled job.
+function standing(rows: { id: string; anchor: string | null; at: number | null }[], now: number) {
+  const next = rows.find((w) => w.anchor === 'next')
+  const matured = next !== undefined && (next.at ?? 0) <= now
+  return { inForce: (matured ? next : rows.find((w) => w.anchor === 'current'))?.id ?? null, waiting: matured ? null : next?.id ?? null }
+}
+const anchors = async (db: D1Database, orgId: string, now: number) =>
+  standing((await db.prepare('SELECT id, anchor, anchor_effective_at AS at FROM wallets WHERE org_id = ? AND anchor IS NOT NULL').bind(orgId).all<{ id: string; anchor: string; at: number | null }>()).results, now)
+const promote = (db: D1Database, orgId: string, now: number): Sql[] => [
+  db.prepare(`UPDATE wallets SET anchor = NULL, anchor_effective_at = NULL WHERE org_id = ? AND anchor = 'current'
+              AND EXISTS (SELECT 1 FROM wallets n WHERE n.org_id = wallets.org_id AND n.anchor = 'next' AND n.anchor_effective_at <= ?)`).bind(orgId, now),
+  db.prepare(`UPDATE wallets SET anchor = 'current' WHERE org_id = ? AND anchor = 'next' AND anchor_effective_at <= ?`).bind(orgId, now),
+]
+
+export type WalletKind = 'safe' | 'custodian' | 'single_key'
+/** The live wallets of an organisation. recovery: 'in_force' (since recoveryAt), 'waiting' (in force from recoveryAt), or null. */
+export async function wallets(db: D1Database, orgId: string, now: number) {
+  const { results } = await db
+    .prepare(`SELECT w.id, w.chain_id AS chainId, w.address, w.kind, w.label, w.state, w.linked_at AS linkedAt, w.anchor, w.anchor_effective_at AS at, w.snapshot
+              FROM wallets w WHERE w.org_id = ? AND ${LIVE} ORDER BY w.rowid`)
+    .bind(orgId, now).all<{ id: string; chainId: number; address: string; kind: WalletKind; label: string; state: 'pending' | 'linked'; linkedAt: number; anchor: string | null; at: number | null; snapshot: string | null }>()
+  const a = standing(results, now)
+  return results.map(({ anchor: _, at, ...w }) => {
+    const recovery = w.id === a.inForce ? ('in_force' as const) : w.id === a.waiting ? ('waiting' as const) : null
+    return { ...w, recovery, recoveryAt: recovery ? at : null }
+  })
+}
+/** Is this address linked, or waiting for its second person, in this organisation? */
+export const walletLive = async (db: D1Database, orgId: string, chainId: number, address: string, now: number) =>
+  Boolean(await db.prepare(`SELECT 1 FROM wallets w WHERE w.org_id = ? AND w.chain_id = ? AND w.address = ? AND ${LIVE}`).bind(orgId, chainId, address, now).first())
+/** The linked wallet a recovery-wallet change is about, by its own id or by the id of the open request for it: what the caller reads on the chain before the write. */
+export const walletFor = (db: D1Database, actor: Actor, id: string, now: number) =>
+  db.prepare(`SELECT w.chain_id AS chainId, w.address, w.kind FROM wallets w WHERE w.org_id = ? AND w.state = 'linked'
+              AND (w.id = ? OR w.id = (SELECT a.subject_id FROM approvals a WHERE a.org_id = w.org_id AND a.id = ? AND a.action = 'anchor.set' AND ${OPEN_REQUEST}))`)
+    .bind(actor.orgId, id, id, now).first<{ chainId: number; address: string; kind: WalletKind }>()
+
+type Linked = { error: 'forbidden' | 'quarantine' | 'already_linked' | 'proof_used' } | { state: 'linked' | 'pending' }
+// A valid proof arrived for an intent of this seat: the first write of the whole link. Everything that decides it is
+// read here, inside the commit: the seat is still an active Owner or Admin and not in quarantine, the proof was never
+// accepted before, the address is not live. Where the 30 day rule lets one person stand for two the wallet is linked
+// at once; otherwise it is pending, with a request of that seat that a different key-role member approves.
+export async function linkWallet(
+  db: D1Database,
+  w: { orgId: string; seatId: string; chainId: number; address: string; kind: WalletKind; label: string; snapshot: string | null; nonce: string; digest: string; signature: string; now: number },
+) {
+  const id = randomId()
+  const requestId = randomId()
+  const payload = JSON.stringify({ value: null })
+  const payloadHash = await sha256Hex(payload)
+  const { now } = w
+  let outcome: Linked = { error: 'forbidden' }
+  await commit(db, w.orgId, async () => {
+    const seat = await db.prepare(`SELECT s.role, s.quarantine_until AS quarantine FROM seats s JOIN organisations o ON o.id = s.org_id AND o.state = 'active'
+                                   WHERE s.org_id = ? AND s.id = ? AND s.state = 'active'`).bind(w.orgId, w.seatId).first<{ role: Role; quarantine: number | null }>()
+    const refused = !seat || (seat.role !== 'owner' && seat.role !== 'admin') ? 'forbidden'
+      : (seat.quarantine ?? 0) > now ? 'quarantine'
+      : (await db.prepare('SELECT 1 FROM wallets WHERE proof_nonce = ?').bind(w.nonce).first()) ? 'proof_used'
+      : (await walletLive(db, w.orgId, w.chainId, w.address, now)) ? 'already_linked'
+      : null
+    if (refused) {
+      outcome = { error: refused }
+      return null
+    }
+    const direct = await alone(db, w.orgId, w.seatId, now)
+    outcome = { state: direct ? 'linked' : 'pending' }
+    const entry: Entry = { at: now, actorKind: 'seat', actorId: w.seatId, sessionId: null, action: direct ? 'wallet.link' : 'approval.request', subjectId: direct ? id : requestId, detail: direct ? 'alone' : 'wallet.link' }
+    return [entry, [
+      db.prepare(`UPDATE wallets AS w SET state = 'unlinked' WHERE w.org_id = ? AND w.state = 'pending' AND NOT ${OPEN_LINK}`).bind(w.orgId, now),
+      db.prepare(`INSERT INTO wallets (id, org_id, chain_id, address, kind, label, state, proof_nonce, proof_digest, proof_signature, proof_checked_at, linked_at, snapshot) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+        .bind(id, w.orgId, w.chainId, w.address, w.kind, w.label, direct ? 'linked' : 'pending', w.nonce, w.digest, w.signature, now, now, w.snapshot),
+      ...(direct ? [] : [db.prepare(`INSERT INTO approvals (id, org_id, action, subject_id, payload, payload_hash, requester_seat_id, state, expires_at, created_at) VALUES (?, ?, 'wallet.link', ?, ?, ?, ?, 'pending', ?, ?)`)
+        .bind(requestId, w.orgId, id, payload, payloadHash, w.seatId, now + REQUEST_MS, now)]),
+    ]]
+  })
+  return outcome as Linked
+}
+
+/** For the readiness block: the device-bound passkeys of each active Owner, and the recovery wallet in force (failing that, the one that waits). */
+export async function readiness(db: D1Database, actor: Actor, now: number) {
+  const owners = await db.prepare(`SELECT (SELECT count(*) FROM credentials k WHERE k.org_id = s.org_id AND k.seat_id = s.id AND k.state = 'active' AND k.device_bound = 1) AS keys
+                                   FROM seats s WHERE s.org_id = ? AND s.role = 'owner' AND s.state = 'active'`).bind(actor.orgId).all<{ keys: number }>()
+  const all = await wallets(db, actor.orgId, now)
+  return { owners: owners.results.map((owner) => owner.keys), wallet: all.find((w) => w.recovery === 'in_force') ?? all.find((w) => w.recovery === 'waiting') ?? null }
 }
 
 /** Frozen seats, with who froze each and when: read from the audit rows. A stop is a freeze by the seat's own replaced passkey. */
@@ -719,7 +851,8 @@ export async function auditRows(db: D1Database, actor: Actor, before: number | n
   const named = (table: string, seat: string) => `(SELECT n.display_name FROM ${table} x JOIN seats n ON n.org_id = x.org_id AND n.id = x.${seat} WHERE x.org_id = a.org_id AND x.id = a.subject_id)`
   const { results } = await db
     .prepare(`SELECT a.seq, a.at, a.action, a.detail, w.display_name AS who, a.prev_hash AS prevHash, a.hash,
-                     COALESCE(t.display_name, ${named('credentials', 'seat_id')}, ${named('enrolment_tickets', 'seat_id')}, ${named('sessions', 'seat_id')}, ${named('approvals', 'subject_id')}) AS target
+                     COALESCE(t.display_name, ${named('credentials', 'seat_id')}, ${named('enrolment_tickets', 'seat_id')}, ${named('sessions', 'seat_id')}, ${named('approvals', 'subject_id')},
+                       (SELECT x.label FROM wallets x WHERE x.org_id = a.org_id AND x.id = a.subject_id)) AS target
               FROM audit_log a LEFT JOIN seats w ON w.org_id = a.org_id AND w.id = a.actor_id LEFT JOIN seats t ON t.org_id = a.org_id AND t.id = a.subject_id
               WHERE a.org_id = ? AND (? IS NULL OR a.seq < ?) ORDER BY a.seq * ? LIMIT ?`)
     .bind(actor.orgId, before, before, limit < 0 ? 1 : -1, limit).all<AuditLine>()
@@ -748,8 +881,9 @@ export async function alertsFor(db: D1Database, actor: Actor, now: number) {
     db.prepare(`SELECT a.subject_id AS id, a.at, s.display_name FROM audit_log a JOIN seats s ON s.org_id = a.org_id AND s.id = a.actor_id
                 WHERE a.org_id = ? AND a.action = 'session.create' AND a.detail = 'ticket_killed' AND a.at > ? AND a.actor_id <> ? AND ? = 1 ORDER BY a.seq`).bind(actor.orgId, since, actor.seatId, seesAll(actor)),
     // What two people changed: told to every member but the one who approved it.
-    db.prepare(`SELECT a.seq, a.at, a.action, a.detail, a.subject_id, s.display_name FROM audit_log a LEFT JOIN seats s ON s.org_id = a.org_id AND s.id = a.subject_id
-                WHERE a.org_id = ? AND a.at > ? AND a.actor_id <> ? AND a.action IN ('seat.unfreeze', 'seat.remove', 'seat.role', 'policy.synced_keys') AND a.detail IS NOT 'invited' ORDER BY a.seq`).bind(actor.orgId, since, actor.seatId),
+    db.prepare(`SELECT a.seq, a.at, a.action, a.detail, a.subject_id, COALESCE(s.display_name, (SELECT x.label FROM wallets x WHERE x.org_id = a.org_id AND x.id = a.subject_id)) AS display_name
+                FROM audit_log a LEFT JOIN seats s ON s.org_id = a.org_id AND s.id = a.subject_id
+                WHERE a.org_id = ? AND a.at > ? AND a.actor_id <> ? AND a.action IN ('seat.unfreeze', 'seat.remove', 'seat.role', 'policy.synced_keys', 'wallet.link', 'anchor.set') AND a.detail IS NOT 'invited' ORDER BY a.seq`).bind(actor.orgId, since, actor.seatId),
   ])
   const requests = KEY_ROLES.includes(actor.role) ? (await openRequests(db, actor, now)).filter((request) => !request.mine) : []
   const waiting = (await openTickets(db, actor, now)).filter((t) => t.myStep)

@@ -3,8 +3,10 @@
   "name": "ophis-business-console",
   "main": "src/server/index.ts",
   "compatibility_date": "2026-10-21",
-  // Static pages cost no Worker request and take their headers from public/_headers. Only /api/* runs the Worker.
-  "assets": { "directory": "./dist", "binding": "ASSETS", "run_worker_first": ["/api/*"] },
+  // The Worker runs first on every path: it decides by hostname which pages a host serves (the console, or the
+  // signing page under /sign/). Console pages still take their headers from public/_headers.
+  // ponytail: one Worker request per static file. Give the signing hostname its own Worker if that ever costs.
+  "assets": { "directory": "./dist", "binding": "ASSETS", "run_worker_first": true },
   // One hostname only (security-design.md section 1, condition 6).
   "workers_dev": false,
   "preview_urls": false,

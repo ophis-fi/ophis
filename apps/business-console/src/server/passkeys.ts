@@ -6,9 +6,21 @@ import { WORDS } from './words.ts'
 // The relying-party id and the origin are constants per environment, never taken from a request.
 // The relying-party id is the full app hostname, so no sibling site can ask for the passkey.
 // A hostname is final once it is listed here: passkeys are tied to it (security-design.md, decision 2).
-export interface Config { rpId: string; origin: string }
+// The signing page has its own hostname (signOrigin), served by the same Worker: a wallet or the Safe interface
+// opens it, never the console. chains: the two JSON-RPC endpoints of each chain a wallet can be pinned to, from
+// different operators; both must agree before a contract wallet's answer counts (chain.ts).
+// ponytail: public endpoints for the local build. Production endpoints are decided later.
+export interface Config { rpId: string; origin: string; signOrigin: string; chains: Record<number, readonly [string, string]> }
 const ENVIRONMENTS: Record<string, Config> = {
-  local: { rpId: 'localhost', origin: 'http://localhost:8787' },
+  local: {
+    rpId: 'localhost', origin: 'http://localhost:8787', signOrigin: 'http://127.0.0.1:8787',
+    chains: {
+      1: ['https://ethereum-rpc.publicnode.com', 'https://eth.drpc.org'],
+      10: ['https://optimism-rpc.publicnode.com', 'https://mainnet.optimism.io'],
+      8453: ['https://base-rpc.publicnode.com', 'https://mainnet.base.org'],
+      42161: ['https://arbitrum-one-rpc.publicnode.com', 'https://arb1.arbitrum.io/rpc'],
+    },
+  },
 }
 export function configFor(environment: string): Config {
   if (!Object.hasOwn(ENVIRONMENTS, environment)) throw new Error('unknown ENVIRONMENT')
@@ -58,6 +70,25 @@ export async function challengeIsOurs(secret: string, purpose: Purpose, binding:
   if (bytes.length !== 56) return false
   if (Number(new DataView(bytes.buffer).getBigUint64(16)) < now) return false
   return crypto.subtle.verify('HMAC', await hmacKey(secret), bytes.subarray(24), macInput(purpose, binding, bytes.subarray(0, 24)))
+}
+
+// A text the server writes to itself and holds nowhere: base64url(JSON) "." base64url(HMAC), with the challenge key
+// under the text's own label, so that it never passes for a challenge or for a text of another kind.
+export async function seal(secret: string, label: string, fields: object) {
+  const body = text.encode(JSON.stringify(fields))
+  return `${toBase64Url(body)}.${toBase64Url(new Uint8Array(await crypto.subtle.sign('HMAC', await hmacKey(secret), macInput(label, '', body))))}`
+}
+/** The fields, if the MAC is ours for this label. Null otherwise: nothing of a text that fails is read. */
+export async function unseal(secret: string, label: string, sealed: string): Promise<unknown> {
+  const key = await hmacKey(secret)
+  try {
+    const [body, mac, more] = sealed.split('.')
+    const bytes = fromBase64Url(body)
+    if (more !== undefined || !(await crypto.subtle.verify('HMAC', key, fromBase64Url(mac), macInput(label, '', bytes)))) return null
+    return JSON.parse(new TextDecoder().decode(bytes))
+  } catch {
+    return null
+  }
 }
 
 // The user handle of a seat's passkeys is the seat id: random, no personal data.

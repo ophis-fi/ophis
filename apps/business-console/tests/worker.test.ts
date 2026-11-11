@@ -1,14 +1,18 @@
 // Security invariants of milestone 1. Each test here was seen to fail once with its control removed
 // (ARCHITECTURE.md, security invariants). Runs in the Workers runtime against a local D1.
 import { applyD1Migrations, env } from 'cloudflare:test'
-import { beforeAll, beforeEach, describe, expect, it } from 'vitest'
+import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
+import { decodeFunctionData, encodeFunctionResult, parseAbi, recoverAddress, serializeSignature, parseSignature, hashTypedData } from 'viem'
+import { mnemonicToAccount } from 'viem/accounts'
 import pageHeaders from '../public/_headers?raw'
 import routerSource from '../src/server/index.ts?raw'
 import dataSource from '../src/server/data.ts?raw'
 import passkeySource from '../src/server/passkeys.ts?raw'
 import * as data from '../src/server/data.ts'
 import { csvCell, EVENTS, handle, routes, type Env } from '../src/server/index.ts'
-import { challengeIsOurs, credentialHash, fromBase64Url, newChallenge, phraseFor, userHandle } from '../src/server/passkeys.ts'
+import { challengeIsOurs, configFor, credentialHash, fromBase64Url, newChallenge, phraseFor, seal, toBase64Url, userHandle } from '../src/server/passkeys.ts'
+import { colour, LIMITS, type SafeState } from '../src/server/chain.ts'
+import { LINK_ACTION, typedLink } from '../src/server/typed.ts'
 import { WORDS } from '../src/server/words.ts'
 import { softwareAuthenticator } from './authenticator.ts'
 
@@ -18,7 +22,10 @@ const START = Date.UTC(2026, 10, 10, 9)
 const TABLES = ['approvals', 'audit_log', 'credentials', 'enrolment_tickets', 'kyb_records', 'organisations', 'recovery_requests', 'sealed_items', 'seats', 'sessions', 'wallets']
 const db = env.DB
 // The challenge key is made per run: no secret lives in the repository.
-const testEnv = { DB: db, ENVIRONMENT: 'local', CHALLENGE_KEY: crypto.randomUUID() + crypto.randomUUID() } as Env
+// The static files: a stand-in that answers every path, with a header only the console's pages may keep.
+const ASSETS = { fetch: async (request: Request) => new Response(`file ${new URL(request.url).pathname}`, { headers: { 'content-type': 'text/html', 'x-frame-options': 'DENY', etag: '"1"' } }) }
+const testEnv = { DB: db, ASSETS, ENVIRONMENT: 'local', CHALLENGE_KEY: crypto.randomUUID() + crypto.randomUUID() } as unknown as Env
+const SIGN = configFor('local').signOrigin
 let now = START
 
 beforeAll(() => applyD1Migrations(db, env.MIGRATIONS))
@@ -28,18 +35,19 @@ beforeEach(() => {
 
 type Key = Awaited<ReturnType<typeof softwareAuthenticator>>
 type Answer = Parameters<Key['authenticate']>[1]
-interface Options { cookie?: string; body?: unknown; headers?: Record<string, string | null>; env?: Env }
+/** sign: the request goes to the signing host, from the signing page. */
+interface Options { cookie?: string; body?: unknown; headers?: Record<string, string | null>; env?: Env; sign?: boolean }
 
 async function call(method: string, path: string, options: Options = {}) {
   const headers = new Headers({ 'sec-fetch-site': 'same-origin' })
   if (method === 'POST') {
-    headers.set('origin', SITE.origin)
+    headers.set('origin', options.sign ? SIGN : SITE.origin)
     headers.set('content-type', 'application/json')
   }
   if (options.cookie) headers.set('cookie', options.cookie)
   for (const [name, value] of Object.entries(options.headers ?? {})) value === null ? headers.delete(name) : headers.set(name, value)
   const body = method === 'POST' ? (typeof options.body === 'string' ? options.body : JSON.stringify(options.body ?? {})) : undefined
-  const response = await handle(new Request(SITE.origin + path, { method, headers, body }), options.env ?? testEnv, () => now)
+  const response = await handle(new Request((options.sign ? SIGN : SITE.origin) + path, { method, headers, body }), options.env ?? testEnv, () => now)
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   return { status: response.status, headers: response.headers, body: (await response.json()) as any }
 }
@@ -184,6 +192,108 @@ async function crossDecide(a: Member, b: Member, what: 'approve' | 'reject' | 'c
 }
 // An environment whose database lets a competing write of the same organisation land just before each of
 // its next batch() calls: the batch then collides on the audit sequence, exactly as two requests at once do.
+// ---- milestone 4a helpers: a fake chain behind the two endpoints, and wallets that sign for real ----
+const CHAIN = 10
+const [RPC1, RPC2] = configFor('local').chains[CHAIN]
+// The public test accounts of anvil and hardhat, from their public mnemonic.
+const accounts = [0, 1, 2, 3, 4].map((addressIndex) => mnemonicToAccount('test test test test test test test test test test test junk', { addressIndex }))
+const SAFE_ABI = parseAbi([
+  'function isValidSignature(bytes32 hash, bytes signature) view returns (bytes4)', 'function getThreshold() view returns (uint256)',
+  'function getOwners() view returns (address[])', 'function getModulesPaginated(address start, uint256 pageSize) view returns (address[] array, address next)',
+])
+const ONE = '0x0000000000000000000000000000000000000001'
+// A contract wallet on the fake chain. plain: it answers isValidSignature and nothing a Safe answers.
+interface Contract extends SafeState { accepts: (digest: string, signature: string) => boolean; plain?: boolean }
+const chain = {
+  contracts: new Map<string, Contract>(),
+  calls: [] as string[],
+  // Changes what one endpoint answers: another result, or a Response or a pending promise in its place.
+  twist: (_url: string, _method: string, result: unknown, _init?: RequestInit): unknown => result,
+}
+function fakeRpc(input: RequestInfo | URL, init?: RequestInit) {
+  const { method, params } = JSON.parse(String(init?.body)) as { method: string; params: [{ to: string; data: `0x${string}` }] }
+  chain.calls.push(`${String(input)} ${method}`)
+  let result: unknown = '0xa'
+  if (method === 'eth_call') {
+    const contract = chain.contracts.get(params[0].to.toLowerCase())
+    const asked = contract && decodeFunctionData({ abi: SAFE_ABI, data: params[0].data })
+    result = !contract || !asked ? '0x' // no code at the address
+      : asked.functionName === 'isValidSignature' ? (contract.accepts(...(asked.args as [string, string])) ? encodeFunctionResult({ abi: SAFE_ABI, functionName: 'isValidSignature', result: '0x1626ba7e' }) : undefined)
+      : contract.plain ? undefined // a revert
+      : asked.functionName === 'getThreshold' ? encodeFunctionResult({ abi: SAFE_ABI, functionName: 'getThreshold', result: BigInt(contract.threshold) })
+      : asked.functionName === 'getOwners' ? encodeFunctionResult({ abi: SAFE_ABI, functionName: 'getOwners', result: contract.owners as `0x${string}`[] })
+      : encodeFunctionResult({ abi: SAFE_ABI, functionName: 'getModulesPaginated', result: [contract.modules as `0x${string}`[], ONE] })
+  }
+  const twisted = chain.twist(String(input), method, result, init)
+  if (twisted instanceof Response || twisted instanceof Promise) return Promise.resolve(twisted)
+  return Promise.resolve(Response.json(twisted === undefined ? { jsonrpc: '2.0', id: 1, error: { code: 3, message: 'execution reverted' } } : { jsonrpc: '2.0', id: 1, result: twisted }))
+}
+beforeEach(() => {
+  vi.stubGlobal('fetch', fakeRpc)
+  chain.contracts.clear()
+  chain.calls = []
+  chain.twist = (_url, _method, result) => result
+  LIMITS.timeoutMs = 5000
+})
+// A 2 of 3 Safe with no module at this address, which accepts what `accepts` says (by default every onchain message: 0x).
+function safeAt(address: string, more: Partial<Contract> = {}) {
+  const contract: Contract = { owners: accounts.slice(0, 3).map((a) => a.address.toLowerCase()).sort(), threshold: 2, modules: [], accepts: (_digest, signature) => signature === '0x', ...more }
+  chain.contracts.set(address.toLowerCase(), contract)
+  return contract
+}
+interface IntentFields { org: string; seat: string; chainId: number; wallet: string; label: string; custodian: boolean; nonce: string; issuedAt: number; expiresAt: number; site: string }
+const intentOf = (sealed: string) => JSON.parse(new TextDecoder().decode(fromBase64Url(sealed.split('.')[0]))) as IntentFields
+// What the signing page builds from the intent, as the wallet signs it. `change`: one field made different.
+const typedOf = (i: IntentFields, change: Partial<Parameters<typeof typedLink>[0]> = {}) =>
+  typedLink({ chainId: i.chainId, site: i.site, organisationId: i.org, wallet: i.wallet, nonce: i.nonce, issuedAt: i.issuedAt, expiresAt: i.expiresAt, ...change }) as never
+const askLink = (m: Holder, address: string, more: Record<string, unknown> = {}) => post('/api/wallets/intent', m, { chainId: CHAIN, address, label: 'Treasury', custodian: false, ...more })
+const prove = (intent: string, signature: string, options: Options = {}) => call('POST', '/api/proof', { sign: true, body: { intent, signature }, ...options })
+// A manager asks, the wallet signs with its own key, the signing page posts the proof.
+async function link(m: Holder, account = accounts[0], more: Record<string, unknown> = {}) {
+  const asked = await askLink(m, account.address, more)
+  expect(asked.status).toBe(200)
+  const intent = asked.body.intent as string
+  const signature = await account.signTypedData(typedOf(intentOf(intent)))
+  return { ...(await prove(intent, signature)), intent, signature }
+}
+interface WalletRow { id: string; org_id: string; state: string; kind: string; anchor: string | null; at: number | null; snapshot: string | null }
+const walletAt = async (address: string) => (await row<WalletRow>('SELECT id, org_id, state, kind, anchor, anchor_effective_at AS at, snapshot FROM wallets WHERE address = ? ORDER BY rowid DESC', address.toLowerCase()))!
+const requestFor = async (subjectId: string) => (await row<{ id: string }>(`SELECT id FROM approvals WHERE subject_id = ? AND state = 'pending'`, subjectId))!.id
+// A linked wallet. With a second person given, the link waits and that person approves it.
+async function linked(m: Holder, second?: Holder, more: Record<string, unknown> = {}, account = accounts[0]) {
+  expect((await link(m, account, more)).body).toEqual({ state: second ? 'pending' : 'linked' })
+  const wallet = await walletAt(account.address)
+  if (second) expect((await decide(second, await requestFor(wallet.id), 'approve')).status).toBe(200)
+  return wallet
+}
+// The same for a Safe, which signs onchain: the proof is the empty signature.
+async function linkedSafe(m: Holder, second?: Holder, address = accounts[4].address) {
+  safeAt(address)
+  const asked = await askLink(m, address)
+  expect((await prove(asked.body.intent, '0x')).body).toEqual({ state: second ? 'pending' : 'linked' })
+  const wallet = await walletAt(address)
+  if (second) expect((await decide(second, await requestFor(wallet.id), 'approve')).status).toBe(200)
+  return wallet
+}
+// The recovery wallet, set by one Owner and approved by a second person.
+async function recovery(o: Holder, second: Holder, walletId: string) {
+  const asked = await post(`/api/wallets/${walletId}/anchor`, o)
+  expect(asked.body).toMatchObject({ state: 'requested' })
+  expect((await decide(second, asked.body.id, 'approve')).body).toEqual({ state: 'applied' })
+}
+const walletsOf = async (m: Holder) => (await call('GET', '/api/org', { cookie: m.cookie })).body.wallets as { id: string; state: string; kind: string; address: string; recovery: string | null; recoveryAt: number | null; threshold?: number; owners?: number }[]
+// A wallet of organisation B, asked about from organisation A: not found, and no row changes anywhere.
+async function crossWallet(a: Member, b: Member, what: 'unlink' | 'anchor' | 'anchor/cancel') {
+  await addKey(a)
+  await addKey(b)
+  const { id } = await linked(b, undefined, { custodian: true })
+  if (what !== 'unlink') expect((await post(`/api/wallets/${id}/anchor`, b)).body).toEqual({ state: 'applied' })
+  const before = await snapshot()
+  expect((await post(`/api/wallets/${id}/${what}`, a)).status).toBe(404)
+  expect(await snapshot()).toBe(before)
+  expect(await walletsOf(a)).toEqual([])
+}
+
 const racing = (compete: () => Promise<unknown>, collisions = 1) => ({
   ...testEnv,
   DB: new Proxy(db, {
@@ -476,7 +586,7 @@ describe('d. request checks', () => {
       const m = await member()
       const headers = { 'sec-fetch-site': site }
       // The route table decides the list: a route added later is checked without touching this test.
-      for (const route of routes) expect((await call(route.method, route.path.replace(':id', m.sessionId), { cookie: m.cookie, headers })).status).toBe(403)
+      for (const route of routes) expect((await call(route.method, route.path.replace(':id', m.sessionId), { cookie: m.cookie, headers, sign: route.sign })).status).toBe(403)
       expect((await call('GET', '/api/me', { cookie: m.cookie })).status).toBe(200)
     })
   }
@@ -484,7 +594,10 @@ describe('d. request checks', () => {
     it(`refuses a state change with Origin ${origin ?? 'missing'}`, async () => {
       const m = await member()
       const headers = { origin }
-      for (const route of routes.filter((r) => r.method === 'POST')) expect((await call('POST', route.path.replace(':id', m.sessionId), { cookie: m.cookie, headers })).status).toBe(403)
+      for (const route of routes.filter((r) => r.method === 'POST')) expect((await call('POST', route.path.replace(':id', m.sessionId), { cookie: m.cookie, headers, sign: route.sign })).status).toBe(403)
+      // The signing host expects its own origin: the console's origin is a foreign one there, and the other way round.
+      expect((await call('POST', '/api/proof', { sign: true, headers: { origin: SITE.origin } })).status).toBe(403)
+      expect((await call('POST', '/api/signin/start', { headers: { origin: SIGN } })).status).toBe(403)
       expect((await call('GET', '/api/me', { cookie: m.cookie })).status).toBe(200)
     })
   }
@@ -500,7 +613,7 @@ describe('d. request checks', () => {
   it('a state change is a JSON POST: no other method, no other content type', async () => {
     const m = await member()
     expect(routes.filter((route) => route.method !== 'GET').every((route) => route.method === 'POST')).toBe(true)
-    expect(routes.filter((route) => route.method === 'GET').map((route) => route.path).sort()).toEqual(['/api/audit', '/api/me', '/api/org'])
+    expect(routes.filter((route) => route.method === 'GET').map((route) => route.path).sort()).toEqual(['/api/audit', '/api/me', '/api/org', '/api/readiness'])
     expect((await call('GET', '/api/signout', { cookie: m.cookie })).status).toBe(404)
     for (const type of ['text/plain', 'application/x-www-form-urlencoded', 'multipart/form-data', null]) {
       expect((await call('POST', '/api/signout', { cookie: m.cookie, headers: { 'content-type': type } })).status).toBe(415)
@@ -718,6 +831,33 @@ const isolation: Record<string, (a: Member, b: Member) => Promise<void>> = {
     expect(out.body.csv).toContain(a.name)
     expect(await count('audit_log', b.orgId)).toBe(rows)
   },
+  // Milestone 4a. B is alone in its organisation, so its wallet is linked at once.
+  'POST /api/wallets/intent': async (a, b) => {
+    await addKey(a)
+    const before = await snapshot()
+    // The organisation of an intent is the session's. One named in the body is not read.
+    const asked = await askLink(a, accounts[0].address, { orgId: b.orgId, org: b.orgId })
+    expect(intentOf(asked.body.intent)).toMatchObject({ org: a.orgId, seat: a.seatId })
+    expect(await snapshot()).toBe(before)
+  },
+  'POST /api/proof': async (a, b) => {
+    // The intent decides the organisation. A session does not, even when its cookie comes along.
+    await addKey(b)
+    const asked = await askLink(b, accounts[0].address)
+    const proved = await prove(asked.body.intent, await accounts[0].signTypedData(typedOf(intentOf(asked.body.intent))), { cookie: a.cookie })
+    expect(proved.body).toEqual({ state: 'linked' })
+    expect([await count('wallets', a.orgId), await count('wallets', b.orgId)]).toEqual([0, 1])
+  },
+  'POST /api/wallets/:id/unlink': (a, b) => crossWallet(a, b, 'unlink'),
+  'POST /api/wallets/:id/anchor': (a, b) => crossWallet(a, b, 'anchor'),
+  'POST /api/wallets/:id/anchor/cancel': (a, b) => crossWallet(a, b, 'anchor/cancel'),
+  'GET /api/readiness': async (a, b) => {
+    await addKey(b)
+    const { id } = await linked(b)
+    expect((await post(`/api/wallets/${id}/anchor`, b)).body).toEqual({ state: 'applied' })
+    expect((await call('GET', '/api/readiness', { cookie: b.cookie })).body.wallet).toMatchObject({ level: 'amber', label: 'Treasury' })
+    expect((await call('GET', '/api/readiness', { cookie: a.cookie })).body).toMatchObject({ wallet: { level: 'none', label: null }, owners: { count: 1 } })
+  },
 }
 
 describe('e. an organisation never sees another', () => {
@@ -822,7 +962,23 @@ describe('f. audit log', () => {
     'approval.cancel': { blocks: 'UPDATE ON approvals', prepare: (m) => asked(m), run: (m, p) => decide(m, p.id, 'cancel') },
     // An invited seat that never enrolled: one person removes it.
     'seat.remove': { blocks: 'UPDATE ON seats', prepare: (m) => issue(m, { displayName: 'Never Came', role: 'viewer' }), run: (m, t) => act(m, t.body.seatId, 'remove') },
+    // Milestone 4a, in an organisation of one key-role member: one person stands for two. Each phase takes another wallet.
+    'wallet.link': { blocks: 'INSERT ON wallets', run: (m) => link(m) },
+    'wallet.unlink': { blocks: 'UPDATE ON wallets', prepare: (m) => linked(m, undefined, {}, accounts[turn++ % 5]), run: (m, w) => post(`/api/wallets/${w.id}/unlink`, m) },
+    'anchor.set': { blocks: 'UPDATE ON wallets', prepare: (m) => linked(m, undefined, {}, accounts[turn++ % 5]), run: (m, w) => post(`/api/wallets/${w.id}/anchor`, m) },
+    'anchor.cancel': {
+      blocks: 'UPDATE ON wallets',
+      prepare: async (m) => {
+        if (waits) await post(`/api/wallets/${waits}/anchor/cancel`, m) // the one that still waits from the phase before
+        const w = await linked(m, undefined, {}, accounts[turn++ % 5])
+        await post(`/api/wallets/${(waits = w.id)}/anchor`, m)
+        return w
+      },
+      run: (m, w) => post(`/api/wallets/${w.id}/anchor/cancel`, m),
+    },
   }
+  let turn = 0
+  let waits = ''
   // A role change that waits for its second person, and that person.
   async function asked(m: Full) {
     const viewer = await colleague(m, 'viewer')
@@ -864,9 +1020,11 @@ describe('f. audit log', () => {
       // /api/audit/export writes its audit row and nothing else: section w proves that no file leaves without the row.
       '/api/approvals/:id/approve', '/api/approvals/:id/cancel', '/api/approvals/:id/reject', '/api/audit/export',
       '/api/enrol/finish', '/api/enrol/start', '/api/members/:id/freeze', '/api/members/:id/remove', '/api/members/:id/role', '/api/members/:id/unfreeze',
-      '/api/passkeys/:id/revoke', '/api/passkeys/finish', '/api/passkeys/start', '/api/policy', '/api/sessions/:id/revoke',
+      // /api/wallets/intent writes nothing at all (section y); /api/proof is the first write of a link.
+      '/api/passkeys/:id/revoke', '/api/passkeys/finish', '/api/passkeys/start', '/api/policy', '/api/proof', '/api/sessions/:id/revoke',
       '/api/signin/finish', '/api/signin/start', '/api/signout', '/api/stepup/finish', '/api/stepup/start', '/api/stop/finish', '/api/stop/start',
       '/api/tickets', '/api/tickets/:id/cancel', '/api/tickets/:id/confirm', '/api/tickets/:id/confirm/start',
+      '/api/wallets/:id/anchor', '/api/wallets/:id/anchor/cancel', '/api/wallets/:id/unlink', '/api/wallets/intent',
     ])
   })
 
@@ -1104,9 +1262,10 @@ describe('k. step-up: a fresh passkey check before a sensitive action', () => {
   it('the routes that need a fresh check, and the routes that need two passkeys, are these', () => {
     const paths = (flag: 'fresh' | 'twoKeys') => routes.filter((route) => route[flag]).map((route) => route.path).sort()
     const m3 = ['/api/approvals/:id/approve', '/api/approvals/:id/reject', '/api/members/:id/freeze', '/api/members/:id/remove', '/api/members/:id/role', '/api/members/:id/unfreeze']
-    expect(paths('fresh')).toEqual([...m3.slice(0, 2), '/api/audit/export', ...m3.slice(2), '/api/passkeys/:id/revoke', '/api/passkeys/finish', '/api/passkeys/start', '/api/policy', '/api/tickets', '/api/tickets/:id/cancel'])
+    const m4 = ['/api/wallets/:id/anchor', '/api/wallets/:id/anchor/cancel', '/api/wallets/:id/unlink', '/api/wallets/intent']
+    expect(paths('fresh')).toEqual([...m3.slice(0, 2), '/api/audit/export', ...m3.slice(2), '/api/passkeys/:id/revoke', '/api/passkeys/finish', '/api/passkeys/start', '/api/policy', '/api/tickets', '/api/tickets/:id/cancel', ...m4])
     // Confirming carries its own passkey check, made for the ticket.
-    expect(paths('twoKeys')).toEqual([...m3, '/api/passkeys/:id/revoke', '/api/policy', '/api/tickets', '/api/tickets/:id/cancel', '/api/tickets/:id/confirm', '/api/tickets/:id/confirm/start'])
+    expect(paths('twoKeys')).toEqual([...m3, '/api/passkeys/:id/revoke', '/api/policy', '/api/tickets', '/api/tickets/:id/cancel', '/api/tickets/:id/confirm', '/api/tickets/:id/confirm/start', ...m4])
     expect(routes.filter((route) => (route.fresh || route.twoKeys || route.settled || route.second) && route.roles === 'public')).toEqual([])
   })
 
@@ -2197,7 +2356,12 @@ describe('r. the role table', () => {
       'POST /api/policy': 'owner fresh twoKeys settled second:policy.synced_keys',
       'POST /api/approvals/:id/approve': `${key} fresh twoKeys settled`, 'POST /api/approvals/:id/reject': `${key} fresh twoKeys`, 'POST /api/approvals/:id/cancel': 'owner,admin',
       'GET /api/audit': 'owner,compliance,viewer', 'POST /api/audit/export': 'owner,compliance,viewer fresh',
+      'POST /api/wallets/intent': change, 'POST /api/wallets/:id/unlink': 'owner,admin fresh twoKeys',
+      'POST /api/wallets/:id/anchor': 'owner fresh twoKeys settled second:anchor.set', 'POST /api/wallets/:id/anchor/cancel': 'owner fresh twoKeys',
+      'GET /api/readiness': 'owner', 'POST /api/proof': 'public',
     })
+    // The signing host has one route, and it is the only one without the console.
+    expect(routes.filter((r) => r.sign).map((r) => r.path)).toEqual(['/api/proof'])
     // A route has its own handler, or it is a change for two people that the router files as a request: never both.
     for (const r of routes) expect(Boolean(r.handler) !== Boolean(r.second), r.path).toBe(true)
   })
@@ -2208,7 +2372,7 @@ describe('r. the role table', () => {
     for (const role of ['admin', 'trader', 'approver', 'compliance', 'viewer']) people[role] = await colleague(o, role)
     // Sign-out last: it ends the session the other calls need.
     const gated = routes.filter((r) => r.roles !== 'public').sort((x, y) => Number(x.path === '/api/signout') - Number(y.path === '/api/signout'))
-    expect(gated.length).toBe(routes.length - 6)
+    expect(gated.length).toBe(routes.length - 7)
     for (const route of gated) {
       for (const [role, m] of Object.entries(people)) {
         const answer = await call(route.method, route.path.replace(':id', '0'.repeat(32)), { cookie: m.cookie })
@@ -2228,15 +2392,17 @@ describe('r. the role table', () => {
   })
 
   it('a route that needs a second person changes nothing by itself: it files a request', async () => {
-    const { o, v } = await trio()
+    const { o, a, v } = await trio()
     const frozen = await colleague(o, 'trader')
     expect((await act(o, frozen.seatId, 'freeze')).status).toBe(200)
+    const wallet = await linked(o, a, { custodian: true })
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const calls: Record<string, () => Promise<{ body: any }>> = {
       'seat.unfreeze': () => act(o, frozen.seatId, 'unfreeze'),
       'seat.role': () => act(o, v.seatId, 'role', { role: 'trader' }),
       'seat.remove': () => act(o, v.seatId, 'remove'),
       'policy.synced_keys': () => post('/api/policy', o, { syncedKeys: true }),
+      'anchor.set': () => post(`/api/wallets/${wallet.id}/anchor`, o),
     }
     expect(Object.keys(calls).sort()).toEqual(routes.flatMap((r) => r.second ?? []).sort())
     const rest = TABLES.filter((table) => table !== 'approvals' && table !== 'audit_log')
@@ -2943,5 +3109,549 @@ describe('x. attacks tried by the review of milestone 3', () => {
     const added = await at(v, '/api/passkeys/finish', { label: 'Raced key', response: await key.register(start.body.options) }, () => act(o, v.seatId, 'freeze'))
     expect(added.status).toBe(409)
     expect(await credentialState(key)).toBeUndefined()
+  })
+})
+
+// ---- milestone 4a: wallets, the proof, the recovery wallet. Each test was seen to fail with its control removed. ----
+const WEEK = 7 * DAY
+const WAIT = 72 * HOUR
+const magic = encodeFunctionResult({ abi: SAFE_ABI, functionName: 'isValidSignature', result: '0x1626ba7e' })
+const builtConsole = import.meta.glob('../dist/assets/*.js', { query: '?raw', import: 'default', eager: true }) as Record<string, string>
+const signSource = import.meta.glob('../sign/*.ts', { query: '?raw', import: 'default', eager: true }) as Record<string, string>
+
+describe('y. wallets and the recovery wallet', () => {
+  it('an intent is the server\'s own text: nothing is written, the address is checked, and case variants are one wallet', async () => {
+    const o = await owner()
+    const before = await snapshot()
+    const asked = await askLink(o, accounts[0].address.toLowerCase())
+    expect(asked.status).toBe(200)
+    const intent = intentOf(asked.body.intent)
+    expect(intent).toMatchObject({ org: o.orgId, seat: o.seatId, chainId: CHAIN, wallet: accounts[0].address, label: 'Treasury', custodian: false, site: 'localhost', issuedAt: START / 1000, expiresAt: (START + WEEK) / 1000 })
+    expect(intent.nonce).toMatch(/^0x[0-9a-f]{64}$/)
+    expect(asked.body.link).toBe(`${SIGN}/sign/#${asked.body.intent}`)
+    expect(await snapshot()).toBe(before)
+    // One letter in the wrong case: the EIP-55 checksum fails.
+    const wrong = accounts[0].address.replace(/[a-f]/, (letter) => letter.toUpperCase())
+    expect(wrong).not.toBe(accounts[0].address)
+    for (const [body, error] of [[{ address: wrong }, 'address_invalid'], [{ address: '0x12' }, 'address_invalid'], [{ chainId: 5 }, 'chain_invalid'], [{ chainId: '10' }, 'chain_invalid'], [{ label: '<b>' }, 'label_invalid'], [{ custodian: 'no' }, 'invalid']] as const) {
+      expect((await askLink(o, accounts[0].address, body)).body, error).toEqual({ error })
+    }
+    // Linked in lower case, asked again in EIP-55 form: the same wallet.
+    expect((await link(o, { ...accounts[0], address: accounts[0].address.toLowerCase() as `0x${string}` })).body).toEqual({ state: 'linked' })
+    expect((await askLink(o, accounts[0].address)).body).toEqual({ error: 'already_linked' })
+    expect((await walletsOf(o)).map((w) => w.address)).toEqual([accounts[0].address])
+    expect((await row<{ address: string }>('SELECT address FROM wallets WHERE org_id = ?', o.orgId))!.address).toBe(accounts[0].address.toLowerCase())
+  })
+
+  it('the MAC is checked first: a changed intent, or a text sealed for another purpose, stops before any endpoint is asked and before any read', async () => {
+    const o = await owner()
+    const other = await member('Birchfield Capital')
+    safeAt(accounts[4].address)
+    const asked = await askLink(o, accounts[4].address)
+    const [body, mac] = (asked.body.intent as string).split('.')
+    const fields = intentOf(asked.body.intent)
+    const forged = (change: Partial<IntentFields>) => `${toBase64Url(new TextEncoder().encode(JSON.stringify({ ...fields, ...change })))}.${mac}`
+    const before = await snapshot()
+    const tries = [
+      forged({ org: other.orgId, seat: other.seatId }), forged({ wallet: accounts[1].address }), forged({ expiresAt: fields.expiresAt + 1 }), forged({ custodian: true }),
+      body, `${body}.`, `${body}.${mac}.${mac}`, `${body}.${toBase64Url(new Uint8Array(32))}`, '', 'x.y',
+      await seal(testEnv.CHALLENGE_KEY, 'other-text', fields), await newChallenge(testEnv.CHALLENGE_KEY, 'signin', '', now),
+    ]
+    // The database is closed for these calls: a refusal that needed a read would fail.
+    const closed = { ...testEnv, DB: new Proxy(db, { get: () => () => { throw new Error('the database was used') } }) }
+    for (const intent of tries) expect((await prove(intent, '0x', { env: closed })).body, intent.slice(-20)).toEqual({ error: 'intent_invalid' })
+    expect((await call('POST', '/api/proof', { sign: true, body: { intent: 5, signature: '0x' } })).status).toBe(400)
+    expect(chain.calls).toEqual([])
+    expect(await snapshot()).toBe(before)
+    expect((await prove(asked.body.intent, '0x')).body).toEqual({ state: 'linked' })
+  })
+
+  it('an intent lives 7 days, judged once the body has arrived', async () => {
+    const o = await owner()
+    const asked = await askLink(o, accounts[0].address)
+    const signature = await accounts[0].signTypedData(typedOf(intentOf(asked.body.intent)))
+    const before = await snapshot()
+    now += WEEK
+    expect((await prove(asked.body.intent, signature)).body).toEqual({ error: 'intent_expired' })
+    expect(await snapshot()).toBe(before)
+    now -= 1000
+    expect((await prove(asked.body.intent, signature)).body).toEqual({ state: 'linked' })
+  })
+
+  it('a proof is accepted once, whatever became of its wallet', async () => {
+    const o = await owner()
+    const first = await link(o)
+    expect(first.body).toEqual({ state: 'linked' })
+    const again = () => prove(first.intent, first.signature)
+    expect((await again()).body).toEqual({ error: 'proof_used' })
+    const { id } = await walletAt(accounts[0].address)
+    expect((await post(`/api/wallets/${id}/unlink`, o)).status).toBe(200)
+    const before = await snapshot()
+    expect((await again()).body).toEqual({ error: 'proof_used' })
+    expect(await snapshot()).toBe(before)
+    // The same address, asked again: a new intent, a new signature, a new row. The old row stays as history.
+    expect((await link(o)).body).toEqual({ state: 'linked' })
+    expect(await count('wallets', o.orgId)).toBe(2)
+  })
+
+  it('the wallet signs exactly these fields: another organisation, site, chain, wallet or action, or another signer, is refused and nothing is written', async () => {
+    const o = await owner()
+    const asked = await askLink(o, accounts[0].address)
+    const fields = intentOf(asked.body.intent)
+    const before = await snapshot()
+    const changed: Record<string, Parameters<typeof typedOf>[1]> = { organisation: { organisationId: '0'.repeat(32) }, site: { site: '127.0.0.1' }, chain: { chainId: 1 }, wallet: { wallet: accounts[1].address }, nonce: { nonce: `0x${'11'.repeat(32)}` }, expiry: { expiresAt: fields.expiresAt + 1 } }
+    for (const [what, change] of Object.entries(changed)) expect((await prove(asked.body.intent, await accounts[0].signTypedData(typedOf(fields, change)))).body, what).toEqual({ error: 'signature_rejected' })
+    const action = typedOf(fields) as unknown as { message: { action: string } }
+    expect(action.message.action).toBe(LINK_ACTION)
+    action.message.action = 'Replace all Owner passkeys of this organisation'
+    expect((await prove(asked.body.intent, await accounts[0].signTypedData(action as never))).body).toEqual({ error: 'signature_rejected' })
+    // The right fields, signed by another key.
+    expect((await prove(asked.body.intent, await accounts[1].signTypedData(typedOf(fields)))).body).toEqual({ error: 'signature_rejected' })
+    // The right key, the same signature in its other form (upper half of s): it recovers to the wallet, and is refused.
+    const good = await accounts[0].signTypedData(typedOf(fields))
+    const { r, s, yParity } = parseSignature(good)
+    const twin = serializeSignature({ r, s: `0x${(0xfffffffffffffffffffffffffffffffebaaedce6af48a03bbfd25e8cd0364141n - BigInt(s)).toString(16).padStart(64, '0')}`, yParity: yParity ? 0 : 1 })
+    expect(await recoverAddress({ hash: hashTypedData(typedOf(fields)), signature: twin })).toBe(accounts[0].address)
+    expect((await prove(asked.body.intent, twin)).body).toEqual({ error: 'signature_rejected' })
+    for (const signature of ['', '0x1', 'ab', `0x${'zz'.repeat(65)}`, `0x${'00'.repeat(4097)}`, 5, null]) expect((await call('POST', '/api/proof', { sign: true, body: { intent: asked.body.intent, signature } })).body, String(signature).slice(0, 8)).toEqual({ error: 'signature_invalid' })
+    expect(await snapshot()).toBe(before)
+    // A signature that recovers to the wallet needs no endpoint: none is asked, and the wallet is never read as a Safe.
+    chain.calls = []
+    safeAt(accounts[0].address)
+    expect((await prove(asked.body.intent, good)).body).toEqual({ state: 'linked' })
+    expect(chain.calls).toEqual([])
+    expect(await walletAt(accounts[0].address)).toMatchObject({ kind: 'single_key', snapshot: null })
+    expect((await row<{ d: string; s: string }>('SELECT proof_digest AS d, proof_signature AS s FROM wallets WHERE org_id = ?', o.orgId))).toEqual({ d: hashTypedData(typedOf(fields)), s: good })
+  })
+
+  it('a contract wallet is valid only when both endpoints, each on the pinned chain, return the ERC-1271 value', async () => {
+    const o = await owner()
+    const address = accounts[4].address
+    const safe = safeAt(address)
+    const asked = await askLink(o, address)
+    const digest = hashTypedData(typedOf(intentOf(asked.body.intent)))
+    const seen: string[] = []
+    safe.accepts = (hash, signature) => (seen.push(hash), signature === '0x')
+    const before = await snapshot()
+    LIMITS.timeoutMs = 50
+    const padded = new Response(`{"jsonrpc":"2.0","id":1,"result":"${magic}"${' '.repeat(LIMITS.maxBytes)}}`)
+    const twists: Record<string, typeof chain.twist> = {
+      'one endpoint says no': (url, method, result) => (url === RPC2 && method === 'eth_call' ? undefined : result),
+      'the endpoints disagree': (url, method, result) => (url === RPC1 && method === 'eth_call' ? `${magic.slice(0, -1)}1` : result),
+      'an endpoint is on another chain': (url, method, result) => (url === RPC1 && method === 'eth_chainId' ? '0x1' : result),
+      'both endpoints are on another chain': (_url, method, result) => (method === 'eth_chainId' ? '0x1' : result),
+      'an endpoint fails': (url, _method, result) => (url === RPC2 ? new Response('down', { status: 502 }) : result),
+      'an endpoint answers no JSON': (url, _method, result) => (url === RPC1 ? new Response('<html>') : result),
+      'an endpoint does not answer in time': (url, method, result, init) => (url === RPC2 && method === 'eth_call' ? new Promise((_, reject) => init!.signal!.addEventListener('abort', () => reject(new Error('aborted')))) : result),
+      'an endpoint answers too much': (url, method, result) => (url === RPC1 && method === 'eth_call' ? padded.clone() : result),
+      'the wallet says another value': (_url, method) => (method === 'eth_call' ? `0xffffffff${'0'.repeat(56)}` : '0xa'),
+      'the wallet says the value with more behind it': (_url, method) => (method === 'eth_call' ? `${magic}00` : '0xa'),
+    }
+    for (const [what, twist] of Object.entries(twists)) {
+      chain.twist = twist
+      expect((await prove(asked.body.intent, '0x')).body, what).toEqual({ error: 'signature_rejected' })
+    }
+    // A signature the wallet does not accept, and an address with no code.
+    chain.twist = (_url, _method, result) => result
+    expect((await prove(asked.body.intent, '0x1234')).body).toEqual({ error: 'signature_rejected' })
+    expect(await snapshot()).toBe(before)
+    chain.calls = []
+    expect((await prove(asked.body.intent, '0x')).body).toEqual({ state: 'linked' })
+    // The digest the wallet was asked about is the one the server built, and each endpoint said its chain first.
+    expect(new Set(seen)).toEqual(new Set([digest]))
+    expect(chain.calls.slice(0, 2).sort()).toEqual([`${RPC1} eth_chainId`, `${RPC2} eth_chainId`].sort())
+    expect(await walletAt(address)).toMatchObject({ kind: 'safe', snapshot: JSON.stringify({ threshold: 2, owners: safe.owners, modules: [] }) })
+    expect((await walletsOf(o))[0]).toMatchObject({ kind: 'safe', threshold: 2, owners: 3 })
+  })
+
+  it('the kind: a Safe when it answers as one on both endpoints, else a custodian wallet when declared, else a single key', async () => {
+    const o = await owner()
+    const kindOf = async (address: string, custodian: boolean, signature = '0x') => {
+      const asked = await askLink(o, address, { custodian })
+      expect((await prove(asked.body.intent, signature)).body, address).toEqual({ state: 'linked' })
+      return (await walletAt(address)).kind
+    }
+    safeAt(accounts[1].address, { plain: true })
+    safeAt(accounts[2].address, { plain: true })
+    safeAt(accounts[3].address)
+    expect(await kindOf(accounts[1].address, true)).toBe('custodian')
+    expect(await kindOf(accounts[2].address, false)).toBe('single_key')
+    // Declared a custodian wallet, but it is a Safe: the chain decides.
+    expect(await kindOf(accounts[3].address, true)).toBe('safe')
+    // A Safe on one endpoint only is not a Safe.
+    safeAt(accounts[4].address)
+    chain.twist = (url, method, result, init) => (url === RPC2 && method === 'eth_call' && !String(init?.body).includes('1626ba7e') ? undefined : result)
+    expect(await kindOf(accounts[4].address, false)).toBe('single_key')
+    chain.twist = (_url, _method, result) => result
+    expect((await link(o, accounts[0], { custodian: true })).body).toEqual({ state: 'linked' })
+    expect((await walletAt(accounts[0].address)).kind).toBe('custodian')
+  })
+
+  it('with colleagues a link is pending until a different key-role member approves it; the requester is read again inside the commit', async () => {
+    const { o, a, v } = await trio()
+    const admin = await colleague(o, 'admin')
+    const first = await link(admin)
+    expect(first.body).toEqual({ state: 'pending' })
+    const wallet = await walletAt(accounts[0].address)
+    expect(wallet).toMatchObject({ state: 'pending', kind: 'single_key' })
+    const id = await requestFor(wallet.id)
+    expect(await row('SELECT action, requester_seat_id, checker_seat_id, state, expires_at FROM approvals WHERE id = ?', id)).toEqual({ action: 'wallet.link', requester_seat_id: admin.seatId, checker_seat_id: null, state: 'pending', expires_at: now + WEEK })
+    expect(await lastAudit(o.orgId)).toEqual({ action: 'approval.request', actor_id: admin.seatId, subject_id: id, detail: 'wallet.link' })
+    // Every role sees the wallet list; the request is with the others.
+    expect(await walletsOf(v)).toMatchObject([{ id: wallet.id, state: 'pending', recovery: null }])
+    expect((await requestsOf(a)).find((r) => r.id === id)).toMatchObject({ kind: 'wallet.link', subjectId: wallet.id, mine: false })
+    expect((await decide(admin, id, 'approve')).body).toEqual({ error: 'own_request' })
+    expect((await decide(v, id, 'approve')).status).toBe(403)
+    expect((await walletAt(accounts[0].address)).state).toBe('pending')
+    now += HOUR
+    for (const m of [o, a]) await again(m)
+    expect((await decide(a, id, 'approve')).body).toEqual({ state: 'applied' })
+    expect(await walletAt(accounts[0].address)).toMatchObject({ state: 'linked' })
+    expect(await lastAudit(o.orgId)).toEqual({ action: 'wallet.link', actor_id: a.seatId, subject_id: wallet.id, detail: null })
+    expect(await approvalOf(id)).toEqual({ state: 'applied', checker_seat_id: a.seatId })
+    expect((await alertsOf(o)).find((alert) => alert.what === 'wallet.link')).toMatchObject({ kind: 'changed', name: 'Treasury' })
+
+    // The intent names its seat. What that seat may do is read when the proof arrives, inside the commit.
+    await again(admin)
+    const asked = await askLink(admin, accounts[1].address)
+    const signature = await accounts[1].signTypedData(typedOf(intentOf(asked.body.intent)))
+    const seat = (sql: string, ...values: unknown[]) => db.prepare(`UPDATE seats SET ${sql} WHERE id = ?`).bind(...values, admin.seatId).run()
+    const before = async () => snapshot(['wallets', 'approvals', 'audit_log'])
+    const untouched = await before()
+    await seat('quarantine_until = ?', now + HOUR)
+    expect((await prove(asked.body.intent, signature)).body).toEqual({ error: 'quarantine' })
+    await seat(`quarantine_until = NULL, role = 'trader'`)
+    expect((await prove(asked.body.intent, signature)).body).toEqual({ error: 'forbidden' })
+    await seat(`role = 'admin', state = 'frozen'`)
+    expect((await prove(asked.body.intent, signature)).body).toEqual({ error: 'forbidden' })
+    expect(await before()).toBe(untouched)
+    // A seat that was lowered at the same instant: the plan reads it again.
+    await seat(`state = 'active'`)
+    const lowered = racing(() => seat(`role = 'viewer'`).then(() => data.revokeSession(db, { orgId: o.orgId, seatId: o.seatId, sessionId: o.sessionId, role: 'owner', quarantineUntil: null, country: null, asn: null }, o.sessionId, 'session.signout', now)))
+    expect((await prove(asked.body.intent, signature, { env: lowered })).body).toEqual({ error: 'forbidden' })
+    expect(await count('wallets', o.orgId)).toBe(1)
+  })
+
+  it('a reject, a cancel and the 7 days leave no linked wallet, and the address can be asked again', async () => {
+    const { o, a } = await trio()
+    const ends: Record<string, (id: string) => Promise<unknown>> = {
+      reject: (id) => decide(a, id, 'reject'), cancel: (id) => decide(o, id, 'cancel'),
+      expiry: async () => { now += WEEK; await again(o); await again(a) },
+      frozen: () => db.prepare(`UPDATE approvals SET state = 'cancelled' WHERE org_id = ? AND state = 'pending'`).bind(o.orgId).run(), // what a freeze of the requester does (closeOpen)
+    }
+    for (const [what, end] of Object.entries(ends)) {
+      expect((await link(o)).body, what).toEqual({ state: 'pending' })
+      const wallet = await walletAt(accounts[0].address)
+      const id = await requestFor(wallet.id)
+      await end(id)
+      expect(await walletsOf(o), what).toEqual([])
+      expect((await decide(a, id, 'approve')).status, what).toBe(404)
+      expect((await walletAt(accounts[0].address)).state, what).toBe('pending')
+    }
+    // Two intents for one address, both proved: the first is live, the second is refused inside the commit.
+    const [one, two] = [await askLink(o, accounts[0].address), await askLink(o, accounts[0].address)]
+    const sign = (asked: { body: { intent: string } }) => accounts[0].signTypedData(typedOf(intentOf(asked.body.intent)))
+    expect((await prove(one.body.intent, await sign(one))).body).toEqual({ state: 'pending' })
+    expect((await prove(two.body.intent, await sign(two))).body).toEqual({ error: 'already_linked' })
+    // The rows that ended are history: unlinked now, each with its own nonce.
+    expect((await db.prepare('SELECT state FROM wallets WHERE org_id = ? ORDER BY rowid').bind(o.orgId).all()).results.map((w) => w.state)).toEqual(['unlinked', 'unlinked', 'unlinked', 'unlinked', 'pending'])
+  })
+
+  it('in an organisation of one key-role member a wallet is linked at once; a colleague of the last 30 days ends that', async () => {
+    const o = await owner()
+    await colleague(o, 'viewer')
+    expect((await link(o)).body).toEqual({ state: 'linked' })
+    const wallet = await walletAt(accounts[0].address)
+    expect(await lastAudit(o.orgId)).toEqual({ action: 'wallet.link', actor_id: o.seatId, subject_id: wallet.id, detail: 'alone' })
+    expect(await count('approvals', o.orgId)).toBe(0)
+    const a = await colleague(o, 'approver')
+    await db.prepare(`UPDATE seats SET state = 'frozen' WHERE id = ?`).bind(a.seatId).run()
+    expect((await link(o, accounts[1])).body).toEqual({ state: 'pending' })
+  })
+
+  it('unlink: one Owner or Admin, also in quarantine, and never the recovery wallet, in force or waiting', async () => {
+    const { o, a, v } = await trio()
+    const admin = await colleague(o, 'admin')
+    const first = await linked(o, a, { custodian: true })
+    const second = await linked(o, a, { custodian: true }, accounts[1])
+    const unlink = (m: Holder, id: string) => post(`/api/wallets/${id}/unlink`, m)
+    expect((await unlink(v, first.id)).body).toEqual({ error: 'forbidden' })
+    expect((await unlink(a, first.id)).body).toEqual({ error: 'forbidden' })
+    await recovery(o, a, first.id)
+    expect(await walletsOf(o)).toMatchObject([{ id: first.id, recovery: 'waiting', recoveryAt: now + WAIT }, { id: second.id, recovery: null, recoveryAt: null }])
+    const before = await snapshot()
+    expect((await unlink(o, first.id)).body).toEqual({ error: 'recovery_wallet' })
+    now += WAIT
+    for (const m of [o, a, admin]) await again(m)
+    expect((await walletsOf(o))[0]).toMatchObject({ recovery: 'in_force', recoveryAt: now })
+    expect((await unlink(admin, first.id)).body).toEqual({ error: 'recovery_wallet' })
+    expect(await snapshot(['wallets', 'approvals'])).toBe(JSON.stringify({ wallets: JSON.parse(before).wallets, approvals: JSON.parse(before).approvals }))
+    // The other wallet: an Admin alone, in quarantine too. A request that waited on it is closed.
+    const asked = await post(`/api/wallets/${second.id}/anchor`, o)
+    await db.prepare('UPDATE seats SET quarantine_until = ? WHERE id = ?').bind(now + HOUR, admin.seatId).run()
+    expect((await unlink(admin, second.id)).body).toEqual({ state: 'applied' })
+    expect(await lastAudit(o.orgId)).toEqual({ action: 'wallet.unlink', actor_id: admin.seatId, subject_id: second.id, detail: null })
+    expect((await walletAt(accounts[1].address)).state).toBe('unlinked')
+    expect((await approvalOf(asked.body.id))!.state).toBe('cancelled')
+    expect((await unlink(admin, second.id)).status).toBe(404)
+    expect((await walletsOf(o)).map((w) => w.id)).toEqual([first.id])
+  })
+
+  it('the recovery wallet: an Owner asks, a different key-role member approves, and it is in force 72 hours later, not before', async () => {
+    const { o, a } = await trio()
+    const admin = await colleague(o, 'admin')
+    const first = await linked(o, a, { custodian: true })
+    const second = await linked(o, a, { custodian: true }, accounts[1])
+    const set = (m: Holder, id: string) => post(`/api/wallets/${id}/anchor`, m)
+    expect((await set(admin, first.id)).body).toEqual({ error: 'forbidden' })
+    const asked = await set(o, first.id)
+    expect(asked.body).toMatchObject({ state: 'requested', notBefore: null })
+    expect(await walletAt(accounts[0].address)).toMatchObject({ anchor: null, at: null })
+    expect((await decide(o, asked.body.id, 'approve')).body).toEqual({ error: 'own_request' })
+    expect((await decide(a, asked.body.id, 'approve')).body).toEqual({ state: 'applied' })
+    expect(await lastAudit(o.orgId)).toEqual({ action: 'anchor.set', actor_id: a.seatId, subject_id: first.id, detail: null })
+    expect(await walletAt(accounts[0].address)).toMatchObject({ anchor: 'next', at: now + WAIT })
+    expect((await alertsOf(admin)).find((alert) => alert.what === 'anchor.set')).toMatchObject({ kind: 'changed', name: 'Treasury' })
+    // One change at a time, and not the same wallet twice.
+    expect((await set(o, second.id)).body).toEqual({ error: 'change_waiting' })
+    now += WAIT - 1
+    for (const m of [o, a]) await again(m)
+    expect((await walletsOf(o))[0]).toMatchObject({ recovery: 'waiting' })
+    expect((await call('GET', '/api/readiness', { cookie: o.cookie })).body.wallet).toMatchObject({ level: 'amber', at: START + WAIT })
+    now += 1
+    expect((await walletsOf(o))[0]).toMatchObject({ recovery: 'in_force', recoveryAt: now })
+    expect((await set(o, first.id)).body).toEqual({ error: 'invalid' })
+    // No scheduled job: the table still says "next". The next wallet write records what the reads already computed.
+    expect((await walletAt(accounts[0].address)).anchor).toBe('next')
+    // A replacement: the one in force stays in force for the 72 hours of the new one, and then no longer is.
+    await recovery(o, a, second.id)
+    expect([(await walletAt(accounts[0].address)).anchor, (await walletAt(accounts[1].address)).anchor]).toEqual(['current', 'next'])
+    expect((await walletsOf(o)).map((w) => w.recovery)).toEqual(['in_force', 'waiting'])
+    now += WAIT
+    await again(o)
+    expect((await walletsOf(o)).map((w) => w.recovery)).toEqual([null, 'in_force'])
+    expect((await post(`/api/wallets/${first.id}/unlink`, o)).body).toEqual({ state: 'applied' })
+    expect(await walletAt(accounts[0].address)).toMatchObject({ state: 'unlinked', anchor: null, at: null })
+    expect(await walletAt(accounts[1].address)).toMatchObject({ anchor: 'current', at: now })
+  })
+
+  it('during the 72 hours any Owner cancels the change, also in quarantine; nobody else does, and not after', async () => {
+    const { o, a } = await trio()
+    const admin = await colleague(o, 'admin')
+    const o2 = await colleague(o, 'owner')
+    const first = await linked(o, a, { custodian: true })
+    const second = await linked(o, a, { custodian: true }, accounts[1])
+    const cancel = (m: Holder, id: string) => post(`/api/wallets/${id}/anchor/cancel`, m)
+    expect((await cancel(o, first.id)).status).toBe(404)
+    await recovery(o, a, first.id)
+    expect((await cancel(admin, first.id)).body).toEqual({ error: 'forbidden' })
+    expect((await cancel(a, first.id)).body).toEqual({ error: 'forbidden' })
+    expect((await cancel(o2, second.id)).status).toBe(404)
+    expect((await walletAt(accounts[0].address)).anchor).toBe('next')
+    await db.prepare('UPDATE seats SET quarantine_until = ? WHERE id = ?').bind(now + HOUR, o2.seatId).run()
+    expect((await cancel(o2, first.id)).body).toEqual({ state: 'applied' })
+    expect(await lastAudit(o.orgId)).toEqual({ action: 'anchor.cancel', actor_id: o2.seatId, subject_id: first.id, detail: null })
+    expect(await walletAt(accounts[0].address)).toMatchObject({ state: 'linked', anchor: null, at: null })
+    // An Owner lowered at the same instant does not cancel: the role is read inside the commit.
+    await recovery(o, a, first.id)
+    const lowered = racing(() => db.batch([db.prepare(`UPDATE seats SET role = 'admin' WHERE id = ?`).bind(o.seatId), db.prepare(`INSERT INTO audit_log SELECT org_id, seq + 1, at, actor_kind, actor_id, session_id, action, subject_id, detail, country, asn, hash, hash || 'x' FROM audit_log WHERE org_id = ? ORDER BY seq DESC LIMIT 1`).bind(o.orgId)]))
+    expect((await call('POST', `/api/wallets/${first.id}/anchor/cancel`, { cookie: o.cookie, env: lowered })).body).toEqual({ error: 'forbidden' })
+    await db.prepare(`UPDATE seats SET role = 'owner' WHERE id = ?`).bind(o.seatId).run()
+    // In force: it is replaced by two people, not cancelled by one.
+    now += WAIT
+    await again(o)
+    expect((await cancel(o, first.id)).status).toBe(404)
+    expect((await walletsOf(o))[0]).toMatchObject({ recovery: 'in_force' })
+  })
+
+  it('a seat in quarantine asks for no link and no recovery wallet, and approves none', async () => {
+    const { o, a } = await trio()
+    const wallet = await linked(o, a, { custodian: true })
+    const asked = await post(`/api/wallets/${wallet.id}/anchor`, o)
+    const quarantine = (seatId: string, until: number | null) => db.prepare('UPDATE seats SET quarantine_until = ? WHERE id = ?').bind(until, seatId).run()
+    await quarantine(o.seatId, now + HOUR)
+    await quarantine(a.seatId, now + HOUR)
+    const before = await snapshot()
+    expect((await askLink(o, accounts[1].address)).body).toEqual({ error: 'quarantine' })
+    expect((await post(`/api/wallets/${wallet.id}/anchor`, o)).body).toEqual({ error: 'quarantine' })
+    expect((await decide(a, asked.body.id, 'approve')).body).toEqual({ error: 'quarantine' })
+    expect(await snapshot()).toBe(before)
+  })
+
+  it('a single key is a recovery wallet only where one person stands for two; there it is set by that one person', async () => {
+    const { o, a } = await trio()
+    const key = await linked(o, a)
+    expect(key.kind).toBe('single_key')
+    const before = await snapshot()
+    expect((await post(`/api/wallets/${key.id}/anchor`, o)).body).toEqual({ error: 'single_key' })
+    expect(await snapshot()).toBe(before)
+    // Asked while alone, approved once a colleague exists: judged again at the approval.
+    const solo = await owner('Solo Vaults')
+    expect((await link(solo, accounts[1])).body).toEqual({ state: 'linked' })
+    const own = await walletAt(accounts[1].address)
+    expect((await post(`/api/wallets/${own.id}/anchor`, solo)).body).toEqual({ state: 'applied' })
+    expect(await lastAudit(solo.orgId)).toEqual({ action: 'anchor.set', actor_id: solo.seatId, subject_id: own.id, detail: 'alone' })
+    expect(await walletAt(accounts[1].address)).toMatchObject({ anchor: 'next', at: now + WAIT })
+    expect((await call('GET', '/api/readiness', { cookie: solo.cookie })).body).toMatchObject({ wallet: { level: 'amber', why: 'single_key' }, overall: 'at_risk', step: 'second_owner' })
+    const { o: o3, a: a3 } = await trio()
+    const stale = await linked(o3, a3, {}, accounts[2])
+    const id = data.randomId()
+    await db.prepare(`INSERT INTO approvals (id, org_id, action, subject_id, payload, payload_hash, requester_seat_id, state, expires_at, created_at) VALUES (?, ?, 'anchor.set', ?, '{"value":null}', 'x', ?, 'pending', ?, ?)`).bind(id, o3.orgId, stale.id, o3.seatId, now + WEEK, now).run()
+    expect((await decide(a3, id, 'approve')).body).toEqual({ error: 'single_key' })
+    expect((await walletAt(accounts[2].address)).anchor).toBeNull()
+  })
+
+  it('a Safe is read on both endpoints when it becomes the recovery wallet: the snapshot is of that moment, and without it nothing is applied', async () => {
+    const { o, a } = await trio()
+    const address = accounts[4].address
+    const wallet = await linkedSafe(o, a)
+    const safe = chain.contracts.get(address.toLowerCase())!
+    const asked = await post(`/api/wallets/${wallet.id}/anchor`, o)
+    expect(asked.body).toMatchObject({ state: 'requested' })
+    // The owners change between the request and the approval.
+    safe.owners = [accounts[1].address.toLowerCase(), accounts[3].address.toLowerCase()].sort()
+    chain.twist = (url, method, result) => (url === RPC2 && method === 'eth_call' ? undefined : result)
+    const before = await snapshot()
+    expect((await decide(a, asked.body.id, 'approve')).body).toEqual({ error: 'wallet_unreadable' })
+    expect(await snapshot()).toBe(before)
+    chain.twist = (_url, _method, result) => result
+    expect((await decide(a, asked.body.id, 'approve')).body).toEqual({ state: 'applied' })
+    expect(await walletAt(address)).toMatchObject({ anchor: 'next', snapshot: JSON.stringify({ threshold: 2, owners: safe.owners, modules: [] }) })
+    // Asked while the endpoints disagree: no request is filed.
+    const other = await linkedSafe(o, a, accounts[3].address)
+    await post(`/api/wallets/${wallet.id}/anchor/cancel`, o)
+    chain.twist = (url, method, result) => (url === RPC1 && method === 'eth_chainId' ? '0x1' : result)
+    expect((await post(`/api/wallets/${other.id}/anchor`, o)).body).toEqual({ error: 'wallet_unreadable' })
+  })
+
+  it('the colour table: green is a Safe in force, 2 or more of its owners, no module, unchanged since its approval; every other recovery wallet is amber', async () => {
+    const owners = ['0xa', '0xb', '0xc']
+    const live: SafeState = { owners, threshold: 2, modules: [] }
+    const snapshotOf = JSON.stringify(live)
+    const safe = { kind: 'safe', snapshot: snapshotOf, inForce: true }
+    const table: [string | null, Parameters<typeof colour>[0], SafeState | null][] = [
+      [null, safe, live],
+      [null, safe, { ...live, owners: [...owners] }],
+      ['waiting', { ...safe, inForce: false }, live],
+      ['unreadable', safe, null],
+      ['module', safe, { ...live, modules: ['0xd'] }],
+      ['threshold', { ...safe, snapshot: JSON.stringify({ ...live, threshold: 1 }) }, { ...live, threshold: 1 }],
+      ['changed', safe, { ...live, threshold: 3 }],
+      ['changed', safe, { ...live, owners: ['0xa', '0xb', '0xd'] }],
+      ['changed', safe, { ...live, owners: ['0xa', '0xb'] }],
+      ['changed', { ...safe, snapshot: null }, live],
+      ['custodian', { ...safe, kind: 'custodian' }, live],
+      ['single_key', { ...safe, kind: 'single_key' }, live],
+    ]
+    for (const [why, wallet, state] of table) expect(colour(wallet, state), `${why} ${JSON.stringify(state)}`).toEqual({ level: why ? 'amber' : 'green', why })
+  })
+
+  it('readiness, for an Owner, read from both endpoints on demand: Ready, At risk with the next step, or Not recoverable', async () => {
+    const o = await member()
+    const ready = async (m: Holder = o) => (await call('GET', '/api/readiness', { cookie: m.cookie })).body
+    // One Owner with one key and no recovery wallet.
+    expect(await ready()).toEqual({ owners: { level: 'red', count: 1 }, wallet: { level: 'none', why: null, label: null, at: null }, overall: 'not_recoverable', step: 'recovery_wallet' })
+    expect((await addKey(o)).status).toBe(200)
+    expect(await ready()).toMatchObject({ owners: { level: 'amber', count: 1 }, overall: 'not_recoverable' })
+    // A Safe as recovery wallet: amber while it waits, green once in force.
+    const address = accounts[4].address
+    const wallet = await linkedSafe(o)
+    const safe = chain.contracts.get(address.toLowerCase())!
+    expect((await post(`/api/wallets/${wallet.id}/anchor`, o)).body).toEqual({ state: 'applied' })
+    chain.calls = []
+    expect(await ready()).toMatchObject({ wallet: { level: 'amber', why: 'waiting', label: 'Treasury', at: now + WAIT }, overall: 'at_risk', step: 'second_owner' })
+    expect(chain.calls).toEqual([])
+    now += WAIT
+    await again(o)
+    expect(await ready()).toEqual({ owners: { level: 'amber', count: 1 }, wallet: { level: 'green', why: null, label: 'Treasury', at: now, threshold: 2, owners: 3 }, overall: 'ready', step: null })
+    expect(chain.calls.length).toBeGreaterThan(0)
+    // What the chain says now decides: a module, a threshold of one, other owners, or endpoints that disagree.
+    safe.modules = [accounts[3].address.toLowerCase()]
+    expect(await ready()).toMatchObject({ wallet: { level: 'amber', why: 'module' }, overall: 'at_risk', step: 'second_owner' })
+    safe.modules = []
+    safe.threshold = 1
+    expect((await ready()).wallet).toMatchObject({ level: 'amber', why: 'threshold' })
+    safe.threshold = 2
+    safe.owners = [...safe.owners.slice(1), accounts[3].address.toLowerCase()].sort()
+    expect((await ready()).wallet).toMatchObject({ level: 'amber', why: 'changed' })
+    chain.twist = (url, method, result) => (url === RPC2 && method === 'eth_call' ? `0x${'0'.repeat(63)}3` : result)
+    expect((await ready()).wallet).toMatchObject({ level: 'amber', why: 'unreadable' })
+    // Owners: a second Owner with two keys is green and Ready whatever the wallet; one of them with one key is red.
+    const o2 = await colleague(o, 'owner')
+    expect(await ready(o2)).toMatchObject({ owners: { level: 'green', count: 2 }, overall: 'ready', step: null })
+    await db.prepare(`UPDATE credentials SET state = 'revoked' WHERE id = ?`).bind(o2.key2.id).run()
+    expect(await ready()).toMatchObject({ owners: { level: 'red', count: 2 }, overall: 'at_risk', step: 'second_key' })
+    // A synced passkey does not count for an Owner; a frozen Owner is not counted.
+    await db.prepare(`UPDATE credentials SET state = 'active', device_bound = 0 WHERE id = ?`).bind(o2.key2.id).run()
+    expect((await ready()).owners).toEqual({ level: 'red', count: 2 })
+    await db.prepare(`UPDATE seats SET state = 'frozen' WHERE id = ?`).bind(o2.seatId).run()
+    expect((await ready()).owners).toEqual({ level: 'amber', count: 1 })
+  })
+
+  it('each host serves its own: the signing host the signing page and the proof route, the console host everything else', async () => {
+    const o = await owner()
+    const get = async (origin: string, path: string, headers: Record<string, string> = {}) => {
+      const response = await handle(new Request(origin + path, { headers: { 'sec-fetch-site': 'same-origin', ...headers } }), testEnv, () => now)
+      return { status: response.status, headers: response.headers, text: await response.text() }
+    }
+    // The signing page: only under /sign/ on the signing host, with its own policy, and it may be framed by Safe only.
+    for (const path of ['/sign', '/sign/', '/sign/manifest.json', '/sign/assets/index-abc.js', '/sign/icon.svg']) {
+      const page = await get(SIGN, path)
+      expect([page.status, page.text], path).toEqual([200, `file ${path}`])
+      expect(Object.fromEntries(page.headers), path).toEqual({
+        'content-security-policy': "default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self'; connect-src 'self'; frame-ancestors https://app.safe.global https://*.safe.global",
+        'cache-control': 'no-cache', 'x-content-type-options': 'nosniff', 'referrer-policy': 'no-referrer', 'strict-transport-security': 'max-age=63072000',
+        'content-type': 'text/html', etag: '"1"', ...(path === '/sign/manifest.json' && { 'access-control-allow-origin': '*' }),
+      })
+      expect((await get(SITE.origin, path)).status, path).toBe(404)
+    }
+    // The console's pages: not on the signing host. On their own host they pass through untouched.
+    for (const path of ['/', '/index.html', '/assets/index-abc.js', '/ophis-icon.svg', '/signs', '/sign.html']) {
+      expect((await get(SIGN, path)).status, path).toBe(404)
+      const page = await get(SITE.origin, path)
+      expect([page.status, page.text, page.headers.get('x-frame-options'), page.headers.get('access-control-allow-origin')], path).toEqual([200, `file ${path}`, 'DENY', null])
+    }
+    // Every console route is refused on the signing host, with a live session cookie too; the proof route is refused on the console host.
+    const touched = await snapshot(['sessions'])
+    now += 2 * MIN
+    for (const route of routes.filter((r) => !r.sign)) {
+      const answer = await call(route.method, route.path.replace(':id', o.sessionId), { cookie: o.cookie, sign: true })
+      expect([answer.status, answer.body], route.path).toEqual([404, { error: 'not_found' }])
+    }
+    expect((await call('POST', '/api/proof', { body: { intent: 'x', signature: '0x' } })).status).toBe(404)
+    // No cookie is read on the signing host: the session's idle clock, which any read of it moves, did not move.
+    expect((await prove('x', '0x', { cookie: o.cookie })).status).toBe(400)
+    expect(await snapshot(['sessions'])).toBe(touched)
+    expect((await call('GET', '/api/me', { cookie: o.cookie })).status).toBe(200)
+    expect(await snapshot(['sessions'])).not.toBe(touched)
+    // The proof route grants no cross-origin access and carries the API headers.
+    const refused = await prove('x', '0x')
+    expect([refused.headers.get('access-control-allow-origin'), refused.headers.get('content-security-policy')]).toEqual([null, "default-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'"])
+  })
+
+  it('the schema keeps one live row per address, one accepted proof per nonce, and the states of a wallet', async () => {
+    const o = await owner()
+    await linked(o)
+    const copy = (change: string) => db.prepare(`INSERT INTO wallets (id, org_id, chain_id, address, kind, label, state, proof_nonce, proof_digest, proof_signature, proof_checked_at, linked_at)
+      SELECT ${change} FROM wallets WHERE org_id = ? LIMIT 1`).bind(o.orgId).run()
+    const columns = (state: string, nonce: string, chain = 'chain_id') => `'${data.randomId()}', org_id, ${chain}, address, kind, label, '${state}', ${nonce}, proof_digest, proof_signature, proof_checked_at, linked_at`
+    await expect(copy(columns('linked', `'n1'`))).rejects.toThrow(/UNIQUE/)
+    await expect(copy(columns('pending', `'n2'`))).rejects.toThrow(/UNIQUE/)
+    await expect(copy(columns('unlinked', 'proof_nonce'))).rejects.toThrow(/UNIQUE/)
+    await expect(copy(columns('gone', `'n3'`))).rejects.toThrow(/CHECK/)
+    await copy(columns('unlinked', `'n4'`))
+    await copy(columns('linked', `'n5'`, '1'))
+    expect(await count('wallets', o.orgId)).toBe(3)
+  })
+
+  it('the console holds no wallet code: its built bundle and its sources never name viem, the Safe SDK or a wallet call', () => {
+    const bundle = Object.values(builtConsole).join('\n')
+    expect(bundle.length, 'build the app first: pnpm build').toBeGreaterThan(50_000)
+    expect(bundle).toContain('Ophis is a software provider')
+    for (const mark of ['eth_signTypedData', 'eth_requestAccounts', 'wallet_switchEthereumChain', 'safe-apps-sdk', 'getOffChainSignature', 'secp256k1', 'isValidSignature', 'EIP712Domain']) expect(bundle, mark).not.toContain(mark)
+    // The signing page does hold it, and nothing of the console's session.
+    const page = Object.values(signSource).join('\n')
+    expect(page).toContain('eth_signTypedData_v4')
+    expect(page).not.toMatch(/document\.cookie|credentials|\/api\/(?!proof)/)
   })
 })

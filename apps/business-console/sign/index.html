@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="en" data-theme="light">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>Ophis Business: wallet signature</title>
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+</head>
+<body>
+<header class="bar"><span class="brand"><img src="icon.svg" alt="" width="26" height="26">ophis.<small>Business</small></span></header>
+<main class="sign">
+  <div>
+    <span class="cap eyebrow">Wallet signature</span>
+    <h1 class="h-page">Link a wallet <em>with one signature</em>.</h1>
+    <p class="lede">A member of your organisation asked to link a wallet in the Ophis Business console. This page asks that wallet to sign a message. It moves no funds. It holds no session and cannot read or change anything in the console.</p>
+  </div>
+  <form id="paste" class="panel">
+    <label class="field">Request code, or the whole link
+      <textarea class="input mono" id="code" rows="4" required spellcheck="false" autocomplete="off"></textarea>
+    </label>
+    <div><button class="btn primary md" type="submit">Read the request</button></div>
+  </form>
+  <section id="request" class="panel" aria-labelledby="rq-h" hidden>
+    <h2 class="h-panel" id="rq-h">What the wallet will sign</h2>
+    <dl class="kv">
+      <dt>Action</dt><dd id="f-action"></dd>
+      <dt>Site</dt><dd id="f-site"></dd>
+      <dt>Organisation id</dt><dd id="f-org" class="mono"></dd>
+      <dt>Chain</dt><dd id="f-chain"></dd>
+      <dt>Wallet</dt><dd id="f-wallet" class="mono"></dd>
+      <dt>Expires</dt><dd id="f-expires"></dd>
+    </dl>
+    <p class="fine">Your wallet shows the same fields. Sign only if they match, and if a colleague you know asked for this link.</p>
+    <div class="methods wide">
+      <button id="by-wallet" class="btn primary" type="button">Sign with the wallet in this browser</button>
+      <button id="by-safe" class="btn primary" type="button" hidden>Sign with this Safe</button>
+      <button id="check" class="btn ghost" type="button">Check again</button>
+    </div>
+    <p class="fine">"Check again" is for a Safe that signed onchain: press it once the owners have executed the transaction. It sends no signature, and the server asks the Safe.</p>
+    <p id="status" class="note" role="status" hidden></p>
+  </section>
+</main>
+<footer class="foot-line">Ophis is a software provider. It is not a crypto-asset service provider.</footer>
+<script type="module" src="main.ts"></script>
+</body>
+</html>
