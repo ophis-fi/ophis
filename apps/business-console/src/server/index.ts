@@ -6,8 +6,9 @@ import { CHAIN_NAME, typedLink, typedProof, type ProofKind } from './typed.ts'
 import { ask } from './support.ts'
 import { activateIntent, activationIntent, activationProof, apply, applyCheck, onboarding, ONBOARDING_EVENTS, operator, OPERATOR, submit } from './onboarding.ts'
 import { WORDS } from './words.ts'
+import { authorizeUrl, exchange, IDPS, newFlow, PROVIDERS, verifyIdToken, type Provider } from './oidc.ts'
 
-export interface Env { DB: D1Database; ASSETS: Fetcher; ENVIRONMENT: string; CHALLENGE_KEY: string }
+export interface Env { DB: D1Database; ASSETS: Fetcher; ENVIRONMENT: string; CHALLENGE_KEY: string; MICROSOFT_CLIENT_SECRET?: string; GOOGLE_CLIENT_SECRET?: string }
 
 const IDLE_MS = 15 * 60_000
 const ABSOLUTE_MS = 12 * 60 * 60_000
@@ -58,6 +59,8 @@ interface Route {
   second?: data.Kind; sign?: boolean; can?: string; handler?: (c: Context) => Promise<Response>
   /** Milestone 5: open to an organisation that is not yet verified. Every other signed-in route answers 403 "unverified" there. */
   unverified?: boolean
+  /** Company sign-in: the one route a provider sends the browser back to. It takes a cross-site navigation, and has gates of its own. */
+  callback?: boolean
 }
 
 const json = (status: number, body: unknown, headers: Record<string, string> = {}) => Response.json(body, { status, headers })
@@ -67,7 +70,7 @@ const NAME = /^[\p{L}\p{N} .'-]{1,60}$/u
 
 const mustBeDeviceBound = (t: { role: data.Role; synced_keys_allowed: number }) => data.needsHardware(t.role, t.synced_keys_allowed)
 // What a refusal of the data module answers. Everything not listed is a conflict with the present state: 409.
-const STATUS: Record<string, number> = { not_found: 404, forbidden: 403, own_request: 403, quarantine: 403, override: 403, invalid: 400, ticket_limit: 429, seat_limit: 429 }
+const STATUS: Record<string, number> = { not_found: 404, forbidden: 403, own_request: 403, quarantine: 403, override: 403, invalid: 400, email_required: 400, ticket_limit: 429, seat_limit: 429 }
 const refuse = (error: string) => fail(STATUS[error] ?? 409, error)
 // The database refuses a second passkey with the same label on one seat (migrations/0002_labels.sql).
 const labelTaken = (error: unknown) => /credentials\.label/.test(String((error as Error)?.message))
@@ -111,15 +114,20 @@ async function enrolStart(c: Context) {
   if (!ticket) return fail(404, 'ticket_invalid')
   const challenge = await newChallenge(c.env.CHALLENGE_KEY, 'enrol', ticket.id, c.now)
   const deviceBound = mustBeDeviceBound(ticket)
+  // Company sign-in: the link says which path it is. Until the provider has confirmed the account there is nothing to create a passkey with.
+  const waits = ticket.idp !== null && ticket.idp_at === null
   return json(200, {
     organisation: ticket.org_name, member: ticket.display_name, role: ticket.role, deviceBound, first: ticket.kind === 'first_owner',
-    options: creationOptions(c.config, challenge, { id: ticket.seat_id, name: ticket.display_name }, deviceBound),
+    company: ticket.idp && { provider: ticket.idp, email: ticket.email ?? ticket.seat_email, confirmed: !waits },
+    ...(!waits && { options: creationOptions(c.config, challenge, { id: ticket.seat_id, name: ticket.display_name }, deviceBound) }),
   })
 }
 
 async function enrolFinish(c: Context) {
   const ticket = await ticketOf(c)
   if (!ticket) return fail(404, 'ticket_invalid')
+  // The path is the link's (the organisation's setting when it was issued), never the caller's: no field of this request chooses it.
+  if (ticket.idp && ticket.idp_at === null) return fail(403, 'company_signin_required')
   const label = typeof c.body.label === 'string' ? c.body.label.trim() : ''
   if (!LABEL.test(label)) return fail(400, 'label_invalid')
   let credential
@@ -131,7 +139,8 @@ async function enrolFinish(c: Context) {
   if (mustBeDeviceBound(ticket) && !credential.deviceBound) return fail(400, 'device_bound_required')
   const stored = await data.storePendingCredential(c.env.DB, ticket, credential, label, c.now).catch((error) => (labelTaken(error) ? 'label_taken' : false))
   if (stored !== true) return fail(409, stored || 'not_stored')
-  // Shown on the member's device only. No route gives it to anyone else: the colleague types what they hear.
+  if (ticket.idp) return json(200, { state: 'pending' }) // company sign-in: no words are made, shown or typed
+  // Shown on the member's device only. No route gives it to anyone else: the colleague types what the member sends.
   const phrase = await phraseOf(c, { ...ticket, credential_id: credential.id, public_key: credential.publicKey })
   return json(200, { state: 'pending', phrase: phrase.words, confirmBy: c.now + data.CONFIRM_MS })
 }
@@ -223,6 +232,8 @@ async function organisation(c: Context) {
     wallets: (await data.wallets(c.env.DB, c.actor.orgId, c.now)).map(walletView),
     chains: Object.keys(c.config.chains).map((id) => ({ id: Number(id), name: CHAIN_NAME[Number(id)] ?? `Chain ${id}` })),
     syncedKeysAllowed: c.session.synced_keys_allowed === 1, rights,
+    // The company sign-in: null while nobody has chosen (members then join with three words, as with "none").
+    company: { setting: c.session.company_signin, tenant: c.session.company_tenant, domain: c.session.email_domain },
   })
 }
 async function revoke(c: Context) {
@@ -290,9 +301,10 @@ async function passkeyRevoke(c: Context) {
 async function ticketIssue(c: Context) {
   const { seatId, displayName, role } = c.body
   const name = typeof displayName === 'string' ? displayName.trim() : ''
+  const { email } = c.body // read only where the organisation uses a company sign-in (the data module decides)
   const target =
-    typeof seatId === 'string' && /^[0-9a-f]{32}$/.test(seatId) ? { seatId }
-    : NAME.test(name) && data.ROLES.includes(role as data.Role) ? { displayName: name, role: role as data.Role }
+    typeof seatId === 'string' && /^[0-9a-f]{32}$/.test(seatId) ? { seatId, email }
+    : NAME.test(name) && data.ROLES.includes(role as data.Role) ? { displayName: name, role: role as data.Role, email }
     : null
   if (!target) return fail(400, 'invalid')
   // 256 random bits. It leaves the server once, here, inside a URL fragment; only its SHA-256 is stored.
@@ -317,14 +329,16 @@ async function confirmStart(c: Context) {
   return open instanceof Response ? open : json(200, { options: await checkOptions(c, 'confirm', open.binding) })
 }
 async function confirmFinish(c: Context) {
-  // Three words of the list, or it is a typing slip and no try is counted.
-  const typed = typeof c.body.words === 'string' ? c.body.words.trim().toLowerCase().split(/\s+/) : []
-  if (typed.length !== 3 || !typed.every((word) => WORDS.includes(word))) return fail(400, 'words_invalid')
   const open = await ticketOpen(c)
   if (open instanceof Response) return open
+  // Company sign-in: the provider confirmed who the passkey belongs to, so no words exist and whatever is typed is not
+  // read; the approval is this member's passkey check. Otherwise: three words of the list, or it is a typing slip
+  // and no try is counted. The link decides which, never the request.
+  const typed = typeof c.body.words === 'string' ? c.body.words.trim().toLowerCase().split(/\s+/) : []
+  if (!open.ticket.idp && (typed.length !== 3 || !typed.every((word) => WORDS.includes(word)))) return fail(400, 'words_invalid')
   const check = await ownAssertion(c, 'confirm', open.binding)
   if (!check) return fail(403, 'passkey_rejected')
-  const outcome = await data.confirmTicket(c.env.DB, c.actor, open.ticket, { ...check, correct: typed.join(' ') === open.phrase.words.join(' '), credentialHash: open.phrase.hash, now: c.now })
+  const outcome = await data.confirmTicket(c.env.DB, c.actor, open.ticket, { ...check, correct: Boolean(open.ticket.idp) || typed.join(' ') === open.phrase.words.join(' '), credentialHash: open.phrase.hash, now: c.now })
   if (outcome.state === 'wrong') return json(400, { error: 'wrong_words', left: outcome.left })
   if (outcome.state === 'dead') return fail(410, 'ticket_dead')
   if (outcome.state === 'gone') return fail(409, 'try_again')
@@ -334,13 +348,98 @@ async function ticketCancel(c: Context) {
   return (await data.cancelTicket(c.env.DB, c.actor, c.params.id ?? '', c.now)) ? json(200, { ok: true }) : fail(404, 'not_found')
 }
 
+// ---- company sign-in: OpenID Connect at the organisation's provider (oidc.ts) ----
+
+const FLOW = 'company-flow' // the label of the flow cookie's text under the challenge key
+const FLOW_COOKIE = '__Host-company'
+const FLOW_MS = 10 * 60_000
+// Host-bound like the session cookie, but Lax, not Strict: the browser comes back from the provider by a cross-site
+// navigation and must bring it. It holds no session: one sign-in's temporary values, for 10 minutes.
+const flowCookie = (value: string, maxAge: number) => `${FLOW_COOKIE}=${value}; Path=/; Secure; HttpOnly; SameSite=Lax; Max-Age=${maxAge}`
+/** What one company sign-in is for, the server's own text in the flow cookie: an enrolment link, or an Owner who sets the company sign-in. */
+interface Flow {
+  provider: Provider; state: string; nonce: string; verifier: string; expiresAt: number
+  ticket?: string; org?: string; seat?: string; session?: string
+  /** The console page to come back to: the server's own choice, never the caller's. */
+  to: string
+}
+const secretOf = (env: Env, provider: Provider) => (provider === 'microsoft' ? env.MICROSOFT_CLIENT_SECRET : env.GOOGLE_CLIENT_SECRET)
+const redirectOf = (c: Context) => `${c.config.origin}/api/company/callback`
+
+// Starts one sign-in: state, nonce and PKCE verifier are made here and kept in the flow cookie; the answer is the
+// provider's address, with the state, the nonce and the hash of the verifier.
+async function begin(c: Context, provider: Provider, bound: Pick<Flow, 'ticket' | 'org' | 'seat' | 'session' | 'to'>, hint: { email?: string | null; domain?: string | null }) {
+  const idp = IDPS[c.env.ENVIRONMENT]?.[provider]
+  if (!idp || !secretOf(c.env, provider)) return fail(503, 'company_signin_unavailable')
+  const flow = newFlow()
+  const sealed = await seal(c.env.CHALLENGE_KEY, FLOW, { ...bound, provider, ...flow, expiresAt: c.now + FLOW_MS } satisfies Flow)
+  return json(200, { url: await authorizeUrl(idp, flow, redirectOf(c), hint) }, { 'set-cookie': flowCookie(sealed, FLOW_MS / 1000) })
+}
+// POST /api/enrol/company (the link's holder): "Continue with Microsoft" or "Continue with Google". Which one is the link's own path.
+async function enrolCompany(c: Context) {
+  const ticket = await ticketOf(c)
+  if (!ticket) return fail(404, 'ticket_invalid')
+  if (!ticket.idp) return fail(409, 'not_company') // a three-word link: the invitee does not choose the path
+  if (ticket.idp_at !== null) return fail(409, 'already_confirmed')
+  return begin(c, ticket.idp, { ticket: c.body.ticket as string, to: `#/enrol/${c.body.ticket as string}` }, { email: ticket.email ?? ticket.seat_email, domain: ticket.domain })
+}
+// POST /api/company/start (Owner, fresh): the Owner signs in with their own company account, which pins the tenant
+// and links that account to the Owner's seat. Applied at once while the organisation is not yet verified; a request
+// for a second person afterwards (the data module decides, in the commit of the callback).
+async function companyStart(c: Context) {
+  const { provider } = c.body
+  if (!PROVIDERS.includes(provider as Provider)) return fail(400, 'invalid')
+  if (!c.session.email_domain) return fail(409, 'no_domain') // the tenant is pinned against the proven domain
+  return begin(c, provider as Provider, { org: c.actor.orgId, seat: c.actor.seatId, session: c.actor.sessionId, to: c.session.org_state === 'unverified' ? '#/onboarding' : '#/organisation' }, { domain: c.session.email_domain })
+}
+
+// GET /api/company/callback: where the provider sends the browser back. The router let it in as a top-level
+// navigation and nothing else. From the query it takes the code and the state, and nothing more; everything else is
+// in the flow cookie, which is the server's own text (MAC), 10 minutes old at most, and used up here whatever
+// happens. Order: the cookie; the state; the code exchanged with the PKCE verifier and the client secret; the ID
+// token verified in full, with the nonce of the cookie; then what the identity is for, in one commit. The answer is
+// always a redirect to a console page with one word about the outcome (and, for a link, the link again in the fragment).
+async function companyCallback(c: Context) {
+  const back = (outcome: string, to = '#/') => new Response(null, { status: 303, headers: { location: `/?company=${outcome}${to}`, 'set-cookie': flowCookie('', 0) } })
+  const sealed = c.request.headers.get('cookie')?.split(/;\s*/).find((part) => part.startsWith(`${FLOW_COOKIE}=`))?.slice(FLOW_COOKIE.length + 1)
+  const flow = sealed ? ((await unseal(c.env.CHALLENGE_KEY, FLOW, sealed)) as Flow | null) : null
+  if (!flow || flow.expiresAt <= c.now) return back('expired')
+  const { to } = flow
+  const query = new URL(c.request.url).searchParams
+  if (query.get('state') !== flow.state) return back('state', to)
+  const code = query.get('code')
+  if (!code || code.length > 2048) return back('cancelled', to)
+  const idp = IDPS[c.env.ENVIRONMENT]?.[flow.provider]
+  const secret = secretOf(c.env, flow.provider)
+  if (!idp || !secret) return back('unavailable', to)
+  const token = await exchange(idp, secret, code, flow.verifier, redirectOf(c))
+  const who = token ? await verifyIdToken(idp, flow.provider, token, flow.nonce, c.now) : null
+  if (!who) return back('rejected', to)
+  if (flow.ticket) {
+    // An enrolment link: the tenant must be the one pinned on the link, and the account the invited one (or the linked one).
+    const ticket = await data.ticketByToken(c.env.DB, await data.sha256Hex(flow.ticket), c.now)
+    if (!ticket || ticket.idp !== who.provider) return back('link', to)
+    if (ticket.idp_tenant !== who.tenant) return back('tenant', to)
+    return back(await data.confirmCompany(c.env.DB, ticket, who, c.now), to)
+  }
+  // An Owner sets the company sign-in. Google: the hosted domain is the organisation's proven domain. Microsoft: the
+  // verified address is at that domain. The session and the Owner role of the flow are read inside the commit.
+  const domain = await data.domainOf(c.env.DB, flow.org!)
+  if (!(who.provider === 'google' ? who.tenant === domain : data.emailAt(who.email, domain))) return back('domain', to)
+  const cf = (c.request as Request<unknown, IncomingRequestCfProperties>).cf
+  const actor: data.Actor = { orgId: flow.org!, seatId: flow.seat!, sessionId: flow.session!, role: 'viewer', quarantineUntil: null, country: cf?.country ?? null, asn: cf?.asn ?? null }
+  const outcome = await data.change(c.env.DB, actor, 'policy.company', flow.org!, `${who.provider} ${who.tenant} ${who.subject}`, c.now)
+  return back('error' in outcome ? outcome.error : outcome.state, to)
+}
+
 // ---- milestone 3: freeze, changes for two people, the audit log ----
 
 // A freeze (one person), or one of the changes that need two. For the passkey rule the subject is the session's
 // organisation; for the rest it is the seat in the path. The new value is a role, or '1' (synced passkeys allowed) or '0'.
 async function change(c: Context, kind: data.Kind | data.Direct) {
-  const value = kind === 'seat.role' ? c.body.role : kind === 'policy.synced_keys' && typeof c.body.syncedKeys === 'boolean' ? (c.body.syncedKeys ? '1' : '0') : null
-  const subject = kind === 'policy.synced_keys' ? c.actor.orgId : c.params.id ?? ''
+  // The company sign-in by this route can only become "none": Microsoft or Google is asked through a sign-in (companyStart).
+  const value = kind === 'seat.role' ? c.body.role : kind === 'policy.synced_keys' && typeof c.body.syncedKeys === 'boolean' ? (c.body.syncedKeys ? '1' : '0') : kind === 'policy.company' ? 'none' : null
+  const subject = kind === 'policy.synced_keys' || kind === 'policy.company' ? c.actor.orgId : c.params.id ?? ''
   const outcome = await data.change(c.env.DB, c.actor, kind, subject, typeof value === 'string' ? value : null, c.now, kind === 'anchor.set' ? await snapshotOf(c, subject) : null)
   return 'error' in outcome ? refuse(outcome.error) : json(200, outcome)
 }
@@ -584,7 +683,7 @@ const walletView = ({ snapshot, ...w }: Awaited<ReturnType<typeof data.wallets>>
 const ROLE_NAME: Record<string, string> = { owner: 'Owner', admin: 'Admin', trader: 'Trader', approver: 'Approver', compliance: 'Compliance officer', viewer: 'Viewer' }
 const CHANGES: Record<string, string> = {
   'seat.unfreeze': 'unfreeze a seat', 'seat.remove': 'remove a member', 'seat.role': 'change a role', 'policy.synced_keys': 'change the passkey rule for key roles',
-  'wallet.link': 'link a wallet', 'anchor.set': 'set the recovery wallet',
+  'wallet.link': 'link a wallet', 'anchor.set': 'set the recovery wallet', 'policy.company': 'change the company sign-in',
 }
 // The one table that turns an audit action into words, for the page and the export alike: neither ever shows a
 // code. A key with a slash is the action with that detail. A test fails if data.ts writes an action that is not here.
@@ -617,6 +716,11 @@ export const EVENTS: Record<string, string> = {
   'policy.synced_keys': 'Passkey rule for key roles changed',
   'policy.synced_keys/synced': 'Passkey rule for key roles changed: synced passkeys allowed',
   'policy.synced_keys/hardware': 'Passkey rule for key roles changed: hardware keys only',
+  'policy.company': 'Company sign-in changed',
+  'policy.company/microsoft': 'Company sign-in set to Microsoft, tenant pinned',
+  'policy.company/google': 'Company sign-in set to Google, domain pinned',
+  'policy.company/none': 'Company sign-in set to none: members join with three words',
+  'ticket.company': 'Company account confirmed by the provider on an enrolment link',
   'approval.request': 'Change requested',
   'approval.reject': 'Change rejected',
   'approval.cancel': 'Request cancelled by its requester',
@@ -701,6 +805,10 @@ export const routes: Route[] = [
   { method: 'POST', path: '/api/members/:id/role', roles: MANAGERS, fresh: true, twoKeys: true, settled: true, second: 'seat.role', can: 'Ask to change a member\'s role, never above the own role' },
   { method: 'POST', path: '/api/members/:id/remove', roles: MANAGERS, fresh: true, twoKeys: true, settled: true, second: 'seat.remove', can: 'Ask to remove a member (an invited seat nobody enrolled on: removed at once)' },
   { method: 'POST', path: '/api/policy', roles: ['owner'], fresh: true, twoKeys: true, settled: true, second: 'policy.synced_keys', can: 'Ask to change the passkey rule for key roles' },
+  { method: 'POST', path: '/api/policy/company', roles: ['owner'], fresh: true, twoKeys: true, settled: true, unverified: true, second: 'policy.company', can: 'Ask to set the company sign-in to none: members then join with three words (alone while the organisation is not yet verified)' },
+  { method: 'POST', path: '/api/company/start', roles: ['owner'], fresh: true, twoKeys: true, settled: true, unverified: true, can: 'Ask to set the company sign-in to Microsoft or Google, by signing in with the own company account (alone while the organisation is not yet verified; then a second person approves)', handler: companyStart },
+  { method: 'POST', path: '/api/enrol/company', roles: 'public', handler: enrolCompany },
+  { method: 'GET', path: '/api/company/callback', roles: 'public', callback: true, handler: companyCallback },
   { method: 'POST', path: '/api/approvals/:id/approve', roles: data.KEY_ROLES, fresh: true, twoKeys: true, settled: true, can: 'Approve a colleague\'s request as the second person', handler: decide('approve') },
   { method: 'POST', path: '/api/approvals/:id/reject', roles: data.KEY_ROLES, fresh: true, twoKeys: true, can: 'Reject a colleague\'s request', handler: decide('reject') },
   { method: 'POST', path: '/api/approvals/:id/cancel', roles: MANAGERS, can: 'Cancel the own request', handler: decide('cancel') },
@@ -745,13 +853,16 @@ async function sessionOf(request: Request, env: Env, now: number) {
 }
 
 async function api(request: Request, env: Env, clock: () => number, config: Config, signing: boolean): Promise<Response> {
-  // Every API route, GET included. A sibling *.ophis.fi host is same-site, so same-site is not enough.
-  if (request.headers.get('sec-fetch-site') !== 'same-origin') return fail(403, 'cross_site')
   const { pathname } = new URL(request.url)
   // Each host has its own routes: the signing host answers the proof route and no other, the console host every other.
   const index = routes.findIndex((route, i) => route.method === request.method && Boolean(route.sign) === signing && patterns[i].test({ pathname }))
-  if (index < 0) return fail(404, 'not_found')
   const route = routes[index]
+  // Every API route, GET included: same-origin only. A sibling *.ophis.fi host is same-site, so same-site is not enough.
+  // One exception, the company sign-in's callback: the provider sends the browser back, so the request is cross-site
+  // by nature. Its gate instead: a top-level navigation to a document, nothing a page can make with fetch, a form
+  // post, an image or a frame. What it then trusts is its own flow cookie (companyCallback).
+  if (route?.callback ? request.headers.get('sec-fetch-mode') !== 'navigate' || request.headers.get('sec-fetch-dest') !== 'document' : request.headers.get('sec-fetch-site') !== 'same-origin') return fail(403, 'cross_site')
+  if (index < 0) return fail(404, 'not_found')
   let body: Record<string, unknown> = {}
   if (route.method === 'POST') {
     if (request.headers.get('origin') !== (signing ? config.signOrigin : config.origin)) return fail(403, 'bad_origin')

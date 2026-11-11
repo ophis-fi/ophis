@@ -5,7 +5,7 @@
 // This file holds its own handlers and, in its first half, its own rows: every statement is prepared with bound
 // parameters, and every change goes through commit() of the data module, with what decides it read inside the plan.
 import { checksum, colour, parseAddress, readCapped, safeState, verify, verifyDigest, type SafeState } from './chain.ts'
-import { commit, countHour, PEOPLE, randomId, REVIEWED, sha256Hex, type Actor, type WalletKind } from './data.ts'
+import { commit, countHour, DOMAIN, emailAt, PEOPLE, randomId, REVIEWED, sha256Hex, type Actor, type WalletKind } from './data.ts'
 import { challengeIsOurs, creationOptions, credentialHash, fromBase64Url, newChallenge, phraseFor, seal, unseal, verifyRegistration, type Config } from './passkeys.ts'
 import { CHAIN_NAME, typedProof } from './typed.ts'
 
@@ -226,20 +226,18 @@ interface Ctx {
 }
 interface Member extends Ctx { actor: Actor }
 
-const DOMAIN = /^(?=.{4,253}$)(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z][a-z0-9-]{0,61}[a-z0-9]$/
 const LEGAL = /^[\p{L}\p{N} .,'&()/-]{2,120}$/u
 const NAME = /^[\p{L}\p{N} .'-]{1,60}$/u
 /** The form, checked. The contact address must be at the company's domain or a subdomain of it: the DNS proof of that domain is then the proof that this is a company address, and no list of mail providers is needed. */
 function applicant(body: Record<string, unknown>): Applicant | string {
   const field = (key: string) => (typeof body[key] === 'string' ? (body[key] as string).trim() : '')
   const a = { legalName: field('legalName'), country: field('country').toUpperCase(), registration: field('registration'), kind: field('kind'), domain: field('domain').toLowerCase(), email: field('email').toLowerCase(), name: field('name') }
-  const host = a.email.slice(a.email.lastIndexOf('@') + 1)
   return !LEGAL.test(a.legalName) ? 'legal_name_invalid'
     : !/^[A-Z]{2}$/.test(a.country) ? 'country_invalid'
     : !/^[A-Za-z0-9 ./-]{2,40}$/.test(a.registration) ? 'registration_invalid'
     : a.kind !== 'partner' && a.kind !== 'institution' ? 'kind_invalid'
     : !DOMAIN.test(a.domain) ? 'domain_invalid'
-    : a.email.length > 254 || !/^[^\s@]{1,64}@[^\s@]+$/.test(a.email) || !DOMAIN.test(host) || (host !== a.domain && !host.endsWith(`.${a.domain}`)) ? 'email_not_at_domain'
+    : !emailAt(a.email, a.domain) ? 'email_not_at_domain'
     : !NAME.test(a.name) ? 'name_invalid'
     : (a as Applicant)
 }

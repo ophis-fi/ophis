@@ -3,12 +3,14 @@
 // The Worker holds no stub and no switch: locally its two resolver constants point here.
 // Records live in .wrangler/dns-stub.json, { "<name>": ["<value>", ...] }, read at every question.
 //   node scripts/dns-stub.mjs                      serve until stopped
-//   node scripts/dns-stub.mjs <command> [args]     serve while that command runs ("pnpm dev": wrangler dev)
+//   node scripts/dns-stub.mjs <command> [args]     serve while that command runs ("pnpm dev": wrangler dev), together with the
+//                                                  stand-in for the company sign-in (scripts/idp-stub.mjs, port 8792)
 //   node scripts/dns-stub.mjs set <name> <value>   publish a TXT record, as a DNS administrator would ("pnpm dns")
 import { spawn } from 'node:child_process'
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { createServer } from 'node:http'
 import { fileURLToPath } from 'node:url'
+import { start as startIdp } from './idp-stub.mjs'
 
 const FOLDER = fileURLToPath(new URL('../.wrangler/', import.meta.url))
 const FILE = `${FOLDER}dns-stub.json`
@@ -43,8 +45,10 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
   } else {
     const stop = start()
     if (command) {
+      const stopIdp = startIdp()
       spawn(command, args, { stdio: 'inherit' }).on('exit', (code) => {
         stop()
+        stopIdp()
         process.exitCode = code ?? 1
       })
     } else console.log('DNS stubs on http://127.0.0.1:8790/dns-query and http://127.0.0.1:8791/resolve. Records: .wrangler/dns-stub.json')

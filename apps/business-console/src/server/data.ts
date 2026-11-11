@@ -52,6 +52,14 @@ const quarantined = (actor: Actor, now: number) => (actor.quarantineUntil ?? 0) 
 const mayManage = (actor: Role, target: Role) => actor === 'owner' || (actor === 'admin' && target !== 'owner')
 
 const hex = (bytes: Uint8Array) => [...bytes].map((b) => b.toString(16).padStart(2, '0')).join('')
+// A company's email domain, and a work address at it or at a subdomain of it, in lower case (null otherwise). The DNS
+// proof of the domain is what makes such an address a company address: no list of mail providers.
+export const DOMAIN = /^(?=.{4,253}$)(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z][a-z0-9-]{0,61}[a-z0-9]$/
+export function emailAt(value: unknown, domain: string | null) {
+  const email = typeof value === 'string' ? value.trim().toLowerCase() : ''
+  const host = email.slice(email.lastIndexOf('@') + 1)
+  return domain && email.length <= 254 && /^[^\s@]{1,64}@[^\s@]+$/.test(email) && DOMAIN.test(host) && (host === domain || host.endsWith(`.${domain}`)) ? email : null
+}
 export const randomId = () => hex(crypto.getRandomValues(new Uint8Array(16)))
 /** 256 random bits, base64url. Only its SHA-256 is ever stored. */
 export const randomToken = () =>
@@ -126,7 +134,14 @@ export async function verifyAudit(db: D1Database, orgId: string): Promise<{ ok: 
 
 // ---- before a session exists ----
 
-export interface Ticket { id: string; org_id: string; seat_id: string; kind: string; role: Role; nonce: string; display_name: string; org_name: string; synced_keys_allowed: number }
+export interface Ticket {
+  id: string; org_id: string; seat_id: string; kind: string; role: Role; nonce: string; display_name: string; org_name: string; synced_keys_allowed: number
+  /** Company sign-in: the path of this link (null: three words), its pinned tenant, the address to confirm, and when the provider confirmed it. */
+  idp: 'microsoft' | 'google' | null; idp_tenant: string | null; email: string | null; idp_at: number | null; seat_email: string | null; domain: string | null
+}
+// The path of a link is the organisation's setting, fixed when the link is issued. A link whose path is no longer
+// the organisation's (the setting or the pinned tenant changed since) is dead, without a write.
+const PATH = `t.idp IS NULLIF(o.company_signin, 'none') AND t.idp_tenant IS o.company_tenant`
 // The ticket's role must be its seat's role: the key rule (Owners: hardware only) is read from the ticket,
 // the rights of the session from the seat, so a ticket that disagrees with its seat is dead.
 // A ticket is also dead once the seat that issued it is no longer active (ISSUER_ACTIVE): what a stopped or
@@ -136,10 +151,11 @@ const ISSUER_ACTIVE = `(t.issuer_seat_id IS NULL OR EXISTS (SELECT 1 FROM seats 
 export function ticketByToken(db: D1Database, tokenHash: string, now: number) {
   return db
     .prepare(
-      `SELECT t.id, t.org_id, t.seat_id, t.kind, t.role, t.nonce, s.display_name, o.name AS org_name, o.synced_keys_allowed
+      `SELECT t.id, t.org_id, t.seat_id, t.kind, t.role, t.nonce, s.display_name, o.name AS org_name, o.synced_keys_allowed,
+              t.idp, t.idp_tenant, t.email, t.idp_at, s.email AS seat_email, o.email_domain AS domain
        FROM enrolment_tickets t
        JOIN seats s ON s.org_id = t.org_id AND s.id = t.seat_id AND s.role = t.role AND s.state IN ('invited', 'active')
-       JOIN organisations o ON o.id = t.org_id AND o.state IN ('unverified', 'active')
+       JOIN organisations o ON o.id = t.org_id AND o.state IN ('unverified', 'active') AND ${PATH}
        WHERE t.token_hash = ? AND t.state = 'issued' AND t.expires_at > ? AND ${ISSUER_ACTIVE}`,
     )
     .bind(tokenHash, now)
@@ -155,8 +171,9 @@ export function storePendingCredential(
   now: number,
 ) {
   return commit(db, ticket.org_id, async () => {
-    // Read again here: the handler found the ticket before this write took its turn.
-    if (!(await db.prepare(`SELECT 1 FROM enrolment_tickets WHERE org_id = ? AND id = ? AND state = 'issued'`).bind(ticket.org_id, ticket.id).first())) return null
+    // Read again here: the handler found the ticket before this write took its turn. On the company path no passkey is
+    // stored on a link whose company sign-in is still missing: the path is the link's, never the caller's choice.
+    if (!(await db.prepare(`SELECT 1 FROM enrolment_tickets WHERE org_id = ? AND id = ? AND state = 'issued' AND (idp IS NULL OR idp_at IS NOT NULL)`).bind(ticket.org_id, ticket.id).first())) return null
     return [{ at: now, actorKind: 'seat', actorId: ticket.seat_id, sessionId: null, action: 'credential.store', subjectId: credential.id }, [
       // credentials.ticket_id is UNIQUE: a second passkey for the same ticket fails the whole batch.
       db.prepare(`INSERT INTO credentials (id, org_id, seat_id, public_key, counter, device_bound, transports, label, state, ticket_id, created_at)
@@ -242,13 +259,15 @@ export interface Session {
   strong_keys: number
   /** Milestone 5: read with the session, judged by the router. Unverified: the routes marked so. Frozen or archived: the sign-out. */
   org_state: 'unverified' | 'active' | 'frozen' | 'archived'
+  /** Company sign-in: the setting (null: not chosen, which behaves as none), the pinned tenant, the proven domain. */
+  company_signin: 'none' | 'microsoft' | 'google' | null; company_tenant: string | null; email_domain: string | null
 }
 /** A session that is not revoked, whose passkey and seat are still active. The caller checks the time limits and the organisation's state. */
 export function sessionByToken(db: D1Database, tokenHash: string) {
   return db
     .prepare(
       `SELECT x.id, x.org_id, x.seat_id, x.credential_id, x.created_at, x.last_seen_at, x.step_up_at, s.role, s.display_name, s.quarantine_until, o.quarantine_until AS org_quarantine_until,
-              o.name AS org_name, o.kind AS org_kind, o.synced_keys_allowed, o.state AS org_state,
+              o.name AS org_name, o.kind AS org_kind, o.synced_keys_allowed, o.state AS org_state, o.company_signin, o.company_tenant, o.email_domain,
               (SELECT count(*) FROM credentials k WHERE k.org_id = x.org_id AND k.seat_id = x.seat_id AND k.state = 'active' AND (s.role <> 'owner' OR k.device_bound = 1)) AS strong_keys
        FROM sessions x
        JOIN credentials c ON c.org_id = x.org_id AND c.id = x.credential_id AND c.state = 'active'
@@ -261,6 +280,9 @@ export function sessionByToken(db: D1Database, tokenHash: string) {
 }
 
 // ---- for a signed-in member: the organisation comes from the Actor ----
+
+/** The proven company domain of an organisation, or null. */
+export const domainOf = async (db: D1Database, orgId: string) => (await db.prepare('SELECT email_domain AS domain FROM organisations WHERE id = ?').bind(orgId).first<{ domain: string | null }>())?.domain ?? null
 
 /** A write with no audit row (the other is countProof): it only moves the idle clock. */
 export async function touchSession(db: D1Database, actor: Pick<Actor, 'orgId' | 'sessionId'>, now: number) {
@@ -371,21 +393,22 @@ export async function revokeCredential(db: D1Database, session: Actor, credentia
 
 // ---- enrolment tickets and the three-word ceremony (recovery.md section 2) ----
 
-type Target = { seatId: string } | { displayName: string; role: Role }
+type Target = ({ seatId: string } | { displayName: string; role: Role }) & { email?: unknown }
 /** An invitation (a new seat, or a seat that never enrolled) or the re-enrolment of an active seat. The seat decides which. */
 export async function issueTicket(db: D1Database, session: Actor, target: Target, tokenHash: string, now: number) {
   const ticketId = randomId()
   const newSeatId = randomId()
-  type Issued = { error: 'not_found' | 'forbidden' | 'quarantine' | 'ticket_limit' | 'seat_limit' } | { error?: undefined; ticketId: string; seatId: string; kind: string; role: Role; expiresAt: number }
+  type Issued = { error: 'not_found' | 'forbidden' | 'quarantine' | 'ticket_limit' | 'seat_limit' | 'email_required' } | { error?: undefined; ticketId: string; seatId: string; kind: string; role: Role; expiresAt: number; company: string | null }
   let outcome: Issued = { error: 'not_found' }
   await commit(db, session.orgId, async () => {
     const actor = await actorNow(db, session)
     outcome = { error: actor ? 'not_found' : 'forbidden' } // a second run of the plan starts again
     if (!actor) return null
-    let seat: { id: string; role: Role; state: string } | null = 'seatId' in target ? null : { id: newSeatId, role: target.role, state: 'new' }
+    type Seat = { id: string; role: Role; state: string; idp?: string | null; tenant?: string | null; subject?: string | null }
+    let seat: Seat | null = 'seatId' in target ? null : { id: newSeatId, role: target.role, state: 'new' }
     // A member does not re-enrol their own seat: they add a passkey after a check from one they hold.
     if ('seatId' in target && target.seatId !== actor.seatId) {
-      seat = await db.prepare(`SELECT id, role, state FROM seats WHERE org_id = ? AND id = ? AND state IN ('invited', 'active')`).bind(actor.orgId, target.seatId).first<{ id: string; role: Role; state: string }>()
+      seat = await db.prepare(`SELECT id, role, state, idp, idp_tenant AS tenant, idp_subject AS subject FROM seats WHERE org_id = ? AND id = ? AND state IN ('invited', 'active')`).bind(actor.orgId, target.seatId).first<Seat>()
     }
     // The seat a recovery request made is not a colleague's to enrol on: only the request's own passkey ever sits on it.
     if (!seat || (seat.state === 'invited' && (await recoveryRow(db, actor.orgId, now, 'seat_id', seat.id)))) return null
@@ -395,8 +418,15 @@ export async function issueTicket(db: D1Database, session: Actor, target: Target
     // New seats this issuer made in 24 hours: a seat and its first ticket are written at the same moment.
     const seats = await db.prepare(`SELECT count(DISTINCT t.seat_id) AS n FROM enrolment_tickets t JOIN seats s ON s.org_id = t.org_id AND s.id = t.seat_id AND s.created_at = t.created_at
                                     WHERE t.org_id = ? AND t.issuer_seat_id = ? AND t.created_at > ?`).bind(actor.orgId, actor.seatId, now - DAY).first<{ n: number }>()
+    // Company sign-in: the organisation's setting decides the path of the link, here and nowhere else. On that path the
+    // inviter names the work address, at the proven domain or a subdomain, which the company account must then show.
+    // A re-enrolment of a seat that is linked to an account of this provider and tenant needs none: that account must come back.
+    const org = (await db.prepare(`SELECT NULLIF(company_signin, 'none') AS idp, company_tenant AS tenant, email_domain AS domain FROM organisations WHERE id = ?`).bind(actor.orgId).first<{ idp: string | null; tenant: string | null; domain: string | null }>())!
+    const linked = Boolean(seat.subject) && seat.idp === org.idp && seat.tenant === org.tenant
+    const email = org.idp && !linked ? emailAt(target.email, org.domain) : null
     const refused = !mayManage(actor.role, seat.role) ? 'forbidden'
       : kind === 'invitation' && quarantined(actor, now) ? 'quarantine' // a new member; re-enrolling an existing seat stays open
+      : org.idp && !linked && !email ? 'email_required'
       : issued!.n >= MAX_TICKETS ? 'ticket_limit'
       : seat.state === 'new' && seats!.n >= MAX_SEATS ? 'seat_limit'
       : null
@@ -404,12 +434,13 @@ export async function issueTicket(db: D1Database, session: Actor, target: Target
       outcome = { error: refused }
       return null
     }
-    const expiresAt = now + (KEY_ROLES.includes(seat.role) ? 10 * MIN : 24 * HOUR)
-    outcome = { ticketId, seatId: seat.id, kind, role: seat.role, expiresAt }
+    // Three words: 10 minutes for a key role. Company sign-in: 24 hours for every role (the member signs in at the provider first).
+    const expiresAt = now + (KEY_ROLES.includes(seat.role) && !org.idp ? 10 * MIN : 24 * HOUR)
+    outcome = { ticketId, seatId: seat.id, kind, role: seat.role, expiresAt, company: org.idp }
     return [seatEntry(actor, now, 'ticket.issue', ticketId, kind), [
       ...('seatId' in target ? [] : [db.prepare(`INSERT INTO seats (id, org_id, display_name, role, state, created_at) VALUES (?, ?, ?, ?, 'invited', ?)`).bind(seat.id, actor.orgId, target.displayName, seat.role, now)]),
-      db.prepare(`INSERT INTO enrolment_tickets (id, org_id, seat_id, kind, role, issuer_seat_id, token_hash, nonce, state, expires_at, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'issued', ?, ?)`)
-        .bind(ticketId, actor.orgId, seat.id, kind, seat.role, actor.seatId, tokenHash, randomId(), expiresAt, now),
+      db.prepare(`INSERT INTO enrolment_tickets (id, org_id, seat_id, kind, role, issuer_seat_id, token_hash, nonce, state, expires_at, created_at, idp, idp_tenant, email) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'issued', ?, ?, ?, ?, ?)`)
+        .bind(ticketId, actor.orgId, seat.id, kind, seat.role, actor.seatId, tokenHash, randomId(), expiresAt, now, org.idp, org.idp && org.tenant, email),
       // The sweep: tickets that were never confirmed, and the pending passkeys stored on them, once nothing reads them.
       db.prepare(`DELETE FROM credentials WHERE org_id = ? AND ticket_id IN (SELECT id FROM enrolment_tickets WHERE org_id = ? AND state <> 'confirmed' AND created_at < ?)`).bind(actor.orgId, actor.orgId, now - SWEEP_MS),
       db.prepare(`DELETE FROM enrolment_tickets WHERE org_id = ? AND state <> 'confirmed' AND created_at < ?`).bind(actor.orgId, now - SWEEP_MS),
@@ -427,6 +458,8 @@ export interface OpenTicket {
   /** What the viewer may do now. */
   myStep: 'issuer' | 'second' | null
   until: number
+  /** Company sign-in: the path, the work address, when the provider confirmed it, and whether the pending passkey is device-bound. */
+  idp: 'microsoft' | 'google' | null; email: string | null; idp_at: number | null; device_bound: number | null
 }
 // Every open ticket of the organisation that is still alive, with the step the viewer may take. A ticket
 // whose seat or issuer is not in the right state, or whose time is up, is not here: it is dead without a write.
@@ -435,8 +468,10 @@ async function ticketRows(db: D1Database, viewer: Pick<Actor, 'orgId' | 'seatId'
   const { results } = await db
     .prepare(
       `SELECT t.id, t.kind, t.role, t.state, t.seat_id, t.issuer_seat_id, s.display_name, t.nonce, t.attempts, t.expires_at, t.stored_at,
-              c.id AS credential_id, c.public_key, a.id AS approval_id, a.not_before, a.expires_at AS approval_expires_at
+              c.id AS credential_id, c.public_key, a.id AS approval_id, a.not_before, a.expires_at AS approval_expires_at,
+              t.idp, COALESCE(t.email, s.email) AS email, t.idp_at, c.device_bound
        FROM enrolment_tickets t
+       JOIN organisations o ON o.id = t.org_id AND ${PATH}
        JOIN seats s ON s.org_id = t.org_id AND s.id = t.seat_id AND s.role = t.role AND s.state = CASE t.kind WHEN 're_enrolment' THEN 'active' ELSE 'invited' END
        LEFT JOIN credentials c ON c.org_id = t.org_id AND c.ticket_id = t.id AND c.state = 'pending'
        LEFT JOIN approvals a ON a.org_id = t.org_id AND a.subject_id = t.id AND a.action = 'ticket.confirm' AND a.state = 'pending'
@@ -465,7 +500,11 @@ async function ticketRows(db: D1Database, viewer: Pick<Actor, 'orgId' | 'seatId'
 export async function openTickets(db: D1Database, actor: Actor, now: number) {
   return (await ticketRows(db, actor, now))
     .filter((t) => seesAll(actor) === 1 || t.myStep)
-    .map((t) => ({ id: t.id, kind: t.kind, role: t.role, seatId: t.seat_id, name: t.display_name, issuerSeatId: t.issuer_seat_id, status: t.status, myStep: t.myStep, until: t.until }))
+    .map((t) => ({
+      id: t.id, kind: t.kind, role: t.role, seatId: t.seat_id, name: t.display_name, issuerSeatId: t.issuer_seat_id, status: t.status, myStep: t.myStep, until: t.until,
+      // Company sign-in: what the provider confirmed, for the approval card. Null on the three-word path.
+      company: t.idp && { provider: t.idp, email: t.email, confirmedAt: t.idp_at, deviceBound: t.device_bound === null ? null : t.device_bound === 1 },
+    }))
 }
 /** The ticket, if the member may type its words now. */
 export const ticketToConfirm = async (db: D1Database, actor: Actor, ticketId: string, now: number) =>
@@ -480,6 +519,9 @@ function activation(db: D1Database, orgId: string, t: OpenTicket, now: number, c
     db.prepare(`UPDATE credentials SET state = 'active' WHERE org_id = ? AND id = ? AND state = 'pending'`).bind(orgId, t.credential_id),
     db.prepare('UPDATE sessions SET revoked_at = ? WHERE org_id = ? AND seat_id = ? AND revoked_at IS NULL').bind(now, orgId, t.seat_id),
     db.prepare(`UPDATE seats SET state = 'active', quarantine_until = ? WHERE org_id = ? AND id = ?`).bind(until, orgId, t.seat_id),
+    // Company sign-in: the account the provider confirmed on this link is the seat's from now on, with its address.
+    db.prepare(`UPDATE seats SET (idp, idp_tenant, idp_subject, email) = (SELECT k.idp, k.idp_tenant, k.idp_subject, COALESCE(k.email, seats.email) FROM enrolment_tickets k WHERE k.org_id = ?1 AND k.id = ?2)
+                WHERE org_id = ?1 AND id = ?3 AND EXISTS (SELECT 1 FROM enrolment_tickets k WHERE k.org_id = ?1 AND k.id = ?2 AND k.idp_at IS NOT NULL)`).bind(orgId, t.id, t.seat_id),
     db.prepare(`UPDATE enrolment_tickets SET state = 'confirmed' WHERE org_id = ? AND id = ?`).bind(orgId, t.id),
     db.prepare(`UPDATE approvals SET state = 'applied', checker_seat_id = ?, decided_at = ? WHERE org_id = ? AND id = ?`).bind(checkerSeatId, now, orgId, t.approval_id),
     ...closeOpen(db, orgId, t.seat_id, now),
@@ -535,6 +577,35 @@ export async function confirmTicket(db: D1Database, session: Actor, seen: OpenTi
     return [seatEntry(actor, now, 'credential.activate', t.credential_id!, t.myStep), [check, ...activation(db, actor.orgId, t, now, t.myStep === 'second' ? actor.seatId : null)]]
   })
   return outcome as Confirmed
+}
+
+export interface Identity { provider: 'microsoft' | 'google'; tenant: string; subject: string; email: string }
+/**
+ * Company sign-in: the provider confirmed an account for this link (the ID token was verified in full by the caller).
+ * One commit, with everything that can change read again inside it: the link is still issued and unconfirmed, and the
+ * organisation's setting is still this provider and tenant (the link's own path never changes: the caller compared it); the account is the invited address (compared in lower
+ * case, which both sides already are), or, for a seat that is linked, exactly the linked account; and it is no other seat's. Then the link carries
+ * the subject, and a passkey may be stored on it.
+ */
+export async function confirmCompany(db: D1Database, seen: Ticket, who: Identity, now: number) {
+  let outcome = 'link'
+  await commit(db, seen.org_id, async () => {
+    const t = await db.prepare(
+      `SELECT t.email, s.idp, s.idp_tenant AS tenant, s.idp_subject AS subject,
+              (SELECT count(*) FROM seats x WHERE x.org_id = t.org_id AND x.id <> t.seat_id AND x.state <> 'removed' AND x.idp = ?3 AND x.idp_tenant = ?4 AND x.idp_subject = ?5) AS taken
+       FROM enrolment_tickets t JOIN seats s ON s.org_id = t.org_id AND s.id = t.seat_id
+       JOIN organisations o ON o.id = t.org_id AND o.company_signin = ?3 AND o.company_tenant = ?4
+       WHERE t.org_id = ?1 AND t.id = ?2 AND t.state = 'issued' AND t.idp_at IS NULL`,
+    ).bind(seen.org_id, seen.id, who.provider, who.tenant, who.subject).first<{ email: string | null; idp: string | null; tenant: string | null; subject: string | null; taken: number }>()
+    outcome = !t ? 'link'
+      : t.email !== null ? (t.email === who.email ? 'ok' : 'email') // both in lower case: the link's by emailAt(), the token's by verifyIdToken()
+      : t.idp === who.provider && t.tenant === who.tenant && t.subject === who.subject ? 'ok' : 'account'
+    if (outcome === 'ok' && t!.taken) outcome = 'in_use'
+    if (outcome !== 'ok') return null
+    return [{ at: now, actorKind: 'seat', actorId: seen.seat_id, sessionId: null, action: 'ticket.company', subjectId: seen.id, detail: who.provider },
+      [db.prepare(`UPDATE enrolment_tickets SET idp_subject = ?, idp_at = ? WHERE org_id = ? AND id = ? AND state = 'issued'`).bind(who.subject, now, seen.org_id, seen.id)]]
+  })
+  return outcome
 }
 
 /** The 72 hours have passed with no cancel: the pending passkey becomes active at its first sign-in. No scheduled job. */
@@ -632,7 +703,7 @@ export function stopReplacement(db: D1Database, credential: StoredCredential, co
 
 // ---- milestone 3: one person freezes, two people change ----
 
-export type Kind = 'seat.unfreeze' | 'seat.remove' | 'seat.role' | 'policy.synced_keys' | 'wallet.link' | 'anchor.set'
+export type Kind = 'seat.unfreeze' | 'seat.remove' | 'seat.role' | 'policy.synced_keys' | 'policy.company' | 'wallet.link' | 'anchor.set'
 /** Changes one person makes: each only tightens, or undoes what has not taken effect yet. */
 export type Direct = 'seat.freeze' | 'wallet.unlink' | 'anchor.cancel'
 // The actor's role as it is inside the commit. The session's copy was read before this write took its turn: a
@@ -692,6 +763,24 @@ async function judge(db: D1Database, orgId: string, role: Role, kind: Kind | Dir
     if ((value !== '0' && value !== '1') || Number(value) === org!.allowed) return 'invalid'
     if (role !== 'owner') return 'forbidden'
     return { apply: [db.prepare('UPDATE organisations SET synced_keys_allowed = ? WHERE id = ?').bind(Number(value), orgId)], detail: value === '1' ? 'synced' : 'hardware', relax: value === '1' }
+  }
+  if (kind === 'policy.company') {
+    // The company sign-in. The value is "none", or "<provider> <tenant> <subject>": the tenant to pin and the asker's
+    // own company account, both taken from a verified ID token by the callback (index.ts), never from a request.
+    // One Owner sets it while the organisation is not yet verified (the Onboarding step); afterwards it takes two people.
+    // An account stands for one seat: the asker's must not be another seat's.
+    const [idp, tenant, subject, more] = (value ?? '').split(' ')
+    const org = await db.prepare(`SELECT state, company_signin AS idp, company_tenant AS tenant,
+                                    (SELECT count(*) FROM seats x WHERE x.org_id = o.id AND x.id <> ?2 AND x.state <> 'removed' AND x.idp = ?3 AND x.idp_tenant = ?4 AND x.idp_subject = ?5) AS taken
+                                  FROM organisations o WHERE o.id = ?1`).bind(orgId, by, idp, tenant ?? null, subject ?? null).first<{ state: string; idp: string | null; tenant: string | null; taken: number }>()
+    if (!org || more !== undefined || !(idp === 'none' ? tenant === undefined : (idp === 'microsoft' || idp === 'google') && tenant && subject)) return 'invalid'
+    if (idp === org.idp && (tenant ?? null) === org.tenant) return 'invalid'
+    if (role !== 'owner') return 'forbidden'
+    if (org.taken) return 'account_in_use'
+    return { direct: org.state === 'unverified', detail: idp, apply: [
+      db.prepare('UPDATE organisations SET company_signin = ?, company_tenant = ? WHERE id = ?').bind(idp, tenant ?? null, orgId),
+      ...(subject ? [db.prepare('UPDATE seats SET idp = ?, idp_tenant = ?, idp_subject = ? WHERE org_id = ? AND id = ?').bind(idp, tenant, subject, orgId, by)] : []),
+    ] }
   }
   const seat = await db
     .prepare(`SELECT s.role, s.state, s.quarantine_until AS quarantine, o.synced_keys_allowed AS synced,
@@ -824,7 +913,9 @@ export async function openRequests(db: D1Database, actor: Actor, now: number) {
               LEFT JOIN seats t ON t.org_id = a.org_id AND t.id = a.subject_id
               WHERE a.org_id = ? AND ${OPEN_REQUEST} AND (? = 1 OR a.requester_seat_id = ?) ORDER BY a.created_at, a.id`)
     .bind(actor.orgId, now, KEY_ROLES.includes(actor.role) ? 1 : 0, actor.seatId).all<{ id: string; kind: Kind; subjectId: string; name: string | null; role: Role | null; payload: string; requesterSeatId: string; requester: string; requesterRole: Role; createdAt: number; expiresAt: number; notBefore: number | null }>()
-  return results.map(({ payload, ...a }) => ({ ...a, value: (JSON.parse(payload) as { value: string | null }).value, mine: a.requesterSeatId === actor.seatId }))
+  // Of a company sign-in the page gets the provider and the tenant, not the asker's account.
+  const shown = (kind: Kind, value: string | null) => (kind === 'policy.company' ? value!.split(' ').slice(0, 2).join(' ') : value)
+  return results.map(({ payload, ...a }) => ({ ...a, value: shown(a.kind, (JSON.parse(payload) as { value: string | null }).value), mine: a.requesterSeatId === actor.seatId }))
 }
 
 // ---- milestone 4a: wallets and the recovery wallet ----
@@ -1202,12 +1293,14 @@ export async function alertsFor(db: D1Database, actor: Actor, now: number) {
 // ---- local development only: no route calls these ----
 
 /** One organisation, its first Owner seat and a one-time enrolment ticket (10 minutes: a key role). */
-export async function seedOrganisation(db: D1Database, o: { name: string; kind: 'partner' | 'institution'; ownerName: string; ticketHash: string; now: number }) {
+export async function seedOrganisation(db: D1Database, o: { name: string; kind: 'partner' | 'institution'; ownerName: string; ticketHash: string; now: number; domain?: string; company?: { idp: 'microsoft' | 'google'; tenant: string } }) {
   const orgId = randomId()
   const seatId = randomId()
   const ticketId = randomId()
   await commit(db, orgId, () => [{ at: o.now, actorKind: 'system', actorId: null, sessionId: null, action: 'organisation.seed', subjectId: orgId }, [
-    db.prepare(`INSERT INTO organisations (id, kind, name, state, created_at) VALUES (?, ?, ?, 'active', ?)`).bind(orgId, o.kind, o.name, o.now),
+    // A domain, and the company sign-in "none" unless told otherwise (then the tenant is pinned here, with no sign-in).
+    db.prepare(`INSERT INTO organisations (id, kind, name, state, created_at, email_domain, domain_verified_at, company_signin, company_tenant) VALUES (?, ?, ?, 'active', ?, ?, ?, ?, ?)`)
+      .bind(orgId, o.kind, o.name, o.now, o.domain ?? null, o.domain ? o.now : null, o.company?.idp ?? 'none', o.company?.tenant ?? null),
     db.prepare(`INSERT INTO seats (id, org_id, display_name, role, state, created_at) VALUES (?, ?, ?, 'owner', 'invited', ?)`).bind(seatId, orgId, o.ownerName, o.now),
     db.prepare(`INSERT INTO enrolment_tickets (id, org_id, seat_id, kind, role, token_hash, nonce, state, expires_at, created_at)
                 VALUES (?, ?, ?, 'first_owner', 'owner', ?, ?, 'issued', ?, ?)`).bind(ticketId, orgId, seatId, o.ticketHash, randomId(), o.now + 10 * 60_000, o.now),
