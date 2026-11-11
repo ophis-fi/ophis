@@ -9,5 +9,5 @@ declare module '*?raw' {
   export default text
 }
 interface ImportMeta {
-  glob(pattern: string, options: { query: string; import: string; eager: true }): Record<string, unknown>
+  glob(pattern: string, options?: { query: string; import: string; eager: true }): Record<string, unknown>
 }
