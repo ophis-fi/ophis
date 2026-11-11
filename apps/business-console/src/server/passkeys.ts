@@ -86,8 +86,10 @@ export async function unseal(secret: string, label: string, sealed: string): Pro
   const key = await hmacKey(secret)
   try {
     const [body, mac, more] = sealed.split('.')
-    const bytes = fromBase64Url(body)
-    if (more !== undefined || !(await crypto.subtle.verify('HMAC', key, fromBase64Url(mac), macInput(label, '', bytes)))) return null
+    const [bytes, tag] = [fromBase64Url(body), fromBase64Url(mac)]
+    // One spelling only: atob also reads padding, the other alphabet, spaces and spare bits, and a text that is used
+    // up once (an application code) must not come back as another text.
+    if (more !== undefined || toBase64Url(bytes) !== body || toBase64Url(tag) !== mac || !(await crypto.subtle.verify('HMAC', key, tag, macInput(label, '', bytes)))) return null
     return JSON.parse(new TextDecoder().decode(bytes))
   } catch {
     return null

@@ -459,7 +459,7 @@ export interface OpenTicket {
   myStep: 'issuer' | 'second' | null
   until: number
   /** Company sign-in: the path, the work address, when the provider confirmed it, and whether the pending passkey is device-bound. */
-  idp: 'microsoft' | 'google' | null; email: string | null; idp_at: number | null; device_bound: number | null
+  idp: 'microsoft' | 'google' | null; email: string | null; idp_at: number | null; idp_subject: string | null; device_bound: number | null
 }
 // Every open ticket of the organisation that is still alive, with the step the viewer may take. A ticket
 // whose seat or issuer is not in the right state, or whose time is up, is not here: it is dead without a write.
@@ -469,7 +469,7 @@ async function ticketRows(db: D1Database, viewer: Pick<Actor, 'orgId' | 'seatId'
     .prepare(
       `SELECT t.id, t.kind, t.role, t.state, t.seat_id, t.issuer_seat_id, s.display_name, t.nonce, t.attempts, t.expires_at, t.stored_at,
               c.id AS credential_id, c.public_key, a.id AS approval_id, a.not_before, a.expires_at AS approval_expires_at,
-              t.idp, COALESCE(t.email, s.email) AS email, t.idp_at, c.device_bound
+              t.idp, COALESCE(t.email, s.email) AS email, t.idp_at, t.idp_subject, c.device_bound
        FROM enrolment_tickets t
        JOIN organisations o ON o.id = t.org_id AND ${PATH}
        JOIN seats s ON s.org_id = t.org_id AND s.id = t.seat_id AND s.role = t.role AND s.state = CASE t.kind WHEN 're_enrolment' THEN 'active' ELSE 'invited' END
@@ -591,16 +591,21 @@ export async function confirmCompany(db: D1Database, seen: Ticket, who: Identity
   let outcome = 'link'
   await commit(db, seen.org_id, async () => {
     const t = await db.prepare(
-      `SELECT t.email, s.idp, s.idp_tenant AS tenant, s.idp_subject AS subject,
+      `SELECT t.email, t.idp_at AS at, t.idp_subject AS confirmed, s.idp, s.idp_tenant AS tenant, s.idp_subject AS subject,
               (SELECT count(*) FROM seats x WHERE x.org_id = t.org_id AND x.id <> t.seat_id AND x.state <> 'removed' AND x.idp = ?3 AND x.idp_tenant = ?4 AND x.idp_subject = ?5) AS taken
        FROM enrolment_tickets t JOIN seats s ON s.org_id = t.org_id AND s.id = t.seat_id
        JOIN organisations o ON o.id = t.org_id AND o.company_signin = ?3 AND o.company_tenant = ?4
-       WHERE t.org_id = ?1 AND t.id = ?2 AND t.state = 'issued' AND t.idp_at IS NULL`,
-    ).bind(seen.org_id, seen.id, who.provider, who.tenant, who.subject).first<{ email: string | null; idp: string | null; tenant: string | null; subject: string | null; taken: number }>()
+       WHERE t.org_id = ?1 AND t.id = ?2 AND t.state = 'issued'`,
+    ).bind(seen.org_id, seen.id, who.provider, who.tenant, who.subject).first<{ email: string | null; at: number | null; confirmed: string | null; idp: string | null; tenant: string | null; subject: string | null; taken: number }>()
     outcome = !t ? 'link'
+      // Confirmed before, no passkey yet: the same account may come back, in another browser (review R1). Nothing is written again.
+      : t.at !== null ? (t.confirmed === who.subject ? 'ok' : 'account')
       : t.email !== null ? (t.email === who.email ? 'ok' : 'email') // both in lower case: the link's by emailAt(), the token's by verifyIdToken()
       : t.idp === who.provider && t.tenant === who.tenant && t.subject === who.subject ? 'ok' : 'account'
-    if (outcome === 'ok' && t!.taken) outcome = 'in_use'
+    if (outcome !== 'ok' || t!.at !== null) return null
+    // One account, one seat (review R2): no other seat is linked to it, and no open link of another seat waits with it.
+    // The unique index of 0010 on seats is the second line.
+    if (t!.taken || (await ticketRows(db, { orgId: seen.org_id, seatId: seen.seat_id, role: 'viewer' }, now)).some((k) => k.seat_id !== seen.seat_id && k.idp_subject === who.subject)) outcome = 'in_use'
     if (outcome !== 'ok') return null
     return [{ at: now, actorKind: 'seat', actorId: seen.seat_id, sessionId: null, action: 'ticket.company', subjectId: seen.id, detail: who.provider },
       [db.prepare(`UPDATE enrolment_tickets SET idp_subject = ?, idp_at = ? WHERE org_id = ? AND id = ? AND state = 'issued'`).bind(who.subject, now, seen.org_id, seen.id)]]

@@ -680,6 +680,7 @@ try {
   const on = applicant.page
   const domain = `e2e-${Date.now().toString(36)}.example`
   const operator = (...args) => run('node', ['scripts/operator.mjs', ...args])
+  const refusedBy = (command) => { try { command(); return '' } catch (error) { return String(error.stderr ?? '') } } // what a refused command printed
   const code = operator('invite').trim().split('\n').pop() // G1: applications are by invitation
   check('the operator command issues an application code', /^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]{43}$/.test(code))
   await on.goto(`${ORIGIN}/apply`)
@@ -747,7 +748,9 @@ try {
   await on.getByText('Under review since').waitFor()
   const listed = operator('list')
   check('the operator command lists the organisation with its domain, the three words and the wallet', listed.includes(newOrg.id) && listed.includes(domain) && listed.includes(firstWords) && listed.includes(key.address) && listed.includes('ready           yes'))
-  check('the operator approves', operator('decide', newOrg.id, 'approve', '--tier', 'standard', '--source', 'registry', '--evidence', 'e2e register extract', '--sha256', 'ab'.repeat(32), '--next-review', '2030-01-01').includes(`${newOrg.id} is now active`))
+  const submission = /submission ([0-9a-f]{16}) /.exec(listed)?.[1] ?? ''
+  check('an approval that names no submission, or another one, is refused', refusedBy(() => operator('decide', newOrg.id, 'approve', '--submission', '0'.repeat(16), '--tier', 'standard', '--source', 'registry', '--evidence', 'e2e register extract', '--sha256', 'ab'.repeat(32), '--next-review', '2030-01-01')).includes('submitted again since that list'))
+  check('the operator approves', operator('decide', newOrg.id, 'approve', '--submission', submission, '--tier', 'standard', '--source', 'registry', '--evidence', 'e2e register extract', '--sha256', 'ab'.repeat(32), '--next-review', '2030-01-01').includes(`${newOrg.id} is now active`))
   check('nothing is left under review', operator('list').includes('Nothing is under review.'))
   await on.reload()
   await on.getByText('Verified on').waitFor()
@@ -787,6 +790,12 @@ try {
   await cora.page.getByRole('button', { name: 'Sign in as this address' }).click()
   await cora.page.getByRole('button', { name: 'Create passkey' }).waitFor()
   check('with the invited account the provider\'s confirmation shows, and the passkey can be created', await cora.page.getByText(`cora@${domain}, confirmed by Microsoft`).isVisible())
+  // Review R1: the passkey belongs to the browser that did the company sign-in. The link alone, in another browser, creates nothing.
+  const thief = await person()
+  await thief.page.goto(companyLink)
+  await thief.page.getByRole('button', { name: 'Continue with Microsoft' }).waitFor()
+  check('the link in another browser, after the member signed in, still asks for the company account: no passkey button there', (await thief.page.getByRole('button', { name: 'Create passkey' }).count()) === 0)
+  await thief.context.close()
   await cora.page.getByRole('button', { name: 'Create passkey' }).click()
   await cora.page.getByRole('heading', { name: 'Your passkey waits for approval.' }).waitFor()
   check('no words are shown on this path', (await cora.page.locator('.phrase').count()) === 0 && await both(cora.page, '40-company-stored'))

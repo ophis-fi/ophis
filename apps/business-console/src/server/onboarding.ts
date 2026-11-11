@@ -21,7 +21,7 @@ export const OPERATOR: Record<string, string> = { local: 'http://operator.localh
 export const DNS = { timeoutMs: 5000, maxBytes: 16 * 1024 }
 const WEEK_S = 7 * 24 * 60 * 60
 const INVITE_S = 14 * 24 * 60 * 60 // an application code lives 14 days
-const MAX_DNS = 10 // DNS checks per domain per clock hour
+const MAX_DNS = 10 // DNS checks per application code per clock hour
 const MAX_BODY = 64 * 1024
 const ID = /^[0-9a-f]{32}$/
 const LABEL = /^[\p{L}\p{N} ._()-]{1,40}$/u
@@ -157,8 +157,8 @@ const walletOf = (db: D1Database, orgId: string) =>
               FROM wallets w JOIN organisations o ON o.id = w.org_id WHERE w.org_id = ? AND ((o.state = 'unverified' AND w.state = 'pending') OR (o.state <> 'unverified' AND w.anchor IS NOT NULL))
               ORDER BY w.rowid DESC LIMIT 1`).bind(orgId).first<WalletRow>()
 
-interface Company { id: string; legalName: string; kind: string; state: string; country: string | null; registration: string | null; domain: string | null; domainVerifiedAt: number | null; reviewAt: number | null; signin: string | null; tenant: string | null }
-const COMPANY = `id, name AS legalName, kind, state, country, registration_number AS registration, email_domain AS domain, domain_verified_at AS domainVerifiedAt, review_at AS reviewAt, company_signin AS signin, company_tenant AS tenant FROM organisations`
+interface Company { id: string; legalName: string; kind: string; state: string; country: string | null; registration: string | null; domain: string | null; domainVerifiedAt: number | null; reviewAt: number | null; signin: string | null; tenant: string | null; print: string | null }
+const COMPANY = `id, name AS legalName, kind, state, country, registration_number AS registration, email_domain AS domain, domain_verified_at AS domainVerifiedAt, review_at AS reviewAt, company_signin AS signin, company_tenant AS tenant, review_print AS print FROM organisations`
 interface KybRow { legalName: string; registration: string | null; country: string; tier: string; source: string; evidenceSha256: string | null; decision: string; reason: string | null; decidedAt: number | null; nextReview: number | null }
 /** The organisation of this session and its newest KYB row: the result, never a document. */
 async function reviewOf(db: D1Database, orgId: string) {
@@ -172,10 +172,14 @@ async function reviewOf(db: D1Database, orgId: string) {
 const underReview = async (db: D1Database) =>
   (await db.prepare(`SELECT ${COMPANY} WHERE state = 'unverified' AND review_at IS NOT NULL ORDER BY review_at, id`).all<Company>()).results
 
-interface Kyb { decision: Decision; reason: string | null; tier: string; source: string; evidenceRef: string | null; evidenceSha256: string | null; nextReview: number | null }
+// The name of a submission, for the operator: 16 hex characters of the SHA-256 of what was submitted (review_print).
+// An approval carries the one the operator looked at; after a change and a new "Submit" it is another (review).
+const submissionOf = async (print: string | null) => (await sha256Hex(print ?? '')).slice(0, 16)
+interface Kyb { decision: Decision; submission: string | null; reason: string | null; tier: string; source: string; evidenceRef: string | null; evidenceSha256: string | null; nextReview: number | null }
 // The operator's decision, in one commit with its row in the client's own audit log (actor kind "operator"). Read
 // inside the plan, all of it again: the organisation is unverified and under review (any change to its Owner seats,
-// their passkeys or the named wallet since the submit has taken it out of review: G3), for an approval A7 still holds,
+// their passkeys or the named wallet since the submit has taken it out of review: G3), for an approval the submission
+// is the one the operator saw in the list (a change followed by a new submit is another one), A7 still holds,
 // and the wallet the handler just checked on the chain is the wallet that waits now, by its id: else "try again". Approve: the organisation is active and that wallet is
 // the recovery wallet in force at once. Refuse: archived. More information: back to the Owner. The KYB row copies the
 // organisation's own name, number and country: the operator sets no field of the organisation, no member, no passkey
@@ -184,10 +188,11 @@ async function decideKyb(db: D1Database, orgId: string, d: Kyb, checked: { id: s
   const id = randomId()
   let outcome = 'not_found'
   await commit(db, orgId, async () => {
-    const o = await db.prepare('SELECT name, country, registration_number AS registration, state, review_at AS reviewAt FROM organisations WHERE id = ?')
-      .bind(orgId).first<{ name: string; country: string; registration: string | null; state: string; reviewAt: number | null }>()
+    const o = await db.prepare('SELECT name, country, registration_number AS registration, state, review_at AS reviewAt, review_print AS print FROM organisations WHERE id = ?')
+      .bind(orgId).first<{ name: string; country: string; registration: string | null; state: string; reviewAt: number | null; print: string | null }>()
     outcome = !o ? 'not_found' : o.state !== 'unverified' || o.reviewAt === null ? 'not_under_review'
-      : d.decision !== 'approve' ? 'ok' : (await missing(db, orgId, now)) ? 'not_ready' : ((await walletOf(db, orgId))?.id ?? null) !== (checked?.id ?? null) ? 'try_again' : 'ok'
+      : d.decision !== 'approve' ? 'ok' : (await missing(db, orgId, now)) ? 'not_ready' : ((await walletOf(db, orgId))?.id ?? null) !== (checked?.id ?? null) ? 'try_again'
+      : (await submissionOf(o.print)) !== d.submission ? 'submission_changed' : 'ok'
     if (outcome !== 'ok' || !o) return null
     return [{ at: now, actorKind: 'operator', actorId: null, sessionId: null, action: KYB_ACTION[d.decision], subjectId: id, detail: d.decision === 'approve' ? d.evidenceSha256 : d.reason }, [
       db.prepare(`INSERT INTO kyb_records (id, org_id, legal_name, registration_number, country, tier, source, evidence_ref, evidence_sha256, decision, decided_at, recheck_at, reason, created_at)
@@ -245,14 +250,14 @@ function applicant(body: Record<string, unknown>): Applicant | string {
 const APPLY = 'apply-intent' // the labels of this file's texts under the challenge key
 const INVITE = 'apply-invite'
 // G1: applications are by invitation. An application code is the server's own text (MAC label "apply-invite": an id
-// and an expiry), made by the operator's command, valid 14 days, good for one organisation: its SHA-256 is stored
-// unique on the organisation it makes. Checked before anything else on every call of /apply; "unused" is the one
+// and an expiry), made by the operator's command, valid 14 days, good for one organisation: the SHA-256 of its id is
+// stored unique on the organisation it makes. Checked before anything else on every call of /apply; "unused" is the one
 // read of that route. The code never leaves the browser again: the intent carries its hash.
 async function invited(c: Ctx) {
   const code = typeof c.body.invite === 'string' ? c.body.invite.trim() : ''
-  const fields = (await unseal(c.env.CHALLENGE_KEY, INVITE, code)) as { expiresAt: number } | null
+  const fields = (await unseal(c.env.CHALLENGE_KEY, INVITE, code)) as { id: string; expiresAt: number } | null
   if (!fields || fields.expiresAt * 1000 <= c.now) return 'invite_invalid'
-  const hash = await sha256Hex(code)
+  const hash = await sha256Hex(fields.id) // the code's own random id, not the text as typed (unseal takes one spelling only)
   return (await c.env.DB.prepare('SELECT 1 FROM organisations WHERE invite_hash = ?').bind(hash).first()) ? 'invite_used' : { hash }
 }
 const ACTIVATE = 'activate-intent'
@@ -323,13 +328,14 @@ export async function lookup(resolver: string, name: string) {
 
 // POST /api/apply/check, "Check DNS". The MAC first, before any lookup; the expiry; then both resolvers must return
 // the exact value, which is made again here from the intent's domain and passkey. Only then the one commit.
-// G6: at most 10 checks per domain per clock hour, whoever holds its intents (countHour, under the key "dns:<domain>"):
-// the one write before the proof, made after the MAC and the expiry and before any lookup.
+// G6: at most 10 checks per application code per clock hour, whatever the domain (countHour, under the key
+// "dns:<hash of the code's id>"): the one write before the proof, made after the MAC and the expiry and before any
+// lookup. Per code, not per domain: an applicant uses up its own checks, never those of the company whose domain it names.
 export async function applyCheck(c: Ctx) {
   const intent = (await unseal(c.env.CHALLENGE_KEY, APPLY, typeof c.body.intent === 'string' ? c.body.intent : '')) as ApplyIntent | null
   if (!intent) return fail(400, 'intent_invalid')
   if (intent.expiresAt * 1000 <= c.now) return fail(410, 'intent_expired')
-  if (!(await countHour(c.env.DB, `dns:${intent.domain}`, c.now, MAX_DNS))) return fail(429, 'too_many')
+  if (!(await countHour(c.env.DB, `dns:${intent.inviteHash}`, c.now, MAX_DNS))) return fail(429, 'too_many')
   const value = await dnsValue(c.env.CHALLENGE_KEY, intent.domain, intent.credentialHash)
   const answers = await Promise.all(RESOLVERS[c.env.ENVIRONMENT].map((resolver) => lookup(resolver, dnsName(intent.domain))))
   // The refusal names the record again: whoever holds the intent may know what to publish (a resumed application reads it here).
@@ -449,7 +455,7 @@ async function list(c: Ctx) {
     const endpoints = wallet?.kind === 'safe' ? c.config.chains[wallet.chainId] : undefined
     const live = endpoints ? await safeState(endpoints, wallet!.chainId, wallet!.address) : null
     organisations.push({
-      id: o.id, legalName: o.legalName, kind: o.kind, country: o.country, registration: o.registration, domain: o.domain, submittedAt: o.reviewAt,
+      id: o.id, legalName: o.legalName, kind: o.kind, country: o.country, registration: o.registration, domain: o.domain, submittedAt: o.reviewAt, submission: await submissionOf(o.print),
       phrase: await wordsOf(c, o.id, first), credentialHash: first.hash, missing: await missing(c.env.DB, o.id, c.now),
       wallet: wallet && { ...walletView(wallet), colour: colour({ kind: wallet.kind, snapshot: wallet.snapshot, inForce: true }, live) },
     })
@@ -458,15 +464,15 @@ async function list(c: Ctx) {
 }
 
 // A decision: approve, refuse, or more information. Codes from fixed lists, a reference, a hash and a date: no free text
-// reaches the audit log. For an approval the wallet's proof is checked again first, a contract wallet's on both
+// reaches the audit log. An approval names the submission it is for, as the list showed it. For an approval the wallet's proof is checked again first, a contract wallet's on both
 // endpoints, and a Safe must be readable: what is read then is the snapshot of the recovery wallet in force.
 async function decide(c: Ctx) {
   const id = c.params.id ?? ''
-  const { decision, reason, tier, source, evidenceRef, evidenceSha256, nextReview } = c.body
+  const { decision, reason, tier, source, evidenceRef, evidenceSha256, nextReview, submission } = c.body
   const approve = decision === 'approve'
   const day = approve && typeof nextReview === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(nextReview) ? Date.parse(`${nextReview}T00:00:00Z`) : null
   if (!ID.test(id) || !Object.hasOwn(KYB_ACTION, String(decision)) || !TIERS.includes(tier as string) || !SOURCES.includes(source as never)
-    || (approve ? reason !== undefined || !(day! > c.now) : !REASONS.includes(reason as never) || nextReview !== undefined)
+    || (approve ? reason !== undefined || !(day! > c.now) || typeof submission !== 'string' || !/^[0-9a-f]{16}$/.test(submission) : !REASONS.includes(reason as never) || nextReview !== undefined)
     || (evidenceRef === undefined ? approve : typeof evidenceRef !== 'string' || !/^[\w ./:#-]{1,120}$/.test(evidenceRef))
     || (evidenceSha256 === undefined ? approve : typeof evidenceSha256 !== 'string' || !/^[0-9a-f]{64}$/.test(evidenceSha256))) return fail(400, 'invalid')
   let checked: { id: string; snapshot: string | null } | null = null
@@ -479,7 +485,7 @@ async function decide(c: Ctx) {
     checked = { id: wallet.id, snapshot: live ? JSON.stringify(live) : wallet.snapshot }
   }
   const outcome = await decideKyb(c.env.DB, id, {
-    decision: decision as Decision, reason: approve ? null : (reason as string), tier: tier as string, source: source as string,
+    decision: decision as Decision, submission: approve ? (submission as string) : null, reason: approve ? null : (reason as string), tier: tier as string, source: source as string,
     evidenceRef: (evidenceRef as string | undefined) ?? null, evidenceSha256: (evidenceSha256 as string | undefined) ?? null, nextReview: day,
   }, checked, c.now)
   return outcome === 'ok' ? json(200, { state: { approve: 'active', refuse: 'archived', more: 'unverified' }[decision as Decision] }) : refuse(outcome)

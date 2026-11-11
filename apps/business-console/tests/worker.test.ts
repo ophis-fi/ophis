@@ -5525,7 +5525,10 @@ describe('E. onboarding: a company applies, proves its domain, is activated and 
   }
   const APPROVE = { decision: 'approve', tier: 'standard', source: 'registry', evidenceRef: 'LBR extract B123456', evidenceSha256: 'ab'.repeat(32), nextReview: '2027-11-11' }
   const MORE = { decision: 'more', reason: 'details_differ', tier: 'standard', source: 'registry' }
-  const decideOn = (orgId: string, body: unknown = APPROVE, options: Parameters<typeof op>[2] = {}) => op('POST', `/api/operator/organisations/${orgId}/decision`, { ...options, body })
+  // An approval names the submission the operator looked at (review): the helper takes it from the row, as the list would show it now.
+  const submissionOf = async (orgId: string) => (await data.sha256Hex((await row<{ print: string | null }>('SELECT review_print AS print FROM organisations WHERE id = ?', orgId))?.print ?? '')).slice(0, 16)
+  const decideOn = async (orgId: string, body: Record<string, unknown> = APPROVE, options: Parameters<typeof op>[2] = {}) =>
+    op('POST', `/api/operator/organisations/${orgId}/decision`, { ...options, body: body.decision === 'approve' && !('submission' in body) ? { ...body, submission: await submissionOf(orgId) } : body })
   const opPaths = (id: string) => onboarding.operatorRoutes.map((r) => [r.method, r.path.replace(':id', id)] as const)
 
   // ---- A1, A2: the application ----
@@ -5671,27 +5674,61 @@ describe('E. onboarding: a company applies, proves its domain, is activated and 
     expect((await checkDns(other.intent)).body).toEqual({ error: 'domain_taken' })
   })
 
-  it('G6: at most 10 DNS checks per domain per hour, counted after the MAC and the expiry and before any lookup', async () => {
+  it('G6, R4: at most 10 DNS checks per application code per hour, counted after the MAC and the expiry and before any lookup; one applicant uses up nobody else\'s', async () => {
     const domain = `limit${++domains}.example`
-    const [a, b, other] = [await applyFor(domain), await applyFor(domain), await applyFor()]
+    const code = await newCode()
+    // One applicant, one code, two domains; another applicant, with a code of its own, for the first of those domains.
+    const [a, b, other] = [await applyFor(domain, { invite: code }), await applyFor(undefined, { invite: code }), await applyFor(domain)]
+    const key = `dns:${fieldsOf<{ inviteHash: string }>(a.intent).inviteHash}`
     // What is not an intent of ours, or is too old, is not counted.
-    expect((await checkDns(resealed(a.intent, { domain: other.domain }))).body).toEqual({ error: 'intent_invalid' })
+    expect((await checkDns(resealed(a.intent, { domain: b.domain }))).body).toEqual({ error: 'intent_invalid' })
     now = START + 7 * DAY
     expect((await checkDns(a.intent)).body).toEqual({ error: 'intent_expired' })
     now = START
-    expect(await counted(`dns:${domain}`)).toBe(0)
-    // Two applications for one domain share its 10.
+    expect(await counted(key)).toBe(0)
+    // Every application made with one code shares its 10, whatever the domain.
     for (let i = 0; i < 10; i++) expect((await checkDns(i % 2 ? a.intent : b.intent)).body.error, `check ${i + 1}`).toBe('dns_not_proved')
-    expect(await counted(`dns:${domain}`)).toBe(10)
+    expect([await counted(key), await counted(`dns:${domain}`)]).toEqual([10, 0])
     publish(a.body.record) // the record is there now: the 11th check still asks nobody
     dns.asked = []
     const rows = await snapshot()
-    const over = await checkDns(a.intent)
-    expect([over.status, over.body]).toEqual([429, { error: 'too_many' }])
+    for (const intent of [a.intent, b.intent]) {
+      const over = await checkDns(intent)
+      expect([over.status, over.body]).toEqual([429, { error: 'too_many' }])
+    }
     expect([dns.asked.length, await snapshot()]).toEqual([0, rows])
-    expect((await checkDns(other.intent)).body.error).toBe('dns_not_proved') // another domain has its own
+    // R4: the company whose domain it is, with its own code, is not locked out by those checks.
+    expect((await checkDns(other.intent)).body.error).toBe('dns_not_proved')
     now = START + HOUR // the next clock hour
     expect((await checkDns(a.intent)).body).toEqual({ state: 'unverified' })
+  })
+
+  it('R3 (review): an application code is used up by its own id and has one spelling: padding, the other base64 alphabet, spare bits or a space inside make no second code', async () => {
+    const alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_'
+    let code = await newCode()
+    for (let i = 0; i < 40 && !/[-_]/.test(code); i++) code = await newCode() // a code that the other alphabet spells differently
+    expect(code).toMatch(/[-_]/)
+    const [body, mac] = code.split('.')
+    const pad = (part: string) => part + '='.repeat((4 - (part.length % 4)) % 4)
+    const spare = (part: string) => part.slice(0, -1) + alphabet[alphabet.indexOf(part.at(-1)!) ^ 1] // the last character of 43 carries two bits that count for nothing
+    const spellings = [`${body}.${pad(mac)}`, `${pad(body)}.${mac}`, code.replace(/-/g, '+').replace(/_/g, '/'), `${body}.${spare(mac)}`, `${body.slice(0, 4)} ${body.slice(4)}.${mac}`, `${body}.${mac.slice(0, 4)}\n${mac.slice(4)}`]
+    expect(new Set([code, ...spellings]).size).toBeGreaterThanOrEqual(6)
+    // Each of them is the same bytes under the same MAC: before the fix each passed as a code of its own.
+    for (const invite of spellings) {
+      if (invite === code) continue
+      const refused = await call('POST', '/api/apply', { body: { ...form('alder.example'), invite } })
+      expect([refused.status, refused.body], invite).toEqual([403, { error: 'invite_invalid' }])
+    }
+    // The exact text, with spaces around it from a paste, is the code. What the organisation keeps is the hash of the code's id.
+    const a = await applyFor(undefined, { invite: ` ${code}\n` })
+    publish(a.body.record)
+    expect((await checkDns(a.intent)).body).toEqual({ state: 'unverified' })
+    expect((await row('SELECT invite_hash FROM organisations WHERE email_domain = ?', a.domain))!.invite_hash).toBe(await data.sha256Hex(fieldsOf<{ id: string }>(code).id))
+    expect((await call('POST', '/api/apply', { body: { ...form('birch.example'), invite: code } })).body).toEqual({ error: 'invite_used' })
+    // Every sealed text has one spelling: an intent in another one is not ours either.
+    const b = await applyFor()
+    expect((await checkDns(`${b.intent}=`)).body).toEqual({ error: 'intent_invalid' })
+    expect((await checkDns(b.intent.replace(/.$/, (c) => alphabet[alphabet.indexOf(c) ^ 1]))).body).toEqual({ error: 'intent_invalid' })
   })
 
   it('A3, A4: the parser reads the JSON form of both resolvers, and the resolvers are constants per environment', () => {
@@ -5793,7 +5830,7 @@ describe('E. onboarding: a company applies, proves its domain, is activated and 
     publish(a.body.record)
     publish(b.body.record)
     expect((await checkDns(a.intent)).body).toEqual({ state: 'unverified' })
-    expect((await row('SELECT invite_hash FROM organisations WHERE email_domain = ?', a.domain))!.invite_hash).toBe(await data.sha256Hex(code))
+    expect((await row('SELECT invite_hash FROM organisations WHERE email_domain = ?', a.domain))!.invite_hash).toBe(await data.sha256Hex(fieldsOf<{ id: string }>(code).id))
     const made = await snapshot()
     expect((await checkDns(b.intent)).body).toEqual({ error: 'invite_used' })
     expect(await snapshot()).toBe(made)
@@ -6115,7 +6152,7 @@ describe('E. onboarding: a company applies, proves its domain, is activated and 
     const a = await underReview()
     const waiting = await row<{ id: string }>(`SELECT id FROM wallets WHERE org_id = ? AND state = 'pending'`, a.orgId)
     // At the same instant the wallet that waits is another row (same proof, another id), with the organisation still under review.
-    const swapped = racing(async () => {
+    const swap = async () => {
       await db.batch([
         db.prepare(`UPDATE wallets SET state = 'unlinked' WHERE id = ?`).bind(waiting!.id),
         db.prepare(`INSERT INTO wallets (id, org_id, chain_id, address, kind, label, state, proof_nonce, proof_digest, proof_signature, proof_checked_at, linked_at, snapshot)
@@ -6123,9 +6160,9 @@ describe('E. onboarding: a company applies, proves its domain, is activated and 
         db.prepare(`UPDATE organisations SET review_print = ${data.REVIEWED} WHERE id = ?1`).bind(a.orgId),
       ])
       await signIn(a.key) // takes the next audit number, as any write of the organisation would
-    })
+    }
     const rows = async () => JSON.stringify([await orgRow(a.orgId), await count('kyb_records', a.orgId), (await db.prepare('SELECT id, state, anchor FROM wallets WHERE org_id = ? ORDER BY id').bind(a.orgId).all()).results])
-    const refused = await decideOn(a.orgId, APPROVE, { env: { ...swapped, OPERATOR_TOKEN: TOKEN } as unknown as Env })
+    const refused = await decideOn(a.orgId, APPROVE, { env: { ...racing(swap), OPERATOR_TOKEN: TOKEN } as unknown as Env })
     const before = await rows()
     expect([refused.status, refused.body]).toEqual([409, { error: 'try_again' }])
     expect((await orgRow(a.orgId))!.state).toBe('unverified')
@@ -6133,6 +6170,31 @@ describe('E. onboarding: a company applies, proves its domain, is activated and 
     // Tried again, the wallet that waits is the one that is checked and activated.
     expect((await decideOn(a.orgId)).body).toEqual({ state: 'active' })
     expect((await db.prepare(`SELECT id, state, anchor FROM wallets WHERE org_id = ? AND state = 'linked'`).bind(a.orgId).all()).results).toEqual([{ id: `${waiting!.id.slice(1)}${waiting!.id[0]}`, state: 'linked', anchor: 'current' }])
+  })
+
+  it('review: an approval names the submission the operator looked at: after another wallet and a new "Submit", the approval of the earlier one activates nothing', async () => {
+    const a = await underReview()
+    const listed = async () => (await op('GET', '/api/operator/organisations')).body.organisations.find((o: { id: string }) => o.id === a.orgId) as { submission: string; wallet: { address: string } }
+    const seen = await listed()
+    expect([seen.submission, seen.wallet.address]).toEqual([await submissionOf(a.orgId), accounts[0].address])
+    expect(seen.submission).toMatch(/^[0-9a-f]{16}$/)
+    // The Owner names another wallet (which un-submits, G3) and submits again, before the operator's decision arrives.
+    expect((await activation(a, accounts[1])).body).toEqual({ state: 'stored' })
+    expect((await orgRow(a.orgId))!.review_at).toBeNull()
+    expect((await submit(a)).body).toEqual({ state: 'under_review' })
+    const rows = await snapshot()
+    const stale = await decideOn(a.orgId, { ...APPROVE, submission: seen.submission })
+    expect([stale.status, stale.body, await snapshot()]).toEqual([409, { error: 'submission_changed' }, rows])
+    // An approval says which submission, in its one form.
+    for (const submission of [undefined, '', 7, seen.submission.toUpperCase(), `${seen.submission}0`, null]) {
+      expect((await decideOn(a.orgId, { ...APPROVE, submission })).body, String(submission)).toEqual({ error: 'invalid' })
+    }
+    expect(await snapshot()).toBe(rows)
+    // The list again shows the new wallet under a new name; that one is approved, and its wallet is the recovery wallet.
+    const now2 = await listed()
+    expect([now2.submission === seen.submission, now2.wallet.address]).toEqual([false, accounts[1].address])
+    expect((await decideOn(a.orgId, { ...APPROVE, submission: now2.submission })).body).toEqual({ state: 'active' })
+    expect((await row<{ address: string }>(`SELECT address FROM wallets WHERE org_id = ? AND anchor = 'current'`, a.orgId))!.address).toBe(accounts[1].address.toLowerCase())
   })
 
   it('G5: "Submit for review" refuses a recovery wallet with a single key when the organisation has other members, as a recovery does; approve checks again', async () => {
@@ -6218,7 +6280,7 @@ describe('E. onboarding: a company applies, proves its domain, is activated and 
     expect((await submit(a)).body).toEqual({ state: 'under_review' })
     const view = (await call('GET', '/api/onboarding', { cookie: a.cookie })).body
     expect(await mine()).toEqual([{
-      id: a.orgId, legalName: 'Alder Custody S.A.', kind: 'institution', country: 'LU', registration: 'B123456', domain: 'alder-list.example', submittedAt: now,
+      id: a.orgId, legalName: 'Alder Custody S.A.', kind: 'institution', country: 'LU', registration: 'B123456', domain: 'alder-list.example', submittedAt: now, submission: await submissionOf(a.orgId),
       phrase: view.first.phrase, credentialHash: view.first.credentialHash, missing: null,
       wallet: { chainId: CHAIN, chain: 'OP Mainnet', address: accounts[4].address, kind: 'safe', label: 'Treasury', inForce: false, threshold: 2, owners: 3, colour: { level: 'green', why: null } },
     }])
@@ -6624,7 +6686,9 @@ describe('G. company sign-in: a company account proves who a new passkey belongs
     for (const [name, value] of Object.entries(headers)) value === null ? h.delete(name) : h.set(name, value)
     const response = await handle(new Request(origin + path, { method, headers: h, redirect: 'manual' }), env, () => now)
     const location = response.headers.get('location')
-    return { status: response.status, location, cleared: response.headers.get('set-cookie'), outcome: /^\/\?company=([a-z_]+)#/.exec(location ?? '')?.[1] ?? null, headers: response.headers }
+    const set = response.headers.getSetCookie()
+    // cleared: what became of the flow cookie. pass: the cookie that ties the link to this browser once the provider confirmed (R1), as a Cookie header.
+    return { status: response.status, location, cleared: set.find((c) => c.startsWith('__Host-company=')) ?? null, pass: set.find((c) => c.startsWith('__Host-enrol='))?.split(';')[0] ?? '', passSet: set.find((c) => c.startsWith('__Host-enrol=')) ?? null, outcome: /^\/\?company=([a-z_]+)#/.exec(location ?? '')?.[1] ?? null, headers: response.headers }
   }
   const claimsFor = (provider: Provider, s: Begun, email: string, more: object = {}) => {
     const domain = email.split('@')[1].toLowerCase()
@@ -6666,7 +6730,7 @@ describe('G. company sign-in: a company account proves who a new passkey belongs
     const s = await begin('/api/enrol/company', { ticket })
     const came = await back(s, claimsFor(o.provider, s, email, { ...pinned(o), ...more }))
     const key = await softwareAuthenticator(SITE)
-    return { came, key, ticket, stored: came.outcome === 'ok' ? await enrol(ticket, key) : null, cookie: '' }
+    return { came, key, ticket, stored: came.outcome === 'ok' ? await enrol(ticket, key, {}, came.pass) : null, cookie: '' }
   }
   // Invited, signed in at the provider, passkey stored, approved by the inviter: a member whose seat is linked.
   async function joined(o: Org & { key: Key }, role = 'viewer', name = 'vera') {
@@ -6731,8 +6795,9 @@ describe('G. company sign-in: a company account proves who a new passkey belongs
     expect([sent.init?.method, new Headers(sent.init?.headers).get('content-type'), sent.init?.redirect]).toEqual(['POST', 'application/x-www-form-urlencoded', 'manual'])
     expect(sent.init?.signal).toBeInstanceOf(AbortSignal)
     expect(came.headers.get('cache-control')).toBe('no-store')
-    // Used once: the same answer again finds the link confirmed (and the provider's code spent).
-    expect((await back(s, claims)).outcome).toBe('link')
+    // Used once: the provider's code is spent, so the same answer again confirms nothing (and the browser has dropped the cookie).
+    const replay = await back(s, claims, { code: `code-${codes}` })
+    expect([replay.outcome, replay.pass, idp.tokens.length]).toEqual(['rejected', '', 2])
   })
 
   it('C5: the ID token is verified in full: signature, issuer, audience, expiry, nonce, subject, a verified email, the hosted domain or the tenant; the consumer tenant is refused', async () => {
@@ -6871,7 +6936,6 @@ describe('G. company sign-in: a company account proves who a new passkey belongs
     expect(await count('audit_log', other.orgId)).toBe((await data.verifyAudit(db, other.orgId) as { rows: number }).rows)
     // The provider's secrets are Worker secrets: without one, nothing starts and nothing comes back.
     const bare = { ...testEnv, GOOGLE_CLIENT_SECRET: undefined } as unknown as Env
-    expect((await call('POST', '/api/enrol/company', { body: { ticket }, env: bare })).body).toEqual({ error: 'already_confirmed' }) // a confirmed link starts no second sign-in
     const second = await inviteTo(o, { displayName: 'Vic Viewer', role: 'viewer', email: `vic@${o.domain}` })
     const refused = await call('POST', '/api/enrol/company', { body: { ticket: ticketOfLink(second.body.link) }, env: bare })
     expect([refused.status, refused.body, refused.headers.get('set-cookie')]).toEqual([503, { error: 'company_signin_unavailable' }, null])
@@ -7229,6 +7293,113 @@ describe('G. company sign-in: a company account proves who a new passkey belongs
     expect(before).not.toBe(await snapshot(['organisations', 'seats']))
     await db.prepare(`UPDATE organisations SET email_domain = NULL WHERE id = ?`).bind(a.orgId).run()
   }
+  it('review: the Owner\'s company sign-in comes back to a session that every route would still accept: one whose passkey was revoked meanwhile, or that is past its 12 hours, changes nothing', async () => {
+    const o = await company('none')
+    const email = `maren@${o.domain}`
+    // The session that started the sign-in was opened by a passkey that the Owner then revokes from another session (it was stolen).
+    const s = await begin('/api/company/start', { provider: 'microsoft' }, o.cookie)
+    expect((await call('GET', '/api/me', { cookie: o.cookie })).status).toBe(200)
+    const other = await signIn(o.key2)
+    expect((await post(`/api/passkeys/${o.key.id}/revoke`, other)).status).toBe(200)
+    expect((await call('GET', '/api/me', { cookie: o.cookie })).status).toBe(401)
+    const rows = await snapshot()
+    const came = await back(s, claimsFor('microsoft', s, email))
+    expect([came.location, await snapshot()]).toEqual(['/?company=forbidden#/organisation', rows])
+    // A session past its 12 hours, or idle for more than 15 minutes: the same.
+    expect((await addKey(other)).status).toBe(200)
+    const t = await begin('/api/company/start', { provider: 'microsoft' }, other.cookie)
+    expect(t.status).toBe(200)
+    const before = await snapshot()
+    for (const column of ['created_at', 'last_seen_at']) {
+      await db.prepare(`UPDATE sessions SET ${column} = ${column} - ? WHERE token_hash = ?`).bind(12 * HOUR + 1, await data.sha256Hex(other.cookie.split('=')[1])).run()
+      const u = await begin('/api/company/start', { provider: 'microsoft' }, o.cookie) // a dead session starts nothing either
+      expect(u.status, column).toBe(401)
+      expect((await back(t, claimsFor('microsoft', t, email))).location, column).toBe('/?company=forbidden#/organisation')
+      await db.prepare(`UPDATE sessions SET ${column} = ${column} + ? WHERE token_hash = ?`).bind(12 * HOUR + 1, await data.sha256Hex(other.cookie.split('=')[1])).run()
+    }
+    expect(await snapshot()).toBe(before)
+    // In time, the same sign-in is a request.
+    expect((await back(t, claimsFor('microsoft', t, email))).location).toBe('/?company=requested#/organisation')
+  })
+
+  // ---- the independent review of 2026-11-11: R1, R2 ----
+
+  it('R1 (review): the passkey belongs to the browser that did the company sign-in: the link alone, in another browser, starts and stores no passkey; the same account signs in again there', async () => {
+    const o = await company('microsoft')
+    const email = `vera@${o.domain}`
+    const asked = await inviteTo(o, { displayName: 'Vera Viewer', role: 'viewer', email })
+    const other = await inviteTo(o, { displayName: 'Tom Trader', role: 'trader', email: `tom@${o.domain}` })
+    const [ticket, ticket2] = [ticketOfLink(asked.body.link), ticketOfLink(other.body.link)]
+    const s = await begin('/api/enrol/company', { ticket })
+    const came = await back(s, claimsFor('microsoft', s, email))
+    expect(came.outcome).toBe('ok')
+    // The callback gives this browser a cookie for this link: host-bound, HttpOnly, Strict, the server's own text.
+    expect(came.passSet).toMatch(/^__Host-enrol=[A-Za-z0-9_-]+\.[A-Za-z0-9_-]{43}; Path=\/; Secure; HttpOnly; SameSite=Strict; Max-Age=86400$/)
+    expect(came.cleared).toBe('__Host-company=; Path=/; Secure; HttpOnly; SameSite=Lax; Max-Age=0')
+    // Whoever holds the link and not that cookie (the invitation was read on the way): no passkey options, and nothing stored.
+    const thief = await softwareAuthenticator(SITE)
+    const s2 = await begin('/api/enrol/company', { ticket: ticket2 })
+    const came2 = await back(s2, claimsFor('microsoft', s2, `tom@${o.domain}`)) // the cookie of another link, even of the same organisation
+    const rows = await snapshot()
+    const sealedFor = async (label: string, fields: object, key = testEnv.CHALLENGE_KEY) => `__Host-enrol=${await seal(key, label, fields)}`
+    const passFields = JSON.parse(new TextDecoder().decode(fromBase64Url(came.pass.split('=')[1].split('.')[0])))
+    const wrong = ['', came2.pass, s.flow.replace('__Host-company', '__Host-enrol'), await sealedFor('company-flow', passFields), await sealedFor('company-pass', passFields, `${testEnv.CHALLENGE_KEY}x`), came.pass.replace('__Host-enrol', '__Host-session')]
+    expect(came2.pass).not.toBe('')
+    for (const cookie of wrong) {
+      const start = await call('POST', '/api/enrol/start', { body: { ticket }, cookie })
+      expect([start.status, start.body.options, start.body.company], cookie.slice(0, 24)).toEqual([200, undefined, { provider: 'microsoft', email, confirmed: false }])
+      // The options of the browser that signed in do not help either: the cookie is asked for again when the passkey is stored.
+      const mine = await call('POST', '/api/enrol/start', { body: { ticket }, cookie: came.pass })
+      const finish = await call('POST', '/api/enrol/finish', { body: { ticket, label: 'Stolen', response: await thief.register(mine.body.options) }, cookie })
+      expect([finish.status, finish.body], cookie.slice(0, 24)).toEqual([403, { error: 'company_signin_required' }])
+    }
+    expect(await snapshot()).toBe(rows)
+    // The same person in another browser signs in again with the same account and may go on there; another account may not.
+    const again = await begin('/api/enrol/company', { ticket })
+    expect(again.status).toBe(200)
+    expect((await back(again, claimsFor('microsoft', again, `mallory@${o.domain}`))).outcome).toBe('account')
+    const sameAddress = await begin('/api/enrol/company', { ticket })
+    const imposter = await back(sameAddress, claimsFor('microsoft', sameAddress, email, { sub: 'sub-someone-else' }))
+    expect([imposter.outcome, imposter.pass]).toEqual(['account', ''])
+    const second = await begin('/api/enrol/company', { ticket })
+    const came3 = await back(second, claimsFor('microsoft', second, email))
+    expect([came3.outcome, came3.pass === '', await snapshot()]).toEqual(['ok', false, rows]) // nothing is written a second time
+    // The browser that signed in: the passkey is made and stored.
+    const key = await softwareAuthenticator(SITE)
+    expect((await enrol(ticket, key, {}, came.pass)).body).toEqual({ state: 'pending' })
+    // A link that holds its passkey takes no further sign-in.
+    expect((await call('POST', '/api/enrol/company', { body: { ticket } })).status).toBe(404)
+  })
+
+  it('R2 (review): one company account, one seat: a link that waits with that account counts, and the schema refuses a second seat with it', async () => {
+    const o = await company('microsoft')
+    const email = `vera@${o.domain}`
+    const [a, b] = [await inviteTo(o, { displayName: 'Vera Viewer', role: 'viewer', email }), await inviteTo(o, { displayName: 'Vera Trader', role: 'trader', email })]
+    const first = await join(o, a.body.link, email)
+    expect([first.came.outcome, first.stored?.status]).toEqual(['ok', 200])
+    // The same account on a second link, for another seat, while the first waits for its approval: refused, nothing written.
+    const rows = await snapshot()
+    const s = await begin('/api/enrol/company', { ticket: ticketOfLink(b.body.link) })
+    const came = await back(s, claimsFor('microsoft', s, email))
+    expect([came.outcome, came.pass, await snapshot()]).toEqual(['in_use', '', rows])
+    // Before any passkey is stored, too: a link that the account confirmed and that is still open.
+    const [c, d] = [await inviteTo(o, { displayName: 'Tom One', role: 'viewer', email: `tom@${o.domain}` }), await inviteTo(o, { displayName: 'Tom Two', role: 'viewer', email: `tom@${o.domain}` })]
+    const sc = await begin('/api/enrol/company', { ticket: ticketOfLink(c.body.link) })
+    expect((await back(sc, claimsFor('microsoft', sc, `tom@${o.domain}`))).outcome).toBe('ok')
+    const sd = await begin('/api/enrol/company', { ticket: ticketOfLink(d.body.link) })
+    expect((await back(sd, claimsFor('microsoft', sd, `tom@${o.domain}`))).outcome).toBe('in_use')
+    // A link that is closed or past its time no longer holds the account.
+    expect((await post(`/api/tickets/${c.body.ticketId}/cancel`, await again(o))).status).toBe(200)
+    const free = await begin('/api/enrol/company', { ticket: ticketOfLink(d.body.link) })
+    expect((await back(free, claimsFor('microsoft', free, `tom@${o.domain}`))).outcome).toBe('ok')
+    // The first link is approved: the seat is linked. The schema allows no second live seat with that account, whatever the code does.
+    expect((await confirm(o, a.body.ticketId, '', o.key)).body).toEqual({ state: 'active' })
+    const twin = db.prepare('UPDATE seats SET idp = ?, idp_tenant = ?, idp_subject = ? WHERE id = ?').bind('microsoft', TID(o.domain), SUB(email), b.body.seatId)
+    await expect(twin.run()).rejects.toThrow(/UNIQUE constraint failed/)
+    await db.prepare(`UPDATE seats SET state = 'removed' WHERE id = ?`).bind(a.body.seatId).run() // a removed seat frees its account
+    await twin.run()
+  })
+
   for (const route of ['POST /api/enrol/company', 'POST /api/company/start', 'POST /api/policy/company', 'GET /api/company/callback']) {
     it(`${route}: the isolation case`, async () => isolation[route](await member('Alder Asset Management'), await member('Birchfield Capital')))
   }

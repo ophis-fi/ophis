@@ -109,13 +109,21 @@ async function ticketOf(c: Context) {
   return data.ticketByToken(c.env.DB, await data.sha256Hex(token), c.now)
 }
 
+const cookieNamed = (c: Context, name: string) => c.request.headers.get('cookie')?.split(/;\s*/).find((part) => part.startsWith(`${name}=`))?.slice(name.length + 1)
+// Company sign-in: the link says which path it is. A passkey is made and stored on such a link only once the provider
+// has confirmed the account, and only in the browser that did that sign-in (review R1): the callback gave it a cookie
+// for this link, the server's own text. The link alone, read on its way, starts nothing.
+const PASS = 'company-pass'
+const PASS_COOKIE = '__Host-enrol'
+const companyWaits = async (c: Context, ticket: data.Ticket) =>
+  ticket.idp !== null && (ticket.idp_at === null || ((await unseal(c.env.CHALLENGE_KEY, PASS, cookieNamed(c, PASS_COOKIE) ?? '')) as { ticket?: string } | null)?.ticket !== ticket.id)
+
 async function enrolStart(c: Context) {
   const ticket = await ticketOf(c)
   if (!ticket) return fail(404, 'ticket_invalid')
   const challenge = await newChallenge(c.env.CHALLENGE_KEY, 'enrol', ticket.id, c.now)
   const deviceBound = mustBeDeviceBound(ticket)
-  // Company sign-in: the link says which path it is. Until the provider has confirmed the account there is nothing to create a passkey with.
-  const waits = ticket.idp !== null && ticket.idp_at === null
+  const waits = await companyWaits(c, ticket)
   return json(200, {
     organisation: ticket.org_name, member: ticket.display_name, role: ticket.role, deviceBound, first: ticket.kind === 'first_owner',
     company: ticket.idp && { provider: ticket.idp, email: ticket.email ?? ticket.seat_email, confirmed: !waits },
@@ -127,7 +135,7 @@ async function enrolFinish(c: Context) {
   const ticket = await ticketOf(c)
   if (!ticket) return fail(404, 'ticket_invalid')
   // The path is the link's (the organisation's setting when it was issued), never the caller's: no field of this request chooses it.
-  if (ticket.idp && ticket.idp_at === null) return fail(403, 'company_signin_required')
+  if (await companyWaits(c, ticket)) return fail(403, 'company_signin_required')
   const label = typeof c.body.label === 'string' ? c.body.label.trim() : ''
   if (!LABEL.test(label)) return fail(400, 'label_invalid')
   let credential
@@ -360,6 +368,8 @@ const flowCookie = (value: string, maxAge: number) => `${FLOW_COOKIE}=${value}; 
 interface Flow {
   provider: Provider; state: string; nonce: string; verifier: string; expiresAt: number
   ticket?: string; org?: string; seat?: string; session?: string
+  /** The hash of the session's token, as the session cookie's is stored: the callback reads the session with it as every route does. */
+  key?: string
   /** The console page to come back to: the server's own choice, never the caller's. */
   to: string
 }
@@ -368,7 +378,7 @@ const redirectOf = (c: Context) => `${c.config.origin}/api/company/callback`
 
 // Starts one sign-in: state, nonce and PKCE verifier are made here and kept in the flow cookie; the answer is the
 // provider's address, with the state, the nonce and the hash of the verifier.
-async function begin(c: Context, provider: Provider, bound: Pick<Flow, 'ticket' | 'org' | 'seat' | 'session' | 'to'>, hint: { email?: string | null; domain?: string | null }) {
+async function begin(c: Context, provider: Provider, bound: Pick<Flow, 'ticket' | 'org' | 'seat' | 'session' | 'key' | 'to'>, hint: { email?: string | null; domain?: string | null }) {
   const idp = IDPS[c.env.ENVIRONMENT]?.[provider]
   if (!idp || !secretOf(c.env, provider)) return fail(503, 'company_signin_unavailable')
   const flow = newFlow()
@@ -380,7 +390,7 @@ async function enrolCompany(c: Context) {
   const ticket = await ticketOf(c)
   if (!ticket) return fail(404, 'ticket_invalid')
   if (!ticket.idp) return fail(409, 'not_company') // a three-word link: the invitee does not choose the path
-  if (ticket.idp_at !== null) return fail(409, 'already_confirmed')
+  // A link that was confirmed and holds no passkey yet takes the sign-in again: the same account, in another browser (R1).
   return begin(c, ticket.idp, { ticket: c.body.ticket as string, to: `#/enrol/${c.body.ticket as string}` }, { email: ticket.email ?? ticket.seat_email, domain: ticket.domain })
 }
 // POST /api/company/start (Owner, fresh): the Owner signs in with their own company account, which pins the tenant
@@ -390,7 +400,7 @@ async function companyStart(c: Context) {
   const { provider } = c.body
   if (!PROVIDERS.includes(provider as Provider)) return fail(400, 'invalid')
   if (!c.session.email_domain) return fail(409, 'no_domain') // the tenant is pinned against the proven domain
-  return begin(c, provider as Provider, { org: c.actor.orgId, seat: c.actor.seatId, session: c.actor.sessionId, to: c.session.org_state === 'unverified' ? '#/onboarding' : '#/organisation' }, { domain: c.session.email_domain })
+  return begin(c, provider as Provider, { org: c.actor.orgId, seat: c.actor.seatId, session: c.actor.sessionId, key: c.session.token_hash, to: c.session.org_state === 'unverified' ? '#/onboarding' : '#/organisation' }, { domain: c.session.email_domain })
 }
 
 // GET /api/company/callback: where the provider sends the browser back. The router let it in as a top-level
@@ -400,8 +410,13 @@ async function companyStart(c: Context) {
 // token verified in full, with the nonce of the cookie; then what the identity is for, in one commit. The answer is
 // always a redirect to a console page with one word about the outcome (and, for a link, the link again in the fragment).
 async function companyCallback(c: Context) {
-  const back = (outcome: string, to = '#/') => new Response(null, { status: 303, headers: { location: `/?company=${outcome}${to}`, 'set-cookie': flowCookie('', 0) } })
-  const sealed = c.request.headers.get('cookie')?.split(/;\s*/).find((part) => part.startsWith(`${FLOW_COOKIE}=`))?.slice(FLOW_COOKIE.length + 1)
+  const back = (outcome: string, to = '#/', pass?: string) => {
+    const headers = new Headers({ location: `/?company=${outcome}${to}`, 'set-cookie': flowCookie('', 0) })
+    // R1: this browser did the sign-in for this link. Strict: only the console's own pages send it. It lives as long as a link can.
+    if (pass) headers.append('set-cookie', `${PASS_COOKIE}=${pass}; Path=/; Secure; HttpOnly; SameSite=Strict; Max-Age=${24 * 60 * 60}`)
+    return new Response(null, { status: 303, headers })
+  }
+  const sealed = cookieNamed(c, FLOW_COOKIE)
   const flow = sealed ? ((await unseal(c.env.CHALLENGE_KEY, FLOW, sealed)) as Flow | null) : null
   if (!flow || flow.expiresAt <= c.now) return back('expired')
   const { to } = flow
@@ -420,10 +435,14 @@ async function companyCallback(c: Context) {
     const ticket = await data.ticketByToken(c.env.DB, await data.sha256Hex(flow.ticket), c.now)
     if (!ticket || ticket.idp !== who.provider) return back('link', to)
     if (ticket.idp_tenant !== who.tenant) return back('tenant', to)
-    return back(await data.confirmCompany(c.env.DB, ticket, who, c.now), to)
+    const outcome = await data.confirmCompany(c.env.DB, ticket, who, c.now)
+    return back(outcome, to, outcome === 'ok' ? await seal(c.env.CHALLENGE_KEY, PASS, { ticket: ticket.id }) : undefined)
   }
   // An Owner sets the company sign-in. Google: the hosted domain is the organisation's proven domain. Microsoft: the
   // verified address is at that domain. The session and the Owner role of the flow are read inside the commit.
+  // The session cookie is Strict and did not travel here: the session of the flow is read as the router reads one
+  // (not revoked, its passkey and seat active, inside both time limits), or nothing is asked (review).
+  if ((await liveSession(c.env, flow.key ?? '', c.now))?.id !== flow.session) return back('forbidden', to)
   const domain = await data.domainOf(c.env.DB, flow.org!)
   if (!(who.provider === 'google' ? who.tenant === domain : data.emailAt(who.email, domain))) return back('domain', to)
   const cf = (c.request as Request<unknown, IncomingRequestCfProperties>).cf
@@ -840,8 +859,9 @@ const patterns = routes.map((route) => new URLPattern({ pathname: route.path }))
 
 async function sessionOf(request: Request, env: Env, now: number) {
   const token = request.headers.get('cookie')?.split(/;\s*/).find((part) => part.startsWith(`${COOKIE}=`))?.slice(COOKIE.length + 1)
-  if (!token) return null
-  const token_hash = await data.sha256Hex(token)
+  return token ? liveSession(env, await data.sha256Hex(token), now) : null
+}
+async function liveSession(env: Env, token_hash: string, now: number) {
   const session = await data.sessionByToken(env.DB, token_hash)
   if (!session) return null
   // Both limits are the server's: 15 minutes idle, 12 hours from sign-in.
