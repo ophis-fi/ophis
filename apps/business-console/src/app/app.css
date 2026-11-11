@@ -154,4 +154,4 @@ p a.btn { text-decoration: none; } /* a link drawn as a button is not underlined
 .support .answer { margin: 0; font-size: 16px; line-height: 1.62; color: var(--ink); } .support .acts > span { font-size: 14px; font-weight: 500; } .support #sp-ask { flex-basis: 100%; } /* Yes and No stay side by side on a phone */
 .support .answer { margin: 0; font-size: 16px; line-height: 1.62; color: var(--ink); } .support .acts > span { font-size: 14px; font-weight: 500; }
 /* Milestone 5a, the Onboarding page: a step's content sits under its title, across the row. */
-.srow > .stack { grid-column: 2 / -1; margin-top: 6px; } .srow > .stack p { grid-column: auto; }
+.srow > .stack { grid-column: 2 / -1; margin-top: 6px; } .srow > .stack p { grid-column: auto; } .srow .fine > span { min-width: 0; overflow-wrap: anywhere; }

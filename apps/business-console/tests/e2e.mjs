@@ -14,10 +14,11 @@
 // command stands in for the waits), is completed with the new passkey, and an old Owner passkey stops it; the
 // recovery sheet prints alone.
 // Milestone 6: the Owner opens Support, asks a question, reads a help text, presses "No" and gets the hand-over card.
-// Milestone 5a (written, not yet run): an application, its DNS proof, the activation by the recovery wallet, the review and the operator's approval.
+// Milestone 5a: an application, its DNS proof, the activation by the recovery wallet, the review and the operator's approval.
 // Starts and stops its own local server on a throwaway database. Run: pnpm test:e2e
 import { execFileSync, spawn } from 'node:child_process'
 import { mkdirSync, readFileSync, rmSync } from 'node:fs'
+import { request as httpRequest } from 'node:http'
 import { chromium } from 'playwright-core'
 import { mnemonicToAccount } from 'viem/accounts'
 import { publish as publishTxt, start as startDnsStubs } from '../scripts/dns-stub.mjs' // milestone 5: the two local resolvers of "Check DNS"
@@ -27,15 +28,18 @@ const ORIGIN = 'http://localhost:8787'
 const SIGN = 'http://127.0.0.1:8787' // the signing page's own hostname
 const STATE = '.wrangler/e2e'
 const CHROME = '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome'
-const env = { ...process.env, WRANGLER_SEND_METRICS: 'false' }
+// E2E_PORT: where this run's server listens when 8787 is taken (a developer's own "pnpm dev"). The addresses stay the
+// constants above: Chrome is told to reach them on that port, and the Worker decides by the Host header as always.
+const PORT = process.env.E2E_PORT ?? '8787'
+const env = { ...process.env, WRANGLER_SEND_METRICS: 'false', E2E_PORT: PORT }
 const run = (command, args) => execFileSync(command, args, { env, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] })
-const reachable = () => fetch(ORIGIN, { signal: AbortSignal.timeout(1000) }).then(() => true, () => false)
+const reachable = () => fetch(`http://127.0.0.1:${PORT}`, { signal: AbortSignal.timeout(1000) }).then(() => true, () => false)
 const check = (what, ok) => {
   if (!ok) throw new Error(`FAILED: ${what}`)
   console.log(`ok  ${what}`)
 }
 
-if (await reachable()) throw new Error('port 8787 is in use: stop the other server first')
+if (await reachable()) throw new Error(`port ${PORT} is in use: stop the other server first, or set E2E_PORT`)
 rmSync(STATE, { recursive: true, force: true })
 mkdirSync('.shots', { recursive: true })
 run('node_modules/.bin/wrangler', ['d1', 'migrations', 'apply', 'DB', '--local', '--persist-to', STATE])
@@ -44,13 +48,13 @@ check('seed printed an enrolment link', Boolean(link))
 
 const stopDnsStubs = startDnsStubs() // ports 8790 and 8791
 // detached: the server gets its own process group, so the whole group can be stopped at the end.
-const server = spawn('node_modules/.bin/wrangler', ['dev', '--persist-to', STATE], { env, detached: true, stdio: 'ignore' })
+const server = spawn('node_modules/.bin/wrangler', ['dev', '--persist-to', STATE, '--port', PORT], { env, detached: true, stdio: 'ignore' })
 let browser
 try {
   for (let i = 0; i < 60 && !(await reachable()); i++) await new Promise((resolve) => setTimeout(resolve, 500))
   check('the local server answers', await reachable())
 
-  browser = await chromium.launch({ executablePath: CHROME, headless: true })
+  browser = await chromium.launch({ executablePath: CHROME, headless: true, args: PORT === '8787' ? [] : [`--host-resolver-rules=MAP localhost:8787 127.0.0.1:${PORT}, MAP 127.0.0.1:8787 127.0.0.1:${PORT}`] })
   const violations = []
   const foreign = []
   // A security key: USB, resident keys, user verification, not backup eligible (device-bound).
@@ -652,7 +656,8 @@ try {
 
   // The revoke also clears the cookie, so the browser alone cannot show that the server forgot the token: replay it.
   cookie = await sessionCookie()
-  const replay = () => fetch(`${ORIGIN}/api/me`, { headers: { cookie: `__Host-session=${cookie.value}`, 'sec-fetch-site': 'same-origin' } }).then((response) => response.status)
+  // node:http, not fetch: the Host header names the console whatever port this run uses.
+  const replay = () => new Promise((resolve, reject) => httpRequest({ host: '127.0.0.1', port: PORT, path: '/api/me', headers: { host: 'localhost:8787', cookie: `__Host-session=${cookie.value}`, 'sec-fetch-site': 'same-origin' } }, (response) => resolve(response.resume().statusCode)).on('error', reject).end())
   const before = await replay()
   await page.getByRole('row', { name: /This session/ }).getByRole('button', { name: 'End session' }).click()
   await page.getByRole('button', { name: 'Sign in with a passkey' }).waitFor()
@@ -660,7 +665,7 @@ try {
   check('the revoked token is dead on the server: it worked before the revoke, not after', before === 200 && (await replay()) === 401)
 
 
-  // ---- milestone 5a. WRITTEN, NOT YET RUN (2026-11-11: port 8787 and Chrome were in use by other work). ----
+  // ---- milestone 5a (first run 2026-11-11, on E2E_PORT=8797) ----
   // A company applies on /apply and proves its domain by DNS (the two local stub resolvers); the applicant signs in,
   // adds the second passkey and names the recovery wallet, which signs the activation on the signing page; the Owner
   // submits; the operator approves through its command; the organisation is active and the KYB record shows.

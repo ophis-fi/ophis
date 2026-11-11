@@ -31,7 +31,7 @@ function call(method, path, body) {
   const text = body === undefined ? undefined : JSON.stringify(body)
   const headers = { host: HOST, 'sec-fetch-site': 'same-origin', authorization: `Bearer ${token}`, ...(text !== undefined && { origin: `http://${HOST}`, 'content-type': 'application/json', 'content-length': Buffer.byteLength(text) }) }
   return new Promise((resolve, reject) => {
-    request({ host: '127.0.0.1', port: 8787, method, path, headers }, (response) => {
+    request({ host: '127.0.0.1', port: Number(process.env.E2E_PORT ?? 8787), method, path, headers }, (response) => {
       let data = ''
       response.setEncoding('utf8').on('data', (chunk) => (data += chunk)).on('end', () => {
         let answer = null

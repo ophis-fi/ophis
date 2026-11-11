@@ -60,7 +60,7 @@ interface ApplyIntent extends Applicant { seat: string; credential: Passkey; cre
 // The one write of an application, after its DNS proof: the organisation (unverified), its first Owner seat, that
 // seat's passkey (active) and the first row of its audit log, which names the seat, the passkey and the passkey's
 // hash for good. One organisation per domain among those that are not archived is the database's rule (the unique
-// index of 0005), and so is "an intent makes one organisation, once" (the primary keys of its seat and passkey).
+// index of 0006), and so is "an intent makes one organisation, once" (the primary keys of its seat and passkey).
 // Read inside the plan: fewer than 20 organisations were made in the last 24 hours.
 // ponytail: the daily count is read, not locked: two applications at the same instant can make it 21.
 async function createOrganisation(db: D1Database, a: ApplyIntent, value: string, now: number) {
