@@ -5246,7 +5246,7 @@ describe('E. onboarding: a company applies, proves its domain, is activated and 
       ['a record of another name', (answer) => ({ ...answer, Answer: answer.Answer.map((r) => ({ ...r, name: domain })) })],
       ['an oversized answer', (answer) => ({ ...answer, Comment: 'x'.repeat(onboarding.DNS.maxBytes) })],
       ['a thrown error', () => Promise.reject(new Error('network'))],
-      ['a timeout', (_answer, init) => new Promise((_resolve, reject) => init!.signal!.addEventListener('abort', () => reject(new Error('aborted'))))],
+      ['a timeout', (_answer, init) => new Promise((_resolve, reject) => init?.signal?.addEventListener('abort', () => reject(new Error('aborted'))))], // no signal: it never answers, and the test fails by its own timeout
     ]
     onboarding.DNS.timeoutMs = 30
     for (const which of [0, 1]) {

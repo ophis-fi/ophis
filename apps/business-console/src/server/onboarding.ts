@@ -172,8 +172,9 @@ const underReview = async (db: D1Database) =>
 
 interface Kyb { decision: Decision; reason: string | null; tier: string; source: string; evidenceRef: string | null; evidenceSha256: string | null; nextReview: number | null }
 // The operator's decision, in one commit with its row in the client's own audit log (actor kind "operator"). Read
-// inside the plan: the organisation is unverified and under review; for an approval, A7 still holds and the wallet the
-// handler just checked on the chain is still the one that waits. Approve: the organisation is active and that wallet is
+// inside the plan: the organisation is unverified and under review, and for an approval A7 still holds. The wallet the
+// handler just checked on the chain is still the one that waits: a new proof takes the organisation out of review
+// (storeProof), so a decision that follows it is refused here. Approve: the organisation is active and that wallet is
 // the recovery wallet in force at once. Refuse: archived. More information: back to the Owner. The KYB row copies the
 // organisation's own name, number and country: the operator sets no field of the organisation, no member, no passkey
 // and no wallet address.
@@ -181,11 +182,10 @@ async function decideKyb(db: D1Database, orgId: string, d: Kyb, checked: { id: s
   const id = randomId()
   let outcome = 'not_found'
   await commit(db, orgId, async () => {
-    const o = await db.prepare(`SELECT name, country, registration_number AS registration, state, review_at AS reviewAt,
-                                       (SELECT w.id FROM wallets w WHERE w.org_id = organisations.id AND w.state = 'pending' ORDER BY w.rowid DESC LIMIT 1) AS wallet FROM organisations WHERE id = ?`)
-      .bind(orgId).first<{ name: string; country: string; registration: string | null; state: string; reviewAt: number | null; wallet: string | null }>()
+    const o = await db.prepare('SELECT name, country, registration_number AS registration, state, review_at AS reviewAt FROM organisations WHERE id = ?')
+      .bind(orgId).first<{ name: string; country: string; registration: string | null; state: string; reviewAt: number | null }>()
     outcome = !o ? 'not_found' : o.state !== 'unverified' || o.reviewAt === null ? 'not_under_review'
-      : d.decision !== 'approve' ? 'ok' : (await missing(db, orgId)) ? 'not_ready' : o.wallet !== (checked?.id ?? null) ? 'try_again' : 'ok'
+      : d.decision !== 'approve' ? 'ok' : (await missing(db, orgId)) ? 'not_ready' : 'ok'
     if (outcome !== 'ok' || !o) return null
     return [{ at: now, actorKind: 'operator', actorId: null, sessionId: null, action: KYB_ACTION[d.decision], subjectId: id, detail: d.decision === 'approve' ? d.evidenceSha256 : d.reason }, [
       db.prepare(`INSERT INTO kyb_records (id, org_id, legal_name, registration_number, country, tier, source, evidence_ref, evidence_sha256, decision, decided_at, recheck_at, reason, created_at)

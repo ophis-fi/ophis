@@ -91,8 +91,8 @@ export function Apply() {
       return setDone(true)
     }
     if (result.data.record) setRecord(result.data.record)
-    else if (result.data.error !== 'too_many') {
-      // Not an application any more: expired, used, or its domain taken.
+    else if (['intent_invalid', 'intent_expired', 'domain_taken', 'not_stored'].includes(result.data.error ?? '')) {
+      // Not an application any more: changed, expired, used, or its domain taken. Any other failure keeps it.
       keep('')
       setIntent('')
     }

@@ -3,3 +3,5 @@
 CHALLENGE_KEY=
 # Milestone 6, Support: the key of the provider (TypeSafe AI). Optional locally: without it every question is a hand-over.
 TYPESAFE_API_KEY=
+# Milestone 5, the operator's local API: a bearer token of 32 characters or more. "pnpm seed" adds one when it is missing.
+OPERATOR_TOKEN=

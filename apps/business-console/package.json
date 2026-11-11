@@ -14,10 +14,13 @@
     "seed": "node scripts/dev.mjs seed",
     "activate": "node scripts/dev.mjs activate",
     "skip": "node scripts/dev.mjs skip",
-    "dev": "vite build && vite build --mode sign && wrangler dev",
+    "dev": "vite build && vite build --mode sign && node scripts/dns-stub.mjs wrangler dev",
+    "dns": "node scripts/dns-stub.mjs set",
+    "operator": "node scripts/operator.mjs",
     "test": "vite build && vite build --mode sign && vitest run",
     "test:chain": "node tests/chain.mjs",
     "test:jev": "node tests/jev.mjs",
+    "test:dns": "node tests/dns.mjs",
     "test:e2e": "vite build && vite build --mode sign && node tests/e2e.mjs"
   },
   "dependencies": {
