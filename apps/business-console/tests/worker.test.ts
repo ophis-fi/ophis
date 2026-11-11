@@ -6693,7 +6693,7 @@ describe('G. company sign-in: a company account proves who a new passkey belongs
   const claimsFor = (provider: Provider, s: Begun, email: string, more: object = {}) => {
     const domain = email.split('@')[1].toLowerCase()
     const base = { aud: IDP[provider].clientId, sub: SUB(email), email, nonce: s.q('nonce'), iat: Math.floor(now / 1000), exp: Math.floor(now / 1000) + 600 }
-    return provider === 'google' ? { ...base, iss: IDP.google.issuer, email_verified: true, hd: domain, ...more } : { ...base, iss: IDP.microsoft.issuer.replace('{tenantid}', TID(domain)), tid: TID(domain), xms_edov: true, ...more }
+    return provider === 'google' ? { ...base, iss: IDP.google.issuer, email_verified: true, hd: domain, ...more } : { ...base, iss: IDP.microsoft.issuer.replace('{tenantid}', TID(domain)), tid: TID(domain), xms_edov: true, acct: 0, ...more }
   }
   let codes = 0
   // The member signs in at the provider (which holds a code for this token) and the browser comes back with the code and the state.
@@ -6867,6 +6867,8 @@ describe('G. company sign-in: a company account proves who a new passkey belongs
       } else {
         // Microsoft: the plain email claim is not enough: xms_edov (domain owner verified) must be the boolean true.
         for (const xms_edov of [false, 'true', 1, undefined]) await rejected(`xms_edov ${xms_edov}`, (s) => good(s, { xms_edov }))
+        // B0: a guest of the tenant is no member of the company: acct (0 member, 1 guest) must be there and say member.
+        for (const acct of [1, '1', 2, true, undefined]) await rejected(`acct ${acct}`, (s) => good(s, { acct }))
         // Work or school tenants only: the consumer tenant, no tenant, a tenant that is no id, an issuer of another tenant than the token's own.
         await rejected('the consumer tenant', (s) => good(s, { tid: CONSUMER_TENANT, iss: IDP.microsoft.issuer.replace('{tenantid}', CONSUMER_TENANT) }))
         await rejected('no tenant', (s) => good(s, { tid: undefined }))

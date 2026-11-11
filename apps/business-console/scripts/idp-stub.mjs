@@ -79,7 +79,7 @@ export function start() {
       const tid = personal ? CONSUMER : tenantOf(domain)
       const claims = {
         aud: asked.clientId, sub: sha(`${provider}:${asked.email}`).digest('hex').slice(0, 32), email: asked.email, nonce: asked.nonce, iat: now, exp: now + 600,
-        ...(provider === 'google' ? { iss: `${BASE}/google`, email_verified: true, ...(!personal && { hd: domain }) } : { iss: `${BASE}/microsoft/${tid}/v2.0`, tid, xms_edov: true }),
+        ...(provider === 'google' ? { iss: `${BASE}/google`, email_verified: true, ...(!personal && { hd: domain }) } : { iss: `${BASE}/microsoft/${tid}/v2.0`, tid, xms_edov: true, acct: 0 }),
       }
       return send(200, 'application/json', JSON.stringify({ token_type: 'Bearer', expires_in: 600, access_token: 'stub', id_token: signed(claims) }))
     }

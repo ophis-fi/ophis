@@ -85,6 +85,8 @@ export interface Identity { provider: Provider; tenant: string; subject: string;
  *   email       Google: email_verified is true, and the hd claim (the hosted domain) is present: it is the tenant
  *               Microsoft: xms_edov is true ("the email domain owner has been verified"); the plain email claim alone
  *               "isn't guaranteed to be correct" (Microsoft, optional claims reference, read 2026-11-11)
+ *               Microsoft: acct says member (0), not guest (1): a guest of the tenant is not of the company. An optional
+ *               claim, asked for in the app registration; a token without it is refused
  * The caller compares the tenant with the pinned one and the email with the invited one.
  * ponytail: the key set is fetched at every sign-in, no cache: a handful of sign-ins a day.
  */
@@ -109,7 +111,7 @@ export async function verifyIdToken(idp: Idp, provider: Provider, token: string,
     if (typeof c.nonce !== 'string' || c.nonce !== nonce) return null
     if (typeof c.sub !== 'string' || !c.sub || c.sub.length > 255 || /\s/.test(c.sub)) return null
     if (typeof c.email !== 'string' || !c.email || c.email.length > 254) return null
-    if (provider === 'google' ? c.email_verified !== true || typeof c.hd !== 'string' || !c.hd : c.xms_edov !== true) return null
+    if (provider === 'google' ? c.email_verified !== true || typeof c.hd !== 'string' || !c.hd : c.xms_edov !== true || (c.acct !== 0 && c.acct !== '0')) return null
     return { provider, tenant: provider === 'google' ? (c.hd as string).toLowerCase() : tid, subject: c.sub, email: c.email.toLowerCase() }
   } catch {
     return null
