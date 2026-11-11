@@ -8,6 +8,7 @@ import mark from './assets/ophis-icon-mono-dark.svg'
 import { Alerts, Compliance, Enrol, Organisation, Problem, Recover, RecoveryBanner, Security, SignIn, type Me } from './pages.tsx'
 import { api, Icon, ROLE, Status } from './ui.tsx'
 import { Support } from './support.tsx'
+import { Apply, Closed, KybRecord, Onboarding } from './onboarding.tsx'
 
 const onHashChange = (listener: () => void) => {
   addEventListener('hashchange', listener)
@@ -49,8 +50,10 @@ function App() {
     const next = takeTicket() // a link opened in a tab where the app is already running
     if (next) setTicket(next)
   }, [hash])
+  const [closed, setClosed] = useState('') // milestone 5: 'org_frozen' or 'org_closed', the organisation of this session
   const loadMe = useCallback(async () => {
-    const result = await api<Me>('/api/me')
+    const result = await api<Me & { error?: string }>('/api/me')
+    setClosed(result.status === 403 && /^org_/.test(result.data.error ?? '') ? result.data.error! : '')
     setMe(result.status === 200 ? result.data : null)
   }, [])
   const signedOut = useCallback(() => {
@@ -60,7 +63,8 @@ function App() {
   useEffect(() => void loadMe(), [loadMe])
 
   // /recover is a path, not a fragment: a public page that holds no session, reached from the recovery sheet.
-  const page = location.pathname === '/recover' ? 'recover' : hash.startsWith('#/security') ? 'security' : hash.startsWith('#/enrol') ? 'enrol' : !me ? 'signin' : hash.startsWith('#/compliance') ? 'compliance' : hash.startsWith('#/support') ? 'support' : 'organisation'
+  // /apply too (milestone 5). An organisation that is not yet verified lands on Onboarding.
+  const page = location.pathname === '/apply' ? 'apply' : location.pathname === '/recover' ? 'recover' : hash.startsWith('#/security') ? 'security' : hash.startsWith('#/enrol') ? 'enrol' : !me ? 'signin' : hash.startsWith('#/compliance') ? 'compliance' : hash.startsWith('#/support') ? 'support' : hash.startsWith('#/onboarding') || (me.organisation.state === 'unverified' && !hash.startsWith('#/organisation')) ? 'onboarding' : 'organisation'
   useEffect(() => {
     document.body.dataset.route = me ? page : 'signin'
     document.body.classList.toggle('menu-open', menu)
@@ -73,6 +77,7 @@ function App() {
     const open = result.status !== 200 && result.status !== 401
     setStillOpen(open)
     if (open) return
+    setClosed('')
     setMe(null)
     location.hash = '#/'
   }
@@ -100,6 +105,7 @@ function App() {
         <nav aria-label="Before you sign in">
           <a href="/#/" aria-current={current('signin')}><Icon name="fingerprint" size={16} />Sign in</a>
           <a href="/#/security" aria-current={current('security')}><Icon name="lock-keyhole" size={16} />Security and data</a>
+          <a href="/apply" aria-current={current('apply')}><Icon name="clipboard-check" size={16} />Apply</a>
         </nav>
         <a className="btn primary sm" data-support href="/#/support" aria-current={current('support')}><Icon name="life-buoy" size={16} />Support</a>
       </header>
@@ -110,7 +116,7 @@ function App() {
           <Later icon="arrow-left-right" label="Desk" />
           <a className="nav" href="/#/compliance" data-tip="Compliance" aria-current={current('compliance')}><Icon name="shield-check" /><span className="lbl">Compliance</span></a>
           <a className="nav" href="/#/organisation" data-tip="Organisation" aria-current={current('organisation')}><Icon name="building-2" /><span className="lbl">Organisation</span></a>
-          <Later icon="clipboard-check" label="Onboarding" />
+          <a className="nav" href="/#/onboarding" data-tip="Onboarding" aria-current={current('onboarding')}><Icon name="clipboard-check" /><span className="lbl">Onboarding</span></a>
           <span className="cap">Trust and help</span>
           <a className="nav" href="/#/security" data-tip="Security and data" aria-current={current('security')}><Icon name="lock-keyhole" /><span className="lbl">Security and data</span></a>
           <a className="nav" href="/#/support" data-tip="Support" aria-current={current('support')}><Icon name="life-buoy" /><span className="lbl">Support</span></a>
@@ -126,13 +132,16 @@ function App() {
           <main id="main" tabIndex={-1}>
             {me && stillOpen && <Problem>Sign-out did not work. Your session is still open. Try again.</Problem>}
             {me && recovery && <RecoveryBanner alert={recovery} organisationId={me.organisation.id} onChanged={loadMe} />}
-            {page === 'recover' ? <Recover />
+            {page === 'apply' ? <Apply />
+            : page === 'recover' ? <Recover />
             : page === 'security' ? <Security owner={me?.seat.role === 'owner'} />
             : page === 'enrol' ? <Enrol ticket={ticket} />
+            : closed ? <Closed kind={closed} onSignOut={signOut} />
             : me === undefined ? null
             : me && unread.length ? <Alerts alerts={unread} onRead={markRead} />
-            : me && page === 'compliance' ? <Compliance onSignedOut={signedOut} />
+            : me && page === 'compliance' ? <><Compliance onSignedOut={signedOut} /><KybRecord /></>
             : me && page === 'support' ? <Support onSignedOut={signedOut} />
+            : me && page === 'onboarding' ? <Onboarding owner={me.seat.role === 'owner'} onSignedOut={signedOut} />
             : me ? <Organisation me={me} onSignedOut={signedOut} onChanged={loadMe} />
             : <SignIn onSignedIn={loadMe} />}
           </main>

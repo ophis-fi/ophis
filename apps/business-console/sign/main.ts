@@ -34,10 +34,14 @@ const SAY: Record<string, string> = {
   single_key: 'A wallet with a single key restores access only for an organisation of one person.',
   wallet_unreadable: 'The Safe could not be read on both network endpoints just now. Try again in a minute.',
   no_recovery_wallet: 'This organisation has no recovery wallet in force.',
+  stored: 'Signed and checked. The wallet is stored as the recovery wallet this organisation named. It is in force once Ophis has approved the organisation. You can close this page.',
+  not_unverified: 'This organisation is no longer waiting for its activation. Nothing was stored.',
+  first_passkey_gone: 'The passkey this request confirms is no longer active. Ask the Owner for a new link.',
 }
 const TITLE: Record<string, [plain: string, emphasised: string, lede: string]> = {
   replace: ['Restore access ', 'to an organisation', 'Someone asks the recovery wallet of an organisation to replace all its Owner passkeys with a new one. If you sign, a wait of 72 hours starts, and then that person is an Owner. Sign only if the person is known to you, read you the three words below, and the organisation id matches the recovery sheet.'],
   override: ['Restore access, ', 'overriding the Owners', 'Someone asks the recovery wallet of an organisation to replace all its Owner passkeys, against its Owners: they cannot cancel or stop it. Sign only if the signers of this wallet decided so together, the person read you the three words below, and the organisation id matches the recovery sheet.'],
+  activate: ['Activate ', 'a new organisation', 'A new organisation names this wallet as its recovery wallet, and asks it to confirm the passkey of its first Owner. Sign only if the Owner is known to you, read you the three words below, and the organisation id matches what the Owner shows you. Later this wallet can restore access to the organisation.'],
   cancel: ['Cancel ', 'an account recovery', 'This cancels the account recovery with the request number below. Nothing else changes, and a new request can start 24 hours later.'],
 }
 // Inside the Safe interface the page is framed, and the Safe signs. Outside it, the wallet of this browser does.
@@ -53,14 +57,17 @@ function say(text: string, tone: 'info' | 'ok' | 'warn' | 'bad' = 'info') {
   status.hidden = false
 }
 const same = (a: string | undefined, b: string) => a?.toLowerCase() === b.toLowerCase()
+/** The request names its wallet and chain (a link, an activation). A recovery does not: the wallet that signs fills them in. */
+const named = () => request.kind === undefined || request.kind === 'activate'
 
 // The request is base64url(JSON) "." MAC. The page shows the fields; only the server can check the MAC, and it does.
 function read(code: string) {
   try {
     sealed = code.trim().replace(/^.*#/, '')
     request = JSON.parse(new TextDecoder().decode(Uint8Array.from(atob(sealed.split('.')[0].replace(/-/g, '+').replace(/_/g, '/')), (c) => c.charCodeAt(0)))) as Request
-    const recovery = request.kind !== undefined
-    if (recovery && (!Object.hasOwn(PROOF_ACTION, request.kind!) || typeof request.phrase !== 'string' || typeof request.credentialHash !== 'string')) throw new Error('fields')
+    // An activation (milestone 5) is a Proof that names its wallet and chain, as a link does.
+    const recovery = request.kind !== undefined && request.kind !== 'activate'
+    if (request.kind !== undefined && (!Object.hasOwn(PROOF_ACTION, request.kind!) || typeof request.phrase !== 'string' || typeof request.credentialHash !== 'string')) throw new Error('fields')
     if (![request.org, request.nonce, request.site, ...(recovery ? [] : [request.wallet])].every((value) => typeof value === 'string') || ![request.issuedAt, request.expiresAt, ...(recovery ? [] : [request.chainId])].every(Number.isSafeInteger)) throw new Error('fields')
   } catch {
     $('request').hidden = true
@@ -72,12 +79,13 @@ function read(code: string) {
     // Text, never markup: the emphasised part of the title is an element made here, and every field is set as text.
     $('title').replaceChildren(TITLE[kind][0], Object.assign(document.createElement('em'), { textContent: TITLE[kind][1] }), '.')
     $('lede').textContent = TITLE[kind][2]
-    $('advice').textContent = 'Your wallet shows the same fields. The wallet and the chain are those of the wallet that signs: it must be the recovery wallet, on the chain named on the recovery sheet.'
+    $('advice').textContent = kind === 'activate' ? 'Your wallet shows the same fields. Sign only if the three words are the ones the Owner read to you.'
+      : 'Your wallet shows the same fields. The wallet and the chain are those of the wallet that signs: it must be the recovery wallet, on the chain named on the recovery sheet.'
     $('f-phrase').textContent = request.phrase || 'None: a cancellation names no passkey'
     $('f-passkey').textContent = request.credentialHash!
     $('f-nonce').textContent = request.nonce
   }
-  show(kind ? null : { wallet: request.wallet, chainId: request.chainId })
+  show(named() ? { wallet: request.wallet, chainId: request.chainId } : null)
   $('f-action').textContent = kind ? PROOF_ACTION[kind] : String(typed.message.action)
   $('f-site').textContent = request.site
   $('f-org').textContent = request.org
@@ -110,7 +118,7 @@ async function byWallet() {
   const { ethereum } = window as { ethereum?: Provider }
   if (!ethereum) return say('No wallet was found in this browser. Open this page in the browser that holds the wallet, or inside the Safe interface.', 'warn')
   const [account] = (await ethereum.request({ method: 'eth_requestAccounts' })) as string[]
-  if (request.kind) show({ wallet: account, chainId: Number(await ethereum.request({ method: 'eth_chainId' })) })
+  if (!named()) show({ wallet: account, chainId: Number(await ethereum.request({ method: 'eth_chainId' })) })
   else {
     if (!same(account, request.wallet)) return say(`The wallet in this browser is ${account}. The request is for ${request.wallet}. Switch the account and try again.`, 'bad')
     await ethereum.request({ method: 'wallet_switchEthereumChain', params: [{ chainId: `0x${request.chainId.toString(16)}` }] })
@@ -122,7 +130,7 @@ async function byWallet() {
 // instead, and "Check again" asks the server to read the Safe once it is executed.
 async function bySafe() {
   const info = await safe!.safe.getInfo()
-  if (request.kind) show({ wallet: info.safeAddress, chainId: info.chainId })
+  if (!named()) show({ wallet: info.safeAddress, chainId: info.chainId })
   else if (!same(info.safeAddress, request.wallet) || info.chainId !== request.chainId) return say(`This Safe is ${info.safeAddress} on chain ${info.chainId}. The request is for ${request.wallet} on chain ${request.chainId}. Open the right Safe and try again.`, 'bad')
   await safe!.eth.setSafeSettings([{ offChainSigning: true }])
   const signed = await safe!.txs.signTypedMessage(typed as never)

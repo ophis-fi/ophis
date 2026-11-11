@@ -7,7 +7,7 @@ export interface Alert {
   id?: string; nonce?: string; override?: boolean; objected?: boolean; lapses?: number; may?: 'cancel' | 'object' | null
 }
 export interface Me {
-  organisation: { id: string; name: string; kind: string; quarantineUntil: number | null }
+  organisation: { id: string; name: string; kind: string; quarantineUntil: number | null; state: string }
   seat: { id: string; displayName: string; role: string; keys: number; quarantineUntil: number | null }
   session: { id: string; endsAt: number; stepUpUntil: number }
   alerts: Alert[]
@@ -442,7 +442,7 @@ const CHANGE: Record<string, string> = {
   'wallet.link': 'Link a wallet', 'anchor.set': 'Set the recovery wallet',
 }
 // The same for a wallet. `on` is the chain's name.
-const kindOf = (w: Wallet) => (w.kind === 'safe' ? `Safe ${w.threshold ?? '?'} of ${w.owners ?? '?'}` : w.kind === 'custodian' ? 'Custodian wallet (declared, not checked by Ophis)' : 'Single key')
+export const kindOf = (w: Pick<Wallet, 'kind' | 'threshold' | 'owners'>) => (w.kind === 'safe' ? `Safe ${w.threshold ?? '?'} of ${w.owners ?? '?'}` : w.kind === 'custodian' ? 'Custodian wallet (declared, not checked by Ophis)' : 'Single key')
 function walletEffect(kind: string, w: Wallet, on: string) {
   const which = `${w.label} (${w.address} on ${on}, ${kindOf(w)})`
   return kind === 'wallet.link' ? `Links the wallet ${which} to the organisation. The wallet signed a message that names this organisation, and the server checked the signature. Every member sees linked wallets.`
@@ -1088,7 +1088,7 @@ export function Compliance({ onSignedOut }: { onSignedOut: () => void }) {
     const result = await api<AuditPage>(`/api/audit${before ? `?before=${before}` : ''}`)
     if (result.status === 401) return onSignedOut()
     if (result.status === 200) return setPage(result.data)
-    setProblem(result.status === 403 ? 'The audit log is open to Owners, Compliance officers and Viewers.' : 'The audit log could not be loaded. Reload the page.')
+    setProblem((result.data as { error?: string }).error === 'unverified' ? 'The audit log opens once Ophis has verified the organisation.' : result.status === 403 ? 'The audit log is open to Owners, Compliance officers and Viewers.' : 'The audit log could not be loaded. Reload the page.')
   }, [before, onSignedOut])
   useEffect(() => void load(), [load])
 
@@ -1144,7 +1144,7 @@ export function Compliance({ onSignedOut }: { onSignedOut: () => void }) {
           </div>
         </Section>
       )}
-      <Section later icon="shield-check" title="Screening and the stored KYB record" hint="Screening results by linked wallet and the stored verification record arrive with onboarding." />
+      <Section later icon="shield-check" title="Screening" hint="Screening results by linked wallet arrive later." />
     </>
   )
 }
