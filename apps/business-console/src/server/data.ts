@@ -94,6 +94,9 @@ export async function verifyAudit(db: D1Database, orgId: string): Promise<{ ok: 
 export interface Ticket { id: string; org_id: string; seat_id: string; kind: string; role: Role; nonce: string; display_name: string; org_name: string; synced_keys_allowed: number }
 // The ticket's role must be its seat's role: the key rule (Owners: hardware only) is read from the ticket,
 // the rights of the session from the seat, so a ticket that disagrees with its seat is dead.
+// A ticket is also dead once the seat that issued it is no longer active (ISSUER_ACTIVE): what a stopped or
+// frozen seat had started does not go on without it. The first Owner's ticket has no issuer.
+const ISSUER_ACTIVE = `(t.issuer_seat_id IS NULL OR EXISTS (SELECT 1 FROM seats i WHERE i.org_id = t.org_id AND i.id = t.issuer_seat_id AND i.state = 'active'))`
 export function ticketByToken(db: D1Database, tokenHash: string, now: number) {
   return db
     .prepare(
@@ -101,7 +104,7 @@ export function ticketByToken(db: D1Database, tokenHash: string, now: number) {
        FROM enrolment_tickets t
        JOIN seats s ON s.org_id = t.org_id AND s.id = t.seat_id AND s.role = t.role AND s.state IN ('invited', 'active')
        JOIN organisations o ON o.id = t.org_id AND o.state IN ('unverified', 'active')
-       WHERE t.token_hash = ? AND t.state = 'issued' AND t.expires_at > ?`,
+       WHERE t.token_hash = ? AND t.state = 'issued' AND t.expires_at > ? AND ${ISSUER_ACTIVE}`,
     )
     .bind(tokenHash, now)
     .first<Ticket>()
@@ -291,7 +294,7 @@ export function addCredential(db: D1Database, actor: Actor, credential: { id: st
   })
 }
 
-/** Active passkeys of active seats only: a replaced (suspended) one keeps its stop right, and a frozen seat waits for two people. */
+/** Active passkeys of active seats only: a replaced (suspended) one keeps its stop right, and a frozen seat waits for two people. A colleague's last one freezes the seat. */
 export async function revokeCredential(db: D1Database, actor: Actor, credentialId: string, now: number) {
   let outcome: 'ok' | 'not_found' | 'forbidden' | 'quarantine' | 'last_passkey' = 'not_found'
   await commit(db, actor.orgId, async () => {
@@ -303,9 +306,14 @@ export async function revokeCredential(db: D1Database, actor: Actor, credentialI
     if (!c) outcome = 'not_found'
     else if (c.seat_id === actor.seatId) outcome = c.active < 2 ? 'last_passkey' : 'ok'
     else outcome = !mayManage(actor.role, c.role) ? 'forbidden' : quarantined(actor, now) ? 'quarantine' : 'ok'
-    if (outcome !== 'ok') return null
-    return [seatEntry(actor, now, 'credential.revoke', credentialId), [
+    if (!c || outcome !== 'ok') return null
+    // A colleague who removes the last passkey of a seat leaves its member nothing to stop a replacement with.
+    // So that seat is frozen, with what it had open: no ticket is issued for a frozen seat, and unfreezing
+    // takes two people (milestone 3). To replace lost passkeys, a colleague re-enrols; they do not revoke.
+    const freeze = c.seat_id !== actor.seatId && c.active < 2
+    return [seatEntry(actor, now, 'credential.revoke', credentialId, freeze ? 'seat_frozen' : null), [
       db.prepare(`UPDATE credentials SET state = 'revoked' WHERE org_id = ? AND id = ?`).bind(actor.orgId, credentialId),
+      ...(freeze ? [db.prepare(`UPDATE seats SET state = 'frozen' WHERE org_id = ? AND id = ?`).bind(actor.orgId, c.seat_id), ...closeOpen(db, actor.orgId, c.seat_id, now)] : []),
     ]]
   })
   return outcome as 'ok' | 'not_found' | 'forbidden' | 'quarantine' | 'last_passkey' // the plan assigns it; the compiler cannot see that
@@ -360,7 +368,7 @@ export interface OpenTicket {
   until: number
 }
 // Every open ticket of the organisation that is still alive, with the step the viewer may take. A ticket
-// whose seat is not in the right state, or whose time is up, is not here: it is dead without a write.
+// whose seat or issuer is not in the right state, or whose time is up, is not here: it is dead without a write.
 // The rows carry the nonce: openTickets() below is the only shape that leaves the server.
 async function ticketRows(db: D1Database, viewer: Pick<Actor, 'orgId' | 'seatId' | 'role'>, now: number, ticketId: string | null = null) {
   const { results } = await db
@@ -371,7 +379,7 @@ async function ticketRows(db: D1Database, viewer: Pick<Actor, 'orgId' | 'seatId'
        JOIN seats s ON s.org_id = t.org_id AND s.id = t.seat_id AND s.role = t.role AND s.state = CASE t.kind WHEN 're_enrolment' THEN 'active' ELSE 'invited' END
        LEFT JOIN credentials c ON c.org_id = t.org_id AND c.ticket_id = t.id AND c.state = 'pending'
        LEFT JOIN approvals a ON a.org_id = t.org_id AND a.subject_id = t.id AND a.action = 'ticket.confirm' AND a.state = 'pending'
-       WHERE t.org_id = ? AND t.state IN ('issued', 'stored') AND (? IS NULL OR t.id = ?)
+       WHERE t.org_id = ? AND t.state IN ('issued', 'stored') AND (? IS NULL OR t.id = ?) AND ${ISSUER_ACTIVE}
        ORDER BY t.created_at, t.id`,
     )
     .bind(viewer.orgId, ticketId, ticketId)
