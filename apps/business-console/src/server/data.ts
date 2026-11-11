@@ -551,9 +551,10 @@ export function stopReplacement(db: D1Database, credential: StoredCredential, co
       db.prepare(`UPDATE credentials SET state = 'revoked' WHERE org_id = ? AND state <> 'revoked' AND (seat_id = ? OR (created_at >= ? AND seat_id IN (SELECT seat_id FROM enrolment_tickets WHERE org_id = ? AND issuer_seat_id = ?)))`)
         .bind(orgId, recovered.seat_id, recovered.closed_at, orgId, recovered.seat_id),
       db.prepare(`UPDATE seats SET state = 'removed' WHERE org_id = ? AND id = ?`).bind(orgId, recovered.seat_id),
-      db.prepare('UPDATE sessions SET revoked_at = ? WHERE org_id = ? AND seat_id = ? AND revoked_at IS NULL').bind(now, orgId, recovered.seat_id),
+      // Every session a revoked passkey opened ends, on the re-enrolled seats too: a write of theirs that is under way finds no session in its commit.
+      db.prepare(`UPDATE sessions SET revoked_at = ? WHERE org_id = ? AND revoked_at IS NULL AND credential_id IN (SELECT id FROM credentials WHERE org_id = ? AND state = 'revoked')`).bind(now, orgId, orgId),
       ...closeOpen(db, orgId, recovered.seat_id, now, true),
-      db.prepare(`UPDATE credentials SET state = 'active', stop_right_until = NULL WHERE org_id = ? AND state = 'suspended' AND stop_right_until = ?`).bind(orgId, current.stop_right_until),
+      db.prepare(`UPDATE credentials SET state = 'active', stop_right_until = NULL WHERE org_id = ? AND state = 'suspended' AND stop_right_until = ? AND seat_id IN (SELECT id FROM seats WHERE org_id = ? AND role = 'owner')`).bind(orgId, current.stop_right_until, orgId),
       used(db, orgId, credential.id, counter, now),
       db.prepare('UPDATE organisations SET quarantine_until = NULL WHERE id = ?').bind(orgId),
     ]]
@@ -882,10 +883,10 @@ export interface RecoveryRow {
   id: string; seat_id: string; wallet_id: string; action: 'replace_owners' | 'override_owners'; nonce: string; digest: string; signature: string; owners_snapshot: string
   wait_until: number; objected: number; chainId: number; address: string; kind: WalletKind; snapshot: string | null
 }
-/** The open request of an active organisation, with the wallet that signed it: by its id, its nonce or its seat, or whichever is open. */
+/** The open request of an organisation, with the wallet that signed it (a session or a passkey exists only in an active organisation; the wallet's cancel only closes): by its id, its nonce or its seat, or whichever is open. */
 export const recoveryRow = (db: D1Database, orgId: string, now: number, by: 'id' | 'nonce' | 'seat_id' = 'id', value: string | null = null) =>
   db.prepare(`SELECT r.id, r.seat_id, r.wallet_id, r.action, r.nonce, r.digest, r.signature, r.owners_snapshot, r.wait_until, r.objected, w.chain_id AS chainId, w.address, w.kind, w.snapshot
-              FROM recovery_requests r JOIN wallets w ON w.org_id = r.org_id AND w.id = r.wallet_id JOIN organisations o ON o.id = r.org_id AND o.state = 'active'
+              FROM recovery_requests r JOIN wallets w ON w.org_id = r.org_id AND w.id = r.wallet_id
               WHERE r.org_id = ? AND ${OPEN_RECOVERY} AND (? IS NULL OR r.${by} = ?)`).bind(orgId, now, value, value).first<RecoveryRow>()
 // Ends a request that did not complete: its pending passkey is revoked and its seat, which nobody ever held, is removed.
 const closeRecovery = (db: D1Database, orgId: string, r: { id: string; seat_id: string }, state: 'cancelled' | 'lapsed', now: number): Sql[] => [
@@ -906,7 +907,7 @@ export interface Anchor { id: string; chainId: number; address: string; kind: Wa
 export async function recoverable(db: D1Database, ask: Pick<RecoveryAsk, 'orgId' | 'nonce' | 'credential'>, now: number): Promise<{ error: string } | { wallet: Anchor }> {
   const inForce = (await anchors(db, ask.orgId, now)).inForce
   const wallet = inForce === null ? null : await db.prepare(`SELECT w.id, w.chain_id AS chainId, w.address, w.kind, w.snapshot FROM wallets w JOIN organisations o ON o.id = w.org_id AND o.state = 'active'
-                                                             WHERE w.org_id = ? AND w.id = ? AND w.state = 'linked'`).bind(ask.orgId, inForce).first<Anchor>()
+                                                             WHERE w.org_id = ? AND w.id = ?`).bind(ask.orgId, inForce).first<Anchor>()
   if (!wallet) return { error: 'no_recovery_wallet' }
   if (await recoveryRow(db, ask.orgId, now)) return { error: 'request_open' }
   const seen = (await db.prepare(`SELECT (SELECT count(*) FROM recovery_requests WHERE nonce = ?) + (SELECT count(*) FROM credentials WHERE id = ?) AS used,
@@ -1039,9 +1040,10 @@ export async function completeRecovery(
   return outcome as 'denied' | 'lapsed' | 'completed'
 }
 
-/** The completed recovery that suspended this passkey: its completion date plus 7 days is the passkey's stop right date, which no re-enrolment gives. An override suspends nothing. */
+/** The completed recovery that suspended this passkey: the passkey is on an Owner seat and its stop right date is the completion date plus 7 days (a re-enrolment could give another seat's passkey the same date). An override suspends nothing. */
 export const recoveryToStop = async (db: D1Database, c: StoredCredential) => (c.stop_right_until === null ? null
-  : db.prepare(`SELECT id, seat_id, closed_at FROM recovery_requests WHERE org_id = ? AND state = 'completed' AND closed_at + ${STOP_MS} = ?`).bind(c.org_id, c.stop_right_until).first<{ id: string; seat_id: string; closed_at: number }>())
+  : db.prepare(`SELECT r.id, r.seat_id, r.closed_at FROM recovery_requests r JOIN seats s ON s.org_id = r.org_id AND s.id = ? AND s.role = 'owner'
+                WHERE r.org_id = ? AND r.state = 'completed' AND r.closed_at + ${STOP_MS} = ?`).bind(c.seat_id, c.org_id, c.stop_right_until).first<{ id: string; seat_id: string; closed_at: number }>())
 
 /** Frozen seats, with who froze each and when: read from the audit rows. A stop is a freeze by the seat's own replaced passkey. */
 export async function frozenSeats(db: D1Database, orgId: string, seatId: string | null = null) {

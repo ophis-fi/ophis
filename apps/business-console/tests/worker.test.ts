@@ -4236,6 +4236,9 @@ describe('B. last-Owner recovery by the recovery wallet', () => {
     const rows = await snapshot()
     expect((await requestRecovery(o.orgId)).proved.body).toEqual(REJECTED)
     expect(await snapshot()).toBe(rows)
+    // A colleague the Owner froze is still a second person: the passkeys a freeze suspends come back with an unfreeze.
+    expect((await post(`/api/members/${joined.seatId}/freeze`, o)).status).toBe(200)
+    expect((await requestRecovery(o.orgId)).proved.body).toEqual(REJECTED)
     await db.prepare(`UPDATE seats SET state = 'removed' WHERE id = ?`).bind(joined.seatId).run()
     expect((await requestRecovery(o.orgId)).proved.body).toMatchObject({ state: 'waiting' })
   })
@@ -4661,6 +4664,7 @@ describe('C. attacks tried by the review of milestone 4b', () => {
 
   it('a stop leaves no passkey that descends from the new Owner: one that a member it re-enrolled added afterwards is revoked with the one from its link', async () => {
     const { o, a, v } = await teamWithWallet()
+    const v2 = await colleague(o, 'viewer')
     const asked = await requestRecovery(o.orgId)
     now += WAIT
     const fresh = { cookie: (await continueRecovery(asked.key)).cookie, key: asked.key }
@@ -4668,13 +4672,30 @@ describe('C. attacks tried by the review of milestone 4b', () => {
     const taken = await ceremony(fresh, { seatId: v.seatId })
     const extra = await addKey(await again(taken))
     expect(extra.status).toBe(200)
+    // A link of the new Owner that is still open, its passkey made and not yet confirmed: the stop closes it.
+    const open = await issue(fresh, { seatId: v2.seatId })
+    const half = await enrolLink(open.body.link)
+    expect(await credentialState(half.key)).toBe('pending')
     // A passkey the Approver adds meanwhile is the Approver's own: the new Owner issued no link for that seat.
     const own = await addKey(await again(a))
     expect((await stop(o.key)).status).toBe(200)
     expect([await credentialState(taken.key), await credentialState(extra.key), await credentialState(own.key), await credentialState(a.key)]).toEqual(['revoked', 'revoked', 'active', 'active'])
     expect((await signIn(extra.key)).status).toBe(401)
+    expect([await credentialState(half.key), await row('SELECT state FROM enrolment_tickets WHERE id = ?', open.body.ticketId), await credentialState(v2.key)]).toEqual(['revoked', { state: 'dead' }, 'active'])
+    expect(await row('SELECT count(*) AS n FROM sessions WHERE seat_id = ? AND revoked_at IS NULL', asked.seat)).toEqual({ n: 0 })
     // The Viewer's passkey from before the recovery keeps what a re-enrolment leaves it: suspended, with its stop right.
     expect(await credentialState(v.key)).toBe('suspended')
+  })
+
+  it('an Owner\'s stop, like an Owner\'s cancel, lets a green recovery wallet override within 30 days', async () => {
+    const { o } = await teamWithWallet('safe')
+    const first = await requestRecovery(o.orgId, null)
+    now += WAIT
+    expect((await continueRecovery(first.key)).status).toBe(200)
+    now += DAY
+    expect((await stop(o.key)).status).toBe(200)
+    expect((await requestRecovery(o.orgId, null, { override: true })).proved.body).toMatchObject({ state: 'waiting' })
+    expect(await recoveryOf(o.orgId)).toMatchObject({ action: 'override_owners' })
   })
 
   it('while a completed recovery can still be stopped no second request opens (its completion would leave an Owner that the stop does not remove); after the stop, or after the 7 days, one opens', async () => {
@@ -4694,5 +4715,66 @@ describe('C. attacks tried by the review of milestone 4b', () => {
     expect((await continueRecovery(second.key)).status).toBe(200)
     now += WEEK
     expect((await requestRecovery(late.o.orgId)).proved.body).toMatchObject({ state: 'waiting' })
+  })
+  it('only a passkey of an Owner seat stops a completed recovery, and the stop gives back Owner passkeys only: another seat\'s replaced passkey with the same stop date stops nothing of it and stays replaced; nor does an Owner passkey that a re-enrolment replaced before the recovery', async () => {
+    const { o, a, v } = await teamWithWallet()
+    const o2 = await colleague(o, 'owner')
+    const asked = await requestRecovery(o.orgId)
+    // An Owner passkey replaced by a re-enrolment of its seat, whose own stop right still runs when the recovery completes.
+    await db.prepare(`UPDATE credentials SET state = 'suspended', stop_right_until = ? WHERE id = ?`).bind(now + WAIT + 2 * DAY, o2.key.id).run()
+    now += WAIT
+    expect((await continueRecovery(asked.key)).status).toBe(200)
+    // Re-enrolments of other seats whose stop right happens to end at the very instant the recovery's does.
+    const twin = data.randomId()
+    await db.batch([
+      db.prepare(`UPDATE credentials SET state = 'suspended', stop_right_until = ? WHERE id = ?`).bind(now + WEEK, v.key.id),
+      db.prepare(`INSERT INTO credentials (id, org_id, seat_id, public_key, device_bound, label, state, stop_right_until, created_at) VALUES (?, ?, ?, 'x', 1, 'Old key', 'suspended', ?, ?)`).bind(twin, o.orgId, a.seatId, now + WEEK, now),
+    ])
+    now += DAY
+    expect((await signIn(v.key)).body).toMatchObject({ error: 'passkey_replaced', recovery: false })
+    await stop(v.key)
+    expect((await stop(o2.key)).status).toBe(200)
+    expect([await credentialState(o2.key), await credentialState(o2.key2), (await seatOf(o2.seatId))?.state]).toEqual(['active', 'revoked', 'frozen'])
+    expect([(await recoveryOf(o.orgId)).state, await credentialState(asked.key), await credentialState(o.key), (await seatOf(asked.seat))?.state]).toEqual(['completed', 'active', 'suspended', 'active'])
+    expect((await stop(o.key)).status).toBe(200)
+    expect(await row('SELECT state, stop_right_until AS until FROM credentials WHERE id = ?', twin)).toEqual({ state: 'suspended', until: now - DAY + WEEK })
+  })
+
+  it('a passkey that is being added, at the instant of the stop, on a seat the new Owner re-enrolled is not added: the stop ends the sessions of the passkeys it revokes', async () => {
+    const { o, v } = await teamWithWallet()
+    const asked = await requestRecovery(o.orgId)
+    now += WAIT
+    const fresh = { cookie: (await continueRecovery(asked.key)).cookie, key: asked.key }
+    expect((await addKey(fresh)).status).toBe(200)
+    const taken = await again(await ceremony(fresh, { seatId: v.seatId }))
+    const key = await softwareAuthenticator(SITE)
+    const start = await post('/api/passkeys/start', taken)
+    let stopped = 0
+    const late = await call('POST', '/api/passkeys/finish', { cookie: taken.cookie, body: { label: 'Late key', response: await key.register(start.body.options) }, env: racing(async () => (stopped = (await stop(o.key)).status)) as unknown as Env })
+    expect([stopped, late.status]).toEqual([200, 409])
+    expect(await row(`SELECT count(*) AS n FROM credentials WHERE seat_id = ? AND state = 'active'`, v.seatId)).toEqual({ n: 0 })
+    expect(await row('SELECT count(*) AS n FROM sessions WHERE seat_id = ? AND revoked_at IS NULL', v.seatId)).toEqual({ n: 0 })
+  })
+
+  it('in an organisation that is frozen or archived while a request waits nothing completes, and the pending passkey stops and signs in to nothing; the recovery wallet can still cancel', async () => {
+    const { o } = await teamWithWallet()
+    const asked = await requestRecovery(o.orgId)
+    now += WAIT
+    for (const state of ['frozen', 'archived']) {
+      await db.prepare('UPDATE organisations SET state = ? WHERE id = ?').bind(state, o.orgId).run()
+      const rows = await snapshot()
+      for (const tried of [await continueRecovery(asked.key), await stop(asked.key), await signIn(asked.key)]) expect(tried.status, state).toBe(401)
+      expect(await snapshot()).toBe(rows)
+    }
+    expect((await cancelByWallet(o.orgId, asked.fields.nonce)).body).toEqual({ state: 'cancelled' })
+    expect([(await recoveryOf(o.orgId)).state, await credentialState(asked.key)]).toEqual(['cancelled', 'revoked'])
+  })
+
+  it('skipping waits by command refuses anything but the local database', async () => {
+    const { o } = await teamWithWallet()
+    await requestRecovery(o.orgId)
+    const r = await recoveryOf(o.orgId)
+    await expect(data.devSkipWaits(db, 'production', now)).rejects.toThrow(/local/)
+    expect((await recoveryOf(o.orgId)).wait_until).toBe(r.wait_until)
   })
 })
