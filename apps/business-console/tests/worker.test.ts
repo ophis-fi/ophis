@@ -2463,6 +2463,32 @@ describe('s. two-person approval', () => {
     expect((await act(o, v.seatId, 'role', { role: 'trader' })).status).toBe(200)
   })
 
+  it('a role that changes at the same instant: the write is judged with the role of that moment, not the session\'s', async () => {
+    const o = await owner()
+    const admin = await colleague(o, 'admin')
+    const a = await colleague(o, 'approver')
+    const c = await colleague(o, 'compliance')
+    const second = await colleague(o, 'owner')
+    const v = await colleague(o, 'viewer')
+    // The Admin is lowered at the instant it freezes a colleague.
+    const lower = (await act(o, admin.seatId, 'role', { role: 'viewer' })).body.id
+    const late = await call('POST', `/api/members/${v.seatId}/freeze`, { cookie: admin.cookie, env: racing(() => decide(a, lower, 'approve')) })
+    expect(late.body).toEqual({ error: 'forbidden' })
+    expect(await seatOf(admin.seatId)).toEqual({ role: 'viewer', state: 'active' })
+    expect(await seatOf(v.seatId)).toEqual({ role: 'viewer', state: 'active' })
+    // The Approver is frozen at the instant it approves.
+    const ask = (await act(o, v.seatId, 'role', { role: 'trader' })).body.id
+    const stale = await call('POST', `/api/approvals/${ask}/approve`, { cookie: a.cookie, env: racing(() => act(o, a.seatId, 'freeze')) })
+    expect(stale.body).toEqual({ error: 'forbidden' })
+    expect(await seatOf(a.seatId)).toEqual({ role: 'approver', state: 'frozen' })
+    expect(await seatOf(v.seatId)).toEqual({ role: 'viewer', state: 'active' })
+    // The second Owner is lowered at the instant it asks to relax the passkey rule.
+    const down = (await act(o, second.seatId, 'role', { role: 'admin' })).body.id
+    const policy = await call('POST', '/api/policy', { cookie: second.cookie, body: { syncedKeys: true }, env: racing(() => decide(c, down, 'approve')) })
+    expect(policy.body).toEqual({ error: 'forbidden' })
+    expect(await row(`SELECT count(*) AS n FROM approvals WHERE org_id = ? AND action = 'policy.synced_keys'`, o.orgId)).toEqual({ n: 0 })
+  })
+
   it('the confirmation of a new passkey is not decided through these routes', async () => {
     const o = await owner()
     const a = await colleague(o, 'approver')

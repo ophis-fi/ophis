@@ -537,6 +537,10 @@ export function stopReplacement(db: D1Database, credential: StoredCredential, co
 // ---- milestone 3: one person freezes, two people change ----
 
 export type Kind = 'seat.unfreeze' | 'seat.remove' | 'seat.role' | 'policy.synced_keys'
+// The actor's role as it is inside the commit. The session's copy was read before this write took its turn: a
+// member lowered, frozen or removed at the same instant must not act with the role they had. Null: not active.
+const roleNow = async (db: D1Database, actor: Actor) =>
+  (await db.prepare(`SELECT role FROM seats WHERE org_id = ? AND id = ? AND state = 'active'`).bind(actor.orgId, actor.seatId).first<{ role: Role }>())?.role ?? null
 interface Change { apply: Sql[]; detail: string | null; direct?: boolean; relax?: boolean }
 // One change, judged against the rows as they are now, for a requester with this role. It runs inside the commit
 // that files the request and again inside the commit that applies it, so an approval never applies what has
@@ -545,6 +549,7 @@ async function judge(db: D1Database, orgId: string, role: Role, kind: Kind | 'se
   if (kind === 'policy.synced_keys') {
     const org = await db.prepare('SELECT synced_keys_allowed AS allowed FROM organisations WHERE id = ?').bind(orgId).first<{ allowed: number }>()
     if (subjectId !== orgId || (value !== '0' && value !== '1') || Number(value) === org!.allowed) return 'invalid'
+    if (role !== 'owner') return 'forbidden'
     return { apply: [db.prepare('UPDATE organisations SET synced_keys_allowed = ? WHERE id = ?').bind(Number(value), orgId)], detail: value === '1' ? 'synced' : 'hardware', relax: value === '1' }
   }
   const seat = await db
@@ -602,7 +607,8 @@ export async function change(db: D1Database, actor: Actor, kind: Kind | 'seat.fr
   const payloadHash = await sha256Hex(payload)
   let outcome: Changed = { error: 'not_found' }
   await commit(db, actor.orgId, async () => {
-    const judged = await judge(db, actor.orgId, actor.role, kind, subjectId, value, now)
+    const role = await roleNow(db, actor)
+    const judged = role ? await judge(db, actor.orgId, role, kind, subjectId, value, now) : 'forbidden'
     if (typeof judged === 'string') {
       outcome = { error: judged }
       return null
@@ -629,7 +635,7 @@ export async function change(db: D1Database, actor: Actor, kind: Kind | 'seat.fr
 // a freeze, a removal and a role change cancel what the seat had asked for, in closeOpen.) The confirmation of
 // a new passkey (ticket.confirm) lives in the same table and is never decided here.
 const OPEN_REQUEST = `a.state = 'pending' AND a.expires_at > ? AND a.action <> 'ticket.confirm'`
-/** Approve (and apply, in the same commit), reject, or cancel. The router has checked the role; the rest is read here, inside the commit. */
+/** Approve (and apply, in the same commit), reject, or cancel. Everything that decides it is read here, inside the commit. */
 export async function decide(db: D1Database, actor: Actor, id: string, decision: 'approve' | 'reject' | 'cancel', now: number) {
   let outcome = 'not_found'
   await commit(db, actor.orgId, async () => {
@@ -641,7 +647,12 @@ export async function decide(db: D1Database, actor: Actor, id: string, decision:
     const mine = a?.requester_seat_id === actor.seatId
     // The requester cancels and nobody else does. The requester never approves or rejects: approvals also has
     // CHECK (checker <> requester), so the database refuses the row even if this line were gone.
-    outcome = !a || (decision === 'cancel' && !mine) ? 'not_found' : decision !== 'cancel' && mine ? 'own_request' : decision === 'approve' && (a.not_before ?? 0) > now ? 'too_early' : 'ok'
+    const role = await roleNow(db, actor)
+    outcome = !a || (decision === 'cancel' && !mine) ? 'not_found'
+      : decision !== 'cancel' && mine ? 'own_request'
+      : decision !== 'cancel' && !(role && KEY_ROLES.includes(role)) ? 'forbidden' // the checker is a key role, now
+      : decision === 'approve' && (a.not_before ?? 0) > now ? 'too_early'
+      : 'ok'
     if (!a || outcome !== 'ok') return null
     const close = (state: string) => db.prepare(`UPDATE approvals SET state = ?, checker_seat_id = ?, decided_at = ? WHERE org_id = ? AND id = ? AND state = 'pending'`)
       .bind(state, decision === 'cancel' ? null : actor.seatId, now, actor.orgId, id)
