@@ -12,6 +12,8 @@ npx -y pnpm@10.34.9 seed        # one organisation, one Owner seat; prints a one
 npx -y pnpm@10.34.9 dev         # builds the console and the signing page, and serves both with the Worker: console http://localhost:8787, signing page http://127.0.0.1:8787/sign/
 npx -y pnpm@10.34.9 activate    # first Owner only: local stand-in for the activation by the recovery wallet (milestone 5)
 npx -y pnpm@10.34.9 skip        # local stand-in for the passing of time: every wait that runs is over (recovery wallet 72 h, recovery request, 24 h after a cancel)
+npx -y pnpm@10.34.9 dns <name> <value>   # milestone 5: publishes a TXT record in the two local stub resolvers that "dev" starts (ports 8790 and 8791)
+npx -y pnpm@10.34.9 operator list        # milestone 5: the operator's command (also: decide, freeze, unfreeze); needs "dev" running
 ```
 
 Open the enrolment link in Chrome, create the passkey, run `activate`, then sign in at http://localhost:8787.
@@ -48,3 +50,16 @@ Test: `npx -y pnpm@10.34.9 test` (builds, then the invariant tests in the Worker
 Support (milestone 6): the rail entry and the top button open `#/support`. The Worker needs the secret `TYPESAFE_API_KEY`: add the line `TYPESAFE_API_KEY=...` to `.dev.vars` (git-ignored; never commit or print it). Without it every question gets the hand-over card.
 `npx -y pnpm@10.34.9 test:jev` (on demand, needs the network and `TYPESAFE_API_KEY` in the environment): sends the 32 questions of the prototype through the server's own functions and prints each outcome, the accuracy and the median latency, never the key.
 `test:e2e` includes the Support flow; with the key in `.dev.vars` that part needs the network too.
+
+Onboarding (milestone 5a). Run `migrate` again (0005), and `seed` once: it adds `OPERATOR_TOKEN` to `.dev.vars` (never printed). `seed` and `activate` still work as before, for an organisation that is active at once.
+1. Open http://localhost:8787/apply (no sign-in). Enter the company, its email domain and a work email at that domain, then create the passkey on a hardware key. Nothing is stored. The page shows one TXT record, `_ophis-verify.<domain>` with the value `ophis-verify=<code>`, and a link to come back (7 days).
+2. Publish the record: locally `npx -y pnpm@10.34.9 dns _ophis-verify.<domain> ophis-verify=<code>`. Press "Check DNS". Both resolvers must show the exact value. Then the organisation exists, not yet verified, and you sign in with that passkey.
+3. Onboarding (the rail entry): add the second passkey under Organisation, then name the recovery wallet. The wallet signs "Activate this organisation and confirm its first Owner passkey" on the signing page, after its holders compared the three words. Or invite a second Owner, who needs two passkeys. Then "Submit for review".
+4. The operator: `npx -y pnpm@10.34.9 operator list` shows what to compare (domain, the first Owner's three words and passkey hash, the recovery wallet, its kind and colour). Then one of
+   `operator decide <id> approve --tier standard --source registry --evidence "<reference>" --sha256 <64 hex> --next-review 2027-11-11`,
+   `operator decide <id> more --reason details_differ --tier standard --source registry`, `operator decide <id> refuse --reason not_eligible --tier standard --source registry`,
+   `operator freeze <id>`, `operator unfreeze <id>`. Each is a row in the client's own audit log. The operator's API answers on `operator.localhost:8787` only, and only locally.
+5. After the approval the organisation is active, the recovery wallet is in force at once, and Compliance shows the "KYB record" block. No document is stored.
+
+`npx -y pnpm@10.34.9 test:dns` (on demand, needs the network): asks Cloudflare and Google, over DNS-over-HTTPS, for the TXT record of example.com through the server's own lookup and parser, and prints both answers.
+`test:e2e` now also needs ports 8790 and 8791 free. Its milestone 5a part is written and has not been run yet.

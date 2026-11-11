@@ -79,7 +79,7 @@ const auditHash = (r: Omit<AuditRow, 'hash'>) =>
 // and the changes, or null to change nothing.
 // ponytail: one retry after a collision, then the caller answers "try again". Ceiling: an organisation
 // with many writers at the same instant. Then queue its writes (a Durable Object per organisation).
-async function commit(db: D1Database, orgId: string, plan: () => [Entry, Sql[]] | null | Promise<[Entry, Sql[]] | null>) {
+export async function commit(db: D1Database, orgId: string, plan: () => [Entry, Sql[]] | null | Promise<[Entry, Sql[]] | null>) {
   for (let attempt = 0; ; attempt++) {
     const head = await db.prepare('SELECT seq, hash FROM audit_log WHERE org_id = ? ORDER BY seq DESC LIMIT 1').bind(orgId).first<{ seq: number; hash: string }>()
     const planned = await plan()
@@ -160,14 +160,14 @@ export interface StoredCredential {
   id: string; org_id: string; seat_id: string; public_key: string; counter: number
   state: 'active' | 'suspended' | 'pending'; stop_right_until: number | null; ticket_id: string | null; seat_state: string
 }
-/** A passkey of an active organisation, with its state. The caller decides what that state may do; a revoked one does not exist here. */
+/** A passkey of an organisation that is active or not yet verified (milestone 5), with its state. The caller decides what that state may do; a revoked one does not exist here. */
 export function credentialById(db: D1Database, credentialId: string) {
   return db
     .prepare(
       `SELECT c.id, c.org_id, c.seat_id, c.public_key, c.counter, c.state, c.stop_right_until, c.ticket_id, s.state AS seat_state
        FROM credentials c
        JOIN seats s ON s.org_id = c.org_id AND s.id = c.seat_id
-       JOIN organisations o ON o.id = c.org_id AND o.state = 'active'
+       JOIN organisations o ON o.id = c.org_id AND o.state IN ('unverified', 'active')
        WHERE c.id = ? AND c.state IN ('active', 'suspended', 'pending')`,
     )
     .bind(credentialId)
@@ -225,18 +225,20 @@ export interface Session {
   role: Role; display_name: string; quarantine_until: number | null; org_quarantine_until: number | null; org_name: string; org_kind: string; synced_keys_allowed: number
   /** Active passkeys of the seat; for an Owner, the device-bound ones only. Two are needed before anything sensitive. */
   strong_keys: number
+  /** Milestone 5: read with the session, judged by the router. Unverified: the routes marked so. Frozen or archived: the sign-out. */
+  org_state: 'unverified' | 'active' | 'frozen' | 'archived'
 }
-/** A session that is not revoked, whose passkey, seat and organisation are all still active. The caller checks the time limits. */
+/** A session that is not revoked, whose passkey and seat are still active. The caller checks the time limits and the organisation's state. */
 export function sessionByToken(db: D1Database, tokenHash: string) {
   return db
     .prepare(
       `SELECT x.id, x.org_id, x.seat_id, x.credential_id, x.created_at, x.last_seen_at, x.step_up_at, s.role, s.display_name, s.quarantine_until, o.quarantine_until AS org_quarantine_until,
-              o.name AS org_name, o.kind AS org_kind, o.synced_keys_allowed,
+              o.name AS org_name, o.kind AS org_kind, o.synced_keys_allowed, o.state AS org_state,
               (SELECT count(*) FROM credentials k WHERE k.org_id = x.org_id AND k.seat_id = x.seat_id AND k.state = 'active' AND (s.role <> 'owner' OR k.device_bound = 1)) AS strong_keys
        FROM sessions x
        JOIN credentials c ON c.org_id = x.org_id AND c.id = x.credential_id AND c.state = 'active'
        JOIN seats s ON s.org_id = x.org_id AND s.id = x.seat_id AND s.state = 'active'
-       JOIN organisations o ON o.id = x.org_id AND o.state = 'active'
+       JOIN organisations o ON o.id = x.org_id
        WHERE x.token_hash = ? AND x.revoked_at IS NULL`,
     )
     .bind(tokenHash)

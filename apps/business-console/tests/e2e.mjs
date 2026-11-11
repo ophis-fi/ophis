@@ -14,11 +14,13 @@
 // command stands in for the waits), is completed with the new passkey, and an old Owner passkey stops it; the
 // recovery sheet prints alone.
 // Milestone 6: the Owner opens Support, asks a question, reads a help text, presses "No" and gets the hand-over card.
+// Milestone 5a (written, not yet run): an application, its DNS proof, the activation by the recovery wallet, the review and the operator's approval.
 // Starts and stops its own local server on a throwaway database. Run: pnpm test:e2e
 import { execFileSync, spawn } from 'node:child_process'
 import { mkdirSync, readFileSync, rmSync } from 'node:fs'
 import { chromium } from 'playwright-core'
 import { mnemonicToAccount } from 'viem/accounts'
+import { publish as publishTxt, start as startDnsStubs } from '../scripts/dns-stub.mjs' // milestone 5: the two local resolvers of "Check DNS"
 
 process.chdir(new URL('..', import.meta.url).pathname)
 const ORIGIN = 'http://localhost:8787'
@@ -40,6 +42,7 @@ run('node_modules/.bin/wrangler', ['d1', 'migrations', 'apply', 'DB', '--local',
 const link = run('node', ['scripts/dev.mjs', 'seed', '--persist', STATE]).match(/http\S+\/#\/enrol\/\S+/)?.[0]
 check('seed printed an enrolment link', Boolean(link))
 
+const stopDnsStubs = startDnsStubs() // ports 8790 and 8791
 // detached: the server gets its own process group, so the whole group can be stopped at the end.
 const server = spawn('node_modules/.bin/wrangler', ['dev', '--persist-to', STATE], { env, detached: true, stdio: 'ignore' })
 let browser
@@ -656,14 +659,90 @@ try {
   check('after the revoke the app is back on sign-in and the session is dead', (await status('/api/me')) === 401)
   check('the revoked token is dead on the server: it worked before the revoke, not after', before === 200 && (await replay()) === 401)
 
+
+  // ---- milestone 5a. WRITTEN, NOT YET RUN (2026-11-11: port 8787 and Chrome were in use by other work). ----
+  // A company applies on /apply and proves its domain by DNS (the two local stub resolvers); the applicant signs in,
+  // adds the second passkey and names the recovery wallet, which signs the activation on the signing page; the Owner
+  // submits; the operator approves through its command; the organisation is active and the KYB record shows.
+  const applicant = await person()
+  const on = applicant.page
+  const domain = `e2e-${Date.now().toString(36)}.example`
+  await on.goto(`${ORIGIN}/apply`)
+  await on.getByLabel('Legal name of the company').fill('Alder Custody S.A.')
+  await on.getByLabel('Country, two-letter code').fill('LU')
+  await on.getByLabel('Registration number or LEI').fill('B123456')
+  await on.getByLabel('The company is a').selectOption('institution')
+  await on.getByLabel('Email domain of the company').fill(domain)
+  await on.getByLabel('Your work email, at that domain').fill(`ops@${domain}`)
+  await on.getByLabel('Your name').fill('Ada Applicant')
+  check('the application page carries the footer line and says nothing is stored yet', await on.getByText(FOOTER).isVisible() && await on.getByText('Nothing is stored until that record is found.').isVisible())
+  await on.getByRole('button', { name: 'Create the passkey and the DNS record' }).click()
+  await on.getByRole('heading', { name: 'Ask your DNS administrator to publish this record.' }).waitFor()
+  const [, recordName, recordValue] = await on.locator('dl.kv dd').allInnerTexts()
+  check('the record is a TXT at _ophis-verify.<domain> with a short code', recordName === `_ophis-verify.${domain}` && /^ophis-verify=[A-Za-z0-9_-]{20}$/.test(recordValue) && await both(on, '32-apply-record'))
+  check('the page offers a link to come back, with the application in the fragment', (await on.getByLabel(/Link to come back/).inputValue()).startsWith(`${ORIGIN}/apply#`))
+  await on.getByRole('button', { name: 'Check DNS' }).click()
+  await on.getByText('The record is not there yet on both resolvers').waitFor()
+  check('before the record is published the check is refused', await on.getByRole('button', { name: 'Check DNS' }).isVisible())
+  // A reload keeps the application (this browser remembers it), and shows the record again.
+  await on.reload()
+  await on.getByText(recordValue).waitFor()
+  publishTxt(recordName, recordValue) // what the company's DNS administrator does
+  await on.getByRole('button', { name: 'Check DNS' }).click()
+  await on.getByRole('heading', { name: 'The domain is proved and the organisation exists.' }).waitFor()
+  await on.getByRole('link', { name: 'Sign in' }).last().click()
+  await on.getByRole('button', { name: 'Sign in with a passkey' }).click()
+  await on.getByRole('heading', { name: /From application to a verified organisation|Read this before you continue/ }).waitFor()
+  if (await on.getByRole('button', { name: 'I have read this' }).count()) await on.getByRole('button', { name: 'I have read this' }).click()
+  await on.getByRole('heading', { name: 'From application to a verified organisation.' }).waitFor()
+  const newOrg = await on.evaluate(() => fetch('/api/me').then((response) => response.json()).then((me) => me.organisation))
+  check('the applicant signs in to an organisation that is not yet verified, and lands on Onboarding', newOrg.state === 'unverified' && newOrg.name === 'Alder Custody S.A.' && await on.getByText('Not submitted.').isVisible())
+  check('an unverified organisation does not reach the audit log', (await status('/api/audit', on)) === 403)
+  await arrive(applicant, false)
+  await secondKey(applicant)
+  await on.goto(`${ORIGIN}/#/onboarding`)
+  await on.reload()
+  await on.getByLabel('Wallet address').fill(key.address)
+  await on.getByLabel('Chain').selectOption({ label: 'OP Mainnet' })
+  await on.getByLabel('A name for it').fill('Treasury')
+  const firstWords = (await on.locator('.phrase span').allInnerTexts()).join(' ')
+  await on.getByRole('button', { name: 'Create the signing link' }).click()
+  const activationLink = await on.getByLabel(/Signing link/).inputValue()
+  check('the Onboarding page gives a signing link on the signing host and three words', activationLink.startsWith(`${SIGN}/sign/#`) && firstWords.split(' ').length === 3 && await both(on, '33-onboarding'))
+  const activated = await sign(activationLink, '34-activation-sign')
+  check('the signing page shows the fourth action, the organisation id and the same three words, and the wallet signs',
+    activated.before.includes('Activate this organisation and confirm its first Owner passkey') && activated.before.includes(newOrg.id) && activated.before.includes(firstWords) && activated.before.includes(key.address)
+    && activated.after.includes('Signed and checked. The wallet is stored') && activated.asked.includes('eth_signTypedData_v4') && activated.fits)
+  await on.getByRole('button', { name: 'The wallet has signed' }).click()
+  await on.getByText('It signed the activation.').waitFor()
+  await on.getByRole('button', { name: 'Submit for review' }).click()
+  await on.getByText('Under review since').waitFor()
+  const operator = (...args) => run('node', ['scripts/operator.mjs', ...args])
+  const listed = operator('list')
+  check('the operator command lists the organisation with its domain, the three words and the wallet', listed.includes(newOrg.id) && listed.includes(domain) && listed.includes(firstWords) && listed.includes(key.address) && listed.includes('ready           yes'))
+  check('the operator approves', operator('decide', newOrg.id, 'approve', '--tier', 'standard', '--source', 'registry', '--evidence', 'e2e register extract', '--sha256', 'ab'.repeat(32), '--next-review', '2030-01-01').includes(`${newOrg.id} is now active`))
+  check('nothing is left under review', operator('list').includes('Nothing is under review.'))
+  await on.reload()
+  await on.getByText('Verified on').waitFor()
+  check('the organisation is active and the Onboarding page says so, with the next review', await on.getByText('Next review 2030-01-01').isVisible() && await on.getByText('It is the recovery wallet in force.').isVisible() && (await status('/api/audit', on)) === 200)
+  await on.goto(`${ORIGIN}/#/compliance`)
+  await on.reload()
+  await on.getByRole('heading', { name: 'KYB record' }).waitFor()
+  check('the Compliance page shows the KYB record and the operator\'s row in the audit log',
+    await on.getByText('No document is stored.').isVisible() && await on.locator('dl.kv dd', { hasText: 'Alder Custody S.A.' }).isVisible() && await on.locator('dl.kv dd', { hasText: 'Approved' }).isVisible()
+    && await on.locator('dl.kv dd', { hasText: 'ab'.repeat(32) }).isVisible() && await on.getByText('Ophis operator: verification approved, organisation active').isVisible() && await both(on, '35-kyb-record', '#root dl.kv'))
+  check('the footer line is on the Onboarding and Compliance pages', await on.getByText(FOOTER).isVisible())
+  await applicant.context.close()
+
   if (violations.length) console.error(violations.join("\n"))
   check(`no policy violation in the browser (${violations.length})`, violations.length === 0)
   check(`no request left the origin (${foreign.length})`, foreign.length === 0)
-  console.log('\nEnd-to-end run passed. Screenshots in .shots/: 01-signin to 31-support-handover')
+  console.log('\nEnd-to-end run passed. Screenshots in .shots/: 01-signin to 35-kyb-record')
 } catch (error) {
   console.error(error.message)
   process.exitCode = 1
 } finally {
+  stopDnsStubs()
   await browser?.close()
   try {
     process.kill(-server.pid, 'SIGTERM')

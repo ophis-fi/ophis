@@ -152,3 +152,6 @@ dialog::backdrop { background: rgba(23, 25, 28, .3); } dialog[open] { display: f
 .support > .panel, .support > .stack { max-width: 760px; } .support > .stack { margin-top: 16px; } .support textarea.input { resize: vertical; }
 p a.btn { text-decoration: none; } /* a link drawn as a button is not underlined like a link in a sentence */
 .support .answer { margin: 0; font-size: 16px; line-height: 1.62; color: var(--ink); } .support .acts > span { font-size: 14px; font-weight: 500; } .support #sp-ask { flex-basis: 100%; } /* Yes and No stay side by side on a phone */
+.support .answer { margin: 0; font-size: 16px; line-height: 1.62; color: var(--ink); } .support .acts > span { font-size: 14px; font-weight: 500; }
+/* Milestone 5a, the Onboarding page: a step's content sits under its title, across the row. */
+.srow > .stack { grid-column: 2 / -1; margin-top: 6px; } .srow > .stack p { grid-column: auto; }

@@ -5,7 +5,7 @@
 //   node scripts/dev.mjs skip       ponytail: stands in for the passing of time: every wait that runs is over (recovery wallet, recovery request, 24 h after a cancel)
 // Option: --persist <dir>, the same value as "wrangler dev --persist-to <dir>".
 import { randomBytes } from 'node:crypto'
-import { existsSync, writeFileSync } from 'node:fs'
+import { appendFileSync, existsSync, readFileSync, writeFileSync } from 'node:fs'
 import { getPlatformProxy } from 'wrangler'
 import { devActivatePending, devSkipWaits, randomToken, seedOrganisation, sha256Hex } from '../src/server/data.ts'
 import { configFor } from '../src/server/passkeys.ts'
@@ -14,6 +14,10 @@ const [command, flag, directory] = process.argv.slice(2)
 process.chdir(new URL('..', import.meta.url).pathname)
 // The challenge key is made on this machine and never leaves it: .dev.vars is git-ignored.
 if (!existsSync('.dev.vars')) writeFileSync('.dev.vars', `CHALLENGE_KEY=${randomBytes(32).toString('base64url')}\n`, { mode: 0o600 })
+// Milestone 5: the token of the operator's local API (scripts/operator.mjs reads it), made the same way and never
+// printed. A file from before this milestone gets the line added.
+const vars = readFileSync('.dev.vars', 'utf8')
+if (!/^OPERATOR_TOKEN=/m.test(vars)) appendFileSync('.dev.vars', `${vars.endsWith('\n') ? '' : '\n'}OPERATOR_TOKEN=${randomBytes(32).toString('base64url')}\n`)
 
 const { env, dispose } = await getPlatformProxy({
   configPath: 'wrangler.jsonc',
