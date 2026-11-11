@@ -3,6 +3,7 @@ import * as data from './data.ts'
 import { checksum, colour, parseAddress, readCapped, safeState, verify, verifyDigest, type SafeState } from './chain.ts'
 import { challengeIsOurs, configFor, creationOptions, credentialHash, newChallenge, phraseFor, requestOptions, seal, toBase64Url, unseal, userHandle, verifyAssertion, verifyRegistration, type Config, type Purpose } from './passkeys.ts'
 import { CHAIN_NAME, typedLink, typedProof, type ProofKind } from './typed.ts'
+import { ask } from './support.ts'
 import { WORDS } from './words.ts'
 
 export interface Env { DB: D1Database; ASSETS: Fetcher; ENVIRONMENT: string; CHALLENGE_KEY: string }
@@ -708,6 +709,7 @@ export const routes: Route[] = [
   { method: 'POST', path: '/api/recovery/:id/object', roles: ['admin', 'approver', 'compliance'], fresh: true, can: 'Object once to an account recovery that waits, which adds 72 hours', handler: recoveryObject },
   { method: 'GET', path: '/api/audit', roles: READERS, can: 'Read the audit log', handler: audit },
   { method: 'POST', path: '/api/audit/export', roles: READERS, fresh: true, can: 'Export the audit log', handler: auditExport },
+  { method: 'POST', path: '/api/support/ask', roles: ANY, can: 'Ask Support a question, which is matched to the fixed help texts', handler: ask },
 ]
 // "What each role can do": the rows of the table above that a session can reach. Routes that share a sentence are one row.
 const rights = [...new Map(routes.flatMap((r) => (r.can ? [[r.can, { can: r.can, roles: r.roles, fresh: Boolean(r.fresh), second: Boolean(r.second) }] as const] : []))).values()]

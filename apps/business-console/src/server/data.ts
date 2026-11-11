@@ -875,6 +875,21 @@ export async function countProof(db: D1Database, orgId: string, now: number) {
   return counted.results[0].n <= MAX_PROOFS
 }
 
+/**
+ * Milestone 6: counts one event of `key` in this clock hour and says whether it is within `max`. Same table and the
+ * same fixed window as countProof; no audit row. Support counts a seat's questions under the key "seat:<id>".
+ * ponytail: the key lives in the column org_id (no foreign key), with a prefix no organisation id can have. Give it
+ * its own table if the two counters ever need different windows.
+ */
+export async function countHour(db: D1Database, key: string, now: number, max: number) {
+  const hour = Math.floor(now / HOUR)
+  const [, counted] = await db.batch<{ n: number }>([
+    db.prepare('DELETE FROM proof_checks WHERE hour < ?').bind(hour),
+    db.prepare('INSERT INTO proof_checks (org_id, hour, n) VALUES (?, ?, 1) ON CONFLICT (org_id, hour) DO UPDATE SET n = n + 1 RETURNING n').bind(key, hour),
+  ])
+  return counted.results[0].n <= max
+}
+
 // A request is open from its proof until it is cancelled, completed or lapsed. 'ready' is never written: a waiting
 // request whose wait is over is ready, and 7 days later it has lapsed, whatever its row says. No scheduled job.
 const OPEN_RECOVERY = `r.state = 'waiting' AND r.wait_until + ${READY_MS} > ?`
