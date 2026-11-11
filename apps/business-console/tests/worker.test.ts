@@ -4596,3 +4596,76 @@ describe('B. last-Owner recovery by the recovery wallet', () => {
     expect(await credentialState(a.key)).toBe('active')
   })
 })
+
+describe('C. attacks tried by the review of milestone 4b', () => {
+  const cancelAs = (m: Holder, id: string) => post(`/api/recovery/${id}/cancel`, m)
+  const theSafe = () => chain.contracts.get(accounts[4].address.toLowerCase())!
+  const anchorOf = async (id: string) => (await row<{ anchor: string | null }>('SELECT anchor FROM wallets WHERE id = ?', id))!.anchor
+
+  it('an override leaves no Owner passkey that could stop anything: one that a re-enrolment had suspended is revoked too, and the removed seat stays removed', async () => {
+    const { o } = await teamWithWallet('safe')
+    await requestRecovery(o.orgId, null)
+    expect((await cancelAs(o, (await recoveryOf(o.orgId)).id)).status).toBe(200)
+    now += DAY
+    const asked = await requestRecovery(o.orgId, null, { override: true })
+    // As a re-enrolment of the Owner's seat leaves a passkey: suspended, with a stop right that still runs at the completion.
+    await db.prepare(`UPDATE credentials SET state = 'suspended', stop_right_until = ? WHERE id = ?`).bind(now + 2 * WAIT, o.key2.id).run()
+    now += WAIT
+    expect((await continueRecovery(asked.key)).status).toBe(200)
+    expect((await stop(o.key2)).status).toBe(401)
+    expect([await credentialState(o.key2), (await seatOf(o.seatId))?.state]).toEqual(['revoked', 'removed'])
+    expect((await row<{ until: number }>('SELECT quarantine_until AS until FROM organisations WHERE id = ?', o.orgId))!.until).toBe(now + WEEK)
+  })
+
+  it('a Safe whose owners changed lapses the request also when the stored proof no longer verifies (an owner who signed was replaced)', async () => {
+    const { o } = await teamWithWallet('safe')
+    const asked = await requestRecovery(o.orgId, null)
+    now += WAIT
+    theSafe().owners = [...theSafe().owners.slice(1), accounts[3].address.toLowerCase()].sort()
+    theSafe().accepts = () => false
+    expect((await continueRecovery(asked.key)).body).toEqual({ error: 'recovery_lapsed' })
+    expect(await recoveryOf(o.orgId)).toMatchObject({ state: 'lapsed', closed_at: now })
+  })
+
+  it('a change of recovery wallet that still waits when a recovery completes is cancelled: the Owners who were replaced leave no wallet that comes into force later', async () => {
+    const { o, a, wallet } = await teamWithWallet()
+    const next = await linked(o, a, { custodian: true }, accounts[1])
+    const asked = await requestRecovery(o.orgId)
+    now += HOUR
+    for (const m of [o, a]) await again(m)
+    await recovery(o, a, next.id)
+    expect(await anchorOf(next.id)).toBe('next')
+    now += WAIT - HOUR
+    const done = await continueRecovery(asked.key)
+    expect(done.status).toBe(200)
+    expect([await anchorOf(wallet.id), await anchorOf(next.id)]).toEqual(['current', null])
+    expect((await walletsOf(done)).map((w) => [w.id, w.recovery])).toEqual(expect.arrayContaining([[wallet.id, 'in_force'], [next.id, null]]))
+    // One that had come into force before the completion is not touched (in force is computed at read).
+    const late = await teamWithWallet()
+    const other = await linked(late.o, late.a, { custodian: true }, accounts[1])
+    const again_ = await requestRecovery(late.o.orgId)
+    await recovery(late.o, late.a, other.id)
+    now += WAIT
+    expect((await continueRecovery(again_.key)).status).toBe(200)
+    expect(await anchorOf(other.id)).toBe('next')
+  })
+
+  it('while a completed recovery can still be stopped no second request opens (its completion would leave an Owner that the stop does not remove); after the stop, or after the 7 days, one opens', async () => {
+    const { o } = await teamWithWallet()
+    const first = await requestRecovery(o.orgId)
+    now += WAIT
+    expect((await continueRecovery(first.key)).status).toBe(200)
+    now += WEEK - MIN
+    const rows = await snapshot()
+    expect((await requestRecovery(o.orgId)).proved.body).toEqual({ error: 'proof_rejected' })
+    expect(await snapshot()).toBe(rows)
+    expect((await stop(o.key)).status).toBe(200)
+    expect((await requestRecovery(o.orgId)).proved.body).toMatchObject({ state: 'waiting' })
+    const late = await teamWithWallet()
+    const second = await requestRecovery(late.o.orgId)
+    now += WAIT
+    expect((await continueRecovery(second.key)).status).toBe(200)
+    now += WEEK
+    expect((await requestRecovery(late.o.orgId)).proved.body).toMatchObject({ state: 'waiting' })
+  })
+})

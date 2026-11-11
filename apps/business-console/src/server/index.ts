@@ -516,9 +516,11 @@ async function continueFinish(c: Context) {
   const endpoints = c.config.chains[r.chainId]
   const proved = endpoints && (await verifyDigest(endpoints, r.chainId, r.digest as `0x${string}`, r.address, r.signature as `0x${string}`))
   const live = endpoints && r.kind === 'safe' ? await safeState(endpoints, r.chainId, r.address) : null
-  if (!proved || (r.kind === 'safe' && !live)) return fail(409, 'wallet_unreadable')
+  if (r.kind === 'safe' && !live) return fail(409, 'wallet_unreadable')
   // An override was green at its proof. Unchanged since, it is green now: the snapshot of its approval cannot change while it is in force.
   const same = JSON.stringify(live) === r.owners_snapshot
+  // A Safe that differs lapses the request whatever its proof says now (an owner who signed may be the one replaced).
+  if (same && !proved) return fail(409, 'wallet_unreadable')
   const token = data.randomToken()
   const cf = (c.request as Request<unknown, IncomingRequestCfProperties>).cf
   const outcome = await data.completeRecovery(c.env.DB, {

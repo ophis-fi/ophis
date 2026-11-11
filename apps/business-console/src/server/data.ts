@@ -896,7 +896,7 @@ export interface Anchor { id: string; chainId: number; address: string; kind: Wa
 /**
  * The rows that decide whether a request can open, as they are now: the organisation is active, it has a recovery
  * wallet in force, no other request is open, this proof (nonce, passkey) was never accepted, the last cancel is 24
- * hours old, and a single key stands only for an organisation of one person (one seat that holds a passkey which
+ * hours old, no completed recovery can still be stopped, and a single key stands only for an organisation of one person (one seat that holds a passkey which
  * signs in or can still stop something). Read by the handler before the signature is checked, so that no endpoint is
  * asked for a request that cannot open, and again inside the commit.
  */
@@ -908,11 +908,15 @@ export async function recoverable(db: D1Database, ask: Pick<RecoveryAsk, 'orgId'
   if (await recoveryRow(db, ask.orgId, now)) return { error: 'request_open' }
   const seen = (await db.prepare(`SELECT (SELECT count(*) FROM recovery_requests WHERE nonce = ?) + (SELECT count(*) FROM credentials WHERE id = ?) AS used,
                                          (SELECT max(closed_at) FROM recovery_requests WHERE org_id = ? AND state = 'cancelled') AS cancelled,
+                                         (SELECT count(*) FROM credentials k JOIN recovery_requests r ON r.org_id = k.org_id AND r.state = 'completed' AND r.closed_at + ${STOP_MS} = k.stop_right_until
+                                          WHERE k.org_id = ? AND k.state = 'suspended' AND k.stop_right_until > ?) AS stoppable,
                                          (SELECT count(*) FROM seats s WHERE s.org_id = ? AND s.state IN ('active', 'frozen') AND EXISTS (SELECT 1 FROM credentials k WHERE k.org_id = s.org_id AND k.seat_id = s.id
                                             AND (k.state = 'active' OR (k.state = 'suspended' AND (k.stop_right_until IS NULL OR k.stop_right_until > ?))))) AS people`)
-    .bind(ask.nonce, ask.credential.id, ask.orgId, ask.orgId, now).first<{ used: number; cancelled: number | null; people: number }>())!
+    .bind(ask.nonce, ask.credential.id, ask.orgId, ask.orgId, now, ask.orgId, now).first<{ used: number; cancelled: number | null; stoppable: number; people: number }>())!
   if (seen.used) return { error: 'proof_used' }
   if ((seen.cancelled ?? -DAY) + DAY > now) return { error: 'wait_after_cancel' }
+  // A second request would complete on top of the first: the Owner it makes is not removed by a stop of the first.
+  if (seen.stoppable) return { error: 'stop_open' }
   if (wallet.kind === 'single_key' && seen.people > 1) return { error: 'single_key' }
   return { wallet }
 }
@@ -1011,13 +1015,16 @@ export async function completeRecovery(
     const others = (await db.prepare(`${owners} AND state <> 'removed'`).bind(c.orgId, r.seat_id).all<{ id: string }>()).results
     outcome = 'completed'
     return [{ at: now, actorKind: 'seat', actorId: r.seat_id, sessionId, action: 'recovery.complete', subjectId: r.id, detail: override ? 'override' : null, country: c.country, asn: c.asn }, [
-      db.prepare(`UPDATE credentials SET state = ?, stop_right_until = ? WHERE org_id = ? AND state = 'active' AND seat_id IN (${owners})`).bind(override ? 'revoked' : 'suspended', override ? null : now + STOP_MS, c.orgId, c.orgId, r.seat_id),
+      // An override revokes every passkey of those seats, also one that a re-enrolment had suspended: its stop would bring a removed seat back.
+      db.prepare(`UPDATE credentials SET state = ?, stop_right_until = ? WHERE org_id = ? AND state ${override ? `<> 'revoked'` : `= 'active'`} AND seat_id IN (${owners})`).bind(override ? 'revoked' : 'suspended', override ? null : now + STOP_MS, c.orgId, c.orgId, r.seat_id),
       db.prepare(`UPDATE sessions SET revoked_at = ? WHERE org_id = ? AND revoked_at IS NULL AND seat_id IN (${owners})`).bind(now, c.orgId, c.orgId, r.seat_id),
       ...others.flatMap((seat) => closeOpen(db, c.orgId, seat.id, now, true)),
       ...(override ? [db.prepare(`UPDATE seats SET state = 'removed' WHERE org_id = ? AND id IN (${owners})`).bind(c.orgId, c.orgId, r.seat_id)] : []),
       db.prepare(`UPDATE credentials SET state = 'active', counter = max(counter, ?), last_used_at = ? WHERE org_id = ? AND id = ?`).bind(c.counter, now, c.orgId, c.credentialId),
       db.prepare(`UPDATE seats SET state = 'active' WHERE org_id = ? AND id = ?`).bind(c.orgId, r.seat_id),
       db.prepare('UPDATE organisations SET quarantine_until = ? WHERE id = ?').bind(now + STOP_MS, c.orgId),
+      // A change of recovery wallet that still waits was the replaced Owners': it must not come into force after them.
+      db.prepare(`UPDATE wallets SET anchor = NULL, anchor_effective_at = NULL WHERE org_id = ? AND anchor = 'next' AND anchor_effective_at > ?`).bind(c.orgId, now),
       db.prepare(`UPDATE recovery_requests SET state = 'completed', closed_at = ? WHERE org_id = ? AND id = ? AND state = 'waiting'`).bind(now, c.orgId, r.id),
       // sessions.challenge_hash is UNIQUE: the same passkey check cannot open a second session.
       db.prepare(`INSERT INTO sessions (id, token_hash, challenge_hash, org_id, seat_id, credential_id, created_at, last_seen_at, step_up_at, user_agent, country, asn) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
