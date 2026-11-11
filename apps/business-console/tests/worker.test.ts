@@ -4627,7 +4627,7 @@ describe('C. attacks tried by the review of milestone 4b', () => {
     expect(await recoveryOf(o.orgId)).toMatchObject({ state: 'lapsed', closed_at: now })
   })
 
-  it('a change of recovery wallet that still waits when a recovery completes is cancelled: the Owners who were replaced leave no wallet that comes into force later', async () => {
+  it('the wallet that signed a request is the recovery wallet when the request completes: a change that waits is cancelled, one that came into force meanwhile is undone, and that wallet is not unlinked while its request is open', async () => {
     const { o, a, wallet } = await teamWithWallet()
     const next = await linked(o, a, { custodian: true }, accounts[1])
     const asked = await requestRecovery(o.orgId)
@@ -4640,14 +4640,41 @@ describe('C. attacks tried by the review of milestone 4b', () => {
     expect(done.status).toBe(200)
     expect([await anchorOf(wallet.id), await anchorOf(next.id)]).toEqual(['current', null])
     expect((await walletsOf(done)).map((w) => [w.id, w.recovery])).toEqual(expect.arrayContaining([[wallet.id, 'in_force'], [next.id, null]]))
-    // One that had come into force before the completion is not touched (in force is computed at read).
+    // The Owners replace the recovery wallet during the wait of a request, and the new one comes into force before the completion.
     const late = await teamWithWallet()
     const other = await linked(late.o, late.a, { custodian: true }, accounts[1])
-    const again_ = await requestRecovery(late.o.orgId)
+    const second = await requestRecovery(late.o.orgId)
     await recovery(late.o, late.a, other.id)
     now += WAIT
-    expect((await continueRecovery(again_.key)).status).toBe(200)
-    expect(await anchorOf(other.id)).toBe('next')
+    // The wallet they replaced is no longer in force. It still cannot be unlinked: its request is open.
+    expect((await post(`/api/wallets/${late.wallet.id}/unlink`, await again(late.o))).body).toEqual({ error: 'recovery_wallet' })
+    await db.batch([db.prepare('UPDATE wallets SET anchor = NULL, anchor_effective_at = NULL WHERE id = ?').bind(late.wallet.id), db.prepare(`UPDATE wallets SET anchor = 'current' WHERE id = ?`).bind(other.id)]) // as the next wallet write would
+    const finished = await continueRecovery(second.key)
+    expect(finished.status).toBe(200)
+    expect([await anchorOf(late.wallet.id), await anchorOf(other.id)]).toEqual(['current', null])
+    expect((await walletsOf(finished)).find((w) => w.id === late.wallet.id)).toMatchObject({ recovery: 'in_force', recoveryAt: now })
+    // Once no request is open, a wallet that is not the recovery wallet is unlinked as ever.
+    const plain = await teamWithWallet()
+    const spare = await linked(plain.o, plain.a, { custodian: true }, accounts[1])
+    expect((await post(`/api/wallets/${spare.id}/unlink`, plain.o)).status).toBe(200)
+  })
+
+  it('a stop leaves no passkey that descends from the new Owner: one that a member it re-enrolled added afterwards is revoked with the one from its link', async () => {
+    const { o, a, v } = await teamWithWallet()
+    const asked = await requestRecovery(o.orgId)
+    now += WAIT
+    const fresh = { cookie: (await continueRecovery(asked.key)).cookie, key: asked.key }
+    expect((await addKey(fresh)).status).toBe(200)
+    const taken = await ceremony(fresh, { seatId: v.seatId })
+    const extra = await addKey(await again(taken))
+    expect(extra.status).toBe(200)
+    // A passkey the Approver adds meanwhile is the Approver's own: the new Owner issued no link for that seat.
+    const own = await addKey(await again(a))
+    expect((await stop(o.key)).status).toBe(200)
+    expect([await credentialState(taken.key), await credentialState(extra.key), await credentialState(own.key), await credentialState(a.key)]).toEqual(['revoked', 'revoked', 'active', 'active'])
+    expect((await signIn(extra.key)).status).toBe(401)
+    // The Viewer's passkey from before the recovery keeps what a re-enrolment leaves it: suspended, with its stop right.
+    expect(await credentialState(v.key)).toBe('suspended')
   })
 
   it('while a completed recovery can still be stopped no second request opens (its completion would leave an Owner that the stop does not remove); after the stop, or after the 7 days, one opens', async () => {

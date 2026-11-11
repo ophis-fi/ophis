@@ -761,11 +761,13 @@ export function Organisation({ me, onSignedOut, onChanged }: { me: Me; onSignedO
             const keys = view.passkeys.filter((key) => key.seatId === member.id && key.state === 'active')
             const again = manages && ready && member.id !== me.seat.id && mayManage(member.role) && (member.state === 'active' || (member.state === 'invited' && !quarantined))
             const frozen = view.frozen.find((seat) => seat.id === member.id)
+            // A seat whose passkeys were replaced (a re-enrolment, or an account recovery) still reads "Active": say what its old passkeys can do.
+            const replaced = view.passkeys.find((key) => key.seatId === member.id && key.state === 'suspended' && (key.stopRightUntil ?? 0) > Date.now())
             return (
               <tr key={member.id}>
                 <td>{member.displayName}</td>
                 <td>{ROLE[member.role] ?? member.role}</td>
-                <td>{keys.length ? `${keys.length}: ${keys.map((key) => key.label).join(', ')}` : 'None'}</td>
+                <td>{keys.length ? `${keys.length}: ${keys.map((key) => key.label).join(', ')}` : 'None'}{replaced && <small>Replaced. Can stop the replacement until {minute(replaced.stopRightUntil!)}</small>}</td>
                 <td>{view.sessions.filter((session) => session.seatId === member.id).length || 'None'}</td>
                 <td><Status>{capital(member.state)}</Status>{frozen && <small>{frozen.stopped ? 'A replaced passkey stopped its replacement' : `By ${frozen.by ?? 'a colleague'}`}{frozen.at ? ` on ${minute(frozen.at)}` : ''}</small>}</td>
                 {manages && <td><div className="acts">

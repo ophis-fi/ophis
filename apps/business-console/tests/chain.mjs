@@ -185,7 +185,10 @@ try {
       done.status === 200 && me.seat.role === 'owner' && me.organisation.id === orgId && me.organisation.quarantineUntil === clock + 7 * 24 * 60 * 60_000)
     check('the old Owner passkey opens no session and is told it can stop the recovery', (await call('/api/signin/finish', { response: await key1.authenticate((await call('/api/signin/start', {})).body.options) })).body.recovery === true)
 
-    // A second request. During its wait an owner is added to the Safe on the fork: the completion lapses.
+    // A second request: refused while the first can still be stopped, open once those 7 days are over. During its
+    // wait an owner is added to the Safe on the fork: the completion lapses.
+    check('while the first recovery can still be stopped, a second request opens nothing', (await recover()).opened.error === 'proof_rejected')
+    clock += 7 * 24 * 60 * 60_000
     const second = await recover()
     check('a second request opens', second.opened.state === 'waiting')
     await exec(vault, encodeFunctionData({ abi, functionName: 'addOwnerWithThreshold', args: [accounts[3].address, 2n] }), 0, vault)
