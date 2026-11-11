@@ -1,7 +1,7 @@
 // Local development commands. They reach the local D1 only: no remote binding is opened
 // (remoteBindings: false), and activation also refuses any ENVIRONMENT but "local".
 //   node scripts/dev.mjs seed       one organisation, one Owner seat, a one-time enrolment link
-//   node scripts/dev.mjs activate   ponytail: stands in for the three-word ceremony until milestone 2
+//   node scripts/dev.mjs activate   ponytail: stands in for the first Owner's activation (the recovery anchor, milestone 4)
 // Option: --persist <dir>, the same value as "wrangler dev --persist-to <dir>".
 import { randomBytes } from 'node:crypto'
 import { existsSync, writeFileSync } from 'node:fs'

@@ -1674,6 +1674,9 @@ describe('o. re-enrolment: suspended passkeys, the stop right, quarantine', () =
     expect((await stop(v.target.key)).status).toBe(401)
     const last = await row('SELECT action, actor_id, subject_id FROM audit_log WHERE org_id = ? ORDER BY seq DESC LIMIT 1', v.o.orgId)
     expect(last).toEqual({ action: 'credential.stop', actor_id: v.target.seatId, subject_id: v.target.key.id })
+    // Not an Owner alone: the passkeys of a frozen seat are not revoked one by one.
+    expect((await post(`/api/passkeys/${v.target.key.id}/revoke`, await again(v.o))).status).toBe(404)
+    expect(await credentialState(v.target.key)).toBe('active')
     expect(await data.verifyAudit(db, v.o.orgId)).toMatchObject({ ok: true })
   })
 
@@ -1800,13 +1803,14 @@ describe('p. alerts shown at sign-in (no email is sent)', () => {
   it('a re-enrolment: the member, the people who must type the words, then every member', async () => {
     const o = await owner()
     const approver = await colleague(o, 'approver')
+    const trader = await colleague(o, 'trader')
     const admin = await colleague(o, 'admin')
     const elsewhere = await owner()
     expect(await kinds(admin)).toEqual([])
     const ticket = await issue(o, { seatId: admin.seatId })
     expect(await kinds(admin)).toEqual(['re_enrolment_started'])
     const joined = await enrolLink(ticket.body.link)
-    expect(await kinds(o)).toEqual(['confirmation_waiting'])
+    expect(await alerts(o)).toEqual([{ key: `wait:${ticket.body.ticketId}:issuer`, kind: 'confirmation_waiting', name: 'A admin' }])
     expect(await kinds(approver)).toEqual([])
     expect((await confirm(o, ticket.body.ticketId, joined.words, o.key)).body).toEqual({ state: 'second' })
     expect(await kinds(o)).toEqual([])
@@ -1817,8 +1821,10 @@ describe('p. alerts shown at sign-in (no email is sent)', () => {
     // (new_passkey: the Admin added a second passkey from another session in the last 7 days.)
     expect(await kinds(fresh)).toEqual(['new_passkey', 'quarantine', 're_enrolment_completed'])
     expect((await alerts(fresh)).find((alert) => alert.kind === 'quarantine')).toMatchObject({ until: at + 72 * HOUR })
-    expect(await alerts(o)).toEqual([expect.objectContaining({ kind: 'colleague_re_enrolled', name: 'A admin' })])
+    // Every other member is told; the issuer is not told what they did themselves.
+    expect(await alerts(trader)).toEqual([expect.objectContaining({ kind: 'colleague_re_enrolled', name: 'A admin' })])
     expect(await kinds(approver)).toEqual(['colleague_re_enrolled'])
+    expect(await kinds(o)).toEqual([])
     // The real Admin stops it: every member sees the frozen seat.
     expect((await stop(admin.key)).status).toBe(200)
     expect(await alerts(o)).toContainEqual(expect.objectContaining({ kind: 'seat_frozen', name: 'A admin' }))

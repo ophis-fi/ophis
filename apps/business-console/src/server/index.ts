@@ -84,7 +84,7 @@ async function enrolStart(c: Context) {
   const challenge = await newChallenge(c.env.CHALLENGE_KEY, 'enrol', ticket.id, c.now)
   const deviceBound = mustBeDeviceBound(ticket)
   return json(200, {
-    organisation: ticket.org_name, member: ticket.display_name, role: ticket.role, deviceBound,
+    organisation: ticket.org_name, member: ticket.display_name, role: ticket.role, deviceBound, first: ticket.kind === 'first_owner',
     options: creationOptions(c.config, challenge, { id: ticket.seat_id, name: ticket.display_name }, deviceBound),
   })
 }

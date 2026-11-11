@@ -1,6 +1,9 @@
-// End-to-end proof in the installed Google Chrome, headless, with Chrome's virtual authenticator
-// (DevTools protocol): seed, enrol, activate, sign in, see the Organisation page, revoke the session,
-// land on sign-in. Starts and stops its own local server on a throwaway database. Run: pnpm test:e2e
+// End-to-end proof in the installed Google Chrome, headless, with Chrome's virtual authenticators
+// (DevTools protocol). Milestone 1: seed, enrol, activate, sign in, see the Organisation page, end the
+// session. Milestone 2: the Owner adds a second key and invites a Viewer; the Viewer enrols in a second
+// browser context with its own authenticator and reads three words; the Owner types them; the Viewer signs
+// in. Then the Viewer is re-enrolled from a third context, and the Viewer's old passkey stops that.
+// Starts and stops its own local server on a throwaway database. Run: pnpm test:e2e
 import { execFileSync, spawn } from 'node:child_process'
 import { mkdirSync, rmSync } from 'node:fs'
 import { chromium } from 'playwright-core'
@@ -32,27 +35,33 @@ try {
   check('the local server answers', await reachable())
 
   browser = await chromium.launch({ executablePath: CHROME, headless: true })
-  // reducedMotion: the kit then skips its entrance animation, so a screenshot never catches a half-faded page.
-  const context = await browser.newContext({ viewport: { width: 1440, height: 900 }, reducedMotion: 'reduce' })
-  const page = await context.newPage()
-  const devtools = await context.newCDPSession(page)
-  await devtools.send('WebAuthn.enable')
-  // A security key: USB, resident keys, user verification, not backup eligible (device-bound).
-  await devtools.send('WebAuthn.addVirtualAuthenticator', {
-    options: { protocol: 'ctap2', transport: 'usb', hasResidentKey: true, hasUserVerification: true, isUserVerified: true, automaticPresenceSimulation: true },
-  })
   const violations = []
   const foreign = []
-  page.on('console', (message) => /content security policy|trusted ?type/i.test(message.text()) && violations.push(message.text()))
-  page.on('request', (request) => request.url().startsWith(`${ORIGIN}/`) || foreign.push(request.url()))
-  const status = (path) => page.evaluate((url) => fetch(url).then((response) => response.status), path)
+  // A security key: USB, resident keys, user verification, not backup eligible (device-bound).
+  const KEY = { protocol: 'ctap2', transport: 'usb', hasResidentKey: true, hasUserVerification: true, isUserVerified: true, automaticPresenceSimulation: true }
+  // One person: a browser context of their own, with one security key plugged in.
+  async function person() {
+    // reducedMotion: the kit then skips its entrance animation, so a screenshot never catches a half-faded page.
+    const context = await browser.newContext({ viewport: { width: 1440, height: 900 }, reducedMotion: 'reduce' })
+    const page = await context.newPage()
+    const devtools = await context.newCDPSession(page)
+    await devtools.send('WebAuthn.enable')
+    const { authenticatorId } = await devtools.send('WebAuthn.addVirtualAuthenticator', { options: KEY })
+    page.on('console', (message) => /content security policy|trusted ?type/i.test(message.text()) && violations.push(message.text()))
+    page.on('request', (request) => request.url().startsWith(`${ORIGIN}/`) || foreign.push(request.url()))
+    return { context, page, devtools, authenticatorId }
+  }
+  const FOOTER = 'Ophis is a software provider. It is not a crypto-asset service provider.'
+  const { context, page, devtools, authenticatorId } = await person()
+  const status = (path, on = page) => on.evaluate((url) => fetch(url).then((response) => response.status), path)
+  const sessionCookie = async () => (await context.cookies()).find((c) => c.name === '__Host-session')
 
   const first = await page.goto(ORIGIN)
   await page.getByRole('button', { name: 'Sign in with a passkey' }).waitFor()
   const headers = first.headers()
   check('the page carries the strict policy', ["default-src 'none'", "script-src 'self'", "frame-ancestors 'none'", "require-trusted-types-for 'script'"].every((part) => headers['content-security-policy']?.includes(part)))
   check('the page carries the other security headers', headers['x-content-type-options'] === 'nosniff' && headers['referrer-policy'] === 'no-referrer' && headers['cross-origin-resource-policy'] === 'same-origin' && headers['x-frame-options'] === 'DENY')
-  check('the footer line is on the sign-in page', await page.getByText('Ophis is a software provider. It is not a crypto-asset service provider.').isVisible())
+  check('the footer line is on the sign-in page', await page.getByText(FOOTER).isVisible())
   check('the sign-in page has no username or password field', (await page.locator('input').count()) === 0)
   await page.evaluate(() => document.fonts.ready)
   await page.screenshot({ path: '.shots/01-signin.png' })
@@ -60,10 +69,10 @@ try {
   await page.goto(link)
   await page.getByRole('button', { name: 'Create passkey' }).waitFor()
   check('the ticket left the address bar', (await page.evaluate(() => location.hash)) === '#/enrol')
-  check('the enrolment page names the organisation and the site', await page.getByText('Northwind Vaults').first().isVisible() && await page.getByText('localhost:8787').isVisible())
+  check('the enrolment page names the organisation and the site', await page.getByText('Northwind Vaults').first().isVisible() && await page.locator('dd.site', { hasText: 'localhost:8787' }).isVisible())
   await page.getByRole('button', { name: 'Create passkey' }).click()
-  await page.getByText('Passkey stored, waiting for confirmation.').waitFor()
-  check('a real browser enrolled a passkey', true)
+  await page.getByRole('heading', { name: 'Read these three words aloud.' }).waitFor()
+  check('a real browser enrolled a passkey and shows three words', (await page.locator('.phrase span').count()) === 3)
 
   await page.getByRole('link', { name: 'Go to sign-in' }).click()
   await page.getByRole('button', { name: 'Sign in with a passkey' }).click()
@@ -73,13 +82,13 @@ try {
   check('the activate command confirmed one passkey', run('node', ['scripts/dev.mjs', 'activate', '--persist', STATE]).includes('Activated 1 pending'))
   await page.getByRole('button', { name: 'Sign in with a passkey' }).click()
   await page.getByRole('heading', { name: 'People, wallets and two-person approval.' }).waitFor()
-  await page.getByRole('button', { name: 'Revoke' }).waitFor()
+  await page.getByRole('button', { name: 'End session' }).waitFor()
   check('the Organisation page shows the member, the passkey and the session',
     await page.getByRole('cell', { name: 'Maren Okafor' }).first().isVisible() && await page.getByText('1: Security key 1').isVisible() && await page.getByText('This session').isVisible())
-  const cookie = (await context.cookies()).find((c) => c.name === '__Host-session')
+  let cookie = await sessionCookie()
   check('the session cookie is __Host-, Secure, HttpOnly, SameSite=Strict, Path=/', Boolean(cookie) && cookie.secure && cookie.httpOnly && cookie.sameSite === 'Strict' && cookie.path === '/' && cookie.domain === 'localhost')
   check('scripts cannot read the session cookie', !(await page.evaluate(() => document.cookie)).includes('session'))
-  check('the footer line is on the Organisation page', await page.getByText('Ophis is a software provider. It is not a crypto-asset service provider.').isVisible())
+  check('the footer line is on the Organisation page', await page.getByText(FOOTER).isVisible())
   await page.screenshot({ path: '.shots/02-organisation.png', fullPage: true })
 
   await page.getByRole('link', { name: 'Security and data' }).first().click()
@@ -87,27 +96,157 @@ try {
   await page.reload()
   await page.getByRole('heading', { name: 'What we store, and what we never hold.' }).waitFor()
   await page.getByRole('link', { name: 'Organisation' }).first().click()
-  await page.getByRole('button', { name: 'Revoke' }).waitFor()
+  await page.getByRole('button', { name: 'End session' }).waitFor()
   check('the session survives a reload', (await status('/api/me')) === 200)
+
+  // ---- milestone 2 ----
+  const organisation = async (on = page) => {
+    await on.goto(`${ORIGIN}/#/organisation`)
+    await on.reload()
+    await on.getByRole('heading', { name: /People, wallets|Read this before you continue/ }).waitFor()
+  }
+  const readAlerts = async (text, on = page) => {
+    await on.getByRole('heading', { name: 'Read this before you continue.' }).waitFor()
+    const shown = await on.getByText(text).isVisible()
+    await on.getByRole('button', { name: 'I have read this' }).click()
+    await on.getByRole('heading', { name: 'People, wallets and two-person approval.' }).waitFor()
+    return shown
+  }
+  // The member's side of the ceremony, on their own device: open the link, create the passkey, read the words.
+  async function enrolAt(link, who) {
+    await who.page.goto(link)
+    await who.page.getByRole('button', { name: 'Create passkey' }).click()
+    await who.page.getByRole('heading', { name: 'Read these three words aloud.' }).waitFor()
+    return who.page.locator('.phrase span').allTextContents()
+  }
+  // The Owner's side: the dialog's two steps. Returns the link, read from the page as the Owner would copy it.
+  async function issue(open) {
+    await open()
+    await page.getByRole('button', { name: 'Create the link' }).click()
+    const link = await page.getByLabel('Enrolment link').inputValue()
+    await page.getByRole('button', { name: 'Copy the link' }).click()
+    await page.getByRole('button', { name: 'Copied' }).waitFor()
+    await page.screenshot({ path: '.shots/07-link-dialog.png' })
+    await page.getByRole('button', { name: 'Done' }).click()
+    return link
+  }
+  async function typeWords(words, name) {
+    await page.getByLabel(`Three words heard from ${name}`).fill(words.join(' '))
+    await page.getByRole('button', { name: 'Confirm with passkey' }).click()
+  }
+
+  check('an Owner with one key is asked for the second and cannot invite yet',
+    await page.getByText('Add your second hardware key.').isVisible() && (await page.getByRole('button', { name: 'Invite member' }).count()) === 0)
+  // The first key goes back in the drawer; a second security key is plugged in.
+  await devtools.send('WebAuthn.removeVirtualAuthenticator', { authenticatorId })
+  await devtools.send('WebAuthn.addVirtualAuthenticator', { options: KEY })
+  await page.getByRole('button', { name: 'Add a passkey' }).click()
+  await page.getByRole('button', { name: 'Invite member' }).waitFor()
+  check('the Owner added a second hardware key and may now invite', await page.getByText('2: Security key 1, Security key 2').isVisible() && (await page.getByText('Add your second hardware key.').count()) === 0)
+
+  // Invite a Viewer. The first try is answered "step-up required", as it would be 5 minutes after the last
+  // passkey check: the app must run a real passkey check, get a new session token, and try again.
+  await context.grantPermissions(['clipboard-read', 'clipboard-write'], { origin: ORIGIN })
+  let asked = 0
+  await page.route('**/api/tickets', (route) => (asked++ ? route.continue() : route.fulfill({ status: 403, contentType: 'application/json', body: '{"error":"step_up_required"}' })))
+  const invitation = await issue(async () => {
+    await page.getByRole('button', { name: 'Invite member' }).click()
+    await page.getByLabel('Name shown to colleagues').fill('Ada Viewer')
+    await page.getByLabel('Role').selectOption('viewer')
+  })
+  await page.unroute('**/api/tickets')
+  const stepped = await sessionCookie()
+  check('a step-up in a real browser gave the session a new token', asked === 2 && stepped.value !== cookie.value)
+  check('the invitation link carries the ticket in the fragment only', /^http:\/\/localhost:8787\/#\/enrol\/[A-Za-z0-9_-]{43}$/.test(invitation) && (await page.evaluate(() => navigator.clipboard.readText())) === invitation)
+  cookie = stepped
+
+  const viewer = await person()
+  const words = await enrolAt(invitation, viewer)
+  check('the Viewer enrolled on their own device and sees three words, large, with the warning',
+    words.length === 3 && words.every((word) => /^[a-z-]{3,10}$/.test(word)) && await viewer.page.getByText('Never type them or send them by message, email or chat.').isVisible()
+    && (await viewer.page.locator('.phrase').evaluate((node) => parseFloat(getComputedStyle(node).fontSize))) >= 34)
+  check('the footer line is on the three-word page', await viewer.page.getByText(FOOTER).isVisible())
+  await viewer.page.screenshot({ path: '.shots/03-three-words.png' })
+
+  await organisation()
+  check('the Owner is told at the door that a passkey waits for the words', await readAlerts('A new passkey of Ada Viewer waits for the three words from you'))
+  await page.getByRole('heading', { name: 'Waiting for confirmation' }).waitFor()
+  const ownerText = (await page.locator('body').innerText()).toLowerCase().split(/[^a-z-]+/)
+  check('the Owner\'s screen does not show the three words', !words.every((word) => ownerText.includes(word)))
+  await page.screenshot({ path: '.shots/04-waiting.png', fullPage: true })
+  await page.setViewportSize({ width: 390, height: 844 })
+  await page.screenshot({ path: '.shots/08-waiting-phone.png', fullPage: true })
+  check('at phone width the page does not scroll sideways', await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth))
+  await page.setViewportSize({ width: 1440, height: 900 })
+  await typeWords(words[0] === 'aardvark' ? ['zucchini', 'zoology', 'zipfile'] : ['aardvark', 'abandoned', 'abbreviate'], 'Ada Viewer')
+  await page.getByText('Those are not the words. 2 tries left.').waitFor()
+  check('wrong words are refused and counted', (await status('/api/me', viewer.page)) === 401)
+  await typeWords(words, 'Ada Viewer')
+  await page.getByRole('button', { name: 'Re-enrol Ada Viewer' }).waitFor()
+  check('the Owner typed the words: the Viewer is active', (await page.getByRole('heading', { name: 'Waiting for confirmation' }).count()) === 0)
+
+  await viewer.page.getByRole('link', { name: 'Go to sign-in' }).click()
+  await viewer.page.getByRole('button', { name: 'Sign in with a passkey' }).click()
+  await viewer.page.getByRole('heading', { name: 'People, wallets and two-person approval.' }).waitFor()
+  await viewer.page.getByRole('button', { name: 'End session' }).waitFor()
+  check('the Viewer signs in and sees only their own seat', (await viewer.page.getByRole('cell', { name: 'Maren Okafor' }).count()) === 0 && await viewer.page.getByRole('cell', { name: 'Ada Viewer' }).first().isVisible()
+    && (await viewer.page.getByRole('button', { name: 'Invite member' }).count()) === 0)
+
+  // Re-enrolment: someone with a third device gets the Viewer's seat a new passkey, and the Owner is talked into the words.
+  const second = await issue(() => page.getByRole('button', { name: 'Re-enrol Ada Viewer' }).click())
+  const replacement = await person()
+  const newWords = await enrolAt(second, replacement)
+  await organisation()
+  await readAlerts('A new passkey of Ada Viewer waits for the three words from you')
+  await typeWords(newWords, 'Ada Viewer')
+  await page.getByText('Can stop its replacement until').waitFor()
+  check('after the re-enrolment the old passkey is suspended, not deleted, and the old session is over',
+    await page.getByText('Suspended').first().isVisible() && (await status('/api/me', viewer.page)) === 401)
+  await replacement.page.getByRole('link', { name: 'Go to sign-in' }).click()
+  await replacement.page.getByRole('button', { name: 'Sign in with a passkey' }).click()
+  check('the new passkey signs in, and is told about the quarantine first', await readAlerts('Your seat is in quarantine until', replacement.page))
+
+  // The real Viewer comes back with the old passkey: no session, one action.
+  await viewer.page.goto(ORIGIN)
+  await viewer.page.getByRole('button', { name: 'Sign in with a passkey' }).click()
+  await viewer.page.getByRole('heading', { name: 'This passkey was replaced.' }).waitFor()
+  check('a replaced passkey lands on the stop page with no session, and the footer line',
+    (await status('/api/me', viewer.page)) === 401 && await viewer.page.getByText(FOOTER).isVisible() && (await viewer.page.getByRole('button', { name: /Stop|Back/ }).count()) === 2)
+  await viewer.page.screenshot({ path: '.shots/05-replaced.png' })
+  await viewer.page.getByRole('button', { name: 'Stop this replacement' }).click()
+  await viewer.page.getByText('Replacement stopped.').waitFor()
+  check('the stop ended the session of the new passkey', (await status('/api/me', replacement.page)) === 401)
+  await replacement.page.goto(ORIGIN)
+  await replacement.page.getByRole('button', { name: 'Sign in with a passkey' }).click()
+  await replacement.page.getByText('Sign-in did not work.').waitFor()
+  check('after the stop the new passkey opens no session', (await status('/api/me', replacement.page)) === 401)
+  await organisation()
+  check('the Owner is told at the door that the seat is frozen', await readAlerts('The seat of Ada Viewer is frozen'))
+  await page.screenshot({ path: '.shots/06-after-stop.png', fullPage: true })
+  await page.getByText('Frozen').waitFor()
+  check('the Organisation page shows the frozen seat and the revoked passkey', await page.getByText('Revoked').first().isVisible() && (await page.getByRole('button', { name: /Re-enrol|New link/ }).count()) === 0)
+  await viewer.context.close()
+  await replacement.context.close()
 
   // The server cannot end the session: the app must not pretend that it did.
   await page.route('**/api/signout', (route) => route.fulfill({ status: 500, contentType: 'application/json', body: '{"error":"internal"}' }))
   await page.getByRole('button', { name: 'Sign out' }).click()
   await page.getByText('Sign-out did not work.').waitFor({ timeout: 5000 })
-  check('a failed sign-out keeps the app signed in and says so', await page.getByRole('button', { name: 'Revoke' }).isVisible() && (await status('/api/me')) === 200)
+  check('a failed sign-out keeps the app signed in and says so', await page.getByRole('button', { name: 'End session' }).isVisible() && (await status('/api/me')) === 200)
   await page.unroute('**/api/signout')
 
   // The revoke also clears the cookie, so the browser alone cannot show that the server forgot the token: replay it.
+  cookie = await sessionCookie()
   const replay = () => fetch(`${ORIGIN}/api/me`, { headers: { cookie: `__Host-session=${cookie.value}`, 'sec-fetch-site': 'same-origin' } }).then((response) => response.status)
   const before = await replay()
-  await page.getByRole('button', { name: 'Revoke' }).click()
+  await page.getByRole('row', { name: /This session/ }).getByRole('button', { name: 'End session' }).click()
   await page.getByRole('button', { name: 'Sign in with a passkey' }).waitFor()
   check('after the revoke the app is back on sign-in and the session is dead', (await status('/api/me')) === 401)
   check('the revoked token is dead on the server: it worked before the revoke, not after', before === 200 && (await replay()) === 401)
 
   check(`no policy violation in the browser (${violations.length})`, violations.length === 0)
   check(`no request left the origin (${foreign.length})`, foreign.length === 0)
-  console.log('\nEnd-to-end run passed. Screenshots: .shots/01-signin.png, .shots/02-organisation.png')
+  console.log('\nEnd-to-end run passed. Screenshots in .shots/: 01-signin to 08-waiting-phone')
 } catch (error) {
   console.error(error.message)
   process.exitCode = 1

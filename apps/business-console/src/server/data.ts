@@ -291,13 +291,13 @@ export function addCredential(db: D1Database, actor: Actor, credential: { id: st
   })
 }
 
-/** Active passkeys only: a replaced (suspended) one keeps its stop right, whoever asks. */
+/** Active passkeys of active seats only: a replaced (suspended) one keeps its stop right, and a frozen seat waits for two people. */
 export async function revokeCredential(db: D1Database, actor: Actor, credentialId: string, now: number) {
   let outcome: 'ok' | 'not_found' | 'forbidden' | 'quarantine' | 'last_passkey' = 'not_found'
   await commit(db, actor.orgId, async () => {
     const c = await db
       .prepare(`SELECT c.seat_id, s.role, (SELECT count(*) FROM credentials k WHERE k.org_id = c.org_id AND k.seat_id = c.seat_id AND k.state = 'active') AS active
-                FROM credentials c JOIN seats s ON s.org_id = c.org_id AND s.id = c.seat_id
+                FROM credentials c JOIN seats s ON s.org_id = c.org_id AND s.id = c.seat_id AND s.state = 'active'
                 WHERE c.org_id = ? AND c.id = ? AND c.state = 'active' AND (c.seat_id = ? OR ? = 1)`)
       .bind(actor.orgId, credentialId, actor.seatId, seesAll(actor)).first<{ seat_id: string; role: Role; active: number }>()
     if (!c) outcome = 'not_found'
@@ -496,18 +496,19 @@ export function stopReplacement(db: D1Database, credential: StoredCredential, co
 
 // ---- alerts: no email exists, so a member is told at sign-in (recovery.md section 1) ----
 
-export interface Alert { key: string; kind: string; at?: number; until?: number; name?: string; count?: number }
+export interface Alert { key: string; kind: string; at?: number; until?: number; name?: string }
 // ponytail: alerts are read from the rows of the last 7 days on each /api/me; the server keeps no "seen"
 // mark (the browser remembers what was read). Add a table if an alert must be acknowledged by name.
 export async function alertsFor(db: D1Database, actor: Actor, now: number) {
   const since = now - ALERT_MS
   const [tickets, added, frozen] = await db.batch([
     db.prepare(`SELECT t.id, t.state, t.seat_id, t.created_at, s.display_name FROM enrolment_tickets t JOIN seats s ON s.org_id = t.org_id AND s.id = t.seat_id
-                WHERE t.org_id = ? AND t.kind = 're_enrolment' AND t.created_at > ? AND (t.seat_id = ? OR t.state = 'confirmed') ORDER BY t.created_at, t.id`).bind(actor.orgId, since, actor.seatId),
+                WHERE t.org_id = ? AND t.kind = 're_enrolment' AND t.created_at > ? AND (t.seat_id = ? OR (t.state = 'confirmed' AND t.issuer_seat_id <> ?))
+                ORDER BY t.created_at, t.id`).bind(actor.orgId, since, actor.seatId, actor.seatId),
     db.prepare(`SELECT subject_id, at FROM audit_log WHERE org_id = ? AND actor_id = ? AND action = 'credential.add' AND at > ? AND session_id <> ? ORDER BY seq`).bind(actor.orgId, actor.seatId, since, actor.sessionId),
     db.prepare(`SELECT id, display_name FROM seats WHERE org_id = ? AND state = 'frozen' ORDER BY created_at, id`).bind(actor.orgId),
   ])
-  const waiting = (await openTickets(db, actor, now)).filter((t) => t.myStep).length
+  const waiting = (await openTickets(db, actor, now)).filter((t) => t.myStep)
   return [
     ...(quarantined(actor, now) ? [{ key: `quarantine:${actor.quarantineUntil}`, kind: 'quarantine', until: actor.quarantineUntil! }] : []),
     ...(tickets.results as { id: string; state: string; seat_id: string; created_at: number; display_name: string }[]).map((t) =>
@@ -515,7 +516,7 @@ export async function alertsFor(db: D1Database, actor: Actor, now: number) {
       : { key: `re:${t.id}:${t.state}`, kind: t.state === 'confirmed' ? 're_enrolment_completed' : 're_enrolment_started', at: t.created_at }),
     ...(added.results as { subject_id: string; at: number }[]).map((c) => ({ key: `key:${c.subject_id}`, kind: 'new_passkey', at: c.at })),
     ...(frozen.results as { id: string; display_name: string }[]).map((seat) => ({ key: `frozen:${seat.id}`, kind: 'seat_frozen', name: seat.display_name })),
-    ...(waiting ? [{ key: 'waiting', kind: 'confirmation_waiting', count: waiting }] : []),
+    ...waiting.map((t) => ({ key: `wait:${t.id}:${t.myStep}`, kind: 'confirmation_waiting', name: t.name })),
   ] satisfies Alert[]
 }
 

@@ -4,7 +4,7 @@ import { createRoot } from 'react-dom/client'
 import './kit.css'
 import './app.css'
 import mark from './assets/ophis-icon-mono-dark.svg'
-import { Enrol, Organisation, Problem, Security, SignIn, type Me } from './pages.tsx'
+import { Alerts, Enrol, Organisation, Problem, Security, SignIn, type Me } from './pages.tsx'
 import { api, Icon, ROLE, Status } from './ui.tsx'
 
 const onHashChange = (listener: () => void) => {
@@ -20,6 +20,18 @@ function takeTicket() {
 }
 const firstTicket = takeTicket() ?? ''
 
+// Alerts this browser has shown and the member has confirmed. Kept per browser on purpose: an alert read
+// on someone else's device is still shown on the member's own.
+const READ = 'ophis-business-alerts-read'
+function alertsRead(): string[] {
+  try {
+    const stored: unknown = JSON.parse(localStorage.getItem(READ) ?? '[]')
+    return Array.isArray(stored) ? stored.filter((key) => typeof key === 'string') : []
+  } catch {
+    return []
+  }
+}
+
 function Later({ icon, label }: { icon: string; label: string }) {
   return <button className="nav" type="button" disabled data-tip={`${label} (later)`}><Icon name={icon} /><span className="lbl">{label}</span><Status>Later</Status></button>
 }
@@ -30,6 +42,7 @@ function App() {
   const [menu, setMenu] = useState(false)
   const [ticket, setTicket] = useState(firstTicket)
   const [stillOpen, setStillOpen] = useState(false)
+  const [read, setRead] = useState(alertsRead)
   useEffect(() => {
     const next = takeTicket() // a link opened in a tab where the app is already running
     if (next) setTicket(next)
@@ -61,11 +74,21 @@ function App() {
     location.hash = '#/'
   }
   const current = (name: string) => (page === name ? 'page' : undefined)
+  const unread = me?.alerts.filter((alert) => !read.includes(alert.key)) ?? []
+  function markRead() {
+    const next = [...read, ...unread.map((alert) => alert.key)].slice(-200)
+    setRead(next)
+    try {
+      localStorage.setItem(READ, JSON.stringify(next))
+    } catch {
+      // storage is blocked: the alerts come back at the next page load, which is the safe side
+    }
+  }
 
   return (
     <>
       <button className="skip btn primary sm" type="button" onClick={() => document.getElementById('main')?.focus()}>Skip to content</button>
-      <div className="band" role="note"><Icon name="info" size={16} /><span><strong>Local build.</strong> Milestone 1 of 6: sign-in core. Test data only.</span></div>
+      <div className="band" role="note"><Icon name="info" size={16} /><span><strong>Local build.</strong> Milestone 2 of 6: enrolment and recovery ceremony. Test data only.</span></div>
       <header className="bar">
         <a className="brand" href="#/" aria-label="Ophis Business"><img src={mark} alt="" />ophis.<small>Business</small></a>
         {me && <div className="org"><span>{me.organisation.name}</span></div>}
@@ -100,7 +123,8 @@ function App() {
             {page === 'security' ? <Security />
             : page === 'enrol' ? <Enrol ticket={ticket} />
             : me === undefined ? null
-            : me ? <Organisation onSignedOut={signedOut} />
+            : me && unread.length ? <Alerts alerts={unread} onRead={markRead} />
+            : me ? <Organisation me={me} onSignedOut={signedOut} onChanged={loadMe} />
             : <SignIn onSignedIn={loadMe} />}
           </main>
           <footer className="foot-line">Ophis is a software provider. It is not a crypto-asset service provider.</footer>
