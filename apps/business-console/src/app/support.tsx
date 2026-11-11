@@ -5,17 +5,19 @@ import { api, Icon, Tile } from './ui.tsx'
 
 interface Entry { id: string; title: string; text: string; link: string }
 type View =
-  | { kind: 'idle' } | { kind: 'busy' } | { kind: 'empty' } | { kind: 'thanks' }
+  | { kind: 'idle' } | { kind: 'busy' } | { kind: 'empty' } | { kind: 'secret' } | { kind: 'thanks' }
   | { kind: 'answer'; list: Entry[]; at: number }
   | { kind: 'handover'; why: string }
 
 const MAX = 500
 const PRIVACY = 'An outside provider, TypeSafe AI (USA), matches your question to our help texts. It receives your question without your name, organisation or wallet. Ophis does not store your question.'
+// The notice above is about what Ophis adds. What the member types is sent as typed, less what the cleaning removes.
+const CARE = 'Leave out names and anything secret.'
 // The email is the member's own: a subject and three empty lines, nothing else filled in.
 const MAILTO = `mailto:clement@ophis.fi?subject=${encodeURIComponent('Ophis Business support')}&body=${encodeURIComponent('What I was doing:\r\n\r\nWhat I expected:\r\n\r\nWhat happened:\r\n')}`
 const PAGE: Record<string, string> = { '/#/organisation': 'Organisation', '/#/compliance': 'Compliance', '/#/security': 'Security and data', '/recover': 'the account recovery page' }
 const WHY = {
-  none: 'No help text fits this question.',
+  none: 'No help text was found for this question.',
   no: 'The help texts did not answer this question.',
   limit: 'You have asked 20 questions in this hour, which is the limit.',
 }
@@ -28,9 +30,9 @@ export function Support({ onSignedOut }: { onSignedOut: () => void }) {
     event.preventDefault()
     if (!question.trim()) return setView({ kind: 'empty' })
     setView({ kind: 'busy' })
-    const result = await api<{ answers?: Entry[]; handover?: boolean }>('/api/support/ask', { question })
+    const result = await api<{ answers?: Entry[]; handover?: boolean; error?: string }>('/api/support/ask', { question })
     if (result.status === 401) return onSignedOut()
-    if (result.status === 400) return setView({ kind: 'empty' })
+    if (result.status === 400) return setView({ kind: result.data.error === 'secret' ? 'secret' : 'empty' })
     // Anything but an answer is the hand-over: no match, the limit, or a failure of ours or the provider's.
     setView(result.status === 200 && result.data.answers?.length ? { kind: 'answer', list: result.data.answers, at: 0 } : { kind: 'handover', why: result.status === 429 ? WHY.limit : WHY.none })
   }
@@ -52,12 +54,13 @@ export function Support({ onSignedOut }: { onSignedOut: () => void }) {
           <button className="btn primary md" type="submit" disabled={view.kind === 'busy'}><Icon name="life-buoy" size={16} />Ask</button>
           <span className="fine" id="sp-count">{question.length} of {MAX} characters</span>
         </div>
-        <p className="fine" id="sp-privacy"><Icon name="info" size={16} /><span>{PRIVACY}</span></p>
+        <p className="fine" id="sp-privacy"><Icon name="info" size={16} /><span>{PRIVACY} {CARE}</span></p>
       </form>
 
       <div className="stack" aria-live="polite">
         {view.kind === 'busy' && <p className="fine" role="status">Looking for the matching help text.</p>}
         {view.kind === 'empty' && <div className="note warn" role="status"><Icon name="info" /><span>Type your question in words. Addresses, email addresses, links and long numbers are removed before it is matched.</span></div>}
+        {view.kind === 'secret' && <div className="note warn" role="status"><Icon name="info" /><span>This looks like a wallet recovery phrase (seed phrase). It was not passed on and not stored. Never type one into a website, an email or a chat.</span></div>}
         {view.kind === 'thanks' && <div className="note ok" role="status"><Icon name="check" /><span>Good. You can ask another question at any time.</span></div>}
         {entry && view.kind === 'answer' && (
           <section className="panel stack" aria-labelledby="sp-answer">

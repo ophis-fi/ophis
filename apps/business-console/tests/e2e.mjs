@@ -611,8 +611,9 @@ try {
   const withKey = /^TYPESAFE_API_KEY=.+/m.test(readFileSync('.dev.vars', 'utf8'))
   await page.locator('.rail').getByRole('link', { name: 'Support' }).click()
   await page.getByRole('heading', { name: /Ask a question/ }).waitFor()
+  check('the band at the top reads "Local build. Test data only." and nothing else', (await page.locator('.band').innerText()).trim() === 'Local build. Test data only.')
   check('Support opens from the rail and from the top button, with the provider notice under the box and the footer line',
-    (await page.locator('[data-support]').getAttribute('href')) === '/#/support' && await page.getByText(FOOTER).isVisible()
+    (await page.locator('[data-support]').getAttribute('href')) === '/#/support' && await page.getByText(FOOTER).isVisible() && await page.getByText('Leave out names and anything secret.').isVisible()
     && await page.getByText('An outside provider, TypeSafe AI (USA), matches your question to our help texts. It receives your question without your name, organisation or wallet. Ophis does not store your question.').isVisible())
   const write = page.getByRole('link', { name: 'Write to Ophis' })
   await page.getByLabel('Your question').fill('How do I add a second passkey?')
@@ -620,14 +621,18 @@ try {
   await page.getByText('Did this answer your question?').or(write).first().waitFor({ timeout: 10000 })
   if (withKey) {
     check('a question gets a help text of the answer base', await page.getByRole('heading', { name: 'Add a second passkey' }).isVisible())
-    await page.screenshot({ path: '.shots/30-support-answer.png', fullPage: true })
+    check('the help text fits at 1440 and at 390, and its link drawn as a button is not underlined',
+      await both(page, '30-support-answer', '#sp-answer') && await page.getByRole('link', { name: /^Open / }).evaluate((a) => getComputedStyle(a).textDecorationLine === 'none'))
     // "No" shows the second best once, if the server sent one, then the hand-over card: two presses at most.
     for (let i = 0; i < 2 && !(await write.isVisible()); i++) await page.getByRole('button', { name: 'No' }).click()
   }
   await write.waitFor({ timeout: 5000 })
   check(`the hand-over card ${withKey ? 'follows "No"' : 'is shown at once without the key'}: an email to Ophis with the subject and three empty lines, nothing else`,
     (await write.getAttribute('href')) === 'mailto:clement@ophis.fi?subject=Ophis%20Business%20support&body=What%20I%20was%20doing%3A%0D%0A%0D%0AWhat%20I%20expected%3A%0D%0A%0D%0AWhat%20happened%3A%0D%0A')
-  await page.screenshot({ path: '.shots/31-support-handover.png', fullPage: true })
+  check(`the card says why: ${withKey ? 'the help texts did not answer' : 'no help text was found'}; "Write to Ophis" is a button without an underline; it fits at 1440 and at 390`,
+    await page.getByText(withKey ? 'The help texts did not answer this question.' : 'No help text was found for this question.').isVisible()
+    && !(await page.getByText('No help text fits').count()) && (!withKey || !(await page.getByText('No help text was found').count()))
+    && await write.evaluate((a) => getComputedStyle(a).textDecorationLine === 'none') && await both(page, '31-support-handover', '#sp-person'))
   await arrive(owner, false)
 
   // The server cannot end the session: the app must not pretend that it did.

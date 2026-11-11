@@ -895,26 +895,12 @@ export async function readiness(db: D1Database, actor: Actor, now: number) {
 // ---- milestone 4b: last-Owner recovery (recovery.md section 4) ----
 
 /**
- * Counts one proof check of this organisation in this hour and says whether it is within the limit. The only write a
- * proof makes before its commit, and it has no audit row: the organisation id comes from a MAC-signed intent and no
- * other row is read.
- * ponytail: a fixed window per clock hour, so up to 20 checks can straddle an hour. One table for link proofs and
- * recovery proofs: whoever holds valid intents of an organisation can use up its hour (Turnstile, not built, is the brake).
- */
-export async function countProof(db: D1Database, orgId: string, now: number) {
-  const hour = Math.floor(now / HOUR)
-  const [, counted] = await db.batch<{ n: number }>([
-    db.prepare('DELETE FROM proof_checks WHERE hour < ?').bind(hour),
-    db.prepare('INSERT INTO proof_checks (org_id, hour, n) VALUES (?, ?, 1) ON CONFLICT (org_id, hour) DO UPDATE SET n = n + 1 RETURNING n').bind(orgId, hour),
-  ])
-  return counted.results[0].n <= MAX_PROOFS
-}
-
-/**
- * Milestone 6: counts one event of `key` in this clock hour and says whether it is within `max`. Same table and the
- * same fixed window as countProof; no audit row. Support counts a seat's questions under the key "seat:<id>".
- * ponytail: the key lives in the column org_id (no foreign key), with a prefix no organisation id can have. Give it
- * its own table if the two counters ever need different windows.
+ * Counts one event of `key` in this clock hour and says whether it is within `max`. No audit row, no other row read.
+ * Proof checks count under the organisation id of a MAC-signed intent (the only write a proof makes before its
+ * commit); Support counts a seat's questions under "seat:<id>", a key no organisation id can be.
+ * ponytail: a fixed window per clock hour, so up to twice `max` can straddle an hour. One table (proof_checks, the key
+ * in its column org_id, no foreign key) for link proofs, recovery proofs and questions: whoever holds valid intents
+ * of an organisation can use up its hour of proofs (Turnstile, not built, is the brake).
  */
 export async function countHour(db: D1Database, key: string, now: number, max: number) {
   const hour = Math.floor(now / HOUR)
@@ -924,6 +910,7 @@ export async function countHour(db: D1Database, key: string, now: number, max: n
   ])
   return counted.results[0].n <= max
 }
+export const countProof = (db: D1Database, orgId: string, now: number) => countHour(db, orgId, now, MAX_PROOFS)
 
 // A request is open from its proof until it is cancelled, completed or lapsed. 'ready' is never written: a waiting
 // request whose wait is over is ready, and 7 days later it has lapsed, whatever its row says. No scheduled job.

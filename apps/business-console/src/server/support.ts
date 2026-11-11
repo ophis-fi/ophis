@@ -3,6 +3,7 @@
 // the ids, titles and one-line descriptions of the answer base, in one request. Never an organisation, a member, a
 // wallet, an id or a session value. The question is not stored and not logged, and there is no audit row: the one
 // write is the hourly counter of the seat.
+import { english } from 'viem/accounts'
 import { ANSWERS, type Answer } from './answers.ts'
 import { readCapped } from './chain.ts'
 import { countHour } from './data.ts'
@@ -15,15 +16,32 @@ const SURE = 0.7
 const NONE = 'none'
 const IDS = [...ANSWERS.map((a) => a.id), NONE]
 
+// One form per character before anything is judged: full-width letters and digits become plain ones (NFKC), and
+// characters that take no room (zero-width space and joiners, soft hyphen, direction marks) go, so that neither splits a value.
+const plain = (raw: string) => raw.normalize('NFKC').replace(/\p{Cf}/gu, '')
+const SEED = new Set(english)
 /**
- * What may leave: the question without a word that holds an email address or a URL, without 0x values and long hex
- * strings (addresses, transactions, keys), without runs of 6 or more digits (also when spaced: phone, account
- * numbers), with single spaces, 500 characters at most. Whole words go, so nothing of them is left behind.
+ * A wallet recovery phrase: 12 words of the BIP-39 English list in a row, whatever stands between them (numbers,
+ * commas, lines). Such a question is refused whole, so that no part of the phrase leaves and its member is told.
+ * ponytail: the English list only (it ships with viem); a phrase in another language is not seen.
+ */
+export function secret(raw: string): boolean {
+  let run = 0
+  return plain(raw).toLowerCase().split(/[^a-z]+/).some((word) => (run = SEED.has(word) ? run + 1 : 0) >= 12)
+}
+
+/**
+ * What may leave: the question without a word that holds an email address, a URL or a domain name (a company's, or a
+ * wallet name such as an ENS name), without 0x values and long hex strings (addresses, transactions, keys), also
+ * when typed in groups, without runs of 6 or more digits (also when spaced: phone, account numbers), with single
+ * spaces, 500 characters at most. Whole words go, so nothing of them is left behind.
  */
 export function clean(raw: string): string {
-  return raw.split(/\s+/).filter((word) => !/@|:\/\/|^www\./i.test(word)).join(' ')
+  return plain(raw).split(/\s+/).filter((word) => !/@|:\/\/|[a-z0-9]\.[a-z]{2,}/i.test(word)).join(' ')
+    // Hex in groups: 16 or more hex characters in all with a digit among them. Words such as "a bad decade" hold none.
+    .replace(/(?<![0-9a-z])[0-9a-f]+(?:[ .:-][0-9a-f]+)+(?![0-9a-z])/gi, (run) => (/\d/.test(run) && run.replace(/[^0-9a-f]/gi, '').length >= 16 ? ' ' : run))
     .replace(/0x[0-9a-f]+|[0-9a-f]{16,}/gi, ' ')
-    .replace(/\d(?:[ .-]?\d){5,}/g, ' ')
+    .replace(/\p{Nd}(?:[ .-]?\p{Nd}){5,}/gu, ' ')
     .replace(/\s+/g, ' ').trim().slice(0, LIMITS.chars).trim()
 }
 
@@ -61,7 +79,7 @@ export function pick(p: Record<string, number>, answered: number): Answer[] {
 export async function select(question: string, key: string, host: string): Promise<Answer[]> {
   const response = await fetch(`https://${host}/v1/systemone`, {
     method: 'POST', headers: { authorization: `Bearer ${key}`, 'content-type': 'application/json' },
-    body: requestBody(question), signal: AbortSignal.timeout(LIMITS.timeoutMs),
+    body: requestBody(question), signal: AbortSignal.timeout(LIMITS.timeoutMs), redirect: 'manual', // a redirect is not followed: its status is a failure below (Workers has no 'error' mode)
   })
   if (!response.ok) throw named('provider_status')
   const text = await readCapped(response.body, LIMITS.answerBytes)
@@ -83,7 +101,9 @@ interface Asked {
 }
 /** POST /api/support/ask. Answers { answers: [one or two entries] } or { handover: true }; a failure is a hand-over. */
 export async function ask(c: Asked): Promise<Response> {
-  const question = typeof c.body.question === 'string' ? clean(c.body.question) : ''
+  const raw = typeof c.body.question === 'string' ? c.body.question : ''
+  if (secret(raw)) return Response.json({ error: 'secret' }, { status: 400 })
+  const question = clean(raw)
   if (!question) return Response.json({ error: 'invalid' }, { status: 400 })
   if (!(await countHour(c.env.DB, `seat:${c.actor.seatId}`, c.now, LIMITS.perHour))) return Response.json({ error: 'too_many' }, { status: 429 })
   try {
