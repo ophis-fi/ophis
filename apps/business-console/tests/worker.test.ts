@@ -4987,7 +4987,7 @@ describe('D. Support: the model selects, the server decides', () => {
 
   it('the answer base: 25 entries, each true to its rules (80 words at most, a console page, plain words), and the page says what the decision asks for', () => {
     expect(ANSWERS.map((a) => a.id)).toEqual(Array.from({ length: 25 }, (_, i) => `KB-${String(i + 1).padStart(2, '0')}`))
-    const banned = /licen[cs]ed|regulated|authori[sz]ed|MiCA|compliant|—|honest/i
+    const banned = /licen[cs]ed|regulated|authori[sz]ed|MiCA|compliant|\u2014|honest/i
     for (const a of ANSWERS) {
       expect(a.text.split(/\s+/).length, a.id).toBeLessThanOrEqual(80)
       expect(a.text.length, a.id).toBeGreaterThan(60)
