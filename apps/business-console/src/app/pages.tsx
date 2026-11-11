@@ -145,6 +145,7 @@ export function SignIn({ onSignedIn }: { onSignedIn: () => void }) {
   const [busy, setBusy] = useState(false)
   const [replaced, setReplaced] = useState<{ until: number; recovery: boolean }>()
   const [frozen, setFrozen] = useState<FrozenInfo>()
+  const [closed, setClosed] = useState('') // G4: the organisation is frozen or closed; no session was opened
   const [problem, setProblem] = useState(passkeysWork() ? '' : NO_PASSKEYS)
 
   async function signIn() {
@@ -155,6 +156,7 @@ export function SignIn({ onSignedIn }: { onSignedIn: () => void }) {
       if (finish.status === 200) return onSignedIn()
       if (finish.status === 403 && finish.data.error === 'passkey_replaced') return setReplaced({ until: finish.data.until ?? 0, recovery: finish.data.recovery === true })
       if (finish.status === 403 && finish.data.error === 'seat_frozen') return setFrozen(finish.data)
+      if (finish.status === 403 && /^org_(frozen|closed)$/.test(finish.data.error ?? '')) return setClosed(finish.data.error!)
       // One message for every other refusal: the server does not say why, and neither do we.
       setProblem(finish.status === 401 ? 'Sign-in did not work. Use a passkey that is active for your organisation.' : 'Sign-in is not available right now. Try again in a moment.')
     } catch {
@@ -166,6 +168,7 @@ export function SignIn({ onSignedIn }: { onSignedIn: () => void }) {
 
   if (replaced) return <Replaced {...replaced} onBack={() => setReplaced(undefined)} />
   if (frozen) return <Frozen info={frozen} onBack={() => setFrozen(undefined)} />
+  if (closed) return <Closed kind={closed} signedIn={false} onSignOut={() => setClosed('')} />
   return (
     <section className="signin">
       <div>
@@ -1309,5 +1312,22 @@ export function Security({ owner }: { owner: boolean }) {
       ))}</div>
       <div className="note"><Icon name="info" /><span className="grow"><b>Limits.</b> No hardware security module, no external certification of Ophis, one operator today. Only the database is pinned to the EU.</span></div>
     </>
+  )
+}
+
+/** An organisation that Ophis froze, or that is closed: nothing is reachable but the sign-out. `signedIn` false: shown at sign-in, where no session was opened. */
+export function Closed({ kind, onSignOut, signedIn = true }: { kind: string; onSignOut: () => void; signedIn?: boolean }) {
+  return (
+    <section className="recover">
+      <header className="ph"><div>
+        <span className="cap eyebrow">Organisation</span>
+        <h1 className="h-page">{kind === 'org_frozen' ? <>This organisation <em>is frozen</em>.</> : <>This organisation <em>is closed</em>.</>}</h1>
+        <p className="lede">{kind === 'org_frozen' ? 'Ophis froze it. Nothing can be read or changed until it is unfrozen. The freeze is a row in your audit log.' : 'Its application was refused, or it was archived. Nothing can be read or changed.'}</p>
+      </div></header>
+      <div className="panel stack">
+        <p>If you think this is a mistake, write to Ophis by email.</p>
+        <div><button className="btn primary md" type="button" onClick={onSignOut}><Icon name="log-out" size={16} />{signedIn ? 'Sign out' : 'Back to sign-in'}</button></div>
+      </div>
+    </section>
   )
 }

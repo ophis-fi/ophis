@@ -198,6 +198,7 @@ async function decideKyb(db: D1Database, orgId: string, d: Kyb, checked: { id: s
 }
 
 // Freeze: an active organisation only. An unverified one is never frozen: an unfreeze would make it active with no review.
+// G4: a freeze ends every session of the organisation, in the same commit; an unfreeze brings none back.
 async function setFrozen(db: D1Database, orgId: string, frozen: boolean, now: number) {
   const [from, to] = frozen ? ['active', 'frozen'] : ['frozen', 'active']
   let outcome = 'not_found'
@@ -206,7 +207,8 @@ async function setFrozen(db: D1Database, orgId: string, frozen: boolean, now: nu
     outcome = !o ? 'not_found' : o.state !== from ? 'wrong_state' : 'ok'
     if (outcome !== 'ok') return null
     return [{ at: now, actorKind: 'operator', actorId: null, sessionId: null, action: frozen ? 'organisation.freeze' : 'organisation.unfreeze', subjectId: orgId },
-      [db.prepare('UPDATE organisations SET state = ? WHERE id = ? AND state = ?').bind(to, orgId, from)]]
+      [db.prepare('UPDATE organisations SET state = ? WHERE id = ? AND state = ?').bind(to, orgId, from),
+        db.prepare('UPDATE sessions SET revoked_at = ? WHERE org_id = ? AND revoked_at IS NULL').bind(now, orgId)]] // none is open at an unfreeze
   })
   return outcome
 }

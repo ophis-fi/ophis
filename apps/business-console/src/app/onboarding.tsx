@@ -360,20 +360,3 @@ export function KybRecord() {
   )
 }
 const SOURCE: Record<string, string> = { registry: 'Company register', gleif: 'GLEIF (LEI)', supervisor_register: 'Public register of a supervisor', declaration: 'Signed declaration' }
-
-/** An organisation that Ophis froze, or that is closed: nothing is reachable but the sign-out. */
-export function Closed({ kind, onSignOut }: { kind: string; onSignOut: () => void }) {
-  return (
-    <section className="recover">
-      <header className="ph"><div>
-        <span className="cap eyebrow">Organisation</span>
-        <h1 className="h-page">{kind === 'org_frozen' ? <>This organisation <em>is frozen</em>.</> : <>This organisation <em>is closed</em>.</>}</h1>
-        <p className="lede">{kind === 'org_frozen' ? 'Ophis froze it. Nothing can be read or changed until it is unfrozen. The freeze is a row in your audit log.' : 'Its application was refused, or it was archived. Nothing can be read or changed.'}</p>
-      </div></header>
-      <div className="panel stack">
-        <p>If you think this is a mistake, write to Ophis by email.</p>
-        <div><button className="btn primary md" type="button" onClick={onSignOut}><Icon name="log-out" size={16} />Sign out</button></div>
-      </div>
-    </section>
-  )
-}

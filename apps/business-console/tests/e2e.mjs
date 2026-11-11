@@ -740,12 +740,23 @@ try {
     await on.getByText('No document is stored.').isVisible() && await on.locator('dl.kv dd', { hasText: 'Alder Custody S.A.' }).isVisible() && await on.locator('dl.kv dd', { hasText: 'Approved' }).isVisible()
     && await on.locator('dl.kv dd', { hasText: 'ab'.repeat(32) }).isVisible() && await on.getByText('Ophis operator: verification approved, organisation active').isVisible() && await both(on, '35-kyb-record', '#root dl.kv'))
   check('the footer line is on the Onboarding and Compliance pages', await on.getByText(FOOTER).isVisible())
+  // G4: the operator freezes the organisation: its sessions end, and a member who signs in gets the plain page.
+  check('the operator freezes the organisation', operator('freeze', newOrg.id).includes(`${newOrg.id} is now frozen`))
+  await on.reload()
+  await on.getByRole('button', { name: 'Sign in with a passkey' }).click()
+  await on.getByRole('heading', { name: 'This organisation is frozen.' }).waitFor()
+  check('a freeze ends the session, and a sign-in shows the plain page, not "Sign-in did not work"', (await status('/api/me', on)) === 401 && await on.getByText(FOOTER).isVisible() && await both(on, '36-org-frozen'))
+  check('the operator unfreezes it', operator('unfreeze', newOrg.id).includes(`${newOrg.id} is now active`))
+  await on.getByRole('button', { name: 'Back to sign-in' }).click()
+  await on.getByRole('button', { name: 'Sign in with a passkey' }).click()
+  await on.getByRole('heading', { name: /People, wallets|Read this before you continue/ }).waitFor()
+  check('after the unfreeze the member signs in again', (await status('/api/me', on)) === 200)
   await applicant.context.close()
 
   if (violations.length) console.error(violations.join("\n"))
   check(`no policy violation in the browser (${violations.length})`, violations.length === 0)
   check(`no request left the origin (${foreign.length})`, foreign.length === 0)
-  console.log('\nEnd-to-end run passed. Screenshots in .shots/: 01-signin to 35-kyb-record')
+  console.log('\nEnd-to-end run passed. Screenshots in .shots/: 01-signin to 36-org-frozen')
 } catch (error) {
   console.error(error.message)
   process.exitCode = 1

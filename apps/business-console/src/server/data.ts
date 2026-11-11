@@ -169,19 +169,23 @@ export function storePendingCredential(
 
 export interface StoredCredential {
   id: string; org_id: string; seat_id: string; public_key: string; counter: number
-  state: 'active' | 'suspended' | 'pending'; stop_right_until: number | null; ticket_id: string | null; seat_state: string
+  state: 'active' | 'suspended' | 'pending'; stop_right_until: number | null; ticket_id: string | null; seat_state: string; org_state: string
 }
-/** A passkey of an organisation that is active or not yet verified (milestone 5), with its state. The caller decides what that state may do; a revoked one does not exist here. */
-export function credentialById(db: D1Database, credentialId: string) {
+/**
+ * A passkey of an organisation that is active or not yet verified (milestone 5), with its state. The caller decides what
+ * that state may do; a revoked one does not exist here. `closedToo` (G4, the sign-in only): also a passkey of a frozen
+ * or archived organisation, so that its member can be told so once the passkey passed its check.
+ */
+export function credentialById(db: D1Database, credentialId: string, closedToo = false) {
   return db
     .prepare(
-      `SELECT c.id, c.org_id, c.seat_id, c.public_key, c.counter, c.state, c.stop_right_until, c.ticket_id, s.state AS seat_state
+      `SELECT c.id, c.org_id, c.seat_id, c.public_key, c.counter, c.state, c.stop_right_until, c.ticket_id, s.state AS seat_state, o.state AS org_state
        FROM credentials c
        JOIN seats s ON s.org_id = c.org_id AND s.id = c.seat_id
-       JOIN organisations o ON o.id = c.org_id AND o.state IN ('unverified', 'active')
-       WHERE c.id = ? AND c.state IN ('active', 'suspended', 'pending')`,
+       JOIN organisations o ON o.id = c.org_id AND (o.state IN ('unverified', 'active') OR ?2 = 1)
+       WHERE c.id = ?1 AND c.state IN ('active', 'suspended', 'pending')`,
     )
-    .bind(credentialId)
+    .bind(credentialId, closedToo ? 1 : 0)
     .first<StoredCredential>()
 }
 /** A replaced passkey keeps one right until quarantine ends: to stop its replacement. A freeze of the seat does not take it away; a seat that is removed has none (also one that a write with a later clock removed 7 days after a recovery, an instant before this stop). */

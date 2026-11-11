@@ -149,14 +149,16 @@ async function signinStart(c: Context) {
 }
 
 // One answer for every failure: unknown passkey, passkey not active, wrong site, stale or replayed challenge.
-// Three more answers exist, and only for a passkey that passed its check: a replaced passkey is told so (it may
+// More answers exist, and only for a passkey that passed its check: a replaced passkey is told so (it may
 // stop its replacement, and opens no session), a passkey of a frozen seat is told who froze the seat and when
-// (and opens no session either), and a passkey whose 72 hour wait is over becomes active here.
+// (and opens no session either), a passkey whose 72 hour wait is over becomes active here, and (G4) an active passkey
+// of an active seat in an organisation that Ophis froze, or that is closed, is told so and opens no session.
 async function signinFinish(c: Context) {
   const denied = fail(401, 'sign_in_failed')
   const id = responseId(c)
-  const credential = id ? await data.credentialById(c.env.DB, id) : null
+  const credential = id ? await data.credentialById(c.env.DB, id, true) : null
   if (!credential) return denied
+  const shut = credential.org_state === 'frozen' ? 'org_frozen' : credential.org_state === 'archived' ? 'org_closed' : null
   const replaced = data.hasStopRight(credential, c.now)
   // The passkeys a frozen seat still holds: restored by a stop (active), or suspended by the freeze (no stop right date).
   const frozen = credential.seat_state === 'frozen' && (credential.state === 'active' || (credential.state === 'suspended' && credential.stop_right_until === null))
@@ -164,6 +166,7 @@ async function signinFinish(c: Context) {
   let used = ''
   const counter = await assertion(c, c.body.response, credential, 'signin', '', (challenge) => (used = challenge))
   if (counter === null) return denied
+  if (shut) return credential.state === 'active' && credential.seat_state === 'active' ? fail(403, shut) : denied
   // recovery: what this passkey would stop is a completed account recovery, not a re-enrolment of its own seat.
   if (replaced) return json(403, { error: 'passkey_replaced', until: credential.stop_right_until, recovery: Boolean(await data.recoveryToStop(c.env.DB, credential)) })
   if (frozen) {

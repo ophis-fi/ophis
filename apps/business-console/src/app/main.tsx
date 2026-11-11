@@ -5,10 +5,10 @@ import './fonts.css'
 import './kit.css'
 import './app.css'
 import mark from './assets/ophis-icon-mono-dark.svg'
-import { Alerts, Compliance, Enrol, Organisation, Problem, Recover, RecoveryBanner, Security, SignIn, type Me } from './pages.tsx'
+import { Alerts, Closed, Compliance, Enrol, Organisation, Problem, Recover, RecoveryBanner, Security, SignIn, type Me } from './pages.tsx'
 import { api, Icon, ROLE, Status } from './ui.tsx'
 import { Support } from './support.tsx'
-import { Apply, Closed, KybRecord, Onboarding } from './onboarding.tsx'
+import { Apply, KybRecord, Onboarding } from './onboarding.tsx'
 
 const onHashChange = (listener: () => void) => {
   addEventListener('hashchange', listener)

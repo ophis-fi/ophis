@@ -505,7 +505,8 @@ describe('b. only an active credential signs in', () => {
     await db.prepare(`UPDATE seats SET state = 'active' WHERE id = ?`).bind(m.seatId).run()
     expect((await call('GET', '/api/me', { cookie: m.cookie })).status).toBe(200)
     await db.prepare(`UPDATE organisations SET state = 'frozen' WHERE id = ?`).bind(m.orgId).run()
-    expect((await signIn(m.key)).status).toBe(401)
+    const shut = await signIn(m.key) // told that the organisation is frozen (section E, G4), and given no session
+    expect([shut.status, shut.body, shut.cookie]).toEqual([403, { error: 'org_frozen' }, ''])
     expect((await call('GET', '/api/me', { cookie: m.cookie })).body).toEqual({ error: 'org_frozen' }) // milestone 5: the session is told so, and reaches nothing but its sign-out (section E)
   })
   it('an Owner cannot enrol a synced passkey; a Viewer can', async () => {
@@ -5576,7 +5577,7 @@ describe('E. onboarding: a company applies, proves its domain, is activated and 
     const rows = await snapshot()
     const f = fieldsOf<{ domain: string }>(a.intent)
     const forged = [
-      resealed(a.intent, { domain: 'birch.example' }), resealed(a.intent, { expiresAt: START / 1000 + 365 * 24 * 3600 }), resealed(a.intent, {}).replace(/.$/, (c) => (c === 'A' ? 'B' : 'A')),
+      resealed(a.intent, { domain: 'birch.example' }), resealed(a.intent, { expiresAt: START / 1000 + 365 * 24 * 3600 }), resealed(a.intent, {}).replace(/\.(.)/, (_, c) => (c === 'A' ? '.B' : '.A')), // the first character of the MAC: the last one carries two unused bits
       await seal(testEnv.CHALLENGE_KEY, 'recover-intent', fieldsOf<object>(a.intent)), await seal(`${testEnv.CHALLENGE_KEY}x`, 'apply-intent', fieldsOf<object>(a.intent)),
       a.intent.split('.')[0], `${a.intent}.x`, '', 7,
     ]
@@ -5805,7 +5806,8 @@ describe('E. onboarding: a company applies, proves its domain, is activated and 
       for (const route of gated.filter((r) => r.path !== '/api/signout')) {
         for (const [role, m] of Object.entries(people)) expect((await ask(route, m)).body, `${state} ${role} ${route.method} ${route.path}`).toEqual({ error })
       }
-      expect((await signIn((o as unknown as { key: Key }).key)).status).toBe(401) // no new session either
+      const shut = await signIn((o as unknown as { key: Key }).key) // no new session either: told so (G4)
+      expect([shut.status, shut.body.error, shut.cookie]).toEqual([403, state === 'frozen' ? 'org_frozen' : 'org_closed', ''])
     }
     // The public routes carry no session and are not gated.
     expect((await call('POST', '/api/signin/start', { cookie: o.cookie })).status).toBe(200)
@@ -6296,11 +6298,11 @@ describe('E. onboarding: a company applies, proves its domain, is activated and 
     expect(await row('SELECT actor_kind, action, detail FROM audit_log WHERE org_id = ? ORDER BY seq DESC', b.orgId)).toEqual({ actor_kind: 'operator', action: 'kyb.refuse', detail: 'not_eligible' })
     expect(await row('SELECT state, anchor FROM wallets WHERE org_id = ?', b.orgId)).toEqual({ state: 'pending', anchor: null })
     expect((await call('GET', '/api/me', { cookie: b.cookie })).body).toEqual({ error: 'org_closed' })
-    expect((await signIn(b.key)).status).toBe(401)
+    expect((await signIn(b.key)).body).toEqual({ error: 'org_closed' })
     expect((await applied(b.domain)).orgId).not.toBe(b.orgId)
   })
 
-  it('A8: freeze and unfreeze, each a row in the client\'s log; only an active organisation is frozen, only a frozen one unfrozen', async () => {
+  it('A8, G4: freeze and unfreeze, each a row in the client\'s log; only an active organisation is frozen, only a frozen one unfrozen; a freeze ends every session, and a sign-in is told so', async () => {
     const a = await underReview()
     const freeze = (id: string, what = 'freeze') => op('POST', `/api/operator/organisations/${id}/${what}`)
     // Unverified: an unfreeze would make it active with no review.
@@ -6311,26 +6313,51 @@ describe('E. onboarding: a company applies, proves its domain, is activated and 
     expect(await snapshot()).toBe(rows)
     expect((await decideOn(a.orgId)).body).toEqual({ state: 'active' })
     expect((await freeze(a.orgId, 'unfreeze')).body).toEqual({ error: 'wrong_state' })
-    const before = await snapshot(['seats', 'credentials', 'sessions', 'wallets', 'kyb_records'])
+    const viewer = await ceremony(a, { displayName: 'Vera Viewer', role: 'viewer' })
+    const replaced = viewer.key // re-enrolled: for 24 hours the old passkey could stop that
+    viewer.key = (await ceremony(a, { seatId: viewer.seatId })).key
+    await again(viewer)
+    const bystander = await owner()
+    const before = await snapshot(['seats', 'credentials', 'wallets', 'kyb_records'])
+    const open = () => db.prepare('SELECT id FROM sessions WHERE org_id = ? AND revoked_at IS NULL').bind(a.orgId).all().then((r) => r.results.length)
+    expect(await open()).toBeGreaterThan(1)
     expect((await freeze(a.orgId)).body).toEqual({ state: 'frozen' })
     expect((await freeze(a.orgId)).body).toEqual({ error: 'wrong_state' })
     expect(await orgRow(a.orgId)).toMatchObject({ state: 'frozen' })
-    expect((await call('GET', '/api/me', { cookie: a.cookie })).body).toEqual({ error: 'org_frozen' })
-    expect((await call('GET', '/api/onboarding', { cookie: a.cookie })).body).toEqual({ error: 'org_frozen' })
-    expect((await signIn(a.key)).status).toBe(401)
+    // G4: the freeze ended every session of the organisation, and of no other.
+    expect(await open()).toBe(0)
+    for (const m of [a, viewer]) expect((await call('GET', '/api/me', { cookie: m.cookie })).body).toEqual({ error: 'signed_out' })
+    expect((await call('GET', '/api/me', { cookie: bystander.cookie })).status).toBe(200)
+    // G4: a member who signs in is told that the organisation is frozen, and gets no session. A passkey that fails its check is told nothing.
+    for (const key of [a.key, viewer.key]) {
+      const shut = await signIn(key)
+      expect([shut.status, shut.body, shut.cookie]).toEqual([403, { error: 'org_frozen' }, ''])
+    }
+    expect((await signIn(a.key, { userVerified: false })).body).toEqual({ error: 'sign_in_failed' })
+    // A replaced passkey is not an active one: the one answer, and it stops nothing while the organisation is frozen.
+    const during = await snapshot()
+    expect((await signIn(replaced)).body).toEqual({ error: 'sign_in_failed' })
+    expect((await stop(replaced)).body).toEqual({ error: 'sign_in_failed' })
+    expect((await continueRecovery(a.key)).body).toEqual({ error: 'sign_in_failed' })
+    expect(await snapshot()).toBe(during)
+    expect(await open()).toBe(0)
     expect((await freeze(a.orgId, 'unfreeze')).body).toEqual({ state: 'active' })
-    expect(await snapshot(['seats', 'credentials', 'sessions', 'wallets', 'kyb_records'])).toBe(before)
+    expect(await snapshot(['seats', 'credentials', 'wallets', 'kyb_records'])).toBe(before)
+    expect(await open()).toBe(0) // an unfreeze brings no session back
     expect((await db.prepare(`SELECT actor_kind, actor_id, action, subject_id FROM audit_log WHERE org_id = ? ORDER BY seq DESC LIMIT 2`).bind(a.orgId).all()).results).toEqual([
       { actor_kind: 'operator', actor_id: null, action: 'organisation.unfreeze', subject_id: a.orgId }, { actor_kind: 'operator', actor_id: null, action: 'organisation.freeze', subject_id: a.orgId },
     ])
+    await again(a)
     const log = await call('GET', '/api/audit', { cookie: a.cookie })
-    expect(log.body.rows.slice(0, 3).map((r: { event: string }) => r.event)).toEqual(['Ophis operator: organisation unfrozen', 'Ophis operator: organisation frozen', 'Ophis operator: verification approved, organisation active'])
+    expect(log.body.rows.slice(1, 3).map((r: { event: string }) => r.event)).toEqual(['Ophis operator: organisation unfrozen', 'Ophis operator: organisation frozen'])
     const csv = (await post('/api/audit/export', a)).body.csv as string
     for (const event of ['Ophis operator: organisation frozen', 'Ophis operator: organisation unfrozen', 'Ophis operator: verification approved, organisation active', 'Organisation submitted for review', 'Recovery wallet signed the activation and confirmed the first Owner passkey']) expect(csv).toContain(event)
     expect(csv).not.toContain('Unlisted event')
     // A frozen organisation is not unfrozen by anything but this route, and an archived one by nothing.
     await db.prepare(`UPDATE organisations SET state = 'archived' WHERE id = ?`).bind(a.orgId).run()
     for (const what of ['freeze', 'unfreeze']) expect((await freeze(a.orgId, what)).body, what).toEqual({ error: 'wrong_state' })
+    const closed = await signIn(a.key) // G4: closed, and told so
+    expect([closed.status, closed.body, closed.cookie]).toEqual([403, { error: 'org_closed' }, ''])
   })
 
   // ---- the standing rules ----
