@@ -2,6 +2,6 @@
 [hidden] { display: none !important; }
 .sign { max-width: 760px; margin: 0 auto; padding: 48px 24px; display: grid; gap: 24px; }
 .sign .panel { display: grid; gap: 20px; } .sign textarea.input { resize: vertical; }
-.sign .btn { white-space: normal; text-align: left; }
+.sign .btn { white-space: normal; text-align: left; } .sign .lede { margin-top: 14px; }
 @media (max-width: 600px) { .sign { padding: 28px 16px; } .sign .panel { padding: 20px; } dl.kv { grid-template-columns: 1fr; gap: 2px 0; } dl.kv dd { margin-bottom: 10px; } }
 .sign:not(.recovery) .rec { display: none; }

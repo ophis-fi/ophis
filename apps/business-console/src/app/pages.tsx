@@ -789,7 +789,7 @@ export function Organisation({ me, onSignedOut, onChanged }: { me: Me; onSignedO
               <tr key={w.id}>
                 <td>{w.label}<small><span className="mono">{w.address}</span> <button className="ib" type="button" aria-label={`Copy the address of ${w.label}`} title={copiedId === w.id ? 'Copied' : 'Copy the address'} onClick={() => navigator.clipboard.writeText(w.address).then(() => setCopiedId(w.id), () => setCopiedId(''))}><Icon name={copiedId === w.id ? 'check' : 'clipboard-check'} size={16} /></button></small></td>
                 <td>{chain(w.chainId)}</td>
-                <td>{kindOf(w)}</td>
+                <td className="kind">{kindOf(w)}</td>
                 <td className="wrap"><Status>{w.state === 'linked' ? 'Linked' : 'Pending'}</Status>{w.state === 'pending' && <small>Waits for a second person, under Approvals</small>}
                   {w.recovery && <><span className={`badge bi ${w.recovery === 'in_force' ? 'ok' : 'warn'}`}><Icon name={w.recovery === 'in_force' ? 'shield-check' : 'clock'} size={16} />Recovery wallet</span>
                     <small>{w.recovery === 'in_force' ? `In force since ${minute(w.recoveryAt!)}` : `In force from ${minute(w.recoveryAt!)}. Until then an Owner can cancel.`}</small></>}</td>
@@ -876,7 +876,7 @@ const ALERT: Record<string, (alert: Alert) => string> = {
   quarantine: (a) => a.detail === 'organisation'
     ? `The organisation is in quarantine until ${minute(a.until!)}, after an account recovery. Nobody adds or removes a member, changes a role, links a wallet, sets the recovery wallet or approves a change, and a replaced Owner passkey can still stop the recovery.`
     : `Your seat is in quarantine until ${minute(a.until!)}. It cannot add a member or revoke a colleague's passkey, and a replaced passkey can still stop the replacement.`,
-  recovery: (a) => recoveryText(a),
+  recovery: () => 'An account recovery is open. Read the notice above this panel before you continue: it says what is happening, until when, and who can cancel.',
   recovery_cancelled: (a) => `An account recovery${a.override ? ' that overrode the Owners' : ''} was cancelled on ${minute(a.at!)}. Nothing changed. The recovery wallet can ask again 24 hours later.`,
   recovery_lapsed: (a) => `An account recovery lapsed on ${minute(a.at!)}: the recovery wallet had changed since the request, or its 7 days ran out. Nothing changed.`,
   recovery_completed: (a) => `An account recovery was completed on ${minute(a.at!)}. The recovery wallet replaced all Owner passkeys: a new Owner signed in${a.override ? ' and the previous Owners were removed' : ', and the previous Owner passkeys can stop this for 7 days'}. If that surprises you, call the people who sign for the recovery wallet.`,

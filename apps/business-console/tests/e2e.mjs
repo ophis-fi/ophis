@@ -9,6 +9,10 @@
 // Milestone 4: an Owner asks to link a wallet; the wallet (a test key behind a fake injected provider, no network)
 // signs on the signing page, which lives on its own hostname; the second Owner approves the link, then the wallet
 // as recovery wallet; the Security page shows the readiness state; unlinking the recovery wallet is refused.
+// Milestone 4b: somebody asks for a recovery on the public page /recover and reads three words; the recovery wallet
+// signs on the signing page; a member sees the banner and an Owner cancels; a second request waits (the local "skip"
+// command stands in for the waits), is completed with the new passkey, and an old Owner passkey stops it; the
+// recovery sheet prints alone.
 // Starts and stops its own local server on a throwaway database. Run: pnpm test:e2e
 import { execFileSync, spawn } from 'node:child_process'
 import { mkdirSync, readFileSync, rmSync } from 'node:fs'
@@ -395,11 +399,18 @@ try {
   const elsewhere = []
   signing.on('console', (message) => /content security policy|refused to/i.test(message.text()) && violations.push(message.text()))
   signing.on('request', (request) => request.url().startsWith(`${SIGN}/`) || elsewhere.push(request.url()))
+  const fonts = []
+  signing.on('response', (response) => response.url().endsWith('.woff2') && response.ok() && fonts.push(response.url()))
   const opened = await signing.goto(signingLink)
   await signing.getByRole('heading', { name: 'What the wallet will sign' }).waitFor()
   const policy = opened.headers()['content-security-policy'] ?? ''
   check('the signing page carries its own policy and may be framed by the Safe interface only',
-    policy === "default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self'; connect-src 'self'; frame-ancestors https://app.safe.global https://*.safe.global" && !opened.headers()['x-frame-options'])
+    policy === "default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self'; font-src 'self'; connect-src 'self'; frame-ancestors https://app.safe.global https://*.safe.global" && !opened.headers()['x-frame-options'])
+  await signing.evaluate(() => document.fonts.ready)
+  check('the signing page shows the black logo of the console and the brand font, both from its own folder',
+    await signing.evaluate(() => { const logo = document.querySelector('.brand img'); return logo.naturalWidth > 0 && new URL(logo.src).pathname.startsWith('/sign/assets/ophis-icon-mono-dark') })
+      && await signing.evaluate(() => [...document.fonts].some((font) => font.family.includes('Ophis Inter') && font.status === 'loaded'))
+      && fonts.length > 0 && fonts.every((url) => url.startsWith(`${SIGN}/sign/assets/Inter-`)))
   const shown = await signing.locator('dl.kv').innerText()
   check('it shows the action, the site, the organisation id, the chain, the wallet and the expiry as text',
     ['Link this wallet to this organisation', 'localhost', 'OP Mainnet (chain id 10)', key.address, 'UTC'].every((text) => shown.includes(text)) && /[0-9a-f]{32}/.test(shown))
@@ -423,11 +434,11 @@ try {
   // The link waits for a second person. The requester cannot approve it; the second Owner does.
   await arrive(owner, false)
   check('the wallet is pending, in EIP-55 form, and its request waits under Approvals',
-    await page.getByRole('row', { name: new RegExp(`Custody wallet.*${key.address}.*OP Mainnet.*Custodian wallet.*Pending`) }).isVisible() && await page.getByText('Requested by you').isVisible() && (await page.getByRole('button', { name: 'Approve' }).count()) === 0)
+    await page.getByRole('row', { name: new RegExp(`Custody wallet.*${key.address}.*OP Mainnet.*Custodian wallet \\(declared, not checked by Ophis\\).*Pending`) }).isVisible() && await page.getByText('Requested by you').isVisible() && (await page.getByRole('button', { name: 'Approve' }).count()) === 0)
   await arrive(bo, false)
   await bo.page.getByRole('button', { name: 'Review' }).click()
   check('the second person reads what the link does, in plain words, before approving',
-    await bo.page.getByText(`Links the wallet Custody wallet (${key.address} on OP Mainnet, Custodian wallet) to the organisation.`).isVisible() && await both(bo.page, '18-approve-wallet'))
+    await bo.page.getByText(`Links the wallet Custody wallet (${key.address} on OP Mainnet, Custodian wallet (declared, not checked by Ophis)) to the organisation.`).isVisible() && await both(bo.page, '18-approve-wallet'))
   await bo.page.getByRole('button', { name: 'Approve' }).click()
   await bo.page.getByText('Nothing waits.').waitFor()
   check('two people linked the wallet', await bo.page.getByRole('row', { name: /Custody wallet.*Linked/ }).isVisible())
@@ -467,6 +478,128 @@ try {
   await page.getByRole('button', { name: 'Close' }).last().click()
   check('the wallet is still linked and still the recovery wallet', await page.getByRole('row', { name: /Custody wallet.*Linked.*Recovery wallet/ }).isVisible())
 
+  // ---- milestone 4b: last-Owner recovery ----
+  const skip = () => run('node', ['scripts/dev.mjs', 'skip', '--persist', STATE])
+  const organisationId = await page.evaluate(() => fetch('/api/me').then((response) => response.json()).then((me) => me.organisation.id))
+  const banner = (on) => on.getByRole('alert').filter({ hasText: 'Account recovery in progress.' })
+  check('the skip command stood in for the 72 hours of the recovery wallet', skip().includes('Every wait'))
+  // The wallet's holders: the test key behind a fake injected provider (no network), on the signing page.
+  async function sign(signingLink, shot) {
+    const context = await browser.newContext({ viewport: { width: 1440, height: 900 }, reducedMotion: 'reduce' })
+    const asked = []
+    await context.exposeFunction('walletCall', async (method, params) => {
+      asked.push(method)
+      return method === 'eth_requestAccounts' ? [key.address] : method === 'eth_chainId' ? '0xa' : method === 'eth_signTypedData_v4' ? key.signTypedData(JSON.parse(params[1])) : null
+    })
+    await context.addInitScript(() => { window.ethereum = { request: ({ method, params }) => window.walletCall(method, params) } })
+    const on = await context.newPage()
+    on.on('console', (message) => /content security policy|refused to/i.test(message.text()) && violations.push(message.text()))
+    on.on('request', (request) => request.url().startsWith(`${SIGN}/`) || foreign.push(request.url()))
+    await on.goto(signingLink)
+    await on.getByRole('heading', { name: 'What the wallet will sign' }).waitFor()
+    const before = await on.locator('main').innerText()
+    const fits = !shot || await both(on, shot)
+    await on.getByRole('button', { name: 'Sign with the wallet in this browser' }).click()
+    await on.getByRole('status').filter({ hasText: /Signed and checked|Refused/ }).waitFor()
+    const after = await on.locator('main').innerText()
+    if (shot) await both(on, `${shot}-done`)
+    await context.close()
+    return { before, after, asked: asked.join(), fits }
+  }
+  // The requester: somebody the console does not know, on the public page, with a new security key.
+  async function ask(shot) {
+    const who = await person()
+    const opened = await who.page.goto(`${ORIGIN}/recover`)
+    await who.page.getByRole('heading', { name: 'Start a recovery' }).waitFor()
+    const open = opened.status() === 200 && (await who.context.cookies()).length === 0 && await who.page.getByText(FOOTER).isVisible()
+      && await who.page.getByText('Nothing is stored until the recovery wallet has signed.').isVisible() && (!shot || await both(who.page, shot))
+    await who.page.getByLabel('Organisation id, from the recovery sheet').fill(organisationId)
+    await who.page.getByRole('button', { name: 'Create the passkey and the signing link' }).click()
+    await who.page.getByRole('heading', { name: 'Read these three words to the signers of the recovery wallet.' }).waitFor()
+    return { ...who, open, words: (await who.page.locator('.phrase span').allInnerTexts()).join(' '), link: await who.page.getByLabel(/^Signing link/).inputValue() }
+  }
+  const resume = async (who) => {
+    await who.page.goto(`${ORIGIN}/recover`)
+    await who.page.getByRole('button', { name: 'Continue with the new passkey' }).click()
+  }
+  const lost = await ask('22-recover')
+  check('/recover is public: no session, the footer line, each button preceded by what it does, and it fits a phone', lost.open)
+  check('the requester gets three words and a link to the signing page, and is told to read the words to the signers',
+    lost.words.split(' ').length === 3 && lost.link.startsWith(`${SIGN}/sign/#`) && await lost.page.getByText('Read the words aloud, face to face or on a call.').isVisible() && await both(lost.page, '23-recover-words'))
+  check('nothing is stored and no member sees anything before the wallet signs', !(await page.evaluate(() => fetch('/api/me').then((response) => response.json()).then((me) => me.alerts.some((alert) => alert.kind.startsWith('recovery'))))))
+  const signed = await sign(lost.link, '24-recovery-signing')
+  check('the signing page shows the Proof fields as text, the three words among them, and names no wallet before the wallet answers',
+    ['Restore access to an organisation.', 'Replace all Owner passkeys of this organisation', 'localhost', organisationId, lost.words, 'The wallet that signs', 'New passkey (hash)', 'Request number (nonce)'].every((text) => signed.before.includes(text)) && signed.fits)
+  check('the wallet gave its account and its chain, signed one typed message, and the page says in plain words that the request waits',
+    signed.asked === 'eth_requestAccounts,eth_chainId,eth_signTypedData_v4' && [key.address, 'OP Mainnet (chain id 10)', 'The request now waits 72 hours'].every((text) => signed.after.includes(text)))
+
+  // A member who is not an Owner: told at the door, then a banner on every page, with the one thing an Admin may do.
+  await organisation(cy.page)
+  check('a member is told at sign-in what is happening, until when, and who can cancel',
+    await readAlerts('An account recovery is open. Read the notice above this panel', cy.page) && await banner(cy.page).getByText('The recovery wallet asked to replace all Owner passkeys').isVisible() && await banner(cy.page).getByText('Any Owner can cancel it after a passkey check').isVisible()
+      && /Nothing changes before \d{4}-\d\d-\d\d \d\d:\d\d UTC/.test(await banner(cy.page).innerText()))
+  await cy.page.getByRole('cell', { name: 'Cy Admin' }).first().waitFor()
+  check('an Admin may object, and the banner says what that does before the button; it fits a phone',
+    await banner(cy.page).getByText('Object adds 72 hours to the wait.').isVisible() && await banner(cy.page).getByRole('button', { name: 'Object: add 72 hours' }).isVisible()
+      && (await banner(cy.page).getByRole('button', { name: 'Cancel this recovery' }).count()) === 0 && await both(cy.page, '25-recovery-banner', '.band'))
+  // An Owner cancels.
+  await organisation()
+  await readAlerts('An account recovery is open. Read the notice above this panel')
+  check('an Owner sees the banner with what a cancel does', await banner(page).getByText('Cancel ends the request at once').isVisible())
+  await banner(page).getByRole('button', { name: 'Cancel this recovery' }).click()
+  check('the Owner cancelled the recovery after a passkey check, and every member is told', await readAlerts('An account recovery was cancelled on') && (await banner(page).count()) === 0)
+  await resume(lost)
+  await lost.page.getByText('That did not work. Use the passkey you created for this recovery.').waitFor()
+  check('the cancelled request cannot be continued', (await status('/api/me', lost.page)) === 401)
+  await lost.context.close()
+
+  // A second request, 24 hours later. It waits 72 hours, is completed with the new passkey, and an old Owner passkey stops it.
+  const early = await sign((await ask()).link)
+  check('within 24 hours of a cancel the recovery wallet opens nothing', early.after.includes('Refused.'))
+  skip()
+  const found = await ask()
+  check('24 hours after the cancel a new request opens', (await sign(found.link)).after.includes('The request now waits 72 hours'))
+  await resume(found)
+  await found.page.getByText('The wait is not over. Come back after').waitFor()
+  check('before the 72 hours are over the new passkey completes nothing', (await status('/api/me', found.page)) === 401)
+  skip()
+  await resume(found)
+  check('after the wait the new passkey completes the recovery and is told about the quarantine first', await readAlerts('The organisation is in quarantine until', found.page))
+  await found.page.getByRole('cell', { name: 'Recovery Owner' }).first().waitFor()
+  check('the new Owner is signed in, the organisation is in quarantine, and the old Owner sessions are over',
+    await found.page.getByRole('cell', { name: 'Recovery Owner' }).first().isVisible() && await found.page.getByText('The recovery wallet replaced all Owner passkeys.').isVisible()
+      && (await status('/api/me')) === 401 && (await status('/api/me', bo.page)) === 401 && (await status('/api/me', cy.page)) === 200 && await both(found.page, '26-recovered'))
+  // The first Owner comes back with a replaced passkey: no session, one action.
+  await page.goto(ORIGIN)
+  await page.getByRole('button', { name: 'Sign in with a passkey' }).click()
+  await page.getByRole('heading', { name: 'This passkey was replaced.' }).waitFor()
+  check('a replaced Owner passkey opens no session and reads what stopping the recovery does, before the button',
+    (await status('/api/me')) === 401 && await page.getByText('It removes the new Owner and makes the Owner passkeys valid again.').isVisible() && await both(page, '27-recovery-stop'))
+  await page.getByRole('button', { name: 'Stop this account recovery' }).click()
+  await page.getByText('Account recovery stopped.').waitFor()
+  check('the stop ended the session of the new Owner', (await status('/api/me', found.page)) === 401)
+  await found.context.close()
+  await page.getByRole('button', { name: 'Back to sign-in' }).click()
+  await page.getByRole('button', { name: 'Sign in with a passkey' }).click()
+  check('the old Owner signs in again and is told what happened', await readAlerts('An account recovery was completed on'))
+  await page.getByRole('row', { name: /Recovery Owner/ }).first().waitFor()
+  check('the organisation is out of quarantine and the new Owner seat is removed',
+    (await page.getByText('The organisation is in quarantine until').count()) === 0 && await page.getByRole('row', { name: /Recovery Owner.*Removed/ }).first().isVisible())
+
+  // The recovery sheet, for an Owner: on the Security page, and alone on paper.
+  await page.goto(`${ORIGIN}/#/security`)
+  await page.getByRole('heading', { name: 'Recovery sheet', exact: true }).waitFor()
+  const sheet = await page.locator('.sheet').innerText()
+  check('the recovery sheet names the console, the organisation id, the recovery wallet and its chain, the signing page, and three ways back in five lines each; it holds no secret',
+    ['localhost:8787', organisationId, key.address, 'OP Mainnet', `${SIGN}/sign/`, 'localhost:8787/recover', 'This sheet holds no secret'].every((text) => sheet.includes(text))
+      && (await page.locator('.sheet ol').count()) === 3 && (await page.locator('.sheet ol li').count()) === 15)
+  check('the readiness block says that last-Owner recovery is in place, and fits a phone', (await page.locator('#readiness').innerText()).includes('Last-Owner recovery') && await both(page, '28-recovery-sheet', '.sheet'))
+  await page.emulateMedia({ media: 'print' })
+  check('printed, the sheet stands alone: no band, bar, rail or other section',
+    await page.locator('.sheet').isVisible() && await page.getByRole('button', { name: 'Print the recovery sheet' }).isHidden() && await page.locator('.bar').isHidden() && await page.locator('.band').isHidden() && await page.getByRole('heading', { name: 'Recovery readiness' }).isHidden())
+  await page.screenshot({ path: '.shots/29-recovery-sheet-print.png', fullPage: true })
+  await page.emulateMedia({ media: 'screen' })
+
   await bo.context.close()
   await cy.context.close()
   await arrive(owner, false)
@@ -490,7 +623,7 @@ try {
   if (violations.length) console.error(violations.join("\n"))
   check(`no policy violation in the browser (${violations.length})`, violations.length === 0)
   check(`no request left the origin (${foreign.length})`, foreign.length === 0)
-  console.log('\nEnd-to-end run passed. Screenshots in .shots/: 01-signin to 21-readiness-phone')
+  console.log('\nEnd-to-end run passed. Screenshots in .shots/: 01-signin to 29-recovery-sheet-print')
 } catch (error) {
   console.error(error.message)
   process.exitCode = 1

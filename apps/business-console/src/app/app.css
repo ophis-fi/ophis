@@ -83,7 +83,7 @@ dialog::backdrop { background: rgba(23, 25, 28, .3); } dialog[open] { display: f
 .choices { list-style: none; margin: 0; padding: 0; display: grid; gap: 22px; }
 .choices > li { display: grid; grid-template-columns: 32px minmax(0, 1fr); gap: 6px 16px; padding-bottom: 22px; border-bottom: 1px solid var(--hair); } .choices > li:last-child { border: 0; padding-bottom: 0; }
 .choices h3 { align-self: center; } .choices .body { grid-column: 2; display: grid; gap: 12px; justify-items: start; font-size: 14px; line-height: 1.6; color: var(--muted); } .choices .body > .field { justify-self: stretch; }
-.yes, .no { display: inline-flex; align-items: center; gap: 6px; } .no { color: var(--faded); } table.t td.wrap { white-space: normal; min-width: 260px; }
+.yes, .no { display: inline-flex; align-items: center; gap: 6px; } .no { color: var(--faded); } table.t td.wrap { white-space: normal; min-width: 260px; } table.t td.kind { white-space: normal; min-width: 150px; }
 .chain { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 14px; font-size: 14px; color: var(--muted); } .pager { display: flex; justify-content: flex-end; gap: 10px; margin-top: 14px; }
 :is(.words, .addkey) .fine { grid-column: 1 / -1; } :is(.words, .addkey) .btn { justify-self: start; }
 .alerts { max-width: 760px; margin: 24px auto; padding: 36px; display: flex; flex-direction: column; gap: 18px; }
