@@ -232,6 +232,24 @@ const Step = ({ icon, title, done, later, children }: { icon: string; title: str
   <div className="srow"><Icon name={icon} size={20} /><b>{title}</b><Status>{later ? 'Later' : done ? 'Done' : 'Pending'}</Status><div className="stack">{children}</div></div>
 )
 
+// ---- milestone 5b: sealing in the browser (key-custody.md section 3) ----
+// The recipient (the public key a file is sealed to) is a constant of this bundle, per hostname: never fetched, never
+// read from the API. localhost: the test recipient that "pnpm seed" made, compiled in by the build from .env.local (its
+// identity file stays on the developer's machine). No other hostname has a recipient yet: there the page says so and
+// seals nothing. The key's fingerprint is the SHA-256 of the recipient string.
+const RECIPIENTS: Record<string, string | undefined> = { localhost: import.meta.env.VITE_SEAL_LOCAL }
+const CLEAR_MAX = 10 * 1024 * 1024
+// PDF, PNG or JPEG, by the first bytes of the file. Only this page can check it: the server never sees the clear file.
+const MAGIC = [[0x25, 0x50, 0x44, 0x46, 0x2d], [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a], [0xff, 0xd8, 0xff]]
+const sha256 = async (bytes: Uint8Array<ArrayBuffer>) => Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256', bytes)), (byte) => byte.toString(16).padStart(2, '0')).join('')
+/** The file, encrypted here in the age v1 format to the one recipient. The library loads when a file is sealed, from this origin. */
+async function sealed(clear: Uint8Array, recipient: string) {
+  const age = await import('age-encryption')
+  const encrypter = new age.Encrypter()
+  encrypter.addRecipient(recipient)
+  return encrypter.encrypt(clear)
+}
+
 // Milestone 5b: the declaration, one page to print, sign and scan (the print stylesheet leaves it alone on the page, like
 // the recovery sheet). Every value is the server's, shown as text: nothing on it can be typed or changed here.
 function Declaration({ view }: { view: View }) {
@@ -272,10 +290,16 @@ export function Onboarding({ owner, onSignedOut }: { owner: boolean; onSignedOut
   const [wallet, setWallet] = useState({ chainId: 0, address: '', label: '', custodian: false })
   const [issued, setIssued] = useState<{ link: string; expiresAt: number }>()
   const [copied, setCopied] = useState(false)
-  const act = async (path: string, body: unknown, then: (data: never) => void) => {
+  // The sealing key of this bundle: its fingerprint, null where this hostname has none, undefined until it is computed.
+  const recipient = RECIPIENTS[location.hostname]
+  const [sealKey, setSealKey] = useState<string | null | undefined>(recipient ? undefined : null)
+  useEffect(() => void (recipient && sha256(new TextEncoder().encode(recipient)).then(setSealKey)), [recipient])
+  const [scan, setScan] = useState<File>()
+  const [sealing, setSealing] = useState(false)
+  const act = async (path: string, body: unknown, then: (data: never) => void, headers?: Record<string, string>) => {
     setProblem('')
     try {
-      const out = await sensitive<{ error?: string }>(path, body)
+      const out = await sensitive<{ error?: string }>(path, body, headers)
       if (out.status === 401) return onSignedOut()
       if (out.status !== 200) return setProblem(told(out.data))
       then(out.data as never)
@@ -287,6 +311,27 @@ export function Onboarding({ owner, onSignedOut }: { owner: boolean; onSignedOut
   const name = (event: FormEvent) => {
     event.preventDefault()
     void act('/api/onboarding/wallet', { ...wallet, chainId: wallet.chainId || view!.chains[0]?.id, address: wallet.address.trim(), label: wallet.label.trim() }, setIssued)
+  }
+  // The signed scan: checked and sealed here, then sent. What leaves this browser is the sealed file and nothing else.
+  const upload = async (event: FormEvent) => {
+    event.preventDefault()
+    if (!scan || !recipient || !sealKey) return
+    setProblem('')
+    setSealing(true)
+    try {
+      const clear = new Uint8Array(await scan.arrayBuffer())
+      if (clear.length > CLEAR_MAX) return setProblem('The file is larger than 10 MB. Scan the page again at a lower resolution.')
+      if (!MAGIC.some((magic) => magic.every((byte, index) => clear[index] === byte))) return setProblem('Choose the scan as a PDF, PNG or JPEG file.')
+      let file
+      try {
+        file = await sealed(clear, recipient)
+      } catch {
+        return setProblem('The file could not be sealed in this browser. Nothing was sent.')
+      }
+      await act('/api/onboarding/declaration', file, () => setScan(undefined), { 'x-seal-key': sealKey })
+    } finally {
+      setSealing(false)
+    }
   }
   // The company sign-in: off to the provider with the Owner's own company account, or "none" at once.
   const signIn = async (provider: string) => {
@@ -377,7 +422,18 @@ export function Onboarding({ owner, onSignedOut }: { owner: boolean; onSignedOut
               </>
             )}
           </Step>
-          <Step icon="scroll-text" title="Declaration" later><p>A signed declaration of the company, sealed in your browser. It arrives with milestone 5b.</p></Step>
+          <Step icon="scroll-text" title="Declaration" done={verified}>
+            <p>Print the declaration below and have it signed by a person who may bind the company. Scan it. The scan is encrypted in this browser before it is sent: the server keeps it sealed and holds no key that opens it.</p>
+            {!verified && owner && keys && sealKey && (
+              <form className="stack" onSubmit={upload}>
+                <label className="field">Signed scan: PDF, PNG or JPEG, 10 MB at most
+                  <input key={scan ? 'chosen' : 'empty'} className="input" type="file" required accept="application/pdf,image/png,image/jpeg" onChange={(event) => setScan(event.target.files?.[0])} />
+                </label>
+                <div><button className="btn primary md" type="submit" disabled={!scan || sealing} title="Encrypts the file in this browser, asks for your passkey, then sends the sealed file."><Icon name="shield-check" size={16} />{sealing ? 'Sealing' : 'Seal and upload'}</button></div>
+              </form>
+            )}
+            <p className="fine" role="status"><Icon name="info" size={16} /><span>{sealKey ? <>Sealed to key <span className="mono">{sealKey}</span>. Only the holder of that key can open the file, offline.</> : sealKey === null ? 'Sealing is not configured for this address yet. No file can be uploaded here.' : 'Reading the sealing key.'}</span></p>
+          </Step>
           <Step icon="shield-check" title="Review" done={verified}>
             <p role="status">{review.status === 'verified' ? (view.record?.decidedAt ? `Verified on ${day(view.record.decidedAt)}.${view.record.nextReview ? ` Next review ${day(view.record.nextReview)}.` : ''}` : 'Verified.')
               : review.status === 'under_review' ? `Under review since ${minute(review.since!)}. Ophis compares the company, the domain, the three words and the recovery wallet.`

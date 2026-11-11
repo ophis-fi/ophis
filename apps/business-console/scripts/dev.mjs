@@ -7,6 +7,7 @@
 // Option: --persist <dir>, the same value as "wrangler dev --persist-to <dir>".
 import { randomBytes } from 'node:crypto'
 import { appendFileSync, existsSync, readFileSync, writeFileSync } from 'node:fs'
+import { generateHybridIdentity, identityToRecipient } from 'age-encryption'
 import { getPlatformProxy } from 'wrangler'
 import { devActivatePending, devSkipWaits, randomToken, seedOrganisation, sha256Hex } from '../src/server/data.ts'
 import { configFor } from '../src/server/passkeys.ts'
@@ -26,6 +27,21 @@ if (!/^OPERATOR_TOKEN=/m.test(vars)) appendFileSync('.dev.vars', `${vars.endsWit
 // Company sign-in: the client secrets of the two providers. Locally the stand-in takes any; real ones are set by hand.
 for (const name of ['MICROSOFT_CLIENT_SECRET', 'GOOGLE_CLIENT_SECRET']) {
   if (!new RegExp(`^${name}=`, 'm').test(readFileSync('.dev.vars', 'utf8'))) appendFileSync('.dev.vars', `${name}=${randomBytes(24).toString('base64url')}\n`)
+}
+// Milestone 5b: the LOCAL test key of the sealing (key-custody.md section 3). The identity, the secret half, is made
+// here and stays in .dev.seal-identity next to .dev.vars (git-ignored, never printed): it opens what the local console
+// seals. Its recipient, the public half, goes to the Worker (SEAL_RECIPIENT in .dev.vars, for the fingerprint) and to
+// the console's build (VITE_SEAL_LOCAL in .env.local, git-ignored: Vite compiles it into the bundle as a constant).
+// A real environment's key is made offline (key-custody.md section 4), never here.
+const lineOf = (file, name) => (existsSync(file) ? readFileSync(file, 'utf8').match(new RegExp(`^${name}=(.*)$`, 'm'))?.[1] : undefined)
+if (!existsSync('.dev.seal-identity') || !lineOf('.dev.vars', 'SEAL_RECIPIENT') || lineOf('.dev.vars', 'SEAL_RECIPIENT') !== lineOf('.env.local', 'VITE_SEAL_LOCAL')) {
+  const identity = await generateHybridIdentity()
+  const recipient = await identityToRecipient(identity)
+  writeFileSync('.dev.seal-identity', `${identity}\n`, { mode: 0o600 })
+  const put = (file, name) => writeFileSync(file, `${(existsSync(file) ? readFileSync(file, 'utf8') : '').replace(new RegExp(`^${name}=.*\\n?`, 'm'), '').replace(/([^\n])$/, '$1\n')}${name}=${recipient}\n`, { mode: 0o600 })
+  put('.dev.vars', 'SEAL_RECIPIENT')
+  put('.env.local', 'VITE_SEAL_LOCAL')
+  console.log('A local test key for sealing was made (.dev.seal-identity). Build the console again ("pnpm dev" does) so that it seals to this key.')
 }
 
 const { env, dispose } = await getPlatformProxy({

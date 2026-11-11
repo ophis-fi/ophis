@@ -222,6 +222,18 @@ async function setFrozen(db: D1Database, orgId: string, frozen: boolean, now: nu
   return outcome
 }
 
+// ---- milestone 5b: the sealed declaration (key-custody.md sections 3 and 4) ----
+// The signed declaration is encrypted in the member's browser, in the age v1 format, to the operator's recipient (a
+// hybrid ML-KEM-768 + X25519 key, "age1pq1..."). The Worker holds no key and never sees the clear file.
+// The sealing key of an environment is named by its fingerprint, the SHA-256 of the recipient string. It is a constant
+// per environment, never read from a request. local: the test recipient that "pnpm seed" made (SEAL_RECIPIENT in
+// .dev.vars; public, its identity file stays on the developer's machine). No other environment has a key yet: null
+// there, and an upload answers "not configured".
+export const SEAL = { maxBytes: 10 * 1024 * 1024 + 8192, generation: 'g1' } // 10 MB of clear file, and room for the age header and the tag of each 64 KiB
+const RECIPIENT = /^age1pq1[a-z0-9]{1500,2500}$/
+export const sealKey = async (env: { ENVIRONMENT: string; SEAL_RECIPIENT?: string }) =>
+  env.ENVIRONMENT === 'local' && RECIPIENT.test(env.SEAL_RECIPIENT ?? '') ? sha256Hex(env.SEAL_RECIPIENT!) : null
+
 // ---- the application (public, console host) ----
 
 // The route's context, as much as these handlers read (index.ts builds it).

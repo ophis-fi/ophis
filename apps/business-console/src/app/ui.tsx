@@ -1,10 +1,11 @@
 // Shared pieces: the API call, icons from the sprite inlined in index.html, badges, time.
 import type { ReactNode } from 'react'
 
-/** GET without a body, JSON POST with one. Same-origin only; the session cookie is HttpOnly. status 0 = no answer. */
-export async function api<T = Record<string, never>>(path: string, body?: unknown): Promise<{ status: number; data: T }> {
+/** GET without a body, JSON POST with one; bytes (a file sealed in this browser, milestone 5b) go as they are. Same-origin only; the session cookie is HttpOnly. status 0 = no answer. */
+export async function api<T = Record<string, never>>(path: string, body?: unknown, headers: Record<string, string> = {}): Promise<{ status: number; data: T }> {
   try {
-    const response = await fetch(path, body === undefined ? undefined : { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) })
+    const bytes = body instanceof Uint8Array
+    const response = await fetch(path, body === undefined ? undefined : { method: 'POST', headers: { ...headers, 'content-type': bytes ? 'application/octet-stream' : 'application/json' }, body: bytes ? (body as BodyInit) : JSON.stringify(body) })
     return { status: response.status, data: (await response.json().catch(() => ({}))) as T }
   } catch {
     return { status: 0, data: {} as T }
@@ -19,11 +20,11 @@ export async function passkeyCheck<T = Record<string, never>>(start: string, fin
   return api<T>(finish, { ...extra, response: passkey.toJSON() })
 }
 /** A sensitive call. When the server asks for a fresh passkey check (5 minutes), do one and try once more. */
-export async function sensitive<T = Record<string, never>>(path: string, body: unknown = {}): Promise<{ status: number; data: T & { error?: string } }> {
-  const first = await api<T & { error?: string }>(path, body)
+export async function sensitive<T = Record<string, never>>(path: string, body: unknown = {}, headers?: Record<string, string>): Promise<{ status: number; data: T & { error?: string } }> {
+  const first = await api<T & { error?: string }>(path, body, headers)
   if (first.status !== 403 || first.data.error !== 'step_up_required') return first
   const check = await passkeyCheck<T & { error?: string }>('/api/stepup/start', '/api/stepup/finish')
-  return check.status === 200 ? api(path, body) : check
+  return check.status === 200 ? api(path, body, headers) : check
 }
 // What the server's refusals mean, in the member's words.
 const SAY: Record<string, string> = {

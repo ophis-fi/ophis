@@ -5423,6 +5423,14 @@ describe('F. Support: attacks tried by the review of milestone 6', () => {
 // the chain are a stubbed fetch. (Import declarations are hoisted: they sit here so that the section stays in one piece.) ----
 import onboardingSource from '../src/server/onboarding.ts?raw'
 import onboardingPage from '../src/app/onboarding.tsx?raw'
+// Milestone 5b: the age library, here only to make what a browser makes (a sealed file) and to open it as the operator would.
+import * as age from 'age-encryption'
+import packageJson from '../package.json'
+const serverSources = import.meta.glob('../src/server/*.ts', { query: '?raw', import: 'default', eager: true }) as Record<string, string>
+// A test key pair of this run: no key lives in the repository.
+const IDENTITY = await age.generateHybridIdentity()
+const RECIPIENT = await age.identityToRecipient(IDENTITY)
+const sealEnv = { ENVIRONMENT: 'local', SEAL_RECIPIENT: RECIPIENT }
 import * as onboarding from '../src/server/onboarding.ts'
 import signHtml from '../sign/index.html?raw'
 
@@ -6639,6 +6647,23 @@ describe('E. onboarding: a company applies, proves its domain, is activated and 
     expect(sheet.length).toBeGreaterThan(500)
     expect(sheet).not.toMatch(/<input|<textarea|<select|contentEditable|useState|onChange/)
     expect(sheet).toMatch(/wallet \? wallet\.address : 'none'/)
+  })
+
+  it('B2: the file is sealed in the browser, by the pinned age library, to a key that is a constant per environment; only the console holds the library', async () => {
+    expect(packageJson.dependencies['age-encryption']).toBe('0.3.1') // exact: no range
+    // Console bundle only: the Worker, the signing page and the scripts of the server never import it.
+    for (const [file, source] of Object.entries({ ...serverSources, ...signSource })) expect(source, file).not.toMatch(/age-encryption['"]/)
+    expect(onboardingPage).toMatch(/await import\('age-encryption'\)/)
+    expect(Object.values(builtConsole).filter((chunk) => chunk.includes('mlkem768x25519')), 'the built console holds the library, in one chunk').toHaveLength(1)
+    // The recipient is a constant of the bundle, by hostname: never fetched, never taken from an answer of the API.
+    expect(onboardingPage).toContain('const RECIPIENTS: Record<string, string | undefined> = { localhost: import.meta.env.VITE_SEAL_LOCAL }')
+    expect(onboardingPage).not.toMatch(/recipient\s*[:=]\s*(view|result|out|data)\b|\.recipient\b/)
+    expect(onboardingPage).toContain('Sealed to key')
+    // The Worker knows the key by its fingerprint: the SHA-256 of the recipient string. Local only; anything else, or no recipient, or something that is none: not configured.
+    expect(await onboarding.sealKey(sealEnv)).toBe(await data.sha256Hex(RECIPIENT))
+    expect(await onboarding.sealKey(sealEnv)).toMatch(/^[0-9a-f]{64}$/)
+    for (const ENVIRONMENT of ['production', 'staging', '']) expect(await onboarding.sealKey({ ...sealEnv, ENVIRONMENT }), ENVIRONMENT).toBeNull()
+    for (const SEAL_RECIPIENT of [undefined, '', 'age1pq1', await age.identityToRecipient(await age.generateX25519Identity()), `${RECIPIENT} `, IDENTITY]) expect(await onboarding.sealKey({ ENVIRONMENT: 'local', SEAL_RECIPIENT })).toBeNull()
   })
 })
 

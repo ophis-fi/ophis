@@ -5,3 +5,6 @@ CHALLENGE_KEY=
 TYPESAFE_API_KEY=
 # Milestone 5, the operator's local API: a bearer token of 32 characters or more. "pnpm seed" adds one when it is missing.
 OPERATOR_TOKEN=
+# Milestone 5b, sealing: the public recipient (age1pq1...) of the LOCAL test key. "pnpm seed" makes the key pair: the
+# identity goes to .dev.seal-identity, the recipient here and to .env.local (VITE_SEAL_LOCAL) for the console's build.
+SEAL_RECIPIENT=
