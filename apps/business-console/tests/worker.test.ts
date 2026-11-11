@@ -1161,6 +1161,8 @@ describe('f. audit log', () => {
       '/api/recover/cancel-intent', '/api/recover/continue/finish', '/api/recover/continue/start', '/api/recover/intent', '/api/recovery/:id/cancel', '/api/recovery/:id/object',
       '/api/sessions/:id/revoke',
       '/api/signin/finish', '/api/signin/start', '/api/signout', '/api/stepup/finish', '/api/stepup/start', '/api/stop/finish', '/api/stop/start',
+      // /api/support/ask writes no audit row: its one write is the hourly counter of the seat (section D).
+      '/api/support/ask',
       '/api/tickets', '/api/tickets/:id/cancel', '/api/tickets/:id/confirm', '/api/tickets/:id/confirm/start',
       '/api/wallets/:id/anchor', '/api/wallets/:id/anchor/cancel', '/api/wallets/:id/unlink', '/api/wallets/intent',
     ])
@@ -2499,6 +2501,7 @@ describe('r. the role table', () => {
       'GET /api/readiness': 'owner', 'POST /api/proof': 'public',
       'POST /api/recover/intent': 'public', 'POST /api/recover/cancel-intent': 'public', 'POST /api/recover/continue/start': 'public', 'POST /api/recover/continue/finish': 'public',
       'POST /api/recovery/:id/cancel': 'owner fresh', 'POST /api/recovery/:id/object': 'admin,approver,compliance fresh',
+      'POST /api/support/ask': any,
     })
     // The signing host has one route, and it is the only one without the console.
     expect(routes.filter((r) => r.sign).map((r) => r.path)).toEqual(['/api/proof'])
@@ -4830,6 +4833,8 @@ describe('D. Support: the model selects, the server decides', () => {
     expect(await outcome({ 'KB-06': 0.6, none: 0.4 }, 0.99)).toEqual({ answers: [shown('KB-06')] })
     // Only the four fields of an entry are answered: the text is the answer base's, word for word.
     expect(Object.keys((await outcome({ 'KB-22': 1 }, 1)).answers[0])).toEqual(['id', 'title', 'text', 'link'])
+    // A hand-over by the rules is an outcome, not a failure: nothing is logged.
+    expect(logged.mock.calls).toEqual([])
   })
 
   it('a provider error, a timeout or an unexpected answer gives the hand-over, never an error, and is logged by name only', async () => {
