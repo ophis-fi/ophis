@@ -49,6 +49,13 @@ const SAY: Record<string, string> = {
   own_request: 'You asked for this change. A different member with a key role approves or rejects it.',
   too_early: 'This lowers a security setting. It can be approved 24 hours after it was asked.',
   invalid: 'Check the name and the role.',
+  chain_invalid: 'Choose one of the listed chains.',
+  address_invalid: 'This is not a wallet address. Paste all 42 characters. If it mixes upper and lower case, one character is wrong.',
+  already_linked: 'This wallet is already linked to the organisation, or waits for its approval.',
+  recovery_wallet: 'This is the recovery wallet. It is replaced first, by two people and 72 hours. Then it can be unlinked.',
+  single_key: 'A wallet with a single key can be the recovery wallet only in an organisation with one key-role member. Use a Safe or a custodian wallet.',
+  change_waiting: 'Another change of recovery wallet waits for its 72 hours. An Owner cancels it first.',
+  wallet_unreadable: 'The Safe could not be read on both network endpoints just now. Try again in a minute.',
 }
 export const say = (data: { error?: string; left?: number }) =>
   data.error === 'wrong_words' ? `Those are not the words. ${data.left === 1 ? 'One try' : `${data.left} tries`} left.`
@@ -63,7 +70,9 @@ export const Tile = ({ name }: { name: string }) => <span className="ic-tile"><I
 // Status badges of the mockup: one tone and one icon per word.
 const STATUS: Record<string, [tone: string, icon: string]> = {
   Active: ['ok', 'check'], 'In place today': ['ok', 'check'], 'This session': ['ok', 'circle-check'], Done: ['ok', 'check'],
-  Pending: ['warn', 'clock'], Invited: ['warn', 'clock'],
+  Pending: ['warn', 'clock'], Invited: ['warn', 'clock'], Linked: ['ok', 'check'],
+  Ready: ['ok', 'shield-check'], 'At risk': ['warn', 'triangle-alert'], 'Not recoverable': ['bad', 'triangle-alert'],
+  Green: ['ok', 'check'], Amber: ['warn', 'triangle-alert'], Red: ['bad', 'x'], None: ['bad', 'x'],
   Suspended: ['draft', 'history'], Planned: ['draft', 'calendar'], Later: ['draft', 'calendar'],
   Revoked: ['bad', 'x'], Frozen: ['bad', 'ban'], Removed: ['bad', 'x'], 'Chain verified': ['ok', 'shield-check'], 'Chain broken': ['bad', 'triangle-alert'],
 }

@@ -282,7 +282,10 @@ interface Member { id: string; displayName: string; role: string; state: string 
 interface Passkey { id: string; seatId: string; label: string; state: string; deviceBound: boolean; createdAt: number; lastUsedAt: number | null; stopRightUntil: number | null }
 interface Ticket { id: string; kind: string; role: string; seatId: string; name: string; issuerSeatId: string | null; status: 'link' | 'issuer' | 'second' | 'wait'; myStep: 'issuer' | 'second' | null; until: number }
 interface Request { id: string; kind: string; subjectId: string; name: string | null; role: string | null; value: string | null; requester: string; requesterRole: string; createdAt: number; expiresAt: number; notBefore: number | null; mine: boolean }
+interface Wallet { id: string; chainId: number; address: string; kind: string; label: string; state: 'pending' | 'linked'; recovery: 'in_force' | 'waiting' | null; recoveryAt: number | null; threshold?: number; owners?: number }
 interface View {
+  wallets: Wallet[]
+  chains: { id: number; name: string }[]
   approvals: Request[]
   frozen: ({ id: string } & FrozenInfo)[]
   syncedKeysAllowed: boolean
@@ -428,18 +431,30 @@ function effect(kind: string, name: string, was: string | null, value?: string |
     : value === '1' ? 'Allows passkeys that sync to a cloud account for Admins, Approvers and Compliance officers. Owners still need hardware keys. This lowers a security setting.'
     : 'Requires hardware security keys again for Admins, Approvers and Compliance officers. Passkeys already enrolled stay.'
 }
-const CHANGE: Record<string, string> = { 'seat.unfreeze': 'Unfreeze a seat', 'seat.remove': 'Remove a member', 'seat.role': 'Change a role', 'policy.synced_keys': 'Change the passkey rule for key roles' }
+const CHANGE: Record<string, string> = {
+  'seat.unfreeze': 'Unfreeze a seat', 'seat.remove': 'Remove a member', 'seat.role': 'Change a role', 'policy.synced_keys': 'Change the passkey rule for key roles',
+  'wallet.link': 'Link a wallet', 'anchor.set': 'Set the recovery wallet',
+}
+// The same for a wallet. `on` is the chain's name.
+const kindOf = (w: Wallet) => (w.kind === 'safe' ? `Safe ${w.threshold ?? '?'} of ${w.owners ?? '?'}` : w.kind === 'custodian' ? 'Custodian wallet' : 'Single key')
+function walletEffect(kind: string, w: Wallet, on: string) {
+  const which = `${w.label} (${w.address} on ${on}, ${kindOf(w)})`
+  return kind === 'wallet.link' ? `Links the wallet ${which} to the organisation. The wallet signed a message that names this organisation, and the server checked the signature. Every member sees linked wallets.`
+    : kind === 'anchor.set' ? `Makes ${which} the recovery wallet: if every Owner is locked out, only this wallet can restore access. It is in force 72 hours after the approval. Until then the one in force stays, and any Owner can cancel the change.`
+    : kind === 'anchor.cancel' ? `Cancels the change. ${w.label} does not become the recovery wallet, and the one in force stays. Done at once, by you alone.`
+    : `Unlinks ${w.label} from the organisation. The wallet itself is not touched. Linking it again takes a new signature. Done at once, by you alone.`
+}
 type Act = (action: () => Promise<Result>) => Promise<void>
 
 // One request that waits for its second person: what will change, who asked, and the buttons this member may use.
-function Approval({ request, mayDecide, act }: { request: Request; mayDecide: boolean; act: Act }) {
+function Approval({ request, wallet, on, mayDecide, act }: { request: Request; wallet?: Wallet; on: string; mayDecide: boolean; act: Act }) {
   const [open, setOpen] = useState(false)
   const path = `/api/approvals/${request.id}`
   const early = (request.notBefore ?? 0) > Date.now()
-  const what = effect(request.kind, request.name ?? '', request.role, request.value)
+  const what = wallet ? walletEffect(request.kind, wallet, on) : effect(request.kind, request.name ?? '', request.role, request.value)
   return (
     <article className="appr">
-      <Tile name={request.kind === 'policy.synced_keys' ? 'key-round' : 'user'} />
+      <Tile name={wallet ? 'wallet' : request.kind === 'policy.synced_keys' ? 'key-round' : 'user'} />
       <div>
         <h3 className="h-card">{CHANGE[request.kind] ?? 'A change'}</h3>
         <p>{what}</p>
@@ -448,10 +463,11 @@ function Approval({ request, mayDecide, act }: { request: Request; mayDecide: bo
           <dl className="kv">
             <dt>Change</dt><dd>{CHANGE[request.kind]}</dd>
             {request.name && <><dt>Member</dt><dd>{request.name}</dd></>}
+            {wallet && <><dt>Wallet</dt><dd>{wallet.label}</dd><dt>Address</dt><dd className="mono">{wallet.address}</dd><dt>Chain</dt><dd>{on}</dd><dt>Kind</dt><dd>{kindOf(wallet)}</dd></>}
             {request.kind === 'seat.role' && <><dt>Role now</dt><dd>{role(request.role)}</dd><dt>Role after</dt><dd>{role(request.value)}</dd></>}
             <dt>Requested by</dt><dd>{request.requester} ({role(request.requesterRole)})</dd>
             <dt>Second person</dt><dd>Any Owner, Admin, Approver or Compliance officer other than the requester, after a passkey check</dd>
-            <dt>Applied</dt><dd>At the moment of the approval{early ? `, not before ${minute(request.notBefore!)}` : ''}</dd>
+            <dt>Applied</dt><dd>{request.kind === 'anchor.set' ? 'In force 72 hours after the approval' : `At the moment of the approval${early ? `, not before ${minute(request.notBefore!)}` : ''}`}</dd>
             <dt>Expires</dt><dd>{minute(request.expiresAt)}</dd>
           </dl>
         )}
@@ -524,11 +540,126 @@ function ManageDialog({ seat, frozen, mayOwner, act, onClose }: { seat: Member; 
   )
 }
 
+// Step 1: which wallet. Step 2: the signing link, for the people who hold the wallet. Nothing is stored before the wallet signs.
+function LinkDialog({ chains, onClose }: { chains: View['chains']; onClose: () => void }) {
+  const dialog = useRef<HTMLDialogElement>(null)
+  const [label, setLabel] = useState('Treasury')
+  const [address, setAddress] = useState('')
+  const [chainId, setChainId] = useState(chains[0]?.id ?? 1)
+  const [custodian, setCustodian] = useState(false)
+  const [issued, setIssued] = useState<{ link: string; expiresAt: number }>()
+  const [copied, setCopied] = useState(false)
+  const [busy, setBusy] = useState(false)
+  const [problem, setProblem] = useState('')
+  useEffect(() => {
+    if (!dialog.current?.open) dialog.current?.showModal()
+  }, [])
+  async function create(event: FormEvent) {
+    event.preventDefault()
+    setBusy(true)
+    setProblem('')
+    try {
+      const result = await sensitive<{ link: string; expiresAt: number }>('/api/wallets/intent', { chainId, address: address.trim(), label: label.trim(), custodian })
+      if (result.status === 200) setIssued(result.data)
+      else setProblem(result.status === 401 ? 'Your session has ended. Sign in again.' : say(result.data))
+    } catch {
+      setProblem(CANCELLED)
+    } finally {
+      setBusy(false)
+    }
+  }
+  return (
+    <dialog ref={dialog} className="drawer" aria-labelledby="lk-h" onClose={onClose}>
+      <header className="dh"><Tile name="wallet" /><div className="grow"><h2 className="h-panel" id="lk-h">Link a wallet</h2><span className="cap">Step {issued ? 2 : 1} of 2</span></div>
+        <button className="ib" type="button" aria-label="Close" onClick={() => dialog.current?.close()}><Icon name="x" /></button></header>
+      <div className="db">
+        <ol className="steps">
+          <li aria-current={issued ? undefined : 'step'}><Tile name="wallet" /><h3 className="h-card">Which wallet</h3>{issued && <Status>Done</Status>}
+            {!issued && (
+              <form className="body" onSubmit={create}>
+                <label className="field">Name in the console
+                  <input className="input" value={label} maxLength={40} required onChange={(event) => setLabel(event.target.value)} />
+                </label>
+                <label className="field">Address
+                  <input className="input mono" value={address} required spellCheck={false} autoComplete="off" placeholder="0x" onChange={(event) => setAddress(event.target.value)} />
+                </label>
+                <label className="field">Chain
+                  <select className="input" value={chainId} onChange={(event) => setChainId(Number(event.target.value))}>{chains.map((chain) => <option key={chain.id} value={chain.id}>{chain.name}</option>)}</select>
+                </label>
+                <label className="check"><input type="checkbox" checked={custodian} onChange={(event) => setCustodian(event.target.checked)} /><span>A custodian holds this wallet (Fireblocks, Ledger Enterprise or similar)</span></label>
+                {problem && <Problem>{problem}</Problem>}
+                <p>This creates a signing link and stores nothing. The wallet is linked once it has signed a message that names this organisation. With colleagues in key roles, one of them then approves the link under Approvals.</p>
+                <button className="btn primary md" type="submit" disabled={busy}><Icon name="wallet" size={16} />Create the signing link</button>
+              </form>
+            )}
+          </li>
+          <li aria-current={issued ? 'step' : undefined}><Tile name="arrow-left-right" /><h3 className="h-card">Hand over the signing link</h3>
+            <div className="body">
+              {issued ? (
+                <>
+                  <p className="note warn"><Icon name="clock" /><span className="grow"><b>This link works once, until {minute(issued.expiresAt)}.</b> It moves no funds. Give it to the people who hold the wallet.</span></p>
+                  <label className="field">Signing link
+                    <input className="input mono" readOnly value={issued.link} onFocus={(event) => event.target.select()} />
+                  </label>
+                  <button className="btn ghost md" type="button" onClick={() => navigator.clipboard.writeText(issued.link).then(() => setCopied(true), () => setCopied(false))}><Icon name="clipboard-check" size={16} />{copied ? 'Copied' : 'Copy the link'}</button>
+                  <p><b>A wallet in a browser, or a custodian's browser extension:</b> open the link in that browser. <b>A Safe:</b> in the Safe interface open Apps, add <span className="mono">{issued.link.split('#')[0]}</span> as a custom app, open it and paste the link. The page shows what will be signed, on its own address, and holds no session of this console.</p>
+                </>
+              ) : <p>The link appears here. It works for 7 days.</p>}
+            </div>
+          </li>
+        </ol>
+      </div>
+      <footer className="df"><button className="btn primary md" type="button" onClick={() => dialog.current?.close()}>{issued ? 'Done' : 'Cancel'}</button></footer>
+    </dialog>
+  )
+}
+
+// What this member may do with one wallet. Each choice says what it does before its button.
+function WalletDialog({ wallet, on, may, act, onClose }: { wallet: Wallet; on: string; may: { unlink: boolean; set: boolean; cancel: boolean }; act: Act; onClose: () => void }) {
+  const dialog = useRef<HTMLDialogElement>(null)
+  useEffect(() => {
+    if (!dialog.current?.open) dialog.current?.showModal()
+  }, [])
+  const run = (what: string) => {
+    dialog.current?.close()
+    void act(() => sensitive(`/api/wallets/${wallet.id}/${what}`))
+  }
+  return (
+    <dialog ref={dialog} className="drawer" aria-labelledby="wl-h" onClose={onClose}>
+      <header className="dh"><Tile name="wallet" /><div className="grow"><h2 className="h-panel" id="wl-h">Manage {wallet.label}</h2><span className="cap">{kindOf(wallet)}, {on}</span></div>
+        <button className="ib" type="button" aria-label="Close" onClick={() => dialog.current?.close()}><Icon name="x" /></button></header>
+      <div className="db">
+        <ul className="choices">
+          {may.set && (
+            <li><Tile name="shield-check" /><h3 className="h-card">Set as recovery wallet</h3>
+              <div className="body"><p>{walletEffect('anchor.set', wallet, on)} With colleagues in key roles it needs a second person: the request waits under Approvals for 7 days.</p>
+                <button className="btn primary md" type="button" onClick={() => run('anchor')}><Icon name="users" size={16} />Request recovery wallet</button></div></li>
+          )}
+          {may.cancel && (
+            <li><Tile name="x" /><h3 className="h-card">Cancel change</h3>
+              <div className="body"><p>{walletEffect('anchor.cancel', wallet, on)}</p>
+                <button className="btn primary md" type="button" onClick={() => run('anchor/cancel')}><Icon name="x" size={16} />Cancel the change now</button></div></li>
+          )}
+          <li><Tile name="x" /><h3 className="h-card">Unlink</h3>
+            <div className="body">{wallet.recovery ? <p>This is the recovery wallet{wallet.recovery === 'waiting' ? ', waiting for its 72 hours' : ''}. It cannot be unlinked. Two people replace it first.</p>
+              : !may.unlink ? <p>An Owner or Admin with two passkeys unlinks a wallet.</p>
+              : <p>{walletEffect('wallet.unlink', wallet, on)}</p>}
+              <button className="btn primary md" type="button" disabled={Boolean(wallet.recovery) || !may.unlink} onClick={() => run('unlink')}><Icon name="x" size={16} />Unlink now</button></div></li>
+        </ul>
+      </div>
+      <footer className="df"><button className="btn ghost md" type="button" onClick={() => dialog.current?.close()}>Close</button></footer>
+    </dialog>
+  )
+}
+
 export function Organisation({ me, onSignedOut, onChanged }: { me: Me; onSignedOut: () => void; onChanged: () => void }) {
   const [view, setView] = useState<View>()
   const [problem, setProblem] = useState('')
   const [ticketFor, setTicketFor] = useState<Member | null>() // undefined: closed. null: a new member. A member: a new link for that seat.
   const [managed, setManaged] = useState<Member>()
+  const [linking, setLinking] = useState(false)
+  const [walletId, setWalletId] = useState<string>()
+  const [copiedId, setCopiedId] = useState('')
   const [label, setLabel] = useState('Security key 2')
   const load = useCallback(async () => {
     const result = await api<View>('/api/org')
@@ -566,6 +697,8 @@ export function Organisation({ me, onSignedOut, onChanged }: { me: Me; onSignedO
   const quarantined = (me.seat.quarantineUntil ?? 0) > Date.now()
   const mayManage = (role: string) => me.seat.role === 'owner' || (me.seat.role === 'admin' && role !== 'owner')
   const hardware = me.seat.role === 'owner'
+  const chain = (id: number) => view?.chains.find((c) => c.id === id)?.name ?? `Chain ${id}`
+  const wallet = view?.wallets.find((w) => w.id === walletId)
   const last = (key: Passkey) => view?.passkeys.filter((other) => other.seatId === key.seatId && other.state === 'active').length === 1
   const keyRows = (keys: Passkey[], own: boolean) => keys.map((key) => (
     <tr key={key.id}>
@@ -587,7 +720,7 @@ export function Organisation({ me, onSignedOut, onChanged }: { me: Me; onSignedO
       <header className="ph"><div>
         <span className="cap eyebrow">Organisation</span>
         <h1 className="h-page">People, wallets and <em>two-person approval</em>.</h1>
-        <p className="lede">Members, their passkeys and sessions, and the changes that need a second person. Wallets arrive in a later milestone.</p>
+        <p className="lede">Members, their passkeys and sessions, linked wallets, and the changes that need a second person.</p>
       </div></header>
       <div className="stack">
         {!ready && <p className="note warn" role="status"><Icon name="key-round" /><span className="grow"><b>Add your second {hardware ? 'hardware key' : 'passkey'}.</b> A seat needs two before it can invite, confirm or revoke. Use <a href="#my-passkeys">My passkeys</a> below.</span></p>}
@@ -604,8 +737,11 @@ export function Organisation({ me, onSignedOut, onChanged }: { me: Me; onSignedO
       {view && (
         <Section id="approvals" icon="users" title="Approvals" hint="Approving asks for your passkey. The requester cannot approve.">
           <div className="stack">
-            {view.approvals.map((request) => <Approval key={request.id} request={request} mayDecide={KEY_ROLES.includes(me.seat.role) && ready && !quarantined} act={act} />)}
-            {view.approvals.length === 0 && <p className="note ok"><Icon name="circle-check" /><span className="grow"><b>Nothing waits.</b> A request to unfreeze a seat, remove a member, change a role or change the passkey rule appears here, and in the audit log.</span></p>}
+            {view.approvals.map((request) => {
+              const about = view.wallets.find((w) => w.id === request.subjectId)
+              return <Approval key={request.id} request={request} wallet={about} on={about ? chain(about.chainId) : ''} mayDecide={KEY_ROLES.includes(me.seat.role) && ready && !quarantined} act={act} />
+            })}
+            {view.approvals.length === 0 && <p className="note ok"><Icon name="circle-check" /><span className="grow"><b>Nothing waits.</b> A request to unfreeze a seat, remove a member, change a role, change the passkey rule, link a wallet or set the recovery wallet appears here, and in the audit log.</span></p>}
           </div>
         </Section>
       )}
@@ -635,6 +771,30 @@ export function Organisation({ me, onSignedOut, onChanged }: { me: Me; onSignedO
       </Section>
       {managed && <ManageDialog seat={managed} frozen={view?.frozen.find((seat) => seat.id === managed.id)} mayOwner={me.seat.role === 'owner'} act={act} onClose={() => setManaged(undefined)} />}
       {ticketFor !== undefined && <TicketDialog seat={ticketFor} mayOwner={me.seat.role === 'owner'} onClose={() => { setTicketFor(undefined); void load() }} />}
+
+      <Section id="wallets" icon="wallet" title="Wallets" hint="A wallet is linked by its own signature. One linked wallet is the recovery wallet: if every Owner is locked out, only it can restore access."
+        action={manages && ready && !quarantined && <button className="btn ghost sm" type="button" onClick={() => setLinking(true)}><Icon name="wallet" size={16} />Link a wallet</button>}>
+        {view && view.wallets.length === 0 ? <p className="note"><Icon name="info" /><span className="grow"><b>No wallet is linked.</b> {manages ? 'Use "Link a wallet": the console gives a signing link, and the wallet signs on a separate page.' : 'An Owner or Admin links one.'}</span></p> : (
+          <div className="table-wrap"><table className="t">
+            <thead><tr><th>Wallet</th><th>Address</th><th>Chain</th><th>Kind</th><th>Status</th><th><span className="sr">Changes</span></th></tr></thead>
+            <tbody>{view?.wallets.map((w) => (
+              <tr key={w.id}>
+                <td>{w.label}</td>
+                <td><span className="mono">{w.address}</span> <button className="ib" type="button" aria-label={`Copy the address of ${w.label}`} title={copiedId === w.id ? 'Copied' : 'Copy the address'} onClick={() => navigator.clipboard.writeText(w.address).then(() => setCopiedId(w.id), () => setCopiedId(''))}><Icon name={copiedId === w.id ? 'check' : 'clipboard-check'} size={16} /></button></td>
+                <td>{chain(w.chainId)}</td>
+                <td>{kindOf(w)}</td>
+                <td><Status>{w.state === 'linked' ? 'Linked' : 'Pending'}</Status>{w.state === 'pending' && <small>Waits for a second person, under Approvals</small>}
+                  {w.recovery && <><span className={`badge bi ${w.recovery === 'in_force' ? 'ok' : 'warn'}`}><Icon name={w.recovery === 'in_force' ? 'shield-check' : 'clock'} size={16} />Recovery wallet</span>
+                    <small>{w.recovery === 'in_force' ? `In force since ${minute(w.recoveryAt!)}` : `In force from ${minute(w.recoveryAt!)}. Until then an Owner can cancel.`}</small></>}</td>
+                <td>{w.state === 'linked' && manages && <button className="btn ghost sm" type="button" aria-label={`Manage ${w.label}`} onClick={() => setWalletId(w.id)}><Icon name="settings" size={16} />Manage</button>}</td>
+              </tr>
+            ))}</tbody>
+          </table></div>
+        )}
+      </Section>
+      {linking && view && <LinkDialog chains={view.chains} onClose={() => { setLinking(false); void load() }} />}
+      {wallet && <WalletDialog wallet={wallet} on={chain(wallet.chainId)} act={act} onClose={() => setWalletId(undefined)}
+        may={{ unlink: ready, set: hardware && ready && !quarantined && !wallet.recovery && !view!.wallets.some((w) => w.recovery === 'waiting'), cancel: hardware && ready && wallet.recovery === 'waiting' }} />}
 
       <Section id="my-passkeys" icon="key-round" title="My passkeys" hint={`Public keys only. Keep two${hardware ? ' hardware keys' : ''}: if you lose one, sign in with the other, revoke the lost one and add a new one.`}>
         <div className="table-wrap"><table className="t">{keyHead(true)}<tbody>{view && keyRows(view.passkeys.filter((key) => key.seatId === me.seat.id), true)}</tbody></table></div>
@@ -696,7 +856,6 @@ export function Organisation({ me, onSignedOut, onChanged }: { me: Me; onSignedO
           </table></div>
         </Section>
       )}
-      <Section later icon="wallet" title="Linked wallets and recovery wallet" hint="Ownership will be proved with a signed message. One wallet per organisation restores access if every Owner is locked out." />
       <Section later icon="key-round" title="API keys" hint="Read-only keys for reports come after the first release. No key will be able to move funds." />
     </>
   )
@@ -719,6 +878,8 @@ const ALERT: Record<string, (alert: Alert) => string> = {
     return a.what === 'seat.role' ? `${a.mine ? 'Your role' : `The role of ${a.name}`} was changed ${when}, from ${role(from)} to ${role(to)}. Two people decided it.`
       : a.what === 'seat.remove' ? `${a.name} was removed from the organisation ${when}. Two people decided it.`
       : a.what === 'seat.unfreeze' ? `${a.mine ? 'Your seat' : `The seat of ${a.name}`} was unfrozen ${when}. Two people decided it.`
+      : a.what === 'wallet.link' ? `The wallet ${a.name} was linked ${when}. Two people decided it.`
+      : a.what === 'anchor.set' ? `The wallet ${a.name} was approved as the recovery wallet ${when}. It is in force 72 hours later. Until then an Owner can cancel the change, under Wallets.`
       : `The passkey rule for key roles was changed ${when}: ${a.detail === 'synced' ? 'synced passkeys are allowed for Admins, Approvers and Compliance officers' : 'hardware security keys only'}. Two people decided it.`
   },
   confirmation_waiting: (a) => `A new passkey of ${a.name} waits for the three words from you, under Waiting for confirmation.`,
@@ -852,7 +1013,48 @@ const SECURITY: [group: string, icon: string, summary: string, rows: Row[]][] = 
   ]],
 ]
 
-export function Security() {
+interface Ready { owners: { level: string; count: number }; wallet: { level: string; why: string | null; label: string | null; at: number | null; threshold?: number; owners?: number }; overall: string; step: string | null }
+const OVERALL: Record<string, [badge: string, sentence: string]> = {
+  ready: ['Ready', 'Access can be restored if a passkey, or an Owner, is lost.'],
+  at_risk: ['At risk', 'Access can still be restored, with little margin.'],
+  not_recoverable: ['Not recoverable', 'One Owner and no recovery wallet: if that Owner is locked out, nobody can restore access.'],
+}
+const STEP: Record<string, string> = {
+  second_key: 'Next step: every Owner adds a second hardware key, under Organisation, My passkeys.',
+  second_owner: 'Next step: invite a second Owner, who enrols two hardware keys.',
+  recovery_wallet: 'Next step: link a wallet and set it as the recovery wallet, under Organisation, Wallets. A Safe with a threshold of 2 or more and no module is best.',
+}
+const WHY: Record<string, (w: Ready['wallet']) => string> = {
+  waiting: (w) => `${w.label} is in force from ${minute(w.at!)}. Until then it does not count.`,
+  single_key: (w) => `${w.label} is a single key: whoever holds that key restores access alone.`,
+  custodian: (w) => `${w.label} is a custodian wallet: its approval rules cannot be checked from outside.`,
+  module: (w) => `${w.label} is a Safe with a module enabled. A module can sign without the owners.`,
+  threshold: (w) => `${w.label} is a Safe that one owner can sign for alone.`,
+  changed: (w) => `The owners or the threshold of ${w.label} changed since it was approved. Set it as the recovery wallet again to confirm them.`,
+  unreadable: (w) => `${w.label} could not be read on both network endpoints just now. Reload the page to try again.`,
+}
+const LEVEL: Record<string, string> = { green: 'Green', amber: 'Amber', red: 'Red', none: 'None' }
+// For an Owner: how ready the organisation is to recover access. The server reads the recovery wallet on the chain for this page.
+function Readiness() {
+  const [ready, setReady] = useState<Ready>()
+  useEffect(() => void api<Ready>('/api/readiness').then((result) => result.status === 200 && setReady(result.data)), [])
+  if (!ready) return null
+  const { owners, wallet } = ready
+  const [badge, sentence] = OVERALL[ready.overall] ?? OVERALL.at_risk
+  return (
+    <section className="sg" id="readiness" aria-labelledby="rd-h">
+      <header><Tile name="life-buoy" /><div><h2 className="h-panel" id="rd-h">Recovery readiness</h2><p><Status>{badge}</Status></p><p>{sentence} {ready.step && STEP[ready.step]}</p></div></header>
+      <div>
+        <div className="srow"><Icon name="users" size={20} /><b>Owners</b><Status>{LEVEL[owners.level]}</Status>
+          <p>{owners.level === 'green' ? `${owners.count} Owners, each with two hardware keys.` : owners.level === 'amber' ? 'One Owner, with two hardware keys. If that person is locked out, only the recovery wallet restores access.' : 'An Owner holds fewer than two hardware keys. One lost key locks that Owner out.'}</p></div>
+        <div className="srow"><Icon name="wallet" size={20} /><b>Recovery wallet</b><Status>{LEVEL[wallet.level]}</Status>
+          <p>{wallet.level === 'none' ? 'No recovery wallet is set.' : wallet.level === 'green' ? `${wallet.label}: a Safe, ${wallet.threshold} of ${wallet.owners}, no module, owners unchanged since its approval. In force since ${minute(wallet.at!)}.` : WHY[wallet.why ?? '']?.(wallet)}</p></div>
+      </div>
+    </section>
+  )
+}
+
+export function Security({ owner }: { owner: boolean }) {
   const rows = SECURITY.flatMap((group) => group[3])
   const inPlace = rows.filter((row) => row[3]).length
   const stats: [number, string, string, string][] = [
@@ -870,7 +1072,7 @@ export function Security() {
       <div className="stats">{stats.map(([count, icon, caption, sub]) => (
         <div className="c" key={caption}><span className="num">{count}</span><span className="cap"><Icon name={icon} size={16} />{caption}</span><span className="sub">{sub}</span></div>
       ))}</div>
-      <div className="groups">{SECURITY.map(([group, icon, summary, groupRows]) => (
+      <div className="groups">{owner && <Readiness />}{SECURITY.map(([group, icon, summary, groupRows]) => (
         <section className="sg" key={group}>
           <header><Tile name={icon} /><div><h2 className="h-panel">{group}</h2><p>{summary}</p></div></header>
           <div>{groupRows.map(([rowIcon, title, sentence, on]) => (

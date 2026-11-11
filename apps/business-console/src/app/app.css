@@ -136,3 +136,6 @@ dialog::backdrop { background: rgba(23, 25, 28, .3); } dialog[open] { display: f
   .appr .acts { grid-column: 1 / -1; margin-top: 8px; } .appr .acts .btn { flex: 1; }
   .words, .addkey { grid-template-columns: minmax(0, 1fr); } .alerts { padding: 22px 20px; margin: 0; } .phrase span { padding: 8px 14px 10px; }
 }
+/* Milestone 4: the wallet list and the link dialog. */
+.check { display: flex; gap: 10px; align-items: flex-start; font-size: 14px; line-height: 1.5; color: var(--ink); } .check input { width: 16px; height: 16px; margin-top: 3px; accent-color: var(--ink); flex: none; }
+table.t td .badge + .badge { margin-left: 6px; } .steps form.body { margin: 0; } .sg > header .badge { margin-top: 4px; }

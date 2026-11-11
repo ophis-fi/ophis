@@ -2,7 +2,7 @@
 import * as data from './data.ts'
 import { checksum, colour, parseAddress, readCapped, safeState, verify, type SafeState } from './chain.ts'
 import { challengeIsOurs, configFor, creationOptions, credentialHash, newChallenge, phraseFor, requestOptions, seal, toBase64Url, unseal, userHandle, verifyAssertion, verifyRegistration, type Config, type Purpose } from './passkeys.ts'
-import { typedLink } from './typed.ts'
+import { CHAIN_NAME, typedLink } from './typed.ts'
 import { WORDS } from './words.ts'
 
 export interface Env { DB: D1Database; ASSETS: Fetcher; ENVIRONMENT: string; CHALLENGE_KEY: string }
@@ -212,6 +212,7 @@ async function organisation(c: Context) {
     approvals: await data.openRequests(c.env.DB, c.actor, c.now),
     frozen: await data.frozenSeats(c.env.DB, c.actor.orgId),
     wallets: (await data.wallets(c.env.DB, c.actor.orgId, c.now)).map(walletView),
+    chains: Object.keys(c.config.chains).map((id) => ({ id: Number(id), name: CHAIN_NAME[Number(id)] ?? `Chain ${id}` })),
     syncedKeysAllowed: c.session.synced_keys_allowed === 1, rights,
   })
 }

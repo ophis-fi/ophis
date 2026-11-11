@@ -88,7 +88,7 @@ function App() {
   return (
     <>
       <button className="skip btn primary sm" type="button" onClick={() => document.getElementById('main')?.focus()}>Skip to content</button>
-      <div className="band" role="note"><Icon name="info" size={16} /><span><strong>Local build.</strong> Milestone 3 of 6: roles, two-person approval and the audit log. Test data only.</span></div>
+      <div className="band" role="note"><Icon name="info" size={16} /><span><strong>Local build.</strong> Milestone 4 of 6: wallets and the recovery wallet. Test data only.</span></div>
       <header className="bar">
         <a className="brand" href="#/" aria-label="Ophis Business"><img src={mark} alt="" />ophis.<small>Business</small></a>
         {me && <div className="org"><span>{me.organisation.name}</span></div>}
@@ -120,7 +120,7 @@ function App() {
         <div className="col">
           <main id="main" tabIndex={-1}>
             {me && stillOpen && <Problem>Sign-out did not work. Your session is still open. Try again.</Problem>}
-            {page === 'security' ? <Security />
+            {page === 'security' ? <Security owner={me?.seat.role === 'owner'} />
             : page === 'enrol' ? <Enrol ticket={ticket} />
             : me === undefined ? null
             : me && unread.length ? <Alerts alerts={unread} onRead={markRead} />
