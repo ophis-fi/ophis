@@ -1,28 +1,41 @@
 # Ophis Business console
 
-Local only for now: passkey sign-in core, the enrolment and recovery ceremony for members, roles with two-person approval and the audit log, wallets with the recovery wallet, and last-Owner recovery (milestones 1 to 4 of 6). Design, schema, routes and invariants: `ARCHITECTURE.md`.
+Local only for now: passkey sign-in, enrolment of members (by company sign-in at Microsoft or Google, or by three words), roles with two-person approval and the audit log, wallets with the recovery wallet, last-Owner recovery, Support, and registration by invitation with the operator's review. Design, schema, routes and invariants: `ARCHITECTURE.md`.
 Never deploy from a laptop, and never run a remote wrangler command from here.
 
 Needs Node 22.18 or later and Google Chrome. Run everything from this folder, with pnpm as `npx -y pnpm@10.34.9`.
 
 ```sh
 npx -y pnpm@10.34.9 install --ignore-workspace   # the flag is required: without it pnpm installs the root workspace
-npx -y pnpm@10.34.9 migrate     # creates or updates the local D1 database (.wrangler/); run it again after pulling: milestone 3 adds 0002, milestone 4 adds 0003 and 0004, the recovery fixes add 0005
-npx -y pnpm@10.34.9 seed        # one organisation, one Owner seat; prints a one-time enrolment link (10 minutes)
-npx -y pnpm@10.34.9 dev         # builds the console and the signing page, and serves both with the Worker: console http://localhost:8787, signing page http://127.0.0.1:8787/sign/
+npx -y pnpm@10.34.9 migrate     # creates or updates the local D1 database (.wrangler/); run it again after pulling (now up to 0009). If it fails with "duplicate column name" (0005_onboarding.sql was renamed 0006): stop dev, delete .wrangler/state, migrate and seed again
+npx -y pnpm@10.34.9 seed        # one organisation (domain northwind.example, company sign-in "none"), one Owner seat; prints a one-time enrolment link (10 minutes). Add: -- --company microsoft (or google) for an organisation that uses the company sign-in
+npx -y pnpm@10.34.9 dev         # builds the console and the signing page, and serves both with the Worker: console http://localhost:8787, signing page http://127.0.0.1:8787/sign/. Also starts the local stand-ins: two DNS resolvers (8790, 8791) and the Microsoft and Google sign-in (8792)
 npx -y pnpm@10.34.9 activate    # first Owner only: local stand-in for the activation by the recovery wallet (milestone 5)
 npx -y pnpm@10.34.9 skip        # local stand-in for the passing of time: every wait that runs is over (recovery wallet 72 h, recovery request, 24 h after a cancel)
 npx -y pnpm@10.34.9 dns <name> <value>   # milestone 5: publishes a TXT record in the two local stub resolvers that "dev" starts (ports 8790 and 8791)
-npx -y pnpm@10.34.9 operator list        # milestone 5: the operator's command (also: decide, freeze, unfreeze); needs "dev" running
+npx -y pnpm@10.34.9 operator list        # milestone 5: the operator's command (also: invite, decide, freeze, unfreeze); needs "dev" running
 ```
 
-Open the enrolment link in Chrome, create the passkey, run `activate`, then sign in at http://localhost:8787.
-`seed` writes `.dev.vars` with a fresh random challenge key when the file is missing (see `.dev.vars.example`).
+`seed` writes `.dev.vars` when it is missing and adds what it lacks (the challenge key, the operator's token, two client secrets for the local stand-in). It is git-ignored: never commit or print it.
+
+## A tester gets in, step by step
+Everything starts at http://localhost:8787 (the console). Use Chrome. Each person needs a security key of their own, or a Chrome virtual authenticator per browser profile (DevTools, More tools, WebAuthn: ctap2, usb, resident keys, user verification).
+1. Once: `install`, `migrate`, then `seed -- --company microsoft` (or plain `seed` for the three-word path). Keep the link it prints (10 minutes).
+2. `dev`, and leave it running. Open http://localhost:8787 : the sign-in page, with the footer line.
+3. Open the printed link. Create the passkey. In a second terminal run `activate` (it stands in for the first Owner's activation). Go to http://localhost:8787 and press "Sign in with a passkey".
+4. Organisation, My passkeys, "Add a passkey" (a second key): an Owner can do nothing else before.
+5. "Invite member": a name, a role and, with the company sign-in, a work email at the domain `seed` printed (`northwind.example` for the first organisation; any local part). Copy the link.
+6. In another browser profile open the link. Press "Continue with Microsoft": the browser goes to the local stand-in (`http://127.0.0.1:8792`, "Test only"), where you type the address to sign in as. Type the invited address. Back on the console, "Create passkey". No words appear. (Type another address to see the refusal; `someone@outlook.com` to see a personal account refused.)
+7. Back as the Owner: reload, "Waiting for confirmation" shows the address "confirmed by Microsoft" and the key type. "Approve with passkey". A key role needs a second key-role member too, or waits 72 hours if there is none (`activate` stands in for that wait).
+8. The new member signs in at http://localhost:8787 with the passkey. The company account is not asked again.
+9. Without `--company`: the member's page shows three words, which the member sends to the inviter over a channel they trust, and the inviter types them.
+10. A new organisation from scratch (registration): `operator invite` prints an application code; open http://localhost:8787/apply and follow "Onboarding" below. Its Onboarding page has the step "Company sign-in", where the first Owner signs in at the stand-in with an address at the organisation's own domain.
+Microsoft and Google themselves are not reachable from this build: only the stand-in is. What the owner must set up for the real ones is in the last section.
 
 Then, in the app (each person needs their own security key, or a Chrome virtual authenticator per browser profile):
 1. Organisation, My passkeys, "Add a passkey". An Owner needs two hardware keys before anything else works.
-2. "Invite member" gives a one-time link (10 minutes for key roles, 24 hours for Trader and Viewer). The member opens it on their own device, creates a passkey and reads three words aloud.
-3. Under "Waiting for confirmation" the inviter types the words and confirms with a passkey. Key roles need a second key-role member too. Only an organisation that has had no other key-role member in the last 30 days waits 72 hours instead (locally, `activate` stands in for that wait).
+2. "Invite member" gives a one-time link. Three-word path (company sign-in "none"): 10 minutes for key roles, 24 hours for Trader and Viewer; the member opens it on their own device, creates a passkey and sends three words to the inviter over a channel both trust. Company sign-in: 24 hours for every role; the member signs in with the company account, then creates the passkey.
+3. Under "Waiting for confirmation" the inviter types the words, or approves what the provider confirmed, and confirms with a passkey. Key roles need a second key-role member too. Only an organisation that has had no other key-role member in the last 30 days waits 72 hours instead (locally, `activate` stands in for that wait).
 4. "Re-enrol" does the same for a member who lost every passkey. The old passkeys are suspended: for 24 or 72 hours one of them can still sign in to a page with one action, "Stop this replacement".
 5. A stop freezes the seat. An Owner or Admin can also freeze a seat at once: Members and roles, "Manage", "Freeze seat". A frozen member who signs in sees who froze the seat and when; a replaced passkey can still stop its replacement on a frozen seat. A member's last passkey is never revoked.
 6. Unfreezing a seat, removing a member, changing a role and changing the passkey rule for key roles take two people: one asks ("Manage", or the passkey rule section), a different member with a key role approves under "Approvals" after a passkey check. Each button is preceded by what it will do.
@@ -51,15 +64,24 @@ Support (milestone 6): the rail entry and the top button open `#/support`. The W
 `npx -y pnpm@10.34.9 test:jev` (on demand, needs the network and `TYPESAFE_API_KEY` in the environment): sends the 32 questions of the prototype through the server's own functions and prints each outcome, the accuracy and the median latency, never the key.
 `test:e2e` includes the Support flow; with the key in `.dev.vars` that part needs the network too.
 
-Onboarding (milestone 5a). Run `migrate` again (0005), and `seed` once: it adds `OPERATOR_TOKEN` to `.dev.vars` (never printed). `seed` and `activate` still work as before, for an organisation that is active at once.
-1. Open http://localhost:8787/apply (no sign-in). Enter the company, its email domain and a work email at that domain, then create the passkey on a hardware key. Nothing is stored. The page shows one TXT record, `_ophis-verify.<domain>` with the value `ophis-verify=<code>`, and a link to come back (7 days).
+Onboarding (milestone 5a). Run `migrate` again, and `seed` once: it adds `OPERATOR_TOKEN` to `.dev.vars` (never printed). `seed` and `activate` still work as before, for an organisation that is active at once.
+0. Applications are by invitation: `npx -y pnpm@10.34.9 operator invite` prints an application code (one use, 14 days).
+1. Open http://localhost:8787/apply (no sign-in). Enter the application code, the company, its email domain and a work email at that domain, then create the passkey on a hardware key. Nothing is stored. The page shows one TXT record, `_ophis-verify.<domain>` with the value `ophis-verify=<code>`, and a link to come back (7 days).
 2. Publish the record: locally `npx -y pnpm@10.34.9 dns _ophis-verify.<domain> ophis-verify=<code>`. Press "Check DNS". Both resolvers must show the exact value. Then the organisation exists, not yet verified, and you sign in with that passkey.
-3. Onboarding (the rail entry): add the second passkey under Organisation, then name the recovery wallet. The wallet signs "Activate this organisation and confirm its first Owner passkey" on the signing page, after its holders compared the three words. Or invite a second Owner, who needs two passkeys. Then "Submit for review".
+3. Onboarding (the rail entry): add the second passkey under Organisation, choose the company sign-in (Microsoft, Google, or none: with a provider you sign in once with your own company account, locally at the stand-in, with an address at the domain you proved), then name the recovery wallet. The wallet signs "Activate this organisation and confirm its first Owner passkey" on the signing page, after its holders compared the three words. Or invite a second Owner, who needs two passkeys. Then "Submit for review". A recovery wallet with a single key is accepted only while you are the only member. Any change to the Owner seats, their passkeys or the named wallet after that puts the organisation back to "Not submitted".
 4. The operator: `npx -y pnpm@10.34.9 operator list` shows what to compare (domain, the first Owner's three words and passkey hash, the recovery wallet, its kind and colour). Then one of
    `operator decide <id> approve --tier standard --source registry --evidence "<reference>" --sha256 <64 hex> --next-review 2027-11-11`,
    `operator decide <id> more --reason details_differ --tier standard --source registry`, `operator decide <id> refuse --reason not_eligible --tier standard --source registry`,
-   `operator freeze <id>`, `operator unfreeze <id>`. Each is a row in the client's own audit log. The operator's API answers on `operator.localhost:8787` only, and only locally.
+   `operator freeze <id>` (it ends every session of the organisation; a member who signs in sees "This organisation is frozen"), `operator unfreeze <id>`. Each is a row in the client's own audit log. The operator's API answers on `operator.localhost:8787` only, and only locally.
 5. After the approval the organisation is active, the recovery wallet is in force at once, and Compliance shows the "KYB record" block. No document is stored.
 
 `npx -y pnpm@10.34.9 test:dns` (on demand, needs the network): asks Cloudflare and Google, over DNS-over-HTTPS, for the TXT record of example.com through the server's own lookup and parser, and prints both answers.
-`test:e2e` now also needs ports 8790 and 8791 free. Its milestone 5a part is written and has not been run yet.
+`test:e2e` also needs ports 8790, 8791 and 8792 free. If port 8787 is taken (your own `dev`), run it as `E2E_PORT=8797 npx -y pnpm@10.34.9 test:e2e`: the browser still uses the address http://localhost:8787. Last run, 2026-11-11: 145 checks passed, registration and one invitation through the stand-in provider included.
+
+## Before real Microsoft and Google accounts work
+Nothing here has ever called Microsoft or Google: `src/server/oidc.ts` holds their addresses as constants (`REAL_ENDPOINTS`) for an environment that does not exist yet. The owner must:
+1. Choose the production hostname of the console (it is also the passkey relying-party id, and final). The redirect address is `https://<that hostname>/api/company/callback`.
+2. Microsoft Entra: register an application, "Accounts in any organizational directory" (multitenant, no personal accounts), platform Web, that redirect address. Token configuration: add the optional ID token claims `email` and `xms_edov`. Create a client secret. Note the application (client) id.
+3. Google Cloud: an OAuth client of type "Web application" with that redirect address, and the consent screen (scopes `openid` and `email`; user type External, published). Note the client id and the client secret.
+4. Add the environment to `ENVIRONMENTS` (`passkeys.ts`) and to `IDPS` (`oidc.ts`: `REAL_ENDPOINTS` plus the two client ids), and set the Worker secrets `MICROSOFT_CLIENT_SECRET` and `GOOGLE_CLIENT_SECRET` with `wrangler secret put` (never in the repository).
+5. Then try one real sign-in of each provider before anyone relies on it: the code expects `xms_edov` as the boolean `true` and Google's `hd` for a Workspace account, as documented, and has not seen a real token.

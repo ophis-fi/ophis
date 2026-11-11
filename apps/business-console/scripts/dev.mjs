@@ -16,7 +16,6 @@ const [command, ...options] = process.argv.slice(2)
 const option = (name) => (options.includes(name) ? options[options.indexOf(name) + 1] : undefined)
 const directory = option('--persist')
 const company = option('--company')
-const DOMAIN = 'northwind.example'
 process.chdir(new URL('..', import.meta.url).pathname)
 // The challenge key is made on this machine and never leaves it: .dev.vars is git-ignored.
 if (!existsSync('.dev.vars')) writeFileSync('.dev.vars', `CHALLENGE_KEY=${randomBytes(32).toString('base64url')}\n`, { mode: 0o600 })
@@ -38,9 +37,12 @@ try {
   if (command === 'seed') {
     const ticket = randomToken()
     if (company !== undefined && company !== 'microsoft' && company !== 'google') throw new Error('--company takes microsoft or google')
+    // One organisation per domain: the first seed gets northwind.example, the next ones northwind-2.example and so on.
+    const { n } = await env.DB.prepare(`SELECT count(*) AS n FROM organisations WHERE email_domain LIKE 'northwind%'`).first()
+    const DOMAIN = n ? `northwind-${n + 1}.example` : 'northwind.example'
     const pinned = company && { idp: company, tenant: company === 'google' ? DOMAIN : tenantOf(DOMAIN) }
     await seedOrganisation(env.DB, { name: 'Northwind Vaults', kind: 'partner', ownerName: 'Maren Okafor', ticketHash: await sha256Hex(ticket), now: Date.now(), domain: DOMAIN, company: pinned })
-    if (pinned) console.log(`Company sign-in: ${company}. Invite members with an address at ${DOMAIN}.`)
+    console.log(pinned ? `Company sign-in: ${company}. Invite members with a work address at ${DOMAIN}.` : `Domain ${DOMAIN}, company sign-in: none (three words).`)
     console.log(`Enrolment link, one use, valid 10 minutes:\n${configFor(env.ENVIRONMENT).origin}/#/enrol/${ticket}`)
   } else if (command === 'activate') {
     console.log(`Activated ${await devActivatePending(env.DB, env.ENVIRONMENT, Date.now())} pending passkey(s).`)
