@@ -6,7 +6,7 @@ import { api, Icon, ROLE, save, say, Section, stamp, Status, Tile } from './ui.t
 
 interface Ticket { type: 'market' | 'limit'; sell: string; buy: string; amount: string; limitPrice: string | null; chainId: number; walletId: string }
 interface Estimate { received: string; volumeEur: string; feeBps: string; feeEur: string; totalEur: string; priced: string | null }
-export interface OrderBody { ticket: Ticket; wallet: string; estimate: Estimate; checks?: string[] }
+export interface OrderBody { ticket: Ticket; wallet: string; address?: string; estimate: Estimate; checks?: string[] }
 // A row of the blotter: an order of this organisation (it has an id), or an example row (it has none).
 interface Order extends OrderBody { id?: string; ref: string; at: number; state: string; open?: boolean; mine?: boolean; preparer?: string; preparerRole?: string; decidedBy?: string | null; decidedAt?: number | null; tx?: string | null }
 interface Institution {
@@ -37,9 +37,13 @@ export function money(text: string, dp = 2) {
 const places = (asset: string) => (asset === 'ETH' ? 4 : 2)
 const qty = (amount: string, asset: string) => `${money(amount, places(asset))} ${asset}`
 const count = (n: number) => money(String(n), 0)
+// What a member typed (an amount, a limit price) is shown whole: every decimal of it, never cut.
+const exact = (text: string, dp = 2) => money(text, Math.max(dp, text.split('.')[1]?.length ?? 0))
+const sold = (t: Ticket) => `${exact(t.amount, places(t.sell))} ${t.sell}`
+const short = (address: string) => (address.length > 13 ? `${address.slice(0, 6)}...${address.slice(-4)}` : address)
 /** An order in words, as the Approvals list and the record say it. */
-export const orderWords = ({ ticket, wallet, estimate }: OrderBody) =>
-  `Sell ${qty(ticket.amount, ticket.sell)} for ${ticket.buy}, ${ticket.type}${ticket.limitPrice ? ` at ${money(ticket.limitPrice)} EUR per ${estimate.priced}` : ''}, ${CHAIN[ticket.chainId] ?? `chain ${ticket.chainId}`}, from ${wallet}`
+export const orderWords = ({ ticket, wallet, address, estimate }: OrderBody) =>
+  `Sell ${sold(ticket)} for ${ticket.buy}, ${ticket.type}${ticket.limitPrice ? ` at ${exact(ticket.limitPrice)} EUR per ${estimate.priced}` : ''}, ${CHAIN[ticket.chainId] ?? `chain ${ticket.chainId}`}, from ${wallet}${address ? ` (${short(address)})` : ''}`
 
 const Banner = () => <p className="note warn demo" role="note"><Icon name="info" /><span className="grow"><b>Demo data.</b> No order is sent and no funds move. Figures are examples.</span></p>
 const EXAMPLE = 'Example figures. The real cost of an order is shown before it is signed.'
@@ -109,7 +113,7 @@ function InstitutionOverview({ v }: { v: Institution }) {
         <div className="c"><span className="num" data-waiting>{v.waiting}</span><span className="cap"><Icon name="users" size={16} />Waiting for approval</span><span className="sub"><a className="link" href="/#/organisation">Open approvals</a></span></div>
       </div>
       <div className="g even sec">
-        <Section icon="wallet" title="Balances by linked wallet" action={<Export table="balances" />}>
+        <Section icon="wallet" title="Balances by wallet" hint="Example wallets and balances, not your linked wallets." action={<Export table="balances" />}>
           <div className="table-wrap">
             <table className="t">
               <thead><tr><th>Asset</th><th className="num">Balance</th><th className="num">Value (EUR)</th></tr></thead>
@@ -122,7 +126,7 @@ function InstitutionOverview({ v }: { v: Institution }) {
           </div>
         </Section>
         <Section icon="history" title="Recent orders" hint="Your own orders first, with their real state. Then example rows." action={<div className="acts"><Export table="orders" /><a className="btn ghost sm" href="/#/desk">All orders</a></div>}>
-          <Table head={['Order', 'Sell, buy', 'Status']} rows={[...v.orders, ...v.examples].slice(0, 8).map((o) => [orderCell(o), <>{qty(o.ticket.amount, o.ticket.sell)}<small>for {o.ticket.buy}</small></>, <Status>{o.state}</Status>])} />
+          <Table head={['Order', 'Sell, buy', 'Status']} rows={[...v.orders, ...v.examples].slice(0, 8).map((o) => [orderCell(o), <>{sold(o.ticket)}<small>for {o.ticket.buy}</small></>, <Status>{o.state}</Status>])} />
         </Section>
       </div>
       <Section icon="receipt" title="Monthly fee statement" hint="Example statement. Orders on Optimism or Unichain." action={<Export table="statement" />}>
@@ -183,23 +187,23 @@ function PartnerOverview({ v }: { v: Partner }) {
         <div className="c"><span className="num">{count(v.trades)}</span><span className="cap"><Icon name="arrow-left-right" size={16} />Trades</span><span className="sub">Average size ${money(v.averageTrade, 0)}</span></div>
       </div>
       <div className="g two eq sec">
-        <section className="panel"><h2 className="cap">Daily volume and fees earned</h2><Chart v={v} /></section>
-        <section className="panel"><h2 className="cap">What you earn</h2>
+        <section className="panel"><h2 className="cap">Daily volume and fees earned (example)</h2><Chart v={v} /></section>
+        <section className="panel"><h2 className="cap">What you earn (example)</h2>
           <div className="feerow"><span className="big cap-fee">{Number(v.feeBps)} bps</span><span className="txt"><b>Your fee.</b> You set it. It applies to each order sent through your integration.</span></div>
           <div className="feerow"><span className="big word">Listed</span><span className="txt"><b>In the payout ledger.</b> Each payout is a row of the ledger below, with its transaction.</span></div>
         </section>
       </div>
-      <section className="panel sec"><h2 className="cap">Where the volume comes from</h2>
+      <section className="panel sec"><h2 className="cap">Where the volume comes from (example)</h2>
         <div className="split"><div><h3 className="h-card">By chain</h3><Breakdown rows={v.chains} /></div><div><h3 className="h-card">By token</h3><Breakdown rows={v.tokens} /></div></div>
       </section>
-      <Section icon="link-2" title="Affiliate codes" hint="One code per integration. Fees follow the code." action={<Export table="codes" />}>
+      <Section icon="link-2" title="Affiliate codes" hint="Example rows. One code per integration. Fees follow the code." action={<Export table="codes" />}>
         <Table head={['Code', 'Created', 'Wallets', 'Trades', 'Volume (USD)', 'Your fee (USD)']} rows={v.codes.map((c) => [<span className="mono">{c.code}</span>, c.created, count(c.wallets), count(c.trades), money(c.volume), money(c.fee)])}
           foot={['Total', '', count(v.wallets), count(v.trades), money(v.volume), money(v.feesEarned)]} />
       </Section>
       <Section icon="hand-coins" title="Payout ledger" hint="Example rows: one per week of the series above." action={<Export table="payouts" />}>
         <Table head={['Period', 'Fees (USD)', 'Transaction', 'Paid at', 'Status']} rows={v.payouts.map((w) => [`${w.from} to ${w.to}`, money(w.fees), w.transaction ? <span className="mono">{w.transaction}</span> : <span className="muted">Not paid yet</span>, w.paidAt ?? '', <Status>{w.status}</Status>])} />
       </Section>
-      <Section icon="wallet" title="Attributed wallets" hint={`Showing ${v.attributed.length} of ${count(v.wallets)}, by volume.`} action={<Export table="wallets" />}>
+      <Section icon="wallet" title="Attributed wallets" hint={`Example rows. Showing ${v.attributed.length} of ${count(v.wallets)}, by volume.`} action={<Export table="wallets" />}>
         <Table head={['Wallet', 'Code', 'Main chain', 'Trades', 'Volume (USD)', 'Last trade (UTC)']} rows={v.attributed.map((w) => [<><span className="mono">{w.wallet}</span><small>First seen {w.firstSeen}</small></>, <span className="mono">{w.code}</span>, w.chain, w.trades, money(w.volume), w.lastTrade])} />
       </Section>
     </>
@@ -215,11 +219,11 @@ const Cost = ({ e }: { e: Estimate }) => (
 )
 const TicketFacts = ({ o }: { o: OrderBody }) => (
   <>
-    <dt>Order type</dt><dd>{o.ticket.type === 'limit' ? `Limit, at ${money(o.ticket.limitPrice ?? '')} EUR per ${o.estimate.priced}` : 'Market'}</dd>
-    <dt>You sell</dt><dd>{qty(o.ticket.amount, o.ticket.sell)}</dd>
+    <dt>Order type</dt><dd>{o.ticket.type === 'limit' ? `Limit, at ${exact(o.ticket.limitPrice ?? '')} EUR per ${o.estimate.priced}` : 'Market'}</dd>
+    <dt>You sell</dt><dd>{sold(o.ticket)}</dd>
     <dt>You buy (estimate)</dt><dd>{qty(o.estimate.received, o.ticket.buy)}</dd>
     <dt>Volume</dt><dd>{money(o.estimate.volumeEur)} EUR</dd>
-    <dt>Settle from</dt><dd>{o.wallet}</dd>
+    <dt>Settle from</dt><dd>{o.wallet}{o.address && <>, <span className="mono">{o.address}</span></>}</dd>
     <dt>Chain</dt><dd>{CHAIN[o.ticket.chainId]}</dd>
   </>
 )
@@ -282,7 +286,7 @@ function TicketForm({ v, onSent }: { v: DeskView; onSent: () => Promise<void> })
       <div className="row">{assets('Buy asset', 'buy')}
         {t.type === 'limit' && <label className="field">Limit price (EUR per {priced})<input className="input" type="text" inputMode="decimal" autoComplete="off" value={t.limitPrice} onChange={(event) => set({ limitPrice: event.target.value })} style={{ textAlign: 'right' }} /></label>}</div>
       {pills('chain', 'Chain', v.chains.map((c) => [c.id, c.name]), t.chainId, (id) => set({ chainId: Number(id) }))}
-      <label className="field">Settle from<select className="input" value={t.walletId} onChange={(event) => set({ walletId: event.target.value })}>{v.wallets.map((w) => <option key={w.id} value={w.id}>{w.label} ({w.address.slice(0, 6)}...{w.address.slice(-4)}, {w.chain})</option>)}</select></label>
+      <label className="field">Settle from<select className="input" value={t.walletId} onChange={(event) => set({ walletId: event.target.value })}>{v.wallets.map((w) => <option key={w.id} value={w.id}>{w.label} ({short(w.address)}, {w.chain})</option>)}</select></label>
       {failed}
       <button className="btn primary" type="submit" disabled={busy}><Icon name="eye" />Review order</button>
       <p className="fine"><Icon name="info" size={16} />Nothing is signed at this step. Limit of {money(v.limitEur)} EUR per order.</p>
@@ -354,8 +358,8 @@ function InstitutionDesk({ onSignedOut }: { onSignedOut: () => void }) {
       <Section icon="scroll-text" title="Order blotter" hint="Your own orders first, with their real state. Then example rows. Select an order to open its record." action={<Export table="orders" />}>
         {failed && <p className="note bad" role="alert"><Icon name="triangle-alert" /><span className="grow">{failed}</span></p>}
         <Table head={['Order', 'Type', 'Sell', 'Buy', 'Chain', 'Status', 'Actions']} rows={rows.map((o) => [
-          orderCell(o, (x) => setPicked(x.id ?? x.ref)), <>{o.ticket.type === 'limit' ? 'Limit' : 'Market'}{o.ticket.limitPrice && <small>at {money(o.ticket.limitPrice)}</small>}</>,
-          qty(o.ticket.amount, o.ticket.sell), <><span className="muted">est.</span> {qty(o.estimate.received, o.ticket.buy)}</>, CHAIN[o.ticket.chainId], <Status>{o.state}</Status>,
+          orderCell(o, (x) => setPicked(x.id ?? x.ref)), <>{o.ticket.type === 'limit' ? 'Limit' : 'Market'}{o.ticket.limitPrice && <small>at {exact(o.ticket.limitPrice)}</small>}</>,
+          sold(o.ticket), <><span className="muted">est.</span> {qty(o.estimate.received, o.ticket.buy)}</>, CHAIN[o.ticket.chainId], <Status>{o.state}</Status>,
           <>
             <button className="ib" type="button" aria-label={`Open the record of ${o.ref}`} title="Record" onClick={() => setPicked(o.id ?? o.ref)}><Icon name="file-text" /></button>
             {o.mine && o.open && <button className="ib" type="button" aria-label={`Cancel ${o.ref}`} title="Cancel order" onClick={() => cancel(o)}><Icon name="ban" /></button>}

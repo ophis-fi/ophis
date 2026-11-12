@@ -540,8 +540,8 @@ function Approval({ request, wallet, on, mayDecide, act }: { request: Request; w
             {request.kind === 'seat.role' && <><dt>Role now</dt><dd>{role(request.role)}</dd><dt>Role after</dt><dd>{role(request.value)}</dd></>}
             <dt>Requested by</dt><dd>{request.requester} ({role(request.requesterRole)})</dd>
             <dt>Second person</dt><dd>Any Owner, Admin, Approver or Compliance officer other than the requester, after a passkey check</dd>
-            {order && <><dt>Order</dt><dd>{orderWords(order)}</dd><dt>Volume</dt><dd>{money(order.estimate.volumeEur)} EUR</dd><dt>Checks passed</dt><dd>{order.checks?.join('. ')}</dd></>}
-            <dt>Applied</dt><dd>{order ? 'Approved. Not sent: demo' : request.kind === 'anchor.set' ? 'In force 72 hours after the approval' : `At the moment of the approval${early ? `, not before ${minute(request.notBefore!)}` : ''}`}</dd>
+            {order && <><dt>Order</dt><dd>{orderWords(order)}</dd><dt>Settle from</dt><dd>{order.wallet}, <span className="mono">{order.address}</span></dd><dt>Volume</dt><dd>{money(order.estimate.volumeEur)} EUR</dd><dt>Checks passed</dt><dd>{order.checks?.join('. ')}</dd></>}
+            <dt>Applied</dt><dd>{order ? 'At the moment of the approval the order reads: Approved. Not sent: demo' : request.kind === 'anchor.set' ? 'In force 72 hours after the approval' : `At the moment of the approval${early ? `, not before ${minute(request.notBefore!)}` : ''}`}</dd>
             <dt>Expires</dt><dd>{minute(request.expiresAt)}</dd>
           </dl>
         )}

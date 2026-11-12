@@ -19,6 +19,7 @@ const FEE_BPS = 1n // of the volume of an institution's order
 const PARTNER_BPS = 25n // the example partner's own fee, which the partner sets
 export const ORDER_LIMIT_EUR = 5_000_000n // per order, at the reference price
 export const MAX_OPEN_ORDERS = 20 // orders that wait for approval, per organisation
+export const ORDERS_PER_HOUR = 30 // orders one member files in an hour: preparing and cancelling in a loop fills no table
 export const PREPARERS = ['owner', 'admin', 'trader'] as const
 
 // ---- money: integers only. A decimal string becomes a bigint with 18 decimals; nothing here is a float. ----
@@ -43,7 +44,7 @@ const sum = (values: bigint[]) => values.reduce((a, b) => a + b, 0n)
 export interface Ticket { type: 'market' | 'limit'; sell: Asset; buy: Asset; amount: string; limitPrice: string | null; chainId: number; walletId: string }
 export interface Estimate { received: string; volumeEur: string; feeBps: string; feeEur: string; totalEur: string; priced: Asset | null }
 /** What an approval of kind order.demo holds, and so what the checker's passkey covers. */
-export interface Order { ticket: Ticket; wallet: string; checks: string[]; estimate: Estimate }
+export interface Order { ticket: Ticket; wallet: string; address: string; checks: string[]; estimate: Estimate }
 /** The checks an order passed. The data module makes them inside the commit that files it; the ticket checks are quote() below. */
 export const CHECKS = [
   'The preparer is an active Trader, Owner or Admin',
@@ -51,7 +52,7 @@ export const CHECKS = [
   'The wallet is linked to this organisation',
   'Both assets are permitted, and they differ',
   'The chain is Optimism or Unichain',
-  `The amount is above zero and within ${shown(ORDER_LIMIT_EUR * E, 2).replace(/\B(?=(\d{3})+\.)/g, ',')} EUR per order, at the reference price`,
+  `The amount is above zero and within ${shown(ORDER_LIMIT_EUR * E, 2).replace(/\B(?=(\d{3})+\.)/g, ',')} EUR per order, at the reference price and at the limit price`,
   `Fewer than ${MAX_OPEN_ORDERS} orders wait for approval`,
 ]
 /**
@@ -71,10 +72,11 @@ export function quote(body: Record<string, unknown>): string | { ticket: Ticket;
   if (units === null || units <= 0n) return 'amount_invalid'
   const limit = type === 'limit' ? fixed(limitPrice, 6) : null
   if (type === 'limit' ? limit === null || limit <= 0n : limitPrice !== null) return 'limit_price_invalid'
-  if ((units * price(sell)) / E > ORDER_LIMIT_EUR * E) return 'over_limit'
   const priced = type === 'limit' ? (sell === 'ETH' ? sell : buy) : null
   const at = (asset: Asset) => (asset === priced ? limit! : price(asset))
   const volume = (units * at(sell)) / E
+  // The limit per order holds at the reference price and at the order's own price: a limit price moves the volume.
+  if ((units * price(sell)) / E > ORDER_LIMIT_EUR * E || volume > ORDER_LIMIT_EUR * E) return 'over_limit'
   const fee = bps(volume, FEE_BPS)
   return {
     ticket: { type, sell, buy, amount: amount as string, limitPrice: type === 'limit' ? (limitPrice as string) : null, chainId, walletId },
@@ -84,6 +86,11 @@ export function quote(body: Record<string, unknown>): string | { ticket: Ticket;
     },
   }
 }
+/**
+ * The order as it is stored and approved: the ticket and the estimate of quote(), the wallet's name and address (two
+ * wallets may share a name), the checks. judge() refuses any other form.
+ */
+export const built = (quoted: Exclude<ReturnType<typeof quote>, string>, wallet: string, address: string): Order => ({ ...quoted, wallet, address, checks: CHECKS })
 /** What the blotter says of an approval row of kind order.demo. An approved order is final: nothing is sent. */
 export const orderState = (state: string, open: boolean) =>
   state === 'pending' ? (open ? 'Pending approval' : 'Expired') : state === 'applied' ? 'Approved. Not sent: demo' : state === 'rejected' ? 'Refused' : 'Cancelled'
@@ -108,7 +115,7 @@ const MONTHS: [month: string, trades: number, volumeEur: string][] = [['2026-11,
 /** The example orders, each with the estimate quote() gives its ticket. */
 export const examples = () => PAST.map(({ ticket, ...o }) => {
   const q = quote({ ...ticket, walletId: '0'.repeat(32) }) as Exclude<ReturnType<typeof quote>, string>
-  return { ...o, at: Date.parse(o.at), tx: o.tx ?? null, ticket: q.ticket, wallet: 'Operations Safe', estimate: q.estimate }
+  return { ...o, at: Date.parse(o.at), tx: o.tx ?? null, ticket: q.ticket, wallet: HOLDINGS[1].wallet, address: HOLDINGS[1].address, estimate: q.estimate }
 })
 export function institution() {
   const balances = HOLDINGS.map((w) => {
@@ -181,8 +188,8 @@ export function partner() {
 
 // ---- CSV: the tables behind every "Export CSV" button. The router adds the column source = demo to each row. ----
 type Table = [head: string[], rows: unknown[][]]
-const orderRow = (o: { ref: string; at: number; state: string; ticket: Ticket; wallet: string; estimate: Estimate }) =>
-  [o.ref, new Date(o.at).toISOString(), o.ticket.type, o.ticket.sell, o.ticket.amount, o.ticket.buy, o.estimate.received, o.ticket.limitPrice ?? '', CHAINS[o.ticket.chainId], o.wallet, o.estimate.volumeEur, o.estimate.feeEur, o.state]
+const orderRow = (o: { ref: string; at: number; state: string; ticket: Ticket; wallet: string; address: string; estimate: Estimate }) =>
+  [o.ref, new Date(o.at).toISOString(), o.ticket.type, o.ticket.sell, o.ticket.amount, o.ticket.buy, o.estimate.received, o.ticket.limitPrice ?? '', CHAINS[o.ticket.chainId], o.wallet, o.address, o.estimate.volumeEur, o.estimate.feeEur, o.state]
 /** The tables an organisation of this kind can export; `own` are its own orders, shown before the examples. */
 export function tables(kind: string, own: Parameters<typeof orderRow>[0][]): Record<string, Table> {
   if (kind === 'partner') {
@@ -197,7 +204,7 @@ export function tables(kind: string, own: Parameters<typeof orderRow>[0][]): Rec
   const i = institution()
   return {
     balances: [['Wallet', 'Address', 'Chain', 'Asset', 'Balance', 'Value (EUR)'], i.balances.flatMap((w) => w.rows.map((r) => [w.wallet, w.address, w.chain, r.asset, r.balance, r.valueEur]))],
-    orders: [['Order', 'Prepared at', 'Type', 'Sell', 'Amount', 'Buy', 'Estimate received', 'Limit price (EUR)', 'Chain', 'Wallet', 'Volume (EUR)', 'Fee (EUR)', 'Status'], [...own, ...i.examples].map(orderRow)],
+    orders: [['Order', 'Prepared at', 'Type', 'Sell', 'Amount', 'Buy', 'Estimate received', 'Limit price (EUR)', 'Chain', 'Wallet', 'Wallet address', 'Volume (EUR)', 'Fee (EUR)', 'Status'], [...own, ...i.examples].map(orderRow)],
     statement: [['Month', 'Trades', 'Volume (EUR)', 'Fee (bps)', 'Fee (EUR)'], i.months.map((m) => [m.month, m.trades, m.volumeEur, m.feeBps, m.feeEur])],
     assets: [['Asset', 'Issuer', 'Status', 'Reference price (EUR)'], desk().assets.map((a) => [a.symbol, a.issuer, a.status, a.eur])],
   }

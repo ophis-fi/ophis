@@ -993,7 +993,7 @@ try {
   await tess.page.getByText('Sent for approval.').waitFor()
   const blotter = (who) => who.page.locator('section', { has: who.page.getByRole('heading', { name: 'Order blotter' }) }).locator('tbody tr')
   check('the order is sent for approval, reads in words, and is the first row of the blotter with its real state',
-    await tess.page.getByText(`${SENTENCE}.`).isVisible() && /^ORD-[0-9a-f]{8}.*Pending approval/.test(await blotter(tess).first().textContent()) && (await blotter(tess).count()) === 8)
+    await tess.page.getByText(new RegExp(`${SENTENCE} \\(0x[0-9a-fA-F]{4}\\.{3}[0-9a-fA-F]{4}\\)\\.`)).isVisible() && /^ORD-[0-9a-f]{8}.*Pending approval/.test(await blotter(tess).first().textContent()) && (await blotter(tess).count()) === 8)
   await arrive(tess, false)
   check('the Trader sees the own request under Approvals, with no way to approve it', await tess.page.getByText(SENTENCE).first().isVisible()
     && await tess.page.getByRole('button', { name: 'Cancel request' }).isVisible() && (await tess.page.getByRole('button', { name: 'Approve' }).count()) === 0)
@@ -1004,7 +1004,7 @@ try {
   await card.getByRole('button', { name: 'Review' }).click()
   check('the Approver reads the order in words, its estimate, who asked, and that nothing is sent', await card.getByRole('heading', { name: 'Demo order' }).isVisible()
     && await card.getByText('Requested by Tess Trader (Trader)').first().isVisible() && await card.getByText('Demo: approving records the decision and sends nothing.').isVisible()
-    && await card.locator('dl.kv dd', { hasText: 'Approved. Not sent: demo' }).isVisible() && await both(abe.page, '50-order-approval', 'article.appr >> nth=0'))
+    && await card.locator('dl.kv dd', { hasText: 'Approved. Not sent: demo' }).isVisible() && /^0x[0-9a-fA-F]{40}$/.test(await card.locator('dl.kv .mono').textContent()) && await both(abe.page, '50-order-approval', 'article.appr >> nth=0'))
   await card.getByRole('button', { name: 'Approve' }).click()
   await card.waitFor({ state: 'detached' })
   await desk(tess)
@@ -1022,18 +1022,18 @@ try {
   await tess.page.setViewportSize({ width: 1440, height: 900 })
 
   // The same for an order the Approver refuses.
-  await ticket.getByLabel('Amount to sell').fill('1000')
+  await ticket.getByLabel('Amount to sell').fill('1000.123456') // every decimal a member typed is shown, never cut
   await ticket.getByRole('button', { name: 'Review order' }).click()
   await review.getByRole('button', { name: 'Send for approval' }).click()
   await tess.page.getByText('Sent for approval.').waitFor()
   await arrive(abe, false)
-  const refusedCard = abe.page.locator('article.appr', { hasText: 'Sell 1,000.00 EURC for ETH' })
+  const refusedCard = abe.page.locator('article.appr', { hasText: 'Sell 1,000.123456 EURC for ETH' })
   await refusedCard.getByRole('button', { name: 'Reject' }).click()
   await refusedCard.waitFor({ state: 'detached' })
   await desk(tess)
   await blotter(tess).first().getByRole('button', { name: /Open the record of ORD-/ }).click()
   check('a refused order shows as refused in the blotter and in its record, with who refused it',
-    (await blotter(tess).first().textContent()).includes('Refused') && await record.getByText(/Refused by Abe Approver on 20\d\d-/).isVisible() && await record.getByText('Sell 1,000.00 EURC for ETH, market, Optimism, from Demo wallet').isVisible()
+    (await blotter(tess).first().textContent()).includes('Refused') && await record.getByText(/Refused by Abe Approver on 20\d\d-/).isVisible() && await record.getByText('Sell 1,000.123456 EURC for ETH, market, Optimism, from Demo wallet').isVisible()
     && (await blotter(tess).nth(1).textContent()).includes('Approved. Not sent: demo') && (await blotter(tess).nth(2).textContent()).includes('Example'))
 
   // One CSV, downloaded and read back.
@@ -1041,13 +1041,13 @@ try {
   const orderLines = readFileSync(await orderFile.path(), 'utf8').split('\r\n').filter(Boolean)
   check('the export of the blotter downloads: named ophis-demo-, the own orders first with their real state, every row with source = demo',
     /^ophis-demo-orders-\d{4}-\d\d-\d\d\.csv$/.test(orderFile.suggestedFilename()) && orderLines[0].endsWith(',"Status","source"') && orderLines.length === 10 && orderLines.slice(1).every((row) => row.endsWith(',"demo"'))
-    && orderLines[1].includes('"1000"') && orderLines[1].includes('"Refused"') && orderLines[2].includes('"250000"') && orderLines[2].includes('"Approved. Not sent: demo"') && orderLines[3].startsWith('"ORD-2611-0142"'))
+    && orderLines[1].includes('"1000.123456"') && orderLines[1].includes('"Refused"') && orderLines[2].includes('"250000"') && orderLines[2].includes('"Approved. Not sent: demo"') && orderLines[3].startsWith('"ORD-2611-0142"'))
 
   await open(tess, 'overview', 'Your position, in one view.')
   const recent = tess.page.locator('section', { has: tess.page.getByRole('heading', { name: 'Recent orders' }) }).locator('tbody tr')
   check('the institution overview: tiles, balances by wallet, the own orders first with their real state, then examples, the fee statement',
     (await recent.first().textContent()).includes('Refused') && (await recent.nth(1).textContent()).includes('Approved. Not sent: demo') && (await recent.nth(2).textContent()).includes('Example')
-    && await tess.page.getByText('Treasury Safe').isVisible() && await tess.page.getByRole('heading', { name: 'Monthly fee statement' }).isVisible() && await tess.page.getByText('17,920,000.00').first().isVisible()
+    && await tess.page.getByText('Treasury Safe').isVisible() && await tess.page.getByText('Example wallets and balances, not your linked wallets.').isVisible() && await tess.page.getByRole('heading', { name: 'Monthly fee statement' }).isVisible() && await tess.page.getByText('17,920,000.00').first().isVisible()
     && await both(tess.page, '45-overview-institution'))
   for (const who of [dana, tess, abe]) await who.context.close()
 

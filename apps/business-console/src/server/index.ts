@@ -818,8 +818,10 @@ async function order(c: Context) {
   if (typeof quoted === 'string') return fail(400, quoted)
   const wallet = (await data.wallets(c.env.DB, c.actor.orgId, c.now)).find((w) => w.id === quoted.ticket.walletId && w.state === 'linked')
   if (!wallet) return refuse('wallet_not_linked')
-  const prepared: demo.Order = { ...quoted, wallet: wallet.label, checks: demo.CHECKS }
+  const prepared = demo.built(quoted, wallet.label, checksum(wallet.address))
   if (c.body.send !== true) return json(200, { demo: true, ...prepared })
+  // The one write route that asks for no fresh passkey check: a member files so many orders an hour and no more.
+  if (!(await data.countHour(c.env.DB, `order:${c.actor.seatId}`, c.now, demo.ORDERS_PER_HOUR))) return fail(429, 'order_rate')
   const outcome = await data.change(c.env.DB, c.actor, 'order.demo', data.randomId(), JSON.stringify(prepared), c.now)
   return 'error' in outcome ? refuse(outcome.error) : json(200, { demo: true, ...outcome })
 }

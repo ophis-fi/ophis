@@ -5,8 +5,8 @@
 // Every state change goes through commit(): the change and its audit row are one db.batch(), which D1
 // runs as one transaction. If the audit row cannot be written, the change is not made.
 
-import { colour, type SafeState } from './chain.ts'
-import { MAX_OPEN_ORDERS, PREPARERS, quote, type Order } from './demo.ts'
+import { checksum, colour, type SafeState } from './chain.ts'
+import { built, MAX_OPEN_ORDERS, PREPARERS, quote, type Order } from './demo.ts'
 
 export type Role = 'owner' | 'admin' | 'trader' | 'approver' | 'compliance' | 'viewer'
 export const ROLES: Role[] = ['owner', 'admin', 'trader', 'approver', 'compliance', 'viewer']
@@ -734,23 +734,26 @@ async function judge(db: D1Database, orgId: string, role: Role, kind: Kind | Dir
     // Demo mode: an order of the desk (demo.ts). The value is the order the router built: ticket, checks, estimate.
     // Everything that decides it is read here, when it is filed and again when it is approved: the ticket checks,
     // the organisation (an active institution, not in quarantine), the preparer (`by`: an active seat whose role
-    // may prepare, now), the wallet (this organisation's, linked) and the number of orders that wait.
+    // may prepare, now), the wallet (this organisation's, linked, with this name and address) and the number of orders that wait.
     // Applying it changes nothing: no order is ever sent, signed or executed.
     // ponytail: the wallet's own chain is not compared with the order's chain (Unichain is no wallet chain yet, and a
     // demo order settles nowhere). A real desk checks that the wallet exists on the chain of the order.
     const order = JSON.parse(value ?? 'null') as Order | null
     const quoted = order ? quote({ ...order.ticket }) : 'invalid'
     if (!order || typeof quoted === 'string') return quoted as string
+    // The order is exactly what this server builds from the ticket now: an estimate of other prices, other checks or
+    // one more field is refused, when it is filed and when it is approved.
+    if (JSON.stringify(built(quoted, order.wallet, order.address)) !== value) return 'invalid'
     const r = await db.prepare(`SELECT o.kind, s.role, max(COALESCE(s.quarantine_until, 0), COALESCE(o.quarantine_until, 0)) AS quarantine,
-                                  (SELECT w.label FROM wallets w WHERE w.org_id = o.id AND w.id = ?1 AND w.state = 'linked') AS wallet,
+                                  (SELECT w.label FROM wallets w WHERE w.org_id = o.id AND w.id = ?1 AND w.state = 'linked') AS wallet, (SELECT w.address FROM wallets w WHERE w.org_id = o.id AND w.id = ?1) AS address,
                                   (SELECT count(*) FROM approvals a WHERE a.org_id = o.id AND a.action = 'order.demo' AND a.subject_id <> ?2 AND a.state = 'pending' AND a.expires_at > ?3) AS waiting
                                 FROM organisations o LEFT JOIN seats s ON s.org_id = o.id AND s.id = ?4 AND s.state = 'active' WHERE o.id = ?5 AND o.state = 'active'`)
-      .bind(order.ticket.walletId, subjectId, now, by, orgId).first<{ kind: string; role: Role | null; quarantine: number; wallet: string | null; waiting: number }>()
+      .bind(order.ticket.walletId, subjectId, now, by, orgId).first<{ kind: string; role: Role | null; quarantine: number; wallet: string | null; address: string | null; waiting: number }>()
     return !r ? 'org_inactive'
       : r.kind !== 'institution' ? 'institution_only'
       : !r.role || !(PREPARERS as readonly Role[]).includes(r.role) ? 'forbidden'
       : r.quarantine > now ? 'quarantine'
-      : r.wallet === null || r.wallet !== order.wallet ? 'wallet_not_linked'
+      : r.wallet === null || r.wallet !== order.wallet || checksum(r.address!) !== order.address ? 'wallet_not_linked'
       : r.waiting >= MAX_OPEN_ORDERS ? 'too_many_orders'
       : { detail: null, apply: [] }
   }

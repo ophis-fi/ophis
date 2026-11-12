@@ -11,7 +11,7 @@ import passkeySource from '../src/server/passkeys.ts?raw'
 import * as data from '../src/server/data.ts'
 import { csvCell, EVENTS, handle, routes, type Env } from '../src/server/index.ts'
 import { challengeIsOurs, configFor, credentialHash, fromBase64Url, newChallenge, phraseFor, seal, toBase64Url, userHandle } from '../src/server/passkeys.ts'
-import { colour, LIMITS, SAFES, type SafeState } from '../src/server/chain.ts'
+import { checksum, colour, LIMITS, SAFES, type SafeState } from '../src/server/chain.ts'
 import { LINK_ACTION, PROOF_ACTION, typedLink, typedProof } from '../src/server/typed.ts'
 import { WORDS } from '../src/server/words.ts'
 import * as demo from '../src/server/demo.ts'
@@ -7993,9 +7993,10 @@ async function actorOf(m: Holder & { orgId: string; seatId: string }, role: stri
   return { orgId: m.orgId, seatId: m.seatId, sessionId, role: role as data.Role, quarantineUntil: null, country: null, asn: null }
 }
 const orderOf = async (id: string) => {
-  const r = (await row<{ action: string; state: string; payload: string; payload_hash: string; subject_id: string; requester_seat_id: string; checker_seat_id: string | null }>('SELECT * FROM approvals WHERE id = ?', id))!
+  const r = (await row<{ id: string; action: string; state: string; payload: string; payload_hash: string; subject_id: string; requester_seat_id: string; checker_seat_id: string | null }>('SELECT * FROM approvals WHERE id = ?', id))!
   return { ...r, order: JSON.parse(JSON.parse(r.payload).value) as demo.Order }
 }
+const addressOf = async (walletId: string) => checksum((await row<{ address: string }>('SELECT address FROM wallets WHERE id = ?', walletId))!.address)
 const deskOrders = async (m: Holder) => (await get('/api/desk', m)).body.orders as (demo.Order & { id: string; state: string; open: boolean; mine: boolean; preparer: string; preparerRole: string; decidedBy: string | null; decidedAt: number | null; ref: string })[]
 const sayOf = async (m: Holder) => ((await get('/api/audit', m)).body.rows as { event: string }[]).map((r) => r.event)
 
@@ -8006,7 +8007,7 @@ isolation['POST /api/desk/orders'] = async (a, b) => {
   // The wallet of another organisation is no wallet of this one, in the review step and when the order is sent.
   for (const send of [false, true]) expect((await prepare(a, other, { send })).body).toEqual({ error: 'wallet_not_linked' })
   // Inside the commit too: a payload that names B's wallet, handed to the data module as A.
-  const forged: demo.Order = { ...(demo.quote({ ...TICKET, walletId: other }) as { ticket: demo.Ticket; estimate: demo.Estimate }), wallet: 'Wallet of B', checks: demo.CHECKS }
+  const forged: demo.Order = { ...(demo.quote({ ...TICKET, walletId: other }) as { ticket: demo.Ticket; estimate: demo.Estimate }), wallet: 'Wallet of B', address: await addressOf(other), checks: demo.CHECKS }
   expect(await data.change(db, await actorOf(a, 'owner'), 'order.demo', data.randomId(), JSON.stringify(forged), now)).toEqual({ error: 'wallet_not_linked' })
   expect(await snapshot()).toBe(before)
   // An order of A: B does not see it, and can neither approve, reject nor cancel it.
@@ -8137,7 +8138,7 @@ describe('H. demo mode: overview, desk and partner figures', () => {
     const r = await orderOf(sent.body.id)
     expect(r).toMatchObject({ action: 'order.demo', state: 'pending', requester_seat_id: t.seatId, checker_seat_id: null, payload_hash: await data.sha256Hex(r.payload) })
     expect(r.order).toEqual({
-      ticket: { ...TICKET, limitPrice: null, walletId }, wallet: 'Operations Safe', checks: demo.CHECKS,
+      ticket: { ...TICKET, limitPrice: null, walletId }, wallet: 'Operations Safe', address: await addressOf(walletId), checks: demo.CHECKS,
       estimate: { received: '84.73728813', volumeEur: '250000.00', feeBps: '1.00', feeEur: '25.00', totalEur: '25.00', priced: null },
     })
     expect(r.order.checks).toHaveLength(7)
@@ -8269,13 +8270,14 @@ describe('H. demo mode: overview, desk and partner figures', () => {
     expect((await prepare(t, walletId, { ...lies, send: false })).body).toEqual(plain)
     const { id } = (await prepare(t, walletId, lies)).body
     const { order } = await orderOf(id)
-    expect(order).toEqual({ ticket: plain.ticket, wallet: 'Operations Safe', checks: demo.CHECKS, estimate: plain.estimate })
+    expect(order).toEqual({ ticket: plain.ticket, wallet: 'Operations Safe', address: await addressOf(walletId), checks: demo.CHECKS, estimate: plain.estimate })
     expect(Object.keys(order.ticket).sort()).toEqual(['amount', 'buy', 'chainId', 'limitPrice', 'sell', 'type', 'walletId'])
   })
 
   it('D2: every check is made again inside the commit that files the order: role now, an active institution, quarantine, the wallet, the ticket', async () => {
     const { o, t, walletId } = await deskTeam()
-    const value = (more: Record<string, unknown> = {}) => JSON.stringify({ ...(demo.quote({ ...TICKET, walletId }) as object), wallet: 'Operations Safe', checks: demo.CHECKS, ...more })
+    const address = await addressOf(walletId)
+    const value = (more: Record<string, unknown> = {}) => JSON.stringify({ ...(demo.quote({ ...TICKET, walletId }) as object), wallet: 'Operations Safe', address, checks: demo.CHECKS, ...more })
     const trader = await actorOf(t, 'trader')
     const file = (payload = value()) => data.change(db, trader, 'order.demo', data.randomId(), payload, now)
     const seat = (set: string) => db.prepare(`UPDATE seats SET ${set} WHERE id = ?`).bind(t.seatId).run()
@@ -8394,6 +8396,77 @@ describe('H. demo mode: overview, desk and partner figures', () => {
     expect((await prepare(await again(t), walletId)).status).toBe(200)
   })
 
+  // ---- the independent review of this milestone: each of these was seen failing before its fix ----
+  it('review D: the limit per order also holds at the limit price of the order, not only at the reference price', async () => {
+    const { t, walletId } = await deskTeam()
+    const before = await snapshot()
+    const sellEth = { type: 'limit', sell: 'ETH', buy: 'EURC' }
+    // 1 ETH at a limit of 999,999,999 EUR is a volume of 999,999,999 EUR. A low limit price does not hide 1,694.92 ETH either.
+    for (const more of [{ ...sellEth, amount: '1', limitPrice: '999999999' }, { ...sellEth, amount: '1', limitPrice: '5000000.01' }, { ...sellEth, amount: '1694.92', limitPrice: '1' }]) {
+      for (const send of [false, true]) expect((await prepare(t, walletId, { ...more, send })).body, JSON.stringify(more)).toEqual({ error: 'over_limit' })
+    }
+    expect(await snapshot()).toBe(before)
+    expect((await prepare(t, walletId, { ...sellEth, amount: '1', limitPrice: '5000000', send: false })).body.estimate.volumeEur).toBe('5000000.00')
+    expect(demo.CHECKS[5]).toBe('The amount is above zero and within 5,000,000.00 EUR per order, at the reference price and at the limit price')
+  })
+
+  it('review D: an order is exactly what this server builds now: another estimate, other checks or an extra field are refused when it is filed and when it is approved', async () => {
+    const { a, t, walletId } = await deskTeam()
+    const built = { ...(demo.quote({ ...TICKET, walletId }) as object), wallet: 'Operations Safe', address: await addressOf(walletId), checks: demo.CHECKS } as demo.Order
+    const trader = await actorOf(t, 'trader')
+    const file = (order: object) => data.change(db, trader, 'order.demo', data.randomId(), JSON.stringify(order), now)
+    const before = await snapshot()
+    const forged = [
+      { ...built, estimate: { ...built.estimate, received: '999999' } }, { ...built, estimate: { ...built.estimate, feeEur: '0.00', totalEur: '0.00' } },
+      { ...built, checks: [] }, { ...built, note: 'x' }, { ...built, ticket: { ...built.ticket, memo: 'x' } },
+    ]
+    for (const order of forged) expect(await file(order), JSON.stringify(order).slice(0, 200)).toEqual({ error: 'invalid' })
+    expect(await snapshot()).toBe(before)
+    // A row whose estimate is not the one of today's prices (a price changed since it was prepared): not approved.
+    const { id } = (await prepare(t, walletId)).body
+    await db.prepare('UPDATE approvals SET payload = ? WHERE id = ?').bind(JSON.stringify({ value: JSON.stringify(forged[0]) }), id).run()
+    expect((await decide(a, id, 'approve')).body).toEqual({ error: 'invalid' })
+    expect((await approvalOf(id))?.state).toBe('pending')
+    expect(await file(built)).toMatchObject({ state: 'requested' })
+  })
+
+  it('review D: an order names its wallet by address too: two wallets with one name are told apart, and an address that is not the wallet\'s is refused', async () => {
+    const { a, t, walletId } = await deskTeam()
+    const twin = await demoWallet(t.orgId) // a second wallet with the same name: nothing forbids it
+    const [first, second] = [await orderOf((await prepare(t, walletId)).body.id), await orderOf((await prepare(t, twin)).body.id)]
+    expect([first.order.wallet, first.order.address]).toEqual(['Operations Safe', await addressOf(walletId)])
+    expect([second.order.wallet, second.order.address]).toEqual(['Operations Safe', await addressOf(twin)])
+    expect(first.order.address).not.toBe(second.order.address)
+    expect((await prepare(t, twin, { send: false })).body.address).toBe(second.order.address)
+    expect((await deskOrders(a)).map((x) => x.address)).toEqual([second.order.address, first.order.address])
+    // The address is read again inside the commit: the twin's address on the first wallet's order is refused.
+    const trader = await actorOf(t, 'trader')
+    const forged = { ...first.order, address: second.order.address }
+    expect(await data.change(db, trader, 'order.demo', data.randomId(), JSON.stringify(forged), now)).toEqual({ error: 'wallet_not_linked' })
+    await db.prepare('UPDATE approvals SET payload = ? WHERE id = ?').bind(JSON.stringify({ value: JSON.stringify(forged) }), first.id).run()
+    expect((await decide(a, first.id, 'approve')).body).toEqual({ error: 'wallet_not_linked' })
+    expect((await decide(a, second.id, 'approve')).status).toBe(200)
+    expect(demo.examples().every((x) => /^0x[0-9a-fA-F]{4}\.\.\.[0-9a-fA-F]{4}$/.test(x.address))).toBe(true)
+  })
+
+  it('review D: a member files at most 30 orders an hour, so preparing and cancelling in a loop cannot fill the tables; a review counts nothing', async () => {
+    const { o, t, walletId } = await deskTeam()
+    for (let i = 0; i < demo.ORDERS_PER_HOUR; i += 1) {
+      const sent = await prepare(t, walletId)
+      expect(sent.status, String(i)).toBe(200)
+      expect((await decide(t, sent.body.id, 'cancel')).status).toBe(200)
+    }
+    const before = await snapshot()
+    const refused = await prepare(t, walletId)
+    expect([refused.status, refused.body]).toEqual([429, { error: 'order_rate' }])
+    expect(await snapshot()).toBe(before)
+    expect((await prepare(t, walletId, { send: false })).status).toBe(200) // the review step
+    expect((await prepare(t, walletId, { amount: '-1' })).body).toEqual({ error: 'amount_invalid' })
+    expect((await prepare(o, walletId)).status).toBe(200) // counted per member
+    now += HOUR
+    expect((await prepare(await again(t), walletId)).status).toBe(200)
+  })
+
   it('D3: every export is built by the server: the name starts with "ophis-demo-", each row has the column source = demo, and the tables follow the kind of the organisation', async () => {
     const { o, a, t } = await deskTeam()
     const viewer = await colleague(o, 'viewer')
@@ -8428,8 +8501,9 @@ describe('H. demo mode: overview, desk and partner figures', () => {
     const second = (await prepare(o, hostile, { amount: '12.5' })).body.id as string
     expect((await decide(a, first, 'approve')).status).toBe(200)
     const file = await exported(o, 'orders')
-    expect(file.rows[0]).toEqual(['Order', 'Prepared at', 'Type', 'Sell', 'Amount', 'Buy', 'Estimate received', 'Limit price (EUR)', 'Chain', 'Wallet', 'Volume (EUR)', 'Fee (EUR)', 'Status', 'source'])
-    expect(file.rows.slice(1, 3).map((r) => [r[0], r[4], r[9], r[12]])).toEqual([[`ORD-${second.slice(0, 8)}`, '12.5', "'-2+3 (cmd)", 'Pending approval'], [`ORD-${first.slice(0, 8)}`, '250000', 'Operations Safe', 'Approved. Not sent: demo']])
+    expect(file.rows[0]).toEqual(['Order', 'Prepared at', 'Type', 'Sell', 'Amount', 'Buy', 'Estimate received', 'Limit price (EUR)', 'Chain', 'Wallet', 'Wallet address', 'Volume (EUR)', 'Fee (EUR)', 'Status', 'source'])
+    expect(file.rows[1][10]).toBe(await addressOf(hostile))
+    expect(file.rows.slice(1, 3).map((r) => [r[0], r[4], r[9], r[13]])).toEqual([[`ORD-${second.slice(0, 8)}`, '12.5', "'-2+3 (cmd)", 'Pending approval'], [`ORD-${first.slice(0, 8)}`, '250000', 'Operations Safe', 'Approved. Not sent: demo']])
     expect(file.rows.slice(3).map((r) => r[0])).toEqual(demo.examples().map((x) => x.ref))
     expect(file.body.csv).toContain(`"'-2+3 (cmd)"`)
     for (const [value, cell] of [['=1+1', `"'=1+1"`], ['+1', `"'+1"`], ['-1', `"'-1"`], ['@SUM(A1)', `"'@SUM(A1)"`], ['\tx', `"'\tx"`], ['\rx', `"'\rx"`], ['a"b', '"a""b"'], ['1.5', '"1.5"'], ['', '""'], [null, '""']] as const) expect(csvCell(value)).toBe(cell)
@@ -8472,6 +8546,13 @@ describe('H. demo mode: overview, desk and partner figures', () => {
       'Illustrative. Each token is checked against the ESMA register before launch', 'Signing in the wallet is not part of this demo.', 'The desk is for institutions.', 'Use a larger screen.', 'Execution: none, demo', 'Sent for approval.',
     ]) expect(deskPage, sentence).toContain(sentence)
     expect(demo.orderState('applied', false)).toBe('Approved. Not sent: demo')
+    // Review: every panel of figures says "example" or "demo" itself, also where the banner has scrolled away, and no
+    // example wallet is called a linked wallet. What a member typed (amount, limit price) is shown whole, never cut.
+    for (const sentence of ['title="Balances by wallet" hint="Example wallets and balances, not your linked wallets."', 'Daily volume and fees earned (example)', 'What you earn (example)', 'Where the volume comes from (example)',
+      'hint="Example rows. One code per integration. Fees follow the code."', 'hint={`Example rows. Showing ', 'hint="Example rows: one per week of the series above."', 'hint="Example statement.']) expect(deskPage, sentence).toContain(sentence)
+    expect(deskPage).not.toMatch(/linked wallet"/)
+    expect(deskPage).not.toMatch(/(qty|money)\((\w+\.)*ticket\.(amount|limitPrice)/)
+    expect(pagesSource).toContain('<dt>Settle from</dt><dd>{order.wallet}, <span className="mono">{order.address}</span></dd>')
     // The banner is on both pages, in every view of them; the footer line is the shell's, so it is on every screen.
     expect(deskPage.match(/<Banner \/>/g)).toHaveLength(3)
     expect(shellPage).toContain('<footer className="foot-line">Ophis is a software provider. It is not a crypto-asset service provider.</footer>')
