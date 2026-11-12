@@ -20,6 +20,9 @@ npx -y pnpm@10.34.9 operator list        # milestone 5: the operator's command (
 
 `seed` writes `.dev.vars` when it is missing and adds what it lacks (the challenge key, the operator's token, two client secrets for the local stand-in, and `INDEXER_URL` with `INDEXER_TOKEN` for the local stand-in of the rebate indexer). It is git-ignored: never commit or print it.
 
+## The quick look: one command, no security key
+`npx -y pnpm@10.34.9 tour` (from this folder) starts the local server on a throwaway database and opens three Chrome windows, each already signed in with a test key: the Owner of a partner (Overview, with the figures of the local stand-in), the Owner of an institution (Desk) and its Approver (Organisation, Approvals). Prepare an order in window 2 and approve it in window 3. Passkey checks answer by themselves in these three tabs only: a new tab has no key. Ctrl+C in the terminal, or quitting that Chrome, stops everything. Port 8787 must be free. `TOUR_CHECK=1` runs it without a window: the Owner sends an order, the Approver approves it, and it ends (`TOUR_CHECK=window`: the same with the windows).
+
 ## A tester gets in, step by step
 Everything starts at http://localhost:8787 (the console). Use Chrome. Each person needs a security key of their own, or a Chrome virtual authenticator per browser profile (DevTools, More tools, WebAuthn: ctap2, usb, resident keys, user verification).
 1. Once: `install`, `migrate`, then `seed -- --company microsoft` (or plain `seed` for the three-word path). Keep the link it prints (10 minutes).

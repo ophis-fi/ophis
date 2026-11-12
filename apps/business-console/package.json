@@ -15,6 +15,7 @@
     "activate": "node scripts/dev.mjs activate",
     "skip": "node scripts/dev.mjs skip",
     "dev": "vite build && vite build --mode sign && node scripts/dns-stub.mjs wrangler dev",
+    "tour": "vite build && vite build --mode sign && node scripts/tour.mjs",
     "dns": "node scripts/dns-stub.mjs set",
     "operator": "node scripts/operator.mjs",
     "test": "vite build && vite build --mode sign && vitest run",
