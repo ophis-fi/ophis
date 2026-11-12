@@ -942,7 +942,9 @@ async function api(request: Request, env: Env, clock: () => number, config: Conf
     if (!bytes) return fail(413, 'too_large')
     context.bytes = bytes
     context.now = clock()
-    if (!(await sessionOf(request, env, context.now))) return fail(401, 'signed_out')
+    const still = await sessionOf(request, env, context.now)
+    if (!still) return fail(401, 'signed_out')
+    if (route.fresh && context.now - still.step_up_at > STEP_UP_MS) return fail(403, 'step_up_required') // review of 5b: a slow body does not stretch the 5 minutes
   }
   // A change for two people has no handler of its own: all this route can do is file the request.
   return route.second ? change(context, route.second) : route.handler!(context)

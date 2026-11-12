@@ -12,7 +12,7 @@
 // Sources: registry, gleif, supervisor_register, declaration. Tiers: standard, enhanced.
 // The command sets nothing else: the API takes no passkey, no member and no wallet address.
 import { createHash } from 'node:crypto'
-import { readFileSync, writeFileSync } from 'node:fs'
+import { existsSync, readFileSync, writeFileSync } from 'node:fs'
 import { request } from 'node:http'
 import { parseArgs } from 'node:util'
 
@@ -51,8 +51,15 @@ function call(method, path, body) {
     }).on('error', reject).end(text)
   })
 }
+// Review of 5b: asked before anything else. A download is a row in the client's audit log: none for bytes that would be thrown away.
+if (command === 'get' && values.out && existsSync(values.out)) {
+  console.error(`Refused: the file exists (${values.out}). Nothing was asked. Name another file.`)
+  process.exit(1)
+}
 const base = '/api/operator/organisations'
-const answer = command === 'list' ? await call('GET', base)
+// Review of 5b: an id is 32 hex characters, as the server makes them. Anything else never becomes a path: ".." would name another route.
+const answer = id !== undefined && !/^[0-9a-f]{32}$/.test(id) ? null
+  : command === 'list' ? await call('GET', base)
   : command === 'invite' ? await call('POST', '/api/operator/invites', {})
   : command === 'decide' && id && decision ? await call('POST', `${base}/${id}/decision`, { decision, tier: values.tier, source: values.source, reason: values.reason, evidenceRef: values.evidence, evidenceSha256: values.sha256, nextReview: values['next-review'], submission: values.submission })
   : (command === 'freeze' || command === 'unfreeze') && id ? await call('POST', `${base}/${id}/${command}`, {})

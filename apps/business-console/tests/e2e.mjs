@@ -22,8 +22,8 @@
 // Starts and stops its own local server on a throwaway database. Run: pnpm test:e2e
 import { execFileSync, spawn } from 'node:child_process'
 import { createHash } from 'node:crypto'
-import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync } from 'node:fs'
-import { request as httpRequest } from 'node:http'
+import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { createServer, request as httpRequest } from 'node:http'
 import { Decrypter } from 'age-encryption' // milestone 5b: opens the downloaded file with the local test identity, as the operator would offline
 import { chromium } from 'playwright-core'
 import { mnemonicToAccount } from 'viem/accounts'
@@ -759,6 +759,14 @@ try {
   await on.emulateMedia({ media: 'print' })
   check('printed, the declaration stands alone', await paper.isVisible() && await on.getByRole('button', { name: 'Print the declaration' }).isHidden() && await on.locator('.bar').isHidden() && await on.locator('.band').isHidden() && await on.getByRole('button', { name: 'Submit for review' }).isHidden())
   await on.screenshot({ path: '.shots/42-declaration-print.png', fullPage: true })
+  await on.setViewportSize({ width: 390, height: 844 })
+  await on.screenshot({ path: '.shots/42-declaration-print-phone.png', fullPage: true })
+  check('printed at the width of a phone, the declaration fits', await on.evaluate(() => document.documentElement.scrollWidth <= innerWidth))
+  await on.setViewportSize({ width: 1440, height: 900 })
+  // What the signatory gets on paper: the browser's own print, as a PDF (print media still emulated).
+  const paperPdf = await on.pdf({ format: 'A4' })
+  writeFileSync('.shots/42-declaration.pdf', paperPdf)
+  check('the declaration prints on one A4 page', (paperPdf.toString('latin1').match(/\/Type\s*\/Page\b/g) ?? []).length === 1)
   await on.emulateMedia({ media: 'screen' })
   const MARKER = 'E2E-CLEAR-TEXT-MARKER-5b'
   const scan = Buffer.from(`%PDF-1.4\n% ${MARKER}\n${'a signed declaration '.repeat(300)}\n%%EOF\n`)
@@ -776,7 +784,9 @@ try {
   check('what left the browser is the sealed file: the age header, no marker', sent.length === 1 && sent[0].subarray(0, 22).toString('latin1') === 'age-encryption.org/v1\n' && !sent[0].includes(MARKER))
   check('the stored object is that sealed file: it starts with the age header, it does not hold the marker, and the step shows its date, size and SHA-256',
     stored.length === 1 && stored[0].subarray(0, 22).toString('latin1') === 'age-encryption.org/v1\n' && !stored[0].includes(MARKER) && stored[0].equals(sent[0])
-      && sha256(stored[0]) === shownSha && stepText.includes(`${stored[0].length.toLocaleString('en-GB')} bytes, sealed`) && await both(on, '43-declaration-step'))
+      && sha256(stored[0]) === shownSha && stepText.includes(`${stored[0].length.toLocaleString('en-GB')} bytes, sealed`) && await both(on, '43-declaration-step', '.srow:has-text("Uploaded on")'))
+  // Review of 5b: an uploaded declaration reads as done, and the Owner is told what a second upload does.
+  check('once uploaded the step says Done, and that a new upload replaces the file and needs a new submit', /Declaration\s+Done/.test(stepText) && await on.getByText('A new upload replaces this file. If the organisation is under review, submit it again.').isVisible())
   await on.getByRole('button', { name: 'Submit for review' }).click()
   await on.getByText('Under review since').waitFor()
   const listed = operator('list')
@@ -785,6 +795,18 @@ try {
   const out = `${STATE}/item.age`
   check('a download without a reason of the list is refused, and writes no file', refusedBy(() => operator('get', itemId, '--reason', 'curiosity', '--out', out)).includes('Refused (400): invalid') && !existsSync(out))
   check('the operator command takes the item, still sealed', operator('get', itemId, '--reason', 'kyb_review', '--out', out).includes('Written, still sealed') && readFileSync(out).equals(stored[0]))
+  // Review of 5b: the command never writes over a file, and asks for nothing when the file is there (no row in the client's log for bytes thrown away).
+  check('a second "get" to the same file is refused before anything is asked, and the file stays', refusedBy(() => operator('get', itemId, '--reason', 'incident', '--out', out)).includes('Refused: the file exists') && readFileSync(out).equals(stored[0])) // and no second row: the KYB block below holds one download
+  // A server that names another SHA-256 than the bytes it sends: the command writes nothing.
+  const liar = createServer((_, response) => response.writeHead(200, { 'x-sha256': '0'.repeat(64), 'x-seal-key': 'f'.repeat(64) }).end('age-encryption.org/v1\n')).listen(0, '127.0.0.1')
+  await new Promise((resolve) => liar.once('listening', resolve))
+  const lied = await new Promise((resolve) => { // not execFileSync: this process must answer as the server meanwhile
+    let said = ''
+    spawn('node', ['scripts/operator.mjs', 'get', itemId, '--reason', 'incident', '--out', `${out}.2`], { env: { ...env, E2E_PORT: String(liar.address().port) }, stdio: ['ignore', 'ignore', 'pipe'] }).on('close', () => resolve(said)).stderr.on('data', (chunk) => (said += chunk))
+  })
+  liar.close()
+  check('a file whose SHA-256 is not the one the server names is not written', lied.includes('does not have the SHA-256') && !existsSync(`${out}.2`))
+  check('an item id that is a path is refused by the command, which asks nothing (Codex: it reached another route of the operator)', refusedBy(() => operator('get', `../organisations/${newOrg.id}/freeze?`, '--reason', 'kyb_review', '--out', `${out}.3`)).includes('usage:') && !existsSync(`${out}.3`))
   const opener = new Decrypter()
   opener.addIdentity(readFileSync('.dev.seal-identity', 'utf8').trim()) // the local test identity; never printed
   check('the local test identity opens the downloaded file, offline: equal to the original', Buffer.from(await opener.decrypt(readFileSync(out))).equals(scan))
@@ -804,7 +826,7 @@ try {
     await on.getByText('The one document stored is the signed declaration, sealed in your browser.').isVisible() && await on.locator('dl.kv dd', { hasText: 'Alder Custody S.A.' }).isVisible() && await on.locator('dl.kv dd', { hasText: 'Approved' }).isVisible()
     && await on.locator('dl.kv dd', { hasText: 'ab'.repeat(32) }).isVisible() && await on.getByText('Ophis operator: verification approved, organisation active').isVisible() && await both(on, '35-kyb-record', '#root dl.kv >> nth=0'))
   check('the KYB block lists the sealed declaration and the operator\'s download with its reason; the audit log has the row',
-    await on.locator('dl.kv dd', { hasText: shownSha }).isVisible() && await on.getByText('still sealed, for the review of the organisation.').isVisible()
+    await on.locator('dl.kv dd', { hasText: shownSha }).isVisible() && await on.getByText('still sealed, for the review of the organisation.').isVisible() && (await on.getByText(/still sealed, for/).count()) === 1
       && await on.getByText('Ophis operator: downloaded the sealed declaration, still sealed. Reason: the review of the organisation').isVisible() && await both(on, '44-kyb-sealed', '#root dl.kv >> nth=1'))
   check('the footer line is on the Onboarding and Compliance pages', await on.getByText(FOOTER).isVisible())
   // Company sign-in (C2): the Owner invites a member by work address. The member signs in at the provider, creates the

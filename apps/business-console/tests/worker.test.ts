@@ -7052,6 +7052,49 @@ describe('E. onboarding: a company applies, proves its domain, is activated and 
     for (const [size, sha, key] of [[0, undefined, undefined], [onboarding.SEAL.maxBytes + 1, undefined, undefined], [100, 'a'.repeat(63), undefined], [100, undefined, 'b'.repeat(65)]] as const) await expect(insert(data.randomId(), size, sha, key)).rejects.toThrow(/CHECK/)
     await insert(done.body.id, onboarding.SEAL.maxBytes)
   })
+
+  it('review of 5b: an approval names a submission, so it never lands on a declaration replaced since, also at the same instant', async () => {
+    const a = await underReview()
+    const seen = await submissionOf(a.orgId)
+    const [first] = await itemsOf(a.orgId)
+    expect((await take(first.id)).status).toBe(200) // the operator read this one
+    const swapped = { ...racing(async () => {
+      expect((await upload(a, await sealedFile())).status).toBe(200)
+      expect((await submit(a)).body).toEqual({ state: 'under_review' })
+    }), OPERATOR_TOKEN: TOKEN } as unknown as Env
+    expect((await decideOn(a.orgId, { ...APPROVE, submission: seen }, { env: swapped })).body).toEqual({ error: 'submission_changed' })
+    expect([(await orgRow(a.orgId))!.state, await count('kyb_records', a.orgId), (await itemsOf(a.orgId))[0].id === first.id]).toEqual(['unverified', 0, false])
+    expect((await take(first.id)).status).toBe(404) // the old item is gone, row and object
+    expect(await objectOf(first.id)).toBeNull()
+  })
+
+  it('review of 5b: the fresh check is judged again once the file has arrived; the header is the whole hybrid header, not its first words', async () => {
+    const a = await undeclared()
+    const kept = await objects()
+    const file = await sealedFile()
+    // A slow sender: the 5 minutes of the passkey check pass while the file is on its way (the session's 15 idle minutes do not).
+    const slow = new ReadableStream<Uint8Array>({ pull(controller) { now += 5 * MIN + 1; controller.enqueue(file); controller.close() } }, { highWaterMark: 0 })
+    const late = await handle(new Request(`${SITE.origin}/api/onboarding/declaration`, { method: 'POST', body: slow, duplex: 'half', headers: { 'sec-fetch-site': 'same-origin', origin: SITE.origin, 'content-type': 'application/octet-stream', 'x-seal-key': KEY, cookie: a.cookie } } as RequestInit), testEnv, () => now)
+    expect([late.status, await late.json()]).toEqual([403, { error: 'step_up_required' }])
+    expect([await itemsOf(a.orgId), await objects()]).toEqual([[], kept])
+    expect((await stepUp(a, a.key)).status).toBe(200)
+    // A header that only starts like one, in front of a clear file (Codex): an empty stanza, a short one, a long one, a missing body.
+    const head = latin1(file.subarray(0, 1627))
+    expect(head).toMatch(/^age-encryption\.org\/v1\n-> mlkem768x25519 [A-Za-z0-9+/]{1494}\n[A-Za-z0-9+/]{43}\n--- [A-Za-z0-9+/]{43}\n$/) // what the library writes: 1,627 bytes (key-custody.md section 3)
+    const clear = `%PDF-1.7 ${MARKER} ${'x'.repeat(200)}`
+    const mac = `\n--- ${'A'.repeat(43)}\n`
+    const forged: Record<string, string> = {
+      'an empty stanza': `age-encryption.org/v1\n-> mlkem768x25519 ${mac}${clear}`,
+      'a stanza without its body': `age-encryption.org/v1\n-> mlkem768x25519 ${'A'.repeat(1494)}${mac}${clear}`,
+      'a short share': `age-encryption.org/v1\n-> mlkem768x25519 ${'A'.repeat(1493)}\n${'A'.repeat(43)}${mac}${clear}`,
+      'a second argument': head.replace('mlkem768x25519 ', 'mlkem768x25519 AAAA ') + clear,
+      'a longer body': head.replace('\n--- ', 'AAAA\n--- ') + clear,
+      'text in the stanza': `age-encryption.org/v1\n-> mlkem768x25519 ${clear}${mac}${'x'.repeat(64)}`,
+    }
+    for (const [what, text] of Object.entries(forged)) expect((await upload(a, fromLatin1(text))).body, what).toEqual({ error: 'not_sealed' })
+    expect([await itemsOf(a.orgId), await objects(), (await snapshot()).includes(MARKER)]).toEqual([[], kept, false])
+    expect((await upload(a, file)).status).toBe(200)
+  })
 })
 
 // ---- company sign-in (owner decision of 2026-11-11): OpenID Connect at Microsoft or Google proves who a new passkey belongs to ----

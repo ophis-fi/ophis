@@ -431,7 +431,7 @@ export function Onboarding({ owner, onSignedOut }: { owner: boolean; onSignedOut
               </>
             )}
           </Step>
-          <Step icon="scroll-text" title="Declaration" done={verified}>
+          <Step icon="scroll-text" title="Declaration" done={verified || Boolean(view.sealed)}>
             <p>Print the declaration below and have it signed by a person who may bind the company. Scan it. The scan is encrypted in this browser before it is sent: the server keeps it sealed and holds no key that opens it.</p>
             {!verified && owner && keys && sealKey && (
               <form className="stack" onSubmit={upload}>
@@ -443,6 +443,7 @@ export function Onboarding({ owner, onSignedOut }: { owner: boolean; onSignedOut
             )}
             <p className="fine" role="status"><Icon name="info" size={16} /><span>{sealKey ? <>Sealed to key <span className="mono">{sealKey}</span>. Only the holder of that key can open the file, offline.</> : sealKey === null ? 'Sealing is not configured for this address yet. No file can be uploaded here.' : 'Reading the sealing key.'}</span></p>
             {view.sealed && <SealedItem item={view.sealed} />}
+            {view.sealed && !verified && owner && <p className="fine">A new upload replaces this file. If the organisation is under review, submit it again.</p>}
           </Step>
           <Step icon="shield-check" title="Review" done={verified}>
             <p role="status">{review.status === 'verified' ? (view.record?.decidedAt ? `Verified on ${day(view.record.decidedAt)}.${view.record.nextReview ? ` Next review ${day(view.record.nextReview)}.` : ''}` : 'Verified.')

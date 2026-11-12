@@ -247,16 +247,14 @@ const RECIPIENT = /^age1pq1[a-z0-9]{1500,2500}$/
 export const sealKey = async (env: { ENVIRONMENT: string; SEAL_RECIPIENT?: string }) =>
   env.ENVIRONMENT === 'local' && RECIPIENT.test(env.SEAL_RECIPIENT ?? '') ? sha256Hex(env.SEAL_RECIPIENT!) : null
 /**
- * What the Worker can check without a key (key-custody.md section 3): an age v1 file with exactly one stanza, of the
- * hybrid type, a header MAC line, and a payload that holds at least a nonce and one tag. A classic X25519 stanza, a
- * second stanza and anything that is not age are refused. The stanza does not say whose key it is.
+ * What the Worker can check without a key (key-custody.md section 3): an age v1 file whose header is exactly the one
+ * of a single hybrid stanza (1,627 bytes: the share of 1,120 bytes, the wrapped file key of 32, the header MAC), and a
+ * payload that holds at least a nonce and one tag. A classic X25519 stanza, a second stanza, a stanza of another
+ * length and anything that is not age are refused. The stanza does not say whose key it is, and what follows the
+ * header is opaque: a sender who writes a correct header in front of a clear file is not found out here.
  */
-export function sealedShape(bytes: Uint8Array) {
-  const head = String.fromCharCode(...bytes.subarray(0, 4096))
-  const end = head.indexOf('\n--- ')
-  return head.startsWith('age-encryption.org/v1\n-> mlkem768x25519 ') && end > 0 && head.slice(0, end).split('\n-> ').length === 2
-    && /^\n--- [A-Za-z0-9+/]{43}\n/.test(head.slice(end)) && bytes.length >= end + 49 + 32
-}
+const HEADER = /^age-encryption\.org\/v1\n-> mlkem768x25519 [A-Za-z0-9+/]{1494}\n[A-Za-z0-9+/]{43}\n--- [A-Za-z0-9+/]{43}\n$/
+export const sealedShape = (bytes: Uint8Array) => bytes.length >= 1627 + 32 && HEADER.test(String.fromCharCode(...bytes.subarray(0, 1627)))
 
 interface Sealed { id: string; kind: string; size: number; sha256: string; key: string; generation: string; at: number }
 const SEALED = `id, kind, size, sha256, key_fingerprint AS key, key_generation AS generation, created_at AS at FROM sealed_items`
