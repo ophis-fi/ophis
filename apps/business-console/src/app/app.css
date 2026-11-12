@@ -179,6 +179,10 @@ fieldset.field { border: 0; margin: 0; padding: 0; min-width: 0; } fieldset.fiel
 .pw + .pw { margin-top: 44px; padding-top: 32px; border-top: 1px solid var(--hair); } .pw > .stats + .panel, .pw > .note { margin-top: 16px; } .pw .sec .stats + .table-wrap, .pw .sec .stats + p { margin-top: 16px; }
 .pw-facts { display: grid; gap: 6px; font-size: 14.5px; } .pw-facts .code { display: inline-block; margin: 0 8px 0 0; padding: 1px 8px; border: 1px solid var(--hair); border-radius: 6px; font-size: 13px; }
 .note > .btn { flex: none; align-self: center; }
+/* Five tiles: three and two, so that a figure of nine digits keeps its tile. A longer one wraps, it never runs into the next. */
+@media (min-width: 721px) { .pw > .stats { grid-template-columns: repeat(6, minmax(0, 1fr)); } .pw > .stats .c { grid-column: span 2; } .pw > .stats .c:nth-child(n + 4) { grid-column: span 3; } }
+@media (max-width: 720px) { .pw > .stats .c:nth-child(-n + 2) { grid-column: 1 / -1; } } /* a phone: each volume on a row of its own */
+.pw .stats .num { overflow-wrap: anywhere; }
 @media (max-width: 1220px) { .g.two, .g.even { grid-template-columns: minmax(0, 1fr); } }
 @media (max-width: 1023px) { .desk { grid-template-columns: minmax(0, 1fr); } }
 @media (max-width: 720px) { .dk-b { display: none; } .dk-s { display: flex; } }

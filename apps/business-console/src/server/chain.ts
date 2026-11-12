@@ -88,13 +88,20 @@ export const verify = (endpoints: Endpoints, typed: Typed, wallet: string, signa
 /** The same for a digest the server built and stored earlier: a recovery proof is checked again when it is used. */
 export async function verifyDigest(endpoints: Endpoints, chainId: number, digest: Hex, wallet: string, signature: Hex) {
   // Recovery first, never a look at the code size: an account with an EIP-7702 delegation has code and signs with its key.
-  // The upper half of s is refused: each signature has one accepted form.
-  if (signature.length === 132 && BigInt(`0x${signature.slice(66, 130)}`) <= HALF_N) {
-    const signer = await recoverAddress({ hash: digest, signature }).catch(() => null)
-    if (signer && isAddressEqual(signer, wallet as Hex)) return { by: 'key' as const, digest }
-  }
+  if (await signedByKey(digest, wallet, signature)) return { by: 'key' as const, digest }
   const [answer] = await reads(endpoints, chainId, wallet, [encodeFunctionData({ abi: ABI, functionName: 'isValidSignature', args: [digest, signature] })])
   return answer === MAGIC ? { by: 'contract' as const, digest } : null
+}
+
+/**
+ * Did the wallet's own key sign this digest? 65 bytes that recover to the wallet; the upper half of s is refused, so
+ * each signature has one accepted form. No endpoint is asked: a key controls its address on every chain, a contract
+ * only on the chain it was asked on.
+ */
+export async function signedByKey(digest: Hex, wallet: string, signature: Hex) {
+  if (signature.length !== 132 || BigInt(`0x${signature.slice(66, 130)}`) > HALF_N) return false
+  const signer = await recoverAddress({ hash: digest, signature }).catch(() => null)
+  return Boolean(signer && isAddressEqual(signer, wallet as Hex))
 }
 
 export interface SafeState { owners: string[]; threshold: number; modules: string[]; handler: boolean }

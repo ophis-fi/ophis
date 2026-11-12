@@ -3,7 +3,7 @@
 // A partner: live figures from the Ophis rebate service, checked and rebuilt by the server (src/server/partner.ts).
 // No order is sent, signed or executed, and this file holds no price: every estimate is the server's.
 import { useCallback, useEffect, useState, type FormEvent, type ReactNode } from 'react'
-import { api, capital, Icon, ROLE, save, say, sensitive, Section, stamp, Status, Tile } from './ui.tsx'
+import { api, CANCELLED, capital, Icon, ROLE, save, say, sensitive, Section, stamp, Status, Tile } from './ui.tsx'
 
 interface Ticket { type: 'market' | 'limit'; sell: string; buy: string; amount: string; limitPrice: string | null; chainId: number; walletId: string }
 interface Estimate { received: string; volumeEur: string; feeBps: string; feeEur: string; totalEur: string; priced: string | null }
@@ -23,7 +23,8 @@ interface PartnerWallet {
     kind: string; sharePct: number; codes: string[]; referredCount: number; cycleVolumeUsd: number; lifetimeVolumeUsd: number; estimatedEarningsUsd: number; paidWeth: number; paidUsd: number
     nextPayoutAt: string | null; referred: { wallet: string; attributed: string; firstSeenAt: string; lifetimeVolumeUsd: number }[]
   }
-  fees: { shareUsd: number; carriedUsd: number; owedUsd: number; pendingTrades: number; paidWeth: number; trades: number; months: { month: string; status: string; owedUsd: number; owedWeth: number; carriedUsd: number }[] }
+  // null: a contract wallet whose chain the rebate service has not confirmed; no figure of it was read.
+  fees: null | { shareUsd: number; carriedUsd: number; owedUsd: number; pendingTrades: number; paidWeth: number; trades: number; months: { month: string; status: string; owedUsd: number; owedWeth: number; carriedUsd: number }[] }
 }
 interface Partner { kind: 'partner'; waiting: number; figures: { state: 'not_connected' | 'no_wallet' | 'figures_unavailable' } | { state: 'live'; asOf: string; leftOut: number; wallets: PartnerWallet[] } }
 interface DeskView {
@@ -149,9 +150,18 @@ const SHOWN = 50 // referred wallets on the page; the CSV holds all of them
 
 function PartnerWalletFigures({ w }: { w: PartnerWallet }) {
   const a = w.affiliate
+  const head = <h2 className="pw-head"><Icon name="wallet" /><b>{w.label}</b><span className="mono muted">{w.wallet}</span><span className="muted">{w.chain}</span></h2>
+  if (!w.fees) return (
+    <section className="pw sec" aria-label={`Wallet ${w.label}`}>
+      {head}
+      <p className="note warn" role="note"><Icon name="info" /><span className="grow"><b>The figures of this wallet are not shown.</b> It is a contract wallet, and Ophis has not confirmed the chain it is controlled on. <a className="link" href="/#/support">Ask Support</a>.</span></p>
+    </section>
+  )
+  // The rebate service answers at most the newest 500 referred wallets of a wallet.
+  const part = a !== null && a.referredCount > a.referred.length
   return (
     <section className="pw sec" aria-label={`Wallet ${w.label}`}>
-      <h2 className="pw-head"><Icon name="wallet" /><b>{w.label}</b><span className="mono muted">{w.wallet}</span><span className="muted">{w.chain}</span></h2>
+      {head}
       {a ? (
         <>
           <div className="stats">
@@ -163,10 +173,10 @@ function PartnerWalletFigures({ w }: { w: PartnerWallet }) {
           </div>
           <div className="panel pw-facts">
             <p><b>Your share: {a.sharePct}% of the net fee on referred volume</b></p>
-            <p>{a.nextPayoutAt ? `Next payout run: ${stamp(Date.parse(a.nextPayoutAt))}` : 'No payout run is scheduled.'}</p>
+            <p>{a.nextPayoutAt ? `Next payout run: ${stamp(Date.parse(a.nextPayoutAt))}. A run is planned, not promised.` : 'No payout run is scheduled.'}</p>
             <p>Active codes: {a.codes.length ? a.codes.map((code) => <span className="mono code" key={code}>{code}</span>) : <span className="muted">none</span>}</p>
           </div>
-          <Section icon="users" title="Referred wallets" hint={a.referred.length > SHOWN ? `The first ${SHOWN} of ${count(a.referred.length)}. The CSV holds all of them.` : 'Wallets attributed to this wallet. The CSV holds all of them.'}>
+          <Section icon="users" title="Referred wallets" hint={part ? `Of ${count(a.referredCount)} referred wallets, the newest ${count(a.referred.length)}. The CSV holds these ${count(a.referred.length)}; the page shows the first ${SHOWN}.` : a.referred.length > SHOWN ? `The first ${SHOWN} of ${count(a.referred.length)}. The CSV holds all of them.` : 'Wallets attributed to this wallet. The CSV holds all of them.'}>
             {a.referred.length ? <Table head={['Wallet', 'Attributed by', 'First seen (UTC)', 'Lifetime volume (USD)']} rows={a.referred.slice(0, SHOWN).map((r) => [<span className="mono">{r.wallet}</span>, r.attributed, stamp(Date.parse(r.firstSeenAt)), usd(r.lifetimeVolumeUsd)])} />
               : <p className="muted">No wallet has been referred yet.</p>}
           </Section>
@@ -245,8 +255,9 @@ function TicketForm({ v, onSent }: { v: DeskView; onSent: () => Promise<void> })
     setBusy(true)
     const { limitPrice, ...rest } = t
     // The estimate needs no passkey. Sending does: when the last check is older than 5 minutes, the passkey is asked for here.
-    const out = await (send ? sensitive : api)<OrderBody & { error?: string }>('/api/desk/orders', { ...rest, amount: t.amount.trim(), ...(t.type === 'limit' && { limitPrice: limitPrice.trim() }), send })
+    const out = await (send ? sensitive : api)<OrderBody & { error?: string }>('/api/desk/orders', { ...rest, amount: t.amount.trim(), ...(t.type === 'limit' && { limitPrice: limitPrice.trim() }), send }).catch(() => null)
     setBusy(false)
+    if (!out) return setProblem(CANCELLED) // the passkey step was cancelled or failed: the ticket is usable again
     setProblem(out.status === 200 ? '' : out.status === 403 && out.data.error === 'forbidden' ? 'Your role cannot prepare orders. A Trader, an Owner or an Admin prepares them.' : say(out.data))
     if (out.status !== 200) return
     if (!send) return setReview(out.data)

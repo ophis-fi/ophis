@@ -5114,6 +5114,11 @@ describe('D. Support: the model selects, the server decides', () => {
     expect(new Set(ANSWERS.map((a) => a.title)).size).toBe(25)
     // What is not built says so.
     for (const id of ['KB-01', 'KB-13', 'KB-16', 'KB-19']) expect(ANSWERS.find((a) => a.id === id)!.text, id).toMatch(/^Not available yet\./)
+    // Review of P4: a partner's Overview shows its fee figures and exports two tables, so the two texts say so.
+    const text = (id: string) => ANSWERS.find((a) => a.id === id)!.text
+    expect(text('KB-13')).toMatch(/A partner organisation sees its own figures in Overview/)
+    expect(text('KB-13') + text('KB-16')).not.toMatch(/no fees view|does not show|one export that exists/)
+    expect(text('KB-16')).toMatch(/the referred wallets and the partner-fee months, in Overview/)
     expect(supportPage).toContain("'An outside provider, TypeSafe AI (USA), matches your question to our help texts. It receives your question without your name, organisation or wallet. Ophis does not store your question.'")
     expect(supportPage).toContain('Did this answer your question?')
     expect(supportPage).toContain("mailto:clement@ophis.fi?subject=${encodeURIComponent('Ophis Business support')}&body=${encodeURIComponent('What I was doing:\\r\\n\\r\\nWhat I expected:\\r\\n\\r\\nWhat happened:\\r\\n')}")
@@ -8085,7 +8090,7 @@ describe('H. demo mode: overview, desk and partner figures', () => {
     expect(view.status).toBe(200)
     expect(view.body).toMatchObject({ demo: true, mayPrepare: true, limitEur: '5000000.00', maxOpen: 20, chains: [{ id: 10, name: 'Optimism' }, { id: 130, name: 'Unichain' }] })
     expect(view.body.assets.map((x: { symbol: string }) => x.symbol)).toEqual(['ETH', 'USDC', 'EURC', 'EURe', 'EURCV'])
-    expect(view.body.wallets).toEqual([{ id: o.walletId, label: 'Operations Safe', address: expect.stringMatching(/^0x[0-9a-fA-F]{40}$/), chain: 'OP Mainnet' }])
+    expect(view.body.wallets).toEqual([{ id: o.walletId, label: 'Operations Safe', address: expect.stringMatching(/^0x[0-9a-fA-F]{40}$/), chain: 'Optimism' }]) // the name of the ticket's chain choice (review of P5)
     expect(JSON.stringify(view.body)).not.toMatch(new RegExp(`${pending}|${gone}`))
     for (const [role, may] of [['trader', true], ['admin', true], ['approver', false], ['compliance', false], ['viewer', false]] as const) {
       expect((await get('/api/desk', await colleague(o, role))).body.mayPrepare, role).toBe(may)
@@ -8704,13 +8709,39 @@ describe('I. partner figures: live', () => {
     const view = await overviewOf(o)
     expect(asked).toHaveLength(1)
     const { url, init, wallets } = asked[0]
-    expect([url, init.method, init.redirect, init.body]).toEqual(['https://indexer.test/business/partner', 'POST', 'manual', JSON.stringify({ wallets: addresses.slice(0, 10) })])
+    expect([url, init.method, init.redirect, init.body]).toEqual(['https://indexer.test/business/partner', 'POST', 'manual', JSON.stringify({ wallets: addresses.slice(0, 10), contract: Object.fromEntries(addresses.slice(0, 10).map((a, i) => [a, i ? [10] : [10, 8453]])) })])
     expect(init.headers).toEqual({ 'content-type': 'application/json', authorization: `Bearer ${INDEXER_TOKEN}` })
     expect(init.signal).toBeInstanceOf(AbortSignal)
     expect(wallets).toEqual(addresses.slice(0, 10))
     expect(view.body.figures).toMatchObject({ state: 'live', leftOut: 2 })
     expect(view.body.figures.wallets.map((w: { label: string; chain: string }) => [w.label, w.chain]).slice(0, 2)).toEqual([['W0', 'OP Mainnet, Base'], ['W1', 'OP Mainnet']])
     expect(partnerFigures.INDEXER).toMatchObject({ timeoutMs: 5000, maxBytes: 1_000_000, maxWallets: 10, maxReferred: 500, maxMonths: 12 })
+  })
+
+  // Review of P2: a contract wallet (a Safe) is controlled per chain, and the same address on another chain can have
+  // other owners. The indexer pins each contract wallet to one chain; the console says which wallets it proved by a
+  // contract signature and on which chains, and the indexer answers no figures (fees null) for one it does not accept.
+  it('a wallet proved by a contract signature is asked with the chains it was proved on, one proved by its own key is not; a contract wallet the indexer refuses shows no figures', async () => {
+    const o = await owner()
+    const account = mnemonicToAccount('test test test test test test test test test test test junk')
+    const digest = `0x${'ab'.repeat(32)}` as const
+    const signature = await account.sign({ hash: digest })
+    const [keyWallet, safe, other] = [account.address.toLowerCase(), someAddress(), someAddress()]
+    const proof = (id: string) => db.prepare(`UPDATE wallets SET kind = 'single_key', proof_digest = ?, proof_signature = ? WHERE id = ?`).bind(digest, signature, id).run()
+    await proof(await walletRow(o.orgId, keyWallet, { label: 'Key wallet', chainId: 8453 }))
+    await walletRow(o.orgId, safe, { label: 'Safe' })
+    await walletRow(o.orgId, safe, { label: 'Safe on Base', chainId: 8453 })
+    await proof(await walletRow(o.orgId, other, { label: 'Signed by another key' })) // 65 bytes that recover to another address: no key proof
+    const refuse = (i: number) => (answer: { wallets: unknown[] }) => ((answer.wallets[i] = { wallet: [keyWallet, safe, other][i], affiliate: null, fees: null }), answer)
+    const asked = indexer(refuse(1))
+    const view = await overviewOf(o)
+    expect(JSON.parse(String(asked[0].init.body))).toEqual({ wallets: [keyWallet, safe, other], contract: { [safe]: [10, 8453], [other]: [10] } })
+    expect(view.body.figures.wallets.map((w: { label: string; affiliate: unknown; fees: unknown }) => [w.label, w.affiliate, w.fees === null])).toEqual([['Key wallet', null, false], ['Safe', null, true], ['Signed by another key', null, false]])
+    for (const table of ['referred', 'months']) expect((await exportOf(o, table)).status).toBe(200)
+    // "No figures" for a wallet proved by its key is no answer the indexer gives: the whole answer is refused.
+    indexer(refuse(0))
+    expect((await overviewOf(o)).body).toEqual(UNAVAILABLE)
+    expect(deskPage).toContain('<b>The figures of this wallet are not shown.</b> It is a contract wallet, and Ophis has not confirmed the chain it is controlled on.')
   })
 
   it('an institution never gets partner figures, and an organisation that is unverified, frozen or closed gets nothing: the indexer is not asked', async () => {
@@ -8777,7 +8808,9 @@ describe('I. partner figures: live', () => {
       ['a next run that is no date', set('wallets.0.affiliate.nextPayoutAt', '1 December')],
       ['asOf that is no ISO time', set('asOf', '12/11/2026')],
       ['no affiliate field at all', (a) => (delete a.wallets[0].affiliate, a)],
-      ['no fees', set('wallets.1.fees', null)],
+      ['no fees for a wallet that has a partner code', set('wallets.0.fees', null)],
+      ['fees that are no object', set('wallets.1.fees', 0)],
+      ['the token itself, as a code', set('wallets.0.affiliate.activeCodes', [INDEXER_TOKEN]), 'echo'],
       ['wallets that are no list', set('wallets', { 0: P })],
       ['an answer that is a list', () => [answerFor([P.wallet, Z.wallet])]],
       ['null', raw('null')],
@@ -8908,7 +8941,7 @@ describe('I. partner figures: live', () => {
     expect(from).toBeGreaterThan(0)
     for (const sentence of [
       'Figures from the Ophis rebate service, read at {stamp(Date.parse(f.asOf))}. Amounts in USD.', "const ESTIMATE = 'Estimate. The amount is fixed when a payout is made.'", 'Your share: {a.sharePct}% of the net fee on referred volume',
-      '`Next payout run: ${stamp(Date.parse(a.nextPayoutAt))}`', "'No payout run is scheduled.'", 'This wallet holds no partner code.', '<b>Your figures are not connected yet.</b>', '<b>No wallet is linked.</b>',
+      '`Next payout run: ${stamp(Date.parse(a.nextPayoutAt))}. A run is planned, not promised.`', "'No payout run is scheduled.'", 'the newest ${count(a.referred.length)}. The CSV holds these ${count(a.referred.length)}', 'This wallet holds no partner code.', '<b>Your figures are not connected yet.</b>', '<b>No wallet is linked.</b>',
       '<a className="link" href="/#/organisation">Link a wallet under Organisation</a>', '<b>The figures are not available right now.</b>', '<Icon name="history" size={16} />Retry</button>', 'const SHOWN = 50', 'a.referred.slice(0, SHOWN)',
       'Referred volume this cycle', 'Lifetime referred volume', 'Referred wallets', 'Estimated earnings this cycle', 'Paid to date', 'Owed this cycle', 'Trades waiting for a price', "['Month', 'Status', 'Owed (USD)', 'Owed (WETH)', 'Carried (USD)']",
     ]) expect(part, sentence).toContain(sentence)
@@ -9067,5 +9100,14 @@ describe('J. the demo desk: a passkey check to send, the band of a limit price, 
     expect(deskPage).toContain('Allowed range: {exact(range.limitLow)} to {exact(range.limitHigh)} EUR, within 20% of the reference price.')
     expect(deskPage).toContain('Sending asks for your passkey.')
     for (const code of ['limit_out_of_band', 'wallet_chain']) expect(uiSource, code).toContain(`${code}: '`)
+    // Review of P5: a passkey step that is cancelled or fails gives the ticket back, with the words every other step uses.
+    expect(deskPage).toMatch(/await \(send \? sensitive : api\)<[^\n]+\.catch\(\(\) => null\)\n\s+setBusy\(false\)\n\s+if \(!out\) return setProblem\(CANCELLED\)/)
+  })
+
+  it('the desk names the chain of a wallet as it names the chain of the order, so that the two can be compared', async () => {
+    const { t } = await deskTeam()
+    const view = (await get('/api/desk', t)).body
+    expect(view.wallets.map((w: { chain: string }) => w.chain)).toEqual(['Optimism'])
+    expect(view.chains.map((c: { name: string }) => c.name)).toContain(view.wallets[0].chain)
   })
 })

@@ -3,7 +3,8 @@
 // made by "pnpm seed"): the Worker holds no stub and no switch. It shares no code with the Worker or the indexer.
 // The figures are the contract file of the indexer's own test, read WHERE IT IS at every question (no copy):
 // apps/rebate-indexer/tests/fixtures/business-partner.json. A wallet of that file gets its entry; any other wallet gets
-// no partner code and zero fees. The bearer rule is the real route's: off (404) without a token of 32 characters, 401 else.
+// no partner code and zero fees. ponytail: `contract` (the chains of contract wallets) is not read here: the real
+// route answers no figures for a contract wallet off its pinned chain. The bearer rule is the real route's: off (404) without a token of 32 characters, 401 else.
 //   node scripts/indexer-stub.mjs     serve until stopped ("pnpm dev" and "pnpm test:e2e" start it themselves)
 // To see the failing cases, open http://127.0.0.1:8793/stub/<mode>: ok, slow (answers after 6 s), shape (a number as
 // text), 500. The mode stays until the next one.

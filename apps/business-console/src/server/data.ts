@@ -1000,6 +1000,10 @@ export async function wallets(db: D1Database, orgId: string, now: number) {
     return { ...w, recovery, recoveryAt: recovery ? at : null }
   })
 }
+/** The linked wallets of an organisation with the proof of each link, oldest first: what the partner figures ask for (partner.ts). */
+export const linkedProofs = async (db: D1Database, orgId: string) =>
+  (await db.prepare(`SELECT chain_id AS chainId, address, label, proof_digest AS digest, proof_signature AS signature FROM wallets WHERE org_id = ? AND state = 'linked' ORDER BY rowid`)
+    .bind(orgId).all<{ chainId: number; address: string; label: string; digest: string; signature: string }>()).results
 /** Is this address linked, or waiting for its second person, in this organisation? */
 export const walletLive = async (db: D1Database, orgId: string, chainId: number, address: string, now: number) =>
   Boolean(await db.prepare(`SELECT 1 FROM wallets w WHERE w.org_id = ? AND w.chain_id = ? AND w.address = ? AND ${LIVE}`).bind(orgId, chainId, address, now).first())

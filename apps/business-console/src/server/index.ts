@@ -834,7 +834,7 @@ const waiting = async (c: Context) => (await data.openRequests(c.env.DB, c.actor
 async function overview(c: Context) {
   const kind = c.session.org_kind
   // A partner: its real figures (partner.ts), or the plain state that says why there are none. Never an example.
-  if (kind === 'partner') return json(200, { kind, waiting: await waiting(c), figures: await partner.figures(c.env, c.actor.orgId, c.now) })
+  if (kind === 'partner') return json(200, { kind, waiting: await waiting(c), figures: await partner.figures(c.env, c.actor.orgId) })
   return json(200, { demo: true, kind, waiting: await waiting(c), ...demo.institution(), orders: await ordersOf(c) })
 }
 async function desk(c: Context) {
@@ -842,7 +842,7 @@ async function desk(c: Context) {
   const wallets = (await data.wallets(c.env.DB, c.actor.orgId, c.now)).filter((w) => w.state === 'linked')
   return json(200, {
     demo: true, ...demo.desk(), mayPrepare: (demo.PREPARERS as readonly string[]).includes(c.actor.role), orders: await ordersOf(c),
-    wallets: wallets.map((w) => ({ id: w.id, label: w.label, address: checksum(w.address), chain: CHAIN_NAME[w.chainId] ?? `Chain ${w.chainId}` })),
+    wallets: wallets.map((w) => ({ id: w.id, label: w.label, address: checksum(w.address), chain: demo.CHAINS[w.chainId] ?? CHAIN_NAME[w.chainId] ?? `Chain ${w.chainId}` })), // the name the chain choice of the ticket uses
   })
 }
 
@@ -855,7 +855,7 @@ async function tableExport(c: Context) {
   let tables: Record<string, [head: string[], rows: unknown[][]]>
   if (live) {
     if (!Object.hasOwn(partner.tables({ state: 'live', asOf: '', leftOut: 0, wallets: [] }), table)) return fail(404, 'not_found')
-    const figures = await partner.figures(c.env, c.actor.orgId, c.now)
+    const figures = await partner.figures(c.env, c.actor.orgId)
     if (figures.state !== 'live') return fail(figures.state === 'figures_unavailable' ? 503 : 409, figures.state)
     tables = partner.tables(figures)
   } else tables = demo.tables(await ordersOf(c))
