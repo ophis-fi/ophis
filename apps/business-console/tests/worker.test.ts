@@ -8441,4 +8441,23 @@ describe('H. demo mode: overview, desk and partner figures', () => {
       expect((await exported(o, 'orders')).body, state).toEqual({ error })
     }
   })
+
+  it('D4: the local seed command adds a linked wallet named "Demo wallet" that an order can settle from; any other environment refuses', async () => {
+    const o = await owner()
+    await setOrg(o.orgId, `kind = 'institution'`)
+    const before = await snapshot()
+    await expect(data.devDemoWallet(db, 'production', o.orgId, now)).rejects.toThrow(/local/)
+    await expect(data.devDemoWallet(db, '', o.orgId, now)).rejects.toThrow(/local/)
+    expect(await snapshot()).toBe(before)
+    const id = await data.devDemoWallet(db, 'local', o.orgId, now)
+    expect((await walletsOf(o)).map((w) => [w.id, w.state, w.kind, w.recovery])).toEqual([[id, 'linked', 'custodian', null]])
+    expect(await lastAudit(o.orgId)).toEqual({ action: 'wallet.link', actor_id: null, subject_id: id, detail: 'demo' })
+    expect((await sayOf(o))[0]).toBe('Demo wallet linked by the local seed command, with no signature')
+    expect((await data.verifyAudit(db, o.orgId)).ok).toBe(true)
+    // One person can try the ticket. The approval still needs a second member.
+    const sent = await prepare(o, id)
+    expect(sent.body.state).toBe('requested')
+    expect((await orderOf(sent.body.id)).order.wallet).toBe('Demo wallet')
+    expect((await decide(o, sent.body.id, 'approve')).body).toEqual({ error: 'own_request' })
+  })
 })

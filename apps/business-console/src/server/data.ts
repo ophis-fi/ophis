@@ -1352,6 +1352,19 @@ export async function seedOrganisation(db: D1Database, o: { name: string; kind: 
   return { orgId, seatId }
 }
 
+// ponytail: demo mode, local only ("seed --demo"). A linked wallet named "Demo wallet" that no signature proved, so
+// that one person can try the order ticket. A real wallet is linked by its own signature (milestone 4a). Its address
+// is random: nobody holds its key. It must never see a real database.
+export async function devDemoWallet(db: D1Database, environment: string, orgId: string, now: number) {
+  if (environment !== 'local') throw new Error('refused: the demo wallet is for the local database only')
+  const id = randomId()
+  await commit(db, orgId, () => [{ at: now, actorKind: 'system', actorId: null, sessionId: null, action: 'wallet.link', subjectId: id, detail: 'demo' }, [
+    db.prepare(`INSERT INTO wallets (id, org_id, chain_id, address, kind, label, state, proof_nonce, proof_digest, proof_signature, proof_checked_at, linked_at)
+                VALUES (?, ?, 10, ?, 'custodian', 'Demo wallet', 'linked', ?, '0x', '0x', ?, ?)`).bind(id, orgId, `0x${randomId()}${randomId().slice(0, 8)}`, `demo-${id}`, now, now),
+  ]])
+  return id
+}
+
 // ponytail: stands in for the first Owner's activation, which the recovery anchor confirms in milestone 4
 // (recovery.md section 3). It activates every pending passkey of a ticket, so it must never see a real database.
 // The pending passkey of a recovery request has no ticket and is never activated here.

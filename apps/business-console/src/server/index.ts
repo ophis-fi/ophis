@@ -753,6 +753,7 @@ export const EVENTS: Record<string, string> = {
   'audit.export': 'Audit log exported',
   'wallet.link': 'Wallet linked',
   'wallet.link/alone': 'Wallet linked by the only key-role member',
+  'wallet.link/demo': 'Demo wallet linked by the local seed command, with no signature',
   'wallet.unlink': 'Wallet unlinked',
   'anchor.set': 'Recovery wallet set, in force after 72 hours',
   'anchor.set/alone': 'Recovery wallet set by the only key-role member, in force after 72 hours',

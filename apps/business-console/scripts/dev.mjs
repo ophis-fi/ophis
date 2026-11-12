@@ -2,6 +2,7 @@
 // (remoteBindings: false), and activation also refuses any ENVIRONMENT but "local".
 //   node scripts/dev.mjs seed       one organisation (domain northwind.example, company sign-in "none"), one Owner seat, a one-time enrolment link
 //                                   seed --company microsoft|google: the company sign-in is set, pinned to the local stand-in's tenant of that domain
+//                                   seed --demo: the organisation is an institution and gets one linked wallet named "Demo wallet" (no signature; local only), to try the order ticket
 //   node scripts/dev.mjs activate   ponytail: stands in for the first Owner's activation (the recovery wallet, milestone 5)
 //   node scripts/dev.mjs skip       ponytail: stands in for the passing of time: every wait that runs is over (recovery wallet, recovery request, 24 h after a cancel)
 // Option: --persist <dir>, the same value as "wrangler dev --persist-to <dir>".
@@ -9,7 +10,7 @@ import { randomBytes } from 'node:crypto'
 import { appendFileSync, existsSync, readFileSync, writeFileSync } from 'node:fs'
 import { generateHybridIdentity, identityToRecipient } from 'age-encryption'
 import { getPlatformProxy } from 'wrangler'
-import { devActivatePending, devSkipWaits, randomToken, seedOrganisation, sha256Hex } from '../src/server/data.ts'
+import { devActivatePending, devDemoWallet, devSkipWaits, randomToken, seedOrganisation, sha256Hex } from '../src/server/data.ts'
 import { configFor } from '../src/server/passkeys.ts'
 import { tenantOf } from './idp-stub.mjs'
 
@@ -17,6 +18,7 @@ const [command, ...options] = process.argv.slice(2)
 const option = (name) => (options.includes(name) ? options[options.indexOf(name) + 1] : undefined)
 const directory = option('--persist')
 const company = option('--company')
+const demo = options.includes('--demo')
 process.chdir(new URL('..', import.meta.url).pathname)
 // The challenge key is made on this machine and never leaves it: .dev.vars is git-ignored.
 if (!existsSync('.dev.vars')) writeFileSync('.dev.vars', `CHALLENGE_KEY=${randomBytes(32).toString('base64url')}\n`, { mode: 0o600 })
@@ -57,7 +59,11 @@ try {
     const { n } = await env.DB.prepare(`SELECT count(*) AS n FROM organisations WHERE email_domain LIKE 'northwind%'`).first()
     const DOMAIN = n ? `northwind-${n + 1}.example` : 'northwind.example'
     const pinned = company && { idp: company, tenant: company === 'google' ? DOMAIN : tenantOf(DOMAIN) }
-    await seedOrganisation(env.DB, { name: 'Northwind Vaults', kind: 'partner', ownerName: 'Maren Okafor', ticketHash: await sha256Hex(ticket), now: Date.now(), domain: DOMAIN, company: pinned })
+    const { orgId } = await seedOrganisation(env.DB, { name: 'Northwind Vaults', kind: demo ? 'institution' : 'partner', ownerName: 'Maren Okafor', ticketHash: await sha256Hex(ticket), now: Date.now(), domain: DOMAIN, company: pinned })
+    if (demo) {
+      await devDemoWallet(env.DB, env.ENVIRONMENT, orgId, Date.now())
+      console.log('Demo: an institution with one linked wallet named "Demo wallet" (no signature, local only).')
+    }
     console.log(pinned ? `Company sign-in: ${company}. Invite members with a work address at ${DOMAIN}.` : `Domain ${DOMAIN}, company sign-in: none (three words).`)
     console.log(`Enrolment link, one use, valid 10 minutes:\n${configFor(env.ENVIRONMENT).origin}/#/enrol/${ticket}`)
   } else if (command === 'activate') {
@@ -66,7 +72,7 @@ try {
     await devSkipWaits(env.DB, env.ENVIRONMENT, Date.now())
     console.log('Every wait that was running is over.')
   } else {
-    console.error('usage: node scripts/dev.mjs seed [--company microsoft|google] | activate | skip   [--persist <dir>]')
+    console.error('usage: node scripts/dev.mjs seed [--company microsoft|google] [--demo] | activate | skip   [--persist <dir>]')
     process.exitCode = 1
   }
 } finally {
