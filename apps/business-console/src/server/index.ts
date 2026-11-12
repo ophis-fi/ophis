@@ -798,8 +798,10 @@ async function auditExport(c: Context) {
   const rows = (await data.exportAudit(c.env.DB, c.actor, c.now)).map(line)
   const utc = (time: number) => `${new Date(time).toISOString().slice(0, 19).replace('T', ' ')}Z`
   const lines = [['No.', 'Time (UTC)', 'Who', 'Event', 'Target', 'Previous row hash', 'Row hash'], ...rows.map((r) => [r.seq, utc(r.at), r.who, r.event, r.target, r.prevHash, r.hash])]
-  return json(200, { name: `ophis-audit-log-${new Date(c.now).toISOString().slice(0, 10)}.csv`, csv: lines.map((cells) => `${cells.map(csvCell).join(',')}\r\n`).join('') })
+  return csvFile(c, 'ophis-audit-log', lines)
 }
+/** A CSV file as the browser saves it: the name ends with today's date, and every cell goes through csvCell. */
+const csvFile = (c: Context, name: string, lines: unknown[][]) => json(200, { name: `${name}-${new Date(c.now).toISOString().slice(0, 10)}.csv`, csv: lines.map((cells) => `${cells.map(csvCell).join(',')}\r\n`).join('') })
 
 // ---- demo mode: overview and desk (demo.ts). Example figures; the approvals counted are real. ----
 
@@ -832,6 +834,17 @@ async function desk(c: Context) {
     demo: true, ...demo.desk(), mayPrepare: (demo.PREPARERS as readonly string[]).includes(c.actor.role), orders: await ordersOf(c),
     wallets: wallets.map((w) => ({ id: w.id, label: w.label, address: checksum(w.address), chain: CHAIN_NAME[w.chainId] ?? `Chain ${w.chainId}` })),
   })
+}
+
+// Every "Export CSV" button of the demo pages. The tables follow the kind of the organisation; an institution's own
+// orders come before the examples. Each row says where it comes from: source = demo.
+async function demoExport(c: Context) {
+  const kind = c.session.org_kind
+  const tables = demo.tables(kind, kind === 'institution' ? await ordersOf(c) : [])
+  const table = c.params.id ?? ''
+  if (!Object.hasOwn(tables, table)) return fail(404, 'not_found')
+  const [head, rows] = tables[table]
+  return csvFile(c, `ophis-demo-${table}`, [[...head, 'source'], ...rows.map((cells) => [...cells, 'demo'])])
 }
 
 const ANY = data.ROLES
@@ -890,6 +903,7 @@ export const routes: Route[] = [
   { method: 'POST', path: '/api/audit/export', roles: READERS, fresh: true, can: 'Export the audit log', handler: auditExport },
   { method: 'GET', path: '/api/overview', roles: ANY, can: 'See the overview of the organisation (demo figures)', handler: overview },
   { method: 'GET', path: '/api/desk', roles: ANY, can: 'See the desk of an institution: permitted assets, orders and their records (demo)', handler: desk },
+  { method: 'GET', path: '/api/export/:id', roles: ANY, can: 'Export a table of the overview or the desk as CSV (demo figures)', handler: demoExport },
   { method: 'POST', path: '/api/desk/orders', roles: demo.PREPARERS, settled: true, can: 'Prepare a demo order on the desk, which a second person approves. Nothing is sent', handler: order },
   { method: 'POST', path: '/api/support/ask', roles: ANY, unverified: true, can: 'Ask Support a question, which is matched to the fixed help texts', handler: ask },
   // Milestone 5 (onboarding.ts). The operator's routes are not here: they have their own hostname and no role.

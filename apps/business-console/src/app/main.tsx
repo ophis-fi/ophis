@@ -6,7 +6,8 @@ import './kit.css'
 import './app.css'
 import mark from './assets/ophis-icon-mono-dark.svg'
 import { Alerts, Closed, Compliance, Enrol, Organisation, Problem, Recover, RecoveryBanner, Security, SignIn, type Me } from './pages.tsx'
-import { api, CAME, Icon, ROLE, Status } from './ui.tsx'
+import { api, CAME, Icon, ROLE } from './ui.tsx'
+import { Desk, Overview } from './desk.tsx'
 import { Support } from './support.tsx'
 import { Apply, KybRecord, Onboarding } from './onboarding.tsx'
 
@@ -40,10 +41,6 @@ function alertsRead(): string[] {
   }
 }
 
-function Later({ icon, label }: { icon: string; label: string }) {
-  return <button className="nav" type="button" disabled data-tip={`${label} (later)`}><Icon name={icon} /><span className="lbl">{label}</span><Status>Later</Status></button>
-}
-
 function App() {
   const hash = useSyncExternalStore(onHashChange, () => location.hash)
   const [me, setMe] = useState<Me | null>() // undefined while the first answer is on its way
@@ -72,8 +69,8 @@ function App() {
   useEffect(() => void loadMe(), [loadMe])
 
   // /recover is a path, not a fragment: a public page that holds no session, reached from the recovery sheet.
-  // /apply too (milestone 5). An organisation that is not yet verified lands on Onboarding.
-  const page = location.pathname === '/apply' ? 'apply' : location.pathname === '/recover' ? 'recover' : hash.startsWith('#/security') ? 'security' : hash.startsWith('#/enrol') ? 'enrol' : !me ? 'signin' : hash.startsWith('#/compliance') ? 'compliance' : hash.startsWith('#/support') ? 'support' : hash.startsWith('#/onboarding') || (me.organisation.state === 'unverified' && !hash.startsWith('#/organisation')) ? 'onboarding' : 'organisation'
+  // /apply too (milestone 5). An organisation that is not yet verified lands on Onboarding, an active one on Overview (demo mode).
+  const page = location.pathname === '/apply' ? 'apply' : location.pathname === '/recover' ? 'recover' : hash.startsWith('#/security') ? 'security' : hash.startsWith('#/enrol') ? 'enrol' : !me ? 'signin' : hash.startsWith('#/compliance') ? 'compliance' : hash.startsWith('#/support') ? 'support' : hash.startsWith('#/onboarding') || (me.organisation.state === 'unverified' && !hash.startsWith('#/organisation')) ? 'onboarding' : hash.startsWith('#/organisation') ? 'organisation' : hash.startsWith('#/desk') ? 'desk' : 'overview'
   useEffect(() => {
     document.body.dataset.route = me ? page : 'signin'
     document.body.classList.toggle('menu-open', menu)
@@ -121,8 +118,8 @@ function App() {
 
       <div className="shell">
         <nav className="rail" aria-label="Main">
-          <Later icon="layout-dashboard" label="Overview" />
-          <Later icon="arrow-left-right" label="Desk" />
+          <a className="nav" href="/#/overview" data-tip="Overview" aria-current={current('overview')}><Icon name="layout-dashboard" /><span className="lbl">Overview</span></a>
+          <a className="nav" href="/#/desk" data-tip="Desk" aria-current={current('desk')}><Icon name="arrow-left-right" /><span className="lbl">Desk</span></a>
           <a className="nav" href="/#/compliance" data-tip="Compliance" aria-current={current('compliance')}><Icon name="shield-check" /><span className="lbl">Compliance</span></a>
           <a className="nav" href="/#/organisation" data-tip="Organisation" aria-current={current('organisation')}><Icon name="building-2" /><span className="lbl">Organisation</span></a>
           <a className="nav" href="/#/onboarding" data-tip="Onboarding" aria-current={current('onboarding')}><Icon name="clipboard-check" /><span className="lbl">Onboarding</span></a>
@@ -152,6 +149,8 @@ function App() {
             : me && page === 'compliance' ? <><Compliance onSignedOut={signedOut} /><KybRecord /></>
             : me && page === 'support' ? <Support onSignedOut={signedOut} />
             : me && page === 'onboarding' ? <Onboarding owner={me.seat.role === 'owner'} onSignedOut={signedOut} />
+            : me && page === 'overview' ? <Overview onSignedOut={signedOut} />
+            : me && page === 'desk' ? <Desk kind={me.organisation.kind} onSignedOut={signedOut} />
             : me ? <Organisation me={me} onSignedOut={signedOut} onChanged={loadMe} />
             : <SignIn onSignedIn={loadMe} />}
           </main>

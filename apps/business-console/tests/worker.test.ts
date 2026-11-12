@@ -690,7 +690,7 @@ describe('d. request checks', () => {
   it('a state change is a JSON POST: no other method, no other content type', async () => {
     const m = await member()
     expect(routes.filter((route) => route.method !== 'GET').every((route) => route.method === 'POST')).toBe(true)
-    expect(routes.filter((route) => route.method === 'GET').map((route) => route.path).sort()).toEqual(['/api/audit', '/api/company/callback', '/api/desk', '/api/me', '/api/onboarding', '/api/org', '/api/overview', '/api/readiness'])
+    expect(routes.filter((route) => route.method === 'GET').map((route) => route.path).sort()).toEqual(['/api/audit', '/api/company/callback', '/api/desk', '/api/export/:id', '/api/me', '/api/onboarding', '/api/org', '/api/overview', '/api/readiness'])
     expect((await call('GET', '/api/signout', { cookie: m.cookie })).status).toBe(404)
     for (const type of ['text/plain', 'application/x-www-form-urlencoded', 'multipart/form-data', null]) {
       expect((await call('POST', '/api/signout', { cookie: m.cookie, headers: { 'content-type': type } })).status).toBe(415)
@@ -2519,7 +2519,7 @@ describe('r. the role table', () => {
       'POST /api/recover/intent': 'public', 'POST /api/recover/cancel-intent': 'public', 'POST /api/recover/continue/start': 'public', 'POST /api/recover/continue/finish': 'public',
       'POST /api/recovery/:id/cancel': 'owner fresh', 'POST /api/recovery/:id/object': 'admin,approver,compliance fresh',
       'POST /api/support/ask': any,
-      'GET /api/overview': any, 'GET /api/desk': any, 'POST /api/desk/orders': 'owner,admin,trader settled',
+      'GET /api/overview': any, 'GET /api/desk': any, 'POST /api/desk/orders': 'owner,admin,trader settled', 'GET /api/export/:id': any,
       'POST /api/apply': 'public', 'POST /api/apply/check': 'public',
       'GET /api/onboarding': 'owner,compliance', 'POST /api/onboarding/wallet': 'owner fresh twoKeys', 'POST /api/onboarding/submit': 'owner fresh twoKeys', 'POST /api/onboarding/declaration': 'owner fresh twoKeys',
     })
@@ -8017,8 +8017,26 @@ isolation['POST /api/desk/orders'] = async (a, b) => {
   expect((await deskOrders(a)).map((o) => o.id)).toEqual([id])
 }
 
+// ---- D3: the CSV exports ----
+// A CSV as a spreadsheet reads it: rows of cells, every cell quoted.
+const cells = (csv: string) => csv.split('\r\n').filter(Boolean).map((line) => [...line.matchAll(/"((?:[^"]|"")*)"/g)].map((m) => m[1].replace(/""/g, '"')))
+const exported = async (m: Holder, table: string) => {
+  const answer = await get(`/api/export/${table}`, m)
+  return { ...answer, rows: answer.status === 200 ? cells(answer.body.csv) : [] }
+}
+isolation['GET /api/export/:id'] = async (a, b) => {
+  for (const m of [a, b]) await setOrg(m.orgId, `kind = 'institution'`)
+  await prepare(b, await demoWallet(b.orgId, 'Wallet of B'), { amount: '777' })
+  const mine = (await prepare(a, await demoWallet(a.orgId, 'Wallet of A'), { amount: '333' })).body.id as string
+  const before = await snapshot()
+  const file = await exported(a, 'orders')
+  expect(file.rows.filter((r) => r[9].startsWith('Wallet of')).map((r) => [r[0], r[4], r[9]])).toEqual([[`ORD-${mine.slice(0, 8)}`, '333', 'Wallet of A']])
+  expect(file.body.csv).not.toMatch(/Wallet of B|"777"/)
+  expect(await snapshot()).toBe(before) // an export of demo figures writes nothing
+}
+
 describe('H. demo mode: overview, desk and partner figures', () => {
-  for (const route of ['GET /api/overview', 'GET /api/desk', 'POST /api/desk/orders']) {
+  for (const route of ['GET /api/overview', 'GET /api/desk', 'POST /api/desk/orders', 'GET /api/export/:id']) {
     it(`${route}: the isolation case`, async () => isolation[route](await member('Alder Asset Management'), await member('Birchfield Capital')))
   }
 
@@ -8371,5 +8389,56 @@ describe('H. demo mode: overview, desk and partner figures', () => {
     expect((await prepare(t, walletId)).status).toBe(200)
     now += 7 * DAY + 1 // every one of them has expired
     expect((await prepare(await again(t), walletId)).status).toBe(200)
+  })
+
+  it('D3: every export is built by the server: the name starts with "ophis-demo-", each row has the column source = demo, and the tables follow the kind of the organisation', async () => {
+    const { o, a, t } = await deskTeam()
+    const viewer = await colleague(o, 'viewer')
+    const names = { institution: ['assets', 'balances', 'orders', 'statement'], partner: ['codes', 'daily', 'payouts', 'wallets'] }
+    expect(Object.keys(demo.tables('institution', [])).sort()).toEqual(names.institution)
+    expect(Object.keys(demo.tables('partner', [])).sort()).toEqual(names.partner)
+    for (const kind of ['institution', 'partner'] as const) {
+      await setOrg(o.orgId, `kind = '${kind}'`)
+      for (const table of names[kind]) {
+        for (const m of [o, a, t, viewer]) {
+          const file = await exported(m, table)
+          expect(file.status, table).toBe(200)
+          expect(file.body.name, table).toBe(`ophis-demo-${table}-2026-11-10.csv`)
+          expect(file.rows.length, table).toBeGreaterThan(1)
+          expect(file.rows[0].at(-1), table).toBe('source')
+          for (const r of file.rows.slice(1)) expect([r.length, r.at(-1)], table).toEqual([file.rows[0].length, 'demo'])
+        }
+      }
+      // A table of the other kind, an unknown one and a name of the prototype: not found.
+      for (const table of [...names[kind === 'partner' ? 'institution' : 'partner'], 'audit', 'constructor', '__proto__', 'toString']) expect((await exported(o, table)).status, table).toBe(404)
+    }
+    expect((await exported(o, 'codes')).rows.slice(1).reduce((n, r) => n + demo.fixed(r[5], 2)!, 0n)).toBe(demo.fixed(demo.partner().feesEarned, 2))
+    expect((await exported(o, 'codes')).body.csv).not.toMatch(/ophis/i)
+  })
+
+  it('D3: an export holds the own orders of the institution before the examples, with their real state, and a cell that starts with = + - @ or a tab is made harmless', async () => {
+    const o = await institution()
+    const a = await colleague(o, 'approver')
+    // A wallet name may start with a minus or a bracket: the label rule allows it.
+    const hostile = await demoWallet(o.orgId, '-2+3 (cmd)')
+    const first = (await prepare(o, o.walletId)).body.id as string
+    const second = (await prepare(o, hostile, { amount: '12.5' })).body.id as string
+    expect((await decide(a, first, 'approve')).status).toBe(200)
+    const file = await exported(o, 'orders')
+    expect(file.rows[0]).toEqual(['Order', 'Prepared at', 'Type', 'Sell', 'Amount', 'Buy', 'Estimate received', 'Limit price (EUR)', 'Chain', 'Wallet', 'Volume (EUR)', 'Fee (EUR)', 'Status', 'source'])
+    expect(file.rows.slice(1, 3).map((r) => [r[0], r[4], r[9], r[12]])).toEqual([[`ORD-${second.slice(0, 8)}`, '12.5', "'-2+3 (cmd)", 'Pending approval'], [`ORD-${first.slice(0, 8)}`, '250000', 'Operations Safe', 'Approved. Not sent: demo']])
+    expect(file.rows.slice(3).map((r) => r[0])).toEqual(demo.examples().map((x) => x.ref))
+    expect(file.body.csv).toContain(`"'-2+3 (cmd)"`)
+    for (const [value, cell] of [['=1+1', `"'=1+1"`], ['+1', `"'+1"`], ['-1', `"'-1"`], ['@SUM(A1)', `"'@SUM(A1)"`], ['\tx', `"'\tx"`], ['\rx', `"'\rx"`], ['a"b', '"a""b"'], ['1.5', '"1.5"'], ['', '""'], [null, '""']] as const) expect(csvCell(value)).toBe(cell)
+    for (const line of file.body.csv.split('\r\n').filter(Boolean)) expect(line).not.toMatch(/(^|,)"[=+\-@\t\r]/)
+  })
+
+  it('D3: the exports are for an active organisation, and for a session', async () => {
+    const o = await institution()
+    expect((await call('GET', '/api/export/orders')).status).toBe(401)
+    for (const [state, error] of [['unverified', 'unverified'], ['frozen', 'org_frozen'], ['archived', 'org_closed']]) {
+      await setOrg(o.orgId, `state = '${state}'`)
+      expect((await exported(o, 'orders')).body, state).toEqual({ error })
+    }
   })
 })

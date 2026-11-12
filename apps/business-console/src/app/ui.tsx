@@ -62,6 +62,18 @@ const SAY: Record<string, string> = {
   recovery_wallet: 'This is the recovery wallet. It is replaced first, by two people and 72 hours. Then it can be unlinked.',
   single_key: 'A wallet with a single key can be the recovery wallet only in an organisation with one key-role member. Use a Safe or a custodian wallet.',
   change_waiting: 'Another change of recovery wallet waits for its 72 hours. An Owner cancels it first.',
+  // Demo mode: the desk.
+  institution_only: 'The desk is for institutions.',
+  type_invalid: 'Choose market or limit.',
+  asset_not_permitted: 'Choose two of the permitted assets.',
+  same_asset: 'Choose two different assets.',
+  chain_not_allowed: 'Choose Optimism or Unichain.',
+  wallet_not_linked: 'That wallet is not linked to this organisation any more. Choose a linked wallet.',
+  amount_invalid: 'Enter the amount as a plain number above zero, like 250000 or 1250.50, with no more decimals than the asset has.',
+  limit_price_invalid: 'Enter the limit price in EUR as a plain number above zero, with at most 6 decimals.',
+  over_limit: 'This is above the limit of 5,000,000.00 EUR per order.',
+  too_many_orders: 'Twenty orders already wait for approval. One of them is decided or cancelled first.',
+  org_inactive: 'The organisation is not active.',
   wallet_unreadable: 'The Safe could not be read on both network endpoints just now. Try again in a minute.',
 }
 export const say = (data: { error?: string; left?: number }) =>
@@ -103,6 +115,9 @@ const STATUS: Record<string, [tone: string, icon: string]> = {
   Ready: ['ok', 'shield-check'], 'At risk': ['warn', 'triangle-alert'], 'Not recoverable': ['bad', 'triangle-alert'],
   Green: ['ok', 'check'], Amber: ['warn', 'triangle-alert'], Red: ['bad', 'x'], None: ['bad', 'x'],
   Suspended: ['draft', 'history'], Planned: ['draft', 'calendar'], Later: ['draft', 'calendar'],
+  // Demo mode: the states of an order, and the tags of example rows.
+  'Pending approval': ['warn', 'clock'], 'Approved. Not sent: demo': ['ok', 'check'], Refused: ['bad', 'x'], Cancelled: ['draft', 'ban'], Expired: ['draft', 'history'],
+  Open: ['', 'clock'], Filled: ['ok', 'check'], Paid: ['ok', 'check'], Accrued: ['', 'clock'], Example: ['draft', 'info'], Illustrative: ['preview', 'info'], Demo: ['preview', 'info'],
   Revoked: ['bad', 'x'], Frozen: ['bad', 'ban'], Removed: ['bad', 'x'], 'Chain verified': ['ok', 'shield-check'], 'Chain broken': ['bad', 'triangle-alert'],
 }
 export function Status({ children }: { children: string }) {
@@ -110,6 +125,14 @@ export function Status({ children }: { children: string }) {
   return <span className={`badge bi ${tone}`}><Icon name={icon} size={16} />{children}</span>
 }
 
+/** Hands a file the server built to the browser's download. */
+export function save(name: string, text: string, type = 'text/csv') {
+  const link = document.createElement('a')
+  link.href = URL.createObjectURL(new Blob([text], { type }))
+  link.download = name
+  link.click()
+  URL.revokeObjectURL(link.href)
+}
 export const stamp = (time: number) => `${new Date(time).toISOString().slice(0, 19).replace('T', ' ')}Z`
 // A deadline: UTC, as everywhere in the console, and the reader's own clock next to it when the two differ.
 export function minute(time: number) {

@@ -1,6 +1,7 @@
 // The screens of milestones 1 to 4, with the markup and classes of the approved mockup.
 import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react'
-import { api, CANCELLED, capital, Icon, minute, passkeyCheck, PROVIDER, ROLE, say, Section, sensitive, stamp, Status, Tile } from './ui.tsx'
+import { api, CANCELLED, capital, Icon, minute, passkeyCheck, PROVIDER, ROLE, save, say, Section, sensitive, stamp, Status, Tile } from './ui.tsx'
+import { money, orderWords, type OrderBody } from './desk.tsx'
 
 export interface Alert {
   key: string; kind: string; at?: number | null; until?: number; name?: string; by?: string | null; stopped?: boolean; what?: string; detail?: string | null; mine?: boolean
@@ -502,7 +503,7 @@ function effect(kind: string, name: string, was: string | null, value?: string |
 }
 const CHANGE: Record<string, string> = {
   'seat.unfreeze': 'Unfreeze a seat', 'seat.remove': 'Remove a member', 'seat.role': 'Change a role', 'policy.synced_keys': 'Change the passkey rule for key roles',
-  'wallet.link': 'Link a wallet', 'anchor.set': 'Set the recovery wallet', 'policy.company': 'Change the company sign-in',
+  'wallet.link': 'Link a wallet', 'anchor.set': 'Set the recovery wallet', 'policy.company': 'Change the company sign-in', 'order.demo': 'Demo order',
 }
 // The same for a wallet. `on` is the chain's name.
 export const kindOf = (w: Pick<Wallet, 'kind' | 'threshold' | 'owners'>) => (w.kind === 'safe' ? `Safe ${w.threshold ?? '?'} of ${w.owners ?? '?'}` : w.kind === 'custodian' ? 'Custodian wallet (declared, not checked by Ophis)' : 'Single key')
@@ -520,10 +521,13 @@ function Approval({ request, wallet, on, mayDecide, act }: { request: Request; w
   const [open, setOpen] = useState(false)
   const path = `/api/approvals/${request.id}`
   const early = (request.notBefore ?? 0) > Date.now()
-  const what = wallet ? walletEffect(request.kind, wallet, on) : effect(request.kind, request.name ?? '', request.role, request.value)
+  // Demo mode: an order of the desk. Its payload is the ticket, the checks and the server's estimate; approving it sends nothing.
+  const order = request.kind === 'order.demo' && request.value ? (JSON.parse(request.value) as OrderBody) : null
+  const what = order ? `${orderWords(order)}. Estimate: ${money(order.estimate.received, order.ticket.buy === 'ETH' ? 4 : 2)} ${order.ticket.buy} received, fee ${money(order.estimate.feeEur)} EUR (${order.estimate.feeBps} bps of volume). Demo: approving records the decision and sends nothing.`
+    : wallet ? walletEffect(request.kind, wallet, on) : effect(request.kind, request.name ?? '', request.role, request.value)
   return (
     <article className="appr">
-      <Tile name={wallet ? 'wallet' : request.kind === 'policy.synced_keys' ? 'key-round' : request.kind === 'policy.company' ? 'building-2' : 'user'} />
+      <Tile name={order ? 'arrow-left-right' : wallet ? 'wallet' : request.kind === 'policy.synced_keys' ? 'key-round' : request.kind === 'policy.company' ? 'building-2' : 'user'} />
       <div>
         <h3 className="h-card">{CHANGE[request.kind] ?? 'A change'}</h3>
         <p>{what}</p>
@@ -536,7 +540,8 @@ function Approval({ request, wallet, on, mayDecide, act }: { request: Request; w
             {request.kind === 'seat.role' && <><dt>Role now</dt><dd>{role(request.role)}</dd><dt>Role after</dt><dd>{role(request.value)}</dd></>}
             <dt>Requested by</dt><dd>{request.requester} ({role(request.requesterRole)})</dd>
             <dt>Second person</dt><dd>Any Owner, Admin, Approver or Compliance officer other than the requester, after a passkey check</dd>
-            <dt>Applied</dt><dd>{request.kind === 'anchor.set' ? 'In force 72 hours after the approval' : `At the moment of the approval${early ? `, not before ${minute(request.notBefore!)}` : ''}`}</dd>
+            {order && <><dt>Order</dt><dd>{orderWords(order)}</dd><dt>Volume</dt><dd>{money(order.estimate.volumeEur)} EUR</dd><dt>Checks passed</dt><dd>{order.checks?.join('. ')}</dd></>}
+            <dt>Applied</dt><dd>{order ? 'Approved. Not sent: demo' : request.kind === 'anchor.set' ? 'In force 72 hours after the approval' : `At the moment of the approval${early ? `, not before ${minute(request.notBefore!)}` : ''}`}</dd>
             <dt>Expires</dt><dd>{minute(request.expiresAt)}</dd>
           </dl>
         )}
@@ -1184,11 +1189,7 @@ export function Compliance({ onSignedOut }: { onSignedOut: () => void }) {
       const out = await sensitive<{ name: string; csv: string }>('/api/audit/export')
       if (out.status === 401) return onSignedOut()
       if (out.status !== 200) return setProblem(say(out.data))
-      const link = document.createElement('a')
-      link.href = URL.createObjectURL(new Blob([out.data.csv], { type: 'text/csv' }))
-      link.download = out.data.name
-      link.click()
-      URL.revokeObjectURL(link.href)
+      save(out.data.name, out.data.csv)
       await load() // the export is itself a row of the log
     } catch {
       setProblem(CANCELLED)

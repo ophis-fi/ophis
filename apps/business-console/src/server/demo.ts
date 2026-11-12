@@ -51,7 +51,7 @@ export const CHECKS = [
   'The wallet is linked to this organisation',
   'Both assets are permitted, and they differ',
   'The chain is Optimism or Unichain',
-  `The amount is above zero and within ${shown(ORDER_LIMIT_EUR * E, 2)} EUR per order, at the reference price`,
+  `The amount is above zero and within ${shown(ORDER_LIMIT_EUR * E, 2).replace(/\B(?=(\d{3})+\.)/g, ',')} EUR per order, at the reference price`,
   `Fewer than ${MAX_OPEN_ORDERS} orders wait for approval`,
 ]
 /**
