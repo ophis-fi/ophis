@@ -39,9 +39,9 @@ address on another chain can be a contract with other owners. Otherwise its
 entry is `{ affiliate: null, fees: null }` and nothing is read for it. A wallet
 proved by its own key is not listed and is read on any chain.
 
-To turn the route on, `BUSINESS_API_TOKEN` must reach the indexer process:
-`docker-compose.yml` passes each variable by name and does not pass this one
-yet. Add it to the indexer service's `environment` before the deploy.
+To turn the route on, set `BUSINESS_API_TOKEN` in the host environment of the
+deploy: `docker-compose.yml` passes it to the indexer process. Leave it unset
+and the route stays off.
 
 ## GitHub secrets required for deploy
 
