@@ -118,7 +118,7 @@ const STATUS: Record<string, [tone: string, icon: string]> = {
   Suspended: ['draft', 'history'], Planned: ['draft', 'calendar'], Later: ['draft', 'calendar'],
   // Demo mode: the states of an order, and the tags of example rows.
   'Pending approval': ['warn', 'clock'], 'Approved. Not sent: demo': ['ok', 'check'], Refused: ['bad', 'x'], Cancelled: ['draft', 'ban'], Expired: ['draft', 'history'],
-  Open: ['', 'clock'], Filled: ['ok', 'check'], Paid: ['ok', 'check'], Accrued: ['', 'clock'], Example: ['draft', 'info'], Illustrative: ['preview', 'info'], Demo: ['preview', 'info'],
+  Open: ['', 'clock'], Filled: ['ok', 'check'], Paid: ['ok', 'check'], Carried: ['', 'clock'], Example: ['draft', 'info'], Illustrative: ['preview', 'info'], Demo: ['preview', 'info'],
   Revoked: ['bad', 'x'], Frozen: ['bad', 'ban'], Removed: ['bad', 'x'], 'Chain verified': ['ok', 'shield-check'], 'Chain broken': ['bad', 'triangle-alert'],
 }
 export function Status({ children }: { children: string }) {

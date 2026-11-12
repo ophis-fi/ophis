@@ -8534,13 +8534,13 @@ describe('H. demo mode: overview, desk and partner figures', () => {
     expect(demo.orderState('applied', false)).toBe('Approved. Not sent: demo')
     // Review: every panel of figures says "example" or "demo" itself, also where the banner has scrolled away, and no
     // example wallet is called a linked wallet. What a member typed (amount, limit price) is shown whole, never cut.
-    for (const sentence of ['title="Balances by wallet" hint="Example wallets and balances, not your linked wallets."', 'Daily volume and fees earned (example)', 'What you earn (example)', 'Where the volume comes from (example)',
-      'hint="Example rows. One code per integration. Fees follow the code."', 'hint={`Example rows. Showing ', 'hint="Example rows: one per week of the series above."', 'hint="Example statement.']) expect(deskPage, sentence).toContain(sentence)
+    for (const sentence of ['title="Balances by wallet" hint="Example wallets and balances, not your linked wallets."', 'hint="Example statement.']) expect(deskPage, sentence).toContain(sentence)
     expect(deskPage).not.toMatch(/linked wallet"/)
     expect(deskPage).not.toMatch(/(qty|money)\((\w+\.)*ticket\.(amount|limitPrice)/)
     expect(pagesSource).toContain('<dt>Settle from</dt><dd>{order.wallet}, <span className="mono">{order.address}</span></dd>')
-    // The banner is on both pages, in every view of them; the footer line is the shell's, so it is on every screen.
-    expect(deskPage.match(/<Banner \/>/g)).toHaveLength(3)
+    // The banner is on the institution's Overview and on the Desk, never on a partner's Overview (section I); the
+    // footer line is the shell's, so it is on every screen.
+    expect(deskPage.match(/<Banner \/>/g)).toHaveLength(2)
     expect(shellPage).toContain('<footer className="foot-line">Ophis is a software provider. It is not a crypto-asset service provider.</footer>')
     expect(shellPage).not.toMatch(/Later/)
   })
@@ -8892,6 +8892,25 @@ describe('I. partner figures: live', () => {
     // No wallet, or not connected: no file.
     const bare = await owner()
     expect([(await exportOf(bare, 'referred')).body, (await exportOf(o, 'referred', testEnv)).body]).toEqual([{ error: 'no_wallet' }, { error: 'not_connected' }])
+  })
+
+  it('the words of the partner Overview: the sentences it must say, no banner, no example, none of the withheld fields, no payout terms and no claim about a licence', () => {
+    const from = deskPage.indexOf("// ---- a partner's overview")
+    const part = deskPage.slice(from, deskPage.indexOf('// ---- the desk ----'))
+    expect(from).toBeGreaterThan(0)
+    for (const sentence of [
+      'Figures from the Ophis rebate service, read at {stamp(Date.parse(f.asOf))}. Amounts in USD.', "const ESTIMATE = 'Estimate. The amount is fixed when a payout is made.'", 'Your share: {a.sharePct}% of the net fee on referred volume',
+      '`Next payout run: ${stamp(Date.parse(a.nextPayoutAt))}`', "'No payout run is scheduled.'", 'This wallet holds no partner code.', '<b>Your figures are not connected yet.</b>', '<b>No wallet is linked.</b>',
+      '<a className="link" href="/#/organisation">Link a wallet under Organisation</a>', '<b>The figures are not available right now.</b>', '<Icon name="history" size={16} />Retry</button>', 'const SHOWN = 50', 'a.referred.slice(0, SHOWN)',
+      'Referred volume this cycle', 'Lifetime referred volume', 'Referred wallets', 'Estimated earnings this cycle', 'Paid to date', 'Owed this cycle', 'Trades waiting for a price', "['Month', 'Status', 'Owed (USD)', 'Owed (WETH)', 'Carried (USD)']",
+    ]) expect(part, sentence).toContain(sentence)
+    expect(part.match(/\{ESTIMATE\}/g)).toHaveLength(2) // under each estimate
+    for (const banned of [/<Banner/, /example|demo|illustrative/i, new RegExp(WITHHELD.join('|')), /minimum (payout|amount)|threshold|bps/i, /licen[cs]ed|regulated|authori[sz]ed|MiCA|compliant/i, /\u2014/, /honest/i,
+      /paid (weekly|monthly|daily|every)|payout (terms|schedule)|\bdue\b|guarantee|no (other|hidden) fee|never charge|price improvement/i]) expect(part).not.toMatch(banned)
+    // Numbers are right-aligned with tabular figures: the kit's body sets tabular-nums, and the money columns carry the class num.
+    expect(deskPage).toContain(String.raw`/\(USD\)|\(EUR\)|\(WETH\)|^(Trades`)
+    // No leftover of the example data anywhere on the page or in the server's demo module.
+    expect(deskPage + demoSource).not.toMatch(/NW-VAULTS|Payout ledger|Affiliate codes|Attributed wallets|43,?983,?000|PARTNER_BPS|function Chart/)
   })
 
   it('an export of another organisation: each file holds the own wallets only', async () => {

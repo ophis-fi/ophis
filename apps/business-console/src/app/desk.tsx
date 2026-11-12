@@ -1,8 +1,9 @@
-// Demo mode: Overview (institution and partner) and Desk. The figures are the server's examples (src/server/demo.ts).
-// What is real here: the orders an institution prepares (two-person requests), their state, and who may do what.
+// Overview and Desk. An institution: demo mode, the figures are the server's examples (src/server/demo.ts). What is
+// real there: the orders an institution prepares (two-person requests), their state, and who may do what.
+// A partner: live figures from the Ophis rebate service, checked and rebuilt by the server (src/server/partner.ts).
 // No order is sent, signed or executed, and this file holds no price: every estimate is the server's.
 import { useCallback, useEffect, useState, type FormEvent, type ReactNode } from 'react'
-import { api, Icon, ROLE, save, say, Section, stamp, Status, Tile } from './ui.tsx'
+import { api, capital, Icon, ROLE, save, say, Section, stamp, Status, Tile } from './ui.tsx'
 
 interface Ticket { type: 'market' | 'limit'; sell: string; buy: string; amount: string; limitPrice: string | null; chainId: number; walletId: string }
 interface Estimate { received: string; volumeEur: string; feeBps: string; feeEur: string; totalEur: string; priced: string | null }
@@ -15,14 +16,16 @@ interface Institution {
   months: { month: string; trades: number; volumeEur: string; feeBps: string; feeEur: string }[]
   orders: Order[]; examples: Order[]
 }
-interface Volume { name: string; volume: string; share: string }
-interface Partner {
-  kind: 'partner'; waiting: number; period: { from: string; to: string }; volume: string; feesEarned: string; feeBps: string; wallets: number; trades: number; averageTrade: string
-  days: { date: string; volume: string; fees: string }[]; chains: Volume[]; tokens: Volume[]
-  codes: { code: string; created: string; wallets: number; trades: number; volume: string; fee: string }[]
-  payouts: { from: string; to: string; fees: string; transaction: string | null; paidAt: string | null; status: string }[]
-  attributed: { wallet: string; firstSeen: string; code: string; chain: string; trades: number; volume: string; lastTrade: string }[]
+// A partner's figures: live, or the plain reason why there are none. Numbers are USD or WETH amounts of the rebate service.
+interface PartnerWallet {
+  wallet: string; label: string; chain: string
+  affiliate: null | {
+    kind: string; sharePct: number; codes: string[]; referredCount: number; cycleVolumeUsd: number; lifetimeVolumeUsd: number; estimatedEarningsUsd: number; paidWeth: number; paidUsd: number
+    nextPayoutAt: string | null; referred: { wallet: string; attributed: string; firstSeenAt: string; lifetimeVolumeUsd: number }[]
+  }
+  fees: { shareUsd: number; carriedUsd: number; owedUsd: number; pendingTrades: number; paidWeth: number; trades: number; months: { month: string; status: string; owedUsd: number; owedWeth: number; carriedUsd: number }[] }
 }
+interface Partner { kind: 'partner'; waiting: number; figures: { state: 'not_connected' | 'no_wallet' | 'figures_unavailable' } | { state: 'live'; asOf: string; leftOut: number; wallets: PartnerWallet[] } }
 interface DeskView {
   assets: { symbol: string; decimals: number; eur: string; issuer: string; status: string }[]; chains: { id: number; name: string }[]
   wallets: { id: string; label: string; address: string; chain: string }[]; limitEur: string; mayPrepare: boolean; orders: Order[]; examples: Order[]
@@ -49,18 +52,18 @@ const Banner = () => <p className="note warn demo" role="note"><Icon name="info"
 const EXAMPLE = 'Example figures. The real cost of an order is shown before it is signed.'
 
 /** "Export CSV": the server builds the file, the browser saves it. */
-function Export({ table, size = 'sm' }: { table: string; size?: 'sm' | 'md' }) {
+function Export({ table, size = 'sm', label = 'Export CSV' }: { table: string; size?: 'sm' | 'md'; label?: string }) {
   const [failed, setFailed] = useState(false)
   async function run() {
     const out = await api<{ name: string; csv: string }>(`/api/export/${table}`)
     setFailed(out.status !== 200)
     if (out.status === 200) save(out.data.name, out.data.csv)
   }
-  return <button className={`btn ghost ${size}`} type="button" onClick={run}><Icon name="download" size={16} />{failed ? 'Export failed. Try again' : 'Export CSV'}</button>
+  return <button className={`btn ghost ${size}`} type="button" onClick={run}><Icon name="download" size={16} />{failed ? 'Export failed. Try again' : label}</button>
 }
 
 function Table({ head, rows, foot }: { head: string[]; rows: ReactNode[][]; foot?: ReactNode[] }) {
-  const cls = (i: number) => (/\(USD\)|\(EUR\)|^(Trades|Wallets|Balance|Sell|Buy|bps|EUR)$/.test(head[i]) ? 'num' : undefined)
+  const cls = (i: number) => (/\(USD\)|\(EUR\)|\(WETH\)|^(Trades|Wallets|Balance|Sell|Buy|bps|EUR)$/.test(head[i]) ? 'num' : undefined)
   return (
     <div className="table-wrap">
       <table className="t">
@@ -92,9 +95,9 @@ function useView<T>(path: string, onSignedOut: () => void) {
 }
 
 export function Overview({ onSignedOut }: { onSignedOut: () => void }) {
-  const { view, problem } = useView<Institution | Partner>('/api/overview', onSignedOut)
+  const { view, problem, load } = useView<Institution | Partner>('/api/overview', onSignedOut)
   if (!view) return problem ? <p className="note bad" role="alert"><Icon name="triangle-alert" /><span className="grow">{problem}</span></p> : null
-  return view.kind === 'partner' ? <PartnerOverview v={view} /> : <InstitutionOverview v={view} />
+  return view.kind === 'partner' ? <PartnerOverview v={view} retry={load} /> : <InstitutionOverview v={view} />
 }
 
 function InstitutionOverview({ v }: { v: Institution }) {
@@ -138,74 +141,74 @@ function InstitutionOverview({ v }: { v: Institution }) {
   )
 }
 
-// The daily chart: bars for the volume of each day, a line for the running total of the fees. Pixels only; the figures are the server's.
-function Chart({ v }: { v: Partner }) {
-  const [W, L, R, y0] = [720, 38, 78, 150]
-  const pw = (W - L - R) / v.days.length
-  const volumes = v.days.map((d) => Number(d.volume)) // ponytail: numbers for drawing only, never shown as money
-  const top = Math.max(...volumes)
-  const ys = (value: number) => y0 - (value / top) * 125
-  let running = 0
-  const points = v.days.map((d, i) => [L + i * pw + pw / 2, (running += Number(d.fees))] as const)
-  const fy = (value: number) => 245 - (value / running) * 48
-  const [ex, ec] = points[points.length - 1]
-  const summary = `Daily volume from ${v.period.from} to ${v.period.to}: ${money(v.volume)} USD in total, between ${money(String(Math.min(...volumes)), 0)} and ${money(String(top), 0)} USD a day. Fees earned reach ${money(v.feesEarned)} USD.`
+// ---- a partner's overview: live figures only, and no banner. ----
+const usd = (n: number) => n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+const weth = (n: number) => n.toLocaleString('en-US', { maximumFractionDigits: 6 })
+const ESTIMATE = 'Estimate. The amount is fixed when a payout is made.'
+const SHOWN = 50 // referred wallets on the page; the CSV holds all of them
+
+function PartnerWalletFigures({ w }: { w: PartnerWallet }) {
+  const a = w.affiliate
   return (
-    <div className="chart">
-      <svg viewBox={`0 0 ${W} 268`} role="img" aria-label={summary}>
-        <text className="ttl" x={L} y={11}>Volume per day (USD)</text>
-        {[1_000_000, 2_000_000].filter((line) => line <= top).map((line) => <g key={line}><line className="grid" x1={L} x2={W - R} y1={ys(line)} y2={ys(line)} /><text x={L - 6} y={ys(line) + 4} textAnchor="end">{line / 1_000_000}M</text></g>)}
-        <text x={L - 6} y={y0 + 4} textAnchor="end">0</text>
-        {v.days.map((d, i) => <rect key={d.date} x={L + i * pw + pw * 0.14} y={ys(volumes[i])} width={pw * 0.72} height={y0 - ys(volumes[i])} rx={2}><title>{d.date}: {money(d.volume, 0)} USD volume, {money(d.fees)} USD fees</title></rect>)}
-        <line className="axis" x1={L} x2={W - R} y1={y0} y2={y0} />
-        <text className="ttl" x={L} y={186}>Fees earned, running total (USD)</text>
-        <line className="axis" x1={L} x2={W - R} y1={245} y2={245} /><text x={L - 6} y={249} textAnchor="end">0</text>
-        <polyline className="fee" points={points.map(([x, c]) => `${x.toFixed(1)},${fy(c).toFixed(1)}`).join(' ')} /><circle cx={ex} cy={fy(ec)} r={4} />
-        <text className="val" x={ex + 9} y={fy(ec) + 4}>{money(v.feesEarned)}</text>
-        {v.days.map((d, i) => (i % 7 === 1 ? <text key={d.date} x={L + i * pw + pw / 2} y={262} textAnchor="middle">{d.date.slice(5)}</text> : null))}
-      </svg>
-      <p className="fine">{summary}</p>
-    </div>
+    <section className="pw sec" aria-label={`Wallet ${w.label}`}>
+      <h2 className="pw-head"><Icon name="wallet" /><b>{w.label}</b><span className="mono muted">{w.wallet}</span><span className="muted">{w.chain}</span></h2>
+      {a ? (
+        <>
+          <div className="stats">
+            <div className="c"><span className="num">${usd(a.cycleVolumeUsd)}</span><span className="cap"><Icon name="trending-up" size={16} />Referred volume this cycle</span></div>
+            <div className="c"><span className="num">${usd(a.lifetimeVolumeUsd)}</span><span className="cap"><Icon name="history" size={16} />Lifetime referred volume</span></div>
+            <div className="c"><span className="num">{count(a.referredCount)}</span><span className="cap"><Icon name="wallet" size={16} />Referred wallets</span></div>
+            <div className="c"><span className="num">${usd(a.estimatedEarningsUsd)}</span><span className="cap"><Icon name="hand-coins" size={16} />Estimated earnings this cycle</span><span className="sub">{ESTIMATE}</span></div>
+            <div className="c"><span className="num">${usd(a.paidUsd)}</span><span className="cap"><Icon name="receipt" size={16} />Paid to date</span><span className="sub">{weth(a.paidWeth)} WETH</span></div>
+          </div>
+          <div className="panel pw-facts">
+            <p><b>Your share: {a.sharePct}% of the net fee on referred volume</b></p>
+            <p>{a.nextPayoutAt ? `Next payout run: ${stamp(Date.parse(a.nextPayoutAt))}` : 'No payout run is scheduled.'}</p>
+            <p>Active codes: {a.codes.length ? a.codes.map((code) => <span className="mono code" key={code}>{code}</span>) : <span className="muted">none</span>}</p>
+          </div>
+          <Section icon="users" title="Referred wallets" hint={a.referred.length > SHOWN ? `The first ${SHOWN} of ${count(a.referred.length)}. The CSV holds all of them.` : 'Wallets attributed to this wallet. The CSV holds all of them.'}>
+            {a.referred.length ? <Table head={['Wallet', 'Attributed by', 'First seen (UTC)', 'Lifetime volume (USD)']} rows={a.referred.slice(0, SHOWN).map((r) => [<span className="mono">{r.wallet}</span>, r.attributed, stamp(Date.parse(r.firstSeenAt)), usd(r.lifetimeVolumeUsd)])} />
+              : <p className="muted">No wallet has been referred yet.</p>}
+          </Section>
+        </>
+      ) : <p className="note"><Icon name="info" /><span className="grow">This wallet holds no partner code.</span></p>}
+      <Section icon="hand-coins" title="Partner fee" hint="The fee you set on the orders of your integration.">
+        <div className="stats">
+          <div className="c"><span className="num">${usd(w.fees.owedUsd)}</span><span className="cap"><Icon name="hand-coins" size={16} />Owed this cycle</span><span className="sub">Your share ${usd(w.fees.shareUsd)} plus ${usd(w.fees.carriedUsd)} carried. {ESTIMATE}</span></div>
+          <div className="c"><span className="num">{count(w.fees.pendingTrades)}</span><span className="cap"><Icon name="clock" size={16} />Trades waiting for a price</span></div>
+          <div className="c"><span className="num">{weth(w.fees.paidWeth)}</span><span className="cap"><Icon name="receipt" size={16} />Paid to date (WETH)</span></div>
+          <div className="c"><span className="num">{count(w.fees.trades)}</span><span className="cap"><Icon name="arrow-left-right" size={16} />Trades</span></div>
+        </div>
+        {w.fees.months.length ? <Table head={['Month', 'Status', 'Owed (USD)', 'Owed (WETH)', 'Carried (USD)']} rows={w.fees.months.map((m) => [m.month, <Status>{capital(m.status)}</Status>, usd(m.owedUsd), weth(m.owedWeth), usd(m.carriedUsd)])} />
+          : <p className="muted">No month has been accounted yet.</p>}
+      </Section>
+    </section>
   )
 }
-const Breakdown = ({ rows }: { rows: Volume[] }) => (
-  <ul className="bd">{rows.map((r) => <li key={r.name}><span>{r.name}</span><span className="bar-t"><i style={{ width: `${(Number(r.share) / Number(rows[0].share)) * 100}%` }} /></span><span className="num">{money(r.volume, 0)}</span><span className="pct">{r.share}%</span></li>)}</ul>
-)
 
-function PartnerOverview({ v }: { v: Partner }) {
+function PartnerOverview({ v, retry }: { v: Partner; retry: () => Promise<void> }) {
+  const f = v.figures
+  const [busy, setBusy] = useState(false)
   return (
     <>
       <header className="ph">
-        <div><span className="cap eyebrow">Partner console</span><h1 className="h-page">Your flow, <em>in one view</em>.</h1><p className="lede">Last 30 days, {v.period.from} to {v.period.to}. All times UTC. Amounts in USD.</p></div>
-        <div className="acts"><Export table="daily" size="md" /></div>
+        <div><span className="cap eyebrow">Partner console</span><h1 className="h-page">Your flow, <em>in one view</em>.</h1>
+          {f.state === 'live' && <p className="lede">Figures from the Ophis rebate service, read at {stamp(Date.parse(f.asOf))}. Amounts in USD.</p>}</div>
+        {f.state === 'live' && <div className="acts"><Export table="referred" size="md" label="Referred wallets CSV" /><Export table="months" size="md" label="Fee months CSV" /></div>}
       </header>
-      <Banner />
-      <div className="stats">
-        <div className="c"><span className="num">${money(v.volume, 0)}</span><span className="cap"><Icon name="trending-up" size={16} />30-day volume</span></div>
-        <div className="c"><span className="num">${money(v.feesEarned)}</span><span className="cap"><Icon name="hand-coins" size={16} />Fees earned</span><span className="sub">{Number(v.feeBps)} bps of volume</span></div>
-        <div className="c"><span className="num">{count(v.wallets)}</span><span className="cap"><Icon name="wallet" size={16} />Active wallets</span></div>
-        <div className="c"><span className="num">{count(v.trades)}</span><span className="cap"><Icon name="arrow-left-right" size={16} />Trades</span><span className="sub">Average size ${money(v.averageTrade, 0)}</span></div>
-      </div>
-      <div className="g two eq sec">
-        <section className="panel"><h2 className="cap">Daily volume and fees earned (example)</h2><Chart v={v} /></section>
-        <section className="panel"><h2 className="cap">What you earn (example)</h2>
-          <div className="feerow"><span className="big cap-fee">{Number(v.feeBps)} bps</span><span className="txt"><b>Your fee.</b> You set it. It applies to each order sent through your integration.</span></div>
-          <div className="feerow"><span className="big word">Listed</span><span className="txt"><b>In the payout ledger.</b> Each payout is a row of the ledger below, with its transaction.</span></div>
-        </section>
-      </div>
-      <section className="panel sec"><h2 className="cap">Where the volume comes from (example)</h2>
-        <div className="split"><div><h3 className="h-card">By chain</h3><Breakdown rows={v.chains} /></div><div><h3 className="h-card">By token</h3><Breakdown rows={v.tokens} /></div></div>
-      </section>
-      <Section icon="link-2" title="Affiliate codes" hint="Example rows. One code per integration. Fees follow the code." action={<Export table="codes" />}>
-        <Table head={['Code', 'Created', 'Wallets', 'Trades', 'Volume (USD)', 'Your fee (USD)']} rows={v.codes.map((c) => [<span className="mono">{c.code}</span>, c.created, count(c.wallets), count(c.trades), money(c.volume), money(c.fee)])}
-          foot={['Total', '', count(v.wallets), count(v.trades), money(v.volume), money(v.feesEarned)]} />
-      </Section>
-      <Section icon="hand-coins" title="Payout ledger" hint="Example rows: one per week of the series above." action={<Export table="payouts" />}>
-        <Table head={['Period', 'Fees (USD)', 'Transaction', 'Paid at', 'Status']} rows={v.payouts.map((w) => [`${w.from} to ${w.to}`, money(w.fees), w.transaction ? <span className="mono">{w.transaction}</span> : <span className="muted">Not paid yet</span>, w.paidAt ?? '', <Status>{w.status}</Status>])} />
-      </Section>
-      <Section icon="wallet" title="Attributed wallets" hint={`Example rows. Showing ${v.attributed.length} of ${count(v.wallets)}, by volume.`} action={<Export table="wallets" />}>
-        <Table head={['Wallet', 'Code', 'Main chain', 'Trades', 'Volume (USD)', 'Last trade (UTC)']} rows={v.attributed.map((w) => [<><span className="mono">{w.wallet}</span><small>First seen {w.firstSeen}</small></>, <span className="mono">{w.code}</span>, w.chain, w.trades, money(w.volume), w.lastTrade])} />
-      </Section>
+      {f.state === 'not_connected' && <p className="note warn" role="status" data-state={f.state}><Icon name="info" /><span className="grow"><b>Your figures are not connected yet.</b> This console is not connected to the Ophis rebate service. Nothing is wrong on your side. <a className="link" href="/#/support">Ask Support</a> when your figures will be connected.</span></p>}
+      {f.state === 'no_wallet' && <p className="note warn" role="status" data-state={f.state}><Icon name="wallet" /><span className="grow"><b>No wallet is linked.</b> Figures are shown for the wallets your organisation has linked. <a className="link" href="/#/organisation">Link a wallet under Organisation</a>.</span></p>}
+      {f.state === 'figures_unavailable' && (
+        <p className="note bad" role="alert" data-state={f.state}><Icon name="triangle-alert" /><span className="grow"><b>The figures are not available right now.</b> The rebate service did not give a usable answer. Nothing changed in your account. Try again in a minute.</span>
+          <button className="btn ghost sm" type="button" disabled={busy} onClick={async () => (setBusy(true), await retry(), setBusy(false))}><Icon name="history" size={16} />Retry</button></p>
+      )}
+      {f.state === 'live' && (
+        <>
+          {f.leftOut > 0 && <p className="note" role="note"><Icon name="info" /><span className="grow">Figures are read for the 10 wallets linked first. {f.leftOut} more linked {f.leftOut === 1 ? 'wallet is' : 'wallets are'} not shown.</span></p>}
+          {f.wallets.map((w) => <PartnerWalletFigures key={w.wallet} w={w} />)}
+        </>
+      )}
+      {v.waiting > 0 && <p className="note"><Icon name="users" /><span className="grow"><b data-waiting>{v.waiting}</b> {v.waiting === 1 ? 'request waits' : 'requests wait'} for your approval. <a className="link" href="/#/organisation">Open approvals</a></span></p>}
     </>
   )
 }
@@ -319,7 +322,7 @@ export function Desk({ kind, onSignedOut }: { kind: string; onSignedOut: () => v
       <header className="ph"><div><span className="cap eyebrow">Desk <Status>Demo</Status></span><h1 className="h-page">Prepare, approve, <em>then sign</em>.</h1><p className="lede">Prepare an order, review the cost, then a second person approves. Amounts in EUR.</p></div></header>
       <Banner />
       {kind === 'institution' ? <InstitutionDesk onSignedOut={onSignedOut} /> : (
-        <div className="panel"><div className="stack" style={{ alignItems: 'flex-start' }}><Tile name="landmark" /><h2 className="h-panel">The desk is for institutions.</h2><p className="muted">Partners integrate the swap in their own product. Your volume, fees and payouts are in Overview.</p>
+        <div className="panel"><div className="stack" style={{ alignItems: 'flex-start' }}><Tile name="landmark" /><h2 className="h-panel">The desk is for institutions.</h2><p className="muted">Partners integrate the swap in their own product. Your figures are in Overview.</p>
           <div className="acts"><a className="btn primary md" href="/#/overview"><Icon name="layout-dashboard" size={16} />Go to Overview</a></div></div></div>
       )}
     </>
