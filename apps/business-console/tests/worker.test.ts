@@ -15,6 +15,9 @@ import { colour, LIMITS, SAFES, type SafeState } from '../src/server/chain.ts'
 import { LINK_ACTION, PROOF_ACTION, typedLink, typedProof } from '../src/server/typed.ts'
 import { WORDS } from '../src/server/words.ts'
 import * as demo from '../src/server/demo.ts'
+import deskPage from '../src/app/desk.tsx?raw'
+import demoSource from '../src/server/demo.ts?raw'
+import shellPage from '../src/app/main.tsx?raw'
 import { softwareAuthenticator } from './authenticator.ts'
 // Milestone 5b: the age library, here only to make what a browser makes (a sealed file) and to open it as the operator would.
 import * as age from 'age-encryption'
@@ -8261,12 +8264,12 @@ describe('H. demo mode: overview, desk and partner figures', () => {
 
   it('D2: what the browser says about a price, a fee or an estimate is not used, and no unknown field reaches the payload', async () => {
     const { t, walletId } = await deskTeam()
-    const honestly = (await prepare(t, walletId, { send: false })).body
+    const plain = (await prepare(t, walletId, { send: false })).body
     const lies = { price: '1', priceEur: '0.01', fee: '0', feeBps: '0', feeEur: '0', estimate: { received: '999999', feeEur: '0.00', totalEur: '0.00' }, wallet: 'Somebody else', checks: [], limitEur: '1e30', ticket: { amount: '1' }, __proto__: { amount: '1' } }
-    expect((await prepare(t, walletId, { ...lies, send: false })).body).toEqual(honestly)
+    expect((await prepare(t, walletId, { ...lies, send: false })).body).toEqual(plain)
     const { id } = (await prepare(t, walletId, lies)).body
     const { order } = await orderOf(id)
-    expect(order).toEqual({ ticket: honestly.ticket, wallet: 'Operations Safe', checks: demo.CHECKS, estimate: honestly.estimate })
+    expect(order).toEqual({ ticket: plain.ticket, wallet: 'Operations Safe', checks: demo.CHECKS, estimate: plain.estimate })
     expect(Object.keys(order.ticket).sort()).toEqual(['amount', 'buy', 'chainId', 'limitPrice', 'sell', 'type', 'walletId'])
   })
 
@@ -8459,5 +8462,19 @@ describe('H. demo mode: overview, desk and partner figures', () => {
     expect(sent.body.state).toBe('requested')
     expect((await orderOf(sent.body.id)).order.wallet).toBe('Demo wallet')
     expect((await decide(o, sent.body.id, 'approve')).body).toEqual({ error: 'own_request' })
+  })
+
+  it('D3: the words of the demo pages: no claim about a licence, no payout terms and no promise about fees; the banner, the footer line and the sentences the pages must say', () => {
+    const said = [deskPage, demoSource, JSON.stringify([demo.partner(), demo.institution(), demo.desk()]), EVENTS['order.demo'], EVENTS['wallet.link/demo']].join('\n')
+    for (const banned of [/licen[cs]ed|regulated|authori[sz]ed|MiCA|compliant/i, /—/, /honest/i, /paid (weekly|monthly|daily|every)|payout (terms|schedule)|\bdue\b|guarantee|no (other|hidden) fee|never charge|price improvement/i]) expect(said).not.toMatch(banned)
+    for (const sentence of [
+      '<b>Demo data.</b> No order is sent and no funds move. Figures are examples.', 'Example figures. The real cost of an order is shown before it is signed.', 'Nothing is signed at this step.',
+      'Illustrative. Each token is checked against the ESMA register before launch', 'Signing in the wallet is not part of this demo.', 'The desk is for institutions.', 'Use a larger screen.', 'Execution: none, demo', 'Sent for approval.',
+    ]) expect(deskPage, sentence).toContain(sentence)
+    expect(demo.orderState('applied', false)).toBe('Approved. Not sent: demo')
+    // The banner is on both pages, in every view of them; the footer line is the shell's, so it is on every screen.
+    expect(deskPage.match(/<Banner \/>/g)).toHaveLength(3)
+    expect(shellPage).toContain('<footer className="foot-line">Ophis is a software provider. It is not a crypto-asset service provider.</footer>')
+    expect(shellPage).not.toMatch(/Later/)
   })
 })

@@ -110,7 +110,16 @@ try {
 
   check('the activate command confirmed one passkey', run('node', ['scripts/dev.mjs', 'activate', '--persist', STATE]).includes('Activated 1 pending'))
   await page.getByRole('button', { name: 'Sign in with a passkey' }).click()
-  await page.getByRole('heading', { name: 'People, wallets and two-person approval.' }).waitFor()
+  // Demo mode: an active organisation lands on Overview. The flows of the earlier milestones work on the Organisation page.
+  const toOrganisation = async (on) => {
+    await on.getByRole('heading', { name: /in one view|People, wallets and two-person approval/ }).waitFor()
+    await on.evaluate(() => void (location.hash = '#/organisation'))
+    await on.getByRole('heading', { name: 'People, wallets and two-person approval.' }).waitFor()
+  }
+  await page.getByRole('heading', { name: 'Your flow, in one view.' }).waitFor()
+  check('after sign-in an active organisation lands on Overview, with the demo banner and the footer line',
+    await page.getByText('Demo data. No order is sent and no funds move. Figures are examples.').isVisible() && await page.getByText(FOOTER).isVisible() && (await page.evaluate(() => location.hash)) !== '#/organisation')
+  await toOrganisation(page)
   await page.getByRole('button', { name: 'End session' }).waitFor()
   check('the Organisation page shows the member, the passkey and the session',
     await page.getByRole('cell', { name: 'Maren Okafor' }).first().isVisible() && await page.getByText('1: Security key 1').isVisible() && await page.getByText('This session').isVisible())
@@ -152,7 +161,7 @@ try {
     await on.getByRole('heading', { name: 'Read this before you continue.' }).waitFor()
     const shown = await on.getByText(text).isVisible() && (!shot || await both(on, shot))
     await on.getByRole('button', { name: 'I have read this' }).click()
-    await on.getByRole('heading', { name: 'People, wallets and two-person approval.' }).waitFor()
+    await toOrganisation(on)
     return shown
   }
   // The member's side of the ceremony, on their own device: open the link, create the passkey, read the words.
@@ -231,7 +240,7 @@ try {
 
   await viewer.page.getByRole('link', { name: 'Go to sign-in' }).click()
   await viewer.page.getByRole('button', { name: 'Sign in with a passkey' }).click()
-  await viewer.page.getByRole('heading', { name: 'People, wallets and two-person approval.' }).waitFor()
+  await toOrganisation(viewer.page)
   await viewer.page.getByRole('button', { name: 'End session' }).waitFor()
   check('the Viewer signs in and sees only their own seat', (await viewer.page.getByRole('cell', { name: 'Maren Okafor' }).count()) === 0 && await viewer.page.getByRole('cell', { name: 'Ada Viewer' }).first().isVisible()
     && (await viewer.page.getByRole('button', { name: 'Invite member' }).count()) === 0)
@@ -292,8 +301,9 @@ try {
       await who.page.goto(ORIGIN)
       await who.page.getByRole('button', { name: 'Sign in with a passkey' }).click()
     } else await organisation(who.page)
-    await who.page.getByRole('heading', { name: /People, wallets|Read this before you continue/ }).waitFor()
+    await who.page.getByRole('heading', { name: /People, wallets|Read this before you continue|in one view/ }).waitFor()
     if (await who.page.getByRole('button', { name: 'I have read this' }).count()) await who.page.getByRole('button', { name: 'I have read this' }).click()
+    await toOrganisation(who.page)
     await who.page.getByRole('button', { name: 'End session' }).first().waitFor()
   }
   // The second key of a seat: the first goes back in the drawer, a new one is plugged in.
@@ -897,10 +907,172 @@ try {
   check('after the unfreeze the member signs in again', (await status('/api/me', on)) === 200)
   await applicant.context.close()
 
+  // ---- demo mode: overview, desk and partner figures ----
+  // An institution from "seed --demo": an Owner, a Trader and an Approver, and the linked "Demo wallet".
+  const BANNER = 'Demo data. No order is sent and no funds move. Figures are examples.'
+  const seeded = (...more) => run('node', ['scripts/dev.mjs', 'seed', ...more, '--persist', STATE])
+  const demoSeed = seeded('--demo')
+  check('seed --demo says what it made', demoSeed.includes('an institution with one linked wallet named "Demo wallet"'))
+  async function firstOwner(link) {
+    const who = await person()
+    await who.page.goto(link)
+    await who.page.getByRole('button', { name: 'Create passkey' }).click()
+    await who.page.getByRole('heading', { name: 'Send these three words to your colleague.' }).waitFor()
+    check('the activate command confirmed the new Owner', run('node', ['scripts/dev.mjs', 'activate', '--persist', STATE]).includes('Activated 1 pending'))
+    await who.page.getByRole('link', { name: 'Go to sign-in' }).click()
+    await who.page.getByRole('button', { name: 'Sign in with a passkey' }).click()
+    return who
+  }
+  const dana = await firstOwner(demoSeed.match(/http\S+\/#\/enrol\/\S+/)[0])
+  await dana.page.getByRole('heading', { name: 'Your position, in one view.' }).waitFor()
+  check('an institution lands on its overview: banner, footer, the total computed from the balances, no approval waiting',
+    await dana.page.getByText(BANNER).isVisible() && await dana.page.getByText(FOOTER).isVisible() && await dana.page.getByText('11,363,175.00').first().isVisible()
+    && (await dana.page.locator('[data-waiting]').textContent()) === '0' && await dana.page.getByText('ORD-2611-0142').isVisible())
+  await toOrganisation(dana.page)
+  await secondKey(dana)
+  async function inviteAt(who, name, role) {
+    await who.page.getByRole('button', { name: 'Invite member' }).click()
+    await who.page.getByLabel('Name shown to colleagues').fill(name)
+    await who.page.getByLabel('Role').selectOption(role)
+    await who.page.getByRole('button', { name: 'Create the link' }).click()
+    const link = await who.page.getByLabel('Enrolment link').inputValue()
+    await who.page.getByRole('button', { name: 'Done' }).click()
+    return link
+  }
+  const tess = await person()
+  await typeWords(await enrolAt(await inviteAt(dana, 'Tess Trader', 'trader'), tess), 'Tess Trader', (await arrive(dana, false), dana.page))
+  await dana.page.getByRole('button', { name: 'Re-enrol Tess Trader' }).waitFor()
+  await arrive(tess)
+  const abe = await person()
+  await typeWords(await enrolAt(await inviteAt(dana, 'Abe Approver', 'approver'), abe), 'Abe Approver', (await arrive(dana, false), dana.page))
+  await dana.page.getByText('a 72 hour wait stands in for the second person').waitFor()
+  check('the activate command stood in for the Approver\'s wait', run('node', ['scripts/dev.mjs', 'activate', '--persist', STATE]).includes('Activated 1 pending'))
+  await arrive(abe)
+  await abe.devtools.send('WebAuthn.removeVirtualAuthenticator', { authenticatorId: abe.authenticatorId })
+  await abe.devtools.send('WebAuthn.addVirtualAuthenticator', { options: KEY })
+  await abe.page.getByRole('button', { name: 'Add a passkey' }).click()
+  await abe.page.getByText('2: Security key 1, Security key 2').waitFor()
+
+  // The Trader prepares an order on the desk.
+  // Open a page of the console afresh; what is shown at the door is read first.
+  const open = async (who, hash, heading) => {
+    await who.page.goto(`${ORIGIN}/#/${hash}`)
+    await who.page.reload()
+    await who.page.getByRole('heading', { name: new RegExp(`${heading}|Read this before you continue`) }).waitFor()
+    if (await who.page.getByRole('button', { name: 'I have read this' }).count()) await who.page.getByRole('button', { name: 'I have read this' }).click()
+    await who.page.getByRole('heading', { name: heading }).waitFor()
+  }
+  const desk = (who) => open(who, 'desk', 'Order blotter')
+  await desk(tess)
+  const ticket = tess.page.locator('form.ticket')
+  check('the desk shows the banner, the ticket with the linked wallet, the permitted assets as illustrative, and the three steps',
+    await tess.page.getByText(BANNER).isVisible() && await ticket.getByLabel('Settle from').locator('option', { hasText: 'Demo wallet' }).count() === 1
+    && await tess.page.getByText('Illustrative. Each token is checked against the ESMA register before launch').isVisible()
+    && await tess.page.getByText('Signing in the wallet is not part of this demo.').isVisible() && await ticket.getByText('Nothing is signed at this step.').isVisible()
+    && (await tess.page.locator('table.t').first().locator('tbody tr').allTextContents()).map((row) => row.match(/^(ETH|USDC|EURCV|EURC|EURe)/)?.[1]).join() === 'ETH,USDC,EURC,EURe,EURCV')
+  check('at phone width the ticket gives way to "Use a larger screen", the blotter stays, and nothing scrolls sideways', await both(tess.page, '47-desk-ticket')
+    && await (async () => {
+      await tess.page.setViewportSize({ width: 390, height: 844 })
+      const ok = await tess.page.getByText('Use a larger screen.').isVisible() && !(await ticket.isVisible()) && await tess.page.getByRole('heading', { name: 'Order blotter' }).isVisible()
+      await tess.page.setViewportSize({ width: 1440, height: 900 })
+      return ok && await ticket.isVisible() && !(await tess.page.getByText('Use a larger screen.').isVisible())
+    })())
+  await ticket.getByLabel('Amount to sell').fill('1e9')
+  await ticket.getByRole('button', { name: 'Review order' }).click()
+  await tess.page.getByText('Enter the amount as a plain number above zero').waitFor()
+  await ticket.getByLabel('Amount to sell').fill('250000')
+  await ticket.getByRole('button', { name: 'Review order' }).click()
+  const review = tess.page.locator('[data-step="review"]')
+  await review.getByRole('heading', { name: 'Review order' }).waitFor()
+  check('the review step shows the server\'s estimate and says that nothing is signed',
+    await review.getByText('84.7372 ETH').isVisible() && await review.getByText('250,000.00 EUR', { exact: true }).isVisible() && await review.getByText('Fee, of the volume').isVisible() && await review.locator('tfoot').getByText('25.00').isVisible()
+    && await review.getByText('Nothing is signed at this step.').isVisible() && await review.getByText('Example figures. The real cost of an order is shown before it is signed.').isVisible()
+    && await both(tess.page, '48-desk-review'))
+  const SENTENCE = 'Sell 250,000.00 EURC for ETH, market, Optimism, from Demo wallet'
+  await review.getByRole('button', { name: 'Send for approval' }).click()
+  await tess.page.getByText('Sent for approval.').waitFor()
+  const blotter = (who) => who.page.locator('section', { has: who.page.getByRole('heading', { name: 'Order blotter' }) }).locator('tbody tr')
+  check('the order is sent for approval, reads in words, and is the first row of the blotter with its real state',
+    await tess.page.getByText(`${SENTENCE}.`).isVisible() && /^ORD-[0-9a-f]{8}.*Pending approval/.test(await blotter(tess).first().textContent()) && (await blotter(tess).count()) === 8)
+  await arrive(tess, false)
+  check('the Trader sees the own request under Approvals, with no way to approve it', await tess.page.getByText(SENTENCE).first().isVisible()
+    && await tess.page.getByRole('button', { name: 'Cancel request' }).isVisible() && (await tess.page.getByRole('button', { name: 'Approve' }).count()) === 0)
+
+  // The Approver approves it with a passkey.
+  await arrive(abe, false)
+  const card = abe.page.locator('article.appr', { hasText: SENTENCE })
+  await card.getByRole('button', { name: 'Review' }).click()
+  check('the Approver reads the order in words, its estimate, who asked, and that nothing is sent', await card.getByRole('heading', { name: 'Demo order' }).isVisible()
+    && await card.getByText('Requested by Tess Trader (Trader)').first().isVisible() && await card.getByText('Demo: approving records the decision and sends nothing.').isVisible()
+    && await card.locator('dl.kv dd', { hasText: 'Approved. Not sent: demo' }).isVisible() && await both(abe.page, '50-order-approval', 'article.appr >> nth=0'))
+  await card.getByRole('button', { name: 'Approve' }).click()
+  await card.waitFor({ state: 'detached' })
+  await desk(tess)
+  check('after the approval the blotter says "Approved. Not sent: demo"', (await blotter(tess).first().textContent()).includes('Approved. Not sent: demo'))
+  await blotter(tess).first().getByRole('button', { name: /Open the record of ORD-/ }).click()
+  const record = tess.page.locator('#record')
+  await record.waitFor()
+  check('the record of the order: who prepared it, the ticket, the checks, the estimate, who decided, and no execution',
+    await record.getByText(SENTENCE).isVisible() && await record.getByText(/Tess Trader \(Trader\) on 20\d\d-/).isVisible() && await record.getByText(/Approved by Abe Approver on 20\d\d-/).isVisible()
+    && await record.getByText('Execution: none, demo').isVisible() && (await record.locator('.checks li').count()) === 7 && await record.getByText('The wallet is linked to this organisation').isVisible()
+    && await record.getByText('84.7372 ETH').isVisible() && await record.getByText('Example figures. The real cost of an order is shown before it is signed.').isVisible()
+    && await both(tess.page, '49-desk-record', '#record'))
+  await tess.page.setViewportSize({ width: 390, height: 844 })
+  check('at phone width the blotter and the record stay usable', await record.getByText('Execution: none, demo').isVisible() && await blotter(tess).first().getByRole('button', { name: /Open the record of ORD-/ }).isVisible())
+  await tess.page.setViewportSize({ width: 1440, height: 900 })
+
+  // The same for an order the Approver refuses.
+  await ticket.getByLabel('Amount to sell').fill('1000')
+  await ticket.getByRole('button', { name: 'Review order' }).click()
+  await review.getByRole('button', { name: 'Send for approval' }).click()
+  await tess.page.getByText('Sent for approval.').waitFor()
+  await arrive(abe, false)
+  const refusedCard = abe.page.locator('article.appr', { hasText: 'Sell 1,000.00 EURC for ETH' })
+  await refusedCard.getByRole('button', { name: 'Reject' }).click()
+  await refusedCard.waitFor({ state: 'detached' })
+  await desk(tess)
+  await blotter(tess).first().getByRole('button', { name: /Open the record of ORD-/ }).click()
+  check('a refused order shows as refused in the blotter and in its record, with who refused it',
+    (await blotter(tess).first().textContent()).includes('Refused') && await record.getByText(/Refused by Abe Approver on 20\d\d-/).isVisible() && await record.getByText('Sell 1,000.00 EURC for ETH, market, Optimism, from Demo wallet').isVisible()
+    && (await blotter(tess).nth(1).textContent()).includes('Approved. Not sent: demo') && (await blotter(tess).nth(2).textContent()).includes('Example'))
+
+  // One CSV, downloaded and read back.
+  const [orderFile] = await Promise.all([tess.page.waitForEvent('download'), tess.page.locator('section', { has: tess.page.getByRole('heading', { name: 'Order blotter' }) }).getByRole('button', { name: 'Export CSV' }).click()])
+  const orderLines = readFileSync(await orderFile.path(), 'utf8').split('\r\n').filter(Boolean)
+  check('the export of the blotter downloads: named ophis-demo-, the own orders first with their real state, every row with source = demo',
+    /^ophis-demo-orders-\d{4}-\d\d-\d\d\.csv$/.test(orderFile.suggestedFilename()) && orderLines[0].endsWith(',"Status","source"') && orderLines.length === 10 && orderLines.slice(1).every((row) => row.endsWith(',"demo"'))
+    && orderLines[1].includes('"1000"') && orderLines[1].includes('"Refused"') && orderLines[2].includes('"250000"') && orderLines[2].includes('"Approved. Not sent: demo"') && orderLines[3].startsWith('"ORD-2611-0142"'))
+
+  await open(tess, 'overview', 'Your position, in one view.')
+  const recent = tess.page.locator('section', { has: tess.page.getByRole('heading', { name: 'Recent orders' }) }).locator('tbody tr')
+  check('the institution overview: tiles, balances by wallet, the own orders first with their real state, then examples, the fee statement',
+    (await recent.first().textContent()).includes('Refused') && (await recent.nth(1).textContent()).includes('Approved. Not sent: demo') && (await recent.nth(2).textContent()).includes('Example')
+    && await tess.page.getByText('Treasury Safe').isVisible() && await tess.page.getByRole('heading', { name: 'Monthly fee statement' }).isVisible() && await tess.page.getByText('17,920,000.00').first().isVisible()
+    && await both(tess.page, '45-overview-institution'))
+  for (const who of [dana, tess, abe]) await who.context.close()
+
+  // A partner organisation (the plain seed): its overview, and the desk that is not for it.
+  const pat = await firstOwner(seeded().match(/http\S+\/#\/enrol\/\S+/)[0])
+  await pat.page.getByRole('heading', { name: 'Your flow, in one view.' }).waitFor()
+  const chart = pat.page.locator('.chart svg[role="img"]')
+  check('the partner overview: tiles, the daily chart as SVG with a text alternative, what you earn, the split, codes, the ledger and attributed wallets',
+    await pat.page.getByText(BANNER).isVisible() && await pat.page.getByText('$43,983,000').isVisible() && await pat.page.getByText('$109,957.50').isVisible() && await pat.page.getByText('9,412').first().isVisible()
+    && /Daily volume from 2026-10-11 to 2026-11-09: 43,983,000\.00 USD in total/.test(await chart.getAttribute('aria-label')) && (await chart.locator('rect').count()) === 30
+    && await pat.page.getByText('Your fee.').isVisible() && await pat.page.getByRole('heading', { name: 'By chain' }).isVisible() && await pat.page.getByRole('heading', { name: 'Affiliate codes' }).isVisible()
+    && await pat.page.getByRole('heading', { name: 'Payout ledger' }).isVisible() && await pat.page.getByText('Showing 8 of 1,284, by volume.').isVisible() && await pat.page.getByText(FOOTER).isVisible())
+  const partnerText = await pat.page.locator('main').innerText()
+  check('the partner overview holds only what the partner earns, and no word of a licence or of payout terms', !/1\.00 bps|Ophis fee|licen[cs]ed|regulated|authori[sz]ed|MiCA|compliant|paid weekly|guarantee|honest|—/i.test(partnerText))
+  check('the partner overview fits a phone', await both(pat.page, '46-overview-partner'))
+  await pat.page.getByRole('link', { name: 'Desk' }).first().click()
+  await pat.page.getByRole('heading', { name: 'The desk is for institutions.' }).waitFor()
+  check('a partner sees "The desk is for institutions.", no ticket, and the server refuses the desk',
+    (await pat.page.locator('form.ticket').count()) === 0 && await pat.page.getByText(BANNER).isVisible() && (await status('/api/desk', pat.page)) === 403 && await both(pat.page, '51-desk-partner'))
+  await pat.context.close()
+
   if (violations.length) console.error(violations.join("\n"))
   check(`no policy violation in the browser (${violations.length})`, violations.length === 0)
   check(`no request left the origin (${foreign.length})`, foreign.length === 0)
-  console.log('\nEnd-to-end run passed. Screenshots in .shots/: 01-signin to 44-kyb-sealed')
+  console.log('\nEnd-to-end run passed. Screenshots in .shots/: 01-signin to 51-desk-partner')
 } catch (error) {
   console.error(error.message)
   process.exitCode = 1
