@@ -75,7 +75,7 @@ const NAME = /^[\p{L}\p{N} .'-]{1,60}$/u
 
 const mustBeDeviceBound = (t: { role: data.Role; synced_keys_allowed: number }) => data.needsHardware(t.role, t.synced_keys_allowed)
 // What a refusal of the data module answers. Everything not listed is a conflict with the present state: 409.
-const STATUS: Record<string, number> = { not_found: 404, forbidden: 403, own_request: 403, quarantine: 403, override: 403, invalid: 400, email_required: 400, ticket_limit: 429, seat_limit: 429 }
+const STATUS: Record<string, number> = { not_found: 404, forbidden: 403, own_request: 403, quarantine: 403, override: 403, institution_only: 403, too_many_orders: 429, invalid: 400, email_required: 400, ticket_limit: 429, seat_limit: 429 }
 const refuse = (error: string) => fail(STATUS[error] ?? 409, error)
 // The database refuses a second passkey with the same label on one seat (migrations/0002_labels.sql).
 const labelTaken = (error: unknown) => /credentials\.label/.test(String((error as Error)?.message))
@@ -709,7 +709,7 @@ const walletView = ({ snapshot, ...w }: Awaited<ReturnType<typeof data.wallets>>
 const ROLE_NAME: Record<string, string> = { owner: 'Owner', admin: 'Admin', trader: 'Trader', approver: 'Approver', compliance: 'Compliance officer', viewer: 'Viewer' }
 const CHANGES: Record<string, string> = {
   'seat.unfreeze': 'unfreeze a seat', 'seat.remove': 'remove a member', 'seat.role': 'change a role', 'policy.synced_keys': 'change the passkey rule for key roles',
-  'wallet.link': 'link a wallet', 'anchor.set': 'set the recovery wallet', 'policy.company': 'change the company sign-in',
+  'wallet.link': 'link a wallet', 'anchor.set': 'set the recovery wallet', 'policy.company': 'change the company sign-in', 'order.demo': 'prepare a demo order',
 }
 // The one table that turns an audit action into words, for the page and the export alike: neither ever shows a
 // code. A key with a slash is the action with that detail. A test fails if data.ts writes an action that is not here.
@@ -757,6 +757,7 @@ export const EVENTS: Record<string, string> = {
   'anchor.set': 'Recovery wallet set, in force after 72 hours',
   'anchor.set/alone': 'Recovery wallet set by the only key-role member, in force after 72 hours',
   'anchor.cancel': 'Change of recovery wallet cancelled',
+  'order.demo': 'Demo order approved. Not sent: demo',
   'recovery.open': 'Account recovery requested by the recovery wallet, 72 hour wait started',
   'recovery.open/override': 'Account recovery requested by the recovery wallet, overriding the Owners, 72 hour wait started',
   'recovery.cancel': 'Account recovery cancelled by an Owner',
@@ -803,16 +804,32 @@ async function auditExport(c: Context) {
 // ---- demo mode: overview and desk (demo.ts). Example figures; the approvals counted are real. ----
 
 // The requests this viewer could decide now: a key role sees every open one, and never decides its own.
+// The organisation's own orders as the pages show them: the approval row in words, with what was approved.
+const ordersOf = async (c: Context) => (await data.orders(c.env.DB, c.actor, c.now)).map(({ order, state, open, ...o }) => ({ ...o, ...order, ref: `ORD-${o.id.slice(0, 8)}`, open, state: demo.orderState(state, open) }))
+// A demo order: the ticket in, the server's own estimate out. With `send` it is filed as a change for two people;
+// without, nothing is written (the review step). The estimate comes from demo.ts and nothing the caller sent
+// about a price or a fee is read. Every check is made again inside the commit that files it (judge() in data.ts).
+async function order(c: Context) {
+  if (c.session.org_kind !== 'institution') return fail(403, 'institution_only')
+  const quoted = demo.quote(c.body)
+  if (typeof quoted === 'string') return fail(400, quoted)
+  const wallet = (await data.wallets(c.env.DB, c.actor.orgId, c.now)).find((w) => w.id === quoted.ticket.walletId && w.state === 'linked')
+  if (!wallet) return refuse('wallet_not_linked')
+  const prepared: demo.Order = { ...quoted, wallet: wallet.label, checks: demo.CHECKS }
+  if (c.body.send !== true) return json(200, { demo: true, ...prepared })
+  const outcome = await data.change(c.env.DB, c.actor, 'order.demo', data.randomId(), JSON.stringify(prepared), c.now)
+  return 'error' in outcome ? refuse(outcome.error) : json(200, { demo: true, ...outcome })
+}
 const waiting = async (c: Context) => (await data.openRequests(c.env.DB, c.actor, c.now)).filter((request) => !request.mine).length
 async function overview(c: Context) {
   const kind = c.session.org_kind
-  return json(200, { demo: true, kind, waiting: await waiting(c), ...(kind === 'partner' ? demo.partner() : demo.institution()) })
+  return json(200, { demo: true, kind, waiting: await waiting(c), ...(kind === 'partner' ? demo.partner() : { ...demo.institution(), orders: await ordersOf(c) }) })
 }
 async function desk(c: Context) {
   if (c.session.org_kind !== 'institution') return fail(403, 'institution_only')
   const wallets = (await data.wallets(c.env.DB, c.actor.orgId, c.now)).filter((w) => w.state === 'linked')
   return json(200, {
-    demo: true, ...demo.desk(), mayPrepare: demo.PREPARERS.includes(c.actor.role),
+    demo: true, ...demo.desk(), mayPrepare: (demo.PREPARERS as readonly string[]).includes(c.actor.role), orders: await ordersOf(c),
     wallets: wallets.map((w) => ({ id: w.id, label: w.label, address: checksum(w.address), chain: CHAIN_NAME[w.chainId] ?? `Chain ${w.chainId}` })),
   })
 }
@@ -856,7 +873,7 @@ export const routes: Route[] = [
   { method: 'GET', path: '/api/company/callback', roles: 'public', callback: true, handler: companyCallback },
   { method: 'POST', path: '/api/approvals/:id/approve', roles: data.KEY_ROLES, fresh: true, twoKeys: true, settled: true, can: 'Approve a colleague\'s request as the second person', handler: decide('approve') },
   { method: 'POST', path: '/api/approvals/:id/reject', roles: data.KEY_ROLES, fresh: true, twoKeys: true, can: 'Reject a colleague\'s request', handler: decide('reject') },
-  { method: 'POST', path: '/api/approvals/:id/cancel', roles: MANAGERS, can: 'Cancel the own request', handler: decide('cancel') },
+  { method: 'POST', path: '/api/approvals/:id/cancel', roles: demo.PREPARERS, can: 'Cancel the own request', handler: decide('cancel') },
   { method: 'POST', path: '/api/wallets/intent', roles: MANAGERS, fresh: true, twoKeys: true, settled: true, can: 'Start the link of a wallet, which the wallet then proves with a signature', handler: walletIntent },
   { method: 'POST', path: '/api/wallets/:id/unlink', roles: MANAGERS, fresh: true, twoKeys: true, can: 'Unlink a wallet, never the recovery wallet', handler: (c) => change(c, 'wallet.unlink') },
   { method: 'POST', path: '/api/wallets/:id/anchor', roles: ['owner'], fresh: true, twoKeys: true, settled: true, second: 'anchor.set', can: 'Ask to make a linked wallet the recovery wallet' },
@@ -873,6 +890,7 @@ export const routes: Route[] = [
   { method: 'POST', path: '/api/audit/export', roles: READERS, fresh: true, can: 'Export the audit log', handler: auditExport },
   { method: 'GET', path: '/api/overview', roles: ANY, can: 'See the overview of the organisation (demo figures)', handler: overview },
   { method: 'GET', path: '/api/desk', roles: ANY, can: 'See the desk of an institution: permitted assets, orders and their records (demo)', handler: desk },
+  { method: 'POST', path: '/api/desk/orders', roles: demo.PREPARERS, settled: true, can: 'Prepare a demo order on the desk, which a second person approves. Nothing is sent', handler: order },
   { method: 'POST', path: '/api/support/ask', roles: ANY, unverified: true, can: 'Ask Support a question, which is matched to the fixed help texts', handler: ask },
   // Milestone 5 (onboarding.ts). The operator's routes are not here: they have their own hostname and no role.
   { method: 'POST', path: '/api/apply', roles: 'public', handler: apply },

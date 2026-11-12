@@ -1085,6 +1085,8 @@ describe('f. audit log', () => {
     'seat.freeze': { blocks: 'UPDATE ON seats', prepare: (m) => colleague(m, 'viewer'), run: (m, v) => act(m, v.seatId, 'freeze') },
     'approval.request': { blocks: 'INSERT ON approvals', prepare: (m) => colleague(m, 'viewer'), run: (m, v) => act(m, v.seatId, 'role', { role: 'trader' }) },
     'seat.role': { blocks: 'UPDATE ON seats', prepare: (m) => asked(m), run: (_, p) => decide(p.approver, p.id, 'approve') },
+    // Demo mode: the approval of an order writes its audit row and closes its request, together.
+    'order.demo': { blocks: 'UPDATE ON approvals', prepare: async (m) => (await setOrg(m.orgId, `kind = 'institution'`), { approver: await colleague(m, 'approver'), id: (await prepare(m, await demoWallet(m.orgId))).body.id as string }), run: (_, p) => decide(p.approver, p.id, 'approve') },
     'approval.reject': { blocks: 'UPDATE ON approvals', prepare: (m) => asked(m), run: (_, p) => decide(p.approver, p.id, 'reject') },
     'approval.cancel': { blocks: 'UPDATE ON approvals', prepare: (m) => asked(m), run: (m, p) => decide(m, p.id, 'cancel') },
     // An invited seat that never enrolled: one person removes it.
@@ -1164,7 +1166,7 @@ describe('f. audit log', () => {
       '/api/apply', '/api/apply/check',
       '/api/approvals/:id/approve', '/api/approvals/:id/cancel', '/api/approvals/:id/reject', '/api/audit/export',
       // Company sign-in: company/start and enrol/company write nothing (they set the flow cookie); the callback (a GET) and policy/company are in section G.
-      '/api/company/start', '/api/enrol/company',
+      '/api/company/start', '/api/desk/orders', '/api/enrol/company',
       '/api/enrol/finish', '/api/enrol/start', '/api/members/:id/freeze', '/api/members/:id/remove', '/api/members/:id/role', '/api/members/:id/unfreeze',
       '/api/onboarding/declaration', '/api/onboarding/submit', '/api/onboarding/wallet',
       // /api/wallets/intent writes nothing at all (section y); /api/proof is the first write of a link.
@@ -2509,7 +2511,7 @@ describe('r. the role table', () => {
       'POST /api/policy': 'owner fresh twoKeys settled second:policy.synced_keys',
       'POST /api/policy/company': 'owner fresh twoKeys settled second:policy.company', 'POST /api/company/start': 'owner fresh twoKeys settled',
       'POST /api/enrol/company': 'public', 'GET /api/company/callback': 'public',
-      'POST /api/approvals/:id/approve': `${key} fresh twoKeys settled`, 'POST /api/approvals/:id/reject': `${key} fresh twoKeys`, 'POST /api/approvals/:id/cancel': 'owner,admin',
+      'POST /api/approvals/:id/approve': `${key} fresh twoKeys settled`, 'POST /api/approvals/:id/reject': `${key} fresh twoKeys`, 'POST /api/approvals/:id/cancel': 'owner,admin,trader',
       'GET /api/audit': 'owner,compliance,viewer', 'POST /api/audit/export': 'owner,compliance,viewer fresh',
       'POST /api/wallets/intent': change, 'POST /api/wallets/:id/unlink': 'owner,admin fresh twoKeys',
       'POST /api/wallets/:id/anchor': 'owner fresh twoKeys settled second:anchor.set', 'POST /api/wallets/:id/anchor/cancel': 'owner fresh twoKeys',
@@ -2517,7 +2519,7 @@ describe('r. the role table', () => {
       'POST /api/recover/intent': 'public', 'POST /api/recover/cancel-intent': 'public', 'POST /api/recover/continue/start': 'public', 'POST /api/recover/continue/finish': 'public',
       'POST /api/recovery/:id/cancel': 'owner fresh', 'POST /api/recovery/:id/object': 'admin,approver,compliance fresh',
       'POST /api/support/ask': any,
-      'GET /api/overview': any, 'GET /api/desk': any,
+      'GET /api/overview': any, 'GET /api/desk': any, 'POST /api/desk/orders': 'owner,admin,trader settled',
       'POST /api/apply': 'public', 'POST /api/apply/check': 'public',
       'GET /api/onboarding': 'owner,compliance', 'POST /api/onboarding/wallet': 'owner fresh twoKeys', 'POST /api/onboarding/submit': 'owner fresh twoKeys', 'POST /api/onboarding/declaration': 'owner fresh twoKeys',
     })
@@ -4483,7 +4485,7 @@ describe('B. last-Owner recovery by the recovery wallet', () => {
     for (const m of [a, v, admin]) await again(m)
     const people: Record<string, Holder> = { owner: { cookie: done.cookie }, admin, approver: a }
     const settled = routes.filter((route) => route.settled)
-    expect(settled.map((route) => route.path).sort()).toEqual(['/api/approvals/:id/approve', '/api/company/start', '/api/members/:id/freeze', '/api/members/:id/remove', '/api/members/:id/role', '/api/members/:id/unfreeze', '/api/policy', '/api/policy/company', '/api/wallets/:id/anchor', '/api/wallets/intent'])
+    expect(settled.map((route) => route.path).sort()).toEqual(['/api/approvals/:id/approve', '/api/company/start', '/api/desk/orders', '/api/members/:id/freeze', '/api/members/:id/remove', '/api/members/:id/role', '/api/members/:id/unfreeze', '/api/policy', '/api/policy/company', '/api/wallets/:id/anchor', '/api/wallets/intent'])
     for (const route of settled) {
       for (const [role, m] of Object.entries(people)) {
         if ((route.roles as string[]).includes(role)) expect((await call('POST', route.path.replace(':id', '0'.repeat(32)), { cookie: m.cookie })).body, `${role} ${route.path}`).toEqual({ error: 'quarantine' })
@@ -7974,8 +7976,49 @@ isolation['GET /api/desk'] = async (a, b) => {
   expect(await snapshot()).toBe(before)
 }
 
+// ---- D2: a demo order is a two-person change ----
+const TICKET = { type: 'market', sell: 'EURC', buy: 'ETH', amount: '250000', chainId: 10 }
+const prepare = (m: Holder, walletId: string, more: Record<string, unknown> = {}) => post('/api/desk/orders', m, { ...TICKET, walletId, send: true, ...more })
+// An institution with an Owner, an Approver and a Trader.
+async function deskTeam() {
+  const o = await institution()
+  return { o, a: await colleague(o, 'approver'), t: await colleague(o, 'trader'), walletId: o.walletId }
+}
+// The actor the router would build for this member: what the data module is called with, without the router's own gates.
+async function actorOf(m: Holder & { orgId: string; seatId: string }, role: string): Promise<data.Actor> {
+  const sessionId = (await get('/api/me', m)).body.session.id as string
+  return { orgId: m.orgId, seatId: m.seatId, sessionId, role: role as data.Role, quarantineUntil: null, country: null, asn: null }
+}
+const orderOf = async (id: string) => {
+  const r = (await row<{ action: string; state: string; payload: string; payload_hash: string; subject_id: string; requester_seat_id: string; checker_seat_id: string | null }>('SELECT * FROM approvals WHERE id = ?', id))!
+  return { ...r, order: JSON.parse(JSON.parse(r.payload).value) as demo.Order }
+}
+const deskOrders = async (m: Holder) => (await get('/api/desk', m)).body.orders as (demo.Order & { id: string; state: string; open: boolean; mine: boolean; preparer: string; preparerRole: string; decidedBy: string | null; decidedAt: number | null; ref: string })[]
+const sayOf = async (m: Holder) => ((await get('/api/audit', m)).body.rows as { event: string }[]).map((r) => r.event)
+
+isolation['POST /api/desk/orders'] = async (a, b) => {
+  for (const m of [a, b]) await setOrg(m.orgId, `kind = 'institution'`)
+  const [own, other] = [await demoWallet(a.orgId), await demoWallet(b.orgId, 'Wallet of B')]
+  const before = await snapshot()
+  // The wallet of another organisation is no wallet of this one, in the review step and when the order is sent.
+  for (const send of [false, true]) expect((await prepare(a, other, { send })).body).toEqual({ error: 'wallet_not_linked' })
+  // Inside the commit too: a payload that names B's wallet, handed to the data module as A.
+  const forged: demo.Order = { ...(demo.quote({ ...TICKET, walletId: other }) as { ticket: demo.Ticket; estimate: demo.Estimate }), wallet: 'Wallet of B', checks: demo.CHECKS }
+  expect(await data.change(db, await actorOf(a, 'owner'), 'order.demo', data.randomId(), JSON.stringify(forged), now)).toEqual({ error: 'wallet_not_linked' })
+  expect(await snapshot()).toBe(before)
+  // An order of A: B does not see it, and can neither approve, reject nor cancel it.
+  const { id } = (await prepare(a, own)).body
+  await addKey(b)
+  const after = await snapshot()
+  expect(await deskOrders(b)).toEqual([])
+  expect((await get('/api/overview', b)).body.orders).toEqual([])
+  for (const what of ['approve', 'reject', 'cancel'] as const) expect((await decide(b, id, what)).status, what).toBe(404)
+  expect(await snapshot()).toBe(after)
+  expect((await deskOrders(a)).map((o) => o.id)).toEqual([id])
+}
+
 describe('H. demo mode: overview, desk and partner figures', () => {
-  for (const route of ['GET /api/overview', 'GET /api/desk']) {
+  for (const route of ['GET /api/overview', 'GET /api/desk', 'POST /api/desk/orders']) {
     it(`${route}: the isolation case`, async () => isolation[route](await member('Alder Asset Management'), await member('Birchfield Capital')))
   }
 
@@ -8062,5 +8105,271 @@ describe('H. demo mode: overview, desk and partner figures', () => {
     }
     await setOrg(o.orgId, `state = 'active'`)
     expect((await get('/api/desk', o)).status).toBe(200)
+  })
+
+  it('D2: a Trader prepares an order, the server makes the estimate from its own prices, and the ticket, the checks and the estimate are the payload of the approval', async () => {
+    const { o, a, t, walletId } = await deskTeam()
+    const rest = TABLES.filter((table) => table !== 'approvals' && table !== 'audit_log')
+    const before = await snapshot(rest)
+    const sent = await prepare(t, walletId)
+    expect(sent.body).toEqual({ demo: true, state: 'requested', id: expect.any(String), notBefore: null })
+    const r = await orderOf(sent.body.id)
+    expect(r).toMatchObject({ action: 'order.demo', state: 'pending', requester_seat_id: t.seatId, checker_seat_id: null, payload_hash: await data.sha256Hex(r.payload) })
+    expect(r.order).toEqual({
+      ticket: { ...TICKET, limitPrice: null, walletId }, wallet: 'Operations Safe', checks: demo.CHECKS,
+      estimate: { received: '84.73728813', volumeEur: '250000.00', feeBps: '1.00', feeEur: '25.00', totalEur: '25.00', priced: null },
+    })
+    expect(r.order.checks).toHaveLength(7)
+    expect(await lastAudit(o.orgId)).toEqual({ action: 'approval.request', actor_id: t.seatId, subject_id: sent.body.id, detail: 'order.demo' })
+    // The Approvals list of a key role holds it, with the payload. The blotter holds it for every role.
+    expect((await requestsOf(a)).map((x) => [x.id, x.kind, x.mine, JSON.parse(x.value).ticket.amount])).toEqual([[sent.body.id, 'order.demo', false, '250000']])
+    expect((await get('/api/overview', a)).body.waiting).toBe(1)
+    expect((await deskOrders(o))[0]).toMatchObject({ id: sent.body.id, state: 'Pending approval', open: true, mine: false, preparerRole: 'trader', decidedBy: null, ticket: { amount: '250000' }, estimate: { feeEur: '25.00' } })
+    expect((await deskOrders(t))[0].mine).toBe(true)
+    expect(await snapshot(rest)).toBe(before) // preparing an order touches nothing but its request and the log
+  })
+
+  it('D2: the review step writes nothing, and an order that is sent holds what the review showed', async () => {
+    const { t, walletId } = await deskTeam()
+    const before = await snapshot()
+    for (const send of [undefined, false, 'true', 1]) {
+      const review = await prepare(t, walletId, { send })
+      expect(review.body, String(send)).toMatchObject({ demo: true, wallet: 'Operations Safe', checks: demo.CHECKS, estimate: { received: '84.73728813', feeEur: '25.00' } })
+      expect(review.body.state).toBeUndefined()
+    }
+    expect(await snapshot()).toBe(before)
+  })
+
+  it('D2: a different member with a key role approves; the approved order is final and nothing else changes: "Approved. Not sent: demo"', async () => {
+    const { o, a, t, walletId } = await deskTeam()
+    const { id } = (await prepare(t, walletId)).body
+    const subject = (await orderOf(id)).subject_id
+    const rest = TABLES.filter((table) => table !== 'approvals' && table !== 'audit_log' && table !== 'sessions')
+    const before = await snapshot(rest)
+    expect((await decide(a, id, 'approve')).body).toEqual({ state: 'applied' })
+    expect(await approvalOf(id)).toEqual({ state: 'applied', checker_seat_id: a.seatId })
+    expect(await lastAudit(o.orgId)).toEqual({ action: 'order.demo', actor_id: a.seatId, subject_id: subject, detail: null })
+    expect(await snapshot(rest)).toBe(before)
+    expect((await deskOrders(t))[0]).toMatchObject({ id, state: 'Approved. Not sent: demo', open: false, decidedBy: 'A approver', decidedAt: now })
+    expect((await get('/api/overview', t)).body.orders[0]).toMatchObject({ id, state: 'Approved. Not sent: demo' })
+    // Final: it can be neither decided again nor cancelled.
+    for (const [m, what] of [[a, 'approve'], [a, 'reject'], [o, 'approve'], [t, 'cancel']] as const) expect((await decide(m, id, what)).status, what).toBe(404)
+    expect(await approvalOf(id)).toEqual({ state: 'applied', checker_seat_id: a.seatId })
+    const words = await sayOf(o)
+    expect(words).toContain('Demo order approved. Not sent: demo')
+    expect(words).toContain('Change requested: prepare a demo order')
+    expect(words.join(' ')).not.toMatch(/Unlisted|order\.demo/)
+  })
+
+  it('D2: a refused order and a cancelled one: the checker refuses, the preparer cancels, nobody else does', async () => {
+    const { o, a, t, walletId } = await deskTeam()
+    const refused = (await prepare(t, walletId)).body.id
+    expect((await decide(a, refused, 'reject')).status).toBe(200)
+    expect(await approvalOf(refused)).toEqual({ state: 'rejected', checker_seat_id: a.seatId })
+    const cancelled = (await prepare(t, walletId, { amount: '10' })).body.id
+    expect((await decide(o, cancelled, 'cancel')).status).toBe(404) // not the Owner's request
+    expect((await decide(a, cancelled, 'cancel')).status).toBe(403) // an Approver prepares nothing, so cancels nothing
+    expect((await decide(t, cancelled, 'cancel')).status).toBe(200)
+    expect(await approvalOf(cancelled)).toEqual({ state: 'cancelled', checker_seat_id: null })
+    expect((await deskOrders(o)).map((x) => [x.id, x.state, x.decidedBy])).toEqual([[cancelled, 'Cancelled', null], [refused, 'Refused', 'A approver']])
+    expect((await decide(a, cancelled, 'approve')).status).toBe(404)
+    expect((await sayOf(o)).slice(0, 2)).toEqual(['Request cancelled by its requester: prepare a demo order', 'Change requested: prepare a demo order'])
+    // After 7 days an order nobody decided has expired, and says so.
+    const old = (await prepare(t, walletId)).body.id
+    now += 7 * DAY + 1
+    await again(o)
+    expect((await deskOrders(o))[0]).toMatchObject({ id: old, state: 'Expired', open: false })
+  })
+
+  it('D2: the role table of an order: Trader, Owner and Admin prepare; the preparer never approves; a Trader or a Viewer never approves', async () => {
+    const { o, a, t, walletId } = await deskTeam()
+    const admin = await colleague(o, 'admin')
+    for (const role of ['approver', 'compliance', 'viewer']) {
+      const answer = await prepare(await colleague(o, role), walletId)
+      expect([answer.status, answer.body], role).toEqual([403, { error: 'forbidden' }])
+    }
+    for (const m of [o, admin, t]) expect((await prepare(m, walletId)).body.state).toBe('requested')
+    const [mine, admins, traders] = await Promise.all([o, admin, t].map(async (m) => (await requestsOf(m)).find((x) => x.mine).id as string))
+    // The preparer, even an Owner, is not the second person.
+    expect((await decide(o, mine, 'approve')).body).toEqual({ error: 'own_request' })
+    expect((await decide(admin, admins, 'reject')).body).toEqual({ error: 'own_request' })
+    const viewer = await colleague(o, 'viewer')
+    for (const m of [t, viewer]) for (const what of ['approve', 'reject'] as const) expect((await decide(m, mine, what)).body, what).toEqual({ error: 'forbidden' })
+    for (const id of [mine, admins, traders]) expect((await approvalOf(id))?.state).toBe('pending')
+    // A different key role does: the Admin approves the Owner's order, the Approver the Trader's.
+    expect((await decide(admin, mine, 'approve')).status).toBe(200)
+    expect((await decide(a, traders, 'approve')).status).toBe(200)
+  })
+
+  it('D2: every ticket check, one by one, with hostile amounts; nothing is written for a refused ticket', async () => {
+    const { t, walletId } = await deskTeam()
+    const before = await snapshot()
+    const refused: [Record<string, unknown>, string][] = [
+      [{ type: 'stop' }, 'type_invalid'], [{ type: undefined }, 'type_invalid'], [{ type: ['market'] }, 'type_invalid'],
+      [{ sell: 'USDT' }, 'asset_not_permitted'], [{ buy: 'WBTC' }, 'asset_not_permitted'], [{ sell: 'eurc' }, 'asset_not_permitted'], [{ buy: 'constructor' }, 'asset_not_permitted'], [{ sell: null }, 'asset_not_permitted'],
+      [{ buy: 'EURC' }, 'same_asset'],
+      [{ chainId: 1 }, 'chain_not_allowed'], [{ chainId: 8453 }, 'chain_not_allowed'], [{ chainId: '10' }, 'chain_not_allowed'], [{ chainId: undefined }, 'chain_not_allowed'],
+      [{ walletId: 'x' }, 'wallet_not_linked'], [{ walletId: undefined }, 'wallet_not_linked'], [{ walletId: data.randomId() }, 'wallet_not_linked'],
+      ...['1e9', '-1', '0', '0.0', ' 1', '1 ', '1,5', '1.', '.5', '01', '+1', '0x10', '१', 'NaN', 'Infinity', '', '1'.repeat(40), '1.0000001', '1.' + '0'.repeat(19)].map((amount) => [{ amount }, 'amount_invalid'] as [Record<string, unknown>, string]),
+      [{ amount: 1 }, 'amount_invalid'], [{ amount: null }, 'amount_invalid'], [{ amount: ['1'] }, 'amount_invalid'], [{ amount: undefined }, 'amount_invalid'],
+      [{ sell: 'ETH', buy: 'EURC', amount: '0.' + '0'.repeat(18) + '1' }, 'amount_invalid'], // more decimals than ETH has
+      [{ amount: '5000000.000001' }, 'over_limit'], [{ sell: 'ETH', buy: 'EURC', amount: '1694.92' }, 'over_limit'], [{ amount: '999999999999999' }, 'over_limit'],
+      [{ limitPrice: '2940' }, 'limit_price_invalid'], // a market order takes none
+      ...[undefined, null, '0', '-1', '1e3', '2940.1234567', 2940, ' 2940'].map((limitPrice) => [{ type: 'limit', limitPrice }, 'limit_price_invalid'] as [Record<string, unknown>, string]),
+    ]
+    for (const [more, error] of refused) {
+      for (const send of [false, true]) {
+        const answer = await prepare(t, walletId, { ...more, send })
+        expect([answer.status === 400 || answer.status === 409, answer.body], JSON.stringify(more)).toEqual([true, { error }])
+      }
+    }
+    expect(await snapshot()).toBe(before)
+    // A wallet whose link still waits for its second person is not linked: no order from it, not even a review.
+    const waits = await demoWallet(t.orgId, 'Waits', 'pending')
+    await db.prepare(`INSERT INTO approvals (id, org_id, action, subject_id, payload, payload_hash, requester_seat_id, state, expires_at, created_at) VALUES (?, ?, 'wallet.link', ?, '{}', '', ?, 'pending', ?, ?)`)
+      .bind(data.randomId(), t.orgId, waits, t.seatId, now + DAY, now).run()
+    for (const send of [false, true]) expect((await prepare(t, waits, { send })).body).toEqual({ error: 'wallet_not_linked' })
+    // The edges that are allowed: the smallest unit, the limit itself, every asset and both chains.
+    const fine: [Record<string, unknown>, Partial<demo.Estimate>][] = [
+      [{ amount: '0.000001' }, { volumeEur: '0.00', feeEur: '0.00', received: '0.00000000' }],
+      [{ amount: '5000000' }, { volumeEur: '5000000.00', feeEur: '500.00' }],
+      [{ sell: 'ETH', buy: 'USDC', amount: '85', chainId: 130 }, { volumeEur: '250750.00', feeEur: '25.07', received: '272527.092391' }],
+      [{ sell: 'EURCV', buy: 'EURe', amount: '1.000000000000000001' }, { volumeEur: '1.00', received: '0.99990000' }],
+      [{ type: 'limit', limitPrice: '2940' }, { received: '85.02551020', priced: 'ETH', volumeEur: '250000.00' }],
+      [{ type: 'limit', limitPrice: '3010.5', sell: 'ETH', buy: 'EURC', amount: '105' }, { volumeEur: '316102.50', feeEur: '31.61', received: '316070.889750', priced: 'ETH' }],
+    ]
+    for (const [more, estimate] of fine) expect((await prepare(t, walletId, { ...more, send: false })).body.estimate, JSON.stringify(more)).toMatchObject(estimate)
+  })
+
+  it('D2: what the browser says about a price, a fee or an estimate is not used, and no unknown field reaches the payload', async () => {
+    const { t, walletId } = await deskTeam()
+    const honestly = (await prepare(t, walletId, { send: false })).body
+    const lies = { price: '1', priceEur: '0.01', fee: '0', feeBps: '0', feeEur: '0', estimate: { received: '999999', feeEur: '0.00', totalEur: '0.00' }, wallet: 'Somebody else', checks: [], limitEur: '1e30', ticket: { amount: '1' }, __proto__: { amount: '1' } }
+    expect((await prepare(t, walletId, { ...lies, send: false })).body).toEqual(honestly)
+    const { id } = (await prepare(t, walletId, lies)).body
+    const { order } = await orderOf(id)
+    expect(order).toEqual({ ticket: honestly.ticket, wallet: 'Operations Safe', checks: demo.CHECKS, estimate: honestly.estimate })
+    expect(Object.keys(order.ticket).sort()).toEqual(['amount', 'buy', 'chainId', 'limitPrice', 'sell', 'type', 'walletId'])
+  })
+
+  it('D2: every check is made again inside the commit that files the order: role now, an active institution, quarantine, the wallet, the ticket', async () => {
+    const { o, t, walletId } = await deskTeam()
+    const value = (more: Record<string, unknown> = {}) => JSON.stringify({ ...(demo.quote({ ...TICKET, walletId }) as object), wallet: 'Operations Safe', checks: demo.CHECKS, ...more })
+    const trader = await actorOf(t, 'trader')
+    const file = (payload = value()) => data.change(db, trader, 'order.demo', data.randomId(), payload, now)
+    const seat = (set: string) => db.prepare(`UPDATE seats SET ${set} WHERE id = ?`).bind(t.seatId).run()
+    const before = await snapshot()
+    const cases: [string, () => Promise<unknown>, () => Promise<unknown>][] = [
+      ['forbidden', () => seat(`role = 'viewer'`), () => seat(`role = 'trader'`)], // the session says Trader; the row says Viewer
+      ['forbidden', () => seat(`role = 'approver'`), () => seat(`role = 'trader'`)],
+      ['quarantine', () => seat(`quarantine_until = ${now + HOUR}`), () => seat('quarantine_until = NULL')],
+      ['quarantine', () => setOrg(o.orgId, `quarantine_until = ${now + HOUR}`), () => setOrg(o.orgId, 'quarantine_until = NULL')],
+      ['institution_only', () => setOrg(o.orgId, `kind = 'partner'`), () => setOrg(o.orgId, `kind = 'institution'`)],
+      ['org_inactive', () => setOrg(o.orgId, `state = 'frozen'`), () => setOrg(o.orgId, `state = 'active'`)],
+      ['org_inactive', () => setOrg(o.orgId, `state = 'unverified'`), () => setOrg(o.orgId, `state = 'active'`)],
+      ['wallet_not_linked', () => db.prepare(`UPDATE wallets SET state = 'unlinked' WHERE id = ?`).bind(walletId).run(), () => db.prepare(`UPDATE wallets SET state = 'linked' WHERE id = ?`).bind(walletId).run()],
+    ]
+    for (const [error, set, undo] of cases) {
+      await set()
+      const during = await snapshot()
+      expect(await file(), error).toEqual({ error })
+      expect(await snapshot()).toBe(during)
+      await undo()
+    }
+    // A payload the router would never build: a ticket that fails a check, a wallet name that is not the wallet's.
+    const forged = (ticket: Record<string, unknown>) => value({ ticket: { ...TICKET, limitPrice: null, walletId, ...ticket } })
+    for (const [payload, error] of [[forged({ amount: '6000000' }), 'over_limit'], [forged({ sell: 'USDT' }), 'asset_not_permitted'], [forged({ buy: 'EURC' }), 'same_asset'], [forged({ chainId: 1 }), 'chain_not_allowed'],
+      [forged({ amount: '1e9' }), 'amount_invalid'], [value({ wallet: 'Another name' }), 'wallet_not_linked'], [forged({ walletId: { id: walletId } }), 'wallet_not_linked'], ['null', 'invalid']] as const) expect(await file(payload), error).toEqual({ error })
+    // A seat that is frozen has no role now: its session's copy of the role is not asked.
+    await seat(`state = 'frozen'`)
+    expect(await file()).toEqual({ error: 'forbidden' })
+    await seat(`state = 'active'`)
+    expect(await snapshot()).toBe(before)
+    expect(await file()).toMatchObject({ state: 'requested' })
+  })
+
+  it('D2: the router refuses a seat in quarantine, the organisation in quarantine, and an organisation that is a partner, unverified, frozen or closed', async () => {
+    const { o, t, walletId } = await deskTeam()
+    const before = await snapshot()
+    const expectRefused = async (error: string) => expect((await prepare(t, walletId)).body, error).toEqual({ error })
+    await db.prepare('UPDATE seats SET quarantine_until = ? WHERE id = ?').bind(now + HOUR, t.seatId).run()
+    await expectRefused('quarantine')
+    await db.prepare('UPDATE seats SET quarantine_until = NULL WHERE id = ?').bind(t.seatId).run()
+    await setOrg(o.orgId, `quarantine_until = ${now + HOUR}`)
+    await expectRefused('quarantine')
+    await setOrg(o.orgId, `quarantine_until = NULL, kind = 'partner'`)
+    await expectRefused('institution_only')
+    expect((await prepare(t, walletId, { send: false })).body).toEqual({ error: 'institution_only' }) // the review step too
+    await setOrg(o.orgId, `kind = 'institution'`)
+    for (const [state, error] of [['unverified', 'unverified'], ['frozen', 'org_frozen'], ['archived', 'org_closed']]) {
+      await setOrg(o.orgId, `state = '${state}'`)
+      await expectRefused(error)
+    }
+    await setOrg(o.orgId, `state = 'active'`)
+    expect(await snapshot()).toBe(before)
+    expect((await prepare(t, walletId)).status).toBe(200)
+  })
+
+  it('D2: when it is decided, the order is read again: the preparer is still active with a role that may prepare, the wallet is still linked, the organisation is still an active institution', async () => {
+    const { o, a, t, walletId } = await deskTeam()
+    const { id } = (await prepare(t, walletId)).body
+    const seat = (set: string) => db.prepare(`UPDATE seats SET ${set} WHERE id = ?`).bind(t.seatId).run()
+    const wallet = (state: string) => db.prepare('UPDATE wallets SET state = ? WHERE id = ?').bind(state, walletId).run()
+    const approver = await actorOf(a, 'approver')
+    // Written straight to the rows: the routes that change a seat also cancel what it asked for, so this is the second line.
+    const cases: [string, () => Promise<unknown>, () => Promise<unknown>][] = [
+      ['forbidden', () => seat(`role = 'viewer'`), () => seat(`role = 'trader'`)],
+      ['forbidden', () => seat(`state = 'frozen'`), () => seat(`state = 'active'`)],
+      ['forbidden', () => seat(`state = 'removed'`), () => seat(`state = 'active'`)],
+      ['wallet_not_linked', () => wallet('unlinked'), () => wallet('linked')],
+      ['institution_only', () => setOrg(o.orgId, `kind = 'partner'`), () => setOrg(o.orgId, `kind = 'institution'`)],
+      ['org_inactive', () => setOrg(o.orgId, `state = 'frozen'`), () => setOrg(o.orgId, `state = 'active'`)],
+      ['org_inactive', () => setOrg(o.orgId, `state = 'archived'`), () => setOrg(o.orgId, `state = 'active'`)],
+    ]
+    for (const [error, set, undo] of cases) {
+      await set()
+      const during = await snapshot()
+      expect(await data.decide(db, approver, id, 'approve', now), error).toBe(error)
+      expect(await snapshot()).toBe(during)
+      await undo()
+    }
+    expect((await approvalOf(id))?.state).toBe('pending')
+    // Through the routes: an Owner unlinks the wallet while the order waits. The approval is refused and the order stays open for its preparer to cancel.
+    expect((await post(`/api/wallets/${walletId}/unlink`, o)).status).toBe(200)
+    const refused = await decide(a, id, 'approve')
+    expect([refused.status, refused.body]).toEqual([409, { error: 'wallet_not_linked' }])
+    expect(await approvalOf(id)).toEqual({ state: 'pending', checker_seat_id: null })
+    expect((await decide(t, id, 'cancel')).status).toBe(200)
+    // Through the routes: a preparer who is frozen loses the orders that wait.
+    const next = await demoWallet(o.orgId, 'Second wallet')
+    const second = (await prepare(await again(t), next)).body.id
+    expect((await act(o, t.seatId, 'freeze')).status).toBe(200)
+    expect((await approvalOf(second))?.state).toBe('cancelled')
+    expect((await decide(a, second, 'approve')).status).toBe(404)
+  })
+
+  it('D2: at most 20 orders wait per organisation; a decided or expired one makes room, and the twentieth can still be approved', async () => {
+    const { o, a, t, walletId } = await deskTeam()
+    const ids: string[] = []
+    for (let i = 0; i < demo.MAX_OPEN_ORDERS; i += 1) ids.push((await prepare(i % 2 ? o : t, walletId, { amount: String(i + 1) })).body.id)
+    expect(ids.every((id) => typeof id === 'string')).toBe(true)
+    const before = await snapshot()
+    for (const m of [t, o]) {
+      const full = await prepare(m, walletId)
+      expect([full.status, full.body]).toEqual([429, { error: 'too_many_orders' }])
+    }
+    expect(await snapshot()).toBe(before)
+    expect((await prepare(t, walletId, { send: false })).status).toBe(200) // the review step files nothing
+    // Another organisation's orders do not count here.
+    const other = await institution('Birchfield Capital')
+    expect((await prepare(other, other.walletId)).status).toBe(200)
+    // With 20 waiting, one of them can still be approved: it does not count itself.
+    expect((await decide(a, ids[0], 'approve')).status).toBe(200)
+    expect((await prepare(t, walletId)).status).toBe(200)
+    expect((await prepare(t, walletId)).status).toBe(429)
+    expect((await decide(t, ids[2], 'cancel')).status).toBe(200)
+    expect((await prepare(t, walletId)).status).toBe(200)
+    now += 7 * DAY + 1 // every one of them has expired
+    expect((await prepare(await again(t), walletId)).status).toBe(200)
   })
 })

@@ -6,6 +6,7 @@
 // runs as one transaction. If the audit row cannot be written, the change is not made.
 
 import { colour, type SafeState } from './chain.ts'
+import { MAX_OPEN_ORDERS, PREPARERS, quote, type Order } from './demo.ts'
 
 export type Role = 'owner' | 'admin' | 'trader' | 'approver' | 'compliance' | 'viewer'
 export const ROLES: Role[] = ['owner', 'admin', 'trader', 'approver', 'compliance', 'viewer']
@@ -709,7 +710,7 @@ export function stopReplacement(db: D1Database, credential: StoredCredential, co
 
 // ---- milestone 3: one person freezes, two people change ----
 
-export type Kind = 'seat.unfreeze' | 'seat.remove' | 'seat.role' | 'policy.synced_keys' | 'policy.company' | 'wallet.link' | 'anchor.set'
+export type Kind = 'seat.unfreeze' | 'seat.remove' | 'seat.role' | 'policy.synced_keys' | 'policy.company' | 'wallet.link' | 'anchor.set' | 'order.demo'
 /** Changes one person makes: each only tightens, or undoes what has not taken effect yet. */
 export type Direct = 'seat.freeze' | 'wallet.unlink' | 'anchor.cancel'
 // The actor's role as it is inside the commit. The session's copy was read before this write took its turn: a
@@ -729,6 +730,28 @@ interface Change { apply: Sql[]; detail: string | null; direct?: boolean; relax?
 // become forbidden since. `direct`: one person is enough (a freeze only tightens; an invited seat was never a member).
 // `by` is the seat that asks. `snapshot`: the Safe as both endpoints see it now, read by the caller before the commit.
 async function judge(db: D1Database, orgId: string, role: Role, kind: Kind | Direct, subjectId: string, value: string | null, now: number, by: string, snapshot: string | null): Promise<string | Change> {
+  if (kind === 'order.demo') {
+    // Demo mode: an order of the desk (demo.ts). The value is the order the router built: ticket, checks, estimate.
+    // Everything that decides it is read here, when it is filed and again when it is approved: the ticket checks,
+    // the organisation (an active institution, not in quarantine), the preparer (`by`: an active seat whose role
+    // may prepare, now), the wallet (this organisation's, linked) and the number of orders that wait.
+    // Applying it changes nothing: no order is ever sent, signed or executed.
+    const order = JSON.parse(value ?? 'null') as Order | null
+    const quoted = order ? quote({ ...order.ticket }) : 'invalid'
+    if (!order || typeof quoted === 'string') return quoted as string
+    const r = await db.prepare(`SELECT o.kind, s.role, max(COALESCE(s.quarantine_until, 0), COALESCE(o.quarantine_until, 0)) AS quarantine,
+                                  (SELECT w.label FROM wallets w WHERE w.org_id = o.id AND w.id = ?1 AND w.state = 'linked') AS wallet,
+                                  (SELECT count(*) FROM approvals a WHERE a.org_id = o.id AND a.action = 'order.demo' AND a.subject_id <> ?2 AND a.state = 'pending' AND a.expires_at > ?3) AS waiting
+                                FROM organisations o LEFT JOIN seats s ON s.org_id = o.id AND s.id = ?4 AND s.state = 'active' WHERE o.id = ?5 AND o.state = 'active'`)
+      .bind(order.ticket.walletId, subjectId, now, by, orgId).first<{ kind: string; role: Role | null; quarantine: number; wallet: string | null; waiting: number }>()
+    return !r ? 'org_inactive'
+      : r.kind !== 'institution' ? 'institution_only'
+      : !r.role || !(PREPARERS as readonly Role[]).includes(r.role) ? 'forbidden'
+      : r.quarantine > now ? 'quarantine'
+      : r.wallet === null || r.wallet !== order.wallet ? 'wallet_not_linked'
+      : r.waiting >= MAX_OPEN_ORDERS ? 'too_many_orders'
+      : { detail: null, apply: [] }
+  }
   if (kind === 'wallet.link' || kind === 'wallet.unlink' || kind === 'anchor.set' || kind === 'anchor.cancel') {
     const at = [orgId, subjectId] as const
     const w = await db.prepare('SELECT state, kind FROM wallets WHERE org_id = ? AND id = ?').bind(...at).first<{ state: string; kind: string }>()
@@ -922,6 +945,21 @@ export async function openRequests(db: D1Database, actor: Actor, now: number) {
   // Of a company sign-in the page gets the provider and the tenant, not the asker's account.
   const shown = (kind: Kind, value: string | null) => (kind === 'policy.company' ? value!.split(' ').slice(0, 2).join(' ') : value)
   return results.map(({ payload, ...a }) => ({ ...a, value: shown(a.kind, (JSON.parse(payload) as { value: string | null }).value), mine: a.requesterSeatId === actor.seatId }))
+}
+
+/**
+ * Demo mode: the orders of an organisation, newest first. An order is its approval row and nothing else: who
+ * prepared it, what was approved (the payload), who decided. ponytail: the 100 newest; page it when a desk has more.
+ */
+export async function orders(db: D1Database, actor: Actor, now: number) {
+  const { results } = await db
+    .prepare(`SELECT a.id, a.payload, a.state, a.created_at AS at, a.decided_at AS decidedAt, a.expires_at AS expiresAt, a.requester_seat_id AS seat,
+                     r.display_name AS preparer, r.role AS preparerRole, k.display_name AS decidedBy
+              FROM approvals a JOIN seats r ON r.org_id = a.org_id AND r.id = a.requester_seat_id
+              LEFT JOIN seats k ON k.org_id = a.org_id AND k.id = a.checker_seat_id
+              WHERE a.org_id = ? AND a.action = 'order.demo' ORDER BY a.created_at DESC, a.rowid DESC LIMIT 100`)
+    .bind(actor.orgId).all<{ id: string; payload: string; state: string; at: number; decidedAt: number | null; expiresAt: number; seat: string; preparer: string; preparerRole: Role; decidedBy: string | null }>()
+  return results.map(({ payload, seat, ...o }) => ({ ...o, mine: seat === actor.seatId, open: o.state === 'pending' && o.expiresAt > now, order: JSON.parse((JSON.parse(payload) as { value: string }).value) as Order }))
 }
 
 // ---- milestone 4a: wallets and the recovery wallet ----

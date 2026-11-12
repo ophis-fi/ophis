@@ -19,7 +19,7 @@ const FEE_BPS = 1n // of the volume of an institution's order
 const PARTNER_BPS = 25n // the example partner's own fee, which the partner sets
 export const ORDER_LIMIT_EUR = 5_000_000n // per order, at the reference price
 export const MAX_OPEN_ORDERS = 20 // orders that wait for approval, per organisation
-export const PREPARERS = ['trader', 'owner', 'admin']
+export const PREPARERS = ['owner', 'admin', 'trader'] as const
 
 // ---- money: integers only. A decimal string becomes a bigint with 18 decimals; nothing here is a float. ----
 const E = 10n ** 18n
@@ -66,7 +66,7 @@ export function quote(body: Record<string, unknown>): string | { ticket: Ticket;
   if (!isAsset(sell) || !isAsset(buy)) return 'asset_not_permitted'
   if (sell === buy) return 'same_asset'
   if (typeof chainId !== 'number' || !Object.hasOwn(CHAINS, chainId)) return 'chain_not_allowed'
-  if (typeof walletId !== 'string' || !/^[0-9a-f]{32}$/.test(walletId)) return 'wallet_not_linked'
+  if (typeof walletId !== 'string') return 'wallet_not_linked' // whether it is a linked wallet of the organisation is read from the rows
   const units = fixed(amount, ASSETS[sell].decimals)
   if (units === null || units <= 0n) return 'amount_invalid'
   const limit = type === 'limit' ? fixed(limitPrice, 6) : null
