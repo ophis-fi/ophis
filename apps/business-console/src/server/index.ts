@@ -5,11 +5,12 @@ import { challengeIsOurs, configFor, creationOptions, credentialHash, newChallen
 import { CHAIN_NAME, typedLink, typedProof, type ProofKind } from './typed.ts'
 import { ask } from './support.ts'
 import * as demo from './demo.ts'
+import * as partner from './partner.ts'
 import { activateIntent, activationIntent, activationProof, apply, applyCheck, DOWNLOAD_REASONS, onboarding, ONBOARDING_EVENTS, operator, OPERATOR, SEAL, sealDeclaration, submit } from './onboarding.ts'
 import { WORDS } from './words.ts'
 import { authorizeUrl, exchange, IDPS, newFlow, PROVIDERS, verifyIdToken, type Provider } from './oidc.ts'
 
-export interface Env { DB: D1Database; ASSETS: Fetcher; SEALED: R2Bucket; ENVIRONMENT: string; CHALLENGE_KEY: string; MICROSOFT_CLIENT_SECRET?: string; GOOGLE_CLIENT_SECRET?: string; SEAL_RECIPIENT?: string }
+export interface Env { DB: D1Database; ASSETS: Fetcher; SEALED: R2Bucket; ENVIRONMENT: string; CHALLENGE_KEY: string; MICROSOFT_CLIENT_SECRET?: string; GOOGLE_CLIENT_SECRET?: string; SEAL_RECIPIENT?: string; INDEXER_URL?: string; INDEXER_TOKEN?: string }
 
 const IDLE_MS = 15 * 60_000
 const ABSOLUTE_MS = 12 * 60 * 60_000
@@ -804,7 +805,7 @@ async function auditExport(c: Context) {
 /** A CSV file as the browser saves it: the name ends with today's date, and every cell goes through csvCell. */
 const csvFile = (c: Context, name: string, lines: unknown[][]) => json(200, { name: `${name}-${new Date(c.now).toISOString().slice(0, 10)}.csv`, csv: lines.map((cells) => `${cells.map(csvCell).join(',')}\r\n`).join('') })
 
-// ---- demo mode: overview and desk (demo.ts). Example figures; the approvals counted are real. ----
+// ---- overview and desk. An institution: demo mode (demo.ts), example figures. A partner: live figures (partner.ts). The approvals counted are real. ----
 
 // The requests this viewer could decide now: a key role sees every open one, and never decides its own.
 // The organisation's own orders as the pages show them: the approval row in words, with what was approved.
@@ -828,7 +829,9 @@ async function order(c: Context) {
 const waiting = async (c: Context) => (await data.openRequests(c.env.DB, c.actor, c.now)).filter((request) => !request.mine).length
 async function overview(c: Context) {
   const kind = c.session.org_kind
-  return json(200, { demo: true, kind, waiting: await waiting(c), ...(kind === 'partner' ? demo.partner() : { ...demo.institution(), orders: await ordersOf(c) }) })
+  // A partner: its real figures (partner.ts), or the plain state that says why there are none. Never an example.
+  if (kind === 'partner') return json(200, { kind, waiting: await waiting(c), figures: await partner.figures(c.env, c.actor.orgId, c.now) })
+  return json(200, { demo: true, kind, waiting: await waiting(c), ...demo.institution(), orders: await ordersOf(c) })
 }
 async function desk(c: Context) {
   if (c.session.org_kind !== 'institution') return fail(403, 'institution_only')
@@ -839,15 +842,22 @@ async function desk(c: Context) {
   })
 }
 
-// Every "Export CSV" button of the demo pages. The tables follow the kind of the organisation; an institution's own
-// orders come before the examples. Each row says where it comes from: source = demo.
-async function demoExport(c: Context) {
-  const kind = c.session.org_kind
-  const tables = demo.tables(kind, kind === 'institution' ? await ordersOf(c) : [])
+// Every "Export CSV" button of Overview and Desk. The tables follow the kind of the organisation, and each row says
+// where it comes from. An institution: demo tables, its own orders before the examples, source = demo. A partner: its
+// referred wallets and partner-fee months from a fresh read of the indexer, source = live; no read, no file.
+async function tableExport(c: Context) {
   const table = c.params.id ?? ''
+  const live = c.session.org_kind === 'partner'
+  let tables: Record<string, [head: string[], rows: unknown[][]]>
+  if (live) {
+    if (!Object.hasOwn(partner.tables({ state: 'live', asOf: '', leftOut: 0, wallets: [] }), table)) return fail(404, 'not_found')
+    const figures = await partner.figures(c.env, c.actor.orgId, c.now)
+    if (figures.state !== 'live') return fail(figures.state === 'figures_unavailable' ? 503 : 409, figures.state)
+    tables = partner.tables(figures)
+  } else tables = demo.tables(await ordersOf(c))
   if (!Object.hasOwn(tables, table)) return fail(404, 'not_found')
   const [head, rows] = tables[table]
-  return csvFile(c, `ophis-demo-${table}`, [[...head, 'source'], ...rows.map((cells) => [...cells, 'demo'])])
+  return csvFile(c, `ophis-${live ? 'partner' : 'demo'}-${table}`, [[...head, 'source'], ...rows.map((cells) => [...cells, live ? 'live' : 'demo'])])
 }
 
 const ANY = data.ROLES
@@ -904,9 +914,9 @@ export const routes: Route[] = [
   { method: 'POST', path: '/api/recovery/:id/object', roles: ['admin', 'approver', 'compliance'], fresh: true, can: 'Object once to an account recovery that waits, which adds 72 hours', handler: recoveryObject },
   { method: 'GET', path: '/api/audit', roles: READERS, can: 'Read the audit log', handler: audit },
   { method: 'POST', path: '/api/audit/export', roles: READERS, fresh: true, can: 'Export the audit log', handler: auditExport },
-  { method: 'GET', path: '/api/overview', roles: ANY, can: 'See the overview of the organisation (demo figures)', handler: overview },
+  { method: 'GET', path: '/api/overview', roles: ANY, can: 'See the overview of the organisation (an institution: demo figures; a partner: its figures from the Ophis rebate service)', handler: overview },
   { method: 'GET', path: '/api/desk', roles: ANY, can: 'See the desk of an institution: permitted assets, orders and their records (demo)', handler: desk },
-  { method: 'GET', path: '/api/export/:id', roles: ANY, can: 'Export a table of the overview or the desk as CSV (demo figures)', handler: demoExport },
+  { method: 'GET', path: '/api/export/:id', roles: ANY, can: 'Export a table of the overview or the desk as CSV', handler: tableExport },
   { method: 'POST', path: '/api/desk/orders', roles: demo.PREPARERS, settled: true, can: 'Prepare a demo order on the desk, which a second person approves. Nothing is sent', handler: order },
   { method: 'POST', path: '/api/support/ask', roles: ANY, unverified: true, can: 'Ask Support a question, which is matched to the fixed help texts', handler: ask },
   // Milestone 5 (onboarding.ts). The operator's routes are not here: they have their own hostname and no role.

@@ -7960,15 +7960,6 @@ async function institution(name?: string) {
 const keysOf = (value: unknown): string[] => (value && typeof value === 'object' ? Object.entries(value).flatMap(([k, v]) => [...(Array.isArray(value) ? [] : [k]), ...keysOf(v)]) : [])
 const total = (rows: object[], field: string) => demo.shown(rows.reduce((n, r) => n + demo.fixed((r as Record<string, unknown>)[field], 2)!, 0n), 2)
 
-isolation['GET /api/overview'] = async (a, b) => {
-  await setOrg(b.orgId, `kind = 'institution'`)
-  await demoWallet(b.orgId, 'Wallet of B')
-  const before = await snapshot()
-  const [mine, theirs] = [await get('/api/overview', a), await get('/api/overview', b)]
-  expect([mine.body.kind, theirs.body.kind]).toEqual(['partner', 'institution']) // the session's organisation decides, nothing in the request
-  expect(JSON.stringify(mine.body)).not.toMatch(new RegExp(`${b.orgId}|${b.seatId}|Wallet of B|Birchfield`))
-  expect(await snapshot()).toBe(before)
-}
 isolation['GET /api/desk'] = async (a, b) => {
   for (const m of [a, b]) await setOrg(m.orgId, `kind = 'institution'`)
   const [own, other] = [await demoWallet(a.orgId, 'Wallet of A'), await demoWallet(b.orgId, 'Wallet of B')]
@@ -8040,18 +8031,11 @@ isolation['GET /api/export/:id'] = async (a, b) => {
 }
 
 describe('H. demo mode: overview, desk and partner figures', () => {
-  for (const route of ['GET /api/overview', 'GET /api/desk', 'POST /api/desk/orders', 'GET /api/export/:id']) {
+  for (const route of ['GET /api/desk', 'POST /api/desk/orders', 'GET /api/export/:id']) {
     it(`${route}: the isolation case`, async () => isolation[route](await member('Alder Asset Management'), await member('Birchfield Capital')))
   }
 
-  it('D1: every total is computed from the rows, with integers: the partner figures agree with each other and the institution total is the sum of its balances', () => {
-    const p = demo.partner()
-    expect([p.volume, p.feesEarned, p.wallets, p.trades, p.averageTrade]).toEqual(['43983000.00', '109957.50', 1284, 9412, '4673.07'])
-    for (const rows of [p.days, p.chains, p.tokens, p.codes]) expect(total(rows, 'volume')).toBe(p.volume)
-    for (const [rows, field] of [[p.days, 'fees'], [p.codes, 'fee'], [p.payouts, 'fees']] as const) expect(total(rows, field), field).toBe(p.feesEarned)
-    expect(p.payouts.map((w) => [w.from, w.to, w.fees, w.status])[1]).toEqual(['2026-11-02', '2026-11-08', '26947.50', 'Paid'])
-    expect(p.payouts[0]).toMatchObject({ from: '2026-11-09', status: 'Accrued', transaction: null, paidAt: null })
-    expect(p.chains.map((c) => c.share)).toEqual(['65.0', '35.0'])
+  it('D1: every total is computed from the rows, with integers: the institution total is the sum of its balances', () => {
     const i = demo.institution()
     expect(i.totalEur).toBe('11363175.00')
     expect(total(i.balances.flatMap((w) => w.rows), 'valueEur')).toBe(i.totalEur)
@@ -8065,17 +8049,16 @@ describe('H. demo mode: overview, desk and partner figures', () => {
   it('D1: only the permitted assets and the two chains appear, in every answer and every export table', () => {
     expect(Object.keys(demo.ASSETS).sort()).toEqual(['ETH', 'EURC', 'EURCV', 'EURe', 'USDC'])
     expect(demo.CHAINS).toEqual({ 10: 'Optimism', 130: 'Unichain' })
-    const all = JSON.stringify([demo.partner(), demo.institution(), demo.desk(), demo.tables('partner', []), demo.tables('institution', [])])
+    const all = JSON.stringify([demo.institution(), demo.desk(), demo.tables([])])
     expect(all).not.toMatch(/USDT|WBTC|DAI|Ethereum|Base|Arbitrum|Gnosis|Polygon/)
-    expect(demo.partner().tokens.map((t) => t.name).sort()).toEqual(Object.keys(demo.ASSETS).sort())
     for (const o of demo.examples()) expect(demo.CHAINS[o.ticket.chainId], o.ref).toBeDefined()
   })
 
   it('D1: GET /api/overview answers every role, follows the kind of the organisation, says demo, and counts the approvals that really wait for this viewer', async () => {
     const { o, a, v } = await trio()
     const t = await colleague(o, 'trader')
-    const partner = await get('/api/overview', o)
-    expect(partner.body).toMatchObject({ demo: true, kind: 'partner', waiting: 0, ...demo.partner() })
+    // A partner gets no example and no word "demo": its figures are live (section I), here not connected.
+    for (const m of [o, a, v, t]) expect((await get('/api/overview', m)).body).toEqual({ kind: 'partner', waiting: 0, figures: { state: 'not_connected' } })
     await setOrg(o.orgId, `kind = 'institution'`)
     for (const m of [o, a, v, t]) expect((await get('/api/overview', m)).body).toMatchObject({ demo: true, kind: 'institution', waiting: 0, totalEur: '11363175.00' })
     expect((await get('/api/overview', o)).body.volume).toBeUndefined()
@@ -8084,15 +8067,6 @@ describe('H. demo mode: overview, desk and partner figures', () => {
     expect(await Promise.all([o, a, v, t].map(async (m) => (await get('/api/overview', m)).body.waiting))).toEqual([0, 1, 0, 0])
     const admin = await colleague(o, 'admin')
     expect((await get('/api/overview', admin)).body.waiting).toBe(1)
-  })
-
-  it('D1: the partner answer holds only what the partner earns: no field and no word of the fee of Ophis', async () => {
-    const o = await owner()
-    const { body } = await get('/api/overview', o)
-    expect([...new Set(keysOf(body))].filter((key) => /fee|bps|cost|margin|share|net|gross|ophis|protocol|platform/i.test(key)).sort()).toEqual(['fee', 'feeBps', 'fees', 'feesEarned', 'share'])
-    expect(body.feeBps).toBe('25.00') // the partner's own fee
-    expect(JSON.stringify(body)).not.toMatch(/ophis|1\.00/i)
-    expect(JSON.stringify(demo.tables('partner', []))).not.toMatch(/ophis/i)
   })
 
   it('D1: GET /api/desk is for institutions: a partner gets 403 institution_only, an institution its permitted assets, its linked wallets and the limits', async () => {
@@ -8471,29 +8445,25 @@ describe('H. demo mode: overview, desk and partner figures', () => {
     expect((await prepare(await again(t), walletId)).status).toBe(200)
   })
 
-  it('D3: every export is built by the server: the name starts with "ophis-demo-", each row has the column source = demo, and the tables follow the kind of the organisation', async () => {
+  it('D3: every export of an institution is built by the server: the name starts with "ophis-demo-", each row has the column source = demo, and a partner gets none of these tables', async () => {
     const { o, a, t } = await deskTeam()
     const viewer = await colleague(o, 'viewer')
-    const names = { institution: ['assets', 'balances', 'orders', 'statement'], partner: ['codes', 'daily', 'payouts', 'wallets'] }
-    expect(Object.keys(demo.tables('institution', [])).sort()).toEqual(names.institution)
-    expect(Object.keys(demo.tables('partner', [])).sort()).toEqual(names.partner)
-    for (const kind of ['institution', 'partner'] as const) {
-      await setOrg(o.orgId, `kind = '${kind}'`)
-      for (const table of names[kind]) {
-        for (const m of [o, a, t, viewer]) {
-          const file = await exported(m, table)
-          expect(file.status, table).toBe(200)
-          expect(file.body.name, table).toBe(`ophis-demo-${table}-2026-11-10.csv`)
-          expect(file.rows.length, table).toBeGreaterThan(1)
-          expect(file.rows[0].at(-1), table).toBe('source')
-          for (const r of file.rows.slice(1)) expect([r.length, r.at(-1)], table).toEqual([file.rows[0].length, 'demo'])
-        }
+    const names = ['assets', 'balances', 'orders', 'statement']
+    expect(Object.keys(demo.tables([])).sort()).toEqual(names)
+    for (const table of names) {
+      for (const m of [o, a, t, viewer]) {
+        const file = await exported(m, table)
+        expect(file.status, table).toBe(200)
+        expect(file.body.name, table).toBe(`ophis-demo-${table}-2026-11-10.csv`)
+        expect(file.rows.length, table).toBeGreaterThan(1)
+        expect(file.rows[0].at(-1), table).toBe('source')
+        for (const r of file.rows.slice(1)) expect([r.length, r.at(-1)], table).toEqual([file.rows[0].length, 'demo'])
       }
-      // A table of the other kind, an unknown one and a name of the prototype: not found.
-      for (const table of [...names[kind === 'partner' ? 'institution' : 'partner'], 'audit', 'constructor', '__proto__', 'toString']) expect((await exported(o, table)).status, table).toBe(404)
     }
-    expect((await exported(o, 'codes')).rows.slice(1).reduce((n, r) => n + demo.fixed(r[5], 2)!, 0n)).toBe(demo.fixed(demo.partner().feesEarned, 2))
-    expect((await exported(o, 'codes')).body.csv).not.toMatch(/ophis/i)
+    // A partner table, an unknown one and a name of the prototype: not found. A partner gets no demo table.
+    for (const table of ['referred', 'months', 'codes', 'daily', 'audit', 'constructor', '__proto__', 'toString']) expect((await exported(o, table)).status, table).toBe(404)
+    await setOrg(o.orgId, `kind = 'partner'`)
+    for (const table of [...names, 'codes', 'daily', 'payouts', 'wallets', 'constructor', '__proto__']) expect((await exported(o, table)).status, table).toBe(404)
   })
 
   it('D3: an export holds the own orders of the institution before the examples, with their real state, and a cell that starts with = + - @ or a tab is made harmless', async () => {
@@ -8543,7 +8513,7 @@ describe('H. demo mode: overview, desk and partner figures', () => {
   })
 
   it('D3: the words of the demo pages: no claim about a licence, no payout terms and no promise about fees; the banner, the footer line and the sentences the pages must say', () => {
-    const said = [deskPage, demoSource, JSON.stringify([demo.partner(), demo.institution(), demo.desk()]), EVENTS['order.demo'], EVENTS['wallet.link/demo']].join('\n')
+    const said = [deskPage, demoSource, JSON.stringify([demo.institution(), demo.desk()]), EVENTS['order.demo'], EVENTS['wallet.link/demo']].join('\n')
     for (const banned of [/licen[cs]ed|regulated|authori[sz]ed|MiCA|compliant/i, /—/, /honest/i, /paid (weekly|monthly|daily|every)|payout (terms|schedule)|\bdue\b|guarantee|no (other|hidden) fee|never charge|price improvement/i]) expect(said).not.toMatch(banned)
     for (const sentence of [
       '<b>Demo data.</b> No order is sent and no funds move. Figures are examples.', 'Example figures. The real cost of an order is shown before it is signed.', 'Nothing is signed at this step.',
@@ -8561,5 +8531,368 @@ describe('H. demo mode: overview, desk and partner figures', () => {
     expect(deskPage.match(/<Banner \/>/g)).toHaveLength(3)
     expect(shellPage).toContain('<footer className="foot-line">Ophis is a software provider. It is not a crypto-asset service provider.</footer>')
     expect(shellPage).not.toMatch(/Later/)
+  })
+})
+
+// ---- partner figures: live. A partner's Overview reads the rebate indexer (src/server/partner.ts) through one
+// token-gated route, only for the wallets the organisation has linked. The contract is the indexer's own fixture,
+// read where it is: a changed contract fails here. Each control was seen failing once with it removed.
+import contract from '../../rebate-indexer/tests/fixtures/business-partner.json'
+import partnerSource from '../src/server/partner.ts?raw'
+import * as partnerFigures from '../src/server/partner.ts'
+const INDEXER_TOKEN = 'console-test-token-0123456789abcdef-0123456789'
+const liveEnv = { ...testEnv, INDEXER_URL: 'https://indexer.test', INDEXER_TOKEN } as Env
+const [P, Z] = contract.wallets // the partner wallet of the contract, and a wallet with no code and zero fees
+const WITHHELD = ['currentCycleNetFeeUsd', 'grossFeeUsd', 'partnerShareBps', 'minPayoutUsd']
+// A wallet row written straight to the table (linking is section y).
+async function walletRow(orgId: string, address: string, more: { label?: string; state?: string; chainId?: number } = {}) {
+  const id = data.randomId()
+  await db.prepare(`INSERT INTO wallets (id, org_id, chain_id, address, kind, label, state, proof_nonce, proof_digest, proof_signature, proof_checked_at, linked_at) VALUES (?, ?, ?, ?, 'safe', ?, ?, ?, '0x', '0x', ?, ?)`)
+    .bind(id, orgId, more.chainId ?? 10, address, more.label ?? 'Treasury Safe', more.state ?? 'linked', data.randomId(), now, now).run()
+  return id
+}
+const someAddress = () => `0x${data.randomId()}${data.randomId().slice(0, 8)}`
+// What the indexer answers for these wallets: the contract's partner wallet as it is, any other with no code and zero fees.
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const answerFor = (wallets: string[]): any => structuredClone({ asOf: contract.asOf, wallets: wallets.map((w) => (w === P.wallet ? P : { ...Z, wallet: w, fees: { ...Z.fees, recipient: w } })) })
+/** Stands in for the indexer. `change` twists the good answer, or returns the Response itself. Returns what was asked. */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function indexer(change: (answer: any, init: RequestInit) => unknown = (answer) => answer) {
+  const asked: { url: string; init: RequestInit; wallets: string[] }[] = []
+  vi.stubGlobal('fetch', async (url: string, init: RequestInit) => {
+    const wallets = JSON.parse(String(init.body)).wallets as string[]
+    asked.push({ url: String(url), init, wallets })
+    const out = await change(answerFor(wallets), init)
+    return out instanceof Response ? out : Response.json(out)
+  })
+  return asked
+}
+const overviewOf = (m: Holder, env: Env = liveEnv) => call('GET', '/api/overview', { cookie: m.cookie, env })
+const exportOf = async (m: Holder, table: string, env: Env = liveEnv) => {
+  const answer = await call('GET', `/api/export/${table}`, { cookie: m.cookie, env })
+  return { ...answer, rows: answer.status === 200 ? cells(answer.body.csv) : [] }
+}
+// A partner organisation whose one linked wallet is the contract's partner wallet.
+async function partnerOrg(name?: string) {
+  const o = await owner(name)
+  return { ...o, walletId: await walletRow(o.orgId, P.wallet) }
+}
+// What the console makes of the contract's partner wallet: built from the contract file, no figure typed a second time.
+const A = P.affiliate!
+const shownPartner = {
+  wallet: checksum(P.wallet), label: 'Treasury Safe', chain: 'OP Mainnet',
+  affiliate: {
+    kind: A.kind, sharePct: A.rateOfNetFeePct, codes: A.activeCodes, referredCount: A.referredCount, cycleVolumeUsd: A.currentCycleVolumeUsd, lifetimeVolumeUsd: A.lifetimeReferredVolumeUsd,
+    estimatedEarningsUsd: A.estimatedCurrentCycleEarningsUsd, paidWeth: A.paidToDateWeth, paidUsd: A.paidToDateUsd, nextPayoutAt: A.nextPayoutAt,
+    referred: A.referees.map((r) => ({ wallet: r.wallet, attributed: { link: 'Referral link', code: 'Partner code in the order', 'link-and-code': 'Referral link and partner code' }[r.attribution], firstSeenAt: r.firstSeenAt, lifetimeVolumeUsd: r.lifetimeVolumeUsd })),
+  },
+  fees: {
+    shareUsd: P.fees.currentCycle.partnerShareUsd, carriedUsd: P.fees.currentCycle.carriedInUsd, owedUsd: P.fees.currentCycle.owedUsd, pendingTrades: P.fees.currentCycle.pendingUnpricedTrades,
+    paidWeth: P.fees.lifetime.paidWeth, trades: P.fees.lifetime.tradeCount,
+    months: P.fees.recentBatches.map((m) => ({ month: m.cycleMonth, status: m.status, owedUsd: m.owedUsd, owedWeth: m.owedWeth, carriedUsd: m.carriedUsd })),
+  },
+}
+const UNAVAILABLE = { kind: 'partner', waiting: 0, figures: { state: 'figures_unavailable' } }
+
+isolation['GET /api/overview'] = async (a, b) => {
+  // Two partners, each with a linked wallet. A's read asks the indexer for A's wallet and never for B's.
+  const [mine, theirs] = [someAddress(), someAddress()]
+  await walletRow(a.orgId, mine, { label: 'Wallet of A' })
+  await walletRow(b.orgId, theirs, { label: 'Wallet of B' })
+  const asked = indexer()
+  const before = await snapshot()
+  const view = await overviewOf(a)
+  expect(view.body.figures.wallets.map((w: { wallet: string }) => w.wallet)).toEqual([checksum(mine)])
+  expect(asked.map((x) => x.wallets)).toEqual([[mine]])
+  expect(JSON.stringify([view.body, asked.map((x) => [x.url, x.init.body, x.init.headers])])).not.toMatch(new RegExp(`${theirs}|${checksum(theirs)}|${b.orgId}|${b.seatId}|${a.orgId}|${a.seatId}|Wallet of B|Birchfield|Alder`))
+  // Nothing in the request moves the read to another organisation or another wallet.
+  const forged = await call('GET', `/api/overview?org=${b.orgId}&wallets=${theirs}`, { cookie: a.cookie, env: liveEnv, headers: { 'x-org': b.orgId } })
+  expect(forged.body.figures.wallets.map((w: { wallet: string }) => w.wallet)).toEqual([checksum(mine)])
+  expect(asked.at(-1)!.wallets).toEqual([mine])
+  expect(await snapshot()).toBe(before) // a read writes nothing
+}
+
+describe('I. partner figures: live', () => {
+  it('GET /api/overview: the isolation case', async () => isolation['GET /api/overview'](await member('Alder Asset Management'), await member('Birchfield Capital')))
+
+  it('the contract file is the one the indexer tests: a partner wallet with two codes, three attributions, two months, a scheduled run; a second wallet with none', () => {
+    expect([P.wallet, A.activeCodes.length, A.referees.map((r) => r.attribution).sort(), P.fees.recentBatches.length, A.payoutStatus, Z.affiliate]).toEqual(['0x5afe5afe5afe5afe5afe5afe5afe5afe5afe5afe', 2, ['code', 'link', 'link-and-code'], 2, 'scheduled', null])
+  })
+
+  it('not connected: no address, no token, or an address that is not acceptable; nothing is asked', async () => {
+    const o = await partnerOrg()
+    const asked = indexer()
+    for (const more of [{ INDEXER_URL: undefined }, { INDEXER_TOKEN: undefined }, { INDEXER_TOKEN: '' }, { INDEXER_URL: '' }, { INDEXER_URL: 'http://indexer.test' }, { INDEXER_URL: 'ftp://indexer.test' }, { INDEXER_URL: 'indexer.test' }, { INDEXER_URL: 'https://user:pw@indexer.test' }]) {
+      expect((await overviewOf(o, { ...liveEnv, ...more } as Env)).body, JSON.stringify(more)).toEqual({ kind: 'partner', waiting: 0, figures: { state: 'not_connected' } })
+    }
+    expect(asked).toEqual([])
+  })
+
+  it('the address rule: https anywhere; plain http only to this machine and only in the local environment', () => {
+    const base = (INDEXER_URL: string, ENVIRONMENT = 'local') => partnerFigures.indexerBase({ ENVIRONMENT, INDEXER_URL })
+    expect(base('https://rebates.example/')).toBe('https://rebates.example')
+    expect(base('https://rebates.example', 'production')).toBe('https://rebates.example')
+    expect(base('https://rebates.example/api/')).toBe('https://rebates.example/api')
+    expect(base('http://127.0.0.1:8793')).toBe('http://127.0.0.1:8793')
+    expect(base('http://localhost:8793')).toBe('http://localhost:8793')
+    for (const url of ['http://rebates.example', 'http://127.0.0.1.example:8793', 'http://127.0.0.1:8793@rebates.example/', 'http://localhost.example:8793', 'http://10.0.0.1:8793', 'ws://127.0.0.1:8793']) expect(base(url), url).toBeNull()
+    for (const url of ['http://127.0.0.1:8793', 'http://localhost:8793']) for (const environment of ['production', 'staging', '']) expect(base(url, environment), url).toBeNull()
+  })
+
+  it('no linked wallet: nothing is asked; a wallet that waits and one that was unlinked are never asked', async () => {
+    const o = await owner()
+    const asked = indexer()
+    expect((await overviewOf(o)).body).toEqual({ kind: 'partner', waiting: 0, figures: { state: 'no_wallet' } })
+    const pending = await walletRow(o.orgId, someAddress(), { state: 'pending' })
+    await db.prepare(`INSERT INTO approvals (id, org_id, action, subject_id, payload, payload_hash, requester_seat_id, state, expires_at, created_at) VALUES (?, ?, 'wallet.link', ?, '{}', '', ?, 'pending', ?, ?)`)
+      .bind(data.randomId(), o.orgId, pending, o.seatId, now + DAY, now).run() // the wallet is live, not linked
+    await walletRow(o.orgId, P.wallet, { state: 'unlinked' })
+    expect((await walletsOf(o)).map((w) => w.state)).toEqual(['pending'])
+    expect((await overviewOf(o)).body.figures).toEqual({ state: 'no_wallet' })
+    expect(asked).toEqual([])
+    // Once one is linked, it alone is asked.
+    const linkedOne = someAddress()
+    await walletRow(o.orgId, linkedOne)
+    expect((await overviewOf(o)).body.figures.state).toBe('live')
+    expect(asked.map((x) => x.wallets)).toEqual([[linkedOne]])
+  })
+
+  it('live: every role of the organisation gets the figures of the contract, built field by field', async () => {
+    const o = await partnerOrg()
+    const asked = indexer()
+    const members = [o, await colleague(o, 'admin'), await colleague(o, 'trader'), await colleague(o, 'approver'), await colleague(o, 'compliance'), await colleague(o, 'viewer')]
+    for (const m of members) expect((await overviewOf(m)).body).toEqual({ kind: 'partner', waiting: 0, figures: { state: 'live', asOf: contract.asOf, leftOut: 0, wallets: [shownPartner] } })
+    expect(asked).toHaveLength(members.length) // one request per read
+    // A wallet with no partner code: affiliate null and zero fees, as the contract's second wallet.
+    const other = someAddress()
+    await walletRow(o.orgId, other, { label: 'Second' })
+    const two = (await overviewOf(o)).body.figures.wallets
+    expect(two[1]).toEqual({ wallet: checksum(other), label: 'Second', chain: 'OP Mainnet', affiliate: null, fees: { shareUsd: 0, carriedUsd: 0, owedUsd: 0, pendingTrades: 0, paidWeth: 0, trades: 0, months: [] } })
+    // A run that is not scheduled gives no date, whatever date the indexer sends.
+    for (const payoutStatus of ['disabled', 'not-configured', 'dry-run']) {
+      indexer((answer) => ((answer.wallets[0].affiliate.payoutStatus = payoutStatus), answer))
+      expect((await overviewOf(o)).body.figures.wallets[0].affiliate.nextPayoutAt, payoutStatus).toBeNull()
+    }
+  })
+
+  it('the request: one POST to /business/partner with the bearer token, the distinct linked addresses oldest first, at most 10, and how many were left out', async () => {
+    const o = await owner()
+    const asked = indexer()
+    const addresses = Array.from({ length: 12 }, someAddress)
+    for (const [i, address] of addresses.entries()) await walletRow(o.orgId, address, { label: `W${i}` })
+    await walletRow(o.orgId, addresses[0], { label: 'Same address on Base', chainId: 8453 }) // one address on two chains is asked once
+    const view = await overviewOf(o)
+    expect(asked).toHaveLength(1)
+    const { url, init, wallets } = asked[0]
+    expect([url, init.method, init.redirect, init.body]).toEqual(['https://indexer.test/business/partner', 'POST', 'manual', JSON.stringify({ wallets: addresses.slice(0, 10) })])
+    expect(init.headers).toEqual({ 'content-type': 'application/json', authorization: `Bearer ${INDEXER_TOKEN}` })
+    expect(init.signal).toBeInstanceOf(AbortSignal)
+    expect(wallets).toEqual(addresses.slice(0, 10))
+    expect(view.body.figures).toMatchObject({ state: 'live', leftOut: 2 })
+    expect(view.body.figures.wallets.map((w: { label: string; chain: string }) => [w.label, w.chain]).slice(0, 2)).toEqual([['W0', 'OP Mainnet, Base'], ['W1', 'OP Mainnet']])
+    expect(partnerFigures.INDEXER).toMatchObject({ timeoutMs: 5000, maxBytes: 1_000_000, maxWallets: 10, maxReferred: 500, maxMonths: 12 })
+  })
+
+  it('an institution never gets partner figures, and an organisation that is unverified, frozen or closed gets nothing: the indexer is not asked', async () => {
+    const o = await partnerOrg()
+    const asked = indexer()
+    await setOrg(o.orgId, `kind = 'institution'`)
+    const view = await overviewOf(o)
+    expect([view.body.kind, view.body.demo, view.body.figures]).toEqual(['institution', true, undefined])
+    for (const table of ['referred', 'months']) expect((await exportOf(o, table)).status).toBe(404)
+    await setOrg(o.orgId, `kind = 'partner'`)
+    for (const [state, error] of [['unverified', 'unverified'], ['frozen', 'org_frozen'], ['archived', 'org_closed']]) {
+      await setOrg(o.orgId, `state = '${state}'`)
+      for (const answer of [await overviewOf(o), await exportOf(o, 'referred')]) expect([answer.status, answer.body], state).toEqual([403, { error }])
+    }
+    expect((await call('GET', '/api/overview', { env: liveEnv })).status).toBe(401)
+    expect(asked).toEqual([])
+  })
+
+  it('a hostile or broken answer, one case each: figures not available, one log line of one word, never a partial mix', async () => {
+    const o = await partnerOrg()
+    await walletRow(o.orgId, Z.wallet, { label: 'Second' })
+    const logged = vi.spyOn(console, 'error').mockImplementation(() => undefined)
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    type Twist = (answer: any) => unknown
+    const raw = (text: string, status = 200, headers: Record<string, string> = {}) => () => new Response(text, { status, headers: { 'content-type': 'application/json', ...headers } })
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const set = (path: string, value: unknown): Twist => (answer) => (path.split('.').slice(0, -1).reduce((at: any, key) => at[key], answer)[path.split('.').at(-1)!] = value, answer)
+    const referee = A.referees[0]
+    const cases: [what: string, twist: Twist, word?: string][] = [
+      ['a wallet that was not asked', (a) => (a.wallets.push({ ...Z, wallet: '0x' + 'c'.repeat(40) }), a)],
+      ['a wallet that was not asked, in place of one that was', (a) => ((a.wallets[1] = { ...a.wallets[1], wallet: '0x' + 'c'.repeat(40) }), a)],
+      ['a missing wallet', (a) => (a.wallets.pop(), a)],
+      ['a duplicate', (a) => ((a.wallets[1] = a.wallets[0]), a)],
+      ['the wallets in another order', (a) => (a.wallets.reverse(), a)],
+      ['the figures of another wallet under this one', set('wallets.0.affiliate.wallet', Z.wallet)],
+      ['the fees of another wallet under this one', set('wallets.0.fees.recipient', Z.wallet)],
+      ['NaN', raw(JSON.stringify(answerFor([P.wallet, Z.wallet])).replace('184250.75', 'NaN')), 'SyntaxError'],
+      ['Infinity as text', raw(JSON.stringify(answerFor([P.wallet, Z.wallet])).replace('184250.75', 'Infinity')), 'SyntaxError'],
+      ['Infinity as a number', raw(JSON.stringify(answerFor([P.wallet, Z.wallet])).replace('184250.75', '1e999'))],
+      ['a negative number', set('wallets.0.affiliate.paidToDateUsd', -1)],
+      ['a negative number in the fees', set('wallets.1.fees.currentCycle.owedUsd', -0.01)],
+      ['a number as a string', set('wallets.0.affiliate.currentCycleVolumeUsd', '184250.75')],
+      ['a number as a string in a month', set('wallets.0.fees.recentBatches.0.owedUsd', '212.4')],
+      ['a number beyond any amount', set('wallets.0.affiliate.lifetimeReferredVolumeUsd', 1e16)],
+      ['a time in the right form that is no time', set('wallets.0.affiliate.referees.0.firstSeenAt', '2026-13-45T25:61:61Z')],
+      ['a count that is no whole number', set('wallets.0.affiliate.referredCount', 2.5)],
+      ['a share above 100', set('wallets.0.affiliate.rateOfNetFeePct', 101)],
+      ['501 referred wallets', set('wallets.0.affiliate.referees', Array.from({ length: 501 }, () => referee))],
+      ['13 months', set('wallets.0.fees.recentBatches', Array.from({ length: 13 }, () => P.fees.recentBatches[0]))],
+      ['a code of 100 kB', set('wallets.0.affiliate.activeCodes', ['a'.repeat(100_000)])],
+      ['markup in a code', set('wallets.0.affiliate.activeCodes', ['<img src=x onerror=alert(1)>'])],
+      ['a formula in a code', set('wallets.0.affiliate.activeCodes', ['=cmd|calc'])],
+      ['a code in upper case', set('wallets.0.affiliate.activeCodes', ['NORTHWIND'])],
+      ['markup in a status', set('wallets.0.fees.recentBatches.0.status', '<b>paid</b>')],
+      ['a formula in a status', set('wallets.0.fees.recentBatches.0.status', '=1+1')],
+      ['a long status', set('wallets.0.fees.recentBatches.0.status', 'p'.repeat(25))],
+      ['a month that is none', set('wallets.0.fees.recentBatches.0.cycleMonth', '2026-13')],
+      ['an unknown payoutStatus', set('wallets.0.affiliate.payoutStatus', 'soon')],
+      ['an unknown attribution', set('wallets.0.affiliate.referees.0.attribution', 'guess')],
+      ['an unknown kind', set('wallets.0.affiliate.kind', 'vip')],
+      ['a referred wallet that is no address', set('wallets.0.affiliate.referees.0.wallet', '0xZZ')],
+      ['a date that is none', set('wallets.0.affiliate.referees.0.firstSeenAt', 'yesterday')],
+      ['a bound date that is none', set('wallets.0.affiliate.referees.1.boundAt', '<i>')],
+      ['a next run that is no date', set('wallets.0.affiliate.nextPayoutAt', '1 December')],
+      ['asOf that is no ISO time', set('asOf', '12/11/2026')],
+      ['no affiliate field at all', (a) => (delete a.wallets[0].affiliate, a)],
+      ['no fees', set('wallets.1.fees', null)],
+      ['wallets that are no list', set('wallets', { 0: P })],
+      ['an answer that is a list', () => [answerFor([P.wallet, Z.wallet])]],
+      ['null', raw('null')],
+      ['a redirect', raw('', 302, { location: 'https://elsewhere.example/business/partner' }), 'status'],
+      ['a redirect with the good answer as its body', raw(JSON.stringify(answerFor([P.wallet, Z.wallet])), 307, { location: 'https://elsewhere.example/' }), 'status'],
+      ['an answer above 1 MB', raw(JSON.stringify({ ...answerFor([P.wallet, Z.wallet]), pad: 'x'.repeat(1_000_001) })), 'size'],
+      ['invalid JSON', raw('{"asOf":'), 'SyntaxError'],
+      ['status 500', raw(JSON.stringify(answerFor([P.wallet, Z.wallet])), 500), 'status'],
+      ['status 201', raw(JSON.stringify(answerFor([P.wallet, Z.wallet])), 201), 'status'],
+      ['status 401', raw('{"error":"unauthorized"}', 401), 'status'],
+      ['a network failure', () => Promise.reject(new TypeError('fetch failed')), 'TypeError'],
+    ]
+    for (const [what, twist, word = 'shape'] of cases) {
+      logged.mockClear()
+      indexer(twist)
+      const view = await overviewOf(o)
+      expect([view.status, view.body], what).toEqual([200, UNAVAILABLE])
+      expect(logged.mock.calls, what).toEqual([['partner figures unavailable', word]])
+      const file = await exportOf(o, 'referred')
+      expect([file.status, file.body], what).toEqual([503, { error: 'figures_unavailable' }])
+    }
+    // The same two wallets with the good answer: live. An answer just under 1 MB with an unknown field: live, the field dropped.
+    indexer()
+    expect((await overviewOf(o)).body.figures.state).toBe('live')
+    indexer((answer) => ({ ...answer, pad: 'x'.repeat(990_000) }))
+    const padded = (await overviewOf(o)).body
+    expect([padded.figures.state, JSON.stringify(padded).length < 5000]).toEqual(['live', true])
+    logged.mockRestore()
+  })
+
+  it('an answer after 6 seconds: the request is given up at 5 seconds, and the figures are not available', { timeout: 15_000 }, async () => {
+    const o = await partnerOrg()
+    const logged = vi.spyOn(console, 'error').mockImplementation(() => undefined)
+    let aborted = false
+    indexer((answer, init) => new Promise((resolve, reject) => {
+      const timer = setTimeout(() => resolve(answer), 6000)
+      init.signal?.addEventListener('abort', () => {
+        aborted = true
+        clearTimeout(timer)
+        reject(init.signal!.reason)
+      })
+    }))
+    const started = Date.now()
+    expect((await overviewOf(o)).body).toEqual(UNAVAILABLE)
+    expect(Date.now() - started).toBeLessThan(5900)
+    expect([aborted, logged.mock.calls]).toEqual([true, [['partner figures unavailable', 'TimeoutError']]])
+    logged.mockRestore()
+  })
+
+  it('the five withheld fields never reach the browser, though the indexer sends each one; nor does any field the console does not know', async () => {
+    const o = await partnerOrg()
+    // The contract sends all five, each with a value of its own.
+    expect([A.currentCycleNetFeeUsd, P.fees.currentCycle.grossFeeUsd, P.fees.partnerShareBps, P.fees.minPayoutUsd, P.fees.nextPayoutAt]).toEqual([17.31, 96.5, 8000, 25, '2026-12-01T02:00:00.000Z'])
+    indexer((answer) => {
+      answer.wallets[0].fees.nextPayoutAt = '2027-01-01T02:00:00.000Z' // told apart from the affiliate's date, which is shown
+      answer.wallets[0].fees.partnerShareBps = 7654 // 8000 would also be found inside a volume
+      answer.wallets[0].affiliate.internalNote = 'marker-internal'
+      answer.wallets[0].fees.currentCycle.ophisShareUsd = 19.3
+      return { ...answer, debug: 'marker-debug' }
+    })
+    const { body } = await overviewOf(o)
+    expect(body.figures.state).toBe('live')
+    const keys = [...new Set(keysOf(body))]
+    for (const field of [...WITHHELD, 'internalNote', 'ophisShareUsd', 'debug', 'payoutStatus', 'recipient']) expect(keys, field).not.toContain(field)
+    expect(keys.filter((key) => /gross|net|bps|min|ophis|protocol|platform/i.test(key))).toEqual([])
+    const sent = JSON.stringify(body)
+    for (const value of ['17.31', '96.5', '7654', '2027-01-01', 'marker', '19.3', ':25,', ':25}']) expect(sent, value).not.toContain(value)
+    const files = (await exportOf(o, 'referred')).body.csv + (await exportOf(o, 'months')).body.csv
+    for (const value of ['17.31', '96.5', '7654', '2027-01-01', 'marker', '"25"']) expect(files, value).not.toContain(value)
+    // The source names them once, in the note that says they are not read.
+    for (const field of [...WITHHELD, 'fees.nextPayoutAt']) expect(partnerSource.split(field).length, field).toBe(2)
+  })
+
+  it('the token is in no answer, no log line and no export', async () => {
+    const o = await partnerOrg()
+    const logged = vi.spyOn(console, 'error').mockImplementation(() => undefined)
+    const out: unknown[] = []
+    const all = async () => out.push(await overviewOf(o), await exportOf(o, 'referred'), await exportOf(o, 'months'), await call('GET', '/api/me', { cookie: o.cookie, env: liveEnv }), await call('GET', '/api/org', { cookie: o.cookie, env: liveEnv }))
+    indexer()
+    await all()
+    // An indexer that echoes the token it was given, in its error and in its answer.
+    indexer((answer, init) => ({ ...answer, echo: init.headers }))
+    await all()
+    indexer((_answer, init) => new Response(JSON.stringify(init.headers), { status: 500 }))
+    await all()
+    indexer((_answer, init) => Promise.reject(new Error(`refused ${JSON.stringify(init.headers)}`)))
+    await all()
+    expect(logged.mock.calls.length).toBeGreaterThan(0)
+    const everything = JSON.stringify([out, logged.mock.calls])
+    for (const secret of [INDEXER_TOKEN, 'Bearer', 'indexer.test']) expect(everything, secret).not.toContain(secret)
+    logged.mockRestore()
+  })
+
+  it('the exports: every referred wallet and every month from a fresh read, named ophis-partner-, source = live, the partner wallet in each row, cells made harmless', async () => {
+    const o = await partnerOrg()
+    await db.prepare('UPDATE wallets SET label = ? WHERE id = ?').bind('=2+3 (cmd)', o.walletId).run() // a wallet name may start with a sign
+    const asked = indexer()
+    const viewer = await colleague(o, 'viewer')
+    const referred = await exportOf(viewer, 'referred')
+    expect([referred.status, referred.body.name]).toEqual([200, 'ophis-partner-referred-2026-11-10.csv'])
+    expect(referred.rows).toEqual([
+      ['Partner wallet', 'Wallet name', 'Referred wallet', 'Attributed by', 'First seen (UTC)', 'Lifetime volume (USD)', 'source'],
+      ...shownPartner.affiliate.referred.map((r) => [checksum(P.wallet), "'=2+3 (cmd)", r.wallet, r.attributed, r.firstSeenAt, String(r.lifetimeVolumeUsd), 'live']),
+    ])
+    const months = await exportOf(o, 'months')
+    expect(months.body.name).toBe('ophis-partner-months-2026-11-10.csv')
+    expect(months.rows).toEqual([
+      ['Partner wallet', 'Wallet name', 'Month', 'Status', 'Owed (USD)', 'Owed (WETH)', 'Carried (USD)', 'source'],
+      ...shownPartner.fees.months.map((m) => [checksum(P.wallet), "'=2+3 (cmd)", m.month, m.status, String(m.owedUsd), String(m.owedWeth), String(m.carriedUsd), 'live']),
+    ])
+    for (const file of [referred, months]) for (const line of file.body.csv.split('\r\n').filter(Boolean)) expect(line).not.toMatch(/(^|,)"[=+\-@\t\r]/)
+    expect(asked).toHaveLength(2) // each file is a fresh read
+    // All 500 referred wallets are in the file.
+    indexer((answer) => ((answer.wallets[0].affiliate.referees = Array.from({ length: 500 }, (_, i) => ({ ...A.referees[0], wallet: `0x${i.toString(16).padStart(40, '0')}` }))), answer))
+    expect((await exportOf(o, 'referred')).rows).toHaveLength(501)
+    // Unknown tables, the demo tables and names of the prototype: not found, and the indexer is not asked.
+    const quiet = indexer()
+    for (const table of ['orders', 'balances', 'codes', 'audit', 'constructor', '__proto__', 'toString']) expect((await exportOf(o, table)).status, table).toBe(404)
+    expect(quiet).toEqual([])
+    // No wallet, or not connected: no file.
+    const bare = await owner()
+    expect([(await exportOf(bare, 'referred')).body, (await exportOf(o, 'referred', testEnv)).body]).toEqual([{ error: 'no_wallet' }, { error: 'not_connected' }])
+  })
+
+  it('an export of another organisation: each file holds the own wallets only', async () => {
+    const [a, b] = [await partnerOrg('Alder Asset Management'), await owner('Birchfield Capital')]
+    const theirs = someAddress()
+    await walletRow(b.orgId, theirs, { label: 'Wallet of B' })
+    const asked = indexer((answer) => (answer.wallets.forEach((w: typeof P) => Object.assign(w, { affiliate: { ...A, wallet: w.wallet }, fees: { ...P.fees, recipient: w.wallet } })), answer))
+    const before = await snapshot()
+    const [mine, other] = [await exportOf(a, 'referred'), await exportOf(b, 'referred')]
+    expect(asked.map((x) => x.wallets)).toEqual([[P.wallet], [theirs]])
+    expect(new Set(mine.rows.slice(1).map((r) => r[0]))).toEqual(new Set([checksum(P.wallet)]))
+    expect(new Set(other.rows.slice(1).map((r) => r[0]))).toEqual(new Set([checksum(theirs)]))
+    expect(mine.body.csv).not.toMatch(new RegExp(`${checksum(theirs)}|Wallet of B`))
+    expect(await snapshot()).toBe(before)
   })
 })

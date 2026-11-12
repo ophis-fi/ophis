@@ -1,4 +1,4 @@
-// Demo mode: the figures of Overview and Desk, and the arithmetic of a demo order. Fixed example data taken from the
+// Demo mode, institutions only: the figures of Overview and Desk, and the arithmetic of a demo order. A partner's figures are live (partner.ts). Fixed example data taken from the
 // mockup. No chain and no market is read, no order is sent, signed or executed. It imports nothing and reads no row.
 // Every total is computed from the rows below, never typed a second time.
 
@@ -16,7 +16,6 @@ export const ASSETS = {
 export type Asset = keyof typeof ASSETS
 const isAsset = (value: unknown): value is Asset => typeof value === 'string' && Object.hasOwn(ASSETS, value)
 const FEE_BPS = 1n // of the volume of an institution's order
-const PARTNER_BPS = 25n // the example partner's own fee, which the partner sets
 export const ORDER_LIMIT_EUR = 5_000_000n // per order, at the reference price
 export const MAX_OPEN_ORDERS = 20 // orders that wait for approval, per organisation
 export const ORDERS_PER_HOUR = 30 // orders one member files in an hour: preparing and cancelling in a loop fills no table
@@ -137,70 +136,12 @@ export const desk = () => ({
   limitEur: shown(ORDER_LIMIT_EUR * E, 2), maxOpen: MAX_OPEN_ORDERS, checks: CHECKS, examples: examples(),
 })
 
-// ---- partner: only what the partner earns. No figure of Ophis's own fee is here, and a test keeps it so. ----
-const FIRST_DAY = Date.UTC(2026, 9, 11)
-const DAY_MS = 86_400_000
-// Volume per day in thousands of USD, 30 days from 2026-10-11.
-const DAYS = [800, 1412, 1811, 1365, 1740, 1613, 715, 907, 1374, 1703, 1414, 1439, 1722, 1074, 774, 1580, 1928, 2209, 1905, 1760, 1179, 767, 2187, 1701, 1582, 1566, 1743, 1145, 855, 2013]
-const BY_CHAIN: [string, string][] = [['Optimism', '28588950'], ['Unichain', '15394050']]
-const BY_TOKEN: [Asset, string][] = [['USDC', '19264554'], ['ETH', '11919393'], ['EURC', '6597450'], ['EURe', '4310334'], ['EURCV', '1891269']]
-// Two volumes differ from the mockup by 2 USD, so that each fee is a whole number of cents and the column adds up to the total.
-const CODES: [code: string, created: string, wallets: number, trades: number, volume: string][] = [
-  ['NW-VAULTS', '2026-06-02', 512, 3846, '20232180'], ['NW-TREASURY', '2026-06-02', 148, 1204, '10555920'], ['NW-DAO-OPS', '2026-07-15', 96, 1611, '7477112'],
-  ['NW-APP', '2026-08-21', 441, 2318, '3958468'], ['NW-PILOT', '2026-10-01', 87, 433, '1759320'],
-]
-const PAYOUT_TX = ['0xc07b...e5a1', '0x5d94...71e3', '0xa6c0...2f8d', '0x13e7...9b60', '0x8f2a...d41c'] // oldest week first
-const ATTRIBUTED: [wallet: string, firstSeen: string, code: string, chain: string, trades: number, volume: string, lastTrade: string][] = [
-  ['0x3fA2...9c1B', '2026-06-04', 'NW-VAULTS', 'Optimism', 212, '4812400', '2026-11-09 21:14:05Z'], ['0xB81e...44d0', '2026-06-11', 'NW-TREASURY', 'Optimism', 38, '3950000', '2026-11-09 16:02:51Z'],
-  ['0x09Cd...a7F3', '2026-07-19', 'NW-DAO-OPS', 'Optimism', 141, '2204750', '2026-11-09 19:40:18Z'], ['0xD4f0...b2E8', '2026-09-02', 'NW-VAULTS', 'Unichain', 77, '1120900', '2026-11-08 11:27:33Z'],
-  ['0x6e5B...13aa', '2026-08-23', 'NW-APP', 'Optimism', 96, '418320', '2026-11-09 22:58:40Z'], ['0x21aC...f590', '2026-09-30', 'NW-APP', 'Unichain', 54, '96480', '2026-11-09 07:15:02Z'],
-  ['0x8C37...0e6D', '2026-10-03', 'NW-PILOT', 'Unichain', 19, '61200', '2026-11-07 13:44:29Z'], ['0xF7b9...5c42', '2026-10-28', 'NW-PILOT', 'Optimism', 6, '12750', '2026-11-06 09:03:57Z'],
-]
-const date = (time: number) => new Date(time).toISOString().slice(0, 10)
-const split = (rows: [string, string][]) => {
-  const total = sum(rows.map(([, v]) => whole(v)))
-  return rows.map(([name, v]) => ({ name, volume: shown(whole(v), 2), share: shown((whole(v) * 100n * E) / total, 1) }))
-}
-export function partner() {
-  const days = DAYS.map((thousands, i) => ({ time: FIRST_DAY + i * DAY_MS, volume: BigInt(thousands) * 1000n * E }))
-  const volume = sum(days.map((d) => d.volume))
-  const trades = CODES.reduce((n, c) => n + c[3], 0)
-  // The ledger: the days of each week (Monday to Sunday) that are in the series. A week that ended before the demo day is paid.
-  const weeks = new Map<number, typeof days>()
-  for (const d of days) {
-    const monday = d.time - ((new Date(d.time).getUTCDay() + 6) % 7) * DAY_MS
-    weeks.set(monday, [...(weeks.get(monday) ?? []), d])
-  }
-  return {
-    period: { from: date(days[0].time), to: date(days.at(-1)!.time) },
-    volume: shown(volume, 2), feesEarned: shown(bps(volume, PARTNER_BPS), 2), feeBps: shown(PARTNER_BPS * E, 2),
-    wallets: CODES.reduce((n, c) => n + c[2], 0), trades, averageTrade: shown(volume / BigInt(trades), 2),
-    days: days.map((d) => ({ date: date(d.time), volume: shown(d.volume, 2), fees: shown(bps(d.volume, PARTNER_BPS), 2) })),
-    chains: split(BY_CHAIN), tokens: split(BY_TOKEN),
-    codes: CODES.map(([code, created, wallets, codeTrades, v]) => ({ code, created, wallets, trades: codeTrades, volume: shown(whole(v), 2), fee: shown(bps(whole(v), PARTNER_BPS), 2) })),
-    payouts: [...weeks.entries()].map(([monday, of], i) => {
-      const paid = monday + 7 * DAY_MS <= Date.parse(DEMO_DAY)
-      return { from: date(of[0].time), to: date(of.at(-1)!.time), fees: shown(bps(sum(of.map((d) => d.volume)), PARTNER_BPS), 2), transaction: paid ? PAYOUT_TX[i] : null, paidAt: paid ? date(monday + 7 * DAY_MS) : null, status: paid ? 'Paid' : 'Accrued' }
-    }).reverse(),
-    attributed: ATTRIBUTED.map(([wallet, firstSeen, code, chain, walletTrades, v, lastTrade]) => ({ wallet, firstSeen, code, chain, trades: walletTrades, volume: shown(whole(v), 2), lastTrade })),
-  }
-}
-
 // ---- CSV: the tables behind every "Export CSV" button. The router adds the column source = demo to each row. ----
 type Table = [head: string[], rows: unknown[][]]
 const orderRow = (o: { ref: string; at: number; state: string; ticket: Ticket; wallet: string; address: string; estimate: Estimate }) =>
   [o.ref, new Date(o.at).toISOString(), o.ticket.type, o.ticket.sell, o.ticket.amount, o.ticket.buy, o.estimate.received, o.ticket.limitPrice ?? '', CHAINS[o.ticket.chainId], o.wallet, o.address, o.estimate.volumeEur, o.estimate.feeEur, o.state]
-/** The tables an organisation of this kind can export; `own` are its own orders, shown before the examples. */
-export function tables(kind: string, own: Parameters<typeof orderRow>[0][]): Record<string, Table> {
-  if (kind === 'partner') {
-    const p = partner()
-    return {
-      daily: [['Date', 'Volume (USD)', 'Fees earned (USD)'], p.days.map((d) => [d.date, d.volume, d.fees])],
-      codes: [['Code', 'Created', 'Wallets', 'Trades', 'Volume (USD)', 'Your fee (USD)'], p.codes.map((c) => [c.code, c.created, c.wallets, c.trades, c.volume, c.fee])],
-      payouts: [['From', 'To', 'Fees (USD)', 'Transaction', 'Paid at', 'Status'], p.payouts.map((w) => [w.from, w.to, w.fees, w.transaction ?? '', w.paidAt ?? '', w.status])],
-      wallets: [['Wallet', 'First seen', 'Code', 'Main chain', 'Trades', 'Volume (USD)', 'Last trade (UTC)'], p.attributed.map((w) => [w.wallet, w.firstSeen, w.code, w.chain, w.trades, w.volume, w.lastTrade])],
-    }
-  }
+/** The tables an institution can export; `own` are its own orders, shown before the examples. */
+export function tables(own: Parameters<typeof orderRow>[0][]): Record<string, Table> {
   const i = institution()
   return {
     balances: [['Wallet', 'Address', 'Chain', 'Asset', 'Balance', 'Value (EUR)'], i.balances.flatMap((w) => w.rows.map((r) => [w.wallet, w.address, w.chain, r.asset, r.balance, r.valueEur]))],
