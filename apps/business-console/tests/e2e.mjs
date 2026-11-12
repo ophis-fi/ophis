@@ -1000,6 +1000,8 @@ try {
   check('a limit order shows the allowed range of the limit price, as the server gives it',
     Number(eth.limitLow) === Number(eth.eur) * 0.8 && Number(eth.limitHigh) === Number(eth.eur) * 1.2
     && await ticket.getByText(`Allowed range: ${grouped(eth.limitLow)} to ${grouped(eth.limitHigh)} EUR, within 20% of the reference price.`).isVisible())
+  check('a chain on which no wallet is linked is switched off on the ticket, and the ticket says why',
+    await ticket.getByLabel('Unichain', { exact: true }).isDisabled() && await ticket.getByLabel('Optimism', { exact: true }).isEnabled() && await ticket.getByText('No wallet is linked on Unichain.').isVisible())
   await ticket.getByLabel(/Limit price/).fill(`${eth.limitHigh.split('.')[0]}.000001`)
   await ticket.getByRole('button', { name: 'Review order' }).click()
   await tess.page.getByText('The limit price is outside the allowed range').waitFor()

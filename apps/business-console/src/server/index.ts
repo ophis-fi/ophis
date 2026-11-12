@@ -834,7 +834,7 @@ const waiting = async (c: Context) => (await data.openRequests(c.env.DB, c.actor
 async function overview(c: Context) {
   const kind = c.session.org_kind
   // A partner: its real figures (partner.ts), or the plain state that says why there are none. Never an example.
-  if (kind === 'partner') return json(200, { kind, waiting: await waiting(c), figures: await partner.figures(c.env, c.actor.orgId) })
+  if (kind === 'partner') return json(200, { kind, waiting: await waiting(c), figures: await partner.figures(c.env, c.actor.orgId, c.now) })
   return json(200, { demo: true, kind, waiting: await waiting(c), ...demo.institution(), orders: await ordersOf(c) })
 }
 async function desk(c: Context) {
@@ -855,8 +855,8 @@ async function tableExport(c: Context) {
   let tables: Record<string, [head: string[], rows: unknown[][]]>
   if (live) {
     if (!Object.hasOwn(partner.tables({ state: 'live', asOf: '', leftOut: 0, wallets: [] }), table)) return fail(404, 'not_found')
-    const figures = await partner.figures(c.env, c.actor.orgId)
-    if (figures.state !== 'live') return fail(figures.state === 'figures_unavailable' ? 503 : 409, figures.state)
+    const figures = await partner.figures(c.env, c.actor.orgId, c.now)
+    if (figures.state !== 'live') return fail(figures.state === 'figures_unavailable' ? 503 : figures.state === 'figures_rate' ? 429 : 409, figures.state)
     tables = partner.tables(figures)
   } else tables = demo.tables(await ordersOf(c))
   if (!Object.hasOwn(tables, table)) return fail(404, 'not_found')

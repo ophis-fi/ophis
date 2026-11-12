@@ -10,7 +10,7 @@ const ORG = '/#/organisation', COMPLIANCE = '/#/compliance', SECURITY = '/#/secu
 export const ANSWERS: readonly Answer[] = [
   { id: 'KB-01', title: 'Open an organisation account, onboarding and the company check (KYB): not available yet', link: SUPPORT,
     about: 'Registering a new organisation, onboarding, the company check (KYB), the KYB record, company details.',
-    text: 'Not available yet. Self-service onboarding, the company check (KYB) and the company record are not built in the console. Today an organisation is set up by Ophis, and its first Owner enrols with a one-time link. To open an organisation or change company details, write to Ophis.' },
+    text: 'Not available yet. There is no open sign-up: an organisation applies only with a single-use application code from Ophis. With it, open Apply on the start page, give the company details and prove your email domain with a DNS record. Onboarding lists the steps: two hardware keys, company sign-in, a recovery wallet or a second Owner, and the signed declaration. Ophis reviews the submission. The record of the company check is under Compliance. To get a code, write to Ophis.' },
   { id: 'KB-02', title: 'Sign in with a passkey', link: ORG,
     about: 'How to sign in: passkeys only, no password, no SMS code, no Google or Microsoft sign-in.',
     text: 'Sign-in uses a passkey only: a hardware security key, or a passkey on your device where your role allows it. There are no passwords, no SMS codes and no Google or Microsoft sign-in. On the start page choose Sign in with a passkey and confirm on your key. The passkey identifies you. It never signs a trade.' },
@@ -64,7 +64,7 @@ export const ANSWERS: readonly Answer[] = [
     text: 'Owners, Compliance officers and Viewers open Compliance. The audit log lists every change in your organisation in the order it happened, in plain words, with times in UTC. Each row carries the hash of the row before it, and the page says Chain verified when no row was changed. Export CSV asks for your passkey and downloads the whole log.' },
   { id: 'KB-19', title: 'Trading desk and order statuses: not available yet', link: SUPPORT,
     about: 'Placing a trade or a swap, the desk, orders and what an order status means.',
-    text: 'Not available yet. The trading desk is not built in the console: you cannot place an order here, and the console shows no orders and no order statuses. Trades are made and signed with your own wallet, outside this console.' },
+    text: 'Not available yet. No order can be sent, signed or executed from the console, and no funds move. An institution can try the Desk in demo mode: a Trader, Owner or Admin prepares an order and a second member approves it with a passkey. An approved order is not sent. Expired means nobody decided it in time. The figures on the Desk are examples. Real trades are made and signed with your own wallet, outside this console.' },
   { id: 'KB-20', title: 'Supported chains', link: ORG,
     about: 'Which blockchains or networks a linked wallet can be on.',
     text: 'A wallet can be linked on four chains today: Ethereum, OP Mainnet, Base and Arbitrum One. You choose the chain when you link the wallet, under Organisation, Wallets, Link a wallet. A wallet on another chain cannot be linked yet.' },

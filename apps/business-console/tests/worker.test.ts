@@ -5118,6 +5118,10 @@ describe('D. Support: the model selects, the server decides', () => {
     const text = (id: string) => ANSWERS.find((a) => a.id === id)!.text
     expect(text('KB-13')).toMatch(/A partner organisation sees its own figures in Overview/)
     expect(text('KB-13') + text('KB-16')).not.toMatch(/no fees view|does not show|one export that exists/)
+    // Onboarding is built and the Desk exists in demo mode: the two texts say what is there and what is not.
+    expect(text('KB-01')).toMatch(/application code from Ophis/)
+    expect(text('KB-19')).toMatch(/demo mode/)
+    expect(text('KB-01') + text('KB-19')).not.toMatch(/not built|shows no orders/)
     expect(text('KB-16')).toMatch(/the referred wallets and the partner-fee months, in Overview/)
     expect(supportPage).toContain("'An outside provider, TypeSafe AI (USA), matches your question to our help texts. It receives your question without your name, organisation or wallet. Ophis does not store your question.'")
     expect(supportPage).toContain('Did this answer your question?')
@@ -8966,6 +8970,25 @@ describe('I. partner figures: live', () => {
     expect(new Set(other.rows.slice(1).map((r) => r[0]))).toEqual(new Set([checksum(theirs)]))
     expect(mine.body.csv).not.toMatch(new RegExp(`${checksum(theirs)}|Wallet of B`))
     expect(await snapshot()).toBe(before)
+  })
+
+  // The indexer counts the console as one caller: without this, one member reloading Overview could use up the minute of every partner.
+  it('120 reads of the figures per organisation in an hour: the next one asks nothing and says so, on the page and in an export; another organisation still reads; the next hour is open again', async () => {
+    const [o, other] = [await partnerOrg('Alder Asset Management'), await partnerOrg('Birchfield Capital')]
+    const asked = indexer()
+    // What asks nothing counts nothing.
+    expect((await overviewOf(o, { ...liveEnv, INDEXER_URL: undefined } as Env)).body.figures.state).toBe('not_connected')
+    expect(await db.prepare('SELECT COUNT(*) AS n FROM proof_checks WHERE org_id = ?').bind(`figures:${o.orgId}`).first('n')).toBe(0)
+    await db.prepare('INSERT INTO proof_checks (org_id, hour, n) VALUES (?, ?, ?)').bind(`figures:${o.orgId}`, Math.floor(now / HOUR), partnerFigures.INDEXER.perHour - 1).run()
+    expect((await overviewOf(o)).body.figures.state).toBe('live') // the 120th
+    expect((await overviewOf(await colleague(o, 'viewer'))).body.figures).toEqual({ state: 'figures_rate' }) // per organisation, not per member
+    const file = await exportOf(o, 'referred')
+    expect([file.status, file.body]).toEqual([429, { error: 'figures_rate' }])
+    expect(asked).toHaveLength(1)
+    expect((await overviewOf(other)).body.figures.state).toBe('live')
+    now += HOUR
+    expect((await overviewOf(await again(o))).body.figures.state).toBe('live')
+    expect(deskPage).toContain('<b>Too many reads.</b>')
   })
 })
 

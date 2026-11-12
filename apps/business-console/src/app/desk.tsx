@@ -26,7 +26,7 @@ interface PartnerWallet {
   // null: a contract wallet whose chain the rebate service has not confirmed; no figure of it was read.
   fees: null | { shareUsd: number; carriedUsd: number; owedUsd: number; pendingTrades: number; paidWeth: number; trades: number; months: { month: string; status: string; owedUsd: number; owedWeth: number; carriedUsd: number }[] }
 }
-interface Partner { kind: 'partner'; waiting: number; figures: { state: 'not_connected' | 'no_wallet' | 'figures_unavailable' } | { state: 'live'; asOf: string; leftOut: number; wallets: PartnerWallet[] } }
+interface Partner { kind: 'partner'; waiting: number; figures: { state: 'not_connected' | 'no_wallet' | 'figures_unavailable' | 'figures_rate' } | { state: 'live'; asOf: string; leftOut: number; wallets: PartnerWallet[] } }
 interface DeskView {
   assets: { symbol: string; decimals: number; eur: string; issuer: string; status: string; limitLow: string; limitHigh: string }[]; chains: { id: number; name: string }[]
   wallets: { id: string; label: string; address: string; chain: string }[]; limitEur: string; mayPrepare: boolean; orders: Order[]; examples: Order[]
@@ -208,6 +208,7 @@ function PartnerOverview({ v, retry }: { v: Partner; retry: () => Promise<void> 
       </header>
       {f.state === 'not_connected' && <p className="note warn" role="status" data-state={f.state}><Icon name="info" /><span className="grow"><b>Your figures are not connected yet.</b> This console is not connected to the Ophis rebate service. Nothing is wrong on your side. <a className="link" href="/#/support">Ask Support</a> when your figures will be connected.</span></p>}
       {f.state === 'no_wallet' && <p className="note warn" role="status" data-state={f.state}><Icon name="wallet" /><span className="grow"><b>No wallet is linked.</b> Figures are shown for the wallets your organisation has linked. <a className="link" href="/#/organisation">Link a wallet under Organisation</a>.</span></p>}
+      {f.state === 'figures_rate' && <p className="note warn" role="status" data-state={f.state}><Icon name="info" /><span className="grow"><b>Too many reads.</b> Your organisation read its figures 120 times in this hour. They can be read again in the next hour.</span></p>}
       {f.state === 'figures_unavailable' && (
         <p className="note bad" role="alert" data-state={f.state}><Icon name="triangle-alert" /><span className="grow"><b>The figures are not available right now.</b> The rebate service did not give a usable answer. Nothing changed in your account. Try again in a minute.</span>
           <button className="btn ghost sm" type="button" disabled={busy} onClick={async () => (setBusy(true), await retry(), setBusy(false))}><Icon name="history" size={16} />Retry</button></p>
@@ -287,11 +288,13 @@ function TicketForm({ v, onSent }: { v: DeskView; onSent: () => Promise<void> })
       </div>
     )
   }
-  const pills = (name: string, legend: string, options: [value: string | number, label: string][], value: string | number, pick: (value: string) => void) => (
+  const pills = (name: string, legend: string, options: [value: string | number, label: string][], value: string | number, pick: (value: string) => void, off: string[] = []) => (
     <fieldset className="field"><legend>{legend}</legend><div className="pills">{options.map(([option, label]) => (
-      <label className="pill" key={option}><input type="radio" name={name} value={option} checked={value === option} onChange={(event) => pick(event.target.value)} />{label}</label>
-    ))}</div></fieldset>
+      <label className="pill" key={option}><input type="radio" name={name} value={option} checked={value === option} disabled={off.includes(label)} onChange={(event) => pick(event.target.value)} />{label}</label>
+    ))}</div>{off.length > 0 && <small className="muted">No wallet is linked on {off.join(' or ')}.</small>}</fieldset>
   )
+  // The server refuses an order whose wallet is not linked on its chain (wallet_chain): such a chain is switched off here, and the ticket says why.
+  const unlinked = v.chains.map((c) => c.name).filter((chain) => !v.wallets.some((w) => w.chain === chain))
   const assets = (label: string, field: 'sell' | 'buy') => (
     <label className="field">{label}<select className="input" value={t[field]} onChange={(event) => set({ [field]: event.target.value })}>{v.assets.map((a) => <option key={a.symbol}>{a.symbol}</option>)}</select></label>
   )
@@ -302,7 +305,7 @@ function TicketForm({ v, onSent }: { v: DeskView; onSent: () => Promise<void> })
       <div className="row">{assets('Buy asset', 'buy')}
         {t.type === 'limit' && <label className="field">Limit price (EUR per {priced})<input className="input" type="text" inputMode="decimal" autoComplete="off" value={t.limitPrice} onChange={(event) => set({ limitPrice: event.target.value })} style={{ textAlign: 'right' }} aria-describedby="limit-range" />
           {range && <small id="limit-range" className="muted">Allowed range: {exact(range.limitLow)} to {exact(range.limitHigh)} EUR, within 20% of the reference price.</small>}</label>}</div>
-      {pills('chain', 'Chain', v.chains.map((c) => [c.id, c.name]), t.chainId, (id) => set({ chainId: Number(id) }))}
+      {pills('chain', 'Chain', v.chains.map((c) => [c.id, c.name]), t.chainId, (id) => set({ chainId: Number(id) }), unlinked)}
       <label className="field">Settle from<select className="input" value={t.walletId} onChange={(event) => set({ walletId: event.target.value })}>{v.wallets.map((w) => <option key={w.id} value={w.id}>{w.label} ({short(w.address)}, {w.chain})</option>)}</select></label>
       {failed}
       <button className="btn primary" type="submit" disabled={busy}><Icon name="eye" />Review order</button>

@@ -7,7 +7,7 @@ import { checksum, readCapped, signedByKey } from './chain.ts'
 import * as data from './data.ts'
 import { CHAIN_NAME } from './typed.ts'
 
-export const INDEXER = { timeoutMs: 5000, maxBytes: 1_000_000, maxWallets: 10, maxReferred: 500, maxMonths: 12, maxCodes: 100 }
+export const INDEXER = { timeoutMs: 5000, maxBytes: 1_000_000, maxWallets: 10, maxReferred: 500, maxMonths: 12, maxCodes: 100, perHour: 120 }
 type Settings = { DB: D1Database; ENVIRONMENT: string; INDEXER_URL?: string; INDEXER_TOKEN?: string }
 const hex = (v: string) => /^0x[0-9a-f]*$/i.test(v)
 
@@ -80,7 +80,7 @@ function feesOf(v: unknown, wallet: string) {
 
 /** fees null: a contract wallet whose chain the indexer has not confirmed. No figure of it was read. */
 export type PartnerWallet = { wallet: string; label: string; chain: string; affiliate: ReturnType<typeof affiliateOf>; fees: ReturnType<typeof feesOf> | null }
-export type Figures = { state: 'not_connected' | 'no_wallet' | 'figures_unavailable' } | { state: 'live'; asOf: string; leftOut: number; wallets: PartnerWallet[] }
+export type Figures = { state: 'not_connected' | 'no_wallet' | 'figures_unavailable' | 'figures_rate' } | { state: 'live'; asOf: string; leftOut: number; wallets: PartnerWallet[] }
 
 /**
  * The figures of the session's organisation. The wallets come from its rows (state linked), never from the request:
@@ -88,8 +88,10 @@ export type Figures = { state: 'not_connected' | 'no_wallet' | 'figures_unavaila
  * A link proved by the wallet's own key holds on every chain. A link proved by a contract signature (a Safe) holds on
  * the chain it was proved on, and the same address can be another contract elsewhere: such a wallet is asked with its
  * chains (`contract`), and the indexer reads it only on the chain it pins that wallet to. Else it answers fees null.
+ * At most 120 requests per organisation and clock hour (figures_rate): the indexer counts the console as one caller,
+ * so without this one member reloading the page could use up the minute of every partner.
  */
-export async function figures(env: Settings, orgId: string): Promise<Figures> {
+export async function figures(env: Settings, orgId: string, now: number): Promise<Figures> {
   const base = indexerBase(env)
   if (!base || !env.INDEXER_TOKEN) return { state: 'not_connected' }
   const rows = new Map<string, { label: string; chains: number[]; key: boolean }>()
@@ -100,6 +102,7 @@ export async function figures(env: Settings, orgId: string): Promise<Figures> {
   }
   const asked = [...rows.keys()].slice(0, INDEXER.maxWallets)
   if (!asked.length) return { state: 'no_wallet' }
+  if (!(await data.countHour(env.DB, `figures:${orgId}`, now, INDEXER.perHour))) return { state: 'figures_rate' }
   const contract = Object.fromEntries(asked.filter((a) => !rows.get(a)!.key).map((a) => [a, rows.get(a)!.chains]))
   try {
     const response = await fetch(`${base}/business/partner`, {
