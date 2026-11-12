@@ -4,7 +4,7 @@ import { checksum, colour, parseAddress, readBytes, readCapped, safeState, verif
 import { challengeIsOurs, configFor, creationOptions, credentialHash, newChallenge, phraseFor, requestOptions, seal, toBase64Url, unseal, userHandle, verifyAssertion, verifyRegistration, type Config, type Purpose } from './passkeys.ts'
 import { CHAIN_NAME, typedLink, typedProof, type ProofKind } from './typed.ts'
 import { ask } from './support.ts'
-import { activateIntent, activationIntent, activationProof, apply, applyCheck, onboarding, ONBOARDING_EVENTS, operator, OPERATOR, SEAL, sealDeclaration, submit } from './onboarding.ts'
+import { activateIntent, activationIntent, activationProof, apply, applyCheck, DOWNLOAD_REASONS, onboarding, ONBOARDING_EVENTS, operator, OPERATOR, SEAL, sealDeclaration, submit } from './onboarding.ts'
 import { WORDS } from './words.ts'
 import { authorizeUrl, exchange, IDPS, newFlow, PROVIDERS, verifyIdToken, type Provider } from './oidc.ts'
 
@@ -766,6 +766,8 @@ export const EVENTS: Record<string, string> = {
   'recovery.lapse': 'Account recovery lapsed: the recovery wallet changed since the request',
   'recovery.stop': 'Account recovery stopped by a replaced Owner passkey: the new Owner removed, the Owner passkeys restored',
   ...ONBOARDING_EVENTS,
+  // Milestone 5b: a download of a sealed item says why (the detail of its row is a code of the fixed list).
+  ...Object.fromEntries(Object.entries(DOWNLOAD_REASONS).map(([code, words]) => [`sealed.download/${code}`, `${ONBOARDING_EVENTS['sealed.download']}. Reason: ${words}`])),
 }
 function said(action: string, detail: string | null) {
   const words = EVENTS[`${action}/${detail}`] ?? EVENTS[action] ?? 'Unlisted event'

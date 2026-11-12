@@ -5560,6 +5560,12 @@ describe('E. onboarding: a company applies, proves its domain, is activated and 
   const submissionOf = async (orgId: string) => (await data.sha256Hex((await row<{ print: string | null }>('SELECT review_print AS print FROM organisations WHERE id = ?', orgId))?.print ?? '')).slice(0, 16)
   const decideOn = async (orgId: string, body: Record<string, unknown> = APPROVE, options: Parameters<typeof op>[2] = {}) =>
     op('POST', `/api/operator/organisations/${orgId}/decision`, { ...options, body: body.decision === 'approve' && !('submission' in body) ? { ...body, submission: await submissionOf(orgId) } : body })
+  // Milestone 5b: the operator takes a sealed item. The answer is bytes, not JSON.
+  async function take(itemId: string, body: unknown = { reason: 'kyb_review' }, testEnvironment: Env = opEnv) {
+    const headers = { 'sec-fetch-site': 'same-origin', authorization: `Bearer ${TOKEN}`, origin: OP, 'content-type': 'application/json' }
+    const response = await handle(new Request(`${OP}/api/operator/items/${itemId}/download`, { method: 'POST', headers, body: JSON.stringify(body) }), testEnvironment, () => now)
+    return { status: response.status, headers: response.headers, bytes: new Uint8Array(await response.arrayBuffer()) }
+  }
   const opPaths = (id: string) => onboarding.operatorRoutes.map((r) => [r.method, r.path.replace(':id', id)] as const)
 
   // ---- A1, A2: the application ----
@@ -6263,6 +6269,7 @@ describe('E. onboarding: a company applies, proves its domain, is activated and 
     const a = await underReview()
     expect(onboarding.operatorRoutes.map((r) => `${r.method} ${r.path}`)).toEqual([
       'GET /api/operator/organisations', 'POST /api/operator/organisations/:id/decision', 'POST /api/operator/organisations/:id/freeze', 'POST /api/operator/organisations/:id/unfreeze', 'POST /api/operator/invites',
+      'GET /api/operator/organisations/:id/items', 'POST /api/operator/items/:id/download', // milestone 5b
     ])
     expect(OP).toBe('http://operator.localhost:8787')
     const rows = await snapshot()
@@ -6544,6 +6551,7 @@ describe('E. onboarding: a company applies, proves its domain, is activated and 
       ['organisation.apply', () => checkDns(a.intent)], ['activation.proof', () => prove(asked.body.intent, signature)], ['review.submit', () => submit(c)], ['declaration.upload', () => upload(b, file)],
       ['kyb.approve', () => decideOn(d.orgId)], ['kyb.more', () => decideOn(d.orgId, MORE)], ['kyb.refuse', () => decideOn(d.orgId, { ...MORE, decision: 'refuse' })],
       ['organisation.freeze', () => op('POST', `/api/operator/organisations/${e.orgId}/freeze`)],
+      ['sealed.download', async () => take((await itemsOf(d.orgId))[0].id)],
     ]
     const rows = await snapshot()
     const kept = await objects()
@@ -6666,6 +6674,76 @@ describe('E. onboarding: a company applies, proves its domain, is activated and 
     expect((await op('GET', '/api/operator/organisations')).body.organisations.find((o: { id: string }) => o.id === a.orgId)).toMatchObject({ missing: 'declaration', declaration: null })
     expect((await decideOn(a.orgId)).body).toEqual({ error: 'not_ready' })
     expect(onboardingPage).toContain('declaration:')
+  })
+
+  it('B5: the operator lists the sealed items of an organisation and takes one, still sealed, for a reason of the fixed list; the row in the client\'s own audit log comes first; no route gives clear text', async () => {
+    const [a, b] = [await underReview(), await underReview()]
+    const [[item], [other]] = [await itemsOf(a.orgId), await itemsOf(b.orgId)]
+    const file = (await objectOf(item.id))!
+    // items <organisation>: that organisation's items and no other's, as the server knows them.
+    const listed = async (id: string) => op('GET', `/api/operator/organisations/${id}/items`)
+    expect((await listed(a.orgId)).body).toEqual({ items: [{ id: item.id, kind: 'declaration', size: item.size, sha256: item.sha256, key: KEY, generation: 'g1', at: item.created_at }] })
+    expect((await listed(b.orgId)).body.items.map((i: { id: string }) => i.id)).toEqual([other.id])
+    expect((await listed('0'.repeat(32))).body).toEqual({ items: [] })
+    expect((await listed('x')).status).toBe(404)
+    // get <item> --reason: a reason of the list, or nothing leaves and nothing is written.
+    expect(Object.keys(onboarding.DOWNLOAD_REASONS)).toEqual(['kyb_review', 'periodic_review', 'authority_request', 'client_request', 'incident'])
+    const rows = await snapshot()
+    for (const body of [{}, { reason: '' }, { reason: 'because' }, { reason: 'KYB_REVIEW' }, { reason: ['kyb_review'] }, { reason: 1 }, { reason: null }, { reason: 'toString' }, { reason: 'constructor' }]) {
+      const refused = await take(item.id, body)
+      expect([refused.status, new TextDecoder().decode(refused.bytes)], JSON.stringify(body)).toEqual([400, '{"error":"invalid"}'])
+    }
+    for (const id of ['0'.repeat(32), a.orgId, a.seatId]) expect((await take(id)).status, id).toBe(404)
+    expect((await take('x')).status).toBe(400)
+    expect(await snapshot()).toBe(rows)
+    // The row cannot be written: no byte of the file leaves.
+    await withTrigger('INSERT ON audit_log', async () => {
+      const blocked = await take(item.id)
+      expect([blocked.status, new TextDecoder().decode(blocked.bytes)]).toEqual([500, '{"error":"internal"}'])
+    })
+    expect(await snapshot()).toBe(rows)
+    // With a reason: the ciphertext, exactly as stored, and one row in the client's own log: the operator, the item, the reason.
+    const logOf = (orgId: string) => db.prepare('SELECT actor_kind, actor_id, session_id, action, subject_id, detail FROM audit_log WHERE org_id = ? ORDER BY seq').bind(orgId).all()
+    const [mine, theirs] = [(await logOf(a.orgId)).results, (await logOf(b.orgId)).results]
+    const taken = await take(item.id, { reason: 'authority_request', organisationId: b.orgId, id: other.id })
+    expect(taken.status).toBe(200)
+    expect(taken.bytes).toEqual(file)
+    expect([taken.headers.get('content-type'), taken.headers.get('x-sha256'), taken.headers.get('x-seal-key'), taken.headers.get('cache-control')]).toEqual(['application/octet-stream', await sha256Of(file), KEY, 'no-store'])
+    expect((await logOf(a.orgId)).results).toEqual([...mine, { actor_kind: 'operator', actor_id: null, session_id: null, action: 'sealed.download', subject_id: item.id, detail: 'authority_request' }])
+    expect((await logOf(b.orgId)).results).toEqual(theirs)
+    expect(await snapshot(TABLES.filter((table) => table !== 'audit_log'))).toBe(JSON.stringify(Object.fromEntries(Object.entries(JSON.parse(rows)).filter(([table]) => table !== 'audit_log'))))
+    // Still sealed: the marker of the clear file is not in it. Only the identity opens it, offline.
+    expect(latin1(taken.bytes)).not.toContain(MARKER)
+    const opener = new age.Decrypter()
+    opener.addIdentity(IDENTITY)
+    expect(new TextDecoder().decode(await opener.decrypt(taken.bytes))).toContain(MARKER)
+    // An item replaced at the same instant is gone: nothing leaves and no row says it was taken.
+    const before = await count('audit_log', a.orgId)
+    const replaced = await take(item.id, { reason: 'kyb_review' }, { ...racing(async () => expect((await upload(a, await sealedFile())).status).toBe(200)), OPERATOR_TOKEN: TOKEN } as unknown as Env)
+    expect(replaced.status).toBe(404)
+    expect(await row(`SELECT count(*) AS n FROM audit_log WHERE org_id = ? AND action = 'sealed.download'`, a.orgId)).toEqual({ n: 1 })
+    expect(await count('audit_log', a.orgId)).toBe(before + 1) // the upload
+    // The row is gone and the object is not yet (a replacement deletes it after its commit): nothing leaves.
+    const c = await underReview()
+    const [third] = await itemsOf(c.orgId)
+    const orphan = await take(third.id, undefined, { ...racing(async () => {
+      expect((await take(third.id)).status).toBe(200) // another write of this organisation: the commit starts again
+      await db.prepare('DELETE FROM sealed_items WHERE id = ?').bind(third.id).run()
+    }), OPERATOR_TOKEN: TOKEN } as unknown as Env)
+    expect([orphan.status, new TextDecoder().decode(orphan.bytes), (await objectOf(third.id)) !== null]).toEqual([404, '{"error":"not_found"}', true])
+    await bucket.delete(third.id)
+    // The words of the client's audit log: who, what, why. One sentence per reason.
+    for (const reason of Object.keys(onboarding.DOWNLOAD_REASONS)) expect(EVENTS[`sealed.download/${reason}`], reason).toMatch(/^Ophis operator: downloaded the sealed declaration, still sealed\. Reason: [a-z ]+$/)
+    expect((await take(other.id)).status).toBe(200)
+    expect((await decideOn(b.orgId)).body).toEqual({ state: 'active' })
+    expect((await call('GET', '/api/audit', { cookie: (await again(b)).cookie })).body.rows.map((r: { event: string }) => r.event))
+      .toContain('Ophis operator: downloaded the sealed declaration, still sealed. Reason: the review of the organisation')
+    // No route of the operator returns anything but the ciphertext and what the server knows of it; the console's and the signing page's hosts have no such route.
+    expect(onboardingSource).not.toMatch(/from 'age-encryption'|\.decrypt\(|Decrypter|addIdentity|AGE-SECRET-KEY/i)
+    for (const host of [SITE.origin, SIGN]) {
+      expect((await op('POST', `/api/operator/items/${other.id}/download`, { host, body: { reason: 'kyb_review' }, cookie: b.cookie })).status).toBe(404)
+      expect((await op('GET', `/api/operator/organisations/${b.orgId}/items`, { host, cookie: b.cookie })).status).toBe(404)
+    }
   })
 
   isolation['POST /api/onboarding/declaration'] = async (a) => {

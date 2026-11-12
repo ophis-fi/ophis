@@ -38,6 +38,7 @@ export const ONBOARDING_EVENTS: Record<string, string> = {
   'kyb.approve': 'Ophis operator: verification approved, organisation active',
   'kyb.refuse': 'Ophis operator: verification refused, organisation closed',
   'kyb.more': 'Ophis operator: more information asked, the review was sent back',
+  'sealed.download': 'Ophis operator: downloaded the sealed declaration, still sealed',
   'organisation.freeze': 'Ophis operator: organisation frozen',
   'organisation.unfreeze': 'Ophis operator: organisation unfrozen',
 }
@@ -237,6 +238,11 @@ async function setFrozen(db: D1Database, orgId: string, frozen: boolean, now: nu
 // .dev.vars; public, its identity file stays on the developer's machine). No other environment has a key yet: null
 // there, and an upload answers "not configured".
 export const SEAL = { maxBytes: 10 * 1024 * 1024 + 8192, generation: 'g1' } // 10 MB of clear file, and room for the age header and the tag of each 64 KiB
+// Why the operator takes a sealed item: a code of this list goes into the client's audit log with every download.
+export const DOWNLOAD_REASONS: Record<string, string> = {
+  kyb_review: 'the review of the organisation', periodic_review: 'a periodic review', authority_request: 'a request of an authority',
+  client_request: 'a request of the organisation', incident: 'an incident',
+}
 const RECIPIENT = /^age1pq1[a-z0-9]{1500,2500}$/
 export const sealKey = async (env: { ENVIRONMENT: string; SEAL_RECIPIENT?: string }) =>
   env.ENVIRONMENT === 'local' && RECIPIENT.test(env.SEAL_RECIPIENT ?? '') ? sha256Hex(env.SEAL_RECIPIENT!) : null
@@ -523,7 +529,8 @@ export async function submit(c: Member) {
 // ponytail: these routes exist in the local environment only and answer 404 anywhere else, until the validation of a
 // Cloudflare Access token is added here, before a first deploy (security-design.md, "Insider at the operator").
 // Locally the caller holds OPERATOR_TOKEN (.dev.vars, made by the seed script). The operator can: list what is under
-// review, record a KYB decision, freeze and unfreeze, and make an application code. Nothing else: no route here takes a passkey, a member or a
+// review, record a KYB decision, freeze and unfreeze, make an application code, and (milestone 5b) list the sealed items
+// of an organisation and take one, still sealed, for a stated reason. Nothing else: no route here takes a passkey, a member or a
 // wallet address.
 
 interface OperatorEnv { DB: D1Database; SEALED: R2Bucket; ENVIRONMENT: string; CHALLENGE_KEY: string; OPERATOR_TOKEN?: string }
@@ -576,6 +583,29 @@ async function decide(c: Ctx) {
   }, checked, c.now)
   return outcome === 'ok' ? json(200, { state: { approve: 'active', refuse: 'archived', more: 'unverified' }[decision as Decision] }) : refuse(outcome)
 }
+// Milestone 5b. GET .../organisations/:id/items: the sealed items of one organisation, as the server knows them.
+async function items(c: Ctx) {
+  return ID.test(c.params.id ?? '') ? json(200, { items: await sealedOf(c.env.DB, c.params.id!) }) : fail(404, 'not_found')
+}
+// POST /api/operator/items/:id/download with {reason}: the one way a sealed file leaves, as ciphertext, to the operator.
+// First a row in the client's own audit log: the operator, the item, and the reason, a code of the fixed list. When
+// that row cannot be written nothing leaves. The item is read again inside the commit: one that is replaced at the
+// same instant is gone, and no row says it was taken. No route returns clear text: the Worker holds no key. The
+// decryption is offline (README; key-custody.md section 4) and is not logged.
+async function download(c: Ctx) {
+  const id = c.params.id ?? ''
+  const { reason } = c.body
+  if (!ID.test(id) || typeof reason !== 'string' || !Object.hasOwn(DOWNLOAD_REASONS, reason)) return fail(400, 'invalid')
+  const item = await c.env.DB.prepare('SELECT org_id AS orgId, sha256, key_fingerprint AS key FROM sealed_items WHERE id = ?').bind(id).first<{ orgId: string; sha256: string; key: string }>()
+  if (!item) return fail(404, 'not_found')
+  const logged = await commit(c.env.DB, item.orgId, async () => {
+    if (!(await c.env.DB.prepare('SELECT 1 FROM sealed_items WHERE org_id = ? AND id = ?').bind(item.orgId, id).first())) return null
+    return [{ at: c.now, actorKind: 'operator', actorId: null, sessionId: null, action: 'sealed.download', subjectId: id, detail: reason }, []]
+  })
+  const object = logged ? await c.env.SEALED.get(id) : null
+  if (!object) return fail(404, 'not_found')
+  return new Response(object.body, { headers: { 'content-type': 'application/octet-stream', 'x-sha256': item.sha256, 'x-seal-key': item.key } })
+}
 // G1: a new application code. Nothing is written: the code is the server's own text, and it is used up by the
 // organisation it makes. ponytail: issued codes are not listed anywhere; whoever holds the operator's token makes them.
 async function invite(c: Ctx) {
@@ -593,6 +623,8 @@ export const operatorRoutes: { method: 'GET' | 'POST'; path: string; handler: (c
   { method: 'POST', path: '/api/operator/organisations/:id/freeze', handler: freeze(true) },
   { method: 'POST', path: '/api/operator/organisations/:id/unfreeze', handler: freeze(false) },
   { method: 'POST', path: '/api/operator/invites', handler: invite },
+  { method: 'GET', path: '/api/operator/organisations/:id/items', handler: items },
+  { method: 'POST', path: '/api/operator/items/:id/download', handler: download },
 ]
 
 // The same request checks as on the other two hosts, then the token. Digests are compared, so the time it takes says
