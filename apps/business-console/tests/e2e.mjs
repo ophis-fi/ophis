@@ -29,6 +29,7 @@ import { chromium } from 'playwright-core'
 import { mnemonicToAccount } from 'viem/accounts'
 import { publish as publishTxt, start as startDnsStubs } from '../scripts/dns-stub.mjs' // milestone 5: the two local resolvers of "Check DNS"
 import { start as startIdp } from '../scripts/idp-stub.mjs' // company sign-in: the local stand-in for Microsoft and Google
+import { CONTRACT, PORT as INDEXER_PORT, start as startIndexer } from '../scripts/indexer-stub.mjs' // partner figures: the local stand-in for the rebate indexer
 
 process.chdir(new URL('..', import.meta.url).pathname)
 const ORIGIN = 'http://localhost:8787'
@@ -56,6 +57,7 @@ check('seed printed an enrolment link', Boolean(link))
 
 const stopDnsStubs = startDnsStubs() // ports 8790 and 8791
 const stopIdp = startIdp() // port 8792
+const stopIndexer = startIndexer() // port 8793
 // detached: the server gets its own process group, so the whole group can be stopped at the end.
 const server = spawn('node_modules/.bin/wrangler', ['dev', '--persist-to', STATE, '--port', PORT], { env, detached: true, stdio: 'ignore' })
 let browser
@@ -1080,6 +1082,7 @@ try {
 } finally {
   stopDnsStubs()
   stopIdp()
+  stopIndexer()
   await browser?.close()
   try {
     process.kill(-server.pid, 'SIGTERM')

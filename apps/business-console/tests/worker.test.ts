@@ -8512,6 +8512,18 @@ describe('H. demo mode: overview, desk and partner figures', () => {
     expect((await decide(o, sent.body.id, 'approve')).body).toEqual({ error: 'own_request' })
   })
 
+  it('D4: "seed --live" gives a partner one linked "Demo wallet" at the partner address of the contract file: local only, and Overview then reads that wallet', async () => {
+    const o = await owner()
+    const before = await snapshot()
+    await expect(data.devDemoWallet(db, 'production', o.orgId, now, P.wallet)).rejects.toThrow(/local/)
+    for (const address of ['0x5AFE5afe5afe5afe5afe5afe5afe5afe5afe5afe', '0x1234', P.wallet + '00']) await expect(data.devDemoWallet(db, 'local', o.orgId, now, address)).rejects.toThrow(/address/)
+    expect(await snapshot()).toBe(before)
+    await data.devDemoWallet(db, 'local', o.orgId, now, P.wallet)
+    const asked = indexer()
+    expect((await overviewOf(o)).body.figures.wallets).toEqual([{ ...shownPartner, label: 'Demo wallet' }])
+    expect(asked.map((x) => x.wallets)).toEqual([[P.wallet]])
+  })
+
   it('D3: the words of the demo pages: no claim about a licence, no payout terms and no promise about fees; the banner, the footer line and the sentences the pages must say', () => {
     const said = [deskPage, demoSource, JSON.stringify([demo.institution(), demo.desk()]), EVENTS['order.demo'], EVENTS['wallet.link/demo']].join('\n')
     for (const banned of [/licen[cs]ed|regulated|authori[sz]ed|MiCA|compliant/i, /—/, /honest/i, /paid (weekly|monthly|daily|every)|payout (terms|schedule)|\bdue\b|guarantee|no (other|hidden) fee|never charge|price improvement/i]) expect(said).not.toMatch(banned)

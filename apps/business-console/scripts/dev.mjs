@@ -3,6 +3,8 @@
 //   node scripts/dev.mjs seed       one organisation (domain northwind.example, company sign-in "none"), one Owner seat, a one-time enrolment link
 //                                   seed --company microsoft|google: the company sign-in is set, pinned to the local stand-in's tenant of that domain
 //                                   seed --demo: the organisation is an institution and gets one linked wallet named "Demo wallet" (no signature; local only), to try the order ticket
+//                                   seed --live: the organisation is a partner and gets one linked "Demo wallet" at the partner address of the indexer's contract file
+//                                                (no signature; local only), so that Overview shows the figures of the local indexer stand-in
 //   node scripts/dev.mjs activate   ponytail: stands in for the first Owner's activation (the recovery wallet, milestone 5)
 //   node scripts/dev.mjs skip       ponytail: stands in for the passing of time: every wait that runs is over (recovery wallet, recovery request, 24 h after a cancel)
 // Option: --persist <dir>, the same value as "wrangler dev --persist-to <dir>".
@@ -13,12 +15,14 @@ import { getPlatformProxy } from 'wrangler'
 import { devActivatePending, devDemoWallet, devSkipWaits, randomToken, seedOrganisation, sha256Hex } from '../src/server/data.ts'
 import { configFor } from '../src/server/passkeys.ts'
 import { tenantOf } from './idp-stub.mjs'
+import { CONTRACT, PORT as INDEXER_PORT } from './indexer-stub.mjs'
 
 const [command, ...options] = process.argv.slice(2)
 const option = (name) => (options.includes(name) ? options[options.indexOf(name) + 1] : undefined)
 const directory = option('--persist')
 const company = option('--company')
 const demo = options.includes('--demo')
+const live = options.includes('--live')
 process.chdir(new URL('..', import.meta.url).pathname)
 // The challenge key is made on this machine and never leaves it: .dev.vars is git-ignored.
 if (!existsSync('.dev.vars')) writeFileSync('.dev.vars', `CHALLENGE_KEY=${randomBytes(32).toString('base64url')}\n`, { mode: 0o600 })
@@ -30,6 +34,10 @@ if (!/^OPERATOR_TOKEN=/m.test(vars)) appendFileSync('.dev.vars', `${vars.endsWit
 for (const name of ['MICROSOFT_CLIENT_SECRET', 'GOOGLE_CLIENT_SECRET']) {
   if (!new RegExp(`^${name}=`, 'm').test(readFileSync('.dev.vars', 'utf8'))) appendFileSync('.dev.vars', `${name}=${randomBytes(24).toString('base64url')}\n`)
 }
+// Partner figures: the local stand-in for the rebate indexer (scripts/indexer-stub.mjs) and the token it asks for,
+// made here and never printed. A real environment sets INDEXER_URL as a variable and INDEXER_TOKEN as a secret.
+if (!/^INDEXER_URL=/m.test(readFileSync('.dev.vars', 'utf8'))) appendFileSync('.dev.vars', `INDEXER_URL=http://127.0.0.1:${INDEXER_PORT}\n`)
+if (!/^INDEXER_TOKEN=/m.test(readFileSync('.dev.vars', 'utf8'))) appendFileSync('.dev.vars', `INDEXER_TOKEN=${randomBytes(32).toString('base64url')}\n`)
 // Milestone 5b: the LOCAL test key of the sealing (key-custody.md section 3). The identity, the secret half, is made
 // here and stays in .dev.seal-identity next to .dev.vars (git-ignored, never printed): it opens what the local console
 // seals. Its recipient, the public half, goes to the Worker (SEAL_RECIPIENT in .dev.vars, for the fingerprint) and to
@@ -63,6 +71,11 @@ try {
     if (demo) {
       await devDemoWallet(env.DB, env.ENVIRONMENT, orgId, Date.now())
       console.log('Demo: an institution with one linked wallet named "Demo wallet" (no signature, local only).')
+    } else if (live) {
+      // The partner wallet of the contract file: the stand-in answers its figures for this address.
+      const address = JSON.parse(readFileSync(CONTRACT, 'utf8')).wallets.find((w) => w.affiliate)?.wallet
+      await devDemoWallet(env.DB, env.ENVIRONMENT, orgId, Date.now(), address)
+      console.log('Live: a partner with one linked wallet named "Demo wallet" (no signature, local only), at the partner address of the indexer contract file.')
     }
     console.log(pinned ? `Company sign-in: ${company}. Invite members with a work address at ${DOMAIN}.` : `Domain ${DOMAIN}, company sign-in: none (three words).`)
     console.log(`Enrolment link, one use, valid 10 minutes:\n${configFor(env.ENVIRONMENT).origin}/#/enrol/${ticket}`)
@@ -72,7 +85,7 @@ try {
     await devSkipWaits(env.DB, env.ENVIRONMENT, Date.now())
     console.log('Every wait that was running is over.')
   } else {
-    console.error('usage: node scripts/dev.mjs seed [--company microsoft|google] [--demo] | activate | skip   [--persist <dir>]')
+    console.error('usage: node scripts/dev.mjs seed [--company microsoft|google] [--demo | --live] | activate | skip   [--persist <dir>]')
     process.exitCode = 1
   }
 } finally {

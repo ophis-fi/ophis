@@ -1360,13 +1360,15 @@ export async function seedOrganisation(db: D1Database, o: { name: string; kind: 
 
 // ponytail: demo mode, local only ("seed --demo"). A linked wallet named "Demo wallet" that no signature proved, so
 // that one person can try the order ticket. A real wallet is linked by its own signature (milestone 4a). Its address
-// is random: nobody holds its key. It must never see a real database.
-export async function devDemoWallet(db: D1Database, environment: string, orgId: string, now: number) {
+// is random: nobody holds its key. "seed --live" gives the address instead: the partner wallet of the indexer's
+// contract file, whose figures the local stand-in answers. It must never see a real database.
+export async function devDemoWallet(db: D1Database, environment: string, orgId: string, now: number, address = `0x${randomId()}${randomId().slice(0, 8)}`) {
   if (environment !== 'local') throw new Error('refused: the demo wallet is for the local database only')
+  if (!/^0x[0-9a-f]{40}$/.test(address)) throw new Error('refused: not an address in lower case')
   const id = randomId()
   await commit(db, orgId, () => [{ at: now, actorKind: 'system', actorId: null, sessionId: null, action: 'wallet.link', subjectId: id, detail: 'demo' }, [
     db.prepare(`INSERT INTO wallets (id, org_id, chain_id, address, kind, label, state, proof_nonce, proof_digest, proof_signature, proof_checked_at, linked_at)
-                VALUES (?, ?, 10, ?, 'custodian', 'Demo wallet', 'linked', ?, '0x', '0x', ?, ?)`).bind(id, orgId, `0x${randomId()}${randomId().slice(0, 8)}`, `demo-${id}`, now, now),
+                VALUES (?, ?, 10, ?, 'custodian', 'Demo wallet', 'linked', ?, '0x', '0x', ?, ?)`).bind(id, orgId, address, `demo-${id}`, now, now),
   ]])
   return id
 }
