@@ -7,12 +7,13 @@
 //                                                (no signature; local only), so that Overview shows the figures of the local indexer stand-in
 //   node scripts/dev.mjs activate   ponytail: stands in for the first Owner's activation (the recovery wallet, milestone 5)
 //   node scripts/dev.mjs skip       ponytail: stands in for the passing of time: every wait that runs is over (recovery wallet, recovery request, 24 h after a cancel)
+//   node scripts/dev.mjs stale      ponytail: stands in for 5 minutes passing: every passkey check is stale, so the next sensitive step (sending an order) asks for the passkey
 // Option: --persist <dir>, the same value as "wrangler dev --persist-to <dir>".
 import { randomBytes } from 'node:crypto'
 import { appendFileSync, existsSync, readFileSync, writeFileSync } from 'node:fs'
 import { generateHybridIdentity, identityToRecipient } from 'age-encryption'
 import { getPlatformProxy } from 'wrangler'
-import { devActivatePending, devDemoWallet, devSkipWaits, randomToken, seedOrganisation, sha256Hex } from '../src/server/data.ts'
+import { devActivatePending, devDemoWallet, devSkipWaits, devStaleChecks, randomToken, seedOrganisation, sha256Hex } from '../src/server/data.ts'
 import { configFor } from '../src/server/passkeys.ts'
 import { tenantOf } from './idp-stub.mjs'
 import { CONTRACT, PORT as INDEXER_PORT } from './indexer-stub.mjs'
@@ -84,8 +85,11 @@ try {
   } else if (command === 'skip') {
     await devSkipWaits(env.DB, env.ENVIRONMENT, Date.now())
     console.log('Every wait that was running is over.')
+  } else if (command === 'stale') {
+    await devStaleChecks(env.DB, env.ENVIRONMENT)
+    console.log('Every passkey check is stale: the next sensitive step asks for the passkey.')
   } else {
-    console.error('usage: node scripts/dev.mjs seed [--company microsoft|google] [--demo | --live] | activate | skip   [--persist <dir>]')
+    console.error('usage: node scripts/dev.mjs seed [--company microsoft|google] [--demo | --live] | activate | skip | stale   [--persist <dir>]')
     process.exitCode = 1
   }
 } finally {

@@ -819,9 +819,13 @@ async function order(c: Context) {
   if (typeof quoted === 'string') return fail(400, quoted)
   const wallet = (await data.wallets(c.env.DB, c.actor.orgId, c.now)).find((w) => w.id === quoted.ticket.walletId && w.state === 'linked')
   if (!wallet) return refuse('wallet_not_linked')
+  if (wallet.chainId !== quoted.ticket.chainId) return refuse('wallet_chain')
   const prepared = demo.built(quoted, wallet.label, checksum(wallet.address))
   if (c.body.send !== true) return json(200, { demo: true, ...prepared })
-  // The one write route that asks for no fresh passkey check: a member files so many orders an hour and no more.
+  // Sending needs a fresh passkey check; the estimate above needs none, so the row of the table carries no `fresh`.
+  // Judged here, as the sealed upload does it: the clock and the session were read after the body arrived (api()).
+  if (c.now - c.session.step_up_at > STEP_UP_MS) return fail(403, 'step_up_required')
+  // A member files so many orders an hour and no more.
   if (!(await data.countHour(c.env.DB, `order:${c.actor.seatId}`, c.now, demo.ORDERS_PER_HOUR))) return fail(429, 'order_rate')
   const outcome = await data.change(c.env.DB, c.actor, 'order.demo', data.randomId(), JSON.stringify(prepared), c.now)
   return 'error' in outcome ? refuse(outcome.error) : json(200, { demo: true, ...outcome })
@@ -929,7 +933,8 @@ export const routes: Route[] = [
   { method: 'POST', path: '/api/onboarding/declaration', roles: ['owner'], fresh: true, twoKeys: true, unverified: true, raw: SEAL.maxBytes, can: 'Upload the signed declaration of a new organisation, sealed in the browser', handler: sealDeclaration },
 ]
 // "What each role can do": the rows of the table above that a session can reach. Routes that share a sentence are one row.
-const rights = [...new Map(routes.flatMap((r) => (r.can ? [[r.can, { can: r.can, roles: r.roles, fresh: Boolean(r.fresh), second: Boolean(r.second) }] as const] : []))).values()]
+// An order is the one two-person change with a handler of its own (the estimate first): it carries both marks here.
+const rights = [...new Map(routes.flatMap((r) => (r.can ? [[r.can, { can: r.can, roles: r.roles, fresh: Boolean(r.fresh) || r.handler === order, second: Boolean(r.second) || r.handler === order }] as const] : []))).values()]
 const patterns = routes.map((route) => new URLPattern({ pathname: route.path }))
 
 async function sessionOf(request: Request, env: Env, now: number) {

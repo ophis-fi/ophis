@@ -734,10 +734,8 @@ async function judge(db: D1Database, orgId: string, role: Role, kind: Kind | Dir
     // Demo mode: an order of the desk (demo.ts). The value is the order the router built: ticket, checks, estimate.
     // Everything that decides it is read here, when it is filed and again when it is approved: the ticket checks,
     // the organisation (an active institution, not in quarantine), the preparer (`by`: an active seat whose role
-    // may prepare, now), the wallet (this organisation's, linked, with this name and address) and the number of orders that wait.
-    // Applying it changes nothing: no order is ever sent, signed or executed.
-    // ponytail: the wallet's own chain is not compared with the order's chain (Unichain is no wallet chain yet, and a
-    // demo order settles nowhere). A real desk checks that the wallet exists on the chain of the order.
+    // may prepare, now), the wallet (this organisation's, linked, with this name and address, on the chain of the order)
+    // and the number of orders that wait. Applying it changes nothing: no order is ever sent, signed or executed.
     const order = JSON.parse(value ?? 'null') as Order | null
     const quoted = order ? quote({ ...order.ticket }) : 'invalid'
     if (!order || typeof quoted === 'string') return quoted as string
@@ -745,15 +743,16 @@ async function judge(db: D1Database, orgId: string, role: Role, kind: Kind | Dir
     // one more field is refused, when it is filed and when it is approved.
     if (JSON.stringify(built(quoted, order.wallet, order.address)) !== value) return 'invalid'
     const r = await db.prepare(`SELECT o.kind, s.role, max(COALESCE(s.quarantine_until, 0), COALESCE(o.quarantine_until, 0)) AS quarantine,
-                                  (SELECT w.label FROM wallets w WHERE w.org_id = o.id AND w.id = ?1 AND w.state = 'linked') AS wallet, (SELECT w.address FROM wallets w WHERE w.org_id = o.id AND w.id = ?1) AS address,
+                                  (SELECT w.label FROM wallets w WHERE w.org_id = o.id AND w.id = ?1 AND w.state = 'linked') AS wallet, (SELECT w.address FROM wallets w WHERE w.org_id = o.id AND w.id = ?1) AS address, (SELECT w.chain_id FROM wallets w WHERE w.org_id = o.id AND w.id = ?1) AS chain,
                                   (SELECT count(*) FROM approvals a WHERE a.org_id = o.id AND a.action = 'order.demo' AND a.subject_id <> ?2 AND a.state = 'pending' AND a.expires_at > ?3) AS waiting
                                 FROM organisations o LEFT JOIN seats s ON s.org_id = o.id AND s.id = ?4 AND s.state = 'active' WHERE o.id = ?5 AND o.state = 'active'`)
-      .bind(order.ticket.walletId, subjectId, now, by, orgId).first<{ kind: string; role: Role | null; quarantine: number; wallet: string | null; address: string | null; waiting: number }>()
+      .bind(order.ticket.walletId, subjectId, now, by, orgId).first<{ kind: string; role: Role | null; quarantine: number; wallet: string | null; address: string | null; chain: number | null; waiting: number }>()
     return !r ? 'org_inactive'
       : r.kind !== 'institution' ? 'institution_only'
       : !r.role || !(PREPARERS as readonly Role[]).includes(r.role) ? 'forbidden'
       : r.quarantine > now ? 'quarantine'
       : r.wallet === null || r.wallet !== order.wallet || checksum(r.address!) !== order.address ? 'wallet_not_linked'
+      : r.chain !== order.ticket.chainId ? 'wallet_chain'
       : r.waiting >= MAX_OPEN_ORDERS ? 'too_many_orders'
       : { detail: null, apply: [] }
   }
@@ -1398,4 +1397,11 @@ export async function devSkipWaits(db: D1Database, environment: string, now: num
     db.prepare(`UPDATE recovery_requests SET wait_until = ? WHERE state = 'waiting' AND wait_until > ?`).bind(now, now),
     db.prepare(`UPDATE recovery_requests SET closed_at = ? WHERE state = 'cancelled' AND closed_at > ?`).bind(now - DAY, now - DAY),
   ])
+}
+
+// ponytail: stands in for the passing of 5 minutes, for the local end-to-end flow: every passkey check is stale, so
+// the next sensitive step asks for the passkey again. Sessions stay signed in. No audit row. Local database only.
+export async function devStaleChecks(db: D1Database, environment: string) {
+  if (environment !== 'local') throw new Error('refused: ageing passkey checks is for the local database only')
+  await db.prepare('UPDATE sessions SET step_up_at = 0').run()
 }

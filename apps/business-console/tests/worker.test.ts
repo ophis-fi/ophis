@@ -2556,7 +2556,12 @@ describe('r. the role table', () => {
     const { rights } = (await call('GET', '/api/org', { cookie: o.cookie })).body
     expect(rights.map((x: { can: string }) => x.can)).toEqual([...new Set(gated.map((r) => r.can))])
     // Routes that share a sentence share its rule, or the page would say less than the router does.
-    for (const r of gated) expect(rights.find((x: { can: string }) => x.can === r.can), r.path).toEqual({ can: r.can, roles: r.roles, fresh: Boolean(r.fresh), second: Boolean(r.second) })
+    // One row says more than its route's flags: a demo order is filed by its own handler (the estimate first), and
+    // sending it needs a fresh passkey check and a second person, so its row carries both marks.
+    const order = (r: (typeof routes)[number]) => r.path === '/api/desk/orders'
+    for (const r of gated) expect(rights.find((x: { can: string }) => x.can === r.can), r.path).toEqual({ can: r.can, roles: r.roles, fresh: Boolean(r.fresh) || order(r), second: Boolean(r.second) || order(r) })
+    expect(rights.filter((x: { second: boolean }) => x.second).map((x: { can: string }) => x.can)).toContain('Prepare a demo order on the desk, which a second person approves. Nothing is sent')
+    expect(rights.filter((x: { second: boolean; fresh: boolean }) => x.second && !x.fresh)).toEqual([])
   })
 
   it('a route that needs a second person changes nothing by itself: it files a request', async () => {
@@ -8115,7 +8120,7 @@ describe('H. demo mode: overview, desk and partner figures', () => {
       ticket: { ...TICKET, limitPrice: null, walletId }, wallet: 'Operations Safe', address: await addressOf(walletId), checks: demo.CHECKS,
       estimate: { received: '84.73728813', volumeEur: '250000.00', feeBps: '1.00', feeEur: '25.00', totalEur: '25.00', priced: null },
     })
-    expect(r.order.checks).toHaveLength(7)
+    expect(r.order.checks).toHaveLength(8)
     expect(await lastAudit(o.orgId)).toEqual({ action: 'approval.request', actor_id: t.seatId, subject_id: sent.body.id, detail: 'order.demo' })
     // The Approvals list of a key role holds it, with the payload. The blotter holds it for every role.
     expect((await requestsOf(a)).map((x) => [x.id, x.kind, x.mine, JSON.parse(x.value).ticket.amount])).toEqual([[sent.body.id, 'order.demo', false, '250000']])
@@ -8229,11 +8234,12 @@ describe('H. demo mode: overview, desk and partner figures', () => {
     await db.prepare(`INSERT INTO approvals (id, org_id, action, subject_id, payload, payload_hash, requester_seat_id, state, expires_at, created_at) VALUES (?, ?, 'wallet.link', ?, '{}', '', ?, 'pending', ?, ?)`)
       .bind(data.randomId(), t.orgId, waits, t.seatId, now + DAY, now).run()
     for (const send of [false, true]) expect((await prepare(t, waits, { send })).body).toEqual({ error: 'wallet_not_linked' })
-    // The edges that are allowed: the smallest unit, the limit itself, every asset and both chains.
+    // The edges that are allowed: the smallest unit, the limit itself, every asset and both chains (Unichain from a wallet linked there).
+    const onUnichain = await walletRow(t.orgId, someAddress(), { chainId: 130, label: 'Unichain wallet' })
     const fine: [Record<string, unknown>, Partial<demo.Estimate>][] = [
       [{ amount: '0.000001' }, { volumeEur: '0.00', feeEur: '0.00', received: '0.00000000' }],
       [{ amount: '5000000' }, { volumeEur: '5000000.00', feeEur: '500.00' }],
-      [{ sell: 'ETH', buy: 'USDC', amount: '85', chainId: 130 }, { volumeEur: '250750.00', feeEur: '25.07', received: '272527.092391' }],
+      [{ sell: 'ETH', buy: 'USDC', amount: '85', chainId: 130, walletId: onUnichain }, { volumeEur: '250750.00', feeEur: '25.07', received: '272527.092391' }],
       [{ sell: 'EURCV', buy: 'EURe', amount: '1.000000000000000001' }, { volumeEur: '1.00', received: '0.99990000' }],
       [{ type: 'limit', limitPrice: '2940' }, { received: '85.02551020', priced: 'ETH', volumeEur: '250000.00' }],
       [{ type: 'limit', limitPrice: '3010.5', sell: 'ETH', buy: 'EURC', amount: '105' }, { volumeEur: '316102.50', feeEur: '31.61', received: '316070.889750', priced: 'ETH' }],
@@ -8379,12 +8385,14 @@ describe('H. demo mode: overview, desk and partner figures', () => {
     const { t, walletId } = await deskTeam()
     const before = await snapshot()
     const sellEth = { type: 'limit', sell: 'ETH', buy: 'EURC' }
-    // 1 ETH at a limit of 999,999,999 EUR is a volume of 999,999,999 EUR. A low limit price does not hide 1,694.92 ETH either.
-    for (const more of [{ ...sellEth, amount: '1', limitPrice: '999999999' }, { ...sellEth, amount: '1', limitPrice: '5000000.01' }, { ...sellEth, amount: '1694.92', limitPrice: '1' }]) {
+    // 1,500 ETH is 4,425,000 EUR at the reference price and over the limit at 3,540 or at 3,333.34. A low limit price does not hide 1,694.92 ETH either.
+    for (const more of [{ ...sellEth, amount: '1500', limitPrice: '3540' }, { ...sellEth, amount: '1500', limitPrice: '3333.34' }, { ...sellEth, amount: '1694.92', limitPrice: '2360' }]) {
       for (const send of [false, true]) expect((await prepare(t, walletId, { ...more, send })).body, JSON.stringify(more)).toEqual({ error: 'over_limit' })
     }
     expect(await snapshot()).toBe(before)
-    expect((await prepare(t, walletId, { ...sellEth, amount: '1', limitPrice: '5000000', send: false })).body.estimate.volumeEur).toBe('5000000.00')
+    expect((await prepare(t, walletId, { ...sellEth, amount: '1500', limitPrice: '3333.33', send: false })).body.estimate.volumeEur).toBe('4999995.00')
+    // A limit price far from the market is refused for itself, before any volume is looked at (the band, section J).
+    expect((await prepare(t, walletId, { ...sellEth, amount: '1', limitPrice: '999999999' })).body).toEqual({ error: 'limit_out_of_band' })
     expect(demo.CHECKS[5]).toBe('The amount is above zero and within 5,000,000.00 EUR per order, at the reference price and at the limit price')
   })
 
@@ -8925,5 +8933,139 @@ describe('I. partner figures: live', () => {
     expect(new Set(other.rows.slice(1).map((r) => r[0]))).toEqual(new Set([checksum(theirs)]))
     expect(mine.body.csv).not.toMatch(new RegExp(`${checksum(theirs)}|Wallet of B`))
     expect(await snapshot()).toBe(before)
+  })
+})
+
+// ---- the desk, four gaps closed after the review of the demo desk. Each control was seen failing once with it removed.
+describe('J. the demo desk: a passkey check to send, the band of a limit price, the chain of the wallet', () => {
+  it('sending an order needs a passkey check of the last 5 minutes; the estimate alone needs none', async () => {
+    const { t, walletId } = await deskTeam()
+    now += 5 * MIN // the check of the sign-in is exactly 5 minutes old: still fresh
+    const first = await prepare(t, walletId)
+    expect(first.status).toBe(200)
+    // Anything but true is a review, also with a fresh check: no order is filed by a truthy word.
+    const filed = await snapshot()
+    for (const send of ['true', 1, {}, undefined]) expect(Object.keys((await prepare(t, walletId, { amount: '100', send })).body).sort(), String(send)).toEqual(['address', 'checks', 'demo', 'estimate', 'ticket', 'wallet'])
+    expect(await snapshot()).toBe(filed)
+    now += 1
+    const before = await snapshot()
+    const stale = await prepare(t, walletId, { amount: '100' })
+    expect([stale.status, stale.body]).toEqual([403, { error: 'step_up_required' }])
+    expect(await snapshot()).toBe(before) // nothing is filed, and the hour's count is not used
+    const review = await prepare(t, walletId, { amount: '100', send: false })
+    expect([review.status, review.body.estimate.volumeEur]).toEqual([200, '100.00'])
+    await stepUp(t, t.key)
+    const sent = await prepare(t, walletId, { amount: '100' })
+    expect([sent.status, sent.body.state]).toEqual([200, 'requested'])
+    // The route's row asks for no check by itself (the review must stay open), so the handler is the control.
+    expect(routes.find((r) => r.path === '/api/desk/orders')!.fresh).toBeUndefined()
+  })
+
+  it('a limit price lies within 20% of the reference price, on both sides: the two exact edges pass, one unit outside each is refused', async () => {
+    const { t, walletId } = await deskTeam()
+    const limit = (more: Record<string, unknown>, send = false) => prepare(t, walletId, { type: 'limit', ...more, send })
+    // ETH: reference 2,950 EUR, so 2,360 to 3,540. USDC: 0.92, so 0.736 to 1.104. A limit price has 6 decimals.
+    expect(demo.desk().assets.map((x) => [x.symbol, x.limitLow, x.limitHigh])).toEqual([['ETH', '2360.00', '3540.00'], ['USDC', '0.736', '1.104'], ['EURC', '0.80', '1.20'], ['EURe', '0.80', '1.20'], ['EURCV', '0.80', '1.20']])
+    for (const [more, edges, outside] of [
+      [{}, ['2360', '3540'], ['2359.999999', '3540.000001']], // EURC for ETH: priced in ETH
+      [{ sell: 'ETH', buy: 'EURC', amount: '10' }, ['2360', '3540'], ['2359.999999', '3540.000001']],
+      [{ sell: 'EURC', buy: 'USDC', amount: '1000' }, ['0.736', '1.104'], ['0.735999', '1.104001']], // priced in the asset bought
+      [{ sell: 'USDC', buy: 'EURe', amount: '1000' }, ['0.8', '1.2'], ['0.799999', '1.200001']],
+    ] as const) {
+      for (const limitPrice of edges) expect((await limit({ ...more, limitPrice })).status, `${JSON.stringify(more)} ${limitPrice}`).toBe(200)
+      const before = await snapshot()
+      for (const limitPrice of outside) for (const send of [false, true]) {
+        const answer = await limit({ ...more, limitPrice }, send)
+        expect([answer.status, answer.body], `${JSON.stringify(more)} ${limitPrice}`).toEqual([400, { error: 'limit_out_of_band' }])
+      }
+      expect(await snapshot()).toBe(before)
+    }
+    // An order at the edge is filed and approved.
+    const a = await colleague(t, 'approver')
+    await addKey(a)
+    const sent = await limit({ limitPrice: '3540' }, true)
+    expect((await decide(await again(a), sent.body.id, 'approve')).status).toBe(200)
+  })
+
+  it('the band is judged inside the commit that files the order, and again inside the commit that approves it', async () => {
+    const { a, t, walletId } = await deskTeam()
+    // Filing: an order built outside the band, handed to the data module without the router.
+    const far = { ...TICKET, type: 'limit', limitPrice: '3540.000001', walletId }
+    const quoted = demo.quote({ ...far, limitPrice: '3540' }) as { ticket: demo.Ticket; estimate: demo.Estimate }
+    const forged = { ticket: { ...quoted.ticket, limitPrice: far.limitPrice }, estimate: quoted.estimate, wallet: 'Operations Safe', address: await addressOf(walletId), checks: demo.CHECKS }
+    const before = await snapshot()
+    expect(await data.change(db, await actorOf(t, 'trader'), 'order.demo', data.randomId(), JSON.stringify(forged), now)).toEqual({ error: 'limit_out_of_band' })
+    expect(await snapshot()).toBe(before)
+    // Approval: an order filed at the edge whose stored limit price is moved outside afterwards is not applied.
+    const { id } = (await prepare(t, walletId, { type: 'limit', limitPrice: '3540' })).body
+    const stored = (await row<{ payload: string }>('SELECT payload FROM approvals WHERE id = ?', id))!.payload
+    expect(stored).toContain('3540')
+    const moved = stored.replace(/(limitPrice\\?":\\?")3540/, '$13540.000001')
+    expect(moved).not.toBe(stored)
+    await db.prepare('UPDATE approvals SET payload = ?, payload_hash = ? WHERE id = ?').bind(moved, await data.sha256Hex(moved), id).run()
+    await addKey(a)
+    const answer = await decide(await again(a), id, 'approve')
+    expect(answer.status).not.toBe(200)
+    expect((await approvalOf(id))!.state).toBe('pending')
+    expect(answer.body).toEqual({ error: 'limit_out_of_band' })
+  })
+
+  it('the wallet is linked on the chain of the order: another chain is refused at the review, when the order is filed, and at the approval after the fact', async () => {
+    const { a, t, walletId } = await deskTeam()
+    const onBase = await walletRow(t.orgId, someAddress(), { chainId: 8453, label: 'Base wallet' })
+    const onUnichain = await walletRow(t.orgId, someAddress(), { chainId: 130, label: 'Unichain wallet' })
+    const before = await snapshot()
+    // A wallet of Base for an order on Optimism; the Optimism wallet for an order on Unichain; the Unichain wallet for Optimism.
+    for (const [wallet, chainId] of [[onBase, 10], [onBase, 130], [walletId, 130], [onUnichain, 10]] as const) {
+      for (const send of [false, true]) {
+        const answer = await prepare(t, wallet, { chainId, send })
+        expect([answer.status, answer.body], `${chainId} ${send}`).toEqual([409, { error: 'wallet_chain' }])
+      }
+    }
+    // Inside the commit that files it, without the router.
+    const forged = { ...(demo.quote({ ...TICKET, walletId: onBase }) as object), wallet: 'Base wallet', address: await addressOf(onBase), checks: demo.CHECKS }
+    expect(await data.change(db, await actorOf(t, 'trader'), 'order.demo', data.randomId(), JSON.stringify(forged), now)).toEqual({ error: 'wallet_chain' })
+    expect(await snapshot()).toBe(before)
+    // The same chain on both sides passes, on each chain of the desk.
+    expect((await prepare(t, onUnichain, { chainId: 130 })).status).toBe(200)
+    // At the approval: the order was fine when it was filed; the wallet's chain is another one now.
+    const { id } = (await prepare(t, walletId)).body
+    await db.prepare('UPDATE wallets SET chain_id = 8453 WHERE id = ?').bind(walletId).run()
+    await addKey(a)
+    const answer = await decide(await again(a), id, 'approve')
+    expect([answer.status, answer.body]).toEqual([409, { error: 'wallet_chain' }])
+    expect((await approvalOf(id))!.state).toBe('pending')
+    // Back on the chain of the order, the same approval passes.
+    await db.prepare('UPDATE wallets SET chain_id = 10 WHERE id = ?').bind(walletId).run()
+    expect((await decide(a, id, 'approve')).status).toBe(200)
+    expect(dataSource).not.toMatch(/ponytail: the wallet's own chain/)
+    expect(demo.CHECKS).toContain('The wallet is linked to this organisation, on the chain of the order')
+    expect(demo.CHECKS).toContain('A limit price is within 20% of the reference price')
+  })
+
+  it('"What each role can do": the row for preparing a demo order carries the second-person mark and the passkey mark', async () => {
+    const o = await owner()
+    const { rights } = (await call('GET', '/api/org', { cookie: o.cookie })).body
+    expect(rights.find((x: { can: string }) => x.can.startsWith('Prepare a demo order'))).toMatchObject({ roles: ['owner', 'admin', 'trader'], fresh: true, second: true })
+    // No other row changed its marks: a row without a second person stays without.
+    expect(rights.find((x: { can: string }) => x.can.startsWith('See the desk'))).toMatchObject({ fresh: false, second: false })
+  })
+
+  it('the local "stale" command ages every passkey check and nothing else: local only', async () => {
+    const { t, walletId } = await deskTeam()
+    await expect(data.devStaleChecks(db, 'production')).rejects.toThrow(/local/)
+    expect((await prepare(t, walletId)).status).toBe(200)
+    await data.devStaleChecks(db, 'local')
+    expect((await prepare(t, walletId)).body).toEqual({ error: 'step_up_required' })
+    expect((await get('/api/me', t)).status).toBe(200) // still signed in
+  })
+
+  it('the seed\'s demo wallet sits on a chain the desk permits, and the page asks for the passkey when an order is sent', () => {
+    expect(dataSource).toMatch(/VALUES \(\?, \?, 10, \?, 'custodian', 'Demo wallet', 'linked'/)
+    expect(demo.CHAINS[10]).toBe('Optimism')
+    expect(deskPage).toContain("await (send ? sensitive : api)<OrderBody & { error?: string }>('/api/desk/orders'")
+    expect(deskPage).toContain('Allowed range: {exact(range.limitLow)} to {exact(range.limitHigh)} EUR, within 20% of the reference price.')
+    expect(deskPage).toContain('Sending asks for your passkey.')
+    for (const code of ['limit_out_of_band', 'wallet_chain']) expect(uiSource, code).toContain(`${code}: '`)
   })
 })

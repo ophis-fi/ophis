@@ -71,6 +71,8 @@ const SAY: Record<string, string> = {
   wallet_not_linked: 'That wallet is not linked to this organisation any more. Choose a linked wallet.',
   amount_invalid: 'Enter the amount as a plain number above zero, like 250000 or 1250.50, with no more decimals than the asset has.',
   limit_price_invalid: 'Enter the limit price in EUR as a plain number above zero, with at most 6 decimals.',
+  limit_out_of_band: 'The limit price is outside the allowed range: within 20% of the reference price, on both sides.',
+  wallet_chain: 'That wallet is not linked on the chain of this order. Choose the chain of the wallet, or a wallet linked on that chain.',
   over_limit: 'This is above the limit of 5,000,000.00 EUR per order, at the reference price or at the limit price.',
   order_rate: 'You prepared 30 orders in the last hour. Try again later.',
   too_many_orders: 'Twenty orders already wait for approval. One of them is decided or cancelled first.',

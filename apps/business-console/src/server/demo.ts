@@ -48,15 +48,17 @@ export interface Order { ticket: Ticket; wallet: string; address: string; checks
 export const CHECKS = [
   'The preparer is an active Trader, Owner or Admin',
   'The organisation is an active institution and not in quarantine',
-  'The wallet is linked to this organisation',
+  'The wallet is linked to this organisation, on the chain of the order',
   'Both assets are permitted, and they differ',
   'The chain is Optimism or Unichain',
   `The amount is above zero and within ${shown(ORDER_LIMIT_EUR * E, 2).replace(/\B(?=(\d{3})+\.)/g, ',')} EUR per order, at the reference price and at the limit price`,
   `Fewer than ${MAX_OPEN_ORDERS} orders wait for approval`,
+  'A limit price is within 20% of the reference price',
 ]
 /**
  * The ticket checks and the estimate, from this server's reference prices. Whatever else the caller sent (a price,
- * a fee, an estimate) is not read. A limit price is EUR per unit of ETH when ETH is one side, else of the asset bought.
+ * a fee, an estimate) is not read. A limit price is EUR per unit of ETH when ETH is one side, else of the asset bought,
+ * and lies within 20% of that asset's reference price.
  * Returns the refusal, or the ticket (known fields only) with its estimate.
  */
 export function quote(body: Record<string, unknown>): string | { ticket: Ticket; estimate: Estimate } {
@@ -72,6 +74,8 @@ export function quote(body: Record<string, unknown>): string | { ticket: Ticket;
   const limit = type === 'limit' ? fixed(limitPrice, 6) : null
   if (type === 'limit' ? limit === null || limit <= 0n : limitPrice !== null) return 'limit_price_invalid'
   const priced = type === 'limit' ? (sell === 'ETH' ? sell : buy) : null
+  // A limit price lies within 20% of the reference price of the asset it prices, on both sides. Integers only.
+  if (priced && (limit! * 5n < price(priced) * 4n || limit! * 5n > price(priced) * 6n)) return 'limit_out_of_band'
   const at = (asset: Asset) => (asset === priced ? limit! : price(asset))
   const volume = (units * at(sell)) / E
   // The limit per order holds at the reference price and at the order's own price: a limit price moves the volume.
@@ -129,9 +133,11 @@ export function institution() {
     examples: examples(),
   }
 }
+// The range a limit price may lie in: the two edges are allowed. Six decimals as a limit price has, zeros cut to two.
+const edge = (value: bigint) => shown(value, 6).replace(/(\.\d\d\d*?)0+$/, '$1')
 /** What the desk shows besides the organisation's own rows. */
 export const desk = () => ({
-  assets: (Object.keys(ASSETS) as Asset[]).map((symbol) => ({ symbol, ...ASSETS[symbol] })),
+  assets: (Object.keys(ASSETS) as Asset[]).map((symbol) => ({ symbol, ...ASSETS[symbol], limitLow: edge((price(symbol) * 4n) / 5n), limitHigh: edge((price(symbol) * 6n) / 5n) })),
   chains: Object.entries(CHAINS).map(([id, name]) => ({ id: Number(id), name })),
   limitEur: shown(ORDER_LIMIT_EUR * E, 2), maxOpen: MAX_OPEN_ORDERS, checks: CHECKS, examples: examples(),
 })

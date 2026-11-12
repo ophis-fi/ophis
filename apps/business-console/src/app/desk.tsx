@@ -3,7 +3,7 @@
 // A partner: live figures from the Ophis rebate service, checked and rebuilt by the server (src/server/partner.ts).
 // No order is sent, signed or executed, and this file holds no price: every estimate is the server's.
 import { useCallback, useEffect, useState, type FormEvent, type ReactNode } from 'react'
-import { api, capital, Icon, ROLE, save, say, Section, stamp, Status, Tile } from './ui.tsx'
+import { api, capital, Icon, ROLE, save, say, sensitive, Section, stamp, Status, Tile } from './ui.tsx'
 
 interface Ticket { type: 'market' | 'limit'; sell: string; buy: string; amount: string; limitPrice: string | null; chainId: number; walletId: string }
 interface Estimate { received: string; volumeEur: string; feeBps: string; feeEur: string; totalEur: string; priced: string | null }
@@ -27,7 +27,7 @@ interface PartnerWallet {
 }
 interface Partner { kind: 'partner'; waiting: number; figures: { state: 'not_connected' | 'no_wallet' | 'figures_unavailable' } | { state: 'live'; asOf: string; leftOut: number; wallets: PartnerWallet[] } }
 interface DeskView {
-  assets: { symbol: string; decimals: number; eur: string; issuer: string; status: string }[]; chains: { id: number; name: string }[]
+  assets: { symbol: string; decimals: number; eur: string; issuer: string; status: string; limitLow: string; limitHigh: string }[]; chains: { id: number; name: string }[]
   wallets: { id: string; label: string; address: string; chain: string }[]; limitEur: string; mayPrepare: boolean; orders: Order[]; examples: Order[]
 }
 
@@ -239,11 +239,13 @@ function TicketForm({ v, onSent }: { v: DeskView; onSent: () => Promise<void> })
   const [busy, setBusy] = useState(false)
   const set = (change: Partial<typeof t>) => setT({ ...t, ...change })
   const priced = t.sell === 'ETH' || t.buy === 'ETH' ? 'ETH' : t.buy
+  const range = v.assets.find((a) => a.symbol === priced)
   async function ask(send: boolean, event?: FormEvent) {
     event?.preventDefault()
     setBusy(true)
     const { limitPrice, ...rest } = t
-    const out = await api<OrderBody & { error?: string }>('/api/desk/orders', { ...rest, amount: t.amount.trim(), ...(t.type === 'limit' && { limitPrice: limitPrice.trim() }), send })
+    // The estimate needs no passkey. Sending does: when the last check is older than 5 minutes, the passkey is asked for here.
+    const out = await (send ? sensitive : api)<OrderBody & { error?: string }>('/api/desk/orders', { ...rest, amount: t.amount.trim(), ...(t.type === 'limit' && { limitPrice: limitPrice.trim() }), send })
     setBusy(false)
     setProblem(out.status === 200 ? '' : out.status === 403 && out.data.error === 'forbidden' ? 'Your role cannot prepare orders. A Trader, an Owner or an Admin prepares them.' : say(out.data))
     if (out.status !== 200) return
@@ -270,7 +272,7 @@ function TicketForm({ v, onSent }: { v: DeskView; onSent: () => Promise<void> })
         <Cost e={review.estimate} />
         {failed}
         <div className="acts"><button className="btn ghost md" type="button" onClick={() => setReview(undefined)}>Back to the ticket</button><button className="btn primary md" type="button" disabled={busy} onClick={() => ask(true)}><Icon name="users" size={16} />Send for approval</button></div>
-        <p className="fine"><Icon name="info" size={16} />Nothing is signed at this step. A second person approves it, with a passkey.</p>
+        <p className="fine"><Icon name="info" size={16} />Nothing is signed at this step. Sending asks for your passkey. A second person then approves it, with a passkey.</p>
       </div>
     )
   }
@@ -287,7 +289,8 @@ function TicketForm({ v, onSent }: { v: DeskView; onSent: () => Promise<void> })
       {pills('type', 'Order type', [['market', 'Market'], ['limit', 'Limit']], t.type, (type) => set({ type }))}
       <div className="row">{assets('Sell asset', 'sell')}<label className="field">Amount to sell<input className="input" type="text" inputMode="decimal" autoComplete="off" value={t.amount} onChange={(event) => set({ amount: event.target.value })} style={{ textAlign: 'right' }} /></label></div>
       <div className="row">{assets('Buy asset', 'buy')}
-        {t.type === 'limit' && <label className="field">Limit price (EUR per {priced})<input className="input" type="text" inputMode="decimal" autoComplete="off" value={t.limitPrice} onChange={(event) => set({ limitPrice: event.target.value })} style={{ textAlign: 'right' }} /></label>}</div>
+        {t.type === 'limit' && <label className="field">Limit price (EUR per {priced})<input className="input" type="text" inputMode="decimal" autoComplete="off" value={t.limitPrice} onChange={(event) => set({ limitPrice: event.target.value })} style={{ textAlign: 'right' }} aria-describedby="limit-range" />
+          {range && <small id="limit-range" className="muted">Allowed range: {exact(range.limitLow)} to {exact(range.limitHigh)} EUR, within 20% of the reference price.</small>}</label>}</div>
       {pills('chain', 'Chain', v.chains.map((c) => [c.id, c.name]), t.chainId, (id) => set({ chainId: Number(id) }))}
       <label className="field">Settle from<select className="input" value={t.walletId} onChange={(event) => set({ walletId: event.target.value })}>{v.wallets.map((w) => <option key={w.id} value={w.id}>{w.label} ({short(w.address)}, {w.chain})</option>)}</select></label>
       {failed}
