@@ -219,6 +219,9 @@ interface View {
   missing: string | null
   review: { status: 'not_submitted' | 'under_review' | 'more_information' | 'verified'; since: number | null; reason: string | null }
   record: KybRow | null
+  // Milestone 5b: the sealed declaration as the server knows it, and every download of the operator with its reason.
+  sealed: { id: string; size: number; sha256: string; key: string; generation: string; at: number } | null
+  downloads: { at: number; item: string; reason: string }[]
   chains: { id: number; name: string }[]
 }
 function useOnboarding(onSignedOut: () => void) {
@@ -438,6 +441,7 @@ export function Onboarding({ owner, onSignedOut }: { owner: boolean; onSignedOut
               </form>
             )}
             <p className="fine" role="status"><Icon name="info" size={16} /><span>{sealKey ? <>Sealed to key <span className="mono">{sealKey}</span>. Only the holder of that key can open the file, offline.</> : sealKey === null ? 'Sealing is not configured for this address yet. No file can be uploaded here.' : 'Reading the sealing key.'}</span></p>
+            {view.sealed && <SealedItem item={view.sealed} />}
           </Step>
           <Step icon="shield-check" title="Review" done={verified}>
             <p role="status">{review.status === 'verified' ? (view.record?.decidedAt ? `Verified on ${day(view.record.decidedAt)}.${view.record.nextReview ? ` Next review ${day(view.record.nextReview)}.` : ''}` : 'Verified.')
@@ -458,14 +462,24 @@ export function Onboarding({ owner, onSignedOut }: { owner: boolean; onSignedOut
   )
 }
 
-/** The Compliance page's block, for an Owner and a Compliance officer: the result of the verification, never a document. */
+/** What the server knows of the sealed declaration. It holds the sealed file and no key that opens it. */
+const SealedItem = ({ item }: { item: NonNullable<View['sealed']> }) => (
+  <dl className="kv">
+    <dt>Uploaded on</dt><dd>{stamp(item.at)}</dd>
+    <dt>Size</dt><dd>{item.size.toLocaleString('en-GB')} bytes, sealed</dd>
+    <dt>SHA-256 of the sealed file</dt><dd className="mono">{item.sha256}</dd>
+    <dt>Sealed to key</dt><dd className="mono">{item.key} ({item.generation})</dd>
+  </dl>
+)
+
+/** The Compliance page's block, for an Owner and a Compliance officer: the result of the verification, the sealed declaration and who took it. */
 export function KybRecord() {
   const [view, setView] = useState<View | null>()
   useEffect(() => void api<View>('/api/onboarding').then((result) => setView(result.status === 200 ? result.data : null)), [])
   if (view === undefined) return null
   const r = view?.record
   return (
-    <Section icon="shield-check" title="KYB record" hint="What Ophis recorded when it verified your organisation. No document is stored.">
+    <Section icon="shield-check" title="KYB record" hint="What Ophis recorded when it verified your organisation. The one document stored is the signed declaration, sealed in your browser.">
       {!view ? <p className="fine">The KYB record is open to Owners and Compliance officers.</p>
       : !r ? <p className="fine">No record yet. It appears when Ophis has reviewed the organisation. See <a href="/#/onboarding">Onboarding</a>.</p>
       : (
@@ -480,6 +494,18 @@ export function KybRecord() {
           <dt>Evidence SHA-256</dt><dd className="mono">{r.evidenceSha256 ?? 'None'}</dd>
           <dt>Decision</dt><dd>{r.decision === 'approved' ? 'Approved' : r.decision === 'rejected' ? 'Refused' : 'More information asked'}{r.reason ? `: ${REASON[r.reason] ?? r.reason}` : ''}</dd>
         </dl>
+      )}
+      {view && (
+        <>
+          <h3 className="h-panel">Signed declaration</h3>
+          {view.sealed ? <SealedItem item={view.sealed} /> : <p className="fine">None uploaded. See <a href="/#/onboarding">Onboarding</a>.</p>}
+          <h3 className="h-panel">Downloads by the Ophis operator</h3>
+          {view.downloads.length === 0 ? <p className="fine">None. Each download of the sealed file is listed here and in the audit log, with its reason.</p> : (
+            <ul className="stack">
+              {view.downloads.map((d) => <li key={`${d.at}${d.item}${d.reason}`}>{stamp(d.at)}: still sealed, for {d.reason}. <span className="fine">Item <span className="mono">{d.item.slice(0, 8)}</span>{d.item === view.sealed?.id ? '' : ', since replaced'}</span></li>)}
+            </ul>
+          )}
+        </>
       )}
     </Section>
   )

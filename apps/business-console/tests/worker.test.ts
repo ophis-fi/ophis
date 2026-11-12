@@ -5566,7 +5566,7 @@ describe('E. onboarding: a company applies, proves its domain, is activated and 
     const response = await handle(new Request(`${OP}/api/operator/items/${itemId}/download`, { method: 'POST', headers, body: JSON.stringify(body) }), testEnvironment, () => now)
     return { status: response.status, headers: response.headers, bytes: new Uint8Array(await response.arrayBuffer()) }
   }
-  const opPaths = (id: string) => onboarding.operatorRoutes.map((r) => [r.method, r.path.replace(':id', id)] as const)
+  const opPaths = (id: string, item = id) => onboarding.operatorRoutes.map((r) => [r.method, r.path.replace(':id', r.path.includes('/items/') ? item : id)] as const)
 
   // ---- A1, A2: the application ----
 
@@ -6273,8 +6273,8 @@ describe('E. onboarding: a company applies, proves its domain, is activated and 
     ])
     expect(OP).toBe('http://operator.localhost:8787')
     const rows = await snapshot()
-    for (const [method, path] of opPaths(a.orgId)) {
-      const body = path.endsWith('decision') ? APPROVE : {}
+    for (const [method, path] of opPaths(a.orgId, (await itemsOf(a.orgId))[0].id)) { // the download: a real item and a reason of the list
+      const body = path.endsWith('decision') ? APPROVE : path.endsWith('download') ? { reason: 'kyb_review' } : {}
       // The console's and the signing page's hostnames, with the token and an Owner's session; any other name.
       for (const host of [SITE.origin, SIGN, 'http://operator.localhost:8788', 'https://operator.localhost:8787', 'http://operator.evil.example']) expect((await op(method, path, { host, body, cookie: a.cookie })).status, `${host} ${path}`).toBe(404)
       // Outside the local environment: 404, whatever the token.
@@ -6601,7 +6601,7 @@ describe('E. onboarding: a company applies, proves its domain, is activated and 
     expect((await post(`/api/wallets/${wallet.id}/anchor`, b)).body).toEqual({ state: 'applied' })
     for (const path of ['/api/onboarding', `/api/onboarding?organisationId=${b.orgId}`, `/api/onboarding?org=${b.orgId}`]) {
       const view = await call('GET', path, { cookie: a.cookie })
-      expect(view.body).toEqual({ company: { legalName: a.name, kind: 'partner', country: null, registration: null, domain: null, domainVerifiedAt: null }, signin: { setting: 'none', tenant: null }, first: null, seal: { key: KEY, generation: 'g1' }, sealed: null, wallet: null, missing: null, review: { status: 'verified', since: null, reason: null }, record: null, chains: expect.any(Array) })
+      expect(view.body).toEqual({ company: { legalName: a.name, kind: 'partner', country: null, registration: null, domain: null, domainVerifiedAt: null }, signin: { setting: 'none', tenant: null }, first: null, seal: { key: KEY, generation: 'g1' }, sealed: null, downloads: [], wallet: null, missing: null, review: { status: 'verified', since: null, reason: null }, record: null, chains: expect.any(Array) })
     }
     expect((await call('GET', '/api/onboarding', { cookie: b.cookie })).body).toMatchObject({ company: { legalName: b.name }, record: { legalName: 'Birchfield Capital Ltd', tier: 'enhanced' }, wallet: { address: accounts[0].address } })
     expect((await call('GET', `/api/onboarding/${b.orgId}`, { cookie: a.cookie })).status).toBe(404)
@@ -6746,6 +6746,42 @@ describe('E. onboarding: a company applies, proves its domain, is activated and 
     }
   })
 
+  it('B6: the client sees its sealed declaration as the server knows it and every download of the operator with its reason, nothing of another organisation; no client route carries a sealed file', async () => {
+    const [a, b] = [await underReview(), await underReview()]
+    const [[item], [other]] = [await itemsOf(a.orgId), await itemsOf(b.orgId)]
+    const viewOf = async (m: Holder) => (await call('GET', '/api/onboarding', { cookie: m.cookie })).body
+    expect(await viewOf(a)).toMatchObject({ seal: { key: KEY, generation: 'g1' }, sealed: { id: item.id, kind: 'declaration', size: item.size, sha256: item.sha256, key: KEY, generation: 'g1', at: item.created_at }, downloads: [] })
+    const at = [(now += MIN), (now += MIN), (now += MIN)]
+    now = at[0]
+    expect((await take(item.id, { reason: 'kyb_review' })).status).toBe(200)
+    now = at[1]
+    expect((await take(other.id, { reason: 'incident' })).status).toBe(200)
+    now = at[2]
+    expect((await take(item.id, { reason: 'authority_request' })).status).toBe(200)
+    const mine = [{ at: at[0], item: item.id, reason: 'the review of the organisation' }, { at: at[2], item: item.id, reason: 'a request of an authority' }]
+    expect((await viewOf(a)).downloads).toEqual(mine)
+    expect((await viewOf(b)).downloads).toEqual([{ at: at[1], item: other.id, reason: 'an incident' }])
+    // A replaced item: the new one is shown, and the downloads of the old one stay listed.
+    expect((await upload(a, await sealedFile())).status).toBe(200)
+    const after = await viewOf(a)
+    expect([after.sealed.id === item.id, after.downloads, after.review.status]).toEqual([false, mine, 'not_submitted'])
+    // No route of the console or of the signing page answers a sealed file: not X's own, not Y's, whatever X names.
+    const theirs = latin1((await objectOf(other.id))!)
+    const answered: Record<string, number> = {}
+    for (const route of routes) {
+      const path = `${route.path.replace(':id', other.id)}?item=${other.id}&organisationId=${b.orgId}`
+      const headers: Record<string, string> = { 'sec-fetch-site': 'same-origin', cookie: (await again(a)).cookie /* a new session each time: a route may end it */, ...(route.method === 'POST' && { origin: route.sign ? SIGN : SITE.origin, 'content-type': 'application/json' }) }
+      const body = route.method === 'POST' ? JSON.stringify({ id: other.id, item: other.id, itemId: other.id, organisationId: b.orgId, reason: 'kyb_review' }) : undefined
+      const response = await handle(new Request((route.sign ? SIGN : SITE.origin) + path, { method: route.method, headers, body }), testEnv, () => now)
+      const text = latin1(new Uint8Array(await response.arrayBuffer()))
+      answered[`${route.method} ${route.path}`] = response.status
+      expect([text.includes('age-encryption.org/v1'), text.includes(theirs.slice(-64)), text.includes(btoa(theirs).slice(0, 64)), response.headers.get('content-type')?.includes('octet-stream') ?? false], route.path).toEqual([false, false, false, false])
+    }
+    expect(answered).toMatchObject({ 'GET /api/onboarding': 200, 'GET /api/me': 200 })
+    // The page shows what the server says.
+    for (const words of ['Uploaded on', 'SHA-256 of the sealed file', 'Sealed to key', 'Downloads by the Ophis operator']) expect(onboardingPage, words).toContain(words)
+  })
+
   isolation['POST /api/onboarding/declaration'] = async (a) => {
     // X's upload is X's, whatever X sends. Y's item, its object and its review are untouched, and X's page shows nothing of Y.
     const [x, y] = [await undeclared(), await underReview()]
@@ -6776,12 +6812,12 @@ describe('E. onboarding: a company applies, proves its domain, is activated and 
     for (const m of [o, c]) expect((await call('GET', '/api/onboarding', { cookie: m.cookie })).status).toBe(200)
     for (const m of [a, v]) expect((await call('GET', '/api/onboarding', { cookie: m.cookie })).body).toEqual({ error: 'forbidden' })
     expect((await call('GET', '/api/onboarding')).status).toBe(401)
-    // "Recovery wallet", never the internal word. No claim about a licence. No document is stored: the block says so.
+    // "Recovery wallet", never the internal word. No claim about a licence. One document is stored, sealed: the block says so.
     for (const banned of [/anchor/i, /licen[cs]ed|regulated|authorised|authorized|MiCA|compliant/i, /—/, /honest/i]) {
       expect(onboardingPage).not.toMatch(banned)
       expect(Object.values(onboarding.ONBOARDING_EVENTS).join(' ')).not.toMatch(banned)
     }
-    expect(onboardingPage).toContain('No document is stored')
+    expect(onboardingPage).toContain('The one document stored is the signed declaration, sealed')
     expect(onboardingPage).not.toMatch(/dangerouslySetInnerHTML|innerHTML/)
     for (const reason of onboarding.REASONS) expect(onboardingPage, reason).toContain(`${reason}:`)
   })

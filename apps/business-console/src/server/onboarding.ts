@@ -261,6 +261,10 @@ export function sealedShape(bytes: Uint8Array) {
 interface Sealed { id: string; kind: string; size: number; sha256: string; key: string; generation: string; at: number }
 const SEALED = `id, kind, size, sha256, key_fingerprint AS key, key_generation AS generation, created_at AS at FROM sealed_items`
 /** The sealed items of one organisation: what the server knows of each, never a byte of it. */
+// ponytail: every download row of the organisation, read at each view. Page it when an organisation passes some hundred downloads.
+const downloadsOf = async (db: D1Database, orgId: string) =>
+  (await db.prepare(`SELECT at, subject_id AS item, detail AS reason FROM audit_log WHERE org_id = ? AND action = 'sealed.download' ORDER BY seq`).bind(orgId).all<{ at: number; item: string; reason: string }>())
+    .results.map((row) => ({ ...row, reason: DOWNLOAD_REASONS[row.reason] ?? row.reason }))
 const sealedOf = async (db: D1Database, orgId: string) => (await db.prepare(`SELECT ${SEALED} WHERE org_id = ? ORDER BY created_at, id`).bind(orgId).all<Sealed>()).results
 
 // The row of an upload, in one commit with its audit row, which carries the hash. Read inside the plan: the uploader is
@@ -436,6 +440,8 @@ export async function onboarding(c: Member) {
     // Milestone 5b: the sealing key of this environment (its fingerprint; null: none configured), and the sealed declaration as the server knows it.
     seal: { key: await sealKey(c.env), generation: SEAL.generation },
     sealed: sealed.find((item) => item.kind === 'declaration') ?? null,
+    // Every time the operator took a sealed item of this organisation, with the reason in words: from its own audit log.
+    downloads: await downloadsOf(c.env.DB, orgId),
     wallet: wallet && walletView(wallet),
     // What "Submit for review" would answer now: null when everything is there.
     missing: company.state === 'unverified' ? await missing(c.env.DB, orgId, c.now) : null,
