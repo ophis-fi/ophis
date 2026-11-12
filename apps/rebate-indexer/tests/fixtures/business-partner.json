@@ -1,0 +1,83 @@
+{
+  "asOf": "2026-11-12T09:30:00.000Z",
+  "wallets": [
+    {
+      "wallet": "0x5afe5afe5afe5afe5afe5afe5afe5afe5afe5afe",
+      "affiliate": {
+        "wallet": "0x5afe5afe5afe5afe5afe5afe5afe5afe5afe5afe",
+        "kind": "partner",
+        "rateOfNetFeePct": 12,
+        "activeCodes": ["northwind", "northwind-app"],
+        "referredCount": 3,
+        "currentCycleVolumeUsd": 184250.75,
+        "currentCycleNetFeeUsd": 17.31,
+        "lifetimeReferredVolumeUsd": 2391804.5,
+        "estimatedCurrentCycleEarningsUsd": 2.08,
+        "paidToDateWeth": 0.0125,
+        "paidToDateUsd": 41.37,
+        "payoutStatus": "scheduled",
+        "nextPayoutAt": "2026-12-01T02:00:00.000Z",
+        "referees": [
+          {
+            "wallet": "0x00000000000000000000000000000000000000a1",
+            "boundAt": "2026-08-03T14:05:00.000Z",
+            "firstSeenAt": "2026-08-03T14:05:00.000Z",
+            "attribution": "link",
+            "lifetimeVolumeUsd": 1504300.25
+          },
+          {
+            "wallet": "0x00000000000000000000000000000000000000a2",
+            "boundAt": "2026-09-19T08:40:00.000Z",
+            "firstSeenAt": "2026-09-17T11:12:00.000Z",
+            "attribution": "link-and-code",
+            "lifetimeVolumeUsd": 880004.25
+          },
+          {
+            "wallet": "0x00000000000000000000000000000000000000a3",
+            "boundAt": null,
+            "firstSeenAt": "2026-10-28T19:55:00.000Z",
+            "attribution": "code",
+            "lifetimeVolumeUsd": 7500
+          }
+        ]
+      },
+      "fees": {
+        "recipient": "0x5afe5afe5afe5afe5afe5afe5afe5afe5afe5afe",
+        "currentCycle": {
+          "grossFeeUsd": 96.5,
+          "partnerShareUsd": 77.2,
+          "carriedInUsd": 6.4,
+          "owedUsd": 83.6,
+          "pendingUnpricedTrades": 2
+        },
+        "lifetime": { "paidWeth": 0.0875, "tradeCount": 412 },
+        "recentBatches": [
+          { "cycleMonth": "2026-10", "status": "paid", "owedUsd": 212.4, "owedWeth": 0.0625, "carriedUsd": 0 },
+          { "cycleMonth": "2026-09", "status": "carried", "owedUsd": 0, "owedWeth": 0, "carriedUsd": 6.4 }
+        ],
+        "nextPayoutAt": "2026-12-01T02:00:00.000Z",
+        "minPayoutUsd": 25,
+        "partnerShareBps": 8000
+      }
+    },
+    {
+      "wallet": "0x00000000000000000000000000000000000000b2",
+      "affiliate": null,
+      "fees": {
+        "recipient": "0x00000000000000000000000000000000000000b2",
+        "currentCycle": {
+          "grossFeeUsd": 0,
+          "partnerShareUsd": 0,
+          "carriedInUsd": 0,
+          "owedUsd": 0,
+          "pendingUnpricedTrades": 0
+        },
+        "lifetime": { "paidWeth": 0, "tradeCount": 0 },
+        "recentBatches": [],
+        "nextPayoutAt": "2026-12-01T02:00:00.000Z",
+        "minPayoutUsd": 25,
+        "partnerShareBps": 8000
+      }
+    }
+  ]
+}

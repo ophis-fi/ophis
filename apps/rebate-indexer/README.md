@@ -22,6 +22,15 @@ See [`RUNBOOK.md`](./RUNBOOK.md) for incident response.
 See the [Ethereum RPC runbook](../../infra/ethereum-rpc/README.md) for baal-backed
 chain-1 reads, public fallback, and the scheduled OTC consistency check.
 
+## Business console read route
+
+`POST /business/partner` lets the Ophis Business console read the partner and
+partner-fee dashboards of up to 10 wallets per call. It is gated by
+`BUSINESS_API_TOKEN` (`Authorization: Bearer ...`). This token reads EVERY
+partner's dashboard, so it is a secret: at least 32 characters, and different
+from `REBATE_INDEXER_ADMIN_TOKEN`. Unset, too short, or equal to the admin
+token means the route is off (404 for every caller).
+
 ## GitHub secrets required for deploy
 
 The deploy workflow joins the tailnet as an ephemeral `tag:ci` node and builds
