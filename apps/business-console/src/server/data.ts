@@ -736,6 +736,8 @@ async function judge(db: D1Database, orgId: string, role: Role, kind: Kind | Dir
     // the organisation (an active institution, not in quarantine), the preparer (`by`: an active seat whose role
     // may prepare, now), the wallet (this organisation's, linked) and the number of orders that wait.
     // Applying it changes nothing: no order is ever sent, signed or executed.
+    // ponytail: the wallet's own chain is not compared with the order's chain (Unichain is no wallet chain yet, and a
+    // demo order settles nowhere). A real desk checks that the wallet exists on the chain of the order.
     const order = JSON.parse(value ?? 'null') as Order | null
     const quoted = order ? quote({ ...order.ticket }) : 'invalid'
     if (!order || typeof quoted === 'string') return quoted as string
