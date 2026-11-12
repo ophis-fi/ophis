@@ -17,7 +17,19 @@ export interface BusinessDeps {
 
 export interface BusinessPartnerAnswer {
   asOf: string;
-  wallets: { wallet: `0x${string}`; affiliate: PartnerDashboard | null; fees: PartnerFeeDashboard }[];
+  /** fees null: a contract wallet the console did not prove on its pinned chain. Nothing was read for it. */
+  wallets: { wallet: `0x${string}`; affiliate: PartnerDashboard | null; fees: PartnerFeeDashboard | null }[];
+}
+
+// The chain each contract wallet is pinned to, as POST /partner reads it (affiliate/partnerAuth.ts): the same address
+// on another chain can be a contract with other owners. Unset or unreadable means no contract wallet is pinned.
+function pinnedChains(): Record<string, unknown> {
+  try {
+    const parsed: unknown = JSON.parse(process.env.CONTRACT_WALLET_AUTH_CHAINS || '{}');
+    return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? (parsed as Record<string, unknown>) : {};
+  } catch {
+    return {};
+  }
 }
 
 function businessToken(): string | null {
@@ -27,7 +39,7 @@ function businessToken(): string | null {
 }
 
 export function registerBusinessRoutes(app: FastifyInstance, deps: BusinessDeps): void {
-  app.post<{ Body: { wallets?: unknown } }>('/business/partner', {
+  app.post<{ Body: { wallets?: unknown; contract?: unknown } }>('/business/partner', {
     config: { rateLimit: { max: 120, timeWindow: '1 minute' } },
   }, async (req, reply): Promise<BusinessPartnerAnswer | undefined> => {
     const expected = businessToken();
@@ -44,12 +56,28 @@ export function registerBusinessRoutes(app: FastifyInstance, deps: BusinessDeps)
     if (!wallets.every((w) => /^0x[0-9a-f]{40}$/.test(w))) return reply.code(400).send({ error: 'invalid wallet address' });
     if (new Set(wallets).size !== wallets.length) return reply.code(400).send({ error: 'duplicate wallet' });
 
+    // contract: for each wallet the console proved by a CONTRACT signature (not by the wallet's own key), the chains it
+    // proved it on. Required, so that a caller cannot leave the rule out by leaving the field out.
+    const contract = req.body?.contract;
+    if (!contract || typeof contract !== 'object' || Array.isArray(contract)) return reply.code(400).send({ error: 'contract must be an object' });
+    const proved = new Map(Object.entries(contract as Record<string, unknown>));
+    for (const [wallet, chains] of proved) {
+      if (!wallets.includes(wallet) || !Array.isArray(chains) || chains.length < 1 || chains.length > 10 || !chains.every((c) => Number.isSafeInteger(c) && c > 0)) {
+        return reply.code(400).send({ error: 'invalid contract wallet chains' });
+      }
+    }
+    const pinned = pinnedChains();
+    // Chains are integers above zero, so an unpinned wallet (undefined) and a pin that is no number never match.
+    const readable = (w: string) => !proved.has(w) || (proved.get(w) as unknown[]).includes(pinned[w]);
+
     const now = new Date();
-    logger.info({ wallets: wallets.length }, 'business partner read');
+    logger.info({ wallets: wallets.length, refused: wallets.filter((w) => !readable(w)).length }, 'business partner read');
     const out: BusinessPartnerAnswer['wallets'] = [];
     // ponytail: one wallet after the other (at most 10); parallel if latency matters.
     for (const w of wallets as `0x${string}`[]) {
-      out.push({ wallet: w, affiliate: await deps.getPartnerDashboard(w, now), fees: await deps.getPartnerFeeDashboard(w, now) });
+      out.push(readable(w)
+        ? { wallet: w, affiliate: await deps.getPartnerDashboard(w, now), fees: await deps.getPartnerFeeDashboard(w, now) }
+        : { wallet: w, affiliate: null, fees: null });
     }
     return { asOf: now.toISOString(), wallets: out };
   });

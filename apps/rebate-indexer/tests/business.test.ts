@@ -70,10 +70,11 @@ afterEach(async () => {
   vi.useRealTimers();
   delete process.env.BUSINESS_API_TOKEN;
   delete process.env.REBATE_INDEXER_ADMIN_TOKEN;
+  delete process.env.CONTRACT_WALLET_AUTH_CHAINS;
 });
 
-const call = (wallets: unknown, headers: Record<string, string> = { authorization: `Bearer ${TOKEN}` }) =>
-  app.inject({ method: 'POST', url: '/business/partner', headers, payload: { wallets } });
+const call = (wallets: unknown, headers: Record<string, string> = { authorization: `Bearer ${TOKEN}` }, contract: unknown = {}) =>
+  app.inject({ method: 'POST', url: '/business/partner', headers, payload: { wallets, contract } });
 
 test('the answer equals the contract file exactly', async () => {
   const res = await call([PARTNER, OTHER]);
@@ -95,6 +96,7 @@ test('the contract file shows what the console is built against', () => {
 
 test.each([
   ['unset', undefined],
+  ['empty', ''],
   ['shorter than 32 characters', 'x'.repeat(31)],
   ['equal to the admin token', ADMIN],
 ])('off (404 for every caller) when the token is %s', async (_name, value) => {
@@ -117,6 +119,7 @@ test.each([
   ['a prefix of the token', { authorization: `Bearer ${TOKEN.slice(0, -1)}` }],
   ['the admin token', { authorization: `Bearer ${ADMIN}` }],
   ['not a bearer', { authorization: TOKEN }],
+  ['under another scheme', { authorization: `Digest ${TOKEN}` }],
 ])('401 when the bearer is %s', async (_name, headers) => {
   const res = await call([PARTNER], headers as Record<string, string>);
   expect(res.statusCode).toBe(401);
@@ -130,6 +133,8 @@ test.each([
   ['empty', []],
   ['11 entries', Array.from({ length: 11 }, (_, i) => addr(i + 1))],
   ['not a string', [42]],
+  ['a nested list', [[PARTNER]]],
+  ['an object', [{ wallet: PARTNER }]],
   ['too short', ['0x1234']],
   ['not hex', [`0x${'g'.repeat(40)}`]],
   ['a duplicate', [PARTNER, PARTNER]],
@@ -137,6 +142,13 @@ test.each([
 ])('400 when wallets is %s', async (_name, wallets) => {
   const res = await call(wallets);
   expect(res.statusCode).toBe(400);
+  expect(asked).toEqual([]);
+});
+
+test.each([['a list', [PARTNER]], ['a string', PARTNER], ['null', null]])('400 when the body is %s, and 413 above 1 MB', async (_name, payload) => {
+  const post = (body: string) => app.inject({ method: 'POST', url: '/business/partner', headers: { authorization: `Bearer ${TOKEN}`, 'content-type': 'application/json' }, payload: body });
+  expect((await post(JSON.stringify(payload))).statusCode).toBe(400);
+  expect((await post(JSON.stringify({ wallets: [PARTNER], contract: {}, pad: 'x'.repeat(1_100_000) }))).statusCode).toBe(413);
   expect(asked).toEqual([]);
 });
 
@@ -149,6 +161,42 @@ test('10 wallets pass, upper case is lowered, and the order asked is kept', asyn
   expect(swapped.wallets.map((w: { wallet: string }) => w.wallet)).toEqual([OTHER, PARTNER]);
   expect(swapped.wallets[0].affiliate).toBeNull();
   expect(swapped.wallets[1].affiliate.wallet).toBe(PARTNER);
+});
+
+// A contract wallet (a Safe) is controlled per chain: the same address on another chain can have other owners. POST
+// /partner pins each contract wallet to ONE chain (CONTRACT_WALLET_AUTH_CHAINS); this route keeps that rule for the
+// wallets the console proved by a contract signature. A wallet proved by its key is chain-independent, as there.
+test('a contract wallet is read only when the console proved it on its pinned chain; else it gets no figures', async () => {
+  const auth = { authorization: `Bearer ${TOKEN}` };
+  const figures = async (contract: unknown) => JSON.parse((await call([PARTNER, OTHER], auth, contract)).body).wallets;
+  const refused = { wallet: PARTNER, affiliate: null, fees: null };
+  // No pinned chain at all: refused, and neither dashboard is read for it. The wallet proved by its key is served.
+  expect(await figures({ [PARTNER]: [8453] })).toEqual([refused, fixture.wallets[1]]);
+  expect(asked).toEqual([OTHER]);
+  process.env.CONTRACT_WALLET_AUTH_CHAINS = JSON.stringify({ [PARTNER]: 10 });
+  expect(await figures({ [PARTNER]: [8453, 1] })).toEqual([refused, fixture.wallets[1]]); // proved on other chains only
+  expect(await figures({ [PARTNER]: [8453, 10] })).toEqual(fixture.wallets); // proved on the pinned chain
+  expect(await figures({})).toEqual(fixture.wallets); // proved by its key
+  process.env.CONTRACT_WALLET_AUTH_CHAINS = 'not json';
+  expect(await figures({ [PARTNER]: [10] })).toEqual([refused, fixture.wallets[1]]);
+  process.env.CONTRACT_WALLET_AUTH_CHAINS = JSON.stringify({ [PARTNER]: '10' });
+  expect(await figures({ [PARTNER]: [10] })).toEqual([refused, fixture.wallets[1]]);
+});
+
+test.each([
+  ['missing', undefined],
+  ['a list', [PARTNER]],
+  ['about a wallet that is not asked', { [OTHER]: [10] }],
+  ['in upper case', { [PARTNER.toUpperCase().replace('0X', '0x')]: [10] }],
+  ['without a chain', { [PARTNER]: [] }],
+  ['with a chain that is no id', { [PARTNER]: ['10'] }],
+  ['with a chain below 1', { [PARTNER]: [0] }],
+  ['with 11 chains', { [PARTNER]: Array.from({ length: 11 }, (_, i) => i + 1) }],
+  ['no list of chains', { [PARTNER]: 10 }],
+])('400 when contract is %s', async (_name, contract) => {
+  const res = await app.inject({ method: 'POST', url: '/business/partner', headers: { authorization: `Bearer ${TOKEN}` }, payload: { wallets: [PARTNER], contract } });
+  expect(res.statusCode).toBe(400);
+  expect(asked).toEqual([]);
 });
 
 test('rate limit: 120 a minute', async () => {

@@ -31,6 +31,18 @@ partner's dashboard, so it is a secret: at least 32 characters, and different
 from `REBATE_INDEXER_ADMIN_TOKEN`. Unset, too short, or equal to the admin
 token means the route is off (404 for every caller).
 
+The body is `{ wallets, contract }`. `contract` names each wallet the console
+proved by a contract signature (a Safe), with the chains it proved it on. Such
+a wallet is read only when one of those chains is its pinned chain in
+`CONTRACT_WALLET_AUTH_CHAINS`, the rule `POST /partner` applies: the same
+address on another chain can be a contract with other owners. Otherwise its
+entry is `{ affiliate: null, fees: null }` and nothing is read for it. A wallet
+proved by its own key is not listed and is read on any chain.
+
+To turn the route on, `BUSINESS_API_TOKEN` must reach the indexer process:
+`docker-compose.yml` passes each variable by name and does not pass this one
+yet. Add it to the indexer service's `environment` before the deploy.
+
 ## GitHub secrets required for deploy
 
 The deploy workflow joins the tailnet as an ephemeral `tag:ci` node and builds
