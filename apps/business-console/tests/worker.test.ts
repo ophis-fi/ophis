@@ -14,6 +14,7 @@ import { challengeIsOurs, configFor, credentialHash, fromBase64Url, newChallenge
 import { colour, LIMITS, SAFES, type SafeState } from '../src/server/chain.ts'
 import { LINK_ACTION, PROOF_ACTION, typedLink, typedProof } from '../src/server/typed.ts'
 import { WORDS } from '../src/server/words.ts'
+import * as demo from '../src/server/demo.ts'
 import { softwareAuthenticator } from './authenticator.ts'
 // Milestone 5b: the age library, here only to make what a browser makes (a sealed file) and to open it as the operator would.
 import * as age from 'age-encryption'
@@ -689,7 +690,7 @@ describe('d. request checks', () => {
   it('a state change is a JSON POST: no other method, no other content type', async () => {
     const m = await member()
     expect(routes.filter((route) => route.method !== 'GET').every((route) => route.method === 'POST')).toBe(true)
-    expect(routes.filter((route) => route.method === 'GET').map((route) => route.path).sort()).toEqual(['/api/audit', '/api/company/callback', '/api/me', '/api/onboarding', '/api/org', '/api/readiness'])
+    expect(routes.filter((route) => route.method === 'GET').map((route) => route.path).sort()).toEqual(['/api/audit', '/api/company/callback', '/api/desk', '/api/me', '/api/onboarding', '/api/org', '/api/overview', '/api/readiness'])
     expect((await call('GET', '/api/signout', { cookie: m.cookie })).status).toBe(404)
     for (const type of ['text/plain', 'application/x-www-form-urlencoded', 'multipart/form-data', null]) {
       expect((await call('POST', '/api/signout', { cookie: m.cookie, headers: { 'content-type': type } })).status).toBe(415)
@@ -2516,6 +2517,7 @@ describe('r. the role table', () => {
       'POST /api/recover/intent': 'public', 'POST /api/recover/cancel-intent': 'public', 'POST /api/recover/continue/start': 'public', 'POST /api/recover/continue/finish': 'public',
       'POST /api/recovery/:id/cancel': 'owner fresh', 'POST /api/recovery/:id/object': 'admin,approver,compliance fresh',
       'POST /api/support/ask': any,
+      'GET /api/overview': any, 'GET /api/desk': any,
       'POST /api/apply': 'public', 'POST /api/apply/check': 'public',
       'GET /api/onboarding': 'owner,compliance', 'POST /api/onboarding/wallet': 'owner fresh twoKeys', 'POST /api/onboarding/submit': 'owner fresh twoKeys', 'POST /api/onboarding/declaration': 'owner fresh twoKeys',
     })
@@ -7931,4 +7933,134 @@ describe('G. company sign-in: a company account proves who a new passkey belongs
   for (const route of ['POST /api/enrol/company', 'POST /api/company/start', 'POST /api/policy/company', 'GET /api/company/callback']) {
     it(`${route}: the isolation case`, async () => isolation[route](await member('Alder Asset Management'), await member('Birchfield Capital')))
   }
+})
+
+// ---- demo mode: overview, desk and partner figures. The figures are examples; the role table, the two-person
+// control, the audit log and the isolation are real. Each control here was seen failing once with it removed.
+const get = (path: string, m: Holder) => call('GET', path, { cookie: m.cookie })
+const setOrg = (orgId: string, set: string) => db.prepare(`UPDATE organisations SET ${set} WHERE id = ?`).bind(orgId).run()
+// A linked wallet, written straight to the table: linking is section y.
+async function demoWallet(orgId: string, label = 'Operations Safe', state = 'linked') {
+  const id = data.randomId()
+  await db.prepare(`INSERT INTO wallets (id, org_id, chain_id, address, kind, label, state, proof_nonce, proof_digest, proof_signature, proof_checked_at, linked_at) VALUES (?, ?, 10, ?, 'custodian', ?, ?, ?, '0x', '0x', ?, ?)`)
+    .bind(id, orgId, `0x${data.randomId()}${data.randomId().slice(0, 8)}`, label, state, data.randomId(), now, now).run()
+  return id
+}
+// An institution: an Owner with two keys, and one linked wallet.
+async function institution(name?: string) {
+  const o = await owner(name)
+  await setOrg(o.orgId, `kind = 'institution'`)
+  return { ...o, walletId: await demoWallet(o.orgId) }
+}
+const keysOf = (value: unknown): string[] => (value && typeof value === 'object' ? Object.entries(value).flatMap(([k, v]) => [...(Array.isArray(value) ? [] : [k]), ...keysOf(v)]) : [])
+const total = (rows: object[], field: string) => demo.shown(rows.reduce((n, r) => n + demo.fixed((r as Record<string, unknown>)[field], 2)!, 0n), 2)
+
+isolation['GET /api/overview'] = async (a, b) => {
+  await setOrg(b.orgId, `kind = 'institution'`)
+  await demoWallet(b.orgId, 'Wallet of B')
+  const before = await snapshot()
+  const [mine, theirs] = [await get('/api/overview', a), await get('/api/overview', b)]
+  expect([mine.body.kind, theirs.body.kind]).toEqual(['partner', 'institution']) // the session's organisation decides, nothing in the request
+  expect(JSON.stringify(mine.body)).not.toMatch(new RegExp(`${b.orgId}|${b.seatId}|Wallet of B|Birchfield`))
+  expect(await snapshot()).toBe(before)
+}
+isolation['GET /api/desk'] = async (a, b) => {
+  for (const m of [a, b]) await setOrg(m.orgId, `kind = 'institution'`)
+  const [own, other] = [await demoWallet(a.orgId, 'Wallet of A'), await demoWallet(b.orgId, 'Wallet of B')]
+  const before = await snapshot()
+  const view = await get('/api/desk', a)
+  expect(view.body.wallets.map((w: { id: string }) => w.id)).toEqual([own])
+  expect(JSON.stringify(view.body)).not.toMatch(new RegExp(`${other}|${b.orgId}|Wallet of B`))
+  expect(await snapshot()).toBe(before)
+}
+
+describe('H. demo mode: overview, desk and partner figures', () => {
+  for (const route of ['GET /api/overview', 'GET /api/desk']) {
+    it(`${route}: the isolation case`, async () => isolation[route](await member('Alder Asset Management'), await member('Birchfield Capital')))
+  }
+
+  it('D1: every total is computed from the rows, with integers: the partner figures agree with each other and the institution total is the sum of its balances', () => {
+    const p = demo.partner()
+    expect([p.volume, p.feesEarned, p.wallets, p.trades, p.averageTrade]).toEqual(['43983000.00', '109957.50', 1284, 9412, '4673.07'])
+    for (const rows of [p.days, p.chains, p.tokens, p.codes]) expect(total(rows, 'volume')).toBe(p.volume)
+    for (const [rows, field] of [[p.days, 'fees'], [p.codes, 'fee'], [p.payouts, 'fees']] as const) expect(total(rows, field), field).toBe(p.feesEarned)
+    expect(p.payouts.map((w) => [w.from, w.to, w.fees, w.status])[1]).toEqual(['2026-11-02', '2026-11-08', '26947.50', 'Paid'])
+    expect(p.payouts[0]).toMatchObject({ from: '2026-11-09', status: 'Accrued', transaction: null, paidAt: null })
+    expect(p.chains.map((c) => c.share)).toEqual(['65.0', '35.0'])
+    const i = demo.institution()
+    expect(i.totalEur).toBe('11363175.00')
+    expect(total(i.balances.flatMap((w) => w.rows), 'valueEur')).toBe(i.totalEur)
+    expect(total(i.balances, 'total')).toBe(i.totalEur)
+    expect(i.months[0]).toEqual({ month: '2026-11, to date', trades: 14, volumeEur: '17920000.00', feeBps: '1.00', feeEur: '1792.00' })
+    // The arithmetic never passes through a float: 0.1 + 0.2 is exact, and a string is cut, never rounded up.
+    expect(demo.shown(demo.fixed('0.1', 18)! + demo.fixed('0.2', 18)!, 18)).toBe('0.300000000000000000')
+    expect(demo.shown(demo.fixed('1.999999', 6)!, 2)).toBe('1.99')
+  })
+
+  it('D1: only the permitted assets and the two chains appear, in every answer and every export table', () => {
+    expect(Object.keys(demo.ASSETS).sort()).toEqual(['ETH', 'EURC', 'EURCV', 'EURe', 'USDC'])
+    expect(demo.CHAINS).toEqual({ 10: 'Optimism', 130: 'Unichain' })
+    const all = JSON.stringify([demo.partner(), demo.institution(), demo.desk(), demo.tables('partner', []), demo.tables('institution', [])])
+    expect(all).not.toMatch(/USDT|WBTC|DAI|Ethereum|Base|Arbitrum|Gnosis|Polygon/)
+    expect(demo.partner().tokens.map((t) => t.name).sort()).toEqual(Object.keys(demo.ASSETS).sort())
+    for (const o of demo.examples()) expect(demo.CHAINS[o.ticket.chainId], o.ref).toBeDefined()
+  })
+
+  it('D1: GET /api/overview answers every role, follows the kind of the organisation, says demo, and counts the approvals that really wait for this viewer', async () => {
+    const { o, a, v } = await trio()
+    const t = await colleague(o, 'trader')
+    const partner = await get('/api/overview', o)
+    expect(partner.body).toMatchObject({ demo: true, kind: 'partner', waiting: 0, ...demo.partner() })
+    await setOrg(o.orgId, `kind = 'institution'`)
+    for (const m of [o, a, v, t]) expect((await get('/api/overview', m)).body).toMatchObject({ demo: true, kind: 'institution', waiting: 0, totalEur: '11363175.00' })
+    expect((await get('/api/overview', o)).body.volume).toBeUndefined()
+    // One request waits: its requester cannot decide it, the Approver can, a Viewer and a Trader decide nothing.
+    expect((await act(o, v.seatId, 'role', { role: 'trader' })).status).toBe(200)
+    expect(await Promise.all([o, a, v, t].map(async (m) => (await get('/api/overview', m)).body.waiting))).toEqual([0, 1, 0, 0])
+    const admin = await colleague(o, 'admin')
+    expect((await get('/api/overview', admin)).body.waiting).toBe(1)
+  })
+
+  it('D1: the partner answer holds only what the partner earns: no field and no word of the fee of Ophis', async () => {
+    const o = await owner()
+    const { body } = await get('/api/overview', o)
+    expect([...new Set(keysOf(body))].filter((key) => /fee|bps|cost|margin|share|net|gross|ophis|protocol|platform/i.test(key)).sort()).toEqual(['fee', 'feeBps', 'fees', 'feesEarned', 'share'])
+    expect(body.feeBps).toBe('25.00') // the partner's own fee
+    expect(JSON.stringify(body)).not.toMatch(/ophis|1\.00/i)
+    expect(JSON.stringify(demo.tables('partner', []))).not.toMatch(/ophis/i)
+  })
+
+  it('D1: GET /api/desk is for institutions: a partner gets 403 institution_only, an institution its permitted assets, its linked wallets and the limits', async () => {
+    const o = await institution()
+    const pending = await demoWallet(o.orgId, 'Waits', 'pending')
+    await db.prepare(`INSERT INTO approvals (id, org_id, action, subject_id, payload, payload_hash, requester_seat_id, state, expires_at, created_at) VALUES (?, ?, 'wallet.link', ?, '{}', '', ?, 'pending', ?, ?)`)
+      .bind(data.randomId(), o.orgId, pending, o.seatId, now + DAY, now).run() // its link waits for a second person: the wallet is live, not linked
+    expect((await walletsOf(o)).map((w) => w.state).sort()).toEqual(['linked', 'pending'])
+    const gone = await demoWallet(o.orgId, 'Gone', 'unlinked')
+    const view = await get('/api/desk', o)
+    expect(view.status).toBe(200)
+    expect(view.body).toMatchObject({ demo: true, mayPrepare: true, limitEur: '5000000.00', maxOpen: 20, chains: [{ id: 10, name: 'Optimism' }, { id: 130, name: 'Unichain' }] })
+    expect(view.body.assets.map((x: { symbol: string }) => x.symbol)).toEqual(['ETH', 'USDC', 'EURC', 'EURe', 'EURCV'])
+    expect(view.body.wallets).toEqual([{ id: o.walletId, label: 'Operations Safe', address: expect.stringMatching(/^0x[0-9a-fA-F]{40}$/), chain: 'OP Mainnet' }])
+    expect(JSON.stringify(view.body)).not.toMatch(new RegExp(`${pending}|${gone}`))
+    for (const [role, may] of [['trader', true], ['admin', true], ['approver', false], ['compliance', false], ['viewer', false]] as const) {
+      expect((await get('/api/desk', await colleague(o, role))).body.mayPrepare, role).toBe(may)
+    }
+    await setOrg(o.orgId, `kind = 'partner'`)
+    const refused = await get('/api/desk', o)
+    expect([refused.status, refused.body]).toEqual([403, { error: 'institution_only' }])
+  })
+
+  it('D1: overview and desk are for an active organisation: unverified, frozen and closed ones get nothing', async () => {
+    const o = await institution()
+    for (const [state, error] of [['unverified', 'unverified'], ['frozen', 'org_frozen'], ['archived', 'org_closed']]) {
+      await setOrg(o.orgId, `state = '${state}'`)
+      for (const path of ['/api/overview', '/api/desk']) {
+        const answer = await get(path, o)
+        expect([answer.status, answer.body], `${state} ${path}`).toEqual([403, { error }])
+      }
+    }
+    await setOrg(o.orgId, `state = 'active'`)
+    expect((await get('/api/desk', o)).status).toBe(200)
+  })
 })

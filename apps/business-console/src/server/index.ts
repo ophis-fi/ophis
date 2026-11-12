@@ -4,6 +4,7 @@ import { checksum, colour, parseAddress, readBytes, readCapped, safeState, verif
 import { challengeIsOurs, configFor, creationOptions, credentialHash, newChallenge, phraseFor, requestOptions, seal, toBase64Url, unseal, userHandle, verifyAssertion, verifyRegistration, type Config, type Purpose } from './passkeys.ts'
 import { CHAIN_NAME, typedLink, typedProof, type ProofKind } from './typed.ts'
 import { ask } from './support.ts'
+import * as demo from './demo.ts'
 import { activateIntent, activationIntent, activationProof, apply, applyCheck, DOWNLOAD_REASONS, onboarding, ONBOARDING_EVENTS, operator, OPERATOR, SEAL, sealDeclaration, submit } from './onboarding.ts'
 import { WORDS } from './words.ts'
 import { authorizeUrl, exchange, IDPS, newFlow, PROVIDERS, verifyIdToken, type Provider } from './oidc.ts'
@@ -799,6 +800,23 @@ async function auditExport(c: Context) {
   return json(200, { name: `ophis-audit-log-${new Date(c.now).toISOString().slice(0, 10)}.csv`, csv: lines.map((cells) => `${cells.map(csvCell).join(',')}\r\n`).join('') })
 }
 
+// ---- demo mode: overview and desk (demo.ts). Example figures; the approvals counted are real. ----
+
+// The requests this viewer could decide now: a key role sees every open one, and never decides its own.
+const waiting = async (c: Context) => (await data.openRequests(c.env.DB, c.actor, c.now)).filter((request) => !request.mine).length
+async function overview(c: Context) {
+  const kind = c.session.org_kind
+  return json(200, { demo: true, kind, waiting: await waiting(c), ...(kind === 'partner' ? demo.partner() : demo.institution()) })
+}
+async function desk(c: Context) {
+  if (c.session.org_kind !== 'institution') return fail(403, 'institution_only')
+  const wallets = (await data.wallets(c.env.DB, c.actor.orgId, c.now)).filter((w) => w.state === 'linked')
+  return json(200, {
+    demo: true, ...demo.desk(), mayPrepare: demo.PREPARERS.includes(c.actor.role),
+    wallets: wallets.map((w) => ({ id: w.id, label: w.label, address: checksum(w.address), chain: CHAIN_NAME[w.chainId] ?? `Chain ${w.chainId}` })),
+  })
+}
+
 const ANY = data.ROLES
 const MANAGERS: readonly data.Role[] = ['owner', 'admin']
 const READERS: readonly data.Role[] = ['owner', 'compliance', 'viewer']
@@ -853,6 +871,8 @@ export const routes: Route[] = [
   { method: 'POST', path: '/api/recovery/:id/object', roles: ['admin', 'approver', 'compliance'], fresh: true, can: 'Object once to an account recovery that waits, which adds 72 hours', handler: recoveryObject },
   { method: 'GET', path: '/api/audit', roles: READERS, can: 'Read the audit log', handler: audit },
   { method: 'POST', path: '/api/audit/export', roles: READERS, fresh: true, can: 'Export the audit log', handler: auditExport },
+  { method: 'GET', path: '/api/overview', roles: ANY, can: 'See the overview of the organisation (demo figures)', handler: overview },
+  { method: 'GET', path: '/api/desk', roles: ANY, can: 'See the desk of an institution: permitted assets, orders and their records (demo)', handler: desk },
   { method: 'POST', path: '/api/support/ask', roles: ANY, unverified: true, can: 'Ask Support a question, which is matched to the fixed help texts', handler: ask },
   // Milestone 5 (onboarding.ts). The operator's routes are not here: they have their own hostname and no role.
   { method: 'POST', path: '/api/apply', roles: 'public', handler: apply },
