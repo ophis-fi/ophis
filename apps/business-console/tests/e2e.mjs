@@ -14,13 +14,17 @@
 // command stands in for the waits), is completed with the new passkey, and an old Owner passkey stops it; the
 // recovery sheet prints alone.
 // Milestone 6: the Owner opens Support, asks a question, reads a help text, presses "No" and gets the hand-over card.
+// Milestone 5b: the declaration prints alone; a scan with a marker is sealed in the browser and uploaded; the stored
+// object is sealed; the operator's command takes it for a reason, and the local test identity opens it: the original.
 // Milestone 5a: an application, its DNS proof, the activation by the recovery wallet, the review and the operator's approval.
 // Company sign-in: the applicant Owner sets Microsoft on the Onboarding page by signing in at the local stand-in provider
 // (scripts/idp-stub.mjs), invites a member by work address, the member signs in there and creates a passkey, the Owner approves.
 // Starts and stops its own local server on a throwaway database. Run: pnpm test:e2e
 import { execFileSync, spawn } from 'node:child_process'
-import { mkdirSync, readFileSync, rmSync } from 'node:fs'
+import { createHash } from 'node:crypto'
+import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync } from 'node:fs'
 import { request as httpRequest } from 'node:http'
+import { Decrypter } from 'age-encryption' // milestone 5b: opens the downloaded file with the local test identity, as the operator would offline
 import { chromium } from 'playwright-core'
 import { mnemonicToAccount } from 'viem/accounts'
 import { publish as publishTxt, start as startDnsStubs } from '../scripts/dns-stub.mjs' // milestone 5: the two local resolvers of "Check DNS"
@@ -745,9 +749,45 @@ try {
     && activated.after.includes('Signed and checked. The wallet is stored') && activated.asked.includes('eth_signTypedData_v4') && activated.fits)
   await on.getByRole('button', { name: 'The wallet has signed' }).click()
   await on.getByText('It signed the activation.').waitFor()
+  // Milestone 5b: the declaration, printed alone; the signed scan, sealed in this browser; the Worker keeps it sealed.
+  check('without the sealed declaration "Submit for review" is closed, and the page says why', await on.getByRole('button', { name: 'Submit for review' }).isDisabled() && await on.getByText('The signed declaration is still missing.').isVisible())
+  const paper = on.locator('article.sheet')
+  const paperText = await paper.innerText()
+  check('the declaration holds the server\'s values, a line for the signatory and the sentence that the signatory may bind the company; nothing on it can be typed',
+    ['Alder Custody S.A.', domain, key.address, 'OP Mainnet', 'Microsoft', 'Name of the signatory', 'Role', 'Date', 'Signature', 'the undersigned may bind the company', FOOTER].every((text) => paperText.includes(text))
+      && /[0-9a-f]{64}/.test(paperText) && (await paper.locator('input, textarea, select, button, [contenteditable]').count()) === 0)
+  await on.emulateMedia({ media: 'print' })
+  check('printed, the declaration stands alone', await paper.isVisible() && await on.getByRole('button', { name: 'Print the declaration' }).isHidden() && await on.locator('.bar').isHidden() && await on.locator('.band').isHidden() && await on.getByRole('button', { name: 'Submit for review' }).isHidden())
+  await on.screenshot({ path: '.shots/42-declaration-print.png', fullPage: true })
+  await on.emulateMedia({ media: 'screen' })
+  const MARKER = 'E2E-CLEAR-TEXT-MARKER-5b'
+  const scan = Buffer.from(`%PDF-1.4\n% ${MARKER}\n${'a signed declaration '.repeat(300)}\n%%EOF\n`)
+  const sent = []
+  on.on('request', (request) => request.url().endsWith('/api/onboarding/declaration') && sent.push(request.postDataBuffer()))
+  check('the page names the key it seals to', await on.getByText(/Sealed to key [0-9a-f]{64}/).isVisible())
+  await on.getByLabel(/Signed scan/).setInputFiles({ name: 'declaration.pdf', mimeType: 'application/pdf', buffer: scan })
+  await on.getByRole('button', { name: 'Seal and upload' }).click()
+  await on.getByText('Uploaded on').waitFor({ timeout: 15000 }).catch(async () => check(`the sealed file was uploaded (the page says: ${(await on.locator('[role=alert]').allInnerTexts()).join(' ')})`, false))
+  const stepText = await on.locator('.srow', { hasText: 'Uploaded on' }).innerText()
+  const shownSha = /SHA-256 of the sealed file\s+([0-9a-f]{64})/.exec(stepText)?.[1]
+  const sha256 = (bytes) => createHash('sha256').update(bytes).digest('hex')
+  // The local R2 simulation keeps each object as one file under the state folder.
+  const stored = readdirSync(STATE, { recursive: true }).filter((name) => /r2.*blobs.[^/\\]+$/.test(name)).map((name) => readFileSync(`${STATE}/${name}`))
+  check('what left the browser is the sealed file: the age header, no marker', sent.length === 1 && sent[0].subarray(0, 22).toString('latin1') === 'age-encryption.org/v1\n' && !sent[0].includes(MARKER))
+  check('the stored object is that sealed file: it starts with the age header, it does not hold the marker, and the step shows its date, size and SHA-256',
+    stored.length === 1 && stored[0].subarray(0, 22).toString('latin1') === 'age-encryption.org/v1\n' && !stored[0].includes(MARKER) && stored[0].equals(sent[0])
+      && sha256(stored[0]) === shownSha && stepText.includes(`${stored[0].length.toLocaleString('en-GB')} bytes, sealed`) && await both(on, '43-declaration-step'))
   await on.getByRole('button', { name: 'Submit for review' }).click()
   await on.getByText('Under review since').waitFor()
   const listed = operator('list')
+  const itemId = /^(\w{32}) {2}declaration/m.exec(operator('items', newOrg.id))?.[1] ?? ''
+  check('the operator\'s list and "items" show the sealed declaration with its size and SHA-256', new RegExp(`declaration +${itemId}  declaration  ${stored[0].length} bytes .* sha256 ${shownSha}`).test(listed) && itemId.length === 32)
+  const out = `${STATE}/item.age`
+  check('a download without a reason of the list is refused, and writes no file', refusedBy(() => operator('get', itemId, '--reason', 'curiosity', '--out', out)).includes('Refused (400): invalid') && !existsSync(out))
+  check('the operator command takes the item, still sealed', operator('get', itemId, '--reason', 'kyb_review', '--out', out).includes('Written, still sealed') && readFileSync(out).equals(stored[0]))
+  const opener = new Decrypter()
+  opener.addIdentity(readFileSync('.dev.seal-identity', 'utf8').trim()) // the local test identity; never printed
+  check('the local test identity opens the downloaded file, offline: equal to the original', Buffer.from(await opener.decrypt(readFileSync(out))).equals(scan))
   check('the operator command lists the organisation with its domain, the three words and the wallet', listed.includes(newOrg.id) && listed.includes(domain) && listed.includes(firstWords) && listed.includes(key.address) && listed.includes('ready           yes'))
   const submission = /submission ([0-9a-f]{16}) /.exec(listed)?.[1] ?? ''
   check('an approval that names no submission, or another one, is refused', refusedBy(() => operator('decide', newOrg.id, 'approve', '--submission', '0'.repeat(16), '--tier', 'standard', '--source', 'registry', '--evidence', 'e2e register extract', '--sha256', 'ab'.repeat(32), '--next-review', '2030-01-01')).includes('submitted again since that list'))
@@ -756,12 +796,16 @@ try {
   await on.reload()
   await on.getByText('Verified on').waitFor()
   check('the organisation is active and the Onboarding page says so, with the next review', await on.getByText('Next review 2030-01-01').isVisible() && await on.getByText('It is the recovery wallet in force.').isVisible() && (await status('/api/audit', on)) === 200)
+  check('once active the declaration stays: the step shows it and offers no upload', await on.getByText('Uploaded on').isVisible() && (await on.getByLabel(/Signed scan/).count()) === 0 && (await on.locator('article.sheet').count()) === 0)
   await on.goto(`${ORIGIN}/#/compliance`)
   await on.reload()
   await on.getByRole('heading', { name: 'KYB record' }).waitFor()
   check('the Compliance page shows the KYB record and the operator\'s row in the audit log',
-    await on.getByText('No document is stored.').isVisible() && await on.locator('dl.kv dd', { hasText: 'Alder Custody S.A.' }).isVisible() && await on.locator('dl.kv dd', { hasText: 'Approved' }).isVisible()
-    && await on.locator('dl.kv dd', { hasText: 'ab'.repeat(32) }).isVisible() && await on.getByText('Ophis operator: verification approved, organisation active').isVisible() && await both(on, '35-kyb-record', '#root dl.kv'))
+    await on.getByText('The one document stored is the signed declaration, sealed in your browser.').isVisible() && await on.locator('dl.kv dd', { hasText: 'Alder Custody S.A.' }).isVisible() && await on.locator('dl.kv dd', { hasText: 'Approved' }).isVisible()
+    && await on.locator('dl.kv dd', { hasText: 'ab'.repeat(32) }).isVisible() && await on.getByText('Ophis operator: verification approved, organisation active').isVisible() && await both(on, '35-kyb-record', '#root dl.kv >> nth=0'))
+  check('the KYB block lists the sealed declaration and the operator\'s download with its reason; the audit log has the row',
+    await on.locator('dl.kv dd', { hasText: shownSha }).isVisible() && await on.getByText('still sealed, for the review of the organisation.').isVisible()
+      && await on.getByText('Ophis operator: downloaded the sealed declaration, still sealed. Reason: the review of the organisation').isVisible() && await both(on, '44-kyb-sealed', '#root dl.kv >> nth=1'))
   check('the footer line is on the Onboarding and Compliance pages', await on.getByText(FOOTER).isVisible())
   // Company sign-in (C2): the Owner invites a member by work address. The member signs in at the provider, creates the
   // passkey, and the Owner approves with a passkey check. No words are shown or typed.
@@ -832,7 +876,7 @@ try {
   if (violations.length) console.error(violations.join("\n"))
   check(`no policy violation in the browser (${violations.length})`, violations.length === 0)
   check(`no request left the origin (${foreign.length})`, foreign.length === 0)
-  console.log('\nEnd-to-end run passed. Screenshots in .shots/: 01-signin to 41-company-approval')
+  console.log('\nEnd-to-end run passed. Screenshots in .shots/: 01-signin to 44-kyb-sealed')
 } catch (error) {
   console.error(error.message)
   process.exitCode = 1

@@ -323,6 +323,7 @@ export function Onboarding({ owner, onSignedOut }: { owner: boolean; onSignedOut
   // The signed scan: checked and sealed here, then sent. What leaves this browser is the sealed file and nothing else.
   const upload = async (event: FormEvent) => {
     event.preventDefault()
+    const form = event.currentTarget as HTMLFormElement // emptied after the upload: the chosen file must stay in the field until then
     if (!scan || !recipient || !sealKey) return
     setProblem('')
     setSealing(true)
@@ -336,7 +337,7 @@ export function Onboarding({ owner, onSignedOut }: { owner: boolean; onSignedOut
       } catch {
         return setProblem('The file could not be sealed in this browser. Nothing was sent.')
       }
-      await act('/api/onboarding/declaration', file, () => setScan(undefined), { 'x-seal-key': sealKey })
+      await act('/api/onboarding/declaration', file, () => { form.reset(); setScan(undefined) }, { 'x-seal-key': sealKey })
     } finally {
       setSealing(false)
     }
@@ -435,7 +436,7 @@ export function Onboarding({ owner, onSignedOut }: { owner: boolean; onSignedOut
             {!verified && owner && keys && sealKey && (
               <form className="stack" onSubmit={upload}>
                 <label className="field">Signed scan: PDF, PNG or JPEG, 10 MB at most
-                  <input key={scan ? 'chosen' : 'empty'} className="input" type="file" required accept="application/pdf,image/png,image/jpeg" onChange={(event) => setScan(event.target.files?.[0])} />
+                  <input className="input" type="file" required accept="application/pdf,image/png,image/jpeg" onChange={(event) => setScan(event.target.files?.[0])} />
                 </label>
                 <div><button className="btn primary md" type="submit" disabled={!scan || sealing} title="Encrypts the file in this browser, asks for your passkey, then sends the sealed file."><Icon name="shield-check" size={16} />{sealing ? 'Sealing' : 'Seal and upload'}</button></div>
               </form>
@@ -497,9 +498,9 @@ export function KybRecord() {
       )}
       {view && (
         <>
-          <h3 className="h-panel">Signed declaration</h3>
+          <h3 className="h-panel sub">Signed declaration</h3>
           {view.sealed ? <SealedItem item={view.sealed} /> : <p className="fine">None uploaded. See <a href="/#/onboarding">Onboarding</a>.</p>}
-          <h3 className="h-panel">Downloads by the Ophis operator</h3>
+          <h3 className="h-panel sub">Downloads by the Ophis operator</h3>
           {view.downloads.length === 0 ? <p className="fine">None. Each download of the sealed file is listed here and in the audit log, with its reason.</p> : (
             <ul className="stack">
               {view.downloads.map((d) => <li key={`${d.at}${d.item}${d.reason}`}>{stamp(d.at)}: still sealed, for {d.reason}. <span className="fine">Item <span className="mono">{d.item.slice(0, 8)}</span>{d.item === view.sealed?.id ? '' : ', since replaced'}</span></li>)}
