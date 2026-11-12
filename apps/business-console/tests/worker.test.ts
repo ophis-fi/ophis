@@ -7090,10 +7090,19 @@ describe('E. onboarding: a company applies, proves its domain, is activated and 
       'a second argument': head.replace('mlkem768x25519 ', 'mlkem768x25519 AAAA ') + clear,
       'a longer body': head.replace('\n--- ', 'AAAA\n--- ') + clear,
       'text in the stanza': `age-encryption.org/v1\n-> mlkem768x25519 ${clear}${mac}${'x'.repeat(64)}`,
+      // The same length as the real header, so that only the part named is wrong.
+      'another stanza type of the same length': latin1(file).replace('-> mlkem768x25519 ', '-> mlkem768x25518 '),
+      'a share one shorter and a body one longer': `age-encryption.org/v1\n-> mlkem768x25519 ${'A'.repeat(1493)}\n${'A'.repeat(44)}${mac}${clear}`,
     }
     for (const [what, text] of Object.entries(forged)) expect((await upload(a, fromLatin1(text))).body, what).toEqual({ error: 'not_sealed' })
     expect([await itemsOf(a.orgId), await objects(), (await snapshot()).includes(MARKER)]).toEqual([[], kept, false])
     expect((await upload(a, file)).status).toBe(200)
+    // A closed organisation (refused by the operator) uploads nothing: its declaration stays as the operator saw it.
+    const r = await underReview()
+    expect((await decideOn(r.orgId, { decision: 'refuse', reason: 'not_eligible', tier: 'standard', source: 'registry' })).body).toEqual({ state: 'archived' })
+    const [theirs] = await itemsOf(r.orgId)
+    expect((await upload(r, file)).body).toEqual({ error: 'org_closed' })
+    expect([await itemsOf(r.orgId), (await objectOf(theirs.id)) !== null]).toEqual([[theirs], true])
   })
 })
 

@@ -771,7 +771,8 @@ try {
   const MARKER = 'E2E-CLEAR-TEXT-MARKER-5b'
   const scan = Buffer.from(`%PDF-1.4\n% ${MARKER}\n${'a signed declaration '.repeat(300)}\n%%EOF\n`)
   const sent = []
-  on.on('request', (request) => request.url().endsWith('/api/onboarding/declaration') && sent.push(request.postDataBuffer()))
+  const around = [] // the address and the headers of that request: the name and the type of the clear file stay in the browser too
+  on.on('request', (request) => request.url().includes('/api/onboarding/declaration') && (sent.push(request.postDataBuffer()), around.push(request.url() + JSON.stringify(request.headers()))))
   check('the page names the key it seals to', await on.getByText(/Sealed to key [0-9a-f]{64}/).isVisible())
   await on.getByLabel(/Signed scan/).setInputFiles({ name: 'declaration.pdf', mimeType: 'application/pdf', buffer: scan })
   await on.getByRole('button', { name: 'Seal and upload' }).click()
@@ -781,7 +782,8 @@ try {
   const sha256 = (bytes) => createHash('sha256').update(bytes).digest('hex')
   // The local R2 simulation keeps each object as one file under the state folder.
   const stored = readdirSync(STATE, { recursive: true }).filter((name) => /r2.*blobs.[^/\\]+$/.test(name)).map((name) => readFileSync(`${STATE}/${name}`))
-  check('what left the browser is the sealed file: the age header, no marker', sent.length === 1 && sent[0].subarray(0, 22).toString('latin1') === 'age-encryption.org/v1\n' && !sent[0].includes(MARKER))
+  check('what left the browser is the sealed file: the age header, no marker, and neither the name nor the type of the clear file', sent.length === 1 && sent[0].subarray(0, 22).toString('latin1') === 'age-encryption.org/v1\n' && !sent[0].includes(MARKER)
+    && around.length === 1 && !/declaration\.pdf|application\/pdf/i.test(around[0] + sent[0].toString('latin1')))
   check('the stored object is that sealed file: it starts with the age header, it does not hold the marker, and the step shows its date, size and SHA-256',
     stored.length === 1 && stored[0].subarray(0, 22).toString('latin1') === 'age-encryption.org/v1\n' && !stored[0].includes(MARKER) && stored[0].equals(sent[0])
       && sha256(stored[0]) === shownSha && stepText.includes(`${stored[0].length.toLocaleString('en-GB')} bytes, sealed`) && await both(on, '43-declaration-step', '.srow:has-text("Uploaded on")'))

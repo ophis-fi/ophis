@@ -253,7 +253,7 @@ export const sealKey = async (env: { ENVIRONMENT: string; SEAL_RECIPIENT?: strin
  * length and anything that is not age are refused. The stanza does not say whose key it is, and what follows the
  * header is opaque: a sender who writes a correct header in front of a clear file is not found out here.
  */
-const HEADER = /^age-encryption\.org\/v1\n-> mlkem768x25519 [A-Za-z0-9+/]{1494}\n[A-Za-z0-9+/]{43}\n--- [A-Za-z0-9+/]{43}\n$/
+const HEADER = /^age-encryption\.org\/v1\n-> mlkem768x25519 [A-Za-z0-9+/]{1494}\n[A-Za-z0-9+/]{43}\n--- [A-Za-z0-9+/]{43}\n/ // 1,627 characters exactly, so no end anchor
 export const sealedShape = (bytes: Uint8Array) => bytes.length >= 1627 + 32 && HEADER.test(String.fromCharCode(...bytes.subarray(0, 1627)))
 
 interface Sealed { id: string; kind: string; size: number; sha256: string; key: string; generation: string; at: number }
