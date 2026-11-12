@@ -118,8 +118,10 @@ function App() {
 
       <div className="shell">
         <nav className="rail" aria-label="Main">
-          <a className="nav" href="/#/overview" data-tip="Overview" aria-current={current('overview')}><Icon name="layout-dashboard" /><span className="lbl">Overview</span></a>
-          <a className="nav" href="/#/desk" data-tip="Desk" aria-current={current('desk')}><Icon name="arrow-left-right" /><span className="lbl">Desk</span></a>
+          {/* The server refuses both to an organisation that is not yet verified: the menu says so instead of leading back to Onboarding. */}
+          {([['overview', 'layout-dashboard', 'Overview'], ['desk', 'arrow-left-right', 'Desk']] as const).map(([to, icon, label]) => me?.organisation.state === 'unverified'
+            ? <button key={to} className="nav" type="button" disabled title="After verification" data-tip={`${label} (after verification)`}><Icon name={icon} /><span className="lbl">{label}</span></button>
+            : <a key={to} className="nav" href={`/#/${to}`} data-tip={label} aria-current={current(to)}><Icon name={icon} /><span className="lbl">{label}</span></a>)}
           <a className="nav" href="/#/compliance" data-tip="Compliance" aria-current={current('compliance')}><Icon name="shield-check" /><span className="lbl">Compliance</span></a>
           <a className="nav" href="/#/organisation" data-tip="Organisation" aria-current={current('organisation')}><Icon name="building-2" /><span className="lbl">Organisation</span></a>
           <a className="nav" href="/#/onboarding" data-tip="Onboarding" aria-current={current('onboarding')}><Icon name="clipboard-check" /><span className="lbl">Onboarding</span></a>

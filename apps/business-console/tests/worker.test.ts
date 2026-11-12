@@ -8181,6 +8181,10 @@ describe('H. demo mode: overview, desk and partner figures', () => {
     expect(words).toContain('Demo order approved. Not sent: demo')
     expect(words).toContain('Change requested: prepare a demo order')
     expect(words.join(' ')).not.toMatch(/Unlisted|order\.demo/)
+    // The log alone names the order: each of its rows carries the reference the blotter shows.
+    const about = ((await get('/api/audit', o)).body.rows as { event: string; target: string }[]).filter((r) => /demo order/i.test(r.event))
+    expect(about.length).toBeGreaterThanOrEqual(2)
+    expect([...new Set(about.map((r) => r.target))]).toEqual([`ORD-${id.slice(0, 8)}`])
   })
 
   it('D2: a refused order and a cancelled one: the checker refuses, the preparer cancels, nobody else does', async () => {

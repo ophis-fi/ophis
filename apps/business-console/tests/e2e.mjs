@@ -729,6 +729,7 @@ try {
   const newOrg = await on.evaluate(() => fetch('/api/me').then((response) => response.json()).then((me) => me.organisation))
   check('the applicant signs in to an organisation that is not yet verified, and lands on Onboarding', newOrg.state === 'unverified' && newOrg.name === 'Alder Custody S.A.' && await on.getByText('Not submitted.').isVisible())
   check('an unverified organisation does not reach the audit log', (await status('/api/audit', on)) === 403)
+  check('its menu shows Overview and Desk switched off', await on.getByRole('button', { name: 'Overview', exact: true }).isDisabled() && await on.getByRole('button', { name: 'Desk', exact: true }).isDisabled())
   await arrive(applicant, false)
   await secondKey(applicant)
   await on.goto(`${ORIGIN}/#/onboarding`)

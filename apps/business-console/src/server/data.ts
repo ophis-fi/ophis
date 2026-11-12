@@ -1275,7 +1275,8 @@ export async function auditRows(db: D1Database, actor: Actor, before: number | n
     .prepare(`SELECT a.seq, a.at, a.action, a.detail, a.prev_hash AS prevHash, a.hash,
                      COALESCE(w.display_name, (SELECT 'Recovery wallet ' || x.label FROM wallets x WHERE x.org_id = a.org_id AND x.id = a.actor_id AND a.actor_kind = 'anchor')) AS who,
                      COALESCE(t.display_name, ${named('credentials', 'seat_id')}, ${named('enrolment_tickets', 'seat_id')}, ${named('sessions', 'seat_id')}, ${named('approvals', 'subject_id')}, ${named('recovery_requests', 'seat_id')},
-                       (SELECT x.label FROM wallets x WHERE x.org_id = a.org_id AND x.id = a.subject_id)) AS target
+                       (SELECT x.label FROM wallets x WHERE x.org_id = a.org_id AND x.id = a.subject_id),
+                       (SELECT 'ORD-' || substr(x.id, 1, 8) FROM approvals x WHERE x.org_id = a.org_id AND a.subject_id IN (x.id, x.subject_id) AND x.action = 'order.demo')) AS target
               FROM audit_log a LEFT JOIN seats w ON w.org_id = a.org_id AND w.id = a.actor_id LEFT JOIN seats t ON t.org_id = a.org_id AND t.id = a.subject_id
               WHERE a.org_id = ? AND (? IS NULL OR a.seq < ?) ORDER BY a.seq * ? LIMIT ?`)
     .bind(actor.orgId, before, before, limit < 0 ? 1 : -1, limit).all<AuditLine>()
