@@ -59,7 +59,20 @@ const stopDnsStubs = startDnsStubs() // ports 8790 and 8791
 const stopIdp = startIdp() // port 8792
 const stopIndexer = startIndexer() // port 8793
 // detached: the server gets its own process group, so the whole group can be stopped at the end.
-const server = spawn('node_modules/.bin/wrangler', ['dev', '--persist-to', STATE, '--port', PORT], { env, detached: true, stdio: 'ignore' })
+const serve = (...more) => spawn('node_modules/.bin/wrangler', ['dev', '--persist-to', STATE, '--port', PORT, ...more], { env, detached: true, stdio: 'ignore' })
+const stopServer = async () => {
+  try {
+    process.kill(-server.pid, 'SIGTERM')
+  } catch {
+    // already gone
+  }
+  for (let i = 0; i < 20 && (await reachable()); i++) await new Promise((resolve) => setTimeout(resolve, 250))
+  if (await reachable()) {
+    process.kill(-server.pid, 'SIGKILL')
+    console.error('the server needed SIGKILL')
+  }
+}
+let server = serve()
 let browser
 try {
   for (let i = 0; i < 60 && !(await reachable()); i++) await new Promise((resolve) => setTimeout(resolve, 500))
@@ -119,8 +132,8 @@ try {
     await on.getByRole('heading', { name: 'People, wallets and two-person approval.' }).waitFor()
   }
   await page.getByRole('heading', { name: 'Your flow, in one view.' }).waitFor()
-  check('after sign-in an active organisation lands on Overview, with the demo banner and the footer line',
-    await page.getByText('Demo data. No order is sent and no funds move. Figures are examples.').isVisible() && await page.getByText(FOOTER).isVisible() && (await page.evaluate(() => location.hash)) !== '#/organisation')
+  check('after sign-in an active organisation lands on Overview: a partner with no linked wallet is told so, with no example and no demo banner, and the footer line',
+    await page.getByText('No wallet is linked.').isVisible() && !(await page.getByText('Demo data.').count()) && !(await page.locator('.stats').count()) && await page.getByText(FOOTER).isVisible() && (await page.evaluate(() => location.hash)) !== '#/organisation')
   await toOrganisation(page)
   await page.getByRole('button', { name: 'End session' }).waitFor()
   check('the Organisation page shows the member, the passkey and the session',
@@ -980,10 +993,30 @@ try {
       await tess.page.setViewportSize({ width: 1440, height: 900 })
       return ok && await ticket.isVisible() && !(await tess.page.getByText('Use a larger screen.').isVisible())
     })())
+  // A limit order: the ticket shows the allowed range, which is the server's (20% around its reference price).
+  const eth = (await tess.page.evaluate(() => fetch('/api/desk').then((response) => response.json()))).assets.find((a) => a.symbol === 'ETH')
+  const grouped = (text) => text.replace(/\B(?=(\d{3})+\.)/g, ',')
+  await ticket.getByLabel('Limit', { exact: true }).check()
+  check('a limit order shows the allowed range of the limit price, as the server gives it',
+    Number(eth.limitLow) === Number(eth.eur) * 0.8 && Number(eth.limitHigh) === Number(eth.eur) * 1.2
+    && await ticket.getByText(`Allowed range: ${grouped(eth.limitLow)} to ${grouped(eth.limitHigh)} EUR, within 20% of the reference price.`).isVisible())
+  await ticket.getByLabel(/Limit price/).fill(`${eth.limitHigh.split('.')[0]}.000001`)
+  await ticket.getByRole('button', { name: 'Review order' }).click()
+  await tess.page.getByText('The limit price is outside the allowed range').waitFor()
+  check('a limit price one unit above the range is refused, and the ticket with the range fits the screenshots', await both(tess.page, '54-desk-limit-range'))
+  await ticket.getByLabel(/Limit price/).fill(eth.limitHigh)
+  await ticket.getByRole('button', { name: 'Review order' }).click()
+  await tess.page.locator('[data-step="review"]').getByText(`Limit, at ${grouped(eth.limitHigh)} EUR per ETH`).waitFor()
+  await tess.page.getByRole('button', { name: 'Back to the ticket' }).click()
+  await ticket.getByLabel('Market', { exact: true }).check()
   await ticket.getByLabel('Amount to sell').fill('1e9')
   await ticket.getByRole('button', { name: 'Review order' }).click()
   await tess.page.getByText('Enter the amount as a plain number above zero').waitFor()
   await ticket.getByLabel('Amount to sell').fill('250000')
+  // Five minutes pass (the local command): every passkey check is stale. The estimate needs none; sending asks for the passkey.
+  check('the stale command aged the passkey checks', run('node', ['scripts/dev.mjs', 'stale', '--persist', STATE]).includes('Every passkey check is stale'))
+  const orderCalls = []
+  tess.page.on('request', (request) => orderCalls.push(`${request.method()} ${new URL(request.url()).pathname}`))
   await ticket.getByRole('button', { name: 'Review order' }).click()
   const review = tess.page.locator('[data-step="review"]')
   await review.getByRole('heading', { name: 'Review order' }).waitFor()
@@ -992,8 +1025,11 @@ try {
     && await review.getByText('Nothing is signed at this step.').isVisible() && await review.getByText('Example figures. The real cost of an order is shown before it is signed.').isVisible()
     && await both(tess.page, '48-desk-review'))
   const SENTENCE = 'Sell 250,000.00 EURC for ETH, market, Optimism, from Demo wallet'
+  check('the estimate asked for no passkey', orderCalls.join() === 'POST /api/desk/orders' && await review.getByText('Sending asks for your passkey.').isVisible())
   await review.getByRole('button', { name: 'Send for approval' }).click()
   await tess.page.getByText('Sent for approval.').waitFor()
+  check('sending the order asked for the passkey first: refused, a passkey check, then sent',
+    orderCalls.slice(1, 5).join() === 'POST /api/desk/orders,POST /api/stepup/start,POST /api/stepup/finish,POST /api/desk/orders')
   const blotter = (who) => who.page.locator('section', { has: who.page.getByRole('heading', { name: 'Order blotter' }) }).locator('tbody tr')
   check('the order is sent for approval, reads in words, and is the first row of the blotter with its real state',
     await tess.page.getByText(new RegExp(`${SENTENCE} \\(0x[0-9a-fA-F]{4}\\.{3}[0-9a-fA-F]{4}\\)\\.`)).isVisible() && /^ORD-[0-9a-f]{8}.*Pending approval/.test(await blotter(tess).first().textContent()) && (await blotter(tess).count()) === 8)
@@ -1017,7 +1053,7 @@ try {
   await record.waitFor()
   check('the record of the order: who prepared it, the ticket, the checks, the estimate, who decided, and no execution',
     await record.getByText(SENTENCE).isVisible() && await record.getByText(/Tess Trader \(Trader\) on 20\d\d-/).isVisible() && await record.getByText(/Approved by Abe Approver on 20\d\d-/).isVisible()
-    && await record.getByText('Execution: none, demo').isVisible() && (await record.locator('.checks li').count()) === 7 && await record.getByText('The wallet is linked to this organisation').isVisible()
+    && await record.getByText('Execution: none, demo').isVisible() && (await record.locator('.checks li').count()) === 8 && await record.getByText('The wallet is linked to this organisation, on the chain of the order').isVisible() && await record.getByText('A limit price is within 20% of the reference price').isVisible()
     && await record.getByText('84.7372 ETH').isVisible() && await record.getByText('Example figures. The real cost of an order is shown before it is signed.').isVisible()
     && await both(tess.page, '49-desk-record', '#record'))
   await tess.page.setViewportSize({ width: 390, height: 844 })
@@ -1054,28 +1090,108 @@ try {
     && await both(tess.page, '45-overview-institution'))
   for (const who of [dana, tess, abe]) await who.context.close()
 
-  // A partner organisation (the plain seed): its overview, and the desk that is not for it.
-  const pat = await firstOwner(seeded().match(/http\S+\/#\/enrol\/\S+/)[0])
+  // ---- partner figures: live ----
+  // The stand-in for the rebate indexer answers the contract file of the indexer's own test, read where it is. Every
+  // number asserted below is read from that file, none is typed here.
+  const contract = JSON.parse(readFileSync(CONTRACT, 'utf8'))
+  const P = contract.wallets.find((w) => w.affiliate)
+  const A = P.affiliate
+  const usd = (n) => n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+  const weth = (n) => n.toLocaleString('en-US', { maximumFractionDigits: 6 })
+  const STUB = `http://127.0.0.1:${INDEXER_PORT}`
+  const stubMode = async (name) => check(`the stand-in is in mode ${name}`, (await (await fetch(`${STUB}/stub/${name}`)).json()).mode === name)
+  const askStub = (headers, wallets = [P.wallet, `0x${'d'.repeat(40)}`]) => fetch(`${STUB}/business/partner`, { method: 'POST', headers: { 'content-type': 'application/json', ...headers }, body: JSON.stringify({ wallets }) })
+  const stubBearer = { authorization: `Bearer ${readFileSync('.dev.vars', 'utf8').match(/^INDEXER_TOKEN=(.+)$/m)?.[1]}` } // never printed
+  const goodAnswer = await askStub(stubBearer)
+  const answered = await goodAnswer.json()
+  check('the stand-in has the real route\'s bearer rule and serves the contract file: its partner wallet as it is, any other wallet with no code and zero fees',
+    (await askStub({})).status === 401 && (await askStub({ authorization: 'Bearer wrong-token-wrong-token-wrong-token-0000' })).status === 401 && (await askStub(stubBearer, [])).status === 400 && (await askStub(stubBearer, [P.wallet, P.wallet])).status === 400
+    && goodAnswer.status === 200 && JSON.stringify(answered.wallets[0]) === JSON.stringify(P) && answered.wallets[1].affiliate === null && answered.wallets[1].fees.currentCycle.owedUsd === 0 && answered.wallets[1].fees.recipient === `0x${'d'.repeat(40)}`)
+
+  // A partner from "seed --live": one linked "Demo wallet" at the contract's partner address.
+  const liveSeed = seeded('--live')
+  check('seed --live says what it made', liveSeed.includes('a partner with one linked wallet named "Demo wallet"'))
+  const pat = await firstOwner(liveSeed.match(/http\S+\/#\/enrol\/\S+/)[0])
   await pat.page.getByRole('heading', { name: 'Your flow, in one view.' }).waitFor()
-  const chart = pat.page.locator('.chart svg[role="img"]')
-  check('the partner overview: tiles, the daily chart as SVG with a text alternative, what you earn, the split, codes, the ledger and attributed wallets',
-    await pat.page.getByText(BANNER).isVisible() && await pat.page.getByText('$43,983,000').isVisible() && await pat.page.getByText('$109,957.50').isVisible() && await pat.page.getByText('9,412').first().isVisible()
-    && /Daily volume from 2026-10-11 to 2026-11-09: 43,983,000\.00 USD in total/.test(await chart.getAttribute('aria-label')) && (await chart.locator('rect').count()) === 30
-    && await pat.page.getByText('Your fee.').isVisible() && await pat.page.getByRole('heading', { name: 'By chain' }).isVisible() && await pat.page.getByRole('heading', { name: 'Affiliate codes' }).isVisible()
-    && await pat.page.getByRole('heading', { name: 'Payout ledger' }).isVisible() && await pat.page.getByText('Showing 8 of 1,284, by volume.').isVisible() && await pat.page.getByText(FOOTER).isVisible())
-  const partnerText = await pat.page.locator('main').innerText()
-  check('the partner overview holds only what the partner earns, and no word of a licence or of payout terms', !/1\.00 bps|Ophis fee|licen[cs]ed|regulated|authori[sz]ed|MiCA|compliant|paid weekly|guarantee|honest|—/i.test(partnerText))
-  check('the partner overview fits a phone', await both(pat.page, '46-overview-partner'))
+  await pat.page.getByText('Figures from the Ophis rebate service, read at').waitFor()
+  const partnerMain = pat.page.locator('main')
+  const referredRows = pat.page.locator('.pw section', { has: pat.page.getByRole('heading', { name: 'Referred wallets' }) }).locator('tbody tr')
+  const monthRows = pat.page.locator('.pw section', { has: pat.page.getByRole('heading', { name: 'Partner fee' }) }).locator('tbody tr')
+  const partnerTile = (caption) => pat.page.locator('.stats .c', { has: pat.page.locator('.cap', { hasText: new RegExp(`^${caption.replace(/[()]/g, '\\$&')}$`) }) }).locator('.num').textContent()
+  check('the partner overview shows the stand-in\'s figures for the linked wallet: the tiles, read from the contract file',
+    (await partnerTile('Referred volume this cycle')) === `$${usd(A.currentCycleVolumeUsd)}` && (await partnerTile('Lifetime referred volume')) === `$${usd(A.lifetimeReferredVolumeUsd)}` && (await partnerTile('Referred wallets')) === String(A.referredCount)
+    && (await partnerTile('Estimated earnings this cycle')) === `$${usd(A.estimatedCurrentCycleEarningsUsd)}` && (await partnerTile('Paid to date')) === `$${usd(A.paidToDateUsd)}` && await pat.page.getByText(`${weth(A.paidToDateWeth)} WETH`, { exact: true }).isVisible())
+  check('the wallet as the console shows wallets, the share, the next payout run, the codes, and the line under an estimate',
+    await pat.page.getByRole('heading', { name: /Demo wallet/ }).isVisible() && (await pat.page.locator('.pw-head .mono').textContent()).toLowerCase() === P.wallet && await pat.page.locator('.pw-head', { hasText: 'OP Mainnet' }).isVisible()
+    && await pat.page.getByText(`Your share: ${A.rateOfNetFeePct}% of the net fee on referred volume`).isVisible() && await pat.page.getByText(`Next payout run: ${A.nextPayoutAt.slice(0, 19).replace('T', ' ')}Z`).isVisible()
+    && (await pat.page.locator('.pw-facts .code').allTextContents()).join() === A.activeCodes.join() && (await pat.page.getByText('Estimate. The amount is fixed when a payout is made.').count()) === 2)
+  check('the referred wallets with how each was attributed, in plain words, and the partner fee with its months',
+    (await referredRows.count()) === A.referees.length && (await referredRows.allTextContents()).every((row, i) => row.includes(A.referees[i].wallet) && row.includes(usd(A.referees[i].lifetimeVolumeUsd)))
+    && (await referredRows.locator('td:nth-child(2)').allTextContents()).join('|') === A.referees.map((r) => ({ link: 'Referral link', code: 'Partner code in the order', 'link-and-code': 'Referral link and partner code' })[r.attribution]).join('|')
+    && (await partnerTile('Owed this cycle')) === `$${usd(P.fees.currentCycle.owedUsd)}` && await pat.page.getByText(`Your share $${usd(P.fees.currentCycle.partnerShareUsd)} plus $${usd(P.fees.currentCycle.carriedInUsd)} carried.`).isVisible()
+    && (await partnerTile('Trades waiting for a price')) === String(P.fees.currentCycle.pendingUnpricedTrades) && (await partnerTile('Paid to date (WETH)')) === weth(P.fees.lifetime.paidWeth) && (await partnerTile('Trades')) === String(P.fees.lifetime.tradeCount)
+    && (await monthRows.count()) === P.fees.recentBatches.length && (await monthRows.allTextContents()).every((row, i) => row.startsWith(P.fees.recentBatches[i].cycleMonth) && row.includes(usd(P.fees.recentBatches[i].owedUsd)) && row.includes(usd(P.fees.recentBatches[i].carriedUsd))))
+  const partnerText = await partnerMain.innerText()
+  check('no demo banner, no example, none of the withheld figures, no word of a licence or of payout terms; the footer line',
+    !(await pat.page.getByText(BANNER).count()) && !/example|demo data|illustrative/i.test(partnerText)
+    && [A.currentCycleNetFeeUsd, P.fees.currentCycle.grossFeeUsd, P.fees.minPayoutUsd].every((n) => !partnerText.includes(usd(n))) && !partnerText.includes(String(P.fees.partnerShareBps)) && !/bps|minimum/i.test(partnerText)
+    && !/Ophis fee|licen[cs]ed|regulated|authori[sz]ed|MiCA|compliant|paid (weekly|monthly)|guarantee|honest|—/i.test(partnerText) && await pat.page.getByText(FOOTER).isVisible())
+  check('the live partner overview fits a phone', await both(pat.page, '52-overview-partner-live'))
+
+  // One CSV, downloaded and read back.
+  const [referredFile] = await Promise.all([pat.page.waitForEvent('download'), pat.page.getByRole('button', { name: 'Referred wallets CSV' }).click()])
+  const referredLines = readFileSync(await referredFile.path(), 'utf8').split('\r\n').filter(Boolean)
+  check('the export of the referred wallets downloads: named ophis-partner-, the partner wallet and source = live in every row, every referred wallet of the contract file',
+    /^ophis-partner-referred-\d{4}-\d\d-\d\d\.csv$/.test(referredFile.suggestedFilename()) && referredLines[0] === '"Partner wallet","Wallet name","Referred wallet","Attributed by","First seen (UTC)","Lifetime volume (USD)","source"'
+    && referredLines.length === A.referees.length + 1 && referredLines.slice(1).every((row, i) => row.toLowerCase().startsWith(`"${P.wallet}","demo wallet","${A.referees[i].wallet}",`) && row.endsWith(`,"${A.referees[i].lifetimeVolumeUsd}","live"`)))
+
+  // The figures are not available: status 500, a wrong shape, an answer after 6 seconds. Never an example, never a part.
+  const patOverview = () => pat.page.goto(`${ORIGIN}/#/overview`).then(() => pat.page.reload())
+  const unavailable = pat.page.locator('[data-state="figures_unavailable"]')
+  for (const failing of ['500', 'shape', 'slow']) {
+    await stubMode(failing)
+    await patOverview()
+    await unavailable.waitFor({ timeout: 15_000 })
+    check(`the indexer answers with ${failing}: "The figures are not available right now", a Retry button, and no figure at all`,
+      await unavailable.getByText('The figures are not available right now.').isVisible() && await unavailable.getByRole('button', { name: 'Retry' }).isVisible()
+      && !(await pat.page.locator('.stats').count()) && !(await partnerMain.innerText()).includes('$') && !(await pat.page.getByRole('button', { name: /CSV/ }).count()))
+    if (failing === '500') check('the unavailable state fits a phone', await both(pat.page, '53-overview-partner-unavailable'))
+  }
+  await stubMode('ok')
+  await unavailable.getByRole('button', { name: 'Retry' }).click()
+  await pat.page.getByText('Figures from the Ophis rebate service, read at').waitFor()
+  check('Retry reads again: the figures are back', (await partnerTile('Referred volume this cycle')) === `$${usd(A.currentCycleVolumeUsd)}`)
   await pat.page.getByRole('link', { name: 'Desk' }).first().click()
   await pat.page.getByRole('heading', { name: 'The desk is for institutions.' }).waitFor()
   check('a partner sees "The desk is for institutions.", no ticket, and the server refuses the desk',
-    (await pat.page.locator('form.ticket').count()) === 0 && await pat.page.getByText(BANNER).isVisible() && (await status('/api/desk', pat.page)) === 403 && await both(pat.page, '51-desk-partner'))
+    (await pat.page.locator('form.ticket').count()) === 0 && (await status('/api/desk', pat.page)) === 403 && await both(pat.page, '51-desk-partner'))
+
+  // A partner with no linked wallet (the plain seed).
+  const nell = await firstOwner(seeded().match(/http\S+\/#\/enrol\/\S+/)[0])
+  await nell.page.getByRole('heading', { name: 'Your flow, in one view.' }).waitFor()
+  const noWallet = nell.page.locator('[data-state="no_wallet"]')
+  await noWallet.waitFor()
+  check('a partner with no linked wallet: "No wallet is linked", a link to Organisation, and no figure',
+    await noWallet.getByText('No wallet is linked.').isVisible() && (await noWallet.getByRole('link', { name: 'Link a wallet under Organisation' }).getAttribute('href')) === '/#/organisation'
+    && !(await nell.page.locator('.stats').count()) && !(await nell.page.getByText(BANNER).count()) && await both(nell.page, '55-overview-partner-no-wallet'))
+  await nell.context.close()
+
+  // Not connected: the same server without the indexer's address. The session survives the restart (it is a row).
+  await stopServer()
+  server = serve('--var', 'INDEXER_URL:off')
+  for (let i = 0; i < 60 && !(await reachable()); i++) await new Promise((resolve) => setTimeout(resolve, 500))
+  await patOverview()
+  const notConnected = pat.page.locator('[data-state="not_connected"]')
+  await notConnected.waitFor({ timeout: 15_000 })
+  check('without the indexer\'s address: "Your figures are not connected yet", a link to Support, and no figure',
+    await notConnected.getByText('Your figures are not connected yet.').isVisible() && (await notConnected.getByRole('link', { name: 'Ask Support' }).getAttribute('href')) === '/#/support'
+    && !(await pat.page.locator('.stats').count()) && await both(pat.page, '56-overview-partner-not-connected'))
   await pat.context.close()
 
   if (violations.length) console.error(violations.join("\n"))
   check(`no policy violation in the browser (${violations.length})`, violations.length === 0)
   check(`no request left the origin (${foreign.length})`, foreign.length === 0)
-  console.log('\nEnd-to-end run passed. Screenshots in .shots/: 01-signin to 51-desk-partner')
+  console.log('\nEnd-to-end run passed. Screenshots in .shots/: 01-signin to 56-overview-partner-not-connected')
 } catch (error) {
   console.error(error.message)
   process.exitCode = 1
@@ -1084,14 +1200,5 @@ try {
   stopIdp()
   stopIndexer()
   await browser?.close()
-  try {
-    process.kill(-server.pid, 'SIGTERM')
-  } catch {
-    // already gone
-  }
-  for (let i = 0; i < 20 && (await reachable()); i++) await new Promise((resolve) => setTimeout(resolve, 250))
-  if (await reachable()) {
-    process.kill(-server.pid, 'SIGKILL')
-    console.error('the server needed SIGKILL')
-  }
+  await stopServer()
 }
