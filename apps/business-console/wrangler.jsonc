@@ -25,5 +25,7 @@
   "r2_buckets": [{ "binding": "SEALED", "bucket_name": "ophis-business-sealed" }],
   // Selects the constants in src/server/passkeys.ts. The relying-party id and origin are never read from a request.
   "vars": { "ENVIRONMENT": "local" },
+  // M10: once a day the Worker reads the OFAC list file (SANCTIONS_URL; unset: nothing is read) and then the figures of the partners.
+  "triggers": { "crons": ["17 3 * * *"] },
   "dev": { "ip": "127.0.0.1", "port": 8787 },
 }

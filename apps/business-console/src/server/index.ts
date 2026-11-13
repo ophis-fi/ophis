@@ -6,11 +6,11 @@ import { CHAIN_NAME, typedLink, typedProof, type ProofKind } from './typed.ts'
 import { ask } from './support.ts'
 import * as demo from './demo.ts'
 import * as partner from './partner.ts'
-import { activateIntent, activationIntent, activationProof, apply, applyCheck, DOWNLOAD_REASONS, onboarding, ONBOARDING_EVENTS, operator, OPERATOR, screening, SEAL, sealDeclaration, submit } from './onboarding.ts'
+import { activateIntent, activationIntent, activationProof, apply, applyCheck, DOWNLOAD_REASONS, onboarding, ONBOARDING_EVENTS, operator, OPERATOR, screening, SEAL, sealDeclaration, submit, sync } from './onboarding.ts'
 import { WORDS } from './words.ts'
 import { authorizeUrl, exchange, IDPS, newFlow, PROVIDERS, verifyIdToken, type Provider } from './oidc.ts'
 
-export interface Env { DB: D1Database; ASSETS: Fetcher; SEALED: R2Bucket; ENVIRONMENT: string; CHALLENGE_KEY: string; MICROSOFT_CLIENT_SECRET?: string; GOOGLE_CLIENT_SECRET?: string; SEAL_RECIPIENT?: string; INDEXER_URL?: string; INDEXER_TOKEN?: string }
+export interface Env { DB: D1Database; ASSETS: Fetcher; SEALED: R2Bucket; ENVIRONMENT: string; CHALLENGE_KEY: string; MICROSOFT_CLIENT_SECRET?: string; GOOGLE_CLIENT_SECRET?: string; SEAL_RECIPIENT?: string; INDEXER_URL?: string; INDEXER_TOKEN?: string; SANCTIONS_URL?: string }
 
 const IDLE_MS = 15 * 60_000
 const ABSOLUTE_MS = 12 * 60 * 60_000
@@ -1061,4 +1061,10 @@ export async function handle(request: Request, env: Env, now: () => number = Dat
   return response
 }
 
-export default { fetch: (request: Request, env: Env) => handle(request, env) } satisfies ExportedHandler<Env>
+/** M10, the daily run (one cron in wrangler.jsonc): the read of the OFAC list file. `now` is injectable, as for handle(). */
+export const daily = (env: Env, now: number) => sync(env, now)
+
+export default {
+  fetch: (request: Request, env: Env) => handle(request, env),
+  scheduled: (_controller, env, context) => context.waitUntil(daily(env, Date.now())),
+} satisfies ExportedHandler<Env>

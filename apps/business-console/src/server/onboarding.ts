@@ -7,6 +7,7 @@
 import { checksum, colour, parseAddress, readCapped, safeState, verify, verifyDigest, type SafeState } from './chain.ts'
 import { commit, countHour, DOMAIN, emailAt, freezing, LISTED, listed, listedWallet, PEOPLE, randomId, REVIEWED, sha256Hex, type Actor, type WalletKind } from './data.ts'
 import { challengeIsOurs, creationOptions, credentialHash, fromBase64Url, newChallenge, phraseFor, seal, unseal, verifyRegistration, type Config } from './passkeys.ts'
+import { indexerBase } from './partner.ts'
 import { CHAIN_NAME, typedProof } from './typed.ts'
 
 // Constants per environment, like those of passkeys.ts, and never read from a request.
@@ -40,6 +41,12 @@ const ADDRESS = /^0x[0-9a-f]{40}$/
 const MAX_ADDRESSES = 20_000 // of one list
 const MAX_LIST_BODY = 1_500_000 // 20,000 addresses are about 900 KB of JSON
 const CHUNK = 99 // D1 binds at most 100 values per statement: the list code and 99 addresses
+// M10: the OFAC list as a file the console reads (SANCTIONS_URL; made by scripts/ofac-list.mjs). One GET, 5 seconds, 2 MB.
+// hold: a file whose count differs from the loaded one by more than a fifth is not loaded. staleMs: no good read for 3 days is said to the operator.
+export const FEED = { timeoutMs: 5000, maxBytes: 2_000_000, hold: 0.2, staleMs: 3 * 24 * 60 * 60 * 1000 }
+/** The addresses of one load, checked: 1 to 20,000, each 0x and 40 hex characters in lower case, none twice. */
+const listable = (addresses: unknown): addresses is string[] => Array.isArray(addresses) && addresses.length >= 1 && addresses.length <= MAX_ADDRESSES
+  && addresses.every((address) => typeof address === 'string' && ADDRESS.test(address)) && new Set(addresses).size === addresses.length
 
 // The words of this file's audit actions, for the audit page and the export (spread into EVENTS of index.ts).
 export const ONBOARDING_EVENTS: Record<string, string> = {
@@ -311,12 +318,15 @@ async function recordScreening(db: D1Database, orgId: string, screening: Screeni
 // is frozen in a commit of its own, with a row in its own log that names the wallet. Everything that decides the freeze
 // is read again inside that commit. A freeze that fails leaves the list loaded: the same load, run again, finds the organisation again.
 // ponytail: every listed wallet of every organisation, at each load. Page the hits when they pass some hundreds.
-async function replaceList(db: D1Database, list: string, sha256: string, addresses: string[], now: number) {
+// M10: `published` is the day of the source file when the load is a read of the list file (sync), which is then a good
+// read (checked_at); a manual load has none and leaves checked_at as it was. Either load clears what was held.
+async function replaceList(db: D1Database, list: string, sha256: string, addresses: string[], now: number, published: string | null = null) {
   const chunks = Array.from({ length: Math.ceil(addresses.length / CHUNK) }, (_, i) => addresses.slice(i * CHUNK, (i + 1) * CHUNK))
   await db.batch([
     db.prepare('DELETE FROM sanctioned_addresses WHERE list = ?').bind(list),
-    db.prepare(`INSERT INTO sanctions_lists (list, sha256, entries, loaded_at) VALUES (?, ?, ?, ?)
-                ON CONFLICT (list) DO UPDATE SET sha256 = excluded.sha256, entries = excluded.entries, loaded_at = excluded.loaded_at`).bind(list, sha256, addresses.length, now),
+    db.prepare(`INSERT INTO sanctions_lists (list, sha256, entries, loaded_at, published, checked_at) VALUES (?, ?, ?, ?, ?, ?)
+                ON CONFLICT (list) DO UPDATE SET sha256 = excluded.sha256, entries = excluded.entries, loaded_at = excluded.loaded_at, published = excluded.published,
+                  checked_at = COALESCE(excluded.checked_at, checked_at), held = NULL`).bind(list, sha256, addresses.length, now, published, published === null ? null : now),
     ...chunks.map((part) => db.prepare(`INSERT INTO sanctioned_addresses (list, address) VALUES ${part.map((_, n) => `(?1, ?${n + 2})`).join(', ')}`).bind(list, ...part)),
   ])
   const hits = (await db.prepare(`SELECT o.id, o.name, o.state, w.address FROM wallets w JOIN organisations o ON o.id = w.org_id WHERE ${LISTED} ORDER BY o.id, w.rowid`).bind(now).all<{ id: string; name: string; state: string; address: string }>()).results
@@ -394,7 +404,7 @@ async function storeSealed(db: D1Database, actor: Actor, item: { id: string; siz
 
 // The route's context, as much as these handlers read (index.ts builds it).
 interface Ctx {
-  env: { DB: D1Database; SEALED: R2Bucket; ENVIRONMENT: string; CHALLENGE_KEY: string; SEAL_RECIPIENT?: string }
+  env: { DB: D1Database; SEALED: R2Bucket; ENVIRONMENT: string; CHALLENGE_KEY: string; SEAL_RECIPIENT?: string; SANCTIONS_URL?: string }
   now: number; config: Config; body: Record<string, unknown>; params: Record<string, string | undefined>
 }
 interface Member extends Ctx { actor: Actor }
@@ -553,6 +563,47 @@ export async function onboarding(c: Member) {
   })
 }
 
+// M10: the OFAC list, read from the file at SANCTIONS_URL (the address rule of the indexer's: https, or plain http to
+// this machine in the local environment). ONE GET, no redirect followed, 5 seconds, 2 MB, and every field checked.
+// Outcomes: not_connected (no acceptable address: the feature is off); unavailable (any failure at all: nothing
+// changes, and the last good read grows old); same (the file is the one loaded: only the time of the check moves);
+// held (the file is not loaded and the reason is stored: older than the loaded one's day, or its count differs from
+// the loaded entries by more than a fifth; a first load is never held); loaded (through replaceList: atomic, and it
+// freezes as a manual load does). The operator's manual load stays the fallback and the override: it clears what is held.
+type Hits = Awaited<ReturnType<typeof replaceList>>
+export type Synced = { outcome: 'not_connected' | 'unavailable' | 'same' } | { outcome: 'held'; reason: 'older' | 'shrunk' | 'grown' } | { outcome: 'loaded'; entries: number; published: string; hits: Hits }
+export async function sync(env: { DB: D1Database; ENVIRONMENT: string; SANCTIONS_URL?: string }, now: number): Promise<Synced> {
+  const url = indexerBase({ ENVIRONMENT: env.ENVIRONMENT, INDEXER_URL: env.SANCTIONS_URL })
+  if (!url) return { outcome: 'not_connected' }
+  let file: { sha256: string; published: string; addresses: string[] }
+  try {
+    const response = await fetch(url, { redirect: 'manual', signal: AbortSignal.timeout(FEED.timeoutMs) })
+    const f = JSON.parse((response.status === 200 && (await readCapped(response.body, FEED.maxBytes))) || '') as Record<string, unknown> | null
+    const day = typeof f?.published === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(f.published) ? Date.parse(`${f.published}T00:00:00Z`) : NaN
+    // list is "ofac"; the SHA-256 of the source; published a real day, not after tomorrow; count equals the number of addresses, which are as a load takes them.
+    if (!f || f.list !== 'ofac' || typeof f.sha256 !== 'string' || !SHA256.test(f.sha256) || !(day <= now + 24 * 60 * 60 * 1000) || new Date(day).toISOString().slice(0, 10) !== f.published
+      || !listable(f.addresses) || f.count !== f.addresses.length) throw Object.assign(new Error('shape'), { name: 'shape' })
+    file = { sha256: f.sha256, published: f.published as string, addresses: f.addresses }
+  } catch (error) {
+    console.error('sanctions list unavailable', error instanceof Error ? error.name : 'unknown') // one word: no address of the file
+    return { outcome: 'unavailable' }
+  }
+  const loaded = await env.DB.prepare(`SELECT sha256, entries, published FROM sanctions_lists WHERE list = 'ofac'`).first<{ sha256: string; entries: number; published: string | null }>()
+  const reason = !loaded || loaded.sha256 === file.sha256 ? null
+    : loaded.published !== null && file.published < loaded.published ? 'older' : file.addresses.length < loaded.entries * (1 - FEED.hold) ? 'shrunk' : file.addresses.length > loaded.entries * (1 + FEED.hold) ? 'grown' : null
+  if (!loaded || (!reason && loaded.sha256 !== file.sha256)) return { outcome: 'loaded', entries: file.addresses.length, published: file.published, hits: await replaceList(env.DB, 'ofac', file.sha256, file.addresses, now, file.published) }
+  await env.DB.prepare(`UPDATE sanctions_lists SET checked_at = ?, held = ? WHERE list = 'ofac'`).bind(now, reason).run()
+  return reason ? { outcome: 'held', reason } : { outcome: 'same' }
+}
+/** For the operator's list: each loaded list, and whether the feed is stale (SANCTIONS_URL is set and the last good read of its list is missing or older than 3 days). A feed that stops must be seen. */
+async function listsOf(env: { DB: D1Database; ENVIRONMENT: string; SANCTIONS_URL?: string }, now: number) {
+  const rows = (await env.DB.prepare('SELECT list, entries, published, loaded_at AS loadedAt, checked_at AS checkedAt, held FROM sanctions_lists ORDER BY list')
+    .all<{ list: string; entries: number; published: string | null; loadedAt: number | null; checkedAt: number | null; held: string | null }>()).results
+  const fed = indexerBase({ ENVIRONMENT: env.ENVIRONMENT, INDEXER_URL: env.SANCTIONS_URL }) !== null
+  if (fed && !rows.some((r) => r.list === 'ofac')) rows.push({ list: 'ofac', entries: 0, published: null, loadedAt: null, checkedAt: null, held: null }) // set, and never read
+  return rows.map((r) => ({ ...r, stale: fed && r.list === 'ofac' && !((r.checkedAt ?? 0) > now - FEED.staleMs) }))
+}
+
 // GET /api/screening (the roles that read the audit log; active organisations only): the Compliance page's section.
 // The organisation's own screening is answered only when its newest record says "clear": no other outcome is ever sent
 // to a browser. With it: the loaded address lists, which are no client's, and each linked wallet of this organisation.
@@ -659,7 +710,7 @@ export async function submit(c: Member) {
 // of an organisation and take one, still sealed, for a stated reason, and (sanctions screening) record a screening and
 // load the addresses of a public list. Nothing else: no route here takes a passkey, a member or a client's wallet address.
 
-interface OperatorEnv { DB: D1Database; SEALED: R2Bucket; ENVIRONMENT: string; CHALLENGE_KEY: string; OPERATOR_TOKEN?: string }
+interface OperatorEnv { DB: D1Database; SEALED: R2Bucket; ENVIRONMENT: string; CHALLENGE_KEY: string; OPERATOR_TOKEN?: string; SANCTIONS_URL?: string }
 
 // What the operator compares before a decision: the domain, the first Owner's words and passkey hash, the recovery
 // wallet with its kind and its colour (read on both endpoints now, as if it were in force), whether A7 holds, and the
@@ -680,7 +731,7 @@ async function list(c: Ctx) {
       wallet: wallet && { ...walletView(wallet), colour: colour({ kind: wallet.kind, snapshot: wallet.snapshot, inForce: true }, live) },
     })
   }
-  return json(200, { organisations, reviews: await reviewsDue(c.env.DB, c.now) })
+  return json(200, { organisations, reviews: await reviewsDue(c.env.DB, c.now), lists: await listsOf(c.env, c.now) })
 }
 
 const MAX_REVIEW_MS = 5 * 365 * 24 * 60 * 60 * 1000 // owner's call: a next review lies at most 5 years ahead; a date further off would hide the organisation from "Reviews due" for good
@@ -753,10 +804,11 @@ async function screen(c: Ctx) {
 // is refused, so that a file the command could not read never empties the list.
 async function loadList(c: Ctx) {
   const { list, sha256, addresses } = c.body
-  if (typeof list !== 'string' || !Object.hasOwn(LISTS, list) || typeof sha256 !== 'string' || !SHA256.test(sha256) || !Array.isArray(addresses) || addresses.length < 1 || addresses.length > MAX_ADDRESSES
-    || !addresses.every((address) => typeof address === 'string' && ADDRESS.test(address)) || new Set(addresses).size !== addresses.length) return fail(400, 'invalid')
-  return json(200, { list, entries: addresses.length, hits: await replaceList(c.env.DB, list, sha256, addresses as string[], c.now) })
+  if (typeof list !== 'string' || !Object.hasOwn(LISTS, list) || typeof sha256 !== 'string' || !SHA256.test(sha256) || !listable(addresses)) return fail(400, 'invalid')
+  return json(200, { list, entries: addresses.length, hits: await replaceList(c.env.DB, list, sha256, addresses, c.now) })
 }
+// M10. POST /api/operator/sanctions/sync: the operator asks for the read of the list file now, as the daily run does it.
+const syncNow = async (c: Ctx) => json(200, await sync(c.env, c.now))
 // Milestone 5b. GET .../organisations/:id/items: the sealed items of one organisation, as the server knows them.
 async function items(c: Ctx) {
   return ID.test(c.params.id ?? '') ? json(200, { items: await sealedOf(c.env.DB, c.params.id!) }) : fail(404, 'not_found')
@@ -801,6 +853,7 @@ export const operatorRoutes: { method: 'GET' | 'POST'; path: string; handler: (c
   { method: 'POST', path: '/api/operator/items/:id/download', handler: download },
   { method: 'POST', path: '/api/operator/organisations/:id/screening', handler: screen },
   { method: 'POST', path: '/api/operator/sanctions', handler: loadList, maxBody: MAX_LIST_BODY },
+  { method: 'POST', path: '/api/operator/sanctions/sync', handler: syncNow },
 ]
 
 // The same request checks as on the other two hosts, then the token. Digests are compared, so the time it takes says

@@ -10,6 +10,8 @@
 //   node scripts/operator.mjs screen <organisation id> --outcome clear|review|hit --list eu=<file> [--list un=<file>] [--list ofac=<file>] --next-review 2027-11-11 [--tier standard --source registry]
 //                                       the result of a search made offline, for an active or a frozen organisation. "review" and "hit" freeze it. --tier and --source: only for an organisation with no record yet (a local seed)
 //   node scripts/operator.mjs addresses <code>=<file>   loads the wallet addresses of a list file (every 0x and 40 hex characters), in place of that list's earlier ones; prints each organisation that holds one, frozen if it was active
+//   node scripts/operator.mjs sync      M10: reads the OFAC list file now (SANCTIONS_URL), as the daily run does: loaded, the same, held (older, shrunk, grown: not loaded; compare
+//                                       it and load it by hand with "addresses"), or not readable. "list" ends with one line per loaded list and a WARNING when one is held or stale
 //   node scripts/operator.mjs freeze|unfreeze <organisation id>        an unfreeze is refused while the newest screening says "review" or "hit", or a linked or pending wallet is on a loaded list
 //   node scripts/operator.mjs items <organisation id>                  the sealed items of an organisation: id, kind, size, date, SHA-256, key
 //   node scripts/operator.mjs get <item id> --reason <code> --out <file>   the item, still sealed; the reason goes into the client's audit log
@@ -111,6 +113,7 @@ const answer = load ? await call('POST', '/api/operator/sanctions', load)
   : id !== undefined && !/^[0-9a-f]{32}$/.test(id) ? null
   : command === 'list' ? await call('GET', base)
   : command === 'invite' ? await call('POST', '/api/operator/invites', {})
+  : command === 'sync' ? await call('POST', '/api/operator/sanctions/sync', {})
   : command === 'decide' && id && decision ? await call('POST', `${base}/${id}/decision`, { decision, tier: values.tier, source: values.source, reason: values.reason, evidenceRef: values.evidence, evidenceSha256: values.sha256, nextReview: values['next-review'], submission: values.submission, screening: values.screening && { outcome: values.screening, lists } })
   : command === 'screen' && id ? await call('POST', `${base}/${id}/screening`, { outcome: values.outcome, lists, nextReview: values['next-review'], tier: values.tier, source: values.source })
   : (command === 'freeze' || command === 'unfreeze') && id ? await call('POST', `${base}/${id}/${command}`, {})
@@ -119,7 +122,7 @@ const answer = load ? await call('POST', '/api/operator/sanctions', load)
   : null
 if (!answer) {
   console.error('usage: node scripts/operator.mjs invite | list | decide <id> approve|more|refuse [--submission --tier --source --reason --evidence --sha256 --next-review --screening clear|review|hit --list eu=<file> --list un=<file> --list ofac=<file>]'
-    + ' | screen <id> --outcome clear|review|hit --list eu=<file> [--list un=<file>] [--list ofac=<file>] --next-review YYYY-MM-DD [--tier --source] | addresses eu|un|ofac=<file> | freeze <id> | unfreeze <id> | items <id>'
+    + ' | sync | screen <id> --outcome clear|review|hit --list eu=<file> [--list un=<file>] [--list ofac=<file>] --next-review YYYY-MM-DD [--tier --source] | addresses eu|un|ofac=<file> | freeze <id> | unfreeze <id> | items <id>'
     + ' | get <item id> --reason kyb_review|periodic_review|authority_request|client_request|incident --out <file>')
   process.exit(1)
 }
@@ -135,6 +138,8 @@ if (answer.status !== 200) {
   console.error(`Refused (${answer.status}): ${error ? `${error}${WHY[error] ? `: ${WHY[error]}` : ''}` : 'no answer from the operator API: is "pnpm dev" running?'}`)
   process.exit(1)
 }
+const count = (n) => `${n} ${n === 1 ? 'address' : 'addresses'}`
+const hitLines = (hits) => (hits.length ? hits.map((h) => `HIT  ${h.id}  ${h.name}  was ${h.state}  ${h.address}  ${h.frozen ? 'frozen now' : 'not changed'}`).join('\n') : 'No linked or pending wallet is on a loaded list.')
 const sealed = (i) => `${i.id}  ${i.kind}  ${i.size} bytes  ${new Date(i.at).toISOString()}  sha256 ${i.sha256}  sealed to key ${i.key.slice(0, 16)} (${i.generation})`
 if (command === 'items') console.log(answer.body.items.length ? answer.body.items.map(sealed).join('\n') : 'No sealed item.')
 else if (command === 'get') {
@@ -148,8 +153,15 @@ else if (command === 'get') {
   console.log(`Written, still sealed: ${values.out}\n${answer.bytes.length} bytes  sha256 ${sha256}  sealed to key ${answer.key.slice(0, 16)}\nThe download is in the organisation's audit log, with the reason "${values.reason}". Open it offline: see README, "Sealed declaration".`)
 } else if (command === 'invite') console.log(`Application code, one use, valid until ${new Date(answer.body.expiresAt).toISOString().slice(0, 16).replace('T', ' ')} UTC:\n${answer.body.code}`)
 else if (load) {
-  console.log(`Loaded ${answer.body.entries} ${answer.body.entries === 1 ? 'address' : 'addresses'} of the list "${answer.body.list}" (file SHA-256 ${load.sha256}).`)
-  console.log(answer.body.hits.length ? answer.body.hits.map((h) => `HIT  ${h.id}  ${h.name}  was ${h.state}  ${h.address}  ${h.frozen ? 'frozen now' : 'not changed'}`).join('\n') : 'No linked or pending wallet is on a loaded list.')
+  console.log(`Loaded ${count(answer.body.entries)} of the list "${answer.body.list}" (file SHA-256 ${load.sha256}).`)
+  console.log(hitLines(answer.body.hits))
+} else if (command === 'sync') {
+  const read = answer.body
+  console.log(read.outcome === 'loaded' ? `Loaded ${count(read.entries)} of the list "ofac", published ${read.published}.\n${hitLines(read.hits)}`
+    : read.outcome === 'same' ? 'The list file is the one already loaded. Nothing changed.'
+    : read.outcome === 'held' ? `WARNING  held (${read.reason}): the list file was not loaded. Compare it, and load it by hand ("addresses ofac=<file>") if it is right.`
+    : read.outcome === 'unavailable' ? 'WARNING  the list file could not be read, or is not what it must be. Nothing changed.'
+    : 'SANCTIONS_URL is not set: there is no list file to read.')
 } else if (command !== 'list') console.log(`Done: ${id} is now ${answer.body.state}.`)
 else {
   if (!answer.body.organisations.length) console.log('Nothing is under review.')
@@ -169,4 +181,10 @@ else {
   const day = (time) => (time ? new Date(time).toISOString().slice(0, 10) : 'none')
   console.log(!answer.body.reviews.length ? 'No review is due, and no organisation is frozen.' : `Reviews due, and frozen organisations (no screening, the next review passed or within 14 days, or frozen):\n${answer.body.reviews
     .map((r) => `${r.id}  ${r.name}  ${r.state}  last screening ${r.outcome ? `${r.outcome} on ${day(r.screenedAt)}` : 'none'}  next review ${day(r.nextReview)}${r.lastAction ? `  frozen by ${r.lastAction}${r.lastDetail ? ` (${r.lastDetail})` : ''} on ${day(r.lastAt)}` : ''}`).join('\n')}`)
+  // M10: the loaded lists. A feed that stops, or a file that was not loaded, must be seen here.
+  for (const l of answer.body.lists) {
+    console.log(`LIST  ${l.list}  ${count(l.entries)}  published ${l.published ?? 'not known'}  loaded ${day(l.loadedAt)}  last good read of the list file ${day(l.checkedAt)}`)
+    if (l.held) console.log(`WARNING  the list file read last was not loaded: ${l.held}. Compare it, and load it by hand ("addresses ${l.list}=<file>") if it is right.`)
+    if (l.stale) console.log('WARNING  no good read of the list file for 3 days or more: the loaded list may be out of date. Run "sync".')
+  }
 }

@@ -6321,7 +6321,7 @@ describe('E. onboarding: a company applies, proves its domain, is activated and 
     expect(onboarding.operatorRoutes.map((r) => `${r.method} ${r.path}`)).toEqual([
       'GET /api/operator/organisations', 'POST /api/operator/organisations/:id/decision', 'POST /api/operator/organisations/:id/freeze', 'POST /api/operator/organisations/:id/unfreeze', 'POST /api/operator/invites',
       'GET /api/operator/organisations/:id/items', 'POST /api/operator/items/:id/download', // milestone 5b
-      'POST /api/operator/organisations/:id/screening', 'POST /api/operator/sanctions', // sanctions screening
+      'POST /api/operator/organisations/:id/screening', 'POST /api/operator/sanctions', 'POST /api/operator/sanctions/sync', // sanctions screening; M10: the read of the list file
     ])
     expect(OP).toBe('http://operator.localhost:8787')
     const rows = await snapshot()
@@ -7382,7 +7382,7 @@ describe('E. onboarding: a company applies, proves its domain, is activated and 
     // ---- S3: wallets against the loaded address lists ----
     const load = (list: unknown, addresses: unknown, more: Record<string, unknown> = {}, options: Parameters<typeof op>[2] = {}) => op('POST', '/api/operator/sanctions', { ...options, body: { list, sha256: H('f'), addresses, ...more } })
     const numbered = (n: number) => Array.from({ length: n }, (_, i) => `0x${i.toString(16).padStart(40, '0')}`)
-    const loaded = async () => [(await db.prepare('SELECT * FROM sanctions_lists ORDER BY list').all()).results, (await db.prepare('SELECT list, address FROM sanctioned_addresses ORDER BY list, address').all<{ list: string; address: string }>()).results.map((r) => `${r.list} ${r.address}`)]
+    const loaded = async () => [(await db.prepare('SELECT list, sha256, entries, loaded_at FROM sanctions_lists ORDER BY list').all()).results, (await db.prepare('SELECT list, address FROM sanctioned_addresses ORDER BY list, address').all<{ list: string; address: string }>()).results.map((r) => `${r.list} ${r.address}`)]
     // As it is between the two steps of a load: the address is on a list, and no organisation was looked at yet.
     const listDirect = (address: string) => db.batch([
       db.prepare(`INSERT INTO sanctions_lists (list, sha256, entries, loaded_at) VALUES ('ofac', ?, 1, ?) ON CONFLICT (list) DO NOTHING`).bind(H('f'), now), db.prepare(`INSERT INTO sanctioned_addresses (list, address) VALUES ('ofac', ?)`).bind(address),
@@ -7643,6 +7643,130 @@ describe('E. onboarding: a company applies, proves its domain, is activated and 
       await put(`UPDATE wallets SET state = 'unlinked' WHERE id = ?`, held)
       await setOrg(o.orgId, `state = 'active'`)
       expect(await stateOf(o.orgId)).toBe('active')
+    })
+
+    // ---- M10 T2: the OFAC list as a file the console reads ----
+    const fed = { ...opEnv, SANCTIONS_URL: 'https://lists.test/ofac.json' } as unknown as Env
+    const fileOf = (addresses: string[], more: Record<string, unknown> = {}) => ({ list: 'ofac', source: 'sdn-test.xml', published: '2026-11-09', sha256: H('a'), count: addresses.length, addresses, ...more })
+    /** Stands in for the list file: the file, the Response itself, or a function that makes one. Returns what was asked. */
+    function feed(answer: unknown) {
+      const asked: { url: string; init: RequestInit }[] = []
+      vi.stubGlobal('fetch', async (url: string, init: RequestInit) => {
+        asked.push({ url: String(url), init })
+        const out = typeof answer === 'function' ? await answer(init) : answer
+        return out instanceof Response ? out : Response.json(out)
+      })
+      return asked
+    }
+    const syncNow = (env: Env = fed) => op('POST', '/api/operator/sanctions/sync', { env })
+    const ofac = () => row('SELECT sha256, entries, loaded_at, published, checked_at, held FROM sanctions_lists WHERE list = ?', 'ofac')
+    const listsNow = async (env: Env = fed) => {
+      vi.stubGlobal('fetch', fakeNet) // the operator's list reads the chain for what is under review
+      return (await op('GET', '/api/operator/organisations', { env })).body.lists as Record<string, unknown>[]
+    }
+
+    it('T2: the list file is read only from an acceptable address (https, or plain http to this machine in the local environment); unset, the feature is off and nothing is asked', async () => {
+      const asked = feed(fileOf([someAddress()]))
+      const rows = await snapshot()
+      for (const SANCTIONS_URL of [undefined, '', 'not an address', 'http://lists.test/ofac.json', 'ftp://lists.test/ofac.json', 'https://user:pw@lists.test/ofac.json', 'https://lists.test/ofac.json?x=1', 'https://lists.test/ofac.json#x']) {
+        expect((await syncNow({ ...opEnv, SANCTIONS_URL } as unknown as Env)).body, String(SANCTIONS_URL)).toEqual({ outcome: 'not_connected' })
+      }
+      expect(await onboarding.sync({ DB: db, ENVIRONMENT: 'production', SANCTIONS_URL: 'http://127.0.0.1:8794/ofac.json' }, now)).toEqual({ outcome: 'not_connected' })
+      expect([asked.length, await snapshot()]).toEqual([0, rows])
+      // ONE GET, with no redirect followed and a time limit.
+      expect((await syncNow({ ...opEnv, SANCTIONS_URL: 'http://127.0.0.1:8794/ofac.json' } as unknown as Env)).body).toEqual({ outcome: 'loaded', entries: 1, published: '2026-11-09', hits: [] })
+      expect(asked.map((a) => [a.url, a.init.method, a.init.redirect, a.init.signal instanceof AbortSignal, a.init.body])).toEqual([['http://127.0.0.1:8794/ofac.json', undefined, 'manual', true, undefined]])
+    })
+
+    it('T2: every field of the file is checked, and any failure is "unavailable" and changes nothing; a load through the file freezes as a manual load does', async () => {
+      const o = await owner()
+      const [A, B, C, D, W] = [someAddress(), someAddress(), someAddress(), someAddress(), someAddress()]
+      await walletRow(o.orgId, W)
+      feed(fileOf([A, B, C, D]))
+      expect((await syncNow()).body).toEqual({ outcome: 'loaded', entries: 4, published: '2026-11-09', hits: [] })
+      const before = [await loaded(), await ofac(), await stateOf(o.orgId)]
+      const good = fileOf([A, W, C, D], { sha256: H('b'), published: '2026-11-11' }) // tomorrow's day: the latest that is taken
+      const bad: [string, unknown][] = [
+        ['another list', { ...good, list: 'un' }], ['no list', { ...good, list: undefined }], ['a short hash', { ...good, sha256: H('b').slice(1) }], ['an upper-case hash', { ...good, sha256: H('B') }], ['a hash that is no text', { ...good, sha256: [H('b')] }],
+        ['a published date in another form', { ...good, published: '11/09/2026' }], ['a day that does not exist', { ...good, published: '2026-02-31' }], ['a day after tomorrow', { ...good, published: '2026-11-12' }], ['no published day', { ...good, published: undefined }],
+        ['a count that is not the number of addresses', { ...good, count: 2 }], ['a count as text', { ...good, count: '4' }], ['no address', { ...good, count: 0, addresses: [] }], ['addresses that are no array', { ...good, count: 42, addresses: A }],
+        ['an upper-case address', { ...good, addresses: [A, W, C, `0x${'AB'.repeat(20)}`] }], ['an address twice', { ...good, addresses: [A, W, C, A] }], ['20,001 addresses', { ...good, count: 20_001, addresses: numbered(20_001) }],
+        ['null', null], ['an array', [good]], ['a text', 'ofac'], ['not JSON', new Response('<html>')], ['status 500', new Response(JSON.stringify(good), { status: 500 })],
+        ['a redirect', new Response(null, { status: 302, headers: { location: 'https://evil.example/ofac.json' } })], ['more than 2 MB', new Response(JSON.stringify({ ...good, pad: 'x'.repeat(2_000_000) }))],
+        ['no answer', () => Promise.reject(new TypeError('fetch failed'))], ['an answer after the time limit', (init: RequestInit) => new Promise((_, reject) => init.signal!.addEventListener('abort', () => reject(init.signal!.reason)))],
+      ]
+      onboarding.FEED.timeoutMs = 20
+      for (const [what, answer] of bad) {
+        feed(answer)
+        expect((await syncNow()).body, what).toEqual({ outcome: 'unavailable' })
+      }
+      onboarding.FEED.timeoutMs = 5000
+      expect([await loaded(), await ofac(), await stateOf(o.orgId)]).toEqual(before)
+      feed(good)
+      expect((await syncNow()).body).toEqual({ outcome: 'loaded', entries: 4, published: '2026-11-11', hits: [{ id: o.orgId, name: o.name, state: 'active', address: W, frozen: true }] })
+      expect([await stateOf(o.orgId), await row('SELECT action, subject_id FROM audit_log WHERE org_id = ? ORDER BY seq DESC', o.orgId)]).toEqual(['frozen', { action: 'screening.wallet', subject_id: expect.any(String) }])
+    })
+
+    it('T2: the same file moves only the time of the check; an older file, and one whose count differs from the loaded one by more than a fifth, is held with its reason and not loaded; a manual load is the override', async () => {
+      feed(fileOf(numbered(10)))
+      expect((await syncNow()).body).toMatchObject({ outcome: 'loaded', entries: 10 })
+      const first = now
+      expect(await ofac()).toEqual({ sha256: H('a'), entries: 10, loaded_at: first, published: '2026-11-09', checked_at: first, held: null })
+      const kept = await loaded()
+      now += DAY
+      expect((await syncNow()).body).toEqual({ outcome: 'same' })
+      expect([await ofac(), await loaded()]).toEqual([{ sha256: H('a'), entries: 10, loaded_at: first, published: '2026-11-09', checked_at: now, held: null }, kept])
+      for (const [reason, file] of [['older', fileOf(numbered(9), { sha256: H('b'), published: '2026-11-08' })], ['shrunk', fileOf(numbered(7), { sha256: H('c') })], ['grown', fileOf(numbered(13), { sha256: H('d'), published: '2026-11-10' })]] as const) {
+        feed(file)
+        now += HOUR
+        expect((await syncNow()).body, reason).toEqual({ outcome: 'held', reason })
+        expect([await ofac(), await loaded()], reason).toEqual([{ sha256: H('a'), entries: 10, loaded_at: first, published: '2026-11-09', checked_at: now, held: reason }, kept])
+      }
+      // The loaded file again: nothing is held any more.
+      feed(fileOf(numbered(10)))
+      expect([(await syncNow()).body, (await ofac())!.held]).toEqual([{ outcome: 'same' }, null])
+      // Held again; the operator looks at the file and loads it by hand: that clears what is held, and the next read is "same".
+      feed(fileOf(numbered(13), { sha256: H('d'), published: '2026-11-10' }))
+      expect((await syncNow()).body).toEqual({ outcome: 'held', reason: 'grown' })
+      const checked = now
+      now += HOUR
+      expect((await load('ofac', numbered(13), { sha256: H('d') })).status).toBe(200)
+      expect(await ofac()).toEqual({ sha256: H('d'), entries: 13, loaded_at: now, published: null, checked_at: checked, held: null })
+      expect((await syncNow()).body).toEqual({ outcome: 'same' })
+      // Exactly a fifth less, or more, is loaded; after a manual load no day is known, so no file is "older".
+      for (const count of [8, 12]) {
+        expect((await load('ofac', numbered(10))).status).toBe(200)
+        feed(fileOf(numbered(count), { sha256: H(String(count % 10)), published: '2026-01-01' }))
+        expect((await syncNow()).body, String(count)).toMatchObject({ outcome: 'loaded', entries: count, published: '2026-01-01' })
+      }
+    })
+
+    it('T2: the operator\'s list names each loaded list, what is held, and a feed that stopped: no good read for 3 days, or none ever', async () => {
+      const [x, y, z] = [someAddress(), someAddress(), someAddress()]
+      expect([await listsNow(opEnv), await listsNow()]).toEqual([[], [{ list: 'ofac', entries: 0, published: null, loadedAt: null, checkedAt: null, held: null, stale: true }]])
+      expect([(await load('un', [x])).status, (await load('ofac', [y, z])).status]).toEqual([200, 200])
+      const manual = now
+      expect(await listsNow()).toEqual([
+        { list: 'ofac', entries: 2, published: null, loadedAt: manual, checkedAt: null, held: null, stale: true }, // loaded by hand, and the file was never read
+        { list: 'un', entries: 1, published: null, loadedAt: manual, checkedAt: null, held: null, stale: false }, // no file feeds this list
+      ])
+      expect((await listsNow(opEnv)).map((l) => l.stale)).toEqual([false, false]) // no address set: nothing can be stale
+      now += HOUR
+      feed(fileOf([y, z], { sha256: H('f') }))
+      expect((await syncNow()).body).toEqual({ outcome: 'same' })
+      const read = now
+      expect((await listsNow())[0]).toEqual({ list: 'ofac', entries: 2, published: null, loadedAt: manual, checkedAt: read, held: null, stale: false })
+      now += 3 * DAY - 1
+      expect((await listsNow())[0].stale).toBe(false)
+      now += 1
+      expect((await listsNow())[0].stale).toBe(true)
+      // A read that fails leaves it stale; a file that is held was read: not stale, and its reason shows.
+      feed(new Response('', { status: 500 }))
+      expect((await syncNow()).body).toEqual({ outcome: 'unavailable' })
+      expect((await listsNow())[0]).toMatchObject({ checkedAt: read, stale: true })
+      feed(fileOf(numbered(9), { sha256: H('9') }))
+      expect((await syncNow()).body).toEqual({ outcome: 'held', reason: 'grown' })
+      expect((await listsNow())[0]).toEqual({ list: 'ofac', entries: 2, published: null, loadedAt: manual, checkedAt: now, held: 'grown', stale: false })
     })
 
     it('S3d: the operator cannot unfreeze while a linked or a pending wallet of the organisation is on a loaded list', async () => {
