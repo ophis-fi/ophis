@@ -3,7 +3,7 @@ use {
         domain::{dex, eth, order},
         util,
     },
-    alloy::primitives::{Address, U256},
+    alloy::primitives::{Address, U256, address},
     base64::prelude::*,
     bigdecimal::FromPrimitive,
     chrono::SecondsFormat,
@@ -56,51 +56,29 @@ const DEFAULT_DEX_APPROVED_ADDRESSES_CACHE_SIZE: u64 = 100;
 /// attacker-controlled router/spender can drain Settlement's transient balance
 /// during execution. Pinning to a static allowlist closes the window.
 ///
-/// **Historical evidence:** addresses below were extracted from a live
-/// authenticated probe (using the same OKX credentials the solver uses in
-/// production) and cross-verified via `cast code` on the chain's RPC to confirm
-/// each is a deployed contract with substantial bytecode (router: ~48 KiB,
-/// spender: ~4 KiB on Optimism). The spender was probed against 4 distinct
-/// tokens (WETH, USDC, OP, DAI) and returned identical for all of them,
-/// confirming it is a single OKX approve-proxy contract per chain rather than
-/// per-token.
-///
-/// API consistency and bytecode existence do not establish deployment control.
-/// The Optimism and Unichain approval spenders independently match OKX's
-/// Token Approval table as of 2026-09-20:
+/// Optimism and Unichain router/spender pins match OKX's canonical DEX Router
+/// and Token Approval tables, checked 2026-11-13:
 /// https://web3.okx.com/onchainos/dev-docs/trade/dex-smart-contract
-/// Per-chain provenance of the pinned routers remains unresolved; the current
-/// router table lists newer addresses. Do not silently repin from API responses.
-/// Adding or changing an entry requires canonical upstream deployment evidence
-/// for that chain and role, followed by an integration check.
+/// Authenticated V6 responses and chain-id/bytecode reads corroborate both pins.
+/// Adding or changing an entry requires canonical per-chain deployment evidence
+/// followed by an integration check; never repin from API responses alone.
 const OKX_ROUTER_ALLOWLIST: &[(u64, Address, Address)] = &[
-    // Optimism mainnet (chain 10). Verified 2026-05-18 via authenticated
-    // probe + `cast code` on https://optimism-rpc.publicnode.com.
+    // Optimism mainnet: canonical V6 router and approval proxy (2026-11-13).
     (
         10,
         // Router (`tx.to` returned by /swap).
-        Address::new([
-            0xDd, 0x5E, 0x9B, 0x94, 0x7c, 0x99, 0xAa, 0x60, 0xba, 0xb0, 0x0c, 0xa4, 0x63, 0x1D,
-            0xce, 0x63, 0xb4, 0x99, 0x83, 0xE7,
-        ]),
+        address!("1f5b43127414e36c31ecb5ff5567262997cd24d0"),
         // Spender (`dexContractAddress` returned by /approve-transaction).
         Address::new([
             0x68, 0xD6, 0xB7, 0x39, 0xD2, 0x02, 0x00, 0x67, 0xD1, 0xe2, 0xF7, 0x13, 0xb9, 0x99,
             0xdA, 0x97, 0xE4, 0xd5, 0x48, 0x12,
         ]),
     ),
-    // Unichain mainnet (chain 130). Verified 2026-06-30 via authenticated OKX
-    // V6 probe (web3.okx.com/api/v6/dex/aggregator) + `eth_getCode` on
-    // https://mainnet.unichain.org: router + spender are STABLE across 3 token
-    // pairs (USDC->WETH, WETH->USDC, USDC->native) and both carry bytecode
-    // (router 24367 B, spender 1610 B).
+    // Unichain mainnet: canonical V6 router and approval proxy (2026-11-13).
     (
         130,
-        // Router (`tx.to` from /swap) — 0x6733Eb2E75B1625F1Fe5f18aD2cB2BaBDA510d19.
-        Address::new([
-            0x67, 0x33, 0xeb, 0x2e, 0x75, 0xb1, 0x62, 0x5f, 0x1f, 0xe5, 0xf1, 0x8a, 0xd2, 0xcb,
-            0x2b, 0xab, 0xda, 0x51, 0x0d, 0x19,
-        ]),
+        // Router (`tx.to` from /swap).
+        address!("e3dab8bf5187f9b4e8e89ff5414d7cf71e2c82e1"),
         // Spender (`dexContractAddress` from /approve-transaction) —
         // 0x2e28281Cf3D58f475cebE27bec4B8a23dFC7782c.
         Address::new([
@@ -876,10 +854,7 @@ mod tests {
     use super::*;
 
     fn op_router() -> Address {
-        Address::new([
-            0xDd, 0x5E, 0x9B, 0x94, 0x7c, 0x99, 0xAa, 0x60, 0xba, 0xb0, 0x0c, 0xa4, 0x63, 0x1D,
-            0xce, 0x63, 0xb4, 0x99, 0x83, 0xE7,
-        ])
+        address!("1f5b43127414e36c31ecb5ff5567262997cd24d0")
     }
 
     fn op_spender() -> Address {
@@ -887,6 +862,19 @@ mod tests {
             0x68, 0xD6, 0xB7, 0x39, 0xD2, 0x02, 0x00, 0x67, 0xD1, 0xe2, 0xF7, 0x13, 0xb9, 0x99,
             0xdA, 0x97, 0xE4, 0xd5, 0x48, 0x12,
         ])
+    }
+
+    #[test]
+    fn canonical_routers_are_chain_scoped_and_legacy_routers_are_rejected() {
+        let unichain = address!("e3dab8bf5187f9b4e8e89ff5414d7cf71e2c82e1");
+        assert!(validate_router_allowlist(130, &unichain).is_ok());
+        assert!(validate_router_allowlist(10, &unichain).is_err());
+        for (chain, legacy) in [
+            (10, address!("dd5e9b947c99aa60bab00ca4631dce63b49983e7")),
+            (130, address!("6733eb2e75b1625f1fe5f18ad2cb2babda510d19")),
+        ] {
+            assert!(validate_router_allowlist(chain, &legacy).is_err());
+        }
     }
 
     #[test]

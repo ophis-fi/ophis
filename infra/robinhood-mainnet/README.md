@@ -28,7 +28,7 @@ enabled because the autopilot requires `debug_traceTransaction`.
 | driver        | 8411        | Solver engine + settlement submitter |
 | baseline      | 9310        | On-chain liquidity solver - ships EMPTY (Robinhood liquidity is Uniswap V4) |
 | lifi-solver   | 9311        | LI.FI same-chain aggregator lane |
-| pons-solver   | 9314        | Direct authenticated pons token/WETH and token/WETH/token V3 lane |
+| pons-solver   | 9314        | Configured direct pons V3 lane; absent from auction dispatch and price estimation |
 | ekubo-solver  | 9315        | Direct Ekubo Core/STONX Ve33 ERC-20 routes with packed-calldata validation |
 | up33-solver   | 9316        | Direct UP33 Solidly V2 stable/volatile routes |
 | pools-solver  | 9317        | pools.trade graduated-token liquidity via Nordstern/Uniswap v4 |
