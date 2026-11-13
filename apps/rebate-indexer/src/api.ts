@@ -176,59 +176,6 @@ export async function getReferrerStats(referrer: `0x${string}`, now: Date) {
   };
 }
 
-// The partner dashboard behind POST /partner (after its signature check) and
-// POST /business/partner (token-gated, src/business.ts). null = the wallet holds
-// no ACTIVE partner code.
-export async function getPartnerDashboard(address: `0x${string}`, now: Date) {
-  // Whitelist: the signer must hold an ACTIVE partner code.
-  const buf = Buffer.from(address.slice(2), 'hex');
-  const [partner] = await sql`SELECT 1 FROM ref_codes WHERE referrer_wallet = ${buf} AND kind = 'partner' AND active = true LIMIT 1`;
-  if (!partner) return null;
-
-  const stats = await getReferrerStats(address, now);
-  // One row per wallet, whether link-bound, code-attributed, or both.
-  const referees = await sql<{ wallet_hex: string; bound_at: Date | null; first_seen: Date; code_tagged: boolean; volume_usd: string }[]>`
-      SELECT encode(r.wallet, 'hex') AS wallet_hex, r.bound_at, r.first_seen, r.code_tagged,
-             COALESCE(SUM(t.value_usd), 0)::text AS volume_usd
-      FROM affiliate_referees r
-      LEFT JOIN affiliate_attributed_trades t ON t.wallet = r.wallet AND t.referrer_wallet = r.referrer_wallet
-      WHERE r.referrer_wallet = ${buf}
-      GROUP BY r.wallet, r.bound_at, r.first_seen, r.code_tagged
-      ORDER BY r.first_seen DESC, r.wallet
-      LIMIT 500
-    `;
-  // Earnings panel figures. Estimated current-cycle earnings are FEE-AWARE: the
-  // tier share of the actual cycle fee base (Σ value*bps), so a 5 bps SDK partner
-  // sees roughly what the payout pays, not ~2x. Paid-to-date is exact, summed from
-  // the executed monthly Safe batches. Next payout is the 1st of next month, 02:00 UTC.
-  const estimatedCurrentCycleEarningsUsd = estimateEarningsFromNetFeeUsd(
-    stats.currentCycleNetFeeUsd,
-    stats.currentCycleVolumeUsd,
-    stats.kind,
-  );
-  const [paid] = await sql<{ paid_weth: number; paid_usd: number }[]>`
-      SELECT
-        COALESCE(SUM(e.paid_wei::numeric) / 1e18, 0)::float8 AS paid_weth,
-        COALESCE(SUM((e.paid_wei::numeric / 1e18) * COALESCE(b.weth_usd_price, 0)), 0)::float8 AS paid_usd
-      FROM affiliate_batch_entries e
-      JOIN affiliate_batches b ON b.id = e.batch_id
-      WHERE e.referrer_wallet = ${buf} AND e.status = 'paid'
-    `;
-  const payoutStatus = affiliatePayoutStatus();
-  return {
-    ...stats,
-    estimatedCurrentCycleEarningsUsd,
-    paidToDateWeth: paid?.paid_weth ?? 0,
-    paidToDateUsd: paid?.paid_usd ?? 0,
-    payoutStatus,
-    nextPayoutAt: payoutStatus === 'scheduled' ? nextFirstOfMonth().toISOString() : null,
-    referees: referees.map((x) => ({ wallet: `0x${x.wallet_hex}`, boundAt: x.bound_at, firstSeenAt: x.first_seen,
-      attribution: x.bound_at ? (x.code_tagged ? 'link-and-code' : 'link') : 'code',
-      lifetimeVolumeUsd: parseFloat(x.volume_usd) })),
-  };
-}
-export type PartnerDashboard = NonNullable<Awaited<ReturnType<typeof getPartnerDashboard>>>;
-
 /**
  * Constant-time bearer-token check for admin-only endpoints.
  *
@@ -1065,9 +1012,52 @@ export async function buildApiServer(): Promise<FastifyInstance> {
     const auth = await verifyPartnerAuth({ chainId: req.body?.chainId, address: wallet, issued, signature: signature as `0x${string}`, nowSec: Math.floor(Date.now() / 1000) });
     if (!auth.ok) return reply.code(401).send({ error: auth.reason });
 
-    const dashboard = await getPartnerDashboard(auth.address, new Date());
-    if (!dashboard) return reply.code(403).send({ error: 'not a whitelisted partner' });
-    return dashboard;
+    // Whitelist: the signer must hold an ACTIVE partner code.
+    const buf = Buffer.from(auth.address.slice(2), 'hex');
+    const [partner] = await sql`SELECT 1 FROM ref_codes WHERE referrer_wallet = ${buf} AND kind = 'partner' AND active = true LIMIT 1`;
+    if (!partner) return reply.code(403).send({ error: 'not a whitelisted partner' });
+
+    const stats = await getReferrerStats(auth.address, new Date());
+    // One row per wallet, whether link-bound, code-attributed, or both.
+    const referees = await sql<{ wallet_hex: string; bound_at: Date | null; first_seen: Date; code_tagged: boolean; volume_usd: string }[]>`
+      SELECT encode(r.wallet, 'hex') AS wallet_hex, r.bound_at, r.first_seen, r.code_tagged,
+             COALESCE(SUM(t.value_usd), 0)::text AS volume_usd
+      FROM affiliate_referees r
+      LEFT JOIN affiliate_attributed_trades t ON t.wallet = r.wallet AND t.referrer_wallet = r.referrer_wallet
+      WHERE r.referrer_wallet = ${buf}
+      GROUP BY r.wallet, r.bound_at, r.first_seen, r.code_tagged
+      ORDER BY r.first_seen DESC, r.wallet
+      LIMIT 500
+    `;
+    // Earnings panel figures. Estimated current-cycle earnings are FEE-AWARE: the
+    // tier share of the actual cycle fee base (Σ value*bps), so a 5 bps SDK partner
+    // sees roughly what the payout pays, not ~2x. Paid-to-date is exact, summed from
+    // the executed monthly Safe batches. Next payout is the 1st of next month, 02:00 UTC.
+    const estimatedCurrentCycleEarningsUsd = estimateEarningsFromNetFeeUsd(
+      stats.currentCycleNetFeeUsd,
+      stats.currentCycleVolumeUsd,
+      stats.kind,
+    );
+    const [paid] = await sql<{ paid_weth: number; paid_usd: number }[]>`
+      SELECT
+        COALESCE(SUM(e.paid_wei::numeric) / 1e18, 0)::float8 AS paid_weth,
+        COALESCE(SUM((e.paid_wei::numeric / 1e18) * COALESCE(b.weth_usd_price, 0)), 0)::float8 AS paid_usd
+      FROM affiliate_batch_entries e
+      JOIN affiliate_batches b ON b.id = e.batch_id
+      WHERE e.referrer_wallet = ${buf} AND e.status = 'paid'
+    `;
+    const payoutStatus = affiliatePayoutStatus();
+    return {
+      ...stats,
+      estimatedCurrentCycleEarningsUsd,
+      paidToDateWeth: paid?.paid_weth ?? 0,
+      paidToDateUsd: paid?.paid_usd ?? 0,
+      payoutStatus,
+      nextPayoutAt: payoutStatus === 'scheduled' ? nextFirstOfMonth().toISOString() : null,
+      referees: referees.map((x) => ({ wallet: `0x${x.wallet_hex}`, boundAt: x.bound_at, firstSeenAt: x.first_seen,
+        attribution: x.bound_at ? (x.code_tagged ? 'link-and-code' : 'link') : 'code',
+        lifetimeVolumeUsd: parseFloat(x.volume_usd) })),
+    };
   });
 
   // Partner-fee dashboard (partner-fees Phase B) — SIGNATURE gated. POST (not GET) so the
