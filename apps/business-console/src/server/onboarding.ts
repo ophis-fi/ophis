@@ -113,7 +113,8 @@ async function createOrganisation(db: D1Database, a: ApplyIntent, value: string,
         db.prepare(`INSERT INTO seats (id, org_id, display_name, email, role, state, created_at) VALUES (?, ?, ?, ?, 'owner', 'active', ?)`).bind(a.seat, orgId, a.name, a.email, now),
         db.prepare(`INSERT INTO credentials (id, org_id, seat_id, public_key, counter, device_bound, transports, label, state, created_at) VALUES (?, ?, ?, ?, ?, 1, ?, 'First key', 'active', ?)`)
           .bind(a.credential.id, orgId, a.seat, a.credential.publicKey, a.credential.counter, JSON.stringify(a.credential.transports), now),
-        ...a.people.map((p) => db.prepare('INSERT INTO application_people (org_id, email, display_name, role) VALUES (?, ?, ?, ?)').bind(orgId, p.email, p.name, p.role)),
+        // An intent sealed before 2026-11-13 (7 days at most) has no `people`: it names nobody.
+        ...(a.people ?? []).map((p) => db.prepare('INSERT INTO application_people (org_id, email, display_name, role) VALUES (?, ?, ?, ?)').bind(orgId, p.email, p.name, p.role)),
       ]]
     })
   } catch (error) {
@@ -140,7 +141,8 @@ const peopleOf = async (db: D1Database, orgId: string) =>
  * A7: what a review needs, from the rows as they are now. Two device-bound passkeys on the first Owner's seat, and
  * either the activation proof (a wallet stored as pending, while the passkey it confirmed is still active) or a second
  * Owner with two device-bound passkeys. G5: a named wallet with a single key is refused when the organisation has
- * other members, by the rule of a recovery (PEOPLE). Milestone 5b: and the signed declaration, sealed. Null: it holds.
+ * other members, by the rule of a recovery (PEOPLE), or when its application names other people: the approval makes
+ * them members. Milestone 5b: and the signed declaration, sealed. Null: it holds.
  * Read when the Owner submits and again when the operator approves.
  */
 async function missing(db: D1Database, orgId: string, now: number): Promise<null | 'not_found' | 'second_key' | 'proof_or_owner' | 'single_key' | 'declaration'> {
@@ -150,9 +152,10 @@ async function missing(db: D1Database, orgId: string, now: number): Promise<null
   const seen = (await db.prepare(`SELECT (SELECT count(*) FROM seats s WHERE ${owner} AND s.id = ?2) AS own, (SELECT count(*) FROM seats s WHERE ${owner} AND s.id <> ?2) AS others,
                                          (SELECT count(*) FROM wallets w WHERE w.org_id = ?1 AND w.state = 'pending') AS proof,
                                          (SELECT count(*) FROM wallets w WHERE w.org_id = ?1 AND w.state = 'pending' AND w.kind = 'single_key') AS single, ${PEOPLE('?1', '?3')} AS people,
+                                         (SELECT count(*) FROM application_people p WHERE p.org_id = ?1) AS named,
                                          (SELECT count(*) FROM sealed_items i WHERE i.org_id = ?1 AND i.kind = 'declaration') AS declared`)
-    .bind(orgId, first.seatId, now).first<{ own: number; others: number; proof: number; single: number; people: number; declared: number }>())!
-  return !seen.own ? 'second_key' : !((seen.proof && first.active) || seen.others) ? 'proof_or_owner' : seen.single && seen.people > 1 ? 'single_key' : !seen.declared ? 'declaration' : null
+    .bind(orgId, first.seatId, now).first<{ own: number; others: number; proof: number; single: number; people: number; named: number; declared: number }>())!
+  return !seen.own ? 'second_key' : !((seen.proof && first.active) || seen.others) ? 'proof_or_owner' : seen.single && (seen.people > 1 || seen.named) ? 'single_key' : !seen.declared ? 'declaration' : null
 }
 
 interface Proved { orgId: string; seatId: string; chainId: number; address: string; kind: WalletKind; label: string; snapshot: string | null; credentialHash: string; nonce: string; digest: string; signature: string }

@@ -795,7 +795,8 @@ try {
   if (await on.getByRole('button', { name: 'I have read this' }).count()) await on.getByRole('button', { name: 'I have read this' }).click()
   await on.getByRole('heading', { name: 'From application to a verified organisation.' }).waitFor()
   const newOrg = await on.evaluate(() => fetch('/api/me').then((response) => response.json()).then((me) => me.organisation))
-  check('the applicant signs in to an organisation that is not yet verified, and lands on Onboarding', newOrg.state === 'unverified' && newOrg.name === 'Alder Custody S.A.' && await on.getByText('Not submitted.').isVisible())
+  check('the applicant signs in to an organisation that is not yet verified, and lands on Onboarding, which names Ben and says not to invite him', newOrg.state === 'unverified' && newOrg.name === 'Alder Custody S.A.' && await on.getByText('Not submitted.').isVisible()
+    && await on.getByText(`Other people named in the application: Ben Okoro (Admin, ben@${domain}). Ophis checks them with the company. When Ophis approves, each gets a seat. Do not invite them yourself.`).isVisible())
   check('an unverified organisation does not reach the audit log', (await status('/api/audit', on)) === 403)
   check('its menu shows Overview and Desk switched off', await on.getByRole('button', { name: 'Overview', exact: true }).isDisabled() && await on.getByRole('button', { name: 'Desk', exact: true }).isDisabled())
   await arrive(applicant, false)
@@ -805,6 +806,7 @@ try {
   await on.getByLabel('Wallet address').fill(key.address)
   await on.getByLabel('Chain').selectOption({ label: 'OP Mainnet' })
   await on.getByLabel('A name for it').fill('Treasury')
+  await on.getByLabel(/A custodian holds this wallet/).check() // G5: the application names Ben, so a single key is refused
   const firstHash = await on.locator('article.sheet dt:has-text("First Owner passkey (hash)") + dd').innerText()
   await on.getByRole('button', { name: 'Create the signing link' }).click()
   const activationLink = await on.getByLabel(/Signing link/).inputValue()
@@ -910,6 +912,9 @@ try {
   await enrolAt(benLink, ben)
   await organisation(on)
   check('the Owner is told at the door that the passkey of the approved person waits', await readAlerts('A new passkey of Ben Okoro waits for you', on))
+  const benCard = on.locator('article.appr', { hasText: 'Ben Okoro' })
+  await benCard.waitFor()
+  check('the card says that this confirmation makes the passkey active at once', await benCard.getByText('Ophis approved this person. Your confirmation makes the passkey active at once, with no second person.').isVisible())
   await confirmAt('Ben Okoro', on)
   await on.getByRole('row', { name: /Ben Okoro.*Admin.*Active/ }).waitFor()
   check('the Owner confirmed: the approved person is active at once, with no second person and no 72 hour wait', (await on.getByRole('heading', { name: 'Waiting for confirmation' }).count()) === 0

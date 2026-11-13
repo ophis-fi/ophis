@@ -52,12 +52,13 @@ const mayManage = (actor: Role, target: Role) => actor === 'owner' || (actor ===
 
 const hex = (bytes: Uint8Array) => [...bytes].map((b) => b.toString(16).padStart(2, '0')).join('')
 // A company's email domain, and a work address at it or at a subdomain of it, in lower case (null otherwise). The DNS
-// proof of the domain is what makes such an address a company address: no list of mail providers.
+// proof of the domain is what makes such an address a company address: no list of mail providers. The part before
+// the @ is printable ASCII: no control character or bidi override reaches a page or the operator's terminal.
 export const DOMAIN = /^(?=.{4,253}$)(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z][a-z0-9-]{0,61}[a-z0-9]$/
 export function emailAt(value: unknown, domain: string | null) {
   const email = typeof value === 'string' ? value.trim().toLowerCase() : ''
   const host = email.slice(email.lastIndexOf('@') + 1)
-  return domain && email.length <= 254 && /^[^\s@]{1,64}@[^\s@]+$/.test(email) && DOMAIN.test(host) && (host === domain || host.endsWith(`.${domain}`)) ? email : null
+  return domain && email.length <= 254 && /^[!-?A-~]{1,64}@[^\s@]+$/.test(email) && DOMAIN.test(host) && (host === domain || host.endsWith(`.${domain}`)) ? email : null
 }
 export const randomId = () => hex(crypto.getRandomValues(new Uint8Array(16)))
 /** 256 random bits, base64url. Only its SHA-256 is ever stored. */
@@ -475,6 +476,7 @@ export async function openTickets(db: D1Database, actor: Actor, now: number) {
     .map((t) => ({
       id: t.id, kind: t.kind, role: t.role, seatId: t.seat_id, name: t.display_name, issuerSeatId: t.issuer_seat_id, status: t.status, myStep: t.myStep, until: t.until,
       storedAt: t.stored_at, // when the member created the pending passkey, for the confirmation card
+      approved: t.approved, // 1: Ophis approved this person, so the issuer's confirmation is the only one (the card says so)
     }))
 }
 /** The ticket, if the member may confirm it now. */

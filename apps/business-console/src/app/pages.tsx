@@ -288,7 +288,7 @@ export function Enrol({ ticket }: { ticket: string }) {
 
 interface Member { id: string; displayName: string; role: string; state: string; approved: number }
 interface Passkey { id: string; seatId: string; label: string; state: string; deviceBound: boolean; createdAt: number; lastUsedAt: number | null; stopRightUntil: number | null }
-interface Ticket { id: string; kind: string; role: string; seatId: string; name: string; issuerSeatId: string | null; status: 'link' | 'issuer' | 'second' | 'wait'; myStep: 'issuer' | 'second' | null; until: number; storedAt: number | null }
+interface Ticket { id: string; kind: string; role: string; seatId: string; name: string; issuerSeatId: string | null; status: 'link' | 'issuer' | 'second' | 'wait'; myStep: 'issuer' | 'second' | null; until: number; storedAt: number | null; approved: number }
 interface Request { id: string; kind: string; subjectId: string; name: string | null; role: string | null; value: string | null; requester: string; requesterRole: string; createdAt: number; expiresAt: number; notBefore: number | null; mine: boolean }
 interface Wallet { id: string; chainId: number; address: string; kind: string; label: string; state: 'pending' | 'linked'; recovery: 'in_force' | 'waiting' | null; recoveryAt: number | null; threshold?: number; owners?: number }
 interface View {
@@ -398,7 +398,7 @@ function Waiting({ ticket, issuer, mayCancel, act }: { ticket: Ticket; issuer: s
   const path = `/api/tickets/${ticket.id}`
   const text =
     ticket.status === 'link' ? `Waiting for ${ticket.name} to open the link and create a passkey. The link works until ${minute(ticket.until)}.`
-    : ticket.myStep === 'issuer' ? `${ticket.name} has created a passkey. Confirm it with your passkey before ${minute(ticket.until)}.`
+    : ticket.myStep === 'issuer' ? `${ticket.name} has created a passkey. Confirm it with your passkey before ${minute(ticket.until)}.${ticket.approved ? ' Ophis approved this person. Your confirmation makes the passkey active at once, with no second person.' : ''}`
     : ticket.myStep === 'second' ? `${issuer} confirmed. You are the second person: confirm with your passkey before ${minute(ticket.until)}.`
     : ticket.status === 'issuer' ? `Waiting for ${issuer} to confirm.`
     : ticket.status === 'second' ? `${issuer} confirmed. Waiting for a second person with a key role, other than ${issuer} and ${ticket.name}, before ${minute(ticket.until)}. No wait replaces that person here.`
@@ -772,7 +772,7 @@ export function Organisation({ me, onSignedOut, onChanged }: { me: Me; onSignedO
                 <td>{ROLE[member.role] ?? member.role}</td>
                 <td>{keys.length ? `${keys.length}: ${keys.map((key) => key.label).join(', ')}` : 'None'}{replaced && <small>Replaced. Can stop the replacement until {minute(replaced.stopRightUntil!)}</small>}</td>
                 <td>{view.sessions.filter((session) => session.seatId === member.id).length || 'None'}</td>
-                <td><Status>{capital(member.state)}</Status>{member.approved === 1 && <small>Approved by Ophis with the organisation</small>}{frozen && <small>{frozen.stopped ? 'A replaced passkey stopped its replacement' : `By ${frozen.by ?? 'a colleague'}`}{frozen.at ? ` on ${minute(frozen.at)}` : ''}</small>}</td>
+                <td><Status>{capital(member.state)}</Status>{member.approved === 1 && member.state === 'invited' && <small>Approved by Ophis with the organisation</small>}{frozen && <small>{frozen.stopped ? 'A replaced passkey stopped its replacement' : `By ${frozen.by ?? 'a colleague'}`}{frozen.at ? ` on ${minute(frozen.at)}` : ''}</small>}</td>
                 {manages && <td><div className="acts">
                   {again && <button className="btn ghost sm" type="button" aria-label={`${member.state === 'active' ? 'Re-enrol' : 'New link for'} ${member.displayName}`} onClick={() => setTicketFor(member)}><Icon name="history" size={16} />{member.state === 'active' ? 'Re-enrol' : 'New link'}</button>}
                   {ready && !quarantined && mayManage(member.role) && member.state !== 'removed' && <button className="btn ghost sm" type="button" aria-label={`Manage ${member.displayName}`} onClick={() => setManaged(member)}><Icon name="settings" size={16} />Manage</button>}

@@ -1722,10 +1722,10 @@ describe('m. enrolment tickets', () => {
     const trader = await colleague(o, 'trader')
     const list = async (m: Holder) => (await call('GET', '/api/org', { cookie: m.cookie })).body.tickets as Record<string, unknown>[]
     const linked = await issue(admin, { displayName: 'Ada Viewer', role: 'viewer' })
-    const link = { id: linked.body.ticketId, kind: 'invitation', role: 'viewer', seatId: linked.body.seatId, name: 'Ada Viewer', issuerSeatId: admin.seatId, status: 'link', myStep: null, until: START + 24 * HOUR, storedAt: null }
+    const link = { id: linked.body.ticketId, kind: 'invitation', role: 'viewer', seatId: linked.body.seatId, name: 'Ada Viewer', issuerSeatId: admin.seatId, status: 'link', myStep: null, until: START + 24 * HOUR, storedAt: null, approved: 0 }
     now += 1 // the list is ordered by time of issue
     const ticket = await issue(o, { displayName: 'New Compliance', role: 'compliance' })
-    const base = { id: ticket.body.ticketId, kind: 'invitation', role: 'compliance', seatId: ticket.body.seatId, name: 'New Compliance', issuerSeatId: o.seatId }
+    const base = { id: ticket.body.ticketId, kind: 'invitation', role: 'compliance', seatId: ticket.body.seatId, name: 'New Compliance', issuerSeatId: o.seatId, approved: 0 }
     expect(await list(o)).toEqual([link, { ...base, status: 'link', myStep: null, until: now + 10 * MIN, storedAt: null }])
     await enrolLink(ticket.body.link)
     const at = now
@@ -5474,10 +5474,10 @@ describe('E. onboarding: a company applies, proves its domain, is activated and 
     return { ...(await prove(asked.body.intent, signature)), intent: asked.body.intent as string, fields, signature }
   }
   const submit = (m: Holder, body: unknown = {}) => post('/api/onboarding/submit', m, body)
-  // Two passkeys, the activation proof of a single key, the sealed declaration, submitted: what the operator finds under review.
-  async function underReview(domain?: string, more: Record<string, unknown> = {}) {
+  // Two passkeys, the activation proof of a single key (or of the wallet `wallet` declares), the sealed declaration, submitted: what the operator finds under review.
+  async function underReview(domain?: string, more: Record<string, unknown> = {}, wallet: Record<string, unknown> = {}) {
     const a = await applicantWithTwoKeys(domain, true, more)
-    expect((await activation(a)).body).toEqual({ state: 'stored' })
+    expect((await activation(a, accounts[0], wallet)).body).toEqual({ state: 'stored' })
     expect((await submit(a)).body).toEqual({ state: 'under_review' })
     return a
   }
@@ -7076,9 +7076,10 @@ describe('E. onboarding: a company applies, proves its domain, is activated and 
     const stored = (domain: string) => named(domain).map((p) => ({ ...p, email: p.email.toLowerCase() }))
     const seatsOf = async (orgId: string) => (await db.prepare('SELECT id, display_name AS name, email, role, state, ophis_approved AS approved FROM seats WHERE org_id = ? ORDER BY rowid').bind(orgId).all<{ id: string; name: string; email: string | null; role: string; state: string; approved: number }>()).results
     // An application that named four more people (five in all), approved by the operator. Its first Owner is signed in, with two keys.
+    // Its recovery wallet is a custodian's: G5 refuses a single key where the application names people.
     async function approvedWithPeople() {
       const domain = `alder-people${++domains}.example`
-      const a = await underReview(domain, { people: named(domain) })
+      const a = await underReview(domain, { people: named(domain) }, { custodian: true })
       expect((await decideOn(a.orgId)).body).toEqual({ state: 'active' })
       const [, ben, cleo, dee, eli] = await seatsOf(a.orgId)
       return { a, ben, cleo, dee, eli }
@@ -7097,6 +7098,8 @@ describe('E. onboarding: a company applies, proves its domain, is activated and 
         ...['approver', 'compliance', 'trader', 'viewer', 'Owner', undefined].map((role): [unknown, string] => [[person({ role })], 'people_invalid']),
         // Not at the domain, by the applicant's own rule: another company's, a free-mail provider's, look-alikes, no address.
         ...['ben@birch.example', 'ben@gmail.com', `ben@evil${domain}`, `ben@${domain}.evil.example`, 'ben', undefined].map((email): [unknown, string] => [[person({ email })], 'person_email_invalid']),
+        // Review: what a terminal or a page acts on, before the @ (the operator's list prints the address): an escape, backspaces, a bidi override.
+        ...[`\u001b[8mben@${domain}`, `\b\b\badmin,ben@${domain}`, `ben\u202e@${domain}`].map((email): [unknown, string] => [[person({ email })], 'person_email_invalid']),
         // Twice, whatever the case, and the applicant's own address.
         [[person(), person({ name: 'Ben Again', email: `BEN@${domain}` })], 'person_email_invalid'], [[person({ email: `Ops@${domain}` })], 'person_email_invalid'],
       ]
@@ -7124,7 +7127,10 @@ describe('E. onboarding: a company applies, proves its domain, is activated and 
       await expect(add(`ben@${domain}`, 'admin')).rejects.toThrow(/UNIQUE/)
       await expect(add(`vic@${domain}`, 'viewer')).rejects.toThrow(/CHECK/)
       expect((await call('GET', '/api/onboarding', { cookie: a.cookie })).body.people).toEqual(stored(domain))
+      // Review, G5: the approval makes them members, so a recovery wallet with a single key is refused now, as a recovery would refuse it then.
       expect((await activation(a)).body).toEqual({ state: 'stored' })
+      expect([(await submit(a)).body, (await call('GET', '/api/onboarding', { cookie: a.cookie })).body.missing]).toEqual([{ error: 'single_key' }, 'single_key'])
+      expect((await activation(a, accounts[1], { custodian: true })).body).toEqual({ state: 'stored' })
       expect((await submit(a)).body).toEqual({ state: 'under_review' })
       const listed = async () => ((await op('GET', '/api/operator/organisations')).body.organisations as { id: string; people: unknown }[]).find((o) => o.id === a.orgId)
       expect((await listed())!.people).toEqual(stored(domain))
@@ -7151,6 +7157,8 @@ describe('E. onboarding: a company applies, proves its domain, is activated and 
       const joined = await enrolLink(link.body.link)
       expect(joined.status).toBe(200)
       expect((await signIn(joined.key)).status).toBe(401) // pending until the issuer confirms
+      // Review: the waiting list marks the ticket, so that the card can say this confirmation is the only one.
+      expect((await call('GET', '/api/org', { cookie: a.cookie })).body.tickets).toEqual([expect.objectContaining({ id: link.body.ticketId, status: 'issuer', myStep: 'issuer', approved: 1 })])
       expect((await confirm(a, link.body.ticketId, a.key)).body).toEqual({ state: 'active' })
       expect(await count('approvals', a.orgId)).toBe(0) // no request for a second person, no wait
       expect(await row('SELECT actor_id, action, subject_id, detail FROM audit_log WHERE org_id = ? ORDER BY seq DESC', a.orgId)).toEqual({ actor_id: a.seatId, action: 'credential.activate', subject_id: joined.key.id, detail: 'ophis' })

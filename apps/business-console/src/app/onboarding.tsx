@@ -29,7 +29,7 @@ const SAY: Record<string, string> = {
   not_stored: 'This application was already used. Sign in with the passkey you created for it.',
   second_key: 'The first Owner needs two passkeys. Add the second under Organisation, My passkeys.',
   proof_or_owner: 'One of two things is still missing: the signature of the recovery wallet, or a second Owner with two passkeys.',
-  single_key: 'A recovery wallet with a single key is accepted only while the organisation has one member. Name a Safe or a custodian wallet instead.',
+  single_key: 'A recovery wallet with a single key is accepted only while the organisation has one member and its application names nobody else. Name a Safe or a custodian wallet instead.',
   declaration: 'The signed declaration is still missing. Print it, have it signed, then seal and upload the scan.',
   not_sealed: 'This is not a file sealed by this page. Choose the scan again and use "Seal and upload".',
   too_large: 'The file is larger than 10 MB. Scan the page again at a lower resolution.',
@@ -390,7 +390,7 @@ export function Onboarding({ owner, onSignedOut }: { owner: boolean; onSignedOut
             <p>{company.domain ? `Domain ${company.domain}, proved by its DNS record on ${day(company.domainVerifiedAt!)}.` : 'Created by Ophis for this local build, without an application.'}</p>
             {view.people.length > 0 && <p>{verified ? 'Approved by Ophis with the organisation' : 'Other people named in the application'}: {view.people.map((p) => `${p.name} (${ROLE[p.role]}, ${p.email})`).join(', ')}. {verified
               ? 'Each has a seat under Organisation, Members and roles. An Owner or Admin gives each one a link there, then confirms the new passkey. No second person is needed.'
-              : 'Ophis checks them with the company. When Ophis approves, each gets a seat.'}</p>}
+              : 'Ophis checks them with the company. When Ophis approves, each gets a seat. Do not invite them yourself.'}</p>}
           </Step>
           <Step icon="key-round" title="Passkeys" done={keys}>
             <p>{keys ? 'The first Owner holds two hardware keys.' : 'The first Owner needs two hardware keys. Add the second one now: until then this seat can do nothing else.'}</p>
