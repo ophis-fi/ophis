@@ -1346,6 +1346,32 @@ describe('i. the schema refuses what the code must never do', () => {
       db.prepare(`INSERT INTO audit_log (org_id, seq, at, actor_kind, action, prev_hash, hash) VALUES (?, 4, 0, 'system', 'second-writer', 'p', 'h')`).bind(m.orgId).run(),
     ).rejects.toThrow(/UNIQUE/)
   })
+  // Review of the removal of the company sign-in: its filter kept a link dead without a write, and a link of its path
+  // had a company account check. 0014 writes both dead, with what waits on them, before their columns go.
+  it('0014 closes what the company sign-in left open: such links with their pending passkeys and confirmations, and a request to change the setting; a plain link stays', async () => {
+    const old = env.OLD
+    await applyD1Migrations(old, env.MIGRATIONS.slice(0, 13))
+    const put = (sql: string, ...values: unknown[]) => old.prepare(sql).bind(...values).run()
+    for (const [org, signin] of [['ms', 'microsoft'], ['no', 'none']]) {
+      await put(`INSERT INTO organisations (id, kind, name, state, created_at, company_signin, company_tenant) VALUES (?, 'partner', ?, 'active', 0, ?, ?)`, org, org, signin, signin === 'none' ? null : 'tenant')
+      await put(`INSERT INTO seats (id, org_id, display_name, role, state, created_at) VALUES (?, ?, 'Owner', 'owner', 'active', 0)`, `${org}-o`, org)
+    }
+    // [ticket, organisation, path of the link, state]: t1 to t3 under Microsoft, t4 and t5 under none.
+    for (const [id, org, idp, state] of [['t1', 'ms', 'microsoft', 'stored'], ['t2', 'ms', null, 'issued'], ['t3', 'ms', 'microsoft', 'issued'], ['t4', 'no', null, 'stored'], ['t5', 'no', 'google', 'stored']]) {
+      await put(`INSERT INTO seats (id, org_id, display_name, role, state, created_at) VALUES (?, ?, 'Member', 'admin', 'invited', 0)`, `${id}-s`, org)
+      await put(`INSERT INTO enrolment_tickets (id, org_id, seat_id, kind, role, issuer_seat_id, token_hash, state, expires_at, created_at, idp, idp_tenant) VALUES (?, ?, ?, 'invitation', 'admin', ?, ?, ?, 1, 0, ?, ?)`,
+        id, org, `${id}-s`, `${org}-o`, id, state, idp, idp && 'tenant')
+      if (state !== 'stored') continue
+      await put(`INSERT INTO credentials (id, org_id, seat_id, public_key, device_bound, label, state, ticket_id, created_at) VALUES (?, ?, ?, 'key', 1, 'Key', 'pending', ?, 0)`, `${id}-c`, org, `${id}-s`, id)
+      await put(`INSERT INTO approvals (id, org_id, action, subject_id, payload_hash, requester_seat_id, state, not_before, expires_at, created_at) VALUES (?, ?, 'ticket.confirm', ?, 'hash', ?, 'pending', 1, 2, 0)`, `${id}-a`, org, id, `${org}-o`)
+    }
+    for (const [id, action] of [['p', 'policy.company'], ['r', 'seat.remove']]) await put(`INSERT INTO approvals (id, org_id, action, subject_id, payload_hash, requester_seat_id, state, expires_at, created_at) VALUES (?, 'ms', ?, 'x', 'hash', 'ms-o', 'pending', 2, 0)`, id, action)
+    await applyD1Migrations(old, env.MIGRATIONS.slice(0, 14))
+    const states = async (table: string) => Object.fromEntries((await old.prepare(`SELECT id, state FROM ${table} ORDER BY id`).all<{ id: string; state: string }>()).results.map((r) => [r.id, r.state]))
+    expect(await states('enrolment_tickets')).toEqual({ t1: 'dead', t2: 'dead', t3: 'dead', t4: 'stored', t5: 'dead' })
+    expect(await states('credentials')).toEqual({ 't1-c': 'revoked', 't4-c': 'pending', 't5-c': 'revoked' })
+    expect(await states('approvals')).toEqual({ p: 'cancelled', r: 'pending', 't1-a': 'cancelled', 't4-a': 'pending', 't5-a': 'cancelled' })
+  })
 })
 
 describe('j. the hash of a passkey, and the purpose of a challenge', () => {

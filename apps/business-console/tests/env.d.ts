@@ -1,6 +1,7 @@
 declare namespace Cloudflare {
   interface Env {
     DB: D1Database
+    OLD: D1Database
     SEALED: R2Bucket
     MIGRATIONS: import('cloudflare:test').D1Migration[]
   }

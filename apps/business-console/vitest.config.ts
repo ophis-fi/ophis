@@ -8,7 +8,7 @@ export default defineConfig(async () => ({
     cloudflareTest({
       miniflare: {
         compatibilityDate: '2026-10-21',
-        d1Databases: ['DB'],
+        d1Databases: ['DB', 'OLD'], // OLD: an empty database, for a migration tried on the rows of the schema before it
         r2Buckets: ['SEALED'],
         bindings: { MIGRATIONS: await readD1Migrations(new URL('./migrations', import.meta.url).pathname) },
       },
