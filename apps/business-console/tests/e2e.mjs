@@ -114,7 +114,7 @@ try {
     `POST /api/operator/organisations/${anId}/screening ${JSON.stringify({ outcome: 'review', lists: { un: fileSha(LIST.un), eu: fileSha(LIST.eu) }, nextReview: '2031-01-01' })}`,
     `POST /api/operator/organisations/${anId}/decision ${JSON.stringify({ decision: 'approve', tier: 'standard', source: 'registry', evidenceRef: 'x', evidenceSha256: 'ab'.repeat(32), nextReview: '2030-01-01', submission: '0'.repeat(16), screening: { outcome: 'clear', lists: { eu: fileSha(LIST.eu) } } })}`,
     `POST /api/operator/sanctions ${JSON.stringify({ list: 'ofac', sha256: fileSha(LIST.addresses), addresses: ['0x00000000000000000000000000000000000a11ce', '0x0000000000000000000000000000000000000b0b'] })}`,
-    `POST /api/operator/sanctions ${JSON.stringify({ list: 'ofac', sha256: fileSha(LIST.xml), addresses: ['0x00000000000000000000000000000000000000a1', '0x0000000000000000000000000000000000000b0b'], published: '2026-11-09' })}`,
+    `POST /api/operator/sanctions ${JSON.stringify({ list: 'ofac', sha256: fileSha(LIST.xml), addresses: ['0x0000000000000000000000000000000000000b0b', '0x00000000000000000000000000000000000000a1'], published: '2026-11-09' })}`, // in the order of the file; the maker sorts
   ]))
   // M10: the maker of the list file, on the test XML (the real structure, invented values), and on files that are not whole.
   const made = `${STATE}/ofac.json`
