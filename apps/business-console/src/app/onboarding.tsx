@@ -205,7 +205,7 @@ export function Apply() {
           <fieldset className="field">
             <legend>Other people of the company, up to 4</legend>
             <div className="stack">
-              <p className="fine">Ophis checks each one with the company. Each needs a work email at the company domain, and the role Owner or Admin. When Ophis approves, each gets a seat. You give them a one-time link, and your passkey check activates their passkey: no second person and no 72 hour wait.</p>
+              <p className="fine">Ophis checks each one with the company. Each needs a work email at the company domain, and the role Owner or Admin. When Ophis approves, each gets a seat. You give them a one-time link, and your passkey check activates their passkey: no second person and no 72 hour wait, for 30 days after the approval.</p>
               {people.map((p, i) => (
                 <div className="stack" key={i}>
                   <label className="field">Name of person {i + 2}
