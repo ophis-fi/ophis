@@ -28,6 +28,13 @@ const LABEL = /^[\p{L}\p{N} ._()-]{1,40}$/u
 export const REASONS = ['entity_not_found', 'details_differ', 'authority_unclear', 'wallet_differs', 'declaration_needed', 'not_eligible'] as const
 export const SOURCES = ['registry', 'gleif', 'supervisor_register', 'declaration'] as const
 const TIERS = ['standard', 'enhanced']
+// Sanctions screening: manual, at no cost. The operator downloads the official lists, searches them offline and records
+// the result with its command. The server holds, per organisation only: the outcome, which lists, the SHA-256 of each
+// list file searched, the date. No name of a person, no detail of a hit and no list file reaches it, and the Worker
+// calls no outside service. The codes of the lists, with the names the pages show:
+export const LISTS: Record<string, string> = { eu: 'EU consolidated financial sanctions list', un: 'UN Security Council consolidated list', ofac: 'OFAC SDN list' }
+const OUTCOMES = ['clear', 'review', 'hit']
+const SHA256 = /^[0-9a-f]{64}$/
 
 // The words of this file's audit actions, for the audit page and the export (spread into EVENTS of index.ts).
 export const ONBOARDING_EVENTS: Record<string, string> = {
@@ -38,6 +45,8 @@ export const ONBOARDING_EVENTS: Record<string, string> = {
   'kyb.approve': 'Ophis operator: verification approved, organisation active',
   'kyb.refuse': 'Ophis operator: verification refused, organisation closed',
   'kyb.more': 'Ophis operator: more information asked, the review was sent back',
+  // The outcome is the detail of the row. Only "clear" has words of its own (index.ts): no other outcome is said to a browser.
+  'kyb.screen': 'Ophis operator: sanctions screening recorded, organisation frozen',
   'sealed.download': 'Ophis operator: downloaded the sealed declaration, still sealed',
   'organisation.freeze': 'Ophis operator: organisation frozen',
   'organisation.unfreeze': 'Ophis operator: organisation unfrozen',
@@ -168,12 +177,13 @@ const walletOf = (db: D1Database, orgId: string) =>
 interface Company { id: string; legalName: string; kind: string; state: string; country: string | null; registration: string | null; domain: string | null; domainVerifiedAt: number | null; reviewAt: number | null; signin: string | null; tenant: string | null; print: string | null }
 const COMPANY = `id, name AS legalName, kind, state, country, registration_number AS registration, email_domain AS domain, domain_verified_at AS domainVerifiedAt, review_at AS reviewAt, company_signin AS signin, company_tenant AS tenant, review_print AS print FROM organisations`
 interface KybRow { legalName: string; registration: string | null; country: string; tier: string; source: string; evidenceSha256: string | null; decision: string; reason: string | null; decidedAt: number | null; nextReview: number | null }
+/** The newest KYB row of one organisation (bind its id): the row that says how the organisation stands. */
+const NEWEST = `FROM kyb_records WHERE org_id = ? ORDER BY created_at DESC, rowid DESC LIMIT 1`
 /** The organisation of this session and its newest KYB row: the result, never a document. */
 async function reviewOf(db: D1Database, orgId: string) {
   const [company, record] = await db.batch([
     db.prepare(`SELECT ${COMPANY} WHERE id = ?`).bind(orgId),
-    db.prepare(`SELECT legal_name AS legalName, registration_number AS registration, country, tier, source, evidence_sha256 AS evidenceSha256, decision, reason, decided_at AS decidedAt, recheck_at AS nextReview
-                FROM kyb_records WHERE org_id = ? ORDER BY created_at DESC, rowid DESC LIMIT 1`).bind(orgId),
+    db.prepare(`SELECT legal_name AS legalName, registration_number AS registration, country, tier, source, evidence_sha256 AS evidenceSha256, decision, reason, decided_at AS decidedAt, recheck_at AS nextReview ${NEWEST}`).bind(orgId),
   ])
   return { company: company.results[0] as Company, record: (record.results[0] as KybRow | undefined) ?? null }
 }
@@ -183,7 +193,16 @@ const underReview = async (db: D1Database) =>
 // The name of a submission, for the operator: 16 hex characters of the SHA-256 of what was submitted (review_print).
 // An approval carries the one the operator looked at; after a change and a new "Submit" it is another (review).
 const submissionOf = async (print: string | null) => (await sha256Hex(print ?? '')).slice(0, 16)
-interface Kyb { decision: Decision; submission: string | null; reason: string | null; tier: string; source: string; evidenceRef: string | null; evidenceSha256: string | null; nextReview: number | null }
+/** A screening as it is stored: the outcome, the lists as one JSON text (code to SHA-256 of the file searched, sorted keys) and the SHA-256 of that exact text. */
+interface Screening { outcome: string; lists: string; hash: string }
+interface Kyb { decision: Decision; submission: string | null; reason: string | null; tier: string; source: string; evidenceRef: string | null; evidenceSha256: string | null; nextReview: number | null; screening: Screening | null }
+interface KybFields extends Omit<Kyb, 'decision' | 'submission'> { name: string; registration: string | null; country: string; decision: string; decidedAt: number | null }
+// The one statement that writes a KYB row: the result of a review or of a screening, never a document. A screening is dated now.
+const kybRow = (db: D1Database, id: string, orgId: string, k: KybFields, now: number) =>
+  db.prepare(`INSERT INTO kyb_records (id, org_id, legal_name, registration_number, country, tier, source, evidence_ref, evidence_sha256, screening_outcome, screening_lists, screening_list_version_hash, screened_at,
+                                       decision, decided_at, recheck_at, reason, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+    .bind(id, orgId, k.name, k.registration, k.country, k.tier, k.source, k.evidenceRef, k.evidenceSha256, k.screening?.outcome ?? null, k.screening?.lists ?? null, k.screening?.hash ?? null, k.screening ? now : null,
+      k.decision, k.decidedAt, k.nextReview, k.reason, now)
 // The operator's decision, in one commit with its row in the client's own audit log (actor kind "operator"). Read
 // inside the plan, all of it again: the organisation is unverified and under review (any change to its Owner seats,
 // their passkeys or the named wallet since the submit has taken it out of review: G3), for an approval the submission
@@ -203,9 +222,7 @@ async function decideKyb(db: D1Database, orgId: string, d: Kyb, checked: { id: s
       : (await submissionOf(o.print)) !== d.submission ? 'submission_changed' : 'ok'
     if (outcome !== 'ok' || !o) return null
     return [{ at: now, actorKind: 'operator', actorId: null, sessionId: null, action: KYB_ACTION[d.decision], subjectId: id, detail: d.decision === 'approve' ? d.evidenceSha256 : d.reason }, [
-      db.prepare(`INSERT INTO kyb_records (id, org_id, legal_name, registration_number, country, tier, source, evidence_ref, evidence_sha256, decision, decided_at, recheck_at, reason, created_at)
-                  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
-        .bind(id, orgId, o.name, o.registration, o.country, d.tier, d.source, d.evidenceRef, d.evidenceSha256, { approve: 'approved', refuse: 'rejected', more: 'pending' }[d.decision], now, d.nextReview, d.reason, now),
+      kybRow(db, id, orgId, { ...d, name: o.name, registration: o.registration, country: o.country, decision: { approve: 'approved', refuse: 'rejected', more: 'pending' }[d.decision], decidedAt: now }, now),
       db.prepare('UPDATE organisations SET state = ?, review_at = NULL WHERE id = ?').bind({ approve: 'active', refuse: 'archived', more: 'unverified' }[d.decision], orgId),
       ...(d.decision === 'approve' && checked ? [db.prepare(`UPDATE wallets SET state = 'linked', linked_at = ?, anchor = 'current', anchor_effective_at = ?, snapshot = ? WHERE org_id = ? AND id = ? AND state = 'pending'`)
         .bind(now, now, checked.snapshot, orgId, checked.id)] : []),
@@ -214,18 +231,51 @@ async function decideKyb(db: D1Database, orgId: string, d: Kyb, checked: { id: s
   return outcome
 }
 
+/** The statements of a freeze by the operator: the organisation, if it is active, and every session of it (G4). */
+const freezing = (db: D1Database, orgId: string, now: number) => [
+  db.prepare(`UPDATE organisations SET state = 'frozen' WHERE id = ? AND state = 'active'`).bind(orgId),
+  db.prepare('UPDATE sessions SET revoked_at = ? WHERE org_id = ? AND revoked_at IS NULL').bind(now, orgId),
+]
+/** Inside a commit: what keeps a frozen organisation frozen. Its newest record says "review" or "hit" (a record with no screening blocks nothing). */
+const blocked = async (db: D1Database, orgId: string) => {
+  const newest = await db.prepare(`SELECT screening_outcome AS outcome ${NEWEST}`).bind(orgId).first<{ outcome: string | null }>()
+  return newest?.outcome && newest.outcome !== 'clear' ? 'screening_not_clear' : null
+}
 // Freeze: an active organisation only. An unverified one is never frozen: an unfreeze would make it active with no review.
 // G4: a freeze ends every session of the organisation, in the same commit; an unfreeze brings none back.
 async function setFrozen(db: D1Database, orgId: string, frozen: boolean, now: number) {
-  const [from, to] = frozen ? ['active', 'frozen'] : ['frozen', 'active']
   let outcome = 'not_found'
   await commit(db, orgId, async () => {
     const o = await db.prepare('SELECT state FROM organisations WHERE id = ?').bind(orgId).first<{ state: string }>()
-    outcome = !o ? 'not_found' : o.state !== from ? 'wrong_state' : 'ok'
+    outcome = !o ? 'not_found' : o.state !== (frozen ? 'active' : 'frozen') ? 'wrong_state' : (!frozen && (await blocked(db, orgId))) || 'ok'
     if (outcome !== 'ok') return null
     return [{ at: now, actorKind: 'operator', actorId: null, sessionId: null, action: frozen ? 'organisation.freeze' : 'organisation.unfreeze', subjectId: orgId },
-      [db.prepare('UPDATE organisations SET state = ? WHERE id = ? AND state = ?').bind(to, orgId, from),
-        db.prepare('UPDATE sessions SET revoked_at = ? WHERE org_id = ? AND revoked_at IS NULL').bind(now, orgId)]] // none is open at an unfreeze
+      frozen ? freezing(db, orgId, now) : [db.prepare(`UPDATE organisations SET state = 'active' WHERE id = ? AND state = 'frozen'`).bind(orgId)]]
+  })
+  return outcome
+}
+
+// A screening of an organisation that is active or frozen, in one commit with its row in the client's own audit log
+// (actor kind "operator", the outcome as detail). Read inside the plan: the organisation, whose name, number and
+// country the new KYB row copies as a decision does, and its newest record, from which tier, source, evidence,
+// decision and its date are carried on. An organisation with no record (a local seed) takes tier and source from the
+// command, as approved now. "review" and "hit" freeze an active organisation in this commit, as the operator's freeze
+// does; "clear" changes no state: a frozen organisation stays frozen until the operator unfreezes it.
+async function recordScreening(db: D1Database, orgId: string, screening: Screening, nextReview: number, given: { tier?: string; source?: string }, now: number) {
+  const id = randomId()
+  let outcome = 'not_found'
+  await commit(db, orgId, async () => {
+    const o = await db.prepare('SELECT name, country, registration_number AS registration, state FROM organisations WHERE id = ?').bind(orgId).first<{ name: string; country: string | null; registration: string | null; state: string }>()
+    const last = await db.prepare(`SELECT tier, source, evidence_ref AS evidenceRef, evidence_sha256 AS evidenceSha256, decision, decided_at AS decidedAt ${NEWEST}`).bind(orgId)
+      .first<{ tier: string; source: string; evidenceRef: string | null; evidenceSha256: string | null; decision: string; decidedAt: number | null }>()
+    const [tier, source] = [last?.tier ?? given.tier, last?.source ?? given.source]
+    outcome = !o ? 'not_found' : o.state !== 'active' && o.state !== 'frozen' ? 'wrong_state' : !tier || !source || !o.country ? 'no_record' : screening.outcome === 'clear' ? o.state : 'frozen'
+    if (!o?.country || !tier || !source || (outcome !== 'active' && outcome !== 'frozen')) return null
+    return [{ at: now, actorKind: 'operator', actorId: null, sessionId: null, action: 'kyb.screen', subjectId: id, detail: screening.outcome }, [
+      kybRow(db, id, orgId, { name: o.name, registration: o.registration, country: o.country, tier, source, evidenceRef: last?.evidenceRef ?? null, evidenceSha256: last?.evidenceSha256 ?? null, screening,
+        decision: last?.decision ?? 'approved', decidedAt: last ? last.decidedAt : now, nextReview, reason: null }, now),
+      ...(outcome === 'frozen' ? freezing(db, orgId, now) : []), // on an organisation that is frozen already these change nothing
+    ]]
   })
   return outcome
 }
@@ -560,18 +610,38 @@ async function list(c: Ctx) {
   return json(200, { organisations })
 }
 
+/** A date as the command gives it, YYYY-MM-DD: Unix ms at 00:00 UTC, or null (or NaN) when it is not one. */
+const dayOf = (value: unknown) => (typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value) ? Date.parse(`${value}T00:00:00Z`) : null)
+/**
+ * S2a: a screening as the command sends it, checked: `outcome` (clear, review or hit) and `lists`, an object from the
+ * code of each list searched to the SHA-256 of the list file (64 hex); the EU list is in every screening. Null: not one.
+ */
+async function screeningOf(value: unknown): Promise<Screening | null> {
+  const { outcome, lists } = (value ?? {}) as { outcome?: unknown; lists?: unknown }
+  const given = (lists ?? {}) as Record<string, unknown>
+  const codes = Object.keys(given).sort() // of an array or a text: its indexes, which are no list code
+  if (!OUTCOMES.includes(outcome as string) || !codes.includes('eu') || !codes.every((code) => Object.hasOwn(LISTS, code) && typeof given[code] === 'string' && SHA256.test(given[code]))) return null
+  const text = JSON.stringify(Object.fromEntries(codes.map((code) => [code, given[code]])))
+  return { outcome: outcome as string, lists: text, hash: await sha256Hex(text) }
+}
+
 // A decision: approve, refuse, or more information. Codes from fixed lists, a reference, a hash and a date: no free text
 // reaches the audit log. An approval names the submission it is for, as the list showed it. For an approval the wallet's proof is checked again first, a contract wallet's on both
 // endpoints, and a Safe must be readable: what is read then is the snapshot of the recovery wallet in force.
 async function decide(c: Ctx) {
   const id = c.params.id ?? ''
-  const { decision, reason, tier, source, evidenceRef, evidenceSha256, nextReview, submission } = c.body
+  const { decision, reason, tier, source, evidenceRef, evidenceSha256, nextReview, submission, screening } = c.body
   const approve = decision === 'approve'
-  const day = approve && typeof nextReview === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(nextReview) ? Date.parse(`${nextReview}T00:00:00Z`) : null
+  const day = approve ? dayOf(nextReview) : null
   if (!ID.test(id) || !Object.hasOwn(KYB_ACTION, String(decision)) || !TIERS.includes(tier as string) || !SOURCES.includes(source as never)
     || (approve ? reason !== undefined || !(day! > c.now) || typeof submission !== 'string' || !/^[0-9a-f]{16}$/.test(submission) : !REASONS.includes(reason as never) || nextReview !== undefined)
     || (evidenceRef === undefined ? approve : typeof evidenceRef !== 'string' || !/^[\w ./:#-]{1,120}$/.test(evidenceRef))
-    || (evidenceSha256 === undefined ? approve : typeof evidenceSha256 !== 'string' || !/^[0-9a-f]{64}$/.test(evidenceSha256))) return fail(400, 'invalid')
+    || (evidenceSha256 === undefined ? approve : typeof evidenceSha256 !== 'string' || !SHA256.test(evidenceSha256))) return fail(400, 'invalid')
+  // S2b: an approval carries a screening whose outcome is "clear"; for the other decisions one is optional, and stored when given.
+  const screened = screening === undefined ? null : await screeningOf(screening)
+  if (screening !== undefined && !screened) return fail(400, 'invalid')
+  if (approve && !screened) return fail(400, 'screening_required')
+  if (approve && screened!.outcome !== 'clear') return fail(409, 'screening_not_clear')
   let checked: { id: string; snapshot: string | null } | null = null
   const wallet = approve ? await walletOf(c.env.DB, id) : null
   if (wallet) {
@@ -583,9 +653,20 @@ async function decide(c: Ctx) {
   }
   const outcome = await decideKyb(c.env.DB, id, {
     decision: decision as Decision, submission: approve ? (submission as string) : null, reason: approve ? null : (reason as string), tier: tier as string, source: source as string,
-    evidenceRef: (evidenceRef as string | undefined) ?? null, evidenceSha256: (evidenceSha256 as string | undefined) ?? null, nextReview: day,
+    evidenceRef: (evidenceRef as string | undefined) ?? null, evidenceSha256: (evidenceSha256 as string | undefined) ?? null, nextReview: day, screening: screened,
   }, checked, c.now)
   return outcome === 'ok' ? json(200, { state: { approve: 'active', refuse: 'archived', more: 'unverified' }[decision as Decision] }) : refuse(outcome)
+}
+// S2c. POST .../organisations/:id/screening with {outcome, lists, nextReview, tier?, source?}: the result of a search the
+// operator made offline, for an organisation that is active or frozen. The next review date is checked as a decision's is.
+async function screen(c: Ctx) {
+  const id = c.params.id ?? ''
+  const { nextReview, tier, source } = c.body
+  const screened = await screeningOf(c.body)
+  const day = dayOf(nextReview)
+  if (!ID.test(id) || !screened || !(day! > c.now) || (tier !== undefined && !TIERS.includes(tier as string)) || (source !== undefined && !SOURCES.includes(source as never))) return fail(400, 'invalid')
+  const outcome = await recordScreening(c.env.DB, id, screened, day!, { tier: tier as string | undefined, source: source as string | undefined }, c.now)
+  return outcome === 'active' || outcome === 'frozen' ? json(200, { state: outcome }) : refuse(outcome)
 }
 // Milestone 5b. GET .../organisations/:id/items: the sealed items of one organisation, as the server knows them.
 async function items(c: Ctx) {
@@ -629,6 +710,7 @@ export const operatorRoutes: { method: 'GET' | 'POST'; path: string; handler: (c
   { method: 'POST', path: '/api/operator/invites', handler: invite },
   { method: 'GET', path: '/api/operator/organisations/:id/items', handler: items },
   { method: 'POST', path: '/api/operator/items/:id/download', handler: download },
+  { method: 'POST', path: '/api/operator/organisations/:id/screening', handler: screen },
 ]
 
 // The same request checks as on the other two hosts, then the token. Digests are compared, so the time it takes says

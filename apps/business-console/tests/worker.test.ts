@@ -5577,7 +5577,9 @@ describe('E. onboarding: a company applies, proves its domain, is activated and 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     return { status: response.status, headers: response.headers, body: (await response.json().catch(() => null)) as any }
   }
-  const APPROVE = { decision: 'approve', tier: 'standard', source: 'registry', evidenceRef: 'LBR extract B123456', evidenceSha256: 'ab'.repeat(32), nextReview: '2027-11-11' }
+  // Sanctions screening: an approval carries one, with the outcome "clear" and the SHA-256 of each list file searched.
+  const SCREENED = { outcome: 'clear', lists: { eu: 'e1'.repeat(32) } }
+  const APPROVE = { decision: 'approve', tier: 'standard', source: 'registry', evidenceRef: 'LBR extract B123456', evidenceSha256: 'ab'.repeat(32), nextReview: '2027-11-11', screening: SCREENED }
   const MORE = { decision: 'more', reason: 'details_differ', tier: 'standard', source: 'registry' }
   // An approval names the submission the operator looked at (review): the helper takes it from the row, as the list would show it now.
   const submissionOf = async (orgId: string) => (await data.sha256Hex((await row<{ print: string | null }>('SELECT review_print AS print FROM organisations WHERE id = ?', orgId))?.print ?? '')).slice(0, 16)
@@ -6293,6 +6295,7 @@ describe('E. onboarding: a company applies, proves its domain, is activated and 
     expect(onboarding.operatorRoutes.map((r) => `${r.method} ${r.path}`)).toEqual([
       'GET /api/operator/organisations', 'POST /api/operator/organisations/:id/decision', 'POST /api/operator/organisations/:id/freeze', 'POST /api/operator/organisations/:id/unfreeze', 'POST /api/operator/invites',
       'GET /api/operator/organisations/:id/items', 'POST /api/operator/items/:id/download', // milestone 5b
+      'POST /api/operator/organisations/:id/screening', // sanctions screening
     ])
     expect(OP).toBe('http://operator.localhost:8787')
     const rows = await snapshot()
@@ -6575,6 +6578,7 @@ describe('E. onboarding: a company applies, proves its domain, is activated and 
       ['kyb.approve', () => decideOn(d.orgId)], ['kyb.more', () => decideOn(d.orgId, MORE)], ['kyb.refuse', () => decideOn(d.orgId, { ...MORE, decision: 'refuse' })],
       ['organisation.freeze', () => op('POST', `/api/operator/organisations/${e.orgId}/freeze`)],
       ['sealed.download', async () => take((await itemsOf(d.orgId))[0].id)],
+      ['kyb.screen', () => op('POST', `/api/operator/organisations/${e.orgId}/screening`, { body: { ...SCREENED, nextReview: '2027-11-11' } })],
     ]
     const rows = await snapshot()
     const kept = await objects()
@@ -6588,7 +6592,7 @@ describe('E. onboarding: a company applies, proves its domain, is activated and 
     for (const action of written) expect(EVENTS[action], action).toEqual(expect.any(String))
     expect(Object.keys(onboarding.ONBOARDING_EVENTS).sort()).toEqual(written)
     // Every statement of this file is prepared with bound parameters: no value of a request is written into SQL text.
-    for (const [, inserted] of onboardingSource.matchAll(/prepare\(`[^`]*?\$\{(\w+)\}/g)) expect(['COMPANY', 'owner', 'REVIEWED', 'SEALED']).toContain(inserted)
+    for (const [, inserted] of onboardingSource.matchAll(/prepare\(`[^`]*?\$\{(\w+)\}/g)) expect(['COMPANY', 'owner', 'REVIEWED', 'SEALED', 'NEWEST']).toContain(inserted)
   })
 
   // One isolation case per new route (the standing rule of section e), added to the table and run here. The Sec-Fetch-Site
@@ -6624,7 +6628,7 @@ describe('E. onboarding: a company applies, proves its domain, is activated and 
     expect((await post(`/api/wallets/${wallet.id}/anchor`, b)).body).toEqual({ state: 'applied' })
     for (const path of ['/api/onboarding', `/api/onboarding?organisationId=${b.orgId}`, `/api/onboarding?org=${b.orgId}`]) {
       const view = await call('GET', path, { cookie: a.cookie })
-      expect(view.body).toEqual({ company: { legalName: a.name, kind: 'partner', country: null, registration: null, domain: null, domainVerifiedAt: null }, signin: { setting: 'none', tenant: null }, first: null, seal: { key: KEY, generation: 'g1' }, sealed: null, downloads: [], wallet: null, missing: null, review: { status: 'verified', since: null, reason: null }, record: null, chains: expect.any(Array) })
+      expect(view.body).toEqual({ company: { legalName: a.name, kind: 'partner', country: 'LU', registration: null, domain: null, domainVerifiedAt: null }, signin: { setting: 'none', tenant: null }, first: null, seal: { key: KEY, generation: 'g1' }, sealed: null, downloads: [], wallet: null, missing: null, review: { status: 'verified', since: null, reason: null }, record: null, chains: expect.any(Array) })
     }
     expect((await call('GET', '/api/onboarding', { cookie: b.cookie })).body).toMatchObject({ company: { legalName: b.name }, record: { legalName: 'Birchfield Capital Ltd', tier: 'enhanced' }, wallet: { address: accounts[0].address } })
     expect((await call('GET', `/api/onboarding/${b.orgId}`, { cookie: a.cookie })).status).toBe(404)
@@ -7147,6 +7151,190 @@ describe('E. onboarding: a company applies, proves its domain, is activated and 
       await expect(address('ofac', X)).rejects.toThrow(/UNIQUE/)
       await expect(address('eu', X)).rejects.toThrow(/FOREIGN KEY/)
       expect((await db.prepare('SELECT list, address FROM sanctioned_addresses').all()).results).toEqual([{ list: 'ofac', address: X }])
+    })
+
+    // ---- S2: the organisation's screening, recorded by the operator ----
+    const H = (char: string) => char.repeat(64) // the SHA-256 of a list file, as the command sends it
+    const screen = (orgId: string, body: Record<string, unknown> = {}, options: Parameters<typeof op>[2] = {}) =>
+      op('POST', `/api/operator/organisations/${orgId}/screening`, { ...options, body: { outcome: 'clear', lists: { eu: H('e') }, nextReview: '2027-11-11', ...body } })
+    // A seeded organisation has no record to copy from: the command gives tier and source.
+    const seedScreen = (orgId: string, body: Record<string, unknown> = {}, options: Parameters<typeof op>[2] = {}) => screen(orgId, { tier: 'standard', source: 'registry', ...body }, options)
+    const frozen = (orgId: string, what: 'freeze' | 'unfreeze' = 'freeze', options: Parameters<typeof op>[2] = {}) => op('POST', `/api/operator/organisations/${orgId}/${what}`, options)
+    const kybOf = async (orgId: string) => (await db.prepare('SELECT * FROM kyb_records WHERE org_id = ? ORDER BY created_at, rowid').bind(orgId).all<Record<string, unknown>>()).results
+    const stateOf = async (orgId: string) => (await orgRow(orgId))!.state
+    const sessionsOf = async (orgId: string) => (await row<{ n: number }>('SELECT count(*) AS n FROM sessions WHERE org_id = ? AND revoked_at IS NULL', orgId))!.n
+    // S2e, over the whole database of this run: active organisations whose newest record says "review" or "hit".
+    const breaches = async () => (await row<{ n: number }>(`SELECT count(*) AS n FROM organisations o WHERE o.state = 'active'
+      AND (SELECT k.screening_outcome FROM kyb_records k WHERE k.org_id = o.id ORDER BY k.created_at DESC, k.rowid DESC LIMIT 1) IN ('review', 'hit')`))!.n
+    // A call of the operator during which something else of the same organisation commits first.
+    const raced = (compete: () => Promise<unknown>) => ({ env: { ...racing(compete), OPERATOR_TOKEN: TOKEN } as unknown as Env })
+
+    it('S2a, S2c: a screening is an outcome and the SHA-256 of each list file searched, the EU list always; it is one KYB row and one row of the operator in the client\'s own log', async () => {
+      const [o, old] = [await owner(), await owner()]
+      const rows = await snapshot()
+      const bad: Record<string, unknown>[] = [
+        { outcome: 'pass' }, { outcome: undefined }, { outcome: ['clear'] }, { outcome: 'CLEAR' },
+        { lists: undefined }, { lists: null }, { lists: [] }, { lists: [H('e')] }, { lists: 'eu' }, { lists: {} }, { lists: { un: H('a') } }, { lists: { eu: H('e'), sdn: H('a') } },
+        { lists: { eu: H('e').slice(1) } }, { lists: { eu: `${H('e')}e` } }, { lists: { eu: H('E') } }, { lists: { eu: 7 } }, { lists: { eu: [H('e')] } }, { lists: { eu: H('e'), un: null } },
+        { lists: JSON.parse(`{"eu":"${H('e')}","__proto__":"${H('a')}"}`) },
+        { nextReview: undefined }, { nextReview: '2026-11-10' }, { nextReview: 'next year' }, { nextReview: 1830000000000 }, { nextReview: '2027-13-01' },
+        { tier: 'gold' }, { source: 'a phone call' },
+      ]
+      for (const body of bad) expect((await seedScreen(o.orgId, body)).body, JSON.stringify(body)).toEqual({ error: 'invalid' })
+      expect((await seedScreen('not-an-id')).body).toEqual({ error: 'invalid' })
+      expect((await seedScreen(data.randomId())).status).toBe(404)
+      // No record to copy from (a local seed): tier and source are given, both. And a seed from before it had a country has none to copy.
+      for (const body of [{}, { tier: 'standard' }, { source: 'registry' }]) {
+        const refused = await screen(o.orgId, body)
+        expect([refused.status, refused.body], JSON.stringify(body)).toEqual([409, { error: 'no_record' }])
+      }
+      expect(await snapshot()).toBe(rows)
+      await setOrg(old.orgId, 'country = NULL')
+      const before = await snapshot()
+      expect((await seedScreen(old.orgId)).body).toEqual({ error: 'no_record' })
+      expect(await snapshot()).toBe(before)
+      // Stored: the lists as one JSON text with sorted keys, whatever the order sent, and the SHA-256 of that exact text.
+      expect((await seedScreen(o.orgId, { lists: { un: H('b'), eu: H('e'), ofac: H('c') }, tier: 'enhanced', source: 'gleif' })).body).toEqual({ state: 'active' })
+      const text = `{"eu":"${H('e')}","ofac":"${H('c')}","un":"${H('b')}"}`
+      const [first] = await kybOf(o.orgId)
+      expect(first).toEqual({
+        id: expect.stringMatching(/^[0-9a-f]{32}$/), org_id: o.orgId, legal_name: o.name, registration_number: null, country: 'LU', tier: 'enhanced', source: 'gleif', evidence_ref: null, evidence_sha256: null, signer_cert_sha256: null,
+        screening_outcome: 'clear', screening_lists: text, screening_list_version_hash: await data.sha256Hex(text), screened_at: now, decision: 'approved', decided_at: now, recheck_at: Date.UTC(2027, 10, 11), reason: null, created_at: now,
+      })
+      expect(await row('SELECT actor_kind, actor_id, session_id, action, subject_id, detail FROM audit_log WHERE org_id = ? ORDER BY seq DESC', o.orgId))
+        .toEqual({ actor_kind: 'operator', actor_id: null, session_id: null, action: 'kyb.screen', subject_id: first.id, detail: 'clear' })
+      expect(await data.verifyAudit(db, o.orgId)).toMatchObject({ ok: true })
+      // The next one copies tier, source, evidence, decision and its date from the newest record: what the command gives for them is not read then.
+      const firstAt = now
+      now += DAY
+      expect((await screen(o.orgId, { tier: 'standard', source: 'registry', nextReview: '2028-01-01' })).body).toEqual({ state: 'active' })
+      expect((await kybOf(o.orgId))[1]).toMatchObject({ tier: 'enhanced', source: 'gleif', decision: 'approved', decided_at: firstAt, recheck_at: Date.UTC(2028, 0, 1), screened_at: now, created_at: now, screening_lists: `{"eu":"${H('e')}"}` })
+      // An organisation the operator approved: the evidence of the approval is carried on; name, number and country are the organisation's own, never the caller's.
+      const a = await underReview()
+      expect((await decideOn(a.orgId)).body).toEqual({ state: 'active' })
+      const approvedAt = now
+      now += DAY
+      expect((await screen(a.orgId, { legalName: 'Other', country: 'FR', evidenceRef: 'x', evidenceSha256: 'cd'.repeat(32), decision: 'rejected' })).body).toEqual({ state: 'active' })
+      expect((await kybOf(a.orgId))[1]).toMatchObject({
+        legal_name: 'Alder Custody S.A.', registration_number: 'B123456', country: 'LU', tier: 'standard', source: 'registry', evidence_ref: 'LBR extract B123456', evidence_sha256: 'ab'.repeat(32),
+        decision: 'approved', decided_at: approvedAt, screening_outcome: 'clear', screened_at: now, reason: null,
+      })
+      expect(await breaches()).toBe(0)
+    })
+
+    it('S2b: an approval needs a screening with the outcome "clear", stored on the KYB row of that decision; "more" and "refuse" take one or none', async () => {
+      const a = await underReview()
+      const rows = await snapshot()
+      const { screening: _none, ...bare } = APPROVE
+      const none = await decideOn(a.orgId, bare)
+      expect([none.status, none.body]).toEqual([400, { error: 'screening_required' }])
+      for (const outcome of ['review', 'hit']) {
+        const refused = await decideOn(a.orgId, { ...APPROVE, screening: { ...SCREENED, outcome } })
+        expect([refused.status, refused.body], outcome).toEqual([409, { error: 'screening_not_clear' }])
+      }
+      const malformed = [{ outcome: 'clear' }, { ...SCREENED, outcome: 'ok' }, { ...SCREENED, lists: [SCREENED.lists.eu] }, { ...SCREENED, lists: { un: H('a') } }, { ...SCREENED, lists: { eu: H('e'), fr: H('a') } }, { ...SCREENED, lists: { eu: 'e' } }, 'clear', null, [SCREENED]]
+      for (const screening of malformed) for (const body of [APPROVE, MORE, { ...MORE, decision: 'refuse' }]) expect((await decideOn(a.orgId, { ...body, screening })).body, `${body.decision} ${JSON.stringify(screening)}`).toEqual({ error: 'invalid' })
+      expect(await snapshot()).toBe(rows)
+      // More information: with none the row holds none; with one, whatever its outcome, the row holds it. Then the approval, with its own.
+      expect((await decideOn(a.orgId, MORE)).body).toEqual({ state: 'unverified' })
+      expect((await submit(a)).body).toEqual({ state: 'under_review' })
+      const two = `{"eu":"${H('e')}","un":"${H('b')}"}`
+      expect((await decideOn(a.orgId, { ...MORE, screening: { outcome: 'review', lists: { un: H('b'), eu: H('e') } } })).body).toEqual({ state: 'unverified' })
+      expect((await submit(a)).body).toEqual({ state: 'under_review' })
+      expect((await decideOn(a.orgId)).body).toEqual({ state: 'active' })
+      const one = JSON.stringify(SCREENED.lists)
+      expect((await kybOf(a.orgId)).map((k) => [k.decision, k.screening_outcome, k.screening_lists, k.screening_list_version_hash, k.screened_at])).toEqual([
+        ['pending', null, null, null, null], ['pending', 'review', two, await data.sha256Hex(two), now], ['approved', 'clear', one, await data.sha256Hex(one), now],
+      ])
+      // A refusal, with none and with one.
+      const [b, c] = [await underReview(), await underReview()]
+      expect((await decideOn(b.orgId, { ...MORE, decision: 'refuse' })).body).toEqual({ state: 'archived' })
+      expect((await decideOn(c.orgId, { ...MORE, decision: 'refuse', screening: { ...SCREENED, outcome: 'hit' } })).body).toEqual({ state: 'archived' })
+      expect([(await kybOf(b.orgId)).map((k) => k.screening_outcome), (await kybOf(c.orgId)).map((k) => k.screening_outcome)]).toEqual([[null], ['hit']])
+      expect(await breaches()).toBe(0)
+    })
+
+    it('S2c: a screening is recorded for an active or a frozen organisation only; "review" and "hit" freeze an active one in the same commit and end every session, as the operator\'s freeze does; "clear" changes no state', async () => {
+      const [early, gone] = [await underReview(), await underReview()]
+      expect((await decideOn(gone.orgId, { ...MORE, decision: 'refuse' })).body).toEqual({ state: 'archived' })
+      const rows = await snapshot()
+      for (const m of [early, gone]) for (const outcome of ['clear', 'review', 'hit']) {
+        const refused = await seedScreen(m.orgId, { outcome })
+        expect([refused.status, refused.body], outcome).toEqual([409, { error: 'wrong_state' }])
+      }
+      expect(await snapshot()).toBe(rows)
+      for (const outcome of ['review', 'hit']) {
+        const { o, a } = await trio() // an Owner, an Approver and a Viewer, each signed in
+        expect(await sessionsOf(o.orgId)).toBeGreaterThanOrEqual(3)
+        const [kept, logged] = [await snapshot(['seats', 'credentials', 'wallets', 'approvals']), await count('audit_log', o.orgId)]
+        expect((await seedScreen(o.orgId, { outcome })).body, outcome).toEqual({ state: 'frozen' })
+        expect([await stateOf(o.orgId), await sessionsOf(o.orgId), await snapshot(['seats', 'credentials', 'wallets', 'approvals'])]).toEqual(['frozen', 0, kept])
+        // One commit: the KYB row, the freeze, the ended sessions and the one audit row, which carries the outcome.
+        expect([await count('audit_log', o.orgId), await row('SELECT actor_kind, action, detail FROM audit_log WHERE org_id = ? ORDER BY seq DESC', o.orgId)]).toEqual([logged + 1, { actor_kind: 'operator', action: 'kyb.screen', detail: outcome }])
+        for (const m of [o, a]) expect((await call('GET', '/api/me', { cookie: m.cookie })).status).toBe(401)
+        const shut = await signIn(o.key)
+        expect([shut.status, shut.body, shut.cookie]).toEqual([403, { error: 'org_frozen' }, ''])
+        // Frozen already: another screening is recorded, whatever its outcome, and the state stays.
+        for (const next of ['hit', 'review', 'clear']) expect((await screen(o.orgId, { outcome: next })).body, next).toEqual({ state: 'frozen' })
+        expect([await stateOf(o.orgId), (await kybOf(o.orgId)).map((k) => k.screening_outcome)]).toEqual(['frozen', [outcome, 'hit', 'review', 'clear']])
+      }
+      // "Clear" on an active organisation: the row and nothing else. Nobody is signed out.
+      const c = await owner()
+      const open = await sessionsOf(c.orgId)
+      expect((await seedScreen(c.orgId)).body).toEqual({ state: 'active' })
+      expect([await stateOf(c.orgId), await sessionsOf(c.orgId), (await call('GET', '/api/me', { cookie: c.cookie })).status]).toEqual(['active', open, 200])
+      expect(await breaches()).toBe(0)
+    })
+
+    it('S2d: the operator cannot unfreeze while the newest record says "review" or "hit"; a clear record after it, no record, or a record with no screening lets the unfreeze through', async () => {
+      for (const outcome of ['review', 'hit']) {
+        const o = await owner()
+        expect((await seedScreen(o.orgId, { outcome })).body).toEqual({ state: 'frozen' })
+        const rows = await snapshot()
+        const refused = await frozen(o.orgId, 'unfreeze')
+        expect([refused.status, refused.body, await snapshot()], outcome).toEqual([409, { error: 'screening_not_clear' }, rows])
+        expect((await screen(o.orgId)).body).toEqual({ state: 'frozen' })
+        expect((await frozen(o.orgId, 'unfreeze')).body, outcome).toEqual({ state: 'active' })
+      }
+      // The newest record decides: a clear one before it changes nothing.
+      const p = await owner()
+      expect((await seedScreen(p.orgId)).body).toEqual({ state: 'active' })
+      expect((await screen(p.orgId, { outcome: 'hit' })).body).toEqual({ state: 'frozen' })
+      expect((await frozen(p.orgId, 'unfreeze')).body).toEqual({ error: 'screening_not_clear' })
+      // No record at all, and a newest record from before a screening was stored: nothing blocks.
+      const [q, r] = [await owner(), await owner()]
+      await put(`INSERT INTO kyb_records (id, org_id, legal_name, country, tier, source, decision, created_at) VALUES (?, ?, 'Old Record Ltd', 'GB', 'standard', 'registry', 'approved', ?)`, data.randomId(), r.orgId, now)
+      for (const m of [q, r]) {
+        expect((await frozen(m.orgId)).body).toEqual({ state: 'frozen' })
+        expect((await frozen(m.orgId, 'unfreeze')).body).toEqual({ state: 'active' })
+      }
+      expect(await breaches()).toBe(0)
+    })
+
+    it('S2e: an active organisation never has a newest record that says "review" or "hit", also when a screening and an unfreeze arrive at the same instant', async () => {
+      // The unfreeze read a clear record; a "hit" lands before it commits. It reads again inside its commit: refused.
+      const o = await owner()
+      expect((await seedScreen(o.orgId)).body).toEqual({ state: 'active' })
+      expect((await frozen(o.orgId)).body).toEqual({ state: 'frozen' })
+      const late = await frozen(o.orgId, 'unfreeze', raced(async () => expect((await screen(o.orgId, { outcome: 'hit' })).body).toEqual({ state: 'frozen' })))
+      expect([late.body, await stateOf(o.orgId)]).toEqual([{ error: 'screening_not_clear' }, 'frozen'])
+      // The screening read a frozen organisation; an unfreeze lands before it commits. It reads again: frozen in that commit.
+      const p = await owner()
+      expect((await seedScreen(p.orgId)).body).toEqual({ state: 'active' })
+      expect((await frozen(p.orgId)).body).toEqual({ state: 'frozen' })
+      const hit = await screen(p.orgId, { outcome: 'hit' }, raced(async () => expect((await frozen(p.orgId, 'unfreeze')).body).toEqual({ state: 'active' })))
+      expect([hit.body, await stateOf(p.orgId), (await kybOf(p.orgId)).at(-1)!.screening_outcome, await sessionsOf(p.orgId)]).toEqual([{ state: 'frozen' }, 'frozen', 'hit', 0])
+      // A "clear" screening read an active organisation; the operator's freeze lands before it commits. The answer is the state as it is.
+      const r = await owner()
+      const clear = await seedScreen(r.orgId, {}, raced(async () => expect((await frozen(r.orgId)).body).toEqual({ state: 'frozen' })))
+      expect([clear.body, await stateOf(r.orgId), (await kybOf(r.orgId)).length]).toEqual([{ state: 'frozen' }, 'frozen', 1])
+      expect(await breaches()).toBe(0)
+      // The check itself can fail: an active organisation with such a record, written straight to the table, is counted.
+      const q = await owner()
+      await put(`INSERT INTO kyb_records (id, org_id, legal_name, country, tier, source, decision, screening_outcome, created_at) VALUES (?, ?, 'Breach Ltd', 'GB', 'standard', 'registry', 'approved', 'review', ?)`, data.randomId(), q.orgId, now)
+      expect(await breaches()).toBe(1)
+      await setOrg(q.orgId, `state = 'archived'`)
+      expect(await breaches()).toBe(0)
     })
   })
 })

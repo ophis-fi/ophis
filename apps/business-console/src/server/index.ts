@@ -770,6 +770,8 @@ export const EVENTS: Record<string, string> = {
   'recovery.lapse': 'Account recovery lapsed: the recovery wallet changed since the request',
   'recovery.stop': 'Account recovery stopped by a replaced Owner passkey: the new Owner removed, the Owner passkeys restored',
   ...ONBOARDING_EVENTS,
+  // Sanctions screening: the one outcome that is said. A row with any other outcome reads as the action alone.
+  'kyb.screen/clear': 'Ophis operator: sanctions screening recorded. Result: no match',
   // Milestone 5b: a download of a sealed item says why (the detail of its row is a code of the fixed list).
   ...Object.fromEntries(Object.entries(DOWNLOAD_REASONS).map(([code, words]) => [`sealed.download/${code}`, `${ONBOARDING_EVENTS['sealed.download']}. Reason: ${words}`])),
 }

@@ -1352,7 +1352,8 @@ export async function seedOrganisation(db: D1Database, o: { name: string; kind: 
   const ticketId = randomId()
   await commit(db, orgId, () => [{ at: o.now, actorKind: 'system', actorId: null, sessionId: null, action: 'organisation.seed', subjectId: orgId }, [
     // A domain, and the company sign-in "none" unless told otherwise (then the tenant is pinned here, with no sign-in).
-    db.prepare(`INSERT INTO organisations (id, kind, name, state, created_at, email_domain, domain_verified_at, company_signin, company_tenant) VALUES (?, ?, ?, 'active', ?, ?, ?, ?, ?)`)
+    // The country is a constant of the seed: the KYB row of a screening copies it (kyb_records needs one).
+    db.prepare(`INSERT INTO organisations (id, kind, name, state, created_at, email_domain, domain_verified_at, company_signin, company_tenant, country) VALUES (?, ?, ?, 'active', ?, ?, ?, ?, ?, 'LU')`)
       .bind(orgId, o.kind, o.name, o.now, o.domain ?? null, o.domain ? o.now : null, o.company?.idp ?? 'none', o.company?.tenant ?? null),
     db.prepare(`INSERT INTO seats (id, org_id, display_name, role, state, created_at) VALUES (?, ?, ?, 'owner', 'invited', ?)`).bind(seatId, orgId, o.ownerName, o.now),
     db.prepare(`INSERT INTO enrolment_tickets (id, org_id, seat_id, kind, role, token_hash, nonce, state, expires_at, created_at)
