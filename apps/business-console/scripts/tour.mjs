@@ -2,8 +2,9 @@
 // It starts the local server on a throwaway database (.wrangler/tour) with the stand-ins, opens the installed Google
 // Chrome with Chrome's virtual security keys (DevTools protocol, as tests/e2e.mjs does) and signs three people in,
 // each in a window of their own: the Owner of a partner, and the Owner and the Approver of an institution.
-// Then the operator's own command loads the test address list and records a clear sanctions screening for both
-// organisations (test files in tests/fixtures/), so that Compliance shows them.
+// Then the operator's own command reads the OFAC list file of the local stand-in ("sync": test data, one referred wallet
+// of the partner is on it, so its Overview shows a flag) and records a clear sanctions screening for both organisations
+// (test files in tests/fixtures/), so that Compliance shows them.
 // Then it waits: Ctrl+C, or closing Chrome, stops everything. TOUR_CHECK=1: no window; the Owner sends an order, the
 // Approver approves it, Compliance shows the screening, and it ends. TOUR_CHECK=window: the same check with the windows.
 import { execFileSync, spawn } from 'node:child_process'
@@ -12,6 +13,7 @@ import { chromium } from 'playwright-core'
 import { start as startDnsStubs } from './dns-stub.mjs'
 import { start as startIdp } from './idp-stub.mjs'
 import { start as startIndexer } from './indexer-stub.mjs'
+import { start as startLists } from './list-stub.mjs'
 
 process.chdir(new URL('..', import.meta.url).pathname)
 const ORIGIN = 'http://localhost:8787'
@@ -34,7 +36,7 @@ rmSync(STATE, { recursive: true, force: true })
 run('node_modules/.bin/wrangler', ['d1', 'migrations', 'apply', 'DB', '--local', '--persist-to', STATE])
 // Each seed prints a one-time enrolment link (10 minutes), and completes .dev.vars for the stand-ins.
 const [partnerSeed, institutionSeed] = [dev('seed', '--live'), dev('seed', '--demo')]
-const stops = [startDnsStubs(), startIdp(), startIndexer()]
+const stops = [startDnsStubs(), startIdp(), startIndexer(), startLists()]
 // detached: the server gets its own process group, so the whole group is stopped at the end.
 const server = spawn('node_modules/.bin/wrangler', ['dev', '--persist-to', STATE, '--port', '8787'], { env, detached: true, stdio: 'ignore' })
 let browser
@@ -142,9 +144,14 @@ try {
   const partner = await firstOwner(partnerSeed)
   const owner = await firstOwner(institutionSeed)
   const approver = await approverOf(owner)
-  // Sanctions screening, with the real operator command and test files: the address list, then a clear screening of each organisation.
+  // Sanctions screening, with the real operator command and test files: the read of the list file, then a clear screening of each organisation.
   const operator = (...args) => run('node', ['scripts/operator.mjs', ...args])
-  operator('addresses', 'ofac=tests/fixtures/sanctions-addresses.txt')
+  // "sync" makes the Worker read the list stand-in, which lives in this process: the command must not block it (not execFileSync).
+  const synced = await new Promise((resolve) => {
+    let said = ''
+    spawn('node', ['scripts/operator.mjs', 'sync'], { env, stdio: ['ignore', 'pipe', 'ignore'] }).on('close', () => resolve(said)).stdout.on('data', (chunk) => (said += chunk))
+  })
+  if (!synced.includes('Loaded 2 addresses')) throw new Error('The list file of the local stand-in was not loaded.')
   const organisations = [...operator('list').matchAll(/^([0-9a-f]{32}) {2}Northwind Vaults/gm)].map((match) => match[1])
   if (organisations.length !== 2) throw new Error('The operator\'s list did not name the two organisations.')
   const nextYear = new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10)
@@ -157,6 +164,7 @@ try {
   await heading(approver, 'People, wallets and two-person approval.')
 
   if (CHECK) {
+    await partner.page.getByText('On a loaded sanctions list', { exact: true }).waitFor() // M10: the flag on the partner's referred wallet
     // The check walks the path the legend names, once: the Owner sends an order, the Approver approves it.
     await owner.page.locator('form.ticket').getByRole('button', { name: 'Review order' }).click()
     await owner.page.locator('[data-step="review"]').getByRole('button', { name: 'Send for approval' }).click()
@@ -171,15 +179,16 @@ try {
       await who.page.getByText('Result: no match.').waitFor()
       await who.page.getByText('Not on a loaded list').waitFor()
     }
-    console.log('Tour check passed: three people signed in, the Owner sent an order, the Approver approved it, and Compliance shows the screening of both organisations.')
+    console.log('Tour check passed: three people signed in, the Owner sent an order, the Approver approved it, the Overview of the partner marks the listed referred wallet, and Compliance shows the screening of both organisations.')
     await stop(0)
   }
   console.log(`
 Three windows are open, each signed in. Test data only.
-  1 Partner, Owner         Overview: the partner figures, from the local stand-in of the rebate service.
+  1 Partner, Owner         Overview: the partner figures, from the local stand-in of the rebate service. One referred
+                           wallet is marked "On a loaded sanctions list": a flag, from the test list file. Nothing is frozen by it.
   2 Institution, Owner     Desk: fill the ticket, "Review order", then send it for approval.
   3 Institution, Approver  Organisation, Approvals: approve or refuse that order.
-Compliance, in windows 1 and 2: the sanctions screening the operator's command recorded, and the test address list.
+Compliance, in windows 1 and 2: the sanctions screening the operator's command recorded, and the list it read.
 Passkey checks in these three tabs answer by themselves (test keys). A new tab or window has no key.
 Press Ctrl+C here, or quit that Chrome, to close the windows and stop the server.`)
   browser.on('disconnected', () => void stop(0))

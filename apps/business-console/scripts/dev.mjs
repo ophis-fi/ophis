@@ -17,6 +17,7 @@ import { devActivatePending, devDemoWallet, devSkipWaits, devStaleChecks, random
 import { configFor } from '../src/server/passkeys.ts'
 import { tenantOf } from './idp-stub.mjs'
 import { CONTRACT, PORT as INDEXER_PORT } from './indexer-stub.mjs'
+import { PORT as LIST_PORT } from './list-stub.mjs'
 
 const [command, ...options] = process.argv.slice(2)
 const option = (name) => (options.includes(name) ? options[options.indexOf(name) + 1] : undefined)
@@ -39,6 +40,8 @@ for (const name of ['MICROSOFT_CLIENT_SECRET', 'GOOGLE_CLIENT_SECRET']) {
 // made here and never printed. A real environment sets INDEXER_URL as a variable and INDEXER_TOKEN as a secret.
 if (!/^INDEXER_URL=/m.test(readFileSync('.dev.vars', 'utf8'))) appendFileSync('.dev.vars', `INDEXER_URL=http://127.0.0.1:${INDEXER_PORT}\n`)
 if (!/^INDEXER_TOKEN=/m.test(readFileSync('.dev.vars', 'utf8'))) appendFileSync('.dev.vars', `INDEXER_TOKEN=${randomBytes(32).toString('base64url')}\n`)
+// M10: the local stand-in for the place where the OFAC list file lives (scripts/list-stub.mjs). A real environment sets SANCTIONS_URL as a variable (https).
+if (!/^SANCTIONS_URL=/m.test(readFileSync('.dev.vars', 'utf8'))) appendFileSync('.dev.vars', `SANCTIONS_URL=http://127.0.0.1:${LIST_PORT}/ofac.json\n`)
 // Milestone 5b: the LOCAL test key of the sealing (key-custody.md section 3). The identity, the secret half, is made
 // here and stays in .dev.seal-identity next to .dev.vars (git-ignored, never printed): it opens what the local console
 // seals. Its recipient, the public half, goes to the Worker (SEAL_RECIPIENT in .dev.vars, for the fingerprint) and to

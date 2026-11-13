@@ -13,6 +13,7 @@ import { createServer } from 'node:http'
 import { fileURLToPath } from 'node:url'
 import { start as startIdp } from './idp-stub.mjs'
 import { start as startIndexer } from './indexer-stub.mjs'
+import { start as startLists } from './list-stub.mjs'
 
 const FOLDER = fileURLToPath(new URL('../.wrangler/', import.meta.url))
 const FILE = `${FOLDER}dns-stub.json`
@@ -49,10 +50,12 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
     if (command) {
       const stopIdp = startIdp()
       const stopIndexer = startIndexer()
+      const stopLists = startLists() // M10: the OFAC list file, port 8794
       spawn(command, args, { stdio: 'inherit' }).on('exit', (code) => {
         stop()
         stopIdp()
         stopIndexer()
+        stopLists()
         process.exitCode = code ?? 1
       })
     } else console.log('DNS stubs on http://127.0.0.1:8790/dns-query and http://127.0.0.1:8791/resolve. Records: .wrangler/dns-stub.json')

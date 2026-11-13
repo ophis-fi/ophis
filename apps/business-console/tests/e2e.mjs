@@ -30,6 +30,7 @@ import { mnemonicToAccount } from 'viem/accounts'
 import { publish as publishTxt, start as startDnsStubs } from '../scripts/dns-stub.mjs' // milestone 5: the two local resolvers of "Check DNS"
 import { start as startIdp } from '../scripts/idp-stub.mjs' // company sign-in: the local stand-in for Microsoft and Google
 import { CONTRACT, PORT as INDEXER_PORT, start as startIndexer } from '../scripts/indexer-stub.mjs' // partner figures: the local stand-in for the rebate indexer
+import { PORT as LIST_PORT, start as startLists } from '../scripts/list-stub.mjs' // M10: the local stand-in for the place where the OFAC list file lives
 
 process.chdir(new URL('..', import.meta.url).pathname)
 const ORIGIN = 'http://localhost:8787'
@@ -58,6 +59,7 @@ check('seed printed an enrolment link', Boolean(link))
 const stopDnsStubs = startDnsStubs() // ports 8790 and 8791
 const stopIdp = startIdp() // port 8792
 const stopIndexer = startIndexer() // port 8793
+const stopLists = startLists() // port 8794
 // detached: the server gets its own process group, so the whole group can be stopped at the end.
 const serve = (...more) => spawn('node_modules/.bin/wrangler', ['dev', '--persist-to', STATE, '--port', PORT, ...more], { env, detached: true, stdio: 'ignore' })
 const stopServer = async () => {
@@ -79,7 +81,7 @@ try {
   check('the local server answers', await reachable())
 
   // Sanctions screening: what the operator's command sends, heard by a server that only listens. A list file stays on this machine.
-  const LIST = { eu: 'tests/fixtures/sanctions-eu.txt', un: 'tests/fixtures/sanctions-un.txt', addresses: 'tests/fixtures/sanctions-addresses.txt' }
+  const LIST = { eu: 'tests/fixtures/sanctions-eu.txt', un: 'tests/fixtures/sanctions-un.txt', addresses: 'tests/fixtures/sanctions-addresses.txt', xml: 'tests/fixtures/sdn-test.xml' }
   const fileSha = (path) => createHash('sha256').update(readFileSync(path)).digest('hex')
   const heard = []
   const listener = createServer((request, response) => {
@@ -103,6 +105,7 @@ try {
   await tell('screen', anId, '--outcome', 'review', '--list', `un=${LIST.un}`, '--list', `eu=${LIST.eu}`, '--next-review', '2031-01-01')
   await tell('decide', anId, 'approve', '--submission', '0'.repeat(16), '--tier', 'standard', '--source', 'registry', '--evidence', 'x', '--sha256', 'ab'.repeat(32), '--next-review', '2030-01-01', '--screening', 'clear', '--list', `eu=${LIST.eu}`)
   await tell('addresses', `ofac=${LIST.addresses}`)
+  await tell('addresses', `ofac=${LIST.xml}`) // M10: an official XML carries its publish day
   listener.close() // before the checks: a failed check must end the run
   check('a list file that names no address, a file that is not there and a list code given twice are refused by the command before anything is sent',
     sentByThose === 0 && unsent[0].startsWith('1 Refused: no address') && unsent[1].startsWith('1 Refused: the file could not be read') && unsent[2].startsWith('1 Refused: a list code is given twice')
@@ -111,7 +114,19 @@ try {
     `POST /api/operator/organisations/${anId}/screening ${JSON.stringify({ outcome: 'review', lists: { un: fileSha(LIST.un), eu: fileSha(LIST.eu) }, nextReview: '2031-01-01' })}`,
     `POST /api/operator/organisations/${anId}/decision ${JSON.stringify({ decision: 'approve', tier: 'standard', source: 'registry', evidenceRef: 'x', evidenceSha256: 'ab'.repeat(32), nextReview: '2030-01-01', submission: '0'.repeat(16), screening: { outcome: 'clear', lists: { eu: fileSha(LIST.eu) } } })}`,
     `POST /api/operator/sanctions ${JSON.stringify({ list: 'ofac', sha256: fileSha(LIST.addresses), addresses: ['0x00000000000000000000000000000000000a11ce', '0x0000000000000000000000000000000000000b0b'] })}`,
+    `POST /api/operator/sanctions ${JSON.stringify({ list: 'ofac', sha256: fileSha(LIST.xml), addresses: ['0x00000000000000000000000000000000000000a1', '0x0000000000000000000000000000000000000b0b'], published: '2026-11-09' })}`,
   ]))
+  // M10: the maker of the list file, on the test XML (the real structure, invented values), and on files that are not whole.
+  const made = `${STATE}/ofac.json`
+  const maker = (from, out) => { try { return run('node', ['scripts/ofac-list.mjs', '--from', from, '--out', out]) } catch (error) { return `refused ${error.stderr}` } }
+  const xml = readFileSync(LIST.xml, 'utf8')
+  const broken = { 'not the list': xml.replaceAll('sdnList', 'sdnLost'), 'a cut download': xml.slice(0, xml.indexOf('</sdnList>')), 'no publish date': xml.replace(/<Publish_Date>.*<\/Publish_Date>/, ''), 'another count': xml.replace('<Record_Count>3<', '<Record_Count>4<'), 'no address': xml.replaceAll('0x0000', 'zz0000') }
+  const refusals = Object.entries(broken).map(([what, text], i) => (writeFileSync(`${STATE}/bad-${i}.xml`, text), [what, maker(`${STATE}/bad-${i}.xml`, `${STATE}/bad-${i}.json`), existsSync(`${STATE}/bad-${i}.json`)]))
+  check('the maker turns the test XML into the list file: the addresses sorted, the publish day, the SHA-256 of the XML; and refuses a file that is not whole, writing nothing',
+    maker(LIST.xml, made).startsWith(`Written: ${made}. 2 addresses, published 2026-11-09`)
+    && readFileSync(made, 'utf8') === `${JSON.stringify({ list: 'ofac', source: 'sdn-test.xml', published: '2026-11-09', sha256: fileSha(LIST.xml), count: 2, addresses: ['0x00000000000000000000000000000000000000a1', '0x0000000000000000000000000000000000000b0b'] }, null, 1)}\n`
+    && refusals.every(([, said, written]) => said.startsWith('refused Refused: ') && said.includes('Nothing was written.') && !written)
+    && ['no <sdnList', 'does not end with </sdnList>', 'no publish date', 'Record_Count says 4', 'no address'].every((why, i) => refusals[i][1].includes(why)))
 
   browser = await chromium.launch({ executablePath: CHROME, headless: true, args: PORT === '8787' ? [] : [`--host-resolver-rules=MAP localhost:8787 127.0.0.1:${PORT}, MAP 127.0.0.1:8787 127.0.0.1:${PORT}`] })
   const violations = []
@@ -908,14 +923,14 @@ try {
     (await section.innerText()).includes(`Checked on ${today} against: EU consolidated financial sanctions list. Result: no match. List version ${version({ eu: fileSha(LIST.eu) })}. Next review by 2030-01-01.`)
     && await section.getByText('No address list is loaded yet. Wallets have not been compared.').isVisible() && (await section.locator('table').count()) === 0
     && await section.getByText('A check is a search of public lists on that date. It is repeated at each review.').isVisible())
-  const loadedList = operator('addresses', `ofac=${LIST.addresses}`)
-  check('the operator loads the test address list: two addresses (lower case, each once, 40 hex characters exactly), and no wallet is on it', loadedList.includes(`Loaded 2 addresses of the list "ofac" (file SHA-256 ${fileSha(LIST.addresses)})`) && loadedList.includes('No linked or pending wallet is on a loaded list.'))
+  const loadedList = operator('addresses', `un=${LIST.addresses}`) // by hand, under the code "un": "ofac" is left to the list file (M10, below)
+  check('the operator loads the test address list: two addresses (lower case, each once, 40 hex characters exactly), and no wallet is on it', loadedList.includes(`Loaded 2 addresses of the list "un" (file SHA-256 ${fileSha(LIST.addresses)})`) && loadedList.includes('No linked or pending wallet is on a loaded list.'))
   check('the operator records a clear screening against two lists', operator('screen', newOrg.id, '--outcome', 'clear', '--list', `un=${LIST.un}`, '--list', `eu=${LIST.eu}`, '--next-review', '2031-01-01').includes(`${newOrg.id} is now active`))
   await on.reload()
   await section.getByText('Not on a loaded list').waitFor()
   check('Compliance shows both: the new screening with its two lists and its version, and the wallet compared with the loaded address list',
     (await section.innerText()).includes(`Checked on ${today} against: EU consolidated financial sanctions list, UN Security Council consolidated list. Result: no match. List version ${version({ eu: fileSha(LIST.eu), un: fileSha(LIST.un) })}. Next review by 2031-01-01.`)
-    && (await section.innerText()).includes(`Linked wallets are compared with the addresses of: OFAC SDN list (2 addresses, loaded ${today}, version ${fileSha(LIST.addresses).slice(0, 16)}).`)
+    && (await section.innerText()).includes(`Linked wallets are compared with the addresses of: UN Security Council consolidated list (2 addresses, loaded ${today}, version ${fileSha(LIST.addresses).slice(0, 16)}).`)
     && await section.getByRole('row', { name: new RegExp(`Treasury.*Not on a loaded list.*OP Mainnet.*${key.address}`) }).isVisible() // the result comes second: it shows on a phone
     && await on.getByText('Ophis operator: sanctions screening recorded. Result: no match').isVisible() && !/\b(hit|clear)\b/.test(await section.innerText()) && await both(on, '57-screening', '.pager')) // from the end of the audit log, so that the heading of the section is in the picture
   // Company sign-in (C2): the Owner invites a member by work address. The member signs in at the provider, creates the
@@ -1241,8 +1256,8 @@ try {
   const [referredFile] = await Promise.all([pat.page.waitForEvent('download'), pat.page.getByRole('button', { name: 'Referred wallets CSV' }).click()])
   const referredLines = readFileSync(await referredFile.path(), 'utf8').split('\r\n').filter(Boolean)
   check('the export of the referred wallets downloads: named ophis-partner-, the partner wallet and source = live in every row, every referred wallet of the contract file',
-    /^ophis-partner-referred-\d{4}-\d\d-\d\d\.csv$/.test(referredFile.suggestedFilename()) && referredLines[0] === '"Partner wallet","Wallet name","Referred wallet","Attributed by","First seen (UTC)","Lifetime volume (USD)","source"'
-    && referredLines.length === A.referees.length + 1 && referredLines.slice(1).every((row, i) => row.toLowerCase().startsWith(`"${P.wallet}","demo wallet","${A.referees[i].wallet}",`) && row.endsWith(`,"${A.referees[i].lifetimeVolumeUsd}","live"`)))
+    /^ophis-partner-referred-\d{4}-\d\d-\d\d\.csv$/.test(referredFile.suggestedFilename()) && referredLines[0] === '"Partner wallet","Wallet name","Referred wallet","Attributed by","First seen (UTC)","Lifetime volume (USD)","On a loaded sanctions list","source"'
+    && referredLines.length === A.referees.length + 1 && referredLines.slice(1).every((row, i) => row.toLowerCase().startsWith(`"${P.wallet}","demo wallet","${A.referees[i].wallet}",`) && row.endsWith(`,"${A.referees[i].lifetimeVolumeUsd}","no","live"`)))
 
   // The figures are not available: status 500, a wrong shape, an answer after 6 seconds. Never an example, never a part.
   const patOverview = () => pat.page.goto(`${ORIGIN}/#/overview`).then(() => pat.page.reload())
@@ -1260,6 +1275,35 @@ try {
   await unavailable.getByRole('button', { name: 'Retry' }).click()
   await pat.page.getByText('Figures from the Ophis rebate service, read at').waitFor()
   check('Retry reads again: the figures are back', (await partnerTile('Referred volume this cycle')) === `$${usd(A.currentCycleVolumeUsd)}`)
+
+  // ---- M10: the OFAC list as a file the console reads, and the flag on a referred wallet ----
+  const listMode = (mode) => fetch(`http://127.0.0.1:${LIST_PORT}/stub/${mode}`)
+  // "sync" makes the Worker read the list stand-in, which lives in this process: the command must not block it (not execFileSync).
+  const operatorSync = () => new Promise((resolve) => {
+    let said = ''
+    const child = spawn('node', ['scripts/operator.mjs', 'sync'], { env, stdio: ['ignore', 'pipe', 'pipe'] }).on('close', () => resolve(said))
+    for (const stream of [child.stdout, child.stderr]) stream.on('data', (chunk) => (said += chunk))
+  })
+  const synced = await operatorSync()
+  check('"operator sync" reads the list file and loads it: the two addresses of the test file, with its publish day', synced.includes('Loaded 2 addresses of the list "ofac", published 2026-11-09.') && synced.includes('No linked or pending wallet is on a loaded list.'))
+  await patOverview()
+  await pat.page.getByText('A referred wallet is on a loaded sanctions list.').waitFor()
+  check('the partner Overview marks the referred wallet that is on the list, with one note above the table; nothing is frozen and the session lives',
+    (await referredRows.first().innerText()).includes(A.referees[0].wallet) && await referredRows.first().getByText('On a loaded sanctions list', { exact: true }).isVisible()
+    && (await pat.page.getByText('On a loaded sanctions list', { exact: true }).count()) === 1 && await pat.page.getByText('The mark freezes nothing and changes nothing in your organisation.').isVisible()
+    && (await status('/api/me', pat.page)) === 200 && await both(pat.page, '59-overview-partner-flag', '.pw-facts'))
+  const flagged = operator('list')
+  check('"operator list" prints the FLAG and the line of the list, with no warning',
+    new RegExp(`^FLAG  [0-9a-f]{32}  Northwind Vaults  referred wallet ${A.referees[0].wallet} is on a loaded list  ${today}$`, 'm').test(flagged)
+    && flagged.includes(`LIST  ofac  2 addresses  published 2026-11-09  loaded ${today}  last good read of the list file ${today}`) && !flagged.includes('WARNING'))
+  await listMode('shrunk')
+  const held = await operatorSync()
+  const heldList = operator('list')
+  check('a shrunk file is held: not loaded, with its warning in "sync" and in "list"', held.includes('WARNING  held (shrunk): the list file was not loaded') && heldList.includes('WARNING  held (shrunk)') && heldList.includes('LIST  ofac  2 addresses  published 2026-11-09'))
+  await listMode('down')
+  check('a list file that cannot be read changes nothing', (await operatorSync()).includes('WARNING  the list file could not be read') && operator('list').includes('WARNING  held (shrunk)'))
+  await listMode('ok')
+  check('the loaded file again: nothing changes, and nothing is held any more', (await operatorSync()).includes('The list file is the one already loaded.') && !operator('list').includes('WARNING'))
   await pat.page.getByRole('link', { name: 'Desk' }).first().click()
   await pat.page.getByRole('heading', { name: 'The desk is for institutions.' }).waitFor()
   check('a partner sees "The desk is for institutions.", no ticket, and the server refuses the desk',
@@ -1290,7 +1334,7 @@ try {
   if (violations.length) console.error(violations.join("\n"))
   check(`no policy violation in the browser (${violations.length})`, violations.length === 0)
   check(`no request left the origin (${foreign.length})`, foreign.length === 0)
-  console.log('\nEnd-to-end run passed. Screenshots in .shots/: 01-signin to 58-screening-frozen')
+  console.log('\nEnd-to-end run passed. Screenshots in .shots/: 01-signin to 59-overview-partner-flag')
 } catch (error) {
   console.error(error.message)
   process.exitCode = 1
@@ -1298,6 +1342,7 @@ try {
   stopDnsStubs()
   stopIdp()
   stopIndexer()
+  stopLists()
   await browser?.close()
   await stopServer()
 }

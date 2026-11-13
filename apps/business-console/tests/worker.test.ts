@@ -7839,6 +7839,13 @@ describe('E. onboarding: a company applies, proves its domain, is activated and 
       expect(await flagsNow(o.orgId, p.orgId)).toEqual([
         { id: o.orgId, name: 'Flagged Partner', address: referees[2], at: now }, { id: p.orgId, name: 'Other Partner', address: referees[0], at: now }, { id: o.orgId, name: 'Flagged Partner', address: referees[0], at: first },
       ])
+      // Two reads at the same instant: the second records the flag just before the first commits (its second batch: the first counts the read).
+      // The first reads again inside its commit: one row.
+      const q = await partnerOrg('Raced Partner')
+      indexer() // the operator's list above read the chain: the indexer answers again
+      let batches = 0
+      const raced2 = { ...liveEnv, DB: racing(async () => ++batches === 2 && expect(await marks(q)).toEqual([true, false, true]), 2).DB } as Env
+      expect([(await overviewOf(q, raced2)).status, (await flagRows(q.orgId)).map((r) => r.detail).sort()]).toEqual([200, [referees[0], referees[2]].sort()])
       // An answer of the indexer that is refused marks and records nothing.
       expect((await load('eu', [referees[1]])).status).toBe(200)
       indexer((answer) => ({ ...answer, asOf: 'yesterday' }))
@@ -7879,7 +7886,8 @@ describe('E. onboarding: a company applies, proves its domain, is activated and 
       const o = await partnerOrg('Swept Partner')
       // More than 20 partners hold a linked wallet (21 more are made here; one that holds none, a frozen one and an institution are not read).
       for (let i = 0; i < 21; i++) await walletRow((await organisation(`Sweep ${i}`)).orgId, someAddress())
-      const [bare, cold, bank] = [await organisation('No wallet'), await organisation('Frozen partner'), await organisation('An institution')]
+      const [bare, cold, bank] = [await organisation('No linked wallet'), await organisation('Frozen partner'), await organisation('An institution')]
+      await walletRow(bare.orgId, someAddress(), { state: 'unlinked' })
       for (const m of [cold, bank]) await walletRow(m.orgId, someAddress())
       await setOrg(cold.orgId, `state = 'frozen'`)
       await setOrg(bank.orgId, `kind = 'institution'`)
@@ -7891,6 +7899,10 @@ describe('E. onboarding: a company applies, proves its domain, is activated and 
       const today = await data.partnersToRead(db, now)
       expect([today.length, new Set(today).size, today.includes(o.orgId), today[0], today.some((id) => [bare, cold, bank].some((m) => m.orgId === id))]).toEqual([20, 20, true, all[windowOf(now)], false])
       expect([(await data.partnersToRead(db, now + DAY))[0], windowOf(now + DAY)]).toEqual([all[(windowOf(now) + 20) % all.length], (windowOf(now) + 20) % all.length])
+      // Over the days every partner is read, each in turn, and nobody else.
+      const cycle = new Set<string>()
+      for (let d = 0; d < all.length; d++) for (const id of await data.partnersToRead(db, now + d * DAY)) cycle.add(id)
+      expect([...cycle].sort()).toEqual(all)
       // One GET of the list file, then one question to the indexer per partner of the window.
       const asked: string[] = []
       vi.stubGlobal('fetch', async (url: string, init: RequestInit = {}) => {
