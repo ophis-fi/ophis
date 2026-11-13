@@ -24,19 +24,21 @@ chain-1 reads, public fallback, and the scheduled OTC consistency check.
 
 ## Business console read route
 
-`POST /business/partner` lets the Ophis Business console read the partner and
-partner-fee dashboards of up to 10 wallets per call. It is gated by
-`BUSINESS_API_TOKEN` (`Authorization: Bearer ...`). This token reads EVERY
-partner's dashboard, so it is a secret: at least 32 characters, and different
-from `REBATE_INDEXER_ADMIN_TOKEN`. Unset, too short, or equal to the admin
-token means the route is off (404 for every caller).
+`POST /business/partner` lets the Ophis Business console read the partner-fee
+dashboard of up to 10 wallets per call. It does not read the referral
+dashboard: the console's partners get no referral share (`POST /partner` keeps
+it for retail). It is gated by `BUSINESS_API_TOKEN`
+(`Authorization: Bearer ...`). This token reads EVERY partner's fee dashboard,
+so it is a secret: at least 32 characters, and different from
+`REBATE_INDEXER_ADMIN_TOKEN`. Unset, too short, or equal to the admin token
+means the route is off (404 for every caller).
 
 The body is `{ wallets, contract }`. `contract` names each wallet the console
 proved by a contract signature (a Safe), with the chains it proved it on. Such
 a wallet is read only when one of those chains is its pinned chain in
 `CONTRACT_WALLET_AUTH_CHAINS`, the rule `POST /partner` applies: the same
 address on another chain can be a contract with other owners. Otherwise its
-entry is `{ affiliate: null, fees: null }` and nothing is read for it. A wallet
+entry is `{ wallet, fees: null }` and nothing is read for it. A wallet
 proved by its own key is not listed and is read on any chain.
 
 To turn the route on, set `BUSINESS_API_TOKEN` in the host environment of the
