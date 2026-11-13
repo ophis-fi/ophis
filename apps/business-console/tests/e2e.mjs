@@ -912,7 +912,7 @@ try {
   check('Compliance shows both: the new screening with its two lists and its version, and the wallet compared with the loaded address list',
     (await section.innerText()).includes(`Checked on ${today} against: EU consolidated financial sanctions list, UN Security Council consolidated list. Result: no match. List version ${version({ eu: fileSha(LIST.eu), un: fileSha(LIST.un) })}. Next review by 2031-01-01.`)
     && (await section.innerText()).includes(`Linked wallets are compared with the addresses of: OFAC SDN list (2 addresses, loaded ${today}, version ${fileSha(LIST.addresses).slice(0, 16)}).`)
-    && await section.getByRole('row', { name: new RegExp(`Treasury.*${key.address}.*OP Mainnet.*Not on a loaded list`) }).isVisible()
+    && await section.getByRole('row', { name: new RegExp(`Treasury.*Not on a loaded list.*OP Mainnet.*${key.address}`) }).isVisible() // the result comes second: it shows on a phone
     && await on.getByText('Ophis operator: sanctions screening recorded. Result: no match').isVisible() && !/\b(hit|clear)\b/.test(await section.innerText()) && await both(on, '57-screening', '.pager')) // from the end of the audit log, so that the heading of the section is in the picture
   // Company sign-in (C2): the Owner invites a member by work address. The member signs in at the provider, creates the
   // passkey, and the Owner approves with a passkey check. No words are shown or typed.
