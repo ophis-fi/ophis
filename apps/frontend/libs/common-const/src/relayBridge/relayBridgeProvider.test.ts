@@ -59,6 +59,17 @@ it('disabled provider makes no discovery requests and remains usable for history
   expect(trustedTokens).not.toHaveBeenCalled()
 })
 
+it('stops quoting when excluded at runtime, even with the rollout flag enabled', async () => {
+  const relay = provider()
+  relay.quoteEnabled = false
+  expect(await relay.getNetworks()).toEqual([])
+  expect(await relay.getIntermediateTokens(request)).toEqual([])
+  await expect(relay.getQuote(request)).rejects.toThrow()
+  expect(fetch).not.toHaveBeenCalled()
+  relay.quoteEnabled = true
+  expect((await relay.getNetworks()).length).toBeGreaterThan(0)
+})
+
 it('returns only trusted same-asset intermediate tokens and refuses unproved sources', async () => {
   const relay = provider()
   expect(await relay.getIntermediateTokens(request)).toEqual([

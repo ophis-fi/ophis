@@ -1,6 +1,6 @@
 import { ReactNode } from 'react'
 
-import { getChainInfo, RECEIVED_LABEL } from '@cowprotocol/common-const'
+import { getChainInfo, isRelayStatus, RECEIVED_LABEL } from '@cowprotocol/common-const'
 import { ExplorerDataType, getExplorerLink } from '@cowprotocol/common-utils'
 import { SupportedChainId } from '@cowprotocol/cow-sdk'
 import { Currency, CurrencyAmount, Token } from '@cowprotocol/currency'
@@ -50,7 +50,9 @@ export function ReceivedBridgingContent({
       <ConfirmDetailsItem
         label={
           <ReceiveAmountTitle variant="success">
-            <SuccessTextBold>{i18n._(RECEIVED_LABEL)}</SuccessTextBold>
+            <SuccessTextBold>
+              {isRelayStatus(statusResult) ? t`Minimum received` : i18n._(RECEIVED_LABEL)}
+            </SuccessTextBold>
           </ReceiveAmountTitle>
         }
       >

@@ -2,6 +2,7 @@ interface RelayEnv {
   RELAY_API_KEY?: string
   OPHIS_RELAY_RATE_LIMITER?: DurableObjectNamespace
 }
+class RelayRateLimitError extends Error {}
 const ORIGINS = new Set(['https://ophis.fi', 'https://swap.ophis.fi', 'https://explorer.ophis.fi'])
 const CHAINS = new Set([1, 10, 56, 100, 130, 137, 4663, 5042, 8453, 9745, 42161, 43114, 57073, 59144])
 // Mirrored fee recipient: tests pin this to the SDK and both frontend constants.
@@ -50,7 +51,7 @@ async function boundedJson(response: Response): Promise<unknown> {
   return JSON.parse(new TextDecoder().decode(bytes)) as unknown
 }
 
-// Chain discovery is shared by every quote and token picker; coalesce it rather than spending quote quota.
+// Coalesce chain discovery before admission so cache hits spend no App read quota.
 const chainCache: { until: number; pending?: Promise<unknown> } = { until: 0 }
 async function upstream(path: string, key: string, body?: Record<string, unknown>): Promise<unknown> {
   const response = await fetch(`https://api.relay.link${path}`, {
@@ -61,21 +62,22 @@ async function upstream(path: string, key: string, body?: Record<string, unknown
   if (!response.ok) throw new Error('Relay unavailable')
   return boundedJson(response)
 }
-function getChains(key: string): Promise<unknown> {
+function getChains(key: string, namespace: DurableObjectNamespace): Promise<unknown> {
   if (chainCache.pending && Date.now() < chainCache.until) return chainCache.pending
   chainCache.until = Date.now() + 300_000
-  chainCache.pending = upstream('/chains', key).catch((error: unknown) => {
+  chainCache.pending = admitted(namespace, 'relay:app:reads').then(() => upstream('/chains', key)).catch((error: unknown) => {
     chainCache.pending = undefined
     throw error
   })
   return chainCache.pending
 }
 
-async function admitted(namespace: DurableObjectNamespace, key: string): Promise<boolean> {
-  const response = await namespace.get(namespace.idFromName(key)).fetch('https://relay-limits.internal/', { method: 'POST' })
+async function admitted(namespace: DurableObjectNamespace, key: string): Promise<void> {
+  const path = key === 'relay:app:reads' ? '/reads' : '/'
+  const response = await namespace.get(namespace.idFromName(key)).fetch(`https://relay-limits.internal${path}`, { method: 'POST' })
   if (!response.ok) throw new Error('Relay admission unavailable')
   const result = object(await response.json())
-  return result.success === true
+  if (result.success !== true) throw new RelayRateLimitError()
 }
 
 function allowedOrigin(origin: string | null, url: URL): boolean {
@@ -102,11 +104,12 @@ export const onRequest: PagesFunction<RelayEnv> = async ({ request, env, params 
   try {
     const limiter = env.OPHIS_RELAY_RATE_LIMITER
     const ip = request.headers.get('cf-connecting-ip') || 'unknown'
-    if (!(await admitted(limiter, `relay:${action}:${ip}`))) return json({ error: 'Rate limited' }, 429)
-    if (action === 'chains') return json(await getChains(env.RELAY_API_KEY))
+    await admitted(limiter, `relay:${action}:${ip}`)
+    if (action === 'chains') return json(await getChains(env.RELAY_API_KEY, limiter))
     if (action === 'status') {
       const requestId = url.searchParams.get('requestId')
       if (!identifier(requestId)) return json({ error: 'Invalid request id' }, 400)
+      await admitted(limiter, 'relay:app:reads')
       const status = object(await upstream(`/intents/status/v3?requestId=${requestId}`, env.RELAY_API_KEY))
       return json({ status: status.status, inTxHashes: status.inTxHashes, txHashes: status.txHashes, refundFailReason: status.refundFailReason })
     }
@@ -114,13 +117,14 @@ export const onRequest: PagesFunction<RelayEnv> = async ({ request, env, params 
     if (body.length > 4096) return json({ error: 'Body too large' }, 413)
     const parsed = (() => { try { return quoteBody(JSON.parse(body) as unknown) } catch { return null } })()
     if (!parsed) return json({ error: 'Invalid bridge request' }, 400)
-    if (!(await admitted(limiter, 'relay:app:quotes'))) return json({ error: 'Rate limited' }, 429)
+    await admitted(limiter, 'relay:app:quotes')
     const quote = object(await upstream('/quote/v2', env.RELAY_API_KEY, parsed))
     const details = object(quote.details)
     const impact = object(object(details.expandedPriceImpact).app)
     if (!Number.isFinite(Number(impact.usd)) || Number(impact.usd) === 0) throw new Error('App fee missing')
     return json({ requestId: quote.requestId, protocol: quote.protocol, details: { currencyOut: details.currencyOut, timeEstimate: details.timeEstimate } })
-  } catch {
+  } catch (error: unknown) {
+    if (error instanceof RelayRateLimitError) return json({ error: 'Rate limited' }, 429)
     return json({ error: 'Relay is temporarily unavailable' }, 502)
   }
 }

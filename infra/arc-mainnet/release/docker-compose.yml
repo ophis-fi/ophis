@@ -16,7 +16,7 @@ x-backend: &backend
 services:
   ofac:
     logging: {driver: json-file, options: {max-size: "5m", max-file: "2"}}
-    image: python:3.13-alpine@sha256:79e7a9b9ff1cbceff819f856fb374477792a5967759d94df266de7b7b4120e6f
+    image: python:3.13-alpine@sha256:9ef1a599f863231c3d91e941389bfdc4a2d6070557243d54df1a4e57015b960e
     restart: unless-stopped
     mem_limit: 128m
     read_only: true

@@ -4,6 +4,11 @@ import { RelayApi } from './relayApi.service'
 
 const hash = (v: unknown): v is string => typeof v === 'string' && /^0x[\da-f]{64}$/i.test(v)
 
+// Relay status has no delivered amount; history retains the signed quote minimum.
+export function isRelayStatus(status: BridgeStatusResult | undefined): boolean {
+  return !!status && 'relayRecoveryRequired' in status && typeof status.relayRecoveryRequired === 'boolean'
+}
+
 export function isRelayRecoveryRequired(status: BridgeStatusResult | undefined): boolean {
   return !!status && 'relayRecoveryRequired' in status && status.relayRecoveryRequired === true
 }

@@ -5,10 +5,11 @@ export class RelayRateLimiter {
 
   async fetch(request: Request): Promise<Response> {
     if (request.method !== 'POST') return new Response(null, { status: 405 })
+    const limit = new URL(request.url).pathname === '/reads' ? 160 : 40
     const success = await this.state.storage.transaction(async (storage) => {
       const now = Date.now()
       const recent = (await storage.get<number[]>('requests') ?? []).filter((time) => time > now - 60_000)
-      if (recent.length >= 40) return false
+      if (recent.length >= limit) return false
       await storage.put('requests', [...recent, now])
       await storage.setAlarm(now + 60_000)
       return true

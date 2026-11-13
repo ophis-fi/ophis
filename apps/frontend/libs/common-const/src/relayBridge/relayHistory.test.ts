@@ -6,6 +6,8 @@ import sample from './fixtures/usdc-base-optimism.json'
 import { RELAY_DAPP_ID, RELAY_DEPOSIT, relayDepository } from './relay.constants'
 import { relayBridgingParams } from './relayHistory.service'
 
+import { getEthFlowContractAddresses } from '../common'
+
 const SHED = '0x2222222222222222222222222222222222222222'
 const SETTLEMENT = '0x4444444444444444444444444444444444444444'
 const UID = `0x${'55'.repeat(56)}`
@@ -67,8 +69,8 @@ jest.mock('../networks', () => ({
   getRpcProvider: () => ({ getTransactionReceipt: async () => mockReceipt }),
 }))
 const status = jest.fn(async () => ({ status: BridgeStatus.EXECUTED }))
-const read = (): ReturnType<typeof relayBridgingParams> =>
-  relayBridgingParams(status, SupportedChainId.BASE, order(), TX, { [SupportedChainId.BASE]: SETTLEMENT })
+const read = (savedOrder = order()): ReturnType<typeof relayBridgingParams> =>
+  relayBridgingParams(status, SupportedChainId.BASE, savedOrder, TX, { [SupportedChainId.BASE]: SETTLEMENT })
 
 beforeEach(() => {
   mockReceipt.status = 1
@@ -82,11 +84,34 @@ it('binds a confirmed deposit to its own traded order and polls the request id, 
     bridgingId: sample.response.requestId,
     inputAmount: 10_000_000n,
     inputTokenAddress: request.sellTokenAddress,
+    outputAmount: BigInt(sample.response.details.currencyOut.minimumAmount),
     recipient: request.account,
     destinationChainId: 10,
   })
   expect(status).toHaveBeenCalledWith(sample.response.requestId, 8453)
 })
+
+it.each(['prod', 'staging'] as const)('resolves the authenticated %s EthFlow sender', async (env) => {
+  const savedOrder = order()
+  savedOrder.owner = getEthFlowContractAddresses(env, SupportedChainId.BASE)
+  savedOrder.onchainOrderData = { sender: request.account }
+  expect((await read(savedOrder))?.params.owner).toBe(request.account)
+})
+
+it.each(['missingSender', 'wrongSender', 'forgedSender'])(
+  'rejects mismatched EthFlow ownership: %s',
+  async (mutation) => {
+    const savedOrder = order()
+    savedOrder.owner = getEthFlowContractAddresses('prod', SupportedChainId.BASE)
+    if (mutation === 'wrongSender') savedOrder.onchainOrderData = { sender: SETTLEMENT }
+    if (mutation === 'forgedSender') {
+      savedOrder.owner = SETTLEMENT
+      savedOrder.onchainOrderData = { sender: request.account }
+    }
+    await expect(read(savedOrder)).rejects.toThrow()
+    expect(status).not.toHaveBeenCalled()
+  },
+)
 
 it.each([
   'failedReceipt',

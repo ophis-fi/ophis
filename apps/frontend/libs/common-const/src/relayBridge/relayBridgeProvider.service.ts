@@ -24,6 +24,8 @@ import { ARC_ENABLED } from '../arc.const'
 import { toBridgeChainInfo } from '../bridgeChainInfo'
 
 export class RelayBridgeProvider implements HookBridgeProvider<RelayQuote> {
+  // History stays registered when wallet or feature settings exclude Relay from quoting.
+  quoteEnabled = true
   readonly type = 'HookBridgeProvider' as const
   readonly info: BridgeProviderInfo = {
     name: 'Relay',
@@ -41,7 +43,7 @@ export class RelayBridgeProvider implements HookBridgeProvider<RelayQuote> {
   }
 
   private get enabled(): boolean {
-    return this.options.enabled ?? RELAY_ENABLED
+    return this.quoteEnabled && (this.options.enabled ?? RELAY_ENABLED)
   }
 
   private async chains(): Promise<RelayChain[]> {

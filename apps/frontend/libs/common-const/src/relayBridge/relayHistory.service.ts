@@ -6,6 +6,7 @@ import { RELAY_DAPP_ID, RELAY_DEPOSIT, relayDepository } from './relay.constants
 import { RelayQuote } from './relay.types'
 import { relayAssert, verifyRelayQuote } from './relay.validation'
 
+import { getEthFlowContractAddresses } from '../common'
 import { getRpcProvider } from '../networks'
 
 const LOGS = new Interface([
@@ -14,6 +15,14 @@ const LOGS = new Interface([
   'event Transfer(address indexed from,address indexed to,uint256 value)',
 ])
 type Provider = HookBridgeProvider<RelayQuote>
+
+function relayOrderOwner(chainId: number, order: EnrichedOrder): string | undefined {
+  const isEthFlowOwner = [
+    getEthFlowContractAddresses('prod', chainId as SupportedChainId),
+    getEthFlowContractAddresses('staging', chainId as SupportedChainId),
+  ].some((address) => areAddressesEqual(address, order.owner))
+  return isEthFlowOwner ? order.onchainOrderData?.sender : order.owner
+}
 
 function readRelayBridge(
   chainId: number,
@@ -25,7 +34,8 @@ function readRelayBridge(
   const request = { ...saved.request, amount: BigInt(saved.request.amount) }
   const quote = verifyRelayQuote(saved.relay, request, 0)
   const shed = order.receiver
-  relayAssert(shed && request.sellTokenChainId === chainId && areAddressesEqual(request.account, order.owner))
+  const owner = relayOrderOwner(chainId, order)
+  relayAssert(shed && request.sellTokenChainId === chainId && areAddressesEqual(request.account, owner))
   relayAssert(areAddressesEqual(request.sellTokenAddress, order.buyToken))
   relayAssert(
     String(request.buyTokenChainId) === String(bridging.destinationChainId) &&

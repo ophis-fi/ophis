@@ -1,6 +1,6 @@
 import React, { ReactNode } from 'react'
 
-import { isRelayRecoveryRequired, RECEIVED_LABEL_EXPLORER } from '@cowprotocol/common-const'
+import { isRelayRecoveryRequired, isRelayStatus, RECEIVED_LABEL_EXPLORER } from '@cowprotocol/common-const'
 import { BridgeStatus, CrossChainOrder, isHookBridgeProvider } from '@cowprotocol/sdk-bridging'
 
 import { AddressLink } from 'components/common/AddressLink'
@@ -28,6 +28,7 @@ export function BridgeDetailsContent({ crossChainOrder }: BridgeDetailsContentPr
     provider,
   } = crossChainOrder
   const { sourceToken, destinationToken } = useCrossChainTokens(crossChainOrder)
+  const isRelay = isRelayStatus(crossChainOrder.statusResult)
   const fromTooltipText = isHookBridgeProvider(provider)
     ? BridgeDetailsTooltips.accountFromProxy
     : BridgeDetailsTooltips.accountOrderSigner
@@ -73,7 +74,7 @@ export function BridgeDetailsContent({ crossChainOrder }: BridgeDetailsContentPr
         <AmountSectionWrapper>
           <BridgeAmountDisplay labelPrefix="From:" bridgeToken={sourceToken} amount={depositAmount} />
           <BridgeAmountDisplay
-            labelPrefix="To:"
+            labelPrefix={isRelay ? 'To (minimum):' : 'To:'}
             bridgeToken={destinationToken}
             amount={outputAmount?.toString() || '0'}
             bridgeProvider={provider}
@@ -81,7 +82,14 @@ export function BridgeDetailsContent({ crossChainOrder }: BridgeDetailsContentPr
         </AmountSectionWrapper>
       </DetailRow>
 
-      <DetailRow label={RECEIVED_LABEL_EXPLORER} tooltipText={BridgeDetailsTooltips.youReceived}>
+      <DetailRow
+        label={isRelay ? 'Minimum received' : RECEIVED_LABEL_EXPLORER}
+        tooltipText={
+          isRelay
+            ? 'The signed quote minimum. The actual received amount may be higher.'
+            : BridgeDetailsTooltips.youReceived
+        }
+      >
         {outputAmount && destinationToken && bridgeStatus === BridgeStatus.EXECUTED ? (
           <BridgeReceiveAmount amount={outputAmount} destinationToken={destinationToken} bridgeProvider={provider} />
         ) : (
@@ -89,7 +97,18 @@ export function BridgeDetailsContent({ crossChainOrder }: BridgeDetailsContentPr
         )}
       </DetailRow>
 
-      <RefundStatusItem bridgeStatus={bridgeStatus} hash={depositTxHash || fillTxHash} />
+      {isRelay && bridgeStatus === BridgeStatus.REFUND ? (
+        <DetailRow label="Refund Status" tooltipText="Refund details are available on Relay.">
+          <span>Relay refund completed. View the Relay transaction for the refunded amount, token and network.</span>
+          {crossChainOrder.explorerUrl && (
+            <a href={crossChainOrder.explorerUrl} target="_blank" rel="noopener noreferrer">
+              View Relay transaction ↗
+            </a>
+          )}
+        </DetailRow>
+      ) : (
+        <RefundStatusItem bridgeStatus={bridgeStatus} hash={depositTxHash || fillTxHash} />
+      )}
 
       {/*TODO: uncomment once we know bridge fee*/}
       {/*<DetailRow label="Bridge fee" tooltipText="The fee charged by the bridge provider">*/}

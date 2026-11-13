@@ -96,6 +96,9 @@ const DECODE_ONLY_PROVIDER_IDS: readonly string[] = [bungeeBridgeProvider.info.d
  * here so the decode entries can never be dropped.
  */
 export function setQuoteBridgeProviders(quoteProviderIds: readonly string[]): void {
+  const relayQuoteEnabled = quoteProviderIds.includes(relayBridgeProvider.info.dappId)
+  if (relayBridgeProvider.quoteEnabled !== relayQuoteEnabled) bridgingSdk.clearCache()
+  relayBridgeProvider.quoteEnabled = relayQuoteEnabled
   bridgingSdk.setAvailableProviders([...new Set([...quoteProviderIds, ...DECODE_ONLY_PROVIDER_IDS])])
 }
 

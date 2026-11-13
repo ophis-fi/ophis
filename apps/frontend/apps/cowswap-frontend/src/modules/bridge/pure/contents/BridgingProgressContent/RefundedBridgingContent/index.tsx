@@ -5,7 +5,7 @@ import { RECEIVED_LABEL } from '@cowprotocol/common-const'
 import { ExplorerDataType, getExplorerLink, shortenAddress } from '@cowprotocol/common-utils'
 import { SupportedChainId } from '@cowprotocol/cow-sdk'
 import { Currency, CurrencyAmount } from '@cowprotocol/currency'
-import { NetworkLogo } from '@cowprotocol/ui'
+import { ExternalLink, NetworkLogo } from '@cowprotocol/ui'
 
 import { Trans, useLingui } from '@lingui/react/macro'
 
@@ -18,11 +18,32 @@ import { RefundLink, RefundRecipientWrapper, StyledTimelineCheckmarkIcon } from 
 interface RefundedContentProps {
   account: string
   bridgeSendCurrencyAmount: CurrencyAmount<Currency>
+  isRelay?: boolean
+  explorerUrl?: string
 }
 
-export function RefundedBridgingContent({ account, bridgeSendCurrencyAmount }: RefundedContentProps): ReactNode {
+export function RefundedBridgingContent({
+  account,
+  bridgeSendCurrencyAmount,
+  isRelay = false,
+  explorerUrl,
+}: RefundedContentProps): ReactNode {
   const sourceChainId = bridgeSendCurrencyAmount.currency.chainId as SupportedChainId
   const { i18n } = useLingui()
+
+  if (isRelay)
+    return (
+      <ConfirmDetailsItem label={i18n._(RECEIVED_LABEL)} withTimelineDot>
+        <SuccessTextBold>
+          <Trans>Relay refund completed. View the Relay transaction for the refunded amount, token and network.</Trans>
+        </SuccessTextBold>
+        {explorerUrl && (
+          <ExternalLink href={explorerUrl}>
+            <Trans>View Relay transaction</Trans>
+          </ExternalLink>
+        )}
+      </ConfirmDetailsItem>
+    )
 
   return (
     <>

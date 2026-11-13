@@ -153,7 +153,10 @@ Before explicitly enabling `REACT_APP_ENABLE_RELAY_BRIDGE=true`:
    a native Workers rate-limit binding is not interchangeable. All environments
    sharing the same Relay App quota must share the global limiter namespace.
    The persistent rolling limit admits 40 quotes/minute, below Relay's default
-   50/minute App quota. Other integrations using that App still consume quota.
+   50/minute App quota, and 160 combined status/uncached-chain reads per minute,
+   below the default 200/minute read quota. Coalesced or cached discovery does
+   not consume extra read slots. Deploy the updated limiter before Pages.
+   Other integrations using that App still consume quota.
 2. Add `RELAY_API_KEY` as a **server-side Pages secret**. Never use a
    `REACT_APP_` variable for the key. Neither the supplied key ID nor App ID is
    an authentication header. Missing secret or limiter makes the proxy fail
@@ -171,6 +174,9 @@ Before explicitly enabling `REACT_APP_ENABLE_RELAY_BRIDGE=true`:
    `RelayErc20Deposit` in the same receipt. Match its signed `orderId` to stored
    appData; poll using the separate API `requestId`. Confirm the destination
    receipt and actual received amount, plus fee accrual and refund handling.
+   Ophis labels the signed minimum explicitly; Relay's status endpoint does
+   not provide the actual delivered or refunded amount. Refund displays link
+   to Relay rather than assuming a source-chain refund of the full deposit.
 
 Availability follows live Relay chain/token discovery, Ophis's trusted token
 list, and existing source execution gates. Destination coverage does not prove

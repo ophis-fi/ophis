@@ -53,6 +53,7 @@ import {
   bridgingSdk,
   bungeeBridgeProvider,
   nearIntentsBridgeProvider,
+  relayBridgeProvider,
   setQuoteBridgeProviders,
 } from './bridgingSdk'
 
@@ -85,10 +86,18 @@ describe('bridgingSdk provider registry', () => {
     expect(availableIds()).not.toContain(acrossBridgeProvider.info.dappId)
   })
 
-  it('keeps the decode-only Bungee entry even with no quote provider at all', () => {
+  it('keeps both history providers even with no quote provider at all', async () => {
     setQuoteBridgeProviders([])
 
-    expect(availableIds()).toEqual([bungeeBridgeProvider.info.dappId])
+    expect(availableIds()).toEqual([relayBridgeProvider.info.dappId, bungeeBridgeProvider.info.dappId])
+    const fetchSpy = jest.spyOn(global, 'fetch')
+    expect(await relayBridgeProvider.getNetworks()).toEqual([])
+    expect(await relayBridgeProvider.getBuyTokens({ buyChainId: 10, sellChainId: 8453 })).toEqual({
+      tokens: [],
+      isRouteAvailable: false,
+    })
+    expect(fetchSpy).not.toHaveBeenCalled()
+    fetchSpy.mockRestore()
   })
 
   it('never lists Bungee first while a quote provider is enabled (single-quote path takes providers[0] ungated)', () => {

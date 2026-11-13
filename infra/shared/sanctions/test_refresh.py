@@ -34,6 +34,12 @@ class RefreshTests(unittest.TestCase):
             with self.subTest(data=data[:80]), self.assertRaises((ValueError, StopIteration)):
                 refresh.extract(data)
 
+    def test_encoded_dtd_cannot_bypass_declaration_checks(self):
+        document = '<!DOCTYPE sdnList [<!ENTITY address "' + A + '">]>' + export(address='&address;').decode()
+        for encoding in ['utf-8', 'utf-16', 'utf-16-le', 'utf-32']:
+            with self.subTest(encoding=encoding), self.assertRaises(ValueError):
+                refresh.extract(document.encode(encoding))
+
     def test_failures_keep_snapshot_and_removals_replace_it(self):
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / 'addresses.json'

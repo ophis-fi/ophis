@@ -1,5 +1,6 @@
 import { ReactNode } from 'react'
 
+import { isRelayStatus } from '@cowprotocol/common-const'
 import { capitalizeFirstLetter, ExplorerDataType, getExplorerLink, shortenAddress } from '@cowprotocol/common-utils'
 import { areAddressesEqual } from '@cowprotocol/cow-sdk'
 import { TokenLogo } from '@cowprotocol/tokens'
@@ -47,7 +48,13 @@ export function BridgeSummaryHeader({
       </SummaryRow>
 
       <SummaryRow>
-        <b>{isFinished ? <Trans>To</Trans> : <Trans>To at least</Trans>}</b>
+        <b>
+          {isFinished && !isRelayStatus(swapAndBridgeContext?.statusResult) ? (
+            <Trans>To</Trans>
+          ) : (
+            <Trans>To at least</Trans>
+          )}
+        </b>
 
         <i>
           {targetAmount ? (

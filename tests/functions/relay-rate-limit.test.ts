@@ -3,7 +3,7 @@ import test from 'node:test';
 
 import { RelayRateLimiter } from '../../infra/relay-rate-limit/worker.ts';
 
-test('persistent rolling admission survives object restart and expires after a minute', async () => {
+for (const [path, limit] of [['/', 40], ['/reads', 160]] as const) test(`${path} rolling admission persists ${limit} requests and expires after a minute`, async () => {
   const values = new Map<string, unknown>();
   const clock = { now: 1_000_000, alarm: 0 };
   const storage = {
@@ -16,10 +16,10 @@ test('persistent rolling admission survives object restart and expires after a m
   const state = { storage } as unknown as ConstructorParameters<typeof RelayRateLimiter>[0];
   const previous = Date.now;
   Date.now = () => clock.now;
-  const admit = async (limiter: RelayRateLimiter) => (await (await limiter.fetch(new Request('https://internal/', { method: 'POST' }))).json()) as { success: boolean };
+  const admit = async (limiter: RelayRateLimiter) => (await (await limiter.fetch(new Request(`https://internal${path}`, { method: 'POST' }))).json()) as { success: boolean };
   try {
     const limiter = new RelayRateLimiter(state);
-    for (const _ of Array.from({ length: 40 })) assert.equal((await admit(limiter)).success, true);
+    for (const _ of Array.from({ length: limit })) assert.equal((await admit(limiter)).success, true);
     assert.equal((await admit(limiter)).success, false);
     assert.equal((await admit(new RelayRateLimiter(state))).success, false);
     clock.now += 60_001;

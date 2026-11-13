@@ -48,7 +48,8 @@ def download():
 
 
 def extract(data):
-    if len(data) > MAX_BYTES or b'<!DOCTYPE' in data or b'<!ENTITY' in data:
+    # Treasury exports UTF-8; reject NULs so UTF-16/32 cannot bypass declaration checks.
+    if len(data) > MAX_BYTES or b'\x00' in data or b'<!DOCTYPE' in data or b'<!ENTITY' in data:
         raise ValueError('oversized export or forbidden XML declaration')
     events = ET.iterparse(io.BytesIO(data), events=('start', 'end'))
     _, root = next(events)

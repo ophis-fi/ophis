@@ -81,6 +81,69 @@ test('rate limited quotes never reach upstream', async () => {
   });
 });
 
+test('status reads use the shared App budget after per-IP admission', async () => {
+  await withFetch(async (calls) => {
+    const admissions: { name: string; path: string }[] = [];
+    const bindings = { RELAY_API_KEY: KEY, OPHIS_RELAY_RATE_LIMITER: {
+      idFromName: (name: string) => name,
+      get: (name: string) => ({ fetch: async (url: string) => {
+        admissions.push({ name, path: new URL(url).pathname });
+        return Response.json({ success: name !== 'relay:app:reads' });
+      } }),
+    } } as unknown as Context['env'];
+    const response = await onRequest({ request: new Request(`https://swap.ophis.fi/api/relay/status?requestId=${ID}`,
+      { headers: { 'cf-connecting-ip': '192.0.2.1' } }), env: bindings, params: { action: 'status' } } as unknown as Context);
+    assert.equal(response.status, 429);
+    assert.deepEqual(admissions, [{ name: 'relay:status:192.0.2.1', path: '/' }, { name: 'relay:app:reads', path: '/reads' }]);
+    assert.equal(calls.length, 0);
+  });
+});
+
+test('chain discovery coalesces before read admission, shares the status budget and retries after rejection', async () => {
+  await withFetch(async (calls) => {
+    const previous = Date.now;
+    const clock = { now: previous(), allowed: true, reads: 0 };
+    const admission = Promise.withResolvers<Response>();
+    const bindings = { RELAY_API_KEY: KEY, OPHIS_RELAY_RATE_LIMITER: {
+      idFromName: (name: string) => name,
+      get: (name: string) => ({ fetch: async (url: string) => {
+        if (name !== 'relay:app:reads') {
+          assert.equal(new URL(url).pathname, '/');
+          return Response.json({ success: true });
+        }
+        assert.equal(new URL(url).pathname, '/reads');
+        clock.reads++;
+        return clock.allowed ? (await admission.promise).clone() : Response.json({ success: false });
+      } }),
+    } } as unknown as Context['env'];
+    const read = (action: string) => onRequest({ request: new Request(`https://swap.ophis.fi/api/relay/${action}`),
+      env: bindings, params: { action: action.split('?')[0] } } as unknown as Context);
+    Date.now = () => clock.now;
+    try {
+      const pending = Promise.all(Array.from({ length: 20 }, () => read('chains')));
+      await new Promise((resolve) => setImmediate(resolve));
+      assert.equal(clock.reads, 1);
+      assert.equal(calls.length, 0);
+      admission.resolve(Response.json({ success: true }));
+      assert.ok((await pending).every((response) => response.status === 200));
+      assert.equal((await read('chains')).status, 200);
+      assert.equal(clock.reads, 1);
+      assert.equal(calls.length, 1);
+      assert.equal(calls[0].url, 'https://api.relay.link/chains');
+      clock.allowed = false;
+      assert.equal((await read(`status?requestId=${ID}`)).status, 429);
+      assert.equal(clock.reads, 2);
+      assert.equal((await read('chains')).status, 200);
+      assert.equal(clock.reads, 2);
+      clock.now += 300_001;
+      assert.equal((await read('chains')).status, 429);
+      assert.equal((await read('chains')).status, 429);
+      assert.equal(clock.reads, 4);
+      assert.equal(calls.length, 1);
+    } finally { Date.now = previous; }
+  }, { chains: [] });
+});
+
 test('rejects a quote where Relay silently omitted the requested app fee', async () => {
   await withFetch(async () => { assert.equal((await call()).status, 502); }, { details: { expandedPriceImpact: { app: { usd: '0' } } } });
 });
