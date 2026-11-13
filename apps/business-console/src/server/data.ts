@@ -693,9 +693,10 @@ export function stopReplacement(db: D1Database, credential: StoredCredential, co
         // The wallet that waited is linked again if the new Owner unlinked it (nothing is linked during the quarantine, so its address is still free).
         ...(wallets === null ? [] : [
           db.prepare('UPDATE wallets SET anchor = NULL, anchor_effective_at = NULL WHERE org_id = ? AND anchor IS NOT NULL').bind(orgId),
-          // Sanctions screening: a wallet whose address came onto a loaded list since is not put back: one the new Owner unlinked stays unlinked. The stop itself is never refused.
+          // Sanctions screening: a wallet the new Owner unlinked stays unlinked when its address came onto a loaded list since. One that
+          // is still linked keeps its place as the recovery wallet (linked to linked meets no trigger). The stop itself is never refused.
           ...wallets.map((w) => db.prepare(`UPDATE wallets SET state = 'linked', anchor = ?, anchor_effective_at = ? WHERE org_id = ? AND id = ?
-                                            AND address NOT IN (SELECT address FROM sanctioned_addresses)`).bind(w.anchor, w.at, orgId, w.id)),
+                                            AND (state = 'linked' OR address NOT IN (SELECT address FROM sanctioned_addresses))`).bind(w.anchor, w.at, orgId, w.id)),
         ]),
       ]]
     }

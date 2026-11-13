@@ -5191,9 +5191,12 @@ describe('E. account recovery: a stop undoes all of it, the organisation is read
     expect((await post(`/api/wallets/${next.id}/unlink`, n)).status).toBe(200)
     now += DAY
     // Written straight to the two tables, as a load does: accounts[1] is the wallet of many organisations of this run.
-    await db.batch([db.prepare(`INSERT INTO sanctions_lists (list, sha256, entries, loaded_at) VALUES ('ofac', ?, 1, ?)`).bind('f'.repeat(64), now), db.prepare(`INSERT INTO sanctioned_addresses (list, address) VALUES ('ofac', ?)`).bind(accounts[1].address.toLowerCase())])
+    // F3: both addresses are on the list. The recovery wallet in force (accounts[0]) is still linked: it keeps its place. The one the new Owner unlinked stays unlinked.
+    await db.batch([db.prepare(`INSERT INTO sanctions_lists (list, sha256, entries, loaded_at) VALUES ('ofac', ?, 2, ?)`).bind('f'.repeat(64), now),
+      ...accounts.slice(0, 2).map((account) => db.prepare(`INSERT INTO sanctioned_addresses (list, address) VALUES ('ofac', ?)`).bind(account.address.toLowerCase()))])
     try {
       expect((await stop(o.key)).status).toBe(200)
+      expect(before).toMatchObject({ state: 'linked', anchor: 'current' })
       expect([await walletRow(wallet.id), await walletRow(next.id)]).toEqual([before, { state: 'unlinked', anchor: null, at: null }])
     } finally {
       await db.batch([db.prepare('DELETE FROM sanctioned_addresses'), db.prepare('DELETE FROM sanctions_lists')])
@@ -6396,6 +6399,7 @@ describe('E. onboarding: a company applies, proves its domain, is activated and 
       { ...APPROVE, decision: 'activate' }, { ...APPROVE, decision: undefined }, { ...APPROVE, tier: 'gold' }, { ...APPROVE, source: 'a phone call' }, { ...APPROVE, source: undefined },
       { ...APPROVE, evidenceRef: undefined }, { ...APPROVE, evidenceRef: '<script>' }, { ...APPROVE, evidenceRef: 'x'.repeat(121) }, { ...APPROVE, evidenceSha256: undefined }, { ...APPROVE, evidenceSha256: 'AB'.repeat(32) },
       { ...APPROVE, evidenceSha256: 'ab'.repeat(31) }, { ...APPROVE, nextReview: undefined }, { ...APPROVE, nextReview: '2026-11-10' }, { ...APPROVE, nextReview: 'next year' }, { ...APPROVE, nextReview: 1830000000000 },
+      { ...APPROVE, nextReview: '2027-02-31' }, { ...APPROVE, nextReview: '2207-11-11' }, { ...APPROVE, nextReview: '2031-11-10' }, // F2: a day that does not exist, a far one, and the first day past 5 years
       { ...APPROVE, reason: 'details_differ' }, { ...MORE, reason: undefined }, { ...MORE, reason: 'They did not answer the phone' }, { ...MORE, nextReview: '2027-11-11' }, { ...MORE, decision: 'refuse', reason: 'no' },
       { ...MORE, evidenceSha256: 'zz' }, { ...MORE, evidenceRef: 7 },
     ]
@@ -6600,10 +6604,11 @@ describe('E. onboarding: a company applies, proves its domain, is activated and 
     const f = await owner()
     // And two wallets that prove an address of that list: one for a link (g, active), one named by an application (h).
     const [g1, h1] = [40, 41].map((addressIndex) => mnemonicToAccount('test test test test test test test test test test test junk', { addressIndex }))
-    const reload = async () => op('POST', '/api/operator/sanctions', { body: { list: 'ofac', sha256: 'f'.repeat(64), addresses: [(await row<{ address: string }>('SELECT address FROM wallets WHERE org_id = ?', f.orgId))!.address, g1.address.toLowerCase(), h1.address.toLowerCase()] } })
-    await walletRow(f.orgId, someAddress())
-    expect((await reload()).body.hits).toEqual([expect.objectContaining({ id: f.orgId, frozen: true })])
-    await setOrg(f.orgId, `state = 'active'`)
+    const onList = [someAddress(), g1.address.toLowerCase(), h1.address.toLowerCase()]
+    const reload = async () => op('POST', '/api/operator/sanctions', { body: { list: 'ofac', sha256: 'f'.repeat(64), addresses: onList } })
+    await walletRow(f.orgId, onList[0])
+    // The list as the first step of that load leaves it, written straight to the two tables: the same load then finds an active organisation to freeze.
+    await db.batch([db.prepare(`INSERT INTO sanctions_lists (list, sha256, entries, loaded_at) VALUES ('ofac', ?, 3, ?)`).bind('f'.repeat(64), now), ...onList.map((address) => db.prepare(`INSERT INTO sanctioned_addresses (list, address) VALUES ('ofac', ?)`).bind(address))])
     const [g, h] = [await owner(), await applicantWithTwoKeys()]
     const [askedG, askedH] = [await askLink(g, g1.address), await nameWallet(h, h1.address)]
     const [proofG, proofH] = [await g1.signTypedData(typedOf(intentOf(askedG.body.intent))), await h1.signTypedData(typedActivate(fieldsOf<ActivateFields>(askedH.body.intent)))]
@@ -7213,6 +7218,7 @@ describe('E. onboarding: a company applies, proves its domain, is activated and 
         { lists: { eu: H('e').slice(1) } }, { lists: { eu: `${H('e')}e` } }, { lists: { eu: H('E') } }, { lists: { eu: 7 } }, { lists: { eu: [H('e')] } }, { lists: { eu: H('e'), un: null } },
         { lists: JSON.parse(`{"eu":"${H('e')}","__proto__":"${H('a')}"}`) },
         { nextReview: undefined }, { nextReview: '2026-11-10' }, { nextReview: 'next year' }, { nextReview: 1830000000000 }, { nextReview: '2027-13-01' },
+        { nextReview: '2027-02-31' }, { nextReview: '2207-11-11' }, { nextReview: '2031-11-10' }, // F2: a day that does not exist (the parser would store 3 March), a far one, and the first day past 5 years
         { tier: 'gold' }, { source: 'a phone call' },
       ]
       for (const body of bad) expect((await seedScreen(o.orgId, body)).body, JSON.stringify(body)).toEqual({ error: 'invalid' })
@@ -7229,12 +7235,12 @@ describe('E. onboarding: a company applies, proves its domain, is activated and 
       expect((await seedScreen(old.orgId)).body).toEqual({ error: 'no_record' })
       expect(await snapshot()).toBe(before)
       // Stored: the lists as one JSON text with sorted keys, whatever the order sent, and the SHA-256 of that exact text.
-      expect((await seedScreen(o.orgId, { lists: { un: H('b'), eu: H('e'), ofac: H('c') }, tier: 'enhanced', source: 'gleif' })).body).toEqual({ state: 'active' })
+      expect((await seedScreen(o.orgId, { lists: { un: H('b'), eu: H('e'), ofac: H('c') }, tier: 'enhanced', source: 'gleif', nextReview: '2031-11-09' })).body).toEqual({ state: 'active' }) // the last day within 5 years
       const text = `{"eu":"${H('e')}","ofac":"${H('c')}","un":"${H('b')}"}`
       const [first] = await kybOf(o.orgId)
       expect(first).toEqual({
         id: expect.stringMatching(/^[0-9a-f]{32}$/), org_id: o.orgId, legal_name: o.name, registration_number: null, country: 'LU', tier: 'enhanced', source: 'gleif', evidence_ref: null, evidence_sha256: null, signer_cert_sha256: null,
-        screening_outcome: 'clear', screening_lists: text, screening_list_version_hash: await data.sha256Hex(text), screened_at: now, decision: 'approved', decided_at: now, recheck_at: Date.UTC(2027, 10, 11), reason: null, created_at: now,
+        screening_outcome: 'clear', screening_lists: text, screening_list_version_hash: await data.sha256Hex(text), screened_at: now, decision: 'approved', decided_at: now, recheck_at: Date.UTC(2031, 10, 9), reason: null, created_at: now,
       })
       expect(await row('SELECT actor_kind, actor_id, session_id, action, subject_id, detail FROM audit_log WHERE org_id = ? ORDER BY seq DESC', o.orgId))
         .toEqual({ actor_kind: 'operator', actor_id: null, session_id: null, action: 'kyb.screen', subject_id: first.id, detail: 'clear' })
@@ -7276,7 +7282,8 @@ describe('E. onboarding: a company applies, proves its domain, is activated and 
       const two = `{"eu":"${H('e')}","un":"${H('b')}"}`
       expect((await decideOn(a.orgId, { ...MORE, screening: { outcome: 'review', lists: { un: H('b'), eu: H('e') } } })).body).toEqual({ state: 'unverified' })
       expect((await submit(a)).body).toEqual({ state: 'under_review' })
-      expect((await decideOn(a.orgId)).body).toEqual({ state: 'active' })
+      expect((await decideOn(a.orgId, { ...APPROVE, nextReview: '2031-11-09' })).body).toEqual({ state: 'active' }) // F2: the last day within 5 years
+      expect((await kybOf(a.orgId)).at(-1)!.recheck_at).toBe(Date.UTC(2031, 10, 9))
       const one = JSON.stringify(SCREENED.lists)
       expect((await kybOf(a.orgId)).map((k) => [k.decision, k.screening_outcome, k.screening_lists, k.screening_list_version_hash, k.screened_at])).toEqual([
         ['pending', null, null, null, null], ['pending', 'review', two, await data.sha256Hex(two), now], ['approved', 'clear', one, await data.sha256Hex(one), now],
@@ -7454,6 +7461,8 @@ describe('E. onboarding: a company applies, proves its domain, is activated and 
       expect(await row('SELECT actor_kind, actor_id, session_id, action, subject_id, detail FROM audit_log WHERE org_id = ? ORDER BY seq DESC', o.orgId))
         .toEqual({ actor_kind: 'operator', actor_id: null, session_id: null, action: 'screening.wallet', subject_id: w1, detail: null })
       expect(w2).not.toBe(w1)
+      // F6: the operator's list says why it is frozen: the row of the load, with the address of its wallet (the row itself carries no detail).
+      expect(((await op('GET', '/api/operator/organisations')).body.reviews as { id: string }[]).find((r) => r.id === o.orgId)).toMatchObject({ state: 'frozen', lastAction: 'screening.wallet', lastDetail: A, lastAt: now })
       expect(await data.verifyAudit(db, o.orgId)).toMatchObject({ ok: true })
       expect([await sessionsOf(o.orgId), await sessionsOf(waits.orgId), await sessionsOf(other.orgId)]).toEqual([0, 0, open])
       for (const m of [o, a]) expect((await call('GET', '/api/me', { cookie: m.cookie })).status).toBe(401)
@@ -7512,6 +7521,9 @@ describe('E. onboarding: a company applies, proves its domain, is activated and 
       // R3: the operator's list names it, frozen, with that event and the address.
       expect(((await op('GET', '/api/operator/organisations')).body.reviews as { id: string }[]).find((r) => r.id === one.orgId))
         .toEqual({ id: one.orgId, name: one.name, state: 'frozen', outcome: null, screenedAt: null, nextReview: null, lastAction: 'screening.attempt', lastDetail: lower(s1), lastAt: now })
+      // F6: a clear screening recorded afterwards does not hide why it is frozen: the attempt and its address stay on the line.
+      expect((await seedScreen(one.orgId)).body).toEqual({ state: 'frozen' })
+      expect(((await op('GET', '/api/operator/organisations')).body.reviews as { id: string }[]).find((r) => r.id === one.orgId)).toMatchObject({ state: 'frozen', outcome: 'clear', lastAction: 'screening.attempt', lastDetail: lower(s1), lastAt: now })
       // After a load without the address the operator unfreezes it, the member reads the row in plain words, and the link passes.
       expect((await without()).status).toBe(200)
       expect((await frozen(one.orgId, 'unfreeze')).body).toEqual({ state: 'active' })
@@ -7624,6 +7636,13 @@ describe('E. onboarding: a company applies, proves its domain, is activated and 
       await put(`UPDATE wallets SET label = 'Renamed' WHERE id = ?`, gone)
       for (const state of ['linked', 'pending']) await walletRow(o.orgId, someAddress(), { state })
       expect(await count('wallets', o.orgId)).toBe(6)
+      // F1: nor does an organisation become active while a linked wallet of it is on a list (an unfreeze that lands at the instant of a load).
+      await setOrg(o.orgId, `state = 'frozen'`)
+      await expect(setOrg(o.orgId, `state = 'active'`)).rejects.toThrow(/wallet_listed/)
+      expect(await stateOf(o.orgId)).toBe('frozen')
+      await put(`UPDATE wallets SET state = 'unlinked' WHERE id = ?`, held)
+      await setOrg(o.orgId, `state = 'active'`)
+      expect(await stateOf(o.orgId)).toBe('active')
     })
 
     it('S3d: the operator cannot unfreeze while a linked or a pending wallet of the organisation is on a loaded list', async () => {
@@ -7640,14 +7659,24 @@ describe('E. onboarding: a company applies, proves its domain, is activated and 
         else expect((await load('ofac', [someAddress()])).body.hits).toEqual([])
         expect((await frozen(o.orgId, 'unfreeze')).body, state).toEqual({ state: 'active' })
       }
-      // The address comes onto a list at the instant of the unfreeze: read again inside the commit.
+      // The address comes onto a list at the instant of the unfreeze, with another commit of the organisation: the request fails, and sent again it is refused in plain words.
       const p = await owner()
       const B = someAddress()
       await walletRow(p.orgId, B)
       expect((await seedScreen(p.orgId)).body).toEqual({ state: 'active' })
       expect((await frozen(p.orgId)).body).toEqual({ state: 'frozen' })
       const late = await frozen(p.orgId, 'unfreeze', raced(async () => (await listDirect(B), await screen(p.orgId))))
-      expect([late.body, await stateOf(p.orgId)]).toEqual([{ error: 'wallet_listed' }, 'frozen'])
+      expect([late.status, await stateOf(p.orgId)]).toEqual([500, 'frozen']) // since F1 the write itself is refused by the database, before the commit sees the other one
+      expect((await frozen(p.orgId, 'unfreeze')).body).toEqual({ error: 'wallet_listed' })
+      // F1: the same instant with no other commit of the organisation in the way. The unfreeze read no listed wallet, the first step of a
+      // load lists it, and nothing makes the unfreeze read again: the database refuses the write. The request fails; sent again, it is refused in plain words.
+      const q = await owner()
+      const C = someAddress()
+      await walletRow(q.orgId, C)
+      expect((await frozen(q.orgId)).body).toEqual({ state: 'frozen' })
+      const pure = await frozen(q.orgId, 'unfreeze', raced(() => listDirect(C)))
+      expect([pure.status, await stateOf(q.orgId), await row('SELECT action FROM audit_log WHERE org_id = ? ORDER BY seq DESC', q.orgId)]).toEqual([500, 'frozen', { action: 'organisation.freeze' }])
+      expect((await frozen(q.orgId, 'unfreeze')).body).toEqual({ error: 'wallet_listed' })
     })
 
     // ---- S4: what the operator's command lists ----
@@ -7664,13 +7693,13 @@ describe('E. onboarding: a company applies, proves its domain, is activated and 
       // Not active and not frozen: an organisation under review and a refused one are not in it.
       const [early, gone] = [await underReview(), await underReview()]
       expect((await decideOn(gone.orgId, { ...MORE, decision: 'refuse' })).body).toEqual({ state: 'archived' })
-      // R3: every frozen organisation is in it, whatever its dates, and each row carries the newest row of its log that froze, unfroze or screened it.
+      // R3, F6: every frozen organisation is in it, whatever its dates, and says why: the newest row of its log among the actions that freeze.
       const never = { lastAction: null, lastDetail: null, lastAt: null }
       const start = now
       expect(await due(...all, early.orgId, gone.orgId)).toEqual([
         { id: none.orgId, name: 'Aa None', state: 'active', outcome: null, screenedAt: null, nextReview: null, ...never },
         { id: old.orgId, name: 'Ab Old', state: 'active', outcome: null, screenedAt: null, nextReview: Date.UTC(2030, 0, 1), ...never },
-        { id: edge.orgId, name: 'Ad Edge', state: 'active', outcome: 'clear', screenedAt: now, nextReview: Date.UTC(2026, 10, 24), lastAction: 'kyb.screen', lastDetail: 'clear', lastAt: now }, // 14 days from now, to the millisecond
+        { id: edge.orgId, name: 'Ad Edge', state: 'active', outcome: 'clear', screenedAt: now, nextReview: Date.UTC(2026, 10, 24), ...never }, // 14 days from now, to the millisecond; F6: an active organisation carries no event
         { id: cold.orgId, name: 'Af Cold', state: 'frozen', outcome: null, screenedAt: null, nextReview: null, lastAction: 'organisation.freeze', lastDetail: null, lastAt: now },
         { id: coldFar.orgId, name: 'Ag Cold far', state: 'frozen', outcome: 'clear', screenedAt: now, nextReview: Date.UTC(2027, 10, 11), lastAction: 'organisation.freeze', lastDetail: null, lastAt: now },
       ])
@@ -7687,6 +7716,9 @@ describe('E. onboarding: a company applies, proves its domain, is activated and 
       expect((await frozen(coldFar.orgId, 'unfreeze')).body).toEqual({ state: 'active' })
       expect((await screen(coldFar.orgId, { nextReview: '2029-01-01' })).body).toEqual({ state: 'active' })
       expect((await due(...all)).map((r) => r.id)).toEqual([old, far, edge, after, cold].map((m) => m.orgId))
+      // F6: unfrozen, an organisation carries no such event any more, although the freeze is still a row of its log.
+      expect((await frozen(cold.orgId, 'unfreeze')).body).toEqual({ state: 'active' })
+      expect(await due(cold.orgId)).toEqual([{ id: cold.orgId, name: 'Af Cold', state: 'active', outcome: null, screenedAt: null, nextReview: null, ...never }])
       // No name of a person is in it.
       expect(JSON.stringify(await due(...all))).not.toMatch(/Owner of|Maren/)
     })
@@ -7773,6 +7805,7 @@ describe('E. onboarding: a company applies, proves its domain, is activated and 
         // A clear screening after it, and a load that names the wallet: each reads in plain words, the wallet by its name.
         expect((await screen(o.orgId)).body).toEqual({ state: 'active' })
         expect((await load('ofac', [(await row<{ address: string }>('SELECT address FROM wallets WHERE id = ?', wallet))!.address])).body.hits).toHaveLength(1)
+        await noLists() // F1: the database lets no organisation become active while a linked wallet of it is on a list
         await setOrg(o.orgId, `state = 'active'`)
         await again(o)
         expect(((await get('/api/audit', o)).body.rows as { event: string; target: string }[]).slice(1, 3).map((r) => [r.event, r.target])).toEqual([

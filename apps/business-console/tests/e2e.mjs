@@ -95,14 +95,18 @@ try {
     spawn('node', ['scripts/operator.mjs', ...args], { env: { ...env, E2E_PORT: String(listener.address().port) }, stdio: ['ignore', 'ignore', 'pipe'] }).on('close', (code) => resolve(`${code} ${said}`)).stderr.on('data', (chunk) => (said += chunk))
   })
   const anId = 'ab'.repeat(16)
-  const unsent = [await tell('addresses', 'ofac=tests/fixtures/sanctions-no-address.txt'), await tell('addresses', 'ofac=tests/fixtures/none.txt'), await tell('screen', anId, '--outcome', 'clear', '--list', `eu=${LIST.eu}`, '--list', `eu=${LIST.un}`, '--next-review', '2031-01-01')]
+  const unsent = [await tell('addresses', 'ofac=tests/fixtures/sanctions-no-address.txt'), await tell('addresses', 'ofac=tests/fixtures/none.txt'), await tell('screen', anId, '--outcome', 'clear', '--list', `eu=${LIST.eu}`, '--list', `eu=${LIST.un}`, '--next-review', '2031-01-01'),
+    // F5: what the server would refuse or drop is said by the command itself.
+    await tell('screen', anId, '--outcome', 'clear', '--list', `un=${LIST.un}`, '--next-review', '2031-01-01'), await tell('screen', anId, '--outcome', 'ok', '--list', `eu=${LIST.eu}`, '--next-review', '2031-01-01'),
+    await tell('decide', anId, 'more', '--reason', 'details_differ', '--tier', 'standard', '--source', 'registry', '--list', `eu=${LIST.eu}`)]
   const sentByThose = heard.length
   await tell('screen', anId, '--outcome', 'review', '--list', `un=${LIST.un}`, '--list', `eu=${LIST.eu}`, '--next-review', '2031-01-01')
   await tell('decide', anId, 'approve', '--submission', '0'.repeat(16), '--tier', 'standard', '--source', 'registry', '--evidence', 'x', '--sha256', 'ab'.repeat(32), '--next-review', '2030-01-01', '--screening', 'clear', '--list', `eu=${LIST.eu}`)
   await tell('addresses', `ofac=${LIST.addresses}`)
   listener.close() // before the checks: a failed check must end the run
   check('a list file that names no address, a file that is not there and a list code given twice are refused by the command before anything is sent',
-    sentByThose === 0 && unsent[0].startsWith('1 Refused: no address') && unsent[1].startsWith('1 Refused: the file could not be read') && unsent[2].startsWith('1 Refused: a list code is given twice'))
+    sentByThose === 0 && unsent[0].startsWith('1 Refused: no address') && unsent[1].startsWith('1 Refused: the file could not be read') && unsent[2].startsWith('1 Refused: a list code is given twice')
+    && unsent[3].startsWith('1 Refused: "screen" needs --list eu=<file>') && unsent[4].startsWith('1 Refused: "screen" needs --outcome clear, review or hit') && unsent[5].startsWith('1 Refused: --list needs --screening'))
   check('the command sends the SHA-256 of each list file and, for "addresses", the addresses in it (lower case, each once, 40 hex characters exactly): nothing else of a file leaves this machine', JSON.stringify(heard.slice(sentByThose)) === JSON.stringify([
     `POST /api/operator/organisations/${anId}/screening ${JSON.stringify({ outcome: 'review', lists: { un: fileSha(LIST.un), eu: fileSha(LIST.eu) }, nextReview: '2031-01-01' })}`,
     `POST /api/operator/organisations/${anId}/decision ${JSON.stringify({ decision: 'approve', tier: 'standard', source: 'registry', evidenceRef: 'x', evidenceSha256: 'ab'.repeat(32), nextReview: '2030-01-01', submission: '0'.repeat(16), screening: { outcome: 'clear', lists: { eu: fileSha(LIST.eu) } } })}`,
@@ -993,7 +997,7 @@ try {
   check('a screening "hit" freezes the organisation', operator('screen', newOrg.id, '--outcome', 'hit', '--list', `eu=${LIST.eu}`, '--next-review', '2031-01-01').includes(`${newOrg.id} is now frozen`))
   check('its member lands on the frozen page, which does not say why, with no session', await frozenPage() && !/screening|sanction|\bhit\b/i.test(await on.locator('#root').innerText()) && await both(on, '58-screening-frozen'))
   check('the operator cannot unfreeze it while the newest screening says "hit"', refusedBy(() => operator('unfreeze', newOrg.id)).includes('Refused (409): screening_not_clear'))
-  check('the operator\'s list names the frozen organisation with its last event', operator('list').includes(`${newOrg.id}  Alder Custody S.A.  frozen  last screening hit on ${today}  next review 2031-01-01  last event kyb.screen (hit) on ${today}`))
+  check('the operator\'s list names the frozen organisation with its last event', operator('list').includes(`${newOrg.id}  Alder Custody S.A.  frozen  last screening hit on ${today}  next review 2031-01-01  frozen by kyb.screen (hit) on ${today}`))
   check('a clear screening is recorded for the frozen organisation, which stays frozen; then the operator unfreezes it',
     operator('screen', newOrg.id, '--outcome', 'clear', '--list', `eu=${LIST.eu}`, '--next-review', '2031-01-01').includes(`${newOrg.id} is now frozen`) && operator('unfreeze', newOrg.id).includes(`${newOrg.id} is now active`))
   await signInAgain()
@@ -1001,7 +1005,8 @@ try {
   const hitList = `${STATE}/hit-list.txt`
   writeFileSync(hitList, `TEST DATA, made by this run. The wallet of the end-to-end organisation: ${key.address}\n`)
   const hit = operator('addresses', `un=${hitList}`)
-  check('a load that names the organisation\'s wallet freezes it and prints the hit', hit.includes('Loaded 1 addresses of the list "un"') && hit.includes(`HIT  ${newOrg.id}  Alder Custody S.A.  was active  ${key.address.toLowerCase()}  frozen now`) && await frozenPage())
+  check('a load that names the organisation\'s wallet freezes it and prints the hit', hit.includes('Loaded 1 address of the list "un"') && hit.includes(`HIT  ${newOrg.id}  Alder Custody S.A.  was active  ${key.address.toLowerCase()}  frozen now`) && await frozenPage()
+    && operator('list').includes(`frozen by screening.wallet (${key.address.toLowerCase()}) on ${today}`)) // F6: the list says why it is frozen, with the address
   check('the operator cannot unfreeze it while that wallet is on a loaded list; the same load again changes nothing', refusedBy(() => operator('unfreeze', newOrg.id)).includes('Refused (409): wallet_listed') && operator('addresses', `un=${hitList}`).includes(`was frozen  ${key.address.toLowerCase()}  not changed`))
   check('after a load without the address the operator unfreezes it', operator('addresses', `un=${LIST.addresses}`).includes('No linked or pending wallet is on a loaded list.') && operator('unfreeze', newOrg.id).includes(`${newOrg.id} is now active`))
   await signInAgain()

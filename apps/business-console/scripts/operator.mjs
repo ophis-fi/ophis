@@ -2,8 +2,8 @@
 // that API's own hostname, with OPERATOR_TOKEN from .dev.vars (made by "pnpm seed"). The token is never printed.
 //   node scripts/operator.mjs invite    a new application code: one use, valid 14 days; give it to the company that may apply
 //   node scripts/operator.mjs list      what is under review (with a warning line when a wallet the application named was refused as listed), then "Reviews due, and frozen
-//                                       organisations": no screening, the next review passed or within 14 days, or frozen; each line ends with the last freeze, unfreeze or
-//                                       screening event of its log (screening.attempt: a member proved a wallet that is on a loaded list, which froze the organisation)
+//                                       organisations": no screening, the next review passed or within 14 days, or frozen; a frozen one ends with what froze it: "frozen by
+//                                       <action> (<detail>) on <day>" (screening.attempt: a member proved a wallet that is on a loaded list; the detail is the address)
 //   node scripts/operator.mjs decide <organisation id> approve --submission <the 16 characters "list" printed> --tier standard --source registry --evidence "<reference>" --sha256 <64 hex> --next-review 2027-11-11
 //                                                              --screening clear --list eu=<file> [--list un=<file>] [--list ofac=<file>]
 //   node scripts/operator.mjs decide <organisation id> more|refuse --reason <code> --tier standard --source registry [--screening clear|review|hit --list eu=<file> ...]
@@ -84,6 +84,15 @@ if (new Set(files.map(([code]) => code)).size !== files.length) {
   process.exit(1)
 }
 const lists = files.length ? Object.fromEntries(files.map(([code, bytes]) => [code, sha256Of(bytes)])) : undefined
+// What the server would refuse or drop, said here in one sentence, before anything is sent.
+const unsent = command === 'screen' && !['clear', 'review', 'hit'].includes(values.outcome) ? '"screen" needs --outcome clear, review or hit'
+  : command === 'screen' && !lists?.eu ? '"screen" needs --list eu=<file>: the EU list is in every screening'
+  : command === 'decide' && lists && !values.screening ? '--list needs --screening clear, review or hit'
+  : null
+if (unsent) {
+  console.error(`Refused: ${unsent}. Nothing was sent.`)
+  process.exit(1)
+}
 // "addresses": every 0x followed by exactly 40 hex characters, in lower case, each once. A file with none is refused here: a load is never empty.
 let load
 if (command === 'addresses') {
@@ -121,7 +130,7 @@ if (answer.status !== 200) {
     wallet_listed: 'a linked or pending wallet of the organisation is on a loaded address list.',
     no_record: 'the organisation has no record to copy from: give --tier and --source.',
   }
-  const error = answer.body?.error
+  const error = load && answer.status === 500 ? 'The list may be loaded. Run the same command again.' : answer.body?.error // the second step, the freezes, did not finish
   console.error(`Refused (${answer.status}): ${error ? `${error}${WHY[error] ? `: ${WHY[error]}` : ''}` : 'no answer from the operator API: is "pnpm dev" running?'}`)
   process.exit(1)
 }
@@ -138,7 +147,7 @@ else if (command === 'get') {
   console.log(`Written, still sealed: ${values.out}\n${answer.bytes.length} bytes  sha256 ${sha256}  sealed to key ${answer.key.slice(0, 16)}\nThe download is in the organisation's audit log, with the reason "${values.reason}". Open it offline: see README, "Sealed declaration".`)
 } else if (command === 'invite') console.log(`Application code, one use, valid until ${new Date(answer.body.expiresAt).toISOString().slice(0, 16).replace('T', ' ')} UTC:\n${answer.body.code}`)
 else if (load) {
-  console.log(`Loaded ${answer.body.entries} addresses of the list "${answer.body.list}" (file SHA-256 ${load.sha256}).`)
+  console.log(`Loaded ${answer.body.entries} ${answer.body.entries === 1 ? 'address' : 'addresses'} of the list "${answer.body.list}" (file SHA-256 ${load.sha256}).`)
   console.log(answer.body.hits.length ? answer.body.hits.map((h) => `HIT  ${h.id}  ${h.name}  was ${h.state}  ${h.address}  ${h.frozen ? 'frozen now' : 'not changed'}`).join('\n') : 'No linked or pending wallet is on a loaded list.')
 } else if (command !== 'list') console.log(`Done: ${id} is now ${answer.body.state}.`)
 else {
@@ -158,5 +167,5 @@ else {
   // The calendar is a manual chore: this is the list to work through.
   const day = (time) => (time ? new Date(time).toISOString().slice(0, 10) : 'none')
   console.log(!answer.body.reviews.length ? 'No review is due, and no organisation is frozen.' : `Reviews due, and frozen organisations (no screening, the next review passed or within 14 days, or frozen):\n${answer.body.reviews
-    .map((r) => `${r.id}  ${r.name}  ${r.state}  last screening ${r.outcome ? `${r.outcome} on ${day(r.screenedAt)}` : 'none'}  next review ${day(r.nextReview)}  last event ${r.lastAction ? `${r.lastAction}${r.lastDetail ? ` (${r.lastDetail})` : ''} on ${day(r.lastAt)}` : 'none'}`).join('\n')}`)
+    .map((r) => `${r.id}  ${r.name}  ${r.state}  last screening ${r.outcome ? `${r.outcome} on ${day(r.screenedAt)}` : 'none'}  next review ${day(r.nextReview)}${r.lastAction ? `  frozen by ${r.lastAction}${r.lastDetail ? ` (${r.lastDetail})` : ''} on ${day(r.lastAt)}` : ''}`).join('\n')}`)
 }

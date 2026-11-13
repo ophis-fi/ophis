@@ -202,14 +202,17 @@ async function reviewOf(db: D1Database, orgId: string) {
 }
 // S4: the reviews that are due, for the operator's list: the active and frozen organisations whose newest record holds
 // no screening (or that have no record), or whose next review date is passed or within 14 days; and every frozen
-// organisation, whatever its dates. Each with the newest row of its log that froze, unfroze or screened it: the
-// operator sees what happened last, also a freeze by a proven attempt to link a listed address. The calendar is a manual chore.
+// organisation, whatever its dates. A frozen one says WHY: the newest row of its log among the actions that freeze (the
+// operator's freeze, a wallet on a list, a proven attempt to link a listed address, a screening that says review or
+// hit), with the address of its wallet when the row carries no detail. A later clear screening does not hide it.
+// An active organisation carries none. The calendar is a manual chore.
 // ponytail: the whole list at each call. Page it when the organisations pass some hundreds.
 const reviewsDue = async (db: D1Database, now: number) =>
-  (await db.prepare(`SELECT o.id, o.name, o.state, k.screening_outcome AS outcome, k.screened_at AS screenedAt, k.recheck_at AS nextReview, e.action AS lastAction, e.detail AS lastDetail, e.at AS lastAt
+  (await db.prepare(`SELECT o.id, o.name, o.state, k.screening_outcome AS outcome, k.screened_at AS screenedAt, k.recheck_at AS nextReview, e.action AS lastAction,
+                            COALESCE(e.detail, (SELECT w.address FROM wallets w WHERE w.org_id = e.org_id AND w.id = e.subject_id)) AS lastDetail, e.at AS lastAt
                      FROM organisations o LEFT JOIN kyb_records k ON k.rowid = (SELECT rowid FROM kyb_records WHERE org_id = o.id ORDER BY created_at DESC, rowid DESC LIMIT 1)
-                     LEFT JOIN audit_log e ON e.org_id = o.id AND e.seq = (SELECT max(seq) FROM audit_log WHERE org_id = o.id
-                       AND action IN ('organisation.freeze', 'organisation.unfreeze', 'kyb.screen', 'screening.wallet', 'screening.attempt'))
+                     LEFT JOIN audit_log e ON o.state = 'frozen' AND e.org_id = o.id AND e.seq = (SELECT max(seq) FROM audit_log WHERE org_id = o.id
+                       AND (action IN ('organisation.freeze', 'screening.wallet', 'screening.attempt') OR (action = 'kyb.screen' AND detail IN ('review', 'hit'))))
                      WHERE o.state = 'frozen' OR (o.state = 'active' AND (k.screening_outcome IS NULL OR k.recheck_at <= ?)) ORDER BY o.name, o.id`).bind(now + DUE_MS).all()).results
 /** R3: the addresses of the wallets an organisation named that were refused as listed, from its own log. */
 const refusedOf = async (db: D1Database, orgId: string) =>
@@ -319,7 +322,9 @@ async function replaceList(db: D1Database, list: string, sha256: string, address
   const hits = (await db.prepare(`SELECT o.id, o.name, o.state, w.address FROM wallets w JOIN organisations o ON o.id = w.org_id WHERE ${LISTED} ORDER BY o.id, w.rowid`).bind(now).all<{ id: string; name: string; state: string; address: string }>()).results
   const frozen = new Map<string, boolean>()
   for (const hit of hits) {
-    if (frozen.has(hit.id)) continue // one commit per organisation, whatever the number of its listed wallets
+    // One commit per organisation, whatever the number of its listed wallets, and none for one that is not active: it
+    // cannot be frozen, and a commit costs 3 to 4 queries of the few an invocation has.
+    if (hit.state !== 'active' || frozen.has(hit.id)) continue
     frozen.set(hit.id, await commit(db, hit.id, async () => {
       const wallet = await listedWallet(db, hit.id, now)
       const active = await db.prepare(`SELECT 1 FROM organisations WHERE id = ? AND state = 'active'`).bind(hit.id).first()
@@ -678,8 +683,15 @@ async function list(c: Ctx) {
   return json(200, { organisations, reviews: await reviewsDue(c.env.DB, c.now) })
 }
 
-/** A date as the command gives it, YYYY-MM-DD: Unix ms at 00:00 UTC, or null (or NaN) when it is not one. */
-const dayOf = (value: unknown) => (typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value) ? Date.parse(`${value}T00:00:00Z`) : null)
+const MAX_REVIEW_MS = 5 * 365 * 24 * 60 * 60 * 1000 // owner's call: a next review lies at most 5 years ahead; a date further off would hide the organisation from "Reviews due" for good
+/**
+ * The next review as the command gives it, YYYY-MM-DD: a real day (the parser moves 2027-02-31 to 3 March: refused),
+ * after now and at most 5 years ahead. Unix ms at 00:00 UTC, or null when it is not one.
+ */
+function reviewDay(value: unknown, now: number) {
+  const ms = typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value) ? Date.parse(`${value}T00:00:00Z`) : NaN
+  return ms > now && ms <= now + MAX_REVIEW_MS && new Date(ms).toISOString().slice(0, 10) === value ? ms : null
+}
 /**
  * S2a: a screening as the command sends it, checked: `outcome` (clear, review or hit) and `lists`, an object from the
  * code of each list searched to the SHA-256 of the list file (64 hex); the EU list is in every screening. Null: not one.
@@ -700,9 +712,9 @@ async function decide(c: Ctx) {
   const id = c.params.id ?? ''
   const { decision, reason, tier, source, evidenceRef, evidenceSha256, nextReview, submission, screening } = c.body
   const approve = decision === 'approve'
-  const day = approve ? dayOf(nextReview) : null
+  const day = approve ? reviewDay(nextReview, c.now) : null
   if (!ID.test(id) || !Object.hasOwn(KYB_ACTION, String(decision)) || !TIERS.includes(tier as string) || !SOURCES.includes(source as never)
-    || (approve ? reason !== undefined || !(day! > c.now) || typeof submission !== 'string' || !/^[0-9a-f]{16}$/.test(submission) : !REASONS.includes(reason as never) || nextReview !== undefined)
+    || (approve ? reason !== undefined || day === null || typeof submission !== 'string' || !/^[0-9a-f]{16}$/.test(submission) : !REASONS.includes(reason as never) || nextReview !== undefined)
     || (evidenceRef === undefined ? approve : typeof evidenceRef !== 'string' || !/^[\w ./:#-]{1,120}$/.test(evidenceRef))
     || (evidenceSha256 === undefined ? approve : typeof evidenceSha256 !== 'string' || !SHA256.test(evidenceSha256))) return fail(400, 'invalid')
   // S2b: an approval carries a screening whose outcome is "clear"; for the other decisions one is optional, and stored when given.
@@ -731,9 +743,9 @@ async function screen(c: Ctx) {
   const id = c.params.id ?? ''
   const { nextReview, tier, source } = c.body
   const screened = await screeningOf(c.body)
-  const day = dayOf(nextReview)
-  if (!ID.test(id) || !screened || !(day! > c.now) || (tier !== undefined && !TIERS.includes(tier as string)) || (source !== undefined && !SOURCES.includes(source as never))) return fail(400, 'invalid')
-  const outcome = await recordScreening(c.env.DB, id, screened, day!, { tier: tier as string | undefined, source: source as string | undefined }, c.now)
+  const day = reviewDay(nextReview, c.now)
+  if (!ID.test(id) || !screened || day === null || (tier !== undefined && !TIERS.includes(tier as string)) || (source !== undefined && !SOURCES.includes(source as never))) return fail(400, 'invalid')
+  const outcome = await recordScreening(c.env.DB, id, screened, day, { tier: tier as string | undefined, source: source as string | undefined }, c.now)
   return outcome === 'active' || outcome === 'frozen' ? json(200, { state: outcome }) : refuse(outcome)
 }
 // S3a. POST /api/operator/sanctions with {list, sha256, addresses}: the addresses the command took from one list file, and
