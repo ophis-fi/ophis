@@ -14,9 +14,7 @@ import {
 } from '@cowprotocol/tokens'
 import { useGnosisSafeInfo, useIsTxBundlingSupported, useWalletDetails, useWalletInfo } from '@cowprotocol/wallet'
 
-import { useHasHookBridgeProvidersEnabled } from 'entities/bridgeProvider'
-
-import { useCurrentAccountProxy } from 'modules/accountProxy/hooks/useCurrentAccountProxy'
+import { useCurrentAccountProxy } from 'modules/accountProxy'
 import { useTokensBalancesCombined } from 'modules/combinedBalances'
 import { useApproveState, useGetAmountToSignApprove, useIsApprovalOrPermitRequired } from 'modules/erc20Approve'
 import { useInjectedWidgetParams } from 'modules/injectedWidget'
@@ -78,10 +76,7 @@ export function useTradeFormValidationContext(): TradeFormValidationCommonContex
   const isWrapUnwrap = useIsWrapOrUnwrap()
   const { isSupportedWallet } = useWalletDetails()
   const gnosisSafeInfo = useGnosisSafeInfo()
-  const hasHookBridgeProvidersEnabled = useHasHookBridgeProvidersEnabled()
-  const { isLoading, data: proxyAccount } = useCurrentAccountProxy()
-  const isAccountProxyLoading = hasHookBridgeProvidersEnabled ? isLoading : false
-  const isProxySetupValid = hasHookBridgeProvidersEnabled ? !!proxyAccount?.isProxySetupValid : true
+  const { isAccountProxyLoading, isProxySetupValid } = getProxyValidation(tradeQuote, useCurrentAccountProxy())
 
   const isSafeReadonlyUser = gnosisSafeInfo?.isReadOnly === true
 
@@ -181,6 +176,19 @@ export function useTradeFormValidationContext(): TradeFormValidationCommonContex
     injectedWidgetParams,
     tradePriceImpact,
   ])
+}
+
+function getProxyValidation(
+  quote: TradeQuoteState,
+  proxy: ReturnType<typeof useCurrentAccountProxy>,
+): Pick<TradeFormValidationCommonContext, 'isAccountProxyLoading' | 'isProxySetupValid'> {
+  if (quote.bridgeQuote?.providerInfo.type !== 'HookBridgeProvider') {
+    return { isAccountProxyLoading: false, isProxySetupValid: true }
+  }
+  return {
+    isAccountProxyLoading: proxy.isLoading && !proxy.error,
+    isProxySetupValid: proxy.error ? null : proxy.data?.isProxySetupValid,
+  }
 }
 
 function isUnsupportedTokenInQuote(state: TradeQuoteState): boolean {
