@@ -993,6 +993,7 @@ try {
   check('a screening "hit" freezes the organisation', operator('screen', newOrg.id, '--outcome', 'hit', '--list', `eu=${LIST.eu}`, '--next-review', '2031-01-01').includes(`${newOrg.id} is now frozen`))
   check('its member lands on the frozen page, which does not say why, with no session', await frozenPage() && !/screening|sanction|\bhit\b/i.test(await on.locator('#root').innerText()) && await both(on, '58-screening-frozen'))
   check('the operator cannot unfreeze it while the newest screening says "hit"', refusedBy(() => operator('unfreeze', newOrg.id)).includes('Refused (409): screening_not_clear'))
+  check('the operator\'s list names the frozen organisation with its last event', operator('list').includes(`${newOrg.id}  Alder Custody S.A.  frozen  last screening hit on ${today}  next review 2031-01-01  last event kyb.screen (hit) on ${today}`))
   check('a clear screening is recorded for the frozen organisation, which stays frozen; then the operator unfreezes it',
     operator('screen', newOrg.id, '--outcome', 'clear', '--list', `eu=${LIST.eu}`, '--next-review', '2031-01-01').includes(`${newOrg.id} is now frozen`) && operator('unfreeze', newOrg.id).includes(`${newOrg.id} is now active`))
   await signInAgain()

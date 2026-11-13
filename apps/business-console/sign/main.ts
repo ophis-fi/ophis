@@ -22,7 +22,7 @@ const SAY: Record<string, string> = {
   signature_invalid: 'The wallet returned something that is not a signature.',
   proof_used: 'This request was already used. Ask for a new link in the console.',
   already_linked: 'This wallet is already linked to the organisation, or waits for its approval.',
-  wallet_listed: 'The address of this wallet is on a public sanctions list that Ophis loaded. It cannot be linked, and nothing was stored.',
+  wallet_listed: 'The address of this wallet is on a public sanctions list that Ophis loaded. It cannot be linked. The attempt is recorded.',
   forbidden: 'The member who asked for this link can no longer link wallets. Ask an Owner or Admin for a new link.',
   quarantine: 'The member who asked for this link is in quarantine, or the whole organisation is after an account recovery. Try again when it ends.',
   waiting: 'Signed and checked. The request now waits 72 hours, and every member of the organisation sees it when they sign in. After the wait the requester continues on the recovery page of the console.',

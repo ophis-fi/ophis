@@ -5,7 +5,7 @@
 // This file holds its own handlers and, in its first half, its own rows: every statement is prepared with bound
 // parameters, and every change goes through commit() of the data module, with what decides it read inside the plan.
 import { checksum, colour, parseAddress, readCapped, safeState, verify, verifyDigest, type SafeState } from './chain.ts'
-import { commit, countHour, DOMAIN, emailAt, LISTED, listed, listedWallet, PEOPLE, randomId, REVIEWED, sha256Hex, type Actor, type WalletKind } from './data.ts'
+import { commit, countHour, DOMAIN, emailAt, freezing, LISTED, listed, listedWallet, PEOPLE, randomId, REVIEWED, sha256Hex, type Actor, type WalletKind } from './data.ts'
 import { challengeIsOurs, creationOptions, credentialHash, fromBase64Url, newChallenge, phraseFor, seal, unseal, verifyRegistration, type Config } from './passkeys.ts'
 import { CHAIN_NAME, typedProof } from './typed.ts'
 
@@ -56,6 +56,9 @@ export const ONBOARDING_EVENTS: Record<string, string> = {
   'organisation.freeze': 'Ophis operator: organisation frozen',
   'organisation.unfreeze': 'Ophis operator: organisation unfrozen',
   'screening.wallet': 'Ophis operator: a wallet of the organisation is on a loaded sanctions list, organisation frozen',
+  // A wallet proved its control of an address that is on a loaded list. An active organisation is frozen by it (data.ts); one that is not yet verified is not.
+  'screening.attempt': 'Link of a wallet refused: its address is on a loaded sanctions list. Organisation frozen',
+  'screening.refused': 'Recovery wallet of the application refused: its address is on a loaded sanctions list',
 }
 const KYB_ACTION = { approve: 'kyb.approve', refuse: 'kyb.refuse', more: 'kyb.more' } as const
 type Decision = keyof typeof KYB_ACTION
@@ -143,6 +146,10 @@ async function storeProof(db: D1Database, w: Proved, now: number) {
     const asker = await db.prepare(`SELECT 1 FROM seats WHERE org_id = ? AND id = ? AND role = 'owner' AND state = 'active'`).bind(w.orgId, w.seatId).first()
     outcome = first?.state !== 'unverified' ? 'not_unverified' : !asker ? 'forbidden' : !first.active || first.hash !== w.credentialHash ? 'first_passkey_gone'
       : (await db.prepare('SELECT 1 FROM wallets WHERE proof_nonce = ?').bind(w.nonce).first()) ? 'proof_used' : (await listed(db, w.address)) ? 'wallet_listed' : 'stored'
+    // A proven wallet at a listed address: refused, with one row in the organisation's log per address (an organisation that is not yet verified is never frozen).
+    if (outcome === 'wallet_listed' && !(await db.prepare(`SELECT 1 FROM audit_log WHERE org_id = ? AND action = 'screening.refused' AND detail = ?`).bind(w.orgId, w.address).first())) {
+      return [{ at: now, actorKind: 'seat', actorId: w.seatId, sessionId: null, action: 'screening.refused', subjectId: null, detail: w.address }, []]
+    }
     if (outcome !== 'stored') return null
     return [{ at: now, actorKind: 'anchor', actorId: id, sessionId: null, action: 'activation.proof', subjectId: id, detail: w.kind }, [
       db.prepare(`UPDATE wallets SET state = 'unlinked' WHERE org_id = ? AND state = 'pending'`).bind(w.orgId),
@@ -194,12 +201,19 @@ async function reviewOf(db: D1Database, orgId: string) {
   return { company: company.results[0] as Company, record: (record.results[0] as KybRow | undefined) ?? null }
 }
 // S4: the reviews that are due, for the operator's list: the active and frozen organisations whose newest record holds
-// no screening (or that have no record), or whose next review date is passed or within 14 days. The calendar is a manual chore.
+// no screening (or that have no record), or whose next review date is passed or within 14 days; and every frozen
+// organisation, whatever its dates. Each with the newest row of its log that froze, unfroze or screened it: the
+// operator sees what happened last, also a freeze by a proven attempt to link a listed address. The calendar is a manual chore.
 // ponytail: the whole list at each call. Page it when the organisations pass some hundreds.
 const reviewsDue = async (db: D1Database, now: number) =>
-  (await db.prepare(`SELECT o.id, o.name, o.state, k.screening_outcome AS outcome, k.screened_at AS screenedAt, k.recheck_at AS nextReview
+  (await db.prepare(`SELECT o.id, o.name, o.state, k.screening_outcome AS outcome, k.screened_at AS screenedAt, k.recheck_at AS nextReview, e.action AS lastAction, e.detail AS lastDetail, e.at AS lastAt
                      FROM organisations o LEFT JOIN kyb_records k ON k.rowid = (SELECT rowid FROM kyb_records WHERE org_id = o.id ORDER BY created_at DESC, rowid DESC LIMIT 1)
-                     WHERE o.state IN ('active', 'frozen') AND (k.screening_outcome IS NULL OR k.recheck_at <= ?) ORDER BY o.name, o.id`).bind(now + DUE_MS).all()).results
+                     LEFT JOIN audit_log e ON e.org_id = o.id AND e.seq = (SELECT max(seq) FROM audit_log WHERE org_id = o.id
+                       AND action IN ('organisation.freeze', 'organisation.unfreeze', 'kyb.screen', 'screening.wallet', 'screening.attempt'))
+                     WHERE o.state = 'frozen' OR (o.state = 'active' AND (k.screening_outcome IS NULL OR k.recheck_at <= ?)) ORDER BY o.name, o.id`).bind(now + DUE_MS).all()).results
+/** R3: the addresses of the wallets an organisation named that were refused as listed, from its own log. */
+const refusedOf = async (db: D1Database, orgId: string) =>
+  (await db.prepare(`SELECT detail FROM audit_log WHERE org_id = ? AND action = 'screening.refused' ORDER BY seq`).bind(orgId).all<{ detail: string }>()).results.map((row) => row.detail)
 const underReview = async (db: D1Database) =>
   (await db.prepare(`SELECT ${COMPANY} WHERE state = 'unverified' AND review_at IS NOT NULL ORDER BY review_at, id`).all<Company>()).results
 
@@ -232,7 +246,7 @@ async function decideKyb(db: D1Database, orgId: string, d: Kyb, checked: { id: s
       .bind(orgId).first<{ name: string; country: string; registration: string | null; state: string; reviewAt: number | null; print: string | null }>()
     outcome = !o ? 'not_found' : o.state !== 'unverified' || o.reviewAt === null ? 'not_under_review'
       : d.decision !== 'approve' ? 'ok' : (await missing(db, orgId, now)) ? 'not_ready' : ((await walletOf(db, orgId))?.id ?? null) !== (checked?.id ?? null) ? 'try_again'
-      : (await submissionOf(o.print)) !== d.submission ? 'submission_changed' : (await listedWallet(db, orgId)) ? 'wallet_listed' : 'ok'
+      : (await submissionOf(o.print)) !== d.submission ? 'submission_changed' : (await listedWallet(db, orgId, now)) ? 'wallet_listed' : 'ok'
     if (outcome !== 'ok' || !o) return null
     return [{ at: now, actorKind: 'operator', actorId: null, sessionId: null, action: KYB_ACTION[d.decision], subjectId: id, detail: d.decision === 'approve' ? d.evidenceSha256 : d.reason }, [
       kybRow(db, id, orgId, { ...d, name: o.name, registration: o.registration, country: o.country, decision: { approve: 'approved', refuse: 'rejected', more: 'pending' }[d.decision], decidedAt: now }, now),
@@ -244,15 +258,10 @@ async function decideKyb(db: D1Database, orgId: string, d: Kyb, checked: { id: s
   return outcome
 }
 
-/** The statements of a freeze by the operator: the organisation, if it is active, and every session of it (G4). */
-const freezing = (db: D1Database, orgId: string, now: number) => [
-  db.prepare(`UPDATE organisations SET state = 'frozen' WHERE id = ? AND state = 'active'`).bind(orgId),
-  db.prepare('UPDATE sessions SET revoked_at = ? WHERE org_id = ? AND revoked_at IS NULL').bind(now, orgId),
-]
-/** Inside a commit: what keeps a frozen organisation frozen. Its newest record says "review" or "hit" (a record with no screening blocks nothing), or a linked or pending wallet of it is on a loaded list. */
-const blocked = async (db: D1Database, orgId: string) => {
+/** Inside a commit: what keeps a frozen organisation frozen. Its newest record says "review" or "hit" (a record with no screening blocks nothing), or a live wallet of it is on a loaded list. */
+const blocked = async (db: D1Database, orgId: string, now: number) => {
   const newest = await db.prepare(`SELECT screening_outcome AS outcome ${NEWEST}`).bind(orgId).first<{ outcome: string | null }>()
-  return newest?.outcome && newest.outcome !== 'clear' ? 'screening_not_clear' : (await listedWallet(db, orgId)) ? 'wallet_listed' : null
+  return newest?.outcome && newest.outcome !== 'clear' ? 'screening_not_clear' : (await listedWallet(db, orgId, now)) ? 'wallet_listed' : null
 }
 // Freeze: an active organisation only. An unverified one is never frozen: an unfreeze would make it active with no review.
 // G4: a freeze ends every session of the organisation, in the same commit; an unfreeze brings none back.
@@ -260,7 +269,7 @@ async function setFrozen(db: D1Database, orgId: string, frozen: boolean, now: nu
   let outcome = 'not_found'
   await commit(db, orgId, async () => {
     const o = await db.prepare('SELECT state FROM organisations WHERE id = ?').bind(orgId).first<{ state: string }>()
-    outcome = !o ? 'not_found' : o.state !== (frozen ? 'active' : 'frozen') ? 'wrong_state' : (!frozen && (await blocked(db, orgId))) || 'ok'
+    outcome = !o ? 'not_found' : o.state !== (frozen ? 'active' : 'frozen') ? 'wrong_state' : (!frozen && (await blocked(db, orgId, now))) || 'ok'
     if (outcome !== 'ok') return null
     return [{ at: now, actorKind: 'operator', actorId: null, sessionId: null, action: frozen ? 'organisation.freeze' : 'organisation.unfreeze', subjectId: orgId },
       frozen ? freezing(db, orgId, now) : [db.prepare(`UPDATE organisations SET state = 'active' WHERE id = ? AND state = 'frozen'`).bind(orgId)]]
@@ -295,7 +304,7 @@ async function recordScreening(db: D1Database, orgId: string, screening: Screeni
 
 // S3a: the addresses of one list are replaced whole, in one batch: the old ones go, the list's row says what was loaded
 // and when, the new ones come in chunks (the SQL text holds placeholders only). The other lists are not touched.
-// S3b: then every organisation that holds a linked or a pending wallet on ANY loaded list is a hit, and an active one
+// S3b: then every organisation that holds a live wallet (LISTED in data.ts) on ANY loaded list is a hit, and an active one
 // is frozen in a commit of its own, with a row in its own log that names the wallet. Everything that decides the freeze
 // is read again inside that commit. A freeze that fails leaves the list loaded: the same load, run again, finds the organisation again.
 // ponytail: every listed wallet of every organisation, at each load. Page the hits when they pass some hundreds.
@@ -307,12 +316,12 @@ async function replaceList(db: D1Database, list: string, sha256: string, address
                 ON CONFLICT (list) DO UPDATE SET sha256 = excluded.sha256, entries = excluded.entries, loaded_at = excluded.loaded_at`).bind(list, sha256, addresses.length, now),
     ...chunks.map((part) => db.prepare(`INSERT INTO sanctioned_addresses (list, address) VALUES ${part.map((_, n) => `(?1, ?${n + 2})`).join(', ')}`).bind(list, ...part)),
   ])
-  const hits = (await db.prepare(`SELECT o.id, o.name, o.state, w.address FROM wallets w JOIN organisations o ON o.id = w.org_id WHERE ${LISTED} ORDER BY o.id, w.rowid`).all<{ id: string; name: string; state: string; address: string }>()).results
+  const hits = (await db.prepare(`SELECT o.id, o.name, o.state, w.address FROM wallets w JOIN organisations o ON o.id = w.org_id WHERE ${LISTED} ORDER BY o.id, w.rowid`).bind(now).all<{ id: string; name: string; state: string; address: string }>()).results
   const frozen = new Map<string, boolean>()
   for (const hit of hits) {
     if (frozen.has(hit.id)) continue // one commit per organisation, whatever the number of its listed wallets
     frozen.set(hit.id, await commit(db, hit.id, async () => {
-      const wallet = await listedWallet(db, hit.id)
+      const wallet = await listedWallet(db, hit.id, now)
       const active = await db.prepare(`SELECT 1 FROM organisations WHERE id = ? AND state = 'active'`).bind(hit.id).first()
       return wallet && active ? [{ at: now, actorKind: 'operator', actorId: null, sessionId: null, action: 'screening.wallet', subjectId: wallet.id }, freezing(db, hit.id, now)] : null
     }))
@@ -662,6 +671,7 @@ async function list(c: Ctx) {
       phrase: await wordsOf(c, o.id, first), credentialHash: first.hash, missing: await missing(c.env.DB, o.id, c.now),
       // Milestone 5b: that the sealed declaration exists, and what the server knows of it. "items" and "get" are the way to the file.
       declaration: (await sealedOf(c.env.DB, o.id)).find((item) => item.kind === 'declaration') ?? null,
+      refused: await refusedOf(c.env.DB, o.id), // sanctions screening: a wallet this application named was on a loaded list
       wallet: wallet && { ...walletView(wallet), colour: colour({ kind: wallet.kind, snapshot: wallet.snapshot, inForce: true }, live) },
     })
   }

@@ -1,7 +1,9 @@
 // The operator's command, local only. It calls the operator's API of the local server (src/server/onboarding.ts) on
 // that API's own hostname, with OPERATOR_TOKEN from .dev.vars (made by "pnpm seed"). The token is never printed.
 //   node scripts/operator.mjs invite    a new application code: one use, valid 14 days; give it to the company that may apply
-//   node scripts/operator.mjs list      what is under review, then "Reviews due": the active and frozen organisations with no screening, or whose next review is passed or within 14 days
+//   node scripts/operator.mjs list      what is under review (with a warning line when a wallet the application named was refused as listed), then "Reviews due, and frozen
+//                                       organisations": no screening, the next review passed or within 14 days, or frozen; each line ends with the last freeze, unfreeze or
+//                                       screening event of its log (screening.attempt: a member proved a wallet that is on a loaded list, which froze the organisation)
 //   node scripts/operator.mjs decide <organisation id> approve --submission <the 16 characters "list" printed> --tier standard --source registry --evidence "<reference>" --sha256 <64 hex> --next-review 2027-11-11
 //                                                              --screening clear --list eu=<file> [--list un=<file>] [--list ofac=<file>]
 //   node scripts/operator.mjs decide <organisation id> more|refuse --reason <code> --tier standard --source registry [--screening clear|review|hit --list eu=<file> ...]
@@ -149,11 +151,12 @@ else {
       `  first Owner     ${o.phrase.join(' ')}   passkey hash ${o.credentialHash}`,
       `  recovery wallet ${o.wallet ? `${o.wallet.address} on ${o.wallet.chain}, ${o.wallet.kind}${o.wallet.threshold ? ` ${o.wallet.threshold} of ${o.wallet.owners}` : ''}, ${o.wallet.colour.level}${o.wallet.colour.why ? ` (${o.wallet.colour.why})` : ''}` : 'none: a second Owner with two passkeys'}`,
       `  declaration     ${o.declaration ? sealed(o.declaration) : 'none'}`,
+      ...(o.refused.length ? [`  WARNING         listed wallet refused: ${o.refused.join(', ')}`] : []),
       `  ready           ${o.missing ? `no: ${o.missing}` : 'yes'}`,
     ].join('\n'))
   }
   // The calendar is a manual chore: this is the list to work through.
   const day = (time) => (time ? new Date(time).toISOString().slice(0, 10) : 'none')
-  console.log(!answer.body.reviews.length ? 'No review is due.' : `Reviews due (no screening, or the next review is passed or within 14 days):\n${answer.body.reviews
-    .map((r) => `${r.id}  ${r.name}  ${r.state}  last screening ${r.outcome ? `${r.outcome} on ${day(r.screenedAt)}` : 'none'}  next review ${day(r.nextReview)}`).join('\n')}`)
+  console.log(!answer.body.reviews.length ? 'No review is due, and no organisation is frozen.' : `Reviews due, and frozen organisations (no screening, the next review passed or within 14 days, or frozen):\n${answer.body.reviews
+    .map((r) => `${r.id}  ${r.name}  ${r.state}  last screening ${r.outcome ? `${r.outcome} on ${day(r.screenedAt)}` : 'none'}  next review ${day(r.nextReview)}  last event ${r.lastAction ? `${r.lastAction}${r.lastDetail ? ` (${r.lastDetail})` : ''} on ${day(r.lastAt)}` : 'none'}`).join('\n')}`)
 }

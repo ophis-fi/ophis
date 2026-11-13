@@ -968,23 +968,33 @@ export async function orders(db: D1Database, actor: Actor, now: number) {
   return results.map(({ payload, seat, ...o }) => ({ ...o, mine: seat === actor.seatId, open: o.state === 'pending' && o.expiresAt > now, order: JSON.parse((JSON.parse(payload) as { value: string }).value) as Order }))
 }
 
-// ---- sanctions screening: the address lists the operator loads (onboarding.ts) ----
-// A listed address is never linked: every write that makes a wallet row, or makes one linked, reads the lists inside
-// its commit (linkWallet and the approval of a link here; the activation proof and the operator's approval in
-// onboarding.ts) and refuses with "wallet_listed". The stop of a recovery, which is never refused, leaves such a wallet unlinked.
-/** SQL: the wallet row `w` is linked or pending, at an address on a loaded list. */
-export const LISTED = `w.state IN ('linked', 'pending') AND w.address IN (SELECT address FROM sanctioned_addresses)`
-/** Is this address on a loaded list? */
-export const listed = async (db: D1Database, address: string) => Boolean(await db.prepare('SELECT 1 FROM sanctioned_addresses WHERE address = ? LIMIT 1').bind(address).first())
-/** The first linked or pending wallet of an organisation that is on a loaded list, or null. */
-export const listedWallet = (db: D1Database, orgId: string) => db.prepare(`SELECT w.id FROM wallets w WHERE w.org_id = ? AND ${LISTED} ORDER BY w.rowid LIMIT 1`).bind(orgId).first<{ id: string }>()
-
 // ---- milestone 4a: wallets and the recovery wallet ----
 
 // A pending wallet is live only while its request is open. A reject, a cancel or the 7 days leave a row that no
 // list shows and that the next link sweeps to 'unlinked'; the row stays, so its proof is never accepted again.
 const OPEN_LINK = `EXISTS (SELECT 1 FROM approvals a WHERE a.org_id = w.org_id AND a.subject_id = w.id AND a.action = 'wallet.link' AND a.state = 'pending' AND a.expires_at > ?)`
 const LIVE = `(w.state = 'linked' OR (w.state = 'pending' AND ${OPEN_LINK}))`
+
+// ---- sanctions screening: the address lists the operator loads (onboarding.ts) ----
+// A listed address is never linked: every write that makes a wallet row, or makes one linked, reads the lists inside
+// its commit (linkWallet and the approval of a link here; the activation proof and the operator's approval in
+// onboarding.ts) and refuses with "wallet_listed". The stop of a recovery, which is never refused, leaves such a wallet
+// unlinked. Two triggers of 0012 refuse the same at the write itself: a load is no commit of the organisation.
+/**
+ * SQL: the wallet row `w` is live, at an address on a loaded list (bind now). Live: linked; pending with an open
+ * request; or pending in an organisation that is not yet verified, whose named wallet has no request. A row whose
+ * request was rejected, cancelled or has expired stays 'pending' for good and counts for nothing.
+ */
+export const LISTED = `(${LIVE} OR (w.state = 'pending' AND (SELECT x.state FROM organisations x WHERE x.id = w.org_id) = 'unverified')) AND w.address IN (SELECT address FROM sanctioned_addresses)`
+/** Is this address on a loaded list? */
+export const listed = async (db: D1Database, address: string) => Boolean(await db.prepare('SELECT 1 FROM sanctioned_addresses WHERE address = ? LIMIT 1').bind(address).first())
+/** The first live wallet of an organisation that is on a loaded list, or null. */
+export const listedWallet = (db: D1Database, orgId: string, now: number) => db.prepare(`SELECT w.id FROM wallets w WHERE w.org_id = ? AND ${LISTED} ORDER BY w.rowid LIMIT 1`).bind(orgId, now).first<{ id: string }>()
+/** The statements of a freeze by the operator or by the screening: the organisation, if it is active, and every session of it (G4). */
+export const freezing = (db: D1Database, orgId: string, now: number): Sql[] => [
+  db.prepare(`UPDATE organisations SET state = 'frozen' WHERE id = ? AND state = 'active'`).bind(orgId),
+  db.prepare('UPDATE sessions SET revoked_at = ? WHERE org_id = ? AND revoked_at IS NULL').bind(now, orgId),
+]
 // "In force" is computed at read: a waiting recovery wallet whose 72 hours have passed is the one in force, and the
 // one it replaced no longer is. promote() writes that down in the next wallet write. No scheduled job.
 function standing(rows: { id: string; anchor: string | null; at: number | null }[], now: number) {
@@ -1052,7 +1062,10 @@ export async function linkWallet(
       : null
     if (refused) {
       outcome = { error: refused }
-      return null
+      // A proven attempt to link a listed address leaves its trace: one row in the organisation's log, and the freeze a load
+      // of that address would have made, with every session ended, in this commit. The answer is the refusal.
+      return refused !== 'wallet_listed' ? null
+        : [{ at: now, actorKind: 'seat', actorId: w.seatId, sessionId: null, action: 'screening.attempt', subjectId: null, detail: w.address }, freezing(db, w.orgId, now)]
     }
     const direct = await alone(db, w.orgId, w.seatId, now)
     outcome = { state: direct ? 'linked' : 'pending' }
