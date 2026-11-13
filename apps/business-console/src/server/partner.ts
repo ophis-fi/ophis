@@ -1,13 +1,14 @@
-// Partner figures: live. The real figures of a partner organisation, read from the Ophis rebate indexer through its one
-// token-gated route (apps/rebate-indexer/src/business.ts), only for the wallets this organisation has linked. The
-// answer is checked field by field and rebuilt as a whitelist: what the browser gets is made here, never passed through.
+// Partner figures: live. The partner fee of a partner organisation (the fee it sets on its integration's orders), read
+// from the Ophis rebate indexer through its one token-gated route (apps/rebate-indexer/src/business.ts), only for the
+// wallets this organisation has linked. No referral share: the console's partners get none. The answer is checked
+// field by field and rebuilt as a whitelist: what the browser gets is made here, never passed through.
 // Any failure gives figures_unavailable: never examples, never a partial mix. The token stays in this file's one request.
 import type { Hex } from 'viem'
 import { checksum, readCapped, signedByKey } from './chain.ts'
 import * as data from './data.ts'
 import { CHAIN_NAME } from './typed.ts'
 
-export const INDEXER = { timeoutMs: 5000, maxBytes: 1_000_000, maxWallets: 10, maxReferred: 500, maxMonths: 12, maxCodes: 100, perHour: 120 }
+export const INDEXER = { timeoutMs: 5000, maxBytes: 1_000_000, maxWallets: 10, maxMonths: 12, perHour: 120 }
 type Settings = { DB: D1Database; ENVIRONMENT: string; INDEXER_URL?: string; INDEXER_TOKEN?: string }
 const hex = (v: string) => /^0x[0-9a-f]*$/i.test(v)
 
@@ -34,37 +35,10 @@ const num = (v: unknown) => (typeof v === 'number' && v >= 0 && v <= 1e15 ? v : 
 const int = (v: unknown) => (Number.isInteger(num(v)) ? (v as number) : no())
 const text = (v: unknown, form: RegExp) => (typeof v === 'string' && form.test(v) ? v : no())
 const iso = (v: unknown) => (Number.isNaN(Date.parse(text(v, /^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d(\.\d{1,3})?Z$/))) ? no() : (v as string))
-const one = <T extends string>(v: unknown, of: readonly T[]) => (of.includes(v as T) ? (v as T) : no())
 const list = (v: unknown, max: number) => (Array.isArray(v) && v.length <= max ? (v as unknown[]) : no())
 const obj = (v: unknown) => (v && typeof v === 'object' && !Array.isArray(v) ? (v as Record<string, unknown>) : no())
-const ADDRESS = /^0x[0-9a-f]{40}$/
-// How a referred wallet was attributed, in plain words: the indexer's three values.
-const ATTRIBUTED = { link: 'Referral link', code: 'Partner code in the order', 'link-and-code': 'Referral link and partner code' } as const
-
-// NOT read and never passed on: affiliate.currentCycleNetFeeUsd, fees.currentCycle.grossFeeUsd, fees.partnerShareBps,
-// fees.minPayoutUsd, fees.nextPayoutAt. The partner view shows only what the partner earns and states no payout terms.
-function affiliateOf(v: unknown, wallet: string) {
-  if (v === null) return null
-  const a = obj(v)
-  if (a.wallet !== wallet) no()
-  const scheduled = one(a.payoutStatus, ['disabled', 'not-configured', 'dry-run', 'scheduled'] as const) === 'scheduled'
-  const next = a.nextPayoutAt === null ? null : iso(a.nextPayoutAt)
-  const sharePct = num(a.rateOfNetFeePct)
-  if (sharePct > 100) no()
-  return {
-    kind: one(a.kind, ['partner', 'regular'] as const), sharePct,
-    codes: list(a.activeCodes, INDEXER.maxCodes).map((code) => text(code, /^[a-z0-9_-]{3,64}$/)),
-    referredCount: int(a.referredCount), cycleVolumeUsd: num(a.currentCycleVolumeUsd), lifetimeVolumeUsd: num(a.lifetimeReferredVolumeUsd),
-    estimatedEarningsUsd: num(a.estimatedCurrentCycleEarningsUsd), paidWeth: num(a.paidToDateWeth), paidUsd: num(a.paidToDateUsd),
-    // The date of the next run, only when a run is scheduled: any other status reads "No payout run is scheduled."
-    nextPayoutAt: scheduled ? next : null,
-    referred: list(a.referees, INDEXER.maxReferred).map(obj).map((r) => {
-      if (r.boundAt !== null) iso(r.boundAt)
-      // listed: on a loaded sanctions list (M10). Set by figures(), from the console's own tables, never from the indexer's answer.
-      return { wallet: text(r.wallet, ADDRESS), attributed: ATTRIBUTED[one(r.attribution, ['link', 'code', 'link-and-code'] as const)], firstSeenAt: iso(r.firstSeenAt), lifetimeVolumeUsd: num(r.lifetimeVolumeUsd), listed: false }
-    }),
-  }
-}
+// NOT read and never passed on: fees.currentCycle.grossFeeUsd, fees.partnerShareBps, fees.minPayoutUsd, fees.nextPayoutAt.
+// The partner view shows only what the partner earns and states no payout terms.
 function feesOf(v: unknown, wallet: string) {
   const f = obj(v)
   const [cycle, life] = [obj(f.currentCycle), obj(f.lifetime)]
@@ -80,7 +54,7 @@ function feesOf(v: unknown, wallet: string) {
 }
 
 /** fees null: a contract wallet whose chain the indexer has not confirmed. No figure of it was read. */
-export type PartnerWallet = { wallet: string; label: string; chain: string; affiliate: ReturnType<typeof affiliateOf>; fees: ReturnType<typeof feesOf> | null }
+export type PartnerWallet = { wallet: string; label: string; chain: string; fees: ReturnType<typeof feesOf> | null }
 export type Figures = { state: 'not_connected' | 'no_wallet' | 'figures_unavailable' | 'figures_rate' } | { state: 'live'; asOf: string; leftOut: number; wallets: PartnerWallet[] }
 
 /**
@@ -121,18 +95,11 @@ export async function figures(env: Settings, orgId: string, now: number): Promis
     const wallets = got.map(obj).map((w, i) => {
       const [address, row] = [asked[i], rows.get(asked[i])!]
       if (w.wallet !== address) no()
-      // "No figures" is an answer only for a wallet asked as a contract wallet, and then it has no partner figures either.
-      const refused = w.fees === null && w.affiliate === null && Object.hasOwn(contract, address)
-      return { wallet: checksum(address), label: row.label, chain: row.chains.map((id) => CHAIN_NAME[id] ?? `Chain ${id}`).join(', '), affiliate: affiliateOf(w.affiliate, address), fees: refused ? null : feesOf(w.fees, address) }
+      // "No figures" is an answer only for a wallet asked as a contract wallet.
+      const refused = w.fees === null && Object.hasOwn(contract, address)
+      return { wallet: checksum(address), label: row.label, chain: row.chains.map((id) => CHAIN_NAME[id] ?? `Chain ${id}`).join(', '), fees: refused ? null : feesOf(w.fees, address) }
     })
-    const asOf = iso(answer.asOf)
-    // M10: a referred wallet that is on a loaded sanctions list is marked, and recorded once in this organisation's own
-    // log (a flag: it freezes nothing). After every check above, so that a refused answer marks and records nothing.
-    const listed = await data.listedAddresses(env.DB)
-    const flagged = wallets.flatMap((w) => w.affiliate?.referred ?? []).filter((r) => (r.listed = listed.has(r.wallet))).map((r) => r.wallet)
-    // A record that fails is no failure of the figures (G9): the marks stay, and the next read records it.
-    if (flagged.length) await data.flag(env.DB, orgId, [...new Set(flagged)], now).catch(() => console.error('partner flag not recorded'))
-    return { state: 'live', asOf, leftOut: rows.size - asked.length, wallets }
+    return { state: 'live', asOf: iso(answer.asOf), leftOut: rows.size - asked.length, wallets }
   } catch (error) {
     // The log carries one word: no address of the service, no token, no wallet.
     console.error('partner figures unavailable', error instanceof Error ? error.name : 'unknown')
@@ -140,10 +107,8 @@ export async function figures(env: Settings, orgId: string, now: number): Promis
   }
 }
 
-/** The CSV tables of a partner, from a fresh read: every referred wallet, and the partner-fee months. */
+/** The CSV table of a partner, from a fresh read: the partner-fee months. */
 export const tables = (f: Extract<Figures, { state: 'live' }>): Record<string, [head: string[], rows: unknown[][]]> => ({
-  referred: [['Partner wallet', 'Wallet name', 'Referred wallet', 'Attributed by', 'First seen (UTC)', 'Lifetime volume (USD)', 'On a loaded sanctions list'],
-    f.wallets.flatMap((w) => (w.affiliate?.referred ?? []).map((r) => [w.wallet, w.label, r.wallet, r.attributed, r.firstSeenAt, r.lifetimeVolumeUsd, r.listed ? 'yes' : 'no']))],
   months: [['Partner wallet', 'Wallet name', 'Month', 'Status', 'Owed (USD)', 'Owed (WETH)', 'Carried (USD)'],
     f.wallets.flatMap((w) => (w.fees?.months ?? []).map((m) => [w.wallet, w.label, m.month, m.status, m.owedUsd, m.owedWeth, m.carriedUsd]))],
 })

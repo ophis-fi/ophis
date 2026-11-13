@@ -1,7 +1,7 @@
 // A local stand-in for the place where the OFAC list file lives (M10), on http://127.0.0.1:8794/ofac.json. Locally
 // SANCTIONS_URL points here (.dev.vars, made by "pnpm seed"): the Worker holds no stub and no switch. It serves what
 // the maker (scripts/ofac-list.mjs) builds from the test XML, tests/fixtures/sdn-test.xml, read at every question:
-// invented values, and one wallet that the indexer stand-in's fixture names as referred, so a partner's Overview shows a flag.
+// invented values.
 //   node scripts/list-stub.mjs     serve until stopped ("pnpm dev", "pnpm test:e2e" and "pnpm tour" start it themselves)
 // The file is made again at every question: its "made" is always now. To see the other cases, open
 // http://127.0.0.1:8794/stub/<mode>: ok, shrunk (one address, published a day later), grown (five, a day later), older

@@ -77,7 +77,7 @@ try {
       console.log('Demo: an institution with one linked wallet named "Demo wallet" (no signature, local only).')
     } else if (live) {
       // The partner wallet of the contract file: the stand-in answers its figures for this address.
-      const address = JSON.parse(readFileSync(CONTRACT, 'utf8')).wallets.find((w) => w.affiliate)?.wallet
+      const address = JSON.parse(readFileSync(CONTRACT, 'utf8')).wallets[0].wallet
       await devDemoWallet(env.DB, env.ENVIRONMENT, orgId, Date.now(), address)
       console.log('Live: a partner with one linked wallet named "Demo wallet" (no signature, local only), at the partner address of the indexer contract file.')
     }

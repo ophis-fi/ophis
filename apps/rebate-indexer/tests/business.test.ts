@@ -2,9 +2,8 @@ import { test, expect, afterEach, beforeEach, vi } from 'vitest';
 import Fastify, { type FastifyInstance } from 'fastify';
 import rateLimit from '@fastify/rate-limit';
 import { readFileSync } from 'node:fs';
-// Type-only: the fakes below are typed with the PRODUCER's exported types, so a
+// Type-only: the fake below is typed with the PRODUCER's exported type, so a
 // changed producer shape fails `tsc --noEmit` here. No database is loaded.
-import type { PartnerDashboard } from '../src/api.js';
 import type { PartnerFeeDashboard } from '../src/partnerFees/report.js';
 import { registerBusinessRoutes } from '../src/business.js';
 
@@ -14,26 +13,6 @@ const OTHER = '0x00000000000000000000000000000000000000b2' as const;
 const TOKEN = 'business-test-token-0123456789abcdef-xyz';
 const ADMIN = 'admin-test-token-0123456789abcdef-uvwxyz';
 
-const affiliate: PartnerDashboard = {
-  wallet: PARTNER,
-  kind: 'partner',
-  rateOfNetFeePct: 12,
-  activeCodes: ['northwind', 'northwind-app'],
-  referredCount: 3,
-  currentCycleVolumeUsd: 184250.75,
-  currentCycleNetFeeUsd: 17.31,
-  lifetimeReferredVolumeUsd: 2391804.5,
-  estimatedCurrentCycleEarningsUsd: 2.08,
-  paidToDateWeth: 0.0125,
-  paidToDateUsd: 41.37,
-  payoutStatus: 'scheduled',
-  nextPayoutAt: '2026-12-01T02:00:00.000Z',
-  referees: [
-    { wallet: '0x00000000000000000000000000000000000000a1', boundAt: new Date('2026-08-03T14:05:00Z'), firstSeenAt: new Date('2026-08-03T14:05:00Z'), attribution: 'link', lifetimeVolumeUsd: 1504300.25 },
-    { wallet: '0x00000000000000000000000000000000000000a2', boundAt: new Date('2026-09-19T08:40:00Z'), firstSeenAt: new Date('2026-09-17T11:12:00Z'), attribution: 'link-and-code', lifetimeVolumeUsd: 880004.25 },
-    { wallet: '0x00000000000000000000000000000000000000a3', boundAt: null, firstSeenAt: new Date('2026-10-28T19:55:00Z'), attribution: 'code', lifetimeVolumeUsd: 7500 },
-  ],
-};
 const fees = (recipient: `0x${string}`, full: boolean): PartnerFeeDashboard => ({
   recipient,
   currentCycle: full
@@ -60,10 +39,7 @@ beforeEach(async () => {
   asked = [];
   app = Fastify({ logger: false });
   await app.register(rateLimit, { max: 100, timeWindow: '1 minute' });
-  registerBusinessRoutes(app, {
-    getPartnerDashboard: async (a) => { asked.push(a); return a === PARTNER ? affiliate : null; },
-    getPartnerFeeDashboard: async (a) => fees(a, a === PARTNER),
-  });
+  registerBusinessRoutes(app, { getPartnerFeeDashboard: async (a) => (asked.push(a), fees(a, a === PARTNER)) });
 });
 afterEach(async () => {
   await app.close();
@@ -83,14 +59,11 @@ test('the answer equals the contract file exactly', async () => {
   expect(JSON.parse(res.body)).toStrictEqual(JSON.parse(JSON.stringify(fixture)));
 });
 
-test('the contract file shows what the console is built against', () => {
+test('the contract file shows what the console is built against: the partner-fee dashboard of each wallet and nothing else', () => {
   const [p, o] = fixture.wallets;
-  expect(p.affiliate.activeCodes).toHaveLength(2);
-  expect(p.affiliate.referees.map((r: { attribution: string }) => r.attribution).sort()).toEqual(['code', 'link', 'link-and-code']);
+  // No referral dashboard: the console's partners get no referral share (retail POST /partner keeps it).
+  expect(fixture.wallets.map((w: object) => Object.keys(w))).toEqual([['wallet', 'fees'], ['wallet', 'fees']]);
   expect(p.fees.recentBatches).toHaveLength(2);
-  expect(p.affiliate.payoutStatus).toBe('scheduled');
-  expect(p.affiliate.nextPayoutAt).toBe('2026-12-01T02:00:00.000Z');
-  expect(o.affiliate).toBeNull();
   expect(o.fees.currentCycle.owedUsd + o.fees.lifetime.paidWeth + o.fees.lifetime.tradeCount).toBe(0);
 });
 
@@ -158,9 +131,7 @@ test('10 wallets pass, upper case is lowered, and the order asked is kept', asyn
   expect(res.statusCode).toBe(200);
   expect(JSON.parse(res.body).wallets.map((w: { wallet: string }) => w.wallet)).toEqual(ten);
   const swapped = JSON.parse((await call([OTHER, PARTNER.toUpperCase().replace('0X', '0x')])).body);
-  expect(swapped.wallets.map((w: { wallet: string }) => w.wallet)).toEqual([OTHER, PARTNER]);
-  expect(swapped.wallets[0].affiliate).toBeNull();
-  expect(swapped.wallets[1].affiliate.wallet).toBe(PARTNER);
+  expect(swapped.wallets.map((w: { wallet: string; fees: { recipient: string } }) => [w.wallet, w.fees.recipient])).toEqual([[OTHER, OTHER], [PARTNER, PARTNER]]);
 });
 
 // A contract wallet (a Safe) is controlled per chain: the same address on another chain can have other owners. POST
@@ -169,8 +140,8 @@ test('10 wallets pass, upper case is lowered, and the order asked is kept', asyn
 test('a contract wallet is read only when the console proved it on its pinned chain; else it gets no figures', async () => {
   const auth = { authorization: `Bearer ${TOKEN}` };
   const figures = async (contract: unknown) => JSON.parse((await call([PARTNER, OTHER], auth, contract)).body).wallets;
-  const refused = { wallet: PARTNER, affiliate: null, fees: null };
-  // No pinned chain at all: refused, and neither dashboard is read for it. The wallet proved by its key is served.
+  const refused = { wallet: PARTNER, fees: null };
+  // No pinned chain at all: refused, and nothing is read for it. The wallet proved by its key is served.
   expect(await figures({ [PARTNER]: [8453] })).toEqual([refused, fixture.wallets[1]]);
   expect(asked).toEqual([OTHER]);
   process.env.CONTRACT_WALLET_AUTH_CHAINS = JSON.stringify({ [PARTNER]: 10 });

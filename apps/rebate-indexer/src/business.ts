@@ -1,24 +1,23 @@
 import { timingSafeEqual } from 'node:crypto';
 import type { FastifyInstance } from 'fastify';
-import type { PartnerDashboard } from './api.js';
 import type { PartnerFeeDashboard } from './partnerFees/report.js';
 import { logger } from './logger.js';
 
 // One token-gated read route for the Ophis Business console. A company wallet (a
 // Safe) cannot sign the 5-minute partnerAuth message, so the console proves wallet
-// control itself and reads the same two dashboards here, server to server.
-// BUSINESS_API_TOKEN reads EVERY partner's dashboard: it is a secret, and the
+// control itself and reads the partner-fee dashboard here, server to server. It
+// never reads the referral dashboard: the console's partners get no referral share.
+// BUSINESS_API_TOKEN reads EVERY partner's fee dashboard: it is a secret, and the
 // feature is OFF (404) unless it is set, long, and different from the admin token.
 
 export interface BusinessDeps {
-  getPartnerDashboard: (address: `0x${string}`, now: Date) => Promise<PartnerDashboard | null>;
   getPartnerFeeDashboard: (recipient: `0x${string}`, now?: Date) => Promise<PartnerFeeDashboard>;
 }
 
 export interface BusinessPartnerAnswer {
   asOf: string;
   /** fees null: a contract wallet the console did not prove on its pinned chain. Nothing was read for it. */
-  wallets: { wallet: `0x${string}`; affiliate: PartnerDashboard | null; fees: PartnerFeeDashboard | null }[];
+  wallets: { wallet: `0x${string}`; fees: PartnerFeeDashboard | null }[];
 }
 
 // The chain each contract wallet is pinned to, as POST /partner reads it (affiliate/partnerAuth.ts): the same address
@@ -74,11 +73,7 @@ export function registerBusinessRoutes(app: FastifyInstance, deps: BusinessDeps)
     logger.info({ wallets: wallets.length, refused: wallets.filter((w) => !readable(w)).length }, 'business partner read');
     const out: BusinessPartnerAnswer['wallets'] = [];
     // ponytail: one wallet after the other (at most 10); parallel if latency matters.
-    for (const w of wallets as `0x${string}`[]) {
-      out.push(readable(w)
-        ? { wallet: w, affiliate: await deps.getPartnerDashboard(w, now), fees: await deps.getPartnerFeeDashboard(w, now) }
-        : { wallet: w, affiliate: null, fees: null });
-    }
+    for (const w of wallets as `0x${string}`[]) out.push({ wallet: w, fees: readable(w) ? await deps.getPartnerFeeDashboard(w, now) : null });
     return { asOf: now.toISOString(), wallets: out };
   });
 }

@@ -738,7 +738,6 @@ export const EVENTS: Record<string, string> = {
   'anchor.set/alone': 'Recovery wallet set by the only key-role member, in force after 72 hours',
   'anchor.cancel': 'Change of recovery wallet cancelled',
   'order.demo': 'Demo order approved. Not sent: demo',
-  'screening.flag': 'A wallet referred to this organisation is on a loaded sanctions list', // M10: a flag. Nothing is frozen by it. The row says which wallet.
   'recovery.open': 'Account recovery requested by the recovery wallet, 72 hour wait started',
   'recovery.open/override': 'Account recovery requested by the recovery wallet, overriding the Owners, 72 hour wait started',
   'recovery.cancel': 'Account recovery cancelled by an Owner',
@@ -757,7 +756,6 @@ export const EVENTS: Record<string, string> = {
 function said(action: string, detail: string | null) {
   const words = EVENTS[`${action}/${detail}`] ?? EVENTS[action] ?? 'Unlisted event'
   if (action.startsWith('approval.') && detail && CHANGES[detail]) return `${words}: ${CHANGES[detail]}`
-  if (action === 'screening.flag' && detail) return `${words}: ${detail}`
   const [from, to] = action === 'seat.role' && detail ? detail.split('.') : []
   return ROLE_NAME[from] && ROLE_NAME[to] ? `${words}: ${ROLE_NAME[from]} to ${ROLE_NAME[to]}` : words
 }
@@ -830,7 +828,7 @@ async function desk(c: Context) {
 
 // Every "Export CSV" button of Overview and Desk. The tables follow the kind of the organisation, and each row says
 // where it comes from. An institution: demo tables, its own orders before the examples, source = demo. A partner: its
-// referred wallets and partner-fee months from a fresh read of the indexer, source = live; no read, no file.
+// partner-fee months from a fresh read of the indexer, source = live; no read, no file.
 async function tableExport(c: Context) {
   const table = c.params.id ?? ''
   const live = c.session.org_kind === 'partner'
@@ -1042,16 +1040,10 @@ export async function handle(request: Request, env: Env, now: () => number = Dat
 }
 
 /**
- * M10, the daily run (one cron in wrangler.jsonc): the read of the OFAC list file, then the figures of the partners
- * (20 a run, in turn), read as their Overview reads them, so that a flag does not wait for a member to open the page.
- * A list file that cannot be read does not stop the second step: the loaded lists still stand. No error stops a later
- * step or partner (G5): each is logged in fixed words, no address and no name. `now` is injectable, as for handle().
+ * M10, the daily run (one cron in wrangler.jsonc): the read of the OFAC list file. An error is logged in fixed words,
+ * no address and no name, and the run answers unavailable: the loaded lists still stand. `now` is injectable, as for handle().
  */
-export async function daily(env: Env, now: number) {
-  const read = await sync(env, now).catch(() => (console.error('daily run: the read of the list file failed'), { outcome: 'unavailable' as const }))
-  for (const orgId of await data.partnersToRead(env.DB, now)) await partner.figures(env, orgId, now).catch(() => console.error('daily run: the figures of a partner failed'))
-  return read
-}
+export const daily = (env: Env, now: number) => sync(env, now).catch(() => (console.error('daily run: the read of the list file failed'), { outcome: 'unavailable' as const }))
 
 export default {
   fetch: (request: Request, env: Env) => handle(request, env),

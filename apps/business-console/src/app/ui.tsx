@@ -119,7 +119,6 @@ const STATUS: Record<string, [tone: string, icon: string]> = {
   'Pending approval': ['warn', 'clock'], 'Approved. Not sent: demo': ['ok', 'check'], Refused: ['bad', 'x'], Cancelled: ['draft', 'ban'], Expired: ['draft', 'history'],
   Open: ['', 'clock'], Filled: ['ok', 'check'], Paid: ['ok', 'check'], Carried: ['', 'clock'], Example: ['draft', 'info'], Illustrative: ['preview', 'info'], Demo: ['preview', 'info'],
   Revoked: ['bad', 'x'], Frozen: ['bad', 'ban'], Removed: ['bad', 'x'], 'Chain verified': ['ok', 'shield-check'], 'Chain broken': ['bad', 'triangle-alert'],
-  'On a loaded sanctions list': ['bad', 'triangle-alert'],
 }
 export function Status({ children }: { children: string }) {
   const [tone, icon] = STATUS[children] ?? ['', 'circle-check']

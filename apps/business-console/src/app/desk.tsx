@@ -19,10 +19,6 @@ interface Institution {
 // A partner's figures: live, or the plain reason why there are none. Numbers are USD or WETH amounts of the rebate service.
 interface PartnerWallet {
   wallet: string; label: string; chain: string
-  affiliate: null | {
-    kind: string; sharePct: number; codes: string[]; referredCount: number; cycleVolumeUsd: number; lifetimeVolumeUsd: number; estimatedEarningsUsd: number; paidWeth: number; paidUsd: number
-    nextPayoutAt: string | null; referred: { wallet: string; attributed: string; firstSeenAt: string; lifetimeVolumeUsd: number; listed: boolean }[]
-  }
   // null: a contract wallet whose chain the rebate service has not confirmed; no figure of it was read.
   fees: null | { shareUsd: number; carriedUsd: number; owedUsd: number; pendingTrades: number; paidWeth: number; trades: number; months: { month: string; status: string; owedUsd: number; owedWeth: number; carriedUsd: number }[] }
 }
@@ -146,53 +142,23 @@ function InstitutionOverview({ v }: { v: Institution }) {
 const usd = (n: number) => n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 const weth = (n: number) => n.toLocaleString('en-US', { maximumFractionDigits: 6 })
 const ESTIMATE = 'Estimate. The amount is fixed when a payout is made.'
-const SHOWN = 50 // referred wallets on the page; the CSV holds all of them
 
 function PartnerWalletFigures({ w }: { w: PartnerWallet }) {
-  const a = w.affiliate
-  const head = <h2 className="pw-head"><Icon name="wallet" /><b>{w.label}</b><span className="mono muted">{w.wallet}</span><span className="muted">{w.chain}</span></h2>
-  if (!w.fees) return (
-    <section className="pw sec" aria-label={`Wallet ${w.label}`}>
-      {head}
-      <p className="note warn" role="note"><Icon name="info" /><span className="grow"><b>The figures of this wallet are not shown.</b> It is a contract wallet, and Ophis has not confirmed the chain it is controlled on. <a className="link" href="/#/support">Ask Support</a>.</span></p>
-    </section>
-  )
-  // The rebate service answers at most the newest 500 referred wallets of a wallet.
-  const part = a !== null && a.referredCount > a.referred.length
   return (
     <section className="pw sec" aria-label={`Wallet ${w.label}`}>
-      {head}
-      {a ? (
-        <>
+      <h2 className="pw-head"><Icon name="wallet" /><b>{w.label}</b><span className="mono muted">{w.wallet}</span><span className="muted">{w.chain}</span></h2>
+      {w.fees ? (
+        <Section icon="hand-coins" title="Partner fee" hint="The fee you set on the orders of your integration.">
           <div className="stats">
-            <div className="c"><span className="num">${usd(a.cycleVolumeUsd)}</span><span className="cap"><Icon name="trending-up" size={16} />Referred volume this cycle</span></div>
-            <div className="c"><span className="num">${usd(a.lifetimeVolumeUsd)}</span><span className="cap"><Icon name="history" size={16} />Lifetime referred volume</span></div>
-            <div className="c"><span className="num">{count(a.referredCount)}</span><span className="cap"><Icon name="wallet" size={16} />Referred wallets</span></div>
-            <div className="c"><span className="num">${usd(a.estimatedEarningsUsd)}</span><span className="cap"><Icon name="hand-coins" size={16} />Estimated earnings this cycle</span><span className="sub">{ESTIMATE}</span></div>
-            <div className="c"><span className="num">${usd(a.paidUsd)}</span><span className="cap"><Icon name="receipt" size={16} />Paid to date</span><span className="sub">{weth(a.paidWeth)} WETH</span></div>
+            <div className="c"><span className="num">${usd(w.fees.owedUsd)}</span><span className="cap"><Icon name="hand-coins" size={16} />Owed this cycle</span><span className="sub">Your share ${usd(w.fees.shareUsd)} plus ${usd(w.fees.carriedUsd)} carried. {ESTIMATE}</span></div>
+            <div className="c"><span className="num">{count(w.fees.pendingTrades)}</span><span className="cap"><Icon name="clock" size={16} />Trades waiting for a price</span></div>
+            <div className="c"><span className="num">{weth(w.fees.paidWeth)}</span><span className="cap"><Icon name="receipt" size={16} />Paid to date (WETH)</span></div>
+            <div className="c"><span className="num">{count(w.fees.trades)}</span><span className="cap"><Icon name="arrow-left-right" size={16} />Trades</span></div>
           </div>
-          <div className="panel pw-facts">
-            <p><b>Your share: {a.sharePct}% of the net fee on referred volume</b></p>
-            <p>{a.nextPayoutAt ? `Next payout run: ${stamp(Date.parse(a.nextPayoutAt))}. A run is planned, not promised.` : 'No payout run is scheduled.'}</p>
-            <p>Active codes: {a.codes.length ? a.codes.map((code) => <span className="mono code" key={code}>{code}</span>) : <span className="muted">none</span>}</p>
-          </div>
-          <Section icon="users" title="Referred wallets" hint={part ? `Of ${count(a.referredCount)} referred wallets, the newest ${count(a.referred.length)}. The CSV holds these ${count(a.referred.length)}; the page shows the first ${SHOWN}.` : a.referred.length > SHOWN ? `The first ${SHOWN} of ${count(a.referred.length)}. The CSV holds all of them.` : 'Wallets attributed to this wallet. The CSV holds all of them.'}>
-            {a.referred.some((r) => r.listed) && <p className="note warn" role="note"><Icon name="triangle-alert" /><span className="grow"><b>A referred wallet is on a loaded sanctions list.</b> It is marked below and in the CSV, and your audit log records it. Ophis sees it too. The mark freezes nothing and changes nothing in your organisation.</span></p>}
-            {a.referred.length ? <Table head={['Wallet', 'Attributed by', 'First seen (UTC)', 'Lifetime volume (USD)']} rows={[...a.referred].sort((x, y) => Number(y.listed) - Number(x.listed)).slice(0, SHOWN).map((r) => [<><span className="mono">{r.wallet}</span>{r.listed && <small><Status>On a loaded sanctions list</Status></small>}</>, r.attributed, stamp(Date.parse(r.firstSeenAt)), usd(r.lifetimeVolumeUsd)])} />
-              : <p className="muted">No wallet has been referred yet.</p>}
-          </Section>
-        </>
-      ) : <p className="note"><Icon name="info" /><span className="grow">This wallet holds no partner code.</span></p>}
-      <Section icon="hand-coins" title="Partner fee" hint="The fee you set on the orders of your integration.">
-        <div className="stats">
-          <div className="c"><span className="num">${usd(w.fees.owedUsd)}</span><span className="cap"><Icon name="hand-coins" size={16} />Owed this cycle</span><span className="sub">Your share ${usd(w.fees.shareUsd)} plus ${usd(w.fees.carriedUsd)} carried. {ESTIMATE}</span></div>
-          <div className="c"><span className="num">{count(w.fees.pendingTrades)}</span><span className="cap"><Icon name="clock" size={16} />Trades waiting for a price</span></div>
-          <div className="c"><span className="num">{weth(w.fees.paidWeth)}</span><span className="cap"><Icon name="receipt" size={16} />Paid to date (WETH)</span></div>
-          <div className="c"><span className="num">{count(w.fees.trades)}</span><span className="cap"><Icon name="arrow-left-right" size={16} />Trades</span></div>
-        </div>
-        {w.fees.months.length ? <Table head={['Month', 'Status', 'Owed (USD)', 'Owed (WETH)', 'Carried (USD)']} rows={w.fees.months.map((m) => [m.month, <Status>{capital(m.status)}</Status>, usd(m.owedUsd), weth(m.owedWeth), usd(m.carriedUsd)])} />
-          : <p className="muted">No month has been accounted yet.</p>}
-      </Section>
+          {w.fees.months.length ? <Table head={['Month', 'Status', 'Owed (USD)', 'Owed (WETH)', 'Carried (USD)']} rows={w.fees.months.map((m) => [m.month, <Status>{capital(m.status)}</Status>, usd(m.owedUsd), weth(m.owedWeth), usd(m.carriedUsd)])} />
+            : <p className="muted">No month has been accounted yet.</p>}
+        </Section>
+      ) : <p className="note warn" role="note"><Icon name="info" /><span className="grow"><b>The figures of this wallet are not shown.</b> It is a contract wallet, and Ophis has not confirmed the chain it is controlled on. <a className="link" href="/#/support">Ask Support</a>.</span></p>}
     </section>
   )
 }
@@ -205,7 +171,7 @@ function PartnerOverview({ v, retry }: { v: Partner; retry: () => Promise<void> 
       <header className="ph">
         <div><span className="cap eyebrow">Partner console</span><h1 className="h-page">Your flow, <em>in one view</em>.</h1>
           {f.state === 'live' && <p className="lede">Figures from the Ophis rebate service, read at {stamp(Date.parse(f.asOf))}. Amounts in USD.</p>}</div>
-        {f.state === 'live' && <div className="acts"><Export table="referred" size="md" label="Referred wallets CSV" /><Export table="months" size="md" label="Fee months CSV" /></div>}
+        {f.state === 'live' && <div className="acts"><Export table="months" size="md" label="Fee months CSV" /></div>}
       </header>
       {f.state === 'not_connected' && <p className="note warn" role="status" data-state={f.state}><Icon name="info" /><span className="grow"><b>Your figures are not connected yet.</b> This console is not connected to the Ophis rebate service. Nothing is wrong on your side. <a className="link" href="/#/support">Ask Support</a> when your figures will be connected.</span></p>}
       {f.state === 'no_wallet' && <p className="note warn" role="status" data-state={f.state}><Icon name="wallet" /><span className="grow"><b>No wallet is linked.</b> Figures are shown for the wallets your organisation has linked. <a className="link" href="/#/organisation">Link a wallet under Organisation</a>.</span></p>}

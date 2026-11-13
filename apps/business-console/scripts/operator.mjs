@@ -194,8 +194,6 @@ else {
   const day = (time) => (time ? new Date(time).toISOString().slice(0, 10) : 'none')
   console.log(!answer.body.reviews.length ? 'No review is due, and no organisation is frozen.' : `Reviews due, and frozen organisations (no screening, the next review passed or within 14 days, or frozen):\n${answer.body.reviews
     .map((r) => `${r.id}  ${r.name}  ${r.state}  last screening ${r.outcome ? `${r.outcome} on ${day(r.screenedAt)}` : 'none'}  next review ${day(r.nextReview)}${r.lastAction ? `  frozen by ${r.lastAction}${r.lastDetail ? ` (${r.lastDetail})` : ''} on ${day(r.lastAt)}` : ''}`).join('\n')}`)
-  // M10: a flag: a wallet referred to a partner is on a loaded list. Nothing is frozen by it: it is for the operator to look at.
-  for (const f of answer.body.flags) console.log(`FLAG  ${f.id}  ${f.name}  referred wallet ${f.address} is on a loaded list  ${day(f.at)}`)
   // M10: the loaded lists. A feed that stops, or a file that was not loaded, must be seen here.
   for (const l of answer.body.lists) {
     console.log(`LIST  ${l.list}  ${count(l.entries)}  published ${l.published ?? 'not known'}  loaded ${day(l.loadedAt)}  last good read of the list file ${day(l.checkedAt)}  file made ${day(l.madeAt)}`)

@@ -448,7 +448,7 @@ export async function buildApiServer(): Promise<FastifyInstance> {
   });
   app.options('*', async (_req, reply) => reply.code(204).send());
   registerTradeRewardRoutes(app);
-  registerBusinessRoutes(app, { getPartnerDashboard, getPartnerFeeDashboard });
+  registerBusinessRoutes(app, { getPartnerFeeDashboard });
 
   // GET / is registered next to /stats below: the bare host root serves the
   // same public stats surface on this host (no redirect, no 404).

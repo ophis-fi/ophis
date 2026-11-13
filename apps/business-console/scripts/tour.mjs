@@ -2,9 +2,8 @@
 // It starts the local server on a throwaway database (.wrangler/tour) with the stand-ins, opens the installed Google
 // Chrome with Chrome's virtual security keys (DevTools protocol, as tests/e2e.mjs does) and signs three people in,
 // each in a window of their own: the Owner of a partner, and the Owner and the Approver of an institution.
-// Then the operator's own command reads the OFAC list file of the local stand-in ("sync": test data, one referred wallet
-// of the partner is on it, so its Overview shows a flag) and records a clear sanctions screening for both organisations
-// (test files in tests/fixtures/), so that Compliance shows them.
+// Then the operator's own command reads the OFAC list file of the local stand-in ("sync": test data) and records a clear
+// sanctions screening for both organisations (test files in tests/fixtures/), so that Compliance shows them.
 // Then it waits: Ctrl+C, or closing Chrome, stops everything. TOUR_CHECK=1: no window; the Owner sends an order, the
 // Approver approves it, Compliance shows the screening, and it ends. TOUR_CHECK=window: the same check with the windows.
 import { execFileSync, spawn } from 'node:child_process'
@@ -162,7 +161,6 @@ try {
   await heading(approver, 'People, wallets and two-person approval.')
 
   if (CHECK) {
-    await partner.page.getByText('On a loaded sanctions list', { exact: true }).waitFor() // M10: the flag on the partner's referred wallet
     // The check walks the path the legend names, once: the Owner sends an order, the Approver approves it.
     await owner.page.locator('form.ticket').getByRole('button', { name: 'Review order' }).click()
     await owner.page.locator('[data-step="review"]').getByRole('button', { name: 'Send for approval' }).click()
@@ -177,13 +175,12 @@ try {
       await who.page.getByText('Result: no match.').waitFor()
       await who.page.getByText('Not on a loaded list').waitFor()
     }
-    console.log('Tour check passed: three people signed in, the Owner sent an order, the Approver approved it, the Overview of the partner marks the listed referred wallet, and Compliance shows the screening of both organisations.')
+    console.log('Tour check passed: three people signed in, the Owner sent an order, the Approver approved it, and Compliance shows the screening of both organisations.')
     await stop(0)
   }
   console.log(`
 Three windows are open, each signed in. Test data only.
-  1 Partner, Owner         Overview: the partner figures, from the local stand-in of the rebate service. One referred
-                           wallet is marked "On a loaded sanctions list": a flag, from the test list file. Nothing is frozen by it.
+  1 Partner, Owner         Overview: the partner fee, from the local stand-in of the rebate service.
   2 Institution, Owner     Desk: fill the ticket, "Review order", then send it for approval.
   3 Institution, Approver  Organisation, Approvals: approve or refuse that order.
 Compliance, in windows 1 and 2: the sanctions screening the operator's command recorded, and the list it read.

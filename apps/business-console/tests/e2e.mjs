@@ -1213,8 +1213,7 @@ try {
   // The stand-in for the rebate indexer answers the contract file of the indexer's own test, read where it is. Every
   // number asserted below is read from that file, none is typed here.
   const contract = JSON.parse(readFileSync(CONTRACT, 'utf8'))
-  const P = contract.wallets.find((w) => w.affiliate)
-  const A = P.affiliate
+  const [P] = contract.wallets // the partner wallet; the second wallet of the file has zero fees
   const usd = (n) => n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
   const weth = (n) => n.toLocaleString('en-US', { maximumFractionDigits: 6 })
   const STUB = `http://127.0.0.1:${INDEXER_PORT}`
@@ -1223,9 +1222,9 @@ try {
   const stubBearer = { authorization: `Bearer ${readFileSync('.dev.vars', 'utf8').match(/^INDEXER_TOKEN=(.+)$/m)?.[1]}` } // never printed
   const goodAnswer = await askStub(stubBearer)
   const answered = await goodAnswer.json()
-  check('the stand-in has the real route\'s bearer rule and serves the contract file: its partner wallet as it is, any other wallet with no code and zero fees',
+  check('the stand-in has the real route\'s bearer rule and serves the contract file: its partner wallet as it is, any other wallet with zero fees, and no referral dashboard',
     (await askStub({})).status === 401 && (await askStub({ authorization: 'Bearer wrong-token-wrong-token-wrong-token-0000' })).status === 401 && (await askStub(stubBearer, [])).status === 400 && (await askStub(stubBearer, [P.wallet, P.wallet])).status === 400
-    && goodAnswer.status === 200 && JSON.stringify(answered.wallets[0]) === JSON.stringify(P) && answered.wallets[1].affiliate === null && answered.wallets[1].fees.currentCycle.owedUsd === 0 && answered.wallets[1].fees.recipient === `0x${'d'.repeat(40)}`)
+    && goodAnswer.status === 200 && JSON.stringify(answered.wallets[0]) === JSON.stringify(P) && JSON.stringify(Object.keys(answered.wallets[1])) === '["wallet","fees"]' && answered.wallets[1].fees.currentCycle.owedUsd === 0 && answered.wallets[1].fees.recipient === `0x${'d'.repeat(40)}`)
 
   // A partner from "seed --live": one linked "Demo wallet" at the contract's partner address.
   const liveSeed = seeded('--live')
@@ -1234,35 +1233,30 @@ try {
   await pat.page.getByRole('heading', { name: 'Your flow, in one view.' }).waitFor()
   await pat.page.getByText('Figures from the Ophis rebate service, read at').waitFor()
   const partnerMain = pat.page.locator('main')
-  const referredRows = pat.page.locator('.pw section', { has: pat.page.getByRole('heading', { name: 'Referred wallets' }) }).locator('tbody tr')
   const monthRows = pat.page.locator('.pw section', { has: pat.page.getByRole('heading', { name: 'Partner fee' }) }).locator('tbody tr')
   const partnerTile = (caption) => pat.page.locator('.stats .c', { has: pat.page.locator('.cap', { hasText: new RegExp(`^${caption.replace(/[()]/g, '\\$&')}$`) }) }).locator('.num').textContent()
-  check('the partner overview shows the stand-in\'s figures for the linked wallet: the tiles, read from the contract file',
-    (await partnerTile('Referred volume this cycle')) === `$${usd(A.currentCycleVolumeUsd)}` && (await partnerTile('Lifetime referred volume')) === `$${usd(A.lifetimeReferredVolumeUsd)}` && (await partnerTile('Referred wallets')) === String(A.referredCount)
-    && (await partnerTile('Estimated earnings this cycle')) === `$${usd(A.estimatedCurrentCycleEarningsUsd)}` && (await partnerTile('Paid to date')) === `$${usd(A.paidToDateUsd)}` && await pat.page.getByText(`${weth(A.paidToDateWeth)} WETH`, { exact: true }).isVisible())
-  check('the wallet as the console shows wallets, the share, the next payout run, the codes, and the line under an estimate',
+  check('the partner overview shows the stand-in\'s partner fee for the linked wallet: the tiles, read from the contract file',
+    (await partnerTile('Owed this cycle')) === `$${usd(P.fees.currentCycle.owedUsd)}` && (await partnerTile('Trades waiting for a price')) === String(P.fees.currentCycle.pendingUnpricedTrades)
+    && (await partnerTile('Paid to date (WETH)')) === weth(P.fees.lifetime.paidWeth) && (await partnerTile('Trades')) === String(P.fees.lifetime.tradeCount))
+  check('the wallet as the console shows wallets, the parts of what is owed, and the line under the estimate',
     await pat.page.getByRole('heading', { name: /Demo wallet/ }).isVisible() && (await pat.page.locator('.pw-head .mono').textContent()).toLowerCase() === P.wallet && await pat.page.locator('.pw-head', { hasText: 'OP Mainnet' }).isVisible()
-    && await pat.page.getByText(`Your share: ${A.rateOfNetFeePct}% of the net fee on referred volume`).isVisible() && await pat.page.getByText(`Next payout run: ${A.nextPayoutAt.slice(0, 19).replace('T', ' ')}Z`).isVisible()
-    && (await pat.page.locator('.pw-facts .code').allTextContents()).join() === A.activeCodes.join() && (await pat.page.getByText('Estimate. The amount is fixed when a payout is made.').count()) === 2)
-  check('the referred wallets with how each was attributed, in plain words, and the partner fee with its months',
-    (await referredRows.count()) === A.referees.length && (await referredRows.allTextContents()).every((row, i) => row.includes(A.referees[i].wallet) && row.includes(usd(A.referees[i].lifetimeVolumeUsd)))
-    && (await referredRows.locator('td:nth-child(2)').allTextContents()).join('|') === A.referees.map((r) => ({ link: 'Referral link', code: 'Partner code in the order', 'link-and-code': 'Referral link and partner code' })[r.attribution]).join('|')
-    && (await partnerTile('Owed this cycle')) === `$${usd(P.fees.currentCycle.owedUsd)}` && await pat.page.getByText(`Your share $${usd(P.fees.currentCycle.partnerShareUsd)} plus $${usd(P.fees.currentCycle.carriedInUsd)} carried.`).isVisible()
-    && (await partnerTile('Trades waiting for a price')) === String(P.fees.currentCycle.pendingUnpricedTrades) && (await partnerTile('Paid to date (WETH)')) === weth(P.fees.lifetime.paidWeth) && (await partnerTile('Trades')) === String(P.fees.lifetime.tradeCount)
-    && (await monthRows.count()) === P.fees.recentBatches.length && (await monthRows.allTextContents()).every((row, i) => row.startsWith(P.fees.recentBatches[i].cycleMonth) && row.includes(usd(P.fees.recentBatches[i].owedUsd)) && row.includes(usd(P.fees.recentBatches[i].carriedUsd))))
+    && await pat.page.getByText(`Your share $${usd(P.fees.currentCycle.partnerShareUsd)} plus $${usd(P.fees.currentCycle.carriedInUsd)} carried.`).isVisible() && (await pat.page.getByText('Estimate. The amount is fixed when a payout is made.').count()) === 1)
+  check('the months of the partner fee, read from the contract file',
+    (await monthRows.count()) === P.fees.recentBatches.length && (await monthRows.allTextContents()).every((row, i) => row.startsWith(P.fees.recentBatches[i].cycleMonth) && row.includes(usd(P.fees.recentBatches[i].owedUsd)) && row.includes(usd(P.fees.recentBatches[i].carriedUsd))))
   const partnerText = await partnerMain.innerText()
-  check('no demo banner, no example, none of the withheld figures, no word of a licence or of payout terms; the footer line',
-    !(await pat.page.getByText(BANNER).count()) && !/example|demo data|illustrative/i.test(partnerText)
-    && [A.currentCycleNetFeeUsd, P.fees.currentCycle.grossFeeUsd, P.fees.minPayoutUsd].every((n) => !partnerText.includes(usd(n))) && !partnerText.includes(String(P.fees.partnerShareBps)) && !/bps|minimum/i.test(partnerText)
+  check('no demo banner, no example, no referral share, none of the withheld figures, no word of a licence or of payout terms; the footer line',
+    !(await pat.page.getByText(BANNER).count()) && !/example|demo data|illustrative/i.test(partnerText) && !/referr|partner code|net fee|earning|payout run/i.test(partnerText)
+    && [P.fees.currentCycle.grossFeeUsd, P.fees.minPayoutUsd].every((n) => !partnerText.includes(usd(n))) && !partnerText.includes(String(P.fees.partnerShareBps)) && !/bps|minimum/i.test(partnerText)
     && !/Ophis fee|licen[cs]ed|regulated|authori[sz]ed|MiCA|compliant|paid (weekly|monthly)|guarantee|honest|—/i.test(partnerText) && await pat.page.getByText(FOOTER).isVisible())
   check('the live partner overview fits a phone', await both(pat.page, '52-overview-partner-live'))
 
-  // One CSV, downloaded and read back.
-  const [referredFile] = await Promise.all([pat.page.waitForEvent('download'), pat.page.getByRole('button', { name: 'Referred wallets CSV' }).click()])
-  const referredLines = readFileSync(await referredFile.path(), 'utf8').split('\r\n').filter(Boolean)
-  check('the export of the referred wallets downloads: named ophis-partner-, the partner wallet and source = live in every row, every referred wallet of the contract file',
-    /^ophis-partner-referred-\d{4}-\d\d-\d\d\.csv$/.test(referredFile.suggestedFilename()) && referredLines[0] === '"Partner wallet","Wallet name","Referred wallet","Attributed by","First seen (UTC)","Lifetime volume (USD)","On a loaded sanctions list","source"'
-    && referredLines.length === A.referees.length + 1 && referredLines.slice(1).every((row, i) => row.toLowerCase().startsWith(`"${P.wallet}","demo wallet","${A.referees[i].wallet}",`) && row.endsWith(`,"${A.referees[i].lifetimeVolumeUsd}","no","live"`)))
+  // The one CSV, downloaded and read back.
+  const [monthsFile] = await Promise.all([pat.page.waitForEvent('download'), pat.page.getByRole('button', { name: 'Fee months CSV' }).click()])
+  const monthLines = readFileSync(await monthsFile.path(), 'utf8').split('\r\n').filter(Boolean)
+  check('the export of the fee months downloads: named ophis-partner-, the partner wallet and source = live in every row, every month of the contract file; it is the only CSV',
+    /^ophis-partner-months-\d{4}-\d\d-\d\d\.csv$/.test(monthsFile.suggestedFilename()) && monthLines[0] === '"Partner wallet","Wallet name","Month","Status","Owed (USD)","Owed (WETH)","Carried (USD)","source"'
+    && monthLines.length === P.fees.recentBatches.length + 1 && monthLines.slice(1).every((row, i) => row.toLowerCase().startsWith(`"${P.wallet}","demo wallet","${P.fees.recentBatches[i].cycleMonth}",`) && row.endsWith(`,"${P.fees.recentBatches[i].carriedUsd}","live"`))
+    && (await pat.page.getByRole('button', { name: /CSV/ }).count()) === 1)
 
   // The figures are not available: status 500, a wrong shape, an answer after 6 seconds. Never an example, never a part.
   const patOverview = () => pat.page.goto(`${ORIGIN}/#/overview`).then(() => pat.page.reload())
@@ -1279,9 +1273,9 @@ try {
   await stubMode('ok')
   await unavailable.getByRole('button', { name: 'Retry' }).click()
   await pat.page.getByText('Figures from the Ophis rebate service, read at').waitFor()
-  check('Retry reads again: the figures are back', (await partnerTile('Referred volume this cycle')) === `$${usd(A.currentCycleVolumeUsd)}`)
+  check('Retry reads again: the figures are back', (await partnerTile('Owed this cycle')) === `$${usd(P.fees.currentCycle.owedUsd)}`)
 
-  // ---- M10: the OFAC list as a file the console reads, and the flag on a referred wallet ----
+  // ---- M10: the OFAC list as a file the console reads ----
   const listMode = (mode) => fetch(`http://127.0.0.1:${LIST_PORT}/stub/${mode}`)
   // "sync" makes the Worker read the list stand-in, which lives in this process: the command must not block it (not execFileSync).
   const operatorSync = () => new Promise((resolve) => {
@@ -1291,16 +1285,9 @@ try {
   })
   const synced = await operatorSync()
   check('"operator sync" reads the list file and loads it: the two addresses of the test file, with its publish day', synced.includes('Loaded 2 addresses of the list "ofac", published 2026-11-09.') && synced.includes('No linked or pending wallet is on a loaded list.'))
-  await patOverview()
-  await pat.page.getByText('A referred wallet is on a loaded sanctions list.').waitFor()
-  check('the partner Overview marks the referred wallet that is on the list, with one note above the table; nothing is frozen and the session lives',
-    (await referredRows.first().innerText()).includes(A.referees[0].wallet) && await referredRows.first().getByText('On a loaded sanctions list', { exact: true }).isVisible()
-    && (await pat.page.getByText('On a loaded sanctions list', { exact: true }).count()) === 1 && await pat.page.getByText('The mark freezes nothing and changes nothing in your organisation.').isVisible()
-    && (await status('/api/me', pat.page)) === 200 && await both(pat.page, '59-overview-partner-flag', '.pw-facts'))
-  const flagged = operator('list')
-  check('"operator list" prints the FLAG and the line of the list, with no warning',
-    new RegExp(`^FLAG  [0-9a-f]{32}  Northwind Vaults  referred wallet ${A.referees[0].wallet} is on a loaded list  ${today}$`, 'm').test(flagged)
-    && flagged.includes(`LIST  ofac  2 addresses  published 2026-11-09  loaded ${today}  last good read of the list file ${today}  file made ${today}`) && !flagged.includes('WARNING'))
+  const lists = operator('list')
+  check('"operator list" prints the line of the list, with no warning',
+    lists.includes(`LIST  ofac  2 addresses  published 2026-11-09  loaded ${today}  last good read of the list file ${today}  file made ${today}`) && !lists.includes('WARNING') && !lists.includes('FLAG'))
   await listMode('shrunk')
   const held = await operatorSync()
   const heldList = operator('list')
@@ -1339,7 +1326,7 @@ try {
   if (violations.length) console.error(violations.join("\n"))
   check(`no policy violation in the browser (${violations.length})`, violations.length === 0)
   check(`no request left the origin (${foreign.length})`, foreign.length === 0)
-  console.log('\nEnd-to-end run passed. Screenshots in .shots/: 01-signin to 59-overview-partner-flag')
+  console.log('\nEnd-to-end run passed. Screenshots in .shots/: 01-signin to 58-screening-frozen')
 } catch (error) {
   console.error(error.message)
   process.exitCode = 1

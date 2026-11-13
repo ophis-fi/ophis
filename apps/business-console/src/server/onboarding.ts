@@ -5,7 +5,7 @@
 // This file holds its own handlers and, in its first half, its own rows: every statement is prepared with bound
 // parameters, and every change goes through commit() of the data module, with what decides it read inside the plan.
 import { checksum, colour, parseAddress, readCapped, safeState, verify, verifyDigest, type SafeState } from './chain.ts'
-import { commit, countHour, DOMAIN, emailAt, flags, freezing, LISTED, listed, listedWallet, PEOPLE, randomId, REVIEWED, sha256Hex, type Actor, type WalletKind } from './data.ts'
+import { commit, countHour, DOMAIN, emailAt, freezing, LISTED, listed, listedWallet, PEOPLE, randomId, REVIEWED, sha256Hex, type Actor, type WalletKind } from './data.ts'
 import { challengeIsOurs, creationOptions, credentialHash, newChallenge, seal, unseal, verifyRegistration, type Config } from './passkeys.ts'
 import { indexerBase } from './partner.ts'
 import { CHAIN_NAME, typedProof } from './typed.ts'
@@ -601,7 +601,7 @@ export async function sync(env: { DB: D1Database; ENVIRONMENT: string; SANCTIONS
     return { outcome: 'unavailable' }
   }
   const loaded = await env.DB.prepare(`SELECT sha256, entries, published FROM sanctions_lists WHERE list = 'ofac'`).first<{ sha256: string; entries: number; published: string | null }>()
-  // The file against the loaded addresses (G2), not only the counts. ponytail: the whole list at each read, as listedAddresses() does.
+  // The file against the loaded addresses (G2), not only the counts. ponytail: the whole list at each read.
   const have = new Set((await env.DB.prepare(`SELECT address FROM sanctioned_addresses WHERE list = 'ofac'`).all<{ address: string }>()).results.map((r) => r.address))
   const added = file.addresses.filter((address) => !have.has(address)).length
   const missing = have.size - (file.addresses.length - added)
@@ -756,7 +756,7 @@ async function list(c: Ctx) {
       wallet: wallet && { ...walletView(wallet), colour: colour({ kind: wallet.kind, snapshot: wallet.snapshot, inForce: true }, live) },
     })
   }
-  return json(200, { organisations, reviews: await reviewsDue(c.env.DB, c.now), lists: await listsOf(c.env, c.now), flags: await flags(c.env.DB) })
+  return json(200, { organisations, reviews: await reviewsDue(c.env.DB, c.now), lists: await listsOf(c.env, c.now) })
 }
 
 const MAX_REVIEW_MS = 5 * 365 * 24 * 60 * 60 * 1000 // owner's call: a next review lies at most 5 years ahead; a date further off would hide the organisation from "Reviews due" for good
