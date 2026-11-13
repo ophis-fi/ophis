@@ -297,7 +297,6 @@ interface View {
   approvals: Request[]
   frozen: ({ id: string } & FrozenInfo)[]
   syncedKeysAllowed: boolean
-  rights: { can: string; roles: string[]; fresh: boolean; second: boolean }[]
   members: Member[]
   passkeys: Passkey[]
   sessions: { id: string; seatId: string; createdAt: number; lastSeenAt: number; userAgent: string | null; country: string | null }[]
@@ -853,21 +852,6 @@ export function Organisation({ me, onSignedOut, onChanged }: { me: Me; onSignedO
         </Section>
       )}
 
-      {view && (
-        <Section icon="list-checks" title="What each role can do" hint="No role can sign a trade. Signatures come from the wallet. This table is read from the rules the server enforces.">
-          <div className="table-wrap"><table className="t">
-            <thead><tr><th>Action</th>{Object.values(ROLE).map((text) => <th key={text}>{text}</th>)}<th>Passkey check first</th><th>Second person</th></tr></thead>
-            <tbody>{view.rights.map((right) => (
-              <tr key={right.can}>
-                <td className="wrap">{right.can}</td>
-                {Object.keys(ROLE).map((code) => <td key={code}>{right.roles.includes(code) ? <span className="yes"><Icon name="check" size={16} /><span className="sr">Yes</span></span> : <span className="no"><Icon name="minus" size={16} /><span className="sr">No</span></span>}</td>)}
-                <td>{right.fresh ? 'Yes' : 'No'}</td>
-                <td>{right.second ? 'Yes' : 'No'}</td>
-              </tr>
-            ))}</tbody>
-          </table></div>
-        </Section>
-      )}
       <Section later icon="key-round" title="API keys" hint="Read-only keys for reports come after the first release. No key will be able to move funds." />
     </>
   )

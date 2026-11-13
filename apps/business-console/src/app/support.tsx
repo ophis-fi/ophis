@@ -1,9 +1,10 @@
 // Support (milestone 6): a question box, the matching help text, and the hand-over to a person by email.
 // Every text shown comes from the server's fixed answer base. Nothing a model wrote is ever displayed.
-import { useState, type FormEvent } from 'react'
-import { api, Icon, Tile } from './ui.tsx'
+import { useEffect, useState, type FormEvent } from 'react'
+import { api, Icon, ROLE, Section, Tile } from './ui.tsx'
 
 interface Entry { id: string; title: string; text: string; link: string }
+interface Right { can: string; roles: string[]; fresh: boolean; second: boolean }
 type View =
   | { kind: 'idle' } | { kind: 'busy' } | { kind: 'empty' } | { kind: 'secret' } | { kind: 'thanks' }
   | { kind: 'answer'; list: Entry[]; at: number }
@@ -25,6 +26,9 @@ const WHY = {
 export function Support({ onSignedOut }: { onSignedOut: () => void }) {
   const [question, setQuestion] = useState('')
   const [view, setView] = useState<View>({ kind: 'idle' })
+  // The FAQ item "What each role can do": the rows of the server's route table, as GET /api/org carries them.
+  const [rights, setRights] = useState<Right[]>()
+  useEffect(() => void api<{ rights?: Right[] }>('/api/org').then((result) => setRights(result.data.rights)), [])
 
   async function ask(event: FormEvent) {
     event.preventDefault()
@@ -83,6 +87,28 @@ export function Support({ onSignedOut }: { onSignedOut: () => void }) {
           </section>
         )}
       </div>
+
+      {rights && (
+        <Section icon="list-checks" title="Frequently asked questions">
+          <details className="disclose">
+            <summary>What each role can do<Icon name="chevron-down" /></summary>
+            <div className="body stack">
+              <p>No role can sign a trade. Signatures come from the wallet. This table is read from the rules the server enforces.</p>
+              <div className="table-wrap"><table className="t">
+                <thead><tr><th>Action</th>{Object.values(ROLE).map((text) => <th key={text}>{text}</th>)}<th>Passkey check first</th><th>Second person</th></tr></thead>
+                <tbody>{rights.map((right) => (
+                  <tr key={right.can}>
+                    <td className="wrap">{right.can}</td>
+                    {Object.keys(ROLE).map((code) => <td key={code}>{right.roles.includes(code) ? <span className="yes"><Icon name="check" size={16} /><span className="sr">Yes</span></span> : <span className="no"><Icon name="minus" size={16} /><span className="sr">No</span></span>}</td>)}
+                    <td>{right.fresh ? 'Yes' : 'No'}</td>
+                    <td>{right.second ? 'Yes' : 'No'}</td>
+                  </tr>
+                ))}</tbody>
+              </table></div>
+            </div>
+          </details>
+        </Section>
+      )}
     </div>
   )
 }

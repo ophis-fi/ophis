@@ -155,6 +155,8 @@ h3.h-panel.sub { margin: 20px 0 6px; font-size: 18px; }
 p a.btn { text-decoration: none; } /* a link drawn as a button is not underlined like a link in a sentence */
 .support .answer { margin: 0; font-size: 16px; line-height: 1.62; color: var(--ink); } .support .acts > span { font-size: 14px; font-weight: 500; } .support #sp-ask { flex-basis: 100%; } /* Yes and No stay side by side on a phone */
 .support .answer { margin: 0; font-size: 16px; line-height: 1.62; color: var(--ink); } .support .acts > span { font-size: 14px; font-weight: 500; }
+/* The FAQ item "What each role can do": its table runs edge to edge, so it fits at 1440 as it did on Organisation. */
+.disclose .table-wrap { margin: 0 -22px -20px; border-width: 1px 0 0; border-radius: 0; color: var(--ink); }
 /* Milestone 5a, the Onboarding page: a step's content sits under its title, across the row. */
 .srow > .stack { grid-column: 2 / -1; margin-top: 6px; } .srow > .stack p { grid-column: auto; overflow-wrap: anywhere; } .srow .fine > span { min-width: 0; overflow-wrap: anywhere; }
 /* Demo mode: Overview and Desk (the mockup's panels). */

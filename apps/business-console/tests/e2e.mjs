@@ -436,7 +436,6 @@ try {
   await page.getByRole('button', { name: 'Approve' }).click()
   await page.getByText('Nothing waits.').waitFor()
   check('the Owner approved it: the Viewer is a Trader', await page.getByRole('row', { name: /Ada Viewer.*Trader/ }).first().isVisible())
-  check('"What each role can do" is on the page, from the server\'s table', await page.getByRole('heading', { name: 'What each role can do' }).isVisible() && await page.getByRole('cell', { name: 'Export the audit log' }).isVisible())
 
   // The audit log: rows in plain words, the chain state, and the export.
   await page.getByRole('link', { name: 'Compliance' }).first().click()
@@ -694,6 +693,7 @@ try {
   await bo.context.close()
   await cy.context.close()
   await arrive(owner, false)
+  const rolesOnOrganisation = await page.getByText('What each role can do').count() // moved to Support on 2026-11-13: none
 
   // Milestone 6: Support. A question, the help text the server selected, "No" until the hand-over card. With no
   // TYPESAFE_API_KEY in .dev.vars the server answers the hand-over at once, and only that path is checked.
@@ -728,6 +728,16 @@ try {
     await page.getByText(withKey ? 'The help texts did not answer this question.' : 'No help text was found for this question.').isVisible()
     && !(await page.getByText('No help text fits').count()) && (!withKey || !(await page.getByText('No help text was found').count()))
     && await write.evaluate((a) => getComputedStyle(a).textDecorationLine === 'none') && await both(page, '31-support-handover', '#sp-person'))
+  // "What each role can do": a FAQ item of Support, closed until opened, with the rows of the server's table. On a phone the
+  // table scrolls inside its own box: the item hides what overflows it, so a page that does not scroll could still cut the table.
+  const roles = page.locator('details', { hasText: 'What each role can do' })
+  const closedAtFirst = !(await roles.evaluate((details) => details.open)) && !(await page.getByRole('cell', { name: 'Export the audit log' }).isVisible())
+  await roles.locator('summary').click()
+  await page.setViewportSize({ width: 390, height: 844 })
+  const scrollsInItsBox = await roles.locator('table').evaluate((table) => getComputedStyle(table.parentElement).overflowX === 'auto' && table.parentElement.scrollWidth > table.parentElement.clientWidth)
+  await page.setViewportSize({ width: 1440, height: 900 })
+  check('"What each role can do" is not on the Organisation page; on Support it is a closed FAQ item that opens to the server\'s table, which scrolls inside its own box on a phone',
+    rolesOnOrganisation === 0 && closedAtFirst && await page.getByRole('cell', { name: 'Export the audit log' }).isVisible() && scrollsInItsBox && await both(page, '37-support-roles', '.support > .sec'))
   await arrive(owner, false)
 
   // The server cannot end the session: the app must not pretend that it did.
