@@ -59,6 +59,7 @@ const SAY: Record<string, string> = {
   chain_invalid: 'Choose one of the listed chains.',
   address_invalid: 'This is not a wallet address. Paste all 42 characters. If it mixes upper and lower case, one character is wrong.',
   already_linked: 'This wallet is already linked to the organisation, or waits for its approval.',
+  wallet_listed: 'The address of this wallet is on a public sanctions list that Ophis loaded. It cannot be linked.',
   recovery_wallet: 'This is the recovery wallet. It is replaced first, by two people and 72 hours. Then it can be unlinked.',
   single_key: 'A wallet with a single key can be the recovery wallet only in an organisation with one key-role member. Use a Safe or a custodian wallet.',
   change_waiting: 'Another change of recovery wallet waits for its 72 hours. An Owner cancels it first.',

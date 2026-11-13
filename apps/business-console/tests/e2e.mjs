@@ -78,6 +78,37 @@ try {
   for (let i = 0; i < 60 && !(await reachable()); i++) await new Promise((resolve) => setTimeout(resolve, 500))
   check('the local server answers', await reachable())
 
+  // Sanctions screening: what the operator's command sends, heard by a server that only listens. A list file stays on this machine.
+  const LIST = { eu: 'tests/fixtures/sanctions-eu.txt', un: 'tests/fixtures/sanctions-un.txt', addresses: 'tests/fixtures/sanctions-addresses.txt' }
+  const fileSha = (path) => createHash('sha256').update(readFileSync(path)).digest('hex')
+  const heard = []
+  const listener = createServer((request, response) => {
+    let body = ''
+    request.on('data', (chunk) => (body += chunk)).on('end', () => {
+      heard.push(`${request.method} ${request.url} ${body}`)
+      response.writeHead(200, { 'content-type': 'application/json' }).end('{"state":"active","list":"ofac","entries":2,"hits":[]}')
+    })
+  }).listen(0, '127.0.0.1')
+  await new Promise((resolve) => listener.once('listening', resolve))
+  const tell = (...args) => new Promise((resolve) => { // not execFileSync: this process must answer as the server meanwhile
+    let said = ''
+    spawn('node', ['scripts/operator.mjs', ...args], { env: { ...env, E2E_PORT: String(listener.address().port) }, stdio: ['ignore', 'ignore', 'pipe'] }).on('close', (code) => resolve(`${code} ${said}`)).stderr.on('data', (chunk) => (said += chunk))
+  })
+  const anId = 'ab'.repeat(16)
+  const unsent = [await tell('addresses', 'ofac=tests/fixtures/sanctions-no-address.txt'), await tell('addresses', 'ofac=tests/fixtures/none.txt'), await tell('screen', anId, '--outcome', 'clear', '--list', `eu=${LIST.eu}`, '--list', `eu=${LIST.un}`, '--next-review', '2031-01-01')]
+  const sentByThose = heard.length
+  await tell('screen', anId, '--outcome', 'review', '--list', `un=${LIST.un}`, '--list', `eu=${LIST.eu}`, '--next-review', '2031-01-01')
+  await tell('decide', anId, 'approve', '--submission', '0'.repeat(16), '--tier', 'standard', '--source', 'registry', '--evidence', 'x', '--sha256', 'ab'.repeat(32), '--next-review', '2030-01-01', '--screening', 'clear', '--list', `eu=${LIST.eu}`)
+  await tell('addresses', `ofac=${LIST.addresses}`)
+  listener.close() // before the checks: a failed check must end the run
+  check('a list file that names no address, a file that is not there and a list code given twice are refused by the command before anything is sent',
+    sentByThose === 0 && unsent[0].startsWith('1 Refused: no address') && unsent[1].startsWith('1 Refused: the file could not be read') && unsent[2].startsWith('1 Refused: a list code is given twice'))
+  check('the command sends the SHA-256 of each list file and, for "addresses", the addresses in it (lower case, each once, 40 hex characters exactly): nothing else of a file leaves this machine', JSON.stringify(heard.slice(sentByThose)) === JSON.stringify([
+    `POST /api/operator/organisations/${anId}/screening ${JSON.stringify({ outcome: 'review', lists: { un: fileSha(LIST.un), eu: fileSha(LIST.eu) }, nextReview: '2031-01-01' })}`,
+    `POST /api/operator/organisations/${anId}/decision ${JSON.stringify({ decision: 'approve', tier: 'standard', source: 'registry', evidenceRef: 'x', evidenceSha256: 'ab'.repeat(32), nextReview: '2030-01-01', submission: '0'.repeat(16), screening: { outcome: 'clear', lists: { eu: fileSha(LIST.eu) } } })}`,
+    `POST /api/operator/sanctions ${JSON.stringify({ list: 'ofac', sha256: fileSha(LIST.addresses), addresses: ['0x00000000000000000000000000000000000a11ce', '0x0000000000000000000000000000000000000b0b'] })}`,
+  ]))
+
   browser = await chromium.launch({ executablePath: CHROME, headless: true, args: PORT === '8787' ? [] : [`--host-resolver-rules=MAP localhost:8787 127.0.0.1:${PORT}, MAP 127.0.0.1:8787 127.0.0.1:${PORT}`] })
   const violations = []
   const foreign = []
@@ -840,9 +871,16 @@ try {
   check('the local test identity opens the downloaded file, offline: equal to the original', Buffer.from(await opener.decrypt(readFileSync(out))).equals(scan))
   check('the operator command lists the organisation with its domain, the three words and the wallet', listed.includes(newOrg.id) && listed.includes(domain) && listed.includes(firstWords) && listed.includes(key.address) && listed.includes('ready           yes'))
   const submission = /submission ([0-9a-f]{16}) /.exec(listed)?.[1] ?? ''
-  check('an approval that names no submission, or another one, is refused', refusedBy(() => operator('decide', newOrg.id, 'approve', '--submission', '0'.repeat(16), '--tier', 'standard', '--source', 'registry', '--evidence', 'e2e register extract', '--sha256', 'ab'.repeat(32), '--next-review', '2030-01-01')).includes('submitted again since that list'))
-  check('the operator approves', operator('decide', newOrg.id, 'approve', '--submission', submission, '--tier', 'standard', '--source', 'registry', '--evidence', 'e2e register extract', '--sha256', 'ab'.repeat(32), '--next-review', '2030-01-01').includes(`${newOrg.id} is now active`))
-  check('nothing is left under review', operator('list').includes('Nothing is under review.'))
+  // Sanctions screening: an approval carries a screening that says "clear". "--list eu=<file>": the command reads the file here and sends its SHA-256.
+  const approve = (...more) => ['decide', newOrg.id, 'approve', '--tier', 'standard', '--source', 'registry', '--evidence', 'e2e register extract', '--sha256', 'ab'.repeat(32), '--next-review', '2030-01-01', ...more]
+  const screened = ['--screening', 'clear', '--list', `eu=${LIST.eu}`]
+  check('an approval that names no submission, or another one, is refused', refusedBy(() => operator(...approve('--submission', '0'.repeat(16), ...screened))).includes('submitted again since that list'))
+  check('an approval with no screening, or with one that does not say "clear", is refused', refusedBy(() => operator(...approve('--submission', submission))).includes('Refused (400): screening_required')
+    && refusedBy(() => operator(...approve('--submission', submission, '--screening', 'hit', '--list', `eu=${LIST.eu}`))).includes('Refused (409): screening_not_clear'))
+  check('the operator approves, with a clear screening', operator(...approve('--submission', submission, ...screened)).includes(`${newOrg.id} is now active`))
+  const afterApproval = operator('list')
+  check('nothing is left under review, and the list names the reviews that are due: the seeded organisation, never screened; not the one just approved',
+    afterApproval.includes('Nothing is under review.') && /Reviews due[^\n]*\n[0-9a-f]{32} {2}Northwind Vaults {2}active {2}last screening none {2}next review none/.test(afterApproval) && !afterApproval.includes(newOrg.id))
   await on.reload()
   await on.getByText('Verified on').waitFor()
   check('the organisation is active and the Onboarding page says so, with the next review', await on.getByText('Next review 2030-01-01').isVisible() && await on.getByText('It is the recovery wallet in force.').isVisible() && (await status('/api/audit', on)) === 200)
@@ -857,6 +895,25 @@ try {
     await on.locator('dl.kv dd', { hasText: shownSha }).isVisible() && await on.getByText('still sealed, for the review of the organisation.').isVisible() && (await on.getByText(/still sealed, for/).count()) === 1
       && await on.getByText('Ophis operator: downloaded the sealed declaration, still sealed. Reason: the review of the organisation').isVisible() && await both(on, '44-kyb-sealed', '#root dl.kv >> nth=1'))
   check('the footer line is on the Onboarding and Compliance pages', await on.getByText(FOOTER).isVisible())
+  // Sanctions screening on the Compliance page. The version is the first 16 hex of the SHA-256 of the stored lists, which hold the SHA-256 of each list file: computed here again from the files.
+  const today = new Date().toISOString().slice(0, 10)
+  const version = (lists) => sha256(Buffer.from(JSON.stringify(lists))).slice(0, 16)
+  const section = on.locator('#screening')
+  await section.getByText('Result: no match.').waitFor()
+  check('Compliance shows the screening of the approval: the date, the list, "no match", the list version, the next review; and that no address list is loaded yet',
+    (await section.innerText()).includes(`Checked on ${today} against: EU consolidated financial sanctions list. Result: no match. List version ${version({ eu: fileSha(LIST.eu) })}. Next review by 2030-01-01.`)
+    && await section.getByText('No address list is loaded yet. Wallets have not been compared.').isVisible() && (await section.locator('table').count()) === 0
+    && await section.getByText('A check is a search of public lists on that date. It is repeated at each review.').isVisible())
+  const loadedList = operator('addresses', `ofac=${LIST.addresses}`)
+  check('the operator loads the test address list: two addresses (lower case, each once, 40 hex characters exactly), and no wallet is on it', loadedList.includes(`Loaded 2 addresses of the list "ofac" (file SHA-256 ${fileSha(LIST.addresses)})`) && loadedList.includes('No linked or pending wallet is on a loaded list.'))
+  check('the operator records a clear screening against two lists', operator('screen', newOrg.id, '--outcome', 'clear', '--list', `un=${LIST.un}`, '--list', `eu=${LIST.eu}`, '--next-review', '2031-01-01').includes(`${newOrg.id} is now active`))
+  await on.reload()
+  await section.getByText('Not on a loaded list').waitFor()
+  check('Compliance shows both: the new screening with its two lists and its version, and the wallet compared with the loaded address list',
+    (await section.innerText()).includes(`Checked on ${today} against: EU consolidated financial sanctions list, UN Security Council consolidated list. Result: no match. List version ${version({ eu: fileSha(LIST.eu), un: fileSha(LIST.un) })}. Next review by 2031-01-01.`)
+    && (await section.innerText()).includes(`Linked wallets are compared with the addresses of: OFAC SDN list (2 addresses, loaded ${today}, version ${fileSha(LIST.addresses).slice(0, 16)}).`)
+    && await section.getByRole('row', { name: new RegExp(`Treasury.*${key.address}.*OP Mainnet.*Not on a loaded list`) }).isVisible()
+    && await on.getByText('Ophis operator: sanctions screening recorded. Result: no match').isVisible() && !/\b(hit|clear)\b/.test(await section.innerText()) && await both(on, '57-screening', '.pager')) // from the end of the audit log, so that the heading of the section is in the picture
   // Company sign-in (C2): the Owner invites a member by work address. The member signs in at the provider, creates the
   // passkey, and the Owner approves with a passkey check. No words are shown or typed.
   await on.goto(`${ORIGIN}/#/organisation`)
@@ -921,6 +978,40 @@ try {
   await on.getByRole('button', { name: 'Sign in with a passkey' }).click()
   await on.getByRole('button', { name: 'Sign out' }).first().waitFor()
   check('after the unfreeze the member signs in again', (await status('/api/me', on)) === 200)
+  // Sanctions screening: a "hit" freezes the organisation in the same step, and it stays frozen until a clear screening is recorded and the operator unfreezes it.
+  const signInAgain = async () => {
+    await on.getByRole('button', { name: 'Back to sign-in' }).click()
+    await on.getByRole('button', { name: 'Sign in with a passkey' }).click()
+    await on.getByRole('button', { name: 'Sign out' }).first().waitFor()
+  }
+  const frozenPage = async () => {
+    await on.reload()
+    await on.getByRole('button', { name: 'Sign in with a passkey' }).click()
+    await on.getByRole('heading', { name: 'This organisation is frozen.' }).waitFor()
+    return (await status('/api/me', on)) === 401 && await on.getByText(FOOTER).isVisible()
+  }
+  check('a screening "hit" freezes the organisation', operator('screen', newOrg.id, '--outcome', 'hit', '--list', `eu=${LIST.eu}`, '--next-review', '2031-01-01').includes(`${newOrg.id} is now frozen`))
+  check('its member lands on the frozen page, which does not say why, with no session', await frozenPage() && !/screening|sanction|\bhit\b/i.test(await on.locator('#root').innerText()) && await both(on, '58-screening-frozen'))
+  check('the operator cannot unfreeze it while the newest screening says "hit"', refusedBy(() => operator('unfreeze', newOrg.id)).includes('Refused (409): screening_not_clear'))
+  check('a clear screening is recorded for the frozen organisation, which stays frozen; then the operator unfreezes it',
+    operator('screen', newOrg.id, '--outcome', 'clear', '--list', `eu=${LIST.eu}`, '--next-review', '2031-01-01').includes(`${newOrg.id} is now frozen`) && operator('unfreeze', newOrg.id).includes(`${newOrg.id} is now active`))
+  await signInAgain()
+  // A list that names the organisation's wallet: the load freezes it and prints the hit; a load without the address lets the operator unfreeze.
+  const hitList = `${STATE}/hit-list.txt`
+  writeFileSync(hitList, `TEST DATA, made by this run. The wallet of the end-to-end organisation: ${key.address}\n`)
+  const hit = operator('addresses', `un=${hitList}`)
+  check('a load that names the organisation\'s wallet freezes it and prints the hit', hit.includes('Loaded 1 addresses of the list "un"') && hit.includes(`HIT  ${newOrg.id}  Alder Custody S.A.  was active  ${key.address.toLowerCase()}  frozen now`) && await frozenPage())
+  check('the operator cannot unfreeze it while that wallet is on a loaded list; the same load again changes nothing', refusedBy(() => operator('unfreeze', newOrg.id)).includes('Refused (409): wallet_listed') && operator('addresses', `un=${hitList}`).includes(`was frozen  ${key.address.toLowerCase()}  not changed`))
+  check('after a load without the address the operator unfreezes it', operator('addresses', `un=${LIST.addresses}`).includes('No linked or pending wallet is on a loaded list.') && operator('unfreeze', newOrg.id).includes(`${newOrg.id} is now active`))
+  await signInAgain()
+  await on.goto(`${ORIGIN}/#/compliance`)
+  await on.reload()
+  await on.getByRole('heading', { name: /Records and the audit trail|Read this before you continue/ }).waitFor()
+  if (await on.getByRole('button', { name: 'I have read this' }).count()) await on.getByRole('button', { name: 'I have read this' }).click() // a new session is told of the passkey added in an earlier one
+  await on.getByText('Chain verified').waitFor()
+  check('unfrozen, the member reads each step in the audit log, in plain words, with the wallet by its name; no outcome but "no match" is said',
+    await on.getByRole('row', { name: /Ophis operator: a wallet of the organisation is on a loaded sanctions list, organisation frozen.*Treasury/ }).isVisible()
+    && await on.getByRole('cell', { name: 'Ophis operator: sanctions screening recorded, organisation frozen', exact: true }).isVisible() && !/Result: (hit|review)|\bhit\b/.test(await on.locator('#root').innerText()))
   await applicant.context.close()
 
   // ---- demo mode: overview, desk and partner figures ----
@@ -1193,7 +1284,7 @@ try {
   if (violations.length) console.error(violations.join("\n"))
   check(`no policy violation in the browser (${violations.length})`, violations.length === 0)
   check(`no request left the origin (${foreign.length})`, foreign.length === 0)
-  console.log('\nEnd-to-end run passed. Screenshots in .shots/: 01-signin to 56-overview-partner-not-connected')
+  console.log('\nEnd-to-end run passed. Screenshots in .shots/: 01-signin to 58-screening-frozen')
 } catch (error) {
   console.error(error.message)
   process.exitCode = 1

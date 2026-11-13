@@ -7686,6 +7686,12 @@ describe('E. onboarding: a company applies, proves its domain, is activated and 
       for (const sentence of ['No screening is recorded yet.', 'Result: no match.', 'Linked wallets are compared with the addresses of:', 'No address list is loaded yet. Wallets have not been compared.', 'Not on a loaded list',
         'A check is a search of public lists on that date. It is repeated at each review.']) expect(section, sentence).toContain(sentence)
       expect(pagesSource).not.toContain('arrive later')
+      // A refusal for a listed address reads in plain words, in the console (the approval of a link) and on the signing page (a proof).
+      const refusals = [uiSource, signSource['../sign/main.ts']].map((source) => /wallet_listed: '([^']+)'/.exec(source)?.[1] ?? '')
+      for (const words of refusals) {
+        expect(words).toMatch(/^The address of this wallet is on a public sanctions list that Ophis loaded\. It cannot be linked/)
+        for (const banned of [/licen[cs]ed|regulated|authori[sz]ed|MiCA|compliant|\bsafe\b/i, /\u2014/, /honest/i]) expect(words).not.toMatch(banned)
+      }
       expect(Object.values(onboarding.LISTS)).toEqual([EU, 'UN Security Council consolidated list', 'OFAC SDN list'])
     })
   })
