@@ -11,10 +11,9 @@ import passkeySource from '../src/server/passkeys.ts?raw'
 import * as data from '../src/server/data.ts'
 import worker, { csvCell, daily, EVENTS, handle, routes, type Env } from '../src/server/index.ts'
 import wranglerConfig from '../wrangler.jsonc?raw'
-import { challengeIsOurs, configFor, credentialHash, fromBase64Url, newChallenge, phraseFor, seal, toBase64Url, userHandle } from '../src/server/passkeys.ts'
+import { challengeIsOurs, configFor, credentialHash, fromBase64Url, newChallenge, seal, toBase64Url, userHandle } from '../src/server/passkeys.ts'
 import { checksum, colour, LIMITS, SAFES, type SafeState } from '../src/server/chain.ts'
-import { LINK_ACTION, PROOF_ACTION, typedLink, typedProof } from '../src/server/typed.ts'
-import { WORDS } from '../src/server/words.ts'
+import { LINK_ACTION, PROOF_ACTION, typedLink, typedProof, type Typed } from '../src/server/typed.ts'
 import * as demo from '../src/server/demo.ts'
 import deskPage from '../src/app/desk.tsx?raw'
 import demoSource from '../src/server/demo.ts?raw'
@@ -112,7 +111,6 @@ type Member = Awaited<ReturnType<typeof member>>
 
 // ---- milestone 2 helpers: every step goes through the routes ----
 const HOUR = 60 * MIN
-const WRONG = `${WORDS[1295]} ${WORDS[1294]} ${WORDS[1293]}`
 interface Holder { cookie: string }
 const post = (path: string, m: Holder, body: unknown = {}) => call('POST', path, { cookie: m.cookie, body })
 const cookieOf = (response: { headers: Headers }) => response.headers.get('set-cookie')?.split(';')[0] ?? ''
@@ -155,17 +153,16 @@ async function colleague(org: { orgId: string; seatId: string }, role: string) {
   return { ...m, key2: second.key }
 }
 const issue = (m: Holder, target: { seatId: string } | { displayName: string; role: string }) => post('/api/tickets', m, target)
-// The member's side: opens the link, creates a passkey, sees the three words.
+// The member's side: opens the link, creates a passkey.
 async function enrolLink(link: string, options: { backupEligible?: boolean } = {}) {
   const key = await softwareAuthenticator(SITE, options)
-  const done = await enrol(link.split('#/enrol/')[1], key)
-  return { ...done, key, words: (done.body.phrase ?? []).join(' ') as string }
+  return { ...(await enrol(link.split('#/enrol/')[1], key)), key }
 }
-// The colleague's side: types the words heard, then a passkey check made for this ticket.
-async function confirm(m: Holder, ticketId: string, words: string, key: Key, answer: Answer = {}) {
+// The colleague's side: a passkey check made for this ticket.
+async function confirm(m: Holder, ticketId: string, key: Key, answer: Answer = {}) {
   const start = await post(`/api/tickets/${ticketId}/confirm/start`, m)
   if (start.status !== 200) return start
-  return post(`/api/tickets/${ticketId}/confirm`, m, { words, response: await key.authenticate(start.body.options, answer) })
+  return post(`/api/tickets/${ticketId}/confirm`, m, { response: await key.authenticate(start.body.options, answer) })
 }
 // Issue, enrol, and the issuer's confirmation. A Trader or Viewer is active after it; a key role needs `second`.
 async function ceremony(issuer: Holder & { key: Key }, target: { seatId: string } | { displayName: string; role: string }, second?: Holder & { key: Key }) {
@@ -173,10 +170,10 @@ async function ceremony(issuer: Holder & { key: Key }, target: { seatId: string 
   expect(ticket.status).toBe(200)
   const joined = await enrolLink(ticket.body.link)
   expect(joined.status).toBe(200)
-  const first = await confirm(issuer, ticket.body.ticketId, joined.words, issuer.key)
+  const first = await confirm(issuer, ticket.body.ticketId, issuer.key)
   expect(first.status).toBe(200)
-  if (second) expect((await confirm(second, ticket.body.ticketId, joined.words, second.key)).body.state).toBe('active')
-  return { ticketId: ticket.body.ticketId as string, seatId: ticket.body.seatId as string, key: joined.key, words: joined.words, state: first.body.state as string, cookie: '' }
+  if (second) expect((await confirm(second, ticket.body.ticketId, second.key)).body.state).toBe('active')
+  return { ticketId: ticket.body.ticketId as string, seatId: ticket.body.seatId as string, key: joined.key, state: first.body.state as string, cookie: '' }
 }
 async function stop(key: Key, answer: Answer = {}) {
   const start = await call('POST', '/api/stop/start')
@@ -323,11 +320,14 @@ async function crossWallet(a: Member, b: Member, what: 'unlink' | 'anchor' | 'an
 
 // ---- milestone 4b helpers: the requester on /recover, the recovery wallet that signs, the pending passkey that continues ----
 type Signer = (typeof accounts)[number]
-interface RecoverFields { kind: 'replace' | 'override' | 'cancel'; org: string; nonce: string; credentialHash: string; phrase: string; issuedAt: number; expiresAt: number; site: string; seat?: string; credential?: { id: string; publicKey: string } }
+interface RecoverFields { kind: 'replace' | 'override' | 'cancel'; org: string; nonce: string; credentialHash: string; issuedAt: number; expiresAt: number; site: string; seat?: string; credential?: { id: string; publicKey: string } }
 const recoverOf = (sealed: string) => JSON.parse(new TextDecoder().decode(fromBase64Url(sealed.split('.')[0]))) as RecoverFields
 // What the signing page builds from a recovery intent, with the wallet its signer reports. `change`: one field made different.
 const typedRecover = (i: RecoverFields, wallet: string, change: Partial<Parameters<typeof typedProof>[0]> = {}) =>
-  typedProof({ kind: i.kind, chainId: CHAIN, site: i.site, organisationId: i.org, wallet, credentialHash: i.credentialHash, phrase: i.phrase, nonce: i.nonce, issuedAt: i.issuedAt, expiresAt: i.expiresAt, ...change }) as never
+  typedProof({ kind: i.kind, chainId: CHAIN, site: i.site, organisationId: i.org, wallet, credentialHash: i.credentialHash, nonce: i.nonce, issuedAt: i.issuedAt, expiresAt: i.expiresAt, ...change }) as never
+// The Proof struct as it was until 2026-11-13, with the three words between the passkey and the nonce: a signature over it must not verify.
+const withPhrase = (typed: Typed) =>
+  ({ ...typed, types: { ...typed.types, Proof: typed.types.Proof.flatMap((field) => (field.name === 'nonce' ? [{ name: 'phrase', type: 'string' }, field] : [field])) }, message: { ...typed.message, phrase: 'three old words' } }) as never
 // The requester: an organisation id, a new device-bound passkey, and the intent for it.
 async function askRecovery(orgId: string, more: Record<string, unknown> = {}, options: Options & { backupEligible?: boolean } = {}) {
   const key = await softwareAuthenticator(SITE, options)
@@ -828,7 +828,7 @@ const isolation: Record<string, (a: Member, b: Member) => Promise<void>> = {
     expect(await row('SELECT org_id FROM seats WHERE id = ?', mine.body.seatId)).toEqual({ org_id: a.orgId })
     expect(await count('seats', b.orgId)).toBe(2)
   },
-  // In the next three, B holds a ticket and A, an Owner with two keys, knows its id and even its words.
+  // In the next three, B holds a ticket and A, an Owner with two keys, knows its id.
   'POST /api/tickets/:id/confirm/start': async (a, b) => {
     await addKey(a)
     await addKey(b)
@@ -842,13 +842,13 @@ const isolation: Record<string, (a: Member, b: Member) => Promise<void>> = {
     await addKey(b)
     const theirs = await issue(b, { displayName: 'Ada Viewer', role: 'viewer' })
     const joined = await enrolLink(theirs.body.link)
-    // A passes a real passkey check for a ticket of its own, and sends it with B's ticket id and B's words.
+    // A passes a real passkey check for a ticket of its own, and sends it with B's ticket id.
     const own = await issue(a, { displayName: 'Bea Viewer', role: 'viewer' })
     await enrolLink(own.body.link)
     const start = await post(`/api/tickets/${own.body.ticketId}/confirm/start`, a)
-    const crossed = await post(`/api/tickets/${theirs.body.ticketId}/confirm`, a, { words: joined.words, response: await a.key.authenticate(start.body.options) })
+    const crossed = await post(`/api/tickets/${theirs.body.ticketId}/confirm`, a, { response: await a.key.authenticate(start.body.options) })
     expect(crossed.status).toBe(404)
-    expect(await row('SELECT state, attempts FROM enrolment_tickets WHERE id = ?', theirs.body.ticketId)).toEqual({ state: 'stored', attempts: 0 })
+    expect(await row('SELECT state FROM enrolment_tickets WHERE id = ?', theirs.body.ticketId)).toEqual({ state: 'stored' })
     expect(await credentialState(joined.key)).toBe('pending')
   },
   'POST /api/tickets/:id/cancel': async (a, b) => {
@@ -1074,10 +1074,9 @@ describe('f. audit log', () => {
     'credential.add': { blocks: 'INSERT ON credentials', run: (m) => addKey(m) },
     'credential.revoke': { blocks: 'UPDATE ON credentials', prepare: async (m) => (await addKey(m)).key, run: (m, key) => post(`/api/passkeys/${key.id}/revoke`, m) },
     'ticket.issue': { blocks: 'INSERT ON enrolment_tickets', run: (m) => issue(m, { displayName: 'Ada Viewer', role: 'viewer' }) },
-    'ticket.attempt': { blocks: 'UPDATE ON enrolment_tickets', prepare: (m) => stored(m, 'viewer'), run: (m, t) => confirm(m, t.id, WRONG, m.key) },
-    'credential.activate': { blocks: 'UPDATE ON credentials', prepare: (m) => stored(m, 'viewer'), run: (m, t) => confirm(m, t.id, t.words, m.key) },
-    // An Admin ticket in an organisation with one key-role member: the issuer's words start the 72 hour wait.
-    'ticket.confirm': { blocks: 'INSERT ON approvals', prepare: (m) => stored(m, 'admin'), run: (m, t) => confirm(m, t.id, t.words, m.key) },
+    'credential.activate': { blocks: 'UPDATE ON credentials', prepare: (m) => stored(m, 'viewer'), run: (m, t) => confirm(m, t.id, m.key) },
+    // An Admin ticket in an organisation with one key-role member: the issuer's confirmation starts the 72 hour wait.
+    'ticket.confirm': { blocks: 'INSERT ON approvals', prepare: (m) => stored(m, 'admin'), run: (m, t) => confirm(m, t.id, m.key) },
     'ticket.cancel': { blocks: 'UPDATE ON enrolment_tickets', prepare: (m) => stored(m, 'viewer'), run: (m, t) => post(`/api/tickets/${t.id}/cancel`, m) },
     'credential.stop': {
       blocks: 'UPDATE ON seats',
@@ -1136,7 +1135,8 @@ describe('f. audit log', () => {
   }
   async function stored(m: Full, role: string) {
     const ticket = await issue(m, { displayName: `New ${role}`, role })
-    return { id: ticket.body.ticketId as string, words: (await enrolLink(ticket.body.link)).words }
+    await enrolLink(ticket.body.link)
+    return { id: ticket.body.ticketId as string }
   }
   for (const [action, change] of Object.entries(changes)) {
     it(`${action}: the change and its audit row succeed or fail together`, async () => {
@@ -1348,42 +1348,15 @@ describe('i. the schema refuses what the code must never do', () => {
   })
 })
 
-describe('j. the three-word phrase', () => {
-  const input = { site: 'localhost', orgId: 'a'.repeat(32), seatId: 'b'.repeat(32), role: 'viewer', purpose: 'invitation', credentialHash: new Uint8Array(32).fill(7), nonce: 'c'.repeat(32) }
-
-  it('the word list is the EFF short list 2.0: 1,296 words, no two with the same first three letters', async () => {
-    expect(WORDS).toHaveLength(1296)
-    expect(new Set(WORDS.map((word) => word.slice(0, 3))).size).toBe(1296)
-    expect(WORDS.every((word) => /^[a-z-]{3,10}$/.test(word))).toBe(true)
-    // SHA-256 of the words joined by line feeds, computed from the downloaded file with another tool.
-    expect(await data.sha256Hex(WORDS.join('\n'))).toBe('7869e4a279a3f019df21fa2b28985656a2ee936dadad9aedc87759dab54aef4f')
-  })
-  it('is derived as recovery.md section 2 specifies', async () => {
+describe('j. the hash of a passkey, and the purpose of a challenge', () => {
+  it('the hash of a passkey covers its credential id and its public key, each with its length', async () => {
     // The recipe is written out here on purpose: a checker that imports what it checks proves nothing.
-    const utf8 = (value: string) => new TextEncoder().encode(value)
     const field = (bytes: Uint8Array) => [0, 0, bytes.length >> 8, bytes.length & 255, ...bytes]
-    const nonce = Uint8Array.from(input.nonce.match(/../g)!, (pair) => parseInt(pair, 16))
-    const bytes = Uint8Array.from([utf8('ophis-enrol-v1'), utf8(input.site), utf8(input.orgId), utf8(input.seatId), utf8(input.role), utf8(input.purpose), input.credentialHash, nonce].flatMap(field))
-    const digest = new Uint8Array(await crypto.subtle.digest('SHA-256', bytes))
-    const n = new DataView(digest.buffer).getBigUint64(0) % 1296n ** 3n
-    const expected = [n / 1296n ** 2n, (n / 1296n) % 1296n, n % 1296n].map((index) => WORDS[Number(index)])
-    expect(await phraseFor(input)).toEqual(expected)
-    // The credential hash covers the credential id and the public key, each with its length.
     const id = Uint8Array.from([1, 2, 3])
     const key = Uint8Array.from([4, 5])
     const hash = new Uint8Array(await crypto.subtle.digest('SHA-256', Uint8Array.from([id, key].flatMap(field))))
     expect([...(await credentialHash('AQID', 'BAU'))]).toEqual([...hash])
     expect(fromBase64Url('AQID')).toEqual(id)
-  })
-  it('is the same for the same input and changes with every input', async () => {
-    const base = (await phraseFor(input)).join(' ')
-    expect((await phraseFor({ ...input })).join(' ')).toBe(base)
-    const other = { site: 'business.example', orgId: 'd'.repeat(32), seatId: 'e'.repeat(32), role: 'trader', purpose: 're_enrolment', credentialHash: new Uint8Array(32).fill(8), nonce: 'f'.repeat(32) }
-    for (const name of Object.keys(other) as (keyof typeof other)[]) {
-      expect((await phraseFor({ ...input, [name]: other[name] })).join(' '), name).not.toBe(base)
-    }
-    // Length prefixes: moving a character from one field to the next gives another phrase.
-    expect((await phraseFor({ ...input, role: 'viewe', purpose: 'rinvitation' })).join(' ')).not.toBe(base)
   })
   it('a challenge made for one purpose does not pass for another, with the same binding', async () => {
     const key = testEnv.CHALLENGE_KEY
@@ -1396,7 +1369,7 @@ describe('j. the three-word phrase', () => {
   })
 })
 
-// ---- milestone 2: step-up, own passkeys, tickets, the three words, the stop right, quarantine, alerts ----
+// ---- milestone 2: step-up, own passkeys, tickets, their confirmation, the stop right, quarantine, alerts ----
 
 describe('k. step-up: a fresh passkey check before a sensitive action', () => {
   const viewer = (name: string) => ({ displayName: name, role: 'viewer' })
@@ -1502,7 +1475,7 @@ describe('k. step-up: a fresh passkey check before a sensitive action', () => {
     const m = await member()
     expect((await call('GET', '/api/me', { cookie: m.cookie })).body.seat.keys).toBe(1)
     const calls: [string, unknown?][] = [
-      ['/api/tickets', viewer('Ada Viewer')], ['/api/tickets/0000/confirm/start'], ['/api/tickets/0000/confirm', { words: WRONG }],
+      ['/api/tickets', viewer('Ada Viewer')], ['/api/tickets/0000/confirm/start'], ['/api/tickets/0000/confirm'],
       ['/api/tickets/0000/cancel'], [`/api/passkeys/${m.key.id}/revoke`],
     ]
     const refusedAll = async () => {
@@ -1672,13 +1645,12 @@ describe('m. enrolment tickets', () => {
     expect(ticket.body.link).toMatch(/^http:\/\/localhost:8787\/#\/enrol\/[A-Za-z0-9_-]{43}$/)
     const token = ticket.body.link.split('#/enrol/')[1]
     const stored = (await row<Record<string, string>>('SELECT * FROM enrolment_tickets WHERE id = ?', ticket.body.ticketId))!
-    expect(stored).toMatchObject({ token_hash: await data.sha256Hex(token), kind: 'invitation', role: 'viewer', state: 'issued', issuer_seat_id: o.seatId, seat_id: ticket.body.seatId, attempts: 0 })
-    expect(stored.nonce).toMatch(/^[0-9a-f]{32}$/)
+    expect(stored).toMatchObject({ token_hash: await data.sha256Hex(token), kind: 'invitation', role: 'viewer', state: 'issued', issuer_seat_id: o.seatId, seat_id: ticket.body.seatId })
     expect(await snapshot()).not.toContain(token)
     expect(await row('SELECT state, role, display_name FROM seats WHERE id = ?', ticket.body.seatId)).toEqual({ state: 'invited', role: 'viewer', display_name: 'Ada Viewer' })
     const view = JSON.stringify((await call('GET', '/api/org', { cookie: o.cookie })).body)
     expect(view).toContain(ticket.body.ticketId)
-    for (const secret of [token, stored.token_hash, stored.nonce]) expect(view).not.toContain(secret)
+    for (const secret of [token, stored.token_hash]) expect(view).not.toContain(secret)
   })
 
   it('a Trader or Viewer ticket lives 24 hours, a key-role ticket 10 minutes', async () => {
@@ -1716,7 +1688,7 @@ describe('m. enrolment tickets', () => {
     expect((await issue(admin, { seatId: viewer.seatId })).status).toBe(200)
   })
 
-  it('the waiting list: an Owner or Admin sees every open ticket, a key role only those waiting for its words, a Trader or Viewer none', async () => {
+  it('the waiting list: an Owner or Admin sees every open ticket, a key role only those waiting for its step, a Trader or Viewer none; a stored passkey shows when it was created', async () => {
     const o = await owner()
     const admin = await colleague(o, 'admin')
     const approver = await colleague(o, 'approver')
@@ -1724,22 +1696,24 @@ describe('m. enrolment tickets', () => {
     const trader = await colleague(o, 'trader')
     const list = async (m: Holder) => (await call('GET', '/api/org', { cookie: m.cookie })).body.tickets as Record<string, unknown>[]
     const linked = await issue(admin, { displayName: 'Ada Viewer', role: 'viewer' })
-    const link = { id: linked.body.ticketId, kind: 'invitation', role: 'viewer', seatId: linked.body.seatId, name: 'Ada Viewer', issuerSeatId: admin.seatId, status: 'link', myStep: null, until: START + 24 * HOUR, company: null }
+    const link = { id: linked.body.ticketId, kind: 'invitation', role: 'viewer', seatId: linked.body.seatId, name: 'Ada Viewer', issuerSeatId: admin.seatId, status: 'link', myStep: null, until: START + 24 * HOUR, storedAt: null, company: null }
     now += 1 // the list is ordered by time of issue
     const ticket = await issue(o, { displayName: 'New Compliance', role: 'compliance' })
     const base = { id: ticket.body.ticketId, kind: 'invitation', role: 'compliance', seatId: ticket.body.seatId, name: 'New Compliance', issuerSeatId: o.seatId, company: null }
-    expect(await list(o)).toEqual([link, { ...base, status: 'link', myStep: null, until: now + 10 * MIN }])
-    const joined = await enrolLink(ticket.body.link)
-    expect(await list(o)).toEqual([link, { ...base, status: 'issuer', myStep: 'issuer', until: now + 60 * MIN }])
-    expect(await list(admin)).toEqual([link, { ...base, status: 'issuer', myStep: null, until: now + 60 * MIN }])
+    expect(await list(o)).toEqual([link, { ...base, status: 'link', myStep: null, until: now + 10 * MIN, storedAt: null }])
+    await enrolLink(ticket.body.link)
+    const at = now
+    now += MIN
+    expect(await list(o)).toEqual([link, { ...base, status: 'issuer', myStep: 'issuer', until: at + 60 * MIN, storedAt: at }])
+    expect(await list(admin)).toEqual([link, { ...base, status: 'issuer', myStep: null, until: at + 60 * MIN, storedAt: at }])
     for (const m of [approver, viewer, trader]) expect(await list(m)).toEqual([])
-    await confirm(o, ticket.body.ticketId, joined.words, o.key)
-    expect(await list(o)).toEqual([link, { ...base, status: 'second', myStep: null, until: now + 60 * MIN }])
-    expect(await list(admin)).toEqual([link, { ...base, status: 'second', myStep: 'second', until: now + 60 * MIN }])
-    expect(await list(approver)).toEqual([{ ...base, status: 'second', myStep: 'second', until: now + 60 * MIN }])
+    await confirm(o, ticket.body.ticketId, o.key)
+    expect(await list(o)).toEqual([link, { ...base, status: 'second', myStep: null, until: at + 60 * MIN, storedAt: at }])
+    expect(await list(admin)).toEqual([link, { ...base, status: 'second', myStep: 'second', until: at + 60 * MIN, storedAt: at }])
+    expect(await list(approver)).toEqual([{ ...base, status: 'second', myStep: 'second', until: at + 60 * MIN, storedAt: at }])
     for (const m of [viewer, trader]) expect(await list(m)).toEqual([])
     // A ticket whose time is up leaves the list without a write.
-    now += 60 * MIN + 1
+    now = at + 60 * MIN + 1
     expect(await list(await again(o))).toEqual([link])
   })
 
@@ -1755,7 +1729,7 @@ describe('m. enrolment tickets', () => {
     expect(await row('SELECT state FROM enrolment_tickets WHERE id = ?', first.body.ticketId)).toEqual({ state: 'dead' })
     expect(await row('SELECT state FROM enrolment_tickets WHERE id = ?', unused.body.ticketId)).toEqual({ state: 'dead' })
     expect(await credentialState(rival.key)).toBe('revoked')
-    expect((await confirm(admin, first.body.ticketId, rival.words, admin.key)).status).toBe(404)
+    expect((await confirm(admin, first.body.ticketId, admin.key)).status).toBe(404)
     expect((await enrolLink(unused.body.link)).status).toBe(404)
     expect((await enrolLink(elsewhere.body.link)).status).toBe(200) // another seat's ticket is untouched
   })
@@ -1776,44 +1750,22 @@ describe('m. enrolment tickets', () => {
     expect(await row('SELECT state FROM enrolment_tickets WHERE id = ?', second.body.ticketId)).toEqual({ state: 'cancelled' })
     expect(await credentialState(joined.key)).toBe('revoked')
     expect((await enrolLink(third.body.link)).status).toBe(404)
-    expect((await confirm(admin, second.body.ticketId, joined.words, admin.key)).status).toBe(404)
+    expect((await confirm(admin, second.body.ticketId, admin.key)).status).toBe(404)
     expect((await signIn(joined.key)).status).toBe(401)
   })
 })
 
-// True when a response gave the phrase away, in any shape: all three words appear among its tokens.
-const shows = (bodies: unknown, phrase: string[]) => {
-  const tokens = new Set(JSON.stringify(bodies).toLowerCase().split(/[^a-z-]+/))
-  return phrase.every((word) => tokens.has(word))
-}
-
-describe('n. the three words: the colleague types what the member reads out', () => {
-  it('a Viewer joins: the passkey is pending until the issuer types the words, and the issuer is never shown them', async () => {
+describe('n. the confirmation: the colleague who issued the link confirms the new passkey', () => {
+  it('a Viewer joins: the passkey is pending until the issuer confirms it with a passkey check, and the member is told nothing more', async () => {
     const o = await owner()
-    const seen: unknown[] = []
     const ticket = await issue(o, { displayName: 'Ada Viewer', role: 'viewer' })
     const id = ticket.body.ticketId
     const joined = await enrolLink(ticket.body.link)
-    expect(joined.body).toEqual({ state: 'pending', phrase: [expect.any(String), expect.any(String), expect.any(String)], confirmBy: now + 60 * MIN })
-    expect(shows(joined.body, joined.body.phrase)).toBe(true)
-    // The words are the ones recovery.md derives from the stored rows (derivation: section j).
-    const { nonce } = (await row<{ nonce: string }>('SELECT nonce FROM enrolment_tickets WHERE id = ?', id))!
-    const { public_key } = (await row<{ public_key: string }>('SELECT public_key FROM credentials WHERE id = ?', joined.key.id))!
-    const derived = await phraseFor({ site: 'localhost', orgId: o.orgId, seatId: ticket.body.seatId, role: 'viewer', purpose: 'invitation', credentialHash: await credentialHash(joined.key.id, public_key), nonce })
-    expect(joined.body.phrase).toEqual(derived)
+    expect(joined.body).toEqual({ state: 'pending' })
     expect((await signIn(joined.key)).status).toBe(401)
-    const view = async () => seen.push((await call('GET', '/api/org', { cookie: o.cookie })).body, (await call('GET', '/api/me', { cookie: o.cookie })).body)
-    seen.push(ticket.body)
-    await view()
-    const start = await post(`/api/tickets/${id}/confirm/start`, o)
-    seen.push(start.body, (await post(`/api/tickets/${id}/confirm`, o, { words: WRONG, response: await o.key.authenticate(start.body.options) })).body)
-    await view()
-    const done = await confirm(o, id, joined.words, o.key)
+    expect(await credentialState(joined.key)).toBe('pending')
+    const done = await confirm(o, id, o.key)
     expect(done.body).toEqual({ state: 'active' })
-    seen.push(done.body)
-    await view()
-    expect(shows(seen, joined.body.phrase)).toBe(false)
-    expect(JSON.stringify(seen)).not.toContain(nonce)
     expect(await credentialState(joined.key)).toBe('active')
     expect(await row('SELECT state, quarantine_until FROM seats WHERE id = ?', ticket.body.seatId)).toEqual({ state: 'active', quarantine_until: null })
     expect(await row('SELECT state FROM enrolment_tickets WHERE id = ?', id)).toEqual({ state: 'confirmed' })
@@ -1821,11 +1773,10 @@ describe('n. the three words: the colleague types what the member reads out', ()
     // The audit rows of the whole ceremony hold ids and fixed codes only, and the chain verifies.
     const { results } = await db.prepare('SELECT * FROM audit_log WHERE org_id = ?').bind(o.orgId).all<Record<string, unknown>>()
     for (const entry of results) for (const value of Object.values(entry)) if (typeof value === 'string') expect(value).toMatch(/^[A-Za-z0-9_.-]+$/)
-    expect(shows(results, joined.body.phrase)).toBe(false)
     expect(await data.verifyAudit(db, o.orgId)).toMatchObject({ ok: true })
   })
 
-  it('only the issuer confirms, with a passkey check made for this ticket; a failed check or a typing slip costs no attempt', async () => {
+  it('only the issuer confirms, with a passkey check made for this ticket; a failed check changes nothing', async () => {
     const o = await owner()
     const admin = await colleague(o, 'admin')
     const viewer = await colleague(o, 'viewer')
@@ -1833,9 +1784,9 @@ describe('n. the three words: the colleague types what the member reads out', ()
     const id = ticket.body.ticketId
     const joined = await enrolLink(ticket.body.link)
     // The Owner is not the issuer of this ticket. A Viewer is nobody here: the role table refuses it.
-    expect((await confirm(o, id, joined.words, o.key)).status).toBe(404)
-    expect((await confirm(viewer, id, joined.words, viewer.key)).status).toBe(403)
-    const send = (response: unknown, words: unknown = joined.words) => post(`/api/tickets/${id}/confirm`, admin, { words, response })
+    expect((await confirm(o, id, o.key)).status).toBe(404)
+    expect((await confirm(viewer, id, viewer.key)).status).toBe(403)
+    const send = (response: unknown) => post(`/api/tickets/${id}/confirm`, admin, { response })
     // The passkey check must be made for this ticket: not a step-up check, not a check for another ticket,
     // not another member's passkey, not one without user verification.
     expect((await send(await admin.key.authenticate((await post('/api/stepup/start', admin)).body.options))).body).toEqual({ error: 'passkey_rejected' })
@@ -1847,71 +1798,27 @@ describe('n. the three words: the colleague types what the member reads out', ()
     expect((await send(await admin.key.authenticate(start.body.options, { userVerified: false }))).body).toEqual({ error: 'passkey_rejected' })
     expect((await send(await admin.key.authenticate(start.body.options, { as: { origin: 'https://evil.example' } }))).body).toEqual({ error: 'passkey_rejected' })
     expect((await send(undefined)).body).toEqual({ error: 'passkey_rejected' })
-    // Words that are not three words of the list are a typing slip, not a guess.
-    for (const words of ['', 'one two', `${WRONG} ${WORDS[0]}`, 'xxxx yyyy zzzz', 7]) expect((await send(await admin.key.authenticate(start.body.options), words)).body).toEqual({ error: 'words_invalid' })
-    expect(await row('SELECT attempts, state FROM enrolment_tickets WHERE id = ?', id)).toEqual({ attempts: 0, state: 'stored' })
-    expect((await send(await admin.key.authenticate(start.body.options), `  ${joined.words.toUpperCase().replace(/ /g, '   ')} `)).body).toEqual({ state: 'active' })
+    expect([await row('SELECT state FROM enrolment_tickets WHERE id = ?', id), await credentialState(joined.key)]).toEqual([{ state: 'stored' }, 'pending'])
+    expect((await send(await admin.key.authenticate(start.body.options))).body).toEqual({ state: 'active' })
   })
 
-  it('three wrong tries kill the ticket and the pending passkey; the counter is exact; a fourth try is refused even with the right words', async () => {
-    const o = await owner()
-    const quiet = (await addKey(o, { counts: false })).key
-    const ticket = await issue(o, { displayName: 'Ada Viewer', role: 'viewer' })
-    const id = ticket.body.ticketId
-    const joined = await enrolLink(ticket.body.link)
-    const stored = () => row('SELECT attempts, state FROM enrolment_tickets WHERE id = ?', id)
-    const first = await confirm(o, id, WRONG, o.key)
-    expect(first.status).toBe(400)
-    expect(first.body).toEqual({ error: 'wrong_words', left: 2 })
-    expect(await stored()).toEqual({ attempts: 1, state: 'stored' })
-    // Each try needs its own passkey check: the check of one try is not accepted for the next.
-    const start = await post(`/api/tickets/${id}/confirm/start`, o)
-    const response = await quiet.authenticate(start.body.options)
-    expect((await post(`/api/tickets/${id}/confirm`, o, { words: WRONG, response })).body).toEqual({ error: 'wrong_words', left: 1 })
-    expect((await post(`/api/tickets/${id}/confirm`, o, { words: joined.words, response })).body).toEqual({ error: 'passkey_rejected' })
-    expect(await stored()).toEqual({ attempts: 2, state: 'stored' })
-    const third = await confirm(o, id, WRONG, o.key)
-    expect(third.status).toBe(410)
-    expect(third.body).toEqual({ error: 'ticket_dead' })
-    expect(await stored()).toEqual({ attempts: 3, state: 'dead' })
-    expect(await credentialState(joined.key)).toBe('revoked')
-    expect((await confirm(o, id, joined.words, o.key)).status).toBe(404)
-    expect(await stored()).toEqual({ attempts: 3, state: 'dead' })
-    expect((await signIn(joined.key)).status).toBe(401)
-    // Two requests with one passkey check at the same instant count one try, not two.
-    const raced = await issue(o, { displayName: 'Cal Viewer', role: 'viewer' })
-    await enrolLink(raced.body.link)
-    const path = `/api/tickets/${raced.body.ticketId}/confirm`
-    const body = { words: WRONG, response: await quiet.authenticate((await post(`${path}/start`, o)).body.options) }
-    let other = { status: 0 }
-    const late = await call('POST', path, { cookie: o.cookie, body, env: racing(async () => (other = await post(path, o, body))) })
-    expect([other.status, late.status]).toEqual([400, 409])
-    expect(late.body).toEqual({ error: 'try_again' })
-    expect(await row('SELECT attempts FROM enrolment_tickets WHERE id = ?', raced.body.ticketId)).toEqual({ attempts: 1 })
-    // Two wrong tries, then the right words: still accepted.
-    const next = await issue(o, { displayName: 'Bea Viewer', role: 'viewer' })
-    const again2 = await enrolLink(next.body.link)
-    for (const left of [2, 1]) expect((await confirm(o, next.body.ticketId, WRONG, o.key)).body).toEqual({ error: 'wrong_words', left })
-    expect((await confirm(o, next.body.ticketId, again2.words, o.key)).body).toEqual({ state: 'active' })
-  })
-
-  it('the words must be typed within 60 minutes of the enrolment', async () => {
+  it('the issuer confirms within 60 minutes of the enrolment', async () => {
     const o = await owner()
     const late = await issue(o, { displayName: 'Ada Viewer', role: 'viewer' })
     const joined = await enrolLink(late.body.link)
     now += 60 * MIN + 1
     await again(o)
-    expect((await confirm(o, late.body.ticketId, joined.words, o.key)).status).toBe(404)
+    expect((await confirm(o, late.body.ticketId, o.key)).status).toBe(404)
     expect(await credentialState(joined.key)).toBe('pending')
     expect((await signIn(joined.key)).status).toBe(401)
     const onTime = await issue(o, { displayName: 'Bea Viewer', role: 'viewer' })
     const second = await enrolLink(onTime.body.link)
     now += 60 * MIN
-    // At the last millisecond the passkey is still pending: only the issuer's words activate it, never a sign-in.
+    // At the last millisecond the passkey is still pending: only the issuer's confirmation activates it, never a sign-in.
     expect((await signIn(second.key)).status).toBe(401)
     expect(await credentialState(second.key)).toBe('pending')
     await again(o)
-    expect((await confirm(o, onTime.body.ticketId, second.words, o.key)).body).toEqual({ state: 'active' })
+    expect((await confirm(o, onTime.body.ticketId, o.key)).body).toEqual({ state: 'active' })
   })
 
   it('a ticket is dead once its seat is not in the right state', async () => {
@@ -1919,9 +1826,9 @@ describe('n. the three words: the colleague types what the member reads out', ()
     const ticket = await issue(o, { displayName: 'Ada Viewer', role: 'viewer' })
     const joined = await enrolLink(ticket.body.link)
     await db.prepare(`UPDATE seats SET state = 'removed' WHERE id = ?`).bind(ticket.body.seatId).run()
-    expect((await confirm(o, ticket.body.ticketId, joined.words, o.key)).status).toBe(404)
+    expect((await confirm(o, ticket.body.ticketId, o.key)).status).toBe(404)
     await db.prepare(`UPDATE seats SET state = 'invited', role = 'trader' WHERE id = ?`).bind(ticket.body.seatId).run()
-    expect((await confirm(o, ticket.body.ticketId, joined.words, o.key)).status).toBe(404)
+    expect((await confirm(o, ticket.body.ticketId, o.key)).status).toBe(404)
     expect(await credentialState(joined.key)).toBe('pending')
   })
 
@@ -1933,28 +1840,26 @@ describe('n. the three words: the colleague types what the member reads out', ()
     const ticket = await issue(o, { displayName: 'New Compliance', role: 'compliance' })
     const id = ticket.body.ticketId
     const joined = await enrolLink(ticket.body.link)
-    expect((await confirm(o, id, joined.words, o.key)).body).toEqual({ state: 'second' })
+    expect((await confirm(o, id, o.key)).body).toEqual({ state: 'second' })
     expect(await credentialState(joined.key)).toBe('pending')
     expect((await signIn(joined.key)).status).toBe(401)
     // The issuer cannot be the second person. A Trader cannot be either.
-    expect((await confirm(o, id, joined.words, o.key)).status).toBe(404)
-    expect((await confirm(trader, id, joined.words, trader.key)).status).toBe(403)
+    expect((await confirm(o, id, o.key)).status).toBe(404)
+    expect((await confirm(trader, id, trader.key)).status).toBe(403)
     expect(await credentialState(joined.key)).toBe('pending')
-    // The second person's wrong words count on the same counter.
-    expect((await confirm(approver, id, WRONG, approver.key)).body).toEqual({ error: 'wrong_words', left: 2 })
-    expect((await confirm(approver, id, joined.words, approver.key)).body).toEqual({ state: 'active' })
+    expect((await confirm(approver, id, approver.key)).body).toEqual({ state: 'active' })
     expect(await row('SELECT requester_seat_id, checker_seat_id, state, subject_id FROM approvals WHERE org_id = ?', o.orgId))
       .toEqual({ requester_seat_id: o.seatId, checker_seat_id: approver.seatId, state: 'applied', subject_id: id })
     expect((await signIn(joined.key)).status).toBe(200)
     // The target is not its own second person, even while its old passkey still holds a session.
     const re = await issue(o, { seatId: admin.seatId })
     const replaced = await enrolLink(re.body.link)
-    expect((await confirm(o, re.body.ticketId, replaced.words, o.key)).body).toEqual({ state: 'second' })
-    expect((await confirm(admin, re.body.ticketId, replaced.words, admin.key)).status).toBe(404)
+    expect((await confirm(o, re.body.ticketId, o.key)).body).toEqual({ state: 'second' })
+    expect((await confirm(admin, re.body.ticketId, admin.key)).status).toBe(404)
     // The second person has the same 60 minutes.
     now += 60 * MIN + 1
     await again(approver)
-    expect((await confirm(approver, re.body.ticketId, replaced.words, approver.key)).status).toBe(404)
+    expect((await confirm(approver, re.body.ticketId, approver.key)).status).toBe(404)
     expect(await credentialState(replaced.key)).toBe('pending')
   })
 
@@ -1963,8 +1868,8 @@ describe('n. the three words: the colleague types what the member reads out', ()
     await colleague(o, 'trader') // not a key role: does not count as a second person
     const ticket = await issue(o, { displayName: 'First Admin', role: 'admin' })
     const joined = await enrolLink(ticket.body.link)
-    expect((await confirm(o, ticket.body.ticketId, joined.words, o.key)).body).toEqual({ state: 'wait', waitUntil: START + 72 * HOUR })
-    expect((await confirm(o, ticket.body.ticketId, joined.words, o.key)).status).toBe(404)
+    expect((await confirm(o, ticket.body.ticketId, o.key)).body).toEqual({ state: 'wait', waitUntil: START + 72 * HOUR })
+    expect((await confirm(o, ticket.body.ticketId, o.key)).status).toBe(404)
     for (const at of [START + 1, START + 71 * HOUR, START + 72 * HOUR - 1]) {
       now = at
       expect((await signIn(joined.key)).status).toBe(401)
@@ -1981,7 +1886,7 @@ describe('n. the three words: the colleague types what the member reads out', ()
     const late = await issue(lonely, { displayName: 'An Approver', role: 'approver' })
     const slow = await enrolLink(late.body.link)
     const t0 = now
-    expect((await confirm(lonely, late.body.ticketId, slow.words, lonely.key)).body).toEqual({ state: 'wait', waitUntil: t0 + 72 * HOUR })
+    expect((await confirm(lonely, late.body.ticketId, lonely.key)).body).toEqual({ state: 'wait', waitUntil: t0 + 72 * HOUR })
     now = t0 + (72 + 7 * 24) * HOUR + 1
     expect((await signIn(slow.key)).status).toBe(401)
     now -= 1
@@ -1993,7 +1898,7 @@ describe('n. the three words: the colleague types what the member reads out', ()
     // A one-person organisation invites its first Admin: the wait (section u). The Owner cancels during it.
     const ticket = await issue(o, { displayName: 'First Admin', role: 'admin' })
     const joined = await enrolLink(ticket.body.link)
-    expect((await confirm(o, ticket.body.ticketId, joined.words, o.key)).body).toEqual({ state: 'wait', waitUntil: START + 72 * HOUR })
+    expect((await confirm(o, ticket.body.ticketId, o.key)).body).toEqual({ state: 'wait', waitUntil: START + 72 * HOUR })
     now = START + 71 * HOUR
     expect((await post(`/api/tickets/${ticket.body.ticketId}/cancel`, await again(o))).status).toBe(200)
     now = START + 72 * HOUR
@@ -2003,7 +1908,7 @@ describe('n. the three words: the colleague types what the member reads out', ()
     const admin = await colleague(o, 'admin')
     const second = await issue(await again(o), { seatId: admin.seatId })
     const other = await enrolLink(second.body.link)
-    expect((await confirm(o, second.body.ticketId, other.words, o.key)).body).toEqual({ state: 'second' })
+    expect((await confirm(o, second.body.ticketId, o.key)).body).toEqual({ state: 'second' })
     await again(admin)
     expect(await row('SELECT state FROM enrolment_tickets WHERE id = ?', second.body.ticketId)).toEqual({ state: 'dead' })
     expect(await credentialState(other.key)).toBe('revoked')
@@ -2138,10 +2043,10 @@ describe('o. re-enrolment: suspended passkeys, the stop right, quarantine', () =
     expect(blocked.status).toBe(403)
     expect(blocked.body).toEqual(quarantine)
     expect((await post(`/api/passkeys/${viewer.key2.id}/revoke`, fresh)).body).toEqual(quarantine)
-    // Typing the words for a new member, as the second person, adds a member too.
+    // Confirming a new member, as the second person, adds a member too.
     const invitation = await issue(o, { displayName: 'New Approver', role: 'approver' })
     const joined = await enrolLink(invitation.body.link)
-    expect((await confirm(o, invitation.body.ticketId, joined.words, o.key)).body).toEqual({ state: 'second' })
+    expect((await confirm(o, invitation.body.ticketId, o.key)).body).toEqual({ state: 'second' })
     expect((await post(`/api/tickets/${invitation.body.ticketId}/confirm/start`, fresh)).body).toEqual(quarantine)
     expect(await count('seats', o.orgId)).toBe(5)
     expect(await credentialState(viewer.key2)).toBe('active')
@@ -2171,7 +2076,7 @@ describe('o. re-enrolment: suspended passkeys, the stop right, quarantine', () =
     for (const ticket of [open, stored]) expect(await row('SELECT state FROM enrolment_tickets WHERE id = ?', ticket.body.ticketId)).toEqual({ state: 'dead' })
     expect(await credentialState(joined.key)).toBe('revoked')
     expect((await enrolLink(open.body.link)).status).toBe(404)
-    expect((await confirm(o, stored.body.ticketId, joined.words, o.key)).status).toBe(404)
+    expect((await confirm(o, stored.body.ticketId, o.key)).status).toBe(404)
     // The issuer is flagged in the log; a colleague's invitation is untouched.
     expect(await row('SELECT action, detail FROM audit_log WHERE org_id = ? ORDER BY seq DESC LIMIT 1', o.orgId)).toEqual({ action: 'session.create', detail: 'ticket_killed' })
     expect((await enrolLink(invitation.body.link)).status).toBe(200)
@@ -2203,7 +2108,7 @@ describe('p. alerts shown at sign-in (no email is sent)', () => {
     expect(await kinds(await again(next))).toEqual([])
   })
 
-  it('a re-enrolment: the member, the people who must type the words, then every member', async () => {
+  it('a re-enrolment: the member, the people who must confirm it, then every member', async () => {
     const o = await owner()
     const approver = await colleague(o, 'approver')
     const trader = await colleague(o, 'trader')
@@ -2215,10 +2120,10 @@ describe('p. alerts shown at sign-in (no email is sent)', () => {
     const joined = await enrolLink(ticket.body.link)
     expect(await alerts(o)).toEqual([{ key: `wait:${ticket.body.ticketId}:issuer`, kind: 'confirmation_waiting', name: 'A admin' }])
     expect(await kinds(approver)).toEqual([])
-    expect((await confirm(o, ticket.body.ticketId, joined.words, o.key)).body).toEqual({ state: 'second' })
+    expect((await confirm(o, ticket.body.ticketId, o.key)).body).toEqual({ state: 'second' })
     expect(await kinds(o)).toEqual([])
     expect(await kinds(approver)).toEqual(['confirmation_waiting'])
-    expect((await confirm(approver, ticket.body.ticketId, joined.words, approver.key)).body).toEqual({ state: 'active' })
+    expect((await confirm(approver, ticket.body.ticketId, approver.key)).body).toEqual({ state: 'active' })
     const at = now
     const fresh = await again({ key: joined.key, cookie: '' })
     // (new_passkey: the Admin added a second passkey from another session in the last 7 days.)
@@ -2262,7 +2167,7 @@ describe('q. attacks tried by the reviewer', () => {
     expect((await act(admin, trader.seatId, 'freeze')).status).toBe(200)
     expect(await seat()).toEqual({ state: 'frozen' })
     expect(await credentialState(trader.key)).toBe('suspended')
-    expect((await confirm(admin, ticket.body.ticketId, own.words, admin.key)).status).toBe(404)
+    expect((await confirm(admin, ticket.body.ticketId, admin.key)).status).toBe(404)
     expect((await issue(admin, { seatId: trader.seatId })).status).toBe(404)
     expect(await credentialState(own.key)).toBe('revoked')
     expect(await row('SELECT state FROM enrolment_tickets WHERE id = ?', ticket.body.ticketId)).toEqual({ state: 'dead' })
@@ -2288,7 +2193,7 @@ describe('q. attacks tried by the reviewer', () => {
     const link = await issue(thief, { seatId: viewer.seatId })
     const half = await issue(thief, { seatId: compliance.seatId })
     const joined = await enrolLink(half.body.link)
-    expect((await confirm(thief, half.body.ticketId, joined.words, thief.key)).body).toEqual({ state: 'second' })
+    expect((await confirm(thief, half.body.ticketId, thief.key)).body).toEqual({ state: 'second' })
     // The real Admin stops the replacement. What the seat had issued is dead in the tables, so that
     // unfreezing the seat later (two people, section t) brings none of it back.
     expect((await stop(admin.key)).status).toBe(200)
@@ -2298,7 +2203,7 @@ describe('q. attacks tried by the reviewer', () => {
     expect((await call('POST', '/api/enrol/start', { body: { ticket: link.body.link.split('#/enrol/')[1] } })).status).toBe(404)
     await again(o)
     expect((await call('GET', '/api/org', { cookie: o.cookie })).body.tickets).toEqual([])
-    expect((await confirm(o, half.body.ticketId, joined.words, o.key)).status).toBe(404)
+    expect((await confirm(o, half.body.ticketId, o.key)).status).toBe(404)
     expect(await credentialState(compliance.key)).toBe('active')
     // The same when a colleague freezes the issuer.
     const frozen = await colleague(o, 'admin')
@@ -2309,7 +2214,7 @@ describe('q. attacks tried by the reviewer', () => {
     const lonely = await owner()
     const invited = await issue(lonely, { displayName: 'First Admin', role: 'admin' })
     const waiting = await enrolLink(invited.body.link)
-    expect((await confirm(lonely, invited.body.ticketId, waiting.words, lonely.key)).body.state).toBe('wait')
+    expect((await confirm(lonely, invited.body.ticketId, lonely.key)).body.state).toBe('wait')
     const unused = await issue(lonely, { displayName: 'Ada Viewer', role: 'viewer' })
     await db.prepare(`UPDATE seats SET state = 'removed' WHERE id = ?`).bind(lonely.seatId).run()
     expect((await call('POST', '/api/enrol/start', { body: { ticket: unused.body.link.split('#/enrol/')[1] } })).status).toBe(404)
@@ -2318,7 +2223,7 @@ describe('q. attacks tried by the reviewer', () => {
     expect(await credentialState(waiting.key)).toBe('pending')
   })
 
-  it('a link opened in two browsers at the same instant stores one passkey, and the other browser is shown no words', async () => {
+  it('a link opened in two browsers at the same instant stores one passkey', async () => {
     const o = await owner()
     const ticket = await issue(o, { displayName: 'Ada Viewer', role: 'viewer' })
     const token = ticket.body.link.split('#/enrol/')[1]
@@ -2332,13 +2237,13 @@ describe('q. attacks tried by the reviewer', () => {
     expect(await row('SELECT count(*) AS n FROM credentials WHERE ticket_id = ?', ticket.body.ticketId)).toEqual({ n: 1 })
   })
 
-  it('two confirmations with the right words at the same instant activate once', async () => {
+  it('two confirmations at the same instant activate once', async () => {
     const o = await owner()
     const quiet = (await addKey(o, { counts: false })).key
     const ticket = await issue(o, { displayName: 'Ada Viewer', role: 'viewer' })
-    const joined = await enrolLink(ticket.body.link)
+    await enrolLink(ticket.body.link)
     const path = `/api/tickets/${ticket.body.ticketId}/confirm`
-    const body = { words: joined.words, response: await quiet.authenticate((await post(`${path}/start`, o)).body.options) }
+    const body = { response: await quiet.authenticate((await post(`${path}/start`, o)).body.options) }
     let first = { status: 0 }
     const second = await call('POST', path, { cookie: o.cookie, body, env: racing(async () => (first = await post(path, o, body))) })
     expect([first.status, second.status]).toEqual([200, 409])
@@ -2353,16 +2258,16 @@ describe('q. attacks tried by the reviewer', () => {
     await db.prepare(`UPDATE seats SET state = 'invited' WHERE id = ?`).bind(approver.seatId).run()
     const ticket = await issue(o, { displayName: 'First Admin', role: 'admin' })
     const joined = await enrolLink(ticket.body.link)
-    expect((await confirm(o, ticket.body.ticketId, joined.words, o.key)).body).toEqual({ state: 'wait', waitUntil: START + 72 * HOUR })
+    expect((await confirm(o, ticket.body.ticketId, o.key)).body).toEqual({ state: 'wait', waitUntil: START + 72 * HOUR })
     await db.prepare(`UPDATE seats SET state = 'active' WHERE id = ?`).bind(approver.seatId).run()
     await again(approver)
-    expect((await confirm(approver, ticket.body.ticketId, joined.words, approver.key)).status).toBe(404)
+    expect((await confirm(approver, ticket.body.ticketId, approver.key)).status).toBe(404)
     now = START + 72 * HOUR - 1
     expect((await signIn(joined.key)).status).toBe(401)
     expect(await credentialState(joined.key)).toBe('pending')
   })
 
-  it('a ticket cancelled or killed while its link is being used stays dead: no passkey is stored and no words are shown', async () => {
+  it('a ticket cancelled or killed while its link is being used stays dead: no passkey is stored', async () => {
     const o = await owner()
     const viewer = await colleague(o, 'viewer')
     const finishing = async (link: string) => {
@@ -2428,23 +2333,6 @@ describe('q. attacks tried by the reviewer', () => {
     expect(await row('SELECT state FROM seats WHERE id = ?', other.seatId)).toEqual({ state: 'frozen' })
     expect((await signIn(other.key)).body).toMatchObject({ error: 'passkey_replaced' }) // told so, and given no session (section x)
     expect(await credentialState(other.key)).toBe('suspended')
-  })
-
-  it('the second person is never shown the words either', async () => {
-    const o = await owner()
-    const approver = await colleague(o, 'approver')
-    const ticket = await issue(o, { displayName: 'New Admin', role: 'admin' })
-    const joined = await enrolLink(ticket.body.link)
-    const id = ticket.body.ticketId
-    expect((await confirm(o, id, joined.words, o.key)).body).toEqual({ state: 'second' })
-    const seen: unknown[] = [(await call('GET', '/api/org', { cookie: approver.cookie })).body, (await call('GET', '/api/me', { cookie: approver.cookie })).body]
-    const start = await post(`/api/tickets/${id}/confirm/start`, approver)
-    seen.push(start.body, (await post(`/api/tickets/${id}/confirm`, approver, { words: WRONG, response: await approver.key.authenticate(start.body.options) })).body)
-    const done = await confirm(approver, id, joined.words, approver.key)
-    expect(done.body).toEqual({ state: 'active' })
-    seen.push(done.body, (await call('GET', '/api/org', { cookie: approver.cookie })).body, (await call('GET', '/api/me', { cookie: approver.cookie })).body)
-    expect(seen).toHaveLength(7)
-    expect(shows(seen, joined.body.phrase)).toBe(false)
   })
 
   it('every member is told when a colleague joins, and Owners and Admins when a sign-in closed a re-enrolment', async () => {
@@ -3249,7 +3137,7 @@ describe('x. attacks tried by the review of milestone 3', () => {
     const down = (await act(o, second.seatId, 'role', { role: 'admin' })).body.id
     expect((await at(second, `/api/tickets/${link.body.ticketId}/cancel`, {}, () => decide(c, down, 'approve'))).status).toBe(404)
     expect(await row('SELECT state FROM enrolment_tickets WHERE id = ?', link.body.ticketId)).toEqual({ state: 'issued' })
-    // The Compliance officer is lowered at the instant it approves, and at the instant it types the words as the second person.
+    // The Compliance officer is lowered at the instant it approves, and at the instant it confirms a new passkey as the second person.
     const ask = (await act(o, v.seatId, 'role', { role: 'trader' })).body.id
     let lower = (await act(o, c.seatId, 'role', { role: 'viewer' })).body.id
     expect((await at(c, `/api/approvals/${ask}/approve`, {}, () => decide(a, lower, 'approve'))).body).toEqual({ error: 'forbidden' })
@@ -3257,9 +3145,9 @@ describe('x. attacks tried by the review of milestone 3', () => {
     const c2 = await colleague(o, 'compliance')
     const joining = await ceremony(o, { displayName: 'New Approver', role: 'approver' })
     lower = (await act(o, c2.seatId, 'role', { role: 'viewer' })).body.id
-    const words = await post(`/api/tickets/${joining.ticketId}/confirm/start`, c2)
-    const typed = await at(c2, `/api/tickets/${joining.ticketId}/confirm`, { words: joining.words, response: await c2.key.authenticate(words.body.options) }, () => decide(a, lower, 'approve'))
-    expect(typed.status).toBe(409)
+    const asked = await post(`/api/tickets/${joining.ticketId}/confirm/start`, c2)
+    const confirmed = await at(c2, `/api/tickets/${joining.ticketId}/confirm`, { response: await c2.key.authenticate(asked.body.options) }, () => decide(a, lower, 'approve'))
+    expect(confirmed.status).toBe(409)
     expect(await credentialState(joining.key)).toBe('pending')
     // The Admin is lowered at the instant it issues a link, and at the instant it revokes a colleague's passkey.
     const seats = await count('seats', o.orgId)
@@ -4052,22 +3940,20 @@ describe('B. last-Owner recovery by the recovery wallet', () => {
     const asked = await askRecovery(o.orgId, {}, { env: noDatabase })
     const nowhere = await askRecovery('f'.repeat(32), {}, { env: noDatabase })
     expect([asked.status, nowhere.status]).toEqual([200, 200])
-    expect(Object.keys(nowhere.body).sort()).toEqual(['expiresAt', 'intent', 'link', 'phrase'])
-    expect(Object.keys(asked.body).sort()).toEqual(['expiresAt', 'intent', 'link', 'phrase'])
+    expect(Object.keys(nowhere.body).sort()).toEqual(['expiresAt', 'intent', 'link'])
+    expect(Object.keys(asked.body).sort()).toEqual(['expiresAt', 'intent', 'link'])
     const nonce = `0x${'ab'.repeat(32)}`
     const cancel = await call('POST', '/api/recover/cancel-intent', { env: noDatabase, body: { organisationId: o.orgId, nonce } })
-    expect(recoverOf(cancel.body.intent)).toEqual({ kind: 'cancel', org: o.orgId, nonce, credentialHash: `0x${'0'.repeat(64)}`, phrase: '', issuedAt: now / 1000, expiresAt: now / 1000 + WEEK / 1000, site: 'localhost' })
+    expect(recoverOf(cancel.body.intent)).toEqual({ kind: 'cancel', org: o.orgId, nonce, credentialHash: `0x${'0'.repeat(64)}`, issuedAt: now / 1000, expiresAt: now / 1000 + WEEK / 1000, site: 'localhost' })
     expect((await call('POST', '/api/recover/continue/start', { env: noDatabase })).status).toBe(200)
     expect(await everything()).toBe(before)
     const i = recoverOf(asked.intent)
     const hash = await credentialHash(asked.key.id, i.credential!.publicKey)
     expect(i).toEqual({
-      kind: 'replace', org: o.orgId, seat: asked.seat, nonce: expect.stringMatching(/^0x[0-9a-f]{64}$/), phrase: asked.body.phrase.join(' '), credentialHash: `0x${hexOf(hash)}`,
+      kind: 'replace', org: o.orgId, seat: asked.seat, nonce: expect.stringMatching(/^0x[0-9a-f]{64}$/), credentialHash: `0x${hexOf(hash)}`,
       credential: { id: asked.key.id, publicKey: expect.any(String), counter: expect.any(Number), transports: expect.any(Array) }, issuedAt: now / 1000, expiresAt: now / 1000 + WEEK / 1000, site: 'localhost',
     })
     expect(asked.body).toMatchObject({ link: `${SIGN}/sign/#${asked.intent}`, expiresAt: now + WEEK })
-    // The three words: as in the enrolment ceremony (section j), for the seat made here, an Owner, with the purpose "recovery".
-    expect(asked.body.phrase).toEqual(await phraseFor({ site: 'localhost', orgId: o.orgId, seatId: asked.seat, role: 'owner', purpose: 'recovery', credentialHash: hash, nonce: i.nonce.slice(2) }))
     expect(recoverOf((await askRecovery(o.orgId, { override: true })).intent).kind).toBe('override')
     expect(recoverOf((await askRecovery(o.orgId, { override: 'yes', kind: 'cancel' })).intent).kind).toBe('replace')
     for (const organisationId of ['', 'x', o.orgId.toUpperCase(), `${o.orgId}0`, 5, null]) {
@@ -4232,7 +4118,7 @@ describe('B. last-Owner recovery by the recovery wallet', () => {
     expect((await requestRecovery(o.orgId, accounts[1])).proved.body).toMatchObject({ state: 'waiting' })
   })
 
-  it('P1: the recovery wallet signs exactly these fields: another organisation, site, chain, wallet, sentence, passkey, phrase, nonce or date is refused, and so is an organisation that is not active', async () => {
+  it('P1: the recovery wallet signs exactly these fields: another organisation, site, chain, wallet, sentence, passkey, nonce or date is refused, and so are the struct with the three words and an organisation that is not active', async () => {
     const { o } = await soloWithWallet(await owner())
     const other = await owner('Another organisation')
     const asked = await askRecovery(o.orgId)
@@ -4244,13 +4130,13 @@ describe('B. last-Owner recovery by the recovery wallet', () => {
       types: {
         EIP712Domain: [{ name: 'name', type: 'string' }, { name: 'version', type: 'string' }, { name: 'chainId', type: 'uint256' }],
         Proof: [{ name: 'action', type: 'string' }, { name: 'site', type: 'string' }, { name: 'organisationId', type: 'string' }, { name: 'wallet', type: 'address' }, { name: 'credentialHash', type: 'bytes32' },
-          { name: 'phrase', type: 'string' }, { name: 'nonce', type: 'bytes32' }, { name: 'issuedAt', type: 'uint64' }, { name: 'expiresAt', type: 'uint64' }],
+          { name: 'nonce', type: 'bytes32' }, { name: 'issuedAt', type: 'uint64' }, { name: 'expiresAt', type: 'uint64' }],
       },
-      message: { action: PROOF_ACTION.replace, site: 'localhost', organisationId: o.orgId, wallet, credentialHash: f.credentialHash, phrase: f.phrase, nonce: f.nonce, issuedAt: f.issuedAt, expiresAt: f.expiresAt },
+      message: { action: PROOF_ACTION.replace, site: 'localhost', organisationId: o.orgId, wallet, credentialHash: f.credentialHash, nonce: f.nonce, issuedAt: f.issuedAt, expiresAt: f.expiresAt },
     })
     const changes: Record<string, Partial<Parameters<typeof typedProof>[0]>> = {
       'another organisation': { organisationId: other.orgId }, 'another site': { site: 'business.evil.example' }, 'another chain': { chainId: 1 }, 'another wallet': { wallet: accounts[1].address },
-      'the cancel sentence': { kind: 'cancel' }, 'the override sentence': { kind: 'override' }, 'another passkey': { credentialHash: `0x${'22'.repeat(32)}` }, 'other words': { phrase: `${f.phrase} ` },
+      'the cancel sentence': { kind: 'cancel' }, 'the override sentence': { kind: 'override' }, 'another passkey': { credentialHash: `0x${'22'.repeat(32)}` },
       'another nonce': { nonce: `0x${'33'.repeat(32)}` }, 'another issue date': { issuedAt: f.issuedAt + 1 }, 'another expiry': { expiresAt: f.expiresAt + 1 },
     }
     const rows = await snapshot()
@@ -4258,6 +4144,7 @@ describe('B. last-Owner recovery by the recovery wallet', () => {
       await uncount()
       expect((await prove(asked.intent, await accounts[0].signTypedData(typedRecover(f, wallet, change)))).body, what).toEqual(REJECTED)
     }
+    expect((await prove(asked.intent, await accounts[0].signTypedData(withPhrase(typedRecover(f, wallet))))).body).toEqual(REJECTED)
     // A Link message with the same organisation, wallet, nonce and dates is not a Proof.
     expect((await prove(asked.intent, await accounts[0].signTypedData(typedLink({ chainId: CHAIN, site: f.site, organisationId: f.org, wallet, nonce: f.nonce, issuedAt: f.issuedAt, expiresAt: f.expiresAt }) as never))).body).toEqual(REJECTED)
     const signature = await accounts[0].signTypedData(typedRecover(f, wallet))
@@ -5224,7 +5111,7 @@ describe('E. account recovery: a stop undoes all of it, the organisation is read
     const link2 = await issue(ad, { seatId: x.seatId })
     const made = await enrolLink(link2.body.link)
     now += MIN
-    expect((await confirm(ad, link2.body.ticketId, made.words, ad.key)).body.state).toBe('active')
+    expect((await confirm(ad, link2.body.ticketId, ad.key)).body.state).toBe('active')
     const good = await again({ key: made.key, cookie: '' })
     const goodMore = await addKey(good)
     // Not under the recovery: the Admin, whom nobody re-enrolled yet, re-enrols a Trader.
@@ -5234,7 +5121,7 @@ describe('E. account recovery: a stop undoes all of it, the organisation is read
     const link1 = await issue(n, { seatId: v.seatId })
     const one = await enrolLink(link1.body.link)
     now += MIN
-    expect((await confirm(n, link1.body.ticketId, one.words, n.key)).body.state).toBe('active')
+    expect((await confirm(n, link1.body.ticketId, n.key)).body.state).toBe('active')
     const two = await ceremony(ad, { seatId: a.seatId }, n)
     // A member the new Owner re-enrolled stops that with the passkey they hold: their seat is frozen and their passkeys are back already.
     const five = await ceremony(n, { seatId: w.seatId })
@@ -5565,9 +5452,9 @@ describe('E. onboarding: a company applies, proves its domain, is activated and 
     return { ...a, key2: second.key }
   }
   const undeclared = (domain?: string) => applicantWithTwoKeys(domain, false)
-  interface ActivateFields { kind: 'activate'; org: string; chainId: number; wallet: string; label: string; custodian: boolean; credentialHash: string; phrase: string; nonce: string; issuedAt: number; expiresAt: number; site: string }
+  interface ActivateFields { kind: 'activate'; org: string; chainId: number; wallet: string; label: string; custodian: boolean; credentialHash: string; nonce: string; issuedAt: number; expiresAt: number; site: string }
   const typedActivate = (i: ActivateFields, change: Partial<Parameters<typeof typedProof>[0]> = {}) =>
-    typedProof({ kind: 'activate', chainId: i.chainId, site: i.site, organisationId: i.org, wallet: i.wallet, credentialHash: i.credentialHash, phrase: i.phrase, nonce: i.nonce, issuedAt: i.issuedAt, expiresAt: i.expiresAt, ...change }) as never
+    typedProof({ kind: 'activate', chainId: i.chainId, site: i.site, organisationId: i.org, wallet: i.wallet, credentialHash: i.credentialHash, nonce: i.nonce, issuedAt: i.issuedAt, expiresAt: i.expiresAt, ...change }) as never
   const nameWallet = (m: Holder, address: string, more: Record<string, unknown> = {}) => post('/api/onboarding/wallet', m, { chainId: CHAIN, address, label: 'Treasury', custodian: false, ...more })
   // The Owner names the recovery wallet, the wallet signs with its own key, the signing page posts the proof.
   async function activation(m: Holder, account = accounts[0], more: Record<string, unknown> = {}) {
@@ -6004,7 +5891,7 @@ describe('E. onboarding: a company applies, proves its domain, is activated and 
 
   // ---- A6: activation by the recovery wallet ----
 
-  it('A6: the Owner names the wallet and gets the server\'s own text: the fourth action, the first Owner\'s passkey hash and three words; nothing is written', async () => {
+  it('A6: the Owner names the wallet and gets the server\'s own text: the fourth action and the first Owner\'s passkey hash; nothing is written', async () => {
     const a = await applicantWithTwoKeys()
     const rows = await snapshot([...TABLES, COUNTER])
     const asked = await nameWallet(a, accounts[0].address.toLowerCase())
@@ -6013,20 +5900,16 @@ describe('E. onboarding: a company applies, proves its domain, is activated and 
     const f = fieldsOf<ActivateFields>(asked.body.intent)
     const first = (await row<{ public_key: string }>('SELECT public_key FROM credentials WHERE id = ?', a.key.id))!
     const hash = await credentialHash(a.key.id, first.public_key)
-    // The words: the recipe of every phrase, purpose "activation", with a nonce that is a MAC over organisation and passkey.
-    const nonce = Array.from(fromBase64Url((await seal(testEnv.CHALLENGE_KEY, 'activation-phrase', { org: a.orgId, credential: a.key.id })).split('.')[1]).subarray(0, 16), (b) => b.toString(16).padStart(2, '0')).join('')
-    const words = await phraseFor({ site: 'localhost', orgId: a.orgId, seatId: a.seatId, role: 'owner', purpose: 'activation', credentialHash: hash, nonce })
     expect(f).toEqual({
-      kind: 'activate', org: a.orgId, seat: a.seatId, chainId: CHAIN, wallet: accounts[0].address, label: 'Treasury', custodian: false, phrase: words.join(' '), site: 'localhost',
+      kind: 'activate', org: a.orgId, seat: a.seatId, chainId: CHAIN, wallet: accounts[0].address, label: 'Treasury', custodian: false, site: 'localhost',
       credentialHash: `0x${Array.from(hash, (b) => b.toString(16).padStart(2, '0')).join('')}`, nonce: expect.stringMatching(/^0x[0-9a-f]{64}$/), issuedAt: START / 1000, expiresAt: START / 1000 + 7 * 24 * 3600,
     })
-    expect(asked.body).toMatchObject({ link: `${SIGN}/sign/#${asked.body.intent}`, phrase: words, expiresAt: START + 7 * DAY })
-    for (const word of words) expect(WORDS).toContain(word)
-    // The same words on the Owner's page, whoever looks and whenever; the second passkey has others.
+    expect(asked.body).toEqual({ intent: asked.body.intent, link: `${SIGN}/sign/#${asked.body.intent}`, expiresAt: START + 7 * DAY })
+    // The same passkey hash on the Owner's page, and in an intent for another wallet.
     const view = await call('GET', '/api/onboarding', { cookie: a.cookie })
-    expect(view.body.first).toEqual({ phrase: words, credentialHash: f.credentialHash, active: true, name: 'Maren Okafor' })
-    expect(fieldsOf<ActivateFields>((await nameWallet(a, accounts[1].address)).body.intent)).toMatchObject({ phrase: f.phrase, credentialHash: f.credentialHash })
-    expect(typedActivate(f)).toMatchObject({ primaryType: 'Proof', domain: { name: 'Ophis Business', version: '1', chainId: CHAIN }, message: { action: 'Activate this organisation and confirm its first Owner passkey', organisationId: a.orgId, wallet: accounts[0].address, credentialHash: f.credentialHash, phrase: f.phrase } })
+    expect(view.body.first).toEqual({ credentialHash: f.credentialHash, active: true, name: 'Maren Okafor' })
+    expect(fieldsOf<ActivateFields>((await nameWallet(a, accounts[1].address)).body.intent)).toMatchObject({ credentialHash: f.credentialHash })
+    expect(typedActivate(f)).toMatchObject({ primaryType: 'Proof', domain: { name: 'Ophis Business', version: '1', chainId: CHAIN }, message: { action: 'Activate this organisation and confirm its first Owner passkey', organisationId: a.orgId, wallet: accounts[0].address, credentialHash: f.credentialHash } })
     for (const [body, error] of [[{ chainId: 5 }, 'chain_invalid'], [{ address: '0x12' }, 'address_invalid'], [{ label: '<b>' }, 'label_invalid'], [{ custodian: 'yes' }, 'invalid']] as const) {
       expect((await nameWallet(a, accounts[0].address, body)).body, error).toEqual({ error })
     }
@@ -6045,12 +5928,13 @@ describe('E. onboarding: a company applies, proves its domain, is activated and 
     const rows = await snapshot()
     const changes: Partial<Parameters<typeof typedProof>[0]>[] = [
       { kind: 'replace' }, { kind: 'override' }, { kind: 'cancel' }, { site: 'evil.example' }, { organisationId: '0'.repeat(32) }, { wallet: accounts[1].address }, { chainId: 1 },
-      { credentialHash: `0x${'11'.repeat(32)}` }, { phrase: WRONG }, { nonce: `0x${'22'.repeat(32)}` }, { issuedAt: f.issuedAt + 1 }, { expiresAt: f.expiresAt + 1 },
+      { credentialHash: `0x${'11'.repeat(32)}` }, { nonce: `0x${'22'.repeat(32)}` }, { issuedAt: f.issuedAt + 1 }, { expiresAt: f.expiresAt + 1 },
     ]
     for (const change of changes) {
       expect((await prove(intent, await accounts[0].signTypedData(typedActivate(f, change)))).body, JSON.stringify(change)).toEqual({ error: 'signature_rejected' })
       await uncount() // 10 proof checks per organisation per hour, as for every proof (section B)
     }
+    expect((await prove(intent, await accounts[0].signTypedData(withPhrase(typedActivate(f))))).body).toEqual({ error: 'signature_rejected' })
     expect((await prove(intent, await accounts[1].signTypedData(typedActivate(f)))).body).toEqual({ error: 'signature_rejected' })
     // A Link message with the same fields is not this Proof.
     expect((await prove(intent, await accounts[0].signTypedData(typedLink({ chainId: CHAIN, site: f.site, organisationId: f.org, wallet: f.wallet, nonce: f.nonce, issuedAt: f.issuedAt, expiresAt: f.expiresAt }) as never))).body).toEqual({ error: 'signature_rejected' })
@@ -6220,7 +6104,7 @@ describe('E. onboarding: a company applies, proves its domain, is activated and 
     const joined = await enrolLink(invited.body.link)
     expect([joined.status, await submitted()]).toEqual([200, false])
     await again2()
-    expect((await confirm(a, invited.body.ticketId, joined.words, a.key)).body.state).toBe('wait')
+    expect((await confirm(a, invited.body.ticketId, a.key)).body.state).toBe('wait')
     expect(await submitted()).toBe(true) // the words typed: neither a seat nor a passkey changed
     now += WAIT + MIN
     expect((await signIn(joined.key)).status).toBe(200) // the passkey becomes active
@@ -6293,8 +6177,8 @@ describe('E. onboarding: a company applies, proves its domain, is activated and 
     // An invited seat nobody enrolled on is not a person yet; a member with a passkey is.
     const link = await issue(a, { displayName: 'Vera Viewer', role: 'viewer' })
     expect((await call('GET', '/api/onboarding', { cookie: a.cookie })).body.missing).toBeNull()
-    const joined = await enrolLink(link.body.link)
-    expect((await confirm(a, link.body.ticketId, joined.words, a.key)).body.state).toBe('active')
+    await enrolLink(link.body.link)
+    expect((await confirm(a, link.body.ticketId, a.key)).body.state).toBe('active')
     const rows = await snapshot()
     const refused = await submit(a)
     expect([refused.status, refused.body]).toEqual([409, { error: 'single_key' }])
@@ -6361,7 +6245,7 @@ describe('E. onboarding: a company applies, proves its domain, is activated and 
     expect(onboardingSource).toContain(`if (env.ENVIRONMENT !== 'local') return fail(404, 'not_found')`)
   })
 
-  it('A8: the list holds what is under review, with what the operator compares: the domain, the first Owner\'s words and passkey hash, the recovery wallet, its kind and colour', async () => {
+  it('A8: the list holds what is under review, with what the operator compares: the domain, the first Owner\'s passkey hash, the recovery wallet, its kind and colour', async () => {
     const a = await applicantWithTwoKeys('alder-list.example')
     const mine = async () => ((await op('GET', '/api/operator/organisations')).body.organisations as { id: string }[]).filter((o) => o.id === a.orgId)
     expect(await mine()).toEqual([]) // not submitted
@@ -6372,7 +6256,7 @@ describe('E. onboarding: a company applies, proves its domain, is activated and 
     const view = (await call('GET', '/api/onboarding', { cookie: a.cookie })).body
     expect(await mine()).toEqual([{
       id: a.orgId, legalName: 'Alder Custody S.A.', kind: 'institution', country: 'LU', registration: 'B123456', domain: 'alder-list.example', submittedAt: now, submission: await submissionOf(a.orgId),
-      phrase: view.first.phrase, credentialHash: view.first.credentialHash, missing: null, declaration: view.sealed, refused: [],
+      credentialHash: view.first.credentialHash, missing: null, declaration: view.sealed, refused: [],
       wallet: { chainId: CHAIN, chain: 'OP Mainnet', address: accounts[4].address, kind: 'safe', label: 'Treasury', inForce: false, threshold: 2, owners: 3, colour: { level: 'green', why: null } },
     }])
     // The colour is read on the chain now: a module added since the proof shows.
@@ -8331,7 +8215,7 @@ describe('G. company sign-in: a company account proves who a new passkey belongs
     return { ...o, domain, provider: provider as Provider }
   }
   type Org = Awaited<ReturnType<typeof company>>
-  // Colleagues made by the helpers of the earlier sections join with three words: make them first, then set the company sign-in.
+  // Colleagues made by the helpers of the earlier sections join without a company sign-in: make them first, then set the company sign-in.
   async function pin<T extends Org>(o: T, provider: Provider) {
     await db.prepare('UPDATE organisations SET company_signin = ?, company_tenant = ? WHERE id = ?').bind(provider, provider === 'google' ? o.domain : TID(o.domain), o.orgId).run()
     o.provider = provider
@@ -8355,7 +8239,7 @@ describe('G. company sign-in: a company account proves who a new passkey belongs
     const asked = await inviteTo(o, { displayName: 'Vera Viewer', role, email })
     const j = await join(o, asked.body.link, email)
     expect([asked.status, j.came.outcome, j.stored?.status]).toEqual([200, 'ok', 200])
-    const approved = await confirm(o, asked.body.ticketId, '', o.key)
+    const approved = await confirm(o, asked.body.ticketId, o.key)
     return { ...j, email, seatId: asked.body.seatId as string, ticketId: asked.body.ticketId as string, approved }
   }
   const seatRow = (seatId: string) => row<{ idp: string | null; idp_tenant: string | null; idp_subject: string | null; email: string | null; state: string }>('SELECT idp, idp_tenant, idp_subject, email, state FROM seats WHERE id = ?', seatId)
@@ -8563,7 +8447,7 @@ describe('G. company sign-in: a company account proves who a new passkey belongs
 
   // ---- C2, C4: the path of a link ----
 
-  it('C2, C4: the path is the organisation\'s choice, not the invitee\'s: no passkey is stored on a link that still lacks the company sign-in, and a three-word link takes no company sign-in', async () => {
+  it('C2, C4: the path is the organisation\'s choice, not the invitee\'s: no passkey is stored on a link that still lacks the company sign-in, and a link of the setting "none" takes no company sign-in', async () => {
     const o = await company('microsoft')
     // The inviter names a work address at the proven domain or a subdomain of it.
     for (const email of [undefined, '', 7, 'vera', 'vera@other.example', `vera@evil${o.domain}`, `vera@${o.domain}.evil.example`, `vera@${o.domain}@gmail.com`]) {
@@ -8585,7 +8469,7 @@ describe('G. company sign-in: a company account proves who a new passkey belongs
     const ours = { ...options, challenge: await newChallenge(testEnv.CHALLENGE_KEY, 'enrol', asked.body.ticketId, now) }
     const response = await key.register(ours)
     const rows = await snapshot()
-    for (const more of [{}, { words: WRONG }, { company: null }, { idp: null, path: 'words', confirmed: true }]) {
+    for (const more of [{}, { company: null }, { idp: null, path: 'none', confirmed: true }]) {
       const refused = await call('POST', '/api/enrol/finish', { body: { ticket, label: 'Key', response, ...more } })
       expect([refused.status, refused.body], JSON.stringify(more)).toEqual([403, { error: 'company_signin_required' }])
     }
@@ -8598,7 +8482,7 @@ describe('G. company sign-in: a company account proves who a new passkey belongs
     const j = await join(o, asked.body.link, `ada@mail.${o.domain}`)
     expect([j.came.outcome, j.stored?.status, j.stored?.body]).toEqual(['ok', 200, { state: 'pending' }])
     expect((await call('POST', '/api/enrol/company', { body: { ticket } })).status).toBe(404) // the link is used
-    // A three-word link (the setting "none", or not chosen): no company sign-in, whoever asks; the words as built.
+    // A link of the setting "none", or not chosen: no company sign-in, whoever asks; the issuer confirms.
     for (const setting of ['none', null] as const) {
       const plain = await company(setting)
       const link = await inviteTo(plain, { displayName: 'Vera Viewer', role: 'viewer', email: `vera@${plain.domain}` })
@@ -8607,9 +8491,8 @@ describe('G. company sign-in: a company account proves who a new passkey belongs
       const refused = await call('POST', '/api/enrol/company', { body: { ticket: ticketOfLink(link.body.link), provider: 'microsoft' } })
       expect([refused.status, refused.body, refused.headers.get('set-cookie')], String(setting)).toEqual([409, { error: 'not_company' }, null])
       const member = await enrolLink(link.body.link)
-      expect(member.body.phrase).toHaveLength(3)
-      expect((await confirm(plain, link.body.ticketId, '', plain.key)).body).toEqual({ error: 'words_invalid' })
-      expect((await confirm(plain, link.body.ticketId, member.words, plain.key)).body).toEqual({ state: 'active' })
+      expect(member.body).toEqual({ state: 'pending' })
+      expect((await confirm(plain, link.body.ticketId, plain.key)).body).toEqual({ state: 'active' })
       expect(await seatRow(link.body.seatId)).toMatchObject({ idp: null, idp_subject: null })
       expect((await inviteTo(plain, { displayName: 'Ken Compliance', role: 'compliance' })).body.expiresAt).toBe(now + 10 * MIN) // a key role, as built
     }
@@ -8646,33 +8529,30 @@ describe('G. company sign-in: a company account proves who a new passkey belongs
     // The seat waits: the passkey is pending and signs in to nothing.
     expect([(await seatRow(asked.body.seatId))!.state, await credentialState(j.key), (await signIn(j.key)).status]).toEqual(['invited', 'pending', 401])
     expect((await list(o))[0]).toMatchObject({ status: 'issuer', myStep: 'issuer', company: { provider: 'microsoft', email, confirmedAt: now, deviceBound: true } })
-    // No words on this path: no answer to anyone holds any.
-    const bodies = JSON.stringify([j.stored?.body, await list(o), await list(second)])
-    for (const word of await phraseFor({ site: 'localhost', orgId: o.orgId, seatId: asked.body.seatId, role: 'viewer', purpose: 'invitation', credentialHash: await credentialHash(j.key.id, (await row<{ public_key: string }>('SELECT public_key FROM credentials WHERE id = ?', j.key.id))!.public_key), nonce: (await row<{ nonce: string }>('SELECT nonce FROM enrolment_tickets WHERE id = ?', asked.body.ticketId))!.nonce })) expect(bodies).not.toContain(`"${word}"`)
     // The approval is the inviter's: not another Owner's, not an Admin's; and it is a passkey check made for this link.
-    for (const m of [second, admin]) expect((await confirm(m, asked.body.ticketId, '', m.key)).status).toBe(404)
-    expect((await confirm(o, asked.body.ticketId, '', o.key, { userVerified: false })).body).toEqual({ error: 'passkey_rejected' })
+    for (const m of [second, admin]) expect((await confirm(m, asked.body.ticketId, m.key)).status).toBe(404)
+    expect((await confirm(o, asked.body.ticketId, o.key, { userVerified: false })).body).toEqual({ error: 'passkey_rejected' })
     const start = await post(`/api/tickets/${asked.body.ticketId}/confirm/start`, o)
     expect((await post(`/api/tickets/${asked.body.ticketId}/confirm`, o, { response: await second.key.authenticate(start.body.options) })).body).toEqual({ error: 'passkey_rejected' })
     expect(await credentialState(j.key)).toBe('pending')
-    expect((await confirm(o, asked.body.ticketId, WRONG, o.key)).body).toEqual({ state: 'active' }) // whatever is typed is not read
+    expect((await confirm(o, asked.body.ticketId, o.key)).body).toEqual({ state: 'active' })
     // The seat is linked to the account the provider confirmed, and the member signs in with the passkey.
     expect(await seatRow(asked.body.seatId)).toEqual({ idp: 'microsoft', idp_tenant: TID(o.domain), idp_subject: SUB(email), email, state: 'active' })
     expect((await signIn(j.key)).status).toBe(200)
     // A key role: the inviter's approval is not enough.
     const boss = await inviteTo(o, { displayName: 'Ada Admin', role: 'admin', email: `ada@${o.domain}` })
     const b = await join(o, boss.body.link, `ada@${o.domain}`)
-    expect((await confirm(o, boss.body.ticketId, '', o.key)).body).toEqual({ state: 'second' })
+    expect((await confirm(o, boss.body.ticketId, o.key)).body).toEqual({ state: 'second' })
     expect([await credentialState(b.key), (await seatRow(boss.body.seatId))!.state]).toEqual(['pending', 'invited'])
-    expect((await confirm(o, boss.body.ticketId, '', o.key)).status).toBe(404) // not the inviter twice
+    expect((await confirm(o, boss.body.ticketId, o.key)).status).toBe(404) // not the inviter twice
     expect((await list(admin)).map((t) => [t.id, t.myStep, t.company])).toEqual([[boss.body.ticketId, 'second', { provider: 'microsoft', email: `ada@${o.domain}`, confirmedAt: now, deviceBound: true }]])
-    expect((await confirm(admin, boss.body.ticketId, '', admin.key)).body).toEqual({ state: 'active' })
+    expect((await confirm(admin, boss.body.ticketId, admin.key)).body).toEqual({ state: 'active' })
     expect(await seatRow(boss.body.seatId)).toMatchObject({ idp_subject: SUB(`ada@${o.domain}`), state: 'active' })
     // Alone (no other key-role seat in 30 days): the 72 hour wait, as built.
     const solo = await company('google')
     const late = await inviteTo(solo, { displayName: 'Ada Admin', role: 'admin', email: `ada@${solo.domain}` })
     const l = await join(solo, late.body.link, `ada@${solo.domain}`)
-    expect((await confirm(solo, late.body.ticketId, '', solo.key)).body).toEqual({ state: 'wait', waitUntil: now + WAIT })
+    expect((await confirm(solo, late.body.ticketId, solo.key)).body).toEqual({ state: 'wait', waitUntil: now + WAIT })
     now += WAIT - 1
     expect((await signIn(l.key)).status).toBe(401)
     now += 1
@@ -8703,7 +8583,7 @@ describe('G. company sign-in: a company account proves who a new passkey belongs
     // The linked account: the new passkey, the inviter's approval, and the re-enrolment as built: old passkey suspended with its stop right, quarantine.
     const again2 = await join(o, re.body.link, v.email)
     expect([again2.came.outcome, again2.stored?.status]).toEqual(['ok', 200])
-    expect((await confirm(o, re.body.ticketId, '', o.key)).body).toEqual({ state: 'active' })
+    expect((await confirm(o, re.body.ticketId, o.key)).body).toEqual({ state: 'active' })
     expect([await credentialState(v.key), await credentialState(again2.key)]).toEqual(['suspended', 'active'])
     expect((await row<{ quarantine_until: number }>('SELECT quarantine_until FROM seats WHERE id = ?', v.seatId))!.quarantine_until).toBe(now + 24 * HOUR)
     expect((await signIn(v.key)).body).toMatchObject({ error: 'passkey_replaced', until: now + 24 * HOUR })
@@ -8718,7 +8598,7 @@ describe('G. company sign-in: a company account proves who a new passkey belongs
     await db.prepare(`UPDATE seats SET state = 'removed' WHERE id = ?`).bind(v.seatId).run() // once that seat is removed the account is free
     const free = await begin('/api/enrol/company', { ticket: ticketOfLink(twin.body.link) })
     expect((await back(free, claimsFor('microsoft', free, v.email))).outcome).toBe('ok')
-    // A seat that is not linked (it joined with three words, or under another provider or tenant): the inviter names the address, as for an invitation.
+    // A seat that is not linked (it joined without a company sign-in, or under another provider or tenant): the inviter names the address, as for an invitation.
     for (const link of [null, ['google', o.domain, SUB(`old@${o.domain}`)], ['google', TID(o.domain), SUB(`old@${o.domain}`)], ['microsoft', TID('other.example'), SUB(`old@${o.domain}`)]] as const) {
       await db.prepare('UPDATE seats SET idp = ?, idp_tenant = ?, idp_subject = ? WHERE id = ?').bind(link?.[0] ?? null, link?.[1] ?? null, link?.[2] ?? null, old.seatId).run()
       expect((await inviteTo(o, { seatId: old.seatId })).body, String(link)).toEqual({ error: 'email_required' })
@@ -8728,7 +8608,7 @@ describe('G. company sign-in: a company account proves who a new passkey belongs
     const wrong = await begin('/api/enrol/company', { ticket: ticketOfLink(named.body.link) })
     expect((await back(wrong, claimsFor('microsoft', wrong, `mallory@${o.domain}`))).outcome).toBe('email')
     const k = await join(o, named.body.link, `old@${o.domain}`)
-    expect((await confirm(o, named.body.ticketId, '', o.key)).body).toEqual({ state: 'active' })
+    expect((await confirm(o, named.body.ticketId, o.key)).body).toEqual({ state: 'active' })
     expect(await seatRow(old.seatId)).toEqual({ idp: 'microsoft', idp_tenant: TID(o.domain), idp_subject: SUB(`old@${o.domain}`), email: `old@${o.domain}`, state: 'active' })
     expect([await credentialState(old.key), await credentialState(k.key)]).toEqual(['suspended', 'active'])
   })
@@ -8859,14 +8739,14 @@ describe('G. company sign-in: a company account proves who a new passkey belongs
     expect(idpStub).toContain(`const CALLBACK = 'http://localhost:8787/api/company/callback'`)
   })
 
-  it('C4, C7: the words of the interface: the three words are sent over a trusted channel, not read aloud; no claim of a licence; the stand-in says what it is', () => {
+  it('C4, C7: the words of the interface: no three words are left anywhere; no claim of a licence; the stand-in says what it is', () => {
     const came = /export const CAME: Record<string, string> = \{([\s\S]*?)\n\}/.exec(uiSource)![1]
     const events = Object.entries(EVENTS).filter(([action]) => /company/.test(action)).map(([, words]) => words).join(' ')
     for (const banned of [/licen[cs]ed|regulated|authorised|authorized|MiCA|compliant/i, /—/, /honest/i, /\banchor\b/i]) for (const said of [came, events, idpStub.replace(/^\/\/.*$/gm, '')]) expect(said).not.toMatch(banned)
     // Every outcome of the callback has its sentence, except "ok", after which the page goes on.
     for (const outcome of ['applied', 'requested', 'expired', 'state', 'cancelled', 'unavailable', 'rejected', 'link', 'tenant', 'email', 'account', 'in_use', 'domain', 'forbidden', 'invalid', 'account_in_use', 'already_requested']) expect(came, outcome).toMatch(new RegExp(`\\n  ${outcome}: '`))
-    expect(pagesSource).not.toMatch(/aloud to the colleague|Three words heard|they read to you/)
-    expect(pagesSource).toContain('Send these words to the colleague who invited you, over a channel you both trust')
+    // The three words were removed (2026-11-13): no page, signing page, server text or help text names them.
+    for (const [file, source] of Object.entries({ pagesSource, uiSource, onboardingPage, signHtml, ...signSource, ...serverSources })) expect(source, file).not.toMatch(/three.word/i)
     expect(idpStub).toContain('Test only. This is not ${NAME[provider]}: no real account and no password.')
   })
 
@@ -9051,7 +8931,7 @@ describe('G. company sign-in: a company account proves who a new passkey belongs
     const free = await begin('/api/enrol/company', { ticket: ticketOfLink(d.body.link) })
     expect((await back(free, claimsFor('microsoft', free, `tom@${o.domain}`))).outcome).toBe('ok')
     // The first link is approved: the seat is linked. The schema allows no second live seat with that account, whatever the code does.
-    expect((await confirm(o, a.body.ticketId, '', o.key)).body).toEqual({ state: 'active' })
+    expect((await confirm(o, a.body.ticketId, o.key)).body).toEqual({ state: 'active' })
     const twin = db.prepare('UPDATE seats SET idp = ?, idp_tenant = ?, idp_subject = ? WHERE id = ?').bind('microsoft', TID(o.domain), SUB(email), b.body.seatId)
     await expect(twin.run()).rejects.toThrow(/UNIQUE constraint failed/)
     await db.prepare(`UPDATE seats SET state = 'removed' WHERE id = ?`).bind(a.body.seatId).run() // a removed seat frees its account

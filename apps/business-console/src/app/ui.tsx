@@ -37,13 +37,11 @@ const SAY: Record<string, string> = {
   forbidden: 'Your role cannot do this.',
   ticket_limit: 'Three links for one member in 24 hours is the limit. Another Owner or Admin can issue one.',
   not_found: 'This is no longer open. Reload the page.',
-  words_invalid: 'Type the three words exactly as they reached you. One of them is not a word of the list.',
   email_required: 'Enter the work address of the member, at your company domain or a subdomain of it. It is the company account they sign in with.',
   company_signin_required: 'Sign in with your company account first.',
   company_signin_unavailable: 'The company sign-in is not available right now. Try again in a moment.',
   no_domain: 'This organisation has no proven company domain, so a company sign-in cannot be pinned.',
   account_in_use: 'That company account already belongs to another member of this organisation.',
-  ticket_dead: 'Three wrong tries. The link and the pending passkey are cancelled. Start again with a new link.',
   try_again: 'Something else changed at the same moment. Try again.',
   device_bound_required: 'This role needs a hardware security key. A passkey that syncs to a cloud account is not accepted.',
   label_invalid: 'Give the key a short name: letters, digits and spaces, 40 characters at most.',
@@ -80,9 +78,7 @@ const SAY: Record<string, string> = {
   org_inactive: 'The organisation is not active.',
   wallet_unreadable: 'The Safe could not be read on both network endpoints just now. Try again in a minute.',
 }
-export const say = (data: { error?: string; left?: number }) =>
-  data.error === 'wrong_words' ? `Those are not the words. ${data.left === 1 ? 'One try' : `${data.left} tries`} left.`
-  : SAY[data.error ?? ''] ?? 'That did not work. Reload the page and try again.'
+export const say = (data: { error?: string }) => SAY[data.error ?? ''] ?? 'That did not work. Reload the page and try again.'
 /** The two providers of a company sign-in, by the server's code. */
 export const PROVIDER: Record<string, string> = { microsoft: 'Microsoft', google: 'Google' }
 // What the company sign-in's callback says when it sends the browser back (/?company=<word>). "ok": nothing to say, the page goes on.

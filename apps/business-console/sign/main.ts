@@ -10,7 +10,7 @@ import '../src/app/app.css'
 import './sign.css'
 import { CHAIN_NAME, PROOF_ACTION, typedLink, typedProof, type ProofKind, type Typed } from '../src/server/typed.ts'
 
-interface Request { org: string; chainId: number; wallet: string; nonce: string; issuedAt: number; expiresAt: number; site: string; kind?: ProofKind; phrase?: string; credentialHash?: string }
+interface Request { org: string; chainId: number; wallet: string; nonce: string; issuedAt: number; expiresAt: number; site: string; kind?: ProofKind; credentialHash?: string }
 interface Provider { request(call: { method: string; params?: unknown[] }): Promise<unknown> }
 const $ = (id: string) => document.getElementById(id)!
 const SAY: Record<string, string> = {
@@ -40,9 +40,9 @@ const SAY: Record<string, string> = {
   first_passkey_gone: 'The passkey this request confirms is no longer active. Ask the Owner for a new link.',
 }
 const TITLE: Record<string, [plain: string, emphasised: string, lede: string]> = {
-  replace: ['Restore access ', 'to an organisation', 'Someone asks the recovery wallet of an organisation to replace all its Owner passkeys with a new one. If you sign, a wait of 72 hours starts, and then that person is an Owner. Sign only if the person is known to you, read you the three words below, and the organisation id matches the recovery sheet.'],
-  override: ['Restore access, ', 'overriding the Owners', 'Someone asks the recovery wallet of an organisation to replace all its Owner passkeys, against its Owners: they cannot cancel or stop it. Sign only if the signers of this wallet decided so together, the person read you the three words below, and the organisation id matches the recovery sheet.'],
-  activate: ['Activate ', 'a new organisation', 'A new organisation names this wallet as its recovery wallet, and asks it to confirm the passkey of its first Owner. Sign only if the Owner is known to you, read you the three words below, and the organisation id matches what the Owner shows you. Later this wallet can restore access to the organisation.'],
+  replace: ['Restore access ', 'to an organisation', 'Someone asks the recovery wallet of an organisation to replace all its Owner passkeys with a new one. If you sign, a wait of 72 hours starts, and then that person is an Owner. Sign only if the request comes from your colleague by a channel you trust, and the organisation id matches the recovery sheet.'],
+  override: ['Restore access, ', 'overriding the Owners', 'Someone asks the recovery wallet of an organisation to replace all its Owner passkeys, against its Owners: they cannot cancel or stop it. Sign only if the signers of this wallet decided so together, the request comes from your colleague by a channel you trust, and the organisation id matches the recovery sheet.'],
+  activate: ['Activate ', 'a new organisation', 'A new organisation names this wallet as its recovery wallet, and asks it to confirm the passkey of its first Owner. Sign only if the request comes from the Owner by a channel you trust, and the organisation id matches what the Owner shows you. Later this wallet can restore access to the organisation.'],
   cancel: ['Cancel ', 'an account recovery', 'This cancels the account recovery with the request number below. Nothing else changes, and a new request can start 24 hours later.'],
 }
 // Inside the Safe interface the page is framed, and the Safe signs. Outside it, the wallet of this browser does.
@@ -68,7 +68,7 @@ function read(code: string) {
     request = JSON.parse(new TextDecoder().decode(Uint8Array.from(atob(sealed.split('.')[0].replace(/-/g, '+').replace(/_/g, '/')), (c) => c.charCodeAt(0)))) as Request
     // An activation (milestone 5) is a Proof that names its wallet and chain, as a link does.
     const recovery = request.kind !== undefined && request.kind !== 'activate'
-    if (request.kind !== undefined && (!Object.hasOwn(PROOF_ACTION, request.kind!) || typeof request.phrase !== 'string' || typeof request.credentialHash !== 'string')) throw new Error('fields')
+    if (request.kind !== undefined && (!Object.hasOwn(PROOF_ACTION, request.kind!) || typeof request.credentialHash !== 'string')) throw new Error('fields')
     if (![request.org, request.nonce, request.site, ...(recovery ? [] : [request.wallet])].every((value) => typeof value === 'string') || ![request.issuedAt, request.expiresAt, ...(recovery ? [] : [request.chainId])].every(Number.isSafeInteger)) throw new Error('fields')
   } catch {
     $('request').hidden = true
@@ -80,9 +80,8 @@ function read(code: string) {
     // Text, never markup: the emphasised part of the title is an element made here, and every field is set as text.
     $('title').replaceChildren(TITLE[kind][0], Object.assign(document.createElement('em'), { textContent: TITLE[kind][1] }), '.')
     $('lede').textContent = TITLE[kind][2]
-    $('advice').textContent = kind === 'activate' ? 'Your wallet shows the same fields. Sign only if the three words are the ones the Owner read to you.'
+    $('advice').textContent = kind === 'activate' ? 'Your wallet shows the same fields. Sign only if the request comes from your colleague by a channel you trust, and the organisation named is theirs.'
       : 'Your wallet shows the same fields. The wallet and the chain are those of the wallet that signs: it must be the recovery wallet, on the chain named on the recovery sheet.'
-    $('f-phrase').textContent = request.phrase || 'None: a cancellation names no passkey'
     // G7: an activation confirms the passkey the first Owner already holds; a recovery names a new one.
     $('l-passkey').textContent = kind === 'activate' ? 'First Owner passkey (hash)' : 'New passkey (hash)'
     $('f-passkey').textContent = request.credentialHash!
@@ -106,7 +105,7 @@ function show(by: { wallet: string; chainId: number } | null) {
   $('f-wallet').textContent = by ? by.wallet : 'The wallet that signs'
   if (!by) return
   const fields = { chainId: by.chainId, site: request.site, organisationId: request.org, wallet: by.wallet, nonce: request.nonce, issuedAt: request.issuedAt, expiresAt: request.expiresAt }
-  typed = request.kind ? typedProof({ ...fields, kind: request.kind, credentialHash: request.credentialHash!, phrase: request.phrase! }) : typedLink(fields)
+  typed = request.kind ? typedProof({ ...fields, kind: request.kind, credentialHash: request.credentialHash! }) : typedLink(fields)
 }
 
 async function post(signature: string) {

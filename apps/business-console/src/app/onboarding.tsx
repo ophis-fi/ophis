@@ -45,7 +45,7 @@ const REASON: Record<string, string> = {
   entity_not_found: 'The company was not found in the register under this name and number.',
   details_differ: 'The legal name, the number or the country differ from the register.',
   authority_unclear: 'It is not shown that the applicant may act for the company.',
-  wallet_differs: 'The recovery wallet or the three words differ from what the signers confirmed.',
+  wallet_differs: 'The recovery wallet or the passkey hash differs from what the signers confirmed.',
   declaration_needed: 'A signed declaration is needed.',
   not_eligible: 'The company is outside what Ophis can serve.',
 }
@@ -212,7 +212,7 @@ export function Apply() {
 interface KybRow { legalName: string; registration: string | null; country: string; tier: string; source: string; evidenceSha256: string | null; decision: string; reason: string | null; decidedAt: number | null; nextReview: number | null }
 interface View {
   company: { legalName: string; kind: string; country: string | null; registration: string | null; domain: string | null; domainVerifiedAt: number | null }
-  first: { phrase: string[]; credentialHash: string; active: boolean; name: string } | null
+  first: { credentialHash: string; active: boolean; name: string } | null
   signin: { setting: 'none' | 'microsoft' | 'google' | null; tenant: string | null }
   wallet: { chainId: number; chain: string; address: string; kind: string; label: string; inForce: boolean; threshold?: number; owners?: number } | null
   missing: string | null
@@ -380,12 +380,12 @@ export function Onboarding({ owner, onSignedOut }: { owner: boolean; onSignedOut
           </Step>
           <Step icon="building-2" title="Company sign-in" done={signin.setting !== null}>
             <p>{PROVIDER[signin.setting ?? ''] ? `${PROVIDER[signin.setting!]}: members you invite sign in once with their company account at ${company.domain}, then create a passkey, and you approve. Pinned to ${signin.setting === 'google' ? 'the domain' : 'the tenant'} ${signin.tenant}. Your own company account is linked to your seat.`
-              : signin.setting === 'none' ? 'None: members you invite create a passkey and send you three words, which you type.'
-              : 'Choose how a new member shows who they are. With Microsoft or Google they sign in once with their company account, and no words are needed. Passkeys stay the only way to sign in.'}</p>
+              : signin.setting === 'none' ? 'None: members you invite create a passkey, and you confirm it after checking with them.'
+              : 'Choose how a new member shows who they are. With Microsoft or Google they sign in once with their company account. With none, you check with them yourself. Passkeys stay the only way to sign in.'}</p>
             {!verified && owner && keys && (
               <div className="acts">
                 {(['microsoft', 'google'] as const).filter((p) => p !== signin.setting).map((p) => <button key={p} className="btn ghost md" type="button" title={`You sign in with your own ${PROVIDER[p]} company account. That pins your organisation there.`} onClick={() => signIn(p)}><Icon name="building-2" size={16} />{signin.setting === null ? 'Continue with' : 'Change to'} {PROVIDER[p]}</button>)}
-                {signin.setting !== 'none' && <button className="btn ghost md" type="button" onClick={() => act('/api/policy/company', {}, () => undefined)}>{signin.setting === null ? 'None: three words' : 'Change to none: three words'}</button>}
+                {signin.setting !== 'none' && <button className="btn ghost md" type="button" onClick={() => act('/api/policy/company', {}, () => undefined)}>{signin.setting === null ? 'None' : 'Change to none'}</button>}
               </div>
             )}
             {!verified && owner && !keys && <p className="fine"><Icon name="info" size={16} /><span>Add your second passkey first.</span></p>}
@@ -395,10 +395,7 @@ export function Onboarding({ owner, onSignedOut }: { owner: boolean; onSignedOut
             {view.wallet ? <p>{view.wallet.label}: {kindOf(view.wallet)}, <span className="mono">{view.wallet.address}</span> on {view.wallet.chain}. {view.wallet.inForce ? 'It is the recovery wallet in force.' : 'It signed the activation. It becomes the recovery wallet when Ophis approves the organisation.'}</p>
               : <p>{proved ? 'A second Owner with two hardware keys is enrolled. No recovery wallet is named.' : 'Name the wallet that restores access if every Owner is locked out, and let it sign once. Or invite a second Owner, who needs two hardware keys.'}</p>}
             {!verified && first && (
-              <>
-                <p className="phrase" aria-label="The three words of the first Owner passkey">{first.phrase.map((word, index) => <span key={index}>{word}</span>)}</p>
-                <p className="fine"><Icon name="info" size={16} /><span>The signers of the wallet compare these three words, and this passkey hash, with the signing page before they sign: <span className="mono">{first.credentialHash}</span></span></p>
-              </>
+              <p className="fine"><Icon name="info" size={16} /><span>The signers of the wallet compare this passkey hash with the signing page before they sign: <span className="mono">{first.credentialHash}</span></span></p>
             )}
             {!verified && owner && keys && first?.active && !issued && (
               <form className="stack" onSubmit={name}>
@@ -426,7 +423,7 @@ export function Onboarding({ owner, onSignedOut }: { owner: boolean; onSignedOut
                   <button className="btn ghost md" type="button" onClick={() => navigator.clipboard.writeText(issued.link).then(() => setCopied(true), () => setCopied(false))}><Icon name="clipboard-check" size={16} />{copied ? 'Copied' : 'Copy the link'}</button>
                   <button className="btn ghost md" type="button" onClick={() => { setIssued(undefined); void load() }}>The wallet has signed</button>
                 </div>
-                <p className="fine"><Icon name="info" size={16} /><span>Give the link to the people who hold the wallet. Read them the three words. A Safe signs inside the Safe interface: add the signing page as a custom app and paste the link.</span></p>
+                <p className="fine"><Icon name="info" size={16} /><span>Give the link to the people who hold the wallet, by a channel they trust. A Safe signs inside the Safe interface: add the signing page as a custom app and paste the link.</span></p>
               </>
             )}
           </Step>
@@ -446,7 +443,7 @@ export function Onboarding({ owner, onSignedOut }: { owner: boolean; onSignedOut
           </Step>
           <Step icon="shield-check" title="Review" done={verified}>
             <p role="status">{review.status === 'verified' ? (view.record?.decidedAt ? `Verified on ${day(view.record.decidedAt)}.${view.record.nextReview ? ` Next review ${day(view.record.nextReview)}.` : ''}` : 'Verified.')
-              : review.status === 'under_review' ? `Under review since ${minute(review.since!)}. Ophis compares the company, the domain, the three words and the recovery wallet.`
+              : review.status === 'under_review' ? `Under review since ${minute(review.since!)}. Ophis compares the company, the domain, the passkey hash and the recovery wallet.`
               : review.status === 'more_information' ? `More information asked: ${REASON[review.reason ?? ''] ?? 'see the message from Ophis.'} Change what is needed, then submit again.`
               : 'Not submitted.'}</p>
             {owner && (review.status === 'not_submitted' || review.status === 'more_information') && (

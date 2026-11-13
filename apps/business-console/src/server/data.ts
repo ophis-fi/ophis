@@ -17,16 +17,15 @@ type Sql = D1PreparedStatement
 
 const MIN = 60_000
 const HOUR = 60 * MIN
-export const CONFIRM_MS = 60 * MIN // the words are typed within 60 minutes of the enrolment
+const CONFIRM_MS = 60 * MIN // the issuer, and a second person where one is needed, confirm within 60 minutes of the enrolment
 const WAIT_MS = 72 * HOUR // replaces the second person when the organisation has none
 const WAIT_OPEN_MS = 7 * 24 * HOUR // after the wait, the new passkey has 7 days to sign in
 const ALERT_MS = 7 * 24 * HOUR
-const MAX_ATTEMPTS = 3
 const MAX_TICKETS = 3 // per issuer and seat per 24 hours
 const MAX_PASSKEYS = 10 // active ones, per seat
 const MAX_SEATS = 10 // new invited seats per issuer per 24 hours
 const DAY = 24 * HOUR
-// The longest a ticket can live: 24 h link, 60 min for the words, 72 h wait, 7 days to sign in. After 12 days
+// The longest a ticket can live: 24 h link, 60 min for the confirmation, 72 h wait, 7 days to sign in. After 12 days
 // a ticket that is not confirmed is dead whatever its state, and no limit or alert (24 h, 7 days) still reads it.
 const SWEEP_MS = 12 * DAY
 const REQUEST_MS = 7 * DAY // a change waits 7 days for its second person
@@ -137,8 +136,8 @@ export async function verifyAudit(db: D1Database, orgId: string): Promise<{ ok: 
 // ---- before a session exists ----
 
 export interface Ticket {
-  id: string; org_id: string; seat_id: string; kind: string; role: Role; nonce: string; display_name: string; org_name: string; synced_keys_allowed: number
-  /** Company sign-in: the path of this link (null: three words), its pinned tenant, the address to confirm, and when the provider confirmed it. */
+  id: string; org_id: string; seat_id: string; kind: string; role: Role; display_name: string; org_name: string; synced_keys_allowed: number
+  /** Company sign-in: the path of this link (null: none), its pinned tenant, the address to confirm, and when the provider confirmed it. */
   idp: 'microsoft' | 'google' | null; idp_tenant: string | null; email: string | null; idp_at: number | null; seat_email: string | null; domain: string | null
 }
 // The path of a link is the organisation's setting, fixed when the link is issued. A link whose path is no longer
@@ -153,7 +152,7 @@ const ISSUER_ACTIVE = `(t.issuer_seat_id IS NULL OR EXISTS (SELECT 1 FROM seats 
 export function ticketByToken(db: D1Database, tokenHash: string, now: number) {
   return db
     .prepare(
-      `SELECT t.id, t.org_id, t.seat_id, t.kind, t.role, t.nonce, s.display_name, o.name AS org_name, o.synced_keys_allowed,
+      `SELECT t.id, t.org_id, t.seat_id, t.kind, t.role, s.display_name, o.name AS org_name, o.synced_keys_allowed,
               t.idp, t.idp_tenant, t.email, t.idp_at, s.email AS seat_email, o.email_domain AS domain
        FROM enrolment_tickets t
        JOIN seats s ON s.org_id = t.org_id AND s.id = t.seat_id AND s.role = t.role AND s.state IN ('invited', 'active')
@@ -393,7 +392,7 @@ export async function revokeCredential(db: D1Database, session: Actor, credentia
   return outcome as 'ok' | 'not_found' | 'forbidden' | 'quarantine' | 'last_passkey' // the plan assigns it; the compiler cannot see that
 }
 
-// ---- enrolment tickets and the three-word ceremony (recovery.md section 2) ----
+// ---- enrolment tickets and their confirmation (recovery.md section 2) ----
 
 type Target = ({ seatId: string } | { displayName: string; role: Role }) & { email?: unknown }
 /** An invitation (a new seat, or a seat that never enrolled) or the re-enrolment of an active seat. The seat decides which. */
@@ -436,7 +435,7 @@ export async function issueTicket(db: D1Database, session: Actor, target: Target
       outcome = { error: refused }
       return null
     }
-    // Three words: 10 minutes for a key role. Company sign-in: 24 hours for every role (the member signs in at the provider first).
+    // No company sign-in: 10 minutes for a key role. Company sign-in: 24 hours for every role (the member signs in at the provider first).
     const expiresAt = now + (KEY_ROLES.includes(seat.role) && !org.idp ? 10 * MIN : 24 * HOUR)
     outcome = { ticketId, seatId: seat.id, kind, role: seat.role, expiresAt, company: org.idp }
     return [seatEntry(actor, now, 'ticket.issue', ticketId, kind), [
@@ -453,9 +452,9 @@ export async function issueTicket(db: D1Database, session: Actor, target: Target
 
 export interface OpenTicket {
   id: string; kind: 'first_owner' | 'invitation' | 're_enrolment'; role: Role; state: string; seat_id: string; issuer_seat_id: string | null; display_name: string
-  nonce: string; attempts: number; expires_at: number; stored_at: number | null
+  expires_at: number; stored_at: number | null
   credential_id: string | null; public_key: string | null; approval_id: string | null; not_before: number | null; approval_expires_at: number | null
-  /** link: waits for the member's passkey. issuer: waits for the issuer's words. second: for a second person's. wait: for the 72 hours. */
+  /** link: waits for the member's passkey. issuer: waits for the issuer's confirmation. second: for a second person's. wait: for the 72 hours. */
   status: 'link' | 'issuer' | 'second' | 'wait'
   /** What the viewer may do now. */
   myStep: 'issuer' | 'second' | null
@@ -465,11 +464,11 @@ export interface OpenTicket {
 }
 // Every open ticket of the organisation that is still alive, with the step the viewer may take. A ticket
 // whose seat or issuer is not in the right state, or whose time is up, is not here: it is dead without a write.
-// The rows carry the nonce: openTickets() below is the only shape that leaves the server.
+// openTickets() below is the only shape that leaves the server.
 async function ticketRows(db: D1Database, viewer: Pick<Actor, 'orgId' | 'seatId' | 'role'>, now: number, ticketId: string | null = null) {
   const { results } = await db
     .prepare(
-      `SELECT t.id, t.kind, t.role, t.state, t.seat_id, t.issuer_seat_id, s.display_name, t.nonce, t.attempts, t.expires_at, t.stored_at,
+      `SELECT t.id, t.kind, t.role, t.state, t.seat_id, t.issuer_seat_id, s.display_name, t.expires_at, t.stored_at,
               c.id AS credential_id, c.public_key, a.id AS approval_id, a.not_before, a.expires_at AS approval_expires_at,
               t.idp, COALESCE(t.email, s.email) AS email, t.idp_at, t.idp_subject, c.device_bound
        FROM enrolment_tickets t
@@ -498,17 +497,18 @@ async function ticketRows(db: D1Database, viewer: Pick<Actor, 'orgId' | 'seatId'
   })
 }
 
-/** For the "Waiting for confirmation" list. An Owner or Admin sees every open ticket; anyone else only those waiting for their words. No secret field. */
+/** For the "Waiting for confirmation" list. An Owner or Admin sees every open ticket; anyone else only those waiting for their step. No secret field. */
 export async function openTickets(db: D1Database, actor: Actor, now: number) {
   return (await ticketRows(db, actor, now))
     .filter((t) => seesAll(actor) === 1 || t.myStep)
     .map((t) => ({
       id: t.id, kind: t.kind, role: t.role, seatId: t.seat_id, name: t.display_name, issuerSeatId: t.issuer_seat_id, status: t.status, myStep: t.myStep, until: t.until,
-      // Company sign-in: what the provider confirmed, for the approval card. Null on the three-word path.
+      storedAt: t.stored_at, // when the member created the pending passkey, for the confirmation card
+      // Company sign-in: what the provider confirmed, for the approval card. Null without a company sign-in.
       company: t.idp && { provider: t.idp, email: t.email, confirmedAt: t.idp_at, deviceBound: t.device_bound === null ? null : t.device_bound === 1 },
     }))
 }
-/** The ticket, if the member may type its words now. */
+/** The ticket, if the member may confirm it now. */
 export const ticketToConfirm = async (db: D1Database, actor: Actor, ticketId: string, now: number) =>
   (await ticketRows(db, actor, now, ticketId)).find((t) => t.myStep) ?? null
 
@@ -539,27 +539,17 @@ const alone = async (db: D1Database, orgId: string, seatId: string, now: number)
        OR EXISTS (SELECT 1 FROM audit_log a WHERE a.org_id = s.org_id AND a.subject_id = s.id AND a.action = 'seat.role' AND a.at > ?))`,
   ).bind(orgId, seatId, now, now - NO_WAIT_MS, now - NO_WAIT_MS).first<{ n: number }>())!.n
 
-type Confirmed = { state: 'active' | 'second' | 'gone' | 'dead' } | { state: 'wait'; waitUntil: number } | { state: 'wrong'; left: number }
-/** The words were typed and the passkey check passed. `seen` is the ticket as the check saw it: if it moved since, nothing is written. */
-export async function confirmTicket(db: D1Database, session: Actor, seen: OpenTicket, x: { correct: boolean; credentialHash: string; credentialId: string; counter: number; now: number }) {
+type Confirmed = { state: 'active' | 'second' | 'gone' } | { state: 'wait'; waitUntil: number }
+/** The passkey check made for this ticket passed. `seen` is the ticket as the check saw it: read again here, it must still wait for this member's step, else nothing is written. */
+export async function confirmTicket(db: D1Database, session: Actor, seen: OpenTicket, x: { credentialHash: string; credentialId: string; counter: number; now: number }) {
   let outcome: Confirmed = { state: 'gone' }
   const { now } = x
   await commit(db, session.orgId, async () => {
     const actor = await actorNow(db, session)
     const t = actor && (await ticketToConfirm(db, actor, seen.id, now))
     outcome = { state: 'gone' }
-    if (!actor || !t || t.attempts !== seen.attempts || t.credential_id !== seen.credential_id) return null
+    if (!actor || !t) return null
     const check = used(db, actor.orgId, x.credentialId, x.counter, now)
-    if (!x.correct) {
-      // The counter is exact: it is added to in the database, in the same batch as its audit row.
-      const dead = t.attempts + 1 >= MAX_ATTEMPTS
-      outcome = dead ? { state: 'dead' } : { state: 'wrong', left: MAX_ATTEMPTS - t.attempts - 1 }
-      return [seatEntry(actor, now, 'ticket.attempt', t.id, dead ? 'dead' : 'wrong'), [
-        check,
-        db.prepare('UPDATE enrolment_tickets SET attempts = attempts + 1 WHERE org_id = ? AND id = ?').bind(actor.orgId, t.id),
-        ...(dead ? closeTicket(db, actor.orgId, t.id, 'dead', now) : []),
-      ]]
-    }
     if (t.myStep === 'issuer' && KEY_ROLES.includes(t.role)) {
       // The 72 hour wait stands in for the second person only in an organisation that has had no key-role seat but
       // the issuer's in the last 30 days: active, frozen, removed, or lowered from a key role (the audit rows give

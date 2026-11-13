@@ -1,7 +1,6 @@
-// Passkeys: per-environment constants, stateless challenges, the two verifications, the three-word phrase.
+// Passkeys: per-environment constants, stateless challenges, the two verifications, the hash of a passkey.
 import { verifyAuthenticationResponse, verifyRegistrationResponse } from '@simplewebauthn/server'
 import type { AuthenticationResponseJSON, RegistrationResponseJSON } from '@simplewebauthn/server'
-import { WORDS } from './words.ts'
 
 // The relying-party id and the origin are constants per environment, never taken from a request.
 // The relying-party id is the full app hostname, so no sibling site can ask for the passkey.
@@ -157,12 +156,9 @@ export async function verifyAssertion(
   return result.authenticationInfo.newCounter
 }
 
-// ---- the three-word phrase (recovery.md section 2) ----
-// credentialHash = SHA-256(credential id ‖ COSE public key)
-// phrase = words3(SHA-256("ophis-enrol-v1" ‖ site ‖ org id ‖ seat id ‖ role ‖ purpose ‖ credentialHash ‖ nonce))
-// Every field carries a 4-byte big-endian length. Text is UTF-8; the hash and the nonce are raw bytes.
-async function hashFields(fields: (string | Uint8Array)[]) {
-  const parts = fields.map((field) => (typeof field === 'string' ? text.encode(field) : field))
+// ---- the hash of a passkey: what a confirmation and a wallet's proof are bound to ----
+// credentialHash = SHA-256(credential id ‖ COSE public key), each field with a 4-byte big-endian length.
+async function hashFields(parts: Uint8Array[]) {
   const bytes = new Uint8Array(parts.reduce((size, part) => size + 4 + part.length, 0))
   let at = 0
   for (const part of parts) {
@@ -173,11 +169,3 @@ async function hashFields(fields: (string | Uint8Array)[]) {
   return new Uint8Array(await crypto.subtle.digest('SHA-256', bytes))
 }
 export const credentialHash = (credentialId: string, publicKey: string) => hashFields([fromBase64Url(credentialId), fromBase64Url(publicKey)])
-
-/** The first 8 bytes as an integer, modulo 1296^3, written as three words: 31 bits. The nonce is 128 server bits, in hex. */
-export async function phraseFor(p: { site: string; orgId: string; seatId: string; role: string; purpose: string; credentialHash: Uint8Array; nonce: string }) {
-  const nonce = Uint8Array.from(p.nonce.match(/../g) ?? [], (pair) => parseInt(pair, 16))
-  const digest = await hashFields(['ophis-enrol-v1', p.site, p.orgId, p.seatId, p.role, p.purpose, p.credentialHash, nonce])
-  const n = new DataView(digest.buffer).getBigUint64(0) % 1296n ** 3n
-  return [n / 1296n ** 2n, (n / 1296n) % 1296n, n % 1296n].map((index) => WORDS[Number(index)])
-}

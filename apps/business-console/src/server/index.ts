@@ -1,13 +1,12 @@
 // Worker entry: answers /api/* and leaves every other path to the static assets.
 import * as data from './data.ts'
 import { checksum, colour, parseAddress, readBytes, readCapped, safeState, verify, verifyDigest, type SafeState } from './chain.ts'
-import { challengeIsOurs, configFor, creationOptions, credentialHash, newChallenge, phraseFor, requestOptions, seal, toBase64Url, unseal, userHandle, verifyAssertion, verifyRegistration, type Config, type Purpose } from './passkeys.ts'
+import { challengeIsOurs, configFor, creationOptions, credentialHash, newChallenge, requestOptions, seal, toBase64Url, unseal, userHandle, verifyAssertion, verifyRegistration, type Config, type Purpose } from './passkeys.ts'
 import { CHAIN_NAME, typedLink, typedProof, type ProofKind } from './typed.ts'
 import { ask } from './support.ts'
 import * as demo from './demo.ts'
 import * as partner from './partner.ts'
 import { activateIntent, activationIntent, activationProof, apply, applyCheck, DOWNLOAD_REASONS, onboarding, ONBOARDING_EVENTS, operator, OPERATOR, screening, SEAL, sealDeclaration, submit, sync } from './onboarding.ts'
-import { WORDS } from './words.ts'
 import { authorizeUrl, exchange, IDPS, newFlow, PROVIDERS, verifyIdToken, type Provider } from './oidc.ts'
 
 export interface Env { DB: D1Database; ASSETS: Fetcher; SEALED: R2Bucket; ENVIRONMENT: string; CHALLENGE_KEY: string; MICROSOFT_CLIENT_SECRET?: string; GOOGLE_CLIENT_SECRET?: string; SEAL_RECIPIENT?: string; INDEXER_URL?: string; INDEXER_TOKEN?: string; SANCTIONS_URL?: string }
@@ -153,17 +152,7 @@ async function enrolFinish(c: Context) {
   if (mustBeDeviceBound(ticket) && !credential.deviceBound) return fail(400, 'device_bound_required')
   const stored = await data.storePendingCredential(c.env.DB, ticket, credential, label, c.now).catch((error) => (labelTaken(error) ? 'label_taken' : false))
   if (stored !== true) return fail(409, stored || 'not_stored')
-  if (ticket.idp) return json(200, { state: 'pending' }) // company sign-in: no words are made, shown or typed
-  // Shown on the member's device only. No route gives it to anyone else: the colleague types what the member sends.
-  const phrase = await phraseOf(c, { ...ticket, credential_id: credential.id, public_key: credential.publicKey })
-  return json(200, { state: 'pending', phrase: phrase.words, confirmBy: c.now + data.CONFIRM_MS })
-}
-
-// The three words of a pending passkey, and its hash: what a confirmation challenge covers (recovery.md section 2).
-async function phraseOf(c: Context, t: { org_id: string; seat_id: string; role: string; kind: string; nonce: string; credential_id: string; public_key: string }) {
-  const hash = await credentialHash(t.credential_id, t.public_key)
-  const words = await phraseFor({ site: c.config.rpId, orgId: t.org_id, seatId: t.seat_id, role: t.role, purpose: t.kind, credentialHash: hash, nonce: t.nonce })
-  return { words, hash: toBase64Url(hash) }
+  return json(200, { state: 'pending' }) // the colleague who issued the link now confirms it
 }
 
 // Takes no input and writes no row: it cannot tell anyone whether an account exists.
@@ -246,7 +235,7 @@ async function organisation(c: Context) {
     wallets: (await data.wallets(c.env.DB, c.actor.orgId, c.now)).map(walletView),
     chains: Object.keys(c.config.chains).map((id) => ({ id: Number(id), name: CHAIN_NAME[Number(id)] ?? `Chain ${id}` })),
     syncedKeysAllowed: c.session.synced_keys_allowed === 1, rights,
-    // The company sign-in: null while nobody has chosen (members then join with three words, as with "none").
+    // The company sign-in: null while nobody has chosen, which works as "none".
     company: { setting: c.session.company_signin, tenant: c.session.company_tenant, domain: c.session.email_domain },
   })
 }
@@ -310,7 +299,7 @@ async function passkeyRevoke(c: Context) {
   return outcome === 'ok' ? json(200, { ok: true }) : refuse(outcome)
 }
 
-// ---- tickets issued by colleagues, and the three words ----
+// ---- tickets issued by colleagues, and their confirmation ----
 
 async function ticketIssue(c: Context) {
   const { seatId, displayName, role } = c.body
@@ -328,15 +317,16 @@ async function ticketIssue(c: Context) {
   return json(200, { ...issued, link: `${c.config.origin}/#/enrol/${token}` })
 }
 
-// A confirmation is its own passkey check: the challenge covers the ticket, the hash of the pending passkey
-// and the number of tries so far, so each try needs a new check and a check never serves another ticket.
+// A confirmation is its own passkey check: the challenge covers the ticket and the hash of the pending passkey, so a
+// check never serves another ticket or another passkey. Before it, the confirming member makes sure, by a channel both
+// trust, that the colleague created that passkey (with a company sign-in the provider also confirmed the account).
 async function ticketOpen(c: Context) {
   const ticket = await data.ticketToConfirm(c.env.DB, c.actor, c.params.id ?? '', c.now)
   if (!ticket) return fail(404, 'not_found')
-  // Typing the words for a new member adds a member: blocked in quarantine. A re-enrolment stays open.
+  // Confirming a new member adds a member: blocked in quarantine. A re-enrolment stays open.
   if (ticket.kind === 'invitation' && (c.actor.quarantineUntil ?? 0) > c.now) return fail(403, 'quarantine')
-  const phrase = await phraseOf(c, { ...ticket, org_id: c.actor.orgId, credential_id: ticket.credential_id!, public_key: ticket.public_key! })
-  return { ticket, phrase, binding: `${ticket.id}.${phrase.hash}.${ticket.attempts}` }
+  const hash = toBase64Url(await credentialHash(ticket.credential_id!, ticket.public_key!))
+  return { ticket, hash, binding: `${ticket.id}.${hash}` }
 }
 async function confirmStart(c: Context) {
   const open = await ticketOpen(c)
@@ -345,16 +335,9 @@ async function confirmStart(c: Context) {
 async function confirmFinish(c: Context) {
   const open = await ticketOpen(c)
   if (open instanceof Response) return open
-  // Company sign-in: the provider confirmed who the passkey belongs to, so no words exist and whatever is typed is not
-  // read; the approval is this member's passkey check. Otherwise: three words of the list, or it is a typing slip
-  // and no try is counted. The link decides which, never the request.
-  const typed = typeof c.body.words === 'string' ? c.body.words.trim().toLowerCase().split(/\s+/) : []
-  if (!open.ticket.idp && (typed.length !== 3 || !typed.every((word) => WORDS.includes(word)))) return fail(400, 'words_invalid')
   const check = await ownAssertion(c, 'confirm', open.binding)
   if (!check) return fail(403, 'passkey_rejected')
-  const outcome = await data.confirmTicket(c.env.DB, c.actor, open.ticket, { ...check, correct: Boolean(open.ticket.idp) || typed.join(' ') === open.phrase.words.join(' '), credentialHash: open.phrase.hash, now: c.now })
-  if (outcome.state === 'wrong') return json(400, { error: 'wrong_words', left: outcome.left })
-  if (outcome.state === 'dead') return fail(410, 'ticket_dead')
+  const outcome = await data.confirmTicket(c.env.DB, c.actor, open.ticket, { ...check, credentialHash: open.hash, now: c.now })
   if (outcome.state === 'gone') return fail(409, 'try_again')
   return json(200, outcome)
 }
@@ -395,7 +378,7 @@ async function begin(c: Context, provider: Provider, bound: Pick<Flow, 'ticket' 
 async function enrolCompany(c: Context) {
   const ticket = await ticketOf(c)
   if (!ticket) return fail(404, 'ticket_invalid')
-  if (!ticket.idp) return fail(409, 'not_company') // a three-word link: the invitee does not choose the path
+  if (!ticket.idp) return fail(409, 'not_company') // a link without company sign-in: the invitee does not choose the path
   // A link that was confirmed and holds no passkey yet takes the sign-in again: the same account, in another browser (R1).
   return begin(c, ticket.idp, { ticket: c.body.ticket as string, to: `#/enrol/${c.body.ticket as string}` }, { email: ticket.email ?? ticket.seat_email, domain: ticket.domain })
 }
@@ -548,7 +531,7 @@ const RECOVER = 'recover-intent' // the label of a recovery intent under the cha
 const NO_HASH = `0x${'0'.repeat(64)}`
 /** What /recover asked for, signed by the server and held nowhere. A cancel names the request's nonce and no passkey. */
 interface RecoverIntent {
-  kind: ProofKind; org: string; nonce: string; credentialHash: string; phrase: string; issuedAt: number; expiresAt: number; site: string
+  kind: ProofKind; org: string; nonce: string; credentialHash: string; issuedAt: number; expiresAt: number; site: string
   seat?: string; credential?: data.RecoveryAsk['credential']
 }
 const sealedRecover = async (c: Context, fields: Omit<RecoverIntent, 'issuedAt' | 'expiresAt' | 'site'>) => {
@@ -560,7 +543,7 @@ const sealedRecover = async (c: Context, fields: Omit<RecoverIntent, 'issuedAt' 
 // The start of a last-Owner recovery, for anyone: no session, and the server writes nothing and reads no row. It
 // answers the same for any well-formed organisation id, so it says nothing about any organisation. First call:
 // the options for a new device-bound passkey, for a seat id made here. Second call: that passkey's registration
-// in, a MAC-signed intent out, with the three words its holder reads to the signers of the recovery wallet.
+// in, a MAC-signed intent out, which names the passkey by its hash.
 // ponytail: Turnstile comes before this route in production (recovery.md section 4); it is not built. Until then
 // anyone can ask for intents; each costs a passkey registration, writes nothing, and its proofs are counted per organisation.
 async function recoverIntent(c: Context) {
@@ -578,22 +561,19 @@ async function recoverIntent(c: Context) {
     return fail(400, 'passkey_rejected')
   }
   if (!credential.deviceBound) return fail(400, 'device_bound_required') // the new passkey is an Owner's
-  const nonce = data.randomId() + data.randomId()
   const hash = await credentialHash(credential.id, credential.publicKey)
-  const words = await phraseFor({ site: c.config.rpId, orgId: org, seatId: seat, role: 'owner', purpose: 'recovery', credentialHash: hash, nonce })
-  const sealed = await sealedRecover(c, {
-    kind: c.body.override === true ? 'override' : 'replace', org, seat, nonce: `0x${nonce}`, phrase: words.join(' '),
+  return json(200, await sealedRecover(c, {
+    kind: c.body.override === true ? 'override' : 'replace', org, seat, nonce: `0x${data.randomId()}${data.randomId()}`,
     credentialHash: `0x${Array.from(hash, (byte) => byte.toString(16).padStart(2, '0')).join('')}`,
     credential: { id: credential.id, publicKey: credential.publicKey, counter: credential.counter, transports: credential.transports },
-  })
-  return json(200, { ...sealed, phrase: words })
+  }))
 }
 // The same for a cancel by the recovery wallet: an organisation id and the nonce of the request in, an intent out.
 // Nothing is read: whether such a request exists is decided when the wallet's signature arrives.
 async function recoverCancelIntent(c: Context) {
   const { organisationId: org, nonce } = c.body
   if (typeof org !== 'string' || !ID.test(org) || typeof nonce !== 'string' || !/^0x[0-9a-f]{64}$/.test(nonce)) return fail(400, 'invalid')
-  return json(200, await sealedRecover(c, { kind: 'cancel', org, nonce, credentialHash: NO_HASH, phrase: '' }))
+  return json(200, await sealedRecover(c, { kind: 'cancel', org, nonce, credentialHash: NO_HASH }))
 }
 
 // A recovery proof, after the MAC, the expiry and the counter. The rows first (recoverable(), or the open request a
@@ -617,7 +597,7 @@ async function recoveryProof(c: Context, intent: RecoverIntent, signature: `0x${
   if (!wallet || !endpoints) return rejected
   const typed = typedProof({
     kind: intent.kind, chainId: wallet.chainId, site: c.config.rpId, organisationId: intent.org, wallet: checksum(wallet.address),
-    credentialHash: intent.credentialHash, phrase: intent.phrase, nonce: intent.nonce, issuedAt: intent.issuedAt, expiresAt: intent.expiresAt,
+    credentialHash: intent.credentialHash, nonce: intent.nonce, issuedAt: intent.issuedAt, expiresAt: intent.expiresAt,
   })
   const proved = await verify(endpoints, typed, wallet.address, signature)
   if (!proved) return rejected
@@ -730,10 +710,8 @@ export const EVENTS: Record<string, string> = {
   'session.signout': 'Signed out',
   'ticket.issue': 'Enrolment link issued',
   'ticket.issue/re_enrolment': 'Re-enrolment link issued',
-  'ticket.attempt': 'Wrong words typed',
-  'ticket.attempt/dead': 'Wrong words typed three times, enrolment cancelled',
-  'ticket.confirm': 'Words confirmed, waiting for a second person',
-  'ticket.confirm/wait': 'Words confirmed, the 72 hour wait started',
+  'ticket.confirm': 'New passkey confirmed by the issuer, waiting for a second person',
+  'ticket.confirm/wait': 'New passkey confirmed by the issuer, the 72 hour wait started',
   'ticket.cancel': 'Enrolment cancelled',
   'seat.freeze': 'Seat frozen',
   'seat.unfreeze': 'Seat unfrozen',
@@ -746,7 +724,7 @@ export const EVENTS: Record<string, string> = {
   'policy.company': 'Company sign-in changed',
   'policy.company/microsoft': 'Company sign-in set to Microsoft, tenant pinned',
   'policy.company/google': 'Company sign-in set to Google, domain pinned',
-  'policy.company/none': 'Company sign-in set to none: members join with three words',
+  'policy.company/none': 'Company sign-in set to none: colleagues confirm a new passkey without a company account',
   'ticket.company': 'Company account confirmed by the provider on an enrolment link',
   'approval.request': 'Change requested',
   'approval.reject': 'Change rejected',
@@ -873,7 +851,7 @@ const MANAGERS: readonly data.Role[] = ['owner', 'admin']
 const READERS: readonly data.Role[] = ['owner', 'compliance', 'viewer']
 const SELF = 'Sign in, pass a passkey check, sign out'
 const ADD = 'Add a passkey to the own seat'
-const WORDS3 = 'Confirm a colleague\'s new passkey: approve what the company account showed, or type the three words'
+const CONFIRM = 'Confirm a colleague\'s new passkey with a passkey check'
 // The route table, which is the role table. A state change is a POST. tests/worker.test.ts fails if a route is
 // missing from its copy of this table, or has no isolation case.
 export const routes: Route[] = [
@@ -891,8 +869,8 @@ export const routes: Route[] = [
   { method: 'POST', path: '/api/passkeys/finish', roles: ANY, fresh: true, unverified: true, can: ADD, handler: passkeyFinish },
   { method: 'POST', path: '/api/passkeys/:id/revoke', roles: ANY, fresh: true, twoKeys: true, unverified: true, can: 'Revoke a passkey of the own seat, never the last (Owner and Admin: also of a member at or below their role)', handler: passkeyRevoke },
   { method: 'POST', path: '/api/tickets', roles: MANAGERS, fresh: true, twoKeys: true, unverified: true, can: 'Invite a member, or re-enrol one who lost every passkey', handler: ticketIssue },
-  { method: 'POST', path: '/api/tickets/:id/confirm/start', roles: data.KEY_ROLES, twoKeys: true, unverified: true, can: WORDS3, handler: confirmStart },
-  { method: 'POST', path: '/api/tickets/:id/confirm', roles: data.KEY_ROLES, twoKeys: true, unverified: true, can: WORDS3, handler: confirmFinish },
+  { method: 'POST', path: '/api/tickets/:id/confirm/start', roles: data.KEY_ROLES, twoKeys: true, unverified: true, can: CONFIRM, handler: confirmStart },
+  { method: 'POST', path: '/api/tickets/:id/confirm', roles: data.KEY_ROLES, twoKeys: true, unverified: true, can: CONFIRM, handler: confirmFinish },
   { method: 'POST', path: '/api/tickets/:id/cancel', roles: ['owner'], fresh: true, twoKeys: true, unverified: true, can: 'Cancel an enrolment that waits', handler: ticketCancel },
   { method: 'POST', path: '/api/stop/start', roles: 'public', handler: stopStart },
   { method: 'POST', path: '/api/stop/finish', roles: 'public', handler: stopFinish },
@@ -901,7 +879,7 @@ export const routes: Route[] = [
   { method: 'POST', path: '/api/members/:id/role', roles: MANAGERS, fresh: true, twoKeys: true, settled: true, second: 'seat.role', can: 'Ask to change a member\'s role, never above the own role' },
   { method: 'POST', path: '/api/members/:id/remove', roles: MANAGERS, fresh: true, twoKeys: true, settled: true, second: 'seat.remove', can: 'Ask to remove a member (an invited seat nobody enrolled on: removed at once)' },
   { method: 'POST', path: '/api/policy', roles: ['owner'], fresh: true, twoKeys: true, settled: true, second: 'policy.synced_keys', can: 'Ask to change the passkey rule for key roles' },
-  { method: 'POST', path: '/api/policy/company', roles: ['owner'], fresh: true, twoKeys: true, settled: true, unverified: true, second: 'policy.company', can: 'Ask to set the company sign-in to none: members then join with three words (alone while the organisation is not yet verified)' },
+  { method: 'POST', path: '/api/policy/company', roles: ['owner'], fresh: true, twoKeys: true, settled: true, unverified: true, second: 'policy.company', can: 'Ask to set the company sign-in to none: colleagues then confirm a new passkey without a company account (alone while the organisation is not yet verified)' },
   { method: 'POST', path: '/api/company/start', roles: ['owner'], fresh: true, twoKeys: true, settled: true, unverified: true, can: 'Ask to set the company sign-in to Microsoft or Google, by signing in with the own company account (alone while the organisation is not yet verified; then a second person approves)', handler: companyStart },
   { method: 'POST', path: '/api/enrol/company', roles: 'public', handler: enrolCompany },
   { method: 'GET', path: '/api/company/callback', roles: 'public', callback: true, handler: companyCallback },

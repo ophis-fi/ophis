@@ -85,8 +85,7 @@ try {
   async function create(who, link) {
     await who.page.goto(link)
     await who.page.getByRole('button', { name: 'Create passkey' }).click()
-    await heading(who, 'Send these three words to your colleague.')
-    return who.page.locator('.phrase span').allTextContents()
+    await heading(who, 'Your passkey waits for approval.')
   }
   async function signIn(who) {
     await who.page.goto(ORIGIN)
@@ -125,9 +124,8 @@ try {
     const link = await owner.page.getByLabel('Enrolment link').inputValue()
     await owner.page.getByRole('button', { name: 'Done' }).click()
     const who = await person()
-    const words = await create(who, link)
+    await create(who, link)
     await organisation(owner)
-    await owner.page.getByLabel('Three words from Abe Approver').fill(words.join(' '))
     await owner.page.getByRole('button', { name: 'Confirm with passkey' }).click()
     await owner.page.getByText('a 72 hour wait stands in for the second person').waitFor()
     dev('activate') // stands in for the 72 hours

@@ -32,14 +32,14 @@ export const PROOF_ACTION = {
   activate: 'Activate this organisation and confirm its first Owner passkey',
 } as const
 export type ProofKind = keyof typeof PROOF_ACTION
-/** credentialHash: SHA-256(credential id, public key) of the new passkey. phrase: the three words its holder reads out. A cancel names no passkey: 32 zero bytes and no words. */
-export interface ProofFields extends LinkFields { kind: ProofKind; credentialHash: string; phrase: string }
+/** credentialHash: SHA-256(credential id, public key) of the passkey the proof is for. A cancel names no passkey: 32 zero bytes. */
+export interface ProofFields extends LinkFields { kind: ProofKind; credentialHash: string }
 export const typedProof = (f: ProofFields): Typed => ({
   domain: { name: 'Ophis Business', version: '1', chainId: f.chainId },
   types: {
     EIP712Domain: [field('string')('name'), field('string')('version'), field('uint256')('chainId')],
-    Proof: [...['action', 'site', 'organisationId'].map(field('string')), field('address')('wallet'), field('bytes32')('credentialHash'), field('string')('phrase'), field('bytes32')('nonce'), ...['issuedAt', 'expiresAt'].map(field('uint64'))],
+    Proof: [...['action', 'site', 'organisationId'].map(field('string')), field('address')('wallet'), field('bytes32')('credentialHash'), field('bytes32')('nonce'), ...['issuedAt', 'expiresAt'].map(field('uint64'))],
   },
   primaryType: 'Proof',
-  message: { action: PROOF_ACTION[f.kind], site: f.site, organisationId: f.organisationId, wallet: f.wallet, credentialHash: f.credentialHash, phrase: f.phrase, nonce: f.nonce, issuedAt: f.issuedAt, expiresAt: f.expiresAt },
+  message: { action: PROOF_ACTION[f.kind], site: f.site, organisationId: f.organisationId, wallet: f.wallet, credentialHash: f.credentialHash, nonce: f.nonce, issuedAt: f.issuedAt, expiresAt: f.expiresAt },
 })

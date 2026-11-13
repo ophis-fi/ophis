@@ -1,15 +1,15 @@
 // End-to-end proof in the installed Google Chrome, headless, with Chrome's virtual authenticators
 // (DevTools protocol). Milestone 1: seed, enrol, activate, sign in, see the Organisation page, end the
 // session. Milestone 2: the Owner adds a second key and invites a Viewer; the Viewer enrols in a second
-// browser context with its own authenticator and reads three words; the Owner types them; the Viewer signs
-// in. Then the Viewer is re-enrolled from a third context, and the Viewer's old passkey stops that.
+// browser context with its own authenticator; the Owner confirms the new passkey with a passkey check; the Viewer
+// signs in. Then the Viewer is re-enrolled from a third context, and the Viewer's old passkey stops that.
 // Milestone 3: a second Owner and an Admin join (the Admin with the second Owner as second person), two people
 // unfreeze the Viewer, the Admin asks for a role change, an Owner approves it, the audit page shows the rows and
 // "Chain verified", and the export downloads.
 // Milestone 4: an Owner asks to link a wallet; the wallet (a test key behind a fake injected provider, no network)
 // signs on the signing page, which lives on its own hostname; the second Owner approves the link, then the wallet
 // as recovery wallet; the Security page shows the readiness state; unlinking the recovery wallet is refused.
-// Milestone 4b: somebody asks for a recovery on the public page /recover and reads three words; the recovery wallet
+// Milestone 4b: somebody asks for a recovery on the public page /recover and gets a signing link; the recovery wallet
 // signs on the signing page; a member sees the banner and an Owner cancels; a second request waits (the local "skip"
 // command stands in for the waits), is completed with the new passkey, and an old Owner passkey stops it; the
 // recovery sheet prints alone.
@@ -168,8 +168,8 @@ try {
   check('the ticket left the address bar', (await page.evaluate(() => location.hash)) === '#/enrol')
   check('the enrolment page names the organisation and the site', await page.getByText('Northwind Vaults').first().isVisible() && await page.locator('dd.site', { hasText: 'localhost:8787' }).isVisible())
   await page.getByRole('button', { name: 'Create passkey' }).click()
-  await page.getByRole('heading', { name: 'Send these three words to your colleague.' }).waitFor()
-  check('a real browser enrolled a passkey and shows three words', (await page.locator('.phrase span').count()) === 3)
+  await page.getByRole('heading', { name: 'Your passkey waits for approval.' }).waitFor()
+  check('a real browser enrolled a passkey, and the page says that a colleague now confirms it', await page.getByText('The colleague who invited you now confirms it with a passkey check.').isVisible())
 
   await page.getByRole('link', { name: 'Go to sign-in' }).click()
   await page.getByRole('button', { name: 'Sign in with a passkey' }).click()
@@ -232,13 +232,12 @@ try {
     await toOrganisation(on)
     return shown
   }
-  // The member's side of the ceremony, on their own device: open the link, create the passkey, read the words.
+  // The member's side, on their own device: open the link, create the passkey.
   async function enrolAt(link, who, label) {
     await who.page.goto(link)
     if (label) await who.page.getByLabel('Name for this key (no personal data)').fill(label)
     await who.page.getByRole('button', { name: 'Create passkey' }).click()
-    await who.page.getByRole('heading', { name: 'Send these three words to your colleague.' }).waitFor()
-    return who.page.locator('.phrase span').allTextContents()
+    await who.page.getByRole('heading', { name: 'Your passkey waits for approval.' }).waitFor()
   }
   // The Owner's side: the dialog's two steps. Returns the link, read from the page as the Owner would copy it.
   async function issue(open) {
@@ -251,10 +250,8 @@ try {
     await page.getByRole('button', { name: 'Done' }).click()
     return link
   }
-  async function typeWords(words, name, on = page) {
-    await on.getByLabel(`Three words from ${name}`).fill(words.join(' '))
-    await on.getByRole('button', { name: 'Confirm with passkey' }).click()
-  }
+  // The colleague's side: the card of that member, and a passkey check.
+  const confirmAt = (name, on = page) => on.locator('article.appr', { hasText: name }).getByRole('button', { name: 'Confirm with passkey' }).click()
 
   check('an Owner with one key is asked for the second and cannot invite yet',
     await page.getByText('Add your second hardware key.').isVisible() && (await page.getByRole('button', { name: 'Invite member' }).count()) === 0)
@@ -282,29 +279,28 @@ try {
   cookie = stepped
 
   const viewer = await person()
-  const words = await enrolAt(invitation, viewer)
-  check('the Viewer enrolled on their own device and sees three words, large, with what to do with them',
-    words.length === 3 && words.every((word) => /^[a-z-]{3,10}$/.test(word)) && await viewer.page.getByText('Send these words to the colleague who invited you, over a channel you both trust').isVisible()
-    && (await viewer.page.locator('.phrase').evaluate((node) => parseFloat(getComputedStyle(node).fontSize))) >= 34)
-  check('the footer line is on the three-word page', await viewer.page.getByText(FOOTER).isVisible())
-  check('the three-word page fits a phone', await both(viewer.page, '03-three-words'))
+  await enrolAt(invitation, viewer)
+  check('the Viewer enrolled on their own device and is told that the colleague who invited them now confirms the passkey, after checking with them',
+    await viewer.page.getByText('The colleague who invited you now confirms it with a passkey check. They may first ask you, by a channel you both trust, whether you created it.').isVisible())
+  check('the footer line is on the page after the passkey', await viewer.page.getByText(FOOTER).isVisible())
+  check('the page after the passkey fits a phone', await both(viewer.page, '03-passkey-stored'))
 
   await organisation()
-  check('the Owner is told at the door that a passkey waits for the words', await readAlerts('A new passkey of Ada Viewer waits for you'))
+  check('the Owner is told at the door that a passkey waits for confirmation', await readAlerts('A new passkey of Ada Viewer waits for you'))
   await page.getByRole('heading', { name: 'Waiting for confirmation' }).waitFor()
-  const ownerText = (await page.locator('body').innerText()).toLowerCase().split(/[^a-z-]+/)
-  check('the Owner\'s screen does not show the three words', !words.every((word) => ownerText.includes(word)))
+  const waiting = page.locator('article.appr', { hasText: 'Ada Viewer' })
+  check('the Owner\'s card names the member, the role and when the passkey was created, and says to check with the member first',
+    await waiting.getByText('Viewer, invitation').isVisible() && /Passkey created\s+\d{4}-\d\d-\d\d \d\d:\d\d:\d\dZ/.test(await waiting.innerText())
+    && await waiting.getByText('Confirm only after you checked with Ada Viewer, by a channel you trust, that they created this passkey.').isVisible())
   await page.screenshot({ path: '.shots/04-waiting.png', fullPage: true })
   await page.setViewportSize({ width: 390, height: 844 })
   await page.screenshot({ path: '.shots/08-waiting-phone.png', fullPage: true })
   check('at phone width the page does not scroll sideways', await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth))
   await page.setViewportSize({ width: 1440, height: 900 })
-  await typeWords(words[0] === 'aardvark' ? ['zucchini', 'zoology', 'zipfile'] : ['aardvark', 'abandoned', 'abbreviate'], 'Ada Viewer')
-  await page.getByText('Those are not the words. 2 tries left.').waitFor()
-  check('wrong words are refused and counted', (await status('/api/me', viewer.page)) === 401)
-  await typeWords(words, 'Ada Viewer')
+  check('before the confirmation the Viewer cannot sign in', (await status('/api/me', viewer.page)) === 401)
+  await confirmAt('Ada Viewer')
   await page.getByRole('button', { name: 'Re-enrol Ada Viewer' }).waitFor()
-  check('the Owner typed the words: the Viewer is active', (await page.getByRole('heading', { name: 'Waiting for confirmation' }).count()) === 0)
+  check('the Owner confirmed: the Viewer is active', (await page.getByRole('heading', { name: 'Waiting for confirmation' }).count()) === 0)
 
   await viewer.page.getByRole('link', { name: 'Go to sign-in' }).click()
   await viewer.page.getByRole('button', { name: 'Sign in with a passkey' }).click()
@@ -313,17 +309,17 @@ try {
   check('the Viewer signs in and sees only their own seat', (await viewer.page.getByRole('cell', { name: 'Maren Okafor' }).count()) === 0 && await viewer.page.getByRole('cell', { name: 'Ada Viewer' }).first().isVisible()
     && (await viewer.page.getByRole('button', { name: 'Invite member' }).count()) === 0)
 
-  // Re-enrolment: someone with a third device gets the Viewer's seat a new passkey, and the Owner is talked into the words.
+  // Re-enrolment: someone with a third device gets the Viewer's seat a new passkey, and the Owner is talked into confirming it.
   const second = await issue(() => page.getByRole('button', { name: 'Re-enrol Ada Viewer' }).click())
   const replacement = await person()
   await replacement.page.goto(second)
   await replacement.page.getByRole('button', { name: 'Create passkey' }).click()
   await replacement.page.getByText('This seat already has a passkey with that name.').waitFor()
-  check('a second passkey with the same name on one seat is refused', (await replacement.page.locator('.phrase').count()) === 0)
-  const newWords = await enrolAt(second, replacement, 'Replacement key')
+  check('a second passkey with the same name on one seat is refused', (await replacement.page.getByRole('heading', { name: 'Your passkey waits for approval.' }).count()) === 0)
+  await enrolAt(second, replacement, 'Replacement key')
   await organisation()
   await readAlerts('A new passkey of Ada Viewer waits for you')
-  await typeWords(newWords, 'Ada Viewer')
+  await confirmAt('Ada Viewer')
   await page.getByText('Can stop its replacement until').waitFor()
   check('after the re-enrolment the old passkey is suspended, not deleted, and the old session is over',
     await page.getByText('Suspended').first().isVisible() && (await status('/api/me', viewer.page)) === 401)
@@ -391,24 +387,24 @@ try {
   // A second Owner. The organisation has one key-role member, so a 72 hour wait stands in for the second person;
   // the local activate command stands in for the wait.
   const bo = await person()
-  const boWords = await enrolAt(await invite('Bo Owner', 'owner'), bo)
+  await enrolAt(await invite('Bo Owner', 'owner'), bo)
   await arrive(owner, false)
-  await typeWords(boWords, 'Bo Owner')
+  await confirmAt('Bo Owner')
   await page.getByText('a 72 hour wait stands in for the second person').waitFor()
   check('with no other key-role member, the second Owner waits 72 hours', (await status('/api/me', bo.page)) === 401)
   check('the activate command stood in for the wait', run('node', ['scripts/dev.mjs', 'activate', '--persist', STATE]).includes('Activated 1 pending'))
   await arrive(bo)
   await secondKey(bo)
 
-  // An Admin, through the full ceremony: the first Owner types the words, then the second Owner does.
+  // An Admin, through the full ceremony: the first Owner confirms, then the second Owner does.
   const cy = await person()
-  const cyWords = await enrolAt(await invite('Cy Admin', 'admin'), cy)
+  await enrolAt(await invite('Cy Admin', 'admin'), cy)
   await arrive(owner, false)
-  await typeWords(cyWords, 'Cy Admin')
+  await confirmAt('Cy Admin')
   await page.getByText('Waiting for a second person with a key role').waitFor()
-  check('after the first Owner\'s words the Admin still cannot sign in', (await status('/api/me', cy.page)) === 401)
+  check('after the first Owner\'s confirmation the Admin still cannot sign in', (await status('/api/me', cy.page)) === 401)
   await arrive(bo, false)
-  await typeWords(cyWords, 'Cy Admin', bo.page)
+  await confirmAt('Cy Admin', bo.page)
   check('the second person is told at once that the member joined', await readAlerts('Cy Admin joined on a link issued on', bo.page))
   await bo.page.getByRole('button', { name: 'Re-enrol Cy Admin' }).waitFor()
   await arrive(cy)
@@ -612,8 +608,8 @@ try {
       && await who.page.getByText('Nothing is stored until the recovery wallet has signed.').isVisible() && (!shot || await both(who.page, shot))
     await who.page.getByLabel('Organisation id, from the recovery sheet').fill(organisationId)
     await who.page.getByRole('button', { name: 'Create the passkey and the signing link' }).click()
-    await who.page.getByRole('heading', { name: 'Read these three words to the signers of the recovery wallet.' }).waitFor()
-    return { ...who, open, words: (await who.page.locator('.phrase span').allInnerTexts()).join(' '), link: await who.page.getByLabel(/^Signing link/).inputValue() }
+    await who.page.getByRole('heading', { name: 'Give this link to the signers of the recovery wallet.' }).waitFor()
+    return { ...who, open, link: await who.page.getByLabel(/^Signing link/).inputValue() }
   }
   const resume = async (who) => {
     await who.page.goto(`${ORIGIN}/recover`)
@@ -621,12 +617,13 @@ try {
   }
   const lost = await ask('22-recover')
   check('/recover is public: no session, the footer line, each button preceded by what it does, and it fits a phone', lost.open)
-  check('the requester gets three words and a link to the signing page, and is told to read the words to the signers',
-    lost.words.split(' ').length === 3 && lost.link.startsWith(`${SIGN}/sign/#`) && await lost.page.getByText('Read the words aloud, face to face or on a call.').isVisible() && await both(lost.page, '23-recover-words'))
+  check('the requester gets a link to the signing page, and is told to send it by a channel the signers trust',
+    lost.link.startsWith(`${SIGN}/sign/#`) && await lost.page.getByText('Send it by a channel the signers trust, so that they know it comes from you.').isVisible() && await both(lost.page, '23-recover-link'))
   check('nothing is stored and no member sees anything before the wallet signs', !(await page.evaluate(() => fetch('/api/me').then((response) => response.json()).then((me) => me.alerts.some((alert) => alert.kind.startsWith('recovery'))))))
   const signed = await sign(lost.link, '24-recovery-signing')
-  check('the signing page shows the Proof fields as text, the three words among them, and names no wallet before the wallet answers',
-    ['Restore access to an organisation.', 'Replace all Owner passkeys of this organisation', 'localhost', organisationId, lost.words, 'The wallet that signs', 'New passkey (hash)', 'Request number (nonce)'].every((text) => signed.before.includes(text)) && signed.fits)
+  check('the signing page shows the Proof fields as text, says what to check, names no wallet before the wallet answers, and shows no words',
+    ['Restore access to an organisation.', 'Replace all Owner passkeys of this organisation', 'localhost', organisationId, 'The wallet that signs', 'New passkey (hash)', 'Request number (nonce)',
+      'Sign only if the request comes from your colleague by a channel you trust, and the organisation id matches the recovery sheet.'].every((text) => signed.before.includes(text)) && !/three words/i.test(signed.before) && signed.fits)
   check('the wallet gave its account and its chain, signed one typed message, and the page says in plain words that the request waits',
     signed.asked === 'eth_requestAccounts,eth_chainId,eth_signTypedData_v4' && [key.address, 'OP Mainnet (chain id 10)', 'The request now waits 72 hours'].every((text) => signed.after.includes(text)))
 
@@ -813,18 +810,19 @@ try {
   const address = await on.evaluate(() => location.search + location.hash)
   check(`the outcome word left the address bar (${address})`, address === '#/onboarding')
   await on.getByText('Microsoft: members you invite sign in once with their company account').waitFor()
-  check('a step that is done offers a change, not a "Continue"', await on.getByRole('button', { name: 'Change to Google' }).isVisible() && await on.getByRole('button', { name: 'Change to none: three words' }).isVisible() && (await on.getByRole('button', { name: /^Continue with/ }).count()) === 0)
+  check('a step that is done offers a change, not a "Continue"', await on.getByRole('button', { name: 'Change to Google' }).isVisible() && await on.getByRole('button', { name: 'Change to none' }).isVisible() && (await on.getByRole('button', { name: /^Continue with/ }).count()) === 0)
   check('back on the Onboarding page the company sign-in is Microsoft, pinned to the tenant', await on.getByText('Your own company account is linked to your seat.').isVisible() && await both(on, '37-company-signin-step'))
   await on.getByLabel('Wallet address').fill(key.address)
   await on.getByLabel('Chain').selectOption({ label: 'OP Mainnet' })
   await on.getByLabel('A name for it').fill('Treasury')
-  const firstWords = (await on.locator('.phrase span').allInnerTexts()).join(' ')
+  const firstHash = await on.getByText('The signers of the wallet compare this passkey hash with the signing page').locator('.mono').innerText()
   await on.getByRole('button', { name: 'Create the signing link' }).click()
   const activationLink = await on.getByLabel(/Signing link/).inputValue()
-  check('the Onboarding page gives a signing link on the signing host and three words', activationLink.startsWith(`${SIGN}/sign/#`) && firstWords.split(' ').length === 3 && await both(on, '33-onboarding'))
+  check('the Onboarding page gives a signing link on the signing host and the first Owner\'s passkey hash', activationLink.startsWith(`${SIGN}/sign/#`) && /^0x[0-9a-f]{64}$/.test(firstHash) && await both(on, '33-onboarding'))
   const activated = await sign(activationLink, '34-activation-sign')
-  check('the signing page shows the fourth action, the organisation id and the same three words, and the wallet signs',
-    activated.before.includes('Activate this organisation and confirm its first Owner passkey') && activated.before.includes('First Owner passkey (hash)') && !activated.before.includes('New passkey (hash)') && activated.before.includes(newOrg.id) && activated.before.includes(firstWords) && activated.before.includes(key.address)
+  check('the signing page shows the fourth action, the organisation id, the same passkey hash and what to check, and the wallet signs',
+    activated.before.includes('Activate this organisation and confirm its first Owner passkey') && activated.before.includes('First Owner passkey (hash)') && !activated.before.includes('New passkey (hash)') && activated.before.includes(newOrg.id) && activated.before.includes(firstHash) && activated.before.includes(key.address)
+    && activated.before.includes('Sign only if the request comes from your colleague by a channel you trust, and the organisation named is theirs.') && !/three words/i.test(activated.before)
     && activated.after.includes('Signed and checked. The wallet is stored') && activated.asked.includes('eth_signTypedData_v4') && activated.fits)
   await on.getByRole('button', { name: 'The wallet has signed' }).click()
   await on.getByText('It signed the activation.').waitFor()
@@ -891,7 +889,7 @@ try {
   const opener = new Decrypter()
   opener.addIdentity(readFileSync('.dev.seal-identity', 'utf8').trim()) // the local test identity; never printed
   check('the local test identity opens the downloaded file, offline: equal to the original', Buffer.from(await opener.decrypt(readFileSync(out))).equals(scan))
-  check('the operator command lists the organisation with its domain, the three words and the wallet', listed.includes(newOrg.id) && listed.includes(domain) && listed.includes(firstWords) && listed.includes(key.address) && listed.includes('ready           yes'))
+  check('the operator command lists the organisation with its domain, the first Owner\'s passkey hash and the wallet', listed.includes(newOrg.id) && listed.includes(domain) && listed.includes(`first Owner     passkey hash ${firstHash}`) && listed.includes(key.address) && listed.includes('ready           yes'))
   const submission = /submission ([0-9a-f]{16}) /.exec(listed)?.[1] ?? ''
   // Sanctions screening: an approval carries a screening that says "clear". "--list eu=<file>": the command reads the file here and sends its SHA-256.
   const approve = (...more) => ['decide', newOrg.id, 'approve', '--tier', 'standard', '--source', 'registry', '--evidence', 'e2e register extract', '--sha256', 'ab'.repeat(32), '--next-review', '2030-01-01', ...more]
@@ -937,14 +935,14 @@ try {
     && await section.getByRole('row', { name: new RegExp(`Treasury.*Not on a loaded list.*OP Mainnet.*${key.address}`) }).isVisible() // the result comes second: it shows on a phone
     && await on.getByText('Ophis operator: sanctions screening recorded. Result: no match').isVisible() && !/\b(hit|clear)\b/.test(await section.innerText()) && await both(on, '57-screening', '.pager')) // from the end of the audit log, so that the heading of the section is in the picture
   // Company sign-in (C2): the Owner invites a member by work address. The member signs in at the provider, creates the
-  // passkey, and the Owner approves with a passkey check. No words are shown or typed.
+  // passkey, and the Owner approves with a passkey check.
   await on.goto(`${ORIGIN}/#/organisation`)
   await on.reload()
   await on.getByRole('button', { name: 'Invite member' }).click()
   await on.getByLabel('Name shown to colleagues').fill('Cora Company')
   await on.getByLabel('Role').selectOption('viewer')
   await on.getByLabel(`Work email at ${domain}`).fill(`cora@${domain}`)
-  check('the invite dialog asks for the work address and says that no words are read or typed', await on.getByText('The member signs in once with this Microsoft company account.').isVisible() && await both(on, '38-invite-company'))
+  check('the invite dialog asks for the work address and says that the member signs in with it', await on.getByText('The member signs in once with this Microsoft company account.').isVisible() && await both(on, '38-invite-company'))
   await on.getByRole('button', { name: 'Create the link' }).click()
   const companyLink = await on.getByLabel('Enrolment link').inputValue()
   await on.getByRole('button', { name: 'Done' }).click()
@@ -972,15 +970,15 @@ try {
   await thief.context.close()
   await cora.page.getByRole('button', { name: 'Create passkey' }).click()
   await cora.page.getByRole('heading', { name: 'Your passkey waits for approval.' }).waitFor()
-  check('no words are shown on this path', (await cora.page.locator('.phrase').count()) === 0 && await both(cora.page, '40-company-stored'))
+  check('the page after the passkey says that the provider confirmed the account and the colleague now approves', await cora.page.getByText('Microsoft confirmed your company account, and your passkey is stored.').isVisible() && await both(cora.page, '40-company-stored'))
   await on.reload()
   await on.getByRole('heading', { name: /People, wallets|Read this before you continue/ }).waitFor()
   check('the Owner is told at the door that a passkey waits', await on.getByText('A new passkey of Cora Company waits for you').isVisible())
   await on.getByRole('button', { name: 'I have read this' }).click()
   await on.getByRole('button', { name: 'Approve with passkey' }).waitFor()
-  check('the approval card shows what the provider confirmed and the key type, and has no words field',
+  check('the approval card shows what the provider confirmed and the key type, as before',
     await on.getByText(`cora@${domain}, confirmed by Microsoft on`).isVisible() && await on.locator('article.appr dl.kv dd', { hasText: 'Hardware security key, bound to the device' }).isVisible()
-    && (await on.getByLabel(/Three words/).count()) === 0 && await both(on, '41-company-approval', 'article.appr >> nth=0'))
+    && (await on.getByText('Passkey created').count()) === 0 && await both(on, '41-company-approval', 'article.appr >> nth=0'))
   await on.getByRole('button', { name: 'Approve with passkey' }).click()
   await on.getByRole('button', { name: 'Approve with passkey' }).waitFor({ state: 'detached' })
   await cora.page.getByRole('link', { name: 'Go to sign-in' }).click()
@@ -1048,7 +1046,7 @@ try {
     const who = await person()
     await who.page.goto(link)
     await who.page.getByRole('button', { name: 'Create passkey' }).click()
-    await who.page.getByRole('heading', { name: 'Send these three words to your colleague.' }).waitFor()
+    await who.page.getByRole('heading', { name: 'Your passkey waits for approval.' }).waitFor()
     check('the activate command confirmed the new Owner', run('node', ['scripts/dev.mjs', 'activate', '--persist', STATE]).includes('Activated 1 pending'))
     await who.page.getByRole('link', { name: 'Go to sign-in' }).click()
     await who.page.getByRole('button', { name: 'Sign in with a passkey' }).click()
@@ -1071,11 +1069,15 @@ try {
     return link
   }
   const tess = await person()
-  await typeWords(await enrolAt(await inviteAt(dana, 'Tess Trader', 'trader'), tess), 'Tess Trader', (await arrive(dana, false), dana.page))
+  await enrolAt(await inviteAt(dana, 'Tess Trader', 'trader'), tess)
+  await arrive(dana, false)
+  await confirmAt('Tess Trader', dana.page)
   await dana.page.getByRole('button', { name: 'Re-enrol Tess Trader' }).waitFor()
   await arrive(tess)
   const abe = await person()
-  await typeWords(await enrolAt(await inviteAt(dana, 'Abe Approver', 'approver'), abe), 'Abe Approver', (await arrive(dana, false), dana.page))
+  await enrolAt(await inviteAt(dana, 'Abe Approver', 'approver'), abe)
+  await arrive(dana, false)
+  await confirmAt('Abe Approver', dana.page)
   await dana.page.getByText('a 72 hour wait stands in for the second person').waitFor()
   check('the activate command stood in for the Approver\'s wait', run('node', ['scripts/dev.mjs', 'activate', '--persist', STATE]).includes('Activated 1 pending'))
   await arrive(abe)

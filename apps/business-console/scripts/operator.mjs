@@ -183,7 +183,7 @@ else {
       `${o.id}  ${o.legalName} (${o.kind}, ${o.country}, ${o.registration})`,
       `  domain          ${o.domain}`,
       `  submitted       ${new Date(o.submittedAt).toISOString()}   submission ${o.submission} (name it in "approve": a change and a new submit make another)`,
-      `  first Owner     ${o.phrase.join(' ')}   passkey hash ${o.credentialHash}`,
+      `  first Owner     passkey hash ${o.credentialHash}`,
       `  recovery wallet ${o.wallet ? `${o.wallet.address} on ${o.wallet.chain}, ${o.wallet.kind}${o.wallet.threshold ? ` ${o.wallet.threshold} of ${o.wallet.owners}` : ''}, ${o.wallet.colour.level}${o.wallet.colour.why ? ` (${o.wallet.colour.why})` : ''}` : 'none: a second Owner with two passkeys'}`,
       `  declaration     ${o.declaration ? sealed(o.declaration) : 'none'}`,
       ...(o.refused.length ? [`  WARNING         listed wallet refused: ${o.refused.join(', ')}`] : []),

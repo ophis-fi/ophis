@@ -169,7 +169,7 @@ try {
       const start = (await call('/api/recover/intent', { organisationId: orgId })).body
       const { intent } = (await call('/api/recover/intent', { organisationId: orgId, seat: start.seat, response: await key.register(start.options) })).body
       const f = fieldsOf(intent)
-      const typedData = typedProof({ kind: f.kind, chainId: 10, site: f.site, organisationId: f.org, wallet: vault, credentialHash: f.credentialHash, phrase: f.phrase, nonce: f.nonce, issuedAt: f.issuedAt, expiresAt: f.expiresAt })
+      const typedData = typedProof({ kind: f.kind, chainId: 10, site: f.site, organisationId: f.org, wallet: vault, credentialHash: f.credentialHash, nonce: f.nonce, issuedAt: f.issuedAt, expiresAt: f.expiresAt })
       const one = await call('/api/proof', { intent, signature: await signed(owners.slice(0, 1), under({ SafeMessage: [{ name: 'message', type: 'bytes' }] }, 'SafeMessage', { message: hashTypedData(typedData) }, vault)) }, { sign: true })
       return { key, one: one.body.error, opened: (await call('/api/proof', { intent, signature: await safeSignature(vault, typedData) }, { sign: true })).body }
     }

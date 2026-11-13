@@ -81,7 +81,7 @@ try {
       await devDemoWallet(env.DB, env.ENVIRONMENT, orgId, Date.now(), address)
       console.log('Live: a partner with one linked wallet named "Demo wallet" (no signature, local only), at the partner address of the indexer contract file.')
     }
-    console.log(pinned ? `Company sign-in: ${company}. Invite members with a work address at ${DOMAIN}.` : `Domain ${DOMAIN}, company sign-in: none (three words).`)
+    console.log(pinned ? `Company sign-in: ${company}. Invite members with a work address at ${DOMAIN}.` : `Domain ${DOMAIN}, company sign-in: none.`)
     console.log(`Enrolment link, one use, valid 10 minutes:\n${configFor(env.ENVIRONMENT).origin}/#/enrol/${ticket}`)
   } else if (command === 'activate') {
     console.log(`Activated ${await devActivatePending(env.DB, env.ENVIRONMENT, Date.now())} pending passkey(s).`)

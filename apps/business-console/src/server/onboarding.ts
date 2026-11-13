@@ -6,7 +6,7 @@
 // parameters, and every change goes through commit() of the data module, with what decides it read inside the plan.
 import { checksum, colour, parseAddress, readCapped, safeState, verify, verifyDigest, type SafeState } from './chain.ts'
 import { commit, countHour, DOMAIN, emailAt, flags, freezing, LISTED, listed, listedWallet, PEOPLE, randomId, REVIEWED, sha256Hex, type Actor, type WalletKind } from './data.ts'
-import { challengeIsOurs, creationOptions, credentialHash, fromBase64Url, newChallenge, phraseFor, seal, unseal, verifyRegistration, type Config } from './passkeys.ts'
+import { challengeIsOurs, creationOptions, credentialHash, newChallenge, seal, unseal, verifyRegistration, type Config } from './passkeys.ts'
 import { indexerBase } from './partner.ts'
 import { CHAIN_NAME, typedProof } from './typed.ts'
 
@@ -86,7 +86,6 @@ const fail = (status: number, error: string) => json(status, { error })
 const STATUS: Record<string, number> = { not_found: 404, forbidden: 403, too_many: 429 }
 const refuse = (error: string) => fail(STATUS[error] ?? 409, error)
 const hex = (bytes: Uint8Array) => [...bytes].map((byte) => byte.toString(16).padStart(2, '0')).join('')
-const bytesOf = (hex0x: string) => Uint8Array.from(hex0x.slice(2).match(/../g) ?? [], (pair) => parseInt(pair, 16))
 
 // ---- rows ----
 
@@ -124,9 +123,9 @@ async function createOrganisation(db: D1Database, a: ApplyIntent, value: string,
 }
 
 /** The first Owner of an organisation that applied: the seat, the passkey and its hash from the first audit row, the organisation's state, whether that passkey is still active on that Owner seat, and the seat's name (for the declaration). */
-interface First { seatId: string; credentialId: string; hash: string; state: string; reviewAt: number | null; active: number; name: string }
+interface First { seatId: string; hash: string; state: string; reviewAt: number | null; active: number; name: string }
 const firstOf = (db: D1Database, orgId: string) =>
-  db.prepare(`SELECT a.actor_id AS seatId, a.subject_id AS credentialId, a.detail AS hash, o.state, o.review_at AS reviewAt, (SELECT display_name FROM seats WHERE org_id = a.org_id AND id = a.actor_id) AS name,
+  db.prepare(`SELECT a.actor_id AS seatId, a.detail AS hash, o.state, o.review_at AS reviewAt, (SELECT display_name FROM seats WHERE org_id = a.org_id AND id = a.actor_id) AS name,
                      (SELECT count(*) FROM credentials k JOIN seats s ON s.org_id = k.org_id AND s.id = k.seat_id AND s.role = 'owner' AND s.state = 'active'
                       WHERE k.org_id = a.org_id AND k.id = a.subject_id AND k.seat_id = a.actor_id AND k.state = 'active') AS active
               FROM audit_log a JOIN organisations o ON o.id = a.org_id WHERE a.org_id = ? AND a.seq = 1 AND a.action = 'organisation.apply'`).bind(orgId).first<First>()
@@ -540,13 +539,6 @@ export async function applyCheck(c: Ctx) {
 
 // ---- the Onboarding page (a session of the organisation) ----
 
-// The three words of the first Owner's passkey: what the signers of the recovery wallet compare on the signing page,
-// and the operator with the Owner. Same recipe as every phrase (purpose "activation"); its nonce is a MAC over the
-// organisation and the passkey, so the words are the same on every screen and nothing is stored for them.
-async function wordsOf(c: Ctx, orgId: string, first: First) {
-  const mac = fromBase64Url((await seal(c.env.CHALLENGE_KEY, 'activation-phrase', { org: orgId, credential: first.credentialId })).split('.')[1])
-  return phraseFor({ site: c.config.rpId, orgId, seatId: first.seatId, role: 'owner', purpose: 'activation', credentialHash: bytesOf(first.hash), nonce: hex(mac.subarray(0, 16)) })
-}
 const walletView = (w: WalletRow) => {
   const seen = w.snapshot ? (JSON.parse(w.snapshot) as SafeState) : null
   return { chainId: w.chainId, chain: CHAIN_NAME[w.chainId] ?? `Chain ${w.chainId}`, address: checksum(w.address), kind: w.kind, label: w.label, inForce: w.inForce === 1, ...(seen && { threshold: seen.threshold, owners: seen.owners.length }) }
@@ -564,7 +556,7 @@ export async function onboarding(c: Member) {
     company: { legalName: company.legalName, kind: company.kind, country: company.country, registration: company.registration, domain: company.domain, domainVerifiedAt: company.domainVerifiedAt },
     // The company sign-in: null until an Owner has chosen (the step of the Onboarding page), which works as "none".
     signin: { setting: company.signin, tenant: company.tenant },
-    first: first && { phrase: await wordsOf(c, orgId, first), credentialHash: first.hash, active: first.active === 1, name: first.name },
+    first: first && { credentialHash: first.hash, active: first.active === 1, name: first.name },
     // Milestone 5b: the sealing key of this environment (its fingerprint; null: none configured), and the sealed declaration as the server knows it.
     seal: { key: await sealKey(c.env), generation: SEAL.generation },
     sealed: sealed.find((item) => item.kind === 'declaration') ?? null,
@@ -659,10 +651,10 @@ export async function screening(c: Member) {
 /** What the Owner asked the recovery wallet to sign, held nowhere. The fields of a recovery intent, with the wallet named. */
 export interface ActivateIntent {
   kind: 'activate'; org: string; seat: string; chainId: number; wallet: string; label: string; custodian: boolean
-  credentialHash: string; phrase: string; nonce: string; issuedAt: number; expiresAt: number; site: string
+  credentialHash: string; nonce: string; issuedAt: number; expiresAt: number; site: string
 }
 // POST /api/onboarding/wallet (Owner, fresh, two passkeys): chain and address of the recovery wallet in, a signing
-// link out. Writes nothing. The passkey and the words are the first Owner's, read from the rows, never from the caller.
+// link out. Writes nothing. The passkey is the first Owner's, read from the rows, never from the caller.
 export async function activationIntent(c: Member) {
   const { chainId, custodian } = c.body
   const address = parseAddress(c.body.address)
@@ -674,14 +666,13 @@ export async function activationIntent(c: Member) {
   const first = await firstOf(c.env.DB, c.actor.orgId)
   if (first?.state !== 'unverified') return fail(409, 'not_unverified')
   if (!first.active) return fail(409, 'first_passkey_gone')
-  const phrase = await wordsOf(c, c.actor.orgId, first)
   const issuedAt = Math.floor(c.now / 1000)
   const intent: ActivateIntent = {
-    kind: 'activate', org: c.actor.orgId, seat: c.actor.seatId, chainId, wallet: checksum(address), label, custodian, credentialHash: first.hash, phrase: phrase.join(' '),
+    kind: 'activate', org: c.actor.orgId, seat: c.actor.seatId, chainId, wallet: checksum(address), label, custodian, credentialHash: first.hash,
     nonce: `0x${randomId()}${randomId()}`, issuedAt, expiresAt: issuedAt + WEEK_S, site: c.config.rpId,
   }
   const sealed = await seal(c.env.CHALLENGE_KEY, ACTIVATE, intent)
-  return json(200, { intent: sealed, link: `${c.config.signOrigin}/sign/#${sealed}`, expiresAt: intent.expiresAt * 1000, phrase })
+  return json(200, { intent: sealed, link: `${c.config.signOrigin}/sign/#${sealed}`, expiresAt: intent.expiresAt * 1000 })
 }
 
 /** The fields of an activation intent, if the MAC is ours. */
@@ -694,7 +685,7 @@ export async function activationProof(c: Ctx, intent: ActivateIntent, signature:
   if (!endpoints) return fail(400, 'signature_invalid')
   const typed = typedProof({
     kind: 'activate', chainId: intent.chainId, site: c.config.rpId, organisationId: intent.org, wallet: intent.wallet,
-    credentialHash: intent.credentialHash, phrase: intent.phrase, nonce: intent.nonce, issuedAt: intent.issuedAt, expiresAt: intent.expiresAt,
+    credentialHash: intent.credentialHash, nonce: intent.nonce, issuedAt: intent.issuedAt, expiresAt: intent.expiresAt,
   })
   const proved = await verify(endpoints, typed, intent.wallet, signature)
   if (!proved) return fail(403, 'signature_rejected')
@@ -746,7 +737,7 @@ export async function submit(c: Member) {
 
 interface OperatorEnv { DB: D1Database; SEALED: R2Bucket; ENVIRONMENT: string; CHALLENGE_KEY: string; OPERATOR_TOKEN?: string; SANCTIONS_URL?: string }
 
-// What the operator compares before a decision: the domain, the first Owner's words and passkey hash, the recovery
+// What the operator compares before a decision: the domain, the first Owner's passkey hash, the recovery
 // wallet with its kind and its colour (read on both endpoints now, as if it were in force), whether A7 holds, and the
 // sealed declaration: its id, size, date and SHA-256. And, in a field of its own, the reviews that are due (S4).
 async function list(c: Ctx) {
@@ -758,7 +749,7 @@ async function list(c: Ctx) {
     const live = endpoints ? await safeState(endpoints, wallet!.chainId, wallet!.address) : null
     organisations.push({
       id: o.id, legalName: o.legalName, kind: o.kind, country: o.country, registration: o.registration, domain: o.domain, submittedAt: o.reviewAt, submission: await submissionOf(o.print),
-      phrase: await wordsOf(c, o.id, first), credentialHash: first.hash, missing: await missing(c.env.DB, o.id, c.now),
+      credentialHash: first.hash, missing: await missing(c.env.DB, o.id, c.now),
       // Milestone 5b: that the sealed declaration exists, and what the server knows of it. "items" and "get" are the way to the file.
       declaration: (await sealedOf(c.env.DB, o.id)).find((item) => item.kind === 'declaration') ?? null,
       refused: await refusedOf(c.env.DB, o.id), // sanctions screening: a wallet this application named was on a loaded list
