@@ -402,7 +402,7 @@ async function linkProof(c: Context, intent: Intent, signature: `0x${string}`) {
   const outcome = await data.linkWallet(c.env.DB, {
     orgId: intent.org, seatId: intent.seat, chainId: intent.chainId, address: intent.wallet.toLowerCase(), label: intent.label,
     kind: safe ? 'safe' : intent.custodian && proved.by === 'key' ? 'custodian' : 'single_key', snapshot: safe && JSON.stringify(safe),
-    nonce: intent.nonce, digest: proved.digest, signature, now: c.now,
+    nonce: intent.nonce, digest: proved.digest, signature, by: proved.by, now: c.now,
   })
   return 'error' in outcome ? refuse(outcome.error) : json(200, outcome)
 }

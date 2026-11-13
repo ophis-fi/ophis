@@ -22,6 +22,7 @@
     "test:chain": "node tests/chain.mjs",
     "test:jev": "node tests/jev.mjs",
     "test:dns": "node tests/dns.mjs",
+    "test:cpu": "node tests/cpu.mjs",
     "test:e2e": "vite build && vite build --mode sign && node tests/e2e.mjs"
   },
   "dependencies": {

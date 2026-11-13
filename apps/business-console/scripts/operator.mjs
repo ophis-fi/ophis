@@ -1,7 +1,7 @@
 // The operator's command, local only. It calls the operator's API of the local server (src/server/onboarding.ts) on
 // that API's own hostname, with OPERATOR_TOKEN from .dev.vars (made by "pnpm seed"). The token is never printed.
 //   node scripts/operator.mjs invite    a new application code: one use, valid 14 days; give it to the company that may apply
-//   node scripts/operator.mjs list      what is under review, with the people the application named besides the first Owner (an approval makes each an invited seat
+//   node scripts/operator.mjs list      the 3 oldest under review (and how many more wait: decide these first), with the people the application named besides the first Owner (an approval makes each an invited seat
 //                                       that needs no second person at its first enrolment), and a warning line when a wallet the application named was refused as listed; then "Reviews due, and frozen
 //                                       organisations": no screening, the next review passed or within 14 days, or frozen; a frozen one ends with what froze it: "frozen by
 //                                       <action> (<detail>) on <day>" (screening.attempt: a member proved a wallet that is on a loaded list; the detail is the address)
@@ -152,7 +152,7 @@ const HELD = {
   manual: `the loaded list was loaded by hand from a file with no publish date, and the list file never replaces such a list. To end this, ${BY_HAND}`,
 }
 const count = (n) => `${n} ${n === 1 ? 'address' : 'addresses'}`
-const hitLines = (hits) => (hits.length ? hits.map((h) => `HIT  ${h.id}  ${h.name}  was ${h.state}  ${h.address}  ${h.frozen ? 'frozen now' : 'not changed'}`).join('\n') : 'No linked or pending wallet is on a loaded list.')
+const hitLines = (hits) => (hits.length ? hits.map((h) => `HIT  ${h.id}  ${h.name}  was ${h.state}  ${h.address}  ${h.frozen ? 'frozen now' : h.later ? 'frozen at the next run: run "sync" to do it now' : 'not changed'}`).join('\n') : 'No linked or pending wallet is on a loaded list.')
 const sealed = (i) => `${i.id}  ${i.kind}  ${i.size} bytes  ${new Date(i.at).toISOString()}  sha256 ${i.sha256}  sealed to key ${i.key.slice(0, 16)} (${i.generation})`
 if (command === 'items') console.log(answer.body.items.length ? answer.body.items.map(sealed).join('\n') : 'No sealed item.')
 else if (command === 'get') {
@@ -179,6 +179,7 @@ else if (load) {
 } else if (command !== 'list') console.log(`Done: ${id} is now ${answer.body.state}.`)
 else {
   if (!answer.body.organisations.length) console.log('Nothing is under review.')
+  if (answer.body.more) console.log(`${answer.body.more} more under review: decide these first, then list again.`)
   for (const o of answer.body.organisations) {
     console.log([
       `${o.id}  ${o.legalName} (${o.kind}, ${o.country}, ${o.registration})`,

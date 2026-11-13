@@ -935,8 +935,8 @@ export async function wallets(db: D1Database, orgId: string, now: number) {
 }
 /** The linked wallets of an organisation with the proof of each link, oldest first: what the partner figures ask for (partner.ts). */
 export const linkedProofs = async (db: D1Database, orgId: string) =>
-  (await db.prepare(`SELECT chain_id AS chainId, address, label, proof_digest AS digest, proof_signature AS signature FROM wallets WHERE org_id = ? AND state = 'linked' ORDER BY rowid`)
-    .bind(orgId).all<{ chainId: number; address: string; label: string; digest: string; signature: string }>()).results
+  (await db.prepare(`SELECT chain_id AS chainId, address, label, proof_digest AS digest, proof_signature AS signature, proof_by AS proofBy FROM wallets WHERE org_id = ? AND state = 'linked' ORDER BY rowid`)
+    .bind(orgId).all<{ chainId: number; address: string; label: string; digest: string; signature: string; proofBy: 'key' | 'contract' | null }>()).results
 /** Is this address linked, or waiting for its second person, in this organisation? */
 export const walletLive = async (db: D1Database, orgId: string, chainId: number, address: string, now: number) =>
   Boolean(await db.prepare(`SELECT 1 FROM wallets w WHERE w.org_id = ? AND w.chain_id = ? AND w.address = ? AND ${LIVE}`).bind(orgId, chainId, address, now).first())
@@ -953,7 +953,7 @@ type Linked = { error: 'forbidden' | 'quarantine' | 'already_linked' | 'proof_us
 // at once; otherwise it is pending, with a request of that seat that a different key-role member approves.
 export async function linkWallet(
   db: D1Database,
-  w: { orgId: string; seatId: string; chainId: number; address: string; kind: WalletKind; label: string; snapshot: string | null; nonce: string; digest: string; signature: string; now: number },
+  w: { orgId: string; seatId: string; chainId: number; address: string; kind: WalletKind; label: string; snapshot: string | null; nonce: string; digest: string; signature: string; by: 'key' | 'contract'; now: number },
 ) {
   const id = randomId()
   const requestId = randomId()
@@ -963,8 +963,8 @@ export async function linkWallet(
   let outcome: Linked = { error: 'forbidden' }
   // The wallet row of this proof: it holds the nonce, so a proof is used once whatever became of it.
   const row = (state: 'linked' | 'pending' | 'unlinked') =>
-    db.prepare(`INSERT INTO wallets (id, org_id, chain_id, address, kind, label, state, proof_nonce, proof_digest, proof_signature, proof_checked_at, linked_at, snapshot) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
-      .bind(id, w.orgId, w.chainId, w.address, w.kind, w.label, state, w.nonce, w.digest, w.signature, now, now, w.snapshot)
+    db.prepare(`INSERT INTO wallets (id, org_id, chain_id, address, kind, label, state, proof_nonce, proof_digest, proof_signature, proof_by, proof_checked_at, linked_at, snapshot) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+      .bind(id, w.orgId, w.chainId, w.address, w.kind, w.label, state, w.nonce, w.digest, w.signature, w.by, now, now, w.snapshot)
   await commit(db, w.orgId, async () => {
     const seat = await db.prepare(`SELECT s.role, max(COALESCE(s.quarantine_until, 0), COALESCE(o.quarantine_until, 0)) AS quarantine FROM seats s JOIN organisations o ON o.id = s.org_id AND o.state = 'active'
                                    WHERE s.org_id = ? AND s.id = ? AND s.state = 'active'`).bind(w.orgId, w.seatId).first<{ role: Role; quarantine: number | null }>()

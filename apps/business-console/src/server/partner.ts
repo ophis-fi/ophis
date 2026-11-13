@@ -90,7 +90,8 @@ export async function figures(env: Settings, orgId: string, now: number): Promis
   for (const w of await data.linkedProofs(env.DB, orgId)) {
     const seen = rows.get(w.address) ?? rows.set(w.address, { label: w.label, chains: [], key: false }).get(w.address)!
     seen.chains.push(w.chainId)
-    seen.key ||= hex(w.digest) && hex(w.signature) && (await signedByKey(w.digest as Hex, w.address, w.signature as Hex))
+    // Free plan: the link wrote how it was proved (proof_by), the same recovery made once. A row from before: recovered here.
+    seen.key ||= w.proofBy ? w.proofBy === 'key' : hex(w.digest) && hex(w.signature) && (await signedByKey(w.digest as Hex, w.address, w.signature as Hex))
   }
   const asked = [...rows.keys()].slice(0, INDEXER.maxWallets)
   if (!asked.length) return { state: 'no_wallet' }

@@ -158,7 +158,7 @@ async function missing(db: D1Database, orgId: string, now: number): Promise<null
   return !seen.own ? 'second_key' : !((seen.proof && first.active) || seen.others) ? 'proof_or_owner' : seen.single && (seen.people > 1 || seen.named) ? 'single_key' : !seen.declared ? 'declaration' : null
 }
 
-interface Proved { orgId: string; seatId: string; chainId: number; address: string; kind: WalletKind; label: string; snapshot: string | null; credentialHash: string; nonce: string; digest: string; signature: string }
+interface Proved { orgId: string; seatId: string; chainId: number; address: string; kind: WalletKind; label: string; snapshot: string | null; credentialHash: string; nonce: string; digest: string; signature: string; by: 'key' | 'contract' }
 // A valid activation proof arrived. One commit: the organisation is still unverified, the seat that asked for it (G2:
 // the intent names it) is still an active Owner, the passkey the wallet confirmed is still the first Owner's and active, the proof was never accepted (proof_nonce is unique and rows stay). The wallet
 // is stored as pending with its proof and replaces an earlier one. No approval request: the operator's decision is the
@@ -179,8 +179,8 @@ async function storeProof(db: D1Database, w: Proved, now: number) {
     if (outcome !== 'stored') return null
     return [{ at: now, actorKind: 'anchor', actorId: id, sessionId: null, action: 'activation.proof', subjectId: id, detail: w.kind }, [
       db.prepare(`UPDATE wallets SET state = 'unlinked' WHERE org_id = ? AND state = 'pending'`).bind(w.orgId),
-      db.prepare(`INSERT INTO wallets (id, org_id, chain_id, address, kind, label, state, proof_nonce, proof_digest, proof_signature, proof_checked_at, linked_at, snapshot) VALUES (?, ?, ?, ?, ?, ?, 'pending', ?, ?, ?, ?, ?, ?)`)
-        .bind(id, w.orgId, w.chainId, w.address, w.kind, w.label, w.nonce, w.digest, w.signature, now, now, w.snapshot),
+      db.prepare(`INSERT INTO wallets (id, org_id, chain_id, address, kind, label, state, proof_nonce, proof_digest, proof_signature, proof_by, proof_checked_at, linked_at, snapshot) VALUES (?, ?, ?, ?, ?, ?, 'pending', ?, ?, ?, ?, ?, ?, ?)`)
+        .bind(id, w.orgId, w.chainId, w.address, w.kind, w.label, w.nonce, w.digest, w.signature, w.by, now, now, w.snapshot),
     ]]
   })
   return outcome
@@ -356,6 +356,10 @@ async function replaceList(db: D1Database, list: string, sha256: string, address
 // is read again inside that commit. After every load, and at every read of the list file that loads nothing (same,
 // held): a freeze that failed is tried again there (G1). The actor is the operator for a manual load, the system for the list file (G7).
 // ponytail: every listed wallet of every organisation, at each call. Page the hits when they pass some hundreds.
+// Free plan (ARCHITECTURE.md): at most FREEZES commits per call. A commit is 4 D1 queries, 8 after a collision, and an
+// invocation has 50. An active hit after them is marked `later`: the next call freezes it (the next daily run, or the
+// operator's "sync" now), as it tries again a freeze that failed.
+export const FREEZES = 5
 async function freezeHits(db: D1Database, now: number, actorKind: 'operator' | 'system') {
   const hits = (await db.prepare(`SELECT o.id, o.name, o.state, w.address FROM wallets w JOIN organisations o ON o.id = w.org_id WHERE ${LISTED} ORDER BY o.id, w.rowid`).bind(now).all<{ id: string; name: string; state: string; address: string }>()).results
   const frozen = new Map<string, boolean>()
@@ -363,13 +367,14 @@ async function freezeHits(db: D1Database, now: number, actorKind: 'operator' | '
     // One commit per organisation, whatever the number of its listed wallets, and none for one that is not active: it
     // cannot be frozen, and a commit costs 3 to 4 queries of the few an invocation has.
     if (hit.state !== 'active' || frozen.has(hit.id)) continue
+    if (frozen.size === FREEZES) break
     frozen.set(hit.id, await commit(db, hit.id, async () => {
       const wallet = await listedWallet(db, hit.id, now)
       const active = await db.prepare(`SELECT 1 FROM organisations WHERE id = ? AND state = 'active'`).bind(hit.id).first()
       return wallet && active ? [{ at: now, actorKind, actorId: null, sessionId: null, action: 'screening.wallet', subjectId: wallet.id }, freezing(db, hit.id, now)] : null
     }))
   }
-  return hits.map((hit) => ({ ...hit, frozen: frozen.get(hit.id) ?? false }))
+  return hits.map((hit) => ({ ...hit, frozen: frozen.get(hit.id) ?? false, ...(hit.state === 'active' && !frozen.has(hit.id) && { later: true }) }))
 }
 
 // ---- milestone 5b: the sealed declaration (key-custody.md sections 3 and 4) ----
@@ -717,7 +722,7 @@ export async function activationProof(c: Ctx, intent: ActivateIntent, signature:
   const outcome = await storeProof(c.env.DB, {
     orgId: intent.org, seatId: intent.seat, chainId: intent.chainId, address: intent.wallet.toLowerCase(), label: intent.label, credentialHash: intent.credentialHash,
     kind: safe ? 'safe' : intent.custodian && proved.by === 'key' ? 'custodian' : 'single_key', snapshot: safe && JSON.stringify(safe),
-    nonce: intent.nonce, digest: proved.digest, signature,
+    nonce: intent.nonce, digest: proved.digest, signature, by: proved.by,
   }, c.now)
   return outcome === 'stored' ? json(200, { state: 'stored' }) : refuse(outcome)
 }
@@ -765,9 +770,14 @@ interface OperatorEnv { DB: D1Database; SEALED: R2Bucket; ENVIRONMENT: string; C
 // named besides the first Owner (an approval approves them too), the recovery wallet with its kind and its colour (read
 // on both endpoints now, as if it were in force), whether A7 holds, and the sealed declaration: its id, size, date and
 // SHA-256. And, in a field of its own, the reviews that are due (S4).
+// Free plan (ARCHITECTURE.md): the oldest UNDER_REVIEW only, in full; `more` counts the others. Each costs 7 D1 queries
+// and, for a Safe, 14 reads of the chain: 50 subrequests per invocation hold 3. A decision takes one off the list.
+// ponytail: no way past the oldest 3. Decide "more" on one that waits, or add an offset, if that ever blocks.
+export const UNDER_REVIEW = 3
 async function list(c: Ctx) {
   const organisations = []
-  for (const o of await underReview(c.env.DB)) {
+  const waiting = await underReview(c.env.DB)
+  for (const o of waiting.slice(0, UNDER_REVIEW)) {
     const first = (await firstOf(c.env.DB, o.id))!
     const wallet = await walletOf(c.env.DB, o.id)
     const endpoints = wallet?.kind === 'safe' ? c.config.chains[wallet.chainId] : undefined
@@ -781,7 +791,7 @@ async function list(c: Ctx) {
       wallet: wallet && { ...walletView(wallet), colour: colour({ kind: wallet.kind, snapshot: wallet.snapshot, inForce: true }, live) },
     })
   }
-  return json(200, { organisations, reviews: await reviewsDue(c.env.DB, c.now), lists: await listsOf(c.env, c.now) })
+  return json(200, { organisations, more: waiting.length - organisations.length, reviews: await reviewsDue(c.env.DB, c.now), lists: await listsOf(c.env, c.now) })
 }
 
 const MAX_REVIEW_MS = 5 * 365 * 24 * 60 * 60 * 1000 // owner's call: a next review lies at most 5 years ahead; a date further off would hide the organisation from "Reviews due" for good

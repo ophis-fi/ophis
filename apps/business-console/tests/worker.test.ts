@@ -9,7 +9,7 @@ import routerSource from '../src/server/index.ts?raw'
 import dataSource from '../src/server/data.ts?raw'
 import passkeySource from '../src/server/passkeys.ts?raw'
 import * as data from '../src/server/data.ts'
-import worker, { csvCell, daily, EVENTS, handle, routes, type Env } from '../src/server/index.ts'
+import worker, { csvCell, daily as dailyRun, EVENTS, handle as handleRequest, routes, type Env } from '../src/server/index.ts'
 import wranglerConfig from '../wrangler.jsonc?raw'
 import { challengeIsOurs, configFor, credentialHash, fromBase64Url, newChallenge, seal, toBase64Url, userHandle } from '../src/server/passkeys.ts'
 import { checksum, colour, LIMITS, SAFES, type SafeState } from '../src/server/chain.ts'
@@ -42,6 +42,53 @@ const RECIPIENT = await age.identityToRecipient(IDENTITY)
 const testEnv = { DB: db, ASSETS, SEALED: env.SEALED, ENVIRONMENT: 'local', CHALLENGE_KEY: crypto.randomUUID() + crypto.randomUUID(), SEAL_RECIPIENT: RECIPIENT } as unknown as Env
 const SIGN = configFor('local').signOrigin
 let now = START
+
+// ---- the Free plan of Cloudflare Workers (ARCHITECTURE.md, "Free plan"): every invocation of this suite is metered ----
+// d1: one per round trip to the database (D1DatabaseSession._wrappedFetch: once per first, all, run or raw, once per
+// batch whatever its statements, once per exec, a failed one too). fetch: every fetch() (external subrequests).
+// internal: the R2 calls and the static files (subrequests to Cloudflare services). Section K checks the largest of each.
+// Two invocations in flight at once share their counts: an overcount, never an undercount.
+const FREE = { d1: 50, fetch: 50, internal: 1000 }
+type Count = { d1: number; fetch: number; internal: number }
+const counts: Count = { d1: 0, fetch: 0, internal: 0 }
+const metered = new Map<string, Count>()
+let inFlight = 0
+function tally(object: object, names: string[], field: keyof Count) {
+  for (const name of names) {
+    let owner = object as Record<string, (...args: unknown[]) => unknown>
+    while (!Object.hasOwn(owner, name)) owner = Object.getPrototypeOf(owner)
+    const original = owner[name]
+    owner[name] = function (this: unknown, ...args: unknown[]) {
+      if (inFlight) counts[field]++
+      return original.apply(this, args)
+    }
+  }
+}
+tally((db as unknown as { alwaysPrimarySession: object }).alwaysPrimarySession, ['_wrappedFetch'], 'd1')
+tally(env.SEALED, ['head', 'get', 'put', 'delete', 'list', 'createMultipartUpload'], 'internal')
+tally(ASSETS, ['fetch'], 'internal')
+let realFetch = globalThis.fetch
+const countingFetch = ((...args: Parameters<typeof fetch>) => (counts.fetch++, realFetch(...args))) as typeof fetch
+async function meter<T>(job: string, run: () => Promise<T>) {
+  const start = { ...counts }
+  if (inFlight++ === 0) [realFetch, globalThis.fetch] = [globalThis.fetch, countingFetch]
+  try {
+    return await run()
+  } finally {
+    if (--inFlight === 0 && globalThis.fetch === countingFetch) globalThis.fetch = realFetch
+    const seen = metered.get(job) ?? { d1: 0, fetch: 0, internal: 0 }
+    metered.set(job, { d1: Math.max(seen.d1, counts.d1 - start.d1), fetch: Math.max(seen.fetch, counts.fetch - start.fetch), internal: Math.max(seen.internal, counts.internal - start.internal) })
+  }
+}
+// The route a request reaches: its row of the route table (or of the operator's), else a page or a refused path.
+function jobOf(request: Request) {
+  const { origin, pathname } = new URL(request.url)
+  const table: { method: string; path: string }[] = origin === onboarding.OPERATOR.local ? onboarding.operatorRoutes : routes
+  const route = table.find((r) => r.method === request.method && new URLPattern({ pathname: r.path }).test({ pathname }))
+  return route ? `${route.method} ${route.path}` : `${request.method} ${pathname.startsWith('/api/') ? '(no route)' : '(page)'}`
+}
+const handle = (request: Request, environment: Env, clock?: () => number) => meter(jobOf(request), () => handleRequest(request, environment, clock))
+const daily = (environment: Env, at: number) => meter('daily run (cron)', () => dailyRun(environment, at))
 
 beforeAll(() => applyD1Migrations(db, env.MIGRATIONS))
 beforeEach(() => {
@@ -5421,6 +5468,8 @@ describe('E. onboarding: a company applies, proves its domain, is activated and 
     dns.twist = (_which, answer) => answer
     onboarding.DNS.timeoutMs = 5000
     await uncount() // the tests share one database and one clock: no test counts the checks of another
+    // The operator's list holds the oldest 3 under review (the Free plan): an organisation an earlier test left there leaves it.
+    await db.prepare('UPDATE organisations SET review_at = NULL WHERE review_at IS NOT NULL').run()
     INVITE = await newCode()
   })
   // G1: an application code from the operator. One is enough for any number of first calls; each organisation uses one up.
@@ -5954,7 +6003,7 @@ describe('E. onboarding: a company applies, proves its domain, is activated and 
     chain.calls = []
     expect((await prove(intent, signature)).body).toEqual({ state: 'stored' })
     const wallet = (await row<Record<string, unknown>>('SELECT * FROM wallets WHERE org_id = ?', a.orgId))!
-    expect(wallet).toMatchObject({ chain_id: CHAIN, address: accounts[0].address.toLowerCase(), kind: 'single_key', label: 'Treasury', state: 'pending', proof_nonce: f.nonce, proof_digest: hashTypedData(typedActivate(f)), proof_signature: signature, proof_checked_at: now, anchor: null, snapshot: null })
+    expect(wallet).toMatchObject({ chain_id: CHAIN, address: accounts[0].address.toLowerCase(), kind: 'single_key', label: 'Treasury', state: 'pending', proof_nonce: f.nonce, proof_digest: hashTypedData(typedActivate(f)), proof_signature: signature, proof_by: 'key', proof_checked_at: now, anchor: null, snapshot: null })
     expect(await count('approvals', a.orgId)).toBe(0)
     expect(await row('SELECT actor_kind, actor_id, action, subject_id, detail FROM audit_log WHERE org_id = ? ORDER BY seq DESC', a.orgId)).toEqual({ actor_kind: 'anchor', actor_id: wallet.id, action: 'activation.proof', subject_id: wallet.id, detail: 'single_key' })
     expect(chain.calls).toEqual([]) // a key's signature asks no endpoint
@@ -5982,7 +6031,7 @@ describe('E. onboarding: a company applies, proves its domain, is activated and 
     expect((await prove(asked.body.intent, '0x')).body).toEqual({ error: 'signature_rejected' })
     chain.twist = (_url, _method, result) => result
     expect((await prove(asked.body.intent, '0x')).body).toEqual({ state: 'stored' })
-    expect(await row(`SELECT kind, snapshot FROM wallets WHERE org_id = ? AND state = 'pending'`, a.orgId)).toEqual({ kind: 'safe', snapshot: JSON.stringify({ threshold: 2, owners: safe.owners, modules: [], handler: true }) })
+    expect(await row(`SELECT kind, snapshot, proof_by FROM wallets WHERE org_id = ? AND state = 'pending'`, a.orgId)).toEqual({ kind: 'safe', snapshot: JSON.stringify({ threshold: 2, owners: safe.owners, modules: [], handler: true }), proof_by: 'contract' })
     expect(await count('wallets', a.orgId)).toBe(3)
     // The same address again: the earlier row is history, so the one live row per address stands.
     expect((await activation(a, accounts[1])).body).toEqual({ state: 'stored' })
@@ -8825,6 +8874,25 @@ isolation['GET /api/overview'] = async (a, b) => {
 describe('I. partner figures: live', () => {
   it('GET /api/overview: the isolation case', async () => isolation['GET /api/overview'](await member('Alder Asset Management'), await member('Birchfield Capital')))
 
+  // The Free plan: about 1 ms of CPU per recovered signature, 10 ms per request (tests/cpu.mjs).
+  it('Free plan: a link writes how it was proved (proof_by) and the figures read that, recovering no signature; a row written before it is recovered as before', async () => {
+    const o = await owner()
+    const key = await linked(o) // accounts[0], by its own key
+    const safe = await linkedSafe(o) // accounts[4], a Safe that signs onchain
+    const by = async (id: string) => (await row<{ by: string | null }>('SELECT proof_by AS by FROM wallets WHERE id = ?', id))!.by
+    expect([await by(key.id), await by(safe.id)]).toEqual(['key', 'contract'])
+    // The column decides, not the signature: emptied, the key wallet is still asked as one (the indexer reads it on every chain).
+    await db.prepare(`UPDATE wallets SET proof_signature = '0x' WHERE id = ?`).bind(key.id).run()
+    // A row from before the column: a real signature of the key of accounts[1], recovered as before.
+    const digest = `0x${'ab'.repeat(32)}` as const
+    const old = await walletRow(o.orgId, accounts[1].address.toLowerCase(), { label: 'Old wallet' })
+    await db.prepare('UPDATE wallets SET proof_digest = ?, proof_signature = ? WHERE id = ?').bind(digest, await accounts[1].sign({ hash: digest }), old).run()
+    expect(await by(old)).toBeNull()
+    const asked = indexer()
+    expect((await overviewOf(o)).body.figures.state).toBe('live')
+    expect(JSON.parse(String(asked[0].init.body))).toEqual({ wallets: [accounts[0], accounts[4], accounts[1]].map((a) => a.address.toLowerCase()), contract: { [accounts[4].address.toLowerCase()]: [CHAIN] } })
+  })
+
   it('the contract file is the one the indexer tests: the partner-fee dashboard of each wallet and the wallets that traded, no referral dashboard; a partner wallet with two months, three wallets and three trades of no known wallet, a second wallet with zero fees and none', () => {
     expect([P.wallet, P.fees.recentBatches.length, P.traders.wallets.length, P.traders.unknown.trades, Z.fees.lifetime.tradeCount, Z.traders.totals.walletCount, contract.wallets.map((w) => Object.keys(w))])
       .toEqual(['0x5afe5afe5afe5afe5afe5afe5afe5afe5afe5afe', 2, 3, 3, 0, 0, [['wallet', 'fees', 'traders'], ['wallet', 'fees', 'traders']]])
@@ -9355,5 +9423,65 @@ describe('J. the demo desk: a passkey check to send, the band of a limit price, 
     const view = (await get('/api/desk', t)).body
     expect(view.wallets.map((w: { chain: string }) => w.chain)).toEqual(['Optimism'])
     expect(view.chains.map((c: { name: string }) => c.name)).toContain(view.wallets[0].chain)
+  })
+})
+
+// ---- K. The Free plan of Cloudflare Workers (ARCHITECTURE.md, "Free plan"). Every invocation of this file was metered
+// (the top of the file). This last section adds the load: 20 partner organisations of 10 linked wallets each, which read
+// every page, the daily run that finds a listed wallet in each of them, and 20 organisations under review in the operator's
+// list. Then it checks the largest count of every route and job against the Free limits per invocation. Run it with the
+// whole file: it fails when a row of a route table was never driven. A new route is in it by its row; a new job (a cron, a
+// queue) is driven through meter() and named in JOBS, one line.
+describe('K. the Free plan of Cloudflare Workers', () => {
+  const JOBS = ['daily run (cron)']
+  it('no invocation passes the Free limits: 50 D1 queries, 50 subrequests, 1,000 to Cloudflare services; listed organisations past the first 5 are frozen by the next runs', async () => {
+    // 20 partner organisations of 10 linked wallets each: every page, with the figures of the indexer.
+    const partners: (Member & { wallets: string[] })[] = []
+    for (let i = 0; i < 20; i++) {
+      const o = await owner(`Partner ${i}`)
+      const wallets = Array.from({ length: 10 }, someAddress)
+      for (const [n, address] of wallets.entries()) await walletRow(o.orgId, address, { label: `Wallet ${n}` })
+      partners.push({ ...o, wallets })
+    }
+    indexer()
+    for (const p of partners) {
+      for (const path of ['/api/me', '/api/org', '/api/overview', '/api/screening', '/api/audit', '/api/export/months', '/api/export/traders']) {
+        expect((await call('GET', path, { cookie: p.cookie, env: liveEnv })).status, path).toBe(200)
+      }
+    }
+    expect((await call('GET', '/api/overview', { cookie: partners[0].cookie, env: liveEnv })).body.figures.wallets).toHaveLength(10)
+
+    // The daily run: the list file names one wallet of each. FREEZES organisations a run, the others marked "later".
+    await db.batch([db.prepare('DELETE FROM sanctioned_addresses'), db.prepare('DELETE FROM sanctions_lists')])
+    const listedAddresses = partners.map((p) => p.wallets[3])
+    vi.stubGlobal('fetch', async () => Response.json({ list: 'ofac', published: '2026-11-09', made: `${new Date(now).toISOString().slice(0, 19)}Z`, sha256: 'c'.repeat(64), count: 20, addresses: listedAddresses }))
+    const fed = { ...testEnv, SANCTIONS_URL: 'https://lists.test/ofac.json' } as Env
+    const frozenNow = async () => (await db.prepare(`SELECT count(*) AS n FROM organisations WHERE state = 'frozen' AND id IN (${partners.map(() => '?').join(', ')})`).bind(...partners.map((p) => p.orgId)).first<{ n: number }>())!.n
+    for (let run = 1; run <= 4; run++) {
+      const read = (await daily(fed, now)) as { outcome: string; hits: { frozen: boolean; later?: boolean }[] }
+      expect(read.outcome).toBe(run === 1 ? 'loaded' : 'same')
+      expect([read.hits.filter((h) => h.frozen).length, read.hits.filter((h) => h.later).length, await frozenNow()]).toEqual([onboarding.FREEZES, 20 - run * onboarding.FREEZES, run * onboarding.FREEZES])
+    }
+
+    // The operator's list with 20 organisations under review, each with a Safe to read on the chain: the oldest 3 in full.
+    vi.stubGlobal('fetch', fakeRpc)
+    for (let i = 0; i < 20; i++) {
+      const [orgId, address] = [data.randomId(), someAddress()]
+      safeAt(address)
+      await db.batch([
+        db.prepare(`INSERT INTO organisations (id, kind, name, state, created_at, review_at, country) VALUES (?, 'institution', ?, 'unverified', ?, 1, 'LU')`).bind(orgId, `Under review ${i}`, now),
+        db.prepare(`INSERT INTO audit_log (org_id, seq, at, actor_kind, actor_id, action, subject_id, detail, prev_hash, hash) VALUES (?, 1, ?, 'seat', ?, 'organisation.apply', ?, ?, ?, ?)`).bind(orgId, now, data.randomId(), data.randomId(), 'h'.repeat(64), '0'.repeat(64), 'x'.repeat(64)),
+        db.prepare(`INSERT INTO wallets (id, org_id, chain_id, address, kind, label, state, proof_nonce, proof_digest, proof_signature, proof_checked_at, linked_at) VALUES (?, ?, ?, ?, 'safe', 'Treasury', 'pending', ?, '0x', '0x', ?, ?)`).bind(data.randomId(), orgId, CHAIN, address, data.randomId(), now, now),
+      ])
+    }
+    const TOKEN = `operator-${crypto.randomUUID()}${crypto.randomUUID()}`
+    const listed = await handle(new Request(`${onboarding.OPERATOR.local}/api/operator/organisations`, { headers: { 'sec-fetch-site': 'same-origin', authorization: `Bearer ${TOKEN}` } }), { ...testEnv, OPERATOR_TOKEN: TOKEN } as Env, () => now)
+    const body = (await listed.json()) as { organisations: { wallet: { colour: { level: string } } }[]; more: number }
+    expect([body.organisations.length, body.organisations.map((o) => o.wallet.colour.level), body.more >= 17]).toEqual([onboarding.UNDER_REVIEW, ['amber', 'amber', 'amber'], true]) // read on the chain: a Safe not yet in force
+
+    // Every route of both tables and every job was driven, and none passed a limit.
+    const jobs = [...routes, ...onboarding.operatorRoutes].map((r) => `${r.method} ${r.path}`).concat(JOBS)
+    expect(jobs.filter((job) => !metered.has(job)), 'never driven: run the whole file').toEqual([])
+    expect([...metered].filter(([, c]) => c.d1 > FREE.d1 || c.fetch > FREE.fetch || c.d1 + c.internal > FREE.internal)).toEqual([])
   })
 })
