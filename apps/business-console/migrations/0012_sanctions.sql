@@ -8,6 +8,7 @@ CREATE TABLE sanctions_lists (
   loaded_at INTEGER NOT NULL,
   published TEXT,                                    -- M10: the day the source file was published (YYYY-MM-DD); NULL: a list made by hand, from a file with no date
   checked_at INTEGER,                                -- M10: the last good read of the list file by the console; NULL: never read
+  made_at INTEGER,                                   -- M10: when the maker made the file of that read (its "made", in ms); NULL: never read
   held TEXT CHECK (held IN ('older', 'shrunk', 'grown', 'manual')) -- M10: the last file read was not loaded, and why; NULL: none is held
 ) STRICT;
 CREATE TABLE sanctioned_addresses (

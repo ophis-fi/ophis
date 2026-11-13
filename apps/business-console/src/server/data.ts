@@ -1015,11 +1015,12 @@ export const flags = async (db: D1Database) =>
 /**
  * The daily run: the active partner organisations that hold a linked wallet, whose figures it reads so that a flag does
  * not wait for a member to open the page. ponytail: at most 20 a run (each costs one request to the indexer and about
- * 4 queries), a window that moves on every day, so each partner is read in turn. Queue them when they pass some dozens.
+ * 3 to 4 queries), a window that starts one partner further each day (G5: also with exactly 20, so that no partner is
+ * always the first). Over more than 20, a partner waits up to n - 20 days. Queue them when they pass some dozens.
  */
 export async function partnersToRead(db: D1Database, now: number) {
   const ids = (await db.prepare(`SELECT DISTINCT o.id FROM organisations o JOIN wallets w ON w.org_id = o.id AND w.state = 'linked' WHERE o.kind = 'partner' AND o.state = 'active' ORDER BY o.id`).all<{ id: string }>()).results.map((row) => row.id)
-  const from = ids.length ? (Math.floor(now / DAY) * SWEEP) % ids.length : 0
+  const from = ids.length ? Math.floor(now / DAY) % ids.length : 0
   return [...ids, ...ids].slice(from, from + Math.min(SWEEP, ids.length))
 }
 /** The statements of a freeze by the operator or by the screening: the organisation, if it is active, and every session of it (G4). */

@@ -120,13 +120,16 @@ try {
   const made = `${STATE}/ofac.json`
   const maker = (from, out) => { try { return run('node', ['scripts/ofac-list.mjs', '--from', from, '--out', out]) } catch (error) { return `refused ${error.stderr}` } }
   const xml = readFileSync(LIST.xml, 'utf8')
-  const broken = { 'not the list': xml.replaceAll('sdnList', 'sdnLost'), 'a cut download': xml.slice(0, xml.indexOf('</sdnList>')), 'no publish date': xml.replace(/<Publish_Date>.*<\/Publish_Date>/, ''), 'another count': xml.replace('<Record_Count>3<', '<Record_Count>4<'), 'no address': xml.replaceAll('0x0000', 'zz0000') }
+  const broken = { 'not the list': xml.replaceAll('sdnList', 'sdnLost'), 'a cut download': xml.slice(0, xml.indexOf('</sdnList>')), 'no publish date': xml.replace(/<Publish_Date>.*<\/Publish_Date>/, ''), 'another count': xml.replace('<Record_Count>3<', '<Record_Count>4<'), 'no address': xml.replaceAll('0x0000', 'zz0000'),
+    'two publish dates': xml.replace('</Publish_Date>', '</Publish_Date><Publish_Date>11/10/2026</Publish_Date>') }
   const refusals = Object.entries(broken).map(([what, text], i) => (writeFileSync(`${STATE}/bad-${i}.xml`, text), [what, maker(`${STATE}/bad-${i}.xml`, `${STATE}/bad-${i}.json`), existsSync(`${STATE}/bad-${i}.json`)]))
-  check('the maker turns the test XML into the list file: the addresses sorted, the publish day, the SHA-256 of the XML; and refuses a file that is not whole, writing nothing',
-    maker(LIST.xml, made).startsWith(`Written: ${made}. 2 addresses, published 2026-11-09`)
-    && readFileSync(made, 'utf8') === `${JSON.stringify({ list: 'ofac', source: 'sdn-test.xml', published: '2026-11-09', sha256: fileSha(LIST.xml), count: 2, addresses: ['0x00000000000000000000000000000000000000a1', '0x0000000000000000000000000000000000000b0b'] }, null, 1)}\n`
+  const makerSaid = maker(LIST.xml, made)
+  const madeAt = JSON.parse(readFileSync(made, 'utf8')).made // the time the maker ran: UTC, to the second
+  check('the maker turns the test XML into the list file: the addresses sorted, the publish day, the time it was made, the SHA-256 of the XML; and refuses a file that is not whole or has two publish dates, writing nothing',
+    makerSaid.startsWith(`Written: ${made}. 2 addresses, published 2026-11-09, made ${madeAt}`) && /^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\dZ$/.test(madeAt) && Math.abs(Date.parse(madeAt) - Date.now()) < 60_000
+    && readFileSync(made, 'utf8') === `${JSON.stringify({ list: 'ofac', source: 'sdn-test.xml', published: '2026-11-09', made: madeAt, sha256: fileSha(LIST.xml), count: 2, addresses: ['0x00000000000000000000000000000000000000a1', '0x0000000000000000000000000000000000000b0b'] }, null, 1)}\n`
     && refusals.every(([, said, written]) => said.startsWith('refused Refused: ') && said.includes('Nothing was written.') && !written)
-    && ['no <sdnList', 'does not end with </sdnList>', 'no publish date', 'Record_Count says 4', 'no address'].every((why, i) => refusals[i][1].includes(why)))
+    && ['no <sdnList', 'does not end with </sdnList>', 'no publish date', 'Record_Count says 4', 'no address', 'more than one publish date'].every((why, i) => refusals[i][1].includes(why)))
 
   browser = await chromium.launch({ executablePath: CHROME, headless: true, args: PORT === '8787' ? [] : [`--host-resolver-rules=MAP localhost:8787 127.0.0.1:${PORT}, MAP 127.0.0.1:8787 127.0.0.1:${PORT}`] })
   const violations = []
@@ -1031,7 +1034,7 @@ try {
   if (await on.getByRole('button', { name: 'I have read this' }).count()) await on.getByRole('button', { name: 'I have read this' }).click() // a new session is told of the passkey added in an earlier one
   await on.getByText('Chain verified').waitFor()
   check('unfrozen, the member reads each step in the audit log, in plain words, with the wallet by its name; no outcome but "no match" is said',
-    await on.getByRole('row', { name: /Ophis operator: a wallet of the organisation is on a loaded sanctions list, organisation frozen.*Treasury/ }).isVisible()
+    await on.getByRole('row', { name: /A wallet of the organisation is on a loaded sanctions list, organisation frozen.*Treasury/ }).isVisible()
     && await on.getByRole('cell', { name: 'Ophis operator: sanctions screening recorded, organisation frozen', exact: true }).isVisible() && !/Result: (hit|review)|\bhit\b/.test(await on.locator('#root').innerText()))
   await applicant.context.close()
 
@@ -1295,7 +1298,7 @@ try {
   const flagged = operator('list')
   check('"operator list" prints the FLAG and the line of the list, with no warning',
     new RegExp(`^FLAG  [0-9a-f]{32}  Northwind Vaults  referred wallet ${A.referees[0].wallet} is on a loaded list  ${today}$`, 'm').test(flagged)
-    && flagged.includes(`LIST  ofac  2 addresses  published 2026-11-09  loaded ${today}  last good read of the list file ${today}`) && !flagged.includes('WARNING'))
+    && flagged.includes(`LIST  ofac  2 addresses  published 2026-11-09  loaded ${today}  last good read of the list file ${today}  file made ${today}`) && !flagged.includes('WARNING'))
   await listMode('shrunk')
   const held = await operatorSync()
   const heldList = operator('list')

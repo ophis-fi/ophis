@@ -1066,11 +1066,12 @@ export async function handle(request: Request, env: Env, now: () => number = Dat
 /**
  * M10, the daily run (one cron in wrangler.jsonc): the read of the OFAC list file, then the figures of the partners
  * (20 a run, in turn), read as their Overview reads them, so that a flag does not wait for a member to open the page.
- * A list file that cannot be read does not stop the second step: the loaded lists still stand. `now` is injectable, as for handle().
+ * A list file that cannot be read does not stop the second step: the loaded lists still stand. No error stops a later
+ * step or partner (G5): each is logged in fixed words, no address and no name. `now` is injectable, as for handle().
  */
 export async function daily(env: Env, now: number) {
-  const read = await sync(env, now)
-  for (const orgId of await data.partnersToRead(env.DB, now)) await partner.figures(env, orgId, now)
+  const read = await sync(env, now).catch(() => (console.error('daily run: the read of the list file failed'), { outcome: 'unavailable' as const }))
+  for (const orgId of await data.partnersToRead(env.DB, now)) await partner.figures(env, orgId, now).catch(() => console.error('daily run: the figures of a partner failed'))
   return read
 }
 

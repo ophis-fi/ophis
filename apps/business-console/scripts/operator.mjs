@@ -10,8 +10,9 @@
 //   node scripts/operator.mjs screen <organisation id> --outcome clear|review|hit --list eu=<file> [--list un=<file>] [--list ofac=<file>] --next-review 2027-11-11 [--tier standard --source registry]
 //                                       the result of a search made offline, for an active or a frozen organisation. "review" and "hit" freeze it. --tier and --source: only for an organisation with no record yet (a local seed)
 //   node scripts/operator.mjs addresses <code>=<file>   loads the wallet addresses of a list file (every 0x and 40 hex characters), in place of that list's earlier ones; prints each organisation that holds one, frozen if it was active
-//   node scripts/operator.mjs sync      M10: reads the OFAC list file now (SANCTIONS_URL), as the daily run does: loaded, the same, held (older, shrunk, grown: not loaded; compare
-//                                       it and load it by hand with "addresses"), or not readable. "list" ends with one line per loaded list and a WARNING when one is held or stale
+//   node scripts/operator.mjs sync      M10: reads the OFAC list file now (SANCTIONS_URL), as the daily run does: loaded, the same, held (older, shrunk, grown, manual: not loaded;
+//                                       compare it, then load the official SDN.XML by hand with "addresses"), or not readable. On the same file or a held one, an organisation
+//                                       whose freeze failed before is frozen now and printed. "list" ends with one line per loaded list and a WARNING when one is held or stale
 //   node scripts/operator.mjs freeze|unfreeze <organisation id>        an unfreeze is refused while the newest screening says "review" or "hit", or a linked or pending wallet is on a loaded list
 //   node scripts/operator.mjs items <organisation id>                  the sealed items of an organisation: id, kind, size, date, SHA-256, key
 //   node scripts/operator.mjs get <item id> --reason <code> --out <file>   the item, still sealed; the reason goes into the client's audit log
@@ -141,11 +142,13 @@ if (answer.status !== 200) {
   process.exit(1)
 }
 // Why a list file that was read is not loaded, and what ends it.
+// The override names the official SDN.XML: the maker's JSON loaded by hand gives a list with no day, which then holds every read as "manual".
+const BY_HAND = 'load the official SDN.XML by hand: addresses ofac=<SDN.XML>'
 const HELD = {
-  older: 'it is older than the loaded list. Nothing to do while the loaded list is the newer one',
-  shrunk: 'it holds over a fifth fewer addresses than the loaded list. Compare it, and load it by hand ("addresses ofac=<file>") if it is right',
-  grown: 'it holds over a fifth more addresses than the loaded list. Compare it, and load it by hand ("addresses ofac=<file>") if it is right',
-  manual: 'the loaded list was loaded by hand from a file with no publish date, and the list file never replaces such a list. Load the official file by hand ("addresses ofac=<SDN.XML>") to end this',
+  older: `it is not newer than the loaded list. If the loaded list is right, there is nothing to do. Else ${BY_HAND}`,
+  shrunk: `over a fifth of the loaded addresses are not in it. Compare it. If it is right, ${BY_HAND}`,
+  grown: `the new addresses in it are over a fifth of the loaded list. Compare it. If it is right, ${BY_HAND}`,
+  manual: `the loaded list was loaded by hand from a file with no publish date, and the list file never replaces such a list. To end this, ${BY_HAND}`,
 }
 const count = (n) => `${n} ${n === 1 ? 'address' : 'addresses'}`
 const hitLines = (hits) => (hits.length ? hits.map((h) => `HIT  ${h.id}  ${h.name}  was ${h.state}  ${h.address}  ${h.frozen ? 'frozen now' : 'not changed'}`).join('\n') : 'No linked or pending wallet is on a loaded list.')
@@ -167,10 +170,11 @@ else if (load) {
 } else if (command === 'sync') {
   const read = answer.body
   console.log(read.outcome === 'loaded' ? `Loaded ${count(read.entries)} of the list "ofac", published ${read.published}.\n${hitLines(read.hits)}`
-    : read.outcome === 'same' ? 'The list file is the one already loaded. Nothing changed.'
+    : read.outcome === 'same' ? 'The list file is the one already loaded. The list did not change.'
     : read.outcome === 'held' ? `WARNING  held (${read.reason}): the list file was not loaded: ${HELD[read.reason]}.`
-    : read.outcome === 'unavailable' ? 'WARNING  the list file could not be read, or is not what it must be. Nothing changed.'
+    : read.outcome === 'unavailable' ? 'WARNING  the list file could not be read, or is not what it must be, or SANCTIONS_URL is not an address the console takes (https). Nothing changed.'
     : 'SANCTIONS_URL is not set: there is no list file to read.')
+  if (read.outcome !== 'loaded' && read.hits) console.log(hitLines(read.hits)) // a freeze that failed before, tried again
 } else if (command !== 'list') console.log(`Done: ${id} is now ${answer.body.state}.`)
 else {
   if (!answer.body.organisations.length) console.log('Nothing is under review.')
@@ -194,8 +198,8 @@ else {
   for (const f of answer.body.flags) console.log(`FLAG  ${f.id}  ${f.name}  referred wallet ${f.address} is on a loaded list  ${day(f.at)}`)
   // M10: the loaded lists. A feed that stops, or a file that was not loaded, must be seen here.
   for (const l of answer.body.lists) {
-    console.log(`LIST  ${l.list}  ${count(l.entries)}  published ${l.published ?? 'not known'}  loaded ${day(l.loadedAt)}  last good read of the list file ${day(l.checkedAt)}`)
+    console.log(`LIST  ${l.list}  ${count(l.entries)}  published ${l.published ?? 'not known'}  loaded ${day(l.loadedAt)}  last good read of the list file ${day(l.checkedAt)}  file made ${day(l.madeAt)}`)
     if (l.held) console.log(`WARNING  held (${l.held}): the list file read last was not loaded: ${HELD[l.held]}.`)
-    if (l.stale) console.log('WARNING  no good read of the list file for 3 days or more: the loaded list may be out of date. Run "sync".')
+    if (l.stale) console.log('WARNING  no good read of the list file for 3 days or more, or the file read was made 3 days ago or more: the loaded list may be out of date. Run "sync", and check that the maker still runs.')
   }
 }

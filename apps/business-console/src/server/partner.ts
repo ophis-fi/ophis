@@ -130,7 +130,8 @@ export async function figures(env: Settings, orgId: string, now: number): Promis
     // log (a flag: it freezes nothing). After every check above, so that a refused answer marks and records nothing.
     const listed = await data.listedAddresses(env.DB)
     const flagged = wallets.flatMap((w) => w.affiliate?.referred ?? []).filter((r) => (r.listed = listed.has(r.wallet))).map((r) => r.wallet)
-    if (flagged.length) await data.flag(env.DB, orgId, [...new Set(flagged)], now)
+    // A record that fails is no failure of the figures (G9): the marks stay, and the next read records it.
+    if (flagged.length) await data.flag(env.DB, orgId, [...new Set(flagged)], now).catch(() => console.error('partner flag not recorded'))
     return { state: 'live', asOf, leftOut: rows.size - asked.length, wallets }
   } catch (error) {
     // The log carries one word: no address of the service, no token, no wallet.

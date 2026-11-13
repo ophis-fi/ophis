@@ -1,10 +1,10 @@
 // The maker of the OFAC address list the console reads (M10). It turns the official SDN.XML into one small JSON file:
-// the wallet addresses in it, the day it was published and the SHA-256 of the XML. It runs where the owner decides
+// the wallet addresses in it, the day it was published, the time it was made and the SHA-256 of the XML. It runs where the owner decides
 // (README): the console only ever reads the file it writes, never OFAC's site.
 //   node scripts/ofac-list.mjs [--from <SDN.XML file>] --out <file.json>
 // Without --from it downloads the file from OFAC's Sanctions List Service (redirects followed, 120 s, 100 MB at most).
 // It refuses, exit 1, and writes nothing: no <sdnList, a file that does not end with </sdnList> (a cut download), no
-// publish date, a Record_Count that is not the number of <sdnEntry>, no address.
+// publish date or more than one, a Record_Count that is not the number of <sdnEntry>, no address.
 import { createHash } from 'node:crypto'
 import { readFileSync, writeFileSync } from 'node:fs'
 import { basename } from 'node:path'
@@ -21,7 +21,7 @@ export function publishedIn(text) {
   return year ? `${year}-${month}-${day}` : null
 }
 
-/** The list as the console reads it, from the bytes of an SDN.XML. Throws, with the reason, for a file that is not whole. */
+/** The list as the console reads it, from the bytes of an SDN.XML. `made`: now, UTC, to the second (the console warns when it is 3 days old). Throws, with the reason, for a file that is not whole. */
 export function build(bytes, source) {
   const text = bytes.toString('latin1')
   const refuse = (why) => {
@@ -29,12 +29,13 @@ export function build(bytes, source) {
   }
   if (!text.includes('<sdnList')) refuse('no <sdnList: this is not the SDN list')
   if (!text.trimEnd().endsWith('</sdnList>')) refuse('the file does not end with </sdnList>: a cut download')
+  if ((text.match(/<Publish_Date>/g) ?? []).length > 1) refuse('more than one publish date')
   const published = publishedIn(text) ?? refuse('no publish date')
   const [records, entries] = [Number(/<Record_Count>(\d+)<\/Record_Count>/.exec(text)?.[1]), text.split('<sdnEntry>').length - 1]
   if (records !== entries) refuse(`Record_Count says ${records}, and the file holds ${entries} entries`)
   const addresses = addressesIn(text).sort()
   if (!addresses.length) refuse('no address')
-  return { list: 'ofac', source, published, sha256: createHash('sha256').update(bytes).digest('hex'), count: addresses.length, addresses }
+  return { list: 'ofac', source, published, made: `${new Date().toISOString().slice(0, 19)}Z`, sha256: createHash('sha256').update(bytes).digest('hex'), count: addresses.length, addresses }
 }
 
 async function download() {
@@ -58,7 +59,7 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
   try {
     const list = build(values.from ? readFileSync(values.from) : await download(), values.from ? basename(values.from) : SDN_URL)
     writeFileSync(values.out, `${JSON.stringify(list, null, 1)}\n`)
-    console.log(`Written: ${values.out}. ${list.count} addresses, published ${list.published}, SHA-256 of the source ${list.sha256}.`)
+    console.log(`Written: ${values.out}. ${list.count} addresses, published ${list.published}, made ${list.made}, SHA-256 of the source ${list.sha256}.`)
   } catch (error) {
     console.error(`Refused: ${error.message}. Nothing was written.`)
     process.exit(1)
