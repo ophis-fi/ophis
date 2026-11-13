@@ -27,7 +27,7 @@ import * as age from 'age-encryption'
 const SITE = { origin: 'http://localhost:8787', rpId: 'localhost' }
 const MIN = 60_000
 const START = Date.UTC(2026, 10, 10, 9)
-const TABLES = ['approvals', 'audit_log', 'credentials', 'enrolment_tickets', 'kyb_records', 'organisations', 'recovery_requests', 'sealed_items', 'seats', 'sessions', 'wallets']
+const TABLES = ['application_people', 'approvals', 'audit_log', 'credentials', 'enrolment_tickets', 'kyb_records', 'organisations', 'recovery_requests', 'sealed_items', 'seats', 'sessions', 'wallets']
 // Sanctions screening: the two global tables, with no org_id: what a public list says, nothing of a client.
 const GLOBAL = ['sanctioned_addresses', 'sanctions_lists']
 // The one table outside the snapshots: the hourly counter of proof checks, which a proof writes before its commit (section B).
@@ -5417,8 +5417,8 @@ describe('E. onboarding: a company applies, proves its domain, is activated and 
   const publish = (record: { name: string; value: string }) => dns.records.set(record.name, [...(dns.records.get(record.name) ?? []), record.value])
   const checkDns = (intent: string, options: Options = {}) => call('POST', '/api/apply/check', { ...options, body: { intent } })
   // An organisation made by an application whose DNS record both resolvers hold. Its first Owner is signed in.
-  async function applied(domain?: string) {
-    const a = await applyFor(domain)
+  async function applied(domain?: string, more: Record<string, unknown> = {}) {
+    const a = await applyFor(domain, more)
     publish(a.body.record)
     expect((await checkDns(a.intent)).body).toEqual({ state: 'unverified' })
     const session = await signIn(a.key)
@@ -5427,8 +5427,8 @@ describe('E. onboarding: a company applies, proves its domain, is activated and 
   }
   // The same with two passkeys on the Owner seat: what every further step needs. Milestone 5b: and with the signed
   // declaration, sealed and uploaded, which "Submit for review" needs; `declare: false` leaves that step open.
-  async function applicantWithTwoKeys(domain?: string, declare = true) {
-    const a = await applied(domain)
+  async function applicantWithTwoKeys(domain?: string, declare = true, more: Record<string, unknown> = {}) {
+    const a = await applied(domain, more)
     const second = await addKey(a)
     expect(second.status).toBe(200)
     if (declare) expect((await upload(a, await sealedFile())).status).toBe(200)
@@ -5449,8 +5449,8 @@ describe('E. onboarding: a company applies, proves its domain, is activated and 
   }
   const submit = (m: Holder, body: unknown = {}) => post('/api/onboarding/submit', m, body)
   // Two passkeys, the activation proof of a single key, the sealed declaration, submitted: what the operator finds under review.
-  async function underReview(domain?: string) {
-    const a = await applicantWithTwoKeys(domain)
+  async function underReview(domain?: string, more: Record<string, unknown> = {}) {
+    const a = await applicantWithTwoKeys(domain, true, more)
     expect((await activation(a)).body).toEqual({ state: 'stored' })
     expect((await submit(a)).body).toEqual({ state: 'under_review' })
     return a
@@ -6238,7 +6238,7 @@ describe('E. onboarding: a company applies, proves its domain, is activated and 
     const view = (await call('GET', '/api/onboarding', { cookie: a.cookie })).body
     expect(await mine()).toEqual([{
       id: a.orgId, legalName: 'Alder Custody S.A.', kind: 'institution', country: 'LU', registration: 'B123456', domain: 'alder-list.example', submittedAt: now, submission: await submissionOf(a.orgId),
-      credentialHash: view.first.credentialHash, missing: null, declaration: view.sealed, refused: [],
+      credentialHash: view.first.credentialHash, people: [], missing: null, declaration: view.sealed, refused: [],
       wallet: { chainId: CHAIN, chain: 'OP Mainnet', address: accounts[4].address, kind: 'safe', label: 'Treasury', inForce: false, threshold: 2, owners: 3, colour: { level: 'green', why: null } },
     }])
     // The colour is read on the chain now: a module added since the proof shows.
@@ -6251,7 +6251,8 @@ describe('E. onboarding: a company applies, proves its domain, is activated and 
     // An organisation that is active, frozen or archived is not under review.
     expect((await decideOn(a.orgId)).body).toEqual({ state: 'active' })
     expect(await mine()).toEqual([])
-    // No name of a person and no address of a member is in the list.
+    // The applicant's own name and address are not in the list: the sealed declaration names the first Owner. (The other
+    // people an application names are, for the operator to check: section P.)
     const text = JSON.stringify((await op('GET', '/api/operator/organisations')).body)
     for (const personal of ['Maren Okafor', 'ops@']) expect(text).not.toContain(personal)
   })
@@ -6303,7 +6304,7 @@ describe('E. onboarding: a company applies, proves its domain, is activated and 
     expect(chain.calls).toEqual([]) // a key's proof is checked again without an endpoint
     // The client reads the operator's row in its own log, and now reaches every route of its role.
     const log = await call('GET', '/api/audit', { cookie: a.cookie })
-    expect(log.body.rows[0]).toMatchObject({ event: 'Ophis operator: verification approved, organisation active', who: 'System' })
+    expect(log.body.rows[0]).toMatchObject({ event: 'Ophis operator: verification approved, organisation active, with the people its application named', who: 'System' })
     expect(log.body.chain).toMatchObject({ ok: true })
     expect((await call('GET', '/api/readiness', { cookie: a.cookie })).body).toMatchObject({ sheet: { wallet: { address: accounts[0].address } } })
     expect((await call('GET', '/api/onboarding', { cookie: a.cookie })).body).toMatchObject({
@@ -6529,16 +6530,17 @@ describe('E. onboarding: a company applies, proves its domain, is activated and 
     expect((await call('GET', '/api/me', { cookie: a.cookie })).body.organisation.id).toBe(a.orgId)
   }
   isolation['GET /api/onboarding'] = async (a, b) => {
-    // B has a KYB row and a recovery wallet. A's page shows A's organisation and nothing of B, whatever A sends.
+    // B has a KYB row, a person its application named and a recovery wallet. A's page shows A's organisation and nothing of B, whatever A sends.
     await db.prepare(`INSERT INTO kyb_records (id, org_id, legal_name, country, tier, source, decision, created_at) VALUES (?, ?, 'Birchfield Capital Ltd', 'GB', 'enhanced', 'registry', 'approved', ?)`).bind(data.randomId(), b.orgId, now).run()
+    await db.prepare(`INSERT INTO application_people (org_id, email, display_name, role) VALUES (?, 'zed@birch.example', 'Zed Birch', 'admin')`).bind(b.orgId).run()
     await addKey(b)
     const wallet = await linked(b, undefined, { custodian: true })
     expect((await post(`/api/wallets/${wallet.id}/anchor`, b)).body).toEqual({ state: 'applied' })
     for (const path of ['/api/onboarding', `/api/onboarding?organisationId=${b.orgId}`, `/api/onboarding?org=${b.orgId}`]) {
       const view = await call('GET', path, { cookie: a.cookie })
-      expect(view.body).toEqual({ company: { legalName: a.name, kind: 'partner', country: 'LU', registration: null, domain: null, domainVerifiedAt: null }, first: null, seal: { key: KEY, generation: 'g1' }, sealed: null, downloads: [], wallet: null, missing: null, review: { status: 'verified', since: null, reason: null }, record: null, chains: expect.any(Array) })
+      expect(view.body).toEqual({ company: { legalName: a.name, kind: 'partner', country: 'LU', registration: null, domain: null, domainVerifiedAt: null }, first: null, people: [], seal: { key: KEY, generation: 'g1' }, sealed: null, downloads: [], wallet: null, missing: null, review: { status: 'verified', since: null, reason: null }, record: null, chains: expect.any(Array) })
     }
-    expect((await call('GET', '/api/onboarding', { cookie: b.cookie })).body).toMatchObject({ company: { legalName: b.name }, record: { legalName: 'Birchfield Capital Ltd', tier: 'enhanced' }, wallet: { address: accounts[0].address } })
+    expect((await call('GET', '/api/onboarding', { cookie: b.cookie })).body).toMatchObject({ company: { legalName: b.name }, people: [{ name: 'Zed Birch', email: 'zed@birch.example', role: 'admin' }], record: { legalName: 'Birchfield Capital Ltd', tier: 'enhanced' }, wallet: { address: accounts[0].address } })
     expect((await call('GET', `/api/onboarding/${b.orgId}`, { cookie: a.cookie })).status).toBe(404)
   }
   isolation['POST /api/onboarding/wallet'] = async (a, b) => {
@@ -7038,6 +7040,141 @@ describe('E. onboarding: a company applies, proves its domain, is activated and 
     const [theirs] = await itemsOf(r.orgId)
     expect((await upload(r, file)).body).toEqual({ error: 'org_closed' })
     expect([await itemsOf(r.orgId), (await objectOf(theirs.id)) !== null]).toEqual([[theirs], true])
+  })
+
+  // ---- P: people Ophis approves with the organisation (owner decision of 2026-11-13) ----
+  describe('P. people Ophis approves with the organisation', () => {
+    const named = (domain: string) => [
+      { name: 'Ben Okoro', email: `Ben@${domain}`, role: 'admin' }, { name: 'Cleo Ndiaye', email: `cleo@eu.${domain}`, role: 'owner' }, { name: 'Dee Lund', email: `dee@${domain}`, role: 'admin' }, { name: 'Eli Varga', email: `eli@${domain}`, role: 'owner' },
+    ]
+    const stored = (domain: string) => named(domain).map((p) => ({ ...p, email: p.email.toLowerCase() }))
+    const seatsOf = async (orgId: string) => (await db.prepare('SELECT id, display_name AS name, email, role, state, ophis_approved AS approved FROM seats WHERE org_id = ? ORDER BY rowid').bind(orgId).all<{ id: string; name: string; email: string | null; role: string; state: string; approved: number }>()).results
+    // An application that named four more people (five in all), approved by the operator. Its first Owner is signed in, with two keys.
+    async function approvedWithPeople() {
+      const domain = `alder-people${++domains}.example`
+      const a = await underReview(domain, { people: named(domain) })
+      expect((await decideOn(a.orgId)).body).toEqual({ state: 'active' })
+      const [, ben, cleo, dee, eli] = await seatsOf(a.orgId)
+      return { a, ben, cleo, dee, eli }
+    }
+
+    it('P1: an application names at most 4 more people, each a name, a work email at the proved domain and the role Owner or Admin; no address twice and never the applicant\'s; the intent carries them as checked', async () => {
+      const domain = 'alder-p1.example'
+      const person = (more: Record<string, unknown> = {}) => ({ name: 'Ben Okoro', email: `ben@${domain}`, role: 'admin', ...more })
+      const four = ['ben', 'cleo', 'dee', 'eva'].map((name) => person({ name, email: `${name}@${domain}` }))
+      const asked = (people: unknown) => call('POST', '/api/apply', { body: { ...form(domain), people } })
+      const rows = await snapshot([...TABLES, COUNTER])
+      const bad: [unknown, string][] = [
+        [[...four, person({ email: `fay@${domain}` })], 'people_invalid'], // a 6th person
+        ['Ben Okoro', 'people_invalid'], [null, 'people_invalid'], [{ 0: person() }, 'people_invalid'], [[7], 'people_invalid'],
+        [[person({ name: '' })], 'people_invalid'], [[person({ name: '<b>Ben</b>' })], 'people_invalid'], [[person({ name: 'x'.repeat(61) })], 'people_invalid'],
+        ...['approver', 'compliance', 'trader', 'viewer', 'Owner', undefined].map((role): [unknown, string] => [[person({ role })], 'people_invalid']),
+        // Not at the domain, by the applicant's own rule: another company's, a free-mail provider's, look-alikes, no address.
+        ...['ben@birch.example', 'ben@gmail.com', `ben@evil${domain}`, `ben@${domain}.evil.example`, 'ben', undefined].map((email): [unknown, string] => [[person({ email })], 'person_email_invalid']),
+        // Twice, whatever the case, and the applicant's own address.
+        [[person(), person({ name: 'Ben Again', email: `BEN@${domain}` })], 'person_email_invalid'], [[person({ email: `Ops@${domain}` })], 'person_email_invalid'],
+      ]
+      for (const [people, error] of bad) expect(await asked(people).then((r) => [r.status, r.body]), JSON.stringify(people)).toEqual([400, { error }])
+      for (const people of [four, [], undefined]) expect((await asked(people)).status, JSON.stringify(people)).toBe(200)
+      expect(await snapshot([...TABLES, COUNTER])).toBe(rows)
+      // The second call checks the form again.
+      const key = await softwareAuthenticator(SITE)
+      const start = await asked(four)
+      const sixth = await call('POST', '/api/apply', { body: { ...form(domain), people: [...four, person({ email: `fay@${domain}` })], seat: start.body.seat, response: await key.register(start.body.options) } })
+      expect(sixth.body).toEqual({ error: 'people_invalid' })
+      // The intent carries them as checked: trimmed, the address in lower case, no other field. None given: nobody else.
+      const a = await applyFor(domain, { people: [person({ name: ' Ben Okoro ', email: ` Ben@Mail.${domain} `, approved: 1, state: 'active' }), person({ name: 'Cleo Ndiaye', email: `cleo@${domain}`, role: 'owner' })] })
+      expect(fieldsOf<{ people: unknown }>(a.intent).people).toEqual([{ name: 'Ben Okoro', email: `ben@mail.${domain}`, role: 'admin' }, { name: 'Cleo Ndiaye', email: `cleo@${domain}`, role: 'owner' }])
+      expect(fieldsOf<{ people: unknown }>((await applyFor(domain)).intent).people).toEqual([])
+    })
+
+    it('P2: the application\'s one commit stores them and makes no seat; the operator sees them in its list, the Owner on Onboarding; the approval, and no other decision, makes each an invited seat with its name, email and role, marked', async () => {
+      const domain = `alder-people${++domains}.example`
+      const a = await applicantWithTwoKeys(domain, true, { people: named(domain) })
+      expect((await db.prepare('SELECT display_name AS name, email, role FROM application_people WHERE org_id = ? ORDER BY rowid').bind(a.orgId).all()).results).toEqual(stored(domain))
+      expect(await seatsOf(a.orgId)).toEqual([expect.objectContaining({ id: a.seatId, role: 'owner', state: 'active', approved: 0 })])
+      // The table's own rules: one row per address in an application, and the role Owner or Admin.
+      const add = (email: string, role: string) => db.prepare(`INSERT INTO application_people (org_id, email, display_name, role) VALUES (?, ?, 'Twin', ?)`).bind(a.orgId, email, role).run()
+      await expect(add(`ben@${domain}`, 'admin')).rejects.toThrow(/UNIQUE/)
+      await expect(add(`vic@${domain}`, 'viewer')).rejects.toThrow(/CHECK/)
+      expect((await call('GET', '/api/onboarding', { cookie: a.cookie })).body.people).toEqual(stored(domain))
+      expect((await activation(a)).body).toEqual({ state: 'stored' })
+      expect((await submit(a)).body).toEqual({ state: 'under_review' })
+      const listed = async () => ((await op('GET', '/api/operator/organisations')).body.organisations as { id: string; people: unknown }[]).find((o) => o.id === a.orgId)
+      expect((await listed())!.people).toEqual(stored(domain))
+      // More information makes no seat; the approval after the next submit does.
+      expect((await decideOn(a.orgId, MORE)).body).toEqual({ state: 'unverified' })
+      expect(await seatsOf(a.orgId)).toHaveLength(1)
+      expect((await submit(a)).body).toEqual({ state: 'under_review' })
+      expect((await decideOn(a.orgId)).body).toEqual({ state: 'active' })
+      expect(await listed()).toBeUndefined()
+      expect((await seatsOf(a.orgId)).slice(1)).toEqual(stored(domain).map((p) => ({ id: expect.stringMatching(/^[0-9a-f]{32}$/), ...p, state: 'invited', approved: 1 })))
+      expect([await count('enrolment_tickets', a.orgId), await count('credentials', a.orgId)]).toEqual([0, 2])
+      // The log says that Ophis approved them with the organisation; the Owner sees them as invited seats, approved by Ophis.
+      expect(await row('SELECT action, detail FROM audit_log WHERE org_id = ? ORDER BY seq DESC', a.orgId)).toEqual({ action: 'kyb.approve', detail: 'ab'.repeat(32) })
+      expect((await call('GET', '/api/audit', { cookie: a.cookie })).body.rows[0].event).toBe('Ophis operator: verification approved, organisation active, with the people its application named')
+      expect(((await call('GET', '/api/org', { cookie: a.cookie })).body.members as { displayName: string; state: string; approved: number }[]).map((m) => `${m.displayName} ${m.state} ${m.approved}`).sort())
+        .toEqual(['Ben Okoro invited 1', 'Cleo Ndiaye invited 1', 'Dee Lund invited 1', 'Eli Varga invited 1', 'Maren Okafor active 0'])
+    })
+
+    it('P3: the first enrolment of an approved seat: the issuer confirms with a passkey check and the passkey is active at once, with no 72 hour wait and no second person; an Owner still needs a hardware key; a member a colleague invites is never marked', async () => {
+      const { a, ben, cleo } = await approvedWithPeople()
+      // No other key-role member here: an Admin the Owner invited would wait 72 hours. Ben's passkey is active at once.
+      const link = await issue(a, { seatId: ben.id })
+      expect(link.body).toMatchObject({ kind: 'invitation', role: 'admin', seatId: ben.id })
+      const joined = await enrolLink(link.body.link)
+      expect(joined.status).toBe(200)
+      expect((await signIn(joined.key)).status).toBe(401) // pending until the issuer confirms
+      expect((await confirm(a, link.body.ticketId, a.key)).body).toEqual({ state: 'active' })
+      expect(await count('approvals', a.orgId)).toBe(0) // no request for a second person, no wait
+      expect(await row('SELECT actor_id, action, subject_id, detail FROM audit_log WHERE org_id = ? ORDER BY seq DESC', a.orgId)).toEqual({ actor_id: a.seatId, action: 'credential.activate', subject_id: joined.key.id, detail: 'ophis' })
+      expect((await call('GET', '/api/audit', { cookie: a.cookie })).body.rows[0]).toMatchObject({ who: 'Maren Okafor', event: 'Passkey confirmed by the issuer, active with no second person: Ophis approved this member with the organisation', target: 'Ben Okoro' })
+      expect((await signIn(joined.key)).status).toBe(200)
+      expect(await row('SELECT state, ophis_approved AS approved, quarantine_until AS quarantine FROM seats WHERE id = ?', ben.id)).toEqual({ state: 'active', approved: 0, quarantine: null })
+      // Ben is now a second key-role member: an Owner's first enrolment would need a second person. Cleo's does not,
+      // and as an Owner she still enrols a hardware key only.
+      const owner = await issue(a, { seatId: cleo.id })
+      expect((await enrolLink(owner.body.link, { backupEligible: true })).body).toEqual({ error: 'device_bound_required' })
+      expect((await enrolLink(owner.body.link)).status).toBe(200)
+      expect((await confirm(a, owner.body.ticketId, a.key)).body).toEqual({ state: 'active' })
+      // A member the Owner invites, with the same role and the same domain, is never marked: the normal rules.
+      const finn = await ceremony(a, { displayName: 'Finn Admin', role: 'admin' })
+      expect([finn.state, (await row('SELECT ophis_approved AS approved FROM seats WHERE id = ?', finn.seatId))!.approved]).toEqual(['second', 0])
+    })
+
+    it('P4: the mark is good once, for the first enrolment, in the role Ophis approved: a re-enrolment, a role change and a removed seat follow the normal rules; the schema never lets it stand on an active seat, and no route sets it', async () => {
+      const { a, ben, cleo, dee, eli } = await approvedWithPeople()
+      // The local activate command, which stands in for confirmations, uses the mark up as any activation does.
+      expect((await enrolLink((await issue(a, { seatId: eli.id })).body.link)).status).toBe(200)
+      await data.devActivatePending(db, 'local', now)
+      expect(await row('SELECT state, ophis_approved AS approved FROM seats WHERE id = ?', eli.id)).toEqual({ state: 'active', approved: 0 })
+      // The role of an approved seat nobody enrolled on cannot change, so the mark never goes to another role.
+      expect((await act(a, ben.id, 'role', { role: 'approver' })).body).toEqual({ error: 'invalid' })
+      expect((await ceremony(a, { seatId: ben.id })).state).toBe('active')
+      const c = await ceremony(a, { seatId: cleo.id })
+      expect(c.state).toBe('active')
+      // The first activation used the mark up: a re-enrolment of the same seat needs the issuer and a second person.
+      expect((await seatsOf(a.orgId)).filter((s) => s.approved).map((s) => s.id)).toEqual([dee.id])
+      expect((await ceremony(a, { seatId: ben.id })).state).toBe('second')
+      // A role change, by two people, and then the seat's next enrolment: the normal rules again.
+      const cleoIn = await again({ orgId: a.orgId, seatId: cleo.id, key: c.key, cookie: '' })
+      expect((await addKey(cleoIn)).status).toBe(200)
+      const lower = await act(a, ben.id, 'role', { role: 'approver' })
+      expect((await decide(cleoIn, lower.body.id, 'approve')).body).toEqual({ state: 'applied' })
+      expect(await row('SELECT role, ophis_approved AS approved FROM seats WHERE id = ?', ben.id)).toEqual({ role: 'approver', approved: 0 })
+      expect((await ceremony(a, { seatId: ben.id })).state).toBe('second')
+      // The schema: no active seat holds the mark, and the mark is 0 or 1.
+      await expect(db.prepare(`UPDATE seats SET state = 'active' WHERE id = ?`).bind(dee.id).run()).rejects.toThrow(/CHECK/)
+      await expect(db.prepare('UPDATE seats SET ophis_approved = 1 WHERE id = ?').bind(ben.id).run()).rejects.toThrow(/CHECK/)
+      await expect(db.prepare('UPDATE seats SET ophis_approved = 2 WHERE id = ?').bind(dee.id).run()).rejects.toThrow(/CHECK/)
+      // A removed approved seat gets no link.
+      expect((await act(a, dee.id, 'remove')).body).toEqual({ state: 'applied' })
+      expect((await issue(a, { seatId: dee.id })).status).toBe(404)
+      // No route sets the mark: one statement writes it, the approval's; data.ts reads it and clears it, nothing else.
+      expect(onboardingSource.match(/ophis_approved/g)).toHaveLength(1)
+      expect(dataSource.match(/ophis_approved = 0/g)).toHaveLength(2)
+      expect(dataSource.replace(/ophis_approved = 0/g, '')).not.toMatch(/ophis_approved\s*(=|,|\))/)
+    })
   })
 
   // ---- sanctions screening: manual, at no cost. The operator searches the lists offline and records the result. ----

@@ -582,6 +582,7 @@ export const EVENTS: Record<string, string> = {
   'credential.store': 'Passkey created, waiting for confirmation',
   'credential.activate': 'Passkey confirmed, now active',
   'credential.activate/wait': 'Passkey active after the 72 hour wait',
+  'credential.activate/ophis': 'Passkey confirmed by the issuer, active with no second person: Ophis approved this member with the organisation',
   'credential.activate.dev': 'Passkey activated by the local command',
   'credential.add': 'Passkey added to the own seat',
   'credential.revoke': 'Passkey revoked',

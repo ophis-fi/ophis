@@ -294,7 +294,7 @@ export async function revokeSession(db: D1Database, actor: Actor, sessionId: str
 export async function organisationView(db: D1Database, actor: Actor, now: number, idleSince: number, startedSince: number) {
   const scope = [actor.orgId, seesAll(actor), actor.seatId]
   const [members, passkeys, sessions] = await db.batch([
-    db.prepare(`SELECT id, display_name AS displayName, role, CASE WHEN ${gone('seats')} THEN 'removed' ELSE state END AS state FROM seats WHERE org_id = ? AND (? = 1 OR id = ?) ORDER BY created_at, id`).bind(now, ...scope),
+    db.prepare(`SELECT id, display_name AS displayName, role, CASE WHEN ${gone('seats')} THEN 'removed' ELSE state END AS state, ophis_approved AS approved FROM seats WHERE org_id = ? AND (? = 1 OR id = ?) ORDER BY created_at, id`).bind(now, ...scope),
     db.prepare(`SELECT id, seat_id AS seatId, label, state, device_bound AS deviceBound, created_at AS createdAt, last_used_at AS lastUsedAt, stop_right_until AS stopRightUntil
                 FROM credentials WHERE org_id = ? AND (? = 1 OR seat_id = ?) ORDER BY created_at, id`).bind(...scope),
     db.prepare(`SELECT id, seat_id AS seatId, created_at AS createdAt, last_seen_at AS lastSeenAt, user_agent AS userAgent, country
@@ -427,6 +427,8 @@ export interface OpenTicket {
   id: string; kind: 'first_owner' | 'invitation' | 're_enrolment'; role: Role; state: string; seat_id: string; issuer_seat_id: string | null; display_name: string
   expires_at: number; stored_at: number | null
   credential_id: string | null; public_key: string | null; approval_id: string | null; not_before: number | null; approval_expires_at: number | null
+  /** 1: Ophis approved this person with the organisation (the seat's mark, on an invited seat only). */
+  approved: number
   /** link: waits for the member's passkey. issuer: waits for the issuer's confirmation. second: for a second person's. wait: for the 72 hours. */
   status: 'link' | 'issuer' | 'second' | 'wait'
   /** What the viewer may do now. */
@@ -439,7 +441,7 @@ export interface OpenTicket {
 async function ticketRows(db: D1Database, viewer: Pick<Actor, 'orgId' | 'seatId' | 'role'>, now: number, ticketId: string | null = null) {
   const { results } = await db
     .prepare(
-      `SELECT t.id, t.kind, t.role, t.state, t.seat_id, t.issuer_seat_id, s.display_name, t.expires_at, t.stored_at,
+      `SELECT t.id, t.kind, t.role, t.state, t.seat_id, t.issuer_seat_id, s.display_name, t.expires_at, t.stored_at, s.ophis_approved AS approved,
               c.id AS credential_id, c.public_key, a.id AS approval_id, a.not_before, a.expires_at AS approval_expires_at
        FROM enrolment_tickets t
        JOIN seats s ON s.org_id = t.org_id AND s.id = t.seat_id AND s.role = t.role AND s.state = CASE t.kind WHEN 're_enrolment' THEN 'active' ELSE 'invited' END
@@ -487,7 +489,8 @@ function activation(db: D1Database, orgId: string, t: OpenTicket, now: number, c
     ...(until === null ? [] : [db.prepare(`UPDATE credentials SET state = 'suspended', stop_right_until = ? WHERE org_id = ? AND seat_id = ? AND state = 'active'`).bind(until, orgId, t.seat_id)]),
     db.prepare(`UPDATE credentials SET state = 'active' WHERE org_id = ? AND id = ? AND state = 'pending'`).bind(orgId, t.credential_id),
     db.prepare('UPDATE sessions SET revoked_at = ? WHERE org_id = ? AND seat_id = ? AND revoked_at IS NULL').bind(now, orgId, t.seat_id),
-    db.prepare(`UPDATE seats SET state = 'active', quarantine_until = ? WHERE org_id = ? AND id = ?`).bind(until, orgId, t.seat_id),
+    // The mark of a person Ophis approved is good once: the first activation uses it up (0015 refuses it on an active seat).
+    db.prepare(`UPDATE seats SET state = 'active', quarantine_until = ?, ophis_approved = 0 WHERE org_id = ? AND id = ?`).bind(until, orgId, t.seat_id),
     db.prepare(`UPDATE enrolment_tickets SET state = 'confirmed' WHERE org_id = ? AND id = ?`).bind(orgId, t.id),
     db.prepare(`UPDATE approvals SET state = 'applied', checker_seat_id = ?, decided_at = ? WHERE org_id = ? AND id = ?`).bind(checkerSeatId, now, orgId, t.approval_id),
     ...closeOpen(db, orgId, t.seat_id, now),
@@ -514,7 +517,10 @@ export async function confirmTicket(db: D1Database, session: Actor, seen: OpenTi
     outcome = { state: 'gone' }
     if (!actor || !t) return null
     const check = used(db, actor.orgId, x.credentialId, x.counter, now)
-    if (t.myStep === 'issuer' && KEY_ROLES.includes(t.role)) {
+    // A seat Ophis approved with the organisation (owner decision of 2026-11-13): at its first enrolment the issuer's
+    // confirmation is enough, with no second person and no wait. The mark exists only on an invited seat that the
+    // operator's approval made, and the activation below clears it: a re-enrolment, or a member invited by a colleague, never has it.
+    if (t.myStep === 'issuer' && KEY_ROLES.includes(t.role) && !t.approved) {
       // The 72 hour wait stands in for the second person only in an organisation that has had no key-role seat but
       // the issuer's in the last 30 days: active, frozen, removed, or lowered from a key role (the audit rows give
       // the dates). Otherwise one Owner could freeze or remove every colleague and then pass every two-person rule
@@ -530,7 +536,7 @@ export async function confirmTicket(db: D1Database, session: Actor, seen: OpenTi
       ]]
     }
     outcome = { state: 'active' }
-    return [seatEntry(actor, now, 'credential.activate', t.credential_id!, t.myStep), [check, ...activation(db, actor.orgId, t, now, t.myStep === 'second' ? actor.seatId : null)]]
+    return [seatEntry(actor, now, 'credential.activate', t.credential_id!, t.approved ? 'ophis' : t.myStep), [check, ...activation(db, actor.orgId, t, now, t.myStep === 'second' ? actor.seatId : null)]]
   })
   return outcome as Confirmed
 }
@@ -1318,7 +1324,7 @@ export async function devActivatePending(db: D1Database, environment: string, no
   for (const c of results) {
     await commit(db, c.org_id, () => [{ at: now, actorKind: 'system', actorId: null, sessionId: null, action: 'credential.activate.dev', subjectId: c.id }, [
       db.prepare(`UPDATE credentials SET state = 'active' WHERE org_id = ? AND id = ? AND state = 'pending'`).bind(c.org_id, c.id),
-      db.prepare(`UPDATE seats SET state = 'active' WHERE org_id = ? AND id = ? AND state = 'invited'`).bind(c.org_id, c.seat_id),
+      db.prepare(`UPDATE seats SET state = 'active', ophis_approved = 0 WHERE org_id = ? AND id = ? AND state = 'invited'`).bind(c.org_id, c.seat_id),
       db.prepare(`UPDATE enrolment_tickets SET state = 'confirmed' WHERE org_id = ? AND id = ?`).bind(c.org_id, c.ticket_id),
     ]])
   }

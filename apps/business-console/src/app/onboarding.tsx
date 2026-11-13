@@ -2,7 +2,7 @@
 // page, and the plain page of an organisation that is frozen or closed. Every value shown comes from the server.
 import { useCallback, useEffect, useState, type FormEvent, type ReactNode } from 'react'
 import { kindOf } from './pages.tsx'
-import { api, CANCELLED, day, Icon, minute, say, Section, sensitive, stamp, Status, Tile } from './ui.tsx'
+import { api, CANCELLED, day, Icon, minute, ROLE, say, Section, sensitive, stamp, Status, Tile } from './ui.tsx'
 
 const Problem = ({ children }: { children: string }) => <p className="note bad" role="alert"><Icon name="triangle-alert" /><span className="grow">{children}</span></p>
 
@@ -15,6 +15,8 @@ const SAY: Record<string, string> = {
   domain_invalid: 'Enter the email domain of the company, for example alder-custody.example. No address, no https.',
   email_not_at_domain: 'The work email must be at the company domain you entered, or at a subdomain of it.',
   name_invalid: 'Enter your own name, 60 characters at most.',
+  people_invalid: 'Name at most 4 more people. Each needs a name of 60 characters at most and the role Owner or Admin.',
+  person_email_invalid: 'Each person needs a work email of their own at the company domain. Not yours, and not one given twice.',
   passkey_rejected: 'The passkey was not accepted. Use a hardware security key and try again.',
   device_bound_required: 'An Owner needs a hardware security key. A passkey that syncs to a cloud account is not accepted.',
   intent_invalid: 'This application is not one this site issued, or it was changed on the way. Start again.',
@@ -69,9 +71,12 @@ const keep = (intent: string) => {
 }
 interface DnsRecord { name: string; type: string; value: string }
 const FIELDS = { invite: '', legalName: '', country: '', registration: '', kind: 'partner', domain: '', email: '', name: '' }
+interface Person { name: string; email: string; role: string }
 
 export function Apply() {
   const [form, setForm] = useState(FIELDS)
+  const [people, setPeople] = useState<Person[]>([]) // besides the applicant: 0 to 4
+  const person = (i: number, change: Partial<Person>) => setPeople(people.map((p, j) => (j === i ? { ...p, ...change } : p)))
   const [intent, setIntent] = useState(() => (location.hash.length > 1 ? location.hash.slice(1) : kept()))
   const [record, setRecord] = useState<DnsRecord>()
   const [expiresAt, setExpiresAt] = useState<number>()
@@ -114,10 +119,10 @@ export function Apply() {
   const start = (event: FormEvent) => {
     event.preventDefault()
     void run(async () => {
-      const begun = await api<{ seat: string; options: PublicKeyCredentialCreationOptionsJSON; error?: string }>('/api/apply', form)
+      const begun = await api<{ seat: string; options: PublicKeyCredentialCreationOptionsJSON; error?: string }>('/api/apply', { ...form, people })
       if (begun.status !== 200) return told(begun.data)
       const passkey = (await navigator.credentials.create({ publicKey: PublicKeyCredential.parseCreationOptionsFromJSON(begun.data.options) })) as PublicKeyCredential
-      const made = await api<{ intent: string; record: DnsRecord; expiresAt: number; error?: string }>('/api/apply', { ...form, seat: begun.data.seat, response: passkey.toJSON() })
+      const made = await api<{ intent: string; record: DnsRecord; expiresAt: number; error?: string }>('/api/apply', { ...form, people, seat: begun.data.seat, response: passkey.toJSON() })
       if (made.status !== 200) return told(made.data)
       keep(made.data.intent)
       setIntent(made.data.intent)
@@ -197,6 +202,29 @@ export function Apply() {
           <label className="field">Your name
             <input className="input" value={form.name} required maxLength={60} autoComplete="name" onChange={set('name')} />
           </label>
+          <fieldset className="field">
+            <legend>Other people of the company, up to 4</legend>
+            <div className="stack">
+              <p className="fine">Ophis checks each one with the company. Each needs a work email at the company domain, and the role Owner or Admin. When Ophis approves, each gets a seat. You give them a one-time link, and your passkey check activates their passkey: no second person and no 72 hour wait.</p>
+              {people.map((p, i) => (
+                <div className="stack" key={i}>
+                  <label className="field">Name of person {i + 2}
+                    <input className="input" value={p.name} required maxLength={60} autoComplete="off" onChange={(event) => person(i, { name: event.target.value })} />
+                  </label>
+                  <label className="field">Work email of person {i + 2}
+                    <input className="input" type="email" value={p.email} required maxLength={254} autoComplete="off" onChange={(event) => person(i, { email: event.target.value })} />
+                  </label>
+                  <label className="field">Role of person {i + 2}
+                    <select className="input" value={p.role} onChange={(event) => person(i, { role: event.target.value })}>
+                      <option value="admin">Admin</option><option value="owner">Owner</option>
+                    </select>
+                  </label>
+                  <div><button className="btn ghost sm" type="button" onClick={() => setPeople(people.filter((_, j) => j !== i))}><Icon name="x" size={16} />Remove person {i + 2}</button></div>
+                </div>
+              ))}
+              {people.length < 4 && <div><button className="btn ghost md" type="button" onClick={() => setPeople([...people, { name: '', email: '', role: 'admin' }])}><Icon name="user" size={16} />Add a person</button></div>}
+            </div>
+          </fieldset>
           <p>The next step creates your passkey, which makes you the first Owner. Use a hardware security key. Then you get one DNS record to publish at the company domain: it proves the domain, and that this passkey is the one your company means.</p>
           <div><button className="btn primary md" type="submit" disabled={busy || typeof PublicKeyCredential === 'undefined'}><Icon name="key-round" size={16} />Create the passkey and the DNS record</button></div>
         </form>
@@ -212,6 +240,7 @@ interface KybRow { legalName: string; registration: string | null; country: stri
 interface View {
   company: { legalName: string; kind: string; country: string | null; registration: string | null; domain: string | null; domainVerifiedAt: number | null }
   first: { credentialHash: string; active: boolean; name: string } | null
+  people: { name: string; email: string; role: string }[]
   wallet: { chainId: number; chain: string; address: string; kind: string; label: string; inForce: boolean; threshold?: number; owners?: number } | null
   missing: string | null
   review: { status: 'not_submitted' | 'under_review' | 'more_information' | 'verified'; since: number | null; reason: string | null }
@@ -272,10 +301,11 @@ function Declaration({ view }: { view: View }) {
           <dt>Email domain</dt><dd className="mono">{company.domain ?? 'none'}</dd>
           <dt>First Owner</dt><dd>{first?.name ?? 'none'}</dd>
           <dt>First Owner passkey (hash)</dt><dd className="mono">{first?.credentialHash ?? 'none'}</dd>
+          <dt>Other people</dt><dd>{view.people.length ? view.people.map((p) => `${p.name}, ${ROLE[p.role]}, ${p.email}`).join('; ') : 'none'}</dd>
           <dt>Recovery wallet</dt><dd className="mono">{wallet ? wallet.address : 'none'}</dd>
           <dt>Chain</dt><dd>{wallet?.chain ?? 'none'}</dd>
         </dl>
-        <p>The undersigned declares that the details above are those of the company, that the first Owner named above acts for the company in the Ophis Business console, and that the undersigned may bind the company.</p>
+        <p>The undersigned declares that the details above are those of the company, that each person named above acts for the company in the Ophis Business console, in the role shown, and that the undersigned may bind the company.</p>
         <dl className="kv sign">
           <dt>Name of the signatory</dt><dd />
           <dt>Role</dt><dd />
@@ -358,6 +388,9 @@ export function Onboarding({ owner, onSignedOut }: { owner: boolean; onSignedOut
           <Step icon="building-2" title="Company and domain" done>
             <p>{company.legalName}{company.kind ? `, ${KIND[company.kind] ?? company.kind}` : ''}{company.country ? `, ${company.country}` : ''}{company.registration ? `, number ${company.registration}` : ''}.</p>
             <p>{company.domain ? `Domain ${company.domain}, proved by its DNS record on ${day(company.domainVerifiedAt!)}.` : 'Created by Ophis for this local build, without an application.'}</p>
+            {view.people.length > 0 && <p>{verified ? 'Approved by Ophis with the organisation' : 'Other people named in the application'}: {view.people.map((p) => `${p.name} (${ROLE[p.role]}, ${p.email})`).join(', ')}. {verified
+              ? 'Each has a seat under Organisation, Members and roles. An Owner or Admin gives each one a link there, then confirms the new passkey. No second person is needed.'
+              : 'Ophis checks them with the company. When Ophis approves, each gets a seat.'}</p>}
           </Step>
           <Step icon="key-round" title="Passkeys" done={keys}>
             <p>{keys ? 'The first Owner holds two hardware keys.' : 'The first Owner needs two hardware keys. Add the second one now: until then this seat can do nothing else.'}</p>

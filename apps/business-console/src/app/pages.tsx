@@ -286,7 +286,7 @@ export function Enrol({ ticket }: { ticket: string }) {
   )
 }
 
-interface Member { id: string; displayName: string; role: string; state: string }
+interface Member { id: string; displayName: string; role: string; state: string; approved: number }
 interface Passkey { id: string; seatId: string; label: string; state: string; deviceBound: boolean; createdAt: number; lastUsedAt: number | null; stopRightUntil: number | null }
 interface Ticket { id: string; kind: string; role: string; seatId: string; name: string; issuerSeatId: string | null; status: 'link' | 'issuer' | 'second' | 'wait'; myStep: 'issuer' | 'second' | null; until: number; storedAt: number | null }
 interface Request { id: string; kind: string; subjectId: string; name: string | null; role: string | null; value: string | null; requester: string; requesterRole: string; createdAt: number; expiresAt: number; notBefore: number | null; mine: boolean }
@@ -381,7 +381,7 @@ function TicketDialog({ seat, mayOwner, onClose }: { seat: Member | null; mayOwn
                     <input className="input mono" readOnly value={issued.link} onFocus={(event) => event.target.select()} />
                   </label>
                   <button className="btn ghost md" type="button" onClick={() => navigator.clipboard.writeText(issued.link).then(() => setCopied(true), () => setCopied(false))}><Icon name="clipboard-check" size={16} />{copied ? 'Copied' : 'Copy the link'}</button>
-                  <p>The member opens it and creates a passkey. Check with them, by a channel you both trust, that they did. Then confirm it under <b>Waiting for confirmation</b>, with your passkey{keyRole ? '. A second person with a key role confirms too' : ''}.</p>
+                  <p>The member opens it and creates a passkey. Check with them, by a channel you both trust, that they did. Then confirm it under <b>Waiting for confirmation</b>, with your passkey{seat?.approved ? '. Ophis approved this person with the organisation, so no second person is needed' : keyRole ? '. A second person with a key role confirms too' : ''}.</p>
                 </>
               ) : <p>The link appears here. {keyRole ? 'For this role it works for 10 minutes.' : 'For this role it works for 24 hours.'}</p>}
             </div>
@@ -740,7 +740,7 @@ export function Organisation({ me, onSignedOut, onChanged }: { me: Me; onSignedO
       </div>
 
       {view && view.tickets.length > 0 && (
-        <Section icon="users" title="Waiting for confirmation" hint="A new passkey works only after a colleague confirmed it. Key roles need a second person.">
+        <Section icon="users" title="Waiting for confirmation" hint="A new passkey works only after a colleague confirmed it. Key roles need a second person, except at the first enrolment of a person Ophis approved.">
           <div className="stack">{view.tickets.map((ticket) => <Waiting key={ticket.id} ticket={ticket} issuer={ticket.issuerSeatId === me.seat.id ? 'You' : name(ticket.issuerSeatId)} mayCancel={me.seat.role === 'owner' && ready} act={act} />)}</div>
         </Section>
       )}
@@ -772,7 +772,7 @@ export function Organisation({ me, onSignedOut, onChanged }: { me: Me; onSignedO
                 <td>{ROLE[member.role] ?? member.role}</td>
                 <td>{keys.length ? `${keys.length}: ${keys.map((key) => key.label).join(', ')}` : 'None'}{replaced && <small>Replaced. Can stop the replacement until {minute(replaced.stopRightUntil!)}</small>}</td>
                 <td>{view.sessions.filter((session) => session.seatId === member.id).length || 'None'}</td>
-                <td><Status>{capital(member.state)}</Status>{frozen && <small>{frozen.stopped ? 'A replaced passkey stopped its replacement' : `By ${frozen.by ?? 'a colleague'}`}{frozen.at ? ` on ${minute(frozen.at)}` : ''}</small>}</td>
+                <td><Status>{capital(member.state)}</Status>{member.approved === 1 && <small>Approved by Ophis with the organisation</small>}{frozen && <small>{frozen.stopped ? 'A replaced passkey stopped its replacement' : `By ${frozen.by ?? 'a colleague'}`}{frozen.at ? ` on ${minute(frozen.at)}` : ''}</small>}</td>
                 {manages && <td><div className="acts">
                   {again && <button className="btn ghost sm" type="button" aria-label={`${member.state === 'active' ? 'Re-enrol' : 'New link for'} ${member.displayName}`} onClick={() => setTicketFor(member)}><Icon name="history" size={16} />{member.state === 'active' ? 'Re-enrol' : 'New link'}</button>}
                   {ready && !quarantined && mayManage(member.role) && member.state !== 'removed' && <button className="btn ghost sm" type="button" aria-label={`Manage ${member.displayName}`} onClick={() => setManaged(member)}><Icon name="settings" size={16} />Manage</button>}

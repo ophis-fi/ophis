@@ -1,7 +1,8 @@
 // The operator's command, local only. It calls the operator's API of the local server (src/server/onboarding.ts) on
 // that API's own hostname, with OPERATOR_TOKEN from .dev.vars (made by "pnpm seed"). The token is never printed.
 //   node scripts/operator.mjs invite    a new application code: one use, valid 14 days; give it to the company that may apply
-//   node scripts/operator.mjs list      what is under review (with a warning line when a wallet the application named was refused as listed), then "Reviews due, and frozen
+//   node scripts/operator.mjs list      what is under review, with the people the application named besides the first Owner (an approval makes each an invited seat
+//                                       that needs no second person at its first enrolment), and a warning line when a wallet the application named was refused as listed; then "Reviews due, and frozen
 //                                       organisations": no screening, the next review passed or within 14 days, or frozen; a frozen one ends with what froze it: "frozen by
 //                                       <action> (<detail>) on <day>" (screening.attempt: a member proved a wallet that is on a loaded list; the detail is the address)
 //   node scripts/operator.mjs decide <organisation id> approve --submission <the 16 characters "list" printed> --tier standard --source registry --evidence "<reference>" --sha256 <64 hex> --next-review 2027-11-11
@@ -184,6 +185,7 @@ else {
       `  domain          ${o.domain}`,
       `  submitted       ${new Date(o.submittedAt).toISOString()}   submission ${o.submission} (name it in "approve": a change and a new submit make another)`,
       `  first Owner     passkey hash ${o.credentialHash}`,
+      ...(o.people.length ? o.people.map((p) => `  person          ${p.name}, ${p.role}, ${p.email}`) : ['  people          none besides the first Owner']),
       `  recovery wallet ${o.wallet ? `${o.wallet.address} on ${o.wallet.chain}, ${o.wallet.kind}${o.wallet.threshold ? ` ${o.wallet.threshold} of ${o.wallet.owners}` : ''}, ${o.wallet.colour.level}${o.wallet.colour.why ? ` (${o.wallet.colour.why})` : ''}` : 'none: a second Owner with two passkeys'}`,
       `  declaration     ${o.declaration ? sealed(o.declaration) : 'none'}`,
       ...(o.refused.length ? [`  WARNING         listed wallet refused: ${o.refused.join(', ')}`] : []),

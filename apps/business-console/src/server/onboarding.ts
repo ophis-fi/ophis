@@ -64,7 +64,7 @@ export const ONBOARDING_EVENTS: Record<string, string> = {
   'activation.proof': 'Recovery wallet signed the activation and confirmed the first Owner passkey',
   'review.submit': 'Organisation submitted for review',
   'declaration.upload': 'Signed declaration uploaded, sealed in the browser (the detail is the SHA-256 of the sealed file)',
-  'kyb.approve': 'Ophis operator: verification approved, organisation active',
+  'kyb.approve': 'Ophis operator: verification approved, organisation active, with the people its application named',
   'kyb.refuse': 'Ophis operator: verification refused, organisation closed',
   'kyb.more': 'Ophis operator: more information asked, the review was sent back',
   // The outcome is the detail of the row. Only "clear" has words of its own (index.ts): no other outcome is said to a browser.
@@ -90,13 +90,15 @@ const hex = (bytes: Uint8Array) => [...bytes].map((byte) => byte.toString(16).pa
 // ---- rows ----
 
 interface Passkey { id: string; publicKey: string; counter: number; transports: string[] }
-interface Applicant { legalName: string; country: string; registration: string; kind: 'partner' | 'institution'; domain: string; email: string; name: string }
+/** One more person the application names (owner decision of 2026-11-13): Ophis approves them with the organisation. */
+interface Person { name: string; email: string; role: 'owner' | 'admin' }
+interface Applicant { legalName: string; country: string; registration: string; kind: 'partner' | 'institution'; domain: string; email: string; name: string; people: Person[] }
 /** What /apply asked for, signed by the server and held nowhere: nothing is written before the DNS record is seen. Times are Unix seconds. */
 interface ApplyIntent extends Applicant { inviteHash: string; seat: string; credential: Passkey; credentialHash: string; issuedAt: number; expiresAt: number; site: string }
 
 // The one write of an application, after its DNS proof: the organisation (unverified), its first Owner seat, that
-// seat's passkey (active) and the first row of its audit log, which names the seat, the passkey and the passkey's
-// hash for good. One organisation per domain among those that are not archived is the database's rule (the unique
+// seat's passkey (active), the other people it named (rows only: their seats come with the approval) and the first
+// row of its audit log, which names the seat, the passkey and the passkey's hash for good. One organisation per domain among those that are not archived is the database's rule (the unique
 // index of 0006), and so are "an intent makes one organisation, once" (the primary keys of its seat and passkey) and
 // "an application code makes one organisation, once" (the unique index of 0007 on its hash).
 async function createOrganisation(db: D1Database, a: ApplyIntent, value: string, now: number) {
@@ -111,6 +113,7 @@ async function createOrganisation(db: D1Database, a: ApplyIntent, value: string,
         db.prepare(`INSERT INTO seats (id, org_id, display_name, email, role, state, created_at) VALUES (?, ?, ?, ?, 'owner', 'active', ?)`).bind(a.seat, orgId, a.name, a.email, now),
         db.prepare(`INSERT INTO credentials (id, org_id, seat_id, public_key, counter, device_bound, transports, label, state, created_at) VALUES (?, ?, ?, ?, ?, 1, ?, 'First key', 'active', ?)`)
           .bind(a.credential.id, orgId, a.seat, a.credential.publicKey, a.credential.counter, JSON.stringify(a.credential.transports), now),
+        ...a.people.map((p) => db.prepare('INSERT INTO application_people (org_id, email, display_name, role) VALUES (?, ?, ?, ?)').bind(orgId, p.email, p.name, p.role)),
       ]]
     })
   } catch (error) {
@@ -129,6 +132,9 @@ const firstOf = (db: D1Database, orgId: string) =>
                      (SELECT count(*) FROM credentials k JOIN seats s ON s.org_id = k.org_id AND s.id = k.seat_id AND s.role = 'owner' AND s.state = 'active'
                       WHERE k.org_id = a.org_id AND k.id = a.subject_id AND k.seat_id = a.actor_id AND k.state = 'active') AS active
               FROM audit_log a JOIN organisations o ON o.id = a.org_id WHERE a.org_id = ? AND a.seq = 1 AND a.action = 'organisation.apply'`).bind(orgId).first<First>()
+/** The people the application named besides its applicant, in the order it gave them. */
+const peopleOf = async (db: D1Database, orgId: string) =>
+  (await db.prepare('SELECT display_name AS name, email, role FROM application_people WHERE org_id = ? ORDER BY rowid').bind(orgId).all<Person>()).results
 
 /**
  * A7: what a review needs, from the rows as they are now. Two device-bound passkeys on the first Owner's seat, and
@@ -255,9 +261,10 @@ const kybRow = (db: D1Database, id: string, orgId: string, k: KybFields, now: nu
 // their passkeys or the named wallet since the submit has taken it out of review: G3), for an approval the submission
 // is the one the operator saw in the list (a change followed by a new submit is another one), A7 still holds,
 // and the wallet the handler just checked on the chain is the wallet that waits now, by its id: else "try again". Approve: the organisation is active and that wallet is
-// the recovery wallet in force at once. Refuse: archived. More information: back to the Owner. The KYB row copies the
-// organisation's own name, number and country: the operator sets no field of the organisation, no member, no passkey
-// and no wallet address.
+// the recovery wallet in force at once, and each person the application named gets a seat, invited and marked as
+// approved by Ophis (the operator names nobody: the rows of the application do). Refuse: archived. More information:
+// back to the Owner. The KYB row copies the organisation's own name, number and country: the operator sets no field of
+// the organisation, no member, no passkey and no wallet address.
 async function decideKyb(db: D1Database, orgId: string, d: Kyb, checked: { id: string; snapshot: string | null } | null, now: number) {
   const id = randomId()
   let outcome = 'not_found'
@@ -268,11 +275,14 @@ async function decideKyb(db: D1Database, orgId: string, d: Kyb, checked: { id: s
       : d.decision !== 'approve' ? 'ok' : (await missing(db, orgId, now)) ? 'not_ready' : ((await walletOf(db, orgId))?.id ?? null) !== (checked?.id ?? null) ? 'try_again'
       : (await submissionOf(o.print)) !== d.submission ? 'submission_changed' : (await listedWallet(db, orgId, now)) ? 'wallet_listed' : 'ok'
     if (outcome !== 'ok' || !o) return null
+    const people = d.decision === 'approve' ? await peopleOf(db, orgId) : []
     return [{ at: now, actorKind: 'operator', actorId: null, sessionId: null, action: KYB_ACTION[d.decision], subjectId: id, detail: d.decision === 'approve' ? d.evidenceSha256 : d.reason }, [
       kybRow(db, id, orgId, { ...d, name: o.name, registration: o.registration, country: o.country, decision: { approve: 'approved', refuse: 'rejected', more: 'pending' }[d.decision], decidedAt: now }, now),
       db.prepare('UPDATE organisations SET state = ?, review_at = NULL WHERE id = ?').bind({ approve: 'active', refuse: 'archived', more: 'unverified' }[d.decision], orgId),
       ...(d.decision === 'approve' && checked ? [db.prepare(`UPDATE wallets SET state = 'linked', linked_at = ?, anchor = 'current', anchor_effective_at = ?, snapshot = ? WHERE org_id = ? AND id = ? AND state = 'pending'`)
         .bind(now, now, checked.snapshot, orgId, checked.id)] : []),
+      ...people.map((p) => db.prepare(`INSERT INTO seats (id, org_id, display_name, email, role, state, ophis_approved, created_at) VALUES (?, ?, ?, ?, ?, 'invited', 1, ?)`)
+        .bind(randomId(), orgId, p.name, p.email, p.role, now)),
     ]]
   })
   return outcome
@@ -426,10 +436,20 @@ interface Member extends Ctx { actor: Actor }
 
 const LEGAL = /^[\p{L}\p{N} .,'&()/-]{2,120}$/u
 const NAME = /^[\p{L}\p{N} .'-]{1,60}$/u
-/** The form, checked. The contact address must be at the company's domain or a subdomain of it: the DNS proof of that domain is then the proof that this is a company address, and no list of mail providers is needed. */
+const MAX_PEOPLE = 4 // besides the applicant: 5 people in all
+/**
+ * The form, checked. The contact address must be at the company's domain or a subdomain of it: the DNS proof of that
+ * domain is then the proof that this is a company address, and no list of mail providers is needed. `people`: 0 to 4
+ * more people, each a name, a work email by the same rule and the role Owner or Admin; no address twice, none the applicant's.
+ */
 function applicant(body: Record<string, unknown>): Applicant | string {
   const field = (key: string) => (typeof body[key] === 'string' ? (body[key] as string).trim() : '')
   const a = { legalName: field('legalName'), country: field('country').toUpperCase(), registration: field('registration'), kind: field('kind'), domain: field('domain').toLowerCase(), email: field('email').toLowerCase(), name: field('name') }
+  const given = body.people === undefined ? [] : Array.isArray(body.people) && body.people.length <= MAX_PEOPLE ? (body.people as unknown[]) : null
+  const people = given?.map((p) => {
+    const x = (p ?? {}) as Record<string, unknown>
+    return { name: typeof x.name === 'string' ? x.name.trim() : '', email: emailAt(x.email, a.domain), role: x.role }
+  })
   return !LEGAL.test(a.legalName) ? 'legal_name_invalid'
     : !/^[A-Z]{2}$/.test(a.country) ? 'country_invalid'
     : !/^[A-Za-z0-9 ./-]{2,40}$/.test(a.registration) ? 'registration_invalid'
@@ -437,7 +457,9 @@ function applicant(body: Record<string, unknown>): Applicant | string {
     : !DOMAIN.test(a.domain) ? 'domain_invalid'
     : !emailAt(a.email, a.domain) ? 'email_not_at_domain'
     : !NAME.test(a.name) ? 'name_invalid'
-    : (a as Applicant)
+    : !people || people.some((p) => !NAME.test(p.name) || (p.role !== 'owner' && p.role !== 'admin')) ? 'people_invalid'
+    : people.some((p, i) => !p.email || p.email === a.email || people.findIndex((q) => q.email === p.email) < i) ? 'person_email_invalid'
+    : ({ ...a, people } as Applicant)
 }
 
 const APPLY = 'apply-intent' // the labels of this file's texts under the challenge key
@@ -555,6 +577,7 @@ export async function onboarding(c: Member) {
   return json(200, {
     company: { legalName: company.legalName, kind: company.kind, country: company.country, registration: company.registration, domain: company.domain, domainVerifiedAt: company.domainVerifiedAt },
     first: first && { credentialHash: first.hash, active: first.active === 1, name: first.name },
+    people: await peopleOf(c.env.DB, orgId), // the people the application named besides the first Owner: Ophis approves them with the organisation
     // Milestone 5b: the sealing key of this environment (its fingerprint; null: none configured), and the sealed declaration as the server knows it.
     seal: { key: await sealKey(c.env), generation: SEAL.generation },
     sealed: sealed.find((item) => item.kind === 'declaration') ?? null,
@@ -735,9 +758,10 @@ export async function submit(c: Member) {
 
 interface OperatorEnv { DB: D1Database; SEALED: R2Bucket; ENVIRONMENT: string; CHALLENGE_KEY: string; OPERATOR_TOKEN?: string; SANCTIONS_URL?: string }
 
-// What the operator compares before a decision: the domain, the first Owner's passkey hash, the recovery
-// wallet with its kind and its colour (read on both endpoints now, as if it were in force), whether A7 holds, and the
-// sealed declaration: its id, size, date and SHA-256. And, in a field of its own, the reviews that are due (S4).
+// What the operator compares before a decision: the domain, the first Owner's passkey hash, the people the application
+// named besides the first Owner (an approval approves them too), the recovery wallet with its kind and its colour (read
+// on both endpoints now, as if it were in force), whether A7 holds, and the sealed declaration: its id, size, date and
+// SHA-256. And, in a field of its own, the reviews that are due (S4).
 async function list(c: Ctx) {
   const organisations = []
   for (const o of await underReview(c.env.DB)) {
@@ -747,7 +771,7 @@ async function list(c: Ctx) {
     const live = endpoints ? await safeState(endpoints, wallet!.chainId, wallet!.address) : null
     organisations.push({
       id: o.id, legalName: o.legalName, kind: o.kind, country: o.country, registration: o.registration, domain: o.domain, submittedAt: o.reviewAt, submission: await submissionOf(o.print),
-      credentialHash: first.hash, missing: await missing(c.env.DB, o.id, c.now),
+      credentialHash: first.hash, people: await peopleOf(c.env.DB, o.id), missing: await missing(c.env.DB, o.id, c.now),
       // Milestone 5b: that the sealed declaration exists, and what the server knows of it. "items" and "get" are the way to the file.
       declaration: (await sealedOf(c.env.DB, o.id)).find((item) => item.kind === 'declaration') ?? null,
       refused: await refusedOf(c.env.DB, o.id), // sanctions screening: a wallet this application named was on a loaded list
