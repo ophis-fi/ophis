@@ -120,6 +120,56 @@ export async function getPartnerFeeDashboard(recipient: `0x${string}`, now: Date
   };
 }
 
+export interface PartnerTraderFigures {
+  readonly trades: number;
+  /** Σ value_usd of the priced trades (a reporting estimate). */
+  readonly volumeUsd: number;
+  /** Trades the nightly pricer has not priced yet (value_usd NULL): in trades, not in volumeUsd. */
+  readonly unpriced: number;
+}
+
+export interface PartnerTraders {
+  /** The 100 largest wallets by volumeUsd (ties by address), largest first. */
+  readonly wallets: (PartnerTraderFigures & { readonly wallet: `0x${string}` })[];
+  /** Every wallet, not only the 100 listed. */
+  readonly totals: PartnerTraderFigures & { readonly walletCount: number };
+}
+
+/**
+ * The wallets that traded through a partner's integration: the owners of the orders that carried
+ * this recipient's fee, lifetime. The owner is bytes 33-52 of the CoW order uid (32-byte digest,
+ * 20-byte owner, 4-byte validTo). Not the referral program: no share, no code, no estimate.
+ */
+export async function getPartnerTraders(recipient: `0x${string}`): Promise<PartnerTraders> {
+  const buf = Buffer.from(recipient.slice(2), 'hex');
+  // The totals are window sums over every wallet: they run before the LIMIT. ORDER BY names w.
+  // because a bare volume_usd would sort the text column of the same name.
+  // ponytail: the 100 largest wallets only, so 10 recipients stay near 100 kB; a paged read if a partner needs them all.
+  const rows = await sql<{ wallet: string; trades: string; volume_usd: string; unpriced: string; wallet_count: string; all_trades: string; all_volume_usd: string; all_unpriced: string }[]>`
+    SELECT '0x' || encode(owner, 'hex') AS wallet, trades::text AS trades, volume_usd::text AS volume_usd, unpriced::text AS unpriced,
+      COUNT(*) OVER ()::text AS wallet_count, SUM(trades) OVER ()::text AS all_trades,
+      SUM(volume_usd) OVER ()::text AS all_volume_usd, SUM(unpriced) OVER ()::text AS all_unpriced
+    FROM (
+      SELECT substring(trade_uid from 33 for 20) AS owner, COUNT(*) AS trades,
+        COALESCE(SUM(value_usd), 0) AS volume_usd, COUNT(*) FILTER (WHERE value_usd IS NULL) AS unpriced
+      FROM partner_fee_trades WHERE recipient = ${buf}
+      GROUP BY 1
+    ) w
+    ORDER BY w.volume_usd DESC, w.owner
+    LIMIT 100
+  `;
+  const all = rows[0];
+  return {
+    wallets: rows.map((r) => ({ wallet: r.wallet as `0x${string}`, trades: Number(r.trades), volumeUsd: Number(r.volume_usd), unpriced: Number(r.unpriced) })),
+    totals: {
+      walletCount: Number(all?.wallet_count ?? 0),
+      trades: Number(all?.all_trades ?? 0),
+      volumeUsd: Number(all?.all_volume_usd ?? 0),
+      unpriced: Number(all?.all_unpriced ?? 0),
+    },
+  };
+}
+
 export interface PartnerFeeStats {
   /** Distinct partner recipients ever attributed a fee. */
   readonly partners: number;

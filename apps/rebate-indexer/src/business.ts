@@ -1,23 +1,25 @@
 import { timingSafeEqual } from 'node:crypto';
 import type { FastifyInstance } from 'fastify';
-import type { PartnerFeeDashboard } from './partnerFees/report.js';
+import type { PartnerFeeDashboard, PartnerTraders } from './partnerFees/report.js';
 import { logger } from './logger.js';
 
 // One token-gated read route for the Ophis Business console. A company wallet (a
 // Safe) cannot sign the 5-minute partnerAuth message, so the console proves wallet
-// control itself and reads the partner-fee dashboard here, server to server. It
+// control itself and reads here, server to server, the partner-fee dashboard and the
+// wallets that traded through its integration (the trades that carried its fee). It
 // never reads the referral dashboard: the console's partners get no referral share.
-// BUSINESS_API_TOKEN reads EVERY partner's fee dashboard: it is a secret, and the
+// BUSINESS_API_TOKEN reads EVERY partner's fee dashboard and traders: it is a secret, and the
 // feature is OFF (404) unless it is set, long, and different from the admin token.
 
 export interface BusinessDeps {
   getPartnerFeeDashboard: (recipient: `0x${string}`, now?: Date) => Promise<PartnerFeeDashboard>;
+  getPartnerTraders: (recipient: `0x${string}`) => Promise<PartnerTraders>;
 }
 
 export interface BusinessPartnerAnswer {
   asOf: string;
-  /** fees null: a contract wallet the console did not prove on its pinned chain. Nothing was read for it. */
-  wallets: { wallet: `0x${string}`; fees: PartnerFeeDashboard | null }[];
+  /** fees and traders null: a contract wallet the console did not prove on its pinned chain. Nothing was read for it. */
+  wallets: { wallet: `0x${string}`; fees: PartnerFeeDashboard | null; traders: PartnerTraders | null }[];
 }
 
 // The chain each contract wallet is pinned to, as POST /partner reads it (affiliate/partnerAuth.ts): the same address
@@ -73,7 +75,11 @@ export function registerBusinessRoutes(app: FastifyInstance, deps: BusinessDeps)
     logger.info({ wallets: wallets.length, refused: wallets.filter((w) => !readable(w)).length }, 'business partner read');
     const out: BusinessPartnerAnswer['wallets'] = [];
     // ponytail: one wallet after the other (at most 10); parallel if latency matters.
-    for (const w of wallets as `0x${string}`[]) out.push({ wallet: w, fees: readable(w) ? await deps.getPartnerFeeDashboard(w, now) : null });
+    for (const w of wallets as `0x${string}`[]) {
+      out.push(readable(w)
+        ? { wallet: w, fees: await deps.getPartnerFeeDashboard(w, now), traders: await deps.getPartnerTraders(w) }
+        : { wallet: w, fees: null, traders: null });
+    }
     return { asOf: now.toISOString(), wallets: out };
   });
 }

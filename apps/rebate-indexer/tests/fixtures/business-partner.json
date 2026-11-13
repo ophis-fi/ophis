@@ -20,6 +20,14 @@
         "nextPayoutAt": "2026-12-01T02:00:00.000Z",
         "minPayoutUsd": 25,
         "partnerShareBps": 8000
+      },
+      "traders": {
+        "wallets": [
+          { "wallet": "0x00000000000000000000000000000000000000c1", "trades": 230, "volumeUsd": 251000.25, "unpriced": 0 },
+          { "wallet": "0x00000000000000000000000000000000000000c2", "trades": 181, "volumeUsd": 118400.5, "unpriced": 1 },
+          { "wallet": "0x00000000000000000000000000000000000000c3", "trades": 1, "volumeUsd": 0, "unpriced": 1 }
+        ],
+        "totals": { "walletCount": 3, "trades": 412, "volumeUsd": 369400.75, "unpriced": 2 }
       }
     },
     {
@@ -38,6 +46,10 @@
         "nextPayoutAt": "2026-12-01T02:00:00.000Z",
         "minPayoutUsd": 25,
         "partnerShareBps": 8000
+      },
+      "traders": {
+        "wallets": [],
+        "totals": { "walletCount": 0, "trades": 0, "volumeUsd": 0, "unpriced": 0 }
       }
     }
   ]
