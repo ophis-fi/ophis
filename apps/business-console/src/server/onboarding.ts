@@ -20,6 +20,7 @@ export const OPERATOR: Record<string, string> = { local: 'http://operator.localh
 
 export const DNS = { timeoutMs: 5000, maxBytes: 16 * 1024 }
 const WEEK_S = 7 * 24 * 60 * 60
+const DUE_MS = 14 * 24 * 60 * 60 * 1000 // a review is due from 14 days before its date
 const INVITE_S = 14 * 24 * 60 * 60 // an application code lives 14 days
 const MAX_DNS = 10 // DNS checks per application code per clock hour
 const MAX_BODY = 64 * 1024
@@ -192,6 +193,13 @@ async function reviewOf(db: D1Database, orgId: string) {
   ])
   return { company: company.results[0] as Company, record: (record.results[0] as KybRow | undefined) ?? null }
 }
+// S4: the reviews that are due, for the operator's list: the active and frozen organisations whose newest record holds
+// no screening (or that have no record), or whose next review date is passed or within 14 days. The calendar is a manual chore.
+// ponytail: the whole list at each call. Page it when the organisations pass some hundreds.
+const reviewsDue = async (db: D1Database, now: number) =>
+  (await db.prepare(`SELECT o.id, o.name, o.state, k.screening_outcome AS outcome, k.screened_at AS screenedAt, k.recheck_at AS nextReview
+                     FROM organisations o LEFT JOIN kyb_records k ON k.rowid = (SELECT rowid FROM kyb_records WHERE org_id = o.id ORDER BY created_at DESC, rowid DESC LIMIT 1)
+                     WHERE o.state IN ('active', 'frozen') AND (k.screening_outcome IS NULL OR k.recheck_at <= ?) ORDER BY o.name, o.id`).bind(now + DUE_MS).all()).results
 const underReview = async (db: D1Database) =>
   (await db.prepare(`SELECT ${COMPANY} WHERE state = 'unverified' AND review_at IS NOT NULL ORDER BY review_at, id`).all<Company>()).results
 
@@ -623,7 +631,7 @@ interface OperatorEnv { DB: D1Database; SEALED: R2Bucket; ENVIRONMENT: string; C
 
 // What the operator compares before a decision: the domain, the first Owner's words and passkey hash, the recovery
 // wallet with its kind and its colour (read on both endpoints now, as if it were in force), whether A7 holds, and the
-// sealed declaration: its id, size, date and SHA-256.
+// sealed declaration: its id, size, date and SHA-256. And, in a field of its own, the reviews that are due (S4).
 async function list(c: Ctx) {
   const organisations = []
   for (const o of await underReview(c.env.DB)) {
@@ -639,7 +647,7 @@ async function list(c: Ctx) {
       wallet: wallet && { ...walletView(wallet), colour: colour({ kind: wallet.kind, snapshot: wallet.snapshot, inForce: true }, live) },
     })
   }
-  return json(200, { organisations })
+  return json(200, { organisations, reviews: await reviewsDue(c.env.DB, c.now) })
 }
 
 /** A date as the command gives it, YYYY-MM-DD: Unix ms at 00:00 UTC, or null (or NaN) when it is not one. */

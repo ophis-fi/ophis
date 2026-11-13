@@ -1,0 +1,7 @@
+TEST DATA. Not a real list and no extract of one: invented addresses only, for the tests of the Ophis business console.
+Stands in for a downloaded list file that names wallet addresses. What "operator addresses" takes from it: two addresses.
+Invented entry 1, Digital Currency Address - ETH 0x00000000000000000000000000000000000a11ce
+Invented entry 2, Digital Currency Address - ETH 0x0000000000000000000000000000000000000B0B (mixed case: loaded in lower case)
+Invented entry 3, Digital Currency Address - ETH 0x00000000000000000000000000000000000A11CE (the first again: loaded once)
+Invented entry 4, Digital Currency Address - XBT 1InventedNotAnAddressOfThisKind (not 0x and 40 hex characters: not loaded)
+Not an address: 0x0000000000000000000000000000000000000000000000000000000000000001 (64 hex characters: not loaded)

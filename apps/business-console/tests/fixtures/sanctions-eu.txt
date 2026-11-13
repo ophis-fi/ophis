@@ -1,0 +1,5 @@
+TEST DATA. Not a real list and no extract of one: invented names only, for the tests of the Ophis business console.
+Stands in for a downloaded copy of the EU consolidated financial sanctions list. One invented entry per line.
+Invented Shell Trading Ltd, Nowhere City (invented)
+Invented Person One, born 1900-01-01 (invented)
+Invented Person Two (invented)

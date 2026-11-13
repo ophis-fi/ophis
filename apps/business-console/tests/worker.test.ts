@@ -7558,6 +7558,38 @@ describe('E. onboarding: a company applies, proves its domain, is activated and 
       const late = await frozen(p.orgId, 'unfreeze', raced(async () => (await listDirect(B), await screen(p.orgId))))
       expect([late.body, await stateOf(p.orgId)]).toEqual([{ error: 'wallet_listed' }, 'frozen'])
     })
+
+    // ---- S4: what the operator's command lists ----
+    it('S4: the operator\'s list answers the reviews that are due, in a field of its own: active and frozen organisations whose newest record holds no screening, or whose next review is passed or within 14 days', async () => {
+      now = Date.UTC(2026, 10, 10) // midnight: a review date is a day at 00:00 UTC
+      const due = async (...ids: string[]) => ((await op('GET', '/api/operator/organisations')).body.reviews as { id: string }[]).filter((r) => ids.includes(r.id))
+      const made: Member[] = []
+      for (const name of ['Aa None', 'Ab Old', 'Ac Far', 'Ad Edge', 'Ae After', 'Af Cold', 'Ag Cold far']) made.push(await member(name))
+      const [none, old, far, edge, after, cold, coldFar] = made
+      const all = [none, old, far, edge, after, cold, coldFar].map((m) => m.orgId)
+      await put(`INSERT INTO kyb_records (id, org_id, legal_name, country, tier, source, decision, recheck_at, created_at) VALUES (?, ?, 'Old Record Ltd', 'GB', 'standard', 'registry', 'approved', ?, ?)`, data.randomId(), old.orgId, Date.UTC(2030, 0, 1), now)
+      for (const [m, nextReview] of [[far, '2027-11-11'], [edge, '2026-11-24'], [after, '2026-11-25'], [coldFar, '2027-11-11']] as const) expect((await seedScreen(m.orgId, { nextReview })).body).toEqual({ state: 'active' })
+      for (const m of [cold, coldFar]) expect((await frozen(m.orgId)).body).toEqual({ state: 'frozen' })
+      // Not active and not frozen: an organisation under review and a refused one are not in it.
+      const [early, gone] = [await underReview(), await underReview()]
+      expect((await decideOn(gone.orgId, { ...MORE, decision: 'refuse' })).body).toEqual({ state: 'archived' })
+      expect(await due(...all, early.orgId, gone.orgId)).toEqual([
+        { id: none.orgId, name: 'Aa None', state: 'active', outcome: null, screenedAt: null, nextReview: null },
+        { id: old.orgId, name: 'Ab Old', state: 'active', outcome: null, screenedAt: null, nextReview: Date.UTC(2030, 0, 1) },
+        { id: edge.orgId, name: 'Ad Edge', state: 'active', outcome: 'clear', screenedAt: now, nextReview: Date.UTC(2026, 10, 24) }, // 14 days from now, to the millisecond
+        { id: cold.orgId, name: 'Af Cold', state: 'frozen', outcome: null, screenedAt: null, nextReview: null },
+      ])
+      // A day later the next one is within 14 days; a year later every date is passed. The newest record decides: a new screening takes the organisation out.
+      now += DAY
+      expect((await due(...all)).map((r) => r.id)).toEqual([none, old, edge, after, cold].map((m) => m.orgId))
+      now += 366 * DAY
+      expect((await due(...all)).map((r) => r.id)).toEqual(all)
+      expect((await screen(far.orgId, { outcome: 'hit', nextReview: '2029-01-01' })).body).toEqual({ state: 'frozen' })
+      expect((await screen(none.orgId, { tier: 'standard', source: 'registry', nextReview: '2029-01-01' })).body).toEqual({ state: 'active' })
+      expect((await due(...all)).map((r) => r.id)).toEqual([old, edge, after, cold, coldFar].map((m) => m.orgId))
+      // No name of a person is in it.
+      expect(JSON.stringify(await due(...all))).not.toMatch(/Owner of|Maren/)
+    })
   })
 })
 
