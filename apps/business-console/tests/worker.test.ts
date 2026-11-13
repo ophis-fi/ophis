@@ -695,7 +695,7 @@ describe('d. request checks', () => {
   it('a state change is a JSON POST: no other method, no other content type', async () => {
     const m = await member()
     expect(routes.filter((route) => route.method !== 'GET').every((route) => route.method === 'POST')).toBe(true)
-    expect(routes.filter((route) => route.method === 'GET').map((route) => route.path).sort()).toEqual(['/api/audit', '/api/company/callback', '/api/desk', '/api/export/:id', '/api/me', '/api/onboarding', '/api/org', '/api/overview', '/api/readiness'])
+    expect(routes.filter((route) => route.method === 'GET').map((route) => route.path).sort()).toEqual(['/api/audit', '/api/company/callback', '/api/desk', '/api/export/:id', '/api/me', '/api/onboarding', '/api/org', '/api/overview', '/api/readiness', '/api/screening'])
     expect((await call('GET', '/api/signout', { cookie: m.cookie })).status).toBe(404)
     for (const type of ['text/plain', 'application/x-www-form-urlencoded', 'multipart/form-data', null]) {
       expect((await call('POST', '/api/signout', { cookie: m.cookie, headers: { 'content-type': type } })).status).toBe(415)
@@ -2517,7 +2517,7 @@ describe('r. the role table', () => {
       'POST /api/policy/company': 'owner fresh twoKeys settled second:policy.company', 'POST /api/company/start': 'owner fresh twoKeys settled',
       'POST /api/enrol/company': 'public', 'GET /api/company/callback': 'public',
       'POST /api/approvals/:id/approve': `${key} fresh twoKeys settled`, 'POST /api/approvals/:id/reject': `${key} fresh twoKeys`, 'POST /api/approvals/:id/cancel': 'owner,admin,trader',
-      'GET /api/audit': 'owner,compliance,viewer', 'POST /api/audit/export': 'owner,compliance,viewer fresh',
+      'GET /api/audit': 'owner,compliance,viewer', 'POST /api/audit/export': 'owner,compliance,viewer fresh', 'GET /api/screening': 'owner,compliance,viewer',
       'POST /api/wallets/intent': change, 'POST /api/wallets/:id/unlink': 'owner,admin fresh twoKeys',
       'POST /api/wallets/:id/anchor': 'owner fresh twoKeys settled second:anchor.set', 'POST /api/wallets/:id/anchor/cancel': 'owner fresh twoKeys',
       'GET /api/readiness': 'owner', 'POST /api/proof': 'public',
@@ -7515,12 +7515,11 @@ describe('E. onboarding: a company applies, proves its domain, is activated and 
       refused = await activation(n, s3)
       expect([refused.status, refused.body, await snapshot()]).toEqual([409, { error: 'wallet_listed' }, rows])
       expect((await without()).status).toBe(200)
+      expect((await activation(n, s3)).body).toEqual({ state: 'stored' })
       const named = await nameWallet(n, s3b.address)
       const proof = await s3b.signTypedData(typedActivate(fieldsOf<ActivateFields>(named.body.intent)))
       expect((await prove(named.body.intent, proof, { env: meanwhile(lower(s3b), n.key, 2) })).body).toEqual({ error: 'wallet_listed' })
-      expect(await count('wallets', n.orgId)).toBe(0)
-      await noLists()
-      expect((await activation(n, s3)).body).toEqual({ state: 'stored' })
+      expect((await db.prepare('SELECT address, state FROM wallets WHERE org_id = ?').bind(n.orgId).all()).results).toEqual([{ address: lower(s3), state: 'pending' }])
       // 4. The operator's approval of an organisation whose wallet came onto a list after its proof.
       expect((await submit(n)).body).toEqual({ state: 'under_review' })
       expect((await load('ofac', [lower(s3)])).body.hits).toEqual([{ id: n.orgId, name: 'Alder Custody S.A.', state: 'unverified', address: lower(s3), frozen: false }])
@@ -7530,7 +7529,7 @@ describe('E. onboarding: a company applies, proves its domain, is activated and 
       expect((await without()).status).toBe(200)
       expect((await decideOn(n.orgId, APPROVE, raced(async () => (await listDirect(lower(s3)), await signIn(n.key))))).body).toEqual({ error: 'wallet_listed' })
       expect(await stateOf(n.orgId)).toBe('unverified')
-      await noLists()
+      expect((await without()).status).toBe(200)
       expect((await decideOn(n.orgId)).body).toEqual({ state: 'active' })
       expect((await walletAt(s3.address)).state).toBe('linked')
     })
@@ -7589,6 +7588,105 @@ describe('E. onboarding: a company applies, proves its domain, is activated and 
       expect((await due(...all)).map((r) => r.id)).toEqual([old, edge, after, cold, coldFar].map((m) => m.orgId))
       // No name of a person is in it.
       expect(JSON.stringify(await due(...all))).not.toMatch(/Owner of|Maren/)
+    })
+
+    // ---- S5: what the client sees ----
+    const view = async (m: Holder) => (await call('GET', '/api/screening', { cookie: m.cookie })).body
+    const EU = 'EU consolidated financial sanctions list'
+    isolation['GET /api/screening'] = async (a, b) => {
+      // B has a clear screening and a linked wallet. A reads its own organisation: no screening, no wallet, whatever it sends. The address lists are no client's.
+      const address = someAddress()
+      await walletRow(b.orgId, address, { label: 'Wallet of B' })
+      expect((await seedScreen(b.orgId)).body).toEqual({ state: 'active' })
+      expect((await load('ofac', [someAddress()])).status).toBe(200)
+      for (const path of ['/api/screening', `/api/screening?organisationId=${b.orgId}`, `/api/screening?org=${b.orgId}`]) {
+        expect((await call('GET', path, { cookie: a.cookie })).body, path).toEqual({ organisation: null, lists: [{ name: 'OFAC SDN list', entries: 1, loadedAt: now, version: H('f').slice(0, 16) }], wallets: [] })
+      }
+      expect(await view(b)).toMatchObject({ organisation: { lists: [EU] }, wallets: [{ label: 'Wallet of B', address: checksum(address) }] })
+      expect((await call('GET', `/api/screening/${b.orgId}`, { cookie: a.cookie })).status).toBe(404)
+    }
+    it('GET /api/screening: the isolation case', async () => isolation['GET /api/screening'](await member('Alder Asset Management'), await member('Birchfield Capital')))
+
+    it('S5: GET /api/screening answers the organisation\'s own screening when it is clear, the loaded address lists and each linked wallet, to the roles that read the audit log, in an active organisation', async () => {
+      const route = routes.find((r) => r.path === '/api/screening')!
+      expect([route.method, route.roles, route.unverified, route.fresh, route.twoKeys]).toEqual(['GET', ['owner', 'compliance', 'viewer'], undefined, undefined, undefined])
+      const { o, a, v } = await trio()
+      const others = [a, await colleague(o, 'admin'), await colleague(o, 'trader')]
+      const readers = [o, await colleague(o, 'compliance'), v]
+      for (const m of others) expect(await view(m)).toEqual({ error: 'forbidden' })
+      expect((await call('GET', '/api/screening')).status).toBe(401)
+      // Nothing recorded, nothing loaded, no wallet.
+      for (const m of readers) expect(await view(m)).toEqual({ organisation: null, lists: [], wallets: [] })
+      const [A, P] = [someAddress(), someAddress()]
+      await walletRow(o.orgId, A, { label: 'Treasury Safe' })
+      await walletRow(o.orgId, P, { label: 'Waits', state: 'pending' })
+      await walletRow(o.orgId, someAddress(), { label: 'Gone', state: 'unlinked' })
+      await walletRow(o.orgId, someAddress(), { label: 'On Base', chainId: 8453 })
+      expect((await seedScreen(o.orgId, { lists: { un: H('b'), eu: H('e') }, nextReview: '2027-06-30' })).body).toEqual({ state: 'active' })
+      const screenedAt = now
+      expect((await load('ofac', [someAddress(), someAddress()], { sha256: H('7') })).status).toBe(200)
+      now += DAY
+      expect((await load('eu', [someAddress()])).status).toBe(200)
+      for (const m of readers) await again(m as Holder & { key: Key })
+      const text = `{"eu":"${H('e')}","un":"${H('b')}"}`
+      const shown = {
+        organisation: { lists: [EU, 'UN Security Council consolidated list'], version: (await data.sha256Hex(text)).slice(0, 16), screenedAt, nextReview: Date.UTC(2027, 5, 30) },
+        lists: [{ name: EU, entries: 1, loadedAt: now, version: H('f').slice(0, 16) }, { name: 'OFAC SDN list', entries: 2, loadedAt: now - DAY, version: H('7').slice(0, 16) }],
+        wallets: [{ label: 'Treasury Safe', address: checksum(A), chain: 'OP Mainnet', listed: false }, { label: 'On Base', address: expect.stringMatching(/^0x[0-9a-fA-F]{40}$/), chain: 'Base', listed: false }],
+      }
+      for (const m of readers) expect(await view(m)).toEqual(shown)
+      // Between the two steps of a load a linked wallet can be on a list for an instant: the page then does not say "not on a list".
+      await listDirect(A)
+      expect((await view(o)).wallets.map((w: { listed: boolean }) => w.listed)).toEqual([true, false])
+      await noLists()
+      // The newest record decides, and only a clear one is shown: an older record with no screening after it shows none.
+      await put(`INSERT INTO kyb_records (id, org_id, legal_name, country, tier, source, decision, created_at) VALUES (?, ?, 'Old Record Ltd', 'GB', 'standard', 'registry', 'approved', ?)`, data.randomId(), o.orgId, now)
+      expect(await view(o)).toEqual({ organisation: null, lists: [], wallets: shown.wallets })
+      // Active organisations only: not yet verified, frozen, closed.
+      for (const [state, error] of [['unverified', 'unverified'], ['frozen', 'org_frozen'], ['archived', 'org_closed']]) {
+        await setOrg(o.orgId, `state = '${state}'`)
+        for (const m of readers) expect(await view(m), state).toEqual({ error })
+      }
+    })
+
+    it('S5: no outcome but "clear" reaches a browser: not in the screening, not in the KYB record, not in the audit log or its export; the two new actions have plain words', async () => {
+      for (const outcome of ['review', 'hit']) {
+        const o = await owner()
+        const wallet = await walletRow(o.orgId, someAddress(), { label: 'Treasury Safe' })
+        expect((await seedScreen(o.orgId, { outcome })).body).toEqual({ state: 'frozen' })
+        expect((await call('GET', '/api/screening', { cookie: o.cookie })).status).toBe(401) // the freeze ended the session
+        // Unfrozen underneath (no route does that while such a record is the newest): even then nothing says the outcome.
+        await setOrg(o.orgId, `state = 'active'`)
+        await again(o)
+        const screening = await view(o)
+        expect(screening).toEqual({ organisation: null, lists: [], wallets: [{ label: 'Treasury Safe', address: expect.any(String), chain: 'OP Mainnet', listed: false }] })
+        const record = (await get('/api/onboarding', o)).body.record
+        expect(Object.keys(record).sort()).toEqual(['country', 'decidedAt', 'decision', 'evidenceSha256', 'legalName', 'nextReview', 'reason', 'registration', 'source', 'tier'])
+        const log = (await get('/api/audit', o)).body.rows as Record<string, unknown>[]
+        const row1 = log.find((r) => String(r.event).includes('screening'))!
+        expect(row1).toEqual({ seq: expect.any(Number), at: now, who: 'System', event: 'Ophis operator: sanctions screening recorded, organisation frozen', target: '', prevHash: expect.any(String), hash: expect.any(String) })
+        const csv = cells((await post('/api/audit/export', o)).body.csv as string)
+        expect(csv[0]).toEqual(['No.', 'Time (UTC)', 'Who', 'Event', 'Target', 'Previous row hash', 'Row hash'])
+        expect(csv.find((line) => line[3].includes('screening'))!.slice(2, 5)).toEqual(['System', 'Ophis operator: sanctions screening recorded, organisation frozen', ''])
+        for (const said of [screening, record, log, csv]) expect(JSON.stringify(said), outcome).not.toMatch(new RegExp(`"${outcome}"|\\b${outcome === 'hit' ? 'hit' : 'under review|in review|needs review'}\\b`))
+        // A clear screening after it, and a load that names the wallet: each reads in plain words, the wallet by its name.
+        expect((await screen(o.orgId)).body).toEqual({ state: 'active' })
+        expect((await load('ofac', [(await row<{ address: string }>('SELECT address FROM wallets WHERE id = ?', wallet))!.address])).body.hits).toHaveLength(1)
+        await setOrg(o.orgId, `state = 'active'`)
+        await again(o)
+        expect(((await get('/api/audit', o)).body.rows as { event: string; target: string }[]).slice(1, 3).map((r) => [r.event, r.target])).toEqual([
+          ['Ophis operator: a wallet of the organisation is on a loaded sanctions list, organisation frozen', 'Treasury Safe'], ['Ophis operator: sanctions screening recorded. Result: no match', ''],
+        ])
+        await noLists()
+      }
+      // The words of this part: no claim about a licence or about what a check makes of anything, no em-dash, the sentences of the page.
+      const section = pagesSource.slice(pagesSource.indexOf('function Screening('), pagesSource.indexOf('// Rows of the approved mockup'))
+      const said = [routes.find((r) => r.path === '/api/screening')!.can, ...Object.values(onboarding.LISTS), EVENTS['kyb.screen'], EVENTS['kyb.screen/clear'], EVENTS['screening.wallet'], section].join('\n')
+      for (const banned of [/licen[cs]ed|regulated|authori[sz]ed|MiCA|compliant|compliance with|\bsafe\b|guarantee|\bclean\b/i, /—/, /honest/i]) expect(said).not.toMatch(banned)
+      for (const sentence of ['No screening is recorded yet.', 'Result: no match.', 'Linked wallets are compared with the addresses of:', 'No address list is loaded yet. Wallets have not been compared.', 'Not on a loaded list',
+        'A check is a search of public lists on that date. It is repeated at each review.']) expect(section, sentence).toContain(sentence)
+      expect(pagesSource).not.toContain('arrive later')
+      expect(Object.values(onboarding.LISTS)).toEqual([EU, 'UN Security Council consolidated list', 'OFAC SDN list'])
     })
   })
 })

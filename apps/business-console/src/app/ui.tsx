@@ -137,6 +137,8 @@ export function save(name: string, text: string, type = 'text/csv') {
   URL.revokeObjectURL(link.href)
 }
 export const stamp = (time: number) => `${new Date(time).toISOString().slice(0, 19).replace('T', ' ')}Z`
+/** A date, UTC: 2027-11-11. */
+export const day = (time: number) => new Date(time).toISOString().slice(0, 10)
 // A deadline: UTC, as everywhere in the console, and the reader's own clock next to it when the two differ.
 export function minute(time: number) {
   const utc = new Date(time).toISOString().slice(0, 16).replace('T', ' ')

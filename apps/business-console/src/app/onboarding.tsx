@@ -2,10 +2,9 @@
 // page, and the plain page of an organisation that is frozen or closed. Every value shown comes from the server.
 import { useCallback, useEffect, useState, type FormEvent, type ReactNode } from 'react'
 import { kindOf } from './pages.tsx'
-import { api, CANCELLED, Icon, minute, PROVIDER, say, Section, sensitive, stamp, Status, Tile } from './ui.tsx'
+import { api, CANCELLED, day, Icon, minute, PROVIDER, say, Section, sensitive, stamp, Status, Tile } from './ui.tsx'
 
 const Problem = ({ children }: { children: string }) => <p className="note bad" role="alert"><Icon name="triangle-alert" /><span className="grow">{children}</span></p>
-const day = (time: number) => new Date(time).toISOString().slice(0, 10)
 
 // What the server's refusals mean here, in the reader's words. Anything else falls back to the console's own list.
 const SAY: Record<string, string> = {

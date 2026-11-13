@@ -1,6 +1,6 @@
 // The screens of milestones 1 to 4, with the markup and classes of the approved mockup.
 import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react'
-import { api, CANCELLED, capital, Icon, minute, passkeyCheck, PROVIDER, ROLE, save, say, Section, sensitive, stamp, Status, Tile } from './ui.tsx'
+import { api, CANCELLED, capital, day, Icon, minute, passkeyCheck, PROVIDER, ROLE, save, say, Section, sensitive, stamp, Status, Tile } from './ui.tsx'
 import { money, orderWords, type OrderBody } from './desk.tsx'
 
 export interface Alert {
@@ -1231,8 +1231,47 @@ export function Compliance({ onSignedOut }: { onSignedOut: () => void }) {
           </div>
         </Section>
       )}
-      <Section later icon="shield-check" title="Screening" hint="Screening results by linked wallet arrive later." />
+      <Screening />
     </>
+  )
+}
+
+interface ScreeningView {
+  organisation: { lists: string[]; version: string; screenedAt: number; nextReview: number } | null
+  lists: { name: string; entries: number; loadedAt: number; version: string }[]
+  wallets: { label: string; address: string; chain: string; listed: boolean }[]
+}
+// Compliance: what Ophis recorded when it searched public sanctions lists for the organisation, and the address lists
+// its linked wallets are compared with. The server sends the organisation's own result only when it is "no match".
+function Screening() {
+  const [view, setView] = useState<ScreeningView | string>()
+  useEffect(() => void api<ScreeningView & { error?: string }>('/api/screening').then((result) => setView(result.status === 200 ? result.data
+    : result.data.error === 'unverified' ? 'The screening is shown once Ophis has verified the organisation.'
+    : result.status === 403 ? 'The screening is open to Owners, Compliance officers and Viewers.' : 'The screening could not be loaded. Reload the page.')), [])
+  if (view === undefined) return null
+  const o = typeof view === 'string' ? null : view.organisation
+  return (
+    <Section id="screening" icon="shield-check" title="Sanctions screening" hint="What Ophis recorded when it searched public sanctions lists for your organisation, and the address lists your linked wallets are compared with.">
+      {typeof view === 'string' ? <p className="fine">{view}</p> : (
+        <div className="stack">
+          <p>{o ? `Checked on ${day(o.screenedAt)} against: ${o.lists.join(', ')}. Result: no match. List version ${o.version}. Next review by ${day(o.nextReview)}.` : 'No screening is recorded yet.'}</p>
+          {view.lists.length === 0 ? <p>No address list is loaded yet. Wallets have not been compared.</p> : (
+            <>
+              <p>Linked wallets are compared with the addresses of: {view.lists.map((l) => `${l.name} (${l.entries.toLocaleString('en-GB')} ${l.entries === 1 ? 'address' : 'addresses'}, loaded ${day(l.loadedAt)}, version ${l.version})`).join('; ')}.</p>
+              {view.wallets.length === 0 ? <p className="fine">No wallet is linked.</p> : (
+                <div className="table-wrap"><table className="t">
+                  <thead><tr><th>Wallet</th><th>Address</th><th>Chain</th><th>Result</th></tr></thead>
+                  <tbody>{view.wallets.map((w) => (
+                    <tr key={`${w.chain} ${w.address}`}><td>{w.label}</td><td className="mono">{w.address}</td><td>{w.chain}</td><td>{w.listed ? 'On a loaded list' : 'Not on a loaded list'}</td></tr>
+                  ))}</tbody>
+                </table></div>
+              )}
+            </>
+          )}
+          <p className="fine"><Icon name="info" size={16} />A check is a search of public lists on that date. It is repeated at each review.</p>
+        </div>
+      )}
+    </Section>
   )
 }
 

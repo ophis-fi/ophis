@@ -539,6 +539,24 @@ export async function onboarding(c: Member) {
   })
 }
 
+// GET /api/screening (the roles that read the audit log; active organisations only): the Compliance page's section.
+// The organisation's own screening is answered only when its newest record says "clear": no other outcome is ever sent
+// to a browser. With it: the loaded address lists, which are no client's, and each linked wallet of this organisation.
+export async function screening(c: Member) {
+  const db = c.env.DB
+  const [record, lists, wallets] = await db.batch([
+    db.prepare(`SELECT screening_outcome AS outcome, screening_lists AS lists, screening_list_version_hash AS hash, screened_at AS screenedAt, recheck_at AS nextReview ${NEWEST}`).bind(c.actor.orgId),
+    db.prepare('SELECT list, entries, loaded_at AS loadedAt, sha256 FROM sanctions_lists ORDER BY list'),
+    db.prepare(`SELECT label, address, chain_id AS chainId, EXISTS (SELECT 1 FROM sanctioned_addresses s WHERE s.address = w.address) AS listed FROM wallets w WHERE w.org_id = ? AND w.state = 'linked' ORDER BY w.rowid`).bind(c.actor.orgId),
+  ])
+  const r = record.results[0] as { outcome: string | null; lists: string; hash: string; screenedAt: number; nextReview: number | null } | undefined
+  return json(200, {
+    organisation: r?.outcome === 'clear' ? { lists: Object.keys(JSON.parse(r.lists)).map((code) => LISTS[code]), version: r.hash.slice(0, 16), screenedAt: r.screenedAt, nextReview: r.nextReview } : null,
+    lists: (lists.results as { list: string; entries: number; loadedAt: number; sha256: string }[]).map((l) => ({ name: LISTS[l.list], entries: l.entries, loadedAt: l.loadedAt, version: l.sha256.slice(0, 16) })),
+    wallets: (wallets.results as { label: string; address: string; chainId: number; listed: number }[]).map((w) => ({ label: w.label, address: checksum(w.address), chain: CHAIN_NAME[w.chainId] ?? `Chain ${w.chainId}`, listed: w.listed === 1 })),
+  })
+}
+
 /** What the Owner asked the recovery wallet to sign, held nowhere. The fields of a recovery intent, with the wallet named. */
 export interface ActivateIntent {
   kind: 'activate'; org: string; seat: string; chainId: number; wallet: string; label: string; custodian: boolean
@@ -624,8 +642,8 @@ export async function submit(c: Member) {
 // Cloudflare Access token is added here, before a first deploy (security-design.md, "Insider at the operator").
 // Locally the caller holds OPERATOR_TOKEN (.dev.vars, made by the seed script). The operator can: list what is under
 // review, record a KYB decision, freeze and unfreeze, make an application code, and (milestone 5b) list the sealed items
-// of an organisation and take one, still sealed, for a stated reason. Nothing else: no route here takes a passkey, a member or a
-// wallet address.
+// of an organisation and take one, still sealed, for a stated reason, and (sanctions screening) record a screening and
+// load the addresses of a public list. Nothing else: no route here takes a passkey, a member or a client's wallet address.
 
 interface OperatorEnv { DB: D1Database; SEALED: R2Bucket; ENVIRONMENT: string; CHALLENGE_KEY: string; OPERATOR_TOKEN?: string }
 
