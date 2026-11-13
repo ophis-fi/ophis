@@ -169,7 +169,7 @@ try {
   check('the enrolment page names the organisation and the site', await page.getByText('Northwind Vaults').first().isVisible() && await page.locator('dd.site', { hasText: 'localhost:8787' }).isVisible())
   await page.getByRole('button', { name: 'Create passkey' }).click()
   await page.getByRole('heading', { name: 'Your passkey waits for approval.' }).waitFor()
-  check('a real browser enrolled a passkey, and the page says that a colleague now confirms it', await page.getByText('The colleague who invited you now confirms it with a passkey check.').isVisible())
+  check('a real browser enrolled a passkey, and the page says that the activate command confirms it: no colleague invited the first Owner', await page.getByText('Local build, first Owner: confirm with the activate command, then sign in.').isVisible() && (await page.getByText('The colleague who invited you').count()) === 0)
 
   await page.getByRole('link', { name: 'Go to sign-in' }).click()
   await page.getByRole('button', { name: 'Sign in with a passkey' }).click()
@@ -815,7 +815,7 @@ try {
   await on.getByLabel('Wallet address').fill(key.address)
   await on.getByLabel('Chain').selectOption({ label: 'OP Mainnet' })
   await on.getByLabel('A name for it').fill('Treasury')
-  const firstHash = await on.getByText('The signers of the wallet compare this passkey hash with the signing page').locator('.mono').innerText()
+  const firstHash = await on.locator('article.sheet dt:has-text("First Owner passkey (hash)") + dd').innerText()
   await on.getByRole('button', { name: 'Create the signing link' }).click()
   const activationLink = await on.getByLabel(/Signing link/).inputValue()
   check('the Onboarding page gives a signing link on the signing host and the first Owner\'s passkey hash', activationLink.startsWith(`${SIGN}/sign/#`) && /^0x[0-9a-f]{64}$/.test(firstHash) && await both(on, '33-onboarding'))

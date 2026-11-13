@@ -2,7 +2,7 @@
 -- belongs to. Passkeys stay the only way to sign in.
 -- organisations: the setting (NULL: not chosen yet, which behaves as 'none') and the pinned tenant: Microsoft's
 -- tenant id, or Google's hosted domain. seats: the company account linked to the seat. enrolment_tickets: the path
--- of the link (idp and its tenant, fixed when it is issued from the organisation's setting; NULL: three words), the
+-- of the link (idp and its tenant, fixed when it is issued from the organisation's setting; NULL: none), the
 -- work address the inviter gave, and what the provider confirmed (the subject, and when).
 ALTER TABLE organisations ADD COLUMN company_signin TEXT CHECK (company_signin IN ('none', 'microsoft', 'google'));
 ALTER TABLE organisations ADD COLUMN company_tenant TEXT;

@@ -394,9 +394,6 @@ export function Onboarding({ owner, onSignedOut }: { owner: boolean; onSignedOut
           <Step icon="wallet" title="Recovery wallet or second Owner" done={proved}>
             {view.wallet ? <p>{view.wallet.label}: {kindOf(view.wallet)}, <span className="mono">{view.wallet.address}</span> on {view.wallet.chain}. {view.wallet.inForce ? 'It is the recovery wallet in force.' : 'It signed the activation. It becomes the recovery wallet when Ophis approves the organisation.'}</p>
               : <p>{proved ? 'A second Owner with two hardware keys is enrolled. No recovery wallet is named.' : 'Name the wallet that restores access if every Owner is locked out, and let it sign once. Or invite a second Owner, who needs two hardware keys.'}</p>}
-            {!verified && first && (
-              <p className="fine"><Icon name="info" size={16} /><span>The signers of the wallet compare this passkey hash with the signing page before they sign: <span className="mono">{first.credentialHash}</span></span></p>
-            )}
             {!verified && owner && keys && first?.active && !issued && (
               <form className="stack" onSubmit={name}>
                 <label className="field">Chain

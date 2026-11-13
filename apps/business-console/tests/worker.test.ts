@@ -74,9 +74,9 @@ async function organisation(name = 'Northwind Vaults') {
 async function ticketFor(orgId: string, seatId: string, role: string, kind: string, issuerSeatId: string) {
   const ticket = data.randomToken()
   await db
-    .prepare(`INSERT INTO enrolment_tickets (id, org_id, seat_id, kind, role, issuer_seat_id, token_hash, nonce, state, expires_at, created_at)
-              VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'issued', ?, ?)`)
-    .bind(data.randomId(), orgId, seatId, kind, role, issuerSeatId, await data.sha256Hex(ticket), data.randomId(), now + 10 * MIN, now)
+    .prepare(`INSERT INTO enrolment_tickets (id, org_id, seat_id, kind, role, issuer_seat_id, token_hash, state, expires_at, created_at)
+              VALUES (?, ?, ?, ?, ?, ?, ?, 'issued', ?, ?)`)
+    .bind(data.randomId(), orgId, seatId, kind, role, issuerSeatId, await data.sha256Hex(ticket), now + 10 * MIN, now)
     .run()
   return ticket
 }
@@ -6023,9 +6023,9 @@ describe('E. onboarding: a company applies, proves its domain, is activated and 
     expect((await prove(asked.body.intent, signature)).body).toEqual({ state: 'stored' })
   })
 
-  it('G7: on the signing page an activation shows "First Owner passkey (hash)", a recovery "New passkey (hash)" (the browser run reads both pages)', () => {
+  it('G7: on the signing page an activation shows "First Owner passkey (hash)", a recovery "New passkey (hash)", a cancel no passkey (the browser run reads the first two pages)', () => {
     expect(signHtml).toContain('<dt class="rec" id="l-passkey">New passkey (hash)</dt>')
-    expect(Object.values(signSource).join('\n')).toContain("$('l-passkey').textContent = kind === 'activate' ? 'First Owner passkey (hash)' : 'New passkey (hash)'")
+    expect(Object.values(signSource).join('\n')).toContain("$('l-passkey').textContent = kind === 'activate' ? 'First Owner passkey (hash)' : kind === 'cancel' ? 'Passkey (none: a cancellation names no passkey)' : 'New passkey (hash)'")
   })
 
   // ---- A7: submit for review ----
@@ -6107,7 +6107,7 @@ describe('E. onboarding: a company applies, proves its domain, is activated and 
     expect([joined.status, await submitted()]).toEqual([200, false])
     await again2()
     expect((await confirm(a, invited.body.ticketId, a.key)).body.state).toBe('wait')
-    expect(await submitted()).toBe(true) // the words typed: neither a seat nor a passkey changed
+    expect(await submitted()).toBe(true) // the issuer confirmed: neither a seat nor a passkey changed
     now += WAIT + MIN
     expect((await signIn(joined.key)).status).toBe(200) // the passkey becomes active
     expect(await submitted()).toBe(false)
@@ -8340,7 +8340,7 @@ describe('G. company sign-in: a company account proves who a new passkey belongs
     const seen = (await data.ticketByToken(db, await data.sha256Hex(ticket), now))!
     expect(await data.storePendingCredential(db, seen, { id: key.id, publicKey: 'x', counter: 0, deviceBound: true, transports: [] }, 'Key', now)).toBe(false)
     expect(await snapshot()).toBe(rows)
-    // After the sign-in: the options, the passkey, and no words.
+    // After the sign-in: the options and the passkey.
     const j = await join(o, asked.body.link, `ada@mail.${o.domain}`)
     expect([j.came.outcome, j.stored?.status, j.stored?.body]).toEqual(['ok', 200, { state: 'pending' }])
     expect((await call('POST', '/api/enrol/company', { body: { ticket } })).status).toBe(404) // the link is used
@@ -8608,7 +8608,7 @@ describe('G. company sign-in: a company account proves who a new passkey belongs
     // Every outcome of the callback has its sentence, except "ok", after which the page goes on.
     for (const outcome of ['applied', 'requested', 'expired', 'state', 'cancelled', 'unavailable', 'rejected', 'link', 'tenant', 'email', 'account', 'in_use', 'domain', 'forbidden', 'invalid', 'account_in_use', 'already_requested']) expect(came, outcome).toMatch(new RegExp(`\\n  ${outcome}: '`))
     // The three words were removed (2026-11-13): no page, signing page, server text or help text names them.
-    for (const [file, source] of Object.entries({ pagesSource, uiSource, onboardingPage, signHtml, ...signSource, ...serverSources })) expect(source, file).not.toMatch(/three.word/i)
+    for (const [file, source] of Object.entries({ pagesSource, uiSource, onboardingPage, signHtml, ...signSource, ...serverSources })) expect(source, file).not.toMatch(/three.word|\bread (you|out)\b|aloud/i)
     expect(idpStub).toContain('Test only. This is not ${NAME[provider]}: no real account and no password.')
   })
 

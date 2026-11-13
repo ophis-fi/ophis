@@ -75,7 +75,7 @@ dialog::backdrop { background: rgba(23, 25, 28, .3); } dialog[open] { display: f
 .steps > li:not([aria-current]) > .ic-tile { opacity: .5; }
 .appr { display: grid; grid-template-columns: 32px minmax(0, 1fr) auto; gap: 6px 16px; align-items: center; padding: 22px 24px; border: 1px solid var(--hair); border-radius: 18px; background: var(--fog); }
 .appr h3 { margin-bottom: 4px; } .appr h3 small { margin-left: 10px; font: 400 13px/1.3 var(--font-body); letter-spacing: 0; color: var(--muted); } .appr p { font-size: 14px; line-height: 1.55; } .appr .ic-tile { align-self: start; }
-.words, .addkey { display: grid; grid-template-columns: minmax(0, 360px) auto; gap: 12px 12px; align-items: end; justify-content: start; } .words { grid-column: 2 / -1; margin-top: 10px; } .addkey { margin-top: 16px; }
+.confirm, .addkey { display: grid; grid-template-columns: minmax(0, 360px) auto; gap: 12px 12px; align-items: end; justify-content: start; } .confirm { grid-column: 2 / -1; margin-top: 10px; } .addkey { margin-top: 16px; }
 .appr .acts { justify-content: flex-end; } .appr dl.kv { margin-top: 12px; } .appr .fine { margin-top: 4px; }
 /* Milestone 3: the choices of the Manage dialog, the role table, the audit log */
 .choices { list-style: none; margin: 0; padding: 0; display: grid; gap: 22px; }
@@ -83,7 +83,7 @@ dialog::backdrop { background: rgba(23, 25, 28, .3); } dialog[open] { display: f
 .choices h3 { align-self: center; } .choices .body { grid-column: 2; display: grid; gap: 12px; justify-items: start; font-size: 14px; line-height: 1.6; color: var(--muted); } .choices .body > .field { justify-self: stretch; }
 .yes, .no { display: inline-flex; align-items: center; gap: 6px; } .no { color: var(--faded); } table.t td.wrap { white-space: normal; min-width: 260px; } table.t td.kind { white-space: normal; min-width: 150px; }
 .chain { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 14px; font-size: 14px; color: var(--muted); } .pager { display: flex; justify-content: flex-end; gap: 10px; margin-top: 14px; }
-:is(.words, .addkey) .fine { grid-column: 1 / -1; } :is(.words, .addkey) .btn { justify-self: start; }
+:is(.confirm, .addkey) .fine { grid-column: 1 / -1; } :is(.confirm, .addkey) .btn { justify-self: start; }
 .alerts { max-width: 760px; margin: 24px auto; padding: 36px; display: flex; flex-direction: column; gap: 18px; }
 .alerts ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 12px; } .alerts li { display: flex; gap: 10px; padding: 14px 16px; border: 1px solid var(--warn-line); border-radius: var(--r-row); background: var(--warn-bg); color: var(--warn); font-size: 14.5px; line-height: 1.55; } .alerts li .ic { margin-top: 3px; flex: none; }
 .stack > .note:last-child { margin-bottom: 8px; }
@@ -132,7 +132,7 @@ dialog::backdrop { background: rgba(23, 25, 28, .3); } dialog[open] { display: f
   .drawer { width: 100vw; border: 0; border-radius: 0; } .db { padding: 18px 16px; } .dh { padding: 14px 12px 14px 16px; } .df { padding: 14px 16px; }
   .appr { grid-template-columns: 32px minmax(0, 1fr); padding: 18px 16px; } .appr > .btn { grid-column: 2; justify-self: start; }
   .appr .acts { grid-column: 1 / -1; margin-top: 8px; } .appr .acts .btn { flex: 1; }
-  .words, .addkey { grid-template-columns: minmax(0, 1fr); } .alerts { padding: 22px 20px; margin: 0; }
+  .confirm, .addkey { grid-template-columns: minmax(0, 1fr); } .alerts { padding: 22px 20px; margin: 0; }
 }
 /* Milestone 4: the wallet list and the link dialog. */
 .check { display: flex; gap: 10px; align-items: flex-start; font-size: 14px; line-height: 1.5; color: var(--ink); } .check input { width: 16px; height: 16px; margin-top: 3px; accent-color: var(--ink); flex: none; }

@@ -82,8 +82,8 @@ function read(code: string) {
     $('lede').textContent = TITLE[kind][2]
     $('advice').textContent = kind === 'activate' ? 'Your wallet shows the same fields. Sign only if the request comes from your colleague by a channel you trust, and the organisation named is theirs.'
       : 'Your wallet shows the same fields. The wallet and the chain are those of the wallet that signs: it must be the recovery wallet, on the chain named on the recovery sheet.'
-    // G7: an activation confirms the passkey the first Owner already holds; a recovery names a new one.
-    $('l-passkey').textContent = kind === 'activate' ? 'First Owner passkey (hash)' : 'New passkey (hash)'
+    // G7: an activation confirms the passkey the first Owner already holds; a recovery names a new one; a cancel, none.
+    $('l-passkey').textContent = kind === 'activate' ? 'First Owner passkey (hash)' : kind === 'cancel' ? 'Passkey (none: a cancellation names no passkey)' : 'New passkey (hash)'
     $('f-passkey').textContent = request.credentialHash!
     $('f-nonce').textContent = request.nonce
   }

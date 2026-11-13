@@ -262,8 +262,8 @@ export function Enrol({ ticket }: { ticket: string }) {
             <h1 className="h-hero">Your passkey <em>waits for approval</em>.</h1>
             <div className="methods wide">
               <p className="note ok" role="status"><Icon name="circle-check" /><span className="grow">{invitation.company
-                ? <><b>{provider} confirmed your company account, and your passkey is stored.</b> The colleague who invited you now approves it with a passkey check. You have nothing to send or to read out.</>
-                : <><b>Your passkey is stored.</b> The colleague who invited you now confirms it with a passkey check. They may first ask you, by a channel you both trust, whether you created it.</>}</span></p>
+                ? <><b>{provider} confirmed your company account, and your passkey is stored.</b> The colleague who invited you now approves it with a passkey check.</>
+                : <><b>Your passkey is stored.</b>{invitation.first ? '' : ' The colleague who invited you now confirms it with a passkey check. They may first ask you, by a channel you both trust, whether you created it.'}</>}</span></p>
               {facts}
               <p className="fine"><Icon name="clock" size={16} />The passkey cannot sign in until it is approved. Then sign in from your bookmark.</p>
               {invitation.first && <p className="fine"><Icon name="info" size={16} />Local build, first Owner: confirm with the activate command, then sign in.</p>}
@@ -465,7 +465,7 @@ function Waiting({ ticket, issuer, mayCancel, act }: { ticket: Ticket; issuer: s
       </div>
       {mayCancel && <button className="btn ghost sm" type="button" onClick={() => act(() => sensitive(`${path}/cancel`))}><Icon name="x" size={16} />Cancel</button>}
       {ticket.myStep && (
-        <form className="words" onSubmit={confirm}>
+        <form className="confirm" onSubmit={confirm}>
           <button className="btn primary md" type="submit"><Icon name="fingerprint" size={16} />{c ? 'Approve with passkey' : 'Confirm with passkey'}</button>
           <p className="fine"><Icon name="info" size={16} />{c ? `Approve only if you invited this person at this address. ${by} confirmed the account; you confirm the person.` : `Confirm only after you checked with ${ticket.name}, by a channel you trust, that they created this passkey.`}</p>
         </form>
@@ -1266,7 +1266,7 @@ const SECURITY: [group: string, icon: string, summary: string, rows: Row[]][] = 
   ]],
   ['If you lose access', 'shield', 'No weak reset.', [
     ['ban', 'No reset by email, phone or code', 'No email, phone call or typed code can reset access to an account.'],
-    ['users', 'Colleagues confirm a new passkey', 'A lost passkey is replaced only after a colleague checked with the member, and confirmed the new passkey with a passkey of their own. A company account can also show who the member is. Key roles need two colleagues.'],
+    ['users', 'Colleagues confirm a new passkey', 'A lost passkey is replaced only after a colleague confirmed the new passkey with a passkey of their own. The console asks them to check with the member first, by a channel both trust. A company account can also show who the member is. Key roles need two colleagues.'],
     ['wallet', 'Your wallet is the last resort', 'If every Owner is locked out, only the recovery wallet of your organisation can restore access, after a 72-hour wait.'],
     ['clock', 'Time to object', 'For some days after a recovery the replaced passkey can still stop the new one, and sensitive changes are blocked.'],
   ]],

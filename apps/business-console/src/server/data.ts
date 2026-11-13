@@ -210,10 +210,10 @@ export function credentialById(db: D1Database, credentialId: string, closedToo =
 export const hasStopRight = (c: StoredCredential, now: number) => c.state === 'suspended' && c.seat_state !== 'removed' && (c.stop_right_until ?? 0) > now
 
 // Ends one ticket, with its pending passkey and its waiting confirmation.
-const closeTicket = (db: D1Database, orgId: string, ticketId: string, state: 'dead' | 'cancelled', now: number): Sql[] => [
+const closeTicket = (db: D1Database, orgId: string, ticketId: string, now: number): Sql[] => [
   db.prepare(`UPDATE credentials SET state = 'revoked' WHERE org_id = ? AND ticket_id = ? AND state = 'pending'`).bind(orgId, ticketId),
   db.prepare(`UPDATE approvals SET state = 'cancelled', decided_at = ? WHERE org_id = ? AND action = 'ticket.confirm' AND subject_id = ? AND state = 'pending'`).bind(now, orgId, ticketId),
-  db.prepare('UPDATE enrolment_tickets SET state = ? WHERE org_id = ? AND id = ?').bind(state, orgId, ticketId),
+  db.prepare(`UPDATE enrolment_tickets SET state = 'cancelled' WHERE org_id = ? AND id = ?`).bind(orgId, ticketId),
 ]
 // The same for every ticket a seat still has open. Run after the statements that settle the ticket that
 // wins, if any: whatever is still open then is dead. `issuedToo`: also the tickets the seat issued for
@@ -440,8 +440,8 @@ export async function issueTicket(db: D1Database, session: Actor, target: Target
     outcome = { ticketId, seatId: seat.id, kind, role: seat.role, expiresAt, company: org.idp }
     return [seatEntry(actor, now, 'ticket.issue', ticketId, kind), [
       ...('seatId' in target ? [] : [db.prepare(`INSERT INTO seats (id, org_id, display_name, role, state, created_at) VALUES (?, ?, ?, ?, 'invited', ?)`).bind(seat.id, actor.orgId, target.displayName, seat.role, now)]),
-      db.prepare(`INSERT INTO enrolment_tickets (id, org_id, seat_id, kind, role, issuer_seat_id, token_hash, nonce, state, expires_at, created_at, idp, idp_tenant, email) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'issued', ?, ?, ?, ?, ?)`)
-        .bind(ticketId, actor.orgId, seat.id, kind, seat.role, actor.seatId, tokenHash, randomId(), expiresAt, now, org.idp, org.idp && org.tenant, email),
+      db.prepare(`INSERT INTO enrolment_tickets (id, org_id, seat_id, kind, role, issuer_seat_id, token_hash, state, expires_at, created_at, idp, idp_tenant, email) VALUES (?, ?, ?, ?, ?, ?, ?, 'issued', ?, ?, ?, ?, ?)`)
+        .bind(ticketId, actor.orgId, seat.id, kind, seat.role, actor.seatId, tokenHash, expiresAt, now, org.idp, org.idp && org.tenant, email),
       // The sweep: tickets that were never confirmed, and the pending passkeys stored on them, once nothing reads them.
       db.prepare(`DELETE FROM credentials WHERE org_id = ? AND ticket_id IN (SELECT id FROM enrolment_tickets WHERE org_id = ? AND state <> 'confirmed' AND created_at < ?)`).bind(actor.orgId, actor.orgId, now - SWEEP_MS),
       db.prepare(`DELETE FROM enrolment_tickets WHERE org_id = ? AND state <> 'confirmed' AND created_at < ?`).bind(actor.orgId, now - SWEEP_MS),
@@ -619,7 +619,7 @@ export function cancelTicket(db: D1Database, actor: Actor, ticketId: string, now
   return commit(db, actor.orgId, async () => {
     const t = await db.prepare(`SELECT id FROM enrolment_tickets WHERE org_id = ? AND id = ? AND state IN ('issued', 'stored')`).bind(actor.orgId, ticketId).first()
     if (!t || (await roleNow(db, actor)) !== 'owner') return null
-    return [seatEntry(actor, now, 'ticket.cancel', ticketId), closeTicket(db, actor.orgId, ticketId, 'cancelled', now)]
+    return [seatEntry(actor, now, 'ticket.cancel', ticketId), closeTicket(db, actor.orgId, ticketId, now)]
   })
 }
 
@@ -1379,8 +1379,8 @@ export async function seedOrganisation(db: D1Database, o: { name: string; kind: 
     db.prepare(`INSERT INTO organisations (id, kind, name, state, created_at, email_domain, domain_verified_at, company_signin, company_tenant, country) VALUES (?, ?, ?, 'active', ?, ?, ?, ?, ?, 'LU')`)
       .bind(orgId, o.kind, o.name, o.now, o.domain ?? null, o.domain ? o.now : null, o.company?.idp ?? 'none', o.company?.tenant ?? null),
     db.prepare(`INSERT INTO seats (id, org_id, display_name, role, state, created_at) VALUES (?, ?, ?, 'owner', 'invited', ?)`).bind(seatId, orgId, o.ownerName, o.now),
-    db.prepare(`INSERT INTO enrolment_tickets (id, org_id, seat_id, kind, role, token_hash, nonce, state, expires_at, created_at)
-                VALUES (?, ?, ?, 'first_owner', 'owner', ?, ?, 'issued', ?, ?)`).bind(ticketId, orgId, seatId, o.ticketHash, randomId(), o.now + 10 * 60_000, o.now),
+    db.prepare(`INSERT INTO enrolment_tickets (id, org_id, seat_id, kind, role, token_hash, state, expires_at, created_at)
+                VALUES (?, ?, ?, 'first_owner', 'owner', ?, 'issued', ?, ?)`).bind(ticketId, orgId, seatId, o.ticketHash, o.now + 10 * 60_000, o.now),
   ]])
   return { orgId, seatId }
 }
