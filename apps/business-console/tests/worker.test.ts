@@ -2889,27 +2889,10 @@ describe('u. the 72 hour wait replaces the second person only where no other key
 })
 
 describe('v. limits asked for by the review of milestone 2', () => {
-  it('ten new invited seats per issuer in 24 hours', async () => {
+  it('no limit on new members (owner decision of 2026-11-13): one issuer invites as many as needed in a day', async () => {
     const o = await owner()
-    const admin = await colleague(o, 'admin')
-    now += DAY // the helper wrote the Admin's seat as invited by the Owner: that day is over
-    await again(admin)
-    await again(o)
-    for (let i = 0; i < 9; i++) expect((await issue(o, { displayName: `Viewer ${i}`, role: 'viewer' })).status).toBe(200)
-    // A new link for a seat that exists is not a new seat: before the limit and after it.
-    const first = await row<{ id: string }>(`SELECT id FROM seats WHERE org_id = ? AND display_name = 'Viewer 0'`, o.orgId)
-    expect((await issue(o, { seatId: first!.id })).status).toBe(200)
-    expect((await issue(o, { displayName: 'Viewer 9', role: 'viewer' })).status).toBe(200)
-    const more = await issue(o, { displayName: 'Viewer 10', role: 'viewer' })
-    expect([more.status, more.body]).toEqual([429, { error: 'seat_limit' }])
-    expect(await count('seats', o.orgId)).toBe(12)
-    expect((await issue(o, { seatId: first!.id })).status).toBe(200)
-    // Another issuer has its own ten; the day passes.
-    expect((await issue(admin, { displayName: 'Viewer 10', role: 'viewer' })).status).toBe(200)
-    now += DAY - 1
-    expect((await issue(await again(o), { displayName: 'Viewer 11', role: 'viewer' })).status).toBe(429)
-    now += 1
-    expect((await issue(o, { displayName: 'Viewer 11', role: 'viewer' })).status).toBe(200)
+    for (let i = 0; i < 12; i++) expect((await issue(o, { displayName: `Viewer ${i}`, role: 'viewer' })).status).toBe(200)
+    expect(await count('seats', o.orgId)).toBe(13)
   })
 
   it('a ticket that was never confirmed is deleted with its pending passkey when a ticket is next written, 12 days after it was made', async () => {

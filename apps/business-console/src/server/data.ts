@@ -23,7 +23,6 @@ const WAIT_OPEN_MS = 7 * 24 * HOUR // after the wait, the new passkey has 7 days
 const ALERT_MS = 7 * 24 * HOUR
 const MAX_TICKETS = 3 // per issuer and seat per 24 hours
 const MAX_PASSKEYS = 10 // active ones, per seat
-const MAX_SEATS = 10 // new invited seats per issuer per 24 hours
 const DAY = 24 * HOUR
 // The longest a ticket can live: 24 h link, 60 min for the confirmation, 72 h wait, 7 days to sign in. After 12 days
 // a ticket that is not confirmed is dead whatever its state, and no limit or alert (24 h, 7 days) still reads it.
@@ -385,7 +384,7 @@ type Target = { seatId: string } | { displayName: string; role: Role }
 export async function issueTicket(db: D1Database, session: Actor, target: Target, tokenHash: string, now: number) {
   const ticketId = randomId()
   const newSeatId = randomId()
-  type Issued = { error: 'not_found' | 'forbidden' | 'quarantine' | 'ticket_limit' | 'seat_limit' } | { error?: undefined; ticketId: string; seatId: string; kind: string; role: Role; expiresAt: number }
+  type Issued = { error: 'not_found' | 'forbidden' | 'quarantine' | 'ticket_limit' } | { error?: undefined; ticketId: string; seatId: string; kind: string; role: Role; expiresAt: number }
   let outcome: Issued = { error: 'not_found' }
   await commit(db, session.orgId, async () => {
     const actor = await actorNow(db, session)
@@ -401,13 +400,10 @@ export async function issueTicket(db: D1Database, session: Actor, target: Target
     const kind = seat.state === 'active' ? 're_enrolment' : 'invitation'
     const issued = await db.prepare('SELECT count(*) AS n FROM enrolment_tickets WHERE org_id = ? AND issuer_seat_id = ? AND seat_id = ? AND created_at > ?')
       .bind(actor.orgId, actor.seatId, seat.id, now - 24 * HOUR).first<{ n: number }>()
-    // New seats this issuer made in 24 hours: a seat and its first ticket are written at the same moment.
-    const seats = await db.prepare(`SELECT count(DISTINCT t.seat_id) AS n FROM enrolment_tickets t JOIN seats s ON s.org_id = t.org_id AND s.id = t.seat_id AND s.created_at = t.created_at
-                                    WHERE t.org_id = ? AND t.issuer_seat_id = ? AND t.created_at > ?`).bind(actor.orgId, actor.seatId, now - DAY).first<{ n: number }>()
+    // No limit on new members (owner decision of 2026-11-13): an Owner or Admin adds as many as needed.
     const refused = !mayManage(actor.role, seat.role) ? 'forbidden'
       : kind === 'invitation' && quarantined(actor, now) ? 'quarantine' // a new member; re-enrolling an existing seat stays open
       : issued!.n >= MAX_TICKETS ? 'ticket_limit'
-      : seat.state === 'new' && seats!.n >= MAX_SEATS ? 'seat_limit'
       : null
     if (refused) {
       outcome = { error: refused }

@@ -43,7 +43,6 @@ const SAY: Record<string, string> = {
   not_stored: 'The passkey was not stored. It may already be on this seat.',
   last_passkey: 'This is the last passkey of the seat and cannot be revoked. Add another first. In an emergency, freeze the seat.',
   label_taken: 'This seat already has a passkey with that name. Choose another name.',
-  seat_limit: 'Ten new members in 24 hours is the limit for one inviter. Another Owner or Admin can invite.',
   last_owner: 'This is the last active Owner. An organisation always keeps one.',
   already_requested: 'This change already waits for a second person, under Approvals.',
   own_request: 'You asked for this change. A different member with a key role approves or rejects it.',

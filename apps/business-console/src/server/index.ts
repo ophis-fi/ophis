@@ -72,7 +72,7 @@ const NAME = /^[\p{L}\p{N} .'-]{1,60}$/u
 
 const mustBeDeviceBound = (t: { role: data.Role; synced_keys_allowed: number }) => data.needsHardware(t.role, t.synced_keys_allowed)
 // What a refusal of the data module answers. Everything not listed is a conflict with the present state: 409.
-const STATUS: Record<string, number> = { not_found: 404, forbidden: 403, own_request: 403, quarantine: 403, override: 403, institution_only: 403, too_many_orders: 429, invalid: 400, ticket_limit: 429, seat_limit: 429 }
+const STATUS: Record<string, number> = { not_found: 404, forbidden: 403, own_request: 403, quarantine: 403, override: 403, institution_only: 403, too_many_orders: 429, invalid: 400, ticket_limit: 429 }
 const refuse = (error: string) => fail(STATUS[error] ?? 409, error)
 // The database refuses a second passkey with the same label on one seat (migrations/0002_labels.sql).
 const labelTaken = (error: unknown) => /credentials\.label/.test(String((error as Error)?.message))
