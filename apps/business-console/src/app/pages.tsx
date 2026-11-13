@@ -1260,9 +1260,9 @@ function Screening() {
               <p>Linked wallets are compared with the addresses of: {view.lists.map((l) => `${l.name} (${l.entries.toLocaleString('en-GB')} ${l.entries === 1 ? 'address' : 'addresses'}, loaded ${day(l.loadedAt)}, version ${l.version})`).join('; ')}.</p>
               {view.wallets.length === 0 ? <p className="fine">No wallet is linked.</p> : (
                 <div className="table-wrap"><table className="t">
-                  <thead><tr><th>Wallet</th><th>Address</th><th>Chain</th><th>Result</th></tr></thead>
+                  <thead><tr><th>Wallet</th><th>Result</th><th>Chain</th><th>Address</th></tr></thead>
                   <tbody>{view.wallets.map((w) => (
-                    <tr key={`${w.chain} ${w.address}`}><td>{w.label}</td><td className="mono">{w.address}</td><td>{w.chain}</td><td>{w.listed ? 'On a loaded list' : 'Not on a loaded list'}</td></tr>
+                    <tr key={`${w.chain} ${w.address}`}><td>{w.label}</td><td>{w.listed ? 'On a loaded list' : 'Not on a loaded list'}</td><td>{w.chain}</td><td className="mono">{w.address}</td></tr>
                   ))}</tbody>
                 </table></div>
               )}

@@ -7496,14 +7496,18 @@ describe('E. onboarding: a company applies, proves its domain, is activated and 
       const [s1, s1b] = [signer(), signer()]
       expect((await load('ofac', [lower(s1)])).body.hits).toEqual([])
       const rest = ['wallets', 'approvals', 'seats', 'credentials', 'kyb_records']
-      let [rows, logged] = [await snapshot(rest), await count('audit_log', one.orgId)]
-      let refused: { status: number; body: unknown } = await link(one, s1)
-      expect([refused.status, refused.body, await snapshot(rest)]).toEqual([409, { error: 'wallet_listed' }, rows])
+      let [rows, logged] = [await snapshot(rest.slice(1)), await count('audit_log', one.orgId)]
+      const first = await link(one, s1)
+      let refused: { status: number; body: unknown } = first
+      expect([refused.status, refused.body, await snapshot(rest.slice(1))]).toEqual([409, { error: 'wallet_listed' }, rows])
       // R2: the wallet proved its control of a listed address. The attempt is one row of the organisation's log, by the member who
       // asked, with the address; and the organisation is frozen in that commit, every session ended, as a load after the link would have done.
+      // The proof is kept as the one wallet row, never live: its nonce is used.
+      const kept = await walletAt(s1.address)
+      expect([kept.state, await count('wallets', one.orgId)]).toEqual(['unlinked', 1])
       expect([await stateOf(one.orgId), await sessionsOf(one.orgId), await count('audit_log', one.orgId)]).toEqual(['frozen', 0, logged + 1])
       expect(await row('SELECT actor_kind, actor_id, session_id, action, subject_id, detail FROM audit_log WHERE org_id = ? ORDER BY seq DESC', one.orgId))
-        .toEqual({ actor_kind: 'seat', actor_id: one.seatId, session_id: null, action: 'screening.attempt', subject_id: null, detail: lower(s1) })
+        .toEqual({ actor_kind: 'seat', actor_id: one.seatId, session_id: null, action: 'screening.attempt', subject_id: kept.id, detail: lower(s1) })
       expect((await signIn(one.key)).body).toEqual({ error: 'org_frozen' })
       // R3: the operator's list names it, frozen, with that event and the address.
       expect(((await op('GET', '/api/operator/organisations')).body.reviews as { id: string }[]).find((r) => r.id === one.orgId))
@@ -7511,13 +7515,19 @@ describe('E. onboarding: a company applies, proves its domain, is activated and 
       // After a load without the address the operator unfreezes it, the member reads the row in plain words, and the link passes.
       expect((await without()).status).toBe(200)
       expect((await frozen(one.orgId, 'unfreeze')).body).toEqual({ state: 'active' })
+      // The same proof again, from anyone who holds it (it stays valid for a week, and the signing page asks no session), also while
+      // its address is on a list again: it was used. No second row, no second freeze.
+      await listDirect(lower(s1))
+      const replayed = await count('audit_log', one.orgId)
+      expect([(await prove(first.intent, first.signature)).body, await stateOf(one.orgId), await count('audit_log', one.orgId), await count('wallets', one.orgId)]).toEqual([{ error: 'proof_used' }, 'active', replayed, 1])
+      expect((await without()).status).toBe(200)
       await again(one)
       expect(await sayOf(one)).toContain('Link of a wallet refused: its address is on a loaded sanctions list. Organisation frozen')
       expect((await link(one, s1)).body).toEqual({ state: 'linked' })
       const asked = await askLink(one, s1b.address)
       const proof1b = await s1b.signTypedData(typedOf(intentOf(asked.body.intent)))
-      expect([(await prove(asked.body.intent, proof1b, { env: meanwhile(lower(s1b), one.key, 2) })).status, await count('wallets', one.orgId), await stateOf(one.orgId)]).toEqual([500, 1, 'active'])
-      expect([(await prove(asked.body.intent, proof1b)).body, await count('wallets', one.orgId), await stateOf(one.orgId)]).toEqual([{ error: 'wallet_listed' }, 1, 'frozen'])
+      expect([(await prove(asked.body.intent, proof1b, { env: meanwhile(lower(s1b), one.key, 2) })).status, await count('wallets', one.orgId), await stateOf(one.orgId)]).toEqual([500, 2, 'active'])
+      expect([(await prove(asked.body.intent, proof1b)).body, await count('wallets', one.orgId), await stateOf(one.orgId)]).toEqual([{ error: 'wallet_listed' }, 3, 'frozen'])
       // 2. The approval of a link: the wallet waits for its second person when its address comes onto a list.
       await noLists()
       const { o, a } = await trio()

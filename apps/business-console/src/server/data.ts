@@ -1051,6 +1051,10 @@ export async function linkWallet(
   const payloadHash = await sha256Hex(payload)
   const { now } = w
   let outcome: Linked = { error: 'forbidden' }
+  // The wallet row of this proof: it holds the nonce, so a proof is used once whatever became of it.
+  const row = (state: 'linked' | 'pending' | 'unlinked') =>
+    db.prepare(`INSERT INTO wallets (id, org_id, chain_id, address, kind, label, state, proof_nonce, proof_digest, proof_signature, proof_checked_at, linked_at, snapshot) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+      .bind(id, w.orgId, w.chainId, w.address, w.kind, w.label, state, w.nonce, w.digest, w.signature, now, now, w.snapshot)
   await commit(db, w.orgId, async () => {
     const seat = await db.prepare(`SELECT s.role, max(COALESCE(s.quarantine_until, 0), COALESCE(o.quarantine_until, 0)) AS quarantine FROM seats s JOIN organisations o ON o.id = s.org_id AND o.state = 'active'
                                    WHERE s.org_id = ? AND s.id = ? AND s.state = 'active'`).bind(w.orgId, w.seatId).first<{ role: Role; quarantine: number | null }>()
@@ -1064,16 +1068,17 @@ export async function linkWallet(
       outcome = { error: refused }
       // A proven attempt to link a listed address leaves its trace: one row in the organisation's log, and the freeze a load
       // of that address would have made, with every session ended, in this commit. The answer is the refusal.
+      // The proof is kept as a row that is never live ('unlinked'): its nonce is used, so the same proof, which stays valid
+      // for a week and is taken from anyone, answers "proof_used" and cannot freeze the organisation a second time.
       return refused !== 'wallet_listed' ? null
-        : [{ at: now, actorKind: 'seat', actorId: w.seatId, sessionId: null, action: 'screening.attempt', subjectId: null, detail: w.address }, freezing(db, w.orgId, now)]
+        : [{ at: now, actorKind: 'seat', actorId: w.seatId, sessionId: null, action: 'screening.attempt', subjectId: id, detail: w.address }, [row('unlinked'), ...freezing(db, w.orgId, now)]]
     }
     const direct = await alone(db, w.orgId, w.seatId, now)
     outcome = { state: direct ? 'linked' : 'pending' }
     const entry: Entry = { at: now, actorKind: 'seat', actorId: w.seatId, sessionId: null, action: direct ? 'wallet.link' : 'approval.request', subjectId: direct ? id : requestId, detail: direct ? 'alone' : 'wallet.link' }
     return [entry, [
       db.prepare(`UPDATE wallets AS w SET state = 'unlinked' WHERE w.org_id = ? AND w.state = 'pending' AND NOT ${OPEN_LINK}`).bind(w.orgId, now),
-      db.prepare(`INSERT INTO wallets (id, org_id, chain_id, address, kind, label, state, proof_nonce, proof_digest, proof_signature, proof_checked_at, linked_at, snapshot) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
-        .bind(id, w.orgId, w.chainId, w.address, w.kind, w.label, direct ? 'linked' : 'pending', w.nonce, w.digest, w.signature, now, now, w.snapshot),
+      row(direct ? 'linked' : 'pending'),
       ...(direct ? [] : [db.prepare(`INSERT INTO approvals (id, org_id, action, subject_id, payload, payload_hash, requester_seat_id, state, expires_at, created_at) VALUES (?, ?, 'wallet.link', ?, ?, ?, ?, 'pending', ?, ?)`)
         .bind(requestId, w.orgId, id, payload, payloadHash, w.seatId, now + REQUEST_MS, now)]),
     ]]
