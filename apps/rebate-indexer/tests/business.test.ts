@@ -33,12 +33,13 @@ const fees = (recipient: `0x${string}`, full: boolean): PartnerFeeDashboard => (
 const traders = (full: boolean): PartnerTraders => ({
   wallets: full
     ? [
-        { wallet: '0x00000000000000000000000000000000000000c1', trades: 230, volumeUsd: 251000.25, unpriced: 0 },
+        { wallet: '0x00000000000000000000000000000000000000c1', trades: 227, volumeUsd: 251000.25, unpriced: 0 },
         { wallet: '0x00000000000000000000000000000000000000c2', trades: 181, volumeUsd: 118400.5, unpriced: 1 },
         { wallet: '0x00000000000000000000000000000000000000c3', trades: 1, volumeUsd: 0, unpriced: 1 },
       ]
     : [],
-  totals: full ? { walletCount: 3, trades: 412, volumeUsd: 369400.75, unpriced: 2 } : { walletCount: 0, trades: 0, volumeUsd: 0, unpriced: 0 },
+  unknown: full ? { trades: 3, volumeUsd: 4250, unpriced: 0 } : { trades: 0, volumeUsd: 0, unpriced: 0 },
+  totals: full ? { walletCount: 3, trades: 412, volumeUsd: 373650.75, unpriced: 2 } : { walletCount: 0, trades: 0, volumeUsd: 0, unpriced: 0 },
 });
 
 let app: FastifyInstance;
@@ -83,6 +84,8 @@ test('the contract file shows what the console is built against: the partner-fee
   expect(p.fees.recentBatches).toHaveLength(2);
   // The traders count the same rows as the lifetime trade count: every trade that carried the partner's fee.
   expect(p.traders.totals.trades).toBe(p.fees.lifetime.tradeCount);
+  // Every wallet of it is listed, so the wallets and the trades of no known wallet add up to the totals.
+  for (const k of ['trades', 'volumeUsd', 'unpriced']) expect(p.traders.wallets.reduce((s: number, w: Record<string, number>) => s + w[k]!, p.traders.unknown[k])).toBe(p.traders.totals[k]);
   expect(o.fees.currentCycle.owedUsd + o.fees.lifetime.paidWeth + o.fees.lifetime.tradeCount + o.traders.totals.walletCount).toBe(0);
 });
 

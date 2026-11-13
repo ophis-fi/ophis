@@ -57,7 +57,7 @@ afterAll(async () => stopPg(pg));
 
 beforeEach(async () => {
   const sql = await getSql();
-  await sql`TRUNCATE partner_fee_batch_entries, partner_fee_batches, partner_fee_trades RESTART IDENTITY CASCADE`;
+  await sql`TRUNCATE partner_fee_batch_entries, partner_fee_batches, partner_fee_trades, defillama_fills RESTART IDENTITY CASCADE`;
   pollState.status = { executed: false, isSuccessful: null, transactionHash: null };
   vi.restoreAllMocks();
 });
@@ -500,5 +500,66 @@ describe('P2.9 getPartnerFeeStats.pendingOwedUsd', () => {
     // the in-flight paid $80 -> $120 total.
     expect(stats.pendingOwedUsd).toBeCloseTo(120, 2);
     expect(stats.partners).toBe(2);
+  });
+});
+
+describe('getPartnerTraders: the wallets that traded through a partner integration', () => {
+  // A uid is digest(32) ‖ owner(20) ‖ validTo(4). Addresses are 40 hex. The eth-flow contracts are
+  // written out here, not imported: OP and Unichain (Ophis) and the canonical CoW one.
+  const A = 'a1'.repeat(20), B = 'b1'.repeat(20), C = 'c1'.repeat(20), D = 'd1'.repeat(20);
+  const O1 = 'ff'.repeat(20), O2 = '01'.repeat(20), O3 = '7e'.repeat(20), O4 = '7d'.repeat(20), O5 = '05'.repeat(20);
+  const OP_FLOW = '764fe4aa1ff493cf39931c7923c8ff5837596504', UNI_FLOW = '38c03729153bccf6a281daf41d7c6a14c543f1d7';
+  const COW_FLOW = 'ba3cb449bd2b4adddbc894d8697f5170800eadec';
+  const uid = (n: number, owner: string) => n.toString(16).padStart(64, '0') + owner + '6a000000';
+  let block = 0;
+  // One settlement of order u carrying the fee of recipient; value null = not priced yet. Returns its block.
+  async function settle(u: string, recipient: string, valueUsd: number | null, at = ++block) {
+    const sql = await getSql();
+    await sql`
+      INSERT INTO partner_fee_trades (trade_uid, recipient, chain_id, block_number, log_index, volume_bps, fee_token, fee_amount, value_usd, fee_usd)
+      VALUES (decode(${u}, 'hex'), decode(${recipient}, 'hex'), 10, ${at}, 0, 10, decode(${'42'.repeat(20)}, 'hex'), 1, ${valueUsd}, 0.01)`;
+    return at;
+  }
+  // The reporting fill of that settlement, with the payer the indexer attributed to it.
+  async function fill(u: string, at: number, payer: string, verified: boolean) {
+    const sql = await getSql();
+    await sql`
+      INSERT INTO defillama_fills (chain_id, block_number, log_index, trade_uid, settlement_timestamp, sell_token, sell_amount, fee_verified, user_address)
+      VALUES (10, ${at}, 0, decode(${u}, 'hex'), now(), decode(${'ee'.repeat(20)}, 'hex'), 1, ${verified}, decode(${payer}, 'hex'))`;
+  }
+  const traders = async (recipient: string) => (await import('../../src/partnerFees/report.js')).getPartnerTraders(`0x${recipient}`);
+  const w = (owner: string, trades: number, volumeUsd: number, unpriced: number) => ({ wallet: `0x${owner}`, trades, volumeUsd, unpriced });
+
+  it('lists the owners largest first, the payer of a native-ETH sale when known, and never an eth-flow contract', async () => {
+    await settle(uid(1, O1), A, 4.25);
+    await settle(uid(1, O1), A, 6); // the same order filled a second time
+    await settle(uid(2, O1), A, null);
+    const both = await settle(uid(3, O2), A, 9.5); // 9.5 sorts above 10.25 as text, below it as a number
+    await settle(uid(3, O2), B, 9.5, both); // the same trade carried B's fee too
+    await fill(uid(4, OP_FLOW), await settle(uid(4, OP_FLOW), A, 5), O3, true); // native ETH, payer known: O3
+    await settle(uid(5, O4), A, 5); // ties with O3 at 5: by address, 7d before 7e
+    await settle(uid(6, OP_FLOW), A, 7); // native ETH, no fill
+    await fill(uid(7, UNI_FLOW), await settle(uid(7, UNI_FLOW), A, null), O5, false); // a fill not verified yet
+    await fill(uid(8, COW_FLOW), await settle(uid(8, COW_FLOW), A, 2), COW_FLOW, true); // a fill that names the contract
+    await settle(uid(9, O5), B, null);
+    for (let v = 1; v <= 105; v++) await settle(uid(1000 + v, (1000 - v).toString(16).padStart(40, '0')), C, v);
+    await settle(uid(2000, OP_FLOW), C, 1000); // the largest trade of C has no known wallet
+
+    expect(await traders(A)).toEqual({
+      wallets: [w(O1, 3, 10.25, 1), w(O2, 1, 9.5, 0), w(O4, 1, 5, 0), w(O3, 1, 5, 0)],
+      unknown: { trades: 3, volumeUsd: 9, unpriced: 1 },
+      totals: { walletCount: 4, trades: 9, volumeUsd: 38.75, unpriced: 2 },
+    });
+    expect(await traders(B)).toEqual({
+      wallets: [w(O2, 1, 9.5, 0), w(O5, 1, 0, 1)],
+      unknown: { trades: 0, volumeUsd: 0, unpriced: 0 },
+      totals: { walletCount: 2, trades: 2, volumeUsd: 9.5, unpriced: 1 },
+    });
+    const c = await traders(C); // 105 wallets: the 100 largest listed, the totals over all of them
+    expect([c.wallets.length, c.wallets[0], c.wallets[99], c.unknown, c.totals]).toEqual([
+      100, w((1000 - 105).toString(16).padStart(40, '0'), 1, 105, 0), w((1000 - 6).toString(16).padStart(40, '0'), 1, 6, 0),
+      { trades: 1, volumeUsd: 1000, unpriced: 0 }, { walletCount: 105, trades: 106, volumeUsd: 6565, unpriced: 0 },
+    ]);
+    expect(await traders(D)).toEqual({ wallets: [], unknown: { trades: 0, volumeUsd: 0, unpriced: 0 }, totals: { walletCount: 0, trades: 0, volumeUsd: 0, unpriced: 0 } });
   });
 });

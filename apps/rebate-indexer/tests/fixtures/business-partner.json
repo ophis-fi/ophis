@@ -23,11 +23,12 @@
       },
       "traders": {
         "wallets": [
-          { "wallet": "0x00000000000000000000000000000000000000c1", "trades": 230, "volumeUsd": 251000.25, "unpriced": 0 },
+          { "wallet": "0x00000000000000000000000000000000000000c1", "trades": 227, "volumeUsd": 251000.25, "unpriced": 0 },
           { "wallet": "0x00000000000000000000000000000000000000c2", "trades": 181, "volumeUsd": 118400.5, "unpriced": 1 },
           { "wallet": "0x00000000000000000000000000000000000000c3", "trades": 1, "volumeUsd": 0, "unpriced": 1 }
         ],
-        "totals": { "walletCount": 3, "trades": 412, "volumeUsd": 369400.75, "unpriced": 2 }
+        "unknown": { "trades": 3, "volumeUsd": 4250, "unpriced": 0 },
+        "totals": { "walletCount": 3, "trades": 412, "volumeUsd": 373650.75, "unpriced": 2 }
       }
     },
     {
@@ -49,6 +50,7 @@
       },
       "traders": {
         "wallets": [],
+        "unknown": { "trades": 0, "volumeUsd": 0, "unpriced": 0 },
         "totals": { "walletCount": 0, "trades": 0, "volumeUsd": 0, "unpriced": 0 }
       }
     }

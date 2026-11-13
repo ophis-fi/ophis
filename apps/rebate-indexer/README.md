@@ -28,7 +28,10 @@ chain-1 reads, public fallback, and the scheduled OTC consistency check.
 dashboard of up to 10 wallets per call. With it comes `traders`: the wallets
 that traded through that partner's integration (the trades that carried its
 fee), each with its trades and USD volume. It lists the 100 largest, and its
-totals count every wallet. It does not read the referral
+totals count every wallet. A sale of native ETH is listed under the wallet
+that paid, when the indexer attributed one to the settlement; while an
+eth-flow contract still owns it, it counts in `unknown`, never as a wallet.
+It does not read the referral
 dashboard: the console's partners get no referral share (`POST /partner` keeps
 it for retail). It is gated by `BUSINESS_API_TOKEN`
 (`Authorization: Bearer ...`). This token reads EVERY partner's fee dashboard

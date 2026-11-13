@@ -1,4 +1,5 @@
 import { sql } from '../db/index.js';
+import { DECODER_ETHFLOW_OWNERS } from '../fetcher.js';
 import { PARTNER_FEE_PARTNER_SHARE_BPS, MIN_PARTNER_PAYOUT_USD } from './split.js';
 
 // Read-only reporting for the signature-gated partner dashboard (POST /partner-fees) and the
@@ -131,36 +132,55 @@ export interface PartnerTraderFigures {
 export interface PartnerTraders {
   /** The 100 largest wallets by volumeUsd (ties by address), largest first. */
   readonly wallets: (PartnerTraderFigures & { readonly wallet: `0x${string}` })[];
-  /** Every wallet, not only the 100 listed. */
+  /** The trades whose wallet is not known: native-ETH sales still owned by an eth-flow contract.
+   *  Not a wallet: never listed, not in walletCount. */
+  readonly unknown: PartnerTraderFigures;
+  /** Every trade, unknown included. walletCount: every known wallet, not only the 100 listed. */
   readonly totals: PartnerTraderFigures & { readonly walletCount: number };
 }
 
 /**
  * The wallets that traded through a partner's integration: the owners of the orders that carried
- * this recipient's fee, lifetime. The owner is bytes 33-52 of the CoW order uid (32-byte digest,
- * 20-byte owner, 4-byte validTo). Not the referral program: no share, no code, no estimate.
+ * this recipient's fee, lifetime. A trade's owner is the payer the indexer attributed to its
+ * settlement (defillama_fills.user_address, verified), else bytes 33-52 of the CoW order uid
+ * (32-byte digest, 20-byte owner, 4-byte validTo). An eth-flow contract is no person (as in
+ * computePublicStats): a trade it still owns counts in unknown. Not the referral program: no
+ * share, no code, no estimate.
  */
 export async function getPartnerTraders(recipient: `0x${string}`): Promise<PartnerTraders> {
   const buf = Buffer.from(recipient.slice(2), 'hex');
-  // The totals are window sums over every wallet: they run before the LIMIT. ORDER BY names w.
-  // because a bare volume_usd would sort the text column of the same name.
+  // owner NULL = the eth-flow trades: one group, sorted last, never listed. The totals are window
+  // sums over every group: they run before the LIMIT. ORDER BY names w. because a bare volume_usd
+  // would sort the text column of the same name.
   // ponytail: the 100 largest wallets only, so 10 recipients stay near 100 kB; a paged read if a partner needs them all.
-  const rows = await sql<{ wallet: string; trades: string; volume_usd: string; unpriced: string; wallet_count: string; all_trades: string; all_volume_usd: string; all_unpriced: string }[]>`
+  const rows = await sql<{ wallet: string | null; trades: string; volume_usd: string; unpriced: string; wallet_count: string; all_trades: string; all_volume_usd: string; all_unpriced: string; unknown_trades: string; unknown_volume_usd: string; unknown_unpriced: string }[]>`
     SELECT '0x' || encode(owner, 'hex') AS wallet, trades::text AS trades, volume_usd::text AS volume_usd, unpriced::text AS unpriced,
-      COUNT(*) OVER ()::text AS wallet_count, SUM(trades) OVER ()::text AS all_trades,
-      SUM(volume_usd) OVER ()::text AS all_volume_usd, SUM(unpriced) OVER ()::text AS all_unpriced
+      COUNT(owner) OVER ()::text AS wallet_count, SUM(trades) OVER ()::text AS all_trades,
+      SUM(volume_usd) OVER ()::text AS all_volume_usd, SUM(unpriced) OVER ()::text AS all_unpriced,
+      COALESCE(SUM(trades) FILTER (WHERE owner IS NULL) OVER (), 0)::text AS unknown_trades,
+      COALESCE(SUM(volume_usd) FILTER (WHERE owner IS NULL) OVER (), 0)::text AS unknown_volume_usd,
+      COALESCE(SUM(unpriced) FILTER (WHERE owner IS NULL) OVER (), 0)::text AS unknown_unpriced
     FROM (
-      SELECT substring(trade_uid from 33 for 20) AS owner, COUNT(*) AS trades,
-        COALESCE(SUM(value_usd), 0) AS volume_usd, COUNT(*) FILTER (WHERE value_usd IS NULL) AS unpriced
-      FROM partner_fee_trades WHERE recipient = ${buf}
+      SELECT CASE WHEN ('0x' || encode(o.owner, 'hex')) <> ALL(${[...DECODER_ETHFLOW_OWNERS]}) THEN o.owner END AS owner,
+        COUNT(*) AS trades, COALESCE(SUM(p.value_usd), 0) AS volume_usd, COUNT(*) FILTER (WHERE p.value_usd IS NULL) AS unpriced
+      FROM partner_fee_trades p
+      LEFT JOIN defillama_fills f ON f.chain_id = p.chain_id AND f.block_number = p.block_number
+        AND f.log_index = p.log_index AND f.trade_uid = p.trade_uid AND f.fee_verified
+      CROSS JOIN LATERAL (SELECT COALESCE(f.user_address, substring(p.trade_uid from 33 for 20)) AS owner) o
+      WHERE p.recipient = ${buf}
       GROUP BY 1
     ) w
-    ORDER BY w.volume_usd DESC, w.owner
+    ORDER BY w.owner IS NULL, w.volume_usd DESC, w.owner
     LIMIT 100
   `;
   const all = rows[0];
   return {
-    wallets: rows.map((r) => ({ wallet: r.wallet as `0x${string}`, trades: Number(r.trades), volumeUsd: Number(r.volume_usd), unpriced: Number(r.unpriced) })),
+    wallets: rows.filter((r) => r.wallet !== null).map((r) => ({ wallet: r.wallet as `0x${string}`, trades: Number(r.trades), volumeUsd: Number(r.volume_usd), unpriced: Number(r.unpriced) })),
+    unknown: {
+      trades: Number(all?.unknown_trades ?? 0),
+      volumeUsd: Number(all?.unknown_volume_usd ?? 0),
+      unpriced: Number(all?.unknown_unpriced ?? 0),
+    },
     totals: {
       walletCount: Number(all?.wallet_count ?? 0),
       trades: Number(all?.all_trades ?? 0),
