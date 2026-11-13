@@ -170,6 +170,7 @@ type Balances = HashMap<Query, U256>;
 struct Inner {
     auction: domain::RawAuctionData,
     solvable_orders: boundary::SolvableOrders,
+    banned_users_revision: Option<String>,
 }
 
 impl SolvableOrdersCache {
@@ -210,10 +211,11 @@ impl SolvableOrdersCache {
     }
 
     pub async fn current_auction(&self) -> Option<domain::RawAuctionData> {
-        self.cache
-            .lock()
-            .await
+        let cache = self.cache.lock().await;
+        let revision = self.banned_users.revision().ok()?;
+        cache
             .as_ref()
+            .filter(|inner| inner.banned_users_revision == revision)
             .map(|inner| inner.auction.clone())
     }
 
@@ -225,6 +227,7 @@ impl SolvableOrdersCache {
     /// other's results.
     #[instrument(skip_all)]
     pub async fn update(&self, block: u64, store_events: bool) -> Result<()> {
+        let banned_users_revision = self.banned_users.revision()?;
         let start = Instant::now();
 
         let _timer = observe::metrics::metrics()
@@ -268,7 +271,7 @@ impl SolvableOrdersCache {
 
         // Remove in-flight orders - already won a previous auction, being settled
         // on-chain.
-        let (orders, removed) = filter_out_in_flight_orders(orders, &in_flight);
+        let (orders, removed) = filter_out_in_flight_orders(orders?, &in_flight);
         Metrics::track_filtered_orders(InFlight, &removed);
         filtered_order_events.extend(removed.into_iter().map(|uid| (uid, InFlight)));
         // It's possible that some orders got marked as invalid due to missing balance
@@ -381,9 +384,14 @@ impl SolvableOrdersCache {
             surplus_capturing_jit_order_owners,
         };
 
+        anyhow::ensure!(
+            self.banned_users.revision()? == banned_users_revision,
+            "OFAC snapshot changed during auction construction"
+        );
         *self.cache.lock().await = Some(Inner {
             auction,
             solvable_orders: db_solvable_orders,
+            banned_users_revision,
         });
 
         tracing::debug!(%block, "updated current auction cache");
@@ -496,7 +504,7 @@ impl SolvableOrdersCache {
         &self,
         mut orders: Vec<&'a Order>,
         invalid_order_uids: &mut HashMap<OrderUid, OrderFilterReason>,
-    ) -> Vec<&'a Order> {
+    ) -> Result<Vec<&'a Order>> {
         let presignature_pending_orders = find_presignature_pending_orders(&orders);
 
         let unsupported_token_orders = find_unsupported_tokens(&orders, &self.deny_listed_tokens);
@@ -505,7 +513,7 @@ impl SolvableOrdersCache {
                 "banned_user_filtering",
                 find_banned_user_orders(&orders, &self.banned_users),
             )
-            .await;
+            .await?;
         tracing::trace!("filtered invalid orders");
 
         Metrics::track_filtered_orders(BannedUser, &banned_user_orders);
@@ -524,7 +532,7 @@ impl SolvableOrdersCache {
         );
 
         orders.retain(|order| !invalid_order_uids.contains_key(&order.metadata.uid));
-        orders
+        Ok(orders)
     }
 
     pub fn track_auction_update(&self, result: &str) {
@@ -588,15 +596,18 @@ impl SolvableOrdersCache {
 
 /// Finds all orders whose owners or receivers are in the set of "banned"
 /// users.
-async fn find_banned_user_orders(orders: &[&Order], banned_users: &banned::Users) -> Vec<OrderUid> {
+async fn find_banned_user_orders(
+    orders: &[&Order],
+    banned_users: &banned::Users,
+) -> Result<Vec<OrderUid>> {
     let banned = banned_users
         .banned(
             orders
                 .iter()
                 .flat_map(|order| std::iter::once(order.metadata.owner).chain(order.data.receiver)),
         )
-        .await;
-    orders
+        .await?;
+    Ok(orders
         .iter()
         .filter_map(|order| {
             std::iter::once(order.metadata.owner)
@@ -604,7 +615,7 @@ async fn find_banned_user_orders(orders: &[&Order], banned_users: &banned::Users
                 .any(|addr| banned.contains(&addr))
                 .then_some(order.metadata.uid)
         })
-        .collect()
+        .collect())
 }
 
 async fn get_native_prices(
@@ -1173,7 +1184,8 @@ mod tests {
             &orders_ref,
             &order_validation::banned::Users::from_set(banned_users),
         )
-        .await;
+        .await
+        .unwrap();
         assert_eq!(
             banned_user_orders,
             [OrderUid([2; 56]), OrderUid([4; 56]), OrderUid([5; 56])],

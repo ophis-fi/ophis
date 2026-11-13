@@ -1,322 +1,279 @@
-//! Banned user detection for order validation.
-//!
-//! Checks if addresses are banned using a hardcoded list and optionally the
-//! Chainalysis Oracle on-chain registry. On-chain results are cached (1-hour
-//! expiry, LRU eviction) with background refresh every 60 seconds.
+//! Manual bans plus a periodically reloaded, freshness-checked OFAC snapshot.
 
 use {
     alloy_primitives::Address,
-    contracts::ChainalysisOracle,
-    futures::future::join_all,
-    moka::sync::Cache,
+    anyhow::{Context, Result, ensure},
+    serde::Deserialize,
     std::{
         collections::HashSet,
-        sync::Arc,
-        time::{Duration, Instant},
+        fs::File,
+        io::Read,
+        path::{Path, PathBuf},
+        sync::{Arc, RwLock, RwLockReadGuard},
+        time::{Duration, SystemTime, UNIX_EPOCH},
     },
 };
 
-/// Sanctions-oracle observability (F6, 2026-05-21 whole-repo audit /
-/// Codex Cyber HIGH).
-///
-/// The fail-open behavior on `Onchain::fetch` errors is INTENTIONAL: the
-/// alternative (fail-closed, rejecting all orders during a Chainalysis
-/// outage) is operationally worse than letting through a few requests
-/// while the oracle recovers. The pre-F6 posture promoted these errors
-/// from `warn` to `error` so they'd surface in log aggregators, but
-/// there was no Prometheus signal — operators had to grep the live
-/// stream to detect a sustained outage.
-///
-/// F6 closes that observability gap. This counter increments on every
-/// Chainalysis fetch failure. Operators alert when more than 5 failures
-/// occur in a 10-minute window sustained for 5 minutes (per-stack alert
-/// in observability/alerts.yml). The behavior remains fail-open by
-/// design; this metric is the visibility layer that lets the operator
-/// decide when to manually shift to fail-closed via the kill-switch
-/// (a separate roadmap item).
-///
-/// When the orderbook scrapes this metric, the namespace prefix
-/// `gp_v2_api` is prepended automatically (see orderbook/src/run.rs:79).
-/// The full Prometheus metric name is
-/// `gp_v2_api_sanctions_oracle_fetch_failed` — NO `_total` suffix.
-/// The Rust `prometheus` crate does not auto-append `_total` (unlike
-/// Prometheus's official naming convention); the field identifier
-/// is the exposition name verbatim. Caught during F6 stress-verify
-/// 2026-05-21 — the original alert rules queried `..._total` and
-/// would never have matched. Renaming the Rust field to include
-/// `_total` would be cleaner long-term but is a wider migration
-/// (dashboards + ad-hoc queries already use the current name).
 #[derive(prometheus_metric_storage::MetricStorage, Clone, Debug)]
 #[metric(subsystem = "sanctions")]
 struct Metrics {
-    /// Sanctions oracle (Chainalysis) fetch failures. Compliance-relevant
-    /// fail-open: the address was NOT added to the ban set this cycle.
-    ///
-    /// `stage` distinguishes the two error paths:
-    ///   - "background_refresh": cache-expiry refresh task
-    ///   - "on_demand":          per-request fetch on cache miss
-    #[metric(labels("stage"))]
-    oracle_fetch_failed: prometheus::IntCounterVec,
+    /// UNIX timestamp of the last successfully downloaded and validated snapshot.
+    snapshot_fetched_at: prometheus::IntGauge,
+    /// Maximum age after which screening stops accepting orders.
+    snapshot_max_age_seconds: prometheus::IntGauge,
+    /// Failed reloads; the last validated snapshot remains subject to expiry.
+    snapshot_reload_failed: prometheus::IntCounter,
 }
 
 impl Metrics {
     fn get() -> &'static Self {
-        Metrics::instance(observe::metrics::get_storage_registry())
-            .expect("Metrics instance")
-    }
-
-    /// Eagerly register the `stage` label combinations so the metric series
-    /// appears in `/metrics` with value 0 from process start — without this,
-    /// `IntCounterVec` only emits series after first `.inc()`, which means
-    /// operator dashboards can't confirm "F6 wired correctly" until something
-    /// fails. Mirrors the pattern at `apps/backend/crates/orderbook/src/
-    /// ipfs_app_data.rs:30-34`.
-    pub fn eager_init() {
-        let metrics = Self::get();
-        for stage in &["background_refresh", "on_demand"] {
-            metrics.oracle_fetch_failed.with_label_values(&[stage]);
-        }
+        Self::instance(observe::metrics::get_storage_registry()).expect("sanctions metrics")
     }
 }
 
-/// A list of banned users and an optional registry that can be checked onchain.
-pub struct Users {
-    list: HashSet<Address>,
-    onchain: Option<Arc<Onchain>>,
+#[derive(Deserialize)]
+struct Snapshot {
+    fetched_at: u64,
+    source_sha256: String,
+    addresses: HashSet<Address>,
 }
 
-#[derive(Clone)]
-struct UserMetadata {
-    is_banned: bool,
-    last_updated: Instant,
-}
-
-/// Onchain banned user checker using Chainalysis Oracle with caching and
-/// background refresh. Maintains a size-bounded LRU cache with periodic
-/// maintenance to refresh expired entries.
-struct Onchain {
-    contract: ChainalysisOracle::Instance,
-    cache: Cache<Address, UserMetadata>,
-}
-
-impl Onchain {
-    pub fn new(contract: ChainalysisOracle::Instance, cache_max_size: u64) -> Arc<Self> {
-        // Eagerly register the F6 metric label combinations so the series
-        // emit at process-start with value 0. Without this, operators
-        // cannot confirm "is the metric wired" until a Chainalysis error
-        // happens — see Metrics::eager_init() for full rationale.
-        Metrics::eager_init();
-
-        let onchain = Arc::new(Self {
-            contract,
-            cache: Cache::builder().max_capacity(cache_max_size).build(),
-        });
-
-        onchain.clone().spawn_maintenance_task();
-
-        onchain
+impl Snapshot {
+    fn ensure_fresh(&self, max_age: Duration) -> Result<()> {
+        let now = SystemTime::now().duration_since(UNIX_EPOCH)?.as_secs();
+        ensure!(
+            now.checked_sub(self.fetched_at)
+                .is_some_and(|age| age <= max_age.as_secs()),
+            "OFAC snapshot is stale or future-dated"
+        );
+        Ok(())
     }
 
-    /// Spawns a background task that periodically checks the cache for expired
-    /// entries and re-run checks for them.
-    fn spawn_maintenance_task(self: Arc<Self>) {
-        let cache_expiry = Duration::from_secs(60 * 60);
-        let maintenance_timeout = Duration::from_secs(60);
-        let detector = Arc::clone(&self);
+    fn read(path: &Path, max_age: Duration) -> Result<Self> {
+        // Read past the bound to detect an oversized atomically replaced file.
+        let mut bytes = Vec::new();
+        File::open(path)?.take(1_048_577).read_to_end(&mut bytes)?;
+        ensure!(bytes.len() <= 1_048_576, "OFAC snapshot exceeds 1 MiB");
+        let snapshot: Self = serde_json::from_slice(&bytes).context("invalid OFAC snapshot")?;
+        ensure!(!snapshot.addresses.is_empty(), "empty OFAC address list");
+        ensure!(
+            snapshot.source_sha256.len() == 64
+                && snapshot
+                    .source_sha256
+                    .bytes()
+                    .all(|byte| byte.is_ascii_hexdigit()),
+            "invalid OFAC source digest"
+        );
+        snapshot.ensure_fresh(max_age)?;
+        Ok(snapshot)
+    }
+}
 
-        tokio::task::spawn(async move {
+struct FileList {
+    path: PathBuf,
+    max_age: Duration,
+    snapshot: RwLock<Snapshot>,
+}
+
+impl FileList {
+    fn current(&self) -> Result<RwLockReadGuard<'_, Snapshot>> {
+        let snapshot = self
+            .snapshot
+            .read()
+            .map_err(|_| anyhow::anyhow!("OFAC snapshot lock poisoned"))?;
+        snapshot.ensure_fresh(self.max_age)?;
+        Ok(snapshot)
+    }
+
+    fn reload(&self) -> Result<()> {
+        let next = Snapshot::read(&self.path, self.max_age)?;
+        let mut snapshot = self
+            .snapshot
+            .write()
+            .map_err(|_| anyhow::anyhow!("OFAC snapshot lock poisoned"))?;
+        ensure!(
+            next.fetched_at >= snapshot.fetched_at,
+            "OFAC snapshot download timestamp moved backwards"
+        );
+        Metrics::get()
+            .snapshot_fetched_at
+            .set(next.fetched_at.try_into()?);
+        *snapshot = next;
+        Ok(())
+    }
+
+    fn spawn(self: &Arc<Self>) {
+        let weak = Arc::downgrade(self);
+        tokio::spawn(async move {
             loop {
-                let start = Instant::now();
-
-                let expired_data: Vec<_> = detector
-                    .cache
-                    .iter()
-                    .filter_map(|(address, metadata)| {
-                        let expired = start
-                            .checked_duration_since(metadata.last_updated)
-                            .unwrap_or_default()
-                            >= cache_expiry - maintenance_timeout;
-
-                        expired.then_some((address, metadata))
-                    })
-                    .collect();
-
-                let results = join_all(expired_data.into_iter().map(|(address, metadata)| {
-                    let detector = detector.clone();
-                    async move {
-                        match detector.fetch(*address).await {
-                            Ok(result) => Some((
-                                *address,
-                                UserMetadata {
-                                    is_banned: result,
-                                    ..metadata
-                                },
-                            )),
-                            Err(err) => {
-                                // Compliance-relevant: a sanctions-oracle outage
-                                // would silently let sanctioned addresses
-                                // through if we treated this as a soft-warn.
-                                // Promote to error so monitoring catches
-                                // it. Behavior is still fail-open (address
-                                // not added to ban set, cache not updated)
-                                // — operators must decide on the compliance
-                                // posture (fail-closed) per chain.
-                                tracing::error!(
-                                    address = ?*address,
-                                    ?err,
-                                    "sanctions-oracle background fetch failed \
-                                     — address NOT added to ban set this cycle"
-                                );
-                                Metrics::get()
-                                    .oracle_fetch_failed
-                                    .with_label_values(&["background_refresh"])
-                                    .inc();
-                                None
-                            }
-                        }
-                    }
-                }))
-                .await
-                .into_iter()
-                .flatten();
-
-                detector.insert_many_into_cache(results);
-
-                let remaining_sleep = maintenance_timeout
-                    .checked_sub(start.elapsed())
-                    .unwrap_or_default();
-                tokio::time::sleep(remaining_sleep).await;
+                tokio::time::sleep(Duration::from_secs(60)).await;
+                let Some(list) = weak.upgrade() else { break };
+                if let Err(err) = list.reload() {
+                    // Retain validated data; current() still enforces its expiry.
+                    Metrics::get().snapshot_reload_failed.inc();
+                    tracing::error!(?err, path = ?list.path, "OFAC snapshot reload failed");
+                }
             }
         });
     }
+}
 
-    fn insert_many_into_cache(&self, addresses: impl Iterator<Item = (Address, UserMetadata)>) {
-        let now = Instant::now();
-        for (address, metadata) in addresses {
-            self.cache.insert(
-                address,
-                UserMetadata {
-                    last_updated: now,
-                    ..metadata
-                },
-            );
-        }
-    }
+pub struct Users {
+    list: HashSet<Address>,
+    file: Option<Arc<FileList>>,
 }
 
 impl Users {
-    /// Creates a new `Users` instance that checks the hardcoded list and uses
-    /// the given `web3` instance to determine whether an onchain registry of
-    /// banned addresses is available.
     pub fn new(
-        contract: Option<ChainalysisOracle::Instance>,
         banned_users: Vec<Address>,
-        cache_max_size: u64,
-    ) -> Self {
-        Self {
-            list: HashSet::from_iter(banned_users),
-            onchain: contract.map(|instance| Onchain::new(instance, cache_max_size)),
-        }
+        path: Option<PathBuf>,
+        max_age: Duration,
+    ) -> Result<Self> {
+        ensure!(!max_age.is_zero(), "OFAC snapshot max age must be positive");
+        let file = path
+            .map(|path| {
+                let snapshot = Snapshot::read(&path, max_age)?;
+                Metrics::get()
+                    .snapshot_fetched_at
+                    .set(snapshot.fetched_at.try_into()?);
+                Metrics::get()
+                    .snapshot_max_age_seconds
+                    .set(max_age.as_secs().try_into()?);
+                let list = Arc::new(FileList {
+                    path,
+                    max_age,
+                    snapshot: RwLock::new(snapshot),
+                });
+                list.spawn();
+                Ok::<_, anyhow::Error>(list)
+            })
+            .transpose()?;
+        Ok(Self {
+            list: banned_users.into_iter().collect(),
+            file,
+        })
     }
 
-    /// Creates a new `Users` instance that passes all addresses.
     pub fn none() -> Self {
-        Self {
-            list: HashSet::new(),
-            onchain: None,
-        }
+        Self::from_set(HashSet::new())
     }
 
-    /// Creates a new `Users` instance that passes all addresses except for the
-    /// ones in `list`.
     pub fn from_set(list: HashSet<Address>) -> Self {
-        Self {
-            list,
-            onchain: None,
-        }
+        Self { list, file: None }
     }
 
-    /// Returns a subset of addresses from the input iterator which are banned.
-    ///
-    /// On cache-misses, it will use the Chainalysis oracle to fetch the users.
-    pub async fn banned(&self, addresses: impl IntoIterator<Item = Address>) -> HashSet<Address> {
-        let mut banned = HashSet::new();
+    /// A different source digest invalidates auctions screened with the previous list.
+    pub fn revision(&self) -> Result<Option<String>> {
+        self.file
+            .as_ref()
+            .map(|file| Ok(file.current()?.source_sha256.clone()))
+            .transpose()
+    }
 
-        let need_lookup = addresses
+    pub async fn banned(
+        &self,
+        addresses: impl IntoIterator<Item = Address>,
+    ) -> Result<HashSet<Address>> {
+        let snapshot = self.file.as_ref().map(|file| file.current()).transpose()?;
+        Ok(addresses
             .into_iter()
             .filter(|address| {
-                if self.list.contains(address) {
-                    banned.insert(*address);
-                    false
-                } else {
-                    true
-                }
+                self.list.contains(address)
+                    || snapshot
+                        .as_ref()
+                        .is_some_and(|snapshot| snapshot.addresses.contains(address))
             })
-            // Need to collect here to make sure filter gets executed and we insert addresses
-            .collect::<HashSet<_>>();
-
-        let Some(onchain) = &self.onchain else {
-            return banned;
-        };
-        let need_lookup: Vec<_> = {
-            let mut filtered = Vec::new();
-            for address in need_lookup {
-                match onchain.cache.get(&address) {
-                    Some(metadata) => {
-                        metadata.is_banned.then(|| banned.insert(address));
-                    }
-                    None => {
-                        filtered.push(address);
-                    }
-                }
-            }
-            filtered
-        };
-
-        let to_cache = join_all(
-            need_lookup
-                .into_iter()
-                .map(|address| async move { (address, onchain.fetch(address).await) }),
-        )
-        .await;
-
-        let now = Instant::now();
-        for (address, result) in to_cache {
-            match result {
-                Ok(is_banned) => {
-                    onchain.cache.insert(
-                        address,
-                        UserMetadata {
-                            is_banned,
-                            last_updated: now,
-                        },
-                    );
-                    is_banned.then(|| banned.insert(address));
-                }
-                Err(err) => {
-                    // Same compliance-relevant fail-open as the background
-                    // task path — promote to error so operators detect
-                    // sustained sanctions-oracle outages. See `update_cache`
-                    // for the matching error path.
-                    tracing::error!(
-                        ?err,
-                        ?address,
-                        "sanctions-oracle fetch failed — address NOT added \
-                         to ban set; investigate Chainalysis oracle health"
-                    );
-                    Metrics::get()
-                        .oracle_fetch_failed
-                        .with_label_values(&["on_demand"])
-                        .inc();
-                }
-            }
-        }
-        banned
+            .collect())
     }
 }
 
-impl Onchain {
-    async fn fetch(&self, address: Address) -> Result<bool, alloy_contract::Error> {
-        self.contract.isSanctioned(address).call().await
+#[cfg(test)]
+mod tests {
+    use {super::*, alloy_primitives::address, serde_json::json, tempfile::NamedTempFile};
+
+    const A: Address = address!("1111111111111111111111111111111111111111");
+    const B: Address = address!("2222222222222222222222222222222222222222");
+    const MANUAL: Address = address!("3333333333333333333333333333333333333333");
+    const MAX_AGE: Duration = Duration::from_secs(86400);
+
+    fn write(path: &Path, addresses: &[Address], fetched_at: u64, digest: char) {
+        std::fs::write(path, serde_json::to_vec(&json!({
+            "addresses": addresses, "fetched_at": fetched_at, "source_sha256": digest.to_string().repeat(64),
+        })).unwrap()).unwrap();
+    }
+
+    fn now() -> u64 {
+        SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_secs()
+    }
+
+    #[tokio::test]
+    async fn merges_manual_bans_and_applies_additions_and_removals() {
+        let file = NamedTempFile::new().unwrap();
+        write(file.path(), &[A], now(), 'a');
+        let users = Users::new(vec![MANUAL], Some(file.path().to_owned()), MAX_AGE).unwrap();
+        assert_eq!(
+            users.banned([A, B, MANUAL]).await.unwrap(),
+            HashSet::from([A, MANUAL])
+        );
+        let revision = users.revision().unwrap();
+        write(file.path(), &[B], now(), 'b');
+        users.file.as_ref().unwrap().reload().unwrap();
+        assert_ne!(users.revision().unwrap(), revision);
+        assert_eq!(
+            users.banned([A, B, MANUAL]).await.unwrap(),
+            HashSet::from([B, MANUAL])
+        );
+    }
+
+    #[tokio::test]
+    async fn retains_validated_data_until_expiry_then_errors_and_recovers() {
+        let file = NamedTempFile::new().unwrap();
+        write(file.path(), &[A], now(), 'a');
+        let users = Users::new(vec![], Some(file.path().to_owned()), MAX_AGE).unwrap();
+        let list = users.file.as_ref().unwrap();
+        std::fs::write(file.path(), "not JSON").unwrap();
+        assert!(list.reload().is_err());
+        assert_eq!(users.banned([A]).await.unwrap(), HashSet::from([A]));
+        list.snapshot.write().unwrap().fetched_at = now() - 86401;
+        assert!(users.banned([A, B]).await.is_err());
+        assert!(users.revision().is_err());
+        write(file.path(), &[B], now(), 'b');
+        list.reload().unwrap();
+        assert_eq!(users.banned([A, B]).await.unwrap(), HashSet::from([B]));
+    }
+
+    #[tokio::test]
+    async fn missing_stale_future_empty_malformed_and_oversized_snapshots_prevent_startup() {
+        let file = NamedTempFile::new().unwrap();
+        for (addresses, timestamp) in [
+            (vec![A], now() - 86401),
+            (vec![A], now() + 60),
+            (vec![], now()),
+        ] {
+            write(file.path(), &addresses, timestamp, 'a');
+            assert!(Users::new(vec![], Some(file.path().to_owned()), MAX_AGE).is_err());
+        }
+        for bytes in [b"bad JSON".to_vec(), vec![b' '; 1_048_577]] {
+            std::fs::write(file.path(), bytes).unwrap();
+            assert!(Users::new(vec![], Some(file.path().to_owned()), MAX_AGE).is_err());
+        }
+        assert!(Users::new(vec![], Some(file.path().with_extension("absent")), MAX_AGE).is_err());
+        assert!(Users::new(vec![], None, Duration::ZERO).is_err());
+    }
+
+    #[tokio::test]
+    async fn rejects_timestamp_rollback_without_clearing_manual_or_ofac_bans() {
+        let file = NamedTempFile::new().unwrap();
+        write(file.path(), &[A], now(), 'a');
+        let users = Users::new(vec![MANUAL], Some(file.path().to_owned()), MAX_AGE).unwrap();
+        write(file.path(), &[B], now() - 10, 'b');
+        assert!(users.file.as_ref().unwrap().reload().is_err());
+        assert_eq!(
+            users.banned([A, B, MANUAL]).await.unwrap(),
+            HashSet::from([A, MANUAL])
+        );
     }
 }

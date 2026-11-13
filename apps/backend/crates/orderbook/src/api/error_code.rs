@@ -65,6 +65,7 @@ const CODES: &[(&str, u16)] = &[
     ("QuoteNotVerified", 2101),
     // 3xxx: retryable upstream failures (503 + Retry-After).
     ("InternalServiceError", 3000),
+    ("SanctionsScreeningUnavailable", 3000),
     ("UpstreamRateLimited", 3100),
     // 4001-4018: signature + field validation.
     ("MissingFrom", 4001),

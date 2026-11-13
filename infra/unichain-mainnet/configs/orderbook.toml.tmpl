@@ -93,3 +93,8 @@ burst = 20
 # CF-Connecting-IP is trustworthy here because the host is only reachable
 # through the Cloudflare tunnel; set to false if that ever changes.
 trust-cf-connecting-ip = true
+
+[banned-users]
+# Direct SDN-listed EVM addresses, refreshed independently of chain RPCs.
+addresses-file = "/sanctions/addresses.json"
+snapshot-max-age = "24h"

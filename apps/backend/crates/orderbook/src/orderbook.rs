@@ -237,6 +237,7 @@ pub struct Orderbook {
     database: crate::database::Postgres,
     database_replica: crate::database::Postgres,
     order_validator: Arc<dyn OrderValidating>,
+    banned_users: Arc<order_validation::banned::Users>,
     app_data: Arc<crate::app_data::Registry>,
     active_order_competition_threshold: u32,
     order_simulator: Option<Arc<OrderSimulator>>,
@@ -250,6 +251,7 @@ impl Orderbook {
         database: crate::database::Postgres,
         database_replica: crate::database::Postgres,
         order_validator: Arc<dyn OrderValidating>,
+        banned_users: Arc<order_validation::banned::Users>,
         app_data: Arc<crate::app_data::Registry>,
         active_order_competition_threshold: u32,
         order_simulator: Option<Arc<OrderSimulator>>,
@@ -261,6 +263,7 @@ impl Orderbook {
             database,
             database_replica,
             order_validator,
+            banned_users,
             app_data,
             active_order_competition_threshold,
             order_simulator,
@@ -516,6 +519,9 @@ impl Orderbook {
     }
 
     pub async fn get_auction(&self) -> Result<Option<dto::AuctionWithId>> {
+        if self.banned_users.revision().is_err() {
+            return Ok(None);
+        }
         let auction = match self.database.most_recent_auction().await? {
             Some(auction) => auction,
             None => {
@@ -523,7 +529,17 @@ impl Orderbook {
                 return Ok(None);
             }
         };
-        Ok(Some(auction))
+        // Persisted auctions can outlive the snapshot used to build them.
+        let banned = self
+            .banned_users
+            .banned(auction.auction.orders.iter().flat_map(|order| {
+                std::iter::once(order.owner).chain(order.receiver)
+            }))
+            .await;
+        match banned {
+            Ok(banned) if banned.is_empty() => Ok(Some(auction)),
+            _ => Ok(None),
+        }
     }
 
     pub async fn get_user_orders(
@@ -794,6 +810,54 @@ mod tests {
     };
 
     #[tokio::test]
+    async fn expired_screening_withholds_persisted_auction_without_querying_database() {
+        let snapshot = tempfile::NamedTempFile::new().unwrap();
+        let fetched_at = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_secs();
+        std::fs::write(
+            snapshot.path(),
+            serde_json::to_vec(&serde_json::json!({
+                "fetched_at": fetched_at,
+                "source_sha256": "a".repeat(64),
+                "addresses": [Address::repeat_byte(1)],
+            }))
+            .unwrap(),
+        )
+        .unwrap();
+        let banned_users = Arc::new(
+            order_validation::banned::Users::new(
+                vec![],
+                Some(snapshot.path().to_owned()),
+                std::time::Duration::from_secs(1),
+            )
+            .unwrap(),
+        );
+        let database =
+            crate::database::Postgres::try_new("postgresql://", Default::default()).unwrap();
+        database.pool.close().await;
+        let orderbook = Orderbook::new(
+            Default::default(),
+            Address::ZERO,
+            database.clone(),
+            database.clone(),
+            Arc::new(MockOrderValidating::new()),
+            banned_users,
+            Arc::new(crate::app_data::Registry::new(
+                Validator::permissive(8192),
+                database,
+                None,
+            )),
+            0,
+            None,
+        );
+        tokio::time::sleep(std::time::Duration::from_secs(2)).await;
+        // The closed pool would return an error if a stale auction were queried.
+        assert!(orderbook.get_auction().await.unwrap().is_none());
+    }
+
+    #[tokio::test]
     #[ignore]
     async fn postgres_replace_order_verifies_signer_and_app_data() {
         let old_order = Order {
@@ -854,6 +918,7 @@ mod tests {
             database,
             database_replica,
             order_validator: Arc::new(order_validator),
+            banned_users: Arc::new(order_validation::banned::Users::none()),
             domain_separator: Default::default(),
             settlement_contract: Address::repeat_byte(0xba),
             app_data,

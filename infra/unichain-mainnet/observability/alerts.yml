@@ -544,41 +544,30 @@ groups:
           summary: "Unichain EthFlow refund/transfer failed — investigate WETH or recipient state"
           description: "EthFlow at 0x38C03729153BCCF6a281DaF41D7C6a14C543F1D7 emitted EthTransferFailed. Possible causes: (1) WETH.withdraw semantics changed; (2) recipient is a contract with a gas-heavy fallback; (3) MEV-grief from a hostile receiver. Check the failing tx hash in driver logs, decode the orderData.owner field, and confirm whether WETH codehash changed via `cast keccak (cast code 0x4200000000000000000000000000000000000006)`. Reference doc: docs/audits/2026-05-18-whype-weth9-parity.md."
 
-  - name: ophis-uni-sanctions-oracle
+  - name: ophis-unichain-ofac-screening
     interval: 30s
     rules:
-      # F6 (2026-05-21 whole-repo audit, Codex Cyber HIGH closed):
-      # the sanctions-oracle (Chainalysis) fail-open behavior is
-      # INTENTIONAL — the alternative (block all orders on outage)
-      # is operationally worse. The pre-F6 posture promoted these
-      # errors from warn to error, but there was no Prometheus
-      # signal. This alert is the visibility layer.
-      #
-      # `stage` distinguishes:
-      #   - background_refresh: 60s-interval cache-expiry refresh task
-      #   - on_demand:          per-request fetch on cache miss
-      #
-      # Alert threshold: more than 5 failures in 10m. Single Chainalysis
-      # hiccups are benign; sustained non-zero indicates a genuine outage
-      # where the operator must decide whether to (a) shift to fail-closed
-      # via code change + rebuild, (b) page Chainalysis support, or (c)
-      # escalate to a manual block-list. Counter only — current code has
-      # no kill switch for runtime fail-closed; manual intervention req.
-      - alert: OphisUniSanctionsOracleFetchFailing
-        # Metric is scraped from orderbook, which sets namespace `gp_v2_api`
-        # at observe::metrics::setup_registry(...). Combined with subsystem
-        # `sanctions` and field `oracle_fetch_failed`, the full name is
-        # `gp_v2_api_sanctions_oracle_fetch_failed` — NO `_total` suffix.
-        # The Rust `prometheus` crate does NOT auto-append `_total`
-        # (unlike Prometheus convention). Caught during F6 stress-verify
-        # 2026-05-21 — previous expression queried `..._total` and would
-        # never have matched the actual scraped metric series.
+      - alert: OphisUniOfacRefreshDelayed
         expr: |
-          increase(gp_v2_api_sanctions_oracle_fetch_failed{job="orderbook"}[10m]) > 5
+          (time() - gp_v2_api_sanctions_snapshot_fetched_at{job="orderbook"} > 3600)
+          or (time() - gp_v2_autopilot_sanctions_snapshot_fetched_at{job="autopilot"} > 3600)
         for: 5m
         labels:
           severity: warning
           chain: unichain
         annotations:
-          summary: "Unichain sanctions oracle (Chainalysis) sustained fetch failures — fail-open active"
-          description: "More than 5 Chainalysis fetch failures in 10m (stage={{ $labels.stage }}). The driver/orderbook is currently in fail-open posture: sanctioned addresses MAY be passing validation. Investigate Chainalysis oracle health (status.chainalysis.com), consider manually rotating to a backup oracle, OR shift to fail-closed by editing apps/backend/crates/order-validation/src/banned.rs to return Err on this path (requires rebuild + redeploy). Cross-reference: F6 in memory/2026-05-21-whole-repo-audit-pass.md."
+          summary: "OFAC download has not succeeded for over an hour"
+          description: "Inspect the ofac service. Last validated data remains in use until its configured 24-hour expiry."
+      - alert: OphisUniOfacScreeningUnavailable
+        expr: |
+          (time() - gp_v2_api_sanctions_snapshot_fetched_at{job="orderbook"} > gp_v2_api_sanctions_snapshot_max_age_seconds{job="orderbook"})
+          or (time() - gp_v2_autopilot_sanctions_snapshot_fetched_at{job="autopilot"} > gp_v2_autopilot_sanctions_snapshot_max_age_seconds{job="autopilot"})
+          or absent(gp_v2_api_sanctions_snapshot_fetched_at{job="orderbook"})
+          or absent(gp_v2_autopilot_sanctions_snapshot_fetched_at{job="autopilot"})
+        for: 1m
+        labels:
+          severity: critical
+          chain: unichain
+        annotations:
+          summary: "Fresh OFAC screening data is unavailable"
+          description: "New submissions return 503 and auctions are withheld when the snapshot is stale. Check the ofac service and the sanctions volume before resuming."
