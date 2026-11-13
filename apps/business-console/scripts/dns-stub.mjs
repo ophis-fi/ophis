@@ -4,14 +4,13 @@
 // Records live in .wrangler/dns-stub.json, { "<name>": ["<value>", ...] }, read at every question.
 //   node scripts/dns-stub.mjs                      serve until stopped
 //   node scripts/dns-stub.mjs <command> [args]     serve while that command runs ("pnpm dev": wrangler dev), together with the
-//                                                  stand-ins for the company sign-in (scripts/idp-stub.mjs, port 8792) and
-//                                                  for the rebate indexer (scripts/indexer-stub.mjs, port 8793)
+//                                                  stand-ins for the rebate indexer (scripts/indexer-stub.mjs, port 8793)
+//                                                  and for the OFAC list file (scripts/list-stub.mjs, port 8794)
 //   node scripts/dns-stub.mjs set <name> <value>   publish a TXT record, as a DNS administrator would ("pnpm dns")
 import { spawn } from 'node:child_process'
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { createServer } from 'node:http'
 import { fileURLToPath } from 'node:url'
-import { start as startIdp } from './idp-stub.mjs'
 import { start as startIndexer } from './indexer-stub.mjs'
 import { start as startLists } from './list-stub.mjs'
 
@@ -48,12 +47,10 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
   } else {
     const stop = start()
     if (command) {
-      const stopIdp = startIdp()
       const stopIndexer = startIndexer()
       const stopLists = startLists() // M10: the OFAC list file, port 8794
       spawn(command, args, { stdio: 'inherit' }).on('exit', (code) => {
         stop()
-        stopIdp()
         stopIndexer()
         stopLists()
         process.exitCode = code ?? 1

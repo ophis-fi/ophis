@@ -18,6 +18,8 @@ import * as demo from '../src/server/demo.ts'
 import deskPage from '../src/app/desk.tsx?raw'
 import demoSource from '../src/server/demo.ts?raw'
 import shellPage from '../src/app/main.tsx?raw'
+import uiSource from '../src/app/ui.tsx?raw'
+import pagesSource from '../src/app/pages.tsx?raw'
 import { softwareAuthenticator } from './authenticator.ts'
 // Milestone 5b: the age library, here only to make what a browser makes (a sealed file) and to open it as the operator would.
 import * as age from 'age-encryption'
@@ -696,7 +698,7 @@ describe('d. request checks', () => {
   it('a state change is a JSON POST: no other method, no other content type', async () => {
     const m = await member()
     expect(routes.filter((route) => route.method !== 'GET').every((route) => route.method === 'POST')).toBe(true)
-    expect(routes.filter((route) => route.method === 'GET').map((route) => route.path).sort()).toEqual(['/api/audit', '/api/company/callback', '/api/desk', '/api/export/:id', '/api/me', '/api/onboarding', '/api/org', '/api/overview', '/api/readiness', '/api/screening'])
+    expect(routes.filter((route) => route.method === 'GET').map((route) => route.path).sort()).toEqual(['/api/audit', '/api/desk', '/api/export/:id', '/api/me', '/api/onboarding', '/api/org', '/api/overview', '/api/readiness', '/api/screening'])
     expect((await call('GET', '/api/signout', { cookie: m.cookie })).status).toBe(404)
     for (const type of ['text/plain', 'application/x-www-form-urlencoded', 'multipart/form-data', null]) {
       expect((await call('POST', '/api/signout', { cookie: m.cookie, headers: { 'content-type': type } })).status).toBe(415)
@@ -1170,13 +1172,11 @@ describe('f. audit log', () => {
       // /api/audit/export writes its audit row and nothing else: section w proves that no file leaves without the row.
       // Milestone 5: /api/apply and /api/onboarding/wallet write nothing; apply/check, onboarding/submit and onboarding/declaration are in section E.
       '/api/apply', '/api/apply/check',
-      '/api/approvals/:id/approve', '/api/approvals/:id/cancel', '/api/approvals/:id/reject', '/api/audit/export',
-      // Company sign-in: company/start and enrol/company write nothing (they set the flow cookie); the callback (a GET) and policy/company are in section G.
-      '/api/company/start', '/api/desk/orders', '/api/enrol/company',
+      '/api/approvals/:id/approve', '/api/approvals/:id/cancel', '/api/approvals/:id/reject', '/api/audit/export', '/api/desk/orders',
       '/api/enrol/finish', '/api/enrol/start', '/api/members/:id/freeze', '/api/members/:id/remove', '/api/members/:id/role', '/api/members/:id/unfreeze',
       '/api/onboarding/declaration', '/api/onboarding/submit', '/api/onboarding/wallet',
       // /api/wallets/intent writes nothing at all (section y); /api/proof is the first write of a link.
-      '/api/passkeys/:id/revoke', '/api/passkeys/finish', '/api/passkeys/start', '/api/policy', '/api/policy/company', '/api/proof',
+      '/api/passkeys/:id/revoke', '/api/passkeys/finish', '/api/passkeys/start', '/api/policy', '/api/proof',
       // The intent routes and continue/start write nothing (section B). The proof opens a request or cancels one; continue/finish completes or lapses one.
       '/api/recover/cancel-intent', '/api/recover/continue/finish', '/api/recover/continue/start', '/api/recover/intent', '/api/recovery/:id/cancel', '/api/recovery/:id/object',
       '/api/sessions/:id/revoke',
@@ -1397,9 +1397,9 @@ describe('k. step-up: a fresh passkey check before a sensitive action', () => {
     const m3 = ['/api/approvals/:id/approve', '/api/approvals/:id/reject', '/api/members/:id/freeze', '/api/members/:id/remove', '/api/members/:id/role', '/api/members/:id/unfreeze']
     const m4 = ['/api/wallets/:id/anchor', '/api/wallets/:id/anchor/cancel', '/api/wallets/:id/unlink', '/api/wallets/intent']
     const m5 = ['/api/onboarding/declaration', '/api/onboarding/submit', '/api/onboarding/wallet']
-    expect(paths('fresh')).toEqual([...m3.slice(0, 2), '/api/audit/export', '/api/company/start', ...m3.slice(2), ...m5, '/api/passkeys/:id/revoke', '/api/passkeys/finish', '/api/passkeys/start', '/api/policy', '/api/policy/company', '/api/recovery/:id/cancel', '/api/recovery/:id/object', '/api/tickets', '/api/tickets/:id/cancel', ...m4])
+    expect(paths('fresh')).toEqual([...m3.slice(0, 2), '/api/audit/export', ...m3.slice(2), ...m5, '/api/passkeys/:id/revoke', '/api/passkeys/finish', '/api/passkeys/start', '/api/policy', '/api/recovery/:id/cancel', '/api/recovery/:id/object', '/api/tickets', '/api/tickets/:id/cancel', ...m4])
     // Confirming carries its own passkey check, made for the ticket.
-    expect(paths('twoKeys')).toEqual([...m3.slice(0, 2), '/api/company/start', ...m3.slice(2), ...m5, '/api/passkeys/:id/revoke', '/api/policy', '/api/policy/company', '/api/tickets', '/api/tickets/:id/cancel', '/api/tickets/:id/confirm', '/api/tickets/:id/confirm/start', ...m4])
+    expect(paths('twoKeys')).toEqual([...m3, ...m5, '/api/passkeys/:id/revoke', '/api/policy', '/api/tickets', '/api/tickets/:id/cancel', '/api/tickets/:id/confirm', '/api/tickets/:id/confirm/start', ...m4])
     expect(routes.filter((route) => (route.fresh || route.twoKeys || route.settled || route.second) && route.roles === 'public')).toEqual([])
   })
 
@@ -1696,10 +1696,10 @@ describe('m. enrolment tickets', () => {
     const trader = await colleague(o, 'trader')
     const list = async (m: Holder) => (await call('GET', '/api/org', { cookie: m.cookie })).body.tickets as Record<string, unknown>[]
     const linked = await issue(admin, { displayName: 'Ada Viewer', role: 'viewer' })
-    const link = { id: linked.body.ticketId, kind: 'invitation', role: 'viewer', seatId: linked.body.seatId, name: 'Ada Viewer', issuerSeatId: admin.seatId, status: 'link', myStep: null, until: START + 24 * HOUR, storedAt: null, company: null }
+    const link = { id: linked.body.ticketId, kind: 'invitation', role: 'viewer', seatId: linked.body.seatId, name: 'Ada Viewer', issuerSeatId: admin.seatId, status: 'link', myStep: null, until: START + 24 * HOUR, storedAt: null }
     now += 1 // the list is ordered by time of issue
     const ticket = await issue(o, { displayName: 'New Compliance', role: 'compliance' })
-    const base = { id: ticket.body.ticketId, kind: 'invitation', role: 'compliance', seatId: ticket.body.seatId, name: 'New Compliance', issuerSeatId: o.seatId, company: null }
+    const base = { id: ticket.body.ticketId, kind: 'invitation', role: 'compliance', seatId: ticket.body.seatId, name: 'New Compliance', issuerSeatId: o.seatId }
     expect(await list(o)).toEqual([link, { ...base, status: 'link', myStep: null, until: now + 10 * MIN, storedAt: null }])
     await enrolLink(ticket.body.link)
     const at = now
@@ -1915,6 +1915,10 @@ describe('n. the confirmation: the colleague who issued the link confirms the ne
     now += 72 * HOUR
     expect((await signIn(other.key)).status).toBe(401)
     expect((await signIn(admin.key)).status).toBe(200)
+  })
+
+  it('the three words were removed (2026-11-13): no page, signing page, server text or help text names them', () => {
+    for (const [file, source] of Object.entries({ pagesSource, uiSource, onboardingPage, signHtml, ...signSource, ...serverSources })) expect(source, file).not.toMatch(/three.word|\bread (you|out)\b|aloud/i)
   })
 })
 
@@ -2403,8 +2407,6 @@ describe('r. the role table', () => {
       'POST /api/members/:id/freeze': change, 'POST /api/members/:id/unfreeze': `${change} second:seat.unfreeze`,
       'POST /api/members/:id/role': `${change} second:seat.role`, 'POST /api/members/:id/remove': `${change} second:seat.remove`,
       'POST /api/policy': 'owner fresh twoKeys settled second:policy.synced_keys',
-      'POST /api/policy/company': 'owner fresh twoKeys settled second:policy.company', 'POST /api/company/start': 'owner fresh twoKeys settled',
-      'POST /api/enrol/company': 'public', 'GET /api/company/callback': 'public',
       'POST /api/approvals/:id/approve': `${key} fresh twoKeys settled`, 'POST /api/approvals/:id/reject': `${key} fresh twoKeys`, 'POST /api/approvals/:id/cancel': 'owner,admin,trader',
       'GET /api/audit': 'owner,compliance,viewer', 'POST /api/audit/export': 'owner,compliance,viewer fresh', 'GET /api/screening': 'owner,compliance,viewer',
       'POST /api/wallets/intent': change, 'POST /api/wallets/:id/unlink': 'owner,admin fresh twoKeys',
@@ -2419,8 +2421,6 @@ describe('r. the role table', () => {
     })
     // The signing host has one route, and it is the only one without the console.
     expect(routes.filter((r) => r.sign).map((r) => r.path)).toEqual(['/api/proof'])
-    // One route takes a cross-site navigation, and it is a GET that no session reaches: the company sign-in's callback.
-    expect(routes.filter((r) => r.callback).map((r) => `${r.method} ${r.path} ${r.roles}`)).toEqual(['GET /api/company/callback public'])
     // A route has its own handler, or it is a change for two people that the router files as a request: never both.
     for (const r of routes) expect(Boolean(r.handler) !== Boolean(r.second), r.path).toBe(true)
   })
@@ -2431,7 +2431,7 @@ describe('r. the role table', () => {
     for (const role of ['admin', 'trader', 'approver', 'compliance', 'viewer']) people[role] = await colleague(o, role)
     // Sign-out last: it ends the session the other calls need.
     const gated = routes.filter((r) => r.roles !== 'public').sort((x, y) => Number(x.path === '/api/signout') - Number(y.path === '/api/signout'))
-    expect(gated.length).toBe(routes.length - 15)
+    expect(gated.length).toBe(routes.length - 13)
     for (const route of gated) {
       for (const [role, m] of Object.entries(people)) {
         const answer = await call(route.method, route.path.replace(':id', '0'.repeat(32)), { cookie: m.cookie })
@@ -2460,14 +2460,12 @@ describe('r. the role table', () => {
     const frozen = await colleague(o, 'trader')
     expect((await act(o, frozen.seatId, 'freeze')).status).toBe(200)
     const wallet = await linked(o, a, { custodian: true })
-    await db.prepare(`UPDATE organisations SET company_signin = 'google', company_tenant = 'northwind.example' WHERE id = ?`).bind(o.orgId).run() // so that "none" is a change
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const calls: Record<string, () => Promise<{ body: any }>> = {
       'seat.unfreeze': () => act(o, frozen.seatId, 'unfreeze'),
       'seat.role': () => act(o, v.seatId, 'role', { role: 'trader' }),
       'seat.remove': () => act(o, v.seatId, 'remove'),
       'policy.synced_keys': () => post('/api/policy', o, { syncedKeys: true }),
-      'policy.company': () => post('/api/policy/company', o),
       'anchor.set': () => post(`/api/wallets/${wallet.id}/anchor`, o),
     }
     expect(Object.keys(calls).sort()).toEqual(routes.flatMap((r) => r.second ?? []).sort())
@@ -4383,7 +4381,7 @@ describe('B. last-Owner recovery by the recovery wallet', () => {
     for (const m of [a, v, admin]) await again(m)
     const people: Record<string, Holder> = { owner: { cookie: done.cookie }, admin, approver: a }
     const settled = routes.filter((route) => route.settled)
-    expect(settled.map((route) => route.path).sort()).toEqual(['/api/approvals/:id/approve', '/api/company/start', '/api/desk/orders', '/api/members/:id/freeze', '/api/members/:id/remove', '/api/members/:id/role', '/api/members/:id/unfreeze', '/api/policy', '/api/policy/company', '/api/wallets/:id/anchor', '/api/wallets/intent'])
+    expect(settled.map((route) => route.path).sort()).toEqual(['/api/approvals/:id/approve', '/api/desk/orders', '/api/members/:id/freeze', '/api/members/:id/remove', '/api/members/:id/role', '/api/members/:id/unfreeze', '/api/policy', '/api/wallets/:id/anchor', '/api/wallets/intent'])
     for (const route of settled) {
       for (const [role, m] of Object.entries(people)) {
         if ((route.roles as string[]).includes(role)) expect((await call('POST', route.path.replace(':id', '0'.repeat(32)), { cookie: m.cookie })).body, `${role} ${route.path}`).toEqual({ error: 'quarantine' })
@@ -5832,7 +5830,6 @@ describe('E. onboarding: a company applies, proves its domain, is activated and 
     'POST /api/passkeys/start', 'POST /api/passkeys/finish', 'POST /api/passkeys/:id/revoke',
     'POST /api/tickets', 'POST /api/tickets/:id/confirm/start', 'POST /api/tickets/:id/confirm', 'POST /api/tickets/:id/cancel',
     'POST /api/support/ask', 'GET /api/onboarding', 'POST /api/onboarding/wallet', 'POST /api/onboarding/submit', 'POST /api/onboarding/declaration',
-    'POST /api/policy/company', 'POST /api/company/start', // the company sign-in is chosen on the Onboarding page
   ]
   it('A5: an unverified organisation reaches the rows marked for it and no other, for every role; a frozen or archived one reaches nothing but its sign-out', async () => {
     expect(routes.filter((r) => r.unverified).map((r) => `${r.method} ${r.path}`).sort()).toEqual([...EARLY].sort())
@@ -6556,7 +6553,7 @@ describe('E. onboarding: a company applies, proves its domain, is activated and 
     expect((await post(`/api/wallets/${wallet.id}/anchor`, b)).body).toEqual({ state: 'applied' })
     for (const path of ['/api/onboarding', `/api/onboarding?organisationId=${b.orgId}`, `/api/onboarding?org=${b.orgId}`]) {
       const view = await call('GET', path, { cookie: a.cookie })
-      expect(view.body).toEqual({ company: { legalName: a.name, kind: 'partner', country: 'LU', registration: null, domain: null, domainVerifiedAt: null }, signin: { setting: 'none', tenant: null }, first: null, seal: { key: KEY, generation: 'g1' }, sealed: null, downloads: [], wallet: null, missing: null, review: { status: 'verified', since: null, reason: null }, record: null, chains: expect.any(Array) })
+      expect(view.body).toEqual({ company: { legalName: a.name, kind: 'partner', country: 'LU', registration: null, domain: null, domainVerifiedAt: null }, first: null, seal: { key: KEY, generation: 'g1' }, sealed: null, downloads: [], wallet: null, missing: null, review: { status: 'verified', since: null, reason: null }, record: null, chains: expect.any(Array) })
     }
     expect((await call('GET', '/api/onboarding', { cookie: b.cookie })).body).toMatchObject({ company: { legalName: b.name }, record: { legalName: 'Birchfield Capital Ltd', tier: 'enhanced' }, wallet: { address: accounts[0].address } })
     expect((await call('GET', `/api/onboarding/${b.orgId}`, { cookie: a.cookie })).status).toBe(404)
@@ -6785,7 +6782,7 @@ describe('E. onboarding: a company applies, proves its domain, is activated and 
     const hash = (await row<{ detail: string }>('SELECT detail FROM audit_log WHERE org_id = ? AND seq = 1', a.orgId))!.detail
     expect(await view()).toMatchObject({
       company: { legalName: 'Alder Custody S.A.', registration: 'B123456', country: 'LU', domain: 'alder-decl.example' },
-      first: { name: 'Maren Okafor', credentialHash: hash }, wallet: null, signin: { setting: null },
+      first: { name: 'Maren Okafor', credentialHash: hash }, wallet: null,
     })
     // The name is the first Owner's seat's, whoever asks: a second Owner sees the same.
     await db.prepare(`UPDATE seats SET display_name = 'Maren O. Okafor' WHERE org_id = ? AND id = ?`).bind(a.orgId, a.seatId).run()
@@ -6794,7 +6791,7 @@ describe('E. onboarding: a company applies, proves its domain, is activated and 
     expect((await view()).wallet).toMatchObject({ address: accounts[0].address, chain: 'OP Mainnet' })
     // The sheet: every line of the brief, as text. No field, no editable element, and the sentence about binding the company.
     const sheet = onboardingPage.slice(onboardingPage.indexOf('function Declaration('), onboardingPage.indexOf('// end of the declaration sheet'))
-    for (const line of ['Legal name', 'Registration number or LEI', 'Country', 'Email domain', 'First Owner', 'passkey (hash)', 'Recovery wallet', 'Chain', 'Company sign-in', 'Name of the signatory', 'Role', 'Date', 'Signature', 'may bind the company', 'Ophis is a software provider. It is not a crypto-asset service provider.']) expect(sheet, line).toContain(line)
+    for (const line of ['Legal name', 'Registration number or LEI', 'Country', 'Email domain', 'First Owner', 'passkey (hash)', 'Recovery wallet', 'Chain', 'Name of the signatory', 'Role', 'Date', 'Signature', 'may bind the company', 'Ophis is a software provider. It is not a crypto-asset service provider.']) expect(sheet, line).toContain(line)
     expect(sheet.length).toBeGreaterThan(500)
     expect(sheet).not.toMatch(/<input|<textarea|<select|contentEditable|useState|onChange/)
     expect(sheet).toMatch(/wallet \? wallet\.address : 'none'/)
@@ -7980,829 +7977,6 @@ describe('E. onboarding: a company applies, proves its domain, is activated and 
       expect(Object.values(onboarding.LISTS)).toEqual([EU, 'UN Security Council consolidated list', 'OFAC SDN list'])
     })
   })
-})
-
-// ---- company sign-in (owner decision of 2026-11-11): OpenID Connect at Microsoft or Google proves who a new passkey belongs to ----
-import { CONSUMER_TENANT, IDPS, OIDC, REAL_ENDPOINTS, type Provider } from '../src/server/oidc.ts'
-import idpStub from '../scripts/idp-stub.mjs?raw'
-import uiSource from '../src/app/ui.tsx?raw'
-import pagesSource from '../src/app/pages.tsx?raw'
-
-describe('G. company sign-in: a company account proves who a new passkey belongs to', () => {
-  const IDP = IDPS.local
-  const STUB = 'http://127.0.0.1:8792/'
-  const text = new TextEncoder()
-  const SECRETS = { MICROSOFT_CLIENT_SECRET: `ms-${crypto.randomUUID()}`, GOOGLE_CLIENT_SECRET: `g-${crypto.randomUUID()}` }
-  const digest = async (value: string) => toBase64Url(new Uint8Array(await crypto.subtle.digest('SHA-256', text.encode(value))))
-  // The provider: a key set, and a token endpoint that does what a real one does: its own code, once, with the PKCE verifier.
-  let keys: CryptoKeyPair
-  let stranger: CryptoKeyPair
-  let jwk: Record<string, unknown>
-  const idp = { codes: new Map<string, { challenge: string; token: string }>(), tokens: [] as { url: string; form: URLSearchParams; init?: RequestInit }[], asked: [] as string[], twist: (_url: string, answer: unknown, _init?: RequestInit): unknown => answer }
-  async function fakeIdp(input: RequestInfo | URL, init?: RequestInit): Promise<Response> {
-    const url = String(input)
-    if (!url.startsWith(STUB)) return fakeRpc(input, init)
-    idp.asked.push(url)
-    let answer: unknown = { keys: [jwk] }
-    if (url.endsWith('/token')) {
-      const form = new URLSearchParams(String(init?.body))
-      idp.tokens.push({ url, form, init })
-      const held = idp.codes.get(form.get('code') ?? '')
-      idp.codes.delete(form.get('code') ?? '')
-      answer = held && held.challenge === (await digest(form.get('code_verifier') ?? '')) && form.get('client_secret') ? { token_type: 'Bearer', access_token: 'x', id_token: held.token } : Response.json({ error: 'invalid_grant' }, { status: 400 })
-    }
-    const twisted = await idp.twist(url, answer, init)
-    return twisted instanceof Response ? twisted : Response.json(twisted)
-  }
-  beforeAll(async () => {
-    const make = () => crypto.subtle.generateKey({ name: 'RSASSA-PKCS1-v1_5', modulusLength: 2048, publicExponent: new Uint8Array([1, 0, 1]), hash: 'SHA-256' }, true, ['sign', 'verify']) as Promise<CryptoKeyPair>
-    ;[keys, stranger] = [await make(), await make()]
-    jwk = { ...((await crypto.subtle.exportKey('jwk', keys.publicKey)) as object), kid: 'k1', use: 'sig' }
-    Object.assign(testEnv, SECRETS)
-  })
-  beforeEach(() => {
-    vi.stubGlobal('fetch', fakeIdp)
-    idp.codes.clear()
-    idp.tokens = []
-    idp.asked = []
-    idp.twist = (_url, answer) => answer
-    OIDC.timeoutMs = 5000
-  })
-  const b64 = (value: object) => toBase64Url(text.encode(JSON.stringify(value)))
-  interface Forge { key?: CryptoKey; header?: object; cut?: boolean }
-  async function jwt(claims: object, forge: Forge = {}) {
-    const head = `${b64({ alg: 'RS256', typ: 'JWT', kid: 'k1', ...forge.header })}.${b64(claims)}`
-    return `${head}.${forge.cut ? '' : toBase64Url(new Uint8Array(await crypto.subtle.sign('RSASSA-PKCS1-v1_5', forge.key ?? keys.privateKey, text.encode(head))))}`
-  }
-  const TID = (domain: string) => `0a0a0a0a-0000-4000-8000-${String([...domain].reduce((h, c) => (h * 31 + c.charCodeAt(0)) % 1e12, 7)).padStart(12, '0')}`
-  const SUB = (email: string) => `sub-${email.toLowerCase()}`
-
-  // The browser: a POST that starts the sign-in (and sets the flow cookie), then the navigation back from the provider.
-  async function begin(path: string, body: unknown, cookie?: string) {
-    const r = await call('POST', path, { body, cookie })
-    return { ...r, flow: cookieOf(r), url: new URL(r.body.url ?? 'http://none/'), q: (name: string) => new URL(r.body.url ?? 'http://none/').searchParams.get(name) ?? '' }
-  }
-  type Begun = Awaited<ReturnType<typeof begin>>
-  async function navigate(path: string, cookie: string, headers: Record<string, string | null> = {}, method = 'GET', origin = SITE.origin, env: Env = testEnv) {
-    const h = new Headers({ 'sec-fetch-site': 'cross-site', 'sec-fetch-mode': 'navigate', 'sec-fetch-dest': 'document' })
-    if (cookie) h.set('cookie', cookie)
-    for (const [name, value] of Object.entries(headers)) value === null ? h.delete(name) : h.set(name, value)
-    const response = await handle(new Request(origin + path, { method, headers: h, redirect: 'manual' }), env, () => now)
-    const location = response.headers.get('location')
-    const set = response.headers.getSetCookie()
-    // cleared: what became of the flow cookie. pass: the cookie that ties the link to this browser once the provider confirmed (R1), as a Cookie header.
-    return { status: response.status, location, cleared: set.find((c) => c.startsWith('__Host-company=')) ?? null, pass: set.find((c) => c.startsWith('__Host-enrol='))?.split(';')[0] ?? '', passSet: set.find((c) => c.startsWith('__Host-enrol=')) ?? null, outcome: /^\/\?company=([a-z_]+)#/.exec(location ?? '')?.[1] ?? null, headers: response.headers }
-  }
-  const claimsFor = (provider: Provider, s: Begun, email: string, more: object = {}) => {
-    const domain = email.split('@')[1].toLowerCase()
-    const base = { aud: IDP[provider].clientId, sub: SUB(email), email, nonce: s.q('nonce'), iat: Math.floor(now / 1000), exp: Math.floor(now / 1000) + 600 }
-    return provider === 'google' ? { ...base, iss: IDP.google.issuer, email_verified: true, hd: domain, ...more } : { ...base, iss: IDP.microsoft.issuer.replace('{tenantid}', TID(domain)), tid: TID(domain), xms_edov: true, acct: 0, ...more }
-  }
-  let codes = 0
-  // The member signs in at the provider (which holds a code for this token) and the browser comes back with the code and the state.
-  async function back(s: Begun, claims: object | string, forge: Forge & { state?: string | null; code?: string | null; cookie?: string; more?: Record<string, string>; env?: Env } = {}) {
-    const code = `code-${++codes}`
-    idp.codes.set(code, { challenge: s.q('code_challenge'), token: typeof claims === 'string' ? claims : await jwt(claims, forge) })
-    const query = new URLSearchParams({ ...(forge.code !== null && { code: forge.code ?? code }), ...(forge.state !== null && { state: forge.state ?? s.q('state') }), ...forge.more })
-    return navigate(`/api/company/callback?${query}`, forge.cookie ?? s.flow, {}, 'GET', SITE.origin, forge.env)
-  }
-
-  let domains = 0
-  // An Owner with two keys, in an active organisation with a proven domain and this company sign-in (as "seed --company" makes it).
-  async function company(provider: Provider | 'none' | null = 'microsoft') {
-    const o = await owner()
-    const domain = `co${++domains}.example`
-    await db.prepare('UPDATE organisations SET email_domain = ?, domain_verified_at = ?, company_signin = ?, company_tenant = ? WHERE id = ?')
-      .bind(domain, now, provider, provider === 'microsoft' ? TID(domain) : provider === 'google' ? domain : null, o.orgId).run()
-    return { ...o, domain, provider: provider as Provider }
-  }
-  type Org = Awaited<ReturnType<typeof company>>
-  // Colleagues made by the helpers of the earlier sections join without a company sign-in: make them first, then set the company sign-in.
-  async function pin<T extends Org>(o: T, provider: Provider) {
-    await db.prepare('UPDATE organisations SET company_signin = ?, company_tenant = ? WHERE id = ?').bind(provider, provider === 'google' ? o.domain : TID(o.domain), o.orgId).run()
-    o.provider = provider
-    return o
-  }
-  // What the provider says of a member of this organisation whatever the address: the pinned tenant.
-  const pinned = (o: Org) => (o.provider === 'google' ? { hd: o.domain } : { tid: TID(o.domain), iss: IDP.microsoft.issuer.replace('{tenantid}', TID(o.domain)) })
-  const inviteTo = (m: Holder, body: Record<string, unknown>) => post('/api/tickets', m, body)
-  const ticketOfLink = (link: string) => link.split('#/enrol/')[1]
-  // The member's side: opens the link, signs in with the company account, creates the passkey.
-  async function join(o: Org, link: string, email: string, more: object = {}) {
-    const ticket = ticketOfLink(link)
-    const s = await begin('/api/enrol/company', { ticket })
-    const came = await back(s, claimsFor(o.provider, s, email, { ...pinned(o), ...more }))
-    const key = await softwareAuthenticator(SITE)
-    return { came, key, ticket, stored: came.outcome === 'ok' ? await enrol(ticket, key, {}, came.pass) : null, cookie: '' }
-  }
-  // Invited, signed in at the provider, passkey stored, approved by the inviter: a member whose seat is linked.
-  async function joined(o: Org & { key: Key }, role = 'viewer', name = 'vera') {
-    const email = `${name}@${o.domain}`
-    const asked = await inviteTo(o, { displayName: 'Vera Viewer', role, email })
-    const j = await join(o, asked.body.link, email)
-    expect([asked.status, j.came.outcome, j.stored?.status]).toEqual([200, 'ok', 200])
-    const approved = await confirm(o, asked.body.ticketId, o.key)
-    return { ...j, email, seatId: asked.body.seatId as string, ticketId: asked.body.ticketId as string, approved }
-  }
-  const seatRow = (seatId: string) => row<{ idp: string | null; idp_tenant: string | null; idp_subject: string | null; email: string | null; state: string }>('SELECT idp, idp_tenant, idp_subject, email, state FROM seats WHERE id = ?', seatId)
-  const orgSetting = (orgId: string) => row<{ company_signin: string | null; company_tenant: string | null }>('SELECT company_signin, company_tenant FROM organisations WHERE id = ?', orgId)
-
-  // ---- C5: the protocol ----
-
-  it('C5: state, nonce and PKCE: made per sign-in, kept in a host-bound cookie for 10 minutes, the verifier never sent to the browser\'s address bar', async () => {
-    const o = await company('microsoft')
-    const asked = await inviteTo(o, { displayName: 'Vera Viewer', role: 'viewer', email: `Vera@${o.domain}` })
-    const ticket = ticketOfLink(asked.body.link)
-    const s = await begin('/api/enrol/company', { ticket })
-    expect(s.status).toBe(200)
-    // The provider's address, with exactly these values.
-    expect(`${s.url.origin}${s.url.pathname}`).toBe(IDP.microsoft.authorize)
-    expect(Object.fromEntries(s.url.searchParams)).toEqual({
-      client_id: IDP.microsoft.clientId, response_type: 'code', scope: 'openid email', redirect_uri: 'http://localhost:8787/api/company/callback', prompt: 'select_account',
-      state: expect.stringMatching(/^[A-Za-z0-9_-]{22}$/), nonce: expect.stringMatching(/^[A-Za-z0-9_-]{22}$/), code_challenge: expect.stringMatching(/^[A-Za-z0-9_-]{43}$/), code_challenge_method: 'S256',
-      login_hint: `vera@${o.domain}`, hd: o.domain,
-    })
-    // The cookie: __Host-, Secure, HttpOnly, Path=/, no Domain, Lax (the provider sends the browser back cross-site), 10 minutes.
-    const set = s.headers.get('set-cookie')!
-    expect(set).toMatch(/^__Host-company=[A-Za-z0-9_-]+\.[A-Za-z0-9_-]{43}; Path=\/; Secure; HttpOnly; SameSite=Lax; Max-Age=600$/)
-    const flow = JSON.parse(new TextDecoder().decode(fromBase64Url(s.flow.split('=')[1].split('.')[0]))) as Record<string, string>
-    expect(flow).toMatchObject({ provider: 'microsoft', state: s.q('state'), nonce: s.q('nonce'), ticket, to: `#/enrol/${ticket}`, expiresAt: now + 10 * MIN })
-    expect(await digest(flow.verifier)).toBe(s.q('code_challenge')) // S256
-    expect(s.body.url).not.toContain(flow.verifier)
-    expect(JSON.stringify(s.body)).not.toContain(flow.verifier)
-    const next = await begin('/api/enrol/company', { ticket })
-    for (const name of ['state', 'nonce', 'code_challenge']) expect(next.q(name)).not.toBe(s.q(name))
-    expect(idp.asked).toHaveLength(0) // nothing was asked of the provider yet, and nothing written
-    // State: the one of this browser's cookie, or nothing happens: no token is asked for.
-    const rows = await snapshot()
-    const claims = claimsFor('microsoft', s, `vera@${o.domain}`)
-    for (const [why, forge] of [['another state', { state: next.q('state') }], ['no state', { state: null }], ['an empty state', { state: '' }], ['the cookie of another sign-in', { cookie: next.flow }]] as const) {
-      const came = await back(s, claims, forge)
-      expect([came.status, came.outcome, came.location], why).toEqual([303, 'state', `/?company=state#/enrol/${ticket}`])
-      expect(came.cleared).toBe('__Host-company=; Path=/; Secure; HttpOnly; SameSite=Lax; Max-Age=0') // used up, whatever happened
-    }
-    // The cookie is the server's own text, for this purpose, 10 minutes: none, a changed one, another label, another key, too old.
-    const fields = { ...flow, nonce: 'x' }
-    const forged = ['', `__Host-company=${b64(fields)}.${s.flow.split('.')[1]}`, `__Host-company=${await seal(testEnv.CHALLENGE_KEY, 'apply-intent', flow)}`, `__Host-company=${await seal(`${testEnv.CHALLENGE_KEY}x`, 'company-flow', flow)}`, `__Host-session=${s.flow.split('=')[1]}`]
-    for (const cookie of forged) expect((await back(s, claims, { cookie })).location, cookie.slice(0, 30)).toBe('/?company=expired#/')
-    now += 10 * MIN
-    expect((await back(s, claims)).outcome).toBe('expired')
-    expect([idp.tokens.length, await snapshot()]).toEqual([0, rows])
-    now -= 1
-    // In time: one request to the token endpoint, a form POST with the code, the client, its secret, the redirect and the PKCE verifier; then the key set.
-    const came = await back(s, claims)
-    expect([came.status, came.location, came.cleared]).toEqual([303, `/?company=ok#/enrol/${ticket}`, '__Host-company=; Path=/; Secure; HttpOnly; SameSite=Lax; Max-Age=0'])
-    expect(idp.asked).toEqual([IDP.microsoft.token, IDP.microsoft.keys])
-    const sent = idp.tokens[0]
-    expect(Object.fromEntries(sent.form)).toEqual({ grant_type: 'authorization_code', code: `code-${codes}`, redirect_uri: 'http://localhost:8787/api/company/callback', client_id: IDP.microsoft.clientId, client_secret: SECRETS.MICROSOFT_CLIENT_SECRET, code_verifier: flow.verifier })
-    expect([sent.init?.method, new Headers(sent.init?.headers).get('content-type'), sent.init?.redirect]).toEqual(['POST', 'application/x-www-form-urlencoded', 'manual'])
-    expect(sent.init?.signal).toBeInstanceOf(AbortSignal)
-    expect(came.headers.get('cache-control')).toBe('no-store')
-    // Used once: the provider's code is spent, so the same answer again confirms nothing (and the browser has dropped the cookie).
-    const replay = await back(s, claims, { code: `code-${codes}` })
-    expect([replay.outcome, replay.pass, idp.tokens.length]).toEqual(['rejected', '', 2])
-  })
-
-  it('C5: the ID token is verified in full: signature, issuer, audience, expiry, nonce, subject, a verified email, the hosted domain or the tenant; the consumer tenant is refused', async () => {
-    for (const provider of ['microsoft', 'google'] as const) {
-      const o = await company(provider)
-      const email = `vera@${o.domain}`
-      const asked = await inviteTo(o, { displayName: 'Vera Viewer', role: 'viewer', email })
-      const ticket = ticketOfLink(asked.body.link)
-      const rows = await snapshot()
-      const fresh = () => begin('/api/enrol/company', { ticket })
-      const rejected = async (why: string, make: (s: Begun) => object | string | Promise<object | string>, forge: Forge = {}, twist?: typeof idp.twist) => {
-        const s = await fresh()
-        if (twist) idp.twist = twist
-        const came = await back(s, await make(s), forge)
-        idp.twist = (_url, answer) => answer
-        expect([came.outcome, came.location], `${provider}: ${why}`).toEqual(['rejected', `/?company=rejected#/enrol/${ticket}`])
-        expect(await snapshot(), `${provider}: ${why}`).toBe(rows)
-      }
-      const good = (s: Begun, more: object = {}) => claimsFor(provider, s, email, more)
-      // Signature.
-      await rejected('signed by another key', (s) => good(s), { key: stranger.privateKey })
-      await rejected('no signature', (s) => good(s), { cut: true })
-      await rejected('alg none', (s) => good(s), { header: { alg: 'none' }, cut: true })
-      await rejected('alg HS256', (s) => good(s), { header: { alg: 'HS256' } })
-      await rejected('a key the set does not hold', (s) => good(s), { header: { kid: 'k2' } })
-      await rejected('no key id', (s) => good(s), { header: { kid: undefined } })
-      await rejected('claims changed after signing', async (s) => {
-        const [head, , signature] = (await jwt(good(s))).split('.')
-        return `${head}.${b64(good(s, { email: `evil@${o.domain}` }))}.${signature}`
-      })
-      await rejected('four parts', async (s) => `${await jwt(good(s))}.x`)
-      await rejected('not a token', () => 'x')
-      // The key set: an error, not JSON, a key for encryption, a redirect, a timeout.
-      await rejected('the key set fails', (s) => good(s), {}, (url, answer) => (url.endsWith('/keys') ? Response.json(answer, { status: 500 }) : answer))
-      await rejected('the key set is not JSON', (s) => good(s), {}, (url, answer) => (url.endsWith('/keys') ? new Response('<html>') : answer))
-      await rejected('the key is not for signatures', (s) => good(s), {}, (url, answer) => (url.endsWith('/keys') ? { keys: [{ ...jwk, use: 'enc' }] } : answer))
-      await rejected('the key set redirects', (s) => good(s), {}, (url, answer) => (url.endsWith('/keys') ? new Response(null, { status: 302, headers: { location: 'https://evil.example/keys' } }) : answer))
-      await rejected('the key set is oversized', (s) => good(s), {}, (url, answer) => (url.endsWith('/keys') ? { ...(answer as object), pad: 'x'.repeat(OIDC.maxBytes) } : answer))
-      OIDC.timeoutMs = 30
-      await rejected('the key set never answers', (s) => good(s), {}, (url, answer, init) => (url.endsWith('/keys') ? new Promise((_resolve, reject) => init?.signal?.addEventListener('abort', () => reject(new Error('aborted')))) : answer))
-      OIDC.timeoutMs = 5000
-      // The token endpoint: an error, no ID token.
-      await rejected('the token endpoint refuses', (s) => good(s), {}, (url, answer) => (url.endsWith('/token') ? Response.json({ error: 'invalid_grant' }, { status: 400 }) : answer))
-      await rejected('no ID token in the answer', (s) => good(s), {}, (url, answer) => (url.endsWith('/token') ? { access_token: 'x' } : answer))
-      // Issuer, audience, expiry, nonce, subject.
-      await rejected('another issuer', (s) => good(s, { iss: 'https://evil.example' }))
-      await rejected('the other provider\'s issuer', (s) => good(s, { iss: provider === 'google' ? IDP.microsoft.issuer.replace('{tenantid}', TID(o.domain)) : IDP.google.issuer }))
-      await rejected('no issuer', (s) => good(s, { iss: undefined }))
-      await rejected('another audience', (s) => good(s, { aud: 'another-client' }))
-      await rejected('two audiences', (s) => good(s, { aud: [IDP[provider].clientId, 'another-client'] }))
-      await rejected('no audience', (s) => good(s, { aud: undefined }))
-      await rejected('expired this second', (s) => good(s, { exp: Math.floor(now / 1000) }))
-      await rejected('expired an hour ago', (s) => good(s, { exp: Math.floor(now / 1000) - 3600 }))
-      await rejected('no expiry', (s) => good(s, { exp: undefined }))
-      await rejected('an expiry that is no number', (s) => good(s, { exp: String(Math.floor(now / 1000) + 600) }))
-      await rejected('another nonce', (s) => good(s, { nonce: `${s.q('nonce')}x` }))
-      await rejected('the nonce of another sign-in', async () => good(await fresh()))
-      await rejected('no nonce', (s) => good(s, { nonce: undefined }))
-      await rejected('no subject', (s) => good(s, { sub: undefined }))
-      await rejected('an empty subject', (s) => good(s, { sub: '' }))
-      await rejected('no email', (s) => good(s, { email: undefined }))
-      if (provider === 'google') {
-        // Google: email_verified must be the boolean true, and the hosted domain (hd) must be there: a personal account has none.
-        for (const email_verified of [false, 'true', 1, undefined]) await rejected(`email_verified ${email_verified}`, (s) => good(s, { email_verified }))
-        await rejected('no hosted domain', (s) => good(s, { hd: undefined }))
-        await rejected('an empty hosted domain', (s) => good(s, { hd: '' }))
-      } else {
-        // Microsoft: the plain email claim is not enough: xms_edov (domain owner verified) must be the boolean true.
-        for (const xms_edov of [false, 'true', 1, undefined]) await rejected(`xms_edov ${xms_edov}`, (s) => good(s, { xms_edov }))
-        // B0: a guest of the tenant is no member of the company: acct (0 member, 1 guest) must be there and say member.
-        for (const acct of [1, '1', 2, true, undefined]) await rejected(`acct ${acct}`, (s) => good(s, { acct }))
-        // Work or school tenants only: the consumer tenant, no tenant, a tenant that is no id, an issuer of another tenant than the token's own.
-        await rejected('the consumer tenant', (s) => good(s, { tid: CONSUMER_TENANT, iss: IDP.microsoft.issuer.replace('{tenantid}', CONSUMER_TENANT) }))
-        await rejected('no tenant', (s) => good(s, { tid: undefined }))
-        await rejected('a tenant that is no id', (s) => good(s, { tid: 'organizations', iss: IDP.microsoft.issuer.replace('{tenantid}', 'organizations') }))
-        await rejected('the issuer of another tenant', (s) => good(s, { iss: IDP.microsoft.issuer.replace('{tenantid}', TID('other.example')) }))
-        await rejected('the issuer with no tenant', (s) => good(s, { iss: IDP.microsoft.issuer }))
-      }
-      // A token that is valid, of another tenant than the pinned one: refused by its tenant. Then the invited address, compared without case.
-      const elsewhere = await fresh()
-      expect((await back(elsewhere, claimsFor(provider, elsewhere, 'vera@other.example', { email }))).outcome, provider).toBe('tenant')
-      const wrong = await fresh()
-      expect((await back(wrong, claimsFor(provider, wrong, `mallory@${o.domain}`))).outcome, provider).toBe('email')
-      expect(await snapshot()).toBe(rows)
-      const right = await fresh()
-      expect((await back(right, claimsFor(provider, right, `Vera@${o.domain.toUpperCase()}`, { hd: o.domain, tid: TID(o.domain), iss: provider === 'google' ? IDP.google.issuer : IDP.microsoft.issuer.replace('{tenantid}', TID(o.domain)) }))).outcome, provider).toBe('ok')
-      expect(await row('SELECT idp, idp_tenant, idp_subject, idp_at, email FROM enrolment_tickets WHERE id = ?', asked.body.ticketId))
-        .toEqual({ idp: provider, idp_tenant: provider === 'google' ? o.domain : TID(o.domain), idp_subject: SUB(`Vera@${o.domain.toUpperCase()}`), idp_at: now, email })
-      expect(await lastAudit(o.orgId)).toEqual({ action: 'ticket.company', actor_id: asked.body.seatId, subject_id: asked.body.ticketId, detail: provider })
-    }
-    // The constants: the local environment points at the stand-in and nowhere else; the real endpoints are those of the two providers.
-    expect(Object.keys(IDPS)).toEqual(['local'])
-    for (const p of ['microsoft', 'google'] as const) for (const address of [IDP[p].authorize, IDP[p].token, IDP[p].keys, IDP[p].issuer]) expect(address.startsWith(`${STUB}${p}`), address).toBe(true)
-    expect(REAL_ENDPOINTS.microsoft).toEqual({
-      authorize: 'https://login.microsoftonline.com/organizations/oauth2/v2.0/authorize', token: 'https://login.microsoftonline.com/organizations/oauth2/v2.0/token',
-      keys: 'https://login.microsoftonline.com/organizations/discovery/v2.0/keys', issuer: 'https://login.microsoftonline.com/{tenantid}/v2.0',
-    })
-    expect(REAL_ENDPOINTS.google).toEqual({ authorize: 'https://accounts.google.com/o/oauth2/v2/auth', token: 'https://oauth2.googleapis.com/token', keys: 'https://www.googleapis.com/oauth2/v3/certs', issuer: 'https://accounts.google.com' })
-    expect(CONSUMER_TENANT).toBe('9188040d-6c67-4c5b-b112-36a304b66dad')
-  }, 60_000)
-
-  it('C5: the callback route has gates of its own: a top-level navigation and nothing else, on the console host; it reads the code and the state and no other field, and needs no session', async () => {
-    const o = await company('google')
-    const email = `vera@${o.domain}`
-    const asked = await inviteTo(o, { displayName: 'Vera Viewer', role: 'viewer', email })
-    const ticket = ticketOfLink(asked.body.link)
-    const s = await begin('/api/enrol/company', { ticket })
-    const code = 'gate-code'
-    idp.codes.set(code, { challenge: s.q('code_challenge'), token: await jwt(claimsFor('google', s, email)) })
-    const path = `/api/company/callback?${new URLSearchParams({ code, state: s.q('state') })}`
-    const rows = await snapshot()
-    // Not a navigation to a document: what a page can make with fetch, an image, a frame or a script. Sec-Fetch-Site is not what lets it in.
-    const not: Record<string, string | null>[] = [
-      { 'sec-fetch-mode': null }, { 'sec-fetch-dest': null }, { 'sec-fetch-mode': null, 'sec-fetch-dest': null }, { 'sec-fetch-mode': 'cors', 'sec-fetch-dest': 'empty' }, { 'sec-fetch-mode': 'no-cors', 'sec-fetch-dest': 'image' },
-      { 'sec-fetch-dest': 'iframe' }, { 'sec-fetch-dest': 'empty' }, { 'sec-fetch-mode': 'same-origin' }, { 'sec-fetch-mode': 'no-cors', 'sec-fetch-dest': 'script' },
-      { 'sec-fetch-site': 'same-origin', 'sec-fetch-mode': 'cors', 'sec-fetch-dest': 'empty' },
-    ]
-    for (const headers of not) {
-      const refused = await navigate(path, s.flow, headers)
-      expect([refused.status, refused.location, refused.cleared], JSON.stringify(headers)).toEqual([403, null, null])
-    }
-    // Another method, the signing host, the operator's host: not this route, so the rule of every other route holds (same-origin, then not found).
-    for (const [method, origin] of [['POST', SITE.origin], ['GET', SIGN], ['GET', onboarding.OPERATOR.local]]) {
-      expect((await navigate(path, s.flow, {}, method, origin)).status, `${method} ${origin}`).toBe(403)
-      expect((await navigate(path, s.flow, { 'sec-fetch-site': 'same-origin', origin }, method, origin)).status, `${method} ${origin}`).toBe(404)
-    }
-    expect([idp.asked.length, await snapshot()]).toEqual([0, rows])
-    // No code: nothing is asked (the member went back, or the provider said no). Fields that are not the code or the state are not read.
-    expect((await navigate(`/api/company/callback?${new URLSearchParams({ state: s.q('state'), error: 'access_denied' })}`, s.flow)).outcome).toBe('cancelled')
-    expect((await navigate(`/api/company/callback?${new URLSearchParams({ state: s.q('state'), code: 'x'.repeat(2049) })}`, s.flow)).outcome).toBe('cancelled')
-    expect(idp.asked).toHaveLength(0)
-    const other = await company('google')
-    const more = { id_token: await jwt(claimsFor('google', s, `mallory@${o.domain}`)), ticket: 'x', to: 'https://evil.example', provider: 'microsoft', org: other.orgId, email: `mallory@${o.domain}`, nonce: 'x', error: 'access_denied' }
-    // Any Sec-Fetch-Site, and a session of another organisation in the cookie jar: the same outcome, for the link of the flow.
-    const came = await navigate(`${path}&${new URLSearchParams(more)}`, `${other.cookie}; ${s.flow}`, { 'sec-fetch-site': 'same-site' })
-    expect([came.status, came.location]).toEqual([303, `/?company=ok#/enrol/${ticket}`])
-    expect(await row('SELECT idp_subject FROM enrolment_tickets WHERE id = ?', asked.body.ticketId)).toEqual({ idp_subject: SUB(email) })
-    expect(await count('audit_log', other.orgId)).toBe((await data.verifyAudit(db, other.orgId) as { rows: number }).rows)
-    // The provider's secrets are Worker secrets: without one, nothing starts and nothing comes back.
-    const bare = { ...testEnv, GOOGLE_CLIENT_SECRET: undefined } as unknown as Env
-    const second = await inviteTo(o, { displayName: 'Vic Viewer', role: 'viewer', email: `vic@${o.domain}` })
-    const refused = await call('POST', '/api/enrol/company', { body: { ticket: ticketOfLink(second.body.link) }, env: bare })
-    expect([refused.status, refused.body, refused.headers.get('set-cookie')]).toEqual([503, { error: 'company_signin_unavailable' }, null])
-    expect((await call('POST', '/api/enrol/company', { body: { ticket: ticketOfLink(second.body.link) }, env: { ...testEnv, ENVIRONMENT: 'production' } as unknown as Env })).status).toBe(500) // no such environment
-  })
-
-  // ---- C2, C4: the path of a link ----
-
-  it('C2, C4: the path is the organisation\'s choice, not the invitee\'s: no passkey is stored on a link that still lacks the company sign-in, and a link of the setting "none" takes no company sign-in', async () => {
-    const o = await company('microsoft')
-    // The inviter names a work address at the proven domain or a subdomain of it.
-    for (const email of [undefined, '', 7, 'vera', 'vera@other.example', `vera@evil${o.domain}`, `vera@${o.domain}.evil.example`, `vera@${o.domain}@gmail.com`]) {
-      const refused = await inviteTo(o, { displayName: 'Vera Viewer', role: 'viewer', email })
-      expect([refused.status, refused.body], String(email)).toEqual([400, { error: 'email_required' }])
-    }
-    expect(await count('enrolment_tickets', o.orgId)).toBe(1)
-    const asked = await inviteTo(o, { displayName: 'Ada Admin', role: 'admin', email: `Ada@Mail.${o.domain}` })
-    // The link lives 24 hours for every role on this path.
-    expect(asked.body).toMatchObject({ kind: 'invitation', role: 'admin', company: 'microsoft', expiresAt: now + 24 * HOUR })
-    expect(await row('SELECT idp, idp_tenant, email, idp_at FROM enrolment_tickets WHERE id = ?', asked.body.ticketId)).toEqual({ idp: 'microsoft', idp_tenant: TID(o.domain), email: `ada@mail.${o.domain}`, idp_at: null })
-    const ticket = ticketOfLink(asked.body.link)
-    const start = await call('POST', '/api/enrol/start', { body: { ticket } })
-    expect(start.body).toMatchObject({ company: { provider: 'microsoft', email: `ada@mail.${o.domain}`, confirmed: false } })
-    expect(start.body.options).toBeUndefined() // nothing to make a passkey with yet
-    // No field of a request chooses the path: a passkey made for this very link (a challenge of ours) is not stored before the sign-in.
-    const key = await softwareAuthenticator(SITE)
-    const options = (await call('POST', '/api/recover/intent', { body: { organisationId: o.orgId } })).body.options
-    const ours = { ...options, challenge: await newChallenge(testEnv.CHALLENGE_KEY, 'enrol', asked.body.ticketId, now) }
-    const response = await key.register(ours)
-    const rows = await snapshot()
-    for (const more of [{}, { company: null }, { idp: null, path: 'none', confirmed: true }]) {
-      const refused = await call('POST', '/api/enrol/finish', { body: { ticket, label: 'Key', response, ...more } })
-      expect([refused.status, refused.body], JSON.stringify(more)).toEqual([403, { error: 'company_signin_required' }])
-    }
-    expect(await snapshot()).toBe(rows)
-    // The same inside the commit: a link confirmed at the same instant is the only way past the handler.
-    const seen = (await data.ticketByToken(db, await data.sha256Hex(ticket), now))!
-    expect(await data.storePendingCredential(db, seen, { id: key.id, publicKey: 'x', counter: 0, deviceBound: true, transports: [] }, 'Key', now)).toBe(false)
-    expect(await snapshot()).toBe(rows)
-    // After the sign-in: the options and the passkey.
-    const j = await join(o, asked.body.link, `ada@mail.${o.domain}`)
-    expect([j.came.outcome, j.stored?.status, j.stored?.body]).toEqual(['ok', 200, { state: 'pending' }])
-    expect((await call('POST', '/api/enrol/company', { body: { ticket } })).status).toBe(404) // the link is used
-    // A link of the setting "none", or not chosen: no company sign-in, whoever asks; the issuer confirms.
-    for (const setting of ['none', null] as const) {
-      const plain = await company(setting)
-      const link = await inviteTo(plain, { displayName: 'Vera Viewer', role: 'viewer', email: `vera@${plain.domain}` })
-      expect(link.body).toMatchObject({ company: null, expiresAt: now + 24 * HOUR })
-      expect(await row('SELECT idp, idp_tenant, email FROM enrolment_tickets WHERE id = ?', link.body.ticketId)).toEqual({ idp: null, idp_tenant: null, email: null })
-      const refused = await call('POST', '/api/enrol/company', { body: { ticket: ticketOfLink(link.body.link), provider: 'microsoft' } })
-      expect([refused.status, refused.body, refused.headers.get('set-cookie')], String(setting)).toEqual([409, { error: 'not_company' }, null])
-      const member = await enrolLink(link.body.link)
-      expect(member.body).toEqual({ state: 'pending' })
-      expect((await confirm(plain, link.body.ticketId, plain.key)).body).toEqual({ state: 'active' })
-      expect(await seatRow(link.body.seatId)).toMatchObject({ idp: null, idp_subject: null })
-      expect((await inviteTo(plain, { displayName: 'Ken Compliance', role: 'compliance' })).body.expiresAt).toBe(now + 10 * MIN) // a key role, as built
-    }
-    // The setting changes at the same instant as the provider's answer arrives: the commit reads it again, and the link stays unconfirmed.
-    const racer = await inviteTo(o, { displayName: 'Ray Viewer', role: 'viewer', email: `ray@${o.domain}` })
-    const r = await begin('/api/enrol/company', { ticket: ticketOfLink(racer.body.link) })
-    const changing = racing(async () => {
-      await db.prepare('UPDATE organisations SET company_tenant = ? WHERE id = ?').bind(TID('other.example'), o.orgId).run()
-      await signIn(o.key) // takes the next audit number, as the commit of a real change would
-    }) as Env
-    expect((await back(r, claimsFor('microsoft', r, `ray@${o.domain}`), { env: changing })).outcome).toBe('link')
-    expect((await row('SELECT idp_at FROM enrolment_tickets WHERE id = ?', racer.body.ticketId))!.idp_at).toBeNull()
-    await db.prepare('UPDATE organisations SET company_tenant = ? WHERE id = ?').bind(TID(o.domain), o.orgId).run()
-    // A link of a setting that changed since is dead: the organisation's choice of now decides.
-    const late = await inviteTo(o, { displayName: 'Lee Viewer', role: 'viewer', email: `lee@${o.domain}` })
-    for (const change of [`company_signin = 'none', company_tenant = NULL`, `company_signin = 'google', company_tenant = '${o.domain}'`, `company_signin = 'microsoft', company_tenant = '${TID('other.example')}'`]) {
-      await db.prepare(`UPDATE organisations SET ${change} WHERE id = ?`).bind(o.orgId).run()
-      for (const path of ['/api/enrol/start', '/api/enrol/company']) expect((await call('POST', path, { body: { ticket: ticketOfLink(late.body.link) } })).status, change).toBe(404)
-      expect((await call('GET', '/api/org', { cookie: o.cookie })).body.tickets, change).toEqual([])
-    }
-  })
-
-  it('C2: the inviter sees what the provider confirmed and the key type, and approves with a passkey check; a key role needs a second key-role person, or the 72 hour wait where the 30 day rule allows it', async () => {
-    const o = await company('none')
-    const second = await colleague(o, 'owner')
-    const admin = await colleague(o, 'admin')
-    await pin(o, 'microsoft')
-    const email = `vera@${o.domain}`
-    const asked = await inviteTo(o, { displayName: 'Vera Viewer', role: 'viewer', email })
-    const list = async (m: Holder) => (await call('GET', '/api/org', { cookie: m.cookie })).body.tickets as { id: string; status: string; myStep: string | null; company: unknown }[]
-    expect((await list(o))[0]).toMatchObject({ status: 'link', myStep: null, company: { provider: 'microsoft', email, confirmedAt: null, deviceBound: null } })
-    const j = await join(o, asked.body.link, email)
-    expect(j.stored?.body).toEqual({ state: 'pending' })
-    // The seat waits: the passkey is pending and signs in to nothing.
-    expect([(await seatRow(asked.body.seatId))!.state, await credentialState(j.key), (await signIn(j.key)).status]).toEqual(['invited', 'pending', 401])
-    expect((await list(o))[0]).toMatchObject({ status: 'issuer', myStep: 'issuer', company: { provider: 'microsoft', email, confirmedAt: now, deviceBound: true } })
-    // The approval is the inviter's: not another Owner's, not an Admin's; and it is a passkey check made for this link.
-    for (const m of [second, admin]) expect((await confirm(m, asked.body.ticketId, m.key)).status).toBe(404)
-    expect((await confirm(o, asked.body.ticketId, o.key, { userVerified: false })).body).toEqual({ error: 'passkey_rejected' })
-    const start = await post(`/api/tickets/${asked.body.ticketId}/confirm/start`, o)
-    expect((await post(`/api/tickets/${asked.body.ticketId}/confirm`, o, { response: await second.key.authenticate(start.body.options) })).body).toEqual({ error: 'passkey_rejected' })
-    expect(await credentialState(j.key)).toBe('pending')
-    expect((await confirm(o, asked.body.ticketId, o.key)).body).toEqual({ state: 'active' })
-    // The seat is linked to the account the provider confirmed, and the member signs in with the passkey.
-    expect(await seatRow(asked.body.seatId)).toEqual({ idp: 'microsoft', idp_tenant: TID(o.domain), idp_subject: SUB(email), email, state: 'active' })
-    expect((await signIn(j.key)).status).toBe(200)
-    // A key role: the inviter's approval is not enough.
-    const boss = await inviteTo(o, { displayName: 'Ada Admin', role: 'admin', email: `ada@${o.domain}` })
-    const b = await join(o, boss.body.link, `ada@${o.domain}`)
-    expect((await confirm(o, boss.body.ticketId, o.key)).body).toEqual({ state: 'second' })
-    expect([await credentialState(b.key), (await seatRow(boss.body.seatId))!.state]).toEqual(['pending', 'invited'])
-    expect((await confirm(o, boss.body.ticketId, o.key)).status).toBe(404) // not the inviter twice
-    expect((await list(admin)).map((t) => [t.id, t.myStep, t.company])).toEqual([[boss.body.ticketId, 'second', { provider: 'microsoft', email: `ada@${o.domain}`, confirmedAt: now, deviceBound: true }]])
-    expect((await confirm(admin, boss.body.ticketId, admin.key)).body).toEqual({ state: 'active' })
-    expect(await seatRow(boss.body.seatId)).toMatchObject({ idp_subject: SUB(`ada@${o.domain}`), state: 'active' })
-    // Alone (no other key-role seat in 30 days): the 72 hour wait, as built.
-    const solo = await company('google')
-    const late = await inviteTo(solo, { displayName: 'Ada Admin', role: 'admin', email: `ada@${solo.domain}` })
-    const l = await join(solo, late.body.link, `ada@${solo.domain}`)
-    expect((await confirm(solo, late.body.ticketId, solo.key)).body).toEqual({ state: 'wait', waitUntil: now + WAIT })
-    now += WAIT - 1
-    expect((await signIn(l.key)).status).toBe(401)
-    now += 1
-    expect((await signIn(l.key)).status).toBe(200)
-    expect(await seatRow(late.body.seatId)).toMatchObject({ idp: 'google', idp_tenant: solo.domain, idp_subject: SUB(`ada@${solo.domain}`), state: 'active' })
-  })
-
-  // ---- C3: re-enrolment ----
-
-  it('C3: a re-enrolment needs the company account that is linked to the seat: same provider, tenant and subject; an account stands for one seat; the stop right and the quarantine stay', async () => {
-    const o = await company('none')
-    const old = await colleague(o, 'viewer')
-    await pin(o, 'microsoft')
-    const v = await joined(o)
-    expect(v.approved.body).toEqual({ state: 'active' })
-    // The seat is linked: no address is asked, and whatever is sent is not used.
-    const re = await inviteTo(o, { seatId: v.seatId, email: `mallory@${o.domain}` })
-    expect(re.body).toMatchObject({ kind: 're_enrolment', company: 'microsoft', expiresAt: now + 24 * HOUR })
-    expect((await row('SELECT email FROM enrolment_tickets WHERE id = ?', re.body.ticketId))!.email).toBeNull()
-    expect((await call('POST', '/api/enrol/start', { body: { ticket: ticketOfLink(re.body.link) } })).body.company).toEqual({ provider: 'microsoft', email: v.email, confirmed: false })
-    const rows = await snapshot()
-    // Another account of the same tenant, also one that shows the same address: not the linked subject.
-    for (const [why, email, more] of [['another member', `mallory@${o.domain}`, {}], ['the same address, another subject', v.email, { sub: 'sub-someone-else' }]] as const) {
-      const s = await begin('/api/enrol/company', { ticket: ticketOfLink(re.body.link) })
-      expect((await back(s, claimsFor('microsoft', s, email, more))).outcome, why).toBe('account')
-      expect(await snapshot(), why).toBe(rows)
-    }
-    // The linked account: the new passkey, the inviter's approval, and the re-enrolment as built: old passkey suspended with its stop right, quarantine.
-    const again2 = await join(o, re.body.link, v.email)
-    expect([again2.came.outcome, again2.stored?.status]).toEqual(['ok', 200])
-    expect((await confirm(o, re.body.ticketId, o.key)).body).toEqual({ state: 'active' })
-    expect([await credentialState(v.key), await credentialState(again2.key)]).toEqual(['suspended', 'active'])
-    expect((await row<{ quarantine_until: number }>('SELECT quarantine_until FROM seats WHERE id = ?', v.seatId))!.quarantine_until).toBe(now + 24 * HOUR)
-    expect((await signIn(v.key)).body).toMatchObject({ error: 'passkey_replaced', until: now + 24 * HOUR })
-    expect((await stop(v.key)).status).toBe(200)
-    expect([await credentialState(v.key), await credentialState(again2.key), (await seatRow(v.seatId))!.state]).toEqual(['active', 'revoked', 'frozen'])
-    // An account stands for one seat: the account linked to that seat confirms no invitation for another.
-    const twin = await inviteTo(o, { displayName: 'Vera Again', role: 'trader', email: v.email })
-    const t = await begin('/api/enrol/company', { ticket: ticketOfLink(twin.body.link) })
-    const before = await snapshot()
-    expect((await back(t, claimsFor('microsoft', t, v.email))).outcome).toBe('in_use')
-    expect(await snapshot()).toBe(before)
-    await db.prepare(`UPDATE seats SET state = 'removed' WHERE id = ?`).bind(v.seatId).run() // once that seat is removed the account is free
-    const free = await begin('/api/enrol/company', { ticket: ticketOfLink(twin.body.link) })
-    expect((await back(free, claimsFor('microsoft', free, v.email))).outcome).toBe('ok')
-    // A seat that is not linked (it joined without a company sign-in, or under another provider or tenant): the inviter names the address, as for an invitation.
-    for (const link of [null, ['google', o.domain, SUB(`old@${o.domain}`)], ['google', TID(o.domain), SUB(`old@${o.domain}`)], ['microsoft', TID('other.example'), SUB(`old@${o.domain}`)]] as const) {
-      await db.prepare('UPDATE seats SET idp = ?, idp_tenant = ?, idp_subject = ? WHERE id = ?').bind(link?.[0] ?? null, link?.[1] ?? null, link?.[2] ?? null, old.seatId).run()
-      expect((await inviteTo(o, { seatId: old.seatId })).body, String(link)).toEqual({ error: 'email_required' })
-    }
-    const named = await inviteTo(o, { seatId: old.seatId, email: `old@${o.domain}` })
-    expect((await row('SELECT email FROM enrolment_tickets WHERE id = ?', named.body.ticketId))!.email).toBe(`old@${o.domain}`)
-    const wrong = await begin('/api/enrol/company', { ticket: ticketOfLink(named.body.link) })
-    expect((await back(wrong, claimsFor('microsoft', wrong, `mallory@${o.domain}`))).outcome).toBe('email')
-    const k = await join(o, named.body.link, `old@${o.domain}`)
-    expect((await confirm(o, named.body.ticketId, o.key)).body).toEqual({ state: 'active' })
-    expect(await seatRow(old.seatId)).toEqual({ idp: 'microsoft', idp_tenant: TID(o.domain), idp_subject: SUB(`old@${o.domain}`), email: `old@${o.domain}`, state: 'active' })
-    expect([await credentialState(old.key), await credentialState(k.key)]).toEqual(['suspended', 'active'])
-  })
-
-  // ---- C1: the setting ----
-
-  it('C1: one Owner sets the company sign-in while the organisation is not yet verified, by signing in with the own company account: the tenant is pinned and the account linked', async () => {
-    for (const provider of ['microsoft', 'google'] as const) {
-      const o = await company(null)
-      await db.prepare(`UPDATE organisations SET state = 'unverified' WHERE id = ?`).bind(o.orgId).run()
-      const email = `maren@${provider === 'google' ? o.domain : `mail.${o.domain}`}`
-      expect((await call('GET', '/api/org', { cookie: o.cookie })).body.company).toEqual({ setting: null, tenant: null, domain: o.domain })
-      for (const bad of [undefined, 'none', 'okta', 7]) expect((await post('/api/company/start', o, { provider: bad })).status, String(bad)).toBe(400)
-      const s = await begin('/api/company/start', { provider }, o.cookie)
-      expect([s.status, `${s.url.origin}${s.url.pathname}`, s.q('hd'), s.q('login_hint')]).toEqual([200, IDP[provider].authorize, o.domain, ''])
-      const flow = JSON.parse(new TextDecoder().decode(fromBase64Url(s.flow.split('=')[1].split('.')[0])))
-      expect(flow).toMatchObject({ provider, org: o.orgId, seat: o.seatId, session: o.sessionId, to: '#/onboarding' })
-      expect(flow.ticket).toBeUndefined()
-      const rows = await snapshot()
-      // The tenant is pinned against the proven domain. Google: the hosted domain is that domain exactly. Microsoft: the verified address is at it.
-      const off = await begin('/api/company/start', { provider }, o.cookie)
-      const foreign = provider === 'google' ? claimsFor('google', off, `maren@mail.${o.domain}`) : claimsFor('microsoft', off, 'maren@other.example')
-      expect((await back(off, foreign)).location, provider).toBe('/?company=domain#/onboarding')
-      expect(await snapshot()).toBe(rows)
-      // The callback carries no session cookie (it is Strict): the session of the flow is read in the commit.
-      const came = await back(s, claimsFor(provider, s, email, provider === 'google' ? {} : { tid: TID(o.domain), iss: IDP.microsoft.issuer.replace('{tenantid}', TID(o.domain)) }))
-      expect(came.location, provider).toBe('/?company=applied#/onboarding')
-      const tenant = provider === 'google' ? o.domain : TID(o.domain)
-      expect(await orgSetting(o.orgId)).toEqual({ company_signin: provider, company_tenant: tenant })
-      expect(await seatRow(o.seatId)).toMatchObject({ idp: provider, idp_tenant: tenant, idp_subject: SUB(email) })
-      expect(await row('SELECT action, actor_kind, actor_id, session_id, subject_id, detail FROM audit_log WHERE org_id = ? ORDER BY seq DESC', o.orgId)).toEqual({ action: 'policy.company', actor_kind: 'seat', actor_id: o.seatId, session_id: o.sessionId, subject_id: o.orgId, detail: provider })
-      expect(await count('approvals', o.orgId)).toBe(0)
-      expect((await call('GET', '/api/org', { cookie: o.cookie })).body.company).toEqual({ setting: provider, tenant, domain: o.domain })
-      // The same again is no change; "none" alone, while still unverified.
-      const same = await begin('/api/company/start', { provider }, o.cookie)
-      expect((await back(same, claimsFor(provider, same, email, provider === 'google' ? {} : { tid: tenant, iss: IDP.microsoft.issuer.replace('{tenantid}', tenant) }))).outcome).toBe('invalid')
-      expect((await post('/api/policy/company', o)).body).toEqual({ state: 'applied' })
-      expect(await orgSetting(o.orgId)).toEqual({ company_signin: 'none', company_tenant: null })
-      expect((await post('/api/policy/company', o)).body).toEqual({ error: 'invalid' })
-    }
-    // An organisation with no proven domain has nothing to pin against.
-    const bare = await owner()
-    expect((await post('/api/company/start', bare, { provider: 'google' })).body).toEqual({ error: 'no_domain' })
-  })
-
-  it('C1: once the organisation is verified a change of the company sign-in takes two people; the session and the Owner role of the sign-in are read in the commit; an account already linked to another seat is refused', async () => {
-    const o = await company('none')
-    const second = await colleague(o, 'owner')
-    const admin = await colleague(o, 'admin')
-    const email = `maren@${o.domain}`
-    // Only an Owner starts it, after a fresh check, with two passkeys, out of quarantine (the role table).
-    expect(routes.find((r) => r.path === '/api/company/start')).toMatchObject({ roles: ['owner'], fresh: true, twoKeys: true, settled: true, unverified: true })
-    expect((await post('/api/company/start', admin, { provider: 'microsoft' })).body).toEqual({ error: 'forbidden' })
-    const s = await begin('/api/company/start', { provider: 'microsoft' }, o.cookie)
-    expect(JSON.parse(new TextDecoder().decode(fromBase64Url(s.flow.split('=')[1].split('.')[0]))).to).toBe('#/organisation')
-    const rest = TABLES.filter((table) => table !== 'approvals' && table !== 'audit_log')
-    const before = await snapshot(rest)
-    const came = await back(s, claimsFor('microsoft', s, email))
-    expect(came.location).toBe('/?company=requested#/organisation')
-    // A request, and nothing else: the setting, the tenant and the Owner's seat are as they were.
-    expect(await snapshot(rest)).toBe(before)
-    const [request] = await requestsOf(second)
-    expect(request).toMatchObject({ kind: 'policy.company', value: `microsoft ${TID(o.domain)}`, requesterSeatId: o.seatId, mine: false, notBefore: null })
-    expect(JSON.stringify(await requestsOf(second))).not.toContain(SUB(email)) // the asker's account is not shown
-    expect((await row<{ payload: string }>('SELECT payload FROM approvals WHERE id = ?', request.id))!.payload).toBe(JSON.stringify({ value: `microsoft ${TID(o.domain)} ${SUB(email)}` }))
-    // The maker is never the checker; a key role approves; then the tenant is pinned and the asker's account linked.
-    expect((await decide(o, request.id, 'approve')).body).toEqual({ error: 'own_request' })
-    expect((await decide(second, request.id, 'approve')).body).toEqual({ state: 'applied' })
-    expect(await orgSetting(o.orgId)).toEqual({ company_signin: 'microsoft', company_tenant: TID(o.domain) })
-    expect(await seatRow(o.seatId)).toMatchObject({ idp: 'microsoft', idp_tenant: TID(o.domain), idp_subject: SUB(email) })
-    expect(await seatRow(second.seatId)).toMatchObject({ idp: null, idp_subject: null })
-    expect(await lastAudit(o.orgId)).toEqual({ action: 'policy.company', actor_id: second.seatId, subject_id: o.orgId, detail: 'microsoft' })
-    // To "none": a request too, by the route; a rejected one changes nothing.
-    const none = await post('/api/policy/company', o, { company: 'google', value: 'google x y' }) // the body chooses nothing
-    expect(none.body).toMatchObject({ state: 'requested' })
-    expect((await row<{ payload: string }>('SELECT payload FROM approvals WHERE id = ?', none.body.id))!.payload).toBe('{"value":"none"}')
-    expect((await decide(second, none.body.id, 'reject')).status).toBe(200)
-    expect(await orgSetting(o.orgId)).toEqual({ company_signin: 'microsoft', company_tenant: TID(o.domain) })
-    // The session of the sign-in ended meanwhile, or its seat is no longer an Owner: nothing is filed.
-    const rows = await snapshot()
-    const ended = await begin('/api/company/start', { provider: 'google' }, o.cookie)
-    await db.prepare('UPDATE sessions SET revoked_at = ? WHERE id = ?').bind(now, o.sessionId).run()
-    expect((await back(ended, claimsFor('google', ended, email))).outcome).toBe('forbidden')
-    await db.prepare('UPDATE sessions SET revoked_at = NULL WHERE id = ?').bind(o.sessionId).run()
-    const lowered = await begin('/api/company/start', { provider: 'google' }, o.cookie)
-    await db.prepare(`UPDATE seats SET role = 'admin' WHERE id = ?`).bind(o.seatId).run()
-    expect((await back(lowered, claimsFor('google', lowered, email))).outcome).toBe('forbidden')
-    await db.prepare(`UPDATE seats SET role = 'owner' WHERE id = ?`).bind(o.seatId).run()
-    // The account of the second Owner's seat cannot become the first Owner's too.
-    await db.prepare('UPDATE seats SET idp = ?, idp_tenant = ?, idp_subject = ? WHERE id = ?').bind('google', o.domain, SUB(email), second.seatId).run()
-    const taken = await begin('/api/company/start', { provider: 'google' }, o.cookie)
-    expect((await back(taken, claimsFor('google', taken, email))).outcome).toBe('account_in_use')
-    await db.prepare('UPDATE seats SET idp = NULL, idp_tenant = NULL, idp_subject = NULL WHERE id = ?').bind(second.seatId).run()
-    expect(await snapshot()).toBe(rows)
-    // Asked while unverified, approved... no: asked now, and judged again at the approval with the rows of then.
-    const g = await begin('/api/company/start', { provider: 'google' }, o.cookie)
-    expect((await back(g, claimsFor('google', g, email))).outcome).toBe('requested')
-    const [pending] = await requestsOf(second)
-    await db.prepare('UPDATE seats SET idp = ?, idp_tenant = ?, idp_subject = ? WHERE id = ?').bind('google', o.domain, SUB(email), admin.seatId).run()
-    expect((await decide(second, pending.id, 'approve')).body).toEqual({ error: 'account_in_use' })
-    expect(await orgSetting(o.orgId)).toEqual({ company_signin: 'microsoft', company_tenant: TID(o.domain) })
-  })
-
-  // ---- the standing rules ----
-
-  it('every change of this section and its audit row succeed or fail together, and its events have their words', async () => {
-    const o = await company('microsoft')
-    await db.prepare(`UPDATE organisations SET state = 'unverified' WHERE id = ?`).bind(o.orgId).run()
-    const asked = await inviteTo(o, { displayName: 'Vera Viewer', role: 'viewer', email: `vera@${o.domain}` })
-    const link = await begin('/api/enrol/company', { ticket: ticketOfLink(asked.body.link) })
-    const owning = await begin('/api/company/start', { provider: 'google' }, o.cookie)
-    const rows = await snapshot()
-    await withTrigger('INSERT ON audit_log', async () => {
-      expect((await back(link, claimsFor('microsoft', link, `vera@${o.domain}`))).status).toBe(500)
-      expect((await back(owning, claimsFor('google', owning, `maren@${o.domain}`))).status).toBe(500)
-      expect((await post('/api/policy/company', o)).status).toBe(500)
-    })
-    expect(await snapshot()).toBe(rows)
-    for (const action of ['ticket.company', 'policy.company', 'policy.company/microsoft', 'policy.company/google', 'policy.company/none']) expect(EVENTS[action], action).toEqual(expect.any(String))
-    // Without the trigger the same sign-ins go through.
-    expect([(await back(link, claimsFor('microsoft', link, `vera@${o.domain}`))).outcome, (await back(owning, claimsFor('google', owning, `maren@${o.domain}`))).outcome]).toEqual(['ok', 'applied'])
-    await db.prepare(`UPDATE organisations SET state = 'active' WHERE id = ?`).bind(o.orgId).run()
-    const events = (await call('GET', '/api/audit', { cookie: o.cookie })).body.rows.map((r: { event: string }) => r.event)
-    expect(events.slice(0, 2)).toEqual(['Company sign-in set to Google, domain pinned', 'Company account confirmed by the provider on an enrolment link'])
-    expect(events).not.toContain('Unlisted event')
-    // The stand-in is a script of its own: the Worker imports nothing of it, and it refuses any redirect but the local console's callback.
-    for (const source of [routerSource, dataSource]) expect(source).not.toMatch(/idp-stub|8792/)
-    expect(idpStub).toContain(`const CALLBACK = 'http://localhost:8787/api/company/callback'`)
-  })
-
-  it('C4, C7: the words of the interface: no three words are left anywhere; no claim of a licence; the stand-in says what it is', () => {
-    const came = /export const CAME: Record<string, string> = \{([\s\S]*?)\n\}/.exec(uiSource)![1]
-    const events = Object.entries(EVENTS).filter(([action]) => /company/.test(action)).map(([, words]) => words).join(' ')
-    for (const banned of [/licen[cs]ed|regulated|authorised|authorized|MiCA|compliant/i, /—/, /honest/i, /\banchor\b/i]) for (const said of [came, events, idpStub.replace(/^\/\/.*$/gm, '')]) expect(said).not.toMatch(banned)
-    // Every outcome of the callback has its sentence, except "ok", after which the page goes on.
-    for (const outcome of ['applied', 'requested', 'expired', 'state', 'cancelled', 'unavailable', 'rejected', 'link', 'tenant', 'email', 'account', 'in_use', 'domain', 'forbidden', 'invalid', 'account_in_use', 'already_requested']) expect(came, outcome).toMatch(new RegExp(`\\n  ${outcome}: '`))
-    // The three words were removed (2026-11-13): no page, signing page, server text or help text names them.
-    for (const [file, source] of Object.entries({ pagesSource, uiSource, onboardingPage, signHtml, ...signSource, ...serverSources })) expect(source, file).not.toMatch(/three.word|\bread (you|out)\b|aloud/i)
-    expect(idpStub).toContain('Test only. This is not ${NAME[provider]}: no real account and no password.')
-  })
-
-  isolation['POST /api/enrol/company'] = async (a, b) => {
-    // A link decides the organisation. A's session does not, and the answer names neither.
-    await db.prepare(`UPDATE organisations SET email_domain = 'birch.example', company_signin = 'google', company_tenant = 'birch.example' WHERE id = ?`).bind(b.orgId).run()
-    await addKey(b)
-    const asked = await inviteTo(b, { displayName: 'Vera Viewer', role: 'viewer', email: 'vera@birch.example' })
-    const s = await begin('/api/enrol/company', { ticket: ticketOfLink(asked.body.link) }, a.cookie)
-    expect([s.status, s.q('hd'), s.q('login_hint')]).toEqual([200, 'birch.example', 'vera@birch.example'])
-    for (const secret of [a.orgId, b.orgId, a.seatId]) expect(s.body.url).not.toContain(secret)
-    await db.prepare(`UPDATE organisations SET email_domain = NULL WHERE id = ?`).bind(b.orgId).run()
-  }
-  isolation['POST /api/company/start'] = async (a, b) => {
-    // The organisation is the session's: a body that names another one binds nothing of it.
-    await db.prepare(`UPDATE organisations SET email_domain = 'alder.example' WHERE id = ?`).bind(a.orgId).run()
-    await addKey(a)
-    const s = await begin('/api/company/start', { provider: 'google', org: b.orgId, orgId: b.orgId, seat: b.seatId, domain: 'birch.example' }, a.cookie)
-    expect(JSON.parse(new TextDecoder().decode(fromBase64Url(s.flow.split('=')[1].split('.')[0])))).toMatchObject({ org: a.orgId, seat: a.seatId, session: a.sessionId })
-    expect(s.q('hd')).toBe('alder.example')
-    await db.prepare(`UPDATE organisations SET email_domain = NULL WHERE id = ?`).bind(a.orgId).run()
-  }
-  isolation['POST /api/policy/company'] = async (a, b) => {
-    await db.prepare(`UPDATE organisations SET company_signin = 'google', company_tenant = 'x.example' WHERE id IN (?, ?)`).bind(a.orgId, b.orgId).run()
-    await addKey(a)
-    const asked = await post('/api/policy/company', a, { orgId: b.orgId, id: b.orgId })
-    expect(asked.status).toBe(200)
-    expect(await row('SELECT org_id, subject_id FROM approvals WHERE id = ?', asked.body.id)).toEqual({ org_id: a.orgId, subject_id: a.orgId })
-    expect([await count('approvals', b.orgId), (await orgSetting(b.orgId))!.company_signin]).toEqual([0, 'google'])
-  }
-  isolation['GET /api/company/callback'] = async (a, b) => {
-    // A sign-in started in A, finished while a session of B is in the cookie jar, with B's ids in the query: it is A's, and B is untouched.
-    await db.prepare(`UPDATE organisations SET email_domain = 'alder.example', state = 'unverified' WHERE id = ?`).bind(a.orgId).run()
-    await addKey(a)
-    const s = await begin('/api/company/start', { provider: 'google' }, a.cookie)
-    const before = await snapshot(['organisations', 'seats'])
-    const code = 'iso-code'
-    idp.codes.set(code, { challenge: s.q('code_challenge'), token: await jwt(claimsFor('google', s, 'maren@alder.example')) })
-    const came = await navigate(`/api/company/callback?${new URLSearchParams({ code, state: s.q('state'), org: b.orgId, seat: b.seatId })}`, `${b.cookie}; ${s.flow}`)
-    expect(came.outcome).toBe('applied')
-    expect(await orgSetting(a.orgId)).toEqual({ company_signin: 'google', company_tenant: 'alder.example' })
-    expect([await orgSetting(b.orgId), await seatRow(b.seatId)]).toEqual([{ company_signin: 'none', company_tenant: null }, expect.objectContaining({ idp: null })])
-    expect(before).not.toBe(await snapshot(['organisations', 'seats']))
-    await db.prepare(`UPDATE organisations SET email_domain = NULL WHERE id = ?`).bind(a.orgId).run()
-  }
-  it('review: the Owner\'s company sign-in comes back to a session that every route would still accept: one whose passkey was revoked meanwhile, or that is past its 12 hours, changes nothing', async () => {
-    const o = await company('none')
-    const email = `maren@${o.domain}`
-    // The session that started the sign-in was opened by a passkey that the Owner then revokes from another session (it was stolen).
-    const s = await begin('/api/company/start', { provider: 'microsoft' }, o.cookie)
-    expect((await call('GET', '/api/me', { cookie: o.cookie })).status).toBe(200)
-    const other = await signIn(o.key2)
-    expect((await post(`/api/passkeys/${o.key.id}/revoke`, other)).status).toBe(200)
-    expect((await call('GET', '/api/me', { cookie: o.cookie })).status).toBe(401)
-    const rows = await snapshot()
-    const came = await back(s, claimsFor('microsoft', s, email))
-    expect([came.location, await snapshot()]).toEqual(['/?company=forbidden#/organisation', rows])
-    // A session past its 12 hours, or idle for more than 15 minutes: the same.
-    expect((await addKey(other)).status).toBe(200)
-    const t = await begin('/api/company/start', { provider: 'microsoft' }, other.cookie)
-    expect(t.status).toBe(200)
-    const before = await snapshot()
-    for (const column of ['created_at', 'last_seen_at']) {
-      await db.prepare(`UPDATE sessions SET ${column} = ${column} - ? WHERE token_hash = ?`).bind(12 * HOUR + 1, await data.sha256Hex(other.cookie.split('=')[1])).run()
-      const u = await begin('/api/company/start', { provider: 'microsoft' }, o.cookie) // a dead session starts nothing either
-      expect(u.status, column).toBe(401)
-      expect((await back(t, claimsFor('microsoft', t, email))).location, column).toBe('/?company=forbidden#/organisation')
-      await db.prepare(`UPDATE sessions SET ${column} = ${column} + ? WHERE token_hash = ?`).bind(12 * HOUR + 1, await data.sha256Hex(other.cookie.split('=')[1])).run()
-    }
-    expect(await snapshot()).toBe(before)
-    // An organisation that was closed or frozen meanwhile reaches nothing, as on every other route (its sessions may still be open).
-    for (const state of ['archived', 'frozen']) {
-      await db.prepare('UPDATE organisations SET state = ? WHERE id = ?').bind(state, o.orgId).run()
-      const rows2 = await snapshot()
-      expect([(await back(t, claimsFor('microsoft', t, email))).location, await snapshot()], state).toEqual(['/?company=forbidden#/organisation', rows2])
-    }
-    await db.prepare(`UPDATE organisations SET state = 'active' WHERE id = ?`).bind(o.orgId).run()
-    // In time, the same sign-in is a request.
-    expect((await back(t, claimsFor('microsoft', t, email))).location).toBe('/?company=requested#/organisation')
-  })
-
-  it('review: attacks on the company sign-in: a look-alike or decorated address, an audience list, the callback by POST', async () => {
-    const o = await company('microsoft')
-    const email = `vera@${o.domain}`
-    const asked = await inviteTo(o, { displayName: 'Vera Viewer', role: 'viewer', email })
-    const ticket = ticketOfLink(asked.body.link)
-    const rows = await snapshot()
-    // The address the provider confirms is the invited one, character for character (case apart): a Cyrillic or full-width
-    // letter, a plus tag, a subdomain, a dot or a space more are another account, also inside the pinned tenant.
-    for (const other of [`vеra@${o.domain}`, `ｖera@${o.domain}`, `vera+x@${o.domain}`, `vera@sub.${o.domain}`, `vera@${o.domain}.`, ` vera@${o.domain}`, `vera@${o.domain}​`]) {
-      const s = await begin('/api/enrol/company', { ticket })
-      const came = await back(s, claimsFor('microsoft', s, other, { ...pinned(o), sub: 'sub-other' }))
-      expect([came.outcome, came.pass], JSON.stringify(other)).toEqual(['email', ''])
-    }
-    // The audience is this client and nothing else: a list, even one that holds it, is refused.
-    for (const aud of [[IDP.microsoft.clientId], [IDP.microsoft.clientId, 'another-client'], 'another-client']) {
-      const s = await begin('/api/enrol/company', { ticket })
-      expect((await back(s, claimsFor('microsoft', s, email, { aud }))).outcome, JSON.stringify(aud)).toBe('rejected')
-    }
-    // The callback is a GET: a POST with the same cookie, code and state reaches no handler.
-    const s = await begin('/api/enrol/company', { ticket })
-    idp.codes.set('code-post', { challenge: s.q('code_challenge'), token: await jwt(claimsFor('microsoft', s, email)) })
-    const exchanges = idp.tokens.length
-    const posted = await navigate(`/api/company/callback?${new URLSearchParams({ code: 'code-post', state: s.q('state') })}`, s.flow, {}, 'POST')
-    expect([[403, 404].includes(posted.status), posted.location, idp.tokens.length - exchanges]).toEqual([true, null, 0])
-    expect(await snapshot()).toBe(rows)
-  })
-
-  // ---- the independent review of 2026-11-11: R1, R2 ----
-
-  it('R1 (review): the passkey belongs to the browser that did the company sign-in: the link alone, in another browser, starts and stores no passkey; the same account signs in again there', async () => {
-    const o = await company('microsoft')
-    const email = `vera@${o.domain}`
-    const asked = await inviteTo(o, { displayName: 'Vera Viewer', role: 'viewer', email })
-    const other = await inviteTo(o, { displayName: 'Tom Trader', role: 'trader', email: `tom@${o.domain}` })
-    const [ticket, ticket2] = [ticketOfLink(asked.body.link), ticketOfLink(other.body.link)]
-    const s = await begin('/api/enrol/company', { ticket })
-    const came = await back(s, claimsFor('microsoft', s, email))
-    expect(came.outcome).toBe('ok')
-    // The callback gives this browser a cookie for this link: host-bound, HttpOnly, Strict, the server's own text.
-    expect(came.passSet).toMatch(/^__Host-enrol=[A-Za-z0-9_-]+\.[A-Za-z0-9_-]{43}; Path=\/; Secure; HttpOnly; SameSite=Strict; Max-Age=86400$/)
-    expect(came.cleared).toBe('__Host-company=; Path=/; Secure; HttpOnly; SameSite=Lax; Max-Age=0')
-    // Whoever holds the link and not that cookie (the invitation was read on the way): no passkey options, and nothing stored.
-    const thief = await softwareAuthenticator(SITE)
-    const s2 = await begin('/api/enrol/company', { ticket: ticket2 })
-    const came2 = await back(s2, claimsFor('microsoft', s2, `tom@${o.domain}`)) // the cookie of another link, even of the same organisation
-    const rows = await snapshot()
-    const sealedFor = async (label: string, fields: object, key = testEnv.CHALLENGE_KEY) => `__Host-enrol=${await seal(key, label, fields)}`
-    const passFields = JSON.parse(new TextDecoder().decode(fromBase64Url(came.pass.split('=')[1].split('.')[0])))
-    const wrong = ['', came2.pass, s.flow.replace('__Host-company', '__Host-enrol'), await sealedFor('company-flow', passFields), await sealedFor('company-pass', passFields, `${testEnv.CHALLENGE_KEY}x`), came.pass.replace('__Host-enrol', '__Host-session')]
-    expect(came2.pass).not.toBe('')
-    for (const cookie of wrong) {
-      const start = await call('POST', '/api/enrol/start', { body: { ticket }, cookie })
-      expect([start.status, start.body.options, start.body.company], cookie.slice(0, 24)).toEqual([200, undefined, { provider: 'microsoft', email, confirmed: false }])
-      // The options of the browser that signed in do not help either: the cookie is asked for again when the passkey is stored.
-      const mine = await call('POST', '/api/enrol/start', { body: { ticket }, cookie: came.pass })
-      const finish = await call('POST', '/api/enrol/finish', { body: { ticket, label: 'Stolen', response: await thief.register(mine.body.options) }, cookie })
-      expect([finish.status, finish.body], cookie.slice(0, 24)).toEqual([403, { error: 'company_signin_required' }])
-    }
-    expect(await snapshot()).toBe(rows)
-    // The same person in another browser signs in again with the same account and may go on there; another account may not.
-    const again = await begin('/api/enrol/company', { ticket })
-    expect(again.status).toBe(200)
-    expect((await back(again, claimsFor('microsoft', again, `mallory@${o.domain}`))).outcome).toBe('email')
-    const sameAddress = await begin('/api/enrol/company', { ticket })
-    const imposter = await back(sameAddress, claimsFor('microsoft', sameAddress, email, { sub: 'sub-someone-else' }))
-    expect([imposter.outcome, imposter.pass]).toEqual(['email', ''])
-    const second = await begin('/api/enrol/company', { ticket })
-    const came3 = await back(second, claimsFor('microsoft', second, email))
-    expect([came3.outcome, came3.pass === '', await snapshot()]).toEqual(['ok', false, rows]) // nothing is written a second time
-    // The browser that signed in: the passkey is made and stored.
-    const key = await softwareAuthenticator(SITE)
-    expect((await enrol(ticket, key, {}, came.pass)).body).toEqual({ state: 'pending' })
-    // A link that holds its passkey takes no further sign-in.
-    expect((await call('POST', '/api/enrol/company', { body: { ticket } })).status).toBe(404)
-  })
-
-  it('R2 (review): one company account, one seat: a link that waits with that account counts, and the schema refuses a second seat with it', async () => {
-    const o = await company('microsoft')
-    const email = `vera@${o.domain}`
-    const [a, b] = [await inviteTo(o, { displayName: 'Vera Viewer', role: 'viewer', email }), await inviteTo(o, { displayName: 'Vera Trader', role: 'trader', email })]
-    const first = await join(o, a.body.link, email)
-    expect([first.came.outcome, first.stored?.status]).toEqual(['ok', 200])
-    // The same account on a second link, for another seat, while the first waits for its approval: refused, nothing written.
-    const rows = await snapshot()
-    const s = await begin('/api/enrol/company', { ticket: ticketOfLink(b.body.link) })
-    const came = await back(s, claimsFor('microsoft', s, email))
-    expect([came.outcome, came.pass, await snapshot()]).toEqual(['in_use', '', rows])
-    // Before any passkey is stored, too: a link that the account confirmed and that is still open.
-    const [c, d] = [await inviteTo(o, { displayName: 'Tom One', role: 'viewer', email: `tom@${o.domain}` }), await inviteTo(o, { displayName: 'Tom Two', role: 'viewer', email: `tom@${o.domain}` })]
-    const sc = await begin('/api/enrol/company', { ticket: ticketOfLink(c.body.link) })
-    expect((await back(sc, claimsFor('microsoft', sc, `tom@${o.domain}`))).outcome).toBe('ok')
-    const sd = await begin('/api/enrol/company', { ticket: ticketOfLink(d.body.link) })
-    expect((await back(sd, claimsFor('microsoft', sd, `tom@${o.domain}`))).outcome).toBe('in_use')
-    // A second link for the same seat (the inviter made a new one) takes the same account: it is the same person's seat.
-    const renewed = await inviteTo(o, { seatId: c.body.seatId, email: `tom@${o.domain}` })
-    const sr = await begin('/api/enrol/company', { ticket: ticketOfLink(renewed.body.link) })
-    expect([renewed.body.kind, (await back(sr, claimsFor('microsoft', sr, `tom@${o.domain}`))).outcome]).toEqual(['invitation', 'ok'])
-    expect((await post(`/api/tickets/${renewed.body.ticketId}/cancel`, await again(o))).status).toBe(200)
-    // A link that is closed or past its time no longer holds the account.
-    expect((await post(`/api/tickets/${c.body.ticketId}/cancel`, await again(o))).status).toBe(200)
-    const free = await begin('/api/enrol/company', { ticket: ticketOfLink(d.body.link) })
-    expect((await back(free, claimsFor('microsoft', free, `tom@${o.domain}`))).outcome).toBe('ok')
-    // The first link is approved: the seat is linked. The schema allows no second live seat with that account, whatever the code does.
-    expect((await confirm(o, a.body.ticketId, o.key)).body).toEqual({ state: 'active' })
-    const twin = db.prepare('UPDATE seats SET idp = ?, idp_tenant = ?, idp_subject = ? WHERE id = ?').bind('microsoft', TID(o.domain), SUB(email), b.body.seatId)
-    await expect(twin.run()).rejects.toThrow(/UNIQUE constraint failed/)
-    await db.prepare(`UPDATE seats SET state = 'removed' WHERE id = ?`).bind(a.body.seatId).run() // a removed seat frees its account
-    await twin.run()
-  })
-
-  for (const route of ['POST /api/enrol/company', 'POST /api/company/start', 'POST /api/policy/company', 'GET /api/company/callback']) {
-    it(`${route}: the isolation case`, async () => isolation[route](await member('Alder Asset Management'), await member('Birchfield Capital')))
-  }
 })
 
 // ---- demo mode: overview, desk and partner figures. The figures are examples; the role table, the two-person

@@ -1,7 +1,6 @@
 // Local development commands. They reach the local D1 only: no remote binding is opened
 // (remoteBindings: false), and activation also refuses any ENVIRONMENT but "local".
-//   node scripts/dev.mjs seed       one organisation (domain northwind.example, company sign-in "none"), one Owner seat, a one-time enrolment link
-//                                   seed --company microsoft|google: the company sign-in is set, pinned to the local stand-in's tenant of that domain
+//   node scripts/dev.mjs seed       one organisation (domain northwind.example), one Owner seat, a one-time enrolment link
 //                                   seed --demo: the organisation is an institution and gets one linked wallet named "Demo wallet" (no signature; local only), to try the order ticket
 //                                   seed --live: the organisation is a partner and gets one linked "Demo wallet" at the partner address of the indexer's contract file
 //                                                (no signature; local only), so that Overview shows the figures of the local indexer stand-in
@@ -15,14 +14,12 @@ import { generateHybridIdentity, identityToRecipient } from 'age-encryption'
 import { getPlatformProxy } from 'wrangler'
 import { devActivatePending, devDemoWallet, devSkipWaits, devStaleChecks, randomToken, seedOrganisation, sha256Hex } from '../src/server/data.ts'
 import { configFor } from '../src/server/passkeys.ts'
-import { tenantOf } from './idp-stub.mjs'
 import { CONTRACT, PORT as INDEXER_PORT } from './indexer-stub.mjs'
 import { PORT as LIST_PORT } from './list-stub.mjs'
 
 const [command, ...options] = process.argv.slice(2)
 const option = (name) => (options.includes(name) ? options[options.indexOf(name) + 1] : undefined)
 const directory = option('--persist')
-const company = option('--company')
 const demo = options.includes('--demo')
 const live = options.includes('--live')
 process.chdir(new URL('..', import.meta.url).pathname)
@@ -32,10 +29,6 @@ if (!existsSync('.dev.vars')) writeFileSync('.dev.vars', `CHALLENGE_KEY=${random
 // printed. A file from before this milestone gets the line added.
 const vars = readFileSync('.dev.vars', 'utf8')
 if (!/^OPERATOR_TOKEN=/m.test(vars)) appendFileSync('.dev.vars', `${vars.endsWith('\n') ? '' : '\n'}OPERATOR_TOKEN=${randomBytes(32).toString('base64url')}\n`)
-// Company sign-in: the client secrets of the two providers. Locally the stand-in takes any; real ones are set by hand.
-for (const name of ['MICROSOFT_CLIENT_SECRET', 'GOOGLE_CLIENT_SECRET']) {
-  if (!new RegExp(`^${name}=`, 'm').test(readFileSync('.dev.vars', 'utf8'))) appendFileSync('.dev.vars', `${name}=${randomBytes(24).toString('base64url')}\n`)
-}
 // Partner figures: the local stand-in for the rebate indexer (scripts/indexer-stub.mjs) and the token it asks for,
 // made here and never printed. A real environment sets INDEXER_URL as a variable and INDEXER_TOKEN as a secret.
 if (!/^INDEXER_URL=/m.test(readFileSync('.dev.vars', 'utf8'))) appendFileSync('.dev.vars', `INDEXER_URL=http://127.0.0.1:${INDEXER_PORT}\n`)
@@ -66,12 +59,10 @@ const { env, dispose } = await getPlatformProxy({
 try {
   if (command === 'seed') {
     const ticket = randomToken()
-    if (company !== undefined && company !== 'microsoft' && company !== 'google') throw new Error('--company takes microsoft or google')
     // One organisation per domain: the first seed gets northwind.example, the next ones northwind-2.example and so on.
     const { n } = await env.DB.prepare(`SELECT count(*) AS n FROM organisations WHERE email_domain LIKE 'northwind%'`).first()
     const DOMAIN = n ? `northwind-${n + 1}.example` : 'northwind.example'
-    const pinned = company && { idp: company, tenant: company === 'google' ? DOMAIN : tenantOf(DOMAIN) }
-    const { orgId } = await seedOrganisation(env.DB, { name: 'Northwind Vaults', kind: demo ? 'institution' : 'partner', ownerName: 'Maren Okafor', ticketHash: await sha256Hex(ticket), now: Date.now(), domain: DOMAIN, company: pinned })
+    const { orgId } = await seedOrganisation(env.DB, { name: 'Northwind Vaults', kind: demo ? 'institution' : 'partner', ownerName: 'Maren Okafor', ticketHash: await sha256Hex(ticket), now: Date.now(), domain: DOMAIN })
     if (demo) {
       await devDemoWallet(env.DB, env.ENVIRONMENT, orgId, Date.now())
       console.log('Demo: an institution with one linked wallet named "Demo wallet" (no signature, local only).')
@@ -81,7 +72,7 @@ try {
       await devDemoWallet(env.DB, env.ENVIRONMENT, orgId, Date.now(), address)
       console.log('Live: a partner with one linked wallet named "Demo wallet" (no signature, local only), at the partner address of the indexer contract file.')
     }
-    console.log(pinned ? `Company sign-in: ${company}. Invite members with a work address at ${DOMAIN}.` : `Domain ${DOMAIN}, company sign-in: none.`)
+    console.log(`Domain ${DOMAIN}.`)
     console.log(`Enrolment link, one use, valid 10 minutes:\n${configFor(env.ENVIRONMENT).origin}/#/enrol/${ticket}`)
   } else if (command === 'activate') {
     console.log(`Activated ${await devActivatePending(env.DB, env.ENVIRONMENT, Date.now())} pending passkey(s).`)
@@ -92,7 +83,7 @@ try {
     await devStaleChecks(env.DB, env.ENVIRONMENT)
     console.log('Every passkey check is stale: the next sensitive step asks for the passkey.')
   } else {
-    console.error('usage: node scripts/dev.mjs seed [--company microsoft|google] [--demo | --live] | activate | skip | stale   [--persist <dir>]')
+    console.error('usage: node scripts/dev.mjs seed [--demo | --live] | activate | skip | stale   [--persist <dir>]')
     process.exitCode = 1
   }
 } finally {

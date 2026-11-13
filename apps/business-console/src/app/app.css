@@ -156,9 +156,7 @@ p a.btn { text-decoration: none; } /* a link drawn as a button is not underlined
 .support .answer { margin: 0; font-size: 16px; line-height: 1.62; color: var(--ink); } .support .acts > span { font-size: 14px; font-weight: 500; } .support #sp-ask { flex-basis: 100%; } /* Yes and No stay side by side on a phone */
 .support .answer { margin: 0; font-size: 16px; line-height: 1.62; color: var(--ink); } .support .acts > span { font-size: 14px; font-weight: 500; }
 /* Milestone 5a, the Onboarding page: a step's content sits under its title, across the row. */
-.srow > .stack { grid-column: 2 / -1; margin-top: 6px; } .srow > .stack p { grid-column: auto; } .srow .fine > span { min-width: 0; overflow-wrap: anywhere; }
-/* Company sign-in: the outcome note above a page, and buttons of a step that wrap on a phone. */
-.note.came { margin-bottom: 24px; } .srow .acts { flex-wrap: wrap; } .srow > .stack p { overflow-wrap: anywhere; }
+.srow > .stack { grid-column: 2 / -1; margin-top: 6px; } .srow > .stack p { grid-column: auto; overflow-wrap: anywhere; } .srow .fine > span { min-width: 0; overflow-wrap: anywhere; }
 /* Demo mode: Overview and Desk (the mockup's panels). */
 .note.demo { margin-bottom: 20px; } .g { display: grid; gap: 16px; align-items: start; } .g.two { grid-template-columns: minmax(0, 1.55fr) minmax(0, 1fr); } .g.even { grid-template-columns: repeat(2, minmax(0, 1fr)); } .g.eq { align-items: stretch; }
 .g > .sec, .stack > .sec { margin-top: 0; } .g.sec, .stats + .g { margin-top: 16px; } .panel > .cap { display: block; margin-bottom: 14px; } .g.even .badge { white-space: normal; }

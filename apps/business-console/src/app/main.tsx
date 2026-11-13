@@ -6,7 +6,7 @@ import './kit.css'
 import './app.css'
 import mark from './assets/ophis-icon-mono-dark.svg'
 import { Alerts, Closed, Compliance, Enrol, Organisation, Problem, Recover, RecoveryBanner, Security, SignIn, type Me } from './pages.tsx'
-import { api, CAME, Icon, ROLE } from './ui.tsx'
+import { api, Icon, ROLE } from './ui.tsx'
 import { Desk, Overview } from './desk.tsx'
 import { Support } from './support.tsx'
 import { Apply, KybRecord, Onboarding } from './onboarding.tsx'
@@ -15,10 +15,6 @@ const onHashChange = (listener: () => void) => {
   addEventListener('hashchange', listener)
   return () => removeEventListener('hashchange', listener)
 }
-// The company sign-in sends the browser back to /?company=<word>#/<page>. The word is taken out of the address bar
-// at once (before the ticket is: the fragment stays), and shown until the member goes to another page.
-const outcome = new URLSearchParams(location.search).get('company') ?? ''
-if (outcome) history.replaceState(null, '', `${location.pathname}${location.hash}`)
 // The enrolment ticket arrives as #/enrol/<ticket>. It is taken out of the address bar and the history
 // at once, and is only ever sent in a POST body.
 function takeTicket() {
@@ -27,7 +23,6 @@ function takeTicket() {
   return ticket
 }
 const firstTicket = takeTicket() ?? ''
-const firstHash = location.hash
 
 // Alerts this browser has shown and the member has confirmed. Kept per browser on purpose: an alert read
 // on someone else's device is still shown on the member's own.
@@ -51,10 +46,6 @@ function App() {
   useEffect(() => {
     const next = takeTicket() // a link opened in a tab where the app is already running
     if (next) setTicket(next)
-  }, [hash])
-  const [came, setCame] = useState(CAME[outcome] ?? '')
-  useEffect(() => {
-    if (hash !== firstHash) setCame('')
   }, [hash])
   const [closed, setClosed] = useState('') // milestone 5: 'org_frozen' or 'org_closed', the organisation of this session
   const loadMe = useCallback(async () => {
@@ -139,7 +130,6 @@ function App() {
         <div className="col">
           <main id="main" tabIndex={-1}>
             {me && stillOpen && <Problem>Sign-out did not work. Your session is still open. Try again.</Problem>}
-            {came && <p className={`note ${outcome === 'applied' || outcome === 'requested' ? 'ok' : 'bad'} came`} role="status"><Icon name={outcome === 'applied' || outcome === 'requested' ? 'circle-check' : 'triangle-alert'} /><span className="grow">{came}</span></p>}
             {me && recovery && <RecoveryBanner alert={recovery} organisationId={me.organisation.id} onChanged={loadMe} />}
             {page === 'apply' ? <Apply />
             : page === 'recover' ? <Recover />

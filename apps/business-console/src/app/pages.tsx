@@ -1,6 +1,6 @@
 // The screens of milestones 1 to 4, with the markup and classes of the approved mockup.
 import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react'
-import { api, CANCELLED, capital, day, Icon, minute, passkeyCheck, PROVIDER, ROLE, save, say, Section, sensitive, stamp, Status, Tile } from './ui.tsx'
+import { api, CANCELLED, capital, day, Icon, minute, passkeyCheck, ROLE, save, say, Section, sensitive, stamp, Status, Tile } from './ui.tsx'
 import { money, orderWords, type OrderBody } from './desk.tsx'
 
 export interface Alert {
@@ -189,8 +189,7 @@ export function SignIn({ onSignedIn }: { onSignedIn: () => void }) {
   )
 }
 
-/** company: the link's path is a company sign-in (the organisation's setting); null: none. options: absent until the provider has confirmed the account. */
-interface Invitation { organisation: string; member: string; role: string; deviceBound: boolean; first: boolean; company: { provider: string; email: string | null; confirmed: boolean } | null; options?: PublicKeyCredentialCreationOptionsJSON }
+interface Invitation { organisation: string; member: string; role: string; deviceBound: boolean; first: boolean; options: PublicKeyCredentialCreationOptionsJSON }
 
 export function Enrol({ ticket }: { ticket: string }) {
   const [invitation, setInvitation] = useState<Invitation | null>()
@@ -212,7 +211,6 @@ export function Enrol({ ticket }: { ticket: string }) {
       // A fresh challenge for each attempt: the first one may have aged while the page was open.
       const start = await api<Invitation>('/api/enrol/start', { ticket })
       if (start.status !== 200) return setInvitation(null)
-      if (!start.data.options) return setInvitation(start.data) // the company sign-in is asked again: this browser no longer holds its confirmation
       const passkey = (await navigator.credentials.create({ publicKey: PublicKeyCredential.parseCreationOptionsFromJSON(start.data.options) })) as PublicKeyCredential
       const finish = await api<{ error?: string }>('/api/enrol/finish', { ticket, label, response: passkey.toJSON() })
       if (finish.status === 200) return setStored(true)
@@ -224,18 +222,6 @@ export function Enrol({ ticket }: { ticket: string }) {
     }
   }
 
-  // The company path: off to the provider. The server answers with its address and keeps this sign-in's values in a cookie.
-  async function company() {
-    setBusy(true)
-    setProblem('')
-    const begun = await api<{ url?: string; error?: string }>('/api/enrol/company', { ticket })
-    if (begun.status === 200 && begun.data.url) return location.assign(begun.data.url)
-    setBusy(false)
-    if (begun.status === 404) return setInvitation(null)
-    setProblem(say(begun.data))
-  }
-  const provider = PROVIDER[invitation?.company?.provider ?? ''] ?? ''
-
   const facts = invitation && (
     <dl className="kv">
       <dt>Site</dt><dd className="site">{location.host}</dd>
@@ -243,7 +229,6 @@ export function Enrol({ ticket }: { ticket: string }) {
       <dt>Member</dt><dd>{invitation.member}</dd>
       <dt>Role</dt><dd>{ROLE[invitation.role] ?? invitation.role}</dd>
       <dt>Key type</dt><dd>{invitation.deviceBound ? 'Hardware security key, bound to the device' : 'Any passkey'}</dd>
-      {invitation.company && <><dt>Company account</dt><dd>{invitation.company.email ?? 'The account linked to this seat'}{invitation.company.confirmed ? `, confirmed by ${provider}` : `, at ${provider}`}</dd></>}
     </dl>
   )
   return (
@@ -261,24 +246,11 @@ export function Enrol({ ticket }: { ticket: string }) {
           <>
             <h1 className="h-hero">Your passkey <em>waits for approval</em>.</h1>
             <div className="methods wide">
-              <p className="note ok" role="status"><Icon name="circle-check" /><span className="grow">{invitation.company
-                ? <><b>{provider} confirmed your company account, and your passkey is stored.</b> The colleague who invited you now approves it with a passkey check.</>
-                : <><b>Your passkey is stored.</b>{invitation.first ? '' : ' The colleague who invited you now confirms it with a passkey check. They may first ask you, by a channel you both trust, whether you created it.'}</>}</span></p>
+              <p className="note ok" role="status"><Icon name="circle-check" /><span className="grow"><b>Your passkey is stored.</b>{invitation.first ? '' : ' The colleague who invited you now confirms it with a passkey check. They may first ask you, by a channel you both trust, whether you created it.'}</span></p>
               {facts}
               <p className="fine"><Icon name="clock" size={16} />The passkey cannot sign in until it is approved. Then sign in from your bookmark.</p>
               {invitation.first && <p className="fine"><Icon name="info" size={16} />Local build, first Owner: confirm with the activate command, then sign in.</p>}
               <a className="btn ghost" href="#/"><Icon name="fingerprint" />Go to sign-in</a>
-            </div>
-          </>
-        ) : invitation.company && !invitation.company.confirmed ? (
-          <>
-            <h1 className="h-hero rise d1">First, <em>your company account</em>.</h1>
-            <p className="lede rise d2">You are joining <b>{invitation.organisation}</b> on <b>{location.host}</b>. Check both before you continue. {provider} confirms that the company account is yours; then you create your passkey here. The passkey is what you sign in with from then on.</p>
-            <div className="methods rise d3">
-              {facts}
-              <button className="btn primary" type="button" onClick={company} disabled={busy}><Icon name="building-2" />Continue with {provider}</button>
-              {problem && <Problem>{problem}</Problem>}
-              <p className="fine"><Icon name="info" size={16} /><span>Ophis receives your work address and an account id from {provider}, once. It receives no password and keeps no access to your account.</span></p>
             </div>
           </>
         ) : (
@@ -303,7 +275,6 @@ export function Enrol({ ticket }: { ticket: string }) {
         <div className="cancan">
           <div><span className="cap">You</span><ul>
             <li><Icon name="check" size={16} />Touch your security key</li>
-            {invitation?.company && <li><Icon name="check" size={16} />Sign in once with your {provider} company account</li>}
           </ul></div>
           <div><span className="cap">Until your colleague confirms</span><ul className="x">
             <li><Icon name="x" size={16} />The passkey cannot sign in</li>
@@ -317,7 +288,7 @@ export function Enrol({ ticket }: { ticket: string }) {
 
 interface Member { id: string; displayName: string; role: string; state: string }
 interface Passkey { id: string; seatId: string; label: string; state: string; deviceBound: boolean; createdAt: number; lastUsedAt: number | null; stopRightUntil: number | null }
-interface Ticket { id: string; kind: string; role: string; seatId: string; name: string; issuerSeatId: string | null; status: 'link' | 'issuer' | 'second' | 'wait'; myStep: 'issuer' | 'second' | null; until: number; storedAt: number | null; company: { provider: string; email: string | null; confirmedAt: number | null; deviceBound: boolean | null } | null }
+interface Ticket { id: string; kind: string; role: string; seatId: string; name: string; issuerSeatId: string | null; status: 'link' | 'issuer' | 'second' | 'wait'; myStep: 'issuer' | 'second' | null; until: number; storedAt: number | null }
 interface Request { id: string; kind: string; subjectId: string; name: string | null; role: string | null; value: string | null; requester: string; requesterRole: string; createdAt: number; expiresAt: number; notBefore: number | null; mine: boolean }
 interface Wallet { id: string; chainId: number; address: string; kind: string; label: string; state: 'pending' | 'linked'; recovery: 'in_force' | 'waiting' | null; recoveryAt: number | null; threshold?: number; owners?: number }
 interface View {
@@ -326,8 +297,6 @@ interface View {
   approvals: Request[]
   frozen: ({ id: string } & FrozenInfo)[]
   syncedKeysAllowed: boolean
-  /** The company sign-in: null while nobody has chosen, which works as "none". */
-  company: { setting: 'none' | 'microsoft' | 'google' | null; tenant: string | null; domain: string | null }
   rights: { can: string; roles: string[]; fresh: boolean; second: boolean }[]
   members: Member[]
   passkeys: Passkey[]
@@ -344,11 +313,9 @@ function browser(userAgent: string | null) {
 
 // Invite a member or re-enrol one, in two steps: who, then the link to hand over. The link exists in this
 // dialog only: the server keeps its hash, and closing the dialog forgets it.
-function TicketDialog({ seat, mayOwner, company, onClose }: { seat: Member | null; mayOwner: boolean; company: View['company']; onClose: () => void }) {
+function TicketDialog({ seat, mayOwner, onClose }: { seat: Member | null; mayOwner: boolean; onClose: () => void }) {
   const dialog = useRef<HTMLDialogElement>(null)
   const [name, setName] = useState('')
-  const [email, setEmail] = useState('')
-  const provider = PROVIDER[company.setting ?? ''] // set: the member also proves who they are with a company account
   const [role, setRole] = useState('viewer')
   const [issued, setIssued] = useState<{ link: string; role: string; expiresAt: number }>()
   const [copied, setCopied] = useState(false)
@@ -363,7 +330,7 @@ function TicketDialog({ seat, mayOwner, company, onClose }: { seat: Member | nul
     setBusy(true)
     setProblem('')
     try {
-      const result = await sensitive<{ link: string; role: string; expiresAt: number }>('/api/tickets', { ...(seat ? { seatId: seat.id } : { displayName: name, role }), ...(provider && email.trim() && { email: email.trim() }) })
+      const result = await sensitive<{ link: string; role: string; expiresAt: number }>('/api/tickets', seat ? { seatId: seat.id } : { displayName: name, role })
       if (result.status === 200) setIssued(result.data)
       else setProblem(result.status === 401 ? 'Your session has ended. Sign in again.' : say(result.data))
     } catch {
@@ -401,12 +368,6 @@ function TicketDialog({ seat, mayOwner, company, onClose }: { seat: Member | nul
                   </label>
                 </>
               )}
-              {provider && (
-                <label className="field">{seat ? `Work email at ${company.domain} (leave empty if this member joined with the ${provider} account before)` : `Work email at ${company.domain}`}
-                  <input className="input" type="email" value={email} maxLength={254} required={!seat} autoComplete="off" disabled={Boolean(issued)} onChange={(event) => setEmail(event.target.value)} />
-                </label>
-              )}
-              {provider && <p className="fine"><Icon name="info" size={16} /><span>The member signs in once with this {provider} company account. That shows who the new passkey belongs to.</span></p>}
               {!issued && <button className="btn primary md" type="submit" disabled={busy}><Icon name="key-round" size={16} />Create the link</button>}
               {problem && <Problem>{problem}</Problem>}
             </form>
@@ -415,15 +376,14 @@ function TicketDialog({ seat, mayOwner, company, onClose }: { seat: Member | nul
             <div className="body">
               {issued ? (
                 <>
-                  <p className="note warn"><Icon name="clock" /><span className="grow"><b>This link works once, until {minute(issued.expiresAt)}.</b> {provider ? 'Send it to the member only. It is of no use without their company account.' : keyRole ? 'Hand it over in person or inside a live call. Never by email.' : 'Send it to the member only.'}</span></p>
+                  <p className="note warn"><Icon name="clock" /><span className="grow"><b>This link works once, until {minute(issued.expiresAt)}.</b> {keyRole ? 'Hand it over in person or inside a live call. Never by email.' : 'Send it to the member only.'}</span></p>
                   <label className="field">Enrolment link
                     <input className="input mono" readOnly value={issued.link} onFocus={(event) => event.target.select()} />
                   </label>
                   <button className="btn ghost md" type="button" onClick={() => navigator.clipboard.writeText(issued.link).then(() => setCopied(true), () => setCopied(false))}><Icon name="clipboard-check" size={16} />{copied ? 'Copied' : 'Copy the link'}</button>
-                  {provider ? <p>The member opens it, signs in with the {provider} company account and creates a passkey. Then you approve it under <b>Waiting for confirmation</b>, with your passkey{keyRole ? '. A second person with a key role approves too' : ''}.</p>
-                  : <p>The member opens it and creates a passkey. Check with them, by a channel you both trust, that they did. Then confirm it under <b>Waiting for confirmation</b>, with your passkey{keyRole ? '. A second person with a key role confirms too' : ''}.</p>}
+                  <p>The member opens it and creates a passkey. Check with them, by a channel you both trust, that they did. Then confirm it under <b>Waiting for confirmation</b>, with your passkey{keyRole ? '. A second person with a key role confirms too' : ''}.</p>
                 </>
-              ) : <p>The link appears here. {keyRole && !provider ? 'For this role it works for 10 minutes.' : 'It works for 24 hours.'}</p>}
+              ) : <p>The link appears here. {keyRole ? 'For this role it works for 10 minutes.' : 'For this role it works for 24 hours.'}</p>}
             </div>
           </li>
         </ol>
@@ -436,15 +396,12 @@ function TicketDialog({ seat, mayOwner, company, onClose }: { seat: Member | nul
 // One open ticket: what it waits for, and the confirmation when it waits for this member.
 function Waiting({ ticket, issuer, mayCancel, act }: { ticket: Ticket; issuer: string; mayCancel: boolean; act: Act }) {
   const path = `/api/tickets/${ticket.id}`
-  const c = ticket.company // set: the provider confirmed who the passkey belongs to, and the colleague approves
-  const by = PROVIDER[c?.provider ?? '']
   const text =
-    ticket.status === 'link' ? (c ? (c.confirmedAt ? `${by} confirmed the company account of ${ticket.name}. Waiting for the passkey. The link works until ${minute(ticket.until)}.` : `Waiting for ${ticket.name} to open the link and sign in with the ${by} company account. The link works until ${minute(ticket.until)}.`)
-      : `Waiting for ${ticket.name} to open the link and create a passkey. The link works until ${minute(ticket.until)}.`)
-    : ticket.myStep === 'issuer' ? (c ? `${ticket.name} signed in with the company account and created a passkey. Approve it with your passkey before ${minute(ticket.until)}.` : `${ticket.name} has created a passkey. Confirm it with your passkey before ${minute(ticket.until)}.`)
-    : ticket.myStep === 'second' ? (c ? `${issuer} approved. You are the second person: approve with your passkey before ${minute(ticket.until)}.` : `${issuer} confirmed. You are the second person: confirm with your passkey before ${minute(ticket.until)}.`)
-    : ticket.status === 'issuer' ? (c ? `Waiting for ${issuer} to approve.` : `Waiting for ${issuer} to confirm.`)
-    : ticket.status === 'second' ? `${issuer} ${c ? 'approved' : 'confirmed'}. Waiting for a second person with a key role, other than ${issuer} and ${ticket.name}, before ${minute(ticket.until)}. No wait replaces that person here.`
+    ticket.status === 'link' ? `Waiting for ${ticket.name} to open the link and create a passkey. The link works until ${minute(ticket.until)}.`
+    : ticket.myStep === 'issuer' ? `${ticket.name} has created a passkey. Confirm it with your passkey before ${minute(ticket.until)}.`
+    : ticket.myStep === 'second' ? `${issuer} confirmed. You are the second person: confirm with your passkey before ${minute(ticket.until)}.`
+    : ticket.status === 'issuer' ? `Waiting for ${issuer} to confirm.`
+    : ticket.status === 'second' ? `${issuer} confirmed. Waiting for a second person with a key role, other than ${issuer} and ${ticket.name}, before ${minute(ticket.until)}. No wait replaces that person here.`
     : `This organisation has had no other member with a key role in the last 30 days, so a 72 hour wait stands in for the second person. The passkey becomes active at its first sign-in after ${minute(ticket.until)}. Any Owner can cancel until then.`
   function confirm(event: FormEvent) {
     event.preventDefault()
@@ -456,18 +413,13 @@ function Waiting({ ticket, issuer, mayCancel, act }: { ticket: Ticket; issuer: s
       <div>
         <h3 className="h-card">{ticket.name}<small>{ROLE[ticket.role] ?? ticket.role}, {ticket.kind === 're_enrolment' ? 're-enrolment' : 'invitation'}</small></h3>
         <p>{text}</p>
-        {c ? (
-          <dl className="kv">
-            <dt>Work email</dt><dd>{c.email ?? 'Not given'}{c.confirmedAt ? `, confirmed by ${by} on ${stamp(c.confirmedAt)}` : `, not yet confirmed by ${by}`}</dd>
-            {c.deviceBound !== null && <><dt>Key type</dt><dd>{c.deviceBound ? 'Hardware security key, bound to the device' : 'Passkey that can sync to a cloud account'}</dd></>}
-          </dl>
-        ) : ticket.storedAt !== null && <dl className="kv"><dt>Passkey created</dt><dd>{stamp(ticket.storedAt)}</dd></dl>}
+        {ticket.storedAt !== null && <dl className="kv"><dt>Passkey created</dt><dd>{stamp(ticket.storedAt)}</dd></dl>}
       </div>
       {mayCancel && <button className="btn ghost sm" type="button" onClick={() => act(() => sensitive(`${path}/cancel`))}><Icon name="x" size={16} />Cancel</button>}
       {ticket.myStep && (
         <form className="confirm" onSubmit={confirm}>
-          <button className="btn primary md" type="submit"><Icon name="fingerprint" size={16} />{c ? 'Approve with passkey' : 'Confirm with passkey'}</button>
-          <p className="fine"><Icon name="info" size={16} />{c ? `Approve only if you invited this person at this address. ${by} confirmed the account; you confirm the person.` : `Confirm only after you checked with ${ticket.name}, by a channel you trust, that they created this passkey.`}</p>
+          <button className="btn primary md" type="submit"><Icon name="fingerprint" size={16} />Confirm with passkey</button>
+          <p className="fine"><Icon name="info" size={16} />{`Confirm only after you checked with ${ticket.name}, by a channel you trust, that they created this passkey.`}</p>
         </form>
       )}
     </article>
@@ -481,14 +433,12 @@ function effect(kind: string, name: string, was: string | null, value?: string |
     : kind === 'seat.unfreeze' ? `Unfreezes the seat of ${name} (${role(was)}). The passkeys that were active before the freeze work again and they can sign in.`
     : kind === 'seat.remove' ? `Removes ${name} (${role(was)}) from the organisation. Their passkeys are revoked, their sessions end, and their open links and requests are cancelled. This cannot be undone: coming back takes a new invitation.`
     : kind === 'seat.role' ? `Changes the role of ${name} from ${role(was)} to ${role(value)}. Their sessions end, and the new role starts at their next sign-in.`
-    : kind === 'policy.company' ? (value === 'none' ? 'Sets the company sign-in to none. New members, and members who are re-enrolled, then create a passkey that a colleague confirms after checking with them. Enrolment links that are open now stop working.'
-      : `Sets the company sign-in to ${PROVIDER[value?.split(' ')[0] ?? ''] ?? 'a provider'}, pinned to ${value?.startsWith('google') ? 'the domain' : 'the tenant'} ${value?.split(' ')[1] ?? ''}. New members, and members who are re-enrolled, then show who they are with their company account. Passkeys stay the only way to sign in. Enrolment links that are open now stop working.`)
     : value === '1' ? 'Allows passkeys that sync to a cloud account for Admins, Approvers and Compliance officers. Owners still need hardware keys. This lowers a security setting.'
     : 'Requires hardware security keys again for Admins, Approvers and Compliance officers. Passkeys already enrolled stay.'
 }
 const CHANGE: Record<string, string> = {
   'seat.unfreeze': 'Unfreeze a seat', 'seat.remove': 'Remove a member', 'seat.role': 'Change a role', 'policy.synced_keys': 'Change the passkey rule for key roles',
-  'wallet.link': 'Link a wallet', 'anchor.set': 'Set the recovery wallet', 'policy.company': 'Change the company sign-in', 'order.demo': 'Demo order',
+  'wallet.link': 'Link a wallet', 'anchor.set': 'Set the recovery wallet', 'order.demo': 'Demo order',
 }
 // The same for a wallet. `on` is the chain's name.
 export const kindOf = (w: Pick<Wallet, 'kind' | 'threshold' | 'owners'>) => (w.kind === 'safe' ? `Safe ${w.threshold ?? '?'} of ${w.owners ?? '?'}` : w.kind === 'custodian' ? 'Custodian wallet (declared, not checked by Ophis)' : 'Single key')
@@ -512,7 +462,7 @@ function Approval({ request, wallet, on, mayDecide, act }: { request: Request; w
     : wallet ? walletEffect(request.kind, wallet, on) : effect(request.kind, request.name ?? '', request.role, request.value)
   return (
     <article className="appr">
-      <Tile name={order ? 'arrow-left-right' : wallet ? 'wallet' : request.kind === 'policy.synced_keys' ? 'key-round' : request.kind === 'policy.company' ? 'building-2' : 'user'} />
+      <Tile name={order ? 'arrow-left-right' : wallet ? 'wallet' : request.kind === 'policy.synced_keys' ? 'key-round' : 'user'} />
       <div>
         <h3 className="h-card">{CHANGE[request.kind] ?? 'A change'}</h3>
         <p>{what}</p>
@@ -790,7 +740,7 @@ export function Organisation({ me, onSignedOut, onChanged }: { me: Me; onSignedO
       </div>
 
       {view && view.tickets.length > 0 && (
-        <Section icon="users" title="Waiting for confirmation" hint={PROVIDER[view.company.setting ?? ''] ? 'A new passkey works only after its owner signed in with the company account and a colleague approved it. Key roles need a second person.' : 'A new passkey works only after a colleague confirmed it. Key roles need a second person.'}>
+        <Section icon="users" title="Waiting for confirmation" hint="A new passkey works only after a colleague confirmed it. Key roles need a second person.">
           <div className="stack">{view.tickets.map((ticket) => <Waiting key={ticket.id} ticket={ticket} issuer={ticket.issuerSeatId === me.seat.id ? 'You' : name(ticket.issuerSeatId)} mayCancel={me.seat.role === 'owner' && ready} act={act} />)}</div>
         </Section>
       )}
@@ -802,7 +752,7 @@ export function Organisation({ me, onSignedOut, onChanged }: { me: Me; onSignedO
               const about = view.wallets.find((w) => w.id === request.subjectId)
               return <Approval key={request.id} request={request} wallet={about} on={about ? chain(about.chainId) : ''} mayDecide={KEY_ROLES.includes(me.seat.role) && ready && !quarantined} act={act} />
             })}
-            {view.approvals.length === 0 && <p className="note ok"><Icon name="circle-check" /><span className="grow"><b>Nothing waits.</b> A request to unfreeze a seat, remove a member, change a role, change the passkey rule or the company sign-in, link a wallet or set the recovery wallet appears here, and in the audit log.</span></p>}
+            {view.approvals.length === 0 && <p className="note ok"><Icon name="circle-check" /><span className="grow"><b>Nothing waits.</b> A request to unfreeze a seat, remove a member, change a role, change the passkey rule, link a wallet or set the recovery wallet appears here, and in the audit log.</span></p>}
           </div>
         </Section>
       )}
@@ -833,7 +783,7 @@ export function Organisation({ me, onSignedOut, onChanged }: { me: Me; onSignedO
         </table></div>
       </Section>
       {managed && <ManageDialog seat={managed} frozen={view?.frozen.find((seat) => seat.id === managed.id)} mayOwner={me.seat.role === 'owner'} act={act} onClose={() => setManaged(undefined)} />}
-      {view && ticketFor !== undefined && <TicketDialog seat={ticketFor} mayOwner={me.seat.role === 'owner'} company={view.company} onClose={() => { setTicketFor(undefined); void load() }} />}
+      {ticketFor !== undefined && <TicketDialog seat={ticketFor} mayOwner={me.seat.role === 'owner'} onClose={() => { setTicketFor(undefined); void load() }} />}
 
       <Section id="wallets" icon="wallet" title="Wallets" hint="A wallet is linked by its own signature. One linked wallet is the recovery wallet: if every Owner is locked out, only it can restore access."
         action={manages && ready && !quarantined && <button className="btn ghost sm" type="button" onClick={() => setLinking(true)}><Icon name="wallet" size={16} />Link a wallet</button>}>
@@ -899,29 +849,6 @@ export function Organisation({ me, onSignedOut, onChanged }: { me: Me; onSignedO
               <p>An Owner can ask to change it. {effect('policy.synced_keys', '', null, view.syncedKeysAllowed ? '0' : '1')} {view.syncedKeysAllowed ? 'It needs a second person.' : 'It needs a second person, who can approve 24 hours after the request at the earliest.'}</p>
             </div>
             {me.seat.role === 'owner' && ready && !quarantined && <button className="btn ghost sm" type="button" onClick={() => act(() => sensitive('/api/policy', { syncedKeys: !view.syncedKeysAllowed }))}><Icon name="users" size={16} />{view.syncedKeysAllowed ? 'Request hardware keys only' : 'Request to allow synced passkeys'}</button>}
-          </article>
-        </Section>
-      )}
-
-      {view && (
-        <Section icon="building-2" title="Company sign-in" hint="A company account at Microsoft or Google can show who a new passkey belongs to, when a member joins or is re-enrolled. Passkeys stay the only way to sign in.">
-          <article className="appr">
-            <Tile name="building-2" />
-            <div>
-              <h3 className="h-card">{view.company.setting === 'microsoft' ? 'Microsoft' : view.company.setting === 'google' ? 'Google' : 'None'}</h3>
-              <p>{PROVIDER[view.company.setting ?? ''] ? `New members sign in once with their ${PROVIDER[view.company.setting!]} company account at ${view.company.domain}, then create a passkey, and the inviter approves. Pinned to ${view.company.setting === 'google' ? 'the domain' : 'the tenant'} ${view.company.tenant}.`
-                : 'New members create a passkey, and the colleague who invited them confirms it after checking with them.'} An Owner asks for a change; a second person approves it. To ask for Microsoft or Google the Owner signs in with their own company account, which pins your organisation there.</p>
-            </div>
-            {me.seat.role === 'owner' && ready && !quarantined && (
-              <div className="acts">
-                {(['microsoft', 'google'] as const).filter((p) => p !== view.company.setting).map((p) => <button key={p} className="btn ghost sm" type="button" onClick={() => act(async () => {
-                  const begun = await sensitive<{ url?: string }>('/api/company/start', { provider: p })
-                  if (begun.status === 200 && begun.data.url) location.assign(begun.data.url)
-                  return begun
-                })}><Icon name="building-2" size={16} />Request {PROVIDER[p]}</button>)}
-                {PROVIDER[view.company.setting ?? ''] && <button className="btn ghost sm" type="button" onClick={() => act(() => sensitive('/api/policy/company'))}><Icon name="users" size={16} />Request none</button>}
-              </div>
-            )}
           </article>
         </Section>
       )}
@@ -1266,7 +1193,7 @@ const SECURITY: [group: string, icon: string, summary: string, rows: Row[]][] = 
   ]],
   ['If you lose access', 'shield', 'No weak reset.', [
     ['ban', 'No reset by email, phone or code', 'No email, phone call or typed code can reset access to an account.'],
-    ['users', 'Colleagues confirm a new passkey', 'A lost passkey is replaced only after a colleague confirmed the new passkey with a passkey of their own. The console asks them to check with the member first, by a channel both trust. A company account can also show who the member is. Key roles need two colleagues.'],
+    ['users', 'Colleagues confirm a new passkey', 'A lost passkey is replaced only after a colleague confirmed the new passkey with a passkey of their own. The console asks them to check with the member first, by a channel both trust. Key roles need two colleagues.'],
     ['wallet', 'Your wallet is the last resort', 'If every Owner is locked out, only the recovery wallet of your organisation can restore access, after a 72-hour wait.'],
     ['clock', 'Time to object', 'For some days after a recovery the replaced passkey can still stop the new one, and sensitive changes are blocked.'],
   ]],
@@ -1355,7 +1282,6 @@ function Sheet({ sheet }: { sheet: Ready['sheet'] }) {
     ['2. You lost every passkey, and a colleague can sign in', [
       'Ask an Owner or an Admin (an Owner, if you are one) to use "Re-enrol" on your seat. You get a one-time link.',
       'Open the link on your own device and create a new passkey.',
-      'If your organisation uses a company sign-in, sign in with your company account first: it must be the account you joined with.',
       'The colleague checks with you, by a channel you both trust, and approves with a passkey. For an Owner, Admin, Approver or Compliance officer a second member with such a role does the same.',
       'Your old passkeys can stop the replacement for 24 hours (72 hours for those roles). Sign in with the new passkey and add a second one.',
     ]],

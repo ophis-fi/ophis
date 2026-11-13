@@ -204,8 +204,8 @@ const walletOf = (db: D1Database, orgId: string) =>
               FROM wallets w JOIN organisations o ON o.id = w.org_id WHERE w.org_id = ? AND ((o.state = 'unverified' AND w.state = 'pending') OR (o.state <> 'unverified' AND w.anchor IS NOT NULL))
               ORDER BY w.rowid DESC LIMIT 1`).bind(orgId).first<WalletRow>()
 
-interface Company { id: string; legalName: string; kind: string; state: string; country: string | null; registration: string | null; domain: string | null; domainVerifiedAt: number | null; reviewAt: number | null; signin: string | null; tenant: string | null; print: string | null }
-const COMPANY = `id, name AS legalName, kind, state, country, registration_number AS registration, email_domain AS domain, domain_verified_at AS domainVerifiedAt, review_at AS reviewAt, company_signin AS signin, company_tenant AS tenant, review_print AS print FROM organisations`
+interface Company { id: string; legalName: string; kind: string; state: string; country: string | null; registration: string | null; domain: string | null; domainVerifiedAt: number | null; reviewAt: number | null; print: string | null }
+const COMPANY = `id, name AS legalName, kind, state, country, registration_number AS registration, email_domain AS domain, domain_verified_at AS domainVerifiedAt, review_at AS reviewAt, review_print AS print FROM organisations`
 interface KybRow { legalName: string; registration: string | null; country: string; tier: string; source: string; evidenceSha256: string | null; decision: string; reason: string | null; decidedAt: number | null; nextReview: number | null }
 /** The newest KYB row of one organisation (bind its id): the row that says how the organisation stands. */
 const NEWEST = `FROM kyb_records WHERE org_id = ? ORDER BY created_at DESC, rowid DESC LIMIT 1`
@@ -554,8 +554,6 @@ export async function onboarding(c: Member) {
   const status = company.state !== 'unverified' ? 'verified' : company.reviewAt !== null ? 'under_review' : record?.decision === 'pending' ? 'more_information' : 'not_submitted'
   return json(200, {
     company: { legalName: company.legalName, kind: company.kind, country: company.country, registration: company.registration, domain: company.domain, domainVerifiedAt: company.domainVerifiedAt },
-    // The company sign-in: null until an Owner has chosen (the step of the Onboarding page), which works as "none".
-    signin: { setting: company.signin, tenant: company.tenant },
     first: first && { credentialHash: first.hash, active: first.active === 1, name: first.name },
     // Milestone 5b: the sealing key of this environment (its fingerprint; null: none configured), and the sealed declaration as the server knows it.
     seal: { key: await sealKey(c.env), generation: SEAL.generation },

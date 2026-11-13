@@ -2,7 +2,7 @@
 // page, and the plain page of an organisation that is frozen or closed. Every value shown comes from the server.
 import { useCallback, useEffect, useState, type FormEvent, type ReactNode } from 'react'
 import { kindOf } from './pages.tsx'
-import { api, CANCELLED, day, Icon, minute, PROVIDER, say, Section, sensitive, stamp, Status, Tile } from './ui.tsx'
+import { api, CANCELLED, day, Icon, minute, say, Section, sensitive, stamp, Status, Tile } from './ui.tsx'
 
 const Problem = ({ children }: { children: string }) => <p className="note bad" role="alert"><Icon name="triangle-alert" /><span className="grow">{children}</span></p>
 
@@ -37,7 +37,6 @@ const SAY: Record<string, string> = {
   not_unverified: 'The organisation is already verified.',
   first_passkey_gone: 'The first Owner passkey is no longer active, so a wallet cannot confirm it. Enrol a second Owner with two passkeys instead.',
   unverified: 'This opens once Ophis has verified the organisation.',
-  invalid: 'That is already the company sign-in.',
 }
 const told = (data: { error?: string }) => SAY[data.error ?? ''] ?? say(data)
 // The reasons the operator can give, from the server's fixed list.
@@ -213,7 +212,6 @@ interface KybRow { legalName: string; registration: string | null; country: stri
 interface View {
   company: { legalName: string; kind: string; country: string | null; registration: string | null; domain: string | null; domainVerifiedAt: number | null }
   first: { credentialHash: string; active: boolean; name: string } | null
-  signin: { setting: 'none' | 'microsoft' | 'google' | null; tenant: string | null }
   wallet: { chainId: number; chain: string; address: string; kind: string; label: string; inForce: boolean; threshold?: number; owners?: number } | null
   missing: string | null
   review: { status: 'not_submitted' | 'under_review' | 'more_information' | 'verified'; since: number | null; reason: string | null }
@@ -260,7 +258,7 @@ async function sealed(clear: Uint8Array, recipient: string) {
 // Milestone 5b: the declaration, one page to print, sign and scan (the print stylesheet leaves it alone on the page, like
 // the recovery sheet). Every value is the server's, shown as text: nothing on it can be typed or changed here.
 function Declaration({ view }: { view: View }) {
-  const { company, first, wallet, signin } = view
+  const { company, first, wallet } = view
   return (
     <div className="groups"><section className="sg printable" aria-labelledby="dc-h">
       <header><Tile name="scroll-text" /><div><h2 className="h-panel" id="dc-h">Declaration to print</h2><p>One page. A person who may bind the company signs it. Then scan it, and seal and upload the scan in the step "Declaration".</p>
@@ -276,7 +274,6 @@ function Declaration({ view }: { view: View }) {
           <dt>First Owner passkey (hash)</dt><dd className="mono">{first?.credentialHash ?? 'none'}</dd>
           <dt>Recovery wallet</dt><dd className="mono">{wallet ? wallet.address : 'none'}</dd>
           <dt>Chain</dt><dd>{wallet?.chain ?? 'none'}</dd>
-          <dt>Company sign-in</dt><dd>{PROVIDER[signin.setting ?? ''] ?? 'none'}</dd>
         </dl>
         <p>The undersigned declares that the details above are those of the company, that the first Owner named above acts for the company in the Ophis Business console, and that the undersigned may bind the company.</p>
         <dl className="kv sign">
@@ -341,20 +338,8 @@ export function Onboarding({ owner, onSignedOut }: { owner: boolean; onSignedOut
       setSealing(false)
     }
   }
-  // The company sign-in: off to the provider with the Owner's own company account, or "none" at once.
-  const signIn = async (provider: string) => {
-    setProblem('')
-    try {
-      const begun = await sensitive<{ url?: string; error?: string }>('/api/company/start', { provider })
-      if (begun.status === 401) return onSignedOut()
-      if (begun.status === 200 && begun.data.url) return location.assign(begun.data.url)
-      setProblem(told(begun.data))
-    } catch {
-      setProblem(CANCELLED)
-    }
-  }
   if (!view) return problem ? <div className="stack"><Problem>{problem}</Problem></div> : null
-  const { company, first, review, missing, signin } = view
+  const { company, first, review, missing } = view
   const verified = review.status === 'verified'
   const keys = verified || (missing !== 'second_key' && missing !== 'not_found')
   const proved = verified || missing === null || missing === 'declaration' // the declaration is asked for last
@@ -377,19 +362,6 @@ export function Onboarding({ owner, onSignedOut }: { owner: boolean; onSignedOut
           <Step icon="key-round" title="Passkeys" done={keys}>
             <p>{keys ? 'The first Owner holds two hardware keys.' : 'The first Owner needs two hardware keys. Add the second one now: until then this seat can do nothing else.'}</p>
             {!keys && <p><a className="btn ghost sm" href="/#/organisation">Open Organisation, My passkeys</a></p>}
-          </Step>
-          <Step icon="building-2" title="Company sign-in" done={signin.setting !== null}>
-            <p>{PROVIDER[signin.setting ?? ''] ? `${PROVIDER[signin.setting!]}: members you invite sign in once with their company account at ${company.domain}, then create a passkey, and you approve. Pinned to ${signin.setting === 'google' ? 'the domain' : 'the tenant'} ${signin.tenant}. Your own company account is linked to your seat.`
-              : signin.setting === 'none' ? 'None: members you invite create a passkey, and you confirm it after checking with them.'
-              : 'Choose how a new member shows who they are. With Microsoft or Google they sign in once with their company account. With none, you check with them yourself. Passkeys stay the only way to sign in.'}</p>
-            {!verified && owner && keys && (
-              <div className="acts">
-                {(['microsoft', 'google'] as const).filter((p) => p !== signin.setting).map((p) => <button key={p} className="btn ghost md" type="button" title={`You sign in with your own ${PROVIDER[p]} company account. That pins your organisation there.`} onClick={() => signIn(p)}><Icon name="building-2" size={16} />{signin.setting === null ? 'Continue with' : 'Change to'} {PROVIDER[p]}</button>)}
-                {signin.setting !== 'none' && <button className="btn ghost md" type="button" onClick={() => act('/api/policy/company', {}, () => undefined)}>{signin.setting === null ? 'None' : 'Change to none'}</button>}
-              </div>
-            )}
-            {!verified && owner && !keys && <p className="fine"><Icon name="info" size={16} /><span>Add your second passkey first.</span></p>}
-            {verified && <p className="fine"><Icon name="info" size={16} /><span>A change now takes two people: Organisation, Company sign-in.</span></p>}
           </Step>
           <Step icon="wallet" title="Recovery wallet or second Owner" done={proved}>
             {view.wallet ? <p>{view.wallet.label}: {kindOf(view.wallet)}, <span className="mono">{view.wallet.address}</span> on {view.wallet.chain}. {view.wallet.inForce ? 'It is the recovery wallet in force.' : 'It signed the activation. It becomes the recovery wallet when Ophis approves the organisation.'}</p>

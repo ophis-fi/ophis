@@ -17,8 +17,6 @@
 // Milestone 5b: the declaration prints alone; a scan with a marker is sealed in the browser and uploaded; the stored
 // object is sealed; the operator's command takes it for a reason, and the local test identity opens it: the original.
 // Milestone 5a: an application, its DNS proof, the activation by the recovery wallet, the review and the operator's approval.
-// Company sign-in: the applicant Owner sets Microsoft on the Onboarding page by signing in at the local stand-in provider
-// (scripts/idp-stub.mjs), invites a member by work address, the member signs in there and creates a passkey, the Owner approves.
 // Starts and stops its own local server on a throwaway database. Run: pnpm test:e2e
 import { execFileSync, spawn } from 'node:child_process'
 import { createHash } from 'node:crypto'
@@ -28,14 +26,12 @@ import { Decrypter } from 'age-encryption' // milestone 5b: opens the downloaded
 import { chromium } from 'playwright-core'
 import { mnemonicToAccount } from 'viem/accounts'
 import { publish as publishTxt, start as startDnsStubs } from '../scripts/dns-stub.mjs' // milestone 5: the two local resolvers of "Check DNS"
-import { start as startIdp } from '../scripts/idp-stub.mjs' // company sign-in: the local stand-in for Microsoft and Google
 import { CONTRACT, PORT as INDEXER_PORT, start as startIndexer } from '../scripts/indexer-stub.mjs' // partner figures: the local stand-in for the rebate indexer
 import { PORT as LIST_PORT, start as startLists } from '../scripts/list-stub.mjs' // M10: the local stand-in for the place where the OFAC list file lives
 
 process.chdir(new URL('..', import.meta.url).pathname)
 const ORIGIN = 'http://localhost:8787'
 const SIGN = 'http://127.0.0.1:8787' // the signing page's own hostname
-const IDP = 'http://127.0.0.1:8792' // the stand-in provider of the local environment
 const STATE = '.wrangler/e2e'
 const CHROME = '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome'
 // E2E_PORT: where this run's server listens when 8787 is taken (a developer's own "pnpm dev"). The addresses stay the
@@ -57,7 +53,6 @@ const link = run('node', ['scripts/dev.mjs', 'seed', '--persist', STATE]).match(
 check('seed printed an enrolment link', Boolean(link))
 
 const stopDnsStubs = startDnsStubs() // ports 8790 and 8791
-const stopIdp = startIdp() // port 8792
 const stopIndexer = startIndexer() // port 8793
 const stopLists = startLists() // port 8794
 // detached: the server gets its own process group, so the whole group can be stopped at the end.
@@ -145,7 +140,7 @@ try {
     await devtools.send('WebAuthn.enable')
     const { authenticatorId } = await devtools.send('WebAuthn.addVirtualAuthenticator', { options: KEY })
     page.on('console', (message) => /content security policy|trusted ?type/i.test(message.text()) && violations.push(message.text()))
-    page.on('request', (request) => request.url().startsWith(`${ORIGIN}/`) || request.url().startsWith(`${IDP}/`) || foreign.push(request.url())) // the company sign-in goes to the provider and back
+    page.on('request', (request) => request.url().startsWith(`${ORIGIN}/`) || foreign.push(request.url()))
     return { context, page, devtools, authenticatorId }
   }
   const FOOTER = 'Ophis is a software provider. It is not a crypto-asset service provider.'
@@ -799,19 +794,6 @@ try {
   await secondKey(applicant)
   await on.goto(`${ORIGIN}/#/onboarding`)
   await on.reload()
-  // Company sign-in (C1): the Owner chooses Microsoft on the Onboarding page and signs in once with the own company account, at the local stand-in.
-  await on.getByRole('button', { name: 'Continue with Microsoft' }).click()
-  await on.getByRole('heading', { name: 'Local stand-in for Microsoft sign-in' }).waitFor()
-  check('the Owner is sent to the provider (locally: the stand-in), with nothing of the flow but the state, the nonce and the PKCE challenge in the address',
-    on.url().startsWith(`${IDP}/microsoft/authorize?`) && ['state', 'nonce', 'code_challenge'].every((name) => new URL(on.url()).searchParams.get(name)) && !on.url().includes('verifier'))
-  await on.getByLabel('Work address').fill(`ops@${domain}`)
-  await on.getByRole('button', { name: 'Sign in as this address' }).click()
-  await on.getByText('The company sign-in is set, and your company account is linked to your seat.').waitFor()
-  const address = await on.evaluate(() => location.search + location.hash)
-  check(`the outcome word left the address bar (${address})`, address === '#/onboarding')
-  await on.getByText('Microsoft: members you invite sign in once with their company account').waitFor()
-  check('a step that is done offers a change, not a "Continue"', await on.getByRole('button', { name: 'Change to Google' }).isVisible() && await on.getByRole('button', { name: 'Change to none' }).isVisible() && (await on.getByRole('button', { name: /^Continue with/ }).count()) === 0)
-  check('back on the Onboarding page the company sign-in is Microsoft, pinned to the tenant', await on.getByText('Your own company account is linked to your seat.').isVisible() && await both(on, '37-company-signin-step'))
   await on.getByLabel('Wallet address').fill(key.address)
   await on.getByLabel('Chain').selectOption({ label: 'OP Mainnet' })
   await on.getByLabel('A name for it').fill('Treasury')
@@ -831,7 +813,7 @@ try {
   const paper = on.locator('article.sheet')
   const paperText = await paper.innerText()
   check('the declaration holds the server\'s values, a line for the signatory and the sentence that the signatory may bind the company; nothing on it can be typed',
-    ['Alder Custody S.A.', domain, key.address, 'OP Mainnet', 'Microsoft', 'Name of the signatory', 'Role', 'Date', 'Signature', 'the undersigned may bind the company', FOOTER].every((text) => paperText.includes(text))
+    ['Alder Custody S.A.', domain, key.address, 'OP Mainnet', 'Name of the signatory', 'Role', 'Date', 'Signature', 'the undersigned may bind the company', FOOTER].every((text) => paperText.includes(text))
       && /[0-9a-f]{64}/.test(paperText) && (await paper.locator('input, textarea, select, button, [contenteditable]').count()) === 0)
   await on.emulateMedia({ media: 'print' })
   check('printed, the declaration stands alone', await paper.isVisible() && await on.getByRole('button', { name: 'Print the declaration' }).isHidden() && await on.locator('.bar').isHidden() && await on.locator('.band').isHidden() && await on.getByRole('button', { name: 'Submit for review' }).isHidden())
@@ -934,59 +916,6 @@ try {
     && (await section.innerText()).includes(`Linked wallets are compared with the addresses of: UN Security Council consolidated list (2 addresses, loaded ${today}, version ${fileSha(LIST.addresses).slice(0, 16)}).`)
     && await section.getByRole('row', { name: new RegExp(`Treasury.*Not on a loaded list.*OP Mainnet.*${key.address}`) }).isVisible() // the result comes second: it shows on a phone
     && await on.getByText('Ophis operator: sanctions screening recorded. Result: no match').isVisible() && !/\b(hit|clear)\b/.test(await section.innerText()) && await both(on, '57-screening', '.pager')) // from the end of the audit log, so that the heading of the section is in the picture
-  // Company sign-in (C2): the Owner invites a member by work address. The member signs in at the provider, creates the
-  // passkey, and the Owner approves with a passkey check.
-  await on.goto(`${ORIGIN}/#/organisation`)
-  await on.reload()
-  await on.getByRole('button', { name: 'Invite member' }).click()
-  await on.getByLabel('Name shown to colleagues').fill('Cora Company')
-  await on.getByLabel('Role').selectOption('viewer')
-  await on.getByLabel(`Work email at ${domain}`).fill(`cora@${domain}`)
-  check('the invite dialog asks for the work address and says that the member signs in with it', await on.getByText('The member signs in once with this Microsoft company account.').isVisible() && await both(on, '38-invite-company'))
-  await on.getByRole('button', { name: 'Create the link' }).click()
-  const companyLink = await on.getByLabel('Enrolment link').inputValue()
-  await on.getByRole('button', { name: 'Done' }).click()
-  const cora = await person()
-  await cora.page.goto(companyLink)
-  await cora.page.getByRole('button', { name: 'Continue with Microsoft' }).waitFor()
-  check('the member\'s page asks for the company account first: no passkey button yet, and the footer line', (await cora.page.getByRole('button', { name: 'Create passkey' }).count()) === 0
-    && await cora.page.getByText(`cora@${domain}, at Microsoft`).isVisible() && await cora.page.getByText(FOOTER).isVisible() && await both(cora.page, '39-company-first'))
-  await cora.page.getByRole('button', { name: 'Continue with Microsoft' }).click()
-  await cora.page.getByRole('heading', { name: 'Local stand-in for Microsoft sign-in' }).waitFor()
-  check('the stand-in shows the invited address', (await cora.page.getByLabel('Work address').inputValue()) === `cora@${domain}`)
-  await cora.page.getByLabel('Work address').fill(`mallory@${domain}`) // another account of the same company
-  await cora.page.getByRole('button', { name: 'Sign in as this address' }).click()
-  await cora.page.getByText('That is not the account this link is for.').waitFor()
-  check('another account of the company is refused, and the link is back in the page, not in the address bar', (await cora.page.evaluate(() => location.search + location.hash)) === '#/enrol' && (await cora.page.getByRole('button', { name: 'Create passkey' }).count()) === 0)
-  await cora.page.getByRole('button', { name: 'Continue with Microsoft' }).click()
-  await cora.page.getByRole('button', { name: 'Sign in as this address' }).click()
-  await cora.page.getByRole('button', { name: 'Create passkey' }).waitFor()
-  check('with the invited account the provider\'s confirmation shows, and the passkey can be created', await cora.page.getByText(`cora@${domain}, confirmed by Microsoft`).isVisible())
-  // Review R1: the passkey belongs to the browser that did the company sign-in. The link alone, in another browser, creates nothing.
-  const thief = await person()
-  await thief.page.goto(companyLink)
-  await thief.page.getByRole('button', { name: 'Continue with Microsoft' }).waitFor()
-  check('the link in another browser, after the member signed in, still asks for the company account: no passkey button there', (await thief.page.getByRole('button', { name: 'Create passkey' }).count()) === 0)
-  await thief.context.close()
-  await cora.page.getByRole('button', { name: 'Create passkey' }).click()
-  await cora.page.getByRole('heading', { name: 'Your passkey waits for approval.' }).waitFor()
-  check('the page after the passkey says that the provider confirmed the account and the colleague now approves', await cora.page.getByText('Microsoft confirmed your company account, and your passkey is stored.').isVisible() && await both(cora.page, '40-company-stored'))
-  await on.reload()
-  await on.getByRole('heading', { name: /People, wallets|Read this before you continue/ }).waitFor()
-  check('the Owner is told at the door that a passkey waits', await on.getByText('A new passkey of Cora Company waits for you').isVisible())
-  await on.getByRole('button', { name: 'I have read this' }).click()
-  await on.getByRole('button', { name: 'Approve with passkey' }).waitFor()
-  check('the approval card shows what the provider confirmed and the key type, as before',
-    await on.getByText(`cora@${domain}, confirmed by Microsoft on`).isVisible() && await on.locator('article.appr dl.kv dd', { hasText: 'Hardware security key, bound to the device' }).isVisible()
-    && (await on.getByText('Passkey created').count()) === 0 && await both(on, '41-company-approval', 'article.appr >> nth=0'))
-  await on.getByRole('button', { name: 'Approve with passkey' }).click()
-  await on.getByRole('button', { name: 'Approve with passkey' }).waitFor({ state: 'detached' })
-  await cora.page.getByRole('link', { name: 'Go to sign-in' }).click()
-  await cora.page.getByRole('button', { name: 'Sign in with a passkey' }).click()
-  await cora.page.getByRole('button', { name: 'Sign out' }).first().waitFor()
-  check('after the Owner\'s approval the member signs in with the passkey', (await status('/api/me', cora.page)) === 200)
-  await cora.context.close()
-
   // G4: the operator freezes the organisation: its sessions end, and a member who signs in gets the plain page.
   check('the operator freezes the organisation', operator('freeze', newOrg.id).includes(`${newOrg.id} is now frozen`))
   await on.reload()
@@ -1332,7 +1261,6 @@ try {
   process.exitCode = 1
 } finally {
   stopDnsStubs()
-  stopIdp()
   stopIndexer()
   stopLists()
   await browser?.close()
