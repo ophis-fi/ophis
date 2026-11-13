@@ -693,7 +693,9 @@ export function stopReplacement(db: D1Database, credential: StoredCredential, co
         // The wallet that waited is linked again if the new Owner unlinked it (nothing is linked during the quarantine, so its address is still free).
         ...(wallets === null ? [] : [
           db.prepare('UPDATE wallets SET anchor = NULL, anchor_effective_at = NULL WHERE org_id = ? AND anchor IS NOT NULL').bind(orgId),
-          ...wallets.map((w) => db.prepare(`UPDATE wallets SET state = 'linked', anchor = ?, anchor_effective_at = ? WHERE org_id = ? AND id = ?`).bind(w.anchor, w.at, orgId, w.id)),
+          // Sanctions screening: a wallet whose address came onto a loaded list since is not put back: one the new Owner unlinked stays unlinked. The stop itself is never refused.
+          ...wallets.map((w) => db.prepare(`UPDATE wallets SET state = 'linked', anchor = ?, anchor_effective_at = ? WHERE org_id = ? AND id = ?
+                                            AND address NOT IN (SELECT address FROM sanctioned_addresses)`).bind(w.anchor, w.at, orgId, w.id)),
         ]),
       ]]
     }
@@ -758,11 +760,11 @@ async function judge(db: D1Database, orgId: string, role: Role, kind: Kind | Dir
   }
   if (kind === 'wallet.link' || kind === 'wallet.unlink' || kind === 'anchor.set' || kind === 'anchor.cancel') {
     const at = [orgId, subjectId] as const
-    const w = await db.prepare('SELECT state, kind FROM wallets WHERE org_id = ? AND id = ?').bind(...at).first<{ state: string; kind: string }>()
+    const w = await db.prepare('SELECT state, kind, address FROM wallets WHERE org_id = ? AND id = ?').bind(...at).first<{ state: string; kind: string; address: string }>()
     if (!w || w.state !== (kind === 'wallet.link' ? 'pending' : 'linked')) return 'not_found'
     // Wallets are linked and unlinked by an Owner or Admin. The recovery wallet is an Owner's matter.
     if (role !== 'owner' && (role !== 'admin' || kind === 'anchor.set' || kind === 'anchor.cancel')) return 'forbidden'
-    if (kind === 'wallet.link') return { detail: null, apply: [db.prepare(`UPDATE wallets SET state = 'linked', linked_at = ? WHERE org_id = ? AND id = ? AND state = 'pending'`).bind(now, ...at)] }
+    if (kind === 'wallet.link') return (await listed(db, w.address)) ? 'wallet_listed' : { detail: null, apply: [db.prepare(`UPDATE wallets SET state = 'linked', linked_at = ? WHERE org_id = ? AND id = ? AND state = 'pending'`).bind(now, ...at)] }
     const a = await anchors(db, orgId, now)
     if (kind === 'wallet.unlink') {
       // Never the recovery wallet, in force or waiting: the last resort is replaced first, by two people and 72 hours.
@@ -966,6 +968,17 @@ export async function orders(db: D1Database, actor: Actor, now: number) {
   return results.map(({ payload, seat, ...o }) => ({ ...o, mine: seat === actor.seatId, open: o.state === 'pending' && o.expiresAt > now, order: JSON.parse((JSON.parse(payload) as { value: string }).value) as Order }))
 }
 
+// ---- sanctions screening: the address lists the operator loads (onboarding.ts) ----
+// A listed address is never linked: every write that makes a wallet row, or makes one linked, reads the lists inside
+// its commit (linkWallet and the approval of a link here; the activation proof and the operator's approval in
+// onboarding.ts) and refuses with "wallet_listed". The stop of a recovery, which is never refused, leaves such a wallet unlinked.
+/** SQL: the wallet row `w` is linked or pending, at an address on a loaded list. */
+export const LISTED = `w.state IN ('linked', 'pending') AND w.address IN (SELECT address FROM sanctioned_addresses)`
+/** Is this address on a loaded list? */
+export const listed = async (db: D1Database, address: string) => Boolean(await db.prepare('SELECT 1 FROM sanctioned_addresses WHERE address = ? LIMIT 1').bind(address).first())
+/** The first linked or pending wallet of an organisation that is on a loaded list, or null. */
+export const listedWallet = (db: D1Database, orgId: string) => db.prepare(`SELECT w.id FROM wallets w WHERE w.org_id = ? AND ${LISTED} ORDER BY w.rowid LIMIT 1`).bind(orgId).first<{ id: string }>()
+
 // ---- milestone 4a: wallets and the recovery wallet ----
 
 // A pending wallet is live only while its request is open. A reject, a cancel or the 7 days leave a row that no
@@ -1013,7 +1026,7 @@ export const walletFor = (db: D1Database, actor: Actor, id: string, now: number)
               AND (w.id = ? OR w.id = (SELECT a.subject_id FROM approvals a WHERE a.org_id = w.org_id AND a.id = ? AND a.action = 'anchor.set' AND ${OPEN_REQUEST}))`)
     .bind(actor.orgId, id, id, now).first<{ chainId: number; address: string; kind: WalletKind }>()
 
-type Linked = { error: 'forbidden' | 'quarantine' | 'already_linked' | 'proof_used' } | { state: 'linked' | 'pending' }
+type Linked = { error: 'forbidden' | 'quarantine' | 'already_linked' | 'proof_used' | 'wallet_listed' } | { state: 'linked' | 'pending' }
 // A valid proof arrived for an intent of this seat: the first write of the whole link. Everything that decides it is
 // read here, inside the commit: the seat is still an active Owner or Admin and not in quarantine, the proof was never
 // accepted before, the address is not live. Where the 30 day rule lets one person stand for two the wallet is linked
@@ -1035,6 +1048,7 @@ export async function linkWallet(
       : (seat.quarantine ?? 0) > now ? 'quarantine'
       : (await db.prepare('SELECT 1 FROM wallets WHERE proof_nonce = ?').bind(w.nonce).first()) ? 'proof_used'
       : (await walletLive(db, w.orgId, w.chainId, w.address, now)) ? 'already_linked'
+      : (await listed(db, w.address)) ? 'wallet_listed'
       : null
     if (refused) {
       outcome = { error: refused }

@@ -5178,6 +5178,28 @@ describe('E. account recovery: a stop undoes all of it, the organisation is read
     expect([await walletRow(late.wallet.id), await walletRow(other.id)]).toEqual(was)
   })
 
+  it('sanctions screening: a stop does not link again a wallet whose address came onto a loaded list after the new Owner unlinked it; the stop itself is never refused', async () => {
+    const { o, a, wallet } = await teamWithWallet()
+    const next = await linked(o, a, { custodian: true }, accounts[1])
+    const asked = await requestRecovery(o.orgId)
+    now += HOUR
+    for (const m of [o, a]) await again(m)
+    await recovery(o, a, next.id)
+    const before = await walletRow(wallet.id)
+    now += WAIT - HOUR
+    const n = await completed(asked)
+    expect((await post(`/api/wallets/${next.id}/unlink`, n)).status).toBe(200)
+    now += DAY
+    // Written straight to the two tables, as a load does: accounts[1] is the wallet of many organisations of this run.
+    await db.batch([db.prepare(`INSERT INTO sanctions_lists (list, sha256, entries, loaded_at) VALUES ('ofac', ?, 1, ?)`).bind('f'.repeat(64), now), db.prepare(`INSERT INTO sanctioned_addresses (list, address) VALUES ('ofac', ?)`).bind(accounts[1].address.toLowerCase())])
+    try {
+      expect((await stop(o.key)).status).toBe(200)
+      expect([await walletRow(wallet.id), await walletRow(next.id)]).toEqual([before, { state: 'unlinked', anchor: null, at: null }])
+    } finally {
+      await db.batch([db.prepare('DELETE FROM sanctioned_addresses'), db.prepare('DELETE FROM sanctions_lists')])
+    }
+  })
+
   it('F2: a stop rolls back every enrolment made under the recovery: on a link the new Owner issued, or confirmed as the second person, and on the links of seats re-enrolled that way; the passkeys they replaced are active again, their sessions end, what they opened closes; an enrolment none of them touched stays', async () => {
     const { o, a, v } = await teamWithWallet()
     const ad = await colleague(o, 'admin')
@@ -5579,6 +5601,7 @@ describe('E. onboarding: a company applies, proves its domain, is activated and 
   }
   // Sanctions screening: an approval carries one, with the outcome "clear" and the SHA-256 of each list file searched.
   const SCREENED = { outcome: 'clear', lists: { eu: 'e1'.repeat(32) } }
+  const noLists = () => db.batch([db.prepare('DELETE FROM sanctioned_addresses'), db.prepare('DELETE FROM sanctions_lists')]) // the tests share one database
   const APPROVE = { decision: 'approve', tier: 'standard', source: 'registry', evidenceRef: 'LBR extract B123456', evidenceSha256: 'ab'.repeat(32), nextReview: '2027-11-11', screening: SCREENED }
   const MORE = { decision: 'more', reason: 'details_differ', tier: 'standard', source: 'registry' }
   // An approval names the submission the operator looked at (review): the helper takes it from the row, as the list would show it now.
@@ -6295,7 +6318,7 @@ describe('E. onboarding: a company applies, proves its domain, is activated and 
     expect(onboarding.operatorRoutes.map((r) => `${r.method} ${r.path}`)).toEqual([
       'GET /api/operator/organisations', 'POST /api/operator/organisations/:id/decision', 'POST /api/operator/organisations/:id/freeze', 'POST /api/operator/organisations/:id/unfreeze', 'POST /api/operator/invites',
       'GET /api/operator/organisations/:id/items', 'POST /api/operator/items/:id/download', // milestone 5b
-      'POST /api/operator/organisations/:id/screening', // sanctions screening
+      'POST /api/operator/organisations/:id/screening', 'POST /api/operator/sanctions', // sanctions screening
     ])
     expect(OP).toBe('http://operator.localhost:8787')
     const rows = await snapshot()
@@ -6573,12 +6596,19 @@ describe('E. onboarding: a company applies, proves its domain, is activated and 
     const e = await underReview()
     expect((await decideOn(e.orgId)).body).toEqual({ state: 'active' })
     const file = await sealedFile()
+    // Sanctions screening: a load that freezes. Loaded once, the freeze undone underneath: the same load finds the organisation again.
+    const f = await owner()
+    const reload = async () => op('POST', '/api/operator/sanctions', { body: { list: 'ofac', sha256: 'f'.repeat(64), addresses: [(await row<{ address: string }>('SELECT address FROM wallets WHERE org_id = ?', f.orgId))!.address] } })
+    await walletRow(f.orgId, someAddress())
+    expect((await reload()).body.hits).toEqual([expect.objectContaining({ id: f.orgId, frozen: true })])
+    await setOrg(f.orgId, `state = 'active'`)
     const steps: [string, () => Promise<{ status: number }>][] = [
       ['organisation.apply', () => checkDns(a.intent)], ['activation.proof', () => prove(asked.body.intent, signature)], ['review.submit', () => submit(c)], ['declaration.upload', () => upload(b, file)],
       ['kyb.approve', () => decideOn(d.orgId)], ['kyb.more', () => decideOn(d.orgId, MORE)], ['kyb.refuse', () => decideOn(d.orgId, { ...MORE, decision: 'refuse' })],
       ['organisation.freeze', () => op('POST', `/api/operator/organisations/${e.orgId}/freeze`)],
       ['sealed.download', async () => take((await itemsOf(d.orgId))[0].id)],
       ['kyb.screen', () => op('POST', `/api/operator/organisations/${e.orgId}/screening`, { body: { ...SCREENED, nextReview: '2027-11-11' } })],
+      ['screening.wallet', reload],
     ]
     const rows = await snapshot()
     const kept = await objects()
@@ -6587,12 +6617,13 @@ describe('E. onboarding: a company applies, proves its domain, is activated and 
     })
     expect(await snapshot()).toBe(rows)
     expect(await objects()).toEqual(kept) // milestone 5b: an upload whose row failed leaves no object behind
+    await noLists()
     const written = [...new Set([...onboardingSource.matchAll(/'([a-z_]+(?:\.[a-z_]+)+)'/g)].map((match) => match[1]))]
     expect(written.sort()).toEqual([...steps.map(([action]) => action), 'organisation.unfreeze'].sort())
     for (const action of written) expect(EVENTS[action], action).toEqual(expect.any(String))
     expect(Object.keys(onboarding.ONBOARDING_EVENTS).sort()).toEqual(written)
     // Every statement of this file is prepared with bound parameters: no value of a request is written into SQL text.
-    for (const [, inserted] of onboardingSource.matchAll(/prepare\(`[^`]*?\$\{(\w+)\}/g)) expect(['COMPANY', 'owner', 'REVIEWED', 'SEALED', 'NEWEST']).toContain(inserted)
+    for (const [, inserted] of onboardingSource.matchAll(/prepare\(`[^`]*?\$\{(\w+)\}/g)) expect(['COMPANY', 'owner', 'REVIEWED', 'SEALED', 'NEWEST', 'LISTED']).toContain(inserted)
   })
 
   // One isolation case per new route (the standing rule of section e), added to the table and run here. The Sec-Fetch-Site
@@ -7134,9 +7165,8 @@ describe('E. onboarding: a company applies, proves its domain, is activated and 
 
   // ---- sanctions screening: manual, at no cost. The operator searches the lists offline and records the result. ----
   describe('S. sanctions screening', () => {
-    const wipe = () => db.batch([db.prepare('DELETE FROM sanctioned_addresses'), db.prepare('DELETE FROM sanctions_lists')])
-    beforeEach(wipe) // the tests share one database: no test sees the lists of another
-    afterAll(wipe)
+    beforeEach(noLists) // no test sees the address lists of another
+    afterAll(noLists)
     const put = (sql: string, ...values: unknown[]) => db.prepare(sql).bind(...values).run()
     const X = `0x${'5a'.repeat(20)}`
 
@@ -7335,6 +7365,198 @@ describe('E. onboarding: a company applies, proves its domain, is activated and 
       expect(await breaches()).toBe(1)
       await setOrg(q.orgId, `state = 'archived'`)
       expect(await breaches()).toBe(0)
+    })
+
+    // ---- S3: wallets against the loaded address lists ----
+    const load = (list: unknown, addresses: unknown, more: Record<string, unknown> = {}, options: Parameters<typeof op>[2] = {}) => op('POST', '/api/operator/sanctions', { ...options, body: { list, sha256: H('f'), addresses, ...more } })
+    const numbered = (n: number) => Array.from({ length: n }, (_, i) => `0x${i.toString(16).padStart(40, '0')}`)
+    const loaded = async () => [(await db.prepare('SELECT * FROM sanctions_lists ORDER BY list').all()).results, (await db.prepare('SELECT list, address FROM sanctioned_addresses ORDER BY list, address').all<{ list: string; address: string }>()).results.map((r) => `${r.list} ${r.address}`)]
+    // As it is between the two steps of a load: the address is on a list, and no organisation was looked at yet.
+    const listDirect = (address: string) => db.batch([
+      db.prepare(`INSERT INTO sanctions_lists (list, sha256, entries, loaded_at) VALUES ('ofac', ?, 1, ?) ON CONFLICT (list) DO NOTHING`).bind(H('f'), now), db.prepare(`INSERT INTO sanctioned_addresses (list, address) VALUES ('ofac', ?)`).bind(address),
+    ])
+    // A wallet key no other test uses: a load of its address finds the organisations of this test only.
+    let signers = 50
+    const signer = () => mnemonicToAccount('test test test test test test test test test test test junk', { addressIndex: signers++ })
+    const lower = (account: { address: string }) => account.address.toLowerCase()
+    interface Hit { id: string; name: string; state: string; address: string; frozen: boolean }
+    const sorted = <T extends { id: string; address?: string }>(hits: T[]) => [...hits].sort((x, y) => `${x.id}${x.address}`.localeCompare(`${y.id}${y.address}`))
+    const hitsOf = (answer: { body: { hits: Hit[] } }) => sorted(answer.body.hits)
+
+    it('S3a: an address list is loaded whole or not at all: a list code of the three, the SHA-256 of its file, 1 to 20,000 distinct addresses in lower case; a load replaces that list and leaves the others alone', async () => {
+      const [A, B, C] = [someAddress(), someAddress(), someAddress()]
+      const rows = await snapshot()
+      const bad: [unknown, unknown, Record<string, unknown>?][] = [
+        ['sdn', [A]], [undefined, [A]], [['ofac'], [A]], ['OFAC', [A]], ['ofac', [A], { sha256: undefined }], ['ofac', [A], { sha256: H('f').slice(1) }], ['ofac', [A], { sha256: H('F') }], ['ofac', [A], { sha256: [H('f')] }],
+        ['ofac', undefined], ['ofac', A], ['ofac', { 0: A }], ['ofac', []], ['ofac', [A, A]], ['ofac', [A, B, A]], ['ofac', [A, 7]], ['ofac', [[A]]], ['ofac', [A.slice(0, 41)]], ['ofac', [`${A}0`]],
+        ['ofac', [A.replace('0x', '0X')]], ['ofac', [`0x${'AB'.repeat(20)}`]], ['ofac', [A.slice(2)]], ['ofac', [` ${A}`]], ['ofac', numbered(20_001)],
+      ]
+      for (const [list, addresses, more] of bad) expect((await load(list, addresses, more)).body, JSON.stringify([list, more, addresses]).slice(0, 120)).toEqual({ error: 'invalid' })
+      expect(await snapshot()).toBe(rows)
+      // 20,000 are taken, in chunks, in one batch. The body is about 900 KB: this route reads up to 1.5 MB, every other route of the operator 64 KB.
+      expect((await load('un', numbered(20_000))).body).toEqual({ list: 'un', entries: 20_000, hits: [] })
+      expect((await row<{ n: number; one: number }>(`SELECT count(*) AS n, count(DISTINCT address) AS one FROM sanctioned_addresses WHERE list = 'un'`))).toEqual({ n: 20_000, one: 20_000 })
+      expect((await load('un', numbered(40_000))).status).toBe(413)
+      expect((await op('POST', '/api/operator/invites', { body: { pad: 'x'.repeat(70_000) } })).status).toBe(413)
+      expect((await load('un', [A])).body).toEqual({ list: 'un', entries: 1, hits: [] })
+      // A load replaces its own list and no other, with what was loaded and when.
+      expect((await load('ofac', [A, B])).status).toBe(200)
+      expect((await load('eu', [B], { sha256: H('2') })).status).toBe(200)
+      const first = now
+      now += DAY
+      expect((await load('ofac', [C], { sha256: H('1') })).body).toEqual({ list: 'ofac', entries: 1, hits: [] })
+      expect(await loaded()).toEqual([
+        [{ list: 'eu', sha256: H('2'), entries: 1, loaded_at: first }, { list: 'ofac', sha256: H('1'), entries: 1, loaded_at: now }, { list: 'un', sha256: H('f'), entries: 1, loaded_at: first }],
+        [`eu ${B}`, `ofac ${C}`, `un ${A}`],
+      ])
+      // Whole or not at all: a load that fails after the old addresses went leaves the list as it was.
+      const kept = await loaded()
+      await withTrigger('INSERT ON sanctioned_addresses', async () => expect((await load('ofac', [A, B], { sha256: H('3') })).status).toBe(500))
+      await withTrigger('INSERT ON sanctions_lists', async () => expect((await load('ofac', [A, B], { sha256: H('3') })).status).toBe(500))
+      expect(await loaded()).toEqual(kept)
+    })
+
+    it('S3b: a load freezes every active organisation that holds a linked or a pending wallet on any loaded list, with a row in its own log and every session ended, and answers the hits; no other organisation changes', async () => {
+      const [A, B, P, E] = [someAddress(), someAddress(), someAddress(), signer()]
+      const { o, a } = await trio()
+      const [w1, w2] = [await walletRow(o.orgId, A), await walletRow(o.orgId, P, { state: 'pending' })] // two wallets of one organisation: two hits, one freeze
+      const [other, waits, gone, cold] = [await owner(), await owner(), await owner(), await owner()]
+      await walletRow(other.orgId, B) // not on the list
+      await walletRow(waits.orgId, P, { state: 'pending' })
+      await walletRow(gone.orgId, A, { state: 'unlinked' }) // history
+      await walletRow(cold.orgId, A)
+      expect((await frozen(cold.orgId)).body).toEqual({ state: 'frozen' })
+      const early = await applicantWithTwoKeys() // not yet verified: its wallet waits for the review
+      expect((await activation(early, E)).body).toEqual({ state: 'stored' })
+      const logs = async () => Promise.all([o, other, waits, gone, cold, early].map((m) => count('audit_log', m.orgId)))
+      const [before, open] = [await logs(), await sessionsOf(other.orgId)]
+      const answer = await load('ofac', [A, P, lower(E), someAddress()])
+      expect([answer.status, answer.body.list, answer.body.entries]).toEqual([200, 'ofac', 4])
+      expect(hitsOf(answer)).toEqual(sorted([
+        { id: o.orgId, name: o.name, state: 'active', address: A, frozen: true }, { id: o.orgId, name: o.name, state: 'active', address: P, frozen: true },
+        { id: waits.orgId, name: waits.name, state: 'active', address: P, frozen: true }, { id: cold.orgId, name: cold.name, state: 'frozen', address: A, frozen: false },
+        { id: early.orgId, name: 'Alder Custody S.A.', state: 'unverified', address: lower(E), frozen: false },
+      ]))
+      expect(await Promise.all([o, other, waits, gone, cold, early].map((m) => stateOf(m.orgId)))).toEqual(['frozen', 'active', 'frozen', 'active', 'frozen', 'unverified'])
+      expect(await logs()).toEqual([before[0] + 1, before[1], before[2] + 1, before[3], before[4], before[5]])
+      expect(await row('SELECT actor_kind, actor_id, session_id, action, subject_id, detail FROM audit_log WHERE org_id = ? ORDER BY seq DESC', o.orgId))
+        .toEqual({ actor_kind: 'operator', actor_id: null, session_id: null, action: 'screening.wallet', subject_id: w1, detail: null })
+      expect(w2).not.toBe(w1)
+      expect(await data.verifyAudit(db, o.orgId)).toMatchObject({ ok: true })
+      expect([await sessionsOf(o.orgId), await sessionsOf(waits.orgId), await sessionsOf(other.orgId)]).toEqual([0, 0, open])
+      for (const m of [o, a]) expect((await call('GET', '/api/me', { cookie: m.cookie })).status).toBe(401)
+      expect((await signIn(o.key)).body).toEqual({ error: 'org_frozen' })
+      expect((await call('GET', '/api/me', { cookie: other.cookie })).status).toBe(200)
+      // Another list: the hits are those of ANY loaded list, and what is frozen already is not frozen again.
+      const second = await load('eu', [B])
+      expect(hitsOf(second).map((h) => [h.id, h.frozen])).toEqual(sorted([{ id: o.orgId, frozen: false }, { id: o.orgId, frozen: false }, { id: waits.orgId, frozen: false }, { id: cold.orgId, frozen: false }, { id: early.orgId, frozen: false }, { id: other.orgId, frozen: true }]).map((h) => [h.id, h.frozen]))
+      expect([await stateOf(other.orgId), await logs()]).toEqual(['frozen', [before[0] + 1, before[1] + 1, before[2] + 1, before[3], before[4], before[5]]])
+      // The operator freezes the organisation at the instant of the load's own freeze: read again inside that commit, nothing is written twice.
+      const late = await owner()
+      const L = someAddress()
+      await walletRow(late.orgId, L)
+      let batches = 0
+      const raced2 = { env: { ...racing(async () => ++batches === 2 && expect((await frozen(late.orgId)).body).toEqual({ state: 'frozen' }), 2), OPERATOR_TOKEN: TOKEN } as unknown as Env }
+      const third = await load('un', [L], {}, raced2)
+      expect(hitsOf(third).filter((h) => h.id === late.orgId)).toEqual([{ id: late.orgId, name: late.name, state: 'active', address: L, frozen: false }])
+      expect((await db.prepare('SELECT action FROM audit_log WHERE org_id = ? ORDER BY seq DESC LIMIT 1').bind(late.orgId).all()).results).toEqual([{ action: 'organisation.freeze' }])
+      // The wallet is unlinked at that instant: no wallet of the organisation is listed any more, and nothing is frozen.
+      const quick = await owner()
+      const Q = someAddress()
+      const unlinked = await walletRow(quick.orgId, Q)
+      batches = 0
+      const raced3 = { env: { ...racing(async () => ++batches === 2 && (await put(`UPDATE wallets SET state = 'unlinked' WHERE id = ?`, unlinked), await signIn(quick.key)), 2), OPERATOR_TOKEN: TOKEN } as unknown as Env }
+      expect(hitsOf(await load('un', [Q], {}, raced3)).filter((h) => h.id === quick.orgId)).toEqual([{ id: quick.orgId, name: quick.name, state: 'active', address: Q, frozen: false }])
+      expect([await stateOf(quick.orgId), (await row<{ n: number }>(`SELECT count(*) AS n FROM audit_log WHERE org_id = ? AND action = 'screening.wallet'`, quick.orgId))!.n]).toEqual(['active', 0])
+      expect(await breaches()).toBe(0)
+    })
+
+    it('S3c: a listed address cannot be linked. The link with its proof, the approval of a link, the wallet of a new organisation and the operator\'s approval each read the lists inside their commit; after a load without the address they pass', async () => {
+      const without = () => load('ofac', [someAddress()])
+      // The address comes onto a list while the write is on its way: just before the batch of its commit (the second batch of a proof, whose first counts the check).
+      const meanwhile = (address: string, key: Key, at = 1) => {
+        let batches = 0
+        return racing(async () => ++batches === at && (await listDirect(address), await signIn(key)), at) as Env
+      }
+      // 1. The link request with its proof (one person: linked at once).
+      const one = await owner()
+      const [s1, s1b] = [signer(), signer()]
+      expect((await load('ofac', [lower(s1)])).body.hits).toEqual([])
+      let rows = await snapshot()
+      let refused: { status: number; body: unknown } = await link(one, s1)
+      expect([refused.status, refused.body, await snapshot()]).toEqual([409, { error: 'wallet_listed' }, rows])
+      expect((await without()).status).toBe(200)
+      expect((await link(one, s1)).body).toEqual({ state: 'linked' })
+      const asked = await askLink(one, s1b.address)
+      expect((await prove(asked.body.intent, await s1b.signTypedData(typedOf(intentOf(asked.body.intent))), { env: meanwhile(lower(s1b), one.key, 2) })).body).toEqual({ error: 'wallet_listed' })
+      expect(await count('wallets', one.orgId)).toBe(1)
+      // 2. The approval of a link: the wallet waits for its second person when its address comes onto a list.
+      await noLists()
+      const { o, a } = await trio()
+      const [s2, s2b] = [signer(), signer()]
+      expect((await link(o, s2, { custodian: true })).body).toEqual({ state: 'pending' })
+      const request = await requestFor((await walletAt(s2.address)).id)
+      await listDirect(lower(s2))
+      rows = await snapshot()
+      refused = await decide(a, request, 'approve')
+      expect([refused.status, refused.body, await snapshot()]).toEqual([409, { error: 'wallet_listed' }, rows])
+      expect((await without()).body.hits).toEqual([])
+      expect([(await decide(a, request, 'approve')).status, (await walletAt(s2.address)).state]).toEqual([200, 'linked'])
+      expect((await link(o, s2b, { custodian: true })).body).toEqual({ state: 'pending' })
+      const second = await requestFor((await walletAt(s2b.address)).id)
+      expect((await call('POST', `/api/approvals/${second}/approve`, { cookie: a.cookie, env: meanwhile(lower(s2b), o.key) })).body).toEqual({ error: 'wallet_listed' })
+      expect((await walletAt(s2b.address)).state).toBe('pending')
+      // 3. The wallet of a new organisation: the activation proof.
+      await noLists()
+      const n = await applicantWithTwoKeys()
+      const [s3, s3b] = [signer(), signer()]
+      expect((await load('ofac', [lower(s3)])).body.hits).toEqual([])
+      rows = await snapshot()
+      refused = await activation(n, s3)
+      expect([refused.status, refused.body, await snapshot()]).toEqual([409, { error: 'wallet_listed' }, rows])
+      expect((await without()).status).toBe(200)
+      const named = await nameWallet(n, s3b.address)
+      const proof = await s3b.signTypedData(typedActivate(fieldsOf<ActivateFields>(named.body.intent)))
+      expect((await prove(named.body.intent, proof, { env: meanwhile(lower(s3b), n.key, 2) })).body).toEqual({ error: 'wallet_listed' })
+      expect(await count('wallets', n.orgId)).toBe(0)
+      await noLists()
+      expect((await activation(n, s3)).body).toEqual({ state: 'stored' })
+      // 4. The operator's approval of an organisation whose wallet came onto a list after its proof.
+      expect((await submit(n)).body).toEqual({ state: 'under_review' })
+      expect((await load('ofac', [lower(s3)])).body.hits).toEqual([{ id: n.orgId, name: 'Alder Custody S.A.', state: 'unverified', address: lower(s3), frozen: false }])
+      rows = await snapshot()
+      refused = await decideOn(n.orgId)
+      expect([refused.status, refused.body, await snapshot()]).toEqual([409, { error: 'wallet_listed' }, rows])
+      expect((await without()).status).toBe(200)
+      expect((await decideOn(n.orgId, APPROVE, raced(async () => (await listDirect(lower(s3)), await signIn(n.key))))).body).toEqual({ error: 'wallet_listed' })
+      expect(await stateOf(n.orgId)).toBe('unverified')
+      await noLists()
+      expect((await decideOn(n.orgId)).body).toEqual({ state: 'active' })
+      expect((await walletAt(s3.address)).state).toBe('linked')
+    })
+
+    it('S3d: the operator cannot unfreeze while a linked or a pending wallet of the organisation is on a loaded list', async () => {
+      for (const state of ['linked', 'pending']) {
+        const o = await owner()
+        const A = someAddress()
+        const wallet = await walletRow(o.orgId, A, { state })
+        expect((await load('ofac', [A])).body.hits).toEqual([{ id: o.orgId, name: o.name, state: 'active', address: A, frozen: true }])
+        const rows = await snapshot()
+        const refused = await frozen(o.orgId, 'unfreeze')
+        expect([refused.status, refused.body, await snapshot()], state).toEqual([409, { error: 'wallet_listed' }, rows])
+        // A wallet that is unlinked blocks nothing; nor does a load without the address.
+        if (state === 'linked') await put(`UPDATE wallets SET state = 'unlinked' WHERE id = ?`, wallet)
+        else expect((await load('ofac', [someAddress()])).body.hits).toEqual([])
+        expect((await frozen(o.orgId, 'unfreeze')).body, state).toEqual({ state: 'active' })
+      }
+      // The address comes onto a list at the instant of the unfreeze: read again inside the commit.
+      const p = await owner()
+      const B = someAddress()
+      await walletRow(p.orgId, B)
+      expect((await seedScreen(p.orgId)).body).toEqual({ state: 'active' })
+      expect((await frozen(p.orgId)).body).toEqual({ state: 'frozen' })
+      const late = await frozen(p.orgId, 'unfreeze', raced(async () => (await listDirect(B), await screen(p.orgId))))
+      expect([late.body, await stateOf(p.orgId)]).toEqual([{ error: 'wallet_listed' }, 'frozen'])
     })
   })
 })
