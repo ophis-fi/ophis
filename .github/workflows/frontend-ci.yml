@@ -140,6 +140,7 @@ jobs:
           node infra/arc-mainnet/release/test_mac_key.cjs
           node infra/arc-mainnet/release/rehearse.cjs
           python3 infra/arc-mainnet/test_credit_gate.py
+          python3 infra/arc-mainnet/release/test_render.py
           python3 infra/arc-mainnet/release/check.py
           python3 infra/arc-mainnet/test_rpc.py
           python3 infra/arc-mainnet/test_rpc.py --release
