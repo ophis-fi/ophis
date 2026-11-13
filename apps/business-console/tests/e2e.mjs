@@ -1220,11 +1220,15 @@ try {
     && await pat.page.getByText(`Your share $${usd(P.fees.currentCycle.partnerShareUsd)} plus $${usd(P.fees.currentCycle.carriedInUsd)} carried.`).isVisible() && (await pat.page.getByText('Estimate. The amount is fixed when a payout is made.').count()) === 1)
   check('the months of the partner fee, read from the contract file',
     (await monthRows.count()) === P.fees.recentBatches.length && (await monthRows.allTextContents()).every((row, i) => row.startsWith(P.fees.recentBatches[i].cycleMonth) && row.includes(usd(P.fees.recentBatches[i].owedUsd)) && row.includes(usd(P.fees.recentBatches[i].carriedUsd))))
-  // The wallets that traded through the integration, read from the contract file: the totals, then each wallet, largest first.
-  const tradedCells = async () => Promise.all((await tradedSection.locator('tbody tr').all()).map((row) => row.locator('td').allTextContents()))
-  check('the wallets that traded through the integration: the totals and every wallet of the contract file, largest first, with its trades and volume; the line on trades not priced yet',
+  // The wallets that traded through the integration, read from the contract file: the totals, then each wallet, largest first,
+  // then the trades of no known wallet. A volume with trades not priced yet says how many under it.
+  const tradedCells = async () => Promise.all((await tradedSection.locator('tbody tr').all()).map(async (row) => (await row.locator('td').allInnerTexts()).map((cell, i) => (i ? cell : cell.toLowerCase()))))
+  const notPriced = (n) => (n ? `\n${n} ${n === 1 ? 'trade' : 'trades'} not priced yet` : '')
+  const UNKNOWN_ROW = 'not known (native eth sales)'
+  check('the wallets that traded through the integration: the totals, every wallet of the contract file, largest first, with its trades and volume, then the trades of no known wallet; trades not priced yet under each volume and in one line',
     (await partnerTile('Wallets', tradedSection)) === String(P.traders.totals.walletCount) && (await partnerTile('Trades', tradedSection)) === String(P.traders.totals.trades) && (await partnerTile('Volume (USD)', tradedSection)) === usd(P.traders.totals.volumeUsd)
-    && JSON.stringify((await tradedCells()).map(([wallet, ...figures]) => [wallet.toLowerCase(), ...figures])) === JSON.stringify(P.traders.wallets.map((w) => [w.wallet, String(w.trades), usd(w.volumeUsd)]))
+    && JSON.stringify(await tradedCells()) === JSON.stringify([...P.traders.wallets, { ...P.traders.unknown, wallet: UNKNOWN_ROW }].map((w) => [w.wallet, String(w.trades), usd(w.volumeUsd) + notPriced(w.unpriced)]))
+    && P.traders.wallets.some((w) => w.unpriced && !w.volumeUsd) && P.traders.unknown.trades > 0
     && await tradedSection.getByText(`Volume is priced each night. ${P.traders.totals.unpriced} trades are not priced yet.`).isVisible() && !(await tradedSection.getByText(/largest wallets/).count()))
   const partnerText = await partnerMain.innerText()
   check('no demo banner, no example, no referral share, none of the withheld figures, no word of a licence or of payout terms; the footer line',
@@ -1246,9 +1250,10 @@ try {
     && monthLines.length === P.fees.recentBatches.length + 1 && monthLines.slice(1).every((row, i) => row.toLowerCase().startsWith(`"${P.wallet}","demo wallet","${P.fees.recentBatches[i].cycleMonth}",`) && row.endsWith(`,"${P.fees.recentBatches[i].carriedUsd}","live"`)))
   const [tradedFile] = await Promise.all([pat.page.waitForEvent('download'), pat.page.getByRole('button', { name: 'Trading wallets CSV' }).click()])
   const tradedLines = readFileSync(await tradedFile.path(), 'utf8').split('\r\n').filter(Boolean)
-  check('the export of the wallets that traded downloads: named ophis-partner-traders-, every wallet of the contract file beside the partner wallet, source = live; the two are the only CSV',
-    /^ophis-partner-traders-\d{4}-\d\d-\d\d\.csv$/.test(tradedFile.suggestedFilename()) && tradedLines[0] === '"Partner wallet","Wallet name","Wallet","Trades","Volume (USD)","source"'
-    && JSON.stringify(tradedLines.slice(1).map((row) => row.toLowerCase())) === JSON.stringify(P.traders.wallets.map((w) => `"${P.wallet}","demo wallet","${w.wallet}","${w.trades}","${w.volumeUsd}","live"`))
+  const tradedRow = (wallet, w) => `"${P.wallet}","demo wallet","${wallet}","${w.trades}","${w.volumeUsd}","${w.unpriced}","live"`
+  check('the export of the wallets that traded downloads: named ophis-partner-traders-, every wallet of the contract file beside the partner wallet with its trades not priced yet, the trades of no known wallet, the total, source = live; the two are the only CSV',
+    /^ophis-partner-traders-\d{4}-\d\d-\d\d\.csv$/.test(tradedFile.suggestedFilename()) && tradedLines[0] === '"Partner wallet","Wallet name","Wallet","Trades","Volume (USD)","Trades not priced yet","source"'
+    && JSON.stringify(tradedLines.slice(1).map((row) => row.toLowerCase())) === JSON.stringify([...P.traders.wallets.map((w) => tradedRow(w.wallet, w)), tradedRow(UNKNOWN_ROW, P.traders.unknown), tradedRow('total, 3 wallets', P.traders.totals)])
     && (await pat.page.getByRole('button', { name: /CSV/ }).count()) === 2)
 
   // The figures are not available: status 500, a wrong shape, an answer after 6 seconds. Never an example, never a part.
@@ -1282,15 +1287,21 @@ try {
     await pat.page.getByText('Figures from the Ophis rebate service, read at').waitFor()
     await pat.page.unroute('**/api/overview')
   }
-  const tradersList = (n) => Array.from({ length: n }, (_, i) => ({ wallet: `0x${(i + 1).toString(16).padStart(40, '0')}`, trades: 1, volumeUsd: n - i }))
-  await tradedWith({ wallets: tradersList(100), totals: { walletCount: 105, trades: 105, volumeUsd: 5100, unpriced: 0 } })
-  check('more than 100 wallets: the table lists 100 and says it shows the largest; every trade priced: no line about pricing',
+  const tradersList = (n) => Array.from({ length: n }, (_, i) => ({ wallet: `0x${(i + 1).toString(16).padStart(40, '0')}`, trades: 1, volumeUsd: n - i, unpriced: 0 }))
+  const none = { trades: 0, volumeUsd: 0, unpriced: 0 }
+  await tradedWith({ wallets: tradersList(100), unknown: none, totals: { walletCount: 105, trades: 105, volumeUsd: 5100, unpriced: 0 } })
+  check('more than 100 wallets: the table lists 100 and says it shows the largest; no trade of an unknown wallet: no row for it; every trade priced: no line about pricing',
     (await tradedSection.locator('tbody tr').count()) === 100 && await tradedSection.getByText('The table shows the 100 largest wallets by volume.').isVisible() && (await partnerTile('Wallets', tradedSection)) === '105'
-    && !(await tradedSection.getByText(/priced each night/).count()))
-  await tradedWith({ wallets: tradersList(2), totals: { walletCount: 2, trades: 2, volumeUsd: 3, unpriced: 1 } })
-  check('every wallet listed: no line about the largest; one trade not priced: the line says it in the singular',
-    !(await tradedSection.getByText(/largest wallets/).count()) && await tradedSection.getByText('Volume is priced each night. 1 trade is not priced yet.').isVisible())
-  await tradedWith({ wallets: [], totals: { walletCount: 0, trades: 0, volumeUsd: 0, unpriced: 0 } })
+    && !(await tradedSection.getByText(/priced each night|not priced yet|Not known/).count()))
+  await tradedWith({ wallets: [{ ...tradersList(2)[0], trades: 2, unpriced: 1 }, tradersList(2)[1]], unknown: none, totals: { walletCount: 2, trades: 3, volumeUsd: 3, unpriced: 1 } })
+  check('every wallet listed: no line about the largest; one trade not priced: under its volume and in the line, in the singular',
+    !(await tradedSection.getByText(/largest wallets/).count()) && await tradedSection.getByText('Volume is priced each night. 1 trade is not priced yet.').isVisible()
+    && JSON.stringify((await tradedCells()).map((row) => row[2])) === JSON.stringify(['2.00\n1 trade not priced yet', '1.00']))
+  await tradedWith({ wallets: [], unknown: { trades: 2, volumeUsd: 1500, unpriced: 2 }, totals: { walletCount: 0, trades: 2, volumeUsd: 1500, unpriced: 2 } })
+  check('only sales of native ETH from no known wallet: the totals, one row for them with its trades not priced yet in the plural, and no line saying nobody traded',
+    (await partnerTile('Wallets', tradedSection)) === '0' && (await partnerTile('Trades', tradedSection)) === '2' && JSON.stringify(await tradedCells()) === JSON.stringify([[UNKNOWN_ROW, '2', '1,500.00\n2 trades not priced yet']])
+    && !(await tradedSection.getByText('No wallet has traded through your integration yet.').count()))
+  await tradedWith({ wallets: [], unknown: none, totals: { walletCount: 0, trades: 0, volumeUsd: 0, unpriced: 0 } })
   check('no wallet has traded yet: one line says so, with no total and no table', await tradedSection.getByText('No wallet has traded through your integration yet.').isVisible() && !(await tradedSection.locator('.stats, table').count()))
   await patOverview()
   await pat.page.getByText('Figures from the Ophis rebate service, read at').waitFor()

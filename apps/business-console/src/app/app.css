@@ -176,7 +176,7 @@ fieldset.field { border: 0; margin: 0; padding: 0; min-width: 0; } fieldset.fiel
 .pw-head { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; font-size: 16px; font-weight: 400; margin: 0 0 14px; } .pw-head b { font-weight: 600; } .pw-head .mono { font-size: 13px; overflow-wrap: anywhere; min-width: 0; }
 .pw + .pw { margin-top: 44px; padding-top: 32px; border-top: 1px solid var(--hair); } .pw > .note, .pw > .sec { margin-top: 16px; } .pw .sec .stats + .table-wrap, .pw .sec .stats + p { margin-top: 16px; }
 .note > .btn { flex: none; align-self: center; }
-.pw .stats .num { overflow-wrap: anywhere; } .pw td .mono { white-space: normal; overflow-wrap: anywhere; } .pw .sec .fine { margin-top: 10px; }
+.pw .stats .num { overflow-wrap: anywhere; } .pw td .mono { white-space: normal; overflow-wrap: anywhere; } .pw td :is(small, .muted) { white-space: normal; } .pw .sec .fine { margin-top: 10px; }
 @media (max-width: 1220px) { .g.two, .g.even { grid-template-columns: minmax(0, 1fr); } }
 @media (max-width: 1023px) { .desk { grid-template-columns: minmax(0, 1fr); } }
 @media (max-width: 720px) { .dk-b { display: none; } .dk-s { display: flex; } }

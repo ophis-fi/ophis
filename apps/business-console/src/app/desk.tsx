@@ -21,9 +21,11 @@ interface PartnerWallet {
   wallet: string; label: string; chain: string
   // null: a contract wallet whose chain the rebate service has not confirmed; no figure of it was read.
   fees: null | { shareUsd: number; carriedUsd: number; owedUsd: number; pendingTrades: number; paidWeth: number; trades: number; months: { month: string; status: string; owedUsd: number; owedWeth: number; carriedUsd: number }[] }
-  // The wallets that traded through the integration: at most 100, the largest first; the totals count every wallet. null with fees.
-  traders: null | { wallets: { wallet: string; trades: number; volumeUsd: number }[]; totals: { walletCount: number; trades: number; volumeUsd: number; unpriced: number } }
+  // The wallets that traded through the integration: at most 100, the largest first; unknown, the trades of no known wallet;
+  // the totals count every trade. unpriced: trades counted but not yet in the volume. null with fees.
+  traders: null | { wallets: (Traded & { wallet: string })[]; unknown: Traded; totals: Traded & { walletCount: number } }
 }
+type Traded = { trades: number; volumeUsd: number; unpriced: number }
 interface Partner { kind: 'partner'; waiting: number; figures: { state: 'not_connected' | 'no_wallet' | 'figures_unavailable' | 'figures_rate' } | { state: 'live'; asOf: string; leftOut: number; wallets: PartnerWallet[] } }
 interface DeskView {
   assets: { symbol: string; decimals: number; eur: string; issuer: string; status: string; limitLow: string; limitHigh: string }[]; chains: { id: number; name: string }[]
@@ -144,6 +146,8 @@ function InstitutionOverview({ v }: { v: Institution }) {
 const usd = (n: number) => n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 const weth = (n: number) => n.toLocaleString('en-US', { maximumFractionDigits: 6 })
 const ESTIMATE = 'Estimate. The amount is fixed when a payout is made.'
+// A volume with trades not priced yet says so under it: a bare 0.00 would read as no volume.
+const volume = (x: Traded) => <>{usd(x.volumeUsd)}{x.unpriced > 0 && <small>{count(x.unpriced)} {x.unpriced === 1 ? 'trade' : 'trades'} not priced yet</small>}</>
 
 function PartnerWalletFigures({ w }: { w: PartnerWallet }) {
   const t = w.traders
@@ -164,14 +168,17 @@ function PartnerWalletFigures({ w }: { w: PartnerWallet }) {
       ) : <p className="note warn" role="note"><Icon name="info" /><span className="grow"><b>The figures of this wallet are not shown.</b> It is a contract wallet, and Ophis has not confirmed the chain it is controlled on. <a className="link" href="/#/support">Ask Support</a>.</span></p>}
       {t && (
         <Section icon="users" title="Wallets that traded through your integration" hint="The wallets whose orders carried your fee, since the first trade. Volume is an estimate.">
-          {t.wallets.length ? (
+          {t.totals.trades ? (
             <>
               <div className="stats">
                 <div className="c"><span className="num">{count(t.totals.walletCount)}</span><span className="cap"><Icon name="wallet" size={16} />Wallets</span></div>
                 <div className="c"><span className="num">{count(t.totals.trades)}</span><span className="cap"><Icon name="arrow-left-right" size={16} />Trades</span></div>
                 <div className="c"><span className="num">{usd(t.totals.volumeUsd)}</span><span className="cap"><Icon name="landmark" size={16} />Volume (USD)</span></div>
               </div>
-              <Table head={['Wallet', 'Trades', 'Volume (USD)']} rows={t.wallets.map((x) => [<span className="mono">{x.wallet}</span>, count(x.trades), usd(x.volumeUsd)])} />
+              <Table head={['Wallet', 'Trades', 'Volume (USD)']} rows={[
+                ...t.wallets.map((x) => [<span className="mono">{x.wallet}</span>, count(x.trades), volume(x)]),
+                ...(t.unknown.trades ? [[<span className="muted">Not known (native ETH sales)</span>, count(t.unknown.trades), volume(t.unknown)]] : []),
+              ]} />
               {t.totals.walletCount > t.wallets.length && <p className="fine"><Icon name="info" size={16} />The table shows the {t.wallets.length} largest wallets by volume.</p>}
               {t.totals.unpriced > 0 && <p className="fine"><Icon name="clock" size={16} />Volume is priced each night. {count(t.totals.unpriced)} {t.totals.unpriced === 1 ? 'trade is' : 'trades are'} not priced yet.</p>}
             </>

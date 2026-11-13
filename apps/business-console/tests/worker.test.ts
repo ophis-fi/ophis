@@ -8800,8 +8800,7 @@ const shownPartner = {
     paidWeth: P.fees.lifetime.paidWeth, trades: P.fees.lifetime.tradeCount,
     months: P.fees.recentBatches.map((m) => ({ month: m.cycleMonth, status: m.status, owedUsd: m.owedUsd, owedWeth: m.owedWeth, carriedUsd: m.carriedUsd })),
   },
-  // Each wallet's own unpriced count is not passed on: the page says the total only.
-  traders: { wallets: P.traders.wallets.map((t) => ({ wallet: checksum(t.wallet), trades: t.trades, volumeUsd: t.volumeUsd })), totals: P.traders.totals },
+  traders: { wallets: P.traders.wallets.map((t) => ({ ...t, wallet: checksum(t.wallet) })), unknown: P.traders.unknown, totals: P.traders.totals },
 }
 const UNAVAILABLE = { kind: 'partner', waiting: 0, figures: { state: 'figures_unavailable' } }
 
@@ -8826,9 +8825,9 @@ isolation['GET /api/overview'] = async (a, b) => {
 describe('I. partner figures: live', () => {
   it('GET /api/overview: the isolation case', async () => isolation['GET /api/overview'](await member('Alder Asset Management'), await member('Birchfield Capital')))
 
-  it('the contract file is the one the indexer tests: the partner-fee dashboard of each wallet and the wallets that traded, no referral dashboard; a partner wallet with two months and three wallets, a second wallet with zero fees and none', () => {
-    expect([P.wallet, P.fees.recentBatches.length, P.traders.wallets.length, Z.fees.lifetime.tradeCount, Z.traders.totals.walletCount, contract.wallets.map((w) => Object.keys(w))])
-      .toEqual(['0x5afe5afe5afe5afe5afe5afe5afe5afe5afe5afe', 2, 3, 0, 0, [['wallet', 'fees', 'traders'], ['wallet', 'fees', 'traders']]])
+  it('the contract file is the one the indexer tests: the partner-fee dashboard of each wallet and the wallets that traded, no referral dashboard; a partner wallet with two months, three wallets and three trades of no known wallet, a second wallet with zero fees and none', () => {
+    expect([P.wallet, P.fees.recentBatches.length, P.traders.wallets.length, P.traders.unknown.trades, Z.fees.lifetime.tradeCount, Z.traders.totals.walletCount, contract.wallets.map((w) => Object.keys(w))])
+      .toEqual(['0x5afe5afe5afe5afe5afe5afe5afe5afe5afe5afe', 2, 3, 3, 0, 0, [['wallet', 'fees', 'traders'], ['wallet', 'fees', 'traders']]])
   })
 
   it('not connected: no address, no token, or an address that is not acceptable; nothing is asked', async () => {
@@ -8881,7 +8880,7 @@ describe('I. partner figures: live', () => {
     const two = (await overviewOf(o)).body.figures.wallets
     expect(two[1]).toEqual({
       wallet: checksum(other), label: 'Second', chain: 'OP Mainnet', fees: { shareUsd: 0, carriedUsd: 0, owedUsd: 0, pendingTrades: 0, paidWeth: 0, trades: 0, months: [] },
-      traders: { wallets: [], totals: { walletCount: 0, trades: 0, volumeUsd: 0, unpriced: 0 } },
+      traders: { wallets: [], unknown: { trades: 0, volumeUsd: 0, unpriced: 0 }, totals: { walletCount: 0, trades: 0, volumeUsd: 0, unpriced: 0 } },
     })
   })
 
@@ -8992,6 +8991,11 @@ describe('I. partner figures: live', () => {
       ['an address that traded, one character too long', set('wallets.0.traders.wallets.0.wallet', `${P.traders.wallets[0].wallet}0`)],
       ['a trade count that is no whole number', set('wallets.0.traders.wallets.0.trades', 2.5)],
       ['a negative volume', set('wallets.0.traders.wallets.0.volumeUsd', -1)],
+      ['a wallet\'s count of trades not priced yet that is no whole number', set('wallets.0.traders.wallets.1.unpriced', 0.5)],
+      ['no field for the trades of no known wallet', (a) => (delete a.wallets[0].traders.unknown, a)],
+      ['the trades of no known wallet that are no object', set('wallets.0.traders.unknown', 3)],
+      ['a count of trades of no known wallet that is no whole number', set('wallets.0.traders.unknown.trades', 1.5)],
+      ['a negative volume of no known wallet', set('wallets.0.traders.unknown.volumeUsd', -1)],
       ['totals that are null', set('wallets.0.traders.totals', null)],
       ['a wallet count that is no whole number', set('wallets.0.traders.totals.walletCount', 3.5)],
       ['a total trade count that is no whole number', set('wallets.0.traders.totals.trades', 411.5)],
@@ -9024,9 +9028,9 @@ describe('I. partner figures: live', () => {
     expect((await overviewOf(o)).body.figures.state).toBe('live')
     // Exactly 100 wallets that traded, of 105: live, the 100 listed, the totals over all 105.
     const hundred = Array.from({ length: 100 }, (_, i) => ({ wallet: `0x${(i + 1).toString(16).padStart(40, '0')}`, trades: 1, volumeUsd: 100 - i, unpriced: 0 }))
-    indexer((answer) => ((answer.wallets[0].traders = { wallets: hundred, totals: { walletCount: 105, trades: 105, volumeUsd: 5100, unpriced: 0 } }), answer))
+    indexer((answer) => ((answer.wallets[0].traders = { wallets: hundred, unknown: { trades: 0, volumeUsd: 0, unpriced: 0 }, totals: { walletCount: 105, trades: 105, volumeUsd: 5100, unpriced: 0 } }), answer))
     const capped = (await overviewOf(o)).body.figures.wallets[0].traders
-    expect([capped.wallets.length, capped.wallets[99], capped.totals.walletCount]).toEqual([100, { wallet: checksum(hundred[99].wallet), trades: 1, volumeUsd: 1 }, 105])
+    expect([capped.wallets.length, capped.wallets[99], capped.totals.walletCount]).toEqual([100, { wallet: checksum(hundred[99].wallet), trades: 1, volumeUsd: 1, unpriced: 0 }, 105])
     indexer((answer) => ({ ...answer, pad: 'x'.repeat(990_000) }))
     const padded = (await overviewOf(o)).body
     expect([padded.figures.state, JSON.stringify(padded).length < 5000]).toEqual(['live', true])
@@ -9062,6 +9066,7 @@ describe('I. partner figures: live', () => {
       answer.wallets[0].fees.internalNote = 'marker-internal'
       answer.wallets[0].fees.currentCycle.ophisShareUsd = 19.3
       answer.wallets[0].traders.wallets[0].internalNote = 'marker-trader'
+      answer.wallets[0].traders.unknown.internalNote = 'marker-unknown'
       answer.wallets[0].traders.totals.internalNote = 'marker-totals'
       return { ...answer, debug: 'marker-debug' }
     })
@@ -9130,13 +9135,21 @@ describe('I. partner figures: live', () => {
     ])
     const traders = await exportOf(viewer, 'traders')
     expect([traders.status, traders.body.name]).toEqual([200, 'ophis-partner-traders-2026-11-10.csv'])
+    // Each wallet with its trades not priced yet, then the trades of no known wallet, then the total of every trade: the
+    // file adds up to the page and says how many wallets traded.
+    const traded = (wallet: string, x: { trades: number; volumeUsd: number; unpriced: number }) => [checksum(P.wallet), "'=2+3 (cmd)", wallet, String(x.trades), String(x.volumeUsd), String(x.unpriced), 'live']
     expect(traders.rows).toEqual([
-      ['Partner wallet', 'Wallet name', 'Wallet', 'Trades', 'Volume (USD)', 'source'],
-      ...shownPartner.traders.wallets.map((t) => [checksum(P.wallet), "'=2+3 (cmd)", t.wallet, String(t.trades), String(t.volumeUsd), 'live']),
+      ['Partner wallet', 'Wallet name', 'Wallet', 'Trades', 'Volume (USD)', 'Trades not priced yet', 'source'],
+      ...shownPartner.traders.wallets.map((t) => traded(t.wallet, t)),
+      traded('Not known (native ETH sales)', P.traders.unknown), traded('Total, 3 wallets', P.traders.totals),
     ])
+    expect(traders.rows.slice(1).map((row) => row.slice(3, 6))).toContainEqual(['1', '0', '1']) // the wallet with only a trade not priced yet
     for (const line of (months.body.csv + traders.body.csv).split('\r\n').filter(Boolean)) expect(line).not.toMatch(/(^|,)"[=+\-@\t\r]/)
     expect((await exportOf(o, 'months')).rows).toEqual(months.rows)
     expect(asked).toHaveLength(3) // each file is a fresh read
+    // No trade of an unknown wallet: no such row. One wallet: the total says so in the singular.
+    indexer((answer) => ((answer.wallets[0].traders = { wallets: [P.traders.wallets[0]], unknown: { trades: 0, volumeUsd: 0, unpriced: 0 }, totals: { walletCount: 1, trades: 227, volumeUsd: 251000.25, unpriced: 0 } }), answer))
+    expect((await exportOf(viewer, 'traders')).rows.slice(1).map((row) => row[2])).toEqual([checksum(P.traders.wallets[0].wallet), 'Total, 1 wallet'])
     // The referred wallets, unknown tables, the demo tables and names of the prototype: not found, and the indexer is not asked.
     const quiet = indexer()
     for (const table of ['referred', 'orders', 'balances', 'codes', 'audit', 'constructor', '__proto__', 'toString']) expect((await exportOf(o, table)).status, table).toBe(404)
@@ -9156,6 +9169,7 @@ describe('I. partner figures: live', () => {
       'title="Partner fee" hint="The fee you set on the orders of your integration."', 'Owed this cycle', 'Your share ${usd(w.fees.shareUsd)} plus ${usd(w.fees.carriedUsd)} carried.', 'Trades waiting for a price', 'Paid to date (WETH)', "['Month', 'Status', 'Owed (USD)', 'Owed (WETH)', 'Carried (USD)']", '<Export table="months" size="md" label="Fee months CSV" />',
       'title="Wallets that traded through your integration" hint="The wallets whose orders carried your fee, since the first trade. Volume is an estimate."', "['Wallet', 'Trades', 'Volume (USD)']", 'The table shows the {t.wallets.length} largest wallets by volume.',
       "Volume is priced each night. {count(t.totals.unpriced)} {t.totals.unpriced === 1 ? 'trade is' : 'trades are'} not priced yet.", 'No wallet has traded through your integration yet.', '<Export table="traders" size="md" label="Trading wallets CSV" />',
+      '[<span className="muted">Not known (native ETH sales)</span>, count(t.unknown.trades), volume(t.unknown)]', "<small>{count(x.unpriced)} {x.unpriced === 1 ? 'trade' : 'trades'} not priced yet</small>",
     ]) expect(part, sentence).toContain(sentence)
     expect(part.match(/\{ESTIMATE\}/g)).toHaveLength(1) // under the estimate
     // No referral share: the console's partners get none (owner decision of 2026-11-13).

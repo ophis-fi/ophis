@@ -54,16 +54,21 @@ function feesOf(v: unknown, wallet: string) {
   }
 }
 // The wallets that traded through the integration: the owners of the orders that carried this wallet's fee, lifetime.
-// At most 100, the largest first (the indexer's order), and totals over every wallet. NOT read: each wallet's own
-// unpriced count (the page says the total only).
+// At most 100, the largest first (the indexer's order); unknown, the trades of no known wallet (sales of native ETH);
+// the totals over every trade. Each with its trades, volume, and trades not priced yet (counted, not in the volume).
+const figuresOf = (v: unknown) => {
+  const f = obj(v)
+  return { trades: int(f.trades), volumeUsd: num(f.volumeUsd), unpriced: int(f.unpriced) }
+}
 function tradersOf(v: unknown) {
   const t = obj(v)
-  const all = obj(t.totals)
   return {
-    wallets: list(t.wallets, INDEXER.maxTraders).map(obj).map((w) => ({ wallet: checksum(text(w.wallet, /^0x[0-9a-f]{40}$/)), trades: int(w.trades), volumeUsd: num(w.volumeUsd) })),
-    totals: { walletCount: int(all.walletCount), trades: int(all.trades), volumeUsd: num(all.volumeUsd), unpriced: int(all.unpriced) },
+    wallets: list(t.wallets, INDEXER.maxTraders).map(obj).map((w) => ({ wallet: checksum(text(w.wallet, /^0x[0-9a-f]{40}$/)), ...figuresOf(w) })),
+    unknown: figuresOf(t.unknown),
+    totals: { walletCount: int(obj(t.totals).walletCount), ...figuresOf(t.totals) },
   }
 }
+const UNKNOWN = 'Not known (native ETH sales)'
 
 /** fees and traders null: a contract wallet whose chain the indexer has not confirmed. No figure of it was read. */
 export type PartnerWallet = { wallet: string; label: string; chain: string; fees: ReturnType<typeof feesOf> | null; traders: ReturnType<typeof tradersOf> | null }
@@ -122,10 +127,16 @@ export async function figures(env: Settings, orgId: string, now: number): Promis
   }
 }
 
-/** The CSV tables of a partner, from a fresh read: the partner-fee months, and the wallets that traded. */
+/** The CSV tables of a partner, from a fresh read: the partner-fee months, and the wallets that traded. The second ends,
+ * for each partner wallet, with the trades of no known wallet (when there are) and the total of every trade. */
 export const tables = (f: Extract<Figures, { state: 'live' }>): Record<string, [head: string[], rows: unknown[][]]> => ({
   months: [['Partner wallet', 'Wallet name', 'Month', 'Status', 'Owed (USD)', 'Owed (WETH)', 'Carried (USD)'],
     f.wallets.flatMap((w) => (w.fees?.months ?? []).map((m) => [w.wallet, w.label, m.month, m.status, m.owedUsd, m.owedWeth, m.carriedUsd]))],
-  traders: [['Partner wallet', 'Wallet name', 'Wallet', 'Trades', 'Volume (USD)'],
-    f.wallets.flatMap((w) => (w.traders?.wallets ?? []).map((t) => [w.wallet, w.label, t.wallet, t.trades, t.volumeUsd]))],
+  traders: [['Partner wallet', 'Wallet name', 'Wallet', 'Trades', 'Volume (USD)', 'Trades not priced yet'],
+    f.wallets.flatMap(({ wallet, label, traders: t }) => {
+      if (!t) return []
+      const row = (name: string, x: ReturnType<typeof figuresOf>) => [wallet, label, name, x.trades, x.volumeUsd, x.unpriced]
+      const n = t.totals.walletCount
+      return [...t.wallets.map((x) => row(x.wallet, x)), ...(t.unknown.trades ? [row(UNKNOWN, t.unknown)] : []), row(`Total, ${n} ${n === 1 ? 'wallet' : 'wallets'}`, t.totals)]
+    })],
 })
