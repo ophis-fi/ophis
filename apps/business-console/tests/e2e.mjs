@@ -17,6 +17,8 @@
 // Milestone 5b: the declaration prints alone; a scan with a marker is sealed in the browser and uploaded; the stored
 // object is sealed; the operator's command takes it for a reason, and the local test identity opens it: the original.
 // Milestone 5a: an application, its DNS proof, the activation by the recovery wallet, the review and the operator's approval.
+// 2026-11-13: the application names a second person; after the approval the Owner gives that person a link and confirms
+// the passkey, which is active at once (Ophis approved the person: no second person, no wait).
 // Starts and stops its own local server on a throwaway database. Run: pnpm test:e2e
 import { execFileSync, spawn } from 'node:child_process'
 import { createHash } from 'node:crypto'
@@ -766,6 +768,12 @@ try {
   await on.getByLabel('Email domain of the company').fill(domain)
   await on.getByLabel('Your work email, at that domain').fill(`ops@${domain}`)
   await on.getByLabel('Your name').fill('Ada Applicant')
+  // Owner decision of 2026-11-13: the application names a second person, whom Ophis approves with the organisation.
+  await on.getByRole('button', { name: 'Add a person' }).click()
+  await on.getByLabel('Name of person 2').fill('Ben Okoro')
+  await on.getByLabel('Work email of person 2').fill(`ben@${domain}`)
+  await on.getByLabel('Role of person 2').selectOption('admin')
+  check('the form names a second person: a name, a work email at the domain, the role Owner or Admin; it fits a phone', await both(on, '59-apply-people', 'fieldset'))
   check('the application page carries the footer line and says nothing is stored yet', await on.getByText(FOOTER).isVisible() && await on.getByText('Nothing is stored until that record is found.').isVisible())
   await on.getByRole('button', { name: 'Create the passkey and the DNS record' }).click()
   await on.getByRole('heading', { name: 'Ask your DNS administrator to publish this record.' }).waitFor()
@@ -813,7 +821,7 @@ try {
   const paper = on.locator('article.sheet')
   const paperText = await paper.innerText()
   check('the declaration holds the server\'s values, a line for the signatory and the sentence that the signatory may bind the company; nothing on it can be typed',
-    ['Alder Custody S.A.', domain, key.address, 'OP Mainnet', 'Name of the signatory', 'Role', 'Date', 'Signature', 'the undersigned may bind the company', FOOTER].every((text) => paperText.includes(text))
+    ['Alder Custody S.A.', domain, key.address, 'OP Mainnet', `Ben Okoro, Admin, ben@${domain}`, 'each person named above acts for the company', 'Name of the signatory', 'Role', 'Date', 'Signature', 'the undersigned may bind the company', FOOTER].every((text) => paperText.includes(text))
       && /[0-9a-f]{64}/.test(paperText) && (await paper.locator('input, textarea, select, button, [contenteditable]').count()) === 0)
   await on.emulateMedia({ media: 'print' })
   check('printed, the declaration stands alone', await paper.isVisible() && await on.getByRole('button', { name: 'Print the declaration' }).isHidden() && await on.locator('.bar').isHidden() && await on.locator('.band').isHidden() && await on.getByRole('button', { name: 'Submit for review' }).isHidden())
@@ -871,7 +879,8 @@ try {
   const opener = new Decrypter()
   opener.addIdentity(readFileSync('.dev.seal-identity', 'utf8').trim()) // the local test identity; never printed
   check('the local test identity opens the downloaded file, offline: equal to the original', Buffer.from(await opener.decrypt(readFileSync(out))).equals(scan))
-  check('the operator command lists the organisation with its domain, the first Owner\'s passkey hash and the wallet', listed.includes(newOrg.id) && listed.includes(domain) && listed.includes(`first Owner     passkey hash ${firstHash}`) && listed.includes(key.address) && listed.includes('ready           yes'))
+  check('the operator command lists the organisation with its domain, the first Owner\'s passkey hash, the person the application named and the wallet', listed.includes(newOrg.id) && listed.includes(domain) && listed.includes(`first Owner     passkey hash ${firstHash}`)
+    && listed.includes(`person          Ben Okoro, admin, ben@${domain}`) && listed.includes(key.address) && listed.includes('ready           yes'))
   const submission = /submission ([0-9a-f]{16}) /.exec(listed)?.[1] ?? ''
   // Sanctions screening: an approval carries a screening that says "clear". "--list eu=<file>": the command reads the file here and sends its SHA-256.
   const approve = (...more) => ['decide', newOrg.id, 'approve', '--tier', 'standard', '--source', 'registry', '--evidence', 'e2e register extract', '--sha256', 'ab'.repeat(32), '--next-review', '2030-01-01', ...more]
@@ -887,6 +896,27 @@ try {
   await on.getByText('Verified on').waitFor()
   check('the organisation is active and the Onboarding page says so, with the next review', await on.getByText('Next review 2030-01-01').isVisible() && await on.getByText('It is the recovery wallet in force.').isVisible() && (await status('/api/audit', on)) === 200)
   check('once active the declaration stays: the step shows it and offers no upload', await on.getByText('Uploaded on').isVisible() && (await on.getByLabel(/Signed scan/).count()) === 0 && (await on.locator('article.sheet').count()) === 0)
+  // The person the application named has a seat, approved by Ophis. The Owner gives a link (the console shows it; Ophis
+  // sends no email), the person enrols, the Owner confirms with a passkey check: active at once, with no second person.
+  check('the Onboarding page names the person Ophis approved with the organisation', await on.getByText(`Approved by Ophis with the organisation: Ben Okoro (Admin, ben@${domain}).`).isVisible())
+  await arrive(applicant, false)
+  check('the member table shows the invited seat as approved by Ophis', await on.getByRole('row', { name: /Ben Okoro.*Admin.*Invited.*Approved by Ophis with the organisation/ }).isVisible())
+  await on.getByRole('button', { name: 'New link for Ben Okoro' }).click()
+  await on.getByRole('button', { name: 'Create the link' }).click()
+  const benLink = await on.getByLabel('Enrolment link').inputValue()
+  check('the link dialog says that this person needs no second person', await on.getByText('Ophis approved this person with the organisation, so no second person is needed').isVisible())
+  await on.getByRole('button', { name: 'Done' }).click()
+  const ben = await person()
+  await enrolAt(benLink, ben)
+  await organisation(on)
+  check('the Owner is told at the door that the passkey of the approved person waits', await readAlerts('A new passkey of Ben Okoro waits for you', on))
+  await confirmAt('Ben Okoro', on)
+  await on.getByRole('row', { name: /Ben Okoro.*Admin.*Active/ }).waitFor()
+  check('the Owner confirmed: the approved person is active at once, with no second person and no 72 hour wait', (await on.getByRole('heading', { name: 'Waiting for confirmation' }).count()) === 0
+    && (await on.getByText('Approved by Ophis with the organisation').count()) === 0 && await both(on, '60-approved-person-active', '#approvals'))
+  await arrive(ben)
+  check('the approved person signs in', (await status('/api/me', ben.page)) === 200)
+  await ben.context.close()
   await on.goto(`${ORIGIN}/#/compliance`)
   await on.reload()
   await on.getByRole('heading', { name: 'KYB record' }).waitFor()
@@ -1255,7 +1285,7 @@ try {
   if (violations.length) console.error(violations.join("\n"))
   check(`no policy violation in the browser (${violations.length})`, violations.length === 0)
   check(`no request left the origin (${foreign.length})`, foreign.length === 0)
-  console.log('\nEnd-to-end run passed. Screenshots in .shots/: 01-signin to 58-screening-frozen')
+  console.log('\nEnd-to-end run passed. Screenshots in .shots/: 01-signin to 60-approved-person-active')
 } catch (error) {
   console.error(error.message)
   process.exitCode = 1
