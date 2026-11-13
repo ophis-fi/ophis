@@ -1282,7 +1282,8 @@ function Sheet({ sheet }: { sheet: Ready['sheet'] }) {
     ['2. You lost every passkey, and a colleague can sign in', [
       'Ask an Owner or an Admin (an Owner, if you are one) to use "Re-enrol" on your seat. You get a one-time link.',
       'Open the link on your own device and create a new passkey.',
-      'The colleague checks with you, by a channel you both trust, and approves with a passkey. For an Owner, Admin, Approver or Compliance officer a second member with such a role does the same.',
+      'The colleague checks with you, by a channel you both trust, and confirms with a passkey.',
+      'For an Owner, Admin, Approver or Compliance officer a second member with such a role does the same.',
       'Your old passkeys can stop the replacement for 24 hours (72 hours for those roles). Sign in with the new passkey and add a second one.',
     ]],
     ['3. No Owner can sign in: the recovery wallet', [
