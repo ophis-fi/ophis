@@ -101,7 +101,10 @@ max-concurrent-requests = 2
 {contracts}
 [native-price-estimation]
 estimators = [[{{type = "Forwarder", url = "http://autopilot:12088"}}]]
-{common}'''
+{common}
+[banned-users]
+addresses-file = "/sanctions/addresses.json"
+snapshot-max-age = "24h"'''
     deployment_block = verified['settlementDeploymentBlock'] if active else 0
     autopilot = f'''node-url = "{rpc}"
 simulation-node-url = "{rpc}"
@@ -140,7 +143,10 @@ prefetch-time = "30s"
 [native-price-estimation.cache]
 max-age = "5m"
 concurrent-requests = 1
-{common}'''
+{common}
+[banned-users]
+addresses-file = "/sanctions/addresses.json"
+snapshot-max-age = "24h"'''
     account = (f'{{ guarded = {{ path = "/run/secrets/solver-key" }}, settlement-targets = [{{ address = "{c["settlement"]}", selectors = ["0x13d79a0b"] }}], require-zero-value = true }}' if active else f'"{cfg["solver"]}"')
     solver_lanes = '\n'.join(f'''[[solver]]
 name = "{name}"

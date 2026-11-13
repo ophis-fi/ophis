@@ -133,3 +133,68 @@ After 3.1 confirms the happy path, run:
 - **3.3** mobile UX (375/414/768 viewports)
 - **3.4** error states (insufficient balance, expired quote, rejected sig)
 - **3.5** quote types (exact-in, exact-out, market, limit)
+
+## Relay bridge integration (disabled by default)
+
+Relay competes with Across V4 and NEAR Intents for supported EVM routes. Ophis
+still selects and executes the source swap. Relay receives an exact ERC-20
+deposit from the user's Shed, with no origin swap or destination calls. Source
+price improvement above that deposit returns to the wallet on the source chain.
+The comparison uses the signed minimum destination output after Relay's costs
+and the 3 bps Ophis app fee. Relay accrues that fee in its offchain USDC balance;
+it is not an immediate onchain payout to the Safe.
+
+Before explicitly enabling `REACT_APP_ENABLE_RELAY_BRIDGE=true`:
+
+1. Review and deploy `infra/relay-rate-limit/wrangler.jsonc` only after release
+   approval. Bind its `RelayRateLimiter` namespace from Worker
+   `ophis-relay-limits` to the swap Pages project as
+   `OPHIS_RELAY_RATE_LIMITER`. Pages supports external Durable Object bindings;
+   a native Workers rate-limit binding is not interchangeable. All environments
+   sharing the same Relay App quota must share the global limiter namespace.
+   The persistent rolling limit admits 40 quotes/minute, below Relay's default
+   50/minute App quota, and 160 combined status/uncached-chain reads per minute,
+   below the default 200/minute read quota. Coalesced or cached discovery does
+   not consume extra read slots. Deploy the updated limiter before Pages.
+   Other integrations using that App still consume quota.
+2. Add `RELAY_API_KEY` as a **server-side Pages secret**. Never use a
+   `REACT_APP_` variable for the key. Neither the supplied key ID nor App ID is
+   an authentication header. Missing secret or limiter makes the proxy fail
+   closed. Explorer status reads use the swap proxy with CORS.
+3. Run the Relay unit/signing/proxy tests and the opt-in
+   `ophisRelayHooks.fork.test.ts` against an isolated Optimism Anvil fork.
+   Set `OPHIS_RELAY_FORK_RPC` and `REACT_APP_NETWORK_URL_10` to the same loopback
+   URL. The test checks the Anvil client before funding its public test-only
+   account. It verifies a reverted empty-proxy call, exact allowance/deposit,
+   surplus return, and replay rejection against the deployed contracts.
+   Refresh the signed WETH quote fixture before rehearsals after its November
+   20, 2026 deadline; do not bypass commitment or expiry validation.
+4. After separate approval for a funded rehearsal, verify the source settlement
+   Trade, payment into the Shed, ERC-20 pull into the pinned Depository, and
+   `RelayErc20Deposit` in the same receipt. Match its signed `orderId` to stored
+   appData; poll using the separate API `requestId`. Confirm the destination
+   receipt and actual received amount, plus fee accrual and refund handling.
+   Ophis labels the signed minimum explicitly; Relay's status endpoint does
+   not provide the actual delivered or refunded amount. Refund displays link
+   to Relay rather than assuming a source-chain refund of the full deposit.
+
+Availability follows live Relay chain/token discovery, Ophis's trusted token
+list, and existing source execution gates. Destination coverage does not prove
+source execution. Non-EVM routes, including Starknet, continue through NEAR.
+The existing SDK also excludes an intermediate identical to the sell token;
+this adapter does not introduce a separate direct-deposit UI for that case.
+
+Ophis limits placement and the signed deposit hook to five minutes; Relay's
+signed fill/refund deadline is separate and can be much longer. Do not describe
+this as a five-minute refund guarantee. Only a confirmed `success` with a fill
+transaction counts as completed. Refund failures requiring intervention stop
+automatic polling and show recovery instructions with a Relay transaction link.
+Refunds can lose gas costs or require manual handling under Relay's screening
+and settlement rules. No funded fill, refund or app-fee withdrawal is established
+by the local fork test.
+
+References: [Relay contract deposits](https://docs.relay.link/references/api/api_core_concepts/wallet-detection),
+[commitments and deposit IDs](https://docs.relay.link/references/protocol/guides/for-apps),
+[status](https://docs.relay.link/references/api/get-intents-status-v3),
+[app fees](https://docs.relay.link/features/app-fees),
+[Pages Durable Object bindings](https://developers.cloudflare.com/pages/functions/bindings/#durable-objects).

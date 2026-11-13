@@ -38,6 +38,8 @@ struct Quote {
     block_number: u64,
     #[allow(dead_code)]
     block_hash: String,
+    #[serde(default, rename = "quote_timestamp")]
+    _quote_timestamp: Option<u64>,
     total_calculated: String,
     estimated_gas_cost: u64,
     price_impact: Option<f64>,
@@ -50,6 +52,9 @@ struct Split {
     #[allow(dead_code)]
     amount_calculated: String,
     route: Vec<Node>,
+    // Accounting metadata does not participate in locally encoded execution.
+    #[serde(default, rename = "hop_accounting")]
+    _hop_accounting: serde::de::IgnoredAny,
 }
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -233,9 +238,8 @@ fn encode_routes(
                 return Err(Error::InvalidQuote);
             }
             let config = decode_fixed::<32>(&hop.pool_key.config)?;
-            // PoolConfig packs fee/tick spacing in the leading 12 bytes and
-            // the extension address in the trailing 20 bytes.
-            let extension = Address::from_slice(&config[12..]);
+            // Ekubo PoolConfig: extension in the high 160 bits, fee/ticks below.
+            let extension = Address::from_slice(&config[..20]);
             let kind = match hop.r#type.as_str() {
                 "core" if extension.is_zero() => 0,
                 "forwarded" if extension == ROBINHOOD_VE33 => 1,
@@ -248,7 +252,16 @@ fn encode_routes(
             } else {
                 return Err(Error::InvalidQuote);
             };
-            let sqrt = decode_fixed::<12>(&hop.sqrt_ratio_limit)?;
+            let sqrt = u128::from_str_radix(
+                hop.sqrt_ratio_limit
+                    .strip_prefix("0x")
+                    .ok_or(Error::InvalidQuote)?,
+                16,
+            )
+            .map_err(|_| Error::InvalidQuote)?;
+            if sqrt >> 96 != 0 {
+                return Err(Error::InvalidQuote);
+            }
             out.push(kind);
             if kind == 1 {
                 out.extend_from_slice(extension.as_slice());
@@ -256,7 +269,7 @@ fn encode_routes(
             out.extend_from_slice(hop.pool_key.token0.as_slice());
             out.extend_from_slice(hop.pool_key.token1.as_slice());
             out.extend_from_slice(&config);
-            out.extend_from_slice(&sqrt);
+            out.extend_from_slice(&sqrt.to_be_bytes()[4..]);
             out.extend_from_slice(&(u32::from(hop.skip_ahead)).to_be_bytes());
             current = next;
         }
@@ -324,13 +337,14 @@ mod tests {
         let split = Split {
             amount_specified: "1".into(),
             amount_calculated: "1".into(),
+            _hop_accounting: Default::default(),
             route: vec![Node {
                 swap: Swap {
                     r#type: "core".into(),
                     pool_key: PoolKey {
                         token0: Address::ZERO,
                         token1: Address::with_last_byte(1),
-                        config: format!("0x{}01", "00".repeat(31)),
+                        config: format!("0x01{}", "00".repeat(31)),
                     },
                     sqrt_ratio_limit: format!("0x{}", "00".repeat(12)),
                     skip_ahead: 0,
@@ -354,10 +368,11 @@ mod tests {
         let token0 = Address::with_last_byte(1);
         let token1 = Address::with_last_byte(2);
         let mut config = [0u8; 32];
-        config[12..].copy_from_slice(ROBINHOOD_VE33.as_slice());
+        config[..20].copy_from_slice(ROBINHOOD_VE33.as_slice());
         let split = Split {
             amount_specified: "7".into(),
             amount_calculated: "5".into(),
+            _hop_accounting: Default::default(),
             route: vec![Node {
                 swap: Swap {
                     r#type: "forwarded".into(),
@@ -379,12 +394,58 @@ mod tests {
     }
 
     #[test]
+    fn accepts_current_quoter_metadata_but_rejects_unknown_swap_fields() {
+        let mut value: serde_json::Value = serde_json::from_str(include_str!(
+            "../../tests/fixtures/ekubo-robinhood-quote.json"
+        ))
+        .unwrap();
+        let quote: Quote = serde_json::from_value(value.clone()).unwrap();
+        assert!(
+            encode_routes(
+                alloy::primitives::address!("5fc5360D0400a0Fd4f2af552ADD042D716F1d168"),
+                alloy::primitives::address!("4a0E65A3EcceC6dBe60AE065F2e7bb85Fae35eEa"),
+                1,
+                Address::with_last_byte(3),
+                &quote.splits,
+            )
+            .is_ok()
+        );
+
+        for invalid in ["0x1000000000000000000000000", "0xnothex"] {
+            let mut invalid_quote = value.clone();
+            invalid_quote["splits"][0]["route"][0]["swap"]["sqrt_ratio_limit"] =
+                serde_json::json!(invalid);
+            let quote: Quote = serde_json::from_value(invalid_quote).unwrap();
+            assert!(
+                encode_routes(
+                    alloy::primitives::address!("5fc5360D0400a0Fd4f2af552ADD042D716F1d168"),
+                    alloy::primitives::address!("4a0E65A3EcceC6dBe60AE065F2e7bb85Fae35eEa"),
+                    1,
+                    Address::with_last_byte(3),
+                    &quote.splits,
+                )
+                .is_err()
+            );
+        }
+
+        value.as_object_mut().unwrap().remove("quote_timestamp");
+        for split in value["splits"].as_array_mut().unwrap() {
+            split.as_object_mut().unwrap().remove("hop_accounting");
+        }
+        assert!(serde_json::from_value::<Quote>(value.clone()).is_ok());
+        value["splits"][0]["route"][0]["swap"]["unexpected_recipient"] =
+            serde_json::json!("0x1234");
+        assert!(serde_json::from_value::<Quote>(value).is_err());
+    }
+
+    #[test]
     fn rejects_nonzero_route_controls() {
         let token0 = Address::with_last_byte(1);
         let token1 = Address::with_last_byte(2);
         let split = Split {
             amount_specified: "7".into(),
             amount_calculated: "5".into(),
+            _hop_accounting: Default::default(),
             route: vec![Node {
                 swap: Swap {
                     r#type: "core".into(),

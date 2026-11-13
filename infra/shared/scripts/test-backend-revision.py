@@ -289,6 +289,7 @@ docker() {
   printf 'docker %s\n' "$*" >> "$ROLLOUT_TEST_LOG"
   case "$*" in
     "compose run --rm migrations") return "$ROLLOUT_TEST_MIGRATION_EXIT" ;;
+    "compose up -d --no-build --force-recreate --wait --wait-timeout 180 ofac") return "$ROLLOUT_TEST_OFAC_EXIT" ;;
     "compose ps --services")
       if [[ "$ROLLOUT_TEST_EXISTING" == 1 ]]; then printf 'rpc-proxy\nalertmanager\nprometheus\n'; fi ;;
     inspect*) printf 'healthy\n' ;;
@@ -301,10 +302,10 @@ docker() {
             source = (stack / "compose-up.sh").read_text()
             tail = source[source.index('\nPROFILES_ARG=""'):]
             for existing in ["0", "1"]:
-                for selection_exit, build_exit, migration_exit in [("0", "0", "0"), ("0", "0", "42"), ("0", "41", "0"), ("43", "0", "0")]:
+                for selection_exit, build_exit, migration_exit, ofac_exit in [("0", "0", "0", "0"), ("0", "0", "42", "0"), ("0", "41", "0", "0"), ("43", "0", "0", "0"), ("0", "0", "0", "44")]:
                     with self.subTest(chain=chain, existing=existing, selection_exit=selection_exit, build_exit=build_exit, migration_exit=migration_exit), tempfile.TemporaryDirectory(prefix=".rollout-test-", dir=ROOT) as directory:
                         log = Path(directory) / "commands.log"
-                        observability = existing == "1" and (selection_exit, build_exit, migration_exit) == ("0", "0", "0")
+                        observability = existing == "1" and (selection_exit, build_exit, migration_exit, ofac_exit) == ("0", "0", "0", "0")
                         if observability:
                             for relative in ["observability-rendered/alertmanager.yml", "observability/prometheus.yml"]:
                                 file = Path(directory) / relative
@@ -314,6 +315,7 @@ docker() {
                                "ROLLOUT_TEST_LOG": str(log), "ROLLOUT_TEST_EXISTING": existing,
                                "COMPOSE_FILE": "/conflicting/compose.yaml", "ROLLOUT_TEST_SELECTION_EXIT": selection_exit,
                                "ROLLOUT_TEST_BUILD_EXIT": build_exit,
+                               "ROLLOUT_TEST_OFAC_EXIT": ofac_exit,
                                "ROLLOUT_TEST_MIGRATION_EXIT": migration_exit}
                         script = fake_commands + "\nSCRIPT_DIR=" + shlex.quote(str(stack)) + "\n" + tail
                         result = subprocess.run(["/bin/bash", "-c", script], cwd=directory, env=env, text=True, capture_output=True)
@@ -336,10 +338,17 @@ docker() {
                             self.assertEqual(result.returncode, 42, result.stderr)
                             self.assertEqual(changes, [])
                             self.assertNotIn("provenance record", commands)
+                        elif ofac_exit == "44":
+                            self.assertEqual(result.returncode, 44, result.stderr)
+                            self.assertEqual(len(changes), 1)
+                            self.assertTrue(commands[changes[0]].endswith("180 ofac"))
+                            self.assertNotIn("provenance record", commands)
                         else:
                             self.assertEqual(result.returncode, 0, result.stderr)
                             self.assertTrue(changes)
                             self.assertLess(migrate, min(changes))
+                            ofac = commands.index("docker compose up -d --no-build --force-recreate --wait --wait-timeout 180 ofac")
+                            self.assertEqual(ofac, min(changes))
                             self.assertGreater(commands.index("provenance record"), max(changes))
                             if existing == "1":
                                 self.assertTrue(any(c.startswith("docker compose stop driver ") for c in commands))

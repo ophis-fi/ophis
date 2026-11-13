@@ -132,13 +132,13 @@ Run `ophis chains` to see the names to type.
 | --- | --- |
 | Ophis base | 0.01%; 0.01 USDC on a 100 USDC swap |
 | Price improvement | Share and cap shown on every quote and confirmation |
-| CoW Protocol volume fee | 0.02%, or 0.003% between stablecoins |
-| Base plus CoW volume fee on a regular swap | 0.03% |
-| CoW-hosted networks | 10, including Base |
+| Upstream volume fee on partner-hosted networks | 0.02%, or 0.003% on correlated pairs such as stablecoins |
+| Combined volume fee on partner-hosted networks | 0.03% standard / 0.013% correlated; improvement and execution costs are additional |
+| Partner-hosted networks | 10, including Base |
 | Ophis-operated networks | Optimism, Unichain, Robinhood Chain, Arc; no upstream fee |
 | Across bridge fee | Included in the displayed amounts |
 
-You receive at least the amount shown as **At least**. See [Fees](/fees) for improvement capture and upstream fee details.
+If the order fills, settlement enforces the amount shown as **At least**. A quote or signed order does not guarantee a fill. See [Fees](/fees) for improvement capture and upstream fee details.
 
 Signing an order is free. Token approvals, wrapping ETH and `ophis recover` require network fees. Each approval covers the amount needed for that swap.
 

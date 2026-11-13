@@ -14,6 +14,22 @@ x-backend: &backend
   volumes: ["./generated:/config:ro"]
   logging: {driver: json-file, options: {max-size: "5m", max-file: "2"}}
 services:
+  ofac:
+    logging: {driver: json-file, options: {max-size: "5m", max-file: "2"}}
+    image: python:3.13-alpine@sha256:9ef1a599f863231c3d91e941389bfdc4a2d6070557243d54df1a4e57015b960e
+    restart: unless-stopped
+    mem_limit: 128m
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    command: [python, /app/refresh.py, /data/addresses.json]
+    volumes: ["../../shared/sanctions/refresh.py:/app/refresh.py:ro", "sanctions:/data"]
+    healthcheck:
+      test: [CMD, python, /app/refresh.py, --check, /data/addresses.json]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 90s
   postgres:
     image: postgres:16
     restart: unless-stopped
@@ -75,12 +91,14 @@ services:
     depends_on: [uniswap-v3, kyberswap, archery, aero, uniswap-v4, sushiswap-v3]
   autopilot:
     <<: *backend
+    volumes: ["./generated:/config:ro", "sanctions:/sanctions:ro"]
     command: [autopilot, --config, /config/autopilot.toml]
-    depends_on: {migrations: {condition: service_completed_successfully}, driver: {condition: service_started}}
+    depends_on: {ofac: {condition: service_healthy}, migrations: {condition: service_completed_successfully}, driver: {condition: service_started}}
   orderbook:
     <<: *backend
+    volumes: ["./generated:/config:ro", "sanctions:/sanctions:ro"]
     command: [orderbook, --config, /config/orderbook.toml]
-    depends_on: {migrations: {condition: service_completed_successfully}, autopilot: {condition: service_started}}
+    depends_on: {ofac: {condition: service_healthy}, migrations: {condition: service_completed_successfully}, autopilot: {condition: service_started}}
   api:
     image: nginx:1.28-alpine@sha256:a8b39bd9cf0f83869a2162827a0caf6137ddf759d50a171451b335cecc87d236
     restart: unless-stopped
@@ -90,6 +108,7 @@ services:
 secrets:
   solver-key: {file: "${ARC_SOLVER_KEY_FILE:?set existing solver key file outside this repository}"}
 volumes:
+  sanctions:
   database:
   credits:
     name: ophis-arc-quicknode-credits

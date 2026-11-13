@@ -456,7 +456,7 @@ describe('fetchAndProcessQuote', () => {
       expect(mockTradeQuoteManager.onResponse).toHaveBeenCalledWith(
         {
           quoteResults: mockQuoteAndPost.swap,
-          postSwapOrderFromQuote: mockQuoteAndPost.postSwapOrderFromQuote,
+          postSwapOrderFromQuote: expect.any(Function),
         },
         mockBridgeQuote,
         mockFetchParams,

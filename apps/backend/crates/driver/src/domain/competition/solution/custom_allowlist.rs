@@ -46,10 +46,10 @@
 //! PROVENANCE AUDIT STATUS (2026-09-20): LI.FI's three entries matched its
 //! canonical repo. DODO's Optimism widget router and DODOApprove now match
 //! its Optimism deployment docs; both OKX approval spenders match its official
-//! Token Approval table. The existing OKX routers and DODO Unichain pair still
-//! lack independently established per-chain provenance. OKX's current router
-//! docs list different addresses; this does not establish that the pinned
-//! older routers are malicious or safe to replace without integration review.
+//! Token Approval table. The OKX routers were repinned on 2026-11-13 to its
+//! canonical per-chain DEX Router table, corroborated by authenticated V6
+//! responses and chain-id/bytecode reads. DODO's Unichain pair still lacks
+//! independently established per-chain provenance.
 //! Address pinning does not validate generic calldata, recipient or token
 //! conservation: these integrations retain trust in the solver/router.
 
@@ -205,11 +205,10 @@ const OPTIMISM_MAINNET: &[Address] = &[
     // upstream docs:
     // https://developers.velora.xyz/augustus-swapper/augustus-v6.2-smart-contracts
     address!("6A000F20005980200259B80c5102003040001068"),
-    // OKX V6 router on Optimism mainnet. Verified 2026-05-18 via
-    // authenticated probe + `cast code`. Used as `tx.to` returned by
-    // OKX `/swap`. Distinct from the spender address below — OKX
-    // separates router and approval target on V6.
-    address!("Dd5E9B947c99Aa60bab00ca4631Dce63b49983E7"),
+    // Canonical OKX Optimism V6 router, checked 2026-11-13 against
+    // https://web3.okx.com/onchainos/dev-docs/trade/dex-smart-contract
+    // Corroborated by authenticated /swap and chain-id/bytecode reads.
+    address!("1f5b43127414e36c31ecb5ff5567262997cd24d0"),
     // OKX ERC-20 approval grantee on Optimism. Independently authenticated
     // 2026-09-20 against the Token Approval table (not the router table):
     // https://web3.okx.com/onchainos/dev-docs/trade/dex-smart-contract
@@ -309,12 +308,9 @@ const UNICHAIN_MAINNET: &[Address] = &[
     // token through. Distinct from the router `to` above. Verified on-chain via
     // `cast code`; matches the solver-level DODO_ROUTER_ALLOWLIST.
     address!("f3d60Ba9e76459A7075E9676740347B7413462Dd"),
-    // OKX DEX router on Unichain (130) — the `tx.to` returned by OKX V6 /swap.
-    // Distinct from the spender below (OKX V6 separates router and approval
-    // target). Verified 2026-06-30 via authenticated OKX V6 probe + `eth_getCode`
-    // (stable across 3 token pairs, 24367 B); matches the (130,...) entry in the
-    // solver-level OKX_ROUTER_ALLOWLIST.
-    address!("6733Eb2E75B1625F1Fe5f18aD2cB2BaBDA510d19"),
+    // Canonical OKX Unichain V6 router, same upstream table and verification
+    // as Optimism (2026-11-13); matches the solver-level pin.
+    address!("e3dab8bf5187f9b4e8e89ff5414d7cf71e2c82e1"),
     // OKX ERC-20 approval grantee on Unichain. Independently authenticated
     // 2026-09-20 against the Token Approval table (not the router table):
     // https://web3.okx.com/onchainos/dev-docs/trade/dex-smart-contract
@@ -1039,9 +1035,8 @@ fn validate_ekubo_route(
             };
             let token0 = Address::from_slice(&data[cursor..cursor + 20]);
             let token1 = Address::from_slice(&data[cursor + 20..cursor + 40]);
-            // PoolConfig begins after token0/token1. Its extension occupies
-            // the trailing 20 bytes after the 12-byte fee/tick prefix.
-            let extension = Address::from_slice(&data[cursor + 52..cursor + 72]);
+            // PoolConfig follows token0/token1; its high 160 bits are extension.
+            let extension = Address::from_slice(&data[cursor + 40..cursor + 60]);
             // The final four bytes are Ekubo's route control word. Non-zero
             // controls can change the linear hop semantics validated here.
             if token0 >= token1
@@ -1405,7 +1400,7 @@ mod tests {
     const KYBER: Address = address!("6131B5fae19EA4f9D964eAc0408E4408b66337b5");
     // Velora Augustus V6.2 (OP only).
     // OKX V6 router on OP (used in the OKX coverage test below).
-    const OKX_OP_ROUTER: Address = address!("Dd5E9B947c99Aa60bab00ca4631Dce63b49983E7");
+    const OKX_OP_ROUTER: Address = address!("1f5b43127414e36c31ecb5ff5567262997cd24d0");
     // OKX V6 spender on OP (separate from router — verifies router/spender
     // distinct-address handling).
     const OKX_OP_SPENDER: Address = address!("68D6B739D2020067D1e2F713b999dA97E4d54812");
@@ -2253,14 +2248,34 @@ mod tests {
         data.extend_from_slice(buy.as_slice());
         let mut config_and_limits = [0u8; 32 + 12 + 4];
         // Ordinary core pools legitimately have non-zero fee/tick metadata
-        // in the first 12 bytes of PoolConfig.
-        config_and_limits[..12].fill(1);
+        // in the final 12 bytes of PoolConfig.
+        config_and_limits[20..32].fill(1);
         data.extend_from_slice(&config_and_limits);
         let custom = direct_custom(ROBINHOOD_EKUBO_ROUTER, sell, buy, 1_000, 990, data);
         assert_eq!(
             validate_with_required_output(&custom, 4663, Some(required(sell, buy, 1_000, 990))),
             Ok(())
         );
+        let mut ve33 = custom.clone();
+        let mut bytes = ve33.call_data.to_vec();
+        bytes[95] = 1;
+        bytes.splice(96..96, ROBINHOOD_EKUBO_VE33.as_slice().iter().copied());
+        bytes[156..176].copy_from_slice(ROBINHOOD_EKUBO_VE33.as_slice());
+        ve33.call_data = bytes.into();
+        assert_eq!(
+            validate_with_required_output(&ve33, 4663, Some(required(sell, buy, 1_000, 990))),
+            Ok(())
+        );
+
+        let mut extended = custom.clone();
+        let mut bytes = extended.call_data.to_vec();
+        bytes[136] = 1;
+        extended.call_data = bytes.into();
+        assert!(matches!(
+            validate_with_required_output(&extended, 4663, Some(required(sell, buy, 1_000, 990))),
+            Err(Error::CallDataNotAllowed { .. })
+        ));
+
         let mut forwarded = custom.clone();
         let mut bytes = forwarded.call_data.to_vec();
         bytes[95] = 2;
@@ -2866,6 +2881,18 @@ mod tests {
             vec![(OKX_OP_SPENDER, U256::from(1_000_000_000u64))],
         );
         assert_eq!(validate(&c, 10), Ok(()));
+        let unichain = make_custom(
+            address!("e3dab8bf5187f9b4e8e89ff5414d7cf71e2c82e1"),
+            vec![(address!("2e28281cf3d58f475cebe27bec4b8a23dfc7782c"), U256::from(1_000u64))],
+        );
+        assert_eq!(validate(&unichain, 130), Ok(()));
+        assert!(validate(&unichain, 10).is_err());
+        for (chain, legacy) in [
+            (10, address!("dd5e9b947c99aa60bab00ca4631dce63b49983e7")),
+            (130, address!("6733eb2e75b1625f1fe5f18ad2cb2babda510d19")),
+        ] {
+            assert!(validate(&make_custom(legacy, vec![]), chain).is_err());
+        }
     }
 
     #[test]

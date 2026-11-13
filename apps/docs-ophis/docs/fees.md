@@ -1,14 +1,14 @@
 ---
 id: fees
 title: Fees
-description: Ophis charges a base fee plus capped price-improvement capture, with separate CoW Protocol and bridge costs.
+description: Check Ophis public swap fees, price-improvement capture, private-swap charges and bridge costs.
 sidebar_label: Fees
 sidebar_position: 3
 ---
 
 # Fees
 
-Ophis charges a 0.01% base fee plus a capped share of any price improvement over the reference quote.
+Public batch-auction orders carry a 0.01% Ophis base fee plus a capped share of price improvement over the reference quote. Direct routes, private swaps and bridges use the fee treatment below.
 
 :::tip[Example]
 
@@ -18,19 +18,19 @@ On a 100 USDC swap, the Ophis base fee is 0.01 USDC.
 
 ## What you pay {/* #the-all-in-cost-per-chain */}
 
-| Component | Ophis-operated chains | CoW-hosted chains (10) |
+| Component | Ophis-operated chains | Partner-hosted chains (10) |
 | --- | --- | --- |
 | Ophis base fee | 1 bp (0.01%) | 1 bp (0.01%) |
 | Volatile-pair improvement capture | 80%, capped at 99 bps (0.99%) of volume | 80%, capped at 99 bps (0.99%) of volume |
 | Stablecoin-pair improvement capture | 50%, capped at 20 bps (0.20%) of volume | 50%, capped at 20 bps (0.20%) of volume |
-| CoW Protocol volume fee | None | 0.02%, or 0.003% on correlated pairs such as stablecoins |
-| Total volume fee (Ophis and CoW) | 0.01% | 0.03% volatile / 0.013% correlated stables |
-| CoW Protocol improvement policy | None | Applies separately |
+| Upstream volume fee | None | 0.02%, or 0.003% on correlated pairs such as stablecoins |
+| Combined volume fee | 0.01% | 0.03% volatile / 0.013% correlated stables |
+| Upstream improvement policy | None | Applies separately |
 
 | Settlement stack | Networks |
 | --- | --- |
 | Ophis-operated | Optimism, Unichain, Robinhood Chain, Arc |
-| CoW-hosted | The other 10 mainnets |
+| Partner-hosted | Ethereum, Arbitrum, Avalanche, Base, BNB Chain, Gnosis, Ink, Linea, Plasma, Polygon |
 
 Gas, liquidity-pool fees, price impact and bridge costs also affect the amount you receive. Review the final quote before signing.
 
@@ -40,7 +40,7 @@ Price improvement is the extra amount a solver finds beyond the reference quote.
 
 On Ophis-operated chains, improvement capture applies to **in-market orders**. Limit orders priced away from the market pay only the base fee.
 
-On CoW-hosted chains, CoW Protocol applies its own fees before the Ophis fee, and the quote shows the result. See [CoW's fee policy](https://docs.cow.fi/governance/fees).
+The ten partner-hosted mainnets use CoW Protocol's orderbooks and solver network. Its fees apply in addition to Ophis fees: a volume fee plus quote-improvement or out-of-market surplus fees where eligible. Check the [upstream fee policy](https://docs.cow.fi/governance/fees) and final quote; the combined volume-fee row is not an all-in cost.
 
 <span id="arc-release-exception" />
 
@@ -59,19 +59,27 @@ Arc follows the same rules as the other Ophis-operated chains, and USDC/EURC cou
 
 See [Networks & assets](/networks-assets) for funding and recovery requirements.
 
+## Direct swap costs
+
+For a direct wallet route, review the selected quote, displayed Ophis fee and network gas before confirming the transaction. Batch-auction improvement capture does not automatically describe these routes.
+
+## Private swap costs
+
+Private mode charges **0.1% (10 bps) of swap output** to Ophis, plus pool fees, broadcaster fees and applicable shielding or withdrawal costs. This is separate from the public batch-auction schedule. The broadcaster fee depends on the network, transaction and payment mode; review the current quote before authorizing.
+
 ## Fee collection {/* #how-its-collected */}
 
-The app and SDK use CoW Protocol's partner-fee model to record fees in `appData`.
+The app and SDK record the base fee and applicable improvement policy in `appData`.
 
-| Setting | Ophis-operated chains | CoW-hosted chains |
+| Setting | Ophis-operated chains | partner-hosted chains |
 | --- | --- | --- |
 | Base fee in `appData` | 1 bp | 1 bp |
 | Improvement capture | Backend policy | CIP-75 `priceImprovementBps` with a `maxVolumeBps` cap |
-| Declared fee validation | Backend rejects a declared fee below 1 bp for the Ophis recipient | CoW's backend validates `appData` |
+| Declared fee validation | Backend rejects a declared fee below 1 bp for the Ophis recipient | The hosted backend validates `appData` |
 
 :::tip[Building an integration]
 
-On Ophis-operated chains, write the base fee in `appData` and leave improvement capture to the backend. On CoW-hosted chains, include both entries. The [SDK helpers](/partners) handle this distinction.
+On Ophis-operated chains, write the base fee in `appData` and leave improvement capture to the backend. On partner-hosted chains, include both entries. The [SDK helpers](/partners) handle this distinction.
 
 :::
 

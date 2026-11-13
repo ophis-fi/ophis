@@ -1,3 +1,4 @@
+import { RELAY_DAPP_ID } from '@cowprotocol/common-const'
 import { BridgeQuoteResults } from '@cowprotocol/sdk-bridging'
 
 import {
@@ -49,5 +50,15 @@ function quotedFillDeadline(quoteBody: string | undefined): number {
     return Number(JSON.parse(quoteBody ?? '{}').fillDeadline ?? Infinity)
   } catch {
     return Infinity
+  }
+}
+
+export function relayValidToLimit(bridgeQuote: BridgeQuoteResults | null): number {
+  if (bridgeQuote?.providerInfo.dappId !== RELAY_DAPP_ID) return Infinity
+  try {
+    const until: unknown = JSON.parse(bridgeQuote.quoteBody ?? '').depositUntil
+    return typeof until === 'number' && Number.isSafeInteger(until) ? until - 30 : 0
+  } catch {
+    return 0
   }
 }

@@ -47,6 +47,25 @@ x-default-logging: &default-logging
 
 
 services:
+  ofac:
+    logging: *default-logging
+    image: python:3.13-alpine@sha256:9ef1a599f863231c3d91e941389bfdc4a2d6070557243d54df1a4e57015b960e
+    restart: unless-stopped
+    mem_limit: 128m
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    command: [python, /app/refresh.py, /data/addresses.json]
+    volumes:
+      - ../shared/sanctions/refresh.py:/app/refresh.py:ro
+      - sanctions:/data
+    healthcheck:
+      test: [CMD, python, /app/refresh.py, --check, /data/addresses.json]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 90s
+
   # Jaeger all-in-one — OTLP/gRPC collector + UI + in-memory storage.
   # Ports offset from OP stack (OP uses 16686/4317) to coexist.
   jaeger:
@@ -174,6 +193,7 @@ services:
     restart: always
     mem_limit: 2g
     depends_on:
+      ofac: { condition: service_healthy }
       db: { condition: service_healthy }
       migrations: { condition: service_completed_successfully }
       rpc-proxy-health: { condition: service_healthy }
@@ -185,6 +205,7 @@ services:
       TRACING_COLLECTOR_ENDPOINT: ${TRACING_COLLECTOR_ENDPOINT:-}
       OPHIS_INTER_SERVICE_AUTH_TOKEN: ${OPHIS_INTER_SERVICE_AUTH_TOKEN:?inter-service auth token must be set}
     volumes:
+      - sanctions:/sanctions:ro
       - ./rendered/orderbook.toml:/orderbook.toml:ro
     command: ["--config", "/orderbook.toml"]
     ports:
@@ -210,6 +231,7 @@ services:
     restart: always
     mem_limit: 1g
     depends_on:
+      ofac: { condition: service_healthy }
       db: { condition: service_healthy }
       migrations: { condition: service_completed_successfully }
       orderbook: { condition: service_healthy }
@@ -222,6 +244,7 @@ services:
       TRACING_COLLECTOR_ENDPOINT: ${TRACING_COLLECTOR_ENDPOINT:-}
       OPHIS_INTER_SERVICE_AUTH_TOKEN: ${OPHIS_INTER_SERVICE_AUTH_TOKEN:?inter-service auth token must be set}
     volumes:
+      - sanctions:/sanctions:ro
       - ./rendered/autopilot.toml:/autopilot.toml:ro
     command: ["--config", "/autopilot.toml"]
 
@@ -673,6 +696,7 @@ services:
       LOOKBACK_TIME: "30d"
 
 volumes:
+  sanctions:
   postgres:
   prometheus-data:
   alertmanager-data:

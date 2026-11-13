@@ -1,4 +1,4 @@
-import { SWR_NO_REFRESH_OPTIONS } from '@cowprotocol/common-const'
+import { isRelayRecoveryRequired, SWR_NO_REFRESH_OPTIONS } from '@cowprotocol/common-const'
 import { CowEnv } from '@cowprotocol/cow-sdk'
 import { CrossChainOrder, getCrossChainOrder, BridgeStatus } from '@cowprotocol/sdk-bridging'
 
@@ -18,7 +18,7 @@ const swrOptions: SWRConfiguration = {
     if (data) {
       const isBridgingFinished = BRIDGING_FINAL_STATUSES.includes(data.statusResult.status)
 
-      if (isBridgingFinished) {
+      if (isBridgingFinished || isRelayRecoveryRequired(data.statusResult)) {
         return 0
       }
     }

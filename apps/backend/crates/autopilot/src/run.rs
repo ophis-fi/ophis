@@ -35,7 +35,6 @@ use {
     event_indexing::block_retriever::BlockRetriever,
     http_client::HttpClientFactory,
     model::DomainSeparator,
-    num::ToPrimitive,
     observe::metrics::LivenessChecking,
     price_estimation::{
         config::price_estimation::BalanceOverridesConfigExt,
@@ -571,10 +570,11 @@ pub async fn run(config: Configuration, shutdown_controller: ShutdownController)
         config.min_order_validity_period,
         persistence.clone(),
         infra::banned::Users::new(
-            eth.contracts().chainalysis_oracle().clone(),
             config.banned_users.addresses,
-            config.banned_users.max_cache_size.get().to_u64().unwrap(),
-        ),
+            config.banned_users.addresses_file,
+            config.banned_users.snapshot_max_age,
+        )
+        .expect("valid and fresh sanctions screening snapshot"),
         balance_fetcher.clone(),
         deny_listed_tokens.clone(),
         competition_native_price_updater.clone(),

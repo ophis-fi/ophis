@@ -2,7 +2,6 @@ use {
     alloy::primitives::Address,
     chain::Chain,
     contracts::{
-        ChainalysisOracle,
         GPv2AllowListAuthentication,
         GPv2Settlement,
         HooksTrampoline,
@@ -19,7 +18,6 @@ pub struct Contracts {
     signatures: contracts::support::Signatures::Instance,
     weth: WETH9::Instance,
     balances: Balances::Instance,
-    chainalysis_oracle: Option<ChainalysisOracle::Instance>,
     trampoline: HooksTrampoline::Instance,
 
     /// The authenticator contract that decides which solver is allowed to
@@ -80,10 +78,6 @@ impl Contracts {
             web3.provider.clone(),
         );
 
-        let chainalysis_oracle = ChainalysisOracle::Instance::deployed(&web3.provider)
-            .await
-            .ok();
-
         // Bootstrap RPC calls: retry with backoff so transient
         // ErrConsensusLowParticipants events from the eRPC proxy don't
         // crash-loop the container. See the `retry-helper` crate for
@@ -115,7 +109,6 @@ impl Contracts {
             signatures,
             weth,
             balances,
-            chainalysis_oracle,
             settlement_domain_separator,
             authenticator,
             trampoline,
@@ -140,10 +133,6 @@ impl Contracts {
 
     pub fn settlement_domain_separator(&self) -> &eth::DomainSeparator {
         &self.settlement_domain_separator
-    }
-
-    pub fn chainalysis_oracle(&self) -> &Option<ChainalysisOracle::Instance> {
-        &self.chainalysis_oracle
     }
 
     pub fn weth(&self) -> &WETH9::Instance {

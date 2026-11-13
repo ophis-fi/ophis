@@ -75,7 +75,7 @@ Use these EIP-55 checksummed addresses from the pack's `addresses.json`:
 
 :::info[Shared signing domains]
 
-On the 10 CoW-hosted chains above, the domain also authorizes CoW Swap orders. Optimism, Unichain, Robinhood Chain and Arc use Ophis-deployed settlements. For Ophis-specific routing on a shared-domain chain, check the orderbook host and appData before signing.
+On the 10 partner-hosted chains above, the domain also authorizes CoW Swap orders. Optimism, Unichain, Robinhood Chain and Arc use Ophis-deployed settlements. These example policies restrict the domain, tokens and receiver; they do not enforce a trade-size cap, a minimum exchange rate, empty appData hooks or a short expiry. Validate those fields in your signing service, and use explicit spending or turnover controls where needed. For Ophis-specific routing on a shared-domain chain, check the orderbook host and appData before signing.
 
 :::
 
@@ -135,7 +135,7 @@ Replace the token and wallet placeholders with your allowlist and agent address.
 
 ## Base policy
 
-This Turnkey policy lets the agent wallet do two things on Base: approve allowlisted tokens for the CoW vault relayer, and sign Ophis orders that pay out to the agent's own wallet. It blocks the pre-hashed signing bypass and key export. Base uses the shared CoW signing domain.
+This Turnkey policy lets the agent wallet do two things on Base: approve allowlisted tokens for the chain's vault relayer, and sign Ophis orders that pay out to the agent's own wallet. It blocks the pre-hashed signing bypass and key export. The shared signing-domain warning above also applies to Base.
 
 ```json
 {

@@ -103,6 +103,7 @@ pub trait OrderValidating: Send + Sync {
 #[derive(Debug)]
 pub enum PartialValidationError {
     Forbidden,
+    SanctionsScreeningUnavailable,
     ValidTo(OrderValidToError),
     InvalidNativeSellToken,
     SameBuyAndSellToken,
@@ -539,6 +540,10 @@ impl OrderValidating for OrderValidator {
             .banned_users
             .banned([order.receiver, order.owner])
             .await
+            .map_err(|err| {
+                tracing::error!(?err, "address screening unavailable");
+                PartialValidationError::SanctionsScreeningUnavailable
+            })?
             .is_empty()
         {
             return Err(PartialValidationError::Forbidden);

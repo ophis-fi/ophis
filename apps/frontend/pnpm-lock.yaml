@@ -1333,15 +1333,33 @@ importers:
       '@cowprotocol/sdk-bridging':
         specifier: 4.0.2
         version: 4.0.2(patch_hash=9ad38533e2f2d09d1b2dcb85ba3fc6dad0dec289b00ec9a5f8b687847acb5c21)(ajv@8.20.0)(cross-fetch@4.0.0(encoding@0.1.13))(encoding@0.1.13)(ipfs-only-hash@4.0.0(encoding@0.1.13))(multiformats@9.9.0)
+      '@cowprotocol/sdk-cow-shed':
+        specifier: 0.3.8
+        version: 0.3.8
+      '@cowprotocol/sdk-weiroll':
+        specifier: 0.1.30
+        version: 0.1.30
       '@cowprotocol/types':
         specifier: workspace:*
         version: link:../types
+      '@ethersproject/abi':
+        specifier: 5.7.0
+        version: 5.7.0
       '@ethersproject/address':
+        specifier: 5.7.0
+        version: 5.7.0
+      '@ethersproject/bytes':
+        specifier: 5.7.0
+        version: 5.7.0
+      '@ethersproject/hash':
         specifier: 5.7.0
         version: 5.7.0
       '@ethersproject/providers':
         specifier: 5.7.0
         version: 5.7.0(bufferutil@4.0.8)(utf-8-validate@5.0.10)
+      '@ethersproject/wallet':
+        specifier: 5.7.0
+        version: 5.7.0
       '@lingui/core':
         specifier: ^5.4.1
         version: 5.5.1(@lingui/babel-plugin-lingui-macro@5.5.1(babel-plugin-macros@3.1.0))(babel-plugin-macros@3.1.0)

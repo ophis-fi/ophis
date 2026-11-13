@@ -108,7 +108,11 @@ async function fetchBridgingQuote(
   let isRequestCancelled = false
 
   const multiQuoteRequest: MultiQuoteRequest = {
-    quoteBridgeRequest: quoteParams,
+    // The SDK funds the bridge from this minimum; posting recalculates it from signed appData.
+    quoteBridgeRequest: {
+      ...quoteParams,
+      swapSlippageBps: advancedSettings.appData?.metadata?.quote?.slippageBips ?? quoteParams.swapSlippageBps,
+    },
     advancedSettings,
     options: {
       onQuoteResult(result: MultiQuoteResult) {
@@ -116,7 +120,16 @@ async function fetchBridgingQuote(
 
         if (result.quote) {
           const { swap, bridge, postSwapOrderFromQuote } = result.quote
-          const quoteAndPost = { quoteResults: swap, postSwapOrderFromQuote: postSwapOrderFromQuote }
+          const quoteAndPost: QuoteAndPost = {
+            quoteResults: swap,
+            postSwapOrderFromQuote(settings, ...args) {
+              const slippage = settings?.appData?.metadata?.quote?.slippageBips
+              if (slippage !== undefined && slippage !== swap.tradeParameters.slippageBps) {
+                throw new Error('Slippage changed. Refresh the bridge quote before signing.')
+              }
+              return postSwapOrderFromQuote(settings, ...args)
+            },
+          }
 
           tradeQuoteManager.onResponse(quoteAndPost, bridge, fetchParams, quoteParams)
         }

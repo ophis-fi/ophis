@@ -1,0 +1,72 @@
+{
+  "block_number": 113333587,
+  "block_hash": "0xa1875e0e52c297a2fecc3af40b96f050729f571e9cf00beda4a915c0cffaf052",
+  "quote_timestamp": 1794570831,
+  "total_calculated": "709821474298312125",
+  "estimated_gas_cost": 27450,
+  "price_impact": 0.0016057060946382243,
+  "splits": [
+    {
+      "amount_specified": "100000000",
+      "amount_calculated": "709821474298312125",
+      "route": [
+        {
+          "swap": {
+            "type": "core",
+            "pool_key": {
+              "token0": "0x4a0E65A3EcceC6dBe60AE065F2e7bb85Fae35eEa",
+              "token1": "0x5fc5360D0400a0Fd4f2af552ADD042D716F1d168",
+              "config": "0x0000000000000000000000000000000000000000004189374bc6a7f08000137c"
+            },
+            "sqrt_ratio_limit": "0x40005e3ffdd20a574f5feb46",
+            "skip_ahead": 0
+          }
+        }
+      ],
+      "hop_accounting": [
+        {
+          "token_in": "0x5fc5360d0400a0fd4f2af552add042d716f1d168",
+          "token_out": "0x4a0e65a3eccec6dbe60ae065f2e7bb85fae35eea",
+          "amount_in": "100000000",
+          "amount_out": "709821474298312125",
+          "status": "complete",
+          "reason": null,
+          "components": [
+            {
+              "kind": "core_fee",
+              "token": "0x5fc5360d0400a0fd4f2af552add042d716f1d168",
+              "amount": "100001",
+              "attribution": "core_pool",
+              "recipient": null,
+              "recipient_reason": "recipient_not_in_quote"
+            },
+            {
+              "kind": "core_fee",
+              "token": "0x4a0e65a3eccec6dbe60ae065f2e7bb85fae35eea",
+              "amount": "0",
+              "attribution": "core_pool",
+              "recipient": null,
+              "recipient_reason": "recipient_not_in_quote"
+            },
+            {
+              "kind": "extension_fee",
+              "token": "0x4a0e65a3eccec6dbe60ae065f2e7bb85fae35eea",
+              "amount": "0",
+              "attribution": "none",
+              "recipient": null,
+              "recipient_reason": "no_charge_recipient"
+            },
+            {
+              "kind": "extension_fee",
+              "token": "0x5fc5360d0400a0fd4f2af552add042d716f1d168",
+              "amount": "0",
+              "attribution": "none",
+              "recipient": null,
+              "recipient_reason": "no_charge_recipient"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

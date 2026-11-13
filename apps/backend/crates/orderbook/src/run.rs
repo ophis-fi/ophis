@@ -19,7 +19,6 @@ use {
     configs::orderbook::Configuration,
     contracts::{
         BalancerV2Vault,
-        ChainalysisOracle,
         GPv2Settlement,
         HooksTrampoline,
         WETH9,
@@ -28,7 +27,6 @@ use {
     gas_price_estimation::gas_price::InstrumentedGasEstimator,
     http_client::HttpClientFactory,
     model::DomainSeparator,
-    num::ToPrimitive,
     observe::metrics::{DEFAULT_METRICS_PORT, serve_metrics},
     order_validation,
     price_estimation::{
@@ -481,16 +479,17 @@ pub async fn run(config: Configuration) {
     };
 
     let app_data_validator = Validator::new(config.app_data_size_limit, recipient_policy);
-    let chainalysis_oracle = ChainalysisOracle::Instance::deployed(&web3.provider)
-        .await
-        .ok();
+    let banned_users = Arc::new(
+        order_validation::banned::Users::new(
+            config.banned_users.addresses,
+            config.banned_users.addresses_file,
+            config.banned_users.snapshot_max_age,
+        )
+        .expect("valid and fresh sanctions screening snapshot"),
+    );
     let order_validator = Arc::new(OrderValidator::new(
         native_token.clone(),
-        Arc::new(order_validation::banned::Users::new(
-            chainalysis_oracle,
-            config.banned_users.addresses,
-            config.banned_users.max_cache_size.get().to_u64().unwrap(),
-        )),
+        banned_users.clone(),
         validity_configuration,
         config.eip1271_skip_creation_validation,
         deny_listed_tokens.clone(),
@@ -556,6 +555,7 @@ pub async fn run(config: Configuration) {
         postgres_write.clone(),
         postgres_read.clone(),
         order_validator.clone(),
+        banned_users,
         app_data.clone(),
         config.active_order_competition_threshold,
         order_simulator,
