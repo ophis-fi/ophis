@@ -991,6 +991,37 @@ export const LISTED = `(${LIVE} OR (w.state = 'pending' AND (SELECT x.state FROM
 export const listed = async (db: D1Database, address: string) => Boolean(await db.prepare('SELECT 1 FROM sanctioned_addresses WHERE address = ? LIMIT 1').bind(address).first())
 /** The first live wallet of an organisation that is on a loaded list, or null. */
 export const listedWallet = (db: D1Database, orgId: string, now: number) => db.prepare(`SELECT w.id FROM wallets w WHERE w.org_id = ? AND ${LISTED} ORDER BY w.rowid LIMIT 1`).bind(orgId, now).first<{ id: string }>()
+// M10: flags. The only outside addresses the console holds are the wallets referred to a partner (partner.ts reads them).
+const MAX_FLAGS = 5 // new flags per read of the figures
+const SWEEP = 20 // partners the daily run reads
+/** The addresses on any loaded list. ponytail: all of them at each read of a partner's figures: fine for lists of hundreds; ask by address (json_each) when one passes some thousands. */
+export const listedAddresses = async (db: D1Database) => new Set((await db.prepare('SELECT DISTINCT address FROM sanctioned_addresses').all<{ address: string }>()).results.map((row) => row.address))
+/**
+ * A flag: a wallet referred to this organisation is on a loaded list. One row of the organisation's own log per
+ * address, once (read again inside the commit). It freezes nothing and changes no state: the partner and the operator are told.
+ * ponytail: at most 5 new rows per read; the others at the next reads, since every read of the figures comes back here.
+ */
+export async function flag(db: D1Database, orgId: string, addresses: string[], now: number) {
+  const flagged = `SELECT detail FROM audit_log WHERE org_id = ? AND action = 'screening.flag'`
+  const known = new Set((await db.prepare(flagged).bind(orgId).all<{ detail: string }>()).results.map((row) => row.detail))
+  for (const address of addresses.filter((a) => !known.has(a)).slice(0, MAX_FLAGS)) {
+    await commit(db, orgId, async () => ((await db.prepare(`${flagged} AND detail = ?`).bind(orgId, address).first()) ? null
+      : [{ at: now, actorKind: 'system', actorId: null, sessionId: null, action: 'screening.flag', subjectId: null, detail: address }, []]))
+  }
+}
+/** For the operator's list: the flags of every organisation, newest first, at most 200. */
+export const flags = async (db: D1Database) =>
+  (await db.prepare(`SELECT a.org_id AS id, o.name, a.detail AS address, a.at FROM audit_log a JOIN organisations o ON o.id = a.org_id WHERE a.action = 'screening.flag' ORDER BY a.at DESC, a.rowid DESC LIMIT 200`).all()).results
+/**
+ * The daily run: the active partner organisations that hold a linked wallet, whose figures it reads so that a flag does
+ * not wait for a member to open the page. ponytail: at most 20 a run (each costs one request to the indexer and about
+ * 4 queries), a window that moves on every day, so each partner is read in turn. Queue them when they pass some dozens.
+ */
+export async function partnersToRead(db: D1Database, now: number) {
+  const ids = (await db.prepare(`SELECT DISTINCT o.id FROM organisations o JOIN wallets w ON w.org_id = o.id AND w.state = 'linked' WHERE o.kind = 'partner' AND o.state = 'active' ORDER BY o.id`).all<{ id: string }>()).results.map((row) => row.id)
+  const from = ids.length ? (Math.floor(now / DAY) * SWEEP) % ids.length : 0
+  return [...ids, ...ids].slice(from, from + Math.min(SWEEP, ids.length))
+}
 /** The statements of a freeze by the operator or by the screening: the organisation, if it is active, and every session of it (G4). */
 export const freezing = (db: D1Database, orgId: string, now: number): Sql[] => [
   db.prepare(`UPDATE organisations SET state = 'frozen' WHERE id = ? AND state = 'active'`).bind(orgId),

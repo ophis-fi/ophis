@@ -21,7 +21,7 @@ interface PartnerWallet {
   wallet: string; label: string; chain: string
   affiliate: null | {
     kind: string; sharePct: number; codes: string[]; referredCount: number; cycleVolumeUsd: number; lifetimeVolumeUsd: number; estimatedEarningsUsd: number; paidWeth: number; paidUsd: number
-    nextPayoutAt: string | null; referred: { wallet: string; attributed: string; firstSeenAt: string; lifetimeVolumeUsd: number }[]
+    nextPayoutAt: string | null; referred: { wallet: string; attributed: string; firstSeenAt: string; lifetimeVolumeUsd: number; listed: boolean }[]
   }
   // null: a contract wallet whose chain the rebate service has not confirmed; no figure of it was read.
   fees: null | { shareUsd: number; carriedUsd: number; owedUsd: number; pendingTrades: number; paidWeth: number; trades: number; months: { month: string; status: string; owedUsd: number; owedWeth: number; carriedUsd: number }[] }
@@ -177,7 +177,8 @@ function PartnerWalletFigures({ w }: { w: PartnerWallet }) {
             <p>Active codes: {a.codes.length ? a.codes.map((code) => <span className="mono code" key={code}>{code}</span>) : <span className="muted">none</span>}</p>
           </div>
           <Section icon="users" title="Referred wallets" hint={part ? `Of ${count(a.referredCount)} referred wallets, the newest ${count(a.referred.length)}. The CSV holds these ${count(a.referred.length)}; the page shows the first ${SHOWN}.` : a.referred.length > SHOWN ? `The first ${SHOWN} of ${count(a.referred.length)}. The CSV holds all of them.` : 'Wallets attributed to this wallet. The CSV holds all of them.'}>
-            {a.referred.length ? <Table head={['Wallet', 'Attributed by', 'First seen (UTC)', 'Lifetime volume (USD)']} rows={a.referred.slice(0, SHOWN).map((r) => [<span className="mono">{r.wallet}</span>, r.attributed, stamp(Date.parse(r.firstSeenAt)), usd(r.lifetimeVolumeUsd)])} />
+            {a.referred.some((r) => r.listed) && <p className="note warn" role="note"><Icon name="triangle-alert" /><span className="grow"><b>A referred wallet is on a loaded sanctions list.</b> It is marked below and in the CSV, and it is a row of your audit log. Ophis sees it too. The mark freezes nothing and changes nothing in your organisation.</span></p>}
+            {a.referred.length ? <Table head={['Wallet', 'Attributed by', 'First seen (UTC)', 'Lifetime volume (USD)']} rows={[...a.referred].sort((x, y) => Number(y.listed) - Number(x.listed)).slice(0, SHOWN).map((r) => [<><span className="mono">{r.wallet}</span>{r.listed && <Status>On a loaded sanctions list</Status>}</>, r.attributed, stamp(Date.parse(r.firstSeenAt)), usd(r.lifetimeVolumeUsd)])} />
               : <p className="muted">No wallet has been referred yet.</p>}
           </Section>
         </>

@@ -6,9 +6,9 @@ CREATE TABLE sanctions_lists (
   sha256 TEXT NOT NULL CHECK (length(sha256) = 64),  -- of the file the addresses were taken from
   entries INTEGER NOT NULL CHECK (entries > 0),      -- addresses loaded: a load is never empty
   loaded_at INTEGER NOT NULL,
-  published TEXT,                                    -- M10: the day the source file was published (YYYY-MM-DD); NULL after a manual load
+  published TEXT,                                    -- M10: the day the source file was published (YYYY-MM-DD); NULL: a list made by hand, from a file with no date
   checked_at INTEGER,                                -- M10: the last good read of the list file by the console; NULL: never read
-  held TEXT CHECK (held IN ('older', 'shrunk', 'grown')) -- M10: the last file read was not loaded, and why; NULL: none is held
+  held TEXT CHECK (held IN ('older', 'shrunk', 'grown', 'manual')) -- M10: the last file read was not loaded, and why; NULL: none is held
 ) STRICT;
 CREATE TABLE sanctioned_addresses (
   list TEXT NOT NULL REFERENCES sanctions_lists (list),

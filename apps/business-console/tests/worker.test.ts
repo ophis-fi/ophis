@@ -9,7 +9,7 @@ import routerSource from '../src/server/index.ts?raw'
 import dataSource from '../src/server/data.ts?raw'
 import passkeySource from '../src/server/passkeys.ts?raw'
 import * as data from '../src/server/data.ts'
-import { csvCell, EVENTS, handle, routes, type Env } from '../src/server/index.ts'
+import { csvCell, daily, EVENTS, handle, routes, type Env } from '../src/server/index.ts'
 import { challengeIsOurs, configFor, credentialHash, fromBase64Url, newChallenge, phraseFor, seal, toBase64Url, userHandle } from '../src/server/passkeys.ts'
 import { checksum, colour, LIMITS, SAFES, type SafeState } from '../src/server/chain.ts'
 import { LINK_ACTION, PROOF_ACTION, typedLink, typedProof } from '../src/server/typed.ts'
@@ -7733,9 +7733,9 @@ describe('E. onboarding: a company applies, proves its domain, is activated and 
       expect((await load('ofac', numbered(13), { sha256: H('d') })).status).toBe(200)
       expect(await ofac()).toEqual({ sha256: H('d'), entries: 13, loaded_at: now, published: null, checked_at: checked, held: null })
       expect((await syncNow()).body).toEqual({ outcome: 'same' })
-      // Exactly a fifth less, or more, is loaded; after a manual load no day is known, so no file is "older".
+      // Exactly a fifth less, or more, is loaded; so is a file of the same day as the loaded one.
       for (const count of [8, 12]) {
-        expect((await load('ofac', numbered(10))).status).toBe(200)
+        expect((await load('ofac', numbered(10), { published: '2026-01-01' })).status).toBe(200)
         feed(fileOf(numbered(count), { sha256: H(String(count % 10)), published: '2026-01-01' }))
         expect((await syncNow()).body, String(count)).toMatchObject({ outcome: 'loaded', entries: count, published: '2026-01-01' })
       }
@@ -7765,8 +7765,146 @@ describe('E. onboarding: a company applies, proves its domain, is activated and 
       expect((await syncNow()).body).toEqual({ outcome: 'unavailable' })
       expect((await listsNow())[0]).toMatchObject({ checkedAt: read, stale: true })
       feed(fileOf(numbered(9), { sha256: H('9') }))
-      expect((await syncNow()).body).toEqual({ outcome: 'held', reason: 'grown' })
-      expect((await listsNow())[0]).toEqual({ list: 'ofac', entries: 2, published: null, loadedAt: manual, checkedAt: now, held: 'grown', stale: false })
+      expect((await syncNow()).body).toEqual({ outcome: 'held', reason: 'manual' }) // the loaded list was made by hand
+      expect((await listsNow())[0]).toEqual({ list: 'ofac', entries: 2, published: null, loadedAt: manual, checkedAt: now, held: 'manual', stale: false })
+    })
+
+    it('T2: the list file never rolls back what the operator loaded by hand: an older file is held as "older", a list made by hand (no publish day) holds every other file as "manual", and the file the operator loaded reads as "same"', async () => {
+      // The feed is stuck on an old file. The operator loads today's official file by hand: the command sends its publish day with it.
+      feed(fileOf(numbered(10), { published: '2026-11-01' }))
+      expect((await syncNow()).body).toMatchObject({ outcome: 'loaded', published: '2026-11-01' })
+      const read = now
+      now += HOUR
+      expect((await load('ofac', numbered(11), { sha256: H('b'), published: '2026-11-09' })).status).toBe(200)
+      const newer = { sha256: H('b'), entries: 11, loaded_at: now, published: '2026-11-09', checked_at: read, held: null }
+      expect(await ofac()).toEqual(newer) // a manual load is no read of the list file
+      const kept = await loaded()
+      now += DAY
+      expect((await syncNow()).body).toEqual({ outcome: 'held', reason: 'older' })
+      expect([await ofac(), await loaded()]).toEqual([{ ...newer, checked_at: now, held: 'older' }, kept])
+      // The operator loads the feed's own file by hand: what was held is cleared, and the next read is "same".
+      expect((await load('ofac', numbered(10), { sha256: H('a'), published: '2026-11-01' })).status).toBe(200)
+      expect([(await ofac())!.held, (await syncNow()).body]).toEqual([null, { outcome: 'same' }])
+      // A list made by hand, from a file with no publish day: the list file never replaces it, whatever its count and day.
+      expect((await load('ofac', numbered(10), { sha256: H('c') })).status).toBe(200)
+      const hand = await loaded()
+      expect((await syncNow()).body).toEqual({ outcome: 'held', reason: 'manual' })
+      expect([await loaded(), await ofac()]).toEqual([hand, { sha256: H('c'), entries: 10, loaded_at: now, published: null, checked_at: now, held: 'manual' }])
+      // The operator ends it by loading a dated file by hand; a manual load is itself never held, and the feed's newer file is then loaded.
+      expect((await load('ofac', numbered(30), { sha256: H('d'), published: '2026-10-01' })).status).toBe(200)
+      expect(await ofac()).toMatchObject({ entries: 30, published: '2026-10-01', held: null })
+      expect((await load('ofac', numbered(10), { sha256: H('e'), published: '2026-10-01' })).status).toBe(200)
+      expect((await syncNow()).body).toMatchObject({ outcome: 'loaded', entries: 10, published: '2026-11-01' })
+      // The day sent with a manual load is checked as the file's is: a real day, not after tomorrow.
+      const rows = await snapshot()
+      for (const published of ['2026-02-31', '2026-11-13', '11/09/2026', 20261109, null]) expect((await load('ofac', numbered(3), { published })).body, String(published)).toEqual({ error: 'invalid' })
+      expect(await snapshot()).toBe(rows)
+      expect((await load('ofac', numbered(3), { published: '2026-11-12' })).status).toBe(200) // tomorrow's day
+    })
+
+    // ---- M10 T3: flags. The only outside addresses the console holds are the wallets referred to a partner ----
+    const referees = A.referees.map((r) => r.wallet)
+    const marks = async (m: Holder) => ((await overviewOf(m)).body.figures.wallets[0].affiliate.referred as { wallet: string; listed: boolean }[]).map((r) => r.listed)
+    const flagRows = async (orgId: string) => (await db.prepare(`SELECT actor_kind, actor_id, session_id, subject_id, detail FROM audit_log WHERE org_id = ? AND action = 'screening.flag' ORDER BY seq`).bind(orgId).all()).results
+    const flagsNow = async (...ids: string[]) => {
+      vi.stubGlobal('fetch', fakeNet)
+      return ((await op('GET', '/api/operator/organisations')).body.flags as { id: string }[]).filter((f) => ids.includes(f.id))
+    }
+
+    it('T3: a wallet referred to a partner that is on a loaded list is marked, and recorded once per organisation and address in the organisation\'s own log; a flag freezes nothing and changes no state', async () => {
+      const [o, p] = [await partnerOrg('Flagged Partner'), await partnerOrg('Other Partner')]
+      indexer()
+      // Nothing is loaded: nothing is marked, nothing is recorded.
+      let rows = await snapshot()
+      expect([await marks(o), await snapshot()]).toEqual([[false, false, false], rows])
+      // The first referred wallet comes onto a list. It is no wallet of an organisation: the load itself finds no hit and freezes nobody.
+      expect((await load('ofac', [referees[0], someAddress()])).body.hits).toEqual([])
+      const rest = TABLES.filter((table) => table !== 'audit_log')
+      rows = await snapshot(rest)
+      expect(await marks(o)).toEqual([true, false, false])
+      expect(await flagRows(o.orgId)).toEqual([{ actor_kind: 'system', actor_id: null, session_id: null, subject_id: null, detail: referees[0] }])
+      expect([await snapshot(rest), await stateOf(o.orgId), (await call('GET', '/api/me', { cookie: o.cookie })).status, await data.verifyAudit(db, o.orgId)]).toEqual([rows, 'active', 200, expect.objectContaining({ ok: true })])
+      // Read again, on the page and as a file: marked each time, recorded once. The CSV carries the column.
+      const first = now
+      now += MIN
+      expect(await marks(o)).toEqual([true, false, false])
+      const file = await exportOf(o, 'referred')
+      expect([file.rows[0][6], file.rows.slice(1).map((r) => r[6]), (await flagRows(o.orgId)).length]).toEqual(['On a loaded sanctions list', ['yes', 'no', 'no'], 1])
+      // Once per organisation AND address: another partner with the same referred wallet gets its own row, and a second address its own.
+      expect([await marks(p), (await flagRows(p.orgId)).map((r) => r.detail), (await flagRows(o.orgId)).length]).toEqual([[true, false, false], [referees[0]], 1])
+      expect((await load('un', [referees[2]])).status).toBe(200)
+      expect([await marks(o), (await flagRows(o.orgId)).map((r) => r.detail)]).toEqual([[true, false, true], [referees[0], referees[2]]])
+      // In plain words in the organisation's own log, with the wallet; and in the operator's list, newest first.
+      expect((await sayOf(o)).filter((event) => event.includes('referred'))).toEqual([referees[2], referees[0]].map((wallet) => `A wallet referred to this organisation is on a loaded sanctions list: ${wallet}`))
+      expect(await flagsNow(o.orgId, p.orgId)).toEqual([
+        { id: o.orgId, name: 'Flagged Partner', address: referees[2], at: now }, { id: p.orgId, name: 'Other Partner', address: referees[0], at: now }, { id: o.orgId, name: 'Flagged Partner', address: referees[0], at: first },
+      ])
+      // An answer of the indexer that is refused marks and records nothing.
+      expect((await load('eu', [referees[1]])).status).toBe(200)
+      indexer((answer) => ({ ...answer, asOf: 'yesterday' }))
+      expect([(await overviewOf(o)).body.figures, (await flagRows(o.orgId)).length]).toEqual([{ state: 'figures_unavailable' }, 2])
+    })
+
+    it('T3: at most 5 new flags are recorded per read; the others at the next reads', async () => {
+      const o = await partnerOrg('Many Flags')
+      const eight = Array.from({ length: 8 }, someAddress)
+      indexer((answer) => {
+        answer.wallets[0].affiliate.referees = eight.map((wallet) => ({ ...A.referees[0], wallet }))
+        return answer
+      })
+      expect((await load('ofac', eight)).status).toBe(200)
+      expect([(await marks(o)).every(Boolean), (await flagRows(o.orgId)).map((r) => r.detail)]).toEqual([true, eight.slice(0, 5)])
+      expect([(await marks(o)).every(Boolean), (await flagRows(o.orgId)).map((r) => r.detail)]).toEqual([true, eight])
+      expect([(await marks(o)).length, (await flagRows(o.orgId)).length, await stateOf(o.orgId)]).toEqual([8, 8, 'active'])
+    })
+
+    it('T3: a browser of one organisation never gets a flag of another: not on the page, not in the file, not in its log', async () => {
+      const [a, b] = [await partnerOrg('Alder Partners'), await owner('Birch Partners')]
+      const [theirs, x] = [someAddress(), someAddress()]
+      await walletRow(b.orgId, theirs, { label: 'Wallet of B' })
+      indexer((answer) => {
+        for (const w of answer.wallets) if (w.wallet === theirs) w.affiliate = { ...structuredClone(A), wallet: theirs, referees: [{ ...A.referees[0], wallet: x }] }
+        return answer
+      })
+      expect((await load('ofac', [referees[0], x])).status).toBe(200)
+      const seen = async (m: Holder) => JSON.stringify([(await overviewOf(m)).body, (await exportOf(m, 'referred')).body, (await get('/api/audit', m)).body, (await post('/api/audit/export', m)).body, (await get('/api/screening', m)).body, (await get('/api/org', m)).body])
+      const [ofA, ofB] = [await seen(a), await seen(b)]
+      expect([ofA.includes(referees[0]), ofA.includes(x), ofB.includes(x), ofB.includes(referees[0])]).toEqual([true, false, true, false])
+      expect([(await flagRows(a.orgId)).map((r) => r.detail), (await flagRows(b.orgId)).map((r) => r.detail)]).toEqual([[referees[0]], [x]])
+      // The operator sees both.
+      expect((await flagsNow(a.orgId, b.orgId)).map((f) => [f.id, (f as Record<string, unknown>).address]).sort()).toEqual([[a.orgId, referees[0]], [b.orgId, x]].sort())
+    })
+
+    it('T3: the daily run reads the list file, then the figures of the partners that hold a linked wallet, 20 a run and each in turn: a flag does not wait for a member to open the page', async () => {
+      const o = await partnerOrg('Swept Partner')
+      // More than 20 partners hold a linked wallet (21 more are made here; one that holds none, a frozen one and an institution are not read).
+      for (let i = 0; i < 21; i++) await walletRow((await organisation(`Sweep ${i}`)).orgId, someAddress())
+      const [bare, cold, bank] = [await organisation('No wallet'), await organisation('Frozen partner'), await organisation('An institution')]
+      for (const m of [cold, bank]) await walletRow(m.orgId, someAddress())
+      await setOrg(cold.orgId, `state = 'frozen'`)
+      await setOrg(bank.orgId, `kind = 'institution'`)
+      const all = (await db.prepare(`SELECT DISTINCT o.id FROM organisations o JOIN wallets w ON w.org_id = o.id AND w.state = 'linked' WHERE o.kind = 'partner' AND o.state = 'active' ORDER BY o.id`).all<{ id: string }>()).results.map((r) => r.id)
+      expect([bare, cold, bank].some((m) => all.includes(m.orgId))).toBe(false)
+      // The clock is set to a day whose window of 20 holds this organisation. The next day the window starts 20 further on.
+      const windowOf = (time: number) => (Math.floor(time / DAY) * 20) % all.length
+      while ((all.indexOf(o.orgId) - windowOf(now) + all.length) % all.length >= 20) now += DAY
+      const today = await data.partnersToRead(db, now)
+      expect([today.length, new Set(today).size, today.includes(o.orgId), today[0], today.some((id) => [bare, cold, bank].some((m) => m.orgId === id))]).toEqual([20, 20, true, all[windowOf(now)], false])
+      expect([(await data.partnersToRead(db, now + DAY))[0], windowOf(now + DAY)]).toEqual([all[(windowOf(now) + 20) % all.length], (windowOf(now) + 20) % all.length])
+      // One GET of the list file, then one question to the indexer per partner of the window.
+      const asked: string[] = []
+      vi.stubGlobal('fetch', async (url: string, init: RequestInit = {}) => {
+        asked.push(init.method === 'POST' ? 'figures' : String(url))
+        return Response.json(init.method === 'POST' ? answerFor(JSON.parse(String(init.body)).wallets) : fileOf([referees[1], someAddress()]))
+      })
+      const env = { ...liveEnv, SANCTIONS_URL: 'https://lists.test/ofac.json' } as Env
+      expect(await daily(env, now)).toMatchObject({ outcome: 'loaded', entries: 2, hits: [] })
+      expect(asked).toEqual(['https://lists.test/ofac.json', ...Array(20).fill('figures')])
+      expect([await flagRows(o.orgId), await stateOf(o.orgId)]).toEqual([[{ actor_kind: 'system', actor_id: null, session_id: null, subject_id: null, detail: referees[1] }], 'active'])
+      // A list file that cannot be read does not stop the read of the figures: the loaded lists still stand.
+      asked.length = 0
+      vi.stubGlobal('fetch', async (_url: string, init: RequestInit = {}) => (init.method === 'POST' ? (asked.push('figures'), Response.json(answerFor(JSON.parse(String(init.body)).wallets))) : new Response('', { status: 500 })))
+      expect([await daily(env, now), asked.length, (await flagRows(o.orgId)).length]).toEqual([{ outcome: 'unavailable' }, 20, 1])
     })
 
     it('S3d: the operator cannot unfreeze while a linked or a pending wallet of the organisation is on a loaded list', async () => {
@@ -9441,7 +9579,7 @@ const shownPartner = {
   affiliate: {
     kind: A.kind, sharePct: A.rateOfNetFeePct, codes: A.activeCodes, referredCount: A.referredCount, cycleVolumeUsd: A.currentCycleVolumeUsd, lifetimeVolumeUsd: A.lifetimeReferredVolumeUsd,
     estimatedEarningsUsd: A.estimatedCurrentCycleEarningsUsd, paidWeth: A.paidToDateWeth, paidUsd: A.paidToDateUsd, nextPayoutAt: A.nextPayoutAt,
-    referred: A.referees.map((r) => ({ wallet: r.wallet, attributed: { link: 'Referral link', code: 'Partner code in the order', 'link-and-code': 'Referral link and partner code' }[r.attribution], firstSeenAt: r.firstSeenAt, lifetimeVolumeUsd: r.lifetimeVolumeUsd })),
+    referred: A.referees.map((r) => ({ wallet: r.wallet, attributed: { link: 'Referral link', code: 'Partner code in the order', 'link-and-code': 'Referral link and partner code' }[r.attribution], firstSeenAt: r.firstSeenAt, lifetimeVolumeUsd: r.lifetimeVolumeUsd, listed: false })), // M10: listed is the console's own mark
   },
   fees: {
     shareUsd: P.fees.currentCycle.partnerShareUsd, carriedUsd: P.fees.currentCycle.carriedInUsd, owedUsd: P.fees.currentCycle.owedUsd, pendingTrades: P.fees.currentCycle.pendingUnpricedTrades,
@@ -9744,8 +9882,8 @@ describe('I. partner figures: live', () => {
     const referred = await exportOf(viewer, 'referred')
     expect([referred.status, referred.body.name]).toEqual([200, 'ophis-partner-referred-2026-11-10.csv'])
     expect(referred.rows).toEqual([
-      ['Partner wallet', 'Wallet name', 'Referred wallet', 'Attributed by', 'First seen (UTC)', 'Lifetime volume (USD)', 'source'],
-      ...shownPartner.affiliate.referred.map((r) => [checksum(P.wallet), "'=2+3 (cmd)", r.wallet, r.attributed, r.firstSeenAt, String(r.lifetimeVolumeUsd), 'live']),
+      ['Partner wallet', 'Wallet name', 'Referred wallet', 'Attributed by', 'First seen (UTC)', 'Lifetime volume (USD)', 'On a loaded sanctions list', 'source'],
+      ...shownPartner.affiliate.referred.map((r) => [checksum(P.wallet), "'=2+3 (cmd)", r.wallet, r.attributed, r.firstSeenAt, String(r.lifetimeVolumeUsd), 'no', 'live']),
     ])
     const months = await exportOf(o, 'months')
     expect(months.body.name).toBe('ophis-partner-months-2026-11-10.csv')
@@ -9774,7 +9912,8 @@ describe('I. partner figures: live', () => {
     for (const sentence of [
       'Figures from the Ophis rebate service, read at {stamp(Date.parse(f.asOf))}. Amounts in USD.', "const ESTIMATE = 'Estimate. The amount is fixed when a payout is made.'", 'Your share: {a.sharePct}% of the net fee on referred volume',
       '`Next payout run: ${stamp(Date.parse(a.nextPayoutAt))}. A run is planned, not promised.`', "'No payout run is scheduled.'", 'the newest ${count(a.referred.length)}. The CSV holds these ${count(a.referred.length)}', 'This wallet holds no partner code.', '<b>Your figures are not connected yet.</b>', '<b>No wallet is linked.</b>',
-      '<a className="link" href="/#/organisation">Link a wallet under Organisation</a>', '<b>The figures are not available right now.</b>', '<Icon name="history" size={16} />Retry</button>', 'const SHOWN = 50', 'a.referred.slice(0, SHOWN)',
+      '<a className="link" href="/#/organisation">Link a wallet under Organisation</a>', '<b>The figures are not available right now.</b>', '<Icon name="history" size={16} />Retry</button>', 'const SHOWN = 50', '.slice(0, SHOWN)', // M10: the listed ones first, then the first 50
+      '<b>A referred wallet is on a loaded sanctions list.</b>', '<Status>On a loaded sanctions list</Status>', 'The mark freezes nothing and changes nothing in your organisation.',
       'Referred volume this cycle', 'Lifetime referred volume', 'Referred wallets', 'Estimated earnings this cycle', 'Paid to date', 'Owed this cycle', 'Trades waiting for a price', "['Month', 'Status', 'Owed (USD)', 'Owed (WETH)', 'Carried (USD)']",
     ]) expect(part, sentence).toContain(sentence)
     expect(part.match(/\{ESTIMATE\}/g)).toHaveLength(2) // under each estimate

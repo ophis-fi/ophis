@@ -15,6 +15,12 @@ export const SDN_URL = 'https://sanctionslistservice.ofac.treas.gov/api/Publicat
 /** The one address rule, shared with "operator addresses": every 0x followed by exactly 40 hex characters, in lower case, each once, in the order of the text. */
 export const addressesIn = (text) => [...new Set((text.match(/0x[0-9a-fA-F]{40}(?![0-9a-fA-F])/g) ?? []).map((address) => address.toLowerCase()))]
 
+/** The day an SDN.XML was published, YYYY-MM-DD, or null: <Publish_Date>MM/DD/YYYY</Publish_Date>. "operator addresses" sends it with a manual load. */
+export function publishedIn(text) {
+  const [, month, day, year] = /<Publish_Date>(\d{2})\/(\d{2})\/(\d{4})<\/Publish_Date>/.exec(text) ?? []
+  return year ? `${year}-${month}-${day}` : null
+}
+
 /** The list as the console reads it, from the bytes of an SDN.XML. Throws, with the reason, for a file that is not whole. */
 export function build(bytes, source) {
   const text = bytes.toString('latin1')
@@ -23,12 +29,12 @@ export function build(bytes, source) {
   }
   if (!text.includes('<sdnList')) refuse('no <sdnList: this is not the SDN list')
   if (!text.trimEnd().endsWith('</sdnList>')) refuse('the file does not end with </sdnList>: a cut download')
-  const [, month, day, year] = /<Publish_Date>(\d{2})\/(\d{2})\/(\d{4})<\/Publish_Date>/.exec(text) ?? refuse('no publish date')
+  const published = publishedIn(text) ?? refuse('no publish date')
   const [records, entries] = [Number(/<Record_Count>(\d+)<\/Record_Count>/.exec(text)?.[1]), text.split('<sdnEntry>').length - 1]
   if (records !== entries) refuse(`Record_Count says ${records}, and the file holds ${entries} entries`)
   const addresses = addressesIn(text).sort()
   if (!addresses.length) refuse('no address')
-  return { list: 'ofac', source, published: `${year}-${month}-${day}`, sha256: createHash('sha256').update(bytes).digest('hex'), count: addresses.length, addresses }
+  return { list: 'ofac', source, published, sha256: createHash('sha256').update(bytes).digest('hex'), count: addresses.length, addresses }
 }
 
 async function download() {

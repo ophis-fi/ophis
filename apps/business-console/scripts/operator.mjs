@@ -25,7 +25,7 @@ import { createHash } from 'node:crypto'
 import { existsSync, readFileSync, writeFileSync } from 'node:fs'
 import { request } from 'node:http'
 import { parseArgs } from 'node:util'
-import { addressesIn } from './ofac-list.mjs' // the one address rule, shared with the maker of the list file
+import { addressesIn, publishedIn } from './ofac-list.mjs' // the one address rule and the one reader of the publish date, shared with the maker of the list file
 
 const HOST = 'operator.localhost:8787' // the Worker decides by this name; the connection goes to 127.0.0.1
 const { positionals: [command, id, decision], values } = parseArgs({
@@ -100,12 +100,14 @@ if (unsent) {
 let load
 if (command === 'addresses') {
   const [list, bytes] = fileOf(id)
-  const addresses = addressesIn(bytes.toString('latin1'))
+  const text = bytes.toString('latin1')
+  const addresses = addressesIn(text)
   if (!addresses.length) {
     console.error('Refused: no address (0x and 40 hex characters) was found in that file. Nothing was sent: the loaded list stays as it is.')
     process.exit(1)
   }
-  load = { list, sha256: sha256Of(bytes), addresses }
+  // The publish day of an official XML goes with it: the console then knows which file is newer, and its own daily read never rolls this load back.
+  load = { list, sha256: sha256Of(bytes), addresses, published: publishedIn(text) ?? undefined }
 }
 const base = '/api/operator/organisations'
 // Review of 5b: an id is 32 hex characters, as the server makes them. Anything else never becomes a path: ".." would name another route.
@@ -138,6 +140,13 @@ if (answer.status !== 200) {
   console.error(`Refused (${answer.status}): ${error ? `${error}${WHY[error] ? `: ${WHY[error]}` : ''}` : 'no answer from the operator API: is "pnpm dev" running?'}`)
   process.exit(1)
 }
+// Why a list file that was read is not loaded, and what ends it.
+const HELD = {
+  older: 'it is older than the loaded list. Nothing to do while the loaded list is the newer one',
+  shrunk: 'it holds over a fifth fewer addresses than the loaded list. Compare it, and load it by hand ("addresses ofac=<file>") if it is right',
+  grown: 'it holds over a fifth more addresses than the loaded list. Compare it, and load it by hand ("addresses ofac=<file>") if it is right',
+  manual: 'the loaded list was loaded by hand from a file with no publish date, and the list file never replaces such a list. Load the official file by hand ("addresses ofac=<SDN.XML>") to end this',
+}
 const count = (n) => `${n} ${n === 1 ? 'address' : 'addresses'}`
 const hitLines = (hits) => (hits.length ? hits.map((h) => `HIT  ${h.id}  ${h.name}  was ${h.state}  ${h.address}  ${h.frozen ? 'frozen now' : 'not changed'}`).join('\n') : 'No linked or pending wallet is on a loaded list.')
 const sealed = (i) => `${i.id}  ${i.kind}  ${i.size} bytes  ${new Date(i.at).toISOString()}  sha256 ${i.sha256}  sealed to key ${i.key.slice(0, 16)} (${i.generation})`
@@ -159,7 +168,7 @@ else if (load) {
   const read = answer.body
   console.log(read.outcome === 'loaded' ? `Loaded ${count(read.entries)} of the list "ofac", published ${read.published}.\n${hitLines(read.hits)}`
     : read.outcome === 'same' ? 'The list file is the one already loaded. Nothing changed.'
-    : read.outcome === 'held' ? `WARNING  held (${read.reason}): the list file was not loaded. Compare it, and load it by hand ("addresses ofac=<file>") if it is right.`
+    : read.outcome === 'held' ? `WARNING  held (${read.reason}): the list file was not loaded: ${HELD[read.reason]}.`
     : read.outcome === 'unavailable' ? 'WARNING  the list file could not be read, or is not what it must be. Nothing changed.'
     : 'SANCTIONS_URL is not set: there is no list file to read.')
 } else if (command !== 'list') console.log(`Done: ${id} is now ${answer.body.state}.`)
@@ -181,10 +190,12 @@ else {
   const day = (time) => (time ? new Date(time).toISOString().slice(0, 10) : 'none')
   console.log(!answer.body.reviews.length ? 'No review is due, and no organisation is frozen.' : `Reviews due, and frozen organisations (no screening, the next review passed or within 14 days, or frozen):\n${answer.body.reviews
     .map((r) => `${r.id}  ${r.name}  ${r.state}  last screening ${r.outcome ? `${r.outcome} on ${day(r.screenedAt)}` : 'none'}  next review ${day(r.nextReview)}${r.lastAction ? `  frozen by ${r.lastAction}${r.lastDetail ? ` (${r.lastDetail})` : ''} on ${day(r.lastAt)}` : ''}`).join('\n')}`)
+  // M10: a flag: a wallet referred to a partner is on a loaded list. Nothing is frozen by it: it is for the operator to look at.
+  for (const f of answer.body.flags) console.log(`FLAG  ${f.id}  ${f.name}  referred wallet ${f.address} is on a loaded list  ${day(f.at)}`)
   // M10: the loaded lists. A feed that stops, or a file that was not loaded, must be seen here.
   for (const l of answer.body.lists) {
     console.log(`LIST  ${l.list}  ${count(l.entries)}  published ${l.published ?? 'not known'}  loaded ${day(l.loadedAt)}  last good read of the list file ${day(l.checkedAt)}`)
-    if (l.held) console.log(`WARNING  the list file read last was not loaded: ${l.held}. Compare it, and load it by hand ("addresses ${l.list}=<file>") if it is right.`)
+    if (l.held) console.log(`WARNING  held (${l.held}): the list file read last was not loaded: ${HELD[l.held]}.`)
     if (l.stale) console.log('WARNING  no good read of the list file for 3 days or more: the loaded list may be out of date. Run "sync".')
   }
 }

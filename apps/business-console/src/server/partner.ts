@@ -60,7 +60,8 @@ function affiliateOf(v: unknown, wallet: string) {
     nextPayoutAt: scheduled ? next : null,
     referred: list(a.referees, INDEXER.maxReferred).map(obj).map((r) => {
       if (r.boundAt !== null) iso(r.boundAt)
-      return { wallet: text(r.wallet, ADDRESS), attributed: ATTRIBUTED[one(r.attribution, ['link', 'code', 'link-and-code'] as const)], firstSeenAt: iso(r.firstSeenAt), lifetimeVolumeUsd: num(r.lifetimeVolumeUsd) }
+      // listed: on a loaded sanctions list (M10). Set by figures(), from the console's own tables, never from the indexer's answer.
+      return { wallet: text(r.wallet, ADDRESS), attributed: ATTRIBUTED[one(r.attribution, ['link', 'code', 'link-and-code'] as const)], firstSeenAt: iso(r.firstSeenAt), lifetimeVolumeUsd: num(r.lifetimeVolumeUsd), listed: false }
     }),
   }
 }
@@ -124,7 +125,13 @@ export async function figures(env: Settings, orgId: string, now: number): Promis
       const refused = w.fees === null && w.affiliate === null && Object.hasOwn(contract, address)
       return { wallet: checksum(address), label: row.label, chain: row.chains.map((id) => CHAIN_NAME[id] ?? `Chain ${id}`).join(', '), affiliate: affiliateOf(w.affiliate, address), fees: refused ? null : feesOf(w.fees, address) }
     })
-    return { state: 'live', asOf: iso(answer.asOf), leftOut: rows.size - asked.length, wallets }
+    const asOf = iso(answer.asOf)
+    // M10: a referred wallet that is on a loaded sanctions list is marked, and recorded once in this organisation's own
+    // log (a flag: it freezes nothing). After every check above, so that a refused answer marks and records nothing.
+    const listed = await data.listedAddresses(env.DB)
+    const flagged = wallets.flatMap((w) => w.affiliate?.referred ?? []).filter((r) => (r.listed = listed.has(r.wallet))).map((r) => r.wallet)
+    if (flagged.length) await data.flag(env.DB, orgId, [...new Set(flagged)], now)
+    return { state: 'live', asOf, leftOut: rows.size - asked.length, wallets }
   } catch (error) {
     // The log carries one word: no address of the service, no token, no wallet.
     console.error('partner figures unavailable', error instanceof Error ? error.name : 'unknown')
@@ -134,8 +141,8 @@ export async function figures(env: Settings, orgId: string, now: number): Promis
 
 /** The CSV tables of a partner, from a fresh read: every referred wallet, and the partner-fee months. */
 export const tables = (f: Extract<Figures, { state: 'live' }>): Record<string, [head: string[], rows: unknown[][]]> => ({
-  referred: [['Partner wallet', 'Wallet name', 'Referred wallet', 'Attributed by', 'First seen (UTC)', 'Lifetime volume (USD)'],
-    f.wallets.flatMap((w) => (w.affiliate?.referred ?? []).map((r) => [w.wallet, w.label, r.wallet, r.attributed, r.firstSeenAt, r.lifetimeVolumeUsd]))],
+  referred: [['Partner wallet', 'Wallet name', 'Referred wallet', 'Attributed by', 'First seen (UTC)', 'Lifetime volume (USD)', 'On a loaded sanctions list'],
+    f.wallets.flatMap((w) => (w.affiliate?.referred ?? []).map((r) => [w.wallet, w.label, r.wallet, r.attributed, r.firstSeenAt, r.lifetimeVolumeUsd, r.listed ? 'yes' : 'no']))],
   months: [['Partner wallet', 'Wallet name', 'Month', 'Status', 'Owed (USD)', 'Owed (WETH)', 'Carried (USD)'],
     f.wallets.flatMap((w) => (w.fees?.months ?? []).map((m) => [w.wallet, w.label, m.month, m.status, m.owedUsd, m.owedWeth, m.carriedUsd]))],
 })
