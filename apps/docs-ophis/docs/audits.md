@@ -8,7 +8,7 @@ sidebar_position: 1
 
 # Security & audits
 
-Ophis uses wallet-authorized orders with onchain limits on the tokens, amounts, receiver and expiry.
+Ophis public batch-auction orders use wallet authorization with onchain limits on the tokens, amounts, receiver and expiry. Direct transactions, private swaps and bridges use the separate authorization and custody paths below.
 
 ## Wallet authorization {/* #custody */}
 
@@ -17,10 +17,11 @@ Standard ERC-20 swaps use EIP-712 signatures, ERC-1271 validation or onchain pre
 | Swap path | Funds and authorization |
 | --- | --- |
 | Standard ERC-20 | Funds stay in your wallet until an authorized solver settles the order. |
-| Native-token | You deposit into EthFlow through an onchain order. |
+| Native-token batch order | You deposit into EthFlow through an onchain order; direct routes may instead wrap or spend native currency in a wallet transaction. |
 | Bridge | Assets are deposited or burned before delivery; recovery follows the provider's rules. |
 | NEAR Intents | You send a source-chain deposit and track delivery or refund through the saved transfer. |
-| OTC | Trading uses external escrow. |
+| OTC | Trading uses immutable Ethereum escrow; funds remain escrowed until filled or cancelled. |
+| Private mode | A RAILGUN shielded wallet holds deposited assets and authorizes supported private transactions. |
 | Vault | A policy module authorizes presigned orders for the Safe. |
 
 <Steps>
@@ -45,7 +46,7 @@ The winning settlement transaction's calldata can be visible in the public mempo
 
 ## Smart contracts
 
-Ophis operates deployments of CoW Protocol's GPv2 settlement stack on these chains. The listed settlement, relayer and EthFlow contracts are immutable. The solver allowlist controls which addresses can settle orders.
+Ophis operates the GPv2 settlement stack on the four networks below. The listed settlement, relayer and EthFlow contracts are immutable. The solver allowlist controls which addresses can settle orders.
 
 | Contract | Address (Optimism, chain 10) | Function |
 | --- | --- | --- |
@@ -70,7 +71,7 @@ Ophis operates deployments of CoW Protocol's GPv2 settlement stack on these chai
 | `GPv2Settlement` | `0x78799F98276efba1EdeeD32eae03a3fd8Cdfec3A` | Settles orders. |
 | `GPv2VaultRelayer` | `0x895505F1FE6D762296685fF4a8201782FFdCB8E9` | Honors calls from the settlement above. |
 
-Use each address on its listed chain. The [SDK deployment map](https://github.com/ophis-fi/ophis/blob/main/packages/sdk/src/domain.ts) and [Arc release sources](https://github.com/ophis-fi/ophis/tree/main/infra/arc-mainnet/release) contain deployment configuration. SDK v0.4.3 includes Arc signing and approval helpers; use ERC-20 token interfaces for Arc batch orders.
+Use each address on its listed chain. The [SDK deployment map](https://github.com/ophis-fi/ophis/blob/main/packages/sdk/src/domain.ts) and [Arc release sources](https://github.com/ophis-fi/ophis/tree/main/infra/arc-mainnet/release) contain deployment configuration. SDK v0.4.5 includes Arc signing and approval helpers; use ERC-20 token interfaces for Arc batch orders.
 
 ## Security reviews {/* #audit-methodology-and-tools */}
 
@@ -87,9 +88,17 @@ Ophis uses these tools and guides in its reviews:
 <Card icon="check" title="Verity Lang" href="https://veritylang.com">Ophis uses Lean 4 proofs for access-control models.</Card>
 </Cards>
 
+## Private wallet security
+
+Private mode uses a separate RAILGUN wallet on Ethereum, Arbitrum, Polygon and BNB Chain. Keep its recovery material secure. Public deposits and withdrawals remain visible onchain; shielding does not guarantee anonymity or hide every aspect of a pool swap. Only synchronized balances marked **Spendable** can fund a private transaction.
+
+Review the minimum output, broadcaster identity, fee and any native-gas prepayment before authorizing. A pending transaction must be reconciled with the recovery controls before another spend. The public batch-auction solver allowlist and fee schedule do not govern this path.
+
+The upstream settlement audits linked above concern the GPv2 contracts. They do not certify Ophis frontend changes, the private wallet, broadcasters, bridge providers or deployment configuration.
+
 ## Native ETH orders {/* #native-eth-sells-ethflow */}
 
-You place native ETH sell orders through an onchain transaction to `CoWSwapEthFlow`, which is wired to the settlement contract and WETH. The transaction authorizes your limit price and receiver. After an unfilled order expires, you can reclaim its deposit directly from the contract onchain.
+For the EthFlow batch-auction path, you place native ETH sell orders through an onchain transaction to `CoWSwapEthFlow`, which is wired to the settlement contract and WETH. The transaction authorizes your limit price and receiver. After an unfilled order expires, you can reclaim its deposit directly from the contract onchain.
 
 ## Solver governance
 
@@ -132,7 +141,7 @@ The [Ophis repository](https://github.com/ophis-fi/ophis) includes the swap fron
 
 | Component | Function |
 | --- | --- |
-| Frontend | A CoW Swap frontend fork with a token-picker swap form. |
+| Frontend | Token selection, public and private swap modes, quote review and transaction tracking. |
 | Intent-parser proxy | A Cloudflare Pages Function using LibertAI Qwen 3.6 27B with a server-side model key; see the [Intent API](/intent-api). |
 
 ## Report a vulnerability {/* #reporting-a-vulnerability */}

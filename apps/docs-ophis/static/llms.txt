@@ -1,10 +1,10 @@
 # Ophis Docs
 
-> Documentation for Ophis: wallet-authorized token swaps built on CoW Protocol, with a web app, CLI, SDK, MCP server, Intent API and widget. The app and CLI cover 15 EVM networks, including the Sepolia testnet. The standalone app also supports NEAR Intents sources and destinations and Circle bridges to and from Arc.
+> Documentation for Ophis: intent-based token swaps authorized with your wallet, with a web app, CLI, SDK, MCP server, Intent API and widget. The app and CLI cover 15 EVM networks, including the Sepolia testnet. The standalone app also supports NEAR Intents sources and destinations and Circle bridges to and from Arc.
 
 ## Build with Ophis
 
-SDK v0.4.3 and hosted MCP cover 14 EVM mainnets, including Arc.
+SDK v0.4.5 and hosted MCP cover 14 EVM mainnets, including Arc.
 
 - [AI agent integration](https://docs.ophis.fi/ai-agents): connect to the hosted MCP server at https://mcp.ophis.fi/mcp to parse requests, resolve tokens, quote, build orders and submit wallet-signed trades.
 - [Ophis CLI](https://docs.ophis.fi/cli): quote, swap and bridge from the terminal (`npm install -g @ophis/cli`, Node.js 20+), with wallet approval over WalletConnect.
@@ -15,9 +15,11 @@ SDK v0.4.3 and hosted MCP cover 14 EVM mainnets, including Arc.
 
 The standalone app supports externally funded NEAR swaps. Select the source in You sell, review the quote and source-chain refund address, then fund the deposit before its deadline with any required memo. Keep the transfer record until delivery or refund completes.
 
+Private mode uses a RAILGUN shielded wallet on Ethereum, Arbitrum, Polygon and BNB Chain. Deposits must synchronize and become Spendable. Private swaps charge 0.1% of output plus pool, broadcaster and applicable deposit/withdrawal costs; they do not use the public batch-auction fee schedule.
+
 ## Fees
 
-The standard schedule charges a 1 bp Ophis base plus 80% of reference-quote improvement on volatile pairs, capped at 99 bps of volume, or 50% on stable pairs, capped at 20 bps. CoW-hosted chains additionally pay CoW Protocol fees. See [Fees](https://docs.ophis.fi/fees).
+The standard schedule charges a 1 bp Ophis base plus 80% of reference-quote improvement on volatile pairs, capped at 99 bps of volume, or 50% on stable pairs, capped at 20 bps. Partner-hosted batch auctions additionally pay upstream fees. See [Fees](https://docs.ophis.fi/fees).
 
 Worked examples:
 
@@ -30,7 +32,7 @@ Worked examples:
 - [Getting started](https://docs.ophis.fi/getting-started): choose tokens, sign a swap or fund an external deposit, and track delivery.
 - [Networks & assets](https://docs.ophis.fi/networks-assets): EVM coverage; NEAR swaps from or to Bitcoin, Solana, Monad, Hyperliquid (Hypercore), X Layer, Sui, Tron, Starknet and Zcash; Circle bridges, Ethereum OTC and wallet requirements.
 - [Architecture](https://docs.ophis.fi/architecture): order signing, solver competition, batch settlement and developer intent parsing.
-- [Fees](https://docs.ophis.fi/fees): base fees, capped improvement capture, CoW Protocol fees and bridge costs.
+- [Fees](https://docs.ophis.fi/fees): base fees, capped improvement capture, upstream settlement fees, private-swap charges and bridge costs.
 - [Trade rewards](https://docs.ophis.fi/trade-rewards): eligible swaps earn a winning USDG ticket; check https://swap.ophis.fi/#/rewards for current availability and claims.
 - [Comparison](https://docs.ophis.fi/comparison): compare quotes, settlement, fees and interfaces for the same trade.
 - [Audits](https://docs.ophis.fi/audits): wallet custody, settlement contracts and published review scope.

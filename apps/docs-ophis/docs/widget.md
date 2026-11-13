@@ -51,7 +51,7 @@ The wrapper supplies `baseUrl` and `appCode` automatically.
 
 <Steps>
 
-1. **Install the library.** Use the underlying CoW Protocol widget library.
+1. **Install the library.** Use the widget library shown below, configured to load the Ophis host.
 
    ```bash
    npm install @cowprotocol/widget-lib
@@ -90,7 +90,7 @@ Leave `partnerFee` unset to use Ophis's base and price-improvement fees. An expl
 | `appCode` | `ophis` | Tags orders in appData. Set it to your registered code to see your volume in the [earnings report](/partners#verifying-your-earnings-get-earningsappcode). |
 | `partnerFee` | Unset | The iframe applies the complete Ophis fee policy. |
 | `partnerFee.recipient` | Ophis Safe when overridden | Pinned by the React wrapper. |
-| `chainId`, `sell`, `buy`, `theme`, `tokenLists` | Upstream defaults | [CoW widget parameters](https://www.npmjs.com/package/@cowprotocol/widget-lib) pass through. |
+| `chainId`, `sell`, `buy`, `theme`, `tokenLists` | Upstream defaults | [Widget parameters](https://www.npmjs.com/package/@cowprotocol/widget-lib) pass through. |
 
 ## Choose a theme {/* #theming */}
 
@@ -114,7 +114,7 @@ Set `theme` to `'light'`, `'dark'` or a full palette object. The default uses Op
 
 The widget selects the orderbook for the chosen chain. Use the standalone app for direct Circle bridging.
 
-A self-hosted iframe host must allow third-party framing: set CSP `frame-ancestors *` and omit `X-Frame-Options: SAMEORIGIN`. The hosted app already allows framing. Users sign fund-moving actions in a wallet popup outside the iframe.
+A self-hosted iframe host must allow third-party framing: set CSP `frame-ancestors` to the embedding origins you intend to support and omit a conflicting `X-Frame-Options: SAMEORIGIN` header. The hosted app already allows framing. Users sign fund-moving actions in a wallet popup outside the iframe.
 
 | License | Value |
 | --- | --- |

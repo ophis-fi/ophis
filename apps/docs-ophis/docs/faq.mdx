@@ -17,7 +17,7 @@ export const faqLd = {
       "name": "How is Ophis different from 1inch or Matcha?",
       "acceptedAnswer": {
         "@type": "Answer",
-        "text": "Ophis uses solver competition, batch auctions and signed price limits. You authorize the trade in your wallet, and solvers find a route within those limits. Compare the final amount received for the same trade."
+        "text": "Ophis public batch-auction orders use solver competition and signed price limits. Direct swaps, private swaps and bridges have separate execution flows. You authorize the trade in your wallet, and solvers find a route within those limits. Compare the final amount received for the same trade."
       }
     },
     {
@@ -33,7 +33,7 @@ export const faqLd = {
       "name": "Which networks are supported?",
       "acceptedAnswer": {
         "@type": "Answer",
-        "text": "The swap app and CLI support 14 EVM chains on mainnet, plus the Sepolia testnet. The standalone app also accepts NEAR Intents sources and destinations. Interface: Networks. App and CLI: 15 EVM networks, including Sepolia. EVM mainnets: Ethereum, Arbitrum One, Avalanche, Base, BNB Smart Chain, Gnosis Chain, Ink, Linea, Optimism, Plasma, Polygon, Robinhood Chain, Unichain, Arc. NEAR Intents: Bitcoin, Solana, Monad, X Layer, Sui, Tron, Hyperliquid (Hypercore), Starknet, Zcash. SDK v0.4.3 and hosted MCP: 14 EVM mainnets, including Arc."
+        "text": "The swap app and CLI support 14 EVM chains on mainnet, plus the Sepolia testnet. The standalone app also accepts NEAR Intents sources and destinations. Interface: Networks. App and CLI: 15 EVM networks, including Sepolia. EVM mainnets: Ethereum, Arbitrum One, Avalanche, Base, BNB Smart Chain, Gnosis Chain, Ink, Linea, Optimism, Plasma, Polygon, Robinhood Chain, Unichain, Arc. NEAR Intents: Bitcoin, Solana, Monad, X Layer, Sui, Tron, Hyperliquid (Hypercore), Starknet, Zcash. SDK v0.4.5 and hosted MCP: 14 EVM mainnets, including Arc."
       }
     },
     {
@@ -41,7 +41,7 @@ export const faqLd = {
       "name": "Is my trade protected from MEV?",
       "acceptedAnswer": {
         "@type": "Answer",
-        "text": "Batch auctions use offchain order submission and a uniform clearing price per token pair to reduce front-running and sandwich opportunities. The settlement contract enforces your signed limits."
+        "text": "Batch auctions use offchain order submission and uniform clearing prices to reduce front-running and sandwich opportunities. This describes the batch-auction path; direct swaps, private swaps and bridges have different protections and risks. The settlement contract enforces your signed limits."
       }
     },
     {
@@ -57,7 +57,7 @@ export const faqLd = {
       "name": "Who runs the solvers?",
       "acceptedAnswer": {
         "@type": "Answer",
-        "text": "CoW's solver network handles CoW-hosted chains. Ophis operates the solver on its own chains. The onchain allowlist controls which solvers can settle orders, and settlement enforces your signed limit price. Ophis-operated chains. Optimism, Unichain, Robinhood Chain, Arc."
+        "text": "The solver operator depends on the network. Ophis runs the solver on Optimism, Unichain, Robinhood Chain and Arc; partner-operated solver networks handle the other public batch-auction chains. The onchain allowlist controls which solvers can settle orders, and settlement enforces your signed limit price. Ophis-operated chains. Optimism, Unichain, Robinhood Chain, Arc."
       }
     },
     {
@@ -65,7 +65,7 @@ export const faqLd = {
       "name": "How are partner fees collected?",
       "acceptedAnswer": {
         "@type": "Answer",
-        "text": "Batch-auction orders carry Ophis's 1 bp base. The app and SDK put the base fee in appData. The Ophis backend applies improvement capture on operated chains; appData carries both components on CoW-hosted chains. Ophis fee component: Rate. Base: 1 bp. Volatile-pair improvement capture: 80%, capped at 99 bps. Stable-pair improvement capture: 50%, capped at 20 bps."
+        "text": "Batch-auction orders carry Ophis's 1 bp base. The app and SDK put the base fee in appData. The Ophis backend applies improvement capture on operated chains; appData carries both components on partner-hosted chains. Ophis fee component: Rate. Base: 1 bp. Volatile-pair improvement capture: 80%, capped at 99 bps. Stable-pair improvement capture: 50%, capped at 20 bps."
       }
     },
     {
@@ -100,7 +100,7 @@ Find the wallet, network and order requirements for your Ophis swap.
 <details id="how-is-ophis-different-from-1inch-or-matcha">
 <summary>How is Ophis different from 1inch or Matcha?</summary>
 
-Ophis uses solver competition, batch auctions and signed price limits. You authorize the trade in your wallet, and solvers find a route within those limits. Compare the final amount received for the same trade.
+Ophis public batch-auction orders use solver competition and signed price limits. Direct swaps, private swaps and bridges have separate execution flows. You authorize the trade in your wallet, and solvers find a route within those limits. Compare the final amount received for the same trade.
 
 </details>
 
@@ -121,14 +121,14 @@ The swap app and CLI support 14 EVM chains on mainnet, plus the Sepolia testnet.
 | App and CLI | 15 EVM networks, including Sepolia |
 | EVM mainnets | Ethereum, Arbitrum One, Avalanche, Base, BNB Smart Chain, Gnosis Chain, Ink, Linea, Optimism, Plasma, Polygon, Robinhood Chain, Unichain, Arc |
 | NEAR Intents | Bitcoin, Solana, Monad, X Layer, Sui, Tron, Hyperliquid (Hypercore), Starknet, Zcash |
-| SDK v0.4.3 and hosted MCP | 14 EVM mainnets, including Arc |
+| SDK v0.4.5 and hosted MCP | 14 EVM mainnets, including Arc |
 
 </details>
 
 <details id="is-my-trade-protected-from-mev">
 <summary>Is my trade protected from MEV?</summary>
 
-Batch auctions use offchain order submission and a uniform clearing price per token pair to reduce front-running and sandwich opportunities. The settlement contract enforces your signed limits.
+Batch auctions use offchain order submission and uniform clearing prices to reduce front-running and sandwich opportunities. This describes the batch-auction path; direct swaps, private swaps and bridges have different protections and risks. The settlement contract enforces your signed limits.
 
 </details>
 
@@ -146,7 +146,7 @@ An unfilled standard ERC-20 order expires, leaving unsold funds in your wallet. 
 <details id="who-runs-the-solvers">
 <summary>Who runs the solvers?</summary>
 
-CoW's solver network handles CoW-hosted chains. Ophis operates the solver on its own chains. The onchain allowlist controls which solvers can settle orders, and settlement enforces your signed limit price.
+The solver operator depends on the network. Ophis runs the solver on Optimism, Unichain, Robinhood Chain and Arc; partner-operated solver networks handle the other public batch-auction chains. The onchain allowlist controls which solvers can settle orders, and settlement enforces your signed limit price.
 
 | Ophis-operated chains |
 | --- |
@@ -157,7 +157,7 @@ CoW's solver network handles CoW-hosted chains. Ophis operates the solver on its
 <details id="how-are-partner-fees-collected">
 <summary>How are partner fees collected?</summary>
 
-Batch-auction orders carry Ophis's **1 bp base**. The app and SDK put the base fee in appData. The Ophis backend applies improvement capture on operated chains; appData carries both components on CoW-hosted chains.
+Batch-auction orders carry Ophis's **1 bp base**. The app and SDK put the base fee in appData. The Ophis backend applies improvement capture on operated chains; appData carries both components on partner-hosted chains.
 
 | Ophis fee component | Rate |
 | --- | --- |
@@ -186,6 +186,10 @@ Yes. Use the public API to turn natural-language requests into structured trade 
 | Authentication | No auth or key required |
 
 </details>
+
+## Private swaps
+
+**Private** mode uses a RAILGUN shielded wallet on Ethereum, Arbitrum, Polygon and BNB Chain. Switching modes does not shield your public balance. Deposits must synchronize and become **Spendable** before use. The Ophis private-swap fee is 0.1% of output, with pool, broadcaster and applicable deposit or withdrawal costs in addition. See [Networks & assets](/networks-assets#private-swaps) for funding and recovery.
 
 ## Next
 

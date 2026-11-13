@@ -47,7 +47,7 @@ export const howToLd = {
 
 # Getting started
 
-Choose your tokens, review the quote and approve your first swap in your wallet.
+Choose your tokens, review the quote and authorize your first swap in your wallet. The steps below describe public batch-auction orders. For a direct route, review and confirm the quoted transaction instead; it requires network gas.
 
 ## Your first swap
 
@@ -90,6 +90,10 @@ See [Networks & assets](/networks-assets#externally-funded-swaps-through-near-in
 | NEAR Intents sources and destinations | Solana, Bitcoin, Monad, Hyperliquid (Hypercore), X Layer, Sui, Tron, Starknet, Zcash |
 
 Use the token selector to find assets on each network. Arc is available in the swap app (chain ID 5042), uses USDC for gas and connects through Circle bridges.
+
+## Private mode
+
+Select **Private** in the standalone app to use a RAILGUN shielded wallet. Private mode supports Ethereum, Arbitrum, Polygon and BNB Chain, with separate deposits, spendable balances, quotes and recovery steps. Public wallet balances do not become private merely by switching modes. Read [private-swap requirements](/networks-assets#private-swaps) before depositing.
 
 ## Stock tokens {/* #robinhood-stock-tokens */}
 

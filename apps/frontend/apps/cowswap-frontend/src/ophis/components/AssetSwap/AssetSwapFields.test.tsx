@@ -2,12 +2,14 @@ import { Suspense } from 'react'
 
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 
+import { Field } from 'legacy/state/types'
+
 import { AssetSwapFields } from './AssetSwapFields'
 
 const mockClosePicker = jest.fn()
-jest.mock('@cowprotocol/common-hooks', () => ({ useReducedMotionPreference: () => true }))
+const mockPicker = { open: false, forceOpen: false, field: Field.INPUT, onSelectToken: jest.fn() }
 jest.mock('modules/tokensList', () => ({
-  useSelectTokenWidgetState: () => ({ open: false, forceOpen: false }),
+  useSelectTokenWidgetState: () => mockPicker,
   useCloseTokenSelectWidget: () => mockClosePicker,
 }))
 jest.mock('./useAssetSwapStyle', () => ({ useAssetSwapStyle: () => ({}) }))
@@ -60,5 +62,31 @@ it('retains the 500ms reversal cooldown with reduced motion', async () => {
   } finally {
     unmount()
     jest.useRealTimers()
+  }
+})
+
+it('preserves edited amounts while opening and closing either picker', () => {
+  const props = {
+    input: <input aria-label="Sell amount" defaultValue="12.5" />,
+    output: <input aria-label="Buy amount" defaultValue="7" />,
+    reverse: { onClick: jest.fn(), disabled: false, loading: false },
+  }
+  const { rerender, container } = render(<AssetSwapFields {...props} />)
+  const amount = screen.getByRole('textbox', { name: 'Sell amount' })
+  fireEvent.change(amount, { target: { value: '25' } })
+
+  for (const field of [Field.INPUT, Field.OUTPUT]) {
+    mockPicker.open = true
+    mockPicker.field = field
+    rerender(<AssetSwapFields {...props} />)
+    expect(screen.getByRole('dialog')).not.toBeNull()
+    expect(container.querySelector('.swp-flip')?.hasAttribute('disabled')).toBe(true)
+    expect(container.querySelectorAll('.swp-live-card[hidden]')).toHaveLength(1)
+    mockPicker.open = false
+    rerender(<AssetSwapFields {...props} />)
+    expect(screen.queryByRole('dialog')).toBeNull()
+    expect(screen.getByRole('textbox', { name: 'Sell amount' })).toBe(amount)
+    expect(screen.getByDisplayValue('25')).toBe(amount)
+    expect(screen.getByRole('button', { name: 'Reverse swap direction' }).hasAttribute('disabled')).toBe(false)
   }
 })
