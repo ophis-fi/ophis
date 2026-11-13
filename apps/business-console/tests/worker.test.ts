@@ -7209,6 +7209,13 @@ describe('E. onboarding: a company applies, proves its domain, is activated and 
       expect(dataSource.match(/ophis_approved = 0/g)).toHaveLength(2)
       expect(dataSource.replace(/ophis_approved = 0/g, '')).not.toMatch(/ophis_approved\s*(=|,|\))/)
     })
+
+    it('P5: the mark lasts 30 days from the approval; then the approved seat takes the normal rules', async () => {
+      const { a, ben } = await approvedWithPeople()
+      await db.prepare('UPDATE seats SET created_at = created_at - ? WHERE id = ?').bind(30 * DAY, ben.id).run()
+      expect((await call('GET', '/api/org', { cookie: a.cookie })).body.members.find((m: { id: string }) => m.id === ben.id).approved).toBe(0)
+      expect((await ceremony(a, { seatId: ben.id })).state).toBe('wait')
+    })
   })
 
   // ---- sanctions screening: manual, at no cost. The operator searches the lists offline and records the result. ----

@@ -30,6 +30,7 @@ const SWEEP_MS = 12 * DAY
 const REQUEST_MS = 7 * DAY // a change waits 7 days for its second person
 const RELAX_MS = DAY // lowering a security setting can be approved only 24 hours after it was asked
 const NO_WAIT_MS = 30 * DAY // the 72 hour wait is for an organisation with no other key-role seat in the last 30 days
+const APPROVED_MS = 30 * DAY // the mark of a person Ophis approved lasts 30 days from the approval; then the seat takes the normal rules
 const STOP_MS = 7 * DAY // after a completed recovery: the replaced Owner passkeys can stop it, and the organisation is in quarantine
 const READY_MS = 7 * DAY // once its wait is over a recovery request can be completed for 7 days; then it has lapsed
 const OVERRIDE_MS = 30 * DAY // a green recovery wallet overrides the Owners only this long after one of them cancelled or stopped a request
@@ -295,7 +296,7 @@ export async function revokeSession(db: D1Database, actor: Actor, sessionId: str
 export async function organisationView(db: D1Database, actor: Actor, now: number, idleSince: number, startedSince: number) {
   const scope = [actor.orgId, seesAll(actor), actor.seatId]
   const [members, passkeys, sessions] = await db.batch([
-    db.prepare(`SELECT id, display_name AS displayName, role, CASE WHEN ${gone('seats')} THEN 'removed' ELSE state END AS state, ophis_approved AS approved FROM seats WHERE org_id = ? AND (? = 1 OR id = ?) ORDER BY created_at, id`).bind(now, ...scope),
+    db.prepare(`SELECT id, display_name AS displayName, role, CASE WHEN ${gone('seats')} THEN 'removed' ELSE state END AS state, (ophis_approved AND created_at > ?) AS approved FROM seats WHERE org_id = ? AND (? = 1 OR id = ?) ORDER BY created_at, id`).bind(now, now - APPROVED_MS, ...scope),
     db.prepare(`SELECT id, seat_id AS seatId, label, state, device_bound AS deviceBound, created_at AS createdAt, last_used_at AS lastUsedAt, stop_right_until AS stopRightUntil
                 FROM credentials WHERE org_id = ? AND (? = 1 OR seat_id = ?) ORDER BY created_at, id`).bind(...scope),
     db.prepare(`SELECT id, seat_id AS seatId, created_at AS createdAt, last_seen_at AS lastSeenAt, user_agent AS userAgent, country
@@ -428,7 +429,7 @@ export interface OpenTicket {
   id: string; kind: 'first_owner' | 'invitation' | 're_enrolment'; role: Role; state: string; seat_id: string; issuer_seat_id: string | null; display_name: string
   expires_at: number; stored_at: number | null
   credential_id: string | null; public_key: string | null; approval_id: string | null; not_before: number | null; approval_expires_at: number | null
-  /** 1: Ophis approved this person with the organisation (the seat's mark, on an invited seat only). */
+  /** 1: Ophis approved this person with the organisation (the seat's mark, on an invited seat only, for 30 days from the approval). */
   approved: number
   /** link: waits for the member's passkey. issuer: waits for the issuer's confirmation. second: for a second person's. wait: for the 72 hours. */
   status: 'link' | 'issuer' | 'second' | 'wait'
@@ -442,7 +443,7 @@ export interface OpenTicket {
 async function ticketRows(db: D1Database, viewer: Pick<Actor, 'orgId' | 'seatId' | 'role'>, now: number, ticketId: string | null = null) {
   const { results } = await db
     .prepare(
-      `SELECT t.id, t.kind, t.role, t.state, t.seat_id, t.issuer_seat_id, s.display_name, t.expires_at, t.stored_at, s.ophis_approved AS approved,
+      `SELECT t.id, t.kind, t.role, t.state, t.seat_id, t.issuer_seat_id, s.display_name, t.expires_at, t.stored_at, (s.ophis_approved AND s.created_at > ?) AS approved,
               c.id AS credential_id, c.public_key, a.id AS approval_id, a.not_before, a.expires_at AS approval_expires_at
        FROM enrolment_tickets t
        JOIN seats s ON s.org_id = t.org_id AND s.id = t.seat_id AND s.role = t.role AND s.state = CASE t.kind WHEN 're_enrolment' THEN 'active' ELSE 'invited' END
@@ -451,7 +452,7 @@ async function ticketRows(db: D1Database, viewer: Pick<Actor, 'orgId' | 'seatId'
        WHERE t.org_id = ? AND t.state IN ('issued', 'stored') AND (? IS NULL OR t.id = ?) AND ${ISSUER_ACTIVE}
        ORDER BY t.created_at, t.id`,
     )
-    .bind(viewer.orgId, ticketId, ticketId)
+    .bind(now - APPROVED_MS, viewer.orgId, ticketId, ticketId)
     .all<OpenTicket>()
   return results.flatMap((t): OpenTicket[] => {
     if (t.state === 'stored' && (!t.credential_id || t.stored_at === null)) return []
