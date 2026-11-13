@@ -1,6 +1,7 @@
 import { ReactNode, useEffect, useRef } from 'react'
 
 import { GtmEvent, useCowAnalytics } from '@cowprotocol/analytics'
+import { isRelayRecoveryRequired } from '@cowprotocol/common-const'
 import { timeSinceInSeconds } from '@cowprotocol/common-utils'
 import { SupportedChainId } from '@cowprotocol/cow-sdk'
 import { BridgeStatus, CrossChainOrder } from '@cowprotocol/sdk-bridging'
@@ -55,7 +56,12 @@ function PendingOrderUpdater({ chainId, orderUid, openSince }: PendingOrderUpdat
 
   // Check once a minute the time it has been pending and trigger appzi if greater than threshold
   useEffect(() => {
-    if (!crossChainOrder || waitingTooLongNpsTriggeredRef.current) return
+    if (
+      !crossChainOrder ||
+      waitingTooLongNpsTriggeredRef.current ||
+      isRelayRecoveryRequired(crossChainOrder.statusResult)
+    )
+      return
 
     const interval = setInterval(() => {
       if (waitingTooLongNpsTriggeredRef.current) {
@@ -90,7 +96,10 @@ function PendingOrderUpdater({ chainId, orderUid, openSince }: PendingOrderUpdat
     const orderStatus = crossChainOrder.statusResult.status
     const isOrderExecuted = orderStatus === BridgeStatus.EXECUTED
     // TODO: detect also when the bridge hook failed to execute after the order was executed
-    const isOrderFailed = orderStatus === BridgeStatus.REFUND || orderStatus === BridgeStatus.EXPIRED
+    const isOrderFailed =
+      orderStatus === BridgeStatus.REFUND ||
+      orderStatus === BridgeStatus.EXPIRED ||
+      isRelayRecoveryRequired(crossChainOrder.statusResult)
 
     const { sourceChainId, destinationChainId } = crossChainOrder.bridgingParams
 

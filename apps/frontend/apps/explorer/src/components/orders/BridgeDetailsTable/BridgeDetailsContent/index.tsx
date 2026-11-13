@@ -1,6 +1,6 @@
 import React, { ReactNode } from 'react'
 
-import { RECEIVED_LABEL_EXPLORER } from '@cowprotocol/common-const'
+import { isRelayRecoveryRequired, RECEIVED_LABEL_EXPLORER } from '@cowprotocol/common-const'
 import { BridgeStatus, CrossChainOrder, isHookBridgeProvider } from '@cowprotocol/sdk-bridging'
 
 import { AddressLink } from 'components/common/AddressLink'
@@ -60,7 +60,9 @@ export function BridgeDetailsContent({ crossChainOrder }: BridgeDetailsContentPr
       </DetailRow>
 
       <DetailRow label="Status" tooltipText={BridgeDetailsTooltips.status}>
-        {bridgeStatus === BridgeStatus.UNKNOWN ? (
+        {isRelayRecoveryRequired(crossChainOrder.statusResult) ? (
+          <StatusLabel status={BridgeStatus.EXPIRED} customText="Recovery required — open the Relay transaction" />
+        ) : bridgeStatus === BridgeStatus.UNKNOWN ? (
           <StatusLabel status={BridgeStatus.IN_PROGRESS} customText="Waiting for swap to complete" />
         ) : (
           <StatusLabel status={bridgeStatus} />

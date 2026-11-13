@@ -1,4 +1,4 @@
-import { getRpcProvider } from '@cowprotocol/common-const'
+import { getRpcProvider, RELAY_DAPP_ID } from '@cowprotocol/common-const'
 import { areAddressesEqual, getAddressKey, getGlobalAdapter, SignerLike, SupportedChainId } from '@cowprotocol/cow-sdk'
 import { Erc20__factory } from '@cowprotocol/cowswap-abis'
 import { BridgeQuoteResults } from '@cowprotocol/sdk-bridging'
@@ -28,7 +28,14 @@ import { assertNoOpenBridge } from './ophisAcrossOpenBridge'
 // The relay fee of the Across quote the user confirmed, set by placeConfirmed just
 // before its order is placed and used once by the hook that placement signs:
 // placing quotes Across again, and that fee is held to this one.
-const confirmed = new Map<string, { fee?: bigint }>()
+const confirmed = new Map<string, { fee?: bigint; relay?: BridgeQuoteResults }>()
+
+export function takeConfirmedRelay(owner: string): BridgeQuoteResults | undefined {
+  const slot = confirmed.get(getAddressKey(owner))
+  const quote = slot?.relay
+  if (slot) slot.relay = undefined
+  return quote
+}
 
 // The fee the user confirmed for the wallet's placement in flight, used once.
 function takeConfirmedFee(owner: string): bigint | undefined {
@@ -60,11 +67,11 @@ export async function placeConfirmed<T>(
   owner: string,
   place: () => Promise<T>,
 ): Promise<T> {
-  if (bridgeQuote?.providerInfo.dappId !== ACROSS_DAPP_ID) return place()
+  if (!bridgeQuote || ![ACROSS_DAPP_ID, RELAY_DAPP_ID].includes(bridgeQuote.providerInfo.dappId)) return place()
   const fee = quotedFee(bridgeQuote)
   const wallet = getAddressKey(owner)
   const run = async (): Promise<T> => {
-    confirmed.set(wallet, { fee })
+    confirmed.set(wallet, { fee, relay: bridgeQuote.providerInfo.dappId === RELAY_DAPP_ID ? bridgeQuote : undefined })
     try {
       return await place()
     } finally {
