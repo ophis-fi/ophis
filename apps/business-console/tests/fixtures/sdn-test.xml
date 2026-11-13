@@ -1,0 +1,32 @@
+<?xml version="1.0" standalone="yes"?>
+<!-- TEST DATA. Not the OFAC list and no extract of it: the structure of SDN.XML with invented values only, for the tests of the Ophis business console. -->
+<sdnList xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns="urn:test:invented-namespace">
+  <publshInformation>
+    <Publish_Date>11/09/2026</Publish_Date>
+    <Record_Count>3</Record_Count>
+  </publshInformation>
+  <sdnEntry>
+    <uid>900001</uid>
+    <lastName>INVENTED PERSON ONE</lastName>
+    <sdnType>Individual</sdnType>
+    <programList><program>INVENTED-PROGRAM</program></programList>
+    <idList>
+      <id><uid>910001</uid><idType>Digital Currency Address - ETH</idType><idNumber>0x00000000000000000000000000000000000000a1</idNumber></id>
+      <id><uid>910002</uid><idType>Digital Currency Address - XBT</idType><idNumber>1InventedNotAnAddressOfThisKind</idNumber></id>
+    </idList>
+  </sdnEntry>
+  <sdnEntry>
+    <uid>900002</uid>
+    <lastName>INVENTED TRADING LTD</lastName>
+    <sdnType>Entity</sdnType>
+    <idList>
+      <id><uid>910003</uid><idType>Digital Currency Address - USDT</idType><idNumber>0x0000000000000000000000000000000000000B0B</idNumber></id>
+      <id><uid>910004</uid><idType>Digital Currency Address - ARB</idType><idNumber>0x00000000000000000000000000000000000000A1</idNumber></id>
+    </idList>
+  </sdnEntry>
+  <sdnEntry>
+    <uid>900003</uid>
+    <lastName>INVENTED VESSEL</lastName>
+    <sdnType>Vessel</sdnType>
+  </sdnEntry>
+</sdnList>

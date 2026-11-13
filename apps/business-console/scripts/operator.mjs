@@ -23,6 +23,7 @@ import { createHash } from 'node:crypto'
 import { existsSync, readFileSync, writeFileSync } from 'node:fs'
 import { request } from 'node:http'
 import { parseArgs } from 'node:util'
+import { addressesIn } from './ofac-list.mjs' // the one address rule, shared with the maker of the list file
 
 const HOST = 'operator.localhost:8787' // the Worker decides by this name; the connection goes to 127.0.0.1
 const { positionals: [command, id, decision], values } = parseArgs({
@@ -97,7 +98,7 @@ if (unsent) {
 let load
 if (command === 'addresses') {
   const [list, bytes] = fileOf(id)
-  const addresses = [...new Set((bytes.toString('latin1').match(/0x[0-9a-fA-F]{40}(?![0-9a-fA-F])/g) ?? []).map((address) => address.toLowerCase()))]
+  const addresses = addressesIn(bytes.toString('latin1'))
   if (!addresses.length) {
     console.error('Refused: no address (0x and 40 hex characters) was found in that file. Nothing was sent: the loaded list stays as it is.')
     process.exit(1)
