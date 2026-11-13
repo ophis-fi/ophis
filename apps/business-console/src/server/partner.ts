@@ -3,12 +3,13 @@
 // wallets this organisation has linked. No referral share: the console's partners get none. The answer is checked
 // field by field and rebuilt as a whitelist: what the browser gets is made here, never passed through.
 // Any failure gives figures_unavailable: never examples, never a partial mix. The token stays in this file's one request.
+// The same answer holds the wallets that traded through the integration, with their trades and volume (tradersOf).
 import type { Hex } from 'viem'
 import { checksum, readCapped, signedByKey } from './chain.ts'
 import * as data from './data.ts'
 import { CHAIN_NAME } from './typed.ts'
 
-export const INDEXER = { timeoutMs: 5000, maxBytes: 1_000_000, maxWallets: 10, maxMonths: 12, perHour: 120 }
+export const INDEXER = { timeoutMs: 5000, maxBytes: 1_000_000, maxWallets: 10, maxMonths: 12, maxTraders: 100, perHour: 120 }
 type Settings = { DB: D1Database; ENVIRONMENT: string; INDEXER_URL?: string; INDEXER_TOKEN?: string }
 const hex = (v: string) => /^0x[0-9a-f]*$/i.test(v)
 
@@ -52,9 +53,20 @@ function feesOf(v: unknown, wallet: string) {
     })),
   }
 }
+// The wallets that traded through the integration: the owners of the orders that carried this wallet's fee, lifetime.
+// At most 100, the largest first (the indexer's order), and totals over every wallet. NOT read: each wallet's own
+// unpriced count (the page says the total only).
+function tradersOf(v: unknown) {
+  const t = obj(v)
+  const all = obj(t.totals)
+  return {
+    wallets: list(t.wallets, INDEXER.maxTraders).map(obj).map((w) => ({ wallet: checksum(text(w.wallet, /^0x[0-9a-f]{40}$/)), trades: int(w.trades), volumeUsd: num(w.volumeUsd) })),
+    totals: { walletCount: int(all.walletCount), trades: int(all.trades), volumeUsd: num(all.volumeUsd), unpriced: int(all.unpriced) },
+  }
+}
 
-/** fees null: a contract wallet whose chain the indexer has not confirmed. No figure of it was read. */
-export type PartnerWallet = { wallet: string; label: string; chain: string; fees: ReturnType<typeof feesOf> | null }
+/** fees and traders null: a contract wallet whose chain the indexer has not confirmed. No figure of it was read. */
+export type PartnerWallet = { wallet: string; label: string; chain: string; fees: ReturnType<typeof feesOf> | null; traders: ReturnType<typeof tradersOf> | null }
 export type Figures = { state: 'not_connected' | 'no_wallet' | 'figures_unavailable' | 'figures_rate' } | { state: 'live'; asOf: string; leftOut: number; wallets: PartnerWallet[] }
 
 /**
@@ -95,9 +107,12 @@ export async function figures(env: Settings, orgId: string, now: number): Promis
     const wallets = got.map(obj).map((w, i) => {
       const [address, row] = [asked[i], rows.get(asked[i])!]
       if (w.wallet !== address) no()
-      // "No figures" is an answer only for a wallet asked as a contract wallet.
-      const refused = w.fees === null && Object.hasOwn(contract, address)
-      return { wallet: checksum(address), label: row.label, chain: row.chains.map((id) => CHAIN_NAME[id] ?? `Chain ${id}`).join(', '), fees: refused ? null : feesOf(w.fees, address) }
+      // "No figures" is an answer only for a wallet asked as a contract wallet, and only whole: no fees and no traders.
+      const refused = w.fees === null && w.traders === null && Object.hasOwn(contract, address)
+      return {
+        wallet: checksum(address), label: row.label, chain: row.chains.map((id) => CHAIN_NAME[id] ?? `Chain ${id}`).join(', '),
+        fees: refused ? null : feesOf(w.fees, address), traders: refused ? null : tradersOf(w.traders),
+      }
     })
     return { state: 'live', asOf: iso(answer.asOf), leftOut: rows.size - asked.length, wallets }
   } catch (error) {
@@ -107,8 +122,10 @@ export async function figures(env: Settings, orgId: string, now: number): Promis
   }
 }
 
-/** The CSV table of a partner, from a fresh read: the partner-fee months. */
+/** The CSV tables of a partner, from a fresh read: the partner-fee months, and the wallets that traded. */
 export const tables = (f: Extract<Figures, { state: 'live' }>): Record<string, [head: string[], rows: unknown[][]]> => ({
   months: [['Partner wallet', 'Wallet name', 'Month', 'Status', 'Owed (USD)', 'Owed (WETH)', 'Carried (USD)'],
     f.wallets.flatMap((w) => (w.fees?.months ?? []).map((m) => [w.wallet, w.label, m.month, m.status, m.owedUsd, m.owedWeth, m.carriedUsd]))],
+  traders: [['Partner wallet', 'Wallet name', 'Wallet', 'Trades', 'Volume (USD)'],
+    f.wallets.flatMap((w) => (w.traders?.wallets ?? []).map((t) => [w.wallet, w.label, t.wallet, t.trades, t.volumeUsd]))],
 })

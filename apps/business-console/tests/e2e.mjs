@@ -1196,9 +1196,10 @@ try {
   const stubBearer = { authorization: `Bearer ${readFileSync('.dev.vars', 'utf8').match(/^INDEXER_TOKEN=(.+)$/m)?.[1]}` } // never printed
   const goodAnswer = await askStub(stubBearer)
   const answered = await goodAnswer.json()
-  check('the stand-in has the real route\'s bearer rule and serves the contract file: its partner wallet as it is, any other wallet with zero fees, and no referral dashboard',
+  check('the stand-in has the real route\'s bearer rule and serves the contract file: its partner wallet as it is, any other wallet with zero fees and no wallet that traded, and no referral dashboard',
     (await askStub({})).status === 401 && (await askStub({ authorization: 'Bearer wrong-token-wrong-token-wrong-token-0000' })).status === 401 && (await askStub(stubBearer, [])).status === 400 && (await askStub(stubBearer, [P.wallet, P.wallet])).status === 400
-    && goodAnswer.status === 200 && JSON.stringify(answered.wallets[0]) === JSON.stringify(P) && JSON.stringify(Object.keys(answered.wallets[1])) === '["wallet","fees"]' && answered.wallets[1].fees.currentCycle.owedUsd === 0 && answered.wallets[1].fees.recipient === `0x${'d'.repeat(40)}`)
+    && goodAnswer.status === 200 && JSON.stringify(answered.wallets[0]) === JSON.stringify(P) && JSON.stringify(Object.keys(answered.wallets[1])) === '["wallet","fees","traders"]' && answered.wallets[1].fees.currentCycle.owedUsd === 0 && answered.wallets[1].fees.recipient === `0x${'d'.repeat(40)}`
+    && answered.wallets[1].traders.wallets.length === 0)
 
   // A partner from "seed --live": one linked "Demo wallet" at the contract's partner address.
   const liveSeed = seeded('--live')
@@ -1207,8 +1208,10 @@ try {
   await pat.page.getByRole('heading', { name: 'Your flow, in one view.' }).waitFor()
   await pat.page.getByText('Figures from the Ophis rebate service, read at').waitFor()
   const partnerMain = pat.page.locator('main')
-  const monthRows = pat.page.locator('.pw section', { has: pat.page.getByRole('heading', { name: 'Partner fee' }) }).locator('tbody tr')
-  const partnerTile = (caption) => pat.page.locator('.stats .c', { has: pat.page.locator('.cap', { hasText: new RegExp(`^${caption.replace(/[()]/g, '\\$&')}$`) }) }).locator('.num').textContent()
+  const feeSection = pat.page.locator('.pw section', { has: pat.page.getByRole('heading', { name: 'Partner fee' }) })
+  const tradedSection = pat.page.locator('.pw section', { has: pat.page.getByRole('heading', { name: 'Wallets that traded through your integration' }) })
+  const monthRows = feeSection.locator('tbody tr')
+  const partnerTile = (caption, within = feeSection) => within.locator('.stats .c', { has: pat.page.locator('.cap', { hasText: new RegExp(`^${caption.replace(/[()]/g, '\\$&')}$`) }) }).locator('.num').textContent()
   check('the partner overview shows the stand-in\'s partner fee for the linked wallet: the tiles, read from the contract file',
     (await partnerTile('Owed this cycle')) === `$${usd(P.fees.currentCycle.owedUsd)}` && (await partnerTile('Trades waiting for a price')) === String(P.fees.currentCycle.pendingUnpricedTrades)
     && (await partnerTile('Paid to date (WETH)')) === weth(P.fees.lifetime.paidWeth) && (await partnerTile('Trades')) === String(P.fees.lifetime.tradeCount))
@@ -1217,20 +1220,36 @@ try {
     && await pat.page.getByText(`Your share $${usd(P.fees.currentCycle.partnerShareUsd)} plus $${usd(P.fees.currentCycle.carriedInUsd)} carried.`).isVisible() && (await pat.page.getByText('Estimate. The amount is fixed when a payout is made.').count()) === 1)
   check('the months of the partner fee, read from the contract file',
     (await monthRows.count()) === P.fees.recentBatches.length && (await monthRows.allTextContents()).every((row, i) => row.startsWith(P.fees.recentBatches[i].cycleMonth) && row.includes(usd(P.fees.recentBatches[i].owedUsd)) && row.includes(usd(P.fees.recentBatches[i].carriedUsd))))
+  // The wallets that traded through the integration, read from the contract file: the totals, then each wallet, largest first.
+  const tradedCells = async () => Promise.all((await tradedSection.locator('tbody tr').all()).map((row) => row.locator('td').allTextContents()))
+  check('the wallets that traded through the integration: the totals and every wallet of the contract file, largest first, with its trades and volume; the line on trades not priced yet',
+    (await partnerTile('Wallets', tradedSection)) === String(P.traders.totals.walletCount) && (await partnerTile('Trades', tradedSection)) === String(P.traders.totals.trades) && (await partnerTile('Volume (USD)', tradedSection)) === usd(P.traders.totals.volumeUsd)
+    && JSON.stringify((await tradedCells()).map(([wallet, ...figures]) => [wallet.toLowerCase(), ...figures])) === JSON.stringify(P.traders.wallets.map((w) => [w.wallet, String(w.trades), usd(w.volumeUsd)]))
+    && await tradedSection.getByText(`Volume is priced each night. ${P.traders.totals.unpriced} trades are not priced yet.`).isVisible() && !(await tradedSection.getByText(/largest wallets/).count()))
   const partnerText = await partnerMain.innerText()
   check('no demo banner, no example, no referral share, none of the withheld figures, no word of a licence or of payout terms; the footer line',
     !(await pat.page.getByText(BANNER).count()) && !/example|demo data|illustrative/i.test(partnerText) && !/referr|partner code|net fee|earning|payout run/i.test(partnerText)
     && [P.fees.currentCycle.grossFeeUsd, P.fees.minPayoutUsd].every((n) => !partnerText.includes(usd(n))) && !partnerText.includes(String(P.fees.partnerShareBps)) && !/bps|minimum/i.test(partnerText)
     && !/Ophis fee|licen[cs]ed|regulated|authori[sz]ed|MiCA|compliant|paid (weekly|monthly)|guarantee|honest|—/i.test(partnerText) && await pat.page.getByText(FOOTER).isVisible())
   check('the live partner overview fits a phone', await both(pat.page, '52-overview-partner-live'))
+  await pat.page.waitForTimeout(200) // the desk size just came back: let it paint before the next shot
+  check('the wallets that traded fit a phone', await both(pat.page, '61-overview-partner-wallets', '.pw section:has-text("Wallets that traded through your integration")'))
+  await pat.page.setViewportSize({ width: 390, height: 844 })
+  check('at phone width the table of those wallets needs no sideways scroll: an address wraps', await tradedSection.locator('.table-wrap').evaluate((box) => box.scrollWidth <= box.clientWidth))
+  await pat.page.setViewportSize({ width: 1440, height: 900 })
 
-  // The one CSV, downloaded and read back.
+  // The two CSV, downloaded and read back.
   const [monthsFile] = await Promise.all([pat.page.waitForEvent('download'), pat.page.getByRole('button', { name: 'Fee months CSV' }).click()])
   const monthLines = readFileSync(await monthsFile.path(), 'utf8').split('\r\n').filter(Boolean)
-  check('the export of the fee months downloads: named ophis-partner-, the partner wallet and source = live in every row, every month of the contract file; it is the only CSV',
+  check('the export of the fee months downloads: named ophis-partner-, the partner wallet and source = live in every row, every month of the contract file',
     /^ophis-partner-months-\d{4}-\d\d-\d\d\.csv$/.test(monthsFile.suggestedFilename()) && monthLines[0] === '"Partner wallet","Wallet name","Month","Status","Owed (USD)","Owed (WETH)","Carried (USD)","source"'
-    && monthLines.length === P.fees.recentBatches.length + 1 && monthLines.slice(1).every((row, i) => row.toLowerCase().startsWith(`"${P.wallet}","demo wallet","${P.fees.recentBatches[i].cycleMonth}",`) && row.endsWith(`,"${P.fees.recentBatches[i].carriedUsd}","live"`))
-    && (await pat.page.getByRole('button', { name: /CSV/ }).count()) === 1)
+    && monthLines.length === P.fees.recentBatches.length + 1 && monthLines.slice(1).every((row, i) => row.toLowerCase().startsWith(`"${P.wallet}","demo wallet","${P.fees.recentBatches[i].cycleMonth}",`) && row.endsWith(`,"${P.fees.recentBatches[i].carriedUsd}","live"`)))
+  const [tradedFile] = await Promise.all([pat.page.waitForEvent('download'), pat.page.getByRole('button', { name: 'Trading wallets CSV' }).click()])
+  const tradedLines = readFileSync(await tradedFile.path(), 'utf8').split('\r\n').filter(Boolean)
+  check('the export of the wallets that traded downloads: named ophis-partner-traders-, every wallet of the contract file beside the partner wallet, source = live; the two are the only CSV',
+    /^ophis-partner-traders-\d{4}-\d\d-\d\d\.csv$/.test(tradedFile.suggestedFilename()) && tradedLines[0] === '"Partner wallet","Wallet name","Wallet","Trades","Volume (USD)","source"'
+    && JSON.stringify(tradedLines.slice(1).map((row) => row.toLowerCase())) === JSON.stringify(P.traders.wallets.map((w) => `"${P.wallet}","demo wallet","${w.wallet}","${w.trades}","${w.volumeUsd}","live"`))
+    && (await pat.page.getByRole('button', { name: /CSV/ }).count()) === 2)
 
   // The figures are not available: status 500, a wrong shape, an answer after 6 seconds. Never an example, never a part.
   const patOverview = () => pat.page.goto(`${ORIGIN}/#/overview`).then(() => pat.page.reload())
@@ -1248,6 +1267,33 @@ try {
   await unavailable.getByRole('button', { name: 'Retry' }).click()
   await pat.page.getByText('Figures from the Ophis rebate service, read at').waitFor()
   check('Retry reads again: the figures are back', (await partnerTile('Owed this cycle')) === `$${usd(P.fees.currentCycle.owedUsd)}`)
+
+  // The rules of the block that the contract file does not reach, on the console's own answer changed in this browser.
+  const tradedWith = async (traders) => {
+    // route.fetch() sends the cookie but not sec-fetch-site, which the server asks of every API call. Nothing here may
+    // throw: an error in a route handler ends the run with the server still up.
+    await pat.page.route('**/api/overview', async (route) => {
+      const response = await route.fetch({ headers: { ...route.request().headers(), 'sec-fetch-site': 'same-origin' } }).catch(() => null)
+      const body = await response?.json().catch(() => null)
+      if (body?.figures?.wallets) body.figures.wallets[0].traders = traders
+      await (response ? route.fulfill({ response, json: body }) : route.abort()).catch(() => undefined)
+    })
+    await patOverview()
+    await pat.page.getByText('Figures from the Ophis rebate service, read at').waitFor()
+    await pat.page.unroute('**/api/overview')
+  }
+  const tradersList = (n) => Array.from({ length: n }, (_, i) => ({ wallet: `0x${(i + 1).toString(16).padStart(40, '0')}`, trades: 1, volumeUsd: n - i }))
+  await tradedWith({ wallets: tradersList(100), totals: { walletCount: 105, trades: 105, volumeUsd: 5100, unpriced: 0 } })
+  check('more than 100 wallets: the table lists 100 and says it shows the largest; every trade priced: no line about pricing',
+    (await tradedSection.locator('tbody tr').count()) === 100 && await tradedSection.getByText('The table shows the 100 largest wallets by volume.').isVisible() && (await partnerTile('Wallets', tradedSection)) === '105'
+    && !(await tradedSection.getByText(/priced each night/).count()))
+  await tradedWith({ wallets: tradersList(2), totals: { walletCount: 2, trades: 2, volumeUsd: 3, unpriced: 1 } })
+  check('every wallet listed: no line about the largest; one trade not priced: the line says it in the singular',
+    !(await tradedSection.getByText(/largest wallets/).count()) && await tradedSection.getByText('Volume is priced each night. 1 trade is not priced yet.').isVisible())
+  await tradedWith({ wallets: [], totals: { walletCount: 0, trades: 0, volumeUsd: 0, unpriced: 0 } })
+  check('no wallet has traded yet: one line says so, with no total and no table', await tradedSection.getByText('No wallet has traded through your integration yet.').isVisible() && !(await tradedSection.locator('.stats, table').count()))
+  await patOverview()
+  await pat.page.getByText('Figures from the Ophis rebate service, read at').waitFor()
 
   // ---- M10: the OFAC list as a file the console reads ----
   const listMode = (mode) => fetch(`http://127.0.0.1:${LIST_PORT}/stub/${mode}`)
@@ -1300,7 +1346,7 @@ try {
   if (violations.length) console.error(violations.join("\n"))
   check(`no policy violation in the browser (${violations.length})`, violations.length === 0)
   check(`no request left the origin (${foreign.length})`, foreign.length === 0)
-  console.log('\nEnd-to-end run passed. Screenshots in .shots/: 01-signin to 60-approved-person-active')
+  console.log('\nEnd-to-end run passed. Screenshots in .shots/: 01-signin to 61-overview-partner-wallets')
 } catch (error) {
   console.error(error.message)
   process.exitCode = 1

@@ -154,6 +154,7 @@ try {
   for (const id of organisations) operator('screen', id, '--outcome', 'clear', '--list', 'eu=tests/fixtures/sanctions-eu.txt', '--list', 'un=tests/fixtures/sanctions-un.txt', '--next-review', nextYear, '--tier', 'standard', '--source', 'registry')
   await show(partner, '#/overview', '1 Partner, Owner')
   await partner.page.getByText('Figures from the Ophis rebate service, read at').waitFor()
+  await partner.page.getByRole('heading', { name: 'Wallets that traded through your integration' }).waitFor()
   await show(owner, '#/desk', '2 Institution, Owner')
   await owner.page.getByRole('button', { name: 'Review order' }).waitFor()
   await show(approver, '#/organisation', '3 Institution, Approver')
@@ -179,7 +180,7 @@ try {
   }
   console.log(`
 Three windows are open, each signed in. Test data only.
-  1 Partner, Owner         Overview: the partner fee, from the local stand-in of the rebate service.
+  1 Partner, Owner         Overview: the partner fee and the wallets that traded, from the local stand-in of the rebate service.
   2 Institution, Owner     Desk: fill the ticket, "Review order", then send it for approval.
   3 Institution, Approver  Organisation, Approvals: approve or refuse that order.
 Compliance, in windows 1 and 2: the sanctions screening the operator's command recorded, and the list it read.

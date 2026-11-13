@@ -21,6 +21,8 @@ interface PartnerWallet {
   wallet: string; label: string; chain: string
   // null: a contract wallet whose chain the rebate service has not confirmed; no figure of it was read.
   fees: null | { shareUsd: number; carriedUsd: number; owedUsd: number; pendingTrades: number; paidWeth: number; trades: number; months: { month: string; status: string; owedUsd: number; owedWeth: number; carriedUsd: number }[] }
+  // The wallets that traded through the integration: at most 100, the largest first; the totals count every wallet. null with fees.
+  traders: null | { wallets: { wallet: string; trades: number; volumeUsd: number }[]; totals: { walletCount: number; trades: number; volumeUsd: number; unpriced: number } }
 }
 interface Partner { kind: 'partner'; waiting: number; figures: { state: 'not_connected' | 'no_wallet' | 'figures_unavailable' | 'figures_rate' } | { state: 'live'; asOf: string; leftOut: number; wallets: PartnerWallet[] } }
 interface DeskView {
@@ -144,6 +146,7 @@ const weth = (n: number) => n.toLocaleString('en-US', { maximumFractionDigits: 6
 const ESTIMATE = 'Estimate. The amount is fixed when a payout is made.'
 
 function PartnerWalletFigures({ w }: { w: PartnerWallet }) {
+  const t = w.traders
   return (
     <section className="pw sec" aria-label={`Wallet ${w.label}`}>
       <h2 className="pw-head"><Icon name="wallet" /><b>{w.label}</b><span className="mono muted">{w.wallet}</span><span className="muted">{w.chain}</span></h2>
@@ -159,6 +162,22 @@ function PartnerWalletFigures({ w }: { w: PartnerWallet }) {
             : <p className="muted">No month has been accounted yet.</p>}
         </Section>
       ) : <p className="note warn" role="note"><Icon name="info" /><span className="grow"><b>The figures of this wallet are not shown.</b> It is a contract wallet, and Ophis has not confirmed the chain it is controlled on. <a className="link" href="/#/support">Ask Support</a>.</span></p>}
+      {t && (
+        <Section icon="users" title="Wallets that traded through your integration" hint="The wallets whose orders carried your fee, since the first trade. Volume is an estimate.">
+          {t.wallets.length ? (
+            <>
+              <div className="stats">
+                <div className="c"><span className="num">{count(t.totals.walletCount)}</span><span className="cap"><Icon name="wallet" size={16} />Wallets</span></div>
+                <div className="c"><span className="num">{count(t.totals.trades)}</span><span className="cap"><Icon name="arrow-left-right" size={16} />Trades</span></div>
+                <div className="c"><span className="num">{usd(t.totals.volumeUsd)}</span><span className="cap"><Icon name="landmark" size={16} />Volume (USD)</span></div>
+              </div>
+              <Table head={['Wallet', 'Trades', 'Volume (USD)']} rows={t.wallets.map((x) => [<span className="mono">{x.wallet}</span>, count(x.trades), usd(x.volumeUsd)])} />
+              {t.totals.walletCount > t.wallets.length && <p className="fine"><Icon name="info" size={16} />The table shows the {t.wallets.length} largest wallets by volume.</p>}
+              {t.totals.unpriced > 0 && <p className="fine"><Icon name="clock" size={16} />Volume is priced each night. {count(t.totals.unpriced)} {t.totals.unpriced === 1 ? 'trade is' : 'trades are'} not priced yet.</p>}
+            </>
+          ) : <p className="muted">No wallet has traded through your integration yet.</p>}
+        </Section>
+      )}
     </section>
   )
 }
@@ -171,7 +190,7 @@ function PartnerOverview({ v, retry }: { v: Partner; retry: () => Promise<void> 
       <header className="ph">
         <div><span className="cap eyebrow">Partner console</span><h1 className="h-page">Your flow, <em>in one view</em>.</h1>
           {f.state === 'live' && <p className="lede">Figures from the Ophis rebate service, read at {stamp(Date.parse(f.asOf))}. Amounts in USD.</p>}</div>
-        {f.state === 'live' && <div className="acts"><Export table="months" size="md" label="Fee months CSV" /></div>}
+        {f.state === 'live' && <div className="acts"><Export table="months" size="md" label="Fee months CSV" /><Export table="traders" size="md" label="Trading wallets CSV" /></div>}
       </header>
       {f.state === 'not_connected' && <p className="note warn" role="status" data-state={f.state}><Icon name="info" /><span className="grow"><b>Your figures are not connected yet.</b> This console is not connected to the Ophis rebate service. Nothing is wrong on your side. <a className="link" href="/#/support">Ask Support</a> when your figures will be connected.</span></p>}
       {f.state === 'no_wallet' && <p className="note warn" role="status" data-state={f.state}><Icon name="wallet" /><span className="grow"><b>No wallet is linked.</b> Figures are shown for the wallets your organisation has linked. <a className="link" href="/#/organisation">Link a wallet under Organisation</a>.</span></p>}

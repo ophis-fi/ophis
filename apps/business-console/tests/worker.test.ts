@@ -5014,14 +5014,14 @@ describe('D. Support: the model selects, the server decides', () => {
     // Review of P4: a partner's Overview shows its fee figures and exports one table, so the two texts say so. No text
     // speaks of a referral share, referred wallets, codes or earnings: the console's partners get none (2026-11-13).
     const text = (id: string) => ANSWERS.find((a) => a.id === id)!.text
-    expect(text('KB-13')).toMatch(/A partner organisation sees its own partner fee in Overview.* Figures are read by the fee recipient address of your integration, so link that address\./)
+    expect(text('KB-13')).toMatch(/A partner organisation sees its own partner fee in Overview.* Overview also lists the wallets that traded, with their volume\. Figures are read by the fee recipient address of your integration, so link that address\./)
     expect(text('KB-13') + text('KB-16')).not.toMatch(/no fees view|does not show|one export that exists/)
     for (const a of ANSWERS) expect(a.title + a.about + a.text, a.id).not.toMatch(/referr|affiliate|partner code|earning/i)
     // Onboarding is built and the Desk exists in demo mode: the two texts say what is there and what is not.
     expect(text('KB-01')).toMatch(/application code from Ophis/)
     expect(text('KB-19')).toMatch(/demo mode/)
     expect(text('KB-01') + text('KB-19')).not.toMatch(/not built|shows no orders/)
-    expect(text('KB-16')).toMatch(/for a partner organisation, the partner-fee months, in Overview/)
+    expect(text('KB-16')).toMatch(/for a partner organisation, the partner-fee months and the wallets that traded, in Overview/)
     expect(supportPage).toContain("'An outside provider, TypeSafe AI (USA), matches your question to our help texts. It receives your question without your name, organisation or wallet. Ophis does not store your question.'")
     expect(supportPage).toContain('Did this answer your question?')
     expect(supportPage).toContain("mailto:clement@ophis.fi?subject=${encodeURIComponent('Ophis Business support')}&body=${encodeURIComponent('What I was doing:\\r\\n\\r\\nWhat I expected:\\r\\n\\r\\nWhat happened:\\r\\n')}")
@@ -8664,7 +8664,7 @@ describe('H. demo mode: overview, desk and partner figures', () => {
       }
     }
     // A partner table, an unknown one and a name of the prototype: not found. A partner gets no demo table.
-    for (const table of ['referred', 'months', 'codes', 'daily', 'audit', 'constructor', '__proto__', 'toString']) expect((await exported(o, table)).status, table).toBe(404)
+    for (const table of ['referred', 'months', 'traders', 'codes', 'daily', 'audit', 'constructor', '__proto__', 'toString']) expect((await exported(o, table)).status, table).toBe(404)
     await setOrg(o.orgId, `kind = 'partner'`)
     for (const table of [...names, 'codes', 'daily', 'payouts', 'wallets', 'constructor', '__proto__']) expect((await exported(o, table)).status, table).toBe(404)
   })
@@ -8800,6 +8800,8 @@ const shownPartner = {
     paidWeth: P.fees.lifetime.paidWeth, trades: P.fees.lifetime.tradeCount,
     months: P.fees.recentBatches.map((m) => ({ month: m.cycleMonth, status: m.status, owedUsd: m.owedUsd, owedWeth: m.owedWeth, carriedUsd: m.carriedUsd })),
   },
+  // Each wallet's own unpriced count is not passed on: the page says the total only.
+  traders: { wallets: P.traders.wallets.map((t) => ({ wallet: checksum(t.wallet), trades: t.trades, volumeUsd: t.volumeUsd })), totals: P.traders.totals },
 }
 const UNAVAILABLE = { kind: 'partner', waiting: 0, figures: { state: 'figures_unavailable' } }
 
@@ -8824,8 +8826,9 @@ isolation['GET /api/overview'] = async (a, b) => {
 describe('I. partner figures: live', () => {
   it('GET /api/overview: the isolation case', async () => isolation['GET /api/overview'](await member('Alder Asset Management'), await member('Birchfield Capital')))
 
-  it('the contract file is the one the indexer tests: the partner-fee dashboard of each wallet and no referral dashboard; a partner wallet with two months, a second wallet with zero fees', () => {
-    expect([P.wallet, P.fees.recentBatches.length, Z.fees.lifetime.tradeCount, contract.wallets.map((w) => Object.keys(w))]).toEqual(['0x5afe5afe5afe5afe5afe5afe5afe5afe5afe5afe', 2, 0, [['wallet', 'fees'], ['wallet', 'fees']]])
+  it('the contract file is the one the indexer tests: the partner-fee dashboard of each wallet and the wallets that traded, no referral dashboard; a partner wallet with two months and three wallets, a second wallet with zero fees and none', () => {
+    expect([P.wallet, P.fees.recentBatches.length, P.traders.wallets.length, Z.fees.lifetime.tradeCount, Z.traders.totals.walletCount, contract.wallets.map((w) => Object.keys(w))])
+      .toEqual(['0x5afe5afe5afe5afe5afe5afe5afe5afe5afe5afe', 2, 3, 0, 0, [['wallet', 'fees', 'traders'], ['wallet', 'fees', 'traders']]])
   })
 
   it('not connected: no address, no token, or an address that is not acceptable; nothing is asked', async () => {
@@ -8876,7 +8879,10 @@ describe('I. partner figures: live', () => {
     const other = someAddress()
     await walletRow(o.orgId, other, { label: 'Second' })
     const two = (await overviewOf(o)).body.figures.wallets
-    expect(two[1]).toEqual({ wallet: checksum(other), label: 'Second', chain: 'OP Mainnet', fees: { shareUsd: 0, carriedUsd: 0, owedUsd: 0, pendingTrades: 0, paidWeth: 0, trades: 0, months: [] } })
+    expect(two[1]).toEqual({
+      wallet: checksum(other), label: 'Second', chain: 'OP Mainnet', fees: { shareUsd: 0, carriedUsd: 0, owedUsd: 0, pendingTrades: 0, paidWeth: 0, trades: 0, months: [] },
+      traders: { wallets: [], totals: { walletCount: 0, trades: 0, volumeUsd: 0, unpriced: 0 } },
+    })
   })
 
   it('the request: one POST to /business/partner with the bearer token, the distinct linked addresses oldest first, at most 10, and how many were left out', async () => {
@@ -8894,7 +8900,7 @@ describe('I. partner figures: live', () => {
     expect(wallets).toEqual(addresses.slice(0, 10))
     expect(view.body.figures).toMatchObject({ state: 'live', leftOut: 2 })
     expect(view.body.figures.wallets.map((w: { label: string; chain: string }) => [w.label, w.chain]).slice(0, 2)).toEqual([['W0', 'OP Mainnet, Base'], ['W1', 'OP Mainnet']])
-    expect(partnerFigures.INDEXER).toMatchObject({ timeoutMs: 5000, maxBytes: 1_000_000, maxWallets: 10, maxMonths: 12 })
+    expect(partnerFigures.INDEXER).toMatchObject({ timeoutMs: 5000, maxBytes: 1_000_000, maxWallets: 10, maxMonths: 12, maxTraders: 100 })
   })
 
   // Review of P2: a contract wallet (a Safe) is controlled per chain, and the same address on another chain can have
@@ -8911,15 +8917,18 @@ describe('I. partner figures: live', () => {
     await walletRow(o.orgId, safe, { label: 'Safe' })
     await walletRow(o.orgId, safe, { label: 'Safe on Base', chainId: 8453 })
     await proof(await walletRow(o.orgId, other, { label: 'Signed by another key' })) // 65 bytes that recover to another address: no key proof
-    const refuse = (i: number) => (answer: { wallets: unknown[] }) => ((answer.wallets[i] = { wallet: [keyWallet, safe, other][i], fees: null }), answer)
+    const refuse = (i: number, traders: unknown = null) => (answer: { wallets: unknown[] }) => ((answer.wallets[i] = { wallet: [keyWallet, safe, other][i], fees: null, traders }), answer)
     const asked = indexer(refuse(1))
     const view = await overviewOf(o)
     expect(JSON.parse(String(asked[0].init.body))).toEqual({ wallets: [keyWallet, safe, other], contract: { [safe]: [10, 8453], [other]: [10] } })
-    expect(view.body.figures.wallets.map((w: { label: string; fees: unknown }) => [w.label, w.fees === null])).toEqual([['Key wallet', false], ['Safe', true], ['Signed by another key', false]])
+    expect(view.body.figures.wallets.map((w: { label: string; fees: unknown; traders: unknown }) => [w.label, w.fees === null, w.traders === null])).toEqual([['Key wallet', false, false], ['Safe', true, true], ['Signed by another key', false, false]])
     expect((await exportOf(o, 'months')).status).toBe(200)
-    // "No figures" for a wallet proved by its key is no answer the indexer gives: the whole answer is refused.
-    indexer(refuse(0))
-    expect((await overviewOf(o)).body).toEqual(UNAVAILABLE)
+    // "No figures" for a wallet proved by its key is no answer the indexer gives: the whole answer is refused. So is a
+    // refusal of half: no fees beside the wallets that traded, or the wallets that traded withheld beside the fees.
+    for (const half of [refuse(0), refuse(1, P.traders), (answer: { wallets: { traders: unknown }[] }) => ((answer.wallets[1].traders = null), answer)]) {
+      indexer(half)
+      expect((await overviewOf(o)).body).toEqual(UNAVAILABLE)
+    }
     expect(deskPage).toContain('<b>The figures of this wallet are not shown.</b> It is a contract wallet, and Ophis has not confirmed the chain it is controlled on.')
   })
 
@@ -8973,6 +8982,21 @@ describe('I. partner figures: live', () => {
       ['asOf that is no ISO time', set('asOf', '12/11/2026')],
       ['no fees field at all', (a) => (delete a.wallets[0].fees, a)],
       ['fees that are no object', set('wallets.1.fees', 0)],
+      // The wallets that traded: each field read is checked as the fees are, and there are at most 100.
+      ['no traders field at all', (a) => (delete a.wallets[0].traders, a)],
+      ['traders that are no object', set('wallets.1.traders', [])],
+      ['wallets that traded that are no list', set('wallets.0.traders.wallets', { 0: P.traders.wallets[0] })],
+      ['101 wallets that traded', set('wallets.0.traders.wallets', Array.from({ length: 101 }, (_, i) => ({ wallet: `0x${(i + 1).toString(16).padStart(40, '0')}`, trades: 1, volumeUsd: 1, unpriced: 0 })))],
+      ['a wallet that traded that is null', set('wallets.0.traders.wallets.0', null)],
+      ['an address that traded, in capitals', set('wallets.0.traders.wallets.0.wallet', `0x${P.traders.wallets[0].wallet.slice(2).toUpperCase()}`)],
+      ['an address that traded, one character too long', set('wallets.0.traders.wallets.0.wallet', `${P.traders.wallets[0].wallet}0`)],
+      ['a trade count that is no whole number', set('wallets.0.traders.wallets.0.trades', 2.5)],
+      ['a negative volume', set('wallets.0.traders.wallets.0.volumeUsd', -1)],
+      ['totals that are null', set('wallets.0.traders.totals', null)],
+      ['a wallet count that is no whole number', set('wallets.0.traders.totals.walletCount', 3.5)],
+      ['a total trade count that is no whole number', set('wallets.0.traders.totals.trades', 411.5)],
+      ['a total volume as a string', set('wallets.0.traders.totals.volumeUsd', '369400.75')],
+      ['an unpriced count that is no whole number', set('wallets.0.traders.totals.unpriced', 1.5)],
       ['the token itself, in a field the console does not read', set('wallets.0.fees.note', INDEXER_TOKEN), 'echo'],
       ['wallets that are no list', set('wallets', { 0: P })],
       ['an answer that is a list', () => [answerFor([P.wallet, Z.wallet])]],
@@ -8998,6 +9022,11 @@ describe('I. partner figures: live', () => {
     // The same two wallets with the good answer: live. An answer just under 1 MB with an unknown field: live, the field dropped.
     indexer()
     expect((await overviewOf(o)).body.figures.state).toBe('live')
+    // Exactly 100 wallets that traded, of 105: live, the 100 listed, the totals over all 105.
+    const hundred = Array.from({ length: 100 }, (_, i) => ({ wallet: `0x${(i + 1).toString(16).padStart(40, '0')}`, trades: 1, volumeUsd: 100 - i, unpriced: 0 }))
+    indexer((answer) => ((answer.wallets[0].traders = { wallets: hundred, totals: { walletCount: 105, trades: 105, volumeUsd: 5100, unpriced: 0 } }), answer))
+    const capped = (await overviewOf(o)).body.figures.wallets[0].traders
+    expect([capped.wallets.length, capped.wallets[99], capped.totals.walletCount]).toEqual([100, { wallet: checksum(hundred[99].wallet), trades: 1, volumeUsd: 1 }, 105])
     indexer((answer) => ({ ...answer, pad: 'x'.repeat(990_000) }))
     const padded = (await overviewOf(o)).body
     expect([padded.figures.state, JSON.stringify(padded).length < 5000]).toEqual(['live', true])
@@ -9032,6 +9061,8 @@ describe('I. partner figures: live', () => {
       answer.wallets[0].fees.partnerShareBps = 7654 // 8000 would also be found inside a volume
       answer.wallets[0].fees.internalNote = 'marker-internal'
       answer.wallets[0].fees.currentCycle.ophisShareUsd = 19.3
+      answer.wallets[0].traders.wallets[0].internalNote = 'marker-trader'
+      answer.wallets[0].traders.totals.internalNote = 'marker-totals'
       return { ...answer, debug: 'marker-debug' }
     })
     const { body } = await overviewOf(o)
@@ -9041,7 +9072,7 @@ describe('I. partner figures: live', () => {
     expect(keys.filter((key) => /gross|net|bps|min|ophis|protocol|platform/i.test(key))).toEqual([])
     const sent = JSON.stringify(body)
     for (const value of ['96.5', '7654', '2027-01-01', 'marker', '19.3', ':25,', ':25}']) expect(sent, value).not.toContain(value)
-    const file = (await exportOf(o, 'months')).body.csv
+    const file = (await exportOf(o, 'months')).body.csv + (await exportOf(o, 'traders')).body.csv
     for (const value of ['96.5', '7654', '2027-01-01', 'marker', '"25"']) expect(file, value).not.toContain(value)
     // The source names them once, in the note that says they are not read.
     for (const field of [...WITHHELD, 'fees.nextPayoutAt']) expect(partnerSource.split(field).length, field).toBe(2)
@@ -9086,7 +9117,7 @@ describe('I. partner figures: live', () => {
     logged.mockRestore()
   })
 
-  it('the export: every month from a fresh read, named ophis-partner-, source = live, the partner wallet in each row, cells made harmless; the referred wallets are no table', async () => {
+  it('the exports: every month and every wallet that traded, from a fresh read, named ophis-partner-, source = live, the partner wallet in each row, cells made harmless; the referred wallets are no table', async () => {
     const o = await partnerOrg()
     await db.prepare('UPDATE wallets SET label = ? WHERE id = ?').bind('=2+3 (cmd)', o.walletId).run() // a wallet name may start with a sign
     const asked = indexer()
@@ -9097,9 +9128,15 @@ describe('I. partner figures: live', () => {
       ['Partner wallet', 'Wallet name', 'Month', 'Status', 'Owed (USD)', 'Owed (WETH)', 'Carried (USD)', 'source'],
       ...shownPartner.fees.months.map((m) => [checksum(P.wallet), "'=2+3 (cmd)", m.month, m.status, String(m.owedUsd), String(m.owedWeth), String(m.carriedUsd), 'live']),
     ])
-    for (const line of months.body.csv.split('\r\n').filter(Boolean)) expect(line).not.toMatch(/(^|,)"[=+\-@\t\r]/)
+    const traders = await exportOf(viewer, 'traders')
+    expect([traders.status, traders.body.name]).toEqual([200, 'ophis-partner-traders-2026-11-10.csv'])
+    expect(traders.rows).toEqual([
+      ['Partner wallet', 'Wallet name', 'Wallet', 'Trades', 'Volume (USD)', 'source'],
+      ...shownPartner.traders.wallets.map((t) => [checksum(P.wallet), "'=2+3 (cmd)", t.wallet, String(t.trades), String(t.volumeUsd), 'live']),
+    ])
+    for (const line of (months.body.csv + traders.body.csv).split('\r\n').filter(Boolean)) expect(line).not.toMatch(/(^|,)"[=+\-@\t\r]/)
     expect((await exportOf(o, 'months')).rows).toEqual(months.rows)
-    expect(asked).toHaveLength(2) // each file is a fresh read
+    expect(asked).toHaveLength(3) // each file is a fresh read
     // The referred wallets, unknown tables, the demo tables and names of the prototype: not found, and the indexer is not asked.
     const quiet = indexer()
     for (const table of ['referred', 'orders', 'balances', 'codes', 'audit', 'constructor', '__proto__', 'toString']) expect((await exportOf(o, table)).status, table).toBe(404)
@@ -9117,6 +9154,8 @@ describe('I. partner figures: live', () => {
       'Figures from the Ophis rebate service, read at {stamp(Date.parse(f.asOf))}. Amounts in USD.', "const ESTIMATE = 'Estimate. The amount is fixed when a payout is made.'", '<b>Your figures are not connected yet.</b>', '<b>No wallet is linked.</b>',
       '<a className="link" href="/#/organisation">Link a wallet under Organisation</a>', '<b>The figures are not available right now.</b>', '<Icon name="history" size={16} />Retry</button>',
       'title="Partner fee" hint="The fee you set on the orders of your integration."', 'Owed this cycle', 'Your share ${usd(w.fees.shareUsd)} plus ${usd(w.fees.carriedUsd)} carried.', 'Trades waiting for a price', 'Paid to date (WETH)', "['Month', 'Status', 'Owed (USD)', 'Owed (WETH)', 'Carried (USD)']", '<Export table="months" size="md" label="Fee months CSV" />',
+      'title="Wallets that traded through your integration" hint="The wallets whose orders carried your fee, since the first trade. Volume is an estimate."', "['Wallet', 'Trades', 'Volume (USD)']", 'The table shows the {t.wallets.length} largest wallets by volume.',
+      "Volume is priced each night. {count(t.totals.unpriced)} {t.totals.unpriced === 1 ? 'trade is' : 'trades are'} not priced yet.", 'No wallet has traded through your integration yet.', '<Export table="traders" size="md" label="Trading wallets CSV" />',
     ]) expect(part, sentence).toContain(sentence)
     expect(part.match(/\{ESTIMATE\}/g)).toHaveLength(1) // under the estimate
     // No referral share: the console's partners get none (owner decision of 2026-11-13).
