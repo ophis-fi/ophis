@@ -1,7 +1,7 @@
 // Security invariants of milestone 1. Each test here was seen to fail once with its control removed
 // (ARCHITECTURE.md, security invariants). Runs in the Workers runtime against a local D1.
 import { applyD1Migrations, env } from 'cloudflare:test'
-import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import { decodeFunctionData, encodeFunctionData, encodeFunctionResult, parseAbi, recoverAddress, serializeSignature, parseSignature, hashTypedData } from 'viem'
 import { mnemonicToAccount } from 'viem/accounts'
 import pageHeaders from '../public/_headers?raw'
@@ -26,6 +26,8 @@ const SITE = { origin: 'http://localhost:8787', rpId: 'localhost' }
 const MIN = 60_000
 const START = Date.UTC(2026, 10, 10, 9)
 const TABLES = ['approvals', 'audit_log', 'credentials', 'enrolment_tickets', 'kyb_records', 'organisations', 'recovery_requests', 'sealed_items', 'seats', 'sessions', 'wallets']
+// Sanctions screening: the two global tables, with no org_id: what a public list says, nothing of a client.
+const GLOBAL = ['sanctioned_addresses', 'sanctions_lists']
 // The one table outside the snapshots: the hourly counter of proof checks, which a proof writes before its commit (section B).
 const COUNTER = 'proof_checks'
 const db = env.DB
@@ -389,7 +391,7 @@ const credentialState = async (key: Key) => (await row<{ state: string }>('SELEC
 
 const count = async (table: string, orgId: string) =>
   (await db.prepare(`SELECT count(*) AS n FROM ${table} WHERE org_id = ?`).bind(orgId).first<{ n: number }>())!.n
-async function snapshot(tables = TABLES) {
+async function snapshot(tables = [...TABLES, ...GLOBAL]) {
   const rows: Record<string, unknown> = {}
   for (const table of tables) rows[table] = (await db.prepare(`SELECT * FROM ${table} ORDER BY 1, 2`).all()).results
   return JSON.stringify(rows)
@@ -1276,7 +1278,7 @@ describe('g. security headers', () => {
 describe('h. sign-in start', () => {
   it('the snapshot below covers every table', async () => {
     const { results } = await db.prepare(`SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%' AND name NOT LIKE '_cf_%' AND name <> 'd1_migrations' ORDER BY name`).all<{ name: string }>()
-    expect(results.map((row) => row.name)).toEqual([...TABLES, COUNTER].sort())
+    expect(results.map((row) => row.name)).toEqual([...TABLES, ...GLOBAL, COUNTER].sort())
   })
   it('writes no row, however often it is called, signed in or not', async () => {
     const m = await member()
@@ -6732,7 +6734,7 @@ describe('E. onboarding: a company applies, proves its domain, is activated and 
     expect([taken.headers.get('content-type'), taken.headers.get('x-sha256'), taken.headers.get('x-seal-key'), taken.headers.get('cache-control')]).toEqual(['application/octet-stream', await sha256Of(file), KEY, 'no-store'])
     expect((await logOf(a.orgId)).results).toEqual([...mine, { actor_kind: 'operator', actor_id: null, session_id: null, action: 'sealed.download', subject_id: item.id, detail: 'authority_request' }])
     expect((await logOf(b.orgId)).results).toEqual(theirs)
-    expect(await snapshot(TABLES.filter((table) => table !== 'audit_log'))).toBe(JSON.stringify(Object.fromEntries(Object.entries(JSON.parse(rows)).filter(([table]) => table !== 'audit_log'))))
+    expect(await snapshot([...TABLES, ...GLOBAL].filter((table) => table !== 'audit_log'))).toBe(JSON.stringify(Object.fromEntries(Object.entries(JSON.parse(rows)).filter(([table]) => table !== 'audit_log'))))
     // Still sealed: the marker of the clear file is not in it. Only the identity opens it, offline.
     expect(latin1(taken.bytes)).not.toContain(MARKER)
     const opener = new age.Decrypter()
@@ -7124,6 +7126,28 @@ describe('E. onboarding: a company applies, proves its domain, is activated and 
     const [theirs] = await itemsOf(r.orgId)
     expect((await upload(r, file)).body).toEqual({ error: 'org_closed' })
     expect([await itemsOf(r.orgId), (await objectOf(theirs.id)) !== null]).toEqual([[theirs], true])
+  })
+
+  // ---- sanctions screening: manual, at no cost. The operator searches the lists offline and records the result. ----
+  describe('S. sanctions screening', () => {
+    const wipe = () => db.batch([db.prepare('DELETE FROM sanctioned_addresses'), db.prepare('DELETE FROM sanctions_lists')])
+    beforeEach(wipe) // the tests share one database: no test sees the lists of another
+    afterAll(wipe)
+    const put = (sql: string, ...values: unknown[]) => db.prepare(sql).bind(...values).run()
+    const X = `0x${'5a'.repeat(20)}`
+
+    it('S1: the two global tables refuse a list code that is not known, a hash of another length, an empty list, an address that is not 42 characters in lower case, an address twice in one list, and an address of a list that is not loaded', async () => {
+      const list = (code: string, sha256: string, entries: number) => put('INSERT INTO sanctions_lists (list, sha256, entries, loaded_at) VALUES (?, ?, ?, ?)', code, sha256, entries, now)
+      await list('ofac', 'ab'.repeat(32), 1)
+      for (const [code, sha256, entries] of [['sdn', 'ab'.repeat(32), 1], ['eu', 'ab'.repeat(31), 1], ['eu', 'ab'.repeat(32), 0]] as const) await expect(list(code, sha256, entries), code).rejects.toThrow(/CHECK/)
+      await expect(list('ofac', 'cd'.repeat(32), 2)).rejects.toThrow(/UNIQUE/)
+      const address = (code: string, value: string) => put('INSERT INTO sanctioned_addresses (list, address) VALUES (?, ?)', code, value)
+      await address('ofac', X)
+      for (const value of [X.replace('5a', '5A'), X.slice(0, 41), `${X}0`]) await expect(address('ofac', value), value).rejects.toThrow(/CHECK/)
+      await expect(address('ofac', X)).rejects.toThrow(/UNIQUE/)
+      await expect(address('eu', X)).rejects.toThrow(/FOREIGN KEY/)
+      expect((await db.prepare('SELECT list, address FROM sanctioned_addresses').all()).results).toEqual([{ list: 'ofac', address: X }])
+    })
   })
 })
 
