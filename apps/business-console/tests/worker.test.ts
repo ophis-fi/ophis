@@ -57,7 +57,7 @@ let now = START
 // counts: an overcount, never an undercount.
 // Rows are limited per day (5,000,000 read, 100,000 written; past either every query fails until 00:00 UTC), not per
 // invocation. A route of the members or a page may use a thousandth of a day: 5,000 read, 100 written. The operator's
-// routes and the daily run, a few a day, may read 50,000 and write 5,000 (a load of a whole list writes about 4,000).
+// routes and the daily run, a few a day, may read 50,000 and write 5,000 (a load of a whole list writes about 3,000).
 const FREE = { d1: 50, fetch: 50, internal: 1000, read: 5000, written: 100 }
 const RARE = { read: 50_000, written: 5000 }
 type Count = { d1: number; fetch: number; internal: number; read: number; written: number }

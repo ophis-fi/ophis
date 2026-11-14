@@ -274,109 +274,125 @@ The console must run on the Workers Free plan. The limits, read in Cloudflare's 
 | Limit (Workers Free) | Value | Source |
 |---|---|---|
 | D1 queries per Worker invocation | 50. A `db.batch()` counts as one query, whatever its statements | https://developers.cloudflare.com/d1/platform/limits/ ("Batch limits") |
-| Subrequests per invocation | 50 (`fetch`), and 1,000 to Cloudflare services (D1, R2) | https://developers.cloudflare.com/workers/platform/limits/#subrequests |
+| Subrequests per invocation | 50 (`fetch`; each hop of a redirect counts, and no fetch here follows one), and 1,000 to internal services. The limits page does not name those; they are read as D1 and R2 from the changelog, which says "50 external subrequests and 1000 subrequests to Cloudflare services" | https://developers.cloudflare.com/workers/platform/limits/#subrequests, https://developers.cloudflare.com/changelog/post/2026-02-11-subrequests-limit/ |
 | CPU time | 10 ms per HTTP request, 10 ms per Cron Trigger run | https://developers.cloudflare.com/workers/platform/limits/#cpu-time |
 | Requests | 100,000 per day | https://developers.cloudflare.com/workers/platform/limits/#daily-requests |
 | Cron Triggers | 5 per account (the console uses 1) | https://developers.cloudflare.com/workers/platform/limits/ |
 | D1 rows | 5 million read and 100,000 written per day; queries fail until 00:00 UTC once passed (enforced since 2026-09-01) | https://developers.cloudflare.com/d1/platform/pricing/, https://developers.cloudflare.com/changelog/post/2026-09-01-d1-free-tier-limit-enforcement/ |
 | D1 storage | 500 MB per database, 5 GB per account | https://developers.cloudflare.com/d1/platform/limits/ |
 | R2 | 10 GB-month of storage, 1 million Class A and 10 million Class B operations per month (Standard storage only) | https://developers.cloudflare.com/r2/pricing/ |
-| Static assets | requests free and unlimited | https://developers.cloudflare.com/workers/platform/pricing/ |
+| Static files | each is a Worker request here (`run_worker_first: true`), counted in the 100,000 a day and the 10 ms of CPU: asset requests are free and unlimited only when they do not run the Worker. A first load of a console page is about 6 of them (the page, its script and style, the icon, the fonts), before its API calls | https://developers.cloudflare.com/workers/static-assets/billing-and-limitations/ |
 
 **Measured.** `tests/worker.test.ts` meters every invocation of the unit suite: D1 round trips (one per `first`, `all`,
-`run`, `raw`, `batch` or `exec`, a failed one too), `fetch` calls, and R2 calls with static files. Section K adds 20
+`run`, `raw`, `batch` or `exec`, a failed one too), `fetch` calls, R2 calls with static files, and (2026-11-14) the
+rows D1 reports in the meta of each result. Rows are counted per day, so each invocation is held to a share of the day:
+a route of the members or a page to 5,000 read and 100 written (a thousandth), the operator's routes and the daily run,
+a few a day, to 50,000 read and 5,000 written. A list holds 1,000 addresses at most, so that a partner page, which sends
+the indexer every listed address, reads about 3,100 rows, and a load writes about 3,000. Section K first loads three
+lists at their largest, the OFAC one twice (the second replaces every address). Then it adds 20
 partner organisations of 10 linked wallets each (every page, with the indexer's figures), the daily run that finds a
 listed wallet in each, 20 organisations under review in the operator's list, each with a Safe read on the chain, and (2026-11-14) 25 sent orders still open that the daily run reads at the orderbook (an order and its trade each) in the run that also freezes 5 organisations, then 15 of which the desk reads 10, an institution with 11 wallets on Ethereum (its Overview reads the 10 linked first: 50 calls in one `aggregate3`) and one with a wallet on each of the 4 chains (its Overview and an export past the cache). It
 fails when a route or job passes a limit, or never answered 2xx (a route driven only to a refusal is not measured). A new route is in it by its row of the table; a new job is
 driven through `meter()` and named in `JOBS`. The largest count of each, 2026-11-14:
 
-| Route or job | D1 queries | `fetch` | R2 and static files |
-|---|---|---|---|
-| The daily run (cron) | 25 | 40 (41 at most: the list file and 20 orders, each with its trade) | 0 |
-| A page or a static file | 0 | 0 | 1 |
-| `GET /api/audit` | 3 | 0 | 0 |
-| `GET /api/desk` | 6 | 20 | 0 |
-| `GET /api/export/:id` | 4 | 16 (the balances of wallets on 4 chains, past the cache) | 0 |
-| `GET /api/me` | 7 | 0 | 0 |
-| `GET /api/onboarding` | 10 | 0 | 0 |
-| `GET /api/operator/organisations` | 24 | 42 | 0 |
-| `GET /api/operator/organisations/:id/items` | 1 | 0 | 0 |
-| `GET /api/org` | 18 | 0 | 0 |
-| `GET /api/overview` | 20 | 16 (an institution's balances on 4 chains: an `aggregate3` on 2 endpoints, each after its `eth_chainId`) | 0 |
-| `GET /api/readiness` | 3 | 14 | 0 |
-| `GET /api/screening` | 2 | 0 | 0 |
-| `POST /api/apply` | 1 | 0 | 0 |
-| `POST /api/apply/check` | 7 | 4 | 0 |
-| `POST /api/approvals/:id/approve` | 17 | 14 | 0 |
-| `POST /api/approvals/:id/cancel` | 15 | 0 | 0 |
-| `POST /api/approvals/:id/reject` | 5 | 0 | 0 |
-| `POST /api/audit/export` | 4 | 0 | 0 |
-| `POST /api/desk/orders` | 7 | 1 | 0 |
-| `POST /api/desk/orders/:id/link` | 6 | 0 | 0 |
-| `POST /api/order` | 4 | 0 | 0 |
-| `POST /api/order/send` | 5 | 1 | 0 |
-| `POST /api/enrol/finish` | 11 | 0 | 0 |
-| `POST /api/enrol/start` | 1 | 0 | 0 |
-| `POST /api/members/:id/freeze` | 14 | 0 | 0 |
-| `POST /api/members/:id/remove` | 6 | 0 | 0 |
-| `POST /api/members/:id/role` | 6 | 0 | 0 |
-| `POST /api/members/:id/unfreeze` | 6 | 0 | 0 |
-| `POST /api/onboarding/declaration` | 14 | 0 | 2 |
-| `POST /api/onboarding/submit` | 15 | 0 | 0 |
-| `POST /api/onboarding/wallet` | 2 | 0 | 0 |
-| `POST /api/operator/invites` | 0 | 0 | 0 |
-| `POST /api/operator/items/:id/download` | 12 | 0 | 2 |
-| `POST /api/operator/organisations/:id/decision` | 26 | 18 | 2 |
-| `POST /api/operator/organisations/:id/freeze` | 3 | 0 | 0 |
-| `POST /api/operator/organisations/:id/screening` | 13 | 0 | 0 |
-| `POST /api/operator/organisations/:id/unfreeze` | 12 | 0 | 0 |
-| `POST /api/operator/sanctions` | 14 | 0 | 0 |
-| `POST /api/operator/sanctions/sync` | 8 | 1 | 0 |
-| `POST /api/passkeys/:id/revoke` | 14 | 0 | 0 |
-| `POST /api/passkeys/finish` | 14 | 0 | 0 |
-| `POST /api/passkeys/start` | 2 | 0 | 0 |
-| `POST /api/policy` | 15 | 0 | 0 |
-| `POST /api/proof` | 21 | 18 | 0 |
-| `POST /api/recover/cancel-intent` | 0 | 0 | 0 |
-| `POST /api/recover/continue/finish` | 16 | 18 | 0 |
-| `POST /api/recover/continue/start` | 0 | 0 | 0 |
-| `POST /api/recover/intent` | 0 | 0 | 0 |
-| `POST /api/recovery/:id/cancel` | 13 | 0 | 0 |
-| `POST /api/recovery/:id/object` | 13 | 0 | 0 |
-| `POST /api/sessions/:id/revoke` | 4 | 0 | 0 |
-| `POST /api/signin/finish` | 15 | 0 | 0 |
-| `POST /api/signin/start` | 0 | 0 | 0 |
-| `POST /api/signout` | 4 | 0 | 0 |
-| `POST /api/stepup/finish` | 12 | 0 | 0 |
-| `POST /api/stepup/start` | 3 | 0 | 0 |
-| `POST /api/stop/finish` | 12 | 0 | 0 |
-| `POST /api/stop/start` | 0 | 0 | 0 |
-| `POST /api/support/ask` | 2 | 1 | 0 |
-| `POST /api/tickets` | 14 | 0 | 0 |
-| `POST /api/tickets/:id/cancel` | 15 | 0 | 0 |
-| `POST /api/tickets/:id/confirm` | 17 | 0 | 0 |
-| `POST /api/tickets/:id/confirm/start` | 4 | 0 | 0 |
-| `POST /api/wallets/:id/anchor` | 9 | 14 | 0 |
-| `POST /api/wallets/:id/anchor/cancel` | 10 | 0 | 0 |
-| `POST /api/wallets/:id/unlink` | 7 | 0 | 0 |
-| `POST /api/wallets/intent` | 2 | 0 | 0 |
+| Route or job | D1 queries | `fetch` | R2 and static files | Rows read | Rows written |
+|---|---|---|---|---|---|
+| The daily run (cron) | 26 | 41 (the list file, and 20 orders with the trade of each) | 0 | 1,870 | 2,042 (a first load of a list of 1,000, and 5 freezes) |
+| A page or a static file | 0 | 0 | 1 | 0 | 0 |
+| `GET /api/audit` | 3 | 0 | 0 | 460 | 0 |
+| `GET /api/desk` | 6 | 20 | 0 | 377 | 10 |
+| `GET /api/export/:id` | 4 | 16 (the balances of wallets on 4 chains, past the cache) | 0 | 3,057 (a partner, as its Overview) | 2 |
+| `GET /api/me` | 7 | 0 | 0 | 163 | 1 |
+| `GET /api/onboarding` | 10 | 0 | 0 | 109 | 1 |
+| `GET /api/operator/organisations` | 24 | 42 | 0 | 9,279 (every organisation of the test database: the reviews due) | 0 |
+| `GET /api/operator/organisations/:id/items` | 1 | 0 | 0 | 3 | 0 |
+| `GET /api/org` | 7 | 0 | 0 | 126 | 1 |
+| `GET /api/overview` | 20 | 16 (an institution's balances on 4 chains: an `aggregate3` on 2 endpoints, each after its `eth_chainId`) | 0 | 3,058 (a partner: the three lists at their largest go to the indexer) | 33 |
+| `GET /api/readiness` | 3 | 14 | 0 | 28 | 0 |
+| `GET /api/screening` | 2 | 0 | 0 | 34 | 0 |
+| `POST /api/apply` | 1 | 0 | 0 | 1 | 0 |
+| `POST /api/apply/check` | 7 | 4 | 0 | 15 | 25 |
+| `POST /api/approvals/:id/approve` | 17 | 14 | 0 | 134 | 11 |
+| `POST /api/approvals/:id/cancel` | 15 | 0 | 0 | 92 | 5 |
+| `POST /api/approvals/:id/reject` | 5 | 0 | 0 | 33 | 3 |
+| `POST /api/audit/export` | 4 | 0 | 0 | 168 | 2 |
+| `POST /api/desk/orders` | 7 | 1 | 0 | 143 | 15 |
+| `POST /api/desk/orders/:id/link` | 6 | 0 | 0 | 30 | 5 |
+| `POST /api/enrol/finish` | 11 | 0 | 0 | 45 | 10 |
+| `POST /api/enrol/start` | 1 | 0 | 0 | 5 | 0 |
+| `POST /api/members/:id/freeze` | 14 | 0 | 0 | 130 | 11 |
+| `POST /api/members/:id/remove` | 6 | 0 | 0 | 84 | 5 |
+| `POST /api/members/:id/role` | 6 | 0 | 0 | 60 | 5 |
+| `POST /api/members/:id/unfreeze` | 6 | 0 | 0 | 38 | 5 |
+| `POST /api/onboarding/declaration` | 14 | 0 | 2 | 1,225 (a test's write that lands during the upload is counted in) | 10 |
+| `POST /api/onboarding/submit` | 15 | 0 | 0 | 93 | 10 |
+| `POST /api/onboarding/wallet` | 2 | 0 | 0 | 16 | 0 |
+| `POST /api/operator/invites` | 0 | 0 | 0 | 0 | 0 |
+| `POST /api/operator/items/:id/download` | 12 | 0 | 2 | 47 | 8 |
+| `POST /api/operator/organisations/:id/decision` | 26 | 18 | 2 | 165 | 22 |
+| `POST /api/operator/organisations/:id/freeze` | 3 | 0 | 0 | 15 | 6 |
+| `POST /api/operator/organisations/:id/screening` | 13 | 0 | 0 | 38 | 9 |
+| `POST /api/operator/organisations/:id/unfreeze` | 12 | 0 | 0 | 29 | 7 |
+| `POST /api/operator/sanctions` | 22 | 0 | 0 | 4,394 | 3,001 (1,000 addresses in place of 1,000 others) |
+| `POST /api/operator/sanctions/sync` | 8 | 1 | 0 | 309 | 35 |
+| `POST /api/order` | 4 | 0 | 0 | 18 | 3 |
+| `POST /api/order/send` | 5 | 1 | 0 | 26 | 4 |
+| `POST /api/passkeys/:id/revoke` | 14 | 0 | 0 | 146 | 5 |
+| `POST /api/passkeys/finish` | 14 | 0 | 0 | 208 | 22 |
+| `POST /api/passkeys/start` | 2 | 0 | 0 | 38 | 1 |
+| `POST /api/policy` | 15 | 0 | 0 | 110 | 5 |
+| `POST /api/proof` | 21 | 18 | 0 | 125 | 25 |
+| `POST /api/recover/cancel-intent` | 0 | 0 | 0 | 0 | 0 |
+| `POST /api/recover/continue/finish` | 16 | 18 | 0 | 268 | 31 |
+| `POST /api/recover/continue/start` | 0 | 0 | 0 | 0 | 0 |
+| `POST /api/recover/intent` | 0 | 0 | 0 | 0 | 0 |
+| `POST /api/recovery/:id/cancel` | 13 | 0 | 0 | 51 | 10 |
+| `POST /api/recovery/:id/object` | 13 | 0 | 0 | 53 | 10 |
+| `POST /api/sessions/:id/revoke` | 4 | 0 | 0 | 19 | 3 |
+| `POST /api/signin/finish` | 15 | 0 | 0 | 77 | 18 |
+| `POST /api/signin/start` | 0 | 0 | 0 | 0 | 0 |
+| `POST /api/signout` | 4 | 0 | 0 | 23 | 3 |
+| `POST /api/stepup/finish` | 12 | 0 | 0 | 36 | 5 |
+| `POST /api/stepup/start` | 3 | 0 | 0 | 17 | 1 |
+| `POST /api/stop/finish` | 12 | 0 | 0 | 1,064 | 47 |
+| `POST /api/stop/start` | 0 | 0 | 0 | 0 | 0 |
+| `POST /api/support/ask` | 2 | 1 | 0 | 27 | 9 |
+| `POST /api/tickets` | 14 | 0 | 0 | 155 | 13 |
+| `POST /api/tickets/:id/cancel` | 15 | 0 | 0 | 106 | 5 |
+| `POST /api/tickets/:id/confirm` | 17 | 0 | 0 | 591 | 15 |
+| `POST /api/tickets/:id/confirm/start` | 4 | 0 | 0 | 49 | 1 |
+| `POST /api/wallets/:id/anchor` | 9 | 14 | 0 | 91 | 6 |
+| `POST /api/wallets/:id/anchor/cancel` | 10 | 0 | 0 | 29 | 3 |
+| `POST /api/wallets/:id/unlink` | 7 | 0 | 0 | 46 | 6 |
+| `POST /api/wallets/intent` | 2 | 0 | 0 | 19 | 0 |
 
 **Fixed on 2026-11-14.** The freezes of a load or a daily run: 4 queries per listed organisation (84 for 20). Now at
 most 5 a call (24 queries, 44 if each commit collides once); the others are marked `later` and the next call freezes
 them: the next daily run, or `operator sync` now. The operator's list: 7 queries and 14 chain reads per organisation under
 review (108 queries in the suite). Now the oldest 3 in full (24 queries, 42 reads) and a count of the others. A partner's
 Overview recovered the signature of each linked wallet. Now the link writes how it was proved (`proof_by`, migration 0016).
+Review of the same day: a load that left organisations for later was finished only by a daily run that read a list
+file; with no list file set, or one that cannot be read, they stayed active. Now every daily run and `sync` freezes
+what waits, whatever the file gives. The chain reads and the DNS lookups followed redirects, so a redirect would have
+cost two subrequests where the meter counted one; no fetch follows one now. The check of K took a refusal as a
+measure; now every route must answer 2xx once, and the first daily run carries its 5 freezes and 20 order reads. The
+rows were not counted: a partner page read every address of the three lists (60,058 rows at 20,000 a list), a load
+wrote 60,001, and the stop of a recovery read the passkeys of every organisation (6,508 here, the OR of one statement):
+the list now holds 1,000, and that statement names its index.
 
 **CPU, a proxy.** `pnpm test:cpu` (tests/cpu.mjs) times the heavy pure-JS steps in Node on this machine (Apple M4),
 not on the Workers meter. One run: signature recovery 0.98 ms, the ERC-1271 path 0.09 ms, unseal of an intent 0.05 ms,
 a passkey assertion 0.16 ms, a registration 0.08 ms, the daily run on today's OFAC EVM list (127 addresses) 0.04 ms and on
-20,000 addresses 4.2 ms, an audit row 8 us. The heaviest request is a proof (one recovery, about 1.1 ms). Before
+1,000 addresses (the most a list holds) 0.19 ms, an audit row 8 us. The heaviest request is a proof (one recovery, about 1.1 ms). Before
 `proof_by`, a partner's Overview with 10 wallets cost 9.8 ms.
 
-**Not within the plan.** The audit page verifies the whole chain of its organisation: about 8 us a row here, so it passes
-10 ms of CPU at about 1,200 rows (Node's WebCrypto; a native hash takes 0.6 us a row, and the Workers figure is not known).
-It also reads every row of the chain at each load. A load of 20,000 addresses writes about 80,000 rows (the old ones
-deleted, the new ones in, each with its index) of the 100,000 a day; today's OFAC EVM list is 127.
+**Not within the plan.** The audit page verifies the whole chain of its organisation: about 8 us a row here, so it
+passes 10 ms of CPU at about 1,200 rows (Node's WebCrypto; a native hash takes 0.6 us a row, and the Workers figure is
+not known). The page and the export (which does not verify) read every row of the chain at each call, so past 5,000
+rows they pass the share of a route too. Verifying from a stored verified head is not built. The shares hold
+the rows of a day at about 1,000 of the heaviest invocations: a day with many more requests (a script, a busy partner
+page: about 1,600 partner Overviews or exports with the three lists full) can use up the 5,000,000 rows read before the
+100,000 requests, and then every query fails until 00:00 UTC.
 
 ## Commands
 `npx -y pnpm@10.34.9 install --ignore-workspace`, then `pnpm migrate`, `pnpm seed` (`--demo`, `--live`), `pnpm dev` (starts the DNS stubs, the stand-in indexer and the stand-in list file), `node scripts/dev.mjs stale`, `pnpm activate`, `pnpm operator invite|list|decide|screen|addresses|sync|freeze|unfreeze|items|get`, `node scripts/ofac-list.mjs`, `pnpm dns`, `pnpm test` (builds first), `pnpm test:e2e` (`E2E_PORT=<port>` when 8787 is taken; it starts the stand-ins on 8790, 8791, 8793, 8794 and 8795), `pnpm skip`, `pnpm test:chain` (needs the network, `anvil` and Node 24 or later), `pnpm test:cpu` (the CPU proxy of the Free plan), `pnpm typecheck` (see README.md).
@@ -504,7 +520,7 @@ A partner's Overview shows the partner fee (the fee a partner sets on the orders
 - The wallets that traded (2026-11-13): `traders` of each wallet, from the same answer: the owners of the orders that carried its fee, lifetime, at most 100, the largest by USD volume first; `unknown`, the trades of no known wallet; totals over every trade. Each with its trades, volume and trades not priced yet (counted, not in the volume). The owner of a trade is the wallet that paid when the indexer attributed one to the settlement (`defillama_fills.user_address`, verified), else the owner in the order uid. A sale of native ETH still owned by an eth-flow contract is no wallet: it counts in `unknown`, never in the list or the wallet count, as the indexer's public stats count it. Checked as `fees` is (an address is `0x` and 40 lower-case hex; at most 100) and rebuilt the same way. The page: "Wallets that traded through your integration": the totals; the table, where a volume with trades not priced yet says how many under it (a bare 0.00 would read as no volume) and the last row is "Not known (native ETH sales)" when there are such trades; a line when more than 100 traded; a line on trades not priced yet. Export `traders` ("Trading wallets CSV"): each listed wallet with its trades not priced yet, then the unknown row, then "Total, N wallets", so the file adds up to the page and says how many wallets traded. The indexer's query is tested in `tests/partnerFees/payout.int.test.ts` (CI, testcontainers). Proof (review of 2026-11-13): 31 single mutations, all caught, each file restored with git checkout and clean after: 16 against that int test case run on PGlite (the payer join, the verified fill, the eth-flow exclusion, the unknown group sorted last, the wallet count, the unknown sums and their mapping, the null row filtered out, the uid bytes, the numeric sort, the tie order, the cap, the unpriced filter, the volume COALESCE, the recipient filter, the total trades), 1 against `tests/business.test.ts` (a contract file that does not add up), 9 against the unit tests (unknown and the totals passed on unchecked, the per-wallet count, the CSV column, the unknown row missing or always there, the total row and its singular, the page row), 5 against `tests/e2e.mjs` (the line under a volume and its plural, the unknown row with none, the block when only such sales exist, the wrap at phone width). State: type check clean, 440 unit tests, end-to-end 236 checks, `test:chain` 89, tour check passed; indexer, the two test files 81, its type check clean, and its new int test case passed on PGlite (no Docker).
 - Access: every role of the organisation; active organisations only; the kind comes from the session, so an institution never gets partner figures and never causes a request.
 - The breakdown (2026-11-14): `breakdown` of each wallet, from the same answer (`getPartnerBreakdown()` in the indexer's `report.ts`, one statement per figure set), null with `fees` for a refused contract wallet, and only so. `daily`: the last 90 UTC days up to `asOf`'s day, oldest first, one row per day with trades (a trade whose block time the indexer does not know yet is in no day); `byChain`: every trade; `byToken`: the token the fee was taken in, on its chain, the 100 with the largest share; `payouts`: the batches whose entry for this wallet is paid, newest first, at most 24, with the date the batch reached its status (executed: the day the payment was recorded), the WETH (paid, else owed), the chain (Gnosis, the payout chain) and the transaction once executed (a failed batch carries its entries and is not listed). Each row with its trades, volume, the partner's share and its trades not priced yet (counted, never summed as 0). The share, not the gross fee: the gross stays withheld (above), and the indexer sends the share (`shareUsd`, the 80% that "Owed this cycle" counts). Checked as `fees` is, and more: a day is a real day, inside the 90, after the one before it; a chain is a whole number above 0, named by `CHAIN_NAME` (Gnosis and Unichain added); a token 40 lower-case hex; a transaction 64 lower-case hex or null; a status a short plain word; at most 90 days, 100 chains, 100 tokens, 24 payouts. The page: "Payouts" (date and chain, WETH, a status in words, the transaction linked to the chain's explorer in a new tab, `EXPLORER` in `desk.tsx`, the indexer's own links); "Daily volume", bars in plain SVG (no chart library), one per day at its place in the 90 days, the highest full height, a day of trades not priced only a thin bar, with the first day, the highest day and `asOf`'s day under it, and "Each day as a table" (shut until opened) as the accessible fallback; "By chain" and "By fee token". At most three columns per table, the trades under the first cell, so each fits a phone. Exports `payouts`, `daily`, `chains`, `tokens` (the CSV buttons of the header). The local stand-in serves the file's own `asOf`, so the file's days stay inside the 90. Proof, builder, 2026-11-14: 67 single mutations, each file restored with git checkout and clean after; 66 caught. Indexer: 25 against the new int test case run on PGlite (the recipient filter of each set, the first and the last of the 90 days, the day of the block time, the unpriced count of each set, the share and not the gross fee, the order of days and chains, the numeric sort of tokens, the token of trades not priced only last, the tie order, one row per token, the token cap, the paid entries only, paid then owed WETH, newest first, the payout cap, the onchain transaction, the date of the status, the chain) and 3 against `tests/business.test.ts` (no breakdown when refused, the 90 days end at `asOf`, the breakdown read), 1 against its contract file (by chain adds up). Console: 28 against the unit tests (the four caps, the day that exists, before and after the 90, each day once, oldest first, the first of the 90, a chain above 0, a token in lower case and checksummed, a transaction of 32 bytes or null, a plain status, refused only whole, the breakdown read, the share, a token's trades, the payout WETH and date checked, a column of each CSV, Gnosis and Unichain by name), 10 against `tests/e2e.mjs`, 9 caught (a bar at its day, the thin bar, the explorer link, a new tab, "Paid", trades not priced in the day table, no chain or token tables without trades, the singular, a long status that wraps on a phone). The one that survived was the phone rule for table headers: it changed nothing (at most three columns already fit), so it was removed. Support answers KB-13 and KB-16 changed (texts only); `test:jev` not run. State: type check clean, 442 unit tests, end-to-end 248 checks, `test:chain` 89, tour check passed; indexer, the two test files 81, its type check clean, its new int test case passed on PGlite (no Docker).
-- Sanctioned wallets that traded (2026-11-14, owner: "i want interactions with ofac sanctioned wallets flagged"). The request carries `listed`: every address of the lists the console holds (`sanctioned_addresses`, any list: OFAC from the daily read of the list file, EU and UN when the operator loads them), lower case, each once, in order (`data.sanctionsHeld()`, one batch with the lists' names and days). The indexer takes at most 60,000 (three lists of 20,000; its route's body limit is 3 MB), lower-cases them, refuses a duplicate or a missing field (400), and answers per readable wallet `sanctioned`: `[{ wallet, trades, volumeUsd, unpriced, firstAt, lastAt }]` (`getPartnerSanctioned()` in its `report.ts`): the listed owners over ALL the partner's trades (not the 100 largest), in one statement, the owner resolved exactly as for the wallets that traded (the verified payer of an eth-flow sale; an eth-flow trade with no known payer stays unknown and is never flagged); `firstAt` and `lastAt` the block times, null while none is known. Null with `fees` for a refused contract wallet, and only so. Checked as the other figures, and more: each wallet was sent as listed, and appears once; each time ISO or null. The page: a red alert at the top of Overview when any ("N wallets on a sanctions list traded through your integration: X trades, $Y.", information only, with a table: the wallet with its lists and trades, the volume, the first and the last trade; a wallet that traded through two partner wallets is one row, added up), its CSV `sanctioned` ("Sanctioned wallets CSV"); a tag "Sanctions list" on each such wallet in "Wallets that traded", one outside the 100 largest added at the end; a line naming the lists checked (name, published day, loaded day), or saying none is loaded. The `traders` CSV has a column "Sanctions list" and the listed wallets outside the 100. Nothing is frozen and nothing is written: a partner's users trading is no act of the organisation (the freeze of 0012 stays for the organisation's own linked wallets). The local stand-in keeps the file's listed wallet (`0x...0b0b`, on the test lists of `tests/fixtures/`) only when it was sent as listed. Proof, builder, 2026-11-14: 37 single mutations, each file restored with git checkout and clean after, all caught. Indexer: 8 against `tests/business.test.ts` (listed required, its bound, lower case, its form, no duplicate, the 3 MB body limit both ways, nothing read for a refused wallet), 8 against the new int test case run on PGlite (the listed filter, the eth-flow exclusion, the verified payer, the payer join, the recipient filter, the order, the first trade, the unpriced count), 1 against its type check (the route wired). Console: 20 against the unit tests (listed sent, a wallet not sent, a wallet twice, its form, its times, a missing time, its figures, a list, the refusal only whole, nothing read when refused, the list names, the lists checked, the CSV column, the wallets outside the 100, none twice, the CSV of the listed wallets, the published and loaded days, an address on two lists, Support KB-13). The page's rules (tag, wallets added at the end, the alert only when any, the adding up over two partner wallets, the earliest first trade, the line of the lists, three columns, the stand-in's filter and its required listed) have their checks in `tests/e2e.mjs`, which pass; their mutations were not run (the run was stopped). Support answers KB-13 and KB-16 changed (texts only); `test:jev` not run. State: type check clean, 443 unit tests, end-to-end 254 checks, `test:chain` passed, tour check passed (it now waits for the alert); indexer, the two test files 89, its type check clean, its new int test case passed on PGlite (no Docker). The largest D1 count of `GET /api/export/:id` is 4 (the exports of the breakdown test now run one after the other, so the meter counts each alone).
+- Sanctioned wallets that traded (2026-11-14, owner: "i want interactions with ofac sanctioned wallets flagged"). The request carries `listed`: every address of the lists the console holds (`sanctioned_addresses`, any list: OFAC from the daily read of the list file, EU and UN when the operator loads them), lower case, each once, in order (`data.sanctionsHeld()`, one batch with the lists' names and days). The indexer takes at most 60,000 (more than the console's three lists of 1,000 hold; its route's body limit is 3 MB), lower-cases them, refuses a duplicate or a missing field (400), and answers per readable wallet `sanctioned`: `[{ wallet, trades, volumeUsd, unpriced, firstAt, lastAt }]` (`getPartnerSanctioned()` in its `report.ts`): the listed owners over ALL the partner's trades (not the 100 largest), in one statement, the owner resolved exactly as for the wallets that traded (the verified payer of an eth-flow sale; an eth-flow trade with no known payer stays unknown and is never flagged); `firstAt` and `lastAt` the block times, null while none is known. Null with `fees` for a refused contract wallet, and only so. Checked as the other figures, and more: each wallet was sent as listed, and appears once; each time ISO or null. The page: a red alert at the top of Overview when any ("N wallets on a sanctions list traded through your integration: X trades, $Y.", information only, with a table: the wallet with its lists and trades, the volume, the first and the last trade; a wallet that traded through two partner wallets is one row, added up), its CSV `sanctioned` ("Sanctioned wallets CSV"); a tag "Sanctions list" on each such wallet in "Wallets that traded", one outside the 100 largest added at the end; a line naming the lists checked (name, published day, loaded day), or saying none is loaded. The `traders` CSV has a column "Sanctions list" and the listed wallets outside the 100. Nothing is frozen and nothing is written: a partner's users trading is no act of the organisation (the freeze of 0012 stays for the organisation's own linked wallets). The local stand-in keeps the file's listed wallet (`0x...0b0b`, on the test lists of `tests/fixtures/`) only when it was sent as listed. Proof, builder, 2026-11-14: 37 single mutations, each file restored with git checkout and clean after, all caught. Indexer: 8 against `tests/business.test.ts` (listed required, its bound, lower case, its form, no duplicate, the 3 MB body limit both ways, nothing read for a refused wallet), 8 against the new int test case run on PGlite (the listed filter, the eth-flow exclusion, the verified payer, the payer join, the recipient filter, the order, the first trade, the unpriced count), 1 against its type check (the route wired). Console: 20 against the unit tests (listed sent, a wallet not sent, a wallet twice, its form, its times, a missing time, its figures, a list, the refusal only whole, nothing read when refused, the list names, the lists checked, the CSV column, the wallets outside the 100, none twice, the CSV of the listed wallets, the published and loaded days, an address on two lists, Support KB-13). The page's rules (tag, wallets added at the end, the alert only when any, the adding up over two partner wallets, the earliest first trade, the line of the lists, three columns, the stand-in's filter and its required listed) have their checks in `tests/e2e.mjs`, which pass; their mutations were not run (the run was stopped). Support answers KB-13 and KB-16 changed (texts only); `test:jev` not run. State: type check clean, 443 unit tests, end-to-end 254 checks, `test:chain` passed, tour check passed (it now waits for the alert); indexer, the two test files 89, its type check clean, its new int test case passed on PGlite (no Docker). The largest D1 count of `GET /api/export/:id` is 4 (the exports of the breakdown test now run one after the other, so the meter counts each alone).
 - Local stand-in: `scripts/indexer-stub.mjs` on `http://127.0.0.1:8793`, started by `dev` and `test:e2e`. It serves the indexer's own contract file, `apps/rebate-indexer/tests/fixtures/business-partner.json`, read where it is (no copy): the indexer's test proves the real route answers exactly that file, the console's tests and the stand-in read the same file. `seed --live` makes a partner with a linked "Demo wallet" at that file's partner address. `/stub/slow|shape|500|ok` switches its failing cases.
 - Proof, builder, 2026-11-12. Indexer: `tests/business.test.ts`, 23 tests, 8 single mutations, all caught; `tests/api.test.ts` 41 before and after. Console: section I, 55 single mutations of `partner.ts` and of the router's part, 54 caught, 1 was a check with no effect of its own (`Number.isFinite`, covered by the upper bound) and was removed; 3 more against `tests/e2e.mjs` (the page sends an order without the passkey step; a withheld figure shown in a tile; the stand-in without its bearer check), all caught. 
 - Review, 2026-11-12 (Codex read-only, semgrep, own attack; 12 + 28 single mutations of the built controls, 2 equivalent; 8 + 11 of the fixes, 1 redundant check removed). Fixed: the chain of a contract wallet (above); the token echoed as a code; a cancelled passkey step left the order ticket disabled (`CANCELLED`, as every other step); the Desk named a wallet's chain "OP Mainnet" next to the choice "Optimism"; "The CSV holds all of them" above 500 referred wallets; "Next payout run" now ends "A run is planned, not promised." (that line went with the referral share, 2026-11-13); Support answers KB-13 and KB-16 said the console shows no fee figures and has one export; five tiles in a row cut a long figure (now three and two; four fee tiles since 2026-11-13). Closed after the review, same day: the indexer's 120 a minute is one bucket for all organisations, so the console now stops at 120 requests per organisation and clock hour (`figures_rate`); `docker-compose.yml` of the indexer passes `BUSINESS_API_TOKEN`; Support answers KB-01 and KB-19 said onboarding and the desk are not built (texts only); the ticket switches off a chain on which no wallet is linked (Unichain today: a wallet cannot be linked there yet) and says so. Left open, by choice: ten wallets of 500 referred wallets each exceed 1 MB and read as unavailable (gone on 2026-11-13: no referred wallet is read); `test:jev` was not run on the four changed Support texts (titles and `about` lines, which are all the model sees, are unchanged).
@@ -517,14 +533,14 @@ The operator downloads the official lists, searches them OFFLINE and records the
 - Routes. Operator: `POST .../organisations/:id/decision` takes `screening: {outcome, lists}`; `POST .../organisations/:id/screening` with `{outcome, lists, nextReview, tier?, source?}`; `POST /api/operator/sanctions` with `{list, sha256, addresses}`; `GET /api/operator/organisations` also answers `reviews`. Client: `GET /api/screening`.
 - S2. An approval needs a screening that says `clear` (none: 400 `screening_required`; `review` or `hit`: 409 `screening_not_clear`), stored on its KYB row; `more` and `refuse` store one when given. A screening of an active or frozen organisation (else `wrong_state`) is ONE commit: a new KYB row (name, number and country from the organisation; tier, source, evidence, decision and its date from its newest record; with no record, a local seed, tier and source come from the command and the decision is approved now, else `no_record`), its audit row `kyb.screen` with the outcome as detail, and for `review` or `hit` on an active organisation the freeze with every session ended, as the operator's freeze. `clear` changes no state. The unfreeze is refused (`screening_not_clear`) while the newest record says `review` or `hit`; a record with no screening blocks nothing.
 - The invariant: an active organisation never has a newest record that says `review` or `hit`. Test S2e counts such rows over the whole test database, also after a screening and an unfreeze at the same instant, each way round.
-- S3. A load replaces one list whole in one batch: 1 to 20,000 distinct addresses in lower case, in chunks of 99 (D1 binds 100 values a statement); an empty load is refused, so a failed parse never empties a list. Then every organisation with a LIVE wallet on ANY loaded list is answered as a hit, and an active one is frozen in a commit of its own (`screening.wallet`, subject the wallet, sessions ended), read again inside that commit. Live (`LISTED` in `data.ts`, owner's review R1): `linked`; `pending` with an open request; or the `pending` wallet an application named, while the organisation is not yet verified. A row whose request was rejected, cancelled or has expired stays `pending` for good and counts for nothing: it freezes nothing and blocks no unfreeze. A listed address is never linked: the link with its proof, the approval of a link, the activation proof and the operator's approval read the lists inside their commit (`wallet_listed`); the stop of a recovery, which is never refused, does not put such a wallet back. The unfreeze is refused (`wallet_listed`) while a live wallet is listed.
+- S3. A load replaces one list whole in one batch: 1 to 1,000 distinct addresses in lower case (the Free plan, 2026-11-14), in chunks of 99 (D1 binds 100 values a statement); an empty load is refused, so a failed parse never empties a list. Then every organisation with a LIVE wallet on ANY loaded list is answered as a hit, and an active one is frozen in a commit of its own (`screening.wallet`, subject the wallet, sessions ended), read again inside that commit. Live (`LISTED` in `data.ts`, owner's review R1): `linked`; `pending` with an open request; or the `pending` wallet an application named, while the organisation is not yet verified. A row whose request was rejected, cancelled or has expired stays `pending` for good and counts for nothing: it freezes nothing and blocks no unfreeze. A listed address is never linked: the link with its proof, the approval of a link, the activation proof and the operator's approval read the lists inside their commit (`wallet_listed`); the stop of a recovery, which is never refused, does not put such a wallet back. The unfreeze is refused (`wallet_listed`) while a live wallet is listed.
 - A proven attempt leaves its trace (R2). A link whose proof is valid at a listed address answers `wallet_listed` and, in that commit, writes the row `screening.attempt` (the member's seat, the address as detail) and freezes the organisation with every session ended: the same two facts in the other order (link, then load) freeze it too. The refused proof is kept as a wallet row in state `unlinked`, never live, the subject of that row: its nonce is used, so the same proof (valid for a week, and taken from anyone by the signing page) answers `proof_used` and cannot freeze the organisation again after an unfreeze. For an application (not yet verified, never frozen) the activation proof writes `screening.refused` once per organisation and address. The pages say "It cannot be linked. The attempt is recorded."
 - The backstop (R4): the lists are read inside the organisation's commit, but a load is no commit of that organisation. Two triggers of 0012 on `wallets` abort with `wallet_listed`: an INSERT of a `linked` or `pending` row, and an UPDATE that makes a row `linked`, at a listed address. A third (review F1) refuses an organisation that becomes active while a linked wallet of it is listed: an unfreeze at the instant of a load writes `organisations` only and meets no commit of its own. Such an abort is a failed request (500); sent again, it gets the plain refusal and its record. The stop of a recovery puts back a wallet that is still linked (linked to linked meets no trigger) and leaves an unlinked one unlinked when its address is listed (F3).
 - What the operator sees (R3): `reviews` also holds every frozen organisation, whatever its dates, and a frozen one says WHY (F6): the newest row of its log among the actions that freeze, `organisation.freeze`, `screening.wallet`, `screening.attempt` and `kyb.screen` with review or hit (action, detail or else the address of its wallet, date), so a clear screening recorded later hides nothing; an active organisation carries none; an organisation under review carries `refused`, the addresses of its `screening.refused` rows. The command prints both.
 - A browser gets: the organisation's result only when its newest record says `clear` (the lists by name, 16 hex of the version, the date, the next review); the loaded lists (name, entries, date, 16 hex of the file's hash); each linked wallet with `listed`. No other outcome is sent anywhere: the audit words of `kyb.screen` say "Result: no match" for `clear` and "sanctions screening recorded, organisation frozen" for the rest, and the detail of a row is never sent. The frozen page does not say why.
 - NOT done: no list is downloaded by the server, and the Worker calls no outside service; no per-person result and no detail of a hit is kept in the system (it stays offline with the operator); no screening of a trade's counterparty; no check of politically exposed persons; the calendar is a manual chore (`operator list` prints "Reviews due": no screening, or the next review passed or within 14 days). The page states a date and a result, never that anything is compliant; whether the procedure is enough is a question for the lawyer.
 - Shortcuts (`ponytail:`) and limits: hits and due reviews are read whole at each call; a freeze that fails after a load leaves the list loaded (the next load, daily run or `sync` freezes it); a frozen organisation cannot unlink a listed wallet itself; a seat in quarantine, or one that may no longer link, that proves a listed address is refused before the lists are read, with no trace; a next review is a real day at most 5 years ahead (F2); a load makes no commit for a hit that is not active (F4); `seed --demo` and `--live` do not read the lists (the trigger refuses a listed wallet); "On a loaded list" on the page lasts only between the two steps of a load and has no test.
-- Proof, 2026-11-13: section S inside E of `tests/worker.test.ts` and one test in the recovery section. Single mutations, one at a time: 114 of S1 to S5 (111 caught at first, 3 closed by a new case), 13 of the owner's review R1 to R4 and 8 of the review F1 to F7, all caught; 9 of the command and 2 of the tour against `tests/e2e.mjs` and `TOUR_CHECK=1`, all caught. With the triggers, a list read made before the commit instead of inside it no longer shows in a test. Not done: a mutation of the page's words, a second reviewer (Codex, semgrep), `test:chain` and `test:jev` (they need the network), 20,000 addresses on a real D1.
+- Proof, 2026-11-13: section S inside E of `tests/worker.test.ts` and one test in the recovery section. Single mutations, one at a time: 114 of S1 to S5 (111 caught at first, 3 closed by a new case), 13 of the owner's review R1 to R4 and 8 of the review F1 to F7, all caught; 9 of the command and 2 of the tour against `tests/e2e.mjs` and `TOUR_CHECK=1`, all caught. With the triggers, a list read made before the commit instead of inside it no longer shows in a test. Not done: a mutation of the page's words, a second reviewer (Codex, semgrep), `test:chain` and `test:jev` (they need the network), 1,000 addresses on a real D1.
 
 ## The OFAC list as a file (M10, 2026-11-13)
 The onchain oracle the swap used stopped being updated and misses addresses of the official file. The console reads the official list itself, as ONE small file, once a day. The manual load of the section above stays the fallback and the override. Code: `sync()`, `freezeHits()`, `listsOf()` in `onboarding.ts`; `daily()` in `index.ts` (the cron: the read of the file, nothing else; an error is logged in fixed words and answers `unavailable`). The flags (T3) were removed on 2026-11-13 with the referral share: they marked wallets referred to a partner, the only outside addresses the console held, and it reads none any more. With them went the partner sweep of the daily run, the event `screening.flag` and the `flags` of the operator's list.

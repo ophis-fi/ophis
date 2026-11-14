@@ -38,8 +38,8 @@ export { LISTS }
 const OUTCOMES = ['clear', 'review', 'hit']
 const SHA256 = /^[0-9a-f]{64}$/
 const ADDRESS = /^0x[0-9a-f]{40}$/
-// Of one list. The rows of D1 Free are counted per day: a load writes about 4 rows an address (the old ones out, the
-// new in, each with its index entry) and every partner page reads the addresses of all three lists. 1,000 keeps both
+// Of one list. The rows of D1 Free are counted per day: a load writes about 3 rows an address (the old one out, the
+// new one in with its index entry) and every partner page reads the addresses of all three lists. 1,000 keeps both
 // in a few thousand; the OFAC EVM list held 127 on 2026-11-13. 1,000 addresses are about 45 KB of JSON: the 64 KB of a body.
 export const MAX_ADDRESSES = 1_000
 const CHUNK = 99 // D1 binds at most 100 values per statement: the list code and 99 addresses

@@ -6,7 +6,7 @@ import { encodeFunctionResult, parseAbi } from 'viem'
 import { mnemonicToAccount } from 'viem/accounts'
 import { signedByKey, verifyDigest } from '../src/server/chain.ts'
 import * as data from '../src/server/data.ts'
-import { sync } from '../src/server/onboarding.ts'
+import { MAX_ADDRESSES, sync } from '../src/server/onboarding.ts'
 import { configFor, newChallenge, seal, unseal, verifyAssertion, verifyRegistration } from '../src/server/passkeys.ts'
 import { softwareAuthenticator } from './authenticator.ts'
 
@@ -68,7 +68,7 @@ const step = {
   assertion: await cpu('passkey assertion (verifyAssertion, ES256)', () => verifyAssertion(config, assertion, { id: stored.id, public_key: stored.publicKey, counter: 0 }, async () => true)),
   registration: await cpu('passkey registration (verifyRegistration, ES256)', () => verifyRegistration(config, registration, async () => true)),
   daily127: await cpu('daily run, a list file of 127 addresses (OFAC EVM today)', await dailyOf(127)),
-  daily20000: await cpu('daily run, a list file of 20,000 addresses (the most a load takes)', await dailyOf(20_000)),
+  dailyMax: await cpu(`daily run, a list file of ${MAX_ADDRESSES.toLocaleString('en')} addresses (the most a load takes)`, await dailyOf(MAX_ADDRESSES)),
   audit: (await cpu(`audit chain of ${ROWS} rows (verifyAudit)`, () => data.verifyAudit(fakeDb, 'o'))) / ROWS,
 }
 // The heaviest invocation of each kind, from its steps. A partner's Overview recovers each linked wallet (partner.ts, at most 10 asked).
@@ -82,7 +82,7 @@ const invocations = {
 }
 // proof_by (migration 0016): a link written since then is recovered nowhere on a partner's Overview; a row written before costs one.
 console.log(`a partner's Overview, 10 wallets linked before proof_by: ${(10 * step.recovery).toFixed(1)} ms (since proof_by: no recovery)`)
-console.log(`a list file of 20,000 addresses: ${step.daily20000.toFixed(1)} ms (not a check: the OFAC EVM list holds 127)`)
+console.log(`a list file of ${MAX_ADDRESSES.toLocaleString('en')} addresses: ${step.dailyMax.toFixed(1)} ms (not a check: the OFAC EVM list holds 127)`)
 console.log(`\nper audit row: ${(step.audit * 1000).toFixed(1)} us; a chain passes 10 ms of CPU here at about ${Math.floor(10 / step.audit)} rows`)
 let failed = false
 for (const [name, ms] of Object.entries(invocations)) {
