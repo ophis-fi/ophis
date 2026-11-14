@@ -52,11 +52,16 @@ let now = START
 // ---- the Free plan of Cloudflare Workers (ARCHITECTURE.md, "Free plan"): every invocation of this suite is metered ----
 // d1: one per round trip to the database (D1DatabaseSession._wrappedFetch: once per first, all, run or raw, once per
 // batch whatever its statements, once per exec, a failed one too). fetch: every fetch() (external subrequests).
-// internal: the R2 calls and the static files (subrequests to Cloudflare services). Section K checks the largest of each.
-// Two invocations in flight at once share their counts: an overcount, never an undercount.
-const FREE = { d1: 50, fetch: 50, internal: 1000 }
-type Count = { d1: number; fetch: number; internal: number }
-const counts: Count = { d1: 0, fetch: 0, internal: 0 }
+// internal: the R2 calls and the static files (subrequests to Cloudflare services). read, written: the rows D1 reports
+// in the meta of each result. Section K checks the largest of each. Two invocations in flight at once share their
+// counts: an overcount, never an undercount.
+// Rows are limited per day (5,000,000 read, 100,000 written; past either every query fails until 00:00 UTC), not per
+// invocation. A route of the members or a page may use a thousandth of a day: 5,000 read, 100 written. The operator's
+// routes and the daily run, a few a day, may read 50,000 and write 5,000 (a load of a whole list writes about 4,000).
+const FREE = { d1: 50, fetch: 50, internal: 1000, read: 5000, written: 100 }
+const RARE = { read: 50_000, written: 5000 }
+type Count = { d1: number; fetch: number; internal: number; read: number; written: number }
+const counts: Count = { d1: 0, fetch: 0, internal: 0, read: 0, written: 0 }
 const metered = new Map<string, Count>()
 // The jobs that answered 2xx at least once (a job that is no request, the daily run, always counts): section K requires
 // one for every route, so that a route the suite only drives to a refusal is not taken as measured.
@@ -74,6 +79,20 @@ function tally(object: object, names: string[], field: keyof Count) {
   }
 }
 tally((db as unknown as { alwaysPrimarySession: object }).alwaysPrimarySession, ['_wrappedFetch'], 'd1')
+{
+  // The rows: D1DatabaseSession._send answers the result of each statement of a round trip, with its meta.
+  let owner = (db as unknown as { alwaysPrimarySession: Record<string, (...args: unknown[]) => Promise<unknown>> }).alwaysPrimarySession
+  while (!Object.hasOwn(owner, '_send')) owner = Object.getPrototypeOf(owner)
+  const send = owner._send
+  owner._send = async function (this: unknown, ...args: unknown[]) {
+    const results = await send.apply(this, args)
+    if (inFlight) for (const r of [results].flat() as { meta?: { rows_read?: number; rows_written?: number } }[]) {
+      counts.read += r?.meta?.rows_read ?? 0
+      counts.written += r?.meta?.rows_written ?? 0
+    }
+    return results
+  }
+}
 tally(env.SEALED, ['head', 'get', 'put', 'delete', 'list', 'createMultipartUpload'], 'internal')
 tally(ASSETS, ['fetch'], 'internal')
 let realFetch = globalThis.fetch
@@ -87,8 +106,8 @@ async function meter<T>(job: string, run: () => Promise<T>) {
     return result
   } finally {
     if (--inFlight === 0 && globalThis.fetch === countingFetch) globalThis.fetch = realFetch
-    const seen = metered.get(job) ?? { d1: 0, fetch: 0, internal: 0 }
-    metered.set(job, { d1: Math.max(seen.d1, counts.d1 - start.d1), fetch: Math.max(seen.fetch, counts.fetch - start.fetch), internal: Math.max(seen.internal, counts.internal - start.internal) })
+    const seen = metered.get(job)
+    metered.set(job, Object.fromEntries((Object.keys(counts) as (keyof Count)[]).map((k) => [k, Math.max(seen?.[k] ?? 0, counts[k] - start[k])])) as Count)
   }
 }
 // The route a request reaches: its row of the route table (or of the operator's), else a page or a refused path.
@@ -7576,20 +7595,21 @@ describe('E. onboarding: a company applies, proves its domain, is activated and 
     const sorted = <T extends { id: string; address?: string }>(hits: T[]) => [...hits].sort((x, y) => `${x.id}${x.address}`.localeCompare(`${y.id}${y.address}`))
     const hitsOf = (answer: { body: { hits: Hit[] } }) => sorted(answer.body.hits)
 
-    it('S3a: an address list is loaded whole or not at all: a list code of the three, the SHA-256 of its file, 1 to 20,000 distinct addresses in lower case; a load replaces that list and leaves the others alone', async () => {
+    it('S3a: an address list is loaded whole or not at all: a list code of the three, the SHA-256 of its file, 1 to 1,000 distinct addresses in lower case; a load replaces that list and leaves the others alone', async () => {
       const [A, B, C] = [someAddress(), someAddress(), someAddress()]
       const rows = await snapshot()
       const bad: [unknown, unknown, Record<string, unknown>?][] = [
         ['sdn', [A]], [undefined, [A]], [['ofac'], [A]], ['OFAC', [A]], ['ofac', [A], { sha256: undefined }], ['ofac', [A], { sha256: H('f').slice(1) }], ['ofac', [A], { sha256: H('F') }], ['ofac', [A], { sha256: [H('f')] }],
         ['ofac', undefined], ['ofac', A], ['ofac', { 0: A }], ['ofac', []], ['ofac', [A, A]], ['ofac', [A, B, A]], ['ofac', [A, 7]], ['ofac', [[A]]], ['ofac', [A.slice(0, 41)]], ['ofac', [`${A}0`]],
-        ['ofac', [A.replace('0x', '0X')]], ['ofac', [`0x${'AB'.repeat(20)}`]], ['ofac', [A.slice(2)]], ['ofac', [` ${A}`]], ['ofac', numbered(20_001)],
+        ['ofac', [A.replace('0x', '0X')]], ['ofac', [`0x${'AB'.repeat(20)}`]], ['ofac', [A.slice(2)]], ['ofac', [` ${A}`]], ['ofac', numbered(onboarding.MAX_ADDRESSES + 1)],
       ]
       for (const [list, addresses, more] of bad) expect((await load(list, addresses, more)).body, JSON.stringify([list, more, addresses]).slice(0, 120)).toEqual({ error: 'invalid' })
       expect(await snapshot()).toBe(rows)
-      // 20,000 are taken, in chunks, in one batch. The body is about 900 KB: this route reads up to 1.5 MB, every other route of the operator 64 KB.
-      expect((await load('un', numbered(20_000))).body).toEqual({ list: 'un', entries: 20_000, hits: [] })
-      expect((await row<{ n: number; one: number }>(`SELECT count(*) AS n, count(DISTINCT address) AS one FROM sanctioned_addresses WHERE list = 'un'`))).toEqual({ n: 20_000, one: 20_000 })
-      expect((await load('un', numbered(40_000))).status).toBe(413)
+      // 1,000 are taken, in chunks, in one batch. Their body is about 45 KB: every route of the operator reads 64 KB at most.
+      const MAX = onboarding.MAX_ADDRESSES
+      expect((await load('un', numbered(MAX))).body).toEqual({ list: 'un', entries: MAX, hits: [] })
+      expect((await row<{ n: number; one: number }>(`SELECT count(*) AS n, count(DISTINCT address) AS one FROM sanctioned_addresses WHERE list = 'un'`))).toEqual({ n: MAX, one: MAX })
+      expect((await load('un', numbered(2 * MAX))).status).toBe(413)
       expect((await op('POST', '/api/operator/invites', { body: { pad: 'x'.repeat(70_000) } })).status).toBe(413)
       expect((await load('un', [A])).body).toEqual({ list: 'un', entries: 1, hits: [] })
       // A load replaces its own list and no other, with what was loaded and when.
@@ -7873,7 +7893,7 @@ describe('E. onboarding: a company applies, proves its domain, is activated and 
         ['no made', { ...good, made: undefined }], ['made as a day', { ...good, made: '2026-11-10' }], ['made with milliseconds', { ...good, made: '2026-11-10T09:00:00.000Z' }], ['made with no Z', { ...good, made: '2026-11-10T09:00:00' }],
         ['made at an hour that does not exist', { ...good, made: '2026-11-10T24:00:00Z' }], ['made on a day that does not exist', { ...good, made: '2026-02-31T09:00:00Z' }], ['made over a day ahead', { ...good, made: isoOf(now + DAY + 1000) }], ['made as a number', { ...good, made: now }],
         ['a count that is not the number of addresses', { ...good, count: 2 }], ['a count as text', { ...good, count: '5' }], ['no address', { ...good, count: 0, addresses: [] }], ['addresses that are no array', { ...good, count: 42, addresses: A }],
-        ['an upper-case address', { ...good, addresses: [A, W, C, D, `0x${'AB'.repeat(20)}`] }], ['an address twice', { ...good, addresses: [A, W, C, D, A] }], ['20,001 addresses', { ...good, count: 20_001, addresses: numbered(20_001) }],
+        ['an upper-case address', { ...good, addresses: [A, W, C, D, `0x${'AB'.repeat(20)}`] }], ['an address twice', { ...good, addresses: [A, W, C, D, A] }], ['one address more than a load takes', { ...good, count: onboarding.MAX_ADDRESSES + 1, addresses: numbered(onboarding.MAX_ADDRESSES + 1) }],
         ['null', null], ['an array', [good]], ['a text', 'ofac'], ['not JSON', new Response('<html>')], ['status 500', new Response(JSON.stringify(good), { status: 500 })],
         ['a redirect', new Response(null, { status: 302, headers: { location: 'https://evil.example/ofac.json' } })], ['more than 2 MB', new Response(JSON.stringify({ ...good, pad: 'x'.repeat(2_000_000) }))],
         ['no answer', () => Promise.reject(new TypeError('fetch failed'))], ['an answer after the time limit', (init: RequestInit) => new Promise((_, reject) => init.signal!.addEventListener('abort', () => reject(init.signal!.reason)))],
@@ -10009,6 +10029,17 @@ describe('J. the real desk: terms from a live quote, two people, then the wallet
 describe('K. the Free plan of Cloudflare Workers', () => {
   const JOBS = ['daily run (cron)']
   it('no invocation passes the Free limits: 50 D1 queries, 50 subrequests, 1,000 to Cloudflare services; listed organisations past the first 5 are frozen by the next runs', async () => {
+    // The address lists at their largest: three of MAX_ADDRESSES, which every partner page below sends the indexer, the
+    // OFAC one loaded twice, so that the second load replaces every address of the first (the most a load writes).
+    const TOKEN = `operator-${crypto.randomUUID()}${crypto.randomUUID()}`
+    const operator = (method: string, path: string, body?: unknown) => handle(new Request(`${onboarding.OPERATOR.local}${path}`, {
+      method, body: body === undefined ? undefined : JSON.stringify(body),
+      headers: { 'sec-fetch-site': 'same-origin', authorization: `Bearer ${TOKEN}`, ...(body !== undefined && { origin: onboarding.OPERATOR.local, 'content-type': 'application/json' }) },
+    }), { ...testEnv, OPERATOR_TOKEN: TOKEN } as Env, () => now)
+    for (const list of ['eu', 'un', 'ofac', 'ofac']) {
+      expect((await operator('POST', '/api/operator/sanctions', { list, sha256: 'd'.repeat(64), addresses: Array.from({ length: onboarding.MAX_ADDRESSES }, someAddress) })).status, list).toBe(200)
+    }
+
     // 20 partner organisations of 10 linked wallets each: every page, with the figures of the indexer.
     const partners: (Member & { wallets: string[] })[] = []
     for (let i = 0; i < 20; i++) {
@@ -10028,12 +10059,15 @@ describe('K. the Free plan of Cloudflare Workers', () => {
     // The real desk: 25 sent orders still open in one institution, each filled at the orderbook (the order and its trade each).
     const institution = await owner('Desk load')
     await setOrg(institution.orgId, `kind = 'institution'`)
+    // Terms as the desk files them, enough for the words of the blotter: each order sells USDC for WETH on OP Mainnet.
+    const terms = JSON.stringify({ type: 'market', chainId: 10, walletId: data.randomId(), wallet: accounts[1].address, label: 'Desk wallet', scheme: 'eip712', sell: { symbol: 'USDC', token: USDC_OP, amount: '1' },
+      buy: { symbol: 'WETH', token: WETH_OP, minimum: '1' }, quoted: '1', slippageBips: 50, limitPrice: null, validFor: 1800, appData: '{}', appDataHash: `0x${'0'.repeat(64)}` })
     const sendOrders = async (n: number) => {
       for (let i = 0; i < n; i++) {
         const [id, uid] = [data.randomId(), `0x${data.randomId()}${data.randomId()}${data.randomId()}${data.randomId().slice(0, 16)}`]
         await db.batch([
           db.prepare(`INSERT INTO approvals (id, org_id, action, subject_id, payload, payload_hash, requester_seat_id, state, expires_at, created_at) VALUES (?, ?, 'order', ?, ?, '', ?, 'applied', ?, ?)`)
-            .bind(id, institution.orgId, data.randomId(), JSON.stringify({ value: JSON.stringify({ chainId: 10, sell: { token: USDC_OP } }) }), institution.seatId, now + DAY, now),
+            .bind(id, institution.orgId, data.randomId(), JSON.stringify({ value: terms }), institution.seatId, now + DAY, now),
           db.prepare(`INSERT INTO orders (org_id, id, approved_at, uid, status, valid_to, sent_at) VALUES (?, ?, ?, ?, 'open', ?, ?)`).bind(institution.orgId, id, now, uid, Math.floor(now / 1000) + 3600, now),
         ])
         sent.set(uid, { from: accounts[1].address, sellAmount: '1', buyAmount: '1' })
@@ -10041,15 +10075,15 @@ describe('K. the Free plan of Cloudflare Workers', () => {
     }
     await sendOrders(25)
 
-    // The daily run: the list file names one wallet of each partner. FREEZES organisations a run, the others marked
-    // "later", and the state of 20 sent orders: the first run carries both halves at their largest.
+    // The daily run: the list file, at its largest, names one wallet of each partner. FREEZES organisations a run, the
+    // others marked "later", and the state of 20 sent orders: the first run carries both halves at their largest.
     await db.batch([db.prepare('DELETE FROM sanctioned_addresses'), db.prepare('DELETE FROM sanctions_lists')])
-    const listedAddresses = partners.map((p) => p.wallets[3])
+    const listedAddresses = [...partners.map((p) => p.wallets[3]), ...Array.from({ length: onboarding.MAX_ADDRESSES - partners.length }, someAddress)]
     const fed = { ...testEnv, SANCTIONS_URL: 'https://lists.test/ofac.json' } as Env
     const asked = book({ state: 'fulfilled' })
     const orderbook = globalThis.fetch
     vi.stubGlobal('fetch', async (input: RequestInfo | URL, init?: RequestInit) => (String(input) === fed.SANCTIONS_URL
-      ? Response.json({ list: 'ofac', published: '2026-11-09', made: `${new Date(now).toISOString().slice(0, 19)}Z`, sha256: 'c'.repeat(64), count: 20, addresses: listedAddresses })
+      ? Response.json({ list: 'ofac', published: '2026-11-09', made: `${new Date(now).toISOString().slice(0, 19)}Z`, sha256: 'c'.repeat(64), count: listedAddresses.length, addresses: listedAddresses })
       : orderbook(input, init)))
     const frozenNow = async () => (await db.prepare(`SELECT count(*) AS n FROM organisations WHERE state = 'frozen' AND id IN (${partners.map(() => '?').join(', ')})`).bind(...partners.map((p) => p.orgId)).first<{ n: number }>())!.n
     for (let run = 1; run <= 4; run++) {
@@ -10071,15 +10105,14 @@ describe('K. the Free plan of Cloudflare Workers', () => {
         db.prepare(`INSERT INTO wallets (id, org_id, chain_id, address, kind, label, state, proof_nonce, proof_digest, proof_signature, proof_checked_at, linked_at) VALUES (?, ?, ?, ?, 'safe', 'Treasury', 'pending', ?, '0x', '0x', ?, ?)`).bind(data.randomId(), orgId, CHAIN, address, data.randomId(), now, now),
       ])
     }
-    const TOKEN = `operator-${crypto.randomUUID()}${crypto.randomUUID()}`
-    const listed = await handle(new Request(`${onboarding.OPERATOR.local}/api/operator/organisations`, { headers: { 'sec-fetch-site': 'same-origin', authorization: `Bearer ${TOKEN}` } }), { ...testEnv, OPERATOR_TOKEN: TOKEN } as Env, () => now)
+    const listed = await operator('GET', '/api/operator/organisations')
     const body = (await listed.json()) as { organisations: { wallet: { colour: { level: string } } }[]; more: number }
     expect([body.organisations.length, body.organisations.map((o) => o.wallet.colour.level), body.more >= 17]).toEqual([onboarding.UNDER_REVIEW, ['amber', 'amber', 'amber'], true]) // read on the chain: a Safe not yet in force
 
     // Reading the desk asks for 10 of the institution's 15 open orders (the order and its trade each).
     await sendOrders(15)
     const desk = book({ state: 'fulfilled' })
-    await call('GET', '/api/desk', { cookie: institution.cookie })
+    expect((await call('GET', '/api/desk', { cookie: institution.cookie })).status).toBe(200)
     expect(desk.length).toBe(20)
 
     // An institution's Overview with 11 linked wallets on Ethereum: the 10 linked first, whose 5 assets are one aggregate3
@@ -10109,6 +10142,7 @@ describe('K. the Free plan of Cloudflare Workers', () => {
     // Every route of both tables and every job answered 2xx at least once, and no invocation passed a limit.
     const jobs = [...routes, ...onboarding.operatorRoutes].map((r) => `${r.method} ${r.path}`).concat(JOBS)
     expect(jobs.filter((job) => !answered.has(job)), 'never answered 2xx: run the whole file').toEqual([])
-    expect([...metered].filter(([, c]) => c.d1 > FREE.d1 || c.fetch > FREE.fetch || c.d1 + c.internal > FREE.internal)).toEqual([])
+    const rows = (job: string) => (JOBS.includes(job) || onboarding.operatorRoutes.some((r) => `${r.method} ${r.path}` === job) ? RARE : FREE)
+    expect([...metered].filter(([job, c]) => c.d1 > FREE.d1 || c.fetch > FREE.fetch || c.d1 + c.internal > FREE.internal || c.read > rows(job).read || c.written > rows(job).written)).toEqual([])
   })
 })

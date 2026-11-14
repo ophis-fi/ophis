@@ -142,7 +142,7 @@ export async function figures(env: Settings, orgId: string, now: number): Promis
   if (!asked.length) return { state: 'no_wallet' }
   if (!(await data.countHour(env.DB, `figures:${orgId}`, now, INDEXER.perHour))) return { state: 'figures_rate' }
   const contract = Object.fromEntries(asked.filter((a) => !rows.get(a)!.key).map((a) => [a, rows.get(a)!.chains]))
-  // ponytail: every listed address in each read (OFAC holds about 130 EVM addresses); a hash set at the indexer if the lists reach thousands.
+  // ponytail: every listed address in each read, at most 3,000 rows (MAX_ADDRESSES a list; OFAC holds about 130 EVM addresses). A hash set at the indexer if the lists must hold more.
   const held = await data.sanctionsHeld(env.DB)
   try {
     const response = await fetch(`${base}/business/partner`, {

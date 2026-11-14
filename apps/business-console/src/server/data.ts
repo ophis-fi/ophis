@@ -601,8 +601,9 @@ export function stopReplacement(db: D1Database, credential: StoredCredential, co
       const rollback = [...under].flatMap((seat) => {
         const of = links.get(seat)!
         const first = of.findLastIndex((e) => !e.bad) + 1
+        // INDEXED BY: for the OR, SQLite would read every passkey with no ticket, of every organisation (the rows of D1 Free).
         return [
-          ...of.flatMap((e, i) => (!e.bad ? [] : [db.prepare(`UPDATE credentials SET state = 'revoked' WHERE org_id = ? AND seat_id = ? AND state <> 'revoked' AND (id = ? OR (ticket_id IS NULL AND created_at >= ? AND created_at < ?))`)
+          ...of.flatMap((e, i) => (!e.bad ? [] : [db.prepare(`UPDATE credentials INDEXED BY credentials_by_seat SET state = 'revoked' WHERE org_id = ? AND seat_id = ? AND state <> 'revoked' AND (id = ? OR (ticket_id IS NULL AND created_at >= ? AND created_at < ?))`)
             .bind(orgId, seat, e.id, e.at, of[i + 1]?.at ?? Number.MAX_SAFE_INTEGER)])),
           ...(first === of.length ? [] : [db.prepare(`UPDATE credentials SET state = 'active', stop_right_until = NULL WHERE org_id = ? AND seat_id = ? AND state = 'suspended' AND stop_right_until = ?`)
             .bind(orgId, seat, of[first].at + quarantineMs(of[first].role))]),

@@ -38,8 +38,10 @@ export { LISTS }
 const OUTCOMES = ['clear', 'review', 'hit']
 const SHA256 = /^[0-9a-f]{64}$/
 const ADDRESS = /^0x[0-9a-f]{40}$/
-const MAX_ADDRESSES = 20_000 // of one list
-const MAX_LIST_BODY = 1_500_000 // 20,000 addresses are about 900 KB of JSON
+// Of one list. The rows of D1 Free are counted per day: a load writes about 4 rows an address (the old ones out, the
+// new in, each with its index entry) and every partner page reads the addresses of all three lists. 1,000 keeps both
+// in a few thousand; the OFAC EVM list held 127 on 2026-11-13. 1,000 addresses are about 45 KB of JSON: the 64 KB of a body.
+export const MAX_ADDRESSES = 1_000
 const CHUNK = 99 // D1 binds at most 100 values per statement: the list code and 99 addresses
 // M10: the OFAC list as a file the console reads (SANCTIONS_URL; made by scripts/ofac-list.mjs). One GET, 5 seconds, 2 MB.
 // hold: a file that lacks, or adds, more than a fifth of the loaded addresses is not loaded. staleMs: no good read, or a file made, for 3 days is said to the operator.
@@ -54,7 +56,7 @@ const madeOk = (value: unknown, now: number): value is string => {
   const ms = typeof value === 'string' && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$/.test(value) ? Date.parse(value) : NaN
   return ms <= now + 24 * 60 * 60 * 1000 && `${new Date(ms).toISOString().slice(0, 19)}Z` === value
 }
-/** The addresses of one load, checked: 1 to 20,000, each 0x and 40 hex characters in lower case, none twice. */
+/** The addresses of one load, checked: 1 to 1,000, each 0x and 40 hex characters in lower case, none twice. */
 const listable = (addresses: unknown): addresses is string[] => Array.isArray(addresses) && addresses.length >= 1 && addresses.length <= MAX_ADDRESSES
   && addresses.every((address) => typeof address === 'string' && ADDRESS.test(address)) && new Set(addresses).size === addresses.length
 
@@ -867,7 +869,7 @@ async function screen(c: Ctx) {
   return outcome === 'active' || outcome === 'frozen' ? json(200, { state: outcome }) : refuse(outcome)
 }
 // S3a. POST /api/operator/sanctions with {list, sha256, addresses}: the addresses the command took from one list file, and
-// the SHA-256 of that file. 1 to 20,000 of them, each 0x and 40 hex characters in lower case, none twice. An empty load
+// the SHA-256 of that file. 1 to 1,000 of them, each 0x and 40 hex characters in lower case, none twice. An empty load
 // is refused, so that a file the command could not read never empties the list.
 async function loadList(c: Ctx) {
   // M10: `published`, when the command found the publish day of an official XML in the file: kept, so that the daily read of the list file never rolls this load back.
@@ -911,7 +913,7 @@ const freeze = (frozen: boolean) => async (c: Ctx) => {
   return outcome === 'ok' ? json(200, { state: frozen ? 'frozen' : 'active' }) : refuse(outcome)
 }
 
-export const operatorRoutes: { method: 'GET' | 'POST'; path: string; handler: (c: Ctx) => Promise<Response>; maxBody?: number }[] = [
+export const operatorRoutes: { method: 'GET' | 'POST'; path: string; handler: (c: Ctx) => Promise<Response> }[] = [
   { method: 'GET', path: '/api/operator/organisations', handler: list },
   { method: 'POST', path: '/api/operator/organisations/:id/decision', handler: decide },
   { method: 'POST', path: '/api/operator/organisations/:id/freeze', handler: freeze(true) },
@@ -920,7 +922,7 @@ export const operatorRoutes: { method: 'GET' | 'POST'; path: string; handler: (c
   { method: 'GET', path: '/api/operator/organisations/:id/items', handler: items },
   { method: 'POST', path: '/api/operator/items/:id/download', handler: download },
   { method: 'POST', path: '/api/operator/organisations/:id/screening', handler: screen },
-  { method: 'POST', path: '/api/operator/sanctions', handler: loadList, maxBody: MAX_LIST_BODY },
+  { method: 'POST', path: '/api/operator/sanctions', handler: loadList },
   { method: 'POST', path: '/api/operator/sanctions/sync', handler: syncNow },
 ]
 
@@ -940,7 +942,7 @@ async function operate(request: Request, env: OperatorEnv, clock: () => number, 
   let body: Record<string, unknown> = {}
   if (request.method === 'POST') {
     if (!/^application\/json\s*(;|$)/i.test(request.headers.get('content-type') ?? '')) return fail(415, 'json_only')
-    const text = await readCapped(request.body, operatorRoutes[index].maxBody ?? MAX_BODY)
+    const text = await readCapped(request.body, MAX_BODY)
     if (text === null) return fail(413, 'too_large')
     try {
       body = JSON.parse(text)
