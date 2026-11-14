@@ -3345,9 +3345,10 @@ describe('w. the audit log page and its export', () => {
         : (target[name as keyof D1Database] as (...args: unknown[]) => unknown).bind(target)),
     })
     const at = async (recheck: number) => db.prepare(`UPDATE ${CHECKS} SET recheck_seq = ?, recheck_hash = ? WHERE org_id = ?`).bind(recheck, await hashAt(recheck), o.orgId).run()
-    // Behind on the checkpoint: it would write 600 and 0 (its sweep ends at 300).
+    // Behind on the checkpoint only: it would write 600.
     await at(data.OLD_ROWS)
-    expect(await data.verifyAudit(stale({ checked_seq: 300, checked_hash: await hashAt(300), recheck_seq: data.OLD_ROWS, recheck_hash: await hashAt(data.OLD_ROWS), sweep_seq: 300, sweep_hash: await hashAt(300), broken_seq: null }), o.orgId)).toMatchObject({ ok: true, rows: 600 })
+    const real = (await row<Record<string, unknown>>(`SELECT * FROM ${CHECKS} WHERE org_id = ?`, o.orgId))!
+    expect(await data.verifyAudit(stale({ ...real, checked_seq: 300, checked_hash: await hashAt(300) }), o.orgId)).toMatchObject({ ok: true, rows: 600 })
     expect(await checks(o.orgId)).toEqual({ checked_seq: head, recheck_seq: data.OLD_ROWS, broken_seq: null })
     // Behind on the re-check: it would write the head and 200.
     await at(2 * data.OLD_ROWS)
