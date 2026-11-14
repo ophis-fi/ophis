@@ -128,6 +128,21 @@ describe('upsertDefillamaFills', () => {
     expect(await source()).toBe('onchain_user');
   });
 
+  it('upgrades a verified receiver to the payer when only the source changes', async () => {
+    const at = { blockNumber: 82n, logIndex: 12, assessedFeeBps: '1.00000000', feeVerified: true };
+    const source = async () => (await sql<{ s: string | null }[]>`
+      SELECT user_source AS s FROM defillama_fills
+      WHERE chain_id = 100 AND block_number = 82 AND log_index = 12 AND trade_uid = decode(${UID.slice(2)}, 'hex')`)[0]!.s;
+    await upsertDefillamaFills([fill({ ...at, userSource: 'receiver' })]); // API record had no onchainUser
+    expect(await source()).toBe('receiver');
+    // A later verified write names the same wallet as the payer: address and fee unchanged, source upgraded.
+    await upsertDefillamaFills([fill({ ...at, userSource: 'onchain_user' })]);
+    expect(await source()).toBe('onchain_user');
+    // A verified write that has no payer again does not downgrade it.
+    await upsertDefillamaFills([fill({ ...at, userSource: 'receiver' })]);
+    expect(await source()).toBe('onchain_user');
+  });
+
   it('accepts the compounded canonical maximum but rejects values above 100.01 bps', async () => {
     await expect(upsertDefillamaFills([
       fill({ blockNumber: 88n, logIndex: 10, assessedFeeBps: '100.00990000', feeVerified: true }),

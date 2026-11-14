@@ -134,7 +134,10 @@ export async function upsertDefillamaFills(rows: PendingDefiLlamaFill[]): Promis
                      OR ${schema.defillamaFills.buyToken} IS NULL
                      OR ${schema.defillamaFills.buyAmount} IS NULL
                      OR (excluded.fee_verified = true
-                       AND ${schema.defillamaFills.userAddress} IS DISTINCT FROM excluded.user_address)`,
+                       AND ${schema.defillamaFills.userAddress} IS DISTINCT FROM excluded.user_address)
+                     -- The same wallet now known as the payer: upgrade only, so a payer is never downgraded.
+                     OR (excluded.fee_verified = true AND excluded.user_source = 'onchain_user'
+                       AND ${schema.defillamaFills.userSource} IS DISTINCT FROM 'onchain_user')`,
     });
 }
 
