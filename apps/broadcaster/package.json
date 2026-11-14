@@ -15,7 +15,7 @@
     "start": "node --max-old-space-size=2560 dist/main.mjs"
   },
   "dependencies": {
-    "@graphql-tools/utils": "9.2.1",
+    "@graphql-tools/utils": "12.0.2",
     "@noble/ed25519": "1.7.5",
     "@railgun-community/engine": "9.9.1",
     "@railgun-community/shared-models": "8.2.1",
