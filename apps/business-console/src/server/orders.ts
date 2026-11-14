@@ -228,7 +228,10 @@ export async function quote(env: Settings, t: Ticket, wallet: Wallet) {
     body: JSON.stringify({
       sellToken: s.token, buyToken: b.token, from, receiver: from, kind: 'sell', sellAmountBeforeFee: atoms.toString(), partiallyFillable: false,
       sellTokenBalance: 'erc20', buyTokenBalance: 'erc20', priceQuality: 'optimal', signingScheme: wallet.kind === 'safe' ? 'presign' : 'eip712', onchainOrder: false,
-      appData: data.full, appDataHash: data.hash, validFor: t.validFor,
+      // The Ophis orderbook of OP Mainnet refuses a key wallet's quote valid more than 3 hours (ExcessiveValidTo, read-only
+      // quotes of 2026-11-14). A quote's validity changes neither its price nor its appData, and the order's own expiry is
+      // fixed when the signing page first opens: so the quote asks for 3 hours at most, and the terms keep the validity picked.
+      appData: data.full, appDataHash: data.hash, validFor: Math.min(t.validFor, 10_800),
     }),
   })
   if (answer.status === 0 || answer.status === 429 || answer.status >= 500) return { error: 'quote_unavailable' }

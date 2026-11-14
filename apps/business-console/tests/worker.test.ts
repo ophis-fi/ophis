@@ -8361,8 +8361,10 @@ function book(o: { state?: string; buy?: string; twist?: (asked: Asked) => Respo
     asked.push(call)
     const twisted = o.twist?.(call)
     if (twisted) return twisted
-    const b = call.body as Record<string, string> & { validTo: number; orderUids: string[] }
+    const b = call.body as Record<string, string> & { validTo: number; validFor: number; orderUids: string[] }
     if (call.method === 'POST' && url.endsWith('/api/v1/quote')) {
+      // The Ophis orderbook of OP Mainnet, as it answered read-only quotes on 2026-11-14: a key wallet's quote valid more than 3 hours is refused.
+      if (chainId === 10 && b.signingScheme === 'eip712' && b.validFor > 10_800) return Response.json({ errorType: 'ExcessiveValidTo', description: 'validTo is too far into the future', code: 4012 }, { status: 400 })
       const real = realBook.quote.response.quote
       const whole = BigInt(b.sellAmountBeforeFee)
       const fee = (whole * BigInt(real.feeAmount)) / (BigInt(real.sellAmount) + BigInt(real.feeAmount))
@@ -9535,6 +9537,16 @@ describe('J. the real desk: terms from a live quote, two people, then the wallet
     expect(asked.at(-1)!.url).toBe('https://api.cow.fi/base/api/v1/quote')
     // A stable asset with one that is not: no stable pair, the share of a volatile pair.
     expect((await review(t, base, { chainId: 8453, sell: 'USDC', buy: 'WETH' })).body.terms).toMatchObject({ appData: orders.appData(8453, 'market', 50, false).full, fee: orders.fee(8453, false) })
+  })
+
+  it('OP Mainnet: the Ophis orderbook refuses a key wallet\'s quote valid more than 3 hours, so a quote asks for 3 hours at most; the terms keep the validity picked', async () => {
+    const { t, walletId } = await deskTeam()
+    const asked = book()
+    for (const validFor of orders.VALIDITY) {
+      const r = await review(t, walletId, { validFor })
+      expect([r.status, r.body.terms?.validFor, r.body.words?.valid], String(validFor)).toEqual([200, validFor, `${validFor === 1800 ? '30 minutes' : `${validFor / 3600} hours`} after signing`])
+      expect(asked.at(-1)!.body!.validFor, String(validFor)).toBe(Math.min(validFor, 10_800))
+    }
   })
 
   it('every ticket check, one by one, with hostile values: nothing is written and no quote is asked for', async () => {

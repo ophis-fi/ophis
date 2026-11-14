@@ -49,6 +49,8 @@ export function start() {
         return answer(encodeFunctionResult({ abi: MULTICALL, functionName: 'aggregate3', result: call.args[0].map((c) => ({ success: true, returnData: encodeFunctionResult({ abi: MULTICALL, functionName: 'balanceOf', result: balanceOf(c.target.toLowerCase()) }) })) }))
       }
       if (request.method === 'POST' && path === '/api/v1/quote') {
+        // The Ophis orderbook of OP Mainnet, as it answered read-only quotes on 2026-11-14: a key wallet's quote valid more than 3 hours is refused.
+        if (chainId === '10' && body.signingScheme === 'eip712' && body.validFor > 10_800) return send(400, { errorType: 'ExcessiveValidTo', description: 'validTo is too far into the future', code: 4012 })
         // The real quote, for the asked tokens and amount: its fee and buy amount in the real proportion to what it sells.
         const real = REAL.quote.response.quote
         const whole = BigInt(body.sellAmountBeforeFee)
