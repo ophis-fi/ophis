@@ -378,7 +378,12 @@ cost two subrequests where the meter counted one; no fetch follows one now. The 
 measure; now every route must answer 2xx once, and the first daily run carries its 5 freezes and 20 order reads. The
 rows were not counted: a partner page read every address of the three lists (60,058 rows at 20,000 a list), a load
 wrote 60,001, and the stop of a recovery read the passkeys of every organisation (6,508 here, the OR of one statement):
-the list now holds 1,000, and that statement names its index.
+the list now holds 1,000, and that statement names its index. Proof: 9 single mutations, each file restored with git
+checkout and clean after, all caught: the retry in `sync()` removed (both G1 tests); `redirect: 'manual'` removed from
+`rpc()`, then from `lookup()` (the 308 and the 302 cases); a route made to refuse always (K names it; with the old check
+K passed); the 20 orders of the daily run raised to 25 (51 `fetch`, K's limit check); the cap back at 20,000 (S3a, K);
+the `INDEXED BY` removed (6,508 rows read, K); the body cap of the operator's load raised again (S3a); the cap check
+off by one (S3a, T2). Unit 452, end-to-end 270 checks, `test:chain` 121, tour check passed.
 
 **CPU, a proxy.** `pnpm test:cpu` (tests/cpu.mjs) times the heavy pure-JS steps in Node on this machine (Apple M4),
 not on the Workers meter. One run: signature recovery 0.98 ms, the ERC-1271 path 0.09 ms, unseal of an intent 0.05 ms,

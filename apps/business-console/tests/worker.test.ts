@@ -10028,7 +10028,7 @@ describe('J. the real desk: terms from a live quote, two people, then the wallet
 // in it by its row; a new job (a cron, a queue) is driven through meter() and named in JOBS, one line.
 describe('K. the Free plan of Cloudflare Workers', () => {
   const JOBS = ['daily run (cron)']
-  it('no invocation passes the Free limits: 50 D1 queries, 50 subrequests, 1,000 to Cloudflare services; listed organisations past the first 5 are frozen by the next runs', async () => {
+  it('no invocation passes the Free limits: 50 D1 queries, 50 subrequests, 1,000 to Cloudflare services, its share of the D1 rows of a day; listed organisations past the first 5 are frozen by the next runs', async () => {
     // The address lists at their largest: three of MAX_ADDRESSES, which every partner page below sends the indexer, the
     // OFAC one loaded twice, so that the second load replaces every address of the first (the most a load writes).
     const TOKEN = `operator-${crypto.randomUUID()}${crypto.randomUUID()}`
