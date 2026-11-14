@@ -187,7 +187,7 @@ Three windows are open, each signed in. Test data only.
                            one of them is on the test OFAC list, so a red alert names it.
   2 Institution, Owner     Desk: fill the ticket, "Review order" (a quote of the local stand-in orderbook), then send it for approval.
                            Overview: the balances of its "Demo wallet" and "Demo Safe", read on the stand-in's test endpoints.
-  3 Institution, Approver  Organisation, Approvals: approve or refuse that order.
+  3 Institution, Approver  Organisation, Approvals: approve or refuse that order, within 1 hour.
 Compliance, in windows 1 and 2: the sanctions screening the operator's command recorded, and the list it read.
 Passkey checks in these three tabs answer by themselves (test keys). A new tab or window has no key.
 Press Ctrl+C here, or quit that Chrome, to close the windows and stop the server.`)

@@ -986,6 +986,7 @@ export async function orderSent(db: D1Database, r: Opening, o: { uid: string; si
   return outcome
 }
 /** What the organisation's other open orders of this wallet still need of the asset this order sells, on its chain, in atoms: the allowance they rely on. */
+// ponytail: reads every order of the organisation (no index on the status). An index on (org_id, status) once a desk keeps thousands.
 export async function reserved(db: D1Database, r: Opening, now: number) {
   const { results } = await db.prepare(`SELECT json_extract(v, '$.sell.amount') AS amount FROM (SELECT json_extract(a.payload, '$.value') AS v FROM orders o JOIN approvals a ON a.org_id = o.org_id AND a.id = o.id
                                           WHERE o.org_id = ? AND o.status IN ('open', 'presignaturePending') AND o.valid_to * 1000 > ?)
