@@ -9084,7 +9084,7 @@ describe('I. partner figures: live', () => {
       ['days that are no list', set('wallets.0.breakdown.daily', { 0: P.breakdown.daily[0] })],
       ['91 days', set('wallets.0.breakdown.daily', Array.from({ length: 91 }, (_, i) => ({ ...P.breakdown.daily[0], day: new Date(Date.UTC(2026, 7, 15) + i * DAY).toISOString().slice(0, 10) })))],
       ['a day in another form', set('wallets.0.breakdown.daily.0.day', '20/08/2026')],
-      ['a day that does not exist', set('wallets.0.breakdown.daily.1.day', '2026-09-31')],
+      ['a day that does not exist', set('wallets.0.breakdown.daily.3.day', '2026-09-31')], // between 09-15 and 10-05: only its being no day refuses it
       ['a day before the 90', set('wallets.0.breakdown.daily.0.day', '2026-08-14')],
       ['a day after asOf', set('wallets.0.breakdown.daily.10.day', '2026-11-13')],
       ['the days newest first', (a) => (a.wallets[0].breakdown.daily.reverse(), a)],
