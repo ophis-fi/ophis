@@ -302,7 +302,7 @@ driven through `meter()` and named in `JOBS`. The largest count of each, 2026-11
 |---|---|---|---|---|---|
 | The daily run (cron) | 26 | 41 (the list file, and 20 orders with the trade of each) | 0 | 1,938 | 2,042 (a first load of a list of 1,000, and 5 freezes) |
 | A page or a static file | 0 | 0 | 1 | 0 | 0 |
-| `GET /api/audit` | 5 (15 for three loads at the same instant, counted together) | 0 | 0 | 764 (a log of 10,000 rows) | 2 |
+| `GET /api/audit` | 5 (15 for three loads at the same instant, counted together) | 0 | 0 | 762 (a log of 10,000 rows) | 2 |
 | `GET /api/desk` | 6 | 20 | 0 | 406 | 10 |
 | `GET /api/export/:id` | 4 | 16 (the balances of wallets on 4 chains, past the cache) | 0 | 3,058 (a partner, as its Overview) | 2 |
 | `GET /api/me` | 7 | 0 | 0 | 163 | 1 |
@@ -399,10 +399,15 @@ a passkey assertion 0.16 ms, a registration 0.08 ms, the daily run on today's OF
 **Fixed on 2026-11-14: the audit page and its export.** The page verified the whole chain at each load (about 8 us a
 row here, so past 10 ms of CPU at about 1,200 rows), and both it and the export read every row (past the share of a
 route at about 5,000). Now the page verifies from a stored checkpoint, 500 rows at most a load (4.1 ms here; the Workers
-figure is not known, and a native hash takes 0.6 us a row), and reads them by their key, 764 rows read on a log of
+figure is not known, and a native hash takes 0.6 us a row), and reads them by their key, 762 rows read on a log of
 10,000; the export comes in pages of 500 rows (2,510 rows read a page). Rows read per page depend on the names each
 row resolves: a row whose subject is no seat, passkey, link, session or wallet also reads the organisation's approvals, for an order
-(ponytail: an organisation with thousands of approvals would need an index on their subject).
+(ponytail: an organisation with thousands of approvals would need an index on their subject). Three Codex passes
+found five defects, each fixed with a test: a removed block after the checkpoint hid the rest; a growing log outran the
+re-check; a boundary row put back between two loads was trusted; a delayed load skipped a link at the same numbers, or
+moved past a stored break. Proof: 23 single mutations of the check and the export, each file restored with git
+checkout after, all caught (in w, K, `test:cpu` for a load of 1,500 new rows, and e2e for a page that saves only the
+first answer). Unit 472, end-to-end 280 checks.
 
 **Not within the plan.** The shares hold
 the rows of a day at about 1,000 of the heaviest invocations: a day with many more requests (a script, a busy partner
