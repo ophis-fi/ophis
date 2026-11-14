@@ -291,7 +291,7 @@ export function stateOf(o: { state: string; open: boolean; approvedAt: number | 
   if (o.state === 'pending') return o.open ? 'Pending approval' : 'Expired'
   if (o.state === 'rejected' || o.status === 'refused') return 'Refused'
   if (o.state !== 'applied') return 'Cancelled'
-  if (!o.uid) return signBy(o) > now ? 'Approved: waiting for signature' : 'Expired'
+  if (!o.uid) return o.status === 'cancelled' ? 'Withdrawn' : signBy(o) > now ? 'Approved: waiting for signature' : 'Expired'
   if (o.status === 'presignaturePending') return 'Sent: waiting for the Safe transaction'
   if (o.status === 'fulfilled') return 'Filled'
   if (o.status === 'cancelled') return 'Cancelled'

@@ -1328,6 +1328,19 @@ try {
   await safeHome.close()
   await desk(tess)
   check('the blotter says the Safe order waits for the Safe transaction (the orderbook: presignature pending)', (await blotter(tess).first().textContent()).includes('Sent: waiting for the Safe transaction') && await both(tess.page, '70-desk-safe-pending'))
+
+  // One person withdraws an approved order before the wallet signs it, after a passkey check: its link stops working.
+  await approved('4')
+  const withdrawnLink = await linkOf('Signing link')
+  await record.getByRole('button', { name: 'Withdraw the order' }).click()
+  await record.getByText('Withdrawn', { exact: true }).waitFor()
+  const late = await keyWallet()
+  await late.page.goto(withdrawnLink)
+  await late.page.getByText('This link is not valid any more').waitFor()
+  check('a Trader withdraws an approved order from its record: the blotter and the record say Withdrawn, no link is offered, and the link given opens nothing',
+    (await blotter(tess).first().textContent()).includes('Withdrawn') && !(await record.getByRole('button', { name: /Signing link|Withdraw the order/ }).count())
+    && late.calls.length === 0 && await both(tess.page, '72-desk-withdrawn', '#record'))
+  await late.context.close()
   for (const who of [dana, tess, abe]) await who.context.close()
 
   // ---- partner figures: live ----
@@ -1630,7 +1643,7 @@ try {
   if (violations.length) console.error(violations.join("\n"))
   check(`no policy violation in the browser (${violations.length})`, violations.length === 0)
   check(`no request left the origin (${foreign.length})`, foreign.length === 0)
-  console.log('\nEnd-to-end run passed. Screenshots in .shots/: 01-signin to 71-sign-cancel')
+  console.log('\nEnd-to-end run passed. Screenshots in .shots/: 01-signin to 72-desk-withdrawn')
 } catch (error) {
   console.error(error.message)
   process.exitCode = 1

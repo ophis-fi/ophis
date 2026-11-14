@@ -1186,6 +1186,7 @@ describe('f. audit log', () => {
     // The real desk: the approval of an order writes its audit row, closes its request and makes its order row, together.
     order: { blocks: 'INSERT ON orders', prepare: async (m) => (book(), await setOrg(m.orgId, `kind = 'institution'`), { approver: await colleague(m, 'approver'), id: (await prepare(m, await demoWallet(m.orgId))).body.id as string }), run: (_, p) => decide(p.approver, p.id, 'approve') },
     'order.link': { blocks: 'UPDATE ON orders', prepare: (m) => approvedIn(m), run: (m, p) => orderLink(m, p.id) },
+    'order.withdraw': { blocks: 'UPDATE ON orders', prepare: (m) => approvedIn(m), run: (m, p) => post(`/api/desk/orders/${p.id}/withdraw`, m) },
     'order.open': { blocks: 'UPDATE ON orders', prepare: async (m) => orderLink(m, (await approvedIn(m)).id), run: (_, l) => orderPage(l.token) },
     'order.send': { blocks: 'UPDATE ON orders', prepare: (m) => opened(m), run: (_, p) => orderSend(p.token, p.signature) },
     'order.sanctioned': {
@@ -1306,7 +1307,7 @@ describe('f. audit log', () => {
       // /api/audit/export writes its audit row and nothing else: section w proves that no file leaves without the row.
       // Milestone 5: /api/apply and /api/onboarding/wallet write nothing; apply/check, onboarding/submit and onboarding/declaration are in section E.
       '/api/apply', '/api/apply/check',
-      '/api/approvals/:id/approve', '/api/approvals/:id/cancel', '/api/approvals/:id/reject', '/api/audit/export', '/api/desk/orders', '/api/desk/orders/:id/link',
+      '/api/approvals/:id/approve', '/api/approvals/:id/cancel', '/api/approvals/:id/reject', '/api/audit/export', '/api/desk/orders', '/api/desk/orders/:id/link', '/api/desk/orders/:id/withdraw',
       '/api/enrol/finish', '/api/enrol/start', '/api/members/:id/freeze', '/api/members/:id/remove', '/api/members/:id/role', '/api/members/:id/unfreeze',
       '/api/onboarding/declaration', '/api/onboarding/submit', '/api/onboarding/wallet',
       // The real desk: the signing page's read fixes the expiry (order.open), its send records the order (order.send, order.sanctioned, order.cancel).
@@ -1559,7 +1560,7 @@ describe('k. step-up: a fresh passkey check before a sensitive action', () => {
     const m3 = ['/api/approvals/:id/approve', '/api/approvals/:id/reject', '/api/members/:id/freeze', '/api/members/:id/remove', '/api/members/:id/role', '/api/members/:id/unfreeze']
     const m4 = ['/api/wallets/:id/anchor', '/api/wallets/:id/anchor/cancel', '/api/wallets/:id/unlink', '/api/wallets/intent']
     const m5 = ['/api/onboarding/declaration', '/api/onboarding/submit', '/api/onboarding/wallet']
-    expect(paths('fresh')).toEqual([...m3.slice(0, 2), '/api/audit/export', '/api/desk/orders/:id/link', ...m3.slice(2), ...m5, '/api/passkeys/:id/revoke', '/api/passkeys/finish', '/api/passkeys/start', '/api/policy', '/api/recovery/:id/cancel', '/api/recovery/:id/object', '/api/tickets', '/api/tickets/:id/cancel', ...m4])
+    expect(paths('fresh')).toEqual([...m3.slice(0, 2), '/api/audit/export', '/api/desk/orders/:id/link', '/api/desk/orders/:id/withdraw', ...m3.slice(2), ...m5, '/api/passkeys/:id/revoke', '/api/passkeys/finish', '/api/passkeys/start', '/api/policy', '/api/recovery/:id/cancel', '/api/recovery/:id/object', '/api/tickets', '/api/tickets/:id/cancel', ...m4])
     // Confirming carries its own passkey check, made for the ticket.
     expect(paths('twoKeys')).toEqual([...m3, ...m5, '/api/passkeys/:id/revoke', '/api/policy', '/api/tickets', '/api/tickets/:id/cancel', '/api/tickets/:id/confirm', '/api/tickets/:id/confirm/start', ...m4])
     expect(routes.filter((route) => (route.fresh || route.twoKeys || route.settled || route.second) && route.roles === 'public')).toEqual([])
@@ -2578,7 +2579,8 @@ describe('r. the role table', () => {
       'POST /api/recovery/:id/cancel': 'owner fresh', 'POST /api/recovery/:id/object': 'admin,approver,compliance fresh',
       'POST /api/support/ask': any,
       'GET /api/overview': any, 'GET /api/desk': any, 'POST /api/desk/orders': 'owner,admin,trader settled', 'GET /api/export/:id': any,
-      'POST /api/desk/orders/:id/link': 'owner,admin,trader,approver,compliance fresh settled', 'POST /api/order': 'public', 'POST /api/order/send': 'public',
+      'POST /api/desk/orders/:id/link': 'owner,admin,trader,approver,compliance fresh settled', 'POST /api/desk/orders/:id/withdraw': 'owner,admin,trader,approver,compliance fresh settled',
+      'POST /api/order': 'public', 'POST /api/order/send': 'public',
       'POST /api/apply': 'public', 'POST /api/apply/check': 'public',
       'GET /api/onboarding': 'owner,compliance', 'POST /api/onboarding/wallet': 'owner fresh twoKeys', 'POST /api/onboarding/submit': 'owner fresh twoKeys', 'POST /api/onboarding/declaration': 'owner fresh twoKeys',
     })
@@ -4529,7 +4531,7 @@ describe('B. last-Owner recovery by the recovery wallet', () => {
     for (const m of [a, v, admin]) await again(m)
     const people: Record<string, Holder> = { owner: { cookie: done.cookie }, admin, approver: a }
     const settled = routes.filter((route) => route.settled)
-    expect(settled.map((route) => route.path).sort()).toEqual(['/api/approvals/:id/approve', '/api/desk/orders', '/api/desk/orders/:id/link', '/api/members/:id/freeze', '/api/members/:id/remove', '/api/members/:id/role', '/api/members/:id/unfreeze', '/api/policy', '/api/wallets/:id/anchor', '/api/wallets/intent'])
+    expect(settled.map((route) => route.path).sort()).toEqual(['/api/approvals/:id/approve', '/api/desk/orders', '/api/desk/orders/:id/link', '/api/desk/orders/:id/withdraw', '/api/members/:id/freeze', '/api/members/:id/remove', '/api/members/:id/role', '/api/members/:id/unfreeze', '/api/policy', '/api/wallets/:id/anchor', '/api/wallets/intent'])
     for (const route of settled) {
       for (const [role, m] of Object.entries(people)) {
         if ((route.roles as string[]).includes(role)) expect((await call('POST', route.path.replace(':id', '0'.repeat(32)), { cookie: m.cookie })).body, `${role} ${route.path}`).toEqual({ error: 'quarantine' })
@@ -8481,6 +8483,19 @@ isolation['POST /api/desk/orders/:id/link'] = async (a, b) => {
   expect(await snapshot()).toBe(before)
   expect((await orderLink(a, id)).status).toBe(200)
 }
+// An approved order of A: a member of B cannot withdraw it.
+isolation['POST /api/desk/orders/:id/withdraw'] = async (a, b) => {
+  book()
+  for (const m of [a, b]) await setOrg(m.orgId, `kind = 'institution'`)
+  const approver = await colleague(a, 'approver')
+  const { id } = (await prepare(a, await demoWallet(a.orgId))).body
+  expect((await decide(approver, id, 'approve')).status).toBe(200)
+  await addKey(b)
+  const before = await snapshot()
+  expect((await post(`/api/desk/orders/${id}/withdraw`, b)).status).toBe(404)
+  expect(await snapshot()).toBe(before)
+  expect((await post(`/api/desk/orders/${id}/withdraw`, a)).body).toEqual({ state: 'withdrawn' })
+}
 // The signing page knows no organisation: a token opens its own order, and nothing names another's.
 isolation['POST /api/order'] = async (a, b) => {
   book()
@@ -8552,7 +8567,7 @@ const BASE_USDC = '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913'
 const held = (token: string, owner: string, atoms: bigint) => chain.balances.set(`${token}:${owner}`.toLowerCase(), atoms)
 
 describe('H. the institution: overview from its wallets and orders, the desk and its exports', () => {
-  for (const route of ['GET /api/desk', 'POST /api/desk/orders', 'GET /api/export/:id', 'POST /api/desk/orders/:id/link', 'POST /api/order', 'POST /api/order/send']) {
+  for (const route of ['GET /api/desk', 'POST /api/desk/orders', 'GET /api/export/:id', 'POST /api/desk/orders/:id/link', 'POST /api/desk/orders/:id/withdraw', 'POST /api/order', 'POST /api/order/send']) {
     it(`${route}: the isolation case`, async () => isolation[route](await member('Alder Asset Management'), await member('Birchfield Capital')))
   }
 
@@ -9768,6 +9783,34 @@ describe('J. the real desk: terms from a live quote, two people, then the wallet
     await again(t)
     expect((await orderLink(t, id)).status).toBe(404)
     expect((await deskOrders(t)).find((x) => x.id === id)!.state).toBe('Expired')
+  })
+
+  it('withdraw: one person, with a fresh passkey check, withdraws an approved order before the wallet signs it; its link dies, no link is given again, the blotter says Withdrawn; a sent order is never withdrawn', async () => {
+    const team = await deskTeam()
+    const asked = book()
+    const id = await approvedOrder(team)
+    const { token } = await orderLink(team.t, id)
+    await orderPage(token)
+    const withdraw = (m: Holder, order = id) => post(`/api/desk/orders/${order}/withdraw`, m)
+    await data.devStaleChecks(db, 'local')
+    expect((await withdraw(team.t)).body).toEqual({ error: 'step_up_required' })
+    await stepUp(team.t, team.t.key)
+    expect((await withdraw(team.t)).body).toEqual({ state: 'withdrawn' })
+    expect(await row('SELECT status, uid, link_hash, link_purpose FROM orders WHERE id = ?', id)).toEqual({ status: 'cancelled', uid: null, link_hash: null, link_purpose: null })
+    expect(await lastAudit(team.o.orgId)).toEqual({ action: 'order.withdraw', actor_id: team.t.seatId, subject_id: id, detail: null })
+    expect((await sayOf(team.o))[0]).toBe('Approved order withdrawn before the wallet signed it: its link no longer works')
+    expect((await deskOrders(team.t)).find((x) => x.id === id)).toMatchObject({ state: 'Withdrawn', signUntil: null })
+    for (const answer of [await orderPage(token), await orderSend(token, '0x')]) expect(answer.body).toEqual({ error: 'link_invalid' })
+    expect((await orderLink(team.t, id)).status).toBe(404)
+    expect((await withdraw(team.t)).status).toBe(404) // once
+    // A sent order is cancelled at the orderbook, never withdrawn.
+    await stepUp(team.a, team.a.key)
+    const sent = await approvedOrder(team, { amount: '9' })
+    expect((await signed((await orderLink(team.t, sent)).token)).answer.body.state).toBe('open')
+    const before = await snapshot()
+    expect((await withdraw(team.t, sent)).status).toBe(404)
+    expect(await snapshot()).toBe(before)
+    expect(asked.filter((x) => x.method === 'POST' && x.url.endsWith('/orders'))).toHaveLength(1)
   })
 
   it('the signing page: the order in words and as the wallet signs it, built by the server; its expiry is fixed at the first read and stored', async () => {

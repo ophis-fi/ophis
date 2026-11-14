@@ -927,6 +927,20 @@ export async function orderLink(db: D1Database, actor: Actor, id: string, purpos
   })
   return outcome
 }
+/** One person withdraws an approved order before the wallet signs it, as a freeze, since it only tightens: its link dies and no link is given again. */
+export async function orderWithdraw(db: D1Database, actor: Actor, id: string, now: number) {
+  let outcome = 'not_found'
+  await commit(db, actor.orgId, async () => {
+    const role = await roleNow(db, actor)
+    const r = await db.prepare(`${ORDER_ROW} WHERE o.org_id = ?1 AND o.id = ?3 AND ${LINK_LIVE}`).bind(actor.orgId, now, id, 'sign').first<OrderRow>()
+    outcome = !role || !(SIGNERS as readonly Role[]).includes(role) ? 'forbidden' : !r ? 'not_found' : 'ok'
+    if (outcome !== 'ok') return null
+    return [seatEntry(actor, now, 'order.withdraw', id), [
+      db.prepare(`UPDATE orders SET status = 'cancelled', link_hash = NULL, link_purpose = NULL WHERE org_id = ? AND id = ? AND uid IS NULL AND status IS NULL`).bind(actor.orgId, id),
+    ]]
+  })
+  return outcome
+}
 /** The order a link opens, while the link can be used, with the wallet of its terms if that wallet is still linked. */
 export const orderByLink = async (db: D1Database, tokenHash: string, now: number) => {
   const r = await db.prepare(`${ORDER_ROW} WHERE o.link_hash = ?1 AND ${LINK_LIVE}`).bind(tokenHash, now, null, null).first<OrderRow>()

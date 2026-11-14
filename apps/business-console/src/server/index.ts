@@ -621,6 +621,7 @@ export const EVENTS: Record<string, string> = {
   'order.link': 'Link issued to the signing page for an order',
   'order.link/sign': 'Signing link issued for an approved order',
   'order.link/cancel': 'Cancel link issued for an open order',
+  'order.withdraw': 'Approved order withdrawn before the wallet signed it: its link no longer works',
   'order.open': 'The signing page read the approved order: its expiry is fixed',
   'order.send': 'Order sent to the orderbook',
   'order.send/eip712': 'Order signed by the wallet and sent to the orderbook',
@@ -729,6 +730,11 @@ async function orderLink(c: Context) {
   const token = data.randomToken()
   const outcome = await data.orderLink(c.env.DB, c.actor, c.params.id ?? '', purpose, await data.sha256Hex(token), c.now)
   return outcome === 'ok' ? json(200, { link: `${c.config.signOrigin}/sign/#order.${token}` }) : refuse(outcome)
+}
+/** Withdraws an approved order that the wallet has not signed: one person, as a freeze, since it only tightens. */
+async function orderWithdraw(c: Context) {
+  const outcome = await data.orderWithdraw(c.env.DB, c.actor, c.params.id ?? '', c.now)
+  return outcome === 'ok' ? json(200, { state: 'withdrawn' }) : refuse(outcome)
 }
 // The signing page's two calls. No session: the link's token is the only key, and its order is read by its hash.
 const openedBy = async (c: Context) => {
@@ -964,6 +970,7 @@ export const routes: Route[] = [
   { method: 'GET', path: '/api/export/:id', roles: ANY, can: 'Export a table of the overview or the desk as CSV', handler: tableExport },
   { method: 'POST', path: '/api/desk/orders', roles: orders.PREPARERS, settled: true, can: 'Prepare an order on the desk, which a second person approves before the wallet signs it', handler: order },
   { method: 'POST', path: '/api/desk/orders/:id/link', roles: orders.SIGNERS, fresh: true, settled: true, can: 'Give the wallet the link to sign an approved order, or to cancel an open one', handler: orderLink },
+  { method: 'POST', path: '/api/desk/orders/:id/withdraw', roles: orders.SIGNERS, fresh: true, settled: true, can: 'Withdraw an approved order before the wallet signs it, at once', handler: orderWithdraw },
   // The real desk: the signing page's two calls, on the signing host. The link's one-time token is the only key.
   { method: 'POST', path: '/api/order', roles: 'public', sign: true, handler: orderPage },
   { method: 'POST', path: '/api/order/send', roles: 'public', sign: true, handler: orderSend },

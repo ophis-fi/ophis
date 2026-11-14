@@ -95,7 +95,7 @@ const STATUS: Record<string, [tone: string, icon: string]> = {
   Green: ['ok', 'check'], Amber: ['warn', 'triangle-alert'], Red: ['bad', 'x'], None: ['bad', 'x'],
   Suspended: ['draft', 'history'], Planned: ['draft', 'calendar'], Later: ['draft', 'calendar'],
   // The states of an order, and of a payout.
-  'Pending approval': ['warn', 'clock'], 'Approved: waiting for signature': ['ok', 'check'], 'Sent: waiting for the Safe transaction': ['warn', 'clock'], Refused: ['bad', 'x'], Cancelled: ['draft', 'ban'], Expired: ['draft', 'history'],
+  'Pending approval': ['warn', 'clock'], 'Approved: waiting for signature': ['ok', 'check'], 'Sent: waiting for the Safe transaction': ['warn', 'clock'], Refused: ['bad', 'x'], Cancelled: ['draft', 'ban'], Withdrawn: ['draft', 'ban'], Expired: ['draft', 'history'],
   Open: ['', 'clock'], Filled: ['ok', 'check'], Paid: ['ok', 'check'], Carried: ['', 'clock'], 'Waiting for signatures': ['warn', 'clock'], 'Not sent yet': ['draft', 'clock'],
   Revoked: ['bad', 'x'], Frozen: ['bad', 'ban'], 'Sanctions list': ['bad', 'triangle-alert'], Removed: ['bad', 'x'], 'Chain verified': ['ok', 'shield-check'], 'Chain broken': ['bad', 'triangle-alert'],
 }

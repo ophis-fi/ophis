@@ -430,7 +430,7 @@ function TicketForm({ v, onSent }: { v: DeskView; onSent: () => Promise<void> })
 
 // The record of one order: who prepared it and when, the quote and its terms, who decided, who gave the signing link,
 // and what the orderbook did. After the approval: the signing link, and the two ways to open it.
-function OrderRecord({ o, v, onClose, onSignedOut }: { o: Order; v: DeskView; onClose: () => void; onSignedOut: () => void }) {
+function OrderRecord({ o, v, onClose, onChanged, onSignedOut }: { o: Order; v: DeskView; onClose: () => void; onChanged: () => Promise<void>; onSignedOut: () => void }) {
   const [link, setLink] = useState('')
   const [copied, setCopied] = useState(false)
   const [problem, setProblem] = useState('')
@@ -442,6 +442,13 @@ function OrderRecord({ o, v, onClose, onSignedOut }: { o: Order; v: DeskView; on
     setProblem(!out ? CANCELLED : out.status === 200 ? '' : say(out.data))
     setLink(out?.status === 200 ? out.data.link : '')
     setCopied(false)
+  }
+  // One person withdraws the approved order before the wallet signs it: its link stops working.
+  async function withdraw() {
+    const out = await sensitive<{ error?: string }>(`/api/desk/orders/${o.id}/withdraw`).catch(() => null)
+    if (out?.status === 401) return onSignedOut()
+    setProblem(!out ? CANCELLED : out.status === 200 ? '' : say(out.data))
+    if (out?.status === 200) await onChanged()
   }
   const tx = o.tx && (EXPLORER[o.terms.chainId] ? <a className="link mono" href={EXPLORER[o.terms.chainId] + o.tx} target="_blank" rel="noopener">{o.tx}</a> : <span className="mono">{o.tx}</span>)
   return (
@@ -465,8 +472,9 @@ function OrderRecord({ o, v, onClose, onSignedOut }: { o: Order; v: DeskView; on
       {purpose && v.maySign && (
         <div className="stack" data-step="link">
           <h3 className="h-card">{purpose === 'sign' ? 'Hand over the signing link' : 'Hand over the cancel link'}</h3>
-          <p className="note"><Icon name="info" /><span className="grow">{purpose === 'sign' ? 'The wallet signs this order on the signing page. Give the link to the people who hold the wallet, by a channel you trust. It works once.' : 'The wallet cancels this order on the signing page. The link works once.'}</span></p>
-          <div className="acts"><button className="btn primary md" type="button" onClick={give}><Icon name="key-round" size={16} />{purpose === 'sign' ? 'Signing link' : 'Cancel link'}</button></div>
+          <p className="note"><Icon name="info" /><span className="grow">{purpose === 'sign' ? 'The wallet signs this order on the signing page. Give the link to the people who hold the wallet, by a channel you trust. It works once. Until the wallet signs, you can withdraw the order: its link then stops working.' : 'The wallet cancels this order on the signing page. The link works once.'}</span></p>
+          <div className="acts"><button className="btn primary md" type="button" onClick={give}><Icon name="key-round" size={16} />{purpose === 'sign' ? 'Signing link' : 'Cancel link'}</button>
+            {purpose === 'sign' && <button className="btn ghost md" type="button" onClick={withdraw}><Icon name="ban" size={16} />Withdraw the order</button>}</div>
           {link && (
             <>
               <label className="field">Link for the wallet<input className="input mono" readOnly value={link} onFocus={(event) => event.target.select()} /></label>
@@ -533,7 +541,7 @@ function InstitutionDesk({ onSignedOut }: { onSignedOut: () => void }) {
           </>,
         ])} /> : <p className="muted">No order yet.</p>}
       </Section>
-      {record && <OrderRecord o={record} v={v} onClose={() => setPicked('')} onSignedOut={onSignedOut} />}
+      {record && <OrderRecord o={record} v={v} onClose={() => setPicked('')} onChanged={load} onSignedOut={onSignedOut} />}
     </>
   )
 }
