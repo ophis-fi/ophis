@@ -5153,7 +5153,7 @@ describe('D. Support: the model selects, the server decides', () => {
     // Review of P4: a partner's Overview shows its fee figures and exports one table, so the two texts say so. No text
     // speaks of a referral share, referred wallets, codes or earnings: the console's partners get none (2026-11-13).
     const text = (id: string) => ANSWERS.find((a) => a.id === id)!.text
-    expect(text('KB-13')).toMatch(/Overview shows a partner organisation its fee owed this cycle \(an estimate\), its payouts, the daily volume, the split by chain and fee token, and the wallets that traded, flagging those on a sanctions list\. Figures are read for the fee recipient address you link\./)
+    expect(text('KB-13')).toMatch(/Overview shows a partner organisation its fee owed this cycle \(an estimate\), its payouts, the daily volume, the split by chain and fee token, and wallets whose orders carried its fee, flagging those on a sanctions list\. Figures are read for the fee recipient address you link\./)
     expect(text('KB-16')).toMatch(/A partner, in Overview: the partner-fee months, payouts, daily volume, the split by chain and by fee token, the wallets that traded, and those of them on a sanctions list\./)
     // The institution's exports are real since 2026-11-14: balances read on the chain, its orders, the statement of its filled orders.
     expect(text('KB-16')).toMatch(/An institution, in Overview: the balances of its linked wallets, its orders, and the monthly statement of its filled orders/)
@@ -9425,10 +9425,11 @@ describe('I. partner figures: live', () => {
       'title="By chain" hint="Every trade, by the chain it settled on."', "['Chain', 'Volume (USD)', 'Your share (USD)']", 'title="By fee token" hint="The token your fee was taken in, on its chain."', "['Fee token', 'Your share (USD)']",
       '<Export table="payouts" size="md" label="Payouts CSV" />', '<Export table="daily" size="md" label="Daily CSV" />', '<Export table="chains" size="md" label="Chains CSV" />', '<Export table="tokens" size="md" label="Fee tokens CSV" />',
       // The wallets on a sanctions list that traded: a red alert with its table and its CSV, a tag in the wallets that traded, the lists checked.
-      "<div className=\"note bad flagged\" role=\"alert\">", "{count(rows.length)} {rows.length === 1 ? 'wallet' : 'wallets'} on a sanctions list traded through your integration: {count(n)} {n === 1 ? 'trade' : 'trades'}, ${usd(rows.reduce((sum, s) => sum + s.volumeUsd, 0))}.",
+      "<div className=\"note bad flagged\" role=\"alert\">", "{count(rows.length)} {rows.length === 1 ? 'wallet' : 'wallets'} on a sanctions list traded through your integration: {count(n)} {n === 1 ? 'trade' : 'trades'}, ${usd(rows.reduce((sum, s) => sum + s.volumeUsd, 0))}{u > 0 && `, ${count(u)} ${u === 1 ? 'trade' : 'trades'} not priced yet`}.",
       'This is for your information. Nothing in your account changes.', '<Export table="sanctioned" label="Sanctioned wallets CSV" />', "['Wallet', 'Volume (USD)', 'First trade']", '<small>Last {s.lastAt.slice(0, 10)}</small>', "'Not known yet'",
       '{listed.has(x.wallet) && <Status>Sanctions list</Status>}', "' The wallets on a sanctions list are added at the end.'",
-      '`The wallets that traded are checked against: ${f.lists.map((l) => `${l.name}${l.published ? `, published ${l.published}` : \'\'}, loaded ${l.loaded}`).join(\'; \')}.`', "'No sanctions list is loaded. The wallets that traded are not checked.'",
+      '`The wallets whose orders carried your fee are checked against: ${f.lists.map((l) => `${l.name}${l.published ? `, published ${l.published}` : \'\'}, loaded ${l.loaded}`).join(\'; \')}.${unchecked(f)}`', "'No sanctions list is loaded. The wallets whose orders carried your fee are not checked.'",
+      "` Not checked: ${count(n)} ${n === 1 ? 'sale' : 'sales'} of native ETH with no known wallet.`", "' Not checked: the orders of linked wallets whose figures are not shown.'",
     ]) expect(part, sentence).toContain(sentence)
     expect(part.match(/\{ESTIMATE\}/g)).toHaveLength(1) // under the estimate
     // No referral share: the console's partners get none (owner decision of 2026-11-13).

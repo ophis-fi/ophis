@@ -36,7 +36,7 @@ export function start() {
     const presented = Buffer.from(/^Bearer (.*)$/.exec(request.headers.authorization ?? '')?.[1] ?? '')
     if (presented.length !== token.length || !timingSafeEqual(presented, token)) return send(401, { error: 'unauthorized' })
     let text = ''
-    request.on('data', (chunk) => (text.length < 10_000 ? (text += chunk) : request.destroy()))
+    request.on('data', (chunk) => (text.length < 3_000_000 ? (text += chunk) : request.destroy())) // the real route's body limit
     request.on('end', () => {
       let wallets, listed
       try {

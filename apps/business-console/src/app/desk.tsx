@@ -211,10 +211,10 @@ function Sanctioned({ wallets }: { wallets: PartnerWallet[] }) {
   }
   const rows = [...all.values()]
   if (!rows.length) return null
-  const n = rows.reduce((sum, s) => sum + s.trades, 0)
+  const [n, u] = [rows.reduce((sum, s) => sum + s.trades, 0), rows.reduce((sum, s) => sum + s.unpriced, 0)]
   return (
     <div className="note bad flagged" role="alert">
-      <p><Icon name="triangle-alert" /><span className="grow"><b>{count(rows.length)} {rows.length === 1 ? 'wallet' : 'wallets'} on a sanctions list traded through your integration: {count(n)} {n === 1 ? 'trade' : 'trades'}, ${usd(rows.reduce((sum, s) => sum + s.volumeUsd, 0))}.</b> This is for your information. Nothing in your account changes.</span></p>
+      <p><Icon name="triangle-alert" /><span className="grow"><b>{count(rows.length)} {rows.length === 1 ? 'wallet' : 'wallets'} on a sanctions list traded through your integration: {count(n)} {n === 1 ? 'trade' : 'trades'}, ${usd(rows.reduce((sum, s) => sum + s.volumeUsd, 0))}{u > 0 && `, ${count(u)} ${u === 1 ? 'trade' : 'trades'} not priced yet`}.</b> This is for your information. Nothing in your account changes.</span></p>
       {/* Three columns fit a phone: the lists and the trades under the wallet, the last trade under the first. */}
       <Table head={['Wallet', 'Volume (USD)', 'First trade']} rows={rows.map((s) => [
         <><span className="mono">{s.wallet}</span><small>{s.lists.join(', ')}</small>{trades(s.trades)}</>, volume(s),
@@ -223,6 +223,14 @@ function Sanctioned({ wallets }: { wallets: PartnerWallet[] }) {
       <Export table="sanctioned" label="Sanctioned wallets CSV" />
     </div>
   )
+}
+
+// What the lists did not reach: the sales of native ETH with no known wallet (the indexer gives a trade one wallet in both
+// answers, so these are the trades not checked), and the orders of a wallet whose figures are not shown.
+function unchecked(f: Extract<Partner['figures'], { state: 'live' }>) {
+  const n = f.wallets.reduce((sum, w) => sum + (w.traders?.unknown.trades ?? 0), 0)
+  return (n ? ` Not checked: ${count(n)} ${n === 1 ? 'sale' : 'sales'} of native ETH with no known wallet.` : '')
+    + (f.leftOut > 0 || f.wallets.some((w) => w.sanctioned === null) ? ' Not checked: the orders of linked wallets whose figures are not shown.' : '')
 }
 
 function PartnerWalletFigures({ w, asOf }: { w: PartnerWallet; asOf: string }) {
@@ -316,8 +324,8 @@ function PartnerOverview({ v, retry }: { v: Partner; retry: () => Promise<void> 
         <>
           {f.leftOut > 0 && <p className="note" role="note"><Icon name="info" /><span className="grow">Figures are read for the 10 wallets linked first. {f.leftOut} more linked {f.leftOut === 1 ? 'wallet is' : 'wallets are'} not shown.</span></p>}
           <Sanctioned wallets={f.wallets} />
-          <p className="fine checked"><Icon name="shield-check" size={16} />{f.lists.length ? `The wallets that traded are checked against: ${f.lists.map((l) => `${l.name}${l.published ? `, published ${l.published}` : ''}, loaded ${l.loaded}`).join('; ')}.`
-            : 'No sanctions list is loaded. The wallets that traded are not checked.'}</p>
+          <p className="fine checked"><Icon name="shield-check" size={16} />{f.lists.length ? `The wallets whose orders carried your fee are checked against: ${f.lists.map((l) => `${l.name}${l.published ? `, published ${l.published}` : ''}, loaded ${l.loaded}`).join('; ')}.${unchecked(f)}`
+            : 'No sanctions list is loaded. The wallets whose orders carried your fee are not checked.'}</p>
           {f.wallets.map((w) => <PartnerWalletFigures key={w.wallet} w={w} asOf={f.asOf} />)}
         </>
       )}

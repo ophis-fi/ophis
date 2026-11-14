@@ -1349,6 +1349,10 @@ try {
     && goodAnswer.status === 200 && JSON.stringify(answered.wallets[0]) === JSON.stringify(P) && JSON.stringify(Object.keys(answered.wallets[1])) === '["wallet","fees","traders","breakdown","sanctioned"]' && answered.wallets[1].sanctioned.length === 0
     && P.sanctioned.length === 1 && notListed.wallets[0].sanctioned.length === 0 && (await askStub(stubBearer, [P.wallet], null)).status === 400 && answered.wallets[1].fees.currentCycle.owedUsd === 0 && answered.wallets[1].fees.recipient === `0x${'d'.repeat(40)}`
     && answered.wallets[1].traders.wallets.length === 0 && Object.values(answered.wallets[1].breakdown).every((rows) => rows.length === 0))
+  // The console sends every address it holds (three lists of 1,000 at most, about 135 kB): the real route reads up to 3 MB.
+  const manyListed = [...Array.from({ length: 1000 }, (_, i) => `0x${i.toString(16).padStart(40, '0')}`), ...P.sanctioned.map((x) => x.wallet)]
+  const big = await askStub(stubBearer, [P.wallet], manyListed).then((r) => r.json()).catch(() => null)
+  check('the stand-in reads a body as large as the console sends: 1,001 listed addresses (45 kB), its listed wallet kept', JSON.stringify(manyListed).length > 45_000 && big?.wallets[0].sanctioned.length === 1)
 
   // A partner from "seed --live": one linked "Demo wallet" at the contract's partner address.
   const liveSeed = seeded('--live')
@@ -1415,11 +1419,16 @@ try {
     && JSON.stringify((await cellsOf(tokenSection)).map(([token, share]) => [token.toLowerCase(), share])) === JSON.stringify(B.byToken.map((t) => [`${t.token}\n${CHAIN_NAMES[t.chainId]}, ${nTrades(t.trades)}`.toLowerCase(), usd(t.shareUsd) + notPriced(t.unpriced)])))
   // The wallets on a sanctions list that traded: owner decision of 2026-11-14, "i want interactions with ofac sanctioned wallets flagged".
   const flagged = pat.page.locator('.note.flagged')
-  check('a wallet of the contract file is on the loaded list "un": a red alert before the figures with the wallets, trades and USD, that it is information, and its table (wallet, list, trades, volume, first and last trade); a line names the list checked; the wallet is tagged once in the wallets that traded',
+  // The line under the alert: the lists checked, then what they did not reach. The sales of no known wallet are the
+  // trades the indexer could not check (it gives a trade one wallet in both answers).
+  const checkedLine = () => pat.page.locator('.checked').innerText()
+  const CHECKED = `The wallets whose orders carried your fee are checked against: UN Security Council consolidated list, loaded ${today}.`
+  const HIDDEN = ' Not checked: the orders of linked wallets whose figures are not shown.'
+  check('a wallet of the contract file is on the loaded list "un": a red alert before the figures with the wallets, trades, USD and trades not priced yet, that it is information, and its table (wallet, list, trades, volume, first and last trade); a line names the list checked and the sales of native ETH of no known wallet, not checked; the wallet is tagged once in the wallets that traded',
     (await flagged.getAttribute('role')) === 'alert' && (await flagged.evaluate((box) => !!(box.compareDocumentPosition(document.querySelector('.pw')) & Node.DOCUMENT_POSITION_FOLLOWING)))
-    && (await flagged.locator('p').first().innerText()).includes(`1 wallet on a sanctions list traded through your integration: ${S.trades} trades, $${usd(S.volumeUsd)}. This is for your information. Nothing in your account changes.`)
+    && (await flagged.locator('p').first().innerText()).includes(`1 wallet on a sanctions list traded through your integration: ${S.trades} trades, $${usd(S.volumeUsd)}, ${nTrades(S.unpriced)} not priced yet. This is for your information. Nothing in your account changes.`) && S.unpriced > 0
     && JSON.stringify((await cellsOf(flagged)).map(([wallet, ...rest]) => [wallet.toLowerCase(), ...rest])) === JSON.stringify([[`${S.wallet}\nun security council consolidated list\n${S.trades} trades`, usd(S.volumeUsd) + notPriced(S.unpriced), `${S.firstAt.slice(0, 10)}\nLast ${S.lastAt.slice(0, 10)}`]])
-    && await pat.page.getByText(`The wallets that traded are checked against: UN Security Council consolidated list, loaded ${today}.`).isVisible()
+    && (await checkedLine()) === `${CHECKED} Not checked: ${P.traders.unknown.trades} sales of native ETH with no known wallet.` && P.traders.unknown.trades > 1
     && (await tradedSection.locator('tbody tr', { hasText: 'Sanctions list' }).count()) === 1 && (await status('/api/me', pat.page)) === 200) // information only: the organisation is not frozen
   check('the alert of the wallets on a sanctions list fits a phone', await both(pat.page, '65-overview-partner-sanctioned', '.note.flagged'))
   await pat.page.setViewportSize({ width: 390, height: 844 })
@@ -1516,9 +1525,9 @@ try {
   const tradersList = (n) => Array.from({ length: n }, (_, i) => ({ wallet: `0x${(i + 1).toString(16).padStart(40, '0')}`, trades: 1, volumeUsd: n - i, unpriced: 0 }))
   const none = { trades: 0, volumeUsd: 0, unpriced: 0 }
   await tradedWith({ wallets: tradersList(100), unknown: none, totals: { walletCount: 105, trades: 105, volumeUsd: 5100, unpriced: 0 } })
-  check('more than 100 wallets: the table lists 100 and says it shows the largest; no trade of an unknown wallet: no row for it; every trade priced: no line about pricing; no listed wallet: no alert, no tag',
+  check('more than 100 wallets: the table lists 100 and says it shows the largest; no trade of an unknown wallet: no row for it, and the line under the alert names none not checked; every trade priced: no line about pricing; no listed wallet: no alert, no tag',
     (await tradedSection.locator('tbody tr').count()) === 100 && await tradedSection.getByText('The table shows the 100 largest wallets by volume.', { exact: true }).isVisible() && (await partnerTile('Wallets', tradedSection)) === '105'
-    && !(await tradedSection.getByText(/priced each night|not priced yet|Not known/).count()) && !(await flagged.count()) && !(await tradedSection.getByText('Sanctions list').count()))
+    && !(await tradedSection.getByText(/priced each night|not priced yet|Not known/).count()) && !(await flagged.count()) && !(await tradedSection.getByText('Sanctions list').count()) && (await checkedLine()) === CHECKED)
   const outside = { wallet: `0x${'e'.repeat(40)}`, lists: ['OFAC SDN list'], trades: 1, volumeUsd: 0.5, unpriced: 0, firstAt: null, lastAt: null }
   await tradedWith({ wallets: tradersList(100), unknown: none, totals: { walletCount: 105, trades: 105, volumeUsd: 5100, unpriced: 0 } }, 'traders', [outside])
   check('a listed wallet outside the 100 largest: added at the end of the table with its tag, and the line says so; the alert in the singular, its block time not known yet',
@@ -1528,12 +1537,25 @@ try {
   // Two partner wallets: a listed wallet that traded through both is one row of the alert, its trades added up, its first and last trade over both.
   await overviewWith((f) => {
     const [w] = f.wallets
-    f.wallets = [w, { ...w, wallet: `0x${'f'.repeat(40)}`, label: 'Second', sanctioned: [{ ...w.sanctioned[0], trades: 2, volumeUsd: 10, unpriced: 0, firstAt: '2026-07-01T00:00:00.000Z', lastAt: '2026-11-10T00:00:00.000Z' }, outside] }]
+    f.wallets = [w, { ...w, wallet: `0x${'f'.repeat(40)}`, label: 'Second', sanctioned: [{ ...w.sanctioned[0], trades: 2, volumeUsd: 10, unpriced: 2, firstAt: '2026-07-01T00:00:00.000Z', lastAt: '2026-11-10T00:00:00.000Z' }, { ...outside, unpriced: 1 }] }]
   })
-  check('two partner wallets: the alert counts each listed wallet once, its trades and volume added up over both, the first trade the earliest and the last the latest',
-    (await flagged.locator('p').first().innerText()).includes(`2 wallets on a sanctions list traded through your integration: ${S.trades + 3} trades, $${usd(S.volumeUsd + 10.5)}.`)
+  check('two partner wallets: the alert counts each listed wallet once, its trades, volume and trades not priced yet added up over both, the first trade the earliest and the last the latest',
+    (await flagged.locator('p').first().innerText()).includes(`2 wallets on a sanctions list traded through your integration: ${S.trades + 3} trades, $${usd(S.volumeUsd + 10.5)}, ${nTrades(S.unpriced + 3)} not priced yet.`)
     && JSON.stringify((await cellsOf(flagged)).map(([wallet, ...rest]) => [wallet.toLowerCase(), ...rest])) === JSON.stringify([
-      [`${S.wallet}\nun security council consolidated list\n${S.trades + 2} trades`, usd(S.volumeUsd + 10) + notPriced(S.unpriced), `2026-07-01\nLast 2026-11-10`], [`${outside.wallet}\nofac sdn list\n1 trade`, '0.50', 'Not known yet']]))
+      [`${S.wallet}\nun security council consolidated list\n${S.trades + 2} trades`, usd(S.volumeUsd + 10) + notPriced(S.unpriced + 2), `2026-07-01\nLast 2026-11-10`], [`${outside.wallet}\nofac sdn list\n1 trade`, '0.50' + notPriced(1), 'Not known yet']]))
+  // What the lists did not reach: a contract wallet whose figures are not shown, the wallets after the 10 read, and a sale of native ETH of no known wallet.
+  await overviewWith((f) => {
+    const [w] = f.wallets
+    f.wallets = [{ ...w, traders: { ...w.traders, unknown: { trades: 1, volumeUsd: 0, unpriced: 1 } } }, { ...w, wallet: `0x${'f'.repeat(40)}`, label: 'Safe', fees: null, traders: null, breakdown: null, sanctioned: null }]
+  })
+  check('a contract wallet whose figures are not shown and one sale of native ETH of no known wallet: the line says neither was checked, in the singular',
+    (await checkedLine()) === `${CHECKED} Not checked: 1 sale of native ETH with no known wallet.${HIDDEN}` && await pat.page.getByText('The figures of this wallet are not shown.').isVisible())
+  await overviewWith((f) => {
+    const [w] = f.wallets
+    Object.assign(f, { leftOut: 2, wallets: [w, { ...w, wallet: `0x${'f'.repeat(40)}`, label: 'Second', traders: { ...w.traders, unknown: { trades: 1, volumeUsd: 0, unpriced: 1 } } }] })
+  })
+  check('wallets linked after the 10 read: the line says their orders were not checked; the sales of no known wallet added up over two partner wallets',
+    (await checkedLine()) === `${CHECKED} Not checked: ${P.traders.unknown.trades + 1} sales of native ETH with no known wallet.${HIDDEN}` && await pat.page.getByText('Figures are read for the 10 wallets linked first. 2 more linked wallets are not shown.').isVisible())
   await tradedWith({ wallets: [{ ...tradersList(2)[0], trades: 2, unpriced: 1 }, tradersList(2)[1]], unknown: none, totals: { walletCount: 2, trades: 3, volumeUsd: 3, unpriced: 1 } })
   check('every wallet listed: no line about the largest; one trade not priced: under its volume and in the line, in the singular',
     !(await tradedSection.getByText(/largest wallets/).count()) && await tradedSection.getByText('Volume is priced each night. 1 trade is not priced yet.').isVisible()
