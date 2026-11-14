@@ -40,7 +40,8 @@ the order's maker chooses. Such trades are not checked against the sanctions
 lists, and the console says so. Fills written before migration 0051 have no
 source yet: the nightly pipeline asks CoW for up to 100 of those orders per
 run and records the source when the stored wallet is the payer or the
-receiver. A row CoW cannot answer for stays in `unknown`.
+receiver. A row CoW cannot answer for stays in `unknown`. A recorded payer is
+never replaced by a later verified write that does not name it.
 It does not read the referral
 dashboard: the console's partners get no referral share (`POST /partner` keeps
 it for retail). It is gated by `BUSINESS_API_TOKEN`
