@@ -8,7 +8,7 @@ import { checksum, colour, parseAddress, readCapped, safeState, verify, verifyDi
 import { commit, countHour, DOMAIN, emailAt, freezing, LISTED, listed, listedWallet, PEOPLE, randomId, REVIEWED, sha256Hex, type Actor, type WalletKind } from './data.ts'
 import { challengeIsOurs, creationOptions, credentialHash, newChallenge, seal, unseal, verifyRegistration, type Config } from './passkeys.ts'
 import { indexerBase } from './partner.ts'
-import { CHAIN_NAME, typedProof } from './typed.ts'
+import { CHAIN_NAME, LISTS, typedProof } from './typed.ts'
 
 // Constants per environment, like those of passkeys.ts, and never read from a request.
 // RESOLVERS: two DNS-over-HTTPS resolvers of different operators, JSON form; both must give the record. The local
@@ -33,8 +33,8 @@ const TIERS = ['standard', 'enhanced']
 // Sanctions screening: manual, at no cost. The operator downloads the official lists, searches them offline and records
 // the result with its command. The server holds, per organisation only: the outcome, which lists, the SHA-256 of each
 // list file searched, the date. No name of a person, no detail of a hit and no list file reaches it, and the Worker
-// calls no outside service. The codes of the lists, with the names the pages show:
-export const LISTS: Record<string, string> = { eu: 'EU consolidated financial sanctions list', un: 'UN Security Council consolidated list', ofac: 'OFAC SDN list' }
+// calls no outside service. The codes of the lists, with the names the pages show: LISTS (typed.ts).
+export { LISTS }
 const OUTCOMES = ['clear', 'review', 'hit']
 const SHA256 = /^[0-9a-f]{64}$/
 const ADDRESS = /^0x[0-9a-f]{40}$/

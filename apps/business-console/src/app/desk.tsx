@@ -30,11 +30,17 @@ interface PartnerWallet {
     daily: (Flow & { day: string })[]; byChain: (Flow & OnChain)[]; byToken: (OnChain & { token: string; trades: number; shareUsd: number; unpriced: number })[]
     payouts: (OnChain & { date: string; weth: number; tx: string | null; status: string })[]
   }
+  // The wallets on a sanctions list that traded through the integration, over every trade. null with fees.
+  sanctioned: null | Listed[]
 }
+type Listed = Traded & { wallet: string; lists: string[]; firstAt: string | null; lastAt: string | null }
 type Traded = { trades: number; volumeUsd: number; unpriced: number }
 type Flow = Traded & { shareUsd: number }
 type OnChain = { chainId: number; chain: string }
-interface Partner { kind: 'partner'; waiting: number; figures: { state: 'not_connected' | 'no_wallet' | 'figures_unavailable' | 'figures_rate' } | { state: 'live'; asOf: string; leftOut: number; wallets: PartnerWallet[] } }
+interface Partner {
+  kind: 'partner'; waiting: number
+  figures: { state: 'not_connected' | 'no_wallet' | 'figures_unavailable' | 'figures_rate' } | { state: 'live'; asOf: string; leftOut: number; lists: { name: string; published: string | null; loaded: string }[]; wallets: PartnerWallet[] }
+}
 interface DeskView {
   assets: { symbol: string; decimals: number; eur: string; issuer: string; status: string; limitLow: string; limitHigh: string }[]; chains: { id: number; name: string }[]
   wallets: { id: string; label: string; address: string; chain: string }[]; limitEur: string; mayPrepare: boolean; orders: Order[]; examples: Order[]
@@ -191,8 +197,36 @@ function DailyVolume({ days, asOf }: { days: (Flow & { day: string })[]; asOf: s
   )
 }
 
+/** The wallets on a sanctions list that traded, over every partner wallet: one row each, its trades added up. Information only. */
+function Sanctioned({ wallets }: { wallets: PartnerWallet[] }) {
+  const all = new Map<string, Listed>()
+  for (const s of wallets.flatMap((w) => w.sanctioned ?? [])) {
+    const seen = all.get(s.wallet)
+    const times = (a: string | null, b: string | null) => [a, b].filter((t): t is string => t !== null).sort() // ISO times sort as text
+    all.set(s.wallet, seen ? { ...seen, trades: seen.trades + s.trades, volumeUsd: seen.volumeUsd + s.volumeUsd, unpriced: seen.unpriced + s.unpriced,
+      firstAt: times(seen.firstAt, s.firstAt)[0] ?? null, lastAt: times(seen.lastAt, s.lastAt).at(-1) ?? null } : s)
+  }
+  const rows = [...all.values()]
+  if (!rows.length) return null
+  const n = rows.reduce((sum, s) => sum + s.trades, 0)
+  return (
+    <div className="note bad flagged" role="alert">
+      <p><Icon name="triangle-alert" /><span className="grow"><b>{count(rows.length)} {rows.length === 1 ? 'wallet' : 'wallets'} on a sanctions list traded through your integration: {count(n)} {n === 1 ? 'trade' : 'trades'}, ${usd(rows.reduce((sum, s) => sum + s.volumeUsd, 0))}.</b> This is for your information. Nothing in your account changes.</span></p>
+      {/* Three columns fit a phone: the lists and the trades under the wallet, the last trade under the first. */}
+      <Table head={['Wallet', 'Volume (USD)', 'First trade']} rows={rows.map((s) => [
+        <><span className="mono">{s.wallet}</span><small>{s.lists.join(', ')}</small>{trades(s.trades)}</>, volume(s),
+        s.firstAt && s.lastAt ? <>{s.firstAt.slice(0, 10)}<small>Last {s.lastAt.slice(0, 10)}</small></> : 'Not known yet', // both or neither: no block time known yet
+      ])} />
+      <Export table="sanctioned" label="Sanctioned wallets CSV" />
+    </div>
+  )
+}
+
 function PartnerWalletFigures({ w, asOf }: { w: PartnerWallet; asOf: string }) {
   const [t, b] = [w.traders, w.breakdown]
+  // A wallet on a sanctions list is tagged; one outside the 100 largest is added at the end.
+  const listed = new Set(w.sanctioned?.map((s) => s.wallet))
+  const outside = (w.sanctioned ?? []).filter((s) => !t?.wallets.some((x) => x.wallet === s.wallet))
   return (
     <section className="pw sec" aria-label={`Wallet ${w.label}`}>
       <h2 className="pw-head"><Icon name="wallet" /><b>{w.label}</b><span className="mono muted">{w.wallet}</span><span className="muted">{w.chain}</span></h2>
@@ -242,10 +276,10 @@ function PartnerWalletFigures({ w, asOf }: { w: PartnerWallet; asOf: string }) {
                 <div className="c"><span className="num">{usd(t.totals.volumeUsd)}</span><span className="cap"><Icon name="landmark" size={16} />Volume (USD)</span></div>
               </div>
               <Table head={['Wallet', 'Trades', 'Volume (USD)']} rows={[
-                ...t.wallets.map((x) => [<span className="mono">{x.wallet}</span>, count(x.trades), volume(x)]),
+                ...[...t.wallets, ...outside].map((x) => [<><span className="mono">{x.wallet}</span>{listed.has(x.wallet) && <Status>Sanctions list</Status>}</>, count(x.trades), volume(x)]),
                 ...(t.unknown.trades ? [[<span className="muted">Not known (native ETH sales)</span>, count(t.unknown.trades), volume(t.unknown)]] : []),
               ]} />
-              {t.totals.walletCount > t.wallets.length && <p className="fine"><Icon name="info" size={16} />The table shows the {t.wallets.length} largest wallets by volume.</p>}
+              {t.totals.walletCount > t.wallets.length && <p className="fine"><Icon name="info" size={16} />The table shows the {t.wallets.length} largest wallets by volume.{outside.length > 0 && ' The wallets on a sanctions list are added at the end.'}</p>}
               {t.totals.unpriced > 0 && <p className="fine"><Icon name="clock" size={16} />Volume is priced each night. {count(t.totals.unpriced)} {t.totals.unpriced === 1 ? 'trade is' : 'trades are'} not priced yet.</p>}
             </>
           ) : <p className="muted">No wallet has traded through your integration yet.</p>}
@@ -278,6 +312,9 @@ function PartnerOverview({ v, retry }: { v: Partner; retry: () => Promise<void> 
       {f.state === 'live' && (
         <>
           {f.leftOut > 0 && <p className="note" role="note"><Icon name="info" /><span className="grow">Figures are read for the 10 wallets linked first. {f.leftOut} more linked {f.leftOut === 1 ? 'wallet is' : 'wallets are'} not shown.</span></p>}
+          <Sanctioned wallets={f.wallets} />
+          <p className="fine checked"><Icon name="shield-check" size={16} />{f.lists.length ? `The wallets that traded are checked against: ${f.lists.map((l) => `${l.name}${l.published ? `, published ${l.published}` : ''}, loaded ${l.loaded}`).join('; ')}.`
+            : 'No sanctions list is loaded. The wallets that traded are not checked.'}</p>
           {f.wallets.map((w) => <PartnerWalletFigures key={w.wallet} w={w} asOf={f.asOf} />)}
         </>
       )}

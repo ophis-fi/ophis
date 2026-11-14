@@ -6,6 +6,7 @@
 // runs as one transaction. If the audit row cannot be written, the change is not made.
 
 import { checksum, colour, type SafeState } from './chain.ts'
+import { LISTS } from './typed.ts'
 import { built, MAX_OPEN_ORDERS, PREPARERS, quote, type Order } from './demo.ts'
 
 export type Role = 'owner' | 'admin' | 'trader' | 'approver' | 'compliance' | 'viewer'
@@ -898,6 +899,18 @@ const LIVE = `(w.state = 'linked' OR (w.state = 'pending' AND ${OPEN_LINK}))`
 export const LISTED = `(${LIVE} OR (w.state = 'pending' AND (SELECT x.state FROM organisations x WHERE x.id = w.org_id) = 'unverified')) AND w.address IN (SELECT address FROM sanctioned_addresses)`
 /** Is this address on a loaded list? */
 export const listed = async (db: D1Database, address: string) => Boolean(await db.prepare('SELECT 1 FROM sanctioned_addresses WHERE address = ? LIMIT 1').bind(address).first())
+/** For the partner figures (partner.ts), in one batch: each loaded list (its name, the day it was published, the day it
+ *  was loaded), and each listed address with the names of its lists. */
+export async function sanctionsHeld(db: D1Database) {
+  const [lists, rows] = await db.batch([
+    db.prepare('SELECT list, published, loaded_at AS loadedAt FROM sanctions_lists ORDER BY list'),
+    db.prepare('SELECT address, group_concat(list) AS lists FROM sanctioned_addresses GROUP BY address ORDER BY address'),
+  ])
+  return {
+    lists: (lists.results as { list: string; published: string | null; loadedAt: number }[]).map((l) => ({ name: LISTS[l.list], published: l.published, loaded: new Date(l.loadedAt).toISOString().slice(0, 10) })),
+    of: new Map((rows.results as { address: string; lists: string }[]).map((r) => [r.address, r.lists.split(',').sort().map((code) => LISTS[code])])),
+  }
+}
 /** The first live wallet of an organisation that is on a loaded list, or null. */
 export const listedWallet = (db: D1Database, orgId: string, now: number) => db.prepare(`SELECT w.id FROM wallets w WHERE w.org_id = ? AND ${LISTED} ORDER BY w.rowid LIMIT 1`).bind(orgId, now).first<{ id: string }>()
 /** The statements of a freeze by the operator or by the screening: the organisation, if it is active, and every session of it (G4). */

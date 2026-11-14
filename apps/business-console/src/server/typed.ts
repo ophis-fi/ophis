@@ -10,6 +10,8 @@ export interface Typed {
 }
 export const LINK_ACTION = 'Link this wallet to this organisation'
 export const CHAIN_NAME: Record<number, string> = { 1: 'Ethereum', 10: 'OP Mainnet', 100: 'Gnosis', 130: 'Unichain', 8453: 'Base', 42161: 'Arbitrum One' }
+/** The sanctions lists the operator loads (onboarding.ts), by code, with the names the pages show. */
+export const LISTS: Record<string, string> = { eu: 'EU consolidated financial sanctions list', un: 'UN Security Council consolidated list', ofac: 'OFAC SDN list' }
 /** Times are Unix seconds. */
 export interface LinkFields { chainId: number; site: string; organisationId: string; wallet: string; nonce: string; issuedAt: number; expiresAt: number }
 const field = (type: string) => (name: string) => ({ name, type })

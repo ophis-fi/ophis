@@ -1192,13 +1192,15 @@ try {
   const weth = (n) => n.toLocaleString('en-US', { maximumFractionDigits: 6 })
   const STUB = `http://127.0.0.1:${INDEXER_PORT}`
   const stubMode = async (name) => check(`the stand-in is in mode ${name}`, (await (await fetch(`${STUB}/stub/${name}`)).json()).mode === name)
-  const askStub = (headers, wallets = [P.wallet, `0x${'d'.repeat(40)}`]) => fetch(`${STUB}/business/partner`, { method: 'POST', headers: { 'content-type': 'application/json', ...headers }, body: JSON.stringify({ wallets }) })
+  const askStub = (headers, wallets = [P.wallet, `0x${'d'.repeat(40)}`], listed = P.sanctioned.map((x) => x.wallet)) => fetch(`${STUB}/business/partner`, { method: 'POST', headers: { 'content-type': 'application/json', ...headers }, body: JSON.stringify({ wallets, listed }) })
   const stubBearer = { authorization: `Bearer ${readFileSync('.dev.vars', 'utf8').match(/^INDEXER_TOKEN=(.+)$/m)?.[1]}` } // never printed
   const goodAnswer = await askStub(stubBearer)
   const answered = await goodAnswer.json()
-  check('the stand-in has the real route\'s bearer rule and serves the contract file: its partner wallet as it is, any other wallet with zero fees and no wallet that traded, and no referral dashboard',
+  const notListed = await (await askStub(stubBearer, [P.wallet], [])).json()
+  check('the stand-in has the real route\'s bearer rule and serves the contract file: its partner wallet as it is, any other wallet with zero fees and no wallet that traded, and no referral dashboard; a listed wallet only when it was sent as listed, and listed is required',
     (await askStub({})).status === 401 && (await askStub({ authorization: 'Bearer wrong-token-wrong-token-wrong-token-0000' })).status === 401 && (await askStub(stubBearer, [])).status === 400 && (await askStub(stubBearer, [P.wallet, P.wallet])).status === 400
-    && goodAnswer.status === 200 && JSON.stringify(answered.wallets[0]) === JSON.stringify(P) && JSON.stringify(Object.keys(answered.wallets[1])) === '["wallet","fees","traders","breakdown"]' && answered.wallets[1].fees.currentCycle.owedUsd === 0 && answered.wallets[1].fees.recipient === `0x${'d'.repeat(40)}`
+    && goodAnswer.status === 200 && JSON.stringify(answered.wallets[0]) === JSON.stringify(P) && JSON.stringify(Object.keys(answered.wallets[1])) === '["wallet","fees","traders","breakdown","sanctioned"]' && answered.wallets[1].sanctioned.length === 0
+    && P.sanctioned.length === 1 && notListed.wallets[0].sanctioned.length === 0 && (await askStub(stubBearer, [P.wallet], null)).status === 400 && answered.wallets[1].fees.currentCycle.owedUsd === 0 && answered.wallets[1].fees.recipient === `0x${'d'.repeat(40)}`
     && answered.wallets[1].traders.wallets.length === 0 && Object.values(answered.wallets[1].breakdown).every((rows) => rows.length === 0))
 
   // A partner from "seed --live": one linked "Demo wallet" at the contract's partner address.
@@ -1225,9 +1227,11 @@ try {
   const tradedCells = async () => Promise.all((await tradedSection.locator('tbody tr').all()).map(async (row) => (await row.locator('td').allInnerTexts()).map((cell, i) => (i ? cell : cell.toLowerCase()))))
   const notPriced = (n) => (n ? `\n${n} ${n === 1 ? 'trade' : 'trades'} not priced yet` : '')
   const UNKNOWN_ROW = 'not known (native eth sales)'
+  const S = P.sanctioned[0] // on the list "un" the operator loaded above (tests/fixtures/sanctions-addresses.txt)
+  const tag = (wallet) => (wallet === S.wallet ? '\nsanctions list' : '')
   check('the wallets that traded through the integration: the totals, every wallet of the contract file, largest first, with its trades and volume, then the trades of no known wallet; trades not priced yet under each volume and in one line',
     (await partnerTile('Wallets', tradedSection)) === String(P.traders.totals.walletCount) && (await partnerTile('Trades', tradedSection)) === String(P.traders.totals.trades) && (await partnerTile('Volume (USD)', tradedSection)) === usd(P.traders.totals.volumeUsd)
-    && JSON.stringify(await tradedCells()) === JSON.stringify([...P.traders.wallets, { ...P.traders.unknown, wallet: UNKNOWN_ROW }].map((w) => [w.wallet, String(w.trades), usd(w.volumeUsd) + notPriced(w.unpriced)]))
+    && JSON.stringify(await tradedCells()) === JSON.stringify([...P.traders.wallets, { ...P.traders.unknown, wallet: UNKNOWN_ROW }].map((w) => [w.wallet + tag(w.wallet), String(w.trades), usd(w.volumeUsd) + notPriced(w.unpriced)]))
     && P.traders.wallets.some((w) => w.unpriced && !w.volumeUsd) && P.traders.unknown.trades > 0
     && await tradedSection.getByText(`Volume is priced each night. ${P.traders.totals.unpriced} trades are not priced yet.`).isVisible() && !(await tradedSection.getByText(/largest wallets/).count()))
   // The breakdown, read from the contract file: the payouts with each transaction linked to the chain's explorer, the
@@ -1262,6 +1266,18 @@ try {
   check('by chain and by fee token, read from the contract file: the chain by its name, the token whole, trades not priced yet under the volume or the share',
     JSON.stringify(await cellsOf(chainSection)) === JSON.stringify(B.byChain.map((c) => [`${CHAIN_NAMES[c.chainId]}\n${nTrades(c.trades)}`, usd(c.volumeUsd) + notPriced(c.unpriced), usd(c.shareUsd)]))
     && JSON.stringify((await cellsOf(tokenSection)).map(([token, share]) => [token.toLowerCase(), share])) === JSON.stringify(B.byToken.map((t) => [`${t.token}\n${CHAIN_NAMES[t.chainId]}, ${nTrades(t.trades)}`.toLowerCase(), usd(t.shareUsd) + notPriced(t.unpriced)])))
+  // The wallets on a sanctions list that traded: owner decision of 2026-11-14, "i want interactions with ofac sanctioned wallets flagged".
+  const flagged = pat.page.locator('.note.flagged')
+  check('a wallet of the contract file is on the loaded list "un": a red alert before the figures with the wallets, trades and USD, that it is information, and its table (wallet, list, trades, volume, first and last trade); a line names the list checked; the wallet is tagged once in the wallets that traded',
+    (await flagged.getAttribute('role')) === 'alert' && (await flagged.evaluate((box) => !!(box.compareDocumentPosition(document.querySelector('.pw')) & Node.DOCUMENT_POSITION_FOLLOWING)))
+    && (await flagged.locator('p').first().innerText()).includes(`1 wallet on a sanctions list traded through your integration: ${S.trades} trades, $${usd(S.volumeUsd)}. This is for your information. Nothing in your account changes.`)
+    && JSON.stringify((await cellsOf(flagged)).map(([wallet, ...rest]) => [wallet.toLowerCase(), ...rest])) === JSON.stringify([[`${S.wallet}\nun security council consolidated list\n${S.trades} trades`, usd(S.volumeUsd) + notPriced(S.unpriced), `${S.firstAt.slice(0, 10)}\nLast ${S.lastAt.slice(0, 10)}`]])
+    && await pat.page.getByText(`The wallets that traded are checked against: UN Security Council consolidated list, loaded ${today}.`).isVisible()
+    && (await tradedSection.locator('tbody tr', { hasText: 'Sanctions list' }).count()) === 1 && (await status('/api/me', pat.page)) === 200) // information only: the organisation is not frozen
+  check('the alert of the wallets on a sanctions list fits a phone', await both(pat.page, '65-overview-partner-sanctioned', '.note.flagged'))
+  await pat.page.setViewportSize({ width: 390, height: 844 })
+  check('at phone width the table of the alert needs no sideways scroll: the address wraps', await flagged.locator('.table-wrap').evaluate((box) => box.scrollWidth <= box.clientWidth))
+  await pat.page.setViewportSize({ width: 1440, height: 900 })
   check('the payouts fit a phone', await both(pat.page, '62-overview-partner-payouts', '.pw section:has-text("Payouts")'))
   check('the daily volume and its table fit a phone', await both(pat.page, '63-overview-partner-daily', '.pw section:has-text("Daily volume")'))
   check('by chain and by fee token fit a phone', await both(pat.page, '64-overview-partner-chains-tokens', '.pw .g.even'))
@@ -1293,11 +1309,16 @@ try {
     && monthLines.length === P.fees.recentBatches.length + 1 && monthLines.slice(1).every((row, i) => row.toLowerCase().startsWith(`"${P.wallet}","demo wallet","${P.fees.recentBatches[i].cycleMonth}",`) && row.endsWith(`,"${P.fees.recentBatches[i].carriedUsd}","live"`)))
   const [tradedFile] = await Promise.all([pat.page.waitForEvent('download'), pat.page.getByRole('button', { name: 'Trading wallets CSV' }).click()])
   const tradedLines = readFileSync(await tradedFile.path(), 'utf8').split('\r\n').filter(Boolean)
-  const tradedRow = (wallet, w) => `"${P.wallet}","demo wallet","${wallet}","${w.trades}","${w.volumeUsd}","${w.unpriced}","live"`
+  const tradedRow = (wallet, w, list = '') => `"${P.wallet}","demo wallet","${wallet}","${list}","${w.trades}","${w.volumeUsd}","${w.unpriced}","live"`
   check('the export of the wallets that traded downloads: named ophis-partner-traders-, every wallet of the contract file beside the partner wallet with its trades not priced yet, the trades of no known wallet, the total, source = live; the two are the only CSV',
-    /^ophis-partner-traders-\d{4}-\d\d-\d\d\.csv$/.test(tradedFile.suggestedFilename()) && tradedLines[0] === '"Partner wallet","Wallet name","Wallet","Trades","Volume (USD)","Trades not priced yet","source"'
-    && JSON.stringify(tradedLines.slice(1).map((row) => row.toLowerCase())) === JSON.stringify([...P.traders.wallets.map((w) => tradedRow(w.wallet, w)), tradedRow(UNKNOWN_ROW, P.traders.unknown), tradedRow('total, 3 wallets', P.traders.totals)])
-    && (await pat.page.getByRole('button', { name: /CSV/ }).count()) === 6)
+    /^ophis-partner-traders-\d{4}-\d\d-\d\d\.csv$/.test(tradedFile.suggestedFilename()) && tradedLines[0] === '"Partner wallet","Wallet name","Wallet","Sanctions list","Trades","Volume (USD)","Trades not priced yet","source"'
+    && JSON.stringify(tradedLines.slice(1).map((row) => row.toLowerCase())) === JSON.stringify([...P.traders.wallets.map((w) => tradedRow(w.wallet, w, w.wallet === S.wallet ? 'un security council consolidated list' : '')), tradedRow(UNKNOWN_ROW, P.traders.unknown), tradedRow('total, 3 wallets', P.traders.totals)])
+    && (await pat.page.getByRole('button', { name: /CSV/ }).count()) === 7)
+  const [listedFile] = await Promise.all([pat.page.waitForEvent('download'), pat.page.getByRole('button', { name: 'Sanctioned wallets CSV' }).click()])
+  const listedLines = readFileSync(await listedFile.path(), 'utf8').split('\r\n').filter(Boolean)
+  check('the export of the wallets on a sanctions list downloads: named ophis-partner-sanctioned-, the wallet with its list, trades, volume, trades not priced yet, first and last trade, source = live',
+    /^ophis-partner-sanctioned-\d{4}-\d\d-\d\d\.csv$/.test(listedFile.suggestedFilename()) && listedLines[0] === '"Partner wallet","Wallet name","Wallet","Sanctions list","Trades","Volume (USD)","Trades not priced yet","First trade","Last trade","source"'
+    && JSON.stringify(listedLines.slice(1).map((row) => row.toLowerCase())) === JSON.stringify([`"${P.wallet}","demo wallet","${S.wallet}","un security council consolidated list","${S.trades}","${S.volumeUsd}","${S.unpriced}","${S.firstAt}","${S.lastAt}","live"`.toLowerCase()]))
   // The four CSV of the breakdown, downloaded and read back.
   const breakdownFile = async (label) => {
     const [file] = await Promise.all([pat.page.waitForEvent('download'), pat.page.getByRole('button', { name: label }).click()])
@@ -1331,25 +1352,41 @@ try {
   check('Retry reads again: the figures are back', (await partnerTile('Owed this cycle')) === `$${usd(P.fees.currentCycle.owedUsd)}`)
 
   // The rules of the block that the contract file does not reach, on the console's own answer changed in this browser.
-  const tradedWith = async (traders, key = 'traders') => {
+  const overviewWith = async (edit) => {
     // route.fetch() sends the cookie but not sec-fetch-site, which the server asks of every API call. Nothing here may
     // throw: an error in a route handler ends the run with the server still up.
     await pat.page.route('**/api/overview', async (route) => {
       const response = await route.fetch({ headers: { ...route.request().headers(), 'sec-fetch-site': 'same-origin' } }).catch(() => null)
       const body = await response?.json().catch(() => null)
-      if (body?.figures?.wallets) body.figures.wallets[0][key] = traders
+      if (body?.figures?.wallets) edit(body.figures)
       await (response ? route.fulfill({ response, json: body }) : route.abort()).catch(() => undefined)
     })
     await patOverview()
     await pat.page.getByText('Figures from the Ophis rebate service, read at').waitFor()
     await pat.page.unroute('**/api/overview')
   }
+  const tradedWith = (traders, key = 'traders', sanctioned = []) => overviewWith((f) => Object.assign(f.wallets[0], { sanctioned, [key]: traders }))
   const tradersList = (n) => Array.from({ length: n }, (_, i) => ({ wallet: `0x${(i + 1).toString(16).padStart(40, '0')}`, trades: 1, volumeUsd: n - i, unpriced: 0 }))
   const none = { trades: 0, volumeUsd: 0, unpriced: 0 }
   await tradedWith({ wallets: tradersList(100), unknown: none, totals: { walletCount: 105, trades: 105, volumeUsd: 5100, unpriced: 0 } })
-  check('more than 100 wallets: the table lists 100 and says it shows the largest; no trade of an unknown wallet: no row for it; every trade priced: no line about pricing',
-    (await tradedSection.locator('tbody tr').count()) === 100 && await tradedSection.getByText('The table shows the 100 largest wallets by volume.').isVisible() && (await partnerTile('Wallets', tradedSection)) === '105'
-    && !(await tradedSection.getByText(/priced each night|not priced yet|Not known/).count()))
+  check('more than 100 wallets: the table lists 100 and says it shows the largest; no trade of an unknown wallet: no row for it; every trade priced: no line about pricing; no listed wallet: no alert, no tag',
+    (await tradedSection.locator('tbody tr').count()) === 100 && await tradedSection.getByText('The table shows the 100 largest wallets by volume.', { exact: true }).isVisible() && (await partnerTile('Wallets', tradedSection)) === '105'
+    && !(await tradedSection.getByText(/priced each night|not priced yet|Not known/).count()) && !(await flagged.count()) && !(await tradedSection.getByText('Sanctions list').count()))
+  const outside = { wallet: `0x${'e'.repeat(40)}`, lists: ['OFAC SDN list'], trades: 1, volumeUsd: 0.5, unpriced: 0, firstAt: null, lastAt: null }
+  await tradedWith({ wallets: tradersList(100), unknown: none, totals: { walletCount: 105, trades: 105, volumeUsd: 5100, unpriced: 0 } }, 'traders', [outside])
+  check('a listed wallet outside the 100 largest: added at the end of the table with its tag, and the line says so; the alert in the singular, its block time not known yet',
+    (await tradedSection.locator('tbody tr').count()) === 101 && JSON.stringify((await tradedCells()).at(-1)) === JSON.stringify([`${outside.wallet}\nsanctions list`, '1', '0.50'])
+    && await tradedSection.getByText('The table shows the 100 largest wallets by volume. The wallets on a sanctions list are added at the end.').isVisible()
+    && (await flagged.locator('p').first().innerText()).includes('1 wallet on a sanctions list traded through your integration: 1 trade, $0.50.') && JSON.stringify(await cellsOf(flagged)) === JSON.stringify([[`${outside.wallet}\nOFAC SDN list\n1 trade`, '0.50', 'Not known yet']]))
+  // Two partner wallets: a listed wallet that traded through both is one row of the alert, its trades added up, its first and last trade over both.
+  await overviewWith((f) => {
+    const [w] = f.wallets
+    f.wallets = [w, { ...w, wallet: `0x${'f'.repeat(40)}`, label: 'Second', sanctioned: [{ ...w.sanctioned[0], trades: 2, volumeUsd: 10, unpriced: 0, firstAt: '2026-07-01T00:00:00.000Z', lastAt: '2026-11-10T00:00:00.000Z' }, outside] }]
+  })
+  check('two partner wallets: the alert counts each listed wallet once, its trades and volume added up over both, the first trade the earliest and the last the latest',
+    (await flagged.locator('p').first().innerText()).includes(`2 wallets on a sanctions list traded through your integration: ${S.trades + 3} trades, $${usd(S.volumeUsd + 10.5)}.`)
+    && JSON.stringify((await cellsOf(flagged)).map(([wallet, ...rest]) => [wallet.toLowerCase(), ...rest])) === JSON.stringify([
+      [`${S.wallet}\nun security council consolidated list\n${S.trades + 2} trades`, usd(S.volumeUsd + 10) + notPriced(S.unpriced), `2026-07-01\nLast 2026-11-10`], [`${outside.wallet}\nofac sdn list\n1 trade`, '0.50', 'Not known yet']]))
   await tradedWith({ wallets: [{ ...tradersList(2)[0], trades: 2, unpriced: 1 }, tradersList(2)[1]], unknown: none, totals: { walletCount: 2, trades: 3, volumeUsd: 3, unpriced: 1 } })
   check('every wallet listed: no line about the largest; one trade not priced: under its volume and in the line, in the singular',
     !(await tradedSection.getByText(/largest wallets/).count()) && await tradedSection.getByText('Volume is priced each night. 1 trade is not priced yet.').isVisible()
@@ -1424,7 +1461,7 @@ try {
   if (violations.length) console.error(violations.join("\n"))
   check(`no policy violation in the browser (${violations.length})`, violations.length === 0)
   check(`no request left the origin (${foreign.length})`, foreign.length === 0)
-  console.log('\nEnd-to-end run passed. Screenshots in .shots/: 01-signin to 64-overview-partner-chains-tokens')
+  console.log('\nEnd-to-end run passed. Screenshots in .shots/: 01-signin to 65-overview-partner-sanctioned')
 } catch (error) {
   console.error(error.message)
   process.exitCode = 1

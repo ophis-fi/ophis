@@ -713,7 +713,7 @@ async function tableExport(c: Context) {
   const live = c.session.org_kind === 'partner'
   let tables: Record<string, [head: string[], rows: unknown[][]]>
   if (live) {
-    if (!Object.hasOwn(partner.tables({ state: 'live', asOf: '', leftOut: 0, wallets: [] }), table)) return fail(404, 'not_found')
+    if (!Object.hasOwn(partner.tables({ state: 'live', asOf: '', leftOut: 0, lists: [], wallets: [] }), table)) return fail(404, 'not_found')
     const figures = await partner.figures(c.env, c.actor.orgId, c.now)
     if (figures.state !== 'live') return fail(figures.state === 'figures_unavailable' ? 503 : figures.state === 'figures_rate' ? 429 : 409, figures.state)
     tables = partner.tables(figures)

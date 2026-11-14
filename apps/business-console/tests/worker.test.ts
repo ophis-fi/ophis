@@ -5061,8 +5061,8 @@ describe('D. Support: the model selects, the server decides', () => {
     // Review of P4: a partner's Overview shows its fee figures and exports one table, so the two texts say so. No text
     // speaks of a referral share, referred wallets, codes or earnings: the console's partners get none (2026-11-13).
     const text = (id: string) => ANSWERS.find((a) => a.id === id)!.text
-    expect(text('KB-13')).toMatch(/Overview shows a partner organisation its fee owed this cycle \(an estimate\), its payouts, the daily volume, the split by chain and fee token, and the wallets that traded\. Figures are read by the fee recipient address of your integration, so link that address\./)
-    expect(text('KB-16')).toMatch(/for a partner organisation, in Overview, the partner-fee months, the payouts, the daily volume, the split by chain and by fee token, and the wallets that traded;/)
+    expect(text('KB-13')).toMatch(/Overview shows a partner organisation its fee owed this cycle \(an estimate\), its payouts, the daily volume, the split by chain and fee token, and the wallets that traded, flagging those on a sanctions list\. Figures are read for the fee recipient address you link\./)
+    expect(text('KB-16')).toMatch(/for a partner organisation, in Overview, the partner-fee months, the payouts, the daily volume, the split by chain and by fee token, the wallets that traded, and those of them on a sanctions list;/)
     expect(text('KB-13') + text('KB-16')).not.toMatch(/no fees view|does not show|one export that exists/)
     for (const a of ANSWERS) expect(a.title + a.about + a.text, a.id).not.toMatch(/referr|affiliate|partner code|earning/i)
     // Onboarding is built and the Desk exists in demo mode: the two texts say what is there and what is not.
@@ -8816,17 +8816,19 @@ async function walletRow(orgId: string, address: string, more: { label?: string;
   return id
 }
 const someAddress = () => `0x${data.randomId()}${data.randomId().slice(0, 8)}`
-// What the indexer answers for these wallets: the contract's partner wallet as it is, any other with zero fees.
+// What the indexer answers for these wallets: the contract's partner wallet as it is, any other with zero fees. Its
+// listed wallets that traded: those of `listed` only, as the indexer's query names them.
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-const answerFor = (wallets: string[]): any => structuredClone({ asOf: contract.asOf, wallets: wallets.map((w) => (w === P.wallet ? P : { ...Z, wallet: w, fees: { ...Z.fees, recipient: w } })) })
+const answerFor = (wallets: string[], listed: string[] = []): any => structuredClone({ asOf: contract.asOf, wallets: wallets.map((w) => (w === P.wallet ? P : { ...Z, wallet: w, fees: { ...Z.fees, recipient: w } }))
+  .map((w) => ({ ...w, sanctioned: w.sanctioned.filter((x) => listed.includes(x.wallet)) })) })
 /** Stands in for the indexer. `change` twists the good answer, or returns the Response itself. Returns what was asked. */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function indexer(change: (answer: any, init: RequestInit) => unknown = (answer) => answer) {
-  const asked: { url: string; init: RequestInit; wallets: string[] }[] = []
+  const asked: { url: string; init: RequestInit; wallets: string[]; listed: string[] }[] = []
   vi.stubGlobal('fetch', async (url: string, init: RequestInit) => {
-    const wallets = JSON.parse(String(init.body)).wallets as string[]
-    asked.push({ url: String(url), init, wallets })
-    const out = await change(answerFor(wallets), init)
+    const { wallets, listed } = JSON.parse(String(init.body)) as { wallets: string[]; listed: string[] }
+    asked.push({ url: String(url), init, wallets, listed })
+    const out = await change(answerFor(wallets, listed), init)
     return out instanceof Response ? out : Response.json(out)
   })
   return asked
@@ -8855,9 +8857,19 @@ const shownPartner = {
     byToken: P.breakdown.byToken.map((t) => ({ ...t, chain: { 10: 'OP Mainnet', 130: 'Unichain' }[t.chainId], token: checksum(t.token) })),
     payouts: P.breakdown.payouts.map(({ txHash, ...p }) => ({ ...p, chain: 'Gnosis', tx: txHash })),
   },
+  sanctioned: [], // no list is loaded (section I empties them before each test)
 }
 const NO_BREAKDOWN = { daily: [], byChain: [], byToken: [], payouts: [] }
 const UNAVAILABLE = { kind: 'partner', waiting: 0, figures: { state: 'figures_unavailable' } }
+const LISTED_TRADER = P.sanctioned[0].wallet // the contract's wallet that traded and is on a list
+const ON_LIST = `0x${'a11ce'.padStart(40, '0')}` // on a list, and never traded
+/** A sanctions list loaded straight into its tables, as the operator's load leaves them. */
+async function loadList(list: string, addresses: string[], published: string | null = null) {
+  await db.batch([
+    db.prepare('INSERT INTO sanctions_lists (list, sha256, entries, loaded_at, published) VALUES (?, ?, ?, ?, ?)').bind(list, 'ab'.repeat(32), addresses.length, now, published),
+    ...addresses.map((address) => db.prepare('INSERT INTO sanctioned_addresses (list, address) VALUES (?, ?)').bind(list, address)),
+  ])
+}
 
 isolation['GET /api/overview'] = async (a, b) => {
   // Two partners, each with a linked wallet. A's read asks the indexer for A's wallet and never for B's.
@@ -8878,6 +8890,7 @@ isolation['GET /api/overview'] = async (a, b) => {
 }
 
 describe('I. partner figures: live', () => {
+  beforeEach(() => db.batch([db.prepare('DELETE FROM sanctioned_addresses'), db.prepare('DELETE FROM sanctions_lists')])) // the tests share one database
   it('GET /api/overview: the isolation case', async () => isolation['GET /api/overview'](await member('Alder Asset Management'), await member('Birchfield Capital')))
 
   // The Free plan: about 1 ms of CPU per recovered signature, 10 ms per request (tests/cpu.mjs).
@@ -8896,14 +8909,15 @@ describe('I. partner figures: live', () => {
     expect(await by(old)).toBeNull()
     const asked = indexer()
     expect((await overviewOf(o)).body.figures.state).toBe('live')
-    expect(JSON.parse(String(asked[0].init.body))).toEqual({ wallets: [accounts[0], accounts[4], accounts[1]].map((a) => a.address.toLowerCase()), contract: { [accounts[4].address.toLowerCase()]: [CHAIN] } })
+    expect(JSON.parse(String(asked[0].init.body))).toEqual({ wallets: [accounts[0], accounts[4], accounts[1]].map((a) => a.address.toLowerCase()), contract: { [accounts[4].address.toLowerCase()]: [CHAIN] }, listed: [] })
   })
 
   it('the contract file is the one the indexer tests: the partner-fee dashboard of each wallet, the wallets that traded and the breakdown, no referral dashboard; a partner wallet with two months, three wallets and three trades of no known wallet, 11 days, two chains, three fee tokens and one payout, a second wallet with zero fees and none', () => {
     const b = P.breakdown
     expect([P.wallet, P.fees.recentBatches.length, P.traders.wallets.length, P.traders.unknown.trades, Z.fees.lifetime.tradeCount, Z.traders.totals.walletCount, contract.wallets.map((w) => Object.keys(w))])
-      .toEqual(['0x5afe5afe5afe5afe5afe5afe5afe5afe5afe5afe', 2, 3, 3, 0, 0, [['wallet', 'fees', 'traders', 'breakdown'], ['wallet', 'fees', 'traders', 'breakdown']]])
+      .toEqual(['0x5afe5afe5afe5afe5afe5afe5afe5afe5afe5afe', 2, 3, 3, 0, 0, [['wallet', 'fees', 'traders', 'breakdown', 'sanctioned'], ['wallet', 'fees', 'traders', 'breakdown', 'sanctioned']]])
     expect([b.daily.length, b.byChain.length, b.byToken.length, b.payouts.length, Z.breakdown]).toEqual([11, 2, 3, 1, NO_BREAKDOWN])
+    expect([P.sanctioned.map((x) => x.wallet), Z.sanctioned]).toEqual([[LISTED_TRADER], []]) // one of the wallets that traded is on a list
   })
 
   it('not connected: no address, no token, or an address that is not acceptable; nothing is asked', async () => {
@@ -8948,7 +8962,7 @@ describe('I. partner figures: live', () => {
     const o = await partnerOrg()
     const asked = indexer()
     const members = [o, await colleague(o, 'admin'), await colleague(o, 'trader'), await colleague(o, 'approver'), await colleague(o, 'compliance'), await colleague(o, 'viewer')]
-    for (const m of members) expect((await overviewOf(m)).body).toEqual({ kind: 'partner', waiting: 0, figures: { state: 'live', asOf: contract.asOf, leftOut: 0, wallets: [shownPartner] } })
+    for (const m of members) expect((await overviewOf(m)).body).toEqual({ kind: 'partner', waiting: 0, figures: { state: 'live', asOf: contract.asOf, leftOut: 0, lists: [], wallets: [shownPartner] } })
     expect(asked).toHaveLength(members.length) // one request per read
     // A wallet that is no fee recipient: zero fees, as the contract's second wallet.
     const other = someAddress()
@@ -8956,8 +8970,45 @@ describe('I. partner figures: live', () => {
     const two = (await overviewOf(o)).body.figures.wallets
     expect(two[1]).toEqual({
       wallet: checksum(other), label: 'Second', chain: 'OP Mainnet', fees: { shareUsd: 0, carriedUsd: 0, owedUsd: 0, pendingTrades: 0, paidWeth: 0, trades: 0, months: [] },
-      traders: { wallets: [], unknown: { trades: 0, volumeUsd: 0, unpriced: 0 }, totals: { walletCount: 0, trades: 0, volumeUsd: 0, unpriced: 0 } }, breakdown: NO_BREAKDOWN,
+      traders: { wallets: [], unknown: { trades: 0, volumeUsd: 0, unpriced: 0 }, totals: { walletCount: 0, trades: 0, volumeUsd: 0, unpriced: 0 } }, breakdown: NO_BREAKDOWN, sanctioned: [],
     })
+  })
+
+  // Owner decision of 2026-11-14: "i want interactions with ofac sanctioned wallets flagged." The flag is information: nothing is frozen.
+  it('the wallets on a sanctions list that traded: every listed address is sent, the indexer names those that traded over every trade, each with the names of its lists and the lists checked; nothing is frozen', async () => {
+    const o = await partnerOrg()
+    const asked = indexer()
+    await loadList('ofac', [LISTED_TRADER, ON_LIST], '2026-11-09')
+    await loadList('un', [LISTED_TRADER]) // a list made by hand: no publish day
+    const before = await snapshot()
+    const { figures } = (await overviewOf(o)).body
+    expect(asked[0].listed).toEqual([LISTED_TRADER, ON_LIST]) // each address once, lower case, in order
+    const day = (ms: number) => new Date(ms).toISOString().slice(0, 10)
+    expect(figures.lists).toEqual([{ name: 'OFAC SDN list', published: '2026-11-09', loaded: day(now) }, { name: 'UN Security Council consolidated list', published: null, loaded: day(now) }])
+    const flagged = { ...P.sanctioned[0], wallet: checksum(LISTED_TRADER), lists: ['OFAC SDN list', 'UN Security Council consolidated list'] }
+    expect(figures.wallets).toEqual([{ ...shownPartner, sanctioned: [flagged] }])
+    // Information only: the organisation stays active, and nothing is written.
+    expect([(await row<{ state: string }>('SELECT state FROM organisations WHERE id = ?', o.orgId))!.state, await snapshot()]).toEqual(['active', before])
+    // A listed wallet outside the 100 largest: in the file of the wallets that traded, after them, with its lists; in the file of the listed wallets.
+    const outside = { wallet: ON_LIST, trades: 2, volumeUsd: 3.5, unpriced: 1, firstAt: null, lastAt: '2026-11-11T08:00:00.000Z' }
+    indexer((answer) => ((answer.wallets[0].sanctioned = [...answer.wallets[0].sanctioned, outside]), answer))
+    const traders = (await exportOf(o, 'traders')).rows
+    expect(traders[0]).toEqual(['Partner wallet', 'Wallet name', 'Wallet', 'Sanctions list', 'Trades', 'Volume (USD)', 'Trades not priced yet', 'source'])
+    expect(traders.slice(1).map((r) => r.slice(2, 5))).toEqual([
+      [checksum(P.traders.wallets[0].wallet), '', String(P.traders.wallets[0].trades)], [checksum(LISTED_TRADER), 'OFAC SDN list; UN Security Council consolidated list', '181'],
+      [checksum(P.traders.wallets[2].wallet), '', '1'], [checksum(ON_LIST), 'OFAC SDN list', '2'], ['Not known (native ETH sales)', '', '3'], ['Total, 3 wallets', '', '412'],
+    ])
+    const listed = await exportOf(o, 'sanctioned')
+    expect([listed.status, listed.body.name]).toEqual([200, 'ophis-partner-sanctioned-2026-11-10.csv'])
+    expect(listed.rows).toEqual([
+      ['Partner wallet', 'Wallet name', 'Wallet', 'Sanctions list', 'Trades', 'Volume (USD)', 'Trades not priced yet', 'First trade', 'Last trade', 'source'],
+      [checksum(P.wallet), 'Treasury Safe', checksum(LISTED_TRADER), 'OFAC SDN list; UN Security Council consolidated list', '181', '118400.5', '1', P.sanctioned[0].firstAt, P.sanctioned[0].lastAt, 'live'],
+      [checksum(P.wallet), 'Treasury Safe', checksum(ON_LIST), 'OFAC SDN list', '2', '3.5', '1', '', outside.lastAt, 'live'],
+    ])
+    // No list loaded: nothing is sent as listed, nothing is flagged.
+    await db.batch([db.prepare('DELETE FROM sanctioned_addresses'), db.prepare('DELETE FROM sanctions_lists')])
+    const bare = indexer()
+    expect([(await overviewOf(o)).body.figures, bare[0].listed]).toEqual([{ state: 'live', asOf: contract.asOf, leftOut: 0, lists: [], wallets: [shownPartner] }, []])
   })
 
   it('the request: one POST to /business/partner with the bearer token, the distinct linked addresses oldest first, at most 10, and how many were left out', async () => {
@@ -8969,7 +9020,7 @@ describe('I. partner figures: live', () => {
     const view = await overviewOf(o)
     expect(asked).toHaveLength(1)
     const { url, init, wallets } = asked[0]
-    expect([url, init.method, init.redirect, init.body]).toEqual(['https://indexer.test/business/partner', 'POST', 'manual', JSON.stringify({ wallets: addresses.slice(0, 10), contract: Object.fromEntries(addresses.slice(0, 10).map((a, i) => [a, i ? [10] : [10, 8453]])) })])
+    expect([url, init.method, init.redirect, init.body]).toEqual(['https://indexer.test/business/partner', 'POST', 'manual', JSON.stringify({ wallets: addresses.slice(0, 10), contract: Object.fromEntries(addresses.slice(0, 10).map((a, i) => [a, i ? [10] : [10, 8453]])), listed: [] })])
     expect(init.headers).toEqual({ 'content-type': 'application/json', authorization: `Bearer ${INDEXER_TOKEN}` })
     expect(init.signal).toBeInstanceOf(AbortSignal)
     expect(wallets).toEqual(addresses.slice(0, 10))
@@ -8992,16 +9043,17 @@ describe('I. partner figures: live', () => {
     await walletRow(o.orgId, safe, { label: 'Safe' })
     await walletRow(o.orgId, safe, { label: 'Safe on Base', chainId: 8453 })
     await proof(await walletRow(o.orgId, other, { label: 'Signed by another key' })) // 65 bytes that recover to another address: no key proof
-    const refuse = (i: number, traders: unknown = null, breakdown: unknown = null) => (answer: { wallets: unknown[] }) => ((answer.wallets[i] = { wallet: [keyWallet, safe, other][i], fees: null, traders, breakdown }), answer)
+    const refuse = (i: number, traders: unknown = null, breakdown: unknown = null, sanctioned: unknown = null) => (answer: { wallets: unknown[] }) => ((answer.wallets[i] = { wallet: [keyWallet, safe, other][i], fees: null, traders, breakdown, sanctioned }), answer)
     const asked = indexer(refuse(1))
     const view = await overviewOf(o)
-    expect(JSON.parse(String(asked[0].init.body))).toEqual({ wallets: [keyWallet, safe, other], contract: { [safe]: [10, 8453], [other]: [10] } })
-    expect(view.body.figures.wallets.map((w: { label: string; fees: unknown; traders: unknown; breakdown: unknown }) => [w.label, w.fees === null, w.traders === null, w.breakdown === null])).toEqual([['Key wallet', false, false, false], ['Safe', true, true, true], ['Signed by another key', false, false, false]])
+    expect(JSON.parse(String(asked[0].init.body))).toEqual({ wallets: [keyWallet, safe, other], contract: { [safe]: [10, 8453], [other]: [10] }, listed: [] })
+    expect(view.body.figures.wallets.map((w: { label: string; fees: unknown; traders: unknown; breakdown: unknown; sanctioned: unknown }) => [w.label, w.fees === null, w.traders === null, w.breakdown === null, w.sanctioned === null]))
+      .toEqual([['Key wallet', false, false, false, false], ['Safe', true, true, true, true], ['Signed by another key', false, false, false, false]])
     expect((await exportOf(o, 'months')).status).toBe(200)
     // "No figures" for a wallet proved by its key is no answer the indexer gives: the whole answer is refused. So is a
     // refusal of half: no fees beside the wallets that traded, or the wallets that traded withheld beside the fees.
-    for (const half of [refuse(0), refuse(1, P.traders), refuse(1, null, NO_BREAKDOWN), (answer: { wallets: { traders: unknown }[] }) => ((answer.wallets[1].traders = null), answer),
-      (answer: { wallets: { breakdown: unknown }[] }) => ((answer.wallets[1].breakdown = null), answer)]) {
+    for (const half of [refuse(0), refuse(1, P.traders), refuse(1, null, NO_BREAKDOWN), refuse(1, null, null, []), (answer: { wallets: { traders: unknown }[] }) => ((answer.wallets[1].traders = null), answer),
+      (answer: { wallets: { breakdown: unknown }[] }) => ((answer.wallets[1].breakdown = null), answer), (answer: { wallets: { sanctioned: unknown }[] }) => ((answer.wallets[1].sanctioned = null), answer)]) {
       indexer(half)
       expect((await overviewOf(o)).body).toEqual(UNAVAILABLE)
     }
@@ -9027,6 +9079,7 @@ describe('I. partner figures: live', () => {
   it('a hostile or broken answer, one case each: figures not available, one log line of one word, never a partial mix', async () => {
     const o = await partnerOrg()
     await walletRow(o.orgId, Z.wallet, { label: 'Second' })
+    await loadList('un', [LISTED_TRADER, ON_LIST]) // the contract's listed wallet that traded, and one that did not
     const logged = vi.spyOn(console, 'error').mockImplementation(() => undefined)
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     type Twist = (answer: any) => unknown
@@ -9041,6 +9094,19 @@ describe('I. partner figures: live', () => {
       ['the wallets in another order', (a) => (a.wallets.reverse(), a)],
       ['the fees of another wallet under this one', set('wallets.0.fees.recipient', Z.wallet)],
       ['NaN', raw(JSON.stringify(answerFor([P.wallet, Z.wallet])).replace('83.6', 'NaN')), 'SyntaxError'],
+      // The listed wallets that traded: each an address that was sent as listed, once; each figure checked as the others.
+      ['no sanctioned field at all', (a) => (delete a.wallets[0].sanctioned, a)],
+      ['sanctioned that is no list', set('wallets.1.sanctioned', {})],
+      ['more listed wallets that traded than were sent', set('wallets.0.sanctioned', [P.sanctioned[0], { ...P.sanctioned[0], wallet: ON_LIST }, { ...P.sanctioned[0], wallet: ON_LIST }])],
+      ['a listed wallet that was not sent', set('wallets.0.sanctioned.0.wallet', P.traders.wallets[0].wallet)],
+      ['a listed wallet twice', set('wallets.0.sanctioned', [P.sanctioned[0], P.sanctioned[0]])],
+      ['a listed wallet in capitals', set('wallets.0.sanctioned.0.wallet', LISTED_TRADER.replace('b0b', 'B0B'))],
+      ['a listed wallet\'s trades that are no whole number', set('wallets.0.sanctioned.0.trades', 181.5)],
+      ['a listed wallet\'s volume as a string', set('wallets.0.sanctioned.0.volumeUsd', '118400.5')],
+      ['a listed wallet\'s count not priced yet that is negative', set('wallets.0.sanctioned.0.unpriced', -1)],
+      ['a first trade that is no time', set('wallets.0.sanctioned.0.firstAt', '2026-08-20')],
+      ['a last trade as a number', set('wallets.0.sanctioned.0.lastAt', Date.parse(P.sanctioned[0].lastAt))],
+      ['a first trade that is missing', (a) => (delete a.wallets[0].sanctioned[0].firstAt, a)],
       ['Infinity as text', raw(JSON.stringify(answerFor([P.wallet, Z.wallet])).replace('83.6', 'Infinity')), 'SyntaxError'],
       ['Infinity as a number', raw(JSON.stringify(answerFor([P.wallet, Z.wallet])).replace('83.6', '1e999'))],
       ['a negative number', set('wallets.0.fees.lifetime.paidWeth', -1)],
@@ -9207,7 +9273,7 @@ describe('I. partner figures: live', () => {
     }
     indexer((answer) => ((answer.wallets[0].affiliate = referral), answer))
     const { body } = await overviewOf(o)
-    expect(body.figures).toEqual({ state: 'live', asOf: contract.asOf, leftOut: 0, wallets: [shownPartner] })
+    expect(body.figures).toEqual({ state: 'live', asOf: contract.asOf, leftOut: 0, lists: [], wallets: [shownPartner] })
     const seen = JSON.stringify([body, (await exportOf(o, 'months')).body])
     for (const value of ['affiliate', 'referr', 'Referr', 'marker-code', '184250.75', '2391804.5', '2.08', '41.37', 'scheduled', referred, '7500', '2026-12-01']) expect(seen, value).not.toContain(value)
     // The console reads no field of it.
@@ -9249,19 +9315,21 @@ describe('I. partner figures: live', () => {
     expect([traders.status, traders.body.name]).toEqual([200, 'ophis-partner-traders-2026-11-10.csv'])
     // Each wallet with its trades not priced yet, then the trades of no known wallet, then the total of every trade: the
     // file adds up to the page and says how many wallets traded.
-    const traded = (wallet: string, x: { trades: number; volumeUsd: number; unpriced: number }) => [checksum(P.wallet), "'=2+3 (cmd)", wallet, String(x.trades), String(x.volumeUsd), String(x.unpriced), 'live']
+    const traded = (wallet: string, x: { trades: number; volumeUsd: number; unpriced: number }) => [checksum(P.wallet), "'=2+3 (cmd)", wallet, '', String(x.trades), String(x.volumeUsd), String(x.unpriced), 'live']
     expect(traders.rows).toEqual([
-      ['Partner wallet', 'Wallet name', 'Wallet', 'Trades', 'Volume (USD)', 'Trades not priced yet', 'source'],
+      ['Partner wallet', 'Wallet name', 'Wallet', 'Sanctions list', 'Trades', 'Volume (USD)', 'Trades not priced yet', 'source'],
       ...shownPartner.traders.wallets.map((t) => traded(t.wallet, t)),
       traded('Not known (native ETH sales)', P.traders.unknown), traded('Total, 3 wallets', P.traders.totals),
     ])
-    expect(traders.rows.slice(1).map((row) => row.slice(3, 6))).toContainEqual(['1', '0', '1']) // the wallet with only a trade not priced yet
+    expect(traders.rows.slice(1).map((row) => row.slice(4, 7))).toContainEqual(['1', '0', '1']) // the wallet with only a trade not priced yet
     for (const line of (months.body.csv + traders.body.csv).split('\r\n').filter(Boolean)) expect(line).not.toMatch(/(^|,)"[=+\-@\t\r]/)
     expect((await exportOf(o, 'months')).rows).toEqual(months.rows)
     expect(asked).toHaveLength(3) // each file is a fresh read
     // The breakdown, one file per table: every row of the contract file, the chain by its name, the token and the transaction whole.
     const b = P.breakdown
-    const files = Object.fromEntries(await Promise.all(['daily', 'chains', 'tokens', 'payouts'].map(async (table) => [table, await exportOf(viewer, table)] as const)))
+    // One after the other: the meter of the Free plan counts each invocation alone.
+    const files: Record<string, Awaited<ReturnType<typeof exportOf>>> = {}
+    for (const table of ['daily', 'chains', 'tokens', 'payouts']) files[table] = await exportOf(viewer, table)
     expect(Object.values(files).map((f) => [f.status, f.body.name])).toEqual(['daily', 'chains', 'tokens', 'payouts'].map((t) => [200, `ophis-partner-${t}-2026-11-10.csv`]))
     const line = (...cells: unknown[]) => [checksum(P.wallet), "'=2+3 (cmd)", ...cells.map(String), 'live']
     const chainName = (id: number) => ({ 10: 'OP Mainnet', 100: 'Gnosis', 130: 'Unichain' })[id]
@@ -9303,10 +9371,15 @@ describe('I. partner figures: live', () => {
       "not priced yet: in the table, not in the bars.", '<summary>Each day as a table<Icon name="chevron-down" /></summary>', "['Day', 'Volume (USD)', 'Your share (USD)']",
       'title="By chain" hint="Every trade, by the chain it settled on."', "['Chain', 'Volume (USD)', 'Your share (USD)']", 'title="By fee token" hint="The token your fee was taken in, on its chain."', "['Fee token', 'Your share (USD)']",
       '<Export table="payouts" size="md" label="Payouts CSV" />', '<Export table="daily" size="md" label="Daily CSV" />', '<Export table="chains" size="md" label="Chains CSV" />', '<Export table="tokens" size="md" label="Fee tokens CSV" />',
+      // The wallets on a sanctions list that traded: a red alert with its table and its CSV, a tag in the wallets that traded, the lists checked.
+      "<div className=\"note bad flagged\" role=\"alert\">", "{count(rows.length)} {rows.length === 1 ? 'wallet' : 'wallets'} on a sanctions list traded through your integration: {count(n)} {n === 1 ? 'trade' : 'trades'}, ${usd(rows.reduce((sum, s) => sum + s.volumeUsd, 0))}.",
+      'This is for your information. Nothing in your account changes.', '<Export table="sanctioned" label="Sanctioned wallets CSV" />', "['Wallet', 'Volume (USD)', 'First trade']", '<small>Last {s.lastAt.slice(0, 10)}</small>', "'Not known yet'",
+      '{listed.has(x.wallet) && <Status>Sanctions list</Status>}', "' The wallets on a sanctions list are added at the end.'",
+      '`The wallets that traded are checked against: ${f.lists.map((l) => `${l.name}${l.published ? `, published ${l.published}` : \'\'}, loaded ${l.loaded}`).join(\'; \')}.`', "'No sanctions list is loaded. The wallets that traded are not checked.'",
     ]) expect(part, sentence).toContain(sentence)
     expect(part.match(/\{ESTIMATE\}/g)).toHaveLength(1) // under the estimate
     // No referral share: the console's partners get none (owner decision of 2026-11-13).
-    for (const banned of [/referr|affiliate|partner code|net fee|earning|payout run|sanctions/i, /<Banner/, /example|demo|illustrative/i, new RegExp(WITHHELD.join('|')), /minimum (payout|amount)|threshold|bps/i, /licen[cs]ed|regulated|authori[sz]ed|MiCA|compliant/i, /\u2014/, /honest/i,
+    for (const banned of [/referr|affiliate|partner code|net fee|earning|payout run|frozen|freeze|blocked/i, /<Banner/, /example|demo|illustrative/i, new RegExp(WITHHELD.join('|')), /minimum (payout|amount)|threshold|bps/i, /licen[cs]ed|regulated|authori[sz]ed|MiCA|compliant/i, /\u2014/, /honest/i,
       /paid (weekly|monthly|daily|every)|payout (terms|schedule)|\bdue\b|guarantee|no (other|hidden) fee|never charge|price improvement/i]) expect(part).not.toMatch(banned)
     // Numbers are right-aligned with tabular figures: the kit's body sets tabular-nums, and the money columns carry the class num.
     expect(deskPage).toContain(String.raw`/\(USD\)|\(EUR\)|\(WETH\)|^(Trades`)
@@ -9510,7 +9583,7 @@ describe('K. the Free plan of Cloudflare Workers', () => {
     }
     indexer()
     for (const p of partners) {
-      for (const path of ['/api/me', '/api/org', '/api/overview', '/api/screening', '/api/audit', ...['months', 'traders', 'daily', 'chains', 'tokens', 'payouts'].map((t) => `/api/export/${t}`)]) {
+      for (const path of ['/api/me', '/api/org', '/api/overview', '/api/screening', '/api/audit', ...['months', 'traders', 'daily', 'chains', 'tokens', 'payouts', 'sanctioned'].map((t) => `/api/export/${t}`)]) {
         expect((await call('GET', path, { cookie: p.cookie, env: liveEnv })).status, path).toBe(200)
       }
     }

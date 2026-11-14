@@ -155,6 +155,7 @@ try {
   await show(partner, '#/overview', '1 Partner, Owner')
   await partner.page.getByText('Figures from the Ophis rebate service, read at').waitFor()
   await partner.page.getByRole('heading', { name: 'Wallets that traded through your integration' }).waitFor()
+  await partner.page.getByText('1 wallet on a sanctions list traded through your integration').waitFor() // a wallet of the stand-in is on the test OFAC file
   await show(owner, '#/desk', '2 Institution, Owner')
   await owner.page.getByRole('button', { name: 'Review order' }).waitFor()
   await show(approver, '#/organisation', '3 Institution, Approver')
@@ -180,7 +181,8 @@ try {
   }
   console.log(`
 Three windows are open, each signed in. Test data only.
-  1 Partner, Owner         Overview: the partner fee and the wallets that traded, from the local stand-in of the rebate service.
+  1 Partner, Owner         Overview: the partner fee and the wallets that traded, from the local stand-in of the rebate service;
+                           one of them is on the test OFAC list, so a red alert names it.
   2 Institution, Owner     Desk: fill the ticket, "Review order", then send it for approval.
   3 Institution, Approver  Organisation, Approvals: approve or refuse that order.
 Compliance, in windows 1 and 2: the sanctions screening the operator's command recorded, and the list it read.

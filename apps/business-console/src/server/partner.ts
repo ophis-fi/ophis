@@ -4,7 +4,9 @@
 // field by field and rebuilt as a whitelist: what the browser gets is made here, never passed through.
 // Any failure gives figures_unavailable: never examples, never a partial mix. The token stays in this file's one request.
 // The same answer holds the wallets that traded through the integration, with their trades and volume (tradersOf), and
-// the breakdown: the flow by day, by chain and by fee token, and the payouts (breakdownOf).
+// the breakdown: the flow by day, by chain and by fee token, and the payouts (breakdownOf). And the wallets on a sanctions
+// list the console holds that traded through it (sanctionedOf): the request sends every listed address, the indexer
+// names those among all the trades. Information only: nothing is frozen because a partner's users traded.
 import type { Hex } from 'viem'
 import { checksum, readCapped, signedByKey } from './chain.ts'
 import * as data from './data.ts'
@@ -95,9 +97,27 @@ function breakdownOf(v: unknown, asOf: string) {
   }
 }
 
-/** fees, traders and breakdown null: a contract wallet whose chain the indexer has not confirmed. No figure of it was read. */
-export type PartnerWallet = { wallet: string; label: string; chain: string; fees: ReturnType<typeof feesOf> | null; traders: ReturnType<typeof tradersOf> | null; breakdown: ReturnType<typeof breakdownOf> | null }
-export type Figures = { state: 'not_connected' | 'no_wallet' | 'figures_unavailable' | 'figures_rate' } | { state: 'live'; asOf: string; leftOut: number; wallets: PartnerWallet[] }
+// The listed wallets that traded, over every trade: each an address the request sent, once, with the names of its lists.
+// firstAt and lastAt: null while no block time of its trades is known.
+function sanctionedOf(v: unknown, of: Map<string, string[]>) {
+  const seen = new Set<string>()
+  const time = (t: unknown) => (t === null ? null : iso(t))
+  return list(v, of.size).map(obj).map((s) => {
+    const wallet = text(s.wallet, /^0x[0-9a-f]{40}$/)
+    if (!of.has(wallet) || seen.has(wallet)) no()
+    seen.add(wallet)
+    return { wallet: checksum(wallet), lists: of.get(wallet)!, ...figuresOf(s), firstAt: time(s.firstAt), lastAt: time(s.lastAt) }
+  })
+}
+
+/** fees, traders, breakdown and sanctioned null: a contract wallet whose chain the indexer has not confirmed. No figure of it was read. */
+export type PartnerWallet = {
+  wallet: string; label: string; chain: string; fees: ReturnType<typeof feesOf> | null; traders: ReturnType<typeof tradersOf> | null; breakdown: ReturnType<typeof breakdownOf> | null
+  sanctioned: ReturnType<typeof sanctionedOf> | null
+}
+/** lists: the sanctions lists the wallets that traded were checked against. */
+export type Figures = { state: 'not_connected' | 'no_wallet' | 'figures_unavailable' | 'figures_rate' }
+  | { state: 'live'; asOf: string; leftOut: number; lists: Awaited<ReturnType<typeof data.sanctionsHeld>>['lists']; wallets: PartnerWallet[] }
 
 /**
  * The figures of the session's organisation. The wallets come from its rows (state linked), never from the request:
@@ -122,9 +142,11 @@ export async function figures(env: Settings, orgId: string, now: number): Promis
   if (!asked.length) return { state: 'no_wallet' }
   if (!(await data.countHour(env.DB, `figures:${orgId}`, now, INDEXER.perHour))) return { state: 'figures_rate' }
   const contract = Object.fromEntries(asked.filter((a) => !rows.get(a)!.key).map((a) => [a, rows.get(a)!.chains]))
+  // ponytail: every listed address in each read (OFAC holds about 130 EVM addresses); a hash set at the indexer if the lists reach thousands.
+  const held = await data.sanctionsHeld(env.DB)
   try {
     const response = await fetch(`${base}/business/partner`, {
-      method: 'POST', headers: { 'content-type': 'application/json', authorization: `Bearer ${env.INDEXER_TOKEN}` }, body: JSON.stringify({ wallets: asked, contract }),
+      method: 'POST', headers: { 'content-type': 'application/json', authorization: `Bearer ${env.INDEXER_TOKEN}` }, body: JSON.stringify({ wallets: asked, contract, listed: [...held.of.keys()] }),
       redirect: 'manual', signal: AbortSignal.timeout(INDEXER.timeoutMs), // a redirect is not followed: its status is a failure below
     })
     if (response.status !== 200) throw named('status')
@@ -139,14 +161,15 @@ export async function figures(env: Settings, orgId: string, now: number): Promis
     const wallets = got.map(obj).map((w, i) => {
       const [address, row] = [asked[i], rows.get(asked[i])!]
       if (w.wallet !== address) no()
-      // "No figures" is an answer only for a wallet asked as a contract wallet, and only whole: no fees, no traders, no breakdown.
-      const refused = w.fees === null && w.traders === null && w.breakdown === null && Object.hasOwn(contract, address)
+      // "No figures" is an answer only for a wallet asked as a contract wallet, and only whole: no fees, no traders, no breakdown, no listed wallet.
+      const refused = w.fees === null && w.traders === null && w.breakdown === null && w.sanctioned === null && Object.hasOwn(contract, address)
       return {
         wallet: checksum(address), label: row.label, chain: row.chains.map((id) => CHAIN_NAME[id] ?? `Chain ${id}`).join(', '),
         fees: refused ? null : feesOf(w.fees, address), traders: refused ? null : tradersOf(w.traders), breakdown: refused ? null : breakdownOf(w.breakdown, asOf),
+        sanctioned: refused ? null : sanctionedOf(w.sanctioned, held.of),
       }
     })
-    return { state: 'live', asOf, leftOut: rows.size - asked.length, wallets }
+    return { state: 'live', asOf, leftOut: rows.size - asked.length, lists: held.lists, wallets }
   } catch (error) {
     // The log carries one word: no address of the service, no token, no wallet.
     console.error('partner figures unavailable', error instanceof Error ? error.name : 'unknown')
@@ -154,19 +177,24 @@ export async function figures(env: Settings, orgId: string, now: number): Promis
   }
 }
 
-/** The CSV tables of a partner, from a fresh read: the partner-fee months, the wallets that traded, and the four of the
- * breakdown. The wallets that traded end, for each partner wallet, with the trades of no known wallet (when there are)
- * and the total of every trade. */
+/** The CSV tables of a partner, from a fresh read: the partner-fee months, the wallets that traded, the four of the
+ * breakdown, and the wallets on a sanctions list that traded. The wallets that traded name the lists of each listed
+ * wallet, and add the listed ones outside the 100 largest; then, for each partner wallet, the trades of no known wallet
+ * (when there are) and the total of every trade. */
 export const tables = (f: Extract<Figures, { state: 'live' }>): Record<string, [head: string[], rows: unknown[][]]> => ({
   months: [['Partner wallet', 'Wallet name', 'Month', 'Status', 'Owed (USD)', 'Owed (WETH)', 'Carried (USD)'],
     f.wallets.flatMap((w) => (w.fees?.months ?? []).map((m) => [w.wallet, w.label, m.month, m.status, m.owedUsd, m.owedWeth, m.carriedUsd]))],
-  traders: [['Partner wallet', 'Wallet name', 'Wallet', 'Trades', 'Volume (USD)', 'Trades not priced yet'],
-    f.wallets.flatMap(({ wallet, label, traders: t }) => {
+  traders: [['Partner wallet', 'Wallet name', 'Wallet', 'Sanctions list', 'Trades', 'Volume (USD)', 'Trades not priced yet'],
+    f.wallets.flatMap(({ wallet, label, traders: t, sanctioned }) => {
       if (!t) return []
-      const row = (name: string, x: ReturnType<typeof figuresOf>) => [wallet, label, name, x.trades, x.volumeUsd, x.unpriced]
+      const lists = new Map<string, string>(sanctioned?.map((s) => [s.wallet, s.lists.join('; ')]))
+      const row = (name: string, x: ReturnType<typeof figuresOf>) => [wallet, label, name, lists.get(name) ?? '', x.trades, x.volumeUsd, x.unpriced]
       const n = t.totals.walletCount
-      return [...t.wallets.map((x) => row(x.wallet, x)), ...(t.unknown.trades ? [row(UNKNOWN, t.unknown)] : []), row(`Total, ${n} ${n === 1 ? 'wallet' : 'wallets'}`, t.totals)]
+      const outside = (sanctioned ?? []).filter((s) => !t.wallets.some((x) => x.wallet === s.wallet))
+      return [...[...t.wallets, ...outside].map((x) => row(x.wallet, x)), ...(t.unknown.trades ? [row(UNKNOWN, t.unknown)] : []), row(`Total, ${n} ${n === 1 ? 'wallet' : 'wallets'}`, t.totals)]
     })],
+  sanctioned: [['Partner wallet', 'Wallet name', 'Wallet', 'Sanctions list', 'Trades', 'Volume (USD)', 'Trades not priced yet', 'First trade', 'Last trade'],
+    f.wallets.flatMap((w) => (w.sanctioned ?? []).map((s) => [w.wallet, w.label, s.wallet, s.lists.join('; '), s.trades, s.volumeUsd, s.unpriced, s.firstAt, s.lastAt]))],
   daily: [['Partner wallet', 'Wallet name', 'Day', 'Trades', 'Volume (USD)', 'Your share (USD)', 'Trades not priced yet'],
     f.wallets.flatMap((w) => (w.breakdown?.daily ?? []).map((d) => [w.wallet, w.label, d.day, d.trades, d.volumeUsd, d.shareUsd, d.unpriced]))],
   chains: [['Partner wallet', 'Wallet name', 'Chain', 'Trades', 'Volume (USD)', 'Your share (USD)', 'Trades not priced yet'],

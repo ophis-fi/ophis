@@ -184,3 +184,6 @@ fieldset.field { border: 0; margin: 0; padding: 0; min-width: 0; } fieldset.fiel
 @media (max-width: 1220px) { .g.two, .g.even { grid-template-columns: minmax(0, 1fr); } }
 @media (max-width: 1023px) { .desk { grid-template-columns: minmax(0, 1fr); } }
 @media (max-width: 720px) { .dk-b { display: none; } .dk-s { display: flex; } }
+/* The wallets on a sanctions list that traded: a red note with its table, above the partner wallets. */
+.note.flagged { flex-direction: column; margin-bottom: 12px; } .note.flagged > p { display: flex; flex-wrap: wrap; gap: 8px 12px; align-items: flex-start; margin: 0; } .note.flagged > .btn { align-self: flex-start; }
+.note.flagged td { color: var(--ink); } .note.flagged td .mono { white-space: normal; overflow-wrap: anywhere; } .note.flagged td small { white-space: normal; } .fine.checked { margin-bottom: 20px; }

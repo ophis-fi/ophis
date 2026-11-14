@@ -1,7 +1,8 @@
 // A local stand-in for the Ophis rebate indexer's one route for this console, POST /business/partner, on
 // http://127.0.0.1:8793. Locally INDEXER_URL points here and INDEXER_TOKEN is this stand-in's token (both in .dev.vars,
 // made by "pnpm seed"): the Worker holds no stub and no switch. It shares no code with the Worker or the indexer.
-// The figures are the contract file of the indexer's own test, read WHERE IT IS at every question (no copy):
+// The figures are the contract file of the indexer's own test, read WHERE IT IS at every question (no copy), its listed
+// wallets that traded kept only when the console sent them as listed (on its loaded lists):
 // apps/rebate-indexer/tests/fixtures/business-partner.json. A wallet of that file gets its entry; any other wallet gets
 // zero fees (the file's second wallet), under the file's asOf. ponytail: `contract` (the chains of contract wallets) is not read here: the real
 // route answers no figures for a contract wallet off its pinned chain. The bearer rule is the real route's: off (404) without a token of 32 characters, 401 else.
@@ -37,19 +38,23 @@ export function start() {
     let text = ''
     request.on('data', (chunk) => (text.length < 10_000 ? (text += chunk) : request.destroy()))
     request.on('end', () => {
-      let wallets
+      let wallets, listed
       try {
-        wallets = JSON.parse(text).wallets
+        ({ wallets, listed } = JSON.parse(text))
       } catch {
         return send(400, { error: 'bad json' })
       }
-      if (!Array.isArray(wallets) || wallets.length < 1 || wallets.length > 10 || !wallets.every((w) => typeof w === 'string' && /^0x[0-9a-f]{40}$/.test(w)) || new Set(wallets).size !== wallets.length) return send(400, { error: 'wallets' })
+      const addresses = (list, min, max) => Array.isArray(list) && list.length >= min && list.length <= max && list.every((w) => typeof w === 'string' && /^0x[0-9a-f]{40}$/.test(w)) && new Set(list).size === list.length
+      if (!addresses(wallets, 1, 10)) return send(400, { error: 'wallets' })
+      if (!addresses(listed, 0, 60_000)) return send(400, { error: 'listed' })
       if (mode === '500') return send(500, { error: 'internal' })
       const contract = JSON.parse(readFileSync(CONTRACT, 'utf8'))
       const [, empty] = contract.wallets
       const answer = {
         asOf: contract.asOf, // the file's own: its daily figures are the 90 days up to that day
-        wallets: wallets.map((wallet) => contract.wallets.find((w) => w.wallet === wallet) ?? { ...empty, wallet, fees: { ...empty.fees, recipient: wallet } }),
+        // The wallets of the file's sanctioned that the console sent as listed, as the real query names only those.
+        wallets: wallets.map((wallet) => contract.wallets.find((w) => w.wallet === wallet) ?? { ...empty, wallet, fees: { ...empty.fees, recipient: wallet } })
+          .map((w) => ({ ...w, sanctioned: w.sanctioned.filter((s) => listed.includes(s.wallet)) })),
       }
       if (mode === 'shape') answer.wallets[0] = { ...answer.wallets[0], fees: { ...answer.wallets[0].fees, lifetime: { ...answer.wallets[0].fees.lifetime, tradeCount: '412' } } }
       setTimeout(() => send(200, answer), mode === 'slow' ? 6000 : 0)
