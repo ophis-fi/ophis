@@ -9798,6 +9798,26 @@ describe('J. the real desk: terms from a live quote, two people, then the wallet
     expect((await orderPage(token)).body).toEqual({ error: 'link_invalid' })
   })
 
+  it('the expiry the first read fixed is read again: once it leaves the orderbook less than its minute, the link opens and sends nothing, no new link is given, and the blotter says Expired; it is never fixed again', async () => {
+    const team = await deskTeam()
+    book()
+    const id = await approvedOrder(team)
+    const { token } = await orderLink(team.t, id)
+    const { validTo } = (await orderPage(token)).body
+    const edge = validTo * 1000 - orders.MIN_VALID_MS
+    const record = async () => (await deskOrders(team.t)).find((x) => x.id === id)!
+    now = edge - 1
+    expect((await orderPage(token)).status).toBe(200)
+    await again(team.t)
+    expect(await record()).toMatchObject({ state: 'Approved: waiting for signature', signUntil: edge })
+    now = edge
+    expect((await orderPage(token)).body).toEqual({ error: 'link_invalid' })
+    expect((await orderSend(token, '0x')).body).toEqual({ error: 'link_invalid' })
+    expect((await orderLink(team.t, id)).status).toBe(404)
+    expect(await record()).toMatchObject({ state: 'Expired', signUntil: edge })
+    expect(await row('SELECT valid_to FROM orders WHERE id = ?', id)).toEqual({ valid_to: validTo })
+  })
+
   it('send, a key wallet: the server checks the signature, posts the order it built as @ophis/cli does, and records it; one order per approval', async () => {
     const team = await deskTeam()
     const asked = book()
@@ -9992,10 +10012,11 @@ describe('J. the real desk: terms from a live quote, two people, then the wallet
     const hash = await data.sha256Hex(token)
     const r = (await data.orderByLink(db, hash, now))!
     // Two reads of the page at the same instant: one fixes the expiry and writes its row, the other changes nothing.
-    expect(await data.orderOpened(db, r, hash, 1, now)).toBe(true)
+    const fixed = Math.floor(now / 1000) + 1800
+    expect(await data.orderOpened(db, r, hash, fixed, now)).toBe(true)
     const rows = await count('audit_log', team.o.orgId)
-    expect(await data.orderOpened(db, r, hash, 2, now)).toBe(false)
-    expect([await count('audit_log', team.o.orgId), (await row<{ v: number }>('SELECT valid_to AS v FROM orders WHERE id = ?', id))!.v]).toEqual([rows, 1])
+    expect(await data.orderOpened(db, r, hash, fixed + 1, now)).toBe(false)
+    expect([await count('audit_log', team.o.orgId), (await row<{ v: number }>('SELECT valid_to AS v FROM orders WHERE id = ?', id))!.v]).toEqual([rows, fixed])
     // The wallet unlinked between the send's read and its commit: nothing is recorded.
     await db.prepare(`UPDATE wallets SET state = 'unlinked' WHERE id = ?`).bind(team.walletId).run()
     expect(await data.orderSent(db, r, hash, { uid: `0x${'1'.repeat(112)}`, signature: '0x', status: 'open' }, now)).toBe('already_sent')

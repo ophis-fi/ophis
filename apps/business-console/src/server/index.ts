@@ -685,7 +685,7 @@ const ordersOf = async (c: Context) => (await data.orders(c.env.DB, c.actor, c.n
   const units = (atoms: string | null, symbol: string) => (atoms === null ? null : `${orders.decimal(atoms, orders.ASSETS[terms.chainId]?.[symbol as orders.Symbol]?.decimals ?? 18)} ${symbol}`)
   return {
     ...o, terms, words: orders.words(terms, o.validTo), ref: `ORD-${o.id.slice(0, 8)}`, state: orders.stateOf({ ...o, approvedAt, status }, c.now),
-    signUntil: o.state === 'applied' && !o.uid && !status ? (approvedAt ?? 0) + orders.SIGN_MS : null,
+    signUntil: o.state === 'applied' && !o.uid && !status ? orders.signBy({ approvedAt, validTo: o.validTo }) : null,
     executed: o.sold && status === 'fulfilled' ? { sold: units(o.sold, terms.sell.symbol), bought: units(o.bought, terms.buy.symbol), fee: units(o.fee, terms.sell.symbol) } : null,
   }
 })

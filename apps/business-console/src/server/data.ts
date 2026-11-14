@@ -7,7 +7,7 @@
 
 import { checksum, colour, type SafeState } from './chain.ts'
 import { LISTS } from './typed.ts'
-import { again, MAX_OPEN_ORDERS, PREPARERS, SIGN_MS, SIGNERS, type Terms } from './orders.ts'
+import { again, MAX_OPEN_ORDERS, MIN_VALID_MS, PREPARERS, SIGN_MS, SIGNERS, type Terms } from './orders.ts'
 
 export type Role = 'owner' | 'admin' | 'trader' | 'approver' | 'compliance' | 'viewer'
 export const ROLES: Role[] = ['owner', 'admin', 'trader', 'approver', 'compliance', 'viewer']
@@ -903,8 +903,12 @@ const ORDER_ROW = `SELECT o.org_id AS orgId, o.id, o.approved_at AS approvedAt, 
                    JOIN organisations g ON g.id = o.org_id AND g.state = 'active' AND g.kind = 'institution'
                    LEFT JOIN wallets w ON w.org_id = o.org_id AND w.state = 'linked' AND w.id = json_extract(json_extract(a.payload, '$.value'), '$.walletId')`
 type OrderRow = { orgId: string; id: string; approvedAt: number; purpose: 'sign' | 'cancel' | null; validTo: number | null; uid: string | null; status: string | null; payload: string; walletId: string | null; walletChain: number | null; walletAddress: string | null }
-/** Can this link be used now (?2: now; ?4: the purpose asked for, or null for the link's own)? A signing link: the order is not sent (a sent or refused one has a status), and its approval is younger than 24 hours. A cancel link: the order is open. An order row exists from its approval on. */
-const LINK_LIVE = `((COALESCE(?4, o.link_purpose) = 'sign' AND o.status IS NULL AND o.approved_at + ${SIGN_MS} > ?2)
+/**
+ * Can this link be used now (?2: now; ?4: the purpose asked for, or null for the link's own)? A signing link: the order is
+ * not sent (a sent or refused one has a status), its approval is younger than 24 hours, and the expiry the page fixed, if
+ * it did, still leaves the orderbook's minute (orders.signBy says the same). A cancel link: the order is open. An order row exists from its approval on.
+ */
+const LINK_LIVE = `((COALESCE(?4, o.link_purpose) = 'sign' AND o.status IS NULL AND o.approved_at + ${SIGN_MS} > ?2 AND (o.valid_to IS NULL OR o.valid_to * 1000 - ${MIN_VALID_MS} > ?2))
                     OR (COALESCE(?4, o.link_purpose) = 'cancel' AND o.status IN ('open', 'presignaturePending') AND o.valid_to * 1000 > ?2))`
 const termsOf = (row: { payload: string }) => JSON.parse((JSON.parse(row.payload) as { value: string }).value) as Terms
 

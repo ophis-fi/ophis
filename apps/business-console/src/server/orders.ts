@@ -43,6 +43,9 @@ export const capOf = (symbol: Symbol, decimals: number) => BigInt(CAP[symbol]) *
 export const VALIDITY = [1800, 14_400, 86_400] // seconds after signing: 30 minutes, 4 hours, 24 hours
 export const SLIPPAGE = { default: 50, max: 300 } // bps
 export const SIGN_MS = 24 * 60 * 60_000 // approved terms can be signed for 24 hours
+export const MIN_VALID_MS = 60_000 // the orderbook refuses an order valid less than 1 minute more (InsufficientValidTo, read-only quotes of 2026-11-14)
+/** Until when approved terms can be signed: 24 hours from the approval, and, once the signing page fixed the expiry, while the orderbook still takes the order. */
+export const signBy = (o: { approvedAt: number | null; validTo: number | null }) => Math.min((o.approvedAt ?? 0) + SIGN_MS, o.validTo === null ? Infinity : o.validTo * 1000 - MIN_VALID_MS)
 export const REVIEW_MS = 5 * 60_000 // a review is sent for approval within 5 minutes, or quoted again
 export const MAX_OPEN_ORDERS = 20 // orders that wait for approval, per organisation
 export const ORDERS_PER_HOUR = 30 // orders one member files in an hour
@@ -288,7 +291,7 @@ export function stateOf(o: { state: string; open: boolean; approvedAt: number | 
   if (o.state === 'pending') return o.open ? 'Pending approval' : 'Expired'
   if (o.state === 'rejected' || o.status === 'refused') return 'Refused'
   if (o.state !== 'applied') return 'Cancelled'
-  if (!o.uid) return (o.approvedAt ?? 0) + SIGN_MS > now ? 'Approved: waiting for signature' : 'Expired'
+  if (!o.uid) return signBy(o) > now ? 'Approved: waiting for signature' : 'Expired'
   if (o.status === 'presignaturePending') return 'Sent: waiting for the Safe transaction'
   if (o.status === 'fulfilled') return 'Filled'
   if (o.status === 'cancelled') return 'Cancelled'
