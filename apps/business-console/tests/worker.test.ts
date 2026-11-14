@@ -3400,8 +3400,8 @@ describe('w. the audit log page and its export', () => {
     await db.prepare('INSERT INTO audit_log (org_id, seq, at, actor_kind, actor_id, session_id, action, subject_id, detail, country, asn, prev_hash, hash) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
       .bind(...fields, await data.sha256Hex(JSON.stringify(fields))).run()
     await grow(o.orgId, 100)
-    const approvals = Array.from({ length: 2000 }, (_, i) => db.prepare(`INSERT INTO approvals (id, org_id, action, subject_id, payload_hash, requester_seat_id, state, expires_at, created_at) VALUES (?, ?, ?, ?, 'x', ?, 'applied', ?, ?)`)
-      .bind(data.randomId(), o.orgId, i % 2 ? 'order' : 'policy.synced_keys', i % 2 ? data.randomId() : o.orgId, o.seatId, now, now))
+    const approvals = Array.from({ length: 2000 }, (_, i) => db.prepare(`INSERT INTO approvals (id, org_id, action, subject_id, payload, payload_hash, requester_seat_id, state, expires_at, created_at) VALUES (?, ?, ?, ?, ?, 'x', ?, 'applied', ?, ?)`)
+      .bind(data.randomId(), o.orgId, i % 10 ? 'policy.synced_keys' : 'order', i % 10 ? o.orgId : data.randomId(), JSON.stringify({ value: '{}' }), o.seatId, now, now))
     for (let i = 0; i < approvals.length; i += 500) await db.batch(approvals.slice(i, i + 500))
     try {
       const reads = async (run: () => Promise<{ status: number }>) => {
@@ -3411,6 +3411,8 @@ describe('w. the audit log page and its export', () => {
       }
       expect(await reads(() => call('GET', '/api/audit', { cookie: o.cookie }))).toBeLessThan(FREE.read)
       expect(await reads(() => post('/api/audit/export', o))).toBeLessThan(FREE.read)
+      // The desk's orders read the 200 orders, not the other approvals.
+      expect(await reads(async () => (inFlight++, await data.orders(db, { orgId: o.orgId, seatId: o.seatId } as data.Actor, now).finally(() => inFlight--), { status: 200 }))).toBeLessThan(1000)
     } finally {
       await db.prepare('DELETE FROM approvals WHERE org_id = ?').bind(o.orgId).run()
     }
