@@ -1,7 +1,7 @@
 // The chain module: JSON-RPC over fetch to the two endpoints of a chain, the one verifier of a wallet signature
 // (EIP-712 digest, key recovery, then ERC-1271), the Safe reads, and the colour of a recovery wallet.
 // A contract wallet's answer counts only when both endpoints, each of which first says it is the pinned chain,
-// give the same one. An error, a timeout, an answer that is too large or a disagreement is a refusal.
+// give the same one. An error, a redirect, a timeout, an answer that is too large or a disagreement is a refusal.
 import { decodeFunctionResult, encodeFunctionData, getAddress, hashTypedData, isAddress, isAddressEqual, keccak256, parseAbi, recoverAddress, toHex, type Hex } from 'viem'
 import type { Typed } from './typed.ts'
 
@@ -58,6 +58,7 @@ export async function readCapped(body: ReadableStream<Uint8Array> | null, max: n
 async function rpc(url: string, method: string, params: unknown[]) {
   const response = await fetch(url, {
     method: 'POST', headers: { 'content-type': 'application/json' }, signal: AbortSignal.timeout(LIMITS.timeoutMs),
+    redirect: 'manual', // not followed: each hop would be one more subrequest of the 50, and a 3xx is no answer below
     body: JSON.stringify({ jsonrpc: '2.0', id: 1, method, params }),
   })
   const text = response.ok ? await readCapped(response.body, LIMITS.maxBytes) : null

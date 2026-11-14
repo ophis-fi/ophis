@@ -539,10 +539,11 @@ export function txtValues(text: string | null, name: string): string[] | null {
     .filter((r) => r?.type === 16 && typeof r.data === 'string' && typeof r.name === 'string' && r.name.toLowerCase().replace(/\.$/, '') === name)
     .map((r) => plain(r.data as string))
 }
-// One resolver, asked once: 5 seconds, 16 KB. An error, a timeout, an oversized or malformed answer is null.
+// One resolver, asked once: 5 seconds, 16 KB. An error, a redirect (not followed: each hop would be one more
+// subrequest), a timeout, an oversized or malformed answer is null.
 export async function lookup(resolver: string, name: string) {
   try {
-    const response = await fetch(`${resolver}?name=${encodeURIComponent(name)}&type=TXT`, { headers: { accept: 'application/dns-json' }, signal: AbortSignal.timeout(DNS.timeoutMs) })
+    const response = await fetch(`${resolver}?name=${encodeURIComponent(name)}&type=TXT`, { headers: { accept: 'application/dns-json' }, redirect: 'manual', signal: AbortSignal.timeout(DNS.timeoutMs) })
     return response.ok ? txtValues(await readCapped(response.body, DNS.maxBytes), name) : null
   } catch {
     return null

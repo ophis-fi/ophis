@@ -3430,6 +3430,8 @@ describe('y. wallets and the recovery wallet', () => {
       'an endpoint fails': (url, _method, result) => (url === RPC2 ? new Response('down', { status: 502 }) : result),
       'an endpoint fails with the value in its body': (url, method, result) => (url === RPC2 && method === 'eth_call' ? Response.json({ jsonrpc: '2.0', id: 1, result: magic }, { status: 500 }) : result),
       'an endpoint answers no JSON': (url, _method, result) => (url === RPC1 ? new Response('<html>') : result),
+      // A 308 to the other endpoint. Followed (fetch's default), it would bring that one's answer, as a second subrequest of the 50.
+      'an endpoint answers with a redirect': (url, _method, result, init) => (url === RPC2 && init?.redirect === 'manual' ? new Response(null, { status: 308, headers: { location: RPC1 } }) : result),
       'an endpoint does not answer in time': (url, method, result, init) => (url === RPC2 && method === 'eth_call' ? new Promise((_, reject) => init?.signal?.addEventListener('abort', () => reject(new Error('aborted')))) : result),
       'an endpoint answers too much': (url, method, result) => (url === RPC1 && method === 'eth_call' ? padded.clone() : result),
       'the wallet says another value': (_url, method) => (method === 'eth_call' ? `0xffffffff${'0'.repeat(56)}` : '0xa'),
@@ -5757,6 +5759,8 @@ describe('E. onboarding: a company applies, proves its domain, is activated and 
       ['no status', ({ Status: _, ...rest }) => rest],
       ['an HTTP error with the record in its body', (answer) => Response.json(answer, { status: 500 })],
       ['not JSON', () => new Response('<html>')],
+      // Followed (fetch's default), the redirect would bring the answer, as a second subrequest of the 50.
+      ['a redirect', (answer, init) => (init?.redirect === 'manual' ? new Response(null, { status: 302, headers: { location: 'https://dns.example/resolve' } }) : answer)],
       ['an answer that is no object', () => Response.json(null)],
       ['an answer section that is no list', (answer) => ({ ...answer, Answer: 'x' })],
       ['a record of another type', (answer) => ({ ...answer, Answer: answer.Answer.map((r) => ({ ...r, type: 5 })) })],
