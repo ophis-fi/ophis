@@ -10062,6 +10062,32 @@ describe('J. the real desk: terms from a live quote, two people, then the wallet
     expect(await row('SELECT status, tx_hash FROM orders WHERE id = ?', id)).toEqual({ status: 'fulfilled', tx_hash: null })
   })
 
+  it('an order the orderbook took is recorded on its id alone: a new link, the wallet unlinked or a withdrawal between the post and the commit leaves no live order without its record', async () => {
+    const team = await deskTeam()
+    const approver = await actorOf(team.a, 'approver')
+    for (const [meanwhile, amount] of [['link', '11'], ['unlink', '12'], ['withdraw', '13']] as const) {
+      book()
+      const id = await approvedOrder(team, { amount })
+      const { token } = await orderLink(team.t, id)
+      const page = await orderPage(token)
+      // The stand-in takes the order, then this happens, then the send commits.
+      const stand = globalThis.fetch
+      vi.stubGlobal('fetch', async (input: RequestInfo | URL, init?: RequestInit) => {
+        const answer = await stand(input, init)
+        if (init?.method === 'POST' && String(input).endsWith('/api/v1/orders')) {
+          if (meanwhile === 'link') expect(await data.orderLink(db, approver, id, 'sign', 'f'.repeat(64), now)).toBe('ok')
+          if (meanwhile === 'unlink') await db.prepare(`UPDATE wallets SET state = 'unlinked' WHERE id = ?`).bind(team.walletId).run()
+          if (meanwhile === 'withdraw') expect(await data.orderWithdraw(db, approver, id, now)).toBe('ok')
+        }
+        return answer
+      })
+      expect((await orderSend(token, await accounts[1].signTypedData(page.body.typed))).body, meanwhile).toEqual({ state: 'open', uid: page.body.uid })
+      expect(await row('SELECT uid, status, link_hash FROM orders WHERE id = ?', id), meanwhile).toEqual({ uid: page.body.uid, status: 'open', link_hash: null })
+      expect(await lastAudit(team.o.orgId), meanwhile).toMatchObject({ action: 'order.send', subject_id: id })
+      await db.prepare(`UPDATE wallets SET state = 'linked' WHERE id = ?`).bind(team.walletId).run()
+    }
+  })
+
   it('inside the commits: the link reads the role now; the expiry is fixed once; one send per approval; the link is read again; the state read is written only while the order is open', async () => {
     const team = await deskTeam()
     book()
@@ -10080,13 +10106,9 @@ describe('J. the real desk: terms from a live quote, two people, then the wallet
     const rows = await count('audit_log', team.o.orgId)
     expect(await data.orderOpened(db, r, hash, fixed + 1, now)).toBe(false)
     expect([await count('audit_log', team.o.orgId), (await row<{ v: number }>('SELECT valid_to AS v FROM orders WHERE id = ?', id))!.v]).toEqual([rows, fixed])
-    // The wallet unlinked between the send's read and its commit: nothing is recorded.
-    await db.prepare(`UPDATE wallets SET state = 'unlinked' WHERE id = ?`).bind(team.walletId).run()
-    expect(await data.orderSent(db, r, hash, { uid: `0x${'1'.repeat(112)}`, signature: '0x', status: 'open' }, now)).toBe('already_sent')
-    await db.prepare(`UPDATE wallets SET state = 'linked' WHERE id = ?`).bind(team.walletId).run()
     // Two sends at the same instant: one is recorded, the other is refused, and the refusal and the cancel read the link again.
-    expect(await data.orderSent(db, r, hash, { uid: `0x${'1'.repeat(112)}`, signature: '0x', status: 'open' }, now)).toBe('ok')
-    expect(await data.orderSent(db, r, hash, { uid: `0x${'2'.repeat(112)}`, signature: '0x', status: 'open' }, now)).toBe('already_sent')
+    expect(await data.orderSent(db, r, { uid: `0x${'1'.repeat(112)}`, signature: '0x', status: 'open' }, now)).toBe('ok')
+    expect(await data.orderSent(db, r, { uid: `0x${'2'.repeat(112)}`, signature: '0x', status: 'open' }, now)).toBe('already_sent')
     const sentRows = await count('audit_log', team.o.orgId)
     expect([await data.orderListed(db, r, hash, 'wallet', now), await data.orderCancelled(db, r, hash, 'key', now), await count('audit_log', team.o.orgId)]).toEqual([false, false, sentRows])
     // The state read for an open order is not written over a cancel made meanwhile.

@@ -962,14 +962,14 @@ export async function orderOpened(db: D1Database, r: Opening, tokenHash: string,
   })
 }
 /**
- * After the orderbook took it: the order id, the signature, the state. Read again inside the commit: this link, no order
- * sent yet, the approval, the organisation and the wallet as the send saw them. One order per approval.
+ * After the orderbook took it: the order id, the signature, the state. The order is live at the orderbook from here, so it
+ * is recorded on its id alone, whatever changed since the send read it (a new link, the wallet unlinked, the window over,
+ * a withdrawal): only an order already recorded is not written again. One order per approval.
  */
-export async function orderSent(db: D1Database, r: Opening, tokenHash: string, o: { uid: string; signature: string; status: string }, now: number) {
+export async function orderSent(db: D1Database, r: Opening, o: { uid: string; signature: string; status: string }, now: number) {
   let outcome = 'already_sent'
   await commit(db, r.orgId, async () => {
-    const still = await db.prepare(`${ORDER_ROW} WHERE o.org_id = ?1 AND o.id = ?3 AND o.link_hash = ?5 AND ${LINK_LIVE}`).bind(r.orgId, now, r.id, null, tokenHash).first<OrderRow>()
-    if (!still || still.walletId !== r.walletId) return null
+    if (!(await db.prepare('SELECT 1 FROM orders WHERE org_id = ? AND id = ? AND uid IS NULL').bind(r.orgId, r.id).first())) return null
     outcome = 'ok'
     return [walletEntry(r, now, 'order.send', r.terms.scheme), [
       db.prepare('UPDATE orders SET uid = ?, signature = ?, status = ?, sent_at = ?, checked_at = ?, link_hash = NULL, link_purpose = NULL WHERE org_id = ? AND id = ? AND uid IS NULL')

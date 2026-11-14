@@ -792,7 +792,7 @@ async function orderSend(c: Context) {
   const posted = await orders.post(c.env, t, built, signature)
   if (posted !== 'ok') return refuse(posted)
   const status = t.scheme === 'presign' ? 'presignaturePending' : 'open'
-  const outcome = await data.orderSent(c.env.DB, r, r.hash, { uid: built.uid, signature, status }, c.now)
+  const outcome = await data.orderSent(c.env.DB, r, { uid: built.uid, signature, status }, c.now)
   return outcome === 'ok' ? json(200, { state: status, uid: built.uid }) : refuse(outcome)
 }
 /** Reads the orderbook's state of sent orders that may still change: of one organisation (the desk, at most 10) or of all (the daily run). */
