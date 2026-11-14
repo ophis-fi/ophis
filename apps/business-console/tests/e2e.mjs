@@ -1198,8 +1198,8 @@ try {
   const answered = await goodAnswer.json()
   check('the stand-in has the real route\'s bearer rule and serves the contract file: its partner wallet as it is, any other wallet with zero fees and no wallet that traded, and no referral dashboard',
     (await askStub({})).status === 401 && (await askStub({ authorization: 'Bearer wrong-token-wrong-token-wrong-token-0000' })).status === 401 && (await askStub(stubBearer, [])).status === 400 && (await askStub(stubBearer, [P.wallet, P.wallet])).status === 400
-    && goodAnswer.status === 200 && JSON.stringify(answered.wallets[0]) === JSON.stringify(P) && JSON.stringify(Object.keys(answered.wallets[1])) === '["wallet","fees","traders"]' && answered.wallets[1].fees.currentCycle.owedUsd === 0 && answered.wallets[1].fees.recipient === `0x${'d'.repeat(40)}`
-    && answered.wallets[1].traders.wallets.length === 0)
+    && goodAnswer.status === 200 && JSON.stringify(answered.wallets[0]) === JSON.stringify(P) && JSON.stringify(Object.keys(answered.wallets[1])) === '["wallet","fees","traders","breakdown"]' && answered.wallets[1].fees.currentCycle.owedUsd === 0 && answered.wallets[1].fees.recipient === `0x${'d'.repeat(40)}`
+    && answered.wallets[1].traders.wallets.length === 0 && Object.values(answered.wallets[1].breakdown).every((rows) => rows.length === 0))
 
   // A partner from "seed --live": one linked "Demo wallet" at the contract's partner address.
   const liveSeed = seeded('--live')
@@ -1230,11 +1230,54 @@ try {
     && JSON.stringify(await tradedCells()) === JSON.stringify([...P.traders.wallets, { ...P.traders.unknown, wallet: UNKNOWN_ROW }].map((w) => [w.wallet, String(w.trades), usd(w.volumeUsd) + notPriced(w.unpriced)]))
     && P.traders.wallets.some((w) => w.unpriced && !w.volumeUsd) && P.traders.unknown.trades > 0
     && await tradedSection.getByText(`Volume is priced each night. ${P.traders.totals.unpriced} trades are not priced yet.`).isVisible() && !(await tradedSection.getByText(/largest wallets/).count()))
+  // The breakdown, read from the contract file: the payouts with each transaction linked to the chain's explorer, the
+  // daily volume as bars with every day in a table under them, by chain, by fee token.
+  const B = P.breakdown
+  const sectionOf = (name) => pat.page.locator('.pw section', { has: pat.page.getByRole('heading', { name, exact: true }) })
+  const cellsOf = async (section) => Promise.all((await section.locator('tbody tr').all()).map((row) => row.locator('td').allInnerTexts()))
+  const CHAIN_NAMES = { 10: 'OP Mainnet', 100: 'Gnosis', 130: 'Unichain' }
+  const shortTx = (tx) => `${tx.slice(0, 6)}...${tx.slice(-4)}`
+  const nTrades = (n) => `${n} ${n === 1 ? 'trade' : 'trades'}`
+  const payoutsSection = sectionOf('Payouts')
+  const txLink = payoutsSection.getByRole('link', { name: shortTx(B.payouts[0].txHash) })
+  check('the payouts of the contract file, newest first: date and chain, WETH, Paid with the transaction linked to the chain\'s explorer in a new tab',
+    JSON.stringify(await cellsOf(payoutsSection)) === JSON.stringify(B.payouts.map((x) => [`${x.date}\n${CHAIN_NAMES[x.chainId]}`, weth(x.weth), `Paid\n${shortTx(x.txHash)}`]))
+    && await txLink.getAttribute('href') === `https://gnosisscan.io/tx/${B.payouts[0].txHash}` && await txLink.getAttribute('target') === '_blank' && await txLink.getAttribute('title') === B.payouts[0].txHash)
+  const dailySection = sectionOf('Daily volume')
+  const bars = dailySection.locator('svg[role="img"] rect')
+  const top = Math.max(...B.daily.map((d) => d.volumeUsd))
+  const barOf = async (i) => bars.nth(i).evaluate((r) => ({ x: Number(r.getAttribute('x')), h: Number(r.getAttribute('height')), title: r.querySelector('title').textContent }))
+  const [firstBar, highest, onlyUnpriced] = [await barOf(0), await barOf(B.daily.findIndex((d) => d.volumeUsd === top)), await barOf(B.daily.length - 1)]
+  check('the daily volume: one bar per day of the contract file at its place in the 90 days, the highest full height, a day of trades not priced only a thin bar; the dates and the highest day under it; a line on trades not priced yet',
+    (await bars.count()) === B.daily.length && firstBar.x === (89 - (Date.parse('2026-11-12') - Date.parse(B.daily[0].day)) / 86_400_000) * 10 + 1 && highest.h === 100 && onlyUnpriced.h === 1
+    && firstBar.title === `${B.daily[0].day}: ${usd(B.daily[0].volumeUsd)} USD, ${B.daily[0].trades} trades` && (await dailySection.locator('svg[role="img"]').getAttribute('aria-label')).startsWith('Daily volume in USD from 2026-08-15 to 2026-11-12. 11 days with trades.')
+    && (await dailySection.locator('figcaption').innerText()).replace(/\s+/g, ' ') === `2026-08-15 Highest day: ${usd(top)} USD 2026-11-12`
+    && await dailySection.getByText(`${B.daily.reduce((n, d) => n + d.unpriced, 0)} trades are not priced yet: in the table, not in the bars.`).isVisible())
+  const dayTable = dailySection.locator('details table')
+  const shut = !(await dayTable.isVisible())
+  await dailySection.getByText('Each day as a table').click()
+  check('the table under the chart, shut until asked: every day with its trades, volume (trades not priced yet under it) and share',
+    shut && await dayTable.isVisible() && JSON.stringify(await cellsOf(dailySection)) === JSON.stringify(B.daily.map((d) => [`${d.day}\n${nTrades(d.trades)}`, usd(d.volumeUsd) + notPriced(d.unpriced), usd(d.shareUsd)])))
+  const [chainSection, tokenSection] = [sectionOf('By chain'), sectionOf('By fee token')]
+  check('by chain and by fee token, read from the contract file: the chain by its name, the token whole, trades not priced yet under the volume or the share',
+    JSON.stringify(await cellsOf(chainSection)) === JSON.stringify(B.byChain.map((c) => [`${CHAIN_NAMES[c.chainId]}\n${nTrades(c.trades)}`, usd(c.volumeUsd) + notPriced(c.unpriced), usd(c.shareUsd)]))
+    && JSON.stringify((await cellsOf(tokenSection)).map(([token, share]) => [token.toLowerCase(), share])) === JSON.stringify(B.byToken.map((t) => [`${t.token}\n${CHAIN_NAMES[t.chainId]}, ${nTrades(t.trades)}`.toLowerCase(), usd(t.shareUsd) + notPriced(t.unpriced)])))
+  check('the payouts fit a phone', await both(pat.page, '62-overview-partner-payouts', '.pw section:has-text("Payouts")'))
+  check('the daily volume and its table fit a phone', await both(pat.page, '63-overview-partner-daily', '.pw section:has-text("Daily volume")'))
+  check('by chain and by fee token fit a phone', await both(pat.page, '64-overview-partner-chains-tokens', '.pw .g.even'))
+  await pat.page.setViewportSize({ width: 390, height: 844 })
+  await pat.page.waitForTimeout(200)
+  check('at phone width the bars span the width and the tables of the breakdown need no sideways scroll',
+    (await dailySection.locator('svg[role="img"]').evaluate((svg) => svg.getBoundingClientRect().width)) > 300
+    && (await Promise.all([payoutsSection, dailySection, chainSection, tokenSection].map((x) => x.locator('.table-wrap').evaluate((box) => box.scrollWidth <= box.clientWidth)))).every(Boolean))
+  await pat.page.setViewportSize({ width: 1440, height: 900 })
+
   const partnerText = await partnerMain.innerText()
   check('no demo banner, no example, no referral share, none of the withheld figures, no word of a licence or of payout terms; the footer line',
     !(await pat.page.getByText(BANNER).count()) && !/example|demo data|illustrative/i.test(partnerText) && !/referr|partner code|net fee|earning|payout run/i.test(partnerText)
     && [P.fees.currentCycle.grossFeeUsd, P.fees.minPayoutUsd].every((n) => !partnerText.includes(usd(n))) && !partnerText.includes(String(P.fees.partnerShareBps)) && !/bps|minimum/i.test(partnerText)
     && !/Ophis fee|licen[cs]ed|regulated|authori[sz]ed|MiCA|compliant|paid (weekly|monthly)|guarantee|honest|—/i.test(partnerText) && await pat.page.getByText(FOOTER).isVisible())
+  await pat.page.evaluate(() => scrollTo(0, 0)) // the checks above scrolled down: this shot is the top of the page
   check('the live partner overview fits a phone', await both(pat.page, '52-overview-partner-live'))
   await pat.page.waitForTimeout(200) // the desk size just came back: let it paint before the next shot
   check('the wallets that traded fit a phone', await both(pat.page, '61-overview-partner-wallets', '.pw section:has-text("Wallets that traded through your integration")'))
@@ -1254,7 +1297,21 @@ try {
   check('the export of the wallets that traded downloads: named ophis-partner-traders-, every wallet of the contract file beside the partner wallet with its trades not priced yet, the trades of no known wallet, the total, source = live; the two are the only CSV',
     /^ophis-partner-traders-\d{4}-\d\d-\d\d\.csv$/.test(tradedFile.suggestedFilename()) && tradedLines[0] === '"Partner wallet","Wallet name","Wallet","Trades","Volume (USD)","Trades not priced yet","source"'
     && JSON.stringify(tradedLines.slice(1).map((row) => row.toLowerCase())) === JSON.stringify([...P.traders.wallets.map((w) => tradedRow(w.wallet, w)), tradedRow(UNKNOWN_ROW, P.traders.unknown), tradedRow('total, 3 wallets', P.traders.totals)])
-    && (await pat.page.getByRole('button', { name: /CSV/ }).count()) === 2)
+    && (await pat.page.getByRole('button', { name: /CSV/ }).count()) === 6)
+  // The four CSV of the breakdown, downloaded and read back.
+  const breakdownFile = async (label) => {
+    const [file] = await Promise.all([pat.page.waitForEvent('download'), pat.page.getByRole('button', { name: label }).click()])
+    return { name: file.suggestedFilename(), lines: readFileSync(await file.path(), 'utf8').split('\r\n').filter(Boolean).map((row) => row.toLowerCase()) }
+  }
+  const csvLine = (...cells) => [P.wallet, 'demo wallet', ...cells, 'live'].map((cell) => `"${String(cell).toLowerCase()}"`).join(',')
+  const [dailyFile, chainsFile, tokensFile, payoutsFile] = [await breakdownFile('Daily CSV'), await breakdownFile('Chains CSV'), await breakdownFile('Fee tokens CSV'), await breakdownFile('Payouts CSV')]
+  check('the four CSV of the breakdown download, named ophis-partner-, with every row of the contract file beside the partner wallet, source = live',
+    [[dailyFile, 'daily'], [chainsFile, 'chains'], [tokensFile, 'tokens'], [payoutsFile, 'payouts']].every(([file, table]) => new RegExp(`^ophis-partner-${table}-\\d{4}-\\d\\d-\\d\\d\\.csv$`).test(file.name))
+    && JSON.stringify(dailyFile.lines.slice(1)) === JSON.stringify(B.daily.map((d) => csvLine(d.day, d.trades, d.volumeUsd, d.shareUsd, d.unpriced)))
+    && JSON.stringify(chainsFile.lines.slice(1)) === JSON.stringify(B.byChain.map((c) => csvLine(CHAIN_NAMES[c.chainId], c.trades, c.volumeUsd, c.shareUsd, c.unpriced)))
+    && JSON.stringify(tokensFile.lines.slice(1)) === JSON.stringify(B.byToken.map((t) => csvLine(CHAIN_NAMES[t.chainId], t.token, t.trades, t.shareUsd, t.unpriced)))
+    && JSON.stringify(payoutsFile.lines.slice(1)) === JSON.stringify(B.payouts.map((x) => csvLine(x.date, x.weth, CHAIN_NAMES[x.chainId], x.txHash, x.status)))
+    && payoutsFile.lines[0] === '"partner wallet","wallet name","date","amount (weth)","chain","transaction","status","source"')
 
   // The figures are not available: status 500, a wrong shape, an answer after 6 seconds. Never an example, never a part.
   const patOverview = () => pat.page.goto(`${ORIGIN}/#/overview`).then(() => pat.page.reload())
@@ -1274,13 +1331,13 @@ try {
   check('Retry reads again: the figures are back', (await partnerTile('Owed this cycle')) === `$${usd(P.fees.currentCycle.owedUsd)}`)
 
   // The rules of the block that the contract file does not reach, on the console's own answer changed in this browser.
-  const tradedWith = async (traders) => {
+  const tradedWith = async (traders, key = 'traders') => {
     // route.fetch() sends the cookie but not sec-fetch-site, which the server asks of every API call. Nothing here may
     // throw: an error in a route handler ends the run with the server still up.
     await pat.page.route('**/api/overview', async (route) => {
       const response = await route.fetch({ headers: { ...route.request().headers(), 'sec-fetch-site': 'same-origin' } }).catch(() => null)
       const body = await response?.json().catch(() => null)
-      if (body?.figures?.wallets) body.figures.wallets[0].traders = traders
+      if (body?.figures?.wallets) body.figures.wallets[0][key] = traders
       await (response ? route.fulfill({ response, json: body }) : route.abort()).catch(() => undefined)
     })
     await patOverview()
@@ -1303,6 +1360,12 @@ try {
     && !(await tradedSection.getByText('No wallet has traded through your integration yet.').count()))
   await tradedWith({ wallets: [], unknown: none, totals: { walletCount: 0, trades: 0, volumeUsd: 0, unpriced: 0 } })
   check('no wallet has traded yet: one line says so, with no total and no table', await tradedSection.getByText('No wallet has traded through your integration yet.').isVisible() && !(await tradedSection.locator('.stats, table').count()))
+  await tradedWith({ daily: [], byChain: [], byToken: [], payouts: [{ date: '2026-12-01', weth: 0.05, chainId: 100, chain: 'Gnosis', tx: null, status: 'proposed' }] }, 'breakdown')
+  check('a payout not executed yet: no transaction and no link, "Waiting for signatures"; no trade in 90 days: one line, no chart; no trade at all: no table by chain or token',
+    JSON.stringify(await cellsOf(payoutsSection)) === JSON.stringify([['2026-12-01\nGnosis', '0.05', 'Waiting for signatures\nNo transaction yet']]) && !(await payoutsSection.getByRole('link').count())
+    && await dailySection.getByText('No trade in the last 90 days.').isVisible() && !(await dailySection.locator('svg[role="img"], table').count()) && !(await pat.page.getByRole('heading', { name: /^By (chain|fee token)$/ }).count()))
+  await tradedWith({ daily: [], byChain: [], byToken: [], payouts: [] }, 'breakdown')
+  check('no payout yet: one line says so, with no table', await payoutsSection.getByText('No payout yet.').isVisible() && !(await payoutsSection.locator('table').count()))
   await patOverview()
   await pat.page.getByText('Figures from the Ophis rebate service, read at').waitFor()
 
@@ -1357,7 +1420,7 @@ try {
   if (violations.length) console.error(violations.join("\n"))
   check(`no policy violation in the browser (${violations.length})`, violations.length === 0)
   check(`no request left the origin (${foreign.length})`, foreign.length === 0)
-  console.log('\nEnd-to-end run passed. Screenshots in .shots/: 01-signin to 61-overview-partner-wallets')
+  console.log('\nEnd-to-end run passed. Screenshots in .shots/: 01-signin to 64-overview-partner-chains-tokens')
 } catch (error) {
   console.error(error.message)
   process.exitCode = 1

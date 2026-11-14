@@ -24,8 +24,16 @@ interface PartnerWallet {
   // The wallets that traded through the integration: at most 100, the largest first; unknown, the trades of no known wallet;
   // the totals count every trade. unpriced: trades counted but not yet in the volume. null with fees.
   traders: null | { wallets: (Traded & { wallet: string })[]; unknown: Traded; totals: Traded & { walletCount: number } }
+  // The last 90 days (oldest first, days with trades only), by chain, by fee token, and the payouts. shareUsd: the partner's
+  // share. tx: null until the payout is executed. null with fees.
+  breakdown: null | {
+    daily: (Flow & { day: string })[]; byChain: (Flow & OnChain)[]; byToken: (OnChain & { token: string; trades: number; shareUsd: number; unpriced: number })[]
+    payouts: (OnChain & { date: string; weth: number; tx: string | null; status: string })[]
+  }
 }
 type Traded = { trades: number; volumeUsd: number; unpriced: number }
+type Flow = Traded & { shareUsd: number }
+type OnChain = { chainId: number; chain: string }
 interface Partner { kind: 'partner'; waiting: number; figures: { state: 'not_connected' | 'no_wallet' | 'figures_unavailable' | 'figures_rate' } | { state: 'live'; asOf: string; leftOut: number; wallets: PartnerWallet[] } }
 interface DeskView {
   assets: { symbol: string; decimals: number; eur: string; issuer: string; status: string; limitLow: string; limitHigh: string }[]; chains: { id: number; name: string }[]
@@ -146,11 +154,45 @@ function InstitutionOverview({ v }: { v: Institution }) {
 const usd = (n: number) => n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 const weth = (n: number) => n.toLocaleString('en-US', { maximumFractionDigits: 6 })
 const ESTIMATE = 'Estimate. The amount is fixed when a payout is made.'
-// A volume with trades not priced yet says so under it: a bare 0.00 would read as no volume.
-const volume = (x: Traded) => <>{usd(x.volumeUsd)}{x.unpriced > 0 && <small>{count(x.unpriced)} {x.unpriced === 1 ? 'trade' : 'trades'} not priced yet</small>}</>
+// A volume (or a share) with trades not priced yet says so under it: a bare 0.00 would read as no volume.
+const volume = (x: { unpriced: number; volumeUsd?: number }, n = x.volumeUsd ?? 0) => <>{usd(n)}{x.unpriced > 0 && <small>{count(x.unpriced)} {x.unpriced === 1 ? 'trade' : 'trades'} not priced yet</small>}</>
 
-function PartnerWalletFigures({ w }: { w: PartnerWallet }) {
-  const t = w.traders
+// The block explorer of a payout's transaction, by chain: the indexer's own links (EXPLORER_TX_URL there).
+const EXPLORER: Record<number, string> = { 100: 'https://gnosisscan.io/tx/', 10: 'https://optimistic.etherscan.io/tx/', 130: 'https://uniscan.xyz/tx/' }
+const PAYOUT: Record<string, string> = { executed: 'Paid', proposed: 'Waiting for signatures', proposing: 'Waiting for signatures', computed: 'Not sent yet' }
+const DAY_MS = 86_400_000
+// The trades of a row, under its first cell: three columns fit a phone.
+const trades = (n: number) => <small>{count(n)} {n === 1 ? 'trade' : 'trades'}</small>
+
+/** The daily volume of the last 90 days in plain SVG, one bar per day with trades, asOf's day on the right; the same days as a table under it. */
+function DailyVolume({ days, asOf }: { days: (Flow & { day: string })[]; asOf: string }) {
+  const end = Date.parse(asOf.slice(0, 10))
+  const [first, last] = [new Date(end - 89 * DAY_MS).toISOString().slice(0, 10), asOf.slice(0, 10)]
+  const top = Math.max(...days.map((d) => d.volumeUsd))
+  const unpriced = days.reduce((n, d) => n + d.unpriced, 0)
+  return (
+    <>
+      <figure className="bars">
+        <svg viewBox="0 0 900 100" preserveAspectRatio="none" role="img" aria-label={`Daily volume in USD from ${first} to ${last}. ${days.length} ${days.length === 1 ? 'day' : 'days'} with trades. The highest day: ${usd(top)}. The table under the chart lists each day.`}>
+          {days.map((d) => {
+            // A day of trades not priced yet only still gets a thin bar: it had trades.
+            const h = Math.max(top ? (d.volumeUsd / top) * 100 : 0, 1)
+            return <rect key={d.day} x={(89 - (end - Date.parse(d.day)) / DAY_MS) * 10 + 1} y={100 - h} width="8" height={h}><title>{`${d.day}: ${usd(d.volumeUsd)} USD, ${count(d.trades)} ${d.trades === 1 ? 'trade' : 'trades'}`}</title></rect>
+          })}
+        </svg>
+        <figcaption><span>{first}</span><span>Highest day: {usd(top)} USD</span><span>{last}</span></figcaption>
+      </figure>
+      {unpriced > 0 && <p className="fine"><Icon name="clock" size={16} />{count(unpriced)} {unpriced === 1 ? 'trade is' : 'trades are'} not priced yet: in the table, not in the bars.</p>}
+      <details className="disclose">
+        <summary>Each day as a table<Icon name="chevron-down" /></summary>
+        <div className="body"><Table head={['Day', 'Volume (USD)', 'Your share (USD)']} rows={days.map((d) => [<>{d.day}{trades(d.trades)}</>, volume(d), usd(d.shareUsd)])} /></div>
+      </details>
+    </>
+  )
+}
+
+function PartnerWalletFigures({ w, asOf }: { w: PartnerWallet; asOf: string }) {
+  const [t, b] = [w.traders, w.breakdown]
   return (
     <section className="pw sec" aria-label={`Wallet ${w.label}`}>
       <h2 className="pw-head"><Icon name="wallet" /><b>{w.label}</b><span className="mono muted">{w.wallet}</span><span className="muted">{w.chain}</span></h2>
@@ -166,6 +208,30 @@ function PartnerWalletFigures({ w }: { w: PartnerWallet }) {
             : <p className="muted">No month has been accounted yet.</p>}
         </Section>
       ) : <p className="note warn" role="note"><Icon name="info" /><span className="grow"><b>The figures of this wallet are not shown.</b> It is a contract wallet, and Ophis has not confirmed the chain it is controlled on. <a className="link" href="/#/support">Ask Support</a>.</span></p>}
+      {b && (
+        <>
+          <Section icon="receipt" title="Payouts" hint="The payouts to this wallet, newest first, at most 24.">
+            {b.payouts.length ? <Table head={['Date', 'Amount (WETH)', 'Status']} rows={b.payouts.map((p) => [
+              <>{p.date}<small>{p.chain}</small></>, weth(p.weth),
+              <><Status>{PAYOUT[p.status] ?? capital(p.status)}</Status>
+                <small>{p.tx ? (EXPLORER[p.chainId] ? <a className="link mono" href={EXPLORER[p.chainId] + p.tx} target="_blank" rel="noopener" title={p.tx}>{short(p.tx)}</a> : <span className="mono">{p.tx}</span>) : 'No transaction yet'}</small></>,
+            ])} /> : <p className="muted">No payout yet.</p>}
+          </Section>
+          <Section icon="calendar" title="Daily volume" hint="The last 90 days, by the day the trade settled (UTC). Volume is an estimate.">
+            {b.daily.length ? <DailyVolume days={b.daily} asOf={asOf} /> : <p className="muted">No trade in the last 90 days.</p>}
+          </Section>
+          {b.byChain.length > 0 && (
+            <div className="g even sec">
+              <Section icon="globe" title="By chain" hint="Every trade, by the chain it settled on.">
+                <Table head={['Chain', 'Volume (USD)', 'Your share (USD)']} rows={b.byChain.map((c) => [<>{c.chain}{trades(c.trades)}</>, volume(c), usd(c.shareUsd)])} />
+              </Section>
+              <Section icon="hand-coins" title="By fee token" hint="The token your fee was taken in, on its chain.">
+                <Table head={['Fee token', 'Your share (USD)']} rows={b.byToken.map((x) => [<><span className="mono">{x.token}</span><small>{x.chain}, {count(x.trades)} {x.trades === 1 ? 'trade' : 'trades'}</small></>, volume(x, x.shareUsd)])} />
+              </Section>
+            </div>
+          )}
+        </>
+      )}
       {t && (
         <Section icon="users" title="Wallets that traded through your integration" hint="The wallets whose orders carried your fee, since the first trade. Volume is an estimate.">
           {t.totals.trades ? (
@@ -197,7 +263,10 @@ function PartnerOverview({ v, retry }: { v: Partner; retry: () => Promise<void> 
       <header className="ph">
         <div><span className="cap eyebrow">Partner console</span><h1 className="h-page">Your flow, <em>in one view</em>.</h1>
           {f.state === 'live' && <p className="lede">Figures from the Ophis rebate service, read at {stamp(Date.parse(f.asOf))}. Amounts in USD.</p>}</div>
-        {f.state === 'live' && <div className="acts"><Export table="months" size="md" label="Fee months CSV" /><Export table="traders" size="md" label="Trading wallets CSV" /></div>}
+        {f.state === 'live' && (
+          <div className="acts"><Export table="months" size="md" label="Fee months CSV" /><Export table="payouts" size="md" label="Payouts CSV" /><Export table="daily" size="md" label="Daily CSV" />
+            <Export table="chains" size="md" label="Chains CSV" /><Export table="tokens" size="md" label="Fee tokens CSV" /><Export table="traders" size="md" label="Trading wallets CSV" /></div>
+        )}
       </header>
       {f.state === 'not_connected' && <p className="note warn" role="status" data-state={f.state}><Icon name="info" /><span className="grow"><b>Your figures are not connected yet.</b> This console is not connected to the Ophis rebate service. Nothing is wrong on your side. <a className="link" href="/#/support">Ask Support</a> when your figures will be connected.</span></p>}
       {f.state === 'no_wallet' && <p className="note warn" role="status" data-state={f.state}><Icon name="wallet" /><span className="grow"><b>No wallet is linked.</b> Figures are shown for the wallets your organisation has linked. <a className="link" href="/#/organisation">Link a wallet under Organisation</a>.</span></p>}
@@ -209,7 +278,7 @@ function PartnerOverview({ v, retry }: { v: Partner; retry: () => Promise<void> 
       {f.state === 'live' && (
         <>
           {f.leftOut > 0 && <p className="note" role="note"><Icon name="info" /><span className="grow">Figures are read for the 10 wallets linked first. {f.leftOut} more linked {f.leftOut === 1 ? 'wallet is' : 'wallets are'} not shown.</span></p>}
-          {f.wallets.map((w) => <PartnerWalletFigures key={w.wallet} w={w} />)}
+          {f.wallets.map((w) => <PartnerWalletFigures key={w.wallet} w={w} asOf={f.asOf} />)}
         </>
       )}
       {v.waiting > 0 && <p className="note"><Icon name="users" /><span className="grow"><b data-waiting>{v.waiting}</b> {v.waiting === 1 ? 'request waits' : 'requests wait'} for your approval. <a className="link" href="/#/organisation">Open approvals</a></span></p>}

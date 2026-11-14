@@ -3,7 +3,7 @@
 // made by "pnpm seed"): the Worker holds no stub and no switch. It shares no code with the Worker or the indexer.
 // The figures are the contract file of the indexer's own test, read WHERE IT IS at every question (no copy):
 // apps/rebate-indexer/tests/fixtures/business-partner.json. A wallet of that file gets its entry; any other wallet gets
-// zero fees (the file's second wallet). ponytail: `contract` (the chains of contract wallets) is not read here: the real
+// zero fees (the file's second wallet), under the file's asOf. ponytail: `contract` (the chains of contract wallets) is not read here: the real
 // route answers no figures for a contract wallet off its pinned chain. The bearer rule is the real route's: off (404) without a token of 32 characters, 401 else.
 //   node scripts/indexer-stub.mjs     serve until stopped ("pnpm dev" and "pnpm test:e2e" start it themselves)
 // To see the failing cases, open http://127.0.0.1:8793/stub/<mode>: ok, slow (answers after 6 s), shape (a number as
@@ -48,7 +48,7 @@ export function start() {
       const contract = JSON.parse(readFileSync(CONTRACT, 'utf8'))
       const [, empty] = contract.wallets
       const answer = {
-        asOf: new Date().toISOString(),
+        asOf: contract.asOf, // the file's own: its daily figures are the 90 days up to that day
         wallets: wallets.map((wallet) => contract.wallets.find((w) => w.wallet === wallet) ?? { ...empty, wallet, fees: { ...empty.fees, recipient: wallet } }),
       }
       if (mode === 'shape') answer.wallets[0] = { ...answer.wallets[0], fees: { ...answer.wallets[0].fees, lifetime: { ...answer.wallets[0].fees.lifetime, tradeCount: '412' } } }
