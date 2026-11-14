@@ -10272,6 +10272,12 @@ describe('J. the real desk: terms from a live quote, two people, then the wallet
     await deskOrders(team2.o)
     expect(await held(down)).toEqual({ uid: null, signature: null, sentAt: null, status: null, link: 1 })
     expect(await lastAudit(team2.o.orgId)).toMatchObject({ action: 'order.unsent', detail: 'missing', subject_id: down })
+    // Refused, and the orderbook cannot be asked: the hold stays, as an earlier send of it may be live.
+    book({ twist: (x) => (x.method === 'POST' && x.url.endsWith('/api/v1/orders') ? Response.json({ errorType: 'InsufficientBalance' }, { status: 400 }) : x.method === 'GET' && x.url.includes('/api/v1/orders/') ? Response.json({}, { status: 503 }) : undefined) })
+    const unsure = await approvedOrder(team2, { amount: '5' })
+    const u = await send(unsure, team2.t)
+    expect((await orderSend(u.token, u.signature)).body).toEqual({ error: 'order_refused' })
+    expect(await held(unsure)).toMatchObject({ uid: u.uid, status: null })
   })
 
   it('a send that stopped while it held the order id: a withdrawal waits, the refresh records the order the orderbook took, and a minute on the same link takes the hold again', async () => {

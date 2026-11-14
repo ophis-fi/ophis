@@ -150,6 +150,10 @@ export interface PartnerTraders {
  * user_address is the order's receiver (ethFlowTrader has no onchainUser there), which whoever
  * made the order chooses. Taken as the wallet, a listed payer would hide behind a clean receiver
  * and anyone could be named as the trader. Such a trade stays in unknown: not checked, and said so.
+ * Limit (Codex, 2026-11-14): verified is not proof of the payer either. An API payload with no
+ * onchainUser (older ones) is stored verified with its receiver as well (ethFlowTrader, fetcher
+ * fillSink). Telling them apart needs the fill to keep where its wallet came from: a column, a
+ * backfill of the rows that have none, then this join asks it. Not built.
  */
 export async function getPartnerTraders(recipient: `0x${string}`): Promise<PartnerTraders> {
   const buf = Buffer.from(recipient.slice(2), 'hex');

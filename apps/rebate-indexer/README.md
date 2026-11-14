@@ -33,7 +33,10 @@ that paid, when the indexer attributed one to the settlement; while an
 eth-flow contract still owns it, it counts in `unknown`, never as a wallet.
 Only a verified payer counts: the on-chain decoder sees the order's receiver,
 which the order's maker chooses, so its trades stay in `unknown` (not
-checked against the sanctions lists, and the console says so).
+checked against the sanctions lists, and the console says so). Limit: an API
+record with no `onchainUser` (older ones) is stored verified with its receiver
+too; telling it apart needs the fill to keep where its wallet came from (not
+built).
 It does not read the referral
 dashboard: the console's partners get no referral share (`POST /partner` keeps
 it for retail). It is gated by `BUSINESS_API_TOKEN`
