@@ -406,7 +406,7 @@ no more rows. Three Codex passes found five defects, each fixed with a test: a r
 the rest; a growing log outran the re-check; a boundary row put back between two loads was trusted; a delayed load
 skipped a link at the same numbers, or moved past a stored break. A fourth review found three more, each fixed with a
 test: the order names scanned every approval of the organisation (100,460 rows read for one page with 2,000 of them;
-now an index of orders only, as every change of policy has the organisation as its subject);
+now an index by subject and action, as every change of policy has the organisation as its subject);
 a load that read the state before a break was stored still said the chain held; a later break found by a second load replaced
 the first row stored. Proof: 23 single mutations of the check and the export, each file restored with git
 checkout after, all caught (in w, K, `test:cpu` for a load of 1,500 new rows, and e2e for a page that saves only the
