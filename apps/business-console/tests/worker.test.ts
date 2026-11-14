@@ -281,7 +281,7 @@ const MULTI_ABI = parseAbi(['struct Call3 { address target; bool allowFailure; b
 const MULTICALL3 = '0xca11bde05977b3631167028862be2a173976ca11'
 const chain = {
   contracts: new Map<string, Contract>(),
-  // ERC-20 balances on the fake chain, by `${token}:${owner}` in lower case; none is 0. -1n: that balanceOf reverts.
+  // ERC-20 balances on the fake chain, by `${token}:${owner}` in lower case; none is 0. -1n: that balanceOf reverts, with 32 bytes of revert data.
   balances: new Map<string, bigint>(),
   calls: [] as string[],
   // Changes what one endpoint answers: another result, or a Response or a pending promise in its place.
@@ -301,7 +301,7 @@ function fakeRpc(input: RequestInfo | URL, init?: RequestInit) {
     result = encodeFunctionResult({ abi: MULTI_ABI, functionName: 'aggregate3', result: args[0].map((c) => {
       const owner = (decodeFunctionData({ abi: MULTI_ABI, data: c.callData }).args as [string])[0]
       const balance = chain.balances.get(`${c.target}:${owner}`.toLowerCase()) ?? 0n
-      return balance < 0n ? { success: false, returnData: '0x' as const } : { success: true, returnData: encodeFunctionResult({ abi: MULTI_ABI, functionName: 'balanceOf', result: balance }) }
+      return balance < 0n ? { success: false, returnData: `0x${'7'.padStart(64, '0')}` as const } : { success: true, returnData: encodeFunctionResult({ abi: MULTI_ABI, functionName: 'balanceOf', result: balance }) }
     }) })
   } else if (method === 'eth_call') {
     const contract = chain.contracts.get(params[0].to.toLowerCase())
@@ -8588,7 +8588,9 @@ describe('H. the institution: overview from its wallets and orders, the desk and
       uids.push((await signed((await orderLink(team.t, id)).token)).page.body.uid)
       ids.push(id)
     }
-    // A cancel link given by the Approver later does not change who gave the signing link.
+    // A cancel link given by the Approver a minute later changes neither who gave the signing link nor when.
+    const signedAt = now
+    now += MIN
     expect((await orderLink(team.a, ids[4], 'cancel')).status).toBe(200)
     // The second order's fee is reported in another token: it is not kept. The fifth order stays open.
     const realFee = (sold: bigint) => (sold * BigInt(realBook.order.response.executedFee)) / BigInt(realBook.order.response.executedSellAmount)
@@ -8612,12 +8614,12 @@ describe('H. the institution: overview from its wallets and orders, the desk and
     expect(view.open).toBe(1)
     const shown = await deskOrders(team.t)
     const first = shown.find((x) => x.id === ids[0])!
-    expect(first).toMatchObject({ state: 'Filled', linkBy: 'A trader', linkAt: now, sentAt: now, tx: realBook.trades.response[0].txHash })
+    expect(first).toMatchObject({ state: 'Filled', linkBy: 'A trader', linkAt: signedAt, sentAt: signedAt, tx: realBook.trades.response[0].txHash })
     expect(first.executed).toEqual({ sold: '250000 USDC', bought: `${units(BigInt(first.terms.buy.minimum), 18)} WETH`, fee: `${units(realFee(250_000_000_000n), 6)} USDC` })
     expect(shown.find((x) => x.id === ids[1])!.executed!.fee).toBeNull()
-    expect(shown.find((x) => x.id === ids[4])).toMatchObject({ state: 'Open', executed: null, linkBy: 'A trader' })
+    expect(shown.find((x) => x.id === ids[4])).toMatchObject({ state: 'Open', executed: null, linkBy: 'A trader', linkAt: signedAt })
     expect(first.words.quote).toBe(`${units(BigInt(first.terms.quoted), 18)} WETH`)
-    expect(first.words.binding).toBe(`Sell exactly 250000 USDC. Receive at least ${units(BigInt(first.terms.buy.minimum), 18)} WETH. Valid until ${new Date((now / 1000 + 1800) * 1000).toISOString().slice(0, 16).replace('T', ' ')} UTC.`)
+    expect(first.words.binding).toBe(`Sell exactly 250000 USDC. Receive at least ${units(BigInt(first.terms.buy.minimum), 18)} WETH. Valid until ${new Date((signedAt / 1000 + 1800) * 1000).toISOString().slice(0, 16).replace('T', ' ')} UTC.`)
     // The CSV: every term, the state, who and when, what the orderbook executed, the fee and the transaction.
     const file = await exported(team.o, 'statement')
     expect(file.rows).toEqual([['Month', 'Asset sold', 'Filled orders', 'Volume sold', 'Fees', 'Orders with no fee reported', 'source'], ...view.months.map((m: Record<string, unknown>) => [m.month, m.asset, String(m.orders), m.volume, m.fee, String(m.unreported), 'live'])])
@@ -8625,8 +8627,8 @@ describe('H. the institution: overview from its wallets and orders, the desk and
     const line = lines.find((r) => r[0] === `ORD-${ids[0].slice(0, 8)}`)!
     expect(Object.fromEntries(lines[0].map((h, i) => [h, line[i]]))).toMatchObject({
       'Prepared by': 'A trader', Type: 'market', Chain: 'OP Mainnet', Signing: 'eip712', Sell: 'USDC', 'Sell token': USDC_OP, 'Amount sold': '250000', Buy: 'WETH', 'Least amount bought': units(BigInt(first.terms.buy.minimum), 18),
-      'Live quote': units(BigInt(first.terms.quoted), 18), 'Slippage (bps)': '50', 'Limit price': '', 'Valid after signing (s)': '1800', 'Valid until': new Date((now / 1000 + 1800) * 1000).toISOString(), 'App data hash': first.terms.appDataHash,
-      Status: 'Filled', 'Decided by': 'A approver', 'Signing link by': 'A trader', 'Signing link at': new Date(now).toISOString(), 'Order id': uids[0], 'Sent at': new Date(now).toISOString(),
+      'Live quote': units(BigInt(first.terms.quoted), 18), 'Slippage (bps)': '50', 'Limit price': '', 'Valid after signing (s)': '1800', 'Valid until': new Date((signedAt / 1000 + 1800) * 1000).toISOString(), 'App data hash': first.terms.appDataHash,
+      Status: 'Filled', 'Decided by': 'A approver', 'Signing link by': 'A trader', 'Signing link at': new Date(signedAt).toISOString(), 'Order id': uids[0], 'Sent at': new Date(signedAt).toISOString(),
       Sold: '250000 USDC', Fee: `${units(realFee(250_000_000_000n), 6)} USDC`, Transaction: realBook.trades.response[0].txHash, source: 'live',
     })
   })
@@ -10062,6 +10064,9 @@ describe('K. the Free plan of Cloudflare Workers', () => {
     chain.calls = []
     expect((await call('GET', '/api/overview', { cookie: spread.cookie })).body.balances.wallets.map((w: { read: boolean }) => w.read)).toEqual([true, true, true, true])
     expect(chain.calls).toHaveLength(16)
+    now += 60_000 // past the cache: the export reads the four chains again
+    expect((await call('GET', '/api/export/balances', { cookie: spread.cookie })).body.name).toMatch(/^ophis-balances-/)
+    expect(chain.calls).toHaveLength(32)
 
     // Every route of both tables and every job was driven, and none passed a limit.
     const jobs = [...routes, ...onboarding.operatorRoutes].map((r) => `${r.method} ${r.path}`).concat(JOBS)
