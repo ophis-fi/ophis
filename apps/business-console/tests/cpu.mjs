@@ -48,13 +48,18 @@ for (let seq = 1, prev = '0'.repeat(64); seq <= ROWS; seq++) {
   chainRows.push({ ...row, hash: prev })
 }
 const CHECKED = ROWS / 2
-const state = { checked_seq: CHECKED, checked_hash: chainRows[CHECKED - 1].hash, recheck_seq: 1000, broken_seq: null }
+const state = { checked_seq: CHECKED, checked_hash: chainRows[CHECKED - 1].hash, recheck_seq: 1000, sweep_seq: CHECKED, sweep_hash: chainRows[CHECKED - 1].hash, broken_seq: null }
 let hashed = 0
 const fakeDb = {
-  prepare: () => ({ bind: (...args) => ({
+  prepare: (sql) => ({ bind: (...args) => ({
     first: async () => state,
     run: async () => ({}),
-    all: async () => { const rows = chainRows.filter((r) => r.seq >= args[1] && r.seq <= args[2]); hashed += rows.length; return { results: rows } },
+    // The rows after a number (LIMIT), or between two.
+    all: async () => {
+      const rows = sql.includes('LIMIT') ? chainRows.filter((r) => r.seq > args[1]).slice(0, args[2]) : chainRows.filter((r) => r.seq >= args[1] && r.seq <= args[2])
+      hashed += rows.length
+      return { results: rows }
+    },
   }) }),
   batch: (statements) => Promise.all(statements.map((s) => s.all())),
 }

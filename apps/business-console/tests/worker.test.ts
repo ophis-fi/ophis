@@ -3240,19 +3240,32 @@ describe('w. the audit log page and its export', () => {
     expect(head).toBe(first + 10)
   })
 
-  it('the chain check: a row changed before the checkpoint is caught by the re-check within ceil(rows / OLD_ROWS) + 1 loads', async () => {
+  it('the chain check: a row changed before the checkpoint is caught by the re-check within ceil(rows / OLD_ROWS) + 1 loads, and while the log grows', async () => {
     const o = await owner()
     const head = await grow(o.orgId, 2 * data.NEW_ROWS)
+    // A sweep of the re-check ends at the checkpoint it began with (300 here), the next one at the checkpoint of then.
     expect(await chainOf(o)).toMatchObject({ ok: true, rows: data.NEW_ROWS, newer: true, rechecked: null })
     expect(await chainOf(o)).toMatchObject({ ok: true, rows: 2 * data.NEW_ROWS, newer: true, rechecked: [1, data.OLD_ROWS] })
-    expect(await chainOf(o)).toMatchObject({ ok: true, rows: head, newer: false, rechecked: [data.OLD_ROWS + 1, 2 * data.OLD_ROWS] })
+    expect(await chainOf(o)).toMatchObject({ ok: true, rows: head, newer: false, rechecked: [data.OLD_ROWS + 1, data.NEW_ROWS] })
+    expect(await chainOf(o)).toMatchObject({ ok: true, rows: head, rechecked: [1, data.OLD_ROWS] })
     // The re-check is past row 50 now: it is caught once the re-check has gone round.
     await asForger(db.prepare(`UPDATE audit_log SET at = at + 1 WHERE org_id = ? AND seq = 50`).bind(o.orgId))
-    const loads = Math.ceil(head / data.OLD_ROWS) + 1
     const seen = []
-    for (let i = 0; i < loads; i++) seen.push(await chainOf(o))
+    for (let i = 0; i < Math.ceil(head / data.OLD_ROWS) + 1; i++) seen.push(await chainOf(o))
     expect(seen.at(-1)).toEqual({ ok: false, seq: 50 })
     expect(seen[0]).toMatchObject({ ok: true })
+    // A log that grows by as many rows as a load verifies: the sweep does not move with the checkpoint, so it still ends.
+    const busy = await owner()
+    const start = await grow(busy.orgId, 2 * data.NEW_ROWS)
+    for (let i = 0; i < 4; i++) await chainOf(busy)
+    await asForger(db.prepare(`UPDATE audit_log SET at = at + 1 WHERE org_id = ? AND seq = 50`).bind(busy.orgId))
+    const growing = []
+    for (let i = 0; i < Math.ceil(start / data.OLD_ROWS) + 1; i++) {
+      await grow(busy.orgId, data.NEW_ROWS)
+      growing.push(await chainOf(busy))
+    }
+    expect(growing.at(-1)).toEqual({ ok: false, seq: 50 })
+    expect(growing[0]).toMatchObject({ ok: true })
   })
 
   it('the chain check: a chain rewritten whole, a removed tail, a removed row and a missing re-check row are breaks', async () => {
@@ -3286,6 +3299,13 @@ describe('w. the audit log page and its export', () => {
     await db.prepare('INSERT INTO audit_log (org_id, seq, at, actor_kind, actor_id, session_id, action, subject_id, detail, country, asn, prev_hash, hash) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
       .bind(...fields, await data.sha256Hex(JSON.stringify(fields))).run()
     expect(await chainOf(gap)).toEqual({ ok: false, seq: after + 1 })
+    // More rows removed just after the checkpoint than a load reads: the rows after the gap are read, and the gap is the break.
+    const block = await owner()
+    const b = await count('audit_log', block.orgId)
+    expect(await chainOf(block)).toMatchObject({ ok: true, rows: b })
+    await grow(block.orgId, 2 * data.NEW_ROWS + 10)
+    await asForger(db.prepare('DELETE FROM audit_log WHERE org_id = ? AND seq BETWEEN ? AND ?').bind(block.orgId, b + 1, b + data.NEW_ROWS + 1))
+    expect(await chainOf(block)).toEqual({ ok: false, seq: b + data.NEW_ROWS + 2 })
     // The row the re-check goes on from removed.
     const long = await owner()
     await grow(long.orgId, data.OLD_ROWS + 50)
@@ -3311,13 +3331,13 @@ describe('w. the audit log page and its export', () => {
         : (target[name as keyof D1Database] as (...args: unknown[]) => unknown).bind(target)),
     })
     const at = (recheck: number) => db.prepare(`UPDATE ${CHECKS} SET recheck_seq = ? WHERE org_id = ?`).bind(recheck, o.orgId).run()
-    // Behind on the checkpoint: it would write 600 and 0.
+    // Behind on the checkpoint: it would write 600 and 0 (its sweep ends at 300).
     await at(data.OLD_ROWS)
-    expect(await data.verifyAudit(stale({ checked_seq: 300, checked_hash: await hashAt(300), recheck_seq: data.OLD_ROWS, broken_seq: null }), o.orgId)).toMatchObject({ ok: true, rows: 600 })
+    expect(await data.verifyAudit(stale({ checked_seq: 300, checked_hash: await hashAt(300), recheck_seq: data.OLD_ROWS, sweep_seq: 300, sweep_hash: await hashAt(300), broken_seq: null }), o.orgId)).toMatchObject({ ok: true, rows: 600 })
     expect(await checks(o.orgId)).toEqual({ checked_seq: head, recheck_seq: data.OLD_ROWS, broken_seq: null })
     // Behind on the re-check: it would write the head and 200.
     await at(2 * data.OLD_ROWS)
-    expect(await data.verifyAudit(stale({ checked_seq: head, checked_hash: await hashAt(head), recheck_seq: 0, broken_seq: null }), o.orgId)).toMatchObject({ ok: true, rows: head, rechecked: [1, data.OLD_ROWS] })
+    expect(await data.verifyAudit(stale({ checked_seq: head, checked_hash: await hashAt(head), recheck_seq: 0, sweep_seq: head, sweep_hash: await hashAt(head), broken_seq: null }), o.orgId)).toMatchObject({ ok: true, rows: head, rechecked: [1, data.OLD_ROWS] })
     expect(await checks(o.orgId)).toEqual({ checked_seq: head, recheck_seq: 2 * data.OLD_ROWS, broken_seq: null })
   })
 
