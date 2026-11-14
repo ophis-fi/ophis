@@ -1364,6 +1364,10 @@ try {
   check('a payout not executed yet: no transaction and no link, "Waiting for signatures"; no trade in 90 days: one line, no chart; no trade at all: no table by chain or token',
     JSON.stringify(await cellsOf(payoutsSection)) === JSON.stringify([['2026-12-01\nGnosis', '0.05', 'Waiting for signatures\nNo transaction yet']]) && !(await payoutsSection.getByRole('link').count())
     && await dailySection.getByText('No trade in the last 90 days.').isVisible() && !(await dailySection.locator('svg[role="img"], table').count()) && !(await pat.page.getByRole('heading', { name: /^By (chain|fee token)$/ }).count()))
+  await pat.page.setViewportSize({ width: 390, height: 844 })
+  await pat.page.waitForTimeout(200)
+  check('at phone width the payout waiting for signatures needs no sideways scroll: its status wraps', await payoutsSection.locator('.table-wrap').evaluate((box) => box.scrollWidth <= box.clientWidth))
+  await pat.page.setViewportSize({ width: 1440, height: 900 })
   await tradedWith({ daily: [], byChain: [], byToken: [], payouts: [] }, 'breakdown')
   check('no payout yet: one line says so, with no table', await payoutsSection.getByText('No payout yet.').isVisible() && !(await payoutsSection.locator('table').count()))
   await patOverview()

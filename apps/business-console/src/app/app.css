@@ -179,7 +179,7 @@ fieldset.field { border: 0; margin: 0; padding: 0; min-width: 0; } fieldset.fiel
 /* The daily volume: plain SVG bars, stretched to the width; the dates under it in HTML (text in a stretched SVG would stretch). */
 .bars { margin: 0; } .bars svg { display: block; width: 100%; height: 160px; color: var(--brown); fill: currentColor; border-bottom: 1px solid var(--line); }
 .bars figcaption { display: flex; justify-content: space-between; gap: 12px; margin-top: 6px; font-size: 13px; color: var(--muted); text-align: center; } .bars figcaption > span:not(:nth-child(2)) { white-space: nowrap; } .pw .bars + .fine, .pw .bars ~ .disclose { margin-top: 12px; }
-@media (max-width: 720px) { .pw table.t th, .pw td .badge { white-space: normal; } } /* the breakdown's headers and a long status wrap on a phone */
+@media (max-width: 720px) { .pw td .badge { white-space: normal; } } /* "Waiting for signatures" wraps in the payouts on a phone */
 .pw .stats .num { overflow-wrap: anywhere; } .pw td .mono { white-space: normal; overflow-wrap: anywhere; } .pw td :is(small, .muted) { white-space: normal; } .pw .sec .fine { margin-top: 10px; }
 @media (max-width: 1220px) { .g.two, .g.even { grid-template-columns: minmax(0, 1fr); } }
 @media (max-width: 1023px) { .desk { grid-template-columns: minmax(0, 1fr); } }
