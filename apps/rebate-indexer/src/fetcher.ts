@@ -95,6 +95,10 @@ export async function upsertDefillamaFills(rows: PendingDefiLlamaFill[]): Promis
     if (!prev || (!prev.feeVerified && row.feeVerified)) byKey.set(key, row);
   }
   const { db, schema } = await import('./db/index.js');
+  // A stored verified payer stays: a later verified write that does not name the payer knows less.
+  const keepPayer = dsql`(${schema.defillamaFills.feeVerified}
+    AND ${schema.defillamaFills.userSource} IS NOT DISTINCT FROM 'onchain_user'
+    AND excluded.user_source IS DISTINCT FROM 'onchain_user')`;
   await db
     .insert(schema.defillamaFills)
     .values([...byKey.values()])
@@ -114,11 +118,11 @@ export async function upsertDefillamaFills(rows: PendingDefiLlamaFill[]): Promis
         buyAmount: dsql`COALESCE(${schema.defillamaFills.buyAmount}, excluded.buy_amount)`,
         // A verified API/exact-UID write is authoritative for user attribution
         // and may correct a legacy eth-flow router copied into this field.
-        userAddress: dsql`CASE WHEN excluded.fee_verified
+        userAddress: dsql`CASE WHEN excluded.fee_verified AND NOT ${keepPayer}
           THEN excluded.user_address
           ELSE COALESCE(${schema.defillamaFills.userAddress}, excluded.user_address) END`,
         // The source goes with the address it describes (the same choice as above).
-        userSource: dsql`CASE WHEN excluded.fee_verified OR ${schema.defillamaFills.userAddress} IS NULL
+        userSource: dsql`CASE WHEN (excluded.fee_verified OR ${schema.defillamaFills.userAddress} IS NULL) AND NOT ${keepPayer}
           THEN excluded.user_source ELSE ${schema.defillamaFills.userSource} END`,
         volumeFeeBps: dsql`CASE WHEN excluded.fee_verified
           THEN excluded.volume_fee_bps ELSE ${schema.defillamaFills.volumeFeeBps} END`,
