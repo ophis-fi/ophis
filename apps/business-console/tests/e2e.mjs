@@ -1161,12 +1161,13 @@ try {
   // The wallet's holder opens the link: the test key behind a fake provider. Its allowance is short, so it approves the exact amount first.
   const signer = mnemonicToAccount('test test test test test test test test test test test junk')
   // A browser that holds the test key: an injected provider whose calls are answered here, with the key's own signatures.
-  async function keyWallet() {
+  // allowance: what the token's allowance read answers, in atoms (none by default).
+  async function keyWallet(allowance = 0n) {
     const calls = []
     const context = await browser.newContext({ viewport: { width: 1440, height: 900 }, reducedMotion: 'reduce' })
     await context.exposeFunction('walletCall', async (method, params) => {
       calls.push([method, params])
-      return method === 'eth_requestAccounts' ? [signer.address] : method === 'eth_call' ? `0x${'0'.repeat(64)}` : method === 'eth_sendTransaction' ? `0x${'ab'.repeat(32)}`
+      return method === 'eth_requestAccounts' ? [signer.address] : method === 'eth_call' ? `0x${allowance.toString(16).padStart(64, '0')}` : method === 'eth_sendTransaction' ? `0x${'ab'.repeat(32)}`
         : method === 'eth_getTransactionReceipt' ? { status: '0x1' } : method === 'eth_signTypedData_v4' ? signer.signTypedData(JSON.parse(params[1])) : null
     })
     await context.addInitScript(() => { window.ethereum = { request: ({ method, params }) => window.walletCall(method, params) } })
@@ -1352,7 +1353,8 @@ try {
   await desk(tess)
   check('the blotter says the listed Safe order is refused', (await blotter(tess).first().textContent()).includes('Refused'))
 
-  // Two open orders of one wallet in one asset: the second asks the wallet to approve what both still need.
+  // Two open orders of one wallet in one asset: the second asks the wallet to approve what both still need, though its
+  // allowance would cover the second alone.
   await approved('5')
   const fifth = await keyWallet()
   await fifth.page.goto(await linkOf('Signing link'))
@@ -1360,7 +1362,7 @@ try {
   await fifth.page.getByText('Signed and sent. The order is open on the orderbook').waitFor()
   await fifth.context.close()
   await approved('6')
-  const sixth = await keyWallet()
+  const sixth = await keyWallet(6n * 10n ** 18n)
   await sixth.page.goto(await linkOf('Signing link'))
   await sixth.page.getByRole('heading', { name: 'The order the wallet will sign' }).waitFor()
   const approveStep = await sixth.page.locator('#o-steps li[data-step="approve"]').innerText()
@@ -1368,7 +1370,7 @@ try {
   await sixth.page.getByRole('button', { name: 'Sign with the wallet in this browser' }).click()
   await sixth.page.getByText('Signed and sent. The order is open on the orderbook').waitFor()
   const wide = sixth.calls.find(([method]) => method === 'eth_sendTransaction')?.[1][0]
-  check('with an order of 5 WETH open on the same wallet, the order of 6 WETH has the wallet approve exactly 11 WETH, and the page says why',
+  check('with an order of 5 WETH open on the same wallet, the order of 6 WETH has the wallet, whose allowance is 6 WETH, approve exactly 11 WETH, and the page says why',
     approveStep.startsWith('Approve exactly 11 WETH for the CoW Protocol vault relayer') && advice.includes('The approval covers this order and the other open orders of this wallet in this asset.')
     && wide?.data === `0x095ea7b3${'83847eab41ad9ea43809ce71569eb2e9daf51830'.padStart(64, '0')}${(11n * 10n ** 18n).toString(16).padStart(64, '0')}`)
   await sixth.context.close()
