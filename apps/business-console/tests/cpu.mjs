@@ -53,7 +53,7 @@ let hashed = 0
 const fakeDb = {
   prepare: (sql) => ({ bind: (...args) => ({
     first: async () => state,
-    run: async () => ({}),
+    run: async () => ({ meta: { changes: 1 } }), // the write applied, as D1 answers it
     // The rows after a number (LIMIT), or between two.
     all: async () => {
       const rows = sql.includes('LIMIT') ? chainRows.filter((r) => r.seq > args[1]).slice(0, args[2]) : chainRows.filter((r) => r.seq >= args[1] && r.seq <= args[2])

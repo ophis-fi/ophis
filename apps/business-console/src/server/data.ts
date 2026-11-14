@@ -131,7 +131,8 @@ export async function commit(db: D1Database, orgId: string, plan: () => [Entry, 
 // row changed between two loads is no anchor), up to the end of a sweep: the checkpoint and its hash as they were when the sweep began, which a
 // growing log does not move. The window that reaches that end must end on that hash; the next sweep goes to the
 // checkpoint of then. So a row is hashed again within this sweep and the next: ceil(rows / OLD_ROWS) + 1 loads when no
-// row is added. A break found is stored, shown on every load after, never cleared by code.
+// row is added. A break found is stored, shown on every load after (also by a load whose write it refused), never
+// cleared by code, and replaced by an earlier row only.
 // ponytail: a removed tail after the checkpoint, or rows rewritten together with audit_checks, needs the external
 // anchor, which is not built.
 export const NEW_ROWS = 300
@@ -163,16 +164,21 @@ export async function verifyAudit(db: D1Database, orgId: string): Promise<ChainS
   const broken = oldBroken ?? ahead.broken
   if (broken !== null) {
     await db.prepare(`INSERT INTO audit_checks (org_id, checked_seq, checked_hash, recheck_seq, recheck_hash, sweep_seq, sweep_hash, broken_seq) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-                      ON CONFLICT (org_id) DO UPDATE SET broken_seq = excluded.broken_seq`).bind(orgId, s.checked_seq, s.checked_hash, s.recheck_seq, s.recheck_hash, s.sweep_seq, s.sweep_hash, broken).run()
+                      ON CONFLICT (org_id) DO UPDATE SET broken_seq = excluded.broken_seq WHERE broken_seq IS NULL OR broken_seq > excluded.broken_seq`).bind(orgId, s.checked_seq, s.checked_hash, s.recheck_seq, s.recheck_hash, s.sweep_seq, s.sweep_hash, broken).run()
     return { ok: false, seq: broken }
   }
   // At the end of a sweep the next one begins, from row 1 to the checkpoint of now.
   const [recheck, sweep] = end === s.sweep_seq ? [{ seq: 0, hash: FIRST }, ahead] : [back, { seq: s.sweep_seq, hash: s.sweep_hash }]
   if (ahead.seq !== s.checked_seq || recheck.seq !== s.recheck_seq || sweep.seq !== s.sweep_seq) {
-    await db.prepare(`INSERT INTO audit_checks (org_id, checked_seq, checked_hash, recheck_seq, recheck_hash, sweep_seq, sweep_hash) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)
+    const moved = await db.prepare(`INSERT INTO audit_checks (org_id, checked_seq, checked_hash, recheck_seq, recheck_hash, sweep_seq, sweep_hash) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)
                       ON CONFLICT (org_id) DO UPDATE SET checked_seq = ?2, checked_hash = ?3, recheck_seq = ?4, recheck_hash = ?5, sweep_seq = ?6, sweep_hash = ?7
                       WHERE (checked_seq, checked_hash, recheck_seq, recheck_hash, sweep_seq, sweep_hash) = (?8, ?9, ?10, ?11, ?12, ?13) AND broken_seq IS NULL`)
       .bind(orgId, ahead.seq, ahead.hash, recheck.seq, recheck.hash, sweep.seq, sweep.hash, s.checked_seq, s.checked_hash, s.recheck_seq, s.recheck_hash, s.sweep_seq, s.sweep_hash).run()
+    // Refused: another load moved the state, or stored a break since this one read it. A stored break is the answer.
+    if (!moved.meta.changes) {
+      const now = await db.prepare('SELECT broken_seq FROM audit_checks WHERE org_id = ?').bind(orgId).first<{ broken_seq: number | null }>()
+      if (now?.broken_seq != null) return { ok: false, seq: now.broken_seq }
+    }
   }
   return { ok: true, rows: ahead.seq, head: ahead.hash, newer: fresh.length > NEW_ROWS, rechecked: end ? [s.recheck_seq + 1, end] : null, per: OLD_ROWS }
 }
@@ -1448,8 +1454,8 @@ export async function frozenSeats(db: D1Database, orgId: string, seatId: string 
 
 export interface AuditLine { seq: number; at: number; action: string; detail: string | null; who: string | null; target: string | null; prevHash: string; hash: string }
 /** One page before `before`, newest first; or, with `after` (the export), the rows after it and before `before`, oldest first. */
-// Read by the key (org_id, seq), so a page reads its own rows and their names only. ponytail: a row whose subject is
-// none of the tables before reads the organisation's approvals for an order; thousands of them would need an index on subject_id.
+// Read by the key (org_id, seq), so a page reads its own rows and their names only, each name by an index (approvals by
+// subject: 0020).
 export async function auditRows(db: D1Database, actor: Actor, before: number | null, limit: number, after: number | null = null) {
   const named = (table: string, seat: string) => `(SELECT n.display_name FROM ${table} x JOIN seats n ON n.org_id = x.org_id AND n.id = x.${seat} WHERE x.org_id = a.org_id AND x.id = a.subject_id)`
   const { results } = await db
@@ -1457,7 +1463,8 @@ export async function auditRows(db: D1Database, actor: Actor, before: number | n
                      COALESCE(w.display_name, (SELECT CASE WHEN a.action LIKE 'order.%' THEN 'Wallet ' ELSE 'Recovery wallet ' END || x.label FROM wallets x WHERE x.org_id = a.org_id AND x.id = a.actor_id AND a.actor_kind = 'anchor')) AS who,
                      COALESCE(t.display_name, ${named('credentials', 'seat_id')}, ${named('enrolment_tickets', 'seat_id')}, ${named('sessions', 'seat_id')}, ${named('approvals', 'subject_id')}, ${named('recovery_requests', 'seat_id')},
                        (SELECT x.label FROM wallets x WHERE x.org_id = a.org_id AND x.id = a.subject_id),
-                       (SELECT 'ORD-' || substr(x.id, 1, 8) FROM approvals x WHERE x.org_id = a.org_id AND a.subject_id IN (x.id, x.subject_id) AND x.action = 'order')) AS target
+                       (SELECT 'ORD-' || substr(x.id, 1, 8) FROM approvals x WHERE x.org_id = a.org_id AND x.id = a.subject_id AND x.action = 'order'),
+                       (SELECT 'ORD-' || substr(x.id, 1, 8) FROM approvals x WHERE x.org_id = a.org_id AND x.subject_id = a.subject_id AND x.action = 'order')) AS target
               FROM audit_log a LEFT JOIN seats w ON w.org_id = a.org_id AND w.id = a.actor_id LEFT JOIN seats t ON t.org_id = a.org_id AND t.id = a.subject_id
               WHERE a.org_id = ? AND a.seq < ? AND a.seq > ? ORDER BY a.seq ${after === null ? 'DESC' : 'ASC'} LIMIT ?`)
     .bind(actor.orgId, before ?? Number.MAX_SAFE_INTEGER, after ?? 0, limit).all<AuditLine>()

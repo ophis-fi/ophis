@@ -3364,8 +3364,48 @@ describe('w. the audit log page and its export', () => {
     const before = (await row<Record<string, unknown>>(`SELECT * FROM ${CHECKS} WHERE org_id = ?`, o.orgId))!
     await grow(o.orgId, 10)
     await db.prepare(`UPDATE ${CHECKS} SET broken_seq = ? WHERE org_id = ?`).bind(head + 5, o.orgId).run()
-    expect(await data.verifyAudit(stale({ ...before, broken_seq: null }), o.orgId)).toMatchObject({ ok: true, rows: head + 10 })
+    expect(await data.verifyAudit(stale({ ...before, broken_seq: null }), o.orgId)).toEqual({ ok: false, seq: head + 5 })
     expect(await checks(o.orgId)).toEqual({ checked_seq: head, recheck_seq: 2 * data.OLD_ROWS, broken_seq: head + 5 })
+  })
+
+  it('the chain check: two loads that find two breaks keep the first row, and a load whose write is refused over a stored break says broken', async () => {
+    const o = await owner()
+    const head = await grow(o.orgId, 20)
+    const stale = (state: object) => new Proxy(db, {
+      get: (target, name) => (name === 'prepare'
+        ? (sql: string) => (sql.startsWith('SELECT checked_seq') ? { bind: () => ({ first: async () => state }) } : target.prepare(sql))
+        : (target[name as keyof D1Database] as (...args: unknown[]) => unknown).bind(target)),
+    })
+    expect(await chainOf(o)).toMatchObject({ ok: true, rows: head })
+    const read = (await row<Record<string, unknown>>(`SELECT * FROM ${CHECKS} WHERE org_id = ?`, o.orgId))!
+    // A load that read the state before a break was stored at row 3 finds the rows after the checkpoint verified: its write is refused, and it says what is stored.
+    await grow(o.orgId, 5)
+    await db.prepare(`UPDATE ${CHECKS} SET broken_seq = 3 WHERE org_id = ?`).bind(o.orgId).run()
+    expect(await data.verifyAudit(stale(read), o.orgId)).toEqual({ ok: false, seq: 3 })
+    // Another, which read no break, finds one later in the log: the first row stays the one named.
+    await asForger(db.prepare(`UPDATE audit_log SET detail = 'changed' WHERE org_id = ? AND seq = ?`).bind(o.orgId, head + 2))
+    expect(await data.verifyAudit(stale(read), o.orgId)).toEqual({ ok: false, seq: head + 2 })
+    expect(await checks(o.orgId)).toMatchObject({ broken_seq: 3 })
+  })
+
+  it('the names of a page read the approvals by their key: thousands of them cost no more rows', async () => {
+    const o = await owner()
+    expect((await post('/api/audit/export', o)).status).toBe(200) // its row has no subject: every lookup of a name runs
+    await grow(o.orgId, data.EXPORT_PAGE)
+    const approvals = Array.from({ length: 2000 }, () => db.prepare(`INSERT INTO approvals (id, org_id, action, subject_id, payload_hash, requester_seat_id, state, expires_at, created_at) VALUES (?, ?, 'order', ?, 'x', ?, 'applied', ?, ?)`)
+      .bind(data.randomId(), o.orgId, data.randomId(), o.seatId, now, now))
+    for (let i = 0; i < approvals.length; i += 500) await db.batch(approvals.slice(i, i + 500))
+    try {
+      const reads = async (run: () => Promise<{ status: number }>) => {
+        const start = counts.read
+        expect((await run()).status).toBe(200)
+        return counts.read - start
+      }
+      expect(await reads(() => call('GET', '/api/audit', { cookie: o.cookie }))).toBeLessThan(FREE.read)
+      expect(await reads(() => post('/api/audit/export', o))).toBeLessThan(FREE.read)
+    } finally {
+      await db.prepare('DELETE FROM approvals WHERE org_id = ?').bind(o.orgId).run()
+    }
   })
 
   it('the export of a log longer than a page: every row in order, its own row last, pages only for an export of the same session', async () => {
