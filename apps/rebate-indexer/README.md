@@ -29,8 +29,12 @@ dashboard of up to 10 wallets per call. With it comes `traders`: the wallets
 that traded through that partner's integration (the trades that carried its
 fee), each with its trades and USD volume. It lists the 100 largest, and its
 totals count every wallet. A sale of native ETH is listed under the wallet
-that paid, when the indexer attributed one to the settlement; while an
-eth-flow contract still owns it, it counts in `unknown`, never as a wallet.
+the indexer attributed to the settlement, its fee verified or not: the payer
+once the API fetcher saw it, until then the receiver the on-chain decoder saw.
+While an eth-flow contract still owns it, it counts in `unknown`, never as a
+wallet. The wallets of the sanctions lists the console sends (`listed`) are
+named among these same wallets (`sanctioned`), so a trade in `unknown` is the
+one that was not checked.
 It does not read the referral
 dashboard: the console's partners get no referral share (`POST /partner` keeps
 it for retail). It is gated by `BUSINESS_API_TOKEN`

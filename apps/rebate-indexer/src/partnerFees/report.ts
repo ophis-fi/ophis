@@ -141,11 +141,13 @@ export interface PartnerTraders {
 
 /**
  * The wallets that traded through a partner's integration: the owners of the orders that carried
- * this recipient's fee, lifetime. A trade's owner is the payer the indexer attributed to its
- * settlement (defillama_fills.user_address, verified), else bytes 33-52 of the CoW order uid
- * (32-byte digest, 20-byte owner, 4-byte validTo). An eth-flow contract is no person (as in
- * computePublicStats): a trade it still owns counts in unknown. Not the referral program: no
- * share, no code, no estimate.
+ * this recipient's fee, lifetime. A trade's owner is the wallet the indexer attributed to its
+ * settlement (defillama_fills.user_address), else bytes 33-52 of the CoW order uid (32-byte digest,
+ * 20-byte owner, 4-byte validTo). fee_verified is not asked: it marks the fee, not the wallet
+ * (migration 0013). For a native-ETH sale that is the payer once the API fetcher saw it, until then
+ * the receiver the settle() decoder saw (ethFlowTrader), as computePublicStats falls back to trades.wallet.
+ * An eth-flow contract is no person: a trade it still owns counts in unknown. Not the referral
+ * program: no share, no code, no estimate.
  */
 export async function getPartnerTraders(recipient: `0x${string}`): Promise<PartnerTraders> {
   const buf = Buffer.from(recipient.slice(2), 'hex');
@@ -165,7 +167,7 @@ export async function getPartnerTraders(recipient: `0x${string}`): Promise<Partn
         COUNT(*) AS trades, COALESCE(SUM(p.value_usd), 0) AS volume_usd, COUNT(*) FILTER (WHERE p.value_usd IS NULL) AS unpriced
       FROM partner_fee_trades p
       LEFT JOIN defillama_fills f ON f.chain_id = p.chain_id AND f.block_number = p.block_number
-        AND f.log_index = p.log_index AND f.trade_uid = p.trade_uid AND f.fee_verified
+        AND f.log_index = p.log_index AND f.trade_uid = p.trade_uid
       CROSS JOIN LATERAL (SELECT COALESCE(f.user_address, substring(p.trade_uid from 33 for 20)) AS owner) o
       WHERE p.recipient = ${buf}
       GROUP BY 1
@@ -198,7 +200,8 @@ export type PartnerSanctioned = readonly (PartnerTraderFigures & { readonly wall
  * The owners of the partner's trades that are among `listed` (lower-case addresses of the sanctions lists the console
  * holds), over EVERY trade of this recipient, not only the 100 largest wallets. The owner is resolved exactly as
  * getPartnerTraders resolves it (the same FROM, JOIN and LATERAL): a trade an eth-flow contract still owns has no known
- * wallet and is never flagged. Largest volume first, ties by address. Information only: nothing is blocked here.
+ * wallet and is never flagged, so the unknown of getPartnerTraders counts exactly the trades that were not checked.
+ * Largest volume first, ties by address. Information only: nothing is blocked here.
  */
 export async function getPartnerSanctioned(recipient: `0x${string}`, listed: readonly string[]): Promise<PartnerSanctioned> {
   const buf = Buffer.from(recipient.slice(2), 'hex');
@@ -208,7 +211,7 @@ export async function getPartnerSanctioned(recipient: `0x${string}`, listed: rea
       to_char(MAX(p.block_timestamp) AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') AS last_at
     FROM partner_fee_trades p
     LEFT JOIN defillama_fills f ON f.chain_id = p.chain_id AND f.block_number = p.block_number
-      AND f.log_index = p.log_index AND f.trade_uid = p.trade_uid AND f.fee_verified
+      AND f.log_index = p.log_index AND f.trade_uid = p.trade_uid
     CROSS JOIN LATERAL (SELECT COALESCE(f.user_address, substring(p.trade_uid from 33 for 20)) AS owner) o
     CROSS JOIN LATERAL (SELECT '0x' || encode(o.owner, 'hex') AS wallet) w
     WHERE p.recipient = ${buf} AND w.wallet = ANY(${[...listed]}) AND w.wallet <> ALL(${[...DECODER_ETHFLOW_OWNERS]})
