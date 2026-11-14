@@ -8054,6 +8054,26 @@ describe('E. onboarding: a company applies, proves its domain, is activated and 
       expect([(await ofac())!.held, await stateOf(p.orgId), await last(p.orgId)]).toEqual(['older', 'frozen', { actor_kind: 'system', action: 'screening.wallet', subject_id: expect.any(String) }])
     })
 
+    it('T2 (G1): what a load leaves for later is frozen by the next daily run or "sync", whatever the list file gives: none set, or one that cannot be read', async () => {
+      const orgs = []
+      for (let i = 0; i < 2 * onboarding.FREEZES + 1; i++) {
+        const o = await owner()
+        const W = someAddress()
+        await walletRow(o.orgId, W)
+        orgs.push({ ...o, W })
+      }
+      const split = (hits: { frozen: boolean; later?: boolean }[] = []) => [hits.filter((h) => h.frozen).length, hits.filter((h) => h.later).length]
+      expect(split((await load('ofac', orgs.map((o) => o.W))).body.hits)).toEqual([5, 6])
+      // SANCTIONS_URL is not set (the default of wrangler.jsonc): the daily run freezes the next 5.
+      const quiet = (await daily(opEnv, now)) as { outcome: string; hits: Hit[] }
+      expect([quiet.outcome, split(quiet.hits)]).toEqual(['not_connected', [5, 1]])
+      // The list file cannot be read: "sync" freezes the last one.
+      feed(new Response('', { status: 500 }))
+      const down = (await syncNow()).body
+      expect([down.outcome, split(down.hits)]).toEqual(['unavailable', [1, 0]])
+      expect(await Promise.all(orgs.map((o) => stateOf(o.orgId)))).toEqual(orgs.map(() => 'frozen'))
+    })
+
     // The daily run reads the list file, and the orderbook's state of sent orders (the real desk, section J), nothing else: the
     // flags of referred wallets went with the referral share (2026-11-13).
     it('T2: the daily run reads the list file and the orderbooks only, not the figures of a partner; a read that throws is logged in fixed words, and the run answers unavailable', async () => {

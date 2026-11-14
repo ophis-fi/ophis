@@ -12,8 +12,8 @@
 //                                       the result of a search made offline, for an active or a frozen organisation. "review" and "hit" freeze it. --tier and --source: only for an organisation with no record yet (a local seed)
 //   node scripts/operator.mjs addresses <code>=<file>   loads the wallet addresses of a list file (every 0x and 40 hex characters), in place of that list's earlier ones; prints each organisation that holds one, frozen if it was active
 //   node scripts/operator.mjs sync      M10: reads the OFAC list file now (SANCTIONS_URL), as the daily run does: loaded, the same, held (older, shrunk, grown, manual: not loaded;
-//                                       compare it, then load the official SDN.XML by hand with "addresses"), or not readable. On the same file or a held one, an organisation
-//                                       whose freeze failed before is frozen now and printed. "list" ends with one line per loaded list and a WARNING when one is held or stale
+//                                       compare it, then load the official SDN.XML by hand with "addresses"), or not readable. Whatever the file gives, an organisation whose
+//                                       freeze failed before, or that a load left for later, is frozen now (5 a run) and printed. "list" ends with one line per loaded list and a WARNING when one is held or stale
 //   node scripts/operator.mjs freeze|unfreeze <organisation id>        an unfreeze is refused while the newest screening says "review" or "hit", or a linked or pending wallet is on a loaded list
 //   node scripts/operator.mjs items <organisation id>                  the sealed items of an organisation: id, kind, size, date, SHA-256, key
 //   node scripts/operator.mjs get <item id> --reason <code> --out <file>   the item, still sealed; the reason goes into the client's audit log
@@ -173,9 +173,9 @@ else if (load) {
   console.log(read.outcome === 'loaded' ? `Loaded ${count(read.entries)} of the list "ofac", published ${read.published}.\n${hitLines(read.hits)}`
     : read.outcome === 'same' ? 'The list file is the one already loaded. The list did not change.'
     : read.outcome === 'held' ? `WARNING  held (${read.reason}): the list file was not loaded: ${HELD[read.reason]}.`
-    : read.outcome === 'unavailable' ? 'WARNING  the list file could not be read, or is not what it must be, or SANCTIONS_URL is not an address the console takes (https). Nothing changed.'
+    : read.outcome === 'unavailable' ? 'WARNING  the list file could not be read, or is not what it must be, or SANCTIONS_URL is not an address the console takes (https). The loaded lists did not change.'
     : 'SANCTIONS_URL is not set: there is no list file to read.')
-  if (read.outcome !== 'loaded' && read.hits) console.log(hitLines(read.hits)) // a freeze that failed before, tried again
+  if (read.outcome !== 'loaded' && read.hits) console.log(hitLines(read.hits)) // a freeze that failed before, or one a load left for later, made now
 } else if (command !== 'list') console.log(`Done: ${id} is now ${answer.body.state}.`)
 else {
   if (!answer.body.organisations.length) console.log('Nothing is under review.')

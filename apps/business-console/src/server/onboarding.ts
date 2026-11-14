@@ -353,8 +353,8 @@ async function replaceList(db: D1Database, list: string, sha256: string, address
 }
 // S3b: every organisation that holds a live wallet (LISTED in data.ts) on ANY loaded list is a hit, and an active one
 // is frozen in a commit of its own, with a row in its own log that names the wallet. Everything that decides the freeze
-// is read again inside that commit. After every load, and at every read of the list file that loads nothing (same,
-// held): a freeze that failed is tried again there (G1). The actor is the operator for a manual load, the system for the list file (G7).
+// is read again inside that commit. After every load, and at every daily run or "sync" that loads nothing, whatever
+// the list file gave: a freeze that failed is tried again there (G1). The actor is the operator for a manual load, the system for the list file (G7).
 // ponytail: every listed wallet of every organisation, at each call. Page the hits when they pass some hundreds.
 // Free plan (ARCHITECTURE.md): at most FREEZES commits per call. A commit is 4 D1 queries, 8 after a collision, and an
 // invocation has 50. An active hit after them is marked `later`: the next call freezes it (the next daily run, or the
@@ -603,18 +603,26 @@ export async function onboarding(c: Member) {
 // M10: the OFAC list, read from the file at SANCTIONS_URL (the address rule of the indexer's: https, or plain http to
 // this machine in the local environment). ONE GET, no redirect followed, 5 seconds, 2 MB, and every field checked.
 // Outcomes: not_connected (the setting is empty: the feature is off); unavailable (any failure at all, an address that is
-// not taken included: nothing changes, and the last good read grows old); same (the same SHA-256 AND the same addresses:
+// not taken included: the lists do not change, and the last good read grows old); same (the same SHA-256 AND the same addresses:
 // only the time of the check moves); held (the file is not loaded and the reason is stored; a first load is never held);
-// loaded (through replaceList: atomic, and it freezes as a manual load does). Same and held try again a freeze that
-// failed (freezeHits). The operator's manual load stays the fallback and the override: it clears what is held and is
+// loaded (through replaceList: atomic, and it freezes as a manual load does). Every other outcome, not_connected and
+// unavailable too, then freezes what a load left for later and a freeze that failed (freezeHits): a load with more
+// than FREEZES active hits is finished by the daily runs, also when no list file is set. The operator's manual load
+// stays the fallback and the override: it clears what is held and is
 // itself never held. The file never rolls it back: a file whose day is not after the loaded one's and that differs is
 // held as "older" (only a strictly newer file replaces a list; a manual load of an official XML carries its day); a
 // list made by hand, with no day, holds every other file as "manual" until the operator loads a dated file by hand; a
 // file that lacks more than a fifth of the loaded addresses is "shrunk", one that adds more than a fifth of them "grown".
 type Hits = Awaited<ReturnType<typeof freezeHits>>
-export type Synced = { outcome: 'not_connected' | 'unavailable' } | { outcome: 'same'; hits?: Hits } | { outcome: 'held'; reason: 'older' | 'shrunk' | 'grown' | 'manual'; hits?: Hits }
+export type Synced = ({ outcome: 'not_connected' | 'unavailable' | 'same' } | { outcome: 'held'; reason: 'older' | 'shrunk' | 'grown' | 'manual' }) & { hits?: Hits }
   | { outcome: 'loaded'; entries: number; published: string; hits: Hits }
 export async function sync(env: { DB: D1Database; ENVIRONMENT: string; SANCTIONS_URL?: string }, now: number): Promise<Synced> {
+  const read = await readList(env, now)
+  if (read.outcome === 'loaded') return read // replaceList has frozen
+  const hits = await freezeHits(env.DB, now, 'system')
+  return hits.length ? { ...read, hits } : read
+}
+async function readList(env: { DB: D1Database; ENVIRONMENT: string; SANCTIONS_URL?: string }, now: number): Promise<Synced> {
   if (!env.SANCTIONS_URL) return { outcome: 'not_connected' }
   const url = indexerBase({ ENVIRONMENT: env.ENVIRONMENT, INDEXER_URL: env.SANCTIONS_URL })
   if (!url) return { outcome: 'unavailable' } // set, and not taken (http in production, a query string): a warning, never silence
@@ -641,9 +649,7 @@ export async function sync(env: { DB: D1Database; ENVIRONMENT: string; SANCTIONS
   if (!loaded || (!same && !reason)) return { outcome: 'loaded', entries: file.addresses.length, published: file.published, hits: await replaceList(env.DB, 'ofac', file.sha256, file.addresses, now, file.published, file.made) }
   // Only over the row that was read (G6): a manual load that landed since keeps its own state.
   await env.DB.prepare(`UPDATE sanctions_lists SET checked_at = ?, made_at = ?, held = ? WHERE list = 'ofac' AND sha256 = ?`).bind(now, file.made, reason, loaded.sha256).run()
-  const hits = await freezeHits(env.DB, now, 'system')
-  const more = hits.length ? { hits } : {}
-  return reason ? { outcome: 'held', reason, ...more } : { outcome: 'same', ...more }
+  return reason ? { outcome: 'held', reason } : { outcome: 'same' }
 }
 /**
  * For the operator's list: each loaded list, and whether the feed is stale. Stale: SANCTIONS_URL is set (even to an
