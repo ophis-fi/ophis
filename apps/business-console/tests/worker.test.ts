@@ -9316,6 +9316,8 @@ describe('J. the real desk: terms from a live quote, two people, then the wallet
     const other = await review(t, base, { chainId: 8453, sell: 'USDC', buy: 'EURC', slippageBips: 300, validFor: 86400 })
     expect(other.body.terms).toMatchObject({ slippageBips: 300, validFor: 86400, appData: orders.appData(8453, 'market', 300, true).full, fee: orders.fee(8453, true) })
     expect(asked.at(-1)!.url).toBe('https://api.cow.fi/base/api/v1/quote')
+    // A stable asset with one that is not: no stable pair, the share of a volatile pair.
+    expect((await review(t, base, { chainId: 8453, sell: 'USDC', buy: 'WETH' })).body.terms).toMatchObject({ appData: orders.appData(8453, 'market', 50, false).full, fee: orders.fee(8453, false) })
   })
 
   it('every ticket check, one by one, with hostile values: nothing is written and no quote is asked for', async () => {
@@ -9348,6 +9350,11 @@ describe('J. the real desk: terms from a live quote, two people, then the wallet
     const onBase = await demoWallet(t.orgId, 'Base wallet', 'linked', someAddress(), 'custodian', 8453)
     const n = asked.length
     expect((await review(t, waits)).body).toEqual({ error: 'wallet_not_linked' })
+    // A wallet whose link waits for its second person is live, not linked: no review either.
+    await db.prepare(`INSERT INTO approvals (id, org_id, action, subject_id, payload, payload_hash, requester_seat_id, state, expires_at, created_at) VALUES (?, ?, 'wallet.link', ?, '{}', '', ?, 'pending', ?, ?)`)
+      .bind(data.randomId(), t.orgId, waits, t.seatId, now + DAY, now).run()
+    expect((await walletsOf(t)).find((w) => w.id === waits)?.state).toBe('pending')
+    expect((await review(t, waits)).body).toEqual({ error: 'wallet_not_linked' })
     expect((await review(t, data.randomId())).body).toEqual({ error: 'wallet_not_linked' })
     expect((await review(t, onBase)).body).toEqual({ error: 'wallet_chain' })
     expect(asked.length).toBe(n)
@@ -9367,7 +9374,7 @@ describe('J. the real desk: terms from a live quote, two people, then the wallet
       [Response.json({ errorType: 'SellAmountDoesNotCoverFee', description: 'x' }, { status: 400 }), 409, { error: 'quote_refused', reason: 'SellAmountDoesNotCoverFee' }],
       [Response.json({ errorType: '<b>x</b>' }, { status: 400 }), 409, { error: 'quote_refused', reason: null }],
       [Response.json({}, { status: 500 }), 503, { error: 'quote_unavailable' }], [Response.json({}, { status: 429 }), 503, { error: 'quote_unavailable' }],
-      [new Response('not json', { status: 200 }), 503, { error: 'quote_unavailable' }], [new Response('x'.repeat(70_000), { status: 200 }), 503, { error: 'quote_unavailable' }],
+      [new Response('not json', { status: 200 }), 503, { error: 'quote_unavailable' }], [Response.json(realBook.quote.response, { status: 400 }), 409, { error: 'quote_refused', reason: null }], [new Response('x'.repeat(70_000), { status: 200 }), 503, { error: 'quote_unavailable' }],
       [new Response(null, { status: 302, headers: { location: 'https://elsewhere.example/' } }), 503, { error: 'quote_unavailable' }], // a redirect is followed nowhere
     ] as const) {
       book({ twist: (a) => (a.url.endsWith('/quote') ? answer.clone() : undefined) })
@@ -9727,8 +9734,8 @@ describe('J. the real desk: terms from a live quote, two people, then the wallet
     expect(daily2.filter((x) => /\/orders\/0x/.test(x.url)).length).toBeLessThanOrEqual(20)
     expect((await deskOrders(team.t)).filter((x) => x.state === 'Open')).toEqual([])
     // An order whose expiry passed reads Expired even before the orderbook is read again.
-    expect(orders.stateOf({ state: 'applied', open: false, approvedAt: now, uid: '0x', status: 'open', validTo: Math.floor(now / 1000) }, now)).toBe('Expired')
-    expect(orders.stateOf({ state: 'applied', open: false, approvedAt: now, uid: '0x', status: 'open', validTo: Math.floor(now / 1000) + 1 }, now)).toBe('Open')
+    expect(orders.stateOf({ state: 'applied', open: false, approvedAt: 0, uid: '0x', status: 'open', validTo: 1_000 }, 1_000_000)).toBe('Expired')
+    expect(orders.stateOf({ state: 'applied', open: false, approvedAt: 0, uid: '0x', status: 'open', validTo: 1_000 }, 999_999)).toBe('Open')
     // An answer the server cannot use changes nothing: another state, an amount that is no integer, a transaction that is no hash.
     const id = await approvedOrder(team, { amount: '7' })
     const { page } = await signed((await orderLink(team.t, id)).token)

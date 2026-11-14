@@ -683,7 +683,7 @@ const csvFile = (c: Context, name: string, lines: unknown[][]) => json(200, { na
 // The organisation's own orders as the pages show them: the approval row, the terms in words, the state.
 const ordersOf = async (c: Context) => (await data.orders(c.env.DB, c.actor, c.now)).map(({ terms, approvedAt, status, ...o }) => ({
   ...o, terms, words: orders.words(terms, o.validTo), ref: `ORD-${o.id.slice(0, 8)}`, state: orders.stateOf({ ...o, approvedAt, status }, c.now),
-  signUntil: o.state === 'applied' && !o.uid ? (approvedAt ?? 0) + orders.SIGN_MS : null,
+  signUntil: o.state === 'applied' && !o.uid && !status ? (approvedAt ?? 0) + orders.SIGN_MS : null,
 }))
 const REVIEW = 'order-review' // the label of a review under the challenge key
 /**
@@ -697,8 +697,9 @@ async function order(c: Context) {
     // Sending needs a fresh passkey check; the review above needs none, so the row of the table carries no `fresh`.
     // Judged here, as the sealed upload does it: the clock and the session were read after the body arrived (api()).
     if (c.now - c.session.step_up_at > STEP_UP_MS) return fail(403, 'step_up_required')
-    const sealed = (typeof c.body.review === 'string' && (await unseal(c.env.CHALLENGE_KEY, REVIEW, c.body.review))) as { org: string; seat: string; at: number; terms: orders.Terms } | null
-    if (!sealed || sealed.org !== c.actor.orgId || sealed.seat !== c.actor.seatId) return fail(400, 'review_invalid')
+    // A seat id names its organisation: the review of this seat is this organisation's.
+    const sealed = (typeof c.body.review === 'string' && (await unseal(c.env.CHALLENGE_KEY, REVIEW, c.body.review))) as { seat: string; at: number; terms: orders.Terms } | null
+    if (!sealed || sealed.seat !== c.actor.seatId) return fail(400, 'review_invalid')
     if (c.now - sealed.at > orders.REVIEW_MS) return fail(409, 'review_expired')
     // A member files so many orders an hour and no more.
     if (!(await data.countHour(c.env.DB, `order:${c.actor.seatId}`, c.now, orders.ORDERS_PER_HOUR))) return fail(429, 'order_rate')
@@ -714,7 +715,7 @@ async function order(c: Context) {
   if ('error' in quoted) return json(quoted.error === 'quote_unavailable' ? 503 : 409, quoted)
   const terms = orders.terms(t, wallet, quoted.quoted)
   if (typeof terms === 'string') return fail(400, terms)
-  const review = await seal(c.env.CHALLENGE_KEY, REVIEW, { org: c.actor.orgId, seat: c.actor.seatId, at: c.now, terms })
+  const review = await seal(c.env.CHALLENGE_KEY, REVIEW, { seat: c.actor.seatId, at: c.now, terms })
   return json(200, { terms, words: orders.words(terms, null), review, until: c.now + orders.REVIEW_MS })
 }
 /** A one-time link to the signing page, for an approved order (sign) or an open one (cancel). Only its SHA-256 is stored. */
@@ -769,7 +770,7 @@ async function orderSend(c: Context) {
     if (done !== 'ok') return refuse(done)
     return (await data.orderCancelled(c.env.DB, r, r.hash, 'key', c.now)) ? json(200, { state: 'cancelled' }) : fail(409, 'try_again')
   }
-  if (r.walletId === null || r.walletChain !== t.chainId || r.walletAddress !== t.wallet.toLowerCase()) return refuse('wallet_not_linked')
+  if (r.walletChain !== t.chainId || r.walletAddress !== t.wallet.toLowerCase()) return refuse('wallet_not_linked') // no linked wallet: both are null
   if (t.scheme === 'eip712' && !(await orders.signedBy(built.hashed, c.body.signature, t.wallet))) return fail(403, 'signature_rejected')
   // A presign order's signature is its owner (the Safe), as the orderbook takes it.
   const signature = t.scheme === 'presign' ? t.wallet.toLowerCase() : (c.body.signature as string)
