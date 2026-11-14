@@ -10049,6 +10049,28 @@ describe('J. the real desk: terms from a live quote, two people, then the wallet
     expect((await deskOrders(team.t)).find((x) => x.id === id)!.state).toBe('Open')
   })
 
+  it('the audit log names the wallet only where its signature was checked: the page\'s read, and a Safe\'s send and cancel, which the link alone reaches, are the system\'s rows', async () => {
+    const team = await deskTeam()
+    book()
+    const last = () => row('SELECT actor_kind, actor_id, action, detail FROM audit_log WHERE org_id = ? ORDER BY seq DESC LIMIT 1', team.o.orgId)
+    const key = await orderLink(team.t, await approvedOrder(team))
+    const page = await orderPage(key.token)
+    expect(await last()).toEqual({ actor_kind: 'system', actor_id: null, action: 'order.open', detail: null })
+    await orderSend(key.token, await accounts[1].signTypedData(page.body.typed))
+    expect(await last()).toEqual({ actor_kind: 'anchor', actor_id: team.walletId, action: 'order.send', detail: 'eip712' })
+    const id = await approvedOrder({ ...team, walletId: await demoWallet(team.o.orgId, 'Treasury Safe', 'linked', accounts[4].address.toLowerCase(), 'safe') })
+    const safe = await orderLink(team.t, id)
+    await orderPage(safe.token)
+    expect((await orderSend(safe.token)).body.state).toBe('presignaturePending')
+    expect(await last()).toEqual({ actor_kind: 'system', actor_id: null, action: 'order.send', detail: 'presign' })
+    const cancel = await orderLink(team.t, id, 'cancel')
+    await orderPage(cancel.token)
+    expect((await orderSend(cancel.token)).body.state).toBe('asked')
+    expect(await last()).toEqual({ actor_kind: 'system', actor_id: null, action: 'order.cancel', detail: 'safe' })
+    const said = Object.fromEntries(((await get('/api/audit', team.o)).body.rows as { who: string; event: string }[]).map((r) => [r.event, r.who]))
+    expect([said['Order signed by the wallet and sent to the orderbook'], said['Order sent to the orderbook: it waits for the Safe owners to sign it onchain']]).toEqual(['Wallet Operations Safe', 'System'])
+  })
+
   it('cancel an open order: a key wallet signs the off-chain cancellation, which goes to DELETE /api/v1/orders; a Safe revokes its presignature itself', async () => {
     const team = await deskTeam()
     const asked = book()

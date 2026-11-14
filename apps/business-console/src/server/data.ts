@@ -955,7 +955,12 @@ export const orderByLink = async (db: D1Database, tokenHash: string, now: number
 type Opening = NonNullable<Awaited<ReturnType<typeof orderByLink>>>
 /** Inside a commit: the link is still this order's. */
 const linked = async (db: D1Database, r: Opening, tokenHash: string) => Boolean(await db.prepare('SELECT 1 FROM orders WHERE org_id = ? AND id = ? AND link_hash = ?').bind(r.orgId, r.id, tokenHash).first())
-const walletEntry = (r: Opening, now: number, action: string, detail: string | null = null): Entry => ({ at: now, actorKind: 'anchor', actorId: r.terms.walletId, sessionId: null, action, subjectId: r.id, detail })
+// The wallet is the actor only where its signature was checked first (orderSend): a key wallet's send, its cancel, and its
+// refusal for a listed address. The page's read, and a Safe's send, cancel and refusal, need the link alone: the system's rows.
+const walletEntry = (r: Opening, now: number, action: string, detail: string | null = null): Entry => {
+  const signed = r.terms.scheme === 'eip712' && action !== 'order.open'
+  return { at: now, actorKind: signed ? 'anchor' : 'system', actorId: signed ? r.terms.walletId : null, sessionId: null, action, subjectId: r.id, detail }
+}
 /** The signing page read the order: its expiry is fixed now, once. */
 export async function orderOpened(db: D1Database, r: Opening, tokenHash: string, validTo: number, now: number) {
   return commit(db, r.orgId, async () => {
