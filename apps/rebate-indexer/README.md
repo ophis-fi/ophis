@@ -31,12 +31,16 @@ fee), each with its trades and USD volume. It lists the 100 largest, and its
 totals count every wallet. A sale of native ETH is listed under the wallet
 that paid, when the indexer attributed one to the settlement; while an
 eth-flow contract still owns it, it counts in `unknown`, never as a wallet.
-Only a verified payer counts: the on-chain decoder sees the order's receiver,
-which the order's maker chooses, so its trades stay in `unknown` (not
-checked against the sanctions lists, and the console says so). Limit: an API
-record with no `onchainUser` (older ones) is stored verified with its receiver
-too; telling it apart needs the fill to keep where its wallet came from (not
-built).
+Each fill records where its wallet came from (`user_source`: `owner`,
+`onchain_user` or `receiver`). A native-ETH sale is named by its wallet only
+when the fill is verified and that wallet is the payer (`onchain_user`, CoW's
+record of who paid the ETH). Any other eth-flow fill stays in `unknown`: the
+on-chain decoder and older API records see only the order's receiver, which
+the order's maker chooses. Such trades are not checked against the sanctions
+lists, and the console says so. Fills written before migration 0051 have no
+source yet: the nightly pipeline asks CoW for up to 100 of those orders per
+run and records the source when the stored wallet is the payer or the
+receiver. A row CoW cannot answer for stays in `unknown`.
 It does not read the referral
 dashboard: the console's partners get no referral share (`POST /partner` keeps
 it for retail). It is gated by `BUSINESS_API_TOKEN`

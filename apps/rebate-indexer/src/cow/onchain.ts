@@ -360,6 +360,7 @@ export async function decodeWindow(
             tradeUid: ev.orderUid as `0x${string}`,
             transactionHash: txHash,
             userAddress: trade.wallet,
+            userSource: trade.walletSource ?? null,
             settlementTimestamp: ts,
             sellToken: ev.sellToken,
             sellAmount: ev.sellAmount,

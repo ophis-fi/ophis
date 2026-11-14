@@ -22,6 +22,7 @@ const fill = (over: Partial<PendingDefiLlamaFill>): PendingDefiLlamaFill => ({
   tradeUid: UID,
   transactionHash: `0x${'33'.repeat(32)}`,
   userAddress: `0x${'44'.repeat(20)}`,
+  userSource: null,
   settlementTimestamp: new Date('2026-08-01T12:00:00Z'),
   sellToken: `0x${'11'.repeat(20)}`,
   sellAmount: 1_000n,
@@ -110,6 +111,21 @@ describe('upsertDefillamaFills', () => {
       WHERE chain_id = 100 AND block_number = 79 AND log_index = 10
         AND trade_uid = decode(${UID.slice(2)}, 'hex')`;
     expect(row!.user).toBe('44'.repeat(20));
+  });
+
+  it('keeps user_source with the address it describes', async () => {
+    const at = { blockNumber: 81n, logIndex: 11 };
+    const source = async () => (await sql<{ s: string | null }[]>`
+      SELECT user_source AS s FROM defillama_fills
+      WHERE chain_id = 100 AND block_number = 81 AND log_index = 11 AND trade_uid = decode(${UID.slice(2)}, 'hex')`)[0]!.s;
+    await upsertDefillamaFills([fill({ ...at, userSource: 'receiver' })]); // decoder discovery
+    expect(await source()).toBe('receiver');
+    // A provisional write that updates the row (its assessment) keeps the stored address, so its source too.
+    await upsertDefillamaFills([fill({ ...at, userAddress: `0x${'66'.repeat(20)}`, userSource: 'onchain_user', assessedFeeBps: '1.00000000' })]);
+    expect(await source()).toBe('receiver');
+    // The verified write sets the address and its source.
+    await upsertDefillamaFills([fill({ ...at, userSource: 'onchain_user', assessedFeeBps: '1.00000000', feeVerified: true })]);
+    expect(await source()).toBe('onchain_user');
   });
 
   it('accepts the compounded canonical maximum but rejects values above 100.01 bps', async () => {

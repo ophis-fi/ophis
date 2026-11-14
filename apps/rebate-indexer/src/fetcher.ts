@@ -53,8 +53,10 @@ export interface PendingDefiLlamaFill {
   logIndex: number;
   tradeUid: `0x${string}`;
   transactionHash: `0x${string}`;
-  /** Actual trader; for eth-flow this is the receiver, never the router owner. */
+  /** Actual trader; for eth-flow the payer (or the receiver as fallback), never the router owner. */
   userAddress: `0x${string}`;
+  /** Where userAddress came from (WalletSource); null when not known (copied from the trades row). */
+  userSource: WalletSource | null;
   settlementTimestamp: Date;
   sellToken: `0x${string}`;
   sellAmount: bigint;
@@ -115,6 +117,9 @@ export async function upsertDefillamaFills(rows: PendingDefiLlamaFill[]): Promis
         userAddress: dsql`CASE WHEN excluded.fee_verified
           THEN excluded.user_address
           ELSE COALESCE(${schema.defillamaFills.userAddress}, excluded.user_address) END`,
+        // The source goes with the address it describes (the same choice as above).
+        userSource: dsql`CASE WHEN excluded.fee_verified OR ${schema.defillamaFills.userAddress} IS NULL
+          THEN excluded.user_source ELSE ${schema.defillamaFills.userSource} END`,
         volumeFeeBps: dsql`CASE WHEN excluded.fee_verified
           THEN excluded.volume_fee_bps ELSE ${schema.defillamaFills.volumeFeeBps} END`,
         assessedFeeBps: dsql`COALESCE(excluded.assessed_fee_bps, ${schema.defillamaFills.assessedFeeBps})`,
@@ -175,7 +180,13 @@ export interface PendingTrade {
   /** The integrator's own-fee recipient (lowercased 0x-address) that pairs with
    *  ownFeeBps, for the "where it paid out" link; null when ownFeeBps is null. */
   ownFeeRecipient: `0x${string}` | null;
+  /** Where `wallet` came from. Set by attributeOrder; reporting only (defillama_fills.user_source). */
+  walletSource?: WalletSource;
 }
+
+/** Where a fill's wallet came from: the order owner, the eth-flow payer (CoW's onchainUser), or the
+ *  eth-flow receiver (the fallback ethFlowTrader takes when the source has no onchainUser). */
+export type WalletSource = 'owner' | 'onchain_user' | 'receiver';
 
 /**
  * Decode the integrator's OWN fee from a settled order's appData: the FIRST
@@ -565,12 +576,20 @@ export function ethFlowTrader(
   ctx: { owner: string; receiver?: string | null; onchainUser?: string | null },
   ethFlowOwners: ReadonlySet<string> = DECODER_ETHFLOW_OWNERS,
 ): `0x${string}` | null {
+  return ethFlowTraderSource(ctx, ethFlowOwners)?.wallet ?? null;
+}
+
+/** ethFlowTrader, and which field the wallet came from: the payer (onchain_user) or the receiver. */
+export function ethFlowTraderSource(
+  ctx: { owner: string; receiver?: string | null; onchainUser?: string | null },
+  ethFlowOwners: ReadonlySet<string> = DECODER_ETHFLOW_OWNERS,
+): { wallet: `0x${string}`; source: 'onchain_user' | 'receiver' } | null {
   const owner = ctx.owner.toLowerCase();
-  for (const raw of [ctx.onchainUser, ctx.receiver]) {
+  for (const [raw, source] of [[ctx.onchainUser, 'onchain_user'], [ctx.receiver, 'receiver']] as const) {
     const a = raw?.trim().toLowerCase();
     if (!a || !/^0x[0-9a-f]{40}$/.test(a) || /^0x0{40}$/.test(a)) continue;
     if (a === owner || ethFlowOwners.has(a)) continue;
-    return a as `0x${string}`;
+    return { wallet: a as `0x${string}`, source };
   }
   return null;
 }
@@ -689,12 +708,15 @@ export function attributeOrder(
   // Attribute to the payer (onchainUser, receiver as fallback — see ethFlowTrader).
   // Skip rather than mis-credit when neither is usable; never credit a router.
   let wallet: `0x${string}`;
+  let walletSource: WalletSource;
   if (ethFlowOwners.has(ctx.owner.toLowerCase())) {
-    const trader = ethFlowTrader(ctx, ethFlowOwners);
+    const trader = ethFlowTraderSource(ctx, ethFlowOwners);
     if (!trader) return null;
-    wallet = trader;
+    wallet = trader.wallet;
+    walletSource = trader.source;
   } else {
     wallet = ctx.owner as `0x${string}`;
+    walletSource = 'owner';
   }
 
   return {
@@ -717,6 +739,7 @@ export function attributeOrder(
     feeVerified: true,
     ownFeeBps: ownFee?.bps ?? null,
     ownFeeRecipient: ownFee?.recipient ?? null,
+    walletSource,
   };
 }
 
@@ -900,6 +923,7 @@ export async function fetchChainTrades(
               ...fillKey,
               transactionHash: t.txHash as `0x${string}`,
               userAddress: fill.wallet,
+              userSource: fill.walletSource ?? null,
               settlementTimestamp,
               sellToken: fill.sellToken,
               sellAmount: fill.sellAmount,

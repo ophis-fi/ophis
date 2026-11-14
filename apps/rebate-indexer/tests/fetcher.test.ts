@@ -211,7 +211,7 @@ describe('fetcher.fetchChainTrades', () => {
     expect(rows).toHaveLength(1);
     expect(rows[0]!.sellAmount).toBe(1000n); // rebate ledger remains one order-total row
     expect(defillamaFills).toMatchObject([
-      { blockNumber: 100n, logIndex: 3, sellAmount: 400n, volumeFeeBps: 5, assessedFeeBps: null, feeVerified: true },
+      { blockNumber: 100n, logIndex: 3, sellAmount: 400n, volumeFeeBps: 5, assessedFeeBps: null, feeVerified: true, userSource: 'owner' },
       { blockNumber: 200n, logIndex: 7, sellAmount: 600n, volumeFeeBps: 5, assessedFeeBps: null, feeVerified: true },
     ]);
     expect(defillamaFills.map((fill) => fill.settlementTimestamp.toISOString())).toEqual([
@@ -402,7 +402,7 @@ describe('fetcher.fetchChainTrades', () => {
     expect(rows).toHaveLength(1);
     expect(rows[0]!.wallet).toBe(user);
     expect(rows[0]!.wallet).not.toBe(CANONICAL);
-    expect(defillamaFills).toMatchObject([{ userAddress: user }]);
+    expect(defillamaFills).toMatchObject([{ userAddress: user, userSource: 'receiver' }]);
   });
 
   it('credits an eth-flow trade to onchainUser (the payer), not the receiver, when they differ', async () => {
@@ -426,7 +426,7 @@ describe('fetcher.fetchChainTrades', () => {
     });
     expect(rows).toHaveLength(1);
     expect(rows[0]!.wallet).toBe(payer);
-    expect(defillamaFills).toMatchObject([{ userAddress: payer }]);
+    expect(defillamaFills).toMatchObject([{ userAddress: payer, userSource: 'onchain_user' }]);
   });
 
   it('recognizes a widget order via metadata.widget.appCode and attributes the top-level appCode as the integrator referral', async () => {

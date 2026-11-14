@@ -141,19 +141,17 @@ export interface PartnerTraders {
 
 /**
  * The wallets that traded through a partner's integration: the owners of the orders that carried
- * this recipient's fee, lifetime. A trade's owner is the payer the indexer attributed to its
- * settlement (defillama_fills.user_address, verified), else bytes 33-52 of the CoW order uid
- * (32-byte digest, 20-byte owner, 4-byte validTo). An eth-flow contract is no person (as in
- * computePublicStats): a trade it still owns counts in unknown. Not the referral program: no
- * share, no code, no estimate.
- * Verified only, on purpose: a fill the settle() decoder discovered is never verified, and its
- * user_address is the order's receiver (ethFlowTrader has no onchainUser there), which whoever
- * made the order chooses. Taken as the wallet, a listed payer would hide behind a clean receiver
- * and anyone could be named as the trader. Such a trade stays in unknown: not checked, and said so.
- * Limit (Codex, 2026-11-14): verified is not proof of the payer either. An API payload with no
- * onchainUser (older ones) is stored verified with its receiver as well (ethFlowTrader, fetcher
- * fillSink). Telling them apart needs the fill to keep where its wallet came from: a column, a
- * backfill of the rows that have none, then this join asks it. Not built.
+ * this recipient's fee, lifetime. A trade's owner is bytes 33-52 of the CoW order uid (32-byte
+ * digest, 20-byte owner, 4-byte validTo). For a native-ETH sale that owner is an eth-flow contract,
+ * which is no person (as in computePublicStats): the trader is then the payer the indexer recorded
+ * for its settlement (defillama_fills.user_address), and only when the fill is verified AND its
+ * user_source is 'onchain_user' (CoW's record of who paid the ETH). Any other eth-flow fill counts
+ * in unknown: a decoder fill, an older API record with no onchainUser, or a row whose source is not
+ * recorded yet. Their user_address is the order's receiver, which whoever made the order chooses.
+ * Taken as the wallet, a listed payer would hide behind a clean receiver and anyone could be named
+ * as the trader. Such a trade stays in unknown: not checked, and said so. The nightly
+ * backfillFillUserSource (repair/routerTrades.ts) records the source of older rows when CoW still
+ * has the order. Not the referral program: no share, no code, no estimate.
  */
 export async function getPartnerTraders(recipient: `0x${string}`): Promise<PartnerTraders> {
   const buf = Buffer.from(recipient.slice(2), 'hex');
@@ -173,7 +171,7 @@ export async function getPartnerTraders(recipient: `0x${string}`): Promise<Partn
         COUNT(*) AS trades, COALESCE(SUM(p.value_usd), 0) AS volume_usd, COUNT(*) FILTER (WHERE p.value_usd IS NULL) AS unpriced
       FROM partner_fee_trades p
       LEFT JOIN defillama_fills f ON f.chain_id = p.chain_id AND f.block_number = p.block_number
-        AND f.log_index = p.log_index AND f.trade_uid = p.trade_uid AND f.fee_verified
+        AND f.log_index = p.log_index AND f.trade_uid = p.trade_uid AND f.fee_verified AND f.user_source = 'onchain_user'
       CROSS JOIN LATERAL (SELECT COALESCE(f.user_address, substring(p.trade_uid from 33 for 20)) AS owner) o
       WHERE p.recipient = ${buf}
       GROUP BY 1
@@ -216,7 +214,7 @@ export async function getPartnerSanctioned(recipient: `0x${string}`, listed: rea
       to_char(MAX(p.block_timestamp) AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') AS last_at
     FROM partner_fee_trades p
     LEFT JOIN defillama_fills f ON f.chain_id = p.chain_id AND f.block_number = p.block_number
-      AND f.log_index = p.log_index AND f.trade_uid = p.trade_uid AND f.fee_verified
+      AND f.log_index = p.log_index AND f.trade_uid = p.trade_uid AND f.fee_verified AND f.user_source = 'onchain_user'
     CROSS JOIN LATERAL (SELECT COALESCE(f.user_address, substring(p.trade_uid from 33 for 20)) AS owner) o
     CROSS JOIN LATERAL (SELECT '0x' || encode(o.owner, 'hex') AS wallet) w
     WHERE p.recipient = ${buf} AND w.wallet = ANY(${[...listed]}) AND w.wallet <> ALL(${[...DECODER_ETHFLOW_OWNERS]})

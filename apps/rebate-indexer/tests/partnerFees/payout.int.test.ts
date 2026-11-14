@@ -520,15 +520,16 @@ describe('getPartnerTraders: the wallets that traded through a partner integrati
       VALUES (decode(${u}, 'hex'), decode(${recipient}, 'hex'), 10, ${at}, 0, 10, decode(${'42'.repeat(20)}, 'hex'), 1, ${valueUsd}, 0.01)`;
     return at;
   }
-  // The reporting fill of that settlement, with the payer the indexer attributed to it.
-  async function fill(u: string, at: number, payer: string, verified: boolean) {
+  // The reporting fill of that settlement, with the wallet the indexer attributed to it and where it came from.
+  async function fill(u: string, at: number, payer: string, verified: boolean, source: string | null = 'onchain_user') {
     const sql = await getSql();
     await sql`
-      INSERT INTO defillama_fills (chain_id, block_number, log_index, trade_uid, settlement_timestamp, sell_token, sell_amount, fee_verified, user_address)
-      VALUES (10, ${at}, 0, decode(${u}, 'hex'), now(), decode(${'ee'.repeat(20)}, 'hex'), 1, ${verified}, decode(${payer}, 'hex'))`;
+      INSERT INTO defillama_fills (chain_id, block_number, log_index, trade_uid, settlement_timestamp, sell_token, sell_amount, fee_verified, user_address, user_source)
+      VALUES (10, ${at}, 0, decode(${u}, 'hex'), now(), decode(${'ee'.repeat(20)}, 'hex'), 1, ${verified}, decode(${payer}, 'hex'), ${source})`;
   }
   const traders = async (recipient: string) => (await import('../../src/partnerFees/report.js')).getPartnerTraders(`0x${recipient}`);
   const w = (owner: string, trades: number, volumeUsd: number, unpriced: number) => ({ wallet: `0x${owner}`, trades, volumeUsd, unpriced });
+  const sanctioned = async (recipient: string, listed: string[]) => (await import('../../src/partnerFees/report.js')).getPartnerSanctioned(`0x${recipient}`, listed.map((a) => `0x${a}`));
 
   it('lists the owners largest first, the payer of a native-ETH sale when known, and never an eth-flow contract', async () => {
     await settle(uid(1, O1), A, 4.25);
@@ -563,8 +564,22 @@ describe('getPartnerTraders: the wallets that traded through a partner integrati
     expect(await traders(D)).toEqual({ wallets: [], unknown: { trades: 0, volumeUsd: 0, unpriced: 0 }, totals: { walletCount: 0, trades: 0, volumeUsd: 0, unpriced: 0 } });
   });
 
+  it('names a native-ETH trader only when its verified fill records the payer; a receiver or an unrecorded source is unknown', async () => {
+    await fill(uid(1, OP_FLOW), await settle(uid(1, OP_FLOW), A, 5), O3, true, 'onchain_user'); // the payer: listed
+    await fill(uid(2, UNI_FLOW), await settle(uid(2, UNI_FLOW), A, 7), O4, true, 'receiver'); // the receiver: unknown
+    await fill(uid(3, COW_FLOW), await settle(uid(3, COW_FLOW), A, 11), O5, true, null); // source not recorded: unknown
+    await fill(uid(4, O1), await settle(uid(4, O1), A, 13), O1, true, null); // a normal owner, source not recorded: listed
+    await settle(uid(5, O2), A, 2); // a normal owner, no fill: listed
+    expect(await traders(A)).toEqual({
+      wallets: [w(O1, 1, 13, 0), w(O3, 1, 5, 0), w(O2, 1, 2, 0)],
+      unknown: { trades: 2, volumeUsd: 18, unpriced: 0 },
+      totals: { walletCount: 3, trades: 5, volumeUsd: 38, unpriced: 0 },
+    });
+    // The sanctions read resolves the wallet the same way: a listed receiver or unrecorded wallet is never flagged.
+    expect((await sanctioned(A, [O1, O3, O4, O5])).map((x) => x.wallet)).toEqual([`0x${O1}`, `0x${O3}`]);
+  });
+
   // getPartnerSanctioned: the listed wallets among EVERY trade of the recipient, the owner resolved as above.
-  const sanctioned = async (recipient: string, listed: string[]) => (await import('../../src/partnerFees/report.js')).getPartnerSanctioned(`0x${recipient}`, listed.map((a) => `0x${a}`));
   async function at(block: number, time: string) {
     const sql = await getSql();
     await sql`UPDATE partner_fee_trades SET block_timestamp = ${time} WHERE block_number = ${block}`;

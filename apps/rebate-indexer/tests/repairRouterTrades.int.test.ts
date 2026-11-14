@@ -167,10 +167,11 @@ describe('repairRouterTrades', () => {
     expect(await walletOf(ETHFLOW_UID('10'))).toBe(HUMAN_Y);
     // u11 was already right and keeps its ticket untouched.
     expect(await walletOf(ETHFLOW_UID('11'))).toBe(HUMAN_X);
-    const [fill] = await sql<{ w: string }[]>`
-      SELECT encode(user_address, 'hex') AS w FROM defillama_fills
+    const [fill] = await sql<{ w: string; s: string | null }[]>`
+      SELECT encode(user_address, 'hex') AS w, user_source AS s FROM defillama_fills
       WHERE chain_id = 1 AND trade_uid = decode(${UID('01')}, 'hex')`;
     expect(fill!.w).toBe(HUMAN_X);
+    expect(fill!.s).toBe('receiver'); // the order has no onchainUser: the source goes with the rewritten address
     // Every guarded case is untouched, including the ticketed trade u8.
     for (const uid of ['02', '03', '04', '05', '06', '08']) {
       expect(await walletOf(uid)).toBe(PROD_ROUTER);
