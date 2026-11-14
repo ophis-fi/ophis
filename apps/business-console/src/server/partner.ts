@@ -102,7 +102,7 @@ function breakdownOf(v: unknown, asOf: string) {
 function sanctionedOf(v: unknown, of: Map<string, string[]>) {
   const seen = new Set<string>()
   const time = (t: unknown) => (t === null ? null : iso(t))
-  return list(v, of.size).map(obj).map((s) => {
+  return list(v, Infinity).map(obj).map((s) => { // bounded by the checks below: each one sent, once
     const wallet = text(s.wallet, /^0x[0-9a-f]{40}$/)
     if (!of.has(wallet) || seen.has(wallet)) no()
     seen.add(wallet)

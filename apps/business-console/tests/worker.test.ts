@@ -9097,7 +9097,6 @@ describe('I. partner figures: live', () => {
       // The listed wallets that traded: each an address that was sent as listed, once; each figure checked as the others.
       ['no sanctioned field at all', (a) => (delete a.wallets[0].sanctioned, a)],
       ['sanctioned that is no list', set('wallets.1.sanctioned', {})],
-      ['more listed wallets that traded than were sent', set('wallets.0.sanctioned', [P.sanctioned[0], { ...P.sanctioned[0], wallet: ON_LIST }, { ...P.sanctioned[0], wallet: ON_LIST }])],
       ['a listed wallet that was not sent', set('wallets.0.sanctioned.0.wallet', P.traders.wallets[0].wallet)],
       ['a listed wallet twice', set('wallets.0.sanctioned', [P.sanctioned[0], P.sanctioned[0]])],
       ['a listed wallet in capitals', set('wallets.0.sanctioned.0.wallet', LISTED_TRADER.replace('b0b', 'B0B'))],
