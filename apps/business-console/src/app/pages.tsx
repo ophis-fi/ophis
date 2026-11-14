@@ -1057,7 +1057,14 @@ export function Alerts({ alerts, onRead }: { alerts: Alert[]; onRead: () => void
 interface AuditPage {
   rows: { seq: number; at: number; who: string; event: string; target: string; prevHash: string; hash: string }[]
   next: number | null
-  chain: { ok: boolean; rows?: number; head?: string; seq?: number }
+  chain: { ok: true; rows: number; head: string; newer: boolean; rechecked: [number, number] | null; per: number } | { ok: false; seq: number }
+}
+// What this load checked, in words: the rows that hold, and the older rows re-checked in turn.
+function checked(chain: Extract<AuditPage['chain'], { ok: true }>) {
+  const said = [`Rows 1 to ${chain.rows} verified. Newest verified row hash ${short(chain.head)}.`]
+  if (chain.newer) said.push('Newer rows are verified over the next loads of this page.')
+  if (chain.rechecked) said.push(`This load re-checked rows ${chain.rechecked[0]} to ${chain.rechecked[1]}. Older rows are re-checked in turn, ${chain.per} on each load.`)
+  return said.join(' ')
 }
 const short = (hash: string) => `${hash.slice(0, 10)}...${hash.slice(-4)}`
 // Compliance: the audit log of the organisation. The server says whether the chain holds; the export carries every hash in full.
@@ -1077,10 +1084,17 @@ export function Compliance({ onSignedOut }: { onSignedOut: () => void }) {
   async function exportCsv() {
     setProblem('')
     try {
-      const out = await sensitive<{ name: string; csv: string }>('/api/audit/export')
-      if (out.status === 401) return onSignedOut()
-      if (out.status !== 200) return setProblem(say(out.data))
-      save(out.data.name, out.data.csv)
+      // The export comes in pages, fetched in order and saved as one file.
+      const parts: string[] = []
+      let out = await sensitive<{ name: string; csv: string; next: number | null; upto: number }>('/api/audit/export')
+      for (;;) {
+        if (out.status === 401) return onSignedOut()
+        if (out.status !== 200) return setProblem(say(out.data))
+        parts.push(out.data.csv)
+        if (!out.data.next) break
+        out = await sensitive('/api/audit/export', { after: out.data.next, upto: out.data.upto })
+      }
+      save(out.data.name, parts.join(''))
       await load() // the export is itself a row of the log
     } catch {
       setProblem(CANCELLED)
@@ -1100,7 +1114,7 @@ export function Compliance({ onSignedOut }: { onSignedOut: () => void }) {
           action={<button className="btn ghost sm" type="button" title="Asks for your passkey, writes a row in this log, then downloads every row with both hashes in full." onClick={exportCsv}><Icon name="download" size={16} />Export CSV</button>}>
           <p className="chain" role="status">
             <Status>{page.chain.ok ? 'Chain verified' : 'Chain broken'}</Status>
-            {page.chain.ok ? `The server checked all ${page.chain.rows} rows just now. Newest row hash ${short(page.chain.head ?? '')}.` : `The chain does not hold at row ${page.chain.seq}. Keep your last export and tell Ophis.`}
+            {page.chain.ok ? checked(page.chain) : `The chain does not hold at row ${page.chain.seq}. Keep your last export and tell Ophis.`}
           </p>
           <div className="table-wrap"><table className="t">
             <thead><tr><th className="num">No.</th><th>Time (UTC)</th><th>Who</th><th>Event</th><th>Target</th><th>Previous row hash</th><th>Row hash</th></tr></thead>

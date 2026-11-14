@@ -37,15 +37,27 @@ const registration = await key.register({ challenge, user: { id: 'seat' } })
 const stored = await verifyRegistration(config, registration, async () => true)
 const assertion = await key.authenticate({ challenge })
 const sealed = await seal(KEY, 'wallet-intent', { org: 'a'.repeat(32), seat: 'b'.repeat(32), chainId: 10, wallet: account.address, nonce: `0x${'1'.repeat(64)}` })
-// An audit chain of 1,000 rows, hashed as data.ts hashes them; verifyAudit says ok only if each row hashes right.
-const ROWS = 1000
+// An audit chain of 10,000 rows, hashed as data.ts hashes them, and a check state half way: a load of the audit page
+// verifies NEW_ROWS rows after the checkpoint and re-checks OLD_ROWS before it, the most it ever hashes. The fake
+// database answers each statement from these rows and never moves the state, so every run does that whole work.
+const ROWS = 10_000
 const chainRows = []
 for (let seq = 1, prev = '0'.repeat(64); seq <= ROWS; seq++) {
   const row = { org_id: 'o'.repeat(32), seq, at: seq, actor_kind: 'seat', actor_id: 's'.repeat(32), session_id: 'x'.repeat(32), action: 'session.create', subject_id: 'c'.repeat(43), detail: null, country: 'LU', asn: 1, prev_hash: prev }
   prev = await data.sha256Hex(JSON.stringify([row.org_id, row.seq, row.at, row.actor_kind, row.actor_id, row.session_id, row.action, row.subject_id, row.detail, row.country, row.asn, row.prev_hash]))
   chainRows.push({ ...row, hash: prev })
 }
-const fakeDb = { prepare: () => ({ bind: () => ({ all: async () => ({ results: chainRows }) }) }) }
+const CHECKED = ROWS / 2
+const state = { checked_seq: CHECKED, checked_hash: chainRows[CHECKED - 1].hash, recheck_seq: 1000, broken_seq: null }
+let hashed = 0
+const fakeDb = {
+  prepare: () => ({ bind: (...args) => ({
+    first: async () => state,
+    run: async () => ({}),
+    all: async () => { const rows = chainRows.filter((r) => r.seq >= args[1] && r.seq <= args[2]); hashed += rows.length; return { results: rows } },
+  }) }),
+  batch: (statements) => Promise.all(statements.map((s) => s.all())),
+}
 // The daily run on a file of n addresses that is the one already loaded (the usual day: "same"), with a database that answers at once.
 async function dailyOf(n) {
   const addresses = Array.from({ length: n }, (_, i) => `0x${i.toString(16).padStart(40, '0')}`)
@@ -58,7 +70,10 @@ async function dailyOf(n) {
     if ((await sync(env, Date.UTC(2026, 10, 10, 9))).outcome !== 'same') throw new Error('the daily run of this script did not read the file as the same')
   }
 }
-if (!(await data.verifyAudit(fakeDb, 'o')).ok) throw new Error('the audit rows of this script do not hash as data.ts hashes them')
+{
+  const chain = await data.verifyAudit(fakeDb, 'o')
+  if (!chain.ok || chain.rows !== CHECKED + data.NEW_ROWS || hashed !== data.NEW_ROWS + 1 + data.OLD_ROWS + 1) throw new Error(`the audit rows of this script do not verify as a load does: ${JSON.stringify(chain)}, ${hashed} rows read`)
+}
 
 const step = {
   recovery: await cpu('signature recovery (signedByKey)', () => signedByKey(digest, account.address, signature)),
@@ -69,7 +84,7 @@ const step = {
   registration: await cpu('passkey registration (verifyRegistration, ES256)', () => verifyRegistration(config, registration, async () => true)),
   daily127: await cpu('daily run, a list file of 127 addresses (OFAC EVM today)', await dailyOf(127)),
   dailyMax: await cpu(`daily run, a list file of ${MAX_ADDRESSES.toLocaleString('en')} addresses (the most a load takes)`, await dailyOf(MAX_ADDRESSES)),
-  audit: (await cpu(`audit chain of ${ROWS} rows (verifyAudit)`, () => data.verifyAudit(fakeDb, 'o'))) / ROWS,
+  audit: await cpu(`audit page, a chain of ${ROWS.toLocaleString('en')} rows (verifyAudit: ${data.NEW_ROWS} new, ${data.OLD_ROWS} re-checked)`, () => data.verifyAudit(fakeDb, 'o')),
 }
 // The heaviest invocation of each kind, from its steps. A partner's Overview recovers each linked wallet (partner.ts, at most 10 asked).
 const invocations = {
@@ -77,13 +92,13 @@ const invocations = {
   'POST /api/proof, a Safe (unseal, recovery tried, ERC-1271)': step.sealCheck + step.recovery + step.erc1271,
   'POST /api/signin/finish (assertion)': step.assertion,
   'POST /api/enrol/finish (registration)': step.registration,
-  'GET /api/audit, a chain of 1,000 rows': 1000 * step.audit,
+  [`GET /api/audit, a chain of ${ROWS.toLocaleString('en')} rows`]: step.audit,
   'daily run (cron), the OFAC EVM list of today': step.daily127,
 }
 // proof_by (migration 0016): a link written since then is recovered nowhere on a partner's Overview; a row written before costs one.
 console.log(`a partner's Overview, 10 wallets linked before proof_by: ${(10 * step.recovery).toFixed(1)} ms (since proof_by: no recovery)`)
 console.log(`a list file of ${MAX_ADDRESSES.toLocaleString('en')} addresses: ${step.dailyMax.toFixed(1)} ms (not a check: the OFAC EVM list holds 127)`)
-console.log(`\nper audit row: ${(step.audit * 1000).toFixed(1)} us; a chain passes 10 ms of CPU here at about ${Math.floor(10 / step.audit)} rows`)
+console.log(`\nper audit row: ${(step.audit * 1000 / (data.NEW_ROWS + data.OLD_ROWS)).toFixed(1)} us; a load hashes ${data.NEW_ROWS + data.OLD_ROWS} rows at most, whatever the length of the chain`)
 let failed = false
 for (const [name, ms] of Object.entries(invocations)) {
   console.log(`${name.padEnd(58)} ${ms.toFixed(3)} ms${ms > 10 ? '  OVER 10 ms' : ''}`)

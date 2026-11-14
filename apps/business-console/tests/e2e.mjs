@@ -448,13 +448,27 @@ try {
   check('the request and the freeze are there too, and no raw code', await page.getByRole('row', { name: /Cy Admin.*Change requested: change a role.*Ada Viewer/ }).isVisible()
     && await page.getByRole('cell', { name: 'Seat unfrozen' }).isVisible() && !/session\.create|seat\.role|approval\./.test(await page.locator('main').innerText()))
   check('the audit page carries the footer line and fits a phone', await page.getByText(FOOTER).isVisible() && await both(page, '14-audit'))
+  const verified = async () => Number((await page.locator('p.chain').innerText()).match(/Rows 1 to (\d+) verified\. Newest verified row hash [0-9a-f]{10}\.\.\.[0-9a-f]{4}\./)?.[1])
+  const verifiedBefore = await verified()
+  check('the audit page says which rows it verified', verifiedBefore > 10)
+  // The export comes in pages: the first answer is cut after 3 rows here, so the page must ask the server for the rest.
+  await page.route('**/api/audit/export', async (route) => {
+    if (route.request().postData() !== '{}') return route.continue()
+    const response = await route.fetch({ headers: { ...(await route.request().allHeaders()), 'sec-fetch-site': 'same-origin' } }) // as the browser sent it
+    if (!response.ok()) return route.fulfill({ response })
+    const body = await response.json()
+    await route.fulfill({ status: 200, json: { ...body, csv: body.csv.split('\r\n').slice(0, 4).map((l) => `${l}\r\n`).join(''), next: 3 } }) // not the response's headers: its length is the whole answer's
+  })
   const [download] = await Promise.all([page.waitForEvent('download'), page.getByRole('button', { name: 'Export CSV' }).click()])
+  await page.unroute('**/api/audit/export')
   const csv = readFileSync(await download.path(), 'utf8')
-  check('the export downloads: every row with both hashes, the export itself last',
+  const numbers = csv.trim().split('\r\n').slice(1).map((l) => Number(l.slice(1, l.indexOf('"', 1))))
+  check('the export downloads in pages as one file: every row in order with both hashes, the export itself last',
     /^ophis-audit-log-\d{4}-\d\d-\d\d\.csv$/.test(download.suggestedFilename()) && csv.startsWith('"No.","Time (UTC)","Who","Event","Target","Previous row hash","Row hash"\r\n')
+    && numbers.length > 3 && numbers.every((n, i) => n === i + 1)
     && csv.includes('"Role changed: Viewer to Trader","Ada Viewer"') && /"Maren Okafor","Audit log exported","","[0-9a-f]{64}","[0-9a-f]{64}"\r\n$/.test(csv))
   await page.getByRole('cell', { name: 'Audit log exported' }).waitFor()
-  check('the export is a row of the log', await page.getByText('Chain verified').isVisible())
+  check('the export is a row of the log, verified on the next load', await page.getByText('Chain verified').isVisible() && (await verified()) === numbers.length && numbers.length > verifiedBefore)
   await cy.page.goto(`${ORIGIN}/#/compliance`)
   await cy.page.getByText('The audit log is open to Owners, Compliance officers and Viewers.').waitFor()
   check('an Admin does not read the audit log', (await status('/api/audit', cy.page)) === 403)

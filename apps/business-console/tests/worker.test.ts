@@ -38,6 +38,8 @@ const TABLES = ['application_people', 'approvals', 'audit_log', 'credentials', '
 const GLOBAL = ['sanctioned_addresses', 'sanctions_lists']
 // The one table outside the snapshots: the hourly counter of proof checks, which a proof writes before its commit (section B).
 const COUNTER = 'proof_checks'
+// And the check state of the audit chain (0019): the one write a GET makes, a cache of the check (section w).
+const CHECKS = 'audit_checks'
 const db = env.DB
 // The challenge key is made per run: no secret lives in the repository.
 // The static files: a stand-in that answers every path, with a header only the console's pages may keep.
@@ -1416,7 +1418,7 @@ describe('g. security headers', () => {
 describe('h. sign-in start', () => {
   it('the snapshot below covers every table', async () => {
     const { results } = await db.prepare(`SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%' AND name NOT LIKE '_cf_%' AND name <> 'd1_migrations' ORDER BY name`).all<{ name: string }>()
-    expect(results.map((row) => row.name)).toEqual([...TABLES, ...GLOBAL, COUNTER].sort())
+    expect(results.map((row) => row.name)).toEqual([...TABLES, ...GLOBAL, COUNTER, CHECKS].sort())
   })
   it('writes no row, however often it is called, signed in or not', async () => {
     const m = await member()
@@ -3111,6 +3113,36 @@ describe('v. limits asked for by the review of milestone 2', () => {
   })
 })
 
+// Appends n rows to the chain of an organisation, hashed by the recipe written out here (a checker that imports what
+// it checks proves nothing): what a long log looks like, without the thousands of requests that would write it. Each
+// is a copy of the last row (its actor, session, action and subject), so that the names of the export are read as for real rows.
+async function grow(orgId: string, n: number) {
+  const head = (await row<Record<string, string | number | null>>('SELECT * FROM audit_log WHERE org_id = ? ORDER BY seq DESC LIMIT 1', orgId))!
+  let [seq, prev] = [head.seq as number, head.hash as string]
+  const statements: D1PreparedStatement[] = []
+  for (let i = 0; i < n; i++) {
+    const fields = [orgId, ++seq, now, head.actor_kind, head.actor_id, head.session_id, head.action, head.subject_id, head.detail, head.country, head.asn, prev]
+    prev = await data.sha256Hex(JSON.stringify(fields))
+    statements.push(db.prepare('INSERT INTO audit_log (org_id, seq, at, actor_kind, actor_id, session_id, action, subject_id, detail, country, asn, prev_hash, hash) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)').bind(...fields, prev))
+  }
+  for (let i = 0; i < statements.length; i += 500) await db.batch(statements.slice(i, i + 500))
+  return seq
+}
+/** Runs SQL with the append-only triggers dropped, as someone with SQL access would, then puts them back. */
+async function asForger(...statements: D1PreparedStatement[]) {
+  await db.batch([db.prepare('DROP TRIGGER audit_log_no_update'), db.prepare('DROP TRIGGER audit_log_no_delete')])
+  try {
+    for (const statement of statements) await statement.run()
+  } finally {
+    await db.batch([
+      db.prepare(`CREATE TRIGGER audit_log_no_update BEFORE UPDATE ON audit_log BEGIN SELECT RAISE(ABORT, 'audit_log is append-only'); END`),
+      db.prepare(`CREATE TRIGGER audit_log_no_delete BEFORE DELETE ON audit_log BEGIN SELECT RAISE(ABORT, 'audit_log is append-only'); END`),
+    ])
+  }
+}
+const checks = (orgId: string) => row<{ checked_seq: number; recheck_seq: number; broken_seq: number | null }>(`SELECT checked_seq, recheck_seq, broken_seq FROM ${CHECKS} WHERE org_id = ?`, orgId)
+const chainOf = async (m: Holder) => (await call('GET', '/api/audit', { cookie: m.cookie })).body.chain
+
 describe('w. the audit log page and its export', () => {
   // A role change asked by the Owner and approved by the Compliance officer.
   async function story() {
@@ -3133,7 +3165,7 @@ describe('w. the audit log page and its export', () => {
     // Words, never codes.
     for (const r of page.body.rows) expect(r.event).toMatch(/^[A-Z][A-Za-z0-9 ,:;'-]+$/)
     expect(JSON.stringify(page.body)).not.toMatch(/Unlisted|session\.create|seat\.role|approval\.request/)
-    expect(page.body.chain).toEqual({ ok: true, rows: rows.length, head: rows[0].hash })
+    expect(page.body.chain).toEqual({ ok: true, rows: rows.length, head: rows[0].hash, newer: false, rechecked: null, per: data.OLD_ROWS })
     expect(page.body.next).toBeNull()
     // Someone with SQL access changes a row: the page says the chain is broken, and where.
     await db.prepare('DROP TRIGGER audit_log_no_update').run()
@@ -3188,6 +3220,128 @@ describe('w. the audit log page and its export', () => {
     expect(['=1', '+1', '-1', '@a', '\ta', '\ra', 'a=1', 'say "hi"', 7, null].map(csvCell)).toEqual([`"'=1"`, `"'+1"`, `"'-1"`, `"'@a"`, `"'\ta"`, `"'\ra"`, '"a=1"', '"say ""hi"""', '"7"', '""'])
     // No file leaves without its audit row.
     await withTrigger('INSERT ON audit_log', async () => expect((await post('/api/audit/export', c)).body).toEqual({ error: 'internal' }))
+  })
+
+  // The check is bounded (data.verifyAudit): NEW_ROWS rows after the checkpoint and OLD_ROWS before it, a load.
+  it('the chain check: a row changed after the checkpoint is caught on the next load, the checkpoint stops before it, and a break stays', async () => {
+    const o = await owner()
+    const first = await count('audit_log', o.orgId)
+    expect(await chainOf(o)).toMatchObject({ ok: true, rows: first })
+    expect(await checks(o.orgId)).toEqual({ checked_seq: first, recheck_seq: 0, broken_seq: null })
+    const head = await grow(o.orgId, 10)
+    const changed = db.prepare(`UPDATE audit_log SET detail = 'changed' WHERE org_id = ? AND seq = ?`).bind(o.orgId, first + 5)
+    await asForger(changed)
+    expect(await chainOf(o)).toEqual({ ok: false, seq: first + 5 })
+    expect((await checks(o.orgId))!.checked_seq).toBeLessThan(first + 5)
+    // The row is put back as it was: the break found stays, on every load, and the checkpoint does not move on.
+    await asForger(db.prepare(`UPDATE audit_log SET detail = NULL WHERE org_id = ? AND seq = ?`).bind(o.orgId, first + 5))
+    for (let i = 0; i < 3; i++) expect(await chainOf(o)).toEqual({ ok: false, seq: first + 5 })
+    expect(await checks(o.orgId)).toEqual({ checked_seq: first, recheck_seq: 0, broken_seq: first + 5 })
+    expect(head).toBe(first + 10)
+  })
+
+  it('the chain check: a row changed before the checkpoint is caught by the re-check within ceil(rows / OLD_ROWS) + 1 loads', async () => {
+    const o = await owner()
+    const head = await grow(o.orgId, 2 * data.NEW_ROWS)
+    expect(await chainOf(o)).toMatchObject({ ok: true, rows: data.NEW_ROWS, newer: true, rechecked: null })
+    expect(await chainOf(o)).toMatchObject({ ok: true, rows: 2 * data.NEW_ROWS, newer: true, rechecked: [1, data.OLD_ROWS] })
+    expect(await chainOf(o)).toMatchObject({ ok: true, rows: head, newer: false, rechecked: [data.OLD_ROWS + 1, 2 * data.OLD_ROWS] })
+    // The re-check is past row 50 now: it is caught once the re-check has gone round.
+    await asForger(db.prepare(`UPDATE audit_log SET at = at + 1 WHERE org_id = ? AND seq = 50`).bind(o.orgId))
+    const loads = Math.ceil(head / data.OLD_ROWS) + 1
+    const seen = []
+    for (let i = 0; i < loads; i++) seen.push(await chainOf(o))
+    expect(seen.at(-1)).toEqual({ ok: false, seq: 50 })
+    expect(seen[0]).toMatchObject({ ok: true })
+  })
+
+  it('the chain check: a chain rewritten whole, a removed tail, a removed row and a missing re-check row are breaks', async () => {
+    // A forger who changes row 2 and computes every hash again: each row links, but not to the stored checkpoint.
+    const o = await owner()
+    const n = await count('audit_log', o.orgId)
+    expect(await chainOf(o)).toMatchObject({ ok: true, rows: n })
+    const rows = (await db.prepare('SELECT * FROM audit_log WHERE org_id = ? ORDER BY seq').bind(o.orgId).all<Record<string, unknown>>()).results
+    const rewrite = []
+    for (let i = 1, prev = rows[0].hash; i < rows.length; i++) {
+      const r: Record<string, unknown> = { ...rows[i], prev_hash: prev, ...(i === 1 && { actor_id: 'someone-else' }) }
+      prev = await data.sha256Hex(JSON.stringify([r.org_id, r.seq, r.at, r.actor_kind, r.actor_id, r.session_id, r.action, r.subject_id, r.detail, r.country, r.asn, r.prev_hash]))
+      rewrite.push(db.prepare('UPDATE audit_log SET actor_id = ?, prev_hash = ?, hash = ? WHERE org_id = ? AND seq = ?').bind(r.actor_id, r.prev_hash, prev, o.orgId, r.seq))
+    }
+    await asForger(...rewrite)
+    expect(await chainOf(o)).toEqual({ ok: false, seq: n })
+    // The last two verified rows removed: the break is the first row gone.
+    const tail = await owner()
+    const m = await count('audit_log', tail.orgId)
+    expect(await chainOf(tail)).toMatchObject({ ok: true, rows: m })
+    await asForger(db.prepare('DELETE FROM audit_log WHERE org_id = ? AND seq >= ?').bind(tail.orgId, m - 1))
+    expect(await chainOf(tail)).toEqual({ ok: false, seq: m - 1 })
+    // A row removed among the new rows, the rows after it linked again: the gap in the numbers is the break.
+    const gap = await owner()
+    const g = await count('audit_log', gap.orgId)
+    expect(await chainOf(gap)).toMatchObject({ ok: true, rows: g })
+    const after = await grow(gap.orgId, 1)
+    await asForger(db.prepare('DELETE FROM audit_log WHERE org_id = ? AND seq = ?').bind(gap.orgId, after))
+    const kept = (await row<{ hash: string }>('SELECT hash FROM audit_log WHERE org_id = ? AND seq = ?', gap.orgId, g))!.hash
+    const fields = [gap.orgId, after + 1, now, 'system', null, null, 'session.signout', null, null, null, null, kept]
+    await db.prepare('INSERT INTO audit_log (org_id, seq, at, actor_kind, actor_id, session_id, action, subject_id, detail, country, asn, prev_hash, hash) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
+      .bind(...fields, await data.sha256Hex(JSON.stringify(fields))).run()
+    expect(await chainOf(gap)).toEqual({ ok: false, seq: after + 1 })
+    // The row the re-check goes on from removed.
+    const long = await owner()
+    await grow(long.orgId, data.OLD_ROWS + 50)
+    expect(await chainOf(long)).toMatchObject({ ok: true, rechecked: null })
+    expect(await chainOf(long)).toMatchObject({ ok: true, rechecked: [1, data.OLD_ROWS] })
+    await asForger(db.prepare('DELETE FROM audit_log WHERE org_id = ? AND seq = ?').bind(long.orgId, data.OLD_ROWS))
+    expect(await chainOf(long)).toEqual({ ok: false, seq: data.OLD_ROWS })
+  })
+
+  it('the chain check: loads at the same instant leave one state, and a load that read an older state never moves it back', async () => {
+    const o = await owner()
+    const head = await grow(o.orgId, 3 * data.NEW_ROWS)
+    const together = (await Promise.all([chainOf(o), chainOf(o), chainOf(o)])) as { ok: boolean; rows: number }[]
+    for (const chain of together) expect(chain.ok && chain.rows % data.NEW_ROWS === 0).toBe(true)
+    expect((await checks(o.orgId))!.checked_seq).toBe(Math.max(...together.map((chain) => chain.rows)))
+    for (let i = 0; i < 4; i++) await chainOf(o)
+    expect(await checks(o.orgId)).toMatchObject({ checked_seq: head, broken_seq: null })
+    // A load that read the state before others moved it: what it would write is refused by the compare-and-set.
+    const hashAt = async (seq: number) => (await row<{ hash: string }>('SELECT hash FROM audit_log WHERE org_id = ? AND seq = ?', o.orgId, seq))!.hash
+    const stale = (state: object) => new Proxy(db, {
+      get: (target, name) => (name === 'prepare'
+        ? (sql: string) => (sql.startsWith('SELECT checked_seq') ? { bind: () => ({ first: async () => state }) } : target.prepare(sql))
+        : (target[name as keyof D1Database] as (...args: unknown[]) => unknown).bind(target)),
+    })
+    const at = (recheck: number) => db.prepare(`UPDATE ${CHECKS} SET recheck_seq = ? WHERE org_id = ?`).bind(recheck, o.orgId).run()
+    // Behind on the checkpoint: it would write 600 and 0.
+    await at(data.OLD_ROWS)
+    expect(await data.verifyAudit(stale({ checked_seq: 300, checked_hash: await hashAt(300), recheck_seq: data.OLD_ROWS, broken_seq: null }), o.orgId)).toMatchObject({ ok: true, rows: 600 })
+    expect(await checks(o.orgId)).toEqual({ checked_seq: head, recheck_seq: data.OLD_ROWS, broken_seq: null })
+    // Behind on the re-check: it would write the head and 200.
+    await at(2 * data.OLD_ROWS)
+    expect(await data.verifyAudit(stale({ checked_seq: head, checked_hash: await hashAt(head), recheck_seq: 0, broken_seq: null }), o.orgId)).toMatchObject({ ok: true, rows: head, rechecked: [1, data.OLD_ROWS] })
+    expect(await checks(o.orgId)).toEqual({ checked_seq: head, recheck_seq: 2 * data.OLD_ROWS, broken_seq: null })
+  })
+
+  it('the export of a log longer than a page: every row in order, its own row last, pages only for an export of the same session', async () => {
+    const o = await owner()
+    await grow(o.orgId, data.EXPORT_PAGE + 20)
+    const out = await post('/api/audit/export', o)
+    expect(out.status).toBe(200)
+    const upto = out.body.upto as number
+    expect(out.body.next).toBe(data.EXPORT_PAGE)
+    expect(await lastAudit(o.orgId)).toMatchObject({ action: 'audit.export', actor_id: o.seatId })
+    await grow(o.orgId, 3) // rows written after the export's own row are not in its file
+    // A later page is given only for an export row of this session, with numbers that make sense.
+    const other = await again({ ...o })
+    for (const [m, body] of [[other, { after: out.body.next, upto }], [o, { after: out.body.next, upto: upto - 1 }], [o, { after: -1, upto }], [o, { after: upto, upto }], [o, { after: '1', upto }], [o, { upto }]] as const) {
+      expect((await post('/api/audit/export', m, body)).body, JSON.stringify(body)).toEqual({ error: 'export_unknown' })
+    }
+    const page = await post('/api/audit/export', o, { after: out.body.next, upto })
+    expect([page.status, page.body.next, page.body.upto], JSON.stringify(page.body)).toEqual([200, null, upto])
+    const lines = (out.body.csv + page.body.csv).trim().split('\r\n')
+    expect(lines[0]).toBe('"No.","Time (UTC)","Who","Event","Target","Previous row hash","Row hash"')
+    expect(lines.slice(1).map((l: string) => Number(l.slice(1, l.indexOf('"', 1))))).toEqual(Array.from({ length: upto }, (_, i) => i + 1))
+    expect(lines.at(-1)).toMatch(/^"\d+","[^"]+","[^"]+","Audit log exported",/)
+    for (const r of await stored(o.orgId)) if (r.seq <= upto) expect(lines[r.seq]).toContain(`"${r.prevHash}","${r.hash}"`)
   })
 })
 
@@ -10501,6 +10655,20 @@ describe('K. the Free plan of Cloudflare Workers', () => {
     now += 60_000 // past the cache: the export reads the four chains again
     expect((await call('GET', '/api/export/balances', { cookie: spread.cookie })).body.name).toMatch(/^ophis-balances-/)
     expect(chain.calls).toHaveLength(32)
+
+    // An audit log of 10,000 rows: each load of its page, and each page of its export, does a bounded part of the work.
+    const audited = await owner('Long log')
+    const longHead = await grow(audited.orgId, 10_000)
+    const loads = []
+    for (let i = 0; i < Math.ceil(longHead / data.NEW_ROWS) + 2; i++) loads.push(await chainOf(audited))
+    expect(loads.at(-1)).toMatchObject({ ok: true, rows: longHead, newer: false })
+    const deep = await call('GET', `/api/audit?before=${data.OLD_ROWS}`, { cookie: audited.cookie })
+    expect(deep.body.rows.map((r: { seq: number }) => r.seq)).toEqual(Array.from({ length: 50 }, (_, i) => data.OLD_ROWS - 1 - i))
+    let file = await post('/api/audit/export', audited)
+    const parts = [file.body.csv as string]
+    while (file.body.next) parts.push((file = await post('/api/audit/export', audited, { after: file.body.next, upto: file.body.upto })).body.csv)
+    expect(parts.length).toBe(Math.ceil((longHead + 1) / data.EXPORT_PAGE))
+    expect(parts.join('').trim().split('\r\n').slice(1).map((l) => Number(l.slice(1, l.indexOf('"', 1))))).toEqual(Array.from({ length: longHead + 1 }, (_, i) => i + 1))
 
     // Every route of both tables and every job answered 2xx at least once, and no invocation passed a limit.
     const jobs = [...routes, ...onboarding.operatorRoutes].map((r) => `${r.method} ${r.path}`).concat(JOBS)

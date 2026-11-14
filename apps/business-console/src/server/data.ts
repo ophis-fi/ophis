@@ -123,16 +123,49 @@ export async function commit(db: D1Database, orgId: string, plan: () => [Entry, 
   }
 }
 
-// ponytail: reads the whole chain of one organisation. Page it, or start from the last anchored
-// root, when a chain passes about 10,000 rows. A removed tail needs the external anchor (later milestone).
-export async function verifyAudit(db: D1Database, orgId: string): Promise<{ ok: true; rows: number; head: string } | { ok: false; seq: number }> {
-  const { results } = await db.prepare('SELECT * FROM audit_log WHERE org_id = ? ORDER BY seq').bind(orgId).all<AuditRow>()
-  let prev = FIRST
-  for (const row of results) {
-    if (row.prev_hash !== prev || row.hash !== (await auditHash(row))) return { ok: false, seq: row.seq }
-    prev = row.hash
+// The check of the chain, kept per organisation (audit_checks, 0019), so that a load hashes a bounded number of rows at
+// any length (Free plan: 10 ms of CPU a request; about 8 us a row in tests/cpu.mjs): at most NEW_ROWS rows after the
+// checkpoint, which moves forward only over rows that verified, by compare-and-set; and OLD_ROWS older rows from
+// recheck_seq, in turn, so every row is hashed again within ceil(checked / OLD_ROWS) + 1 loads. The window that reaches
+// the checkpoint must end on its stored hash. A break found is stored, shown on every load after, never cleared by code.
+// ponytail: a removed tail after the checkpoint, or rows rewritten together with audit_checks, needs the external
+// anchor, which is not built.
+export const NEW_ROWS = 300
+export const OLD_ROWS = 200
+export type ChainState = { ok: true; rows: number; head: string; newer: boolean; rechecked: [number, number] | null; per: number } | { ok: false; seq: number }
+/** Walks `rows` on from the row (seq, hash): the last row that follows, and the first that does not. */
+async function walk(rows: AuditRow[], seq: number, hash: string) {
+  for (const row of rows) {
+    if (row.seq !== seq + 1 || row.prev_hash !== hash || row.hash !== (await auditHash(row))) return { seq, hash, broken: row.seq }
+    ;[seq, hash] = [row.seq, row.hash]
   }
-  return { ok: true, rows: results.length, head: prev }
+  return { seq, hash, broken: null as number | null }
+}
+export async function verifyAudit(db: D1Database, orgId: string): Promise<ChainState> {
+  const s = (await db.prepare('SELECT checked_seq, checked_hash, recheck_seq, broken_seq FROM audit_checks WHERE org_id = ?').bind(orgId)
+    .first<{ checked_seq: number; checked_hash: string; recheck_seq: number; broken_seq: number | null }>()) ?? { checked_seq: 0, checked_hash: FIRST, recheck_seq: 0, broken_seq: null }
+  if (s.broken_seq !== null) return { ok: false, seq: s.broken_seq }
+  const span = (from: number, to: number) => db.prepare('SELECT * FROM audit_log WHERE org_id = ? AND seq BETWEEN ? AND ? ORDER BY seq').bind(orgId, from, to)
+  const end = Math.min(s.recheck_seq + OLD_ROWS, s.checked_seq)
+  const [fresh, old] = (await db.batch<AuditRow>([span(s.checked_seq + 1, s.checked_seq + NEW_ROWS + 1), span(s.recheck_seq, end)])).map((r) => r.results)
+  // The older rows: from the row at recheck_seq (whose own hash the window before checked), to `end`, on the stored hash there.
+  const anchor = s.recheck_seq ? old.shift() : { seq: 0, hash: FIRST }
+  const back = anchor?.seq === s.recheck_seq ? await walk(old, anchor.seq, anchor.hash) : { seq: 0, hash: '', broken: s.recheck_seq }
+  const oldBroken = back.broken ?? (back.seq < end ? back.seq + 1 : end === s.checked_seq && back.hash !== s.checked_hash ? end : null)
+  const ahead = await walk(fresh.slice(0, NEW_ROWS), s.checked_seq, s.checked_hash)
+  const broken = oldBroken ?? ahead.broken
+  if (broken !== null) {
+    await db.prepare(`INSERT INTO audit_checks (org_id, checked_seq, checked_hash, recheck_seq, broken_seq) VALUES (?, ?, ?, ?, ?)
+                      ON CONFLICT (org_id) DO UPDATE SET broken_seq = excluded.broken_seq WHERE broken_seq IS NULL`).bind(orgId, s.checked_seq, s.checked_hash, s.recheck_seq, broken).run()
+    return { ok: false, seq: broken }
+  }
+  const recheck = end === s.checked_seq ? 0 : end
+  if (ahead.seq !== s.checked_seq || recheck !== s.recheck_seq) {
+    await db.prepare(`INSERT INTO audit_checks (org_id, checked_seq, checked_hash, recheck_seq) VALUES (?1, ?2, ?3, ?4)
+                      ON CONFLICT (org_id) DO UPDATE SET checked_seq = ?2, checked_hash = ?3, recheck_seq = ?4
+                      WHERE broken_seq IS NULL AND checked_seq = ?5 AND recheck_seq = ?6`).bind(orgId, ahead.seq, ahead.hash, recheck, s.checked_seq, s.recheck_seq).run()
+  }
+  return { ok: true, rows: ahead.seq, head: ahead.hash, newer: fresh.length > NEW_ROWS, rechecked: end ? [s.recheck_seq + 1, end] : null, per: OLD_ROWS }
 }
 
 // ---- before a session exists ----
@@ -1405,8 +1438,10 @@ export async function frozenSeats(db: D1Database, orgId: string, seatId: string 
 // ---- the audit log, as its readers see it: names instead of ids, newest first ----
 
 export interface AuditLine { seq: number; at: number; action: string; detail: string | null; who: string | null; target: string | null; prevHash: string; hash: string }
-/** One page before `before` (newest first), or the whole chain in order for the export (`limit` -1). */
-export async function auditRows(db: D1Database, actor: Actor, before: number | null, limit: number) {
+/** One page before `before`, newest first; or, with `after` (the export), the rows after it and before `before`, oldest first. */
+// Read by the key (org_id, seq), so a page reads its own rows and their names only. ponytail: a row whose subject is
+// none of the tables before reads the organisation's approvals for an order; thousands of them would need an index on subject_id.
+export async function auditRows(db: D1Database, actor: Actor, before: number | null, limit: number, after: number | null = null) {
   const named = (table: string, seat: string) => `(SELECT n.display_name FROM ${table} x JOIN seats n ON n.org_id = x.org_id AND n.id = x.${seat} WHERE x.org_id = a.org_id AND x.id = a.subject_id)`
   const { results } = await db
     .prepare(`SELECT a.seq, a.at, a.action, a.detail, a.prev_hash AS prevHash, a.hash,
@@ -1415,14 +1450,21 @@ export async function auditRows(db: D1Database, actor: Actor, before: number | n
                        (SELECT x.label FROM wallets x WHERE x.org_id = a.org_id AND x.id = a.subject_id),
                        (SELECT 'ORD-' || substr(x.id, 1, 8) FROM approvals x WHERE x.org_id = a.org_id AND a.subject_id IN (x.id, x.subject_id) AND x.action = 'order')) AS target
               FROM audit_log a LEFT JOIN seats w ON w.org_id = a.org_id AND w.id = a.actor_id LEFT JOIN seats t ON t.org_id = a.org_id AND t.id = a.subject_id
-              WHERE a.org_id = ? AND (? IS NULL OR a.seq < ?) ORDER BY a.seq * ? LIMIT ?`)
-    .bind(actor.orgId, before, before, limit < 0 ? 1 : -1, limit).all<AuditLine>()
+              WHERE a.org_id = ? AND a.seq < ? AND a.seq > ? ORDER BY a.seq ${after === null ? 'DESC' : 'ASC'} LIMIT ?`)
+    .bind(actor.orgId, before ?? Number.MAX_SAFE_INTEGER, after ?? 0, limit).all<AuditLine>()
   return results
 }
-/** The export writes its row first: if that fails, no file leaves. The row is part of the file. */
-export async function exportAudit(db: D1Database, actor: Actor, now: number) {
-  await commit(db, actor.orgId, () => [seatEntry(actor, now, 'audit.export', null), []])
-  return auditRows(db, actor, null, -1)
+// The export, in pages of EXPORT_PAGE rows (the Free plan's share of rows read a request) that the page fetches in order
+// and saves as one file. The first call writes the export's row first: if that fails, no file leaves. The file holds
+// every row up to that one, which is its last. A later page is given only for an export row of the same session.
+export const EXPORT_PAGE = 500
+export async function exportAudit(db: D1Database, actor: Actor, now: number, after: number | null, upto: number | null) {
+  if (upto === null) {
+    await commit(db, actor.orgId, () => [seatEntry(actor, now, 'audit.export', null), []])
+    upto = (await db.prepare(`SELECT seq FROM audit_log WHERE org_id = ? AND action = 'audit.export' AND session_id = ? ORDER BY seq DESC LIMIT 1`).bind(actor.orgId, actor.sessionId).first<{ seq: number }>())!.seq
+  } else if (!(await db.prepare(`SELECT 1 FROM audit_log WHERE org_id = ? AND seq = ? AND action = 'audit.export' AND session_id = ?`).bind(actor.orgId, upto, actor.sessionId).first())) return null
+  const rows = await auditRows(db, actor, upto + 1, EXPORT_PAGE, after ?? 0)
+  return { rows, upto, next: rows.length === EXPORT_PAGE && rows.at(-1)!.seq < upto ? rows.at(-1)!.seq : null }
 }
 
 // ---- alerts: no email exists, so a member is told at sign-in (recovery.md section 1) ----

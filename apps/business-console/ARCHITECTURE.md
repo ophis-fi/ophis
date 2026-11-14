@@ -61,6 +61,7 @@ Rules: every tenant row has `org_id`; children reference parents by `(org_id, id
 | sanctioned_addresses | list, address | 0012. Global. Lower case, the `CHECK` of `wallets.address`. Primary key `(address, list)`. Three triggers (0012) refuse, at an address of this table: a live wallet row, a wallet row that becomes linked, and an organisation that becomes active while a linked wallet of it is there. |
 | orders | org_id, id (the approval's), approved_at, link_hash (unique), link_purpose (sign, cancel), valid_to, uid, signature, sent_at, status (presignaturePending, open, fulfilled, cancelled, expired, refused), executed_sell, executed_buy, executed_fee, tx_hash, checked_at, link_by, link_at | 0017, 0018. The real desk: one row per approved order, made by the approving commit; the terms are the approval's value. The link's SHA-256 only. `uid` is not unique: one wallet may be linked to two organisations. |
 | audit_log | org_id, seq, at, actor_kind, actor_id, session_id, action, subject_id, detail, country, asn, prev_hash, hash | Ids only. Primary key `(org_id, seq)`. Triggers refuse UPDATE and DELETE. |
+| audit_checks | org_id, checked_seq, checked_hash, recheck_seq, broken_seq | 0019. The check of the chain kept between loads of the audit page (`verifyAudit()`): the checkpoint (the last row of the run from row 1 that verified, and its hash), where the re-check of older rows goes on, and the first break found. A cache of the check, not a record: no audit row. |
 
 Audit chain: `hash = SHA-256(JSON([org_id, seq, at, actor_kind, actor_id, session_id, action, subject_id, detail, country, asn, prev_hash]))`; the first `prev_hash` is 64 zeros.
 Every state change goes through `commit()` in `data.ts`: the change and its audit row are one `db.batch()`, one transaction.
@@ -90,7 +91,7 @@ Rule for new code: whatever decides a write is read inside the plan. A read made
 - Passkey rule for key roles (`synced_keys_allowed`): an Owner asks. Tightening applies at the approval. Relaxing gets `not_before` = request + 24 h and cannot be approved earlier.
 - The 30 day rule: the 72 hour wait replaces the second person only if no seat but the issuer's is, or in the last 30 days was, a key-role seat: active, frozen, removed by two people, or changed in role (dates from the audit rows `seat.remove` and `seat.role`; any role change counts, since it took two key-role people). A key-role re-enrolment therefore never waits: it needs a real second person, or the recovery wallet (M4).
 - Limits: none on new members (owner decision of 2026-11-13: an Owner or Admin adds as many as needed; `MAX_SEATS` and `seat_limit` are gone), and 3 links per issuer and seat per 24 h (M2). A ticket not confirmed 12 days after it was made (its longest life is 11 days) is deleted with its pending passkey when a ticket is next issued. Two live passkeys of one seat never share a label.
-- Audit page: `GET /api/audit?before=<seq>`, 50 rows, names resolved at read time, events in words from the one table `EVENTS` (`index.ts`), chain state from `verifyAudit`. An action that leaves `EVENTS` reads "Unlisted event" in a log that already holds it: so far only in local databases, for `ticket.attempt` (a refused confirmation), `screening.flag` (a flag), `ticket.company` and `policy.company` (the company sign-in), all removed on 2026-11-13; 0014 cancels a `policy.company` request still waiting there. Rebuild such a database: delete `.wrangler/state`, then migrate and seed. `POST /api/audit/export` writes its audit row, then answers the whole log as CSV text inside JSON (a state change is a POST; the page saves the file). Every cell is quoted; a cell a spreadsheet would run gets an apostrophe.
+- Audit page: `GET /api/audit?before=<seq>`, 50 rows, names resolved at read time, events in words from the one table `EVENTS` (`index.ts`), chain state from `verifyAudit` (2026-11-14, bounded): a load verifies at most 300 rows after the checkpoint (`NEW_ROWS`) and re-checks 200 older rows (`OLD_ROWS`) from a rolling cursor, in turn; the window that reaches the checkpoint must end on the stored hash. Each row is checked for its number (the one before plus 1), its link to the row before and its own hash. The checkpoint only moves forward over rows that verified, by compare-and-set on the checkpoint and the cursor, so a load that read an older state writes nothing. A break found is stored in `audit_checks` and shown on every load after; no code clears it. With no row added, a changed row before the checkpoint is found within ceil(rows / 200) + 1 loads. The page says what it checked: "Rows 1 to N verified", newer rows still to verify, and the rows this load re-checked. An action that leaves `EVENTS` reads "Unlisted event" in a log that already holds it: so far only in local databases, for `ticket.attempt` (a refused confirmation), `screening.flag` (a flag), `ticket.company` and `policy.company` (the company sign-in), all removed on 2026-11-13; 0014 cancels a `policy.company` request still waiting there. Rebuild such a database: delete `.wrangler/state`, then migrate and seed. `POST /api/audit/export` writes its audit row, then answers the first 500 rows (`EXPORT_PAGE`) as CSV text inside JSON with `next` and `upto` (the export row's number); the page asks for the next rows with `{after, upto}` until `next` is null, in order, and saves them as one file (a state change is a POST). A later page is given only for an export row of the same session (else 400 `export_unknown`). The file holds every row up to the export's own row, which is its last. Every cell is quoted; a cell a spreadsheet would run gets an apostrophe.
 
 ### Wallets and the recovery wallet as built (M4a; owner decisions D1 to D13 of 2026-11-11). On screen: "recovery wallet"
 - One signing format, EIP-712. Domain `{ name: "Ophis Business", version: "1", chainId }` of the wallet's pinned chain, no `verifyingContract`. Struct `Link { string action, string site, string organisationId, address wallet, bytes32 nonce, uint64 issuedAt, uint64 expiresAt }`; action `Link this wallet to this organisation`, site the console hostname, times in Unix seconds.
@@ -172,6 +173,7 @@ The route table is the role table (M3): the role first, then the gates. `twoKeys
 | D | POST /api/order, POST /api/order/send (signing host only) | none: the one-time token of the link | the wallet's holders | no | the approval before; the send checks the signature, the wallet, the organisation and the sanctions lists |
 
 ## Security invariants and the tests that prove them
+Reads write nothing, with one exception (2026-11-14): `GET /api/audit` writes its check state in `audit_checks`, a cache of the check of the chain, never audited and outside the snapshots of the tests. It never clears a break and never moves the checkpoint back.
 Each test (in `tests/worker.test.ts`) was seen to fail with its control removed once. Milestone 1, independent review, 2026-11-11: 71 single mutations, 70 caught; the survivor was the purpose label inside the challenge HMAC, which milestone 2 now tests.
 Milestone 2, independent review, 2026-11-11: 137 single mutations written and run from scratch. 10 survived: 4 were real test gaps, now closed (a stop must revoke passkeys the replacement added; a replaced passkey on a frozen seat; replaced and pending passkeys in the two-key count; a sign-in must not close tickets the member issued), 1 was a comparison that could never differ (deleted), 5 have no security effect (among them the two below). The defects the review fixed each have a test in section q that was seen failing first.
 Milestone 2, builder, 2026-11-11: 110 single mutations of its controls, all caught, and four more against `tests/e2e.mjs`. Not separately provable, because another check covers the same case: the ticket id inside the confirmation binding (the credential hash is already unique per ticket), and the early stop-right check a handler could add (the write checks it).
@@ -222,6 +224,7 @@ Milestone 4b, builder, 2026-11-11: 11 single mutations of the hardening, all cau
 | No limit on new members; unconfirmed tickets swept after 12 days; one label per live passkey of a seat | v: three tests |
 | A freeze takes no stop right away; no role change during quarantine; every write that depends on the actor reads the role, the seat and the session inside its commit; a request is judged again with its requester's role; an approval and its cancel at the same instant | x: six tests |
 | Audit page: own rows only, words not codes, chain state from the server, pages of 50; export: fresh check, one audit row, formula-safe cells, never cached | w: four tests; e: `GET /api/audit`, `POST /api/audit/export` |
+| The chain check is bounded and misses nothing for long: a changed row after the checkpoint is caught on the next load and the checkpoint stops before it; a row changed before it is caught by the re-check within ceil(rows / 200) + 1 loads; a chain rewritten whole, a removed tail, a removed row and a missing re-check row are breaks; a break stays; loads at the same instant leave one state and a stale load moves nothing back. The export comes in pages: every row in order, its own row last, a later page only for an export of the same session | w: `the chain check:` four tests, `the export of a log longer than a page...`; K: a log of 10,000 rows; e2e: an export cut after 3 rows comes back whole |
 | An intent is the server's own text: MAC first, before any read or chain call; 7 days; nothing written; EIP-55 checked, case variants one wallet | y: `an intent is the server's own text...`, `the MAC is checked first...`, `an intent lives 7 days...` |
 | A proof is accepted once; the wallet signs exactly these fields (organisation, site, chain, wallet, action, nonce, expiry); another signer or the upper half of `s` is refused; a key wallet asks no endpoint | y: `a proof is accepted once...`, `the wallet signs exactly these fields...` |
 | A contract wallet: the ERC-1271 value on both endpoints, each on the pinned chain; a no, a disagreement, an error, a redirect (not followed), a timeout or an oversized answer refuses; nothing is written; the kind | y: `a contract wallet is valid only...`, `the kind: a Safe when...`; `test:chain` on a real Safe |
@@ -251,10 +254,10 @@ Milestone 4b, builder, 2026-11-11: 11 single mutations of the hardening, all cau
 ## Deliberate shortcuts (`ponytail:` in the code)
 - The idle clock is written at most once a minute: a session can end up to 60 s early, never late.
 - Writes of one organisation are serialised by the audit sequence, with one retry. Many writers at the same instant would need a queue.
-- `verifyAudit` reads a whole chain. A removed tail is only detectable with the external hourly anchor, which is not built.
+- `verifyAudit` checks a bounded part of the chain a load (above). A removed tail after the checkpoint, or rows rewritten together with `audit_checks`, is only detectable with the external hourly anchor, which is not built.
 - `scripts/dev.mjs activate` stands in for the first Owner's activation by the recovery wallet (M5). Members no longer need it. It never activates the pending passkey of a recovery request. `skip` stands in for the passing of time: every wait that runs is over.
 - Alerts are read from rows of the last 7 days; the server keeps no "seen" mark.
-- The audit page verifies the whole chain on every load, and the export answers the whole log at once: fine to about 10,000 rows.
+- The audit page verifies 300 new rows and re-checks 200 older ones a load: a log that grows faster than that waits for the next loads, and a changed old row is found after up to ceil(rows / 200) + 1 loads, not at once. The export is fetched in pages of 500 rows, so a log of n rows costs ceil(n / 500) requests.
 - Relaxing the passkey rule waits before its approval, not after it. Tightening it does not remove synced passkeys already enrolled.
 - The actor's role, seat and session are read again inside the commit for every write that depends on them. Quarantine, the two passkeys and the fresh check still come from the session read at the start of the request.
 - One person alone can re-enrol a Trader or Viewer seat (M2). Once its quarantine is over, that seat can be promoted by two people like any other: the second person is the control, and is told of the re-enrolment by the 7 day alert only.
@@ -291,7 +294,7 @@ a few a day, to 50,000 read and 5,000 written. A list holds 1,000 addresses at m
 the indexer every listed address, reads about 3,100 rows, and a load writes about 3,000. Section K first loads three
 lists at their largest, the OFAC one twice (the second replaces every address). Then it adds 20
 partner organisations of 10 linked wallets each (every page, with the indexer's figures), the daily run that finds a
-listed wallet in each, 20 organisations under review in the operator's list, each with a Safe read on the chain, and (2026-11-14) 25 sent orders still open that the daily run reads at the orderbook (an order and its trade each) in the run that also freezes 5 organisations, then 15 of which the desk reads 10, an institution with 11 wallets on Ethereum (its Overview reads the 10 linked first: 50 calls in one `aggregate3`) and one with a wallet on each of the 4 chains (its Overview and an export past the cache). It
+listed wallet in each, 20 organisations under review in the operator's list, each with a Safe read on the chain, and (2026-11-14) 25 sent orders still open that the daily run reads at the orderbook (an order and its trade each) in the run that also freezes 5 organisations, then 15 of which the desk reads 10, an institution with 11 wallets on Ethereum (its Overview reads the 10 linked first: 50 calls in one `aggregate3`) and one with a wallet on each of the 4 chains (its Overview and an export past the cache), and (2026-11-14) an audit log of 10,000 rows, its page loaded until all is verified and its export fetched page by page. It
 fails when a route or job passes a limit, or never answered 2xx (a route driven only to a refusal is not measured). A new route is in it by its row of the table; a new job is
 driven through `meter()` and named in `JOBS`. The largest count of each, 2026-11-14:
 
@@ -299,7 +302,7 @@ driven through `meter()` and named in `JOBS`. The largest count of each, 2026-11
 |---|---|---|---|---|---|
 | The daily run (cron) | 26 | 41 (the list file, and 20 orders with the trade of each) | 0 | 1,938 | 2,042 (a first load of a list of 1,000, and 5 freezes) |
 | A page or a static file | 0 | 0 | 1 | 0 | 0 |
-| `GET /api/audit` | 3 | 0 | 0 | 460 | 0 |
+| `GET /api/audit` | 5 (15 for three loads at the same instant, counted together) | 0 | 0 | 764 (a log of 10,000 rows) | 2 |
 | `GET /api/desk` | 6 | 20 | 0 | 406 | 10 |
 | `GET /api/export/:id` | 4 | 16 (the balances of wallets on 4 chains, past the cache) | 0 | 3,058 (a partner, as its Overview) | 2 |
 | `GET /api/me` | 7 | 0 | 0 | 163 | 1 |
@@ -315,7 +318,7 @@ driven through `meter()` and named in `JOBS`. The largest count of each, 2026-11
 | `POST /api/approvals/:id/approve` | 17 | 14 | 0 | 145 | 11 |
 | `POST /api/approvals/:id/cancel` | 15 | 0 | 0 | 97 | 5 |
 | `POST /api/approvals/:id/reject` | 5 | 0 | 0 | 33 | 3 |
-| `POST /api/audit/export` | 4 | 0 | 0 | 168 | 2 |
+| `POST /api/audit/export` | 5 | 0 | 0 | 2,510 (a page of 500 rows of a log of 10,000) | 2 |
 | `POST /api/desk/orders` | 7 | 1 | 0 | 143 | 24 |
 | `POST /api/desk/orders/:id/link` | 6 | 0 | 0 | 30 | 5 |
 | `POST /api/desk/orders/:id/withdraw` | 5 | 0 | 0 | 30 | 4 |
@@ -389,13 +392,19 @@ off by one (S3a, T2). Unit 452, end-to-end 270 checks, `test:chain` 121, tour ch
 **CPU, a proxy.** `pnpm test:cpu` (tests/cpu.mjs) times the heavy pure-JS steps in Node on this machine (Apple M4),
 not on the Workers meter. One run: signature recovery 0.98 ms, the ERC-1271 path 0.09 ms, unseal of an intent 0.05 ms,
 a passkey assertion 0.16 ms, a registration 0.08 ms, the daily run on today's OFAC EVM list (127 addresses) 0.04 ms and on
-1,000 addresses (the most a list holds) 0.19 ms, an audit row 8 us. The heaviest request is a proof (one recovery, about 1.1 ms). Before
+1,000 addresses (the most a list holds) 0.19 ms, an audit row 8 us, and so a load of the audit page 4.1 ms, whatever the length of the log
+(500 rows at most: 300 new, 200 re-checked, here on a log of 10,000). The heaviest request is a load of the audit page. Before
 `proof_by`, a partner's Overview with 10 wallets cost 9.8 ms.
 
-**Not within the plan.** The audit page verifies the whole chain of its organisation: about 8 us a row here, so it
-passes 10 ms of CPU at about 1,200 rows (Node's WebCrypto; a native hash takes 0.6 us a row, and the Workers figure is
-not known). The page and the export (which does not verify) read every row of the chain at each call, so past 5,000
-rows they pass the share of a route too. Verifying from a stored verified head is not built. The shares hold
+**Fixed on 2026-11-14: the audit page and its export.** The page verified the whole chain at each load (about 8 us a
+row here, so past 10 ms of CPU at about 1,200 rows), and both it and the export read every row (past the share of a
+route at about 5,000). Now the page verifies from a stored checkpoint, 500 rows at most a load (4.1 ms here; the Workers
+figure is not known, and a native hash takes 0.6 us a row), and reads them by their key, 764 rows read on a log of
+10,000; the export comes in pages of 500 rows (2,510 rows read a page). Rows read per page depend on the names each
+row resolves: a row whose subject is no seat, passkey, link, session or wallet also reads the organisation's approvals, for an order
+(ponytail: an organisation with thousands of approvals would need an index on their subject).
+
+**Not within the plan.** The shares hold
 the rows of a day at about 1,000 of the heaviest invocations: a day with many more requests (a script, a busy partner
 page: about 1,600 partner Overviews or exports with the three lists full) can use up the 5,000,000 rows read before the
 100,000 requests, and then every query fails until 00:00 UTC.

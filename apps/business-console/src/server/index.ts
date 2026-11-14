@@ -657,7 +657,8 @@ function said(action: string, detail: string | null) {
 const line = (r: data.AuditLine) => ({ seq: r.seq, at: r.at, who: r.who ?? 'System', event: said(r.action, r.detail), target: r.target ?? '', prevHash: r.prevHash, hash: r.hash })
 
 const PAGE = 50
-// ponytail: the chain is verified in full on every page (verifyAudit reads it whole). Same ceiling: about 10,000 rows.
+// The chain state: verifyAudit checks the new rows and re-checks a window of older ones, a bounded number a load, and
+// writes its check state (audit_checks): the one write a GET makes, a cache of the check, never audited.
 async function audit(c: Context) {
   const cursor = new URL(c.request.url).searchParams.get('before') ?? ''
   const rows = await data.auditRows(c.env.DB, c.actor, /^[1-9]\d{0,14}$/.test(cursor) ? Number(cursor) : null, PAGE)
@@ -670,15 +671,20 @@ export const csvCell = (value: unknown) => {
   const text = String(value ?? '')
   return `"${(/^[=+\-@\t\r]/.test(text) ? `'${text}` : text).replace(/"/g, '""')}"`
 }
-// ponytail: the whole log in one answer. Page it, or stream it, when a log passes about 10,000 rows.
+// The export in pages (data.exportAudit): the first call writes its row and answers the file's name, its heading and the
+// first rows; each later call, with `after` and `upto` from the one before, the next rows. The page joins them in one file.
 async function auditExport(c: Context) {
-  const rows = (await data.exportAudit(c.env.DB, c.actor, c.now)).map(line)
+  const [after, upto] = [c.body.after, c.body.upto]
+  const later = after !== undefined || upto !== undefined
+  if (later && !(Number.isSafeInteger(after) && Number.isSafeInteger(upto) && (after as number) >= 0 && (upto as number) > (after as number))) return fail(400, 'export_unknown')
+  const page = await data.exportAudit(c.env.DB, c.actor, c.now, later ? (after as number) : null, later ? (upto as number) : null)
+  if (!page) return fail(400, 'export_unknown')
   const utc = (time: number) => `${new Date(time).toISOString().slice(0, 19).replace('T', ' ')}Z`
-  const lines = [['No.', 'Time (UTC)', 'Who', 'Event', 'Target', 'Previous row hash', 'Row hash'], ...rows.map((r) => [r.seq, utc(r.at), r.who, r.event, r.target, r.prevHash, r.hash])]
-  return csvFile(c, 'ophis-audit-log', lines)
+  const lines = [...(later ? [] : [['No.', 'Time (UTC)', 'Who', 'Event', 'Target', 'Previous row hash', 'Row hash']]), ...page.rows.map(line).map((r) => [r.seq, utc(r.at), r.who, r.event, r.target, r.prevHash, r.hash])]
+  return csvFile(c, 'ophis-audit-log', lines, { next: page.next, upto: page.upto })
 }
 /** A CSV file as the browser saves it: the name ends with today's date, and every cell goes through csvCell. */
-const csvFile = (c: Context, name: string, lines: unknown[][]) => json(200, { name: `${name}-${new Date(c.now).toISOString().slice(0, 10)}.csv`, csv: lines.map((cells) => `${cells.map(csvCell).join(',')}\r\n`).join('') })
+const csvFile = (c: Context, name: string, lines: unknown[][], more: object = {}) => json(200, { name: `${name}-${new Date(c.now).toISOString().slice(0, 10)}.csv`, csv: lines.map((cells) => `${cells.map(csvCell).join(',')}\r\n`).join(''), ...more })
 
 // ---- overview and desk. An institution: its desk (orders.ts), the balances of its linked wallets read on the chain,
 // and its statement from its filled orders. A partner: live figures (partner.ts). The approvals counted are real. ----
