@@ -9956,6 +9956,31 @@ describe('J. the real desk: terms from a live quote, two people, then the wallet
     expect(asked.length).toBeGreaterThanOrEqual(n)
   })
 
+  it('the allowance the signing page asks for: this order and what the wallet\'s other open orders of the same asset on its chain still need, of this organisation only', async () => {
+    const team = await deskTeam()
+    book()
+    const weth = (amount: string, more: Record<string, unknown> = {}) => ({ sell: 'WETH', buy: 'USDC', amount, ...more })
+    const sent = async (t: typeof team, more: Record<string, unknown>, signer = accounts[1]) => {
+      const id = await approvedOrder(t, more)
+      expect((await signed((await orderLink(t.t, id)).token, signer)).answer.body.state).toBe('open')
+      return id
+    }
+    await sent(team, weth('1'))
+    const filled = await sent(team, weth('0.5'))
+    const expired = await sent(team, weth('0.3'))
+    await sent(team, { amount: '100' }) // USDC: another asset
+    await sent({ ...team, walletId: await demoWallet(team.o.orgId, 'Other wallet', 'linked', accounts[2].address.toLowerCase()) }, weth('0.7'), accounts[2])
+    await sent({ ...team, walletId: await demoWallet(team.o.orgId, 'Base wallet', 'linked', accounts[1].address.toLowerCase(), 'custodian', 8453) }, weth('0.4', { chainId: 8453 })) // the same token address on Base
+    await approvedOrder(team, weth('0.2')) // approved, not sent
+    await sent(await deskTeam(), weth('0.9')) // another organisation with the same wallet
+    await db.batch([db.prepare(`UPDATE orders SET status = 'fulfilled' WHERE id = ?`).bind(filled), db.prepare(`UPDATE orders SET valid_to = ? WHERE id = ?`).bind(Math.floor(now / 1000), expired)])
+    const page = await orderPage((await orderLink(team.t, await approvedOrder(team, weth('2')))).token)
+    expect(page.body).toMatchObject({ sellAmount: String(2n * 10n ** 18n), allowance: String(3n * 10n ** 18n), allowanceWords: '3 WETH' })
+    // A cancel link asks for no allowance.
+    const open = (await deskOrders(team.t)).find((x) => x.state === 'Open' && x.terms.sell.symbol === 'USDC')!
+    expect((await orderPage((await orderLink(team.t, open.id, 'cancel')).token)).body).toMatchObject({ purpose: 'cancel', allowance: null, allowanceWords: null })
+  })
+
   it('send: the wallet still linked on its chain and the organisation active, the expiry fixed; an orderbook that refuses or fails records nothing, and DuplicatedOrder is the same order', async () => {
     const team = await deskTeam()
     book()

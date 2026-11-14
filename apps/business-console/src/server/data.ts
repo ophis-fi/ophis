@@ -985,6 +985,14 @@ export async function orderSent(db: D1Database, r: Opening, o: { uid: string; si
   })
   return outcome
 }
+/** What the organisation's other open orders of this wallet still need of the asset this order sells, on its chain, in atoms: the allowance they rely on. */
+export async function reserved(db: D1Database, r: Opening, now: number) {
+  const { results } = await db.prepare(`SELECT json_extract(v, '$.sell.amount') AS amount FROM (SELECT json_extract(a.payload, '$.value') AS v FROM orders o JOIN approvals a ON a.org_id = o.org_id AND a.id = o.id
+                                          WHERE o.org_id = ? AND o.status IN ('open', 'presignaturePending') AND o.valid_to * 1000 > ?)
+                                        WHERE json_extract(v, '$.chainId') = ? AND json_extract(v, '$.wallet') = ? AND json_extract(v, '$.sell.token') = ?`)
+    .bind(r.orgId, now, r.terms.chainId, r.terms.wallet, r.terms.sell.token).all<{ amount: string }>()
+  return results.reduce((sum, x) => sum + BigInt(x.amount), 0n)
+}
 /** The first address of these on a loaded sanctions list, or null. */
 export const listedOf = async (db: D1Database, addresses: string[]) =>
   (await db.prepare(`SELECT address FROM sanctioned_addresses WHERE address IN (${addresses.map(() => '?').join(', ')}) LIMIT 1`).bind(...addresses.map((a) => a.toLowerCase())).first<{ address: string }>())?.address ?? null

@@ -763,9 +763,12 @@ async function orderPage(c: Context) {
   }
   const built = orders.gpv2(t, validTo!)
   const chain = orders.CHAINS[t.chainId]
+  // The allowance the vault relayer needs: this order, and what the wallet's other open orders of the asset still need.
+  const allowance = r.purpose === 'sign' ? (await data.reserved(c.env.DB, r, c.now)) + BigInt(t.sell.amount) : null
   return json(200, {
     purpose: r.purpose, scheme: t.scheme, chainId: t.chainId, wallet: t.wallet, words: orders.words(t, validTo), uid: built.uid, validTo,
     settlement: chain.settlement, relayer: chain.relayer, sellToken: t.sell.token, sellAmount: t.sell.amount,
+    allowance: allowance?.toString() ?? null, allowanceWords: allowance === null ? null : `${orders.decimal(allowance, orders.ASSETS[t.chainId][t.sell.symbol]!.decimals)} ${t.sell.symbol}`,
     typed: t.scheme === 'presign' ? null : r.purpose === 'sign' ? built.typed : orders.cancellation(t.chainId, built.uid).typed,
   })
 }
