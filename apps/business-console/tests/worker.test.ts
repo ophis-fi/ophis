@@ -3413,6 +3413,9 @@ describe('w. the audit log page and its export', () => {
       expect(await reads(() => post('/api/audit/export', o))).toBeLessThan(FREE.read)
       // The desk's orders read the 200 orders, not the other approvals.
       expect(await reads(async () => (inFlight++, await data.orders(db, { orgId: o.orgId, seatId: o.seatId } as data.Actor, now).finally(() => inFlight--), { status: 200 }))).toBeLessThan(1000)
+      // A wallet unlinked or a seat removed cancels what waits on it by its subject alone (data.ts, decide).
+      const cancel = await db.prepare(`UPDATE approvals SET state = 'cancelled', decided_at = ? WHERE org_id = ? AND subject_id = ? AND state = 'pending'`).bind(now, o.orgId, o.seatId).run()
+      expect(cancel.meta.rows_read).toBeLessThan(10)
     } finally {
       await db.prepare('DELETE FROM approvals WHERE org_id = ?').bind(o.orgId).run()
     }
