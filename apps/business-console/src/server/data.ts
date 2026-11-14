@@ -884,12 +884,12 @@ export async function orders(db: D1Database, actor: Actor, now: number) {
 // ---- the real desk after the approval: the signing link, the signing page, the send, the cancel, the state ----
 const ORDER_ROW = `SELECT o.org_id AS orgId, o.id, o.approved_at AS approvedAt, o.link_purpose AS purpose, o.valid_to AS validTo, o.uid, o.status, a.payload,
                           w.id AS walletId, w.chain_id AS walletChain, w.address AS walletAddress
-                   FROM orders o JOIN approvals a ON a.org_id = o.org_id AND a.id = o.id AND a.action = 'order' AND a.state = 'applied'
+                   FROM orders o JOIN approvals a ON a.org_id = o.org_id AND a.id = o.id
                    JOIN organisations g ON g.id = o.org_id AND g.state = 'active' AND g.kind = 'institution'
                    LEFT JOIN wallets w ON w.org_id = o.org_id AND w.state = 'linked' AND w.id = json_extract(json_extract(a.payload, '$.value'), '$.walletId')`
 type OrderRow = { orgId: string; id: string; approvedAt: number; purpose: 'sign' | 'cancel' | null; validTo: number | null; uid: string | null; status: string | null; payload: string; walletId: string | null; walletChain: number | null; walletAddress: string | null }
-/** Can this link be used now (?2: now; ?4: the purpose asked for, or null for the link's own)? A signing link: the order is not sent, and its approval is younger than 24 hours. A cancel link: the order is open. */
-const LINK_LIVE = `((COALESCE(?4, o.link_purpose) = 'sign' AND o.uid IS NULL AND o.status IS NULL AND o.approved_at + ${SIGN_MS} > ?2)
+/** Can this link be used now (?2: now; ?4: the purpose asked for, or null for the link's own)? A signing link: the order is not sent (a sent or refused one has a status), and its approval is younger than 24 hours. A cancel link: the order is open. An order row exists from its approval on. */
+const LINK_LIVE = `((COALESCE(?4, o.link_purpose) = 'sign' AND o.status IS NULL AND o.approved_at + ${SIGN_MS} > ?2)
                     OR (COALESCE(?4, o.link_purpose) = 'cancel' AND o.status IN ('open', 'presignaturePending') AND o.valid_to * 1000 > ?2))`
 const termsOf = (row: { payload: string }) => JSON.parse((JSON.parse(row.payload) as { value: string }).value) as Terms
 

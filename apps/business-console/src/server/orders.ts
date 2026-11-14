@@ -175,9 +175,8 @@ export const cancellation = (chainId: number, uid: string) => {
   const message = { orderUids: [uid as Hex] }
   return { hashed: { domain, types: CANCEL_TYPES, primaryType: 'OrderCancellations' as const, message }, typed: { domain, types: { EIP712Domain: DOMAIN_FIELDS, ...CANCEL_TYPES }, primaryType: 'OrderCancellations', message } }
 }
-/** Did the wallet's own key sign this? A signature of 65 bytes only; anything else is no. */
+/** Did the wallet's own key sign this? Anything that is no signature of it is no (viem throws on it). */
 export async function signedBy(hashed: object, signature: unknown, wallet: string) {
-  if (typeof signature !== 'string' || !/^0x[0-9a-fA-F]{130}$/.test(signature)) return false
   const by = await recoverTypedDataAddress({ ...hashed, signature } as never).catch(() => null)
   return by !== null && by.toLowerCase() === wallet.toLowerCase()
 }

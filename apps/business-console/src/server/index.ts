@@ -727,9 +727,7 @@ async function orderLink(c: Context) {
 }
 // The signing page's two calls. No session: the link's token is the only key, and its order is read by its hash.
 const openedBy = async (c: Context) => {
-  const token = c.body.token
-  if (typeof token !== 'string' || !/^[A-Za-z0-9_-]{43}$/.test(token)) return null
-  const hash = await data.sha256Hex(token)
+  const hash = await data.sha256Hex(String(c.body.token)) // a token that is not ours matches no row
   const r = await data.orderByLink(c.env.DB, hash, c.now)
   return r && { ...r, hash }
 }

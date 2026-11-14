@@ -9673,6 +9673,14 @@ describe('J. the real desk: terms from a live quote, two people, then the wallet
     expect(c.body.typed).toEqual({ domain: page.body.typed.domain, types: { EIP712Domain: page.body.typed.types.EIP712Domain, OrderCancellations: [{ name: 'orderUids', type: 'bytes[]' }] }, primaryType: 'OrderCancellations', message: { orderUids: [page.body.uid] } })
     expect((await orderSend(cancel.token, await accounts[2].signTypedData(c.body.typed))).body).toEqual({ error: 'signature_rejected' })
     const signature = await accounts[1].signTypedData(c.body.typed)
+    // The orderbook refuses or fails the cancellation: nothing is written, and the link can be used again.
+    for (const [answer, error] of [[Response.json({ errorType: 'OrderFullyExecuted' }, { status: 400 }), 'order_refused'], [Response.json({}, { status: 502 }), 'orderbook_unavailable']] as const) {
+      book({ twist: (a) => (a.method === 'DELETE' ? answer.clone() : undefined) })
+      const before = await snapshot()
+      expect((await orderSend(cancel.token, signature)).body).toEqual({ error })
+      expect(await snapshot()).toBe(before)
+    }
+    book({ twist: (a) => { asked.push(a); return undefined } })
     expect((await orderSend(cancel.token, signature)).body).toEqual({ state: 'cancelled' })
     expect(asked.at(-1)).toEqual({ url: 'https://optimism-mainnet.ophis.fi/api/v1/orders', method: 'DELETE', body: { orderUids: [page.body.uid], signature, signingScheme: 'eip712' } })
     expect(await row('SELECT status, link_hash FROM orders WHERE id = ?', id)).toEqual({ status: 'cancelled', link_hash: null })
@@ -9721,11 +9729,60 @@ describe('J. the real desk: terms from a live quote, two people, then the wallet
     // An order whose expiry passed reads Expired even before the orderbook is read again.
     expect(orders.stateOf({ state: 'applied', open: false, approvedAt: now, uid: '0x', status: 'open', validTo: Math.floor(now / 1000) }, now)).toBe('Expired')
     expect(orders.stateOf({ state: 'applied', open: false, approvedAt: now, uid: '0x', status: 'open', validTo: Math.floor(now / 1000) + 1 }, now)).toBe('Open')
-    // An answer the server cannot use changes nothing.
-    book({ twist: (a) => (/\/orders\/0x/.test(a.url) ? Response.json({ status: 'weird', executedSellAmount: '1', executedBuyAmount: '1' }) : undefined) })
-    const before = await snapshot()
+    // An answer the server cannot use changes nothing: another state, an amount that is no integer, a transaction that is no hash.
+    const id = await approvedOrder(team, { amount: '7' })
+    const { page } = await signed((await orderLink(team.t, id)).token)
+    for (const answer of [{ status: 'weird', executedSellAmount: '1', executedBuyAmount: '1' }, { status: 'open', executedSellAmount: '1e3', executedBuyAmount: '1' }, { status: 'open', executedSellAmount: '1', executedBuyAmount: '-1' }]) {
+      book({ twist: (a) => (a.url.endsWith(`/orders/${page.body.uid}`) ? Response.json(answer) : /\/orders\/0x/.test(a.url) ? Response.json({}, { status: 404 }) : undefined) })
+      const before = await snapshot()
+      expect((await get('/api/desk', team.t)).status).toBe(200)
+      expect(await snapshot(), JSON.stringify(answer)).toBe(before)
+    }
+    book({ state: 'fulfilled', twist: (a) => (a.url.includes('/trades') ? Response.json([{ txHash: 'not a hash' }]) : undefined) })
     await get('/api/desk', team.t)
-    expect(await snapshot()).toBe(before)
+    expect(await row('SELECT status, tx_hash FROM orders WHERE id = ?', id)).toEqual({ status: 'fulfilled', tx_hash: null })
+  })
+
+  it('inside the commits: the link reads the role now; the expiry is fixed once; one send per approval; the link is read again; the state read is written only while the order is open', async () => {
+    const team = await deskTeam()
+    book()
+    const id = await approvedOrder(team)
+    // A Trader lowered to Viewer at the same instant: the link is refused inside its commit.
+    const trader = await actorOf(team.t, 'trader')
+    await db.prepare(`UPDATE seats SET role = 'viewer' WHERE id = ?`).bind(team.t.seatId).run()
+    expect(await data.orderLink(db, trader, id, 'sign', 'a'.repeat(64), now)).toBe('forbidden')
+    await db.prepare(`UPDATE seats SET role = 'trader' WHERE id = ?`).bind(team.t.seatId).run()
+    const { token } = await orderLink(team.t, id)
+    const hash = await data.sha256Hex(token)
+    const r = (await data.orderByLink(db, hash, now))!
+    // Two reads of the page at the same instant: one fixes the expiry and writes its row, the other changes nothing.
+    expect(await data.orderOpened(db, r, hash, 1, now)).toBe(true)
+    const rows = await count('audit_log', team.o.orgId)
+    expect(await data.orderOpened(db, r, hash, 2, now)).toBe(false)
+    expect([await count('audit_log', team.o.orgId), (await row<{ v: number }>('SELECT valid_to AS v FROM orders WHERE id = ?', id))!.v]).toEqual([rows, 1])
+    // The wallet unlinked between the send's read and its commit: nothing is recorded.
+    await db.prepare(`UPDATE wallets SET state = 'unlinked' WHERE id = ?`).bind(team.walletId).run()
+    expect(await data.orderSent(db, r, hash, { uid: `0x${'1'.repeat(112)}`, signature: '0x', status: 'open' }, now)).toBe('already_sent')
+    await db.prepare(`UPDATE wallets SET state = 'linked' WHERE id = ?`).bind(team.walletId).run()
+    // Two sends at the same instant: one is recorded, the other is refused, and the refusal and the cancel read the link again.
+    expect(await data.orderSent(db, r, hash, { uid: `0x${'1'.repeat(112)}`, signature: '0x', status: 'open' }, now)).toBe('ok')
+    expect(await data.orderSent(db, r, hash, { uid: `0x${'2'.repeat(112)}`, signature: '0x', status: 'open' }, now)).toBe('already_sent')
+    const sentRows = await count('audit_log', team.o.orgId)
+    expect([await data.orderListed(db, r, hash, 'wallet', now), await data.orderCancelled(db, r, hash, 'key', now), await count('audit_log', team.o.orgId)]).toEqual([false, false, sentRows])
+    // The state read for an open order is not written over a cancel made meanwhile.
+    await db.prepare(`UPDATE orders SET status = 'cancelled' WHERE id = ?`).bind(id).run()
+    await data.orderStates(db, [{ orgId: team.o.orgId, id, status: 'open', sold: '0', bought: '0', tx: null }], now)
+    expect(await row('SELECT status FROM orders WHERE id = ?', id)).toEqual({ status: 'cancelled' })
+    // A cancel link once the order's expiry has passed, and any link of an organisation that is no longer an institution: nothing.
+    await db.prepare(`UPDATE orders SET status = 'open', valid_to = ? WHERE id = ?`).bind(Math.floor(now / 1000) + 60, id).run()
+    expect((await orderLink(team.t, id, 'cancel')).status).toBe(200)
+    now += 61_000
+    await again(team.t)
+    expect((await orderLink(team.t, id, 'cancel')).status).toBe(404)
+    const next = await approvedOrder(team, { amount: '9' })
+    const link = await orderLink(team.t, next)
+    await setOrg(team.o.orgId, `kind = 'partner'`)
+    expect((await orderPage(link.token)).body).toEqual({ error: 'link_invalid' })
   })
 
   it('"What each role can do": the order row carries the second-person and passkey marks; the link row the passkey mark; the words of the refusals are on the pages', async () => {
