@@ -742,10 +742,17 @@ const openedBy = async (c: Context) => {
   const r = await data.orderByLink(c.env.DB, hash, c.now)
   return r && { ...r, hash }
 }
+/** The approved terms are what this server would make of their own inputs now: an asset delisted or a cap lowered since refuses them. */
+const permitted = (r: { payload: string }) => {
+  const value = (JSON.parse(r.payload) as { value: string }).value
+  const fresh = orders.again(value)
+  return typeof fresh !== 'string' && JSON.stringify(fresh) === value
+}
 /** What the page shows and has the wallet sign, all built here from the approved terms: the page chooses nothing. */
 async function orderPage(c: Context) {
   const r = await openedBy(c)
   if (!r) return fail(404, 'link_invalid')
+  if (r.purpose === 'sign' && !permitted(r)) return refuse('asset_not_permitted') // before the wallet approves or signs anything
   const t = r.terms
   let validTo = r.validTo
   // The expiry is fixed when the page first reads a signing link, and stored: every later read signs the same order.
@@ -789,6 +796,7 @@ async function orderSend(c: Context) {
     await data.orderListed(c.env.DB, r, r.hash, listed === t.wallet.toLowerCase() ? 'wallet' : listed === t.sell.token.toLowerCase() ? 'sell' : 'buy', c.now)
     return fail(403, 'sanctioned_address')
   }
+  if (!permitted(r)) return refuse('asset_not_permitted') // a deploy between the page and the send
   const posted = await orders.post(c.env, t, built, signature)
   if (posted !== 'ok') return refuse(posted)
   const status = t.scheme === 'presign' ? 'presignaturePending' : 'open'

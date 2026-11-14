@@ -9991,6 +9991,30 @@ describe('J. the real desk: terms from a live quote, two people, then the wallet
     }
   })
 
+  it('an asset delisted since the approval: the page and the send refuse the order, so nothing is fixed, approved or sent; listed again, the same signature is sent', async () => {
+    const team = await deskTeam()
+    const asked = book()
+    const id = await approvedOrder(team)
+    const { token } = await orderLink(team.t, id)
+    const weth = orders.ASSETS[10].WETH
+    let signature = ''
+    try {
+      delete orders.ASSETS[10].WETH
+      expect((await orderPage(token)).body).toEqual({ error: 'asset_not_permitted' })
+      expect(await row('SELECT valid_to FROM orders WHERE id = ?', id)).toEqual({ valid_to: null })
+      orders.ASSETS[10].WETH = weth
+      signature = await accounts[1].signTypedData((await orderPage(token)).body.typed)
+      delete orders.ASSETS[10].WETH
+      const before = await snapshot()
+      expect((await orderSend(token, signature)).body).toEqual({ error: 'asset_not_permitted' })
+      expect(await snapshot()).toBe(before)
+      expect(asked.filter((x) => x.method === 'POST' && x.url.endsWith('/orders'))).toEqual([])
+    } finally {
+      orders.ASSETS[10].WETH = weth
+    }
+    expect((await orderSend(token, signature)).body.state).toBe('open')
+  })
+
   it('a Safe: quoted and posted as a presign order from the Safe; the page gets no typed data, and the order waits for the Safe until the orderbook sees the presignature', async () => {
     const team = await deskTeam()
     const safe = await demoWallet(team.o.orgId, 'Treasury Safe', 'linked', accounts[4].address.toLowerCase(), 'safe')
@@ -10165,7 +10189,7 @@ describe('J. the real desk: terms from a live quote, two people, then the wallet
     expect(rights.find((x: { can: string }) => x.can.startsWith('Give the wallet the link'))).toMatchObject({ roles: ['owner', 'admin', 'trader', 'approver', 'compliance'], fresh: true, second: false })
     expect(rights.find((x: { can: string }) => x.can.startsWith('See the desk'))).toMatchObject({ fresh: false, second: false })
     for (const code of ['limit_out_of_band', 'wallet_chain', 'slippage_invalid', 'validity_invalid', 'quote_unavailable', 'quote_refused', 'review_expired', 'review_invalid', 'amount_too_small']) expect(uiSource, code).toContain(`${code}: '`)
-    for (const code of ['open', 'presignaturePending', 'cancelled', 'asked', 'link_invalid', 'signature_rejected', 'sanctioned_address', 'wallet_not_linked', 'order_refused', 'orderbook_unavailable', 'already_sent', 'not_opened']) expect(signScript, code).toMatch(new RegExp(`\\b${code}: '`))
+    for (const code of ['open', 'presignaturePending', 'cancelled', 'asked', 'link_invalid', 'signature_rejected', 'sanctioned_address', 'wallet_not_linked', 'asset_not_permitted', 'order_refused', 'orderbook_unavailable', 'already_sent', 'not_opened']) expect(signScript, code).toMatch(new RegExp(`\\b${code}: '`))
     expect(deskPage).toContain("await (send ? sensitive : api)<OrderBody & { review: string; error?: string }>('/api/desk/orders'")
   })
 })

@@ -178,6 +178,7 @@ const ORDER_SAY: Record<string, string> = {
   signature_rejected: 'The signature is not from the wallet of this order. Nothing was sent.',
   sanctioned_address: 'Refused: an address of this order is on a public sanctions list that Ophis loaded. Nothing was sent. The attempt is recorded.',
   wallet_not_linked: 'The wallet is no longer linked to the organisation on this chain. Nothing was sent.',
+  asset_not_permitted: 'An asset or a limit of this order is no longer permitted. Nothing was sent. Prepare a new order in the console.',
   order_refused: 'The orderbook refused the order. Nothing was sent.',
   orderbook_unavailable: 'The orderbook did not answer. Try again in a minute.',
   already_sent: 'This order was already sent.',
