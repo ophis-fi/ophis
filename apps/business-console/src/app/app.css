@@ -160,7 +160,7 @@ p a.btn { text-decoration: none; } /* a link drawn as a button is not underlined
 /* Milestone 5a, the Onboarding page: a step's content sits under its title, across the row. */
 .srow > .stack { grid-column: 2 / -1; margin-top: 6px; } .srow > .stack p { grid-column: auto; overflow-wrap: anywhere; } .srow .fine > span { min-width: 0; overflow-wrap: anywhere; }
 /* Demo mode: Overview and Desk (the mockup's panels). */
-.note.demo { margin-bottom: 20px; } .g { display: grid; gap: 16px; align-items: start; } .g.two { grid-template-columns: minmax(0, 1.55fr) minmax(0, 1fr); } .g.even { grid-template-columns: repeat(2, minmax(0, 1fr)); } .g.eq { align-items: stretch; }
+.g { display: grid; gap: 16px; align-items: start; } .g.two { grid-template-columns: minmax(0, 1.55fr) minmax(0, 1fr); } .g.even { grid-template-columns: repeat(2, minmax(0, 1fr)); } .g.eq { align-items: stretch; }
 .g > .sec, .stack > .sec { margin-top: 0; } .g.sec, .stats + .g { margin-top: 16px; } .panel > .cap { display: block; margin-bottom: 14px; } .g.even .badge { white-space: normal; }
 table.t tfoot td { border-top: 1px solid var(--line); border-bottom: 0; background: var(--fog); font-weight: 600; } table.t tr.grp td { background: var(--fog); padding-top: 10px; padding-bottom: 10px; }
 tr.grp .gr { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; } table.t td .badge { margin-left: 8px; } table.t td > .badge:first-child { margin-left: 0; }
