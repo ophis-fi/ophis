@@ -125,7 +125,8 @@ export async function commit(db: D1Database, orgId: string, plan: () => [Entry, 
 
 // The check of the chain, kept per organisation (audit_checks, 0019), so that a load hashes a bounded number of rows at
 // any length (Free plan: 10 ms of CPU a request; about 8 us a row in tests/cpu.mjs): at most NEW_ROWS rows after the
-// checkpoint, which moves forward only over rows that verified, by compare-and-set; and OLD_ROWS older rows from
+// checkpoint, which moves forward only over rows that verified, by compare-and-set on the whole state as read (a load that
+// read an older state, or one before a break was stored, writes nothing); and OLD_ROWS older rows from
 // recheck_seq, in turn, each window walking on from the hash the window before verified (recheck_hash: a boundary
 // row changed between two loads is no anchor), up to the end of a sweep: the checkpoint and its hash as they were when the sweep began, which a
 // growing log does not move. The window that reaches that end must end on that hash; the next sweep goes to the
@@ -170,7 +171,8 @@ export async function verifyAudit(db: D1Database, orgId: string): Promise<ChainS
   if (ahead.seq !== s.checked_seq || recheck.seq !== s.recheck_seq || sweep.seq !== s.sweep_seq) {
     await db.prepare(`INSERT INTO audit_checks (org_id, checked_seq, checked_hash, recheck_seq, recheck_hash, sweep_seq, sweep_hash) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)
                       ON CONFLICT (org_id) DO UPDATE SET checked_seq = ?2, checked_hash = ?3, recheck_seq = ?4, recheck_hash = ?5, sweep_seq = ?6, sweep_hash = ?7
-                      WHERE checked_seq = ?8 AND recheck_seq = ?9`).bind(orgId, ahead.seq, ahead.hash, recheck.seq, recheck.hash, sweep.seq, sweep.hash, s.checked_seq, s.recheck_seq).run()
+                      WHERE (checked_seq, checked_hash, recheck_seq, recheck_hash, sweep_seq, sweep_hash) = (?8, ?9, ?10, ?11, ?12, ?13) AND broken_seq IS NULL`)
+      .bind(orgId, ahead.seq, ahead.hash, recheck.seq, recheck.hash, sweep.seq, sweep.hash, s.checked_seq, s.checked_hash, s.recheck_seq, s.recheck_hash, s.sweep_seq, s.sweep_hash).run()
   }
   return { ok: true, rows: ahead.seq, head: ahead.hash, newer: fresh.length > NEW_ROWS, rechecked: end ? [s.recheck_seq + 1, end] : null, per: OLD_ROWS }
 }

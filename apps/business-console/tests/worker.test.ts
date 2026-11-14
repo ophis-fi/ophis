@@ -3353,6 +3353,18 @@ describe('w. the audit log page and its export', () => {
     await at(2 * data.OLD_ROWS)
     expect(await data.verifyAudit(stale({ checked_seq: head, checked_hash: await hashAt(head), recheck_seq: 0, recheck_hash: '0'.repeat(64), sweep_seq: head, sweep_hash: await hashAt(head), broken_seq: null }), o.orgId)).toMatchObject({ ok: true, rows: head, rechecked: [1, data.OLD_ROWS] })
     expect(await checks(o.orgId)).toEqual({ checked_seq: head, recheck_seq: 2 * data.OLD_ROWS, broken_seq: null })
+    // At the same numbers but another hash there (the state moved on and came back to 400 over other rows): it would write 600.
+    const now = (await row<Record<string, unknown>>(`SELECT * FROM ${CHECKS} WHERE org_id = ?`, o.orgId))!
+    await db.prepare(`UPDATE ${CHECKS} SET recheck_hash = ? WHERE org_id = ?`).bind('f'.repeat(64), o.orgId).run()
+    expect(await data.verifyAudit(stale({ ...now, broken_seq: null }), o.orgId)).toMatchObject({ ok: true, rechecked: [2 * data.OLD_ROWS + 1, 3 * data.OLD_ROWS] })
+    expect(await checks(o.orgId)).toEqual({ checked_seq: head, recheck_seq: 2 * data.OLD_ROWS, broken_seq: null })
+    // A load that read the state before a break was stored: it would move the checkpoint on over the new rows.
+    await at(2 * data.OLD_ROWS)
+    const before = (await row<Record<string, unknown>>(`SELECT * FROM ${CHECKS} WHERE org_id = ?`, o.orgId))!
+    await grow(o.orgId, 10)
+    await db.prepare(`UPDATE ${CHECKS} SET broken_seq = ? WHERE org_id = ?`).bind(head + 5, o.orgId).run()
+    expect(await data.verifyAudit(stale({ ...before, broken_seq: null }), o.orgId)).toMatchObject({ ok: true, rows: head + 10 })
+    expect(await checks(o.orgId)).toEqual({ checked_seq: head, recheck_seq: 2 * data.OLD_ROWS, broken_seq: head + 5 })
   })
 
   it('the export of a log longer than a page: every row in order, its own row last, pages only for an export of the same session', async () => {
