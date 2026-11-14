@@ -3140,6 +3140,17 @@ async function asForger(...statements: D1PreparedStatement[]) {
     ])
   }
 }
+/** The statements of a forger who changes row `from` and computes every hash again up to row `to`: each row still links. */
+async function forge(orgId: string, from: number, to: number) {
+  const rows = (await db.prepare('SELECT * FROM audit_log WHERE org_id = ? AND seq BETWEEN ? AND ? ORDER BY seq').bind(orgId, from - 1, to).all<Record<string, unknown>>()).results
+  const statements = []
+  for (let i = 1, prev = rows[0].hash; i < rows.length; i++) {
+    const r: Record<string, unknown> = { ...rows[i], prev_hash: prev, ...(i === 1 && { actor_id: 'someone-else' }) }
+    prev = await data.sha256Hex(JSON.stringify([r.org_id, r.seq, r.at, r.actor_kind, r.actor_id, r.session_id, r.action, r.subject_id, r.detail, r.country, r.asn, r.prev_hash]))
+    statements.push(db.prepare('UPDATE audit_log SET actor_id = ?, prev_hash = ?, hash = ? WHERE org_id = ? AND seq = ?').bind(r.actor_id, r.prev_hash, prev, orgId, r.seq))
+  }
+  return statements
+}
 const checks = (orgId: string) => row<{ checked_seq: number; recheck_seq: number; broken_seq: number | null }>(`SELECT checked_seq, recheck_seq, broken_seq FROM ${CHECKS} WHERE org_id = ?`, orgId)
 const chainOf = async (m: Holder) => (await call('GET', '/api/audit', { cookie: m.cookie })).body.chain
 
@@ -3268,19 +3279,12 @@ describe('w. the audit log page and its export', () => {
     expect(growing[0]).toMatchObject({ ok: true })
   })
 
-  it('the chain check: a chain rewritten whole, a removed tail, a removed row and a missing re-check row are breaks', async () => {
+  it('the chain check: a chain rewritten whole, a removed tail, a removed row, a removed block and a boundary row put back between two loads are breaks', async () => {
     // A forger who changes row 2 and computes every hash again: each row links, but not to the stored checkpoint.
     const o = await owner()
     const n = await count('audit_log', o.orgId)
     expect(await chainOf(o)).toMatchObject({ ok: true, rows: n })
-    const rows = (await db.prepare('SELECT * FROM audit_log WHERE org_id = ? ORDER BY seq').bind(o.orgId).all<Record<string, unknown>>()).results
-    const rewrite = []
-    for (let i = 1, prev = rows[0].hash; i < rows.length; i++) {
-      const r: Record<string, unknown> = { ...rows[i], prev_hash: prev, ...(i === 1 && { actor_id: 'someone-else' }) }
-      prev = await data.sha256Hex(JSON.stringify([r.org_id, r.seq, r.at, r.actor_kind, r.actor_id, r.session_id, r.action, r.subject_id, r.detail, r.country, r.asn, r.prev_hash]))
-      rewrite.push(db.prepare('UPDATE audit_log SET actor_id = ?, prev_hash = ?, hash = ? WHERE org_id = ? AND seq = ?').bind(r.actor_id, r.prev_hash, prev, o.orgId, r.seq))
-    }
-    await asForger(...rewrite)
+    await asForger(...(await forge(o.orgId, 2, n)))
     expect(await chainOf(o)).toEqual({ ok: false, seq: n })
     // The last two verified rows removed: the break is the first row gone.
     const tail = await owner()
@@ -3306,13 +3310,16 @@ describe('w. the audit log page and its export', () => {
     await grow(block.orgId, 2 * data.NEW_ROWS + 10)
     await asForger(db.prepare('DELETE FROM audit_log WHERE org_id = ? AND seq BETWEEN ? AND ?').bind(block.orgId, b + 1, b + data.NEW_ROWS + 1))
     expect(await chainOf(block)).toEqual({ ok: false, seq: b + data.NEW_ROWS + 2 })
-    // The row the re-check goes on from removed.
-    const long = await owner()
-    await grow(long.orgId, data.OLD_ROWS + 50)
-    expect(await chainOf(long)).toMatchObject({ ok: true, rechecked: null })
-    expect(await chainOf(long)).toMatchObject({ ok: true, rechecked: [1, data.OLD_ROWS] })
-    await asForger(db.prepare('DELETE FROM audit_log WHERE org_id = ? AND seq = ?').bind(long.orgId, data.OLD_ROWS))
-    expect(await chainOf(long)).toEqual({ ok: false, seq: data.OLD_ROWS })
+    // A forger who rewrites rows 50 to 200 before the re-check reads them, then puts row 200's hash back before it goes
+    // on from there: the re-check goes on from the hash it verified, not from the row.
+    const toggle = await owner()
+    await grow(toggle.orgId, 2 * data.OLD_ROWS)
+    expect(await chainOf(toggle)).toMatchObject({ ok: true, rechecked: null })
+    const original = (await row<{ hash: string }>('SELECT hash FROM audit_log WHERE org_id = ? AND seq = ?', toggle.orgId, data.OLD_ROWS))!.hash
+    await asForger(...(await forge(toggle.orgId, 50, data.OLD_ROWS)))
+    expect(await chainOf(toggle)).toMatchObject({ ok: true, rechecked: [1, data.OLD_ROWS] })
+    await asForger(db.prepare('UPDATE audit_log SET hash = ? WHERE org_id = ? AND seq = ?').bind(original, toggle.orgId, data.OLD_ROWS))
+    expect(await chainOf(toggle)).toEqual({ ok: false, seq: data.OLD_ROWS + 1 })
   })
 
   it('the chain check: loads at the same instant leave one state, and a load that read an older state never moves it back', async () => {
@@ -3330,14 +3337,14 @@ describe('w. the audit log page and its export', () => {
         ? (sql: string) => (sql.startsWith('SELECT checked_seq') ? { bind: () => ({ first: async () => state }) } : target.prepare(sql))
         : (target[name as keyof D1Database] as (...args: unknown[]) => unknown).bind(target)),
     })
-    const at = (recheck: number) => db.prepare(`UPDATE ${CHECKS} SET recheck_seq = ? WHERE org_id = ?`).bind(recheck, o.orgId).run()
+    const at = async (recheck: number) => db.prepare(`UPDATE ${CHECKS} SET recheck_seq = ?, recheck_hash = ? WHERE org_id = ?`).bind(recheck, await hashAt(recheck), o.orgId).run()
     // Behind on the checkpoint: it would write 600 and 0 (its sweep ends at 300).
     await at(data.OLD_ROWS)
-    expect(await data.verifyAudit(stale({ checked_seq: 300, checked_hash: await hashAt(300), recheck_seq: data.OLD_ROWS, sweep_seq: 300, sweep_hash: await hashAt(300), broken_seq: null }), o.orgId)).toMatchObject({ ok: true, rows: 600 })
+    expect(await data.verifyAudit(stale({ checked_seq: 300, checked_hash: await hashAt(300), recheck_seq: data.OLD_ROWS, recheck_hash: await hashAt(data.OLD_ROWS), sweep_seq: 300, sweep_hash: await hashAt(300), broken_seq: null }), o.orgId)).toMatchObject({ ok: true, rows: 600 })
     expect(await checks(o.orgId)).toEqual({ checked_seq: head, recheck_seq: data.OLD_ROWS, broken_seq: null })
     // Behind on the re-check: it would write the head and 200.
     await at(2 * data.OLD_ROWS)
-    expect(await data.verifyAudit(stale({ checked_seq: head, checked_hash: await hashAt(head), recheck_seq: 0, sweep_seq: head, sweep_hash: await hashAt(head), broken_seq: null }), o.orgId)).toMatchObject({ ok: true, rows: head, rechecked: [1, data.OLD_ROWS] })
+    expect(await data.verifyAudit(stale({ checked_seq: head, checked_hash: await hashAt(head), recheck_seq: 0, recheck_hash: '0'.repeat(64), sweep_seq: head, sweep_hash: await hashAt(head), broken_seq: null }), o.orgId)).toMatchObject({ ok: true, rows: head, rechecked: [1, data.OLD_ROWS] })
     expect(await checks(o.orgId)).toEqual({ checked_seq: head, recheck_seq: 2 * data.OLD_ROWS, broken_seq: null })
   })
 

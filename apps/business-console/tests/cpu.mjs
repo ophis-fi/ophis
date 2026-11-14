@@ -48,7 +48,7 @@ for (let seq = 1, prev = '0'.repeat(64); seq <= ROWS; seq++) {
   chainRows.push({ ...row, hash: prev })
 }
 const CHECKED = ROWS / 2
-const state = { checked_seq: CHECKED, checked_hash: chainRows[CHECKED - 1].hash, recheck_seq: 1000, sweep_seq: CHECKED, sweep_hash: chainRows[CHECKED - 1].hash, broken_seq: null }
+const state = { checked_seq: CHECKED, checked_hash: chainRows[CHECKED - 1].hash, recheck_seq: 1000, recheck_hash: chainRows[999].hash, sweep_seq: CHECKED, sweep_hash: chainRows[CHECKED - 1].hash, broken_seq: null }
 let hashed = 0
 const fakeDb = {
   prepare: (sql) => ({ bind: (...args) => ({
@@ -77,7 +77,7 @@ async function dailyOf(n) {
 }
 {
   const chain = await data.verifyAudit(fakeDb, 'o')
-  if (!chain.ok || chain.rows !== CHECKED + data.NEW_ROWS || hashed !== data.NEW_ROWS + 1 + data.OLD_ROWS + 1) throw new Error(`the audit rows of this script do not verify as a load does: ${JSON.stringify(chain)}, ${hashed} rows read`)
+  if (!chain.ok || chain.rows !== CHECKED + data.NEW_ROWS || hashed !== data.NEW_ROWS + 1 + data.OLD_ROWS) throw new Error(`the audit rows of this script do not verify as a load does: ${JSON.stringify(chain)}, ${hashed} rows read`)
 }
 
 const step = {

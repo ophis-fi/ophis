@@ -126,7 +126,8 @@ export async function commit(db: D1Database, orgId: string, plan: () => [Entry, 
 // The check of the chain, kept per organisation (audit_checks, 0019), so that a load hashes a bounded number of rows at
 // any length (Free plan: 10 ms of CPU a request; about 8 us a row in tests/cpu.mjs): at most NEW_ROWS rows after the
 // checkpoint, which moves forward only over rows that verified, by compare-and-set; and OLD_ROWS older rows from
-// recheck_seq, in turn, up to the end of a sweep: the checkpoint and its hash as they were when the sweep began, which a
+// recheck_seq, in turn, each window walking on from the hash the window before verified (recheck_hash: a boundary
+// row changed between two loads is no anchor), up to the end of a sweep: the checkpoint and its hash as they were when the sweep began, which a
 // growing log does not move. The window that reaches that end must end on that hash; the next sweep goes to the
 // checkpoint of then. So a row is hashed again within this sweep and the next: ceil(rows / OLD_ROWS) + 1 loads when no
 // row is added. A break found is stored, shown on every load after, never cleared by code.
@@ -144,33 +145,32 @@ async function walk(rows: AuditRow[], seq: number, hash: string) {
   return { seq, hash, broken: null as number | null }
 }
 export async function verifyAudit(db: D1Database, orgId: string): Promise<ChainState> {
-  const s = (await db.prepare('SELECT checked_seq, checked_hash, recheck_seq, sweep_seq, sweep_hash, broken_seq FROM audit_checks WHERE org_id = ?').bind(orgId)
-    .first<{ checked_seq: number; checked_hash: string; recheck_seq: number; sweep_seq: number; sweep_hash: string; broken_seq: number | null }>())
-    ?? { checked_seq: 0, checked_hash: FIRST, recheck_seq: 0, sweep_seq: 0, sweep_hash: FIRST, broken_seq: null }
+  const s = (await db.prepare('SELECT checked_seq, checked_hash, recheck_seq, recheck_hash, sweep_seq, sweep_hash, broken_seq FROM audit_checks WHERE org_id = ?').bind(orgId)
+    .first<{ checked_seq: number; checked_hash: string; recheck_seq: number; recheck_hash: string; sweep_seq: number; sweep_hash: string; broken_seq: number | null }>())
+    ?? { checked_seq: 0, checked_hash: FIRST, recheck_seq: 0, recheck_hash: FIRST, sweep_seq: 0, sweep_hash: FIRST, broken_seq: null }
   if (s.broken_seq !== null) return { ok: false, seq: s.broken_seq }
   const end = Math.min(s.recheck_seq + OLD_ROWS, s.sweep_seq)
   // The rows that exist after the checkpoint, whatever their numbers (a gap is a break, found by walk), and the window.
   const [fresh, old] = (await db.batch<AuditRow>([
     db.prepare('SELECT * FROM audit_log WHERE org_id = ? AND seq > ? ORDER BY seq LIMIT ?').bind(orgId, s.checked_seq, NEW_ROWS + 1),
-    db.prepare('SELECT * FROM audit_log WHERE org_id = ? AND seq BETWEEN ? AND ? ORDER BY seq').bind(orgId, s.recheck_seq, end),
+    db.prepare('SELECT * FROM audit_log WHERE org_id = ? AND seq BETWEEN ? AND ? ORDER BY seq').bind(orgId, s.recheck_seq + 1, end),
   ])).map((r) => r.results)
-  // The older rows: from the row at recheck_seq (whose own hash the window before checked), to `end`, on the sweep's hash there.
-  const anchor = s.recheck_seq ? old.shift() : { seq: 0, hash: FIRST }
-  const back = anchor?.seq === s.recheck_seq ? await walk(old, anchor.seq, anchor.hash) : { seq: 0, hash: '', broken: s.recheck_seq }
+  // The older rows: on from the stored hash of the window before, to `end`, and there on the sweep's hash.
+  const back = await walk(old, s.recheck_seq, s.recheck_hash)
   const oldBroken = back.broken ?? (back.seq < end ? back.seq + 1 : end === s.sweep_seq && back.hash !== s.sweep_hash ? end : null)
   const ahead = await walk(fresh.slice(0, NEW_ROWS), s.checked_seq, s.checked_hash)
   const broken = oldBroken ?? ahead.broken
   if (broken !== null) {
-    await db.prepare(`INSERT INTO audit_checks (org_id, checked_seq, checked_hash, recheck_seq, sweep_seq, sweep_hash, broken_seq) VALUES (?, ?, ?, ?, ?, ?, ?)
-                      ON CONFLICT (org_id) DO UPDATE SET broken_seq = excluded.broken_seq`).bind(orgId, s.checked_seq, s.checked_hash, s.recheck_seq, s.sweep_seq, s.sweep_hash, broken).run()
+    await db.prepare(`INSERT INTO audit_checks (org_id, checked_seq, checked_hash, recheck_seq, recheck_hash, sweep_seq, sweep_hash, broken_seq) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                      ON CONFLICT (org_id) DO UPDATE SET broken_seq = excluded.broken_seq`).bind(orgId, s.checked_seq, s.checked_hash, s.recheck_seq, s.recheck_hash, s.sweep_seq, s.sweep_hash, broken).run()
     return { ok: false, seq: broken }
   }
   // At the end of a sweep the next one begins, from row 1 to the checkpoint of now.
-  const [recheck, sweep] = end === s.sweep_seq ? [0, ahead] : [end, { seq: s.sweep_seq, hash: s.sweep_hash }]
-  if (ahead.seq !== s.checked_seq || recheck !== s.recheck_seq || sweep.seq !== s.sweep_seq) {
-    await db.prepare(`INSERT INTO audit_checks (org_id, checked_seq, checked_hash, recheck_seq, sweep_seq, sweep_hash) VALUES (?1, ?2, ?3, ?4, ?5, ?6)
-                      ON CONFLICT (org_id) DO UPDATE SET checked_seq = ?2, checked_hash = ?3, recheck_seq = ?4, sweep_seq = ?5, sweep_hash = ?6
-                      WHERE checked_seq = ?7 AND recheck_seq = ?8`).bind(orgId, ahead.seq, ahead.hash, recheck, sweep.seq, sweep.hash, s.checked_seq, s.recheck_seq).run()
+  const [recheck, sweep] = end === s.sweep_seq ? [{ seq: 0, hash: FIRST }, ahead] : [back, { seq: s.sweep_seq, hash: s.sweep_hash }]
+  if (ahead.seq !== s.checked_seq || recheck.seq !== s.recheck_seq || sweep.seq !== s.sweep_seq) {
+    await db.prepare(`INSERT INTO audit_checks (org_id, checked_seq, checked_hash, recheck_seq, recheck_hash, sweep_seq, sweep_hash) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)
+                      ON CONFLICT (org_id) DO UPDATE SET checked_seq = ?2, checked_hash = ?3, recheck_seq = ?4, recheck_hash = ?5, sweep_seq = ?6, sweep_hash = ?7
+                      WHERE checked_seq = ?8 AND recheck_seq = ?9`).bind(orgId, ahead.seq, ahead.hash, recheck.seq, recheck.hash, sweep.seq, sweep.hash, s.checked_seq, s.recheck_seq).run()
   }
   return { ok: true, rows: ahead.seq, head: ahead.hash, newer: fresh.length > NEW_ROWS, rechecked: end ? [s.recheck_seq + 1, end] : null, per: OLD_ROWS }
 }
