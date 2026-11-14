@@ -58,6 +58,9 @@ const FREE = { d1: 50, fetch: 50, internal: 1000 }
 type Count = { d1: number; fetch: number; internal: number }
 const counts: Count = { d1: 0, fetch: 0, internal: 0 }
 const metered = new Map<string, Count>()
+// The jobs that answered 2xx at least once (a job that is no request, the daily run, always counts): section K requires
+// one for every route, so that a route the suite only drives to a refusal is not taken as measured.
+const answered = new Set<string>()
 let inFlight = 0
 function tally(object: object, names: string[], field: keyof Count) {
   for (const name of names) {
@@ -79,7 +82,9 @@ async function meter<T>(job: string, run: () => Promise<T>) {
   const start = { ...counts }
   if (inFlight++ === 0) [realFetch, globalThis.fetch] = [globalThis.fetch, countingFetch]
   try {
-    return await run()
+    const result = await run()
+    if (!(result instanceof Response) || result.ok) answered.add(job)
+    return result
   } finally {
     if (--inFlight === 0 && globalThis.fetch === countingFetch) globalThis.fetch = realFetch
     const seen = metered.get(job) ?? { d1: 0, fetch: 0, internal: 0 }
@@ -9999,8 +10004,8 @@ describe('J. the real desk: terms from a live quote, two people, then the wallet
 // (the top of the file). This last section adds the load: 20 partner organisations of 10 linked wallets each, which read
 // every page, the daily run that finds a listed wallet in each of them, and 20 organisations under review in the operator's
 // list. Then it checks the largest count of every route and job against the Free limits per invocation. Run it with the
-// whole file: it fails when a row of a route table was never driven. A new route is in it by its row; a new job (a cron, a
-// queue) is driven through meter() and named in JOBS, one line.
+// whole file: it fails when a row of a route table never answered 2xx (a refusal alone measures nothing). A new route is
+// in it by its row; a new job (a cron, a queue) is driven through meter() and named in JOBS, one line.
 describe('K. the Free plan of Cloudflare Workers', () => {
   const JOBS = ['daily run (cron)']
   it('no invocation passes the Free limits: 50 D1 queries, 50 subrequests, 1,000 to Cloudflare services; listed organisations past the first 5 are frozen by the next runs', async () => {
@@ -10020,17 +10025,40 @@ describe('K. the Free plan of Cloudflare Workers', () => {
     }
     expect((await call('GET', '/api/overview', { cookie: partners[0].cookie, env: liveEnv })).body.figures.wallets).toHaveLength(10)
 
-    // The daily run: the list file names one wallet of each. FREEZES organisations a run, the others marked "later".
+    // The real desk: 25 sent orders still open in one institution, each filled at the orderbook (the order and its trade each).
+    const institution = await owner('Desk load')
+    await setOrg(institution.orgId, `kind = 'institution'`)
+    const sendOrders = async (n: number) => {
+      for (let i = 0; i < n; i++) {
+        const [id, uid] = [data.randomId(), `0x${data.randomId()}${data.randomId()}${data.randomId()}${data.randomId().slice(0, 16)}`]
+        await db.batch([
+          db.prepare(`INSERT INTO approvals (id, org_id, action, subject_id, payload, payload_hash, requester_seat_id, state, expires_at, created_at) VALUES (?, ?, 'order', ?, ?, '', ?, 'applied', ?, ?)`)
+            .bind(id, institution.orgId, data.randomId(), JSON.stringify({ value: JSON.stringify({ chainId: 10, sell: { token: USDC_OP } }) }), institution.seatId, now + DAY, now),
+          db.prepare(`INSERT INTO orders (org_id, id, approved_at, uid, status, valid_to, sent_at) VALUES (?, ?, ?, ?, 'open', ?, ?)`).bind(institution.orgId, id, now, uid, Math.floor(now / 1000) + 3600, now),
+        ])
+        sent.set(uid, { from: accounts[1].address, sellAmount: '1', buyAmount: '1' })
+      }
+    }
+    await sendOrders(25)
+
+    // The daily run: the list file names one wallet of each partner. FREEZES organisations a run, the others marked
+    // "later", and the state of 20 sent orders: the first run carries both halves at their largest.
     await db.batch([db.prepare('DELETE FROM sanctioned_addresses'), db.prepare('DELETE FROM sanctions_lists')])
     const listedAddresses = partners.map((p) => p.wallets[3])
-    vi.stubGlobal('fetch', async () => Response.json({ list: 'ofac', published: '2026-11-09', made: `${new Date(now).toISOString().slice(0, 19)}Z`, sha256: 'c'.repeat(64), count: 20, addresses: listedAddresses }))
     const fed = { ...testEnv, SANCTIONS_URL: 'https://lists.test/ofac.json' } as Env
+    const asked = book({ state: 'fulfilled' })
+    const orderbook = globalThis.fetch
+    vi.stubGlobal('fetch', async (input: RequestInfo | URL, init?: RequestInit) => (String(input) === fed.SANCTIONS_URL
+      ? Response.json({ list: 'ofac', published: '2026-11-09', made: `${new Date(now).toISOString().slice(0, 19)}Z`, sha256: 'c'.repeat(64), count: 20, addresses: listedAddresses })
+      : orderbook(input, init)))
     const frozenNow = async () => (await db.prepare(`SELECT count(*) AS n FROM organisations WHERE state = 'frozen' AND id IN (${partners.map(() => '?').join(', ')})`).bind(...partners.map((p) => p.orgId)).first<{ n: number }>())!.n
     for (let run = 1; run <= 4; run++) {
-      const read = (await daily(fed, now)) as { outcome: string; hits: { frozen: boolean; later?: boolean }[] }
-      expect(read.outcome).toBe(run === 1 ? 'loaded' : 'same')
-      expect([read.hits.filter((h) => h.frozen).length, read.hits.filter((h) => h.later).length, await frozenNow()]).toEqual([onboarding.FREEZES, 20 - run * onboarding.FREEZES, run * onboarding.FREEZES])
+      const ran = (await daily(fed, now)) as { outcome: string; hits: { frozen: boolean; later?: boolean }[] }
+      expect(ran.outcome).toBe(run === 1 ? 'loaded' : 'same')
+      expect([ran.hits.filter((h) => h.frozen).length, ran.hits.filter((h) => h.later).length, await frozenNow()]).toEqual([onboarding.FREEZES, 20 - run * onboarding.FREEZES, run * onboarding.FREEZES])
+      if (run === 1) expect(asked.length).toBe(40) // with its 5 freezes, 20 orders and the trade of each
     }
+    expect(metered.get('daily run (cron)')!.fetch).toBe(41) // the list file and 20 orders, each with its trade
 
     // The operator's list with 20 organisations under review, each with a Safe to read on the chain: the oldest 3 in full.
     vi.stubGlobal('fetch', fakeRpc)
@@ -10048,25 +10076,11 @@ describe('K. the Free plan of Cloudflare Workers', () => {
     const body = (await listed.json()) as { organisations: { wallet: { colour: { level: string } } }[]; more: number }
     expect([body.organisations.length, body.organisations.map((o) => o.wallet.colour.level), body.more >= 17]).toEqual([onboarding.UNDER_REVIEW, ['amber', 'amber', 'amber'], true]) // read on the chain: a Safe not yet in force
 
-    // The real desk: 25 sent orders still open in one institution, each filled at the orderbook. Reading the desk asks for
-    // 10 of them (the order and its trade each); the daily run for 20 more of all organisations.
-    const institution = await owner('Desk load')
-    await setOrg(institution.orgId, `kind = 'institution'`)
-    for (let i = 0; i < 25; i++) {
-      const [id, uid] = [data.randomId(), `0x${data.randomId()}${data.randomId()}${data.randomId()}${data.randomId().slice(0, 16)}`]
-      await db.batch([
-        db.prepare(`INSERT INTO approvals (id, org_id, action, subject_id, payload, payload_hash, requester_seat_id, state, expires_at, created_at) VALUES (?, ?, 'order', ?, ?, '', ?, 'applied', ?, ?)`)
-          .bind(id, institution.orgId, data.randomId(), JSON.stringify({ value: JSON.stringify({ chainId: 10, sell: { token: USDC_OP } }) }), institution.seatId, now + DAY, now),
-        db.prepare(`INSERT INTO orders (org_id, id, approved_at, uid, status, valid_to, sent_at) VALUES (?, ?, ?, ?, 'open', ?, ?)`).bind(institution.orgId, id, now, uid, Math.floor(now / 1000) + 3600, now),
-      ])
-      sent.set(uid, { from: accounts[1].address, sellAmount: '1', buyAmount: '1' })
-    }
-    const read = book({ state: 'fulfilled' })
-    await daily(testEnv, now)
-    expect(read.length).toBe(40)
+    // Reading the desk asks for 10 of the institution's 15 open orders (the order and its trade each).
+    await sendOrders(15)
+    const desk = book({ state: 'fulfilled' })
     await call('GET', '/api/desk', { cookie: institution.cookie })
-    expect(read.length).toBe(50)
-    expect(metered.get('daily run (cron)')!.fetch).toBeGreaterThanOrEqual(40)
+    expect(desk.length).toBe(20)
 
     // An institution's Overview with 11 linked wallets on Ethereum: the 10 linked first, whose 5 assets are one aggregate3
     // of 50 calls, read on both endpoints (its answer must fit the 16 KB an RPC answer may have), then its three exports.
@@ -10092,9 +10106,9 @@ describe('K. the Free plan of Cloudflare Workers', () => {
     expect((await call('GET', '/api/export/balances', { cookie: spread.cookie })).body.name).toMatch(/^ophis-balances-/)
     expect(chain.calls).toHaveLength(32)
 
-    // Every route of both tables and every job was driven, and none passed a limit.
+    // Every route of both tables and every job answered 2xx at least once, and no invocation passed a limit.
     const jobs = [...routes, ...onboarding.operatorRoutes].map((r) => `${r.method} ${r.path}`).concat(JOBS)
-    expect(jobs.filter((job) => !metered.has(job)), 'never driven: run the whole file').toEqual([])
+    expect(jobs.filter((job) => !answered.has(job)), 'never answered 2xx: run the whole file').toEqual([])
     expect([...metered].filter(([, c]) => c.d1 > FREE.d1 || c.fetch > FREE.fetch || c.d1 + c.internal > FREE.internal)).toEqual([])
   })
 })

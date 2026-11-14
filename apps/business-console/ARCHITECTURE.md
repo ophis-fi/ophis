@@ -286,8 +286,8 @@ The console must run on the Workers Free plan. The limits, read in Cloudflare's 
 **Measured.** `tests/worker.test.ts` meters every invocation of the unit suite: D1 round trips (one per `first`, `all`,
 `run`, `raw`, `batch` or `exec`, a failed one too), `fetch` calls, and R2 calls with static files. Section K adds 20
 partner organisations of 10 linked wallets each (every page, with the indexer's figures), the daily run that finds a
-listed wallet in each, 20 organisations under review in the operator's list, each with a Safe read on the chain, and (2026-11-14) 25 sent orders still open that the daily run and the desk read at the orderbook (an order and its trade each), an institution with 11 wallets on Ethereum (its Overview reads the 10 linked first: 50 calls in one `aggregate3`) and one with a wallet on each of the 4 chains (its Overview and an export past the cache). It
-fails when a route or job passes a limit, or was never driven. A new route is in it by its row of the table; a new job is
+listed wallet in each, 20 organisations under review in the operator's list, each with a Safe read on the chain, and (2026-11-14) 25 sent orders still open that the daily run reads at the orderbook (an order and its trade each) in the run that also freezes 5 organisations, then 15 of which the desk reads 10, an institution with 11 wallets on Ethereum (its Overview reads the 10 linked first: 50 calls in one `aggregate3`) and one with a wallet on each of the 4 chains (its Overview and an export past the cache). It
+fails when a route or job passes a limit, or never answered 2xx (a route driven only to a refusal is not measured). A new route is in it by its row of the table; a new job is
 driven through `meter()` and named in `JOBS`. The largest count of each, 2026-11-14:
 
 | Route or job | D1 queries | `fetch` | R2 and static files |
