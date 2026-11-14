@@ -50,7 +50,7 @@ Rules: every tenant row has `org_id`; children reference parents by `(org_id, id
 | credentials | id, org_id, seat_id, public_key, counter, device_bound, transports, label, state (pending, active, suspended, revoked), spare, ticket_id (unique), stop_right_until, created_at, last_used_at | Public material only. One credential per ticket. Unique `(org_id, seat_id, label)` among passkeys that are not revoked (0002). |
 | sessions | id, token_hash, challenge_hash (unique), org_id, seat_id, credential_id, created_at, last_seen_at, step_up_at, revoked_at, user_agent, country, asn | No IP address. A used sign-in challenge is recorded here. |
 | approvals | id, org_id, action, subject_id, payload, payload_hash, requester_seat_id, checker_seat_id, state, not_before, expires_at, created_at, decided_at | `CHECK`: the checker is never the requester. Holds the ticket confirmations (M2) and the requests (M3). |
-| wallets | id, org_id, chain_id, address, kind (safe, custodian, single_key), label, state (pending, linked, unlinked), proof_nonce (unique), proof_digest, proof_signature, proof_checked_at, linked_at, anchor (current, next), anchor_effective_at, snapshot | 0003. Unique `(org_id, anchor)`: one recovery wallet in force, at most one waiting. Unique `(org_id, chain_id, address)` among rows that are not unlinked. A row is never deleted, so a proof is accepted once. |
+| wallets | id, org_id, chain_id, address, kind (safe, custodian, single_key), label, state (pending, linked, unlinked), proof_nonce (unique), proof_digest, proof_signature, proof_by (key, contract; 0016, NULL on an older row), proof_checked_at, linked_at, anchor (current, next), anchor_effective_at, snapshot | 0003. Unique `(org_id, anchor)`: one recovery wallet in force, at most one waiting. Unique `(org_id, chain_id, address)` among rows that are not unlinked. A row is never deleted, so a proof is accepted once. |
 | recovery_requests | id, org_id, wallet_id, seat_id, action (replace_owners, override_owners), credential_hash, nonce (unique), digest, signature, owners_snapshot, state (waiting, cancelled, ready, completed, lapsed), wait_until, objected, created_at, closed_at, undo | Last-Owner recovery (M4b). One open request per organisation. `ready` is never written. Rows stay, so a proof is accepted once. `undo` (0005): the wallet rows that held `anchor` just before the completion, as JSON `[{id, anchor, at}]`. |
 | proof_checks | org_id, hour, n | 0004. Proof checks per organisation per clock hour, and Support questions per seat under the key `seat:<id>` (`countHour()`). No foreign key, no audit row. |
 | kyb_records | id, org_id, legal_name, registration_number, country, tier, source, evidence_ref, evidence_sha256, signer_cert_sha256, screening_outcome, screening_lists, screening_list_version_hash, screened_at, decision, decided_at, recheck_at, created_at | The result, never the documents. One row per review or screening: `screening_outcome` (clear, review, hit), `screening_lists` (JSON, list code to the SHA-256 of the file searched), the SHA-256 of that text, `screened_at` (last section). |
@@ -263,8 +263,115 @@ Milestone 4b, builder, 2026-11-11: 11 single mutations of the hardening, all cau
 - Partner figures: the wallets are asked one read per page view, with no cache; a partner's amounts are the indexer's floating-point numbers, shown and never added up.
 - Not built yet: other rate limits, Turnstile, email alerts, a passkey check on a change of country or network, the spare key, the production hostname.
 
+## Free plan (2026-11-14: the owner pays for nothing, so a limit passed is a bug)
+The console must run on the Workers Free plan. The limits, read in Cloudflare's documentation on 2026-11-14:
+
+| Limit (Workers Free) | Value | Source |
+|---|---|---|
+| D1 queries per Worker invocation | 50. A `db.batch()` counts as one query, whatever its statements | https://developers.cloudflare.com/d1/platform/limits/ ("Batch limits") |
+| Subrequests per invocation | 50 (`fetch`), and 1,000 to Cloudflare services (D1, R2) | https://developers.cloudflare.com/workers/platform/limits/#subrequests |
+| CPU time | 10 ms per HTTP request, 10 ms per Cron Trigger run | https://developers.cloudflare.com/workers/platform/limits/#cpu-time |
+| Requests | 100,000 per day | https://developers.cloudflare.com/workers/platform/limits/#daily-requests |
+| Cron Triggers | 5 per account (the console uses 1) | https://developers.cloudflare.com/workers/platform/limits/ |
+| D1 rows | 5 million read and 100,000 written per day; queries fail until 00:00 UTC once passed (enforced since 2026-09-01) | https://developers.cloudflare.com/d1/platform/pricing/, https://developers.cloudflare.com/changelog/post/2026-09-01-d1-free-tier-limit-enforcement/ |
+| D1 storage | 500 MB per database, 5 GB per account | https://developers.cloudflare.com/d1/platform/limits/ |
+| R2 | 10 GB-month of storage, 1 million Class A and 10 million Class B operations per month (Standard storage only) | https://developers.cloudflare.com/r2/pricing/ |
+| Static assets | requests free and unlimited | https://developers.cloudflare.com/workers/platform/pricing/ |
+
+**Measured.** `tests/worker.test.ts` meters every invocation of the unit suite: D1 round trips (one per `first`, `all`,
+`run`, `raw`, `batch` or `exec`, a failed one too), `fetch` calls, and R2 calls with static files. Section K adds 20
+partner organisations of 10 linked wallets each (every page, with the indexer's figures), the daily run that finds a
+listed wallet in each, and 20 organisations under review in the operator's list, each with a Safe read on the chain. It
+fails when a route or job passes a limit, or was never driven. A new route is in it by its row of the table; a new job is
+driven through `meter()` and named in `JOBS`. The largest count of each, 2026-11-14:
+
+| Route or job | D1 queries | `fetch` | R2 and static files |
+|---|---|---|---|
+| The daily run (cron) | 24 | 1 | 0 |
+| A page or a static file | 0 | 0 | 1 |
+| `GET /api/audit` | 3 | 0 | 0 |
+| `GET /api/desk` | 3 | 0 | 0 |
+| `GET /api/export/:id` | 3 | 1 | 0 |
+| `GET /api/me` | 7 | 0 | 0 |
+| `GET /api/onboarding` | 10 | 0 | 0 |
+| `GET /api/operator/organisations` | 24 | 42 | 0 |
+| `GET /api/operator/organisations/:id/items` | 1 | 0 | 0 |
+| `GET /api/org` | 18 | 0 | 0 |
+| `GET /api/overview` | 12 | 1 | 0 |
+| `GET /api/readiness` | 3 | 14 | 0 |
+| `GET /api/screening` | 2 | 0 | 0 |
+| `POST /api/apply` | 1 | 0 | 0 |
+| `POST /api/apply/check` | 7 | 4 | 0 |
+| `POST /api/approvals/:id/approve` | 17 | 14 | 0 |
+| `POST /api/approvals/:id/cancel` | 15 | 0 | 0 |
+| `POST /api/approvals/:id/reject` | 5 | 0 | 0 |
+| `POST /api/audit/export` | 4 | 0 | 0 |
+| `POST /api/desk/orders` | 9 | 0 | 0 |
+| `POST /api/enrol/finish` | 11 | 0 | 0 |
+| `POST /api/enrol/start` | 1 | 0 | 0 |
+| `POST /api/members/:id/freeze` | 14 | 0 | 0 |
+| `POST /api/members/:id/remove` | 6 | 0 | 0 |
+| `POST /api/members/:id/role` | 6 | 0 | 0 |
+| `POST /api/members/:id/unfreeze` | 6 | 0 | 0 |
+| `POST /api/onboarding/declaration` | 14 | 0 | 2 |
+| `POST /api/onboarding/submit` | 15 | 0 | 0 |
+| `POST /api/onboarding/wallet` | 2 | 0 | 0 |
+| `POST /api/operator/invites` | 0 | 0 | 0 |
+| `POST /api/operator/items/:id/download` | 12 | 0 | 2 |
+| `POST /api/operator/organisations/:id/decision` | 26 | 18 | 2 |
+| `POST /api/operator/organisations/:id/freeze` | 3 | 0 | 0 |
+| `POST /api/operator/organisations/:id/screening` | 13 | 0 | 0 |
+| `POST /api/operator/organisations/:id/unfreeze` | 12 | 0 | 0 |
+| `POST /api/operator/sanctions` | 14 | 0 | 0 |
+| `POST /api/operator/sanctions/sync` | 8 | 1 | 0 |
+| `POST /api/passkeys/:id/revoke` | 14 | 0 | 0 |
+| `POST /api/passkeys/finish` | 14 | 0 | 0 |
+| `POST /api/passkeys/start` | 2 | 0 | 0 |
+| `POST /api/policy` | 15 | 0 | 0 |
+| `POST /api/proof` | 21 | 18 | 0 |
+| `POST /api/recover/cancel-intent` | 0 | 0 | 0 |
+| `POST /api/recover/continue/finish` | 16 | 18 | 0 |
+| `POST /api/recover/continue/start` | 0 | 0 | 0 |
+| `POST /api/recover/intent` | 0 | 0 | 0 |
+| `POST /api/recovery/:id/cancel` | 13 | 0 | 0 |
+| `POST /api/recovery/:id/object` | 13 | 0 | 0 |
+| `POST /api/sessions/:id/revoke` | 4 | 0 | 0 |
+| `POST /api/signin/finish` | 15 | 0 | 0 |
+| `POST /api/signin/start` | 0 | 0 | 0 |
+| `POST /api/signout` | 4 | 0 | 0 |
+| `POST /api/stepup/finish` | 12 | 0 | 0 |
+| `POST /api/stepup/start` | 3 | 0 | 0 |
+| `POST /api/stop/finish` | 12 | 0 | 0 |
+| `POST /api/stop/start` | 0 | 0 | 0 |
+| `POST /api/support/ask` | 2 | 1 | 0 |
+| `POST /api/tickets` | 14 | 0 | 0 |
+| `POST /api/tickets/:id/cancel` | 15 | 0 | 0 |
+| `POST /api/tickets/:id/confirm` | 17 | 0 | 0 |
+| `POST /api/tickets/:id/confirm/start` | 4 | 0 | 0 |
+| `POST /api/wallets/:id/anchor` | 9 | 14 | 0 |
+| `POST /api/wallets/:id/anchor/cancel` | 10 | 0 | 0 |
+| `POST /api/wallets/:id/unlink` | 7 | 0 | 0 |
+| `POST /api/wallets/intent` | 2 | 0 | 0 |
+
+**Fixed on 2026-11-14.** The freezes of a load or a daily run: 4 queries per listed organisation (84 for 20). Now at
+most 5 a call (24 queries, 44 if each commit collides once); the others are marked `later` and the next call freezes
+them: the next daily run, or `operator sync` now. The operator's list: 7 queries and 14 chain reads per organisation under
+review (108 queries in the suite). Now the oldest 3 in full (24 queries, 42 reads) and a count of the others. A partner's
+Overview recovered the signature of each linked wallet. Now the link writes how it was proved (`proof_by`, migration 0016).
+
+**CPU, a proxy.** `pnpm test:cpu` (tests/cpu.mjs) times the heavy pure-JS steps in Node on this machine (Apple M4),
+not on the Workers meter. One run: signature recovery 0.98 ms, the ERC-1271 path 0.09 ms, unseal of an intent 0.05 ms,
+a passkey assertion 0.16 ms, a registration 0.08 ms, the daily run on today's OFAC EVM list (127 addresses) 0.04 ms and on
+20,000 addresses 4.2 ms, an audit row 8 us. The heaviest request is a proof (one recovery, about 1.1 ms). Before
+`proof_by`, a partner's Overview with 10 wallets cost 9.8 ms.
+
+**Not within the plan.** The audit page verifies the whole chain of its organisation: about 8 us a row here, so it passes
+10 ms of CPU at about 1,200 rows (Node's WebCrypto; a native hash takes 0.6 us a row, and the Workers figure is not known).
+It also reads every row of the chain at each load. A load of 20,000 addresses writes about 80,000 rows (the old ones
+deleted, the new ones in, each with its index) of the 100,000 a day; today's OFAC EVM list is 127.
+
 ## Commands
-`npx -y pnpm@10.34.9 install --ignore-workspace`, then `pnpm migrate`, `pnpm seed` (`--demo`, `--live`), `pnpm dev` (starts the DNS stubs, the stand-in indexer and the stand-in list file), `node scripts/dev.mjs stale`, `pnpm activate`, `pnpm operator invite|list|decide|screen|addresses|sync|freeze|unfreeze|items|get`, `node scripts/ofac-list.mjs`, `pnpm dns`, `pnpm test` (builds first), `pnpm test:e2e` (`E2E_PORT=<port>` when 8787 is taken), `pnpm skip`, `pnpm test:chain` (needs the network, `anvil` and Node 24 or later), `pnpm typecheck` (see README.md).
+`npx -y pnpm@10.34.9 install --ignore-workspace`, then `pnpm migrate`, `pnpm seed` (`--demo`, `--live`), `pnpm dev` (starts the DNS stubs, the stand-in indexer and the stand-in list file), `node scripts/dev.mjs stale`, `pnpm activate`, `pnpm operator invite|list|decide|screen|addresses|sync|freeze|unfreeze|items|get`, `node scripts/ofac-list.mjs`, `pnpm dns`, `pnpm test` (builds first), `pnpm test:e2e` (`E2E_PORT=<port>` when 8787 is taken), `pnpm skip`, `pnpm test:chain` (needs the network, `anvil` and Node 24 or later), `pnpm test:cpu` (the CPU proxy of the Free plan), `pnpm typecheck` (see README.md).
 
 ## Milestones
 - M1 sign-in core: passkey enrolment (pending), sign-in, sessions, request checks, audit chain, console shell. Built.
