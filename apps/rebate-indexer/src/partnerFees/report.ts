@@ -1,6 +1,6 @@
 import { sql } from '../db/index.js';
 import { DECODER_ETHFLOW_OWNERS } from '../fetcher.js';
-import { PARTNER_FEE_PARTNER_SHARE_BPS, MIN_PARTNER_PAYOUT_USD } from './split.js';
+import { PARTNER_FEE_CHAIN, PARTNER_FEE_PARTNER_SHARE_BPS, MIN_PARTNER_PAYOUT_USD } from './split.js';
 
 // Read-only reporting for the signature-gated partner dashboard (POST /partner-fees) and the
 // optional public GET /partner-fees/stats (partner-fees Phase B). No money movement here.
@@ -187,6 +187,78 @@ export async function getPartnerTraders(recipient: `0x${string}`): Promise<Partn
       volumeUsd: Number(all?.all_volume_usd ?? 0),
       unpriced: Number(all?.all_unpriced ?? 0),
     },
+  };
+}
+
+export interface PartnerFlowFigures {
+  readonly trades: number;
+  /** Σ value_usd of the priced trades (a reporting estimate). */
+  readonly volumeUsd: number;
+  /** The partner's share (PARTNER_FEE_PARTNER_SHARE_BPS) of Σ fee_usd of the priced trades: what currentCycle.partnerShareUsd counts. */
+  readonly shareUsd: number;
+  /** Trades not priced yet (value_usd NULL, which a fee not priced implies): in trades, not in volumeUsd. */
+  readonly unpriced: number;
+}
+
+export interface PartnerBreakdown {
+  /** The last 90 UTC days up to `now`, oldest first, one row per day with trades. A trade whose block time is not known yet is in no day. */
+  readonly daily: (PartnerFlowFigures & { readonly day: string })[];
+  /** Every trade, by the chain it settled on. */
+  readonly byChain: (PartnerFlowFigures & { readonly chainId: number })[];
+  /** By the token the fee was taken in, on its chain: the 100 with the largest share. unpriced here: fee_usd NULL. */
+  readonly byToken: { readonly chainId: number; readonly token: `0x${string}`; readonly trades: number; readonly shareUsd: number; readonly unpriced: number }[];
+  /** The batches that pay this recipient (its entry 'paid'), newest first, at most 24. date: the day the batch reached its
+   *  status (executed: the day the payment was recorded). txHash: the onchain transaction, once executed. */
+  readonly payouts: { readonly date: string; readonly weth: number; readonly chainId: number; readonly txHash: `0x${string}` | null; readonly status: string }[];
+}
+
+/**
+ * The partner's flow by day, by chain and by fee token, and the payouts made to it: one statement per figure set. The
+ * same rows as getPartnerFeeDashboard (partner_fee_trades of this recipient; the share as the dashboard's 80%). A trade
+ * not priced yet is counted in unpriced, never summed as 0.
+ */
+export async function getPartnerBreakdown(recipient: `0x${string}`, now: Date = new Date()): Promise<PartnerBreakdown> {
+  const buf = Buffer.from(recipient.slice(2), 'hex');
+  type Flow = { trades: string; volume_usd: string; share_usd: string; unpriced: string };
+  const flow = (r: Flow): PartnerFlowFigures => ({ trades: Number(r.trades), volumeUsd: Number(r.volume_usd), shareUsd: Number(r.share_usd), unpriced: Number(r.unpriced) });
+  const daily = await sql<(Flow & { day: string })[]>`
+    SELECT d.day::text AS day, COUNT(*)::text AS trades, COALESCE(SUM(p.value_usd), 0)::text AS volume_usd,
+      COALESCE(SUM(p.fee_usd) * ${PARTNER_FEE_PARTNER_SHARE_BPS} / 10000, 0)::text AS share_usd, COUNT(*) FILTER (WHERE p.value_usd IS NULL)::text AS unpriced
+    FROM partner_fee_trades p
+    CROSS JOIN LATERAL (SELECT (p.block_timestamp AT TIME ZONE 'UTC')::date AS day) d
+    CROSS JOIN (SELECT (${now.toISOString()}::timestamptz AT TIME ZONE 'UTC')::date AS today) n
+    WHERE p.recipient = ${buf} AND d.day BETWEEN n.today - 89 AND n.today
+    GROUP BY d.day ORDER BY d.day
+  `;
+  const byChain = await sql<(Flow & { chain_id: number })[]>`
+    SELECT chain_id, COUNT(*)::text AS trades, COALESCE(SUM(value_usd), 0)::text AS volume_usd,
+      COALESCE(SUM(fee_usd) * ${PARTNER_FEE_PARTNER_SHARE_BPS} / 10000, 0)::text AS share_usd, COUNT(*) FILTER (WHERE value_usd IS NULL)::text AS unpriced
+    FROM partner_fee_trades WHERE recipient = ${buf}
+    GROUP BY chain_id ORDER BY chain_id
+  `;
+  // ORDER BY the sum itself: share_usd is text. ponytail: the 100 largest tokens; a paged read if a partner needs them all.
+  const byToken = await sql<{ chain_id: number; token: string; trades: string; share_usd: string; unpriced: string }[]>`
+    SELECT chain_id, '0x' || encode(fee_token, 'hex') AS token, COUNT(*)::text AS trades,
+      COALESCE(SUM(fee_usd) * ${PARTNER_FEE_PARTNER_SHARE_BPS} / 10000, 0)::text AS share_usd, COUNT(*) FILTER (WHERE fee_usd IS NULL)::text AS unpriced
+    FROM partner_fee_trades WHERE recipient = ${buf}
+    GROUP BY chain_id, fee_token ORDER BY SUM(fee_usd) DESC NULLS LAST, chain_id, fee_token
+    LIMIT 100
+  `;
+  // paid_wei once executed, else the owed_wei the batch will pay. A failed batch turned its entries to 'carried': not listed.
+  const payouts = await sql<{ date: string; weth: string; tx_hash: string | null; status: string }[]>`
+    SELECT (b.updated_at AT TIME ZONE 'UTC')::date::text AS date, (COALESCE(e.paid_wei, e.owed_wei) / 1e18)::text AS weth,
+      '0x' || encode(b.safe_tx_hash, 'hex') AS tx_hash, b.status
+    FROM partner_fee_batch_entries e
+    JOIN partner_fee_batches b ON b.id = e.batch_id
+    WHERE e.recipient = ${buf} AND e.status = 'paid'
+    ORDER BY b.cycle_month DESC, b.id DESC
+    LIMIT 24
+  `;
+  return {
+    daily: daily.map((r) => ({ day: r.day, ...flow(r) })),
+    byChain: byChain.map((r) => ({ chainId: r.chain_id, ...flow(r) })),
+    byToken: byToken.map((r) => ({ chainId: r.chain_id, token: r.token as `0x${string}`, trades: Number(r.trades), shareUsd: Number(r.share_usd), unpriced: Number(r.unpriced) })),
+    payouts: payouts.map((r) => ({ date: r.date, weth: Number(r.weth), chainId: PARTNER_FEE_CHAIN, txHash: r.tx_hash as `0x${string}` | null, status: r.status })),
   };
 }
 

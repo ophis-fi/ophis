@@ -563,3 +563,68 @@ describe('getPartnerTraders: the wallets that traded through a partner integrati
     expect(await traders(D)).toEqual({ wallets: [], unknown: { trades: 0, volumeUsd: 0, unpriced: 0 }, totals: { walletCount: 0, trades: 0, volumeUsd: 0, unpriced: 0 } });
   });
 });
+
+describe('getPartnerBreakdown: the flow by day, chain and fee token, and the payouts', () => {
+  const A = 'a2'.repeat(20), B = 'b2'.repeat(20), C = 'c2'.repeat(20), D = 'd2'.repeat(20);
+  const T1 = '01'.repeat(20), T2 = '02'.repeat(20), T3 = '03'.repeat(20), T4 = '04'.repeat(20), T5 = '05'.repeat(20);
+  const NOW = new Date('2026-11-12T09:30:00Z'); // the 90 days: 2026-08-15 to 2026-11-12
+  let n = 0;
+  // One settlement carrying recipient's fee; value and fee null = not priced yet; at null = block time not known yet.
+  async function trade(recipient: string, chainId: number, token: string, valueUsd: number | null, feeUsd: number | null, at: string | null) {
+    const sql = await getSql();
+    const u = (++n).toString(16).padStart(112, '0');
+    await sql`
+      INSERT INTO partner_fee_trades (trade_uid, recipient, chain_id, block_number, log_index, volume_bps, fee_token, fee_amount, value_usd, fee_usd, block_timestamp)
+      VALUES (decode(${u}, 'hex'), decode(${recipient}, 'hex'), ${chainId}, ${n}, 0, 10, decode(${token}, 'hex'), 1, ${valueUsd}, ${feeUsd}, ${at})`;
+  }
+  async function batch(cycleMonth: string, status: string, updatedAt: string, txHash: string | null, entries: [recipient: string, status: string, owedWei: bigint, paidWei: bigint | null][]) {
+    const sql = await getSql();
+    const [row] = await sql<{ id: number }[]>`
+      INSERT INTO partner_fee_batches (cycle_month, total_owed_wei, status, safe_tx_hash, updated_at)
+      VALUES (${cycleMonth}, 0, ${status}, decode(${txHash}, 'hex'), ${updatedAt}) RETURNING id`;
+    for (const [recipient, entryStatus, owedWei, paidWei] of entries) {
+      await sql`
+        INSERT INTO partner_fee_batch_entries (batch_id, recipient, owed_usd, owed_wei, paid_wei, status)
+        VALUES (${row!.id}, decode(${recipient}, 'hex'), 1, ${owedWei.toString()}, ${paidWei === null ? null : paidWei.toString()}, ${entryStatus})`;
+    }
+  }
+  const breakdown = async (recipient: string) => (await import('../../src/partnerFees/report.js')).getPartnerBreakdown(`0x${recipient}`, NOW);
+  const f = (trades: number, volumeUsd: number, shareUsd: number, unpriced: number) => ({ trades, volumeUsd, shareUsd, unpriced });
+  const tok = (chainId: number, token: string, trades: number, shareUsd: number, unpriced: number) => ({ chainId, token: `0x${token}`, trades, shareUsd, unpriced });
+
+  it('one row per day of the last 90, every trade by chain, the fee tokens by share, the batches that pay the recipient newest first', async () => {
+    await trade(A, 10, T1, 100, 12.8125, '2026-11-12T08:00:00Z');
+    await trade(A, 10, T1, null, null, '2026-11-12T01:00:00Z'); // not priced yet: counted, not summed as 0
+    await trade(A, 130, T3, 40, 11.875, '2026-08-15T00:00:00Z'); // the first of the 90 days
+    await trade(A, 10, T2, 7, 1, '2026-08-14T23:59:59Z'); // the day before: in no day, in its chain and token
+    await trade(A, 130, T3, 3, 0, '2026-11-13T00:00:00Z'); // after now's day
+    await trade(A, 10, T4, null, null, null); // block time not known yet
+    await trade(A, 10, T2, 20, 0, '2026-10-01T12:00:00Z');
+    await trade(A, 130, T5, 5, 1, '2026-10-01T13:00:00Z'); // ties T2 on its fee: by chain
+    await trade(B, 10, T1, 1000, 1000, '2026-11-12T03:00:00Z'); // another recipient
+    for (let i = 1; i <= 101; i++) await trade(C, 10, i.toString(16).padStart(40, '0'), i, i, '2026-11-01T00:00:00Z');
+
+    await batch('2026-08-01', 'executed', '2026-09-03T10:00:00Z', 'aa'.repeat(32), [[A, 'paid', 26n * 10n ** 15n, 25n * 10n ** 15n], [B, 'paid', 10n ** 18n, 10n ** 18n]]);
+    await batch('2026-09-01', 'executed', '2026-10-02T10:00:00Z', 'bb'.repeat(32), [[A, 'carried', 10n ** 15n, null]]); // nothing paid to A
+    await batch('2026-10-01', 'failed', '2026-11-01T01:00:00Z', 'cc'.repeat(32), [[A, 'carried', 5n * 10n ** 15n, null]]); // a failed batch carries
+    await batch('2026-11-01', 'proposed', '2026-11-01T02:05:00Z', null, [[A, 'paid', 625n * 10n ** 14n, null]]); // not executed: the WETH owed, no tx
+    for (let m = 0; m < 26; m++) await batch(`${2024 + Math.floor(m / 12)}-${String((m % 12) + 1).padStart(2, '0')}-01`, 'executed', '2026-01-01T00:00:00Z', 'dd'.repeat(32), [[C, 'paid', BigInt(m + 1) * 10n ** 15n, BigInt(m + 1) * 10n ** 15n]]);
+
+    expect(await breakdown(A)).toEqual({
+      daily: [{ day: '2026-08-15', ...f(1, 40, 9.5, 0) }, { day: '2026-10-01', ...f(2, 25, 0.8, 0) }, { day: '2026-11-12', ...f(2, 100, 10.25, 1) }],
+      byChain: [{ chainId: 10, ...f(5, 127, 11.05, 2) }, { chainId: 130, ...f(3, 48, 10.3, 0) }],
+      // 10.25 sorts below 9.5 as text; a token of trades not priced only is last.
+      byToken: [tok(10, T1, 2, 10.25, 1), tok(130, T3, 2, 9.5, 0), tok(10, T2, 2, 0.8, 0), tok(130, T5, 1, 0.8, 0), tok(10, T4, 1, 0, 1)],
+      payouts: [
+        { date: '2026-11-01', weth: 0.0625, chainId: 100, txHash: null, status: 'proposed' },
+        { date: '2026-09-03', weth: 0.025, chainId: 100, txHash: `0x${'aa'.repeat(32)}`, status: 'executed' },
+      ],
+    });
+    const c = await breakdown(C); // 101 tokens: the 100 largest; 26 batches: the 24 newest
+    expect([c.byToken.length, c.byToken[0], c.byToken[99], c.payouts.length, c.payouts[0], c.payouts[23]!.date, c.payouts[23]!.weth]).toEqual([
+      100, tok(10, (101).toString(16).padStart(40, '0'), 1, 80.8, 0), tok(10, (2).toString(16).padStart(40, '0'), 1, 1.6, 0),
+      24, { date: '2026-01-01', weth: 0.026, chainId: 100, txHash: `0x${'dd'.repeat(32)}`, status: 'executed' }, '2026-01-01', 0.003,
+    ]);
+    expect(await breakdown(D)).toEqual({ daily: [], byChain: [], byToken: [], payouts: [] });
+  });
+});

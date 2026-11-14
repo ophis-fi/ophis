@@ -12,7 +12,7 @@
           "owedUsd": 83.6,
           "pendingUnpricedTrades": 2
         },
-        "lifetime": { "paidWeth": 0.0875, "tradeCount": 412 },
+        "lifetime": { "paidWeth": 0.0625, "tradeCount": 412 },
         "recentBatches": [
           { "cycleMonth": "2026-10", "status": "paid", "owedUsd": 212.4, "owedWeth": 0.0625, "carriedUsd": 0 },
           { "cycleMonth": "2026-09", "status": "carried", "owedUsd": 0, "owedWeth": 0, "carriedUsd": 6.4 }
@@ -29,6 +29,33 @@
         ],
         "unknown": { "trades": 3, "volumeUsd": 4250, "unpriced": 0 },
         "totals": { "walletCount": 3, "trades": 412, "volumeUsd": 373650.75, "unpriced": 2 }
+      },
+      "breakdown": {
+        "daily": [
+          { "day": "2026-08-20", "trades": 14, "volumeUsd": 12500.4, "shareUsd": 10.0003, "unpriced": 0 },
+          { "day": "2026-09-02", "trades": 22, "volumeUsd": 18250, "shareUsd": 14.6, "unpriced": 0 },
+          { "day": "2026-09-15", "trades": 31, "volumeUsd": 27400.25, "shareUsd": 21.9202, "unpriced": 0 },
+          { "day": "2026-09-28", "trades": 18, "volumeUsd": 15020, "shareUsd": 12.016, "unpriced": 0 },
+          { "day": "2026-10-05", "trades": 40, "volumeUsd": 36880.5, "shareUsd": 29.5044, "unpriced": 0 },
+          { "day": "2026-10-11", "trades": 9, "volumeUsd": 8100, "shareUsd": 6.48, "unpriced": 0 },
+          { "day": "2026-10-19", "trades": 52, "volumeUsd": 48210.75, "shareUsd": 38.5686, "unpriced": 0 },
+          { "day": "2026-10-26", "trades": 27, "volumeUsd": 22950, "shareUsd": 18.36, "unpriced": 0 },
+          { "day": "2026-11-02", "trades": 35, "volumeUsd": 31500.2, "shareUsd": 25.2002, "unpriced": 0 },
+          { "day": "2026-11-07", "trades": 12, "volumeUsd": 10900, "shareUsd": 8.72, "unpriced": 1 },
+          { "day": "2026-11-11", "trades": 1, "volumeUsd": 0, "shareUsd": 0, "unpriced": 1 }
+        ],
+        "byChain": [
+          { "chainId": 10, "trades": 300, "volumeUsd": 280000.5, "shareUsd": 224.0004, "unpriced": 1 },
+          { "chainId": 130, "trades": 112, "volumeUsd": 93650.25, "shareUsd": 74.9202, "unpriced": 1 }
+        ],
+        "byToken": [
+          { "chainId": 10, "token": "0x4200000000000000000000000000000000000006", "trades": 180, "shareUsd": 150.0004, "unpriced": 0 },
+          { "chainId": 130, "token": "0x4200000000000000000000000000000000000006", "trades": 112, "shareUsd": 74.9202, "unpriced": 1 },
+          { "chainId": 10, "token": "0x0b2c639c533813f4aa9d7837caf62653d097ff85", "trades": 120, "shareUsd": 74, "unpriced": 1 }
+        ],
+        "payouts": [
+          { "date": "2026-11-03", "weth": 0.0625, "chainId": 100, "txHash": "0x9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e", "status": "executed" }
+        ]
       }
     },
     {
@@ -52,7 +79,8 @@
         "wallets": [],
         "unknown": { "trades": 0, "volumeUsd": 0, "unpriced": 0 },
         "totals": { "walletCount": 0, "trades": 0, "volumeUsd": 0, "unpriced": 0 }
-      }
+      },
+      "breakdown": { "daily": [], "byChain": [], "byToken": [], "payouts": [] }
     }
   ]
 }

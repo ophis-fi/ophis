@@ -1,12 +1,13 @@
 import { timingSafeEqual } from 'node:crypto';
 import type { FastifyInstance } from 'fastify';
-import type { PartnerFeeDashboard, PartnerTraders } from './partnerFees/report.js';
+import type { PartnerBreakdown, PartnerFeeDashboard, PartnerTraders } from './partnerFees/report.js';
 import { logger } from './logger.js';
 
 // One token-gated read route for the Ophis Business console. A company wallet (a
 // Safe) cannot sign the 5-minute partnerAuth message, so the console proves wallet
-// control itself and reads here, server to server, the partner-fee dashboard and the
-// wallets that traded through its integration (the trades that carried its fee). It
+// control itself and reads here, server to server, the partner-fee dashboard, the
+// wallets that traded through its integration (the trades that carried its fee), and its
+// flow by day, chain and fee token with the payouts made to it (the breakdown). It
 // never reads the referral dashboard: the console's partners get no referral share.
 // BUSINESS_API_TOKEN reads EVERY partner's fee dashboard and traders: it is a secret, and the
 // feature is OFF (404) unless it is set, long, and different from the admin token.
@@ -14,12 +15,13 @@ import { logger } from './logger.js';
 export interface BusinessDeps {
   getPartnerFeeDashboard: (recipient: `0x${string}`, now?: Date) => Promise<PartnerFeeDashboard>;
   getPartnerTraders: (recipient: `0x${string}`) => Promise<PartnerTraders>;
+  getPartnerBreakdown: (recipient: `0x${string}`, now?: Date) => Promise<PartnerBreakdown>;
 }
 
 export interface BusinessPartnerAnswer {
   asOf: string;
-  /** fees and traders null: a contract wallet the console did not prove on its pinned chain. Nothing was read for it. */
-  wallets: { wallet: `0x${string}`; fees: PartnerFeeDashboard | null; traders: PartnerTraders | null }[];
+  /** fees, traders and breakdown null: a contract wallet the console did not prove on its pinned chain. Nothing was read for it. */
+  wallets: { wallet: `0x${string}`; fees: PartnerFeeDashboard | null; traders: PartnerTraders | null; breakdown: PartnerBreakdown | null }[];
 }
 
 // The chain each contract wallet is pinned to, as POST /partner reads it (affiliate/partnerAuth.ts): the same address
@@ -77,8 +79,8 @@ export function registerBusinessRoutes(app: FastifyInstance, deps: BusinessDeps)
     // ponytail: one wallet after the other (at most 10); parallel if latency matters.
     for (const w of wallets as `0x${string}`[]) {
       out.push(readable(w)
-        ? { wallet: w, fees: await deps.getPartnerFeeDashboard(w, now), traders: await deps.getPartnerTraders(w) }
-        : { wallet: w, fees: null, traders: null });
+        ? { wallet: w, fees: await deps.getPartnerFeeDashboard(w, now), traders: await deps.getPartnerTraders(w), breakdown: await deps.getPartnerBreakdown(w, now) }
+        : { wallet: w, fees: null, traders: null, breakdown: null });
     }
     return { asOf: now.toISOString(), wallets: out };
   });
