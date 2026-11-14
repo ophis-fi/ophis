@@ -220,6 +220,10 @@ function closeOpen(db: D1Database, orgId: string, seatId: string, now: number, i
     db.prepare(`UPDATE approvals SET state = 'cancelled', decided_at = ? WHERE org_id = ? AND action = 'ticket.confirm' AND state = 'pending' AND subject_id IN (${tickets})`).bind(now, ...scope),
     db.prepare(`UPDATE enrolment_tickets SET state = 'dead' WHERE org_id = ? AND id IN (${tickets})`).bind(...scope),
     db.prepare(`UPDATE approvals SET state = 'cancelled', decided_at = ? WHERE org_id = ? AND requester_seat_id = ? AND state = 'pending' AND ? = 1`).bind(now, orgId, seatId, issuedToo ? 1 : 0),
+    // The real desk: the signing links the seat gave die, and the approved orders it prepared that are not sent are withdrawn.
+    db.prepare(`UPDATE orders SET link_hash = NULL, link_purpose = NULL WHERE org_id = ? AND link_by = ? AND link_purpose = 'sign' AND ? = 1`).bind(orgId, seatId, issuedToo ? 1 : 0),
+    db.prepare(`UPDATE orders SET status = 'cancelled', link_hash = NULL, link_purpose = NULL WHERE org_id = ? AND uid IS NULL AND status IS NULL AND ? = 1
+                AND id IN (SELECT id FROM approvals WHERE org_id = ? AND requester_seat_id = ? AND action = 'order')`).bind(orgId, issuedToo ? 1 : 0, orgId, seatId),
   ]
 }
 

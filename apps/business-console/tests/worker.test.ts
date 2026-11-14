@@ -9813,6 +9813,26 @@ describe('J. the real desk: terms from a live quote, two people, then the wallet
     expect(asked.filter((x) => x.method === 'POST' && x.url.endsWith('/orders'))).toHaveLength(1)
   })
 
+  it('what a frozen seat started does not go on: the signing link it gave dies, and the approved orders it prepared that are not sent are withdrawn; a sent one stays', async () => {
+    const team = await deskTeam()
+    book()
+    // The Trader prepared one order, gave the link of another that the Owner prepared, and sent a third.
+    const byTrader = await approvedOrder(team)
+    const own = (await prepare(team.o, team.walletId, { amount: '9' })).body.id as string
+    expect((await decide(team.a, own, 'approve')).status).toBe(200)
+    const given = await orderLink(team.t, own)
+    expect((await orderPage(given.token)).status).toBe(200)
+    const sent = await approvedOrder(team, { amount: '7' })
+    expect((await signed((await orderLink(team.t, sent)).token)).answer.body.state).toBe('open')
+    await stepUp(team.o, team.o.key)
+    expect((await act(team.o, team.t.seatId, 'freeze')).status).toBe(200)
+    expect((await orderPage(given.token)).body).toEqual({ error: 'link_invalid' })
+    expect(Object.fromEntries((await deskOrders(team.o)).map((x) => [x.id, x.state]))).toMatchObject({ [byTrader]: 'Withdrawn', [own]: 'Approved: waiting for signature', [sent]: 'Open' })
+    // A colleague gives the Owner's order a new link.
+    await stepUp(team.a, team.a.key)
+    expect((await orderPage((await orderLink(team.a, own)).token)).status).toBe(200)
+  })
+
   it('the signing page: the order in words and as the wallet signs it, built by the server; its expiry is fixed at the first read and stored', async () => {
     const team = await deskTeam()
     book()
