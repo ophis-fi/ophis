@@ -174,5 +174,5 @@ export const tables = (f: Extract<Figures, { state: 'live' }>): Record<string, [
   tokens: [['Partner wallet', 'Wallet name', 'Chain', 'Fee token', 'Trades', 'Your share (USD)', 'Trades not priced yet'],
     f.wallets.flatMap((w) => (w.breakdown?.byToken ?? []).map((t) => [w.wallet, w.label, t.chain, t.token, t.trades, t.shareUsd, t.unpriced]))],
   payouts: [['Partner wallet', 'Wallet name', 'Date', 'Amount (WETH)', 'Chain', 'Transaction', 'Status'],
-    f.wallets.flatMap((w) => (w.breakdown?.payouts ?? []).map((p) => [w.wallet, w.label, p.date, p.weth, p.chain, p.tx ?? '', p.status]))],
+    f.wallets.flatMap((w) => (w.breakdown?.payouts ?? []).map((p) => [w.wallet, w.label, p.date, p.weth, p.chain, p.tx, p.status]))],
 })
