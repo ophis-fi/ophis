@@ -6145,7 +6145,7 @@ describe('E. onboarding: a company applies, proves its domain, is activated and 
     expect(onboarding.txtValues('{"Status":3}', 'a.example')).toBeNull()
     expect(onboarding.txtValues('{"Status":0}', 'a.example')).toEqual([])
     expect(onboarding.txtValues(null, 'a.example')).toBeNull()
-    expect(onboarding.RESOLVERS).toEqual({ local: ['http://127.0.0.1:8790/dns-query', 'http://127.0.0.1:8791/resolve'] })
+    expect(onboarding.RESOLVERS).toEqual({ local: ['http://127.0.0.1:8790/dns-query', 'http://127.0.0.1:8791/resolve'], production: onboarding.PUBLIC_RESOLVERS })
     expect(onboarding.PUBLIC_RESOLVERS).toEqual(['https://cloudflare-dns.com/dns-query', 'https://dns.google/resolve'])
     expect(onboarding.DNS).toEqual({ timeoutMs: 5000, maxBytes: 16 * 1024 })
     // No stub and no switch in the Worker: the resolver is never taken from the request or from a variable of the environment.
