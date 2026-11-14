@@ -8350,7 +8350,7 @@ const orderOf = async (id: string) => {
   return { ...r, terms: JSON.parse(JSON.parse(r.payload).value) as orders.Terms }
 }
 const addressOf = async (walletId: string) => checksum((await row<{ address: string }>('SELECT address FROM wallets WHERE id = ?', walletId))!.address)
-const deskOrders = async (m: Holder) => (await get('/api/desk', m)).body.orders as { id: string; ref: string; state: string; open: boolean; mine: boolean; preparer: string; preparerRole: string; decidedBy: string | null; decidedAt: number | null; terms: orders.Terms; words: Record<string, string>; uid: string | null; sold: string | null; bought: string | null; tx: string | null }[]
+const deskOrders = async (m: Holder) => (await get('/api/desk', m)).body.orders as { id: string; ref: string; state: string; signUntil: number | null; open: boolean; mine: boolean; preparer: string; preparerRole: string; decidedBy: string | null; decidedAt: number | null; terms: orders.Terms; words: Record<string, string>; uid: string | null; sold: string | null; bought: string | null; tx: string | null }[]
 const sayOf = async (m: Holder) => ((await get('/api/audit', m)).body.rows as { event: string }[]).map((r) => r.event)
 /** An order prepared by the Trader and approved by the Approver. */
 async function approvedOrder(team: Awaited<ReturnType<typeof deskTeam>>, more: Record<string, unknown> = {}) {
@@ -9643,7 +9643,7 @@ describe('J. the real desk: terms from a live quote, two people, then the wallet
       expect(await row('SELECT status, uid, link_hash FROM orders WHERE id = ?', id)).toEqual({ status: 'refused', uid: null, link_hash: null })
       expect(await lastAudit(team.o.orgId)).toEqual({ action: 'order.sanctioned', actor_id: team.walletId, subject_id: id, detail: which })
       expect((await sayOf(team.o))[0]).toBe('Order refused before it was sent: an address of it is on a loaded sanctions list')
-      expect((await deskOrders(team.t)).find((x) => x.id === id)!.state).toBe('Refused')
+      expect((await deskOrders(team.t)).find((x) => x.id === id)).toMatchObject({ state: 'Refused', signUntil: null }) // nothing is left to sign
       expect((await orderSend(token, '0x')).body).toEqual({ error: 'link_invalid' })
     }
   })
