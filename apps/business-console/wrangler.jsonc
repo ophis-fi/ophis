@@ -33,6 +33,9 @@
   "env": {
     "production": {
       "assets": { "directory": "./dist", "binding": "ASSETS", "run_worker_first": true },
+      // The two names only: no workers.dev name, no preview names (repeated so that no default applies).
+      "workers_dev": false,
+      "preview_urls": false,
       "routes": [
         { "pattern": "pro.ophis.fi", "custom_domain": true },
         { "pattern": "sign.ophis.fi", "custom_domain": true },
