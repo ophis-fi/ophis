@@ -11,7 +11,7 @@ import passkeySource from '../src/server/passkeys.ts?raw'
 import * as data from '../src/server/data.ts'
 import worker, { csvCell, daily as dailyRun, EVENTS, handle as handleRequest, routes, type Env } from '../src/server/index.ts'
 import wranglerConfig from '../wrangler.jsonc?raw'
-import { challengeIsOurs, configFor, credentialHash, fromBase64Url, newChallenge, seal, toBase64Url, userHandle } from '../src/server/passkeys.ts'
+import { challengeIsOurs, configFor, credentialHash, fromBase64Url, newChallenge, seal, SUPPORT_HOSTS, toBase64Url, userHandle } from '../src/server/passkeys.ts'
 import { checksum, colour, LIMITS, SAFES, type SafeState } from '../src/server/chain.ts'
 import { LINK_ACTION, PROOF_ACTION, typedLink, typedProof, type Typed } from '../src/server/typed.ts'
 import * as orders from '../src/server/orders.ts'
@@ -4107,6 +4107,20 @@ describe('y. wallets and the recovery wallet', () => {
     // The proof route grants no cross-origin access and carries the API headers.
     const refused = await prove('x', '0x')
     expect([refused.headers.get('access-control-allow-origin'), refused.headers.get('content-security-policy')]).toEqual([null, "default-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'"])
+  })
+
+  it('production: the console on pro.ophis.fi, the signing page on sign.ophis.fi, every other name gets nothing', async () => {
+    const env = { ...testEnv, ENVIRONMENT: 'production' }
+    const get = async (url: string) => (await handle(new Request(url, { headers: { 'sec-fetch-site': 'same-origin' } }), env, () => now)).status
+    expect(configFor('production')).toMatchObject({ rpId: 'pro.ophis.fi', origin: 'https://pro.ophis.fi', signOrigin: 'https://sign.ophis.fi' })
+    expect([await get('https://pro.ophis.fi/'), await get('https://sign.ophis.fi/sign/')]).toEqual([200, 200])
+    for (const url of ['https://sign.ophis.fi/', 'https://pro.ophis.fi/sign/', 'http://pro.ophis.fi/', 'https://ophis.fi/', `${SITE.origin}/`, `${SIGN}/sign/`]) expect(await get(url), url).toBe(404)
+    // Every table kept per environment has its entry, so no route of production meets a missing constant.
+    for (const environment of ['local', 'production']) {
+      expect(Object.keys(configFor(environment).chains), environment).toEqual(['1', '10', '8453', '42161'])
+      expect(onboarding.RESOLVERS[environment], environment).toHaveLength(2)
+      expect(SUPPORT_HOSTS[environment], environment).toBe('api.typesafe.ai')
+    }
   })
 
   it('the schema keeps one live row per address, one accepted proof per nonce, and the states of a wallet', async () => {

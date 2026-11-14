@@ -13,9 +13,9 @@ import { CHAIN_NAME, LISTS, typedProof } from './typed.ts'
 // Constants per environment, like those of passkeys.ts, and never read from a request.
 // RESOLVERS: two DNS-over-HTTPS resolvers of different operators, JSON form; both must give the record. The local
 // environment asks two stubs that the dev and end-to-end scripts start (scripts/dns-stub.mjs): no stub lives here.
-// PUBLIC_RESOLVERS: Cloudflare and Google, for the production entry; `pnpm test:dns` asks them with this file's parser.
+// PUBLIC_RESOLVERS: Cloudflare and Google, the production entry; `pnpm test:dns` asks them with this file's parser.
 export const PUBLIC_RESOLVERS = ['https://cloudflare-dns.com/dns-query', 'https://dns.google/resolve'] as const
-export const RESOLVERS: Record<string, readonly [string, string]> = { local: ['http://127.0.0.1:8790/dns-query', 'http://127.0.0.1:8791/resolve'] }
+export const RESOLVERS: Record<string, readonly [string, string]> = { local: ['http://127.0.0.1:8790/dns-query', 'http://127.0.0.1:8791/resolve'], production: PUBLIC_RESOLVERS }
 // The operator's API has a hostname of its own, as the signing page has.
 export const OPERATOR: Record<string, string> = { local: 'http://operator.localhost:8787' }
 

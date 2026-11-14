@@ -8,18 +8,19 @@ import type { AuthenticationResponseJSON, RegistrationResponseJSON } from '@simp
 // The signing page has its own hostname (signOrigin), served by the same Worker: a wallet or the Safe interface
 // opens it, never the console. chains: the two JSON-RPC endpoints of each chain a wallet can be pinned to, from
 // different operators; both must agree before a contract wallet's answer counts (chain.ts).
-// ponytail: public endpoints for the local build. Production endpoints are decided later.
+// ponytail: keyless public endpoints in both environments (each answered its eth_chainId on 2026-11-14). Own or paid
+// nodes when their rate limits are reached.
 export interface Config { rpId: string; origin: string; signOrigin: string; chains: Record<number, readonly [string, string]> }
+const CHAINS = {
+  1: ['https://ethereum-rpc.publicnode.com', 'https://eth.drpc.org'],
+  10: ['https://optimism-rpc.publicnode.com', 'https://mainnet.optimism.io'],
+  8453: ['https://base-rpc.publicnode.com', 'https://mainnet.base.org'],
+  42161: ['https://arbitrum-one-rpc.publicnode.com', 'https://arb1.arbitrum.io/rpc'],
+} as const
 const ENVIRONMENTS: Record<string, Config> = {
-  local: {
-    rpId: 'localhost', origin: 'http://localhost:8787', signOrigin: 'http://127.0.0.1:8787',
-    chains: {
-      1: ['https://ethereum-rpc.publicnode.com', 'https://eth.drpc.org'],
-      10: ['https://optimism-rpc.publicnode.com', 'https://mainnet.optimism.io'],
-      8453: ['https://base-rpc.publicnode.com', 'https://mainnet.base.org'],
-      42161: ['https://arbitrum-one-rpc.publicnode.com', 'https://arb1.arbitrum.io/rpc'],
-    },
-  },
+  local: { rpId: 'localhost', origin: 'http://localhost:8787', signOrigin: 'http://127.0.0.1:8787', chains: CHAINS },
+  // Decided 2026-11-14, final: passkeys and security keys are tied to pro.ophis.fi.
+  production: { rpId: 'pro.ophis.fi', origin: 'https://pro.ophis.fi', signOrigin: 'https://sign.ophis.fi', chains: CHAINS },
 }
 export function configFor(environment: string): Config {
   if (!Object.hasOwn(ENVIRONMENTS, environment)) throw new Error('unknown ENVIRONMENT')
@@ -27,7 +28,7 @@ export function configFor(environment: string): Config {
 }
 // Milestone 6: the hostname of the Support provider (TypeSafe AI, USA), per environment like the constants above and
 // never read from a request. Its key is the Worker secret TYPESAFE_API_KEY (support.ts).
-export const SUPPORT_HOSTS: Record<string, string> = { local: 'api.typesafe.ai' }
+export const SUPPORT_HOSTS: Record<string, string> = { local: 'api.typesafe.ai', production: 'api.typesafe.ai' }
 
 const ALGORITHMS = [-7, -8, -257] // ES256, EdDSA, RS256
 const CHALLENGE_MS = 5 * 60_000

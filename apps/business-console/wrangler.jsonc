@@ -28,4 +28,21 @@
   // M10: once a day the Worker reads the OFAC list file (SANCTIONS_URL; unset: nothing is read) and then the figures of the partners.
   "triggers": { "crons": ["17 3 * * *"] },
   "dev": { "ip": "127.0.0.1", "port": 8787 },
+  // Production, decided 2026-11-14: the console on pro.ophis.fi, the signing page on sign.ophis.fi, one Worker
+  // (ophis-business-console-production). Not deployed. Bindings and vars are not inherited, so they are repeated here.
+  "env": {
+    "production": {
+      "assets": { "directory": "./dist", "binding": "ASSETS", "run_worker_first": true },
+      "routes": [
+        { "pattern": "pro.ophis.fi", "custom_domain": true },
+        { "pattern": "sign.ophis.fi", "custom_domain": true },
+      ],
+      // Placeholder id: the id of the database created with --jurisdiction=eu.
+      "d1_databases": [{ "binding": "DB", "database_name": "ophis-business", "database_id": "00000000-0000-0000-0000-000000000000", "migrations_dir": "migrations" }],
+      "r2_buckets": [{ "binding": "SEALED", "bucket_name": "ophis-business-sealed", "jurisdiction": "eu" }],
+      // SANCTIONS_URL stays unset until the list file's address is chosen. Secrets: CHALLENGE_KEY, INDEXER_TOKEN,
+      // TYPESAFE_API_KEY (wrangler secret put --env production). SEAL_RECIPIENT waits for the security-key ceremony.
+      "vars": { "ENVIRONMENT": "production", "INDEXER_URL": "https://rebates.ophis.fi" },
+    },
+  },
 }
