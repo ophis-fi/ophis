@@ -209,12 +209,14 @@ async function readOrder(code: string) {
   for (const [id, text] of [['o-binding', w.binding], ['o-sell', w.sell], ['o-buy', w.buy], ['o-type', w.type], ['o-chain', w.chain], ['o-wallet', w.wallet], ['o-valid', w.valid], ['o-fee', w.fee], ['o-uid', order.uid]]) $(id).textContent = text
   $('o-binding').hidden = order.purpose !== 'sign'
   const presign = order.scheme === 'presign'
+  const approve: [string, string] = ['approve', `Approve exactly ${order.allowanceWords} for the CoW Protocol vault relayer, if the wallet has not yet`]
   steps(order.purpose === 'cancel'
     ? [[presign ? 'safe' : 'sign', presign ? 'The Safe transaction that revokes the presignature, signed and executed by the Safe owners' : 'Sign the cancellation in the wallet'], ['sent', presign ? 'Recorded: the cancel waits for the Safe transaction' : 'Sent to the orderbook']]
-    : [['approve', `Approve exactly ${order.allowanceWords} for the CoW Protocol vault relayer, if the wallet has not yet`], [presign ? 'safe' : 'sign', presign ? 'The Safe transaction: the approval if needed and the presignature of the order, signed and executed by the Safe owners' : 'Sign the order in the wallet'], ['sent', 'Sent to the orderbook']])
+    : presign ? [['sent', 'Checked and sent to the orderbook, where it waits for the Safe transaction'], approve, ['safe', 'The Safe transaction: the approval if needed and the presignature of the order, signed and executed by the Safe owners']]
+    : [approve, ['sign', 'Sign the order in the wallet'], ['sent', 'Sent to the orderbook']])
   const others = order.allowance === order.sellAmount ? '' : ' The approval covers this order and the other open orders of this wallet in this asset.'
   $('o-advice').textContent = order.purpose === 'cancel' ? (presign ? 'In the Safe interface you see one transaction: the revocation of this order\'s presignature on the settlement contract. Check it before the owners sign.' : 'Your wallet shows the cancellation of this order id to sign. Check that it matches.')
-    : presign ? `In the Safe interface you see one transaction batch: an approval of exactly ${order.allowanceWords} to the CoW Protocol vault relayer if one is needed, and the signature of this order on the settlement contract. Check it before the owners sign.${others}`
+    : presign ? `The order is checked and sent to the orderbook first. Then the Safe interface shows one transaction batch: an approval of exactly ${order.allowanceWords} to the CoW Protocol vault relayer if one is needed, and the signature of this order on the settlement contract. Check it before the owners sign.${others}`
     : `Your wallet may first ask to approve exactly ${order.allowanceWords} to the CoW Protocol vault relayer, then it shows the order to sign. Check that it matches.${others}`
   $('o-by-wallet').hidden = Boolean(safe) || presign
   $('o-by-safe').hidden = !safe
@@ -229,6 +231,7 @@ const sent = async (signature?: string) => {
   const { data } = await call('/api/order/send', signature ? { signature } : {})
   say(ORDER_SAY[(data.state ?? data.error) as string] ?? 'The order could not be sent. Try again in a minute.', data.state ? 'ok' : 'bad')
   step('sent', data.state ? 'done' : 'todo')
+  return data.state
 }
 const short = (have: unknown) => BigInt(decodeFunctionResult({ abi: ERC20, functionName: 'allowance', data: have as `0x${string}` })) < BigInt(order.allowance!)
 const approval = () => encodeFunctionData({ abi: ERC20, functionName: 'approve', args: [order.relayer as `0x${string}`, BigInt(order.allowance!)] })
@@ -258,21 +261,29 @@ async function orderByWallet() {
   step('sign', 'done')
   await sent(signature)
 }
-// Inside the Safe interface: one batch, which its owners sign and execute there. Signing: [approve exactly what the server named if short,
-// setPreSignature(order, true)]. Cancelling: setPreSignature(order, false).
+// Inside the Safe interface: one batch, which its owners sign and execute there. Signing: the server checks the order (the
+// sanctions lists, the wallet still linked) and the orderbook takes it, waiting for its presignature; only then is the Safe
+// asked for [approve exactly what the server named if short, setPreSignature(order, true)], so that a refused order leaves
+// nothing in the Safe's queue. Cancelling: setPreSignature(order, false), then the record.
+let posted = false // the orderbook took this Safe's order: only its Safe transaction is left to propose
 async function orderBySafe() {
   const info = await safe!.safe.getInfo()
   if (!same(info.safeAddress, order.wallet) || info.chainId !== order.chainId) return say(`This Safe is ${info.safeAddress} on chain ${info.chainId}. The order is for ${order.wallet} on chain ${order.chainId}. Open the right Safe and try again.`, 'bad')
-  const txs = order.purpose === 'cancel' ? [] : (short(await safe!.eth.call([{ from: order.wallet, to: order.sellToken, data: allowance() }])) ? [{ to: order.sellToken, value: '0', data: approval() }] : [])
-  if (order.purpose === 'sign') step('approve', txs.length ? 'now' : 'skipped')
+  const signing = order.purpose === 'sign'
+  if (signing && !posted) {
+    posted = (await sent()) === 'presignaturePending'
+    if (!posted) return
+  }
+  const txs = signing && short(await safe!.eth.call([{ from: order.wallet, to: order.sellToken, data: allowance() }])) ? [{ to: order.sellToken, value: '0', data: approval() }] : []
+  if (signing) step('approve', txs.length ? 'now' : 'skipped')
   step('safe', 'now')
-  await safe!.txs.send({ txs: [...txs, { to: order.settlement, value: '0', data: presign(order.purpose === 'sign') }] })
+  await safe!.txs.send({ txs: [...txs, { to: order.settlement, value: '0', data: presign(signing) }] })
   if (txs.length) step('approve', 'proposed')
   step('safe', 'proposed')
-  await sent()
+  if (!signing) await sent()
 }
 $('o-by-wallet').addEventListener('click', () => void orderByWallet().catch(() => say('The wallet did not sign. Nothing was sent.', 'warn')))
-$('o-by-safe').addEventListener('click', () => void orderBySafe().catch(() => say('The Safe did not take the transaction. Nothing was sent.', 'warn')))
+$('o-by-safe').addEventListener('click', () => void orderBySafe().catch(() => say(posted ? 'The order waits at the orderbook, but the Safe did not take its transaction. The order cannot fill without it. Press the button again.' : 'The Safe did not take the transaction. Nothing was sent.', 'warn')))
 
 const run = (action: () => Promise<unknown>) => () => void action().catch(() => say('The wallet did not sign. Nothing was sent.', 'warn'))
 $('paste').addEventListener('submit', (event) => {

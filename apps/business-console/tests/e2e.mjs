@@ -1298,36 +1298,59 @@ try {
   await outsideSafe.page.getByText('This wallet is a Safe. In the Safe interface open Apps').waitFor()
   check('outside the Safe interface, the signing page of a Safe order offers no wallet signature and says where to open it', !(await outsideSafe.page.getByRole('button', { name: /Sign with/ }).isVisible()))
   await outsideSafe.context.close()
-  const safeHome = await browser.newContext({ viewport: { width: 1440, height: 900 }, reducedMotion: 'reduce' })
-  const proposed = []
-  await safeHome.exposeFunction('safeSent', (txs) => void proposed.push(...txs))
-  await safeHome.route('https://app.safe.global/**', (route) => route.fulfill({ contentType: 'text/html', body: `<!doctype html><title>Safe</title><body style="margin:0"><iframe id="app" title="Ophis" src="${safeLink}" style="width:100%;height:100vh;border:0"></iframe><script>
-    addEventListener('message', async ({ data, source }) => {
-      if (!data || !data.method) return
-      const answer = data.method === 'getSafeInfo' ? { safeAddress: ${JSON.stringify(safeAddress)}, chainId: 10, threshold: 2, owners: [], isReadOnly: false }
-        : data.method === 'rpcCall' ? '0x${'0'.repeat(64)}' : data.method === 'sendTransactions' ? (await window.safeSent(data.params.txs), { safeTxHash: '0x${'cd'.repeat(32)}' }) : null
-      source.postMessage({ id: data.id, success: true, version: '9.1.0', data: answer }, '*')
-    })</script></body>` }))
-  // The public Safe page frames a page on this machine: Chrome asks for local network access first, granted here.
-  await safeHome.grantPermissions(['local-network-access'])
-  const safePage = await safeHome.newPage()
-  safePage.on('console', (message) => /content security policy|refused to/i.test(message.text()) && violations.push(message.text()))
-  await safePage.goto('https://app.safe.global/apps/open')
-  const inSafe = safePage.frameLocator('#app')
-  await inSafe.getByRole('heading', { name: 'The order the wallet will sign' }).waitFor()
-  const stepsInSafe = async () => (await inSafe.locator('#o-steps li').evaluateAll((items) => items.map((li) => `${li.dataset.step} ${li.dataset.state}`))).join()
-  check('inside the Safe interface the page shows the Safe order and its steps: the approval and the presignature in one Safe transaction, then the send', await stepsInSafe() === 'approve todo,safe todo,sent todo'
-    && (await inSafe.locator('#o-wallet').innerText()).startsWith('Demo Safe') && await both(safePage, '69-sign-safe'))
+  // The Safe interface, opened on a signing link: what the Safe was asked to propose is kept in `proposed`.
+  async function safeFrame(link) {
+    const context = await browser.newContext({ viewport: { width: 1440, height: 900 }, reducedMotion: 'reduce' })
+    const proposed = []
+    await context.exposeFunction('safeSent', (txs) => void proposed.push(...txs))
+    await context.route('https://app.safe.global/**', (route) => route.fulfill({ contentType: 'text/html', body: `<!doctype html><title>Safe</title><body style="margin:0"><iframe id="app" title="Ophis" src="${link}" style="width:100%;height:100vh;border:0"></iframe><script>
+      addEventListener('message', async ({ data, source }) => {
+        if (!data || !data.method) return
+        const answer = data.method === 'getSafeInfo' ? { safeAddress: ${JSON.stringify(safeAddress)}, chainId: 10, threshold: 2, owners: [], isReadOnly: false }
+          : data.method === 'rpcCall' ? '0x${'0'.repeat(64)}' : data.method === 'sendTransactions' ? (await window.safeSent(data.params.txs), { safeTxHash: '0x${'cd'.repeat(32)}' }) : null
+        source.postMessage({ id: data.id, success: true, version: '9.1.0', data: answer }, '*')
+      })</script></body>` }))
+    // The public Safe page frames a page on this machine: Chrome asks for local network access first, granted here.
+    await context.grantPermissions(['local-network-access'])
+    const page = await context.newPage()
+    page.on('console', (message) => /content security policy|refused to/i.test(message.text()) && violations.push(message.text()))
+    await page.goto('https://app.safe.global/apps/open')
+    const inSafe = page.frameLocator('#app')
+    await inSafe.getByRole('heading', { name: 'The order the wallet will sign' }).waitFor()
+    const steps = async () => (await inSafe.locator('#o-steps li').evaluateAll((items) => items.map((li) => `${li.dataset.step} ${li.dataset.state}`))).join()
+    return { context, proposed, page, inSafe, steps }
+  }
+  const safeHome = await safeFrame(safeLink)
+  const { inSafe, proposed } = safeHome
+  check('inside the Safe interface the page shows the Safe order and its steps: the send to the orderbook first, then the approval and the presignature in one Safe transaction', await safeHome.steps() === 'sent todo,approve todo,safe todo'
+    && (await inSafe.locator('#o-wallet').innerText()).startsWith('Demo Safe') && await both(safeHome.page, '69-sign-safe'))
   await inSafe.getByRole('button', { name: 'Sign with this Safe' }).click()
   await inSafe.getByText('Sent. The order waits for the Safe owners to execute the transaction').waitFor()
+  await inSafe.locator('#o-steps li[data-step="safe"][data-state="proposed"]').waitFor()
   const uid = await inSafe.locator('#o-uid').innerText()
-  check('the Safe was asked for one batch: an approval of exactly 3 WETH to the vault relayer, then setPreSignature(order, true) on the settlement; the steps say proposed, and sent',
+  check('the order went to the orderbook, then the Safe was asked for one batch: an approval of exactly 3 WETH to the vault relayer, then setPreSignature(order, true) on the settlement; the steps say sent, and proposed',
     proposed.length === 2 && proposed[0].to === '0x4200000000000000000000000000000000000006' && proposed[0].data === `0x095ea7b3${'83847eab41ad9ea43809ce71569eb2e9daf51830'.padStart(64, '0')}${(3n * 10n ** 18n).toString(16).padStart(64, '0')}`
     && proposed[1].to.toLowerCase() === '0x310784c7fce12d578da6f53460777bac9718b859' && proposed[1].data.startsWith('0xec6cb13f') && proposed[1].data.includes(uid.slice(2))
-    && await stepsInSafe() === 'approve proposed,safe proposed,sent done')
-  await safeHome.close()
+    && await safeHome.steps() === 'sent done,approve proposed,safe proposed')
+  await safeHome.context.close()
   await desk(tess)
   check('the blotter says the Safe order waits for the Safe transaction (the orderbook: presignature pending)', (await blotter(tess).first().textContent()).includes('Sent: waiting for the Safe transaction') && await both(tess.page, '70-desk-safe-pending'))
+
+  // A Safe order whose asset sold is on a loaded sanctions list: the server refuses it before the Safe is asked for anything.
+  await approved('4', 'Demo Safe')
+  const listedLink = await linkOf('Signing link')
+  const tokenList = `${STATE}/token-list.txt`
+  writeFileSync(tokenList, 'TEST DATA, made by this run. The asset sold, WETH on OP Mainnet: 0x4200000000000000000000000000000000000006\n')
+  check('the operator loads a list that names the asset sold', operator('addresses', `un=${tokenList}`).includes('Loaded 1 address of the list "un"'))
+  const listedSafe = await safeFrame(listedLink)
+  await listedSafe.inSafe.getByRole('button', { name: 'Sign with this Safe' }).click()
+  await listedSafe.inSafe.getByText('Refused: an address of this order is on a public sanctions list that Ophis loaded.').waitFor()
+  check('a Safe order of a listed asset is refused before the Safe is asked for anything: no transaction proposed, the Safe step still to do',
+    listedSafe.proposed.length === 0 && await listedSafe.steps() === 'sent todo,approve todo,safe todo')
+  await listedSafe.context.close()
+  check('the list is loaded again as it was', operator('addresses', `un=${LIST.addresses}`).includes('No linked or pending wallet is on a loaded list.'))
+  await desk(tess)
+  check('the blotter says the listed Safe order is refused', (await blotter(tess).first().textContent()).includes('Refused'))
 
   // Two open orders of one wallet in one asset: the second asks the wallet to approve what both still need.
   await approved('5')
@@ -1351,7 +1374,7 @@ try {
   await sixth.context.close()
 
   // One person withdraws an approved order before the wallet signs it, after a passkey check: its link stops working.
-  await approved('4')
+  await approved('7')
   const withdrawnLink = await linkOf('Signing link')
   await record.getByRole('button', { name: 'Withdraw the order' }).click()
   await record.getByText('Withdrawn', { exact: true }).waitFor()
