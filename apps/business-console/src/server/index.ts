@@ -41,7 +41,7 @@ const SIGN_HEADERS = {
 }
 
 interface Context {
-  request: Request; env: Env; now: number; config: Config
+  request: Request; env: Env; now: number; config: Config; ctx?: ExecutionContext
   body: Record<string, unknown>; params: Record<string, string | undefined>
   /** The body of a route marked `raw` (milestone 5b: a sealed file), and only there. */
   bytes: Uint8Array
@@ -72,7 +72,7 @@ const NAME = /^[\p{L}\p{N} .'-]{1,60}$/u
 
 const mustBeDeviceBound = (t: { role: data.Role; synced_keys_allowed: number }) => data.needsHardware(t.role, t.synced_keys_allowed)
 // What a refusal of the data module answers. Everything not listed is a conflict with the present state: 409.
-const STATUS: Record<string, number> = { not_found: 404, forbidden: 403, own_request: 403, quarantine: 403, override: 403, institution_only: 403, too_many_orders: 429, invalid: 400, ticket_limit: 429, quote_unavailable: 503, orderbook_unavailable: 503 }
+const STATUS: Record<string, number> = { not_found: 404, link_invalid: 404, forbidden: 403, own_request: 403, quarantine: 403, override: 403, institution_only: 403, too_many_orders: 429, invalid: 400, ticket_limit: 429, quote_unavailable: 503, orderbook_unavailable: 503 }
 const refuse = (error: string) => fail(STATUS[error] ?? 409, error)
 // The database refuses a second passkey with the same label on one seat (migrations/0002_labels.sql).
 const labelTaken = (error: unknown) => /credentials\.label/.test(String((error as Error)?.message))
@@ -630,6 +630,7 @@ export const EVENTS: Record<string, string> = {
   'order.cancel/key': 'Order cancelled by the signature of the wallet',
   'order.cancel/safe': 'Cancel of the order sent to the Safe, for its owners to sign onchain',
   'order.sanctioned': 'Order refused before it was sent: an address of it is on a loaded sanctions list',
+  'order.unsent': 'The orderbook did not take the order: nothing was sent',
   'recovery.open': 'Account recovery requested by the recovery wallet, 72 hour wait started',
   'recovery.open/override': 'Account recovery requested by the recovery wallet, overriding the Owners, 72 hour wait started',
   'recovery.cancel': 'Account recovery cancelled by an Owner',
@@ -775,8 +776,9 @@ async function orderPage(c: Context) {
 /**
  * The page posts the signature (a key wallet) or nothing (a Safe). Signing: the server builds the order again from the
  * terms and the stored expiry, checks the signature (or posts a presign order from the Safe), the wallet still linked
- * on that chain, the organisation active, and no address of it on a loaded sanctions list; then the orderbook takes it,
- * then one commit records it. Cancelling: the signed cancellation to the orderbook, or a Safe's own transaction.
+ * on that chain, the organisation active, and no address of it on a loaded sanctions list; then one commit holds the
+ * order id (data.orderSending), the orderbook takes it, and the record follows. Cancelling: the signed cancellation to
+ * the orderbook, or a Safe's own transaction.
  */
 async function orderSend(c: Context) {
   const r = await openedBy(c)
@@ -801,16 +803,24 @@ async function orderSend(c: Context) {
     return fail(403, 'sanctioned_address')
   }
   if (!permitted(r)) return refuse('asset_not_permitted') // a deploy between the page and the send
-  const posted = await orders.post(c.env, t, built, signature)
-  if (posted !== 'ok') return refuse(posted)
+  const held = await data.orderSending(c.env.DB, r, r.hash, built.uid, signature, c.now)
+  if (held !== 'ok') return refuse(held)
   const status = t.scheme === 'presign' ? 'presignaturePending' : 'open'
-  const outcome = await data.orderSent(c.env.DB, r, { uid: built.uid, signature, status }, c.now)
+  // The post and its record finish even if the page closes meanwhile (waitUntil). An answer lost on the way: the orderbook is asked once for the order.
+  const done = (async () => {
+    const posted = await orders.post(c.env, t, built, signature)
+    if (posted === 'ok' || (posted === 'orderbook_unavailable' && (await orders.status(c.env, t.chainId, built.uid, t.sell.token)))) return (await data.orderSent(c.env.DB, r, built.uid, status), 'ok')
+    await data.orderUnsent(c.env.DB, r, built.uid, posted, c.now)
+    return posted
+  })()
+  c.ctx?.waitUntil(done)
+  const outcome = await done
   return outcome === 'ok' ? json(200, { state: status, uid: built.uid }) : refuse(outcome)
 }
 /** Reads the orderbook's state of sent orders that may still change: of one organisation (the desk, at most 10) or of all (the daily run). */
 async function refresh(env: Env, orgId: string | null, now: number, limit: number) {
   const read = []
-  for (const o of await data.openOrders(env.DB, orgId, limit)) {
+  for (const o of await data.openOrders(env.DB, orgId, limit, now)) {
     const state = await orders.status(env, o.chainId, o.uid, o.sellToken)
     if (state) read.push({ ...o, ...state })
   }
@@ -1015,7 +1025,7 @@ async function sessionOf(request: Request, env: Env, now: number) {
   return { ...session, token_hash }
 }
 
-async function api(request: Request, env: Env, clock: () => number, config: Config, signing: boolean): Promise<Response> {
+async function api(request: Request, env: Env, clock: () => number, config: Config, signing: boolean, ctx?: ExecutionContext): Promise<Response> {
   // Every API route, GET included. A sibling *.ophis.fi host is same-site, so same-site is not enough.
   if (request.headers.get('sec-fetch-site') !== 'same-origin') return fail(403, 'cross_site')
   const { pathname } = new URL(request.url)
@@ -1038,7 +1048,7 @@ async function api(request: Request, env: Env, clock: () => number, config: Conf
   }
   // Read once the body has arrived: a slow sender cannot stretch a challenge, a ticket or a session past its end.
   const now = clock()
-  const context = { request, env, now, config, body, params: patterns[index].exec({ pathname })?.pathname.groups ?? {} } as Context
+  const context = { request, env, now, config, ctx, body, params: patterns[index].exec({ pathname })?.pathname.groups ?? {} } as Context
   if (route.roles !== 'public') {
     const session = await sessionOf(request, env, now)
     if (!session) return fail(401, 'signed_out')
@@ -1095,7 +1105,7 @@ async function pages(request: Request, env: Env, signing: boolean) {
 }
 
 /** `now` is injectable so that tests own the clock. */
-export async function handle(request: Request, env: Env, now: () => number = Date.now): Promise<Response> {
+export async function handle(request: Request, env: Env, now: () => number = Date.now, ctx?: ExecutionContext): Promise<Response> {
   const { pathname, origin } = new URL(request.url)
   let response: Response
   try {
@@ -1107,7 +1117,7 @@ export async function handle(request: Request, env: Env, now: () => number = Dat
     // Any other host is not ours: a request that arrives under another name gets nothing, not even a refusal with a reason.
     if (!signing && origin !== config.origin) return new Response('Not found', { status: 404, headers: HEADERS })
     if (!pathname.startsWith('/api/')) return await pages(request, env, signing)
-    response = await api(request, env, now, config, signing)
+    response = await api(request, env, now, config, signing, ctx)
   } catch (error) {
     // Logs carry route names and error names only: no ids of people, no values, no tokens.
     console.error('api failure', request.method, pathname, error instanceof Error ? error.name : 'unknown')
@@ -1130,6 +1140,6 @@ export async function daily(env: Env, now: number) {
 }
 
 export default {
-  fetch: (request: Request, env: Env) => handle(request, env),
+  fetch: (request: Request, env: Env, ctx) => handle(request, env, Date.now, ctx),
   scheduled: (_controller, env, context) => context.waitUntil(daily(env, Date.now())),
 } satisfies ExportedHandler<Env>
