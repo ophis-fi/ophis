@@ -530,7 +530,7 @@ describe('getPartnerTraders: the wallets that traded through a partner integrati
   const traders = async (recipient: string) => (await import('../../src/partnerFees/report.js')).getPartnerTraders(`0x${recipient}`);
   const w = (owner: string, trades: number, volumeUsd: number, unpriced: number) => ({ wallet: `0x${owner}`, trades, volumeUsd, unpriced });
 
-  it('lists the owners largest first, the wallet of a native-ETH sale when known (its fee verified or not), and never an eth-flow contract', async () => {
+  it('lists the owners largest first, the payer of a native-ETH sale when known, and never an eth-flow contract', async () => {
     await settle(uid(1, O1), A, 4.25);
     await settle(uid(1, O1), A, 6); // the same order filled a second time
     await settle(uid(2, O1), A, null);
@@ -539,16 +539,16 @@ describe('getPartnerTraders: the wallets that traded through a partner integrati
     await fill(uid(4, OP_FLOW), await settle(uid(4, OP_FLOW), A, 5), O3, true); // native ETH, payer known: O3
     await settle(uid(5, O4), A, 5); // ties with O3 at 5: by address, 7d before 7e
     await settle(uid(6, OP_FLOW), A, 7); // native ETH, no fill
-    await fill(uid(7, UNI_FLOW), await settle(uid(7, UNI_FLOW), A, null), O5, false); // its fee not verified: its wallet O5 is known all the same
+    await fill(uid(7, UNI_FLOW), await settle(uid(7, UNI_FLOW), A, null), O5, false); // a fill not verified yet
     await fill(uid(8, COW_FLOW), await settle(uid(8, COW_FLOW), A, 2), COW_FLOW, true); // a fill that names the contract
     await settle(uid(9, O5), B, null);
     for (let v = 1; v <= 105; v++) await settle(uid(1000 + v, (1000 - v).toString(16).padStart(40, '0')), C, v);
     await settle(uid(2000, OP_FLOW), C, 1000); // the largest trade of C has no known wallet
 
     expect(await traders(A)).toEqual({
-      wallets: [w(O1, 3, 10.25, 1), w(O2, 1, 9.5, 0), w(O4, 1, 5, 0), w(O3, 1, 5, 0), w(O5, 1, 0, 1)],
-      unknown: { trades: 2, volumeUsd: 9, unpriced: 0 },
-      totals: { walletCount: 5, trades: 9, volumeUsd: 38.75, unpriced: 2 },
+      wallets: [w(O1, 3, 10.25, 1), w(O2, 1, 9.5, 0), w(O4, 1, 5, 0), w(O3, 1, 5, 0)],
+      unknown: { trades: 3, volumeUsd: 9, unpriced: 1 },
+      totals: { walletCount: 4, trades: 9, volumeUsd: 38.75, unpriced: 2 },
     });
     expect(await traders(B)).toEqual({
       wallets: [w(O2, 1, 9.5, 0), w(O5, 1, 0, 1)],
@@ -569,7 +569,7 @@ describe('getPartnerTraders: the wallets that traded through a partner integrati
     const sql = await getSql();
     await sql`UPDATE partner_fee_trades SET block_timestamp = ${time} WHERE block_number = ${block}`;
   }
-  it('getPartnerSanctioned: a listed owner outside the 100 largest, the wallet of a native-ETH sale (its fee verified or not), never an unlisted wallet or an eth-flow contract', async () => {
+  it('getPartnerSanctioned: a listed owner outside the 100 largest, the verified payer of a native-ETH sale, never an unlisted wallet or an eth-flow contract', async () => {
     const small = (1000 - 1).toString(16).padStart(40, '0'); // the smallest of 105 wallets: not among the 100 listed
     for (let v = 1; v <= 105; v++) {
       const b = await settle(uid(1000 + v, (1000 - v).toString(16).padStart(40, '0')), A, v);
@@ -580,14 +580,13 @@ describe('getPartnerTraders: the wallets that traded through a partner integrati
     await at(sale, '2026-10-02T08:30:00Z');
     await at(await settle(uid(2, O3), A, null), '2026-11-05T12:00:00.250Z'); // O3 again, by its own order, not priced yet
     await settle(uid(3, OP_FLOW), A, 7); // native ETH, no fill: the contract is listed, and still never flagged
-    await fill(uid(4, UNI_FLOW), await settle(uid(4, UNI_FLOW), A, 9), O5, false); // native ETH, the decoder saw O5 (listed): its fee not verified, its wallet known
+    await fill(uid(4, UNI_FLOW), await settle(uid(4, UNI_FLOW), A, 9), O5, false); // the payer O5 is listed, the fill not verified yet
     await settle(uid(5, O1), A, 50); // a wallet on no list
     await settle(uid(6, O4), B, 3); // listed, but traded through another recipient only
 
     const listed = [small, O3, O4, O5, OP_FLOW, UNI_FLOW];
     expect((await traders(A)).wallets.some((x) => x.wallet === `0x${small}`)).toBe(false);
     expect(await sanctioned(A, listed)).toEqual([
-      { wallet: `0x${O5}`, trades: 1, volumeUsd: 9, unpriced: 0, firstAt: null, lastAt: null },
       { wallet: `0x${O3}`, trades: 2, volumeUsd: 5, unpriced: 1, firstAt: '2026-10-02T08:30:00.000Z', lastAt: '2026-11-05T12:00:00.250Z' },
       { wallet: `0x${small}`, trades: 1, volumeUsd: 1, unpriced: 0, firstAt: '2026-09-01T10:00:00.000Z', lastAt: '2026-09-01T10:00:00.000Z' },
     ]);
