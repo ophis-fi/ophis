@@ -131,7 +131,7 @@ export async function commit(db: D1Database, orgId: string, plan: () => [Entry, 
 // row changed between two loads is no anchor), up to the end of a sweep: the checkpoint and its hash as they were when the sweep began, which a
 // growing log does not move. The window that reaches that end must end on that hash; the next sweep goes to the
 // checkpoint of then. So a row is hashed again within this sweep and the next: ceil(rows / OLD_ROWS) + 1 loads when no
-// row is added. A break found is stored, shown on every load after (also by a load whose write it refused), never
+// row is added. A break found is stored, shown on every load after (also by a load that read the state before it and wrote nothing), never
 // cleared by code, and replaced by an earlier row only.
 // ponytail: a removed tail after the checkpoint, or rows rewritten together with audit_checks, needs the external
 // anchor, which is not built.
@@ -169,16 +169,15 @@ export async function verifyAudit(db: D1Database, orgId: string): Promise<ChainS
   }
   // At the end of a sweep the next one begins, from row 1 to the checkpoint of now.
   const [recheck, sweep] = end === s.sweep_seq ? [{ seq: 0, hash: FIRST }, ahead] : [back, { seq: s.sweep_seq, hash: s.sweep_hash }]
-  if (ahead.seq !== s.checked_seq || recheck.seq !== s.recheck_seq || sweep.seq !== s.sweep_seq) {
-    const moved = await db.prepare(`INSERT INTO audit_checks (org_id, checked_seq, checked_hash, recheck_seq, recheck_hash, sweep_seq, sweep_hash) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)
+  const moved = (ahead.seq !== s.checked_seq || recheck.seq !== s.recheck_seq || sweep.seq !== s.sweep_seq) && await db.prepare(`INSERT INTO audit_checks (org_id, checked_seq, checked_hash, recheck_seq, recheck_hash, sweep_seq, sweep_hash) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)
                       ON CONFLICT (org_id) DO UPDATE SET checked_seq = ?2, checked_hash = ?3, recheck_seq = ?4, recheck_hash = ?5, sweep_seq = ?6, sweep_hash = ?7
                       WHERE (checked_seq, checked_hash, recheck_seq, recheck_hash, sweep_seq, sweep_hash) = (?8, ?9, ?10, ?11, ?12, ?13) AND broken_seq IS NULL`)
       .bind(orgId, ahead.seq, ahead.hash, recheck.seq, recheck.hash, sweep.seq, sweep.hash, s.checked_seq, s.checked_hash, s.recheck_seq, s.recheck_hash, s.sweep_seq, s.sweep_hash).run()
-    // Refused: another load moved the state, or stored a break since this one read it. A stored break is the answer.
-    if (!moved.meta.changes) {
-      const now = await db.prepare('SELECT broken_seq FROM audit_checks WHERE org_id = ?').bind(orgId).first<{ broken_seq: number | null }>()
-      if (now?.broken_seq != null) return { ok: false, seq: now.broken_seq }
-    }
+  // Nothing written (nothing moved, or refused: another load moved the state or stored a break since this one read it).
+  // A stored break is the answer.
+  if (!moved || !moved.meta.changes) {
+    const now = await db.prepare('SELECT broken_seq FROM audit_checks WHERE org_id = ?').bind(orgId).first<{ broken_seq: number | null }>()
+    if (now?.broken_seq != null) return { ok: false, seq: now.broken_seq }
   }
   return { ok: true, rows: ahead.seq, head: ahead.hash, newer: fresh.length > NEW_ROWS, rechecked: end ? [s.recheck_seq + 1, end] : null, per: OLD_ROWS }
 }

@@ -3378,9 +3378,11 @@ describe('w. the audit log page and its export', () => {
     })
     expect(await chainOf(o)).toMatchObject({ ok: true, rows: head })
     const read = (await row<Record<string, unknown>>(`SELECT * FROM ${CHECKS} WHERE org_id = ?`, o.orgId))!
-    // A load that read the state before a break was stored at row 3 finds the rows after the checkpoint verified: its write is refused, and it says what is stored.
-    await grow(o.orgId, 5)
+    // A load that read the state before a break was stored at row 3, on a log it checks whole: it writes nothing, and says what is stored.
     await db.prepare(`UPDATE ${CHECKS} SET broken_seq = 3 WHERE org_id = ?`).bind(o.orgId).run()
+    expect(await data.verifyAudit(stale(read), o.orgId)).toEqual({ ok: false, seq: 3 })
+    // The same, with new rows after the checkpoint: its write is refused, and it says what is stored.
+    await grow(o.orgId, 5)
     expect(await data.verifyAudit(stale(read), o.orgId)).toEqual({ ok: false, seq: 3 })
     // Another, which read no break, finds one later in the log: the first row stays the one named.
     await asForger(db.prepare(`UPDATE audit_log SET detail = 'changed' WHERE org_id = ? AND seq = ?`).bind(o.orgId, head + 2))
@@ -3392,8 +3394,14 @@ describe('w. the audit log page and its export', () => {
     const o = await owner()
     expect((await post('/api/audit/export', o)).status).toBe(200) // its row has no subject: every lookup of a name runs
     await grow(o.orgId, data.EXPORT_PAGE)
-    const approvals = Array.from({ length: 2000 }, () => db.prepare(`INSERT INTO approvals (id, org_id, action, subject_id, payload_hash, requester_seat_id, state, expires_at, created_at) VALUES (?, ?, 'order', ?, 'x', ?, 'applied', ?, ?)`)
-      .bind(data.randomId(), o.orgId, data.randomId(), o.seatId, now, now))
+    // Rows about the organisation itself, the subject of every change of policy: those approvals are no order.
+    const last = (await row<{ seq: number; hash: string }>('SELECT seq, hash FROM audit_log WHERE org_id = ? ORDER BY seq DESC LIMIT 1', o.orgId))!
+    const fields = [o.orgId, last.seq + 1, now, 'seat', o.seatId, null, 'policy.synced_keys', o.orgId, 'hardware', null, null, last.hash]
+    await db.prepare('INSERT INTO audit_log (org_id, seq, at, actor_kind, actor_id, session_id, action, subject_id, detail, country, asn, prev_hash, hash) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
+      .bind(...fields, await data.sha256Hex(JSON.stringify(fields))).run()
+    await grow(o.orgId, 100)
+    const approvals = Array.from({ length: 2000 }, (_, i) => db.prepare(`INSERT INTO approvals (id, org_id, action, subject_id, payload_hash, requester_seat_id, state, expires_at, created_at) VALUES (?, ?, ?, ?, 'x', ?, 'applied', ?, ?)`)
+      .bind(data.randomId(), o.orgId, i % 2 ? 'order' : 'policy.synced_keys', i % 2 ? data.randomId() : o.orgId, o.seatId, now, now))
     for (let i = 0; i < approvals.length; i += 500) await db.batch(approvals.slice(i, i + 500))
     try {
       const reads = async (run: () => Promise<{ status: number }>) => {
