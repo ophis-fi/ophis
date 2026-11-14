@@ -1,20 +1,27 @@
 // Overview and Desk. An institution: its desk is real (src/server/orders.ts): an order is prepared on a live quote,
-// approved by a second person, then signed by the organisation's own wallet on the signing page. Its overview figures
-// (balances, statement) are the server's examples (src/server/demo.ts). A partner: live figures from the Ophis rebate
-// service, checked and rebuilt by the server (src/server/partner.ts). This file holds no price and builds no order.
+// approved by a second person, then signed by the organisation's own wallet on the signing page. Its overview: the
+// balances of its linked wallets read on the chain, its orders and its monthly statement from the filled ones. A partner:
+// live figures from the Ophis rebate service, checked and rebuilt by the server (src/server/partner.ts). This file holds
+// no price and builds no order.
 import { useCallback, useEffect, useState, type FormEvent, type ReactNode } from 'react'
-import { api, CANCELLED, capital, Icon, ROLE, save, say, sensitive, Section, stamp, Status, Tile } from './ui.tsx'
+import { api, CANCELLED, capital, Icon, ROLE, save, say, sensitive, Section, stamp, Status, Tile, Ways } from './ui.tsx'
 
 // What an approval binds (the server's terms; amounts in atoms) and the same in words, made by the server.
 interface Terms { type: 'market' | 'limit'; chainId: number; walletId: string; wallet: string; label: string; scheme: 'eip712' | 'presign'; sell: { symbol: string; amount: string }; buy: { symbol: string; minimum: string }; quoted: string; slippageBips: number | null; limitPrice: string | null; validFor: number }
-interface Words { sell: string; buy: string; type: string; chain: string; wallet: string; valid: string; fee: string }
+interface Words { sell: string; buy: string; type: string; chain: string; wallet: string; valid: string; fee: string; quote: string; binding: string }
 export interface OrderBody { terms: Terms; words: Words }
-// A row of the blotter: an order of this organisation, its state, and what the orderbook did with it.
-interface Order extends OrderBody { id: string; ref: string; at: number; state: string; open: boolean; mine: boolean; preparer: string; preparerRole: string; decidedBy: string | null; decidedAt: number | null; uid: string | null; sold: string | null; bought: string | null; tx: string | null; signUntil: number | null }
+// A row of the blotter: an order of this organisation, its state, and what the orderbook did with it (in words, units of each asset).
+interface Order extends OrderBody {
+  id: string; ref: string; at: number; state: string; open: boolean; mine: boolean; preparer: string; preparerRole: string; decidedBy: string | null; decidedAt: number | null
+  linkBy: string | null; linkAt: number | null; sentAt: number | null; uid: string | null; tx: string | null; signUntil: number | null
+  executed: { sold: string; bought: string; fee: string | null } | null
+}
 interface Institution {
-  kind: 'institution'; waiting: number; asOf: string; totalEur: string
-  balances: { wallet: string; address: string; chain: string; total: string; rows: { asset: string; balance: string; valueEur: string }[] }[]
-  months: { month: string; trades: number; volumeEur: string; feeBps: string; feeEur: string }[]
+  kind: 'institution'; waiting: number; asOf: string; open: number
+  // The linked wallets on the desk chains (the 10 linked first), in the assets of each chain. balance null: not read.
+  balances: { readAt: string; leftOut: number; wallets: { wallet: string; address: string; chain: string; read: boolean; rows: { asset: string; token: string; balance: string | null }[] }[] }
+  // The filled orders of 12 months, by the month they were sent (UTC) and the asset sold; amounts in units of that asset.
+  months: { month: string; asset: string; orders: number; volume: string; fee: string; unreported: number }[]
   orders: Order[]
 }
 // A partner's figures: live, or the plain reason why there are none. Numbers are USD or WETH amounts of the rebate service.
@@ -53,13 +60,11 @@ export function money(text: string, dp = 2) {
   const [whole, part = ''] = text.split('.')
   return `${whole.replace(/\B(?=(\d{3})+$)/g, ',')}${dp ? `.${part.padEnd(dp, '0').slice(0, dp)}` : ''}`
 }
-const places = (asset: string) => (asset === 'ETH' ? 4 : 2)
+const places = (asset: string) => (asset === 'WETH' ? 4 : 2)
 const count = (n: number) => money(String(n), 0)
 const short = (address: string) => (address.length > 13 ? `${address.slice(0, 6)}...${address.slice(-4)}` : address)
 /** An order in words, as the Approvals list and the record say it. Every amount whole, as the server wrote it. */
 export const orderWords = ({ terms, words }: OrderBody) => `Sell ${words.sell} for ${words.buy}, ${terms.type}, ${words.chain}, from ${terms.label} (${short(terms.wallet)})`
-
-const Banner = () => <p className="note warn demo" role="note"><Icon name="info" /><span className="grow"><b>Example figures.</b> The balances and the statement are examples. Your orders below are real.</span></p>
 
 /** "Export CSV": the server builds the file, the browser saves it. */
 function Export({ table, size = 'sm', label = 'Export CSV' }: { table: string; size?: 'sm' | 'md'; label?: string }) {
@@ -73,7 +78,7 @@ function Export({ table, size = 'sm', label = 'Export CSV' }: { table: string; s
 }
 
 function Table({ head, rows, foot }: { head: string[]; rows: ReactNode[][]; foot?: ReactNode[] }) {
-  const cls = (i: number) => (/\(USD\)|\(EUR\)|\(WETH\)|^(Trades|Wallets|Balance|Sell|Buy|bps|EUR)$/.test(head[i]) ? 'num' : undefined)
+  const cls = (i: number) => (/\(USD\)|\(WETH\)|^(Trades|Wallets|Balance|Orders|Volume|Fees)$/.test(head[i]) ? 'num' : undefined)
   return (
     <div className="table-wrap">
       <table className="t">
@@ -108,41 +113,46 @@ export function Overview({ onSignedOut }: { onSignedOut: () => void }) {
 }
 
 function InstitutionOverview({ v }: { v: Institution }) {
-  const month = v.months[0]
+  const b = v.balances
+  const thisMonth = v.months.filter((m) => m.month === v.asOf.slice(0, 7)).reduce((n, m) => n + m.orders, 0)
   return (
     <>
       <header className="ph">
-        <div><span className="cap eyebrow">Institution console</span><h1 className="h-page">Your position, <em>in one view</em>.</h1><p className="lede">Position at {v.asOf}. Reporting currency: EUR.</p></div>
+        <div><span className="cap eyebrow">Institution console</span><h1 className="h-page">Your position, <em>in one view</em>.</h1><p className="lede">Balances read on the chain at {stamp(Date.parse(b.readAt))}. Amounts in units of each asset.</p></div>
         <div className="acts"><a className="btn ghost md" href="/#/desk"><Icon name="arrow-left-right" size={16} />Open the desk</a></div>
       </header>
-      <Banner />
       <div className="stats">
-        <div className="c"><span className="num">{money(v.totalEur)}</span><span className="cap"><Icon name="landmark" size={16} />Total value (EUR)</span><span className="sub">Across {v.balances.length} example wallets</span></div>
-        <div className="c"><span className="num">{month.trades}</span><span className="cap"><Icon name="arrow-left-right" size={16} />Orders this month</span><span className="sub">Volume {money(month.volumeEur)} EUR</span></div>
-        <div className="c"><span className="num">{money(month.feeEur)}</span><span className="cap"><Icon name="receipt" size={16} />Fees this month (EUR)</span><span className="sub">{month.feeBps} bps of volume</span></div>
+        <div className="c"><span className="num">{b.wallets.length}</span><span className="cap"><Icon name="wallet" size={16} />Linked wallets</span><span className="sub">On the chains of the desk</span></div>
+        <div className="c"><span className="num">{thisMonth}</span><span className="cap"><Icon name="arrow-left-right" size={16} />Orders filled this month</span><span className="sub">{v.asOf.slice(0, 7)}, UTC</span></div>
+        <div className="c"><span className="num">{v.open}</span><span className="cap"><Icon name="clock" size={16} />Open orders</span><span className="sub">On the orderbook now</span></div>
         <div className="c"><span className="num" data-waiting>{v.waiting}</span><span className="cap"><Icon name="users" size={16} />Waiting for approval</span><span className="sub"><a className="link" href="/#/organisation">Open approvals</a></span></div>
       </div>
       <div className="g even sec">
-        <Section icon="wallet" title="Balances by wallet" hint="Example wallets and balances, not your linked wallets." action={<Export table="balances" />}>
-          <div className="table-wrap">
-            <table className="t">
-              <thead><tr><th>Asset</th><th className="num">Balance</th><th className="num">Value (EUR)</th></tr></thead>
-              <tbody>{v.balances.flatMap((w) => [
-                <tr className="grp" key={w.wallet}><td colSpan={3}><div className="gr"><span><Icon name="wallet" size={16} /> <b>{w.wallet}</b> <span className="mono muted">{w.address}</span></span><span>{w.chain}</span></div></td></tr>,
-                ...w.rows.map((r) => <tr key={w.wallet + r.asset}><td>{r.asset}</td><td className="num">{money(r.balance, places(r.asset))}</td><td className="num">{money(r.valueEur)}</td></tr>),
-              ])}</tbody>
-              <tfoot><tr><td>Total, {v.balances.length} wallets</td><td /><td className="num">{money(v.totalEur)}</td></tr></tfoot>
-            </table>
-          </div>
+        <Section icon="wallet" title="Balances by wallet" hint="Your linked wallets, read on the chain. Only the assets of the desk are shown." action={<Export table="balances" />}>
+          {b.wallets.length ? (
+            <div className="table-wrap">
+              <table className="t">
+                <thead><tr><th>Asset</th><th className="num">Balance</th></tr></thead>
+                <tbody>{b.wallets.flatMap((w) => [
+                  <tr className="grp" key={w.address + w.chain}><td colSpan={2}><div className="gr"><span><Icon name="wallet" size={16} /> <b>{w.wallet}</b> <span className="mono muted">{short(w.address)}</span></span><span>{w.chain}</span></div></td></tr>,
+                  ...(w.read ? w.rows.map((r) => <tr key={w.address + w.chain + r.asset}><td>{r.asset}</td><td className="num">{r.balance === null ? 'Not read' : money(r.balance, places(r.asset))}</td></tr>)
+                    : [<tr key={`${w.address + w.chain} unread`}><td colSpan={2} className="muted">Not read: the two network endpoints did not give the same answer just now. Reload in a minute.</td></tr>]),
+                ])}</tbody>
+              </table>
+            </div>
+          ) : <p className="muted">No wallet is linked on a chain of the desk. <a className="link" href="/#/organisation">Link one under Organisation</a>.</p>}
+          {b.leftOut > 0 && <p className="fine"><Icon name="info" size={16} />Balances are read for the 10 wallets linked first. {b.leftOut} more linked {b.leftOut === 1 ? 'wallet is' : 'wallets are'} not shown.</p>}
         </Section>
         <Section icon="history" title="Recent orders" hint="Your own orders, newest first, with their real state." action={<div className="acts"><Export table="orders" /><a className="btn ghost sm" href="/#/desk">All orders</a></div>}>
-          {v.orders.length ? <Table head={['Order', 'Sell, buy', 'Status']} rows={v.orders.slice(0, 8).map((o) => [orderCell(o), <>{o.words.sell}<small>for {o.words.buy}</small></>, <Status>{o.state}</Status>])} /> : <p className="muted">No order yet. Orders are prepared on the desk.</p>}
+          {v.orders.length ? <Table head={['Order', 'Sell, buy', 'Status']} rows={v.orders.map((o) => [orderCell(o), <>{o.words.sell}<small>for {o.words.buy}</small></>, <Status>{o.state}</Status>])} /> : <p className="muted">No order yet. Orders are prepared on the desk.</p>}
         </Section>
       </div>
-      <Section icon="receipt" title="Monthly fee statement" hint="Example statement. Orders on Optimism or Unichain." action={<Export table="statement" />}>
-        <Table head={['Fee line (EUR)', ...v.months.map((m) => m.month)]} rows={[
-          ['Trades', ...v.months.map((m) => m.trades)], ['Volume', ...v.months.map((m) => money(m.volumeEur))], [`Fee (${month.feeBps} bps of volume)`, ...v.months.map((m) => money(m.feeEur))],
-        ]} foot={['Total', ...v.months.map((m) => money(m.feeEur))]} />
+      <Section icon="receipt" title="Monthly statement" hint="Your filled orders of the last 12 months, by the month they were sent (UTC) and the asset sold. Amounts in units of the asset sold." action={<Export table="statement" />}>
+        {v.months.length ? <Table head={['Month', 'Orders', 'Volume', 'Fees']} rows={v.months.map((m) => [
+          <>{m.month}<small>{m.asset} sold</small></>, m.orders, money(m.volume, places(m.asset)),
+          <>{money(m.fee, places(m.asset))}{m.unreported > 0 && <small>{m.unreported} {m.unreported === 1 ? 'order' : 'orders'} with no fee reported</small>}</>,
+        ])} /> : <p className="muted">No filled order yet.</p>}
+        <p className="fine"><Icon name="info" size={16} />Fees: what the orderbook reports for each filled order, in the asset sold. The network fee and the protocol fees, the Ophis fee among them.</p>
       </Section>
     </>
   )
@@ -156,7 +166,8 @@ const ESTIMATE = 'Estimate. The amount is fixed when a payout is made.'
 const volume = (x: { unpriced: number; volumeUsd?: number }, n = x.volumeUsd ?? 0) => <>{usd(n)}{x.unpriced > 0 && <small>{count(x.unpriced)} {x.unpriced === 1 ? 'trade' : 'trades'} not priced yet</small>}</>
 
 // The block explorer of a payout's transaction, by chain: the indexer's own links (EXPLORER_TX_URL there).
-const EXPLORER: Record<number, string> = { 100: 'https://gnosisscan.io/tx/', 10: 'https://optimistic.etherscan.io/tx/', 130: 'https://uniscan.xyz/tx/' }
+// The desk's chains too: an order's transaction.
+const EXPLORER: Record<number, string> = { 1: 'https://etherscan.io/tx/', 10: 'https://optimistic.etherscan.io/tx/', 100: 'https://gnosisscan.io/tx/', 130: 'https://uniscan.xyz/tx/', 8453: 'https://basescan.org/tx/', 42161: 'https://arbiscan.io/tx/' }
 const PAYOUT: Record<string, string> = { executed: 'Paid', proposed: 'Waiting for signatures', proposing: 'Waiting for signatures', computed: 'Not sent yet' }
 const DAY_MS = 86_400_000
 // The trades of a row, under its first cell: three columns fit a phone.
@@ -329,13 +340,16 @@ const TermsFacts = ({ o }: { o: OrderBody }) => (
 )
 
 function TicketForm({ v, onSent }: { v: DeskView; onSent: () => Promise<void> }) {
-  const [t, setT] = useState({ type: 'market', walletId: v.wallets[0]?.id ?? '', sell: '', buy: '', amount: '', limitPrice: '', slippage: String(v.slippage.default / 100), validFor: v.validity[0] })
+  const [t, setT] = useState({ type: 'market', chainId: v.wallets[0]?.chainId ?? 0, walletId: v.wallets[0]?.id ?? '', sell: '', buy: '', amount: '', limitPrice: '', slippage: String(v.slippage.default / 100), validFor: v.validity[0] })
   const [review, setReview] = useState<OrderBody & { review: string }>()
   const [sent, setSent] = useState(false)
   const [problem, setProblem] = useState('')
   const [busy, setBusy] = useState(false)
   const set = (change: Partial<typeof t>) => setT({ ...t, ...change })
-  const wallet = v.wallets.find((w) => w.id === t.walletId) ?? v.wallets[0]
+  // The chains with a linked wallet; on the chain picked, its wallets.
+  const chains = v.chains.filter((c) => v.wallets.some((w) => w.chainId === c.id))
+  const onChain = v.wallets.filter((w) => w.chainId === t.chainId)
+  const wallet = onChain.find((w) => w.id === t.walletId) ?? onChain[0]
   const here = v.assets.filter((a) => a.chainId === wallet?.chainId)
   const [sell, buy] = [here.find((a) => a.symbol === t.sell) ?? here[0], here.find((a) => a.symbol === t.buy) ?? here[1]]
   async function ask(send: boolean, event?: FormEvent) {
@@ -368,7 +382,8 @@ function TicketForm({ v, onSent }: { v: DeskView; onSent: () => Promise<void> })
     return (
       <div className="ticket" data-step="review">
         <h3 className="h-card">Review order</h3>
-        <dl className="kv"><TermsFacts o={review} /></dl>
+        <p className="note" data-binding><Icon name="file-text" /><span className="grow"><b>{review.words.binding}</b></span></p>
+        <dl className="kv"><dt>Live quote</dt><dd>{review.words.quote} for {review.words.sell}, from the orderbook now</dd><TermsFacts o={review} /></dl>
         <p className="fine"><Icon name="info" size={16} />The least amount bought comes from a live quote of the orderbook. It is binding once approved. Send it for approval within 5 minutes, or review it again.</p>
         {failed}
         <div className="acts"><button className="btn ghost md" type="button" onClick={() => setReview(undefined)}>Back to the ticket</button><button className="btn primary md" type="button" disabled={busy} onClick={() => ask(true)}><Icon name="users" size={16} />Send for approval</button></div>
@@ -386,7 +401,10 @@ function TicketForm({ v, onSent }: { v: DeskView; onSent: () => Promise<void> })
   )
   return (
     <form className="ticket" data-step="ticket" onSubmit={(event) => ask(false, event)}>
-      <label className="field">Settle from<select className="input" value={wallet.id} onChange={(event) => set({ walletId: event.target.value, sell: '', buy: '' })}>{v.wallets.map((w) => <option key={w.id} value={w.id}>{w.label} ({short(w.address)}, {w.chain})</option>)}</select></label>
+      <div className="row">
+        <label className="field">Chain<select className="input" value={wallet.chainId} onChange={(event) => set({ chainId: Number(event.target.value), walletId: '', sell: '', buy: '' })}>{chains.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}</select></label>
+        <label className="field">Settle from<select className="input" value={wallet.id} onChange={(event) => set({ walletId: event.target.value })}>{onChain.map((w) => <option key={w.id} value={w.id}>{w.label} ({short(w.address)}, {w.scheme === 'presign' ? 'Safe' : 'key or custodian'})</option>)}</select></label>
+      </div>
       {pills('type', 'Order type', [['market', 'Market'], ['limit', 'Limit']], t.type, (type) => set({ type }))}
       <div className="row">{assets('Sell asset', 'sell', sell?.symbol)}<label className="field">Amount to sell<input className="input" type="text" inputMode="decimal" autoComplete="off" value={t.amount} onChange={(event) => set({ amount: event.target.value })} style={{ textAlign: 'right' }} />
         {sell && <small className="muted">At most {money(sell.cap, 0)} {sell.symbol} per order.</small>}</label></div>
@@ -402,36 +420,52 @@ function TicketForm({ v, onSent }: { v: DeskView; onSent: () => Promise<void> })
   )
 }
 
-// The record of one order: who prepared it and when, its terms, who decided, the signing link, and what the orderbook did.
+// The record of one order: who prepared it and when, the quote and its terms, who decided, who gave the signing link,
+// and what the orderbook did. After the approval: the signing link, and the two ways to open it.
 function OrderRecord({ o, v, onClose, onSignedOut }: { o: Order; v: DeskView; onClose: () => void; onSignedOut: () => void }) {
   const [link, setLink] = useState('')
+  const [copied, setCopied] = useState(false)
   const [problem, setProblem] = useState('')
   const decided = o.state === 'Cancelled' && !o.decidedBy ? `Cancelled by its preparer${o.decidedAt ? ` on ${stamp(o.decidedAt)}` : ''}` : o.decidedBy && o.decidedAt ? `${o.state === 'Refused' && !o.uid ? 'Refused' : 'Approved'} by ${o.decidedBy} on ${stamp(o.decidedAt)}` : o.state === 'Expired' ? 'Nobody decided it within 7 days' : 'Not decided yet'
-  const purpose = o.state === 'Approved: waiting for signature' && !o.uid ? 'sign' : o.state === 'Open' ? 'cancel' : null
+  const purpose = o.state === 'Approved: waiting for signature' && !o.uid ? 'sign' : o.state === 'Open' || o.state === 'Sent: waiting for the Safe transaction' ? 'cancel' : null
   async function give() {
     const out = await sensitive<{ link: string; error?: string }>(`/api/desk/orders/${o.id}/link`, { purpose }).catch(() => null)
     if (out?.status === 401) return onSignedOut()
     setProblem(!out ? CANCELLED : out.status === 200 ? '' : say(out.data))
     setLink(out?.status === 200 ? out.data.link : '')
+    setCopied(false)
   }
+  const tx = o.tx && (EXPLORER[o.terms.chainId] ? <a className="link mono" href={EXPLORER[o.terms.chainId] + o.tx} target="_blank" rel="noopener">{o.tx}</a> : <span className="mono">{o.tx}</span>)
   return (
     <section className="panel sec" id="record" aria-label={`Record of ${o.ref}`}>
       <div className="rp-top"><b className="mono">{o.ref}</b><Status>{o.state}</Status><button className="ib" type="button" aria-label="Close the record" onClick={onClose}><Icon name="x" /></button></div>
       <p>{orderWords(o)}</p>
+      <p className="note" data-binding><Icon name="file-text" /><span className="grow"><b>{o.words.binding}</b></span></p>
       <dl className="kv">
         <dt>Prepared by</dt><dd>{`${o.preparer} (${ROLE[o.preparerRole] ?? o.preparerRole}) on ${stamp(o.at)}`}</dd>
+        <dt>Live quote</dt><dd>{o.words.quote} for {o.words.sell}, when it was prepared</dd>
         <TermsFacts o={o} />
         <dt>Decided</dt><dd>{decided}</dd>
+        {o.linkBy && o.linkAt && <><dt>Signing link</dt><dd>Given by {o.linkBy} on {stamp(o.linkAt)}</dd></>}
         {o.signUntil && <><dt>Sign before</dt><dd>{stamp(o.signUntil)}</dd></>}
+        {o.sentAt && <><dt>Sent to the orderbook</dt><dd>{stamp(o.sentAt)}</dd></>}
         {o.uid && <><dt>Order id</dt><dd className="mono">{o.uid}</dd></>}
-        {o.sold && <><dt>Executed</dt><dd>{o.sold} sold, {o.bought} bought (atoms)</dd></>}
-        {o.tx && <><dt>Transaction</dt><dd className="mono">{o.tx}</dd></>}
+        {o.executed && <><dt>Executed</dt><dd>{o.executed.sold} sold, {o.executed.bought} bought</dd>
+          <dt>Fee at settlement</dt><dd>{o.executed.fee ?? 'Not reported by the orderbook'}<small className="muted"> The network fee and the protocol fees, the Ophis fee among them, as the orderbook reports them.</small></dd></>}
+        {tx && <><dt>Transaction</dt><dd>{tx}</dd></>}
       </dl>
       {purpose && v.maySign && (
-        <div className="stack">
+        <div className="stack" data-step="link">
+          <h3 className="h-card">{purpose === 'sign' ? 'Hand over the signing link' : 'Hand over the cancel link'}</h3>
           <p className="note"><Icon name="info" /><span className="grow">{purpose === 'sign' ? 'The wallet signs this order on the signing page. Give the link to the people who hold the wallet, by a channel you trust. It works once.' : 'The wallet cancels this order on the signing page. The link works once.'}</span></p>
           <div className="acts"><button className="btn primary md" type="button" onClick={give}><Icon name="key-round" size={16} />{purpose === 'sign' ? 'Signing link' : 'Cancel link'}</button></div>
-          {link && <label className="field">Link for the wallet<input className="input mono" readOnly value={link} onFocus={(event) => event.target.select()} /></label>}
+          {link && (
+            <>
+              <label className="field">Link for the wallet<input className="input mono" readOnly value={link} onFocus={(event) => event.target.select()} /></label>
+              <div><button className="btn ghost md" type="button" onClick={() => navigator.clipboard.writeText(link).then(() => setCopied(true), () => setCopied(false))}><Icon name="clipboard-check" size={16} />{copied ? 'Copied' : 'Copy the link'}</button></div>
+              <p className="fine"><Icon name="info" size={16} /><span><Ways link={link} />{o.terms.scheme === 'presign' && ' This wallet is a Safe: use the Safe interface.'}</span></p>
+            </>
+          )}
         </div>
       )}
       {problem && <p className="note bad" role="alert"><Icon name="triangle-alert" /><span className="grow">{problem}</span></p>}
@@ -455,6 +489,7 @@ function InstitutionDesk({ onSignedOut }: { onSignedOut: () => void }) {
   const { view: v, problem, load } = useView<DeskView>('/api/desk', onSignedOut)
   const [picked, setPicked] = useState('')
   const [failed, setFailed] = useState('')
+  const [busy, setBusy] = useState(false)
   if (!v) return problem ? <p className="note bad" role="alert"><Icon name="triangle-alert" /><span className="grow">{problem}</span></p> : null
   const record = v.orders.find((o) => o.id === picked)
   async function cancel(o: Order) {
@@ -479,7 +514,8 @@ function InstitutionDesk({ onSignedOut }: { onSignedOut: () => void }) {
           </ol>
         </div>
       </div>
-      <Section icon="scroll-text" title="Order blotter" hint="Your orders, newest first, with their state. Select an order to open its record." action={<Export table="orders" />}>
+      <Section icon="scroll-text" title="Order blotter" hint="Your orders, newest first, with their state. Refresh reads the orderbook again. Select an order to open its record."
+        action={<div className="acts"><button className="btn ghost sm" type="button" disabled={busy} onClick={async () => (setBusy(true), await load(), setBusy(false))}><Icon name="history" size={16} />Refresh</button><Export table="orders" /></div>}>
         {failed && <p className="note bad" role="alert"><Icon name="triangle-alert" /><span className="grow">{failed}</span></p>}
         {v.orders.length ? <Table head={['Order', 'Type', 'Sell', 'Buy', 'Chain', 'Status', 'Actions']} rows={v.orders.map((o) => [
           orderCell(o, (x) => setPicked(x.id)), o.terms.type === 'limit' ? 'Limit' : 'Market', o.words.sell, o.words.buy, o.words.chain, <Status>{o.state}</Status>,

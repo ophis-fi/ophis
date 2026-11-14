@@ -14,13 +14,13 @@ import wranglerConfig from '../wrangler.jsonc?raw'
 import { challengeIsOurs, configFor, credentialHash, fromBase64Url, newChallenge, seal, toBase64Url, userHandle } from '../src/server/passkeys.ts'
 import { checksum, colour, LIMITS, SAFES, type SafeState } from '../src/server/chain.ts'
 import { LINK_ACTION, PROOF_ACTION, typedLink, typedProof, type Typed } from '../src/server/typed.ts'
-import * as demo from '../src/server/demo.ts'
 import * as orders from '../src/server/orders.ts'
 import realBook from './fixtures/orderbook.json'
 import golden from './fixtures/appdata-golden.json'
 import deskPage from '../src/app/desk.tsx?raw'
 import ordersSource from '../src/server/orders.ts?raw'
 import signScript from '../sign/main.ts?raw'
+import signPage from '../sign/index.html?raw'
 import devScript from '../scripts/dev.mjs?raw'
 import demoSource from '../src/server/demo.ts?raw'
 import shellPage from '../src/app/main.tsx?raw'
@@ -276,8 +276,13 @@ const word = (address: string) => `0x${address.slice(2).toLowerCase().padStart(6
 // A contract wallet on the fake chain. plain: it answers isValidSignature and nothing a Safe answers.
 // code, singleton (storage slot 0) and fallback (the handler slot): by default those of a genuine Safe 1.4.1. bigThreshold: what getThreshold really says.
 interface Contract extends Omit<SafeState, 'handler'> { accepts: (digest: string, signature: string) => boolean; plain?: boolean; code: string; singleton: string; fallback: string; bigThreshold?: bigint }
+// Multicall3 and ERC-20 balanceOf, written here from their public ABI (not imported from chain.ts).
+const MULTI_ABI = parseAbi(['struct Call3 { address target; bool allowFailure; bytes callData; }', 'struct Result { bool success; bytes returnData; }', 'function aggregate3(Call3[] calls) view returns (Result[] returnData)', 'function balanceOf(address owner) view returns (uint256)'])
+const MULTICALL3 = '0xca11bde05977b3631167028862be2a173976ca11'
 const chain = {
   contracts: new Map<string, Contract>(),
+  // ERC-20 balances on the fake chain, by `${token}:${owner}` in lower case; none is 0. -1n: that balanceOf reverts.
+  balances: new Map<string, bigint>(),
   calls: [] as string[],
   // Changes what one endpoint answers: another result, or a Response or a pending promise in its place.
   twist: (_url: string, _method: string, result: unknown, _init?: RequestInit): unknown => result,
@@ -285,11 +290,19 @@ const chain = {
 function fakeRpc(input: RequestInfo | URL, init?: RequestInit) {
   const { method, params } = JSON.parse(String(init?.body)) as { method: string; params: [{ to: string; data: `0x${string}` }] }
   chain.calls.push(`${String(input)} ${method}`)
-  let result: unknown = '0xa'
+  // eth_chainId: the chain whose endpoint was asked (OP Mainnet for any other address).
+  let result: unknown = `0x${Number(Object.entries(configFor('local').chains).find(([, urls]) => urls.includes(String(input)))?.[0] ?? CHAIN).toString(16)}`
   if (method === 'eth_getCode' || method === 'eth_getStorageAt') {
     const [address, slot] = params as unknown as string[]
     const contract = chain.contracts.get(address.toLowerCase())
     result = method === 'eth_getCode' ? contract?.code ?? '0x' : word(!contract ? '0x0' : slot === '0x0' ? contract.singleton : contract.fallback)
+  } else if (method === 'eth_call' && params[0].to.toLowerCase() === MULTICALL3) {
+    const { args } = decodeFunctionData({ abi: MULTI_ABI, data: params[0].data }) as unknown as { args: [{ target: string; callData: `0x${string}` }[]] }
+    result = encodeFunctionResult({ abi: MULTI_ABI, functionName: 'aggregate3', result: args[0].map((c) => {
+      const owner = (decodeFunctionData({ abi: MULTI_ABI, data: c.callData }).args as [string])[0]
+      const balance = chain.balances.get(`${c.target}:${owner}`.toLowerCase()) ?? 0n
+      return balance < 0n ? { success: false, returnData: '0x' as const } : { success: true, returnData: encodeFunctionResult({ abi: MULTI_ABI, functionName: 'balanceOf', result: balance }) }
+    }) })
   } else if (method === 'eth_call') {
     const contract = chain.contracts.get(params[0].to.toLowerCase())
     const asked = contract && decodeFunctionData({ abi: SAFE_ABI, data: params[0].data })
@@ -307,6 +320,7 @@ function fakeRpc(input: RequestInfo | URL, init?: RequestInit) {
 beforeEach(() => {
   vi.stubGlobal('fetch', fakeRpc)
   chain.contracts.clear()
+  chain.balances.clear()
   chain.calls = []
   chain.twist = (_url, _method, result) => result
   LIMITS.timeoutMs = 5000
@@ -5109,17 +5123,21 @@ describe('D. Support: the model selects, the server decides', () => {
     }
     expect(new Set(ANSWERS.map((a) => a.title)).size).toBe(25)
     // What is not built says so.
-    for (const id of ['KB-01', 'KB-13', 'KB-16']) expect(ANSWERS.find((a) => a.id === id)!.text, id).toMatch(/^Not available yet\./)
+    for (const id of ['KB-01', 'KB-13']) expect(ANSWERS.find((a) => a.id === id)!.text, id).toMatch(/^Not available yet\./)
     // Review of P4: a partner's Overview shows its fee figures and exports one table, so the two texts say so. No text
     // speaks of a referral share, referred wallets, codes or earnings: the console's partners get none (2026-11-13).
     const text = (id: string) => ANSWERS.find((a) => a.id === id)!.text
     expect(text('KB-13')).toMatch(/Overview shows a partner organisation its fee owed this cycle \(an estimate\), its payouts, the daily volume, the split by chain and fee token, and the wallets that traded, flagging those on a sanctions list\. Figures are read for the fee recipient address you link\./)
-    expect(text('KB-16')).toMatch(/for a partner organisation, in Overview, the partner-fee months, the payouts, the daily volume, the split by chain and by fee token, the wallets that traded, and those of them on a sanctions list;/)
+    expect(text('KB-16')).toMatch(/A partner, in Overview: the partner-fee months, payouts, daily volume, the split by chain and by fee token, the wallets that traded, and those of them on a sanctions list\./)
+    // The institution's exports are real since 2026-11-14: balances read on the chain, its orders, the statement of its filled orders.
+    expect(text('KB-16')).toMatch(/An institution, in Overview: the balances of its linked wallets, its orders, and the monthly statement of its filled orders/)
+    expect(text('KB-16')).not.toMatch(/Not available|example/i)
     expect(text('KB-13') + text('KB-16')).not.toMatch(/no fees view|does not show|one export that exists/)
     for (const a of ANSWERS) expect(a.title + a.about + a.text, a.id).not.toMatch(/referr|affiliate|partner code|earning/i)
     // Onboarding is built and the Desk is real (2026-11-14): the two texts say what is there.
     expect(text('KB-01')).toMatch(/application code from Ophis/)
-    expect(text('KB-19')).toMatch(/one-time link lets your wallet sign it, within 24 hours/)
+    expect(text('KB-19')).toMatch(/one-time link lets your wallet sign it, within 24 hours\. A Safe signs in the Safe interface\./)
+    expect(text('KB-19')).toContain('Sent: waiting for the Safe transaction')
     expect(text('KB-19')).not.toMatch(/demo|Not available/)
     expect(text('KB-01') + text('KB-19')).not.toMatch(/not built|shows no orders/)
     expect(supportPage).toContain("'An outside provider, TypeSafe AI (USA), matches your question to our help texts. It receives your question without your name, organisation or wallet. Ophis does not store your question.'")
@@ -8243,8 +8261,8 @@ describe('E. onboarding: a company applies, proves its domain, is activated and 
   })
 })
 
-// ---- demo mode: overview, desk and partner figures. The figures are examples; the role table, the two-person
-// control, the audit log and the isolation are real. Each control here was seen failing once with it removed.
+// ---- overview, desk and partner figures: the role table, the two-person control, the audit log and the isolation.
+// Each control here was seen failing once with it removed.
 const get = (path: string, m: Holder) => call('GET', path, { cookie: m.cookie })
 const setOrg = (orgId: string, set: string) => db.prepare(`UPDATE organisations SET ${set} WHERE id = ?`).bind(orgId).run()
 // A linked wallet, written straight to the table: linking is section y.
@@ -8255,7 +8273,6 @@ async function demoWallet(orgId: string, label = 'Operations Safe', state = 'lin
   return id
 }
 const keysOf = (value: unknown): string[] => (value && typeof value === 'object' ? Object.entries(value).flatMap(([k, v]) => [...(Array.isArray(value) ? [] : [k]), ...keysOf(v)]) : [])
-const total = (rows: object[], field: string) => demo.shown(rows.reduce((n, r) => n + demo.fixed((r as Record<string, unknown>)[field], 2)!, 0n), 2)
 
 isolation['GET /api/desk'] = async (a, b) => {
   book()
@@ -8318,7 +8335,9 @@ function book(o: { state?: string; buy?: string; twist?: (asked: Asked) => Respo
     const status = o.state ?? 'open'
     const filled = status === 'fulfilled'
     if (url.includes('/trades')) return Response.json(filled ? realBook.trades.response.map((t) => ({ ...t, orderUid: uid })) : [])
-    return Response.json({ ...realBook.order.response, uid, owner: order.from.toLowerCase(), status, executedSellAmount: filled ? order.sellAmount : '0', executedBuyAmount: filled ? order.buyAmount : '0' })
+    // The real order's fee, in the same proportion to what was sold, in the asset sold.
+    const fee = filled ? String((BigInt(order.sellAmount) * BigInt(realBook.order.response.executedFee)) / BigInt(realBook.order.response.executedSellAmount)) : '0'
+    return Response.json({ ...realBook.order.response, uid, owner: order.from.toLowerCase(), status, executedSellAmount: filled ? order.sellAmount : '0', executedBuyAmount: filled ? order.buyAmount : '0', executedFee: fee, executedFeeToken: String(order.sellToken).toLowerCase() })
   })
   return asked
 }
@@ -8350,7 +8369,8 @@ const orderOf = async (id: string) => {
   return { ...r, terms: JSON.parse(JSON.parse(r.payload).value) as orders.Terms }
 }
 const addressOf = async (walletId: string) => checksum((await row<{ address: string }>('SELECT address FROM wallets WHERE id = ?', walletId))!.address)
-const deskOrders = async (m: Holder) => (await get('/api/desk', m)).body.orders as { id: string; ref: string; state: string; signUntil: number | null; open: boolean; mine: boolean; preparer: string; preparerRole: string; decidedBy: string | null; decidedAt: number | null; terms: orders.Terms; words: Record<string, string>; uid: string | null; sold: string | null; bought: string | null; tx: string | null }[]
+const deskOrders = async (m: Holder) => (await get('/api/desk', m)).body.orders as { id: string; ref: string; state: string; signUntil: number | null; open: boolean; mine: boolean; preparer: string; preparerRole: string; decidedBy: string | null; decidedAt: number | null; terms: orders.Terms; words: Record<string, string>; uid: string | null; sold: string | null; bought: string | null; tx: string | null
+  executed: { sold: string; bought: string; fee: string | null } | null; linkBy: string | null; linkAt: number | null; sentAt: number | null }[]
 const sayOf = async (m: Holder) => ((await get('/api/audit', m)).body.rows as { event: string }[]).map((r) => r.event)
 /** An order prepared by the Trader and approved by the Approver. */
 async function approvedOrder(team: Awaited<ReturnType<typeof deskTeam>>, more: Record<string, unknown> = {}) {
@@ -8463,26 +8483,152 @@ isolation['GET /api/export/:id'] = async (a, b) => {
   const mine = (await prepare(a, await demoWallet(a.orgId, 'Wallet of A'), { amount: '333' })).body.id as string
   const before = await snapshot()
   const file = await exported(a, 'orders')
-  expect(file.rows.slice(1).map((r) => [r[0], r[4], r[7]])).toEqual([[`ORD-${mine.slice(0, 8)}`, 'Wallet of A', '333']])
+  expect(file.rows.slice(1).map((r) => [r[0], r[5], r[10]])).toEqual([[`ORD-${mine.slice(0, 8)}`, 'Wallet of A', '333']])
   expect(file.body.csv).not.toMatch(/Wallet of B|"777"/)
+  const held = await exported(a, 'balances')
+  expect([...new Set(held.rows.slice(1).map((r) => r[0]))]).toEqual(['Wallet of A'])
+  expect(held.body.csv + (await exported(a, 'statement')).body.csv).not.toMatch(/Wallet of B/)
   expect(await snapshot()).toBe(before) // an export writes nothing
 }
 
-describe('H. the institution: overview figures (examples), the desk and its exports', () => {
+// Atoms as units, written here (not orders.decimal): every decimal kept, trailing zeros cut.
+const units = (atoms: bigint, decimals: number) => {
+  const text = atoms.toString().padStart(decimals + 1, '0')
+  const part = text.slice(text.length - decimals).replace(/0+$/, '')
+  return `${text.slice(0, text.length - decimals)}${part ? `.${part}` : ''}`
+}
+const BASE_USDC = '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913'
+const held = (token: string, owner: string, atoms: bigint) => chain.balances.set(`${token}:${owner}`.toLowerCase(), atoms)
+
+describe('H. the institution: overview from its wallets and orders, the desk and its exports', () => {
   for (const route of ['GET /api/desk', 'POST /api/desk/orders', 'GET /api/export/:id', 'POST /api/desk/orders/:id/link', 'POST /api/order', 'POST /api/order/send']) {
     it(`${route}: the isolation case`, async () => isolation[route](await member('Alder Asset Management'), await member('Birchfield Capital')))
   }
 
-  it('D1: every total of the example figures is computed from the rows, with integers: the institution total is the sum of its balances', () => {
-    const i = demo.institution()
-    expect(i.totalEur).toBe('11363175.00')
-    expect(total(i.balances.flatMap((w) => w.rows), 'valueEur')).toBe(i.totalEur)
-    expect(total(i.balances, 'total')).toBe(i.totalEur)
-    expect(i.months[0]).toEqual({ month: '2026-11, to date', trades: 14, volumeEur: '17920000.00', feeBps: '1.00', feeEur: '1792.00' })
-    // The arithmetic never passes through a float: 0.1 + 0.2 is exact, and a string is cut, never rounded up.
-    expect(demo.shown(demo.fixed('0.1', 18)! + demo.fixed('0.2', 18)!, 18)).toBe('0.300000000000000000')
-    expect(demo.shown(demo.fixed('1.999999', 6)!, 2)).toBe('1.99')
-    expect(Object.keys(demo.tables()).sort()).toEqual(['balances', 'statement'])
+  it('D1: the balances of the linked wallets, read on the chain: one aggregate3 per chain on both endpoints, in the assets of that chain; a call that fails is no balance, and an answer the two endpoints do not share is none', async () => {
+    const { o, walletId } = await deskTeam() // accounts[1] on OP Mainnet
+    const base = await demoWallet(o.orgId, 'Base Safe', 'linked', someAddress(), 'safe', 8453)
+    const pending = await demoWallet(o.orgId, 'Waits', 'pending')
+    await db.prepare(`INSERT INTO approvals (id, org_id, action, subject_id, payload, payload_hash, requester_seat_id, state, expires_at, created_at) VALUES (?, ?, 'wallet.link', ?, '{}', '', ?, 'pending', ?, ?)`)
+      .bind(data.randomId(), o.orgId, pending, o.seatId, now + DAY, now).run() // its link waits for a second person: live, not linked
+    await demoWallet(o.orgId, 'Unichain', 'linked', someAddress(), 'custodian', 130) // a chain the desk does not serve
+    held(WETH_OP, accounts[1].address, 12_345_000_000_000_000_000n)
+    held(USDC_OP, accounts[1].address, 1_500_250_000n)
+    held(BASE_USDC, await addressOf(base), -1n) // its balanceOf reverts
+    const view = (await get('/api/overview', o)).body
+    expect(view.balances).toEqual({ readAt: new Date(now).toISOString(), leftOut: 0, wallets: [
+      { wallet: 'Operations Safe', address: accounts[1].address, chain: 'OP Mainnet', read: true, rows: [{ asset: 'WETH', token: WETH_OP, balance: '12.345' }, { asset: 'USDC', token: USDC_OP, balance: '1500.25' }] },
+      { wallet: 'Base Safe', address: await addressOf(base), chain: 'Base', read: true, rows: [
+        { asset: 'WETH', token: WETH_OP, balance: '0' }, { asset: 'USDC', token: BASE_USDC, balance: null }, { asset: 'EURC', token: '0x60a3E35Cc302bFA44Cb288Bc5a4F316Fdb1adb42', balance: '0' }] },
+    ] })
+    expect(walletId).toBeTruthy()
+    // One eth_call per chain on each of its two endpoints, each of which first said it is that chain.
+    const endpoints = [...configFor('local').chains[10], ...configFor('local').chains[8453]]
+    expect(chain.calls.filter((x) => x.endsWith('eth_call')).sort()).toEqual(endpoints.map((u) => `${u} eth_call`).sort())
+    expect(chain.calls.filter((x) => x.endsWith('eth_chainId')).sort()).toEqual(endpoints.map((u) => `${u} eth_chainId`).sort())
+    // The two endpoints of Base answer differently: Base is not read, OP Mainnet is (a minute later: the cache below is past).
+    now += 60_000
+    chain.twist = (url, method, result) => (url === configFor('local').chains[8453][1] && method === 'eth_call' ? `0x${'0'.repeat(64)}` : result)
+    const twisted = (await get('/api/overview', o)).body.balances.wallets
+    expect(twisted.map((w: { read: boolean; rows: { balance: string | null }[] }) => [w.read, w.rows[0].balance])).toEqual([[true, '12.345'], [false, null]])
+    // An endpoint that says it is another chain answers nothing.
+    now += 60_000
+    chain.twist = (url, method, result) => (url === configFor('local').chains[10][0] && method === 'eth_chainId' ? '0x1' : result)
+    expect((await get('/api/overview', o)).body.balances.wallets[0].read).toBe(false)
+    // Both endpoints give the same answer, but for fewer calls than were asked: no balance is matched to a wallet.
+    now += 60_000
+    const short = encodeFunctionResult({ abi: MULTI_ABI, functionName: 'aggregate3', result: [{ success: true, returnData: encodeFunctionResult({ abi: MULTI_ABI, functionName: 'balanceOf', result: 5n }) }] })
+    chain.twist = (url, method, result) => (configFor('local').chains[10].includes(url) && method === 'eth_call' ? short : result)
+    expect((await get('/api/overview', o)).body.balances.wallets[0]).toMatchObject({ read: false, rows: [{ balance: null }, { balance: null }] })
+  })
+
+  it('D1: locally only, RPC_URL names a stand-in on this machine for the balances; any other value is not read', async () => {
+    const { o } = await deskTeam()
+    for (const [url, asked] of [['http://127.0.0.1:8795/rpc', 'http://127.0.0.1:8795/rpc/10/a'], ['https://rpc.example/rpc', configFor('local').chains[10][0]], ['http://127.0.0.1:8795/rpc?x=1', configFor('local').chains[10][0]]]) {
+      chain.calls = []
+      now += 60_000
+      await call('GET', '/api/overview', { cookie: o.cookie, env: { ...testEnv, RPC_URL: url } as Env })
+      expect(chain.calls[0], url).toBe(`${asked} eth_chainId`)
+    }
+  })
+
+  it('D1: the balances are cached 60 seconds per organisation and its wallets; the 10 wallets linked first are read; the CSV says the same', async () => {
+    const { o } = await deskTeam()
+    held(WETH_OP, accounts[1].address, 10n ** 18n)
+    await get('/api/overview', o)
+    const asked = () => chain.calls.filter((x) => x.endsWith('eth_call')).length
+    expect(asked()).toBe(2)
+    now += 59_999
+    held(WETH_OP, accounts[1].address, 2n * 10n ** 18n)
+    expect((await get('/api/overview', o)).body.balances.wallets[0].rows[0].balance).toBe('1')
+    expect(asked()).toBe(2)
+    now += 1
+    expect((await get('/api/overview', o)).body.balances.wallets[0].rows[0].balance).toBe('2')
+    expect(asked()).toBe(4)
+    // A wallet linked meanwhile is read at once.
+    const more = await demoWallet(o.orgId, 'Wallet 1')
+    expect((await get('/api/overview', o)).body.balances.wallets.map((w: { address: string }) => w.address)).toEqual([accounts[1].address, await addressOf(more)])
+    expect(asked()).toBe(6)
+    for (let i = 2; i <= 10; i++) await demoWallet(o.orgId, `Wallet ${i}`)
+    const view = (await get('/api/overview', o)).body.balances
+    expect([view.wallets.length, view.leftOut, view.wallets.at(-1).wallet]).toEqual([10, 1, 'Wallet 9'])
+    const file = await exported(o, 'balances')
+    expect(file.rows[0]).toEqual(['Wallet', 'Address', 'Chain', 'Asset', 'Token', 'Balance', 'Read at', 'source'])
+    expect(file.rows[1]).toEqual(['Operations Safe', accounts[1].address, 'OP Mainnet', 'WETH', WETH_OP, '2', view.readAt, 'live'])
+    expect(file.rows).toHaveLength(1 + 10 * 2)
+  })
+
+  it('D1: the monthly statement and the record come from the filled orders: by the month sent and the asset sold, in units; a fee is kept only in the asset sold; the record names who gave the signing link', async () => {
+    const team = await deskTeam()
+    book()
+    const ids: string[] = []
+    const uids: string[] = []
+    for (const amount of ['250000', '100.5', '7', '9', '11', '13']) {
+      const id = await approvedOrder(team, { amount })
+      uids.push((await signed((await orderLink(team.t, id)).token)).page.body.uid)
+      ids.push(id)
+    }
+    // A cancel link given by the Approver later does not change who gave the signing link.
+    expect((await orderLink(team.a, ids[4], 'cancel')).status).toBe(200)
+    // The second order's fee is reported in another token: it is not kept. The fifth order stays open.
+    const realFee = (sold: bigint) => (sold * BigInt(realBook.order.response.executedFee)) / BigInt(realBook.order.response.executedSellAmount)
+    // The third order's fee is no integer: not kept either.
+    const answer = (uid: string, more: object) => Response.json({ ...realBook.order.response, uid, status: 'fulfilled', executedBuyAmount: '1', executedFeeToken: USDC_OP.toLowerCase(), ...more })
+    book({ state: 'fulfilled', twist: (a) => (a.url.endsWith(`/orders/${uids[1]}`) ? answer(uids[1], { executedSellAmount: '100500000', executedFee: '500', executedFeeToken: WETH_OP })
+      : a.url.endsWith(`/orders/${uids[2]}`) ? answer(uids[2], { executedSellAmount: '7000000', executedFee: '7e5' })
+      : a.url.endsWith(`/orders/${uids[4]}`) ? answer(uids[4], { status: 'open', executedSellAmount: '0', executedBuyAmount: '0' }) : undefined) })
+    await get('/api/desk', team.t)
+    // The sixth order sold an asset this server no longer lists (as after a delisting): it is no line of the statement.
+    const delisted = (await orderOf(ids[5])).terms
+    await db.prepare('UPDATE approvals SET payload = ? WHERE id = ?').bind(JSON.stringify({ value: JSON.stringify({ ...delisted, sell: { ...delisted.sell, symbol: 'XYZ' } }) }), ids[5]).run()
+    // Sent in October, and 13 months ago: the second is no line of the statement.
+    await db.prepare('UPDATE orders SET sent_at = ? WHERE id = ?').bind(Date.UTC(2026, 9, 15), ids[2]).run()
+    await db.prepare('UPDATE orders SET sent_at = ? WHERE id = ?').bind(now - 366 * DAY, ids[3]).run()
+    const view = (await get('/api/overview', team.o)).body
+    expect(view.months).toEqual([
+      { month: '2026-11', asset: 'USDC', orders: 2, volume: '250100.5', fee: units(realFee(250_000_000_000n), 6), unreported: 1 },
+      { month: '2026-10', asset: 'USDC', orders: 1, volume: '7', fee: '0', unreported: 1 },
+    ])
+    expect(view.open).toBe(1)
+    const shown = await deskOrders(team.t)
+    const first = shown.find((x) => x.id === ids[0])!
+    expect(first).toMatchObject({ state: 'Filled', linkBy: 'A trader', linkAt: now, sentAt: now, tx: realBook.trades.response[0].txHash })
+    expect(first.executed).toEqual({ sold: '250000 USDC', bought: `${units(BigInt(first.terms.buy.minimum), 18)} WETH`, fee: `${units(realFee(250_000_000_000n), 6)} USDC` })
+    expect(shown.find((x) => x.id === ids[1])!.executed!.fee).toBeNull()
+    expect(shown.find((x) => x.id === ids[4])).toMatchObject({ state: 'Open', executed: null, linkBy: 'A trader' })
+    expect(first.words.quote).toBe(`${units(BigInt(first.terms.quoted), 18)} WETH`)
+    expect(first.words.binding).toBe(`Sell exactly 250000 USDC. Receive at least ${units(BigInt(first.terms.buy.minimum), 18)} WETH. Valid until ${new Date((now / 1000 + 1800) * 1000).toISOString().slice(0, 16).replace('T', ' ')} UTC.`)
+    // The CSV: every term, the state, who and when, what the orderbook executed, the fee and the transaction.
+    const file = await exported(team.o, 'statement')
+    expect(file.rows).toEqual([['Month', 'Asset sold', 'Filled orders', 'Volume sold', 'Fees', 'Orders with no fee reported', 'source'], ...view.months.map((m: Record<string, unknown>) => [m.month, m.asset, String(m.orders), m.volume, m.fee, String(m.unreported), 'live'])])
+    const lines = (await exported(team.o, 'orders')).rows
+    const line = lines.find((r) => r[0] === `ORD-${ids[0].slice(0, 8)}`)!
+    expect(Object.fromEntries(lines[0].map((h, i) => [h, line[i]]))).toMatchObject({
+      'Prepared by': 'A trader', Type: 'market', Chain: 'OP Mainnet', Signing: 'eip712', Sell: 'USDC', 'Sell token': USDC_OP, 'Amount sold': '250000', Buy: 'WETH', 'Least amount bought': units(BigInt(first.terms.buy.minimum), 18),
+      'Live quote': units(BigInt(first.terms.quoted), 18), 'Slippage (bps)': '50', 'Limit price': '', 'Valid after signing (s)': '1800', 'Valid until': new Date((now / 1000 + 1800) * 1000).toISOString(), 'App data hash': first.terms.appDataHash,
+      Status: 'Filled', 'Decided by': 'A approver', 'Signing link by': 'A trader', 'Signing link at': new Date(now).toISOString(), 'Order id': uids[0], 'Sent at': new Date(now).toISOString(),
+      Sold: '250000 USDC', Fee: `${units(realFee(250_000_000_000n), 6)} USDC`, Transaction: realBook.trades.response[0].txHash, source: 'live',
+    })
   })
 
   it('D1: GET /api/overview answers every role, follows the kind of the organisation, and counts the approvals that really wait for this viewer', async () => {
@@ -8491,8 +8637,7 @@ describe('H. the institution: overview figures (examples), the desk and its expo
     // A partner gets no example and no word "demo": its figures are live (section I), here not connected.
     for (const m of [o, a, v, t]) expect((await get('/api/overview', m)).body).toEqual({ kind: 'partner', waiting: 0, figures: { state: 'not_connected' } })
     await setOrg(o.orgId, `kind = 'institution'`)
-    for (const m of [o, a, v, t]) expect((await get('/api/overview', m)).body).toMatchObject({ demo: true, kind: 'institution', waiting: 0, totalEur: '11363175.00', orders: [] })
-    expect((await get('/api/overview', o)).body.examples).toBeUndefined() // no example order: the orders are the organisation's own
+    for (const m of [o, a, v, t]) expect((await get('/api/overview', m)).body).toEqual({ kind: 'institution', waiting: 0, asOf: new Date(now).toISOString(), balances: { readAt: new Date(now).toISOString(), leftOut: 0, wallets: [] }, months: [], orders: [], open: 0 })
     // One request waits: its requester cannot decide it, the Approver can, a Viewer and a Trader decide nothing.
     expect((await act(o, v.seatId, 'role', { role: 'trader' })).status).toBe(200)
     expect(await Promise.all([o, a, v, t].map(async (m) => (await get('/api/overview', m)).body.waiting))).toEqual([0, 1, 0, 0])
@@ -8540,19 +8685,22 @@ describe('H. the institution: overview figures (examples), the desk and its expo
     expect((await get('/api/desk', o)).status).toBe(200)
   })
 
-  it('D3: the exports of an institution: its orders and the permitted assets are live, the example tables say demo; a partner gets none of these', async () => {
+  it('D3: the exports of an institution: its orders, the balances of its wallets, its statement and the permitted assets, named ophis-, every row source = live; a partner gets none of these', async () => {
     book()
     const { o, a, t, walletId } = await deskTeam()
-    await prepare(t, walletId)
+    const id = await approvedOrder({ o, a, t, walletId })
+    await signed((await orderLink(t, id)).token)
+    book({ state: 'fulfilled' })
+    await get('/api/desk', t)
     const viewer = await colleague(o, 'viewer')
-    for (const [table, name, source] of [['orders', 'ophis-desk-orders', 'live'], ['assets', 'ophis-desk-assets', 'live'], ['balances', 'ophis-demo-balances', 'demo'], ['statement', 'ophis-demo-statement', 'demo']]) {
+    for (const table of ['orders', 'assets', 'balances', 'statement']) {
       for (const m of [o, a, t, viewer]) {
         const file = await exported(m, table)
         expect(file.status, table).toBe(200)
-        expect(file.body.name, table).toBe(`${name}-2026-11-10.csv`)
+        expect(file.body.name, table).toBe(`ophis-${table}-2026-11-10.csv`)
         expect(file.rows.length, table).toBeGreaterThan(1)
         expect(file.rows[0].at(-1), table).toBe('source')
-        for (const r of file.rows.slice(1)) expect([r.length, r.at(-1)], table).toEqual([file.rows[0].length, source])
+        for (const r of file.rows.slice(1)) expect([r.length, r.at(-1)], table).toEqual([file.rows[0].length, 'live'])
       }
     }
     expect((await exported(o, 'assets')).rows.slice(1).map((r) => r.slice(0, 3).join(' '))).toContain(`OP Mainnet USDC ${USDC_OP}`)
@@ -8569,9 +8717,11 @@ describe('H. the institution: overview figures (examples), the desk and its expo
     const second = (await prepare(o, hostile, { amount: '12.5' })).body.id as string
     expect((await decide(a, first, 'approve')).status).toBe(200)
     const file = await exported(o, 'orders')
-    expect(file.rows[0]).toEqual(['Order', 'Prepared at', 'Type', 'Chain', 'Wallet', 'Wallet address', 'Sell', 'Amount', 'Buy', 'Least amount bought', 'Status', 'Order id', 'Sold', 'Bought', 'Transaction', 'source'])
-    expect(file.rows.slice(1).map((r) => [r[0], r[4], r[7], r[10]])).toEqual([[`ORD-${second.slice(0, 8)}`, "'-2+3 (cmd)", '12.5', 'Pending approval'], [`ORD-${first.slice(0, 8)}`, 'Operations Safe', '250000', 'Approved: waiting for signature']])
-    expect(file.rows[1][5]).toBe(await addressOf(hostile))
+    expect(file.rows[0]).toEqual(['Order', 'Prepared at', 'Prepared by', 'Type', 'Chain', 'Wallet', 'Wallet address', 'Signing', 'Sell', 'Sell token', 'Amount sold', 'Buy', 'Buy token', 'Least amount bought',
+      'Live quote', 'Slippage (bps)', 'Limit price', 'Valid after signing (s)', 'Valid until', 'App data hash', 'Status', 'Decided by', 'Decided at', 'Signing link by', 'Signing link at', 'Order id', 'Sent at',
+      'Sold', 'Bought', 'Fee', 'Transaction', 'source'])
+    expect(file.rows.slice(1).map((r) => [r[0], r[5], r[10], r[20]])).toEqual([[`ORD-${second.slice(0, 8)}`, "'-2+3 (cmd)", '12.5', 'Pending approval'], [`ORD-${first.slice(0, 8)}`, 'Operations Safe', '250000', 'Approved: waiting for signature']])
+    expect(file.rows[1][6]).toBe(await addressOf(hostile))
     expect(file.body.csv).toContain(`"'-2+3 (cmd)"`)
     for (const [value, cell] of [['=1+1', `"'=1+1"`], ['+1', `"'+1"`], ['-1', `"'-1"`], ['@SUM(A1)', `"'@SUM(A1)"`], ['\tx', `"'\tx"`], ['\rx', `"'\rx"`], ['a"b', '"a""b"'], ['1.5', '"1.5"'], ['', '""'], [null, '""']] as const) expect(csvCell(value)).toBe(cell)
     for (const line of file.body.csv.split('\r\n').filter(Boolean)) expect(line).not.toMatch(/(^|,)"[=+\-@\t\r]/)
@@ -8605,6 +8755,11 @@ describe('H. the institution: overview figures (examples), the desk and its expo
     expect(sent.body.state).toBe('requested')
     expect((await orderOf(sent.body.id)).terms.label).toBe('Demo wallet')
     expect((await decide(o, sent.body.id, 'approve')).body).toEqual({ error: 'own_request' })
+    // The "Demo Safe" of the seed: a Safe, whose orders are presign orders.
+    const safe = await data.devDemoWallet(db, 'local', o.orgId, now, undefined, 'safe', 'Demo Safe')
+    expect((await walletsOf(o)).find((w) => w.id === safe)).toMatchObject({ state: 'linked', kind: 'safe' })
+    expect((await review(o, safe)).body.terms).toMatchObject({ label: 'Demo Safe', scheme: 'presign' })
+    expect(devScript).toContain("await devDemoWallet(env.DB, env.ENVIRONMENT, orgId, Date.now(), undefined, 'safe', 'Demo Safe')")
   })
 
   it('D4: "seed --live" gives a partner one linked "Demo wallet" at the partner address of the contract file: local only, and Overview then reads that wallet', async () => {
@@ -8620,17 +8775,16 @@ describe('H. the institution: overview figures (examples), the desk and its expo
   })
 
   it('D3: the words of the desk and the overview: no claim about a licence, no payout terms and no promise about fees; the sentences the pages must say', () => {
-    const said = [deskPage, demoSource, ordersSource, signScript, JSON.stringify(demo.institution()), ...Object.entries(EVENTS).filter(([k]) => k.startsWith('order')).map(([, v]) => v), EVENTS['wallet.link/demo']].join('\n')
+    const said = [deskPage, demoSource, ordersSource, signScript, signPage, ...Object.entries(EVENTS).filter(([k]) => k.startsWith('order')).map(([, v]) => v), EVENTS['wallet.link/demo']].join('\n')
     for (const banned of [/licen[cs]ed|regulated|authori[sz]ed|MiCA|compliant/i, /—/, /honest/i, /paid (weekly|monthly|daily|every)|payout (terms|schedule)|\bdue\b|guarantee|no (other|hidden) fee|never charge|price improvement/i]) expect(said).not.toMatch(banned)
     for (const sentence of [
-      '<b>Example figures.</b> The balances and the statement are examples. Your orders below are real.', 'Nothing is signed at this step.', 'The desk is for institutions.', 'Use a larger screen.', 'Sent for approval.',
+      'Nothing is signed at this step.', 'The desk is for institutions.', 'Use a larger screen.', 'Sent for approval.', 'Only the assets of the desk are shown.', 'Hand over the signing link', '<Ways link={link} />',
       'The Safe owners or your custodian sign on the signing page. Ophis cannot.', 'Sending asks for your passkey.', 'Each is listed on a chain where two independent sources agree on its address.',
     ]) expect(deskPage, sentence).toContain(sentence)
     expect(deskPage).not.toMatch(/Demo data|not part of this demo|Execution: none/)
     expect(pagesSource).toContain('<dt>Settle from</dt><dd>{order.terms.label}, <span className="mono">{order.terms.wallet}</span></dd>')
-    // The banner of example figures is on the institution's Overview only, never on the desk or a partner's Overview; the
-    // footer line is the shell's, so it is on every screen.
-    expect(deskPage.match(/<Banner \/>/g)).toHaveLength(1)
+    // No example figure is left: no banner, no example tag, no example table. The footer line is the shell's, so it is on every screen.
+    expect(deskPage + uiSource + demoSource).not.toMatch(/Banner|Example|Illustrative|totalEur|example wallets/)
     expect(shellPage).toContain('<footer className="foot-line">Ophis is a software provider. It is not a crypto-asset service provider.</footer>')
     expect(shellPage).not.toMatch(/Later/)
   })
@@ -8725,6 +8879,17 @@ isolation['GET /api/overview'] = async (a, b) => {
   expect(forged.body.figures.wallets.map((w: { wallet: string }) => w.wallet)).toEqual([checksum(mine)])
   expect(asked.at(-1)!.wallets).toEqual([mine])
   expect(await snapshot()).toBe(before) // a read writes nothing
+  // Two institutions: A's balances are read for A's wallet only, and nothing of B is in the reads or the answer.
+  for (const m of [a, b]) await setOrg(m.orgId, `kind = 'institution'`)
+  const institutions = await snapshot()
+  vi.stubGlobal('fetch', fakeRpc)
+  const bodies: string[] = []
+  chain.twist = (_url, _method, result, init) => (bodies.push(String(init?.body)), result)
+  const own = (await overviewOf(a)).body
+  expect(own.balances.wallets.map((w: { address: string }) => w.address)).toEqual([checksum(mine)])
+  expect(bodies.join()).toContain(mine.slice(2))
+  expect(JSON.stringify([own, bodies])).not.toMatch(new RegExp(`${theirs.slice(2)}|${checksum(theirs).slice(2)}|${b.orgId}|Wallet of B`, 'i'))
+  expect(await snapshot()).toBe(institutions)
 }
 
 describe('I. partner figures: live', () => {
@@ -8903,7 +9068,7 @@ describe('I. partner figures: live', () => {
     const asked = indexer()
     await setOrg(o.orgId, `kind = 'institution'`)
     const view = await overviewOf(o)
-    expect([view.body.kind, view.body.demo, view.body.figures]).toEqual(['institution', true, undefined])
+    expect([view.body.kind, view.body.balances.wallets.length, view.body.figures]).toEqual(['institution', 1, undefined])
     expect((await exportOf(o, 'months')).status).toBe(404)
     await setOrg(o.orgId, `kind = 'partner'`)
     for (const [state, error] of [['unverified', 'unverified'], ['frozen', 'org_frozen'], ['archived', 'org_closed']]) {
@@ -8911,7 +9076,7 @@ describe('I. partner figures: live', () => {
       for (const answer of [await overviewOf(o), await exportOf(o, 'months')]) expect([answer.status, answer.body], state).toEqual([403, { error }])
     }
     expect((await call('GET', '/api/overview', { env: liveEnv })).status).toBe(401)
-    expect(asked).toEqual([])
+    expect(asked.filter((x) => x.url.startsWith(liveEnv.INDEXER_URL!))).toEqual([]) // the institution's balances went to the chain
   })
 
   it('a hostile or broken answer, one case each: figures not available, one log line of one word, never a partial mix', async () => {
@@ -9219,7 +9384,7 @@ describe('I. partner figures: live', () => {
     for (const banned of [/referr|affiliate|partner code|net fee|earning|payout run|frozen|freeze|blocked/i, /<Banner/, /example|demo|illustrative/i, new RegExp(WITHHELD.join('|')), /minimum (payout|amount)|threshold|bps/i, /licen[cs]ed|regulated|authori[sz]ed|MiCA|compliant/i, /\u2014/, /honest/i,
       /paid (weekly|monthly|daily|every)|payout (terms|schedule)|\bdue\b|guarantee|no (other|hidden) fee|never charge|price improvement/i]) expect(part).not.toMatch(banned)
     // Numbers are right-aligned with tabular figures: the kit's body sets tabular-nums, and the money columns carry the class num.
-    expect(deskPage).toContain(String.raw`/\(USD\)|\(EUR\)|\(WETH\)|^(Trades`)
+    expect(deskPage).toContain(String.raw`/\(USD\)|\(WETH\)|^(Trades`)
     // No leftover of the example data anywhere on the page or in the server's demo module.
     expect(deskPage + demoSource).not.toMatch(/NW-VAULTS|Payout ledger|Affiliate codes|Attributed wallets|43,?983,?000|PARTNER_BPS|function Chart/)
   })
@@ -9663,7 +9828,7 @@ describe('J. the real desk: terms from a live quote, two people, then the wallet
     expect(asked.at(-1)!.body).toMatchObject({ signingScheme: 'presign', signature: accounts[4].address.toLowerCase(), from: accounts[4].address })
     expect(await lastAudit(team.o.orgId)).toMatchObject({ action: 'order.send', detail: 'presign' })
     book({ state: 'presignaturePending' })
-    expect((await deskOrders(team.t)).find((x) => x.id === id)!.state).toBe('Approved: waiting for signature')
+    expect((await deskOrders(team.t)).find((x) => x.id === id)!.state).toBe('Sent: waiting for the Safe transaction')
     book({ state: 'open' })
     expect((await deskOrders(team.t)).find((x) => x.id === id)!.state).toBe('Open')
   })
@@ -9778,7 +9943,7 @@ describe('J. the real desk: terms from a live quote, two people, then the wallet
     expect([await data.orderListed(db, r, hash, 'wallet', now), await data.orderCancelled(db, r, hash, 'key', now), await count('audit_log', team.o.orgId)]).toEqual([false, false, sentRows])
     // The state read for an open order is not written over a cancel made meanwhile.
     await db.prepare(`UPDATE orders SET status = 'cancelled' WHERE id = ?`).bind(id).run()
-    await data.orderStates(db, [{ orgId: team.o.orgId, id, status: 'open', sold: '0', bought: '0', tx: null }], now)
+    await data.orderStates(db, [{ orgId: team.o.orgId, id, status: 'open', sold: '0', bought: '0', tx: null, fee: null }], now)
     expect(await row('SELECT status FROM orders WHERE id = ?', id)).toEqual({ status: 'cancelled' })
     // A cancel link once the order's expiry has passed, and any link of an organisation that is no longer an institution: nothing.
     await db.prepare(`UPDATE orders SET status = 'open', valid_to = ? WHERE id = ?`).bind(Math.floor(now / 1000) + 60, id).run()
@@ -9865,7 +10030,7 @@ describe('K. the Free plan of Cloudflare Workers', () => {
       const [id, uid] = [data.randomId(), `0x${data.randomId()}${data.randomId()}${data.randomId()}${data.randomId().slice(0, 16)}`]
       await db.batch([
         db.prepare(`INSERT INTO approvals (id, org_id, action, subject_id, payload, payload_hash, requester_seat_id, state, expires_at, created_at) VALUES (?, ?, 'order', ?, ?, '', ?, 'applied', ?, ?)`)
-          .bind(id, institution.orgId, data.randomId(), JSON.stringify({ value: JSON.stringify({ chainId: 10 }) }), institution.seatId, now + DAY, now),
+          .bind(id, institution.orgId, data.randomId(), JSON.stringify({ value: JSON.stringify({ chainId: 10, sell: { token: USDC_OP } }) }), institution.seatId, now + DAY, now),
         db.prepare(`INSERT INTO orders (org_id, id, approved_at, uid, status, valid_to, sent_at) VALUES (?, ?, ?, ?, 'open', ?, ?)`).bind(institution.orgId, id, now, uid, Math.floor(now / 1000) + 3600, now),
       ])
       sent.set(uid, { from: accounts[1].address, sellAmount: '1', buyAmount: '1' })
@@ -9876,6 +10041,27 @@ describe('K. the Free plan of Cloudflare Workers', () => {
     await call('GET', '/api/desk', { cookie: institution.cookie })
     expect(read.length).toBe(50)
     expect(metered.get('daily run (cron)')!.fetch).toBeGreaterThanOrEqual(40)
+
+    // An institution's Overview with 11 linked wallets on Ethereum: the 10 linked first, whose 5 assets are one aggregate3
+    // of 50 calls, read on both endpoints (its answer must fit the 16 KB an RPC answer may have), then its three exports.
+    vi.stubGlobal('fetch', fakeRpc)
+    const holder = await owner('Balances load')
+    await setOrg(holder.orgId, `kind = 'institution'`)
+    for (let i = 0; i < 11; i++) {
+      const address = someAddress()
+      await demoWallet(holder.orgId, `Wallet ${i}`, 'linked', address, 'custodian', 1)
+      for (const a of Object.values(orders.ASSETS[1])) held(a!.token, address, 2n ** 255n) // the longest number a balance can be
+    }
+    const big = (await call('GET', '/api/overview', { cookie: holder.cookie })).body.balances
+    expect([big.wallets.length, big.leftOut, big.wallets.every((w: { read: boolean }) => w.read)]).toEqual([10, 1, true])
+    for (const table of ['balances', 'statement', 'orders']) expect((await call('GET', `/api/export/${table}`, { cookie: holder.cookie })).status, table).toBe(200)
+    // One wallet on each of the 4 chains: 4 aggregate3, each on 2 endpoints after their eth_chainId (16 subrequests).
+    const spread = await owner('Four chains')
+    await setOrg(spread.orgId, `kind = 'institution'`)
+    for (const chainId of [1, 10, 8453, 42161]) await demoWallet(spread.orgId, `On ${chainId}`, 'linked', someAddress(), 'custodian', chainId)
+    chain.calls = []
+    expect((await call('GET', '/api/overview', { cookie: spread.cookie })).body.balances.wallets.map((w: { read: boolean }) => w.read)).toEqual([true, true, true, true])
+    expect(chain.calls).toHaveLength(16)
 
     // Every route of both tables and every job was driven, and none passed a limit.
     const jobs = [...routes, ...onboarding.operatorRoutes].map((r) => `${r.method} ${r.path}`).concat(JOBS)

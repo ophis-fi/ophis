@@ -185,17 +185,22 @@ export async function signedBy(hashed: object, signature: unknown, wallet: strin
 /** Tests lower these. */
 export const ORDERBOOK = { timeoutMs: 5000, maxBytes: 64 * 1024 }
 type Settings = { ENVIRONMENT: string; ORDERBOOK_URL?: string }
-/** The orderbook of a chain. Locally only, ORDERBOOK_URL names a stand-in on this machine (plain http to it): any other value is not read. */
+/** A local stand-in's base address: only in `local`, only plain http to this machine. Any other value is not read (null). */
 // The local rule of indexerBase() in partner.ts, written here: partner.ts imports data.ts, which imports this module.
-export function orderbook(env: Settings, chainId: number) {
+export function standIn(env: { ENVIRONMENT: string }, value: string | undefined) {
   let url: URL | null = null
   try {
-    url = new URL(env.ORDERBOOK_URL ?? '')
+    url = new URL(value ?? '')
   } catch {
-    // not set, or not an address: the real orderbook
+    // not set, or not an address: the real one
   }
   const here = env.ENVIRONMENT === 'local' && url?.protocol === 'http:' && (url.hostname === '127.0.0.1' || url.hostname === 'localhost') && !url.username && !url.password && !url.search && !url.hash
-  return here ? `${url!.origin}${url!.pathname.replace(/\/+$/, '')}/${chainId}` : CHAINS[chainId].orderbook
+  return here ? `${url!.origin}${url!.pathname.replace(/\/+$/, '')}` : null
+}
+/** The orderbook of a chain. Locally only, ORDERBOOK_URL names a stand-in on this machine. */
+export function orderbook(env: Settings, chainId: number) {
+  const here = standIn(env, env.ORDERBOOK_URL)
+  return here ? `${here}/${chainId}` : CHAINS[chainId].orderbook
 }
 async function ask(env: Settings, chainId: number, path: string, init: RequestInit = {}) {
   try {
@@ -256,8 +261,11 @@ export async function cancel(env: Settings, chainId: number, uid: string, signat
   return answer.status === 200 ? 'ok' : answer.status === 0 || answer.status === 429 || answer.status >= 500 ? 'orderbook_unavailable' : 'order_refused'
 }
 const STATUS = ['presignaturePending', 'open', 'fulfilled', 'cancelled', 'expired']
-/** The orderbook's state of a sent order, and the transaction of its trade once it is filled. Null: no usable answer. */
-export async function status(env: Settings, chainId: number, uid: string) {
+/**
+ * The orderbook's state of a sent order, and the transaction of its trade once it is filled. Null: no usable answer.
+ * fee: executedFee (the network fee and the protocol fees, the Ophis fee among them), kept only in the asset sold.
+ */
+export async function status(env: Settings, chainId: number, uid: string, sellToken: string) {
   const order = await ask(env, chainId, `/api/v1/orders/${uid}`)
   const o = order.body as Record<string, unknown> | null
   if (order.status !== 200 || !o || !STATUS.includes(o.status as string) || !digits(o.executedSellAmount) || !digits(o.executedBuyAmount)) return null
@@ -267,7 +275,8 @@ export async function status(env: Settings, chainId: number, uid: string) {
     const hash = Array.isArray(trades.body) ? (trades.body[0] as { txHash?: unknown } | undefined)?.txHash : null
     tx = typeof hash === 'string' && /^0x[0-9a-f]{64}$/.test(hash) ? hash : null
   }
-  return { status: o.status as string, sold: o.executedSellAmount as string, bought: o.executedBuyAmount as string, tx }
+  const fee = digits(o.executedFee) && typeof o.executedFeeToken === 'string' && o.executedFeeToken.toLowerCase() === sellToken.toLowerCase() ? (o.executedFee as string) : null
+  return { status: o.status as string, sold: o.executedSellAmount as string, bought: o.executedBuyAmount as string, tx, fee }
 }
 
 // ---- words ----
@@ -277,22 +286,25 @@ export function stateOf(o: { state: string; open: boolean; approvedAt: number | 
   if (o.state === 'rejected' || o.status === 'refused') return 'Refused'
   if (o.state !== 'applied') return 'Cancelled'
   if (!o.uid) return (o.approvedAt ?? 0) + SIGN_MS > now ? 'Approved: waiting for signature' : 'Expired'
-  if (o.status === 'presignaturePending') return 'Approved: waiting for signature'
+  if (o.status === 'presignaturePending') return 'Sent: waiting for the Safe transaction'
   if (o.status === 'fulfilled') return 'Filled'
   if (o.status === 'cancelled') return 'Cancelled'
   return o.status === 'expired' || (o.validTo ?? 0) * 1000 <= now ? 'Expired' : 'Open'
 }
 const VALID_WORDS: Record<number, string> = { 1800: '30 minutes', 14_400: '4 hours', 86_400: '24 hours' }
-/** The terms in words, as the signing page and the Approvals card show them. */
+/** The terms in words, as the signing page and the Approvals card show them. binding: what the wallet's signature binds, in three sentences. */
 export function words(t: Terms, validTo: number | null) {
   const [s, b] = [ASSETS[t.chainId][t.sell.symbol], ASSETS[t.chainId][t.buy.symbol]]
+  const [sell, least] = [`${decimal(t.sell.amount, s?.decimals ?? 18)} ${t.sell.symbol}`, `${decimal(t.buy.minimum, b?.decimals ?? 18)} ${t.buy.symbol}`]
+  const until = validTo ? `${new Date(validTo * 1000).toISOString().slice(0, 16).replace('T', ' ')} UTC` : null
   return {
-    sell: `${decimal(t.sell.amount, s?.decimals ?? 18)} ${t.sell.symbol}`,
-    buy: `at least ${decimal(t.buy.minimum, b?.decimals ?? 18)} ${t.buy.symbol}`,
+    sell, buy: `at least ${least}`,
     type: t.type === 'market' ? `Market, slippage ${t.slippageBips! / 100}%` : `Limit, at ${t.limitPrice} ${t.buy.symbol} per ${t.sell.symbol}`,
     chain: CHAIN_NAME[t.chainId] ?? `Chain ${t.chainId}`,
     wallet: `${t.label} (${t.wallet})`,
-    valid: validTo ? `Until ${new Date(validTo * 1000).toISOString().slice(0, 16).replace('T', ' ')} UTC` : `${VALID_WORDS[t.validFor]} after signing`,
+    valid: until ? `Until ${until}` : `${VALID_WORDS[t.validFor]} after signing`,
     fee: '0.01% of the volume, plus a share of any price better than the quote',
+    quote: `${decimal(t.quoted, b?.decimals ?? 18)} ${t.buy.symbol}`,
+    binding: `Sell exactly ${sell}. Receive at least ${least}. ${until ? `Valid until ${until}` : `Valid for ${VALID_WORDS[t.validFor]} after signing`}.`,
   }
 }

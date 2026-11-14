@@ -176,7 +176,7 @@ try {
     for (const who of [partner, owner]) {
       await who.page.evaluate(() => void (location.hash = '#/compliance'))
       await who.page.getByText('Result: no match.').waitFor()
-      await who.page.getByText('Not on a loaded list').waitFor()
+      await who.page.getByText('Not on a loaded list').first().waitFor()
     }
     console.log('Tour check passed: three people signed in, the Owner sent an order, the Approver approved it, and Compliance shows the screening of both organisations.')
     await stop(0)
@@ -186,6 +186,7 @@ Three windows are open, each signed in. Test data only.
   1 Partner, Owner         Overview: the partner fee and the wallets that traded, from the local stand-in of the rebate service;
                            one of them is on the test OFAC list, so a red alert names it.
   2 Institution, Owner     Desk: fill the ticket, "Review order" (a quote of the local stand-in orderbook), then send it for approval.
+                           Overview: the balances of its "Demo wallet" and "Demo Safe", read on the stand-in's test endpoints.
   3 Institution, Approver  Organisation, Approvals: approve or refuse that order.
 Compliance, in windows 1 and 2: the sanctions screening the operator's command recorded, and the list it read.
 Passkey checks in these three tabs answer by themselves (test keys). A new tab or window has no key.

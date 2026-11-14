@@ -30,7 +30,7 @@ import { mnemonicToAccount } from 'viem/accounts'
 import { publish as publishTxt, start as startDnsStubs } from '../scripts/dns-stub.mjs' // milestone 5: the two local resolvers of "Check DNS"
 import { CONTRACT, PORT as INDEXER_PORT, start as startIndexer } from '../scripts/indexer-stub.mjs' // partner figures: the local stand-in for the rebate indexer
 import { PORT as LIST_PORT, start as startLists } from '../scripts/list-stub.mjs' // M10: the local stand-in for the place where the OFAC list file lives
-import { PORT as ORDERBOOK_PORT, start as startOrderbook } from '../scripts/orderbook-stub.mjs' // the real desk: the local stand-in for the public orderbooks
+import { PORT as ORDERBOOK_PORT, start as startOrderbook, TEST_BALANCES } from '../scripts/orderbook-stub.mjs' // the real desk: the local stand-in for the public orderbooks and the chains' endpoints
 
 process.chdir(new URL('..', import.meta.url).pathname)
 const ORIGIN = 'http://localhost:8787'
@@ -1012,10 +1012,11 @@ try {
     && await on.getByRole('cell', { name: 'Ophis operator: sanctions screening recorded, organisation frozen', exact: true }).isVisible() && !/Result: (hit|review)|\bhit\b/.test(await on.locator('#root').innerText()))
   await applicant.context.close()
 
-  // ---- the institution: the real desk (orders on a live quote of the local stand-in orderbook), and the example figures of its overview ----
-  // An institution from "seed --demo": an Owner, a Trader and an Approver, and the linked "Demo wallet" (the address of the
-  // first public test key of anvil, which signs here against the stand-in orderbook only).
-  const BANNER = 'Example figures. The balances and the statement are examples. Your orders below are real.'
+  // ---- the institution: the real desk (orders on a live quote of the local stand-in orderbook), and its overview from
+  // its wallets (balances read on the stand-in's endpoints) and its orders ----
+  // An institution from "seed --demo": an Owner, a Trader and an Approver, the linked "Demo wallet" (the address of the
+  // first public test key of anvil, which signs here against the stand-in orderbook only) and the linked "Demo Safe".
+  const BANNER = /Example figures|examples|Illustrative/
   const seeded = (...more) => run('node', ['scripts/dev.mjs', 'seed', ...more, '--persist', STATE])
   const demoSeed = seeded('--demo')
   check('seed --demo says what it made', demoSeed.includes('an institution with one linked wallet named "Demo wallet"'))
@@ -1031,9 +1032,12 @@ try {
   }
   const dana = await firstOwner(demoSeed.match(/http\S+\/#\/enrol\/\S+/)[0])
   await dana.page.getByRole('heading', { name: 'Your position, in one view.' }).waitFor()
-  check('an institution lands on its overview: the banner of example figures, the footer, the total computed from the balances, no approval and no order yet',
-    await dana.page.getByText(BANNER).isVisible() && await dana.page.getByText(FOOTER).isVisible() && await dana.page.getByText('11,363,175.00').first().isVisible()
-    && (await dana.page.locator('[data-waiting]').textContent()) === '0' && await dana.page.getByText('No order yet. Orders are prepared on the desk.').isVisible())
+  const balanceRows = dana.page.locator('section', { has: dana.page.getByRole('heading', { name: 'Balances by wallet' }) }).locator('tbody tr')
+  const testWeth = (Number(TEST_BALANCES.weth / 10n ** 14n) / 10_000).toFixed(4) // the stand-in's test balance, as the page shows it (4 decimals)
+  check('an institution lands on its overview: no example figure, the footer, the balances of its two linked wallets read on the stand-in endpoints, no approval and no order yet',
+    !(await dana.page.getByText(BANNER).count()) && await dana.page.getByText(FOOTER).isVisible() && (await balanceRows.count()) === 6
+    && JSON.stringify(await balanceRows.allInnerTexts()).includes(`WETH\\t${testWeth}`) && (await balanceRows.nth(3).innerText()).includes('Demo Safe')
+    && (await dana.page.locator('[data-waiting]').textContent()) === '0' && await dana.page.getByText('No order yet. Orders are prepared on the desk.').isVisible() && await dana.page.getByText('No filled order yet.').isVisible())
   await toOrganisation(dana.page)
   await secondKey(dana)
   async function inviteAt(who, name, role) {
@@ -1076,8 +1080,9 @@ try {
   await desk(tess)
   const ticket = tess.page.locator('form.ticket')
   const assetRows = (await tess.page.locator('section', { has: tess.page.getByRole('heading', { name: 'Permitted assets' }) }).locator('tbody tr').allTextContents())
-  check('the desk shows the ticket with the linked wallet, the permitted assets by chain, the three steps, and no demo banner',
-    await ticket.getByLabel('Settle from').locator('option', { hasText: 'Demo wallet' }).count() === 1 && !(await tess.page.getByText(BANNER).count())
+  check('the desk shows the ticket with the chain and its linked wallets, the permitted assets by chain, the three steps, and no example',
+    await ticket.getByLabel('Settle from').locator('option', { hasText: 'Demo wallet' }).count() === 1 && await ticket.getByLabel('Settle from').locator('option', { hasText: 'Demo Safe' }).count() === 1
+    && (await ticket.getByLabel('Chain').locator('option').allTextContents()).join() === 'OP Mainnet' && !(await tess.page.getByText(BANNER).count())
     && await tess.page.getByText('Each is listed on a chain where two independent sources agree on its address.').isVisible() && assetRows.length === 13 && assetRows.filter((r) => r.includes('OP Mainnet')).length === 2
     && await tess.page.getByText('The Safe owners or your custodian sign on the signing page. Ophis cannot.').isVisible() && await ticket.getByText('Nothing is signed at this step.').isVisible())
   check('at phone width the ticket gives way to "Use a larger screen", the blotter stays, and nothing scrolls sideways', await both(tess.page, '47-desk-ticket')
@@ -1109,8 +1114,10 @@ try {
   const reviewed = await review.locator('dl.kv').innerText()
   check('the review step shows the server\'s terms from the live quote, the fee, the wallet that receives, and says that nothing is signed',
     ['1 WETH', 'at least ', ' USDC', 'Market, slippage 0.5%', 'OP Mainnet', '30 minutes after signing', '0.01% of the volume', 'The wallet receives what is bought.'].every((text) => reviewed.includes(text))
-    && await review.getByText('Nothing is signed at this step.').isVisible() && await review.getByText(/live quote of the orderbook/).isVisible() && await both(tess.page, '48-desk-review'))
+    && await review.getByText('Nothing is signed at this step.').isVisible() && await review.getByText(/live quote of the orderbook/).isVisible() && await both(tess.page, '48-desk-review', '[data-step="review"]'))
   const least = /at least (\S+) USDC/.exec(reviewed)[1]
+  const BINDING = `Sell exactly 1 WETH. Receive at least ${least} USDC. Valid for 30 minutes after signing.`
+  check('the review states the binding terms in words and the live quote', (await review.locator('[data-binding]').innerText()) === BINDING && /Live quote\s+[\d.]+ USDC for 1 WETH, from the orderbook now/.test(reviewed))
   const SENTENCE = `Sell 1 WETH for at least ${least} USDC, market, OP Mainnet, from Demo wallet`
   check('the review asked for no passkey', orderCalls.join() === 'POST /api/desk/orders' && await review.getByText('Sending asks for your passkey.').isVisible())
   await review.getByRole('button', { name: 'Send for approval' }).click()
@@ -1128,7 +1135,8 @@ try {
   await arrive(abe, false)
   const card = abe.page.locator('article.appr', { hasText: SENTENCE })
   await card.getByRole('button', { name: 'Review' }).click()
-  check('the Approver reads the order in words, who asked, and that the wallet signs it within 24 hours', await card.getByRole('heading', { name: 'Order' }).isVisible()
+  check('the Approver reads the order in words, the least amount received first, who asked, and that the wallet signs it within 24 hours', await card.getByRole('heading', { name: 'Order' }).isVisible()
+    && (await card.locator('p').first().innerText()).startsWith(BINDING) && await card.getByText(/Live quote/).isVisible()
     && await card.getByText('Requested by Tess Trader (Trader)').first().isVisible() && await card.getByText(/the wallet signs these terms within 24 hours/).isVisible()
     && /^0x[0-9a-fA-F]{40}$/.test(await card.locator('dl.kv .mono').textContent()) && await both(abe.page, '50-order-approval', 'article.appr >> nth=0'))
   await card.getByRole('button', { name: 'Approve' }).click()
@@ -1140,34 +1148,45 @@ try {
   await record.waitFor()
   await record.getByRole('button', { name: 'Signing link' }).click()
   const orderLink = await record.getByLabel('Link for the wallet').inputValue()
-  check('the record of the order: who prepared it, its terms, who approved it, until when it can be signed, and a one-time signing link after a passkey check',
+  check('the record of the order: who prepared it, the quote and the binding terms, who approved it, until when it can be signed, and a one-time signing link after a passkey check, with its two ways and a copy button',
     await record.getByText(SENTENCE).isVisible() && await record.getByText(/Tess Trader \(Trader\) on 20\d\d-/).isVisible() && await record.getByText(/Approved by Abe Approver on 20\d\d-/).isVisible()
-    && await record.getByText('Sign before').isVisible() && /^http:\/\/127\.0\.0\.1:8787\/sign\/#order\.[A-Za-z0-9_-]{43}$/.test(orderLink) && await both(tess.page, '49-desk-record', '#record'))
+    && (await record.locator('[data-binding]').innerText()) === BINDING && await record.getByText(/USDC for 1 WETH, when it was prepared/).isVisible()
+    && await record.getByText('Sign before').isVisible() && /^http:\/\/127\.0\.0\.1:8787\/sign\/#order\.[A-Za-z0-9_-]{43}$/.test(orderLink) && await record.getByRole('heading', { name: 'Hand over the signing link' }).isVisible()
+    && await record.getByText('A wallet in a browser, or a custodian\'s browser extension:').isVisible()
+    && (await record.locator('[data-step="link"] .fine').innerText()).includes(`add ${SIGN}/sign/ as a custom app`) && await record.getByRole('button', { name: 'Copy the link' }).isVisible() && await both(tess.page, '49-desk-record', '#record'))
   await tess.page.setViewportSize({ width: 390, height: 844 })
   check('at phone width the blotter and the record stay usable', await record.getByText(SENTENCE).isVisible() && await blotter(tess).first().getByRole('button', { name: /Open the record of ORD-/ }).isVisible())
   await tess.page.setViewportSize({ width: 1440, height: 900 })
 
   // The wallet's holder opens the link: the test key behind a fake provider. Its allowance is short, so it approves the exact amount first.
   const signer = mnemonicToAccount('test test test test test test test test test test test junk')
-  const walletCalls = []
-  const holderOfDesk = await browser.newContext({ viewport: { width: 1440, height: 900 }, reducedMotion: 'reduce' })
-  await holderOfDesk.exposeFunction('walletCall', async (method, params) => {
-    walletCalls.push([method, params])
-    return method === 'eth_requestAccounts' ? [signer.address] : method === 'eth_call' ? `0x${'0'.repeat(64)}` : method === 'eth_sendTransaction' ? `0x${'ab'.repeat(32)}`
-      : method === 'eth_getTransactionReceipt' ? { status: '0x1' } : method === 'eth_signTypedData_v4' ? signer.signTypedData(JSON.parse(params[1])) : null
-  })
-  await holderOfDesk.addInitScript(() => { window.ethereum = { request: ({ method, params }) => window.walletCall(method, params) } })
-  const signOrder = await holderOfDesk.newPage()
+  // A browser that holds the test key: an injected provider whose calls are answered here, with the key's own signatures.
+  async function keyWallet() {
+    const calls = []
+    const context = await browser.newContext({ viewport: { width: 1440, height: 900 }, reducedMotion: 'reduce' })
+    await context.exposeFunction('walletCall', async (method, params) => {
+      calls.push([method, params])
+      return method === 'eth_requestAccounts' ? [signer.address] : method === 'eth_call' ? `0x${'0'.repeat(64)}` : method === 'eth_sendTransaction' ? `0x${'ab'.repeat(32)}`
+        : method === 'eth_getTransactionReceipt' ? { status: '0x1' } : method === 'eth_signTypedData_v4' ? signer.signTypedData(JSON.parse(params[1])) : null
+    })
+    await context.addInitScript(() => { window.ethereum = { request: ({ method, params }) => window.walletCall(method, params) } })
+    return { context, calls, page: await context.newPage() }
+  }
+  const { context: holderOfDesk, calls: walletCalls, page: signOrder } = await keyWallet()
   const offOrigin = []
   signOrder.on('request', (request) => request.url().startsWith(`${SIGN}/`) || offOrigin.push(request.url()))
   signOrder.on('console', (message) => /content security policy|refused to/i.test(message.text()) && violations.push(message.text()))
   await signOrder.goto(orderLink)
   await signOrder.getByRole('heading', { name: 'The order the wallet will sign' }).waitFor()
   const fields = await signOrder.locator('#order dl.kv').innerText()
-  check('the signing page shows the order in words, built by the server: amounts, chain, the wallet that receives, validity, fee, order id',
-    ['1 WETH', `at least ${least} USDC`, 'OP Mainnet', `Demo wallet (${signer.address})`, 'Until ', ' UTC', '0.01% of the volume'].every((text) => fields.includes(text)) && /0x[0-9a-f]{112}/.test(fields) && await both(signOrder, '66-sign-order'))
+  const stepsOf = async (on) => (await on.locator('#o-steps li').evaluateAll((items) => items.map((li) => `${li.dataset.step} ${li.dataset.state}`))).join()
+  check('the signing page shows the order in words, built by the server: the binding terms, amounts, chain, the wallet that receives, validity, fee, order id, and its three steps to do',
+    ['1 WETH', `at least ${least} USDC`, 'OP Mainnet', `Demo wallet (${signer.address})`, 'Until ', ' UTC', '0.01% of the volume'].every((text) => fields.includes(text)) && /0x[0-9a-f]{112}/.test(fields)
+    && new RegExp(`^Sell exactly 1 WETH\\. Receive at least ${least.replace(/\./g, '\\.')} USDC\\. Valid until 20\\d\\d-\\d\\d-\\d\\d \\d\\d:\\d\\d UTC\\.$`).test(await signOrder.locator('#o-binding').innerText())
+    && await stepsOf(signOrder) === 'approve todo,sign todo,sent todo' && await both(signOrder, '66-sign-order'))
   await signOrder.getByRole('button', { name: 'Sign with the wallet in this browser' }).click()
   await signOrder.getByText('Signed and sent. The order is open on the orderbook').waitFor()
+  check('each step of the signing page is done: the approval, the signature, the send', await stepsOf(signOrder) === 'approve done,sign done,sent done')
   const approval = walletCalls.find(([method]) => method === 'eth_sendTransaction')?.[1][0]
   check('the wallet was asked for its account, the chain, the allowance, an approval of the exact amount and its receipt, then one typed signature',
     walletCalls.map(([method]) => method).join() === 'eth_requestAccounts,wallet_switchEthereumChain,eth_call,eth_sendTransaction,eth_getTransactionReceipt,eth_signTypedData_v4'
@@ -1183,8 +1202,11 @@ try {
   await fetch(`http://127.0.0.1:${ORDERBOOK_PORT}/stub/fulfilled`)
   await desk(tess)
   await blotter(tess).first().getByRole('button', { name: /Open the record of ORD-/ }).click()
-  check('once the orderbook says it is filled, the desk reads it: "Filled", the order id, the amounts and the transaction',
-    (await blotter(tess).first().textContent()).includes('Filled') && await record.getByText('Order id').isVisible() && await record.getByText('Transaction').isVisible() && await both(tess.page, '68-desk-filled', '#record'))
+  const recordText = await record.innerText()
+  check('once the orderbook says it is filled, the desk reads it: "Filled", who gave the signing link, when it was sent, the order id, the amounts in units, the fee, and the transaction linked to the explorer',
+    (await blotter(tess).first().textContent()).includes('Filled') && await record.getByText('Order id').isVisible() && /Given by Tess Trader on 20\d\d-/.test(recordText) && recordText.includes('Sent to the orderbook')
+    && new RegExp(`Executed\\s+1 WETH sold, ${least.replace(/\./g, '\\.')} USDC bought`).test(recordText) && /Fee at settlement\s+0\.0078\d* WETH/.test(recordText)
+    && (await record.getByRole('link', { name: /^0x[0-9a-f]{64}$/ }).getAttribute('href')).startsWith('https://optimistic.etherscan.io/tx/0x') && await both(tess.page, '68-desk-filled', '#record'))
 
   // The same for an order the Approver refuses.
   await ticket.getByLabel('Amount to sell').fill('0.123456789012345678') // every decimal a member typed is kept
@@ -1204,16 +1226,108 @@ try {
   // One CSV, downloaded and read back.
   const [orderFile] = await Promise.all([tess.page.waitForEvent('download'), tess.page.locator('section', { has: tess.page.getByRole('heading', { name: 'Order blotter' }) }).getByRole('button', { name: 'Export CSV' }).click()])
   const orderLines = readFileSync(await orderFile.path(), 'utf8').split('\r\n').filter(Boolean)
-  check('the export of the blotter downloads: named ophis-desk-, the orders with their real state, every row with source = live',
-    /^ophis-desk-orders-\d{4}-\d\d-\d\d\.csv$/.test(orderFile.suggestedFilename()) && orderLines[0].endsWith(',"Transaction","source"') && orderLines.length === 3 && orderLines.slice(1).every((row) => row.endsWith(',"live"'))
+  check('the export of the blotter downloads: named ophis-orders-, the orders with their real state, every row with source = live',
+    /^ophis-orders-\d{4}-\d\d-\d\d\.csv$/.test(orderFile.suggestedFilename()) && orderLines[0].endsWith(',"Transaction","source"') && orderLines.length === 3 && orderLines.slice(1).every((row) => row.endsWith(',"live"'))
     && orderLines[1].includes('"0.123456789012345678"') && orderLines[1].includes('"Refused"') && orderLines[2].includes('"Filled"') && /"0x[0-9a-f]{64}","live"$/.test(orderLines[2]))
 
   await open(tess, 'overview', 'Your position, in one view.')
   const recent = tess.page.locator('section', { has: tess.page.getByRole('heading', { name: 'Recent orders' }) }).locator('tbody tr')
-  check('the institution overview: the example tiles and balances, the own orders with their real state, the example fee statement',
+  const statementRows = tess.page.locator('section', { has: tess.page.getByRole('heading', { name: 'Monthly statement' }) }).locator('tbody tr')
+  const month = new Date().toISOString().slice(0, 7)
+  check('the institution overview: its linked wallets and their balances, the own orders with their real state, and the statement of the filled order: this month, WETH sold, one order, its volume and fee',
     (await recent.first().textContent()).includes('Refused') && (await recent.nth(1).textContent()).includes('Filled') && (await recent.count()) === 2
-    && await tess.page.getByText('Treasury Safe').isVisible() && await tess.page.getByText('Example wallets and balances, not your linked wallets.').isVisible() && await tess.page.getByRole('heading', { name: 'Monthly fee statement' }).isVisible() && await tess.page.getByText('17,920,000.00').first().isVisible()
+    && await tess.page.getByText('Your linked wallets, read on the chain. Only the assets of the desk are shown.').isVisible() && (await statementRows.count()) === 1
+    && new RegExp(`^${month}\\s*WETH sold\\s+1\\s+1\\.0000\\s+0\\.0078`).test(await statementRows.first().innerText())
     && await both(tess.page, '45-overview-institution'))
+  const [statementFile] = await Promise.all([tess.page.waitForEvent('download'), tess.page.locator('section', { has: tess.page.getByRole('heading', { name: 'Monthly statement' }) }).getByRole('button', { name: 'Export CSV' }).click()])
+  const [balanceFile] = await Promise.all([tess.page.waitForEvent('download'), tess.page.locator('section', { has: tess.page.getByRole('heading', { name: 'Balances by wallet' }) }).getByRole('button', { name: 'Export CSV' }).click()])
+  const statementLines = readFileSync(await statementFile.path(), 'utf8').split('\r\n').filter(Boolean)
+  const balanceLines = readFileSync(await balanceFile.path(), 'utf8').split('\r\n').filter(Boolean)
+  check('the statement and the balances download as ophis- files: one line per month and asset, one per wallet and asset',
+    /^ophis-statement-\d{4}-\d\d-\d\d\.csv$/.test(statementFile.suggestedFilename()) && /^ophis-balances-\d{4}-\d\d-\d\d\.csv$/.test(balanceFile.suggestedFilename())
+    && statementLines.length === 2 && statementLines[1].startsWith(`"${month}","WETH","1","1",`) && balanceLines.length === 5 && balanceLines[1].startsWith(`"Demo wallet","${signer.address}","OP Mainnet","WETH",`))
+
+  // The Trader prepares an order, the Approver approves it; then the record of the newest order gives its link.
+  async function approved(amount, wallet = 'Demo wallet') {
+    await desk(tess)
+    await ticket.getByLabel('Settle from').selectOption(await ticket.getByLabel('Settle from').locator('option', { hasText: wallet }).getAttribute('value'))
+    await ticket.getByLabel('Amount to sell').fill(amount)
+    await ticket.getByRole('button', { name: 'Review order' }).click()
+    await review.getByRole('button', { name: 'Send for approval' }).click()
+    await tess.page.getByText('Sent for approval.').waitFor()
+    await arrive(abe, false)
+    const asked = abe.page.locator('article.appr', { hasText: `Sell ${amount} WETH for at least` })
+    await asked.getByRole('button', { name: 'Approve' }).click()
+    await asked.waitFor({ state: 'detached' })
+  }
+  async function linkOf(button) {
+    await desk(tess)
+    await blotter(tess).first().getByRole('button', { name: /Open the record of ORD-/ }).click()
+    await record.getByRole('button', { name: button }).click()
+    return record.getByLabel('Link for the wallet').inputValue()
+  }
+  // A cancel: an order the key wallet signed is open on the orderbook; the wallet cancels it on a cancel link.
+  await fetch(`http://127.0.0.1:${ORDERBOOK_PORT}/stub/open`)
+  await approved('2')
+  const toSign = await keyWallet()
+  await toSign.page.goto(await linkOf('Signing link'))
+  await toSign.page.getByRole('button', { name: 'Sign with the wallet in this browser' }).click()
+  await toSign.page.getByText('Signed and sent. The order is open on the orderbook').waitFor()
+  await desk(tess)
+  check('the second order is open on the orderbook', (await blotter(tess).first().textContent()).includes('Open'))
+  const cancelPage = await toSign.context.newPage() // a new tab: the page reads its link when it opens
+  await cancelPage.goto(await linkOf('Cancel link'))
+  await cancelPage.getByRole('heading', { name: 'Cancel an approved order.' }).waitFor()
+  check('the cancel link opens the open order to cancel: one signature, then the send', await stepsOf(cancelPage) === 'sign todo,sent todo')
+  await cancelPage.getByRole('button', { name: 'Cancel with the wallet in this browser' }).click()
+  await cancelPage.getByText('Signed and sent. The orderbook cancelled the order.').waitFor()
+  check('the wallet signed the off-chain cancellation once, and each step is done', toSign.calls.filter(([method]) => method === 'eth_signTypedData_v4').length === 2
+    && JSON.parse(toSign.calls.at(-1)[1][1]).primaryType === 'OrderCancellations' && await stepsOf(cancelPage) === 'sign done,sent done' && await both(cancelPage, '71-sign-cancel'))
+  await toSign.context.close()
+  await desk(tess)
+  check('the blotter reads the cancel at the orderbook: "Cancelled"', (await blotter(tess).first().textContent()).includes('Cancelled') && (await blotter(tess).nth(1).textContent()).includes('Refused'))
+
+  // A Safe: its order is a presign order, sent from inside the Safe interface. The stand-in here is a page at
+  // app.safe.global (served by this browser, never fetched) that frames the signing page and answers the Safe Apps SDK.
+  await approved('3', 'Demo Safe')
+  const safeLink = await linkOf('Signing link')
+  check('the record of a Safe order says to use the Safe interface', await record.getByText('This wallet is a Safe: use the Safe interface.', { exact: false }).isVisible())
+  const safeAddress = (await tess.page.evaluate(async () => (await (await fetch('/api/desk')).json()).wallets)).find((w) => w.label === 'Demo Safe').address
+  const outsideSafe = await keyWallet()
+  await outsideSafe.page.goto(safeLink)
+  await outsideSafe.page.getByText('This wallet is a Safe. In the Safe interface open Apps').waitFor()
+  check('outside the Safe interface, the signing page of a Safe order offers no wallet signature and says where to open it', !(await outsideSafe.page.getByRole('button', { name: /Sign with/ }).isVisible()))
+  await outsideSafe.context.close()
+  const safeHome = await browser.newContext({ viewport: { width: 1440, height: 900 }, reducedMotion: 'reduce' })
+  const proposed = []
+  await safeHome.exposeFunction('safeSent', (txs) => void proposed.push(...txs))
+  await safeHome.route('https://app.safe.global/**', (route) => route.fulfill({ contentType: 'text/html', body: `<!doctype html><title>Safe</title><body style="margin:0"><iframe id="app" title="Ophis" src="${safeLink}" style="width:100%;height:100vh;border:0"></iframe><script>
+    addEventListener('message', async ({ data, source }) => {
+      if (!data || !data.method) return
+      const answer = data.method === 'getSafeInfo' ? { safeAddress: ${JSON.stringify(safeAddress)}, chainId: 10, threshold: 2, owners: [], isReadOnly: false }
+        : data.method === 'rpcCall' ? '0x${'0'.repeat(64)}' : data.method === 'sendTransactions' ? (await window.safeSent(data.params.txs), { safeTxHash: '0x${'cd'.repeat(32)}' }) : null
+      source.postMessage({ id: data.id, success: true, version: '9.1.0', data: answer }, '*')
+    })</script></body>` }))
+  // The public Safe page frames a page on this machine: Chrome asks for local network access first, granted here.
+  await safeHome.grantPermissions(['local-network-access'])
+  const safePage = await safeHome.newPage()
+  safePage.on('console', (message) => /content security policy|refused to/i.test(message.text()) && violations.push(message.text()))
+  await safePage.goto('https://app.safe.global/apps/open')
+  const inSafe = safePage.frameLocator('#app')
+  await inSafe.getByRole('heading', { name: 'The order the wallet will sign' }).waitFor()
+  const stepsInSafe = async () => (await inSafe.locator('#o-steps li').evaluateAll((items) => items.map((li) => `${li.dataset.step} ${li.dataset.state}`))).join()
+  check('inside the Safe interface the page shows the Safe order and its steps: the approval and the presignature in one Safe transaction, then the send', await stepsInSafe() === 'approve todo,safe todo,sent todo'
+    && (await inSafe.locator('#o-wallet').innerText()).startsWith('Demo Safe') && await both(safePage, '69-sign-safe'))
+  await inSafe.getByRole('button', { name: 'Sign with this Safe' }).click()
+  await inSafe.getByText('Sent. The order waits for the Safe owners to execute the transaction').waitFor()
+  const uid = await inSafe.locator('#o-uid').innerText()
+  check('the Safe was asked for one batch: an approval of exactly 3 WETH to the vault relayer, then setPreSignature(order, true) on the settlement; the steps say proposed, and sent',
+    proposed.length === 2 && proposed[0].to === '0x4200000000000000000000000000000000000006' && proposed[0].data === `0x095ea7b3${'83847eab41ad9ea43809ce71569eb2e9daf51830'.padStart(64, '0')}${(3n * 10n ** 18n).toString(16).padStart(64, '0')}`
+    && proposed[1].to.toLowerCase() === '0x310784c7fce12d578da6f53460777bac9718b859' && proposed[1].data.startsWith('0xec6cb13f') && proposed[1].data.includes(uid.slice(2))
+    && await stepsInSafe() === 'approve proposed,safe proposed,sent done')
+  await safeHome.close()
+  await desk(tess)
+  check('the blotter says the Safe order waits for the Safe transaction (the orderbook: presignature pending)', (await blotter(tess).first().textContent()).includes('Sent: waiting for the Safe transaction') && await both(tess.page, '70-desk-safe-pending'))
   for (const who of [dana, tess, abe]) await who.context.close()
 
   // ---- partner figures: live ----
@@ -1494,7 +1608,7 @@ try {
   if (violations.length) console.error(violations.join("\n"))
   check(`no policy violation in the browser (${violations.length})`, violations.length === 0)
   check(`no request left the origin (${foreign.length})`, foreign.length === 0)
-  console.log('\nEnd-to-end run passed. Screenshots in .shots/: 01-signin to 68-desk-filled')
+  console.log('\nEnd-to-end run passed. Screenshots in .shots/: 01-signin to 71-sign-cancel')
 } catch (error) {
   console.error(error.message)
   process.exitCode = 1

@@ -5,7 +5,7 @@
 // Keys: the public test accounts of anvil. If the public endpoint cannot be reached, it says so and checks nothing.
 // The real desk, last: on an anvil fork of each wallet chain (1, 10, 8453, 42161), the settlement and the vault relayer
 // of orders.ts against the contracts themselves, the order id of a signed order as the settlement derives it in a real
-// settle, a presignature for the order id the server computed, and Multicall3.
+// settle, a presignature for the order id the server computed, Multicall3, and Overview's balances read through it.
 import { execFileSync, spawn } from 'node:child_process'
 import { randomBytes } from 'node:crypto'
 import { rmSync } from 'node:fs'
@@ -13,7 +13,7 @@ import { concat, createPublicClient, createTestClient, createWalletClient, decod
 import { mnemonicToAccount } from 'viem/accounts'
 import { arbitrum, base, mainnet, optimism } from 'viem/chains'
 import * as orders from '../src/server/orders.ts'
-import { colour, SAFES, safeState, verify } from '../src/server/chain.ts'
+import { balancesOf, colour, SAFES, safeState, verify } from '../src/server/chain.ts'
 import { typedLink, typedProof } from '../src/server/typed.ts'
 import { getPlatformProxy } from 'wrangler'
 import * as data from '../src/server/data.ts'
@@ -277,6 +277,11 @@ for (const [id, [viemChain, fork]] of Object.entries(FORKS)) {
     const presigned = orders.gpv2(safeTerms, atTime + 1800)
     check(`${name}: setPreSignature from the owner sets preSignature for the order id the server computed`, safeTerms.scheme === 'presign'
       && await mined(await as(owner).writeContract({ address: settlement, abi: GPV2, functionName: 'setPreSignature', args: [presigned.uid, true] })) && (await read('preSignature', [presigned.uid])) === PRE_SIGNED)
+
+    // Overview's balances: the server's one aggregate3 on the real Multicall3 gives what balanceOf gives, for every asset of the chain.
+    const pairs = Object.values(orders.ASSETS[chainId]).flatMap((a) => [[settlement, a.token], [owner.address, a.token]])
+    const direct = await Promise.all(pairs.map(([who, token]) => read('balanceOf', [who], token)))
+    check(`${name}: the server's balances through Multicall3 aggregate3 equal balanceOf of each asset (${pairs.length} reads)`, JSON.stringify(await balancesOf([RPC, RPC], chainId, pairs), (_, v) => (typeof v === 'bigint' ? String(v) : v)) === JSON.stringify(direct.map(String)))
   } finally {
     node.kill()
     for (let i = 0; i < 20 && (await chainId_(RPC)); i++) await new Promise((resolve) => setTimeout(resolve, 250))

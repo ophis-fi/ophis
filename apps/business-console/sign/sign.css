@@ -5,3 +5,5 @@
 .sign .btn { white-space: normal; text-align: left; } .sign .lede { margin-top: 14px; }
 @media (max-width: 600px) { .sign { padding: 28px 16px; } .sign .panel { padding: 20px; } dl.kv { grid-template-columns: 1fr; gap: 2px 0; } dl.kv dd { margin-bottom: 10px; } }
 .sign:not(.recovery) .rec { display: none; }
+.o-steps { margin: 0; padding-left: 22px; display: grid; gap: 8px; font-size: 14px; line-height: 1.5; }
+.o-steps li b { font-weight: 600; margin-left: 6px; } .o-steps li[data-state="done"] b { color: var(--ok, inherit); } .o-steps li[data-state="todo"] { color: var(--muted); }

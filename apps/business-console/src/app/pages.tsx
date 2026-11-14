@@ -1,6 +1,6 @@
 // The screens of milestones 1 to 4, with the markup and classes of the approved mockup.
 import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react'
-import { api, CANCELLED, capital, day, Icon, minute, passkeyCheck, ROLE, save, say, Section, sensitive, stamp, Status, Tile } from './ui.tsx'
+import { api, CANCELLED, capital, day, Icon, minute, passkeyCheck, ROLE, save, say, Section, sensitive, stamp, Status, Tile, Ways } from './ui.tsx'
 import { orderWords, type OrderBody } from './desk.tsx'
 
 export interface Alert {
@@ -457,7 +457,7 @@ function Approval({ request, wallet, on, mayDecide, act }: { request: Request; w
   const early = (request.notBefore ?? 0) > Date.now()
   // An order of the desk. Its value is the terms the approval binds; the server gives them in words.
   const order = request.kind === 'order' && request.value && request.words ? ({ terms: JSON.parse(request.value), words: request.words } as OrderBody) : null
-  const what = order ? `${orderWords(order)}. ${order.words.type}. ${order.words.valid}. Ophis fee: ${order.words.fee}. Once approved, the wallet signs these terms within 24 hours, or they expire.`
+  const what = order ? `${order.words.binding} ${orderWords(order)}. ${order.words.type}. Ophis fee: ${order.words.fee}. Once approved, the wallet signs these terms within 24 hours, or they expire.`
     : wallet ? walletEffect(request.kind, wallet, on) : effect(request.kind, request.name ?? '', request.role, request.value)
   return (
     <article className="appr">
@@ -474,7 +474,7 @@ function Approval({ request, wallet, on, mayDecide, act }: { request: Request; w
             {request.kind === 'seat.role' && <><dt>Role now</dt><dd>{role(request.role)}</dd><dt>Role after</dt><dd>{role(request.value)}</dd></>}
             <dt>Requested by</dt><dd>{request.requester} ({role(request.requesterRole)})</dd>
             <dt>Second person</dt><dd>Any Owner, Admin, Approver or Compliance officer other than the requester, after a passkey check</dd>
-            {order && <><dt>Order</dt><dd>{orderWords(order)}</dd><dt>Settle from</dt><dd>{order.terms.label}, <span className="mono">{order.terms.wallet}</span></dd><dt>You buy</dt><dd>{order.words.buy}</dd><dt>Live quote</dt><dd>{order.terms.quoted} (atoms of {order.terms.buy.symbol})</dd></>}
+            {order && <><dt>Order</dt><dd>{orderWords(order)}</dd><dt>Settle from</dt><dd>{order.terms.label}, <span className="mono">{order.terms.wallet}</span></dd><dt>You buy</dt><dd>{order.words.buy}</dd><dt>Live quote</dt><dd>{order.words.quote}, when it was prepared</dd></>}
             <dt>Applied</dt><dd>{order ? 'At the approval the order waits for the wallet to sign it' : request.kind === 'anchor.set' ? 'In force 72 hours after the approval' : `At the moment of the approval${early ? `, not before ${minute(request.notBefore!)}` : ''}`}</dd>
             <dt>Expires</dt><dd>{minute(request.expiresAt)}</dd>
           </dl>
@@ -610,7 +610,7 @@ function LinkDialog({ chains, onClose }: { chains: View['chains']; onClose: () =
                     <input className="input mono" readOnly value={issued.link} onFocus={(event) => event.target.select()} />
                   </label>
                   <button className="btn ghost md" type="button" onClick={() => navigator.clipboard.writeText(issued.link).then(() => setCopied(true), () => setCopied(false))}><Icon name="clipboard-check" size={16} />{copied ? 'Copied' : 'Copy the link'}</button>
-                  <p><b>A wallet in a browser, or a custodian's browser extension:</b> open the link in that browser. <b>A Safe:</b> in the Safe interface open Apps, add <span className="mono">{issued.link.split('#')[0]}</span> as a custom app, open it and paste the link. The page shows what will be signed, on its own address, and holds no session of this console.</p>
+                  <p><Ways link={issued.link} /> The page shows what will be signed, on its own address, and holds no session of this console.</p>
                 </>
               ) : <p>The link appears here. It works for 7 days.</p>}
             </div>
@@ -999,7 +999,7 @@ export function Recover() {
             <input className="input mono" readOnly value={issued.link} onFocus={(event) => event.target.select()} />
           </label>
           <div><button className="btn ghost md" type="button" onClick={() => navigator.clipboard.writeText(issued.link).then(() => setCopied(true), () => setCopied(false))}><Icon name="clipboard-check" size={16} />{copied ? 'Copied' : 'Copy the link'}</button></div>
-          <p className="fine"><Icon name="info" size={16} /><span><b>A wallet in a browser, or a custodian's browser extension:</b> open the link in that browser. <b>A Safe:</b> in the Safe interface open Apps, add <span className="mono">{issued.link.split('#')[0]}</span> as a custom app, open it and paste the link.</span></p>
+          <p className="fine"><Icon name="info" size={16} /><span><Ways link={issued.link} /></span></p>
           {issued.recovery && <p className="fine"><Icon name="clock" size={16} />Once the wallet has signed, every member of the organisation sees the request at sign-in. 72 hours later, come back to this page on this device and use "Continue with the new passkey". Keep the security key you just used.</p>}
         </div>
       ) : (

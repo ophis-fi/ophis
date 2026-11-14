@@ -1,7 +1,8 @@
 // Local development commands. They reach the local D1 only: no remote binding is opened
 // (remoteBindings: false), and activation also refuses any ENVIRONMENT but "local".
 //   node scripts/dev.mjs seed       one organisation (domain northwind.example), one Owner seat, a one-time enrolment link
-//                                   seed --demo: the organisation is an institution and gets one linked wallet named "Demo wallet" (no signature; local only), to try the order ticket
+//                                   seed --demo: the organisation is an institution and gets one linked wallet named "Demo wallet" (no signature; local only), to try the order ticket,
+//                                                and a linked "Demo Safe" (kind safe, a random address) whose orders are presign orders
 //                                   seed --live: the organisation is a partner and gets one linked "Demo wallet" at the partner address of the indexer's contract file
 //                                                (no signature; local only), so that Overview shows the figures of the local indexer stand-in
 //   node scripts/dev.mjs activate   ponytail: stands in for the first Owner's activation (the recovery wallet, milestone 5)
@@ -42,6 +43,9 @@ if (!/^SANCTIONS_URL=/m.test(readFileSync('.dev.vars', 'utf8'))) appendFileSync(
 // The real desk: the local stand-in for the public orderbooks (scripts/orderbook-stub.mjs). Locally nothing reaches a real
 // orderbook. Without this line the local desk asks the real ones (their constants in src/server/orders.ts).
 if (!/^ORDERBOOK_URL=/m.test(readFileSync('.dev.vars', 'utf8'))) appendFileSync('.dev.vars', `ORDERBOOK_URL=http://127.0.0.1:${ORDERBOOK_PORT}\n`)
+// Overview's balances: the same stand-in answers the two JSON-RPC endpoints of each chain. Without this line the local
+// Overview reads the public endpoints of src/server/passkeys.ts.
+if (!/^RPC_URL=/m.test(readFileSync('.dev.vars', 'utf8'))) appendFileSync('.dev.vars', `RPC_URL=http://127.0.0.1:${ORDERBOOK_PORT}/rpc\n`)
 // Milestone 5b: the LOCAL test key of the sealing (key-custody.md section 3). The identity, the secret half, is made
 // here and stays in .dev.seal-identity next to .dev.vars (git-ignored, never printed): it opens what the local console
 // seals. Its recipient, the public half, goes to the Worker (SEAL_RECIPIENT in .dev.vars, for the fingerprint) and to
@@ -72,7 +76,8 @@ try {
     const { orgId } = await seedOrganisation(env.DB, { name: 'Northwind Vaults', kind: demo ? 'institution' : 'partner', ownerName: 'Maren Okafor', ticketHash: await sha256Hex(ticket), now: Date.now(), domain: DOMAIN })
     if (demo) {
       await devDemoWallet(env.DB, env.ENVIRONMENT, orgId, Date.now(), DEMO_KEY_WALLET)
-      console.log('Demo: an institution with one linked wallet named "Demo wallet" (no signature, local only), at the address of the first public test key of anvil.')
+      await devDemoWallet(env.DB, env.ENVIRONMENT, orgId, Date.now(), undefined, 'safe', 'Demo Safe')
+      console.log('Demo: an institution with one linked wallet named "Demo wallet" (no signature, local only), at the address of the first public test key of anvil, and a "Demo Safe" at a random address.')
     } else if (live) {
       // The partner wallet of the contract file: the stand-in answers its figures for this address.
       const address = JSON.parse(readFileSync(CONTRACT, 'utf8')).wallets[0].wallet

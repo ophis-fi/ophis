@@ -94,15 +94,20 @@ const STATUS: Record<string, [tone: string, icon: string]> = {
   Ready: ['ok', 'shield-check'], 'At risk': ['warn', 'triangle-alert'], 'Not recoverable': ['bad', 'triangle-alert'],
   Green: ['ok', 'check'], Amber: ['warn', 'triangle-alert'], Red: ['bad', 'x'], None: ['bad', 'x'],
   Suspended: ['draft', 'history'], Planned: ['draft', 'calendar'], Later: ['draft', 'calendar'],
-  // The states of an order, and the tags of example rows.
-  'Pending approval': ['warn', 'clock'], 'Approved: waiting for signature': ['ok', 'check'], Refused: ['bad', 'x'], Cancelled: ['draft', 'ban'], Expired: ['draft', 'history'],
-  Open: ['', 'clock'], Filled: ['ok', 'check'], Paid: ['ok', 'check'], Carried: ['', 'clock'], 'Waiting for signatures': ['warn', 'clock'], 'Not sent yet': ['draft', 'clock'], Example: ['draft', 'info'], Illustrative: ['preview', 'info'], Demo: ['preview', 'info'],
+  // The states of an order, and of a payout.
+  'Pending approval': ['warn', 'clock'], 'Approved: waiting for signature': ['ok', 'check'], 'Sent: waiting for the Safe transaction': ['warn', 'clock'], Refused: ['bad', 'x'], Cancelled: ['draft', 'ban'], Expired: ['draft', 'history'],
+  Open: ['', 'clock'], Filled: ['ok', 'check'], Paid: ['ok', 'check'], Carried: ['', 'clock'], 'Waiting for signatures': ['warn', 'clock'], 'Not sent yet': ['draft', 'clock'],
   Revoked: ['bad', 'x'], Frozen: ['bad', 'ban'], 'Sanctions list': ['bad', 'triangle-alert'], Removed: ['bad', 'x'], 'Chain verified': ['ok', 'shield-check'], 'Chain broken': ['bad', 'triangle-alert'],
 }
 export function Status({ children }: { children: string }) {
   const [tone, icon] = STATUS[children] ?? ['', 'circle-check']
   return <span className={`badge bi ${tone}`}><Icon name={icon} size={16} />{children}</span>
 }
+
+/** The two ways the people who hold a wallet open a signing link: a wallet in a browser, or the Safe interface. */
+export const Ways = ({ link }: { link: string }) => (
+  <><b>A wallet in a browser, or a custodian's browser extension:</b> open the link in that browser. <b>A Safe:</b> in the Safe interface open Apps, add <span className="mono">{link.split('#')[0]}</span> as a custom app, open it and paste the link.</>
+)
 
 /** Hands a file the server built to the browser's download. */
 export function save(name: string, text: string, type = 'text/csv') {

@@ -1,15 +1,14 @@
 // Worker entry: answers /api/* and leaves every other path to the static assets.
 import * as data from './data.ts'
-import { checksum, colour, parseAddress, readBytes, readCapped, safeState, verify, verifyDigest, type SafeState } from './chain.ts'
+import { balancesOf, checksum, colour, parseAddress, readBytes, readCapped, safeState, verify, verifyDigest, type SafeState } from './chain.ts'
 import { challengeIsOurs, configFor, creationOptions, credentialHash, newChallenge, requestOptions, seal, toBase64Url, unseal, userHandle, verifyAssertion, verifyRegistration, type Config, type Purpose } from './passkeys.ts'
 import { CHAIN_NAME, typedLink, typedProof, type ProofKind } from './typed.ts'
 import { ask } from './support.ts'
-import * as demo from './demo.ts'
 import * as orders from './orders.ts'
 import * as partner from './partner.ts'
 import { activateIntent, activationIntent, activationProof, apply, applyCheck, DOWNLOAD_REASONS, onboarding, ONBOARDING_EVENTS, operator, OPERATOR, screening, SEAL, sealDeclaration, submit, sync } from './onboarding.ts'
 
-export interface Env { DB: D1Database; ASSETS: Fetcher; SEALED: R2Bucket; ENVIRONMENT: string; CHALLENGE_KEY: string; SEAL_RECIPIENT?: string; INDEXER_URL?: string; INDEXER_TOKEN?: string; SANCTIONS_URL?: string; ORDERBOOK_URL?: string }
+export interface Env { DB: D1Database; ASSETS: Fetcher; SEALED: R2Bucket; ENVIRONMENT: string; CHALLENGE_KEY: string; SEAL_RECIPIENT?: string; INDEXER_URL?: string; INDEXER_TOKEN?: string; SANCTIONS_URL?: string; ORDERBOOK_URL?: string; RPC_URL?: string }
 
 const IDLE_MS = 15 * 60_000
 const ABSOLUTE_MS = 12 * 60 * 60_000
@@ -677,14 +676,19 @@ async function auditExport(c: Context) {
 /** A CSV file as the browser saves it: the name ends with today's date, and every cell goes through csvCell. */
 const csvFile = (c: Context, name: string, lines: unknown[][]) => json(200, { name: `${name}-${new Date(c.now).toISOString().slice(0, 10)}.csv`, csv: lines.map((cells) => `${cells.map(csvCell).join(',')}\r\n`).join('') })
 
-// ---- overview and desk. An institution: its desk is real (orders.ts), its overview figures are examples (demo.ts).
-// A partner: live figures (partner.ts). The approvals counted are real. ----
+// ---- overview and desk. An institution: its desk (orders.ts), the balances of its linked wallets read on the chain,
+// and its statement from its filled orders. A partner: live figures (partner.ts). The approvals counted are real. ----
 
-// The organisation's own orders as the pages show them: the approval row, the terms in words, the state.
-const ordersOf = async (c: Context) => (await data.orders(c.env.DB, c.actor, c.now)).map(({ terms, approvedAt, status, ...o }) => ({
-  ...o, terms, words: orders.words(terms, o.validTo), ref: `ORD-${o.id.slice(0, 8)}`, state: orders.stateOf({ ...o, approvedAt, status }, c.now),
-  signUntil: o.state === 'applied' && !o.uid && !status ? (approvedAt ?? 0) + orders.SIGN_MS : null,
-}))
+// The organisation's own orders as the pages show them: the approval row, the terms in words, the state, and once
+// filled, the executed amounts and the fee in words (units of each asset).
+const ordersOf = async (c: Context) => (await data.orders(c.env.DB, c.actor, c.now)).map(({ terms, approvedAt, status, ...o }) => {
+  const units = (atoms: string | null, symbol: string) => (atoms === null ? null : `${orders.decimal(atoms, orders.ASSETS[terms.chainId]?.[symbol as orders.Symbol]?.decimals ?? 18)} ${symbol}`)
+  return {
+    ...o, terms, words: orders.words(terms, o.validTo), ref: `ORD-${o.id.slice(0, 8)}`, state: orders.stateOf({ ...o, approvedAt, status }, c.now),
+    signUntil: o.state === 'applied' && !o.uid && !status ? (approvedAt ?? 0) + orders.SIGN_MS : null,
+    executed: o.sold && status === 'fulfilled' ? { sold: units(o.sold, terms.sell.symbol), bought: units(o.bought, terms.buy.symbol), fee: units(o.fee, terms.sell.symbol) } : null,
+  }
+})
 const REVIEW = 'order-review' // the label of a review under the challenge key
 /**
  * An order of the desk. The ticket in, a live quote (from the wallet), the terms out, sealed by the server for 5
@@ -789,7 +793,7 @@ async function orderSend(c: Context) {
 async function refresh(env: Env, orgId: string | null, now: number, limit: number) {
   const read = []
   for (const o of await data.openOrders(env.DB, orgId, limit)) {
-    const state = await orders.status(env, o.chainId, o.uid)
+    const state = await orders.status(env, o.chainId, o.uid, o.sellToken)
     if (state) read.push({ ...o, ...state })
   }
   await data.orderStates(env.DB, read, now)
@@ -799,7 +803,59 @@ async function overview(c: Context) {
   const kind = c.session.org_kind
   // A partner: its real figures (partner.ts), or the plain state that says why there are none. Never an example.
   if (kind === 'partner') return json(200, { kind, waiting: await waiting(c), figures: await partner.figures(c.env, c.actor.orgId, c.now) })
-  return json(200, { demo: true, kind, waiting: await waiting(c), ...demo.institution(), orders: await ordersOf(c) })
+  const list = await ordersOf(c)
+  return json(200, { kind, waiting: await waiting(c), asOf: new Date(c.now).toISOString(), balances: await balances(c), months: await statement(c), orders: list.slice(0, 8), open: list.filter((o) => o.state === 'Open').length })
+}
+// ponytail: a cache of this isolate, 60 seconds, keyed by the organisation and its wallets. A D1 row would hold across isolates.
+const BALANCE_CACHE = new Map<string, { at: number; value: Awaited<ReturnType<typeof readBalances>> }>()
+const BALANCE_MS = 60_000
+const BALANCE_WALLETS = 10 // the wallets linked first: 10 of 5 assets is 50 calls, whose answer fits the 16 KB of an RPC answer
+/** The balances of the organisation's linked wallets on the desk chains, in the assets of each chain: read briefly cached. */
+async function balances(c: Context) {
+  const wallets = (await data.wallets(c.env.DB, c.actor.orgId, c.now)).filter((w) => w.state === 'linked' && Object.hasOwn(orders.CHAINS, w.chainId))
+  const key = `${c.actor.orgId} ${wallets.slice(0, BALANCE_WALLETS).map((w) => `${w.id}:${w.chainId}:${w.address}`).join()}`
+  const seen = BALANCE_CACHE.get(key)
+  if (seen && c.now - seen.at < BALANCE_MS) return { ...seen.value, leftOut: wallets.length - seen.value.wallets.length }
+  for (const [k, v] of BALANCE_CACHE) if (c.now - v.at >= BALANCE_MS) BALANCE_CACHE.delete(k)
+  const value = await readBalances(c, wallets.slice(0, BALANCE_WALLETS), c.now)
+  BALANCE_CACHE.set(key, { at: c.now, value })
+  return { ...value, leftOut: wallets.length - value.wallets.length }
+}
+/** One aggregate3 per chain, on that chain's two endpoints (locally, RPC_URL names a stand-in on this machine). */
+async function readBalances(c: Context, wallets: Awaited<ReturnType<typeof data.wallets>>, at: number) {
+  const local = orders.standIn(c.env, c.env.RPC_URL)
+  const chains = [...new Set(wallets.map((w) => w.chainId))]
+  const read = new Map(await Promise.all(chains.map(async (chainId) => {
+    const assets = Object.entries(orders.ASSETS[chainId]) as [orders.Symbol, orders.Asset][]
+    const mine = wallets.filter((w) => w.chainId === chainId)
+    const endpoints = local ? ([`${local}/${chainId}/a`, `${local}/${chainId}/b`] as const) : c.config.chains[chainId]
+    const got = await balancesOf(endpoints, chainId, mine.flatMap((w) => assets.map(([, a]) => [w.address, a.token] as [string, string])))
+    return [chainId, { assets, got }] as const
+  })))
+  return {
+    readAt: new Date(at).toISOString(),
+    wallets: wallets.map((w) => {
+      const { assets, got } = read.get(w.chainId)!
+      const first = wallets.filter((x) => x.chainId === w.chainId).indexOf(w) * assets.length
+      return {
+        wallet: w.label, address: checksum(w.address), chain: CHAIN_NAME[w.chainId], read: got !== null,
+        rows: assets.map(([symbol, a], i) => ({ asset: symbol, token: a.token, balance: got?.[first + i] == null ? null : orders.decimal(got[first + i]!, a.decimals) })),
+      }
+    }),
+  }
+}
+/** The monthly statement: the filled orders of the last 12 months, by the month they were sent (UTC) and the asset sold. */
+async function statement(c: Context) {
+  const months = new Map<string, { month: string; asset: string; orders: number; volume: bigint; fee: bigint; unreported: number; decimals: number }>()
+  for (const o of await data.filledOrders(c.env.DB, c.actor.orgId, c.now - 365 * 86_400_000)) {
+    const decimals = orders.ASSETS[o.chainId]?.[o.symbol as orders.Symbol]?.decimals
+    if (decimals === undefined) continue // no asset this server lists: never an amount in units it cannot name
+    const key = `${new Date(o.sentAt).toISOString().slice(0, 7)} ${o.symbol}`
+    const m = months.get(key) ?? { month: key.slice(0, 7), asset: o.symbol, orders: 0, volume: 0n, fee: 0n, unreported: 0, decimals }
+    months.set(key, { ...m, orders: m.orders + 1, volume: m.volume + BigInt(o.sold), fee: m.fee + BigInt(o.fee ?? 0), unreported: m.unreported + (o.fee === null ? 1 : 0) })
+  }
+  return [...months.values()].sort((a, b) => b.month.localeCompare(a.month) || a.asset.localeCompare(b.asset))
+    .map((m) => ({ month: m.month, asset: m.asset, orders: m.orders, volume: orders.decimal(m.volume, m.decimals), fee: orders.decimal(m.fee, m.decimals), unreported: m.unreported }))
 }
 async function desk(c: Context) {
   if (c.session.org_kind !== 'institution') return fail(403, 'institution_only')
@@ -817,29 +873,39 @@ const assetRows = () => Object.entries(orders.ASSETS).flatMap(([id, assets]) => 
   chainId: Number(id), chain: CHAIN_NAME[Number(id)], symbol, token: a!.token, decimals: a!.decimals, cap: orders.decimal(orders.capOf(symbol as orders.Symbol, a!.decimals), a!.decimals),
 })))
 
-// Every "Export CSV" button of Overview and Desk. The tables follow the kind of the organisation, and each row says
-// where it comes from. An institution: its orders and the permitted assets (source = live), and the example tables of
-// the overview (source = demo). A partner: its partner-fee months from a fresh read of the indexer, source = live; no read, no file.
+// Every "Export CSV" button of Overview and Desk. The tables follow the kind of the organisation; every row says
+// source = live. An institution: its orders (every term, the state, what the orderbook executed), the balances of its
+// linked wallets, its statement and the permitted assets. A partner: its figures from a fresh read of the indexer; no read, no file.
+const utc = (time: number | null) => (time === null ? '' : new Date(time).toISOString())
+const INSTITUTION: Record<string, [head: string[], rows: (c: Context) => Promise<unknown[][]>]> = {
+  orders: [['Order', 'Prepared at', 'Prepared by', 'Type', 'Chain', 'Wallet', 'Wallet address', 'Signing', 'Sell', 'Sell token', 'Amount sold', 'Buy', 'Buy token', 'Least amount bought',
+    'Live quote', 'Slippage (bps)', 'Limit price', 'Valid after signing (s)', 'Valid until', 'App data hash', 'Status', 'Decided by', 'Decided at', 'Signing link by', 'Signing link at', 'Order id', 'Sent at',
+    'Sold', 'Bought', 'Fee', 'Transaction'],
+  async (c) => (await ordersOf(c)).map((o) => {
+    // An asset delisted since: 18 decimals, as its words say.
+    const [s, b] = [o.terms.sell, o.terms.buy].map((x) => orders.ASSETS[o.terms.chainId]?.[x.symbol]?.decimals ?? 18)
+    return [o.ref, utc(o.at), o.preparer, o.terms.type, CHAIN_NAME[o.terms.chainId], o.terms.label, o.terms.wallet, o.terms.scheme, o.terms.sell.symbol, o.terms.sell.token, orders.decimal(o.terms.sell.amount, s),
+      o.terms.buy.symbol, o.terms.buy.token, orders.decimal(o.terms.buy.minimum, b), orders.decimal(o.terms.quoted, b), o.terms.slippageBips ?? '', o.terms.limitPrice ?? '', o.terms.validFor,
+      o.validTo === null ? '' : utc(o.validTo * 1000), o.terms.appDataHash, o.state, o.decidedBy ?? '', utc(o.decidedAt), o.linkBy ?? '', utc(o.linkAt), o.uid ?? '', utc(o.sentAt),
+      o.executed?.sold ?? '', o.executed?.bought ?? '', o.executed?.fee ?? '', o.tx ?? '']
+  })],
+  balances: [['Wallet', 'Address', 'Chain', 'Asset', 'Token', 'Balance', 'Read at'],
+    async (c) => { const b = await balances(c); return b.wallets.flatMap((w) => w.rows.map((r) => [w.wallet, w.address, w.chain, r.asset, r.token, r.balance ?? 'not read', b.readAt])) }],
+  statement: [['Month', 'Asset sold', 'Filled orders', 'Volume sold', 'Fees', 'Orders with no fee reported'], async (c) => (await statement(c)).map((m) => [m.month, m.asset, m.orders, m.volume, m.fee, m.unreported])],
+  assets: [['Chain', 'Asset', 'Token', 'Decimals', 'Most per order'], async () => assetRows().map((a) => [a.chain, a.symbol, a.token, a.decimals, a.cap])],
+}
 async function tableExport(c: Context) {
   const table = c.params.id ?? ''
-  const live = c.session.org_kind === 'partner'
-  let tables: Record<string, [head: string[], rows: unknown[][]]>
-  if (live) {
-    if (!Object.hasOwn(partner.tables({ state: 'live', asOf: '', leftOut: 0, lists: [], wallets: [] }), table)) return fail(404, 'not_found')
-    const figures = await partner.figures(c.env, c.actor.orgId, c.now)
-    if (figures.state !== 'live') return fail(figures.state === 'figures_unavailable' ? 503 : figures.state === 'figures_rate' ? 429 : 409, figures.state)
-    tables = partner.tables(figures)
-  } else tables = demo.tables()
-  const desk: Record<string, [head: string[], rows: () => Promise<unknown[][]>]> = live ? {} : {
-    orders: [['Order', 'Prepared at', 'Type', 'Chain', 'Wallet', 'Wallet address', 'Sell', 'Amount', 'Buy', 'Least amount bought', 'Status', 'Order id', 'Sold', 'Bought', 'Transaction'],
-      async () => (await ordersOf(c)).map((o) => [o.ref, new Date(o.at).toISOString(), o.terms.type, CHAIN_NAME[o.terms.chainId], o.terms.label, o.terms.wallet, o.terms.sell.symbol, o.words.sell.split(' ')[0],
-        o.terms.buy.symbol, o.words.buy.split(' ')[2], o.state, o.uid ?? '', o.sold ?? '', o.bought ?? '', o.tx ?? ''])],
-    assets: [['Chain', 'Asset', 'Token', 'Decimals', 'Most per order'], async () => assetRows().map((a) => [a.chain, a.symbol, a.token, a.decimals, a.cap])],
+  if (c.session.org_kind !== 'partner') {
+    if (!Object.hasOwn(INSTITUTION, table)) return fail(404, 'not_found')
+    const [head, rows] = INSTITUTION[table]
+    return csvFile(c, `ophis-${table}`, [[...head, 'source'], ...(await rows(c)).map((cells) => [...cells, 'live'])])
   }
-  if (Object.hasOwn(desk, table)) return csvFile(c, `ophis-desk-${table}`, [[...desk[table][0], 'source'], ...(await desk[table][1]()).map((cells) => [...cells, 'live'])])
-  if (!Object.hasOwn(tables, table)) return fail(404, 'not_found')
-  const [head, rows] = tables[table]
-  return csvFile(c, `ophis-${live ? 'partner' : 'demo'}-${table}`, [[...head, 'source'], ...rows.map((cells) => [...cells, live ? 'live' : 'demo'])])
+  if (!Object.hasOwn(partner.tables({ state: 'live', asOf: '', leftOut: 0, lists: [], wallets: [] }), table)) return fail(404, 'not_found')
+  const figures = await partner.figures(c.env, c.actor.orgId, c.now)
+  if (figures.state !== 'live') return fail(figures.state === 'figures_unavailable' ? 503 : figures.state === 'figures_rate' ? 429 : 409, figures.state)
+  const [head, rows] = partner.tables(figures)[table]
+  return csvFile(c, `ophis-partner-${table}`, [[...head, 'source'], ...rows.map((cells) => [...cells, 'live'])])
 }
 
 const ANY = data.ROLES
@@ -893,7 +959,7 @@ export const routes: Route[] = [
   { method: 'GET', path: '/api/audit', roles: READERS, can: 'Read the audit log', handler: audit },
   { method: 'POST', path: '/api/audit/export', roles: READERS, fresh: true, can: 'Export the audit log', handler: auditExport },
   { method: 'GET', path: '/api/screening', roles: READERS, can: 'See the sanctions screening Ophis recorded for the organisation, and the address lists its linked wallets are compared with', handler: screening },
-  { method: 'GET', path: '/api/overview', roles: ANY, can: 'See the overview of the organisation (an institution: its orders and example figures; a partner: its figures from the Ophis rebate service)', handler: overview },
+  { method: 'GET', path: '/api/overview', roles: ANY, can: 'See the overview of the organisation (an institution: the balances of its linked wallets, its orders and its statement; a partner: its figures from the Ophis rebate service)', handler: overview },
   { method: 'GET', path: '/api/desk', roles: ANY, can: 'See the desk of an institution: permitted assets, orders and their records', handler: desk },
   { method: 'GET', path: '/api/export/:id', roles: ANY, can: 'Export a table of the overview or the desk as CSV', handler: tableExport },
   { method: 'POST', path: '/api/desk/orders', roles: orders.PREPARERS, settled: true, can: 'Prepare an order on the desk, which a second person approves before the wallet signs it', handler: order },

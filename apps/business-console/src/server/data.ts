@@ -871,14 +871,28 @@ export async function orders(db: D1Database, actor: Actor, now: number) {
   const { results } = await db
     .prepare(`SELECT a.id, a.payload, a.state, a.created_at AS at, a.decided_at AS decidedAt, a.expires_at AS expiresAt, a.requester_seat_id AS seat,
                      r.display_name AS preparer, r.role AS preparerRole, k.display_name AS decidedBy,
-                     o.approved_at AS approvedAt, o.valid_to AS validTo, o.uid, o.status, o.sent_at AS sentAt, o.executed_sell AS sold, o.executed_buy AS bought, o.tx_hash AS tx
+                     o.approved_at AS approvedAt, o.valid_to AS validTo, o.uid, o.status, o.sent_at AS sentAt, o.executed_sell AS sold, o.executed_buy AS bought, o.executed_fee AS fee, o.tx_hash AS tx,
+                     l.display_name AS linkBy, o.link_at AS linkAt
               FROM approvals a JOIN seats r ON r.org_id = a.org_id AND r.id = a.requester_seat_id
               LEFT JOIN seats k ON k.org_id = a.org_id AND k.id = a.checker_seat_id
               LEFT JOIN orders o ON o.org_id = a.org_id AND o.id = a.id
+              LEFT JOIN seats l ON l.org_id = a.org_id AND l.id = o.link_by
               WHERE a.org_id = ? AND a.action = 'order' ORDER BY a.created_at DESC, a.rowid DESC LIMIT 100`)
     .bind(actor.orgId).all<{ id: string; payload: string; state: string; at: number; decidedAt: number | null; expiresAt: number; seat: string; preparer: string; preparerRole: Role; decidedBy: string | null
-      approvedAt: number | null; validTo: number | null; uid: string | null; status: string | null; sentAt: number | null; sold: string | null; bought: string | null; tx: string | null }>()
+      approvedAt: number | null; validTo: number | null; uid: string | null; status: string | null; sentAt: number | null; sold: string | null; bought: string | null; fee: string | null; tx: string | null; linkBy: string | null; linkAt: number | null }>()
   return results.map(({ payload, seat, ...o }) => ({ ...o, mine: seat === actor.seatId, open: o.state === 'pending' && o.expiresAt > now, terms: JSON.parse((JSON.parse(payload) as { value: string }).value) as Terms }))
+}
+
+/**
+ * The filled orders of an organisation sent since `since`, for the monthly statement: the chain and the asset sold of
+ * their terms, what was sold, the fee. ponytail: every row of the 12 months, read whole; a month table when that grows.
+ */
+export async function filledOrders(db: D1Database, orgId: string, since: number) {
+  const { results } = await db.prepare(`SELECT json_extract(json_extract(a.payload, '$.value'), '$.chainId') AS chainId, json_extract(json_extract(a.payload, '$.value'), '$.sell.symbol') AS symbol,
+                                               o.sent_at AS sentAt, o.executed_sell AS sold, o.executed_fee AS fee
+                                        FROM orders o JOIN approvals a ON a.org_id = o.org_id AND a.id = o.id WHERE o.org_id = ? AND o.status = 'fulfilled' AND o.sent_at >= ?`)
+    .bind(orgId, since).all<{ chainId: number; symbol: string; sentAt: number; sold: string; fee: string | null }>()
+  return results
 }
 
 // ---- the real desk after the approval: the signing link, the signing page, the send, the cancel, the state ----
@@ -893,7 +907,7 @@ const LINK_LIVE = `((COALESCE(?4, o.link_purpose) = 'sign' AND o.status IS NULL 
                     OR (COALESCE(?4, o.link_purpose) = 'cancel' AND o.status IN ('open', 'presignaturePending') AND o.valid_to * 1000 > ?2))`
 const termsOf = (row: { payload: string }) => JSON.parse((JSON.parse(row.payload) as { value: string }).value) as Terms
 
-/** A one-time link for the signing page, issued by a Trader or a key role after the approval: only its SHA-256 is stored, and a new one replaces the last. */
+/** A one-time link for the signing page, issued by a Trader or a key role after the approval: only its SHA-256 is stored, and a new one replaces the last. The record keeps who gave the last signing link, and when. */
 export async function orderLink(db: D1Database, actor: Actor, id: string, purpose: 'sign' | 'cancel', tokenHash: string, now: number) {
   let outcome = 'not_found'
   await commit(db, actor.orgId, async () => {
@@ -902,7 +916,8 @@ export async function orderLink(db: D1Database, actor: Actor, id: string, purpos
     outcome = !role || !(SIGNERS as readonly Role[]).includes(role) ? 'forbidden' : !r ? 'not_found' : 'ok'
     if (outcome !== 'ok') return null
     return [seatEntry(actor, now, 'order.link', id, purpose), [
-      db.prepare('UPDATE orders SET link_hash = ?, link_purpose = ? WHERE org_id = ? AND id = ?').bind(tokenHash, purpose, actor.orgId, id),
+      db.prepare(`UPDATE orders SET link_hash = ?1, link_purpose = ?2, link_by = CASE WHEN ?2 = 'sign' THEN ?3 ELSE link_by END, link_at = CASE WHEN ?2 = 'sign' THEN ?4 ELSE link_at END WHERE org_id = ?5 AND id = ?6`)
+        .bind(tokenHash, purpose, actor.seatId, now, actor.orgId, id),
     ]]
   })
   return outcome
@@ -958,15 +973,15 @@ export async function openOrders(db: D1Database, orgId: string | null, limit: nu
   const { results } = await db.prepare(`SELECT o.org_id AS orgId, o.id, o.uid, a.payload FROM orders o JOIN approvals a ON a.org_id = o.org_id AND a.id = o.id
                                         WHERE o.status IN ('open', 'presignaturePending') AND (?1 IS NULL OR o.org_id = ?1) ORDER BY o.checked_at, o.rowid LIMIT ?2`)
     .bind(orgId, limit).all<{ orgId: string; id: string; uid: string; payload: string }>()
-  return results.map((r) => ({ orgId: r.orgId, id: r.id, uid: r.uid, chainId: termsOf(r).chainId }))
+  return results.map((r) => ({ orgId: r.orgId, id: r.id, uid: r.uid, chainId: termsOf(r).chainId, sellToken: termsOf(r).sell.token }))
 }
 /**
  * The orderbook's state, written as read. ponytail: a copy of the public orderbook, so no audit row of its own and no
  * commit (the people's decisions are in the log: the approval, the link, the send, the cancel). One batch.
  */
-export async function orderStates(db: D1Database, read: { orgId: string; id: string; status: string; sold: string; bought: string; tx: string | null }[], now: number) {
-  if (read.length) await db.batch(read.map((x) => db.prepare(`UPDATE orders SET status = ?, executed_sell = ?, executed_buy = ?, tx_hash = COALESCE(?, tx_hash), checked_at = ? WHERE org_id = ? AND id = ? AND status IN ('open', 'presignaturePending')`)
-    .bind(x.status, x.sold, x.bought, x.tx, now, x.orgId, x.id)))
+export async function orderStates(db: D1Database, read: { orgId: string; id: string; status: string; sold: string; bought: string; tx: string | null; fee: string | null }[], now: number) {
+  if (read.length) await db.batch(read.map((x) => db.prepare(`UPDATE orders SET status = ?, executed_sell = ?, executed_buy = ?, executed_fee = ?, tx_hash = COALESCE(?, tx_hash), checked_at = ? WHERE org_id = ? AND id = ? AND status IN ('open', 'presignaturePending')`)
+    .bind(x.status, x.sold, x.bought, x.fee, x.tx, now, x.orgId, x.id)))
 }
 
 // ---- milestone 4a: wallets and the recovery wallet ----
@@ -1409,14 +1424,15 @@ export async function seedOrganisation(db: D1Database, o: { name: string; kind: 
 // ponytail: local only ("seed --demo"). A linked wallet named "Demo wallet" that no signature proved, so that one
 // person can try the order ticket. A real wallet is linked by its own signature (milestone 4a). Its address is random
 // (nobody holds its key) unless given: "seed --demo" gives the first public test key of anvil, which signs locally against the stand-in orderbook. "seed --live" gives the address instead: the partner wallet of the indexer's
-// contract file, whose figures the local stand-in answers. It must never see a real database.
-export async function devDemoWallet(db: D1Database, environment: string, orgId: string, now: number, address = `0x${randomId()}${randomId().slice(0, 8)}`) {
+// contract file, whose figures the local stand-in answers. "seed --demo" also links a "Demo Safe" (kind safe, a random
+// address), whose orders the end-to-end run sends as presign orders. It must never see a real database.
+export async function devDemoWallet(db: D1Database, environment: string, orgId: string, now: number, address = `0x${randomId()}${randomId().slice(0, 8)}`, kind: 'custodian' | 'safe' = 'custodian', label = 'Demo wallet') {
   if (environment !== 'local') throw new Error('refused: the demo wallet is for the local database only')
   if (!/^0x[0-9a-f]{40}$/.test(address)) throw new Error('refused: not an address in lower case')
   const id = randomId()
   await commit(db, orgId, () => [{ at: now, actorKind: 'system', actorId: null, sessionId: null, action: 'wallet.link', subjectId: id, detail: 'demo' }, [
     db.prepare(`INSERT INTO wallets (id, org_id, chain_id, address, kind, label, state, proof_nonce, proof_digest, proof_signature, proof_checked_at, linked_at)
-                VALUES (?, ?, 10, ?, 'custodian', 'Demo wallet', 'linked', ?, '0x', '0x', ?, ?)`).bind(id, orgId, address, `demo-${id}`, now, now),
+                VALUES (?, ?, 10, ?, ?, ?, 'linked', ?, '0x', '0x', ?, ?)`).bind(id, orgId, address, kind, label, `demo-${id}`, now, now),
   ]])
   return id
 }

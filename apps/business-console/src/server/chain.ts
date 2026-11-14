@@ -104,6 +104,28 @@ export async function signedByKey(digest: Hex, wallet: string, signature: Hex) {
   return Boolean(signer && isAddressEqual(signer, wallet as Hex))
 }
 
+// Multicall3, at the same address on every chain of the desk (tests/chain.mjs reads its code on each fork).
+export const MULTICALL3 = '0xcA11bde05977b3631167028862bE2a173976CA11'
+const BALANCES = parseAbi([
+  'struct Call3 { address target; bool allowFailure; bytes callData; }', 'struct Result { bool success; bytes returnData; }',
+  'function aggregate3(Call3[] calls) view returns (Result[] returnData)', 'function balanceOf(address owner) view returns (uint256)',
+])
+/**
+ * ERC-20 balances, one aggregate3 eth_call for every [wallet, token] pair of one chain, as both endpoints see it. Per
+ * pair: the balance, or null when that call failed. Null: no answer both endpoints gave.
+ */
+export async function balancesOf(endpoints: Endpoints, chainId: number, pairs: [wallet: string, token: string][]) {
+  const calls = pairs.map(([wallet, token]) => ({ target: token as Hex, allowFailure: true, callData: encodeFunctionData({ abi: BALANCES, functionName: 'balanceOf', args: [wallet as Hex] }) }))
+  const [answer] = await reads(endpoints, chainId, MULTICALL3, [encodeFunctionData({ abi: BALANCES, functionName: 'aggregate3', args: [calls] })])
+  try {
+    const results = decodeFunctionResult({ abi: BALANCES, functionName: 'aggregate3', data: answer! })
+    if (results.length !== pairs.length) return null
+    return results.map((r) => (r.success && r.returnData.length === 66 ? BigInt(r.returnData) : null))
+  } catch {
+    return null
+  }
+}
+
 export interface SafeState { owners: string[]; threshold: number; modules: string[]; handler: boolean }
 /**
  * Owners, threshold and modules of a genuine Safe, as both endpoints see it. Genuine: the runtime code is an official
