@@ -1,7 +1,7 @@
 // Security invariants of milestone 1. Each test here was seen to fail once with its control removed
 // (ARCHITECTURE.md, security invariants). Runs in the Workers runtime against a local D1.
 import { applyD1Migrations, env } from 'cloudflare:test'
-import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import { decodeFunctionData, encodeFunctionData, encodeFunctionResult, parseAbi, recoverAddress, serializeSignature, parseSignature, hashTypedData, keccak256, toBytes } from 'viem'
 import { mnemonicToAccount } from 'viem/accounts'
 import pageHeaders from '../public/_headers?raw'
@@ -3116,7 +3116,9 @@ describe('v. limits asked for by the review of milestone 2', () => {
 // Appends n rows to the chain of an organisation, hashed by the recipe written out here (a checker that imports what
 // it checks proves nothing): what a long log looks like, without the thousands of requests that would write it. Each
 // is a copy of the last row (its actor, session, action and subject), so that the names of the export are read as for real rows.
+const grown = new Set<string>()
 async function grow(orgId: string, n: number) {
+  grown.add(orgId)
   const head = (await row<Record<string, string | number | null>>('SELECT * FROM audit_log WHERE org_id = ? ORDER BY seq DESC LIMIT 1', orgId))!
   let [seq, prev] = [head.seq as number, head.hash as string]
   const statements: D1PreparedStatement[] = []
@@ -3155,6 +3157,11 @@ const checks = (orgId: string) => row<{ checked_seq: number; recheck_seq: number
 const chainOf = async (m: Holder) => (await call('GET', '/api/audit', { cookie: m.cookie })).body.chain
 
 describe('w. the audit log page and its export', () => {
+  // The long logs of this section are removed after each test: the snapshots of later sections read every row of the database.
+  afterEach(async () => {
+    for (const orgId of grown) await asForger(db.prepare('DELETE FROM audit_log WHERE org_id = ?').bind(orgId))
+    grown.clear()
+  })
   // A role change asked by the Owner and approved by the Compliance officer.
   async function story() {
     const o = await owner()
