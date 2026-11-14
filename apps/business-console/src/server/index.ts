@@ -632,6 +632,7 @@ export const EVENTS: Record<string, string> = {
   'order.cancel/safe': 'Cancel of the order sent to the Safe, for its owners to sign onchain',
   'order.sanctioned': 'Order refused before it was sent: an address of it is on a loaded sanctions list',
   'order.unsent': 'The orderbook did not take the order: nothing was sent',
+  'order.found': 'The orderbook has the order of a send whose answer was lost: recorded as it read it',
   'recovery.open': 'Account recovery requested by the recovery wallet, 72 hour wait started',
   'recovery.open/override': 'Account recovery requested by the recovery wallet, overriding the Owners, 72 hour wait started',
   'recovery.cancel': 'Account recovery cancelled by an Owner',
@@ -807,13 +808,14 @@ async function orderSend(c: Context) {
   const held = await data.orderSending(c.env.DB, r, r.hash, built.uid, signature, c.now)
   if (held !== 'ok') return refuse(held)
   const status = t.scheme === 'presign' ? 'presignaturePending' : 'open'
-  // The post and its record finish even if the page closes meanwhile (waitUntil). No answer: the orderbook is asked once
-  // for the order; not there yet, the hold stays (the post may still land): the refresh reads it, the link sends again in a minute.
+  // The post and its record finish even if the page closes meanwhile (waitUntil). Not taken now: the orderbook may have it
+  // already (a lost answer, an earlier send of this hold that has filled since), so it is asked once. The hold ends only
+  // when the post was refused and the order is not there; else it stays, the refresh reads it, the link sends again in a minute.
   const done = (async () => {
     const posted = await orders.post(c.env, t, built, signature)
-    const seen = posted === 'orderbook_unavailable' ? await orders.status(c.env, t.chainId, built.uid, t.sell.token) : null
+    const seen = posted === 'ok' ? null : await orders.status(c.env, t.chainId, built.uid, t.sell.token)
     if (posted === 'ok' || (seen && seen !== 'missing')) return (await data.orderSent(c.env.DB, r, built.uid, status), 'ok')
-    if (posted === 'order_refused') await data.orderUnsent(c.env.DB, r, built.uid, posted, c.now)
+    if (posted === 'order_refused' && seen === 'missing') await data.orderUnsent(c.env.DB, r, built.uid, posted, c.now)
     return posted
   })()
   c.ctx?.waitUntil(done)
@@ -823,11 +825,12 @@ async function orderSend(c: Context) {
 /** Reads the orderbook's state of sent orders that may still change: of one organisation (the desk, at most 10) or of all (the daily run). */
 async function refresh(env: Env, orgId: string | null, now: number, limit: number) {
   const read = []
-  let gone = 0
-  for (const o of await data.openOrders(env.DB, orgId, limit, now)) {
+  let moved = 0
+  for (const o of await data.openOrders(env.DB, orgId, limit)) {
     const state = await orders.status(env, o.chainId, o.uid, o.sellToken)
-    // ponytail: one hold the orderbook does not have is ended per read (3 D1 queries), the next on the next read.
-    if (state === 'missing') { if (o.held && !gone++) await data.holdGone(env.DB, o, now) } else if (state) read.push({ ...o, ...state })
+    if (!state) continue
+    // ponytail: a hold leaves by one commit (3 D1 queries), one per read: the next on the next read.
+    if (o.held) { if (!moved++) await (state === 'missing' ? data.holdGone(env.DB, o, now) : data.holdFound(env.DB, o, state, now)) } else if (state !== 'missing') read.push({ ...o, ...state })
   }
   await data.orderStates(env.DB, read, now)
 }

@@ -919,8 +919,6 @@ const LINK_LIVE = `((COALESCE(?4, o.link_purpose) = 'sign' AND o.status IS NULL 
                      AND o.approved_at + CASE json_extract(json_extract(a.payload, '$.value'), '$.type') WHEN 'limit' THEN ${SIGN_MS.limit} ELSE ${SIGN_MS.market} END > ?2)
                     OR (COALESCE(?4, o.link_purpose) = 'cancel' AND o.status IN ('open', 'presignaturePending') AND o.valid_to * 1000 > ?2))`
 const termsOf = (row: { payload: string }) => JSON.parse((JSON.parse(row.payload) as { value: string }).value) as Terms
-/** SQL: an order sent, or being sent (its send holds the order id), whose state may still change at the orderbook. */
-const UNSETTLED = `(status IN ('open', 'presignaturePending') OR (status IS NULL AND uid IS NOT NULL))`
 
 /** A one-time link for the signing page, issued by a Trader or a key role after the approval: only its SHA-256 is stored, and a new one replaces the last. The record keeps who gave the last signing link, and when. */
 export async function orderLink(db: D1Database, actor: Actor, id: string, purpose: 'sign' | 'cancel', tokenHash: string, now: number) {
@@ -1000,17 +998,26 @@ export async function orderSending(db: D1Database, r: Opening, tokenHash: string
 /** The orderbook took it: the order is live, recorded on the id its send holds, and its link is used. ponytail: no audit row, the send's is it. */
 export const orderSent = (db: D1Database, r: Opening, uid: string, status: string) =>
   db.prepare('UPDATE orders SET status = ?, link_hash = NULL, link_purpose = NULL WHERE org_id = ? AND id = ? AND uid = ? AND status IS NULL').bind(status, r.orgId, r.id, uid).run()
-// The hold ends (taken no earlier than `before`): the order waits for its signature on its link; withdrawn if its link died meanwhile (a withdrawal, a freeze).
+// The hold ends, if it was taken no later than `before` (a send ends its own hold, never a later one): the order waits
+// for its signature on its link, withdrawn if its link died meanwhile (a withdrawal, a freeze). Every way out of a hold
+// is one commit (orderUnsent, holdGone, holdFound; orderSent only after the orderbook took it), so none writes over another.
 const release = (db: D1Database, x: { orgId: string; id: string; uid: string }, before: number, e: Entry) =>
   commit(db, x.orgId, async () => (await db.prepare('SELECT 1 FROM orders WHERE org_id = ? AND id = ? AND uid = ? AND status IS NULL AND sent_at <= ?').bind(x.orgId, x.id, x.uid, before).first())
     ? [e, [db.prepare(`UPDATE orders SET uid = NULL, signature = NULL, sent_at = NULL, checked_at = NULL, status = CASE WHEN link_hash IS NULL THEN 'cancelled' END
                        WHERE org_id = ? AND id = ? AND uid = ? AND status IS NULL AND sent_at <= ?`).bind(x.orgId, x.id, x.uid, before)]]
     : null)
-/** The orderbook refused it (a 4xx): the hold ends. No answer is no refusal: the hold stays, as the order may be live. */
+/** The orderbook refused it (a 4xx) and does not have it: the hold ends. Anything less sure keeps the hold, as the order may be live. */
 export const orderUnsent = (db: D1Database, r: Opening, uid: string, why: string, now: number) => release(db, { orgId: r.orgId, id: r.id, uid }, now, walletEntry(r, now, 'order.unsent', why))
 /** A hold a minute old that the orderbook does not have (404): its send stopped before the post, or the post never landed. */
 export const holdGone = (db: D1Database, x: { orgId: string; id: string; uid: string }, now: number) =>
   release(db, x, now - HOLD_MS, { at: now, actorKind: 'system', actorId: null, sessionId: null, action: 'order.unsent', subjectId: x.id, detail: 'missing' })
+/** A hold the orderbook has: the send reached it and its record was lost. Recorded as the orderbook read it, its link used. */
+export const holdFound = (db: D1Database, x: { orgId: string; id: string; uid: string }, s: { status: string; sold: string; bought: string; tx: string | null; fee: string | null }, now: number) =>
+  commit(db, x.orgId, async () => (await db.prepare('SELECT 1 FROM orders WHERE org_id = ? AND id = ? AND uid = ? AND status IS NULL').bind(x.orgId, x.id, x.uid).first())
+    ? [{ at: now, actorKind: 'system', actorId: null, sessionId: null, action: 'order.found', subjectId: x.id, detail: s.status }, [
+      db.prepare('UPDATE orders SET status = ?, executed_sell = ?, executed_buy = ?, executed_fee = ?, tx_hash = ?, checked_at = ?, link_hash = NULL, link_purpose = NULL WHERE org_id = ? AND id = ? AND uid = ? AND status IS NULL')
+        .bind(s.status, s.sold, s.bought, s.fee, s.tx, now, x.orgId, x.id, x.uid),
+    ]] : null)
 /** What the organisation's other open orders of this wallet still need of the asset this order sells, on its chain, in atoms: the allowance they rely on. */
 // ponytail: reads every order of the organisation (no index on the status). An index on (org_id, status) once a desk keeps thousands.
 export async function reserved(db: D1Database, r: Opening, now: number) {
@@ -1034,11 +1041,12 @@ export const orderCancelled = (db: D1Database, r: Opening, tokenHash: string, ho
     db.prepare(`UPDATE orders SET link_hash = NULL, link_purpose = NULL, status = CASE WHEN ? = 'key' THEN 'cancelled' ELSE status END WHERE org_id = ? AND id = ?`).bind(how, r.orgId, r.id),
   ]] : null)
 /** Sent orders whose state may still change, least recently read first: of one organisation, or of all (the daily run). */
-// A send that stopped while it held the order id: its order is read here until it expires, so one the orderbook took is recorded.
-export async function openOrders(db: D1Database, orgId: string | null, limit: number, now: number) {
+// With the holds of sends that stopped (an order id, no state): read until the orderbook says what became of them, expired or not.
+export async function openOrders(db: D1Database, orgId: string | null, limit: number) {
   const { results } = await db.prepare(`SELECT o.org_id AS orgId, o.id, o.uid, o.status, a.payload FROM orders o JOIN approvals a ON a.org_id = o.org_id AND a.id = o.id
-                                        WHERE ${UNSETTLED} AND (o.status IS NOT NULL OR o.valid_to * 1000 > ?3) AND (?1 IS NULL OR o.org_id = ?1) ORDER BY o.checked_at, o.rowid LIMIT ?2`)
-    .bind(orgId, limit, now).all<{ orgId: string; id: string; uid: string; status: string | null; payload: string }>()
+                                        WHERE (o.status IN ('open', 'presignaturePending') OR (o.status IS NULL AND o.uid IS NOT NULL)) AND (?1 IS NULL OR o.org_id = ?1)
+                                        ORDER BY o.checked_at, o.rowid LIMIT ?2`)
+    .bind(orgId, limit).all<{ orgId: string; id: string; uid: string; status: string | null; payload: string }>()
   return results.map((r) => ({ orgId: r.orgId, id: r.id, uid: r.uid, held: r.status === null, chainId: termsOf(r).chainId, sellToken: termsOf(r).sell.token }))
 }
 /**
@@ -1046,7 +1054,7 @@ export async function openOrders(db: D1Database, orgId: string | null, limit: nu
  * commit (the people's decisions are in the log: the approval, the link, the send, the cancel). One batch.
  */
 export async function orderStates(db: D1Database, read: { orgId: string; id: string; status: string; sold: string; bought: string; tx: string | null; fee: string | null }[], now: number) {
-  if (read.length) await db.batch(read.map((x) => db.prepare(`UPDATE orders SET status = ?, executed_sell = ?, executed_buy = ?, executed_fee = ?, tx_hash = COALESCE(?, tx_hash), checked_at = ? WHERE org_id = ? AND id = ? AND ${UNSETTLED}`)
+  if (read.length) await db.batch(read.map((x) => db.prepare(`UPDATE orders SET status = ?, executed_sell = ?, executed_buy = ?, executed_fee = ?, tx_hash = COALESCE(?, tx_hash), checked_at = ? WHERE org_id = ? AND id = ? AND status IN ('open', 'presignaturePending')`)
     .bind(x.status, x.sold, x.bought, x.fee, x.tx, now, x.orgId, x.id)))
 }
 

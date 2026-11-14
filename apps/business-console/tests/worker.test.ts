@@ -10218,6 +10218,7 @@ describe('J. the real desk: terms from a live quote, two people, then the wallet
     const send = async (id: string, giver = team.t) => {
       const { token } = await orderLink(giver, id)
       const page = await orderPage(token)
+      sent.delete(page.body.uid) // an earlier test may have sent the same terms at the same instant: the stand-in has not seen this one
       return { token, uid: page.body.uid as string, signature: await accounts[1].signTypedData(page.body.typed) }
     }
     const held = (id: string) => row('SELECT uid, signature, sent_at AS sentAt, status, link_hash IS NOT NULL AS link FROM orders WHERE id = ?', id)
@@ -10281,6 +10282,7 @@ describe('J. the real desk: terms from a live quote, two people, then the wallet
       const { token } = await orderLink(team.t, id)
       const page = await orderPage(token)
       const signature = await accounts[1].signTypedData(page.body.typed)
+      sent.delete(page.body.uid)
       await db.prepare('UPDATE orders SET uid = ?, signature = ?, sent_at = ?, checked_at = ? WHERE id = ?').bind(page.body.uid, signature, now, now, id).run()
       return { id, token, signature, uid: page.body.uid as string }
     }
@@ -10306,13 +10308,21 @@ describe('J. the real desk: terms from a live quote, two people, then the wallet
     sent.set(b.uid, { from: accounts[1].address, sellAmount: '12', buyAmount: '1', sellToken: USDC_OP })
     await again(team.o)
     expect(Object.fromEntries((await deskOrders(team.o)).map((x) => [x.id, x.state]))).toMatchObject({ [b.id]: 'Open' })
-    expect(await row('SELECT status FROM orders WHERE id = ?', b.id)).toEqual({ status: 'open' })
-    // A hold whose order has expired is read no more.
+    expect(await row('SELECT status, link_hash FROM orders WHERE id = ?', b.id)).toEqual({ status: 'open', link_hash: null })
+    expect(await lastAudit(team.o.orgId)).toMatchObject({ action: 'order.found', actor_id: null, detail: 'open', subject_id: b.id })
+    // Stopped after the post, and filled since: sent again, the orderbook refuses it (no balance left), is asked, and has it.
+    const f = await hold('16')
+    sent.set(f.uid, { from: accounts[1].address, sellAmount: '16', buyAmount: '1', sellToken: USDC_OP })
+    now += 61_000
+    book({ twist: (x) => (x.method === 'POST' && x.url.endsWith('/api/v1/orders') ? Response.json({ errorType: 'InsufficientBalance' }, { status: 400 }) : undefined) })
+    expect((await orderSend(f.token, f.signature)).body).toEqual({ state: 'open', uid: f.uid })
+    // A hold whose order has expired is read all the same: the orderbook filled it, so the fill is recorded.
     const c = await hold('13')
+    sent.set(c.uid, { from: accounts[1].address, sellAmount: '13', buyAmount: '1', sellToken: USDC_OP })
     await db.prepare('UPDATE orders SET valid_to = ? WHERE id = ?').bind(Math.floor(now / 1000) - 1, c.id).run()
-    const asked = book()
-    await deskOrders(team.o)
-    expect(asked.filter((x) => x.url.includes(c.uid))).toEqual([])
+    book({ state: 'fulfilled' })
+    await again(team.o)
+    expect(Object.fromEntries((await deskOrders(team.o)).map((x) => [x.id, x.state]))).toMatchObject({ [c.id]: 'Filled' })
   })
 
   it('inside the commits: the link reads the role now; the expiry is fixed once; one send per approval; the link is read again; the state read is written only while the order is open', async () => {
