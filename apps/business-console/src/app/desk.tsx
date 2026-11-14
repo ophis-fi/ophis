@@ -448,7 +448,7 @@ function OrderRecord({ o, v, onClose, onChanged, onSignedOut }: { o: Order; v: D
     const out = await sensitive<{ error?: string }>(`/api/desk/orders/${o.id}/withdraw`).catch(() => null)
     if (out?.status === 401) return onSignedOut()
     setProblem(!out ? CANCELLED : out.status === 200 ? '' : say(out.data))
-    if (out?.status === 200) await onChanged()
+    if (out?.status === 200 || out?.data.error === 'being_sent') await onChanged()
   }
   const tx = o.tx && (EXPLORER[o.terms.chainId] ? <a className="link mono" href={EXPLORER[o.terms.chainId] + o.tx} target="_blank" rel="noopener">{o.tx}</a> : <span className="mono">{o.tx}</span>)
   return (

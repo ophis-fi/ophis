@@ -9998,17 +9998,22 @@ describe('J. the real desk: terms from a live quote, two people, then the wallet
     await setOrg(team.o.orgId, `state = 'frozen'`)
     expect((await orderSend(token, signature)).body).toEqual({ error: 'link_invalid' })
     await setOrg(team.o.orgId, `state = 'active'`)
-    // Nothing is kept but the log's two rows: the send, then the orderbook did not take it (it does not have this order).
+    // Refused (a 4xx): nothing is kept but the log's two rows, the send and the orderbook not taking it.
     const rest = [...TABLES, ...GLOBAL].filter((x) => x !== 'audit_log')
     const before = await snapshot(rest)
     sent.delete(page.body.uid)
-    for (const [answer, error] of [[Response.json({ errorType: 'InsufficientBalance' }, { status: 400 }), 'order_refused'], [Response.json({}, { status: 500 }), 'orderbook_unavailable'],
-      [Response.json('0x' + 'ab'.repeat(56), { status: 201 }), 'orderbook_unavailable']] as const) {
-      book({ twist: (a) => (a.method === 'POST' && a.url.endsWith('/orders') ? answer.clone() : undefined) })
-      expect((await orderSend(token, signature)).body).toEqual({ error })
-      expect(await lastAudit(team.o.orgId), error).toMatchObject({ action: 'order.unsent', detail: error, subject_id: id })
-    }
+    book({ twist: (a) => (a.method === 'POST' && a.url.endsWith('/orders') ? Response.json({ errorType: 'InsufficientBalance' }, { status: 400 }) : undefined) })
+    expect((await orderSend(token, signature)).body).toEqual({ error: 'order_refused' })
+    expect(await lastAudit(team.o.orgId)).toMatchObject({ action: 'order.unsent', detail: 'order_refused', subject_id: id })
     expect(await snapshot(rest)).toBe(before)
+    // No answer (a 500, or an order id that is not this one) and the order not there: the hold stays, as it may be live; a minute on, the same link sends again.
+    for (const answer of [Response.json({}, { status: 500 }), Response.json('0x' + 'ab'.repeat(56), { status: 201 })]) {
+      book({ twist: (a) => (a.method === 'POST' && a.url.endsWith('/orders') ? answer.clone() : undefined) })
+      expect((await orderSend(token, signature)).body).toEqual({ error: 'orderbook_unavailable' })
+      expect(await row('SELECT uid, status FROM orders WHERE id = ?', id)).toEqual({ uid: page.body.uid, status: null })
+      expect((await orderSend(token, signature)).body).toEqual({ error: 'already_sent' })
+      now += 61_000
+    }
     // The orderbook already has this very order (a send whose answer was lost): it is recorded.
     book({ twist: (a) => (a.method === 'POST' && a.url.endsWith('/orders') ? Response.json({ errorType: 'DuplicatedOrder' }, { status: 400 }) : undefined) })
     expect((await orderSend(token, signature)).body).toEqual({ state: 'open', uid: page.body.uid })
@@ -10182,7 +10187,7 @@ describe('J. the real desk: terms from a live quote, two people, then the wallet
     expect(await row('SELECT status, tx_hash FROM orders WHERE id = ?', id)).toEqual({ status: 'fulfilled', tx_hash: null })
   })
 
-  it('a send holds the order id before the post: a new link or a withdrawal meanwhile is refused, an unlinked wallet changes nothing, and the order the orderbook took is recorded', async () => {
+  it('a send holds the order id before the post: a new link meanwhile is refused, a withdrawal kills the link and says the order is being sent, an unlinked wallet changes nothing, and the order the orderbook took is recorded', async () => {
     const team = await deskTeam()
     const approver = await actorOf(team.a, 'approver')
     for (const [meanwhile, amount] of [['link', '11'], ['unlink', '12'], ['withdraw', '13']] as const) {
@@ -10197,13 +10202,13 @@ describe('J. the real desk: terms from a live quote, two people, then the wallet
         if (init?.method === 'POST' && String(input).endsWith('/api/v1/orders')) {
           if (meanwhile === 'link') expect(await data.orderLink(db, approver, id, 'sign', 'f'.repeat(64), now)).toBe('not_found')
           if (meanwhile === 'unlink') await db.prepare(`UPDATE wallets SET state = 'unlinked' WHERE id = ?`).bind(team.walletId).run()
-          if (meanwhile === 'withdraw') expect(await data.orderWithdraw(db, approver, id, now)).toBe('not_found')
+          if (meanwhile === 'withdraw') expect(await data.orderWithdraw(db, approver, id, now)).toBe('being_sent')
         }
         return answer
       })
       expect((await orderSend(token, await accounts[1].signTypedData(page.body.typed))).body, meanwhile).toEqual({ state: 'open', uid: page.body.uid })
       expect(await row('SELECT uid, status, link_hash FROM orders WHERE id = ?', id), meanwhile).toEqual({ uid: page.body.uid, status: 'open', link_hash: null })
-      expect(await lastAudit(team.o.orgId), meanwhile).toMatchObject({ action: 'order.send', subject_id: id })
+      expect(await lastAudit(team.o.orgId), meanwhile).toMatchObject(meanwhile === 'withdraw' ? { action: 'order.withdraw', detail: 'held', subject_id: id } : { action: 'order.send', subject_id: id })
       await db.prepare(`UPDATE wallets SET state = 'linked' WHERE id = ?`).bind(team.walletId).run()
     }
   })
@@ -10252,12 +10257,20 @@ describe('J. the real desk: terms from a live quote, two people, then the wallet
       return init?.method === 'POST' && String(input).endsWith('/api/v1/orders') ? Response.json({}, { status: 503 }) : answer
     })
     expect((await orderSend(token, await accounts[1].signTypedData(page.body.typed))).body).toEqual({ state: 'open', uid: page.body.uid })
-    // Down for good (no reply, and no order there): nothing is kept.
+    // No reply, and the order not there yet: the hold stays, as the post may still land. A minute on, the refresh ends it.
     book({ twist: (x) => (x.method === 'POST' && x.url.endsWith('/api/v1/orders') ? Response.json({}, { status: 503 }) : undefined) })
     const down = await approvedOrder(team2, { amount: '6' })
     const d = await send(down, team2.t)
     expect((await orderSend(d.token, d.signature)).body).toEqual({ error: 'orderbook_unavailable' })
+    expect(await held(down)).toEqual({ uid: d.uid, signature: d.signature, sentAt: now, status: null, link: 1 })
+    expect((await orderSend(d.token, d.signature)).body).toEqual({ error: 'already_sent' })
+    await deskOrders(team2.o) // a fresh hold is not ended by the refresh
+    expect(await held(down)).toMatchObject({ uid: d.uid })
+    now += 61_000
+    await again(team2.o)
+    await deskOrders(team2.o)
     expect(await held(down)).toEqual({ uid: null, signature: null, sentAt: null, status: null, link: 1 })
+    expect(await lastAudit(team2.o.orgId)).toMatchObject({ action: 'order.unsent', detail: 'missing', subject_id: down })
   })
 
   it('a send that stopped while it held the order id: a withdrawal waits, the refresh records the order the orderbook took, and a minute on the same link takes the hold again', async () => {
@@ -10273,10 +10286,21 @@ describe('J. the real desk: terms from a live quote, two people, then the wallet
     }
     // Stopped before the post: the hold waits a minute, then the same link posts it.
     const a = await hold('11')
-    expect(await data.orderWithdraw(db, await actorOf(team.a, 'approver'), a.id, now)).toBe('not_found')
     expect((await orderSend(a.token, a.signature)).body).toEqual({ error: 'already_sent' })
     now += 61_000
     expect((await orderSend(a.token, a.signature)).body).toEqual({ state: 'open', uid: a.uid })
+    // Stopped before the post, then withdrawn: its link dies so nothing sends it again, and the refresh withdraws it (the orderbook does not have it).
+    const w = await hold('14')
+    const w2 = await hold('15') // not withdrawn: back to waiting for its signature, one read later (one hold ended per read)
+    expect(await data.orderWithdraw(db, await actorOf(team.a, 'approver'), w.id, now)).toBe('being_sent')
+    now += 61_000
+    expect((await orderSend(w.token, w.signature)).body).toEqual({ error: 'link_invalid' })
+    await again(team.o)
+    await deskOrders(team.o)
+    const state = (id: string) => row('SELECT uid, status, link_hash IS NOT NULL AS link FROM orders WHERE id = ?', id)
+    expect([await state(w.id), await state(w2.id)]).toEqual([{ uid: null, status: 'cancelled', link: 0 }, { uid: w2.uid, status: null, link: 1 }])
+    await deskOrders(team.o)
+    expect(await state(w2.id)).toEqual({ uid: null, status: null, link: 1 })
     // Stopped after the post: the orderbook has it, the desk's refresh records it as it reads it.
     const b = await hold('12')
     sent.set(b.uid, { from: accounts[1].address, sellAmount: '12', buyAmount: '1', sellToken: USDC_OP })

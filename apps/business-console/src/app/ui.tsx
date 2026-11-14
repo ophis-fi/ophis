@@ -37,6 +37,7 @@ const SAY: Record<string, string> = {
   forbidden: 'Your role cannot do this.',
   ticket_limit: 'Three links for one member in 24 hours is the limit. Another Owner or Admin can issue one.',
   not_found: 'This is no longer open. Reload the page.',
+  being_sent: 'The wallet is sending this order now. Its link no longer works: withdrawn if the orderbook does not take it; if it does, it shows Open and you can cancel it.',
   try_again: 'Something else changed at the same moment. Try again.',
   device_bound_required: 'This role needs a hardware security key. A passkey that syncs to a cloud account is not accepted.',
   label_invalid: 'Give the key a short name: letters, digits and spaces, 40 characters at most.',

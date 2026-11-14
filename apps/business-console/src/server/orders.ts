@@ -277,6 +277,7 @@ const STATUS = ['presignaturePending', 'open', 'fulfilled', 'cancelled', 'expire
 export async function status(env: Settings, chainId: number, uid: string, sellToken: string) {
   const order = await ask(env, chainId, `/api/v1/orders/${uid}`)
   const o = order.body as Record<string, unknown> | null
+  if (order.status === 404) return 'missing' as const // the orderbook does not have this order id
   if (order.status !== 200 || !o || !STATUS.includes(o.status as string) || !digits(o.executedSellAmount) || !digits(o.executedBuyAmount)) return null
   let tx: string | null = null
   if (o.status === 'fulfilled') {
