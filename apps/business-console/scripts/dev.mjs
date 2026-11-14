@@ -16,7 +16,11 @@ import { devActivatePending, devDemoWallet, devSkipWaits, devStaleChecks, random
 import { configFor } from '../src/server/passkeys.ts'
 import { CONTRACT, PORT as INDEXER_PORT } from './indexer-stub.mjs'
 import { PORT as LIST_PORT } from './list-stub.mjs'
+import { PORT as ORDERBOOK_PORT } from './orderbook-stub.mjs'
 
+// The first account of the public test mnemonic of anvil and hardhat: its key is public, so it signs the local desk's
+// orders in tests/e2e.mjs, against the stand-in orderbook only. Never send funds to it.
+const DEMO_KEY_WALLET = '0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266'
 const [command, ...options] = process.argv.slice(2)
 const option = (name) => (options.includes(name) ? options[options.indexOf(name) + 1] : undefined)
 const directory = option('--persist')
@@ -35,6 +39,9 @@ if (!/^INDEXER_URL=/m.test(readFileSync('.dev.vars', 'utf8'))) appendFileSync('.
 if (!/^INDEXER_TOKEN=/m.test(readFileSync('.dev.vars', 'utf8'))) appendFileSync('.dev.vars', `INDEXER_TOKEN=${randomBytes(32).toString('base64url')}\n`)
 // M10: the local stand-in for the place where the OFAC list file lives (scripts/list-stub.mjs). A real environment sets SANCTIONS_URL as a variable (https).
 if (!/^SANCTIONS_URL=/m.test(readFileSync('.dev.vars', 'utf8'))) appendFileSync('.dev.vars', `SANCTIONS_URL=http://127.0.0.1:${LIST_PORT}/ofac.json\n`)
+// The real desk: the local stand-in for the public orderbooks (scripts/orderbook-stub.mjs). Locally nothing reaches a real
+// orderbook. Without this line the local desk asks the real ones (their constants in src/server/orders.ts).
+if (!/^ORDERBOOK_URL=/m.test(readFileSync('.dev.vars', 'utf8'))) appendFileSync('.dev.vars', `ORDERBOOK_URL=http://127.0.0.1:${ORDERBOOK_PORT}\n`)
 // Milestone 5b: the LOCAL test key of the sealing (key-custody.md section 3). The identity, the secret half, is made
 // here and stays in .dev.seal-identity next to .dev.vars (git-ignored, never printed): it opens what the local console
 // seals. Its recipient, the public half, goes to the Worker (SEAL_RECIPIENT in .dev.vars, for the fingerprint) and to
@@ -64,8 +71,8 @@ try {
     const DOMAIN = n ? `northwind-${n + 1}.example` : 'northwind.example'
     const { orgId } = await seedOrganisation(env.DB, { name: 'Northwind Vaults', kind: demo ? 'institution' : 'partner', ownerName: 'Maren Okafor', ticketHash: await sha256Hex(ticket), now: Date.now(), domain: DOMAIN })
     if (demo) {
-      await devDemoWallet(env.DB, env.ENVIRONMENT, orgId, Date.now())
-      console.log('Demo: an institution with one linked wallet named "Demo wallet" (no signature, local only).')
+      await devDemoWallet(env.DB, env.ENVIRONMENT, orgId, Date.now(), DEMO_KEY_WALLET)
+      console.log('Demo: an institution with one linked wallet named "Demo wallet" (no signature, local only), at the address of the first public test key of anvil.')
     } else if (live) {
       // The partner wallet of the contract file: the stand-in answers its figures for this address.
       const address = JSON.parse(readFileSync(CONTRACT, 'utf8')).wallets[0].wallet

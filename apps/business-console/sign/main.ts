@@ -3,7 +3,10 @@
 // to the proof route of this host. A wallet link names its wallet and chain. A recovery request does not: the
 // server tells nobody which wallet is an organisation's recovery wallet, so the wallet that signs fills them in.
 // It holds no session and calls nothing else. Wallet code lives here and on the server, never in the console.
+// The real desk: a link "#order.<token>" opens an approved order. The server builds everything from the approved terms:
+// the page never chooses an amount, a token, a receiver or a chain. It only asks the wallet.
 import SafeAppsSDK from '@safe-global/safe-apps-sdk'
+import { decodeFunctionResult, encodeFunctionData, parseAbi } from 'viem'
 import '../src/app/fonts.css' // Inter, copied by this build into /sign/assets/: the page's policy has font-src 'self'
 import '../src/app/kit.css'
 import '../src/app/app.css'
@@ -63,6 +66,8 @@ const named = () => request.kind === undefined || request.kind === 'activate'
 
 // The request is base64url(JSON) "." MAC. The page shows the fields; only the server can check the MAC, and it does.
 function read(code: string) {
+  const ordered = /^(?:.*#)?order\.([A-Za-z0-9_-]{43})$/.exec(code.trim())
+  if (ordered) return void readOrder(ordered[1])
   try {
     sealed = code.trim().replace(/^.*#/, '')
     request = JSON.parse(new TextDecoder().decode(Uint8Array.from(atob(sealed.split('.')[0].replace(/-/g, '+').replace(/_/g, '/')), (c) => c.charCodeAt(0)))) as Request
@@ -144,6 +149,92 @@ async function bySafe() {
     await new Promise((resolve) => setTimeout(resolve, 5000))
   }
 }
+
+// ---- the real desk: an approved order to sign, or an open one to cancel ----
+interface OrderPage { purpose: 'sign' | 'cancel'; scheme: 'eip712' | 'presign'; chainId: number; wallet: string; words: Record<string, string>; uid: string; settlement: string; relayer: string; sellToken: string; sellAmount: string; typed: Typed | null }
+const ORDER_SAY: Record<string, string> = {
+  open: 'Signed and sent. The order is open on the orderbook until it fills or expires. You can close this page.',
+  presignaturePending: 'Sent. The order waits for the Safe owners to execute the transaction in the Safe interface. Once it is executed, the order is open.',
+  cancelled: 'Signed and sent. The orderbook cancelled the order. You can close this page.',
+  asked: 'The cancel waits for the Safe owners to execute the transaction in the Safe interface.',
+  link_invalid: 'This link is not valid any more: it was used, it expired, or a newer link replaced it. Ask for a new link in the console.',
+  signature_rejected: 'The signature is not from the wallet of this order. Nothing was sent.',
+  sanctioned_address: 'Refused: an address of this order is on a public sanctions list that Ophis loaded. Nothing was sent. The attempt is recorded.',
+  wallet_not_linked: 'The wallet is no longer linked to the organisation on this chain. Nothing was sent.',
+  order_refused: 'The orderbook refused the order. Nothing was sent.',
+  orderbook_unavailable: 'The orderbook did not answer. Try again in a minute.',
+  already_sent: 'This order was already sent.',
+  not_opened: 'Reload this page, then sign.',
+  try_again: 'Something else changed at the same moment. Reload this page and try again.',
+}
+const ERC20 = parseAbi(['function allowance(address owner, address spender) view returns (uint256)', 'function approve(address spender, uint256 amount) returns (bool)'])
+const SETTLEMENT = parseAbi(['function setPreSignature(bytes orderUid, bool signed)'])
+let token = ''
+let order: OrderPage
+const call = async (path: string, body: object) => {
+  const response = await fetch(path, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ token, ...body }) }).catch(() => null)
+  return { ok: response?.status === 200, data: ((await response?.json().catch(() => null)) ?? {}) as Record<string, unknown> }
+}
+async function readOrder(code: string) {
+  token = code
+  const { ok, data } = await call('/api/order', {})
+  $('paste').hidden = true
+  if (!ok) return say(ORDER_SAY[data.error as string] ?? 'The order could not be read. Try again in a minute.', 'bad')
+  order = data as unknown as OrderPage
+  const w = order.words
+  // Text, never markup: every field is set as text.
+  $('title').replaceChildren(order.purpose === 'sign' ? 'Sign ' : 'Cancel ', Object.assign(document.createElement('em'), { textContent: 'an approved order' }), '.')
+  $('lede').textContent = order.purpose === 'sign'
+    ? 'Two people in the organisation approved this order. If you sign, it goes to the public orderbook and can fill until it expires. What is bought goes to the wallet itself. Ophis never holds the funds.'
+    : 'This cancels the open order below. Nothing else changes.'
+  for (const [id, text] of [['o-sell', w.sell], ['o-buy', w.buy], ['o-type', w.type], ['o-chain', w.chain], ['o-wallet', w.wallet], ['o-valid', w.valid], ['o-fee', w.fee], ['o-uid', order.uid]]) $(id).textContent = text
+  $('o-advice').textContent = order.scheme === 'presign'
+    ? 'In the Safe interface you see one transaction batch: an approval of exactly the amount sold to the CoW Protocol vault relayer if one is needed, and the signature of this order on the settlement contract. Check it before the owners sign.'
+    : 'Your wallet may first ask to approve exactly the amount sold to the CoW Protocol vault relayer, then it shows the order to sign. Check that it matches.'
+  $('o-by-wallet').hidden = Boolean(safe)
+  $('o-by-safe').hidden = !safe
+  $('o-by-wallet').textContent = $('o-by-safe').textContent = order.purpose === 'sign' ? (safe ? 'Sign with this Safe' : 'Sign with the wallet in this browser') : (safe ? 'Cancel with this Safe' : 'Cancel with the wallet in this browser')
+  $('order').hidden = false
+}
+const sent = async (signature?: string) => {
+  say('Sending.')
+  const { data } = await call('/api/order/send', signature ? { signature } : {})
+  say(ORDER_SAY[(data.state ?? data.error) as string] ?? 'The order could not be sent. Try again in a minute.', data.state ? 'ok' : 'bad')
+}
+const short = (have: unknown) => BigInt(decodeFunctionResult({ abi: ERC20, functionName: 'allowance', data: have as `0x${string}` })) < BigInt(order.sellAmount)
+const approval = () => encodeFunctionData({ abi: ERC20, functionName: 'approve', args: [order.relayer as `0x${string}`, BigInt(order.sellAmount)] })
+const allowance = () => encodeFunctionData({ abi: ERC20, functionName: 'allowance', args: [order.wallet as `0x${string}`, order.relayer as `0x${string}`] })
+const presign = (signed: boolean) => encodeFunctionData({ abi: SETTLEMENT, functionName: 'setPreSignature', args: [order.uid as `0x${string}`, signed] })
+
+// A key wallet in this browser: the chain, the allowance (an approval of the exact amount if short, and its receipt), the signature.
+async function orderByWallet() {
+  const { ethereum } = window as { ethereum?: Provider }
+  if (!ethereum) return say('No wallet was found in this browser. Open this page in the browser that holds the wallet.', 'warn')
+  const [account] = (await ethereum.request({ method: 'eth_requestAccounts' })) as string[]
+  if (!same(account, order.wallet)) return say(`The wallet in this browser is ${account}. The order is for ${order.wallet}. Switch the account and try again.`, 'bad')
+  await ethereum.request({ method: 'wallet_switchEthereumChain', params: [{ chainId: `0x${order.chainId.toString(16)}` }] })
+  if (order.purpose === 'sign' && short(await ethereum.request({ method: 'eth_call', params: [{ to: order.sellToken, data: allowance() }, 'latest'] }))) {
+    say('Approve exactly the amount sold, in the wallet. Then wait for the transaction.')
+    const hash = await ethereum.request({ method: 'eth_sendTransaction', params: [{ from: account, to: order.sellToken, data: approval() }] })
+    for (let receipt: { status?: string } | null = null; ; await new Promise((resolve) => setTimeout(resolve, 2000))) {
+      receipt = (await ethereum.request({ method: 'eth_getTransactionReceipt', params: [hash] })) as { status?: string } | null
+      if (receipt?.status === '0x1') break
+      if (receipt) return say('The approval failed onchain. Nothing was signed.', 'bad')
+    }
+  }
+  await sent((await ethereum.request({ method: 'eth_signTypedData_v4', params: [account, JSON.stringify(order.typed)] })) as string)
+}
+// Inside the Safe interface: one batch, which its owners sign and execute there. Signing: [approve the exact amount if short,
+// setPreSignature(order, true)]. Cancelling: setPreSignature(order, false).
+async function orderBySafe() {
+  const info = await safe!.safe.getInfo()
+  if (!same(info.safeAddress, order.wallet) || info.chainId !== order.chainId) return say(`This Safe is ${info.safeAddress} on chain ${info.chainId}. The order is for ${order.wallet} on chain ${order.chainId}. Open the right Safe and try again.`, 'bad')
+  const txs = order.purpose === 'cancel' ? [] : (short(await safe!.eth.call([{ from: order.wallet, to: order.sellToken, data: allowance() }])) ? [{ to: order.sellToken, value: '0', data: approval() }] : [])
+  await safe!.txs.send({ txs: [...txs, { to: order.settlement, value: '0', data: presign(order.purpose === 'sign') }] })
+  await sent()
+}
+$('o-by-wallet').addEventListener('click', () => void orderByWallet().catch(() => say('The wallet did not sign. Nothing was sent.', 'warn')))
+$('o-by-safe').addEventListener('click', () => void orderBySafe().catch(() => say('The Safe did not take the transaction. Nothing was sent.', 'warn')))
 
 const run = (action: () => Promise<unknown>) => () => void action().catch(() => say('The wallet did not sign. Nothing was sent.', 'warn'))
 $('paste').addEventListener('submit', (event) => {

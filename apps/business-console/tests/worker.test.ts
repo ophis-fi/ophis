@@ -2,7 +2,7 @@
 // (ARCHITECTURE.md, security invariants). Runs in the Workers runtime against a local D1.
 import { applyD1Migrations, env } from 'cloudflare:test'
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
-import { decodeFunctionData, encodeFunctionData, encodeFunctionResult, parseAbi, recoverAddress, serializeSignature, parseSignature, hashTypedData } from 'viem'
+import { decodeFunctionData, encodeFunctionData, encodeFunctionResult, parseAbi, recoverAddress, serializeSignature, parseSignature, hashTypedData, keccak256, toBytes } from 'viem'
 import { mnemonicToAccount } from 'viem/accounts'
 import pageHeaders from '../public/_headers?raw'
 import routerSource from '../src/server/index.ts?raw'
@@ -15,7 +15,13 @@ import { challengeIsOurs, configFor, credentialHash, fromBase64Url, newChallenge
 import { checksum, colour, LIMITS, SAFES, type SafeState } from '../src/server/chain.ts'
 import { LINK_ACTION, PROOF_ACTION, typedLink, typedProof, type Typed } from '../src/server/typed.ts'
 import * as demo from '../src/server/demo.ts'
+import * as orders from '../src/server/orders.ts'
+import realBook from './fixtures/orderbook.json'
+import golden from './fixtures/appdata-golden.json'
 import deskPage from '../src/app/desk.tsx?raw'
+import ordersSource from '../src/server/orders.ts?raw'
+import signScript from '../sign/main.ts?raw'
+import devScript from '../scripts/dev.mjs?raw'
 import demoSource from '../src/server/demo.ts?raw'
 import shellPage from '../src/app/main.tsx?raw'
 import uiSource from '../src/app/ui.tsx?raw'
@@ -27,7 +33,7 @@ import * as age from 'age-encryption'
 const SITE = { origin: 'http://localhost:8787', rpId: 'localhost' }
 const MIN = 60_000
 const START = Date.UTC(2026, 10, 10, 9)
-const TABLES = ['application_people', 'approvals', 'audit_log', 'credentials', 'enrolment_tickets', 'kyb_records', 'organisations', 'recovery_requests', 'sealed_items', 'seats', 'sessions', 'wallets']
+const TABLES = ['application_people', 'approvals', 'audit_log', 'credentials', 'enrolment_tickets', 'kyb_records', 'orders', 'organisations', 'recovery_requests', 'sealed_items', 'seats', 'sessions', 'wallets']
 // Sanctions screening: the two global tables, with no org_id: what a public list says, nothing of a client.
 const GLOBAL = ['sanctioned_addresses', 'sanctions_lists']
 // The one table outside the snapshots: the hourly counter of proof checks, which a proof writes before its commit (section B).
@@ -1139,8 +1145,33 @@ describe('f. audit log', () => {
     'seat.freeze': { blocks: 'UPDATE ON seats', prepare: (m) => colleague(m, 'viewer'), run: (m, v) => act(m, v.seatId, 'freeze') },
     'approval.request': { blocks: 'INSERT ON approvals', prepare: (m) => colleague(m, 'viewer'), run: (m, v) => act(m, v.seatId, 'role', { role: 'trader' }) },
     'seat.role': { blocks: 'UPDATE ON seats', prepare: (m) => asked(m), run: (_, p) => decide(p.approver, p.id, 'approve') },
-    // Demo mode: the approval of an order writes its audit row and closes its request, together.
-    'order.demo': { blocks: 'UPDATE ON approvals', prepare: async (m) => (await setOrg(m.orgId, `kind = 'institution'`), { approver: await colleague(m, 'approver'), id: (await prepare(m, await demoWallet(m.orgId))).body.id as string }), run: (_, p) => decide(p.approver, p.id, 'approve') },
+    // The real desk: the approval of an order writes its audit row, closes its request and makes its order row, together.
+    order: { blocks: 'INSERT ON orders', prepare: async (m) => (book(), await setOrg(m.orgId, `kind = 'institution'`), { approver: await colleague(m, 'approver'), id: (await prepare(m, await demoWallet(m.orgId))).body.id as string }), run: (_, p) => decide(p.approver, p.id, 'approve') },
+    'order.link': { blocks: 'UPDATE ON orders', prepare: (m) => approvedIn(m), run: (m, p) => orderLink(m, p.id) },
+    'order.open': { blocks: 'UPDATE ON orders', prepare: async (m) => orderLink(m, (await approvedIn(m)).id), run: (_, l) => orderPage(l.token) },
+    'order.send': { blocks: 'UPDATE ON orders', prepare: (m) => opened(m), run: (_, p) => orderSend(p.token, p.signature) },
+    'order.sanctioned': {
+      blocks: 'UPDATE ON orders',
+      prepare: (m) => opened(m),
+      run: async (_, p) => {
+        await db.batch([db.prepare(`INSERT OR REPLACE INTO sanctions_lists (list, sha256, entries, loaded_at) VALUES ('ofac', ?, 1, ?)`).bind('ab'.repeat(32), now), db.prepare(`INSERT OR IGNORE INTO sanctioned_addresses (list, address) VALUES ('ofac', ?)`).bind(WETH_OP.toLowerCase())])
+        try {
+          return await orderSend(p.token, p.signature)
+        } finally {
+          await db.batch([db.prepare('DELETE FROM sanctioned_addresses'), db.prepare('DELETE FROM sanctions_lists')])
+        }
+      },
+    },
+    'order.cancel': {
+      blocks: 'UPDATE ON orders',
+      prepare: async (m) => {
+        await keyed(m)
+        const { id } = await approvedIn(m, keyedWallet.get(m.orgId))
+        await signed((await orderLink(m, id)).token)
+        return (await orderLink(m, id, 'cancel')).token
+      },
+      run: async (_, token) => orderSend(token, await accounts[1].signTypedData((await orderPage(token)).body.typed)),
+    },
     'approval.reject': { blocks: 'UPDATE ON approvals', prepare: (m) => asked(m), run: (_, p) => decide(p.approver, p.id, 'reject') },
     'approval.cancel': { blocks: 'UPDATE ON approvals', prepare: (m) => asked(m), run: (m, p) => decide(m, p.id, 'cancel') },
     // An invited seat that never enrolled: one person removes it.
@@ -1163,6 +1194,24 @@ describe('f. audit log', () => {
     'recovery.open': { blocks: 'INSERT ON recovery_requests', prepare: async (m) => (await anchored(m), askRecovery(m.orgId)), run: async (_, asked) => prove(asked.intent, await accounts[0].signTypedData(typedRecover(recoverOf(asked.intent), accounts[0].address))) },
     'recovery.complete': { blocks: 'INSERT ON sessions', prepare: (m) => ready(m), run: (_, key) => continueRecovery(key) },
     'recovery.stop': { blocks: 'UPDATE ON organisations', prepare: async (m) => void ((await row(`SELECT 1 FROM recovery_requests WHERE org_id = ? AND state = 'completed'`, m.orgId)) ?? (await continueRecovery(await ready(m)))), run: (m) => stop(m.key) },
+  }
+  // An approved order of this Owner (the approver is a colleague made once per organisation); keyed: a key wallet of accounts[1].
+  const approvers = new Map<string, Holder & { key: Key }>()
+  const keyedWallet = new Map<string, string>()
+  const keyed = async (m: Full) => void (keyedWallet.has(m.orgId) || keyedWallet.set(m.orgId, await demoWallet(m.orgId, 'Key wallet', 'linked', accounts[1].address.toLowerCase())))
+  // An approved order of the key wallet whose signing page was read (its expiry fixed), and the wallet's signature.
+  async function opened(m: Full) {
+    await keyed(m)
+    const { token } = await orderLink(m, (await approvedIn(m, keyedWallet.get(m.orgId))).id)
+    return { token, signature: await accounts[1].signTypedData((await orderPage(token)).body.typed) }
+  }
+  async function approvedIn(m: Full, walletId?: string) {
+    book()
+    await setOrg(m.orgId, `kind = 'institution'`)
+    if (!approvers.has(m.orgId)) approvers.set(m.orgId, await colleague(m, 'approver'))
+    const id = (await prepare(m, walletId ?? (await demoWallet(m.orgId)))).body.id as string
+    expect((await decide(approvers.get(m.orgId)!, id, 'approve')).status).toBe(200)
+    return { id }
   }
   const anchored = async (m: Full) => void ((await row('SELECT 1 FROM wallets WHERE org_id = ?', m.orgId)) ?? (await soloWithWallet(m)))
   // The pending passkey of a request whose wait is over, made once per organisation.
@@ -1219,9 +1268,11 @@ describe('f. audit log', () => {
       // /api/audit/export writes its audit row and nothing else: section w proves that no file leaves without the row.
       // Milestone 5: /api/apply and /api/onboarding/wallet write nothing; apply/check, onboarding/submit and onboarding/declaration are in section E.
       '/api/apply', '/api/apply/check',
-      '/api/approvals/:id/approve', '/api/approvals/:id/cancel', '/api/approvals/:id/reject', '/api/audit/export', '/api/desk/orders',
+      '/api/approvals/:id/approve', '/api/approvals/:id/cancel', '/api/approvals/:id/reject', '/api/audit/export', '/api/desk/orders', '/api/desk/orders/:id/link',
       '/api/enrol/finish', '/api/enrol/start', '/api/members/:id/freeze', '/api/members/:id/remove', '/api/members/:id/role', '/api/members/:id/unfreeze',
       '/api/onboarding/declaration', '/api/onboarding/submit', '/api/onboarding/wallet',
+      // The real desk: the signing page's read fixes the expiry (order.open), its send records the order (order.send, order.sanctioned, order.cancel).
+      '/api/order', '/api/order/send',
       // /api/wallets/intent writes nothing at all (section y); /api/proof is the first write of a link.
       '/api/passkeys/:id/revoke', '/api/passkeys/finish', '/api/passkeys/start', '/api/policy', '/api/proof',
       // The intent routes and continue/start write nothing (section B). The proof opens a request or cancels one; continue/finish completes or lapses one.
@@ -1470,7 +1521,7 @@ describe('k. step-up: a fresh passkey check before a sensitive action', () => {
     const m3 = ['/api/approvals/:id/approve', '/api/approvals/:id/reject', '/api/members/:id/freeze', '/api/members/:id/remove', '/api/members/:id/role', '/api/members/:id/unfreeze']
     const m4 = ['/api/wallets/:id/anchor', '/api/wallets/:id/anchor/cancel', '/api/wallets/:id/unlink', '/api/wallets/intent']
     const m5 = ['/api/onboarding/declaration', '/api/onboarding/submit', '/api/onboarding/wallet']
-    expect(paths('fresh')).toEqual([...m3.slice(0, 2), '/api/audit/export', ...m3.slice(2), ...m5, '/api/passkeys/:id/revoke', '/api/passkeys/finish', '/api/passkeys/start', '/api/policy', '/api/recovery/:id/cancel', '/api/recovery/:id/object', '/api/tickets', '/api/tickets/:id/cancel', ...m4])
+    expect(paths('fresh')).toEqual([...m3.slice(0, 2), '/api/audit/export', '/api/desk/orders/:id/link', ...m3.slice(2), ...m5, '/api/passkeys/:id/revoke', '/api/passkeys/finish', '/api/passkeys/start', '/api/policy', '/api/recovery/:id/cancel', '/api/recovery/:id/object', '/api/tickets', '/api/tickets/:id/cancel', ...m4])
     // Confirming carries its own passkey check, made for the ticket.
     expect(paths('twoKeys')).toEqual([...m3, ...m5, '/api/passkeys/:id/revoke', '/api/policy', '/api/tickets', '/api/tickets/:id/cancel', '/api/tickets/:id/confirm', '/api/tickets/:id/confirm/start', ...m4])
     expect(routes.filter((route) => (route.fresh || route.twoKeys || route.settled || route.second) && route.roles === 'public')).toEqual([])
@@ -2489,11 +2540,12 @@ describe('r. the role table', () => {
       'POST /api/recovery/:id/cancel': 'owner fresh', 'POST /api/recovery/:id/object': 'admin,approver,compliance fresh',
       'POST /api/support/ask': any,
       'GET /api/overview': any, 'GET /api/desk': any, 'POST /api/desk/orders': 'owner,admin,trader settled', 'GET /api/export/:id': any,
+      'POST /api/desk/orders/:id/link': 'owner,admin,trader,approver,compliance fresh settled', 'POST /api/order': 'public', 'POST /api/order/send': 'public',
       'POST /api/apply': 'public', 'POST /api/apply/check': 'public',
       'GET /api/onboarding': 'owner,compliance', 'POST /api/onboarding/wallet': 'owner fresh twoKeys', 'POST /api/onboarding/submit': 'owner fresh twoKeys', 'POST /api/onboarding/declaration': 'owner fresh twoKeys',
     })
-    // The signing host has one route, and it is the only one without the console.
-    expect(routes.filter((r) => r.sign).map((r) => r.path)).toEqual(['/api/proof'])
+    // The signing host has three routes (the proof, and the real desk's read and send of an order), and they are the only ones without the console.
+    expect(routes.filter((r) => r.sign).map((r) => r.path)).toEqual(['/api/proof', '/api/order', '/api/order/send'])
     // A route has its own handler, or it is a change for two people that the router files as a request: never both.
     for (const r of routes) expect(Boolean(r.handler) !== Boolean(r.second), r.path).toBe(true)
   })
@@ -2504,7 +2556,7 @@ describe('r. the role table', () => {
     for (const role of ['admin', 'trader', 'approver', 'compliance', 'viewer']) people[role] = await colleague(o, role)
     // Sign-out last: it ends the session the other calls need.
     const gated = routes.filter((r) => r.roles !== 'public').sort((x, y) => Number(x.path === '/api/signout') - Number(y.path === '/api/signout'))
-    expect(gated.length).toBe(routes.length - 13)
+    expect(gated.length).toBe(routes.length - 15)
     for (const route of gated) {
       for (const [role, m] of Object.entries(people)) {
         const answer = await call(route.method, route.path.replace(':id', '0'.repeat(32)), { cookie: m.cookie })
@@ -2520,11 +2572,11 @@ describe('r. the role table', () => {
     const { rights } = (await call('GET', '/api/org', { cookie: o.cookie })).body
     expect(rights.map((x: { can: string }) => x.can)).toEqual([...new Set(gated.map((r) => r.can))])
     // Routes that share a sentence share its rule, or the page would say less than the router does.
-    // One row says more than its route's flags: a demo order is filed by its own handler (the estimate first), and
+    // One row says more than its route's flags: an order is filed by its own handler (the review first), and
     // sending it needs a fresh passkey check and a second person, so its row carries both marks.
     const order = (r: (typeof routes)[number]) => r.path === '/api/desk/orders'
     for (const r of gated) expect(rights.find((x: { can: string }) => x.can === r.can), r.path).toEqual({ can: r.can, roles: r.roles, fresh: Boolean(r.fresh) || order(r), second: Boolean(r.second) || order(r) })
-    expect(rights.filter((x: { second: boolean }) => x.second).map((x: { can: string }) => x.can)).toContain('Prepare a demo order on the desk, which a second person approves. Nothing is sent')
+    expect(rights.filter((x: { second: boolean }) => x.second).map((x: { can: string }) => x.can)).toContain('Prepare an order on the desk, which a second person approves before the wallet signs it')
     expect(rights.filter((x: { second: boolean; fresh: boolean }) => x.second && !x.fresh)).toEqual([])
   })
 
@@ -3785,7 +3837,7 @@ describe('y. wallets and the recovery wallet', () => {
     // The signing page does hold it, and nothing of the console's session.
     const page = Object.values(signSource).join('\n')
     expect(page).toContain('eth_signTypedData_v4')
-    expect(page).not.toMatch(/document\.cookie|credentials|\/api\/(?!proof)/)
+    expect(page).not.toMatch(/document\.cookie|credentials|\/api\/(?!proof|order)/)
   })
 })
 
@@ -4437,7 +4489,7 @@ describe('B. last-Owner recovery by the recovery wallet', () => {
     for (const m of [a, v, admin]) await again(m)
     const people: Record<string, Holder> = { owner: { cookie: done.cookie }, admin, approver: a }
     const settled = routes.filter((route) => route.settled)
-    expect(settled.map((route) => route.path).sort()).toEqual(['/api/approvals/:id/approve', '/api/desk/orders', '/api/members/:id/freeze', '/api/members/:id/remove', '/api/members/:id/role', '/api/members/:id/unfreeze', '/api/policy', '/api/wallets/:id/anchor', '/api/wallets/intent'])
+    expect(settled.map((route) => route.path).sort()).toEqual(['/api/approvals/:id/approve', '/api/desk/orders', '/api/desk/orders/:id/link', '/api/members/:id/freeze', '/api/members/:id/remove', '/api/members/:id/role', '/api/members/:id/unfreeze', '/api/policy', '/api/wallets/:id/anchor', '/api/wallets/intent'])
     for (const route of settled) {
       for (const [role, m] of Object.entries(people)) {
         if ((route.roles as string[]).includes(role)) expect((await call('POST', route.path.replace(':id', '0'.repeat(32)), { cookie: m.cookie })).body, `${role} ${route.path}`).toEqual({ error: 'quarantine' })
@@ -5057,7 +5109,7 @@ describe('D. Support: the model selects, the server decides', () => {
     }
     expect(new Set(ANSWERS.map((a) => a.title)).size).toBe(25)
     // What is not built says so.
-    for (const id of ['KB-01', 'KB-13', 'KB-16', 'KB-19']) expect(ANSWERS.find((a) => a.id === id)!.text, id).toMatch(/^Not available yet\./)
+    for (const id of ['KB-01', 'KB-13', 'KB-16']) expect(ANSWERS.find((a) => a.id === id)!.text, id).toMatch(/^Not available yet\./)
     // Review of P4: a partner's Overview shows its fee figures and exports one table, so the two texts say so. No text
     // speaks of a referral share, referred wallets, codes or earnings: the console's partners get none (2026-11-13).
     const text = (id: string) => ANSWERS.find((a) => a.id === id)!.text
@@ -5065,9 +5117,10 @@ describe('D. Support: the model selects, the server decides', () => {
     expect(text('KB-16')).toMatch(/for a partner organisation, in Overview, the partner-fee months, the payouts, the daily volume, the split by chain and by fee token, the wallets that traded, and those of them on a sanctions list;/)
     expect(text('KB-13') + text('KB-16')).not.toMatch(/no fees view|does not show|one export that exists/)
     for (const a of ANSWERS) expect(a.title + a.about + a.text, a.id).not.toMatch(/referr|affiliate|partner code|earning/i)
-    // Onboarding is built and the Desk exists in demo mode: the two texts say what is there and what is not.
+    // Onboarding is built and the Desk is real (2026-11-14): the two texts say what is there.
     expect(text('KB-01')).toMatch(/application code from Ophis/)
-    expect(text('KB-19')).toMatch(/demo mode/)
+    expect(text('KB-19')).toMatch(/one-time link lets your wallet sign it, within 24 hours/)
+    expect(text('KB-19')).not.toMatch(/demo|Not available/)
     expect(text('KB-01') + text('KB-19')).not.toMatch(/not built|shows no orders/)
     expect(supportPage).toContain("'An outside provider, TypeSafe AI (USA), matches your question to our help texts. It receives your question without your name, organisation or wallet. Ophis does not store your question.'")
     expect(supportPage).toContain('Did this answer your question?')
@@ -7983,8 +8036,9 @@ describe('E. onboarding: a company applies, proves its domain, is activated and 
       expect([(await ofac())!.held, await stateOf(p.orgId), await last(p.orgId)]).toEqual(['older', 'frozen', { actor_kind: 'system', action: 'screening.wallet', subject_id: expect.any(String) }])
     })
 
-    // The daily run reads the list file and nothing else: the flags of referred wallets went with the referral share (2026-11-13).
-    it('T2: the daily run reads the list file and nothing else, not the figures of a partner; a read that throws is logged in fixed words, and the run answers unavailable', async () => {
+    // The daily run reads the list file, and the orderbook's state of sent orders (the real desk, section J), nothing else: the
+    // flags of referred wallets went with the referral share (2026-11-13).
+    it('T2: the daily run reads the list file and the orderbooks only, not the figures of a partner; a read that throws is logged in fixed words, and the run answers unavailable', async () => {
       await partnerOrg('Partner with a linked wallet')
       const env = { ...liveEnv, SANCTIONS_URL: 'https://lists.test/ofac.json' } as Env
       const logged = vi.spyOn(console, 'error').mockImplementation(() => undefined)
@@ -7995,7 +8049,7 @@ describe('E. onboarding: a company applies, proves its domain, is activated and 
       logged.mockRestore()
       const asked = feed(fileOf([someAddress(), someAddress()]))
       expect(await daily(env, now)).toMatchObject({ outcome: 'loaded', entries: 2, hits: [] })
-      expect(asked.map((x) => [x.url, x.init.method ?? 'GET'])).toEqual([['https://lists.test/ofac.json', 'GET']])
+      expect(asked.filter((x) => !ORDERBOOK.test(x.url)).map((x) => [x.url, x.init.method ?? 'GET'])).toEqual([['https://lists.test/ofac.json', 'GET']])
     })
 
     it('T2: the Worker\'s default export has the scheduled handler, and wrangler.jsonc holds one cron', () => {
@@ -8194,22 +8248,17 @@ describe('E. onboarding: a company applies, proves its domain, is activated and 
 const get = (path: string, m: Holder) => call('GET', path, { cookie: m.cookie })
 const setOrg = (orgId: string, set: string) => db.prepare(`UPDATE organisations SET ${set} WHERE id = ?`).bind(orgId).run()
 // A linked wallet, written straight to the table: linking is section y.
-async function demoWallet(orgId: string, label = 'Operations Safe', state = 'linked') {
+async function demoWallet(orgId: string, label = 'Operations Safe', state = 'linked', address = `0x${data.randomId()}${data.randomId().slice(0, 8)}`, kind = 'custodian', chainId = 10) {
   const id = data.randomId()
-  await db.prepare(`INSERT INTO wallets (id, org_id, chain_id, address, kind, label, state, proof_nonce, proof_digest, proof_signature, proof_checked_at, linked_at) VALUES (?, ?, 10, ?, 'custodian', ?, ?, ?, '0x', '0x', ?, ?)`)
-    .bind(id, orgId, `0x${data.randomId()}${data.randomId().slice(0, 8)}`, label, state, data.randomId(), now, now).run()
+  await db.prepare(`INSERT INTO wallets (id, org_id, chain_id, address, kind, label, state, proof_nonce, proof_digest, proof_signature, proof_checked_at, linked_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, '0x', '0x', ?, ?)`)
+    .bind(id, orgId, chainId, address, kind, label, state, data.randomId(), now, now).run()
   return id
-}
-// An institution: an Owner with two keys, and one linked wallet.
-async function institution(name?: string) {
-  const o = await owner(name)
-  await setOrg(o.orgId, `kind = 'institution'`)
-  return { ...o, walletId: await demoWallet(o.orgId) }
 }
 const keysOf = (value: unknown): string[] => (value && typeof value === 'object' ? Object.entries(value).flatMap(([k, v]) => [...(Array.isArray(value) ? [] : [k]), ...keysOf(v)]) : [])
 const total = (rows: object[], field: string) => demo.shown(rows.reduce((n, r) => n + demo.fixed((r as Record<string, unknown>)[field], 2)!, 0n), 2)
 
 isolation['GET /api/desk'] = async (a, b) => {
+  book()
   for (const m of [a, b]) await setOrg(m.orgId, `kind = 'institution'`)
   const [own, other] = [await demoWallet(a.orgId, 'Wallet of A'), await demoWallet(b.orgId, 'Wallet of B')]
   const before = await snapshot()
@@ -8219,13 +8268,77 @@ isolation['GET /api/desk'] = async (a, b) => {
   expect(await snapshot()).toBe(before)
 }
 
-// ---- D2: a demo order is a two-person change ----
-const TICKET = { type: 'market', sell: 'EURC', buy: 'ETH', amount: '250000', chainId: 10 }
-const prepare = (m: Holder, walletId: string, more: Record<string, unknown> = {}) => post('/api/desk/orders', m, { ...TICKET, walletId, send: true, ...more })
-// An institution with an Owner, an Approver and a Trader.
+// ---- the real desk: an order is a two-person change, then the wallet signs it ----
+// The stand-in orderbook: its answers are the real ones of tests/fixtures/orderbook.json (copied from api.cow.fi, read-only),
+// with the fields of the order asked about put in. It hashes the order id itself, with viem: no code of the Worker.
+const ORDERBOOK = /^https:\/\/(api\.cow\.fi\/(mainnet|base|arbitrum_one)|optimism-mainnet\.ophis\.fi)\/api\/v1\//
+const BOOK_CHAIN: Record<string, number> = { 'api.cow.fi/mainnet': 1, 'optimism-mainnet.ophis.fi': 10, 'api.cow.fi/base': 8453, 'api.cow.fi/arbitrum_one': 42161 }
+const SETTLEMENT_OF: Record<number, `0x${string}`> = { 1: '0x9008D19f58AAbD9eD0D60971565AA8510560ab41', 10: '0x310784c7FCE12d578dA6f53460777bAc9718B859', 8453: '0x9008D19f58AAbD9eD0D60971565AA8510560ab41', 42161: '0x9008D19f58AAbD9eD0D60971565AA8510560ab41' }
+const GPV2 = { Order: ['sellToken:address', 'buyToken:address', 'receiver:address', 'sellAmount:uint256', 'buyAmount:uint256', 'validTo:uint32', 'appData:bytes32', 'feeAmount:uint256', 'kind:string', 'partiallyFillable:bool', 'sellTokenBalance:string', 'buyTokenBalance:string'].map((f) => ({ name: f.split(':')[0], type: f.split(':')[1] })) }
+/** The order id of a posted order, as the settlement contract derives it (digest, owner, validTo). */
+const uidOf = (chainId: number, o: Record<string, unknown>) => `${hashTypedData({ domain: { name: 'Gnosis Protocol', version: 'v2', chainId, verifyingContract: SETTLEMENT_OF[chainId] }, types: GPV2, primaryType: 'Order',
+  message: { ...o, appData: o.appDataHash, sellAmount: BigInt(o.sellAmount as string), buyAmount: BigInt(o.buyAmount as string), feeAmount: BigInt(o.feeAmount as string) } as never })}${(o.from as string).slice(2)}${(o.validTo as number).toString(16).padStart(8, '0')}`.toLowerCase()
+interface Asked { url: string; method: string; body: Record<string, unknown> | null }
+/**
+ * Stands in for the orderbooks; every other fetch goes to the fake chain. state: what a sent order reads. buy: the
+ * quote's buy amount, in place of the real proportion. twist: another answer for one call (a Response, or undefined to keep it).
+ */
+// The orders the stand-in took, over the whole file: a later book() still answers for them.
+const sent = new Map<string, Record<string, unknown>>()
+function book(o: { state?: string; buy?: string; twist?: (asked: Asked) => Response | undefined } = {}) {
+  const asked: Asked[] = []
+  vi.stubGlobal('fetch', async (input: RequestInfo | URL, init?: RequestInit) => {
+    const url = String(input)
+    if (!ORDERBOOK.test(url)) return fakeRpc(input, init)
+    const chainId = BOOK_CHAIN[url.slice(8).split('/api/v1/')[0]]
+    const call: Asked = { url, method: init?.method ?? 'GET', body: init?.body ? JSON.parse(String(init.body)) : null }
+    asked.push(call)
+    const twisted = o.twist?.(call)
+    if (twisted) return twisted
+    const b = call.body as Record<string, string> & { validTo: number; orderUids: string[] }
+    if (call.method === 'POST' && url.endsWith('/api/v1/quote')) {
+      const real = realBook.quote.response.quote
+      const whole = BigInt(b.sellAmountBeforeFee)
+      const fee = (whole * BigInt(real.feeAmount)) / (BigInt(real.sellAmount) + BigInt(real.feeAmount))
+      // The real price of WETH in EURC: for a sale of WETH as it is, for a purchase of WETH the other way round.
+      const [up, down] = WETHS.includes(b.buyToken.toLowerCase()) ? [real.sellAmount, real.buyAmount] : [real.buyAmount, real.sellAmount]
+      const buyAmount = o.buy ?? String(((whole - fee) * BigInt(up)) / BigInt(down))
+      return Response.json({ ...realBook.quote.response, from: b.from.toLowerCase(), quote: { ...real, sellToken: b.sellToken.toLowerCase(), buyToken: b.buyToken.toLowerCase(), receiver: b.receiver.toLowerCase(), sellAmount: String(whole - fee), feeAmount: String(fee), buyAmount, appData: b.appData, appDataHash: b.appDataHash, signingScheme: b.signingScheme } })
+    }
+    if (call.method === 'POST' && url.endsWith('/api/v1/orders')) {
+      const uid = uidOf(chainId, b)
+      if (sent.has(uid)) return Response.json({ errorType: 'DuplicatedOrder', description: 'order already exists' }, { status: 400 })
+      sent.set(uid, b)
+      return Response.json(uid, { status: 201 })
+    }
+    if (call.method === 'DELETE') return Response.json('Cancelled')
+    const uid = /\/api\/v1\/(?:orders\/|trades\?orderUid=)(0x[0-9a-f]{112})$/.exec(url)?.[1] ?? ''
+    const order = sent.get(uid) as Record<string, string> | undefined
+    if (!order) return Response.json({ errorType: 'NotFound' }, { status: 404 })
+    const status = o.state ?? 'open'
+    const filled = status === 'fulfilled'
+    if (url.includes('/trades')) return Response.json(filled ? realBook.trades.response.map((t) => ({ ...t, orderUid: uid })) : [])
+    return Response.json({ ...realBook.order.response, uid, owner: order.from.toLowerCase(), status, executedSellAmount: filled ? order.sellAmount : '0', executedBuyAmount: filled ? order.buyAmount : '0' })
+  })
+  return asked
+}
+const TICKET = { type: 'market', sell: 'USDC', buy: 'WETH', amount: '250000', chainId: 10 }
+const USDC_OP = '0x0b2C639c533813f4Aa9D7837CAf62653d097Ff85'
+const WETHS = ['0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2', '0x4200000000000000000000000000000000000006', '0x82af49447d8a07e3bd95bd0d56f35241523fbab1']
+const WETH_OP = '0x4200000000000000000000000000000000000006'
+/** The review: the ticket in, a live quote of the stand-in, the terms and the sealed review out. Nothing is written. */
+const review = (m: Holder, walletId: string, more: Record<string, unknown> = {}) => post('/api/desk/orders', m, { ...TICKET, walletId, ...more })
+/** The review, then its send for approval. A refused review is the answer. */
+async function prepare(m: Holder, walletId: string, more: Record<string, unknown> = {}) {
+  const r = await review(m, walletId, more)
+  return r.status === 200 ? post('/api/desk/orders', m, { send: true, review: r.body.review }) : r
+}
+// An institution with an Owner, an Approver and a Trader. Its wallet is a key wallet (a custodian's: accounts[1]) on OP Mainnet.
 async function deskTeam() {
-  const o = await institution()
-  return { o, a: await colleague(o, 'approver'), t: await colleague(o, 'trader'), walletId: o.walletId }
+  const o = await owner()
+  await setOrg(o.orgId, `kind = 'institution'`)
+  const walletId = await demoWallet(o.orgId, 'Operations Safe', 'linked', accounts[1].address.toLowerCase())
+  return { o, a: await colleague(o, 'approver'), t: await colleague(o, 'trader'), walletId }
 }
 // The actor the router would build for this member: what the data module is called with, without the router's own gates.
 async function actorOf(m: Holder & { orgId: string; seatId: string }, role: string): Promise<data.Actor> {
@@ -8234,21 +8347,45 @@ async function actorOf(m: Holder & { orgId: string; seatId: string }, role: stri
 }
 const orderOf = async (id: string) => {
   const r = (await row<{ id: string; action: string; state: string; payload: string; payload_hash: string; subject_id: string; requester_seat_id: string; checker_seat_id: string | null }>('SELECT * FROM approvals WHERE id = ?', id))!
-  return { ...r, order: JSON.parse(JSON.parse(r.payload).value) as demo.Order }
+  return { ...r, terms: JSON.parse(JSON.parse(r.payload).value) as orders.Terms }
 }
 const addressOf = async (walletId: string) => checksum((await row<{ address: string }>('SELECT address FROM wallets WHERE id = ?', walletId))!.address)
-const deskOrders = async (m: Holder) => (await get('/api/desk', m)).body.orders as (demo.Order & { id: string; state: string; open: boolean; mine: boolean; preparer: string; preparerRole: string; decidedBy: string | null; decidedAt: number | null; ref: string })[]
+const deskOrders = async (m: Holder) => (await get('/api/desk', m)).body.orders as { id: string; ref: string; state: string; open: boolean; mine: boolean; preparer: string; preparerRole: string; decidedBy: string | null; decidedAt: number | null; terms: orders.Terms; words: Record<string, string>; uid: string | null; sold: string | null; bought: string | null; tx: string | null }[]
 const sayOf = async (m: Holder) => ((await get('/api/audit', m)).body.rows as { event: string }[]).map((r) => r.event)
+/** An order prepared by the Trader and approved by the Approver. */
+async function approvedOrder(team: Awaited<ReturnType<typeof deskTeam>>, more: Record<string, unknown> = {}) {
+  const filed = await prepare(team.t, team.walletId, more)
+  expect(filed.body, JSON.stringify(filed.body)).toMatchObject({ state: 'requested' })
+  const { id } = filed.body
+  expect((await decide(team.a, id, 'approve')).body).toEqual({ state: 'applied' })
+  return id as string
+}
+/** A one-time link to the signing page (a fresh passkey check of the member is the router's gate), and its token. */
+async function orderLink(m: Holder, id: string, purpose = 'sign') {
+  const answer = await post(`/api/desk/orders/${id}/link`, m, { purpose })
+  return { ...answer, token: answer.status === 200 ? (answer.body.link as string).split('#order.')[1] : '' }
+}
+const orderPage = (token: string) => call('POST', '/api/order', { sign: true, body: { token } })
+const orderSend = (token: string, signature?: string) => call('POST', '/api/order/send', { sign: true, body: { token, signature } })
+/** The signing page: read the order, the wallet's key signs what the server built, post it. */
+async function signed(token: string, signer: Signer = accounts[1]) {
+  const page = await orderPage(token)
+  return { page, answer: await orderSend(token, await signer.signTypedData(page.body.typed)) }
+}
 
 isolation['POST /api/desk/orders'] = async (a, b) => {
+  book()
   for (const m of [a, b]) await setOrg(m.orgId, `kind = 'institution'`)
   const [own, other] = [await demoWallet(a.orgId), await demoWallet(b.orgId, 'Wallet of B')]
   const before = await snapshot()
-  // The wallet of another organisation is no wallet of this one, in the review step and when the order is sent.
-  for (const send of [false, true]) expect((await prepare(a, other, { send })).body).toEqual({ error: 'wallet_not_linked' })
-  // Inside the commit too: a payload that names B's wallet, handed to the data module as A.
-  const forged: demo.Order = { ...(demo.quote({ ...TICKET, walletId: other }) as { ticket: demo.Ticket; estimate: demo.Estimate }), wallet: 'Wallet of B', address: await addressOf(other), checks: demo.CHECKS }
-  expect(await data.change(db, await actorOf(a, 'owner'), 'order.demo', data.randomId(), JSON.stringify(forged), now)).toEqual({ error: 'wallet_not_linked' })
+  // The wallet of another organisation is no wallet of this one, at the review.
+  expect((await review(a, other)).body).toEqual({ error: 'wallet_not_linked' })
+  // Inside the commit too: terms that name B's wallet, handed to the data module as A.
+  const forged = (await review(b, other)).body.terms
+  expect(await data.change(db, await actorOf(a, 'owner'), 'order', data.randomId(), JSON.stringify(forged), now)).toEqual({ error: 'wallet_not_linked' })
+  // A review sealed for a member of B is not A's to send.
+  const sealed = (await review(b, other)).body.review
+  expect((await post('/api/desk/orders', a, { send: true, review: sealed })).body).toEqual({ error: 'review_invalid' })
   expect(await snapshot()).toBe(before)
   // An order of A: B does not see it, and can neither approve, reject nor cancel it.
   const { id } = (await prepare(a, own)).body
@@ -8260,6 +8397,57 @@ isolation['POST /api/desk/orders'] = async (a, b) => {
   expect(await snapshot()).toBe(after)
   expect((await deskOrders(a)).map((o) => o.id)).toEqual([id])
 }
+// An approved order of A: a member of B gets no link for it.
+isolation['POST /api/desk/orders/:id/link'] = async (a, b) => {
+  book()
+  for (const m of [a, b]) await setOrg(m.orgId, `kind = 'institution'`)
+  const approver = await colleague(a, 'approver')
+  const { id } = (await prepare(a, await demoWallet(a.orgId))).body
+  expect((await decide(approver, id, 'approve')).status).toBe(200)
+  await addKey(b)
+  const before = await snapshot()
+  expect((await orderLink(b, id)).status).toBe(404)
+  expect(await snapshot()).toBe(before)
+  expect((await orderLink(a, id)).status).toBe(200)
+}
+// The signing page knows no organisation: a token opens its own order, and nothing names another's.
+isolation['POST /api/order'] = async (a, b) => {
+  book()
+  for (const m of [a, b]) await setOrg(m.orgId, `kind = 'institution'`)
+  const opened: { token: string; wallet: string }[] = []
+  for (const m of [a, b]) {
+    const approver = await colleague(m, 'approver')
+    const wallet = await demoWallet(m.orgId, m === a ? 'Wallet of A' : 'Wallet of B')
+    const { id } = (await prepare(m, wallet)).body
+    expect((await decide(approver, id, 'approve')).status).toBe(200)
+    opened.push({ token: (await orderLink(m, id)).token, wallet: await addressOf(wallet) })
+  }
+  const page = await orderPage(opened[0].token)
+  expect(page.body.wallet).toBe(opened[0].wallet)
+  expect(JSON.stringify(page.body)).not.toMatch(new RegExp(`${opened[1].wallet}|${b.orgId}|${a.orgId}|Wallet of B`, 'i'))
+  // A session cookie of B changes nothing: the page reads by the token alone.
+  expect((await call('POST', '/api/order', { sign: true, cookie: b.cookie, body: { token: opened[0].token } })).body.wallet).toBe(opened[0].wallet)
+}
+isolation['POST /api/order/send'] = async (a, b) => {
+  book()
+  for (const m of [a, b]) await setOrg(m.orgId, `kind = 'institution'`)
+  const tokens: string[] = []
+  for (const m of [a, b]) {
+    const approver = await colleague(m, 'approver')
+    const { id } = (await prepare(m, await demoWallet(m.orgId, 'Key wallet', 'linked', (m === a ? accounts[1] : accounts[2]).address.toLowerCase()))).body
+    expect((await decide(approver, id, 'approve')).status).toBe(200)
+    tokens.push((await orderLink(m, id)).token)
+  }
+  // B's wallet signs A's order: refused. A's signature on B's link: refused.
+  const pageA = await orderPage(tokens[0])
+  const pageB = await orderPage(tokens[1])
+  const before = await snapshot()
+  expect((await orderSend(tokens[0], await accounts[2].signTypedData(pageA.body.typed))).body).toEqual({ error: 'signature_rejected' })
+  expect((await orderSend(tokens[1], await accounts[1].signTypedData(pageA.body.typed))).body).toEqual({ error: 'signature_rejected' })
+  expect(await snapshot()).toBe(before)
+  expect((await orderSend(tokens[1], await accounts[2].signTypedData(pageB.body.typed))).body.state).toBe('open')
+  expect((await row<{ n: number }>(`SELECT count(*) AS n FROM orders WHERE org_id = ? AND uid IS NOT NULL`, a.orgId))!.n).toBe(0)
+}
 
 // ---- D3: the CSV exports ----
 // A CSV as a spreadsheet reads it: rows of cells, every cell quoted.
@@ -8269,22 +8457,23 @@ const exported = async (m: Holder, table: string) => {
   return { ...answer, rows: answer.status === 200 ? cells(answer.body.csv) : [] }
 }
 isolation['GET /api/export/:id'] = async (a, b) => {
+  book()
   for (const m of [a, b]) await setOrg(m.orgId, `kind = 'institution'`)
   await prepare(b, await demoWallet(b.orgId, 'Wallet of B'), { amount: '777' })
   const mine = (await prepare(a, await demoWallet(a.orgId, 'Wallet of A'), { amount: '333' })).body.id as string
   const before = await snapshot()
   const file = await exported(a, 'orders')
-  expect(file.rows.filter((r) => r[9].startsWith('Wallet of')).map((r) => [r[0], r[4], r[9]])).toEqual([[`ORD-${mine.slice(0, 8)}`, '333', 'Wallet of A']])
+  expect(file.rows.slice(1).map((r) => [r[0], r[4], r[7]])).toEqual([[`ORD-${mine.slice(0, 8)}`, 'Wallet of A', '333']])
   expect(file.body.csv).not.toMatch(/Wallet of B|"777"/)
-  expect(await snapshot()).toBe(before) // an export of demo figures writes nothing
+  expect(await snapshot()).toBe(before) // an export writes nothing
 }
 
-describe('H. demo mode: overview, desk and partner figures', () => {
-  for (const route of ['GET /api/desk', 'POST /api/desk/orders', 'GET /api/export/:id']) {
+describe('H. the institution: overview figures (examples), the desk and its exports', () => {
+  for (const route of ['GET /api/desk', 'POST /api/desk/orders', 'GET /api/export/:id', 'POST /api/desk/orders/:id/link', 'POST /api/order', 'POST /api/order/send']) {
     it(`${route}: the isolation case`, async () => isolation[route](await member('Alder Asset Management'), await member('Birchfield Capital')))
   }
 
-  it('D1: every total is computed from the rows, with integers: the institution total is the sum of its balances', () => {
+  it('D1: every total of the example figures is computed from the rows, with integers: the institution total is the sum of its balances', () => {
     const i = demo.institution()
     expect(i.totalEur).toBe('11363175.00')
     expect(total(i.balances.flatMap((w) => w.rows), 'valueEur')).toBe(i.totalEur)
@@ -8293,24 +8482,17 @@ describe('H. demo mode: overview, desk and partner figures', () => {
     // The arithmetic never passes through a float: 0.1 + 0.2 is exact, and a string is cut, never rounded up.
     expect(demo.shown(demo.fixed('0.1', 18)! + demo.fixed('0.2', 18)!, 18)).toBe('0.300000000000000000')
     expect(demo.shown(demo.fixed('1.999999', 6)!, 2)).toBe('1.99')
+    expect(Object.keys(demo.tables()).sort()).toEqual(['balances', 'statement'])
   })
 
-  it('D1: only the permitted assets and the two chains appear, in every answer and every export table', () => {
-    expect(Object.keys(demo.ASSETS).sort()).toEqual(['ETH', 'EURC', 'EURCV', 'EURe', 'USDC'])
-    expect(demo.CHAINS).toEqual({ 10: 'Optimism', 130: 'Unichain' })
-    const all = JSON.stringify([demo.institution(), demo.desk(), demo.tables([])])
-    expect(all).not.toMatch(/USDT|WBTC|DAI|Ethereum|Base|Arbitrum|Gnosis|Polygon/)
-    for (const o of demo.examples()) expect(demo.CHAINS[o.ticket.chainId], o.ref).toBeDefined()
-  })
-
-  it('D1: GET /api/overview answers every role, follows the kind of the organisation, says demo, and counts the approvals that really wait for this viewer', async () => {
+  it('D1: GET /api/overview answers every role, follows the kind of the organisation, and counts the approvals that really wait for this viewer', async () => {
     const { o, a, v } = await trio()
     const t = await colleague(o, 'trader')
     // A partner gets no example and no word "demo": its figures are live (section I), here not connected.
     for (const m of [o, a, v, t]) expect((await get('/api/overview', m)).body).toEqual({ kind: 'partner', waiting: 0, figures: { state: 'not_connected' } })
     await setOrg(o.orgId, `kind = 'institution'`)
-    for (const m of [o, a, v, t]) expect((await get('/api/overview', m)).body).toMatchObject({ demo: true, kind: 'institution', waiting: 0, totalEur: '11363175.00' })
-    expect((await get('/api/overview', o)).body.volume).toBeUndefined()
+    for (const m of [o, a, v, t]) expect((await get('/api/overview', m)).body).toMatchObject({ demo: true, kind: 'institution', waiting: 0, totalEur: '11363175.00', orders: [] })
+    expect((await get('/api/overview', o)).body.examples).toBeUndefined() // no example order: the orders are the organisation's own
     // One request waits: its requester cannot decide it, the Approver can, a Viewer and a Trader decide nothing.
     expect((await act(o, v.seatId, 'role', { role: 'trader' })).status).toBe(200)
     expect(await Promise.all([o, a, v, t].map(async (m) => (await get('/api/overview', m)).body.waiting))).toEqual([0, 1, 0, 0])
@@ -8318,21 +8500,27 @@ describe('H. demo mode: overview, desk and partner figures', () => {
     expect((await get('/api/overview', admin)).body.waiting).toBe(1)
   })
 
-  it('D1: GET /api/desk is for institutions: a partner gets 403 institution_only, an institution its permitted assets, its linked wallets and the limits', async () => {
-    const o = await institution()
+  it('D1: GET /api/desk is for institutions: a partner gets 403 institution_only, an institution the permitted assets, its linked wallets on the wallet chains, and the limits', async () => {
+    book()
+    const { o, walletId } = await deskTeam()
     const pending = await demoWallet(o.orgId, 'Waits', 'pending')
     await db.prepare(`INSERT INTO approvals (id, org_id, action, subject_id, payload, payload_hash, requester_seat_id, state, expires_at, created_at) VALUES (?, ?, 'wallet.link', ?, '{}', '', ?, 'pending', ?, ?)`)
       .bind(data.randomId(), o.orgId, pending, o.seatId, now + DAY, now).run() // its link waits for a second person: the wallet is live, not linked
-    expect((await walletsOf(o)).map((w) => w.state).sort()).toEqual(['linked', 'pending'])
     const gone = await demoWallet(o.orgId, 'Gone', 'unlinked')
+    const safe = await demoWallet(o.orgId, 'Treasury Safe', 'linked', someAddress(), 'safe', 8453)
     const view = await get('/api/desk', o)
     expect(view.status).toBe(200)
-    expect(view.body).toMatchObject({ demo: true, mayPrepare: true, limitEur: '5000000.00', maxOpen: 20, chains: [{ id: 10, name: 'Optimism' }, { id: 130, name: 'Unichain' }] })
-    expect(view.body.assets.map((x: { symbol: string }) => x.symbol)).toEqual(['ETH', 'USDC', 'EURC', 'EURe', 'EURCV'])
-    expect(view.body.wallets).toEqual([{ id: o.walletId, label: 'Operations Safe', address: expect.stringMatching(/^0x[0-9a-fA-F]{40}$/), chain: 'Optimism' }]) // the name of the ticket's chain choice (review of P5)
+    expect(view.body).toMatchObject({ mayPrepare: true, maySign: true, maxOpen: 20, validity: [1800, 14400, 86400], slippage: { default: 50, max: 300 }, chains: [{ id: 1, name: 'Ethereum' }, { id: 10, name: 'OP Mainnet' }, { id: 8453, name: 'Base' }, { id: 42161, name: 'Arbitrum One' }] })
+    expect(view.body.demo).toBeUndefined()
+    expect(view.body.assets.map((x: { chainId: number; symbol: string }) => `${x.chainId} ${x.symbol}`)).toEqual(['1 WETH', '1 USDC', '1 EURC', '1 EURe', '1 EURCV', '10 WETH', '10 USDC', '8453 WETH', '8453 USDC', '8453 EURC', '42161 WETH', '42161 USDC', '42161 EURe'])
+    expect(view.body.assets.find((x: { symbol: string }) => x.symbol === 'WETH').cap).toBe('2850')
+    expect(view.body.wallets).toEqual([
+      { id: walletId, label: 'Operations Safe', address: accounts[1].address, chainId: 10, chain: 'OP Mainnet', scheme: 'eip712' },
+      { id: safe, label: 'Treasury Safe', address: await addressOf(safe), chainId: 8453, chain: 'Base', scheme: 'presign' },
+    ])
     expect(JSON.stringify(view.body)).not.toMatch(new RegExp(`${pending}|${gone}`))
-    for (const [role, may] of [['trader', true], ['admin', true], ['approver', false], ['compliance', false], ['viewer', false]] as const) {
-      expect((await get('/api/desk', await colleague(o, role))).body.mayPrepare, role).toBe(may)
+    for (const [role, prepares, signs] of [['trader', true, true], ['admin', true, true], ['approver', false, true], ['compliance', false, true], ['viewer', false, false]] as const) {
+      expect((({ mayPrepare, maySign }) => [mayPrepare, maySign])((await get('/api/desk', await colleague(o, role))).body), role).toEqual([prepares, signs])
     }
     await setOrg(o.orgId, `kind = 'partner'`)
     const refused = await get('/api/desk', o)
@@ -8340,7 +8528,7 @@ describe('H. demo mode: overview, desk and partner figures', () => {
   })
 
   it('D1: overview and desk are for an active organisation: unverified, frozen and closed ones get nothing', async () => {
-    const o = await institution()
+    const { o } = await deskTeam()
     for (const [state, error] of [['unverified', 'unverified'], ['frozen', 'org_frozen'], ['archived', 'org_closed']]) {
       await setOrg(o.orgId, `state = '${state}'`)
       for (const path of ['/api/overview', '/api/desk']) {
@@ -8352,392 +8540,45 @@ describe('H. demo mode: overview, desk and partner figures', () => {
     expect((await get('/api/desk', o)).status).toBe(200)
   })
 
-  it('D2: a Trader prepares an order, the server makes the estimate from its own prices, and the ticket, the checks and the estimate are the payload of the approval', async () => {
+  it('D3: the exports of an institution: its orders and the permitted assets are live, the example tables say demo; a partner gets none of these', async () => {
+    book()
     const { o, a, t, walletId } = await deskTeam()
-    const rest = TABLES.filter((table) => table !== 'approvals' && table !== 'audit_log')
-    const before = await snapshot(rest)
-    const sent = await prepare(t, walletId)
-    expect(sent.body).toEqual({ demo: true, state: 'requested', id: expect.any(String), notBefore: null })
-    const r = await orderOf(sent.body.id)
-    expect(r).toMatchObject({ action: 'order.demo', state: 'pending', requester_seat_id: t.seatId, checker_seat_id: null, payload_hash: await data.sha256Hex(r.payload) })
-    expect(r.order).toEqual({
-      ticket: { ...TICKET, limitPrice: null, walletId }, wallet: 'Operations Safe', address: await addressOf(walletId), checks: demo.CHECKS,
-      estimate: { received: '84.73728813', volumeEur: '250000.00', feeBps: '1.00', feeEur: '25.00', totalEur: '25.00', priced: null },
-    })
-    expect(r.order.checks).toHaveLength(8)
-    expect(await lastAudit(o.orgId)).toEqual({ action: 'approval.request', actor_id: t.seatId, subject_id: sent.body.id, detail: 'order.demo' })
-    // The Approvals list of a key role holds it, with the payload. The blotter holds it for every role.
-    expect((await requestsOf(a)).map((x) => [x.id, x.kind, x.mine, JSON.parse(x.value).ticket.amount])).toEqual([[sent.body.id, 'order.demo', false, '250000']])
-    expect((await get('/api/overview', a)).body.waiting).toBe(1)
-    expect((await deskOrders(o))[0]).toMatchObject({ id: sent.body.id, state: 'Pending approval', open: true, mine: false, preparerRole: 'trader', decidedBy: null, ticket: { amount: '250000' }, estimate: { feeEur: '25.00' } })
-    expect((await deskOrders(t))[0].mine).toBe(true)
-    expect(await snapshot(rest)).toBe(before) // preparing an order touches nothing but its request and the log
-  })
-
-  it('D2: the review step writes nothing, and an order that is sent holds what the review showed', async () => {
-    const { t, walletId } = await deskTeam()
-    const before = await snapshot()
-    for (const send of [undefined, false, 'true', 1]) {
-      const review = await prepare(t, walletId, { send })
-      expect(review.body, String(send)).toMatchObject({ demo: true, wallet: 'Operations Safe', checks: demo.CHECKS, estimate: { received: '84.73728813', feeEur: '25.00' } })
-      expect(review.body.state).toBeUndefined()
-    }
-    expect(await snapshot()).toBe(before)
-  })
-
-  it('D2: a different member with a key role approves; the approved order is final and nothing else changes: "Approved. Not sent: demo"', async () => {
-    const { o, a, t, walletId } = await deskTeam()
-    const { id } = (await prepare(t, walletId)).body
-    const subject = (await orderOf(id)).subject_id
-    const rest = TABLES.filter((table) => table !== 'approvals' && table !== 'audit_log' && table !== 'sessions')
-    const before = await snapshot(rest)
-    expect((await decide(a, id, 'approve')).body).toEqual({ state: 'applied' })
-    expect(await approvalOf(id)).toEqual({ state: 'applied', checker_seat_id: a.seatId })
-    expect(await lastAudit(o.orgId)).toEqual({ action: 'order.demo', actor_id: a.seatId, subject_id: subject, detail: null })
-    expect(await snapshot(rest)).toBe(before)
-    expect((await deskOrders(t))[0]).toMatchObject({ id, state: 'Approved. Not sent: demo', open: false, decidedBy: 'A approver', decidedAt: now })
-    expect((await get('/api/overview', t)).body.orders[0]).toMatchObject({ id, state: 'Approved. Not sent: demo' })
-    // Final: it can be neither decided again nor cancelled.
-    for (const [m, what] of [[a, 'approve'], [a, 'reject'], [o, 'approve'], [t, 'cancel']] as const) expect((await decide(m, id, what)).status, what).toBe(404)
-    expect(await approvalOf(id)).toEqual({ state: 'applied', checker_seat_id: a.seatId })
-    const words = await sayOf(o)
-    expect(words).toContain('Demo order approved. Not sent: demo')
-    expect(words).toContain('Change requested: prepare a demo order')
-    expect(words.join(' ')).not.toMatch(/Unlisted|order\.demo/)
-    // The log alone names the order: each of its rows carries the reference the blotter shows.
-    const about = ((await get('/api/audit', o)).body.rows as { event: string; target: string }[]).filter((r) => /demo order/i.test(r.event))
-    expect(about.length).toBeGreaterThanOrEqual(2)
-    expect([...new Set(about.map((r) => r.target))]).toEqual([`ORD-${id.slice(0, 8)}`])
-  })
-
-  it('D2: a refused order and a cancelled one: the checker refuses, the preparer cancels, nobody else does', async () => {
-    const { o, a, t, walletId } = await deskTeam()
-    const refused = (await prepare(t, walletId)).body.id
-    expect((await decide(a, refused, 'reject')).status).toBe(200)
-    expect(await approvalOf(refused)).toEqual({ state: 'rejected', checker_seat_id: a.seatId })
-    const cancelled = (await prepare(t, walletId, { amount: '10' })).body.id
-    expect((await decide(o, cancelled, 'cancel')).status).toBe(404) // not the Owner's request
-    expect((await decide(a, cancelled, 'cancel')).status).toBe(403) // an Approver prepares nothing, so cancels nothing
-    expect((await decide(t, cancelled, 'cancel')).status).toBe(200)
-    expect(await approvalOf(cancelled)).toEqual({ state: 'cancelled', checker_seat_id: null })
-    expect((await deskOrders(o)).map((x) => [x.id, x.state, x.decidedBy])).toEqual([[cancelled, 'Cancelled', null], [refused, 'Refused', 'A approver']])
-    expect((await decide(a, cancelled, 'approve')).status).toBe(404)
-    expect((await sayOf(o)).slice(0, 2)).toEqual(['Request cancelled by its requester: prepare a demo order', 'Change requested: prepare a demo order'])
-    // After 7 days an order nobody decided has expired, and says so.
-    const old = (await prepare(t, walletId)).body.id
-    now += 7 * DAY + 1
-    await again(o)
-    expect((await deskOrders(o))[0]).toMatchObject({ id: old, state: 'Expired', open: false })
-  })
-
-  it('D2: the role table of an order: Trader, Owner and Admin prepare; the preparer never approves; a Trader or a Viewer never approves', async () => {
-    const { o, a, t, walletId } = await deskTeam()
-    const admin = await colleague(o, 'admin')
-    for (const role of ['approver', 'compliance', 'viewer']) {
-      const answer = await prepare(await colleague(o, role), walletId)
-      expect([answer.status, answer.body], role).toEqual([403, { error: 'forbidden' }])
-    }
-    for (const m of [o, admin, t]) expect((await prepare(m, walletId)).body.state).toBe('requested')
-    const [mine, admins, traders] = await Promise.all([o, admin, t].map(async (m) => (await requestsOf(m)).find((x) => x.mine).id as string))
-    // The preparer, even an Owner, is not the second person.
-    expect((await decide(o, mine, 'approve')).body).toEqual({ error: 'own_request' })
-    expect((await decide(admin, admins, 'reject')).body).toEqual({ error: 'own_request' })
+    await prepare(t, walletId)
     const viewer = await colleague(o, 'viewer')
-    for (const m of [t, viewer]) for (const what of ['approve', 'reject'] as const) expect((await decide(m, mine, what)).body, what).toEqual({ error: 'forbidden' })
-    for (const id of [mine, admins, traders]) expect((await approvalOf(id))?.state).toBe('pending')
-    // A different key role does: the Admin approves the Owner's order, the Approver the Trader's.
-    expect((await decide(admin, mine, 'approve')).status).toBe(200)
-    expect((await decide(a, traders, 'approve')).status).toBe(200)
-  })
-
-  it('D2: every ticket check, one by one, with hostile amounts; nothing is written for a refused ticket', async () => {
-    const { t, walletId } = await deskTeam()
-    const before = await snapshot()
-    const refused: [Record<string, unknown>, string][] = [
-      [{ type: 'stop' }, 'type_invalid'], [{ type: undefined }, 'type_invalid'], [{ type: ['market'] }, 'type_invalid'],
-      [{ sell: 'USDT' }, 'asset_not_permitted'], [{ buy: 'WBTC' }, 'asset_not_permitted'], [{ sell: 'eurc' }, 'asset_not_permitted'], [{ buy: 'constructor' }, 'asset_not_permitted'], [{ sell: null }, 'asset_not_permitted'],
-      [{ buy: 'EURC' }, 'same_asset'],
-      [{ chainId: 1 }, 'chain_not_allowed'], [{ chainId: 8453 }, 'chain_not_allowed'], [{ chainId: '10' }, 'chain_not_allowed'], [{ chainId: undefined }, 'chain_not_allowed'],
-      [{ walletId: 'x' }, 'wallet_not_linked'], [{ walletId: undefined }, 'wallet_not_linked'], [{ walletId: data.randomId() }, 'wallet_not_linked'],
-      ...['1e9', '-1', '0', '0.0', ' 1', '1 ', '1,5', '1.', '.5', '01', '+1', '0x10', '१', 'NaN', 'Infinity', '', '1'.repeat(40), '1.0000001', '1.' + '0'.repeat(19)].map((amount) => [{ amount }, 'amount_invalid'] as [Record<string, unknown>, string]),
-      [{ amount: 1 }, 'amount_invalid'], [{ amount: null }, 'amount_invalid'], [{ amount: ['1'] }, 'amount_invalid'], [{ amount: undefined }, 'amount_invalid'],
-      [{ sell: 'ETH', buy: 'EURC', amount: '0.' + '0'.repeat(18) + '1' }, 'amount_invalid'], // more decimals than ETH has
-      [{ amount: '5000000.000001' }, 'over_limit'], [{ sell: 'ETH', buy: 'EURC', amount: '1694.92' }, 'over_limit'], [{ amount: '999999999999999' }, 'over_limit'],
-      [{ limitPrice: '2940' }, 'limit_price_invalid'], // a market order takes none
-      ...[undefined, null, '0', '-1', '1e3', '2940.1234567', 2940, ' 2940'].map((limitPrice) => [{ type: 'limit', limitPrice }, 'limit_price_invalid'] as [Record<string, unknown>, string]),
-    ]
-    for (const [more, error] of refused) {
-      for (const send of [false, true]) {
-        const answer = await prepare(t, walletId, { ...more, send })
-        expect([answer.status === 400 || answer.status === 409, answer.body], JSON.stringify(more)).toEqual([true, { error }])
-      }
-    }
-    expect(await snapshot()).toBe(before)
-    // A wallet whose link still waits for its second person is not linked: no order from it, not even a review.
-    const waits = await demoWallet(t.orgId, 'Waits', 'pending')
-    await db.prepare(`INSERT INTO approvals (id, org_id, action, subject_id, payload, payload_hash, requester_seat_id, state, expires_at, created_at) VALUES (?, ?, 'wallet.link', ?, '{}', '', ?, 'pending', ?, ?)`)
-      .bind(data.randomId(), t.orgId, waits, t.seatId, now + DAY, now).run()
-    for (const send of [false, true]) expect((await prepare(t, waits, { send })).body).toEqual({ error: 'wallet_not_linked' })
-    // The edges that are allowed: the smallest unit, the limit itself, every asset and both chains (Unichain from a wallet linked there).
-    const onUnichain = await walletRow(t.orgId, someAddress(), { chainId: 130, label: 'Unichain wallet' })
-    const fine: [Record<string, unknown>, Partial<demo.Estimate>][] = [
-      [{ amount: '0.000001' }, { volumeEur: '0.00', feeEur: '0.00', received: '0.00000000' }],
-      [{ amount: '5000000' }, { volumeEur: '5000000.00', feeEur: '500.00' }],
-      [{ sell: 'ETH', buy: 'USDC', amount: '85', chainId: 130, walletId: onUnichain }, { volumeEur: '250750.00', feeEur: '25.07', received: '272527.092391' }],
-      [{ sell: 'EURCV', buy: 'EURe', amount: '1.000000000000000001' }, { volumeEur: '1.00', received: '0.99990000' }],
-      [{ type: 'limit', limitPrice: '2940' }, { received: '85.02551020', priced: 'ETH', volumeEur: '250000.00' }],
-      [{ type: 'limit', limitPrice: '3010.5', sell: 'ETH', buy: 'EURC', amount: '105' }, { volumeEur: '316102.50', feeEur: '31.61', received: '316070.889750', priced: 'ETH' }],
-    ]
-    for (const [more, estimate] of fine) expect((await prepare(t, walletId, { ...more, send: false })).body.estimate, JSON.stringify(more)).toMatchObject(estimate)
-  })
-
-  it('D2: what the browser says about a price, a fee or an estimate is not used, and no unknown field reaches the payload', async () => {
-    const { t, walletId } = await deskTeam()
-    const plain = (await prepare(t, walletId, { send: false })).body
-    const lies = { price: '1', priceEur: '0.01', fee: '0', feeBps: '0', feeEur: '0', estimate: { received: '999999', feeEur: '0.00', totalEur: '0.00' }, wallet: 'Somebody else', checks: [], limitEur: '1e30', ticket: { amount: '1' }, __proto__: { amount: '1' } }
-    expect((await prepare(t, walletId, { ...lies, send: false })).body).toEqual(plain)
-    const { id } = (await prepare(t, walletId, lies)).body
-    const { order } = await orderOf(id)
-    expect(order).toEqual({ ticket: plain.ticket, wallet: 'Operations Safe', address: await addressOf(walletId), checks: demo.CHECKS, estimate: plain.estimate })
-    expect(Object.keys(order.ticket).sort()).toEqual(['amount', 'buy', 'chainId', 'limitPrice', 'sell', 'type', 'walletId'])
-  })
-
-  it('D2: every check is made again inside the commit that files the order: role now, an active institution, quarantine, the wallet, the ticket', async () => {
-    const { o, t, walletId } = await deskTeam()
-    const address = await addressOf(walletId)
-    const value = (more: Record<string, unknown> = {}) => JSON.stringify({ ...(demo.quote({ ...TICKET, walletId }) as object), wallet: 'Operations Safe', address, checks: demo.CHECKS, ...more })
-    const trader = await actorOf(t, 'trader')
-    const file = (payload = value()) => data.change(db, trader, 'order.demo', data.randomId(), payload, now)
-    const seat = (set: string) => db.prepare(`UPDATE seats SET ${set} WHERE id = ?`).bind(t.seatId).run()
-    const before = await snapshot()
-    const cases: [string, () => Promise<unknown>, () => Promise<unknown>][] = [
-      ['forbidden', () => seat(`role = 'viewer'`), () => seat(`role = 'trader'`)], // the session says Trader; the row says Viewer
-      ['forbidden', () => seat(`role = 'approver'`), () => seat(`role = 'trader'`)],
-      ['quarantine', () => seat(`quarantine_until = ${now + HOUR}`), () => seat('quarantine_until = NULL')],
-      ['quarantine', () => setOrg(o.orgId, `quarantine_until = ${now + HOUR}`), () => setOrg(o.orgId, 'quarantine_until = NULL')],
-      ['institution_only', () => setOrg(o.orgId, `kind = 'partner'`), () => setOrg(o.orgId, `kind = 'institution'`)],
-      ['org_inactive', () => setOrg(o.orgId, `state = 'frozen'`), () => setOrg(o.orgId, `state = 'active'`)],
-      ['org_inactive', () => setOrg(o.orgId, `state = 'unverified'`), () => setOrg(o.orgId, `state = 'active'`)],
-      ['wallet_not_linked', () => db.prepare(`UPDATE wallets SET state = 'unlinked' WHERE id = ?`).bind(walletId).run(), () => db.prepare(`UPDATE wallets SET state = 'linked' WHERE id = ?`).bind(walletId).run()],
-    ]
-    for (const [error, set, undo] of cases) {
-      await set()
-      const during = await snapshot()
-      expect(await file(), error).toEqual({ error })
-      expect(await snapshot()).toBe(during)
-      await undo()
-    }
-    // A payload the router would never build: a ticket that fails a check, a wallet name that is not the wallet's.
-    const forged = (ticket: Record<string, unknown>) => value({ ticket: { ...TICKET, limitPrice: null, walletId, ...ticket } })
-    for (const [payload, error] of [[forged({ amount: '6000000' }), 'over_limit'], [forged({ sell: 'USDT' }), 'asset_not_permitted'], [forged({ buy: 'EURC' }), 'same_asset'], [forged({ chainId: 1 }), 'chain_not_allowed'],
-      [forged({ amount: '1e9' }), 'amount_invalid'], [value({ wallet: 'Another name' }), 'wallet_not_linked'], [forged({ walletId: { id: walletId } }), 'wallet_not_linked'], ['null', 'invalid']] as const) expect(await file(payload), error).toEqual({ error })
-    // A seat that is frozen has no role now: its session's copy of the role is not asked.
-    await seat(`state = 'frozen'`)
-    expect(await file()).toEqual({ error: 'forbidden' })
-    await seat(`state = 'active'`)
-    expect(await snapshot()).toBe(before)
-    expect(await file()).toMatchObject({ state: 'requested' })
-  })
-
-  it('D2: the router refuses a seat in quarantine, the organisation in quarantine, and an organisation that is a partner, unverified, frozen or closed', async () => {
-    const { o, t, walletId } = await deskTeam()
-    const before = await snapshot()
-    const expectRefused = async (error: string) => expect((await prepare(t, walletId)).body, error).toEqual({ error })
-    await db.prepare('UPDATE seats SET quarantine_until = ? WHERE id = ?').bind(now + HOUR, t.seatId).run()
-    await expectRefused('quarantine')
-    await db.prepare('UPDATE seats SET quarantine_until = NULL WHERE id = ?').bind(t.seatId).run()
-    await setOrg(o.orgId, `quarantine_until = ${now + HOUR}`)
-    await expectRefused('quarantine')
-    await setOrg(o.orgId, `quarantine_until = NULL, kind = 'partner'`)
-    await expectRefused('institution_only')
-    expect((await prepare(t, walletId, { send: false })).body).toEqual({ error: 'institution_only' }) // the review step too
-    await setOrg(o.orgId, `kind = 'institution'`)
-    for (const [state, error] of [['unverified', 'unverified'], ['frozen', 'org_frozen'], ['archived', 'org_closed']]) {
-      await setOrg(o.orgId, `state = '${state}'`)
-      await expectRefused(error)
-    }
-    await setOrg(o.orgId, `state = 'active'`)
-    expect(await snapshot()).toBe(before)
-    expect((await prepare(t, walletId)).status).toBe(200)
-  })
-
-  it('D2: when it is decided, the order is read again: the preparer is still active with a role that may prepare, the wallet is still linked, the organisation is still an active institution', async () => {
-    const { o, a, t, walletId } = await deskTeam()
-    const { id } = (await prepare(t, walletId)).body
-    const seat = (set: string) => db.prepare(`UPDATE seats SET ${set} WHERE id = ?`).bind(t.seatId).run()
-    const wallet = (state: string) => db.prepare('UPDATE wallets SET state = ? WHERE id = ?').bind(state, walletId).run()
-    const approver = await actorOf(a, 'approver')
-    // Written straight to the rows: the routes that change a seat also cancel what it asked for, so this is the second line.
-    const cases: [string, () => Promise<unknown>, () => Promise<unknown>][] = [
-      ['forbidden', () => seat(`role = 'viewer'`), () => seat(`role = 'trader'`)],
-      ['forbidden', () => seat(`state = 'frozen'`), () => seat(`state = 'active'`)],
-      ['forbidden', () => seat(`state = 'removed'`), () => seat(`state = 'active'`)],
-      ['wallet_not_linked', () => wallet('unlinked'), () => wallet('linked')],
-      ['institution_only', () => setOrg(o.orgId, `kind = 'partner'`), () => setOrg(o.orgId, `kind = 'institution'`)],
-      ['org_inactive', () => setOrg(o.orgId, `state = 'frozen'`), () => setOrg(o.orgId, `state = 'active'`)],
-      ['org_inactive', () => setOrg(o.orgId, `state = 'archived'`), () => setOrg(o.orgId, `state = 'active'`)],
-    ]
-    for (const [error, set, undo] of cases) {
-      await set()
-      const during = await snapshot()
-      expect(await data.decide(db, approver, id, 'approve', now), error).toBe(error)
-      expect(await snapshot()).toBe(during)
-      await undo()
-    }
-    expect((await approvalOf(id))?.state).toBe('pending')
-    // Through the routes: an Owner unlinks the wallet while the order waits. The approval is refused and the order stays open for its preparer to cancel.
-    expect((await post(`/api/wallets/${walletId}/unlink`, o)).status).toBe(200)
-    const refused = await decide(a, id, 'approve')
-    expect([refused.status, refused.body]).toEqual([409, { error: 'wallet_not_linked' }])
-    expect(await approvalOf(id)).toEqual({ state: 'pending', checker_seat_id: null })
-    expect((await decide(t, id, 'cancel')).status).toBe(200)
-    // Through the routes: a preparer who is frozen loses the orders that wait.
-    const next = await demoWallet(o.orgId, 'Second wallet')
-    const second = (await prepare(await again(t), next)).body.id
-    expect((await act(o, t.seatId, 'freeze')).status).toBe(200)
-    expect((await approvalOf(second))?.state).toBe('cancelled')
-    expect((await decide(a, second, 'approve')).status).toBe(404)
-  })
-
-  it('D2: at most 20 orders wait per organisation; a decided or expired one makes room, and the twentieth can still be approved', async () => {
-    const { o, a, t, walletId } = await deskTeam()
-    const ids: string[] = []
-    for (let i = 0; i < demo.MAX_OPEN_ORDERS; i += 1) ids.push((await prepare(i % 2 ? o : t, walletId, { amount: String(i + 1) })).body.id)
-    expect(ids.every((id) => typeof id === 'string')).toBe(true)
-    const before = await snapshot()
-    for (const m of [t, o]) {
-      const full = await prepare(m, walletId)
-      expect([full.status, full.body]).toEqual([429, { error: 'too_many_orders' }])
-    }
-    expect(await snapshot()).toBe(before)
-    expect((await prepare(t, walletId, { send: false })).status).toBe(200) // the review step files nothing
-    // Another organisation's orders do not count here.
-    const other = await institution('Birchfield Capital')
-    expect((await prepare(other, other.walletId)).status).toBe(200)
-    // With 20 waiting, one of them can still be approved: it does not count itself.
-    expect((await decide(a, ids[0], 'approve')).status).toBe(200)
-    expect((await prepare(t, walletId)).status).toBe(200)
-    expect((await prepare(t, walletId)).status).toBe(429)
-    expect((await decide(t, ids[2], 'cancel')).status).toBe(200)
-    expect((await prepare(t, walletId)).status).toBe(200)
-    now += 7 * DAY + 1 // every one of them has expired
-    expect((await prepare(await again(t), walletId)).status).toBe(200)
-  })
-
-  // ---- the independent review of this milestone: each of these was seen failing before its fix ----
-  it('review D: the limit per order also holds at the limit price of the order, not only at the reference price', async () => {
-    const { t, walletId } = await deskTeam()
-    const before = await snapshot()
-    const sellEth = { type: 'limit', sell: 'ETH', buy: 'EURC' }
-    // 1,500 ETH is 4,425,000 EUR at the reference price and over the limit at 3,540 or at 3,333.34. A low limit price does not hide 1,694.92 ETH either.
-    for (const more of [{ ...sellEth, amount: '1500', limitPrice: '3540' }, { ...sellEth, amount: '1500', limitPrice: '3333.34' }, { ...sellEth, amount: '1694.92', limitPrice: '2360' }]) {
-      for (const send of [false, true]) expect((await prepare(t, walletId, { ...more, send })).body, JSON.stringify(more)).toEqual({ error: 'over_limit' })
-    }
-    expect(await snapshot()).toBe(before)
-    expect((await prepare(t, walletId, { ...sellEth, amount: '1500', limitPrice: '3333.33', send: false })).body.estimate.volumeEur).toBe('4999995.00')
-    // A limit price far from the market is refused for itself, before any volume is looked at (the band, section J).
-    expect((await prepare(t, walletId, { ...sellEth, amount: '1', limitPrice: '999999999' })).body).toEqual({ error: 'limit_out_of_band' })
-    expect(demo.CHECKS[5]).toBe('The amount is above zero and within 5,000,000.00 EUR per order, at the reference price and at the limit price')
-  })
-
-  it('review D: an order is exactly what this server builds now: another estimate, other checks or an extra field are refused when it is filed and when it is approved', async () => {
-    const { a, t, walletId } = await deskTeam()
-    const built = { ...(demo.quote({ ...TICKET, walletId }) as object), wallet: 'Operations Safe', address: await addressOf(walletId), checks: demo.CHECKS } as demo.Order
-    const trader = await actorOf(t, 'trader')
-    const file = (order: object) => data.change(db, trader, 'order.demo', data.randomId(), JSON.stringify(order), now)
-    const before = await snapshot()
-    const forged = [
-      { ...built, estimate: { ...built.estimate, received: '999999' } }, { ...built, estimate: { ...built.estimate, feeEur: '0.00', totalEur: '0.00' } },
-      { ...built, checks: [] }, { ...built, note: 'x' }, { ...built, ticket: { ...built.ticket, memo: 'x' } },
-    ]
-    for (const order of forged) expect(await file(order), JSON.stringify(order).slice(0, 200)).toEqual({ error: 'invalid' })
-    expect(await snapshot()).toBe(before)
-    // A row whose estimate is not the one of today's prices (a price changed since it was prepared): not approved.
-    const { id } = (await prepare(t, walletId)).body
-    await db.prepare('UPDATE approvals SET payload = ? WHERE id = ?').bind(JSON.stringify({ value: JSON.stringify(forged[0]) }), id).run()
-    expect((await decide(a, id, 'approve')).body).toEqual({ error: 'invalid' })
-    expect((await approvalOf(id))?.state).toBe('pending')
-    expect(await file(built)).toMatchObject({ state: 'requested' })
-  })
-
-  it('review D: an order names its wallet by address too: two wallets with one name are told apart, and an address that is not the wallet\'s is refused', async () => {
-    const { a, t, walletId } = await deskTeam()
-    const twin = await demoWallet(t.orgId) // a second wallet with the same name: nothing forbids it
-    const [first, second] = [await orderOf((await prepare(t, walletId)).body.id), await orderOf((await prepare(t, twin)).body.id)]
-    expect([first.order.wallet, first.order.address]).toEqual(['Operations Safe', await addressOf(walletId)])
-    expect([second.order.wallet, second.order.address]).toEqual(['Operations Safe', await addressOf(twin)])
-    expect(first.order.address).not.toBe(second.order.address)
-    expect((await prepare(t, twin, { send: false })).body.address).toBe(second.order.address)
-    expect((await deskOrders(a)).map((x) => x.address)).toEqual([second.order.address, first.order.address])
-    // The address is read again inside the commit: the twin's address on the first wallet's order is refused.
-    const trader = await actorOf(t, 'trader')
-    const forged = { ...first.order, address: second.order.address }
-    expect(await data.change(db, trader, 'order.demo', data.randomId(), JSON.stringify(forged), now)).toEqual({ error: 'wallet_not_linked' })
-    await db.prepare('UPDATE approvals SET payload = ? WHERE id = ?').bind(JSON.stringify({ value: JSON.stringify(forged) }), first.id).run()
-    expect((await decide(a, first.id, 'approve')).body).toEqual({ error: 'wallet_not_linked' })
-    expect((await decide(a, second.id, 'approve')).status).toBe(200)
-    expect(demo.examples().every((x) => /^0x[0-9a-fA-F]{4}\.\.\.[0-9a-fA-F]{4}$/.test(x.address))).toBe(true)
-  })
-
-  it('review D: a member files at most 30 orders an hour, so preparing and cancelling in a loop cannot fill the tables; a review counts nothing', async () => {
-    const { o, t, walletId } = await deskTeam()
-    for (let i = 0; i < demo.ORDERS_PER_HOUR; i += 1) {
-      const sent = await prepare(t, walletId)
-      expect(sent.status, String(i)).toBe(200)
-      expect((await decide(t, sent.body.id, 'cancel')).status).toBe(200)
-    }
-    const before = await snapshot()
-    const refused = await prepare(t, walletId)
-    expect([refused.status, refused.body]).toEqual([429, { error: 'order_rate' }])
-    expect(await snapshot()).toBe(before)
-    expect((await prepare(t, walletId, { send: false })).status).toBe(200) // the review step
-    expect((await prepare(t, walletId, { amount: '-1' })).body).toEqual({ error: 'amount_invalid' })
-    expect((await prepare(o, walletId)).status).toBe(200) // counted per member
-    now += HOUR
-    expect((await prepare(await again(t), walletId)).status).toBe(200)
-  })
-
-  it('D3: every export of an institution is built by the server: the name starts with "ophis-demo-", each row has the column source = demo, and a partner gets none of these tables', async () => {
-    const { o, a, t } = await deskTeam()
-    const viewer = await colleague(o, 'viewer')
-    const names = ['assets', 'balances', 'orders', 'statement']
-    expect(Object.keys(demo.tables([])).sort()).toEqual(names)
-    for (const table of names) {
+    for (const [table, name, source] of [['orders', 'ophis-desk-orders', 'live'], ['assets', 'ophis-desk-assets', 'live'], ['balances', 'ophis-demo-balances', 'demo'], ['statement', 'ophis-demo-statement', 'demo']]) {
       for (const m of [o, a, t, viewer]) {
         const file = await exported(m, table)
         expect(file.status, table).toBe(200)
-        expect(file.body.name, table).toBe(`ophis-demo-${table}-2026-11-10.csv`)
+        expect(file.body.name, table).toBe(`${name}-2026-11-10.csv`)
         expect(file.rows.length, table).toBeGreaterThan(1)
         expect(file.rows[0].at(-1), table).toBe('source')
-        for (const r of file.rows.slice(1)) expect([r.length, r.at(-1)], table).toEqual([file.rows[0].length, 'demo'])
+        for (const r of file.rows.slice(1)) expect([r.length, r.at(-1)], table).toEqual([file.rows[0].length, source])
       }
     }
-    // A partner table, an unknown one and a name of the prototype: not found. A partner gets no demo table.
+    expect((await exported(o, 'assets')).rows.slice(1).map((r) => r.slice(0, 3).join(' '))).toContain(`OP Mainnet USDC ${USDC_OP}`)
     for (const table of ['referred', 'months', 'traders', 'codes', 'daily', 'audit', 'constructor', '__proto__', 'toString']) expect((await exported(o, table)).status, table).toBe(404)
     await setOrg(o.orgId, `kind = 'partner'`)
-    for (const table of [...names, 'codes', 'wallets', 'constructor', '__proto__']) expect((await exported(o, table)).status, table).toBe(404)
+    for (const table of ['orders', 'assets', 'balances', 'statement', 'codes', 'wallets', 'constructor', '__proto__']) expect((await exported(o, table)).status, table).toBe(404)
   })
 
-  it('D3: an export holds the own orders of the institution before the examples, with their real state, and a cell that starts with = + - @ or a tab is made harmless', async () => {
-    const o = await institution()
-    const a = await colleague(o, 'approver')
-    // A wallet name may start with a minus or a bracket: the label rule allows it.
+  it('D3: the orders export holds the real orders with their state, and a cell that starts with = + - @ or a tab is made harmless', async () => {
+    book()
+    const { o, a, walletId } = await deskTeam()
     const hostile = await demoWallet(o.orgId, '-2+3 (cmd)')
-    const first = (await prepare(o, o.walletId)).body.id as string
+    const first = (await prepare(o, walletId)).body.id as string
     const second = (await prepare(o, hostile, { amount: '12.5' })).body.id as string
     expect((await decide(a, first, 'approve')).status).toBe(200)
     const file = await exported(o, 'orders')
-    expect(file.rows[0]).toEqual(['Order', 'Prepared at', 'Type', 'Sell', 'Amount', 'Buy', 'Estimate received', 'Limit price (EUR)', 'Chain', 'Wallet', 'Wallet address', 'Volume (EUR)', 'Fee (EUR)', 'Status', 'source'])
-    expect(file.rows[1][10]).toBe(await addressOf(hostile))
-    expect(file.rows.slice(1, 3).map((r) => [r[0], r[4], r[9], r[13]])).toEqual([[`ORD-${second.slice(0, 8)}`, '12.5', "'-2+3 (cmd)", 'Pending approval'], [`ORD-${first.slice(0, 8)}`, '250000', 'Operations Safe', 'Approved. Not sent: demo']])
-    expect(file.rows.slice(3).map((r) => r[0])).toEqual(demo.examples().map((x) => x.ref))
+    expect(file.rows[0]).toEqual(['Order', 'Prepared at', 'Type', 'Chain', 'Wallet', 'Wallet address', 'Sell', 'Amount', 'Buy', 'Least amount bought', 'Status', 'Order id', 'Sold', 'Bought', 'Transaction', 'source'])
+    expect(file.rows.slice(1).map((r) => [r[0], r[4], r[7], r[10]])).toEqual([[`ORD-${second.slice(0, 8)}`, "'-2+3 (cmd)", '12.5', 'Pending approval'], [`ORD-${first.slice(0, 8)}`, 'Operations Safe', '250000', 'Approved: waiting for signature']])
+    expect(file.rows[1][5]).toBe(await addressOf(hostile))
     expect(file.body.csv).toContain(`"'-2+3 (cmd)"`)
     for (const [value, cell] of [['=1+1', `"'=1+1"`], ['+1', `"'+1"`], ['-1', `"'-1"`], ['@SUM(A1)', `"'@SUM(A1)"`], ['\tx', `"'\tx"`], ['\rx', `"'\rx"`], ['a"b', '"a""b"'], ['1.5', '"1.5"'], ['', '""'], [null, '""']] as const) expect(csvCell(value)).toBe(cell)
     for (const line of file.body.csv.split('\r\n').filter(Boolean)) expect(line).not.toMatch(/(^|,)"[=+\-@\t\r]/)
   })
 
   it('D3: the exports are for an active organisation, and for a session', async () => {
-    const o = await institution()
+    const { o } = await deskTeam()
     expect((await call('GET', '/api/export/orders')).status).toBe(401)
     for (const [state, error] of [['unverified', 'unverified'], ['frozen', 'org_frozen'], ['archived', 'org_closed']]) {
       await setOrg(o.orgId, `state = '${state}'`)
@@ -8745,22 +8586,24 @@ describe('H. demo mode: overview, desk and partner figures', () => {
     }
   })
 
-  it('D4: the local seed command adds a linked wallet named "Demo wallet" that an order can settle from; any other environment refuses', async () => {
+  it('D4: "seed --demo" links a "Demo wallet" (a key wallet, at the first public test key of anvil in the seed) that an order can settle from; any other environment refuses', async () => {
+    book()
     const o = await owner()
     await setOrg(o.orgId, `kind = 'institution'`)
     const before = await snapshot()
     await expect(data.devDemoWallet(db, 'production', o.orgId, now)).rejects.toThrow(/local/)
     await expect(data.devDemoWallet(db, '', o.orgId, now)).rejects.toThrow(/local/)
     expect(await snapshot()).toBe(before)
-    const id = await data.devDemoWallet(db, 'local', o.orgId, now)
+    const id = await data.devDemoWallet(db, 'local', o.orgId, now, accounts[0].address.toLowerCase())
     expect((await walletsOf(o)).map((w) => [w.id, w.state, w.kind, w.recovery])).toEqual([[id, 'linked', 'custodian', null]])
     expect(await lastAudit(o.orgId)).toEqual({ action: 'wallet.link', actor_id: null, subject_id: id, detail: 'demo' })
     expect((await sayOf(o))[0]).toBe('Demo wallet linked by the local seed command, with no signature')
     expect((await data.verifyAudit(db, o.orgId)).ok).toBe(true)
+    expect(devScript).toContain(`const DEMO_KEY_WALLET = '${accounts[0].address.toLowerCase()}'`)
     // One person can try the ticket. The approval still needs a second member.
     const sent = await prepare(o, id)
     expect(sent.body.state).toBe('requested')
-    expect((await orderOf(sent.body.id)).order.wallet).toBe('Demo wallet')
+    expect((await orderOf(sent.body.id)).terms.label).toBe('Demo wallet')
     expect((await decide(o, sent.body.id, 'approve')).body).toEqual({ error: 'own_request' })
   })
 
@@ -8776,23 +8619,18 @@ describe('H. demo mode: overview, desk and partner figures', () => {
     expect(asked.map((x) => x.wallets)).toEqual([[P.wallet]])
   })
 
-  it('D3: the words of the demo pages: no claim about a licence, no payout terms and no promise about fees; the banner, the footer line and the sentences the pages must say', () => {
-    const said = [deskPage, demoSource, JSON.stringify([demo.institution(), demo.desk()]), EVENTS['order.demo'], EVENTS['wallet.link/demo']].join('\n')
+  it('D3: the words of the desk and the overview: no claim about a licence, no payout terms and no promise about fees; the sentences the pages must say', () => {
+    const said = [deskPage, demoSource, ordersSource, signScript, JSON.stringify(demo.institution()), ...Object.entries(EVENTS).filter(([k]) => k.startsWith('order')).map(([, v]) => v), EVENTS['wallet.link/demo']].join('\n')
     for (const banned of [/licen[cs]ed|regulated|authori[sz]ed|MiCA|compliant/i, /—/, /honest/i, /paid (weekly|monthly|daily|every)|payout (terms|schedule)|\bdue\b|guarantee|no (other|hidden) fee|never charge|price improvement/i]) expect(said).not.toMatch(banned)
     for (const sentence of [
-      '<b>Demo data.</b> No order is sent and no funds move. Figures are examples.', 'Example figures. The real cost of an order is shown before it is signed.', 'Nothing is signed at this step.',
-      'Illustrative. Each token is checked against the ESMA register before launch', 'Signing in the wallet is not part of this demo.', 'The desk is for institutions.', 'Use a larger screen.', 'Execution: none, demo', 'Sent for approval.',
+      '<b>Example figures.</b> The balances and the statement are examples. Your orders below are real.', 'Nothing is signed at this step.', 'The desk is for institutions.', 'Use a larger screen.', 'Sent for approval.',
+      'The Safe owners or your custodian sign on the signing page. Ophis cannot.', 'Sending asks for your passkey.', 'Each is listed on a chain where two independent sources agree on its address.',
     ]) expect(deskPage, sentence).toContain(sentence)
-    expect(demo.orderState('applied', false)).toBe('Approved. Not sent: demo')
-    // Review: every panel of figures says "example" or "demo" itself, also where the banner has scrolled away, and no
-    // example wallet is called a linked wallet. What a member typed (amount, limit price) is shown whole, never cut.
-    for (const sentence of ['title="Balances by wallet" hint="Example wallets and balances, not your linked wallets."', 'hint="Example statement.']) expect(deskPage, sentence).toContain(sentence)
-    expect(deskPage).not.toMatch(/linked wallet"/)
-    expect(deskPage).not.toMatch(/(qty|money)\((\w+\.)*ticket\.(amount|limitPrice)/)
-    expect(pagesSource).toContain('<dt>Settle from</dt><dd>{order.wallet}, <span className="mono">{order.address}</span></dd>')
-    // The banner is on the institution's Overview and on the Desk, never on a partner's Overview (section I); the
+    expect(deskPage).not.toMatch(/Demo data|not part of this demo|Execution: none/)
+    expect(pagesSource).toContain('<dt>Settle from</dt><dd>{order.terms.label}, <span className="mono">{order.terms.wallet}</span></dd>')
+    // The banner of example figures is on the institution's Overview only, never on the desk or a partner's Overview; the
     // footer line is the shell's, so it is on every screen.
-    expect(deskPage.match(/<Banner \/>/g)).toHaveLength(2)
+    expect(deskPage.match(/<Banner \/>/g)).toHaveLength(1)
     expect(shellPage).toContain('<footer className="foot-line">Ophis is a software provider. It is not a crypto-asset service provider.</footer>')
     expect(shellPage).not.toMatch(/Later/)
   })
@@ -9421,145 +9259,484 @@ describe('I. partner figures: live', () => {
 })
 
 // ---- the desk, four gaps closed after the review of the demo desk. Each control was seen failing once with it removed.
-describe('J. the demo desk: a passkey check to send, the band of a limit price, the chain of the wallet', () => {
-  it('sending an order needs a passkey check of the last 5 minutes; the estimate alone needs none', async () => {
-    const { t, walletId } = await deskTeam()
-    now += 5 * MIN // the check of the sign-in is exactly 5 minutes old: still fresh
-    const first = await prepare(t, walletId)
-    expect(first.status).toBe(200)
-    // Anything but true is a review, also with a fresh check: no order is filed by a truthy word.
-    const filed = await snapshot()
-    for (const send of ['true', 1, {}, undefined]) expect(Object.keys((await prepare(t, walletId, { amount: '100', send })).body).sort(), String(send)).toEqual(['address', 'checks', 'demo', 'estimate', 'ticket', 'wallet'])
-    expect(await snapshot()).toBe(filed)
-    now += 1
-    const before = await snapshot()
-    const stale = await prepare(t, walletId, { amount: '100' })
-    expect([stale.status, stale.body]).toEqual([403, { error: 'step_up_required' }])
-    expect(await snapshot()).toBe(before) // nothing is filed, and the hour's count is not used
-    const review = await prepare(t, walletId, { amount: '100', send: false })
-    expect([review.status, review.body.estimate.volumeEur]).toEqual([200, '100.00'])
-    await stepUp(t, t.key)
-    const sent = await prepare(t, walletId, { amount: '100' })
-    expect([sent.status, sent.body.state]).toEqual([200, 'requested'])
-    // The route's row asks for no check by itself (the review must stay open), so the handler is the control.
-    expect(routes.find((r) => r.path === '/api/desk/orders')!.fresh).toBeUndefined()
+describe('J. the real desk: terms from a live quote, two people, then the wallet signs', () => {
+  const gold = golden.chains as unknown as Record<string, { orderbook: string; settlement: string; relayer: string; pairs: { sell: string; buy: string; stable: boolean }[]; appData: { slippageBips: number | null; stable: boolean; fullAppData: string; appDataHash: string }[] }>
+
+  it('the chains, the appData and the fee are exactly what @ophis/sdk makes (golden values the SDK made); a limit order differs only in its orderClass', () => {
+    expect(Object.keys(orders.CHAINS)).toEqual(Object.keys(gold))
+    for (const [id, g] of Object.entries(gold)) {
+      const chainId = Number(id)
+      expect([orders.CHAINS[chainId].orderbook, orders.CHAINS[chainId].settlement, orders.CHAINS[chainId].relayer], id).toEqual([g.orderbook, g.settlement, g.relayer])
+      for (const x of g.appData) {
+        expect(orders.appData(chainId, 'market', x.slippageBips, x.stable), `${id} ${x.slippageBips} ${x.stable}`).toEqual({ full: x.fullAppData, hash: x.appDataHash })
+        // The limit order: the SDK's own document with orderClass "limit", nothing else changed.
+        const limit = orders.appData(chainId, 'limit', x.slippageBips, x.stable)
+        expect(limit.full).toBe(x.fullAppData.replace('"orderClass":{"orderClass":"market"}', '"orderClass":{"orderClass":"limit"}'))
+        expect(limit.hash).toBe(keccak256(toBytes(limit.full)))
+      }
+      // The stable pairs of the SDK (isOphisStablePair), for every pair of the table.
+      const table = Object.values(orders.ASSETS[chainId])
+      expect(table.map((a) => a!.token).sort()).toEqual([...new Set(g.pairs.map((p) => p.sell))].sort())
+      for (const p of g.pairs) {
+        const [s, b] = [table.find((a) => a!.token === p.sell)!, table.find((a) => a!.token === p.buy)!]
+        expect(s.stable && b.stable, `${id} ${p.sell} ${p.buy}`).toBe(p.stable)
+      }
+    }
+    // The assets of each chain, by the sources named in ARCHITECTURE.md (two independent sources, and symbol() and decimals() on a public RPC).
+    expect(Object.fromEntries(Object.entries(orders.ASSETS).map(([id, a]) => [id, Object.entries(a).map(([symbol, x]) => `${symbol} ${x!.token} ${x!.decimals}`)]))).toEqual({
+      1: ['WETH 0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2 18', 'USDC 0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48 6', 'EURC 0x1aBaEA1f7C830bD89Acc67eC4af516284b1bC33c 6', 'EURe 0x39b8B6385416f4cA36a20319F70D28621895279D 18', 'EURCV 0x5F7827FDeb7c20b443265Fc2F40845B715385Ff2 18'],
+      10: ['WETH 0x4200000000000000000000000000000000000006 18', 'USDC 0x0b2C639c533813f4Aa9D7837CAf62653d097Ff85 6'],
+      8453: ['WETH 0x4200000000000000000000000000000000000006 18', 'USDC 0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913 6', 'EURC 0x60a3E35Cc302bFA44Cb288Bc5a4F316Fdb1adb42 6'],
+      42161: ['WETH 0x82aF49447D8a07e3bd95BD0d56f35241523fBab1 18', 'USDC 0xaf88d065e77c8cC2239327C5EDb3A432268e5831 6', 'EURe 0x0c06cCF38114ddfc35e07427B9424adcca9F44F8 18'],
+    })
   })
 
-  it('a limit price lies within 20% of the reference price, on both sides: the two exact edges pass, one unit outside each is refused', async () => {
+  it('the review: a live quote from the wallet, with the exact appData, and complete terms; nothing is written', async () => {
     const { t, walletId } = await deskTeam()
-    const limit = (more: Record<string, unknown>, send = false) => prepare(t, walletId, { type: 'limit', ...more, send })
-    // ETH: reference 2,950 EUR, so 2,360 to 3,540. USDC: 0.92, so 0.736 to 1.104. A limit price has 6 decimals.
-    expect(demo.desk().assets.map((x) => [x.symbol, x.limitLow, x.limitHigh])).toEqual([['ETH', '2360.00', '3540.00'], ['USDC', '0.736', '1.104'], ['EURC', '0.80', '1.20'], ['EURe', '0.80', '1.20'], ['EURCV', '0.80', '1.20']])
-    for (const [more, edges, outside] of [
-      [{}, ['2360', '3540'], ['2359.999999', '3540.000001']], // EURC for ETH: priced in ETH
-      [{ sell: 'ETH', buy: 'EURC', amount: '10' }, ['2360', '3540'], ['2359.999999', '3540.000001']],
-      [{ sell: 'EURC', buy: 'USDC', amount: '1000' }, ['0.736', '1.104'], ['0.735999', '1.104001']], // priced in the asset bought
-      [{ sell: 'USDC', buy: 'EURe', amount: '1000' }, ['0.8', '1.2'], ['0.799999', '1.200001']],
+    const asked = book()
+    const before = await snapshot()
+    const r = await review(t, walletId)
+    expect(r.status).toBe(200)
+    expect(await snapshot()).toBe(before)
+    const data = orders.appData(10, 'market', 50, false)
+    expect(asked).toEqual([{ url: 'https://optimism-mainnet.ophis.fi/api/v1/quote', method: 'POST', body: {
+      sellToken: USDC_OP, buyToken: WETH_OP, from: accounts[1].address, receiver: accounts[1].address, kind: 'sell', sellAmountBeforeFee: '250000000000', partiallyFillable: false,
+      sellTokenBalance: 'erc20', buyTokenBalance: 'erc20', priceQuality: 'optimal', signingScheme: 'eip712', onchainOrder: false, appData: data.full, appDataHash: data.hash, validFor: 1800,
+    } }])
+    const quoted = BigInt(r.body.terms.quoted)
+    expect(r.body.terms).toEqual({
+      type: 'market', chainId: 10, walletId, wallet: accounts[1].address, label: 'Operations Safe', scheme: 'eip712',
+      sell: { symbol: 'USDC', token: USDC_OP, amount: '250000000000' }, buy: { symbol: 'WETH', token: WETH_OP, minimum: String((((quoted * 9999n) / 10000n) * 9950n) / 10000n) },
+      quoted: r.body.terms.quoted, slippageBips: 50, limitPrice: null, validFor: 1800, appData: data.full, appDataHash: data.hash, fee: { volumeBps: 1, recipient: '0x858f0F5eE954846D47155F5203c04aF1819eCeF8' },
+    })
+    expect(r.body.words).toMatchObject({ sell: '250000 USDC', chain: 'OP Mainnet', type: 'Market, slippage 0.5%', valid: '30 minutes after signing', wallet: `Operations Safe (${accounts[1].address})` })
+    expect(r.body.until).toBe(now + 5 * MIN)
+    // The slippage and the validity the member picks are in the terms and in the appData; a hosted chain carries the share too.
+    const base = await demoWallet(t.orgId, 'Base wallet', 'linked', accounts[1].address.toLowerCase(), 'custodian', 8453)
+    const other = await review(t, base, { chainId: 8453, sell: 'USDC', buy: 'EURC', slippageBips: 300, validFor: 86400 })
+    expect(other.body.terms).toMatchObject({ slippageBips: 300, validFor: 86400, appData: orders.appData(8453, 'market', 300, true).full, fee: orders.fee(8453, true) })
+    expect(asked.at(-1)!.url).toBe('https://api.cow.fi/base/api/v1/quote')
+  })
+
+  it('every ticket check, one by one, with hostile values: nothing is written and no quote is asked for', async () => {
+    const { t, walletId } = await deskTeam()
+    const asked = book()
+    const before = await snapshot()
+    const cap = { sell: 'USDC', amount: '5500000.000001' }
+    const refused: [Record<string, unknown>, string][] = [
+      [{ type: 'stop' }, 'type_invalid'], [{ type: undefined }, 'type_invalid'],
+      [{ chainId: 130 }, 'chain_not_allowed'], [{ chainId: '10' }, 'chain_not_allowed'], [{ chainId: undefined }, 'chain_not_allowed'],
+      [{ sell: 'EURC' }, 'asset_not_permitted'], [{ buy: 'ETH' }, 'asset_not_permitted'], [{ sell: 'usdc' }, 'asset_not_permitted'], [{ buy: 'constructor' }, 'asset_not_permitted'], [{ sell: '__proto__' }, 'asset_not_permitted'],
+      [{ buy: 'USDC' }, 'same_asset'], [{ walletId: undefined }, 'wallet_not_linked'],
+      ...['1e9', '-1', '0', '0.0', ' 1', '1,5', '.5', '01', '0x10', 'NaN', '', '1'.repeat(40), '1.0000001'].map((amount) => [{ amount }, 'amount_invalid'] as [Record<string, unknown>, string]),
+      [{ amount: 1 }, 'amount_invalid'], [{ sell: 'WETH', buy: 'USDC', amount: '0.' + '0'.repeat(18) + '1' }, 'amount_invalid'],
+      [cap, 'over_limit'], [{ sell: 'WETH', buy: 'USDC', amount: '2850.000000000000000001' }, 'over_limit'],
+      ...[301, -1, 0.5, '50'].map((slippageBips) => [{ slippageBips }, 'slippage_invalid'] as [Record<string, unknown>, string]),
+      [{ type: 'limit', limitPrice: '0.0004', slippageBips: 50 }, 'slippage_invalid'], [{ limitPrice: '0.0004' }, 'limit_price_invalid'],
+      ...[undefined, null, '0', '-1', '1e3', 0.0004].map((limitPrice) => [{ type: 'limit', limitPrice }, 'limit_price_invalid'] as [Record<string, unknown>, string]),
+      ...[60, '1800', 3600].map((validFor) => [{ validFor }, 'validity_invalid'] as [Record<string, unknown>, string]),
+    ]
+    for (const [more, error] of refused) {
+      const answer = await review(t, walletId, more)
+      expect([answer.status, answer.body], JSON.stringify(more)).toEqual([400, { error }])
+    }
+    expect([asked.length, await snapshot()]).toEqual([0, before])
+    // The edges that are allowed: the smallest unit and the cap itself.
+    for (const more of [{ amount: '0.000001', sell: 'USDC' }, { amount: '5500000' }, { sell: 'WETH', buy: 'USDC', amount: '2850' }]) expect((await review(t, walletId, more)).status, JSON.stringify(more)).toBe(200)
+    // A wallet that is not this organisation's linked one, or on another chain: no quote is asked for either.
+    const waits = await demoWallet(t.orgId, 'Waits', 'pending')
+    const onBase = await demoWallet(t.orgId, 'Base wallet', 'linked', someAddress(), 'custodian', 8453)
+    const n = asked.length
+    expect((await review(t, waits)).body).toEqual({ error: 'wallet_not_linked' })
+    expect((await review(t, data.randomId())).body).toEqual({ error: 'wallet_not_linked' })
+    expect((await review(t, onBase)).body).toEqual({ error: 'wallet_chain' })
+    expect(asked.length).toBe(n)
+  })
+
+  it('the quote must be for exactly what was asked; an orderbook that fails or refuses gives no terms', async () => {
+    const { t, walletId } = await deskTeam()
+    const quoteOf = (change: Record<string, unknown>) => (a: Asked) => (a.url.endsWith('/quote') ? Response.json({ ...realBook.quote.response, quote: { ...realBook.quote.response.quote, sellToken: USDC_OP.toLowerCase(), buyToken: WETH_OP.toLowerCase(), sellAmount: '249999000000', feeAmount: '1000000', ...change } }) : undefined)
+    book({ twist: quoteOf({}) })
+    expect((await review(t, walletId)).status).toBe(200) // the copied quote, for this order: it passes
+    for (const [change, error] of [[{ sellToken: WETH_OP.toLowerCase() }, 'quote_unavailable'], [{ buyToken: USDC_OP.toLowerCase() }, 'quote_unavailable'], [{ feeAmount: '1000001' }, 'quote_unavailable'],
+      [{ buyAmount: '-1' }, 'quote_unavailable'], [{ buyAmount: 12 }, 'quote_unavailable'], [{ sellAmount: '1e11' }, 'quote_unavailable'], [{ buyAmount: '0' }, 'amount_too_small']] as const) {
+      book({ twist: quoteOf(change) })
+      expect((await review(t, walletId)).body.error, JSON.stringify(change)).toBe(error)
+    }
+    for (const [answer, status, body] of [
+      [Response.json({ errorType: 'SellAmountDoesNotCoverFee', description: 'x' }, { status: 400 }), 409, { error: 'quote_refused', reason: 'SellAmountDoesNotCoverFee' }],
+      [Response.json({ errorType: '<b>x</b>' }, { status: 400 }), 409, { error: 'quote_refused', reason: null }],
+      [Response.json({}, { status: 500 }), 503, { error: 'quote_unavailable' }], [Response.json({}, { status: 429 }), 503, { error: 'quote_unavailable' }],
+      [new Response('not json', { status: 200 }), 503, { error: 'quote_unavailable' }], [new Response('x'.repeat(70_000), { status: 200 }), 503, { error: 'quote_unavailable' }],
+      [new Response(null, { status: 302, headers: { location: 'https://elsewhere.example/' } }), 503, { error: 'quote_unavailable' }], // a redirect is followed nowhere
     ] as const) {
-      for (const limitPrice of edges) expect((await limit({ ...more, limitPrice })).status, `${JSON.stringify(more)} ${limitPrice}`).toBe(200)
-      const before = await snapshot()
-      for (const limitPrice of outside) for (const send of [false, true]) {
-        const answer = await limit({ ...more, limitPrice }, send)
-        expect([answer.status, answer.body], `${JSON.stringify(more)} ${limitPrice}`).toEqual([400, { error: 'limit_out_of_band' }])
-      }
-      expect(await snapshot()).toBe(before)
+      book({ twist: (a) => (a.url.endsWith('/quote') ? answer.clone() : undefined) })
+      const r = await review(t, walletId)
+      expect([r.status, r.body], String(status)).toEqual([status, body])
     }
-    // An order at the edge is filed and approved.
-    const a = await colleague(t, 'approver')
-    await addKey(a)
-    const sent = await limit({ limitPrice: '3540' }, true)
-    expect((await decide(await again(a), sent.body.id, 'approve')).status).toBe(200)
+    // A stand-in on this machine answers locally only; any other ORDERBOOK_URL is not read.
+    expect(orders.orderbook({ ENVIRONMENT: 'local', ORDERBOOK_URL: 'http://127.0.0.1:8795' }, 10)).toBe('http://127.0.0.1:8795/10')
+    for (const url of ['https://evil.example', 'http://evil.example', '', undefined]) expect(orders.orderbook({ ENVIRONMENT: 'local', ORDERBOOK_URL: url }, 10), String(url)).toBe('https://optimism-mainnet.ophis.fi')
   })
 
-  it('the band is judged inside the commit that files the order, and again inside the commit that approves it', async () => {
-    const { a, t, walletId } = await deskTeam()
-    // Filing: an order built outside the band, handed to the data module without the router.
-    const far = { ...TICKET, type: 'limit', limitPrice: '3540.000001', walletId }
-    const quoted = demo.quote({ ...far, limitPrice: '3540' }) as { ticket: demo.Ticket; estimate: demo.Estimate }
-    const forged = { ticket: { ...quoted.ticket, limitPrice: far.limitPrice }, estimate: quoted.estimate, wallet: 'Operations Safe', address: await addressOf(walletId), checks: demo.CHECKS }
+  it('a limit price: units of the asset bought per unit sold, within 20% of the live quote on both sides; the two exact edges pass, one unit outside each is refused', async () => {
+    const { t, walletId } = await deskTeam()
+    book({ buy: '1000000000' }) // the quote: 1,000 USDC for 1 WETH
+    const limit = (limitPrice: string) => review(t, walletId, { type: 'limit', sell: 'WETH', buy: 'USDC', amount: '1', limitPrice })
+    for (const edge of ['800', '1200', '1000']) expect((await limit(edge)).body.terms.buy.minimum, edge).toBe(String(Number(edge) * 1e6))
+    for (const outside of ['799.999999', '1200.000001']) expect((await limit(outside)).body, outside).toEqual({ error: 'limit_out_of_band' })
+    const terms = (await limit('1000')).body.terms
+    expect(terms).toMatchObject({ type: 'limit', slippageBips: null, limitPrice: '1000', appData: orders.appData(10, 'limit', null, false).full })
+  })
+
+  it('send: the sealed review is filed as it was reviewed, for two people; a review of another seat, a changed one or one older than 5 minutes is refused', async () => {
+    const { o, a, t, walletId } = await deskTeam()
+    const asked = book()
+    const r = await review(t, walletId)
+    const rest = TABLES.filter((table) => table !== 'approvals' && table !== 'audit_log')
+    const before = await snapshot(rest)
+    const sent = await post('/api/desk/orders', t, { send: true, review: r.body.review })
+    expect(sent.body).toEqual({ state: 'requested', id: expect.any(String), notBefore: null })
+    expect(asked).toHaveLength(1) // sending asks for no new quote: the terms are the reviewed ones
+    const filed = await orderOf(sent.body.id)
+    expect(filed).toMatchObject({ action: 'order', state: 'pending', requester_seat_id: t.seatId, payload_hash: await data.sha256Hex(filed.payload) })
+    expect(filed.terms).toEqual(r.body.terms)
+    expect(await lastAudit(o.orgId)).toEqual({ action: 'approval.request', actor_id: t.seatId, subject_id: sent.body.id, detail: 'order' })
+    expect((await requestsOf(a)).map((x) => [x.id, x.kind, x.mine, x.words.sell])).toEqual([[sent.body.id, 'order', false, '250000 USDC']])
+    expect((await deskOrders(o))[0]).toMatchObject({ id: sent.body.id, state: 'Pending approval', open: true, mine: false, preparerRole: 'trader', decidedBy: null })
+    expect(await snapshot(rest)).toBe(before)
+    // Refused, and nothing filed: another member's review, a changed review, a review older than 5 minutes, a stale passkey check.
+    const filedNow = await count('approvals', o.orgId)
+    const [body, mac] = r.body.review.split('.')
+    const changed = `${toBase64Url(new TextEncoder().encode(JSON.stringify({ ...JSON.parse(new TextDecoder().decode(fromBase64Url(body))), terms: { ...r.body.terms, buy: { ...r.body.terms.buy, minimum: '1' } } })))}.${mac}`
+    for (const [m, sealed, error] of [[o, r.body.review, 'review_invalid'], [t, changed, 'review_invalid'], [t, 'x', 'review_invalid'], [t, undefined, 'review_invalid'],
+      [t, await seal(testEnv.CHALLENGE_KEY, 'wallet-intent', JSON.parse(new TextDecoder().decode(fromBase64Url(body)))), 'review_invalid']] as const) {
+      expect((await post('/api/desk/orders', m, { send: true, review: sealed })).body, String(error)).toEqual({ error })
+    }
+    now += 5 * MIN + 1
+    await stepUp(t, t.key)
+    expect((await post('/api/desk/orders', t, { send: true, review: r.body.review })).body).toEqual({ error: 'review_expired' })
+    await data.devStaleChecks(db, 'local')
+    expect((await post('/api/desk/orders', t, { send: true, review: (await review(t, walletId)).body.review })).body).toEqual({ error: 'step_up_required' })
+    expect(await count('approvals', o.orgId)).toBe(filedNow)
+    // The route's row asks for no check by itself (the review must stay open), so the handler is the control.
+    expect(routes.find((x) => x.path === '/api/desk/orders')!.fresh).toBeUndefined()
+  })
+
+  it('judge() makes the terms again inside the commit that files them and inside the one that approves them: terms this server would not make, or rows that changed, are refused', async () => {
+    const { o, a, t, walletId } = await deskTeam()
+    book()
+    const terms = (await review(t, walletId)).body.terms as orders.Terms
+    const trader = await actorOf(t, 'trader')
+    const file = (value: unknown) => data.change(db, trader, 'order', data.randomId(), JSON.stringify(value), now)
     const before = await snapshot()
-    expect(await data.change(db, await actorOf(t, 'trader'), 'order.demo', data.randomId(), JSON.stringify(forged), now)).toEqual({ error: 'limit_out_of_band' })
+    for (const [value, error] of [
+      [{ ...terms, buy: { ...terms.buy, minimum: String(BigInt(terms.buy.minimum) - 1n) } }, 'invalid'], [{ ...terms, buy: { ...terms.buy, minimum: String(BigInt(terms.buy.minimum) + 1n) } }, 'invalid'],
+      [{ ...terms, appData: terms.appData.replace('business', 'other') }, 'invalid'], [{ ...terms, appDataHash: `0x${'0'.repeat(64)}` }, 'invalid'], [{ ...terms, fee: { volumeBps: 0, recipient: accounts[2].address } }, 'invalid'],
+      [{ ...terms, sell: { ...terms.sell, token: WETH_OP } }, 'invalid'], [{ ...terms, scheme: 'presign' }, 'wallet_not_linked'], [{ ...terms, note: 'x' }, 'invalid'], [{ ...terms, quoted: '0' }, 'invalid'], [{ ...terms, quoted: 12 }, 'invalid'],
+      [{ ...terms, sell: { ...terms.sell, amount: '5500000000001' } }, 'over_limit'], [{ ...terms, sell: { ...terms.sell, symbol: 'EURC' } }, 'asset_not_permitted'], [{ ...terms, chainId: 130 }, 'chain_not_allowed'],
+      [{ ...terms, slippageBips: 301 }, 'slippage_invalid'], [{ ...terms, validFor: 60 }, 'validity_invalid'], [null, 'invalid'], ['x', 'invalid'],
+      [{ ...terms, label: 'Another name' }, 'wallet_not_linked'], [{ ...terms, wallet: accounts[2].address }, 'wallet_not_linked'],
+    ] as const) expect(await file(value), JSON.stringify(value)?.slice(0, 120)).toEqual({ error })
+    const seat = (set: string) => db.prepare(`UPDATE seats SET ${set} WHERE id = ?`).bind(t.seatId).run()
+    const wallet = (set: string) => db.prepare(`UPDATE wallets SET ${set} WHERE id = ?`).bind(walletId).run()
+    const cases: [string, () => Promise<unknown>, () => Promise<unknown>][] = [
+      ['forbidden', () => seat(`role = 'viewer'`), () => seat(`role = 'trader'`)], ['forbidden', () => seat(`state = 'frozen'`), () => seat(`state = 'active'`)],
+      ['quarantine', () => seat(`quarantine_until = ${now + HOUR}`), () => seat('quarantine_until = NULL')], ['quarantine', () => setOrg(o.orgId, `quarantine_until = ${now + HOUR}`), () => setOrg(o.orgId, 'quarantine_until = NULL')],
+      ['institution_only', () => setOrg(o.orgId, `kind = 'partner'`), () => setOrg(o.orgId, `kind = 'institution'`)], ['org_inactive', () => setOrg(o.orgId, `state = 'frozen'`), () => setOrg(o.orgId, `state = 'active'`)],
+      ['wallet_not_linked', () => wallet(`state = 'unlinked'`), () => wallet(`state = 'linked'`)], ['wallet_not_linked', () => wallet(`kind = 'safe'`), () => wallet(`kind = 'custodian'`)],
+      ['wallet_not_linked', () => wallet(`label = 'Renamed'`), () => wallet(`label = 'Operations Safe'`)], ['wallet_chain', () => wallet('chain_id = 8453'), () => wallet('chain_id = 10')],
+    ]
+    for (const [error, set, undo] of cases) {
+      await set()
+      const during = await snapshot()
+      expect(await file(terms), error).toEqual({ error })
+      expect(await snapshot()).toBe(during)
+      await undo()
+    }
     expect(await snapshot()).toBe(before)
-    // Approval: an order filed at the edge whose stored limit price is moved outside afterwards is not applied.
-    const { id } = (await prepare(t, walletId, { type: 'limit', limitPrice: '3540' })).body
+    // At the approval: the same rows, read again inside the approving commit.
+    const id = (await file(terms) as { id: string }).id
+    const approver = await actorOf(a, 'approver')
+    for (const [error, set, undo] of cases) {
+      await set()
+      // The requester's own quarantine is the approval's first refusal, for every kind of request (M4a).
+      expect(await data.decide(db, approver, id, 'approve', now), error).toBe(error === 'quarantine' && set === cases[2][1] ? 'requester_quarantine' : error)
+      await undo()
+    }
+    // A payload changed after it was filed is not approved.
     const stored = (await row<{ payload: string }>('SELECT payload FROM approvals WHERE id = ?', id))!.payload
-    expect(stored).toContain('3540')
-    const moved = stored.replace(/(limitPrice\\?":\\?")3540/, '$13540.000001')
-    expect(moved).not.toBe(stored)
-    await db.prepare('UPDATE approvals SET payload = ?, payload_hash = ? WHERE id = ?').bind(moved, await data.sha256Hex(moved), id).run()
-    await addKey(a)
-    const answer = await decide(await again(a), id, 'approve')
-    expect(answer.status).not.toBe(200)
-    expect((await approvalOf(id))!.state).toBe('pending')
-    expect(answer.body).toEqual({ error: 'limit_out_of_band' })
+    await db.prepare('UPDATE approvals SET payload = ? WHERE id = ?').bind(JSON.stringify({ value: JSON.stringify({ ...terms, buy: { ...terms.buy, minimum: '1' } }) }), id).run()
+    expect(await data.decide(db, approver, id, 'approve', now)).toBe('invalid')
+    await db.prepare('UPDATE approvals SET payload = ? WHERE id = ?').bind(stored, id).run()
+    expect(await row('SELECT * FROM orders WHERE id = ?', id)).toBeNull()
+    expect(await data.decide(db, approver, id, 'approve', now)).toBe('ok')
+    expect(await row('SELECT org_id, approved_at, uid, link_hash FROM orders WHERE id = ?', id)).toEqual({ org_id: o.orgId, approved_at: now, uid: null, link_hash: null })
+    expect(await lastAudit(o.orgId)).toMatchObject({ action: 'order', actor_id: a.seatId })
+    expect((await deskOrders(t))[0]).toMatchObject({ id, state: 'Approved: waiting for signature', decidedBy: 'A approver' })
   })
 
-  it('the wallet is linked on the chain of the order: another chain is refused at the review, when the order is filed, and at the approval after the fact', async () => {
-    const { a, t, walletId } = await deskTeam()
-    const onBase = await walletRow(t.orgId, someAddress(), { chainId: 8453, label: 'Base wallet' })
-    const onUnichain = await walletRow(t.orgId, someAddress(), { chainId: 130, label: 'Unichain wallet' })
+  it('the role table of an order: Trader, Owner and Admin prepare; the preparer never approves; at most 20 wait; 30 an hour per member', async () => {
+    const { o, a, t, walletId } = await deskTeam()
+    book()
+    for (const role of ['approver', 'compliance', 'viewer']) expect((await review(await colleague(o, role), walletId)).body, role).toEqual({ error: 'forbidden' })
+    const admin = await colleague(o, 'admin')
+    const ids: string[] = []
+    for (const m of [o, admin, t]) ids.push((await prepare(m, walletId)).body.id)
+    expect((await decide(o, ids[0], 'approve')).body).toEqual({ error: 'own_request' })
+    for (const what of ['approve', 'reject'] as const) expect((await decide(t, ids[0], what)).body).toEqual({ error: 'forbidden' })
+    expect((await decide(admin, ids[0], 'approve')).status).toBe(200)
+    expect((await decide(t, ids[2], 'cancel')).status).toBe(200)
+    expect((await decide(a, ids[1], 'reject')).status).toBe(200)
+    expect((await deskOrders(o)).map((x) => x.state)).toEqual(['Cancelled', 'Refused', 'Approved: waiting for signature'])
+    // 20 wait at most; a decided one makes room.
+    for (let i = 0; i < orders.MAX_OPEN_ORDERS; i++) expect((await prepare(i % 2 ? o : admin, walletId, { amount: String(i + 1) })).status).toBe(200)
+    const full = await prepare(t, walletId)
+    expect([full.status, full.body]).toEqual([429, { error: 'too_many_orders' }])
+    // 30 an hour per member, counted when filed: the review counts nothing.
+    now += 7 * DAY + 1
+    await again(t)
+    for (let i = 0; i < orders.ORDERS_PER_HOUR; i++) expect((await decide(t, (await prepare(t, walletId)).body.id, 'cancel')).status, String(i)).toBe(200)
+    expect((await prepare(t, walletId)).body).toEqual({ error: 'order_rate' })
+    expect((await review(t, walletId)).status).toBe(200)
+  })
+
+  it('the signing link: a Trader or a key role, with a fresh passkey check, for an approved order only; one-time, only its SHA-256 stored, a new one replaces the last', async () => {
+    const team = await deskTeam()
+    book()
+    const { o, a, t } = team
+    const pending = (await prepare(t, team.walletId)).body.id
+    expect((await orderLink(t, pending)).status).toBe(404) // not approved yet
+    const id = await approvedOrder(team)
+    const viewer = await colleague(o, 'viewer')
+    expect((await orderLink(viewer, id)).body).toEqual({ error: 'forbidden' })
+    expect((await orderLink(t, id, 'other')).body).toEqual({ error: 'invalid' })
+    expect((await orderLink(t, id, 'cancel')).status).toBe(404) // nothing is open to cancel
+    await data.devStaleChecks(db, 'local')
+    expect((await orderLink(t, id)).body).toEqual({ error: 'step_up_required' })
+    await stepUp(t, t.key)
+    const first = await orderLink(t, id)
+    expect(first.body.link).toMatch(/^http:\/\/127\.0\.0\.1:8787\/sign\/#order\.[A-Za-z0-9_-]{43}$/)
+    expect(await row('SELECT link_hash, link_purpose FROM orders WHERE id = ?', id)).toEqual({ link_hash: await data.sha256Hex(first.token), link_purpose: 'sign' })
+    expect(await snapshot()).not.toContain(first.token)
+    expect(await lastAudit(o.orgId)).toEqual({ action: 'order.link', actor_id: t.seatId, subject_id: id, detail: 'sign' })
+    expect((await orderPage(first.token)).status).toBe(200)
+    // A key role may give one too; the last link replaces the first.
+    await stepUp(a, a.key)
+    const second = await orderLink(a, id)
+    expect((await orderPage(first.token)).body).toEqual({ error: 'link_invalid' })
+    expect((await orderPage(second.token)).status).toBe(200)
+    // After 24 hours the approved terms can no longer be signed: no page, no link, and the blotter says Expired.
+    now += 24 * HOUR
+    expect((await orderPage(second.token)).body).toEqual({ error: 'link_invalid' })
+    await again(t)
+    expect((await orderLink(t, id)).status).toBe(404)
+    expect((await deskOrders(t)).find((x) => x.id === id)!.state).toBe('Expired')
+  })
+
+  it('the signing page: the order in words and as the wallet signs it, built by the server; its expiry is fixed at the first read and stored', async () => {
+    const team = await deskTeam()
+    book()
+    const id = await approvedOrder(team)
+    const { token } = await orderLink(team.t, id)
     const before = await snapshot()
-    // A wallet of Base for an order on Optimism; the Optimism wallet for an order on Unichain; the Unichain wallet for Optimism.
-    for (const [wallet, chainId] of [[onBase, 10], [onBase, 130], [walletId, 130], [onUnichain, 10]] as const) {
-      for (const send of [false, true]) {
-        const answer = await prepare(t, wallet, { chainId, send })
-        expect([answer.status, answer.body], `${chainId} ${send}`).toEqual([409, { error: 'wallet_chain' }])
+    const page = await orderPage(token)
+    const validTo = Math.floor(now / 1000) + 1800
+    const terms = (await orderOf(id)).terms
+    expect(page.body).toMatchObject({ purpose: 'sign', scheme: 'eip712', chainId: 10, wallet: accounts[1].address, validTo, settlement: '0x310784c7FCE12d578dA6f53460777bAc9718B859', relayer: '0x83847EaB41ad9ea43809ce71569eB2e9daF51830', sellToken: USDC_OP, sellAmount: '250000000000' })
+    expect(page.body.typed.message).toEqual({ sellToken: USDC_OP, buyToken: WETH_OP, receiver: accounts[1].address, sellAmount: '250000000000', buyAmount: terms.buy.minimum, validTo, appData: terms.appDataHash, feeAmount: '0', kind: 'sell', partiallyFillable: false, sellTokenBalance: 'erc20', buyTokenBalance: 'erc20' })
+    expect(page.body.typed.domain).toEqual({ name: 'Gnosis Protocol', version: 'v2', chainId: 10, verifyingContract: '0x310784c7FCE12d578dA6f53460777bAc9718B859' })
+    expect(page.body.uid).toBe(uidOf(10, { ...page.body.typed.message, appDataHash: terms.appDataHash, from: accounts[1].address }))
+    expect(page.body.words.valid).toBe(`Until ${new Date(validTo * 1000).toISOString().slice(0, 16).replace('T', ' ')} UTC`)
+    expect(await snapshot()).not.toBe(before)
+    expect(await row('SELECT valid_to FROM orders WHERE id = ?', id)).toEqual({ valid_to: validTo })
+    expect(await lastAudit(team.o.orgId)).toMatchObject({ action: 'order.open', subject_id: id })
+    // Read again later: the same order, the same expiry; nothing more is written.
+    now += 10 * MIN
+    const again2 = await snapshot()
+    expect((await orderPage(token)).body).toEqual(page.body)
+    expect(await snapshot()).toBe(again2)
+    for (const bad of ['x', 'a'.repeat(43), undefined]) expect((await orderPage(bad as string)).body, String(bad)).toEqual({ error: 'link_invalid' })
+    // The organisation frozen, or no longer an institution: the link opens nothing.
+    await setOrg(team.o.orgId, `state = 'frozen'`)
+    expect((await orderPage(token)).body).toEqual({ error: 'link_invalid' })
+  })
+
+  it('send, a key wallet: the server checks the signature, posts the order it built as @ophis/cli does, and records it; one order per approval', async () => {
+    const team = await deskTeam()
+    const asked = book()
+    const id = await approvedOrder(team)
+    const { token } = await orderLink(team.t, id)
+    const page = await orderPage(token)
+    expect((await orderSend(token, '0x' + '1'.repeat(130))).body).toEqual({ error: 'signature_rejected' })
+    expect((await orderSend(token, await accounts[2].signTypedData(page.body.typed))).body).toEqual({ error: 'signature_rejected' })
+    expect((await orderSend(token, 'x')).body).toEqual({ error: 'signature_rejected' })
+    expect(asked.filter((x) => x.url.endsWith('/orders'))).toEqual([])
+    const signature = await accounts[1].signTypedData(page.body.typed)
+    const answer = await orderSend(token, signature)
+    expect(answer.body).toEqual({ state: 'open', uid: page.body.uid })
+    const terms = (await orderOf(id)).terms
+    expect(asked.at(-1)).toEqual({ url: 'https://optimism-mainnet.ophis.fi/api/v1/orders', method: 'POST', body: {
+      sellToken: USDC_OP, buyToken: WETH_OP, receiver: accounts[1].address, sellAmount: '250000000000', buyAmount: terms.buy.minimum, validTo: page.body.validTo, feeAmount: '0', kind: 'sell',
+      partiallyFillable: false, sellTokenBalance: 'erc20', buyTokenBalance: 'erc20', appData: terms.appData, appDataHash: terms.appDataHash, signingScheme: 'eip712', signature, from: accounts[1].address,
+    } })
+    expect(await row('SELECT uid, signature, status, link_hash, sent_at FROM orders WHERE id = ?', id)).toEqual({ uid: page.body.uid, signature, status: 'open', link_hash: null, sent_at: now })
+    expect(await lastAudit(team.o.orgId)).toMatchObject({ action: 'order.send', detail: 'eip712', subject_id: id })
+    expect((await sayOf(team.o))[0]).toBe('Order signed by the wallet and sent to the orderbook')
+    expect((await deskOrders(team.t)).find((x) => x.id === id)).toMatchObject({ state: 'Open', uid: page.body.uid })
+    // A second send of the same approval: refused, nothing posted. A new link is refused too.
+    const n = asked.length
+    expect((await orderSend(token, signature)).body).toEqual({ error: 'link_invalid' })
+    expect((await orderLink(team.t, id)).status).toBe(404)
+    expect(asked.filter((x) => x.method === 'POST' && x.url.endsWith('/orders')).length).toBe(1)
+    expect(asked.length).toBeGreaterThanOrEqual(n)
+  })
+
+  it('send: the wallet still linked on its chain and the organisation active, the expiry fixed; an orderbook that refuses or fails records nothing, and DuplicatedOrder is the same order', async () => {
+    const team = await deskTeam()
+    book()
+    const id = await approvedOrder(team)
+    const { token } = await orderLink(team.t, id)
+    expect((await orderSend(token, '0x')).body).toEqual({ error: 'not_opened' })
+    const page = await orderPage(token)
+    const signature = await accounts[1].signTypedData(page.body.typed)
+    const wallet = (set: string) => db.prepare(`UPDATE wallets SET ${set} WHERE id = ?`).bind(team.walletId).run()
+    for (const [set, undo] of [[`state = 'unlinked'`, `state = 'linked'`], ['chain_id = 8453', 'chain_id = 10'], [`address = '${accounts[2].address.toLowerCase()}'`, `address = '${accounts[1].address.toLowerCase()}'`]]) {
+      await wallet(set)
+      expect((await orderSend(token, signature)).body, set).toEqual({ error: 'wallet_not_linked' })
+      await wallet(undo)
+    }
+    await setOrg(team.o.orgId, `state = 'frozen'`)
+    expect((await orderSend(token, signature)).body).toEqual({ error: 'link_invalid' })
+    await setOrg(team.o.orgId, `state = 'active'`)
+    const before = await snapshot()
+    for (const [answer, error] of [[Response.json({ errorType: 'InsufficientBalance' }, { status: 400 }), 'order_refused'], [Response.json({}, { status: 500 }), 'orderbook_unavailable'],
+      [Response.json('0x' + 'ab'.repeat(56), { status: 201 }), 'orderbook_unavailable']] as const) {
+      book({ twist: (a) => (a.method === 'POST' && a.url.endsWith('/orders') ? answer.clone() : undefined) })
+      expect((await orderSend(token, signature)).body).toEqual({ error })
+    }
+    expect(await snapshot()).toBe(before)
+    // The orderbook already has this very order (a send whose answer was lost): it is recorded.
+    book({ twist: (a) => (a.method === 'POST' && a.url.endsWith('/orders') ? Response.json({ errorType: 'DuplicatedOrder' }, { status: 400 }) : undefined) })
+    expect((await orderSend(token, signature)).body).toEqual({ state: 'open', uid: page.body.uid })
+  })
+
+  it('send: an order of a wallet or a token on a loaded sanctions list is refused before it is sent, and flagged in the log and the blotter', async () => {
+    const team = await deskTeam()
+    for (const [which, address] of [['wallet', accounts[1].address], ['sell', USDC_OP], ['buy', WETH_OP]] as const) {
+      const asked = book()
+      const id = await approvedOrder(team)
+      const { token } = await orderLink(team.t, id)
+      const page = await orderPage(token)
+      await db.batch([db.prepare(`INSERT OR REPLACE INTO sanctions_lists (list, sha256, entries, loaded_at) VALUES ('ofac', ?, 1, ?)`).bind('ab'.repeat(32), now), db.prepare(`INSERT INTO sanctioned_addresses (list, address) VALUES ('ofac', ?)`).bind(address.toLowerCase())])
+      const answer = await orderSend(token, await accounts[1].signTypedData(page.body.typed))
+      await db.batch([db.prepare('DELETE FROM sanctioned_addresses'), db.prepare('DELETE FROM sanctions_lists')])
+      expect([answer.status, answer.body], which).toEqual([403, { error: 'sanctioned_address' }])
+      expect(asked.filter((x) => x.url.endsWith('/orders')), which).toEqual([])
+      expect(await row('SELECT status, uid, link_hash FROM orders WHERE id = ?', id)).toEqual({ status: 'refused', uid: null, link_hash: null })
+      expect(await lastAudit(team.o.orgId)).toEqual({ action: 'order.sanctioned', actor_id: team.walletId, subject_id: id, detail: which })
+      expect((await sayOf(team.o))[0]).toBe('Order refused before it was sent: an address of it is on a loaded sanctions list')
+      expect((await deskOrders(team.t)).find((x) => x.id === id)!.state).toBe('Refused')
+      expect((await orderSend(token, '0x')).body).toEqual({ error: 'link_invalid' })
+    }
+  })
+
+  it('a Safe: quoted and posted as a presign order from the Safe; the page gets no typed data, and the order waits for the Safe until the orderbook sees the presignature', async () => {
+    const team = await deskTeam()
+    const safe = await demoWallet(team.o.orgId, 'Treasury Safe', 'linked', accounts[4].address.toLowerCase(), 'safe')
+    const asked = book()
+    const terms = (await review(team.t, safe)).body.terms
+    expect(terms.scheme).toBe('presign')
+    expect(asked[0].body!.signingScheme).toBe('presign')
+    const id = await approvedOrder({ ...team, walletId: safe })
+    const { token } = await orderLink(team.t, id)
+    const page = await orderPage(token)
+    expect([page.body.scheme, page.body.typed]).toEqual(['presign', null])
+    expect((await orderSend(token)).body).toEqual({ state: 'presignaturePending', uid: page.body.uid })
+    expect(asked.at(-1)!.body).toMatchObject({ signingScheme: 'presign', signature: accounts[4].address.toLowerCase(), from: accounts[4].address })
+    expect(await lastAudit(team.o.orgId)).toMatchObject({ action: 'order.send', detail: 'presign' })
+    book({ state: 'presignaturePending' })
+    expect((await deskOrders(team.t)).find((x) => x.id === id)!.state).toBe('Approved: waiting for signature')
+    book({ state: 'open' })
+    expect((await deskOrders(team.t)).find((x) => x.id === id)!.state).toBe('Open')
+  })
+
+  it('cancel an open order: a key wallet signs the off-chain cancellation, which goes to DELETE /api/v1/orders; a Safe revokes its presignature itself', async () => {
+    const team = await deskTeam()
+    const asked = book()
+    const id = await approvedOrder(team)
+    const { token } = await orderLink(team.t, id)
+    const { page } = await signed(token)
+    const cancel = await orderLink(team.a, id, 'cancel')
+    const c = await orderPage(cancel.token)
+    expect(c.body).toMatchObject({ purpose: 'cancel', uid: page.body.uid })
+    expect(c.body.typed).toEqual({ domain: page.body.typed.domain, types: { EIP712Domain: page.body.typed.types.EIP712Domain, OrderCancellations: [{ name: 'orderUids', type: 'bytes[]' }] }, primaryType: 'OrderCancellations', message: { orderUids: [page.body.uid] } })
+    expect((await orderSend(cancel.token, await accounts[2].signTypedData(c.body.typed))).body).toEqual({ error: 'signature_rejected' })
+    const signature = await accounts[1].signTypedData(c.body.typed)
+    expect((await orderSend(cancel.token, signature)).body).toEqual({ state: 'cancelled' })
+    expect(asked.at(-1)).toEqual({ url: 'https://optimism-mainnet.ophis.fi/api/v1/orders', method: 'DELETE', body: { orderUids: [page.body.uid], signature, signingScheme: 'eip712' } })
+    expect(await row('SELECT status, link_hash FROM orders WHERE id = ?', id)).toEqual({ status: 'cancelled', link_hash: null })
+    expect(await lastAudit(team.o.orgId)).toMatchObject({ action: 'order.cancel', detail: 'key', subject_id: id })
+    expect((await deskOrders(team.t)).find((x) => x.id === id)!.state).toBe('Cancelled')
+    expect((await orderLink(team.t, id, 'cancel')).status).toBe(404) // nothing open is left
+    // A Safe: the page asks the Safe for setPreSignature(uid, false); the server writes the row and asks the orderbook nothing.
+    const safe = await demoWallet(team.o.orgId, 'Treasury Safe', 'linked', accounts[4].address.toLowerCase(), 'safe')
+    const safeId = await approvedOrder({ ...team, walletId: safe })
+    const s = await orderLink(team.t, safeId)
+    await orderPage(s.token)
+    expect((await orderSend(s.token)).body.state).toBe('presignaturePending')
+    const sc = await orderLink(team.t, safeId, 'cancel')
+    expect((await orderPage(sc.token)).body).toMatchObject({ purpose: 'cancel', scheme: 'presign', typed: null, settlement: '0x310784c7FCE12d578dA6f53460777bAc9718B859' })
+    const n = asked.length
+    expect((await orderSend(sc.token)).body).toEqual({ state: 'asked' })
+    expect(asked.length).toBe(n)
+    expect(await lastAudit(team.o.orgId)).toMatchObject({ action: 'order.cancel', detail: 'safe' })
+  })
+
+  it('the state: reading the desk asks the orderbook for at most 10 open orders, the daily run for the rest; a filled order shows its amounts and transaction', async () => {
+    const team = await deskTeam()
+    book()
+    const ids: string[] = []
+    for (let i = 0; i < 12; i++) {
+      const id = await approvedOrder(team, { amount: String(100 + i) })
+      await signed((await orderLink(team.t, id)).token)
+      ids.push(id)
+      if (i % 5 === 4) {
+        now += 7 * DAY + 1 // room for more waiting orders, and a fresh sign-in
+        for (const m of [team.t, team.a]) await again(m)
       }
     }
-    // Inside the commit that files it, without the router.
-    const forged = { ...(demo.quote({ ...TICKET, walletId: onBase }) as object), wallet: 'Base wallet', address: await addressOf(onBase), checks: demo.CHECKS }
-    expect(await data.change(db, await actorOf(t, 'trader'), 'order.demo', data.randomId(), JSON.stringify(forged), now)).toEqual({ error: 'wallet_chain' })
+    const asked = book({ state: 'fulfilled' })
+    await get('/api/desk', team.t)
+    expect(asked.filter((x) => /\/orders\/0x/.test(x.url))).toHaveLength(10)
+    expect(asked.filter((x) => x.url.includes('/trades?orderUid='))).toHaveLength(10)
+    const filled = (await deskOrders(team.t)).filter((x) => x.state === 'Filled')
+    expect(filled.length).toBeGreaterThanOrEqual(10)
+    expect(filled[0]).toMatchObject({ tx: realBook.trades.response[0].txHash, sold: expect.stringMatching(/^\d+$/), bought: expect.stringMatching(/^\d+$/) })
+    // The daily run reads what is left, oldest read first.
+    const daily2 = book({ state: 'expired' })
+    await daily(testEnv, now)
+    expect(daily2.filter((x) => /\/orders\/0x/.test(x.url)).length).toBeLessThanOrEqual(20)
+    expect((await deskOrders(team.t)).filter((x) => x.state === 'Open')).toEqual([])
+    // An order whose expiry passed reads Expired even before the orderbook is read again.
+    expect(orders.stateOf({ state: 'applied', open: false, approvedAt: now, uid: '0x', status: 'open', validTo: Math.floor(now / 1000) }, now)).toBe('Expired')
+    expect(orders.stateOf({ state: 'applied', open: false, approvedAt: now, uid: '0x', status: 'open', validTo: Math.floor(now / 1000) + 1 }, now)).toBe('Open')
+    // An answer the server cannot use changes nothing.
+    book({ twist: (a) => (/\/orders\/0x/.test(a.url) ? Response.json({ status: 'weird', executedSellAmount: '1', executedBuyAmount: '1' }) : undefined) })
+    const before = await snapshot()
+    await get('/api/desk', team.t)
     expect(await snapshot()).toBe(before)
-    // The same chain on both sides passes, on each chain of the desk.
-    expect((await prepare(t, onUnichain, { chainId: 130 })).status).toBe(200)
-    // At the approval: the order was fine when it was filed; the wallet's chain is another one now.
-    const { id } = (await prepare(t, walletId)).body
-    await db.prepare('UPDATE wallets SET chain_id = 8453 WHERE id = ?').bind(walletId).run()
-    await addKey(a)
-    const answer = await decide(await again(a), id, 'approve')
-    expect([answer.status, answer.body]).toEqual([409, { error: 'wallet_chain' }])
-    expect((await approvalOf(id))!.state).toBe('pending')
-    // Back on the chain of the order, the same approval passes.
-    await db.prepare('UPDATE wallets SET chain_id = 10 WHERE id = ?').bind(walletId).run()
-    expect((await decide(a, id, 'approve')).status).toBe(200)
-    expect(dataSource).not.toMatch(/ponytail: the wallet's own chain/)
-    expect(demo.CHECKS).toContain('The wallet is linked to this organisation, on the chain of the order')
-    expect(demo.CHECKS).toContain('A limit price is within 20% of the reference price')
   })
 
-  it('"What each role can do": the row for preparing a demo order carries the second-person mark and the passkey mark', async () => {
+  it('"What each role can do": the order row carries the second-person and passkey marks; the link row the passkey mark; the words of the refusals are on the pages', async () => {
     const o = await owner()
     const { rights } = (await call('GET', '/api/org', { cookie: o.cookie })).body
-    expect(rights.find((x: { can: string }) => x.can.startsWith('Prepare a demo order'))).toMatchObject({ roles: ['owner', 'admin', 'trader'], fresh: true, second: true })
-    // No other row changed its marks: a row without a second person stays without.
+    expect(rights.find((x: { can: string }) => x.can.startsWith('Prepare an order'))).toMatchObject({ roles: ['owner', 'admin', 'trader'], fresh: true, second: true })
+    expect(rights.find((x: { can: string }) => x.can.startsWith('Give the wallet the link'))).toMatchObject({ roles: ['owner', 'admin', 'trader', 'approver', 'compliance'], fresh: true, second: false })
     expect(rights.find((x: { can: string }) => x.can.startsWith('See the desk'))).toMatchObject({ fresh: false, second: false })
-  })
-
-  it('the local "stale" command ages every passkey check and nothing else: local only', async () => {
-    const { t, walletId } = await deskTeam()
-    await expect(data.devStaleChecks(db, 'production')).rejects.toThrow(/local/)
-    expect((await prepare(t, walletId)).status).toBe(200)
-    await data.devStaleChecks(db, 'local')
-    expect((await prepare(t, walletId)).body).toEqual({ error: 'step_up_required' })
-    expect((await get('/api/me', t)).status).toBe(200) // still signed in
-  })
-
-  it('the seed\'s demo wallet sits on a chain the desk permits, and the page asks for the passkey when an order is sent', () => {
-    expect(dataSource).toMatch(/VALUES \(\?, \?, 10, \?, 'custodian', 'Demo wallet', 'linked'/)
-    expect(demo.CHAINS[10]).toBe('Optimism')
-    expect(deskPage).toContain("await (send ? sensitive : api)<OrderBody & { error?: string }>('/api/desk/orders'")
-    expect(deskPage).toContain('Allowed range: {exact(range.limitLow)} to {exact(range.limitHigh)} EUR, within 20% of the reference price.')
-    expect(deskPage).toContain('Sending asks for your passkey.')
-    for (const code of ['limit_out_of_band', 'wallet_chain']) expect(uiSource, code).toContain(`${code}: '`)
-    // Review of P5: a passkey step that is cancelled or fails gives the ticket back, with the words every other step uses.
-    expect(deskPage).toMatch(/await \(send \? sensitive : api\)<[^\n]+\.catch\(\(\) => null\)\n\s+setBusy\(false\)\n\s+if \(!out\) return setProblem\(CANCELLED\)/)
-  })
-
-  it('the desk names the chain of a wallet as it names the chain of the order, so that the two can be compared', async () => {
-    const { t } = await deskTeam()
-    const view = (await get('/api/desk', t)).body
-    expect(view.wallets.map((w: { chain: string }) => w.chain)).toEqual(['Optimism'])
-    expect(view.chains.map((c: { name: string }) => c.name)).toContain(view.wallets[0].chain)
+    for (const code of ['limit_out_of_band', 'wallet_chain', 'slippage_invalid', 'validity_invalid', 'quote_unavailable', 'quote_refused', 'review_expired', 'review_invalid', 'amount_too_small']) expect(uiSource, code).toContain(`${code}: '`)
+    for (const code of ['open', 'presignaturePending', 'cancelled', 'asked', 'link_invalid', 'signature_rejected', 'sanctioned_address', 'wallet_not_linked', 'order_refused', 'orderbook_unavailable', 'already_sent', 'not_opened']) expect(signScript, code).toMatch(new RegExp(`\\b${code}: '`))
+    expect(deskPage).toContain("await (send ? sensitive : api)<OrderBody & { review: string; error?: string }>('/api/desk/orders'")
   })
 })
 
@@ -9615,6 +9792,26 @@ describe('K. the Free plan of Cloudflare Workers', () => {
     const listed = await handle(new Request(`${onboarding.OPERATOR.local}/api/operator/organisations`, { headers: { 'sec-fetch-site': 'same-origin', authorization: `Bearer ${TOKEN}` } }), { ...testEnv, OPERATOR_TOKEN: TOKEN } as Env, () => now)
     const body = (await listed.json()) as { organisations: { wallet: { colour: { level: string } } }[]; more: number }
     expect([body.organisations.length, body.organisations.map((o) => o.wallet.colour.level), body.more >= 17]).toEqual([onboarding.UNDER_REVIEW, ['amber', 'amber', 'amber'], true]) // read on the chain: a Safe not yet in force
+
+    // The real desk: 25 sent orders still open in one institution, each filled at the orderbook. Reading the desk asks for
+    // 10 of them (the order and its trade each); the daily run for 20 more of all organisations.
+    const institution = await owner('Desk load')
+    await setOrg(institution.orgId, `kind = 'institution'`)
+    for (let i = 0; i < 25; i++) {
+      const [id, uid] = [data.randomId(), `0x${data.randomId()}${data.randomId()}${data.randomId()}${data.randomId().slice(0, 16)}`]
+      await db.batch([
+        db.prepare(`INSERT INTO approvals (id, org_id, action, subject_id, payload, payload_hash, requester_seat_id, state, expires_at, created_at) VALUES (?, ?, 'order', ?, ?, '', ?, 'applied', ?, ?)`)
+          .bind(id, institution.orgId, data.randomId(), JSON.stringify({ value: JSON.stringify({ chainId: 10 }) }), institution.seatId, now + DAY, now),
+        db.prepare(`INSERT INTO orders (org_id, id, approved_at, uid, status, valid_to, sent_at) VALUES (?, ?, ?, ?, 'open', ?, ?)`).bind(institution.orgId, id, now, uid, Math.floor(now / 1000) + 3600, now),
+      ])
+      sent.set(uid, { from: accounts[1].address, sellAmount: '1', buyAmount: '1' })
+    }
+    const read = book({ state: 'fulfilled' })
+    await daily(testEnv, now)
+    expect(read.length).toBe(40)
+    await call('GET', '/api/desk', { cookie: institution.cookie })
+    expect(read.length).toBe(50)
+    expect(metered.get('daily run (cron)')!.fetch).toBeGreaterThanOrEqual(40)
 
     // Every route of both tables and every job was driven, and none passed a limit.
     const jobs = [...routes, ...onboarding.operatorRoutes].map((r) => `${r.method} ${r.path}`).concat(JOBS)

@@ -30,6 +30,7 @@ import { mnemonicToAccount } from 'viem/accounts'
 import { publish as publishTxt, start as startDnsStubs } from '../scripts/dns-stub.mjs' // milestone 5: the two local resolvers of "Check DNS"
 import { CONTRACT, PORT as INDEXER_PORT, start as startIndexer } from '../scripts/indexer-stub.mjs' // partner figures: the local stand-in for the rebate indexer
 import { PORT as LIST_PORT, start as startLists } from '../scripts/list-stub.mjs' // M10: the local stand-in for the place where the OFAC list file lives
+import { PORT as ORDERBOOK_PORT, start as startOrderbook } from '../scripts/orderbook-stub.mjs' // the real desk: the local stand-in for the public orderbooks
 
 process.chdir(new URL('..', import.meta.url).pathname)
 const ORIGIN = 'http://localhost:8787'
@@ -57,6 +58,7 @@ check('seed printed an enrolment link', Boolean(link))
 const stopDnsStubs = startDnsStubs() // ports 8790 and 8791
 const stopIndexer = startIndexer() // port 8793
 const stopLists = startLists() // port 8794
+const stopOrderbook = startOrderbook() // port 8795
 // detached: the server gets its own process group, so the whole group can be stopped at the end.
 const serve = (...more) => spawn('node_modules/.bin/wrangler', ['dev', '--persist-to', STATE, '--port', PORT, ...more], { env, detached: true, stdio: 'ignore' })
 const stopServer = async () => {
@@ -500,7 +502,7 @@ try {
     await signing.evaluate(() => { const logo = document.querySelector('.brand img'); return logo.naturalWidth > 0 && new URL(logo.src).pathname.startsWith('/sign/assets/ophis-icon-mono-dark') })
       && await signing.evaluate(() => [...document.fonts].some((font) => font.family.includes('Ophis Inter') && font.status === 'loaded'))
       && fonts.length > 0 && fonts.every((url) => url.startsWith(`${SIGN}/sign/assets/Inter-`)))
-  const shown = await signing.locator('dl.kv').innerText()
+  const shown = await signing.locator('#request dl.kv').innerText()
   check('it shows the action, the site, the organisation id, the chain, the wallet and the expiry as text',
     ['Link this wallet to this organisation', 'localhost', 'OP Mainnet (chain id 10)', key.address, 'UTC'].every((text) => shown.includes(text)) && /[0-9a-f]{32}/.test(shown))
   check('the signing page carries the footer line and fits a phone', await signing.getByText(FOOTER).isVisible() && await both(signing, '16-signing-page'))
@@ -1010,9 +1012,10 @@ try {
     && await on.getByRole('cell', { name: 'Ophis operator: sanctions screening recorded, organisation frozen', exact: true }).isVisible() && !/Result: (hit|review)|\bhit\b/.test(await on.locator('#root').innerText()))
   await applicant.context.close()
 
-  // ---- demo mode: overview, desk and partner figures ----
-  // An institution from "seed --demo": an Owner, a Trader and an Approver, and the linked "Demo wallet".
-  const BANNER = 'Demo data. No order is sent and no funds move. Figures are examples.'
+  // ---- the institution: the real desk (orders on a live quote of the local stand-in orderbook), and the example figures of its overview ----
+  // An institution from "seed --demo": an Owner, a Trader and an Approver, and the linked "Demo wallet" (the address of the
+  // first public test key of anvil, which signs here against the stand-in orderbook only).
+  const BANNER = 'Example figures. The balances and the statement are examples. Your orders below are real.'
   const seeded = (...more) => run('node', ['scripts/dev.mjs', 'seed', ...more, '--persist', STATE])
   const demoSeed = seeded('--demo')
   check('seed --demo says what it made', demoSeed.includes('an institution with one linked wallet named "Demo wallet"'))
@@ -1028,9 +1031,9 @@ try {
   }
   const dana = await firstOwner(demoSeed.match(/http\S+\/#\/enrol\/\S+/)[0])
   await dana.page.getByRole('heading', { name: 'Your position, in one view.' }).waitFor()
-  check('an institution lands on its overview: banner, footer, the total computed from the balances, no approval waiting',
+  check('an institution lands on its overview: the banner of example figures, the footer, the total computed from the balances, no approval and no order yet',
     await dana.page.getByText(BANNER).isVisible() && await dana.page.getByText(FOOTER).isVisible() && await dana.page.getByText('11,363,175.00').first().isVisible()
-    && (await dana.page.locator('[data-waiting]').textContent()) === '0' && await dana.page.getByText('ORD-2611-0142').isVisible())
+    && (await dana.page.locator('[data-waiting]').textContent()) === '0' && await dana.page.getByText('No order yet. Orders are prepared on the desk.').isVisible())
   await toOrganisation(dana.page)
   await secondKey(dana)
   async function inviteAt(who, name, role) {
@@ -1072,11 +1075,11 @@ try {
   const desk = (who) => open(who, 'desk', 'Order blotter')
   await desk(tess)
   const ticket = tess.page.locator('form.ticket')
-  check('the desk shows the banner, the ticket with the linked wallet, the permitted assets as illustrative, and the three steps',
-    await tess.page.getByText(BANNER).isVisible() && await ticket.getByLabel('Settle from').locator('option', { hasText: 'Demo wallet' }).count() === 1
-    && await tess.page.getByText('Illustrative. Each token is checked against the ESMA register before launch').isVisible()
-    && await tess.page.getByText('Signing in the wallet is not part of this demo.').isVisible() && await ticket.getByText('Nothing is signed at this step.').isVisible()
-    && (await tess.page.locator('table.t').first().locator('tbody tr').allTextContents()).map((row) => row.match(/^(ETH|USDC|EURCV|EURC|EURe)/)?.[1]).join() === 'ETH,USDC,EURC,EURe,EURCV')
+  const assetRows = (await tess.page.locator('section', { has: tess.page.getByRole('heading', { name: 'Permitted assets' }) }).locator('tbody tr').allTextContents())
+  check('the desk shows the ticket with the linked wallet, the permitted assets by chain, the three steps, and no demo banner',
+    await ticket.getByLabel('Settle from').locator('option', { hasText: 'Demo wallet' }).count() === 1 && !(await tess.page.getByText(BANNER).count())
+    && await tess.page.getByText('Each is listed on a chain where two independent sources agree on its address.').isVisible() && assetRows.length === 13 && assetRows.filter((r) => r.includes('OP Mainnet')).length === 2
+    && await tess.page.getByText('The Safe owners or your custodian sign on the signing page. Ophis cannot.').isVisible() && await ticket.getByText('Nothing is signed at this step.').isVisible())
   check('at phone width the ticket gives way to "Use a larger screen", the blotter stays, and nothing scrolls sideways', await both(tess.page, '47-desk-ticket')
     && await (async () => {
       await tess.page.setViewportSize({ width: 390, height: 844 })
@@ -1084,48 +1087,39 @@ try {
       await tess.page.setViewportSize({ width: 1440, height: 900 })
       return ok && await ticket.isVisible() && !(await tess.page.getByText('Use a larger screen.').isVisible())
     })())
-  // A limit order: the ticket shows the allowed range, which is the server's (20% around its reference price).
-  const eth = (await tess.page.evaluate(() => fetch('/api/desk').then((response) => response.json()))).assets.find((a) => a.symbol === 'ETH')
-  const grouped = (text) => text.replace(/\B(?=(\d{3})+\.)/g, ',')
+  // A limit order: its price is units of the asset bought per unit sold, within 20% of the live quote.
+  await ticket.getByLabel('Amount to sell').fill('1')
   await ticket.getByLabel('Limit', { exact: true }).check()
-  check('a limit order shows the allowed range of the limit price, as the server gives it',
-    Number(eth.limitLow) === Number(eth.eur) * 0.8 && Number(eth.limitHigh) === Number(eth.eur) * 1.2
-    && await ticket.getByText(`Allowed range: ${grouped(eth.limitLow)} to ${grouped(eth.limitHigh)} EUR, within 20% of the reference price.`).isVisible())
-  check('a chain on which no wallet is linked is switched off on the ticket, and the ticket says why',
-    await ticket.getByLabel('Unichain', { exact: true }).isDisabled() && await ticket.getByLabel('Optimism', { exact: true }).isEnabled() && await ticket.getByText('No wallet is linked on Unichain.').isVisible())
-  await ticket.getByLabel(/Limit price/).fill(`${eth.limitHigh.split('.')[0]}.000001`)
+  await ticket.getByLabel('Limit price (USDC per WETH)').fill('1')
   await ticket.getByRole('button', { name: 'Review order' }).click()
-  await tess.page.getByText('The limit price is outside the allowed range').waitFor()
-  check('a limit price one unit above the range is refused, and the ticket with the range fits the screenshots', await both(tess.page, '54-desk-limit-range'))
-  await ticket.getByLabel(/Limit price/).fill(eth.limitHigh)
-  await ticket.getByRole('button', { name: 'Review order' }).click()
-  await tess.page.locator('[data-step="review"]').getByText(`Limit, at ${grouped(eth.limitHigh)} EUR per ETH`).waitFor()
-  await tess.page.getByRole('button', { name: 'Back to the ticket' }).click()
+  await tess.page.getByText('The limit price is outside the allowed range: within 20% of the live quote').waitFor()
+  check('a limit price far from the live quote is refused, and the ticket fits the screenshots', await both(tess.page, '54-desk-limit-range'))
   await ticket.getByLabel('Market', { exact: true }).check()
   await ticket.getByLabel('Amount to sell').fill('1e9')
   await ticket.getByRole('button', { name: 'Review order' }).click()
   await tess.page.getByText('Enter the amount as a plain number above zero').waitFor()
-  await ticket.getByLabel('Amount to sell').fill('250000')
-  // Five minutes pass (the local command): every passkey check is stale. The estimate needs none; sending asks for the passkey.
+  await ticket.getByLabel('Amount to sell').fill('1')
+  // Five minutes pass (the local command): every passkey check is stale. The review needs none; sending asks for the passkey.
   check('the stale command aged the passkey checks', run('node', ['scripts/dev.mjs', 'stale', '--persist', STATE]).includes('Every passkey check is stale'))
   const orderCalls = []
   tess.page.on('request', (request) => orderCalls.push(`${request.method()} ${new URL(request.url()).pathname}`))
   await ticket.getByRole('button', { name: 'Review order' }).click()
   const review = tess.page.locator('[data-step="review"]')
   await review.getByRole('heading', { name: 'Review order' }).waitFor()
-  check('the review step shows the server\'s estimate and says that nothing is signed',
-    await review.getByText('84.7372 ETH').isVisible() && await review.getByText('250,000.00 EUR', { exact: true }).isVisible() && await review.getByText('Fee, of the volume').isVisible() && await review.locator('tfoot').getByText('25.00').isVisible()
-    && await review.getByText('Nothing is signed at this step.').isVisible() && await review.getByText('Example figures. The real cost of an order is shown before it is signed.').isVisible()
-    && await both(tess.page, '48-desk-review'))
-  const SENTENCE = 'Sell 250,000.00 EURC for ETH, market, Optimism, from Demo wallet'
-  check('the estimate asked for no passkey', orderCalls.join() === 'POST /api/desk/orders' && await review.getByText('Sending asks for your passkey.').isVisible())
+  const reviewed = await review.locator('dl.kv').innerText()
+  check('the review step shows the server\'s terms from the live quote, the fee, the wallet that receives, and says that nothing is signed',
+    ['1 WETH', 'at least ', ' USDC', 'Market, slippage 0.5%', 'OP Mainnet', '30 minutes after signing', '0.01% of the volume', 'The wallet receives what is bought.'].every((text) => reviewed.includes(text))
+    && await review.getByText('Nothing is signed at this step.').isVisible() && await review.getByText(/live quote of the orderbook/).isVisible() && await both(tess.page, '48-desk-review'))
+  const least = /at least (\S+) USDC/.exec(reviewed)[1]
+  const SENTENCE = `Sell 1 WETH for at least ${least} USDC, market, OP Mainnet, from Demo wallet`
+  check('the review asked for no passkey', orderCalls.join() === 'POST /api/desk/orders' && await review.getByText('Sending asks for your passkey.').isVisible())
   await review.getByRole('button', { name: 'Send for approval' }).click()
   await tess.page.getByText('Sent for approval.').waitFor()
   check('sending the order asked for the passkey first: refused, a passkey check, then sent',
     orderCalls.slice(1, 5).join() === 'POST /api/desk/orders,POST /api/stepup/start,POST /api/stepup/finish,POST /api/desk/orders')
   const blotter = (who) => who.page.locator('section', { has: who.page.getByRole('heading', { name: 'Order blotter' }) }).locator('tbody tr')
-  check('the order is sent for approval, reads in words, and is the first row of the blotter with its real state',
-    await tess.page.getByText(new RegExp(`${SENTENCE} \\(0x[0-9a-fA-F]{4}\\.{3}[0-9a-fA-F]{4}\\)\\.`)).isVisible() && /^ORD-[0-9a-f]{8}.*Pending approval/.test(await blotter(tess).first().textContent()) && (await blotter(tess).count()) === 8)
+  check('the order is sent for approval, reads in words, and is the one row of the blotter with its real state',
+    await tess.page.getByText(new RegExp(`${SENTENCE.replace(/\./g, '\\.')} \\(0x[0-9a-fA-F]{4}\\.{3}[0-9a-fA-F]{4}\\)\\.`)).isVisible() && /^ORD-[0-9a-f]{8}.*Pending approval/.test(await blotter(tess).first().textContent()) && (await blotter(tess).count()) === 1)
   await arrive(tess, false)
   check('the Trader sees the own request under Approvals, with no way to approve it', await tess.page.getByText(SENTENCE).first().isVisible()
     && await tess.page.getByRole('button', { name: 'Cancel request' }).isVisible() && (await tess.page.getByRole('button', { name: 'Approve' }).count()) === 0)
@@ -1134,51 +1128,90 @@ try {
   await arrive(abe, false)
   const card = abe.page.locator('article.appr', { hasText: SENTENCE })
   await card.getByRole('button', { name: 'Review' }).click()
-  check('the Approver reads the order in words, its estimate, who asked, and that nothing is sent', await card.getByRole('heading', { name: 'Demo order' }).isVisible()
-    && await card.getByText('Requested by Tess Trader (Trader)').first().isVisible() && await card.getByText('Demo: approving records the decision and sends nothing.').isVisible()
-    && await card.locator('dl.kv dd', { hasText: 'Approved. Not sent: demo' }).isVisible() && /^0x[0-9a-fA-F]{40}$/.test(await card.locator('dl.kv .mono').textContent()) && await both(abe.page, '50-order-approval', 'article.appr >> nth=0'))
+  check('the Approver reads the order in words, who asked, and that the wallet signs it within 24 hours', await card.getByRole('heading', { name: 'Order' }).isVisible()
+    && await card.getByText('Requested by Tess Trader (Trader)').first().isVisible() && await card.getByText(/the wallet signs these terms within 24 hours/).isVisible()
+    && /^0x[0-9a-fA-F]{40}$/.test(await card.locator('dl.kv .mono').textContent()) && await both(abe.page, '50-order-approval', 'article.appr >> nth=0'))
   await card.getByRole('button', { name: 'Approve' }).click()
   await card.waitFor({ state: 'detached' })
   await desk(tess)
-  check('after the approval the blotter says "Approved. Not sent: demo"', (await blotter(tess).first().textContent()).includes('Approved. Not sent: demo'))
+  check('after the approval the blotter says "Approved: waiting for signature"', (await blotter(tess).first().textContent()).includes('Approved: waiting for signature'))
   await blotter(tess).first().getByRole('button', { name: /Open the record of ORD-/ }).click()
   const record = tess.page.locator('#record')
   await record.waitFor()
-  check('the record of the order: who prepared it, the ticket, the checks, the estimate, who decided, and no execution',
+  await record.getByRole('button', { name: 'Signing link' }).click()
+  const orderLink = await record.getByLabel('Link for the wallet').inputValue()
+  check('the record of the order: who prepared it, its terms, who approved it, until when it can be signed, and a one-time signing link after a passkey check',
     await record.getByText(SENTENCE).isVisible() && await record.getByText(/Tess Trader \(Trader\) on 20\d\d-/).isVisible() && await record.getByText(/Approved by Abe Approver on 20\d\d-/).isVisible()
-    && await record.getByText('Execution: none, demo').isVisible() && (await record.locator('.checks li').count()) === 8 && await record.getByText('The wallet is linked to this organisation, on the chain of the order').isVisible() && await record.getByText('A limit price is within 20% of the reference price').isVisible()
-    && await record.getByText('84.7372 ETH').isVisible() && await record.getByText('Example figures. The real cost of an order is shown before it is signed.').isVisible()
-    && await both(tess.page, '49-desk-record', '#record'))
+    && await record.getByText('Sign before').isVisible() && /^http:\/\/127\.0\.0\.1:8787\/sign\/#order\.[A-Za-z0-9_-]{43}$/.test(orderLink) && await both(tess.page, '49-desk-record', '#record'))
   await tess.page.setViewportSize({ width: 390, height: 844 })
-  check('at phone width the blotter and the record stay usable', await record.getByText('Execution: none, demo').isVisible() && await blotter(tess).first().getByRole('button', { name: /Open the record of ORD-/ }).isVisible())
+  check('at phone width the blotter and the record stay usable', await record.getByText(SENTENCE).isVisible() && await blotter(tess).first().getByRole('button', { name: /Open the record of ORD-/ }).isVisible())
   await tess.page.setViewportSize({ width: 1440, height: 900 })
 
+  // The wallet's holder opens the link: the test key behind a fake provider. Its allowance is short, so it approves the exact amount first.
+  const signer = mnemonicToAccount('test test test test test test test test test test test junk')
+  const walletCalls = []
+  const holderOfDesk = await browser.newContext({ viewport: { width: 1440, height: 900 }, reducedMotion: 'reduce' })
+  await holderOfDesk.exposeFunction('walletCall', async (method, params) => {
+    walletCalls.push([method, params])
+    return method === 'eth_requestAccounts' ? [signer.address] : method === 'eth_call' ? `0x${'0'.repeat(64)}` : method === 'eth_sendTransaction' ? `0x${'ab'.repeat(32)}`
+      : method === 'eth_getTransactionReceipt' ? { status: '0x1' } : method === 'eth_signTypedData_v4' ? signer.signTypedData(JSON.parse(params[1])) : null
+  })
+  await holderOfDesk.addInitScript(() => { window.ethereum = { request: ({ method, params }) => window.walletCall(method, params) } })
+  const signOrder = await holderOfDesk.newPage()
+  const offOrigin = []
+  signOrder.on('request', (request) => request.url().startsWith(`${SIGN}/`) || offOrigin.push(request.url()))
+  signOrder.on('console', (message) => /content security policy|refused to/i.test(message.text()) && violations.push(message.text()))
+  await signOrder.goto(orderLink)
+  await signOrder.getByRole('heading', { name: 'The order the wallet will sign' }).waitFor()
+  const fields = await signOrder.locator('#order dl.kv').innerText()
+  check('the signing page shows the order in words, built by the server: amounts, chain, the wallet that receives, validity, fee, order id',
+    ['1 WETH', `at least ${least} USDC`, 'OP Mainnet', `Demo wallet (${signer.address})`, 'Until ', ' UTC', '0.01% of the volume'].every((text) => fields.includes(text)) && /0x[0-9a-f]{112}/.test(fields) && await both(signOrder, '66-sign-order'))
+  await signOrder.getByRole('button', { name: 'Sign with the wallet in this browser' }).click()
+  await signOrder.getByText('Signed and sent. The order is open on the orderbook').waitFor()
+  const approval = walletCalls.find(([method]) => method === 'eth_sendTransaction')?.[1][0]
+  check('the wallet was asked for its account, the chain, the allowance, an approval of the exact amount and its receipt, then one typed signature',
+    walletCalls.map(([method]) => method).join() === 'eth_requestAccounts,wallet_switchEthereumChain,eth_call,eth_sendTransaction,eth_getTransactionReceipt,eth_signTypedData_v4'
+    && approval.to === '0x4200000000000000000000000000000000000006' && approval.data === `0x095ea7b3${'83847eab41ad9ea43809ce71569eb2e9daf51830'.padStart(64, '0')}${(10n ** 18n).toString(16).padStart(64, '0')}`
+    && await both(signOrder, '67-order-sent'))
+  check(`the signing page of an order asked nothing of another origin (${offOrigin.length})`, offOrigin.length === 0)
+  await signOrder.reload()
+  await signOrder.getByText('This link is not valid any more').waitFor()
+  check('the link works once', true)
+  await holderOfDesk.close()
+  await desk(tess)
+  check('the blotter says "Open" once the orderbook has it', (await blotter(tess).first().textContent()).includes('Open'))
+  await fetch(`http://127.0.0.1:${ORDERBOOK_PORT}/stub/fulfilled`)
+  await desk(tess)
+  await blotter(tess).first().getByRole('button', { name: /Open the record of ORD-/ }).click()
+  check('once the orderbook says it is filled, the desk reads it: "Filled", the order id, the amounts and the transaction',
+    (await blotter(tess).first().textContent()).includes('Filled') && await record.getByText('Order id').isVisible() && await record.getByText('Transaction').isVisible() && await both(tess.page, '68-desk-filled', '#record'))
+
   // The same for an order the Approver refuses.
-  await ticket.getByLabel('Amount to sell').fill('1000.123456') // every decimal a member typed is shown, never cut
+  await ticket.getByLabel('Amount to sell').fill('0.123456789012345678') // every decimal a member typed is kept
   await ticket.getByRole('button', { name: 'Review order' }).click()
   await review.getByRole('button', { name: 'Send for approval' }).click()
   await tess.page.getByText('Sent for approval.').waitFor()
   await arrive(abe, false)
-  const refusedCard = abe.page.locator('article.appr', { hasText: 'Sell 1,000.123456 EURC for ETH' })
+  const refusedCard = abe.page.locator('article.appr', { hasText: 'Sell 0.123456789012345678 WETH for at least' })
   await refusedCard.getByRole('button', { name: 'Reject' }).click()
   await refusedCard.waitFor({ state: 'detached' })
   await desk(tess)
   await blotter(tess).first().getByRole('button', { name: /Open the record of ORD-/ }).click()
   check('a refused order shows as refused in the blotter and in its record, with who refused it',
-    (await blotter(tess).first().textContent()).includes('Refused') && await record.getByText(/Refused by Abe Approver on 20\d\d-/).isVisible() && await record.getByText('Sell 1,000.123456 EURC for ETH, market, Optimism, from Demo wallet').isVisible()
-    && (await blotter(tess).nth(1).textContent()).includes('Approved. Not sent: demo') && (await blotter(tess).nth(2).textContent()).includes('Example'))
+    (await blotter(tess).first().textContent()).includes('Refused') && await record.getByText(/Refused by Abe Approver on 20\d\d-/).isVisible() && await record.getByText(/Sell 0\.123456789012345678 WETH for at least/).isVisible()
+    && (await blotter(tess).nth(1).textContent()).includes('Filled'))
 
   // One CSV, downloaded and read back.
   const [orderFile] = await Promise.all([tess.page.waitForEvent('download'), tess.page.locator('section', { has: tess.page.getByRole('heading', { name: 'Order blotter' }) }).getByRole('button', { name: 'Export CSV' }).click()])
   const orderLines = readFileSync(await orderFile.path(), 'utf8').split('\r\n').filter(Boolean)
-  check('the export of the blotter downloads: named ophis-demo-, the own orders first with their real state, every row with source = demo',
-    /^ophis-demo-orders-\d{4}-\d\d-\d\d\.csv$/.test(orderFile.suggestedFilename()) && orderLines[0].endsWith(',"Status","source"') && orderLines.length === 10 && orderLines.slice(1).every((row) => row.endsWith(',"demo"'))
-    && orderLines[1].includes('"1000.123456"') && orderLines[1].includes('"Refused"') && orderLines[2].includes('"250000"') && orderLines[2].includes('"Approved. Not sent: demo"') && orderLines[3].startsWith('"ORD-2611-0142"'))
+  check('the export of the blotter downloads: named ophis-desk-, the orders with their real state, every row with source = live',
+    /^ophis-desk-orders-\d{4}-\d\d-\d\d\.csv$/.test(orderFile.suggestedFilename()) && orderLines[0].endsWith(',"Transaction","source"') && orderLines.length === 3 && orderLines.slice(1).every((row) => row.endsWith(',"live"'))
+    && orderLines[1].includes('"0.123456789012345678"') && orderLines[1].includes('"Refused"') && orderLines[2].includes('"Filled"') && /"0x[0-9a-f]{64}","live"$/.test(orderLines[2]))
 
   await open(tess, 'overview', 'Your position, in one view.')
   const recent = tess.page.locator('section', { has: tess.page.getByRole('heading', { name: 'Recent orders' }) }).locator('tbody tr')
-  check('the institution overview: tiles, balances by wallet, the own orders first with their real state, then examples, the fee statement',
-    (await recent.first().textContent()).includes('Refused') && (await recent.nth(1).textContent()).includes('Approved. Not sent: demo') && (await recent.nth(2).textContent()).includes('Example')
+  check('the institution overview: the example tiles and balances, the own orders with their real state, the example fee statement',
+    (await recent.first().textContent()).includes('Refused') && (await recent.nth(1).textContent()).includes('Filled') && (await recent.count()) === 2
     && await tess.page.getByText('Treasury Safe').isVisible() && await tess.page.getByText('Example wallets and balances, not your linked wallets.').isVisible() && await tess.page.getByRole('heading', { name: 'Monthly fee statement' }).isVisible() && await tess.page.getByText('17,920,000.00').first().isVisible()
     && await both(tess.page, '45-overview-institution'))
   for (const who of [dana, tess, abe]) await who.context.close()
@@ -1461,7 +1494,7 @@ try {
   if (violations.length) console.error(violations.join("\n"))
   check(`no policy violation in the browser (${violations.length})`, violations.length === 0)
   check(`no request left the origin (${foreign.length})`, foreign.length === 0)
-  console.log('\nEnd-to-end run passed. Screenshots in .shots/: 01-signin to 65-overview-partner-sanctioned')
+  console.log('\nEnd-to-end run passed. Screenshots in .shots/: 01-signin to 68-desk-filled')
 } catch (error) {
   console.error(error.message)
   process.exitCode = 1
@@ -1469,6 +1502,7 @@ try {
   stopDnsStubs()
   stopIndexer()
   stopLists()
+  await stopOrderbook()
   await browser?.close()
   await stopServer()
 }

@@ -3,12 +3,16 @@
 // of the allow-list (chain.ts, SAFES) and compares code hash, slot 0 and fallback handler with that list; then it asks
 // the server's own verifier and Safe reads about a real 2 of 3 Safe 1.4.1, and runs a whole last-Owner recovery on it.
 // Keys: the public test accounts of anvil. If the public endpoint cannot be reached, it says so and checks nothing.
+// The real desk, last: on an anvil fork of each wallet chain (1, 10, 8453, 42161), the settlement and the vault relayer
+// of orders.ts against the contracts themselves, the order id of a signed order as the settlement derives it in a real
+// settle, a presignature for the order id the server computed, and Multicall3.
 import { execFileSync, spawn } from 'node:child_process'
 import { randomBytes } from 'node:crypto'
 import { rmSync } from 'node:fs'
-import { concat, createPublicClient, createWalletClient, encodeFunctionData, hashTypedData, http, keccak256, parseAbi, zeroAddress } from 'viem'
+import { concat, createPublicClient, createTestClient, createWalletClient, decodeEventLog, domainSeparator, encodeAbiParameters, encodeFunctionData, hashTypedData, http, keccak256, parseAbi, zeroAddress } from 'viem'
 import { mnemonicToAccount } from 'viem/accounts'
-import { optimism } from 'viem/chains'
+import { arbitrum, base, mainnet, optimism } from 'viem/chains'
+import * as orders from '../src/server/orders.ts'
 import { colour, SAFES, safeState, verify } from '../src/server/chain.ts'
 import { typedLink, typedProof } from '../src/server/typed.ts'
 import { getPlatformProxy } from 'wrangler'
@@ -36,9 +40,10 @@ const check = (what, ok) => {
   if (!ok) throw new Error(`FAILED: ${what}`)
   console.log(`ok  ${what}`)
 }
-const chainId = (url) => fetch(url, { method: 'POST', headers: { 'content-type': 'application/json' }, body: '{"jsonrpc":"2.0","id":1,"method":"eth_chainId","params":[]}', signal: AbortSignal.timeout(5000) })
+const chainId_ = (url) => fetch(url, { method: 'POST', headers: { 'content-type': 'application/json' }, body: '{"jsonrpc":"2.0","id":1,"method":"eth_chainId","params":[]}', signal: AbortSignal.timeout(5000) })
   .then((response) => response.json()).then((answer) => answer.result, () => null)
 
+const chainId = chainId_
 if ((await chainId(FORK)) !== '0xa') {
   console.error(`The public endpoint ${FORK} could not be reached. Nothing was checked.`)
   process.exit(1)
@@ -202,7 +207,79 @@ try {
     await proxy.dispose()
     rmSync(STATE, { recursive: true, force: true })
   }
-  console.log('The real-chain check passed.')
 } finally {
   anvil.kill()
 }
+
+// ---- the real desk, on a fork of each wallet chain ----
+const GPV2 = parseAbi([
+  'function domainSeparator() view returns (bytes32)', 'function vaultRelayer() view returns (address)', 'function authenticator() view returns (address)',
+  'function setPreSignature(bytes orderUid, bool signed)', 'function preSignature(bytes orderUid) view returns (uint256)',
+  'function settle(address[] tokens, uint256[] clearingPrices, (uint256 sellTokenIndex, uint256 buyTokenIndex, address receiver, uint256 sellAmount, uint256 buyAmount, uint32 validTo, bytes32 appData, uint256 feeAmount, uint256 flags, uint256 executedAmount, bytes signature)[] trades, (address target, uint256 value, bytes callData)[][3] interactions)',
+  'event Trade(address indexed owner, address sellToken, address buyToken, uint256 sellAmount, uint256 buyAmount, uint256 feeAmount, bytes orderUid)',
+  'function manager() view returns (address)', 'function addSolver(address solver)',
+  'function deposit() payable', 'function approve(address spender, uint256 amount) returns (bool)', 'function balanceOf(address owner) view returns (uint256)',
+])
+const MULTICALL3 = '0xcA11bde05977b3631167028862bE2a173976CA11'
+const PRE_SIGNED = BigInt(keccak256(new TextEncoder().encode('GPv2Signing.Scheme.PreSign')))
+const FORKS = { 1: [mainnet, 'https://ethereum-rpc.publicnode.com'], 10: [optimism, 'https://mainnet.optimism.io'], 8453: [base, 'https://mainnet.base.org'], 42161: [arbitrum, 'https://arb1.arbitrum.io/rpc'] }
+for (let i = 0; i < 20 && (await chainId_(RPC)); i++) await new Promise((resolve) => setTimeout(resolve, 250)) // the fork of OP Mainnet has stopped
+const [owner, solver] = [1, 2].map((addressIndex) => mnemonicToAccount('test test test test test test test test test test test junk', { addressIndex }))
+for (const [id, [viemChain, fork]] of Object.entries(FORKS)) {
+  const chainId = Number(id)
+  const hex = `0x${chainId.toString(16)}`
+  if ((await chainId_(fork)) !== hex) {
+    console.error(`The public endpoint ${fork} could not be reached. Nothing more was checked.`)
+    process.exit(1)
+  }
+  const node = spawn('anvil', ['--fork-url', fork, '--port', '8546', '--silent', '--compute-units-per-second', '60', '--retries', '10', '--fork-retry-backoff', '1500', '--no-storage-caching'], { stdio: 'ignore' })
+  try {
+    for (let i = 0; i < 60 && (await chainId_(RPC)) !== hex; i++) await new Promise((resolve) => setTimeout(resolve, 500))
+    const name = viemChain.name
+    check(`${name}: anvil runs as a fork`, (await chainId_(RPC)) === hex)
+    const pub = createPublicClient({ chain: viemChain, transport: http(RPC) })
+    const test = createTestClient({ chain: viemChain, mode: 'anvil', transport: http(RPC) })
+    const { settlement, relayer } = orders.CHAINS[chainId]
+    const read = (functionName, args = [], address = settlement) => pub.readContract({ address, abi: GPV2, functionName, args })
+    check(`${name}: the server's domain separator is the settlement's domainSeparator()`, (await read('domainSeparator')) === domainSeparator({ domain: orders.domainOf(chainId) }))
+    check(`${name}: the vault relayer is the settlement's vaultRelayer()`, (await read('vaultRelayer')) === relayer)
+    check(`${name}: Multicall3 has code at ${MULTICALL3}`, ((await pub.getCode({ address: MULTICALL3 })) ?? '0x').length > 2)
+
+    // A limit order of the server's own terms: 0.01 WETH for at least 1 unit of USDC, signed by an anvil key.
+    const { WETH, USDC } = orders.ASSETS[chainId]
+    const atTime = Number((await pub.getBlock()).timestamp)
+    const ticket = orders.ticket({ type: 'limit', chainId, walletId: 'w', sell: 'WETH', buy: 'USDC', amount: '0.01', limitPrice: '0.0001', validFor: 1800 })
+    const terms = orders.terms(ticket, { id: 'w', label: 'Key wallet', address: owner.address, kind: 'custodian' }, 1n)
+    const built = orders.gpv2(terms, atTime + 1800)
+    const signature = await owner.signTypedData(built.typed)
+    // The owner wraps and approves exactly the amount sold, as the signing page does; a solver is added; the settlement gets 1 unit of USDC.
+    const as = (account) => createWalletClient({ account, chain: viemChain, transport: http(RPC) })
+    for (const a of [owner, solver]) await test.setBalance({ address: a.address, value: 10n ** 20n })
+    const mined = async (hash) => (await pub.waitForTransactionReceipt({ hash })).status === 'success'
+    check(`${name}: the owner wraps and approves the exact amount to the vault relayer`, await mined(await as(owner).writeContract({ address: WETH.token, abi: GPV2, functionName: 'deposit', value: 10n ** 16n }))
+      && await mined(await as(owner).writeContract({ address: WETH.token, abi: GPV2, functionName: 'approve', args: [relayer, 10n ** 16n] })))
+    const manager = await read('manager', [], await read('authenticator'))
+    await test.impersonateAccount({ address: manager })
+    await test.setBalance({ address: manager, value: 10n ** 20n })
+    await mined(await createWalletClient({ account: manager, chain: viemChain, transport: http(RPC) }).writeContract({ address: await read('authenticator'), abi: GPV2, functionName: 'addSolver', args: [solver.address] }))
+    // A balance of 1 unit: the slot of the token's balance map is found by trying the first 20.
+    for (let slot = 0n; slot < 20n && (await read('balanceOf', [settlement], USDC.token)) === 0n; slot++) {
+      await test.setStorageAt({ address: USDC.token, index: keccak256(encodeAbiParameters([{ type: 'address' }, { type: 'uint256' }], [settlement, slot])), value: `0x${'1'.padStart(64, '0')}` })
+    }
+    const m = built.message
+    const trade = { sellTokenIndex: 0n, buyTokenIndex: 1n, receiver: m.receiver, sellAmount: BigInt(m.sellAmount), buyAmount: BigInt(m.buyAmount), validTo: m.validTo, appData: m.appData, feeAmount: 0n, flags: 0n, executedAmount: 0n, signature }
+    const receipt = await pub.waitForTransactionReceipt({ hash: await as(solver).writeContract({ address: settlement, abi: GPV2, functionName: 'settle', args: [[WETH.token, USDC.token], [1n, 10n ** 16n], [trade], [[], [], []]] }) })
+    const traded = receipt.logs.filter((l) => l.address.toLowerCase() === settlement.toLowerCase()).map((l) => { try { return decodeEventLog({ abi: GPV2, ...l }) } catch { return null } }).find((e) => e?.eventName === 'Trade')
+    check(`${name}: a real settle of the order an anvil key signed derives the order id the server computed`, receipt.status === 'success' && traded?.args.orderUid === built.uid)
+
+    // A presign order (a Safe's terms; here an anvil key is its owner): setPreSignature from the owner, for the server's order id.
+    const safeTerms = orders.terms({ ...ticket, limitPrice: '0.0002' }, { id: 'w', label: 'Safe', address: owner.address, kind: 'safe' }, 2n)
+    const presigned = orders.gpv2(safeTerms, atTime + 1800)
+    check(`${name}: setPreSignature from the owner sets preSignature for the order id the server computed`, safeTerms.scheme === 'presign'
+      && await mined(await as(owner).writeContract({ address: settlement, abi: GPV2, functionName: 'setPreSignature', args: [presigned.uid, true] })) && (await read('preSignature', [presigned.uid])) === PRE_SIGNED)
+  } finally {
+    node.kill()
+    for (let i = 0; i < 20 && (await chainId_(RPC)); i++) await new Promise((resolve) => setTimeout(resolve, 250))
+  }
+}
+console.log('The real-chain check passed.')

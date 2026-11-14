@@ -5,10 +5,11 @@ import { challengeIsOurs, configFor, creationOptions, credentialHash, newChallen
 import { CHAIN_NAME, typedLink, typedProof, type ProofKind } from './typed.ts'
 import { ask } from './support.ts'
 import * as demo from './demo.ts'
+import * as orders from './orders.ts'
 import * as partner from './partner.ts'
 import { activateIntent, activationIntent, activationProof, apply, applyCheck, DOWNLOAD_REASONS, onboarding, ONBOARDING_EVENTS, operator, OPERATOR, screening, SEAL, sealDeclaration, submit, sync } from './onboarding.ts'
 
-export interface Env { DB: D1Database; ASSETS: Fetcher; SEALED: R2Bucket; ENVIRONMENT: string; CHALLENGE_KEY: string; SEAL_RECIPIENT?: string; INDEXER_URL?: string; INDEXER_TOKEN?: string; SANCTIONS_URL?: string }
+export interface Env { DB: D1Database; ASSETS: Fetcher; SEALED: R2Bucket; ENVIRONMENT: string; CHALLENGE_KEY: string; SEAL_RECIPIENT?: string; INDEXER_URL?: string; INDEXER_TOKEN?: string; SANCTIONS_URL?: string; ORDERBOOK_URL?: string }
 
 const IDLE_MS = 15 * 60_000
 const ABSOLUTE_MS = 12 * 60 * 60_000
@@ -72,7 +73,7 @@ const NAME = /^[\p{L}\p{N} .'-]{1,60}$/u
 
 const mustBeDeviceBound = (t: { role: data.Role; synced_keys_allowed: number }) => data.needsHardware(t.role, t.synced_keys_allowed)
 // What a refusal of the data module answers. Everything not listed is a conflict with the present state: 409.
-const STATUS: Record<string, number> = { not_found: 404, forbidden: 403, own_request: 403, quarantine: 403, override: 403, institution_only: 403, too_many_orders: 429, invalid: 400, ticket_limit: 429 }
+const STATUS: Record<string, number> = { not_found: 404, forbidden: 403, own_request: 403, quarantine: 403, override: 403, institution_only: 403, too_many_orders: 429, invalid: 400, ticket_limit: 429, quote_unavailable: 503, orderbook_unavailable: 503 }
 const refuse = (error: string) => fail(STATUS[error] ?? 409, error)
 // The database refuses a second passkey with the same label on one seat (migrations/0002_labels.sql).
 const labelTaken = (error: unknown) => /credentials\.label/.test(String((error as Error)?.message))
@@ -214,7 +215,8 @@ async function organisation(c: Context) {
   const view = await data.organisationView(c.env.DB, c.actor, c.now, c.now - IDLE_MS, c.now - ABSOLUTE_MS)
   return json(200, {
     ...view, tickets: await data.openTickets(c.env.DB, c.actor, c.now), currentSessionId: c.session.id,
-    approvals: await data.openRequests(c.env.DB, c.actor, c.now),
+    // An order's terms in words, made here: the page builds no amount.
+    approvals: (await data.openRequests(c.env.DB, c.actor, c.now)).map((a) => (a.kind === 'order' ? { ...a, words: orders.words(JSON.parse(a.value!), null) } : a)),
     frozen: await data.frozenSeats(c.env.DB, c.actor.orgId),
     wallets: (await data.wallets(c.env.DB, c.actor.orgId, c.now)).map(walletView),
     chains: Object.keys(c.config.chains).map((id) => ({ id: Number(id), name: CHAIN_NAME[Number(id)] ?? `Chain ${id}` })),
@@ -573,7 +575,7 @@ const walletView = ({ snapshot, ...w }: Awaited<ReturnType<typeof data.wallets>>
 const ROLE_NAME: Record<string, string> = { owner: 'Owner', admin: 'Admin', trader: 'Trader', approver: 'Approver', compliance: 'Compliance officer', viewer: 'Viewer' }
 const CHANGES: Record<string, string> = {
   'seat.unfreeze': 'unfreeze a seat', 'seat.remove': 'remove a member', 'seat.role': 'change a role', 'policy.synced_keys': 'change the passkey rule for key roles',
-  'wallet.link': 'link a wallet', 'anchor.set': 'set the recovery wallet', 'order.demo': 'prepare a demo order',
+  'wallet.link': 'link a wallet', 'anchor.set': 'set the recovery wallet', order: 'prepare an order',
 }
 // The one table that turns an audit action into words, for the page and the export alike: neither ever shows a
 // code. A key with a slash is the action with that detail. A test fails if data.ts writes an action that is not here.
@@ -616,7 +618,18 @@ export const EVENTS: Record<string, string> = {
   'anchor.set': 'Recovery wallet set, in force after 72 hours',
   'anchor.set/alone': 'Recovery wallet set by the only key-role member, in force after 72 hours',
   'anchor.cancel': 'Change of recovery wallet cancelled',
-  'order.demo': 'Demo order approved. Not sent: demo',
+  order: 'Order approved: its terms can be signed for 24 hours',
+  'order.link': 'Link issued to the signing page for an order',
+  'order.link/sign': 'Signing link issued for an approved order',
+  'order.link/cancel': 'Cancel link issued for an open order',
+  'order.open': 'The signing page read the approved order: its expiry is fixed',
+  'order.send': 'Order sent to the orderbook',
+  'order.send/eip712': 'Order signed by the wallet and sent to the orderbook',
+  'order.send/presign': 'Order sent to the orderbook: it waits for the Safe owners to sign it onchain',
+  'order.cancel': 'Order cancelled',
+  'order.cancel/key': 'Order cancelled by the signature of the wallet',
+  'order.cancel/safe': 'Cancel of the order sent to the Safe, for its owners to sign onchain',
+  'order.sanctioned': 'Order refused before it was sent: an address of it is on a loaded sanctions list',
   'recovery.open': 'Account recovery requested by the recovery wallet, 72 hour wait started',
   'recovery.open/override': 'Account recovery requested by the recovery wallet, overriding the Owners, 72 hour wait started',
   'recovery.cancel': 'Account recovery cancelled by an Owner',
@@ -664,30 +677,123 @@ async function auditExport(c: Context) {
 /** A CSV file as the browser saves it: the name ends with today's date, and every cell goes through csvCell. */
 const csvFile = (c: Context, name: string, lines: unknown[][]) => json(200, { name: `${name}-${new Date(c.now).toISOString().slice(0, 10)}.csv`, csv: lines.map((cells) => `${cells.map(csvCell).join(',')}\r\n`).join('') })
 
-// ---- overview and desk. An institution: demo mode (demo.ts), example figures. A partner: live figures (partner.ts). The approvals counted are real. ----
+// ---- overview and desk. An institution: its desk is real (orders.ts), its overview figures are examples (demo.ts).
+// A partner: live figures (partner.ts). The approvals counted are real. ----
 
-// The requests this viewer could decide now: a key role sees every open one, and never decides its own.
-// The organisation's own orders as the pages show them: the approval row in words, with what was approved.
-const ordersOf = async (c: Context) => (await data.orders(c.env.DB, c.actor, c.now)).map(({ order, state, open, ...o }) => ({ ...o, ...order, ref: `ORD-${o.id.slice(0, 8)}`, open, state: demo.orderState(state, open) }))
-// A demo order: the ticket in, the server's own estimate out. With `send` it is filed as a change for two people;
-// without, nothing is written (the review step). The estimate comes from demo.ts and nothing the caller sent
-// about a price or a fee is read. Every check is made again inside the commit that files it (judge() in data.ts).
+// The organisation's own orders as the pages show them: the approval row, the terms in words, the state.
+const ordersOf = async (c: Context) => (await data.orders(c.env.DB, c.actor, c.now)).map(({ terms, approvedAt, status, ...o }) => ({
+  ...o, terms, words: orders.words(terms, o.validTo), ref: `ORD-${o.id.slice(0, 8)}`, state: orders.stateOf({ ...o, approvedAt, status }, c.now),
+  signUntil: o.state === 'applied' && !o.uid ? (approvedAt ?? 0) + orders.SIGN_MS : null,
+}))
+const REVIEW = 'order-review' // the label of a review under the challenge key
+/**
+ * An order of the desk. The ticket in, a live quote (from the wallet), the terms out, sealed by the server for 5
+ * minutes: that is the review, and nothing is written. With `send` and that sealed review, the terms are filed as a
+ * change for two people, exactly as the member reviewed them. Every check is made again inside the commit (judge()).
+ */
 async function order(c: Context) {
   if (c.session.org_kind !== 'institution') return fail(403, 'institution_only')
-  const quoted = demo.quote(c.body)
-  if (typeof quoted === 'string') return fail(400, quoted)
-  const wallet = (await data.wallets(c.env.DB, c.actor.orgId, c.now)).find((w) => w.id === quoted.ticket.walletId && w.state === 'linked')
+  if (c.body.send === true) {
+    // Sending needs a fresh passkey check; the review above needs none, so the row of the table carries no `fresh`.
+    // Judged here, as the sealed upload does it: the clock and the session were read after the body arrived (api()).
+    if (c.now - c.session.step_up_at > STEP_UP_MS) return fail(403, 'step_up_required')
+    const sealed = (typeof c.body.review === 'string' && (await unseal(c.env.CHALLENGE_KEY, REVIEW, c.body.review))) as { org: string; seat: string; at: number; terms: orders.Terms } | null
+    if (!sealed || sealed.org !== c.actor.orgId || sealed.seat !== c.actor.seatId) return fail(400, 'review_invalid')
+    if (c.now - sealed.at > orders.REVIEW_MS) return fail(409, 'review_expired')
+    // A member files so many orders an hour and no more.
+    if (!(await data.countHour(c.env.DB, `order:${c.actor.seatId}`, c.now, orders.ORDERS_PER_HOUR))) return fail(429, 'order_rate')
+    const outcome = await data.change(c.env.DB, c.actor, 'order', data.randomId(), JSON.stringify(sealed.terms), c.now)
+    return 'error' in outcome ? refuse(outcome.error) : json(200, outcome)
+  }
+  const t = orders.ticket(c.body)
+  if (typeof t === 'string') return fail(400, t)
+  const wallet = (await data.wallets(c.env.DB, c.actor.orgId, c.now)).find((w) => w.id === t.walletId && w.state === 'linked')
   if (!wallet) return refuse('wallet_not_linked')
-  if (wallet.chainId !== quoted.ticket.chainId) return refuse('wallet_chain')
-  const prepared = demo.built(quoted, wallet.label, checksum(wallet.address))
-  if (c.body.send !== true) return json(200, { demo: true, ...prepared })
-  // Sending needs a fresh passkey check; the estimate above needs none, so the row of the table carries no `fresh`.
-  // Judged here, as the sealed upload does it: the clock and the session were read after the body arrived (api()).
-  if (c.now - c.session.step_up_at > STEP_UP_MS) return fail(403, 'step_up_required')
-  // A member files so many orders an hour and no more.
-  if (!(await data.countHour(c.env.DB, `order:${c.actor.seatId}`, c.now, demo.ORDERS_PER_HOUR))) return fail(429, 'order_rate')
-  const outcome = await data.change(c.env.DB, c.actor, 'order.demo', data.randomId(), JSON.stringify(prepared), c.now)
-  return 'error' in outcome ? refuse(outcome.error) : json(200, { demo: true, ...outcome })
+  if (wallet.chainId !== t.chainId) return refuse('wallet_chain')
+  const quoted = await orders.quote(c.env, t, wallet)
+  if ('error' in quoted) return json(quoted.error === 'quote_unavailable' ? 503 : 409, quoted)
+  const terms = orders.terms(t, wallet, quoted.quoted)
+  if (typeof terms === 'string') return fail(400, terms)
+  const review = await seal(c.env.CHALLENGE_KEY, REVIEW, { org: c.actor.orgId, seat: c.actor.seatId, at: c.now, terms })
+  return json(200, { terms, words: orders.words(terms, null), review, until: c.now + orders.REVIEW_MS })
+}
+/** A one-time link to the signing page, for an approved order (sign) or an open one (cancel). Only its SHA-256 is stored. */
+async function orderLink(c: Context) {
+  const purpose = c.body.purpose === 'cancel' ? 'cancel' : c.body.purpose === 'sign' ? 'sign' : null
+  if (!purpose) return fail(400, 'invalid')
+  const token = data.randomToken()
+  const outcome = await data.orderLink(c.env.DB, c.actor, c.params.id ?? '', purpose, await data.sha256Hex(token), c.now)
+  return outcome === 'ok' ? json(200, { link: `${c.config.signOrigin}/sign/#order.${token}` }) : refuse(outcome)
+}
+// The signing page's two calls. No session: the link's token is the only key, and its order is read by its hash.
+const openedBy = async (c: Context) => {
+  const token = c.body.token
+  if (typeof token !== 'string' || !/^[A-Za-z0-9_-]{43}$/.test(token)) return null
+  const hash = await data.sha256Hex(token)
+  const r = await data.orderByLink(c.env.DB, hash, c.now)
+  return r && { ...r, hash }
+}
+/** What the page shows and has the wallet sign, all built here from the approved terms: the page chooses nothing. */
+async function orderPage(c: Context) {
+  const r = await openedBy(c)
+  if (!r) return fail(404, 'link_invalid')
+  const t = r.terms
+  let validTo = r.validTo
+  // The expiry is fixed when the page first reads a signing link, and stored: every later read signs the same order.
+  if (r.purpose === 'sign' && validTo === null) {
+    validTo = Math.floor(c.now / 1000) + t.validFor
+    if (!(await data.orderOpened(c.env.DB, r, r.hash, validTo, c.now))) return fail(409, 'try_again')
+  }
+  const built = orders.gpv2(t, validTo!)
+  const chain = orders.CHAINS[t.chainId]
+  return json(200, {
+    purpose: r.purpose, scheme: t.scheme, chainId: t.chainId, wallet: t.wallet, words: orders.words(t, validTo), uid: built.uid, validTo,
+    settlement: chain.settlement, relayer: chain.relayer, sellToken: t.sell.token, sellAmount: t.sell.amount,
+    typed: t.scheme === 'presign' ? null : r.purpose === 'sign' ? built.typed : orders.cancellation(t.chainId, built.uid).typed,
+  })
+}
+/**
+ * The page posts the signature (a key wallet) or nothing (a Safe). Signing: the server builds the order again from the
+ * terms and the stored expiry, checks the signature (or posts a presign order from the Safe), the wallet still linked
+ * on that chain, the organisation active, and no address of it on a loaded sanctions list; then the orderbook takes it,
+ * then one commit records it. Cancelling: the signed cancellation to the orderbook, or a Safe's own transaction.
+ */
+async function orderSend(c: Context) {
+  const r = await openedBy(c)
+  if (!r) return fail(404, 'link_invalid')
+  const t = r.terms
+  if (r.validTo === null) return fail(409, 'not_opened')
+  const built = orders.gpv2(t, r.validTo)
+  if (r.purpose === 'cancel') {
+    if (t.scheme === 'presign') return (await data.orderCancelled(c.env.DB, r, r.hash, 'safe', c.now)) ? json(200, { state: 'asked' }) : fail(409, 'try_again')
+    if (!(await orders.signedBy(orders.cancellation(t.chainId, built.uid).hashed, c.body.signature, t.wallet))) return fail(403, 'signature_rejected')
+    const done = await orders.cancel(c.env, t.chainId, built.uid, c.body.signature as string)
+    if (done !== 'ok') return refuse(done)
+    return (await data.orderCancelled(c.env.DB, r, r.hash, 'key', c.now)) ? json(200, { state: 'cancelled' }) : fail(409, 'try_again')
+  }
+  if (r.walletId === null || r.walletChain !== t.chainId || r.walletAddress !== t.wallet.toLowerCase()) return refuse('wallet_not_linked')
+  if (t.scheme === 'eip712' && !(await orders.signedBy(built.hashed, c.body.signature, t.wallet))) return fail(403, 'signature_rejected')
+  // A presign order's signature is its owner (the Safe), as the orderbook takes it.
+  const signature = t.scheme === 'presign' ? t.wallet.toLowerCase() : (c.body.signature as string)
+  const listed = await data.listedOf(c.env.DB, [t.wallet, t.sell.token, t.buy.token])
+  if (listed) {
+    await data.orderListed(c.env.DB, r, r.hash, listed === t.wallet.toLowerCase() ? 'wallet' : listed === t.sell.token.toLowerCase() ? 'sell' : 'buy', c.now)
+    return fail(403, 'sanctioned_address')
+  }
+  const posted = await orders.post(c.env, t, built, signature)
+  if (posted !== 'ok') return refuse(posted)
+  const status = t.scheme === 'presign' ? 'presignaturePending' : 'open'
+  const outcome = await data.orderSent(c.env.DB, r, r.hash, { uid: built.uid, signature, status }, c.now)
+  return outcome === 'ok' ? json(200, { state: status, uid: built.uid }) : refuse(outcome)
+}
+/** Reads the orderbook's state of sent orders that may still change: of one organisation (the desk, at most 10) or of all (the daily run). */
+async function refresh(env: Env, orgId: string | null, now: number, limit: number) {
+  const read = []
+  for (const o of await data.openOrders(env.DB, orgId, limit)) {
+    const state = await orders.status(env, o.chainId, o.uid)
+    if (state) read.push({ ...o, ...state })
+  }
+  await data.orderStates(env.DB, read, now)
 }
 const waiting = async (c: Context) => (await data.openRequests(c.env.DB, c.actor, c.now)).filter((request) => !request.mine).length
 async function overview(c: Context) {
@@ -698,16 +804,23 @@ async function overview(c: Context) {
 }
 async function desk(c: Context) {
   if (c.session.org_kind !== 'institution') return fail(403, 'institution_only')
-  const wallets = (await data.wallets(c.env.DB, c.actor.orgId, c.now)).filter((w) => w.state === 'linked')
+  await refresh(c.env, c.actor.orgId, c.now, 10)
+  const wallets = (await data.wallets(c.env.DB, c.actor.orgId, c.now)).filter((w) => w.state === 'linked' && Object.hasOwn(orders.CHAINS, w.chainId))
   return json(200, {
-    demo: true, ...demo.desk(), mayPrepare: (demo.PREPARERS as readonly string[]).includes(c.actor.role), orders: await ordersOf(c),
-    wallets: wallets.map((w) => ({ id: w.id, label: w.label, address: checksum(w.address), chain: demo.CHAINS[w.chainId] ?? CHAIN_NAME[w.chainId] ?? `Chain ${w.chainId}` })), // the name the chain choice of the ticket uses
+    chains: Object.keys(orders.CHAINS).map((id) => ({ id: Number(id), name: CHAIN_NAME[Number(id)] })),
+    assets: assetRows(), validity: orders.VALIDITY, slippage: orders.SLIPPAGE, maxOpen: orders.MAX_OPEN_ORDERS,
+    mayPrepare: (orders.PREPARERS as readonly string[]).includes(c.actor.role), maySign: (orders.SIGNERS as readonly string[]).includes(c.actor.role), orders: await ordersOf(c),
+    wallets: wallets.map((w) => ({ id: w.id, label: w.label, address: checksum(w.address), chainId: w.chainId, chain: CHAIN_NAME[w.chainId], scheme: w.kind === 'safe' ? 'presign' : 'eip712' })),
   })
 }
+/** The permitted assets: one row per asset and chain, with its token and the most one order sells. */
+const assetRows = () => Object.entries(orders.ASSETS).flatMap(([id, assets]) => Object.entries(assets).map(([symbol, a]) => ({
+  chainId: Number(id), chain: CHAIN_NAME[Number(id)], symbol, token: a!.token, decimals: a!.decimals, cap: orders.decimal(orders.capOf(symbol as orders.Symbol, a!.decimals), a!.decimals),
+})))
 
 // Every "Export CSV" button of Overview and Desk. The tables follow the kind of the organisation, and each row says
-// where it comes from. An institution: demo tables, its own orders before the examples, source = demo. A partner: its
-// partner-fee months from a fresh read of the indexer, source = live; no read, no file.
+// where it comes from. An institution: its orders and the permitted assets (source = live), and the example tables of
+// the overview (source = demo). A partner: its partner-fee months from a fresh read of the indexer, source = live; no read, no file.
 async function tableExport(c: Context) {
   const table = c.params.id ?? ''
   const live = c.session.org_kind === 'partner'
@@ -717,7 +830,14 @@ async function tableExport(c: Context) {
     const figures = await partner.figures(c.env, c.actor.orgId, c.now)
     if (figures.state !== 'live') return fail(figures.state === 'figures_unavailable' ? 503 : figures.state === 'figures_rate' ? 429 : 409, figures.state)
     tables = partner.tables(figures)
-  } else tables = demo.tables(await ordersOf(c))
+  } else tables = demo.tables()
+  const desk: Record<string, [head: string[], rows: () => Promise<unknown[][]>]> = live ? {} : {
+    orders: [['Order', 'Prepared at', 'Type', 'Chain', 'Wallet', 'Wallet address', 'Sell', 'Amount', 'Buy', 'Least amount bought', 'Status', 'Order id', 'Sold', 'Bought', 'Transaction'],
+      async () => (await ordersOf(c)).map((o) => [o.ref, new Date(o.at).toISOString(), o.terms.type, CHAIN_NAME[o.terms.chainId], o.terms.label, o.terms.wallet, o.terms.sell.symbol, o.words.sell.split(' ')[0],
+        o.terms.buy.symbol, o.words.buy.split(' ')[2], o.state, o.uid ?? '', o.sold ?? '', o.bought ?? '', o.tx ?? ''])],
+    assets: [['Chain', 'Asset', 'Token', 'Decimals', 'Most per order'], async () => assetRows().map((a) => [a.chain, a.symbol, a.token, a.decimals, a.cap])],
+  }
+  if (Object.hasOwn(desk, table)) return csvFile(c, `ophis-desk-${table}`, [[...desk[table][0], 'source'], ...(await desk[table][1]()).map((cells) => [...cells, 'live'])])
   if (!Object.hasOwn(tables, table)) return fail(404, 'not_found')
   const [head, rows] = tables[table]
   return csvFile(c, `ophis-${live ? 'partner' : 'demo'}-${table}`, [[...head, 'source'], ...rows.map((cells) => [...cells, live ? 'live' : 'demo'])])
@@ -758,7 +878,7 @@ export const routes: Route[] = [
   { method: 'POST', path: '/api/policy', roles: ['owner'], fresh: true, twoKeys: true, settled: true, second: 'policy.synced_keys', can: 'Ask to change the passkey rule for key roles' },
   { method: 'POST', path: '/api/approvals/:id/approve', roles: data.KEY_ROLES, fresh: true, twoKeys: true, settled: true, can: 'Approve a colleague\'s request as the second person', handler: decide('approve') },
   { method: 'POST', path: '/api/approvals/:id/reject', roles: data.KEY_ROLES, fresh: true, twoKeys: true, can: 'Reject a colleague\'s request', handler: decide('reject') },
-  { method: 'POST', path: '/api/approvals/:id/cancel', roles: demo.PREPARERS, can: 'Cancel the own request', handler: decide('cancel') },
+  { method: 'POST', path: '/api/approvals/:id/cancel', roles: orders.PREPARERS, can: 'Cancel the own request', handler: decide('cancel') },
   { method: 'POST', path: '/api/wallets/intent', roles: MANAGERS, fresh: true, twoKeys: true, settled: true, can: 'Start the link of a wallet, which the wallet then proves with a signature', handler: walletIntent },
   { method: 'POST', path: '/api/wallets/:id/unlink', roles: MANAGERS, fresh: true, twoKeys: true, can: 'Unlink a wallet, never the recovery wallet', handler: (c) => change(c, 'wallet.unlink') },
   { method: 'POST', path: '/api/wallets/:id/anchor', roles: ['owner'], fresh: true, twoKeys: true, settled: true, second: 'anchor.set', can: 'Ask to make a linked wallet the recovery wallet' },
@@ -774,10 +894,14 @@ export const routes: Route[] = [
   { method: 'GET', path: '/api/audit', roles: READERS, can: 'Read the audit log', handler: audit },
   { method: 'POST', path: '/api/audit/export', roles: READERS, fresh: true, can: 'Export the audit log', handler: auditExport },
   { method: 'GET', path: '/api/screening', roles: READERS, can: 'See the sanctions screening Ophis recorded for the organisation, and the address lists its linked wallets are compared with', handler: screening },
-  { method: 'GET', path: '/api/overview', roles: ANY, can: 'See the overview of the organisation (an institution: demo figures; a partner: its figures from the Ophis rebate service)', handler: overview },
-  { method: 'GET', path: '/api/desk', roles: ANY, can: 'See the desk of an institution: permitted assets, orders and their records (demo)', handler: desk },
+  { method: 'GET', path: '/api/overview', roles: ANY, can: 'See the overview of the organisation (an institution: its orders and example figures; a partner: its figures from the Ophis rebate service)', handler: overview },
+  { method: 'GET', path: '/api/desk', roles: ANY, can: 'See the desk of an institution: permitted assets, orders and their records', handler: desk },
   { method: 'GET', path: '/api/export/:id', roles: ANY, can: 'Export a table of the overview or the desk as CSV', handler: tableExport },
-  { method: 'POST', path: '/api/desk/orders', roles: demo.PREPARERS, settled: true, can: 'Prepare a demo order on the desk, which a second person approves. Nothing is sent', handler: order },
+  { method: 'POST', path: '/api/desk/orders', roles: orders.PREPARERS, settled: true, can: 'Prepare an order on the desk, which a second person approves before the wallet signs it', handler: order },
+  { method: 'POST', path: '/api/desk/orders/:id/link', roles: orders.SIGNERS, fresh: true, settled: true, can: 'Give the wallet the link to sign an approved order, or to cancel an open one', handler: orderLink },
+  // The real desk: the signing page's two calls, on the signing host. The link's one-time token is the only key.
+  { method: 'POST', path: '/api/order', roles: 'public', sign: true, handler: orderPage },
+  { method: 'POST', path: '/api/order/send', roles: 'public', sign: true, handler: orderSend },
   { method: 'POST', path: '/api/support/ask', roles: ANY, unverified: true, can: 'Ask Support a question, which is matched to the fixed help texts', handler: ask },
   // Milestone 5 (onboarding.ts). The operator's routes are not here: they have their own hostname and no role.
   { method: 'POST', path: '/api/apply', roles: 'public', handler: apply },
@@ -914,7 +1038,12 @@ export async function handle(request: Request, env: Env, now: () => number = Dat
  * M10, the daily run (one cron in wrangler.jsonc): the read of the OFAC list file. An error is logged in fixed words,
  * no address and no name, and the run answers unavailable: the loaded lists still stand. `now` is injectable, as for handle().
  */
-export const daily = (env: Env, now: number) => sync(env, now).catch(() => (console.error('daily run: the read of the list file failed'), { outcome: 'unavailable' as const }))
+export async function daily(env: Env, now: number) {
+  const read = await sync(env, now).catch(() => (console.error('daily run: the read of the list file failed'), { outcome: 'unavailable' as const }))
+  // The real desk: the state of 20 sent orders, the least recently read first (the desk reads its own 10 at each view).
+  await refresh(env, null, now, 20).catch(() => console.error('daily run: the read of the orderbook failed'))
+  return read
+}
 
 export default {
   fetch: (request: Request, env: Env) => handle(request, env),

@@ -5,7 +5,8 @@
 //   node scripts/dns-stub.mjs                      serve until stopped
 //   node scripts/dns-stub.mjs <command> [args]     serve while that command runs ("pnpm dev": wrangler dev), together with the
 //                                                  stand-ins for the rebate indexer (scripts/indexer-stub.mjs, port 8793)
-//                                                  and for the OFAC list file (scripts/list-stub.mjs, port 8794)
+//                                                  for the OFAC list file (scripts/list-stub.mjs, port 8794)
+//                                                  and for the orderbooks of the desk (scripts/orderbook-stub.mjs, port 8795)
 //   node scripts/dns-stub.mjs set <name> <value>   publish a TXT record, as a DNS administrator would ("pnpm dns")
 import { spawn } from 'node:child_process'
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
@@ -13,6 +14,7 @@ import { createServer } from 'node:http'
 import { fileURLToPath } from 'node:url'
 import { start as startIndexer } from './indexer-stub.mjs'
 import { start as startLists } from './list-stub.mjs'
+import { start as startOrderbook } from './orderbook-stub.mjs'
 
 const FOLDER = fileURLToPath(new URL('../.wrangler/', import.meta.url))
 const FILE = `${FOLDER}dns-stub.json`
@@ -49,10 +51,12 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
     if (command) {
       const stopIndexer = startIndexer()
       const stopLists = startLists() // M10: the OFAC list file, port 8794
+      const stopOrderbook = startOrderbook() // the desk's orderbooks, port 8795
       spawn(command, args, { stdio: 'inherit' }).on('exit', (code) => {
         stop()
         stopIndexer()
         stopLists()
+        stopOrderbook()
         process.exitCode = code ?? 1
       })
     } else console.log('DNS stubs on http://127.0.0.1:8790/dns-query and http://127.0.0.1:8791/resolve. Records: .wrangler/dns-stub.json')

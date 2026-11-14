@@ -41,6 +41,24 @@
     </div>
     <p class="fine">"Check again" is for a Safe that signed onchain: press it once the owners have executed the transaction. It sends no signature, and the server asks the Safe.</p>
   </section>
+  <section id="order" class="panel" aria-labelledby="or-h" hidden>
+    <h2 class="h-panel" id="or-h">The order the wallet will sign</h2>
+    <dl class="kv">
+      <dt>You sell</dt><dd id="o-sell"></dd>
+      <dt>You buy</dt><dd id="o-buy"></dd>
+      <dt>Order type</dt><dd id="o-type"></dd>
+      <dt>Chain</dt><dd id="o-chain"></dd>
+      <dt>Wallet, which receives what is bought</dt><dd id="o-wallet"></dd>
+      <dt>Valid</dt><dd id="o-valid"></dd>
+      <dt>Ophis fee</dt><dd id="o-fee"></dd>
+      <dt>Order id</dt><dd id="o-uid" class="mono"></dd>
+    </dl>
+    <p class="fine" id="o-advice"></p>
+    <div class="methods wide">
+      <button id="o-by-wallet" class="btn primary" type="button">Sign with the wallet in this browser</button>
+      <button id="o-by-safe" class="btn primary" type="button" hidden>Sign with this Safe</button>
+    </div>
+  </section>
   <p id="status" class="note" role="status" hidden></p>
 </main>
 <footer class="foot-line">Ophis is a software provider. It is not a crypto-asset service provider.</footer>

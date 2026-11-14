@@ -1,7 +1,7 @@
 // The screens of milestones 1 to 4, with the markup and classes of the approved mockup.
 import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react'
 import { api, CANCELLED, capital, day, Icon, minute, passkeyCheck, ROLE, save, say, Section, sensitive, stamp, Status, Tile } from './ui.tsx'
-import { money, orderWords, type OrderBody } from './desk.tsx'
+import { orderWords, type OrderBody } from './desk.tsx'
 
 export interface Alert {
   key: string; kind: string; at?: number | null; until?: number; name?: string; by?: string | null; stopped?: boolean; what?: string; detail?: string | null; mine?: boolean
@@ -289,7 +289,7 @@ export function Enrol({ ticket }: { ticket: string }) {
 interface Member { id: string; displayName: string; role: string; state: string; approved: number }
 interface Passkey { id: string; seatId: string; label: string; state: string; deviceBound: boolean; createdAt: number; lastUsedAt: number | null; stopRightUntil: number | null }
 interface Ticket { id: string; kind: string; role: string; seatId: string; name: string; issuerSeatId: string | null; status: 'link' | 'issuer' | 'second' | 'wait'; myStep: 'issuer' | 'second' | null; until: number; storedAt: number | null; approved: number }
-interface Request { id: string; kind: string; subjectId: string; name: string | null; role: string | null; value: string | null; requester: string; requesterRole: string; createdAt: number; expiresAt: number; notBefore: number | null; mine: boolean }
+interface Request { id: string; kind: string; subjectId: string; name: string | null; role: string | null; value: string | null; requester: string; requesterRole: string; createdAt: number; expiresAt: number; notBefore: number | null; mine: boolean; words?: OrderBody['words'] }
 interface Wallet { id: string; chainId: number; address: string; kind: string; label: string; state: 'pending' | 'linked'; recovery: 'in_force' | 'waiting' | null; recoveryAt: number | null; threshold?: number; owners?: number }
 interface View {
   wallets: Wallet[]
@@ -437,7 +437,7 @@ function effect(kind: string, name: string, was: string | null, value?: string |
 }
 const CHANGE: Record<string, string> = {
   'seat.unfreeze': 'Unfreeze a seat', 'seat.remove': 'Remove a member', 'seat.role': 'Change a role', 'policy.synced_keys': 'Change the passkey rule for key roles',
-  'wallet.link': 'Link a wallet', 'anchor.set': 'Set the recovery wallet', 'order.demo': 'Demo order',
+  'wallet.link': 'Link a wallet', 'anchor.set': 'Set the recovery wallet', order: 'Order',
 }
 // The same for a wallet. `on` is the chain's name.
 export const kindOf = (w: Pick<Wallet, 'kind' | 'threshold' | 'owners'>) => (w.kind === 'safe' ? `Safe ${w.threshold ?? '?'} of ${w.owners ?? '?'}` : w.kind === 'custodian' ? 'Custodian wallet (declared, not checked by Ophis)' : 'Single key')
@@ -455,9 +455,9 @@ function Approval({ request, wallet, on, mayDecide, act }: { request: Request; w
   const [open, setOpen] = useState(false)
   const path = `/api/approvals/${request.id}`
   const early = (request.notBefore ?? 0) > Date.now()
-  // Demo mode: an order of the desk. Its payload is the ticket, the checks and the server's estimate; approving it sends nothing.
-  const order = request.kind === 'order.demo' && request.value ? (JSON.parse(request.value) as OrderBody) : null
-  const what = order ? `${orderWords(order)}. Estimate: ${money(order.estimate.received, order.ticket.buy === 'ETH' ? 4 : 2)} ${order.ticket.buy} received, fee ${money(order.estimate.feeEur)} EUR (${order.estimate.feeBps} bps of volume). Demo: approving records the decision and sends nothing.`
+  // An order of the desk. Its value is the terms the approval binds; the server gives them in words.
+  const order = request.kind === 'order' && request.value && request.words ? ({ terms: JSON.parse(request.value), words: request.words } as OrderBody) : null
+  const what = order ? `${orderWords(order)}. ${order.words.type}. ${order.words.valid}. Ophis fee: ${order.words.fee}. Once approved, the wallet signs these terms within 24 hours, or they expire.`
     : wallet ? walletEffect(request.kind, wallet, on) : effect(request.kind, request.name ?? '', request.role, request.value)
   return (
     <article className="appr">
@@ -474,8 +474,8 @@ function Approval({ request, wallet, on, mayDecide, act }: { request: Request; w
             {request.kind === 'seat.role' && <><dt>Role now</dt><dd>{role(request.role)}</dd><dt>Role after</dt><dd>{role(request.value)}</dd></>}
             <dt>Requested by</dt><dd>{request.requester} ({role(request.requesterRole)})</dd>
             <dt>Second person</dt><dd>Any Owner, Admin, Approver or Compliance officer other than the requester, after a passkey check</dd>
-            {order && <><dt>Order</dt><dd>{orderWords(order)}</dd><dt>Settle from</dt><dd>{order.wallet}, <span className="mono">{order.address}</span></dd><dt>Volume</dt><dd>{money(order.estimate.volumeEur)} EUR</dd><dt>Checks passed</dt><dd>{order.checks?.join('. ')}</dd></>}
-            <dt>Applied</dt><dd>{order ? 'At the moment of the approval the order reads: Approved. Not sent: demo' : request.kind === 'anchor.set' ? 'In force 72 hours after the approval' : `At the moment of the approval${early ? `, not before ${minute(request.notBefore!)}` : ''}`}</dd>
+            {order && <><dt>Order</dt><dd>{orderWords(order)}</dd><dt>Settle from</dt><dd>{order.terms.label}, <span className="mono">{order.terms.wallet}</span></dd><dt>You buy</dt><dd>{order.words.buy}</dd><dt>Live quote</dt><dd>{order.terms.quoted} (atoms of {order.terms.buy.symbol})</dd></>}
+            <dt>Applied</dt><dd>{order ? 'At the approval the order waits for the wallet to sign it' : request.kind === 'anchor.set' ? 'In force 72 hours after the approval' : `At the moment of the approval${early ? `, not before ${minute(request.notBefore!)}` : ''}`}</dd>
             <dt>Expires</dt><dd>{minute(request.expiresAt)}</dd>
           </dl>
         )}

@@ -1,20 +1,21 @@
-// Overview and Desk. An institution: demo mode, the figures are the server's examples (src/server/demo.ts). What is
-// real there: the orders an institution prepares (two-person requests), their state, and who may do what.
-// A partner: live figures from the Ophis rebate service, checked and rebuilt by the server (src/server/partner.ts).
-// No order is sent, signed or executed, and this file holds no price: every estimate is the server's.
+// Overview and Desk. An institution: its desk is real (src/server/orders.ts): an order is prepared on a live quote,
+// approved by a second person, then signed by the organisation's own wallet on the signing page. Its overview figures
+// (balances, statement) are the server's examples (src/server/demo.ts). A partner: live figures from the Ophis rebate
+// service, checked and rebuilt by the server (src/server/partner.ts). This file holds no price and builds no order.
 import { useCallback, useEffect, useState, type FormEvent, type ReactNode } from 'react'
 import { api, CANCELLED, capital, Icon, ROLE, save, say, sensitive, Section, stamp, Status, Tile } from './ui.tsx'
 
-interface Ticket { type: 'market' | 'limit'; sell: string; buy: string; amount: string; limitPrice: string | null; chainId: number; walletId: string }
-interface Estimate { received: string; volumeEur: string; feeBps: string; feeEur: string; totalEur: string; priced: string | null }
-export interface OrderBody { ticket: Ticket; wallet: string; address?: string; estimate: Estimate; checks?: string[] }
-// A row of the blotter: an order of this organisation (it has an id), or an example row (it has none).
-interface Order extends OrderBody { id?: string; ref: string; at: number; state: string; open?: boolean; mine?: boolean; preparer?: string; preparerRole?: string; decidedBy?: string | null; decidedAt?: number | null; tx?: string | null }
+// What an approval binds (the server's terms; amounts in atoms) and the same in words, made by the server.
+interface Terms { type: 'market' | 'limit'; chainId: number; walletId: string; wallet: string; label: string; scheme: 'eip712' | 'presign'; sell: { symbol: string; amount: string }; buy: { symbol: string; minimum: string }; quoted: string; slippageBips: number | null; limitPrice: string | null; validFor: number }
+interface Words { sell: string; buy: string; type: string; chain: string; wallet: string; valid: string; fee: string }
+export interface OrderBody { terms: Terms; words: Words }
+// A row of the blotter: an order of this organisation, its state, and what the orderbook did with it.
+interface Order extends OrderBody { id: string; ref: string; at: number; state: string; open: boolean; mine: boolean; preparer: string; preparerRole: string; decidedBy: string | null; decidedAt: number | null; uid: string | null; sold: string | null; bought: string | null; tx: string | null; signUntil: number | null }
 interface Institution {
   kind: 'institution'; waiting: number; asOf: string; totalEur: string
   balances: { wallet: string; address: string; chain: string; total: string; rows: { asset: string; balance: string; valueEur: string }[] }[]
   months: { month: string; trades: number; volumeEur: string; feeBps: string; feeEur: string }[]
-  orders: Order[]; examples: Order[]
+  orders: Order[]
 }
 // A partner's figures: live, or the plain reason why there are none. Numbers are USD or WETH amounts of the rebate service.
 interface PartnerWallet {
@@ -42,29 +43,23 @@ interface Partner {
   figures: { state: 'not_connected' | 'no_wallet' | 'figures_unavailable' | 'figures_rate' } | { state: 'live'; asOf: string; leftOut: number; lists: { name: string; published: string | null; loaded: string }[]; wallets: PartnerWallet[] }
 }
 interface DeskView {
-  assets: { symbol: string; decimals: number; eur: string; issuer: string; status: string; limitLow: string; limitHigh: string }[]; chains: { id: number; name: string }[]
-  wallets: { id: string; label: string; address: string; chain: string }[]; limitEur: string; mayPrepare: boolean; orders: Order[]; examples: Order[]
+  chains: { id: number; name: string }[]; assets: { chainId: number; chain: string; symbol: string; token: string; decimals: number; cap: string }[]
+  validity: number[]; slippage: { default: number; max: number }; maxOpen: number
+  wallets: { id: string; label: string; address: string; chainId: number; chain: string; scheme: string }[]; mayPrepare: boolean; maySign: boolean; orders: Order[]
 }
 
-const CHAIN: Record<number, string> = { 10: 'Optimism', 130: 'Unichain' }
 /** A decimal string of the server with thousands separators and `dp` decimals (cut). Text only: no number is made of it. */
 export function money(text: string, dp = 2) {
   const [whole, part = ''] = text.split('.')
   return `${whole.replace(/\B(?=(\d{3})+$)/g, ',')}${dp ? `.${part.padEnd(dp, '0').slice(0, dp)}` : ''}`
 }
 const places = (asset: string) => (asset === 'ETH' ? 4 : 2)
-const qty = (amount: string, asset: string) => `${money(amount, places(asset))} ${asset}`
 const count = (n: number) => money(String(n), 0)
-// What a member typed (an amount, a limit price) is shown whole: every decimal of it, never cut.
-const exact = (text: string, dp = 2) => money(text, Math.max(dp, text.split('.')[1]?.length ?? 0))
-const sold = (t: Ticket) => `${exact(t.amount, places(t.sell))} ${t.sell}`
 const short = (address: string) => (address.length > 13 ? `${address.slice(0, 6)}...${address.slice(-4)}` : address)
-/** An order in words, as the Approvals list and the record say it. */
-export const orderWords = ({ ticket, wallet, address, estimate }: OrderBody) =>
-  `Sell ${sold(ticket)} for ${ticket.buy}, ${ticket.type}${ticket.limitPrice ? ` at ${exact(ticket.limitPrice)} EUR per ${estimate.priced}` : ''}, ${CHAIN[ticket.chainId] ?? `chain ${ticket.chainId}`}, from ${wallet}${address ? ` (${short(address)})` : ''}`
+/** An order in words, as the Approvals list and the record say it. Every amount whole, as the server wrote it. */
+export const orderWords = ({ terms, words }: OrderBody) => `Sell ${words.sell} for ${words.buy}, ${terms.type}, ${words.chain}, from ${terms.label} (${short(terms.wallet)})`
 
-const Banner = () => <p className="note warn demo" role="note"><Icon name="info" /><span className="grow"><b>Demo data.</b> No order is sent and no funds move. Figures are examples.</span></p>
-const EXAMPLE = 'Example figures. The real cost of an order is shown before it is signed.'
+const Banner = () => <p className="note warn demo" role="note"><Icon name="info" /><span className="grow"><b>Example figures.</b> The balances and the statement are examples. Your orders below are real.</span></p>
 
 /** "Export CSV": the server builds the file, the browser saves it. */
 function Export({ table, size = 'sm', label = 'Export CSV' }: { table: string; size?: 'sm' | 'md'; label?: string }) {
@@ -90,10 +85,7 @@ function Table({ head, rows, foot }: { head: string[]; rows: ReactNode[][]; foot
   )
 }
 const orderCell = (o: Order, pick?: (o: Order) => void) => (
-  <>
-    {pick ? <button className="link mono" type="button" onClick={() => pick(o)}>{o.ref}</button> : <span className="mono">{o.ref}</span>}
-    {!o.id && <Status>Example</Status>}<small>{stamp(o.at)}</small>
-  </>
+  <>{pick ? <button className="link mono" type="button" onClick={() => pick(o)}>{o.ref}</button> : <span className="mono">{o.ref}</span>}<small>{stamp(o.at)}</small></>
 )
 
 function useView<T>(path: string, onSignedOut: () => void) {
@@ -143,8 +135,8 @@ function InstitutionOverview({ v }: { v: Institution }) {
             </table>
           </div>
         </Section>
-        <Section icon="history" title="Recent orders" hint="Your own orders first, with their real state. Then example rows." action={<div className="acts"><Export table="orders" /><a className="btn ghost sm" href="/#/desk">All orders</a></div>}>
-          <Table head={['Order', 'Sell, buy', 'Status']} rows={[...v.orders, ...v.examples].slice(0, 8).map((o) => [orderCell(o), <>{sold(o.ticket)}<small>for {o.ticket.buy}</small></>, <Status>{o.state}</Status>])} />
+        <Section icon="history" title="Recent orders" hint="Your own orders, newest first, with their real state." action={<div className="acts"><Export table="orders" /><a className="btn ghost sm" href="/#/desk">All orders</a></div>}>
+          {v.orders.length ? <Table head={['Order', 'Sell, buy', 'Status']} rows={v.orders.slice(0, 8).map((o) => [orderCell(o), <>{o.words.sell}<small>for {o.words.buy}</small></>, <Status>{o.state}</Status>])} /> : <p className="muted">No order yet. Orders are prepared on the desk.</p>}
         </Section>
       </div>
       <Section icon="receipt" title="Monthly fee statement" hint="Example statement. Orders on Optimism or Unichain." action={<Export table="statement" />}>
@@ -324,38 +316,35 @@ function PartnerOverview({ v, retry }: { v: Partner; retry: () => Promise<void> 
 }
 
 // ---- the desk ----
-const Cost = ({ e }: { e: Estimate }) => (
+const TermsFacts = ({ o }: { o: OrderBody }) => (
   <>
-    <Table head={['Fee line', 'bps', 'EUR']} rows={[['Fee, of the volume', e.feeBps, money(e.feeEur)]]} foot={['Total (estimate)', e.feeBps, money(e.totalEur)]} />
-    <p className="fine"><Icon name="info" size={16} />{EXAMPLE}</p>
-  </>
-)
-const TicketFacts = ({ o }: { o: OrderBody }) => (
-  <>
-    <dt>Order type</dt><dd>{o.ticket.type === 'limit' ? `Limit, at ${exact(o.ticket.limitPrice ?? '')} EUR per ${o.estimate.priced}` : 'Market'}</dd>
-    <dt>You sell</dt><dd>{sold(o.ticket)}</dd>
-    <dt>You buy (estimate)</dt><dd>{qty(o.estimate.received, o.ticket.buy)}</dd>
-    <dt>Volume</dt><dd>{money(o.estimate.volumeEur)} EUR</dd>
-    <dt>Settle from</dt><dd>{o.wallet}{o.address && <>, <span className="mono">{o.address}</span></>}</dd>
-    <dt>Chain</dt><dd>{CHAIN[o.ticket.chainId]}</dd>
+    <dt>Order type</dt><dd>{o.words.type}</dd>
+    <dt>You sell</dt><dd>{o.words.sell}</dd>
+    <dt>You buy</dt><dd>{o.words.buy}</dd>
+    <dt>Settle from</dt><dd>{o.terms.label}, <span className="mono">{o.terms.wallet}</span>. The wallet receives what is bought.</dd>
+    <dt>Chain</dt><dd>{o.words.chain}</dd>
+    <dt>Valid</dt><dd>{o.words.valid}</dd>
+    <dt>Ophis fee</dt><dd>{o.words.fee}</dd>
   </>
 )
 
 function TicketForm({ v, onSent }: { v: DeskView; onSent: () => Promise<void> }) {
-  const [t, setT] = useState({ type: 'market', sell: 'EURC', buy: 'ETH', amount: '250000', limitPrice: '2940', chainId: 10, walletId: v.wallets[0]?.id ?? '' })
-  const [review, setReview] = useState<OrderBody>()
+  const [t, setT] = useState({ type: 'market', walletId: v.wallets[0]?.id ?? '', sell: '', buy: '', amount: '', limitPrice: '', slippage: String(v.slippage.default / 100), validFor: v.validity[0] })
+  const [review, setReview] = useState<OrderBody & { review: string }>()
   const [sent, setSent] = useState(false)
   const [problem, setProblem] = useState('')
   const [busy, setBusy] = useState(false)
   const set = (change: Partial<typeof t>) => setT({ ...t, ...change })
-  const priced = t.sell === 'ETH' || t.buy === 'ETH' ? 'ETH' : t.buy
-  const range = v.assets.find((a) => a.symbol === priced)
+  const wallet = v.wallets.find((w) => w.id === t.walletId) ?? v.wallets[0]
+  const here = v.assets.filter((a) => a.chainId === wallet?.chainId)
+  const [sell, buy] = [here.find((a) => a.symbol === t.sell) ?? here[0], here.find((a) => a.symbol === t.buy) ?? here[1]]
   async function ask(send: boolean, event?: FormEvent) {
     event?.preventDefault()
     setBusy(true)
-    const { limitPrice, ...rest } = t
-    // The estimate needs no passkey. Sending does: when the last check is older than 5 minutes, the passkey is asked for here.
-    const out = await (send ? sensitive : api)<OrderBody & { error?: string }>('/api/desk/orders', { ...rest, amount: t.amount.trim(), ...(t.type === 'limit' && { limitPrice: limitPrice.trim() }), send }).catch(() => null)
+    const ticket = { type: t.type, chainId: wallet.chainId, walletId: wallet.id, sell: sell?.symbol, buy: buy?.symbol, amount: t.amount.trim(), validFor: t.validFor,
+      ...(t.type === 'limit' ? { limitPrice: t.limitPrice.trim() } : { slippageBips: Math.round(Number(t.slippage) * 100) }) }
+    // The review needs no passkey. Sending does: when the last check is older than 5 minutes, the passkey is asked for here.
+    const out = await (send ? sensitive : api)<OrderBody & { review: string; error?: string }>('/api/desk/orders', send ? { send: true, review: review?.review } : ticket).catch(() => null)
     setBusy(false)
     if (!out) return setProblem(CANCELLED) // the passkey step was cancelled or failed: the ticket is usable again
     setProblem(out.status === 200 ? '' : out.status === 403 && out.data.error === 'forbidden' ? 'Your role cannot prepare orders. A Trader, an Owner or an Admin prepares them.' : say(out.data))
@@ -366,11 +355,11 @@ function TicketForm({ v, onSent }: { v: DeskView; onSent: () => Promise<void> })
   }
   const failed = problem && <p className="note bad" role="alert"><Icon name="triangle-alert" /><span className="grow">{problem}</span></p>
   if (!v.mayPrepare) return <p className="note"><Icon name="info" /><span className="grow"><b>Your role reads the desk.</b> A Trader, an Owner or an Admin prepares orders. The blotter and the records below are open to you.</span></p>
-  if (v.wallets.length === 0) return <p className="note warn"><Icon name="wallet" /><span className="grow"><b>No wallet is linked.</b> An order settles from a linked wallet of the organisation. <a className="link" href="/#/organisation">Link one under Organisation</a>.</span></p>
+  if (!wallet) return <p className="note warn"><Icon name="wallet" /><span className="grow"><b>No wallet is linked.</b> An order settles from a linked wallet of the organisation. <a className="link" href="/#/organisation">Link one under Organisation</a>.</span></p>
   if (sent && review) {
     return (
       <div className="ticket" data-step="sent">
-        <p className="note ok" role="status"><Icon name="circle-check" /><span className="grow"><b>Sent for approval.</b> {orderWords(review)}. A different member with a key role approves or refuses it under Approvals. Nothing is sent to a market.</span></p>
+        <p className="note ok" role="status"><Icon name="circle-check" /><span className="grow"><b>Sent for approval.</b> {orderWords(review)}. A different member with a key role approves or refuses it under Approvals. Then the wallet signs it.</span></p>
         <div className="acts"><a className="btn ghost md" href="/#/organisation"><Icon name="users" size={16} />Open approvals</a><button className="btn primary md" type="button" onClick={() => (setSent(false), setReview(undefined))}><Icon name="pencil" size={16} />New order</button></div>
       </div>
     )
@@ -379,55 +368,73 @@ function TicketForm({ v, onSent }: { v: DeskView; onSent: () => Promise<void> })
     return (
       <div className="ticket" data-step="review">
         <h3 className="h-card">Review order</h3>
-        <dl className="kv"><TicketFacts o={review} /></dl>
-        <Cost e={review.estimate} />
+        <dl className="kv"><TermsFacts o={review} /></dl>
+        <p className="fine"><Icon name="info" size={16} />The least amount bought comes from a live quote of the orderbook. It is binding once approved. Send it for approval within 5 minutes, or review it again.</p>
         {failed}
         <div className="acts"><button className="btn ghost md" type="button" onClick={() => setReview(undefined)}>Back to the ticket</button><button className="btn primary md" type="button" disabled={busy} onClick={() => ask(true)}><Icon name="users" size={16} />Send for approval</button></div>
         <p className="fine"><Icon name="info" size={16} />Nothing is signed at this step. Sending asks for your passkey. A second person then approves it, with a passkey.</p>
       </div>
     )
   }
-  const pills = (name: string, legend: string, options: [value: string | number, label: string][], value: string | number, pick: (value: string) => void, off: string[] = []) => (
+  const pills = (name: string, legend: string, options: [value: string, label: string][], value: string, pick: (value: string) => void) => (
     <fieldset className="field"><legend>{legend}</legend><div className="pills">{options.map(([option, label]) => (
-      <label className="pill" key={option}><input type="radio" name={name} value={option} checked={value === option} disabled={off.includes(label)} onChange={(event) => pick(event.target.value)} />{label}</label>
-    ))}</div>{off.length > 0 && <small className="muted">No wallet is linked on {off.join(' or ')}.</small>}</fieldset>
+      <label className="pill" key={option}><input type="radio" name={name} value={option} checked={value === option} onChange={(event) => pick(event.target.value)} />{label}</label>
+    ))}</div></fieldset>
   )
-  // The server refuses an order whose wallet is not linked on its chain (wallet_chain): such a chain is switched off here, and the ticket says why.
-  const unlinked = v.chains.map((c) => c.name).filter((chain) => !v.wallets.some((w) => w.chain === chain))
-  const assets = (label: string, field: 'sell' | 'buy') => (
-    <label className="field">{label}<select className="input" value={t[field]} onChange={(event) => set({ [field]: event.target.value })}>{v.assets.map((a) => <option key={a.symbol}>{a.symbol}</option>)}</select></label>
+  const assets = (label: string, field: 'sell' | 'buy', value?: string) => (
+    <label className="field">{label}<select className="input" value={value} onChange={(event) => set({ [field]: event.target.value })}>{here.map((a) => <option key={a.symbol}>{a.symbol}</option>)}</select></label>
   )
   return (
     <form className="ticket" data-step="ticket" onSubmit={(event) => ask(false, event)}>
+      <label className="field">Settle from<select className="input" value={wallet.id} onChange={(event) => set({ walletId: event.target.value, sell: '', buy: '' })}>{v.wallets.map((w) => <option key={w.id} value={w.id}>{w.label} ({short(w.address)}, {w.chain})</option>)}</select></label>
       {pills('type', 'Order type', [['market', 'Market'], ['limit', 'Limit']], t.type, (type) => set({ type }))}
-      <div className="row">{assets('Sell asset', 'sell')}<label className="field">Amount to sell<input className="input" type="text" inputMode="decimal" autoComplete="off" value={t.amount} onChange={(event) => set({ amount: event.target.value })} style={{ textAlign: 'right' }} /></label></div>
-      <div className="row">{assets('Buy asset', 'buy')}
-        {t.type === 'limit' && <label className="field">Limit price (EUR per {priced})<input className="input" type="text" inputMode="decimal" autoComplete="off" value={t.limitPrice} onChange={(event) => set({ limitPrice: event.target.value })} style={{ textAlign: 'right' }} aria-describedby="limit-range" />
-          {range && <small id="limit-range" className="muted">Allowed range: {exact(range.limitLow)} to {exact(range.limitHigh)} EUR, within 20% of the reference price.</small>}</label>}</div>
-      {pills('chain', 'Chain', v.chains.map((c) => [c.id, c.name]), t.chainId, (id) => set({ chainId: Number(id) }), unlinked)}
-      <label className="field">Settle from<select className="input" value={t.walletId} onChange={(event) => set({ walletId: event.target.value })}>{v.wallets.map((w) => <option key={w.id} value={w.id}>{w.label} ({short(w.address)}, {w.chain})</option>)}</select></label>
+      <div className="row">{assets('Sell asset', 'sell', sell?.symbol)}<label className="field">Amount to sell<input className="input" type="text" inputMode="decimal" autoComplete="off" value={t.amount} onChange={(event) => set({ amount: event.target.value })} style={{ textAlign: 'right' }} />
+        {sell && <small className="muted">At most {money(sell.cap, 0)} {sell.symbol} per order.</small>}</label></div>
+      <div className="row">{assets('Buy asset', 'buy', buy?.symbol)}
+        {t.type === 'limit' ? <label className="field">Limit price ({buy?.symbol} per {sell?.symbol})<input className="input" type="text" inputMode="decimal" autoComplete="off" value={t.limitPrice} onChange={(event) => set({ limitPrice: event.target.value })} style={{ textAlign: 'right' }} aria-describedby="limit-range" />
+          <small id="limit-range" className="muted">Within 20% of the live quote.</small></label>
+          : <label className="field">Slippage (%)<input className="input" type="text" inputMode="decimal" autoComplete="off" value={t.slippage} onChange={(event) => set({ slippage: event.target.value })} style={{ textAlign: 'right' }} /><small className="muted">At most {v.slippage.max / 100}%.</small></label>}</div>
+      <label className="field">Valid after signing<select className="input" value={t.validFor} onChange={(event) => set({ validFor: Number(event.target.value) })}>{v.validity.map((s) => <option key={s} value={s}>{s < 3600 ? `${s / 60} minutes` : `${s / 3600} hours`}</option>)}</select></label>
       {failed}
       <button className="btn primary" type="submit" disabled={busy}><Icon name="eye" />Review order</button>
-      <p className="fine"><Icon name="info" size={16} />Nothing is signed at this step. Limit of {money(v.limitEur)} EUR per order.</p>
+      <p className="fine"><Icon name="info" size={16} />Nothing is signed at this step. The review asks the orderbook for a live quote.</p>
     </form>
   )
 }
 
-// The record of one order: who prepared it and when, the ticket, the checks, the estimate, who decided, and that nothing was executed.
-function OrderRecord({ o, onClose }: { o: Order; onClose: () => void }) {
-  const decided = o.state === 'Cancelled' ? `Cancelled by its preparer${o.decidedAt ? ` on ${stamp(o.decidedAt)}` : ''}` : o.decidedBy && o.decidedAt ? `${o.state === 'Refused' ? 'Refused' : 'Approved'} by ${o.decidedBy} on ${stamp(o.decidedAt)}` : o.state === 'Expired' ? 'Nobody decided it within 7 days' : 'Not decided yet'
+// The record of one order: who prepared it and when, its terms, who decided, the signing link, and what the orderbook did.
+function OrderRecord({ o, v, onClose, onSignedOut }: { o: Order; v: DeskView; onClose: () => void; onSignedOut: () => void }) {
+  const [link, setLink] = useState('')
+  const [problem, setProblem] = useState('')
+  const decided = o.state === 'Cancelled' && !o.decidedBy ? `Cancelled by its preparer${o.decidedAt ? ` on ${stamp(o.decidedAt)}` : ''}` : o.decidedBy && o.decidedAt ? `${o.state === 'Refused' && !o.uid ? 'Refused' : 'Approved'} by ${o.decidedBy} on ${stamp(o.decidedAt)}` : o.state === 'Expired' ? 'Nobody decided it within 7 days' : 'Not decided yet'
+  const purpose = o.state === 'Approved: waiting for signature' && !o.uid ? 'sign' : o.state === 'Open' ? 'cancel' : null
+  async function give() {
+    const out = await sensitive<{ link: string; error?: string }>(`/api/desk/orders/${o.id}/link`, { purpose }).catch(() => null)
+    if (out?.status === 401) return onSignedOut()
+    setProblem(!out ? CANCELLED : out.status === 200 ? '' : say(out.data))
+    setLink(out?.status === 200 ? out.data.link : '')
+  }
   return (
     <section className="panel sec" id="record" aria-label={`Record of ${o.ref}`}>
-      <div className="rp-top"><b className="mono">{o.ref}</b><Status>{o.state}</Status>{!o.id && <Status>Example</Status>}<button className="ib" type="button" aria-label="Close the record" onClick={onClose}><Icon name="x" /></button></div>
+      <div className="rp-top"><b className="mono">{o.ref}</b><Status>{o.state}</Status><button className="ib" type="button" aria-label="Close the record" onClick={onClose}><Icon name="x" /></button></div>
       <p>{orderWords(o)}</p>
       <dl className="kv">
-        <dt>Prepared by</dt><dd>{o.id ? `${o.preparer} (${ROLE[o.preparerRole ?? ''] ?? o.preparerRole}) on ${stamp(o.at)}` : `Example row, dated ${stamp(o.at)}`}</dd>
-        <TicketFacts o={o} />
-        <dt>Decided</dt><dd>{o.id ? decided : 'Example row: no decision is recorded'}</dd>
+        <dt>Prepared by</dt><dd>{`${o.preparer} (${ROLE[o.preparerRole] ?? o.preparerRole}) on ${stamp(o.at)}`}</dd>
+        <TermsFacts o={o} />
+        <dt>Decided</dt><dd>{decided}</dd>
+        {o.signUntil && <><dt>Sign before</dt><dd>{stamp(o.signUntil)}</dd></>}
+        {o.uid && <><dt>Order id</dt><dd className="mono">{o.uid}</dd></>}
+        {o.sold && <><dt>Executed</dt><dd>{o.sold} sold, {o.bought} bought (atoms)</dd></>}
+        {o.tx && <><dt>Transaction</dt><dd className="mono">{o.tx}</dd></>}
       </dl>
-      <p className="note"><Icon name="info" /><span className="grow">Execution: none, demo</span></p>
-      {o.checks && <div><h3 className="h-card">Checks passed when it was prepared</h3><ul className="checks">{o.checks.map((line) => <li key={line}><Icon name="check" size={16} />{line}</li>)}</ul></div>}
-      <div><h3 className="h-card">Estimate</h3><Cost e={o.estimate} /></div>
+      {purpose && v.maySign && (
+        <div className="stack">
+          <p className="note"><Icon name="info" /><span className="grow">{purpose === 'sign' ? 'The wallet signs this order on the signing page. Give the link to the people who hold the wallet, by a channel you trust. It works once.' : 'The wallet cancels this order on the signing page. The link works once.'}</span></p>
+          <div className="acts"><button className="btn primary md" type="button" onClick={give}><Icon name="key-round" size={16} />{purpose === 'sign' ? 'Signing link' : 'Cancel link'}</button></div>
+          {link && <label className="field">Link for the wallet<input className="input mono" readOnly value={link} onFocus={(event) => event.target.select()} /></label>}
+        </div>
+      )}
+      {problem && <p className="note bad" role="alert"><Icon name="triangle-alert" /><span className="grow">{problem}</span></p>}
     </section>
   )
 }
@@ -435,8 +442,7 @@ function OrderRecord({ o, onClose }: { o: Order; onClose: () => void }) {
 export function Desk({ kind, onSignedOut }: { kind: string; onSignedOut: () => void }) {
   return (
     <>
-      <header className="ph"><div><span className="cap eyebrow">Desk <Status>Demo</Status></span><h1 className="h-page">Prepare, approve, <em>then sign</em>.</h1><p className="lede">Prepare an order, review the cost, then a second person approves. Amounts in EUR.</p></div></header>
-      <Banner />
+      <header className="ph"><div><span className="cap eyebrow">Desk</span><h1 className="h-page">Prepare, approve, <em>then sign</em>.</h1><p className="lede">Prepare an order on a live quote, then a second person approves, then your wallet signs.</p></div></header>
       {kind === 'institution' ? <InstitutionDesk onSignedOut={onSignedOut} /> : (
         <div className="panel"><div className="stack" style={{ alignItems: 'flex-start' }}><Tile name="landmark" /><h2 className="h-panel">The desk is for institutions.</h2><p className="muted">Partners integrate the swap in their own product. Your figures are in Overview.</p>
           <div className="acts"><a className="btn primary md" href="/#/overview"><Icon name="layout-dashboard" size={16} />Go to Overview</a></div></div></div>
@@ -450,8 +456,7 @@ function InstitutionDesk({ onSignedOut }: { onSignedOut: () => void }) {
   const [picked, setPicked] = useState('')
   const [failed, setFailed] = useState('')
   if (!v) return problem ? <p className="note bad" role="alert"><Icon name="triangle-alert" /><span className="grow">{problem}</span></p> : null
-  const rows = [...v.orders, ...v.examples]
-  const record = rows.find((o) => (o.id ?? o.ref) === picked)
+  const record = v.orders.find((o) => o.id === picked)
   async function cancel(o: Order) {
     const out = await api<{ error?: string }>(`/api/approvals/${o.id}/cancel`, {})
     if (out.status === 401) return onSignedOut()
@@ -464,28 +469,27 @@ function InstitutionDesk({ onSignedOut }: { onSignedOut: () => void }) {
       <div className="desk dk-b">
         <section className="panel"><h2 className="cap">Order ticket</h2><TicketForm v={v} onSent={load} /></section>
         <div className="stack">
-          <Section icon="list-checks" title="Permitted assets" hint="Illustrative. Each token is checked against the ESMA register before launch" action={<div className="acts"><Status>Illustrative</Status><Export table="assets" /></div>}>
-            <Table head={['Asset', 'Issuer', 'Status', 'Reference price (EUR)']} rows={v.assets.map((a) => [<b>{a.symbol}</b>, a.issuer, a.status, money(a.eur)])} />
+          <Section icon="list-checks" title="Permitted assets" hint="Each is listed on a chain where two independent sources agree on its address." action={<Export table="assets" />}>
+            <Table head={['Asset', 'Chain', 'Most per order']} rows={v.assets.map((a) => [<><b>{a.symbol}</b><small className="mono">{short(a.token)}</small></>, a.chain, money(a.cap, 0)])} />
           </Section>
           <ol className="stats flow">
-            <li className="c"><Tile name="pencil" /><div><span className="cap">Step 1</span><b>Prepare</b><p>A Trader fills the ticket and reviews the cost.</p></div></li>
+            <li className="c"><Tile name="pencil" /><div><span className="cap">Step 1</span><b>Prepare</b><p>A Trader fills the ticket and reviews the live quote.</p></div></li>
             <li className="c"><Tile name="users" /><div><span className="cap">Step 2</span><b>Approve</b><p>A second person approves under Approvals, with a passkey.</p></div></li>
-            <li className="c"><Tile name="key-round" /><div><span className="cap">Step 3</span><b>Sign in wallet</b><p>Signing in the wallet is not part of this demo. The Safe owners or your custodian sign. Ophis cannot.</p></div></li>
+            <li className="c"><Tile name="key-round" /><div><span className="cap">Step 3</span><b>Sign in wallet</b><p>The Safe owners or your custodian sign on the signing page. Ophis cannot.</p></div></li>
           </ol>
         </div>
       </div>
-      <Section icon="scroll-text" title="Order blotter" hint="Your own orders first, with their real state. Then example rows. Select an order to open its record." action={<Export table="orders" />}>
+      <Section icon="scroll-text" title="Order blotter" hint="Your orders, newest first, with their state. Select an order to open its record." action={<Export table="orders" />}>
         {failed && <p className="note bad" role="alert"><Icon name="triangle-alert" /><span className="grow">{failed}</span></p>}
-        <Table head={['Order', 'Type', 'Sell', 'Buy', 'Chain', 'Status', 'Actions']} rows={rows.map((o) => [
-          orderCell(o, (x) => setPicked(x.id ?? x.ref)), <>{o.ticket.type === 'limit' ? 'Limit' : 'Market'}{o.ticket.limitPrice && <small>at {exact(o.ticket.limitPrice)}</small>}</>,
-          sold(o.ticket), <><span className="muted">est.</span> {qty(o.estimate.received, o.ticket.buy)}</>, CHAIN[o.ticket.chainId], <Status>{o.state}</Status>,
+        {v.orders.length ? <Table head={['Order', 'Type', 'Sell', 'Buy', 'Chain', 'Status', 'Actions']} rows={v.orders.map((o) => [
+          orderCell(o, (x) => setPicked(x.id)), o.terms.type === 'limit' ? 'Limit' : 'Market', o.words.sell, o.words.buy, o.words.chain, <Status>{o.state}</Status>,
           <>
-            <button className="ib" type="button" aria-label={`Open the record of ${o.ref}`} title="Record" onClick={() => setPicked(o.id ?? o.ref)}><Icon name="file-text" /></button>
+            <button className="ib" type="button" aria-label={`Open the record of ${o.ref}`} title="Record" onClick={() => setPicked(o.id)}><Icon name="file-text" /></button>
             {o.mine && o.open && <button className="ib" type="button" aria-label={`Cancel ${o.ref}`} title="Cancel order" onClick={() => cancel(o)}><Icon name="ban" /></button>}
           </>,
-        ])} />
+        ])} /> : <p className="muted">No order yet.</p>}
       </Section>
-      {record && <OrderRecord o={record} onClose={() => setPicked('')} />}
+      {record && <OrderRecord o={record} v={v} onClose={() => setPicked('')} onSignedOut={onSignedOut} />}
     </>
   )
 }

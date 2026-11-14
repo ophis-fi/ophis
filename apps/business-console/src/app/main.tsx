@@ -60,7 +60,7 @@ function App() {
   useEffect(() => void loadMe(), [loadMe])
 
   // /recover is a path, not a fragment: a public page that holds no session, reached from the recovery sheet.
-  // /apply too (milestone 5). An organisation that is not yet verified lands on Onboarding, an active one on Overview (demo mode).
+  // /apply too (milestone 5). An organisation that is not yet verified lands on Onboarding, an active one on Overview.
   const page = location.pathname === '/apply' ? 'apply' : location.pathname === '/recover' ? 'recover' : hash.startsWith('#/security') ? 'security' : hash.startsWith('#/enrol') ? 'enrol' : !me ? 'signin' : hash.startsWith('#/compliance') ? 'compliance' : hash.startsWith('#/support') ? 'support' : hash.startsWith('#/onboarding') || (me.organisation.state === 'unverified' && !hash.startsWith('#/organisation')) ? 'onboarding' : hash.startsWith('#/organisation') ? 'organisation' : hash.startsWith('#/desk') ? 'desk' : 'overview'
   useEffect(() => {
     document.body.dataset.route = me ? page : 'signin'

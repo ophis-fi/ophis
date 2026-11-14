@@ -7,7 +7,7 @@
 
 import { checksum, colour, type SafeState } from './chain.ts'
 import { LISTS } from './typed.ts'
-import { built, MAX_OPEN_ORDERS, PREPARERS, quote, type Order } from './demo.ts'
+import { again, MAX_OPEN_ORDERS, PREPARERS, SIGN_MS, SIGNERS, type Terms } from './orders.ts'
 
 export type Role = 'owner' | 'admin' | 'trader' | 'approver' | 'compliance' | 'viewer'
 export const ROLES: Role[] = ['owner', 'admin', 'trader', 'approver', 'compliance', 'viewer']
@@ -643,7 +643,7 @@ export function stopReplacement(db: D1Database, credential: StoredCredential, co
 
 // ---- milestone 3: one person freezes, two people change ----
 
-export type Kind = 'seat.unfreeze' | 'seat.remove' | 'seat.role' | 'policy.synced_keys' | 'wallet.link' | 'anchor.set' | 'order.demo'
+export type Kind = 'seat.unfreeze' | 'seat.remove' | 'seat.role' | 'policy.synced_keys' | 'wallet.link' | 'anchor.set' | 'order'
 /** Changes one person makes: each only tightens, or undoes what has not taken effect yet. */
 export type Direct = 'seat.freeze' | 'wallet.unlink' | 'anchor.cancel'
 // The actor's role as it is inside the commit. The session's copy was read before this write took its turn: a
@@ -663,31 +663,30 @@ interface Change { apply: Sql[]; detail: string | null; direct?: boolean; relax?
 // become forbidden since. `direct`: one person is enough (a freeze only tightens; an invited seat was never a member).
 // `by` is the seat that asks. `snapshot`: the Safe as both endpoints see it now, read by the caller before the commit.
 async function judge(db: D1Database, orgId: string, role: Role, kind: Kind | Direct, subjectId: string, value: string | null, now: number, by: string, snapshot: string | null): Promise<string | Change> {
-  if (kind === 'order.demo') {
-    // Demo mode: an order of the desk (demo.ts). The value is the order the router built: ticket, checks, estimate.
-    // Everything that decides it is read here, when it is filed and again when it is approved: the ticket checks,
-    // the organisation (an active institution, not in quarantine), the preparer (`by`: an active seat whose role
-    // may prepare, now), the wallet (this organisation's, linked, with this name and address, on the chain of the order)
-    // and the number of orders that wait. Applying it changes nothing: no order is ever sent, signed or executed.
-    const order = JSON.parse(value ?? 'null') as Order | null
-    const quoted = order ? quote({ ...order.ticket }) : 'invalid'
-    if (!order || typeof quoted === 'string') return quoted as string
-    // The order is exactly what this server builds from the ticket now: an estimate of other prices, other checks or
-    // one more field is refused, when it is filed and when it is approved.
-    if (JSON.stringify(built(quoted, order.wallet, order.address)) !== value) return 'invalid'
+  if (kind === 'order') {
+    // An order of the desk (orders.ts). The value is its terms, complete: chain, wallet, both tokens, the exact amount
+    // sold, the least amount bought, validity, appData and fee. Everything that decides it is read here, when it is filed
+    // and again when it is approved: the terms are what this server makes of their own inputs now (an asset, a cap, an
+    // appData or a fee it would not make is refused), the organisation (an active institution, not in quarantine), the
+    // preparer (`by`: an active seat whose role may prepare, now), the wallet (this organisation's, linked, with this name,
+    // address and kind, on the chain of the order) and the number of orders that wait. The approval makes its order row.
+    const terms = again(value)
+    if (typeof terms === 'string') return terms
+    if (JSON.stringify(terms) !== value) return 'invalid'
     const r = await db.prepare(`SELECT o.kind, s.role, max(COALESCE(s.quarantine_until, 0), COALESCE(o.quarantine_until, 0)) AS quarantine,
-                                  (SELECT w.label FROM wallets w WHERE w.org_id = o.id AND w.id = ?1 AND w.state = 'linked') AS wallet, (SELECT w.address FROM wallets w WHERE w.org_id = o.id AND w.id = ?1) AS address, (SELECT w.chain_id FROM wallets w WHERE w.org_id = o.id AND w.id = ?1) AS chain,
-                                  (SELECT count(*) FROM approvals a WHERE a.org_id = o.id AND a.action = 'order.demo' AND a.subject_id <> ?2 AND a.state = 'pending' AND a.expires_at > ?3) AS waiting
+                                  (SELECT w.label FROM wallets w WHERE w.org_id = o.id AND w.id = ?1 AND w.state = 'linked') AS wallet, (SELECT w.address FROM wallets w WHERE w.org_id = o.id AND w.id = ?1) AS address,
+                                  (SELECT w.chain_id FROM wallets w WHERE w.org_id = o.id AND w.id = ?1) AS chain, (SELECT w.kind FROM wallets w WHERE w.org_id = o.id AND w.id = ?1) AS walletKind,
+                                  (SELECT count(*) FROM approvals a WHERE a.org_id = o.id AND a.action = 'order' AND a.subject_id <> ?2 AND a.state = 'pending' AND a.expires_at > ?3) AS waiting
                                 FROM organisations o LEFT JOIN seats s ON s.org_id = o.id AND s.id = ?4 AND s.state = 'active' WHERE o.id = ?5 AND o.state = 'active'`)
-      .bind(order.ticket.walletId, subjectId, now, by, orgId).first<{ kind: string; role: Role | null; quarantine: number; wallet: string | null; address: string | null; chain: number | null; waiting: number }>()
+      .bind(terms.walletId, subjectId, now, by, orgId).first<{ kind: string; role: Role | null; quarantine: number; wallet: string | null; address: string | null; chain: number | null; walletKind: string | null; waiting: number }>()
     return !r ? 'org_inactive'
       : r.kind !== 'institution' ? 'institution_only'
       : !r.role || !(PREPARERS as readonly Role[]).includes(r.role) ? 'forbidden'
       : r.quarantine > now ? 'quarantine'
-      : r.wallet === null || r.wallet !== order.wallet || checksum(r.address!) !== order.address ? 'wallet_not_linked'
-      : r.chain !== order.ticket.chainId ? 'wallet_chain'
+      : r.wallet === null || r.wallet !== terms.label || checksum(r.address!) !== terms.wallet || (r.walletKind === 'safe') !== (terms.scheme === 'presign') ? 'wallet_not_linked'
+      : r.chain !== terms.chainId ? 'wallet_chain'
       : r.waiting >= MAX_OPEN_ORDERS ? 'too_many_orders'
-      : { detail: null, apply: [] }
+      : { detail: null, apply: [db.prepare(`INSERT INTO orders (org_id, id, approved_at) SELECT org_id, id, ? FROM approvals WHERE org_id = ? AND subject_id = ? AND action = 'order'`).bind(now, orgId, subjectId)] }
   }
   if (kind === 'wallet.link' || kind === 'wallet.unlink' || kind === 'anchor.set' || kind === 'anchor.cancel') {
     const at = [orgId, subjectId] as const
@@ -865,18 +864,109 @@ export async function openRequests(db: D1Database, actor: Actor, now: number) {
 }
 
 /**
- * Demo mode: the orders of an organisation, newest first. An order is its approval row and nothing else: who
- * prepared it, what was approved (the payload), who decided. ponytail: the 100 newest; page it when a desk has more.
+ * The orders of an organisation, newest first: the approval row (who prepared it, its terms, who decided) and, once
+ * approved, its order row (the expiry, the order id, the orderbook's state as last read). ponytail: the 100 newest; page it when a desk has more.
  */
 export async function orders(db: D1Database, actor: Actor, now: number) {
   const { results } = await db
     .prepare(`SELECT a.id, a.payload, a.state, a.created_at AS at, a.decided_at AS decidedAt, a.expires_at AS expiresAt, a.requester_seat_id AS seat,
-                     r.display_name AS preparer, r.role AS preparerRole, k.display_name AS decidedBy
+                     r.display_name AS preparer, r.role AS preparerRole, k.display_name AS decidedBy,
+                     o.approved_at AS approvedAt, o.valid_to AS validTo, o.uid, o.status, o.sent_at AS sentAt, o.executed_sell AS sold, o.executed_buy AS bought, o.tx_hash AS tx
               FROM approvals a JOIN seats r ON r.org_id = a.org_id AND r.id = a.requester_seat_id
               LEFT JOIN seats k ON k.org_id = a.org_id AND k.id = a.checker_seat_id
-              WHERE a.org_id = ? AND a.action = 'order.demo' ORDER BY a.created_at DESC, a.rowid DESC LIMIT 100`)
-    .bind(actor.orgId).all<{ id: string; payload: string; state: string; at: number; decidedAt: number | null; expiresAt: number; seat: string; preparer: string; preparerRole: Role; decidedBy: string | null }>()
-  return results.map(({ payload, seat, ...o }) => ({ ...o, mine: seat === actor.seatId, open: o.state === 'pending' && o.expiresAt > now, order: JSON.parse((JSON.parse(payload) as { value: string }).value) as Order }))
+              LEFT JOIN orders o ON o.org_id = a.org_id AND o.id = a.id
+              WHERE a.org_id = ? AND a.action = 'order' ORDER BY a.created_at DESC, a.rowid DESC LIMIT 100`)
+    .bind(actor.orgId).all<{ id: string; payload: string; state: string; at: number; decidedAt: number | null; expiresAt: number; seat: string; preparer: string; preparerRole: Role; decidedBy: string | null
+      approvedAt: number | null; validTo: number | null; uid: string | null; status: string | null; sentAt: number | null; sold: string | null; bought: string | null; tx: string | null }>()
+  return results.map(({ payload, seat, ...o }) => ({ ...o, mine: seat === actor.seatId, open: o.state === 'pending' && o.expiresAt > now, terms: JSON.parse((JSON.parse(payload) as { value: string }).value) as Terms }))
+}
+
+// ---- the real desk after the approval: the signing link, the signing page, the send, the cancel, the state ----
+const ORDER_ROW = `SELECT o.org_id AS orgId, o.id, o.approved_at AS approvedAt, o.link_purpose AS purpose, o.valid_to AS validTo, o.uid, o.status, a.payload,
+                          w.id AS walletId, w.chain_id AS walletChain, w.address AS walletAddress
+                   FROM orders o JOIN approvals a ON a.org_id = o.org_id AND a.id = o.id AND a.action = 'order' AND a.state = 'applied'
+                   JOIN organisations g ON g.id = o.org_id AND g.state = 'active' AND g.kind = 'institution'
+                   LEFT JOIN wallets w ON w.org_id = o.org_id AND w.state = 'linked' AND w.id = json_extract(json_extract(a.payload, '$.value'), '$.walletId')`
+type OrderRow = { orgId: string; id: string; approvedAt: number; purpose: 'sign' | 'cancel' | null; validTo: number | null; uid: string | null; status: string | null; payload: string; walletId: string | null; walletChain: number | null; walletAddress: string | null }
+/** Can this link be used now (?2: now; ?4: the purpose asked for, or null for the link's own)? A signing link: the order is not sent, and its approval is younger than 24 hours. A cancel link: the order is open. */
+const LINK_LIVE = `((COALESCE(?4, o.link_purpose) = 'sign' AND o.uid IS NULL AND o.status IS NULL AND o.approved_at + ${SIGN_MS} > ?2)
+                    OR (COALESCE(?4, o.link_purpose) = 'cancel' AND o.status IN ('open', 'presignaturePending') AND o.valid_to * 1000 > ?2))`
+const termsOf = (row: { payload: string }) => JSON.parse((JSON.parse(row.payload) as { value: string }).value) as Terms
+
+/** A one-time link for the signing page, issued by a Trader or a key role after the approval: only its SHA-256 is stored, and a new one replaces the last. */
+export async function orderLink(db: D1Database, actor: Actor, id: string, purpose: 'sign' | 'cancel', tokenHash: string, now: number) {
+  let outcome = 'not_found'
+  await commit(db, actor.orgId, async () => {
+    const role = await roleNow(db, actor)
+    const r = await db.prepare(`${ORDER_ROW} WHERE o.org_id = ?1 AND o.id = ?3 AND ${LINK_LIVE}`).bind(actor.orgId, now, id, purpose).first<OrderRow>()
+    outcome = !role || !(SIGNERS as readonly Role[]).includes(role) ? 'forbidden' : !r ? 'not_found' : 'ok'
+    if (outcome !== 'ok') return null
+    return [seatEntry(actor, now, 'order.link', id, purpose), [
+      db.prepare('UPDATE orders SET link_hash = ?, link_purpose = ? WHERE org_id = ? AND id = ?').bind(tokenHash, purpose, actor.orgId, id),
+    ]]
+  })
+  return outcome
+}
+/** The order a link opens, while the link can be used, with the wallet of its terms if that wallet is still linked. */
+export const orderByLink = async (db: D1Database, tokenHash: string, now: number) => {
+  const r = await db.prepare(`${ORDER_ROW} WHERE o.link_hash = ?1 AND ${LINK_LIVE}`).bind(tokenHash, now, null, null).first<OrderRow>()
+  return r && { ...r, terms: termsOf(r) }
+}
+type Opening = NonNullable<Awaited<ReturnType<typeof orderByLink>>>
+/** Inside a commit: the link is still this order's. */
+const linked = async (db: D1Database, r: Opening, tokenHash: string) => Boolean(await db.prepare('SELECT 1 FROM orders WHERE org_id = ? AND id = ? AND link_hash = ?').bind(r.orgId, r.id, tokenHash).first())
+const walletEntry = (r: Opening, now: number, action: string, detail: string | null = null): Entry => ({ at: now, actorKind: 'anchor', actorId: r.terms.walletId, sessionId: null, action, subjectId: r.id, detail })
+/** The signing page read the order: its expiry is fixed now, once. */
+export async function orderOpened(db: D1Database, r: Opening, tokenHash: string, validTo: number, now: number) {
+  return commit(db, r.orgId, async () => {
+    const still = await db.prepare(`SELECT 1 FROM orders o WHERE o.org_id = ? AND o.id = ? AND o.link_hash = ? AND o.valid_to IS NULL`).bind(r.orgId, r.id, tokenHash).first()
+    return still ? [walletEntry(r, now, 'order.open'), [db.prepare('UPDATE orders SET valid_to = ? WHERE org_id = ? AND id = ? AND valid_to IS NULL').bind(validTo, r.orgId, r.id)]] : null
+  })
+}
+/**
+ * After the orderbook took it: the order id, the signature, the state. Read again inside the commit: this link, no order
+ * sent yet, the approval, the organisation and the wallet as the send saw them. One order per approval.
+ */
+export async function orderSent(db: D1Database, r: Opening, tokenHash: string, o: { uid: string; signature: string; status: string }, now: number) {
+  let outcome = 'already_sent'
+  await commit(db, r.orgId, async () => {
+    const still = await db.prepare(`${ORDER_ROW} WHERE o.org_id = ?1 AND o.id = ?3 AND o.link_hash = ?5 AND ${LINK_LIVE}`).bind(r.orgId, now, r.id, null, tokenHash).first<OrderRow>()
+    if (!still || still.walletId !== r.walletId) return null
+    outcome = 'ok'
+    return [walletEntry(r, now, 'order.send', r.terms.scheme), [
+      db.prepare('UPDATE orders SET uid = ?, signature = ?, status = ?, sent_at = ?, checked_at = ?, link_hash = NULL, link_purpose = NULL WHERE org_id = ? AND id = ? AND uid IS NULL')
+        .bind(o.uid, o.signature, o.status, now, now, r.orgId, r.id),
+    ]]
+  })
+  return outcome
+}
+/** The first address of these on a loaded sanctions list, or null. */
+export const listedOf = async (db: D1Database, addresses: string[]) =>
+  (await db.prepare(`SELECT address FROM sanctioned_addresses WHERE address IN (${addresses.map(() => '?').join(', ')}) LIMIT 1`).bind(...addresses.map((a) => a.toLowerCase())).first<{ address: string }>())?.address ?? null
+/** An order refused before it was sent, because an address of it is on a loaded list: flagged in the log, and it is never sent. */
+export const orderListed = (db: D1Database, r: Opening, tokenHash: string, which: string, now: number) =>
+  commit(db, r.orgId, async () => (await linked(db, r, tokenHash)) ? [walletEntry(r, now, 'order.sanctioned', which), [
+    db.prepare(`UPDATE orders SET status = 'refused', link_hash = NULL, link_purpose = NULL WHERE org_id = ? AND id = ? AND uid IS NULL`).bind(r.orgId, r.id),
+  ]] : null)
+/** A cancel: the orderbook took a key wallet's cancellation (`cancelled`), or the Safe was asked to revoke its presignature. */
+export const orderCancelled = (db: D1Database, r: Opening, tokenHash: string, how: 'key' | 'safe', now: number) =>
+  commit(db, r.orgId, async () => (await linked(db, r, tokenHash)) ? [walletEntry(r, now, 'order.cancel', how), [
+    db.prepare(`UPDATE orders SET link_hash = NULL, link_purpose = NULL, status = CASE WHEN ? = 'key' THEN 'cancelled' ELSE status END WHERE org_id = ? AND id = ?`).bind(how, r.orgId, r.id),
+  ]] : null)
+/** Sent orders whose state may still change, least recently read first: of one organisation, or of all (the daily run). */
+export async function openOrders(db: D1Database, orgId: string | null, limit: number) {
+  const { results } = await db.prepare(`SELECT o.org_id AS orgId, o.id, o.uid, a.payload FROM orders o JOIN approvals a ON a.org_id = o.org_id AND a.id = o.id
+                                        WHERE o.status IN ('open', 'presignaturePending') AND (?1 IS NULL OR o.org_id = ?1) ORDER BY o.checked_at, o.rowid LIMIT ?2`)
+    .bind(orgId, limit).all<{ orgId: string; id: string; uid: string; payload: string }>()
+  return results.map((r) => ({ orgId: r.orgId, id: r.id, uid: r.uid, chainId: termsOf(r).chainId }))
+}
+/**
+ * The orderbook's state, written as read. ponytail: a copy of the public orderbook, so no audit row of its own and no
+ * commit (the people's decisions are in the log: the approval, the link, the send, the cancel). One batch.
+ */
+export async function orderStates(db: D1Database, read: { orgId: string; id: string; status: string; sold: string; bought: string; tx: string | null }[], now: number) {
+  if (read.length) await db.batch(read.map((x) => db.prepare(`UPDATE orders SET status = ?, executed_sell = ?, executed_buy = ?, tx_hash = COALESCE(?, tx_hash), checked_at = ? WHERE org_id = ? AND id = ? AND status IN ('open', 'presignaturePending')`)
+    .bind(x.status, x.sold, x.bought, x.tx, now, x.orgId, x.id)))
 }
 
 // ---- milestone 4a: wallets and the recovery wallet ----
@@ -1231,10 +1321,10 @@ export async function auditRows(db: D1Database, actor: Actor, before: number | n
   const named = (table: string, seat: string) => `(SELECT n.display_name FROM ${table} x JOIN seats n ON n.org_id = x.org_id AND n.id = x.${seat} WHERE x.org_id = a.org_id AND x.id = a.subject_id)`
   const { results } = await db
     .prepare(`SELECT a.seq, a.at, a.action, a.detail, a.prev_hash AS prevHash, a.hash,
-                     COALESCE(w.display_name, (SELECT 'Recovery wallet ' || x.label FROM wallets x WHERE x.org_id = a.org_id AND x.id = a.actor_id AND a.actor_kind = 'anchor')) AS who,
+                     COALESCE(w.display_name, (SELECT CASE WHEN a.action LIKE 'order.%' THEN 'Wallet ' ELSE 'Recovery wallet ' END || x.label FROM wallets x WHERE x.org_id = a.org_id AND x.id = a.actor_id AND a.actor_kind = 'anchor')) AS who,
                      COALESCE(t.display_name, ${named('credentials', 'seat_id')}, ${named('enrolment_tickets', 'seat_id')}, ${named('sessions', 'seat_id')}, ${named('approvals', 'subject_id')}, ${named('recovery_requests', 'seat_id')},
                        (SELECT x.label FROM wallets x WHERE x.org_id = a.org_id AND x.id = a.subject_id),
-                       (SELECT 'ORD-' || substr(x.id, 1, 8) FROM approvals x WHERE x.org_id = a.org_id AND a.subject_id IN (x.id, x.subject_id) AND x.action = 'order.demo')) AS target
+                       (SELECT 'ORD-' || substr(x.id, 1, 8) FROM approvals x WHERE x.org_id = a.org_id AND a.subject_id IN (x.id, x.subject_id) AND x.action = 'order')) AS target
               FROM audit_log a LEFT JOIN seats w ON w.org_id = a.org_id AND w.id = a.actor_id LEFT JOIN seats t ON t.org_id = a.org_id AND t.id = a.subject_id
               WHERE a.org_id = ? AND (? IS NULL OR a.seq < ?) ORDER BY a.seq * ? LIMIT ?`)
     .bind(actor.orgId, before, before, limit < 0 ? 1 : -1, limit).all<AuditLine>()
@@ -1316,9 +1406,9 @@ export async function seedOrganisation(db: D1Database, o: { name: string; kind: 
   return { orgId, seatId }
 }
 
-// ponytail: demo mode, local only ("seed --demo"). A linked wallet named "Demo wallet" that no signature proved, so
-// that one person can try the order ticket. A real wallet is linked by its own signature (milestone 4a). Its address
-// is random: nobody holds its key. "seed --live" gives the address instead: the partner wallet of the indexer's
+// ponytail: local only ("seed --demo"). A linked wallet named "Demo wallet" that no signature proved, so that one
+// person can try the order ticket. A real wallet is linked by its own signature (milestone 4a). Its address is random
+// (nobody holds its key) unless given: "seed --demo" gives the first public test key of anvil, which signs locally against the stand-in orderbook. "seed --live" gives the address instead: the partner wallet of the indexer's
 // contract file, whose figures the local stand-in answers. It must never see a real database.
 export async function devDemoWallet(db: D1Database, environment: string, orgId: string, now: number, address = `0x${randomId()}${randomId().slice(0, 8)}`) {
   if (environment !== 'local') throw new Error('refused: the demo wallet is for the local database only')

@@ -12,6 +12,7 @@ import { chromium } from 'playwright-core'
 import { start as startDnsStubs } from './dns-stub.mjs'
 import { start as startIndexer } from './indexer-stub.mjs'
 import { start as startLists } from './list-stub.mjs'
+import { start as startOrderbook } from './orderbook-stub.mjs'
 
 process.chdir(new URL('..', import.meta.url).pathname)
 const ORIGIN = 'http://localhost:8787'
@@ -34,7 +35,7 @@ rmSync(STATE, { recursive: true, force: true })
 run('node_modules/.bin/wrangler', ['d1', 'migrations', 'apply', 'DB', '--local', '--persist-to', STATE])
 // Each seed prints a one-time enrolment link (10 minutes), and completes .dev.vars for the stand-ins.
 const [partnerSeed, institutionSeed] = [dev('seed', '--live'), dev('seed', '--demo')]
-const stops = [startDnsStubs(), startIndexer(), startLists()]
+const stops = [startDnsStubs(), startIndexer(), startLists(), startOrderbook()]
 // detached: the server gets its own process group, so the whole group is stopped at the end.
 const server = spawn('node_modules/.bin/wrangler', ['dev', '--persist-to', STATE, '--port', '8787'], { env, detached: true, stdio: 'ignore' })
 let browser
@@ -163,11 +164,12 @@ try {
 
   if (CHECK) {
     // The check walks the path the legend names, once: the Owner sends an order, the Approver approves it.
+    await owner.page.locator('form.ticket').getByLabel('Amount to sell').fill('1')
     await owner.page.locator('form.ticket').getByRole('button', { name: 'Review order' }).click()
     await owner.page.locator('[data-step="review"]').getByRole('button', { name: 'Send for approval' }).click()
     await owner.page.getByText('Sent for approval.').waitFor()
     await organisation(approver)
-    const card = approver.page.locator('article.appr', { hasText: 'Sell 250,000.00 EURC for ETH' })
+    const card = approver.page.locator('article.appr', { hasText: 'Sell 1 WETH for at least' })
     await card.getByRole('button', { name: 'Review' }).click()
     await card.getByRole('button', { name: 'Approve' }).click()
     await card.waitFor({ state: 'detached' })
@@ -183,7 +185,7 @@ try {
 Three windows are open, each signed in. Test data only.
   1 Partner, Owner         Overview: the partner fee and the wallets that traded, from the local stand-in of the rebate service;
                            one of them is on the test OFAC list, so a red alert names it.
-  2 Institution, Owner     Desk: fill the ticket, "Review order", then send it for approval.
+  2 Institution, Owner     Desk: fill the ticket, "Review order" (a quote of the local stand-in orderbook), then send it for approval.
   3 Institution, Approver  Organisation, Approvals: approve or refuse that order.
 Compliance, in windows 1 and 2: the sanctions screening the operator's command recorded, and the list it read.
 Passkey checks in these three tabs answer by themselves (test keys). A new tab or window has no key.
