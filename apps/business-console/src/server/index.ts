@@ -708,7 +708,7 @@ async function order(c: Context) {
     if (c.now - sealed.at > orders.REVIEW_MS) return fail(409, 'review_expired')
     // A member files so many orders an hour and no more.
     if (!(await data.countHour(c.env.DB, `order:${c.actor.seatId}`, c.now, orders.ORDERS_PER_HOUR))) return fail(429, 'order_rate')
-    const outcome = await data.change(c.env.DB, c.actor, 'order', data.randomId(), JSON.stringify(sealed.terms), c.now)
+    const outcome = await data.change(c.env.DB, c.actor, 'order', await data.sha256Hex(c.body.review as string), JSON.stringify(sealed.terms), c.now)
     return 'error' in outcome ? refuse(outcome.error) : json(200, outcome)
   }
   const t = orders.ticket(c.body)
@@ -720,7 +720,8 @@ async function order(c: Context) {
   if ('error' in quoted) return json(quoted.error === 'quote_unavailable' ? 503 : 409, quoted)
   const terms = orders.terms(t, wallet, quoted.quoted)
   if (typeof terms === 'string') return fail(400, terms)
-  const review = await seal(c.env.CHALLENGE_KEY, REVIEW, { seat: c.actor.seatId, at: c.now, terms })
+  // id: two reviews are two, even of the same terms in the same millisecond. Its hash is the order's subject: a review is sent once.
+  const review = await seal(c.env.CHALLENGE_KEY, REVIEW, { seat: c.actor.seatId, at: c.now, id: data.randomId(), terms })
   return json(200, { terms, words: orders.words(terms, null), review, until: c.now + orders.REVIEW_MS })
 }
 /** A one-time link to the signing page, for an approved order (sign) or an open one (cancel). Only its SHA-256 is stored. */

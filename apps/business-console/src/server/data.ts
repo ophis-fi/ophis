@@ -804,8 +804,9 @@ export async function change(db: D1Database, actor: Actor, kind: Kind | Direct, 
       outcome = { state: 'applied' }
       return [seatEntry(actor, now, kind, subjectId, judged.detail), judged.apply]
     }
-    if (await db.prepare(`SELECT 1 FROM approvals WHERE org_id = ? AND action = ? AND subject_id = ? AND state = 'pending' AND expires_at > ?`).bind(actor.orgId, kind, subjectId, now).first()) {
-      outcome = { error: 'already_requested' }
+    // An order's subject is the hash of its review: a review is sent once, whatever became of that order.
+    if (await db.prepare(`SELECT 1 FROM approvals WHERE org_id = ? AND action = ? AND subject_id = ? AND (action = 'order' OR (state = 'pending' AND expires_at > ?))`).bind(actor.orgId, kind, subjectId, now).first()) {
+      outcome = { error: kind === 'order' ? 'review_used' : 'already_requested' }
       return null
     }
     const notBefore = judged.relax ? now + RELAX_MS : null

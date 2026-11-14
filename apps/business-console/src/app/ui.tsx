@@ -74,6 +74,7 @@ const SAY: Record<string, string> = {
   quote_refused: 'The orderbook gave no quote for this order. Check the amount and the assets.',
   review_invalid: 'This review is not valid. Review the order again.',
   review_expired: 'The quote is older than 5 minutes. Review the order again for a new quote.',
+  review_used: 'This review was already sent for approval. To send another order, review it again.',
   order_rate: 'You prepared 30 orders in the last hour. Try again later.',
   too_many_orders: 'Twenty orders already wait for approval. One of them is decided or cancelled first.',
   org_inactive: 'The organisation is not active.',

@@ -9674,6 +9674,20 @@ describe('J. the real desk: terms from a live quote, two people, then the wallet
     expect(routes.find((x) => x.path === '/api/desk/orders')!.fresh).toBeUndefined()
   })
 
+  it('a review is sent once: sent again, while its order waits or after it was decided, it files nothing; a new review is a new order', async () => {
+    const { a, t, walletId } = await deskTeam()
+    book()
+    const r = await review(t, walletId)
+    const send = () => post('/api/desk/orders', t, { send: true, review: r.body.review })
+    const first = await send()
+    expect(first.body).toMatchObject({ state: 'requested' })
+    expect((await send()).body).toEqual({ error: 'review_used' })
+    expect((await decide(a, first.body.id, 'approve')).body).toEqual({ state: 'applied' })
+    expect((await send()).body).toEqual({ error: 'review_used' })
+    expect((await deskOrders(t)).map((x) => x.id)).toEqual([first.body.id])
+    expect((await prepare(t, walletId)).body).toMatchObject({ state: 'requested' })
+  })
+
   it('judge() makes the terms again inside the commit that files them and inside the one that approves them: terms this server would not make, or rows that changed, are refused', async () => {
     const { o, a, t, walletId } = await deskTeam()
     book()
@@ -10188,7 +10202,7 @@ describe('J. the real desk: terms from a live quote, two people, then the wallet
     expect(rights.find((x: { can: string }) => x.can.startsWith('Prepare an order'))).toMatchObject({ roles: ['owner', 'admin', 'trader'], fresh: true, second: true })
     expect(rights.find((x: { can: string }) => x.can.startsWith('Give the wallet the link'))).toMatchObject({ roles: ['owner', 'admin', 'trader', 'approver', 'compliance'], fresh: true, second: false })
     expect(rights.find((x: { can: string }) => x.can.startsWith('See the desk'))).toMatchObject({ fresh: false, second: false })
-    for (const code of ['limit_out_of_band', 'wallet_chain', 'slippage_invalid', 'validity_invalid', 'quote_unavailable', 'quote_refused', 'review_expired', 'review_invalid', 'amount_too_small']) expect(uiSource, code).toContain(`${code}: '`)
+    for (const code of ['limit_out_of_band', 'wallet_chain', 'slippage_invalid', 'validity_invalid', 'quote_unavailable', 'quote_refused', 'review_expired', 'review_invalid', 'review_used', 'amount_too_small']) expect(uiSource, code).toContain(`${code}: '`)
     for (const code of ['open', 'presignaturePending', 'cancelled', 'asked', 'link_invalid', 'signature_rejected', 'sanctioned_address', 'wallet_not_linked', 'asset_not_permitted', 'order_refused', 'orderbook_unavailable', 'already_sent', 'not_opened']) expect(signScript, code).toMatch(new RegExp(`\\b${code}: '`))
     expect(deskPage).toContain("await (send ? sensitive : api)<OrderBody & { review: string; error?: string }>('/api/desk/orders'")
   })
