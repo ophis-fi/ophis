@@ -5164,7 +5164,7 @@ describe('D. Support: the model selects, the server decides', () => {
     for (const a of ANSWERS) expect(a.title + a.about + a.text, a.id).not.toMatch(/referr|affiliate|partner code|earning/i)
     // Onboarding is built and the Desk is real (2026-11-14): the two texts say what is there.
     expect(text('KB-01')).toMatch(/application code from Ophis/)
-    expect(text('KB-19')).toMatch(/one-time link lets your wallet sign it, within 24 hours\. A Safe signs in the Safe interface\./)
+    expect(text('KB-19')).toMatch(/approves it with a passkey, within 1 hour\. Then a one-time link lets your wallet sign it, within 1 hour \(market\) or 24 hours \(limit\)\. A Safe signs in the Safe interface\./)
     expect(text('KB-19')).toContain('Sent: waiting for the Safe transaction')
     expect(text('KB-19')).not.toMatch(/demo|Not available/)
     expect(text('KB-01') + text('KB-19')).not.toMatch(/not built|shows no orders/)
@@ -9785,6 +9785,37 @@ describe('J. the real desk: terms from a live quote, two people, then the wallet
     expect((await deskOrders(t)).find((x) => x.id === id)!.state).toBe('Expired')
   })
 
+  it('the windows, to the millisecond: an order waits 1 hour for its second person; a market order is signed within 1 hour of its approval, a limit order within 24 hours', async () => {
+    const team = await deskTeam()
+    book({ buy: '1000000000' }) // 1,000 USDC for 1 WETH: a limit at 1,000 is in the band
+    const late = (await prepare(team.t, team.walletId)).body.id as string
+    const market = (await prepare(team.t, team.walletId, { amount: '2' })).body.id as string
+    const limit = (await prepare(team.t, team.walletId, { type: 'limit', sell: 'WETH', buy: 'USDC', amount: '1', limitPrice: '1000' })).body.id as string
+    now += orders.APPROVE_MS - 1
+    await again(team.a)
+    for (const id of [market, limit]) expect((await decide(team.a, id, 'approve')).body).toEqual({ state: 'applied' })
+    const approvedAt = now
+    now += 1
+    expect((await decide(team.a, late, 'approve')).status).toBe(404)
+    const record = async (id: string) => (await deskOrders(team.a)).find((x) => x.id === id)!
+    expect(await record(late)).toMatchObject({ state: 'Expired', open: false })
+    expect(await record(market)).toMatchObject({ signUntil: approvedAt + HOUR, words: { signWithin: '1 hour' } })
+    expect(await record(limit)).toMatchObject({ signUntil: approvedAt + 24 * HOUR, words: { signWithin: '24 hours' } })
+    const links = { market: await orderLink(team.a, market), limit: await orderLink(team.a, limit) }
+    now = approvedAt + HOUR - 1
+    expect((await orderPage(links.market.token)).status).toBe(200)
+    now = approvedAt + HOUR
+    expect((await orderPage(links.market.token)).body).toEqual({ error: 'link_invalid' })
+    await again(team.a)
+    expect([(await record(market)).state, (await record(limit)).state]).toEqual(['Expired', 'Approved: waiting for signature'])
+    now = approvedAt + 24 * HOUR - 1
+    expect((await orderPage(links.limit.token)).status).toBe(200)
+    now = approvedAt + 24 * HOUR
+    expect((await orderPage(links.limit.token)).body).toEqual({ error: 'link_invalid' })
+    await again(team.a)
+    expect((await record(limit)).state).toBe('Expired')
+  })
+
   it('withdraw: one person, with a fresh passkey check, withdraws an approved order before the wallet signs it; its link dies, no link is given again, the blotter says Withdrawn; a sent order is never withdrawn', async () => {
     const team = await deskTeam()
     const asked = book()
@@ -10046,8 +10077,8 @@ describe('J. the real desk: terms from a live quote, two people, then the wallet
     expect(daily2.filter((x) => /\/orders\/0x/.test(x.url)).length).toBeLessThanOrEqual(20)
     expect((await deskOrders(team.t)).filter((x) => x.state === 'Open')).toEqual([])
     // An order whose expiry passed reads Expired even before the orderbook is read again.
-    expect(orders.stateOf({ state: 'applied', open: false, approvedAt: 0, uid: '0x', status: 'open', validTo: 1_000 }, 1_000_000)).toBe('Expired')
-    expect(orders.stateOf({ state: 'applied', open: false, approvedAt: 0, uid: '0x', status: 'open', validTo: 1_000 }, 999_999)).toBe('Open')
+    expect(orders.stateOf({ state: 'applied', open: false, type: 'market', approvedAt: 0, uid: '0x', status: 'open', validTo: 1_000 }, 1_000_000)).toBe('Expired')
+    expect(orders.stateOf({ state: 'applied', open: false, type: 'market', approvedAt: 0, uid: '0x', status: 'open', validTo: 1_000 }, 999_999)).toBe('Open')
     // An answer the server cannot use changes nothing: another state, an amount that is no integer, a transaction that is no hash.
     const id = await approvedOrder(team, { amount: '7' })
     const { page } = await signed((await orderLink(team.t, id)).token)

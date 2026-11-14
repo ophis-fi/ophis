@@ -457,7 +457,7 @@ function Approval({ request, wallet, on, mayDecide, act }: { request: Request; w
   const early = (request.notBefore ?? 0) > Date.now()
   // An order of the desk. Its value is the terms the approval binds; the server gives them in words.
   const order = request.kind === 'order' && request.value && request.words ? ({ terms: JSON.parse(request.value), words: request.words } as OrderBody) : null
-  const what = order ? `${order.words.binding} ${orderWords(order)}. ${order.words.type}. Ophis fee: ${order.words.fee}. Once approved, the wallet signs these terms within 24 hours, or they expire.`
+  const what = order ? `${order.words.binding} ${orderWords(order)}. ${order.words.type}. Ophis fee: ${order.words.fee}. Once approved, the wallet signs these terms within ${order.words.signWithin}, or they expire.`
     : wallet ? walletEffect(request.kind, wallet, on) : effect(request.kind, request.name ?? '', request.role, request.value)
   return (
     <article className="appr">

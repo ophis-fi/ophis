@@ -42,10 +42,13 @@ export const capOf = (symbol: Symbol, decimals: number) => BigInt(CAP[symbol]) *
 
 export const VALIDITY = [1800, 14_400, 86_400] // seconds after signing: 30 minutes, 4 hours, 24 hours
 export const SLIPPAGE = { default: 50, max: 300 } // bps
-export const SIGN_MS = 24 * 60 * 60_000 // approved terms can be signed for 24 hours
+// The least amount of a market order rests on the live quote of its review: so it is approved within 1 hour of being sent
+// for approval, and signed within 1 hour of the approval. A limit order rests on the member's own price: 24 hours to sign.
+export const APPROVE_MS = 60 * 60_000
+export const SIGN_MS = { market: 60 * 60_000, limit: 24 * 60 * 60_000 }
 export const MIN_VALID_MS = 60_000 // the orderbook refuses an order valid less than 1 minute more (InsufficientValidTo, read-only quotes of 2026-11-14)
-/** Until when approved terms can be signed: 24 hours from the approval, and, once the signing page fixed the expiry, while the orderbook still takes the order. */
-export const signBy = (o: { approvedAt: number | null; validTo: number | null }) => Math.min((o.approvedAt ?? 0) + SIGN_MS, o.validTo === null ? Infinity : o.validTo * 1000 - MIN_VALID_MS)
+/** Until when approved terms can be signed: their window from the approval, and, once the signing page fixed the expiry, while the orderbook still takes the order. */
+export const signBy = (o: { type: Ticket['type']; approvedAt: number | null; validTo: number | null }) => Math.min((o.approvedAt ?? 0) + SIGN_MS[o.type], o.validTo === null ? Infinity : o.validTo * 1000 - MIN_VALID_MS)
 export const REVIEW_MS = 5 * 60_000 // a review is sent for approval within 5 minutes, or quoted again
 export const MAX_OPEN_ORDERS = 20 // orders that wait for approval, per organisation
 export const ORDERS_PER_HOUR = 30 // orders one member files in an hour
@@ -287,7 +290,7 @@ export async function status(env: Settings, chainId: number, uid: string, sellTo
 
 // ---- words ----
 /** What the blotter says of an order: its approval row and its order row. */
-export function stateOf(o: { state: string; open: boolean; approvedAt: number | null; uid: string | null; status: string | null; validTo: number | null }, now: number) {
+export function stateOf(o: { state: string; open: boolean; type: Ticket['type']; approvedAt: number | null; uid: string | null; status: string | null; validTo: number | null }, now: number) {
   if (o.state === 'pending') return o.open ? 'Pending approval' : 'Expired'
   if (o.state === 'rejected' || o.status === 'refused') return 'Refused'
   if (o.state !== 'applied') return 'Cancelled'
@@ -309,6 +312,7 @@ export function words(t: Terms, validTo: number | null) {
     chain: CHAIN_NAME[t.chainId] ?? `Chain ${t.chainId}`,
     wallet: `${t.label} (${t.wallet})`,
     valid: until ? `Until ${until}` : `${VALID_WORDS[t.validFor]} after signing`,
+    signWithin: t.type === 'market' ? '1 hour' : '24 hours', // SIGN_MS in words: how long after the approval the wallet can sign
     fee: '0.01% of the volume, plus a share of any price better than the quote',
     quote: `${decimal(t.quoted, b?.decimals ?? 18)} ${t.buy.symbol}`,
     binding: `Sell exactly ${sell}. Receive at least ${least}. ${until ? `Valid until ${until}` : `Valid for ${VALID_WORDS[t.validFor]} after signing`}.`,

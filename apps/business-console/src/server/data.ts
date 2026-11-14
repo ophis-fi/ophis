@@ -7,7 +7,7 @@
 
 import { checksum, colour, type SafeState } from './chain.ts'
 import { LISTS } from './typed.ts'
-import { again, MAX_OPEN_ORDERS, MIN_VALID_MS, PREPARERS, SIGN_MS, SIGNERS, type Terms } from './orders.ts'
+import { again, APPROVE_MS, MAX_OPEN_ORDERS, MIN_VALID_MS, PREPARERS, SIGN_MS, SIGNERS, type Terms } from './orders.ts'
 
 export type Role = 'owner' | 'admin' | 'trader' | 'approver' | 'compliance' | 'viewer'
 export const ROLES: Role[] = ['owner', 'admin', 'trader', 'approver', 'compliance', 'viewer']
@@ -812,7 +812,7 @@ export async function change(db: D1Database, actor: Actor, kind: Kind | Direct, 
     outcome = { state: 'requested', id, notBefore }
     return [seatEntry(actor, now, 'approval.request', id, kind), [
       db.prepare(`INSERT INTO approvals (id, org_id, action, subject_id, payload, payload_hash, requester_seat_id, state, not_before, expires_at, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?, ?)`)
-        .bind(id, actor.orgId, kind, subjectId, payload, payloadHash, actor.seatId, notBefore, now + REQUEST_MS, now),
+        .bind(id, actor.orgId, kind, subjectId, payload, payloadHash, actor.seatId, notBefore, now + (kind === 'order' ? APPROVE_MS : REQUEST_MS), now),
     ]]
   })
   return outcome as Changed
@@ -909,10 +909,11 @@ const ORDER_ROW = `SELECT o.org_id AS orgId, o.id, o.approved_at AS approvedAt, 
 type OrderRow = { orgId: string; id: string; approvedAt: number; purpose: 'sign' | 'cancel' | null; validTo: number | null; uid: string | null; status: string | null; payload: string; walletId: string | null; walletChain: number | null; walletAddress: string | null }
 /**
  * Can this link be used now (?2: now; ?4: the purpose asked for, or null for the link's own)? A signing link: the order is
- * not sent (a sent or refused one has a status), its approval is younger than 24 hours, and the expiry the page fixed, if
- * it did, still leaves the orderbook's minute (orders.signBy says the same). A cancel link: the order is open. An order row exists from its approval on.
+ * not sent (a sent, refused or withdrawn one has a status), its approval is younger than 1 hour (market) or 24 hours (limit), and the
+ * expiry the page fixed, if it did, still leaves the orderbook's minute (orders.signBy says the same). A cancel link: the order is open. An order row exists from its approval on.
  */
-const LINK_LIVE = `((COALESCE(?4, o.link_purpose) = 'sign' AND o.status IS NULL AND o.approved_at + ${SIGN_MS} > ?2 AND (o.valid_to IS NULL OR o.valid_to * 1000 - ${MIN_VALID_MS} > ?2))
+const LINK_LIVE = `((COALESCE(?4, o.link_purpose) = 'sign' AND o.status IS NULL AND (o.valid_to IS NULL OR o.valid_to * 1000 - ${MIN_VALID_MS} > ?2)
+                     AND o.approved_at + CASE json_extract(json_extract(a.payload, '$.value'), '$.type') WHEN 'limit' THEN ${SIGN_MS.limit} ELSE ${SIGN_MS.market} END > ?2)
                     OR (COALESCE(?4, o.link_purpose) = 'cancel' AND o.status IN ('open', 'presignaturePending') AND o.valid_to * 1000 > ?2))`
 const termsOf = (row: { payload: string }) => JSON.parse((JSON.parse(row.payload) as { value: string }).value) as Terms
 

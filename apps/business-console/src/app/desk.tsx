@@ -8,7 +8,7 @@ import { api, CANCELLED, capital, Icon, ROLE, save, say, sensitive, Section, sta
 
 // What an approval binds (the server's terms; amounts in atoms) and the same in words, made by the server.
 interface Terms { type: 'market' | 'limit'; chainId: number; walletId: string; wallet: string; label: string; scheme: 'eip712' | 'presign'; sell: { symbol: string; amount: string }; buy: { symbol: string; minimum: string }; quoted: string; slippageBips: number | null; limitPrice: string | null; validFor: number }
-interface Words { sell: string; buy: string; type: string; chain: string; wallet: string; valid: string; fee: string; quote: string; binding: string }
+interface Words { sell: string; buy: string; type: string; chain: string; wallet: string; valid: string; signWithin: string; fee: string; quote: string; binding: string }
 export interface OrderBody { terms: Terms; words: Words }
 // A row of the blotter: an order of this organisation, its state, and what the orderbook did with it (in words, units of each asset).
 interface Order extends OrderBody {
@@ -434,7 +434,7 @@ function OrderRecord({ o, v, onClose, onChanged, onSignedOut }: { o: Order; v: D
   const [link, setLink] = useState('')
   const [copied, setCopied] = useState(false)
   const [problem, setProblem] = useState('')
-  const decided = o.state === 'Cancelled' && !o.decidedBy ? `Cancelled by its preparer${o.decidedAt ? ` on ${stamp(o.decidedAt)}` : ''}` : o.decidedBy && o.decidedAt ? `${o.state === 'Refused' && !o.uid ? 'Refused' : 'Approved'} by ${o.decidedBy} on ${stamp(o.decidedAt)}` : o.state === 'Expired' ? 'Nobody decided it within 7 days' : 'Not decided yet'
+  const decided = o.state === 'Cancelled' && !o.decidedBy ? `Cancelled by its preparer${o.decidedAt ? ` on ${stamp(o.decidedAt)}` : ''}` : o.decidedBy && o.decidedAt ? `${o.state === 'Refused' && !o.uid ? 'Refused' : 'Approved'} by ${o.decidedBy} on ${stamp(o.decidedAt)}` : o.state === 'Expired' ? 'Nobody decided it within 1 hour' : 'Not decided yet'
   const purpose = o.state === 'Approved: waiting for signature' && !o.uid ? 'sign' : o.state === 'Open' || o.state === 'Sent: waiting for the Safe transaction' ? 'cancel' : null
   async function give() {
     const out = await sensitive<{ link: string; error?: string }>(`/api/desk/orders/${o.id}/link`, { purpose }).catch(() => null)

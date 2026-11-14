@@ -617,7 +617,7 @@ export const EVENTS: Record<string, string> = {
   'anchor.set': 'Recovery wallet set, in force after 72 hours',
   'anchor.set/alone': 'Recovery wallet set by the only key-role member, in force after 72 hours',
   'anchor.cancel': 'Change of recovery wallet cancelled',
-  order: 'Order approved: its terms can be signed for 24 hours',
+  order: 'Order approved: its terms can be signed for 1 hour (a market order) or 24 hours (a limit order)',
   'order.link': 'Link issued to the signing page for an order',
   'order.link/sign': 'Signing link issued for an approved order',
   'order.link/cancel': 'Cancel link issued for an open order',
@@ -685,8 +685,8 @@ const csvFile = (c: Context, name: string, lines: unknown[][]) => json(200, { na
 const ordersOf = async (c: Context) => (await data.orders(c.env.DB, c.actor, c.now)).map(({ terms, approvedAt, status, ...o }) => {
   const units = (atoms: string | null, symbol: string) => (atoms === null ? null : `${orders.decimal(atoms, orders.ASSETS[terms.chainId]?.[symbol as orders.Symbol]?.decimals ?? 18)} ${symbol}`)
   return {
-    ...o, terms, words: orders.words(terms, o.validTo), ref: `ORD-${o.id.slice(0, 8)}`, state: orders.stateOf({ ...o, approvedAt, status }, c.now),
-    signUntil: o.state === 'applied' && !o.uid && !status ? orders.signBy({ approvedAt, validTo: o.validTo }) : null,
+    ...o, terms, words: orders.words(terms, o.validTo), ref: `ORD-${o.id.slice(0, 8)}`, state: orders.stateOf({ ...o, type: terms.type, approvedAt, status }, c.now),
+    signUntil: o.state === 'applied' && !o.uid && !status ? orders.signBy({ type: terms.type, approvedAt, validTo: o.validTo }) : null,
     executed: o.sold && status === 'fulfilled' ? { sold: units(o.sold, terms.sell.symbol), bought: units(o.bought, terms.buy.symbol), fee: units(o.fee, terms.sell.symbol) } : null,
   }
 })
