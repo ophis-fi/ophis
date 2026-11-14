@@ -3384,9 +3384,9 @@ describe('w. the audit log page and its export', () => {
     // The same, with new rows after the checkpoint: its write is refused, and it says what is stored.
     await grow(o.orgId, 5)
     expect(await data.verifyAudit(stale(read), o.orgId)).toEqual({ ok: false, seq: 3 })
-    // Another, which read no break, finds one later in the log: the first row stays the one named.
+    // Another, which read no break, finds one later in the log: the first row stays the one stored and the one named.
     await asForger(db.prepare(`UPDATE audit_log SET detail = 'changed' WHERE org_id = ? AND seq = ?`).bind(o.orgId, head + 2))
-    expect(await data.verifyAudit(stale(read), o.orgId)).toEqual({ ok: false, seq: head + 2 })
+    expect(await data.verifyAudit(stale(read), o.orgId)).toEqual({ ok: false, seq: 3 })
     expect(await checks(o.orgId)).toMatchObject({ broken_seq: 3 })
   })
 

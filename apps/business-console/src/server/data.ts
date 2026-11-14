@@ -162,10 +162,12 @@ export async function verifyAudit(db: D1Database, orgId: string): Promise<ChainS
   const oldBroken = back.broken ?? (back.seq < end ? back.seq + 1 : end === s.sweep_seq && back.hash !== s.sweep_hash ? end : null)
   const ahead = await walk(fresh.slice(0, NEW_ROWS), s.checked_seq, s.checked_hash)
   const broken = oldBroken ?? ahead.broken
+  const stored = async () => (await db.prepare('SELECT broken_seq FROM audit_checks WHERE org_id = ?').bind(orgId).first<{ broken_seq: number | null }>())?.broken_seq ?? null
   if (broken !== null) {
-    await db.prepare(`INSERT INTO audit_checks (org_id, checked_seq, checked_hash, recheck_seq, recheck_hash, sweep_seq, sweep_hash, broken_seq) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    const w = await db.prepare(`INSERT INTO audit_checks (org_id, checked_seq, checked_hash, recheck_seq, recheck_hash, sweep_seq, sweep_hash, broken_seq) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
                       ON CONFLICT (org_id) DO UPDATE SET broken_seq = excluded.broken_seq WHERE broken_seq IS NULL OR broken_seq > excluded.broken_seq`).bind(orgId, s.checked_seq, s.checked_hash, s.recheck_seq, s.recheck_hash, s.sweep_seq, s.sweep_hash, broken).run()
-    return { ok: false, seq: broken }
+    // Refused: an earlier break is stored, and the page names that one.
+    return { ok: false, seq: w.meta.changes ? broken : (await stored()) ?? broken }
   }
   // At the end of a sweep the next one begins, from row 1 to the checkpoint of now.
   const [recheck, sweep] = end === s.sweep_seq ? [{ seq: 0, hash: FIRST }, ahead] : [back, { seq: s.sweep_seq, hash: s.sweep_hash }]
@@ -176,8 +178,8 @@ export async function verifyAudit(db: D1Database, orgId: string): Promise<ChainS
   // Nothing written (nothing moved, or refused: another load moved the state or stored a break since this one read it).
   // A stored break is the answer.
   if (!moved || !moved.meta.changes) {
-    const now = await db.prepare('SELECT broken_seq FROM audit_checks WHERE org_id = ?').bind(orgId).first<{ broken_seq: number | null }>()
-    if (now?.broken_seq != null) return { ok: false, seq: now.broken_seq }
+    const b = await stored()
+    if (b !== null) return { ok: false, seq: b }
   }
   return { ok: true, rows: ahead.seq, head: ahead.hash, newer: fresh.length > NEW_ROWS, rechecked: end ? [s.recheck_seq + 1, end] : null, per: OLD_ROWS }
 }
