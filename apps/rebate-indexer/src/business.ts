@@ -1,6 +1,6 @@
 import { timingSafeEqual } from 'node:crypto';
 import type { FastifyInstance } from 'fastify';
-import type { PartnerBreakdown, PartnerFeeDashboard, PartnerTraders } from './partnerFees/report.js';
+import type { PartnerBreakdown, PartnerFeeDashboard, PartnerSanctioned, PartnerTraders } from './partnerFees/report.js';
 import { logger } from './logger.js';
 
 // One token-gated read route for the Ophis Business console. A company wallet (a
@@ -8,7 +8,8 @@ import { logger } from './logger.js';
 // control itself and reads here, server to server, the partner-fee dashboard, the
 // wallets that traded through its integration (the trades that carried its fee), and its
 // flow by day, chain and fee token with the payouts made to it (the breakdown). It
-// never reads the referral dashboard: the console's partners get no referral share.
+// never reads the referral dashboard: the console's partners get no referral share. The console also sends the addresses
+// of the sanctions lists it holds (listed): each wallet's answer names those of them that traded through its integration.
 // BUSINESS_API_TOKEN reads EVERY partner's fee dashboard and traders: it is a secret, and the
 // feature is OFF (404) unless it is set, long, and different from the admin token.
 
@@ -16,16 +17,20 @@ export interface BusinessDeps {
   getPartnerFeeDashboard: (recipient: `0x${string}`, now?: Date) => Promise<PartnerFeeDashboard>;
   getPartnerTraders: (recipient: `0x${string}`) => Promise<PartnerTraders>;
   getPartnerBreakdown: (recipient: `0x${string}`, now?: Date) => Promise<PartnerBreakdown>;
+  getPartnerSanctioned: (recipient: `0x${string}`, listed: readonly string[]) => Promise<PartnerSanctioned>;
 }
 
 export interface BusinessPartnerAnswer {
   asOf: string;
-  /** fees, traders and breakdown null: a contract wallet the console did not prove on its pinned chain. Nothing was read for it. */
-  wallets: { wallet: `0x${string}`; fees: PartnerFeeDashboard | null; traders: PartnerTraders | null; breakdown: PartnerBreakdown | null }[];
+  /** fees, traders, breakdown and sanctioned null: a contract wallet the console did not prove on its pinned chain. Nothing was read for it. */
+  wallets: { wallet: `0x${string}`; fees: PartnerFeeDashboard | null; traders: PartnerTraders | null; breakdown: PartnerBreakdown | null; sanctioned: PartnerSanctioned | null }[];
 }
 
 // The chain each contract wallet is pinned to, as POST /partner reads it (affiliate/partnerAuth.ts): the same address
 // on another chain can be a contract with other owners. Unset or unreadable means no contract wallet is pinned.
+// listed: at most what the console's three lists can hold (20,000 addresses each), about 2.7 MB of JSON.
+export const MAX_LISTED = 60_000;
+
 function pinnedChains(): Record<string, unknown> {
   try {
     const parsed: unknown = JSON.parse(process.env.CONTRACT_WALLET_AUTH_CHAINS || '{}');
@@ -42,8 +47,8 @@ function businessToken(): string | null {
 }
 
 export function registerBusinessRoutes(app: FastifyInstance, deps: BusinessDeps): void {
-  app.post<{ Body: { wallets?: unknown; contract?: unknown } }>('/business/partner', {
-    config: { rateLimit: { max: 120, timeWindow: '1 minute' } },
+  app.post<{ Body: { wallets?: unknown; contract?: unknown; listed?: unknown } }>('/business/partner', {
+    config: { rateLimit: { max: 120, timeWindow: '1 minute' } }, bodyLimit: 3_000_000,
   }, async (req, reply): Promise<BusinessPartnerAnswer | undefined> => {
     const expected = businessToken();
     if (!expected) return reply.code(404).send({ error: 'not found' });
@@ -69,6 +74,13 @@ export function registerBusinessRoutes(app: FastifyInstance, deps: BusinessDeps)
         return reply.code(400).send({ error: 'invalid contract wallet chains' });
       }
     }
+    // listed: the addresses on the sanctions lists the console holds. Required, as contract: an empty list says none is loaded.
+    const rawListed = req.body?.listed;
+    if (!Array.isArray(rawListed) || rawListed.length > MAX_LISTED) return reply.code(400).send({ error: `listed must hold at most ${MAX_LISTED} addresses` });
+    const listed = rawListed.map((a) => (typeof a === 'string' ? a.toLowerCase() : ''));
+    if (!listed.every((a) => /^0x[0-9a-f]{40}$/.test(a))) return reply.code(400).send({ error: 'invalid listed address' });
+    if (new Set(listed).size !== listed.length) return reply.code(400).send({ error: 'duplicate listed address' });
+
     const pinned = pinnedChains();
     // Chains are integers above zero, so an unpinned wallet (undefined) and a pin that is no number never match.
     const readable = (w: string) => !proved.has(w) || (proved.get(w) as unknown[]).includes(pinned[w]);
@@ -79,8 +91,8 @@ export function registerBusinessRoutes(app: FastifyInstance, deps: BusinessDeps)
     // ponytail: one wallet after the other (at most 10); parallel if latency matters.
     for (const w of wallets as `0x${string}`[]) {
       out.push(readable(w)
-        ? { wallet: w, fees: await deps.getPartnerFeeDashboard(w, now), traders: await deps.getPartnerTraders(w), breakdown: await deps.getPartnerBreakdown(w, now) }
-        : { wallet: w, fees: null, traders: null, breakdown: null });
+        ? { wallet: w, fees: await deps.getPartnerFeeDashboard(w, now), traders: await deps.getPartnerTraders(w), breakdown: await deps.getPartnerBreakdown(w, now), sanctioned: await deps.getPartnerSanctioned(w, listed) }
+        : { wallet: w, fees: null, traders: null, breakdown: null, sanctioned: null });
     }
     return { asOf: now.toISOString(), wallets: out };
   });

@@ -4,12 +4,15 @@ import rateLimit from '@fastify/rate-limit';
 import { readFileSync } from 'node:fs';
 // Type-only: the fake below is typed with the PRODUCER's exported type, so a
 // changed producer shape fails `tsc --noEmit` here. No database is loaded.
-import type { PartnerBreakdown, PartnerFeeDashboard, PartnerTraders } from '../src/partnerFees/report.js';
-import { registerBusinessRoutes } from '../src/business.js';
+import type { PartnerBreakdown, PartnerFeeDashboard, PartnerSanctioned, PartnerTraders } from '../src/partnerFees/report.js';
+import { MAX_LISTED, registerBusinessRoutes } from '../src/business.js';
 
 const fixture = JSON.parse(readFileSync(new URL('./fixtures/business-partner.json', import.meta.url), 'utf8'));
 const PARTNER = '0x5afe5afe5afe5afe5afe5afe5afe5afe5afe5afe' as const;
 const OTHER = '0x00000000000000000000000000000000000000b2' as const;
+// What the console sends as listed: a wallet on a list that traded through PARTNER's integration, and one that did not.
+const LISTED_TRADER = '0x0000000000000000000000000000000000000b0b' as const;
+const LISTED = [LISTED_TRADER, '0x00000000000000000000000000000000000a11ce'];
 const TOKEN = 'business-test-token-0123456789abcdef-xyz';
 const ADMIN = 'admin-test-token-0123456789abcdef-uvwxyz';
 
@@ -34,7 +37,7 @@ const traders = (full: boolean): PartnerTraders => ({
   wallets: full
     ? [
         { wallet: '0x00000000000000000000000000000000000000c1', trades: 227, volumeUsd: 251000.25, unpriced: 0 },
-        { wallet: '0x00000000000000000000000000000000000000c2', trades: 181, volumeUsd: 118400.5, unpriced: 1 },
+        { wallet: LISTED_TRADER, trades: 181, volumeUsd: 118400.5, unpriced: 1 },
         { wallet: '0x00000000000000000000000000000000000000c3', trades: 1, volumeUsd: 0, unpriced: 1 },
       ]
     : [],
@@ -60,10 +63,15 @@ const breakdown = (full: boolean): PartnerBreakdown => (full
     }
   : { daily: [], byChain: [], byToken: [], payouts: [] });
 
+// As the query: only the wallets of `listed` that traded.
+const sanctioned = (full: boolean, listed: readonly string[]): PartnerSanctioned => (full ? [{ wallet: LISTED_TRADER, trades: 181, volumeUsd: 118400.5, unpriced: 1, firstAt: '2026-08-20T14:02:11.000Z', lastAt: '2026-11-07T09:41:05.000Z' }] : [])
+  .filter((s) => listed.includes(s.wallet));
+
 let app: FastifyInstance;
 let asked: string[];
 let askedTraders: string[];
 let askedBreakdown: [string, string][];
+let askedSanctioned: [string, readonly string[]][];
 beforeEach(async () => {
   vi.useFakeTimers({ toFake: ['Date'], now: new Date('2026-11-12T09:30:00Z') });
   process.env.BUSINESS_API_TOKEN = TOKEN;
@@ -71,12 +79,14 @@ beforeEach(async () => {
   asked = [];
   askedTraders = [];
   askedBreakdown = [];
+  askedSanctioned = [];
   app = Fastify({ logger: false });
   await app.register(rateLimit, { max: 100, timeWindow: '1 minute' });
   registerBusinessRoutes(app, {
     getPartnerFeeDashboard: async (a) => (asked.push(a), fees(a, a === PARTNER)),
     getPartnerTraders: async (a) => (askedTraders.push(a), traders(a === PARTNER)),
     getPartnerBreakdown: async (a, at) => (askedBreakdown.push([a, at!.toISOString()]), breakdown(a === PARTNER)),
+    getPartnerSanctioned: async (a, listed) => (askedSanctioned.push([a, listed]), sanctioned(a === PARTNER, listed)),
   });
 });
 afterEach(async () => {
@@ -87,8 +97,8 @@ afterEach(async () => {
   delete process.env.CONTRACT_WALLET_AUTH_CHAINS;
 });
 
-const call = (wallets: unknown, headers: Record<string, string> = { authorization: `Bearer ${TOKEN}` }, contract: unknown = {}) =>
-  app.inject({ method: 'POST', url: '/business/partner', headers, payload: { wallets, contract } });
+const call = (wallets: unknown, headers: Record<string, string> = { authorization: `Bearer ${TOKEN}` }, contract: unknown = {}, listed: unknown = LISTED) =>
+  app.inject({ method: 'POST', url: '/business/partner', headers, payload: { wallets, contract, listed } });
 
 test('the answer equals the contract file exactly', async () => {
   const res = await call([PARTNER, OTHER]);
@@ -98,12 +108,13 @@ test('the answer equals the contract file exactly', async () => {
   expect([asked, askedTraders]).toEqual([[PARTNER, OTHER], [PARTNER, OTHER]]);
   // The breakdown's 90 days end at the same time as the answer's asOf.
   expect(askedBreakdown).toEqual([[PARTNER, fixture.asOf], [OTHER, fixture.asOf]]);
+  expect(askedSanctioned).toEqual([[PARTNER, LISTED], [OTHER, LISTED]]);
 });
 
 test('the contract file shows what the console is built against: the partner-fee dashboard, the traders and the breakdown of each wallet, and nothing else', () => {
   const [p, o] = fixture.wallets;
   // No referral dashboard: the console's partners get no referral share (retail POST /partner keeps it).
-  expect(fixture.wallets.map((w: object) => Object.keys(w))).toEqual([['wallet', 'fees', 'traders', 'breakdown'], ['wallet', 'fees', 'traders', 'breakdown']]);
+  expect(fixture.wallets.map((w: object) => Object.keys(w))).toEqual([['wallet', 'fees', 'traders', 'breakdown', 'sanctioned'], ['wallet', 'fees', 'traders', 'breakdown', 'sanctioned']]);
   expect(p.fees.recentBatches).toHaveLength(2);
   // The traders count the same rows as the lifetime trade count: every trade that carried the partner's fee.
   expect(p.traders.totals.trades).toBe(p.fees.lifetime.tradeCount);
@@ -121,6 +132,39 @@ test('the contract file shows what the console is built against: the partner-fee
   expect([days, days[0] >= '2026-08-15', days.at(-1) <= fixture.asOf.slice(0, 10)]).toEqual([[...new Set(days)].sort(), true, true]);
   expect(b.daily.some((d: Record<string, number>) => d.trades === d.unpriced && d.volumeUsd === 0)).toBe(true);
   expect(Object.values(o.breakdown).flat()).toEqual([]);
+  // A listed wallet that traded: the same trades and volume as in the wallets that traded, its first trade before its last.
+  for (const s of p.sanctioned) {
+    expect(p.traders.wallets.find((w: { wallet: string }) => w.wallet === s.wallet)).toEqual({ wallet: s.wallet, trades: s.trades, volumeUsd: s.volumeUsd, unpriced: s.unpriced });
+    expect(s.firstAt < s.lastAt).toBe(true);
+  }
+  expect([p.sanctioned.length, o.sanctioned]).toEqual([1, []]);
+});
+
+test('listed: the addresses of the lists the console holds, lower-cased, passed to the query of each wallet read; empty when none is loaded', async () => {
+  const res = await call([PARTNER], undefined, {}, [LISTED_TRADER.replace('b0b', 'B0B'), LISTED[1]]);
+  expect([res.statusCode, JSON.parse(res.body).wallets[0].sanctioned]).toEqual([200, fixture.wallets[0].sanctioned]);
+  expect(askedSanctioned).toEqual([[PARTNER, LISTED]]);
+  const none = await call([PARTNER], undefined, {}, []);
+  expect([none.statusCode, JSON.parse(none.body).wallets[0].sanctioned]).toEqual([200, []]);
+  // At most what the three lists can hold, about 2.7 MB: under the route's body limit.
+  const all = Array.from({ length: MAX_LISTED }, (_, i) => addr(i + 1));
+  expect([MAX_LISTED, (await call([OTHER], undefined, {}, all)).statusCode]).toEqual([60_000, 200]);
+  expect(askedSanctioned.at(-1)![1]).toHaveLength(MAX_LISTED);
+});
+
+test.each([
+  ['missing', undefined],
+  ['not a list', LISTED_TRADER],
+  ['above 60,000 addresses', Array.from({ length: 60_001 }, (_, i) => `0x${(i + 1).toString(16).padStart(40, '0')}`)],
+  ['an address that is no string', [42]],
+  ['an address too short', ['0x1234']],
+  ['an address that is not hex', [`0x${'g'.repeat(40)}`]],
+  ['a duplicate in another case', [LISTED_TRADER, LISTED_TRADER.replace('b0b', 'B0B')]],
+])('400 when listed is %s', async (_name, listed) => {
+  // Not through call(): its default would stand in for a listed that is missing.
+  const res = await app.inject({ method: 'POST', url: '/business/partner', headers: { authorization: `Bearer ${TOKEN}` }, payload: { wallets: [PARTNER], contract: {}, listed } });
+  expect(res.statusCode).toBe(400);
+  expect([asked, askedSanctioned]).toEqual([[], []]);
 });
 
 test.each([
@@ -174,10 +218,10 @@ test.each([
   expect(asked).toEqual([]);
 });
 
-test.each([['a list', [PARTNER]], ['a string', PARTNER], ['null', null]])('400 when the body is %s, and 413 above 1 MB', async (_name, payload) => {
+test.each([['a list', [PARTNER]], ['a string', PARTNER], ['null', null]])('400 when the body is %s, and 413 above 3 MB', async (_name, payload) => {
   const post = (body: string) => app.inject({ method: 'POST', url: '/business/partner', headers: { authorization: `Bearer ${TOKEN}`, 'content-type': 'application/json' }, payload: body });
   expect((await post(JSON.stringify(payload))).statusCode).toBe(400);
-  expect((await post(JSON.stringify({ wallets: [PARTNER], contract: {}, pad: 'x'.repeat(1_100_000) }))).statusCode).toBe(413);
+  expect((await post(JSON.stringify({ wallets: [PARTNER], contract: {}, listed: [], pad: 'x'.repeat(3_000_000) }))).statusCode).toBe(413);
   expect(asked).toEqual([]);
 });
 
@@ -197,10 +241,10 @@ test('10 wallets pass, upper case is lowered, and the order asked is kept', asyn
 test('a contract wallet is read only when the console proved it on its pinned chain; else it gets no figures', async () => {
   const auth = { authorization: `Bearer ${TOKEN}` };
   const figures = async (contract: unknown) => JSON.parse((await call([PARTNER, OTHER], auth, contract)).body).wallets;
-  const refused = { wallet: PARTNER, fees: null, traders: null, breakdown: null };
+  const refused = { wallet: PARTNER, fees: null, traders: null, breakdown: null, sanctioned: null };
   // No pinned chain at all: refused, and nothing is read for it. The wallet proved by its key is served.
   expect(await figures({ [PARTNER]: [8453] })).toEqual([refused, fixture.wallets[1]]);
-  expect([asked, askedTraders, askedBreakdown.map(([w]) => w)]).toEqual([[OTHER], [OTHER], [OTHER]]);
+  expect([asked, askedTraders, askedBreakdown.map(([w]) => w), askedSanctioned.map(([w]) => w)]).toEqual([[OTHER], [OTHER], [OTHER], [OTHER]]);
   process.env.CONTRACT_WALLET_AUTH_CHAINS = JSON.stringify({ [PARTNER]: 10 });
   expect(await figures({ [PARTNER]: [8453, 1] })).toEqual([refused, fixture.wallets[1]]); // proved on other chains only
   expect(await figures({ [PARTNER]: [8453, 10] })).toEqual(fixture.wallets); // proved on the pinned chain
@@ -222,7 +266,7 @@ test.each([
   ['with 11 chains', { [PARTNER]: Array.from({ length: 11 }, (_, i) => i + 1) }],
   ['no list of chains', { [PARTNER]: 10 }],
 ])('400 when contract is %s', async (_name, contract) => {
-  const res = await app.inject({ method: 'POST', url: '/business/partner', headers: { authorization: `Bearer ${TOKEN}` }, payload: { wallets: [PARTNER], contract } });
+  const res = await app.inject({ method: 'POST', url: '/business/partner', headers: { authorization: `Bearer ${TOKEN}` }, payload: { wallets: [PARTNER], contract, listed: [] } });
   expect(res.statusCode).toBe(400);
   expect(asked).toEqual([]);
 });

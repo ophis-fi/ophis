@@ -190,6 +190,34 @@ export async function getPartnerTraders(recipient: `0x${string}`): Promise<Partn
   };
 }
 
+/** A wallet on a sanctions list the console holds that traded through the partner's integration. firstAt and lastAt:
+ *  the block times of its first and last trade, null while no block time of its trades is known yet. */
+export type PartnerSanctioned = readonly (PartnerTraderFigures & { readonly wallet: `0x${string}`; readonly firstAt: string | null; readonly lastAt: string | null })[];
+
+/**
+ * The owners of the partner's trades that are among `listed` (lower-case addresses of the sanctions lists the console
+ * holds), over EVERY trade of this recipient, not only the 100 largest wallets. The owner is resolved exactly as
+ * getPartnerTraders resolves it (the same FROM, JOIN and LATERAL): a trade an eth-flow contract still owns has no known
+ * wallet and is never flagged. Largest volume first, ties by address. Information only: nothing is blocked here.
+ */
+export async function getPartnerSanctioned(recipient: `0x${string}`, listed: readonly string[]): Promise<PartnerSanctioned> {
+  const buf = Buffer.from(recipient.slice(2), 'hex');
+  const rows = await sql<{ wallet: string; trades: string; volume_usd: string; unpriced: string; first_at: string | null; last_at: string | null }[]>`
+    SELECT w.wallet, COUNT(*)::text AS trades, COALESCE(SUM(p.value_usd), 0)::text AS volume_usd, COUNT(*) FILTER (WHERE p.value_usd IS NULL)::text AS unpriced,
+      to_char(MIN(p.block_timestamp) AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') AS first_at,
+      to_char(MAX(p.block_timestamp) AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') AS last_at
+    FROM partner_fee_trades p
+    LEFT JOIN defillama_fills f ON f.chain_id = p.chain_id AND f.block_number = p.block_number
+      AND f.log_index = p.log_index AND f.trade_uid = p.trade_uid AND f.fee_verified
+    CROSS JOIN LATERAL (SELECT COALESCE(f.user_address, substring(p.trade_uid from 33 for 20)) AS owner) o
+    CROSS JOIN LATERAL (SELECT '0x' || encode(o.owner, 'hex') AS wallet) w
+    WHERE p.recipient = ${buf} AND w.wallet = ANY(${[...listed]}) AND w.wallet <> ALL(${[...DECODER_ETHFLOW_OWNERS]})
+    GROUP BY w.wallet
+    ORDER BY COALESCE(SUM(p.value_usd), 0) DESC, w.wallet
+  `;
+  return rows.map((r) => ({ wallet: r.wallet as `0x${string}`, trades: Number(r.trades), volumeUsd: Number(r.volume_usd), unpriced: Number(r.unpriced), firstAt: r.first_at, lastAt: r.last_at }));
+}
+
 export interface PartnerFlowFigures {
   readonly trades: number;
   /** Σ value_usd of the priced trades (a reporting estimate). */

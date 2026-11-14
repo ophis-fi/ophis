@@ -562,6 +562,37 @@ describe('getPartnerTraders: the wallets that traded through a partner integrati
     ]);
     expect(await traders(D)).toEqual({ wallets: [], unknown: { trades: 0, volumeUsd: 0, unpriced: 0 }, totals: { walletCount: 0, trades: 0, volumeUsd: 0, unpriced: 0 } });
   });
+
+  // getPartnerSanctioned: the listed wallets among EVERY trade of the recipient, the owner resolved as above.
+  const sanctioned = async (recipient: string, listed: string[]) => (await import('../../src/partnerFees/report.js')).getPartnerSanctioned(`0x${recipient}`, listed.map((a) => `0x${a}`));
+  async function at(block: number, time: string) {
+    const sql = await getSql();
+    await sql`UPDATE partner_fee_trades SET block_timestamp = ${time} WHERE block_number = ${block}`;
+  }
+  it('getPartnerSanctioned: a listed owner outside the 100 largest, the verified payer of a native-ETH sale, never an unlisted wallet or an eth-flow contract', async () => {
+    const small = (1000 - 1).toString(16).padStart(40, '0'); // the smallest of 105 wallets: not among the 100 listed
+    for (let v = 1; v <= 105; v++) {
+      const b = await settle(uid(1000 + v, (1000 - v).toString(16).padStart(40, '0')), A, v);
+      if (v === 1) await at(b, '2026-09-01T10:00:00Z');
+    }
+    const sale = await settle(uid(1, OP_FLOW), A, 5); // native ETH, the verified payer O3 is listed
+    await fill(uid(1, OP_FLOW), sale, O3, true);
+    await at(sale, '2026-10-02T08:30:00Z');
+    await at(await settle(uid(2, O3), A, null), '2026-11-05T12:00:00.250Z'); // O3 again, by its own order, not priced yet
+    await settle(uid(3, OP_FLOW), A, 7); // native ETH, no fill: the contract is listed, and still never flagged
+    await fill(uid(4, UNI_FLOW), await settle(uid(4, UNI_FLOW), A, 9), O5, false); // the payer O5 is listed, the fill not verified yet
+    await settle(uid(5, O1), A, 50); // a wallet on no list
+    await settle(uid(6, O4), B, 3); // listed, but traded through another recipient only
+
+    const listed = [small, O3, O4, O5, OP_FLOW, UNI_FLOW];
+    expect((await traders(A)).wallets.some((x) => x.wallet === `0x${small}`)).toBe(false);
+    expect(await sanctioned(A, listed)).toEqual([
+      { wallet: `0x${O3}`, trades: 2, volumeUsd: 5, unpriced: 1, firstAt: '2026-10-02T08:30:00.000Z', lastAt: '2026-11-05T12:00:00.250Z' },
+      { wallet: `0x${small}`, trades: 1, volumeUsd: 1, unpriced: 0, firstAt: '2026-09-01T10:00:00.000Z', lastAt: '2026-09-01T10:00:00.000Z' },
+    ]);
+    expect(await sanctioned(B, listed)).toEqual([{ wallet: `0x${O4}`, trades: 1, volumeUsd: 3, unpriced: 0, firstAt: null, lastAt: null }]); // no block time known yet
+    expect([await sanctioned(A, [O1.replace('ff', 'fe')]), await sanctioned(A, []), await sanctioned(D, listed)]).toEqual([[], [], []]);
+  });
 });
 
 describe('getPartnerBreakdown: the flow by day, chain and fee token, and the payouts', () => {

@@ -24,7 +24,7 @@
       "traders": {
         "wallets": [
           { "wallet": "0x00000000000000000000000000000000000000c1", "trades": 227, "volumeUsd": 251000.25, "unpriced": 0 },
-          { "wallet": "0x00000000000000000000000000000000000000c2", "trades": 181, "volumeUsd": 118400.5, "unpriced": 1 },
+          { "wallet": "0x0000000000000000000000000000000000000b0b", "trades": 181, "volumeUsd": 118400.5, "unpriced": 1 },
           { "wallet": "0x00000000000000000000000000000000000000c3", "trades": 1, "volumeUsd": 0, "unpriced": 1 }
         ],
         "unknown": { "trades": 3, "volumeUsd": 4250, "unpriced": 0 },
@@ -56,7 +56,10 @@
         "payouts": [
           { "date": "2026-11-03", "weth": 0.0625, "chainId": 100, "txHash": "0x9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e", "status": "executed" }
         ]
-      }
+      },
+      "sanctioned": [
+        { "wallet": "0x0000000000000000000000000000000000000b0b", "trades": 181, "volumeUsd": 118400.5, "unpriced": 1, "firstAt": "2026-08-20T14:02:11.000Z", "lastAt": "2026-11-07T09:41:05.000Z" }
+      ]
     },
     {
       "wallet": "0x00000000000000000000000000000000000000b2",
@@ -80,7 +83,8 @@
         "unknown": { "trades": 0, "volumeUsd": 0, "unpriced": 0 },
         "totals": { "walletCount": 0, "trades": 0, "volumeUsd": 0, "unpriced": 0 }
       },
-      "breakdown": { "daily": [], "byChain": [], "byToken": [], "payouts": [] }
+      "breakdown": { "daily": [], "byChain": [], "byToken": [], "payouts": [] },
+      "sanctioned": []
     }
   ]
 }
