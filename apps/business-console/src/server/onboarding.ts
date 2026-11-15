@@ -640,7 +640,7 @@ async function readList(env: { DB: D1Database; ENVIRONMENT: string; SANCTIONS_UR
     console.error('sanctions list unavailable', error instanceof Error ? error.name : 'unknown') // one word: no address of the file
     return { outcome: 'unavailable' }
   }
-  const loaded = await env.DB.prepare(`SELECT sha256, entries, published, held, held_adds AS heldAdds FROM sanctions_lists WHERE list = 'ofac'`).first<{ sha256: string; entries: number; published: string | null; held: string | null; heldAdds: number | null }>()
+  const loaded = await env.DB.prepare(`SELECT sha256, entries, published FROM sanctions_lists WHERE list = 'ofac'`).first<{ sha256: string; entries: number; published: string | null }>()
   // The file against the loaded addresses (G2), not only the counts. ponytail: the whole list at each read.
   const have = new Set((await env.DB.prepare(`SELECT address FROM sanctioned_addresses WHERE list = 'ofac'`).all<{ address: string }>()).results.map((r) => r.address))
   const added = file.addresses.filter((address) => !have.has(address)).length
@@ -652,10 +652,12 @@ async function readList(env: { DB: D1Database; ENVIRONMENT: string; SANCTIONS_UR
   if (!loaded || (!same && !reason)) return { outcome: 'loaded', entries: file.addresses.length, published: file.published, hits: await replaceList(env.DB, 'ofac', file.sha256, file.addresses, now, file.published, file.made) }
   // A hold that saw new addresses (or an unknown count) stays until a load: a later file that adds nothing, or the
   // loaded list again, does not lower it, so names once seen missing keep the desk stopped until a person loads a list.
-  const pending = loaded.held !== null && (loaded.heldAdds ?? 1) > 0
-  const adds = pending ? (loaded.heldAdds === null ? null : Math.max(loaded.heldAdds, reason ? added : 0)) : reason ? added : null
-  // Only over the row that was read (G6): a manual load that landed since keeps its own state.
-  await env.DB.prepare(`UPDATE sanctions_lists SET checked_at = ?, made_at = ?, held = ?, held_adds = ? WHERE list = 'ofac' AND sha256 = ?`).bind(now, file.made, reason ?? (pending ? loaded.held : null), adds, loaded.sha256).run()
+  // Merged in the statement, against the row as it is when written (SQLite reads the old row in every SET): two syncs
+  // at once cannot undo each other. Only over the row that was read (G6): a manual load that landed since keeps its own.
+  await env.DB.prepare(`UPDATE sanctions_lists SET checked_at = ?1, made_at = ?2,
+      held = CASE WHEN held IS NOT NULL AND COALESCE(held_adds, 1) > 0 THEN COALESCE(?3, held) ELSE ?3 END,
+      held_adds = CASE WHEN held IS NOT NULL AND COALESCE(held_adds, 1) > 0 THEN (CASE WHEN held_adds IS NULL THEN NULL ELSE MAX(held_adds, COALESCE(?4, 0)) END) ELSE ?4 END
+    WHERE list = 'ofac' AND sha256 = ?5`).bind(now, file.made, reason, reason ? added : null, loaded.sha256).run()
   return reason ? { outcome: 'held', reason } : { outcome: 'same' }
 }
 /**

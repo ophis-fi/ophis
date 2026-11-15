@@ -8307,6 +8307,26 @@ describe('E. onboarding: a company applies, proves its domain, is activated and 
       }
     })
 
+    it('T2: two syncs at once cannot lower a hold: the later write merges with the row as it is, not as it read it (review 2026-11-15)', async () => {
+      const base = numbered(10)
+      const x = someAddress()
+      expect((await load('ofac', base, { published: '2026-11-01' })).status).toBe(200)
+      const files = [fileOf(base.slice(1), { sha256: H('5'), published: '2026-11-02' }), fileOf([...base.slice(1), x], { sha256: H('6'), published: '2026-11-02' })]
+      feed(() => files.shift()) // the delayed sync reads a file with nothing new, the other one a file with x
+      // The delayed sync: just before its write, the other sync runs to its end and holds the file with x.
+      const delayed = { ...fed, DB: new Proxy(db, { get(target, property) {
+        if (property !== 'prepare') { const value = Reflect.get(target, property); return typeof value === 'function' ? value.bind(target) : value }
+        return (sql: string) => {
+          const statement = target.prepare(sql)
+          if (!sql.startsWith('UPDATE sanctions_lists SET checked_at')) return statement
+          return { bind: (...values: unknown[]) => ({ run: async () => (await onboarding.sync(fed, now), statement.bind(...values).run()) }) }
+        }
+      } }) } as unknown as Env
+      expect((await onboarding.sync(delayed, now)).outcome).toBe('held')
+      expect([await onboarding.ofacStale(fed, now), (await listsNow())[0].heldAdds]).toEqual([true, 1])
+      expect((await load('ofac', [...base, x], { published: '2026-11-02' })).status).toBe(200)
+    })
+
     it('T2: a hold that saw new addresses stays until a load: a later file that adds nothing does not reopen the desk (review 2026-11-15)', async () => {
       const base = numbered(10)
       const x = someAddress()
