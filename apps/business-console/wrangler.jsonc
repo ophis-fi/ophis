@@ -43,9 +43,10 @@
       // Placeholder id: the id of the database created with --jurisdiction=eu.
       "d1_databases": [{ "binding": "DB", "database_name": "ophis-business", "database_id": "00000000-0000-0000-0000-000000000000", "migrations_dir": "migrations" }],
       "r2_buckets": [{ "binding": "SEALED", "bucket_name": "ophis-business-sealed", "jurisdiction": "eu" }],
-      // SANCTIONS_URL stays unset until the list file's address is chosen. Secrets: CHALLENGE_KEY, INDEXER_TOKEN,
-      // TYPESAFE_API_KEY (wrangler secret put --env production). SEAL_RECIPIENT waits for the security-key ceremony.
-      "vars": { "ENVIRONMENT": "production", "INDEXER_URL": "https://rebates.ophis.fi" },
+      // SANCTIONS_URL: the OFAC list file that .github/workflows/ofac-list.yml commits each day to the branch ofac-list.
+      // Secrets: CHALLENGE_KEY, INDEXER_TOKEN, TYPESAFE_API_KEY, TURNSTILE_SECRET (wrangler secret put --env production).
+      // SEAL_RECIPIENT waits for the security-key ceremony. TURNSTILE (src/server/index.ts) gets the widget's public site key.
+      "vars": { "ENVIRONMENT": "production", "INDEXER_URL": "https://rebates.ophis.fi", "SANCTIONS_URL": "https://raw.githubusercontent.com/ophis-fi/ophis/ofac-list/ofac.json" },
     },
   },
 }

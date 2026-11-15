@@ -12,6 +12,7 @@ import { chromium } from 'playwright-core'
 import { start as startDnsStubs } from './dns-stub.mjs'
 import { start as startIndexer } from './indexer-stub.mjs'
 import { start as startLists } from './list-stub.mjs'
+import { start as startTurnstile } from './turnstile-stub.mjs'
 import { start as startOrderbook } from './orderbook-stub.mjs'
 
 process.chdir(new URL('..', import.meta.url).pathname)
@@ -35,7 +36,7 @@ rmSync(STATE, { recursive: true, force: true })
 run('node_modules/.bin/wrangler', ['d1', 'migrations', 'apply', 'DB', '--local', '--persist-to', STATE])
 // Each seed prints a one-time enrolment link (10 minutes), and completes .dev.vars for the stand-ins.
 const [partnerSeed, institutionSeed] = [dev('seed', '--live'), dev('seed', '--demo')]
-const stops = [startDnsStubs(), startIndexer(), startLists(), startOrderbook()]
+const stops = [startDnsStubs(), startIndexer(), startLists(), startOrderbook(), startTurnstile()]
 // detached: the server gets its own process group, so the whole group is stopped at the end.
 const server = spawn('node_modules/.bin/wrangler', ['dev', '--persist-to', STATE, '--port', '8787'], { env, detached: true, stdio: 'ignore' })
 let browser

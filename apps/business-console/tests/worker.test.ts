@@ -9,7 +9,7 @@ import routerSource from '../src/server/index.ts?raw'
 import dataSource from '../src/server/data.ts?raw'
 import passkeySource from '../src/server/passkeys.ts?raw'
 import * as data from '../src/server/data.ts'
-import worker, { csvCell, daily as dailyRun, EVENTS, handle as handleRequest, routes, type Env } from '../src/server/index.ts'
+import worker, { csvCell, daily as dailyRun, EVENTS, handle as handleRequest, routes, TURNSTILE, type Env } from '../src/server/index.ts'
 import wranglerConfig from '../wrangler.jsonc?raw'
 import { challengeIsOurs, configFor, credentialHash, fromBase64Url, newChallenge, seal, SUPPORT_HOSTS, toBase64Url, userHandle } from '../src/server/passkeys.ts'
 import { checksum, colour, LIMITS, SAFES, type SafeState } from '../src/server/chain.ts'
@@ -47,7 +47,10 @@ const ASSETS = { fetch: async (request: Request) => new Response(`file ${new URL
 // Milestone 5b: the sealing key pair of this run, made here: no key lives in the repository. The Worker gets the recipient only.
 const IDENTITY = await age.generateHybridIdentity()
 const RECIPIENT = await age.identityToRecipient(IDENTITY)
-const testEnv = { DB: db, ASSETS, SEALED: env.SEALED, ENVIRONMENT: 'local', CHALLENGE_KEY: crypto.randomUUID() + crypto.randomUUID(), SEAL_RECIPIENT: RECIPIENT } as unknown as Env
+// The bot check of /recover, as scripts/turnstile-stub.mjs answers it: Cloudflare's public test secret and dummy token.
+const HUMAN_OK = 'XXXX.DUMMY.TOKEN.XXXX'
+const TURNSTILE_TEST = '1x0000000000000000000000000000000AA'
+const testEnv = { DB: db, ASSETS, SEALED: env.SEALED, ENVIRONMENT: 'local', CHALLENGE_KEY: crypto.randomUUID() + crypto.randomUUID(), SEAL_RECIPIENT: RECIPIENT, TURNSTILE_URL: 'http://127.0.0.1:8796', TURNSTILE_SECRET: TURNSTILE_TEST } as unknown as Env
 const SIGN = configFor('local').signOrigin
 let now = START
 
@@ -313,7 +316,15 @@ const chain = {
   // Changes what one endpoint answers: another result, or a Response or a pending promise in its place.
   twist: (_url: string, _method: string, result: unknown, _init?: RequestInit): unknown => result,
 }
+// turnstileTwist lets a test change the bot check's answer; turnstileAsked keeps the field names of each request to it.
+let turnstileTwist = (answer: Record<string, unknown>): Record<string, unknown> => answer
+const turnstileAsked: string[][] = []
 function fakeRpc(input: RequestInfo | URL, init?: RequestInit) {
+  if (String(input) === 'http://127.0.0.1:8796/turnstile/v0/siteverify') {
+    const asked = JSON.parse(String(init?.body)) as Record<string, unknown>
+    turnstileAsked.push(Object.keys(asked))
+    return Response.json(turnstileTwist(asked.secret === TURNSTILE_TEST && asked.response === HUMAN_OK ? { success: true, hostname: 'localhost', action: 'recover' } : { success: false }))
+  }
   const { method, params } = JSON.parse(String(init?.body)) as { method: string; params: [{ to: string; data: `0x${string}` }] }
   chain.calls.push(`${String(input)} ${method}`)
   // eth_chainId: the chain whose endpoint was asked (OP Mainnet for any other address).
@@ -345,6 +356,7 @@ function fakeRpc(input: RequestInfo | URL, init?: RequestInit) {
 }
 beforeEach(() => {
   vi.stubGlobal('fetch', fakeRpc)
+  turnstileTwist = (answer) => answer
   chain.contracts.clear()
   chain.balances.clear()
   chain.calls = []
@@ -427,7 +439,7 @@ const withPhrase = (typed: Typed) =>
 async function askRecovery(orgId: string, more: Record<string, unknown> = {}, options: Options & { backupEligible?: boolean } = {}) {
   const key = await softwareAuthenticator(SITE, options)
   const start = await call('POST', '/api/recover/intent', { ...options, body: { organisationId: orgId } })
-  const done = await call('POST', '/api/recover/intent', { ...options, body: { organisationId: orgId, seat: start.body.seat, response: await key.register(start.body.options), ...more } })
+  const done = await call('POST', '/api/recover/intent', { ...options, body: { organisationId: orgId, seat: start.body.seat, response: await key.register(start.body.options), turnstile: HUMAN_OK, ...more } })
   return { ...done, key, intent: done.body.intent as string, seat: start.body.seat as string }
 }
 // The whole request: asked on /recover, signed by the recovery wallet (its own key; null: a Safe that signed onchain, '0x'), posted by the signing page.
@@ -444,7 +456,7 @@ async function continueRecovery(key: Key, options: Options = {}, answer: Answer 
 }
 // The recovery wallet cancels: the public form gives the intent for the request's nonce, the wallet signs it.
 async function cancelByWallet(orgId: string, nonce: string, signer: Signer | null = accounts[0], change: Partial<Parameters<typeof typedProof>[0]> = {}) {
-  const asked = await call('POST', '/api/recover/cancel-intent', { body: { organisationId: orgId, nonce } })
+  const asked = await call('POST', '/api/recover/cancel-intent', { body: { organisationId: orgId, nonce, turnstile: HUMAN_OK } })
   const signature = signer ? await signer.signTypedData(typedRecover(recoverOf(asked.body.intent), signer.address, change)) : '0x'
   return prove(asked.body.intent, signature)
 }
@@ -1038,7 +1050,7 @@ const isolation: Record<string, (a: Member, b: Member) => Promise<void>> = {
   },
   'POST /api/recover/cancel-intent': async (a, b) => {
     const before = await snapshot()
-    const asked = await call('POST', '/api/recover/cancel-intent', { cookie: a.cookie, body: { organisationId: b.orgId, nonce: `0x${'ab'.repeat(32)}` } })
+    const asked = await call('POST', '/api/recover/cancel-intent', { cookie: a.cookie, body: { organisationId: b.orgId, nonce: `0x${'ab'.repeat(32)}`, turnstile: HUMAN_OK } })
     expect(recoverOf(asked.body.intent)).toMatchObject({ org: b.orgId, kind: 'cancel' })
     expect(await snapshot()).toBe(before)
   },
@@ -4359,7 +4371,7 @@ describe('B. last-Owner recovery by the recovery wallet', () => {
     expect(Object.keys(nowhere.body).sort()).toEqual(['expiresAt', 'intent', 'link'])
     expect(Object.keys(asked.body).sort()).toEqual(['expiresAt', 'intent', 'link'])
     const nonce = `0x${'ab'.repeat(32)}`
-    const cancel = await call('POST', '/api/recover/cancel-intent', { env: noDatabase, body: { organisationId: o.orgId, nonce } })
+    const cancel = await call('POST', '/api/recover/cancel-intent', { env: noDatabase, body: { organisationId: o.orgId, nonce, turnstile: HUMAN_OK } })
     expect(recoverOf(cancel.body.intent)).toEqual({ kind: 'cancel', org: o.orgId, nonce, credentialHash: `0x${'0'.repeat(64)}`, issuedAt: now / 1000, expiresAt: now / 1000 + WEEK / 1000, site: 'localhost' })
     expect((await call('POST', '/api/recover/continue/start', { env: noDatabase })).status).toBe(200)
     expect(await everything()).toBe(before)
@@ -4381,7 +4393,7 @@ describe('B. last-Owner recovery by the recovery wallet', () => {
     expect((await askRecovery(o.orgId, {}, { backupEligible: true })).body).toEqual({ error: 'device_bound_required' })
     const key = await softwareAuthenticator(SITE)
     const start = await call('POST', '/api/recover/intent', { body: { organisationId: o.orgId } })
-    const finish = async (body: Record<string, unknown>, answer: Answer = {}) => (await call('POST', '/api/recover/intent', { body: { organisationId: o.orgId, seat: start.body.seat, response: await key.register(start.body.options, answer), ...body } })).body.error
+    const finish = async (body: Record<string, unknown>, answer: Answer = {}) => (await call('POST', '/api/recover/intent', { body: { organisationId: o.orgId, seat: start.body.seat, response: await key.register(start.body.options, answer), turnstile: HUMAN_OK, ...body } })).body.error
     expect(await finish({ organisationId: 'f'.repeat(32) })).toBe('passkey_rejected')
     expect(await finish({ seat: 'e'.repeat(32) })).toBe('passkey_rejected')
     expect(await finish({}, { userVerified: false })).toBe('passkey_rejected')
@@ -4447,11 +4459,53 @@ describe('B. last-Owner recovery by the recovery wallet', () => {
   })
   const link_ = (m: Holder) => link(m, accounts[2])
 
-  it('P3: the same registration sent again, with either kind, gets the same request nonce, so a replay never makes a fresh count; the count of past hours is deleted by an index (review 2026-11-15)', async () => {
+  it('P3: the two recovery forms need a solved bot check (Turnstile): no token, a bad one, another host or action, a refused or failed check, no secret or site key: 403 human_check_failed and no intent; the address of the visitor is not sent', async () => {
     const { o } = await teamWithWallet('safe')
     const key = await softwareAuthenticator(SITE)
     const start = await call('POST', '/api/recover/intent', { body: { organisationId: o.orgId } })
     const body = { organisationId: o.orgId, seat: start.body.seat, response: await key.register(start.body.options) }
+    const cancel = { organisationId: o.orgId, nonce: `0x${'ab'.repeat(32)}` }
+    const both = async (turnstile: unknown, env?: Env) => (await Promise.all([call('POST', '/api/recover/intent', { body: { ...body, turnstile }, env }), call('POST', '/api/recover/cancel-intent', { body: { ...cancel, turnstile }, env })]))
+      .map((r) => [r.status, r.body.error ?? (typeof r.body.intent === 'string' ? 'issued' : 'other')])
+    const refused = [[403, 'human_check_failed'], [403, 'human_check_failed']]
+    for (const token of [undefined, '', 'not-the-dummy', 'x'.repeat(2049), 7]) expect(await both(token), String(token)).toEqual(refused)
+    for (const twist of [{ hostname: 'example.com' }, { action: 'login' }, { success: 'true' }]) {
+      turnstileTwist = (answer) => ({ ...answer, ...twist })
+      expect(await both(HUMAN_OK), JSON.stringify(twist)).toEqual(refused)
+    }
+    turnstileTwist = () => { throw new Error('down') }
+    expect(await both(HUMAN_OK)).toEqual(refused)
+    turnstileTwist = (answer) => answer
+    expect(await both(HUMAN_OK, { ...testEnv, TURNSTILE_SECRET: undefined } as unknown as Env)).toEqual(refused)
+    TURNSTILE.local.sitekey = ''
+    try {
+      expect(await both(HUMAN_OK)).toEqual(refused)
+    } finally {
+      TURNSTILE.local.sitekey = '1x00000000000000000000AA'
+    }
+    turnstileAsked.length = 0
+    expect(await both(HUMAN_OK)).toEqual([[200, 'issued'], [200, 'issued']])
+    expect(turnstileAsked).toEqual([['secret', 'response'], ['secret', 'response']])
+  })
+
+  it('/recover carries the bot check: its script first in <head>, the site key, a policy that adds only its origin (Trusted Types kept), and no etag; the other pages do not', async () => {
+    const policy = pageHeaders.split('\n').map((line) => line.trim()).find((line) => line.startsWith('Content-Security-Policy: '))!.slice('Content-Security-Policy: '.length)
+    const shell = '<!doctype html><html><head><script type="module" src="/assets/app.js"></script></head><body></body></html>'
+    const env = { ...testEnv, ASSETS: { fetch: async () => new Response(shell, { headers: { 'content-type': 'text/html', 'content-security-policy': policy, etag: '"1"' } }) } } as unknown as Env
+    const get = async (path: string) => { const r = await handle(new Request(SITE.origin + path), env, () => now); return [await r.text(), r.headers.get('content-security-policy'), r.headers.get('etag')] }
+    const base = 'http://127.0.0.1:8796'
+    expect(await get('/recover')).toEqual([
+      shell.replace('<head>', `<head><script src="${base}/turnstile/v0/api.js?render=explicit" defer></script><meta name="turnstile-sitekey" content="1x00000000000000000000AA">`),
+      `${policy.replace("script-src 'self'", `script-src 'self' ${base}`)}; frame-src ${base}`, null])
+    expect((await get('/recover'))[1]).toContain("require-trusted-types-for 'script'")
+    for (const path of ['/', '/apply']) expect(await get(path), path).toEqual([shell, policy, '"1"'])
+  })
+
+  it('P3: the same registration sent again, with either kind, gets the same request nonce, so a replay never makes a fresh count; the count of past hours is deleted by an index (review 2026-11-15)', async () => {
+    const { o } = await teamWithWallet('safe')
+    const key = await softwareAuthenticator(SITE)
+    const start = await call('POST', '/api/recover/intent', { body: { organisationId: o.orgId } })
+    const body = { organisationId: o.orgId, seat: start.body.seat, response: await key.register(start.body.options), turnstile: HUMAN_OK }
     const [one, two, other] = [await call('POST', '/api/recover/intent', { body }), await call('POST', '/api/recover/intent', { body }), await call('POST', '/api/recover/intent', { body: { ...body, override: true } })]
     expect([one.status, two.status, other.status, recoverOf(two.body.intent).nonce, recoverOf(other.body.intent).nonce]).toEqual([200, 200, 200, recoverOf(one.body.intent).nonce, recoverOf(one.body.intent).nonce]) // the kind changes nothing
     expect(JSON.stringify((await db.prepare('EXPLAIN QUERY PLAN DELETE FROM proof_checks WHERE hour < ?').bind(1).all()).results)).toContain('proof_checks_hour')
@@ -4640,7 +4694,7 @@ describe('B. last-Owner recovery by the recovery wallet', () => {
     expect((await cancelByWallet(o.orgId, r.nonce, accounts[0], { kind: 'replace' })).body).toEqual(REJECTED)
     expect((await cancelByWallet(elsewhere.orgId, r.nonce)).body).toEqual(REJECTED)
     // The signature that opened the request does not cancel it.
-    const intent = (await call('POST', '/api/recover/cancel-intent', { body: { organisationId: o.orgId, nonce: r.nonce } })).body.intent
+    const intent = (await call('POST', '/api/recover/cancel-intent', { body: { organisationId: o.orgId, nonce: r.nonce, turnstile: HUMAN_OK } })).body.intent
     expect((await prove(intent, first.signature)).body).toEqual(REJECTED)
     expect(await snapshot()).toBe(rows)
     expect((await cancelByWallet(o.orgId, r.nonce)).body).toEqual({ state: 'cancelled' })

@@ -8,7 +8,7 @@ import * as orders from './orders.ts'
 import * as partner from './partner.ts'
 import { activateIntent, activationIntent, activationProof, apply, applyCheck, DOWNLOAD_REASONS, ofacStale, onboarding, ONBOARDING_EVENTS, operator, OPERATOR, screening, SEAL, sealDeclaration, submit, sync } from './onboarding.ts'
 
-export interface Env { DB: D1Database; ASSETS: Fetcher; SEALED: R2Bucket; ENVIRONMENT: string; CHALLENGE_KEY: string; SEAL_RECIPIENT?: string; INDEXER_URL?: string; INDEXER_TOKEN?: string; SANCTIONS_URL?: string; ORDERBOOK_URL?: string; RPC_URL?: string }
+export interface Env { DB: D1Database; ASSETS: Fetcher; SEALED: R2Bucket; ENVIRONMENT: string; CHALLENGE_KEY: string; SEAL_RECIPIENT?: string; INDEXER_URL?: string; INDEXER_TOKEN?: string; SANCTIONS_URL?: string; ORDERBOOK_URL?: string; RPC_URL?: string; TURNSTILE_URL?: string; TURNSTILE_SECRET?: string }
 
 const IDLE_MS = 15 * 60_000
 const ABSOLUTE_MS = 12 * 60 * 60_000
@@ -432,8 +432,29 @@ const sealedRecover = async (c: Context, fields: Omit<RecoverIntent, 'issuedAt' 
 // answers the same for any well-formed organisation id, so it says nothing about any organisation. First call:
 // the options for a new device-bound passkey, for a seat id made here. Second call: that passkey's registration
 // in, a MAC-signed intent out, which names the passkey by its hash.
-// ponytail: Turnstile comes before this route in production (recovery.md section 4); it is not built. Until then
-// anyone can ask for intents; each costs a passkey registration, writes nothing, and its proofs are counted per organisation.
+// Turnstile, the bot check before the anonymous recovery forms (security-design.md: before any pre-sign-in form that
+// writes). Production: Cloudflare's endpoint, this host's name, the action "recover". Locally only, TURNSTILE_URL names a
+// stand-in on this machine (scripts/turnstile-stub.mjs). Fails closed: no site key or secret; a token missing, over 2,048
+// characters, refused, of another host or action; no answer in 5 seconds. The production site key is public and is set
+// here once the widget exists; TURNSTILE_SECRET is a Worker secret. The visitor's address is not sent.
+export const TURNSTILE: Record<string, { sitekey: string; hostname: string }> = {
+  local: { sitekey: '1x00000000000000000000AA', hostname: 'localhost' }, // Cloudflare's test key, which always passes
+  production: { sitekey: '', hostname: 'pro.ophis.fi' },
+}
+const turnstileBase = (env: Env) => orders.standIn(env, env.TURNSTILE_URL) ?? 'https://challenges.cloudflare.com'
+async function human(c: Context) {
+  const t = TURNSTILE[c.env.ENVIRONMENT], token = c.body.turnstile
+  if (!t?.sitekey || !c.env.TURNSTILE_SECRET || typeof token !== 'string' || !token || token.length > 2048) return false
+  try {
+    const answer = await fetch(`${turnstileBase(c.env)}/turnstile/v0/siteverify`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ secret: c.env.TURNSTILE_SECRET, response: token }), signal: AbortSignal.timeout(5000) })
+    const v = (await answer.json()) as { success?: unknown; hostname?: unknown; action?: unknown }
+    return answer.ok && v.success === true && v.hostname === t.hostname && v.action === 'recover'
+  } catch {
+    return false
+  }
+}
+// The second call needs a solved bot check (Turnstile, below): each intent then costs one. It writes nothing, and its
+// proofs are counted per request.
 async function recoverIntent(c: Context) {
   const { organisationId: org, seat } = c.body
   if (typeof org !== 'string' || !ID.test(org)) return fail(400, 'invalid')
@@ -442,6 +463,7 @@ async function recoverIntent(c: Context) {
     const challenge = await newChallenge(c.env.CHALLENGE_KEY, 'recover', `${org}.${made}`, c.now)
     return json(200, { seat: made, options: creationOptions(c.config, challenge, { id: made, name: 'Recovery Owner' }, true) })
   }
+  if (!(await human(c))) return fail(403, 'human_check_failed')
   let credential
   try {
     credential = await verifyRegistration(c.config, c.body.response, (challenge) => challengeIsOurs(c.env.CHALLENGE_KEY, 'recover', `${org}.${seat}`, challenge, c.now))
@@ -460,11 +482,12 @@ async function recoverIntent(c: Context) {
     credential: { id: credential.id, publicKey: credential.publicKey, counter: credential.counter, transports: credential.transports },
   }))
 }
-// The same for a cancel by the recovery wallet: an organisation id and the nonce of the request in, an intent out.
-// Nothing is read: whether such a request exists is decided when the wallet's signature arrives.
+// The same for a cancel by the recovery wallet: an organisation id and the nonce of the request in, an intent out,
+// after a solved bot check. Nothing is read: whether such a request exists is decided when the wallet's signature arrives.
 async function recoverCancelIntent(c: Context) {
   const { organisationId: org, nonce } = c.body
   if (typeof org !== 'string' || !ID.test(org) || typeof nonce !== 'string' || !/^0x[0-9a-f]{64}$/.test(nonce)) return fail(400, 'invalid')
+  if (!(await human(c))) return fail(403, 'human_check_failed')
   return json(200, await sealedRecover(c, { kind: 'cancel', org, nonce, credentialHash: NO_HASH }))
 }
 
@@ -1130,11 +1153,25 @@ async function pages(request: Request, env: Env, signing: boolean) {
   if (signing !== (pathname === '/sign' || pathname.startsWith('/sign/'))) return new Response('Not found', { status: 404, headers: HEADERS })
   // /recover is a page of the console's one shell (the app reads the path): public, and it needs no session.
   const asset = await env.ASSETS.fetch(pathname === '/recover' || pathname === '/apply' ? new Request(new URL('/', request.url), request) : request)
-  if (!signing) return asset // public/_headers sets the console's headers
+  if (!signing) return pathname === '/recover' ? recoverPage(asset, env) : asset // public/_headers sets the console's headers
   const headers = new Headers(SIGN_HEADERS)
   for (const name of ['content-type', 'location', 'etag']) if (asset.headers.has(name)) headers.set(name, asset.headers.get(name)!)
   if (pathname === '/sign/manifest.json') headers.set('access-control-allow-origin', '*')
   return new Response(asset.body, { status: asset.status, headers })
+}
+
+// /recover with the bot check: its script first in <head> (parser-inserted, so before the app, which then finds
+// window.turnstile) and the site key; the page's policy adds only the check's origin, for scripts and frames, and keeps
+// Trusted Types (tested with Cloudflare's script, 2026-11-15). No site key or no policy on the asset: the page as it is,
+// and its forms are refused. No etag: the site key lives in this Worker, not in the asset.
+function recoverPage(asset: Response, env: Env) {
+  const t = TURNSTILE[env.ENVIRONMENT], csp = asset.headers.get('content-security-policy'), base = turnstileBase(env)
+  if (!t?.sitekey || !csp) return asset
+  const page = new HTMLRewriter().on('head', { element: (head) => { head.prepend(`<script src="${base}/turnstile/v0/api.js?render=explicit" defer></script><meta name="turnstile-sitekey" content="${t.sitekey}">`, { html: true }) } }).transform(asset)
+  const response = new Response(page.body, page)
+  response.headers.set('content-security-policy', `${csp.replace("script-src 'self'", `script-src 'self' ${base}`)}; frame-src ${base}`)
+  response.headers.delete('etag')
+  return response
 }
 
 /** `now` is injectable so that tests own the clock. */

@@ -931,7 +931,24 @@ export function RecoveryBanner({ alert, organisationId, onChanged }: { alert: Al
 // /recover: public, no session. Three things: start a recovery (a new passkey and a signing link for the recovery
 // wallet), continue one whose wait is over, or get the link with which the recovery wallet cancels one.
 const ORG_ID = /^[0-9a-f]{32}$/
+// Turnstile, the check that the visitor is a person (security-design.md): the Worker puts its script and the site key
+// on /recover only. One widget for the two forms that ask for an intent; a token is used once, so it resets after each.
+type Turnstile = { ready(run: () => void): void; render(box: HTMLElement, options: Record<string, unknown>): string; reset(id: string): void; remove(id: string): void }
+const turnstile = () => (window as unknown as { turnstile?: Turnstile }).turnstile
+const HUMAN = 'First complete the check above that you are a person.'
+const HUMAN_FAILED = 'The check that you are a person did not pass, or it expired. Complete it again, then retry.'
 export function Recover() {
+  const sitekey = document.querySelector<HTMLMetaElement>('meta[name="turnstile-sitekey"]')?.content
+  const box = useRef<HTMLDivElement>(null)
+  const widget = useRef<string | null>(null)
+  const [human, setHuman] = useState<string | null>(null)
+  useEffect(() => {
+    const t = turnstile()
+    if (!sitekey || !t || !box.current) return
+    t.ready(() => { widget.current = t.render(box.current!, { sitekey, action: 'recover', 'response-field': false, callback: setHuman, 'expired-callback': () => setHuman(null), 'error-callback': () => (setHuman(null), true) }) })
+    return () => { if (widget.current) t.remove(widget.current) }
+  }, [sitekey])
+  const spent = () => { setHuman(null); if (widget.current) turnstile()?.reset(widget.current) }
   const prefill = location.hash.match(/^#cancel=([0-9a-f]{32})\.(0x[0-9a-f]{64})$/)
   const [org, setOrg] = useState(prefill?.[1] ?? '')
   const [override, setOverride] = useState(false)
@@ -955,13 +972,15 @@ export function Recover() {
   const start = (event: FormEvent) => {
     event.preventDefault()
     if (!ORG_ID.test(org.trim())) return setProblem(BAD_ID)
+    if (!human) return setProblem(HUMAN)
     void run(async () => {
       const organisationId = org.trim()
       const begun = await api<{ seat: string; options: PublicKeyCredentialCreationOptionsJSON }>('/api/recover/intent', { organisationId })
       if (begun.status !== 200) return 'That did not work. Try again in a moment.'
       const passkey = (await navigator.credentials.create({ publicKey: PublicKeyCredential.parseCreationOptionsFromJSON(begun.data.options) })) as PublicKeyCredential
-      const done = await api<{ link: string; expiresAt: number; error?: string }>('/api/recover/intent', { organisationId, seat: begun.data.seat, override, response: passkey.toJSON() })
-      if (done.status !== 200) return done.data.error === 'device_bound_required' ? say(done.data) : 'The passkey was not accepted. Use a hardware security key and try again.'
+      const done = await api<{ link: string; expiresAt: number; error?: string }>('/api/recover/intent', { organisationId, seat: begun.data.seat, override, response: passkey.toJSON(), turnstile: human })
+      spent()
+      if (done.status !== 200) return done.data.error === 'human_check_failed' ? HUMAN_FAILED : done.data.error === 'device_bound_required' ? say(done.data) : 'The passkey was not accepted. Use a hardware security key and try again.'
       setIssued({ ...done.data, recovery: true })
     })
   }
@@ -969,9 +988,11 @@ export function Recover() {
     event.preventDefault()
     if (!ORG_ID.test(org.trim())) return setProblem(BAD_ID)
     if (!/^0x[0-9a-f]{64}$/.test(nonce.trim())) return setProblem('A request number starts with 0x and has 64 more characters. Members see it in the console, and it is the nonce on the signing page.')
+    if (!human) return setProblem(HUMAN)
     void run(async () => {
-      const done = await api<{ link: string; expiresAt: number }>('/api/recover/cancel-intent', { organisationId: org.trim(), nonce: nonce.trim() })
-      if (done.status !== 200) return 'That did not work. Try again in a moment.'
+      const done = await api<{ link: string; expiresAt: number; error?: string }>('/api/recover/cancel-intent', { organisationId: org.trim(), nonce: nonce.trim(), turnstile: human })
+      spent()
+      if (done.status !== 200) return done.data.error === 'human_check_failed' ? HUMAN_FAILED : 'That did not work. Try again in a moment.'
       setIssued(done.data)
     })
   }
@@ -991,6 +1012,7 @@ export function Recover() {
         <p className="lede">The wallet your organisation named as its recovery wallet signs one message. After a wait of 72 hours a new Owner replaces all Owner passkeys. This page stores nothing and asks for no name.</p>
       </div></header>
       {problem && <Problem>{problem}</Problem>}
+      <div hidden={!!issued}>{sitekey ? <div ref={box} /> : <p className="fine"><Icon name="info" size={16} /><span>The check that you are a person is not set up on this site yet, so a recovery cannot start here.</span></p>}</div>
       {issued ? (
         <div className="panel stack">
           <h2 className="h-panel">Give this link to the signers of the recovery wallet.</h2>

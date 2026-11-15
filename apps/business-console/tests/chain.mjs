@@ -20,6 +20,7 @@ import * as data from '../src/server/data.ts'
 import { handle } from '../src/server/index.ts'
 import { configFor, fromBase64Url } from '../src/server/passkeys.ts'
 import { softwareAuthenticator } from './authenticator.ts'
+import { DUMMY as HUMAN_OK, PORT as TURNSTILE_PORT, start as startTurnstile, TEST_SECRET as TURNSTILE_TEST } from '../scripts/turnstile-stub.mjs'
 
 process.chdir(new URL('..', import.meta.url).pathname)
 
@@ -131,10 +132,11 @@ try {
   execFileSync('node_modules/.bin/wrangler', ['d1', 'migrations', 'apply', 'DB', '--local', '--persist-to', STATE], { env: { ...process.env, WRANGLER_SEND_METRICS: 'false' }, stdio: 'ignore' })
   const proxy = await getPlatformProxy({ configPath: 'wrangler.jsonc', remoteBindings: false, persist: { path: `${STATE}/v3` } })
   const realFetch = globalThis.fetch
+  const stopTurnstile = startTurnstile() // the bot check of the recovery forms, the local stand-in
   try {
     const config = configFor('local')
     globalThis.fetch = (input, init) => realFetch(config.chains[10].includes(String(input)) ? RPC : input, init)
-    const env = { DB: proxy.env.DB, ASSETS: { fetch: async () => new Response('') }, ENVIRONMENT: 'local', CHALLENGE_KEY: randomBytes(32).toString('base64url') }
+    const env = { DB: proxy.env.DB, ASSETS: { fetch: async () => new Response('') }, ENVIRONMENT: 'local', CHALLENGE_KEY: randomBytes(32).toString('base64url'), TURNSTILE_URL: `http://127.0.0.1:${TURNSTILE_PORT}`, TURNSTILE_SECRET: TURNSTILE_TEST }
     const site = { origin: config.origin, rpId: config.rpId }
     let clock = Date.now()
     const HOURS72 = 72 * 60 * 60_000
@@ -172,7 +174,7 @@ try {
     const recover = async () => {
       const key = await softwareAuthenticator(site)
       const start = (await call('/api/recover/intent', { organisationId: orgId })).body
-      const { intent } = (await call('/api/recover/intent', { organisationId: orgId, seat: start.seat, response: await key.register(start.options) })).body
+      const { intent } = (await call('/api/recover/intent', { organisationId: orgId, seat: start.seat, response: await key.register(start.options), turnstile: HUMAN_OK })).body
       const f = fieldsOf(intent)
       const typedData = typedProof({ kind: f.kind, chainId: 10, site: f.site, organisationId: f.org, wallet: vault, credentialHash: f.credentialHash, nonce: f.nonce, issuedAt: f.issuedAt, expiresAt: f.expiresAt })
       const one = await call('/api/proof', { intent, signature: await signed(owners.slice(0, 1), under({ SafeMessage: [{ name: 'message', type: 'bytes' }] }, 'SafeMessage', { message: hashTypedData(typedData) }, vault)) }, { sign: true })
@@ -204,6 +206,7 @@ try {
     check('and the pending passkey is worth nothing any more', (await resume(second.key)).status === 401)
   } finally {
     globalThis.fetch = realFetch
+    stopTurnstile()
     await proxy.dispose()
     rmSync(STATE, { recursive: true, force: true })
   }

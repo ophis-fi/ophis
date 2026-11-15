@@ -18,6 +18,7 @@ import { configFor } from '../src/server/passkeys.ts'
 import { CONTRACT, PORT as INDEXER_PORT } from './indexer-stub.mjs'
 import { PORT as LIST_PORT } from './list-stub.mjs'
 import { PORT as ORDERBOOK_PORT } from './orderbook-stub.mjs'
+import { PORT as TURNSTILE_PORT, TEST_SECRET as TURNSTILE_TEST_SECRET } from './turnstile-stub.mjs'
 
 // The first account of the public test mnemonic of anvil and hardhat: its key is public, so it signs the local desk's
 // orders in tests/e2e.mjs, against the stand-in orderbook only. Never send funds to it.
@@ -46,6 +47,10 @@ if (!/^ORDERBOOK_URL=/m.test(readFileSync('.dev.vars', 'utf8'))) appendFileSync(
 // Overview's balances: the same stand-in answers the two JSON-RPC endpoints of each chain. Without this line the local
 // Overview reads the public endpoints of src/server/passkeys.ts.
 if (!/^RPC_URL=/m.test(readFileSync('.dev.vars', 'utf8'))) appendFileSync('.dev.vars', `RPC_URL=http://127.0.0.1:${ORDERBOOK_PORT}/rpc\n`)
+// The bot check of /recover: the local stand-in for Cloudflare Turnstile (scripts/turnstile-stub.mjs) and Cloudflare's
+// public test secret. A real environment sets no TURNSTILE_URL, and TURNSTILE_SECRET as a secret.
+if (!/^TURNSTILE_URL=/m.test(readFileSync('.dev.vars', 'utf8'))) appendFileSync('.dev.vars', `TURNSTILE_URL=http://127.0.0.1:${TURNSTILE_PORT}\n`)
+if (!/^TURNSTILE_SECRET=/m.test(readFileSync('.dev.vars', 'utf8'))) appendFileSync('.dev.vars', `TURNSTILE_SECRET=${TURNSTILE_TEST_SECRET}\n`)
 // Milestone 5b: the LOCAL test key of the sealing (key-custody.md section 3). The identity, the secret half, is made
 // here and stays in .dev.seal-identity next to .dev.vars (git-ignored, never printed): it opens what the local console
 // seals. Its recipient, the public half, goes to the Worker (SEAL_RECIPIENT in .dev.vars, for the fingerprint) and to

@@ -14,6 +14,7 @@ import { createServer } from 'node:http'
 import { fileURLToPath } from 'node:url'
 import { start as startIndexer } from './indexer-stub.mjs'
 import { start as startLists } from './list-stub.mjs'
+import { start as startTurnstile } from './turnstile-stub.mjs'
 import { start as startOrderbook } from './orderbook-stub.mjs'
 
 const FOLDER = fileURLToPath(new URL('../.wrangler/', import.meta.url))
@@ -52,11 +53,13 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
       const stopIndexer = startIndexer()
       const stopLists = startLists() // M10: the OFAC list file, port 8794
       const stopOrderbook = startOrderbook() // the desk's orderbooks, port 8795
+      const stopTurnstile = startTurnstile() // the bot check of /recover, port 8796
       spawn(command, args, { stdio: 'inherit' }).on('exit', (code) => {
         stop()
         stopIndexer()
         stopLists()
         stopOrderbook()
+        stopTurnstile()
         process.exitCode = code ?? 1
       })
     } else console.log('DNS stubs on http://127.0.0.1:8790/dns-query and http://127.0.0.1:8791/resolve. Records: .wrangler/dns-stub.json')

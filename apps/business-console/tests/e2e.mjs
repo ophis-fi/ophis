@@ -30,6 +30,7 @@ import { mnemonicToAccount } from 'viem/accounts'
 import { publish as publishTxt, start as startDnsStubs } from '../scripts/dns-stub.mjs' // milestone 5: the two local resolvers of "Check DNS"
 import { CONTRACT, PORT as INDEXER_PORT, start as startIndexer } from '../scripts/indexer-stub.mjs' // partner figures: the local stand-in for the rebate indexer
 import { PORT as LIST_PORT, start as startLists } from '../scripts/list-stub.mjs' // M10: the local stand-in for the place where the OFAC list file lives
+import { start as startTurnstile } from '../scripts/turnstile-stub.mjs' // the local stand-in for Cloudflare Turnstile
 import { PORT as ORDERBOOK_PORT, start as startOrderbook, TEST_BALANCES } from '../scripts/orderbook-stub.mjs' // the real desk: the local stand-in for the public orderbooks and the chains' endpoints
 
 process.chdir(new URL('..', import.meta.url).pathname)
@@ -59,6 +60,7 @@ const stopDnsStubs = startDnsStubs() // ports 8790 and 8791
 const stopIndexer = startIndexer() // port 8793
 const stopLists = startLists() // port 8794
 const stopOrderbook = startOrderbook() // port 8795
+const stopTurnstile = startTurnstile() // port 8796: the bot check of /recover
 // detached: the server gets its own process group, so the whole group can be stopped at the end.
 const serve = (...more) => spawn('node_modules/.bin/wrangler', ['dev', '--persist-to', STATE, '--port', PORT, ...more], { env, detached: true, stdio: 'ignore' })
 const stopServer = async () => {
@@ -144,7 +146,8 @@ try {
     await devtools.send('WebAuthn.enable')
     const { authenticatorId } = await devtools.send('WebAuthn.addVirtualAuthenticator', { options: KEY })
     page.on('console', (message) => /content security policy|trusted ?type/i.test(message.text()) && violations.push(message.text()))
-    page.on('request', (request) => request.url().startsWith(`${ORIGIN}/`) || foreign.push(request.url()))
+    // /recover alone loads the bot check, here its local stand-in (scripts/turnstile-stub.mjs): no other page leaves the origin.
+    page.on('request', (request) => request.url().startsWith(`${ORIGIN}/`) || (request.frame().url().startsWith(`${ORIGIN}/recover`) && request.url().startsWith('http://127.0.0.1:8796/turnstile/')) || foreign.push(request.url()))
     return { context, page, devtools, authenticatorId }
   }
   const FOOTER = 'Ophis is a software provider. It is not a crypto-asset service provider.'
@@ -618,6 +621,7 @@ try {
     await who.page.getByRole('heading', { name: 'Start a recovery' }).waitFor()
     const open = opened.status() === 200 && (await who.context.cookies()).length === 0 && await who.page.getByText(FOOTER).isVisible()
       && await who.page.getByText('Nothing is stored until the recovery wallet has signed.').isVisible() && (!shot || await both(who.page, shot))
+    await who.page.getByText('Check that you are a person: the local stand-in passes it.').waitFor() // the bot check rendered, and solved
     await who.page.getByLabel('Organisation id, from the recovery sheet').fill(organisationId)
     await who.page.getByRole('button', { name: 'Create the passkey and the signing link' }).click()
     await who.page.getByRole('heading', { name: 'Give this link to the signers of the recovery wallet.' }).waitFor()
@@ -1712,6 +1716,7 @@ try {
   stopDnsStubs()
   stopIndexer()
   stopLists()
+  stopTurnstile()
   await stopOrderbook()
   await browser?.close()
   await stopServer()
