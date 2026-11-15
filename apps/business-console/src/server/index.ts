@@ -384,7 +384,8 @@ async function proof(c: Context) {
   if (intent.expiresAt * 1000 <= c.now) return fail(410, 'intent_expired')
   // Recovery intents go to anyone (Turnstile is not built), so their checks count per request (the nonce: made here for
   // a recovery, the open request's for a cancel): else 10 bad proofs an hour would block the organisation's wallet links,
-  // activation and real recovery (review 2026-11-15).
+  // activation and real recovery (review 2026-11-15). A cancel of no open request is refused before it counts: it writes nothing.
+  if (recover?.kind === 'cancel' && !(await data.recoveryRow(c.env.DB, intent.org, c.now, 'nonce', recover.nonce))) return fail(403, 'proof_rejected')
   if (!(await data.countProof(c.env.DB, recover ? `recover:${intent.org}:${recover.nonce}` : intent.org, c.now))) return fail(429, 'too_many')
   const { signature } = c.body
   if (typeof signature !== 'string' || signature.length > 8194 || !/^0x(?:[0-9a-fA-F]{2})*$/.test(signature)) return fail(400, 'signature_invalid')
@@ -448,10 +449,13 @@ async function recoverIntent(c: Context) {
     return fail(400, 'passkey_rejected')
   }
   if (!credential.deviceBound) return fail(400, 'device_bound_required') // the new passkey is an Owner's
-  const hash = await credentialHash(credential.id, credential.publicKey)
+  const hash = `0x${Array.from(await credentialHash(credential.id, credential.publicKey), (byte) => byte.toString(16).padStart(2, '0')).join('')}`
+  const kind = c.body.override === true ? 'override' : 'replace'
+  // One registration, one request: the same response sent again (its challenge lives 5 minutes) gets the same nonce,
+  // so the same 10 checks, never a fresh count (review 2026-11-15). A nonce is accepted once (recovery_requests).
   return json(200, await sealedRecover(c, {
-    kind: c.body.override === true ? 'override' : 'replace', org, seat, nonce: `0x${data.randomId()}${data.randomId()}`,
-    credentialHash: `0x${Array.from(hash, (byte) => byte.toString(16).padStart(2, '0')).join('')}`,
+    kind, org, seat, nonce: `0x${await data.sha256Hex(`${kind}.${org}.${seat}.${hash}`)}`,
+    credentialHash: hash,
     credential: { id: credential.id, publicKey: credential.publicKey, counter: credential.counter, transports: credential.transports },
   }))
 }
@@ -764,11 +768,11 @@ const permitted = (r: { payload: string }) => {
 // The sanctions screen of a signing link, at the page and at the send. A known hit first: refused and recorded even
 // while the list is stale, so its flag is never lost. Then the stale stop (503, nothing written: the link works once
 // the list is read again). Cancels are never screened.
-async function screened(c: Context, r: NonNullable<Awaited<ReturnType<typeof openedBy>>>) {
+async function screened(c: Context, r: NonNullable<Awaited<ReturnType<typeof openedBy>>>, checked: boolean) {
   const t = r.terms
   const listed = await data.listedOf(c.env.DB, [t.wallet, t.sell.token, t.buy.token])
   if (listed) {
-    await data.orderListed(c.env.DB, r, r.hash, listed === t.wallet.toLowerCase() ? 'wallet' : listed === t.sell.token.toLowerCase() ? 'sell' : 'buy', c.now)
+    await data.orderListed(c.env.DB, r, r.hash, listed === t.wallet.toLowerCase() ? 'wallet' : listed === t.sell.token.toLowerCase() ? 'sell' : 'buy', c.now, checked)
     return fail(403, 'sanctioned_address')
   }
   return (await ofacStale(c.env, c.now)) ? fail(503, 'sanctions_list_stale') : null
@@ -778,7 +782,7 @@ async function orderPage(c: Context) {
   const r = await openedBy(c)
   if (!r) return fail(404, 'link_invalid')
   if (r.purpose === 'sign' && !permitted(r)) return refuse('asset_not_permitted') // before the wallet approves or signs anything
-  const stop = r.purpose === 'sign' ? await screened(c, r) : null // the same, and the expiry does not start
+  const stop = r.purpose === 'sign' ? await screened(c, r, false) : null // the same, and the expiry does not start
   if (stop) return stop
   const t = r.terms
   let validTo = r.validTo
@@ -822,7 +826,7 @@ async function orderSend(c: Context) {
   if (t.scheme === 'eip712' && !(await orders.signedBy(built.hashed, c.body.signature, t.wallet))) return fail(403, 'signature_rejected')
   // A presign order's signature is its owner (the Safe), as the orderbook takes it.
   const signature = t.scheme === 'presign' ? t.wallet.toLowerCase() : (c.body.signature as string)
-  const stop = await screened(c, r)
+  const stop = await screened(c, r, true) // a key wallet's signature was verified above
   if (stop) return stop
   if (!permitted(r)) return refuse('asset_not_permitted') // a deploy between the page and the send
   const held = await data.orderSending(c.env.DB, r, r.hash, built.uid, signature, c.now)

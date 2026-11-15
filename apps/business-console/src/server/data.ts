@@ -1013,8 +1013,9 @@ type Opening = NonNullable<Awaited<ReturnType<typeof orderByLink>>>
 const linked = async (db: D1Database, r: Opening, tokenHash: string) => Boolean(await db.prepare('SELECT 1 FROM orders WHERE org_id = ? AND id = ? AND link_hash = ?').bind(r.orgId, r.id, tokenHash).first())
 // The wallet is the actor only where its signature was checked first (orderSend): a key wallet's send, its cancel, and its
 // refusal for a listed address. The page's read, and a Safe's send, cancel and refusal, need the link alone: the system's rows.
-const walletEntry = (r: Opening, now: number, action: string, detail: string | null = null): Entry => {
-  const signed = r.terms.scheme === 'eip712' && action !== 'order.open'
+// checked: the wallet's signature was verified in this request (false for a refusal at the page, before any signature).
+const walletEntry = (r: Opening, now: number, action: string, detail: string | null = null, checked = true): Entry => {
+  const signed = checked && r.terms.scheme === 'eip712' && action !== 'order.open'
   return { at: now, actorKind: signed ? 'anchor' : 'system', actorId: signed ? r.terms.walletId : null, sessionId: null, action, subjectId: r.id, detail }
 }
 /** The signing page read the order: its expiry is fixed now, once. */
@@ -1080,8 +1081,8 @@ export async function reserved(db: D1Database, r: Opening, now: number) {
 export const listedOf = async (db: D1Database, addresses: string[]) =>
   (await db.prepare(`SELECT address FROM sanctioned_addresses WHERE address IN (${addresses.map(() => '?').join(', ')}) LIMIT 1`).bind(...addresses.map((a) => a.toLowerCase())).first<{ address: string }>())?.address ?? null
 /** An order refused before it was sent, because an address of it is on a loaded list: flagged in the log, and it is never sent. */
-export const orderListed = (db: D1Database, r: Opening, tokenHash: string, which: string, now: number) =>
-  commit(db, r.orgId, async () => (await linked(db, r, tokenHash)) ? [walletEntry(r, now, 'order.sanctioned', which), [
+export const orderListed = (db: D1Database, r: Opening, tokenHash: string, which: string, now: number, checked = true) =>
+  commit(db, r.orgId, async () => (await linked(db, r, tokenHash)) ? [walletEntry(r, now, 'order.sanctioned', which, checked), [
     db.prepare(`UPDATE orders SET status = 'refused', link_hash = NULL, link_purpose = NULL WHERE org_id = ? AND id = ? AND uid IS NULL`).bind(r.orgId, r.id),
   ]] : null)
 /** A cancel: the orderbook took a key wallet's cancellation (`cancelled`), or the Safe was asked to revoke its presignature. */

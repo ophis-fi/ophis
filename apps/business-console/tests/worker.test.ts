@@ -4425,7 +4425,8 @@ describe('B. last-Owner recovery by the recovery wallet', () => {
     theSafe().accepts = () => false
     const rows = await snapshot()
     // Bad cancels for made-up requests (anyone can ask their intents) count apart: a real request keeps its own 10.
-    for (let i = 0; i < 10; i++) await cancelByWallet(o.orgId, `0x${String(i).repeat(64)}`, null)
+    for (let i = 0; i < 10; i++) expect((await cancelByWallet(o.orgId, `0x${String(i).repeat(64)}`, null)).body).toEqual(REJECTED)
+    expect(await counted(`recover:${o.orgId}:0x${'0'.repeat(64)}`)).toBe(0) // a cancel of no open request is refused before it counts
     for (let i = 0; i < 10; i++) expect((await prove(asked.intent, bad)).body, String(i)).toEqual(REJECTED)
     for (let i = 0; i < 10; i++) expect((await prove(link.body.intent, bad)).body, String(i)).toEqual({ error: 'signature_rejected' }) // still checked
     expect(await snapshot()).toBe(rows)
@@ -4445,6 +4446,16 @@ describe('B. last-Owner recovery by the recovery wallet', () => {
     expect(await row(`SELECT count(*) AS n FROM ${COUNTER} WHERE hour < ?`, Math.floor(now / HOUR))).toEqual({ n: 0 })
   })
   const link_ = (m: Holder) => link(m, accounts[2])
+
+  it('P3: the same registration sent twice gets the same request nonce, so a replay never makes a fresh count; the count of past hours is deleted by an index (review 2026-11-15)', async () => {
+    const { o } = await teamWithWallet('safe')
+    const key = await softwareAuthenticator(SITE)
+    const start = await call('POST', '/api/recover/intent', { body: { organisationId: o.orgId } })
+    const body = { organisationId: o.orgId, seat: start.body.seat, response: await key.register(start.body.options) }
+    const [one, two] = [await call('POST', '/api/recover/intent', { body }), await call('POST', '/api/recover/intent', { body })]
+    expect([one.status, two.status, recoverOf(two.body.intent).nonce]).toEqual([200, 200, recoverOf(one.body.intent).nonce])
+    expect(JSON.stringify((await db.prepare('EXPLAIN QUERY PLAN DELETE FROM proof_checks WHERE hour < ?').bind(1).all()).results)).toContain('proof_checks_hour')
+  })
 
   it('P3: a valid proof opens the request in one commit: 72 hours, the Safe as both endpoints see it, a new Owner seat invited with the pending passkey, an audit row of the wallet, a banner for every member', async () => {
     const { o, a, v, wallet } = await teamWithWallet('safe')
@@ -10325,16 +10336,14 @@ describe('J. the real desk: terms from a live quote, two people, then the wallet
     const send = () => call('POST', '/api/order/send', { sign: true, body: { token, signature }, env: fed })
     const listAt = (loaded: number, checked: number | null, made: number | null, held: string | null = null) => db.prepare(`INSERT OR REPLACE INTO sanctions_lists (list, sha256, entries, loaded_at, checked_at, made_at, held) VALUES ('ofac', ?, 1, ?, ?, ?, ?)`).bind('ab'.repeat(32), loaded, checked, made, held).run()
     const old = now - 3 * DAY
-    // Never read; read 3 days ago; a file made 3 days ago, loaded and read now; loaded by hand 3 days ago; read now, a newer file held.
-    const cases: ([number, number | null, number | null, string?] | null)[] = [null, [old, old, old], [now, now, old], [old, null, null], [old, now, now, 'grown']]
+    // Never read; read 3 days ago; a file made 3 days ago, loaded and read now; loaded by hand 3 days ago; read now, a newer file held; read now, an older or same-day file held.
+    const cases: ([number, number | null, number | null, string?] | null)[] = [null, [old, old, old], [now, now, old], [old, null, null], [old, now, now, 'grown'], [old, now, now, 'older']]
     for (const at of cases) {
       if (at) await listAt(...at)
       const [shown, answer] = [await page(), await send()]
       expect([shown.status, shown.body, answer.status, answer.body], String(at)).toEqual([503, { error: 'sanctions_list_stale' }, 503, { error: 'sanctions_list_stale' }])
     }
     expect([asked.filter((x) => x.url.endsWith('/orders')), await row('SELECT status, uid FROM orders WHERE id = ?', id)]).toEqual([[], { status: null, uid: null }])
-    await listAt(old, now, now, 'older') // a held file no newer than the loaded list: nothing newer is missing
-    expect(await onboarding.ofacStale(fed, now)).toBe(false)
     await listAt(old + 1, null, null) // loaded by hand since, the fallback: the operator line stays stale, the desk sends
     expect((await send()).body).toMatchObject({ state: 'open' })
     await clear() // stale again: a cancel is never stopped
@@ -10353,7 +10362,7 @@ describe('J. the real desk: terms from a live quote, two people, then the wallet
     const shown = await call('POST', '/api/order', { sign: true, body: { token }, env: { ...testEnv, SANCTIONS_URL: 'https://lists.test/ofac.json' } as Env })
     await db.batch([db.prepare('DELETE FROM sanctioned_addresses'), db.prepare('DELETE FROM sanctions_lists')])
     expect([shown.status, shown.body, await row('SELECT status, link_hash FROM orders WHERE id = ?', id), await lastAudit(team.o.orgId)])
-      .toEqual([403, { error: 'sanctioned_address' }, { status: 'refused', link_hash: null }, { action: 'order.sanctioned', actor_id: team.walletId, subject_id: id, detail: 'wallet' }])
+      .toEqual([403, { error: 'sanctioned_address' }, { status: 'refused', link_hash: null }, { action: 'order.sanctioned', actor_id: null, subject_id: id, detail: 'wallet' }]) // no signature was checked: the system's row
   })
 
   it('an asset delisted since the approval: the page and the send refuse the order, so nothing is fixed, approved or sent; listed again, the same signature is sent', async () => {
@@ -10398,6 +10407,35 @@ describe('J. the real desk: terms from a live quote, two people, then the wallet
     expect((await deskOrders(team.t)).find((x) => x.id === id)!.state).toBe('Sent: waiting for the Safe transaction')
     book({ state: 'open' })
     expect((await deskOrders(team.t)).find((x) => x.id === id)!.state).toBe('Open')
+  })
+
+  it('send: a list read that lands during a send does not stop that send (inside the day of lag the daily read allows); the next check stops', async () => {
+    const team = await deskTeam()
+    book()
+    const id = await approvedOrder(team)
+    const { token } = await orderLink(team.t, id)
+    const signature = await accounts[1].signTypedData((await orderPage(token)).body.typed)
+    await db.prepare(`INSERT OR REPLACE INTO sanctions_lists (list, sha256, entries, loaded_at, checked_at, made_at) VALUES ('ofac', ?, 1, ?, ?, ?)`).bind('ab'.repeat(32), now, now, now).run()
+    const before = await onboarding.ofacStale(testEnv, now)
+    // racing(): the hold is written just before the send's first batch, its claim, after the screen read the list.
+    const sent = await call('POST', '/api/order/send', { sign: true, body: { token, signature }, env: racing(() => db.prepare(`UPDATE sanctions_lists SET held = 'grown' WHERE list = 'ofac'`).run()) })
+    const after = await onboarding.ofacStale(testEnv, now)
+    await db.batch([db.prepare('DELETE FROM sanctioned_addresses'), db.prepare('DELETE FROM sanctions_lists')])
+    expect([before, sent.body.state, after]).toEqual([false, 'open', true])
+  })
+
+  it('a Safe order sent, then its page closed before the Safe transaction: the link is used up and no new signing link is given; the order waits until it expires (the known limit)', async () => {
+    const team = await deskTeam()
+    const safe = await demoWallet(team.o.orgId, 'Treasury Safe', 'linked', accounts[4].address.toLowerCase(), 'safe')
+    book()
+    const id = await approvedOrder({ ...team, walletId: safe })
+    const { token } = await orderLink(team.t, id)
+    await orderPage(token)
+    const sent = await orderSend(token)
+    const [again, fresh] = [await orderPage(token), await orderLink(team.t, id)]
+    book({ state: 'presignaturePending' })
+    expect([sent.body.state, again.status, again.body, fresh.status, fresh.body, (await deskOrders(team.t)).find((x) => x.id === id)!.state])
+      .toEqual(['presignaturePending', 404, { error: 'link_invalid' }, 404, { error: 'not_found' }, 'Sent: waiting for the Safe transaction'])
   })
 
   it('the audit log names the wallet only where its signature was checked: the page\'s read, and a Safe\'s send and cancel, which the link alone reaches, are the system\'s rows', async () => {

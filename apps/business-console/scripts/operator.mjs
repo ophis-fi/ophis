@@ -146,10 +146,10 @@ if (answer.status !== 200) {
 // The override names the official SDN.XML: the maker's JSON loaded by hand gives a list with no day, which then holds every read as "manual".
 const BY_HAND = 'load the official SDN.XML by hand: addresses ofac=<SDN.XML>'
 const HELD = {
-  older: `it is not newer than the loaded list. If the loaded list is right, there is nothing to do. Else ${BY_HAND}`,
-  shrunk: `over a fifth of the loaded addresses are not in it. Compare it. If it is right, ${BY_HAND}`,
-  grown: `the new addresses in it are over a fifth of the loaded list. Compare it. If it is right, ${BY_HAND}`,
-  manual: `the loaded list was loaded by hand from a file with no publish date, and the list file never replaces such a list. To end this, ${BY_HAND}`,
+  older: `it is not newer than the loaded list: a day before, or the same day with other addresses (a correction of that day). The desk sends no order meanwhile. Compare it. If the loaded list is right, a newer file ends this. Else ${BY_HAND}`,
+  shrunk: `over a fifth of the loaded addresses are not in it. The desk sends no order meanwhile. Compare it. If it is right, ${BY_HAND}`,
+  grown: `the new addresses in it are over a fifth of the loaded list. The desk sends no order meanwhile. Compare it. If it is right, ${BY_HAND}`,
+  manual: `the loaded list was loaded by hand from a file with no publish date, and the list file never replaces such a list. The desk sends no order meanwhile. To end this, ${BY_HAND}`,
 }
 const count = (n) => `${n} ${n === 1 ? 'address' : 'addresses'}`
 const hitLines = (hits) => (hits.length ? hits.map((h) => `HIT  ${h.id}  ${h.name}  was ${h.state}  ${h.address}  ${h.frozen ? 'frozen now' : h.later ? 'frozen at the next run: run "sync" to do it now' : 'not changed'}`).join('\n') : 'No linked or pending wallet is on a loaded list.')
