@@ -655,18 +655,24 @@ async function readList(env: { DB: D1Database; ENVIRONMENT: string; SANCTIONS_UR
   return reason ? { outcome: 'held', reason } : { outcome: 'same' }
 }
 /**
- * For the operator's list: each loaded list, and whether the feed is stale. Stale: SANCTIONS_URL is set (even to an
- * address that is not taken) and the last good read of its list, or the making of the file read then, is missing or
- * 3 days old or more. A feed that stops, or a maker that stops while the file is still served, must be seen.
+ * For the operator's list: each loaded list, and whether the feed is stale. Stale: the feed is due (SANCTIONS_URL is set,
+ * even to an address that is not taken, or the environment is not the local one: production must be fed) and the last
+ * good read of its list, or the making of the file read then, is missing or 3 days old or more. A feed that stops, or a
+ * maker that stops while the file is still served, must be seen.
  */
 async function listsOf(env: { DB: D1Database; ENVIRONMENT: string; SANCTIONS_URL?: string }, now: number) {
   const rows = (await env.DB.prepare('SELECT list, entries, published, loaded_at AS loadedAt, checked_at AS checkedAt, made_at AS madeAt, held FROM sanctions_lists ORDER BY list')
     .all<{ list: string; entries: number; published: string | null; loadedAt: number | null; checkedAt: number | null; madeAt: number | null; held: string | null }>()).results
-  const fed = Boolean(env.SANCTIONS_URL)
+  const fed = Boolean(env.SANCTIONS_URL) || env.ENVIRONMENT !== 'local'
   if (fed && !rows.some((r) => r.list === 'ofac')) rows.push({ list: 'ofac', entries: 0, published: null, loadedAt: null, checkedAt: null, madeAt: null, held: null }) // set, and never read
   const fresh = (time: number | null) => (time ?? 0) > now - FEED.staleMs
   return rows.map((r) => ({ ...r, stale: fed && r.list === 'ofac' && !(fresh(r.checkedAt) && fresh(r.madeAt)) }))
 }
+// The desk's stop: an empty or old list would pass every address, so no order is sent while the operator sees the OFAC
+// line stale or held (a newer file that was not loaded: the loaded list may lack its new names), unless the operator
+// loaded the list by hand after the last good read, less than 3 days ago (the fallback).
+export const ofacStale = async (env: { DB: D1Database; ENVIRONMENT: string; SANCTIONS_URL?: string }, now: number) => (await listsOf(env, now))
+  .some((r) => r.list === 'ofac' && (r.stale || r.held !== null) && !(r.loadedAt !== null && r.loadedAt > (r.checkedAt ?? 0) && r.loadedAt > now - FEED.staleMs))
 
 // GET /api/screening (the roles that read the audit log; active organisations only): the Compliance page's section.
 // The organisation's own screening is answered only when its newest record says "clear": no other outcome is ever sent

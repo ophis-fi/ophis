@@ -1081,6 +1081,17 @@ try {
   await abe.page.getByRole('button', { name: 'Add a passkey' }).click()
   await abe.page.getByText('2: Security key 1, Security key 2').waitFor()
 
+  // M10: the desk sends only while the OFAC list file was read (F1: an empty list passes every address), so it is read first.
+  const listMode = (mode) => fetch(`http://127.0.0.1:${LIST_PORT}/stub/${mode}`)
+  // "sync" makes the Worker read the list stand-in, which lives in this process: the command must not block it (not execFileSync).
+  const operatorSync = () => new Promise((resolve) => {
+    let said = ''
+    const child = spawn('node', ['scripts/operator.mjs', 'sync'], { env, stdio: ['ignore', 'pipe', 'pipe'] }).on('close', () => resolve(said))
+    for (const stream of [child.stdout, child.stderr]) stream.on('data', (chunk) => (said += chunk))
+  })
+  const synced = await operatorSync()
+  check('"operator sync" reads the list file and loads it: the two addresses of the test file, with its publish day', synced.includes('Loaded 2 addresses of the list "ofac", published 2026-11-09.') && synced.includes('No linked or pending wallet is on a loaded list.'))
+
   // The Trader prepares an order on the desk.
   // Open a page of the console afresh; what is shown at the door is read first.
   const open = async (who, hash, heading) => {
@@ -1451,7 +1462,7 @@ try {
   const tradedCells = async () => Promise.all((await tradedSection.locator('tbody tr').all()).map(async (row) => (await row.locator('td').allInnerTexts()).map((cell, i) => (i ? cell : cell.toLowerCase()))))
   const notPriced = (n) => (n ? `\n${n} ${n === 1 ? 'trade' : 'trades'} not priced yet` : '')
   const UNKNOWN_ROW = 'not known (native eth sales)'
-  const S = P.sanctioned[0] // on the list "un" the operator loaded above (tests/fixtures/sanctions-addresses.txt)
+  const S = P.sanctioned[0] // on the list "un" the operator loaded above (tests/fixtures/sanctions-addresses.txt), and on the OFAC test file read before the desk
   const tag = (wallet) => (wallet === S.wallet ? '\nsanctions list' : '')
   check('the wallets that traded through the integration: the totals, every wallet of the contract file, largest first, with its trades and volume, then the trades of no known wallet; trades not priced yet under each volume and in one line',
     (await partnerTile('Wallets', tradedSection)) === String(P.traders.totals.walletCount) && (await partnerTile('Trades', tradedSection)) === String(P.traders.totals.trades) && (await partnerTile('Volume (USD)', tradedSection)) === usd(P.traders.totals.volumeUsd)
@@ -1495,12 +1506,12 @@ try {
   // The line under the alert: the lists checked, then what they did not reach. The sales of no known wallet are the
   // trades the indexer could not check (it gives a trade one wallet in both answers).
   const checkedLine = () => pat.page.locator('.checked').innerText()
-  const CHECKED = `The wallets whose orders carried your fee are checked against: UN Security Council consolidated list, loaded ${today}.`
+  const CHECKED = `The wallets whose orders carried your fee are checked against: OFAC SDN list, published 2026-11-09, loaded ${today}; UN Security Council consolidated list, loaded ${today}.`
   const HIDDEN = ' Not checked: the orders of linked wallets whose figures are not shown.'
   check('a wallet of the contract file is on the loaded list "un": a red alert before the figures with the wallets, trades, USD and trades not priced yet, that it is information, and its table (wallet, list, trades, volume, first and last trade); a line names the list checked and the sales of native ETH of no known wallet, not checked; the wallet is tagged once in the wallets that traded',
     (await flagged.getAttribute('role')) === 'alert' && (await flagged.evaluate((box) => !!(box.compareDocumentPosition(document.querySelector('.pw')) & Node.DOCUMENT_POSITION_FOLLOWING)))
     && (await flagged.locator('p').first().innerText()).includes(`1 wallet on a sanctions list traded through your integration: ${S.trades} trades, $${usd(S.volumeUsd)}, ${nTrades(S.unpriced)} not priced yet. This is for your information. Nothing in your account changes.`) && S.unpriced > 0
-    && JSON.stringify((await cellsOf(flagged)).map(([wallet, ...rest]) => [wallet.toLowerCase(), ...rest])) === JSON.stringify([[`${S.wallet}\nun security council consolidated list\n${S.trades} trades`, usd(S.volumeUsd) + notPriced(S.unpriced), `${S.firstAt.slice(0, 10)}\nLast ${S.lastAt.slice(0, 10)}`]])
+    && JSON.stringify((await cellsOf(flagged)).map(([wallet, ...rest]) => [wallet.toLowerCase(), ...rest])) === JSON.stringify([[`${S.wallet}\nofac sdn list, un security council consolidated list\n${S.trades} trades`, usd(S.volumeUsd) + notPriced(S.unpriced), `${S.firstAt.slice(0, 10)}\nLast ${S.lastAt.slice(0, 10)}`]])
     && (await checkedLine()) === `${CHECKED} Not checked: ${P.traders.unknown.trades} sales of native ETH with no known wallet.` && P.traders.unknown.trades > 1
     && (await tradedSection.locator('tbody tr', { hasText: 'Sanctions list' }).count()) === 1 && (await status('/api/me', pat.page)) === 200) // information only: the organisation is not frozen
   check('the alert of the wallets on a sanctions list fits a phone', await both(pat.page, '65-overview-partner-sanctioned', '.note.flagged'))
@@ -1541,13 +1552,13 @@ try {
   const tradedRow = (wallet, w, list = '') => `"${P.wallet}","demo wallet","${wallet}","${list}","${w.trades}","${w.volumeUsd}","${w.unpriced}","live"`
   check('the export of the wallets that traded downloads: named ophis-partner-traders-, every wallet of the contract file beside the partner wallet with its trades not priced yet, the trades of no known wallet, the total, source = live; the two are the only CSV',
     /^ophis-partner-traders-\d{4}-\d\d-\d\d\.csv$/.test(tradedFile.suggestedFilename()) && tradedLines[0] === '"Partner wallet","Wallet name","Wallet","Sanctions list","Trades","Volume (USD)","Trades not priced yet","source"'
-    && JSON.stringify(tradedLines.slice(1).map((row) => row.toLowerCase())) === JSON.stringify([...P.traders.wallets.map((w) => tradedRow(w.wallet, w, w.wallet === S.wallet ? 'un security council consolidated list' : '')), tradedRow(UNKNOWN_ROW, P.traders.unknown), tradedRow('total, 3 wallets', P.traders.totals)])
+    && JSON.stringify(tradedLines.slice(1).map((row) => row.toLowerCase())) === JSON.stringify([...P.traders.wallets.map((w) => tradedRow(w.wallet, w, w.wallet === S.wallet ? 'ofac sdn list; un security council consolidated list' : '')), tradedRow(UNKNOWN_ROW, P.traders.unknown), tradedRow('total, 3 wallets', P.traders.totals)])
     && (await pat.page.getByRole('button', { name: /CSV/ }).count()) === 7)
   const [listedFile] = await Promise.all([pat.page.waitForEvent('download'), pat.page.getByRole('button', { name: 'Sanctioned wallets CSV' }).click()])
   const listedLines = readFileSync(await listedFile.path(), 'utf8').split('\r\n').filter(Boolean)
   check('the export of the wallets on a sanctions list downloads: named ophis-partner-sanctioned-, the wallet with its list, trades, volume, trades not priced yet, first and last trade, source = live',
     /^ophis-partner-sanctioned-\d{4}-\d\d-\d\d\.csv$/.test(listedFile.suggestedFilename()) && listedLines[0] === '"Partner wallet","Wallet name","Wallet","Sanctions list","Trades","Volume (USD)","Trades not priced yet","First trade","Last trade","source"'
-    && JSON.stringify(listedLines.slice(1).map((row) => row.toLowerCase())) === JSON.stringify([`"${P.wallet}","demo wallet","${S.wallet}","un security council consolidated list","${S.trades}","${S.volumeUsd}","${S.unpriced}","${S.firstAt}","${S.lastAt}","live"`.toLowerCase()]))
+    && JSON.stringify(listedLines.slice(1).map((row) => row.toLowerCase())) === JSON.stringify([`"${P.wallet}","demo wallet","${S.wallet}","ofac sdn list; un security council consolidated list","${S.trades}","${S.volumeUsd}","${S.unpriced}","${S.firstAt}","${S.lastAt}","live"`.toLowerCase()]))
   // The four CSV of the breakdown, downloaded and read back.
   const breakdownFile = async (label) => {
     const [file] = await Promise.all([pat.page.waitForEvent('download'), pat.page.getByRole('button', { name: label }).click()])
@@ -1615,7 +1626,7 @@ try {
   check('two partner wallets: the alert counts each listed wallet once, its trades, volume and trades not priced yet added up over both, the first trade the earliest and the last the latest',
     (await flagged.locator('p').first().innerText()).includes(`2 wallets on a sanctions list traded through your integration: ${S.trades + 3} trades, $${usd(S.volumeUsd + 10.5)}, ${nTrades(S.unpriced + 3)} not priced yet.`)
     && JSON.stringify((await cellsOf(flagged)).map(([wallet, ...rest]) => [wallet.toLowerCase(), ...rest])) === JSON.stringify([
-      [`${S.wallet}\nun security council consolidated list\n${S.trades + 2} trades`, usd(S.volumeUsd + 10) + notPriced(S.unpriced + 2), `2026-07-01\nLast 2026-11-10`], [`${outside.wallet}\nofac sdn list\n1 trade`, '0.50' + notPriced(1), 'Not known yet']]))
+      [`${S.wallet}\nofac sdn list, un security council consolidated list\n${S.trades + 2} trades`, usd(S.volumeUsd + 10) + notPriced(S.unpriced + 2), `2026-07-01\nLast 2026-11-10`], [`${outside.wallet}\nofac sdn list\n1 trade`, '0.50' + notPriced(1), 'Not known yet']]))
   // What the lists did not reach: a contract wallet whose figures are not shown, the wallets after the 10 read, and a sale of native ETH of no known wallet.
   await overviewWith((f) => {
     const [w] = f.wallets
@@ -1652,16 +1663,7 @@ try {
   await patOverview()
   await pat.page.getByText('Figures from the Ophis rebate service, read at').waitFor()
 
-  // ---- M10: the OFAC list as a file the console reads ----
-  const listMode = (mode) => fetch(`http://127.0.0.1:${LIST_PORT}/stub/${mode}`)
-  // "sync" makes the Worker read the list stand-in, which lives in this process: the command must not block it (not execFileSync).
-  const operatorSync = () => new Promise((resolve) => {
-    let said = ''
-    const child = spawn('node', ['scripts/operator.mjs', 'sync'], { env, stdio: ['ignore', 'pipe', 'pipe'] }).on('close', () => resolve(said))
-    for (const stream of [child.stdout, child.stderr]) stream.on('data', (chunk) => (said += chunk))
-  })
-  const synced = await operatorSync()
-  check('"operator sync" reads the list file and loads it: the two addresses of the test file, with its publish day', synced.includes('Loaded 2 addresses of the list "ofac", published 2026-11-09.') && synced.includes('No linked or pending wallet is on a loaded list.'))
+  // ---- M10: the OFAC list as a file the console reads (its first read is before the desk) ----
   const lists = operator('list')
   check('"operator list" prints the line of the list, with no warning',
     lists.includes(`LIST  ofac  2 addresses  published 2026-11-09  loaded ${today}  last good read of the list file ${today}  file made ${today}`) && !lists.includes('WARNING') && !lists.includes('FLAG'))

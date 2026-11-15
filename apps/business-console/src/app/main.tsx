@@ -95,7 +95,7 @@ function App() {
   return (
     <>
       <button className="skip btn primary sm" type="button" onClick={() => document.getElementById('main')?.focus()}>Skip to content</button>
-      <div className="band" role="note"><Icon name="info" size={16} /><span><strong>Local build.</strong> Test data only.</span></div>
+      {location.hostname === 'localhost' && <div className="band" role="note"><Icon name="info" size={16} /><span><strong>Local build.</strong> Test data only.</span></div>}
       <header className="bar">
         <a className="brand" href="/#/" aria-label="Ophis Business"><img src={mark} alt="" />ophis.<small>Business</small></a>
         {me && <div className="org"><span>{me.organisation.name}</span></div>}

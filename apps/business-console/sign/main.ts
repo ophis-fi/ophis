@@ -178,6 +178,7 @@ const ORDER_SAY: Record<string, string> = {
   link_invalid: 'This link is not valid any more: it was used, it expired, or a newer link replaced it. Ask for a new link in the console.',
   signature_rejected: 'The signature is not from the wallet of this order. Nothing was sent.',
   sanctioned_address: 'Refused: an address of this order is on a public sanctions list that Ophis loaded. Nothing was sent. The attempt is recorded.',
+  sanctions_list_stale: 'The sanctions list that Ophis checks each order against is not up to date. Nothing was sent. Try again later.',
   wallet_not_linked: 'The wallet is no longer linked to the organisation on this chain. Nothing was sent.',
   asset_not_permitted: 'An asset or a limit of this order is no longer permitted. Nothing was sent. Prepare a new order in the console.',
   order_refused: 'The orderbook refused the order. Nothing was sent.',

@@ -6,7 +6,7 @@ import { CHAIN_NAME, typedLink, typedProof, type ProofKind } from './typed.ts'
 import { ask } from './support.ts'
 import * as orders from './orders.ts'
 import * as partner from './partner.ts'
-import { activateIntent, activationIntent, activationProof, apply, applyCheck, DOWNLOAD_REASONS, onboarding, ONBOARDING_EVENTS, operator, OPERATOR, screening, SEAL, sealDeclaration, submit, sync } from './onboarding.ts'
+import { activateIntent, activationIntent, activationProof, apply, applyCheck, DOWNLOAD_REASONS, ofacStale, onboarding, ONBOARDING_EVENTS, operator, OPERATOR, screening, SEAL, sealDeclaration, submit, sync } from './onboarding.ts'
 
 export interface Env { DB: D1Database; ASSETS: Fetcher; SEALED: R2Bucket; ENVIRONMENT: string; CHALLENGE_KEY: string; SEAL_RECIPIENT?: string; INDEXER_URL?: string; INDEXER_TOKEN?: string; SANCTIONS_URL?: string; ORDERBOOK_URL?: string; RPC_URL?: string }
 
@@ -382,7 +382,9 @@ async function proof(c: Context) {
   const intent = link ?? recover ?? activate
   if (!intent) return fail(400, 'intent_invalid')
   if (intent.expiresAt * 1000 <= c.now) return fail(410, 'intent_expired')
-  if (!(await data.countProof(c.env.DB, intent.org, c.now))) return fail(429, 'too_many')
+  // Recovery intents go to anyone (Turnstile is not built), so their checks have their own count: else 10 bad proofs an
+  // hour would block the organisation's wallet links and activation (review 2026-11-15).
+  if (!(await data.countProof(c.env.DB, recover ? `recover:${intent.org}` : intent.org, c.now))) return fail(429, 'too_many')
   const { signature } = c.body
   if (typeof signature !== 'string' || signature.length > 8194 || !/^0x(?:[0-9a-fA-F]{2})*$/.test(signature)) return fail(400, 'signature_invalid')
   return link ? linkProof(c, link, signature as `0x${string}`) : recover ? recoveryProof(c, recover, signature as `0x${string}`) : activationProof(c, activate!, signature as `0x${string}`)
@@ -763,6 +765,7 @@ async function orderPage(c: Context) {
   const r = await openedBy(c)
   if (!r) return fail(404, 'link_invalid')
   if (r.purpose === 'sign' && !permitted(r)) return refuse('asset_not_permitted') // before the wallet approves or signs anything
+  if (r.purpose === 'sign' && (await ofacStale(c.env, c.now))) return fail(503, 'sanctions_list_stale') // the same, and the expiry does not start
   const t = r.terms
   let validTo = r.validTo
   // The expiry is fixed when the page first reads a signing link, and stored: every later read signs the same order.
@@ -805,6 +808,7 @@ async function orderSend(c: Context) {
   if (t.scheme === 'eip712' && !(await orders.signedBy(built.hashed, c.body.signature, t.wallet))) return fail(403, 'signature_rejected')
   // A presign order's signature is its owner (the Safe), as the orderbook takes it.
   const signature = t.scheme === 'presign' ? t.wallet.toLowerCase() : (c.body.signature as string)
+  if (await ofacStale(c.env, c.now)) return fail(503, 'sanctions_list_stale') // nothing written: the link sends once the list is read again
   const listed = await data.listedOf(c.env.DB, [t.wallet, t.sell.token, t.buy.token])
   if (listed) {
     await data.orderListed(c.env.DB, r, r.hash, listed === t.wallet.toLowerCase() ? 'wallet' : listed === t.sell.token.toLowerCase() ? 'sell' : 'buy', c.now)

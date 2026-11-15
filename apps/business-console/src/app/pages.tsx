@@ -249,7 +249,7 @@ export function Enrol({ ticket }: { ticket: string }) {
               <p className="note ok" role="status"><Icon name="circle-check" /><span className="grow"><b>Your passkey is stored.</b>{invitation.first ? '' : ' The colleague who invited you now confirms it with a passkey check. They may first ask you, by a channel you both trust, whether you created it.'}</span></p>
               {facts}
               <p className="fine"><Icon name="clock" size={16} />The passkey cannot sign in until it is approved. Then sign in from your bookmark.</p>
-              {invitation.first && <p className="fine"><Icon name="info" size={16} />Local build, first Owner: confirm with the activate command, then sign in.</p>}
+              {invitation.first && location.hostname === 'localhost' && <p className="fine"><Icon name="info" size={16} />Local build, first Owner: confirm with the activate command, then sign in.</p>}
               <a className="btn ghost" href="#/"><Icon name="fingerprint" />Go to sign-in</a>
             </div>
           </>
