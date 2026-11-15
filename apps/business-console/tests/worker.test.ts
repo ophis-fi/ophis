@@ -4447,13 +4447,13 @@ describe('B. last-Owner recovery by the recovery wallet', () => {
   })
   const link_ = (m: Holder) => link(m, accounts[2])
 
-  it('P3: the same registration sent twice gets the same request nonce, so a replay never makes a fresh count; the count of past hours is deleted by an index (review 2026-11-15)', async () => {
+  it('P3: the same registration sent again, with either kind, gets the same request nonce, so a replay never makes a fresh count; the count of past hours is deleted by an index (review 2026-11-15)', async () => {
     const { o } = await teamWithWallet('safe')
     const key = await softwareAuthenticator(SITE)
     const start = await call('POST', '/api/recover/intent', { body: { organisationId: o.orgId } })
     const body = { organisationId: o.orgId, seat: start.body.seat, response: await key.register(start.body.options) }
-    const [one, two] = [await call('POST', '/api/recover/intent', { body }), await call('POST', '/api/recover/intent', { body })]
-    expect([one.status, two.status, recoverOf(two.body.intent).nonce]).toEqual([200, 200, recoverOf(one.body.intent).nonce])
+    const [one, two, other] = [await call('POST', '/api/recover/intent', { body }), await call('POST', '/api/recover/intent', { body }), await call('POST', '/api/recover/intent', { body: { ...body, override: true } })]
+    expect([one.status, two.status, other.status, recoverOf(two.body.intent).nonce, recoverOf(other.body.intent).nonce]).toEqual([200, 200, 200, recoverOf(one.body.intent).nonce, recoverOf(one.body.intent).nonce]) // the kind changes nothing
     expect(JSON.stringify((await db.prepare('EXPLAIN QUERY PLAN DELETE FROM proof_checks WHERE hour < ?').bind(1).all()).results)).toContain('proof_checks_hour')
   })
 

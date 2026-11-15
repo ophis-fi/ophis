@@ -451,10 +451,11 @@ async function recoverIntent(c: Context) {
   if (!credential.deviceBound) return fail(400, 'device_bound_required') // the new passkey is an Owner's
   const hash = `0x${Array.from(await credentialHash(credential.id, credential.publicKey), (byte) => byte.toString(16).padStart(2, '0')).join('')}`
   const kind = c.body.override === true ? 'override' : 'replace'
-  // One registration, one request: the same response sent again (its challenge lives 5 minutes) gets the same nonce,
-  // so the same 10 checks, never a fresh count (review 2026-11-15). A nonce is accepted once (recovery_requests).
+  // One registration, one request: the same response sent again (its challenge lives 5 minutes), with either kind, gets
+  // the same nonce, so the same 10 checks, never a fresh count (review 2026-11-15). A nonce is accepted once
+  // (recovery_requests), so one registration opens one request, of one kind.
   return json(200, await sealedRecover(c, {
-    kind, org, seat, nonce: `0x${await data.sha256Hex(`${kind}.${org}.${seat}.${hash}`)}`,
+    kind, org, seat, nonce: `0x${await data.sha256Hex(`${org}.${seat}.${hash}`)}`,
     credentialHash: hash,
     credential: { id: credential.id, publicKey: credential.publicKey, counter: credential.counter, transports: credential.transports },
   }))
