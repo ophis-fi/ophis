@@ -669,10 +669,10 @@ async function listsOf(env: { DB: D1Database; ENVIRONMENT: string; SANCTIONS_URL
   return rows.map((r) => ({ ...r, stale: fed && r.list === 'ofac' && !(fresh(r.checkedAt) && fresh(r.madeAt)) }))
 }
 // The desk's stop: an empty or old list would pass every address, so no order is sent while the operator sees the OFAC
-// line stale or held (a newer file that was not loaded: the loaded list may lack its new names), unless the operator
-// loaded the list by hand after the last good read, less than 3 days ago (the fallback).
+// line stale or held (a file that was not loaded and may carry new names: not "older", which is no newer than the
+// loaded list), unless the operator loaded the list by hand after the last good read, less than 3 days ago (the fallback).
 export const ofacStale = async (env: { DB: D1Database; ENVIRONMENT: string; SANCTIONS_URL?: string }, now: number) => (await listsOf(env, now))
-  .some((r) => r.list === 'ofac' && (r.stale || r.held !== null) && !(r.loadedAt !== null && r.loadedAt > (r.checkedAt ?? 0) && r.loadedAt > now - FEED.staleMs))
+  .some((r) => r.list === 'ofac' && (r.stale || (r.held !== null && r.held !== 'older')) && !(r.loadedAt !== null && r.loadedAt > (r.checkedAt ?? 0) && r.loadedAt > now - FEED.staleMs))
 
 // GET /api/screening (the roles that read the audit log; active organisations only): the Compliance page's section.
 // The organisation's own screening is answered only when its newest record says "clear": no other outcome is ever sent

@@ -382,9 +382,10 @@ async function proof(c: Context) {
   const intent = link ?? recover ?? activate
   if (!intent) return fail(400, 'intent_invalid')
   if (intent.expiresAt * 1000 <= c.now) return fail(410, 'intent_expired')
-  // Recovery intents go to anyone (Turnstile is not built), so their checks have their own count: else 10 bad proofs an
-  // hour would block the organisation's wallet links and activation (review 2026-11-15).
-  if (!(await data.countProof(c.env.DB, recover ? `recover:${intent.org}` : intent.org, c.now))) return fail(429, 'too_many')
+  // Recovery intents go to anyone (Turnstile is not built), so their checks count per request (the nonce: made here for
+  // a recovery, the open request's for a cancel): else 10 bad proofs an hour would block the organisation's wallet links,
+  // activation and real recovery (review 2026-11-15).
+  if (!(await data.countProof(c.env.DB, recover ? `recover:${intent.org}:${recover.nonce}` : intent.org, c.now))) return fail(429, 'too_many')
   const { signature } = c.body
   if (typeof signature !== 'string' || signature.length > 8194 || !/^0x(?:[0-9a-fA-F]{2})*$/.test(signature)) return fail(400, 'signature_invalid')
   return link ? linkProof(c, link, signature as `0x${string}`) : recover ? recoveryProof(c, recover, signature as `0x${string}`) : activationProof(c, activate!, signature as `0x${string}`)
@@ -760,12 +761,25 @@ const permitted = (r: { payload: string }) => {
   const fresh = orders.again(value)
   return typeof fresh !== 'string' && JSON.stringify(fresh) === value
 }
+// The sanctions screen of a signing link, at the page and at the send. A known hit first: refused and recorded even
+// while the list is stale, so its flag is never lost. Then the stale stop (503, nothing written: the link works once
+// the list is read again). Cancels are never screened.
+async function screened(c: Context, r: NonNullable<Awaited<ReturnType<typeof openedBy>>>) {
+  const t = r.terms
+  const listed = await data.listedOf(c.env.DB, [t.wallet, t.sell.token, t.buy.token])
+  if (listed) {
+    await data.orderListed(c.env.DB, r, r.hash, listed === t.wallet.toLowerCase() ? 'wallet' : listed === t.sell.token.toLowerCase() ? 'sell' : 'buy', c.now)
+    return fail(403, 'sanctioned_address')
+  }
+  return (await ofacStale(c.env, c.now)) ? fail(503, 'sanctions_list_stale') : null
+}
 /** What the page shows and has the wallet sign, all built here from the approved terms: the page chooses nothing. */
 async function orderPage(c: Context) {
   const r = await openedBy(c)
   if (!r) return fail(404, 'link_invalid')
   if (r.purpose === 'sign' && !permitted(r)) return refuse('asset_not_permitted') // before the wallet approves or signs anything
-  if (r.purpose === 'sign' && (await ofacStale(c.env, c.now))) return fail(503, 'sanctions_list_stale') // the same, and the expiry does not start
+  const stop = r.purpose === 'sign' ? await screened(c, r) : null // the same, and the expiry does not start
+  if (stop) return stop
   const t = r.terms
   let validTo = r.validTo
   // The expiry is fixed when the page first reads a signing link, and stored: every later read signs the same order.
@@ -808,12 +822,8 @@ async function orderSend(c: Context) {
   if (t.scheme === 'eip712' && !(await orders.signedBy(built.hashed, c.body.signature, t.wallet))) return fail(403, 'signature_rejected')
   // A presign order's signature is its owner (the Safe), as the orderbook takes it.
   const signature = t.scheme === 'presign' ? t.wallet.toLowerCase() : (c.body.signature as string)
-  if (await ofacStale(c.env, c.now)) return fail(503, 'sanctions_list_stale') // nothing written: the link sends once the list is read again
-  const listed = await data.listedOf(c.env.DB, [t.wallet, t.sell.token, t.buy.token])
-  if (listed) {
-    await data.orderListed(c.env.DB, r, r.hash, listed === t.wallet.toLowerCase() ? 'wallet' : listed === t.sell.token.toLowerCase() ? 'sell' : 'buy', c.now)
-    return fail(403, 'sanctioned_address')
-  }
+  const stop = await screened(c, r)
+  if (stop) return stop
   if (!permitted(r)) return refuse('asset_not_permitted') // a deploy between the page and the send
   const held = await data.orderSending(c.env.DB, r, r.hash, built.uid, signature, c.now)
   if (held !== 'ok') return refuse(held)

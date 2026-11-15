@@ -4416,7 +4416,7 @@ describe('B. last-Owner recovery by the recovery wallet', () => {
     expect((await prove(asked.intent, '0x')).body).toEqual({ state: 'waiting', until: now + WAIT })
   })
 
-  it('P3: 10 proof checks per organisation per hour, link proofs included, and 10 more for recovery, whose intents anyone can ask (never out of the links\' 10): the 11th is refused before a row is read or an endpoint asked, and the counter is the only write before the commit', async () => {
+  it('P3: 10 proof checks per organisation per hour, link proofs included, and 10 per recovery request, whose intents anyone can ask (never out of the links\' 10): the 11th is refused before a row is read or an endpoint asked, and the counter is the only write before the commit', async () => {
     const { o } = await teamWithWallet('safe')
     const other = await owner('Another organisation')
     const asked = await askRecovery(o.orgId)
@@ -4424,10 +4424,12 @@ describe('B. last-Owner recovery by the recovery wallet', () => {
     const bad = `0x${'11'.repeat(65)}`
     theSafe().accepts = () => false
     const rows = await snapshot()
+    // Bad cancels for made-up requests (anyone can ask their intents) count apart: a real request keeps its own 10.
+    for (let i = 0; i < 10; i++) await cancelByWallet(o.orgId, `0x${String(i).repeat(64)}`, null)
     for (let i = 0; i < 10; i++) expect((await prove(asked.intent, bad)).body, String(i)).toEqual(REJECTED)
     for (let i = 0; i < 10; i++) expect((await prove(link.body.intent, bad)).body, String(i)).toEqual({ error: 'signature_rejected' }) // still checked
     expect(await snapshot()).toBe(rows)
-    expect([await counted(o.orgId), await counted(`recover:${o.orgId}`)]).toEqual([10, 10])
+    expect([await counted(o.orgId), await counted(`recover:${o.orgId}:${recoverOf(asked.intent).nonce}`)]).toEqual([10, 10])
     theSafe().accepts = (_digest, signature) => signature === '0x'
     chain.calls = []
     for (const intent of [asked.intent, link.body.intent]) {
@@ -10316,8 +10318,10 @@ describe('J. the real desk: terms from a live quote, two people, then the wallet
     const asked = book()
     const id = await approvedOrder(team)
     const { token } = await orderLink(team.t, id)
-    const signature = await accounts[1].signTypedData((await orderPage(token)).body.typed)
     const fed = { ...testEnv, SANCTIONS_URL: 'https://lists.test/ofac.json' } as Env
+    const page = (link = token) => call('POST', '/api/order', { sign: true, body: { token: link }, env: fed })
+    expect([(await page()).status, await row('SELECT valid_to FROM orders WHERE id = ?', id)]).toEqual([503, { valid_to: null }]) // the expiry does not start
+    const signature = await accounts[1].signTypedData((await orderPage(token)).body.typed) // no list address set: the feature is off
     const send = () => call('POST', '/api/order/send', { sign: true, body: { token, signature }, env: fed })
     const listAt = (loaded: number, checked: number | null, made: number | null, held: string | null = null) => db.prepare(`INSERT OR REPLACE INTO sanctions_lists (list, sha256, entries, loaded_at, checked_at, made_at, held) VALUES ('ofac', ?, 1, ?, ?, ?, ?)`).bind('ab'.repeat(32), loaded, checked, made, held).run()
     const old = now - 3 * DAY
@@ -10325,13 +10329,31 @@ describe('J. the real desk: terms from a live quote, two people, then the wallet
     const cases: ([number, number | null, number | null, string?] | null)[] = [null, [old, old, old], [now, now, old], [old, null, null], [old, now, now, 'grown']]
     for (const at of cases) {
       if (at) await listAt(...at)
-      const [page, answer] = [await call('POST', '/api/order', { sign: true, body: { token }, env: fed }), await send()]
-      expect([page.status, page.body, answer.status, answer.body], String(at)).toEqual([503, { error: 'sanctions_list_stale' }, 503, { error: 'sanctions_list_stale' }])
+      const [shown, answer] = [await page(), await send()]
+      expect([shown.status, shown.body, answer.status, answer.body], String(at)).toEqual([503, { error: 'sanctions_list_stale' }, 503, { error: 'sanctions_list_stale' }])
     }
     expect([asked.filter((x) => x.url.endsWith('/orders')), await row('SELECT status, uid FROM orders WHERE id = ?', id)]).toEqual([[], { status: null, uid: null }])
+    await listAt(old, now, now, 'older') // a held file no newer than the loaded list: nothing newer is missing
+    expect(await onboarding.ofacStale(fed, now)).toBe(false)
     await listAt(old + 1, null, null) // loaded by hand since, the fallback: the operator line stays stale, the desk sends
     expect((await send()).body).toMatchObject({ state: 'open' })
-    await clear()
+    await clear() // stale again: a cancel is never stopped
+    const cancel = (await orderLink(team.t, id, 'cancel')).token
+    const cancelled = await call('POST', '/api/order/send', { sign: true, body: { token: cancel, signature: await accounts[1].signTypedData((await page(cancel)).body.typed) }, env: fed })
+    expect(cancelled.body).toEqual({ state: 'cancelled' })
+  })
+
+  it('send: a known hit is refused and recorded at the page, before the stale stop, so its flag is never lost', async () => {
+    const team = await deskTeam()
+    book()
+    const id = await approvedOrder(team)
+    const { token } = await orderLink(team.t, id)
+    const old = now - 3 * DAY // read 3 days ago: stale, and it names the wallet
+    await db.batch([db.prepare(`INSERT OR REPLACE INTO sanctions_lists (list, sha256, entries, loaded_at, checked_at, made_at) VALUES ('ofac', ?, 1, ?, ?, ?)`).bind('ab'.repeat(32), old, old, old), db.prepare(`INSERT INTO sanctioned_addresses (list, address) VALUES ('ofac', ?)`).bind(accounts[1].address.toLowerCase())])
+    const shown = await call('POST', '/api/order', { sign: true, body: { token }, env: { ...testEnv, SANCTIONS_URL: 'https://lists.test/ofac.json' } as Env })
+    await db.batch([db.prepare('DELETE FROM sanctioned_addresses'), db.prepare('DELETE FROM sanctions_lists')])
+    expect([shown.status, shown.body, await row('SELECT status, link_hash FROM orders WHERE id = ?', id), await lastAudit(team.o.orgId)])
+      .toEqual([403, { error: 'sanctioned_address' }, { status: 'refused', link_hash: null }, { action: 'order.sanctioned', actor_id: team.walletId, subject_id: id, detail: 'wallet' }])
   })
 
   it('an asset delisted since the approval: the page and the send refuse the order, so nothing is fixed, approved or sent; listed again, the same signature is sent', async () => {

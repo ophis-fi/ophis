@@ -1325,7 +1325,7 @@ try {
   check('outside the Safe interface, the signing page of a Safe order offers no wallet signature and says where to open it', !(await outsideSafe.page.getByRole('button', { name: /Sign with/ }).isVisible()))
   await outsideSafe.context.close()
   // The Safe interface, opened on a signing link: what the Safe was asked to propose is kept in `proposed`.
-  async function safeFrame(link) {
+  async function safeFrame(link, shown = true) {
     const context = await browser.newContext({ viewport: { width: 1440, height: 900 }, reducedMotion: 'reduce' })
     const proposed = []
     await context.exposeFunction('safeSent', (txs) => void proposed.push(...txs))
@@ -1342,7 +1342,7 @@ try {
     page.on('console', (message) => /content security policy|refused to/i.test(message.text()) && violations.push(message.text()))
     await page.goto('https://app.safe.global/apps/open')
     const inSafe = page.frameLocator('#app')
-    await inSafe.getByRole('heading', { name: 'The order the wallet will sign' }).waitFor()
+    if (shown) await inSafe.getByRole('heading', { name: 'The order the wallet will sign' }).waitFor()
     const steps = async () => (await inSafe.locator('#o-steps li').evaluateAll((items) => items.map((li) => `${li.dataset.step} ${li.dataset.state}`))).join()
     return { context, proposed, page, inSafe, steps }
   }
@@ -1368,11 +1368,10 @@ try {
   const tokenList = `${STATE}/token-list.txt`
   writeFileSync(tokenList, 'TEST DATA, made by this run. The asset sold, WETH on OP Mainnet: 0x4200000000000000000000000000000000000006\n')
   check('the operator loads a list that names the asset sold', operator('addresses', `un=${tokenList}`).includes('Loaded 1 address of the list "un"'))
-  const listedSafe = await safeFrame(listedLink)
-  await listedSafe.inSafe.getByRole('button', { name: 'Sign with this Safe' }).click()
+  const listedSafe = await safeFrame(listedLink, false)
   await listedSafe.inSafe.getByText('Refused: an address of this order is on a public sanctions list that Ophis loaded.').waitFor()
-  check('a Safe order of a listed asset is refused before the Safe is asked for anything: no transaction proposed, the Safe step still to do',
-    listedSafe.proposed.length === 0 && await listedSafe.steps() === 'sent todo,approve todo,safe todo')
+  check('a Safe order of a listed asset is refused as its page opens, before the Safe is asked for anything: no order shown, nothing to sign, no transaction proposed',
+    listedSafe.proposed.length === 0 && !(await listedSafe.inSafe.getByRole('button', { name: 'Sign with this Safe' }).count()) && !(await listedSafe.inSafe.getByRole('heading', { name: 'The order the wallet will sign' }).count()))
   await listedSafe.context.close()
   check('the list is loaded again as it was', operator('addresses', `un=${LIST.addresses}`).includes('No linked or pending wallet is on a loaded list.'))
   await desk(tess)
