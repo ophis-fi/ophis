@@ -10468,6 +10468,20 @@ describe('J. the real desk: terms from a live quote, two people, then the wallet
     expect(cancelled.body).toEqual({ state: 'cancelled' })
   })
 
+  it('production with no list file: the OFAC list is loaded by hand once a month, current for 35 days after that load, then the desk stops; locally the feature is off (owner, 2026-11-15)', async () => {
+    const clear = () => db.batch([db.prepare('DELETE FROM sanctioned_addresses'), db.prepare('DELETE FROM sanctions_lists')])
+    await clear()
+    const production = { DB: db, ENVIRONMENT: 'production' }
+    const loadedAt = (at: number) => db.prepare(`INSERT OR REPLACE INTO sanctions_lists (list, sha256, entries, loaded_at) VALUES ('ofac', ?, 1, ?)`).bind('ab'.repeat(32), at).run()
+    expect(await onboarding.ofacStale(production, now)).toBe(true) // none loaded
+    await loadedAt(now - onboarding.FEED.manualMs + 1)
+    expect([await onboarding.ofacStale(production, now), await onboarding.ofacStale({ DB: db, ENVIRONMENT: 'local' }, now)]).toEqual([false, false])
+    await loadedAt(now - onboarding.FEED.manualMs)
+    expect([await onboarding.ofacStale(production, now), await onboarding.ofacStale({ DB: db, ENVIRONMENT: 'local' }, now)]).toEqual([true, false])
+    expect(onboarding.FEED.manualMs).toBe(35 * DAY)
+    await clear()
+  })
+
   it('send: a known hit is refused and recorded at the page, before the stale stop, so its flag is never lost', async () => {
     const team = await deskTeam()
     book()

@@ -45,7 +45,8 @@ export const MAX_ADDRESSES = 1_000
 const CHUNK = 99 // D1 binds at most 100 values per statement: the list code and 99 addresses
 // M10: the OFAC list as a file the console reads (SANCTIONS_URL; made by scripts/ofac-list.mjs). One GET, 5 seconds, 2 MB.
 // hold: a file that adds more than a fifth of the loaded addresses is not loaded, nor one that lacks any (a removal waits for a person). staleMs: no good read, or a file made, for 3 days is said to the operator.
-export const FEED = { timeoutMs: 5000, maxBytes: 2_000_000, hold: 0.2, staleMs: 3 * 24 * 60 * 60 * 1000 }
+// manualMs: with no file set (production, owner 2026-11-15), the OFAC list is loaded by hand once a month; 35 days after that load it is stale.
+export const FEED = { timeoutMs: 5000, maxBytes: 2_000_000, hold: 0.2, staleMs: 3 * 24 * 60 * 60 * 1000, manualMs: 35 * 24 * 60 * 60 * 1000 }
 /** The day a list file was published, YYYY-MM-DD: a real day, not after tomorrow. */
 const publishedOk = (value: unknown, now: number): value is string => {
   const ms = typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value) ? Date.parse(`${value}T00:00:00Z`) : NaN
@@ -661,18 +662,19 @@ async function readList(env: { DB: D1Database; ENVIRONMENT: string; SANCTIONS_UR
   return reason ? { outcome: 'held', reason } : { outcome: 'same' }
 }
 /**
- * For the operator's list: each loaded list, and whether the feed is stale. Stale: the feed is due (SANCTIONS_URL is set,
- * even to an address that is not taken, or the environment is not the local one: production must be fed) and the last
- * good read of its list, or the making of the file read then, is missing or 3 days old or more. A feed that stops, or a
- * maker that stops while the file is still served, must be seen.
+ * For the operator's list: each loaded list, and whether the OFAC list is stale. With SANCTIONS_URL set (even to an
+ * address that is not taken): when the last good read of the file, or the making of the file read then, is missing or
+ * 3 days old or more; a feed that stops, or a maker that stops while the file is still served, must be seen. With no
+ * file outside the local environment (production loads the list by hand, monthly): when no list was loaded, or the
+ * last load is 35 days old or more. Locally, with no file, the feature is off.
  */
 async function listsOf(env: { DB: D1Database; ENVIRONMENT: string; SANCTIONS_URL?: string }, now: number) {
   const rows = (await env.DB.prepare('SELECT list, entries, published, loaded_at AS loadedAt, checked_at AS checkedAt, made_at AS madeAt, held, held_adds AS heldAdds FROM sanctions_lists ORDER BY list')
     .all<{ list: string; entries: number; published: string | null; loadedAt: number | null; checkedAt: number | null; madeAt: number | null; held: string | null; heldAdds: number | null }>()).results
-  const fed = Boolean(env.SANCTIONS_URL) || env.ENVIRONMENT !== 'local'
-  if (fed && !rows.some((r) => r.list === 'ofac')) rows.push({ list: 'ofac', entries: 0, published: null, loadedAt: null, checkedAt: null, madeAt: null, held: null, heldAdds: null }) // set, and never read
-  const fresh = (time: number | null) => (time ?? 0) > now - FEED.staleMs
-  return rows.map((r) => ({ ...r, stale: fed && r.list === 'ofac' && !(fresh(r.checkedAt) && fresh(r.madeAt)) }))
+  const fed = Boolean(env.SANCTIONS_URL), due = fed || env.ENVIRONMENT !== 'local'
+  if (due && !rows.some((r) => r.list === 'ofac')) rows.push({ list: 'ofac', entries: 0, published: null, loadedAt: null, checkedAt: null, madeAt: null, held: null, heldAdds: null }) // set, and never read
+  const within = (time: number | null, ms: number) => (time ?? 0) > now - ms
+  return rows.map((r) => ({ ...r, stale: due && r.list === 'ofac' && !(fed ? within(r.checkedAt, FEED.staleMs) && within(r.madeAt, FEED.staleMs) : within(r.loadedAt, FEED.manualMs)) }))
 }
 // The desk's stop: an empty or old list would pass every address, so no order is sent while the operator sees the OFAC
 // line stale, or held with a file that has addresses the loaded list lacks (or not known how many): those names would
