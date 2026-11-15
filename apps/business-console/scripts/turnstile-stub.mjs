@@ -1,17 +1,22 @@
 // The local stand-in for Cloudflare Turnstile, the bot check of /recover (src/server/index.ts, TURNSTILE): locally
-// nothing reaches Cloudflare. Its api.js solves at once with Cloudflare's dummy token, as Cloudflare's test key does.
-// Its siteverify takes that token only with Cloudflare's public test secret, and answers for this machine's host and
-// the action "recover", so the server's host and action checks run here too.
+// nothing reaches Cloudflare. Its api.js solves at once with Cloudflare's dummy token and a serial (the server uses
+// each token once, so each must differ). Its siteverify takes such a token only with Cloudflare's public test secret,
+// and answers for this machine's host and the action "recover", so the server's host and action checks run here too.
 //   TURNSTILE_URL=http://127.0.0.1:8796 and that test secret are in .dev.vars (made by "pnpm seed").
-//   "pnpm dev", "pnpm test:e2e" and "pnpm tour" start it.
+//   "pnpm dev", "pnpm test:e2e", "pnpm test:chain" and "pnpm tour" start it.
 import { createServer } from 'node:http'
 
 export const PORT = 8796
-export const TEST_SECRET = '1x0000000000000000000000000000000AA' // Cloudflare's public test secret: it takes only the dummy token
+export const TEST_SECRET = '1x0000000000000000000000000000000AA' // Cloudflare's public test secret: with Cloudflare it takes only the dummy token
 export const DUMMY = 'XXXX.DUMMY.TOKEN.XXXX'
+let serial = 0
+/** A token the stand-in takes, a new one at each call (for callers in Node, such as tests/chain.mjs). */
+export const token = () => `${DUMMY}.${Date.now()}${++serial}`
+const TOKEN = /^XXXX\.DUMMY\.TOKEN\.XXXX\.\d+$/
 const API = `window.turnstile = (() => {
   const widgets = new Map()
-  const solve = (options) => setTimeout(() => options.callback && options.callback(${JSON.stringify(DUMMY)}))
+  let serial = 0
+  const solve = (options) => setTimeout(() => options.callback && options.callback(${JSON.stringify(DUMMY)} + '.' + Date.now() + (++serial)))
   return {
     ready: (run) => run(),
     render: (box, options) => {
@@ -39,7 +44,7 @@ export function start() {
       } catch {
         // not JSON: refused below
       }
-      const ok = asked.secret === TEST_SECRET && asked.response === DUMMY
+      const ok = asked.secret === TEST_SECRET && typeof asked.response === 'string' && TOKEN.test(asked.response)
       response.writeHead(200, { 'content-type': 'application/json' })
       response.end(JSON.stringify(ok ? { success: true, hostname: 'localhost', action: 'recover', 'error-codes': [] } : { success: false, 'error-codes': ['invalid-input-response'] }))
     })

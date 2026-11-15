@@ -20,7 +20,7 @@ import * as data from '../src/server/data.ts'
 import { handle } from '../src/server/index.ts'
 import { configFor, fromBase64Url } from '../src/server/passkeys.ts'
 import { softwareAuthenticator } from './authenticator.ts'
-import { DUMMY as HUMAN_OK, PORT as TURNSTILE_PORT, start as startTurnstile, TEST_SECRET as TURNSTILE_TEST } from '../scripts/turnstile-stub.mjs'
+import { PORT as TURNSTILE_PORT, start as startTurnstile, TEST_SECRET as TURNSTILE_TEST, token as humanToken } from '../scripts/turnstile-stub.mjs'
 
 process.chdir(new URL('..', import.meta.url).pathname)
 
@@ -174,7 +174,7 @@ try {
     const recover = async () => {
       const key = await softwareAuthenticator(site)
       const start = (await call('/api/recover/intent', { organisationId: orgId })).body
-      const { intent } = (await call('/api/recover/intent', { organisationId: orgId, seat: start.seat, response: await key.register(start.options), turnstile: HUMAN_OK })).body
+      const { intent } = (await call('/api/recover/intent', { organisationId: orgId, seat: start.seat, response: await key.register(start.options), turnstile: humanToken() })).body
       const f = fieldsOf(intent)
       const typedData = typedProof({ kind: f.kind, chainId: 10, site: f.site, organisationId: f.org, wallet: vault, credentialHash: f.credentialHash, nonce: f.nonce, issuedAt: f.issuedAt, expiresAt: f.expiresAt })
       const one = await call('/api/proof', { intent, signature: await signed(owners.slice(0, 1), under({ SafeMessage: [{ name: 'message', type: 'bytes' }] }, 'SafeMessage', { message: hashTypedData(typedData) }, vault)) }, { sign: true })

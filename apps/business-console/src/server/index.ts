@@ -448,13 +448,16 @@ async function human(c: Context) {
   try {
     const answer = await fetch(`${turnstileBase(c.env)}/turnstile/v0/siteverify`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ secret: c.env.TURNSTILE_SECRET, response: token }), signal: AbortSignal.timeout(5000) })
     const v = (await answer.json()) as { success?: unknown; hostname?: unknown; action?: unknown }
-    return answer.ok && v.success === true && v.hostname === t.hostname && v.action === 'recover'
+    if (!(answer.ok && v.success === true && v.hostname === t.hostname && v.action === 'recover')) return false
+    // Cloudflare's own single use is eventually consistent: requests close together can all pass it. So an accepted
+    // token is used once here too, a row of the hourly counter keyed by its hash: one write per solved check.
+    return await data.countHour(c.env.DB, `human:${await data.sha256Hex(token)}`, c.now, 1)
   } catch {
     return false
   }
 }
-// The second call needs a solved bot check (Turnstile, below): each intent then costs one. It writes nothing, and its
-// proofs are counted per request.
+// The second call needs a solved bot check (Turnstile, above): each intent then costs one. Before the check nothing
+// is written; the check writes one row (its token, used once). Its proofs are counted per request.
 async function recoverIntent(c: Context) {
   const { organisationId: org, seat } = c.body
   if (typeof org !== 'string' || !ID.test(org)) return fail(400, 'invalid')
@@ -1152,7 +1155,9 @@ async function pages(request: Request, env: Env, signing: boolean) {
   const { pathname } = new URL(request.url)
   if (signing !== (pathname === '/sign' || pathname.startsWith('/sign/'))) return new Response('Not found', { status: 404, headers: HEADERS })
   // /recover is a page of the console's one shell (the app reads the path): public, and it needs no session.
-  const asset = await env.ASSETS.fetch(pathname === '/recover' || pathname === '/apply' ? new Request(new URL('/', request.url), request) : request)
+  // /recover is rewritten here, so its shell is fetched whole (no conditional header): a page cached before the site
+  // key was set must not come back as 304 without the check.
+  const asset = await env.ASSETS.fetch(pathname === '/recover' ? new Request(new URL('/', request.url)) : pathname === '/apply' ? new Request(new URL('/', request.url), request) : request)
   if (!signing) return pathname === '/recover' ? recoverPage(asset, env) : asset // public/_headers sets the console's headers
   const headers = new Headers(SIGN_HEADERS)
   for (const name of ['content-type', 'location', 'etag']) if (asset.headers.has(name)) headers.set(name, asset.headers.get(name)!)
