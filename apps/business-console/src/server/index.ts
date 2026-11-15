@@ -448,10 +448,12 @@ async function human(c: Context) {
   try {
     const answer = await fetch(`${turnstileBase(c.env)}/turnstile/v0/siteverify`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ secret: c.env.TURNSTILE_SECRET, response: token }), signal: AbortSignal.timeout(5000) })
     const v = (await answer.json()) as { success?: unknown; hostname?: unknown; action?: unknown }
+    const codes = Array.isArray(v['error-codes' as keyof typeof v]) ? (v['error-codes' as keyof typeof v] as unknown[]).map(String) : []
+    if (codes.some((code) => code.includes('secret'))) console.error('bot check: Cloudflare refused the secret (TURNSTILE_SECRET)')
     if (!(answer.ok && v.success === true && v.hostname === t.hostname && v.action === 'recover')) return false
     // Cloudflare's own single use is eventually consistent: requests close together can all pass it. So an accepted
-    // token is used once here too, a row of the hourly counter keyed by its hash: one write per solved check.
-    return await data.countHour(c.env.DB, `human:${await data.sha256Hex(token)}`, c.now, 1)
+    // token is used once here too (used_tokens, 10 minutes): one write per solved check.
+    return await data.firstUse(c.env.DB, await data.sha256Hex(token), c.now)
   } catch {
     return false
   }
@@ -1171,7 +1173,7 @@ async function pages(request: Request, env: Env, signing: boolean) {
 // and its forms are refused. No etag: the site key lives in this Worker, not in the asset.
 function recoverPage(asset: Response, env: Env) {
   const t = TURNSTILE[env.ENVIRONMENT], csp = asset.headers.get('content-security-policy'), base = turnstileBase(env)
-  if (!t?.sitekey || !csp) return asset
+  if (!t?.sitekey || !env.TURNSTILE_SECRET || !csp) return asset // no key or no secret: the page says the check is not set up
   const page = new HTMLRewriter().on('head', { element: (head) => { head.prepend(`<script src="${base}/turnstile/v0/api.js?render=explicit" defer></script><meta name="turnstile-sitekey" content="${t.sitekey}">`, { html: true }) } }).transform(asset)
   const response = new Response(page.body, page)
   response.headers.set('content-security-policy', `${csp.replace("script-src 'self'", `script-src 'self' ${base}`)}; frame-src ${base}`)

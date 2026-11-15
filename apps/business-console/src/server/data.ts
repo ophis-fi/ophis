@@ -1265,6 +1265,14 @@ export async function countHour(db: D1Database, key: string, now: number, max: n
   return counted.results[0].n <= max
 }
 export const countProof = (db: D1Database, orgId: string, now: number) => countHour(db, orgId, now, MAX_PROOFS)
+/** A bot-check token's hash, kept 10 minutes (a token lives 5): true at its first use, false after (used_tokens). */
+export async function firstUse(db: D1Database, hash: string, now: number) {
+  const [, taken] = await db.batch([
+    db.prepare('DELETE FROM used_tokens WHERE until < ?').bind(now),
+    db.prepare('INSERT INTO used_tokens (hash, until) VALUES (?, ?) ON CONFLICT DO NOTHING').bind(hash, now + 10 * 60_000),
+  ])
+  return taken.meta.changes === 1
+}
 
 // A request is open from its proof until it is cancelled, completed or lapsed. 'ready' is never written: a waiting
 // request whose wait is over is ready, and 7 days later it has lapsed, whatever its row says. No scheduled job.

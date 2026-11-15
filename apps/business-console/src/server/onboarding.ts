@@ -44,7 +44,7 @@ const ADDRESS = /^0x[0-9a-f]{40}$/
 export const MAX_ADDRESSES = 1_000
 const CHUNK = 99 // D1 binds at most 100 values per statement: the list code and 99 addresses
 // M10: the OFAC list as a file the console reads (SANCTIONS_URL; made by scripts/ofac-list.mjs). One GET, 5 seconds, 2 MB.
-// hold: a file that lacks, or adds, more than a fifth of the loaded addresses is not loaded. staleMs: no good read, or a file made, for 3 days is said to the operator.
+// hold: a file that adds more than a fifth of the loaded addresses is not loaded, nor one that lacks any (a removal waits for a person). staleMs: no good read, or a file made, for 3 days is said to the operator.
 export const FEED = { timeoutMs: 5000, maxBytes: 2_000_000, hold: 0.2, staleMs: 3 * 24 * 60 * 60 * 1000 }
 /** The day a list file was published, YYYY-MM-DD: a real day, not after tomorrow. */
 const publishedOk = (value: unknown, now: number): value is string => {
@@ -348,7 +348,7 @@ async function replaceList(db: D1Database, list: string, sha256: string, address
     db.prepare('DELETE FROM sanctioned_addresses WHERE list = ?').bind(list),
     db.prepare(`INSERT INTO sanctions_lists (list, sha256, entries, loaded_at, published, checked_at, made_at) VALUES (?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT (list) DO UPDATE SET sha256 = excluded.sha256, entries = excluded.entries, loaded_at = excluded.loaded_at, published = excluded.published,
-                  checked_at = COALESCE(excluded.checked_at, checked_at), made_at = COALESCE(excluded.made_at, made_at), held = NULL`).bind(list, sha256, addresses.length, now, published, made === null ? null : now, made),
+                  checked_at = COALESCE(excluded.checked_at, checked_at), made_at = COALESCE(excluded.made_at, made_at), held = NULL, held_adds = NULL`).bind(list, sha256, addresses.length, now, published, made === null ? null : now, made),
     ...chunks.map((part) => db.prepare(`INSERT INTO sanctioned_addresses (list, address) VALUES ${part.map((_, n) => `(?1, ?${n + 2})`).join(', ')}`).bind(list, ...part)),
   ])
   return freezeHits(db, now, made === null ? 'operator' : 'system')
@@ -648,10 +648,10 @@ async function readList(env: { DB: D1Database; ENVIRONMENT: string; SANCTIONS_UR
   const same = loaded?.sha256 === file.sha256 && !added && !missing
   const reason = !loaded || same ? null
     : loaded.published === null ? 'manual' : file.published <= loaded.published ? 'older'
-    : missing > loaded.entries * FEED.hold ? 'shrunk' : added > loaded.entries * FEED.hold ? 'grown' : null
+    : missing > 0 ? 'shrunk' : added > loaded.entries * FEED.hold ? 'grown' : null
   if (!loaded || (!same && !reason)) return { outcome: 'loaded', entries: file.addresses.length, published: file.published, hits: await replaceList(env.DB, 'ofac', file.sha256, file.addresses, now, file.published, file.made) }
   // Only over the row that was read (G6): a manual load that landed since keeps its own state.
-  await env.DB.prepare(`UPDATE sanctions_lists SET checked_at = ?, made_at = ?, held = ? WHERE list = 'ofac' AND sha256 = ?`).bind(now, file.made, reason, loaded.sha256).run()
+  await env.DB.prepare(`UPDATE sanctions_lists SET checked_at = ?, made_at = ?, held = ?, held_adds = ? WHERE list = 'ofac' AND sha256 = ?`).bind(now, file.made, reason, reason ? added : null, loaded.sha256).run()
   return reason ? { outcome: 'held', reason } : { outcome: 'same' }
 }
 /**
@@ -661,19 +661,19 @@ async function readList(env: { DB: D1Database; ENVIRONMENT: string; SANCTIONS_UR
  * maker that stops while the file is still served, must be seen.
  */
 async function listsOf(env: { DB: D1Database; ENVIRONMENT: string; SANCTIONS_URL?: string }, now: number) {
-  const rows = (await env.DB.prepare('SELECT list, entries, published, loaded_at AS loadedAt, checked_at AS checkedAt, made_at AS madeAt, held FROM sanctions_lists ORDER BY list')
-    .all<{ list: string; entries: number; published: string | null; loadedAt: number | null; checkedAt: number | null; madeAt: number | null; held: string | null }>()).results
+  const rows = (await env.DB.prepare('SELECT list, entries, published, loaded_at AS loadedAt, checked_at AS checkedAt, made_at AS madeAt, held, held_adds AS heldAdds FROM sanctions_lists ORDER BY list')
+    .all<{ list: string; entries: number; published: string | null; loadedAt: number | null; checkedAt: number | null; madeAt: number | null; held: string | null; heldAdds: number | null }>()).results
   const fed = Boolean(env.SANCTIONS_URL) || env.ENVIRONMENT !== 'local'
-  if (fed && !rows.some((r) => r.list === 'ofac')) rows.push({ list: 'ofac', entries: 0, published: null, loadedAt: null, checkedAt: null, madeAt: null, held: null }) // set, and never read
+  if (fed && !rows.some((r) => r.list === 'ofac')) rows.push({ list: 'ofac', entries: 0, published: null, loadedAt: null, checkedAt: null, madeAt: null, held: null, heldAdds: null }) // set, and never read
   const fresh = (time: number | null) => (time ?? 0) > now - FEED.staleMs
   return rows.map((r) => ({ ...r, stale: fed && r.list === 'ofac' && !(fresh(r.checkedAt) && fresh(r.madeAt)) }))
 }
 // The desk's stop: an empty or old list would pass every address, so no order is sent while the operator sees the OFAC
-// line stale or held (a file that was not loaded may carry new names; "older" too, since it also holds a same-day
-// correction: a stale copy of an older file stops the desk as well, fail-closed), unless the operator loaded the list
-// by hand after the last good read, less than 3 days ago (the fallback).
+// line stale, or held with a file that has addresses the loaded list lacks (or not known how many): those names would
+// pass. A held file that only removes addresses leaves the screen stricter and does not stop it. The operator lifts the
+// stop by loading the list by hand after the last good read, less than 3 days ago (the fallback).
 export const ofacStale = async (env: { DB: D1Database; ENVIRONMENT: string; SANCTIONS_URL?: string }, now: number) => (await listsOf(env, now))
-  .some((r) => r.list === 'ofac' && (r.stale || r.held !== null) && !(r.loadedAt !== null && r.loadedAt > (r.checkedAt ?? 0) && r.loadedAt > now - FEED.staleMs))
+  .some((r) => r.list === 'ofac' && (r.stale || (r.held !== null && (r.heldAdds ?? 1) > 0)) && !(r.loadedAt !== null && r.loadedAt > (r.checkedAt ?? 0) && r.loadedAt > now - FEED.staleMs))
 
 // GET /api/screening (the roles that read the audit log; active organisations only): the Compliance page's section.
 // The organisation's own screening is answered only when its newest record says "clear": no other outcome is ever sent

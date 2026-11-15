@@ -40,6 +40,8 @@ const GLOBAL = ['sanctioned_addresses', 'sanctions_lists']
 const COUNTER = 'proof_checks'
 // And the check state of the audit chain (0019): the one write a GET makes, a cache of the check (section w).
 const CHECKS = 'audit_checks'
+// And the used bot-check tokens (0022): the one write of the two recovery forms, after a passed check (section P).
+const TOKENS = 'used_tokens'
 const db = env.DB
 // The challenge key is made per run: no secret lives in the repository.
 // The static files: a stand-in that answers every path, with a header only the console's pages may keep.
@@ -1431,7 +1433,7 @@ describe('g. security headers', () => {
 describe('h. sign-in start', () => {
   it('the snapshot below covers every table', async () => {
     const { results } = await db.prepare(`SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%' AND name NOT LIKE '_cf_%' AND name <> 'd1_migrations' ORDER BY name`).all<{ name: string }>()
-    expect(results.map((row) => row.name)).toEqual([...TABLES, ...GLOBAL, COUNTER, CHECKS].sort())
+    expect(results.map((row) => row.name)).toEqual([...TABLES, ...GLOBAL, COUNTER, CHECKS, TOKENS].sort())
   })
   it('writes no row, however often it is called, signed in or not', async () => {
     const m = await member()
@@ -4353,8 +4355,8 @@ describe('A. hardening after milestone 4a', () => {
 describe('B. last-Owner recovery by the recovery wallet', () => {
   // A database that fails on any use, and one that only counts: proofs that must read nothing run against them.
   const noDatabase = { ...testEnv, DB: new Proxy({}, { get: () => { throw new Error('the database was used') } }) } as unknown as Env
-  // The one table the intent routes may touch: the counter, for the bot check's token, used once.
-  const counterOnly = { ...testEnv, DB: new Proxy(db, { get: (target, property) => property === 'prepare' ? (sql: string) => { if (!/^(DELETE FROM|INSERT INTO) proof_checks /.test(sql)) throw new Error(`the database was used: ${sql}`); return target.prepare(sql) } : typeof Reflect.get(target, property) === 'function' ? Reflect.get(target, property).bind(target) : Reflect.get(target, property) }) } as unknown as Env
+  // The one table the intent routes may touch: used_tokens, for the bot check's token, used once.
+  const counterOnly = { ...testEnv, DB: new Proxy(db, { get: (target, property) => property === 'prepare' ? (sql: string) => { if (!/^(DELETE FROM|INSERT INTO) used_tokens /.test(sql)) throw new Error(`the database was used: ${sql}`); return target.prepare(sql) } : typeof Reflect.get(target, property) === 'function' ? Reflect.get(target, property).bind(target) : Reflect.get(target, property) }) } as unknown as Env
   const countsOnly = { ...testEnv, DB: new Proxy(db, { get: (target, property) => (property === 'prepare' ? (sql: string) => { if (/^\s*SELECT/i.test(sql)) throw new Error('a row was read'); return target.prepare(sql) } : Reflect.get(target, property).bind(target)) }) } as unknown as Env
   const everything = () => snapshot([...TABLES, COUNTER])
   const REJECTED = { error: 'proof_rejected' }
@@ -4367,7 +4369,7 @@ describe('B. last-Owner recovery by the recovery wallet', () => {
 
   it('P2: /recover is public and holds nothing: the intent routes read and write no row but the one of the bot check (its token, used once), answer any well-formed organisation id alike, and the intent is the server\'s own text', async () => {
     const { o } = await soloWithWallet(await owner())
-    await db.prepare('DELETE FROM proof_checks').run() // counters of earlier tests: the count's own cleanup would remove them
+    await db.prepare('DELETE FROM used_tokens').run() // tokens of earlier tests: the next use's cleanup would remove them
     const before = await everything()
     const asked = await askRecovery(o.orgId, {}, { env: counterOnly })
     const nowhere = await askRecovery('f'.repeat(32), {}, { env: counterOnly })
@@ -4378,7 +4380,7 @@ describe('B. last-Owner recovery by the recovery wallet', () => {
     const cancel = await call('POST', '/api/recover/cancel-intent', { env: counterOnly, body: { organisationId: o.orgId, nonce, turnstile: humanOk() } })
     expect(recoverOf(cancel.body.intent)).toEqual({ kind: 'cancel', org: o.orgId, nonce, credentialHash: `0x${'0'.repeat(64)}`, issuedAt: now / 1000, expiresAt: now / 1000 + WEEK / 1000, site: 'localhost' })
     expect((await call('POST', '/api/recover/continue/start', { env: noDatabase })).status).toBe(200)
-    expect((await db.prepare("DELETE FROM proof_checks WHERE org_id LIKE 'human:%'").run()).meta.changes).toBe(3) // one per solved check
+    expect((await db.prepare('DELETE FROM used_tokens').run()).meta.changes).toBe(3) // one per solved check
     expect(await everything()).toBe(before)
     const i = recoverOf(asked.intent)
     const hash = await credentialHash(asked.key.id, i.credential!.publicKey)
@@ -4495,6 +4497,12 @@ describe('B. last-Owner recovery by the recovery wallet', () => {
     const once = humanOk()
     const [first, again] = (await both(() => once)).map(([status]) => status)
     expect([[first, again].sort(), (await both(() => once)).map(([status]) => status)]).toEqual([[200, 403], [403, 403]])
+    // Across a clock hour too: a token used a minute before the hour is refused a minute after it.
+    now = Math.ceil(now / HOUR) * HOUR - 60_000
+    const late = humanOk()
+    const [before] = (await both(() => late)).map(([status]) => status)
+    now += 120_000
+    expect([before, (await both(() => late)).map(([status]) => status)]).toEqual([200, [403, 403]])
   })
 
   it('/recover carries the bot check: its script first in <head>, the site key, a policy that adds only its origin (Trusted Types kept), and no etag; the other pages do not', async () => {
@@ -4508,6 +4516,9 @@ describe('B. last-Owner recovery by the recovery wallet', () => {
       `${policy.replace("script-src 'self'", `script-src 'self' ${base}`)}; frame-src ${base}`, null])
     expect((await get('/recover'))[1]).toContain("require-trusted-types-for 'script'")
     for (const path of ['/', '/apply']) expect(await get(path), path).toEqual([shell, policy, '"1"'])
+    // No secret: the page says the check is not set up rather than offer forms that would all be refused.
+    const keyless = { ...env, TURNSTILE_SECRET: undefined } as unknown as Env
+    expect(await (await handleRequest(new Request(SITE.origin + '/recover'), keyless, () => now)).text()).toBe(shell)
     // A page kept from before the site key was set comes back whole, never as a 304 without the check.
     const cached = { ...env, ASSETS: { fetch: async (request: Request) => (request.headers.get('if-none-match') ? new Response(null, { status: 304 }) : env.ASSETS.fetch(request)) } } as unknown as Env
     const again = await handleRequest(new Request(SITE.origin + '/recover', { headers: { 'if-none-match': '"1"' } }), cached, () => now)
@@ -8220,7 +8231,7 @@ describe('E. onboarding: a company applies, proves its domain, is activated and 
       expect(await onboarding.sync({ DB: db, ENVIRONMENT: 'production', SANCTIONS_URL: 'http://127.0.0.1:8794/ofac.json' }, now)).toEqual({ outcome: 'unavailable' })
       expect([asked.length, await snapshot()]).toEqual([0, rows])
       // The operator sees it: a set address that is not taken is a stale line; an empty one is no line.
-      for (const SANCTIONS_URL of refused) expect(await listsNow({ ...opEnv, SANCTIONS_URL } as unknown as Env), SANCTIONS_URL).toEqual([{ list: 'ofac', entries: 0, published: null, loadedAt: null, checkedAt: null, madeAt: null, held: null, stale: true }])
+      for (const SANCTIONS_URL of refused) expect(await listsNow({ ...opEnv, SANCTIONS_URL } as unknown as Env), SANCTIONS_URL).toEqual([{ list: 'ofac', entries: 0, published: null, loadedAt: null, checkedAt: null, madeAt: null, held: null, heldAdds: null, stale: true }])
       expect(await listsNow({ ...opEnv, SANCTIONS_URL: '' } as unknown as Env)).toEqual([])
       // ONE GET, with no redirect followed and a time limit.
       const one = feed(fileOf([someAddress()]))
@@ -8235,7 +8246,7 @@ describe('E. onboarding: a company applies, proves its domain, is activated and 
       feed(fileOf([A, B, C, D, E]))
       expect((await syncNow()).body).toEqual({ outcome: 'loaded', entries: 5, published: '2026-11-09', hits: [] })
       const before = [await loaded(), await ofac(), await made(), await stateOf(o.orgId)]
-      const good = fileOf([A, W, C, D, E], { sha256: H('b'), published: '2026-11-11', made: isoOf(now + DAY) }) // tomorrow's day, and a day ahead: the latest that is taken
+      const good = fileOf([A, B, C, D, E, W], { sha256: H('b'), published: '2026-11-11', made: isoOf(now + DAY) }) // tomorrow's day, and a day ahead: the latest that is taken
       const bad: [string, unknown][] = [
         ['another list', { ...good, list: 'un' }], ['no list', { ...good, list: undefined }], ['a short hash', { ...good, sha256: H('b').slice(1) }], ['an upper-case hash', { ...good, sha256: H('B') }], ['a hash that is no text', { ...good, sha256: [H('b')] }],
         ['a published date in another form', { ...good, published: '11/09/2026' }], ['a day that does not exist', { ...good, published: '2026-02-31' }], ['a day after tomorrow', { ...good, published: '2026-11-12' }], ['no published day', { ...good, published: undefined }],
@@ -8256,12 +8267,12 @@ describe('E. onboarding: a company applies, proves its domain, is activated and 
       onboarding.FEED.timeoutMs = 5000
       expect([await loaded(), await ofac(), await made(), await stateOf(o.orgId)]).toEqual(before)
       feed(good)
-      expect((await syncNow()).body).toEqual({ outcome: 'loaded', entries: 5, published: '2026-11-11', hits: [{ id: o.orgId, name: o.name, state: 'active', address: W, frozen: true }] })
+      expect((await syncNow()).body).toEqual({ outcome: 'loaded', entries: 6, published: '2026-11-11', hits: [{ id: o.orgId, name: o.name, state: 'active', address: W, frozen: true }] })
       // G7: a freeze by the read of the list file is the system's, not the operator's.
       expect([await stateOf(o.orgId), await made(), await row('SELECT actor_kind, action, subject_id FROM audit_log WHERE org_id = ? ORDER BY seq DESC', o.orgId)]).toEqual(['frozen', now + DAY, { actor_kind: 'system', action: 'screening.wallet', subject_id: expect.any(String) }])
     })
 
-    it('T2: the same file moves only the time of the check; an older file, and one whose count differs from the loaded one by more than a fifth, is held with its reason and not loaded; a manual load is the override', async () => {
+    it('T2: the same file moves only the time of the check; an older file, one that lacks any loaded address, and one that adds more than a fifth, is held with its reason and not loaded; a manual load is the override', async () => {
       feed(fileOf(numbered(10)))
       expect((await syncNow()).body).toMatchObject({ outcome: 'loaded', entries: 10 })
       const first = now
@@ -8287,29 +8298,29 @@ describe('E. onboarding: a company applies, proves its domain, is activated and 
       expect((await load('ofac', numbered(13), { sha256: H('d') })).status).toBe(200)
       expect(await ofac()).toEqual({ sha256: H('d'), entries: 13, loaded_at: now, published: null, checked_at: checked, held: null })
       expect((await syncNow()).body).toEqual({ outcome: 'same' })
-      // Exactly a fifth less, or more, is loaded (a day newer: G3 holds a file of the same day that differs).
-      for (const count of [8, 12]) {
+      // Exactly a fifth more is loaded; any address less is held, a removal waits for a person (a day newer: G3 holds a file of the same day that differs).
+      for (const [count, outcome] of [[12, { outcome: 'loaded', entries: 12, published: '2026-01-02' }], [8, { outcome: 'held', reason: 'shrunk' }]] as const) {
         expect((await load('ofac', numbered(10), { published: '2026-01-01' })).status).toBe(200)
         feed(fileOf(numbered(count), { sha256: H(String(count % 10)), published: '2026-01-02' }))
-        expect((await syncNow()).body, String(count)).toMatchObject({ outcome: 'loaded', entries: count, published: '2026-01-02' })
+        expect((await syncNow()).body, String(count)).toMatchObject(outcome)
       }
     })
 
     it('T2: the operator\'s list names each loaded list, what is held, and a feed that stopped: no good read for 3 days, or none ever', async () => {
       const [x, y, z] = [someAddress(), someAddress(), someAddress()]
-      expect([await listsNow(opEnv), await listsNow()]).toEqual([[], [{ list: 'ofac', entries: 0, published: null, loadedAt: null, checkedAt: null, madeAt: null, held: null, stale: true }]])
+      expect([await listsNow(opEnv), await listsNow()]).toEqual([[], [{ list: 'ofac', entries: 0, published: null, loadedAt: null, checkedAt: null, madeAt: null, held: null, heldAdds: null, stale: true }]])
       expect([(await load('un', [x])).status, (await load('ofac', [y, z])).status]).toEqual([200, 200])
       const manual = now
       expect(await listsNow()).toEqual([
-        { list: 'ofac', entries: 2, published: null, loadedAt: manual, checkedAt: null, madeAt: null, held: null, stale: true }, // loaded by hand, and the file was never read
-        { list: 'un', entries: 1, published: null, loadedAt: manual, checkedAt: null, madeAt: null, held: null, stale: false }, // no file feeds this list
+        { list: 'ofac', entries: 2, published: null, loadedAt: manual, checkedAt: null, madeAt: null, held: null, heldAdds: null, stale: true }, // loaded by hand, and the file was never read
+        { list: 'un', entries: 1, published: null, loadedAt: manual, checkedAt: null, madeAt: null, held: null, heldAdds: null, stale: false }, // no file feeds this list
       ])
       expect((await listsNow(opEnv)).map((l) => l.stale)).toEqual([false, false]) // no address set: nothing can be stale
       now += HOUR
       feed(fileOf([y, z], { sha256: H('f') }))
       expect((await syncNow()).body).toEqual({ outcome: 'same' })
       const read = now
-      expect((await listsNow())[0]).toEqual({ list: 'ofac', entries: 2, published: null, loadedAt: manual, checkedAt: read, madeAt: read, held: null, stale: false })
+      expect((await listsNow())[0]).toEqual({ list: 'ofac', entries: 2, published: null, loadedAt: manual, checkedAt: read, madeAt: read, held: null, heldAdds: null, stale: false })
       now += 3 * DAY - 1
       expect((await listsNow())[0].stale).toBe(false)
       now += 1
@@ -8320,7 +8331,7 @@ describe('E. onboarding: a company applies, proves its domain, is activated and 
       expect((await listsNow())[0]).toMatchObject({ checkedAt: read, stale: true })
       feed(fileOf(numbered(9), { sha256: H('9') }))
       expect((await syncNow()).body).toEqual({ outcome: 'held', reason: 'manual' }) // the loaded list was made by hand
-      expect((await listsNow())[0]).toEqual({ list: 'ofac', entries: 2, published: null, loadedAt: manual, checkedAt: now, madeAt: now, held: 'manual', stale: false })
+      expect((await listsNow())[0]).toEqual({ list: 'ofac', entries: 2, published: null, loadedAt: manual, checkedAt: now, madeAt: now, held: 'manual', heldAdds: 9, stale: false })
     })
 
     it('T2: the list file never rolls back what the operator loaded by hand: an older file is held as "older", a list made by hand (no publish day) holds every other file as "manual", and the file the operator loaded reads as "same"', async () => {
@@ -8356,12 +8367,12 @@ describe('E. onboarding: a company applies, proves its domain, is activated and 
       expect((await load('ofac', numbered(3), { published: '2026-11-12' })).status).toBe(200) // tomorrow's day
     })
 
-    it('T2 (G2): "same" is the same SHA-256 AND the same addresses; a file is held when the loaded addresses it lacks, or the new ones it adds, are more than a fifth of the loaded entries, whatever the counts', async () => {
+    it('T2 (G2): "same" is the same SHA-256 AND the same addresses; a file is held when it lacks any loaded address (a removal waits for a person), or when the new ones it adds are more than a fifth of the loaded entries, whatever the counts', async () => {
       // [loaded entries, of them not in the file, new in the file, outcome]. A fifth of 1 is 0.2, of 2 is 0.4, of 5 is 1, of 10 is 2. Equal counts with other addresses are held too.
       const cases: [number, number, number, string][] = [
         [1, 0, 1, 'grown'], [1, 1, 1, 'shrunk'], [2, 1, 0, 'shrunk'], [2, 0, 1, 'grown'], [2, 1, 1, 'shrunk'],
-        [5, 1, 0, 'loaded'], [5, 2, 0, 'shrunk'], [5, 0, 1, 'loaded'], [5, 0, 2, 'grown'], [5, 1, 1, 'loaded'], [5, 2, 2, 'shrunk'],
-        [10, 2, 2, 'loaded'], [10, 3, 0, 'shrunk'], [10, 0, 3, 'grown'], [10, 3, 3, 'shrunk'], [10, 2, 3, 'grown'],
+        [5, 1, 0, 'shrunk'], [5, 2, 0, 'shrunk'], [5, 0, 1, 'loaded'], [5, 0, 2, 'grown'], [5, 1, 1, 'shrunk'], [5, 2, 2, 'shrunk'],
+        [10, 2, 2, 'shrunk'], [10, 3, 0, 'shrunk'], [10, 0, 2, 'loaded'], [10, 0, 3, 'grown'], [10, 3, 3, 'shrunk'], [10, 2, 3, 'shrunk'],
       ]
       for (const [n, gone, fresh, outcome] of cases) {
         const base = Array.from({ length: n }, someAddress)
@@ -8370,15 +8381,17 @@ describe('E. onboarding: a company applies, proves its domain, is activated and 
         feed(fileOf([...base.slice(gone), ...Array.from({ length: fresh }, someAddress)], { sha256: H('b'), published: '2026-11-02' }))
         const read = (await syncNow()).body
         expect(read.reason ?? read.outcome, `${n} loaded, ${gone} gone, ${fresh} new`).toBe(outcome)
+        if (outcome !== 'loaded') expect((await listsNow())[0].heldAdds, `${n} loaded, ${gone} gone, ${fresh} new`).toBe(fresh) // the desk stops only if above 0
         if (outcome !== 'loaded') expect(await loaded()).toEqual(kept)
       }
-      // The same SHA-256 with another set of addresses is not "same": a day newer and within a fifth, it is loaded; of the same day, it is held.
+      // The same SHA-256 with another set of addresses is not "same": a day newer and adding within a fifth, it is loaded; of the same day, it is held.
       const base = Array.from({ length: 5 }, someAddress)
       expect((await load('ofac', base, { sha256: H('c'), published: '2026-11-01' })).status).toBe(200)
-      feed(fileOf([...base.slice(1), someAddress()], { sha256: H('c'), published: '2026-11-01' }))
+      const more = [...base, someAddress()]
+      feed(fileOf(more, { sha256: H('c'), published: '2026-11-01' }))
       expect((await syncNow()).body).toEqual({ outcome: 'held', reason: 'older' })
-      feed(fileOf([...base.slice(1), someAddress()], { sha256: H('c'), published: '2026-11-02' }))
-      expect((await syncNow()).body).toMatchObject({ outcome: 'loaded', entries: 5, published: '2026-11-02' })
+      feed(fileOf(more, { sha256: H('c'), published: '2026-11-02' }))
+      expect((await syncNow()).body).toMatchObject({ outcome: 'loaded', entries: 6, published: '2026-11-02' })
     })
 
     it('T2 (G3): only a strictly newer file replaces a list: after a manual load of an official XML of day D, a list file of day D with a small change is held as "older"', async () => {
@@ -8386,13 +8399,13 @@ describe('E. onboarding: a company applies, proves its domain, is activated and 
       expect((await load('ofac', numbered(10), { sha256: H('b'), published: day })).status).toBe(200)
       const kept = await loaded()
       now += HOUR
-      const changed = [...numbered(9), someAddress()]
+      const changed = [...numbered(10), someAddress()] // one address more: a removal would be held anyway
       feed(fileOf(changed, { published: day }))
       expect((await syncNow()).body).toEqual({ outcome: 'held', reason: 'older' })
       expect([await loaded(), (await ofac())!.held]).toEqual([kept, 'older'])
       // The next day's file with the same change is loaded.
       feed(fileOf(changed, { published: '2026-11-10' }))
-      expect((await syncNow()).body).toMatchObject({ outcome: 'loaded', entries: 10, published: '2026-11-10' })
+      expect((await syncNow()).body).toMatchObject({ outcome: 'loaded', entries: 11, published: '2026-11-10' })
     })
 
     it('T2 (G4): a list file still served when its maker stopped turns stale: the same file read day after day is stale on the fourth day; a fresh "made" clears it', async () => {
@@ -10401,16 +10414,19 @@ describe('J. the real desk: terms from a live quote, two people, then the wallet
     expect([(await page()).status, await row('SELECT valid_to FROM orders WHERE id = ?', id)]).toEqual([503, { valid_to: null }]) // the expiry does not start
     const signature = await accounts[1].signTypedData((await orderPage(token)).body.typed) // no list address set: the feature is off
     const send = () => call('POST', '/api/order/send', { sign: true, body: { token, signature }, env: fed })
-    const listAt = (loaded: number, checked: number | null, made: number | null, held: string | null = null) => db.prepare(`INSERT OR REPLACE INTO sanctions_lists (list, sha256, entries, loaded_at, checked_at, made_at, held) VALUES ('ofac', ?, 1, ?, ?, ?, ?)`).bind('ab'.repeat(32), loaded, checked, made, held).run()
+    const listAt = (loaded: number, checked: number | null, made: number | null, held: string | null = null, adds: number | null = null) => db.prepare(`INSERT OR REPLACE INTO sanctions_lists (list, sha256, entries, loaded_at, checked_at, made_at, held, held_adds) VALUES ('ofac', ?, 1, ?, ?, ?, ?, ?)`).bind('ab'.repeat(32), loaded, checked, made, held, adds).run()
     const old = now - 3 * DAY
-    // Never read; read 3 days ago; a file made 3 days ago, loaded and read now; loaded by hand 3 days ago; read now, a newer file held; read now, an older or same-day file held.
-    const cases: ([number, number | null, number | null, string?] | null)[] = [null, [old, old, old], [now, now, old], [old, null, null], [old, now, now, 'grown'], [old, now, now, 'older']]
+    // Never read; read 3 days ago; a file made 3 days ago, loaded and read now; loaded by hand 3 days ago; read now, a
+    // held file with new addresses; read now, a held file whose count of new addresses is not known.
+    const cases: ([number, number | null, number | null, string?, number?] | null)[] = [null, [old, old, old], [now, now, old], [old, null, null], [old, now, now, 'grown', 3], [old, now, now, 'older']]
     for (const at of cases) {
       if (at) await listAt(...at)
       const [shown, answer] = [await page(), await send()]
       expect([shown.status, shown.body, answer.status, answer.body], String(at)).toEqual([503, { error: 'sanctions_list_stale' }, 503, { error: 'sanctions_list_stale' }])
     }
     expect([asked.filter((x) => x.url.endsWith('/orders')), await row('SELECT status, uid FROM orders WHERE id = ?', id)]).toEqual([[], { status: null, uid: null }])
+    await listAt(old, now, now, 'shrunk', 0) // a held file that only removes addresses: the loaded list is the stricter one
+    expect(await onboarding.ofacStale(fed, now)).toBe(false)
     await listAt(old + 1, null, null) // loaded by hand since, the fallback: the operator line stays stale, the desk sends
     expect((await send()).body).toMatchObject({ state: 'open' })
     await clear() // stale again: a cancel is never stopped
