@@ -31,7 +31,7 @@
 import { execFileSync, spawnSync } from 'node:child_process'
 import { createHash, randomBytes } from 'node:crypto'
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
-import { tmpdir } from 'node:os'
+import { homedir } from 'node:os'
 import { request as plain } from 'node:http'
 import { request as tls } from 'node:https'
 import { parseArgs } from 'node:util'
@@ -57,16 +57,18 @@ if (command === 'token') {
     process.exit(1)
   }
   // One run at a time (Codex): two runs at once could leave the Keychain with one token and the Worker with the other,
-  // both saying "Done". mkdir fails if the folder exists; it is removed at the end, and on Ctrl-C.
-  const lock = `${tmpdir()}/ophis-operator-token.lock`
+  // both saying "Done". mkdir fails if the folder exists. It is in the home folder, the same in every session of this
+  // account (not the temp folder, which TMPDIR moves, and which may be shared), and removed at the end or on a signal
+  // (once the step running then returns).
+  const lock = `${homedir()}/.ophis-operator-token.lock`
   try {
     mkdirSync(lock)
-  } catch {
-    console.error(`Refused: another "token" run is going. Nothing was changed. (If none is, a run stopped midway: remove ${lock}.)`)
+  } catch (error) {
+    console.error(error.code === 'EEXIST' ? `Refused: another "token" run is going. Nothing was changed. (If none is, a run stopped midway: remove ${lock}.)` : `Refused: the lock ${lock} could not be made (${error.code}). Nothing was changed.`)
     process.exit(1)
   }
   process.on('exit', () => rmSync(lock, { recursive: true, force: true }))
-  process.on('SIGINT', () => process.exit(130))
+  for (const signal of ['SIGINT', 'SIGTERM', 'SIGHUP']) process.on(signal, () => process.exit(130))
   const fresh = randomBytes(32).toString('hex')
   spawnSync('security', ['-i'], { input: `add-generic-password -U ${KEYCHAIN.join(' ')} -w ${fresh}\n`, stdio: ['pipe', 'ignore', 'ignore'] })
   if (spawnSync('security', ['find-generic-password', ...KEYCHAIN, '-w'], quiet).stdout?.trim() !== fresh) {

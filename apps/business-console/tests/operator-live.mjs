@@ -1,15 +1,19 @@
 // The operator's command with --production, heard on this machine: tests/e2e.mjs runs it, and so can a check of one
 // change, from the app folder: node tests/operator-live.mjs <a folder it may empty>. node:https points at a local
 // listener (tests/fixtures/https-local.mjs, which takes only the operator's address), and "security", "cloudflared"
-// and "wrangler" are stand-ins on the PATH that log every call and answer only the exact call the command must make.
+// and "wrangler" are stand-ins that log every call and answer only the exact call the command must make. The PATH holds
+// the stand-ins ONLY (Codex): a missing or misnamed one fails the run; it can never fall through to the real Keychain or
+// wrangler. HOME is the folder (the token run's lock), and a dead local proxy is set, which the fixture must not use.
 import { spawn } from 'node:child_process'
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { createServer } from 'node:http'
+import { createServer as listen } from 'node:net'
 
 const OLD = 'k'.repeat(64), ACCESS = 'aaa.bbb.ccc'
 const KEYCHAIN = 'find-generic-password -a operator -s ophis-operator-token -w'
 
 export async function hear(dir) {
+  if (dir.includes(':')) throw new Error('operator-live: a folder with ":" would split the PATH of the stand-ins')
   rmSync(dir, { recursive: true, force: true })
   const bin = `${dir}/bin`, calls = `${dir}/calls`, kept = `${dir}/kept`, put = `${dir}/put`
   mkdirSync(bin, { recursive: true })
@@ -18,13 +22,13 @@ export async function hear(dir) {
   // "security -i" reads one command on stdin and, as the real one does when a command fails, repeats it on both
   // outputs. find gives the token "-i" kept, else the old one. Kept is false: a Keychain that keeps nothing.
   const security = (keeps) => tool('security', `case "$1" in
-  -i) line=$(cat); echo "$line"; echo "$line" >&2; ${keeps ? `printf %s "$line" > ${q(kept)}` : ':'} ;;
-  find-generic-password) [ "$*" = "${KEYCHAIN}" ] || exit 1; if [ -f ${q(kept)} ]; then sed 's/.* -w //' ${q(kept)}; else echo ${OLD}; fi ;;
+  -i) line=$(/bin/cat); echo "$line"; echo "$line" >&2; ${keeps ? `printf %s "$line" > ${q(kept)}` : ':'} ;;
+  find-generic-password) [ "$*" = "${KEYCHAIN}" ] || exit 1; if [ -f ${q(kept)} ]; then /usr/bin/sed 's/.* -w //' ${q(kept)}; else echo ${OLD}; fi ;;
   *) exit 1 ;;
 esac`)
   // With no token, the stand-in still prints a line on stdout and exits 1: the command must go by the exit code.
   const cloudflared = (token) => tool('cloudflared', `[ "$*" = "access token -app=https://operator.ophis.fi" ] && { ${token ? `echo ${ACCESS}` : 'echo not.a.token; exit 1'}; }\nexit 0`)
-  const wrangler = (pause) => tool('wrangler', `[ "$*" = "secret put OPERATOR_TOKEN --env production" ] || exit 1\nsleep ${pause}\ncat > ${q(put)}`)
+  const wrangler = (pause) => tool('wrangler', `[ "$*" = "secret put OPERATOR_TOKEN --env production" ] || exit 1\n/bin/sleep ${pause}\n/bin/cat > ${q(put)}`)
   wrangler(0)
   const heard = []
   let edge = false // true: answer as Access does when it refuses at the edge, with a page and no JSON
@@ -34,17 +38,21 @@ esac`)
     response.writeHead(200, { 'content-type': 'application/json' }).end(request.method === 'POST' ? '{"code":"c0de","expiresAt":0}' : '{"organisations":[],"more":0,"reviews":[],"lists":[]}')
   }).listen(0, '127.0.0.1')
   await new Promise((resolve) => server.once('listening', resolve))
-  const env = { ...process.env, PATH: `${bin}:${process.env.PATH}`, E2E_PORT: String(server.address().port), TMPDIR: dir } // TMPDIR: the token run's lock lives here
-  delete env.OPERATOR_TOKEN // the command reads these two first: not here
-  delete env.CF_ACCESS_TOKEN
+  const dead = listen().listen(0, '127.0.0.1')
+  await new Promise((resolve) => dead.once('listening', resolve))
+  const proxy = `http://127.0.0.1:${dead.address().port}`
+  await new Promise((resolve) => dead.close(resolve)) // nothing listens there now: a request sent to the proxy fails
+  const env = { ...process.env, PATH: bin, HOME: dir, E2E_PORT: String(server.address().port), NODE_USE_ENV_PROXY: '1', HTTP_PROXY: proxy, HTTPS_PROXY: proxy, NO_PROXY: '' }
+  for (const name of ['OPERATOR_TOKEN', 'CF_ACCESS_TOKEN', 'http_proxy', 'https_proxy', 'no_proxy']) delete env[name] // the command reads the first two first: not here
   let said = ''
-  const go = (args) => new Promise((resolve) => {
-    const child = spawn('node', ['--import', './tests/fixtures/https-local.mjs', 'scripts/operator.mjs', ...args], { env, stdio: ['ignore', 'pipe', 'pipe'] })
+  const go = (args, more = {}) => new Promise((resolve) => {
+    const child = spawn(process.execPath, ['--import', './tests/fixtures/https-local.mjs', 'scripts/operator.mjs', ...args], { env: { ...env, ...more }, stdio: ['ignore', 'pipe', 'pipe'] })
     child.stdout.on('data', (chunk) => (said += chunk))
     child.stderr.on('data', (chunk) => (said += chunk))
     child.on('close', resolve)
   })
   const run = (...args) => go([...args, '--production'])
+  const runWith = (more, ...args) => go([...args, '--production'], more)
   const read = (path) => (existsSync(path) ? readFileSync(path, 'utf8') : null)
   const log = () => {
     const text = read(calls) ?? ''
@@ -71,7 +79,9 @@ esac`)
   // the Worker end with the same token.
   security(true)
   wrangler(2)
-  const pair = await Promise.all([run('token'), run('token')])
+  mkdirSync(`${dir}/a`)
+  mkdirSync(`${dir}/b`)
+  const pair = await Promise.all([runWith({ TMPDIR: `${dir}/a` }, 'token'), runWith({ TMPDIR: `${dir}/b` }, 'token')]) // two temp folders: still one lock (Codex)
   const together = { codes: pair, kept: read(kept), put: read(put), said }
   log()
   cloudflared(true)

@@ -13,6 +13,7 @@ https.request = (options, callback) => {
   if (typeof options !== 'object' || Object.keys(options).some((key) => !TAKEN.includes(key)) || host !== 'operator.ophis.fi' || port !== 443) {
     throw new Error("https-local: not the operator's address, or an option this fixture does not take")
   }
-  return http.request({ host: '127.0.0.1', port: Number(process.env.E2E_PORT), method, path, headers }, callback)
+  // agent false: a fresh agent of its own, never the global one, which NODE_USE_ENV_PROXY would send through a proxy (Codex).
+  return http.request({ host: '127.0.0.1', port: Number(process.env.E2E_PORT), method, path, headers, agent: false }, callback)
 }
 syncBuiltinESMExports() // the command's "import { request } from 'node:https'" then sees this one
