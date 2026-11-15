@@ -200,7 +200,7 @@ else {
   // M10: the loaded lists. A feed that stops, or a file that was not loaded, must be seen here.
   for (const l of answer.body.lists) {
     console.log(`LIST  ${l.list}  ${count(l.entries)}  published ${l.published ?? 'not known'}  loaded ${day(l.loadedAt)}  last good read of the list file ${day(l.checkedAt)}  file made ${day(l.madeAt)}`)
-    if (l.held) console.log(`WARNING  held (${l.held}): the list file read last was not loaded: ${HELD[l.held]}.${l.heldAdds === 0 ? ' It only removes addresses: the desk goes on with the loaded list.' : ' It has addresses the loaded list lacks: the desk sends no order meanwhile.'}`)
+    if (l.held) console.log(`WARNING  held (${l.held}): a list file read since the last load was not loaded: ${HELD[l.held]}.${l.heldAdds === 0 ? ' It only removes addresses: the desk goes on with the loaded list.' : ' It has addresses the loaded list lacks: the desk sends no order meanwhile.'}`)
     if (l.stale) console.log('WARNING  no good read of the list file for 3 days or more, or the file read was made 3 days ago or more: the loaded list may be out of date. Run "sync", and check that the maker still runs.')
   }
 }

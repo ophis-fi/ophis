@@ -4497,12 +4497,13 @@ describe('B. last-Owner recovery by the recovery wallet', () => {
     const once = humanOk()
     const [first, again] = (await both(() => once)).map(([status]) => status)
     expect([[first, again].sort(), (await both(() => once)).map(([status]) => status)]).toEqual([[200, 403], [403, 403]])
-    // Across a clock hour too: a token used a minute before the hour is refused a minute after it.
+    // Across a clock hour too: a token used a minute before the hour is refused a minute after it (one form, in turn).
+    const cancelWith = async (turnstile: string) => (await call('POST', '/api/recover/cancel-intent', { body: { ...cancel, turnstile } })).status
     now = Math.ceil(now / HOUR) * HOUR - 60_000
     const late = humanOk()
-    const [before] = (await both(() => late)).map(([status]) => status)
+    const before = await cancelWith(late)
     now += 120_000
-    expect([before, (await both(() => late)).map(([status]) => status)]).toEqual([200, [403, 403]])
+    expect([before, await cancelWith(late)]).toEqual([200, 403])
   })
 
   it('/recover carries the bot check: its script first in <head>, the site key, a policy that adds only its origin (Trusted Types kept), and no etag; the other pages do not', async () => {
@@ -8287,9 +8288,9 @@ describe('E. onboarding: a company applies, proves its domain, is activated and 
         expect((await syncNow()).body, reason).toEqual({ outcome: 'held', reason })
         expect([await ofac(), await loaded()], reason).toEqual([{ sha256: H('a'), entries: 10, loaded_at: first, published: '2026-11-09', checked_at: now, held: reason }, kept])
       }
-      // The loaded file again: nothing is held any more.
+      // The loaded file again: the hold stays, since the grown file's new addresses were never loaded (only a load ends it).
       feed(fileOf(numbered(10)))
-      expect([(await syncNow()).body, (await ofac())!.held]).toEqual([{ outcome: 'same' }, null])
+      expect([(await syncNow()).body, (await ofac())!.held]).toEqual([{ outcome: 'same' }, 'grown'])
       // Held again; the operator looks at the file and loads it by hand: that clears what is held, and the next read is "same".
       feed(fileOf(numbered(13), { sha256: H('d'), published: '2026-11-10' }))
       expect((await syncNow()).body).toEqual({ outcome: 'held', reason: 'grown' })
@@ -8304,6 +8305,18 @@ describe('E. onboarding: a company applies, proves its domain, is activated and 
         feed(fileOf(numbered(count), { sha256: H(String(count % 10)), published: '2026-01-02' }))
         expect((await syncNow()).body, String(count)).toMatchObject(outcome)
       }
+    })
+
+    it('T2: a hold that saw new addresses stays until a load: a later file that adds nothing does not reopen the desk (review 2026-11-15)', async () => {
+      const base = numbered(10)
+      const x = someAddress()
+      expect((await load('ofac', base, { published: '2026-11-01' })).status).toBe(200)
+      feed(fileOf([...base.slice(1), x], { sha256: H('1'), published: '2026-11-02' })) // one address less, x more: held, the desk stops
+      expect([(await syncNow()).body, await onboarding.ofacStale(fed, now)]).toEqual([{ outcome: 'held', reason: 'shrunk' }, true])
+      feed(fileOf(base.slice(2), { sha256: H('2'), published: '2026-10-31' })) // then an older file with nothing new
+      expect([(await syncNow()).body, await onboarding.ofacStale(fed, now), (await listsNow())[0].heldAdds]).toEqual([{ outcome: 'held', reason: 'older' }, true, 1]) // x was never loaded
+      expect((await load('ofac', [...base, x], { published: '2026-11-02' })).status).toBe(200) // a person loads the list
+      expect(await onboarding.ofacStale(fed, now)).toBe(false)
     })
 
     it('T2: the operator\'s list names each loaded list, what is held, and a feed that stopped: no good read for 3 days, or none ever', async () => {
