@@ -1,5 +1,10 @@
-// The operator's command, local only. It calls the operator's API of the local server (src/server/onboarding.ts) on
-// that API's own hostname, with OPERATOR_TOKEN from .dev.vars (made by "pnpm seed"). The token is never printed.
+// The operator's command. It calls the operator's API of the local server (src/server/onboarding.ts) on that API's own
+// hostname, with OPERATOR_TOKEN from .dev.vars (made by "pnpm seed"). The token is never printed.
+// --production (after the command): https://operator.ophis.fi instead, behind Cloudflare Access (README, "The operator's
+// address in production"). The token is then the Keychain item "ophis-operator-token" (or OPERATOR_TOKEN), and the Access
+// token comes from cloudflared: when it has none, "cloudflared access login" opens the browser for the PIN sent by email.
+//   node scripts/operator.mjs token --production   once at go-live, or to change it: a new token into the Keychain and the Worker secret
+//                                                   OPERATOR_TOKEN (wrangler, logged in). It goes on stdin only, never as an argument, and is never shown.
 //   node scripts/operator.mjs invite    a new application code: one use, valid 14 days; give it to the company that may apply
 //   node scripts/operator.mjs list      the 3 oldest under review (and how many more wait: decide these first), with the people the application named besides the first Owner (an approval makes each an invited seat
 //                                       that needs no second person at its first enrolment), and a warning line when a wallet the application named was refused as listed; then "Reviews due, and frozen
@@ -23,36 +28,79 @@
 // Sanctions screening (README, "Screening, step by step"): "--list code=file" names a list file on this machine (codes eu, un, ofac; eu in every
 // screening). The file is read here and only its SHA-256 is sent. The file, the names searched and what was found never leave this machine.
 // The command sets nothing else: the API takes no passkey, no member and no wallet address of a client.
-import { createHash } from 'node:crypto'
+import { execFileSync, spawnSync } from 'node:child_process'
+import { createHash, randomBytes } from 'node:crypto'
 import { existsSync, readFileSync, writeFileSync } from 'node:fs'
-import { request } from 'node:http'
+import { request as plain } from 'node:http'
+import { request as tls } from 'node:https'
 import { parseArgs } from 'node:util'
 import { addressesIn, publishedIn } from './ofac-list.mjs' // the one address rule and the one reader of the publish date, shared with the maker of the list file
 
-const HOST = 'operator.localhost:8787' // the Worker decides by this name; the connection goes to 127.0.0.1
 const { positionals: [command, id, decision], values } = parseArgs({
   allowPositionals: true,
   options: {
     tier: { type: 'string' }, source: { type: 'string' }, reason: { type: 'string' }, evidence: { type: 'string' }, sha256: { type: 'string' }, 'next-review': { type: 'string' }, submission: { type: 'string' }, out: { type: 'string' },
-    screening: { type: 'string' }, outcome: { type: 'string' }, list: { type: 'string', multiple: true },
+    screening: { type: 'string' }, outcome: { type: 'string' }, list: { type: 'string', multiple: true }, production: { type: 'boolean' },
   },
 })
-let token
-try {
-  token = readFileSync(new URL('../.dev.vars', import.meta.url), 'utf8').match(/^OPERATOR_TOKEN=(.+)$/m)?.[1]
-} catch {
-  // no file: the message below
+const live = values.production === true
+const HOST = live ? 'operator.ophis.fi' : 'operator.localhost:8787' // the Worker decides by this name; locally the connection goes to 127.0.0.1
+const ORIGIN = `${live ? 'https' : 'http'}://${HOST}`
+const quiet = { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] } // a token read here is never shown
+const KEYCHAIN = ['-a', 'operator', '-s', 'ophis-operator-token']
+// The new token reaches "security" and wrangler on stdin: an argument can be read by any process of this Mac while
+// it runs. "security -i" reads its command from stdin; its output is discarded, since it repeats a command that fails.
+if (command === 'token') {
+  if (!live) {
+    console.error('"token" is for production: token --production. Locally the token is in .dev.vars (made by "pnpm seed").')
+    process.exit(1)
+  }
+  const fresh = randomBytes(32).toString('hex')
+  spawnSync('security', ['-i'], { input: `add-generic-password -U ${KEYCHAIN.join(' ')} -w ${fresh}\n`, stdio: ['pipe', 'ignore', 'ignore'] })
+  if (spawnSync('security', ['find-generic-password', ...KEYCHAIN, '-w'], quiet).stdout?.trim() !== fresh) {
+    console.error('Refused: the Keychain did not keep the new token. Nothing was sent to Cloudflare.')
+    process.exit(1)
+  }
+  const put = spawnSync('wrangler', ['secret', 'put', 'OPERATOR_TOKEN', '--env', 'production'], { input: fresh, stdio: ['pipe', 'inherit', 'inherit'] })
+  console.log(put.status === 0 ? 'Done: the new operator token is in the Keychain (ophis-operator-token) and in the Worker secret OPERATOR_TOKEN.'
+    : 'The Worker secret was not set (run it as "npx -y pnpm@10.34.9 operator token --production", with wrangler logged in). The Keychain has the new token: run it again.')
+  process.exit(put.status === 0 ? 0 : 1)
 }
-if (!token) {
-  console.error('No OPERATOR_TOKEN in .dev.vars. Run "pnpm seed" once: it adds one. Then restart "pnpm dev".')
+let token, access
+if (live) {
+  try {
+    token = process.env.OPERATOR_TOKEN ?? execFileSync('security', ['find-generic-password', ...KEYCHAIN, '-w'], quiet).trim()
+  } catch {
+    // no item: the message below
+  }
+  const accessToken = () => { // cloudflared prints the token and exits 0; with none, it exits 1 and prints only on stderr
+    const run = spawnSync('cloudflared', ['access', 'token', `-app=${ORIGIN}`], quiet)
+    return run.status === 0 ? run.stdout.trim() : undefined
+  }
+  access = process.env.CF_ACCESS_TOKEN ?? accessToken()
+  if (token && !access) {
+    spawnSync('cloudflared', ['access', 'login', '--quiet', '--auto-close', ORIGIN], { stdio: 'inherit' }) // the browser: the PIN sent by email
+    access = accessToken()
+  }
+} else {
+  try {
+    token = readFileSync(new URL('../.dev.vars', import.meta.url), 'utf8').match(/^OPERATOR_TOKEN=(.+)$/m)?.[1]
+  } catch {
+    // no file: the message below
+  }
+}
+if (!token || (live && !access)) {
+  console.error(!live ? 'No OPERATOR_TOKEN in .dev.vars. Run "pnpm seed" once: it adds one. Then restart "pnpm dev".'
+    : !token ? 'No operator token in the Keychain (item "ophis-operator-token"): README, "The operator\'s address in production". Nothing was sent.'
+    : 'No Cloudflare Access token: the sign-in did not finish. Run the command again: a browser asks for the PIN sent by email (it needs cloudflared: brew install cloudflared). Nothing was sent.')
   process.exit(1)
 }
 
 function call(method, path, body) {
   const text = body === undefined ? undefined : JSON.stringify(body)
-  const headers = { host: HOST, 'sec-fetch-site': 'same-origin', authorization: `Bearer ${token}`, ...(text !== undefined && { origin: `http://${HOST}`, 'content-type': 'application/json', 'content-length': Buffer.byteLength(text) }) }
+  const headers = { host: HOST, 'sec-fetch-site': 'same-origin', authorization: `Bearer ${token}`, ...(live && { 'cf-access-token': access }), ...(text !== undefined && { origin: ORIGIN, 'content-type': 'application/json', 'content-length': Buffer.byteLength(text) }) }
   return new Promise((resolve, reject) => {
-    request({ host: '127.0.0.1', port: Number(process.env.E2E_PORT ?? 8787), method, path, headers }, (response) => {
+    (live ? tls : plain)({ host: live ? HOST : '127.0.0.1', port: live ? 443 : Number(process.env.E2E_PORT ?? 8787), method, path, headers }, (response) => {
       const chunks = []
       response.on('data', (chunk) => chunks.push(chunk)).on('end', () => {
         const bytes = Buffer.concat(chunks)
@@ -127,7 +175,7 @@ const answer = load ? await call('POST', '/api/operator/sanctions', load)
 if (!answer) {
   console.error('usage: node scripts/operator.mjs invite | list | decide <id> approve|more|refuse [--submission --tier --source --reason --evidence --sha256 --next-review --screening clear|review|hit --list eu=<file> --list un=<file> --list ofac=<file>]'
     + ' | sync | screen <id> --outcome clear|review|hit --list eu=<file> [--list un=<file>] [--list ofac=<file>] --next-review YYYY-MM-DD [--tier --source] | addresses eu|un|ofac=<file> | freeze <id> | unfreeze <id> | items <id>'
-    + ' | get <item id> --reason kyb_review|periodic_review|authority_request|client_request|incident --out <file>')
+    + ' | get <item id> --reason kyb_review|periodic_review|authority_request|client_request|incident --out <file> | token --production. Add --production for operator.ophis.fi.')
   process.exit(1)
 }
 if (answer.status !== 200) {
@@ -137,9 +185,11 @@ if (answer.status !== 200) {
     screening_not_clear: 'the screening does not say "clear" (an approval: the one given; an unfreeze: the newest one recorded).',
     wallet_listed: 'a linked or pending wallet of the organisation is on a loaded address list.',
     no_record: 'the organisation has no record to copy from: give --tier and --source.',
+    access_required: 'the console did not take the Cloudflare Access proof: ACCESS_TEAM and ACCESS_AUD (wrangler.jsonc) must be those of the Access application.',
   }
   const error = load && answer.status === 500 ? 'The list may be loaded. Run the same command again.' : answer.body?.error // the second step, the freezes, did not finish
-  console.error(`Refused (${answer.status}): ${error ? `${error}${WHY[error] ? `: ${WHY[error]}` : ''}` : 'no answer from the operator API: is "pnpm dev" running?'}`)
+  const silent = live ? `no answer from the operator API: if Cloudflare Access refused, run "cloudflared access login --quiet ${ORIGIN}" and try again` : 'no answer from the operator API: is "pnpm dev" running?' // --quiet: the token is not printed
+  console.error(`Refused (${answer.status}): ${error ? `${error}${WHY[error] ? `: ${WHY[error]}` : ''}` : silent}`)
   process.exit(1)
 }
 // Why a list file that was read is not loaded, and what ends it.

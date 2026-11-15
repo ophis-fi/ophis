@@ -121,7 +121,7 @@ async function meter<T>(job: string, run: () => Promise<T>) {
 // The route a request reaches: its row of the route table (or of the operator's), else a page or a refused path.
 function jobOf(request: Request) {
   const { origin, pathname } = new URL(request.url)
-  const table: { method: string; path: string }[] = origin === onboarding.OPERATOR.local ? onboarding.operatorRoutes : routes
+  const table: { method: string; path: string }[] = Object.values(onboarding.OPERATOR).includes(origin) ? onboarding.operatorRoutes : routes
   const route = table.find((r) => r.method === request.method && new URLPattern({ pathname: r.path }).test({ pathname }))
   return route ? `${route.method} ${route.path}` : `${request.method} ${pathname.startsWith('/api/') ? '(no route)' : '(page)'}`
 }
@@ -4124,17 +4124,18 @@ describe('y. wallets and the recovery wallet', () => {
     expect([refused.headers.get('access-control-allow-origin'), refused.headers.get('content-security-policy')]).toEqual([null, "default-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'"])
   })
 
-  it('production: the console on pro.ophis.fi, the signing page on sign.ophis.fi, every other name gets nothing', async () => {
+  it('production: the console on pro.ophis.fi, the signing page on sign.ophis.fi, the operator\'s API on operator.ophis.fi behind Access, every other name gets nothing', async () => {
     const env = { ...testEnv, ENVIRONMENT: 'production' }
     const get = async (url: string) => (await handle(new Request(url, { headers: { 'sec-fetch-site': 'same-origin' } }), env, () => now)).status
     expect(configFor('production')).toMatchObject({ rpId: 'pro.ophis.fi', origin: 'https://pro.ophis.fi', signOrigin: 'https://sign.ophis.fi' })
-    expect([await get('https://pro.ophis.fi/'), await get('https://sign.ophis.fi/sign/')]).toEqual([200, 200])
+    expect([await get('https://pro.ophis.fi/'), await get('https://sign.ophis.fi/sign/'), await get('https://operator.ophis.fi/')]).toEqual([200, 200, 403])
     for (const url of ['https://sign.ophis.fi/', 'https://pro.ophis.fi/sign/', 'http://pro.ophis.fi/', 'https://ophis.fi/', `${SITE.origin}/`, `${SIGN}/sign/`]) expect(await get(url), url).toBe(404)
     // Every table kept per environment has its entry, so no route of production meets a missing constant.
     for (const environment of ['local', 'production']) {
       expect(Object.keys(configFor(environment).chains), environment).toEqual(['1', '10', '8453', '42161'])
       expect(onboarding.RESOLVERS[environment], environment).toHaveLength(2)
       expect(SUPPORT_HOSTS[environment], environment).toBe('api.typesafe.ai')
+      expect(onboarding.OPERATOR[environment], environment).toMatch(/^https?:\/\/operator\./)
     }
   })
 
@@ -5878,6 +5879,7 @@ describe('F. Support: attacks tried by the review of milestone 6', () => {
 // ---- milestone 5a: application, domain proof, activation, review, the operator's API. One appended section. DNS and
 // the chain are a stubbed fetch. (Import declarations are hoisted: they sit here so that the section stays in one piece.) ----
 import onboardingSource from '../src/server/onboarding.ts?raw'
+import accessCerts from './fixtures/access-certs.json'
 import onboardingPage from '../src/app/onboarding.tsx?raw'
 import packageJson from '../package.json'
 const serverSources = import.meta.glob('../src/server/*.ts', { query: '?raw', import: 'default', eager: true }) as Record<string, string>
@@ -6719,22 +6721,25 @@ describe('E. onboarding: a company applies, proves its domain, is activated and 
 
   // ---- A8: the operator ----
 
-  it('A8: the operator\'s routes answer on their own hostname only, in the local environment only, and to the token only', async () => {
+  it('A8: the operator\'s routes answer on their own hostname only, locally to the token only, in production behind Cloudflare Access, and nowhere else', async () => {
     const a = await underReview()
     expect(onboarding.operatorRoutes.map((r) => `${r.method} ${r.path}`)).toEqual([
       'GET /api/operator/organisations', 'POST /api/operator/organisations/:id/decision', 'POST /api/operator/organisations/:id/freeze', 'POST /api/operator/organisations/:id/unfreeze', 'POST /api/operator/invites',
       'GET /api/operator/organisations/:id/items', 'POST /api/operator/items/:id/download', // milestone 5b
       'POST /api/operator/organisations/:id/screening', 'POST /api/operator/sanctions', 'POST /api/operator/sanctions/sync', // sanctions screening; M10: the read of the list file
     ])
+    expect(onboarding.OPERATOR).toEqual({ local: 'http://operator.localhost:8787', production: 'https://operator.ophis.fi' })
     expect(OP).toBe('http://operator.localhost:8787')
     const rows = await snapshot()
     for (const [method, path] of opPaths(a.orgId, (await itemsOf(a.orgId))[0].id)) { // the download: a real item and a reason of the list
       const body = path.endsWith('decision') ? APPROVE : path.endsWith('download') ? { reason: 'kyb_review' } : {}
       // The console's and the signing page's hostnames, with the token and an Owner's session; any other name.
       for (const host of [SITE.origin, SIGN, 'http://operator.localhost:8788', 'https://operator.localhost:8787', 'http://operator.evil.example']) expect((await op(method, path, { host, body, cookie: a.cookie })).status, `${host} ${path}`).toBe(404)
-      // Outside the local environment: 404, whatever the token.
+      // An environment with no operator's hostname: 404, whatever the token. Production: Cloudflare Access's proof first (the next test).
       const request = () => new Request(OP + path, { method, headers: { 'sec-fetch-site': 'same-origin', authorization: `Bearer ${TOKEN}`, origin: OP, 'content-type': 'application/json' }, body: method === 'POST' ? JSON.stringify(body) : undefined })
-      for (const ENVIRONMENT of ['production', 'staging', '']) expect((await onboarding.operator(request(), { ...opEnv, ENVIRONMENT }, () => now, configFor('local'), {})).status, ENVIRONMENT).toBe(404)
+      for (const ENVIRONMENT of ['staging', '', 'constructor']) expect((await onboarding.operator(request(), { ...opEnv, ENVIRONMENT }, () => now, configFor('local'), {})).status, ENVIRONMENT).toBe(404)
+      const unproved = await onboarding.operator(request(), { ...opEnv, ENVIRONMENT: 'production' }, () => now, configFor('local'), {})
+      expect([unproved.status, await unproved.json()]).toEqual([403, { error: 'access_required' }])
       // The token: missing, wrong, another scheme, a prefix, none configured, a short one configured.
       for (const authorization of [null, 'Bearer wrong', `Basic ${TOKEN}`, TOKEN, `Bearer ${TOKEN.slice(0, -1)}`, `Bearer ${TOKEN}x`, 'Bearer ', `bearer ${TOKEN}`]) {
         expect((await op(method, path, { body, headers: { authorization } })).body, `${authorization} ${path}`).toEqual({ error: 'operator_token' })
@@ -6760,7 +6765,92 @@ describe('E. onboarding: a company applies, proves its domain, is activated and 
     expect(listed.headers.get('cache-control')).toBe('no-store')
     expect(listed.headers.get('content-security-policy')).toContain("default-src 'none'")
     expect([...listed.headers.keys()].filter((name) => name.startsWith('access-control-'))).toEqual([])
-    expect(onboardingSource).toContain(`if (env.ENVIRONMENT !== 'local') return fail(404, 'not_found')`)
+    expect(onboardingSource).toContain(`if (!Object.hasOwn(OPERATOR, env.ENVIRONMENT)) return fail(404, 'not_found')`)
+    expect(onboardingSource).toContain(`if (env.ENVIRONMENT !== 'local' && !(await accessOk(request, env, clock()))) return fail(403, 'access_required')`)
+  })
+
+  it('A8: in production the operator\'s hostname answers only with the signed proof of Cloudflare Access, then the checks and the token as locally', async () => {
+    const TEAM = 'ophis-test.cloudflareaccess.com', AUD = 'ab'.repeat(32), KID = 'cd'.repeat(32), PROD = onboarding.OPERATOR.production
+    const rsa = { name: 'RSASSA-PKCS1-v1_5', modulusLength: 2048, publicExponent: new Uint8Array([1, 0, 1]), hash: 'SHA-256' }
+    const [ours, other] = (await Promise.all([rsa, rsa].map((a) => crypto.subtle.generateKey(a, true, ['sign', 'verify'])))) as CryptoKeyPair[]
+    // The key list as Cloudflare serves it (tests/fixtures/access-certs.json: the example team of Cloudflare's docs, read
+    // 2026-11-15): kid, kty, alg, use, e, n for each key, then the certificates. Ours takes the place of the second key.
+    const { n, e } = (await crypto.subtle.exportKey('jwk', ours.publicKey)) as JsonWebKey
+    const certs = { ...accessCerts, keys: [accessCerts.keys[0], { kid: KID, kty: 'RSA', alg: 'RS256', use: 'sig', e, n }] }
+    const asked: string[] = []
+    let keys: () => Response | Promise<Response> = () => Response.json(certs)
+    vi.stubGlobal('fetch', async (url: string, init?: RequestInit) => {
+      asked.push(`${url} ${init?.redirect}`)
+      return keys()
+    })
+    // A proof as Access makes it (Cloudflare's "Application token": the header, then the claims of a person who signed in).
+    const part = (value: unknown) => toBase64Url(new TextEncoder().encode(JSON.stringify(value)))
+    const at = Math.floor(now / 1000)
+    const CLAIMS = { aud: [AUD], email: 'operator@example.com', exp: at + 3600, iat: at - 60, nbf: at - 60, iss: `https://${TEAM}`, type: 'app', identity_nonce: '6ei69kawdKzMIAPF', sub: '7335d417-61da-459d-899c-0a01c76a2f94', country: 'LU' }
+    async function proof(claims: Record<string, unknown> = CLAIMS, header: Record<string, unknown> = { alg: 'RS256', kid: KID, typ: 'JWT' }, key = ours.privateKey) {
+      const signed = `${part(header)}.${part(claims)}`
+      return `${signed}.${toBase64Url(new Uint8Array(await crypto.subtle.sign('RSASSA-PKCS1-v1_5', key, new TextEncoder().encode(signed))))}`
+    }
+    const prod = { ...opEnv, ENVIRONMENT: 'production', ACCESS_TEAM: TEAM, ACCESS_AUD: AUD } as unknown as Env
+    const ask = (jwt: string | null, options: Parameters<typeof op>[2] = {}, method = 'GET', path = '/api/operator/organisations') =>
+      op(method, path, { host: PROD, env: prod, ...options, headers: { 'cf-access-jwt-assertion': jwt, ...options.headers } })
+    const good = await proof()
+    const rows = await snapshot()
+    const listed = await ask(good)
+    expect([listed.status, listed.body.organisations]).toEqual([200, []])
+    expect(asked).toEqual([`https://${TEAM}/cdn-cgi/access/certs manual`]) // the keys of the team set here, one read, no redirect followed
+    expect((await ask(good, { body: { decision: 'approve' } }, 'POST', '/api/operator/organisations/' + '0'.repeat(32) + '/freeze')).body).toEqual({ error: 'not_found' }) // a POST reaches the handler
+    // Refused, 403, before any other check and without a read of the keys: no proof, an empty one, a made-up one, an
+    // algorithm other than RS256 (none, HS256), no key id; and an environment without the team or the tag, or with a
+    // team that is not a Cloudflare Access domain.
+    asked.length = 0
+    const forged = [null, '', 'x', 'a.b', `${good}.x`, `${part({ alg: 'none', kid: KID })}.${part(CLAIMS)}.`, await proof(CLAIMS, { alg: 'HS256', kid: KID }), await proof(CLAIMS, { alg: 'RS256' }), `!${good}`]
+    for (const jwt of forged) expect((await ask(jwt)).body, String(jwt)).toEqual({ error: 'access_required' })
+    for (const env of [{ ACCESS_TEAM: undefined }, { ACCESS_TEAM: '' }, { ACCESS_TEAM: 'evil.example' }, { ACCESS_TEAM: `${TEAM}.evil.example` }, { ACCESS_TEAM: `https://${TEAM}` }, { ACCESS_TEAM: 'Ophis-test.cloudflareaccess.com' }, { ACCESS_TEAM: `x/${TEAM}` }, { ACCESS_AUD: undefined }, { ACCESS_AUD: '' }]) {
+      expect((await ask(good, { env: { ...prod, ...env } as unknown as Env })).body, JSON.stringify(env)).toEqual({ error: 'access_required' })
+    }
+    expect(asked).toEqual([])
+    // Refused after the read of the keys: an unknown key id, the other key of the list, a signature by another key, claims
+    // changed after the signature, another application, no application, another team (its keys would verify: the issuer
+    // must still be the team set here), not https, expired (exp is now), no expiry, an expiry in text, not yet valid.
+    const signedClaims = good.split('.')
+    const refused = [
+      await proof(CLAIMS, { alg: 'RS256', kid: 'ef'.repeat(32) }), await proof(CLAIMS, { alg: 'RS256', kid: accessCerts.keys[0].kid }), await proof(CLAIMS, undefined, other.privateKey),
+      `${signedClaims[0]}.${part({ ...CLAIMS, email: 'someone@example.com' })}.${signedClaims[2]}`,
+      await proof({ ...CLAIMS, aud: ['ef'.repeat(32)] }), await proof({ ...CLAIMS, aud: undefined }), await proof({ ...CLAIMS, aud: [] }), await proof({ ...CLAIMS, aud: `${AUD}x` }),
+      await proof({ ...CLAIMS, iss: 'https://other.cloudflareaccess.com' }), await proof({ ...CLAIMS, iss: `http://${TEAM}` }), await proof({ ...CLAIMS, iss: `https://${TEAM}/` }),
+      await proof({ ...CLAIMS, exp: at }), await proof({ ...CLAIMS, exp: undefined }), await proof({ ...CLAIMS, exp: String(at + 3600) }), await proof({ ...CLAIMS, nbf: at + 60 }),
+    ]
+    for (const [i, jwt] of refused.entries()) expect((await ask(jwt)).body, `refused ${i}`).toEqual({ error: 'access_required' })
+    expect(asked.length).toBe(refused.length)
+    expect((await ask(good, { env: { ...prod, ACCESS_TEAM: 'other.cloudflareaccess.com' } as unknown as Env })).body).toEqual({ error: 'access_required' })
+    // The keys unreadable: the network fails, an error or a redirect (not followed) even with the list as body, too large, not JSON, no list, a key that does not import.
+    const broken: (() => Response | Promise<Response>)[] = [
+      () => Promise.reject(new TypeError('network')), () => Response.json(certs, { status: 500 }), () => Response.json(certs, { status: 302, headers: { location: 'https://evil.example/certs' } }),
+      () => new Response(JSON.stringify(certs) + ' '.repeat(64 * 1024)), () => new Response('<html>'), () => Response.json({ keys: 'none' }), () => Response.json({}),
+      () => Response.json({ keys: [{ ...certs.keys[1], kty: 'EC' }] }), () => Response.json({ keys: [{ ...certs.keys[1], alg: 'RS512' }] }),
+    ]
+    for (const [i, answer] of broken.entries()) {
+      keys = answer
+      expect((await ask(good)).body, `keys ${i}`).toEqual({ error: 'access_required' })
+    }
+    keys = () => Response.json(certs)
+    // An audience given as one text, as RFC 7519 allows, is taken too.
+    expect((await ask(await proof({ ...CLAIMS, aud: AUD }))).status).toBe(200)
+    // Access does not replace anything: with a good proof, the request checks and the token as locally.
+    for (const authorization of [null, 'Bearer wrong', `Bearer ${TOKEN}x`]) expect((await ask(good, { headers: { authorization } })).body, String(authorization)).toEqual({ error: 'operator_token' })
+    expect((await ask(good, { env: { ...prod, OPERATOR_TOKEN: undefined } as unknown as Env })).body).toEqual({ error: 'operator_token' })
+    expect((await ask(good, { headers: { 'sec-fetch-site': 'cross-site' } })).body).toEqual({ error: 'cross_site' })
+    for (const origin of [OP, 'https://pro.ophis.fi', 'https://operator.ophis.fi.evil.example', null]) expect((await ask(good, { body: {}, headers: { origin } }, 'POST', '/api/operator/invites')).body, String(origin)).toEqual({ error: 'bad_origin' })
+    expect((await ask(good, {}, 'GET', '/api/operator')).status).toBe(404)
+    expect((await ask(null, {}, 'GET', '/api/operator')).body).toEqual({ error: 'access_required' }) // without the proof, not even which routes exist
+    expect(await snapshot()).toBe(rows) // nothing above wrote a row
+    // A good proof and the token: an application code, as locally.
+    const invite = await ask(good, { body: {} }, 'POST', '/api/operator/invites')
+    expect([invite.status, typeof invite.body.code]).toEqual([200, 'string'])
+    // Each hostname in its own environment only: production's on the local server, the local one in production.
+    expect((await op('GET', '/api/operator/organisations', { host: PROD, headers: { 'cf-access-jwt-assertion': good } })).status).toBe(404)
+    expect((await op('GET', '/api/operator/organisations', { env: prod, headers: { 'cf-access-jwt-assertion': good } })).status).toBe(404)
   })
 
   it('A8: the list holds what is under review, with what the operator compares: the domain, the first Owner\'s passkey hash, the recovery wallet, its kind and colour', async () => {

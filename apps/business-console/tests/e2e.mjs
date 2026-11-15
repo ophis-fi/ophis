@@ -31,6 +31,7 @@ import { publish as publishTxt, start as startDnsStubs } from '../scripts/dns-st
 import { CONTRACT, PORT as INDEXER_PORT, start as startIndexer } from '../scripts/indexer-stub.mjs' // partner figures: the local stand-in for the rebate indexer
 import { PORT as LIST_PORT, start as startLists } from '../scripts/list-stub.mjs' // M10: the local stand-in for the place where the OFAC list file lives
 import { start as startTurnstile } from '../scripts/turnstile-stub.mjs' // the local stand-in for Cloudflare Turnstile
+import { hear, verdict } from './operator-live.mjs' // the operator's command with --production, heard locally
 import { PORT as ORDERBOOK_PORT, start as startOrderbook, TEST_BALANCES } from '../scripts/orderbook-stub.mjs' // the real desk: the local stand-in for the public orderbooks and the chains' endpoints
 
 process.chdir(new URL('..', import.meta.url).pathname)
@@ -117,6 +118,8 @@ try {
     `POST /api/operator/sanctions ${JSON.stringify({ list: 'ofac', sha256: fileSha(LIST.addresses), addresses: ['0x00000000000000000000000000000000000a11ce', '0x0000000000000000000000000000000000000b0b'] })}`,
     `POST /api/operator/sanctions ${JSON.stringify({ list: 'ofac', sha256: fileSha(LIST.xml), addresses: ['0x0000000000000000000000000000000000000b0b', '0x00000000000000000000000000000000000000a1'], published: '2026-11-09' })}`, // in the order of the file; the maker sorts
   ]))
+  // --production and "token --production": heard on this machine (tests/operator-live.mjs), nothing leaves it.
+  for (const [what, ok] of verdict(await hear(`${process.cwd()}/${STATE}/live`))) check(what, ok)
   // M10: the maker of the list file, on the test XML (the real structure, invented values), and on files that are not whole.
   const made = `${STATE}/ofac.json`
   const maker = (from, out) => { try { return run('node', ['scripts/ofac-list.mjs', '--from', from, '--out', out]) } catch (error) { return `refused ${error.stderr}` } }

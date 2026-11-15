@@ -6,7 +6,7 @@
 // parameters, and every change goes through commit() of the data module, with what decides it read inside the plan.
 import { checksum, colour, parseAddress, readCapped, safeState, verify, verifyDigest, type SafeState } from './chain.ts'
 import { commit, countHour, DOMAIN, emailAt, freezing, LISTED, listed, listedWallet, PEOPLE, randomId, REVIEWED, sha256Hex, type Actor, type WalletKind } from './data.ts'
-import { challengeIsOurs, creationOptions, credentialHash, newChallenge, seal, unseal, verifyRegistration, type Config } from './passkeys.ts'
+import { challengeIsOurs, creationOptions, credentialHash, fromBase64Url, newChallenge, seal, unseal, verifyRegistration, type Config } from './passkeys.ts'
 import { indexerBase } from './partner.ts'
 import { CHAIN_NAME, LISTS, typedProof } from './typed.ts'
 
@@ -16,8 +16,8 @@ import { CHAIN_NAME, LISTS, typedProof } from './typed.ts'
 // PUBLIC_RESOLVERS: Cloudflare and Google, the production entry; `pnpm test:dns` asks them with this file's parser.
 export const PUBLIC_RESOLVERS = ['https://cloudflare-dns.com/dns-query', 'https://dns.google/resolve'] as const
 export const RESOLVERS: Record<string, readonly [string, string]> = { local: ['http://127.0.0.1:8790/dns-query', 'http://127.0.0.1:8791/resolve'], production: PUBLIC_RESOLVERS }
-// The operator's API has a hostname of its own, as the signing page has.
-export const OPERATOR: Record<string, string> = { local: 'http://operator.localhost:8787' }
+// The operator's API has a hostname of its own, as the signing page has. In production Cloudflare Access stands in front of it (accessOk).
+export const OPERATOR: Record<string, string> = { local: 'http://operator.localhost:8787', production: 'https://operator.ophis.fi' }
 
 export const DNS = { timeoutMs: 5000, maxBytes: 16 * 1024 }
 const WEEK_S = 7 * 24 * 60 * 60
@@ -781,21 +781,22 @@ export async function submit(c: Member) {
 }
 
 // ---- the operator's API (its own hostname) ----
-// ponytail: these routes exist in the local environment only and answer 404 anywhere else, until the validation of a
-// Cloudflare Access token is added here, before a first deploy (security-design.md, "Insider at the operator").
-// Locally the caller holds OPERATOR_TOKEN (.dev.vars, made by the seed script). The operator can: list what is under
+// These routes answer on the hostnames of OPERATOR only: locally with the token alone, in production behind Cloudflare
+// Access too (accessOk), and 404 in any other environment. The caller holds OPERATOR_TOKEN (locally in .dev.vars, made by
+// the seed script; in production a Worker secret, and on the operator's Mac a Keychain item). The operator can: list what is under
 // review, record a KYB decision, freeze and unfreeze, make an application code, and (milestone 5b) list the sealed items
 // of an organisation and take one, still sealed, for a stated reason, and (sanctions screening) record a screening and
 // load the addresses of a public list. Nothing else: no route here takes a passkey, a member or a client's wallet address.
 
-interface OperatorEnv { DB: D1Database; SEALED: R2Bucket; ENVIRONMENT: string; CHALLENGE_KEY: string; OPERATOR_TOKEN?: string; SANCTIONS_URL?: string }
+interface OperatorEnv { DB: D1Database; SEALED: R2Bucket; ENVIRONMENT: string; CHALLENGE_KEY: string; OPERATOR_TOKEN?: string; SANCTIONS_URL?: string; ACCESS_TEAM?: string; ACCESS_AUD?: string }
 
 // What the operator compares before a decision: the domain, the first Owner's passkey hash, the people the application
 // named besides the first Owner (an approval approves them too), the recovery wallet with its kind and its colour (read
 // on both endpoints now, as if it were in force), whether A7 holds, and the sealed declaration: its id, size, date and
 // SHA-256. And, in a field of its own, the reviews that are due (S4).
 // Free plan (ARCHITECTURE.md): the oldest UNDER_REVIEW only, in full; `more` counts the others. Each costs 7 D1 queries
-// and, for a Safe, 14 reads of the chain: 50 subrequests per invocation hold 3. A decision takes one off the list.
+// and, for a Safe, 14 reads of the chain: 50 subrequests per invocation hold 3 (in production one more reads the Access
+// keys: 43). A decision takes one off the list.
 // ponytail: no way past the oldest 3. Decide "more" on one that waits, or add an offset, if that ever blocks.
 export const UNDER_REVIEW = 3
 async function list(c: Ctx) {
@@ -941,10 +942,40 @@ export const operatorRoutes: { method: 'GET' | 'POST'; path: string; handler: (c
   { method: 'POST', path: '/api/operator/sanctions/sync', handler: syncNow },
 ]
 
-// The same request checks as on the other two hosts, then the token. Digests are compared, so the time it takes says
-// nothing about the token.
+// Outside local, Cloudflare Access (Zero Trust Free) stands in front of the operator's hostname, and the Worker checks
+// Access's signed proof itself, the header Cf-Access-Jwt-Assertion (Cloudflare's "Validate JWTs"; ctx.access is not given
+// to a Worker with static files): RS256 by a key of the team's list, the issuer, the application's AUD tag, the expiry.
+// So a request that did not pass the Access policy (the application deleted, a header made up) gets 403, even with the
+// token. ACCESS_TEAM: the team's domain, <team>.cloudflareaccess.com; ACCESS_AUD: the application's AUD tag (wrangler.jsonc).
+// Either missing: every request is refused. The keys are read at each request: 5 s, 64 KB, no redirect followed, one
+// subrequest. ponytail: the email in the proof is not compared, the Access policy decides who; if that ever needs a
+// second lock, compare it with a list of emails kept as a secret.
+export async function accessOk(request: Request, env: { ACCESS_TEAM?: string; ACCESS_AUD?: string }, now: number) {
+  const team = env.ACCESS_TEAM ?? '', jwt = request.headers.get('cf-access-jwt-assertion') ?? ''
+  if (!/^[a-z0-9-]+\.cloudflareaccess\.com$/.test(team) || !env.ACCESS_AUD || !jwt) return false
+  try {
+    const parts = jwt.split('.')
+    if (parts.length !== 3) return false
+    const [header, claims] = parts.slice(0, 2).map((part) => JSON.parse(new TextDecoder().decode(fromBase64Url(part))))
+    if (header?.alg !== 'RS256' || typeof header.kid !== 'string') return false
+    const response = await fetch(`https://${team}/cdn-cgi/access/certs`, { redirect: 'manual', signal: AbortSignal.timeout(5000) })
+    const text = response.ok ? await readCapped(response.body, 64 * 1024) : null
+    const key = text === null ? undefined : (JSON.parse(text).keys as (JsonWebKey & { kid?: unknown })[]).find((k) => k.kid === header.kid)
+    if (!key) return false
+    const rsa = { name: 'RSASSA-PKCS1-v1_5', hash: 'SHA-256' }
+    const signed = await crypto.subtle.verify(rsa, await crypto.subtle.importKey('jwk', key, rsa, false, ['verify']), fromBase64Url(parts[2]), new TextEncoder().encode(`${parts[0]}.${parts[1]}`))
+    const audiences = Array.isArray(claims.aud) ? claims.aud : [claims.aud]
+    return signed && claims.iss === `https://${team}` && audiences.includes(env.ACCESS_AUD) && typeof claims.exp === 'number' && claims.exp * 1000 > now && !(typeof claims.nbf === 'number' && claims.nbf * 1000 > now)
+  } catch {
+    return false // malformed, a key that does not import, the keys unreadable: refused
+  }
+}
+
+// Access first outside local; then the same request checks as on the other two hosts, then the token. Digests are
+// compared, so the time it takes says nothing about the token.
 async function operate(request: Request, env: OperatorEnv, clock: () => number, config: Config): Promise<Response> {
-  if (env.ENVIRONMENT !== 'local') return fail(404, 'not_found')
+  if (!Object.hasOwn(OPERATOR, env.ENVIRONMENT)) return fail(404, 'not_found')
+  if (env.ENVIRONMENT !== 'local' && !(await accessOk(request, env, clock()))) return fail(403, 'access_required')
   if (request.headers.get('sec-fetch-site') !== 'same-origin') return fail(403, 'cross_site')
   const { pathname } = new URL(request.url)
   const patterns = operatorRoutes.map((route) => new URLPattern({ pathname: route.path })) // made here, not at load: the scripts import this file on Node 22, which has no URLPattern
