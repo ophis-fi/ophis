@@ -13,17 +13,19 @@ export async function hear(dir) {
   rmSync(dir, { recursive: true, force: true })
   const bin = `${dir}/bin`, calls = `${dir}/calls`, kept = `${dir}/kept`, put = `${dir}/put`
   mkdirSync(bin, { recursive: true })
-  const tool = (name, body) => writeFileSync(`${bin}/${name}`, `#!/bin/sh\necho "${name} $*" >> ${calls}\n${body}\n`, { mode: 0o755 })
+  const q = (path) => `'${path.replaceAll("'", "'\\''")}'` // a path in the scripts below, quoted for sh (Codex)
+  const tool = (name, body) => writeFileSync(`${bin}/${name}`, `#!/bin/sh\necho "${name} $*" >> ${q(calls)}\n${body}\n`, { mode: 0o755 })
   // "security -i" reads one command on stdin and, as the real one does when a command fails, repeats it on both
   // outputs. find gives the token "-i" kept, else the old one. Kept is false: a Keychain that keeps nothing.
   const security = (keeps) => tool('security', `case "$1" in
-  -i) line=$(cat); echo "$line"; echo "$line" >&2; ${keeps ? `printf %s "$line" > ${kept}` : ':'} ;;
-  find-generic-password) [ "$*" = "${KEYCHAIN}" ] || exit 1; if [ -f ${kept} ]; then sed 's/.* -w //' ${kept}; else echo ${OLD}; fi ;;
+  -i) line=$(cat); echo "$line"; echo "$line" >&2; ${keeps ? `printf %s "$line" > ${q(kept)}` : ':'} ;;
+  find-generic-password) [ "$*" = "${KEYCHAIN}" ] || exit 1; if [ -f ${q(kept)} ]; then sed 's/.* -w //' ${q(kept)}; else echo ${OLD}; fi ;;
   *) exit 1 ;;
 esac`)
   // With no token, the stand-in still prints a line on stdout and exits 1: the command must go by the exit code.
   const cloudflared = (token) => tool('cloudflared', `[ "$*" = "access token -app=https://operator.ophis.fi" ] && { ${token ? `echo ${ACCESS}` : 'echo not.a.token; exit 1'}; }\nexit 0`)
-  tool('wrangler', `[ "$*" = "secret put OPERATOR_TOKEN --env production" ] || exit 1\ncat > ${put}`)
+  const wrangler = (pause) => tool('wrangler', `[ "$*" = "secret put OPERATOR_TOKEN --env production" ] || exit 1\nsleep ${pause}\ncat > ${q(put)}`)
+  wrangler(0)
   const heard = []
   let edge = false // true: answer as Access does when it refuses at the edge, with a page and no JSON
   const server = createServer((request, response) => {
@@ -32,7 +34,7 @@ esac`)
     response.writeHead(200, { 'content-type': 'application/json' }).end(request.method === 'POST' ? '{"code":"c0de","expiresAt":0}' : '{"organisations":[],"more":0,"reviews":[],"lists":[]}')
   }).listen(0, '127.0.0.1')
   await new Promise((resolve) => server.once('listening', resolve))
-  const env = { ...process.env, PATH: `${bin}:${process.env.PATH}`, E2E_PORT: String(server.address().port) }
+  const env = { ...process.env, PATH: `${bin}:${process.env.PATH}`, E2E_PORT: String(server.address().port), TMPDIR: dir } // TMPDIR: the token run's lock lives here
   delete env.OPERATOR_TOKEN // the command reads these two first: not here
   delete env.CF_ACCESS_TOKEN
   let said = ''
@@ -65,7 +67,13 @@ esac`)
   const unkept = { calls: log(), put: read(put) }
   codes.push(await go(['token'])) // without --production: refused, nothing called
   const plain = { calls: log(), put: read(put) }
+  // Two "token" runs at once (Codex), with a slow wrangler so that they overlap: one is refused, and the Keychain and
+  // the Worker end with the same token.
   security(true)
+  wrangler(2)
+  const pair = await Promise.all([run('token'), run('token')])
+  const together = { codes: pair, kept: read(kept), put: read(put), said }
+  log()
   cloudflared(true)
   edge = true
   const shown = said // what the runs above printed
@@ -73,11 +81,11 @@ esac`)
   codes.push(await run('list'))
   const refused = said
   server.close()
-  return { codes, heard, sent, noAccess, token, unkept, plain, shown, refused }
+  return { codes, heard, sent, noAccess, token, unkept, plain, together, shown, refused }
 }
 
 /** What must hold, as [what, ok] pairs. */
-export function verdict({ codes, heard, sent, noAccess, token, unkept, plain, shown, refused }) {
+export function verdict({ codes, heard, sent, noAccess, token, unkept, plain, together, shown, refused }) {
   const asked = (method, url, origin) => ({ method, url, host: 'operator.ophis.fi', origin, site: 'same-origin', authorization: `Bearer ${OLD}`, access: ACCESS })
   const fresh = token.put ?? ''
   return [
@@ -92,6 +100,9 @@ export function verdict({ codes, heard, sent, noAccess, token, unkept, plain, sh
       codes[4] === 1 && unkept.put === null && unkept.calls === `security -i\nsecurity ${KEYCHAIN}\n`],
     ['"token" without --production: refused, nothing called',
       codes[5] === 1 && plain.calls === '' && plain.put === null],
+    ['two "token" runs at once: one is refused, and the Keychain and the Worker secret end with the same token, never shown',
+      JSON.stringify([...together.codes].sort()) === '[0,1]' && together.said.includes('Refused: another "token" run is going') && /^[0-9a-f]{64}$/.test(together.put ?? '')
+        && together.kept === `add-generic-password -U -a operator -s ophis-operator-token -w ${together.put}` && !shown.includes(together.put)],
     ['--production refused by Access at the edge: the command says to sign in again with "--quiet", which does not print the token',
       codes[6] === 1 && refused.includes('Refused (403)') && refused.includes('run "cloudflared access login --quiet https://operator.ophis.fi"')],
   ]

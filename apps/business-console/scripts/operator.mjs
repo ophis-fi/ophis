@@ -30,7 +30,8 @@
 // The command sets nothing else: the API takes no passkey, no member and no wallet address of a client.
 import { execFileSync, spawnSync } from 'node:child_process'
 import { createHash, randomBytes } from 'node:crypto'
-import { existsSync, readFileSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
 import { request as plain } from 'node:http'
 import { request as tls } from 'node:https'
 import { parseArgs } from 'node:util'
@@ -55,6 +56,17 @@ if (command === 'token') {
     console.error('"token" is for production: token --production. Locally the token is in .dev.vars (made by "pnpm seed").')
     process.exit(1)
   }
+  // One run at a time (Codex): two runs at once could leave the Keychain with one token and the Worker with the other,
+  // both saying "Done". mkdir fails if the folder exists; it is removed at the end, and on Ctrl-C.
+  const lock = `${tmpdir()}/ophis-operator-token.lock`
+  try {
+    mkdirSync(lock)
+  } catch {
+    console.error(`Refused: another "token" run is going. Nothing was changed. (If none is, a run stopped midway: remove ${lock}.)`)
+    process.exit(1)
+  }
+  process.on('exit', () => rmSync(lock, { recursive: true, force: true }))
+  process.on('SIGINT', () => process.exit(130))
   const fresh = randomBytes(32).toString('hex')
   spawnSync('security', ['-i'], { input: `add-generic-password -U ${KEYCHAIN.join(' ')} -w ${fresh}\n`, stdio: ['pipe', 'ignore', 'ignore'] })
   if (spawnSync('security', ['find-generic-password', ...KEYCHAIN, '-w'], quiet).stdout?.trim() !== fresh) {
