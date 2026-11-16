@@ -4,8 +4,8 @@ import { ADAPT, PRIVACY } from './execution'
 import type { WalletSession } from './wallet'
 
 const state = vi.hoisted(() => ({ record: undefined as unknown, ratchet: vi.fn(), remove: vi.fn(), history: vi.fn(), sync: vi.fn(), base: false,
-  finalized: 125, reorg: false }))
-vi.mock('./config', async original => ({ ...await original<typeof import('./config')>(), get CHAIN_ID() { return state.base ? 8453 : 1 } }))
+  finalized: 125, reorg: false, chainId: 1 }))
+vi.mock('./config', async original => ({ ...await original<typeof import('./config')>(), get CHAIN_ID() { return state.base ? 8453 : state.chainId } }))
 vi.mock('./wallet', () => ({ syncWallet: state.sync }))
 vi.mock('./storage', () => ({
   readPrivateState: async () => state.record,
@@ -43,6 +43,11 @@ const session = {
   info: { id: 'test-wallet' },
   accounts: { getAccount: async () => ({ address: pending.account }) },
   provider: { getTransactionReceipt: receipt, call: balance, getNetwork: async () => ({ chainId: 8453n }),
+    send: async (method: string, params: unknown[]) => {
+      expect(method).toBe('eth_getBlockByNumber'); expect(params[1]).toBe(false)
+      const block = await session.provider.getBlock(params[0] === 'finalized' ? 'finalized' : Number(BigInt(String(params[0]))))
+      return { ...block, number: `0x${block!.number.toString(16)}` }
+    },
     getBlock: async (tag: string | number) => ({ number: tag === 'finalized' ? state.finalized : tag,
       hash: `0x${(state.reorg && tag === 125 ? '55' : '44').repeat(32)}` }) },
 } as unknown as WalletSession
@@ -50,6 +55,7 @@ const session = {
 beforeEach(() => {
   state.record = undefined
   state.base = false
+  state.chainId = 1
   state.finalized = 125; state.reorg = false
   vi.clearAllMocks()
   state.history.mockResolvedValue([])
@@ -57,6 +63,20 @@ beforeEach(() => {
 })
 
 describe('pending swap recovery journal', () => {
+  it.each([1, 56, 42161, 137])('retains an orphaned cached swap receipt and account index on chain %i', async chainId => {
+    state.chainId = chainId; state.record = { ...pending, chainId }
+    const output = PRIVACY.encodeEventLog('Shield', [0, 0,
+      [{ npk, token: { tokenAddress: TOKENS.WETH.address, tokenType: 0, tokenSubID: 0 }, value: 10n }], [], []])
+    const mined = { hash: pending.hash, blockHash: `0x${'44'.repeat(32)}`, blockNumber: 125, status: 1,
+      confirmations: async () => 10, logs: [spent, { address: CONFIG.proxyContract, ...output }] } as never
+    state.reorg = true
+    await expect(reconcilePendingSwap(session, false, false, mined)).rejects.toThrow('history changed')
+    expect(state.remove).not.toHaveBeenCalled(); expect(state.ratchet).not.toHaveBeenCalled()
+    expect(state.record).toEqual({ ...pending, chainId }); expect(receipt).not.toHaveBeenCalled()
+    state.reorg = false
+    await expect(reconcilePendingSwap(session, false, false, mined)).resolves.toContain('Private output confirmed')
+    expect(state.remove).toHaveBeenCalledOnce(); expect(state.ratchet).toHaveBeenCalledOnce()
+  })
   it('retains a synchronized Base swap through inclusion and reorg until canonical finality', async () => {
     state.base = true; state.finalized = 124
     state.record = { ...pending, chainId: 8453 }
@@ -110,6 +130,7 @@ describe('pending swap recovery journal', () => {
       hash === replacement
         ? {
             status: 1,
+            blockHash: `0x${'44'.repeat(32)}`,
             blockNumber: 125,
             confirmations: async () => 2,
             logs: [
@@ -160,6 +181,7 @@ describe('pending swap recovery journal', () => {
     state.record = pending
     receipt.mockResolvedValue({
       status: 1,
+      blockHash: `0x${'44'.repeat(32)}`,
       blockNumber: 125,
       confirmations: async () => 2,
       logs: [spent, { address: CONFIG.proxyContract, ...encoded }],
@@ -200,7 +222,7 @@ describe('pending swap recovery journal', () => {
 function cleanupFailureReceipt(token = pending.token) {
   const output = PRIVACY.encodeEventLog('Shield', [0, 0,
     [{ npk, token: { tokenAddress: TOKENS[token].address, tokenType: 0, tokenSubID: 0 }, value: 10n }], [], []])
-  return { status: 1, blockNumber: 125, confirmations: async () => 2, logs: [spent,
+  return { status: 1, blockHash: `0x${'44'.repeat(32)}`, blockNumber: 125, confirmations: async () => 2, logs: [spent,
     { address: CONFIG.proxyContract, ...output },
     { address: pending.account, ...ADAPT.encodeEventLog('CallError', [4, '0xdeadbeef']) }] }
 }

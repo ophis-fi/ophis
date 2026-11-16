@@ -6,6 +6,8 @@ export function feeTokenFor(principal: TokenSymbol): TokenSymbol {
 }
 
 export function usesBoundWithdrawal(token: TokenSymbol, nativeOutput = false): boolean {
+  // Base's qualified submission design requires the prepared execution account,
+  // including same-token exits; prepareUnshield rejects non-prepaid Base paths.
   return CHAIN_ID === 8453 || nativeOutput || tokenFor(token).address.toLowerCase() !== tokenFor(feeTokenFor(token)).address.toLowerCase()
 }
 

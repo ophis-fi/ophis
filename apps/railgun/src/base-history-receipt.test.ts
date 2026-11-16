@@ -51,3 +51,24 @@ it('keeps a persistence failure sticky for ordinary reads until the same receipt
   await saveBaseHistoryReceipt(session, receipt('second'))
   expect(await pendingBaseHistoryReceipts(session)).toHaveLength(2)
 })
+
+it('retries failed cleanup without treating durable receipts as lost writes', async () => {
+  await saveBaseHistoryReceipt(session, receipt())
+  const expected = await pendingBaseHistoryReceipts(session)
+  state.deletes.mockImplementationOnce(() => { throw new Error('storage temporarily unavailable') })
+  await expect(clearBaseHistoryReceipts(session, expected)).rejects.toThrow('storage temporarily unavailable')
+  expect(await pendingBaseHistoryReceipts(session)).toEqual(expected)
+  await clearBaseHistoryReceipts(session, expected)
+  expect(await pendingBaseHistoryReceipts(session)).toEqual([])
+})
+
+it('does not clear durable evidence while a newer receipt remains unsaved', async () => {
+  await saveBaseHistoryReceipt(session, receipt())
+  const expected = await pendingBaseHistoryReceipts(session)
+  state.writes.mockImplementationOnce(() => { throw new Error('disk full') })
+  await expect(saveBaseHistoryReceipt(session, receipt('newer'))).rejects.toThrow('disk full')
+  await expect(clearBaseHistoryReceipts(session, expected)).rejects.toThrow('could not be saved')
+  expect(state.deletes).not.toHaveBeenCalled()
+  await saveBaseHistoryReceipt(session, receipt('newer'))
+  expect(await pendingBaseHistoryReceipts(session)).toHaveLength(2)
+})

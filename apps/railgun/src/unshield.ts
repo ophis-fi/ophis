@@ -45,6 +45,8 @@ export async function prepareUnshield(
   const sameAsset = getAddress(asset.address) === getAddress(feeAsset.address)
   if (nativeOutput && getAddress(asset.address) !== getAddress(tokenFor(WRAPPED_SYMBOL).address))
     throw new Error(`Native ${NATIVE_SYMBOL} withdrawal requires private ${WRAPPED_SYMBOL}.`)
+  if (CHAIN_ID === 8453 && !prepaid)
+    throw new Error('Base withdrawals require approved prepaid fee credit and a prepared execution account. Legacy broadcaster withdrawals are unavailable.')
   if (!prepaid) validateBroadcaster(selected, feeAsset.address, usesBoundWithdrawal(token, nativeOutput))
   const destination = getAddress(recipient)
   if (PILOT_WITHDRAWAL_RECIPIENT &&

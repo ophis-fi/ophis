@@ -54,14 +54,17 @@ export async function createBaseHistorySource(provider: JsonRpcProvider, origin:
   const header = async (number: number) => {
     const value = await provider.send('eth_getBlockByNumber', [`0x${number.toString(16)}`, false]) as Record<string, unknown>
     historyAssert(value && historyHash(value.hash) && historyQuantity(value.number) === number, 'Base canonical history header is unavailable.')
-    return value.hash.toLowerCase()
+    return { hash: value.hash.toLowerCase(), timestamp: historyQuantity(value.timestamp) }
   }
+  const matches = (value: { hash: string; timestamp: number }, anchor: { blockHash: string; timestamp: number }) =>
+    value.hash === anchor.blockHash.toLowerCase() && value.timestamp === anchor.timestamp
+  const current = (timestamp: number) => timestamp <= Date.now() / 1000 + 30 && Date.now() / 1000 - timestamp <= 90
   const snapshot = async () => {
     const manifest = await validateHistoryManifest((await get('/manifest', 512 * 1024)).value)
     if (cached?.manifest.generation === manifest.generation) return cached
     const finalized = await provider.send('eth_getBlockByNumber', ['finalized', false]) as Record<string, unknown>
     historyAssert(finalized && historyHash(finalized.hash) && historyQuantity(finalized.number) >= manifest.toBlock &&
-      await header(manifest.toBlock) === manifest.blockHash, 'Base history snapshot is not canonical and finalized.')
+      matches(await header(manifest.toBlock), manifest), 'Base history snapshot is not canonical and finalized.')
     const logs: HistoryLog[] = []
     for (const [index, page] of manifest.pages.entries()) {
       const body = await get(`/page/${manifest.generation}/${index}`, B.pageBytes)
@@ -79,26 +82,30 @@ export async function createBaseHistorySource(provider: JsonRpcProvider, origin:
   const source = async (checkpoint?: BaseHistoryCheckpoint): Promise<BaseHistoryScan> => {
     const receipts = required.map(receipt => ({ ...receipt }))
     if (checkpoint && !(Number.isSafeInteger(checkpoint.blockNumber) && checkpoint.blockNumber >= B.fromBlock && historyHash(checkpoint.blockHash) &&
-      await header(checkpoint.blockNumber) === checkpoint.blockHash))
+      (await header(checkpoint.blockNumber)).hash === checkpoint.blockHash.toLowerCase()))
       throw Object.assign(new Error('Base history checkpoint changed. Rebuild verified history; preserve wallet keys and saved transactions.'), { requiresBaseHistoryRescan: true })
     const { manifest, logs } = await snapshot()
     const tail = (await get(`/tail/${manifest.generation}`, 8 * 1024 ** 2)).value as HistoryTail
     historyAssert(tail && tail.generation === manifest.generation && tail.fromBlock === manifest.toBlock + 1 &&
       Number.isSafeInteger(tail.toBlock) && tail.toBlock >= manifest.toBlock && tail.toBlock - manifest.toBlock <= B.maxTail &&
       historyHash(tail.blockHash) && Number.isSafeInteger(tail.timestamp) && tail.timestamp >= manifest.timestamp &&
-      tail.timestamp <= Date.now() / 1000 + 30 && Date.now() / 1000 - tail.timestamp <= 90 &&
+      current(tail.timestamp) &&
       (!checkpoint || tail.toBlock >= checkpoint.blockNumber), 'Base recent history is not current. Retry shortly.')
     const recent = validateHistoryLogs(tail.logs, tail.fromBlock, tail.toBlock)
     historyAssert(receipts.every(receipt => tail.toBlock >= receipt.blockNumber),
       'Your transaction is mined; Base private history is catching up (about 30 seconds). Keep the saved transaction and refresh balances; do not repeat it.')
     const verifyReceipts = async () => {
-      for (const receipt of receipts) historyAssert(await header(receipt.blockNumber) === receipt.blockHash,
+      for (const receipt of receipts) historyAssert((await header(receipt.blockNumber)).hash === receipt.blockHash.toLowerCase(),
         'The saved Base receipt is no longer canonical. Keep the pending transaction and check its status again.')
     }
     await verifyReceipts()
     historyAssert(logs.length + recent.length <= B.maxLogs, 'Base history event limit exceeded.')
-    historyAssert(await header(manifest.toBlock) === manifest.blockHash && await header(tail.toBlock) === tail.blockHash,
-      'Base history anchor differs from the trusted provider.')
+    const verifyAnchors = async () => {
+      const snapshotHeader = await header(manifest.toBlock), tailHeader = await header(tail.toBlock)
+      historyAssert(matches(snapshotHeader, manifest) && matches(tailHeader, tail) && current(tailHeader.timestamp),
+        'Base history anchor differs from the trusted provider or is no longer current.')
+    }
+    await verifyAnchors()
     const at = `0x${tail.toBlock.toString(16)}`
     const [root, treeNumber, nextLeafIndex] = await Promise.all(['merkleRoot', 'treeNumber', 'nextLeafIndex'].map(async name => {
       const result = await provider.send('eth_call', [{ to: B.address, data: abi.encodeFunctionData(name) }, at])
@@ -116,8 +123,7 @@ export async function createBaseHistorySource(provider: JsonRpcProvider, origin:
         (latest.tree === tree || length === 0 && latest.tree === tree - 1 && latest.index === 65_535) &&
         await merkletree.getTreeLength(tree) === length && `0x${actualRoot.replace(/^0x/, '')}`.toLowerCase() === String(root).toLowerCase(),
         'Base history does not match the complete canonical tree.')
-      historyAssert(await header(manifest.toBlock) === manifest.blockHash && await header(tail.toBlock) === tail.blockHash,
-        'Base history changed during verification.')
+      await verifyAnchors()
       await verifyReceipts()
       covered = JSON.stringify(receipts)
     } }

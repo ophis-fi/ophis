@@ -412,15 +412,15 @@ async function retireEmptyFunding(session: WalletSession, setup: FundedBaseExecu
   return true
 }
 export async function checkBaseExecutionSetup(session: WalletSession, suppliedHash?: string, index?: number): Promise<BaseSetupStatus> {
-  const current = await savedBaseExecutionSetup(session, index)
-  if (!current) throw new Error('No Base setup is saved.')
-  if (current.version === 1) {
-    const result = await checkLegacyBaseExecutionSetup(session, suppliedHash, index)
-    return { ...result, stage: result.ready ? 'setup' : 'cancelled' }
-  }
   return exclusive(session, async () => {
+    const current = await savedBaseExecutionSetup(session, index)
+    if (!current) throw new Error('No Base setup is saved.')
+    if (current.version === 1) {
+      const result = await checkLegacyBaseExecutionSetup(session, suppliedHash, index)
+      return { ...result, stage: result.ready ? 'setup' : 'cancelled' }
+    }
     await assertChain(session)
-    const setup = await savedBaseExecutionSetup(session, index) as FundedBaseExecutionSetup
+    const setup = current
     if (setup.retired && setup.signedTransaction) throw new Error('This execution account is retired. Use its saved remainder recovery.')
     if (!setup.signedTransaction) {
       const hash = suppliedHash || setup.fundingConfirmedHash || setup.fundingHash

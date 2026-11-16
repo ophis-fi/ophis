@@ -4,10 +4,13 @@ import { alchemyCU, isAlchemyUrl } from '../rpc-policy'
 
 type Budget = (methods: string[], provider: 'alchemy') => { allowed: boolean; reason?: string }
 interface Job { toBlock: number; blockHash: string; timestamp: number; pages: HistoryPage[]; previous?: HistoryManifest }
-interface State { current?: HistoryManifest; previous?: HistoryManifest; job?: Job; scheduled?: boolean; nextAttempt: number }
+interface State { current?: HistoryManifest; previous?: HistoryManifest; job?: Job; scheduled?: boolean; nextAttempt: number; retryAt?: number }
 const stateKey = 1, dailyLimit = 10_000, tailLifetime = 30_000
 const tailDailyLimit = 350_000
 const hex = (value: number) => `0x${value.toString(16)}`
+class HistoryBudgetUnavailable extends Error {
+  constructor(message: string, readonly retryAt: number) { super(message) }
+}
 
 /** Public Base logs only; shares the existing account meter and its SQLite storage. */
 export class BaseHistoryCache {
@@ -37,9 +40,10 @@ export class BaseHistoryCache {
     historyAssert(cost !== undefined, 'Unpriced public history method.')
     const usage = `${historical ? 'history' : 'tail'}:${day}`
     const used = Number(this.storage.sql.exec<{ cu: number }>('SELECT cu FROM base_history_usage WHERE day=?', usage).toArray()[0]?.cu ?? 0)
-    historyAssert(used + cost <= (historical ? dailyLimit : tailDailyLimit), 'Base history daily budget reached.')
+    if (used + cost > (historical ? dailyLimit : tailDailyLimit))
+      throw new HistoryBudgetUnavailable('Base history daily budget reached.', Date.parse(`${day}T00:00:00Z`) + 86_400_000)
     const reserved = this.consume([method], 'alchemy')
-    historyAssert(reserved.allowed, 'Shared RPC budget unavailable.')
+    if (!reserved.allowed) throw new HistoryBudgetUnavailable('Shared RPC budget unavailable.', Date.now() + B.refreshMs)
     this.storage.sql.exec('DELETE FROM base_history_usage WHERE day NOT IN (?,?)', `history:${day}`, `tail:${day}`)
     this.storage.sql.exec('INSERT INTO base_history_usage(day,cu) VALUES(?,?) ON CONFLICT(day) DO UPDATE SET cu=excluded.cu', usage, used + cost)
     // Charge attempts before network I/O; no redirect, retry or public fallback.
@@ -95,6 +99,11 @@ export class BaseHistoryCache {
   }
   private async advance(): Promise<void> {
     let state = this.state()
+    if (state.retryAt && Date.now() < state.retryAt) {
+      await this.storage.setAlarm(state.retryAt)
+      return
+    }
+    delete state.retryAt
     try {
       this.endpoint()
       if (!state.job) {
@@ -143,7 +152,15 @@ export class BaseHistoryCache {
         state = { current: manifest, previous: state.current, nextAttempt: Date.now() + B.refreshMs }
         this.save(state); this.prune(state)
       })
-    } catch {
+    } catch (error) {
+      if (error instanceof HistoryBudgetUnavailable) {
+        // A cold scan can span daily allowances; retain its verified prefix without publishing it.
+        state.retryAt = state.nextAttempt = error.retryAt
+        if (!state.job) state.scheduled = true
+        this.save(state)
+        await this.storage.setAlarm(error.retryAt)
+        return
+      }
       // Preserve the last complete generation; never publish an incomplete scan.
       state = { current: state.current, previous: state.previous, nextAttempt: Date.now() + B.refreshMs }
       this.storage.transactionSync(() => { this.save(state); this.prune(state) })

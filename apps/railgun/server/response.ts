@@ -5,7 +5,7 @@ const object = (value: unknown): value is Record<string, unknown> => !!value && 
 
 // Match the classifications used by ethers and prepaid-diagnostic without exposing
 // arbitrary provider diagnostics (which can contain its authenticated URL).
-function message(error: Record<string, unknown>): string {
+function message(error: Record<string, unknown>, depth = 0): string | undefined {
   const text = typeof error.message === 'string' ? error.message.slice(0, 2048).toLowerCase() : ''
   if (error.code === 3 || /revert|execution failed/.test(text)) return 'execution reverted'
   if (/insufficient funds|base fee exceeds gas limit/.test(text)) return 'insufficient funds'
@@ -20,7 +20,15 @@ function message(error: Record<string, unknown>): string {
   if (error.code === -32602) return 'invalid RPC parameters'
   if (/rate|limit|capacity|quota/.test(text)) return 'RPC rate or quota limit reached'
   if (/already known/.test(text)) return 'transaction already known'
-  return 'Trusted RPC rejected the request.'
+  if (depth < 4) {
+    for (const key of ['data', 'error', 'originalError']) {
+      const nested = error[key]
+      if (!object(nested)) continue
+      const classified = message(nested, depth + 1)
+      if (classified !== undefined) return classified
+    }
+  }
+  return undefined
 }
 
 function revertData(value: unknown, depth = 0): string | undefined {
@@ -45,7 +53,7 @@ function sanitized(reply: unknown): unknown {
   const code = typeof error.code === 'number' && Number.isSafeInteger(error.code) ? error.code : -32000
   const data = revertData(error.data)
   return { jsonrpc: '2.0', id: reply.id,
-    error: { code, message: message(error), ...(data === undefined ? {} : { data }) } }
+    error: { code, message: message(error) ?? 'Trusted RPC rejected the request.', ...(data === undefined ? {} : { data }) } }
 }
 
 /** Preserve RPC results and recoverable error semantics, never provider transport diagnostics. */

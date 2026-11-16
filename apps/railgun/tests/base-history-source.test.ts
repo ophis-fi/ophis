@@ -38,11 +38,37 @@ it('verifies complete empty spans and canonical head without log RPC or indexer 
   const result = await source()
   expect(result.events).toEqual({ commitmentEvents: [], nullifierEvents: [], unshieldEvents: [] })
   await result.validate(f.tree as never)
+  expect(f.send).toHaveBeenCalledTimes(9)
   expect(result.checkpoint).toEqual({ blockNumber: f.head, blockHash: f.tail.blockHash })
   expect(f.send.mock.calls.every(([method]) => method === 'eth_getBlockByNumber' || method === 'eth_call')).toBe(true)
   const reads = f.fetch.mock.calls.filter(([url]) => String(url).includes('/page/')).length
   await source(result.checkpoint)
   expect(f.fetch.mock.calls.filter(([url]) => String(url).includes('/page/'))).toHaveLength(reads)
+})
+
+it('rejects a stale canonical tail whose cache timestamp was forged fresh without extra RPC reads', async () => {
+  const f = await fixture(), original = f.send.getMockImplementation()!
+  f.manifest.timestamp -= 600
+  const { generation: _generation, ...core } = f.manifest
+  f.manifest.generation = await historyDigest(JSON.stringify(core))
+  f.tail.generation = f.manifest.generation
+  f.send.mockImplementation(async (method, params) => {
+    const value = await original(method, params)
+    return method === 'eth_getBlockByNumber' && typeof value !== 'string' ? { ...value,
+      timestamp: hex(f.manifest.timestamp + (params[0] === hex(f.head) ? 10 : 0)) } : value
+  })
+  const source = await createBaseHistorySource(f.provider, 'https://swap.ophis.fi')
+  await expect(source()).rejects.toThrow('trusted provider')
+  expect(f.send).toHaveBeenCalledTimes(4)
+  expect(f.send.mock.calls.some(([method]) => method === 'eth_call')).toBe(false)
+})
+
+it('rechecks canonical tail freshness after tree verification before declaring balances ready', async () => {
+  const f = await fixture(), source = await createBaseHistorySource(f.provider, 'https://swap.ophis.fi')
+  const scan = await source()
+  const clock = vi.spyOn(Date, 'now').mockReturnValue((f.tail.timestamp + 91) * 1000)
+  try { await expect(scan.validate(f.tree as never)).rejects.toThrow('no longer current') }
+  finally { clock.mockRestore() }
 })
 
 it.each(['warming', 'bad-page', 'not-finalized', 'wrong-root', 'ahead'])('keeps %s history unusable without fallback', async reason => {

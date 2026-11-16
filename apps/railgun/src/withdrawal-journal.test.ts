@@ -6,10 +6,10 @@ import type { WalletSession } from './wallet'
 import { mixedWithdrawalData, mixedWithdrawalTransactions, withdrawalData } from '../tests/withdrawal.fixture'
 
 const state = vi.hoisted(() => ({ value: undefined as unknown, preserved: undefined as unknown, remove: vi.fn(), history: vi.fn(), save: vi.fn(), sync: vi.fn(), base: false,
-  finalized: 102, reorg: false, credit: vi.fn(), live: false }))
+  finalized: 102, reorg: false, credit: vi.fn(), live: false, chainId: 1, inputReorg: false }))
 vi.mock('./prepaid', () => ({ pendingPrepaid: state.credit }))
 vi.mock('./config', async (original) => ({ ...await original<typeof import('./config')>(),
-  get CHAIN_ID() { return state.base ? 8453 : 1 },
+  get CHAIN_ID() { return state.base ? 8453 : state.chainId },
   get ENVIRONMENT() { return state.live ? 'ethereum' : 'fork' },
   PILOT_WITHDRAWAL_RECIPIENT: '0x0000000000000000000000000000000000001234' }))
 vi.mock('./wallet', () => ({ syncWallet: state.sync }))
@@ -75,9 +75,15 @@ const call = vi.fn()
 const session = {
   info: { id: 'test-wallet' },
   provider: { getTransactionReceipt: getReceipt, getBlockNumber: async () => 102, call,
+    send: async (method: string, params: unknown[]) => {
+      expect(method).toBe('eth_getBlockByNumber'); expect(params[1]).toBe(false)
+      const block = await session.provider.getBlock(params[0] === 'finalized' ? 'finalized' : Number(BigInt(String(params[0]))))
+      return { ...block, number: `0x${block!.number.toString(16)}` }
+    },
     getNetwork: async () => ({ chainId: 8453n }),
-    getBlock: async (tag: string | number) => ({ number: tag === 'finalized' ? state.finalized : tag,
-      hash: `0x${(state.reorg && tag === 102 ? '88' : '77').repeat(32)}` }) },
+    getBlock: async (tag: string | number) => ({ number: tag === 'latest' ? 102 : tag === 'finalized' ? state.finalized : tag,
+      hash: `0x${(tag === 101 ? state.inputReorg ? '99' : '66' : state.reorg && tag === 102 ? '88' : '77').repeat(32)}`,
+      parentHash: `0x${'66'.repeat(32)}` }) },
 } as unknown as WalletSession
 
 function receipt(): TransactionReceipt {
@@ -86,6 +92,7 @@ function receipt(): TransactionReceipt {
   if (!unshield || !nullified) throw new Error('Missing Railgun events')
   return {
     status: 1,
+    blockHash: `0x${'77'.repeat(32)}`,
     blockNumber: 102,
     confirmations: async () => 2,
     logs: [
@@ -106,6 +113,8 @@ function receipt(): TransactionReceipt {
 beforeEach(() => {
   vi.clearAllMocks()
   state.base = false
+  state.chainId = 1
+  state.inputReorg = false
   state.live = false
   state.finalized = 102; state.reorg = false
   state.value = pending
@@ -115,6 +124,21 @@ beforeEach(() => {
   state.remove.mockReset()
   state.history.mockResolvedValue([])
   call.mockResolvedValue(PRIVACY.encodeFunctionResult('nullifiers', [false]))
+})
+
+it.each([1, 56, 42161, 137])('keeps an orphaned cached withdrawal on chain %i even if an input looks spent', async chainId => {
+  state.chainId = chainId; const hash = `0x${'66'.repeat(32)}`
+  state.value = { ...pending, chainId, hash }
+  const saved = state.value
+  const mined = Object.assign(receipt(), { hash, blockHash: `0x${'77'.repeat(32)}` })
+  state.reorg = true
+  call.mockResolvedValue(PRIVACY.encodeFunctionResult('nullifiers', [true]))
+  await expect(reconcilePendingWithdrawal(session, mined)).rejects.toThrow('history changed')
+  expect(state.remove).not.toHaveBeenCalled(); expect(state.value).toBe(saved)
+  expect(call).not.toHaveBeenCalled(); expect(getReceipt).not.toHaveBeenCalled()
+  state.reorg = false
+  await expect(reconcilePendingWithdrawal(session, mined)).resolves.toContain('Withdrawal confirmed')
+  expect(state.remove).toHaveBeenCalledOnce()
 })
 
 it('retains a synchronized Base withdrawal through inclusion and reorg until canonical finality', async () => {
@@ -306,6 +330,22 @@ it('can dismiss a proof only after a saved input is spent at a confirmed block',
   await expect(reconcilePendingWithdrawal(session)).resolves.toMatch(/no longer executable/)
   expect(state.remove).toHaveBeenCalledOnce()
   expect(call.mock.calls[0][0].blockTag).toBe(101)
+})
+
+it.each([1, 56, 42161, 137])('retains a no-receipt proof if its spent-input block reorgs on chain %i', async chainId => {
+  state.chainId = chainId; state.value = { ...pending, chainId }; const saved = state.value
+  getReceipt.mockResolvedValue(null)
+  call.mockImplementation(async () => {
+    state.inputReorg = true
+    return PRIVACY.encodeFunctionResult('nullifiers', [true])
+  })
+  await expect(reconcilePendingWithdrawal(session)).rejects.toThrow('history changed')
+  expect(state.remove).not.toHaveBeenCalled(); expect(state.value).toBe(saved)
+  expect(call.mock.calls[0][0].blockTag).toBe(101)
+  state.inputReorg = false
+  call.mockResolvedValue(PRIVACY.encodeFunctionResult('nullifiers', [true]))
+  await expect(reconcilePendingWithdrawal(session)).resolves.toContain('no longer executable')
+  expect(state.remove).toHaveBeenCalledOnce()
 })
 
 it('preserves both original proofs when only the independent legacy fee input is spent', async () => {

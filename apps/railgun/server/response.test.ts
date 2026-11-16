@@ -43,6 +43,37 @@ it('retains nested hex revert data but discards arbitrary error objects and stri
   expect(await invalid.json()).toEqual({ jsonrpc: '2.0', id: 'wallet-1', error: { code: -32000, message: 'Trusted RPC rejected the request.' } })
 })
 
+it.each(['eth_call', 'eth_estimateGas'])('retains nested revert classification for actual ethers %s errors', async method => {
+  const data = '0x08c379a0' + AbiCoder.defaultAbiCoder().encode(['string'], ['RailgunSmartWallet: Gas price too low']).slice(2)
+  const response = await clean({ code: -32603, message: `Internal JSON-RPC error at ${secret}`,
+    data: { originalError: { message: `execution reverted via ${secret}`, data, stack: secret } } })
+  const body = await response.json()
+  expect(body).toEqual({ jsonrpc: '2.0', id: 'wallet-1', error: { code: -32603, message: 'execution reverted', data } })
+  expect(JSON.stringify(body)).not.toContain(secret)
+  const provider = new JsonRpcProvider(undefined, 42161, { staticNetwork: true })
+  const error = provider.getRpcError({ jsonrpc: '2.0', id: 1, method, params: [{ to: '0x' + '11'.repeat(20) }] }, body as any)
+  expect(error).toMatchObject({ code: 'CALL_EXCEPTION', data, reason: 'RailgunSmartWallet: Gas price too low' })
+  provider.destroy()
+})
+
+it.each(['data', 'error', 'originalError'])('classifies only bounded supported nested %s error fields', async key => {
+  const recognized = { code: -32603, message: secret, [key]: { message: `nonce too low; ${secret}` } }
+  const body = await (await clean(recognized)).json()
+  expect(body).toMatchObject({ error: { code: -32603, message: 'nonce too low' } })
+  const provider = new JsonRpcProvider(undefined, 42161, { staticNetwork: true })
+  expect(provider.getRpcError({ jsonrpc: '2.0', id: 1, method: 'eth_estimateGas', params: [{}] }, body as any))
+    .toMatchObject({ code: 'NONCE_EXPIRED' })
+  provider.destroy()
+  let nested: Record<string, unknown> = { message: `nonce too low ${secret}` }
+  for (let i = 0; i < 5; i++) nested = { [key]: nested }
+  for (const detail of [{ code: -32603, diagnostic: recognized[key] }, { code: -32603, ...nested },
+    { code: -32603, [key]: { message: `${'x'.repeat(2048)}nonce too low ${secret}` } }]) {
+    const unknown = await (await clean(detail)).json()
+    expect(unknown).toMatchObject({ error: { code: -32603, message: 'Trusted RPC rejected the request.' } })
+    expect(JSON.stringify(unknown)).not.toContain(secret)
+  }
+})
+
 it('preserves batch successes and error codes without forwarding outer diagnostics', async () => {
   const response = await publicRpcResponse(Response.json([
     { jsonrpc: '2.0', id: 1, result: '0x1234', debug: secret },

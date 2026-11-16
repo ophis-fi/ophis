@@ -7,7 +7,7 @@ import { alchemyCU } from '../rpc-policy'
 
 const databases: DatabaseSync[] = []
 afterEach(() => { databases.splice(0).forEach(db => db.close()); vi.unstubAllGlobals(); vi.useRealTimers() })
-function fixture() {
+function fixture(finalized = B.fromBlock + 249_999) {
   const db = new DatabaseSync(':memory:'); databases.push(db)
   const setAlarm = vi.fn(async () => {})
   const storage = { setAlarm, sql: { exec(query: string, ...params: unknown[]) {
@@ -18,7 +18,7 @@ function fixture() {
   } } as unknown as DurableObjectStorage
   const env = { RAILGUN_RPC_ENABLED: 'true', RAILGUN_BASE_ALCHEMY_EXTENDED: 'true',
     RAILGUN_BASE_RPC_URL: 'https://base-mainnet.g.alchemy.com/v2/synthetic-test' } as Env
-  const consume = vi.fn(() => ({ allowed: true })), finalized = B.fromBlock + 249_999
+  const consume = vi.fn(() => ({ allowed: true }))
   const fetch = vi.fn(async (_url: unknown, options?: RequestInit) => {
     expect(options?.redirect).toBe('manual')
     const { method, params } = JSON.parse(String(options?.body))
@@ -68,6 +68,69 @@ it('preserves pending warmup across restart and never exposes staged pages', asy
   expect(f.fetch.mock.calls.filter(([, options]) => JSON.parse(String(options?.body)).method === 'eth_getLogs')).toHaveLength(3)
 })
 
+it('resumes a 168-page cold scan after the UTC daily allowance resets without rereading completed pages', async () => {
+  vi.useFakeTimers(); vi.setSystemTime(new Date('2026-11-16T12:00:00Z'))
+  const f = fixture(B.fromBlock + 168 * B.width - 1)
+  await f.cache.manifest()
+  for (let index = 0; index < 84; index++) await f.cache.alarm()
+  const before = f.fetch.mock.calls.length
+  const saved = JSON.parse(String(f.db.prepare('SELECT body FROM base_history_state WHERE id=1').get()?.body))
+  expect(saved.job.pages).toHaveLength(166)
+  expect(saved.retryAt).toBe(Date.parse('2026-11-17T00:00:00Z'))
+  expect(await f.restart().manifest()).toBeUndefined()
+  await f.restart().alarm()
+  expect(f.fetch).toHaveBeenCalledTimes(before)
+  expect(f.db.prepare('SELECT cu FROM base_history_usage WHERE day=?').get('history:2026-11-16')?.cu).toBeLessThanOrEqual(10_000)
+  vi.setSystemTime(new Date('2026-11-17T00:00:01Z'))
+  const restarted = f.restart(); await restarted.alarm()
+  const manifest = await restarted.manifest()
+  expect((await validateHistoryManifest(manifest)).pages).toHaveLength(168)
+  const pages = f.fetch.mock.calls.map(([, options]) => JSON.parse(String(options?.body)))
+    .filter(request => request.method === 'eth_getLogs')
+  expect(pages).toHaveLength(168)
+  expect(new Set(pages.map(request => request.params[0].fromBlock)).size).toBe(168)
+})
+
+it('retains progress on shared-budget refusal but discards it if the resumed anchor is no longer canonical', async () => {
+  vi.useFakeTimers(); vi.setSystemTime(new Date('2026-11-16T12:00:00Z'))
+  const f = fixture(), original = f.fetch.getMockImplementation()!
+  await f.cache.manifest(); await f.cache.alarm()
+  f.consume.mockReturnValue({ allowed: false })
+  await f.cache.alarm()
+  const readState = () => JSON.parse(String(f.db.prepare('SELECT body FROM base_history_state WHERE id=1').get()?.body))
+  expect(readState().job.pages).toHaveLength(2)
+  const calls = f.fetch.mock.calls.length
+  await f.restart().alarm()
+  expect(f.fetch).toHaveBeenCalledTimes(calls)
+  vi.setSystemTime(Date.now() + B.refreshMs)
+  f.consume.mockReturnValue({ allowed: true })
+  f.fetch.mockImplementation(async (url, options) => {
+    const request = JSON.parse(String(options?.body)), value = await (await original(url, options)).json() as { result: any }
+    if (request.method === 'eth_getBlockByNumber') value.result.hash = id('changed anchor')
+    return Response.json(value)
+  })
+  await f.restart().alarm()
+  expect(readState().job).toBeUndefined()
+  expect(await f.restart().manifest()).toBeUndefined()
+  expect(f.db.prepare('SELECT COUNT(*) AS count FROM base_history_parts').get()?.count).toBe(0)
+  expect(f.fetch.mock.calls.filter(([, options]) => JSON.parse(String(options?.body)).method === 'eth_getLogs')).toHaveLength(3)
+})
+
+it('re-arms a persisted budget pause after the alarm write fails, without another RPC attempt', async () => {
+  vi.useFakeTimers(); vi.setSystemTime(new Date('2026-11-16T12:00:00Z'))
+  const f = fixture()
+  await f.cache.manifest(); await f.cache.alarm()
+  f.db.prepare('UPDATE base_history_usage SET cu=9990 WHERE day=?').run('history:2026-11-16')
+  f.setAlarm.mockRejectedValueOnce(new Error('synthetic alarm write failure'))
+  await expect(f.cache.alarm()).rejects.toThrow('alarm write failure')
+  const calls = f.fetch.mock.calls.length
+  await f.restart().alarm()
+  expect(f.setAlarm).toHaveBeenLastCalledWith(Date.parse('2026-11-17T00:00:00Z'))
+  expect(f.fetch).toHaveBeenCalledTimes(calls)
+  const state = JSON.parse(String(f.db.prepare('SELECT body FROM base_history_state WHERE id=1').get()?.body))
+  expect(state.job.pages).toHaveLength(2)
+})
+
 it.each(['canonical-anchor', 'oversized-page', 'wrong-chain', 'budget', 'redirect'])('does not publish or retry silently after %s failure', async reason => {
   const f = fixture(), original = f.fetch.getMockImplementation()!
   f.fetch.mockImplementation(async (url, options) => {
@@ -86,7 +149,7 @@ it.each(['canonical-anchor', 'oversized-page', 'wrong-chain', 'budget', 'redirec
   const calls = f.fetch.mock.calls.length, alarms = f.setAlarm.mock.calls.length
   await f.restart().manifest()
   await f.restart().alarm()
-  expect(f.fetch).toHaveBeenCalledTimes(calls); expect(f.setAlarm).toHaveBeenCalledTimes(alarms)
+  expect(f.fetch).toHaveBeenCalledTimes(calls); expect(f.setAlarm).toHaveBeenCalledTimes(alarms + (reason === 'budget' ? 1 : 0))
   if (reason === 'budget') expect(f.fetch).not.toHaveBeenCalled()
 })
 

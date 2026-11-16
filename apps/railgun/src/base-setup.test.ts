@@ -76,6 +76,25 @@ it('never reuses a delegated account after a restore without its local setup jou
   await expect(requireBaseExecutionSetup(f.session, f.account.address)).rejects.toThrow('Prepare this Base execution account')
 })
 
+it('locks legacy confirmation through its RPC and write so it cannot overwrite used state', async () => {
+  const f = await fixture(), setup = await f.prepare()
+  await submitBaseExecutionSetup(f.session, f.signer, setup)
+  f.ready(); await checkBaseExecutionSetup(f.session)
+  let entered!: () => void, release!: () => void
+  const reached = new Promise<void>(resolve => { entered = resolve })
+  const waiting = new Promise<void>(resolve => { release = resolve })
+  const original = f.provider.getTransaction
+  f.provider.getTransaction = async () => { entered(); await waiting; return original() }
+  const checking = checkBaseExecutionSetup(f.session)
+  await reached
+  const marking = await markBaseExecutionSetupUsed(f.session, f.account.address).then(() => 'overlapped', error => error.message)
+  release(); await checking
+  expect(marking).toContain('already in progress')
+  await markBaseExecutionSetupUsed(f.session, f.account.address)
+  await checkBaseExecutionSetup(f.session)
+  expect(await savedBaseExecutionSetup(f.session)).toMatchObject({ confirmed: true, used: true })
+})
+
 it('journals before disclosure and does not repeat an unknown wallet submission', async () => {
   const f = await fixture(), setup = await f.prepare()
   vi.mocked(f.signer.sendTransaction).mockImplementation(async () => {

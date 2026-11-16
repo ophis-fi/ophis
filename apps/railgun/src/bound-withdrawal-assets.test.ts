@@ -52,13 +52,18 @@ async function setup(chainId = 56) {
       call: async () => `0x${'19'.padStart(64, '0')}` } } as unknown as WalletSession
   return { config, token, selected, session }
 }
+function prepaidFor(selected: Awaited<ReturnType<typeof setup>>['selected']): PreparedCredit {
+  return { scope: { token: selected.tokenAddress, recipient: selected.railgunAddress }, selected,
+    rate: 1_150_000_000_000_000_000n, collectionAllowance: 100n, maximumGasPrice: 100n,
+    maximumGasCost: 1_000_000_000n, maximumCharge: 2_000_000_000n } as PreparedCredit
+}
 
-it.each([1, 42161, 137, 56, 8453])('prepares a registered ERC20 exit on chain %s without reducing principal for its wrapped-native fee', async (chainId) => {
+it.each([1, 42161, 137, 56])('prepares a registered ERC20 exit on chain %s without reducing principal for its wrapped-native fee', async (chainId) => {
   const { config, token, selected, session } = await setup(chainId)
   const { prepareUnshield } = await import('./unshield')
   const { ADAPT } = await import('./execution')
   const prepared = await prepareUnshield(session, token, '', recipient, selected, true)
-  expect(state.baseSetup).toHaveBeenCalledTimes(chainId === 8453 ? 1 : 0)
+  expect(state.baseSetup).not.toHaveBeenCalled()
   expect(prepared.kind).toBe('TX7702')
   if (prepared.kind !== 'TX7702') throw new Error('Expected bound exit')
   expect(prepared.token).toBe(customToken.toLowerCase())
@@ -77,8 +82,33 @@ it('stops Base withdrawal preparation before fee estimation when account setup i
   const { token, selected, session } = await setup(8453)
   state.baseSetup.mockRejectedValue(new Error('Prepare this Base execution account'))
   const { prepareUnshield } = await import('./unshield')
-  await expect(prepareUnshield(session, token, '', recipient, selected, true)).rejects.toThrow('execution account')
+  await expect(prepareUnshield(session, token, '', recipient, selected, true, false, prepaidFor(selected))).rejects.toThrow('execution account')
   expect(state.estimate).not.toHaveBeenCalled()
+})
+
+it.each(['WETH', 'USDC'] as const)('keeps Base %s on the prepaid bound path including same-token exits', async token => {
+  const { config, selected, session } = await setup(8453)
+  const { prepareUnshield } = await import('./unshield')
+  const asset = config.tokenFor(token), principal = 10n ** BigInt(asset.decimals)
+  state.balances.set(config.tokenFor('WETH').address.toLowerCase(), 0n)
+  state.balances.set(asset.address.toLowerCase(), principal)
+  const prepaid = prepaidFor(selected)
+  const prepared = await prepareUnshield(session, token, '', recipient, selected, true, false, prepaid)
+  expect(prepared.kind).toBe('TX7702')
+  expect(prepared.prepaid).toBe(prepaid)
+  expect(prepared.feeToken).toBe('WETH')
+  expect(prepared.amounts[0].amount).toBe(principal)
+  expect(state.baseSetup).toHaveBeenCalledOnce()
+  expect(state.estimate.mock.calls[0][10]).toBeUndefined()
+  expect(state.estimate.mock.calls[0][11]).toBe(true)
+})
+
+it.each(['WETH', 'USDC'] as const)('refuses an unqualified legacy Base %s withdrawal before estimating or proving', async token => {
+  const { selected, session } = await setup(8453)
+  const { prepareUnshield } = await import('./unshield')
+  await expect(prepareUnshield(session, token, '', recipient, selected, true)).rejects.toThrow('Base withdrawals require approved prepaid fee credit')
+  expect(state.estimate).not.toHaveBeenCalled()
+  expect(state.baseSetup).not.toHaveBeenCalled()
 })
 
 it('reserves the exact fee from a native BNB Max exit and signs exact positive unwrap and output amounts', async () => {
@@ -184,8 +214,13 @@ async function signedRecord(native = true, chainId = 56,
   ] } as unknown as TransactionReceipt
   const delegateCode = '0x6001600055'
   const provider = { getNetwork: vi.fn(async () => ({ chainId: BigInt(chainId) })),
+    send: async (method: string, params: unknown[]): Promise<unknown> => {
+      expect(method).toBe('eth_getBlockByNumber'); expect(params[1]).toBe(false)
+      const block = await provider.getBlock(params[0] === 'finalized' ? 'finalized' : Number(BigInt(String(params[0]))))
+      return { ...block, number: `0x${block.number.toString(16)}` }
+    },
     getBlock: vi.fn(async (tag: string | number) => ({ number: typeof tag === 'number' ? tag : 103,
-      hash: `0x${(tag === 102 ? '55' : '66').repeat(32)}` })),
+      hash: `0x${(tag === 102 ? '55' : '66').repeat(32)}`, parentHash: `0x${'55'.repeat(32)}` })),
     getTransaction: vi.fn(async () => ({ hash, to: owner.address, from: recipient, data, value: 0n, blockNumber: 102 })),
     getCode: vi.fn(async (address: string) => address.toLowerCase() === owner.address.toLowerCase()
       ? `0xef0100${config.CONFIG.relayAdapt7702Contract.slice(2).toLowerCase()}` : delegateCode),

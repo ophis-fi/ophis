@@ -59,11 +59,12 @@ export async function refreshReorgedBaseHistoryReceipts(session: WalletSession, 
 }
 export function clearBaseHistoryReceipts(session: WalletSession, expected: readonly HistoryReceipt[]): Promise<void> {
   return serialized(async () => {
+    if (persistenceFailed || unsaved.size)
+      throw new Error('The Base confirmation could not be saved. Keep this page and its transaction record; repair storage before refreshing.')
     if (JSON.stringify(await read(session)) !== JSON.stringify(expected))
       throw new Error('A newer Base confirmation is still synchronizing. Keep the saved transaction and refresh balances.')
-    if (expected.length) {
-      try { await deletePrivateState(session, key) }
-      catch (error) { persistenceFailed = true; throw error }
-    }
+    // Failed cleanup leaves already durable receipts available for another
+    // verification/cleanup attempt; only failed saves can lose new evidence.
+    if (expected.length) await deletePrivateState(session, key)
   })
 }

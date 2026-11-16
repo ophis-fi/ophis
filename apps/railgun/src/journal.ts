@@ -5,6 +5,7 @@ import { assertReceipt, assertPrivateOutput, PRIVACY, ADAPT } from './execution'
 import { deletePrivateState, readPrivateState, writePrivateState } from './storage'
 import { syncWallet, type WalletSession } from './wallet'
 import { assertBaseReceiptFinality } from './base-finality'
+import { assertCanonicalReceipt } from './receipt-canonical'
 
 export interface PendingSwap {
   chainId?: number
@@ -159,7 +160,7 @@ export async function reconcilePendingSwap(
   if (CHAIN_ID === 8453) {
     await syncWallet(session, receipt)
     await assertBaseReceiptFinality(session, receipt)
-  }
+  } else await assertCanonicalReceipt(session.provider, receipt)
   await fullWalletForID(session.info.id).setEphemeralKeyIndexIfGreater(CHAIN, pending.index + 1)
   await deletePrivateState(session, 'pendingSwap')
   return recovered

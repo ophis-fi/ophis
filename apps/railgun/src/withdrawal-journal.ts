@@ -1,6 +1,6 @@
 import { CHAIN, CHAIN_ID, isTokenSymbol, CONFIG, NATIVE_SYMBOL, TOKENS, tokenFor, PILOT_WITHDRAWAL_RECIPIENT, WRAPPED_SYMBOL, type TokenSymbol } from './config'
 import { fullWalletForID, getWalletTransactionHistory } from '@railgun-community/wallet'
-import { authorizationify, Contract, formatUnits, getAddress, Interface, type JsonRpcSigner, type TransactionReceipt } from 'ethers'
+import { authorizationify, Contract, formatUnits, getAddress, Interface, isHexString, ZeroHash, type JsonRpcSigner, type TransactionReceipt } from 'ethers'
 import { assertBaseReceiptFinality } from './base-finality'
 import { RelayAdapt7702ExecutionType } from '@railgun-community/engine'
 import { ADAPT, assertAuthorization, assertAtomicWithdrawal, assertBoundWithdrawal, assertNativeExecutionBinding, assertReceipt, withdrawalOutput, PRIVACY } from './execution'
@@ -8,6 +8,7 @@ import { deletePrivateState, readPrivateState, writePrivateState } from './stora
 import { syncWallet, type WalletSession } from './wallet'
 import { assertPublicNetwork } from './shield'
 import { feeTokenFor } from './fee-asset'
+import { assertCanonicalReceipt } from './receipt-canonical'
 
 export interface PendingWithdrawal {
   chainId?: number
@@ -248,13 +249,13 @@ export async function reconcilePendingWithdrawal(session: WalletSession, knownRe
     if (CHAIN_ID === 8453) {
       await syncWallet(session, receipt)
       await assertBaseReceiptFinality(session, receipt)
-    }
+    } else await assertCanonicalReceipt(session.provider, receipt)
     if (pending.execution)
       await fullWalletForID(session.info.id).setEphemeralKeyIndexIfGreater(CHAIN, pending.execution.index + 1)
     await deletePrivateState(session, 'pendingWithdrawal')
     return `Withdrawal confirmed: ${hash}`
   }
-  const spent = await withdrawalInputStates(session, pending)
+  const { spent, anchor } = await withdrawalInputStates(session, pending, CHAIN_ID !== 8453)
   let offset = 0
   const proofsDead: boolean[] = [...withdrawalTransactions(pending)].map((tx) => {
     const dead = spent.slice(offset, offset + tx.nullifiers.length).some(Boolean)
@@ -265,6 +266,7 @@ export async function reconcilePendingWithdrawal(session: WalletSession, knownRe
     throw new Error(`Withdrawal inputs were spent without a confirmed recipient output. The complete saved proof is preserved.${pending.execution ? ` Check recovery account ${pending.execution.index} (${pending.execution.account}); invalidate its authorization before clearing.` : ' Remaining principal proofs must be recovered before clearing.'}`)
   if (proofsDead.every(Boolean)) {
     if (CHAIN_ID === 8453) throw new Error('Base withdrawal inputs were spent, but their complete history is not confirmed. Keep the saved withdrawal and check its receipt again.')
+    await assertCanonicalReceipt(session.provider, anchor!)
     await deletePrivateState(session, 'pendingWithdrawal')
     return 'Saved withdrawal proof is no longer executable: an input was spent. Check wallet history for the actual outcome; this does not confirm the requested output.'
   }
@@ -274,17 +276,29 @@ export async function reconcilePendingWithdrawal(session: WalletSession, knownRe
 }
 
 export async function withdrawalInputsSpent(session: WalletSession, pending: PendingWithdrawal): Promise<boolean> {
-  return (await withdrawalInputStates(session, pending)).some(Boolean)
+  return (await withdrawalInputStates(session, pending)).spent.some(Boolean)
 }
 
-async function withdrawalInputStates(session: WalletSession, pending: PendingWithdrawal): Promise<boolean[]> {
+async function withdrawalInputStates(session: WalletSession, pending: PendingWithdrawal, pinCanonical = false):
+  Promise<{ spent: boolean[]; anchor?: { blockNumber: number; blockHash: string } }> {
   const inputs = withdrawalInputs(pending)
-  const confirmedBlock = Math.max(0, (await session.provider.getBlockNumber()) - 1)
+  let anchor: { blockNumber: number; blockHash: string } | undefined
+  let confirmedBlock: number
+  if (pinCanonical) {
+    // The latest header provides the exact parent hash without a separate read.
+    // Recheck that parent only if these nullifier reads would delete the proof.
+    const latest = await session.provider.getBlock('latest')
+    if (!latest || !Number.isSafeInteger(latest.number) || latest.number < 1 ||
+      !isHexString(latest.parentHash, 32) || latest.parentHash === ZeroHash)
+      throw new Error('Withdrawal confirmation evidence is unavailable. Keep the saved withdrawal.')
+    confirmedBlock = latest.number - 1
+    anchor = { blockNumber: confirmedBlock, blockHash: latest.parentHash }
+  } else confirmedBlock = Math.max(0, (await session.provider.getBlockNumber()) - 1)
   const proxy = new Contract(CONFIG.proxyContract, PRIVACY, session.provider)
   const spent: boolean[] = await Promise.all(
     inputs.map((input) => proxy.getFunction('nullifiers')(input.tree, input.nullifier, { blockTag: confirmedBlock })),
   )
-  return spent
+  return { spent, anchor }
 }
 
 export function publicWithdrawalResumeBlocked(pending: PendingWithdrawal | undefined,
