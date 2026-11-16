@@ -32,6 +32,16 @@ async function fixture() {
     getFeeData: async () => ({ maxFeePerGas: 100n, maxPriorityFeePerGas: 1n }),
     estimateGas: vi.fn(async () => 50_000n),
     getTransaction: async () => chain.tx, getTransactionReceipt: async () => chain.receipt,
+    send: vi.fn(async (method: string, params: unknown[]): Promise<unknown> => {
+      if (method === 'eth_getBlockByNumber') {
+        const block = await provider.getBlock(params[0] === 'latest' || params[0] === 'finalized' ? params[0] : Number(BigInt(String(params[0]))))
+        return { ...block, number: `0x${block.number.toString(16)}` }
+      }
+      if (method === 'eth_getCode') return provider.getCode()
+      if (method === 'eth_getTransactionCount') return `0x${(await provider.getTransactionCount(params[0] as string)).toString(16)}`
+      expect(method).toBe('eth_call')
+      return provider.call(params[0] as { to: string })
+    }),
   }
   const signer = { provider, getAddress: async () => payer.address, sendTransaction: vi.fn(async (tx: any) => {
     chain.tx = { ...tx, from: payer.address, hash: id('setup'), blockHash: id('block'), blockNumber: 100 }
@@ -190,7 +200,24 @@ async function fundedFixture() {
       : abi.encodeFunctionResult('nonce', [typeof request.blockTag === 'number' && request.blockTag <= chain.finalized ? chain.finalizedExecuteNonce ?? chain.executeNonce : chain.executeNonce]),
     getFeeData: async () => ({ maxFeePerGas: 100n, maxPriorityFeePerGas: 10n }),
     estimateGas: vi.fn(async () => 21_000n),
-    send: vi.fn(async (method: string) => method === 'eth_estimateGas' ? '0x5208' : `0x${100n.toString(16).padStart(64, '0')}`),
+    send: vi.fn(async (method: string, params: unknown[]): Promise<unknown> => {
+      if (method === 'eth_estimateGas') return '0x5208'
+      if (method === 'eth_getBlockByNumber') {
+        const header = await provider.getBlock(params[0] === 'latest' || params[0] === 'finalized' ? params[0] : Number(BigInt(String(params[0]))))
+        return { ...header, number: `0x${header.number.toString(16)}`, baseFeePerGas: `0x${header.baseFeePerGas.toString(16)}` }
+      }
+      const selector = params[1] as { blockHash?: string; requireCanonical?: boolean } | string
+      const selected = typeof selector === 'object'
+        ? [chain.finalized, chain.latest, chain.latest - 1, 99, 100, 110].find(number => block(number).hash === selector.blockHash) : selector
+      if (typeof selector === 'object') { expect(selector.requireCanonical).toBe(true); expect(selected).toBeDefined() }
+      if (method === 'eth_getCode') return provider.getCode(params[0] as string)
+      if (method === 'eth_getTransactionCount') return `0x${(await provider.getTransactionCount(params[0] as string, selected)).toString(16)}`
+      if (method === 'eth_getBalance') return `0x${(await provider.getBalance(params[0] as string)).toString(16)}`
+      expect(method).toBe('eth_call')
+      const request = params[0] as { to: string }
+      if (request.to === account.address || request.to === CONFIG.railgunRegistryContract) return provider.call({ ...request, blockTag: selected })
+      return `0x${100n.toString(16).padStart(64, '0')}`
+    }),
     getTransaction: async (hash: string) => chain.txs.get(hash) ?? null,
     getTransactionReceipt: async (hash: string) => chain.receipts.get(hash) ?? null,
     broadcastTransaction: vi.fn(async (raw: string) => {
@@ -511,7 +538,7 @@ it('retires a missing-hash request only after finalized payer progress and canon
   const getBlock = f.provider.getBlock
   const blockSpy = vi.spyOn(f.provider, 'getBlock').mockImplementation(async tag => ({ ...await getBlock(tag),
     ...(tag === f.chain.finalized ? { hash: id('changed finalized anchor') } : {}) }))
-  await expect(checkBaseExecutionSetup(f.session)).rejects.toThrow('transaction hash')
+  await expect(checkBaseExecutionSetup(f.session)).rejects.toThrow('history changed')
   blockSpy.mockRestore()
   await expect(checkBaseExecutionSetup(f.session)).resolves.toEqual({ ready: false, stage: 'cancelled', lateFundingPossible: true })
   expect(await savedBaseExecutionSetup(f.session)).toMatchObject({ retired: true, cancelled: true })
@@ -565,3 +592,237 @@ it('does not retire a dropped hash merely because the stale reviewed nonce advan
   f.chain.payerNonce = 9
   await expect(checkBaseExecutionSetup(f.session)).resolves.toMatchObject({ stage: 'cancelled', lateFundingPossible: true })
 })
+
+it.each(['payer-nonce', 'account-nonce', 'code', 'balance'])('does not retire funding using branch B %s between branch A headers', async field => {
+  const f = await fundedFixture(), review = await f.prepare()
+  await submitBaseExecutionSetup(f.session, f.signer, review)
+  f.chain.receipts.clear(); f.chain.txs.clear(); f.chain.balance = 0n; f.chain.payerNonce++
+  const saved = await savedBaseExecutionSetup(f.session), send = f.provider.send.getMockImplementation()!
+  const method = field.includes('nonce') ? 'eth_getTransactionCount' : field === 'code' ? 'eth_getCode' : 'eth_getBalance'
+  const address = field === 'payer-nonce' ? f.payer.address : f.account.address
+  f.provider.send.mockImplementation(async (name, params) => {
+    if (name === method && params[0] === address && typeof params[1] === 'object')
+      return field === 'payer-nonce' ? '0x5' : field === 'code' ? '0x6000' : '0x1'
+    return send(name, params)
+  })
+  await expect(checkBaseExecutionSetup(f.session)).rejects.toThrow()
+  expect(await savedBaseExecutionSetup(f.session)).toEqual(saved)
+  expect(f.signer.sendTransaction).toHaveBeenCalledOnce(); expect(f.accountSigner).not.toHaveBeenCalled()
+})
+
+it.each(['finalized-nonce', 'latest-nonce', 'finalized-code', 'latest-code', 'balance', 'payer-code', 'execution-nonce'])(
+  'does not authorize recovery using branch B %s between branch A headers', async field => {
+    const f = await fundedFixture()
+    if (field === 'execution-nonce') { await f.prepared(); await markBaseExecutionSetupUsed(f.session, f.account.address); f.chain.executeNonce = 1n }
+    else await f.fund()
+    const saved = await savedBaseExecutionSetup(f.session), signatures = f.accountSigner.mock.calls.length
+    const send = f.provider.send.getMockImplementation()!
+    f.provider.send.mockImplementation(async (method, params) => {
+      const selector = params[1] as { blockHash?: string }
+      if (typeof selector === 'object') {
+        const final = selector.blockHash === id(`block${f.chain.finalized}`)
+        const target = params[0] === f.account.address
+        if (field.endsWith('-nonce') && field !== 'execution-nonce' && target && method === 'eth_getTransactionCount' &&
+          (field.startsWith('finalized') ? final : !final)) return '0x1'
+        if (field.endsWith('-code') && field !== 'payer-code' && target && method === 'eth_getCode' &&
+          (field.startsWith('finalized') ? final : !final)) return '0x6000'
+        if (field === 'balance' && target && method === 'eth_getBalance') return '0x0'
+        if (field === 'payer-code' && params[0] === f.payer.address && method === 'eth_getCode') return '0x6000'
+        if (field === 'execution-nonce' && method === 'eth_call' && (params[0] as { to: string }).to === f.account.address)
+          return `0x${'0'.repeat(64)}`
+      }
+      return send(method, params)
+    })
+    await expect(prepareBaseSetupRefund(f.session)).rejects.toThrow()
+    expect(await savedBaseExecutionSetup(f.session)).toEqual(saved)
+    expect(f.accountSigner).toHaveBeenCalledTimes(signatures)
+  },
+)
+
+it.each(['confirmed', 'failed', 'superseded'])('retains the unconfirmed refund when the %s finality anchor changes', async outcome => {
+  const f = await fundedFixture(); await f.fund()
+  if (outcome === 'superseded') await submitFundedBaseExecutionSetup(f.session)
+  const review = await prepareBaseSetupRefund(f.session)
+  await submitBaseSetupRefund(f.session, review)
+  f.mine(f.chain.broadcasts[outcome === 'superseded' ? 0 : f.chain.broadcasts.length - 1], outcome === 'failed' ? 0 : 1)
+  const saved = await savedBaseExecutionSetup(f.session), send = f.provider.send.getMockImplementation()!
+  f.provider.send.mockImplementation(async (method, params) => method === 'eth_getBlockByNumber' && params[0] === '0xc8'
+    ? { number: '0xc8', hash: id('replaced finality anchor') } : send(method, params))
+  await expect(checkBaseSetupRefund(f.session)).rejects.toThrow(/history changed/)
+  expect(await savedBaseExecutionSetup(f.session)).toEqual(saved)
+})
+
+it('retains the saved refund if the receipt reorgs while reading its remaining balance', async () => {
+  const f = await fundedFixture(); await f.fund()
+  await submitBaseSetupRefund(f.session, await prepareBaseSetupRefund(f.session)); f.mine(f.chain.broadcasts[0])
+  const saved = await savedBaseExecutionSetup(f.session), send = f.provider.send.getMockImplementation()!
+  const balance = f.provider.getBalance
+  let changed = false
+  f.provider.getBalance = async address => { changed = true; return balance(address) }
+  f.provider.send.mockImplementation(async (method, params) => changed && method === 'eth_getBlockByNumber' && params[0] === '0x6e'
+    ? { number: '0x6e', hash: id('replaced return receipt') } : send(method, params))
+  await expect(checkBaseSetupRefund(f.session)).rejects.toThrow(/history changed/)
+  expect(await savedBaseExecutionSetup(f.session)).toEqual(saved)
+})
+
+it('refuses legacy setup confirmation when only numbered reads show the installed delegation', async () => {
+  const f = await fixture(); await submitBaseExecutionSetup(f.session, f.signer, await f.prepare()); f.ready()
+  const saved = await savedBaseExecutionSetup(f.session), send = f.provider.send.getMockImplementation()!
+  f.provider.send.mockImplementation(async (method, params) => method === 'eth_getTransactionCount' && typeof params[1] === 'object'
+    ? '0x0' : send(method, params))
+  await expect(checkBaseExecutionSetup(f.session)).rejects.toThrow()
+  expect(await savedBaseExecutionSetup(f.session)).toEqual(saved)
+})
+
+it.each(['legacy', 'funded'])('keeps %s funding cancellation pending when hash-pinned account state is not fresh', async kind => {
+  if (kind === 'legacy') {
+    const f = await fixture(); await submitBaseExecutionSetup(f.session, f.signer, await f.prepare())
+    Object.assign(f.chain.tx, { to: f.payer.address, type: 2, authorizationList: undefined })
+    const saved = await savedBaseExecutionSetup(f.session), send = f.provider.send.getMockImplementation()!
+    f.provider.send.mockImplementation(async (method, params) => method === 'eth_getCode' && typeof params[1] === 'object'
+      ? '0x6000' : send(method, params))
+    await expect(checkBaseExecutionSetup(f.session)).rejects.toThrow()
+    expect(await savedBaseExecutionSetup(f.session)).toEqual(saved)
+  } else {
+    const f = await fundedFixture(); await submitBaseExecutionSetup(f.session, f.signer, await f.prepare())
+    Object.assign(f.chain.txs.get(id('funding')), { to: f.payer.address, value: 0n }); f.chain.balance = 0n
+    const saved = await savedBaseExecutionSetup(f.session), send = f.provider.send.getMockImplementation()!
+    f.provider.send.mockImplementation(async (method, params) => method === 'eth_getCode' && params[0] === f.account.address && typeof params[1] === 'object'
+      ? '0x6000' : send(method, params))
+    await expect(checkBaseExecutionSetup(f.session)).rejects.toThrow()
+    expect(await savedBaseExecutionSetup(f.session)).toEqual(saved)
+  }
+})
+
+it.each(['eth_getCode', 'eth_getTransactionCount', 'eth_getBalance', 'eth_call'].flatMap(method =>
+  ['unsupported', 'malformed', 'missing'].map(failure => ({ method, failure }))))(
+  'preserves setup recovery when hash-pinned $method is $failure without a numbered fallback', async ({ method, failure }) => {
+    const f = await fundedFixture(); await f.prepared()
+    const saved = await savedBaseExecutionSetup(f.session), signatures = f.accountSigner.mock.calls.length
+    const broadcasts = [...f.chain.broadcasts], send = f.provider.send.getMockImplementation()!
+    f.provider.send.mockClear().mockImplementation(async (name, params) => {
+      const address = name === 'eth_call' ? (params[0] as { to?: string }).to : params[0]
+      if (name !== method || address !== f.account.address || typeof params[1] !== 'object') return send(name, params)
+      if (failure === 'unsupported') throw new Error('Selector unsupported at https://provider.invalid/synthetic-secret')
+      return failure === 'missing' ? undefined : name === 'eth_getCode' || name === 'eth_call' ? '0x1' : '0x01'
+    })
+    await expect(prepareBaseSetupRefund(f.session)).rejects.toThrow(
+      'Base recovery state could not be verified on its canonical block. Preserve its recovery record.')
+    const targeted = f.provider.send.mock.calls.filter(([name, params]) => name === method &&
+      (name === 'eth_call' ? (params[0] as { to?: string }).to : params[0]) === f.account.address && params[1] !== 'pending')
+    expect(targeted.length).toBeGreaterThan(0)
+    expect(targeted.every(([, params]) => typeof params[1] === 'object' && (params[1] as { requireCanonical: boolean }).requireCanonical)).toBe(true)
+    expect(await savedBaseExecutionSetup(f.session)).toEqual(saved)
+    expect(f.accountSigner).toHaveBeenCalledTimes(signatures); expect(f.chain.broadcasts).toEqual(broadcasts)
+  },
+)
+
+it('refuses an unsafe integer nonce from a pinned recovery read', async () => {
+  const f = await fundedFixture(); await f.fund()
+  const saved = await savedBaseExecutionSetup(f.session), send = f.provider.send.getMockImplementation()!
+  f.provider.send.mockImplementation(async (method, params) => method === 'eth_getTransactionCount' && typeof params[1] === 'object'
+    ? '0x20000000000000' : send(method, params))
+  await expect(prepareBaseSetupRefund(f.session)).rejects.toThrow('could not be verified')
+  expect(await savedBaseExecutionSetup(f.session)).toEqual(saved)
+  expect(f.accountSigner).not.toHaveBeenCalled()
+})
+
+it.each(['confirmation', 'signing'])('uses the pinned setup balance for %s even if unpinned balance is sufficient', async step => {
+  const f = await fundedFixture()
+  if (step === 'signing') await f.fund()
+  else await submitBaseExecutionSetup(f.session, f.signer, await f.prepare())
+  const saved = await savedBaseExecutionSetup(f.session), send = f.provider.send.getMockImplementation()!
+  f.provider.send.mockImplementation(async (method, params) => method === 'eth_getBalance' && params[0] === f.account.address && typeof params[1] === 'object'
+    ? '0x0' : send(method, params))
+  await expect(step === 'signing' ? submitFundedBaseExecutionSetup(f.session) : checkBaseExecutionSetup(f.session)).rejects.toThrow()
+  expect(await savedBaseExecutionSetup(f.session)).toEqual(saved)
+  expect(f.accountSigner).not.toHaveBeenCalled(); expect(f.chain.broadcasts).toEqual([])
+})
+
+it('does not fund a setup against an orphaned quote hidden by cached getBlock', async () => {
+  const f = await fundedFixture(), review = await f.prepare()
+  f.chain.latest = 100
+  const send = f.provider.send.getMockImplementation()!
+  f.provider.send.mockImplementation(async (method, params) => method === 'eth_getBlockByNumber' && params[0] === '0x63'
+    ? { number: '0x63', hash: id('quote was reorged out') } : send(method, params))
+  await expect(submitBaseExecutionSetup(f.session, f.signer, review)).rejects.toThrow(/history changed/)
+  expect(f.signer.sendTransaction).not.toHaveBeenCalled(); expect(state.other.has('baseExecutionSetupsV2')).toBe(false)
+})
+
+it('does not sign while the uncached Base head exceeds the retained fee cap despite cached lower fees', async () => {
+  const f = await fundedFixture(); await f.fund()
+  f.chain.latest = 301; f.chain.baseFee = 91n
+  const block = f.provider.getBlock, send = f.provider.send.getMockImplementation()!
+  f.provider.getBlock = async tag => tag === 'latest' || tag === 300 ? { ...await block(300), baseFeePerGas: 90n } : block(tag)
+  f.provider.send.mockImplementation(async (method, params) => {
+    if (method === 'eth_getBlockByNumber' && params[0] === 'latest') {
+      const header = await block('latest')
+      return { ...header, number: `0x${header.number.toString(16)}`, baseFeePerGas: `0x${header.baseFeePerGas.toString(16)}` }
+    }
+    return send(method, params)
+  })
+  await expect(submitFundedBaseExecutionSetup(f.session)).rejects.toThrow('fees exceed')
+  expect(f.accountSigner).not.toHaveBeenCalled(); expect(f.chain.broadcasts).toEqual([])
+})
+
+it('pins legacy account emptiness before asking the public wallet to submit setup', async () => {
+  const f = await fixture(), reviewed = await f.prepare(), send = f.provider.send.getMockImplementation()!
+  f.provider.send.mockImplementation(async (method, params) => method === 'eth_getCode' && typeof params[1] === 'object'
+    ? '0x6000' : send(method, params))
+  await expect(submitBaseExecutionSetup(f.session, f.signer, reviewed)).rejects.toThrow()
+  expect(state.saved).toBeUndefined(); expect(f.signer.sendTransaction).not.toHaveBeenCalled()
+})
+
+it.each(['cancellation', 'confirmation', 'signing'])('rejects a freshness head older than its %s evidence', async step => {
+  const f = await fundedFixture()
+  if (step === 'signing') await f.fund()
+  else await submitBaseExecutionSetup(f.session, f.signer, await f.prepare())
+  if (step === 'cancellation') { Object.assign(f.chain.txs.get(id('funding')), { to: f.payer.address, value: 0n }); f.chain.balance = 0n }
+  const saved = await savedBaseExecutionSetup(f.session), send = f.provider.send.getMockImplementation()!
+  let heads = 0
+  f.provider.send.mockImplementation(async (method, params) => {
+    if (method === 'eth_getBlockByNumber' && params[0] === 'latest' && ++heads === (step === 'confirmation' ? 3 : 2))
+      return { number: '0x63', hash: id('block99') }
+    return send(method, params)
+  })
+  await expect(step === 'signing' ? submitFundedBaseExecutionSetup(f.session) : checkBaseExecutionSetup(f.session)).rejects.toThrow()
+  expect(await savedBaseExecutionSetup(f.session)).toEqual(saved)
+  expect(f.accountSigner).not.toHaveBeenCalled(); expect(f.chain.broadcasts).toEqual([])
+})
+
+it('repins the funded setup receipt after its delegation check before marking confirmed', async () => {
+  const f = await fundedFixture(); await f.fund(); await submitFundedBaseExecutionSetup(f.session); f.mine(f.chain.broadcasts[0])
+  const saved = await savedBaseExecutionSetup(f.session), send = f.provider.send.getMockImplementation()!
+  let heads = 0, changed = false
+  f.provider.send.mockImplementation(async (method, params) => {
+    if (method === 'eth_getBlockByNumber' && params[0] === 'latest' && ++heads === 3) { f.chain.latest = 301; changed = true }
+    if (changed && method === 'eth_getBlockByNumber' && (params[0] === '0x6e' || params[0] === '0x12c'))
+      return { number: params[0], hash: id('setup confirmation reorg') }
+    return send(method, params)
+  })
+  await expect(checkBaseExecutionSetup(f.session)).rejects.toThrow(/history changed/)
+  expect(await savedBaseExecutionSetup(f.session)).toEqual(saved)
+})
+
+it('retries only retained bytes after an unused provisional setup confirmation is reorged out', async () => {
+  const f = await fundedFixture(); await f.prepared()
+  const original = f.chain.broadcasts[0], hash = Transaction.from(original).hash!
+  f.chain.txs.delete(hash); f.chain.receipts.delete(hash); f.chain.code = '0x'; f.chain.nonce = 0
+  await expect(retrySignedBaseExecutionSetup(f.session)).resolves.toBe(hash)
+  expect(f.chain.broadcasts).toEqual([original, original]); expect(f.accountSigner).toHaveBeenCalledOnce()
+  expect(await savedBaseExecutionSetup(f.session)).toMatchObject({ signedTransaction: original, hash })
+})
+
+it.each(['used', 'pendingSwap', 'pendingWithdrawal', 'preservedWithdrawal', 'nativePrepaidCredit', 'prepaidCredit'])(
+  'does not reactivate a reorged setup while %s preserves disclosed private execution', async pending => {
+    const f = await fundedFixture(); await f.prepared()
+    if (pending === 'used') await markBaseExecutionSetupUsed(f.session, f.account.address)
+    else state.other.set(pending, pending.endsWith('Credit') ? { attempt: {} } : {})
+    const original = f.chain.broadcasts[0], hash = Transaction.from(original).hash!
+    f.chain.txs.delete(hash); f.chain.receipts.delete(hash); f.chain.code = '0x'; f.chain.nonce = 0
+    const saved = await savedBaseExecutionSetup(f.session)
+    await expect(retrySignedBaseExecutionSetup(f.session)).rejects.toThrow()
+    expect(f.chain.broadcasts).toEqual([original]); expect(f.accountSigner).toHaveBeenCalledOnce()
+    expect(await savedBaseExecutionSetup(f.session)).toEqual(saved)
+  },
+)

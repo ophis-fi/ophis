@@ -517,11 +517,12 @@ it('offers the funded local setup after reload but never signs it without explic
   expect(mocks.baseSubmit).not.toHaveBeenCalled()
 })
 
-it('resumes the saved signed setup without another funding payment or signature', async () => {
+it.each([false, true])('offers exact setup recovery even after provisional confirmation: %s', async confirmed => {
   mocks.chainId = 8453
   vi.stubGlobal('window', { ethereum: provider })
   const account = '0x0000000000000000000000000000000000000001'
-  mocks.baseSaved.mockResolvedValue({ version: 2, account, funded: true, signedTransaction: 'private saved bytes' })
+  mocks.baseSaved.mockResolvedValue({ version: 2, account, funded: true, confirmed, signedTransaction: 'private saved bytes' })
+  mocks.pendingCredit.mockResolvedValue({ key: 'settled attempt', completed: true })
   mocks.baseRetry.mockResolvedValue('same saved hash')
   const { wireWalletActions } = await import('./wallet-actions')
   await wireWalletActions({ accounts: { getCurrentAccount: async () => ({ address: account }) } } as unknown as WalletSession)
@@ -532,6 +533,25 @@ it('resumes the saved signed setup without another funding payment or signature'
   expect(mocks.baseSubmit).not.toHaveBeenCalled()
   expect(mocks.baseComplete).not.toHaveBeenCalled()
   expect(elements['base-setup-status'].textContent).not.toContain('private saved bytes')
+})
+
+it.each(['used', 'retired', 'cancelled', 'refund', 'pending-swap', 'preserved', 'pending-credit'])('hides setup retry while %s is unresolved', async kind => {
+  mocks.chainId = 8453
+  mocks.environment = 'mainnet'
+  vi.stubGlobal('window', { ethereum: provider })
+  const account = '0x0000000000000000000000000000000000000001'
+  const saved: Record<string, unknown> = { version: 2, account, funded: true, signedTransaction: 'private saved bytes' }
+  if (['used', 'retired', 'cancelled'].includes(kind)) saved[kind] = true
+  if (kind === 'refund') saved.refund = { confirmed: false }
+  if (kind === 'pending-swap') mocks.pendingSwap.mockResolvedValue({ account, index: 0 })
+  if (kind === 'preserved') mocks.preserved.mockResolvedValue({ token: 'WETH', recipient: account,
+    transaction: { data: withdrawalData(1, 1, account, TOKENS.WETH.address) } })
+  if (kind === 'pending-credit') mocks.pendingCredit.mockResolvedValue({ key: 'saved prepaid attempt' })
+  mocks.baseSaved.mockResolvedValue(saved)
+  const { wireWalletActions } = await import('./wallet-actions')
+  await wireWalletActions({ accounts: { getCurrentAccount: async () => ({ address: account }) } } as unknown as WalletSession)
+  expect(elements['retry-base-setup'].hidden).toBe(true)
+  expect(mocks.baseRetry).not.toHaveBeenCalled()
 })
 
 it('cannot complete setup from a blank invalidated review even if a stale control is clicked', async () => {

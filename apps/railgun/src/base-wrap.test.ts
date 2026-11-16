@@ -1,5 +1,5 @@
 import { beforeEach, expect, it, vi } from 'vitest'
-import { id, Interface, type JsonRpcSigner } from 'ethers'
+import { id, Interface, JsonRpcProvider, ZeroHash, type JsonRpcSigner } from 'ethers'
 import type { WalletSession } from './wallet'
 
 const state = vi.hoisted(() => ({ saved: undefined as unknown, network: vi.fn(), balance: vi.fn() }))
@@ -19,11 +19,17 @@ const weth = new Interface(['function deposit() payable', 'event Deposit(address
 function fixture() {
   const chain = { network: 8453n, code: '0x', blockHash: id('block'), head: 101, finalized: 99,
     tx: undefined as any, receipt: undefined as any }
+  const block = (tag: string | number) => ({ number: typeof tag === 'number' ? tag : tag === 'finalized' ? chain.finalized : chain.head,
+    hash: chain.blockHash })
   const provider = { getNetwork: async () => ({ chainId: chain.network }), getCode: async () => chain.code,
     getTransactionCount: async () => 7,
     getTransaction: async () => chain.tx, getTransactionReceipt: async () => chain.receipt,
-    getBlock: async (tag: string | number) => ({ number: typeof tag === 'number' ? tag : tag === 'finalized' ? chain.finalized : chain.head,
-      hash: chain.blockHash }) }
+    getBlock: async (tag: string | number) => block(tag),
+    send: vi.fn(async (method: string, params: unknown[]): Promise<unknown> => {
+      expect(method).toBe('eth_getBlockByNumber'); expect(params[1]).toBe(false)
+      const header = block(params[0] === 'latest' || params[0] === 'finalized' ? params[0] : Number(BigInt(String(params[0]))))
+      return { ...header, number: `0x${header.number.toString(16)}` }
+    }) }
   const signer = { provider, getAddress: async () => payer, sendTransaction: vi.fn(async (tx: any) => {
     expect(state.saved).toEqual(expect.arrayContaining([expect.objectContaining({ payer, nonce: 7, amount: '123' })]))
     chain.tx = { ...tx, from: payer, hash: id('wrap'), blockHash: id('block'), blockNumber: 100 }
@@ -31,7 +37,7 @@ function fixture() {
     chain.receipt = { hash: id('wrap'), blockHash: id('block'), blockNumber: 100, status: 1, logs: [{ address: wrapped, ...log }] }
     return { hash: id('wrap'), nonce: tx.nonce }
   }) } as unknown as JsonRpcSigner
-  return { chain, signer, session: { provider } as unknown as WalletSession }
+  return { chain, signer, provider, session: { provider } as unknown as WalletSession }
 }
 
 it('only requests a direct public type2 wrap and requires its exact deposit receipt', async () => {
@@ -134,4 +140,48 @@ it('can set an unknown wrap aside without erasing its later recovery or blocking
   await expect(checkBaseWrap(f.session, id('wrap'))).resolves.toMatchObject({ state: 'wrapped' })
   expect(await savedBaseWrap(f.session)).toBeDefined()
   expect(await baseWrapRecords(f.session)).toHaveLength(1)
+})
+
+it.each(['wrapped', 'cancelled', 'failed'])('preserves a %s wrap when actual ethers cached an orphaned receipt block', async outcome => {
+  const f = fixture(); await wrapBaseNative(f.session, f.signer, 123n)
+  if (outcome === 'cancelled') Object.assign(f.chain.tx, { to: payer, value: 0n, data: '0x' })
+  if (outcome === 'failed') f.chain.receipt.status = 0
+  const saved = structuredClone(state.saved), rpc = new JsonRpcProvider(undefined, 8453, { staticNetwork: true })
+  let reorg = false
+  vi.spyOn(rpc, 'send').mockImplementation(async (_method, params) => {
+    const tag = (params as unknown[])[0], number = tag === 'latest' ? 101 : tag === 'finalized' ? 100 : Number(BigInt(String(tag)))
+    return { number: `0x${number.toString(16)}`, hash: number === 100 && reorg ? id('orphan replacement') : id('block'),
+      parentHash: ZeroHash, timestamp: '0x1', nonce: '0x0000000000000000', difficulty: '0x0', gasLimit: '0x1', gasUsed: '0x0',
+      miner: null, extraData: '0x', transactions: [] }
+  })
+  try {
+    await rpc.getBlock(100)
+    reorg = true
+    f.provider.getBlock = async tag => (await rpc.getBlock(tag))! as { number: number; hash: string }
+    f.provider.send.mockImplementation((method, params) => rpc.send(method, params))
+    await expect(checkBaseWrap(f.session)).rejects.toThrow(/canonical|history changed/)
+    expect(state.saved).toEqual(saved)
+    expect(f.signer.sendTransaction).toHaveBeenCalledOnce()
+  } finally { rpc.destroy() }
+})
+
+it.each(['cancelled', 'failed'])('repins the finalized anchor before removing a %s wrap', async outcome => {
+  const f = fixture(); await wrapBaseNative(f.session, f.signer, 123n)
+  if (outcome === 'cancelled') Object.assign(f.chain.tx, { to: payer, value: 0n, data: '0x' })
+  else f.chain.receipt.status = 0
+  f.chain.finalized = 101; f.chain.head = 103
+  const saved = structuredClone(state.saved), send = f.provider.send.getMockImplementation()!
+  f.provider.send.mockImplementation(async (method, params) => params[0] === '0x65'
+    ? { number: '0x65', hash: id('changed finalized branch') } : send(method, params))
+  await expect(checkBaseWrap(f.session)).rejects.toThrow(/history changed/)
+  expect(state.saved).toEqual(saved)
+})
+
+it('keeps a successful wrap if its two-confirmation head changes before cleanup', async () => {
+  const f = fixture(); await wrapBaseNative(f.session, f.signer, 123n)
+  const saved = structuredClone(state.saved), send = f.provider.send.getMockImplementation()!
+  f.provider.send.mockImplementation(async (method, params) => params[0] === '0x65'
+    ? { number: '0x65', hash: id('changed latest head') } : send(method, params))
+  await expect(checkBaseWrap(f.session)).rejects.toThrow(/history changed/)
+  expect(state.saved).toEqual(saved)
 })

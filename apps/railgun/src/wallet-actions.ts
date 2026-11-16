@@ -115,7 +115,7 @@ export async function wireWalletActions(session: WalletSession): Promise<void> {
     const pending = await pendingSwap(session)
     const withdrawal = await pendingWithdrawal(session)
     const preserved = await preservedWithdrawal(session)
-    const nativeCredit = usesPrepaid && nativePrepaid ? await pendingPrepaid(session, 'native') : undefined
+    const nativeCredit = CHAIN_ID === 8453 || usesPrepaid && nativePrepaid ? await pendingPrepaid(session, 'native') : undefined
     const unsupportedWeth = !!withdrawal && canPreserveWethWithdrawal(withdrawal)
     const boundWithdrawal = withdrawal?.execution
     const identity = pending?.account || withdrawal?.recipient
@@ -139,7 +139,8 @@ export async function wireWalletActions(session: WalletSession): Promise<void> {
       element('base-setup-hash-label').hidden = !setup || !!setup.confirmed || !!setup.cancelled || !!identity || setup.version === 2 && !!setup.signedTransaction
       const funded = setup?.version === 2 && !!setup.funded && !setup.signedTransaction && !retired && !setup.cancelled && !identity
       element('complete-base-setup').hidden = !funded
-      element('retry-base-setup').hidden = setup?.version !== 2 || !setup.signedTransaction || !!setup.confirmed || !!retired || !!identity
+      element('retry-base-setup').hidden = setup?.version !== 2 || !setup.signedTransaction || !!setup.used || !!setup.cancelled ||
+        !!setup.refund || !!retired || !!identity || !!preserved || !!nativeCredit?.key && !nativeCredit.completed
       if (!state.baseSetup) {
         element('confirm-base-setup').hidden = true
         element('base-setup-consent-label').hidden = !funded

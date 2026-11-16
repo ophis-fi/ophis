@@ -109,6 +109,29 @@ function probe(provider: string, token?: string): Request {
   })
 }
 
+it.each(['eth_getTransactionCount', 'eth_getBalance', 'eth_getStorageAt'].flatMap(method =>
+  [false, true].map(unsupported => ({ method, unsupported }))))('preserves Base recovery selectors: $method, unsupported $unsupported', async ({ method, unsupported }) => {
+  const selector = { blockHash: `0x${'66'.repeat(32)}`, requireCanonical: true }
+  const params = method === 'eth_getStorageAt' ? [RAILGUN_PROXIES[8453], '0x0', selector] : [RAILGUN_PROXIES[8453], selector]
+  const payload = { jsonrpc: '2.0', id: 7, method, params }
+  const url = 'https://base-mainnet.g.alchemy.com/v2/test-key', reserve = vi.fn().mockReturnValue({ allowed: true })
+  const result = method === 'eth_getStorageAt' ? `0x${'00'.repeat(32)}` : '0x0'
+  const upstream = vi.fn(async (_target: string | URL | Request, init?: RequestInit) => {
+    expect(JSON.parse(String(init?.body)).params).toEqual(params)
+    return Response.json(unsupported ? { jsonrpc: '2.0', id: 7, error: { code: -32602, message: 'Hash selector unsupported' } }
+      : { jsonrpc: '2.0', id: 7, result })
+  })
+  vi.stubGlobal('fetch', upstream)
+  const response = await gateway.fetch(new Request('https://swap.ophis.fi/rpc/8453', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload),
+  }), { ...enabled, VALIDATION_CLOUD_BUDGET: budgetBinding(reserve), RAILGUN_BASE_RPC_URL: url })
+  expect(await response.json()).toEqual(unsupported
+    ? { jsonrpc: '2.0', id: 7, error: { code: -32602, message: 'invalid RPC parameters' } }
+    : { jsonrpc: '2.0', id: 7, result })
+  expect(upstream).toHaveBeenCalledExactlyOnceWith(url, expect.anything())
+  expect(reserve).toHaveBeenCalledExactlyOnceWith([method], 'alchemy')
+})
+
 it.each([undefined, '', 'wrong-secret'])('rejects diagnostic credentials %s before accessing a budget or upstream', async (token) => {
   diagnosticCrypto()
   const env = alchemyEnv()

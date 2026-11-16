@@ -1,9 +1,11 @@
 import { isHexString, toQuantity, ZeroHash, type JsonRpcProvider, type TransactionReceipt } from 'ethers'
 
 /** Terminal rechecks must bypass ethers' short getBlock cache. Ordinary reads retain their cache. */
-export async function readUncachedBlockHeader(provider: Pick<JsonRpcProvider, 'send'>, block: number | 'finalized'):
+export async function readUncachedBlockHeader(provider: Pick<JsonRpcProvider, 'send'>, block: number | 'finalized' | 'latest'):
   Promise<{ number: number; hash: string } | null> {
-  const value = await provider.send('eth_getBlockByNumber', [typeof block === 'number' ? toQuantity(block) : block, false])
+  const value = await provider.send('eth_getBlockByNumber', [typeof block === 'number' ? toQuantity(block) : block, false]).catch(() => {
+    throw new Error('Transaction confirmation evidence is unavailable. Keep the saved private transaction.')
+  })
   if (value === null) return null
   const number = typeof value?.number === 'string' && /^0x[0-9a-f]{1,14}$/i.test(value.number)
     ? Number(BigInt(value.number)) : NaN
