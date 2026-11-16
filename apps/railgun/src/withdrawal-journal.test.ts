@@ -76,6 +76,7 @@ const session = {
   info: { id: 'test-wallet' },
   provider: { getTransactionReceipt: getReceipt, getBlockNumber: async () => 102, call,
     send: async (method: string, params: unknown[]) => {
+      if (method === 'eth_call') return call({ ...(params[0] as object), blockTag: params[1] })
       expect(method).toBe('eth_getBlockByNumber'); expect(params[1]).toBe(false)
       const block = await session.provider.getBlock(params[0] === 'finalized' ? 'finalized' : Number(BigInt(String(params[0]))))
       return { ...block, number: `0x${block!.number.toString(16)}` }
@@ -329,7 +330,7 @@ it('can dismiss a proof only after a saved input is spent at a confirmed block',
   call.mockResolvedValue(PRIVACY.encodeFunctionResult('nullifiers', [true]))
   await expect(reconcilePendingWithdrawal(session)).resolves.toMatch(/no longer executable/)
   expect(state.remove).toHaveBeenCalledOnce()
-  expect(call.mock.calls[0][0].blockTag).toBe(101)
+  expect(call.mock.calls[0][0].blockTag).toEqual({ blockHash: `0x${'66'.repeat(32)}`, requireCanonical: true })
 })
 
 it.each([1, 56, 42161, 137])('retains a no-receipt proof if its spent-input block reorgs on chain %i', async chainId => {
@@ -341,11 +342,55 @@ it.each([1, 56, 42161, 137])('retains a no-receipt proof if its spent-input bloc
   })
   await expect(reconcilePendingWithdrawal(session)).rejects.toThrow('history changed')
   expect(state.remove).not.toHaveBeenCalled(); expect(state.value).toBe(saved)
-  expect(call.mock.calls[0][0].blockTag).toBe(101)
+  expect(call.mock.calls[0][0].blockTag).toEqual({ blockHash: `0x${'66'.repeat(32)}`, requireCanonical: true })
   state.inputReorg = false
   call.mockResolvedValue(PRIVACY.encodeFunctionResult('nullifiers', [true]))
   await expect(reconcilePendingWithdrawal(session)).resolves.toContain('no longer executable')
   expect(state.remove).toHaveBeenCalledOnce()
+})
+
+it.each([1, 56, 42161, 137])('retains a no-receipt proof through an A-B-A reorg during its nullifier read on chain %i', async chainId => {
+  state.chainId = chainId; state.value = { ...pending, chainId }; const saved = state.value
+  const selector = { blockHash: `0x${'66'.repeat(32)}`, requireCanonical: true }
+  let branch = 'A'
+  const reads: unknown[][] = []
+  const numericRead = vi.fn(async () => {
+    branch = 'B'
+    // B has spent this input; A has not. The old height-only read incorrectly
+    // carries B's answer through the final header check after A returns.
+    const result = PRIVACY.encodeFunctionResult('nullifiers', [true])
+    branch = 'A'
+    return result
+  })
+  const rpc = { ...session.provider, call: numericRead, send: async (method: string, params: unknown[]) => {
+    if (method !== 'eth_call') return session.provider.send(method, params)
+    reads.push(params); branch = 'B'
+    try {
+      expect(params[1]).toEqual(selector)
+      throw new Error('Requested block A is not canonical while B is current')
+    } finally { branch = 'A' }
+  } }
+  await expect(reconcilePendingWithdrawal({ ...session, provider: rpc } as unknown as WalletSession)).rejects.toThrow('canonical block')
+  expect(branch).toBe('A'); expect(state.value).toBe(saved); expect(state.remove).not.toHaveBeenCalled()
+  expect(reads).toHaveLength(1); expect(numericRead).not.toHaveBeenCalled()
+})
+
+it.each(['unsupported', 'missing block', 'malformed result', 'non-boolean result'])('preserves the proof when a canonical-hash nullifier read is %s', async failure => {
+  const numericRead = vi.fn(async () => PRIVACY.encodeFunctionResult('nullifiers', [true]))
+  const reads = vi.fn(async (method: string, params: unknown[]) => {
+    if (method !== 'eth_call') return session.provider.send(method, params)
+    expect(params[1]).toEqual({ blockHash: `0x${'66'.repeat(32)}`, requireCanonical: true })
+    if (failure === 'malformed result') return '0x'
+    if (failure === 'non-boolean result') return `0x${'02'.padStart(64, '0')}`
+    throw new Error(`${failure}: https://provider.invalid/synthetic-secret`)
+  })
+  const saved = state.value
+  const result = reconcilePendingWithdrawal({ ...session, provider: { ...session.provider, call: numericRead, send: reads } } as unknown as WalletSession)
+  await expect(result).rejects.toThrow('canonical block')
+  await expect(result).rejects.not.toThrow('synthetic-secret')
+  expect(state.value).toBe(saved); expect(state.remove).not.toHaveBeenCalled(); expect(state.save).not.toHaveBeenCalled()
+  expect(reads.mock.calls.filter(([method]) => method === 'eth_call')).toHaveLength(1)
+  expect(numericRead).not.toHaveBeenCalled()
 })
 
 it('preserves both original proofs when only the independent legacy fee input is spent', async () => {

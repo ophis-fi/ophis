@@ -5,13 +5,14 @@ import {
   type RelayAdapt7702Request,
 } from '@railgun-community/engine'
 import { fullWalletForID } from '@railgun-community/wallet'
-import { Contract, getAddress } from 'ethers'
+import { Contract, getAddress, isHexString, ZeroHash } from 'ethers'
 import { ADAPT, encodeRequest } from './execution'
 import { pendingSwap } from './journal'
 import { pendingWithdrawal } from './withdrawal-journal'
 import { deletePrivateState } from './storage'
 import type { WalletSession } from './wallet'
 import { gasDetails } from './broadcaster'
+import { assertCanonicalReceipt, readUncachedBlockHeader } from './receipt-canonical'
 
 export const CANCELLATION_GAS_LIMIT = 300_000n
 
@@ -107,18 +108,26 @@ export async function cancelPendingSwap(session: WalletSession, acceptLeftovers:
     const receipt = await sent.wait(2)
     if (!receipt || receipt.status !== 1) throw new Error('Cancellation is not confirmed. Keep the pending record.')
   }
-  const finalized = CHAIN_ID === 8453 ? await session.provider.getBlock('finalized') : undefined
-  if (CHAIN_ID === 8453 && !finalized?.hash) throw new Error('Base cancellation must finalize before clearing its pending record.')
-  const confirmedBlock = finalized?.number ?? Number(BigInt(await session.provider.send('eth_blockNumber', []))) - 1
-  if (confirmedBlock < 0 || (await session.provider.getCode(account.address, confirmedBlock)).toLowerCase() !== delegation)
+  const anchor = CHAIN_ID === 8453 ? await readUncachedBlockHeader(session.provider, 'finalized')
+    : await session.provider.getBlock('latest').then(head => head && ({ number: head.number - 1, hash: head.parentHash }))
+  if (!anchor || !Number.isSafeInteger(anchor.number) || anchor.number < 0 || !isHexString(anchor.hash, 32) || anchor.hash === ZeroHash)
+    throw new Error('Cancellation confirmation evidence is unavailable. Keep the pending record.')
+  const selector = { blockHash: anchor.hash, requireCanonical: true }
+  const read = async (method: 'eth_getCode' | 'eth_call', argument: unknown): Promise<string> => {
+    try {
+      const result = await session.provider.send(method, [argument, selector])
+      if (!isHexString(result, method === 'eth_call' ? 32 : true)) throw new Error('Invalid execution state')
+      return result
+    } catch { throw new Error('Cancellation state could not be verified on its canonical block. Keep the pending record.') }
+  }
+  if ((await read('eth_getCode', account.address)).toLowerCase() !== delegation)
     throw new Error('Cancellation needs two confirmations. Keep the pending record.')
-  const advanced: bigint = await new Contract(account.address, ADAPT, session.provider).getFunction('nonce')({
-    blockTag: confirmedBlock,
-  })
+  const advanced: bigint = ADAPT.decodeFunctionResult('nonce', await read('eth_call', {
+    to: account.address, data: ADAPT.encodeFunctionData('nonce'),
+  }))[0]
   if (advanced <= BigInt(pending.executeNonce))
     throw new Error('Old execution authorization is not confirmed invalid. Keep the pending record.')
-  if (finalized && (await session.provider.getBlock(finalized.number))?.hash !== finalized.hash)
-    throw new Error('Base cancellation history changed. Keep the pending record until finality is verified.')
+  await assertCanonicalReceipt(session.provider, { blockNumber: anchor.number, blockHash: anchor.hash })
   await fullWalletForID(session.info.id).setEphemeralKeyIndexIfGreater(CHAIN, pending.index + 1)
   await deletePrivateState(session, withdrawal ? 'pendingWithdrawal' : 'pendingSwap')
   return `Old ${withdrawal ? 'withdrawal' : 'swap'} authorization invalidated. Account ${pending.index} (${pending.account}) remains recoverable; check its balances.`

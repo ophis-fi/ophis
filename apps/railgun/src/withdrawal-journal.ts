@@ -285,8 +285,8 @@ async function withdrawalInputStates(session: WalletSession, pending: PendingWit
   let anchor: { blockNumber: number; blockHash: string } | undefined
   let confirmedBlock: number
   if (pinCanonical) {
-    // The latest header provides the exact parent hash without a separate read.
-    // Recheck that parent only if these nullifier reads would delete the proof.
+    // Pin both the state reads and terminal recheck to this exact parent. A
+    // height-only eth_call can read another branch during an A-B-A reorg.
     const latest = await session.provider.getBlock('latest')
     if (!latest || !Number.isSafeInteger(latest.number) || latest.number < 1 ||
       !isHexString(latest.parentHash, 32) || latest.parentHash === ZeroHash)
@@ -295,9 +295,20 @@ async function withdrawalInputStates(session: WalletSession, pending: PendingWit
     anchor = { blockNumber: confirmedBlock, blockHash: latest.parentHash }
   } else confirmedBlock = Math.max(0, (await session.provider.getBlockNumber()) - 1)
   const proxy = new Contract(CONFIG.proxyContract, PRIVACY, session.provider)
-  const spent: boolean[] = await Promise.all(
-    inputs.map((input) => proxy.getFunction('nullifiers')(input.tree, input.nullifier, { blockTag: confirmedBlock })),
-  )
+  const spent: boolean[] = await Promise.all(inputs.map(async input => {
+    if (!anchor) return proxy.getFunction('nullifiers')(input.tree, input.nullifier, { blockTag: confirmedBlock })
+    try {
+      // Direct send preserves EIP-1898 and bypasses ethers' numeric blockTag
+      // normalization/cache. Unsupported providers must not fall back to height.
+      const result = await session.provider.send('eth_call', [{ to: CONFIG.proxyContract,
+        data: PRIVACY.encodeFunctionData('nullifiers', [input.tree, input.nullifier]) },
+      { blockHash: anchor.blockHash, requireCanonical: true }])
+      if (!isHexString(result, 32) || BigInt(result) > 1n) throw new Error('Invalid nullifier result')
+      return PRIVACY.decodeFunctionResult('nullifiers', result)[0] === true
+    } catch {
+      throw new Error('Withdrawal input state could not be verified on its canonical block. Keep the saved withdrawal.')
+    }
+  }))
   return { spent, anchor }
 }
 

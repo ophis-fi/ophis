@@ -52,12 +52,57 @@ function alchemyEnv(reserve = vi.fn().mockReturnValue({ allowed: true })) {
   return { ...vcEnv(reserve), RAILGUN_ARBITRUM_RPC_URL: alchemyURL, RAILGUN_ARBITRUM_VALIDATION_CLOUD_URL: vcURL }
 }
 
+it.each([false, true])('preserves a canonical block-hash eth_call without replay or numeric fallback (unsupported: %s)', async unsupported => {
+  const selector = { blockHash: `0x${'66'.repeat(32)}`, requireCanonical: true }
+  const payload = { jsonrpc: '2.0', id: 7, method: 'eth_call', params: [{ to: RAILGUN_PROXIES[42161], data: '0x12345678' }, selector] }
+  const reserve = vi.fn().mockReturnValue({ allowed: true })
+  const upstream = vi.fn(async (_target: string | URL | Request, init?: RequestInit) => {
+    const forwarded = JSON.parse(String(init?.body))
+    expect(forwarded.params[1]).toEqual(selector)
+    expect(forwarded.params).toHaveLength(2)
+    expect(forwarded.params[0]).toEqual({ ...payload.params[0], gas: '0x1c9c380' })
+    return Response.json(unsupported
+      ? { jsonrpc: '2.0', id: 7, error: { code: -32602, message: 'Block selector unsupported' } }
+      : { jsonrpc: '2.0', id: 7, result: `0x${'00'.repeat(32)}` })
+  })
+  vi.stubGlobal('fetch', upstream)
+  const response = await gateway.fetch(arbitrum(payload), alchemyEnv(reserve))
+  expect(response.status).toBe(200)
+  expect(await response.json()).toEqual(unsupported
+    ? { jsonrpc: '2.0', id: 7, error: { code: -32602, message: 'invalid RPC parameters' } }
+    : { jsonrpc: '2.0', id: 7, result: `0x${'00'.repeat(32)}` })
+  expect(upstream).toHaveBeenCalledTimes(1)
+  expect(upstream.mock.calls[0][0]).toBe(alchemyURL)
+  expect(reserve).toHaveBeenCalledExactlyOnceWith(['eth_call'], 'alchemy')
+})
+
 function diagnosticCrypto() {
   const digest = crypto.subtle.digest.bind(crypto.subtle)
   vi.stubGlobal('crypto', { subtle: { digest,
     timingSafeEqual: (a: ArrayBuffer, b: ArrayBuffer) => timingSafeEqual(new Uint8Array(a), new Uint8Array(b)),
   } })
 }
+
+it.each([false, true])('preserves a canonical block-hash eth_getCode without replay or numeric fallback (unsupported: %s)', async unsupported => {
+  const selector = { blockHash: `0x${'66'.repeat(32)}`, requireCanonical: true }
+  const payload = { jsonrpc: '2.0', id: 7, method: 'eth_getCode', params: [RAILGUN_PROXIES[42161], selector] }
+  const reserve = vi.fn().mockReturnValue({ allowed: true })
+  const upstream = vi.fn(async (_target: string | URL | Request, init?: RequestInit) => {
+    expect(JSON.parse(String(init?.body)).params).toEqual(payload.params)
+    return Response.json(unsupported
+      ? { jsonrpc: '2.0', id: 7, error: { code: -32602, message: 'Block selector unsupported' } }
+      : { jsonrpc: '2.0', id: 7, result: '0x6001600055' })
+  })
+  vi.stubGlobal('fetch', upstream)
+  const response = await gateway.fetch(arbitrum(payload), alchemyEnv(reserve))
+  expect(response.status).toBe(200)
+  expect(await response.json()).toEqual(unsupported
+    ? { jsonrpc: '2.0', id: 7, error: { code: -32602, message: 'invalid RPC parameters' } }
+    : { jsonrpc: '2.0', id: 7, result: '0x6001600055' })
+  expect(upstream).toHaveBeenCalledTimes(1)
+  expect(upstream.mock.calls[0][0]).toBe(alchemyURL)
+  expect(reserve).toHaveBeenCalledExactlyOnceWith(['eth_getCode'], 'alchemy')
+})
 function probe(provider: string, token?: string): Request {
   return new Request(`https://swap.ophis.fi/rpc/budget/${provider}`, {
     method: 'POST', headers: token ? { Authorization: `Bearer ${token}` } : {},

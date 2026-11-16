@@ -820,22 +820,25 @@ it('refuses disclosure when the core changes while an execution request is encry
 it.each(['execute', 'refund'])('rejects an in-flight %s on restart, retaining exact consent without automatic replay', async operation => {
   const executionCredit = await preparePrepaid(session)
   const credit = operation === 'refund' ? await preparePrepaidRefund(session) : executionCredit
-  let published = 0
+  const publications = () => state.send.mock.calls.filter(([packet]) => {
+    const payload = JSON.parse(packet.params.encryptedData[0]).authorization?.payload
+    return payload && JSON.parse(payload).kind === operation
+  })
   state.send.mockImplementation(async packet => {
     const request = JSON.parse(packet.params.encryptedData[0])
     if (!request.authorization?.payload.includes(`"kind":"${operation}"`)) return server(packet)
-    published++; state.core = {}; state.subscriptions.clear(); state.restart!()
+    state.core = {}; state.subscriptions.clear(); state.restart!()
   })
   await expect(operation === 'execute'
     ? submitPrepaid(session, populated, credit.selected, gas, false, undefined, credit)
     : requestPrepaidRefund(session, credit, 100_000n)).rejects.toThrow(`${operation === 'execute' ? 'transaction' : 'refund'} submission connection changed`)
-  expect(published).toBe(1)
+  expect(publications()).toHaveLength(1)
   const saved = (state.record as { attempt?: { payload: string }; refund?: { payload: string } })[operation === 'execute' ? 'attempt' : 'refund']
   expect(JSON.parse(saved!.payload).kind).toBe(operation)
   expect(state.signPublic).not.toHaveBeenCalled()
   state.send.mockImplementation(server)
   await expect(preparePrepaid(session)).resolves.toHaveProperty('ledgerId', ledgerId)
-  expect(published).toBe(1)
+  expect(publications()).toHaveLength(1)
 })
 
 it('identifies discovery timeout without reporting private identifiers', async () => {

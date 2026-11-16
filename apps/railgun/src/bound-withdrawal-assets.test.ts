@@ -214,14 +214,16 @@ async function signedRecord(native = true, chainId = 56,
   ] } as unknown as TransactionReceipt
   const delegateCode = '0x6001600055'
   const provider = { getNetwork: vi.fn(async () => ({ chainId: BigInt(chainId) })),
-    send: async (method: string, params: unknown[]): Promise<unknown> => {
+    send: vi.fn(async (method: string, params: unknown[]): Promise<unknown> => {
+      if (method === 'eth_call') return provider.call(params[0] as { to?: string })
+      if (method === 'eth_getCode') return provider.getCode(params[0] as string)
       expect(method).toBe('eth_getBlockByNumber'); expect(params[1]).toBe(false)
       const block = await provider.getBlock(params[0] === 'finalized' ? 'finalized' : Number(BigInt(String(params[0]))))
       return { ...block, number: `0x${block.number.toString(16)}` }
-    },
+    }),
     getBlock: vi.fn(async (tag: string | number) => ({ number: typeof tag === 'number' ? tag : 103,
       hash: `0x${(tag === 102 ? '55' : '66').repeat(32)}`, parentHash: `0x${'55'.repeat(32)}` })),
-    getTransaction: vi.fn(async () => ({ hash, to: owner.address, from: recipient, data, value: 0n, blockNumber: 102 })),
+    getTransaction: vi.fn(async () => ({ hash, to: owner.address, from: recipient, data, value: 0n, blockNumber: 102, blockHash: receipt.blockHash })),
     getCode: vi.fn(async (address: string) => address.toLowerCase() === owner.address.toLowerCase()
       ? `0xef0100${config.CONFIG.relayAdapt7702Contract.slice(2).toLowerCase()}` : delegateCode),
     call: vi.fn(async (_tx: { to?: string }) => ADAPT.encodeFunctionResult('nonce', [1n])),
@@ -323,7 +325,7 @@ it.each([false, true])('confirms native output only after matching its direct or
   if (guarded) {
     const guard = '0x0000000000000000000000000000000000007890'
     const code = executionGuardCode(recipient, delegateCode, config.CONFIG.relayAdapt7702Contract)
-    provider.getTransaction.mockResolvedValue({ hash, to: guard, from: recipient, data: EXECUTION_GUARD.encodeFunctionData('execute', [owner.address, pending.transaction.data, 0n]), value: 0n, blockNumber: 102 })
+    provider.getTransaction.mockResolvedValue({ hash, to: guard, from: recipient, data: EXECUTION_GUARD.encodeFunctionData('execute', [owner.address, pending.transaction.data, 0n]), value: 0n, blockNumber: 102, blockHash: receipt.blockHash })
     provider.getCode.mockImplementation(async (address: string) => address === guard ? code
       : address.toLowerCase() === owner.address.toLowerCase() ? `0xef0100${config.CONFIG.relayAdapt7702Contract.slice(2).toLowerCase()}` : delegateCode)
   }
@@ -334,15 +336,16 @@ it.each([false, true])('confirms native output only after matching its direct or
   expect(state.ratchet.mock.invocationCallOrder[0]).toBeLessThan(state.remove.mock.invocationCallOrder[0])
 })
 
-it.each(['calldata', 'nonce', 'delegate', 'chain', 'guard'])('preserves the complete native proof when actual execution %s does not match', async (changed) => {
+it.each(['calldata', 'nonce', 'delegate', 'chain', 'guard', 'block-hash'])('preserves the complete native proof when actual execution %s does not match', async (changed) => {
   const { pending, receipt, session, provider, config, delegateCode } = await signedRecord()
   const { ADAPT, assertNativeExecutionBinding } = await import('./execution')
-  if (changed === 'calldata') provider.getTransaction.mockResolvedValue({ hash, to: pending.execution!.account, from: recipient, data: '0x1234', value: 0n, blockNumber: 102 })
+  if (changed === 'calldata') provider.getTransaction.mockResolvedValue({ hash, to: pending.execution!.account, from: recipient, data: '0x1234', value: 0n, blockNumber: 102, blockHash: receipt.blockHash })
+  if (changed === 'block-hash') provider.getTransaction.mockResolvedValue({ ...await provider.getTransaction(), blockHash: `0x${'77'.repeat(32)}` })
   if (changed === 'nonce') provider.call.mockResolvedValue(ADAPT.encodeFunctionResult('nonce', [0n]))
   if (changed === 'delegate') provider.getCode.mockResolvedValue(delegateCode)
   if (changed === 'chain') provider.getNetwork.mockResolvedValue({ chainId: 1n })
   if (changed === 'guard') provider.getTransaction.mockResolvedValue({ hash, to: recipient, from: recipient,
-    data: EXECUTION_GUARD.encodeFunctionData('execute', [pending.execution!.account, pending.transaction.data, 0n]), value: 0n, blockNumber: 102 })
+    data: EXECUTION_GUARD.encodeFunctionData('execute', [pending.execution!.account, pending.transaction.data, 0n]), value: 0n, blockNumber: 102, blockHash: receipt.blockHash })
   await expect(assertNativeExecutionBinding(session, receipt, pending, hash)).rejects.toThrow()
   // All inputs are reported spent, as they are after a mined success. This must
   // preserve a bound record without an authenticated complete native receipt.
@@ -354,3 +357,56 @@ it.each(['calldata', 'nonce', 'delegate', 'chain', 'guard'])('preserves the comp
   expect(state.ratchet).not.toHaveBeenCalled()
   expect(state.remove).not.toHaveBeenCalled()
 })
+
+it.each([1, 56, 42161].flatMap(chainId => ['delegate', 'account', 'guard', 'nonce'].map(read => ({ chainId, read }))))(
+  'preserves native proof when branch B supplies $read between branch A header reads on chain $chainId', async ({ chainId, read }) => {
+    const { config, owner, pending, receipt, session, provider, delegateCode } = await signedRecord(true, chainId)
+    const { ADAPT, assertNativeExecutionBinding } = await import('./execution')
+    const guard = '0x0000000000000000000000000000000000007890'
+    const code = executionGuardCode(recipient, delegateCode, config.CONFIG.relayAdapt7702Contract)
+    provider.getTransaction.mockResolvedValue({ ...await provider.getTransaction(), to: guard,
+      data: EXECUTION_GUARD.encodeFunctionData('execute', [owner.address, pending.transaction.data, 0n]) })
+    provider.getCode.mockImplementation(async address => address === guard ? code
+      : address.toLowerCase() === owner.address.toLowerCase() ? `0xef0100${config.CONFIG.relayAdapt7702Contract.slice(2).toLowerCase()}` : delegateCode)
+    // The numbered code and nonce getters expose valid branch B state. The
+    // block-hash request binds all execution checks to receipt branch A instead.
+    const normal = provider.send.getMockImplementation()!
+    const target = read === 'delegate' ? config.CONFIG.relayAdapt7702Contract : read === 'guard' ? guard : owner.address
+    provider.send.mockImplementation(async (method, params) => {
+      if (method === 'eth_getCode' || method === 'eth_call') {
+        expect(params[1]).toEqual({ blockHash: receipt.blockHash, requireCanonical: true })
+        if (read === 'nonce' && method === 'eth_call' && (params[0] as { to: string }).to === owner.address)
+          return ADAPT.encodeFunctionResult('nonce', [0n])
+        if (read !== 'nonce' && method === 'eth_getCode' && params[0] === target) return '0x'
+      }
+      return normal(method, params)
+    })
+    await expect(assertNativeExecutionBinding(session, receipt, pending, hash)).rejects.toThrow()
+    const { reconcilePendingWithdrawal } = await import('./withdrawal-journal')
+    await expect(reconcilePendingWithdrawal(session)).rejects.toThrow('complete saved proof is preserved')
+    expect(state.pending).toBe(pending)
+    expect(state.ratchet).not.toHaveBeenCalled(); expect(state.remove).not.toHaveBeenCalled()
+  },
+)
+
+it.each(['eth_getCode', 'eth_call'].flatMap(method => ['unsupported', 'malformed', 'missing'].map(failure => ({ method, failure }))))(
+  'retains native proof when hash-pinned $method is $failure without a numbered fallback', async ({ method, failure }) => {
+    const { owner, pending, receipt, session, provider } = await signedRecord()
+    const { assertNativeExecutionBinding } = await import('./execution')
+    const normal = provider.send.getMockImplementation()!
+    provider.send.mockImplementation(async (name, params) => {
+      if (name !== method || (name === 'eth_call' && (params[0] as { to: string }).to !== owner.address)) return normal(name, params)
+      expect(params[1]).toEqual({ blockHash: receipt.blockHash, requireCanonical: true })
+      if (failure === 'unsupported') throw new Error('Unsupported selector at https://provider.example/private-test-key')
+      return failure === 'malformed' ? '0x1' : undefined
+    })
+    await expect(assertNativeExecutionBinding(session, receipt, pending, hash)).rejects.toThrow(
+      'Native execution state could not be verified on its canonical block. Keep the saved withdrawal.')
+    const { reconcilePendingWithdrawal } = await import('./withdrawal-journal')
+    await expect(reconcilePendingWithdrawal(session)).rejects.toThrow('complete saved proof is preserved')
+    expect(provider.send.mock.calls.filter(([name]) => name === method)
+      .every(([, params]) => typeof params[1] === 'object' && params[1] !== null)).toBe(true)
+    expect(state.pending).toBe(pending)
+    expect(state.ratchet).not.toHaveBeenCalled(); expect(state.remove).not.toHaveBeenCalled()
+  },
+)

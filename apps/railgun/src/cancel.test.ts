@@ -7,7 +7,7 @@ import type { WalletSession } from './wallet'
 
 const state = vi.hoisted(() => ({
   nonce: vi.fn(), remove: vi.fn(), ratchet: vi.fn(), confirmedNonce: 0n, confirmedCode: '', chainId: 1, reorg: false,
-  balance: vi.fn(), estimate: vi.fn(), send: vi.fn(), wait: vi.fn(), priceCap: undefined as bigint | undefined,
+  balance: vi.fn(), estimate: vi.fn(), send: vi.fn(), rpc: vi.fn(), wait: vi.fn(), priceCap: undefined as bigint | undefined,
   currentCode: '', currentNonce: 1n, maxFee: 2_000_000_000n, priority: 1_000_000_000n,
   derive: vi.fn(), payerSend: vi.fn(), payerCode: '', payerNonce: 2, payerLatestNonce: 2, targetNonce: 0, outerRaw: '',
 }))
@@ -37,13 +37,14 @@ const session = {
   info: { id: 'test' },
   provider: {
     getNetwork: async () => ({ chainId: BigInt(state.chainId) }),
-    getBlock: async (tag: string | number) => ({ number: 100, hash: `0x${(state.reorg && typeof tag === 'number' ? '22' : '11').repeat(32)}` }),
+    getBlock: async (tag: string | number) => ({ number: tag === 'latest' ? 101 : typeof tag === 'number' ? tag : 100,
+      hash: `0x${(state.reorg && typeof tag === 'number' ? '22' : '11').repeat(32)}`, parentHash: `0x${'11'.repeat(32)}` }),
     getCode: async (address: string, block?: number) => address === payerAddress ? state.payerCode : block === 100 ? state.confirmedCode : state.currentCode,
     getBalance: state.balance, estimateGas: state.estimate,
     getTransactionCount: async (address: string, tag: string) => address === payerAddress
       ? tag === 'latest' ? state.payerLatestNonce : state.payerNonce : state.targetNonce,
     getFeeData: async () => ({ maxFeePerGas: state.maxFee, maxPriorityFeePerGas: state.priority }),
-    send: async () => '0x65',
+    send: state.rpc,
   },
   accounts: { getAccount: state.derive },
 } as unknown as WalletSession
@@ -70,8 +71,19 @@ beforeEach(() => {
   })
   state.confirmedCode = delegation
   state.confirmedNonce = 0n
-  state.nonce.mockImplementation(async (options?: { blockTag: number }) =>
-    options?.blockTag === 100 ? state.confirmedNonce : state.currentNonce)
+  state.nonce.mockImplementation(async (options?: { blockTag: unknown }) =>
+    options?.blockTag !== undefined ? state.confirmedNonce : state.currentNonce)
+  state.rpc.mockReset().mockImplementation(async (method: string, params: unknown[]) => {
+    if (method === 'eth_blockNumber') return '0x65'
+    if (method === 'eth_getBlockByNumber') {
+      const block = await session.provider.getBlock(params[0] === 'finalized' ? 'finalized' : Number(BigInt(String(params[0]))))
+      return { ...block, number: `0x${block!.number.toString(16)}` }
+    }
+    expect(params[1]).toEqual({ blockHash: `0x${'11'.repeat(32)}`, requireCanonical: true })
+    if (method === 'eth_getCode') return state.confirmedCode
+    expect(method).toBe('eth_call')
+    return ADAPT.encodeFunctionResult('nonce', [await state.nonce({ blockTag: params[1] })])
+  })
 })
 
 it.each(['0x', delegation])('retains the journal while latest nonce advancement is unconfirmed (%s)', async (code) => {
@@ -84,9 +96,59 @@ it.each(['0x', delegation])('retains the journal while latest nonce advancement 
 it('clears only after the old authorization is invalid at the two-confirmation block', async () => {
   state.confirmedNonce = 1n
   await expect(cancelPendingSwap(session, true)).resolves.toMatch(/invalidated/)
-  expect(state.nonce).toHaveBeenCalledWith({ blockTag: 100 })
+  expect(state.nonce).toHaveBeenCalledWith({ blockTag: { blockHash: `0x${'11'.repeat(32)}`, requireCanonical: true } })
   expect(state.ratchet).toHaveBeenCalledWith(1n, 4)
   expect(state.remove).toHaveBeenCalledOnce()
+})
+
+it.each([1, 56, 42161, 137, 8453].flatMap(chainId => ['code', 'nonce'].map(read => ({ chainId, read }))))(
+  'keeps cancellation evidence when branch B advances $read between branch A header reads on chain $chainId', async ({ chainId, read }) => {
+    state.chainId = chainId
+    // Numbered reads return branch B's valid delegation and advanced nonce, but
+    // the selected block hash remains A before and after those reads.
+    state.confirmedNonce = 1n
+    const normal = state.rpc.getMockImplementation()!
+    state.rpc.mockImplementation(async (method: string, params: unknown[]) => {
+      if (method === (read === 'code' ? 'eth_getCode' : 'eth_call')) {
+        expect(params[1]).toEqual({ blockHash: `0x${'11'.repeat(32)}`, requireCanonical: true })
+        return read === 'code' ? '0x' : ADAPT.encodeFunctionResult('nonce', [0n])
+      }
+      return normal(method, params)
+    })
+    await expect(cancelPendingSwap(session, true)).rejects.toThrow(/confirm/)
+    expect(state.remove).not.toHaveBeenCalled(); expect(state.ratchet).not.toHaveBeenCalled()
+    expect(state.send).not.toHaveBeenCalled(); expect(state.payerSend).not.toHaveBeenCalled()
+  },
+)
+
+it.each(['eth_getCode', 'eth_call'].flatMap(method => ['unsupported', 'malformed', 'missing'].map(failure => ({ method, failure }))))(
+  'retains cancellation proof when hash-pinned $method is $failure without a numbered fallback', async ({ method, failure }) => {
+    state.confirmedNonce = 1n
+    const normal = state.rpc.getMockImplementation()!
+    state.rpc.mockImplementation(async (name: string, params: unknown[]) => {
+      if (name !== method) return normal(name, params)
+      expect(params[1]).toEqual({ blockHash: `0x${'11'.repeat(32)}`, requireCanonical: true })
+      if (failure === 'unsupported') throw new Error('Unsupported selector at https://provider.example/private-test-key')
+      return failure === 'malformed' ? '0x1' : undefined
+    })
+    await expect(cancelPendingSwap(session, true)).rejects.toThrow('Cancellation state could not be verified on its canonical block. Keep the pending record.')
+    expect(state.rpc.mock.calls.filter(([name]) => name === method)).toHaveLength(1)
+    expect(state.remove).not.toHaveBeenCalled(); expect(state.ratchet).not.toHaveBeenCalled()
+    expect(state.send).not.toHaveBeenCalled()
+  },
+)
+
+it.each([1, 56, 42161, 137])('rechecks the cancellation block after state reads before clearing on chain %s', async chainId => {
+  state.chainId = chainId; state.confirmedNonce = 1n
+  const normal = state.rpc.getMockImplementation()!
+  state.rpc.mockImplementation(async (method: string, params: unknown[]) => {
+    const result = await normal(method, params)
+    if (method === 'eth_call') state.reorg = true
+    return result
+  })
+  await expect(cancelPendingSwap(session, true)).rejects.toThrow('history changed')
+  expect(state.remove).not.toHaveBeenCalled(); expect(state.ratchet).not.toHaveBeenCalled()
+  expect(state.send).not.toHaveBeenCalled()
 })
 
 

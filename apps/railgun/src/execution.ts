@@ -9,7 +9,7 @@ import {
   type TransactionStructV2,
   type RelayAdapt7702Request,
 } from '@railgun-community/engine'
-import { Contract, getAddress, getBigInt, Interface, verifyAuthorization, ZeroAddress, ZeroHash, type TransactionReceipt, type TransactionRequest } from 'ethers'
+import { Contract, getAddress, getBigInt, Interface, isHexString, verifyAuthorization, ZeroAddress, ZeroHash, type TransactionReceipt, type TransactionRequest } from 'ethers'
 import type { WalletSession } from './wallet'
 import type { PendingWithdrawal } from './withdrawal-journal'
 import { assertExecutionGuardCode, decodeGuardedExecution } from '../operator/execution-guard'
@@ -130,9 +130,18 @@ export async function assertNativeExecutionBinding(session: WalletSession, recei
   assertBoundWithdrawal(pending.transaction.data, e.account, pending.token, pending.recipient, BigInt(pending.minimum), 'native', pending.feeMode)
   const transaction = await session.provider.getTransaction(hash)
   if (!transaction?.to || transaction.hash.toLowerCase() !== hash.toLowerCase() || transaction.blockNumber !== receipt.blockNumber ||
+    !isHexString(receipt.blockHash, 32) || receipt.blockHash === ZeroHash || transaction.blockHash?.toLowerCase() !== receipt.blockHash.toLowerCase() ||
     transaction.value !== 0n) throw new Error('Native receipt is not bound to the saved signed execution.')
   const account = getAddress(e.account)
-  const delegateCode = await session.provider.getCode(CONFIG.relayAdapt7702Contract, receipt.blockNumber)
+  const selector = { blockHash: receipt.blockHash, requireCanonical: true }
+  const read = async (method: 'eth_getCode' | 'eth_call', argument: unknown): Promise<string> => {
+    try {
+      const result = await session.provider.send(method, [argument, selector])
+      if (!isHexString(result, method === 'eth_call' ? 32 : true)) throw new Error('Invalid execution state')
+      return result
+    } catch { throw new Error('Native execution state could not be verified on its canonical block. Keep the saved withdrawal.') }
+  }
+  const delegateCode = await read('eth_getCode', CONFIG.relayAdapt7702Contract)
   if (delegateCode === '0x') throw new Error('Canonical native withdrawal delegate is unavailable.')
   if (getAddress(transaction.to) === account) {
     if (transaction.data.toLowerCase() !== pending.transaction.data.toLowerCase()) throw new Error('Native receipt calldata differs from the saved execution.')
@@ -140,11 +149,11 @@ export async function assertNativeExecutionBinding(session: WalletSession, recei
     const guarded = decodeGuardedExecution(transaction.data)
     if (guarded.account !== account || guarded.execution.toLowerCase() !== pending.transaction.data.toLowerCase() ||
       guarded.nonce !== BigInt(e.executeNonce)) throw new Error('Native guard receipt differs from the saved execution.')
-    assertExecutionGuardCode(transaction.from, await session.provider.getCode(transaction.to, receipt.blockNumber), delegateCode, CONFIG.relayAdapt7702Contract)
+    assertExecutionGuardCode(transaction.from, await read('eth_getCode', transaction.to), delegateCode, CONFIG.relayAdapt7702Contract)
   }
-  if ((await session.provider.getCode(account, receipt.blockNumber)).toLowerCase() !== `0xef0100${CONFIG.relayAdapt7702Contract.slice(2).toLowerCase()}`)
+  if ((await read('eth_getCode', account)).toLowerCase() !== `0xef0100${CONFIG.relayAdapt7702Contract.slice(2).toLowerCase()}`)
     throw new Error('Native receipt account does not use the canonical delegate.')
-  const nonce: bigint = await new Contract(account, ADAPT, session.provider).getFunction('nonce')({ blockTag: receipt.blockNumber })
+  const nonce: bigint = ADAPT.decodeFunctionResult('nonce', await read('eth_call', { to: account, data: ADAPT.encodeFunctionData('nonce') }))[0]
   if (nonce <= BigInt(e.executeNonce)) throw new Error('Native execution nonce was not advanced.')
 }
 
