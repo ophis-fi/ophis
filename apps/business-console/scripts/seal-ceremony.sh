@@ -26,6 +26,8 @@ trap 'printf "\nSTOPPED: the step above failed. Nothing uses %s yet: move it awa
 online() { route -n get "$@" default 2>/dev/null | grep -q 'interface:'; }
 if online || online -inet6; then stop "This laptop is online. Turn Wi-Fi off (and unplug any network cable), then run this again."; fi
 [[ ! -e "$OUT" ]] || stop "$OUT exists already: a key was made, or a run stopped half way. Keep it if the console seals to it; otherwise move it away and run this again."
+# The key folder leaves the laptop after a run; the public half stays here: a second key is never made by mistake.
+[[ ! -e "$HERE/ophis-recipient-g1.txt" ]] || stop "A key was made before: its public half, ophis-recipient-g1.txt, is next to this script, and the console may seal to it. To make another key on purpose, move that file away first."
 mkdir "$OUT"
 cd "$OUT"
 
@@ -63,34 +65,41 @@ for k in B A; do
 done
 
 fingerprint=$(printf '%s' "$recipient" | shasum -a 256 | cut -d ' ' -f 1)
-cat > README.txt <<EOF
-Ophis business console, sealing key g1. Fingerprint (SHA-256 of ophis-recipient-g1.txt without its line end):
-$fingerprint
+# The commands below are each on a line of their own, with no comment after them: macOS's Terminal runs zsh, which
+# does not take "#" as a comment when typed (tests/age.mjs runs these lines in zsh -f -i).
+{ printf 'Ophis business console, sealing key g1. Fingerprint (SHA-256 of ophis-recipient-g1.txt without its line end):\n%s\n' "$fingerprint"
+cat <<'EOF'
 
 Keep: seal-identity-g1.age (the key, locked to the two YubiKeys), yk-A.txt and yk-B.txt (which YubiKey and slot),
 yk-recipients.txt. Two USB sticks, one with each YubiKey, in two places. Never on a computer that goes online, and
 never in iCloud, GitHub or Cloudflare.
 
-Open a sealed item. Wi-Fi off, in this folder, item.age next to it, YubiKey A plugged in (B: yk-B.txt); PIN once, a touch.
-The clear file goes to a RAM disk only, never to this stick:
-  shasum -a 256 item.age      # must equal the SHA-256 that "operator get" printed
-  diskutil erasevolume APFS ram \$(hdiutil attach -nomount ram://204800)      # /Volumes/ram, 100 MB, in memory
-  age -d -i yk-A.txt seal-identity-g1.age | age -d -i - -o /Volumes/ram/item.pdf item.age
-Treat item.pdf as a file from a stranger. After use: diskutil eject ram
+Open a sealed item. Wi-Fi off, in this folder, item.age next to it, YubiKey A plugged in (with B: yk-B.txt); PIN once,
+a touch. The clear file goes to a RAM disk only, never to this stick. This must print the SHA-256 "operator get" printed:
+  shasum -a 256 item.age
+Then make the RAM disk (/Volumes/OphisRAM, 100 MB, in memory; a name only this uses) and open the item onto it:
+  diskutil erasevolume APFS OphisRAM $(hdiutil attach -nomount ram://204800)
+  age -d -i yk-A.txt seal-identity-g1.age | age -d -i - -o /Volumes/OphisRAM/item.pdf item.age
+Treat /Volumes/OphisRAM/item.pdf as a file from a stranger. After use:
+  diskutil eject OphisRAM
 
 A YubiKey lost or broken (here B): lock the key to the one left (A) and a new YubiKey (C). Nothing changes in the
-console. Wi-Fi off, in this folder, one line at a time:
-  age-plugin-yubikey --generate --name ophis-seal-C --pin-policy once --touch-policy always > yk-C.txt      # C alone plugged in
+console. Wi-Fi off, in this folder, one line at a time. First the new key, C, plugged in ALONE:
+  age-plugin-yubikey --generate --name ophis-seal-C --pin-policy once --touch-policy always > yk-C.txt
+This must print "two keys: go on". If it prints "STOP", go no further: C was not made, or it was A again.
+  [ "$(sed -n 's/^# *Recipient: //p' yk-A.txt yk-C.txt | grep -c '^age1yubikey1')" = 2 ] && [ "$(sed -n 's/^# *Serial: \([0-9]*\),.*/\1/p' yk-A.txt yk-C.txt | sort -u | grep -c .)" = 2 ] && echo "two keys: go on" || echo "STOP"
+Then the new lock, with A plugged in, and its check:
   sed -n 's/^# *Recipient: //p' yk-A.txt yk-C.txt > yk-recipients-new.txt
-  grep -c '^age1yubikey1' yk-recipients-new.txt      # must print 2: if not, stop here
-  age -d -i yk-A.txt seal-identity-g1.age | age -R yk-recipients-new.txt -o seal-identity-g1.new.age      # A plugged in
+  age -d -i yk-A.txt seal-identity-g1.age | age -R yk-recipients-new.txt -o seal-identity-g1.new.age
   age -d -i yk-A.txt seal-identity-g1.new.age | age-keygen -y | cmp - ophis-recipient-g1.txt && echo "A opens it"
-  age -d -i yk-C.txt seal-identity-g1.new.age | age-keygen -y | cmp - ophis-recipient-g1.txt && echo "C opens it"      # C plugged in
+Then with C plugged in instead:
+  age -d -i yk-C.txt seal-identity-g1.new.age | age-keygen -y | cmp - ophis-recipient-g1.txt && echo "C opens it"
 Both must say so. Then: seal-identity-g1.new.age becomes seal-identity-g1.age, yk-recipients-new.txt becomes
 yk-recipients.txt, keep yk-C.txt, and put the folder on both sticks again.
 EOF
+} > README.txt
 cp ophis-recipient-g1.txt "$HERE/ophis-recipient-g1.txt"
 printf '\nDone. Fingerprint of the sealing key:\n%s\n\n' "$fingerprint"
 printf 'Next, still offline: copy %s to two USB sticks (one with each YubiKey), check both copies are there,\n' "$OUT"
-printf 'then delete it from this laptop (rm -rf %s) BEFORE Wi-Fi goes back on. Then send the fingerprint above.\n' "$OUT"
+printf 'then delete it from this laptop (rm -rf %q) BEFORE Wi-Fi goes back on. Then send the fingerprint above.\n' "$OUT"
 printf 'The public half is in %s/ophis-recipient-g1.txt.\n' "$HERE"

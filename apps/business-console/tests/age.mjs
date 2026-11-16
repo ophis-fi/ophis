@@ -45,7 +45,7 @@ try {
   const stubs = join(dir, 'stubs')
   if (stubs.includes(':')) throw new Error('a ":" in the folder would split PATH')
   mkdirSync(stubs)
-  for (const tool of ['age', 'dirname', 'mkdir', 'sed', 'rm', 'cmp', 'cut', 'shasum', 'cat', 'cp', 'grep']) symlinkSync(real(tool), join(stubs, tool))
+  for (const tool of ['age', 'dirname', 'mkdir', 'sed', 'rm', 'cmp', 'cut', 'shasum', 'cat', 'cp', 'grep', 'sort']) symlinkSync(real(tool), join(stubs, tool))
   const stub = (name, body) => { writeFileSync(join(stubs, name), `#!/bin/bash\n${body}\n`); chmodSync(join(stubs, name), 0o755) }
   // As macOS route answers (seen 2026-11-16): a default route prints its "interface:" line; none prints "not in table"
   // on standard error, and the status is 0 either way. ROUTE4 or ROUTE6 set: that family has a default route.
@@ -106,18 +106,20 @@ try {
   // README.txt's recipes, run as written there (the RAM disk is a folder here; the stand-in keys are software keys).
   const readme = readFileSync(join(good.out, 'README.txt'), 'utf8')
   const lines = readme.split('\n').filter((line) => line.startsWith('  ')).map((line) => line.trim())
-  const shell = (line, env = {}) => spawnSync('/bin/bash', ['-c', `cd "$1" && ${line}`, '_', good.out], { env: { PATH: stubs, ...env }, encoding: 'utf8' })
+  // In the shell of macOS's Terminal as typed: zsh, interactive, no startup files ("#" is then no comment: ToB, delta).
+  const shell = (line, env = {}) => spawnSync('/bin/zsh', ['-f', '-i', '-c', `cd "$1" && ${line}`, '_', good.out], { env: { PATH: stubs, ...env }, encoding: 'utf8' })
+  check('no README.txt command line carries a comment', lines.length > 0 && lines.every((line) => !/\s#/.test(line)))
   const ram = join(dir, 'ram')
   mkdirSync(ram)
-  const open = lines.find((line) => line.startsWith('age -d -i yk-A.txt seal-identity-g1.age | age -d -i - -o /Volumes/ram/item.pdf item.age')) ?? ''
-  check('README.txt opens an item onto the RAM disk only', open !== '' && lines.some((line) => line.startsWith('diskutil erasevolume APFS ram $(hdiutil attach -nomount ram://')))
+  const open = lines.find((line) => line.startsWith('age -d -i yk-A.txt seal-identity-g1.age | age -d -i - -o /Volumes/OphisRAM/item.pdf item.age')) ?? ''
+  check('README.txt opens an item onto its own RAM disk only (a name nothing else uses)', open !== '' && lines.some((line) => line.startsWith('diskutil erasevolume APFS OphisRAM $(hdiutil attach -nomount ram://')))
   // The whole chain: the console seals to the published recipient; README.txt's recipe opens it with either key.
   const item = Buffer.concat([Buffer.from('%PDF-1.7\n'), randomBytes(5000)])
   const sealer = new Encrypter()
   sealer.addRecipient(pq)
   writeFileSync(join(good.out, 'item.age'), await sealer.encrypt(item))
   for (const k of ['A', 'B']) {
-    const recipe = shell(open.replaceAll('yk-A.txt', `yk-${k}.txt`).replace('/Volumes/ram/item.pdf', join(ram, `item-${k}.pdf`)))
+    const recipe = shell(open.replaceAll('yk-A.txt', `yk-${k}.txt`).replace('/Volumes/OphisRAM/item.pdf', join(ram, `item-${k}.pdf`)))
     check(`README.txt's recipe opens what the console sealed, with key ${k}`, recipe.status === 0 && readFileSync(join(ram, `item-${k}.pdf`)).equals(item))
   }
   // The lost key: its six lines, one at a time, as the README says (its count is of YubiKey recipients: widened as above).
@@ -125,13 +127,14 @@ try {
   check('README.txt has the six lines of a lost key', lost.length === 6)
   const said = lost.map((line) => shell(line)).map((run) => (run.status === 0 ? run.stdout.trim() : `exit ${run.status}`))
   check(`with them the key file opens with A and with the new key C, to the same recipient (${said.join(' | ')})`,
-    JSON.stringify(said) === JSON.stringify(['', '', '2', '', 'A opens it', 'C opens it']))
+    JSON.stringify(said) === JSON.stringify(['', 'two keys: go on', '', '', 'A opens it', 'C opens it']))
   // Codex P1: the one left cannot open the key file (no pipefail in a plain shell): the new file holds nothing, and its checks say so.
   writeFileSync(join(good.out, 'yk-X.txt'), execFileSync(real('age-keygen'), { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }))
   const empty = [shell(lost[3].replace('-i yk-A.txt', '-i yk-X.txt')), shell(lost[4]), shell(lost[5])]
   check('a re-lock by a key that cannot open the file gives a file that neither check accepts', empty[0].status === 0 && !empty[1].stdout.includes('opens it') && !empty[2].stdout.includes('opens it'))
   const noC = shell(lost[0], { FAIL: 'C' })
-  check('when the new key fails to generate, the count line says 1, not 2', noC.status !== 0 && shell(lost[1]).status === 0 && shell(lost[2]).stdout.trim() === '1')
+  check('when the new key fails to generate, the check line says STOP', noC.status !== 0 && shell(lost[1]).stdout.trim() === 'STOP')
+  check('when A is left in for the new key (same serial), the check line says STOP', shell(lost[0], { SAME: '1' }).status === 0 && shell(lost[1]).stdout.trim() === 'STOP')
 
   const soft = ceremony('soft', { script: original })
   check('the script as written stops on a key that is not a YubiKey, before any key file', soft.status !== 0 && soft.stderr.includes('gave no hardware recipient') && !existsSync(join(soft.out, 'seal-identity-g1.age')))
@@ -143,6 +146,14 @@ try {
   writeFileSync(join(again.out, 'seal-identity-g1.age'), 'KEEP')
   const rerun = spawnSync('/bin/bash', [join(again.here, 'seal-ceremony.sh')], { env: { HOME: again.home, PATH: stubs }, input: '\n'.repeat(6), encoding: 'utf8' })
   check('run again, it stops and leaves the key made before as it was', rerun.status !== 0 && rerun.stderr.includes('exists already') && readFileSync(join(again.out, 'seal-identity-g1.age'), 'utf8') === 'KEEP')
+  // Codex, delta: the key folder is deleted from the laptop as told; the public half next to the script still stops a second key.
+  const done = ceremony('done home')
+  const published1 = readFileSync(join(done.here, 'ophis-recipient-g1.txt'), 'utf8')
+  check('a home with a space: the delete line quotes the path', done.status === 0 && done.stdout.includes(`rm -rf ${done.out.replaceAll(' ', '\\ ')}) BEFORE`))
+  rmSync(done.out, { recursive: true })
+  const second = spawnSync('/bin/bash', [join(done.here, 'seal-ceremony.sh')], { env: { HOME: done.home, PATH: stubs }, input: '\n'.repeat(6), encoding: 'utf8' })
+  check('after the key folder is deleted, a second run stops on the public half and changes nothing', second.status !== 0 && second.stderr.includes('A key was made before')
+    && !existsSync(done.out) && readFileSync(join(done.here, 'ophis-recipient-g1.txt'), 'utf8') === published1)
   const bad = ceremony('bad', { env: { BAD: 'B' } })
   check('a key that cannot open the key file stops it, and no public half is put next to the script', bad.status !== 0 && bad.stderr.includes('YubiKey B did not open') && !existsSync(join(bad.here, 'ophis-recipient-g1.txt')))
   const same = ceremony('same', { env: { SAME: '1' } })
