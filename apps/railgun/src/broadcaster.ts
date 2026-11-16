@@ -188,9 +188,18 @@ export async function assertSubmittable(
   gas: BroadcasterGas,
   prepaid?: PreparedCredit,
 ): Promise<void> {
-  if (ENVIRONMENT !== 'ethereum') throw new Error('Mainnet broadcasting is disabled in this local fork build.')
+  await assertSubmissionContext(session, selected, gas, prepaid)
   if (prepaid) await (await import('./prepaid')).assertPrepaidContext(session, selected, gas, prepaid)
-  else validateBroadcaster(selected, selected.tokenAddress, gas.evmGasType === EVMGasType.Type4)
+}
+
+async function assertSubmissionContext(
+  session: WalletSession,
+  selected: SelectedBroadcaster,
+  gas: BroadcasterGas,
+  prepaid?: PreparedCredit,
+): Promise<void> {
+  if (ENVIRONMENT !== 'ethereum') throw new Error('Mainnet broadcasting is disabled in this local fork build.')
+  if (!prepaid) validateBroadcaster(selected, selected.tokenAddress, gas.evmGasType === EVMGasType.Type4)
   const policy = PROTECTED_BROADCASTERS[CHAIN_ID]?.find((operator) => operator.railgunAddress === selected.railgunAddress)
   if (policy && (calculateGasPrice(gas) > policy.maxGasPrice || calculateMaximumGas(gas) > policy.maxTransactionCost))
     throw new Error('This gas quote exceeds the Ophis broadcaster limits. Wait for lower gas prices; check recovery before preparing another transaction.')
@@ -213,9 +222,10 @@ export async function submitPrivate(
   checkedAt?: FinalQuoteCheck,
   prepaid?: PreparedCredit,
 ): Promise<string> {
-  if (!prepaid && ENVIRONMENT === 'ethereum' && [1, 56].includes(CHAIN_ID) && selected.railgunAddress === OPHIS_BROADCASTER)
+  if (!prepaid && ENVIRONMENT === 'ethereum' && selected.railgunAddress === OPHIS_BROADCASTER)
     throw new Error('Ophis now requires confirmed prepaid fee credit. Keep this saved proof and use public-wallet recovery; it will not be rebuilt or converted automatically.')
-  await assertSubmittable(session, selected, gas, prepaid)
+  await assertSubmissionContext(session, selected, gas, prepaid)
+  if (prepaid) await (await import('./prepaid')).assertPrepaidBindings(session, selected, gas, prepaid)
   if (use7702) assertFinalQuoteFresh(checkedAt)
   if (!populated.nullifiers?.length) throw new Error('Private transaction has no spend nullifiers.')
   const transaction = populated.transaction as TransactionRequest
@@ -227,7 +237,12 @@ export async function submitPrivate(
     throw new Error('Common submissions must be withdrawals through the selected privacy contract.')
   if (!use7702) assertAtomicWithdrawal(transaction.data, !prepaid && CHAIN_ID === 56 ? 'WBNB' : undefined)
   const authorization = use7702 ? transaction.authorizationList?.[0] : undefined
-  if (use7702 && !authorization) throw new Error('Missing 7702 authorization.')
+  const predelegated = CHAIN_ID === 8453 && use7702 && !!prepaid
+  if (predelegated) {
+    if (transaction.type !== 2 || transaction.authorizationList?.length) throw new Error('Base requires a prepared account and no outer authorization.')
+    await (await import('./base-setup')).requireBaseExecutionSetup(session, transaction.to)
+  } else if (use7702 && !authorization) throw new Error('Missing 7702 authorization.')
+  if (CHAIN_ID === 8453 && use7702 && !prepaid) throw new Error('Base execution requires the prepaid broadcaster.')
   const type4 =
     gas.evmGasType === EVMGasType.Type4
       ? {

@@ -12,6 +12,7 @@ it.each(['dev', 'preview'])('%s forwards only same-origin JSON RPC requests to t
   const paths: string[] = []
   const upstream = createHttpServer((request, response) => {
     paths.push(request.url || '')
+    for (const header of ['origin', 'cookie', 'authorization']) expect(request.headers[header]).toBeUndefined()
     response.setHeader('Content-Type', 'text/plain')
     response.end('ok')
   })
@@ -52,7 +53,8 @@ it.each(['dev', 'preview'])('%s forwards only same-origin JSON RPC requests to t
     expect(paths).toEqual([])
     for (const path of ['/rpc', '/rpc/1']) {
       const response = await fetch(`${origin}${path}`, { method: 'POST',
-        headers: { 'Content-Type': 'application/json; charset=utf-8', Origin: origin } })
+        headers: { 'Content-Type': 'application/json; charset=utf-8', Origin: origin,
+          Cookie: 'test-private-session=do-not-forward', Authorization: 'Bearer test-do-not-forward' } })
       expect(response.status).toBe(200)
       expect(await response.text()).toBe('ok')
     }

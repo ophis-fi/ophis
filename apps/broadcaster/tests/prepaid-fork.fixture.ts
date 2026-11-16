@@ -3,7 +3,7 @@ import assert from 'node:assert/strict'
 import { join } from 'node:path'
 import { appendFileSync, mkdirSync, statfsSync, writeFileSync } from 'node:fs'
 import LevelDOWN from 'leveldown'
-import { Contract, ContractFactory, JsonRpcProvider, Wallet, Transaction, Mnemonic, getAddress, hexlify, randomBytes, ZeroAddress, ZeroHash } from 'ethers'
+import { Contract, ContractFactory, Interface, JsonRpcProvider, Wallet, Transaction, Mnemonic, getAddress, hexlify, randomBytes, ZeroAddress, ZeroHash } from 'ethers'
 import { EngineEvent, POI, TransactionBatch, TransactNote, OutputType, RailgunEngine, getTokenDataERC20, type QuickSyncEvents } from '@railgun-community/engine'
 import { ArtifactStore, startRailgunEngine, loadProvider, unloadProvider, getEngine, getProver,
   createRailgunWallet, fullWalletForID, viewOnlyWalletForID, EphemeralKeyManager, refreshBalances,
@@ -21,32 +21,48 @@ import { RailgunSDK } from '../src/sdk'
 import { Broadcaster } from '../src/broadcaster'
 import { CreditLedger, creditCharge } from '../src/credit'
 import { finalizedCreditReceipt } from '../src/credit-payment'
+import { verifyNativeBacking } from '../src/credit-native-payment'
 import { accountingReport } from '../src/operations'
 import { creditBackingEvidence } from '../src/credit-backing'
 import { ANON_COLLECTION_ABI, ANON_COLLECTION_GATEWAY, readAnonCollectionBaseFee } from '../src/anon-native-collection'
 import { GUARD_ARTIFACT } from '../../railgun/operator/execution-guard-artifact'
 import { CREDIT_PROTOCOL, CREDIT_AUTHORIZATION_TYPES, CREDIT_REQUEST_LIFETIME, creditAuthorizationValue,
-  creditDomain, creditMemo, type CreditScope } from '../../railgun/credit-protocol'
+  creditDomain, creditMemo, nativeCreditData, type CreditScope } from '../../railgun/credit-protocol'
 import { disablePPOI } from '../../railgun/poi-policy'
 import { quoteSwap, unshieldAmount } from '../../railgun/src/recipe'
 import { PROXY, WRAPPED_SYMBOL, CHAIN_ID as CLIENT_CHAIN_ID } from '../../railgun/src/config'
-import { ADAPT, assertBoundWithdrawal, assertSameExecution, encodeRequest } from '../../railgun/src/execution'
+import { ADAPT, assertBoundWithdrawal, assertNativeShield, assertPrivateOutput, assertSameExecution, encodeRequest } from '../../railgun/src/execution'
 import type { WalletSession } from '../../railgun/src/wallet'
-import { forkPrepaidSender } from './prepaid-fork-transport.fixture'
+import { forkPrepaidSender, forkSenderDiagnostic } from './prepaid-fork-transport.fixture'
+import type { BaseValidityPlan } from '../../railgun/operator/base-validity'
+import { readBaseHistoryCache } from './prepaid-fork-history.fixture'
 
 // Separate synthetic fixture: never import it from a production entry point.
 // Uses real SDK proofs and the real fee-wallet note/receipt/backing validators.
 export async function prepaidFork(input: { rpc: string; root: string; forkBlock: number;
   assertOwned: () => Promise<void>; progress: (phase: string, details?: unknown) => void }) {
-  assert([1, 56].includes(CHAIN_ID), 'Only the separate Ethereum and BNB prepaid fixtures are supported.')
+  assert([1, 56, 42161, 8453].includes(CHAIN_ID), 'Select a supported isolated prepaid fixture.')
   assert.equal(CLIENT_CHAIN_ID, CHAIN_ID, 'The client helpers and backend must use the same immutable chain.')
   assert.equal(new URL(input.rpc).hostname, '127.0.0.1')
   await input.assertOwned()
   const provider = new JsonRpcProvider(input.rpc, CHAIN_ID, { cacheTimeout: -1, batchMaxCount: 1 })
   const originalSend = provider.send.bind(provider)
+  const base = CHAIN_ID === 8453
+  const baseOperatorFee = new Interface(['function getOperatorFee(uint256) view returns (uint256)'])
   provider.send = async (method: string, params: unknown[]) => {
     if (/^(anvil_|evm_|eth_send|eth_sign|personal_)/.test(method) && method !== 'anvil_metadata') await input.assertOwned()
-    try { return await originalSend(method, params) }
+    try {
+      // Anvil does not debit OP L1/operator fees. Only this synthetic fixture
+      // supplies explicit zero extras; production receipt validation is unchanged.
+      const call = params[0] as { to?: string; data?: string } | undefined
+      if (base && method === 'eth_call' && call?.to?.toLowerCase() === '0x420000000000000000000000000000000000000f' &&
+        call.data?.startsWith(baseOperatorFee.getFunction('getOperatorFee')!.selector)) {
+        await input.assertOwned()
+        return baseOperatorFee.encodeFunctionResult('getOperatorFee', [0n])
+      }
+      const result = await originalSend(method, params)
+      return base && method === 'eth_getTransactionReceipt' && result ? { ...result, l1Fee: '0x0' } : result
+    }
     catch (error) {
       input.progress('owned-rpc-error', { method, message: String(error).slice(0, 4000) })
       throw error
@@ -57,8 +73,10 @@ export async function prepaidFork(input: { rpc: string; root: string; forkBlock:
   const secrets = readSecrets(join(root, 'operator.json'))
   const store = new Store(root)
   const bnb = CHAIN_ID === 56
+  const native = CHAIN_ID === 42161 || base
   const config = settings({ OPHIS_BROADCASTER_CHAIN_ID: String(CHAIN_ID), OPHIS_BROADCASTER_MODE: 'fork', OPHIS_BROADCASTER_RPC: input.rpc,
     OPHIS_BROADCASTER_ADMISSION: 'public', OPHIS_BROADCASTER_ENABLED: '1', OPHIS_BROADCASTER_STATE: root,
+    OPHIS_BROADCASTER_CREDIT_PAYMENT_MODE: native ? 'public-native' : 'private-wrapped',
     OPHIS_BROADCASTER_MARGIN_BPS: '1500', OPHIS_BROADCASTER_MAX_GAS_PRICE_WEI: bnb ? '100000000' : '500000000',
     OPHIS_BROADCASTER_MAX_TX_COST_WEI: bnb ? '250000000000000' : '1500000000000000',
     OPHIS_BROADCASTER_DAILY_BUDGET_WEI: bnb ? '450000000000000' : '1500000000000000',
@@ -72,7 +90,8 @@ export async function prepaidFork(input: { rpc: string; root: string; forkBlock:
   let loaded = false, signatures = 0, submissions = 0
   let inclusionFailure: 'revert' | 'out-of-gas' | undefined
   const results: Record<string, unknown> = { passed: false, chainId: CHAIN_ID, proofMode: 'real-sdk', proofsCompleted: 0,
-    livePPOI: false, livePrivateRelay: false, singleEngineSyntheticWallets: true, operations: [] }
+    livePPOI: false, livePrivateRelay: false, singleEngineSyntheticWallets: true, operations: [],
+    ...(base ? { syntheticBaseSettlementFees: true, baseSettlementModel: 'Anvil execution gas only; L1 and operator extras explicitly zero' } : {}) }
   const operations = results.operations as Record<string, unknown>[]
   const log = (phase: string, details?: unknown) => input.progress(phase, details)
   const stage = async <T>(name: string, work: () => Promise<T>, milliseconds = 120_000): Promise<T> => {
@@ -143,13 +162,35 @@ export async function prepaidFork(input: { rpc: string; root: string; forkBlock:
     engine.on(EngineEvent.UTXOMerkletreeHistoryScanUpdate, (event) => {
       log('public-history-scan', { status: event.scanStatus, progress: event.progress })
     })
+    let baseHistory: Awaited<ReturnType<QuickSyncEvents>> | undefined
     const bounded: QuickSyncEvents = async (...args) => {
+      if (baseHistory) return Object.fromEntries(Object.entries(baseHistory).map(([key, values]) => [key,
+        (values as { blockNumber: number }[]).filter(event => event.blockNumber >= args[2])])) as Awaited<ReturnType<QuickSyncEvents>>
       log('public-indexer-query', { startingBlock: args[2] })
-      const events = await quick(...args)
+      let events: Awaited<ReturnType<QuickSyncEvents>>
+      try { events = await quick(...args) }
+      catch (error) {
+        const cause = error instanceof Error ? error.cause as { code?: string } | undefined : undefined
+        log('public-indexer-failed', { message: String(error).slice(0, 1000), code: cause?.code })
+        throw error
+      }
       log('public-indexer-result', Object.fromEntries(Object.entries(events).map(([key, values]) => [key, values.length])))
-      return Object.fromEntries(Object.entries(events).map(([key, values]) => [key,
+      const snapshot = Object.fromEntries(Object.entries(events).map(([key, values]) => [key,
         (values as { blockNumber: number }[]).filter((event) => event.blockNumber <= input.forkBlock)])) as Awaited<ReturnType<QuickSyncEvents>>
+      if (base) baseHistory = snapshot
+      return snapshot
     }
+    // Quick-sync failures are swallowed by the SDK and otherwise trigger ~12,000
+    // serial log ranges on Base. Preflight once before loading any provider, then
+    // reuse only this finalized public snapshot throughout the synthetic run.
+    if (base && process.env.OPHIS_PREPAID_TEST_HISTORY_CACHE) {
+      const anchor = await provider.getBlock(input.forkBlock)
+      assert(anchor?.hash, 'Canonical fork anchor is required before importing public history.')
+      baseHistory = readBaseHistoryCache(process.env.OPHIS_PREPAID_TEST_HISTORY_CACHE, {
+        chainId: CHAIN_ID, address: NETWORK.proxyContract, fromBlock: NETWORK.deploymentBlock, toBlock: input.forkBlock, blockHash: anchor.hash,
+      })
+      log('public-history-cache-loaded', Object.fromEntries(Object.entries(baseHistory).map(([key, values]) => [key, values.length])))
+    } else if (base) await stage('base-indexer-preflight', () => bounded(VERSION, NETWORK.chain, NETWORK.deploymentBlock), 60_000)
     Object.defineProperty(engine, 'quickSyncEvents', { value: bounded })
     await sdk.start()
     const feeFullId = sdk.walletId, feeFullKey = secrets.encryptionKey
@@ -178,7 +219,7 @@ export async function prepaidFork(input: { rpc: string; root: string; forkBlock:
     loaded = true
     await refresh(user.id, sdk.walletId)
     setLoggers(() => {}, () => {})
-    const sender = { broadcastTransaction: async (raw: string, expires?: number) => {
+    const sender = { broadcastTransaction: async (raw: string, expires?: number, basePlan?: BaseValidityPlan) => {
       await input.assertOwned()
       const tx = Transaction.from(raw), row = store.pending().find((item) => item.raw === raw && item.hash === tx.hash)
       assert(row, 'Signed bytes must be journaled before disclosure.')
@@ -190,10 +231,23 @@ export async function prepaidFork(input: { rpc: string; root: string; forkBlock:
       try {
         // Inject only after successful real proof tracing and durable signing on our owned fork.
         if (failure) await provider.send('anvil_setCode', [NETWORK.proxyContract, failure === 'revert' ? '0x60006000fd' : '0x5b600056'])
-        const response = await transport!.sender.broadcastTransaction(raw, expires)
+        const response = await transport!.sender.broadcastTransaction(raw, expires, basePlan)
         const receipt = await finalized(response.hash, failure ? 0 : 1)
-        if (failure === 'out-of-gas') assert.equal(receipt.gasUsed, tx.gasLimit)
+        if (failure === 'out-of-gas') {
+          if (!base) assert.equal(receipt.gasUsed, tx.gasLimit)
+          else {
+            const trace = await provider.send('debug_traceTransaction', [response.hash, { tracer: 'callTracer' }])
+            const failedProxy = (node: any): boolean => node?.to?.toLowerCase() === NETWORK.proxyContract.toLowerCase() &&
+              /out of gas/i.test(String(node.error)) || Array.isArray(node?.calls) && node.calls.some(failedProxy)
+            assert(failedProxy(trace), 'The included Base guarded call must expose the injected inner out-of-gas failure.')
+          }
+        }
         return response
+      } catch (error) {
+        const diagnostic = { chainId: CHAIN_ID, submission: submissions, error: forkSenderDiagnostic(error) }
+        writeFileSync(join(input.root, 'sender-failure.json'), json(diagnostic), { mode: 0o600 })
+        log('synthetic-sender-failed', diagnostic)
+        throw error
       } finally {
         if (originalCode) await provider.send('anvil_setCode', [NETWORK.proxyContract, originalCode])
       }
@@ -223,17 +277,37 @@ export async function prepaidFork(input: { rpc: string; root: string; forkBlock:
     }
     const info = await request(); scope = info.scope; ledgerId = info.ledgerId
     log('synthetic-native-shield')
+    const nativeShieldAccount = base ? await accounts.getCurrentAccount(CHAIN) : undefined
     const shield = await populateShieldBaseToken(VERSION, NETWORK_NAME, user.railgunAddress, hexlify(randomBytes(32)),
-      { tokenAddress: TOKENS[0].address, amount: 20_000_000_000_000_000n })
+      { tokenAddress: TOKENS[0].address, amount: 20_000_000_000_000_000n }, undefined, nativeShieldAccount)
+    const shieldNpk = nativeShieldAccount ? assertNativeShield(shield.transaction, nativeShieldAccount.address, 20_000_000_000_000_000n) : undefined
     const shieldTx = await publicGas.sendTransaction(bnb ? { ...shield.transaction, type: 0, gasPrice: 50_000_000n,
       maxFeePerGas: undefined, maxPriorityFeePerGas: undefined } : shield.transaction)
-    await finalized(shieldTx.hash)
+    const shieldReceipt = await finalized(shieldTx.hash)
+    if (shieldNpk) {
+      assertPrivateOutput(shieldReceipt, TOKENS[0].address, shieldNpk, 19_950_000_000_000_000n)
+      await ratchetEphemeralAddress(user.id, NETWORK_NAME)
+    }
     operations.push({ kind: 'shield', hash: shieldTx.hash })
     await refresh(user.id, sdk.walletId)
     const userBalance = (token = TOKENS[0].address) => balanceForERC20Token(VERSION, fullWalletForID(user.id), NETWORK_NAME, token, true)
     assert.equal(await userBalance(), 19_950_000_000_000_000n)
-    log('real-topup-proof')
     const topupAmount = bnb ? 2_000_000_000_000_000n : 10_000_000_000_000_000n
+    let firstClaimCompletedAt: number
+    if (native) {
+      log('public-native-credit-payment')
+      const paymentId = hexlify(randomBytes(32))
+      const payment = await publicGas.sendTransaction({ to: operator.address, value: topupAmount, chainId: CHAIN,
+        data: nativeCreditData(scope, ledgerId, claimant.address, paymentId) })
+      await finalized(payment.hash)
+      const claim = await request({ kind: 'claim', transactionHash: payment.hash, paymentId })
+      firstClaimCompletedAt = performance.now()
+      assert.equal(BigInt(claim.available), topupAmount)
+      assert.equal((await request({ kind: 'claim', transactionHash: payment.hash, paymentId })).available, claim.available)
+      assert.equal(store.db.prepare('SELECT COUNT(*) AS count FROM credit_native_deposits').get()!.count, 1)
+      operations.push({ kind: 'native-topup', hash: payment.hash, amount: topupAmount.toString(), duplicateIdempotent: true })
+    } else {
+    log('real-topup-proof')
     const memo = creditMemo(scope, ledgerId, claimant.address)
     // The initial qualified owner route spends one accounted note and returns at most one change note.
     const recipients = [{ tokenAddress: TOKENS[0].address, amount: topupAmount, recipientAddress: sdk.address }]
@@ -251,23 +325,25 @@ export async function prepaidFork(input: { rpc: string; root: string; forkBlock:
     const topupTx = await publicGas.sendTransaction(topup.transaction), topupReceipt = await finalized(topupTx.hash)
     await refresh(user.id, sdk.walletId)
     const claim = await request({ kind: 'claim', transactionHash: topupTx.hash })
-    const firstClaimCompletedAt = performance.now()
+    firstClaimCompletedAt = performance.now()
     assert.equal(BigInt(claim.available), topupAmount)
     const duplicate = await request({ kind: 'claim', transactionHash: topupTx.hash })
     assert.equal(duplicate.available, claim.available)
     assert.equal(store.db.prepare('SELECT COUNT(*) AS count FROM credit_deposits').get()!.count, 1)
     operations.push({ kind: 'topup', hash: topupTx.hash, amount: topupAmount.toString(), notes: 1,
       gasUsed: topupReceipt.gasUsed.toString(), realSdkClaim: true, duplicateIdempotent: true })
+    }
     const submit = async (populated: any, gas: TransactionGasDetails, type4: boolean, quote: Record<string, any>) => {
       const tx = populated.transaction
       const data = { txidVersion: VERSION, to: tx.to, data: tx.data, broadcasterViewingKey: sdk.publicViewingKey,
         chainType: 0, chainID: CHAIN_ID, feesID: quote.feesID, useRelayAdapt: type4, minVersion: '8.0.0', maxVersion: '8.999.0',
         transactType: type4 ? 'TX7702' : 'COMMON', preTransactionPOIsPerTxidLeafPerList: populated.preTransactionPOIsPerTxidLeafPerList,
-        ...(type4 ? { authorization: tx.authorizationList?.[0], gasLimit: calculateGasLimit(gas.gasEstimate).toString(),
+        ...(type4 ? { ...(base ? { predelegated: true } : { authorization: tx.authorizationList?.[0] }), gasLimit: calculateGasLimit(gas.gasEstimate).toString(),
           maxFeePerGas: (gas as any).maxFeePerGas.toString(), maxPriorityFeePerGas: (gas as any).maxPriorityFeePerGas.toString() }
           : { minGasPrice: (gas as any).gasPrice.toString() }) }
-      const maximumCharge = ((calculateMaximumGas(gas) + BigInt(quote.collectionAllowance)) * BigInt(quote.rate) + 10n ** 18n - 1n) / 10n ** 18n
-      const payload = { kind: 'execute', sequence: quote.nextSequence, request: data, maximumCharge: maximumCharge.toString(), collectionAllowance: quote.collectionAllowance }
+      const maximumCharge = ((base ? BigInt(quote.maximumGasCost) : calculateMaximumGas(gas)) + BigInt(quote.collectionAllowance)) * BigInt(quote.rate)
+      const chargeCeiling = (maximumCharge + 10n ** 18n - 1n) / 10n ** 18n
+      const payload = { kind: 'execute', sequence: quote.nextSequence, request: data, maximumCharge: chargeCeiling.toString(), collectionAllowance: quote.collectionAllowance }
       // Synthetic proved calldata only; never a spending key. Keep failed-before-signing
       // SDK compatibility cases reviewable after the disposable database is removed.
       appendFileSync(join(input.root, 'proved-requests.jsonl'), json({ type4, transaction: tx, gas, payload }) + '\n', { mode: 0o600 })
@@ -277,10 +353,26 @@ export async function prepaidFork(input: { rpc: string; root: string; forkBlock:
       const count = signatures, replay = await request(payload)
       assert.equal(replay.txHash, response.txHash); assert.equal(signatures, count)
       assert.equal(replay.state, 'settled')
-      return { hash: response.txHash, charged: replay.charged, maximumCharge: maximumCharge.toString(), quote }
+      return { hash: response.txHash, charged: replay.charged, maximumCharge: chargeCeiling.toString(), quote }
+    }
+    const setupBaseAccount = async (account: Awaited<ReturnType<typeof accounts.getCurrentAccount>>) => {
+      if (!base) return
+      await input.assertOwned()
+      assert.equal(await provider.getCode(account.address), '0x')
+      assert.equal(await provider.getTransactionCount(account.address, 'pending'), 0)
+      const authorization = await account.signer.authorize({ chainId: CHAIN, address: NETWORK.relayAdapt7702Contract, nonce: 0 })
+      const setup = await publicGas.sendTransaction({ chainId: CHAIN, type: 4, to: ZeroAddress, value: 0n, data: '0x',
+        authorizationList: [authorization] })
+      const receipt = await finalized(setup.hash)
+      assert.equal((await provider.getCode(account.address)).toLowerCase(), `0xef0100${NETWORK.relayAdapt7702Contract.slice(2).toLowerCase()}`)
+      assert.equal(await provider.getTransactionCount(account.address), 1)
+      assert.equal(await new Contract(account.address, ADAPT, provider).nonce(), 0n)
+      operations.push({ kind: 'user-paid-base-account-setup', account: account.address, payer: publicGas.address,
+        hash: setup.hash, gasCost: (receipt.gasUsed * receipt.gasPrice).toString(), syntheticLocalOnly: true })
     }
     log('real-fee-free-swap-proof')
     const account = await accounts.getCurrentAccount(CHAIN)
+    await setupBaseAccount(account)
     const route = await quoteSwap(provider, WRAPPED_SYMBOL, '0.001', account.address, 'USDC')
     const swapQuote = await request({ kind: 'quote' })
     const unshields = [{ tokenAddress: TOKENS[0].address, amount: route.amount }]
@@ -292,11 +384,18 @@ export async function prepaidFork(input: { rpc: string; root: string; forkBlock:
     const estimated = await gasEstimateForUnprovenCrossContractCalls7702(VERSION, NETWORK_NAME, user.id, userKey,
       unshields, [], reshields, [], route.calls, gas, undefined, true, 3_000_000n)
     gas = { ...gas, gasEstimate: estimated.gasEstimate } as typeof gas
-    await generateCrossContractCallsProof7702(VERSION, NETWORK_NAME, user.id, userKey, unshields, [], reshields, [], route.calls,
+    const swapRequest = await generateCrossContractCallsProof7702(VERSION, NETWORK_NAME, user.id, userKey, unshields, [], reshields, [], route.calls,
       undefined, true, 0n, 3_000_000n, progress)
     results.proofsCompleted = Number(results.proofsCompleted) + 1
     const swap = await populateProvedCrossContractCalls(VERSION, NETWORK_NAME, user.id, unshields, [], reshields, [], route.calls,
       undefined, true, 0n, gas)
+    if (base) {
+      assert.equal(swap.transaction.type, 4)
+      assert.deepEqual(provider.getRpcTransaction(swap.transaction).authorizationList,
+        provider.getRpcTransaction({ authorizationList: [swapRequest.authorization] }).authorizationList)
+      swap.transaction = { ...swap.transaction, type: 2, authorizationList: undefined }
+      assertSameExecution({ provider } as WalletSession, swapRequest, swap.transaction)
+    }
     const swapped = await submit(swap, gas, true, swapQuote)
     await ratchetEphemeralAddress(user.id, NETWORK_NAME); await refresh(user.id, sdk.walletId)
     const privateOutput = await userBalance(usdc.address)
@@ -316,11 +415,12 @@ export async function prepaidFork(input: { rpc: string; root: string; forkBlock:
       : { evmGasType: EVMGasType.Type2, gasEstimate: estimate,
         maxFeePerGas: gasPrice, maxPriorityFeePerGas: gasPrice }
     let withdrawn: Awaited<ReturnType<typeof submit>>, minimum: bigint | undefined
-    if (bnb) {
+    if (bnb || native) {
       // Match the production prepaid bound-withdrawal shape: one principal proof,
       // then re-sign the SDK action with requireSuccess=true before disclosure.
       const withdrawalAccount = await accounts.getCurrentAccount(CHAIN)
       assert.notEqual(withdrawalAccount.address, account.address, 'The completed swap account must have ratcheted.')
+      await setupBaseAccount(withdrawalAccount)
       const feeBps: bigint = await new Contract(NETWORK.proxyContract, PROXY, provider).unshieldFee()
       minimum = unshieldAmount(privateOutput, feeBps)
       const calls = [{ to: withdrawalAccount.address, value: 0n, data: ADAPT.encodeFunctionData('transfer', [[{
@@ -339,8 +439,8 @@ export async function prepaidFork(input: { rpc: string; root: string; forkBlock:
         request.transactions, actionData, Number(request.authorization.nonce), request, undefined, request.ephemeralAddress)
       const strict = { ...request, actionData, authorization: signed.authorization, executionSignature: signed.signature }
       const encoded = encodeRequest(strict)
-      const transaction = { to: withdrawalAccount.address, data: String(encoded.data), value: 0n, type: 4,
-        authorizationList: [strict.authorization], chainId: CHAIN, gasLimit: calculateGasLimit(withdrawalGas.gasEstimate),
+      const transaction = { to: withdrawalAccount.address, data: String(encoded.data), value: 0n,
+        ...(base ? { type: 2 } : { type: 4, authorizationList: [strict.authorization] }), chainId: CHAIN, gasLimit: calculateGasLimit(withdrawalGas.gasEstimate),
         maxFeePerGas: withdrawalGas.maxFeePerGas, maxPriorityFeePerGas: withdrawalGas.maxPriorityFeePerGas }
       assertSameExecution({ provider } as WalletSession, strict, transaction)
       const checked = assertBoundWithdrawal(transaction.data, withdrawalAccount.address, 'USDC', recipient, minimum, undefined, 'prepaid')
@@ -360,24 +460,50 @@ export async function prepaidFork(input: { rpc: string; root: string; forkBlock:
     const received = BigInt(await token.balanceOf(recipient)) - before
     assert(received > 0n && received <= privateOutput)
     if (minimum !== undefined) assert.equal(received, minimum, 'The bound USDC transfer must pay the exact reviewed net amount.')
-    operations.push({ kind: 'fee-free-withdrawal', shape: bnb ? 'strict-bound-one-principal-proof' : 'common',
+    operations.push({ kind: 'fee-free-withdrawal', shape: bnb || native ? 'strict-bound-one-principal-proof' : 'common',
       recipient, received: received.toString(), tokenDecimals: usdc.decimals, ...withdrawn })
     log('real-proof-included-failure-tests')
     await refresh(user.id, sdk.walletId)
     const ledger = CreditLedger.load(store), principalBeforeFailures = await userBalance()
     const failureAmounts = [{ tokenAddress: TOKENS[0].address, amount: 100_000_000_000_000n, recipientAddress: recipient }]
-    const failureEstimate = await gasEstimateForUnprovenUnshield(VERSION, NETWORK_NAME, user.id, userKey,
-      failureAmounts, [], commonGas, undefined, true)
-    const failureGas = { ...commonGas, gasEstimate: failureEstimate.gasEstimate }
-    await generateUnshieldProof(VERSION, NETWORK_NAME, user.id, userKey, failureAmounts, [], undefined, true, commonGas.gasPrice, progress)
+    let failureGas: TransactionGasDetails, failureProof: any
+    if (base) {
+      const failureAccount = await accounts.getCurrentAccount(CHAIN)
+      await setupBaseAccount(failureAccount)
+      const feeBps: bigint = await new Contract(NETWORK.proxyContract, PROXY, provider).unshieldFee()
+      const minimum = unshieldAmount(failureAmounts[0].amount, feeBps)
+      const calls = [{ to: failureAccount.address, value: 0n, data: ADAPT.encodeFunctionData('transfer', [[{
+        token: { tokenType: 0, tokenAddress: TOKENS[0].address, tokenSubID: 0 }, to: recipient, value: minimum,
+      }]]) }]
+      const principal = [{ tokenAddress: TOKENS[0].address, amount: failureAmounts[0].amount }]
+      const estimated = await gasEstimateForUnprovenCrossContractCalls7702(VERSION, NETWORK_NAME, user.id, userKey,
+        principal, [], [], [], calls, type4Gas, undefined, true, 3_000_000n)
+      failureGas = { ...type4Gas, gasEstimate: estimated.gasEstimate }
+      const request = await generateCrossContractCallsProof7702(VERSION, NETWORK_NAME, user.id, userKey,
+        principal, [], [], [], calls, undefined, true, 0n, 3_000_000n, progress)
+      const actionData = { ...request.actionData, requireSuccess: true }
+      const signed = await fullWalletForID(user.id).sign7702Request(userKey, NETWORK.relayAdapt7702Contract, CHAIN,
+        request.transactions, actionData, Number(request.authorization.nonce), request, undefined, request.ephemeralAddress)
+      const strict = { ...request, actionData, authorization: signed.authorization, executionSignature: signed.signature }
+      const transaction = { ...encodeRequest(strict), chainId: CHAIN, gasLimit: calculateGasLimit(failureGas.gasEstimate),
+        maxFeePerGas: type4Gas.maxFeePerGas, maxPriorityFeePerGas: type4Gas.maxPriorityFeePerGas }
+      assertSameExecution({ provider } as WalletSession, strict, transaction)
+      assertBoundWithdrawal(String(transaction.data), failureAccount.address, WRAPPED_SYMBOL, recipient, minimum, undefined, 'prepaid')
+      failureProof = { transaction, preTransactionPOIsPerTxidLeafPerList: {} }
+    } else {
+      const estimated = await gasEstimateForUnprovenUnshield(VERSION, NETWORK_NAME, user.id, userKey,
+        failureAmounts, [], commonGas, undefined, true)
+      failureGas = { ...commonGas, gasEstimate: estimated.gasEstimate }
+      await generateUnshieldProof(VERSION, NETWORK_NAME, user.id, userKey, failureAmounts, [], undefined, true, commonGas.gasPrice, progress)
+      failureProof = await populateProvedUnshield(VERSION, NETWORK_NAME, user.id, failureAmounts, [], undefined, true,
+        commonGas.gasPrice, sdkCommonGas(failureGas.gasEstimate))
+    }
     results.proofsCompleted = Number(results.proofsCompleted) + 1
-    const failureProof = await populateProvedUnshield(VERSION, NETWORK_NAME, user.id, failureAmounts, [], undefined, true,
-      commonGas.gasPrice, sdkCommonGas(failureGas.gasEstimate))
     for (const failure of ['revert', 'out-of-gas'] as const) {
       const quote = await request({ kind: 'quote' }), creditBefore = ledger.balance(claimant.address)
       const nativeBefore = await provider.getBalance(operator.address)
       inclusionFailure = failure
-      const submitted = await submit(failureProof, failureGas, false, quote)
+      const submitted = await submit(failureProof, failureGas, base, quote)
       const receipt = await finalizedCreditReceipt(provider, submitted.hash)
       assert.equal(receipt.status, 0)
       const cost = receipt.gasUsed * receipt.gasPrice
@@ -391,11 +517,28 @@ export async function prepaidFork(input: { rpc: string; root: string; forkBlock:
       assert.equal(after.reserved, 0n)
       await refresh(user.id, sdk.walletId)
       assert.equal(await userBalance(), principalBeforeFailures)
-      const fundedBacking = creditBackingEvidence(await sdk.accountedCreditBacking(provider, ledger.accountedNotes(), 1))
-      assert(fundedBacking.available >= ledger.requiredBacking() && fundedBacking.bounded >= ledger.earned())
+      if (native) ledger.assertNativeBacked(await verifyNativeBacking(provider, scope, ledgerId, ledger.nativeDeposits(), ledger.nativeSettlements()), config.reserve)
+      else {
+        const fundedBacking = creditBackingEvidence(await sdk.accountedCreditBacking(provider, ledger.accountedNotes(), 1))
+        assert(fundedBacking.available >= ledger.requiredBacking() && fundedBacking.bounded >= ledger.earned())
+      }
       operations.push({ kind: `included-${failure}`, hash: submitted.hash, gasUsed: receipt.gasUsed.toString(),
         gasCost: cost.toString(), charged: charged.toString(), maximumCharge: submitted.maximumCharge,
         realProofValidatedBeforeInjection: true, principalUnspent: true, remainingCreditBacked: true })
+    }
+    if (native) {
+      const report = accountingReport(store.db)
+      const balance = await provider.getBalance(operator.address)
+      assert.equal(balance - ledger.liability(), operatorNativeBefore + ledger.earned())
+      assert.equal(signatures, 4); assert.equal(submissions, 4); assert.equal(store.hasPending(), false)
+      assert.equal(transport.stats().leakedWrite, false); assert.equal(transport.stats().protectedWrites, 4)
+      if (base) assert.equal(operations.filter(operation => operation.kind === 'user-paid-base-account-setup').length, 3)
+      Object.assign(results, { passed: true, funding: 'public-native', signatures, submissions, artifactBytes,
+        balance: JSON.parse(json(ledger.balance(claimant.address))), accounting: report, protectedTransport: transport.stats(),
+        nativeProtocolFeeQualification: false, publicMainnetWrites: 0,
+        ...(base ? { predelegatedType2Execution: true, userPaidAccountSetups: 3,
+          conditionalEnforcement: 'modeled against owned Anvil state; not a live sequencer test' } : {}) })
+      return results
     }
     log('real-memo-less-owner-refund')
     await refresh(user.id, sdk.walletId, feeFullId)

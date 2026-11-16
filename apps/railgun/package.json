@@ -78,7 +78,9 @@
       "@railgun-community/engine@9.9.1": "patches/@railgun-community__engine@9.9.1.patch",
       "zod@3.22.4": "../../patches/zod@3.22.4.patch",
       "zod@3.25.76": "../../patches/zod@3.25.76.patch",
-      "@railgun-community/wallet@11.2.0": "patches/@railgun-community__wallet@11.2.0.patch"
+      "@railgun-community/wallet@11.2.0": "patches/@railgun-community__wallet@11.2.0.patch",
+      "@railgun-community/waku-broadcaster-client-web@10.0.1": "patches/@railgun-community__waku-broadcaster-client-web@10.0.1.patch",
+      "@waku/sdk@0.0.36": "patches/@waku__sdk@0.0.36.patch"
     }
   }
 }

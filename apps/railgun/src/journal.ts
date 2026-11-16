@@ -1,9 +1,11 @@
 import { CHAIN_ID, isTokenSymbol, CHAIN, ERC20, TOKENS, CONFIG, ROUTE_INTERMEDIATES, type TokenSymbol } from './config'
-import { Contract, getAddress } from 'ethers'
+import { Contract, getAddress, type TransactionReceipt } from 'ethers'
 import { fullWalletForID, getWalletTransactionHistory } from '@railgun-community/wallet'
 import { assertReceipt, assertPrivateOutput, PRIVACY, ADAPT } from './execution'
 import { deletePrivateState, readPrivateState, writePrivateState } from './storage'
-import type { WalletSession } from './wallet'
+import { syncWallet, type WalletSession } from './wallet'
+import { assertBaseReceiptFinality } from './base-finality'
+import { assertCanonicalReceipt } from './receipt-canonical'
 
 export interface PendingSwap {
   chainId?: number
@@ -88,6 +90,7 @@ export async function reconcilePendingSwap(
   session: WalletSession,
   allowRecovered = false,
   acceptLeftovers = false,
+  knownReceipt?: TransactionReceipt,
 ): Promise<string> {
   const pending = await pendingSwap(session)
   if (!pending) return 'No pending private swap.'
@@ -95,7 +98,8 @@ export async function reconcilePendingSwap(
   if (getAddress(account.address) !== getAddress(pending.account)) throw new Error('Recovery account mismatch.')
   if (!pending.inputs?.length)
     throw new Error('This older swap record has no saved input binding. Use recovery or cancel its authorization; the record has been preserved.')
-  let receipt = pending.hash ? await session.provider.getTransactionReceipt(pending.hash) : null
+  let receipt = pending.hash ? knownReceipt?.hash?.toLowerCase() === pending.hash.toLowerCase()
+    ? knownReceipt : await session.provider.getTransactionReceipt(pending.hash) : null
   if (!receipt || receipt.status === 0) {
     // The SDK's startingBlock filters input-note creation, not the spend's block.
     const history = await getWalletTransactionHistory(CONFIG.chain, session.info.id, undefined)
@@ -153,6 +157,10 @@ export async function reconcilePendingSwap(
     if (balances.some((balance) => BigInt(balance) !== 0n))
       throw new Error(`Recovery account ${pending.index} still holds funds after a failed cleanup call. Recover them before reconciling, or explicitly accept leftovers.`)
   }
+  if (CHAIN_ID === 8453) {
+    await syncWallet(session, receipt)
+    await assertBaseReceiptFinality(session, receipt)
+  } else await assertCanonicalReceipt(session.provider, receipt)
   await fullWalletForID(session.info.id).setEphemeralKeyIndexIfGreater(CHAIN, pending.index + 1)
   await deletePrivateState(session, 'pendingSwap')
   return recovered

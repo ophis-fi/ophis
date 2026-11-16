@@ -15,15 +15,16 @@ describe.each(PRIVATE_NETWORKS)('$name private swap configuration', (network) =>
     const { amountFromInput, recipeCalls, assertQuoteFresh, quoteSwap } = await import('./recipe')
     const { routeCandidates } = await import('./routes')
     expect(config.CHAIN).toBe(BigInt(network.chainId))
-    expect(Object.keys(config.TOKENS)).toHaveLength(3)
+    expect(Object.keys(config.TOKENS)).toHaveLength(network.stables.length + 1)
     const precision = network.chainId === 56 ? 18 : 6
     expect(amountFromInput('1', 'USDC')).toBe(10n ** BigInt(precision))
     expect(config.tokenFor(config.WRAPPED_SYMBOL).address).toBe(config.CONFIG.baseToken.wrappedAddress)
     for (const sell of Object.keys(config.TOKENS).filter(config.isTokenSymbol)) {
       for (const buy of Object.keys(config.TOKENS).filter(config.isTokenSymbol).filter((token) => token !== sell)) {
         const candidates = routeCandidates(sell, buy)
-        expect(candidates).toHaveLength(20)
-        expect(new Set(candidates.map((route) => route.path)).size).toBe(20)
+        const routeCount = 4 + (network.stables.length - 1) * 16
+        expect(candidates).toHaveLength(routeCount)
+        expect(new Set(candidates.map((route) => route.path)).size).toBe(routeCount)
         for (const route of candidates) {
           const calls = recipeCalls(sell, buy, '0x0000000000000000000000000000000000001234', 100n, 1n, 12345, route.path)
           expect(calls[2].to).toBe(network.router)
@@ -49,5 +50,5 @@ describe.each(PRIVATE_NETWORKS)('$name private swap configuration', (network) =>
 })
 
 it('rejects unsupported chains rather than using Ethereum as a fallback', () => {
-  for (const value of [0, 10, 8453, Number.NaN, Number.POSITIVE_INFINITY]) expect(() => privateNetwork(value)).toThrow()
+  for (const value of [0, 10, 84532, Number.NaN, Number.POSITIVE_INFINITY]) expect(() => privateNetwork(value)).toThrow()
 })

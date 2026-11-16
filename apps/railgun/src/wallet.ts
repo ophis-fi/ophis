@@ -19,12 +19,14 @@ import {
   type RailgunBalancesEvent,
   type RailgunWalletInfo,
 } from '@railgun-community/shared-models'
-import { JsonRpcProvider, Mnemonic, randomBytes, hexlify, getBytes } from 'ethers'
+import { JsonRpcProvider, Mnemonic, randomBytes, hexlify, getBytes, type TransactionReceipt } from 'ethers'
 import { groth16 } from 'snarkjs'
 import { artifacts, encryptionKey, readPreference, walletDB, writePreference } from './storage'
 import { RPC_BATCH_SIZE } from '../rpc-policy'
 import { disablePPOI } from '../poi-policy'
 import { EngineEvent, MerkletreeScanStatus, POI, type MerkletreeHistoryScanEventData } from '@railgun-community/engine'
+import { installBaseHistory } from '../base-history-sdk'
+import { saveBaseHistoryReceipt, pendingBaseHistoryReceipts, refreshReorgedBaseHistoryReceipts, clearBaseHistoryReceipts } from './base-history-receipt'
 
 export interface WalletSession {
   info: RailgunWalletInfo
@@ -37,9 +39,11 @@ interface WalletMetadata {
   salt: string
 }
 const tab: { lock?: Promise<void> } = {}
+let baseHistorySource: Awaited<ReturnType<typeof installBaseHistory>> | undefined
 const scan: {
   ready: boolean
   timedOut: boolean
+  requiresRescan?: boolean
   epoch: number
   warming?: Promise<void>
   syncing?: Promise<void>
@@ -47,20 +51,22 @@ const scan: {
   report: (status: string, ready: boolean) => void
 } = { ready: false, timedOut: false, epoch: 0, report: () => {} }
 
-async function verifyHistory(walletIds: string[]): Promise<void> {
+async function verifyHistory(walletIds: string[], rescan = false): Promise<void> {
   if (scan.timedOut) throw new Error('History verification timed out. Reload this page before retrying.')
   if (getEngine().getUTXOMerkletree(VERSION, CONFIG.chain).isScanning)
     throw new Error('A history scan is already running. Wait and refresh balances before depositing or spending.')
   let timeout: ReturnType<typeof setTimeout> | undefined
   const verified = new Promise<void>((resolve, reject) => {
-    scan.finished = (complete) => complete ? resolve() : reject(new Error('Private history verification is incomplete. Refresh balances to retry before depositing or spending.'))
+    scan.finished = (complete) => complete ? resolve() : reject(new Error(scan.requiresRescan
+      ? 'Base history needs a verified rebuild. Use Rebuild Base history in Recovery; keys and saved transactions are preserved.'
+      : 'Private history verification is incomplete. Recent Base updates may take 30 seconds; refresh balances to retry.'))
     timeout = setTimeout(() => {
       scan.timedOut = true
       reject(new Error('History verification timed out. Keep your recovery phrase safe and reload to retry.'))
     }, 10 * 60_000)
   })
   try {
-    await Promise.all([refreshBalances(CONFIG.chain, walletIds), verified])
+    await Promise.all([rescan ? getEngine().fullRescanUTXOMerkletreesAndWallets(CONFIG.chain, walletIds) : refreshBalances(CONFIG.chain, walletIds), verified])
   } finally {
     clearTimeout(timeout)
     scan.finished = undefined
@@ -72,6 +78,11 @@ export function requireWalletSync(): void {
     throw new Error(
       'Private history is not synchronized. Wait for synchronization or repair the RPC connection before spending.',
     )
+}
+
+export async function ensureWalletSync(session: WalletSession): Promise<void> {
+  if (!scan.ready) await syncWallet(session)
+  requireWalletSync()
 }
 
 export async function claimWalletTab(): Promise<void> {
@@ -119,16 +130,39 @@ export async function startWalletEngine(
       throw new Error('Mainnet mode cannot use a local fork.')
     disablePPOI(POI, CONFIG)
     await startRailgunEngine('ophis', walletDB, false, artifacts, false, false)
+    if (CHAIN_ID === 8453 && ENVIRONMENT === 'ethereum') {
+      onStatus('Preparing shared Base history. Recent updates may take about 30 seconds.', false)
+      baseHistorySource = await installBaseHistory(getEngine(), provider, location.origin)
+    }
     // Upstream snarkjs types reject the sparse circuit inputs accepted by Railgun.
     getProver().setSnarkJSGroth16(groth16 as unknown as SnarkJSGroth16)
-    setOnBalanceUpdateCallback(onBalance)
+    let verifiedBaseHistory = false
+    const pendingBaseBalances = new Map<string, RailgunBalancesEvent>()
+    setOnBalanceUpdateCallback(event => {
+      if (CHAIN_ID === 8453 && !verifiedBaseHistory) {
+        pendingBaseBalances.set(`${event.railgunWalletID}:${event.balanceBucket}`, event); return
+      }
+      onBalance(event)
+    })
     getEngine().on(EngineEvent.UTXOMerkletreeHistoryScanUpdate, (event: MerkletreeHistoryScanEventData) => {
       if (event.chain.id !== CHAIN_ID || event.txidVersion !== VERSION) return
+      if (CHAIN_ID === 8453) {
+        scan.requiresRescan = (event as MerkletreeHistoryScanEventData & { requiresRescan?: boolean }).requiresRescan === true
+        const rebuild = document.getElementById('rebuild-base-history')
+        if (rebuild) rebuild.hidden = !scan.requiresRescan
+        verifiedBaseHistory = event.scanStatus === MerkletreeScanStatus.Complete
+        if (!verifiedBaseHistory) scan.ready = false
+        if (verifiedBaseHistory) { for (const balance of pendingBaseBalances.values()) onBalance(balance); pendingBaseBalances.clear() }
+        if (event.scanStatus === MerkletreeScanStatus.Incomplete) pendingBaseBalances.clear()
+      }
       if (event.scanStatus === MerkletreeScanStatus.Complete) scan.finished?.(true)
       if (event.scanStatus === MerkletreeScanStatus.Incomplete) scan.finished?.(false)
       if (event.scanStatus === MerkletreeScanStatus.Incomplete) { scan.ready = false; scan.epoch++ }
       onStatus(
         event.scanStatus === MerkletreeScanStatus.Complete ? 'History verified. Updating private balances…' :
+          CHAIN_ID === 8453 && event.scanStatus === MerkletreeScanStatus.Incomplete
+            ? scan.requiresRescan ? 'Rebuild Base history in Recovery to verify cached balances. Keys and saved transactions are preserved.'
+              : 'Base history is not yet verified. Recent updates may take about 30 seconds; refresh balances.' :
           `Synchronizing private history: ${event.scanStatus}${event.progress == null ? '' : ` ${Math.round(event.progress * 100)}%`}`,
         scan.ready,
       )
@@ -203,21 +237,51 @@ export async function openWallet(
   return { info, key, provider, accounts }
 }
 
-export function syncWallet(session: WalletSession): Promise<void> {
-  scan.syncing ??= (async () => {
+export function syncWallet(session: WalletSession, receipt?: TransactionReceipt): Promise<void> {
+  const base = CHAIN_ID === 8453 && ENVIRONMENT === 'ethereum'
+  if (base && receipt) { scan.ready = false; scan.epoch++ }
+  const persisted = base && receipt ? saveBaseHistoryReceipt(session, receipt) : undefined
+  const previous = scan.syncing
+  if (previous && !persisted) return previous
+  scan.ready = false
+  const task = (async () => {
+    // Save before waiting: reload must retain a mined transaction's history requirement.
+    await persisted
+    await previous?.catch(() => {})
     scan.ready = false
     if (!scan.warming)
       scan.report('Synchronizing private history. Deposits and spending become available when verification finishes.', false)
     await scan.warming?.catch(() => {})
     const epoch = scan.epoch
+    const receipts = base ? await refreshReorgedBaseHistoryReceipts(session, await pendingBaseHistoryReceipts(session)) : []
+    if (base) {
+      if (!baseHistorySource) throw new Error('Verified Base history is unavailable. Preserve saved transactions and reload.')
+      baseHistorySource.setRequiredReceipts(receipts)
+    }
     await verifyHistory([session.info.id])
     await refreshReceivedBalances(session)
     await session.accounts.scanHistoryForEphemeralIndex(CONFIG.chain)
     if (scan.epoch !== epoch) throw new Error('Private history changed during verification. Refresh balances to retry.')
+    if (base) {
+      baseHistorySource!.assertReceiptCoverage()
+      await clearBaseHistoryReceipts(session, receipts)
+      if (scan.epoch !== epoch) throw new Error('A newer Base transaction is still synchronizing. Keep its saved record.')
+    }
     scan.ready = true
     scan.report('Complete · private balances are ready.', true)
-  })().finally(() => { scan.syncing = undefined })
-  return scan.syncing
+  })().finally(() => { if (scan.syncing === task) scan.syncing = undefined })
+  scan.syncing = task
+  return task
+}
+
+/** Explicit user action; the SDK clears only derived UTXOs/received balances, then uses the bounded shared source. */
+export async function rebuildBaseHistory(session: WalletSession): Promise<void> {
+  if (CHAIN_ID !== 8453 || ENVIRONMENT !== 'ethereum' || scan.syncing || scan.warming)
+    throw new Error('Wait for the current Base history scan to finish.')
+  scan.ready = false
+  scan.syncing = verifyHistory([session.info.id], true).finally(() => { scan.syncing = undefined })
+  await scan.syncing
+  await syncWallet(session)
 }
 
 export function refreshReceivedBalances(session: WalletSession): Promise<void> {

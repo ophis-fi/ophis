@@ -3,6 +3,9 @@ import { isAbsolute, resolve } from 'node:path'
 import { getAddress, isHexString, ZeroAddress, ZeroHash } from 'ethers'
 import { PRIVATE_NETWORKS, privateNetwork, type PrivateToken } from '../../railgun/src/networks'
 import { traceRpcURL } from './bnb-trace-provider'
+import { protectedWriteRPC } from '../../railgun/operator/protected-submission'
+import { CREDIT_MAX_MESSAGE_BYTES, NATIVE_CREDIT_CHAINS } from '../../railgun/credit-protocol'
+import { baseHistoryOrigin as validateBaseHistoryOrigin } from '../../railgun/base-history'
 
 function chainId(value: string | undefined): number {
   if (value !== undefined && !/^[1-9][0-9]*$/.test(value)) throw new Error('Invalid broadcaster chain ID.')
@@ -27,7 +30,7 @@ export const TOPICS = {
   transact: `/railgun/v2/0-${CHAIN_ID}-transact/json`,
   response: `/railgun/v2/0-${CHAIN_ID}-transact-response/json`,
 }
-export const MAX_MESSAGE_BYTES = 512 * 1024
+export const MAX_MESSAGE_BYTES = CREDIT_MAX_MESSAGE_BYTES
 export const MAX_GAS = 8_000_000n
 export const FEE_LIFETIME_MS = 5 * 60_000
 export const TOKENS: readonly PrivateToken[] = [
@@ -37,11 +40,13 @@ export const TOKENS: readonly PrivateToken[] = [
 export const FEE_TOKENS: readonly PrivateToken[] = CHAIN_ID === 56 ? TOKENS.slice(0, 1) : TOKENS
 
 export interface Settings {
+  baseHistoryOrigin?: string
   chainId: number
   mode: 'mainnet' | 'fork'
   admission: 'pilot' | 'public'
   enabled: boolean
   rpc: string
+  writeRpc?: string
   traceRpc?: string
   waku: string
   state: string
@@ -52,6 +57,7 @@ export interface Settings {
   reserve: bigint
   marginBps: bigint
   creditPaymentMode?: 'private-wrapped' | 'public-native'
+  creditLedgerId?: string
   creditCollectionGas?: bigint
   creditCollectionInputs?: number
   creditCollectionOutputs?: number
@@ -69,7 +75,12 @@ export function assertSigningNetwork(config: Pick<Settings, 'chainId' | 'mode' |
   // Public BNB execution requires native prepayment; the older fee mode stays in its pilot.
   if (config.mode === 'mainnet' && CHAIN_ID === 56 && config.admission !== 'pilot' && config.creditPaymentMode !== 'public-native')
     throw new Error('BNB mainnet signing without native prepayment is restricted to pilot admission pending live fee-paid acceptance.')
-  if (config.mode === 'mainnet' && CHAIN_ID !== 1 && CHAIN_ID !== 56)
+  if (config.mode === 'mainnet' && CHAIN_ID === 42161 && config.creditPaymentMode !== 'public-native')
+    throw new Error('Arbitrum mainnet signing requires native prepayment; private-wrapped fees await live acceptance.')
+  if (config.mode === 'mainnet' && CHAIN_ID === 8453 &&
+    (config.creditPaymentMode !== 'public-native' || config.admission !== 'pilot'))
+    throw new Error('L2 mainnet signing requires a native-prepayment pilot pending live acceptance.')
+  if (config.mode === 'mainnet' && ![1, 56, 42161, 8453].includes(CHAIN_ID))
     throw new Error('Mainnet signing on this chain awaits qualified private delivery and live acceptance.')
 }
 
@@ -81,8 +92,8 @@ export function settings(env: NodeJS.ProcessEnv): Settings {
   const creditPaymentMode = env.OPHIS_BROADCASTER_CREDIT_PAYMENT_MODE ?? 'private-wrapped'
   if (creditPaymentMode !== 'private-wrapped' && creditPaymentMode !== 'public-native')
     throw new Error('Invalid prepaid payment mode.')
-  if (creditPaymentMode === 'public-native' && CHAIN_ID !== 1 && CHAIN_ID !== 56)
-    throw new Error('Native prepaid fees are supported only on Ethereum and BNB.')
+  if (creditPaymentMode === 'public-native' && !NATIVE_CREDIT_CHAINS.includes(CHAIN_ID))
+    throw new Error('Native prepaid fees are not supported on this chain.')
   const admission = env.OPHIS_BROADCASTER_ADMISSION ?? 'pilot'
   if (admission !== 'pilot' && admission !== 'public') throw new Error('Invalid broadcaster admission policy.')
   if (CHAIN_ID !== 1 && !env.OPHIS_BROADCASTER_RPC) throw new Error('Configure a trusted RPC for this broadcaster chain.')
@@ -95,6 +106,8 @@ export function settings(env: NodeJS.ProcessEnv): Settings {
   if (mode === 'fork' && (rpc.protocol !== 'http:' || !['127.0.0.1', '[::1]'].includes(rpc.hostname)))
     throw new Error('Fork mode requires a loopback Anvil RPC.')
   const traceRpc = traceRpcURL(env.OPHIS_BROADCASTER_TRACE_RPC, CHAIN_ID, mode)
+  const writeRpc = env.OPHIS_BROADCASTER_WRITE_RPC || undefined
+  if (writeRpc) protectedWriteRPC(CHAIN_ID, writeRpc)
   const state = resolve(env.OPHIS_BROADCASTER_STATE ?? './data')
   const secrets = env.OPHIS_BROADCASTER_SECRETS ?? resolve(mode === 'fork' ? './secrets/operator.json' : './secrets/operator.sealed.json')
   if (!isAbsolute(secrets)) throw new Error('The operator secrets path must be absolute.')
@@ -105,6 +118,9 @@ export function settings(env: NodeJS.ProcessEnv): Settings {
   }
   const enabled = env.OPHIS_BROADCASTER_ENABLED === '1'
   if (enabled) assertSigningNetwork({ chainId: CHAIN_ID, mode, admission, creditPaymentMode })
+  const creditLedgerId = env.OPHIS_BROADCASTER_CREDIT_LEDGER_ID
+  if (creditLedgerId !== undefined && (!isHexString(creditLedgerId, 32) || creditLedgerId.toLowerCase() === ZeroHash))
+    throw new Error('The expected credit ledger ID must be a nonzero 32-byte identity.')
   const maxGasPrice = integer('OPHIS_BROADCASTER_MAX_GAS_PRICE_WEI', '0')
   const maxTransactionCost = integer('OPHIS_BROADCASTER_MAX_TX_COST_WEI', '0')
   const reserve = integer('OPHIS_BROADCASTER_RESERVE_WEI', '0')
@@ -133,11 +149,14 @@ export function settings(env: NodeJS.ProcessEnv): Settings {
     : getAddress(env.OPHIS_BROADCASTER_PREPAID_PILOT_OWNER)
   if ((prepaidPilotLedgerId === undefined) !== (prepaidPilotOwner === undefined) || prepaidPilotOwner === ZeroAddress)
     throw new Error('A prepaid pilot approval requires both its ledger ID and nonzero credit owner address.')
-  if (prepaidPilotLedgerId !== undefined && (admission !== 'pilot' || ![1, 56].includes(CHAIN_ID) ||
+  if (prepaidPilotLedgerId !== undefined && (admission !== 'pilot' ||
+    !([1, 56].includes(CHAIN_ID) || ([42161, 8453].includes(CHAIN_ID) && creditPaymentMode === 'public-native')) ||
     !isHexString(prepaidPilotLedgerId, 32) || prepaidPilotLedgerId.toLowerCase() === ZeroHash))
     throw new Error('A prepaid pilot opt-in requires its exact nonzero ledger ID and qualified pilot admission.')
   if (admission === 'public' && (pilotAccount || pilotWithdrawalRecipient))
     throw new Error('Public admission must not specify pilot restrictions.')
+  if (enabled && mode === 'mainnet' && admission === 'public' && creditPaymentMode === 'public-native' && !creditLedgerId)
+    throw new Error('Public native prepayment requires the existing approved credit ledger ID.')
   if (enabled && mode === 'mainnet' && (!executionGuard || (admission === 'pilot' && !pilotAccount)))
     throw new Error(admission === 'pilot'
       ? 'Mainnet is restricted to an explicit pilot account and an operator-bound execution guard pending live acceptance.'
@@ -146,8 +165,12 @@ export function settings(env: NodeJS.ProcessEnv): Settings {
     : getAddress(env.OPHIS_BROADCASTER_OPERATOR_ADDRESS)
   if (operatorAddress === ZeroAddress || (enabled && mode === 'mainnet' && !operatorAddress))
     throw new Error('Mainnet signing requires the verified dedicated gas-wallet address.')
-  return { chainId: CHAIN_ID, mode, admission, enabled, rpc: rpc.href, traceRpc, waku: waku.href, state, secrets, maxGasPrice,
-    maxTransactionCost, dailyBudget, reserve, marginBps, creditPaymentMode, creditCollectionGas, creditCollectionInputs, creditCollectionOutputs,
+  const historyOrigin = env.OPHIS_BROADCASTER_BASE_HISTORY_ORIGIN
+  if (historyOrigin !== undefined && (CHAIN_ID !== 8453 || mode !== 'mainnet'))
+    throw new Error('A Base history origin is valid only for Base mainnet.')
+  const baseHistoryOrigin = historyOrigin === undefined ? undefined : validateBaseHistoryOrigin(historyOrigin, admission === 'pilot')
+  return { chainId: CHAIN_ID, mode, admission, enabled, rpc: rpc.href, writeRpc, traceRpc, waku: waku.href, state, secrets, maxGasPrice, baseHistoryOrigin,
+    maxTransactionCost, dailyBudget, reserve, marginBps, creditPaymentMode, creditLedgerId: creditLedgerId?.toLowerCase(), creditCollectionGas, creditCollectionInputs, creditCollectionOutputs,
     creditCollectionProofs, executionGuard, pilotAccount, pilotWithdrawalRecipient,
     prepaidPilotLedgerId: prepaidPilotLedgerId?.toLowerCase(), prepaidPilotOwner, operatorAddress }
 }

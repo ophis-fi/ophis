@@ -8,11 +8,16 @@ import type { WalletSession } from './wallet'
 vi.mock('./config', async (original) => ({ ...await original<typeof import('./config')>(), ENVIRONMENT: 'ethereum' }))
 afterEach(() => vi.restoreAllMocks())
 
-it('pins native Ethereum and BNB prepayment to the owner identity and approved limits', () => {
+it('pins native Ethereum, BNB and Arbitrum prepayment to the owner identity and approved limits', () => {
   const protectedRoute = PROTECTED_BROADCASTERS[1]![0]
   expect(PREPAID_BROADCASTERS[1]).toEqual({ ...protectedRoute, operator: PREPAID_OPERATOR, funding: 'native' })
   expect(PREPAID_BROADCASTERS[56]).toEqual({ operator: PREPAID_OPERATOR, railgunAddress: FEE_SIGNER, funding: 'native',
     expiresAt: protectedRoute.expiresAt, maxGasPrice: 100_000_000n, maxTransactionCost: 250_000_000_000_000n })
+  expect(PREPAID_BROADCASTERS[42161]).toEqual({ operator: PREPAID_OPERATOR, railgunAddress: FEE_SIGNER, funding: 'native',
+    expiresAt: protectedRoute.expiresAt, maxGasPrice: 100_000_000n, maxTransactionCost: 1_000_000_000_000_000n })
+  expect(PREPAID_BROADCASTERS[8453]).toBeUndefined()
+  expect(PREPAID_BROADCASTERS[137]).toBeUndefined()
+  expect(PROTECTED_BROADCASTERS[42161]).toBeUndefined()
 })
 
 it('binds Ethereum discovery and protection to the reviewed Ophis fee identity without a calendar cutoff', () => {

@@ -46,6 +46,8 @@ export function renderWalletLayout(): void {
   element('sell-label').textContent = view === 'withdrawal' ? 'You withdraw' : 'You sell'
   element('amount').setAttribute('aria-label', view === 'withdrawal' ? 'Amount to withdraw' : 'Amount to sell')
   element('trade-actions').hidden = view !== 'swap' || review
+  const baseSetup = document.getElementById('base-setup')
+  if (baseSetup) baseSetup.hidden = !(view === 'withdrawal' || view === 'swap' && !review)
   element('swap-review').hidden = view !== 'swap' || !review
   element('wallet-back').hidden = view === 'swap'
   element('wallet-view-title').textContent = ({ swap: '', 'deposit-details': 'Add funds', withdrawal: 'Withdraw',

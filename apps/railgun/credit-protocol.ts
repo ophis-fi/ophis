@@ -3,6 +3,9 @@ import { AbiCoder, getAddress, id, isHexString, keccak256, toUtf8Bytes, verifyTy
 export const CREDIT_PROTOCOL = 'ophis.prepaid.v1'
 export const CREDIT_REQUEST_LIFETIME = 5 * 60_000
 export const CREDIT_MAX_PAYLOAD = 300_000
+export const CREDIT_MAX_MESSAGE_BYTES = 512 * 1024
+// Protocol support does not approve a live operator or its submission route.
+export const NATIVE_CREDIT_CHAINS: readonly number[] = [1, 56, 42161, 137, 8453]
 export interface CreditScope { chainId: number; operator: string; recipient: string; token: string; funding?: 'native' }
 export interface CreditAuthorization { owner: string; payload: string; expires: number; signature: string }
 export const creditTopics = (chainId: number) => ({ request: `ophis-prepaid-v1-${chainId}`, response: `ophis-prepaid-v1-${chainId}-response` })
@@ -14,7 +17,7 @@ export const CREDIT_AUTHORIZATION_TYPES = { CreditRequest: [
 ] }
 export function creditDomain(scope: CreditScope, ledgerId: string) {
   const native = scope.funding === 'native'
-  if ((scope.funding !== undefined && !native) || ![1, 56].includes(scope.chainId) || !isHexString(ledgerId, 32) || /^0x0{64}$/i.test(ledgerId) ||
+  if ((scope.funding !== undefined && !native) || !(native ? NATIVE_CREDIT_CHAINS : [1, 56]).includes(scope.chainId) || !isHexString(ledgerId, 32) || /^0x0{64}$/i.test(ledgerId) ||
     getAddress(scope.operator) === ZeroAddress || (native
       ? getAddress(scope.token) !== ZeroAddress || getAddress(scope.recipient) !== getAddress(scope.operator)
       : getAddress(scope.token) === ZeroAddress || !scope.recipient.startsWith('0zk1')))

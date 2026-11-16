@@ -2,7 +2,7 @@ import { withdrawalPilotKey } from './prepaid-pilot'
 import { getAddress, hexlify, isHexString, randomBytes, Transaction, ZeroAddress, type TransactionReceipt } from 'ethers'
 import type { Store } from './storage'
 import type { CreditScope } from '../../railgun/credit-protocol'
-import { creditRefundMemo } from '../../railgun/credit-protocol'
+import { NATIVE_CREDIT_CHAINS, creditRefundMemo } from '../../railgun/credit-protocol'
 import { finalizedCreditEvidence } from './credit-payment'
 import { getRailgunWalletAddressData, validateRailgunAddress } from '@railgun-community/wallet'
 import { creditBackingEvidence, type CreditBacking } from './credit-backing'
@@ -10,9 +10,10 @@ import { assertUnrelatedOwnerPayout, ownerDebitEvidence, type AccountedNote, typ
   type VerifiedUnrelatedOwnerPayout } from './credit-owner-payment'
 import { ANON_COLLECTION_BASE_FEE_BPS, nativeCollectionEvidence, type VerifiedNativeCollection } from './anon-native-collection'
 import { PROXY } from './transaction'
-import { NETWORK } from './config'
+import { NETWORK, type Settings } from './config'
+import { validateBaseValidityPlan, type BaseValidityPlan } from '../../railgun/operator/base-validity'
 import { nativeBackingEvidence, nativeDepositEvidence, nativeHistoryCatalog, nativeScope, type NativeCreditBacking,
-  type NativeDepositAnchor, type NativeSettlementAnchor, type VerifiedNativeDeposit } from './credit-native-payment'
+  type NativeDepositAnchor, type NativePendingAttempt, type NativeSettlementAnchor, type VerifiedNativeDeposit } from './credit-native-payment'
 
 export type { CreditScope } from '../../railgun/credit-protocol'
 export interface ConfirmedCredit {
@@ -39,6 +40,7 @@ export interface CreditAttempt {
   backing: CreditBacking | NativeCreditBacking
   nativeReserve?: bigint
   nativeRefund?: { recipient: string; net: bigint }
+  baseValidity?: BaseValidityPlan
 }
 interface AttemptRow {
   key: string; owner: string; unsigned: string; maximum_charge: string; rate: string
@@ -80,6 +82,22 @@ export const creditCharge = (gasCost: bigint, rate: bigint, collectionAllowance:
   return quantity((((gasCost + collectionAllowance) * rate + SCALE - 1n) / SCALE).toString())
 }
 
+/** The independent deployment pin must survive a missing, stale or wrong state directory. */
+export function assertConfiguredCreditLedger(store: Store,
+  config: Pick<Settings, 'mode' | 'enabled' | 'creditLedgerId' | 'prepaidPilotLedgerId'>): boolean {
+  const table = store.db.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name='credit_identity'").get()
+  const identity = table && store.db.prepare('SELECT id FROM credit_identity WHERE singleton=1').get()
+  if (identity && (typeof identity.id !== 'string' || !isHexString(identity.id, 32) || /^0x0{64}$/i.test(identity.id)))
+    throw new Error('The persisted prepaid ledger identity is invalid.')
+  for (const expected of [config.creditLedgerId, config.prepaidPilotLedgerId]) {
+    if (expected !== undefined && identity?.id !== expected.toLowerCase())
+      throw new Error('The persisted prepaid ledger does not match the configured identity. Restore the reviewed state before continuing.')
+  }
+  if (!identity && config.mode === 'mainnet' && config.enabled)
+    throw new Error('Live signing cannot initialize a missing prepaid ledger. Restore the reviewed state or initialize once while disabled.')
+  return !!identity
+}
+
 /** Uses the operator journal so payment reservation and nonce ownership commit together. */
 export class CreditLedger {
   readonly id: string
@@ -92,7 +110,7 @@ export class CreditLedger {
   }
   constructor(private readonly store: Store, scope: CreditScope, initialNonce = 0) {
     const native = scope.funding === 'native'
-    if (![1, 56].includes(scope.chainId) || (scope.funding !== undefined && !native) ||
+    if (!(native ? NATIVE_CREDIT_CHAINS : [1, 56]).includes(scope.chainId) || (scope.funding !== undefined && !native) ||
       (native ? getAddress(scope.recipient) !== getAddress(scope.operator) || getAddress(scope.token) !== ZeroAddress : !validateRailgunAddress(scope.recipient)))
       throw new Error('Unsupported credit scope.')
     if (!Number.isSafeInteger(initialNonce) || initialNonce < 0) throw new Error('Invalid initial operator nonce.')
@@ -114,6 +132,15 @@ export class CreditLedger {
       CREATE TABLE IF NOT EXISTS credit_attempts (
         key TEXT PRIMARY KEY, owner TEXT NOT NULL, unsigned TEXT NOT NULL, maximum_charge TEXT NOT NULL,
         rate TEXT NOT NULL, collection_allowance TEXT NOT NULL, charged TEXT, settlement_hash TEXT);
+      CREATE TABLE IF NOT EXISTS credit_base_validity (
+        key TEXT NOT NULL, unsigned TEXT NOT NULL, plan TEXT NOT NULL, PRIMARY KEY(key,unsigned));
+      CREATE TRIGGER IF NOT EXISTS immutable_credit_base_validity_update BEFORE UPDATE ON credit_base_validity
+        BEGIN SELECT RAISE(ABORT,'Base fee predicates are immutable'); END;
+      CREATE TRIGGER IF NOT EXISTS immutable_credit_base_validity_delete BEFORE DELETE ON credit_base_validity
+        BEGIN SELECT RAISE(ABORT,'Base fee predicates are immutable'); END;
+      CREATE TRIGGER IF NOT EXISTS immutable_credit_base_validity_replace BEFORE INSERT ON credit_base_validity
+        WHEN EXISTS(SELECT 1 FROM credit_base_validity WHERE key=NEW.key AND unsigned=NEW.unsigned)
+        BEGIN SELECT RAISE(ABORT,'Base fee predicates are immutable'); END;
       CREATE TABLE IF NOT EXISTS credit_retired_requests (
         key TEXT PRIMARY KEY, owner TEXT NOT NULL, operation TEXT NOT NULL CHECK(operation IN ('execute','refund')),
         created INTEGER NOT NULL);
@@ -257,8 +284,20 @@ export class CreditLedger {
     }
   }
   get isNative(): boolean { return this.scope.funding === 'native' }
+  get pipelinesNative(): boolean { return this.isNative && [42161, 8453].includes(this.scope.chainId) }
   hasUnsettledNativeAttempt(): boolean {
     return this.isNative && !!this.store.db.prepare('SELECT 1 FROM credit_attempts WHERE charged IS NULL LIMIT 1').get()
+  }
+  nativeCapacityReached(): boolean {
+    if (!this.pipelinesNative) return this.hasUnsettledNativeAttempt()
+    return Number(this.store.db.prepare('SELECT COUNT(*) AS count FROM credit_attempts WHERE charged IS NULL').get()!.count) >= 20
+  }
+  nativePendingAttempts(beforeNonce = Number.MAX_SAFE_INTEGER): NativePendingAttempt[] {
+    if (!this.pipelinesNative) return []
+    return (this.store.db.prepare(`SELECT r.key,r.nonce,r.raw,r.max_cost FROM credit_attempts a JOIN requests r ON r.key=a.key
+      WHERE a.charged IS NULL AND r.nonce<? ORDER BY r.nonce LIMIT 21`).all(beforeNonce) as unknown as
+      { key: string; nonce: number; raw: string; max_cost: string }[]).map(item => ({ nonce: item.nonce, raw: item.raw,
+        maximumCost: BigInt(item.max_cost), cancellations: this.store.cancellations(item.key).map(tx => tx.raw) }))
   }
   private depositTable(): string { return this.isNative ? 'credit_native_deposits' : 'credit_deposits' }
   private assertPrivateCredit(): void { if (this.isNative) throw new Error('Private owner operations cannot spend native customer credit.') }
@@ -274,6 +313,40 @@ export class CreditLedger {
     return this.store.db.prepare(`SELECT a.settlement_hash AS transactionHash,
       json_extract(r.fee_data,'$.blockNumber') AS blockNumber,json_extract(r.fee_data,'$.blockHash') AS blockHash
       FROM credit_attempts a JOIN requests r ON r.key=a.key WHERE a.charged IS NOT NULL`).all() as unknown as NativeSettlementAnchor[]
+  }
+  baseValidity(key: string, unsigned = this.attempt(key)?.unsigned): Readonly<BaseValidityPlan> | undefined {
+    if (this.scope.chainId !== 8453 || !this.isNative || !unsigned) return undefined
+    const row = this.store.db.prepare('SELECT plan FROM credit_base_validity WHERE key=? AND unsigned=?').get(hash(key), unsigned)
+    return row ? validateBaseValidityPlan(JSON.parse(String(row.plan)), unsigned) : undefined
+  }
+  baseCancellation(key: string, maxFeePerGas: bigint, maxPriorityFeePerGas: bigint): Readonly<BaseValidityPlan> | undefined {
+    if (this.scope.chainId !== 8453 || !this.isNative) return undefined
+    const plans = this.store.db.prepare('SELECT unsigned,plan FROM credit_base_validity WHERE key=?').all(hash(key))
+      .map(row => validateBaseValidityPlan(JSON.parse(String(row.plan)), String(row.unsigned)))
+      .filter(plan => {
+        const tx = Transaction.from(plan.unsigned)
+        return tx.to === this.scope.operator && tx.value === 0n && tx.data === '0x' &&
+          tx.maxFeePerGas === maxFeePerGas && tx.maxPriorityFeePerGas === maxPriorityFeePerGas
+      })
+    if (plans.length > 1) throw new Error('Multiple Base cancellation reservations match these gas prices; preserve their held nonce.')
+    return plans[0]
+  }
+  reserveBaseCancellation(key: string, input: BaseValidityPlan): void {
+    if (this.scope.chainId !== 8453 || !this.isNative) throw new Error('Base cancellation requires its native ledger.')
+    key = hash(key)
+    const plan = validateBaseValidityPlan(input), tx = Transaction.from(plan.unsigned)
+    this.atomic(() => {
+      const request = this.store.get(hash(key)), attempt = this.attempt(key)
+      if (!request || !attempt || attempt.charged !== null || tx.nonce !== request.nonce || tx.to !== this.scope.operator ||
+        tx.data !== '0x' || tx.value !== 0n) throw new Error('The Base cancellation must retain its original nonce and credit hold.')
+      this.assertCancellationCovered(key, BigInt(plan.maximumCost))
+      const saved = this.baseValidity(key, plan.unsigned)
+      if (saved) {
+        if (JSON.stringify(saved) !== JSON.stringify(plan)) throw new Error('Base fee predicates are immutable')
+        return
+      }
+      this.store.db.prepare('INSERT INTO credit_base_validity(key,unsigned,plan) VALUES(?,?,?)').run(key, plan.unsigned, JSON.stringify(plan))
+    })
   }
   nativeRefund(key: string): { key: string; recipient: string; net: string; paid: string | null;
     transaction_hash: string | null; status: number | null } | undefined {
@@ -308,8 +381,9 @@ export class CreditLedger {
     quantity(reserve.toString(), true)
     const value = nativeBackingEvidence(proof)
     if (value.ledgerId !== this.id || value.scope !== nativeScope(this.scope, this.id) ||
-      value.catalog !== nativeHistoryCatalog(this.nativeDeposits(), this.nativeSettlements()) ||
-      value.available < this.liability() + reserve || (nonce !== undefined && value.nonce !== nonce))
+      // Recovery proves the included prefix; signatures at or above its nonce keep their full holds.
+      value.catalog !== nativeHistoryCatalog(this.nativeDeposits(), this.nativeSettlements(), this.nativePendingAttempts(value.nonce)) ||
+      value.available + value.pendingOutflow < this.liability() + reserve || (nonce !== undefined && value.nonce !== nonce))
       throw new Error('Native balance or canonical history does not cover all customer liabilities and reserve.')
   }
   private atomic<T>(run: () => T): T {
@@ -676,13 +750,17 @@ export class CreditLedger {
   reserve(attempt: CreditAttempt): void {
     const key = hash(attempt.key), owner = ownerAddress(attempt.owner), tx = Transaction.from(attempt.unsigned)
     const refund = attempt.nativeRefund
+    const basePlan = this.scope.chainId === 8453 && this.isNative
+      ? validateBaseValidityPlan(attempt.baseValidity, attempt.unsigned) : undefined
+    if ((!basePlan && attempt.baseValidity) || (basePlan && (BigInt(basePlan.maximumCost) !== attempt.gasBudget ||
+      basePlan.feeExpiryMs > attempt.expiration))) throw new Error('The Base validity budget differs from its credit reservation.')
     if (refund && (!this.isNative || ![0,2].includes(tx.type ?? -1) || !tx.to || tx.data !== '0x' ||
       getAddress(tx.to) !== ownerAddress(refund.recipient) || getAddress(tx.to) === this.scope.operator ||
       tx.value !== quantity(refund.net.toString(),true) || (tx.authorizationList?.length ?? 0))) throw new Error('Invalid native refund reservation.')
     if (this.isNative && attempt.collectionAllowance !== 0n) throw new Error('Native prepaid attempts have no private collection allowance.')
     if (![0, 1, 2, 4].includes(tx.type ?? -1) || tx.isSigned() || tx.unsignedSerialized !== attempt.unsigned || tx.chainId !== BigInt(this.scope.chainId) ||
       tx.nonce !== attempt.nonce || !Number.isSafeInteger(attempt.nonce) || attempt.nonce < 0 || tx.value !== (refund?.net ?? 0n) ||
-      attempt.gasBudget <= 0n || tx.gasLimit * (tx.maxFeePerGas ?? tx.gasPrice ?? 0n) !== attempt.gasBudget ||
+      attempt.gasBudget <= 0n || (!basePlan && tx.gasLimit * (tx.maxFeePerGas ?? tx.gasPrice ?? 0n) !== attempt.gasBudget) ||
       !Number.isSafeInteger(attempt.expiration) || attempt.expiration <= Date.now() ||
       attempt.maximumCharge < (refund?.net ?? 0n) + creditCharge(attempt.gasBudget, attempt.rate, attempt.collectionAllowance))
       throw new Error('Invalid prepaid attempt reservation.')
@@ -692,8 +770,8 @@ export class CreditLedger {
       this.assertChainNonce(attempt.nonce)
       this.assertOwnerJournalReady()
       if (this.isNative) {
-        if (this.hasUnsettledNativeAttempt())
-          throw new Error('Finalize the outstanding native attempt before another signature.')
+        if (this.nativeCapacityReached())
+          throw new Error('Finalize the outstanding native attempts before another signature.')
         this.assertNativeBacked(attempt.backing as NativeCreditBacking, attempt.nativeReserve ?? 0n, attempt.nonce)
       } else {
         const backing = creditBackingEvidence(attempt.backing as CreditBacking)
@@ -712,6 +790,8 @@ export class CreditLedger {
       const now = Date.now()
       this.store.db.prepare(`INSERT INTO credit_attempts(key,owner,unsigned,maximum_charge,rate,collection_allowance,sequence)
         VALUES(?,?,?,?,?,?,?)`).run(key, owner, attempt.unsigned, maximum.toString(), attempt.rate.toString(), attempt.collectionAllowance.toString(), attempt.sequence)
+      if (basePlan) this.store.db.prepare('INSERT INTO credit_base_validity(key,unsigned,plan) VALUES(?,?,?)')
+        .run(key, attempt.unsigned, JSON.stringify(basePlan))
       this.store.db.prepare(`INSERT INTO requests(key,envelope,created,max_cost,signed_at,fee_data,nonce,fee_expiration)
         VALUES(?,?,?,?,?,?,?,?)`).run(key, attempt.envelope, now, attempt.gasBudget.toString(), now,
         JSON.stringify({ kind: 'prepaid', ledgerId: this.id, owner, sequence: attempt.sequence }), attempt.nonce, attempt.expiration)
@@ -767,7 +847,7 @@ export class CreditLedger {
   settle(key: string, receipt: TransactionReceipt): bigint {
     const evidence = finalizedCreditEvidence(receipt)
     key = hash(key)
-    const receiptHash = hash(evidence.hash), cost = evidence.gasUsed * evidence.gasPrice
+    const receiptHash = hash(evidence.hash), cost = evidence.networkCost
     return this.atomic(() => {
       const attempt = this.attempt(key), request = this.store.get(key)
       const raw = request?.hash === receiptHash ? request.raw : this.store.cancellations(key).find((tx) => tx.hash === receiptHash)?.raw

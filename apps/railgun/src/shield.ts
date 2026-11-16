@@ -1,4 +1,4 @@
-import { NATIVE_SYMBOL, WRAPPED_SYMBOL, isTokenSymbol, tokenFor, CHAIN, CHAIN_NAME, CONFIG, ENVIRONMENT, ERC20, NETWORK, VERSION, type TokenSymbol } from './config'
+import { NATIVE_SYMBOL, WRAPPED_SYMBOL, isTokenSymbol, tokenFor, CHAIN, CHAIN_ID, CHAIN_NAME, CONFIG, ENVIRONMENT, ERC20, NETWORK, VERSION, type TokenSymbol } from './config'
 import {
   BrowserProvider,
   Contract,
@@ -15,6 +15,8 @@ import {
 import { populateShield, populateShieldBaseToken } from '@railgun-community/wallet'
 import type { WalletSession } from './wallet'
 import { forkMarker } from './fork-marker'
+import { unusedNativeShieldAccount } from './account'
+import { assertNativeShield, assertPrivateOutput } from './execution'
 
 export type ShieldToken = TokenSymbol | 'ETH' | 'POL' | 'BNB'
 
@@ -118,7 +120,8 @@ export async function requireShieldBalance(signer: JsonRpcSigner, token: ShieldT
       `Public wallet balance: ${formatUnits(balance, decimals)} ${token}.\n` +
       `Required to shield: ${formatUnits(amount, decimals)} ${token}.\n` +
       (token === WRAPPED_SYMBOL
-        ? `Choose ${NATIVE_SYMBOL} as the deposit asset to use it directly. Token approval does not wrap native funds.`
+        ? CHAIN_ID === 8453 ? 'Choose ETH to wrap it into WETH first, then approve and shield WETH. Token approval does not wrap ETH.'
+          : `Choose ${NATIVE_SYMBOL} as the deposit asset to use it directly. Token approval does not wrap native funds.`
         : token === NATIVE_SYMBOL
           ? `Your connected public wallet needs this ${NATIVE_SYMBOL} amount plus ${NATIVE_SYMBOL} for gas.`
           : 'Your connected public wallet needs this token amount before shielding.'),
@@ -151,6 +154,8 @@ export async function shield(
   onStatus: (message: string) => void = () => {},
   beforeSend: () => void = () => {},
 ): Promise<TransactionReceipt> {
+  if (CHAIN_ID === 8453 && token === NATIVE_SYMBOL)
+    throw new Error('On Base, wrap ETH into WETH first, then approve and shield the WETH.')
   onStatus('Checking your public wallet network and balance…')
   await assertPublicNetwork(session, signer)
   await requireShieldBalance(signer, token, amount)
@@ -163,10 +168,14 @@ export async function shield(
   }
   const shieldKey = hexlify(randomBytes(32))
   onStatus(`Preparing your ${token} deposit…`)
+  const account = token === NATIVE_SYMBOL && !CONFIG.relayAdaptContract ? await unusedNativeShieldAccount(session) : undefined
   const { transaction } = token === NATIVE_SYMBOL
-    ? await populateShieldBaseToken(VERSION, NETWORK, session.info.railgunAddress, shieldKey, recipient)
+    ? account
+      ? await populateShieldBaseToken(VERSION, NETWORK, session.info.railgunAddress, shieldKey, recipient, undefined, account)
+      : await populateShieldBaseToken(VERSION, NETWORK, session.info.railgunAddress, shieldKey, recipient)
     : await populateShield(VERSION, NETWORK, shieldKey, [recipient], [])
-  if (token === NATIVE_SYMBOL && (transaction.to?.toLowerCase() !== CONFIG.relayAdaptContract.toLowerCase() || transaction.value !== amount))
+  const npk = account ? assertNativeShield(transaction, account.address, amount) : undefined
+  if (token === NATIVE_SYMBOL && !account && (transaction.to?.toLowerCase() !== CONFIG.relayAdaptContract.toLowerCase() || transaction.value !== amount))
     throw new Error(`${NATIVE_SYMBOL} deposit transaction does not match the expected Railgun contract and amount.`)
   onStatus(`Confirm the ${formatUnits(amount, token === NATIVE_SYMBOL ? 18 : tokenFor(token).decimals)} ${token} deposit in your connected wallet. Open your wallet app and check its requests. A request can remain pending; do not submit it again.`)
   await assertPublicNetwork(session, signer, beforeSend)
@@ -174,6 +183,8 @@ export async function shield(
   onStatus(`Deposit submitted: ${response.hash}. Waiting for ${CHAIN_NAME} confirmation. Do not submit it again.`)
   const receipt = await response.wait()
   if (!receipt || receipt.status !== 1) throw new Error('Shield was not confirmed.')
+  if (npk) assertPrivateOutput(receipt, recipient.tokenAddress, npk, 1n)
+  if (CHAIN_ID === 8453 && ENVIRONMENT === 'ethereum') await (await import('./base-history-receipt')).saveBaseHistoryReceipt(session, receipt)
   onStatus(`Deposit confirmed: ${receipt.hash}. Refresh balances after confirmation and synchronization. Ophis does not require PPOI verification.`)
   return receipt
 }

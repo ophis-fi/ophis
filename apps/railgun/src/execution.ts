@@ -9,7 +9,7 @@ import {
   type TransactionStructV2,
   type RelayAdapt7702Request,
 } from '@railgun-community/engine'
-import { Contract, getAddress, Interface, verifyAuthorization, ZeroAddress, ZeroHash, type TransactionReceipt, type TransactionRequest } from 'ethers'
+import { Contract, getAddress, getBigInt, Interface, isHexString, verifyAuthorization, ZeroAddress, ZeroHash, type TransactionReceipt, type TransactionRequest } from 'ethers'
 import type { WalletSession } from './wallet'
 import type { PendingWithdrawal } from './withdrawal-journal'
 import { assertExecutionGuardCode, decodeGuardedExecution } from '../operator/execution-guard'
@@ -51,7 +51,7 @@ export function assertBoundWithdrawal(data: string, account: string, token: Toke
   const native = output === 'native'
   const prepaid = feeMode === 'prepaid'
   const sameFeeAsset = getAddress(asset.address) === getAddress(tokenFor(feeTokenFor(token)).address)
-  if ((native ? CHAIN_ID !== 56 || !sameFeeAsset : sameFeeAsset && !prepaid) || decoded?.name !== 'execute' ||
+  if ((native ? getAddress(asset.address) !== getAddress(CONFIG.baseToken.wrappedAddress) : sameFeeAsset && !prepaid) || decoded?.name !== 'execute' ||
     ADAPT.encodeFunctionData(decoded.fragment, decoded.args) !== data.toLowerCase()) throw new Error('Canonical signed withdrawal required.')
   const transactions = decoded.args._transactions as readonly WithdrawalTransaction[]
   const action = decoded.args._actionData
@@ -94,6 +94,32 @@ export function assertAuthorization(request: RelayAdapt7702Request): void {
     throw new Error('7702 authorization does not belong to the executing account.')
 }
 
+export function assertNativeShield(transaction: TransactionRequest, account: string, amount: bigint): string {
+  const authorization = transaction.authorizationList?.[0]
+  if (transaction.type !== 4 || transaction.to !== account || transaction.value !== amount || amount <= 0n ||
+    transaction.authorizationList?.length !== 1 || !authorization ||
+    getBigInt(authorization.chainId) !== CHAIN || getBigInt(authorization.nonce) !== 0n ||
+    getAddress(authorization.address) !== getAddress(CONFIG.relayAdapt7702Contract) ||
+    getAddress(verifyAuthorization({ ...authorization, nonce: getBigInt(authorization.nonce) }, authorization.signature)) !== getAddress(account) || typeof transaction.data !== 'string')
+    throw new Error('Native deposit authorization does not match the selected account, chain and amount.')
+  const decoded = ADAPT.parseTransaction({ data: transaction.data })
+  if (decoded?.name !== 'execute' || ADAPT.encodeFunctionData(decoded.fragment, decoded.args) !== transaction.data.toLowerCase())
+    throw new Error('Canonical native deposit calldata is required.')
+  const action = decoded.args._actionData
+  if (decoded.args._transactions.length !== 0 || decoded.args._nonce !== 0n || !action.requireSuccess || action.calls.length !== 2 ||
+    action.calls.some((call: { to: string; value: bigint }) => getAddress(call.to) !== getAddress(account) || call.value !== 0n) ||
+    action.calls[0].data !== ADAPT.encodeFunctionData('wrapBase', [amount]))
+    throw new Error('Native deposit must wrap and shield the exact amount atomically.')
+  const [requests] = ADAPT.decodeFunctionData('shield', action.calls[1].data)
+  if (requests.length !== 1 || ADAPT.encodeFunctionData('shield', [requests]) !== action.calls[1].data ||
+    getAddress(requests[0].preimage.token.tokenAddress) !== getAddress(CONFIG.baseToken.wrappedAddress) ||
+    requests[0].preimage.token.tokenType !== 0n || requests[0].preimage.token.tokenSubID !== 0n || requests[0].preimage.value !== amount)
+    throw new Error('Native deposit must shield the selected wrapped asset and amount.')
+  RelayAdapt7702Validator.validateExecution([], action, decoded.args._signature, CHAIN_ID, account,
+    { executionType: RelayAdapt7702ExecutionType.ExecuteWithNonce, executeNonce: 0n })
+  return String(requests[0].preimage.npk)
+}
+
 // Native output has no recipient Transfer event. In addition to the canonical
 // unshield/unwrap logs, confirmation must bind the actual successful transaction
 // to the complete signed native action and the trusted account/guard code.
@@ -104,9 +130,18 @@ export async function assertNativeExecutionBinding(session: WalletSession, recei
   assertBoundWithdrawal(pending.transaction.data, e.account, pending.token, pending.recipient, BigInt(pending.minimum), 'native', pending.feeMode)
   const transaction = await session.provider.getTransaction(hash)
   if (!transaction?.to || transaction.hash.toLowerCase() !== hash.toLowerCase() || transaction.blockNumber !== receipt.blockNumber ||
+    !isHexString(receipt.blockHash, 32) || receipt.blockHash === ZeroHash || transaction.blockHash?.toLowerCase() !== receipt.blockHash.toLowerCase() ||
     transaction.value !== 0n) throw new Error('Native receipt is not bound to the saved signed execution.')
   const account = getAddress(e.account)
-  const delegateCode = await session.provider.getCode(CONFIG.relayAdapt7702Contract, receipt.blockNumber)
+  const selector = { blockHash: receipt.blockHash, requireCanonical: true }
+  const read = async (method: 'eth_getCode' | 'eth_call', argument: unknown): Promise<string> => {
+    try {
+      const result = await session.provider.send(method, [argument, selector])
+      if (!isHexString(result, method === 'eth_call' ? 32 : true)) throw new Error('Invalid execution state')
+      return result
+    } catch { throw new Error('Native execution state could not be verified on its canonical block. Keep the saved withdrawal.') }
+  }
+  const delegateCode = await read('eth_getCode', CONFIG.relayAdapt7702Contract)
   if (delegateCode === '0x') throw new Error('Canonical native withdrawal delegate is unavailable.')
   if (getAddress(transaction.to) === account) {
     if (transaction.data.toLowerCase() !== pending.transaction.data.toLowerCase()) throw new Error('Native receipt calldata differs from the saved execution.')
@@ -114,11 +149,11 @@ export async function assertNativeExecutionBinding(session: WalletSession, recei
     const guarded = decodeGuardedExecution(transaction.data)
     if (guarded.account !== account || guarded.execution.toLowerCase() !== pending.transaction.data.toLowerCase() ||
       guarded.nonce !== BigInt(e.executeNonce)) throw new Error('Native guard receipt differs from the saved execution.')
-    assertExecutionGuardCode(transaction.from, await session.provider.getCode(transaction.to, receipt.blockNumber), delegateCode, CONFIG.relayAdapt7702Contract)
+    assertExecutionGuardCode(transaction.from, await read('eth_getCode', transaction.to), delegateCode, CONFIG.relayAdapt7702Contract)
   }
-  if ((await session.provider.getCode(account, receipt.blockNumber)).toLowerCase() !== `0xef0100${CONFIG.relayAdapt7702Contract.slice(2).toLowerCase()}`)
+  if ((await read('eth_getCode', account)).toLowerCase() !== `0xef0100${CONFIG.relayAdapt7702Contract.slice(2).toLowerCase()}`)
     throw new Error('Native receipt account does not use the canonical delegate.')
-  const nonce: bigint = await new Contract(account, ADAPT, session.provider).getFunction('nonce')({ blockTag: receipt.blockNumber })
+  const nonce: bigint = ADAPT.decodeFunctionResult('nonce', await read('eth_call', { to: account, data: ADAPT.encodeFunctionData('nonce') }))[0]
   if (nonce <= BigInt(e.executeNonce)) throw new Error('Native execution nonce was not advanced.')
 }
 
@@ -135,7 +170,8 @@ export function encodeRequest(request: RelayAdapt7702Request): TransactionReques
     request.executionSignature,
     request,
   )
-  return { to: request.ephemeralAddress, data, value: 0n, type: 4, authorizationList: [request.authorization] }
+  return { to: request.ephemeralAddress, data, value: 0n, ...(CHAIN_ID === 8453
+    ? { type: 2 } : { type: 4, authorizationList: [request.authorization] }) }
 }
 
 export async function assertExecutionNetwork(session: WalletSession): Promise<void> {
@@ -158,6 +194,7 @@ export function assertSameExecution(
     if (JSON.stringify(expected[field]) !== JSON.stringify(actual[field]))
       throw new Error('Populated transaction differs from the signed execution. Submission blocked.')
   }
+  if (CHAIN_ID === 8453 && transaction.type !== 2) throw new Error('Base requires its prepared account and a type-2 execution.')
   if (BigInt(transaction.value || 0) !== 0n) throw new Error('Unexpected public value in a private swap.')
 }
 
@@ -168,6 +205,7 @@ export async function simulateRequest(
 ): Promise<void> {
   assertAuthorization(request)
   await assertExecutionNetwork(session)
+  if (CHAIN_ID === 8453) await (await import('./base-setup')).requireBaseExecutionSetup(session, request.ephemeralAddress)
   const probe = encodeRequest(request)
   const delegated = await session.provider.call({
     ...probe,
@@ -184,6 +222,7 @@ export async function simulateRequest(
     gasLimit,
     from: '0x0000000000000000000000000000000000000001',
   })
+  if (CHAIN_ID === 8453) await (await import('./base-setup')).markBaseExecutionSetupUsed(session, request.ephemeralAddress)
   const trace: unknown = await session.provider.send('debug_traceCall', [
     transaction,
     'latest',

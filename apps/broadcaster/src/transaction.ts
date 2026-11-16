@@ -19,6 +19,7 @@ export function uint(value: unknown, positive = false): bigint {
 export interface ParsedRequest {
   transaction: ContractTransaction
   type4: boolean
+  predelegated?: boolean
   authorization?: Authorization
   executeNonce?: bigint
   transactions: TransactionStructV2[]
@@ -31,12 +32,12 @@ export interface ParsedRequest {
 function boundWithdrawal(transactions: TransactionStructV2[], calls: readonly { to: unknown; data: unknown; value: unknown }[], account: string, prepaid: boolean): NonNullable<ParsedRequest['withdrawal']> {
   const native = calls.length === 2
   const principalIndex = native || prepaid ? 0 : 1
-  if ((calls.length !== 1 && !native) || (native && CHAIN_ID !== 56) || transactions.length !== principalIndex + 1 ||
+  if ((calls.length !== 1 && !native) || transactions.length !== principalIndex + 1 ||
     (principalIndex === 1 && BigInt(transactions[0].boundParams.unshield) !== 0n) ||
     BigInt(transactions[principalIndex].boundParams.unshield) !== 1n ||
     calls.some((call) => typeof call.to !== 'string' || getAddress(call.to) !== account ||
       typeof call.data !== 'string' || BigInt(String(call.value)) !== 0n))
-    throw new Error('A bound withdrawal requires its exact canonical self transfer and private WBNB fee.')
+    throw new Error('A bound withdrawal requires its exact canonical self transfer and secured fee.')
   const call = calls[native ? 1 : 0]
   const transfer = ADAPT.parseTransaction({ data: String(call.data) })
   if (transfer?.name !== 'transfer' || ADAPT.encodeFunctionData(transfer.fragment, transfer.args) !== call.data || transfer.args[0].length !== 1)
@@ -60,7 +61,7 @@ function boundWithdrawal(transactions: TransactionStructV2[], calls: readonly { 
   if (native) {
     const unwrap = ADAPT.parseTransaction({ data: String(calls[0].data) })
     if (unwrap?.name !== 'unwrapBase' || ADAPT.encodeFunctionData(unwrap.fragment, unwrap.args) !== calls[0].data || BigInt(unwrap.args[0]) !== amount)
-      throw new Error('Native BNB withdrawal must unwrap and send the exact positive net amount.')
+      throw new Error('Native withdrawal must unwrap and send the exact positive net amount.')
   }
   return { recipient, token, amount, grossAmount }
 }
@@ -78,16 +79,23 @@ export function parseRequest(data: Record<string, unknown>, operator: string, se
   let executeNonce: bigint | undefined
   let withdrawal: ParsedRequest['withdrawal']
   const type4 = data.transactType === 'TX7702'
+  const predelegated = data.predelegated === true
+  if (data.predelegated !== undefined && (!predelegated || CHAIN_ID !== 8453 || !prepaid || !type4))
+    throw new Error('Predelegated execution is restricted to prepaid Base requests.')
+  if (CHAIN_ID === 8453 && (!predelegated || !settings.executionGuard))
+    throw new Error('Base execution requires an installed delegation and guarded native prepayment.')
   if (type4) {
-    if (!object(data.authorization) || !object(data.authorization.signature) || data.useRelayAdapt !== true || to === getAddress(operator))
+    if (data.useRelayAdapt !== true || to === getAddress(operator) ||
+      (predelegated ? data.authorization !== undefined : !object(data.authorization) || !object(data.authorization.signature)))
       throw new Error('A canonical private execution authorization is required.')
-    const auth = data.authorization
-    const sig = data.authorization.signature
-    authorization = authorizationify({ address: String(auth.address), chainId: uint(auth.chainId),
-      nonce: uint(auth.nonce), signature: Signature.from({ r: String(sig.r), s: String(sig.s),
-        ...(sig.yParity === 0 || sig.yParity === 1 ? { yParity: sig.yParity } : { v: Number(sig.v) }) }) })
-    if (authorization.nonce >= 2n ** 64n - 1n) throw new Error('Invalid authorization nonce.')
-    RelayAdapt7702Validator.validateAuthorization(authorization, NETWORK.relayAdapt7702Contract, CHAIN_ID, to)
+    if (!predelegated) {
+      const auth = data.authorization as Record<string, unknown>, sig = auth.signature as Record<string, unknown>
+      authorization = authorizationify({ address: String(auth.address), chainId: uint(auth.chainId),
+        nonce: uint(auth.nonce), signature: Signature.from({ r: String(sig.r), s: String(sig.s),
+          ...(sig.yParity === 0 || sig.yParity === 1 ? { yParity: sig.yParity } : { v: Number(sig.v) }) }) })
+      if (authorization.nonce >= 2n ** 64n - 1n) throw new Error('Invalid authorization nonce.')
+      RelayAdapt7702Validator.validateAuthorization(authorization, NETWORK.relayAdapt7702Contract, CHAIN_ID, to)
+    }
     const decoded = ADAPT.parseTransaction({ data: calldata })
     if (decoded?.name !== 'execute' || ADAPT.encodeFunctionData(decoded.fragment, decoded.args) !== calldata)
       throw new Error('Canonical nonce-aware private execute calldata is required.')
@@ -99,16 +107,16 @@ export function parseRequest(data: Record<string, unknown>, operator: string, se
     const action = decoded.args._actionData
     if (action.calls.length > 64 || (action.requireSuccess !== false && action.requireSuccess !== true))
       throw new Error('Unsupported private execution policy.')
-    if ((CHAIN_ID === 56 || action.requireSuccess) && transactions.some((tx) => BigInt(tx.boundParams.chainID) !== CHAIN ||
+    if ((CHAIN_ID === 56 || predelegated || action.requireSuccess) && transactions.some((tx) => BigInt(tx.boundParams.chainID) !== CHAIN ||
       typeof tx.boundParams.adaptContract !== 'string' || getAddress(tx.boundParams.adaptContract) !== to || tx.boundParams.adaptParams !== ZeroHash))
       throw new Error('Every guarded private proof must be bound to its signed execution account and chain.')
-    if (CHAIN_ID === 56 && !action.requireSuccess &&
+    if (!action.requireSuccess &&
       ((action.calls.length === 1 && action.calls[0].to === to && typeof action.calls[0].data === 'string' &&
         action.calls[0].data.startsWith(ADAPT.getFunction('transfer')!.selector)) ||
        (action.calls.length === 2 && action.calls.every((call: { to: unknown }) => call.to === to) &&
         action.calls[0].data.startsWith(ADAPT.getFunction('unwrapBase')!.selector) &&
         action.calls[1].data.startsWith(ADAPT.getFunction('transfer')!.selector))))
-      throw new Error('A BNB public withdrawal must require its signed transfer to succeed.')
+      throw new Error('A public withdrawal must require its signed transfer to succeed.')
     RelayAdapt7702Validator.validateExecution(transactions, decoded.args._actionData, decoded.args._signature, CHAIN_ID, to,
       { executionType: RelayAdapt7702ExecutionType.ExecuteWithNonce, executeNonce })
     if (action.requireSuccess) {
@@ -124,8 +132,8 @@ export function parseRequest(data: Record<string, unknown>, operator: string, se
     if (gasLimit > MAX_GAS || maxFeePerGas > settings.maxGasPrice || maxPriorityFeePerGas > maxFeePerGas ||
       gasLimit * maxFeePerGas > settings.maxTransactionCost || BigInt(decoded.args._actionData.minGasLimit) > gasLimit)
       throw new Error('The request exceeds the operator gas budget.')
-    transaction = { to, data: calldata, value: 0n, type: 4, gasLimit, maxFeePerGas, maxPriorityFeePerGas,
-      authorizationList: [authorization], chainId: CHAIN }
+    transaction = { to, data: calldata, value: 0n, type: predelegated ? 2 : 4, gasLimit, maxFeePerGas, maxPriorityFeePerGas,
+      ...(authorization ? { authorizationList: [authorization] } : {}), chainId: CHAIN }
   } else {
     if (data.transactType !== 'COMMON' || data.useRelayAdapt !== false || to !== getAddress(NETWORK.proxyContract))
       throw new Error('Only canonical privacy-contract withdrawals are supported as common requests.')
@@ -155,15 +163,41 @@ export function parseRequest(data: Record<string, unknown>, operator: string, se
   if (!transactions.length || transactions.length > 8 || !nullifiers.length || nullifiers.length > 128 ||
     nullifiers.some((n) => !isHexString(n, 32)) || new Set(nullifiers).size !== nullifiers.length)
     throw new Error('Invalid private transaction or nullifier set.')
-  return { transaction, transactions, type4, authorization, executeNonce, nullifiers,
+  return { transaction, transactions, type4, ...(predelegated ? { predelegated } : {}), authorization, executeNonce, nullifiers,
     pois: data.preTransactionPOIsPerTxidLeafPerList, feesID: data.feesID, withdrawal }
 }
 
+export class TraceValidationError extends Error {
+  constructor(readonly category: 'malformed' | 'node-error' | 'limit' | 'exact-batch-absent', message: string) { super(message) }
+}
+
+// Inspect only bounded error text for classification; never return provider messages, data or requests.
+export function traceRpcDiagnostic(error: unknown): {
+  category: 'invalid-params' | 'method-unavailable' | 'gas-price-below-base' | 'execution' | 'timeout' | 'other'; rpcCode?: number
+} {
+  const outer = object(error) ? error : {}, info = object(outer.info) ? outer.info : {}
+  const inner = object(info.error) ? info.error : object(outer.error) ? outer.error : {}
+  const code = [inner.code, outer.code].find(value => typeof value === 'number' && Number.isSafeInteger(value) &&
+    value >= -(2 ** 31) && value < 2 ** 31) as number | undefined
+  const text = [inner.message, outer.shortMessage, outer.message].filter(value => typeof value === 'string')
+    .map(value => (value as string).slice(0, 512)).join(' ').toLowerCase()
+  const category = code === -32602 ? 'invalid-params'
+    : code === -32601 || code === -32004 ? 'method-unavailable'
+    : outer.code === 'TIMEOUT' || /timeout|timed out|deadline exceeded/.test(text) ? 'timeout'
+    : /max fee per gas less than block base fee|fee cap less than block base fee|gas price (?:below|less than) (?:the )?(?:block )?base fee/.test(text) ? 'gas-price-below-base'
+    : code === 3 || outer.code === 'CALL_EXCEPTION' || /execution reverted|execution failed|out of gas|intrinsic gas/.test(text) ? 'execution'
+    : 'other'
+  return { category, ...(code !== undefined && { rpcCode: code }) }
+}
+
 export function assertTraceSuccess(trace: unknown, count = { nodes: 0 }, depth = 0): void {
-  if (!object(trace) || typeof trace.type !== 'string' || trace.error || depth > 64 || ++count.nodes > 4096)
-    throw new Error('Private transaction simulation failed.')
+  if (!object(trace) || typeof trace.type !== 'string')
+    throw new TraceValidationError('malformed', 'Private transaction simulation failed.')
+  if (trace.error) throw new TraceValidationError('node-error', 'Private transaction simulation failed.')
+  if (depth > 64 || ++count.nodes > 4096)
+    throw new TraceValidationError('limit', 'Private transaction simulation failed.')
   if (trace.calls !== undefined) {
-    if (!Array.isArray(trace.calls)) throw new Error('Malformed private execution trace.')
+    if (!Array.isArray(trace.calls)) throw new TraceValidationError('malformed', 'Malformed private execution trace.')
     for (const call of trace.calls) assertTraceSuccess(call, count, depth + 1)
   }
 }
@@ -176,5 +210,5 @@ export function assertPrivateExecution(trace: unknown, transactCalldata: string)
       call.input === transactCalldata ||
     Array.isArray(call.calls) && call.calls.some((child) => containsPayment(child as Record<string, unknown>))
   if (!containsPayment(trace as Record<string, unknown>))
-    throw new Error('Simulation did not execute the exact fee-bearing private batch.')
+    throw new TraceValidationError('exact-batch-absent', 'Simulation did not execute the exact fee-bearing private batch.')
 }

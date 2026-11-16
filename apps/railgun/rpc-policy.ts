@@ -28,23 +28,27 @@ const ALCHEMY_HOSTS: Readonly<Record<number, string>> = {
   42161: 'arb-mainnet.g.alchemy.com',
   137: 'polygon-mainnet.g.alchemy.com',
   56: 'bnb-mainnet.g.alchemy.com',
+  8453: 'base-mainnet.g.alchemy.com',
 }
 
 export function isAlchemyUrl(chainId: number, value: string): boolean {
-  const url = new URL(value)
-  return url.protocol === 'https:' && url.hostname === ALCHEMY_HOSTS[chainId]
-    && !url.port && !url.username && !url.password && !url.search && !url.hash
-    && /^\/v2\/[A-Za-z0-9_-]+$/.test(url.pathname)
+  try {
+    const url = new URL(value)
+    return url.protocol === 'https:' && url.hostname === ALCHEMY_HOSTS[chainId]
+      && !url.port && !url.username && !url.password && !url.search && !url.hash
+      && /^\/v2\/[A-Za-z0-9_-]+$/.test(url.pathname)
+  } catch { return false }
 }
 
-// https://www.alchemy.com/docs/reference/compute-unit-costs, checked 2026-10-29.
-// Free-tier traces are unavailable; log scans use the existing Validation Cloud allowance.
+// https://www.alchemy.com/docs/reference/compute-unit-costs, checked 2026-11-11.
+// Extended methods require a separately verified paid-plan route in the gateway.
 const ALCHEMY_CU: Readonly<Partial<Record<string, number>>> = {
   eth_chainId: 0, net_version: 0, web3_clientVersion: 20, eth_blockNumber: 10,
   eth_getBlockByNumber: 20, eth_getBlockByHash: 20, eth_getBalance: 20, eth_getCode: 20,
   eth_getStorageAt: 20, eth_getTransactionCount: 20, eth_getTransactionByHash: 20,
   eth_getTransactionReceipt: 20, eth_call: 26, eth_estimateGas: 20, eth_gasPrice: 20,
   eth_maxPriorityFeePerGas: 10, eth_feeHistory: 10, eth_sendRawTransaction: 40,
+  eth_getLogs: 60, debug_traceCall: 40,
 }
 export function alchemyCU(method: string): number | undefined {
   return Object.hasOwn(ALCHEMY_CU, method) ? ALCHEMY_CU[method] : undefined
@@ -52,6 +56,7 @@ export function alchemyCU(method: string): number | undefined {
 export function alchemyThroughputCU(method: string): number | undefined {
   if (method === 'eth_chainId' || method === 'net_version') return 5
   if (method === 'eth_sendRawTransaction') return 50
+  if (method === 'debug_traceCall') return 1000
   return alchemyCU(method)
 }
 
@@ -75,4 +80,5 @@ export const RAILGUN_PROXIES: Readonly<Record<number, string>> = {
   42161: '0xfa7093cdd9ee6932b4eb2c9e1cde7ce00b1fa4b9',
   137: '0x19b620929f97b7b990801496c3b361ca5def8c71',
   56: '0x590162bf4b50f6576a459b75309ee21d92178a10',
+  8453: '0x0047d1f97674614189e80566575fb615788acf25',
 }

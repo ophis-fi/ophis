@@ -5,10 +5,11 @@ import { GUARD_ARTIFACT } from '../../railgun/operator/execution-guard-artifact'
 import { executionGuardCode } from '../../railgun/operator/execution-guard'
 import { protectedWriteRPC } from '../../railgun/operator/protected-provider'
 import { assertBnbBundleUnexpired, assertBnbHead, createBnbBundle, submitProtected } from '../../railgun/operator/protected-submission'
-import { assertSigningNetwork, CHAIN, CHAIN_ID, NETWORK, type Settings } from './config'
+import { assertSigningNetwork, CHAIN, CHAIN_ID, FEE_LIFETIME_MS, NETWORK, type Settings } from './config'
 import { signApprovedTransaction, type GasSigner } from './signer'
 import { privateDirectory } from './storage'
 import { readChainState } from './chain-state'
+import { assertBaseValidityUnexpired, createBaseValidityBody, prepareBaseValidity } from '../../railgun/operator/base-validity'
 
 export interface GuardApproval {
   chainId: number; gasOperator: string; predictedGuard: string; canonicalDelegate: string
@@ -19,11 +20,13 @@ export interface GuardApproval {
 const registry = new Interface(['function getContractAddress(string) view returns (address)'])
 
 export async function deployGuard(config: Settings, approval: GuardApproval, provider: JsonRpcProvider, signer: GasSigner) {
-  // Guard commissioning has explicit owner limits below; ordinary BNB sponsorship stays gated.
-  if (!(CHAIN_ID === 56 && config.chainId === CHAIN_ID && config.mode === 'mainnet' &&
-      !config.enabled && approval?.chainId === CHAIN_ID && approval.gasFundingApproved === true))
+  // Commissioning has explicit owner limits; public execution remains separately gated.
+  if (!([56, 42161, 8453].includes(CHAIN_ID) && config.chainId === CHAIN_ID && config.mode === 'mainnet' &&
+      !config.enabled && approval?.chainId === CHAIN_ID && approval.gasFundingApproved === true &&
+      typeof approval.gasOperator === 'string' && typeof approval.predictedGuard === 'string' &&
+      typeof approval.expectedRuntimeKeccak256 === 'string'))
     assertSigningNetwork(config)
-  protectedWriteRPC(CHAIN_ID)
+  protectedWriteRPC(CHAIN_ID, config.writeRpc)
   const operator = getAddress(signer.address), guard = getCreateAddress({ from: operator, nonce: 0 })
   if (config.chainId !== CHAIN_ID || config.mode !== 'mainnet' || config.enabled || approval.chainId !== CHAIN_ID || approval.gasFundingApproved !== true ||
     operator !== config.operatorAddress || getAddress(approval.gasOperator) !== operator ||
@@ -60,7 +63,10 @@ export async function deployGuard(config: Settings, approval: GuardApproval, pro
   const transaction = { ...creation, from: operator, value: 0n, type: 2, chainId: CHAIN, nonce: 0,
     maxFeePerGas: price, maxPriorityFeePerGas: tip }
   const estimate = await provider.estimateGas(transaction), gasLimit = (estimate * 120n + 99n) / 100n
-  if (gasLimit * price > ceiling || await provider.getBalance(operator) < reserve + pilot + gasLimit * price)
+  const baseValidity = CHAIN_ID === 8453 ? await prepareBaseValidity(provider,
+    Transaction.from({ ...transaction, from: undefined, gasLimit }), Date.now() + FEE_LIFETIME_MS) : undefined
+  const maximumCost = baseValidity ? BigInt(baseValidity.maximumCost) : gasLimit * price
+  if (maximumCost > ceiling || await provider.getBalance(operator) < reserve + pilot + maximumCost)
     throw new Error('Deployment would exceed its ceiling or consume the reserved pilot balance.')
   const simulated = await provider.send('eth_call', [{ from: operator, value: '0x0', data: creation.data,
     type: '0x2', nonce: '0x0', maxFeePerGas: `0x${price.toString(16)}`, maxPriorityFeePerGas: `0x${tip.toString(16)}`, gas: `0x${gasLimit.toString(16)}` }, tag])
@@ -71,7 +77,7 @@ export async function deployGuard(config: Settings, approval: GuardApproval, pro
   }
   const raw = await signApprovedTransaction(signer, { ...transaction, gasLimit })
   const hash = Transaction.from(raw).hash!
-  let submission: string | undefined
+  let submission: string | undefined = baseValidity ? createBaseValidityBody(raw, baseValidity) : undefined
   let publicationHeight = block.number
   if (CHAIN_ID === 56) {
     try {
@@ -81,7 +87,7 @@ export async function deployGuard(config: Settings, approval: GuardApproval, pro
     } catch { /* A delayed signature must still be durably retained below. */ }
   }
   const record = { chainId: CHAIN_ID, hash, raw, operator, guard, expectedRuntimeKeccak256: approval.expectedRuntimeKeccak256,
-    maximumCostWei: (gasLimit * price).toString(), createdAt: Date.now(), confirmed: false,
+    maximumCostWei: maximumCost.toString(), createdAt: Date.now(), confirmed: false, ...(baseValidity ? { baseValidity } : {}),
     ...(submission ? { submission } : CHAIN_ID === 56 ? { submissionHeld: true } : {}) }
   const fd = openSync(path, constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL | constants.O_NOFOLLOW, 0o600)
   try { writeFileSync(fd, JSON.stringify(record)); fsyncSync(fd) } finally { closeSync(fd) }
@@ -90,10 +96,12 @@ export async function deployGuard(config: Settings, approval: GuardApproval, pro
   if (CHAIN_ID === 56 && !submission)
     throw new Error('The BNB deployment signature remains journaled without a valid bundle. Publication is held; reconcile before any further deployment.')
   try {
-    if (submission) assertBnbBundleUnexpired(submission, raw, BigInt(publicationHeight))
+    if (submission && CHAIN_ID === 56) assertBnbBundleUnexpired(submission, raw, BigInt(publicationHeight))
+    if (submission && CHAIN_ID === 8453)
+      assertBaseValidityUnexpired(submission, raw, BigInt((await readChainState(provider)).block.number))
     const bundleHash = await submitProtected(CHAIN_ID, submission ?? JSON.stringify({
       jsonrpc: '2.0', id: 1, method: 'eth_sendRawTransaction', params: [raw],
-    }), hash)
+    }), hash, config.writeRpc)
     return { status: 'protected-deployment-submitted', hash, guard, maximumCostWei: record.maximumCostWei,
       ...(bundleHash ? { bundleHash } : {}) }
   } catch { throw new Error('Deployment outcome is unknown. Its signed bytes are journaled; no public fallback or new signature was attempted.') }
