@@ -20,7 +20,12 @@ beforeEach(() => {
 })
 afterEach(() => vi.unstubAllEnvs())
 
-const session = { info: { id: 'generated-test-wallet' }, provider: { getTransactionReceipt: state.receipt } } as unknown as WalletSession
+const session = { info: { id: 'generated-test-wallet' }, provider: { getTransactionReceipt: state.receipt,
+  send: async (method: string, params: unknown[]) => {
+    expect(method).toBe('eth_getBlockByNumber'); expect(params[1]).toBe(false)
+    return { number: params[0], hash: `0x${'99'.repeat(32)}` }
+  },
+  getBlock: async (number: number) => ({ number, hash: `0x${'99'.repeat(32)}` }) } } as unknown as WalletSession
 
 async function confirmedBoundRecord(lostResponse = false) {
   const { CONFIG, FEE_SIGNER, TOKENS } = await import('./config')
@@ -44,7 +49,7 @@ async function confirmedBoundRecord(lostResponse = false) {
     execution: { index: 7, account: owner.address, executeNonce: '0', gasEstimate: '3000000', maxFeePerGas: '50000000', maxPriorityFeePerGas: '50000000',
       authorization: { address: authorization.address, chainId: '56', nonce: '0', signature: authorization.signature.serialized } } }
   const token = new Interface(['event Transfer(address indexed from,address indexed to,uint256 value)'])
-  const receipt = { status: 1, blockNumber: 102, confirmations: async () => 2,
+  const receipt = { status: 1, blockHash: `0x${'99'.repeat(32)}`, blockNumber: 102, confirmations: async () => 2,
     logs: [
       { address: CONFIG.proxyContract, ...PRIVACY.encodeEventLog('Nullified', [0, pending.nullifiers]) },
       { address: TOKENS.USDC.address, ...token.encodeEventLog('Transfer', [owner.address, recipient, 998n]) },

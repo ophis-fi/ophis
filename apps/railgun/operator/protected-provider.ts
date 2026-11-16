@@ -2,14 +2,16 @@ import { closeSync, constants, fstatSync, lstatSync, mkdirSync, openSync } from 
 import { join } from 'node:path'
 import { DatabaseSync } from 'node:sqlite'
 import { NETWORK_CONFIG, NetworkName } from '@railgun-community/shared-models'
-import { FetchRequest, getAddress, JsonRpcProvider, Transaction, verifyAuthorization,
+import { FetchRequest, getAddress, isError, JsonRpcProvider, Transaction, verifyAuthorization,
   type JsonRpcPayload, type JsonRpcResult, type JsonRpcError } from 'ethers'
 import { assertExecutionGuardCode, decodeGuardedExecution } from './execution-guard'
 import { assertBnbBundleUnexpired, createBnbBundle, protectedWriteRPC, readBnbBundle, submitProtected } from './protected-submission'
+import { assertBaseValidityUnexpired, createBaseValidityBody, readBaseValidityBody, validateBaseValidityPlan, type BaseValidityPlan } from './base-validity'
 export { PROTECTED_WRITE_RPC, protectedWriteRPC } from './protected-submission'
 
 const NETWORKS: Record<number, NetworkName | undefined> = {
   1: NetworkName.Ethereum, 42161: NetworkName.Arbitrum, 56: NetworkName.BNBChain, 137: NetworkName.Polygon,
+  8453: NetworkName.Base,
 }
 
 const READ_METHODS = new Set([
@@ -22,6 +24,7 @@ const READ_METHODS = new Set([
 ])
 type Pending = { hash: string; nonce: number; raw: string; cancel_hash: string | null; cancel_raw: string | null }
 type PendingSummary = { hash: string; nonce: number; cancellationHash?: string }
+type Operation = Pick<Pending, 'hash' | 'nonce' | 'raw'>
 
 /** Node-only transport for an operator's existing, validated Railgun transaction sender. */
 export class ProtectedEthereumProvider extends JsonRpcProvider {
@@ -32,7 +35,7 @@ export class ProtectedEthereumProvider extends JsonRpcProvider {
   private readonly config: (typeof NETWORK_CONFIG)[NetworkName]
 
   constructor(readRPC: string | FetchRequest, operatorAddress: string, privateStateDirectory: string, executionGuard?: string,
-    private readonly chainId = 1, private readonly nativeRefunds = false) {
+    private readonly chainId = 1, private readonly nativeRefunds = false, private readonly writeRPC?: string) {
     const network = Number.isSafeInteger(chainId) ? NETWORKS[chainId] : undefined
     if (!network) throw new Error('Unsupported protected operator chain.')
     super(readRPC, chainId, { batchMaxCount: 1, cacheTimeout: -1 })
@@ -94,6 +97,16 @@ export class ProtectedEthereumProvider extends JsonRpcProvider {
       CREATE TABLE IF NOT EXISTS bundle_acknowledgments (
         operator TEXT NOT NULL, hash TEXT NOT NULL, bundle_hash TEXT NOT NULL, PRIMARY KEY(operator,hash,bundle_hash)
       );
+      CREATE TABLE IF NOT EXISTS base_validity (
+        operator TEXT NOT NULL, hash TEXT NOT NULL, plan TEXT NOT NULL, body TEXT NOT NULL, PRIMARY KEY(operator,hash)
+      );
+      CREATE TRIGGER IF NOT EXISTS preserve_base_validity_update BEFORE UPDATE ON base_validity
+        BEGIN SELECT RAISE(ABORT, 'Base validity history is append-only'); END;
+      CREATE TRIGGER IF NOT EXISTS preserve_base_validity_delete BEFORE DELETE ON base_validity
+        BEGIN SELECT RAISE(ABORT, 'Base validity history is append-only'); END;
+      CREATE TRIGGER IF NOT EXISTS preserve_base_validity_replace BEFORE INSERT ON base_validity
+        WHEN EXISTS(SELECT 1 FROM base_validity WHERE operator=NEW.operator AND hash=NEW.hash)
+        BEGIN SELECT RAISE(ABORT, 'Base validity history is append-only'); END;
       CREATE TRIGGER IF NOT EXISTS preserve_bundle_update BEFORE UPDATE ON protected_bundles
         BEGIN SELECT RAISE(ABORT, 'Protected bundle history is append-only'); END;
       CREATE TRIGGER IF NOT EXISTS preserve_bundle_delete BEFORE DELETE ON protected_bundles
@@ -114,9 +127,10 @@ export class ProtectedEthereumProvider extends JsonRpcProvider {
         if (binding.chain_id !== chainId || binding.operator !== this.operator)
           throw new Error('The protected journal belongs to another chain or operator.')
       } else if (chainId !== 1 && (this.journal.prepare(`SELECT 1 FROM pending UNION ALL SELECT 1 FROM cancellation_history
-        UNION ALL SELECT 1 FROM operation_history UNION ALL SELECT 1 FROM protected_bundles UNION ALL SELECT 1 FROM bundle_acknowledgments LIMIT 1`).get() ||
+        UNION ALL SELECT 1 FROM operation_history UNION ALL SELECT 1 FROM protected_bundles UNION ALL SELECT 1 FROM bundle_acknowledgments
+        UNION ALL SELECT 1 FROM base_validity LIMIT 1`).get() ||
         this.journal.prepare(`SELECT 1 FROM sqlite_master WHERE type='table'
-          AND name NOT IN ('pending','binding','operation_history','cancellation_history','protected_bundles','bundle_acknowledgments')
+          AND name NOT IN ('pending','binding','operation_history','cancellation_history','protected_bundles','bundle_acknowledgments','base_validity')
           AND name NOT LIKE 'sqlite_%' LIMIT 1`).get())) {
         throw new Error('Only verified Ethereum journals can be migrated without a chain binding.')
       }
@@ -167,6 +181,16 @@ export class ProtectedEthereumProvider extends JsonRpcProvider {
           !this.journal.prepare('SELECT 1 FROM protected_bundles WHERE operator=? AND hash=?').get(this.operator, item.hash))
           throw new Error('The protected builder acknowledgment is inconsistent.')
       }
+      for (const item of this.journal.prepare('SELECT * FROM base_validity').iterate()) {
+        if (chainId !== 8453 || item.operator !== this.operator || typeof item.body !== 'string' || typeof item.plan !== 'string')
+          throw new Error('The Base validity journal has an inconsistent binding.')
+        const envelope = readBaseValidityBody(item.body), plan = validateBaseValidityPlan(JSON.parse(item.plan))
+        const retained = this.journal.prepare(`SELECT raw FROM operation_history WHERE operator=? AND hash=?
+          UNION ALL SELECT raw FROM cancellation_history WHERE operator=? AND hash=?`).get(this.operator, item.hash, this.operator, item.hash)
+        if (envelope.hash !== item.hash || typeof retained?.raw !== 'string' || retained.raw.toLowerCase() !== envelope.raw.toLowerCase() ||
+          createBaseValidityBody(envelope.raw, plan) !== item.body || JSON.stringify(plan) !== item.plan)
+          throw new Error('The Base validity envelope differs from its retained transaction or fee plan.')
+      }
       if (!binding) this.journal.prepare('INSERT INTO binding (id, chain_id, operator) VALUES (1, ?, ?)').run(chainId, this.operator)
       this.journal.exec('COMMIT')
     } catch (error) {
@@ -190,7 +214,14 @@ export class ProtectedEthereumProvider extends JsonRpcProvider {
     return super._send(payload)
   }
 
-  override async broadcastTransaction(raw: string, validUntilMs?: number) {
+  override async broadcastTransaction(raw: string, validUntilMs?: number, basePlan?: BaseValidityPlan) {
+    if (basePlan && this.chainId !== 8453) throw new Error('Base validity plans belong only to Base.')
+    if (this.chainId === 8453 && basePlan) {
+      const plan = validateBaseValidityPlan(basePlan)
+      if (validUntilMs !== undefined && validUntilMs !== plan.feeExpiryMs)
+        throw new Error('The Base validity plan differs from its authenticated fee expiration.')
+      await this.journalSigned(raw, this.validate(raw, false), false, undefined, validUntilMs, undefined, plan)
+    }
     if (this.chainId === 56 && validUntilMs !== undefined) {
       const tx = this.validate(raw, false)
       if (this.executionGuard && tx.type === 4 && tx.to !== this.executionGuard)
@@ -214,18 +245,18 @@ export class ProtectedEthereumProvider extends JsonRpcProvider {
   }
 
   /** Operator-signed, zero-value self-transfer; invalidates only the journaled gas nonce. */
-  async cancelPending(signedCancellation: string): Promise<string> {
-    return this.sendProtected(signedCancellation, true)
+  async cancelPending(signedCancellation: string, basePlan?: BaseValidityPlan): Promise<string> {
+    return this.sendProtected(signedCancellation, true, undefined, basePlan)
   }
 
   /** Persist an already signed operation without publishing it, including restart recovery. */
-  async stageSigned(raw: string): Promise<string> {
-    return this.journalSigned(raw, this.validate(raw, false), false)
+  async stageSigned(raw: string, basePlan?: BaseValidityPlan): Promise<string> {
+    return this.journalSigned(raw, this.validate(raw, false), false, undefined, undefined, undefined, basePlan, true)
   }
 
   /** Local recovery only: preserve the newer pointer before selecting a journaled lower nonce after a reorg. */
-  async stageRecovery(raw: string, expectedPending: PendingSummary): Promise<string> {
-    return this.journalSigned(raw, this.validate(raw, false), false, undefined, undefined, expectedPending)
+  async stageRecovery(raw: string, expectedPending: PendingSummary, basePlan?: BaseValidityPlan): Promise<string> {
+    return this.journalSigned(raw, this.validate(raw, false), false, undefined, undefined, expectedPending, basePlan, true)
   }
 
   override destroy(): void {
@@ -273,6 +304,8 @@ export class ProtectedEthereumProvider extends JsonRpcProvider {
     if (!tx.isSigned() || !tx.hash || tx.from !== this.operator || tx.chainId !== BigInt(this.chainId) || (tx.value !== 0n && !nativeRefund) ||
       !tx.to || tx.gasLimit <= 0n || tx.gasLimit > 30_000_000n)
       throw new Error('Only this operator’s signed Railgun transactions on the selected chain are accepted.')
+    if (this.chainId === 8453 && (tx.type !== 2 || tx.authorizationList?.length))
+      throw new Error('Base validity publication requires a type-2 transaction without an authorization list.')
     if (cancellation) {
       if (tx.type !== 2 || tx.to !== this.operator || tx.data !== '0x' || tx.gasLimit < 21_000n ||
         (this.chainId === 1 && tx.gasLimit !== 21_000n) || tx.authorizationList?.length)
@@ -281,6 +314,9 @@ export class ProtectedEthereumProvider extends JsonRpcProvider {
       if (tx.gasLimit < 21_000n) throw new Error('Native refund gas limit is below the transaction minimum.')
     } else if (tx.data === '0x') {
       throw new Error('Railgun calldata is required.')
+    } else if (this.chainId === 8453) {
+      if (!this.executionGuard || tx.to !== this.executionGuard || decodeGuardedExecution(tx.data).account === this.operator)
+        throw new Error('Base execution requires its reviewed guard and a separate predelegated account.')
     } else if (tx.type === 4) {
       const account = tx.to === this.executionGuard ? decodeGuardedExecution(tx.data).account : tx.to
       const auth = tx.authorizationList?.[0]
@@ -299,6 +335,14 @@ export class ProtectedEthereumProvider extends JsonRpcProvider {
     return tx
   }
 
+  /** Verify the read route before readiness; recheck the chain on every submission. */
+  async assertReadNetwork(): Promise<void> {
+    this.forkCheck ??= this.checkFork().catch((error) => { this.forkCheck = undefined; throw error })
+    await this.forkCheck
+    const chain = await this.read('eth_chainId', [])
+    if (chain !== `0x${this.chainId.toString(16)}`) throw new Error('A read node for the selected mainnet chain is required.')
+  }
+
   private async checkFork(): Promise<void> {
     for (const method of ['anvil_metadata', 'hardhat_metadata']) {
       const result = await this.read(method, [], true)
@@ -306,14 +350,35 @@ export class ProtectedEthereumProvider extends JsonRpcProvider {
     }
   }
 
+  private unsupportedForkProbe(value: unknown, method: string): boolean {
+    if (!['anvil_metadata', 'hardhat_metadata'].includes(method) || !value || typeof value !== 'object' || Array.isArray(value)) return false
+    const reply = value as Record<string, unknown>
+    if (reply.jsonrpc !== '2.0' || reply.id !== 1 || 'result' in reply || !reply.error ||
+      typeof reply.error !== 'object' || Array.isArray(reply.error)) return false
+    const error = reply.error as Record<string, unknown>
+    // Alchemy reports unsupported fork probes as HTTP400/-32600 rather than -32601.
+    // Only exact method-bound refusals qualify; authentication and invalid-request errors do not.
+    return error.code === -32600 && (error.message === `Unsupported method: ${method}` ||
+      error.message === `Unsupported method: ${method}.` ||
+      (this.chainId === 42161 && error.message === `Unsupported method: ${method} on ARB_MAINNET`))
+  }
+
   private async read(method: string, params: unknown[], allowUnsupported = false): Promise<unknown> {
     // Bypass the queue for guard reads made while _send is servicing a broadcast.
     try {
       const [result] = await super._send({ jsonrpc: '2.0', id: 1, method, params }) as (JsonRpcResult | JsonRpcError)[]
-      if (result?.id === 1 && 'error' in result && allowUnsupported && result.error.code === -32601) return undefined
+      if (result?.id === 1 && 'jsonrpc' in result && result.jsonrpc === '2.0' && !('result' in result) &&
+        'error' in result && allowUnsupported && result.error.code === -32601) return undefined
       if (!result || result.id !== 1 || 'error' in result) throw new Error()
       return result.result
-    } catch { throw new Error('The trusted read node could not verify submission state.') }
+    } catch (error) {
+      if (allowUnsupported && isError(error, 'SERVER_ERROR') && error.response?.statusCode === 400 &&
+        error.response.body && error.response.body.length <= 4096) {
+        try { if (this.unsupportedForkProbe(error.response.bodyJson, method)) return undefined }
+        catch { /* Malformed error bodies never establish unsupported fork probes. */ }
+      }
+      throw new Error('The trusted read node could not verify submission state.')
+    }
   }
 
   private async quantity(method: string, params: unknown[]): Promise<bigint> {
@@ -333,13 +398,101 @@ export class ProtectedEthereumProvider extends JsonRpcProvider {
     return { number: Number(height), timestamp: Number(BigInt(block.timestamp)) }
   }
 
+  private pipelineJournal(first: bigint) {
+    return {
+      pending: this.pending(),
+      operations: this.journal.prepare('SELECT hash,nonce,raw FROM operation_history WHERE operator=? AND nonce>=? ORDER BY nonce LIMIT 21')
+        .all(this.operator, first) as Operation[],
+      cancellations: this.journal.prepare('SELECT original_hash,hash,nonce,raw FROM cancellation_history WHERE operator=? AND nonce>=? ORDER BY nonce,rowid')
+        .all(this.operator, first) as (Operation & { original_hash: string })[],
+    }
+  }
+
+  private async nativeNonceState(tx: Transaction) {
+    const network = this.chainId === 42161 ? 'Arbitrum' : 'Base'
+    const block = async (tag: string) => {
+      const value = await this.read('eth_getBlockByNumber', [tag, false]) as { number?: string; hash?: string; timestamp?: string } | null
+      if (!value || typeof value.number !== 'string' || !/^0x(?:0|[1-9a-f][0-9a-f]*)$/i.test(value.number) ||
+        BigInt(value.number) > BigInt(Number.MAX_SAFE_INTEGER) || (tag.startsWith('0x') && BigInt(value.number) !== BigInt(tag)) ||
+        typeof value.hash !== 'string' || !/^0x[0-9a-f]{64}$/i.test(value.hash) || /^0x0{64}$/i.test(value.hash) ||
+        typeof value.timestamp !== 'string' || !/^0x(?:0|[1-9a-f][0-9a-f]*)$/i.test(value.timestamp))
+        throw new Error(`The canonical ${network} block identity is unavailable.`)
+      return { number: value.number, hash: value.hash, timestamp: Number(BigInt(value.timestamp)) }
+    }
+    const [head, finalized] = await Promise.all([block('latest'), block('finalized')])
+    if (BigInt(finalized.number) > BigInt(head.number) || Math.abs(Date.now() / 1000 - head.timestamp) > 45)
+      throw new Error(`The canonical ${network} head is stale or inconsistent.`)
+    const [latest, confirmed] = await Promise.all([
+      this.quantity('eth_getTransactionCount', [this.operator, head.number]),
+      this.quantity('eth_getTransactionCount', [this.operator, finalized.number]),
+    ])
+    if (confirmed > latest || latest > BigInt(Number.MAX_SAFE_INTEGER) || latest - confirmed > 20n || latest !== BigInt(tx.nonce))
+      throw new Error(`The ${network} nonce range is inconsistent or exceeds 20 outstanding operations.`)
+    const journal = this.pipelineJournal(confirmed)
+    if (journal.operations.length > 20 || journal.operations.some((operation, index) => BigInt(operation.nonce) !== confirmed + BigInt(index)) ||
+      (journal.operations.length === 20 && !journal.operations.some(operation => operation.nonce === tx.nonce)))
+      throw new Error(`The complete ${network} nonce journal must fit within 20 outstanding operations.`)
+    const canonical = new Map<string, Promise<Awaited<ReturnType<typeof block>>>>()
+    for (let nonce = confirmed; nonce < latest; nonce++) {
+      const operation = journal.operations.find(item => BigInt(item.nonce) === nonce)
+      if (!operation) throw new Error(`A consumed ${network} nonce is missing from the protected journal.`)
+      const candidates = [operation, ...journal.cancellations.filter(item => item.nonce === operation.nonce)]
+      let included = false
+      for (const candidate of candidates) {
+        const signed = this.validate(candidate.raw, candidate !== operation)
+        if (signed.hash !== candidate.hash || signed.nonce !== operation.nonce ||
+          ('original_hash' in candidate && candidate.original_hash !== operation.hash))
+          throw new Error(`The retained ${network} transaction identity is inconsistent.`)
+        const receipt = await this.read('eth_getTransactionReceipt', [candidate.hash]) as {
+          transactionHash?: string; blockNumber?: string; blockHash?: string; status?: string
+        } | null
+        if (!receipt) continue
+        if (receipt.transactionHash !== candidate.hash || typeof receipt.blockNumber !== 'string' ||
+          !/^0x(?:0|[1-9a-f][0-9a-f]*)$/i.test(receipt.blockNumber) ||
+          BigInt(receipt.blockNumber) <= BigInt(finalized.number) || BigInt(receipt.blockNumber) > BigInt(head.number) ||
+          typeof receipt.blockHash !== 'string' || !/^0x[0-9a-f]{64}$/i.test(receipt.blockHash) ||
+          (receipt.status !== '0x0' && receipt.status !== '0x1'))
+          throw new Error(`The ${network} inclusion receipt does not match its journaled transaction.`)
+        if (!canonical.has(receipt.blockNumber)) canonical.set(receipt.blockNumber, block(receipt.blockNumber))
+        if ((await canonical.get(receipt.blockNumber)!).hash === receipt.blockHash) {
+          if (included) throw new Error(`Multiple journaled transactions consumed the same ${network} nonce.`)
+          included = true
+        }
+      }
+      if (!included) throw new Error(`A consumed ${network} nonce has no canonical journaled inclusion.`)
+    }
+    const [currentHead, currentFinalized] = await Promise.all([block(head.number), block(finalized.number)])
+    if (currentHead.hash !== head.hash || currentFinalized.hash !== finalized.hash || Math.abs(Date.now() / 1000 - head.timestamp) > 45)
+      throw new Error(`${network} canonical history changed while checking the nonce journal.`)
+    return { latest, confirmed, journal: JSON.stringify(journal), blockNumber: head.number, blockHash: head.hash }
+  }
+
+  private async assertBaseAuthority(tx: Transaction, cancellation: boolean, head: { blockNumber: string; blockHash: string }): Promise<void> {
+    const calls = [this.read('eth_getCode', [this.operator, head.blockNumber])]
+    if (!cancellation && tx.value === 0n) {
+      const { account } = decodeGuardedExecution(tx.data)
+      calls.push(this.read('eth_getCode', [this.executionGuard!, head.blockNumber]),
+        this.read('eth_getCode', [this.config.relayAdapt7702Contract, head.blockNumber]),
+        this.read('eth_getCode', [account, head.blockNumber]))
+    }
+    const [operatorCode, guardCode, delegateCode, accountCode] = await Promise.all(calls)
+    if (operatorCode !== '0x') throw new Error('Base prepaid gas must use an undelegated operator.')
+    if (!cancellation && tx.value === 0n) {
+      if (typeof guardCode !== 'string' || typeof delegateCode !== 'string' || typeof accountCode !== 'string' ||
+        accountCode.toLowerCase() !== `0xef0100${this.config.relayAdapt7702Contract.slice(2).toLowerCase()}`)
+        throw new Error('The Base execution account must already delegate to the canonical Railgun implementation.')
+      assertExecutionGuardCode(this.operator, guardCode, delegateCode, this.config.relayAdapt7702Contract)
+    }
+    const canonical = await this.read('eth_getBlockByNumber', [head.blockNumber, false]) as { hash?: string } | null
+    if (canonical?.hash !== head.blockHash) throw new Error('Base authority changed canonical history before staging.')
+  }
+
   private async journalSigned(raw: string, tx: Transaction, cancellation: boolean, retryHash?: string, validUntilMs?: number,
-    recovery?: PendingSummary): Promise<string> {
+    recovery?: PendingSummary, basePlan?: BaseValidityPlan, stagingOnly = false): Promise<string> {
     const hash = tx.hash!
-    this.forkCheck ??= this.checkFork().catch((error) => { this.forkCheck = undefined; throw error })
-    await this.forkCheck
-    const chain = await this.read('eth_chainId', [])
-    if (chain !== `0x${this.chainId.toString(16)}`) throw new Error('A read node for the selected mainnet chain is required.')
+    if (basePlan && this.chainId !== 8453) throw new Error('Base validity plans belong only to Base.')
+    const plan = basePlan && validateBaseValidityPlan(basePlan), baseBody = plan && createBaseValidityBody(raw, plan)
+    await this.assertReadNetwork()
     if (this.executionGuard && tx.to === this.executionGuard && !cancellation && tx.type === 4) {
       const [code, delegateCode] = await Promise.all([
         this.read('eth_getCode', [this.executionGuard, 'latest']),
@@ -350,8 +503,15 @@ export class ProtectedEthereumProvider extends JsonRpcProvider {
     }
     const height = await this.quantity('eth_blockNumber', [])
     const bnbHead = this.chainId === 56 ? await this.bnbHead(height) : undefined
+    const pipeline = [42161, 8453].includes(this.chainId) && this.nativeRefunds ? await this.nativeNonceState(tx) : undefined
+    if (this.chainId === 8453) {
+      if (!pipeline) throw new Error('Base validity submission requires native prepaid mode.')
+      // Recovery must retain an original even if its account revoked delegation before the signing crash was reconciled.
+      // Every publication, including retry and cancellation, checks authority again against the pinned canonical head.
+      if (!stagingOnly) await this.assertBaseAuthority(tx, cancellation, pipeline)
+    }
     // Read confirmed state, not a public pending pool that cannot see private submissions.
-    const [latest, confirmed] = await Promise.all([
+    const [latest, confirmed] = pipeline ? [pipeline.latest, pipeline.confirmed] : await Promise.all([
       this.quantity('eth_getTransactionCount', [this.operator, 'latest']),
       this.quantity('eth_getTransactionCount', [this.operator,
         this.chainId === 1 ? `0x${(height > 0n ? height - 1n : 0n).toString(16)}` : 'finalized']),
@@ -359,9 +519,18 @@ export class ProtectedEthereumProvider extends JsonRpcProvider {
     if (confirmed > latest) throw new Error('The trusted read node returned inconsistent nonce state.')
     this.journal.exec('BEGIN IMMEDIATE')
     try {
+      if (pipeline && JSON.stringify(this.pipelineJournal(confirmed)) !== pipeline.journal)
+        throw new Error('The protected native journal changed during canonical verification; retry its current state.')
       const pending = this.pending()
       const retained = pending?.hash === hash || !!this.journal.prepare(`SELECT 1 FROM cancellation_history WHERE operator=? AND hash=?
         UNION ALL SELECT 1 FROM operation_history WHERE operator=? AND hash=? LIMIT 1`).get(this.operator, hash, this.operator, hash)
+      if (baseBody) {
+        const saved = this.journal.prepare('SELECT plan,body FROM base_validity WHERE operator=? AND hash=?').get(this.operator, hash)
+        if (saved ? saved.body !== baseBody || saved.plan !== JSON.stringify(plan) : retained)
+          throw new Error('A retained Base transaction cannot change or acquire a new validity envelope; preserve its held nonce.')
+        if (!saved) this.journal.prepare('INSERT INTO base_validity(operator,hash,plan,body) VALUES(?,?,?,?)')
+          .run(this.operator, hash, JSON.stringify(plan), baseBody)
+      }
       if (retryHash && (pending?.cancel_hash ?? pending?.hash) !== retryHash)
         throw new Error('The pending transaction changed while retrying. Read the current journal before retrying.')
       if (cancellation && (!pending || pending.nonce !== tx.nonce))
@@ -369,11 +538,11 @@ export class ProtectedEthereumProvider extends JsonRpcProvider {
       if (recovery) {
         if (cancellation || !pending || pending.hash !== recovery.hash || pending.nonce !== recovery.nonce ||
           (pending.cancel_hash ?? undefined) !== recovery.cancellationHash || pending.nonce <= tx.nonce ||
-          latest !== confirmed || latest !== BigInt(tx.nonce))
+          (!pipeline && latest !== confirmed) || latest !== BigInt(tx.nonce))
           throw new Error('The reorg recovery pointer or confirmed nonce changed; preserve both journals.')
         this.retainOperation(this.validate(pending.raw, false), pending.raw)
         this.journal.prepare('DELETE FROM pending WHERE operator=?').run(this.operator)
-      } else if (pending && confirmed > BigInt(pending.nonce)) {
+      } else if (pending && (pipeline ? latest : confirmed) > BigInt(pending.nonce)) {
         this.journal.prepare('DELETE FROM pending WHERE operator = ?').run(this.operator)
       } else if (!cancellation && pending && (pending.hash !== hash || pending.cancel_hash)) {
         throw new Error('Operator nonce is unresolved. Reconcile or retry the identical journaled transaction.')
@@ -407,15 +576,18 @@ export class ProtectedEthereumProvider extends JsonRpcProvider {
     return hash
   }
 
-  private async sendProtected(raw: string, cancellation = false, retryHash?: string): Promise<string> {
-    protectedWriteRPC(this.chainId)
+  private async sendProtected(raw: string, cancellation = false, retryHash?: string, basePlan?: BaseValidityPlan): Promise<string> {
+    protectedWriteRPC(this.chainId, this.writeRPC)
     const tx = this.validate(raw, cancellation)
     if (this.executionGuard && !cancellation && tx.type === 4 && tx.to !== this.executionGuard)
       throw new Error('This operator requires guarded private execution.')
     if (this.chainId === 56 && !cancellation &&
       !this.journal.prepare('SELECT 1 FROM protected_bundles WHERE operator=? AND hash=?').get(this.operator, tx.hash!))
       throw new Error('This BNB transaction has no journaled bundle with authenticated fee expiration. No raw submission was staged; reconcile any existing held record.')
-    const hash = await this.journalSigned(raw, tx, cancellation, retryHash)
+    if (this.chainId === 8453 && !basePlan &&
+      !this.journal.prepare('SELECT 1 FROM base_validity WHERE operator=? AND hash=?').get(this.operator, tx.hash!))
+      throw new Error('This Base transaction has no saved fee-bound validity envelope. Preserve its held nonce or explicitly cancel.')
+    const hash = await this.journalSigned(raw, tx, cancellation, retryHash, undefined, undefined, basePlan)
     let body = JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'eth_sendRawTransaction', params: [raw] })
     if (this.chainId === 56) {
       const stored = this.journal.prepare('SELECT body FROM protected_bundles WHERE operator=? AND hash=?').get(this.operator, hash)
@@ -424,7 +596,18 @@ export class ProtectedEthereumProvider extends JsonRpcProvider {
       body = stored.body
       assertBnbBundleUnexpired(body, raw, await this.quantity('eth_blockNumber', []))
     }
-    const bundleHash = await submitProtected(this.chainId, body, hash)
+    if (this.chainId === 8453) {
+      const saved = this.journal.prepare('SELECT plan,body FROM base_validity WHERE operator=? AND hash=?').get(this.operator, hash)
+      if (typeof saved?.body !== 'string' || typeof saved.plan !== 'string') throw new Error('The held Base validity envelope is unavailable.')
+      const plan = validateBaseValidityPlan(JSON.parse(saved.plan))
+      body = saved.body
+      if (createBaseValidityBody(readBaseValidityBody(body, raw).raw, plan) !== body)
+        throw new Error('The retained Base validity predicates changed.')
+      const height = await this.quantity('eth_blockNumber', [])
+      if (Date.now() >= plan.feeExpiryMs) throw new Error('The Base fee quote expired; its signed nonce remains held. Cancel or reconcile it.')
+      assertBaseValidityUnexpired(body, raw, height)
+    }
+    const bundleHash = await submitProtected(this.chainId, body, hash, this.writeRPC)
     if (bundleHash) {
       try {
         this.journal.prepare(`INSERT INTO bundle_acknowledgments(operator,hash,bundle_hash) SELECT ?,?,?

@@ -1,4 +1,4 @@
-import { CHAIN, CHAIN_NAME, NATIVE_SYMBOL, ERC20, NETWORK, TOKENS, ROUTE_INTERMEDIATES, tokenFor, VERSION, type TokenSymbol } from './config'
+import { CHAIN, CHAIN_ID, CHAIN_NAME, NATIVE_SYMBOL, ERC20, NETWORK, TOKENS, ROUTE_INTERMEDIATES, tokenFor, VERSION, type TokenSymbol } from './config'
 import { Contract, formatEther, formatUnits, hexlify, randomBytes } from 'ethers'
 import { populateShield } from '@railgun-community/wallet'
 import type { WalletSession } from './wallet'
@@ -57,5 +57,6 @@ export async function recoverToken(session: WalletSession, index: number, symbol
   const sent = await signer.sendTransaction(transaction)
   const receipt = await sent.wait()
   if (!receipt || receipt.status !== 1) throw new Error('Recovery shield failed.')
+  if (CHAIN_ID === 8453) await (await import('./wallet')).syncWallet(session, receipt)
   return sent.hash
 }

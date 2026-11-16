@@ -1,5 +1,9 @@
-import { RPC_BATCH_SIZE, RAILGUN_PROXY, RAILGUN_PROXIES, isAlchemyUrl, alchemyCU, isValidationCloudUrl, validationCloudCU, zanRpcUrl } from '../rpc-policy'
+import { readBody } from './body'
+import { publicRpcResponse } from './response'
+import { PRODUCTION_PRIVATE_CHAIN_IDS, RPC_BATCH_SIZE, RAILGUN_PROXY, RAILGUN_PROXIES, isAlchemyUrl, alchemyCU, isValidationCloudUrl, validationCloudCU, zanRpcUrl } from '../rpc-policy'
 import { probeBudget } from './budget'
+import { baseHistoryResponse } from './history'
+import { BASE_HISTORY_PATH } from '../base-history'
 export { ValidationCloudBudget } from './budget'
 
 const METHODS = new Set([
@@ -39,29 +43,7 @@ function error(status: number, message: string): Response {
   return Response.json({ error: message }, { status, headers: HEADERS })
 }
 
-async function readBody(request: Request | Response, maximum = MAX_BODY): Promise<unknown> {
-  const reader = request.body?.getReader()
-  if (!reader) throw new Error('JSON body required.')
-  const parts: Uint8Array[] = []
-  let length = 0
-  while (true) {
-    const { value, done } = await reader.read()
-    if (done) break
-    length += value.byteLength
-    if (length > maximum) {
-      await reader.cancel()
-      throw new Error('RPC body exceeds its supported size.')
-    }
-    parts.push(value)
-  }
-  const bytes = new Uint8Array(length)
-  let offset = 0
-  for (const part of parts) {
-    bytes.set(part, offset)
-    offset += part.length
-  }
-  return JSON.parse(new TextDecoder().decode(bytes))
-}
+
 
 export function rpcCall(value: unknown, proxy = RAILGUN_PROXY): RPCCall {
   if (!value || typeof value !== 'object') throw new Error('Invalid JSON-RPC request.')
@@ -146,17 +128,23 @@ export function rpcCall(value: unknown, proxy = RAILGUN_PROXY): RPCCall {
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
     const url = new URL(request.url)
+    if (url.pathname === BASE_HISTORY_PATH || url.pathname.startsWith(BASE_HISTORY_PATH + '/')) {
+      if (!PRODUCTION_PRIVATE_CHAIN_IDS.includes(8453)) return error(404, 'Unsupported private network.')
+      return baseHistoryResponse(request, env)
+    }
     if (url.pathname.startsWith('/rpc/budget/')) return probeBudget(request, env)
     if (url.pathname !== '/rpc' && !url.pathname.startsWith('/rpc/')) return error(404, 'RPC route not found.')
-    const match = /^\/rpc(?:\/(1|42161|137|56))?$/.exec(url.pathname)
+    const match = /^\/rpc(?:\/(1|42161|137|56|8453))?$/.exec(url.pathname)
     if (!match) return error(404, 'Unsupported private network.')
     const chainId = Number(match[1] || 1)
+    if (!PRODUCTION_PRIVATE_CHAIN_IDS.includes(chainId)) return error(404, 'Unsupported private network.')
     const proxy = RAILGUN_PROXIES[chainId]
     const endpoints: Record<number, { url?: string; token?: string }> = {
       1: { url: env.RAILGUN_RPC_URL, token: env.RAILGUN_RPC_TOKEN },
       42161: { url: env.RAILGUN_ARBITRUM_RPC_URL || zanRpcUrl(42161, env.RAILGUN_ZAN_API_KEY), token: env.RAILGUN_ARBITRUM_RPC_TOKEN },
       137: { url: env.RAILGUN_POLYGON_RPC_URL || zanRpcUrl(137, env.RAILGUN_ZAN_API_KEY), token: env.RAILGUN_POLYGON_RPC_TOKEN },
       56: { url: env.RAILGUN_BNB_RPC_URL || zanRpcUrl(56, env.RAILGUN_ZAN_API_KEY), token: env.RAILGUN_BNB_RPC_TOKEN },
+      8453: { url: env.RAILGUN_BASE_RPC_URL, token: env.RAILGUN_BASE_RPC_TOKEN },
     }
     const { url: upstreamUrl, token: upstreamToken } = endpoints[chainId]
     if (request.method !== 'POST') return error(405, 'POST required.')
@@ -171,7 +159,7 @@ export default {
     const key = request.headers.get('CF-Connecting-IP') || 'local'
     let payload: RPCCall | RPCCall[]
     try {
-      const parsed = await readBody(request)
+      const parsed = await readBody(request, MAX_BODY)
       if (Array.isArray(parsed) && (parsed.length === 0 || parsed.length > RPC_BATCH_SIZE))
         throw new Error('RPC batches require 1 to 20 calls.')
       payload = Array.isArray(parsed) ? parsed.map((item) => rpcCall(item, proxy)) : rpcCall(parsed, proxy)
@@ -192,7 +180,10 @@ export default {
         137: env.RAILGUN_POLYGON_VALIDATION_CLOUD_URL,
         56: env.RAILGUN_BNB_VALIDATION_CLOUD_URL,
       }
-      const extended = alchemy && calls.some((call) => call.method === 'debug_traceCall' || call.method === 'eth_getLogs')
+      const historyOrTrace = calls.some((call) => call.method === 'debug_traceCall' || call.method === 'eth_getLogs')
+      const paidAlchemy = chainId === 42161 ? env.RAILGUN_ARBITRUM_ALCHEMY_EXTENDED === 'true'
+        : chainId === 8453 && env.RAILGUN_BASE_ALCHEMY_EXTENDED === 'true'
+      const extended = alchemy && historyOrTrace && !paidAlchemy
       const extendedUrl = extendedEndpoints[chainId]
       if (extended && (!extendedUrl || !isValidationCloudUrl(chainId, extendedUrl)))
         return error(503, 'A verified Validation Cloud endpoint is required for traces and log scans on Alchemy Free.')
@@ -214,23 +205,33 @@ export default {
       const execution = calls.some((call) => ['eth_call', 'eth_estimateGas', 'debug_traceCall', 'eth_sendRawTransaction'].includes(call.method))
       const zan = alchemy ? undefined : zanRpcUrl(chainId, env.RAILGUN_ZAN_API_KEY)
       const priced = calls.every((call) => (alchemy && !extended ? alchemyCU(call.method) : validationCloudCU(call.method)) !== undefined)
-      if (alchemy && !priced) return error(400, 'RPC batches require methods supported by the selected free provider with verified CU costs.')
+      if (alchemy && !priced) return error(400, 'RPC batches require methods supported by the selected provider with verified CU costs.')
       if (validationCloud && execution && !priced) return error(400, 'Execution batches require methods with verified CU costs.')
       if (validationCloud && !priced && !zan) return error(503, 'This RPC method requires the configured ZAN transport.')
+      if (alchemy && historyOrTrace && calls.some((call) => call.method === 'eth_sendRawTransaction'))
+        return error(400, 'Transaction submission cannot be mixed with history or trace requests.')
+      if (alchemy && calls.every((call) => call.method === 'eth_blockNumber' && call.params.length === 0)) {
+        if (!env.VALIDATION_CLOUD_BUDGET) return error(503, 'RPC budget guard is not configured.')
+        const result = await env.VALIDATION_CLOUD_BUDGET.getByName('alchemy-shared-account').blockNumber(chainId, upstream.href)
+        const replies = calls.map((call) => ({ jsonrpc: '2.0', id: call.id, result }))
+        return Response.json(Array.isArray(payload) ? replies : replies[0], { headers: HEADERS })
+      }
       // Execution data goes to one configured provider; only ordinary reads may fail over.
       const first = validationCloud && !execution && zan ? zan : upstream.href
       const fallback = validationCloud && priced && first !== upstream.href
+      let budgetRejected = false
+      const budgetError = (status: number, message: string) => { budgetRejected = true; return error(status, message) }
       const forward = async (target: string): Promise<Response> => {
         if ((validationCloud || alchemy) && target === upstream.href) {
           const provider = validationCloud ? 'validationCloud' : 'alchemy'
-          if (!env.VALIDATION_CLOUD_BUDGET) return error(503, 'RPC budget guard is not configured.')
+          if (!env.VALIDATION_CLOUD_BUDGET) return budgetError(503, 'RPC budget guard is not configured.')
           try {
             const stub = env.VALIDATION_CLOUD_BUDGET.getByName(validationCloud ? 'shared-account' : 'alchemy-shared-account')
             const methods = calls.map((call) => call.method)
             const budget = validationCloud ? await stub.consume(methods) : await stub.consume(methods, provider)
-            if (!budget.allowed) return error(429, budget.reason || 'Shared RPC budget reached.')
+            if (!budget.allowed) return budgetError(429, budget.reason || 'Shared RPC budget reached.')
           } catch {
-            return error(503, 'RPC budget guard unavailable. Retry without clearing pending transactions.')
+            return budgetError(503, 'RPC budget guard unavailable. Retry without clearing pending transactions.')
           }
         }
         return fetch(target, {
@@ -268,9 +269,11 @@ export default {
           response = limited ? await forward(upstream.href) : Response.json(result)
         }
       }
-      if (response.status >= 300 && response.status < 400)
+      if (response.status >= 300 && response.status < 400) {
+        await response.body?.cancel()
         return error(502, 'Trusted RPC redirects are disabled.')
-      return new Response(response.body, { status: response.status, headers: HEADERS })
+      }
+      return budgetRejected ? response : publicRpcResponse(response, HEADERS)
     } catch {
       return error(502, 'Trusted RPC unavailable. Retry without clearing pending transactions.')
     }

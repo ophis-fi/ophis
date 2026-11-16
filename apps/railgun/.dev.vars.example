@@ -3,7 +3,8 @@ RAILGUN_RPC_URL=http://127.0.0.1:8549
 RAILGUN_RPC_ENABLED=true
 # Legacy transport only; the Alchemy configuration never contacts ZAN.
 RAILGUN_ZAN_API_KEY=
-# Alchemy Free URLs: https://{arb,polygon,bnb}-mainnet.g.alchemy.com/v2/<key>
+# Alchemy app RPC URLs: https://{arb,base,polygon,bnb}-mainnet.g.alchemy.com/v2/<key>
+# Never install an Alchemy account/admin access credential here.
 # Shared 24M CU/rolling 32-day allowance; all credentials remain server-side.
 RAILGUN_ARBITRUM_RPC_URL=
 RAILGUN_ARBITRUM_RPC_TOKEN=
@@ -11,6 +12,12 @@ RAILGUN_POLYGON_RPC_URL=
 RAILGUN_POLYGON_RPC_TOKEN=
 RAILGUN_BNB_RPC_URL=
 RAILGUN_BNB_RPC_TOKEN=
+RAILGUN_BASE_RPC_URL=
+RAILGUN_BASE_RPC_TOKEN=
+# Opt in only after verifying the existing paid plan supports bounded history and call traces.
+# Defaults retain the separate free history route. The shared CU cap is unchanged.
+RAILGUN_ARBITRUM_ALCHEMY_EXTENDED=false
+RAILGUN_BASE_ALCHEMY_EXTENDED=false
 # Alchemy Free cannot trace or scan 500 blocks. Use existing free Validation Cloud endpoints.
 # https://mainnet.{arbitrum,polygon,bsc}.validationcloud.io/v1/<key>
 # All three share 40M CU/calendar month, with no subscription upgrade.

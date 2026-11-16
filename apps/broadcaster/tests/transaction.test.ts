@@ -54,7 +54,7 @@ describe('permissionless guarded withdrawal boundary', () => {
     expect(parseRequest(raw, operator, settings).withdrawal).toEqual({ token, recipient, amount: 1000n, grossAmount: 1000n })
     expect(() => parseRequest(raw, operator, config)).toThrow('guarded withdrawals')
   })
-  it.runIf(CHAIN_ID === 56)('accepts exact native unwrap and send with one fee-bearing WBNB proof', async () => {
+  it('accepts exact native unwrap and send with one fee-bearing wrapped-native proof', async () => {
     const raw = await signedNativeWithdrawalRequest('ab'.repeat(32), 'view', recipient)
     const parsed = parseRequest(raw, operator, settings)
     expect(parsed.transactions).toHaveLength(1)
@@ -91,7 +91,7 @@ describe('permissionless guarded withdrawal boundary', () => {
     })
     expect(() => parseRequest(raw, operator, settings)).toThrow()
   })
-  it.runIf(CHAIN_ID === 56).each(['unwrap-zero', 'unwrap-more', 'unwrap-less', 'reordered', 'extra-call', 'external-call', 'call-value',
+  it.each(['unwrap-zero', 'unwrap-more', 'unwrap-less', 'reordered', 'extra-call', 'external-call', 'call-value',
     'non-native-output', 'wrong-principal', 'wrong-unshield-account', 'no-unshield', 'missing-fee-output', 'ciphertext-count',
     'zero-value', 'different-send-value', 'recipient-account', 'zero-recipient', 'requireSuccess-false'])('rejects a signed malformed native withdrawal: %s', async (kind) => {
     const raw = await signedNativeWithdrawalRequest('ab'.repeat(32), 'view', recipient, undefined, (transactions, action, account) => {
@@ -114,11 +114,7 @@ describe('permissionless guarded withdrawal boundary', () => {
     })
     expect(() => parseRequest(raw, operator, settings)).toThrow()
   })
-  it.runIf(CHAIN_ID !== 56)('keeps native unwrap outside BNB closed without changing guarded ERC20 support', async () => {
-    const raw = await signedNativeWithdrawalRequest('ab'.repeat(32), 'view', recipient)
-    expect(() => parseRequest(raw, operator, settings)).toThrow()
-  })
-  it.runIf(CHAIN_ID === 56)('still rejects a BNB public transfer with requireSuccess disabled', async () => {
+  it('rejects a public transfer with requireSuccess disabled', async () => {
     const raw = await signedWithdrawalRequest('ab'.repeat(32), 'view', recipient, token, undefined,
       (_transactions, action) => { action.requireSuccess = false })
     expect(() => parseRequest(raw, operator, settings)).toThrow('must require')

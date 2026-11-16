@@ -9,7 +9,7 @@ afterAll(() => {
   if (originalFixtureChain === undefined) delete process.env.OPHIS_BROADCASTER_CHAIN_ID
   else process.env.OPHIS_BROADCASTER_CHAIN_ID = originalFixtureChain
 })
-import { build } from 'esbuild'
+import { build, type Plugin } from 'esbuild'
 import { mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
 import { execFile } from 'node:child_process'
 import { createServer } from 'node:http'
@@ -23,15 +23,17 @@ import { cliBacking } from './main-sdk.fixture'
 import { NETWORK, TOKENS } from '../src/config'
 import { PROXY } from '../src/transaction'
 import { ANON_COLLECTION_GATEWAY } from '../src/anon-native-collection'
+import { DatabaseSync } from 'node:sqlite'
 const anonRuntime = readFileSync(new URL('./fixtures/anon-gateway-runtime.hex', import.meta.url), 'utf8').trim()
 
 const testGasKey = id('public disposable CLI unit test gas key')
 const operator = new Wallet(testGasKey).address
 const otherOperator = '0x0000000000000000000000000000000000005678'
-let directory: string, executable: string, port: number, readChain = 1
+let directory: string, executable: string, startupExecutable: string, port: number, readChain = 1
 let health: Record<string, unknown>
 let payoutNullifiers: string[] = [], rpcMethods: string[] = []
-beforeEach(() => { payoutNullifiers = []; rpcMethods = [] })
+let startupProbe: 'unsupported' | 'unavailable' | undefined
+beforeEach(() => { payoutNullifiers = []; rpcMethods = []; startupProbe = undefined })
 const payoutHash = id('CLI owner payout'), payoutBlock = id('CLI finalized block'), refundKey = id('CLI saved refund')
 const feeRecipient = '0zk1qy08nqrftxezyxdegx6ca055tr65f2hf3u24j9urx04e5fnzepv6nrv7j6fe3z53luvr6qkgtjukzmkcp856gs5a6wzdd3pnesr9r6ljvym9l3a4fcepgkvek3f'
 const refundRecipient = '0zk1qycrffu7psx6udqv62vjfrx85kf9fxvzcwzjxfpj5nw59urf46c0trv7j6fe3z53lu9xnx4de52xjyewrs8me5u49mte0sc06unkwkppmyx05qyrsvjt7yqt7sm'
@@ -42,6 +44,12 @@ const server = createServer(async (request, response) => {
   for await (const chunk of request) body += chunk
   const call = JSON.parse(body)
   rpcMethods.push(call.method)
+  if (startupProbe && ['anvil_metadata', 'hardhat_metadata'].includes(call.method)) {
+    response.statusCode = 400
+    response.end(JSON.stringify({ jsonrpc: '2.0', id: call.id,
+      error: { code: -32600, message: startupProbe === 'unsupported' ? `Unsupported method: ${call.method}` : 'Invalid request' } }))
+    return
+  }
   const result = call.method === 'eth_chainId' ? `0x${readChain.toString(16)}`
     : call.method === 'eth_getTransactionCount' ? '0x3'
     : call.method === 'eth_getCode' ? (call.params[0].toLowerCase() === ANON_COLLECTION_GATEWAY.toLowerCase() ? anonRuntime : '0x')
@@ -65,10 +73,9 @@ const server = createServer(async (request, response) => {
 beforeAll(async () => {
   directory = mkdtempSync(join(tmpdir(), 'ophis-main-cli-'))
   executable = join(directory, 'main.mjs')
+  startupExecutable = join(directory, 'startup-main.mjs')
   symlinkSync(new URL('../node_modules', import.meta.url).pathname, join(directory, 'node_modules'), 'dir')
-  await build({ entryPoints: [new URL('../src/main.ts', import.meta.url).pathname], outfile: executable,
-    bundle: true, platform: 'node', format: 'esm', packages: 'external', logLevel: 'silent',
-    plugins: [{ name: 'fixture-sdk', setup(builder) {
+  const plugins: Plugin[] = [{ name: 'fixture-sdk', setup(builder) {
       builder.onResolve({ filter: /^\.\/sdk$/ }, (args) => args.importer.endsWith('/src/main.ts')
         ? { path: new URL('./main-sdk.fixture.ts', import.meta.url).pathname } : undefined)
     } }, { name: 'fixture-free-disk', setup(builder) {
@@ -77,7 +84,29 @@ beforeAll(async () => {
       builder.onLoad({ filter: /.*/, namespace: 'fixture-free-disk' }, () => ({
         contents: "export * from 'node:fs'; export const statfsSync = () => ({ bavail: 8 * 1024 ** 3, bsize: 1 });",
       }))
-    } }],
+    } }]
+  const entryPoints = [new URL('../src/main.ts', import.meta.url).pathname]
+  await build({ entryPoints, outfile: executable,
+    bundle: true, platform: 'node', format: 'esm', packages: 'external', logLevel: 'silent', plugins })
+  // Exercise real mainnet startup and the real protected provider; synthetic unlock only,
+  // with traps at the first SDK/recovery boundary so no fixture can sign or handle requests.
+  await build({ entryPoints, outfile: startupExecutable,
+    bundle: true, platform: 'node', format: 'esm', packages: 'external', logLevel: 'silent',
+    plugins: [{ name: 'startup-boundaries', setup(builder) {
+      builder.onResolve({ filter: /^\.\/(?:sdk|recovery|unlock-socket)$/ }, args => args.importer.endsWith('/src/main.ts')
+        ? { path: args.path, namespace: 'startup-boundaries' } : undefined)
+      builder.onLoad({ filter: /.*/, namespace: 'startup-boundaries' }, args => ({ contents:
+        args.path === './sdk' ? `export class RailgunSDK { constructor() {
+          console.log(JSON.stringify({ status: 'fixture-sdk-reached' })); throw new Error('Fixture stops before SDK work.'); } }`
+          : args.path === './recovery' ? `export async function recover() {
+            console.log(JSON.stringify({ status: 'fixture-recovery-reached' })); throw new Error('Fixture stops before signing.'); }`
+            : `export async function receiveUnlock(_path, accept) { return {
+                value: Promise.resolve(accept(Buffer.from(${JSON.stringify(JSON.stringify({ gasKey: testGasKey,
+                  feeViewingKey: '11'.repeat(64), encryptionKey: '22'.repeat(32) }))}))), close: async () => {} }; }
+              export function sendUnlock() { throw new Error('Unused fixture.'); }
+              export function stdinUnlock() { throw new Error('Unused fixture.'); }`,
+      }))
+    } }, ...plugins],
   })
   await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve))
   const address = server.address()
@@ -88,6 +117,83 @@ beforeAll(async () => {
 afterAll(async () => {
   await new Promise<void>((resolve, reject) => server.close((error) => error ? reject(error) : resolve()))
   rmSync(directory, { recursive: true, force: true })
+})
+
+it.each(['run', 'retry', 'cancel'])('requires protected read-network preflight before %s can reach SDK or recovery work', async command => {
+  readChain = 1
+  for (const probe of ['unavailable', 'unsupported'] as const) {
+    startupProbe = probe; rpcMethods = []
+    const state = mkdtempSync(join(directory, 'startup-')), sealed = join(state, 'synthetic-sealed.json')
+    const journal = new Store(state)
+    new CreditLedger(journal, { chainId: 1, operator, recipient: feeRecipient, token: TOKENS[0].address })
+    journal.close()
+    writeFileSync(sealed, JSON.stringify({ version: 1, ciphertext: 'public fixture placeholder' }), { mode: 0o600 })
+    const listener = createServer()
+    await new Promise<void>(resolve => listener.listen(0, '127.0.0.1', resolve))
+    const address = listener.address()
+    if (!address || typeof address === 'string') throw new Error('Missing startup health port.')
+    await new Promise<void>(resolve => listener.close(() => resolve()))
+    const env = { PATH: process.env.PATH, HOME: directory, TMPDIR: directory,
+      OPHIS_BROADCASTER_MODE: 'mainnet', OPHIS_BROADCASTER_ENABLED: '1', OPHIS_BROADCASTER_CHAIN_ID: '1',
+      OPHIS_BROADCASTER_RPC: `http://127.0.0.1:${port}`, OPHIS_BROADCASTER_PORT: String(address.port),
+      OPHIS_BROADCASTER_STATE: state, OPHIS_BROADCASTER_SECRETS: sealed, OPHIS_BROADCASTER_OPERATOR_ADDRESS: operator,
+      OPHIS_BROADCASTER_EXECUTION_GUARD: otherOperator, OPHIS_BROADCASTER_PILOT_ACCOUNT: otherOperator,
+      OPHIS_BROADCASTER_MARGIN_BPS: '1500', OPHIS_BROADCASTER_MAX_GAS_PRICE_WEI: '100',
+      OPHIS_BROADCASTER_MAX_TX_COST_WEI: '1000', OPHIS_BROADCASTER_RESERVE_WEI: '1000',
+      OPHIS_BROADCASTER_DAILY_BUDGET_WEI: '1000' }
+    const result = await new Promise<{ code: string | number | undefined; stdout: string; stderr: string }>(resolve => {
+      execFile(process.execPath, [startupExecutable, command], { env, timeout: 10_000, maxBuffer: 64 * 1024 },
+        (error, stdout, stderr) => resolve({ code: error ? error.code ?? error.name : 0, stdout, stderr }))
+    })
+    // Positive fixture deliberately stops at the next boundary, before any SDK work or signature.
+    expect(result.code, result.stderr).toBe(1)
+    const statuses = result.stdout.split('\n').filter(Boolean).map(line => JSON.parse(line).status)
+    expect(statuses).toEqual(probe === 'unavailable' ? ['locked']
+      : ['locked', command === 'run' ? 'fixture-sdk-reached' : 'fixture-recovery-reached'])
+    expect(rpcMethods.filter(method => method.endsWith('_metadata'))).toEqual(probe === 'unavailable'
+      ? ['anvil_metadata', 'hardhat_metadata', 'anvil_metadata']
+      : ['anvil_metadata', 'hardhat_metadata', 'anvil_metadata', 'hardhat_metadata'])
+    expect(rpcMethods.some(method => /send|sign/i.test(method))).toBe(false)
+    const requests = new DatabaseSync(join(state, 'requests.sqlite'), { readOnly: true })
+    const protectedJournal = new DatabaseSync(join(state, 'protected-transactions.sqlite'), { readOnly: true })
+    try {
+      expect(requests.prepare('SELECT COUNT(*) AS count FROM requests').get()?.count).toBe(0)
+      expect(requests.prepare('SELECT COUNT(*) AS count FROM credit_attempts').get()?.count).toBe(0)
+      expect(protectedJournal.prepare('SELECT COUNT(*) AS count FROM operation_history').get()?.count).toBe(0)
+    } finally { requests.close(); protectedJournal.close() }
+    expect(result.stderr).toContain('No secret values were logged')
+    expect(result.stderr).not.toContain(testGasKey)
+  }
+})
+
+it.each(['missing', 'different'])('rejects a %s configured ledger during CLI startup before owner unlock', async kind => {
+  readChain = 1; startupProbe = 'unsupported'; rpcMethods = []
+  const state = mkdtempSync(join(directory, 'pinned-startup-'))
+  if (kind === 'different') {
+    const journal = new Store(state)
+    const ledger = new CreditLedger(journal, { chainId: 1, operator, recipient: feeRecipient, token: TOKENS[0].address })
+    ledger.deposit({ owner: otherOperator, amount: 1_000_000n, tree: 0, position: 0, commitment: id('startup pinned note'),
+      transactionHash: id('startup pinned deposit'), blockHash: payoutBlock, blockNumber: 1 })
+    journal.close()
+  }
+  const env = { PATH: process.env.PATH, HOME: directory, TMPDIR: directory,
+    OPHIS_BROADCASTER_MODE: 'mainnet', OPHIS_BROADCASTER_ENABLED: '0', OPHIS_BROADCASTER_CHAIN_ID: '1',
+    OPHIS_BROADCASTER_RPC: `http://127.0.0.1:${port}`, OPHIS_BROADCASTER_STATE: state,
+    OPHIS_BROADCASTER_OPERATOR_ADDRESS: operator, OPHIS_BROADCASTER_CREDIT_LEDGER_ID: id('approved separate ledger') }
+  const result = await new Promise<{ code: string | number | undefined; stdout: string; stderr: string }>(resolve => {
+    execFile(process.execPath, [startupExecutable, 'retry'], { env, timeout: 10_000, maxBuffer: 64 * 1024 },
+      (error, stdout, stderr) => resolve({ code: error ? error.code ?? error.name : 0, stdout, stderr }))
+  })
+  expect(result.code, result.stderr).toBe(1)
+  expect(result.stdout).toBe('')
+  expect(result.stderr).toContain('No secret values were logged')
+  expect(rpcMethods.some(method => /send|sign|Balance|TransactionCount/i.test(method))).toBe(false)
+  const journal = new Store(state)
+  try {
+    expect(journal.db.prepare('SELECT COUNT(*) AS count FROM requests').get()?.count).toBe(0)
+    if (kind === 'missing') expect(journal.db.prepare("SELECT 1 FROM sqlite_master WHERE name='credit_identity'").get()).toBeUndefined()
+    else expect(CreditLedger.load(journal).balance(otherOperator).available).toBe(1_000_000n)
+  } finally { journal.close() }
 })
 
 async function report(chainId: number, boundChain: number | null = chainId, boundOperator = operator, command = ['report'],

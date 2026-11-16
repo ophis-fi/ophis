@@ -22,6 +22,8 @@ const enabled = process.env.OPHIS_NATIVE_PAYMENT_FORK === '1'
 const upstreams: Record<number, string> = {
   1: 'https://ethereum-rpc.publicnode.com',
   56: 'https://bsc-mainnet.public.blastapi.io',
+  42161: 'https://arb1.arbitrum.io/rpc',
+  137: 'https://polygon.drpc.org',
 }
 
 async function unusedPort(): Promise<number> {
@@ -33,7 +35,7 @@ async function unusedPort(): Promise<number> {
   return address.port
 }
 
-describe.runIf(enabled && [1, 56].includes(CHAIN_ID))('owned native-payment fork', () => {
+describe.runIf(enabled && [1, 56, 42161, 137].includes(CHAIN_ID))('owned native-payment fork', () => {
   it('proves finalized native funding, success/revert/cancellation and exact gas-funded liabilities', async () => {
     const directory = mkdtempSync(join(tmpdir(), 'ophis-native-fork-'))
     let child: ChildProcess | undefined, provider: JsonRpcProvider | undefined, store: Store | undefined
@@ -80,7 +82,7 @@ describe.runIf(enabled && [1, 56].includes(CHAIN_ID))('owned native-payment fork
       const config = settings({ OPHIS_BROADCASTER_CHAIN_ID: String(CHAIN_ID), OPHIS_BROADCASTER_MODE: 'fork',
         OPHIS_BROADCASTER_ADMISSION: 'public', OPHIS_BROADCASTER_ENABLED: '1', OPHIS_BROADCASTER_RPC: url,
         OPHIS_BROADCASTER_CREDIT_PAYMENT_MODE: 'public-native', OPHIS_BROADCASTER_MARGIN_BPS: '1500',
-        OPHIS_BROADCASTER_MAX_GAS_PRICE_WEI: '50000000000', OPHIS_BROADCASTER_MAX_TX_COST_WEI: parseEther('0.005').toString(),
+        OPHIS_BROADCASTER_MAX_GAS_PRICE_WEI: CHAIN_ID === 137 ? '200000000000' : '50000000000', OPHIS_BROADCASTER_MAX_TX_COST_WEI: parseEther('0.005').toString(),
         OPHIS_BROADCASTER_RESERVE_WEI: parseEther('0.05').toString(), OPHIS_BROADCASTER_DAILY_BUDGET_WEI: parseEther('0.05').toString() })
       const privateViewingKey = randomBytes(32), publicViewingKey = Buffer.from(await ed.getPublicKey(privateViewingKey)).toString('hex')
       const unsupported = async (): Promise<never> => { throw new Error('Private RAILGUN proof/collection is outside this native-only fixture.') }

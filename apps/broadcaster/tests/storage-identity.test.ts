@@ -15,7 +15,7 @@ async function signed(chainId = 1, wallet = Wallet.createRandom(), nonce = 0, ma
   return { raw, hash: Transaction.from(raw).hash!, wallet }
 }
 
-it.each([1, 42161, 56, 137])('binds an empty chain %i journal and rejects another chain or operator after reopen', (chainId) => {
+it.each([1, 42161, 56, 137, 8453])('binds an empty chain %i journal and rejects another chain or operator after reopen', (chainId) => {
   const operator = Wallet.createRandom().address
   store.bindIdentity(chainId, operator.toLowerCase())
   store.close(); store = new Store(directory)
@@ -100,7 +100,7 @@ it('prevents identity updates, deletes and replacements without restricting othe
     "INSERT OR REPLACE INTO settings VALUES('chainId','56')", "UPDATE settings SET key='walletId' WHERE key='operatorAddress'"])
     expect(() => store.db.exec(sql)).toThrow('immutable')
   expect(() => store.db.prepare('INSERT OR REPLACE INTO settings VALUES(?,?)').run('walletId', 'normal')).not.toThrow()
-  expect(() => store.bindIdentity(8453)).toThrow('Unsupported')
+  expect(() => store.bindIdentity(84532)).toThrow('Unsupported')
   expect(() => store.bindIdentity(1, ZeroAddress)).toThrow('Invalid operator')
 })
 

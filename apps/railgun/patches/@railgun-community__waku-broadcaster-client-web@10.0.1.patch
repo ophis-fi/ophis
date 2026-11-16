@@ -1,0 +1,82 @@
+diff --git a/dist/waku/waku-broadcaster-waku-core-base.js b/dist/waku/waku-broadcaster-waku-core-base.js
+index b174ac5606d707e47ea18620645f5788913cee93..a53d32ece4ccd31046f4992e08015c7e67600fd2 100644
+--- a/dist/waku/waku-broadcaster-waku-core-base.js
++++ b/dist/waku/waku-broadcaster-waku-core-base.js
+@@ -136,11 +136,7 @@ export class WakuBroadcasterWakuCoreBase {
+             payload,
+         });
+         const acceptedCount = this.getLightPushAcceptedCount(result);
+-        const failures = result.failures ?? [];
+-        if (failures.length > 0) {
+-            if (acceptedCount > 0) {
+-                return;
+-            }
++        if (acceptedCount === 0) {
+             throw new Error('Failed to send message');
+         }
+     }
+diff --git a/dist/waku/waku-observers.js b/dist/waku/waku-observers.js
+index b954a02ad46c7caf2224b8a6e9d6930cbec15be4..16e2205b1367a450548fb5fd6c1e9fe4288ace32 100644
+--- a/dist/waku/waku-observers.js
++++ b/dist/waku/waku-observers.js
+@@ -11,6 +11,7 @@ export class WakuObservers {
+     static currentChain;
+     static currentContentTopics = [];
+     static currentSubscriptions = [];
++    static failedTransportWakus = new WeakSet();
+     static messageCache = new Set();
+     static observedMessages = [];
+     static MAX_CACHE_SIZE = 5000;
+@@ -121,9 +122,8 @@ export class WakuObservers {
+         }
+     };
+     static async addTransportSubscription(waku, topic, callback) {
+-        if (!isDefined(waku)) {
+-            BroadcasterDebug.log('No waku instance found, Transport Subscription not added.');
+-            return;
++        if (!isDefined(waku) || this.failedTransportWakus.has(waku)) {
++            throw new Error('Private broadcaster response subscription unavailable. Reconnect before retrying.');
+         }
+         const transportTopic = contentTopics.encrypted(topic);
+         const decoder = createDecoder(transportTopic, BroadcasterConfig.getWakuRoutingInfo());
+@@ -133,7 +133,17 @@ export class WakuObservers {
+             decoder,
+             callback: wrappedCallback,
+         };
+-        await waku.filter.subscribe(decoder, wrappedCallback);
++        try {
++            if (await waku.filter.subscribe(decoder, wrappedCallback) !== true) {
++                throw new Error('Response subscription was not accepted.');
++            }
++        }
++        catch {
++            // Waku retains failed local registrations, which can falsely succeed on retry.
++            try { await waku.filter.unsubscribe(decoder); }
++            catch { this.failedTransportWakus.add(waku); }
++            throw new Error('Private broadcaster response subscription failed. Reconnect before retrying. Keep the saved attempt for recovery.');
++        }
+         this.currentSubscriptions?.push({
+             params,
+         });
+diff --git a/dist/waku-broadcaster-client.js b/dist/waku-broadcaster-client.js
+index 24ea881437d66d0cb4eda0ba6a735b36329e97fc..4dbe4ef4b95c5cae6f5f30651ef536c4bcb70264 100644
+--- a/dist/waku-broadcaster-client.js
++++ b/dist/waku-broadcaster-client.js
+@@ -196,7 +196,7 @@ export class WakuBroadcasterClient {
+         BroadcasterDebug.log(this.formatHealthcheckLog(healthSnapshot));
+     }
+     static async addTransportSubscription(waku, topic, callback) {
+-        await WakuObservers.addTransportSubscription(WakuBroadcasterWakuCore.waku, topic, callback);
++        await WakuObservers.addTransportSubscription(waku, topic, callback);
+     }
+     static async sendTransport(data, topic) {
+         const customTopic = contentTopics.encrypted(topic);
+@@ -204,7 +204,7 @@ export class WakuBroadcasterClient {
+             await WakuBroadcasterWakuCore.broadcastMessage(data, customTopic);
+         }
+         catch (e) {
+-            BroadcasterDebug.log(`SendTransport error: ${e.message}`);
++            throw new Error('Private broadcaster message delivery was not confirmed. Keep the saved attempt for recovery.');
+         }
+     }
+     static getWakuCore() {

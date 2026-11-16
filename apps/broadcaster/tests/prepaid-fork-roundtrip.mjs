@@ -13,7 +13,7 @@ import { JsonRpcProvider } from 'ethers'
 // Starts its own node; there is deliberately no attach-to-an-existing-fork option.
 const app = fileURLToPath(new URL('..', import.meta.url))
 const chainId = Number(process.env.OPHIS_PREPAID_TEST_CHAIN_ID ?? 1)
-assert([1, 56].includes(chainId), 'Only Ethereum and BNB have isolated prepaid fixtures.')
+assert([1, 56, 42161, 8453].includes(chainId), 'Select a supported isolated prepaid fixture.')
 assert(!process.env.OPHIS_BROADCASTER_CHAIN_ID || process.env.OPHIS_BROADCASTER_CHAIN_ID === String(chainId), 'Conflicting immutable broadcaster chain.')
 process.env.OPHIS_BROADCASTER_CHAIN_ID = String(chainId)
 assert(process.env.OPHIS_PREPAID_TEST_UPSTREAM, 'Select an explicit public-state read RPC.')
@@ -31,7 +31,7 @@ try {
 } finally { readOnly.destroy() }
 assert(Number.isSafeInteger(forkBlock) && forkBlock > 0, 'A finalized public-state snapshot is required.')
 mkdirSync(evidence, { recursive: true, mode: 0o700 })
-const root = mkdtempSync(join(evidence, chainId === 56 ? 'bnb-' : 'ethereum-'))
+const root = mkdtempSync(join(evidence, `chain-${chainId}-`))
 const anvilTemporary = join(root, 'anvil-tmp')
 mkdirSync(anvilTemporary, { mode: 0o700 })
 const freeBytes = () => { const state = statfsSync(root); return state.bavail * state.bsize }
@@ -45,7 +45,8 @@ const anvil = process.env.OPHIS_PREPAID_TEST_ANVIL ?? join(homedir(), '.foundry/
 assert(anvil.startsWith('/'), 'An absolute Anvil binary path is required.')
 const args = ['--fork-url', upstream, '--fork-block-number', String(forkBlock), '--host', '127.0.0.1',
   '--port', String(port), '--chain-id', String(chainId), '--hardfork', 'prague', '--no-storage-caching', '--quiet',
-  '--max-persisted-states', '64', '--cache-path', anvilTemporary,
+  // Native backing reads finalized state, which trails Anvil's head by 64 blocks.
+  '--max-persisted-states', '256', '--cache-path', anvilTemporary,
   '--gas-price', chainId === 56 ? '50000000' : '100000', '--base-fee', chainId === 56 ? '1' : '7',
   ...(chainId === 56 ? ['--disable-min-priority-fee'] : [])]
 const output = createWriteStream(join(root, 'anvil.log'), { mode: 0o600 })

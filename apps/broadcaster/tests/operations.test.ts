@@ -240,6 +240,39 @@ it('requires WBNB pricing rather than stablecoin quotes when monitoring BNB', as
   expect((await f.run()).alerts).toEqual(['stale-fee-pricing'])
 })
 
+it.each([1, 56, 42161, 8453])('monitors public-native chain %i using its real wrapped-native fee rate', async (chainId) => {
+  const f = await selectedMonitor(chainId)
+  f.settings.creditPaymentMode = 'public-native'
+  const { FeeOracle } = await import('../src/fees')
+  const oracle = new FeeOracle(f.provider as unknown as JsonRpcProvider, f.settings.marginBps, true)
+  const result = await f.operations.monitor(f.settings, f.provider as unknown as JsonRpcProvider, oracle, 4340)
+  expect(result.alerts).toEqual([])
+  expect(result.ok).toBe(true)
+  expect(Object.keys(await oracle.rates())).toHaveLength(1)
+})
+
+it.each([1, 56, 42161, 8453])('still rejects missing or nonpositive native fee pricing on chain %i', async (chainId) => {
+  const f = await selectedMonitor(chainId)
+  f.settings.creditPaymentMode = 'public-native'
+  const { FEE_TOKENS } = await import('../src/config')
+  const wrapped = getAddress(FEE_TOKENS[0].address)
+  for (const rates of [{}, { [wrapped]: 0n }, { [wrapped]: -1n }]) {
+    f.oracle.rates.mockResolvedValue(rates)
+    expect((await f.run()).alerts).toEqual(['stale-fee-pricing'])
+  }
+})
+
+it.each([1, 137, 42161])('keeps all private-credit fee-token checks on chain %i', async (chainId) => {
+  const f = await selectedMonitor(chainId)
+  const { FEE_TOKENS } = await import('../src/config')
+  expect(FEE_TOKENS.length).toBeGreaterThan(1)
+  expect(f.settings.creditPaymentMode).not.toBe('public-native')
+  f.oracle.rates.mockResolvedValue({ [getAddress(FEE_TOKENS[0].address)]: 1n })
+  expect((await f.run()).alerts).toEqual(['stale-fee-pricing'])
+  f.oracle.rates.mockResolvedValue(Object.fromEntries(FEE_TOKENS.map((token) => [getAddress(token.address), 1n])))
+  expect((await f.run()).ok).toBe(true)
+})
+
 it.each(TOKENS.slice(1))('retains historical received $symbol fee accounting', (token) => {
   store.signed('old-stable-fee', 'encrypted', 'raw', 'old-fee-hash', 100n, config.dailyBudget, 0,
     JSON.stringify({ payment: { token: token.address, amount: '12345' } }))

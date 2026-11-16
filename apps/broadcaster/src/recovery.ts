@@ -1,13 +1,14 @@
 import { JsonRpcProvider, Transaction } from 'ethers'
 import type { ProtectedEthereumProvider } from '../../railgun/operator/protected-provider'
-import { assertSigningNetwork, CHAIN, CHAIN_ID, MAX_GAS, type Settings } from './config'
+import { assertSigningNetwork, CHAIN, CHAIN_ID, FEE_LIFETIME_MS, MAX_GAS, type Settings } from './config'
 import { readChainState } from './chain-state'
 import { Store, type RequestRecord } from './storage'
 import { ADAPT, PROXY, assertPrivateExecution, assertTraceSuccess, uint } from './transaction'
 import { decodeGuardedExecution } from '../../railgun/operator/execution-guard'
 import { signApprovedTransaction, type GasSigner } from './signer'
-import { CreditLedger } from './credit'
+import { assertConfiguredCreditLedger, CreditLedger, creditCharge } from './credit'
 import { assertNativeRefundTrace, verifyNativeBacking } from './credit-native-payment'
+import { prepareBaseValidity, type BaseValidityPlan } from '../../railgun/operator/base-validity'
 
 type Sender = Pick<ProtectedEthereumProvider, 'stageSigned' | 'stageRecovery' | 'pendingTransaction' | 'retryPending' | 'cancelPending'>
 
@@ -18,6 +19,7 @@ export async function recover(command: 'retry' | 'cancel', args: string[], confi
   if (config.chainId !== CHAIN_ID) throw new Error('Recovery settings do not match the process chain.')
   if (command === 'retry' && args.length) throw new Error('Retry accepts no replacement parameters.')
   if (command === 'cancel' && args.length !== 2) throw new Error('Cancel requires explicit maximum and priority gas prices in wei.')
+  assertConfiguredCreditLedger(store, config)
   // A backup cannot establish whether newer signatures, credit charges or refunds existed.
   // It remains blocked until complete newer journals are recovered; nonce equality is not enough.
   store.assertCreditJournalActive()
@@ -28,7 +30,7 @@ export async function recover(command: 'retry' | 'cancel', args: string[], confi
   let nativeLedger: CreditLedger | undefined
   const verifyNative = async () => {
     if (nativeLedger) nativeLedger.assertNativeBacked(await verifyNativeBacking(provider, nativeLedger.scope, nativeLedger.id,
-      nativeLedger.nativeDeposits(), nativeLedger.nativeSettlements()), config.reserve, item.nonce)
+      nativeLedger.nativeDeposits(), nativeLedger.nativeSettlements(), nativeLedger.nativePendingAttempts(item.nonce)), config.reserve, item.nonce)
   }
   if (rows.length > 1) {
     if (!prepaid) throw new Error('Multiple unresolved operations require complete prepaid journals.')
@@ -45,12 +47,14 @@ export async function recover(command: 'retry' | 'cancel', args: string[], confi
       if (!held || held.charged !== null || (command === 'retry' && item.fee_expiration <= Date.now()))
         throw new Error('The reserved request cannot be retried. Cancel its held nonce after quote expiry.')
       const tx = Transaction.from(held.unsigned)
+      if (CHAIN_ID === 8453 && !ledger.baseValidity(item.key, held.unsigned))
+        throw new Error('The Base reservation is missing its immutable fee predicates.')
       const state = await readChainState(provider)
       const [latest, settled, balance] = await Promise.all([
         provider.getTransactionCount(wallet.address, state.block.number), provider.getTransactionCount(wallet.address, state.settled),
         provider.getBalance(wallet.address, state.block.number),
       ])
-      if (latest !== item.nonce || settled !== item.nonce || balance < BigInt(item.max_cost) + config.reserve || store.exposure() > config.dailyBudget)
+      if (latest !== item.nonce || (!ledger.pipelinesNative && settled !== item.nonce) || balance < BigInt(item.max_cost) + config.reserve || store.exposure() > config.dailyBudget)
         throw new Error('Reconcile the reserved nonce and operator budget before recovery.')
       if (command === 'cancel') {
         const price = uint(args[0], true), tip = uint(args[1], true)
@@ -77,6 +81,8 @@ export async function recover(command: 'retry' | 'cancel', args: string[], confi
   const original = Transaction.from(item.raw)
   if (original.hash !== item.hash || original.from !== wallet.address || original.nonce !== item.nonce || original.chainId !== CHAIN)
     throw new Error('The signed recovery record is inconsistent.')
+  const baseOriginal = nativeLedger?.baseValidity(item.key, original.unsignedSerialized)
+  if (CHAIN_ID === 8453 && !baseOriginal) throw new Error('The Base reservation is missing its immutable fee predicates.')
   if ((await provider.getNetwork()).chainId !== CHAIN) throw new Error('The recovery read node is on another chain.')
   const pending = sender.pendingTransaction()
   const { block, settled, baseFee, minimumGasPrice } = await readChainState(provider)
@@ -85,9 +91,10 @@ export async function recover(command: 'retry' | 'cancel', args: string[], confi
     provider.getTransactionCount(wallet.address, settled),
     provider.getBalance(wallet.address, block.number),
   ])
-  if (nonce !== item.nonce || confirmed !== item.nonce) throw new Error('Reconcile the mined operator nonce before recovery.')
+  if (nonce !== item.nonce || (!nativeLedger?.pipelinesNative && confirmed !== item.nonce)) throw new Error('Reconcile the mined operator nonce before recovery.')
   let rewind: typeof pending
-  if (pending && (pending.hash !== item.hash || pending.nonce !== item.nonce) && pending.nonce >= confirmed) {
+  if (pending && (pending.hash !== item.hash || pending.nonce !== item.nonce) &&
+    pending.nonce >= (nativeLedger?.pipelinesNative ? nonce : confirmed)) {
     if (!prepaid || pending.nonce <= item.nonce)
       throw new Error('The two recovery journals disagree; preserve both for reconciliation.')
     const held = assertHeldRange(store, CreditLedger.load(store), item.nonce, pending.nonce, wallet.address)
@@ -102,6 +109,10 @@ export async function recover(command: 'retry' | 'cancel', args: string[], confi
     throw new Error('The protected cancellation is missing from the request journal.')
   let raw = item.cancel_raw ?? item.raw
   const tx = Transaction.from(raw)
+  let baseCancellation: Readonly<BaseValidityPlan> | undefined = item.cancel_raw
+    ? nativeLedger?.baseValidity(item.key, tx.unsignedSerialized) : undefined
+  if (CHAIN_ID === 8453 && item.cancel_raw && !baseCancellation)
+    throw new Error('The saved Base cancellation is missing its immutable fee predicates.')
   if (tx.from !== wallet.address || tx.chainId !== CHAIN || tx.nonce !== item.nonce ||
     (item.cancel_raw && tx.hash !== item.cancel_hash))
     throw new Error('The signed recovery cancellation record is inconsistent.')
@@ -113,16 +124,26 @@ export async function recover(command: 'retry' | 'cancel', args: string[], confi
       throw new Error('Cancellation gas prices must exceed both existing signed prices.')
     const cancellation = { to: wallet.address, value: 0n, data: '0x',
       type: 2, chainId: CHAIN, nonce, maxFeePerGas, maxPriorityFeePerGas }
-    const estimate = CHAIN_ID === 1 ? 21_000n : await provider.estimateGas({ ...cancellation, from: wallet.address })
+    // A signing crash may have retained the plan before retaining the signature.
+    const savedCancellation = nativeLedger?.baseCancellation(item.key, maxFeePerGas, maxPriorityFeePerGas)
+    const estimate = savedCancellation ? Transaction.from(savedCancellation.unsigned).gasLimit
+      : CHAIN_ID === 1 ? 21_000n : await provider.estimateGas({ ...cancellation, from: wallet.address })
     if (typeof estimate !== 'bigint' || estimate < 21_000n) throw new Error('Invalid cancellation gas estimate.')
-    const gasLimit = CHAIN_ID === 1 ? estimate : (estimate * 110n + 99n) / 100n
+    const gasLimit = savedCancellation !== undefined || CHAIN_ID === 1 ? estimate : (estimate * 110n + 99n) / 100n
     const transaction = { ...cancellation, gasLimit }
     checkLimits(gasLimit, maxFeePerGas, maxPriorityFeePerGas, baseFee, minimumGasPrice, balance, config)
-    const cost = gasLimit * maxFeePerGas
+    baseCancellation = savedCancellation ?? (CHAIN_ID === 8453
+      ? await prepareBaseValidity(provider, Transaction.from(transaction), Date.now() + FEE_LIFETIME_MS) : undefined)
+    if (baseCancellation && (Date.now() >= baseCancellation.feeExpiryMs || block.number >= baseCancellation.expiryBlock))
+      throw new Error('The saved Base cancellation fee predicates expired; preserve the reservation and review new cancellation gas prices.')
+    const cost = baseCancellation ? BigInt(baseCancellation.maximumCost) : gasLimit * maxFeePerGas
+    if (cost > config.maxTransactionCost || balance < cost + config.reserve)
+      throw new Error('The cancellation total network fee exceeds the approved reserve.')
     store.assertPrepaidCancellationCovered(item.key, cost)
     const extra = cost > BigInt(item.max_cost) ? cost - BigInt(item.max_cost) : 0n
     if (store.exposure() + extra > config.dailyBudget) throw new Error('Cancellation exceeds the rolling gas budget.')
     await verifyNative()
+    if (baseCancellation) nativeLedger!.reserveBaseCancellation(item.key, baseCancellation)
     raw = await signApprovedTransaction(wallet, transaction)
     store.cancel(item.key, raw, Transaction.from(raw).hash!, cost, config.dailyBudget)
   } else {
@@ -141,7 +162,7 @@ export async function recover(command: 'retry' | 'cancel', args: string[], confi
     }), `0x${block.number.toString(16)}`, { tracer: 'callTracer', timeout: '10s' }])
     if (item.cancel_raw) assertTraceSuccess(trace)
     else if (nativeLedger?.nativeRefund(item.key)) assertNativeRefundTrace(trace, { from: wallet.address, to: tx.to!, value: tx.value })
-    else assertPrivateExecution(trace, original.type === 4 ? PROXY.encodeFunctionData('transact', [
+    else assertPrivateExecution(trace, original.type === 4 || (CHAIN_ID === 8453 && original.to === config.executionGuard) ? PROXY.encodeFunctionData('transact', [
       ADAPT.decodeFunctionData('execute', config.executionGuard
         ? decodeGuardedExecution(original.data).execution : original.data)._transactions,
     ]) : original.data)
@@ -149,13 +170,18 @@ export async function recover(command: 'retry' | 'cancel', args: string[], confi
   // Recheck native liabilities/origins after simulation and before any saved signature is disclosed.
   await verifyNative()
   // The transport can still retain the previous confirmed nonce after a crash before staging this one.
-  if (rewind) await sender.stageRecovery(item.raw, rewind)
-  else if (!pending || pending.hash !== item.hash) await sender.stageSigned(item.raw)
+  if (rewind) {
+    if (baseOriginal) await sender.stageRecovery(item.raw, rewind, baseOriginal)
+    else await sender.stageRecovery(item.raw, rewind)
+  } else if (!pending || pending.hash !== item.hash) {
+    if (baseOriginal) await sender.stageSigned(item.raw, baseOriginal)
+    else await sender.stageSigned(item.raw)
+  }
   const staged = sender.pendingTransaction()
   if (staged?.hash === item.hash && staged.cancellationHash &&
     !store.cancellations(item.key).some((tx) => tx.hash === staged.cancellationHash))
     throw new Error('The restored protected cancellation is missing from the request journal.')
-  if (command === 'cancel' || item.cancel_raw) return sender.cancelPending(raw)
+  if (command === 'cancel' || item.cancel_raw) return baseCancellation ? sender.cancelPending(raw, baseCancellation) : sender.cancelPending(raw)
   return sender.retryPending()
 }
 
@@ -168,10 +194,22 @@ function assertHeldRange(store: Store, ledger: CreditLedger, first: number, last
   for (let i = 0; i < held.length; i++) {
     const item = held[i], attempt = ledger.attempt(item.key), proof = JSON.parse(item.fee_data)
     if (item.nonce !== first + i || item.assured || proof.kind !== 'prepaid' || proof.ledgerId !== ledger.id ||
-      !attempt || attempt.charged !== null || !item.raw || !item.hash)
-      throw new Error('Every reorged nonce must retain its signed operation and unsettled credit hold.')
+      !attempt || attempt.charged !== null)
+      throw new Error('Every reorged nonce must retain its reserved operation and unsettled credit hold.')
     if (proof.owner !== attempt.owner) throw new Error('A reorged operation belongs to another credit owner.')
     ledger.balance(attempt.owner)
+    if (ledger.pipelinesNative && item.raw === null && item.hash === null) {
+      const unsigned = Transaction.from(attempt.unsigned), net = BigInt(ledger.nativeRefund(item.key)?.net ?? 0)
+      const basePlan = ledger.scope.chainId === 8453 ? ledger.baseValidity(item.key, attempt.unsigned) : undefined
+      if (unsigned.isSigned() || unsigned.unsignedSerialized !== attempt.unsigned || ![0, 1, 2, 4].includes(unsigned.type ?? -1) ||
+        unsigned.chainId !== CHAIN || unsigned.nonce !== item.nonce || unsigned.value !== net ||
+        (ledger.scope.chainId === 8453 && (!basePlan || BigInt(basePlan.maximumCost) !== BigInt(item.max_cost))) ||
+        unsigned.gasLimit <= 0n || unsigned.gasLimit * (unsigned.maxFeePerGas ?? unsigned.gasPrice ?? 0n) > BigInt(item.max_cost) ||
+        BigInt(attempt.maximum_charge) < net + creditCharge(BigInt(item.max_cost), BigInt(attempt.rate), BigInt(attempt.collection_allowance)))
+        throw new Error('A reorged unsigned reservation disagrees with its retained credit hold.')
+      continue
+    }
+    if (!item.raw || !item.hash) throw new Error('Every reorged nonce must retain its signed operation and unsettled credit hold.')
     const tx = Transaction.from(item.raw)
     if (!tx.isSigned() || tx.hash !== item.hash || tx.serialized !== item.raw || tx.unsignedSerialized !== attempt.unsigned ||
       tx.chainId !== CHAIN || tx.from !== operator || tx.nonce !== item.nonce)

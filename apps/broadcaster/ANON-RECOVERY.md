@@ -1,5 +1,7 @@
 # Current ANON operator recovery
 
+This launcher and generated owner client cover Ethereum and BNB only. For Arbitrum, use the separately reviewed [manual L2 recovery route](ARBITRUM-RECOVERY.md), which preserves the existing L2 owner helper, ledger pin and write RPC. Do not widen this launcher's accepted chains or custody profile to make an Arbitrum command pass. Base remains separately held.
+
 This procedure resolves an already journaled outer gas transaction. It does not create a user proof, release a held credit, reset a nonce or activate public admission. The operator must approve the exact command, candidate image/bundle and, for cancellation, both gas prices. Preparing the container does not authorize unlocking or spending. The original ANON helper, encrypted records, manifest, certificate and fee-source pins remain unchanged.
 
 Use this procedure after stopping the selected normal broadcaster through the existing operator procedure. Keep its original container stopped and present. The launcher refuses a running source or unexpected mounts; it never stops, renames, removes or starts the source, Waku or a node. It creates only a stopped recovery container; no RPC is contacted by the launcher. Starting that recovery process later performs the backend's configured chain checks and waits for owner unlock before signing.

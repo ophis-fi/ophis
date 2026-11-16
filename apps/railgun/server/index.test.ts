@@ -52,17 +52,83 @@ function alchemyEnv(reserve = vi.fn().mockReturnValue({ allowed: true })) {
   return { ...vcEnv(reserve), RAILGUN_ARBITRUM_RPC_URL: alchemyURL, RAILGUN_ARBITRUM_VALIDATION_CLOUD_URL: vcURL }
 }
 
+it.each([false, true])('preserves a canonical block-hash eth_call without replay or numeric fallback (unsupported: %s)', async unsupported => {
+  const selector = { blockHash: `0x${'66'.repeat(32)}`, requireCanonical: true }
+  const payload = { jsonrpc: '2.0', id: 7, method: 'eth_call', params: [{ to: RAILGUN_PROXIES[42161], data: '0x12345678' }, selector] }
+  const reserve = vi.fn().mockReturnValue({ allowed: true })
+  const upstream = vi.fn(async (_target: string | URL | Request, init?: RequestInit) => {
+    const forwarded = JSON.parse(String(init?.body))
+    expect(forwarded.params[1]).toEqual(selector)
+    expect(forwarded.params).toHaveLength(2)
+    expect(forwarded.params[0]).toEqual({ ...payload.params[0], gas: '0x1c9c380' })
+    return Response.json(unsupported
+      ? { jsonrpc: '2.0', id: 7, error: { code: -32602, message: 'Block selector unsupported' } }
+      : { jsonrpc: '2.0', id: 7, result: `0x${'00'.repeat(32)}` })
+  })
+  vi.stubGlobal('fetch', upstream)
+  const response = await gateway.fetch(arbitrum(payload), alchemyEnv(reserve))
+  expect(response.status).toBe(200)
+  expect(await response.json()).toEqual(unsupported
+    ? { jsonrpc: '2.0', id: 7, error: { code: -32602, message: 'invalid RPC parameters' } }
+    : { jsonrpc: '2.0', id: 7, result: `0x${'00'.repeat(32)}` })
+  expect(upstream).toHaveBeenCalledTimes(1)
+  expect(upstream.mock.calls[0][0]).toBe(alchemyURL)
+  expect(reserve).toHaveBeenCalledExactlyOnceWith(['eth_call'], 'alchemy')
+})
+
 function diagnosticCrypto() {
   const digest = crypto.subtle.digest.bind(crypto.subtle)
   vi.stubGlobal('crypto', { subtle: { digest,
     timingSafeEqual: (a: ArrayBuffer, b: ArrayBuffer) => timingSafeEqual(new Uint8Array(a), new Uint8Array(b)),
   } })
 }
+
+it.each([false, true])('preserves a canonical block-hash eth_getCode without replay or numeric fallback (unsupported: %s)', async unsupported => {
+  const selector = { blockHash: `0x${'66'.repeat(32)}`, requireCanonical: true }
+  const payload = { jsonrpc: '2.0', id: 7, method: 'eth_getCode', params: [RAILGUN_PROXIES[42161], selector] }
+  const reserve = vi.fn().mockReturnValue({ allowed: true })
+  const upstream = vi.fn(async (_target: string | URL | Request, init?: RequestInit) => {
+    expect(JSON.parse(String(init?.body)).params).toEqual(payload.params)
+    return Response.json(unsupported
+      ? { jsonrpc: '2.0', id: 7, error: { code: -32602, message: 'Block selector unsupported' } }
+      : { jsonrpc: '2.0', id: 7, result: '0x6001600055' })
+  })
+  vi.stubGlobal('fetch', upstream)
+  const response = await gateway.fetch(arbitrum(payload), alchemyEnv(reserve))
+  expect(response.status).toBe(200)
+  expect(await response.json()).toEqual(unsupported
+    ? { jsonrpc: '2.0', id: 7, error: { code: -32602, message: 'invalid RPC parameters' } }
+    : { jsonrpc: '2.0', id: 7, result: '0x6001600055' })
+  expect(upstream).toHaveBeenCalledTimes(1)
+  expect(upstream.mock.calls[0][0]).toBe(alchemyURL)
+  expect(reserve).toHaveBeenCalledExactlyOnceWith(['eth_getCode'], 'alchemy')
+})
 function probe(provider: string, token?: string): Request {
   return new Request(`https://swap.ophis.fi/rpc/budget/${provider}`, {
     method: 'POST', headers: token ? { Authorization: `Bearer ${token}` } : {},
   })
 }
+
+it.each(['eth_getTransactionCount', 'eth_getBalance', 'eth_getStorageAt'].flatMap(method =>
+  [false, true].map(unsupported => ({ method, unsupported }))))('preserves Arbitrum recovery selectors: $method, unsupported $unsupported', async ({ method, unsupported }) => {
+  const selector = { blockHash: `0x${'66'.repeat(32)}`, requireCanonical: true }
+  const params = method === 'eth_getStorageAt' ? [RAILGUN_PROXIES[42161], '0x0', selector] : [RAILGUN_PROXIES[42161], selector]
+  const payload = { jsonrpc: '2.0', id: 7, method, params }
+  const reserve = vi.fn().mockReturnValue({ allowed: true })
+  const result = method === 'eth_getStorageAt' ? `0x${'00'.repeat(32)}` : '0x0'
+  const upstream = vi.fn(async (_target: string | URL | Request, init?: RequestInit) => {
+    expect(JSON.parse(String(init?.body)).params).toEqual(params)
+    return Response.json(unsupported ? { jsonrpc: '2.0', id: 7, error: { code: -32602, message: 'Hash selector unsupported' } }
+      : { jsonrpc: '2.0', id: 7, result })
+  })
+  vi.stubGlobal('fetch', upstream)
+  const response = await gateway.fetch(arbitrum(payload), alchemyEnv(reserve))
+  expect(await response.json()).toEqual(unsupported
+    ? { jsonrpc: '2.0', id: 7, error: { code: -32602, message: 'invalid RPC parameters' } }
+    : { jsonrpc: '2.0', id: 7, result })
+  expect(upstream).toHaveBeenCalledExactlyOnceWith(alchemyURL, expect.anything())
+  expect(reserve).toHaveBeenCalledExactlyOnceWith([method], 'alchemy')
+})
 
 it.each([undefined, '', 'wrong-secret'])('rejects diagnostic credentials %s before accessing a budget or upstream', async (token) => {
   diagnosticCrypto()
@@ -145,6 +211,27 @@ it('uses Alchemy for a quote and reserves its shared budget without contacting Z
   expect(upstream.mock.calls[0][1].headers.Origin).toBe('https://swap.ophis.fi')
 })
 
+it('serves height-only batches through the shared meter and preserves every caller ID', async () => {
+  const env = alchemyEnv(), upstream = vi.fn()
+  const blockNumber = vi.fn().mockResolvedValue('0x123')
+  Object.assign(env.VALIDATION_CLOUD_BUDGET.getByName('alchemy-shared-account'), { blockNumber })
+  vi.stubGlobal('fetch', upstream)
+  const calls = [7, 'scan'].map((id) => ({ ...chain, id, method: 'eth_blockNumber' }))
+  const response = await gateway.fetch(arbitrum(calls), env)
+  expect(await response.json()).toEqual(calls.map(({ id }) => ({ jsonrpc: '2.0', id, result: '0x123' })))
+  expect(blockNumber).toHaveBeenCalledExactlyOnceWith(42161, alchemyURL)
+  expect(upstream).not.toHaveBeenCalled()
+})
+
+it('never routes a signed transaction to the history provider through a mixed batch', async () => {
+  const upstream = vi.fn()
+  vi.stubGlobal('fetch', upstream)
+  const calls = [{ ...chain, method: 'eth_sendRawTransaction', params: ['0x1234'] },
+    { ...chain, id: 2, method: 'eth_getLogs', params: [{ address: RAILGUN_PROXIES[42161], fromBlock: '0x1', toBlock: '0x2' }] }]
+  expect((await gateway.fetch(arbitrum(calls), alchemyEnv())).status).toBe(400)
+  expect(upstream).not.toHaveBeenCalled()
+})
+
 it.each(['debug_traceCall', 'eth_getLogs'])('routes %s directly to Validation Cloud without probing Alchemy', async (method) => {
   const reserve = vi.fn().mockReturnValue({ allowed: true })
   const env = alchemyEnv(reserve)
@@ -160,6 +247,29 @@ it.each(['debug_traceCall', 'eth_getLogs'])('routes %s directly to Validation Cl
   expect(env.VALIDATION_CLOUD_BUDGET.getByName).toHaveBeenCalledWith('shared-account')
   expect((await gateway.fetch(arbitrum({ ...chain, method, params }), { ...env, RAILGUN_ARBITRUM_VALIDATION_CLOUD_URL: undefined })).status).toBe(503)
   expect(upstream).toHaveBeenCalledOnce()
+})
+
+it.each([[42161, 'arb']] as const)('uses the explicitly qualified paid Alchemy history route for chain %s', async (chainId, prefix) => {
+  const reserve = vi.fn().mockReturnValue({ allowed: true }), env = { ...alchemyEnv(reserve),
+    RAILGUN_ARBITRUM_ALCHEMY_EXTENDED: 'true' }
+  const upstream = vi.fn().mockImplementation(async () => Response.json({ ...chain, result: [] }))
+  vi.stubGlobal('fetch', upstream)
+  const trace = { ...chain, method: 'debug_traceCall', params: [{ gas: '0x186a0' }, 'latest', { tracer: 'callTracer' }] }
+  const logs = { ...chain, method: 'eth_getLogs', params: [{ address: RAILGUN_PROXIES[chainId], fromBlock: '0x1', toBlock: '0x1f4' }] }
+  const rpc = (body: unknown) => new Request(`https://swap.ophis.fi/rpc/${chainId}`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
+  })
+  expect((await gateway.fetch(rpc([trace, logs]), env)).status).toBe(200)
+  expect(upstream).toHaveBeenCalledOnce()
+  expect(upstream.mock.calls[0][0]).toBe(`https://${prefix}-mainnet.g.alchemy.com/v2/test-key`)
+  expect(reserve).toHaveBeenCalledExactlyOnceWith(['debug_traceCall', 'eth_getLogs'], 'alchemy')
+  expect((await gateway.fetch(rpc([logs, { ...chain, method: 'eth_sendRawTransaction', params: ['0x1234'] }]), env)).status).toBe(400)
+  expect(upstream).toHaveBeenCalledOnce()
+  upstream.mockRejectedValueOnce(new Error('private provider credential'))
+  const failure = await gateway.fetch(rpc(trace), env)
+  expect(failure.status).toBe(502)
+  expect(await failure.text()).not.toContain('private provider credential')
+  expect(upstream).toHaveBeenCalledTimes(2)
 })
 
 it.each(['eth_call', 'eth_estimateGas', 'eth_sendRawTransaction'])('never retries %s through another provider after an Alchemy failure', async (method) => {
@@ -184,7 +294,7 @@ it('rejects exhausted or unavailable Alchemy meters before forwarding and does n
   expect(upstream).not.toHaveBeenCalled()
 })
 
-it.each([[42161, 'arb'], [137, 'polygon'], [56, 'bnb']] as const)('pins Alchemy to chain %s and rejects edited credentials', (chainId, prefix) => {
+it.each([[42161, 'arb'], [137, 'polygon'], [56, 'bnb'], [8453, 'base']] as const)('pins Alchemy to chain %s and rejects edited credentials', (chainId, prefix) => {
   const url = `https://${prefix}-mainnet.g.alchemy.com/v2/test-key`
   expect(isAlchemyUrl(chainId, url)).toBe(true)
   for (const edited of [url + '?extra=1', url + '#fragment', url.replace('https:', 'http:'), url.replace('/v2/', ':8443/v2/'), url.replace('-mainnet.', '-mainnet.evil.'), url.replace('https://', 'https://key@')])
@@ -269,7 +379,7 @@ it('pins Validation Cloud to the selected network and rejects edited URLs', () =
   }
 })
 
-it.each([[42161, 'ARBITRUM'], [137, 'POLYGON'], [56, 'BNB']] as const)(
+it.each([[42161, 'ARBITRUM'], [56, 'BNB']] as const)(
   'uses a server-only provider key on the pinned chain %s endpoint and rejects edited URLs',
   async (chainId, name) => {
     const upstream = vi.fn().mockResolvedValue(Response.json({ jsonrpc: '2.0', id: 1, result: `0x${chainId.toString(16)}` }))
@@ -430,7 +540,7 @@ it('keeps authorization and calldata unchanged, bounds traces, and strips cookie
     ],
   }
   const fetch = vi.fn<typeof globalThis.fetch>().mockResolvedValue(
-    new Response('{"result":{"type":"CALL"}}', {
+    new Response('{"jsonrpc":"2.0","id":1,"result":{"type":"CALL"}}', {
       headers: { 'Cache-Control': 'public', 'Set-Cookie': 'bad=1' },
     }),
   )
@@ -492,6 +602,30 @@ it('charges a trace rate-limit token for every trace in a batch and keeps upstre
   expect(redirected.headers.get('Location')).toBeNull()
 })
 
+it.each([401, 429, 500])('does not expose upstream HTTP %s diagnostics or replay an execution request', async (status) => {
+  const cancel = vi.fn()
+  const upstream = vi.fn(async () => new Response(new ReadableStream({
+    start(controller) {
+      controller.enqueue(new TextEncoder().encode('Provider failure at https://trusted-rpc.example with Bearer server-only-test-token'))
+      controller.close()
+    }, cancel,
+  }), { status, headers: { 'Content-Type': 'text/plain' } }))
+  vi.stubGlobal('fetch', upstream)
+  const result = await gateway.fetch(request({ ...chain, method: 'eth_sendRawTransaction', params: ['0x1234'] }), enabled)
+  expect(result.status).toBe(status)
+  expect(await result.text()).not.toMatch(/trusted-rpc|server-only-test-token|Bearer/)
+  expect(upstream).toHaveBeenCalledOnce()
+  expect(cancel).toHaveBeenCalledOnce()
+})
+
+it('preserves successful JSON-RPC revert data and request IDs', async () => {
+  const body = { jsonrpc: '2.0', id: 'wallet-request', error: { code: 3, message: 'execution reverted', data: '0x08c379a0' } }
+  vi.stubGlobal('fetch', vi.fn(async () => Response.json(body)))
+  const result = await gateway.fetch(request({ ...chain, id: 'wallet-request', method: 'eth_call', params: [{ to: RAILGUN_PROXY }, 'latest'] }), enabled)
+  expect(result.status).toBe(200)
+  expect(await result.json()).toEqual(body)
+})
+
 it('pins each network RPC and rejects unconfigured chains and foreign Railgun log filters', async () => {
   const upstream = vi.fn().mockResolvedValue(Response.json({ jsonrpc: '2.0', id: 1, result: '0x38' }))
   vi.stubGlobal('fetch', upstream)
@@ -503,10 +637,63 @@ it('pins each network RPC and rejects unconfigured chains and foreign Railgun lo
   expect(String(upstream.mock.calls[0][0])).toBe('https://bnb-rpc.example/')
   expect(upstream.mock.calls[0][1].headers.Authorization).toBe('Bearer test-bnb-token')
   upstream.mockClear()
-  expect((await gateway.fetch(make('/rpc/137', chain), env)).status).toBe(503)
+  expect((await gateway.fetch(make('/rpc/137', chain), env)).status).toBe(404)
   expect((await gateway.fetch(make('/rpc/8453', chain), env)).status).toBe(404)
+  expect((await gateway.fetch(make('/rpc/84532', chain), env)).status).toBe(404)
   const logs = { ...chain, method: 'eth_getLogs', params: [{ address: RAILGUN_PROXY, fromBlock: '0x0', toBlock: '0x1' }] }
   expect((await gateway.fetch(make('/rpc/56', logs), env)).status).toBe(400)
   expect(upstream).not.toHaveBeenCalled()
   expect(rpcCall({ ...logs, params: [{ ...logs.params[0], address: RAILGUN_PROXIES[56] }] }, RAILGUN_PROXIES[56]).method).toBe('eth_getLogs')
 })
+
+it.each([137, 8453].flatMap(chainId => ['eth_chainId', 'eth_call', 'eth_getLogs', 'debug_traceCall', 'eth_sendRawTransaction']
+  .map(method => ({ chainId, method }))))('refuses disabled chain $chainId method $method before any quota, meter or upstream work', async ({ chainId, method }) => {
+  const upstream = vi.fn(), limit = vi.fn().mockResolvedValue({ success: true }), reserve = vi.fn()
+  const env = { ...enabled, VALIDATION_CLOUD_BUDGET: budgetBinding(reserve), RPC_LIMIT: { limit }, TRACE_LIMIT: { limit },
+    RAILGUN_POLYGON_RPC_URL: 'https://polygon-mainnet.g.alchemy.com/v2/retained-key',
+    RAILGUN_POLYGON_VALIDATION_CLOUD_URL: 'https://mainnet.polygon.validationcloud.io/v1/retained-key',
+    RAILGUN_BASE_RPC_URL: 'https://base-mainnet.g.alchemy.com/v2/retained-key',
+    RAILGUN_BASE_ALCHEMY_EXTENDED: 'true', RAILGUN_ZAN_API_KEY: 'retained-key' }
+  vi.stubGlobal('fetch', upstream)
+  const params = method === 'eth_call' ? [{ to: RAILGUN_PROXIES[chainId] }, 'latest']
+    : method === 'eth_getLogs' ? [{ address: RAILGUN_PROXIES[chainId], fromBlock: '0x1', toBlock: '0x2' }]
+    : method === 'debug_traceCall' ? [{ gas: '0x186a0' }, 'latest', { tracer: 'callTracer' }]
+    : method === 'eth_sendRawTransaction' ? ['0x1234'] : []
+  const response = await gateway.fetch(new Request(`https://swap.ophis.fi/rpc/${chainId}`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...chain, method, params }),
+  }), env)
+  expect(response.status).toBe(404)
+  expect(await response.json()).toEqual({ error: 'Unsupported private network.' })
+  expect(limit).not.toHaveBeenCalled(); expect(reserve).not.toHaveBeenCalled()
+  expect(env.VALIDATION_CLOUD_BUDGET.getByName).not.toHaveBeenCalled(); expect(upstream).not.toHaveBeenCalled()
+})
+
+it.each(['', '/manifest', `/page/${'ab'.repeat(32)}/0`, `/tail/${'ab'.repeat(32)}`])(
+  'refuses disabled Base history %s even with retained credentials and extended mode', async suffix => {
+    const upstream = vi.fn(), limit = vi.fn().mockResolvedValue({ success: true }), reserve = vi.fn()
+    const env = { ...enabled, VALIDATION_CLOUD_BUDGET: budgetBinding(reserve), RPC_LIMIT: { limit },
+      RAILGUN_BASE_RPC_URL: 'https://base-mainnet.g.alchemy.com/v2/retained-key', RAILGUN_BASE_ALCHEMY_EXTENDED: 'true' }
+    vi.stubGlobal('fetch', upstream)
+    const response = await gateway.fetch(new Request(`https://swap.ophis.fi/rpc/history/base${suffix}`), env)
+    expect(response.status).toBe(404)
+    expect(await response.json()).toEqual({ error: 'Unsupported private network.' })
+    expect(limit).not.toHaveBeenCalled(); expect(reserve).not.toHaveBeenCalled()
+    expect(env.VALIDATION_CLOUD_BUDGET.getByName).not.toHaveBeenCalled(); expect(upstream).not.toHaveBeenCalled()
+  },
+)
+
+it.each([['/rpc', 1], ['/rpc/1', 1], ['/rpc/56', 56], ['/rpc/42161', 42161]] as const)(
+  'keeps active route %s on its configured upstream', async (path, chainId) => {
+    const upstream = vi.fn().mockResolvedValue(Response.json({ ...chain, result: `0x${chainId.toString(16)}` }))
+    vi.stubGlobal('fetch', upstream)
+    const env = { ...enabled, RAILGUN_ARBITRUM_RPC_URL: 'https://arbitrum-rpc.example', RAILGUN_ARBITRUM_RPC_TOKEN: 'test-arbitrum-token',
+      RAILGUN_BNB_RPC_URL: 'https://bnb-rpc.example', RAILGUN_BNB_RPC_TOKEN: 'test-bnb-token' }
+    const response = await gateway.fetch(new Request(`https://swap.ophis.fi${path}`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(chain),
+    }), env)
+    expect(response.status).toBe(200)
+    expect(await response.json()).toEqual({ jsonrpc: '2.0', id: 1, result: `0x${chainId.toString(16)}` })
+    expect(upstream).toHaveBeenCalledExactlyOnceWith(chainId === 1 ? 'https://trusted-rpc.example/'
+      : chainId === 56 ? 'https://bnb-rpc.example/' : 'https://arbitrum-rpc.example/', expect.anything())
+  },
+)

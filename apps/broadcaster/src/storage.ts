@@ -3,6 +3,7 @@ import { dirname, join } from 'node:path'
 import { DatabaseSync } from 'node:sqlite'
 import { getAddress, randomBytes, Mnemonic, Transaction, Wallet, ZeroAddress } from 'ethers'
 import { parseSecrets, privateDirectory, privateFile, type Secrets } from './secrets'
+import { validateBaseValidityPlan } from '../../railgun/operator/base-validity'
 
 export { parseMainnetSecrets, parseSecrets, privateDirectory, privateFile, type Secrets } from './secrets'
 
@@ -88,7 +89,7 @@ export class Store {
         BEGIN SELECT RAISE(ABORT, 'Operator identity is immutable'); END;`)
   }
   bindIdentity(chainId: number, operatorAddress?: string): void {
-    const supported = (value: number) => [1, 42161, 56, 137].includes(value)
+    const supported = (value: number) => [1, 42161, 56, 137, 8453].includes(value)
     if (!supported(chainId)) throw new Error('Unsupported operator journal network.')
     const requested = operatorAddress === undefined ? undefined : getAddress(operatorAddress)
     if (requested === ZeroAddress) throw new Error('Invalid operator journal identity.')
@@ -124,7 +125,7 @@ export class Store {
           if (!operator || !reserved || !identity || proof.kind !== 'prepaid' || proof.owner !== reserved.owner ||
             proof.ledgerId !== identity.id || unsigned.isSigned() || unsigned.unsignedSerialized !== reserved.unsigned ||
             unsigned.chainId !== BigInt(chainId) || unsigned.nonce !== row.nonce || row.nonce !== row.expected_nonce ||
-            !validValue || unsigned.gasLimit * (unsigned.maxFeePerGas ?? unsigned.gasPrice ?? 0n) !== BigInt(String(row.max_cost)))
+            !validValue || this.reservedNetworkMaximum(String(row.key), unsigned) !== BigInt(String(row.max_cost)))
             throw new Error('The journal contains an inconsistent prepaid reservation.')
           continue
         }
@@ -133,6 +134,10 @@ export class Store {
         if (!tx.isSigned() || tx.serialized !== row.raw || tx.hash !== row.hash || tx.chainId !== BigInt(chainId) ||
           tx.nonce !== row.nonce || row.nonce !== row.expected_nonce || (operator && tx.from !== operator))
           throw new Error('The journal contains an inconsistent signed transaction.')
+        if (chainId === 8453 && this.db.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name='credit_attempts'").get() &&
+          this.db.prepare('SELECT 1 FROM credit_attempts WHERE key=?').get(row.key) &&
+          this.reservedNetworkMaximum(String(row.key), tx) > BigInt(this.get(String(row.key))!.max_cost))
+          throw new Error('The Base journal fee plan exceeds its reserved network budget.')
         operator ??= tx.from!
       }
       if (!chain) this.db.prepare('INSERT INTO settings(key,value) VALUES(?,?)').run('chainId', String(chainId))
@@ -179,6 +184,10 @@ export class Store {
       const request = this.get(key)
       if (!request || request.confirmed) throw new Error('No unresolved request to cancel.')
       this.assertPrepaidCancellationCovered(key, cost)
+      if (this.db.prepare('SELECT value FROM settings WHERE key=?').get('chainId')?.value === '8453' &&
+        JSON.parse(request.fee_data).kind === 'prepaid' &&
+        this.reservedNetworkMaximum(key, Transaction.from(raw)) !== cost)
+        throw new Error('The Base cancellation differs from its reserved total-fee plan.')
       const oldCost = BigInt(request.max_cost), maxCost = oldCost > cost ? oldCost : cost
       if (this.exposure() + maxCost - oldCost > budget) throw new Error('Cancellation exceeds the rolling gas budget.')
       if (request.cancel_raw != null || request.cancel_hash != null) {
@@ -217,9 +226,15 @@ export class Store {
       }
     }
     const original = Transaction.from(String(attempt.unsigned))
-    const maximum = original.gasLimit * (original.maxFeePerGas ?? original.gasPrice ?? 0n)
+    const maximum = this.reservedNetworkMaximum(key, original)
     if (cost <= 0n || cost > maximum || BigInt(request.max_cost) !== maximum)
       throw new Error('Cancellation exceeds its secured prepaid budget.')
+  }
+  private reservedNetworkMaximum(key: string, transaction: Transaction): bigint {
+    if (transaction.chainId !== 8453n) return transaction.gasLimit * (transaction.maxFeePerGas ?? transaction.gasPrice ?? 0n)
+    const row = this.db.prepare('SELECT plan FROM credit_base_validity WHERE key=? AND unsigned=?').get(key, transaction.unsignedSerialized)
+    if (!row) throw new Error('The Base reservation is missing its immutable total-fee plan.')
+    return BigInt(validateBaseValidityPlan(JSON.parse(String(row.plan)), transaction.unsignedSerialized).maximumCost)
   }
   assertCreditJournalActive(): void {
     if (lstatSync(join(this.path, '.prepaid-restore-review-required'), { throwIfNoEntry: false }) ||

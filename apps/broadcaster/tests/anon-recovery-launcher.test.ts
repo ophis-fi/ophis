@@ -60,6 +60,16 @@ it.each(['1', '56'])('creates only chain %s recovery with authoritative mount an
   expect(args[args.indexOf('--restart') + 1]).toBe('no')
   expect(args).not.toContain('compose'); expect(args).not.toContain('--publish'); expect(args).not.toContain('--entrypoint')
 })
+
+it('preserves the approved credit ledger identity in an isolated recovery process', () => {
+  const f = fixture()
+  const binding = `OPHIS_BROADCASTER_CREDIT_LEDGER_ID=0x${'ab'.repeat(32)}`
+  f.source.Config.Env.push(binding)
+  f.target.Config.Env.push(binding)
+  prepareRecovery(f.argv, f.docker)
+  const [, environment] = f.docker.mock.calls.find(([args]) => args[0] === 'create')!
+  expect(environment!.OPHIS_BROADCASTER_CREDIT_LEDGER_ID).toBe(`0x${'ab'.repeat(32)}`)
+})
 it.each([
   ['137', image, bundle, 'retry'], ['1', image, bundle, 'run'], ['1', image, bundle, 'cancel'],
   ['1', image, bundle, 'cancel', '0', '1'], ['1', image, bundle, 'cancel', '-1', '1'],

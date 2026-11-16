@@ -78,7 +78,7 @@ async function fixture(guard?: string, withdrawalRecipient?: string, commonWithd
         return ADAPT.encodeFunctionResult('adaptImplementation', [NETWORK.relayAdapt7702Contract])
       return ADAPT.encodeFunctionResult('nonce', [0n])
     }),
-    getRpcTransaction: vi.fn((value) => value), send: vi.fn(async (): Promise<unknown> => ({ type: 'CALL', calls: [
+    getRpcTransaction: vi.fn((value) => value), send: vi.fn(async (method?: string): Promise<unknown> => method === 'eth_estimateGas' ? '0x186a0' : ({ type: 'CALL', calls: [
       { type: 'CALL', to: NETWORK.proxyContract, input: privateCalldata(data) },
     ] })),
   }
@@ -200,6 +200,47 @@ describe.runIf([1, 56].includes(CHAIN_ID))('prepaid execution through the encryp
     const saved = store.pending()[0], ledger = CreditLedger.load(store)
     expect(ledger.attempt(saved.key)?.collection_allowance).toBe('0')
   })
+  it.each([
+    { stage: 'first', category: 'invalid-params', rpc: { code: -32602, message: 'PRIVATE diagnostic input', data: 'PRIVATE calldata' } },
+    { stage: 'fresh', category: 'timeout', rpc: { code: 'TIMEOUT', message: 'PRIVATE provider URL' } },
+    { stage: 'first', category: 'malformed', trace: { type: 'CALL', calls: 'PRIVATE malformed payload' } },
+    { stage: 'first', category: 'node-error', trace: { type: 'CALL', calls: [{ type: 'CALL', error: 'PRIVATE revert data' }] } },
+    { stage: 'fresh', category: 'node-error', trace: { type: 'CALL', error: 'PRIVATE changed state' } },
+    { stage: 'first', category: 'limit', trace: { type: 'CALL', calls: Array.from({ length: 4096 }, () => ({ type: 'STATICCALL' })) } },
+    { stage: 'first', category: 'exact-batch-absent', trace: { type: 'CALL', to: NETWORK.proxyContract, input: '0x1234' } },
+  ])('reports only safe $stage trace $category diagnostics before any credit reservation or signature', async scenario => {
+    const f = await prepaidFixture(true); await f.fund()
+    const ledger = CreditLedger.load(store), balance = ledger.balance(f.owner.address)
+    let fresh = false
+    const block = f.provider.getBlock.getMockImplementation()!
+    f.provider.getBlock.mockImplementation(async tag => fresh
+      ? { ...await block(tag), number: 101, hash: id('fresh trace head') } : block(tag))
+    f.sdk.validatePrepaid.mockImplementation(async () => { fresh = true })
+    const validTrace = { type: 'CALL', to: f.service.config.executionGuard, calls: [
+      { type: 'STATICCALL', to: f.data.to },
+      { type: 'CALL', to: f.data.to, calls: [{ type: 'CALL', to: NETWORK.proxyContract, input: privateCalldata(f.data) }] },
+    ] }
+    f.provider.send.mockImplementation(async () => {
+      if (scenario.stage === 'fresh' && !fresh) return validTrace
+      if ('rpc' in scenario) throw scenario.rpc
+      return scenario.trace
+    })
+    const log = vi.spyOn(console, 'error').mockImplementation(() => {})
+    try {
+      const response = await f.send(f.execution)
+      const phase = `trace-${scenario.stage}-${'rpc' in scenario ? 'rpc' : 'validation'}`
+      expect(response.error).toContain(`[${phase}:${scenario.category}`)
+      expect(log).toHaveBeenCalledOnce()
+      expect(JSON.parse(String(log.mock.calls[0][0]))).toMatchObject({ status: 'request-rejected', phase,
+        trace: { category: scenario.category } })
+      expect(JSON.stringify([response, log.mock.calls])).not.toContain('PRIVATE')
+      expect(ledger.balance(f.owner.address)).toEqual(balance)
+      expect(store.db.prepare('SELECT COUNT(*) AS count FROM credit_attempts').get()).toEqual({ count: 0 })
+      expect(store.db.prepare('SELECT COUNT(*) AS count FROM requests').get()).toEqual({ count: 0 })
+      expect(f.sign).not.toHaveBeenCalled(); expect(f.sender.broadcastTransaction).not.toHaveBeenCalled()
+      expect(f.provider.send).toHaveBeenCalledTimes(scenario.stage === 'fresh' ? 2 : 1)
+    } finally { log.mockRestore() }
+  })
   it.each(['owner', 'global', 'busy'])('rejects new prepaid work before RPC reads when %s admission is exhausted', async (limit) => {
     const f = await prepaidFixture(true); await f.fund()
     const admission = f.service as unknown as { attempts: number[]; busy: boolean;
@@ -309,7 +350,26 @@ describe.runIf([1, 56].includes(CHAIN_ID))('prepaid execution through the encryp
     expect(kind === 'refund' ? replay.transactionHash : replay.txHash).toBe(saved.hash)
     expect(f.sign).toHaveBeenCalledOnce()
   })
-  it.each(['wrong-owner', 'wrong-ledger', 'missing-policy', 'public-with-pilot'])('holds new native refunds for %s while preserving paid claims and saved recovery', async (failure) => {
+  it('refuses a mismatched pilot ledger pin without changing paid credit, then recovers after restoring the pin', async () => {
+    const f = await prepaidFixture(true)
+    await f.fund()
+    const ledger = CreditLedger.load(store), before = ledger.balance(f.owner.address)
+    f.service.config.admission = 'pilot'
+    f.service.config.prepaidPilotOwner = f.owner.address
+    f.service.config.prepaidPilotLedgerId = id('unapproved ledger')
+    f.service.config.enabled = false
+    expect((await f.send({ kind: 'balance' })).error).toBeTruthy()
+    expect((await f.send({ kind: 'quote', refund: true })).error).toBeTruthy()
+    expect(ledger.balance(f.owner.address)).toEqual(before)
+    expect(store.pending()).toHaveLength(0)
+    expect(f.sign).not.toHaveBeenCalled()
+    f.service.config.prepaidPilotLedgerId = f.info.ledgerId
+    await f.fund()
+    expect((await f.send({ kind: 'balance' })).available).toBe(before.available.toString())
+    expect(CreditLedger.load(store).id).toBe(f.info.ledgerId)
+    expect(ledger.balance(f.owner.address)).toEqual(before)
+  })
+  it.each(['wrong-owner', 'missing-policy', 'public-with-pilot'])('holds new native refunds for %s while preserving paid claims and saved recovery', async (failure) => {
     const f = await prepaidFixture(true)
     await f.fund()
     const quote = await f.send({ kind: 'quote', refund: true }), recipient = Wallet.createRandom().address, net = 10n ** 16n
@@ -322,7 +382,6 @@ describe.runIf([1, 56].includes(CHAIN_ID))('prepaid execution through the encryp
       f.service.config.prepaidPilotLedgerId = f.info.ledgerId
       f.service.config.prepaidPilotOwner = f.owner.address
       if (failure === 'wrong-owner') f.service.config.prepaidPilotOwner = Wallet.createRandom().address
-      if (failure === 'wrong-ledger') f.service.config.prepaidPilotLedgerId = id('unapproved ledger')
       if (failure === 'missing-policy') { f.service.config.prepaidPilotLedgerId = undefined; f.service.config.prepaidPilotOwner = undefined }
       if (failure === 'public-with-pilot') f.service.config.admission = 'public'
       f.service.config.enabled = false
@@ -478,6 +537,17 @@ describe.runIf([1, 56].includes(CHAIN_ID))('prepaid execution through the encryp
     expect(f.sdk.accountedCreditBacking).not.toHaveBeenCalled()
     expect(CreditLedger.load(store).scope.funding).toBe('native')
     expect(store.db.prepare('SELECT COUNT(*) AS n FROM credit_deposits').get()?.n).toBe(0)
+  })
+  it('rechecks native funding after discovery and refuses to sign against changed canonical history', async () => {
+    const f = await prepaidFixture(true)
+    await f.fund()
+    expect((await f.service.feeAdvertisement()).available).toBe(true)
+    f.provider.getBlock.mockImplementation(async (tag) => ({ number: typeof tag === 'number' ? tag : 100,
+      hash: id('changed canonical history'), timestamp: Math.floor(Date.now() / 1000), baseFeePerGas: 1n }))
+    expect((await f.send(f.execution)).error).toBeTruthy()
+    expect(f.sign).not.toHaveBeenCalled()
+    expect(f.sender.broadcastTransaction).not.toHaveBeenCalled()
+    expect(CreditLedger.load(store).balance(f.owner.address).available).toBe(10n ** 18n)
   })
   it('keeps the historical pilot halt without an explicit exact prepaid ledger approval', async () => {
     const f = await prepaidFixture(); await f.fund()
@@ -1180,7 +1250,8 @@ describe('signing gate and duplicate recovery', () => {
   })
   it('advertises fees with lowercase token keys for the RAILGUN client cache while preserving stored rates', async () => {
     const f = await fixture()
-    const envelope = JSON.parse(Buffer.from(await f.service.feeAdvertisement()).toString())
+    const published = await f.service.feeAdvertisement()
+    const envelope = JSON.parse(Buffer.from(published.message).toString())
     const advertisement = JSON.parse(Buffer.from(envelope.data, 'hex').toString())
     expect(advertisement.fees[TOKENS[0].address.toLowerCase()]).toBe('0xde0b6b3a7640000')
     expect(Object.keys(advertisement.fees).every((token) => token === token.toLowerCase())).toBe(true)
@@ -1469,7 +1540,8 @@ describe('public admission and sequential settlement', () => {
       const wire = await packetFor(data, f.sdk.publicViewingKey)
       f.sdk.fee.mockResolvedValue({ [getAddress(CHAIN_ID === 56 ? TOKENS[0].address : token.address)]:
         CHAIN_ID === 56 || token.address === TOKENS[0].address ? 2_000_000_000_000_000n : 2_000_000n })
-      f.provider.send.mockResolvedValue({ type: 'CALL', to: NETWORK.proxyContract, input: privateCalldata(data) })
+      f.provider.send.mockImplementation(async method => method === 'eth_estimateGas' ? '0x186a0'
+        : { type: 'CALL', to: NETWORK.proxyContract, input: privateCalldata(data) })
       const response = wire.decode(await f.service.handle(wire.payload))
       expect(response.txHash).toBeTruthy()
       const signed = Transaction.from(store.pending()[0].raw!)
@@ -1534,7 +1606,8 @@ describe('public admission and sequential settlement', () => {
     if (kind === 'fee-token') f.sdk.fee.mockResolvedValue({ [TOKENS[CHAIN_ID === 56 ? 1 : 0].address]: 2_000_000_000_000_000n })
     if (kind === 'underpaid') f.sdk.fee.mockResolvedValue({ [TOKENS[CHAIN_ID === 56 ? 0 : 1].address]: 1n })
     if (kind === 'expired') store.db.prepare('UPDATE fees SET expiration=0 WHERE id=?').run(f.quote.id)
-    f.provider.send.mockResolvedValue({ type: 'CALL', to: NETWORK.proxyContract, input: data.data })
+    f.provider.send.mockImplementation(async method => method === 'eth_estimateGas' ? '0x186a0'
+      : { type: 'CALL', to: NETWORK.proxyContract, input: data.data })
     const wire = await packetFor(data, f.sdk.publicViewingKey)
     const error = wire.decode(await f.service.handle(wire.payload)).error
     const expected = ['zero-recipient', 'high-recipient'].includes(kind) ? 'nonzero public address'

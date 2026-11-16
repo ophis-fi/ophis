@@ -1,8 +1,21 @@
+import { isAlchemyUrl } from '../rpc-policy'
+import { readBaseValidityBody } from './base-validity'
+
 export const PROTECTED_WRITE_RPC = 'https://rpc.flashbots.net?hint=hash'
 export const BNB_BUNDLE_RPC = 'https://puissant-builder.48.club/'
+export const BASE_VALIDITY_RPC = 'https://mainnet-sequencer.base.org'
 export const BNB_HEAD_MAX_AGE_SECONDS = 3
 
-export function protectedWriteRPC(chainId = 1): string {
+export function protectedWriteRPC(chainId = 1, endpoint?: string): string {
+  if (chainId === 8453) {
+    if (endpoint && endpoint !== BASE_VALIDITY_RPC) throw new Error('Base validity submission requires its fixed sequencer endpoint.')
+    return BASE_VALIDITY_RPC
+  }
+  if (chainId === 42161) {
+    if (endpoint && isAlchemyUrl(chainId, endpoint)) return endpoint
+    throw new Error('This chain requires its pinned Alchemy submission endpoint; publication remains disabled.')
+  }
+  if (endpoint) throw new Error('This chain does not permit a submission endpoint override.')
   if (chainId === 1) return PROTECTED_WRITE_RPC
   // The separate signing/qualification gate remains required for this candidate transport.
   if (chainId === 56) return BNB_BUNDLE_RPC
@@ -49,9 +62,12 @@ export function assertBnbBundleUnexpired(body: string, raw: string, height: bigi
 }
 
 /** Returns only the builder acknowledgment, never a transaction receipt/hash substitute. */
-export async function submitProtected(chainId: number, body: string, transactionHash: string): Promise<string | undefined> {
+export async function submitProtected(chainId: number, body: string, transactionHash: string, endpoint?: string): Promise<string | undefined> {
+  if (chainId === 8453 && readBaseValidityBody(body).hash !== transactionHash)
+    throw new Error('The Base validity envelope does not match its approved transaction.')
   try {
-    const response = await fetch(protectedWriteRPC(chainId), { method: 'POST', headers: { 'Content-Type': 'application/json' },
+    const response = await fetch(protectedWriteRPC(chainId, endpoint), { method: 'POST', headers: { 'Content-Type': 'application/json',
+      ...([42161, 8453].includes(chainId) ? { Origin: 'https://swap.ophis.fi' } : {}) },
       redirect: 'error', signal: AbortSignal.timeout(15_000), body })
     const result = await response.json() as { jsonrpc?: unknown; id?: unknown; result?: unknown; error?: unknown }
     if (!response.ok || result.jsonrpc !== '2.0' || result.id !== 1 || result.error ||

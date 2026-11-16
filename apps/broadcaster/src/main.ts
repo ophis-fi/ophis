@@ -19,7 +19,7 @@ import { migrateOperator } from './migrate'
 import { snapshotCriticalState } from './backup'
 import { deployGuard, type GuardApproval } from './guard-deployment'
 import { accountingReport, acknowledgeLoss, localHealth, monitor, monitorMetrics } from './operations'
-import { CreditLedger } from './credit'
+import { assertConfiguredCreditLedger, CreditLedger } from './credit'
 import { finalizedCreditReceipt } from './credit-payment'
 import { ownerCostPreflight } from './owner-cost'
 import { PROXY, uint } from './transaction'
@@ -32,9 +32,11 @@ process.umask(0o077)
 async function run(): Promise<void> {
   const command = process.argv[2] ?? 'run'
   const ownerSyncCommand = command === 'prepare-owner-operation' || command === 'reject-unrelated-owner-payout'
-  if (command === 'sync' && (process.argv.length > 4 || (process.argv[3] !== undefined && process.argv[3] !== '--initialize-credit')))
-    throw new Error('Sync accepts only the explicit --initialize-credit option.')
+  if (command === 'sync' && (process.argv.length > 4 || (process.argv[3] !== undefined && !['--initialize-credit', '--rescan-base-history'].includes(process.argv[3]))))
+    throw new Error('Sync accepts only --initialize-credit or --rescan-base-history.')
   const initializeCredit = command === 'sync' && process.argv[3] === '--initialize-credit'
+  const rescanBaseHistory = command === 'sync' && process.argv[3] === '--rescan-base-history'
+  if (rescanBaseHistory && CHAIN_ID !== 8453) throw new Error('Base history rebuild is restricted to Base.')
   // Inspection and explicit ledger initialization never enable transaction submission.
   const config = settings(command === 'sync' ? { ...process.env, OPHIS_BROADCASTER_ENABLED: '0' } : process.env)
   const identity = { chainId: CHAIN_ID, nativeSymbol: NATIVE_SYMBOL, operatorAddress: config.operatorAddress ?? null }
@@ -132,6 +134,7 @@ async function run(): Promise<void> {
     lock = new LevelDOWN(join(config.state, 'operator-lock'))
     await new Promise<void>((resolve, reject) => lock!.open((error) => error ? reject(error) : resolve()))
     store = new Store(config.state)
+    assertConfiguredCreditLedger(store, config)
     if (command !== 'migrate') store.bindIdentity(CHAIN_ID, config.operatorAddress)
     if (command === 'record-owner-payout' || command === 'reject-owner-payout') {
       if (process.argv.length !== 5) throw new Error('Provide the saved owner intent and exact payout transaction hash.')
@@ -227,7 +230,10 @@ async function run(): Promise<void> {
       console.log(JSON.stringify(await deployGuard(config, approval, provider, wallet)))
       return
     }
-    if (config.mode === 'mainnet') sender = new ProtectedEthereumProvider(config.rpc, wallet.address, config.state, config.executionGuard, CHAIN_ID, config.creditPaymentMode === 'public-native')
+    if (config.mode === 'mainnet') {
+      sender = new ProtectedEthereumProvider(config.rpc, wallet.address, config.state, config.executionGuard, CHAIN_ID, config.creditPaymentMode === 'public-native', config.writeRpc)
+      await sender.assertReadNetwork()
+    }
     if (command === 'retry' || command === 'cancel') {
       if (!sender) throw new Error('Manual recovery is a mainnet protected-transport command; test its function on a fork.')
       const hash = await recover(command, process.argv.slice(3), config, store, provider, wallet, sender)
@@ -243,6 +249,7 @@ async function run(): Promise<void> {
       return
     }
     await sdk.start(provider)
+    if (rescanBaseHistory) await sdk.rescanBaseHistory()
     if (command === 'reject-unrelated-owner-payout') {
       if (process.argv.length !== 5) throw new Error('Provide the held owner intent and exact unrelated transaction hash.')
       const ledger = CreditLedger.load(store)
@@ -296,7 +303,7 @@ async function run(): Promise<void> {
       try {
         if (Date.now() - lastRefresh >= 30_000) {
           lastRefresh = Date.now()
-          metrics.ready = await broadcaster.available()
+          metrics.ready = command === 'run' ? false : await broadcaster.available()
           if (sdk.ready()) {
             metrics.feeBalances = await sdk.balances(); metrics.feeBalancesAt = Date.now()
             if (command === 'sync' && !syncReported) {
@@ -309,8 +316,11 @@ async function run(): Promise<void> {
           else { delete metrics.feeBalances; delete metrics.feeBalancesAt }
           if (command === 'run' && !reconcile) reconcile = broadcaster.reconcile()
             .catch(() => { metrics.errors++ }).finally(() => { reconcile = undefined })
-          if (command === 'run' && sdk.ready())
-            await waku!.publish(TOPICS.fees, await broadcaster.feeAdvertisement())
+          if (command === 'run' && sdk.ready()) {
+            const advertisement = await broadcaster.feeAdvertisement()
+            await waku!.publish(TOPICS.fees, advertisement.message)
+            metrics.ready = advertisement.available
+          }
         }
         if (command === 'run') {
           for (const message of await waku!.messages()) {

@@ -10,7 +10,7 @@
     <main>
       <header>
         <div class="heading"><strong><img src="./incognito.svg" width="18" height="18" alt="" /> Private swap</strong><span id="environment"></span></div>
-        <label class="network-selector"><span class="sr-only">Private network</span><select id="private-network" aria-label="Private network"><option value="1">Ethereum</option><option value="42161">Arbitrum</option><option value="137">Polygon</option><option value="56">BNB Chain</option></select></label>
+        <label class="network-selector"><span class="sr-only">Private network</span><select id="private-network" aria-label="Private network"><option value="1">Ethereum</option><option value="42161">Arbitrum</option><option value="56">BNB Chain</option></select></label>
       </header>
       <p id="status" role="status" aria-live="polite"></p>
       <span id="history-announcement" class="sr-only" role="status"></span>
@@ -82,6 +82,16 @@
         <p id="public-wallet-error" role="alert"></p>
         <button id="switch-network" type="button" hidden>Switch to Ethereum</button>
         <button id="review-shield" type="button" hidden>Check shield amount</button>
+        <button id="wrap-native" type="button" hidden>Wrap ETH to WETH</button>
+        <div id="wrap-recovery" hidden>
+          <p id="wrap-saved-help">A wrap is saved. Check it before wrapping again. WETH remains in your public wallet until you approve and shield it.</p>
+          <label>Wrap, speed-up or cancellation transaction hash<input id="wrap-hash" type="text" autocomplete="off" /></label>
+          <button id="check-wrap" type="button">Check saved wrap</button>
+          <details id="wrap-defer"><summary>Keep an uncertain wrap for later</summary>
+            <label><input id="wrap-defer-consent" type="checkbox" /> Keep its recovery record. It may still confirm; another wrap converts additional ETH into WETH.</label>
+            <button id="defer-wrap" type="button">Keep wrap for later recovery</button>
+          </details>
+        </div>
         <button id="approve" type="button" hidden>Approve amount</button>
         <button id="shield" type="button" hidden>Shield amount</button>
         <p id="public-transaction-status" role="status" aria-live="polite"></p>
@@ -90,7 +100,7 @@
         <p id="withdraw-pending-help" role="status" hidden></p>
         <p>Withdrawing makes the destination and amount public.</p>
         <p id="withdraw-fee-help">Choose the token and amount above. The broadcaster fee comes from your private balance.</p>
-        <label id="native-withdrawal-option" hidden><input id="withdraw-native" type="checkbox" checked /> Receive BNB (unwrap WBNB automatically)</label>
+        <label id="native-withdrawal-option" hidden><input id="withdraw-native" type="checkbox" checked /> <span id="native-withdrawal-label">Receive native currency</span></label>
         <label>Public recipient<input id="recipient" type="text" autocomplete="off" spellcheck="false" /></label>
         <button id="withdraw-max" class="secondary-action" type="button">Max withdrawal after fee</button>
         <button id="withdraw-quote" type="button">Review withdrawal fee</button>
@@ -121,6 +131,7 @@
             </details>
             <button id="check-fee-attempt" class="secondary-action" type="button" hidden>Check fee-credit transaction</button>
             <button id="retry-fee-attempt" class="secondary-action" type="button" hidden>Retry saved fee-credit request</button>
+            <button id="diagnose-fee-attempt" class="secondary-action" type="button" hidden>Inspect saved transaction — no transaction sent</button>
             <p id="fee-credit-status" role="status" aria-live="polite"></p>
             <p id="fee-refund-help">Unused credit remains available for later fees. Review the refund destination and network fee before requesting it.</p>
             <details><summary>Request unused credit back</summary>
@@ -137,6 +148,7 @@
           <div class="secondary-actions"><button id="refresh" class="secondary-action" type="button">Refresh balances</button><a id="recovery-shortcut" href="#recovery">Troubleshoot a transaction</a></div>
         </details>
         <details id="recovery"><summary>Recovery and pending transactions</summary>
+        <button id="rebuild-base-history" type="button" hidden>Rebuild Base history</button>
         <pre id="pending-details"></pre>
         <div id="leftovers-consent" hidden><label
           ><input id="accept-leftovers" type="checkbox" /> Keep the displayed recovery account index: any public
@@ -145,6 +157,8 @@
         <button id="reconcile" type="button">Reconcile pending swap</button>
         <button id="reconcile-withdrawal" type="button">Check pending withdrawal</button>
         <button id="retry-withdrawal" class="secondary-action" type="button">Retry saved withdrawal through broadcaster</button>
+        <pre id="saved-withdrawal-review" role="status"></pre>
+        <button id="confirm-saved-withdrawal" type="button" hidden>Confirm saved withdrawal</button>
         <button id="use-usdc-withdrawal" class="secondary-action" type="button" hidden>Keep WETH proof and withdraw USDC instead</button>
         <pre id="preserved-withdrawal-details"></pre>
         <button id="restore-preserved-withdrawal" class="secondary-action" type="button" hidden>Restore preserved withdrawal</button>
@@ -159,6 +173,14 @@
           needs <span id="cancel-gas-symbol">native currency</span> for gas. Funding it from your public wallet creates a public link.
         </p>
         <button id="cancel-swap" class="secondary-action" type="button">Cancel pending swap using temporary account gas</button>
+        <section id="cancel-earlier" hidden>
+          <h3>Use ETH already in an earlier recovery account</h3>
+          <label>Gas account index<input id="cancel-gas-index" type="text" inputmode="numeric" value="0" /></label>
+          <button id="review-cancel-earlier" type="button">Review existing recovery ETH</button>
+          <pre id="cancel-earlier-review"></pre>
+          <label><input id="cancel-earlier-consent" type="checkbox" /> I approve gas from the reviewed account and the public link between these accounts.</label>
+          <button id="confirm-cancel-earlier" type="button" hidden>Confirm cancellation using existing ETH</button>
+        </section>
         <p>
           Resuming reuses the saved withdrawal proof so it cannot withdraw twice. Your public wallet pays gas, the
           committed broadcaster fee still applies, and the transaction becomes linked to that wallet.
@@ -193,6 +215,6 @@
       <button id="walletconnect-copy" type="button">Copy connection link</button>
       <button id="walletconnect-cancel" type="button">Cancel</button>
     </dialog>
-    <script type="module" src="/src/main.ts"></script>
+    <script type="module" src="/src/entry.ts"></script>
   </body>
 </html>

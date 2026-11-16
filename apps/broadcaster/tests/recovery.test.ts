@@ -77,6 +77,24 @@ async function reorgedPrepaid(f: Awaited<ReturnType<typeof fixture>>, chainId: n
   return { ledger, owner, operations, maximum: 2n * creditCharge(gasBudget, rate, 0n) }
 }
 
+it.each(['creditLedgerId', 'prepaidPilotLedgerId'] as const)('rejects a wrong nonempty journal through the %s pin before recovery reads or signing', async field => {
+  const f = await fixture(), state = await reorgedPrepaid(f, 1)
+  const selected = { ...f.selectedConfig, mode: 'mainnet' as const, enabled: false, [field]: id('different approved ledger') }
+  for (const command of ['retry', 'cancel'] as const) {
+    await expect(f.recover(command, command === 'cancel' ? ['3000000000', '2000000000'] : [], selected, store,
+      f.provider as unknown as JsonRpcProvider, f.wallet, f.sender)).rejects.toThrow('configured identity')
+  }
+  expect(f.provider.getNetwork).not.toHaveBeenCalled()
+  expect(f.provider.getTransactionCount).not.toHaveBeenCalled()
+  expect(f.sign).not.toHaveBeenCalled()
+  expect(f.sender.pendingTransaction).not.toHaveBeenCalled()
+  expect(f.sender.stageRecovery).not.toHaveBeenCalled()
+  expect(f.sender.retryPending).not.toHaveBeenCalled()
+  expect(f.sender.cancelPending).not.toHaveBeenCalled()
+  expect(state.ledger.balance(state.owner).reserved).toBe(state.maximum)
+  for (const item of state.operations) expect(store.get(item.key)?.raw).toBe(item.raw)
+})
+
 it.each([1, 56])('recovers multiple reorged chain %i nonces in order without re-signing or releasing credit holds', async (chainId) => {
   const f = await fixture(chainId), state = await reorgedPrepaid(f, chainId)
   expect(await f.run('retry')).toBe(state.operations[0].hash)

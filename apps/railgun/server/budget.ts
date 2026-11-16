@@ -1,7 +1,9 @@
 import { DurableObject } from 'cloudflare:workers'
-import { RPC_BATCH_SIZE, alchemyCU, alchemyThroughputCU, validationCloudCU } from '../rpc-policy'
+import { readBody } from './body'
+import { PRODUCTION_PRIVATE_CHAIN_IDS, RPC_BATCH_SIZE, alchemyCU, alchemyThroughputCU, isAlchemyUrl, validationCloudCU } from '../rpc-policy'
+import { BaseHistoryCache } from './history'
 
-// One meter for all three keys: reserve 10m of the account's 50m for other usage.
+// One meter for the provider's keys: reserve 10m of the account's 50m for other usage.
 const CU_LIMIT = 40_000_000
 
 // Deployment-only probe: a fixed zero/10-CU read, never an upstream transaction.
@@ -58,10 +60,50 @@ export async function probeBudget(request: Request, env: Env): Promise<Response>
 }
 
 export class ValidationCloudBudget extends DurableObject<Env> {
+  private readonly heads = new Map<number, { endpoint: string; at: number; result: Promise<string> }>()
+  private history?: BaseHistoryCache
   constructor(ctx: DurableObjectState, env: Env) {
     super(ctx, env)
     this.ctx.storage.sql.exec('CREATE TABLE IF NOT EXISTS usage (month TEXT PRIMARY KEY, cu INTEGER NOT NULL)')
     this.ctx.storage.sql.exec('CREATE TABLE IF NOT EXISTS pace (id INTEGER PRIMARY KEY, second REAL, calls REAL)')
+  }
+  private baseHistory(): BaseHistoryCache {
+    if (!PRODUCTION_PRIVATE_CHAIN_IDS.includes(8453)) throw new Error('Base history is disabled.')
+    return this.history ??= new BaseHistoryCache(this.ctx.storage, this.env, this.consume.bind(this))
+  }
+  baseHistoryManifest() { return this.baseHistory().manifest() }
+  baseHistoryPage(generation: string, page: number) { return this.baseHistory().page(generation, page) }
+  baseHistoryTail(generation: string) { return this.baseHistory().recent(generation) }
+  async alarm(): Promise<void> {
+    if (!PRODUCTION_PRIVATE_CHAIN_IDS.includes(8453)) {
+      await this.ctx.storage.deleteAlarm()
+      return
+    }
+    return this.baseHistory().alarm()
+  }
+
+  async blockNumber(chainId: number, endpoint: string): Promise<string> {
+    if (!PRODUCTION_PRIVATE_CHAIN_IDS.includes(chainId)) throw new Error('Unsupported private network.')
+    if (!isAlchemyUrl(chainId, endpoint)) throw new Error('Invalid Alchemy head endpoint.')
+    const now = Date.now(), cached = this.heads.get(chainId)
+    // Only display/scan height is shared; canonical headers, balances, nonces and simulations stay fresh.
+    if (cached?.endpoint === endpoint && now >= cached.at && now - cached.at < 15_000) return cached.result
+    const budget = this.consume(['eth_blockNumber'], 'alchemy')
+    if (!budget.allowed) throw new Error(budget.reason)
+    const entry = { endpoint, at: now, result: (async () => {
+      const response = await fetch(endpoint, { method: 'POST', redirect: 'manual', signal: AbortSignal.timeout(5_000),
+        headers: { 'Content-Type': 'application/json', Origin: 'https://swap.ophis.fi', 'User-Agent': 'Ophis-Private-Wallet/1.0' },
+        body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'eth_blockNumber', params: [] }) })
+      if (!response.ok) { await response.body?.cancel(); throw new Error('Invalid Alchemy head response.') }
+      const value = await readBody(response, 1024) as Record<string, unknown> | null
+      if (!value || value.jsonrpc !== '2.0' || value.id !== 1 || value.error || typeof value.result !== 'string' ||
+        !/^0x(?:0|[1-9a-f][0-9a-f]*)$/i.test(value.result) || BigInt(value.result) > BigInt(Number.MAX_SAFE_INTEGER))
+        throw new Error('Invalid Alchemy head response.')
+      return value.result as string
+    })().catch(() => { throw new Error('Alchemy head unavailable.') }) }
+    this.heads.set(chainId, entry)
+    // Keep the same short backoff on failures so callers cannot amplify an upstream outage.
+    return entry.result
   }
 
   consume(methods: string[], provider: 'validationCloud' | 'alchemy' = 'validationCloud'): { allowed: boolean; reason?: string; remainingCU?: number } {
