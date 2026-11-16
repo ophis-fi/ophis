@@ -15,7 +15,7 @@ SDK v0.4.5 and hosted MCP cover 14 EVM mainnets, including Arc.
 
 The standalone app supports externally funded NEAR swaps. Select the source in You sell, review the quote and source-chain refund address, then fund the deposit before its deadline with any required memo. Keep the transfer record until delivery or refund completes.
 
-Private mode uses a RAILGUN shielded wallet on Ethereum, Arbitrum, Polygon and BNB Chain. Deposits must synchronize and become Spendable. Private swaps charge 0.1% of output plus pool, broadcaster and applicable deposit/withdrawal costs; they do not use the public batch-auction fee schedule.
+Private mode uses a RAILGUN shielded wallet on Ethereum, Arbitrum and BNB Chain. Deposits must synchronize and become Spendable. Private swaps charge 0.1% of output plus pool, broadcaster and applicable deposit/withdrawal costs; they do not use the public batch-auction fee schedule.
 
 ## Fees
 

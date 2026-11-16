@@ -93,7 +93,7 @@ Use the token selector to find assets on each network. Arc is available in the s
 
 ## Private mode
 
-Select **Private** in the standalone app to use a RAILGUN shielded wallet. Private mode supports Ethereum, Arbitrum, Polygon and BNB Chain, with separate deposits, spendable balances, quotes and recovery steps. Public wallet balances do not become private merely by switching modes. Read [private-swap requirements](/networks-assets#private-swaps) before depositing.
+Select **Private** in the standalone app to use a RAILGUN shielded wallet. Private mode supports Ethereum, Arbitrum and BNB Chain, with separate deposits, spendable balances, quotes and recovery steps. Public wallet balances do not become private merely by switching modes. Read [private-swap requirements](/networks-assets#private-swaps) before depositing.
 
 ## Stock tokens {/* #robinhood-stock-tokens */}
 

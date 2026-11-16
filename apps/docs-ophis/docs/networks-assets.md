@@ -107,7 +107,7 @@ Check the token contract, issuer disclosures and trading restrictions before swa
 
 ## Private swaps
 
-Select **Private** in the standalone swap app to open the RAILGUN shielded-wallet flow. It supports **Ethereum, Arbitrum, Polygon and BNB Chain**. Private mode has its own token list, balances, quotes and broadcaster availability; public-mode network coverage does not apply.
+Select **Private** in the standalone swap app to open the RAILGUN shielded-wallet flow. It supports **Ethereum, Arbitrum and BNB Chain**. Private mode has its own token list, balances, quotes and broadcaster availability; public-mode network coverage does not apply.
 
 1. Create or unlock the private wallet and keep its recovery material securely.
 2. Shield supported assets from your public wallet. Approvals and deposits require public transactions; a deposit must synchronize and become **Spendable** before it can fund a private swap.

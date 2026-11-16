@@ -90,7 +90,7 @@ Ophis uses these tools and guides in its reviews:
 
 ## Private wallet security
 
-Private mode uses a separate RAILGUN wallet on Ethereum, Arbitrum, Polygon and BNB Chain. Keep its recovery material secure. Public deposits and withdrawals remain visible onchain; shielding does not guarantee anonymity or hide every aspect of a pool swap. Only synchronized balances marked **Spendable** can fund a private transaction.
+Private mode uses a separate RAILGUN wallet on Ethereum, Arbitrum and BNB Chain. Keep its recovery material secure. Public deposits and withdrawals remain visible onchain; shielding does not guarantee anonymity or hide every aspect of a pool swap. Only synchronized balances marked **Spendable** can fund a private transaction.
 
 Review the minimum output, broadcaster identity, fee and any native-gas prepayment before authorizing. A pending transaction must be reconciled with the recovery controls before another spend. The public batch-auction solver allowlist and fee schedule do not govern this path.
 
