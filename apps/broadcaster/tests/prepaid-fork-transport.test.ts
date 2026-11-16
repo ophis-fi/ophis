@@ -27,7 +27,8 @@ async function fixture(chainId: number) {
     const words = [1_000_000_000n, (1000n << 96n) | (1000n << 64n), 1n, (7n << 64n) | 9n,
       0x8bde8f549f56d405f07e1aa15df9e1fc69839881n, 0x4f1db3c6abd250ba86e0928471a8f7db3afd88f1n, 0x01010101n]
     const provider = { getNetwork: async () => ({ chainId: 8453n }), getBlock: async () => head,
-      send: async () => toBeHex(words.shift()!, 32) } as unknown as JsonRpcProvider
+      send: async (method: string) => method === 'eth_getBlockByNumber'
+        ? { number: '0x64', hash: head.hash } : toBeHex(words.shift()!, 32) } as unknown as JsonRpcProvider
     const plan = await prepareBaseValidity(provider, Transaction.from(raw).unsignedSerialized, head.timestamp * 1000 + 60_000)
     body = createBaseValidityBody(raw, plan)
   }

@@ -37,6 +37,13 @@ it('fails closed with a fixed diagnostic when the canonical read fails', async (
   await expect(result).rejects.not.toThrow(secret)
 })
 
+it.each(['latest', 'finalized', 123] as const)('redacts provider errors from direct header reads: %s', async tag => {
+  const secret = 'https://provider.invalid/synthetic-secret'
+  const result = readUncachedBlockHeader({ send: vi.fn().mockRejectedValue(new Error(secret)) }, tag)
+  await expect(result).rejects.toThrow('evidence is unavailable')
+  await expect(result).rejects.not.toThrow(secret)
+})
+
 it('bypasses an actual ethers cached old block at the terminal canonicality check', async () => {
   const rpc = new JsonRpcProvider(undefined, 1, { staticNetwork: true })
   let reorg = false

@@ -366,7 +366,9 @@ describe('Base fee-bound validity transport', () => {
     const feeProvider = {
       getNetwork: async () => ({ chainId: 8453n }),
       getBlock: async () => ({ number: Number(height), timestamp: headTimestamp, hash: blockHashes.get(`0x${height.toString(16)}`) ?? `0x${'cd'.repeat(32)}` }),
-      send: async (_method: string, [address, slot]: string[]) => {
+      send: async (method: string, [address, slot]: string[]) => {
+        if (method === 'eth_getBlockByNumber') return { number: `0x${height.toString(16)}`,
+          hash: blockHashes.get(`0x${height.toString(16)}`) ?? `0x${'cd'.repeat(32)}` }
         const values: Record<string, bigint> = { '0x1': 1_000_000_000n, '0x3': (1000n << 96n) | (1000n << 64n), '0x7': 1n, '0x8': 0n }
         const value = slot.length > 10 ? address.endsWith('0015')
           ? 0x8bde8f549f56d405f07e1aa15df9e1fc69839881n : 0x4f1db3c6abd250ba86e0928471a8f7db3afd88f1n

@@ -1,4 +1,5 @@
 import { getBytes, isHexString, toQuantity, Transaction, type JsonRpcProvider, type TransactionLike } from 'ethers'
+import { assertCanonicalReceipt } from '../src/receipt-canonical'
 
 type PriceOperator = '=' | '<='
 type StoragePredicate = { type: 'storage'; params: { address: string; slot: string; op: PriceOperator; value: string; mask?: string } }
@@ -105,7 +106,7 @@ export function validateBaseValidityPlan(value: unknown, expectedUnsigned?: stri
   return Object.freeze(canonical)
 }
 
-/** Reads contain only the fixed fee contracts and a block number; signed execution bytes never reach the read RPC. */
+/** Reads contain only fixed fee contracts and a block hash; signed execution bytes never reach the read RPC. */
 export async function prepareBaseValidity(provider: Pick<JsonRpcProvider, 'getNetwork' | 'getBlock' | 'send'>,
   transaction: string | TransactionLike<string>, feeExpiryMs: number): Promise<Readonly<BaseValidityPlan>> {
   const tx = unsignedTransaction(transaction)
@@ -121,13 +122,18 @@ export async function prepareBaseValidity(provider: Pick<JsonRpcProvider, 'getNe
     throw new Error('Base quote expires before a bounded inclusion window.')
   const template = predicates([0n, 0n, 0n, 0n], expiryBlock, '<=').slice(0, 7) as StoragePredicate[]
   const words = await Promise.all(template.map(async predicate => {
-    const result: unknown = await provider.send('eth_getStorageAt', [predicate.params.address, predicate.params.slot, toQuantity(head.number)])
+    const result: unknown = await provider.send('eth_getStorageAt', [predicate.params.address, predicate.params.slot,
+      { blockHash: head.hash, requireCanonical: true }]).catch(() => {
+      throw new Error('Base historical fee storage is unavailable.')
+    })
     if (typeof result !== 'string' || !isHexString(result, 32)) throw new Error('Base historical fee storage is unavailable.')
     return BigInt(result)
   }))
   if (words[4] !== L1_IMPLEMENTATION || words[5] !== ORACLE_IMPLEMENTATION || words[6] !== JOVIAN_FLAGS)
     throw new Error('Base fee implementation or activation differs from the reviewed mainnet policy.')
-  if ((await provider.getBlock(head.number))?.hash !== head.hash) throw new Error('Base fee head changed during verification.')
+  await assertCanonicalReceipt(provider, { blockNumber: head.number, blockHash: head.hash! }).catch(() => {
+    throw new Error('Base fee head changed during verification.')
+  })
   const values = [priceCeiling(words[0]), words[1] & SCALARS_MASK, priceCeiling(words[2]), words[3] & OPERATOR_MASK]
   return validateBaseValidityPlan({ unsigned: tx.unsignedSerialized, maximumCost: maximumCost(tx, values).toString(),
     headNumber: head.number, headTimestamp: head.timestamp, expiryBlock, feeExpiryMs, validity: predicates(values, expiryBlock, '<=') })

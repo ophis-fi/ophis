@@ -3,6 +3,7 @@ import { CHAIN, CHAIN_ID, WRAPPED_SYMBOL, tokenFor } from './config'
 import { assertPublicNetwork, requireShieldBalance } from './shield'
 import { readPrivateState, writePrivateState, deletePrivateState } from './storage'
 import type { WalletSession } from './wallet'
+import { assertCanonicalReceipt, readUncachedBlockHeader } from './receipt-canonical'
 
 const KEY = 'basePublicWrap'
 const WETH = new Interface(['function deposit() payable', 'event Deposit(address indexed dst, uint256 wad)'])
@@ -97,11 +98,11 @@ export async function checkBaseWrap(session: WalletSession, suppliedHash?: strin
     const hash = suppliedHash || active?.hash
     if (!hash || !isHexString(hash, 32)) throw new Error('Copy the wrap, speed-up or cancellation hash from your public wallet.')
     const [tx, receipt, head] = await Promise.all([session.provider.getTransaction(hash),
-      session.provider.getTransactionReceipt(hash), session.provider.getBlock('latest')])
+      session.provider.getTransactionReceipt(hash), readUncachedBlockHeader(session.provider, 'latest')])
     if (!tx || !receipt || !head || tx.hash.toLowerCase() !== hash.toLowerCase() || receipt.hash.toLowerCase() !== hash.toLowerCase() ||
-      tx.blockNumber !== receipt.blockNumber || tx.blockHash !== receipt.blockHash || head.number < receipt.blockNumber + 1 ||
-      (await session.provider.getBlock(receipt.blockNumber))?.hash !== receipt.blockHash)
+      tx.blockNumber !== receipt.blockNumber || tx.blockHash !== receipt.blockHash || head.number < receipt.blockNumber + 1)
       throw new Error('The wrap needs two canonical confirmations. Keep its saved transaction.')
+    await assertCanonicalReceipt(session.provider, receipt)
     const saved = records.find(record => record.data === tx.data) ?? records.find(record =>
       record.submittedNonce === tx.nonce && record.payer.toLowerCase() === tx.from.toLowerCase() &&
       tx.to?.toLowerCase() === record.payer.toLowerCase() && tx.data === '0x' && tx.value === 0n)
@@ -113,8 +114,9 @@ export async function checkBaseWrap(session: WalletSession, suppliedHash?: strin
     if (!cancelled && (getAddress(tx.to) !== wrapped || tx.value !== amount || tx.data !== saved.data))
       throw new Error('This receipt does not match the saved wrap amount or contract.')
     const state = receipt.status === 0 ? 'failed' : cancelled ? 'cancelled' : 'wrapped'
+    let finalized: Awaited<ReturnType<typeof readUncachedBlockHeader>> = null
     if (state !== 'wrapped') {
-      const finalized = await session.provider.getBlock('finalized')
+      finalized = await readUncachedBlockHeader(session.provider, 'finalized')
       if (!finalized || finalized.number < receipt.blockNumber)
         throw new Error('Wait for the wrap failure or cancellation to finalize before wrapping again.')
     } else {
@@ -123,8 +125,9 @@ export async function checkBaseWrap(session: WalletSession, suppliedHash?: strin
         log.topics.length === deposit.topics.length && log.topics.every((topic, i) => topic.toLowerCase() === deposit.topics[i].toLowerCase())))
         throw new Error('The receipt does not contain the expected WETH deposit.')
     }
-    if ((await session.provider.getBlock(receipt.blockNumber))?.hash !== receipt.blockHash)
-      throw new Error('Wrap history changed. Keep its saved transaction and check again.')
+    await assertCanonicalReceipt(session.provider, receipt)
+    await assertCanonicalReceipt(session.provider, { blockNumber: head.number, blockHash: head.hash })
+    if (finalized) await assertCanonicalReceipt(session.provider, { blockNumber: finalized.number, blockHash: finalized.hash })
     await saveRecords(session, records.filter(record => record.data !== saved.data))
     return { hash, amount, state }
   } finally { busy.delete(session) }

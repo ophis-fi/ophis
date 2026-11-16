@@ -1,5 +1,5 @@
 import { afterEach, expect, it, vi } from 'vitest'
-import { getBytes, id, toBeHex, Transaction, Wallet, type JsonRpcProvider } from 'ethers'
+import { getBytes, id, toBeHex, toQuantity, Transaction, Wallet, type JsonRpcProvider } from 'ethers'
 import { assertBaseValidityUnexpired, createBaseValidityBody, prepareBaseValidity, readBaseValidityBody,
   validateBaseValidityPlan, type BaseValidityPlan } from './base-validity'
 
@@ -18,7 +18,9 @@ function fixture() {
     [`${ORACLE}:${IMPLEMENTATION_SLOT}`, 0x4f1db3c6abd250ba86e0928471a8f7db3afd88f1n], [`${ORACLE}:0x0`, 0x01010101n],
   ])
   const provider = { getNetwork: vi.fn(async () => ({ chainId: 8453n })), getBlock: vi.fn(async () => head),
-    send: vi.fn(async (_method: string, params: string[]) => toBeHex(words.get(`${params[0]}:${params[1]}`)!, 32)),
+    send: vi.fn(async (method: string, params: unknown[]) => method === 'eth_getBlockByNumber'
+      ? { number: toQuantity(head.number), hash: head.hash }
+      : toBeHex(words.get(`${params[0]}:${params[1]}`)!, 32)),
   } as unknown as JsonRpcProvider
   const feeExpiryMs = timestamp * 1000 + 30_000
   return { wallet, tx, head, words, provider, feeExpiryMs, prepare: () => prepareBaseValidity(provider, tx, feeExpiryMs) }
@@ -35,10 +37,11 @@ it('reserves full Fjord/Jovian cost at both price ceilings without sending execu
   expect(plan.validity[2].params.value).toBe('0x2')
   expect(plan.validity[1].params.value).toBe(`0x${((1000n << 96n) | (1000n << 64n)).toString(16)}`)
   expect(plan.validity[3].params.value).toBe(`0x${((7n << 64n) | 9n).toString(16)}`)
-  expect(f.provider.send).toHaveBeenCalledTimes(7)
-  for (const [method, params] of vi.mocked(f.provider.send).mock.calls) {
+  expect(f.provider.send).toHaveBeenCalledTimes(8)
+  expect(f.provider.send).toHaveBeenLastCalledWith('eth_getBlockByNumber', ['0x64', false])
+  for (const [method, params] of vi.mocked(f.provider.send).mock.calls.slice(0, 7)) {
     expect(method).toBe('eth_getStorageAt')
-    expect((params as string[])[2]).toBe('0x64')
+    expect((params as unknown[])[2]).toEqual({ blockHash: f.head.hash, requireCanonical: true })
     expect([L1, ORACLE]).toContain((params as string[])[0])
   }
   expect(Object.isFrozen(plan)).toBe(true)
@@ -122,14 +125,49 @@ it('requires a greater-than contradiction for an upper-bound exclusion test and 
   }
 })
 
+it('keeps fee words on one block across an A-to-B-to-A reorg', async () => {
+  const f = fixture(), read = vi.mocked(f.provider.send).getMockImplementation()!, canonical = f.words.get(`${L1}:0x3`)!
+  vi.mocked(f.provider.send).mockImplementation(async (method, params) => {
+    const args = params as unknown[]
+    if (method === 'eth_getStorageAt') {
+      if (typeof args[2] === 'string' && args[1] === '0x3') return toBeHex(canonical ^ (1n << 96n), 32)
+      expect(args[2]).toEqual({ blockHash: f.head.hash, requireCanonical: true })
+    }
+    return read(method, params)
+  })
+  const plan = await f.prepare()
+  expect(BigInt(plan.validity[1].params.value)).toBe(canonical & (((1n << 64n) - 1n) << 64n))
+})
+
+it('rejects an orphaned fee snapshot even when ethers keeps returning the cached head', async () => {
+  const f = fixture(), read = vi.mocked(f.provider.send).getMockImplementation()!
+  vi.mocked(f.provider.send).mockImplementation(async (method, params) => method === 'eth_getBlockByNumber'
+    ? { number: toQuantity(f.head.number), hash: id('reorg after storage') } : read(method, params))
+  await expect(f.prepare()).rejects.toThrow()
+})
+
+it('refuses a provider without canonical hash selectors instead of falling back to numbered reads', async () => {
+  const f = fixture(), read = vi.mocked(f.provider.send).getMockImplementation()!
+  vi.mocked(f.provider.send).mockImplementation(async (method, params) => {
+    if (method === 'eth_getStorageAt' && typeof (params as unknown[])[2] === 'object') throw new Error('Hash selector unsupported')
+    return read(method, params)
+  })
+  const result = f.prepare()
+  await expect(result).rejects.toThrow('Base historical fee storage is unavailable.')
+  await expect(result).rejects.not.toThrow('Hash selector unsupported')
+})
+
 it.each(['legacy', 'l1-implementation', 'oracle-implementation', 'missing-word', 'reorg', 'wrong-chain', 'expired'])('refuses unsupported or changed fee state: %s', async kind => {
   const f = fixture()
   if (kind === 'legacy') f.words.set(`${ORACLE}:0x0`, 0x010101n)
   if (kind === 'l1-implementation') f.words.set(`${L1}:${IMPLEMENTATION_SLOT}`, 1n)
   if (kind === 'oracle-implementation') f.words.set(`${ORACLE}:${IMPLEMENTATION_SLOT}`, 1n)
   if (kind === 'missing-word') vi.mocked(f.provider.send).mockResolvedValue('0x')
-  if (kind === 'reorg') vi.mocked(f.provider.getBlock).mockImplementation(async tag => ({ ...f.head,
-    hash: tag === 'latest' ? f.head.hash : id('changed') }) as Awaited<ReturnType<JsonRpcProvider['getBlock']>>)
+  if (kind === 'reorg') {
+    const read = vi.mocked(f.provider.send).getMockImplementation()!
+    vi.mocked(f.provider.send).mockImplementation(async (method, params) => method === 'eth_getBlockByNumber'
+      ? { number: toQuantity(f.head.number), hash: id('changed') } : read(method, params))
+  }
   if (kind === 'wrong-chain') vi.mocked(f.provider.getNetwork).mockResolvedValue({ chainId: 1n } as Awaited<ReturnType<JsonRpcProvider['getNetwork']>>)
   if (kind === 'expired') vi.spyOn(Date, 'now').mockReturnValue(f.feeExpiryMs + 1)
   await expect(f.prepare()).rejects.toThrow()

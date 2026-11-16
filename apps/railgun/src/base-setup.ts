@@ -6,11 +6,34 @@ import { readPrivateState, writePrivateState, deletePrivateState } from './stora
 import { assertPublicNetwork } from './shield'
 import type { WalletSession } from './wallet'
 import { quoteBaseSetupFees, quoteBaseRefundFees, type BaseSetupFeeQuote } from './base-setup-fees'
+import { assertCanonicalReceipt, readUncachedBlockHeader } from './receipt-canonical'
 
 const KEY = 'baseExecutionSetup'
 const NONCE = new Interface(['function nonce() view returns (uint256)'])
 const REGISTRY = new Interface(['function getContractAddress(string) view returns (address)'])
 const busy = new WeakSet<WalletSession>()
+type RecoveryAnchor = { number: number; hash: string }
+
+/** Bind recovery decisions to a block identity; never retry unsupported reads at a height. */
+async function recoveryRead(session: WalletSession, anchor: RecoveryAnchor | 'pending',
+  method: 'eth_getCode' | 'eth_getTransactionCount' | 'eth_getBalance' | 'eth_call', argument: unknown): Promise<string> {
+  try {
+    if (anchor === 'pending' && method !== 'eth_getTransactionCount') throw new Error('Invalid recovery selector')
+    const selector = anchor === 'pending' ? anchor : { blockHash: anchor.hash, requireCanonical: true }
+    const result = await session.provider.send(method, [argument, selector])
+    const valid = method === 'eth_getCode' ? isHexString(result, true) : method === 'eth_call' ? isHexString(result, 32)
+      : typeof result === 'string' && /^0x(?:0|[1-9a-f][0-9a-f]{0,63})$/i.test(result)
+    if (!valid || (method === 'eth_getTransactionCount' && BigInt(result) > BigInt(Number.MAX_SAFE_INTEGER)))
+      throw new Error('Invalid recovery state')
+    return result
+  } catch { throw new Error('Base recovery state could not be verified on its canonical block. Preserve its recovery record.') }
+}
+const recoveryNonce = async (session: WalletSession, anchor: RecoveryAnchor | 'pending', address: string) =>
+  Number(BigInt(await recoveryRead(session, anchor, 'eth_getTransactionCount', address)))
+const recoveryBalance = async (session: WalletSession, anchor: RecoveryAnchor, address: string) =>
+  BigInt(await recoveryRead(session, anchor, 'eth_getBalance', address))
+const checkAnchor = (session: WalletSession, anchor: RecoveryAnchor) =>
+  assertCanonicalReceipt(session.provider, { blockNumber: anchor.number, blockHash: anchor.hash })
 export interface LegacyBaseExecutionSetup {
   version: 1; account: string; index: number; payer: string; payerNonce: number; createdAt: number
   authorization: { address: string; chainId: string; nonce: string; signature: string }
@@ -18,21 +41,21 @@ export interface LegacyBaseExecutionSetup {
   hash?: string; confirmedHash?: string; confirmed?: boolean; cancelled?: boolean; used?: boolean
 }
 
-async function currentDelegation(session: WalletSession, account: string, expectedNonce = 1): Promise<{ ready: boolean; nonce: number }> {
+async function currentDelegation(session: WalletSession, account: string, expectedNonce = 1, minimumBlock = 0): Promise<{ ready: boolean; nonce: number }> {
   if (CHAIN_ID !== 8453 || (await session.provider.getNetwork()).chainId !== CHAIN)
     throw new Error('Base execution setup requires the selected Base network.')
-  const head = await session.provider.getBlock('latest')
-  if (!head?.hash) throw new Error('Base setup confirmation is unavailable.')
+  const head = await readUncachedBlockHeader(session.provider, 'latest')
+  if (!head?.hash || head.number < minimumBlock) throw new Error('Base setup confirmation is unavailable or behind its transaction evidence.')
   const [code, nonce, pendingNonce] = await Promise.all([
-    session.provider.getCode(account, head.number), session.provider.getTransactionCount(account, head.number),
-    session.provider.getTransactionCount(account, 'pending'),
+    recoveryRead(session, head, 'eth_getCode', account), recoveryNonce(session, head, account),
+    recoveryNonce(session, 'pending', account),
   ])
   const expected = `0xef0100${CONFIG.relayAdapt7702Contract.slice(2).toLowerCase()}`
   if (code.toLowerCase() !== expected || nonce !== expectedNonce || pendingNonce !== nonce) return { ready: false, nonce }
-  const executionNonce = NONCE.decodeFunctionResult('nonce', await session.provider.call({ to: account,
-    data: NONCE.encodeFunctionData('nonce'), blockTag: head.number }))[0]
-  if ((await session.provider.getBlock(head.number))?.hash !== head.hash)
-    throw new Error('Base setup history changed. Check again before preparing an operation.')
+  const executionNonce = NONCE.decodeFunctionResult('nonce', await recoveryRead(session, head, 'eth_call', {
+    to: account, data: NONCE.encodeFunctionData('nonce'),
+  }))[0]
+  await checkAnchor(session, head)
   return { ready: executionNonce === 0n, nonce }
 }
 
@@ -98,10 +121,14 @@ async function submitLegacyBaseExecutionSetup(session: WalletSession, signer: Js
       Date.now() - setup.createdAt > 120_000 || Date.now() < setup.createdAt)
       throw new Error('Check the saved Base setup or review a fresh setup before signing.')
     await assertPublicNetwork(session, signer, beforeSend)
+    const head = await readUncachedBlockHeader(session.provider, 'latest')
+    if (!head) throw new Error('Base setup confirmation is unavailable.')
     if (getAddress(await signer.getAddress()) !== setup.payer || await signer.provider.getTransactionCount(setup.payer, 'pending') !== setup.payerNonce ||
       (await session.accounts.getCurrentAccount(CHAIN)).address !== setup.account ||
-      await session.provider.getCode(setup.account) !== '0x' || await session.provider.getTransactionCount(setup.account, 'pending') !== 0)
+      await recoveryRead(session, head, 'eth_getCode', setup.account) !== '0x' ||
+      await recoveryNonce(session, head, setup.account) !== 0 || await recoveryNonce(session, 'pending', setup.account) !== 0)
       throw new Error('The setup wallet, nonce or execution account changed. Review it again.')
+    await checkAnchor(session, head)
     await writePrivateState(session, KEY, setup)
     try { beforeSend() } catch (error) { await deletePrivateState(session, KEY); throw error }
     let sent
@@ -125,20 +152,19 @@ async function checkLegacyBaseExecutionSetup(session: WalletSession, suppliedHas
   const hash = suppliedHash || setup.confirmedHash || setup.hash
   if (!hash || !isHexString(hash, 32))
     throw new Error('Copy the setup transaction hash from your public wallet. Do not send another setup transaction.')
-  const [tx, receipt, head] = await Promise.all([session.provider.getTransaction(hash), session.provider.getTransactionReceipt(hash),
-    session.provider.getBlock('latest')])
-  if (!receipt || !tx || !head || receipt.hash.toLowerCase() !== hash.toLowerCase() || tx.hash.toLowerCase() !== hash.toLowerCase() ||
-    tx.blockNumber !== receipt.blockNumber || tx.blockHash !== receipt.blockHash || head.number < receipt.blockNumber + 1 ||
-    (await session.provider.getBlock(receipt.blockNumber))?.hash !== receipt.blockHash)
-    throw new Error('Base setup needs two canonical confirmations. Keep its saved transaction.')
+  const { tx, receipt, head } = await canonicalTransaction(session, hash)
   const authorization = tx.authorizationList?.[0]
   if (tx.type === 2 && tx.chainId === CHAIN && tx.nonce === setup.payerNonce && getAddress(tx.from) === setup.payer &&
     tx.to && getAddress(tx.to) === setup.payer && tx.data === '0x' && tx.value === 0n && !tx.authorizationList?.length && receipt.status === 1) {
-    const finalized = await session.provider.getBlock('finalized')
-    if (!finalized || finalized.number < receipt.blockNumber ||
-      await session.provider.getCode(setup.account) !== '0x' || await session.provider.getTransactionCount(setup.account, 'pending') !== 0 ||
-      (await session.provider.getBlock(receipt.blockNumber))?.hash !== receipt.blockHash)
+    const final = await canonicalTransaction(session, hash, true)
+    const latest = await readUncachedBlockHeader(session.provider, 'latest')
+    if (!latest || latest.number < final.head.number || final.receipt.status !== 1 ||
+      await recoveryRead(session, latest, 'eth_getCode', setup.account) !== '0x' ||
+      await recoveryNonce(session, latest, setup.account) !== 0 || await recoveryNonce(session, 'pending', setup.account) !== 0)
       throw new Error('Wait for the cancelled setup nonce to finalize before preparing another setup.')
+    await assertCanonicalReceipt(session.provider, final.receipt)
+    await checkAnchor(session, latest)
+    await checkAnchor(session, final.head)
     await writePrivateState(session, KEY, { ...setup, confirmed: undefined, cancelled: true, confirmedHash: hash })
     return { hash, ready: false }
   }
@@ -148,7 +174,9 @@ async function checkLegacyBaseExecutionSetup(session: WalletSession, suppliedHas
     getAddress(authorization.address) !== getAddress(CONFIG.relayAdapt7702Contract) ||
     getAddress(verifyAuthorization(authorization, authorization.signature)) !== setup.account ||
     (receipt.status !== 0 && receipt.status !== 1)) throw new Error('The setup receipt does not match its saved authorization.')
-  if (!(await currentDelegation(session, setup.account)).ready) throw new Error('The Base setup did not install an unused canonical delegation.')
+  if (!(await currentDelegation(session, setup.account, 1, head.number)).ready) throw new Error('The Base setup did not install an unused canonical delegation.')
+  await assertCanonicalReceipt(session.provider, receipt)
+  await checkAnchor(session, head)
   await writePrivateState(session, KEY, { ...setup, hash: setup.hash ?? hash, confirmedHash: hash, confirmed: true, cancelled: undefined })
   return { hash, ready: true }
 }
@@ -298,25 +326,26 @@ export async function isBaseSetupAccountReserved(session: WalletSession, account
 async function assertChain(session: WalletSession): Promise<void> {
   if (CHAIN_ID !== 8453 || (await session.provider.getNetwork()).chainId !== CHAIN) throw new Error('Base network is required.')
 }
-async function assertFresh(session: WalletSession, account: string, empty: boolean): Promise<void> {
+async function assertFresh(session: WalletSession, account: string, empty: boolean, minimumBlock = 0): Promise<{ head: RecoveryAnchor; balance: bigint }> {
   await assertChain(session)
-  const head = await session.provider.getBlock('latest')
-  if (!head?.hash) throw new Error('Base setup history is unavailable.')
-  const [code, nonce, pending, balance] = await Promise.all([session.provider.getCode(account, head.number),
-    session.provider.getTransactionCount(account, head.number), session.provider.getTransactionCount(account, 'pending'),
-    session.provider.getBalance(account, head.number)])
-  if (code !== '0x' || nonce !== 0 || pending !== 0 || (empty && balance !== 0n) ||
-    (await session.provider.getBlock(head.number))?.hash !== head.hash)
+  const head = await readUncachedBlockHeader(session.provider, 'latest')
+  if (!head?.hash || head.number < minimumBlock) throw new Error('Base setup history is unavailable or behind its transaction evidence.')
+  const [code, nonce, pending, balance] = await Promise.all([recoveryRead(session, head, 'eth_getCode', account),
+    recoveryNonce(session, head, account), recoveryNonce(session, 'pending', account), recoveryBalance(session, head, account)])
+  if (code !== '0x' || nonce !== 0 || pending !== 0 || (empty && balance !== 0n))
     throw new Error('The execution account is not fresh. Keep its saved funding and recovery records.')
-  const registered = REGISTRY.decodeFunctionResult('getContractAddress', await session.provider.call({ to: CONFIG.railgunRegistryContract,
-    data: REGISTRY.encodeFunctionData('getContractAddress', ['RelayAdapt7702']), blockTag: head.number }))[0]
+  const registered = REGISTRY.decodeFunctionResult('getContractAddress', await recoveryRead(session, head, 'eth_call', {
+    to: CONFIG.railgunRegistryContract, data: REGISTRY.encodeFunctionData('getContractAddress', ['RelayAdapt7702']),
+  }))[0]
   if (getAddress(registered) !== getAddress(CONFIG.relayAdapt7702Contract)) throw new Error('The Base delegate registry changed.')
+  await checkAnchor(session, head)
+  return { head, balance }
 }
 async function quoteCurrent(session: WalletSession, quote: BaseSetupFeeQuote): Promise<void> {
   validateQuote(quote)
-  if (Date.now() < quote.createdAt || Date.now() - quote.createdAt > 120_000 ||
-    (await session.provider.getBlock(quote.blockNumber))?.hash !== quote.blockHash)
+  if (Date.now() < quote.createdAt || Date.now() - quote.createdAt > 120_000)
     throw new Error('The Base fee review expired or its history changed. Review it again.')
+  await assertCanonicalReceipt(session.provider, quote)
 }
 async function assertFundingPayer(session: WalletSession, payer: string): Promise<void> {
   const code = await session.provider.getCode(payer)
@@ -359,7 +388,7 @@ export async function submitBaseExecutionSetup(session: WalletSession, signer: J
       getAddress((await session.accounts.getCurrentAccount(CHAIN)).address) !== setup.account)
       throw new Error('The setup payer, nonce or execution account changed.')
     await assertFundingPayer(session, setup.payer)
-    await assertFresh(session, setup.account, true)
+    await assertFresh(session, setup.account, true, setup.feeQuote.blockNumber)
     await saveSetup(session, setup, true)
     // Once a wallet request may have escaped, retain the allocation even for an ambiguous rejection.
     try { beforeSend() } catch (error) { await saveSetup(session, { ...setup, retired: true, cancelled: true }); throw error }
@@ -379,12 +408,15 @@ export async function submitBaseExecutionSetup(session: WalletSession, signer: J
 }
 async function canonicalTransaction(session: WalletSession, hash: string, finalized = false, knownReceipt?: TransactionReceipt) {
   if (!isHexString(hash, 32)) throw new Error('Provide the saved transaction hash.')
-  const [tx, receipt, head] = await Promise.all([session.provider.getTransaction(hash), knownReceipt ?? session.provider.getTransactionReceipt(hash),
-    session.provider.getBlock(finalized ? 'finalized' : 'latest')])
+  // Read the anchor first, then bind the receipt and repin the anchor. Parallel
+  // or cached header reads can combine a receipt with a different finalized fork.
+  const head = await readUncachedBlockHeader(session.provider, finalized ? 'finalized' : 'latest')
+  const [tx, receipt] = await Promise.all([session.provider.getTransaction(hash), knownReceipt ?? session.provider.getTransactionReceipt(hash)])
   if (!tx || !receipt || !head?.hash || tx.hash.toLowerCase() !== hash.toLowerCase() || receipt.hash.toLowerCase() !== hash.toLowerCase() ||
-    tx.blockHash !== receipt.blockHash || tx.blockNumber !== receipt.blockNumber || head.number < receipt.blockNumber + (finalized ? 0 : 1) ||
-    (await session.provider.getBlock(receipt.blockNumber))?.hash !== receipt.blockHash)
+    tx.blockHash !== receipt.blockHash || tx.blockNumber !== receipt.blockNumber || head.number < receipt.blockNumber + (finalized ? 0 : 1))
     throw new Error(finalized ? 'Wait for this transaction to finalize. Keep its recovery record.' : 'This transaction needs two canonical confirmations. Keep its recovery record.')
+  await assertCanonicalReceipt(session.provider, receipt)
+  await checkAnchor(session, head)
   return { tx, receipt, head }
 }
 async function verifiedFunding(session: WalletSession, setup: FundedBaseExecutionSetup, hash: string, finalized = false) {
@@ -397,17 +429,18 @@ async function verifiedFunding(session: WalletSession, setup: FundedBaseExecutio
 }
 async function retireEmptyFunding(session: WalletSession, setup: FundedBaseExecutionSetup): Promise<boolean> {
   if (setup.funded || setup.signedTransaction) return false
-  const [finalized, latest] = await Promise.all([session.provider.getBlock('finalized'), session.provider.getBlock('latest')])
+  const finalized = await readUncachedBlockHeader(session.provider, 'finalized')
+  const latest = await readUncachedBlockHeader(session.provider, 'latest')
   if (!finalized?.hash || !latest?.hash || latest.number < finalized.number || finalized.number < setup.feeQuote.blockNumber ||
-    await session.provider.getTransactionCount(setup.payer, finalized.number) <= Math.max(setup.payerNonce, setup.fundingNonce ?? 0)) return false
+    await recoveryNonce(session, finalized, setup.payer) <= Math.max(setup.payerNonce, setup.fundingNonce ?? 0)) return false
   for (const block of [finalized, latest]) {
-    const [code, nonce, balance] = await Promise.all([session.provider.getCode(setup.account, block.number),
-      session.provider.getTransactionCount(setup.account, block.number), session.provider.getBalance(setup.account, block.number)])
+    const [code, nonce, balance] = await Promise.all([recoveryRead(session, block, 'eth_getCode', setup.account),
+      recoveryNonce(session, block, setup.account), recoveryBalance(session, block, setup.account)])
     if (code !== '0x' || nonce !== 0 || balance !== 0n) return false
   }
-  if (await session.provider.getTransactionCount(setup.account, 'pending') !== 0 ||
-    (await session.provider.getBlock(finalized.number))?.hash !== finalized.hash ||
-    (await session.provider.getBlock(latest.number))?.hash !== latest.hash) return false
+  if (await recoveryNonce(session, 'pending', setup.account) !== 0) return false
+  await checkAnchor(session, latest)
+  await checkAnchor(session, finalized)
   await saveSetup(session, { ...setup, retired: true, cancelled: true })
   return true
 }
@@ -442,24 +475,33 @@ export async function checkBaseExecutionSetup(session: WalletSession, suppliedHa
         getAddress(tx.from) === setup.payer && tx.to && getAddress(tx.to) === setup.account && tx.value === BigInt(setup.fundingAmount) &&
         tx.data === '0x' && !tx.authorizationList?.length && !tx.accessList?.length
       if (cancellation || failedFunding) {
-        await canonicalTransaction(session, hash, true)
-        await assertFresh(session, setup.account, true)
+        const final = await canonicalTransaction(session, hash, true)
+        if (final.receipt.status !== receipt.status) throw new Error('The funding receipt outcome changed. Keep its recovery record.')
+        await assertFresh(session, setup.account, true, final.head.number)
+        await assertCanonicalReceipt(session.provider, final.receipt)
+        await checkAnchor(session, final.head)
         await saveSetup(session, { ...setup, retired: true, cancelled: true, fundingHash: setup.fundingHash ?? hash })
         return { hash, ready: false, stage: 'cancelled' }
       }
-      await verifiedFunding(session, setup, hash)
-      await assertFresh(session, setup.account, false)
-      if (await session.provider.getBalance(setup.account) < BigInt(setup.fundingAmount))
+      const funding = await verifiedFunding(session, setup, hash)
+      const current = await assertFresh(session, setup.account, false, funding.head.number)
+      if (current.balance < BigInt(setup.fundingAmount))
         throw new Error('The setup funding is not available in its reserved account. Keep its recovery record.')
+      await assertCanonicalReceipt(session.provider, funding.receipt)
+      await checkAnchor(session, current.head)
+      await checkAnchor(session, funding.head)
       await saveSetup(session, { ...setup, funded: true, fundingConfirmedHash: hash, fundingNonce: tx.nonce })
       return { hash, ready: false, funded: true, stage: setup.retired ? 'cancelled' : 'funding' }
     }
     const hash = suppliedHash || setup.hash!
     if (hash !== setup.hash) throw new Error('Check the exact locally signed setup hash. No replacement was signed.')
-    await verifiedFunding(session, setup, setup.fundingConfirmedHash!)
-    const { tx, receipt } = await canonicalTransaction(session, hash)
+    const funding = await verifiedFunding(session, setup, setup.fundingConfirmedHash!)
+    const { tx, receipt, head } = await canonicalTransaction(session, hash)
     if ((receipt.status !== 0 && receipt.status !== 1) || tx.hash !== assertSigned(setup.signedTransaction, localSetupTransaction(setup)).hash ||
-      !(await currentDelegation(session, setup.account, 2)).ready) throw new Error('The local setup did not install its unused canonical delegation.')
+      !(await currentDelegation(session, setup.account, 2, Math.max(head.number, funding.head.number))).ready)
+      throw new Error('The local setup did not install its unused canonical delegation.')
+    await assertCanonicalReceipt(session.provider, receipt)
+    await checkAnchor(session, head)
     await saveSetup(session, { ...setup, confirmed: true, confirmedHash: hash })
     return { hash, ready: true, funded: true, stage: 'setup' }
   })
@@ -469,17 +511,28 @@ export async function submitFundedBaseExecutionSetup(session: WalletSession, bef
     let setup = await savedBaseExecutionSetup(session)
     if (!setup || setup.version !== 2 || !setup.funded || !setup.fundingConfirmedHash || setup.signedTransaction || setup.retired || setup.used)
       throw new Error('Confirm the saved funding before signing this setup. Keep any existing signed transaction.')
-    await verifiedFunding(session, setup, setup.fundingConfirmedHash)
-    await assertFresh(session, setup.account, false)
+    const funding = await verifiedFunding(session, setup, setup.fundingConfirmedHash)
     const fresh = await quoteBaseSetupFees(session.provider, localSetupTransaction(setup))
+    await quoteCurrent(session, fresh)
+    const current = await assertFresh(session, setup.account, false, Math.max(funding.head.number, fresh.blockNumber))
     if (fresh.unsignedHash !== setup.feeQuote.unsignedHash || BigInt(fresh.maximumNetworkFee) > BigInt(setup.fundingAmount) ||
-      await session.provider.getBalance(setup.account) < BigInt(setup.fundingAmount))
+      current.balance < BigInt(setup.fundingAmount))
       throw new Error('The setup allocation or estimated fee changed. Review its remaining balance; no automatic top-up was sent.')
-    const head = await session.provider.getBlock('latest')
-    if (!head?.hash || head.baseFeePerGas == null || head.baseFeePerGas < 0n ||
-      head.baseFeePerGas + BigInt(setup.maxPriorityFeePerGas) > BigInt(setup.maxFeePerGas) ||
-      (await session.provider.getBlock(head.number))?.hash !== head.hash)
+    try {
+      // Fetch the fee header without ethers' cache and bind it to the same
+      // account-state snapshot. A different hash is an error, never a fallback.
+      const header = await session.provider.send('eth_getBlockByNumber', [`0x${current.head.number.toString(16)}`, false])
+      if (header?.hash?.toLowerCase() !== current.head.hash.toLowerCase() ||
+        header?.number !== `0x${current.head.number.toString(16)}` || typeof header.baseFeePerGas !== 'string' ||
+        !/^0x(?:0|[1-9a-f][0-9a-f]{0,63})$/i.test(header.baseFeePerGas) ||
+        BigInt(header.baseFeePerGas) + BigInt(setup.maxPriorityFeePerGas) > BigInt(setup.maxFeePerGas))
+        throw new Error('Invalid current fee head')
+    } catch {
       throw new Error('Base fees exceed the saved setup limit. Wait for lower fees or return the remaining gas; no setup was signed.')
+    }
+    await assertCanonicalReceipt(session.provider, funding.receipt)
+    await checkAnchor(session, funding.head)
+    await checkAnchor(session, current.head)
     beforeSend()
     const account = await session.accounts.getAccount(CHAIN, setup.index)
     const raw = await account.signer.signTransaction(localSetupTransaction(setup)), tx = assertSigned(raw, localSetupTransaction(setup))
@@ -495,12 +548,18 @@ export async function retrySignedBaseExecutionSetup(session: WalletSession): Pro
   return exclusive(session, async () => {
     await assertChain(session)
     const setup = await savedBaseExecutionSetup(session)
-    if (!setup || setup.version !== 2 || !setup.signedTransaction || !setup.hash || setup.retired || setup.confirmed)
+    if (!setup || setup.version !== 2 || !setup.signedTransaction || !setup.hash || !setup.funded || !setup.fundingConfirmedHash ||
+      setup.retired || setup.cancelled || setup.used || setup.refund)
       throw new Error('No pending signed Base setup is available to retry.')
+    await noPrivatePending(session)
     if (await session.provider.getTransactionReceipt(setup.hash)) throw new Error('This setup has a receipt. Check its confirmation first.')
-    await verifiedFunding(session, setup, setup.fundingConfirmedHash!)
-    await assertFresh(session, setup.account, false)
+    const funding = await verifiedFunding(session, setup, setup.fundingConfirmedHash)
+    const current = await assertFresh(session, setup.account, false, funding.head.number)
+    if (current.balance < BigInt(setup.fundingAmount)) throw new Error('The retained setup allocation is unavailable. Keep its recovery record.')
     assertSigned(setup.signedTransaction, localSetupTransaction(setup), setup.hash)
+    await assertCanonicalReceipt(session.provider, funding.receipt)
+    await checkAnchor(session, funding.head)
+    await checkAnchor(session, current.head)
     const sent = await session.provider.broadcastTransaction(setup.signedTransaction)
     if (sent.hash !== setup.hash) throw new Error('Setup retry response did not match its saved transaction.')
     return setup.hash
@@ -521,42 +580,45 @@ async function refundState(session: WalletSession, setup: FundedBaseExecutionSet
   await noPrivatePending(session)
   const fundingHash = setup.fundingConfirmedHash || setup.fundingHash
   if (!fundingHash) throw new Error('Verify the original funding transaction before recovering its balance.')
-  await verifiedFunding(session, setup, fundingHash, true)
+  const evidence = [await verifiedFunding(session, setup, fundingHash, true)]
   if (setup.refund && !setup.refund.confirmed) throw new Error('Check or retry the saved remainder transaction before preparing another.')
   let cancelsSetup = false
   if (setup.signedTransaction) {
     const closedCancellation = [...(setup.refundHistory ?? []), ...(setup.refund ? [setup.refund] : [])]
       .find(item => item.cancelsSetup && item.confirmed && !item.superseded)
-    if (closedCancellation) await canonicalTransaction(session, closedCancellation.hash, true)
-    else if (await session.provider.getTransactionReceipt(setup.hash!)) await canonicalTransaction(session, setup.hash!, true)
+    if (closedCancellation) evidence.push(await canonicalTransaction(session, closedCancellation.hash, true))
+    else if (await session.provider.getTransactionReceipt(setup.hash!)) evidence.push(await canonicalTransaction(session, setup.hash!, true))
     else {
       if (setup.used || setup.confirmed || setup.refund?.confirmed) throw new Error('The saved setup history changed. Preserve its recovery record.')
       cancelsSetup = true
     }
   }
-  const [finalized, latest] = await Promise.all([session.provider.getBlock('finalized'), session.provider.getBlock('latest')])
-  if (!finalized?.hash || !latest?.hash || latest.number < finalized.number) throw new Error('Canonical Base history is unavailable.')
+  const finalized = await readUncachedBlockHeader(session.provider, 'finalized')
+  const latest = await readUncachedBlockHeader(session.provider, 'latest')
+  if (!finalized?.hash || !latest?.hash || latest.number < finalized.number ||
+    evidence.some(item => item.receipt.blockNumber > finalized.number)) throw new Error('Canonical Base history is unavailable.')
   const [nonce, latestNonce, pendingNonce, code, latestCode, balance] = await Promise.all([
-    session.provider.getTransactionCount(setup.account, finalized.number), session.provider.getTransactionCount(setup.account, latest.number),
-    session.provider.getTransactionCount(setup.account, 'pending'), session.provider.getCode(setup.account, finalized.number),
-    session.provider.getCode(setup.account, latest.number), session.provider.getBalance(setup.account, latest.number),
+    recoveryNonce(session, finalized, setup.account), recoveryNonce(session, latest, setup.account),
+    recoveryNonce(session, 'pending', setup.account), recoveryRead(session, finalized, 'eth_getCode', setup.account),
+    recoveryRead(session, latest, 'eth_getCode', setup.account), recoveryBalance(session, latest, setup.account),
   ])
   if (nonce !== latestNonce || (cancelsSetup ? pendingNonce !== 0 && pendingNonce !== 1 : nonce !== pendingNonce) || code !== latestCode)
     throw new Error('Wait for the execution account transactions to finalize before returning its balance.')
   const delegated = `0xef0100${CONFIG.relayAdapt7702Contract.slice(2).toLowerCase()}`
   if (code !== '0x' && code.toLowerCase() !== delegated) throw new Error('The execution account delegation changed. Preserve its recovery record.')
-  const executionNonce = code === '0x' ? 0n : BigInt(NONCE.decodeFunctionResult('nonce', await session.provider.call({ to: setup.account,
-    data: NONCE.encodeFunctionData('nonce'), blockTag: finalized.number }))[0])
+  const executionNonce = code === '0x' ? 0n : BigInt(NONCE.decodeFunctionResult('nonce', await recoveryRead(session, finalized, 'eth_call', {
+    to: setup.account, data: NONCE.encodeFunctionData('nonce'),
+  }))[0])
   if (cancelsSetup && (nonce !== 0 || code !== '0x')) throw new Error('The pending setup nonce changed. Check its saved outcome first.')
   const expectedNonce = setup.refund?.confirmed ? setup.refund.nonce + 1 : cancelsSetup ? 0 : setup.signedTransaction ? code === '0x' ? 1 : 2 : 0
   if (nonce < expectedNonce || (setup.used ? executionNonce === 0n : executionNonce !== 0n))
     throw new Error('A disclosed private execution must finish or be cancelled onchain before returning setup funds.')
-  if ((await session.provider.getBlock(finalized.number))?.hash !== finalized.hash ||
-    (await session.provider.getBlock(latest.number))?.hash !== latest.hash)
-    throw new Error('Base recovery history changed. Check again before signing.')
-  const recipientCode = await session.provider.getCode(setup.payer)
+  const recipientCode = await recoveryRead(session, latest, 'eth_getCode', setup.payer)
   if (recipientCode !== '0x' && !/^0xef0100[0-9a-f]{40}$/i.test(recipientCode))
     throw new Error('The recorded payer cannot receive this direct recovery transaction.')
+  for (const item of evidence) await assertCanonicalReceipt(session.provider, item.receipt)
+  await checkAnchor(session, latest)
+  await checkAnchor(session, finalized)
   return { nonce, balance, cancelsSetup }
 }
 export async function prepareBaseSetupRefund(session: WalletSession, index?: number): Promise<BaseSetupRefund> {
@@ -625,18 +687,30 @@ export async function checkBaseSetupRefund(session: WalletSession, index?: numbe
     const setup = await savedBaseExecutionSetup(session, index)
     if (!setup || setup.version !== 2 || !setup.refund) throw new Error('No saved Base remainder transaction exists for this index.')
     const refund = setup.refund
-    if (!await session.provider.getTransactionReceipt(refund.hash) && refund.cancelsSetup && setup.hash) {
-      await canonicalTransaction(session, setup.hash, true)
-      assertSigned(setup.signedTransaction!, localSetupTransaction(setup), setup.hash)
-      await saveSetup(session, { ...setup, refund: { ...refund, confirmed: true, failed: true, superseded: true } })
-      return { hash: refund.hash, confirmed: true, failed: true, superseded: true, remaining: (await session.provider.getBalance(setup.account)).toString() }
+    const remainingAfterFinality = async (evidence: Awaited<ReturnType<typeof canonicalTransaction>>) => {
+      const latest = await readUncachedBlockHeader(session.provider, 'latest')
+      if (!latest || latest.number < evidence.head.number) throw new Error('Canonical Base recovery history is unavailable.')
+      const remaining = await recoveryBalance(session, latest, setup.account)
+      await assertCanonicalReceipt(session.provider, evidence.receipt)
+      await checkAnchor(session, latest)
+      await checkAnchor(session, evidence.head)
+      return remaining.toString()
     }
-    const { receipt } = await canonicalTransaction(session, refund.hash, true)
+    if (!await session.provider.getTransactionReceipt(refund.hash) && refund.cancelsSetup && setup.hash) {
+      const evidence = await canonicalTransaction(session, setup.hash, true)
+      assertSigned(setup.signedTransaction!, localSetupTransaction(setup), setup.hash)
+      if (evidence.receipt.status !== 0 && evidence.receipt.status !== 1) throw new Error('The setup receipt status is unavailable.')
+      const remaining = await remainingAfterFinality(evidence)
+      await saveSetup(session, { ...setup, refund: { ...refund, confirmed: true, failed: true, superseded: true } })
+      return { hash: refund.hash, confirmed: true, failed: true, superseded: true, remaining }
+    }
+    const evidence = await canonicalTransaction(session, refund.hash, true), { receipt } = evidence
     assertSigned(refund.signedTransaction, refundTransaction(refund), refund.hash)
     if (receipt.status !== 0 && receipt.status !== 1) throw new Error('The return receipt status is unavailable.')
     const failed = receipt.status === 0 ? true as const : undefined
+    const remaining = await remainingAfterFinality(evidence)
     await saveSetup(session, { ...setup, refund: { ...refund, confirmed: true, ...(failed ? { failed } : {}) } })
-    return { hash: refund.hash, confirmed: true, ...(failed ? { failed } : {}), remaining: (await session.provider.getBalance(setup.account)).toString() }
+    return { hash: refund.hash, confirmed: true, ...(failed ? { failed } : {}), remaining }
   })
 }
 export async function retryBaseSetupRefund(session: WalletSession, index?: number): Promise<string> {

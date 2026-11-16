@@ -75,6 +75,10 @@ async function fixture() {
       return ADAPT.encodeFunctionResult('nonce', [0n])
     }),
     send: vi.fn(async (method: string, params: any[]): Promise<unknown> => {
+      if (method === 'eth_getBlockByNumber') {
+        const header = block(Number(BigInt(params[0])))
+        return { number: toQuantity(header.number), hash: header.hash }
+      }
       if (method === 'eth_getStorageAt') return toBeHex(words.get(`${params[0]}:${params[1]}`)!, 32)
       if (method === 'eth_getTransactionReceipt') {
         const receipt = receipts.get(params[0])
