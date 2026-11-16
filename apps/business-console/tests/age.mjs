@@ -125,6 +125,8 @@ try {
   const traced = ceremony('traced', { bash: ['/bin/bash', '-x'] })
   const tracedKey = new RegExp(SHOWN).exec(traced.stdout)?.[1].replaceAll(' ', '') ?? 'none'
   check('run with bash -x, it still never prints the key whole', traced.status === 0 && !traced.stdout.includes(tracedKey))
+  const piped = ceremony('piped', { bash: ['/bin/bash', '-c', 'set -o pipefail; /bin/bash "$0" | cat'] })
+  check('piped or logged (| tee log), it stops before making anything: the key is shown on a terminal only (Codex)', piped.status !== 0 && piped.stdout.includes('not piped or logged') && nothingKept(piped))
   const retry = ceremony('retry', { typed: ['NOT THE KEY\n', 'AGE-SECRET-KEY-PQ-1 {from}\n'] })
   check('a key typed back wrong once can be typed again', retry.status === 0 && retry.stdout.includes('That is not the key'))
   // README.txt's recipes, as written there, in Terminal's shell: zsh, interactive, no startup files ("#" typed is no comment).

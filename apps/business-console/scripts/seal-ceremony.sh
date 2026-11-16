@@ -34,6 +34,8 @@ trap 'printf "\nSTOPPED: the step above failed. Nothing was kept: run this again
 
 [[ "$(age --version 2>/dev/null)" =~ ^v1\.([3-9]|[1-9][0-9])\. ]] || stop "age 1.3 or later is needed: Wi-Fi on, brew install age age-plugin-yubikey, then run this again."
 [[ "$(age-plugin-yubikey --version 2>/dev/null)" =~ ^age-plugin-yubikey\ 0\.5\. ]] || stop "age-plugin-yubikey 0.5 is needed: Wi-Fi on, brew install age-plugin-yubikey, then run this again."
+# The key is shown once for the paper: on a terminal only, never into a pipe or a log (Codex: "| tee log" kept it whole).
+[[ -t 0 && -t 1 ]] || stop "Run it in Terminal as it is, not piped or logged: it shows the key once, on the screen only."
 # Online = a default route, IPv4 or IPv6. macOS route exits 0 even with none ("not in table"): read its answer, not its status.
 online() { route -n get "$@" default 2>/dev/null | grep -q 'interface:'; }
 if online || online -inet6; then stop "This laptop is online. Turn Wi-Fi off (and unplug any network cable), then run this again."; fi
