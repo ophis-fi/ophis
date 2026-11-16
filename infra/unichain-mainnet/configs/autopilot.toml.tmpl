@@ -193,3 +193,8 @@ estimators = [
 
 [native-price-estimation.cache]
 max-age = "20m"
+
+[banned-users]
+# Direct SDN-listed EVM addresses, refreshed independently of chain RPCs.
+addresses-file = "/sanctions/addresses.json"
+snapshot-max-age = "24h"

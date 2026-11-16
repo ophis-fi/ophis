@@ -1,5 +1,7 @@
 # Optimism RPC capacity and recovery
 
+Sanctions screening: successful historical Chainalysis RPC checks below do not prove current sanctions data. The oracle was last updated March 18, 2026. See [OFAC listed-address screening](ofac-address-screening.md) for the reviewed replacement and rollout procedure.
+
 ## November 1, 2026: reduce Alchemy CU consumption
 
 Operator constraint remains **no spending**. The supplied key matches the

@@ -62,7 +62,9 @@ with tempfile.TemporaryDirectory() as directory:
  assert json.loads((out/'activation.json').read_text())['active'] is False
  assert 'guarded' not in (out/'driver.toml').read_text()
  for service in ['autopilot','orderbook']:
-  registry=tomllib.loads((out/(service+'.toml')).read_text())['partner-fee-registry']
+  config=tomllib.loads((out/(service+'.toml')).read_text())
+  assert config['banned-users']=={'addresses-file':'/sanctions/addresses.json','snapshot-max-age':'24h'}
+  registry=config['partner-fee-registry']
   assert registry['registry-enabled'] is True and registry['registration-enabled'] is False
  assert 'REACT_APP_CCTP_ENABLED=false' in (out/'frontend.env').read_text()
  assert 'location ~ ^/api/v1/quote(?:/draft)?$' in (out/'nginx.conf').read_text()

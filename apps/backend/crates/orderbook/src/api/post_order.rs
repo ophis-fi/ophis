@@ -73,6 +73,15 @@ impl IntoResponse for PartialValidationErrorWrapper {
                 error("Forbidden", "Forbidden, your account is deny-listed"),
             )
                 .into_response(),
+            PartialValidationError::SanctionsScreeningUnavailable => (
+                StatusCode::SERVICE_UNAVAILABLE,
+                [(axum::http::header::RETRY_AFTER, "60")],
+                error(
+                    "SanctionsScreeningUnavailable",
+                    "Address screening is temporarily unavailable; retry later",
+                ),
+            )
+                .into_response(),
             PartialValidationError::ValidTo(OrderValidToError::Insufficient) => (
                 StatusCode::BAD_REQUEST,
                 error(
@@ -372,6 +381,22 @@ impl IntoResponse for OrderReplacementError {
 #[cfg(test)]
 mod tests {
     use {super::*, crate::api::response_body, model::order::OrderUid, serde_json::json};
+
+    #[tokio::test]
+    async fn screening_outage_is_not_reported_as_a_banned_account() {
+        let unavailable =
+            PartialValidationErrorWrapper(PartialValidationError::SanctionsScreeningUnavailable)
+                .into_response();
+        assert_eq!(unavailable.status(), StatusCode::SERVICE_UNAVAILABLE);
+        assert_eq!(unavailable.headers()[axum::http::header::RETRY_AFTER], "60");
+        let bytes = response_body(unavailable).await;
+        let body: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+        assert_eq!(body["errorType"], "SanctionsScreeningUnavailable");
+        assert_eq!(body["code"], 3000);
+        let banned =
+            PartialValidationErrorWrapper(PartialValidationError::Forbidden).into_response();
+        assert_eq!(banned.status(), StatusCode::FORBIDDEN);
+    }
 
     type Result = std::result::Result<(StatusCode, Json<OrderUid>), AddOrderError>;
 

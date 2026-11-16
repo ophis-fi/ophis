@@ -8,7 +8,7 @@ sidebar_position: 4
 
 # Vault manager rebalancing
 
-Rebalance your vault or treasury Safe through CoW Protocol with onchain rules for tokens, prices and turnover.
+Rebalance your vault or treasury Safe through Ophis with onchain rules for tokens, prices and turnover.
 
 ## How it works
 
@@ -62,9 +62,9 @@ The `@ophis/safe-swap` v0.1.7 builder uses SDK v0.4.4 and supports these 14 chai
 | Orderbook | Chains |
 | --- | --- |
 | Ophis self-hosted | Optimism, Unichain, Robinhood Chain (4663), Arc (5042) |
-| CoW-hosted | Ethereum, Base, Arbitrum One, Polygon, Gnosis Chain, BNB Smart Chain, Avalanche, Linea, Ink, Plasma (9745) |
+| partner-hosted | Ethereum, Base, Arbitrum One, Polygon, Gnosis Chain, BNB Smart Chain, Avalanche, Linea, Ink, Plasma (9745) |
 
-Use ERC-20 token addresses on Arc; native-token sentinels are rejected. Plasma orders use CoW's production Plasma orderbook and canonical settlement.
+Use ERC-20 token addresses on Arc; native-token sentinels are rejected. Plasma orders use the production Plasma orderbook and shared settlement contracts.
 
 ## Deployment addresses
 
@@ -72,12 +72,12 @@ Each vault deploys a module through a factory with its own Safe, curator, token 
 
 | Chain | Module factory | Settlement |
 | --- | --- | --- |
-| Ethereum (1) | `0xd6e80ca05b8bfebdaf6338b1f22f98f065ce96f4` | Canonical CoW |
+| Ethereum (1) | `0xd6e80ca05b8bfebdaf6338b1f22f98f065ce96f4` | Shared settlement |
 | Optimism (10) | `0xd6e80ca05b8bfebdaf6338b1f22f98f065ce96f4` | Ophis self-hosted |
-| Base (8453) | `0xd6e80ca05b8bfebdaf6338b1f22f98f065ce96f4` | Canonical CoW |
-| Arbitrum One (42161) | `0xd6e80ca05b8bfebdaf6338b1f22f98f065ce96f4` | Canonical CoW |
+| Base (8453) | `0xd6e80ca05b8bfebdaf6338b1f22f98f065ce96f4` | Shared settlement |
+| Arbitrum One (42161) | `0xd6e80ca05b8bfebdaf6338b1f22f98f065ce96f4` | Shared settlement |
 | Unichain (130) | `0x251195c88639fa9364302D51E649910A2537ee9d` | Ophis self-hosted |
-| Plasma (9745) | `0x8bfd02f98854647f4235d770a284ddbbac0bf2ca` | Canonical CoW |
+| Plasma (9745) | `0x8bfd02f98854647f4235d770a284ddbbac0bf2ca` | Shared settlement |
 
 The Plasma module uses WXPL/USDT0 with Chainlink XPL/USD and USDT0/USD feeds. Plasma has no native USDC.
 
@@ -90,7 +90,7 @@ The [operator runbook](https://github.com/ophis-fi/ophis/blob/main/docs/operatio
 1. **Derive the appData hash.** Pin the document containing the chain, fee metadata and your Safe as signer.
 2. **Deploy your module.** Use the factory and the per-chain scripts in [`contracts/script/`](https://github.com/ophis-fi/ophis/tree/main/contracts/script). The constructor validates the feeds and settlement.
 3. **Enable the module.** Have the Safe owners sign `enableModule(module)`.
-4. **Build and submit an order.** Use `@ophis/safe-swap`, then have the curator call `module.rebalance(order, minBuyOverride)`.
+4. **Build and submit an order.** Use `@ophis/safe-swap` with full appData matching the hash pinned in your module. Have the curator call `module.rebalance(order, minBuyOverride)` and wait for confirmation before submitting the presigned order to the matching orderbook. Use the module to authorize the order; executing the builder's raw approval/presign batch directly would bypass its policy checks.
 
    ```ts
    import { buildOphisSafePresign } from '@ophis/safe-swap'
@@ -108,7 +108,7 @@ The [operator runbook](https://github.com/ophis-fi/ophis/blob/main/docs/operatio
    // The curator then calls, from its own key:
    //   module.rebalance(order, minBuyOverride)
    // The module re-derives the same orderUid, re-checks every field on-chain,
-   // sets the exact allowance, and presigns. Solvers settle it like any CoW order.
+   // sets the exact allowance, and presigns. Solvers settle it as a presigned batch-auction order.
    ```
 
 </Steps>
@@ -148,9 +148,9 @@ Disabling the module leaves existing presignatures and allowances active. Resolv
 | Base | 1 bp |
 | Volatile pairs | 80% of reference-quote improvement, capped at 99 bps |
 | Stable pairs | 50% of reference-quote improvement, capped at 20 bps |
-| CoW-hosted orders | CoW Protocol's upstream fees also apply. |
+| Partner-hosted orders | Upstream fees also apply; see [Fees](/fees). |
 
-Ophis-operated backends apply the improvement policy. CoW-hosted orders encode it in CIP-75 appData.
+Ophis-operated backends apply the improvement policy. Partner-hosted orders encode it in CIP-75 appData.
 
 ## Next
 

@@ -5,6 +5,7 @@ import {
   getRpcProvider,
   ophisAcrossApiOptions,
   registerOphisNearIntentsNetworks,
+  RelayBridgeProvider,
 } from '@cowprotocol/common-const'
 import { setGlobalAdapter, SupportedChainId } from '@cowprotocol/cow-sdk'
 import { AcrossBridgeProvider, NearIntentsBridgeProvider } from '@cowprotocol/sdk-bridging'
@@ -34,7 +35,13 @@ const acrossBridgeProvider = new AcrossBridgeProvider({ apiOptions: ophisAcrossA
 
 const nearIntentsBridgeProvider = new NearIntentsBridgeProvider({ apiKey: process.env.REACT_APP_NEAR_API_KEY })
 
-export const knownBridgeProviders = [bungeeBridgeProvider, acrossBridgeProvider, nearIntentsBridgeProvider]
+const relayBridgeProvider = new RelayBridgeProvider({ enabled: false, apiUrl: 'https://swap.ophis.fi/api/relay' })
+export const knownBridgeProviders = [
+  bungeeBridgeProvider,
+  acrossBridgeProvider,
+  nearIntentsBridgeProvider,
+  relayBridgeProvider,
+]
 
 setGlobalAdapter(cowSdkAdapter)
 

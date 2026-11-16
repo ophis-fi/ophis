@@ -13,7 +13,7 @@ import { ERC1271, GuardedHookTerms, SHED_CALLS } from './ophisAcrossConstants'
  */
 export async function signedByOwner(
   chainId: SupportedChainId,
-  terms: GuardedHookTerms,
+  terms: Pick<GuardedHookTerms, 'owner' | 'shed'>,
   calls: Parameters<CowShedHooks['infoToSign']>[0],
   nonce: string,
   deadline: bigint,

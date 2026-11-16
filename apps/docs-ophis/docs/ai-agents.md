@@ -26,8 +26,9 @@ https://mcp.ophis.fi/mcp
 
 | Setting | Value |
 | --- | --- |
-| Request header | `Accept: text/event-stream` |
-| Missing header | HTTP 406 |
+| POST request headers | `Content-Type: application/json` and `Accept: application/json, text/event-stream` |
+| Unsupported response types | HTTP 406 |
+| GET `/mcp` | HTTP 405; idle SSE streams are not offered |
 
 <Steps>
 
@@ -96,8 +97,8 @@ Your MCP client lists every tool the server offers.
 | Tool | Purpose |
 | --- | --- |
 | `parse_intent` | Parse natural language into structured fields. |
-| `resolve_token` | Resolve a symbol against trusted Ophis/CoW lists; check the chain, address and ambiguity. |
-| `get_quote` | Fetch an executable quote. |
+| `resolve_token` | Resolve a symbol against trusted token lists; check the chain, address and ambiguity. |
+| `get_quote` | Fetch a current quote; availability and expiry must still be checked before signing. |
 | `build_order` | Build a bounded order with the receiver unconditionally pinned to the owner. |
 | `submit_order` | Submit a signed order to its chain's orderbook. |
 | `validate_order` | Check appCode, host, domain, appData hash and receiver for a manually built order. |
@@ -339,7 +340,7 @@ Use MCP `list_chains` for supported networks beyond the shell skills.
 
 ## Build SDK orders {/* #submitting-orders-programmatically */}
 
-**`@ophis/sdk`**, published on npm (v0.4.5, public), builds orders for the [CoW Protocol orderbook API](https://docs.cow.fi/cow-protocol/reference/apis/orderbook). Install it with `npm install @ophis/sdk`.
+**`@ophis/sdk`**, published on npm (v0.4.5, public), provides chain-specific orderbook, signing-domain, fee and receiver-safety helpers. Use it with the trading client shown below to quote and submit orders. Install it with `npm install @ophis/sdk`.
 
 <Steps>
 

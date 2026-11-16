@@ -52,8 +52,8 @@ const DOCS_PORTAL = 'https://docs.ophis.fi/'
 const MAX_POST_BODY_BYTES = 64 * 1024
 
 /** Bound every Pages POST before an API handler buffers/parses its JSON. */
-async function readPostBody(request: Request): Promise<string | null> {
-  if (Number(request.headers.get('content-length')) > MAX_POST_BODY_BYTES) return null
+async function readPostBody(request: Request, maxBytes: number): Promise<string | null> {
+  if (Number(request.headers.get('content-length')) > maxBytes) return null
   if (!request.body) return ''
   const reader = request.body.getReader()
   const decoder = new TextDecoder()
@@ -64,7 +64,7 @@ async function readPostBody(request: Request): Promise<string | null> {
       const { done, value } = await reader.read()
       if (done) return body + decoder.decode()
       size += value.byteLength
-      if (size > MAX_POST_BODY_BYTES) {
+      if (size > maxBytes) {
         void reader.cancel().catch(() => {})
         return null
       }
@@ -212,10 +212,11 @@ export const onRequest: PagesFunction<Env> = async (context) => {
   }
   let request: Request = context.request
   if (request.method === 'POST') {
-    const body = await readPostBody(request)
+    const maxBytes = url.pathname.startsWith('/api/relay/') ? 4096 : MAX_POST_BODY_BYTES
+    const body = await readPostBody(request, maxBytes)
     if (body === null) {
       return Response.json(
-        { ok: false, error: { code: 'BAD_INPUT', message: `Request body exceeds ${MAX_POST_BODY_BYTES} bytes.` } },
+        { ok: false, error: { code: 'BAD_INPUT', message: `Request body exceeds ${maxBytes} bytes.` } },
         { status: 413, headers: { 'cache-control': 'no-store', 'x-content-type-options': 'nosniff' } },
       )
     }

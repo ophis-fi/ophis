@@ -1,16 +1,16 @@
 ---
 id: architecture
 title: How it works
-description: Ophis turns wallet-signed orders into batch-auction swaps settled through CoW Protocol contracts.
+description: Follow Ophis batch-auction orders, direct swaps, private swaps and cross-chain transfers from authorization to settlement.
 sidebar_label: How it works
 sidebar_position: 2
 ---
 
 # How it works
 
-Ophis uses CoW Protocol's batch auctions to find a route and settle your trade within the limits you sign.
+Ophis compares available routes for your trade. Public swaps can use a signed batch-auction order or a direct transaction; cross-chain transfers and private swaps use separate execution flows.
 
-## Order lifecycle {/* #the-intent-lifecycle */}
+## Batch-auction order lifecycle {/* #the-intent-lifecycle */}
 
 <Steps>
 
@@ -28,9 +28,15 @@ Offchain order submission, uniform clearing prices and peer matching reduce fron
 | Networks | Orderbook and solvers |
 | --- | --- |
 | Optimism, Unichain, Robinhood Chain, Arc | Ophis operates the orderbook and solver |
-| CoW-hosted chains | CoW's orderbooks and solver network |
+| Ethereum, Arbitrum, Avalanche, Base, BNB Chain, Gnosis, Ink, Linea, Plasma, Polygon | Partner-operated orderbooks and solver network |
 
 The onchain `GPv2AllowListAuthentication` contract controls which solvers can settle orders. Each settlement enforces your signed limit price.
+
+## Other swap paths
+
+A direct swap executes a quoted transaction from your wallet and requires network gas. It does not enter a batch auction. The form shows the selected route and its minimum output before approval.
+
+Private mode uses a RAILGUN shielded wallet on Ethereum, Arbitrum, Polygon or BNB Chain. Its supported pool routes and broadcaster fees differ from public batch auctions. See [private swaps](/networks-assets#private-swaps) and [Fees](/fees#private-swap-costs).
 
 ## Developer intent parsing
 
@@ -41,7 +47,7 @@ The [Intent API](/intent-api) converts natural language into a structured `Parse
 ┌──────────────┐  parse ┌──────────────────┐ sign ┌──────────────────┐    ┌──────────────┐
 │ "swap 100    │ ─────▶ │ sell: USDC       │ ───▶ │ solvers compete  │ ─▶ │ uniform-price│
 │  USDC for    │  LLM   │ buy:  ETH        │ wallet│ for best execution│   │ on-chain     │
-│  ETH on Base"│        │ amount: 100      │      │ (DEX / P2P / xchain)│  │ settlement   │
+│  ETH on Base"│        │ amount: 100      │      │ (DEX / peer match)│  │ settlement   │
 └──────────────┘        │ chain: base      │      └──────────────────┘    └──────────────┘
                         └──────────────────┘
 ```

@@ -122,6 +122,17 @@ assert.deepEqual(feeChainIds.sort((a, b) => a - b), expectedSdkIds, 'SDK/MCP mai
 const orderbookIds = [...sdkOrderbook.matchAll(/^  (\d+): 'https:\/\//gm)].map((match) => Number(match[1]));
 assert.deepEqual(orderbookIds.sort((a, b) => a - b), expectedSdkIds, 'SDK orderbook coverage drift');
 
+const sdkCoverage = /SDK v(\S+)[^\d.;\n]*\b14 EVM mainnets\b[^.;\n]*including Arc/;
+assert.doesNotMatch(
+  `SDK v${sdkPackage.version}: 13 EVM mainnets, excluding Arc\nVault builder: 14 EVM mainnets, including Arc`,
+  sdkCoverage,
+  'SDK coverage guard must not borrow coverage from another table row',
+);
+assert.doesNotMatch(
+  `SDK v${sdkPackage.version}: 13 EVM mainnets; Vault builder: 14 EVM mainnets, including Arc`,
+  sdkCoverage,
+  'SDK coverage guard must not borrow coverage from a later statement',
+);
 for (const path of [
   'apps/docs-ophis/docs/networks-assets.md',
   'apps/docs-ophis/docs/comparison.md',
@@ -130,7 +141,11 @@ for (const path of [
   'apps/docs-ophis/static/llms.txt',
 ]) {
   const doc = read(path);
-  assert.match(doc, /SDK v0\.4\.3[\s\S]*?14[^.]*including Arc/, `${path}: SDK/MCP coverage must include Arc`);
+  assert.equal(
+    doc.match(sdkCoverage)?.[1],
+    sdkPackage.version,
+    `${path}: SDK/MCP coverage must use the current SDK version and include Arc`,
+  );
   assert.doesNotMatch(doc, /(?:exclude|excluding) Arc[.;|\n]/, `${path}: stale SDK/MCP Arc exclusion`);
 }
 assert.match(aiAgents, /"arc": 5042/, 'Python intent helper must resolve Arc');

@@ -1,6 +1,6 @@
 import { ReactElement, ReactNode, useMemo } from 'react'
 
-import { COW_TOKEN_TO_CHAIN, V_COW, V_COW_CONTRACT_ADDRESS } from '@cowprotocol/common-const'
+import { COW_TOKEN_TO_CHAIN, isRelayRecoveryRequired, V_COW, V_COW_CONTRACT_ADDRESS } from '@cowprotocol/common-const'
 import { ExplorerDataType, getExplorerLink, shortenAddress } from '@cowprotocol/common-utils'
 import { areAddressesEqual, SupportedChainId } from '@cowprotocol/cow-sdk'
 import { CurrencyAmount, Token } from '@cowprotocol/currency'
@@ -145,9 +145,10 @@ export function ActivityDetails(props: {
 
   const bridgingStatus = swapAndBridgeContext?.statusResult?.status
   const isOrderPending = isBridgeOrder
-    ? bridgingStatus && bridgingStatus !== BridgeStatus.UNKNOWN
-      ? !BRIDGING_FINAL_STATUSES.includes(bridgingStatus)
-      : !!bridgeOrderData
+    ? !isRelayRecoveryRequired(swapAndBridgeContext?.statusResult) &&
+      (bridgingStatus && bridgingStatus !== BridgeStatus.UNKNOWN
+        ? !BRIDGING_FINAL_STATUSES.includes(bridgingStatus)
+        : !!bridgeOrderData)
     : order && isPending(order)
 
   const isCustomRecipientWarningBannerVisible = !useIsReceiverWalletBannerHidden(id) && order && isOrderPending

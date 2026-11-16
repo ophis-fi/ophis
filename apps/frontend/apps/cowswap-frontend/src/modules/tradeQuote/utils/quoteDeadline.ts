@@ -1,7 +1,7 @@
 import { MAX_VALID_TO_EPOCH } from '@cowprotocol/common-utils'
 
 import ms from 'ms.macro'
-import { acrossValidToLimit, nearValidToLimit } from 'tradingSdk/ophisBridgeValidTo'
+import { acrossValidToLimit, nearValidToLimit, relayValidToLimit } from 'tradingSdk/ophisBridgeValidTo'
 
 import { getIsFastQuote } from './getIsFastQuote'
 
@@ -74,5 +74,6 @@ export function getOrderValidTo(deadline: number, state: TradeQuoteState): numbe
     MAX_VALID_TO_EPOCH,
     acrossValidToLimit(state.bridgeQuote),
     nearValidToLimit(state.bridgeQuote),
+    relayValidToLimit(state.bridgeQuote),
   )
 }

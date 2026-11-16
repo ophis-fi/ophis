@@ -2,14 +2,18 @@ import {
   createDecodeOnlyBungeeBridgeProvider,
   ophisAcrossApiOptions,
   registerOphisNearIntentsNetworks,
+  RelayBridgeProvider,
+  RELAY_ENABLED,
 } from '@cowprotocol/common-const'
-import { EnrichedOrder, SupportedChainId } from '@cowprotocol/cow-sdk'
+import { EnrichedOrder, SupportedChainId, TokenInfo } from '@cowprotocol/cow-sdk'
 import { BridgingSdk } from '@cowprotocol/sdk-bridging'
+import { fetchTokenList, OPHIS_TOKENS_LIST_SOURCE } from '@cowprotocol/tokens'
 
 import { orderBookApi } from 'cowSdk'
 
-import { OphisAcrossBridgeProvider } from './ophisBridgeProviders'
+import { ACROSS_EXECUTABLE_SOURCE_IDS, OphisAcrossBridgeProvider } from './ophisBridgeProviders'
 import { OphisNearIntentsBridgeProvider } from './ophisNearIntentsProvider.service'
+import { signRelayHook } from './ophisRelayHooks.service'
 import { tradingSdk } from './tradingSdk'
 
 // NEAR networks the SDK does not ship (including Robinhood): registered before
@@ -44,11 +48,33 @@ export const nearIntentsBridgeProvider = new OphisNearIntentsBridgeProvider({
   apiKey: process.env.REACT_APP_NEAR_API_KEY || undefined,
 })
 
+const relayTokens: { list?: Promise<TokenInfo[]> } = {}
+export const relayBridgeProvider = new RelayBridgeProvider({
+  // Existing source execution gates also prove the Shed/Weiroll path; Relay needs no Across math helper.
+  sourceChainIds: ACROSS_EXECUTABLE_SOURCE_IDS,
+  trustedTokens: () => {
+    relayTokens.list ??= fetchTokenList({ source: OPHIS_TOKENS_LIST_SOURCE })
+      .then((state) => state.list.tokens)
+      .catch((error: unknown) => {
+        relayTokens.list = undefined
+        throw error
+      })
+    return relayTokens.list
+  },
+  signHook: (terms, ...args) => signRelayHook(newestOrders, terms, ...args),
+})
+
+export const defaultQuoteBridgeProviders = [
+  acrossBridgeProvider,
+  nearIntentsBridgeProvider,
+  ...(RELAY_ENABLED ? [relayBridgeProvider] : []),
+]
+
 // Bungee LAST: the SDK's single-provider getQuote path takes providers[0] for
 // a cross-chain request without checking getNetworks, and getAvailableProviders
 // preserves this constructor order, so the decode-only entry must never be first.
 export const bridgingSdk = new BridgingSdk({
-  providers: [acrossBridgeProvider, nearIntentsBridgeProvider, bungeeBridgeProvider],
+  providers: [acrossBridgeProvider, nearIntentsBridgeProvider, relayBridgeProvider, bungeeBridgeProvider],
   enableLogging: !!localStorage.getItem('enableBridgingSdkLogs'),
   tradingSdk,
   orderBookApi,
@@ -62,7 +88,7 @@ export const bridgingSdk = new BridgingSdk({
  * feature flags). Being available costs nothing: the provider advertises no
  * networks and no buy tokens, so no quote or token-list request reaches it.
  */
-const DECODE_ONLY_PROVIDER_IDS: readonly string[] = [bungeeBridgeProvider.info.dappId]
+const DECODE_ONLY_PROVIDER_IDS: readonly string[] = [bungeeBridgeProvider.info.dappId, relayBridgeProvider.info.dappId]
 
 /**
  * The one writer of the SDK's available list: the providers enabled for quoting
@@ -70,6 +96,9 @@ const DECODE_ONLY_PROVIDER_IDS: readonly string[] = [bungeeBridgeProvider.info.d
  * here so the decode entries can never be dropped.
  */
 export function setQuoteBridgeProviders(quoteProviderIds: readonly string[]): void {
+  const relayQuoteEnabled = quoteProviderIds.includes(relayBridgeProvider.info.dappId)
+  if (relayBridgeProvider.quoteEnabled !== relayQuoteEnabled) bridgingSdk.clearCache()
+  relayBridgeProvider.quoteEnabled = relayQuoteEnabled
   bridgingSdk.setAvailableProviders([...new Set([...quoteProviderIds, ...DECODE_ONLY_PROVIDER_IDS])])
 }
 
@@ -82,4 +111,4 @@ export function setQuoteBridgeProviders(quoteProviderIds: readonly string[]): vo
 // stay undefined → the updater's early-return preserves whatever's set
 // here. To keep the contract simple, both quote providers are advertised
 // to the bridging SDK from boot.
-setQuoteBridgeProviders([acrossBridgeProvider.info.dappId, nearIntentsBridgeProvider.info.dappId])
+setQuoteBridgeProviders(defaultQuoteBridgeProviders.map((provider) => provider.info.dappId))

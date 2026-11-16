@@ -183,6 +183,9 @@ python3 "$SCRIPT_DIR/../shared/scripts/backend-revision.py" images "$SCRIPT_DIR/
 echo "==> docker compose run --rm migrations"
 docker compose run --rm migrations
 
+# Existing-stack restarts use --no-deps, so screening must be ready first.
+docker compose up -d --no-build --force-recreate --wait --wait-timeout 180 ofac
+
 echo ""
 # Force-recreate config-mounted services BEFORE running `up`. Docker
 # Compose's change-detection only looks at the image+env+volume-spec

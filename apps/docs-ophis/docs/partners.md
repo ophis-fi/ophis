@@ -1,7 +1,7 @@
 ---
 id: partners
 title: Partner integration (SDK)
-description: Build and submit Ophis swap orders from your app with the Ophis SDK and CoW SDK.
+description: Build and submit Ophis swap orders with chain-specific signing, approval, fee and receiver-safety helpers.
 sidebar_label: Partner integration
 sidebar_position: 4
 ---
@@ -109,15 +109,17 @@ Resolve the relayer with `getOphisVaultRelayer(chainId)`. An approval from the S
 | Unichain | `unichain-mainnet.ophis.fi` | `0x108A678716e5E1776036eF044CAB7064226F714E` |
 | Robinhood Chain | `robinhood-mainnet.ophis.fi` | `0x886d9fd312F442C4E1f3cdeAE7b4AB73493e57cD` |
 | Arc | `arc-mainnet.ophis.fi` | `0x78799F98276efba1EdeeD32eae03a3fd8Cdfec3A` |
-| CoW-hosted: Mainnet, Base, Arbitrum, Gnosis, Polygon, Avalanche, BNB, Linea, Plasma, Ink | `api.cow.fi/<chain>` | `0x9008D19f58AAbD9eD0D60971565AA8510560ab41` |
+| Partner-hosted: Ethereum, Base, Arbitrum, Gnosis, Polygon, Avalanche, BNB, Linea, Plasma, Ink | Resolve with `getOphisOrderbookUrl(chainId)`; URL slugs differ from chain names | `0x9008D19f58AAbD9eD0D60971565AA8510560ab41` |
 
 | Chain | Vault Relayer |
 | --- | --- |
 | Optimism | `0x83847EaB41ad9ea43809ce71569eB2e9daF51830` |
 | Unichain | `0xaB29E2a859704C914E55566Ae9b3A7EDE25959cb` |
-| CoW-hosted chains | `0xC92E8bdf79f0507f65a392b0ab4667716BFE0110` |
+| Robinhood Chain | `0xB52C38097c19cd38238c62DD36027a7918eFa890` |
+| Arc | `0x895505F1FE6D762296685fF4a8201782FFdCB8E9` |
+| partner-hosted chains | `0xC92E8bdf79f0507f65a392b0ab4667716BFE0110` |
 
-Use the Ophis host, settlement, and relayer on Ophis-operated chains. Use the CoW SDK defaults on CoW-hosted chains. Arc host and signing-domain support starts with SDK v0.4.3.
+Use the Ophis host, settlement, and relayer on Ophis-operated chains. Resolve all three through the Ophis helpers, including on partner-hosted chains. Use SDK v0.4.5 for the current chain and safety helpers; Arc support was introduced in v0.4.3.
 
 ## Ophis fees
 
@@ -128,15 +130,15 @@ Use the Ophis host, settlement, and relayer on Ophis-operated chains. Use the Co
 | Improvement cap | 99 bps | 20 bps |
 | Maximum Ophis charge | 100 bps | 21 bps |
 
-Ophis-operated backends apply improvement capture separately from the appData base fee. On CoW-hosted chains, the SDK includes both entries in appData, and CoW Protocol adds its own fee. See [Fees](/fees).
+Ophis-operated backends apply improvement capture separately from the appData base fee. On partner-hosted chains, the SDK includes both entries in appData; upstream fees also apply. See [Fees](/fees).
 
 ## Optimism setup {/* #optimism-integration */}
 
-Use these lower-level calls to configure an existing CoW integration.
+Use these lower-level calls to configure an existing orderbook integration.
 
 <Steps>
 
-1. **Select the Ophis orderbook.** Cast the Optimism chain ID for the CoW SDK types.
+1. **Select the Ophis orderbook.** Cast the Optimism chain ID for the trading client types.
 
    ```ts
    import { OrderBookApi, SupportedChainId } from '@cowprotocol/cow-sdk';
@@ -208,9 +210,9 @@ Use these lower-level calls to configure an existing CoW integration.
 
 Submit with `orderBookApi.sendOrder({ ...order, from: vaultSafe, signingScheme: SigningScheme.EIP1271, signature, appData: fullAppData, appDataHash })`. Import `SigningScheme` from `@cowprotocol/cow-sdk`.
 
-## CoW-hosted orders {/* #other-cow-hosted-chains */}
+## Partner-hosted orders {/* #other-cow-hosted-chains */}
 
-Keep the CoW SDK host and settlement defaults, and put the complete helper result in `metadata.partnerFee`.
+Resolve the host and settlement through the chain helpers above, and put the complete fee-helper result in `metadata.partnerFee`.
 
 ```ts
 import { buildOphisAppDataPartnerFee } from '@ophis/sdk';
@@ -223,7 +225,7 @@ The helper returns an array with the base fee and capped improvement policy. Kee
 
 ## Charge your own fee
 
-On CoW-hosted chains, add your recipient to the `partnerFee` array in appData v1.4.0 or later. Keep the complete Ophis fee policy alongside your entry.
+On partner-hosted chains, add your recipient to the `partnerFee` array in appData v1.4.0 or later. Keep the complete Ophis fee policy alongside your entry.
 
 ```ts
 const ophisPartnerFee = buildOphisAppDataPartnerFee(chainId, isStablePair);
@@ -278,7 +280,7 @@ curl https://rebates.ophis.fi/earnings/your-code
 | --- | --- |
 | `routedVolumeUsd` | Volume routed under your appCode |
 | `ophisFeeAccruedUsd` | The Ophis base fee charged on that volume |
-| `ownFeeAccruedUsd.hostedAccrued` | Your own fee charged on CoW-hosted chains, before CoW's service fee; CoW pays it in its weekly distribution |
+| `ownFeeAccruedUsd.hostedAccrued` | Your own fee charged on partner-hosted chains, before CoW's service fee; CoW pays it in its weekly distribution |
 
 ## Sell native ETH {/* #selling-native-eth-eth-flow */}
 
@@ -333,7 +335,7 @@ await ethFlow.createOrder(built.orderTuple, { value: built.value });
 
 | Chain | Native-token path |
 | --- | --- |
-| Optimism, Unichain, Base, and other CoW-hosted chains | Resolve EthFlow support through the SDK |
+| Optimism, Unichain, Base, and other partner-hosted chains | Resolve EthFlow support through the SDK |
 | Robinhood Chain | `getOphisEthFlowAddress(4663)` resolves `0xC1Ee77e8a1B85D5EED702a9bB435f434408A4d29` |
 | Arc | Use the ERC-20 USDC interface for native USDC |
 

@@ -1,14 +1,36 @@
 import { useCurrencyAmountBalance } from '@cowprotocol/balances-and-allowances'
-import { NATIVE_CURRENCIES, USDC_MAINNET, WRAPPED_NATIVE_CURRENCIES } from '@cowprotocol/common-const'
+import {
+  NATIVE_CURRENCIES,
+  STARKNET_CHAIN_ID,
+  USDC_MAINNET,
+  WRAPPED_NATIVE_CURRENCIES,
+} from '@cowprotocol/common-const'
 import { OrderKind } from '@cowprotocol/cow-sdk'
 import { CurrencyAmount } from '@cowprotocol/currency'
+import { BridgeQuoteResults } from '@cowprotocol/sdk-bridging'
 import { useIsTxBundlingSupported } from '@cowprotocol/wallet'
 
 import { renderHook } from '@testing-library/react'
 
 import { TradeType, useDerivedTradeState, useIsSwapEth, useSwapFundingAmount } from 'modules/trade'
+import type { TradeQuoteState } from 'modules/tradeQuote'
 
 import { useTradeFormValidationContext } from './useTradeFormValidationContext'
+
+import { validateTradeForm } from '../services/validateTradeForm'
+import { TradeFormValidation } from '../types'
+
+let mockQuote: Partial<TradeQuoteState> = {}
+let mockProxy: {
+  isLoading: boolean
+  data?: { isProxySetupValid: boolean | null }
+  error?: Error
+} = { isLoading: false }
+
+beforeEach(() => {
+  mockQuote = {}
+  mockProxy = { isLoading: false }
+})
 
 jest.mock('@cowprotocol/balances-and-allowances', () => ({ useCurrencyAmountBalance: jest.fn() }))
 jest.mock('@cowprotocol/common-hooks', () => ({ useIsOnline: () => true }))
@@ -25,8 +47,8 @@ jest.mock('@cowprotocol/wallet', () => ({
   useIsTxBundlingSupported: jest.fn(),
   useWalletDetails: () => ({ isSupportedWallet: true }),
 }))
-jest.mock('entities/bridgeProvider', () => ({ useHasHookBridgeProvidersEnabled: () => false }))
-jest.mock('modules/accountProxy/hooks/useCurrentAccountProxy', () => ({ useCurrentAccountProxy: () => ({}) }))
+jest.mock('entities/bridgeProvider', () => ({ useHasHookBridgeProvidersEnabled: () => true }))
+jest.mock('modules/accountProxy', () => ({ useCurrentAccountProxy: () => mockProxy }))
 jest.mock('modules/combinedBalances', () => ({ useTokensBalancesCombined: () => ({ hasFirstLoad: true }) }))
 jest.mock('modules/erc20Approve', () => ({
   useApproveState: () => ({}),
@@ -34,7 +56,7 @@ jest.mock('modules/erc20Approve', () => ({
   useIsApprovalOrPermitRequired: () => ({}),
 }))
 jest.mock('modules/injectedWidget', () => ({ useInjectedWidgetParams: () => ({}) }))
-jest.mock('modules/rwa', () => ({ RwaTokenStatus: {}, useRwaTokenStatus: () => ({}) }))
+jest.mock('modules/rwa', () => ({ RwaTokenStatus: { Restricted: 'restricted' }, useRwaTokenStatus: () => ({}) }))
 jest.mock('modules/trade', () => ({
   TradeType: { SWAP: 'swap' },
   useDerivedTradeState: jest.fn(),
@@ -45,7 +67,7 @@ jest.mock('modules/trade', () => ({
   useSwapFundingAmount: jest.fn(),
   useTradePriceImpact: () => ({}),
 }))
-jest.mock('modules/tradeQuote', () => ({ useTradeQuote: () => ({}) }))
+jest.mock('modules/tradeQuote', () => ({ useTradeQuote: () => mockQuote }))
 jest.mock('common/hooks/useIsProviderNetworkDeprecated', () => ({ useIsProviderNetworkDeprecated: () => false }))
 jest.mock('common/hooks/useIsProviderNetworkUnsupported', () => ({ useIsProviderNetworkUnsupported: () => false }))
 jest.mock('common/hooks/useOphisNameResolution', () => ({ useOphisNameResolution: () => ({}) }))
@@ -84,3 +106,54 @@ it.each<[boolean, boolean, string, string]>([
     )
   },
 )
+
+describe('bridge account-proxy validation', () => {
+  beforeEach(() => {
+    const native = NATIVE_CURRENCIES[8453]
+    const amount = CurrencyAmount.fromRawAmount(native, '50000000000000000')
+    jest.mocked(useIsSwapEth).mockReturnValue(true)
+    jest.mocked(useIsTxBundlingSupported).mockReturnValue(true)
+    jest.mocked(useSwapFundingAmount).mockReturnValue(amount)
+    jest.mocked(useDerivedTradeState).mockReturnValue({
+      inputCurrency: native,
+      outputCurrency: NATIVE_CURRENCIES[STARKNET_CHAIN_ID],
+      inputCurrencyAmount: amount,
+      inputCurrencyBalance: amount,
+      orderKind: OrderKind.SELL,
+      tradeType: TradeType.SWAP,
+    } as unknown as ReturnType<typeof useDerivedTradeState>)
+  })
+
+  it.each([true, false])('NEAR Base-to-Starknet ignores unrelated proxy loading/failure: loading=%s', (isLoading) => {
+    mockQuote.bridgeQuote = {
+      providerInfo: { type: 'ReceiverAccountBridgeProvider' },
+    } as BridgeQuoteResults
+    mockProxy = { isLoading, error: new Error('unrelated account-proxy RPC failure') }
+    const { result } = renderHook(() => useTradeFormValidationContext())
+    expect(result.current).toMatchObject({ isAccountProxyLoading: false, isProxySetupValid: true })
+    expect(result.current && validateTradeForm(result.current)).not.toContain(TradeFormValidation.ProxyAccountLoading)
+  })
+
+  it('still waits for the account proxy when the selected bridge uses hooks', () => {
+    mockQuote.bridgeQuote = { providerInfo: { type: 'HookBridgeProvider' } } as BridgeQuoteResults
+    mockProxy = { isLoading: true }
+    const { result } = renderHook(() => useTradeFormValidationContext())
+    expect(result.current).toMatchObject({ isAccountProxyLoading: true })
+    expect(result.current && validateTradeForm(result.current)).toContain(TradeFormValidation.ProxyAccountLoading)
+  })
+
+  it.each([true, false, null])('preserves hook proxy verification state: %s', (isProxySetupValid) => {
+    mockQuote.bridgeQuote = { providerInfo: { type: 'HookBridgeProvider' } } as BridgeQuoteResults
+    mockProxy = { isLoading: false, data: { isProxySetupValid } }
+    const { result } = renderHook(() => useTradeFormValidationContext())
+    expect(result.current).toMatchObject({ isAccountProxyLoading: false, isProxySetupValid })
+  })
+
+  it.each([false, true])('reports a hook proxy RPC failure even while retrying: loading=%s', (isLoading) => {
+    mockQuote.bridgeQuote = { providerInfo: { type: 'HookBridgeProvider' } } as BridgeQuoteResults
+    mockProxy = { isLoading, error: new Error('proxy RPC unavailable') }
+    const { result } = renderHook(() => useTradeFormValidationContext())
+    expect(result.current).toMatchObject({ isAccountProxyLoading: false, isProxySetupValid: null })
+    expect(result.current && validateTradeForm(result.current)).toContain(TradeFormValidation.ProxyAccountUnknown)
+  })
+})

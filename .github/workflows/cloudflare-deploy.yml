@@ -224,6 +224,8 @@ jobs:
           # skipped. Re-check with `pnpm across-source-preflight 4663` (10/10) if
           # any of the on-chain pieces are ever redeployed.
           REACT_APP_ACROSS_ROBINHOOD_SOURCE: 'true'
+          # Server key + private limiter binding must be provisioned before explicitly enabling Relay.
+          REACT_APP_ENABLE_RELAY_BRIDGE: ${{ vars.REACT_APP_ENABLE_RELAY_BRIDGE || 'false' }}
           # Optimism live proof: settlement + FundsDeposited 0xed07b783…de17070;
           # Base delivery 0x924b95fe…2638d86, 0.798230 USDC (2026-10-01 UTC).
           # Full receipts: infra/optimism-mainnet/README.md.

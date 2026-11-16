@@ -145,3 +145,8 @@ refresh-interval = "30s"
 # Match OP block time instead of polling the same head every 500ms.
 [shared.current-block]
 poll-interval = "2s"
+
+[banned-users]
+# Direct SDN-listed EVM addresses, refreshed independently of chain RPCs.
+addresses-file = "/sanctions/addresses.json"
+snapshot-max-age = "24h"

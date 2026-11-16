@@ -1,0 +1,35 @@
+name: OFAC screening
+
+on:
+  pull_request:
+    paths:
+      - 'infra/shared/sanctions/**'
+      - 'infra/*-mainnet/docker-compose.yml'
+      - 'infra/arc-mainnet/release/docker-compose.yml'
+      - '.github/workflows/ofac-screening.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'infra/shared/sanctions/**'
+      - 'infra/*-mainnet/docker-compose.yml'
+      - 'infra/arc-mainnet/release/docker-compose.yml'
+      - '.github/workflows/ofac-screening.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
+      - name: Validate OFAC refresh and failure handling
+        run: python3 -m unittest discover -s infra/shared/sanctions -v
+      - name: Validate all four stack definitions without reading operator environment files
+        run: |
+          for stack in optimism unichain robinhood; do
+            docker compose -f infra/$stack-mainnet/docker-compose.yml config --no-interpolate --no-env-resolution --quiet
+          done
+          docker compose -f infra/arc-mainnet/release/docker-compose.yml config --no-interpolate --no-env-resolution --quiet

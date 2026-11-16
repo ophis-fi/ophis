@@ -26,6 +26,7 @@ export * from './bridgeDestination.const'
 export * from './bridgeDestinationChains'
 export * from './bridgeChainInfo'
 export * from './nearIntentsNetworks'
+export * from './relayBridge'
 
 export * from './arc.const'
 export * from './circleTokens'

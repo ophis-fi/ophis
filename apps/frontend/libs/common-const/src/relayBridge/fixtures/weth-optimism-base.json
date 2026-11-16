@@ -1,0 +1,97 @@
+{
+  "request": {
+    "user": "0x2E138c49EBd6dEB245171d77a5E4Dcd9f46b99F3",
+    "recipient": "0x117c61e5808303A6dc357a9495522e10f670FAa5",
+    "refundTo": "0x117c61e5808303A6dc357a9495522e10f670FAa5",
+    "tradeType": "EXACT_INPUT",
+    "explicitDeposit": true,
+    "disableOriginSwaps": true,
+    "usePermit": false,
+    "includeProtocolData": true,
+    "slippageTolerance": "10",
+    "referrer": "ophis",
+    "originChainId": 10,
+    "destinationChainId": 8453,
+    "originCurrency": "0x4200000000000000000000000000000000000006",
+    "destinationCurrency": "0x4200000000000000000000000000000000000006",
+    "amount": "10000000000000000",
+    "appFees": [
+      {
+        "recipient": "0x858f0F5eE954846D47155F5203c04aF1819eCeF8",
+        "fee": "3"
+      }
+    ]
+  },
+  "response": {
+    "requestId": "0x1794576535c65c4201cd0b6b0a67cfb7a8bb95725ccba4e54b15d97bd7d2dfd5",
+    "protocol": {
+      "v2": {
+        "orderId": "0xbe707f40509582f2a0f59e0796810fc400a06c55e094ef35ab238d3a7cc36096",
+        "hubType": "onchain",
+        "orderData": {
+          "version": "v1",
+          "solverChainId": "base",
+          "solver": "0xf70da97812cb96acdf810712aa562db8dfa3dbef",
+          "salt": "0x6a174cd6f23b294708214249277fd83d7224b893a41ffc6470c707ceabf8e822",
+          "inputs": [
+            {
+              "payment": {
+                "chainId": "optimism",
+                "currency": "0x4200000000000000000000000000000000000006",
+                "amount": "10000000000000000",
+                "weight": "1"
+              },
+              "refunds": [
+                {
+                  "chainId": "optimism",
+                  "recipient": "0x117c61e5808303A6dc357a9495522e10f670FAa5",
+                  "currency": "0x4200000000000000000000000000000000000006",
+                  "minimumAmount": "0",
+                  "deadline": 1795181335,
+                  "extraData": "0x0000000000000000000000000729e2a4716d9f7dd17858d5d504426d228697f7"
+                },
+                {
+                  "chainId": "base",
+                  "recipient": "0x117c61e5808303A6dc357a9495522e10f670FAa5",
+                  "currency": "0x0000000000000000000000000000000000000000",
+                  "minimumAmount": "0",
+                  "deadline": 1795181335,
+                  "extraData": "0x0000000000000000000000000729e2a4716d9f7dd17858d5d504426d228697f7"
+                }
+              ]
+            }
+          ],
+          "output": {
+            "chainId": "base",
+            "payments": [
+              {
+                "recipient": "0x117c61e5808303A6dc357a9495522e10f670FAa5",
+                "currency": "0x4200000000000000000000000000000000000006",
+                "minimumAmount": "9972555871282482",
+                "expectedAmount": "9982538409692174"
+              }
+            ],
+            "calls": [],
+            "deadline": 1795181335,
+            "extraData": "0x0000000000000000000000000729e2a4716d9f7dd17858d5d504426d228697f7"
+          },
+          "fees": []
+        },
+        "orderSignature": "0xc3cc8d5d91456ddb24bad6fc2818103490a6b8f8ae763002dc524786db8762571481522a200b13e36fafc5b73a20227144714258e296374ea51427217ee3ecba1c",
+        "paymentDetails": {
+          "chainId": "optimism",
+          "depository": "0x4cd00e387622c35bddb9b4c962c136462338bc31",
+          "currency": "0x4200000000000000000000000000000000000006",
+          "amount": "10000000000000000"
+        }
+      }
+    },
+    "details": {
+      "timeEstimate": 1,
+      "currencyOut": {
+        "amount": "9982538409692174",
+        "minimumAmount": "9972555871282482"
+      }
+    }
+  }
+}

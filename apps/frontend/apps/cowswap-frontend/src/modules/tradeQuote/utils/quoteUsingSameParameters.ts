@@ -23,7 +23,7 @@ export function quoteUsingSameParameters(
   const currentParams = currentQuote.quote?.quoteResults.tradeParameters
   if (!currentParams || !nextParams) return false
 
-  // Do not compare slippage if the request contains smart slippage
+  // Same-chain smart slippage does not require another quote.
   const slippageCheck = hasSmartSlippage ? true : compareSlippage(currentParams.slippageBps, nextParams.swapSlippageBps)
 
   if (currentQuote.bridgeQuote) {
@@ -42,8 +42,8 @@ export function quoteUsingSameParameters(
       [currentParams.amount === nextParams.amount.toString(), 'amount'],
       [bridgeTradeParams.validFor === nextParams.validFor, 'validFor'],
       [bridgeTradeParams.receiver === nextParams.receiver, 'receiver'],
-      // Use currentParams.slippageBps since bridgeTradeParams doesn't preserve slippageBps when auto-slippage is enabled
-      [slippageCheck, 'slippageBps', currentParams.slippageBps, nextParams.swapSlippageBps],
+      // Every slippage change alters bridge funding, including automatic updates and zero bps.
+      [sameBridgeSlippage(currentParams.slippageBps, nextParams, appData), 'slippageBps'],
       [areAddressesEqual(currentParams.sellToken, nextParams.sellTokenAddress), 'sellToken'],
       [bridgeTradeParams.sellTokenChainId === nextParams.sellTokenChainId, 'sellTokenChainId'],
       [areAddressesEqual(bridgeTradeParams.buyTokenAddress, nextParams.buyTokenAddress), 'buyTokenAddress'],
@@ -86,6 +86,15 @@ export function quoteUsingSameParameters(
   }
 
   return changes.length === 0
+}
+
+function sameBridgeSlippage(
+  current: number | undefined,
+  params: QuoteBridgeRequest,
+  appData: AppDataInfo['doc'] | undefined,
+): boolean {
+  const next = appData?.metadata.quote?.slippageBips ?? params.swapSlippageBps
+  return next === undefined || current === next
 }
 
 function areHooksEqual(hookA: CowHook | undefined, hookB: CowHook | undefined): boolean {

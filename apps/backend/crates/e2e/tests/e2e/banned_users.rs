@@ -3,6 +3,7 @@ use {
         primitives::{Address, address},
         providers::ext::{AnvilApi, ImpersonateConfig},
     },
+    configs::test_util::TestDefault,
     contracts::ERC20,
     e2e::setup::{OnchainComponents, Services, run_forked_test_with_block_number},
     ethrpc::Web3,
@@ -15,7 +16,7 @@ use {
 #[ignore]
 async fn forked_node_mainnet_single_limit_order() {
     run_forked_test_with_block_number(
-        forked_mainnet_onchain_banned_user_test,
+        forked_mainnet_file_banned_user_test,
         std::env::var("FORK_URL_MAINNET")
             .expect("FORK_URL_MAINNET must be set to run forked tests"),
         FORK_BLOCK_MAINNET,
@@ -29,7 +30,7 @@ const FORK_BLOCK_MAINNET: u64 = 24843565;
 const DAI_WHALE_MAINNET: Address = address!("28c6c06298d514db089934071355e5743bf21d60");
 const BANNED_USER: Address = address!("7F367cC41522cE07553e823bf3be79A889DEbe1B");
 
-async fn forked_mainnet_onchain_banned_user_test(web3: Web3) {
+async fn forked_mainnet_file_banned_user_test(web3: Web3) {
     let mut onchain = OnchainComponents::deployed(web3.clone()).await;
     let [solver] = onchain.make_solvers_forked(1u64.eth()).await;
 
@@ -80,7 +81,19 @@ async fn forked_mainnet_onchain_banned_user_test(web3: Web3) {
 
     // Place Order
     let services = Services::new(&onchain).await;
-    services.start_protocol(solver).await;
+    let snapshot = tempfile::NamedTempFile::new().unwrap();
+    std::fs::write(snapshot.path(), serde_json::to_vec(&serde_json::json!({
+        "fetched_at": std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_secs(),
+        "source_sha256": "a".repeat(64),
+        "addresses": [BANNED_USER],
+    })).unwrap()).unwrap();
+    let mut orderbook = configs::orderbook::Configuration::test_default();
+    orderbook.banned_users.addresses_file = Some(snapshot.path().to_owned());
+    let mut autopilot = configs::autopilot::Configuration::test("test_solver", solver.address());
+    autopilot.banned_users.addresses_file = Some(snapshot.path().to_owned());
+    services
+        .start_protocol_with_args(autopilot, orderbook, solver)
+        .await;
 
     let result = services
         .submit_quote(&OrderQuoteRequest {

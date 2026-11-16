@@ -14,6 +14,8 @@
     "src/tradingSdk/ophisNearIntentsProvider.service.test.ts",
     "src/tradingSdk/ophisBridgeProviders.test.ts",
     "src/tradingSdk/bridgingSdk.test.ts",
+    "src/entities/bridgeProvider/BridgeProvidersUpdater.test.tsx",
+    "src/modules/tradeQuote/services/bridgeSlippage.test.ts",
     "src/ophis/hooks/useBeatMarket.test.ts",
     "src/modules/usdAmount/services/fetchCurrencyUsdPrice.test.ts",
     "src/cowSdk.utils.test.ts",
