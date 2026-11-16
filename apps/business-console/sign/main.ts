@@ -234,6 +234,15 @@ const sent = async (signature?: string) => {
   step('sent', data.state ? 'done' : 'todo')
   return data.state
 }
+// The allowance read again just before it is checked: another order of this wallet in this asset may have been sent since
+// this page was read, and the approval must cover it too (Codex, PR #1646). ponytail: two pages that both pass this point
+// before either sends still race; a check of the allowance at the send if that ever matters.
+async function reread() {
+  const { ok, data } = await call('/api/order', {})
+  if (ok) Object.assign(order, { allowance: data.allowance, allowanceWords: data.allowanceWords })
+  else say(ORDER_SAY[data.error as string] ?? 'The order could not be read. Try again in a minute.', 'bad')
+  return ok
+}
 const short = (have: unknown) => BigInt(decodeFunctionResult({ abi: ERC20, functionName: 'allowance', data: have as `0x${string}` })) < BigInt(order.allowance!)
 const approval = () => encodeFunctionData({ abi: ERC20, functionName: 'approve', args: [order.relayer as `0x${string}`, BigInt(order.allowance!)] })
 const allowance = () => encodeFunctionData({ abi: ERC20, functionName: 'allowance', args: [order.wallet as `0x${string}`, order.relayer as `0x${string}`] })
@@ -246,6 +255,7 @@ async function orderByWallet() {
   const [account] = (await ethereum.request({ method: 'eth_requestAccounts' })) as string[]
   if (!same(account, order.wallet)) return say(`The wallet in this browser is ${account}. The order is for ${order.wallet}. Switch the account and try again.`, 'bad')
   await ethereum.request({ method: 'wallet_switchEthereumChain', params: [{ chainId: `0x${order.chainId.toString(16)}` }] })
+  if (order.purpose === 'sign' && !(await reread())) return
   if (order.purpose === 'sign') step('approve', 'now')
   if (order.purpose === 'sign' && short(await ethereum.request({ method: 'eth_call', params: [{ to: order.sellToken, data: allowance() }, 'latest'] }))) {
     say(`Approve exactly ${order.allowanceWords}, in the wallet. Then wait for the transaction.`)
@@ -275,6 +285,7 @@ async function orderBySafe() {
     posted = (await sent()) === 'presignaturePending'
     if (!posted) return
   }
+  if (signing && !(await reread())) return
   const txs = signing && short(await safe!.eth.call([{ from: order.wallet, to: order.sellToken, data: allowance() }])) ? [{ to: order.sellToken, value: '0', data: approval() }] : []
   if (signing) step('approve', txs.length ? 'now' : 'skipped')
   step('safe', 'now')

@@ -1222,6 +1222,8 @@ try {
   const { context: holderOfDesk, calls: walletCalls, page: signOrder } = await keyWallet()
   const offOrigin = []
   signOrder.on('request', (request) => request.url().startsWith(`${SIGN}/`) || offOrigin.push(request.url()))
+  const orderReads = [] // the order read at the page's load, and again just before its allowance is checked (Codex, PR #1646)
+  signOrder.on('request', (request) => request.method() === 'POST' && request.url() === `${SIGN}/api/order` && orderReads.push(request.url()))
   signOrder.on('console', (message) => /content security policy|refused to/i.test(message.text()) && violations.push(message.text()))
   await signOrder.goto(orderLink)
   await signOrder.getByRole('heading', { name: 'The order the wallet will sign' }).waitFor()
@@ -1234,6 +1236,7 @@ try {
   await signOrder.getByRole('button', { name: 'Sign with the wallet in this browser' }).click()
   await signOrder.getByText('Signed and sent. The order is open on the orderbook').waitFor()
   check('each step of the signing page is done: the approval, the signature, the send', await stepsOf(signOrder) === 'approve done,sign done,sent done')
+  check('the signing page read the order again just before it checked the allowance: an order of the same wallet sent meanwhile is covered', orderReads.length === 2)
   const approval = walletCalls.find(([method]) => method === 'eth_sendTransaction')?.[1][0]
   check('the wallet was asked for its account, the chain, the allowance, an approval of the exact amount and its receipt, then one typed signature',
     walletCalls.map(([method]) => method).join() === 'eth_requestAccounts,wallet_switchEthereumChain,eth_call,eth_sendTransaction,eth_getTransactionReceipt,eth_signTypedData_v4'
