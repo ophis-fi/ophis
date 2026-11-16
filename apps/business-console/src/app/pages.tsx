@@ -203,8 +203,6 @@ export function Enrol({ ticket }: { ticket: string }) {
   const [tries, setTries] = useState(0)
   useEffect(() => {
     if (!ticket) return setInvitation(null)
-    setInvitation(undefined) // another link opened in this tab: nothing of the last one stays while this one is checked
-    setStored(false)
     api<Invitation>('/api/enrol/start', { ticket }).then((start) => start.status === 200 ? setInvitation(start.data) : start.status === 404 ? setInvitation(null) : setProblem(RETRY))
   }, [ticket, tries])
 

@@ -134,7 +134,7 @@ function App() {
             {page === 'apply' ? <Apply />
             : page === 'recover' ? <Recover />
             : page === 'security' ? <Security owner={me?.seat.role === 'owner'} />
-            : page === 'enrol' ? <Enrol ticket={ticket} />
+            : page === 'enrol' ? <Enrol key={ticket} ticket={ticket} /> /* one per link: what an earlier link's requests answer lands nowhere (CodeRabbit, PR #1646) */
             : closed ? <Closed kind={closed} onSignOut={signOut} />
             : me === undefined ? null
             : me && unread.length ? <Alerts alerts={unread} onRead={markRead} />
