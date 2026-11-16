@@ -88,13 +88,16 @@ export async function upsertDefillamaFills(rows: PendingDefiLlamaFill[]): Promis
   // requests shifts a boundary row into both pages (the old DO NOTHING path
   // absorbed this silently). A VERIFIED copy wins over a provisional one so the
   // in-batch pick can never lose the authoritative fee. Of two copies equally verified, the
-  // one naming the payer wins, as keepPayer below does across batches (CodeRabbit, PR #1646).
+  // one naming the payer wins, as keepPayer below does across batches; a known assessed fee
+  // of the other copy stays, as the conflict update's COALESCE keeps it (CodeRabbit, PR #1646).
   const byKey = new Map<string, PendingDefiLlamaFill>();
   for (const row of rows) {
     const key = `${row.chainId}:${row.blockNumber}:${row.logIndex}:${row.tradeUid}`;
     const prev = byKey.get(key);
-    if (!prev || (!prev.feeVerified && row.feeVerified)
-      || (prev.feeVerified === row.feeVerified && row.userSource === 'onchain_user' && prev.userSource !== 'onchain_user')) byKey.set(key, row);
+    const pick = !prev || (!prev.feeVerified && row.feeVerified)
+      || (prev.feeVerified === row.feeVerified && row.userSource === 'onchain_user' && prev.userSource !== 'onchain_user') ? row : prev;
+    const other = pick === row ? prev : row;
+    byKey.set(key, { ...pick, assessedFeeBps: pick.assessedFeeBps ?? other?.assessedFeeBps ?? null });
   }
   const { db, schema } = await import('./db/index.js');
   // A stored verified payer stays: a later verified write that does not name the payer knows less.

@@ -203,6 +203,8 @@ export function Enrol({ ticket }: { ticket: string }) {
   const [tries, setTries] = useState(0)
   useEffect(() => {
     if (!ticket) return setInvitation(null)
+    setInvitation(undefined) // another link opened in this tab: nothing of the last one stays while this one is checked
+    setStored(false)
     api<Invitation>('/api/enrol/start', { ticket }).then((start) => start.status === 200 ? setInvitation(start.data) : start.status === 404 ? setInvitation(null) : setProblem(RETRY))
   }, [ticket, tries])
 
@@ -683,22 +685,25 @@ export function Organisation({ me, onSignedOut, onChanged }: { me: Me; onSignedO
   useEffect(() => void load(), [load])
 
   // Every action goes through here: run it, say what went wrong, then show the new state. One at a time: a second click
-  // meanwhile would open a second passkey prompt, which the browser refuses, and hide the first one's success (CodeRabbit, PR #1646).
+  // meanwhile would open a second passkey prompt, which the browser refuses, and hide the first one's success. Held through
+  // the reload too, so an older reload never lands after a newer one (CodeRabbit, PR #1646).
   const running = useRef(false)
   const act: Act = async (action) => {
     if (running.current) return
     running.current = true
     setProblem('')
     try {
-      const result = await action()
-      if (result.status !== 200 && result.status !== 401) setProblem(say(result.data))
-    } catch {
-      setProblem(CANCELLED)
+      try {
+        const result = await action()
+        if (result.status !== 200 && result.status !== 401) setProblem(say(result.data))
+      } catch {
+        setProblem(CANCELLED)
+      }
+      await load() // a 401 here returns the app to sign-in: ending your own session, or revoking its passkey
+      onChanged()
     } finally {
       running.current = false
     }
-    await load() // a 401 here returns the app to sign-in: ending your own session, or revoking its passkey
-    onChanged()
   }
   async function addPasskey(event: FormEvent) {
     event.preventDefault()

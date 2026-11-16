@@ -48,4 +48,16 @@ describe('upsertDefillamaFills: the same fill twice in one batch (CodeRabbit, PR
     expect(await kept([fill(PAYER, 'onchain_user', false), receiver])).toEqual([[STORED, 'receiver', true]]);
     expect(await kept([payer, fill(STORED, 'onchain_user', false)])).toEqual([[PAYER, 'onchain_user', true]]);
   });
+
+  it('keeps the payer, and the assessed fee the other copy knows, in either order; a fee of its own stays its own', async () => {
+    const [payer, receiver] = [fill(PAYER, 'onchain_user', true), { ...fill(STORED, 'receiver', true), assessedFeeBps: '2.50000000' }];
+    for (const rows of [[receiver, payer], [payer, receiver]]) {
+      inserted.length = 0;
+      await upsertDefillamaFills(rows);
+      expect((inserted[0] as PendingDefiLlamaFill[]).map((r) => [r.userAddress, r.userSource, r.assessedFeeBps])).toEqual([[PAYER, 'onchain_user', '2.50000000']]);
+    }
+    inserted.length = 0;
+    await upsertDefillamaFills([{ ...payer, assessedFeeBps: '1.00000000' }, receiver]);
+    expect((inserted[0] as PendingDefiLlamaFill[])[0]!.assessedFeeBps).toBe('1.00000000');
+  });
 });
