@@ -1,4 +1,5 @@
 export const RPC_BATCH_SIZE = 20
+export const PRODUCTION_PRIVATE_CHAIN_IDS: readonly number[] = [1, 56, 42161]
 
 const ZAN_NETWORK_PATHS: Readonly<Record<number, string>> = {
   42161: 'arb/one',

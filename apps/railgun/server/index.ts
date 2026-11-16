@@ -1,6 +1,6 @@
 import { readBody } from './body'
 import { publicRpcResponse } from './response'
-import { RPC_BATCH_SIZE, RAILGUN_PROXY, RAILGUN_PROXIES, isAlchemyUrl, alchemyCU, isValidationCloudUrl, validationCloudCU, zanRpcUrl } from '../rpc-policy'
+import { PRODUCTION_PRIVATE_CHAIN_IDS, RPC_BATCH_SIZE, RAILGUN_PROXY, RAILGUN_PROXIES, isAlchemyUrl, alchemyCU, isValidationCloudUrl, validationCloudCU, zanRpcUrl } from '../rpc-policy'
 import { probeBudget } from './budget'
 import { baseHistoryResponse } from './history'
 import { BASE_HISTORY_PATH } from '../base-history'
@@ -128,12 +128,16 @@ export function rpcCall(value: unknown, proxy = RAILGUN_PROXY): RPCCall {
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
     const url = new URL(request.url)
-    if (url.pathname.startsWith(BASE_HISTORY_PATH + '/')) return baseHistoryResponse(request, env)
+    if (url.pathname === BASE_HISTORY_PATH || url.pathname.startsWith(BASE_HISTORY_PATH + '/')) {
+      if (!PRODUCTION_PRIVATE_CHAIN_IDS.includes(8453)) return error(404, 'Unsupported private network.')
+      return baseHistoryResponse(request, env)
+    }
     if (url.pathname.startsWith('/rpc/budget/')) return probeBudget(request, env)
     if (url.pathname !== '/rpc' && !url.pathname.startsWith('/rpc/')) return error(404, 'RPC route not found.')
     const match = /^\/rpc(?:\/(1|42161|137|56|8453))?$/.exec(url.pathname)
     if (!match) return error(404, 'Unsupported private network.')
     const chainId = Number(match[1] || 1)
+    if (!PRODUCTION_PRIVATE_CHAIN_IDS.includes(chainId)) return error(404, 'Unsupported private network.')
     const proxy = RAILGUN_PROXIES[chainId]
     const endpoints: Record<number, { url?: string; token?: string }> = {
       1: { url: env.RAILGUN_RPC_URL, token: env.RAILGUN_RPC_TOKEN },

@@ -2,7 +2,7 @@ import assert from 'node:assert/strict'
 import { Contract, FetchRequest, Interface, JsonRpcProvider, Wallet, getAddress } from 'ethers'
 import { NETWORK_CONFIG } from '@railgun-community/shared-models'
 import { PRIVATE_NETWORKS } from '../src/networks.ts'
-import { isAlchemyUrl, isValidationCloudUrl, zanRpcUrl, RPC_BATCH_SIZE } from '../rpc-policy.ts'
+import { PRODUCTION_PRIVATE_CHAIN_IDS, isAlchemyUrl, isValidationCloudUrl, zanRpcUrl, RPC_BATCH_SIZE } from '../rpc-policy.ts'
 
 // Read-only: an empty generated account authorizes an adapter getter; nothing is broadcast.
 const gateway = process.env.RAILGUN_READINESS_GATEWAY
@@ -34,19 +34,19 @@ if (process.env.RAILGUN_READINESS_BUDGET_ONLY === '1') {
 const endpoints = {
   1: process.env.RAILGUN_RPC_URL,
   42161: process.env.RAILGUN_ARBITRUM_RPC_URL || zanRpcUrl(42161, process.env.RAILGUN_ZAN_API_KEY),
-  137: process.env.RAILGUN_POLYGON_RPC_URL || zanRpcUrl(137, process.env.RAILGUN_ZAN_API_KEY),
   56: process.env.RAILGUN_BNB_RPC_URL || zanRpcUrl(56, process.env.RAILGUN_ZAN_API_KEY),
 }
 const extendedEndpoints = {
   42161: process.env.RAILGUN_ARBITRUM_VALIDATION_CLOUD_URL,
-  137: process.env.RAILGUN_POLYGON_VALIDATION_CLOUD_URL,
   56: process.env.RAILGUN_BNB_VALIDATION_CLOUD_URL,
 }
 const reports = []
-// All three vendor-backed networks share one account's credits/second budget.
-// Base has a separate acceptance gate; this deployment still configures four networks.
-const deploymentNetworks = PRIVATE_NETWORKS.filter(network => Object.hasOwn(endpoints, network.chainId))
-assert.equal(deploymentNetworks.length, Object.keys(endpoints).length, 'A required deployment network is missing')
+// The active vendor-backed networks share one account's credits/second budget.
+const deploymentNetworks = PRIVATE_NETWORKS.filter(network => PRODUCTION_PRIVATE_CHAIN_IDS.includes(network.chainId))
+assert.deepEqual(deploymentNetworks.map(network => network.chainId).sort((a, b) => a - b),
+  [...PRODUCTION_PRIVATE_CHAIN_IDS].sort((a, b) => a - b), 'A required deployment network is missing')
+assert.deepEqual(Object.keys(endpoints).map(Number).sort((a, b) => a - b),
+  [...PRODUCTION_PRIVATE_CHAIN_IDS].sort((a, b) => a - b), 'Deployment endpoints differ from the active private networks')
 for (const network of deploymentNetworks) {
   const endpoint = gateway ? new URL(network.chainId === 1 ? '/rpc' : `/rpc/${network.chainId}`, gateway).href : endpoints[network.chainId]
   assert(endpoint, 'Configure this network RPC or the existing server-only provider credential')

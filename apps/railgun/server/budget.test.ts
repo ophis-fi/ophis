@@ -8,10 +8,11 @@ vi.mock('cloudflare:workers', () => ({ DurableObject: class {
 } }))
 
 const databases: DatabaseSync[] = []
-function fixture() {
+function fixture(env: Partial<Env> = {}) {
   const db = new DatabaseSync(':memory:')
   databases.push(db)
   const storage = {
+    setAlarm: vi.fn(async () => {}), deleteAlarm: vi.fn(async () => {}),
     sql: { exec(query: string, ...params: (string | number)[]) {
       const statement = db.prepare(query)
       const rows = query.startsWith('SELECT') ? statement.all(...params) : (statement.run(...params), [])
@@ -23,8 +24,8 @@ function fixture() {
       catch (error) { db.exec('ROLLBACK'); throw error }
     },
   }
-  const restart = () => Reflect.construct(ValidationCloudBudget, [{ storage }, {}]) as ValidationCloudBudget
-  return { db, meter: restart(), restart }
+  const restart = () => Reflect.construct(ValidationCloudBudget, [{ storage }, env]) as ValidationCloudBudget
+  return { db, meter: restart(), restart, storage }
 }
 afterEach(() => { databases.splice(0).forEach((db) => db.close()); vi.useRealTimers(); vi.unstubAllGlobals() })
 
@@ -121,6 +122,7 @@ it('paces Alchemy by shared weighted CU and charges only accepted requests', () 
 })
 
 const arbEndpoint = 'https://arb-mainnet.g.alchemy.com/v2/test-key'
+const bnbEndpoint = 'https://bnb-mainnet.g.alchemy.com/v2/test-key'
 const baseEndpoint = 'https://base-mainnet.g.alchemy.com/v2/test-key'
 it('shares head reads across concurrent clients and charges only one upstream call per fifteen seconds', async () => {
   vi.useFakeTimers()
@@ -146,9 +148,9 @@ it('isolates cached heads by chain and endpoint and never follows a redirected s
     result: endpoint === arbEndpoint ? '0x123' : '0x456' }))
   vi.stubGlobal('fetch', upstream)
   expect(await meter.blockNumber(42161, arbEndpoint)).toBe('0x123')
-  expect(await meter.blockNumber(8453, baseEndpoint)).toBe('0x456')
+  expect(await meter.blockNumber(56, bnbEndpoint)).toBe('0x456')
   expect(await meter.blockNumber(42161, arbEndpoint.replace('test-key', 'replacement-key'))).toBe('0x456')
-  await expect(meter.blockNumber(8453, arbEndpoint)).rejects.toThrow('endpoint')
+  await expect(meter.blockNumber(56, arbEndpoint)).rejects.toThrow('endpoint')
   expect(upstream).toHaveBeenCalledTimes(3)
   for (const [, options] of upstream.mock.calls as unknown as [string, RequestInit][]) {
     expect(options.redirect).toBe('manual')
@@ -201,6 +203,49 @@ it('cancels oversized head streams before buffering the rest and redacts upstrea
   }))))
   await expect(meter.blockNumber(42161, arbEndpoint)).rejects.toThrow('Alchemy head unavailable.')
   expect(cancel).toHaveBeenCalledOnce()
-  vi.stubGlobal('fetch', vi.fn(async () => { throw new Error(baseEndpoint) }))
-  await expect(meter.blockNumber(8453, baseEndpoint)).rejects.toThrow(/^Alchemy head unavailable\.$/)
+  vi.stubGlobal('fetch', vi.fn(async () => { throw new Error(bnbEndpoint) }))
+  await expect(meter.blockNumber(56, bnbEndpoint)).rejects.toThrow(/^Alchemy head unavailable\.$/)
+})
+
+it.each([[137, 'https://polygon-mainnet.g.alchemy.com/v2/retained-key'], [8453, baseEndpoint]] as const)(
+  'refuses disabled chain %s head reads without quota changes or an upstream call', async (chainId, endpoint) => {
+    const { db, meter } = fixture(), upstream = vi.fn(async () => Response.json({ jsonrpc: '2.0', id: 1, result: '0x1' }))
+    vi.stubGlobal('fetch', upstream)
+    await expect(meter.blockNumber(chainId, endpoint)).rejects.toThrow('Unsupported private network.')
+    expect(db.prepare('SELECT * FROM usage').all()).toEqual([])
+    expect(db.prepare('SELECT * FROM pace').all()).toEqual([])
+    expect(upstream).not.toHaveBeenCalled()
+  },
+)
+
+const retainedBaseEnv = { RAILGUN_RPC_ENABLED: 'true', RAILGUN_BASE_ALCHEMY_EXTENDED: 'true', RAILGUN_BASE_RPC_URL: baseEndpoint }
+it.each(['manifest', 'page', 'tail'] as const)('refuses disabled Base %s before constructing its history cache', async method => {
+  const { db, meter, storage } = fixture(retainedBaseEnv), upstream = vi.fn()
+  vi.stubGlobal('fetch', upstream)
+  const action = async () => method === 'manifest' ? meter.baseHistoryManifest()
+    : method === 'page' ? meter.baseHistoryPage('ab'.repeat(32), 0) : meter.baseHistoryTail('ab'.repeat(32))
+  await expect(action()).rejects.toThrow('Base history is disabled.')
+  expect(db.prepare("SELECT name FROM sqlite_master WHERE type='table' ORDER BY name").all()).toEqual([{ name: 'pace' }, { name: 'usage' }])
+  expect(storage.setAlarm).not.toHaveBeenCalled(); expect(storage.deleteAlarm).not.toHaveBeenCalled()
+  expect(upstream).not.toHaveBeenCalled()
+})
+
+it.each([false, true])('disarms a persisted Base-only alarm after restart without changing history or quota (paused: %s)', async paused => {
+  const { db, restart, storage } = fixture(retainedBaseEnv), upstream = vi.fn(async () => { throw new Error('Must not fetch disabled Base') })
+  vi.stubGlobal('fetch', upstream)
+  db.exec('CREATE TABLE base_history_state(id INTEGER PRIMARY KEY, body TEXT NOT NULL)')
+  db.exec('CREATE TABLE base_history_parts(hash TEXT, part INTEGER, body TEXT)')
+  db.exec('CREATE TABLE base_history_usage(day TEXT PRIMARY KEY, cu INTEGER NOT NULL)')
+  db.exec('CREATE TABLE base_history_tail(id INTEGER PRIMARY KEY, body TEXT NOT NULL)')
+  db.prepare('INSERT INTO base_history_state(id,body) VALUES(1,?)').run(JSON.stringify({ scheduled: true, nextAttempt: 0,
+    ...(paused ? { retryAt: Date.now() + 60_000 } : {}) }))
+  db.prepare('INSERT INTO base_history_parts(hash,part,body) VALUES(?,0,?)').run('ab'.repeat(32), 'saved-public-history')
+  db.prepare('INSERT INTO base_history_usage(day,cu) VALUES(?,?)').run('history:2026-11-16', 1234)
+  db.prepare('INSERT INTO base_history_tail(id,body) VALUES(1,?)').run('saved-tail')
+  const tables = ['usage', 'pace', 'base_history_state', 'base_history_parts', 'base_history_usage', 'base_history_tail']
+  const snapshot = () => tables.map(table => db.prepare(`SELECT * FROM ${table}`).all())
+  const before = snapshot()
+  await restart().alarm()
+  expect(storage.deleteAlarm).toHaveBeenCalledOnce(); expect(storage.setAlarm).not.toHaveBeenCalled()
+  expect(snapshot()).toEqual(before); expect(upstream).not.toHaveBeenCalled()
 })
