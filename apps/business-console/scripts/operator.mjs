@@ -2,7 +2,7 @@
 // hostname, with OPERATOR_TOKEN from .dev.vars (made by "pnpm seed"). The token is never printed.
 // --production (after the command): https://operator.ophis.fi instead, behind Cloudflare Access (README, "The operator's
 // address in production"). The token is then the Keychain item "ophis-operator-token" (or OPERATOR_TOKEN), and the Access
-// token comes from cloudflared: when it has none, "cloudflared access login" opens the browser for the PIN sent by email.
+// token comes from cloudflared: when it has none, "cloudflared access login" opens the browser for the Cloudflare sign-in.
 //   node scripts/operator.mjs token --production   once at go-live, or to change it: a new token into the Keychain and the Worker secret
 //                                                   OPERATOR_TOKEN (wrangler, logged in). It goes on stdin only, never as an argument, and is never shown.
 //   node scripts/operator.mjs invite    a new application code: one use, valid 14 days; give it to the company that may apply
@@ -93,7 +93,7 @@ if (live) {
   }
   access = process.env.CF_ACCESS_TOKEN ?? accessToken()
   if (token && !access) {
-    spawnSync('cloudflared', ['access', 'login', '--quiet', '--auto-close', ORIGIN], { stdio: 'inherit' }) // the browser: the PIN sent by email
+    spawnSync('cloudflared', ['access', 'login', '--quiet', '--auto-close', ORIGIN], { stdio: 'inherit' }) // the browser: the Cloudflare sign-in
     access = accessToken()
   }
 } else {
@@ -106,7 +106,7 @@ if (live) {
 if (!token || (live && !access)) {
   console.error(!live ? 'No OPERATOR_TOKEN in .dev.vars. Run "pnpm seed" once: it adds one. Then restart "pnpm dev".'
     : !token ? 'No operator token in the Keychain (item "ophis-operator-token"): README, "The operator\'s address in production". Nothing was sent.'
-    : 'No Cloudflare Access token: the sign-in did not finish. Run the command again: a browser asks for the PIN sent by email (it needs cloudflared: brew install cloudflared). Nothing was sent.')
+    : 'No Cloudflare Access token: the sign-in did not finish. Run the command again: a browser opens the Cloudflare sign-in (it needs cloudflared: brew install cloudflared). Nothing was sent.')
   process.exit(1)
 }
 

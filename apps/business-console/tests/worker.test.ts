@@ -8610,6 +8610,16 @@ describe('E. onboarding: a company applies, proves its domain, is activated and 
       expect([...wranglerConfig.matchAll(/"crons":\s*\[([^\]]*)\]/g)].map((m) => m[1])).toEqual(['"17 3 * * *"'])
     })
 
+    it('the production Access values have the form accessOk takes: a team domain without https://, a 64-hex AUD tag', () => {
+      // env.production itself, not the first match in the file (Codex): wrangler.jsonc without its // comments and trailing commas
+      const json = wranglerConfig
+        .replace(/("(?:[^"\\]|\\.)*")|\/\/[^\n]*/g, (_, str?: string) => str ?? '')
+        .replace(/("(?:[^"\\]|\\.)*")|,(\s*[}\]])/g, (_, str?: string, end?: string) => str ?? end ?? '')
+      const vars = JSON.parse(json).env.production.vars
+      expect(vars.ACCESS_TEAM).toMatch(/^[a-z0-9-]+\.cloudflareaccess\.com$/)
+      expect(vars.ACCESS_AUD).toMatch(/^[0-9a-f]{64}$/)
+    })
+
     it('S3d: the operator cannot unfreeze while a linked or a pending wallet of the organisation is on a loaded list', async () => {
       for (const state of ['linked', 'pending']) {
         const o = await owner()
