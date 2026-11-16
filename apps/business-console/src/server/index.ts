@@ -435,11 +435,11 @@ const sealedRecover = async (c: Context, fields: Omit<RecoverIntent, 'issuedAt' 
 // Turnstile, the bot check before the anonymous recovery forms (security-design.md: before any pre-sign-in form that
 // writes). Production: Cloudflare's endpoint, this host's name, the action "recover". Locally only, TURNSTILE_URL names a
 // stand-in on this machine (scripts/turnstile-stub.mjs). Fails closed: no site key or secret; a token missing, over 2,048
-// characters, refused, of another host or action; no answer in 5 seconds. The production site key is public and is set
-// here once the widget exists; TURNSTILE_SECRET is a Worker secret. The visitor's address is not sent.
+// characters, refused, of another host or action; no answer in 5 seconds. The production site key is public: it is in
+// the page (the widget of pro.ophis.fi, Managed). TURNSTILE_SECRET is a Worker secret. The visitor's address is not sent.
 export const TURNSTILE: Record<string, { sitekey: string; hostname: string }> = {
   local: { sitekey: '1x00000000000000000000AA', hostname: 'localhost' }, // Cloudflare's test key, which always passes
-  production: { sitekey: '', hostname: 'pro.ophis.fi' },
+  production: { sitekey: '0x4AAAAAAGDRobwEznaQaco6', hostname: 'pro.ophis.fi' },
 }
 const turnstileBase = (env: Env) => orders.standIn(env, env.TURNSTILE_URL) ?? 'https://challenges.cloudflare.com'
 async function human(c: Context) {

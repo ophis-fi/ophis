@@ -116,7 +116,7 @@ To try it locally, with `dev` running: `npx -y pnpm@10.34.9 operator addresses o
 
 ## The bot check of /recover (Turnstile)
 The two anonymous recovery forms (start a recovery, cancel one) need a solved Cloudflare Turnstile check: each intent then costs one, which bounds anonymous recovery traffic. The server checks the token with Cloudflare, with this host's name and the action `recover`, and refuses on any doubt (`human_check_failed`). Only `/recover` loads the check's script; its policy adds only the check's origin and keeps Trusted Types.
-1. Production: create a widget in the Cloudflare dashboard (Turnstile, hostname `pro.ophis.fi`, Managed). Put its public site key in `TURNSTILE` (`src/server/index.ts`) and its secret with `wrangler secret put TURNSTILE_SECRET --env production`. Free plan. Until then `/recover` says the check is not set up, and its forms are refused.
+1. Production: a widget in the Cloudflare dashboard (Turnstile, hostname `pro.ophis.fi`, Managed). Its public site key is in `TURNSTILE` (`src/server/index.ts`). Its secret goes to the Worker, typed at wrangler's hidden prompt, never in a command or a chat: `cd <this folder> && npx -y pnpm@10.34.9 exec wrangler secret put TURNSTILE_SECRET --env production`. A secret that was ever pasted elsewhere is rotated first (the widget, Settings, Rotate Secret Key; the old one keeps working for two hours). Free plan. Until then `/recover` says the check is not set up, and its forms are refused.
 2. Locally: `scripts/turnstile-stub.mjs` (port 8796) stands in for Cloudflare and solves at once with Cloudflare's dummy token; `seed` adds `TURNSTILE_URL` and Cloudflare's public test secret to `.dev.vars`; `dev`, `tour` and `test:e2e` start it.
 
 ## The operator's address in production
