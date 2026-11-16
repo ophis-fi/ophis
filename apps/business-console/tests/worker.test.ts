@@ -10761,6 +10761,26 @@ describe('J. the real desk: terms from a live quote, two people, then the wallet
     }
   })
 
+  it('a filled order whose transaction could not be read is read again: the fill is recorded at once, the transaction on a later refresh, and not past 7 days after its expiry (Codex, PR #1646)', async () => {
+    const team = await deskTeam()
+    book()
+    const id = await approvedOrder(team)
+    const { token } = await orderLink(team.t, id)
+    expect((await orderSend(token, await accounts[1].signTypedData((await orderPage(token)).body.typed))).body.state).toBe('open')
+    const txOf = () => row<{ status: string; tx: string | null }>('SELECT status, tx_hash AS tx FROM orders WHERE id = ?', id)
+    book({ state: 'fulfilled', twist: (a) => (a.url.includes('/api/v1/trades') ? new Response('down', { status: 500 }) : undefined) })
+    await deskOrders(team.t)
+    expect(await txOf()).toEqual({ status: 'fulfilled', tx: null })
+    book({ state: 'fulfilled' })
+    await deskOrders(team.t)
+    const tx = (await txOf())!.tx
+    expect(tx).toMatch(/^0x[0-9a-f]{64}$/)
+    // 7 days after its expiry the transaction is no longer asked for.
+    await db.prepare('UPDATE orders SET tx_hash = NULL, valid_to = ? WHERE id = ?').bind(Math.floor((now - 7 * DAY) / 1000) - 1, id).run()
+    await deskOrders(team.t)
+    expect(await txOf()).toEqual({ status: 'fulfilled', tx: null })
+  })
+
   it('the audit log names the wallet only where its signature was checked: the page\'s read, and a Safe\'s send and cancel, which the link alone reaches, are the system\'s rows', async () => {
     const team = await deskTeam()
     book()

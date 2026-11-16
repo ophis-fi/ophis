@@ -1098,11 +1098,14 @@ export const orderCancelled = (db: D1Database, r: Opening, tokenHash: string, ho
   ]] : null)
 /** Sent orders whose state may still change, least recently read first: of one organisation, or of all (the daily run). */
 // With the holds of sends that stopped (an order id, no state): read until the orderbook says what became of them, expired or not.
-export async function openOrders(db: D1Database, orgId: string | null, limit: number) {
+// And a filled order whose transaction was not read yet (the trades answer failed once), for 7 days after its expiry: its
+// fill is recorded, its transaction link follows (Codex, PR #1646).
+export async function openOrders(db: D1Database, orgId: string | null, limit: number, now: number) {
   const { results } = await db.prepare(`SELECT o.org_id AS orgId, o.id, o.uid, o.status, a.payload FROM orders o JOIN approvals a ON a.org_id = o.org_id AND a.id = o.id
-                                        WHERE (o.status IN ('open', 'presignaturePending') OR (o.status IS NULL AND o.uid IS NOT NULL)) AND (?1 IS NULL OR o.org_id = ?1)
+                                        WHERE (o.status IN ('open', 'presignaturePending') OR (o.status IS NULL AND o.uid IS NOT NULL) OR (o.status = 'fulfilled' AND o.tx_hash IS NULL AND o.valid_to * 1000 > ?3))
+                                          AND (?1 IS NULL OR o.org_id = ?1)
                                         ORDER BY o.checked_at, o.rowid LIMIT ?2`)
-    .bind(orgId, limit).all<{ orgId: string; id: string; uid: string; status: string | null; payload: string }>()
+    .bind(orgId, limit, now - 7 * 24 * 60 * 60 * 1000).all<{ orgId: string; id: string; uid: string; status: string | null; payload: string }>()
   return results.map((r) => ({ orgId: r.orgId, id: r.id, uid: r.uid, held: r.status === null, chainId: termsOf(r).chainId, sellToken: termsOf(r).sell.token }))
 }
 /**
@@ -1113,7 +1116,7 @@ export async function openOrders(db: D1Database, orgId: string | null, limit: nu
 // same, so orders an orderbook cannot answer for never hold the refresh's window (Codex, PR #1646).
 export async function orderStates(db: D1Database, read: { orgId: string; id: string; status: string; sold: string; bought: string; tx: string | null; fee: string | null }[], now: number, tried: { orgId: string; id: string }[] = []) {
   if (read.length || tried.length) await db.batch([
-    ...read.map((x) => db.prepare(`UPDATE orders SET status = ?, executed_sell = ?, executed_buy = ?, executed_fee = ?, tx_hash = COALESCE(?, tx_hash), checked_at = ? WHERE org_id = ? AND id = ? AND status IN ('open', 'presignaturePending')`)
+    ...read.map((x) => db.prepare(`UPDATE orders SET status = ?, executed_sell = ?, executed_buy = ?, executed_fee = ?, tx_hash = COALESCE(?, tx_hash), checked_at = ? WHERE org_id = ? AND id = ? AND (status IN ('open', 'presignaturePending') OR (status = 'fulfilled' AND tx_hash IS NULL))`)
       .bind(x.status, x.sold, x.bought, x.fee, x.tx, now, x.orgId, x.id)),
     ...tried.map((x) => db.prepare('UPDATE orders SET checked_at = ? WHERE org_id = ? AND id = ?').bind(now, x.orgId, x.id)),
   ])

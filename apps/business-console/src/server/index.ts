@@ -886,7 +886,7 @@ async function refresh(env: Env, orgId: string | null, now: number, limit: numbe
   const read = []
   const tried = []
   let moved = 0
-  for (const o of await data.openOrders(env.DB, orgId, limit)) {
+  for (const o of await data.openOrders(env.DB, orgId, limit, now)) {
     const state = await orders.status(env, o.chainId, o.uid, o.sellToken)
     if (!state) { tried.push(o); continue }
     // ponytail: a hold leaves by one commit (3 D1 queries), one per read: the next on the next read.
