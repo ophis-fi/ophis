@@ -731,16 +731,17 @@ async function judge(db: D1Database, orgId: string, role: Role, kind: Kind | Dir
     if (JSON.stringify(terms) !== value) return 'invalid'
     const r = await db.prepare(`SELECT o.kind, s.role, max(COALESCE(s.quarantine_until, 0), COALESCE(o.quarantine_until, 0)) AS quarantine,
                                   (SELECT w.label FROM wallets w WHERE w.org_id = o.id AND w.id = ?1 AND w.state = 'linked') AS wallet, (SELECT w.address FROM wallets w WHERE w.org_id = o.id AND w.id = ?1) AS address,
-                                  (SELECT w.chain_id FROM wallets w WHERE w.org_id = o.id AND w.id = ?1) AS chain, (SELECT w.kind FROM wallets w WHERE w.org_id = o.id AND w.id = ?1) AS walletKind,
+                                  (SELECT w.chain_id FROM wallets w WHERE w.org_id = o.id AND w.id = ?1) AS chain, (SELECT w.kind FROM wallets w WHERE w.org_id = o.id AND w.id = ?1) AS walletKind, (SELECT w.proof_by FROM wallets w WHERE w.org_id = o.id AND w.id = ?1) AS proofBy,
                                   (SELECT count(*) FROM approvals a WHERE a.org_id = o.id AND a.action = 'order' AND a.subject_id <> ?2 AND a.state = 'pending' AND a.expires_at > ?3) AS waiting
                                 FROM organisations o LEFT JOIN seats s ON s.org_id = o.id AND s.id = ?4 AND s.state = 'active' WHERE o.id = ?5 AND o.state = 'active'`)
-      .bind(terms.walletId, subjectId, now, by, orgId).first<{ kind: string; role: Role | null; quarantine: number; wallet: string | null; address: string | null; chain: number | null; walletKind: string | null; waiting: number }>()
+      .bind(terms.walletId, subjectId, now, by, orgId).first<{ kind: string; role: Role | null; quarantine: number; wallet: string | null; address: string | null; chain: number | null; walletKind: string | null; proofBy: string | null; waiting: number }>()
     return !r ? 'org_inactive'
       : r.kind !== 'institution' ? 'institution_only'
       : !r.role || !(PREPARERS as readonly Role[]).includes(r.role) ? 'forbidden'
       : r.quarantine > now ? 'quarantine'
       : r.wallet === null || r.wallet !== terms.label || checksum(r.address!) !== terms.wallet || (r.walletKind === 'safe') !== (terms.scheme === 'presign') ? 'wallet_not_linked'
       : r.chain !== terms.chainId ? 'wallet_chain'
+      : r.walletKind !== 'safe' && r.proofBy === 'contract' ? 'wallet_contract'
       : r.waiting >= MAX_OPEN_ORDERS ? 'too_many_orders'
       : { detail: null, apply: [db.prepare(`INSERT INTO orders (org_id, id, approved_at) SELECT org_id, id, ? FROM approvals WHERE org_id = ? AND subject_id = ? AND action = 'order'`).bind(now, orgId, subjectId)] }
   }
@@ -1004,8 +1005,11 @@ export async function orderWithdraw(db: D1Database, actor: Actor, id: string, no
   return outcome
 }
 /** The order a link opens, while the link can be used, with the wallet of its terms if that wallet is still linked. */
+// A Safe's order the orderbook took, its presignature still to come: its sign link answers until the order expires, so a
+// page that lost the answer or was reloaded gets the order again and proposes the Safe transaction (Codex, PR #1646).
+const PRESIGN_WAITING = `(o.link_purpose = 'sign' AND o.status = 'presignaturePending' AND o.valid_to * 1000 > ?2)`
 export const orderByLink = async (db: D1Database, tokenHash: string, now: number) => {
-  const r = await db.prepare(`${ORDER_ROW} WHERE o.link_hash = ?1 AND ${LINK_LIVE}`).bind(tokenHash, now, null, null).first<OrderRow>()
+  const r = await db.prepare(`${ORDER_ROW} WHERE o.link_hash = ?1 AND (${LINK_LIVE} OR ${PRESIGN_WAITING})`).bind(tokenHash, now, null, null).first<OrderRow>()
   return r && { ...r, terms: termsOf(r) }
 }
 type Opening = NonNullable<Awaited<ReturnType<typeof orderByLink>>>
@@ -1045,9 +1049,10 @@ export async function orderSending(db: D1Database, r: Opening, tokenHash: string
   })
   return outcome
 }
-/** The orderbook took it: the order is live, recorded on the id its send holds, and its link is used. ponytail: no audit row, the send's is it. */
+/** The orderbook took it: the order is live, recorded on the id its send holds, and its link is used (a Safe's waits for its presignature: PRESIGN_WAITING). ponytail: no audit row, the send's is it. */
 export const orderSent = (db: D1Database, r: Opening, uid: string, status: string) =>
-  db.prepare('UPDATE orders SET status = ?, link_hash = NULL, link_purpose = NULL WHERE org_id = ? AND id = ? AND uid = ? AND status IS NULL').bind(status, r.orgId, r.id, uid).run()
+  db.prepare(`UPDATE orders SET status = ?1, ${KEEP_PRESIGN_LINK} WHERE org_id = ?2 AND id = ?3 AND uid = ?4 AND status IS NULL`).bind(status, r.orgId, r.id, uid).run()
+const KEEP_PRESIGN_LINK = `link_hash = CASE WHEN ?1 = 'presignaturePending' THEN link_hash END, link_purpose = CASE WHEN ?1 = 'presignaturePending' THEN link_purpose END`
 // The hold ends, if it was taken no later than `before` (a send ends its own hold, never a later one): the order waits
 // for its signature on its link, withdrawn if its link died meanwhile (a withdrawal, a freeze). Every way out of a hold
 // is one commit (orderUnsent, holdGone, holdFound; orderSent only after the orderbook took it), so none writes over another.
@@ -1065,7 +1070,7 @@ export const holdGone = (db: D1Database, x: { orgId: string; id: string; uid: st
 export const holdFound = (db: D1Database, x: { orgId: string; id: string; uid: string }, s: { status: string; sold: string; bought: string; tx: string | null; fee: string | null }, now: number) =>
   commit(db, x.orgId, async () => (await db.prepare('SELECT 1 FROM orders WHERE org_id = ? AND id = ? AND uid = ? AND status IS NULL').bind(x.orgId, x.id, x.uid).first())
     ? [{ at: now, actorKind: 'system', actorId: null, sessionId: null, action: 'order.found', subjectId: x.id, detail: s.status }, [
-      db.prepare('UPDATE orders SET status = ?, executed_sell = ?, executed_buy = ?, executed_fee = ?, tx_hash = ?, checked_at = ?, link_hash = NULL, link_purpose = NULL WHERE org_id = ? AND id = ? AND uid = ? AND status IS NULL')
+      db.prepare(`UPDATE orders SET status = ?1, executed_sell = ?2, executed_buy = ?3, executed_fee = ?4, tx_hash = ?5, checked_at = ?6, ${KEEP_PRESIGN_LINK} WHERE org_id = ?7 AND id = ?8 AND uid = ?9 AND status IS NULL`)
         .bind(s.status, s.sold, s.bought, s.fee, s.tx, now, x.orgId, x.id, x.uid),
     ]] : null)
 /** What the organisation's other open orders of this wallet still need of the asset this order sells, on its chain, in atoms: the allowance they rely on. */
@@ -1166,9 +1171,9 @@ export type WalletKind = 'safe' | 'custodian' | 'single_key'
 /** The live wallets of an organisation. recovery: 'in_force' (since recoveryAt), 'waiting' (in force from recoveryAt), or null. */
 export async function wallets(db: D1Database, orgId: string, now: number) {
   const { results } = await db
-    .prepare(`SELECT w.id, w.chain_id AS chainId, w.address, w.kind, w.label, w.state, w.linked_at AS linkedAt, w.anchor, w.anchor_effective_at AS at, w.snapshot
+    .prepare(`SELECT w.id, w.chain_id AS chainId, w.address, w.kind, w.label, w.state, w.linked_at AS linkedAt, w.anchor, w.anchor_effective_at AS at, w.snapshot, w.proof_by AS proofBy
               FROM wallets w WHERE w.org_id = ? AND ${LIVE} ORDER BY w.rowid`)
-    .bind(orgId, now).all<{ id: string; chainId: number; address: string; kind: WalletKind; label: string; state: 'pending' | 'linked'; linkedAt: number; anchor: string | null; at: number | null; snapshot: string | null }>()
+    .bind(orgId, now).all<{ id: string; chainId: number; address: string; kind: WalletKind; label: string; state: 'pending' | 'linked'; linkedAt: number; anchor: string | null; at: number | null; snapshot: string | null; proofBy: 'key' | 'contract' | null }>()
   const a = standing(results, now)
   return results.map(({ anchor: _, at, ...w }) => {
     const recovery = w.id === a.inForce ? ('in_force' as const) : w.id === a.waiting ? ('waiting' as const) : null

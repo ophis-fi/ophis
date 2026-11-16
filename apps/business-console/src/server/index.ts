@@ -761,6 +761,9 @@ async function order(c: Context) {
   const wallet = (await data.wallets(c.env.DB, c.actor.orgId, c.now)).find((w) => w.id === t.walletId && w.state === 'linked')
   if (!wallet) return refuse('wallet_not_linked')
   if (wallet.chainId !== t.chainId) return refuse('wallet_chain')
+  // A contract that proved the link (ERC-1271) but is no genuine Safe is stored as a single key; it has no key to sign an
+  // order with and no Safe to presign it (Codex): the desk refuses it.
+  if (wallet.kind !== 'safe' && wallet.proofBy === 'contract') return refuse('wallet_contract')
   const quoted = await orders.quote(c.env, t, wallet)
   if ('error' in quoted) return json(quoted.error === 'quote_unavailable' ? 503 : 409, quoted)
   const terms = orders.terms(t, wallet, quoted.quoted)
@@ -858,6 +861,9 @@ async function orderSend(c: Context) {
   const stop = await screened(c, r, true) // a key wallet's signature was verified above
   if (stop) return stop
   if (!permitted(r)) return refuse('asset_not_permitted') // a deploy between the page and the send
+  // Asked again for a Safe's order the orderbook already took (a lost answer, a reloaded page): its uid, so that the page
+  // proposes the Safe transaction. Nothing is posted or written (Codex, PR #1646).
+  if (r.status === 'presignaturePending') return r.uid === built.uid ? json(200, { state: 'presignaturePending', uid: built.uid }) : refuse('already_sent')
   const held = await data.orderSending(c.env.DB, r, r.hash, built.uid, signature, c.now)
   if (held !== 'ok') return refuse(held)
   const status = t.scheme === 'presign' ? 'presignaturePending' : 'open'

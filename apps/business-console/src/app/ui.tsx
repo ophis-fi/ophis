@@ -70,6 +70,7 @@ const SAY: Record<string, string> = {
   validity_invalid: 'Choose how long the order stays valid after signing: 30 minutes, 4 hours or 24 hours.',
   amount_too_small: 'The amount is too small to get a usable price.',
   wallet_chain: 'That wallet is not linked on the chain of this order. Choose the chain of the wallet, or a wallet linked on that chain.',
+  wallet_contract: 'That wallet is a contract that is not a Safe: the desk cannot sign orders for it. Use a wallet with its own key, or a Safe.',
   over_limit: 'This is above the most one order may sell of this asset.',
   quote_unavailable: 'The orderbook did not give a usable quote just now. Try again in a minute.',
   quote_refused: 'The orderbook gave no quote for this order. Check the amount and the assets.',

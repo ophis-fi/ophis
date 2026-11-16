@@ -10114,6 +10114,11 @@ describe('J. the real desk: terms from a live quote, two people, then the wallet
     expect((await review(t, waits)).body).toEqual({ error: 'wallet_not_linked' })
     expect((await review(t, data.randomId())).body).toEqual({ error: 'wallet_not_linked' })
     expect((await review(t, onBase)).body).toEqual({ error: 'wallet_chain' })
+    // A contract that proved its link (ERC-1271) but is no genuine Safe is stored as a single key: no key signs for it
+    // and no Safe presigns, so the desk refuses it (Codex, PR #1646).
+    const contract = await demoWallet(t.orgId, 'Contract wallet', 'linked', someAddress(), 'single_key')
+    await db.prepare(`UPDATE wallets SET proof_by = 'contract' WHERE id = ?`).bind(contract).run()
+    expect((await review(t, contract)).body).toEqual({ error: 'wallet_contract' })
     expect(asked.length).toBe(n)
   })
 
@@ -10224,6 +10229,7 @@ describe('J. the real desk: terms from a live quote, two people, then the wallet
       ['institution_only', () => setOrg(o.orgId, `kind = 'partner'`), () => setOrg(o.orgId, `kind = 'institution'`)], ['org_inactive', () => setOrg(o.orgId, `state = 'frozen'`), () => setOrg(o.orgId, `state = 'active'`)],
       ['wallet_not_linked', () => wallet(`state = 'unlinked'`), () => wallet(`state = 'linked'`)], ['wallet_not_linked', () => wallet(`kind = 'safe'`), () => wallet(`kind = 'custodian'`)],
       ['wallet_not_linked', () => wallet(`label = 'Renamed'`), () => wallet(`label = 'Operations Safe'`)], ['wallet_chain', () => wallet('chain_id = 8453'), () => wallet('chain_id = 10')],
+      ['wallet_contract', () => wallet(`proof_by = 'contract', kind = 'single_key'`), () => wallet(`proof_by = NULL, kind = 'custodian'`)],
     ]
     for (const [error, set, undo] of cases) {
       await set()
@@ -10673,18 +10679,57 @@ describe('J. the real desk: terms from a live quote, two people, then the wallet
     expect([before, sent.body.state, after]).toEqual([false, 'open', true])
   })
 
-  it('a Safe order sent, then its page closed before the Safe transaction: the link is used up and no new signing link is given; the order waits until it expires (the known limit)', async () => {
+  it('a Safe order sent, then its answer lost or its page reloaded before the Safe transaction: the same link gives the order and its uid again, posting and writing nothing, until the orderbook sees the presignature; no new signing link is given (Codex, PR #1646)', async () => {
+    const team = await deskTeam()
+    const safe = await demoWallet(team.o.orgId, 'Treasury Safe', 'linked', accounts[4].address.toLowerCase(), 'safe')
+    const asked = book()
+    const id = await approvedOrder({ ...team, walletId: safe })
+    const { token } = await orderLink(team.t, id)
+    const page = await orderPage(token)
+    const sent = await orderSend(token)
+    const [posts, before] = [asked.length, await snapshot()]
+    const resent = await orderSend(token)
+    expect([asked.length, await snapshot()]).toEqual([posts, before]) // nothing posted, nothing written
+    const [again, fresh] = [await orderPage(token), await orderLink(team.t, id)]
+    expect([sent.body, resent.body, again.status, again.body.uid, fresh.status, fresh.body])
+      .toEqual([{ state: 'presignaturePending', uid: page.body.uid }, { state: 'presignaturePending', uid: page.body.uid }, 200, page.body.uid, 404, { error: 'not_found' }])
+    book({ state: 'presignaturePending' })
+    expect((await deskOrders(team.t)).find((x) => x.id === id)!.state).toBe('Sent: waiting for the Safe transaction')
+    expect((await orderSend(token)).body).toEqual({ state: 'presignaturePending', uid: page.body.uid })
+    // Not past the order's own expiry.
+    const validTo = (await row<{ v: number }>('SELECT valid_to AS v FROM orders WHERE id = ?', id))!.v
+    await db.prepare('UPDATE orders SET valid_to = ? WHERE id = ?').bind(Math.floor(now / 1000) - 1, id).run()
+    expect((await orderSend(token)).body).toEqual({ error: 'link_invalid' })
+    await db.prepare('UPDATE orders SET valid_to = ? WHERE id = ?').bind(validTo, id).run()
+    // Once the orderbook sees the presignature, the order moves on and its link is dead.
+    book({ state: 'open' })
+    expect((await deskOrders(team.t)).find((x) => x.id === id)!.state).toBe('Open')
+    expect((await orderSend(token)).body).toEqual({ error: 'link_invalid' })
+  })
+
+  it('a Safe order whose send stopped after the post: the refresh finds it waiting for its presignature and keeps its link, so the page can still propose the Safe transaction (Codex, PR #1646)', async () => {
     const team = await deskTeam()
     const safe = await demoWallet(team.o.orgId, 'Treasury Safe', 'linked', accounts[4].address.toLowerCase(), 'safe')
     book()
     const id = await approvedOrder({ ...team, walletId: safe })
     const { token } = await orderLink(team.t, id)
-    await orderPage(token)
-    const sent = await orderSend(token)
-    const [again, fresh] = [await orderPage(token), await orderLink(team.t, id)]
+    const page = await orderPage(token)
+    // The hold of a send whose record was lost: its uid written, no status, older than a hold.
+    await db.prepare('UPDATE orders SET uid = ?, signature = ?, sent_at = ?, checked_at = ? WHERE id = ?').bind(page.body.uid, accounts[4].address.toLowerCase(), now - 61_000, now - 61_000, id).run()
     book({ state: 'presignaturePending' })
-    expect([sent.body.state, again.status, again.body, fresh.status, fresh.body, (await deskOrders(team.t)).find((x) => x.id === id)!.state])
-      .toEqual(['presignaturePending', 404, { error: 'link_invalid' }, 404, { error: 'not_found' }, 'Sent: waiting for the Safe transaction'])
+    await deskOrders(team.t)
+    expect(await row('SELECT status, link_hash IS NOT NULL AS link FROM orders WHERE id = ?', id)).toEqual({ status: 'presignaturePending', link: 1 })
+    expect((await orderSend(token)).body).toEqual({ state: 'presignaturePending', uid: page.body.uid })
+  })
+
+  it('a key wallet\'s order sent: its link is used up at once (only a Safe\'s waits for its presignature)', async () => {
+    const team = await deskTeam()
+    book()
+    const id = await approvedOrder(team)
+    const { token } = await orderLink(team.t, id)
+    const signature = await accounts[1].signTypedData((await orderPage(token)).body.typed)
+    expect((await call('POST', '/api/order/send', { sign: true, body: { token, signature } })).body.state).toBe('open')
+    expect((await call('POST', '/api/order/send', { sign: true, body: { token, signature } })).body).toEqual({ error: 'link_invalid' })
   })
 
   it('the audit log names the wallet only where its signature was checked: the page\'s read, and a Safe\'s send and cancel, which the link alone reaches, are the system\'s rows', async () => {
@@ -10981,7 +11026,7 @@ describe('J. the real desk: terms from a live quote, two people, then the wallet
     expect(rights.find((x: { can: string }) => x.can.startsWith('Prepare an order'))).toMatchObject({ roles: ['owner', 'admin', 'trader'], fresh: true, second: true })
     expect(rights.find((x: { can: string }) => x.can.startsWith('Give the wallet the link'))).toMatchObject({ roles: ['owner', 'admin', 'trader', 'approver', 'compliance'], fresh: true, second: false })
     expect(rights.find((x: { can: string }) => x.can.startsWith('See the desk'))).toMatchObject({ fresh: false, second: false })
-    for (const code of ['limit_out_of_band', 'wallet_chain', 'slippage_invalid', 'validity_invalid', 'quote_unavailable', 'quote_refused', 'review_expired', 'review_invalid', 'review_used', 'amount_too_small']) expect(uiSource, code).toContain(`${code}: '`)
+    for (const code of ['limit_out_of_band', 'wallet_chain', 'wallet_contract', 'slippage_invalid', 'validity_invalid', 'quote_unavailable', 'quote_refused', 'review_expired', 'review_invalid', 'review_used', 'amount_too_small']) expect(uiSource, code).toContain(`${code}: '`)
     for (const code of ['open', 'presignaturePending', 'cancelled', 'asked', 'link_invalid', 'signature_rejected', 'sanctioned_address', 'wallet_not_linked', 'asset_not_permitted', 'order_refused', 'orderbook_unavailable', 'already_sent', 'not_opened']) expect(signScript, code).toMatch(new RegExp(`\\b${code}: '`))
     expect(deskPage).toContain("await (send ? sensitive : api)<OrderBody & { review: string; error?: string }>('/api/desk/orders'")
   })
