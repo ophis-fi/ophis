@@ -674,8 +674,13 @@ export function Organisation({ me, onSignedOut, onChanged }: { me: Me; onSignedO
   const [walletId, setWalletId] = useState<string>()
   const [copiedId, setCopiedId] = useState('')
   const [label, setLabel] = useState('Security key 2')
+  // Only the newest read lands: reads of an action, a closed dialog and the page can overlap, and an older answer never
+  // overwrites a newer one (CodeRabbit, PR #1646).
+  const reads = useRef(0)
   const load = useCallback(async () => {
+    const n = ++reads.current
     const result = await api<View>('/api/org')
+    if (n !== reads.current) return
     if (result.status === 401) return onSignedOut()
     if (result.status !== 200) return setProblem('The organisation could not be loaded. Reload the page.')
     setView(result.data)

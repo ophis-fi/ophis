@@ -1,5 +1,5 @@
 // App shell: band, bar, rail, footer line. Routes live in the URL fragment, as in the mockup.
-import { StrictMode, useCallback, useEffect, useState, useSyncExternalStore } from 'react'
+import { StrictMode, useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react'
 import { createRoot } from 'react-dom/client'
 import './fonts.css'
 import './kit.css'
@@ -48,8 +48,12 @@ function App() {
     if (next) setTicket(next)
   }, [hash])
   const [closed, setClosed] = useState('') // milestone 5: 'org_frozen' or 'org_closed', the organisation of this session
+  // Only the newest read lands: the refreshes of pages and actions overlap, and an older answer never overwrites a newer one (CodeRabbit, PR #1646).
+  const reads = useRef(0)
   const loadMe = useCallback(async () => {
+    const n = ++reads.current
     const result = await api<Me & { error?: string }>('/api/me')
+    if (n !== reads.current) return
     setClosed(result.status === 403 && /^org_/.test(result.data.error ?? '') ? result.data.error! : '')
     setMe(result.status === 200 ? result.data : null)
   }, [])
