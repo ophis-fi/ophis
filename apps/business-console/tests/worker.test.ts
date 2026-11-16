@@ -7430,7 +7430,7 @@ describe('E. onboarding: a company applies, proves its domain, is activated and 
 
   // The fingerprint the security-key ceremony printed and the key holder sent (README, "The sealing key in production"):
   // a recipient pasted from anywhere else (the local test key, say) fails here. Empty until the ceremony.
-  const PRODUCTION_FINGERPRINT = ''
+  const PRODUCTION_FINGERPRINT = '9d1f8c22a7c3b24f89a3b191733196d2c2509ddec5357c83bbcbaa0ce3e15b8f' // generation g1, 2026-11-16
   it('B2: production seals to one recipient, the same in the bundle (pro.ophis.fi) and in the Worker (env.production), of the hybrid form or empty until the ceremony, and it is the ceremony\'s', async () => {
     const bundle = /^const PRODUCTION = '([^'\n]*)'$/m.exec(onboardingPage)?.[1]
     // env.production itself: wrangler.jsonc without its // comments and trailing commas, as for the Access values
