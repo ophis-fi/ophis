@@ -832,6 +832,7 @@ mod tests {
                 Some(snapshot.path().to_owned()),
                 std::time::Duration::from_secs(1),
             )
+            .await
             .unwrap(),
         );
         let database =

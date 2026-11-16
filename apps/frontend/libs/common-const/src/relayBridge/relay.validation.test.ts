@@ -21,6 +21,17 @@ it('verifies a live 3 bps bridge quote against the official order hash and pinne
   expect(verifyRelayQuote(sample.response, request, now).protocol.v2.orderId).toBe(sample.response.protocol.v2.orderId)
 })
 
+it.each([0, 9, -1, 0.5, 101, NaN, Infinity])(
+  'rejects a signed quote outside requested slippage %s',
+  (bridgeSlippageBps) => {
+    expect(() => verifyRelayQuote(sample.response, { ...request, bridgeSlippageBps }, now)).toThrow()
+  },
+)
+
+it.each([10, 100])('accepts the signed rounded-up minimum within requested slippage %s', (bridgeSlippageBps) => {
+  expect(verifyRelayQuote(sample.response, { ...request, bridgeSlippageBps }, now)).toBe(sample.response)
+})
+
 it.each([
   ['source chain', { sellTokenChainId: SupportedChainId.MAINNET }],
   ['destination chain', { buyTokenChainId: SupportedChainId.ARBITRUM_ONE }],

@@ -3,12 +3,12 @@ import { QuoteBridgeRequest } from '@cowprotocol/sdk-bridging'
 
 import { RELAY_DEPOSIT_WINDOW, relayCurrency } from './relay.constants'
 import { RelayQuote } from './relay.types'
-import { verifyRelayQuote } from './relay.validation'
+import { relaySlippageBps, verifyRelayQuote } from './relay.validation'
 import { RelayApi } from './relayApi.service'
 
 export async function relayQuote(api: RelayApi, request: QuoteBridgeRequest, shed: string): Promise<RelayQuote> {
   if (request.kind !== OrderKind.SELL) throw new Error('Relay supports sell orders only')
-  const slippageBps = request.bridgeSlippageBps ?? 10
+  const slippageBps = relaySlippageBps(request)
   const response = await api.request('quote', {
     user: shed,
     recipient: request.receiver || request.account,
@@ -64,6 +64,7 @@ export function sameRelayRequest(a: QuoteBridgeRequest, b: QuoteBridgeRequest): 
     a.sellTokenChainId === b.sellTokenChainId &&
     a.buyTokenChainId === b.buyTokenChainId &&
     a.amount === b.amount &&
+    relaySlippageBps(a) === relaySlippageBps(b) &&
     areAddressesEqual(a.account, b.account) &&
     areAddressesEqual(a.receiver || a.account, b.receiver || b.account) &&
     areAddressesEqual(a.sellTokenAddress, b.sellTokenAddress) &&

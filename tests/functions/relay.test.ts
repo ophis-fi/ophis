@@ -81,6 +81,13 @@ test('rate limited quotes never reach upstream', async () => {
   });
 });
 
+test('quote body limit counts UTF-8 bytes before calling Relay', async () => {
+  await withFetch(async (calls) => {
+    assert.equal((await call('quote', { ...body(), padding: '€'.repeat(1500) })).status, 413);
+    assert.equal(calls.length, 0);
+  });
+});
+
 test('status reads use the shared App budget after per-IP admission', async () => {
   await withFetch(async (calls) => {
     const admissions: { name: string; path: string }[] = [];

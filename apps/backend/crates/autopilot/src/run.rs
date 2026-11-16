@@ -574,6 +574,7 @@ pub async fn run(config: Configuration, shutdown_controller: ShutdownController)
             config.banned_users.addresses_file,
             config.banned_users.snapshot_max_age,
         )
+        .await
         .expect("valid and fresh sanctions screening snapshot"),
         balance_fetcher.clone(),
         deny_listed_tokens.clone(),

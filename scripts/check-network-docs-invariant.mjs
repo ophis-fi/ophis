@@ -122,11 +122,16 @@ assert.deepEqual(feeChainIds.sort((a, b) => a - b), expectedSdkIds, 'SDK/MCP mai
 const orderbookIds = [...sdkOrderbook.matchAll(/^  (\d+): 'https:\/\//gm)].map((match) => Number(match[1]));
 assert.deepEqual(orderbookIds.sort((a, b) => a - b), expectedSdkIds, 'SDK orderbook coverage drift');
 
-const sdkCoverage = /SDK v(\S+)[^\n]*?\b14\b[^.\n]*including Arc/;
+const sdkCoverage = /SDK v(\S+)[^\d.;\n]*\b14 EVM mainnets\b[^.;\n]*including Arc/;
 assert.doesNotMatch(
   `SDK v${sdkPackage.version}: 13 EVM mainnets, excluding Arc\nVault builder: 14 EVM mainnets, including Arc`,
   sdkCoverage,
   'SDK coverage guard must not borrow coverage from another table row',
+);
+assert.doesNotMatch(
+  `SDK v${sdkPackage.version}: 13 EVM mainnets; Vault builder: 14 EVM mainnets, including Arc`,
+  sdkCoverage,
+  'SDK coverage guard must not borrow coverage from a later statement',
 );
 for (const path of [
   'apps/docs-ophis/docs/networks-assets.md',

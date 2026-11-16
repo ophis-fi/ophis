@@ -485,6 +485,7 @@ pub async fn run(config: Configuration) {
             config.banned_users.addresses_file,
             config.banned_users.snapshot_max_age,
         )
+        .await
         .expect("valid and fresh sanctions screening snapshot"),
     );
     let order_validator = Arc::new(OrderValidator::new(

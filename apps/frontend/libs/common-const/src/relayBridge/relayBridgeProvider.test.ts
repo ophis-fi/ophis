@@ -103,6 +103,20 @@ it('compares net destination output, including the app fee, and refunds to the o
   expect(JSON.parse(quote.quoteBody || '{}').request.signer).toBeUndefined()
 })
 
+it('rejects tightened slippage during quoting and refuses reuse after a tolerance change', async () => {
+  const relay = provider()
+  const quote = await relay.getQuote(request)
+  await expect(relay.getUnsignedBridgeCall({ ...request, bridgeSlippageBps: 10 }, quote)).resolves.toBeDefined()
+  for (const bridgeSlippageBps of [0, 20]) {
+    await expect(relay.getUnsignedBridgeCall({ ...request, bridgeSlippageBps }, quote)).rejects.toThrow()
+  }
+  await expect(relay.getQuote({ ...request, bridgeSlippageBps: 0 })).rejects.toThrow()
+  const mutableRequest = { ...request, bridgeSlippageBps: 10 }
+  const mutableQuote = await relay.getQuote(mutableRequest)
+  mutableRequest.bridgeSlippageBps = 0
+  await expect(relay.getUnsignedBridgeCall(mutableRequest, mutableQuote)).rejects.toThrow()
+})
+
 it('an unavailable Relay discovery endpoint leaves other providers free to quote', async () => {
   ;(fetch as jest.Mock).mockRejectedValue(new Error('network down'))
   expect(await provider().getNetworks()).toEqual([])

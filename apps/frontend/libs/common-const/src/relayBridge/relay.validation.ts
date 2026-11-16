@@ -25,6 +25,12 @@ export function relayAmount(value: unknown): bigint {
   return amount
 }
 
+export function relaySlippageBps(request: QuoteBridgeRequest): number {
+  const slippageBps = request.bridgeSlippageBps ?? 10
+  relayAssert(Number.isInteger(slippageBps) && slippageBps >= 0 && slippageBps <= 100)
+  return slippageBps
+}
+
 // EVM addresses are already Relay's canonical bytes encoding. Fail closed on any schema/signature change.
 export function verifyRelayQuote(value: unknown, request: QuoteBridgeRequest, now: number): RelayResponse {
   const quote = value as RelayResponse
@@ -69,7 +75,10 @@ export function verifyRelayQuote(value: unknown, request: QuoteBridgeRequest, no
   })
   const minimum = relayAmount(output.minimumAmount)
   const expected = relayAmount(output.expectedAmount)
+  const slippageBps = relaySlippageBps(request)
   relayAssert(minimum > 0n && expected >= minimum)
+  // Round the minimum up to avoid exceeding the requested loss by one token atom.
+  relayAssert(minimum >= (expected * (10_000n - BigInt(slippageBps)) + 9_999n) / 10_000n)
   relayAssert(minimum === relayAmount(quote.details.currencyOut.minimumAmount))
   relayAssert(expected === relayAmount(quote.details.currencyOut.amount))
   return quote

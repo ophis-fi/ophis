@@ -108,10 +108,15 @@ impl FileList {
             loop {
                 tokio::time::sleep(Duration::from_secs(60)).await;
                 let Some(list) = weak.upgrade() else { break };
-                if let Err(err) = list.reload() {
+                let path = list.path.clone();
+                let result = tokio::task::spawn_blocking(move || list.reload())
+                    .await
+                    .context("OFAC snapshot reload task failed")
+                    .and_then(std::convert::identity);
+                if let Err(err) = result {
                     // Retain validated data; current() still enforces its expiry.
                     Metrics::get().snapshot_reload_failed.inc();
-                    tracing::error!(?err, path = ?list.path, "OFAC snapshot reload failed");
+                    tracing::error!(?err, ?path, "OFAC snapshot reload failed");
                 }
             }
         });
@@ -124,30 +129,35 @@ pub struct Users {
 }
 
 impl Users {
-    pub fn new(
+    pub async fn new(
         banned_users: Vec<Address>,
         path: Option<PathBuf>,
         max_age: Duration,
     ) -> Result<Self> {
         ensure!(!max_age.is_zero(), "OFAC snapshot max age must be positive");
-        let file = path
-            .map(|path| {
+        let file = if let Some(path) = path {
+            let (path, snapshot) = tokio::task::spawn_blocking(move || {
                 let snapshot = Snapshot::read(&path, max_age)?;
-                Metrics::get()
-                    .snapshot_fetched_at
-                    .set(snapshot.fetched_at.try_into()?);
-                Metrics::get()
-                    .snapshot_max_age_seconds
-                    .set(max_age.as_secs().try_into()?);
-                let list = Arc::new(FileList {
-                    path,
-                    max_age,
-                    snapshot: RwLock::new(snapshot),
-                });
-                list.spawn();
-                Ok::<_, anyhow::Error>(list)
+                Ok::<_, anyhow::Error>((path, snapshot))
             })
-            .transpose()?;
+            .await
+            .context("OFAC snapshot startup task failed")??;
+            Metrics::get()
+                .snapshot_fetched_at
+                .set(snapshot.fetched_at.try_into()?);
+            Metrics::get()
+                .snapshot_max_age_seconds
+                .set(max_age.as_secs().try_into()?);
+            let list = Arc::new(FileList {
+                path,
+                max_age,
+                snapshot: RwLock::new(snapshot),
+            });
+            list.spawn();
+            Some(list)
+        } else {
+            None
+        };
         Ok(Self {
             list: banned_users.into_iter().collect(),
             file,
@@ -213,7 +223,9 @@ mod tests {
     async fn merges_manual_bans_and_applies_additions_and_removals() {
         let file = NamedTempFile::new().unwrap();
         write(file.path(), &[A], now(), 'a');
-        let users = Users::new(vec![MANUAL], Some(file.path().to_owned()), MAX_AGE).unwrap();
+        let users = Users::new(vec![MANUAL], Some(file.path().to_owned()), MAX_AGE)
+            .await
+            .unwrap();
         assert_eq!(
             users.banned([A, B, MANUAL]).await.unwrap(),
             HashSet::from([A, MANUAL])
@@ -232,7 +244,9 @@ mod tests {
     async fn retains_validated_data_until_expiry_then_errors_and_recovers() {
         let file = NamedTempFile::new().unwrap();
         write(file.path(), &[A], now(), 'a');
-        let users = Users::new(vec![], Some(file.path().to_owned()), MAX_AGE).unwrap();
+        let users = Users::new(vec![], Some(file.path().to_owned()), MAX_AGE)
+            .await
+            .unwrap();
         let list = users.file.as_ref().unwrap();
         std::fs::write(file.path(), "not JSON").unwrap();
         assert!(list.reload().is_err());
@@ -254,26 +268,73 @@ mod tests {
             (vec![], now()),
         ] {
             write(file.path(), &addresses, timestamp, 'a');
-            assert!(Users::new(vec![], Some(file.path().to_owned()), MAX_AGE).is_err());
+            assert!(
+                Users::new(vec![], Some(file.path().to_owned()), MAX_AGE)
+                    .await
+                    .is_err()
+            );
         }
         for bytes in [b"bad JSON".to_vec(), vec![b' '; 1_048_577]] {
             std::fs::write(file.path(), bytes).unwrap();
-            assert!(Users::new(vec![], Some(file.path().to_owned()), MAX_AGE).is_err());
+            assert!(
+                Users::new(vec![], Some(file.path().to_owned()), MAX_AGE)
+                    .await
+                    .is_err()
+            );
         }
-        assert!(Users::new(vec![], Some(file.path().with_extension("absent")), MAX_AGE).is_err());
-        assert!(Users::new(vec![], None, Duration::ZERO).is_err());
+        assert!(
+            Users::new(vec![], Some(file.path().with_extension("absent")), MAX_AGE)
+                .await
+                .is_err()
+        );
+        assert!(Users::new(vec![], None, Duration::ZERO).await.is_err());
     }
 
     #[tokio::test]
     async fn rejects_timestamp_rollback_without_clearing_manual_or_ofac_bans() {
         let file = NamedTempFile::new().unwrap();
         write(file.path(), &[A], now(), 'a');
-        let users = Users::new(vec![MANUAL], Some(file.path().to_owned()), MAX_AGE).unwrap();
+        let users = Users::new(vec![MANUAL], Some(file.path().to_owned()), MAX_AGE)
+            .await
+            .unwrap();
         write(file.path(), &[B], now() - 10, 'b');
         assert!(users.file.as_ref().unwrap().reload().is_err());
         assert_eq!(
             users.banned([A, B, MANUAL]).await.unwrap(),
             HashSet::from([A, MANUAL])
         );
+    }
+
+    #[cfg(unix)]
+    #[tokio::test(flavor = "current_thread")]
+    async fn slow_snapshot_startup_keeps_runtime_responsive() {
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("snapshot.fifo");
+        assert!(
+            std::process::Command::new("mkfifo")
+                .arg(&path)
+                .status()
+                .unwrap()
+                .success()
+        );
+        let (send, receive) = std::sync::mpsc::channel();
+        let heartbeat = tokio::spawn(async move {
+            tokio::time::sleep(Duration::from_millis(10)).await;
+            let _ = send.send(());
+        });
+        let writer_path = path.clone();
+        let writer = std::thread::spawn(move || {
+            let responsive = receive.recv_timeout(Duration::from_secs(2)).is_ok();
+            // Always release the FIFO so a regression fails instead of hanging.
+            write(&writer_path, &[A], now(), 'a');
+            responsive
+        });
+        let users = Users::new(vec![], Some(path), MAX_AGE).await.unwrap();
+        assert!(
+            writer.join().unwrap(),
+            "snapshot I/O blocked the async runtime"
+        );
+        heartbeat.await.unwrap();
+        assert_eq!(users.banned([A]).await.unwrap(), HashSet::from([A]));
     }
 }

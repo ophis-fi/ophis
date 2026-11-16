@@ -55,13 +55,14 @@ test('docs aliases preserve the path and cannot redirect to another host', async
 });
 
 test('POST body limits cancel chunked input before forwarding or waiting for cancellation', async () => {
-  for (const path of ['/api/intent', '/api/beat-market', '/api/intent/']) {
+  for (const path of ['/api/intent', '/api/beat-market', '/api/intent/', '/api/relay/quote']) {
+    const limit = path === '/api/relay/quote' ? 4096 : 64 * 1024;
     let reads = 0;
     let cancelled = false;
     const body = new ReadableStream<Uint8Array>({
       pull(controller) {
         reads++;
-        if (reads === 1) controller.enqueue(new Uint8Array(64 * 1024 + 1));
+        if (reads === 1) controller.enqueue(new Uint8Array(limit + 1));
         else controller.error(new Error('oversized body must not be drained'));
       },
       cancel() {
@@ -77,6 +78,28 @@ test('POST body limits cancel chunked input before forwarding or waiting for can
     assert.equal(cancelled, true);
     assert.equal(reads, 1);
     assert.equal(body.locked, false);
+  }
+});
+
+test('Relay POSTs enforce the 4096-byte limit before the handler reads the body', async () => {
+  for (const [body, status] of [
+    ['{}' + ' '.repeat(4094), 200],
+    ['{}' + ' '.repeat(4095), 413],
+    [JSON.stringify({ text: '€'.repeat(1600) }), 413],
+  ] as const) {
+    let forwarded = false;
+    const res = await onRequest({
+      request: new Request('https://swap.ophis.fi/api/relay/quote', {
+        method: 'POST', body, headers: { 'content-length': '2' },
+      }),
+      next: async (request: Request) => {
+        forwarded = true;
+        return new Response(await request.text());
+      },
+    } as unknown as Parameters<typeof onRequest>[0]);
+    assert.equal(res.status, status);
+    assert.equal(forwarded, status === 200);
+    if (status === 200) assert.equal(await res.text(), body);
   }
 });
 

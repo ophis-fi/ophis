@@ -114,7 +114,7 @@ export const onRequest: PagesFunction<RelayEnv> = async ({ request, env, params 
       return json({ status: status.status, inTxHashes: status.inTxHashes, txHashes: status.txHashes, refundFailReason: status.refundFailReason })
     }
     const body = await request.text()
-    if (body.length > 4096) return json({ error: 'Body too large' }, 413)
+    if (new TextEncoder().encode(body).byteLength > 4096) return json({ error: 'Body too large' }, 413)
     const parsed = (() => { try { return quoteBody(JSON.parse(body) as unknown) } catch { return null } })()
     if (!parsed) return json({ error: 'Invalid bridge request' }, 400)
     await admitted(limiter, 'relay:app:quotes')
